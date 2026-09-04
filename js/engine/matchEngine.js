@@ -17,13 +17,27 @@ const _Random = (typeof Random !== 'undefined' && Random)
         }
     });
 
+const _LiveMatchDirector = (typeof LiveMatchDirector !== 'undefined' && LiveMatchDirector)
+    ? LiveMatchDirector
+    : ((typeof window !== 'undefined' && window.LiveMatchDirector)
+        ? window.LiveMatchDirector
+        : ((typeof require !== 'undefined') ? require('./liveMatchDirector.js').LiveMatchDirector : null));
+
+const _PositionEngine = (typeof PositionEngine !== 'undefined' && PositionEngine)
+    ? PositionEngine
+    : ((typeof window !== 'undefined' && window.PositionEngine)
+        ? window.PositionEngine
+        : ((typeof require !== 'undefined') ? require('./positionEngine.js').PositionEngine : null));
+
 // Zentrale Kalibrierungs- und Tuning-Parameter
 const MATCH_TUNING = {
     baseGoalChance: {
-        through_ball: 0.12,
-        cross: 0.08,
-        dribble: 0.07,
-        corner: 0.055,
+        // Kalibriert auf ca. 2.6 - 2.8 Tore pro Spiel, nachdem die Positionseignung
+        // die effektiven Teamstärken realistischer (und leicht niedriger) macht
+        through_ball: 0.145,
+        cross: 0.097,
+        dribble: 0.085,
+        corner: 0.066,
         penalty: 0.77
     },
     skillInfluence: 340,
@@ -224,10 +238,51 @@ class MatchEngine {
     }
 
     /**
+     * Liefert die Positionscodes der Formation eines Vereins (Slot-Reihenfolge)
+     */
+    static getFormationSlots(club) {
+        const formConfigs = (typeof FORMATION_CONFIGS !== 'undefined' && FORMATION_CONFIGS)
+            ? FORMATION_CONFIGS
+            : ((typeof window !== 'undefined' && window.FORMATION_CONFIGS)
+                ? window.FORMATION_CONFIGS
+                : (typeof require !== 'undefined' ? require('./gameState.js').FORMATION_CONFIGS : {}));
+
+        const key = club?.formation || "4-4-2";
+        const config = (formConfigs && formConfigs[key]) || (formConfigs && formConfigs["4-4-2"]) || null;
+        return (config && Array.isArray(config.positions)) ? config.positions : [];
+    }
+
+    /**
+     * Ordnet jedem Spieler der Startelf die Position zu, auf der er tatsächlich aufgestellt ist.
+     * Der Index in der Aufstellung entspricht dem Formations-Slot.
+     */
+    static getDeployedPositionMap(club, lineupPlayers) {
+        const slots = this.getFormationSlots(club);
+        const map = new Map();
+        (lineupPlayers || []).forEach((p, idx) => {
+            if (!p) return;
+            const slotPos = slots[idx]?.pos || p.pos;
+            map.set(p.id, slotPos);
+        });
+        return map;
+    }
+
+    /**
+     * Familiaritätsfaktor eines Spielers auf seiner Einsatzposition (1.0 = Stammposition)
+     */
+    static getPositionModifier(player, deployedPos) {
+        if (!player || !deployedPos || !_PositionEngine) return 1.0;
+        if (player.pos === deployedPos) return 1.0;
+        return _PositionEngine.getRatingModifier(_PositionEngine.getFamiliarity(player, deployedPos));
+    }
+
+    /**
      * Berechnet die effektive Spielerstärke aus positionsrelevanten Attributen (A1)
      * Gewichtung: ~60 % Attribute / 40 % overall (Fallback auf overall pro fehlendem Attribut)
+     * Wird eine abweichende Einsatzposition übergeben, sinkt die Stärke entsprechend
+     * der Positionseignung des Spielers.
      */
-    static calculateEffectivePlayerSkill(player) {
+    static calculateEffectivePlayerSkill(player, deployedPos = null) {
         if (!player) return 65;
         const ovr = player.overall || 68;
 
@@ -236,7 +291,8 @@ class MatchEngine {
         };
 
         let attrs = [];
-        const pos = player.pos || "ZM";
+        // Die Attributgewichtung richtet sich nach der Position, auf der gespielt wird
+        const pos = deployedPos || player.pos || "ZM";
 
         if (pos === "TW") {
             attrs = [getAttr("reflexes"), getAttr("handling"), getAttr("oneOnOne"), getAttr("positioning")];
@@ -254,8 +310,9 @@ class MatchEngine {
         const fitnessFactor = 0.6 + ((player.fitness || 100) / 100) * 0.4;
         const moraleFactor = 0.85 + ((player.morale || 75) / 100) * 0.2;
         const formFactor = 0.85 + ((player.form || 7.0) / 10) * 0.2;
+        const positionFactor = this.getPositionModifier(player, deployedPos);
 
-        return baseSkill * fitnessFactor * moraleFactor * formFactor;
+        return baseSkill * fitnessFactor * moraleFactor * formFactor * positionFactor;
     }
 
     /**
@@ -273,15 +330,20 @@ class MatchEngine {
         let defSum = 0, defCount = 0;
         let gkPower = 70;
 
-        lineupPlayers.forEach(p => {
-            const effectiveSkill = this.calculateEffectivePlayerSkill(p);
+        // Einsatzpositionen aus der Formation ableiten: ein Spieler wird dort bewertet,
+        // wo er aufgestellt ist - nicht dort, wo er eigentlich zuhause ist.
+        const deployedMap = this.getDeployedPositionMap(club, lineupPlayers);
 
-            if (p.pos === "TW") {
+        lineupPlayers.forEach(p => {
+            const deployedPos = deployedMap.get(p.id) || p.pos;
+            const effectiveSkill = this.calculateEffectivePlayerSkill(p, deployedPos);
+
+            if (deployedPos === "TW") {
                 gkPower = effectiveSkill * 1.05;
-            } else if (["IV", "LV", "RV"].includes(p.pos)) {
+            } else if (["IV", "LV", "RV"].includes(deployedPos)) {
                 defSum += effectiveSkill;
                 defCount++;
-            } else if (["DM", "ZM", "LM", "RM", "OM"].includes(p.pos)) {
+            } else if (["DM", "ZM", "LM", "RM", "OM"].includes(deployedPos)) {
                 midSum += effectiveSkill;
                 midCount++;
             } else { // ST, LA, RA
@@ -526,6 +588,19 @@ class MatchEngine {
         const playerYellows = new Map();
         const sentOffPlayerIds = new Set();
 
+        // Einsatzpositionen aus den Formationen ableiten: Wer auf der Sechs spielt,
+        // taucht auch im Spielbericht als Sechser auf - nicht als Stürmer.
+        const homeSlots = this.getFormationSlots(homeClub);
+        const awaySlots = this.getFormationSlots(awayClub);
+
+        const deployedPosOf = (player, isHomeTeam) => {
+            if (!player) return "ZM";
+            const arr = isHomeTeam ? activeHomePlayers : activeAwayPlayers;
+            const slots = isHomeTeam ? homeSlots : awaySlots;
+            const idx = arr.indexOf(player);
+            return (idx >= 0 && slots[idx]?.pos) || player.pos || "ZM";
+        };
+
         // Hilfsfunktion: Schuss/Angriff erzeugen (E20)
         const buildAttackScene = (min, isHomeAttacking, attackType) => {
             const attClub = isHomeAttacking ? homeClub : awayClub;
@@ -539,11 +614,14 @@ class MatchEngine {
             const defPowerLocal = isHomeAttacking ? awayPower : homePower;
             const attTactics = isHomeAttacking ? homeTactics : awayTactics;
 
-            const attackers = attPlayers.filter(p => ["ST", "LA", "RA", "OM"].includes(p.pos));
-            const midfielders = attPlayers.filter(p => ["ZM", "DM", "LM", "RM"].includes(p.pos));
-            const wingers = attPlayers.filter(p => ["LA", "RA", "LM", "RM"].includes(p.pos));
-            const defenders = defPlayers.filter(p => ["IV", "LV", "RV", "DM"].includes(p.pos));
-            const gk = defPlayers.find(p => p.pos === "TW") || defPlayers[0];
+            const attPos = p => deployedPosOf(p, isHomeAttacking);
+            const defPos = p => deployedPosOf(p, !isHomeAttacking);
+
+            const attackers = attPlayers.filter(p => ["ST", "LA", "RA", "OM"].includes(attPos(p)));
+            const midfielders = attPlayers.filter(p => ["ZM", "DM", "LM", "RM"].includes(attPos(p)));
+            const wingers = attPlayers.filter(p => ["LA", "RA", "LM", "RM"].includes(attPos(p)));
+            const defenders = defPlayers.filter(p => ["IV", "LV", "RV", "DM"].includes(defPos(p)));
+            const gk = defPlayers.find(p => defPos(p) === "TW") || defPlayers.find(p => p.pos === "TW") || defPlayers[0];
 
             const shooter = attackers.length > 0 ? _Random.choice(attackers) : (midfielders[0] || attPlayers[0]);
             const passer = midfielders.length > 0 ? _Random.choice(midfielders) : (attPlayers[1] || attPlayers[0]);
@@ -817,10 +895,14 @@ class MatchEngine {
 
             if (sceneTypeRoll < MATCH_TUNING.foulRate) {
                 // 1. ZWEIKÄMPFE, FOULS, KARTEN & ELFMETER (A6, A8)
-                const foulEligible = defPlayers.filter(p => !sentOffPlayerIds.has(p.id));
-                const defender = _Random.choice(foulEligible) || defPlayers[0];
-                const shooter = _Random.choice(attPlayers.filter(p => ["ST", "LA", "RA", "OM"].includes(p.pos))) || attPlayers[0];
-                const gk = defPlayers.find(p => p.pos === "TW") || defPlayers[0];
+                const foulDefPos = p => deployedPosOf(p, !isHomeAttacking);
+                const foulAttPos = p => deployedPosOf(p, isHomeAttacking);
+
+                // Der Torwart begeht keine Feldzweikämpfe im Mittelfeld
+                const foulEligible = defPlayers.filter(p => !sentOffPlayerIds.has(p.id) && foulDefPos(p) !== "TW" && p.pos !== "TW");
+                const defender = _Random.choice(foulEligible) || defPlayers.find(p => p.pos !== "TW") || defPlayers[0];
+                const shooter = _Random.choice(attPlayers.filter(p => ["ST", "LA", "RA", "OM"].includes(foulAttPos(p)))) || attPlayers[0];
+                const gk = defPlayers.find(p => foulDefPos(p) === "TW") || defPlayers.find(p => p.pos === "TW") || defPlayers[0];
                 const fPos = { x: _Random.float(25, 75), y: _Random.float(20, 80) };
 
                 const isPenalty = _Random.chance(MATCH_TUNING.penaltyRate);
@@ -1618,13 +1700,83 @@ class LiveMatch {
         this.maxSubstitutions = 5;
 
         // 2D Match Visualizer Zustand
-        this.ball = { x: 50, y: 50, targetX: 50, targetY: 50, speed: 0.04, holderId: null };
+        this.ball = {
+            x: 50, y: 50,
+            targetX: 50, targetY: 50,
+            originX: 50, originY: 50,
+            travelDuration: 0.01, travelElapsed: 1,
+            distance: 0, height: 0, inFlight: false,
+            actionType: "pass",
+            holderId: null
+        };
         this.ballTrail = [];
         this.activePlayerId = null;
         this.goalFlash = 0;
+        this.celebratingTeam = null;
+        this.sceneRoles = null;
         this.players2D = this.initialize2DPositions();
         this.currentPhase = "kickoff";
         this.lastCommentary = "Das Spiel wird angepfiffen!";
+
+        // Regie der 2D-Simulation (Highlights, Ballzirkulation, Laufwege)
+        this.director = _LiveMatchDirector ? new _LiveMatchDirector(this) : null;
+    }
+
+    /**
+     * Aktualisiert die Spielphase anhand der aktuellen Minute (C15)
+     */
+    updatePhaseLabel() {
+        const minute = this.minute;
+        if (minute <= 0) {
+            this.currentPhase = "kickoff";
+        } else if (minute <= 45) {
+            this.currentPhase = "first_half";
+        } else if (minute <= 47 && this.currentPhase === "first_half") {
+            this.currentPhase = "half_time";
+        } else if (minute > 45) {
+            this.currentPhase = this.isFinished ? "full_time" : "second_half";
+        }
+    }
+
+    /**
+     * Beendet das Spiel, sobald die reguläre Zeit abgelaufen und die Timeline
+     * vollständig abgespielt ist.
+     */
+    checkForFinish() {
+        if (this.isFinished) return false;
+        if (this.minute >= 90 && this.timelineIndex >= this.timeline.length) {
+            this.finishMatch();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Echtzeit-Taktung der 2D-Simulation (wird pro Frame vom UI aufgerufen).
+     * Die Spieluhr läuft dabei kontinuierlich weiter und verlangsamt sich
+     * während einer Highlight-Szene, damit Minute, Kommentar und Bild
+     * zusammenpassen.
+     */
+    advanceRealTime(realDeltaMs) {
+        if (!this.director) {
+            // Fallback ohne Regie: klassischer Minutentakt
+            this._fallbackAccumulator = (this._fallbackAccumulator || 0) + (realDeltaMs || 0);
+            if (this._fallbackAccumulator >= this.getTickIntervalMs()) {
+                this._fallbackAccumulator = 0;
+                this.tick();
+            }
+            return;
+        }
+        this.director.advanceRealTime(realDeltaMs);
+    }
+
+    /**
+     * Aktueller Spielstand der Uhr als "45:12"
+     */
+    getClockText() {
+        const mm = String(Math.max(0, this.minute)).padStart(2, "0");
+        const ss = String(Math.max(0, Math.floor(this.seconds || 0))).padStart(2, "0");
+        return `${mm}:${ss}`;
     }
 
     getTickIntervalMs() {
@@ -1661,14 +1813,16 @@ class LiveMatch {
         const players = [];
 
         this.homeLineup.forEach((p, idx) => {
-            const slot = homePositions[idx] || { x: 50, y: 90 };
+            const slot = homePositions[idx] || { x: 50, y: 90, pos: p.pos };
             const fieldX = Math.max(3, Math.min(48, ((100 - slot.y) / 100) * 44 + 4));
             const fieldY = slot.x;
             players.push({
                 id: p.id,
                 name: p.name,
                 number: idx + 1,
-                pos: p.pos,
+                // Im 2D-Feld zählt die Position, auf der gespielt wird
+                pos: slot.pos || p.pos,
+                naturalPos: p.pos,
                 team: "home",
                 baseX: fieldX,
                 baseY: fieldY,
@@ -1683,14 +1837,15 @@ class LiveMatch {
         });
 
         this.awayLineup.forEach((p, idx) => {
-            const slot = awayPositions[idx] || { x: 50, y: 90 };
+            const slot = awayPositions[idx] || { x: 50, y: 90, pos: p.pos };
             const fieldX = Math.max(52, Math.min(97, 96 - ((100 - slot.y) / 100) * 44));
             const fieldY = slot.x;
             players.push({
                 id: p.id,
                 name: p.name,
                 number: idx + 1,
-                pos: p.pos,
+                pos: slot.pos || p.pos,
+                naturalPos: p.pos,
                 team: "away",
                 baseX: fieldX,
                 baseY: fieldY,
@@ -1728,25 +1883,24 @@ class LiveMatch {
         this.match.timeline = this.timeline;
     }
 
+    /**
+     * Klassischer Minutentakt (Sofortmodus, Tests und Fallback ohne Regie).
+     * Springt um einen kompletten Minutenschritt nach vorne und löst alle
+     * fälligen Timeline-Ereignisse unmittelbar auf.
+     */
     tick() {
         if (this.isFinished || this.isPaused) return;
 
         const minuteStep = this.getMinuteStep();
-        this.minute += minuteStep;
 
-        // Phasen aktualisieren (C15)
-        if (this.minute === 0) {
-            this.currentPhase = "kickoff";
-        } else if (this.minute <= 45) {
-            this.currentPhase = "first_half";
-        } else if (this.minute === 46 && this.currentPhase === "first_half") {
-            this.currentPhase = "half_time";
-            this.lastCommentary = `Halbzeit! Spielstand: ${this.homeScore}:${this.awayScore}.`;
-        } else if (this.minute > 46 && this.minute <= 90) {
-            this.currentPhase = "second_half";
+        if (this.director) {
+            this.director.advanceMatchSeconds(minuteStep * 60);
+            return;
         }
 
-        // Timeline-Events verarbeiten (C16 - Ticker holt auf bei mehreren Szenen)
+        this.minute += minuteStep;
+        this.updatePhaseLabel();
+
         let processedEventsCount = 0;
         const maxEventsPerTick = 3;
 
@@ -1759,9 +1913,7 @@ class LiveMatch {
             processedEventsCount++;
         }
 
-        if (this.minute >= 90 && this.timelineIndex >= this.timeline.length) {
-            this.finishMatch();
-        }
+        this.checkForFinish();
     }
 
     processEvent(ev) {
@@ -1779,8 +1931,8 @@ class LiveMatch {
                 this.stats.xG[1] = parseFloat((this.stats.xG[1] + (ev.xG || 0.3)).toFixed(2));
                 this.celebratingTeam = "away";
             }
-            this.goalFlash = 20;
-            this.goalCelebrationTimer = 40; // Jubelphase für Spieler (B6)
+            this.goalFlash = 1.0;
+            this.lastScorerName = ev.playerName || null;
             this.addEvent("goal", ev.clubId, ev.text);
         } else if (ev.type === "save") {
             if (ev.team === "away") {
@@ -1828,18 +1980,16 @@ class LiveMatch {
             this.currentPhase = "full_time";
         }
 
-        if (ev.start && ev.end) {
-            // Ball wandert sanft zum Zielpunkt statt zu springen (B1)
+        // Die Ballführung übernimmt der LiveMatchDirector; ohne Regie wird
+        // der Ball direkt auf den Zielpunkt gesetzt.
+        if (!this.director && ev.start && ev.end) {
             this.ball.targetX = ev.end.x;
             this.ball.targetY = ev.end.y;
-            // Bestimme Ballgeschwindigkeit nach Aktionstyp (B3)
-            if (ev.type === "goal" || ev.type === "save" || ev.type === "shot_miss") {
-                this.ball.actionType = "shot";
-            } else if (ev.text && (ev.text.includes("Flanke") || ev.text.includes("Ecke"))) {
-                this.ball.actionType = "cross";
-            } else {
-                this.ball.actionType = "pass";
-            }
+            this.ball.originX = ev.end.x;
+            this.ball.originY = ev.end.y;
+            this.ball.x = ev.end.x;
+            this.ball.y = ev.end.y;
+            this.ball.actionType = (ev.type === "goal" || ev.type === "save" || ev.type === "shot_miss") ? "shot" : "pass";
         }
 
         if (ev.fromPlayerId) this.activePlayerId = ev.fromPlayerId;
@@ -1851,7 +2001,12 @@ class LiveMatch {
     }
 
     addEvent(type, clubId, text) {
+        // Fortlaufende Nummer, damit die Oberfläche neue Einträge auch dann
+        // erkennt, wenn die Liste bereits ihre Maximallänge erreicht hat.
+        this.eventSeq = (this.eventSeq || 0) + 1;
+
         this.events.unshift({
+            seq: this.eventSeq,
             minute: this.minute,
             type,
             clubId,
@@ -1860,82 +2015,40 @@ class LiveMatch {
         if (this.events.length > 50) this.events.pop();
     }
 
+    /**
+     * Bewegt Ball und Spieler weich weiter (wird pro Frame aufgerufen).
+     * Ohne Delta-Zeit wird ein Standardschritt von 100 ms angenommen,
+     * damit Sofortsimulation und Tests weiterhin funktionieren.
+     */
     updateBallAndPlayers(deltaMs) {
-        // Delta-Zeit-basierte Normalisierung (Standard 16.6ms für 60fps) (B3)
-        const dt = (typeof deltaMs === "number" && deltaMs > 0 && deltaMs < 200) ? deltaMs / 16.667 : 1.0;
-
-        // Ballgeschwindigkeit nach Aktionstyp (Schuss schnell, Flanke mittel, Kurzpass langsam) (B3)
-        let ballLerp = 0.12;
-        if (this.ball.actionType === "shot") ballLerp = 0.22;
-        else if (this.ball.actionType === "cross") ballLerp = 0.14;
-        else if (this.ball.actionType === "pass") ballLerp = 0.09;
-
-        const effectiveBallLerp = Math.min(1.0, ballLerp * dt);
-        this.ball.x += (this.ball.targetX - this.ball.x) * effectiveBallLerp;
-        this.ball.y += (this.ball.targetY - this.ball.y) * effectiveBallLerp;
-
-        // B4: Ballschweif mit alterungsbasiertem Fade statt kumulativem Verblassen
-        const ballDist = Math.hypot(this.ball.targetX - this.ball.x, this.ball.targetY - this.ball.y);
-        if (ballDist > 1.5) {
-            this.ballTrail.unshift({ x: this.ball.x, y: this.ball.y, born: Date.now() });
-        }
-        const now = Date.now();
-        this.ballTrail = this.ballTrail.filter(t => (now - t.born) < 280);
-        if (this.ballTrail.length > 12) this.ballTrail.pop();
-
-        if (this.goalFlash > 0) this.goalFlash--;
-
-        // B5: Ruhephasen mit Ballzirkulation & Raumkompression
-        if (ballDist < 1.0 && this.goalCelebrationTimer <= 0) {
-            this.idleTick = (this.idleTick || 0) + dt;
-            if (this.idleTick > 25) {
-                this.idleTick = 0;
-                // Zirkulieren im Mittelfeld / Defensive
-                const possessionTeam = this.stats.possession[0] >= 50 ? "home" : "away";
-                const circX = possessionTeam === "home" ? (35 + Math.sin(now * 0.002) * 15) : (65 + Math.sin(now * 0.002) * 15);
-                const circY = 50 + Math.cos(now * 0.003) * 20;
-                this.ball.targetX = circX;
-                this.ball.targetY = circY;
-                this.ball.actionType = "pass";
-            }
+        if (this.director) {
+            this.director.updateMotion(deltaMs);
+            return;
         }
 
-        // B6: Torjubel Steuerung
-        if (this.goalCelebrationTimer > 0) {
-            this.goalCelebrationTimer -= dt;
-            if (this.goalCelebrationTimer <= 0) {
-                // Anstoß Reset nach Jubel
-                this.ball.x = 50;
-                this.ball.y = 50;
-                this.ball.targetX = 50;
-                this.ball.targetY = 50;
-            }
-        }
+        // Fallback ohne Regie: einfache Interpolation
+        const dt = (typeof deltaMs === "number" && deltaMs > 0) ? Math.min(0.1, deltaMs / 1000) : 0.1;
+
+        this.ball.x += (this.ball.targetX - this.ball.x) * Math.min(1, dt * 8);
+        this.ball.y += (this.ball.targetY - this.ball.y) * Math.min(1, dt * 8);
 
         const ballShiftX = (this.ball.x - 50) * 0.85;
         const ballShiftY = (this.ball.y - 50) * 0.35;
 
         this.players2D.forEach(p => {
-            if (this.goalCelebrationTimer > 0 && this.celebratingTeam === p.team) {
-                // Torjubel: Spieler laufen zur Eckfahne (B6)
-                const cornerFlagX = p.team === "home" ? 95 : 5;
-                const cornerFlagY = 10;
-                p.targetX = cornerFlagX + (p.number % 3) * 2;
-                p.targetY = cornerFlagY + (p.number % 4) * 2;
-            } else if (p.pos === "TW") {
+            if (p.pos === "TW") {
                 p.targetX = p.baseX + ballShiftX * 0.15;
                 p.targetY = p.baseY + ballShiftY * 0.4;
             } else {
                 p.targetX = Math.max(2, Math.min(98, p.baseX + ballShiftX));
                 p.targetY = Math.max(2, Math.min(98, p.baseY + ballShiftY));
             }
-
-            // Spielergeschwindigkeit abhängig von pace-Attribut (B3)
-            const paceFactor = ((p.pace || 70) / 75) * 0.11;
-            const playerLerp = Math.min(1.0, paceFactor * dt);
-            p.x += (p.targetX - p.x) * playerLerp;
-            p.y += (p.targetY - p.y) * playerLerp;
+            const lerp = Math.min(1, dt * 7);
+            p.x += (p.targetX - p.x) * lerp;
+            p.y += (p.targetY - p.y) * lerp;
         });
+
+        if (this.goalFlash > 0) this.goalFlash = Math.max(0, this.goalFlash - dt * 1.4);
     }
 
     substitute(teamType, playerOutId, playerInId) {
@@ -1973,7 +2086,10 @@ class LiveMatch {
         if (p2d) {
             p2d.id = playerIn.id;
             p2d.name = playerIn.name;
-            p2d.pos = playerIn.pos;
+            // Der Slot auf dem Feld bleibt bestehen, nur der Spieler wechselt
+            p2d.naturalPos = playerIn.pos;
+            p2d.pace = playerIn.pace || playerIn.overall || 70;
+            if (this.director) this.director.initPlayers();
         }
 
         this.substitutionsUsed[teamType]++;

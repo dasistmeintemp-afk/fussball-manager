@@ -414,17 +414,41 @@
                             <div class="pitch-header-bar">
                                 <label for="selectFormation">Formation:</label>
                                 <select id="selectFormation" class="styled-select">
-                                    <option value="4-4-2">4-4-2 Standard</option>
-                                    <option value="4-3-3">4-3-3 Offensiv</option>
-                                    <option value="4-2-3-1">4-2-3-1 Ausgewogen</option>
-                                    <option value="3-5-2">3-5-2 Kompakt</option>
-                                    <option value="5-3-2">5-3-2 Defensiv</option>
-                                    <option value="4-1-4-1">4-1-4-1 Mittelfeld</option>
-                                    <option value="4-3-1-2">4-3-1-2 Raute</option>
+                                    <!-- Wird dynamisch befüllt (Standard + eigene Formationen) -->
                                 </select>
+                                <button class="btn btn-sm btn-secondary" id="btnFormationEdit" title="Positionen frei auf dem Raster verschieben">
+                                    ✏️ Formation bearbeiten
+                                </button>
+                            </div>
+
+                            <!-- Editorleiste: nur im Bearbeitungsmodus sichtbar -->
+                            <div class="formation-editor-bar" id="formationEditorBar" style="display:none;">
+                                <div class="formation-editor-row">
+                                    <span class="formation-shape-badge" id="formationShapeBadge">4-4-2</span>
+                                    <span class="formation-editor-hint" id="formationEditorHint">
+                                        Spieler mit der Maus (oder dem Finger) auf dem Raster verschieben.
+                                    </span>
+                                </div>
+                                <div class="formation-editor-row">
+                                    <label for="selectSlotPosition">Position des gewählten Spielers:</label>
+                                    <select id="selectSlotPosition" class="styled-select" disabled>
+                                        <option value="">– Spieler auswählen –</option>
+                                    </select>
+                                    <label class="formation-snap-toggle">
+                                        <input type="checkbox" id="chkFormationSnap" checked>
+                                        Am Raster ausrichten
+                                    </label>
+                                </div>
+                                <div class="formation-editor-row">
+                                    <input type="text" id="inputFormationName" class="styled-input" maxlength="28" placeholder="Name der eigenen Formation">
+                                    <button class="btn btn-sm btn-primary" id="btnFormationSave">💾 Speichern</button>
+                                    <button class="btn btn-sm btn-secondary" id="btnFormationReset">↺ Zurücksetzen</button>
+                                    <button class="btn btn-sm btn-danger" id="btnFormationDelete" style="display:none;">🗑 Löschen</button>
+                                </div>
                             </div>
 
                             <div class="soccer-pitch" id="tacticsPitch">
+                                <div class="pitch-grid-overlay" id="pitchGridOverlay"></div>
                                 <div class="pitch-marking penalty-box top"></div>
                                 <div class="pitch-marking penalty-box bottom"></div>
                                 <div class="pitch-marking center-circle"></div>
@@ -1291,6 +1315,7 @@
                         </div>
                         <div class="match-time-badge">
                             <span id="lmMinute">0</span>'
+                            <span class="live-clock" id="lmClock">00:00</span>
                             <span class="time-label">LIVE</span>
                         </div>
                         <div class="team-score away">
@@ -1584,6 +1609,7 @@
     <script src="js/engine/contractEngine.js"></script>
     <script src="js/engine/scoutingEngine.js"></script>
     <script src="js/engine/youthEngine.js"></script>
+    <script src="js/engine/positionEngine.js"></script>
     <script src="js/engine/aiManagerEngine.js"></script>
     <script src="js/engine/clubGenerator.js"></script>
     <script src="js/engine/playerGenerator.js"></script>
@@ -1592,6 +1618,7 @@
     <script src="js/engine/calendarEngine.js"></script>
     <script src="js/engine/opponentAnalysisEngine.js"></script>
     <script src="js/engine/gameState.js"></script>
+    <script src="js/engine/liveMatchDirector.js"></script>
     <script src="js/engine/matchEngine.js"></script>
     <script src="js/engine/transferEngine.js"></script>
     <script src="js/engine/trainingEngine.js"></script>

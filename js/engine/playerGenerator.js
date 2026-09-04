@@ -14,6 +14,22 @@ class PlayerGenerator {
     ];
 
     /**
+     * Auflösung der PositionEngine in Browser- und Node-Umgebung
+     */
+    static getPositionEngine() {
+        if (typeof PositionEngine !== "undefined" && PositionEngine) return PositionEngine;
+        if (typeof window !== "undefined" && window.PositionEngine) return window.PositionEngine;
+        if (typeof require !== "undefined") {
+            try {
+                return require("./positionEngine.js").PositionEngine;
+            } catch (e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Ermittelt CA & PA-Bandbreiten je nach Ligastufe
      */
     static getAbilityRangeForLevel(level = 1) {
@@ -45,6 +61,10 @@ class PlayerGenerator {
 
         const pos = preferredPosition || this.POSITIONS[Math.floor(Math.random() * this.POSITIONS.length)];
         const age = 17 + Math.floor(Math.random() * 18); // 17 - 34
+
+        // Nebenpositionen: nicht jeder Spieler kann überall spielen
+        const positionEngine = this.getPositionEngine();
+        const secondaryPositions = positionEngine ? positionEngine.generateSecondaryPositions(pos) : [];
 
         const abilityRange = this.getAbilityRangeForLevel(level);
         const caSpread = abilityRange.maxCA - abilityRange.minCA;
@@ -103,6 +123,8 @@ class PlayerGenerator {
             age: age,
             nationality: nationality,
             pos: pos,
+            secondPos: secondaryPositions[0] || null,
+            positions: secondaryPositions,
             clubId: clubId,
             overall: overall,
             pot: pot,
@@ -197,6 +219,8 @@ class PlayerGenerator {
             age: age,
             nationality: "Deutschland",
             pos: pos,
+            secondPos: (this.getPositionEngine()?.generateSecondaryPositions(pos) || [])[0] || null,
+            positions: this.getPositionEngine()?.generateSecondaryPositions(pos) || [],
             overall: overall,
             pot: pot,
             trueCurrentAbility: baseCA,

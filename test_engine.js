@@ -19,6 +19,7 @@ const { CompetitionEngine } = require('./js/engine/competitionEngine.js');
 const { PlayerRatingEngine } = require('./js/engine/playerRatingEngine.js');
 const { CalendarEngine } = require('./js/engine/calendarEngine.js');
 const { OpponentAnalysisEngine } = require('./js/engine/opponentAnalysisEngine.js');
+const { PositionEngine } = require('./js/engine/positionEngine.js');
 const { GameState, FORMATION_CONFIGS } = require('./js/engine/gameState.js');
 const { MatchEngine, LiveMatch } = require('./js/engine/matchEngine.js');
 const { TransferEngine } = require('./js/engine/transferEngine.js');
@@ -326,7 +327,7 @@ function runEngineTests() {
     });
 
     // 12. SaveService & MigrationService
-    test("SaveService & MigrationService: Export, Import und Schema-Migration von v1 nach v5", () => {
+    test("SaveService & MigrationService: Export, Import und Schema-Migration von v1 nach v6", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const exportedJson = SaveService.exportJson(state);
         const importRes = SaveService.importJson(exportedJson);
@@ -343,8 +344,8 @@ function runEngineTests() {
             }
         };
         const migRes = MigrationService.migrateSave(legacySave);
-        if (!migRes.success || migRes.saveVersion !== 5 || !migRes.state.scouting || !migRes.state.calendar || !migRes.state.competitions) {
-            throw new Error("MigrationService failed to migrate to version 5");
+        if (!migRes.success || migRes.saveVersion !== 6 || !migRes.state.scouting || !migRes.state.calendar || !migRes.state.competitions || !migRes.state.customFormations) {
+            throw new Error("MigrationService failed to migrate to version 6");
         }
     });
 
@@ -550,6 +551,268 @@ function runEngineTests() {
         if (avgPotTop <= avgPotSmall) {
             throw new Error(`Akademie Stufe 5 generiert im Mittel nicht bessere Talente als Stufe 1: Top=${avgPotTop.toFixed(1)}, Small=${avgPotSmall.toFixed(1)}`);
         }
+    });
+
+    // 19. PositionEngine: Positionseignung und Familiarität
+    test("PositionEngine: Familiarität, Eignungsstufen und effektive Bewertung", () => {
+        const striker = { pos: "ST", overall: 90 };
+        const centreBack = { pos: "IV", overall: 80 };
+        const keeper = { pos: "TW", overall: 85 };
+
+        // Stammposition ist immer volle Stärke
+        const natural = PositionEngine.getSuitability(striker, "ST");
+        if (natural.familiarity !== 1 || natural.effectiveOverall !== 90) {
+            throw new Error(`Stammposition muss 1.0 / volle Stärke ergeben, war ${natural.familiarity} / ${natural.effectiveOverall}`);
+        }
+        if (natural.level !== "natural") throw new Error(`Erwartete Stufe "natural", war "${natural.level}"`);
+
+        // Je weiter entfernt, desto schwächer
+        const stAsOm = PositionEngine.getSuitability(striker, "OM").effectiveOverall;
+        const stAsZm = PositionEngine.getSuitability(striker, "ZM").effectiveOverall;
+        const stAsIv = PositionEngine.getSuitability(striker, "IV").effectiveOverall;
+        const stAsTw = PositionEngine.getSuitability(striker, "TW").effectiveOverall;
+
+        if (!(90 > stAsOm && stAsOm > stAsZm && stAsZm > stAsIv && stAsIv >= stAsTw)) {
+            throw new Error(`Eignung fällt nicht monoton: ST=90, OM=${stAsOm}, ZM=${stAsZm}, IV=${stAsIv}, TW=${stAsTw}`);
+        }
+        if (stAsIv >= 70) {
+            throw new Error(`Stürmer als Innenverteidiger muss deutlich schwächer sein, war ${stAsIv}`);
+        }
+
+        // Verwandte Positionen bleiben stark
+        const ivAsLv = PositionEngine.getSuitability(centreBack, "LV");
+        if (ivAsLv.familiarity < 0.8) {
+            throw new Error(`Innenverteidiger auf Linksverteidiger sollte gut geeignet sein, war ${ivAsLv.familiarity}`);
+        }
+
+        // Torwart ist ein Sonderfall in beide Richtungen
+        if (PositionEngine.getFamiliarity(keeper, "IV") > 0.2) throw new Error("Torwart im Feld darf keine hohe Eignung haben");
+        if (PositionEngine.getFamiliarity(centreBack, "TW") > 0.2) throw new Error("Feldspieler im Tor darf keine hohe Eignung haben");
+
+        // Hinterlegte Nebenposition zählt als eingespielt
+        const utility = { pos: "RV", secondPos: "DM", overall: 80 };
+        if (PositionEngine.getFamiliarity(utility, "DM") < 0.9) {
+            throw new Error("Hinterlegte Nebenposition muss als eingespielt gelten");
+        }
+
+        // Ranking liefert die Stammposition zuerst
+        const ranking = PositionEngine.getPositionRanking(utility);
+        if (ranking[0].position !== "RV") throw new Error(`Ranking beginnt nicht mit der Stammposition: ${ranking[0].position}`);
+    });
+
+    // 20. PositionEngine: Zonen und Formationserkennung
+    test("PositionEngine: Zonenerkennung und automatische Formationsbenennung", () => {
+        const cases = [
+            [50, 95, "TW"], [50, 76, "IV"], [10, 72, "LV"], [90, 72, "RV"],
+            [50, 56, "DM"], [50, 45, "ZM"], [12, 44, "LM"], [88, 44, "RM"],
+            [50, 32, "OM"], [12, 20, "LA"], [88, 20, "RA"], [50, 12, "ST"]
+        ];
+        cases.forEach(([x, y, expected]) => {
+            const detected = PositionEngine.detectPositionFromCoords(x, y);
+            if (detected !== expected) {
+                throw new Error(`Zone (${x}/${y}) sollte ${expected} sein, war ${detected}`);
+            }
+        });
+
+        // Alle mitgelieferten Formationen müssen korrekt benannt werden
+        Object.keys(FORMATION_CONFIGS).forEach(key => {
+            if (GameState.isCustomFormation(key)) return;
+            const shape = PositionEngine.detectFormationShape(FORMATION_CONFIGS[key].positions);
+            if (shape !== key) {
+                throw new Error(`Formation ${key} wurde als ${shape} erkannt`);
+            }
+        });
+    });
+
+    // 21. Positionsbewusste Aufstellung und Teamstärke
+    test("MatchEngine & PositionEngine: Fehlbesetzungen schwächen die Mannschaft messbar", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        club.formation = "4-4-2";
+        GameState.autoSetLineupForClub(club, state.players);
+
+        const slots = FORMATION_CONFIGS["4-4-2"].positions;
+        const optimalLineup = club.lineup.map(id => state.players.find(p => p.id === id));
+
+        // Die automatische Aufstellung soll überwiegend natürliche Positionen treffen
+        const naturalCount = optimalLineup.filter((p, i) => p && PositionEngine.getFamiliarity(p, slots[i].pos) >= 0.9).length;
+        if (naturalCount < 8) {
+            throw new Error(`Auto-Aufstellung besetzt nur ${naturalCount} von 11 Positionen passend`);
+        }
+
+        const powerOptimal = MatchEngine.calculateTeamPower(club, state.players, false);
+
+        // Aufstellung absichtlich verdrehen (Feldspieler in umgekehrter Reihenfolge)
+        const scrambled = [club.lineup[0], ...club.lineup.slice(1).reverse()];
+        club.lineup = scrambled;
+        const powerScrambled = MatchEngine.calculateTeamPower(club, state.players, false);
+
+        if (!(powerScrambled.total < powerOptimal.total)) {
+            throw new Error(`Verdrehte Aufstellung ist nicht schwächer: optimal=${powerOptimal.total.toFixed(1)}, verdreht=${powerScrambled.total.toFixed(1)}`);
+        }
+
+        // Ein Feldspieler im Tor muss die Torwartstärke deutlich senken
+        const outfield = state.players.find(p => p.clubId === "muc" && p.pos === "ST");
+        club.lineup = [outfield.id, ...club.lineup.slice(1)];
+        const powerNoKeeper = MatchEngine.calculateTeamPower(club, state.players, false);
+        if (!(powerNoKeeper.goalkeeper < powerOptimal.goalkeeper * 0.85)) {
+            throw new Error(`Feldspieler im Tor senkt die Torwartstärke zu wenig: ${powerNoKeeper.goalkeeper.toFixed(1)} vs ${powerOptimal.goalkeeper.toFixed(1)}`);
+        }
+    });
+
+    // 22. Eigene Formationen
+    test("GameState: Eigene Formationen speichern, registrieren, validieren und löschen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === "muc");
+
+        // Entwurf aus 4-4-2: beide Stürmer auf die Flügel ziehen
+        const draft = FORMATION_CONFIGS["4-4-2"].positions.map(s => ({ ...s }));
+        draft[9] = { ...draft[9], x: 16, y: 20 };
+        draft[10] = { ...draft[10], x: 84, y: 20 };
+
+        const saved = GameState.saveCustomFormation(state, "Flügelzange", draft);
+        if (!saved.success) throw new Error("Eigene Formation konnte nicht gespeichert werden: " + saved.error);
+        if (!FORMATION_CONFIGS[saved.key]) throw new Error("Eigene Formation wurde nicht global registriert");
+        if (!GameState.isCustomFormation(saved.key)) throw new Error("Eigene Formation wird nicht als eigene erkannt");
+
+        const savedPositions = FORMATION_CONFIGS[saved.key].positions;
+        if (savedPositions.length !== 11) throw new Error("Gespeicherte Formation hat nicht 11 Positionen");
+        if (savedPositions[0].pos !== "TW") throw new Error("Torwart steht nicht an erster Stelle");
+        if (savedPositions.filter(p => p.pos === "TW").length !== 1) throw new Error("Formation hat nicht genau einen Torwart");
+
+        // Positionen der gezogenen Slots wurden aus der Zone abgeleitet
+        const wide = savedPositions.filter(p => p.pos === "LA" || p.pos === "RA");
+        if (wide.length !== 2) throw new Error(`Erwartete zwei Flügelstürmer, gefunden: ${wide.length}`);
+
+        // Reihenfolge-Abbildung erlaubt das Mitsortieren der Aufstellung
+        if (!Array.isArray(saved.order) || saved.order.length !== 11) throw new Error("Speichern liefert keine Sortierreihenfolge");
+        if (new Set(saved.order).size !== 11) throw new Error("Sortierreihenfolge enthält Duplikate");
+
+        // Mit der eigenen Formation lässt sich aufstellen und simulieren
+        club.formation = saved.key;
+        GameState.autoSetLineupForClub(club, state.players);
+        if (club.lineup.length !== 11) throw new Error("Auto-Aufstellung mit eigener Formation fehlgeschlagen");
+
+        const opponent = state.clubs.find(c => c.id !== "muc");
+        const match = { id: "custom_form_match", played: false, homeClubId: club.id, awayClubId: opponent.id };
+        MatchEngine.simulateFullMatch(match, club, opponent, state.players);
+        if (typeof match.homeGoals !== "number") throw new Error("Simulation mit eigener Formation fehlgeschlagen");
+
+        // Ungültige Formationen werden abgewiesen
+        const tooFew = GameState.saveCustomFormation(state, "Zu klein", draft.slice(0, 9));
+        if (tooFew.success) throw new Error("Formation mit 9 Positionen wurde fälschlich akzeptiert");
+
+        const twoKeepers = draft.map(s => ({ ...s }));
+        twoKeepers[5] = { ...twoKeepers[5], x: 50, y: 95 };
+        const dual = GameState.saveCustomFormation(state, "Zwei Torhüter", twoKeepers);
+        if (dual.success) throw new Error("Formation mit zwei Torhütern wurde fälschlich akzeptiert");
+
+        const noName = GameState.saveCustomFormation(state, "", draft);
+        if (noName.success) throw new Error("Formation ohne Namen wurde fälschlich akzeptiert");
+
+        // Löschen setzt betroffene Vereine zurück
+        const deleted = GameState.deleteCustomFormation(state, saved.key);
+        if (!deleted.success) throw new Error("Eigene Formation konnte nicht gelöscht werden");
+        if (FORMATION_CONFIGS[saved.key]) throw new Error("Gelöschte Formation ist noch registriert");
+        if (club.formation !== "4-4-2") throw new Error("Verein wurde nach dem Löschen nicht zurückgesetzt");
+    });
+
+    // 23. LiveMatchDirector: Echtzeit-Regie der 2D-Simulation
+    test("LiveMatchDirector: flüssige Echtzeit-Simulation mit synchronem Kommentar", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+        const match = { id: "director_test", played: false, homeClubId: "muc", awayClubId: "dor" };
+        match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, state.players);
+
+        const live = new LiveMatch(match, homeClub, awayClub, state.players);
+        if (!live.director) throw new Error("LiveMatch besitzt keine Regie");
+
+        live.speed = 2;
+        const FRAME = 1000 / 60;
+        let frames = 0;
+        let maxBallStep = 0;
+        let maxPlayerStep = 0;
+        const commentaries = new Set();
+        let prevBall = { x: live.ball.x, y: live.ball.y };
+        const prevPlayers = live.players2D.map(p => ({ x: p.x, y: p.y }));
+
+        while (!live.isFinished && frames < 60 * 400) {
+            live.advanceRealTime(FRAME);
+            live.updateBallAndPlayers(FRAME);
+            frames++;
+
+            maxBallStep = Math.max(maxBallStep, Math.hypot(live.ball.x - prevBall.x, live.ball.y - prevBall.y));
+            prevBall = { x: live.ball.x, y: live.ball.y };
+
+            live.players2D.forEach((p, i) => {
+                maxPlayerStep = Math.max(maxPlayerStep, Math.hypot(p.x - prevPlayers[i].x, p.y - prevPlayers[i].y));
+                prevPlayers[i].x = p.x;
+                prevPlayers[i].y = p.y;
+            });
+
+            commentaries.add(live.lastCommentary);
+        }
+
+        if (!live.isFinished) throw new Error(`Spiel wurde in ${frames} Frames nicht beendet (Minute ${live.minute})`);
+        if (live.timelineIndex < live.timeline.length) {
+            throw new Error(`Nicht alle Ereignisse abgespielt: ${live.timelineIndex}/${live.timeline.length}`);
+        }
+        if (live.homeScore !== match.homeGoals || live.awayScore !== match.awayGoals) {
+            throw new Error(`Endstand weicht ab: ${live.homeScore}:${live.awayScore} vs ${match.homeGoals}:${match.awayGoals}`);
+        }
+
+        // Bewegungen müssen weich sein - keine Sprünge über das halbe Feld
+        if (maxBallStep > 6) throw new Error(`Ball springt pro Frame um ${maxBallStep.toFixed(1)} Feldeinheiten`);
+        if (maxPlayerStep > 1.5) throw new Error(`Spieler springen pro Frame um ${maxPlayerStep.toFixed(2)} Feldeinheiten`);
+
+        // Feld und Spielbericht gehen Hand in Hand: viele verschiedene Meldungen
+        if (commentaries.size < 20) throw new Error(`Zu wenige Kommentarwechsel: ${commentaries.size}`);
+        if (live.events.length === 0) throw new Error("Ticker blieb leer");
+        if (!live.events.every(e => typeof e.seq === "number")) throw new Error("Ticker-Ereignisse besitzen keine laufende Nummer");
+
+        // Alle Spieler bleiben im Feld, Torhüter bei ihrem Tor
+        live.players2D.forEach(p => {
+            if (p.x < 0 || p.x > 100 || p.y < 0 || p.y > 100) {
+                throw new Error(`Spieler ${p.name} steht außerhalb des Feldes (${p.x}/${p.y})`);
+            }
+        });
+
+        // Die Uhr läuft sekundengenau
+        const clock = live.getClockText();
+        if (!/^\d{2}:\d{2}$/.test(clock)) throw new Error(`Uhrzeitformat ungültig: ${clock}`);
+    });
+
+    // 24. Torwartverhalten und Ballführung in der Regie
+    test("LiveMatchDirector: Torhüter bleiben am eigenen Tor, Ballbesitz wechselt", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+        const match = { id: "director_gk", played: false, homeClubId: "muc", awayClubId: "dor" };
+        match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, state.players);
+
+        const live = new LiveMatch(match, homeClub, awayClub, state.players);
+        const homeGk = live.players2D.find(p => p.team === "home" && p.pos === "TW");
+        const awayGk = live.players2D.find(p => p.team === "away" && p.pos === "TW");
+
+        const possessionTeams = new Set();
+        let maxHomeGkX = 0;
+        let minAwayGkX = 100;
+
+        for (let i = 0; i < 60 * 120 && !live.isFinished; i++) {
+            live.advanceRealTime(1000 / 60);
+            live.updateBallAndPlayers(1000 / 60);
+            possessionTeams.add(live.director.possessionTeam);
+            maxHomeGkX = Math.max(maxHomeGkX, homeGk.x);
+            minAwayGkX = Math.min(minAwayGkX, awayGk.x);
+        }
+
+        if (maxHomeGkX > 30) throw new Error(`Heim-Torwart verlässt seine Hälfte (x=${maxHomeGkX.toFixed(1)})`);
+        if (minAwayGkX < 70) throw new Error(`Auswärts-Torwart verlässt seine Hälfte (x=${minAwayGkX.toFixed(1)})`);
+        if (possessionTeams.size < 2) throw new Error("Ballbesitz wechselt nie zwischen den Mannschaften");
+
+        const poss = live.stats.possession;
+        if (poss[0] + poss[1] !== 100) throw new Error(`Ballbesitzsumme ist ${poss[0] + poss[1]}`);
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

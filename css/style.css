@@ -912,10 +912,200 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
+    z-index: 25;
+}
+
+/* ---------------------------------------------------------------
+   Formations-Editor: Raster, Bearbeitungsleiste und Eignungsanzeige
+   --------------------------------------------------------------- */
+
+.pitch-grid-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    background-image:
+        repeating-linear-gradient(to right, rgba(255,255,255,0.16) 0 1px, transparent 1px 10%),
+        repeating-linear-gradient(to bottom, rgba(255,255,255,0.16) 0 1px, transparent 1px 8.3333%);
+}
+
+.soccer-pitch.editing .pitch-grid-overlay {
+    opacity: 1;
+}
+
+/* Zonenbänder als Orientierung: Abwehr, Mittelfeld, Angriff */
+.soccer-pitch.editing::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(to bottom,
+            rgba(56, 189, 248, 0.10) 0 26%,
+            rgba(250, 204, 21, 0.07) 26% 51%,
+            rgba(239, 68, 68, 0.09) 51% 86%,
+            rgba(148, 163, 184, 0.16) 86% 100%);
+}
+
+.soccer-pitch.editing .pitch-node {
+    cursor: grab;
+    touch-action: none;
+}
+
+.soccer-pitch.editing .pitch-node.dragging {
+    cursor: grabbing;
+    z-index: 40;
+}
+
+.soccer-pitch.editing .pitch-node.dragging .pitch-node-shirt {
+    transform: scale(1.15);
+    box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.8), 0 8px 16px rgba(0,0,0,0.5);
+}
+
+.formation-editor-bar {
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.formation-editor-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 12px;
+}
+
+.formation-editor-row .styled-select,
+.formation-editor-row .styled-input {
+    flex: 0 1 200px;
+    min-width: 130px;
+}
+
+.formation-shape-badge {
+    background: var(--accent-primary, #2563eb);
+    color: #fff;
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    padding: 4px 10px;
+    border-radius: 999px;
+}
+
+.formation-editor-hint {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.formation-snap-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+/* Positionskürzel und Eignung am Spielerknoten */
+.pitch-node-pos {
+    position: absolute;
+    top: -9px;
+    right: -12px;
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid rgba(255,255,255,0.35);
+    color: #f8fafc;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    padding: 1px 5px;
+    border-radius: 999px;
+    pointer-events: none;
+}
+
+.pitch-node-fit {
+    display: block;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1.3;
+    margin-top: 1px;
+    opacity: 0.95;
+}
+
+.pitch-node-shirt.fit-natural { border-color: #22c55e; }
+.pitch-node-shirt.fit-accomplished { border-color: #4ade80; }
+.pitch-node-shirt.fit-competent { border-color: #a3e635; }
+.pitch-node-shirt.fit-unconvincing { border-color: #facc15; }
+.pitch-node-shirt.fit-awkward { border-color: #fb923c; box-shadow: 0 0 0 2px rgba(251,146,60,0.35), 0 4px 8px rgba(0,0,0,0.4); }
+.pitch-node-shirt.fit-makeshift { border-color: #ef4444; box-shadow: 0 0 0 2px rgba(239,68,68,0.45), 0 4px 8px rgba(0,0,0,0.4); }
+
+.bench-node .bench-fit {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(148, 163, 184, 0.15);
+}
+
+.position-map {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.position-map-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 62px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    background: rgba(148, 163, 184, 0.08);
+    border: 1px solid var(--border-color);
+}
+
+.position-map-code {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+    color: #f1f5f9;
+    border-bottom: 2px solid transparent;
+    padding-bottom: 1px;
+}
+
+.position-map-value {
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 1.1;
+}
+
+.position-map-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.lineup-warning {
+    margin-top: 10px;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    background: rgba(251, 146, 60, 0.12);
+    border: 1px solid rgba(251, 146, 60, 0.4);
+    color: #fdba74;
+    font-size: 12px;
+    line-height: 1.5;
 }
 
 .pitch-node {
     position: absolute;
+    z-index: 20;
     transform: translate(-50%, -50%);
     display: flex;
     flex-direction: column;
@@ -1823,6 +2013,34 @@ body {
     padding: 20px;
 }
 
+/*
+ * Live-Spiel: Der Weichzeichner des Overlays musste bei jedem Animationsframe
+ * über den gesamten Bildschirm neu berechnet werden - das war die Ursache für
+ * das Ruckeln der 2D-Simulation (ca. 16 statt 60 Bilder pro Sekunde).
+ * Das Vollbild-Modal verdeckt den Hintergrund ohnehin komplett, deshalb wird
+ * hier auf den Effekt verzichtet und stattdessen deckend gefüllt.
+ */
+#modalLiveMatch {
+    background: #020617;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    padding: 0;
+}
+
+/* Auch die Buttons im Live-Modal erzeugen sonst je eine eigene Blur-Ebene */
+#modalLiveMatch .btn,
+#modalLiveMatch .btn-secondary,
+#modalLiveMatch .modal-box {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+/* Der Canvas bekommt eine eigene Compositing-Ebene */
+#livePitchCanvas {
+    will-change: transform;
+    contain: paint;
+}
+
 .modal-box {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
@@ -2008,16 +2226,46 @@ body {
     justify-content: center;
     padding: 16px;
     position: relative;
+    overflow: hidden;
+    min-height: 0;
+    min-width: 0;
 }
 
 #livePitchCanvas {
-    background: radial-gradient(circle, #047857 0%, #064e3b 100%);
-    border: 3px solid rgba(255,255,255,0.7);
+    background: #0b4227;
+    border: 2px solid rgba(255,255,255,0.55);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-lg);
+    /* Größe wird per JS (DPR-korrekt) gesetzt - hier nur eine Obergrenze */
     max-width: 100%;
-    max-height: 440px;
+    display: block;
 }
+
+.live-clock {
+    display: inline-block;
+    margin-left: 8px;
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.72);
+    letter-spacing: 0.5px;
+}
+
+/* Farbcodierung der Ticker-Ereignisse */
+.ticker-event {
+    border-left: 3px solid transparent;
+    padding-left: 8px;
+}
+.ticker-event.ticker-goal { border-left-color: #22c55e; color: #bbf7d0; font-weight: 700; }
+.ticker-event.ticker-save { border-left-color: #38bdf8; }
+.ticker-event.ticker-shot_miss { border-left-color: #94a3b8; }
+.ticker-event.ticker-corner { border-left-color: #a78bfa; }
+.ticker-event.ticker-foul { border-left-color: #fb923c; }
+.ticker-event.ticker-yellow_card { border-left-color: #facc15; }
+.ticker-event.ticker-red_card { border-left-color: #ef4444; font-weight: 600; }
+.ticker-event.ticker-injury { border-left-color: #f87171; }
+.ticker-event.ticker-sub { border-left-color: #34d399; }
+.ticker-event.ticker-tactics { border-left-color: #60a5fa; }
 
 .live-commentary-bar {
     width: 100%;
@@ -3250,9 +3498,8 @@ body {
         padding: 6px;
     }
     #livePitchCanvas {
-        width: 100%;
-        height: auto;
         border-radius: var(--radius-sm);
+        border-width: 1px;
     }
     .live-match-controls {
         flex-wrap: wrap;

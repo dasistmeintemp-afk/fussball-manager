@@ -160,6 +160,27 @@ function runWizardTests() {
         if (posDom !== -1 && posDom > posUi) throw new Error("dom.js muss vor uiManager.js geladen werden");
         if (posSave !== -1 && posSave > posGameState) throw new Error("saveService.js muss vor gameState.js geladen werden");
         if (posUi > posApp) throw new Error("uiManager.js muss vor app.js geladen werden");
+
+        // PositionEngine und die 2D-Regie müssen vor ihren Nutzern geladen werden
+        const posPositionEngine = html.indexOf('src="js/engine/positionEngine.js"');
+        const posDirector = html.indexOf('src="js/engine/liveMatchDirector.js"');
+        const posMatchEngine = html.indexOf('src="js/engine/matchEngine.js"');
+        const posAiManager = html.indexOf('src="js/engine/aiManagerEngine.js"');
+
+        if (posPositionEngine === -1) throw new Error("positionEngine.js fehlt in index.html");
+        if (posDirector === -1) throw new Error("liveMatchDirector.js fehlt in index.html");
+        if (posPositionEngine > posGameState) throw new Error("positionEngine.js muss vor gameState.js geladen werden");
+        if (posPositionEngine > posAiManager) throw new Error("positionEngine.js muss vor aiManagerEngine.js geladen werden");
+        if (posDirector > posMatchEngine) throw new Error("liveMatchDirector.js muss vor matchEngine.js geladen werden");
+
+        // Alle eingebundenen Skripte müssen auch offline verfügbar sein
+        const sw = fs.readFileSync('./service-worker.js', 'utf8');
+        const scriptSrcs = [...html.matchAll(/<script src="([^"]+)"/g)].map(m => m[1]);
+        scriptSrcs.forEach(srcPath => {
+            if (!sw.includes(`"./${srcPath}"`)) {
+                throw new Error(`Script ${srcPath} fehlt im Service-Worker-Cache`);
+            }
+        });
     });
 
     // 4. Service Worker Cache & Activation Prüfung
@@ -487,7 +508,11 @@ function runWizardTests() {
             "pane-dashboard", "pane-squad", "pane-tactics", "pane-fixtures", "pane-calendar",
             "pane-transfers", "pane-training", "pane-finances", "pane-stats", "pane-inbox", "pane-settings",
             "btnDashLiveMatch", "btnDashInstantSim", "btnDashOpponentAnalysis", "btnHeaderAdvance",
-            "livePitchCanvas", "modalLiveMatch", "inboxList", "inboxDetail"
+            "livePitchCanvas", "modalLiveMatch", "inboxList", "inboxDetail",
+            // Formations-Editor & Live-Uhr
+            "selectFormation", "btnFormationEdit", "formationEditorBar", "formationShapeBadge",
+            "selectSlotPosition", "chkFormationSnap", "inputFormationName", "btnFormationSave",
+            "btnFormationReset", "btnFormationDelete", "pitchGridOverlay", "lmClock"
         ];
 
         requiredStaticIds.forEach(id => {

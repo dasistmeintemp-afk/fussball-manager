@@ -1,0 +1,184 @@
+# ⚽ FM PRO - Fußballmanager (Saison Edition)
+
+Ein leichtgewichtiger, detailreicher und vollständig spielbarer **Fußballmanager im Browser**, der ohne Installation direkt gestartet, als PWA installiert oder als Paket (z. B. ZIP) an Freunde verschickt werden kann.
+
+---
+
+## 🚀 Spiel starten & Spielanleitung
+
+### 1. Spiel starten (Keine Installation nötig!)
+* **Einfacher Doppelklick:** Öffne die Datei **`index.html`** in einem modernen Webbrowser (Chrome, Firefox, Safari, Edge).
+* **Oder via lokalem Webserver:**
+  ```bash
+  python3 -m http.server 8000
+  ```
+  und rufe `http://localhost:8000` im Browser auf.
+* **PWA-Unterstützung:** Kann direkt als Web-App auf dem Desktop oder Smartphone installiert und offline gespielt werden.
+* **Hinweis zu Browser-Cache & Service Worker (Entwicklung/Updates):**
+  Falls nach Code-Änderungen alte Dateien im Browser gecached sein sollten:
+  1. Im Browser DevTools öffnen (`F12`).
+  2. Tab **Application** (oder *Anwendung*) -> **Service Workers** -> **Unregister** klicken.
+  3. Unter **Storage** (oder *Speicher*) -> **Clear site data** (oder *Websitedaten löschen*) klicken.
+  4. Seite mit `Strg + F5` (bzw. `Cmd + Shift + R`) neu laden.
+
+---
+
+### 2. Neues Spiel erstellen & Verein auswählen
+1. Klicke im Startbildschirm auf **"⭐ Neues Spiel starten"**.
+2. **Schritt 1 (Managerprofil):** Gib deinen Namen ein, wähle Nationalität, Geburtsdatum und deinen gewünschten Schwierigkeitsgrad (*Leicht*, *Normal*, *Schwer*).
+3. **Schritt 2 (Liga):** Bestätige die Spielklasse (*Deutschland Liga 1* mit 18 Klubs und 34 Spieltagen).
+4. **Schritt 3 (Vereinsauswahl & Kaderanalyse):** 
+   - Filtere nach Name/Stadt, sortiere nach Kaderstärke oder Budget.
+   - Wähle links einen Verein aus, um rechts sofort die detaillierte Analyse (Top-Spieler, Talente, Schwächen, Finanzen und Vorstandsziel) einzusehen.
+   - Klicke auf **"✅ Diesen Verein übernehmen & Saison starten"**.
+5. Du landest direkt in deinem Manager-Dashboard.
+
+---
+
+### 3. Spielstand-Speicherung & Weitergabe an Freunde
+
+Das Spiel besitzt ein vollständiges, robustes Speichersystem:
+
+* **Automatisches Speichern (`SaveService` & `localStorage`):**
+  Jede Aktion (Spieltage, Transfers, Taktik, Training, Vertragsverlängerungen) wird automatisch im lokalen Browser-Speicher abgelegt.
+* **Spielstand fortsetzen:**
+  Beim erneuten Öffnen zeigt der Startbildschirm deine Managerdaten, Verein, Saison, Spieltag, Tabellenplatz und den Speicherzeitpunkt. Klicke einfach auf **"▶️ Spielstand fortsetzen"**.
+* **Spielstand exportieren:**
+  Klicke im Menü unter **"Spielstand & Optionen"** auf **"💾 Spielstand exportieren"**. Du erhältst eine `.json`-Datei mit einem sprechenden Dateinamen (z. B. `fm-save-fc-münchen-saison-1-spieltag-5.json`).
+* **Spielstand an Freunde verschicken / Importieren:**
+  Verschicke deine `.json`-Datei an Freunde. Diese können im Startbildschirm auf **"📁 Spielstand importieren"** klicken und deinen Spielstand auf ihrem Gerät sofort weiterspielen.
+* **Automatische Migration (`MigrationService`):**
+  Ältere Spielstände werden beim Laden oder Importieren automatisch auf das aktuelle Schema migriert, ohne dass Fortschritt verloren geht.
+
+---
+
+## 🌟 Highlights & Spielfunktionen
+
+### 1. 🏆 Liga & Wettbewerb
+- **18 Vereine der Liga 1**: Vollständige Kader, Budgets, Stadien, Fanbasen, Sponsoren und Vereinsinfrastruktur.
+- **Vollständiger Spielplan**: 34 Spieltage (Hin- & Rückrunde) nach Round-Robin-Verfahren.
+- **Vollwertige Simulation**: An jedem Spieltag spielen alle 18 Klubs zeitgleich gegeneinander.
+- **Live-Tabelle & Historie**: Punkte (3/1/0-System), Tordifferenz, Tore, Gegentore, Formkurven sowie Archivierung vergangener Meisterschaften.
+
+### 2. 📋 Aufstellung, Taktik & Teamchemie
+- **Aufstellungsprüfung (`StateValidator`):** Verhindert Spielstart bei ungültiger Startelf (genau 11 Spieler, genau 1 TW, keine verletzten oder gesperrten Spieler).
+- **Formationen:** `4-4-2`, `4-3-3`, `4-2-3-1`, `3-5-2`, `5-3-2`, `4-1-4-1`, `4-3-1-2`.
+- **Taktische Stellschrauben:** Mentalität, Pressing, Spieltempo, Passstil, Angriffsfokus.
+- **Spezialrollen:** Kapitän, Elfmeterschütze, Freistoßschütze, Eckenschütze.
+- **Teamchemie & Spielerzufriedenheit:** Individuelle Zufriedenheit je Spieler (Spielzeit, Vertrag, Teamleistung) und Einfluss auf Spielgeschehen.
+
+### 3. 🎮 2D-Live-Match-Engine & Sofort-Simulation
+- **Interaktiver 2D-Pitch (Canvas):** Spieler als dynamische Punkte, lebensechte Ballbewegung, Passstafetten und Torchancen.
+- **Live-Ticker auf Deutsch:** Taktischer Spielbericht für Tore, Karten, Auswechslungen und Glanzparaden.
+- **Echtzeit-Statistiken:** Ballbesitz %, Schüsse, Schüsse aufs Tor, Fouls, Ecken und Expected Goals (xG).
+- **In-Game Coaching:** Live-Taktikanpassungen und bis zu 5 Auswechslungen während des Spiels.
+
+### 4. 🔄 Transfersystem, Scouting & Verträge
+- **Transfermarkt mit Suchfiltern:** Nach Position, Stärke, Potenzial und Preisklasse filtern.
+- **Vertragsverlängerungen (`ContractEngine`):** Individuelle Gehaltsforderungen, Rollenabsprachen und Vertragslaufzeiten direkt im Spielermenü verhandeln.
+- **Scouting-Zentrale (`ScoutingEngine`):** Scouts für gezielte Positionen, Altersklassen und Mindeststärken entsenden und detaillierte Spielerberichte erhalten.
+- **KI-Manager (`AIManagerEngine`):** KI-Vereine optimieren vor jedem Spieltag ihre Aufstellung und unterbreiten Angebote für deine Stars.
+
+### 5. 🏋️ Training & Jugendakademie
+- **Trainingsschwerpunkte:** Allround, Angriff, Defensive, Technik, Taktik, Regeneration, Jugendförderung.
+- **Nachwuchsakademie (`YouthEngine`):** Akademie-Ausbau (Stufe 1 bis 5) für stärkere Talente und direkte Beförderung von Jugendspielern mit Profi-Vertrag in die 1. Mannschaft.
+- **Verletzungen & Sperren:** Realistische Ausfallzeiten (Leicht/Mittel/Schwer) und Gelb-/Rotsperren.
+
+### 6. 💼 Finanzen, Sponsoren & Buchungsjournal
+- **Finanzübersicht (`FinanceEngine`):** Kontostand, Transferbudget, Gehaltsetat, Ticketeinnahmen und wöchentliche Sponsorenzahlungen.
+- **Transaktionsjournal:** Detailliertes Buchungsjournal mit lückenloser Historie aller Einnahmen und Ausgaben.
+- **Infrastruktur:** Stadion, Trainingsgelände, Jugendzentrum und medizinische Abteilung.
+
+### 7. 🗓️ Kalender-Tagesablauf, 🔍 Gegneranalyse & 🌟 FM-Scoutingsystem
+- **FM-Spielerbewertungssystem (`PlayerRatingEngine`):** Trennung von echten internen Fähigkeiten (CA/PA 1–200, Hidden Attributes wie Professionalität & Ehrgeiz) und sichtbaren, scoutabhängigen Einschätzungsbereichen.
+- **Relative Sternebewertungen:** Qualitätssterne (0.5 bis 5.0) werden dynamisch relativ zur Stärke des eigenen Kaders berechnet.
+- **Saisonkalender & Wochenplan (`CalendarEngine`):** Realistischer Tagesablauf zwischen Spieltagen (Regeneration, Schwerpunkt-Training, Medien-/Sponsoren-Events, Taktikschulung und Gegneranalyse).
+- **Taktische Gegneranalyse (`OpponentAnalysisEngine`):** Vor jedem Ligaspiel detaillierte Stärken-/Schwächenprofile, gegnerische Taktiktendenzen, Gefahreinstufung und konkrete Trainer-Empfehlungen abrufen.
+- **Detaillierte Spielberichte:** Textzusammenfassungen, xG-Vergleiche, Zweikampfquoten, Paraden und Auszeichnungen für den Mann des Spiels.
+- **Verbessertes Postfach (`NewsEngine`):** Vollständige Suche, Filterleiste (Vorstand, Spiel, Transfers, Training, Finanzen) und dauerhafte Mail-Historie.
+
+### 8. 🌐 Multi-League, Wettbewerbe & deutsche Ligapyramide
+- **Top-5-Ligen & Länder:** Deutschland, England, Spanien, Italien, Frankreich mit eigenen Liga- und Wettbewerbsregeln.
+- **Deutsche Ligapyramide (Level 1 bis 7):** Bundesliga, 2. Bundesliga, 3. Liga, Regionalligen (West, Bayern, etc.), Oberligen, Verbandsliga und Landesliga mit fiktiver Generierung via `ClubGenerator` & `PlayerGenerator`.
+- **Nationale Pokale & Europapokal:** Deutschland Pokal (`de_cup`), Champions League (`ucl`), Europa League (`uel`) und Conference League (`uecl`) mit Gruppen- und K.O.-Runden via `CompetitionEngine`.
+- **Europäische Qualifikation:** Automatische Ermittlung der Teilnehmer für internationale Pokale am Saisonende nach Liga-Platzierung.
+
+### 9. 🎯 100% Synchrone Timeline-MatchEngine & 2D-Visualisierung
+- **Deterministische Match-Timeline (`MatchEngine.generateTimeline`):** Generiert chronologische Ketten von Spielzügen (Pässe, Flanken, Dribblings, Schüsse, xG, Glanzparaden, Tore, Karten) inklusive 2D-Koordinaten (`start`, `end`).
+- **Exakte 2D-Parität:** Die 2D-Simulation (`LiveMatch`) und die Sofortsimulation (`simulateFullMatch`) werten exakt dieselbe Timeline aus. Alle Torschützen, Vorlagengeber, Ticker-Texte, Statistiken und Spielberichte stimmen 1:1 mit der 2D-Darstellung überein.
+
+---
+
+## 📁 Modulare Projektarchitektur
+
+```plain text
+untitled/
+├── index.html                  # Hauptoberfläche & Responsive Shell
+├── manifest.json               # PWA-Web-App-Manifest
+├── service-worker.js           # Offline-Caching & PWA Service Worker
+├── css/
+│   └── style.css               # Modernes Dark-Mode UI Theme
+├── js/
+│   ├── app.js                  # App-Initialisierung & Controller
+│   ├── core/
+│   │   ├── constants.js        # Zentrale Konstanten & Enums
+│   │   ├── dom.js              # Fehlertolerante DOM-Hilfsfunktionen
+│   │   ├── formatters.js       # Formatierer für Geld, Datum, Prozente
+│   │   ├── random.js           # Mathematische Zufallsgeneratoren
+│   │   └── validators.js       # StateValidator für Spielstand, Aufstellung & Spielplan
+│   ├── data/
+│   │   ├── initialData.js      # 18 Bundesliga-Vereine & Spielerdaten
+│   │   ├── leagueData.js       # Top-5-Ligen, Ligapyramide, Pokale & Europa-Wettbewerbe
+│   │   └── namePools.js        # Namenspools für Jugend & Neugenerierungen
+│   ├── services/
+│   │   ├── saveService.js      # Speichern, Laden, Exportieren, Importieren
+│   │   └── migrationService.js # Schema-Migrationen für Abwärtskompatibilität (v1 -> v5)
+│   ├── engine/
+│   │   ├── gameState.js        # Zentraler Zustand & Liga-Generator
+│   │   ├── matchEngine.js      # Timeline-basierte Spielberechnung & synchrone 2D-Live-Canvas-Engine
+│   │   ├── seasonEngine.js     # Spieltagsfortschritt & Saisonabschluss
+│   │   ├── competitionEngine.js# Ligen, Pokalrunden, Europapokal & Auf-/Abstieg
+│   │   ├── clubGenerator.js    # Generator für Amateur- und Pyramidenvereine
+│   │   ├── playerGenerator.js  # Generator für fiktive Kader und Jugendtalente
+│   │   ├── transferEngine.js   # Markt- & Transferlogik
+│   │   ├── trainingEngine.js   # Wöchentliche Trainings- & Spielerentwicklung
+│   │   ├── financeEngine.js    # Spieltagseinnahmen, Gehälter & Journal
+│   │   ├── boardEngine.js      # Vorstandszufriedenheit & Saisonziele
+│   │   ├── newsEngine.js       # Zentrales Nachrichtensystem & Postfach
+│   │   ├── aiManagerEngine.js  # KI-Aufstellungen & KI-Transferangebote
+│   │   ├── scoutingEngine.js   # Scoutaufträge & Spielerberichte
+│   │   ├── youthEngine.js      # Jugendförderung & Akademieausbau
+│   │   ├── contractEngine.js   # Vertragsforderungen & Verlängerungen
+│   │   ├── calendarEngine.js   # Saisonkalender & dynamischer Tagesablauf
+│   │   └── opponentAnalysisEngine.js # Taktische Gegneranalyse
+│   └── ui/
+│       └── uiManager.js        # Render-Logik aller Ansichten & Modale
+├── test_runner.js              # Zentraler Runner für alle Testsuiten
+├── test_data.js                # Datenintegrität & Strukturprüfungen
+├── test_wizard.js              # Wizard-Filter, DOM-Simulation & Regressionstests
+├── test_engine.js              # Unit- & Modultests für alle Engines
+└── test_e2e.js                 # End-to-End- & Mehr-Saison-Simulationstests
+```
+
+---
+
+## 🧪 Tests ausführen
+
+Führe im Projektverzeichnis den zentralen Test-Runner aus:
+```bash
+node test_runner.js
+```
+
+Oder führe die individuellen Test-Suiten aus:
+```bash
+node test_data.js && node test_wizard.js && node test_engine.js && node test_e2e.js
+```
+Alle 4 Testsuiten validieren lückenlos:
+1. **Datenintegrität (`test_data.js`):** Alle 18 Vereine, Attribute, Torhüter, Gehalts- und Transferbudgets.
+2. **Wizard & UI Regression (`test_wizard.js`):** Suchfilter, Schwierigkeitsstufen, Sortierungen, Edge-Cases, DOM-Simulation und Code-Regressionsprüfungen gegen Legacy-IDs.
+3. **Engines (`test_engine.js`):** MatchEngine, SeasonEngine, Finance, Board, News, Contracts, Scouting, Youth, AIManager, SaveService & MigrationService.
+4. **E2E & Integration (`test_e2e.js`):** Vollständiger Karrierestart, 2D-LiveMatch, Auswechslungen, Transfers, Training und Multi-Saison-Läufe.
+
+---
+
+## 🎮 Viel Erfolg auf dem Weg zur Meisterschaft! 🏆

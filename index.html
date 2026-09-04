@@ -1,0 +1,1392 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fußballmanager Pro - Saison Edition</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app" class="app-container">
+        <!-- Top Navigation / Header -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="brand">
+                    <span class="brand-icon">⚽</span>
+                    <span class="brand-title">FM<span class="brand-accent">PRO</span></span>
+                </div>
+                <div class="club-badge-container" id="headerClubInfo">
+                    <span class="club-color-dot" id="headerClubDot"></span>
+                    <span class="club-name" id="headerClubName">Kein Verein</span>
+                    <span class="header-tag" id="headerDifficulty">Normal</span>
+                </div>
+            </div>
+
+            <div class="header-center">
+                <div class="season-info-pill">
+                    <span class="info-label">Saison</span>
+                    <span class="info-val" id="headerSeason">1</span>
+                    <span class="divider">•</span>
+                    <span class="info-label">Spieltag</span>
+                    <span class="info-val" id="headerMatchday">1 / 22</span>
+                </div>
+            </div>
+
+            <div class="header-right">
+                <div class="finance-pill" title="Aktueller Kontostand / Transferbudget">
+                    <span class="fin-icon">💰</span>
+                    <span class="fin-val" id="headerBalance">0 €</span>
+                    <span class="fin-sub" id="headerTransferBudget">TB: 0 €</span>
+                </div>
+                <div class="confidence-pill" title="Vorstandszufriedenheit">
+                    <span class="conf-icon">👔</span>
+                    <div class="conf-bar-wrap">
+                        <div class="conf-bar-fill" id="headerConfidenceBar" style="width: 75%;"></div>
+                    </div>
+                    <span class="conf-val" id="headerConfidenceVal">75%</span>
+                </div>
+                <button class="btn btn-primary btn-advance" id="btnHeaderAdvance">
+                    <span>Spieltag starten</span>
+                    <span class="btn-arrow">➔</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Layout -->
+        <div class="main-wrapper">
+            <!-- Sidebar Navigation -->
+            <aside class="sidebar">
+                <nav class="nav-menu">
+                    <button class="nav-item active" data-tab="dashboard">
+                        <span class="nav-icon">📊</span>
+                        <span class="nav-text">Dashboard</span>
+                    </button>
+                    <button class="nav-item" data-tab="squad">
+                        <span class="nav-icon">👥</span>
+                        <span class="nav-text">Kader</span>
+                    </button>
+                    <button class="nav-item" data-tab="tactics">
+                        <span class="nav-icon">📋</span>
+                        <span class="nav-text">Aufstellung & Taktik</span>
+                    </button>
+                    <button class="nav-item" data-tab="fixtures">
+                        <span class="nav-icon">📅</span>
+                        <span class="nav-text">Spielplan & Tabelle</span>
+                    </button>
+                    <button class="nav-item" data-tab="calendar">
+                        <span class="nav-icon">🗓️</span>
+                        <span class="nav-text">Kalender & Ablauf</span>
+                    </button>
+                    <button class="nav-item" data-tab="transfers">
+                        <span class="nav-icon">🔄</span>
+                        <span class="nav-text">Transfermarkt</span>
+                        <span class="badge" id="navOffersBadge" style="display:none;">0</span>
+                    </button>
+                    <button class="nav-item" data-tab="training">
+                        <span class="nav-icon">🏋️</span>
+                        <span class="nav-text">Training</span>
+                    </button>
+                    <button class="nav-item" data-tab="finances">
+                        <span class="nav-icon">💼</span>
+                        <span class="nav-text">Finanzen</span>
+                    </button>
+                    <button class="nav-item" data-tab="stats">
+                        <span class="nav-icon">🏆</span>
+                        <span class="nav-text">Statistiken</span>
+                    </button>
+                    <button class="nav-item" data-tab="inbox">
+                        <span class="nav-icon">📬</span>
+                        <span class="nav-text">Postfach</span>
+                        <span class="badge" id="navInboxBadge" style="display:none;">0</span>
+                    </button>
+                    <button class="nav-item" data-tab="settings">
+                        <span class="nav-icon">⚙️</span>
+                        <span class="nav-text">Spielstand & Optionen</span>
+                    </button>
+                </nav>
+
+                <div class="sidebar-footer">
+                    <div class="quick-status">
+                        <div class="quick-status-item">
+                            <span class="qs-label">Tabellenplatz:</span>
+                            <span class="qs-val" id="sbRank">-</span>
+                        </div>
+                        <div class="quick-status-item">
+                            <span class="qs-label">Form:</span>
+                            <div class="form-indicators" id="sbForm">
+                                <span class="form-dot">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Content Area -->
+            <main class="content-area" id="contentArea">
+                <!-- Tab: Dashboard -->
+                <section class="tab-pane active" id="pane-dashboard">
+                    <div class="dashboard-grid">
+                        <!-- Next Match Card -->
+                        <div class="dash-card next-match-card">
+                            <div class="card-header">
+                                <h3>Nächste Begegnung</h3>
+                                <span class="matchday-tag" id="dashMatchdayTag">Spieltag 1</span>
+                            </div>
+                            <div class="match-preview-content">
+                                <div class="preview-team home-team">
+                                    <div class="preview-crest" id="dashHomeCrest"></div>
+                                    <h4 id="dashHomeName">FC München</h4>
+                                    <span class="preview-rank" id="dashHomeRank">Platz 1</span>
+                                </div>
+                                <div class="preview-vs">
+                                    <span class="vs-text">VS</span>
+                                    <span class="preview-venue" id="dashVenue">Allianz Arena</span>
+                                </div>
+                                <div class="preview-team away-team">
+                                    <div class="preview-crest" id="dashAwayCrest"></div>
+                                    <h4 id="dashAwayName">Borussia Dortmund</h4>
+                                    <span class="preview-rank" id="dashAwayRank">Platz 2</span>
+                                </div>
+                            </div>
+                            <div class="match-action-row">
+                                <button class="btn btn-secondary" id="btnDashOpponentAnalysis">🔍 Gegneranalyse anzeigen</button>
+                                <button class="btn btn-secondary" id="btnDashInstantSim">⚡ Sofort berechnen</button>
+                                <button class="btn btn-primary btn-lg" id="btnDashLiveMatch">▶ 2D-Live-Spiel starten</button>
+                            </div>
+                        </div>
+
+                        <!-- Calendar & Weekly Routine Snapshot Card -->
+                        <div class="dash-card calendar-snapshot-card">
+                            <div class="card-header">
+                                <h3>Wochenplan & Tagesablauf</h3>
+                                <span class="badge badge-info" id="dashCurrentDateBadge">01.08.2026</span>
+                            </div>
+                            <div class="calendar-timeline-list" id="dashCalendarList">
+                                <!-- Dynamische Tagesliste -->
+                            </div>
+                            <div class="calendar-action-bar" style="margin-top:14px; display:flex; gap:10px;">
+                                <button class="btn btn-primary btn-sm" id="btnDashAdvanceDay">⏭️ Nächsten Tag simulieren</button>
+                                <button class="btn btn-secondary btn-sm" id="btnDashAdvanceMatchday">⏩ Bis zum Spieltag vorspulen</button>
+                            </div>
+                        </div>
+
+                        <!-- League Table Snapshot Card -->
+                        <div class="dash-card table-snapshot-card">
+                            <div class="card-header">
+                                <h3>Tabelle (Auszug)</h3>
+                                <button class="btn btn-sm btn-link" id="btnDashFullTable">Ganze Tabelle ➔</button>
+                            </div>
+                            <div class="table-container">
+                                <table class="compact-table" id="dashStandingsTable">
+                                    <thead>
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Verein</th>
+                                            <th>Sp</th>
+                                            <th>Diff</th>
+                                            <th>Pkt</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dashStandingsBody">
+                                        <!-- Dynamisch -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Board & Season Goals Card -->
+                        <div class="dash-card board-card">
+                            <div class="card-header">
+                                <h3>Vorstand & Saisonziel</h3>
+                            </div>
+                            <div class="board-body">
+                                <div class="goal-item">
+                                    <span class="goal-label">Saisonziel:</span>
+                                    <span class="goal-val" id="dashBoardGoal">Qualifikation für die Top 3</span>
+                                </div>
+                                <div class="goal-item">
+                                    <span class="goal-label">Vorstandszufriedenheit:</span>
+                                    <div class="progress-bar-lg">
+                                        <div class="progress-fill" id="dashBoardFill" style="width: 75%;"></div>
+                                    </div>
+                                    <span class="goal-pct" id="dashBoardPct">75%</span>
+                                </div>
+                                <div class="board-msg-box" id="dashBoardMsg">
+                                    Der Vorstand ist mit dem aktuellen Saisonverlauf zufrieden.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Squad Status & Medical Card -->
+                        <div class="dash-card squad-status-card">
+                            <div class="card-header">
+                                <h3>Kader-Status & Lazarett</h3>
+                            </div>
+                            <div class="medical-list" id="dashMedicalList">
+                                <div class="empty-state-sm">Keine verletzten oder gesperrten Spieler.</div>
+                            </div>
+                        </div>
+
+                        <!-- Recent News Ticker Card -->
+                        <div class="dash-card news-ticker-card full-width">
+                            <div class="card-header">
+                                <h3>Aktuelle Vereinsnachrichten</h3>
+                                <button class="btn btn-sm btn-link" id="btnDashFullInbox">Postfach öffnen ➔</button>
+                            </div>
+                            <div class="news-list-dash" id="dashNewsList">
+                                <!-- Dynamisch -->
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab: Squad (Kader) -->
+                <section class="tab-pane" id="pane-squad">
+                    <div class="pane-header">
+                        <h2>Kaderübersicht</h2>
+                        <div class="pane-actions">
+                            <div class="filter-group">
+                                <button class="btn btn-sm filter-btn active" data-filter-pos="all">Alle</button>
+                                <button class="btn btn-sm filter-btn" data-filter-pos="TW">Torwart</button>
+                                <button class="btn btn-sm filter-btn" data-filter-pos="DEF">Abwehr</button>
+                                <button class="btn btn-sm filter-btn" data-filter-pos="MID">Mittelfeld</button>
+                                <button class="btn btn-sm filter-btn" data-filter-pos="ATT">Sturm</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="table-container full-page">
+                        <table class="data-table" id="squadTable">
+                            <thead>
+                                <tr>
+                                    <th>Status</th>
+                                    <th>Name</th>
+                                    <th>Pos</th>
+                                    <th>Alter</th>
+                                    <th>Stärke (OVR)</th>
+                                    <th>Potenzial</th>
+                                    <th>Fitness</th>
+                                    <th>Moral</th>
+                                    <th>Form</th>
+                                    <th>Marktwert</th>
+                                    <th>Gehalt/Woche</th>
+                                    <th>Vertrag</th>
+                                    <th>Aktionen</th>
+                                </tr>
+                            </thead>
+                            <tbody id="squadTableBody">
+                                <!-- Dynamisch -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Tab: Tactics & Pitch (Aufstellung) -->
+                <section class="tab-pane" id="pane-tactics">
+                    <div class="pane-header">
+                        <h2>Aufstellung & Taktik</h2>
+                        <div class="pane-actions">
+                            <button class="btn btn-secondary" id="btnAutoLineup">⚡ Beste 11 automatisch aufstellen</button>
+                        </div>
+                    </div>
+
+                    <div class="tactics-layout">
+                        <!-- Left: Interactive 2D Pitch -->
+                        <div class="pitch-container-card">
+                            <div class="pitch-header-bar">
+                                <label for="selectFormation">Formation:</label>
+                                <select id="selectFormation" class="styled-select">
+                                    <option value="4-4-2">4-4-2 Standard</option>
+                                    <option value="4-3-3">4-3-3 Offensiv</option>
+                                    <option value="4-2-3-1">4-2-3-1 Ausgewogen</option>
+                                    <option value="3-5-2">3-5-2 Kompakt</option>
+                                    <option value="5-3-2">5-3-2 Defensiv</option>
+                                    <option value="4-1-4-1">4-1-4-1 Mittelfeld</option>
+                                    <option value="4-3-1-2">4-3-1-2 Raute</option>
+                                </select>
+                            </div>
+
+                            <div class="soccer-pitch" id="tacticsPitch">
+                                <div class="pitch-marking penalty-box top"></div>
+                                <div class="pitch-marking penalty-box bottom"></div>
+                                <div class="pitch-marking center-circle"></div>
+                                <div class="pitch-marking center-line"></div>
+                                <div class="pitch-players-layer" id="pitchPlayersLayer">
+                                    <!-- 11 Spieler Slots interaktiv -->
+                                </div>
+                            </div>
+
+                            <!-- Ersatzbank -->
+                            <div class="bench-section">
+                                <h4>Ersatzbank (Auswechselspieler)</h4>
+                                <div class="bench-slots" id="benchSlots">
+                                    <!-- Bank Slots -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right: Tactic Controls & Roles -->
+                        <div class="tactics-sidebar-controls">
+                            <div class="tactics-card">
+                                <h3>Taktische Ausrichtung</h3>
+                                <div class="tactic-field">
+                                    <label>Grundmentalität:</label>
+                                    <select id="tacMentality" class="styled-select">
+                                        <option value="very_defensive">Sehr defensiv (Beton anrühren)</option>
+                                        <option value="defensive">Defensiv (Konterspiel)</option>
+                                        <option value="balanced" selected>Ausgeglichen</option>
+                                        <option value="offensive">Offensiv (Druckvoller Aufbau)</option>
+                                        <option value="very_offensive">Sehr offensiv (Volles Risiko)</option>
+                                    </select>
+                                </div>
+
+                                <div class="tactic-field">
+                                    <label>Pressing:</label>
+                                    <select id="tacPressing" class="styled-select">
+                                        <option value="low">Niedrig (Raumverknappung)</option>
+                                        <option value="medium" selected>Mittel (Geordnet)</option>
+                                        <option value="high">Hoch (Gegenpressing)</option>
+                                    </select>
+                                </div>
+
+                                <div class="tactic-field">
+                                    <label>Spieltempo:</label>
+                                    <select id="tacTempo" class="styled-select">
+                                        <option value="slow">Langsam (Geduldig)</option>
+                                        <option value="normal" selected>Normal</option>
+                                        <option value="fast">Schnell (Direktzüge)</option>
+                                    </select>
+                                </div>
+
+                                <div class="tactic-field">
+                                    <label>Passspiel:</label>
+                                    <select id="tacPassing" class="styled-select">
+                                        <option value="short">Kurzpass (Ballbesitz)</option>
+                                        <option value="mixed" selected>Gemischt</option>
+                                        <option value="direct">Direkt & Weite Bälle</option>
+                                    </select>
+                                </div>
+
+                                <div class="tactic-field">
+                                    <label>Angriffsfokus:</label>
+                                    <select id="tacFocus" class="styled-select">
+                                        <option value="left">Flügel links</option>
+                                        <option value="center">Durchs Zentrum</option>
+                                        <option value="right">Flügel rechts</option>
+                                        <option value="balanced" selected>Ausgewogen über alle Zonen</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="tactics-card">
+                                <h3>Standard- & Führungsrollen</h3>
+                                <div class="tactic-field">
+                                    <label>Kapitän:</label>
+                                    <select id="roleCaptain" class="styled-select"></select>
+                                </div>
+                                <div class="tactic-field">
+                                    <label>Elfmeterschütze:</label>
+                                    <select id="rolePenalty" class="styled-select"></select>
+                                </div>
+                                <div class="tactic-field">
+                                    <label>Freistoßschütze:</label>
+                                    <select id="roleFreeKick" class="styled-select"></select>
+                                </div>
+                                <div class="tactic-field">
+                                    <label>Eckballschütze:</label>
+                                    <select id="roleCorner" class="styled-select"></select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab: Fixtures & League Table (Spielplan & Tabelle) -->
+                <section class="tab-pane" id="pane-fixtures">
+                    <div class="pane-header">
+                        <div style="display:flex; align-items:center; gap:16px;">
+                            <h2>Wettbewerbe & Spielplan</h2>
+                            <select id="selectCompetitionView" class="styled-select" style="min-width:200px; padding:6px 12px; font-weight:700;">
+                                <option value="de_liga_1">🇩🇪 Deutschland Liga 1 (1. Bundesliga)</option>
+                                <option value="de_cup">🏆 Deutschland Pokal</option>
+                                <option value="ucl">⭐ Champions League</option>
+                                <option value="uel">🌍 Europa League</option>
+                                <option value="uecl">🏆 Conference League</option>
+                            </select>
+                        </div>
+                        <div class="view-switch-buttons">
+                            <button class="btn btn-sm active" id="btnToggleTable">Tabelle / Runden</button>
+                            <button class="btn btn-sm" id="btnToggleFixtures">Spielplan & Ergebnisse</button>
+                        </div>
+                    </div>
+
+                    <!-- View 1: Full Standings Table -->
+                    <div id="viewStandings" class="table-container full-page">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Platz</th>
+                                    <th>Verein</th>
+                                    <th>Spiele</th>
+                                    <th>S</th>
+                                    <th>U</th>
+                                    <th>N</th>
+                                    <th>Tore</th>
+                                    <th>Diff</th>
+                                    <th>Punkte</th>
+                                    <th>Form (letzte 5)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fullStandingsBody">
+                                <!-- Dynamisch -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- View 2: Full Schedule Fixtures -->
+                    <div id="viewFixtures" class="fixtures-container" style="display: none;">
+                        <div class="fixtures-nav-bar">
+                            <button class="btn btn-secondary btn-sm" id="btnPrevMatchday">◀ Vorheriger</button>
+                            <span class="matchday-display-title" id="fixtureMatchdayTitle">Spieltag 1</span>
+                            <button class="btn btn-secondary btn-sm" id="btnNextMatchday">Nächster ▶</button>
+                        </div>
+                        <div class="fixtures-list" id="fixturesList">
+                            <!-- Dynamische Partien -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab: Transfers -->
+                <section class="tab-pane" id="pane-transfers">
+                    <div class="pane-header">
+                        <h2>Transfermarkt & Scouting</h2>
+                        <div class="view-switch-buttons">
+                            <button class="btn btn-sm active" id="btnSubTransfersMarket">Transfermarkt</button>
+                            <button class="btn btn-sm" id="btnSubTransfersScouting">🔭 Scouting-Zentrale</button>
+                        </div>
+                    </div>
+
+                    <div id="viewTransferMarket">
+                        <div class="transfer-filters mb-3">
+                            <input type="text" id="tfSearch" class="styled-input" placeholder="Spielername suchen...">
+                            <select id="tfPosFilter" class="styled-select">
+                                <option value="all">Alle Positionen</option>
+                                <option value="TW">Torwart</option>
+                                <option value="IV">Innenverteidiger</option>
+                                <option value="LV">Linksverteidiger</option>
+                                <option value="RV">Rechtsverteidiger</option>
+                                <option value="DM">Def. Mittelfeld</option>
+                                <option value="ZM">Zentr. Mittelfeld</option>
+                                <option value="OM">Off. Mittelfeld</option>
+                                <option value="LM">Linkes Mittelfeld</option>
+                                <option value="RM">Rechtes Mittelfeld</option>
+                                <option value="LA">Linksaußen</option>
+                                <option value="RA">Rechtsaußen</option>
+                                <option value="ST">Stürmer</option>
+                            </select>
+                            <select id="tfRatingFilter" class="styled-select">
+                                <option value="0">Stärke beliebig</option>
+                                <option value="75">Ab 75 OVR</option>
+                                <option value="80">Ab 80 OVR</option>
+                                <option value="85">Ab 85 OVR</option>
+                            </select>
+                        </div>
+
+                        <!-- AI Offers Card if available -->
+                        <div class="ai-offers-container" id="aiOffersContainer" style="display:none;">
+                            <h3>Eingehende Transferangebote für Ihre Spieler</h3>
+                            <div class="ai-offers-list" id="aiOffersList"></div>
+                        </div>
+
+                        <!-- Transfer Market Table -->
+                        <div class="table-container full-page">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Verein</th>
+                                        <th>Pos</th>
+                                        <th>Alter</th>
+                                        <th>Stärke</th>
+                                        <th>Potenzial</th>
+                                        <th>Marktwert</th>
+                                        <th>Gehalt</th>
+                                        <th>Vertrag</th>
+                                        <th>Aktion</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="transferTableBody">
+                                    <!-- Dynamisch -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Scouting View -->
+                    <div id="viewScoutingCenter" style="display:none;">
+                        <div class="dash-card mb-3">
+                            <h3>Neuen Scouting-Auftrag erteilen</h3>
+                            <div class="transfer-filters mt-2">
+                                <select id="scoutPosSelect" class="styled-select">
+                                    <option value="ALL">Alle Positionen</option>
+                                    <option value="TW">Torwart (TW)</option>
+                                    <option value="IV">Innenverteidiger (IV)</option>
+                                    <option value="LV">Linksverteidiger (LV)</option>
+                                    <option value="RV">Rechtsverteidiger (RV)</option>
+                                    <option value="ZM">Mittelfeld (ZM/DM/OM)</option>
+                                    <option value="ST">Stürmer (ST/Flügel)</option>
+                                </select>
+                                <select id="scoutAgeSelect" class="styled-select">
+                                    <option value="21">Max. 21 Jahre (Talente)</option>
+                                    <option value="25" selected>Max. 25 Jahre (Jungprofis)</option>
+                                    <option value="35">Keine Altersgrenze</option>
+                                </select>
+                                <select id="scoutOvrSelect" class="styled-select">
+                                    <option value="65">Ab 65 Stärke</option>
+                                    <option value="75" selected>Ab 75 Stärke</option>
+                                    <option value="80">Ab 80 Stärke (Topspieler)</option>
+                                </select>
+                                <button class="btn btn-primary" id="btnStartScoutAssignment">Scout entsenden ➔</button>
+                            </div>
+                        </div>
+
+                        <div class="dash-card mb-3">
+                            <h3>Laufende Scouting-Aufträge</h3>
+                            <div id="scoutAssignmentsList" class="mt-2">
+                                <!-- Dynamische Aufträge -->
+                            </div>
+                        </div>
+
+                        <div class="dash-card">
+                            <h3>Vorliegende Scoutberichte & Empfehlungen</h3>
+                            <div id="scoutReportsList" class="mt-2">
+                                <!-- Dynamische Berichte -->
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab: Training -->
+                <section class="tab-pane" id="pane-training">
+                    <div class="pane-header">
+                        <h2>Trainingssteuerung & Entwicklung</h2>
+                    </div>
+
+                    <div class="training-grid">
+                        <div class="dash-card">
+                            <h3>Trainingsschwerpunkt wählen</h3>
+                            <div class="training-focus-options">
+                                <label class="focus-option-card">
+                                    <input type="radio" name="trainFocus" value="allround" checked>
+                                    <div class="focus-card-content">
+                                        <h4>🔄 Ausgewogen (Allround)</h4>
+                                        <p>Harmonische Entwicklung aller Mannschaftsteile.</p>
+                                    </div>
+                                </label>
+                                <label class="focus-option-card">
+                                    <input type="radio" name="trainFocus" value="attack">
+                                    <div class="focus-card-content">
+                                        <h4>🎯 Angriffsdrill & Torabschluss</h4>
+                                        <p>Verbessert Schusspräzision, Dribbling und Chancenverwertung.</p>
+                                    </div>
+                                </label>
+                                <label class="focus-option-card">
+                                    <input type="radio" name="trainFocus" value="defense">
+                                    <div class="focus-card-content">
+                                        <h4>🛡️ Defensivorganisation & Zweikampf</h4>
+                                        <p>Fördert Tackling, Stellungsspiel und Physis der Verteidigung.</p>
+                                    </div>
+                                </label>
+                                <label class="focus-option-card">
+                                    <input type="radio" name="trainFocus" value="technique">
+                                    <div class="focus-card-content">
+                                        <h4>⚽ Technik & Kurzpassspiel</h4>
+                                        <p>Steigert Ballsicherheit, Technik und Spielaufbau.</p>
+                                    </div>
+                                </label>
+                                <label class="focus-option-card">
+                                    <input type="radio" name="trainFocus" value="tactics">
+                                    <div class="focus-card-content">
+                                        <h4>🧠 Taktikverständnis & Übersicht</h4>
+                                        <p>Schärft das Auge für den freien Raum und die Positionierung.</p>
+                                    </div>
+                                </label>
+                                <label class="focus-option-card">
+                                    <input type="radio" name="trainFocus" value="regeneration">
+                                    <div class="focus-card-content">
+                                        <h4>💆 Regeneration & Wellness</h4>
+                                        <p>Maximale Erholung von Fitness und Frische. Senkt Verletzungsrisiko.</p>
+                                    </div>
+                                </label>
+                                <label class="focus-option-card">
+                                    <input type="radio" name="trainFocus" value="youth">
+                                    <div class="focus-card-content">
+                                        <h4>⭐ Jugend- & Talentförderung</h4>
+                                        <p>Fokussiertes Fördertraining für Spieler unter 23 Jahren.</p>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="dash-card">
+                            <h3>Trainingsintensität</h3>
+                            <div class="intensity-picker">
+                                <label class="intensity-btn">
+                                    <input type="radio" name="trainIntensity" value="low">
+                                    <span>Schonend (Niedrig)</span>
+                                </label>
+                                <label class="intensity-btn">
+                                    <input type="radio" name="trainIntensity" value="normal" checked>
+                                    <span>Standard (Normal)</span>
+                                </label>
+                                <label class="intensity-btn">
+                                    <input type="radio" name="trainIntensity" value="high">
+                                    <span>Vollgas (Hart)</span>
+                                </label>
+                            </div>
+                            <div class="training-info-alert">
+                                ℹ️ Die Trainingseffekte werden mit jedem Spieltagswochenwechsel automatisch auf alle Spieler angewendet.
+                            </div>
+                        </div>
+
+                        <!-- Jugendakademie -->
+                        <div class="dash-card" style="grid-column: 1 / -1;">
+                            <div class="card-header">
+                                <h3>🌟 Nachwuchsakademie & Jugendförderung</h3>
+                                <div>
+                                    <span id="youthAcademyLevelBadge" class="header-tag">Akademie: Stufe 1</span>
+                                    <button class="btn btn-sm btn-secondary ml-2" id="btnUpgradeYouthAcademy">Akademie ausbauen (+2.5 Mio. €)</button>
+                                </div>
+                            </div>
+                            <div class="table-container mt-2">
+                                <table class="compact-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Position</th>
+                                            <th>Alter</th>
+                                            <th>Aktuelle Stärke</th>
+                                            <th>Potenzial</th>
+                                            <th>Aktion</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="youthProspectsBody">
+                                        <!-- Dynamisch -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab: Finances (Finanzen) -->
+                <section class="tab-pane" id="pane-finances">
+                    <div class="pane-header">
+                        <h2>Vereinsfinanzen & Bilanz</h2>
+                    </div>
+                    <div class="finances-grid">
+                        <div class="dash-card">
+                            <h3>Vermögen & Budgets</h3>
+                            <div class="finance-stat-row">
+                                <span>Gesamter Kontostand:</span>
+                                <strong id="finBalance">0 €</strong>
+                            </div>
+                            <div class="finance-stat-row">
+                                <span>Verfügbares Transferbudget:</span>
+                                <strong id="finTransferBudget">0 €</strong>
+                            </div>
+                            <div class="finance-stat-row">
+                                <span>Wöchentliches Gehaltsbudget:</span>
+                                <strong id="finWageBudget">0 €</strong>
+                            </div>
+                            <div class="finance-stat-row">
+                                <span>Laufende Gehaltskosten / Woche:</span>
+                                <strong id="finWageCosts">0 €</strong>
+                            </div>
+                        </div>
+
+                        <div class="dash-card">
+                            <h3>Einnahmequellen & Sponsoring</h3>
+                            <div class="finance-stat-row">
+                                <span>Stadionkapazität:</span>
+                                <strong id="finCapacity">0 Plätze</strong>
+                            </div>
+                            <div class="finance-stat-row">
+                                <span>Geschätzte Einnahmen pro Heimspiel:</span>
+                                <strong id="finMatchdayIncome">0 €</strong>
+                            </div>
+                            <div class="finance-stat-row">
+                                <span>Feste Sponsorenerträge / Woche:</span>
+                                <strong id="finSponsorWeekly">0 €</strong>
+                            </div>
+                            <div class="finance-stat-row">
+                                <span>Fanbasis / Mitglieder:</span>
+                                <strong id="finFanbase">0 Fans</strong>
+                            </div>
+                        </div>
+
+                        <!-- Vereinsfazilitäten -->
+                        <div class="dash-card">
+                            <h3>🏟️ Vereinsinfrastruktur</h3>
+                            <div class="finance-stat-row">
+                                <span>Trainingsgelände:</span>
+                                <strong id="facTraining">Stufe 2</strong>
+                            </div>
+                            <div class="finance-stat-row">
+                                <span>Jugendzentrum:</span>
+                                <strong id="facYouth">Stufe 1</strong>
+                            </div>
+                            <div class="finance-stat-row">
+                                <span>Medizinische Abteilung:</span>
+                                <strong id="facMedical">Stufe 1</strong>
+                            </div>
+                            <div class="finance-stat-row">
+                                <span>Stadion-Ausbaustufe:</span>
+                                <strong id="facStadium">Stufe 2</strong>
+                            </div>
+                        </div>
+
+                        <!-- Transaktionshistorie -->
+                        <div class="dash-card" style="grid-column: 1 / -1;">
+                            <h3>📒 Buchungs- und Transaktionsjournal</h3>
+                            <div class="table-container mt-2" style="max-height: 260px; overflow-y: auto;">
+                                <table class="compact-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Datum</th>
+                                            <th>Vorgang</th>
+                                            <th>Betrag</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="finTransactionsBody">
+                                        <!-- Dynamisch -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab: Statistics (Statistiken) -->
+                <section class="tab-pane" id="pane-stats">
+                    <div class="pane-header">
+                        <h2>Liga-Statistiken & Ranglisten</h2>
+                    </div>
+                    <div class="stats-grid">
+                        <div class="dash-card">
+                            <h3>⚽ Torjägerkanone (Tore)</h3>
+                            <div class="leaderboard-list" id="statsTopScorers"></div>
+                        </div>
+                        <div class="dash-card">
+                            <h3>🎯 Beste Vorlagengeber (Assists)</h3>
+                            <div class="leaderboard-list" id="statsTopAssists"></div>
+                        </div>
+                        <div class="dash-card">
+                            <h3>🧤 Weiße Westen (Clean Sheets)</h3>
+                            <div class="leaderboard-list" id="statsCleanSheets"></div>
+                        </div>
+                        <div class="dash-card">
+                            <h3>⭐ Notenbeste Spieler</h3>
+                            <div class="leaderboard-list" id="statsTopRatings"></div>
+                        </div>
+
+                        <!-- Historie -->
+                        <div class="dash-card" style="grid-column: 1 / -1;">
+                            <h3>🏆 Historie der vergangenen Saisons</h3>
+                            <div class="table-container mt-2">
+                                <table class="compact-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Saison</th>
+                                            <th>Deutscher Meister</th>
+                                            <th>Eigener Verein</th>
+                                            <th>Eigener Tabellenplatz</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="statsHistoryBody">
+                                        <!-- Dynamisch -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab: Calendar & Daily Routine -->
+                <section class="tab-pane" id="pane-calendar">
+                    <div class="pane-header">
+                        <h2>Saisonkalender & Tagesablauf</h2>
+                        <div class="pane-actions" style="display:flex; gap:10px;">
+                            <button class="btn btn-primary" id="btnCalendarAdvanceDay">⏭️ 1 Tag simulieren</button>
+                            <button class="btn btn-secondary" id="btnCalendarAdvanceMatchday">⏩ Zum nächsten Spieltag</button>
+                        </div>
+                    </div>
+                    <div class="calendar-layout">
+                        <div class="dash-card">
+                            <div class="card-header">
+                                <h3>Aktuelle Saisonwoche</h3>
+                                <span class="badge badge-info" id="calCurrentDateText">01.08.2026</span>
+                            </div>
+                            <div class="calendar-grid-week" id="calendarWeekGrid">
+                                <!-- Dynamische 7-Tage-Karten -->
+                            </div>
+                        </div>
+
+                        <div class="dash-card" style="margin-top:20px;">
+                            <div class="card-header">
+                                <h3>Kommende Termine & Spieltage der Saison</h3>
+                            </div>
+                            <div class="calendar-full-list" id="calendarFullList">
+                                <!-- Gesamte Terminliste -->
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab: Inbox (Postfach) -->
+                <section class="tab-pane" id="pane-inbox">
+                    <div class="pane-header">
+                        <h2>Postfach & Vereinsnachrichten</h2>
+                        <div class="pane-actions" style="display:flex; gap:10px;">
+                            <button class="btn btn-secondary btn-sm" id="btnInboxMarkAllRead">✓ Alle als gelesen markieren</button>
+                        </div>
+                    </div>
+                    
+                    <div class="inbox-toolbar" style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:center;">
+                        <div class="inbox-search-wrap" style="flex:1; min-width:200px;">
+                            <input type="text" id="inboxSearchInput" class="styled-input" placeholder="Nachrichten durchsuchen..." style="width:100%;">
+                        </div>
+                        <div class="inbox-filter-tags" id="inboxFilterTags" style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <button class="filter-chip active" data-inbox-filter="all">Alle</button>
+                            <button class="filter-chip" data-inbox-filter="unread">Ungelesen</button>
+                            <button class="filter-chip" data-inbox-filter="board">Vorstand</button>
+                            <button class="filter-chip" data-inbox-filter="match">Spiel</button>
+                            <button class="filter-chip" data-inbox-filter="transfer">Transfers</button>
+                            <button class="filter-chip" data-inbox-filter="training">Training</button>
+                            <button class="filter-chip" data-inbox-filter="scouting">Scouting</button>
+                            <button class="filter-chip" data-inbox-filter="finance">Finanzen</button>
+                        </div>
+                    </div>
+
+                    <div class="inbox-layout">
+                        <div class="inbox-list" id="inboxList">
+                            <!-- Dynamisch -->
+                        </div>
+                        <div class="inbox-detail" id="inboxDetail">
+                            <div class="empty-state">Wählen Sie eine Nachricht aus der Liste aus.</div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab: Settings (Spielstand & Optionen) -->
+                <section class="tab-pane" id="pane-settings">
+                    <div class="pane-header">
+                        <h2>Spielstand & Einstellungen</h2>
+                    </div>
+                    <div class="settings-grid">
+                        <div class="dash-card">
+                            <h3>Speichern & Laden (Lokal)</h3>
+                            <p>Speichern Sie Ihren aktuellen Karrierefortschritt sicher im Browser.</p>
+                            <div class="btn-group-column">
+                                <button class="btn btn-primary" id="btnSaveLocal">💾 Spielstand im Browser speichern</button>
+                                <button class="btn btn-secondary" id="btnLoadLocal">📂 Gespeicherten Spielstand laden</button>
+                            </div>
+                        </div>
+
+                        <div class="dash-card">
+                            <h3>Spielstand weitergeben (Datei Export / Import)</h3>
+                            <p>Exportieren Sie Ihren Spielstand als JSON-Datei, um ihn an Freunde zu verschicken oder auf anderen Geräten weiterzuspielen!</p>
+                            <div class="btn-group-column">
+                                <button class="btn btn-primary" id="btnExportJson">📤 Spielstand als Datei herunterladen</button>
+                                <label class="btn btn-secondary file-upload-btn">
+                                    📥 Spielstand-Datei importieren
+                                    <input type="file" id="fileImportJson" accept=".json" style="display:none;">
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="dash-card">
+                            <h3>Neues Spiel / Karriere</h3>
+                            <p>Starten Sie eine neue Managersaison mit einem Verein Ihrer Wahl.</p>
+                            <button class="btn btn-danger" id="btnNewGamePrompt">➕ Neues Spiel starten</button>
+                        </div>
+
+                        <div class="dash-card">
+                            <h3>Sound & Audio-Effekte</h3>
+                            <p>Synthetisierte Soundeffekte für Stadion-Atmosphäre, Pfiffe und Tore.</p>
+                            <button class="btn btn-secondary" id="btnToggleSound">🔊 Sound: Aktiviert</button>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+
+        <!-- ================= MODALS & OVERLAYS ================= -->
+
+        <!-- Start Screen / Main Menu Screen Overlay -->
+        <div class="start-screen-overlay" id="startScreenOverlay">
+            <div class="start-screen-container">
+                <div class="start-hero-header">
+                    <div class="start-logo">
+                        <span class="start-logo-icon">⚽</span>
+                        <h1 class="start-logo-title">FUSSBALL<span class="brand-accent">MANAGER</span> <span class="start-pro-tag">PRO</span></h1>
+                    </div>
+                    <p class="start-subtitle">Deine Karriere als Cheftrainer & Sportdirektor. Übernimm die Kontrolle.</p>
+                </div>
+
+                <div class="start-screen-grid">
+                    <!-- Linke Spalte: Hauptmenü-Aktionen -->
+                    <div class="start-actions-card">
+                        <h2 class="start-card-title">Hauptmenü</h2>
+                        
+                        <div class="start-menu-buttons">
+                            <button class="btn btn-primary btn-lg start-btn" id="btnStartNewGame">
+                                <span class="btn-icon">⭐</span>
+                                <span class="btn-text-wrap">
+                                    <span class="btn-main-text">Neues Spiel starten</span>
+                                    <span class="btn-sub-text">Erstelle ein neues Managerprofil & wähle einen Verein</span>
+                                </span>
+                            </button>
+
+                            <button class="btn btn-success btn-lg start-btn" id="btnStartContinueGame" disabled>
+                                <span class="btn-icon">▶️</span>
+                                <span class="btn-text-wrap">
+                                    <span class="btn-main-text">Spielstand fortsetzen</span>
+                                    <span class="btn-sub-text" id="startContinueSubText">Kein lokaler Spielstand gefunden</span>
+                                </span>
+                            </button>
+
+                            <div class="start-btn-row">
+                                <label class="btn btn-secondary start-btn-half" for="startFileInput">
+                                    <span>📁 Spielstand importieren</span>
+                                </label>
+                                <input type="file" id="startFileInput" accept=".json" style="display:none;">
+
+                                <button class="btn btn-secondary start-btn-half" id="btnStartAbout">
+                                    <span>ℹ️ Über das Spiel</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Rechte Spalte: Aktueller Spielstand-Status -->
+                    <div class="start-saveinfo-card" id="startSaveInfoCard">
+                        <h2 class="start-card-title">Lokaler Spielstand</h2>
+                        <div id="startSaveDetailsContent">
+                            <div class="no-save-placeholder">
+                                <span class="placeholder-icon">📂</span>
+                                <p>Noch kein aktiver Spielstand im Browser gespeichert.</p>
+                                <span class="placeholder-hint">Klicke auf "Neues Spiel starten", um deine Trainerkarriere zu beginnen.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: About / Über das Spiel -->
+        <div class="modal-overlay" id="modalAboutGame" style="display: none;">
+            <div class="modal-box modal-md">
+                <div class="modal-header">
+                    <h2>Über Fußballmanager Pro</h2>
+                    <button class="modal-close" id="btnCloseAboutModal">×</button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Fußballmanager Pro</strong> ist ein leichtgewichtiger, vollständiger Fußballmanager für den Browser – komplett ohne Serverzwang spielbar.</p>
+                    <ul class="about-feature-list">
+                        <li>⚽ <strong>18 detaillierte Bundesliga-Vereine</strong> mit echten Kadern, Stadien und Finanzen</li>
+                        <li>🕹️ <strong>2D-Echtzeit-Spielfeld</strong> mit Live-Ticker, In-Game-Taktiken und dynamischen Auswechslungen</li>
+                        <li>📈 <strong>Taktik & Aufstellung:</strong> 7 Formationen, Standard-Schützen, individuelle Rollen</li>
+                        <li>🔄 <strong>Transfersystem & Verhandlungen:</strong> Ablösen, Gehälter, Spielerverträge & Postfach-Angebote</li>
+                        <li>🏋️ <strong>Wöchentliches Training & Lazarett:</strong> Verletzungen, Sperren, Talentförderung</li>
+                        <li>💾 <strong>100% Offline-Savegame & JSON-Export/Import:</strong> Spielstände mit Freunden teilen</li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="btnDismissAbout">Schließen</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Setup-Assistent für Neues Spiel -->
+        <div class="modal-overlay" id="modalNewGame" style="display: none;">
+            <div class="modal-box modal-fullscreen wizard-modal-box">
+                <div class="wizard-header">
+                    <div class="wizard-steps-indicator">
+                        <div class="wizard-step-node active" data-step="1">
+                            <span class="step-num">1</span>
+                            <span class="step-label">Managerprofil</span>
+                        </div>
+                        <div class="step-line"></div>
+                        <div class="wizard-step-node" data-step="2">
+                            <span class="step-num">2</span>
+                            <span class="step-label">Liga</span>
+                        </div>
+                        <div class="step-line"></div>
+                        <div class="wizard-step-node" data-step="3">
+                            <span class="step-num">3</span>
+                            <span class="step-label">Vereinsauswahl</span>
+                        </div>
+                    </div>
+                    <button class="modal-close" id="btnCloseWizard">×</button>
+                </div>
+
+                <div class="wizard-body">
+                    <!-- Schritt 1: Managerprofil -->
+                    <div class="wizard-step-content active" id="wizardStep1">
+                        <div class="wizard-card-center">
+                            <h2>Schritt 1: Ihr Managerprofil</h2>
+                            <p class="wizard-desc">Legen Sie Ihre persönlichen Trainerdaten und den gewünschten Schwierigkeitsgrad fest.</p>
+
+                            <div class="wizard-form-grid">
+                                <div class="form-col">
+                                    <label for="inputManagerName">Managername / Trainername:</label>
+                                    <input type="text" id="inputManagerName" class="styled-input" value="Trainer Schmidt" placeholder="z. B. Hansi Flick">
+                                </div>
+                                <div class="form-col">
+                                    <label for="inputManagerNationality">Nationalität:</label>
+                                    <select id="inputManagerNationality" class="styled-select">
+                                        <option value="Deutschland" selected>🇩🇪 Deutschland</option>
+                                        <option value="Österreich">🇦🇹 Österreich</option>
+                                        <option value="Schweiz">🇨🇭 Schweiz</option>
+                                        <option value="Spanien">🇪🇸 Spanien</option>
+                                        <option value="Italien">🇮🇹 Italien</option>
+                                        <option value="Frankreich">🇫🇷 Frankreich</option>
+                                        <option value="England">🏴󠁧󠁢󠁥󠁮󠁧󠁿 England</option>
+                                        <option value="Niederlande">🇳🇱 Niederlande</option>
+                                    </select>
+                                </div>
+                                <div class="form-col">
+                                    <label for="inputManagerBirthdate">Geburtsdatum:</label>
+                                    <input type="date" id="inputManagerBirthdate" class="styled-input" value="1985-05-15">
+                                </div>
+                                <div class="form-col">
+                                    <label for="selectDifficulty">Schwierigkeitsgrad:</label>
+                                    <select id="selectDifficulty" class="styled-select">
+                                        <option value="easy">Leicht (+35% Budget, hohe Vorstandstoleranz)</option>
+                                        <option value="normal" selected>Normal (Ausgewogenes und realistisches Gameplay)</option>
+                                        <option value="hard">Schwer (-25% Budget, anspruchsvolle Vorstände)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Schritt 2: Ligaauswahl -->
+                    <div class="wizard-step-content" id="wizardStep2" style="display:none;">
+                        <div class="wizard-card-center">
+                            <h2>Schritt 2: Liga auswählen</h2>
+                            <p class="wizard-desc">Wählen Sie den Wettbewerb für Ihre Karriere.</p>
+
+                            <div class="league-selection-container">
+                                <div class="league-option-card selected">
+                                    <div class="league-badge-big">🇩🇪</div>
+                                    <div class="league-info">
+                                        <div class="league-title-row">
+                                            <h3>Deutschland Liga 1</h3>
+                                            <span class="badge badge-success">Aktiv</span>
+                                        </div>
+                                        <p class="league-sub">Die höchste deutsche Spielklasse mit 18 Traditions- und Spitzenvereinen.</p>
+                                        <div class="league-meta-grid">
+                                            <div class="l-meta-item">
+                                                <span class="l-meta-label">Vereine:</span>
+                                                <span class="l-meta-val">18 Klubs</span>
+                                            </div>
+                                            <div class="l-meta-item">
+                                                <span class="l-meta-label">Saisonlänge:</span>
+                                                <span class="l-meta-val">34 Spieltage (Hin- & Rückrunde)</span>
+                                            </div>
+                                            <div class="l-meta-item">
+                                                <span class="l-meta-label">Wertung:</span>
+                                                <span class="l-meta-val">Sieg: 3 Pkt • Remis: 1 Pkt • Niederlage: 0 Pkt</span>
+                                            </div>
+                                            <div class="l-meta-item">
+                                                <span class="l-meta-label">Wettbewerbsmodus:</span>
+                                                <span class="l-meta-val">Vollständige Round-Robin-Simulation</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Schritt 3: Vereinsauswahl & Detailanalyse -->
+                    <div class="wizard-step-content" id="wizardStep3" style="display:none;">
+                        <div class="club-select-layout">
+                            <!-- Linke Spalte: Filter & Vereinsliste -->
+                            <div class="club-select-left">
+                                <div class="club-filter-bar">
+                                    <input type="text" id="filterClubSearch" class="styled-input" placeholder="🔍 Verein oder Stadt suchen...">
+                                    <div class="filter-controls-row">
+                                        <select id="filterClubSort" class="styled-select">
+                                            <option value="strength_desc">Sortieren: Stärke (Absteigend)</option>
+                                            <option value="strength_asc">Sortieren: Stärke (Aufsteigend)</option>
+                                            <option value="budget_desc">Sortieren: Budget (Höchstes zuerst)</option>
+                                            <option value="name_asc">Sortieren: Name (A - Z)</option>
+                                        </select>
+                                        <select id="filterClubDifficulty" class="styled-select">
+                                            <option value="all">Alle Schwierigkeiten</option>
+                                            <option value="easy">Favoriten (Meisterschaft)</option>
+                                            <option value="medium">Verfolger (Top 3 / Europa)</option>
+                                            <option value="hard">Herausforderer (Mittelfeld/Abstieg)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="club-selection-list" id="clubSelectionList">
+                                    <!-- Dynamische Vereinskarten -->
+                                </div>
+                            </div>
+
+                            <!-- Rechte Spalte: Vereins-Detailanalyse -->
+                            <div class="club-select-right">
+                                <div class="club-detail-panel" id="clubDetailPanel">
+                                    <div class="club-detail-placeholder">
+                                        <span>👈 Bitte wählen Sie links einen Verein aus, um detaillierte Kaderanalysen, Finanzen und Vorstandserwartungen einzusehen.</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="wizard-footer">
+                    <button class="btn btn-secondary btn-lg" id="btnWizardBack" style="display: none;">◀ Zurück</button>
+                    <div class="wizard-footer-right">
+                        <button class="btn btn-primary btn-lg" id="btnWizardNext">Weiter ▶</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: 2D Live Match Simulator -->
+        <div class="modal-overlay" id="modalLiveMatch" style="display: none;">
+            <div class="modal-box modal-fullscreen">
+                <div class="live-match-header">
+                    <div class="live-scoreboard">
+                        <div class="team-score home">
+                            <span class="team-name" id="lmHomeName">FC München</span>
+                            <span class="score-digit" id="lmHomeScore">0</span>
+                        </div>
+                        <div class="match-time-badge">
+                            <span id="lmMinute">0</span>'
+                            <span class="time-label">LIVE</span>
+                        </div>
+                        <div class="team-score away">
+                            <span class="score-digit" id="lmAwayScore">0</span>
+                            <span class="team-name" id="lmAwayName">Borussia Dortmund</span>
+                        </div>
+                    </div>
+
+                    <div class="live-controls-bar">
+                        <button class="btn btn-sm btn-icon" id="btnLmPause">⏸ Pause</button>
+                        <div class="speed-selector">
+                            <button class="btn btn-sm speed-btn active" data-speed="1">1x</button>
+                            <button class="btn btn-sm speed-btn" data-speed="2">2x</button>
+                            <button class="btn btn-sm speed-btn" data-speed="4">4x</button>
+                        </div>
+                        <button class="btn btn-sm btn-secondary" id="btnLmSkip">⚡ Sofort-Ergebnis</button>
+                    </div>
+                </div>
+
+                <div class="live-match-body">
+                    <!-- Left: 2D Pitch Canvas -->
+                    <div class="live-pitch-wrapper">
+                        <canvas id="livePitchCanvas" width="800" height="500"></canvas>
+                        <div class="live-commentary-bar" id="lmCommentary">
+                            Das Spiel wird angepfiffen!
+                        </div>
+                    </div>
+
+                    <!-- Right: Live Stats & In-Game Coaching -->
+                    <div class="live-match-sidebar">
+                        <div class="live-tab-buttons">
+                            <button class="btn btn-sm live-subtab active" data-subtab="stats">Statistiken</button>
+                            <button class="btn btn-sm live-subtab" data-subtab="coaching">Taktik & Wechsel</button>
+                            <button class="btn btn-sm live-subtab" data-subtab="events">Ticker</button>
+                        </div>
+
+                        <!-- Subtab: Stats -->
+                        <div class="live-subtab-pane active" id="lmSubtab-stats">
+                            <div class="live-stat-bar-item">
+                                <div class="stat-labels">
+                                    <span id="lmStatPossHome">50%</span>
+                                    <span>Ballbesitz</span>
+                                    <span id="lmStatPossAway">50%</span>
+                                </div>
+                                <div class="dual-bar">
+                                    <div class="dual-bar-left" id="lmBarPossHome" style="width: 50%;"></div>
+                                    <div class="dual-bar-right" id="lmBarPossAway" style="width: 50%;"></div>
+                                </div>
+                            </div>
+
+                            <div class="live-stat-bar-item">
+                                <div class="stat-labels">
+                                    <span id="lmStatShotsHome">0</span>
+                                    <span>Schüsse (Aufs Tor)</span>
+                                    <span id="lmStatShotsAway">0</span>
+                                </div>
+                            </div>
+
+                            <div class="live-stat-bar-item">
+                                <div class="stat-labels">
+                                    <span id="lmStatXgHome">0.00</span>
+                                    <span>Expected Goals (xG)</span>
+                                    <span id="lmStatXgAway">0.00</span>
+                                </div>
+                            </div>
+
+                            <div class="live-stat-bar-item">
+                                <div class="stat-labels">
+                                    <span id="lmStatCornersHome">0</span>
+                                    <span>Ecken</span>
+                                    <span id="lmStatCornersAway">0</span>
+                                </div>
+                            </div>
+
+                            <div class="live-stat-bar-item">
+                                <div class="stat-labels">
+                                    <span id="lmStatFoulsHome">0</span>
+                                    <span>Fouls</span>
+                                    <span id="lmStatFoulsAway">0</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Subtab: In-Game Coaching -->
+                        <div class="live-subtab-pane" id="lmSubtab-coaching">
+                            <h4>Live-Taktik ändern</h4>
+                            <select id="lmLiveMentality" class="styled-select mb-2">
+                                <option value="very_defensive">Sehr defensiv</option>
+                                <option value="defensive">Defensiv</option>
+                                <option value="balanced" selected>Ausgeglichen</option>
+                                <option value="offensive">Offensiv</option>
+                                <option value="very_offensive">Sehr offensiv</option>
+                            </select>
+
+                            <h4>Auswechslung (Klick auf Spieler):</h4>
+                            <div class="live-subs-list" id="lmLiveSubsList">
+                                <!-- Dynamisch Auswechselbare Spieler -->
+                            </div>
+                        </div>
+
+                        <!-- Subtab: Event Ticker -->
+                        <div class="live-subtab-pane" id="lmSubtab-events">
+                            <div class="event-ticker-feed" id="lmEventFeed">
+                                <!-- Events -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Match Report (Nach dem Abpfiff) -->
+        <div class="modal-overlay" id="modalMatchReport" style="display: none;">
+            <div class="modal-box modal-lg">
+                <div class="modal-header">
+                    <h2>Spielbericht & Analyse</h2>
+                </div>
+                <div class="modal-body" id="matchReportContent">
+                    <!-- Dynamischer Spielbericht -->
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" id="btnCloseReport">Weiter zum Dashboard ▶</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Opponent Analysis (Gegneranalyse vor dem Spiel) -->
+        <div class="modal-overlay" id="modalOpponentAnalysis" style="display: none;">
+            <div class="modal-box modal-lg">
+                <div class="modal-header">
+                    <h2>🔍 Taktische Gegneranalyse & Scoutingbericht</h2>
+                    <button class="modal-close" id="btnCloseOpponentAnalysis">×</button>
+                </div>
+                <div class="modal-body" id="opponentAnalysisContent">
+                    <!-- Dynamischer Scoutingbericht -->
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" id="btnConfirmOpponentAnalysis">Verstanden & Zurück zum Dashboard</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Player Details / Contract Offer -->
+        <div class="modal-overlay" id="modalPlayerDetails" style="display: none;">
+            <div class="modal-box modal-md">
+                <div class="modal-header">
+                    <h2 id="pdPlayerName">Spieler Details</h2>
+                    <button class="modal-close" id="btnClosePlayerDetails">×</button>
+                </div>
+                <div class="modal-body" id="playerDetailsContent">
+                    <!-- Dynamische Spielerdaten -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Transfer Offer Negotiation -->
+        <div class="modal-overlay" id="modalTransferOffer" style="display: none;">
+            <div class="modal-box modal-md">
+                <div class="modal-header">
+                    <h2 id="toModalTitle">Transferangebot abgeben</h2>
+                    <button class="modal-close" id="btnCloseTransferOffer">×</button>
+                </div>
+                <div class="modal-body" id="transferOfferContent">
+                    <!-- Transfer Verhandlungs-Formular -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Season Champion Celebration -->
+        <div class="modal-overlay" id="modalSeasonEnd" style="display: none;">
+            <div class="modal-box modal-md text-center">
+                <div class="trophy-anim">🏆</div>
+                <h1 id="seTitle">Saisonabschluss!</h1>
+                <p id="seSubtitle" class="lead-text">Der Deutsche Meister steht fest.</p>
+                <div class="se-details" id="seDetails"></div>
+                <div class="modal-footer center">
+                    <button class="btn btn-primary btn-lg" id="btnStartNextSeason">Nächste Saison starten ▶</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts in richtiger Reihenfolge einbinden -->
+    <script src="js/core/constants.js"></script>
+    <script src="js/core/dom.js"></script>
+    <script src="js/core/formatters.js"></script>
+    <script src="js/core/random.js"></script>
+    <script src="js/core/validators.js"></script>
+    <script src="js/data/namePools.js"></script>
+    <script src="js/data/leagueData.js"></script>
+    <script src="js/data/initialData.js"></script>
+    <script src="js/services/migrationService.js"></script>
+    <script src="js/services/saveService.js"></script>
+    <script src="js/engine/newsEngine.js"></script>
+    <script src="js/engine/boardEngine.js"></script>
+    <script src="js/engine/financeEngine.js"></script>
+    <script src="js/engine/contractEngine.js"></script>
+    <script src="js/engine/scoutingEngine.js"></script>
+    <script src="js/engine/youthEngine.js"></script>
+    <script src="js/engine/aiManagerEngine.js"></script>
+    <script src="js/engine/clubGenerator.js"></script>
+    <script src="js/engine/playerGenerator.js"></script>
+    <script src="js/engine/competitionEngine.js"></script>
+    <script src="js/engine/playerRatingEngine.js"></script>
+    <script src="js/engine/calendarEngine.js"></script>
+    <script src="js/engine/opponentAnalysisEngine.js"></script>
+    <script src="js/engine/gameState.js"></script>
+    <script src="js/engine/matchEngine.js"></script>
+    <script src="js/engine/transferEngine.js"></script>
+    <script src="js/engine/trainingEngine.js"></script>
+    <script src="js/engine/seasonEngine.js"></script>
+    <script src="js/ui/uiManager.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

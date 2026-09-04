@@ -815,6 +815,122 @@ function runEngineTests() {
         if (poss[0] + poss[1] !== 100) throw new Error(`Ballbesitzsumme ist ${poss[0] + poss[1]}`);
     });
 
+    // 25. Scoutwissen bestimmt die Genauigkeit der angezeigten Werte
+    test("PlayerRatingEngine: Mehr Scoutwissen liefert engere und genauere Schätzungen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const target = state.players.find(p => p.clubId !== "muc");
+        const context = { userClubId: "muc", leagueDataCoverage: 100 };
+
+        const levels = [20, 40, 60, 80];
+        let lastCaSpan = Infinity;
+        let lastStarSpan = Infinity;
+        let lastAttrSpan = Infinity;
+
+        levels.forEach(level => {
+            target.scoutingKnowledge = { known: true, knowledgeLevel: level, accuracy: level };
+            const card = PlayerRatingEngine.calculateVisiblePlayerCard(target, context);
+
+            // Die geschätzte Spanne muss den wahren Wert immer enthalten
+            const trueCa = target.trueCurrentAbility;
+            if (trueCa < card.estimatedCa.min || trueCa > card.estimatedCa.max) {
+                throw new Error(`Wahre Stärke ${trueCa} liegt bei ${level}% außerhalb der Schätzung ${card.estimatedCa.min}-${card.estimatedCa.max}`);
+            }
+
+            // Und mit steigendem Wissen enger werden
+            const caSpan = card.estimatedCa.max - card.estimatedCa.min;
+            if (caSpan >= lastCaSpan) {
+                throw new Error(`Stärke-Spanne wird bei ${level}% nicht enger: ${caSpan} vs. zuvor ${lastCaSpan}`);
+            }
+            lastCaSpan = caSpan;
+
+            const starSpan = card.starsCaMax - card.starsCaMin;
+            if (starSpan > lastStarSpan) {
+                throw new Error(`Sterne-Spanne wächst bei ${level}%: ${starSpan} vs. zuvor ${lastStarSpan}`);
+            }
+            lastStarSpan = starSpan;
+
+            const attr = PlayerRatingEngine.getVisibleAttribute(target, "pace", level);
+            const attrSpan = attr.max - attr.min;
+            if (attr.known) throw new Error(`Attribut bei ${level}% Wissen fälschlich als gesichert gemeldet`);
+            if (attrSpan >= lastAttrSpan) {
+                throw new Error(`Attribut-Spanne wird bei ${level}% nicht enger: ${attrSpan} vs. zuvor ${lastAttrSpan}`);
+            }
+            if (attr.min > target.pace || attr.max < target.pace) {
+                throw new Error(`Wahres Tempo ${target.pace} liegt außerhalb der Spanne ${attr.text}`);
+            }
+            lastAttrSpan = attrSpan;
+        });
+
+        // Ab voller Kenntnis exakte Werte statt Spannen
+        target.scoutingKnowledge = { known: true, knowledgeLevel: 95, accuracy: 95 };
+        const full = PlayerRatingEngine.calculateVisiblePlayerCard(target, context);
+        if (!full.isPrecise) throw new Error("Vollständig gescouteter Spieler gilt nicht als gesichert");
+        if (full.visibleOvr !== target.overall) {
+            throw new Error(`Bei vollem Wissen muss die exakte Stärke erscheinen (${full.visibleOvr} statt ${target.overall})`);
+        }
+        if (full.starsCaMin !== full.starsCaMax) throw new Error("Bei vollem Wissen darf keine Sterne-Spanne mehr bleiben");
+        const exactAttr = PlayerRatingEngine.getVisibleAttribute(target, "pace", 95);
+        if (!exactAttr.known || exactAttr.exact !== target.pace) {
+            throw new Error(`Attribut bei vollem Wissen nicht exakt: ${exactAttr.text}`);
+        }
+
+        // Eigene Spieler sind immer vollständig bekannt
+        const ownPlayer = state.players.find(p => p.clubId === "muc");
+        const ownCard = PlayerRatingEngine.calculateVisiblePlayerCard(ownPlayer, context);
+        if (!ownCard.isPrecise || ownCard.visibleOvr !== ownPlayer.overall) {
+            throw new Error("Eigene Spieler müssen mit exakten Werten angezeigt werden");
+        }
+    });
+
+    // 26. Schätzungen sind stabil und verraten die Wahrheit nicht
+    test("PlayerRatingEngine: Schätzungen sind deterministisch und geben die wahren Werte nicht preis", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const context = { userClubId: "muc", leagueDataCoverage: 100 };
+        const scouted = state.players.filter(p => p.clubId !== "muc").slice(0, 12);
+
+        let deviationSum = 0;
+        scouted.forEach(p => {
+            p.scoutingKnowledge = { known: false, knowledgeLevel: 25, accuracy: 25 };
+
+            // Zweimal berechnen muss dasselbe Ergebnis liefern (kein Flackern)
+            const a = PlayerRatingEngine.calculateVisiblePlayerCard(p, context);
+            const b = PlayerRatingEngine.calculateVisiblePlayerCard(p, context);
+            if (a.visibleOvr !== b.visibleOvr || a.starsCaMin !== b.starsCaMin) {
+                throw new Error(`Schätzung für ${p.name} ist nicht stabil: ${a.visibleOvr} vs. ${b.visibleOvr}`);
+            }
+
+            const attrA = PlayerRatingEngine.getVisibleAttribute(p, "shooting", 25);
+            const attrB = PlayerRatingEngine.getVisibleAttribute(p, "shooting", 25);
+            if (attrA.text !== attrB.text) {
+                throw new Error(`Attributschätzung für ${p.name} ist nicht stabil: ${attrA.text} vs. ${attrB.text}`);
+            }
+
+            // Bei wenig Wissen darf keine exakte Zahl erscheinen
+            if (String(a.visibleOvr).indexOf("-") === -1) {
+                throw new Error(`Unbekannter Spieler ${p.name} zeigt eine exakte Stärke: ${a.visibleOvr}`);
+            }
+
+            const estMid = PlayerRatingEngine.abilityToOverall(Math.round((a.estimatedCa.min + a.estimatedCa.max) / 2));
+            deviationSum += Math.abs(estMid - p.overall);
+        });
+
+        // Die Schätzmitte darf nicht systematisch exakt die Wahrheit treffen -
+        // sonst wäre Scouten wertlos
+        const avgDeviation = deviationSum / scouted.length;
+        if (avgDeviation < 0.5) {
+            throw new Error(`Schätzungen treffen die Wahrheit zu genau (mittlere Abweichung ${avgDeviation.toFixed(2)} OVR)`);
+        }
+        if (avgDeviation > 8) {
+            throw new Error(`Schätzungen weichen unrealistisch stark ab (mittlere Abweichung ${avgDeviation.toFixed(2)} OVR)`);
+        }
+
+        // Sternebewertung als Spanne darstellbar
+        const html = PlayerRatingEngine.renderStarRange(2.5, 4.5);
+        if (!html.includes("star-uncertain") || !html.includes("★")) {
+            throw new Error("Sterne-Spanne wird nicht als Unsicherheit dargestellt");
+        }
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

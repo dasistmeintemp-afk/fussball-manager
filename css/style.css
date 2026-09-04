@@ -1172,6 +1172,69 @@ body {
     background: rgba(148, 163, 184, 0.15);
 }
 
+/* Sternebewertungen mit Unsicherheitsspanne */
+.star-rating {
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+.star-uncertain {
+    opacity: 0.32;
+}
+
+.star-empty {
+    opacity: 0.22;
+}
+
+/* Werte, die nur geschätzt sind */
+.estimated-value {
+    font-style: italic;
+    opacity: 0.9;
+}
+
+.scout-confidence-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: rgba(148, 163, 184, 0.08);
+    border: 1px solid var(--border-color);
+    margin-bottom: 14px;
+    font-size: 12px;
+}
+
+.scout-confidence-bar > span:first-child {
+    white-space: nowrap;
+}
+
+.scout-confidence-track {
+    flex: 1;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.2);
+    overflow: hidden;
+    min-width: 60px;
+}
+
+.scout-confidence-fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width 0.3s ease;
+}
+
+/* Anklickbare Tabellenzeilen (Transfermarkt, Kader) */
+.data-table tbody tr.row-clickable {
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.data-table tbody tr.row-clickable:hover {
+    background: rgba(56, 189, 248, 0.08);
+}
+
 .position-map {
     display: flex;
     flex-wrap: wrap;

@@ -23,6 +23,12 @@ const _dirRandom = (typeof Random !== 'undefined' && Random)
         clamp: (val, min, max) => Math.max(min, Math.min(max, val))
     });
 
+const _MatchFlowEngine = (typeof MatchFlowEngine !== 'undefined' && MatchFlowEngine)
+    ? MatchFlowEngine
+    : ((typeof window !== 'undefined' && window.MatchFlowEngine)
+        ? window.MatchFlowEngine
+        : ((typeof require !== 'undefined') ? require('./matchFlowEngine.js').MatchFlowEngine : null));
+
 /**
  * Ereignisse, deren Text erst beim Eintreffen des Balls gemeldet wird
  * (Torschuss, Parade, Fehlschuss) - so passt der Kommentar zum Bild.
@@ -43,6 +49,51 @@ const AMBIENT_COMMENTARY = [
     "{minute}' - {a} sucht den Weg nach vorne und spielt auf {b}.",
     "{minute}' - {club} lässt den Ball laufen, {a} zu {b}."
 ];
+
+/** Kommentare zum laufenden Spiel zwischen den Highlights */
+const FLOW_COMMENTARY = {
+    pass: [
+        "{minute}' - {a} verlagert ruhig auf {b}.",
+        "{minute}' - Sauberer Ball von {a} in den Lauf von {b}.",
+        "{minute}' - {a} findet {b} im Zwischenraum.",
+        "{minute}' - {club} lässt den Ball zirkulieren, {a} zu {b}.",
+        "{minute}' - {a} treibt an und bedient {b}.",
+        "{minute}' - Geduldiger Aufbau bei {club} über {a}."
+    ],
+    intercept: [
+        "{minute}' - Abgefangen! {b} liest den Pass von {a}.",
+        "{minute}' - {b} geht dazwischen und erobert den Ball.",
+        "{minute}' - Fehlpass von {a} – {b} schaltet sofort um.",
+        "{minute}' - {b} antizipiert stark und schnappt sich die Kugel."
+    ],
+    loose: [
+        "{minute}' - {a} verstolpert den Ball, jetzt ist er frei.",
+        "{minute}' - Der Ball springt {a} über den Fuß.",
+        "{minute}' - Ungenau von {a}, der Ball läuft ins Niemandsland."
+    ],
+    dribble: [
+        "{minute}' - {a} setzt sich stark im Dribbling durch!",
+        "{minute}' - {a} lässt seinen Gegenspieler stehen.",
+        "{minute}' - Schöne Körpertäuschung von {a}, er kommt durch."
+    ],
+    tackle: [
+        "{minute}' - {b} grätscht {a} den Ball vom Fuß.",
+        "{minute}' - Konsequent verteidigt von {b} gegen {a}.",
+        "{minute}' - {a} verliert den Zweikampf gegen {b}."
+    ],
+    throwin: [
+        "{minute}' - Einwurf für {club}.",
+        "{minute}' - Der Ball ist im Seitenaus, Einwurf {club}."
+    ],
+    goalkick: [
+        "{minute}' - Abstoß für {club}.",
+        "{minute}' - Der Ball geht ins Toraus, Abstoß."
+    ],
+    freekick: [
+        "{minute}' - Freistoß für {club} aus aussichtsreicher Position.",
+        "{minute}' - Der Schiedsrichter pfeift, Freistoß {club}."
+    ]
+};
 
 const AMBIENT_PRESSURE = [
     "{minute}' - {club} presst früh an und erobert den Ball durch {a}.",
@@ -78,6 +129,19 @@ class LiveMatchDirector {
         // Ausgangszustand des Balls merken, damit externe Vorgaben erkannt werden
         this._lastTargetX = liveMatch?.ball?.targetX;
         this._lastTargetY = liveMatch?.ball?.targetY;
+
+        // Ruhender Ball (Einwurf, Abstoß, Ecke, Freistoß)
+        this.deadBallTimer = 0;
+        this.deadBall = null;
+        this.flowStats = { actions: 0, passesCompleted: 0, turnovers: 0, setPieces: 0 };
+
+        // Ballbesitz-Mikrosimulation
+        this.flow = _MatchFlowEngine ? new _MatchFlowEngine({
+            getPlayers: () => this.match.players2D || [],
+            getTactics: (team) => (team === "home" ? this.match.homeClub?.tactics : this.match.awayClub?.tactics) || {},
+            attackDir: (team) => this.attackDir(team),
+            ownGoalX: (team) => this.ownGoalX(team)
+        }) : null;
 
         this.initPlayers();
         this.startAmbient(this.targetPossession[0] >= 50 ? "home" : "away");
@@ -519,7 +583,7 @@ class LiveMatchDirector {
         this.possessionTeam = team === "away" ? "away" : "home";
         this.match.sceneRoles = null;
         this.ambientTimer = 0;
-        this.ambientInterval = _dirRandom.float(0.7, 1.3) * this.getSpeedScale() + 0.25;
+        this.ambientInterval = 0.35;
         this.pickAmbientCarrier();
     }
 
@@ -541,9 +605,7 @@ class LiveMatchDirector {
             if (roll <= 0) { chosen = entry.p; break; }
         }
 
-        this.carrierId = chosen.id;
-        this.match.activePlayerId = chosen.id;
-        this.match.ball.holderId = chosen.id;
+        this.setCarrier(chosen);
 
         // Der Ball läuft zum neuen Ballführenden, statt zu springen
         const dist = Math.hypot(chosen.x - ball.x, chosen.y - ball.y);
@@ -552,99 +614,338 @@ class LiveMatchDirector {
         }
     }
 
+    setCarrier(player) {
+        if (!player) return;
+        // Ballbesitzkette mitzählen (Grundlage für entschlosseneres Aufrücken)
+        if (player.team === this.possessionTeam) {
+            this.possessionChain = (this.possessionChain || 0) + 1;
+        } else {
+            this.possessionChain = 0;
+            this.possessionTeam = player.team;
+        }
+        this.carrierId = player.id;
+        this.match.ball.holderId = player.id;
+        this.match.activePlayerId = player.id;
+        this.match.flowPhase = this.flow ? this.flow.derivePhase(player, player.team) : null;
+    }
+
+    /**
+     * Spielfluss zwischen den Highlights: echte Entscheidungen des
+     * Ballführenden statt zufälliger Pässe.
+     */
     updateAmbient(dt) {
+        // Ruhende Bälle (Einwurf, Abstoß, Ecke, Freistoß) warten ihre Zeit ab
+        if (this.deadBallTimer > 0) {
+            this.deadBallTimer -= dt;
+            if (this.deadBallTimer <= 0) this.resumeFromDeadBall();
+            return;
+        }
+
         this.ambientTimer += dt;
         if (this.ambientTimer < this.ambientInterval) return;
-
         this.ambientTimer = 0;
-        this.ambientInterval = _dirRandom.float(0.7, 1.3) * this.getSpeedScale() + 0.25;
 
         const carrier = this.getPlayer2D(this.carrierId);
         if (!carrier) {
             this.pickAmbientCarrier();
+            this.ambientInterval = 0.5;
             return;
         }
 
-        // Ballverlust: das Team ohne Ballbesitzvorteil erobert häufiger
-        const possessionEdge = this.possessionTeam === "home"
-            ? (this.targetPossession[0] - 50) / 100
-            : (this.targetPossession[1] - 50) / 100;
-        const turnoverChance = Math.max(0.06, 0.20 - possessionEdge * 0.35);
-
-        if (Math.random() < turnoverChance) {
-            this.handleAmbientTurnover(carrier);
+        if (!this.flow) {
+            // Ohne Flow-Engine bleibt das alte, einfache Verhalten
+            this.ambientInterval = 1.0;
+            const mate = this.teamPlayers(carrier.team).find(p => p.id !== carrier.id && p.pos !== "TW");
+            if (mate) {
+                this.setBallTravel(mate.x, mate.y, 0.5, "pass");
+                this.setCarrier(mate);
+            }
             return;
         }
 
-        const receiver = this.pickPassReceiver(carrier);
-        if (!receiver) return;
-
-        const dist = Math.hypot(receiver.x - carrier.x, receiver.y - carrier.y);
-        const duration = Math.max(0.22, Math.min(0.8, dist / 90)) * (0.6 + this.getSpeedScale() * 0.6);
-
-        this.setBallTravel(receiver.x, receiver.y, duration, "pass");
-        this.carrierId = receiver.id;
-        this.match.ball.holderId = receiver.id;
-        this.match.activePlayerId = receiver.id;
-
-        // Der Kommentarbalken soll auch zwischen den Highlights lebendig bleiben
-        if (Math.random() < 0.55) {
-            this.setAmbientCommentary(AMBIENT_COMMENTARY, carrier, receiver);
+        const action = this.flow.decide(carrier, { chainLength: this.possessionChain || 0 });
+        if (!action) {
+            this.ambientInterval = 0.8;
+            return;
         }
+
+        this.applyFlowAction(action);
+        this.ambientInterval = this.flow.getActionInterval(carrier.team, action.type)
+            * (0.55 + this.getSpeedScale() * 0.65);
     }
 
-    handleAmbientTurnover(carrier) {
-        const newTeam = this.possessionTeam === "home" ? "away" : "home";
-        const ball = this.match.ball;
+    /**
+     * Setzt eine Entscheidung der Flow-Engine in Ballbewegung,
+     * Ballbesitzwechsel und Kommentar um.
+     */
+    applyFlowAction(action) {
+        const from = action.from;
+        const to = action.to;
+        const dist = Math.hypot((to.x ?? from.x) - from.x, (to.y ?? from.y) - from.y);
 
-        const winner = this.teamPlayers(newTeam)
-            .filter(p => p.pos !== "TW")
-            .sort((a, b) => Math.hypot(a.x - ball.x, a.y - ball.y) - Math.hypot(b.x - ball.x, b.y - ball.y))[0];
-
-        this.possessionTeam = newTeam;
-        if (!winner) {
-            this.pickAmbientCarrier();
+        // Ball verlässt das Feld? Dann gibt es eine Standardsituation
+        if (action.outcome === "out" || this.handleOutOfPlay(action, to)) {
+            if (action.outcome === "out") {
+                this.flowStats.turnovers++;
+                this.handleOutOfPlay(action, to);
+            }
             return;
         }
 
-        this.carrierId = winner.id;
-        ball.holderId = winner.id;
-        this.match.activePlayerId = winner.id;
-        this.setBallTravel(winner.x, winner.y, 0.25, "pass");
+        const speedScale = 0.55 + this.getSpeedScale() * 0.6;
+        const actionType = action.type === "longball" ? "cross" : "pass";
+        const duration = Math.max(0.2, Math.min(0.95, dist / (action.type === "longball" ? 62 : 78))) * speedScale;
 
-        if (Math.random() < 0.7) {
-            this.setAmbientCommentary(AMBIENT_PRESSURE, winner, carrier);
+        this.flowStats.actions++;
+
+        if (action.type === "dribble") {
+            this.handleDribbleAction(action, duration);
+            return;
+        }
+
+        if (action.outcome === "complete") {
+            this.flowStats.passesCompleted++;
+            this.setBallTravel(to.x, to.y, duration, actionType);
+            this.setCarrier(to);
+            this.narrateFlow(action);
+            return;
+        }
+
+        if (action.outcome === "intercepted") {
+            this.flowStats.turnovers++;
+            const winner = action.interceptor;
+            this.possessionTeam = winner.team;
+            this.setBallTravel(winner.x, winner.y, duration * 0.9, actionType);
+            this.setCarrier(winner);
+            this.narrateFlow(action);
+            return;
+        }
+
+        // Fehlpass ins Niemandsland: der nächste Spieler erobert den Ball
+        this.flowStats.turnovers++;
+        this.setBallTravel(to.x, to.y, duration, actionType);
+        this.claimLooseBall(to);
+        this.narrateFlow(action);
+    }
+
+    handleDribbleAction(action, duration) {
+        const carrier = action.from;
+        if (action.outcome === "beaten") {
+            this.setBallTravel(action.to.x, action.to.y, duration * 1.1, "pass");
+            this.setCarrier(carrier);
+            this.narrateFlow(action);
+            return;
+        }
+
+        // Zweikampf verloren: der Verteidiger übernimmt
+        const defender = action.defender;
+        this.flowStats.turnovers++;
+        if (defender) {
+            this.possessionTeam = defender.team;
+            this.setBallTravel(defender.x, defender.y, duration * 0.7, "pass");
+            this.setCarrier(defender);
+        }
+        this.narrateFlow(action);
+    }
+
+    /**
+     * Der Ball liegt frei: der nächstgelegene Spieler beider Teams bekommt ihn
+     */
+    claimLooseBall(point) {
+        const contenders = (this.match.players2D || [])
+            .filter(p => p.pos !== "TW")
+            .sort((a, b) => Math.hypot(a.x - point.x, a.y - point.y) - Math.hypot(b.x - point.x, b.y - point.y));
+
+        const winner = contenders[0];
+        if (!winner) return;
+        this.possessionTeam = winner.team;
+        this.setCarrier(winner);
+    }
+
+    // --------------------------------------------------- Standardsituationen
+
+    /**
+     * Prüft, ob ein Ball ins Aus geht, und startet die passende
+     * Standardsituation. Ohne das lief der Ball bisher einfach am Rand entlang.
+     */
+    handleOutOfPlay(action, to) {
+        const x = to.x ?? 0;
+        const y = to.y ?? 0;
+        const team = action.from?.team || this.possessionTeam;
+
+        // Seitenaus -> Einwurf für den Gegner
+        if (y < 1.5 || y > 98.5) {
+            const spotY = y < 1.5 ? 1.5 : 98.5;
+            const spotX = Math.max(4, Math.min(96, x));
+            this.startDeadBall("throwin", team === "home" ? "away" : "home", spotX, spotY);
+            return true;
+        }
+
+        // Toraus: Abstoß für die verteidigende Mannschaft.
+        //
+        // Ecken entstehen bewusst NICHT aus dem freien Spielfluss, sondern
+        // ausschließlich aus der Timeline. Nur so bleiben Live-Statistik und
+        // Spielbericht deckungsgleich - und eine sofort berechnete Partie hat
+        // dieselbe Eckenzahl wie eine im 2D-Modus verfolgte.
+        if (x < 1.5 || x > 98.5) {
+            const defendingTeam = x < 1.5 ? "home" : "away";
+            const goalX = x < 1.5 ? 8 : 92;
+            this.startDeadBall("goalkick", defendingTeam, goalX, 50);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Beginnt eine ruhende Spielsituation: Ball an den Punkt, Spieler ordnen
+     * sich neu, kurze Pause - danach wird ausgeführt.
+     */
+    startDeadBall(kind, team, x, y) {
+        const speedScale = this.getSpeedScale();
+        this.deadBall = { kind, team, x, y };
+        this.possessionTeam = team;
+        this.flowStats.setPieces++;
+
+        // Ball rollt zum Ausführungspunkt
+        const dist = Math.hypot(x - this.match.ball.x, y - this.match.ball.y);
+        this.setBallTravel(x, y, Math.max(0.25, Math.min(0.9, dist / 90)) * speedScale + 0.15, "pass");
+
+        // Ausführender Spieler: der nächstgelegene passende Spieler
+        const executor = this.pickSetPieceTaker(kind, team, x, y);
+        if (executor) {
+            this.carrierId = executor.id;
+            this.match.ball.holderId = executor.id;
+            this.match.activePlayerId = executor.id;
+        }
+
+        this.deadBallTimer = (kind === "goalkick" ? 1.2 : kind === "corner" ? 1.5 : 0.85) * speedScale + 0.3;
+        this.match.setPiece = { kind, team, x, y };
+
+        const pool = FLOW_COMMENTARY[kind];
+        if (pool && Math.random() < 0.8) {
+            const clubName = team === "home"
+                ? (this.match.homeClub?.name || "Heim")
+                : (this.match.awayClub?.name || "Gast");
+            this.match.lastCommentary = (_dirRandom.choice(pool) || pool[0])
+                .replace("{minute}", this.match.minute)
+                .replace("{club}", clubName);
         }
     }
 
     /**
-     * Sucht eine sinnvolle Anspielstation: eher nach vorne, aber nicht zu weit
+     * Wer führt die Standardsituation aus?
      */
-    pickPassReceiver(carrier) {
-        const mates = this.teamPlayers(carrier.team).filter(p => p.id !== carrier.id && p.pos !== "TW");
-        if (mates.length === 0) return null;
+    pickSetPieceTaker(kind, team, x, y) {
+        const squad = this.teamPlayers(team);
+        if (squad.length === 0) return null;
 
-        const dir = this.attackDir(carrier.team);
-        const scored = mates.map(p => {
-            const dist = Math.hypot(p.x - carrier.x, p.y - carrier.y);
-            if (dist < 4) return { p, score: -Infinity };
+        if (kind === "goalkick") {
+            return squad.find(p => p.pos === "TW") || squad[0];
+        }
 
-            // Distanzfenster für realistische Pässe
-            const distScore = dist < 32 ? 1 - Math.abs(dist - 16) / 32 : Math.max(0, 0.6 - (dist - 32) / 60);
-            const forward = (p.x - carrier.x) * dir;
-            const forwardScore = forward > 0 ? 0.55 : 0.2;
+        const outfield = squad.filter(p => p.pos !== "TW");
+        const pool = outfield.length > 0 ? outfield : squad;
 
-            return { p, score: distScore + forwardScore + Math.random() * 0.35 };
-        }).filter(e => e.score > -Infinity);
+        if (kind === "corner") {
+            // Eckenschützen sind bevorzugt technisch starke Flügelspieler
+            return pool.slice().sort((a, b) =>
+                (this.setPieceSkill(b) - this.setPieceSkill(a))
+            )[0];
+        }
 
-        if (scored.length === 0) return null;
-        scored.sort((a, b) => b.score - a.score);
-        return scored[0].p;
+        // Einwurf und Freistoß: der nächstgelegene Spieler
+        return pool.slice().sort((a, b) =>
+            Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y)
+        )[0];
     }
 
-    setAmbientCommentary(pool, a, b) {
+    setPieceSkill(player) {
+        const t = typeof player.technique === "number" ? player.technique : 65;
+        const p = typeof player.passing === "number" ? player.passing : 65;
+        return t * 0.5 + p * 0.5;
+    }
+
+    /**
+     * Führt die ruhende Situation aus und gibt das Spiel wieder frei
+     */
+    resumeFromDeadBall() {
+        const info = this.deadBall;
+        this.deadBall = null;
+        this.deadBallTimer = 0;
+        this.match.setPiece = null;
+
+        if (!info) return;
+
+        const taker = this.getPlayer2D(this.carrierId);
+        if (!taker) {
+            this.pickAmbientCarrier();
+            return;
+        }
+
+        // Ecken fliegen in den Strafraum, alles andere wird normal weitergespielt
+        if (info.kind === "corner") {
+            const dir = this.attackDir(info.team);
+            const boxX = info.x + dir * 9;
+            const target = { x: boxX, y: 50 + _dirRandom.float(-9, 9) };
+            this.setBallTravel(target.x, target.y, 0.75 * this.getSpeedScale() + 0.2, "cross");
+            this.claimLooseBall(target);
+            return;
+        }
+
+        if (info.kind === "goalkick") {
+            // Abstoß: kurz aufbauen oder lang schlagen, je nach Passspiel
+            const tactics = (info.team === "home" ? this.match.homeClub?.tactics : this.match.awayClub?.tactics) || {};
+            const goLong = tactics.passing === "direct" || _dirRandom.chance(0.35);
+            const mates = this.teamPlayers(info.team).filter(p => p.pos !== "TW");
+            const dir = this.attackDir(info.team);
+
+            let receiver;
+            if (goLong) {
+                receiver = mates.slice().sort((a, b) => (b.x - a.x) * dir)[0];
+            } else {
+                receiver = mates.filter(p => p.group === "def")
+                    .sort((a, b) => Math.hypot(a.x - info.x, a.y - info.y) - Math.hypot(b.x - info.x, b.y - info.y))[0]
+                    || mates[0];
+            }
+
+            if (receiver) {
+                const dist = Math.hypot(receiver.x - info.x, receiver.y - info.y);
+                this.setBallTravel(receiver.x, receiver.y,
+                    Math.max(0.3, Math.min(1.0, dist / 70)) * this.getSpeedScale() + 0.15,
+                    goLong ? "cross" : "pass");
+                this.setCarrier(receiver);
+            }
+            return;
+        }
+
+        // Einwurf und Freistoß: normale Entscheidung der Flow-Engine
+        this.ambientTimer = this.ambientInterval;
+    }
+
+    /**
+     * Kommentar zum Spielfluss - sparsam, damit der Ticker nicht zugemüllt wird
+     */
+    narrateFlow(action) {
+        const pools = {
+            complete: FLOW_COMMENTARY.pass,
+            intercepted: FLOW_COMMENTARY.intercept,
+            loose: FLOW_COMMENTARY.loose,
+            beaten: FLOW_COMMENTARY.dribble,
+            tackled: FLOW_COMMENTARY.tackle
+        };
+
+        const pool = pools[action.outcome];
+        if (!pool) return;
+
+        // Aufbaupässe nur gelegentlich melden, Ballverluste fast immer
+        const chatty = action.outcome === "complete" ? 0.22 : 0.75;
+        if (Math.random() > chatty) return;
+
         const template = _dirRandom.choice(pool) || pool[0];
-        const clubName = this.possessionTeam === "home"
+        const a = action.from;
+        const b = action.interceptor || action.defender || action.to;
+        const teamName = (name) => name === "home"
             ? (this.match.homeClub?.name || "Heim")
             : (this.match.awayClub?.name || "Gast");
 
@@ -652,7 +953,7 @@ class LiveMatchDirector {
             .replace("{minute}", this.match.minute)
             .replace("{a}", a?.name || "Der Ballführende")
             .replace("{b}", b?.name || "der Mitspieler")
-            .replace("{club}", clubName);
+            .replace("{club}", teamName(a?.team || this.possessionTeam));
     }
 
     // ------------------------------------------------------- Ballbewegung

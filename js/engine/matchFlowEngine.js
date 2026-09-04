@@ -147,10 +147,11 @@ class MatchFlowEngine {
 
         // Wie viel Risiko darf ein Pass haben?
         let forwardDrive = 1.0;
-        if (mentality === "very_offensive") forwardDrive = 1.45;
-        else if (mentality === "offensive") forwardDrive = 1.2;
-        else if (mentality === "defensive") forwardDrive = 0.8;
-        else if (mentality === "very_defensive") forwardDrive = 0.6;
+        let riskAversion = 1.0;
+        if (mentality === "very_offensive") { forwardDrive = 1.7; riskAversion = 0.72; }
+        else if (mentality === "offensive") { forwardDrive = 1.3; riskAversion = 0.86; }
+        else if (mentality === "defensive") { forwardDrive = 0.68; riskAversion = 1.2; }
+        else if (mentality === "very_defensive") { forwardDrive = 0.42; riskAversion = 1.45; }
 
         // Je länger eine Mannschaft den Ball hält, desto entschlossener rückt
         // sie auf - so entstehen echte Angriffszüge statt Dauerquerpässe.
@@ -172,9 +173,12 @@ class MatchFlowEngine {
             const lengthScore = 1 - Math.min(1, Math.abs(dist - preferred) / 42);
 
             // Raumgewinn zählt, Rückpässe sind nur die Notlösung
+            // Defensive Mannschaften nehmen den Rückpass eher in Kauf,
+            // offensive meiden ihn - der Abschlag wird also mit der
+            // Offensivfreude staerker bestraft.
             const progressScore = forward > 0
                 ? Math.min(1, forward / 30) * forwardDrive
-                : Math.max(-0.45, forward / 45);
+                : Math.max(-0.5, forward / 45) * forwardDrive;
 
             // Flügelfokus
             let focusScore = 0;
@@ -190,7 +194,7 @@ class MatchFlowEngine {
                 + space * 0.85
                 + focusScore
                 + roleScore
-                - laneRisk * 1.35
+                - laneRisk * 1.35 * riskAversion
                 + _flowRandom.float(-0.18, 0.18);
 
             return { type: "pass", target: mate, dist, laneRisk, space, forward, score };

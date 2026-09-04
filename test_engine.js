@@ -20,6 +20,7 @@ const { PlayerRatingEngine } = require('./js/engine/playerRatingEngine.js');
 const { CalendarEngine } = require('./js/engine/calendarEngine.js');
 const { OpponentAnalysisEngine } = require('./js/engine/opponentAnalysisEngine.js');
 const { PositionEngine } = require('./js/engine/positionEngine.js');
+const { MatchFlowEngine } = require('./js/engine/matchFlowEngine.js');
 const { GameState, FORMATION_CONFIGS } = require('./js/engine/gameState.js');
 const { MatchEngine, LiveMatch } = require('./js/engine/matchEngine.js');
 const { TransferEngine } = require('./js/engine/transferEngine.js');
@@ -928,6 +929,263 @@ function runEngineTests() {
         const html = PlayerRatingEngine.renderStarRange(2.5, 4.5);
         if (!html.includes("star-uncertain") || !html.includes("★")) {
             throw new Error("Sterne-Spanne wird nicht als Unsicherheit dargestellt");
+        }
+    });
+
+    // 27. MatchFlowEngine: Bewertung von Druck, Passwegen und Optionen
+    test("MatchFlowEngine: Druck, Passwege und Entscheidungen folgen der Spielsituation", () => {
+        const players = [
+            { id: 1, team: "home", pos: "ZM", group: "mid", x: 40, y: 50, passing: 80, vision: 80, technique: 80, dribbling: 70, pace: 70 },
+            { id: 2, team: "home", pos: "ST", group: "att", x: 70, y: 50, passing: 60, pace: 85 },
+            { id: 3, team: "home", pos: "IV", group: "def", x: 20, y: 50, passing: 70 },
+            { id: 4, team: "away", pos: "IV", group: "def", x: 55, y: 50, defense: 80, pace: 70 },
+            { id: 5, team: "away", pos: "ZM", group: "mid", x: 90, y: 50, defense: 70 }
+        ];
+
+        const flow = new MatchFlowEngine({
+            getPlayers: () => players,
+            getTactics: () => ({ mentality: "balanced", passing: "mixed", tempo: "normal" }),
+            attackDir: team => (team === "home" ? 1 : -1),
+            ownGoalX: team => (team === "home" ? 4 : 96)
+        });
+
+        const carrier = players[0];
+        const opponents = players.filter(p => p.team === "away");
+
+        // Druck: ein Gegner direkt daneben erzeugt mehr Druck als einer weit weg
+        const free = flow.getPressure({ x: 10, y: 10 }, opponents);
+        const marked = flow.getPressure({ x: 56, y: 50 }, opponents);
+        if (!(marked > free)) throw new Error(`Druckmodell falsch: eng=${marked.toFixed(2)}, frei=${free.toFixed(2)}`);
+
+        // Passweg: durch einen Gegner hindurch ist riskanter als daneben vorbei
+        const blocked = flow.getLaneRisk(carrier, players[1], opponents);
+        const open = flow.getLaneRisk(carrier, { x: 40, y: 10 }, opponents);
+        if (!(blocked > open)) throw new Error(`Passwegbewertung falsch: verstellt=${blocked.toFixed(2)}, frei=${open.toFixed(2)}`);
+
+        // Freiraum
+        if (!(flow.getSpace({ x: 10, y: 10 }, opponents) > flow.getSpace({ x: 56, y: 50 }, opponents))) {
+            throw new Error("Freiraumbewertung falsch");
+        }
+
+        // Spielphase aus der Ballposition
+        if (flow.derivePhase({ x: 15 }, "home") !== "buildup") throw new Error("Phase im eigenen Drittel falsch erkannt");
+        if (flow.derivePhase({ x: 85 }, "home") !== "final_third") throw new Error("Phase im letzten Drittel falsch erkannt");
+        if (flow.derivePhase({ x: 15 }, "away") !== "final_third") throw new Error("Phase für die Auswärtsmannschaft falsch gespiegelt");
+
+        // Entscheidung liefert eine gültige Aktion
+        for (let i = 0; i < 40; i++) {
+            const action = flow.decide(carrier);
+            if (!action) throw new Error("Flow-Engine liefert keine Entscheidung");
+            if (!["pass", "longball", "dribble"].includes(action.type)) {
+                throw new Error(`Unbekannter Aktionstyp: ${action.type}`);
+            }
+            if (!["complete", "intercepted", "loose", "out", "beaten", "tackled"].includes(action.outcome)) {
+                throw new Error(`Unbekannter Ausgang: ${action.outcome}`);
+            }
+            if (action.outcome === "intercepted" && action.interceptor?.team === carrier.team) {
+                throw new Error("Ein Mitspieler kann den eigenen Pass nicht abfangen");
+            }
+        }
+    });
+
+    // 28. Taktikregler verändern das Spiel sichtbar
+    test("MatchFlowEngine: Passspiel, Angriffsfokus und Mentalität wirken messbar", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+
+        const measure = (tactics) => {
+            const agg = { dist: 0, n: 0, forward: 0, left: 0, right: 0 };
+
+            for (let run = 0; run < 4; run++) {
+                Object.assign(homeClub.tactics, tactics);
+                const match = { id: `flow_${run}_${tactics.passing}_${tactics.focus}_${tactics.mentality}`, played: false, homeClubId: "muc", awayClubId: "dor" };
+                match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, state.players);
+
+                const live = new LiveMatch(match, homeClub, awayClub, state.players);
+                live.speed = 2;
+
+                const director = live.director;
+                const original = director.applyFlowAction.bind(director);
+                director.applyFlowAction = (action) => {
+                    if (action.from?.team === "home" && action.to) {
+                        const tx = action.to.x ?? action.from.x;
+                        const ty = action.to.y ?? action.from.y;
+                        agg.dist += Math.hypot(tx - action.from.x, ty - action.from.y);
+                        agg.n++;
+                        if (tx > action.from.x) agg.forward++;
+                        if (ty < 38) agg.left++;
+                        else if (ty > 62) agg.right++;
+                    }
+                    original(action);
+                };
+
+                let frames = 0;
+                while (!live.isFinished && frames < 60 * 500) {
+                    live.advanceRealTime(1000 / 60);
+                    live.updateBallAndPlayers(1000 / 60);
+                    frames++;
+                }
+            }
+
+            return {
+                avgDist: agg.dist / Math.max(1, agg.n),
+                forwardShare: agg.forward / Math.max(1, agg.n),
+                left: agg.left,
+                right: agg.right,
+                n: agg.n
+            };
+        };
+
+        const base = { mentality: "balanced", pressing: "medium", tempo: "normal", focus: "balanced" };
+
+        const short = measure({ ...base, passing: "short" });
+        const direct = measure({ ...base, passing: "direct" });
+
+        if (short.n < 40 || direct.n < 40) {
+            throw new Error(`Zu wenige Spielaktionen für eine Auswertung (${short.n}/${direct.n})`);
+        }
+        if (!(direct.avgDist > short.avgDist + 1.5)) {
+            throw new Error(`Direktes Passspiel erzeugt keine längeren Pässe: kurz=${short.avgDist.toFixed(1)}, direkt=${direct.avgDist.toFixed(1)}`);
+        }
+
+        const left = measure({ ...base, passing: "mixed", focus: "left" });
+        const right = measure({ ...base, passing: "mixed", focus: "right" });
+
+        if (!(left.left > left.right)) {
+            throw new Error(`Angriffsfokus links wirkt nicht: links=${left.left}, rechts=${left.right}`);
+        }
+        if (!(right.right > right.left)) {
+            throw new Error(`Angriffsfokus rechts wirkt nicht: links=${right.left}, rechts=${right.right}`);
+        }
+
+        const offensive = measure({ ...base, passing: "mixed", mentality: "very_offensive" });
+        const defensive = measure({ ...base, passing: "mixed", mentality: "very_defensive" });
+
+        if (!(offensive.forwardShare > defensive.forwardShare + 0.12)) {
+            throw new Error(`Mentalität wirkt nicht auf die Spielrichtung: offensiv=${(offensive.forwardShare * 100).toFixed(0)} %, defensiv=${(defensive.forwardShare * 100).toFixed(0)} %`);
+        }
+
+        // Aufräumen für nachfolgende Tests
+        Object.assign(homeClub.tactics, base, { passing: "mixed" });
+    });
+
+    // 29. Spielfluss, Standardsituationen und Mannschaftsform im Live-Spiel
+    test("LiveMatchDirector: durchgehender Spielfluss, Standards und aufrückende Mannschaft", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+        const match = { id: "flow_live", played: false, homeClubId: "muc", awayClubId: "dor" };
+        match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, state.players);
+
+        const live = new LiveMatch(match, homeClub, awayClub, state.players);
+        live.speed = 2;
+
+        const setPieceKinds = new Set();
+        const original = live.director.startDeadBall.bind(live.director);
+        live.director.startDeadBall = (kind, team, x, y) => {
+            setPieceKinds.add(kind);
+            original(kind, team, x, y);
+        };
+
+        let frames = 0;
+        let maxBallStep = 0;
+        let prev = { x: live.ball.x, y: live.ball.y };
+        const carriers = new Set();
+
+        while (!live.isFinished && frames < 60 * 500) {
+            live.advanceRealTime(1000 / 60);
+            live.updateBallAndPlayers(1000 / 60);
+            frames++;
+            maxBallStep = Math.max(maxBallStep, Math.hypot(live.ball.x - prev.x, live.ball.y - prev.y));
+            prev = { x: live.ball.x, y: live.ball.y };
+            if (live.director.carrierId) carriers.add(live.director.carrierId);
+        }
+
+        const stats = live.director.flowStats;
+        if (stats.actions < 40) throw new Error(`Zu wenig Spielfluss: nur ${stats.actions} Aktionen`);
+
+        const completionRate = stats.passesCompleted / Math.max(1, stats.actions);
+        if (completionRate < 0.35 || completionRate > 0.9) {
+            throw new Error(`Unrealistische Passquote: ${(completionRate * 100).toFixed(0)} %`);
+        }
+        if (stats.turnovers < 5) throw new Error(`Kaum Ballverluste: ${stats.turnovers}`);
+        if (setPieceKinds.size === 0) throw new Error("Es gab keine einzige Standardsituation");
+        if (setPieceKinds.has("corner")) {
+            throw new Error("Ecken dürfen nicht aus dem Spielfluss entstehen (sonst weicht die Statistik vom Spielbericht ab)");
+        }
+        if (carriers.size < 12) throw new Error(`Nur ${carriers.size} verschiedene Spieler am Ball`);
+        if (maxBallStep > 6) throw new Error(`Ball springt um ${maxBallStep.toFixed(1)} Feldeinheiten pro Bild`);
+
+        // Kondition sinkt über die Spielzeit, aber nicht ins Bodenlose
+        const freshness = live.players2D.map(p => p.freshness);
+        const minFresh = Math.min(...freshness);
+        const maxFresh = Math.max(...freshness);
+        if (minFresh > 0.97) throw new Error("Die Kondition sinkt über 90 Minuten gar nicht");
+        if (minFresh < 0.6) throw new Error(`Kondition fällt zu tief: ${minFresh.toFixed(2)}`);
+        if (maxFresh - minFresh < 0.01) throw new Error("Alle Spieler ermüden exakt gleich stark");
+
+        // Endstand bleibt deckungsgleich mit der Timeline
+        if (live.homeScore !== match.homeGoals || live.awayScore !== match.awayGoals) {
+            throw new Error("Der Spielfluss hat den Endstand verfälscht");
+        }
+    });
+
+    // 30. Mannschaftsform: Aufrücken im Ballbesitz, Absichern ohne Ball
+    test("LiveMatchDirector: Mannschaft rückt im Ballbesitz auf und sichert ohne Ball ab", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+        const match = { id: "shape", played: false, homeClubId: "muc", awayClubId: "dor" };
+        match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, state.players);
+
+        const live = new LiveMatch(match, homeClub, awayClub, state.players);
+        live.director.possessionTeam = "home";
+
+        const settle = (ballX) => {
+            for (let i = 0; i < 420; i++) {
+                live.ball.targetX = ballX;
+                live.ball.targetY = 50;
+                live.updateBallAndPlayers(1000 / 60);
+            }
+            const home = live.players2D.filter(p => p.team === "home" && p.pos !== "TW");
+            const byGroup = {};
+            home.forEach(p => {
+                byGroup[p.group] = byGroup[p.group] || [];
+                byGroup[p.group].push(p.x);
+            });
+            const avg = arr => arr.reduce((s, v) => s + v, 0) / (arr.length || 1);
+            return {
+                def: avg(byGroup.def || [0]),
+                mid: avg(byGroup.mid || [0]),
+                att: avg(byGroup.att || [0])
+            };
+        };
+
+        const deep = settle(20);
+        const high = settle(85);
+
+        // Staffelung: Abwehr hinter Mittelfeld hinter Angriff
+        [deep, high].forEach((shape, idx) => {
+            if (!(shape.def < shape.mid && shape.mid < shape.att)) {
+                throw new Error(`Staffelung stimmt nicht (${idx === 0 ? "tief" : "hoch"}): ` +
+                    `Abwehr ${shape.def.toFixed(0)}, Mittelfeld ${shape.mid.toFixed(0)}, Angriff ${shape.att.toFixed(0)}`);
+            }
+        });
+
+        // Bei Ball im letzten Drittel rückt die ganze Mannschaft deutlich auf
+        if (!(high.def > deep.def + 12)) {
+            throw new Error(`Abwehrkette rückt nicht mit auf: tief ${deep.def.toFixed(0)}, hoch ${high.def.toFixed(0)}`);
+        }
+        if (!(high.att > 75)) {
+            throw new Error(`Angriff kommt nicht in den Strafraum: ${high.att.toFixed(0)}`);
+        }
+
+        // Die verteidigende Mannschaft steht dabei tief
+        const awayOutfield = live.players2D.filter(p => p.team === "away" && p.pos !== "TW");
+        const awayAvg = awayOutfield.reduce((s, p) => s + p.x, 0) / awayOutfield.length;
+        if (!(awayAvg > 65)) {
+            throw new Error(`Verteidigende Mannschaft sichert nicht ab: Schnitt ${awayAvg.toFixed(0)}`);
         }
     });
 

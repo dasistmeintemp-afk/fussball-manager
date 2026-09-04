@@ -854,6 +854,20 @@ class UIManager {
                     osc.start(now + i * 0.08);
                     osc.stop(now + i * 0.08 + 0.6);
                 });
+            } else if (type === "gasp") {
+                // Raunen im Stadion bei einer vergebenen Chance
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = "sawtooth";
+                osc.frequency.setValueAtTime(180, now);
+                osc.frequency.exponentialRampToValueAtTime(90, now + 0.55);
+                gain.gain.setValueAtTime(0.0001, now);
+                gain.gain.exponentialRampToValueAtTime(0.06, now + 0.12);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.6);
             } else if (type === "click") {
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
@@ -1100,6 +1114,97 @@ class UIManager {
         });
 
         return { canvas, pitchX, pitchY, pitchW, pitchH, midX, midY, unit };
+    }
+
+    /**
+     * Stadionatmosphäre: ein durchgehendes Rauschen als Publikum, dessen
+     * Lautstärke sich nach der Spielsituation richtet. Ohne Ton wirkt selbst
+     * eine gute Simulation leblos.
+     */
+    startCrowdAmbience() {
+        if (!this.soundEnabled) return;
+        try {
+            if (!this.audioCtx && typeof window !== "undefined") {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (typeof AudioContextClass === "function") this.audioCtx = new AudioContextClass();
+            }
+            const ctx = this.audioCtx;
+            if (!ctx || this.crowd) return;
+            if (ctx.state === "suspended") ctx.resume();
+
+            // Rosa-artiges Rauschen als Grundlage für den Zuschauerteppich
+            const seconds = 3;
+            const buffer = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            let b0 = 0, b1 = 0, b2 = 0;
+            for (let i = 0; i < data.length; i++) {
+                const white = Math.random() * 2 - 1;
+                b0 = 0.99765 * b0 + white * 0.0990460;
+                b1 = 0.96300 * b1 + white * 0.2965164;
+                b2 = 0.57000 * b2 + white * 1.0526913;
+                data[i] = (b0 + b1 + b2 + white * 0.1848) * 0.16;
+            }
+
+            const source = ctx.createBufferSource();
+            source.buffer = buffer;
+            source.loop = true;
+
+            // Bandpass macht aus dem Rauschen ein Stimmengewirr
+            const filter = ctx.createBiquadFilter();
+            filter.type = "bandpass";
+            filter.frequency.value = 620;
+            filter.Q.value = 0.7;
+
+            const gain = ctx.createGain();
+            gain.gain.value = 0.0;
+
+            source.connect(filter);
+            filter.connect(gain);
+            gain.connect(ctx.destination);
+            source.start();
+
+            this.crowd = { source, gain, filter, level: 0 };
+        } catch (e) {
+            console.warn("Stadionatmosphäre nicht verfügbar:", e);
+        }
+    }
+
+    /**
+     * Passt die Lautstärke des Publikums an die Spielsituation an
+     */
+    updateCrowdAmbience(liveMatch, dt) {
+        const crowd = this.crowd;
+        if (!crowd || !this.audioCtx) return;
+
+        const dir = liveMatch.director;
+        const mode = dir?.mode || "ambient";
+
+        // Grundpegel steigt, je näher der Ball an einem Tor ist
+        const ballThreat = Math.max(0, 1 - Math.min(
+            Math.abs(liveMatch.ball.x - 4),
+            Math.abs(liveMatch.ball.x - 96)
+        ) / 45);
+
+        let target = 0.05 + ballThreat * 0.09;
+        if (mode === "highlight") target += 0.06;
+        if (dir?.deadBall) target += 0.02;
+        if (liveMatch.goalFlash > 0) target = 0.34;
+        if (mode === "celebration") target = 0.3;
+
+        crowd.level += (target - crowd.level) * Math.min(1, dt * 2.2);
+        try {
+            crowd.gain.gain.setTargetAtTime(crowd.level, this.audioCtx.currentTime, 0.12);
+        } catch (e) { /* Browser ohne setTargetAtTime */ }
+    }
+
+    /** Beendet die Stadionatmosphäre */
+    stopCrowdAmbience() {
+        if (!this.crowd) return;
+        try {
+            this.crowd.gain.gain.value = 0;
+            this.crowd.source.stop();
+        } catch (e) { /* bereits gestoppt */ }
+        this.crowd = null;
     }
 
     /**
@@ -4010,6 +4115,7 @@ class UIManager {
 
 
         this.resizeLiveCanvas();
+        this.startCrowdAmbience();
         let lastFrameTime = performance.now();
 
         const tickLoop = (now) => {
@@ -4020,6 +4126,7 @@ class UIManager {
                     window.removeEventListener("resize", this.liveResizeHandler);
                     this.liveResizeHandler = null;
                 }
+                this.stopCrowdAmbience();
                 updateLiveUI();
                 render2DCanvas();
                 this.playSound("whistle");
@@ -4034,14 +4141,16 @@ class UIManager {
             const deltaMs = Math.min(120, now - lastFrameTime);
             lastFrameTime = now;
 
-            const prevScore = liveMatch.homeScore + liveMatch.awayScore;
-
             liveMatch.advanceRealTime(deltaMs);
             liveMatch.updateBallAndPlayers(deltaMs);
 
-            if (liveMatch.homeScore + liveMatch.awayScore > prevScore) {
-                this.playSound("goal");
+            // Klanghinweise der Regie abarbeiten (Pfiff, Jubel, Raunen)
+            if (Array.isArray(liveMatch.soundCues) && liveMatch.soundCues.length > 0) {
+                liveMatch.soundCues.forEach(cue => this.playSound(cue));
+                liveMatch.soundCues.length = 0;
             }
+
+            this.updateCrowdAmbience(liveMatch, deltaMs / 1000);
 
             updateLiveUI();
             render2DCanvas(deltaMs / 1000);
@@ -4075,6 +4184,7 @@ class UIManager {
         });
 
         document.getElementById("btnLmSkip").onclick = () => {
+            this.stopCrowdAmbience();
             liveMatch.skipToEnd();
             updateLiveUI();
             render2DCanvas();

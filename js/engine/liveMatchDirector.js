@@ -589,12 +589,29 @@ class LiveMatchDirector {
     }
 
     /**
+     * Meldet einen Klang an die Oberfläche (Pfiff, Jubel, Raunen).
+     * Der Regisseur kennt die Tonausgabe nicht - er legt nur Hinweise ab.
+     */
+    cueSound(name) {
+        if (!Array.isArray(this.match.soundCues)) this.match.soundCues = [];
+        if (this.match.soundCues.length < 8) this.match.soundCues.push(name);
+    }
+
+    /**
      * Passende Einblendung zu einem Spielereignis
      */
     bannerForEvent(ev) {
         const club = ev.team === "home"
             ? (this.match.homeClub?.name || "Heim")
             : (this.match.awayClub?.name || "Gast");
+
+        if (ev.type === "foul" || ev.type === "yellow_card" || ev.type === "red_card") {
+            this.cueSound("whistle");
+        } else if (ev.type === "goal") {
+            this.cueSound("goal");
+        } else if (ev.type === "save" || ev.type === "shot_miss") {
+            this.cueSound("gasp");
+        }
 
         if (ev.type === "yellow_card") {
             this.showBanner(ev.isSecondYellow ? "🟨🟥 GELB-ROT" : "🟨 GELBE KARTE",
@@ -933,6 +950,7 @@ class LiveMatchDirector {
         }
 
         this.deadBallTimer = (kind === "goalkick" ? 1.2 : kind === "corner" ? 1.5 : 0.85) * speedScale + 0.3;
+        if (kind !== "throwin") this.cueSound("whistle");
         this.match.setPiece = { kind, team, x, y };
 
         const pool = FLOW_COMMENTARY[kind];

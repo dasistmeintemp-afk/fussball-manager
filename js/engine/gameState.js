@@ -117,7 +117,187 @@ let FORMATION_CONFIGS = {
     }
 };
 
+/**
+ * Merkt sich die mitgelieferten Standardformationen, damit eigene Formationen
+ * jederzeit sauber ergänzt oder wieder entfernt werden können.
+ */
+const BUILTIN_FORMATION_KEYS = Object.keys(FORMATION_CONFIGS);
+
 class GameState {
+
+    /**
+     * Auflösung der PositionEngine in Browser- und Node-Umgebung
+     */
+    static _getPositionEngine() {
+        if (typeof PositionEngine !== 'undefined' && PositionEngine) return PositionEngine;
+        if (typeof window !== 'undefined' && window.PositionEngine) return window.PositionEngine;
+        if (typeof require !== 'undefined') {
+            try {
+                return require('./positionEngine.js').PositionEngine;
+            } catch (e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Liefert eine Formationskonfiguration (Standard oder eigene) mit Fallback auf 4-4-2
+     */
+    static getFormationConfig(formationKey) {
+        return FORMATION_CONFIGS[formationKey]
+            || FORMATION_CONFIGS["4-4-2"]
+            || { name: "4-4-2 Standard", positions: [] };
+    }
+
+    /**
+     * Prüft, ob eine Formation vom Spieler selbst erstellt wurde
+     */
+    static isCustomFormation(formationKey) {
+        return !BUILTIN_FORMATION_KEYS.includes(formationKey);
+    }
+
+    /**
+     * Standardformationen (Reihenfolge der Auslieferung)
+     */
+    static getBuiltinFormationKeys() {
+        return [...BUILTIN_FORMATION_KEYS];
+    }
+
+    /**
+     * Validiert und normalisiert die Positionen einer (eigenen) Formation.
+     * Erwartet 11 Slots, exakt einen Torwart und Koordinaten innerhalb des Feldes.
+     */
+    static normalizeFormationPositions(positions) {
+        const posEngine = GameState._getPositionEngine();
+        if (!Array.isArray(positions) || positions.length !== 11) {
+            return { valid: false, error: "Eine Formation benötigt genau 11 Positionen." };
+        }
+
+        const normalized = positions.map((slot, idx) => {
+            const x = Math.max(3, Math.min(97, Number(slot?.x)));
+            const y = Math.max(3, Math.min(97, Number(slot?.y)));
+            if (!isFinite(x) || !isFinite(y)) return null;
+
+            let pos = slot?.pos;
+            if (posEngine) {
+                pos = posEngine.normalizePosition(pos) || posEngine.detectPositionFromCoords(x, y);
+            }
+            pos = pos || "ZM";
+
+            return {
+                id: idx,
+                pos,
+                role: slot?.role || (posEngine?.POSITION_META?.[pos]?.name) || pos,
+                x: Math.round(x * 10) / 10,
+                y: Math.round(y * 10) / 10
+            };
+        });
+
+        if (normalized.some(s => s === null)) {
+            return { valid: false, error: "Ungültige Koordinaten in der Formation." };
+        }
+
+        const keepers = normalized.filter(s => s.pos === "TW");
+        if (keepers.length !== 1) {
+            return { valid: false, error: "Eine Formation braucht genau einen Torwart." };
+        }
+
+        // Torwart immer an Position 0, danach von hinten nach vorne sortieren
+        const gk = keepers[0];
+        const outfield = normalized
+            .filter(s => s !== gk)
+            .sort((a, b) => b.y - a.y || a.x - b.x);
+
+        const ordered = [gk, ...outfield].map((slot, idx) => ({ ...slot, id: idx }));
+
+        return { valid: true, positions: ordered };
+    }
+
+    /**
+     * Registriert die eigenen Formationen des Spielstands global,
+     * damit alle Engines (Match, KI, Aufstellung) sie kennen.
+     */
+    static registerCustomFormations(state) {
+        // Zuerst alte eigene Einträge entfernen
+        Object.keys(FORMATION_CONFIGS).forEach(key => {
+            if (!BUILTIN_FORMATION_KEYS.includes(key)) delete FORMATION_CONFIGS[key];
+        });
+
+        const custom = state?.customFormations;
+        if (!custom || typeof custom !== 'object') return FORMATION_CONFIGS;
+
+        Object.entries(custom).forEach(([key, config]) => {
+            if (!config || !Array.isArray(config.positions)) return;
+            FORMATION_CONFIGS[key] = {
+                name: config.name || key,
+                custom: true,
+                shape: config.shape || null,
+                positions: config.positions
+            };
+        });
+
+        return FORMATION_CONFIGS;
+    }
+
+    /**
+     * Speichert eine eigene Formation im Spielstand und registriert sie global
+     */
+    static saveCustomFormation(state, name, positions, existingKey = null) {
+        if (!state) return { success: false, error: "Kein Spielstand geladen." };
+
+        const cleanName = String(name || "").trim();
+        if (cleanName.length < 2) {
+            return { success: false, error: "Bitte einen Namen mit mindestens 2 Zeichen angeben." };
+        }
+
+        const normalized = GameState.normalizeFormationPositions(positions);
+        if (!normalized.valid) {
+            return { success: false, error: normalized.error };
+        }
+
+        if (!state.customFormations) state.customFormations = {};
+
+        const key = existingKey && GameState.isCustomFormation(existingKey)
+            ? existingKey
+            : `custom_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+
+        const posEngine = GameState._getPositionEngine();
+        const shape = posEngine ? posEngine.detectFormationShape(normalized.positions) : null;
+
+        state.customFormations[key] = {
+            key,
+            name: cleanName,
+            custom: true,
+            shape,
+            createdAt: new Date().toISOString(),
+            positions: normalized.positions
+        };
+
+        GameState.registerCustomFormations(state);
+
+        return { success: true, key, shape, name: cleanName };
+    }
+
+    /**
+     * Löscht eine eigene Formation und setzt betroffene Vereine auf 4-4-2 zurück
+     */
+    static deleteCustomFormation(state, key) {
+        if (!state?.customFormations || !state.customFormations[key]) {
+            return { success: false, error: "Diese Formation existiert nicht." };
+        }
+
+        delete state.customFormations[key];
+        delete FORMATION_CONFIGS[key];
+
+        (state.clubs || []).forEach(club => {
+            if (club.formation === key) club.formation = "4-4-2";
+        });
+
+        GameState.registerCustomFormations(state);
+        return { success: true };
+    }
+
     constructor() {
         this.saveId = "save_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6);
         this.version = "0.2.0";
@@ -169,6 +349,8 @@ class GameState {
             soundEnabled: true,
             autosaveEnabled: true
         };
+        // Eigene, im Formations-Editor erstellte Aufstellungen
+        this.customFormations = {};
     }
 
     /**
@@ -176,6 +358,8 @@ class GameState {
      */
     static createNewGame(userClubId, difficulty = "normal", managerProfile = {}) {
         const state = new GameState();
+        // Eventuell noch registrierte Formationen eines vorherigen Spielstands entfernen
+        GameState.registerCustomFormations(state);
         state.userClubId = userClubId;
         state.difficulty = difficulty;
         state.managerName = managerProfile.name || (typeof managerProfile === "string" ? managerProfile : "Trainer");
@@ -296,6 +480,11 @@ class GameState {
 
             // Spieler anlegen
             clubData.players.forEach(pData => {
+                // Positionsprofil: hinterlegte Nebenposition oder ein realistisch erzeugtes Profil
+                const extraPositions = pData.secondPos
+                    ? [pData.secondPos]
+                    : (GameState._getPositionEngine()?.generateSecondaryPositions(pData.pos) || []);
+
                 const player = {
                     id: playerIdCounter++,
                     clubId: club.id,
@@ -303,7 +492,8 @@ class GameState {
                     age: pData.age,
                     nationality: "Deutschland",
                     pos: pData.pos,
-                    secondPos: pData.secondPos || null,
+                    secondPos: pData.secondPos || extraPositions[0] || null,
+                    positions: extraPositions,
                     overall: pData.overall,
                     pot: pData.pot,
                     trueCurrentAbility: (typeof PlayerRatingEngine !== 'undefined' && PlayerRatingEngine) ? PlayerRatingEngine.overallToAbility(pData.overall) : (pData.overall * 2),
@@ -450,42 +640,61 @@ class GameState {
     }
 
     /**
-     * Stellt die stärkste 11 und Bank für einen Verein auf
+     * Stellt die stärkste 11 und Bank für einen Verein auf.
+     * Die Zuordnung erfolgt positionsbewusst: Ein Spieler wird dort eingeplant,
+     * wo seine effektive Bewertung (Stärke x Positionseignung) am höchsten ist.
      */
     static autoSetLineupForClub(club, allPlayers) {
         const clubPlayers = allPlayers.filter(p => club.playerIds.includes(p.id) && p.injuredWeeks === 0 && p.suspendedMatches === 0);
-        
-        // Nach Gesamtstärke absteigend sortieren
+
+        // Nach Gesamtstärke absteigend sortieren (Basisreihenfolge für Bank & Fallbacks)
         clubPlayers.sort((a, b) => b.overall - a.overall);
 
-        const formationConfig = FORMATION_CONFIGS[club.formation] || FORMATION_CONFIGS["4-4-2"];
+        const formationConfig = GameState.getFormationConfig(club.formation);
         const neededSlots = formationConfig.positions;
         const assignedPlayerIds = [];
         const lineup = [];
 
-        // Finde für jede Position den besten passenden Spieler
-        neededSlots.forEach(slot => {
-            let candidate = clubPlayers.find(p => !assignedPlayerIds.includes(p.id) && (p.pos === slot.pos || p.secondPos === slot.pos));
-            if (!candidate) {
-                // Fallback: TW für TW, Feldspieler für Feldspieler
-                if (slot.pos === "TW") {
-                    candidate = clubPlayers.find(p => !assignedPlayerIds.includes(p.id) && p.pos === "TW");
-                } else {
-                    candidate = clubPlayers.find(p => !assignedPlayerIds.includes(p.id) && p.pos !== "TW");
-                }
-            }
-            if (!candidate) {
-                candidate = clubPlayers.find(p => !assignedPlayerIds.includes(p.id));
-            }
-            if (candidate) {
-                assignedPlayerIds.push(candidate.id);
-                lineup.push(candidate.id);
-            }
-        });
+        const posEngine = GameState._getPositionEngine();
 
-        // Bank (bis zu 7 Spieler)
+        if (posEngine && typeof posEngine.assignBestLineup === "function") {
+            const assigned = posEngine.assignBestLineup(clubPlayers, neededSlots);
+            assigned.forEach(player => {
+                if (player && !assignedPlayerIds.includes(player.id)) {
+                    assignedPlayerIds.push(player.id);
+                    lineup.push(player.id);
+                }
+            });
+        } else {
+            // Fallback ohne PositionEngine
+            neededSlots.forEach(slot => {
+                let candidate = clubPlayers.find(p => !assignedPlayerIds.includes(p.id) && (p.pos === slot.pos || p.secondPos === slot.pos));
+                if (!candidate) {
+                    if (slot.pos === "TW") {
+                        candidate = clubPlayers.find(p => !assignedPlayerIds.includes(p.id) && p.pos === "TW");
+                    } else {
+                        candidate = clubPlayers.find(p => !assignedPlayerIds.includes(p.id) && p.pos !== "TW");
+                    }
+                }
+                if (!candidate) {
+                    candidate = clubPlayers.find(p => !assignedPlayerIds.includes(p.id));
+                }
+                if (candidate) {
+                    assignedPlayerIds.push(candidate.id);
+                    lineup.push(candidate.id);
+                }
+            });
+        }
+
+        // Bank (bis zu 7 Spieler) - Ersatztorwart hat Vorrang
         const bench = [];
-        clubPlayers.forEach(p => {
+        const remaining = clubPlayers.filter(p => !assignedPlayerIds.includes(p.id));
+        const backupGk = remaining.find(p => p.pos === "TW");
+        if (backupGk) {
+            assignedPlayerIds.push(backupGk.id);
+            bench.push(backupGk.id);
+        }
+        remaining.forEach(p => {
             if (!assignedPlayerIds.includes(p.id) && bench.length < 7) {
                 assignedPlayerIds.push(p.id);
                 bench.push(p.id);

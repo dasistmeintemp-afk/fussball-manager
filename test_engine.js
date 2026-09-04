@@ -326,7 +326,7 @@ function runEngineTests() {
     });
 
     // 12. SaveService & MigrationService
-    test("SaveService & MigrationService: Export, Import und Schema-Migration von v1 nach v5", () => {
+    test("SaveService & MigrationService: Export, Import und Schema-Migration von v1 nach v6", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const exportedJson = SaveService.exportJson(state);
         const importRes = SaveService.importJson(exportedJson);
@@ -343,8 +343,8 @@ function runEngineTests() {
             }
         };
         const migRes = MigrationService.migrateSave(legacySave);
-        if (!migRes.success || migRes.saveVersion !== 5 || !migRes.state.scouting || !migRes.state.calendar || !migRes.state.competitions) {
-            throw new Error("MigrationService failed to migrate to version 5");
+        if (!migRes.success || migRes.saveVersion !== 6 || !migRes.state.scouting || !migRes.state.calendar || !migRes.state.competitions || !migRes.state.customFormations) {
+            throw new Error("MigrationService failed to migrate to version 6");
         }
     });
 

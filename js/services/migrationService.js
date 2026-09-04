@@ -3,7 +3,7 @@
  */
 
 const MigrationService = {
-    CURRENT_SAVE_VERSION: 5,
+    CURRENT_SAVE_VERSION: 6,
 
     /**
      * Migriert einen Spielstand auf die aktuelle Version
@@ -204,6 +204,49 @@ const MigrationService = {
             }
 
             state.schemaVersion = 5;
+        }
+
+        // Migration Version 5 -> Version 6: Eigene Formationen & Positionsprofile der Spieler
+        if (currentVersion < 6 || !state.customFormations) {
+            console.log(`[MigrationService] Migriere Spielstand auf Version 6 (Formations-Editor & Positionsprofile)...`);
+
+            if (!state.customFormations || typeof state.customFormations !== 'object') {
+                state.customFormations = {};
+            }
+
+            const positionEngine = (typeof PositionEngine !== 'undefined' && PositionEngine)
+                ? PositionEngine
+                : ((typeof window !== 'undefined' && window.PositionEngine)
+                    ? window.PositionEngine
+                    : (typeof require !== 'undefined' ? require('../engine/positionEngine.js').PositionEngine : null));
+
+            if (Array.isArray(state.players) && positionEngine) {
+                state.players.forEach(p => {
+                    if (!Array.isArray(p.positions)) {
+                        const extra = [];
+                        const second = positionEngine.normalizePosition(p.secondPos);
+                        if (second) extra.push(second);
+                        if (extra.length === 0) {
+                            positionEngine.generateSecondaryPositions(p.pos).forEach(pos => extra.push(pos));
+                        }
+                        p.positions = extra;
+                        if (!p.secondPos && extra.length > 0) p.secondPos = extra[0];
+                    }
+                });
+            }
+
+            // Eigene Formationen des Spielstands global verfügbar machen
+            const gameStateRef = (typeof GameState !== 'undefined' && GameState)
+                ? GameState
+                : ((typeof window !== 'undefined' && window.GameState)
+                    ? window.GameState
+                    : (typeof require !== 'undefined' ? require('../engine/gameState.js').GameState : null));
+
+            if (gameStateRef && typeof gameStateRef.registerCustomFormations === 'function') {
+                gameStateRef.registerCustomFormations(state);
+            }
+
+            state.schemaVersion = 6;
         }
 
         return {

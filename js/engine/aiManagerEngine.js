@@ -24,42 +24,44 @@ const AIManagerEngine = {
         const starters = [];
         const usedIds = new Set();
 
-        // 1. Torwart finden
-        const gks = available.filter(p => p.pos === "TW").sort((a, b) => b.overall - a.overall);
-        if (gks.length > 0) {
-            starters.push(gks[0].id);
-            usedIds.add(gks[0].id);
+        // 1. Positionsbewusste Aufstellung: jeder Spieler dort, wo er am stärksten ist
+        const positionEngine = (typeof PositionEngine !== 'undefined' && PositionEngine)
+            ? PositionEngine
+            : ((typeof window !== 'undefined' && window.PositionEngine)
+                ? window.PositionEngine
+                : (typeof require !== 'undefined' ? require('./positionEngine.js').PositionEngine : null));
+
+        const slots = (formConfig && Array.isArray(formConfig.positions)) ? formConfig.positions : [];
+
+        if (positionEngine && slots.length > 0) {
+            const assigned = positionEngine.assignBestLineup(available, slots);
+            assigned.forEach(player => {
+                if (player && !usedIds.has(player.id)) {
+                    starters.push(player.id);
+                    usedIds.add(player.id);
+                }
+            });
         } else {
-            // Not-Torwart
-            const fallbackGk = available.sort((a, b) => (b.goalkeeping || b.overall) - (a.goalkeeping || a.overall))[0];
-            if (fallbackGk) {
-                starters.push(fallbackGk.id);
-                usedIds.add(fallbackGk.id);
+            // Fallback ohne PositionEngine: Torwart + beste Feldspieler
+            const gks = available.filter(p => p.pos === "TW").sort((a, b) => b.overall - a.overall);
+            if (gks.length > 0) {
+                starters.push(gks[0].id);
+                usedIds.add(gks[0].id);
             }
-        }
 
-        // 2. Feldspieler nach Positionen der Formation besetzen
-        if (formConfig && formConfig.positions) {
-            const outfieldSlots = formConfig.positions.filter(slot => slot.pos !== "TW");
-
-            outfieldSlots.forEach(slot => {
-                // Exakte Positionsübereinstimmung
+            slots.filter(slot => slot.pos !== "TW").forEach(slot => {
                 let candidate = available
                     .filter(p => !usedIds.has(p.id) && (p.pos === slot.pos || p.secondPos === slot.pos))
                     .sort((a, b) => b.overall - a.overall)[0];
 
-                // Falls kein passender Spieler, bester verbleibender Feldspieler
                 if (!candidate) {
                     candidate = available
                         .filter(p => !usedIds.has(p.id) && p.pos !== "TW")
                         .sort((a, b) => b.overall - a.overall)[0];
                 }
-
-                // Absoluter Fallback falls Kader zu klein
                 if (!candidate) {
                     candidate = available.filter(p => !usedIds.has(p.id))[0];
                 }
-
                 if (candidate) {
                     starters.push(candidate.id);
                     usedIds.add(candidate.id);
@@ -77,12 +79,17 @@ const AIManagerEngine = {
             }
         }
 
-        // 4. Ersatzbank bestimmen (bis zu 7 Spieler)
-        const bench = available
+        // 4. Ersatzbank bestimmen (bis zu 7 Spieler, Ersatztorwart zuerst)
+        const benchPool = available
             .filter(p => !usedIds.has(p.id))
-            .sort((a, b) => b.overall - a.overall)
-            .slice(0, 7)
-            .map(p => p.id);
+            .sort((a, b) => b.overall - a.overall);
+
+        const bench = [];
+        const backupGk = benchPool.find(p => p.pos === "TW");
+        if (backupGk) bench.push(backupGk.id);
+        benchPool.forEach(p => {
+            if (bench.length < 7 && !bench.includes(p.id)) bench.push(p.id);
+        });
 
         club.lineup = starters;
         club.bench = bench;

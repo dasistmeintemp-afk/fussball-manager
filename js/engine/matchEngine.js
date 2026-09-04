@@ -17,6 +17,12 @@ const _Random = (typeof Random !== 'undefined' && Random)
         }
     });
 
+const _PositionEngine = (typeof PositionEngine !== 'undefined' && PositionEngine)
+    ? PositionEngine
+    : ((typeof window !== 'undefined' && window.PositionEngine)
+        ? window.PositionEngine
+        : ((typeof require !== 'undefined') ? require('./positionEngine.js').PositionEngine : null));
+
 // Zentrale Kalibrierungs- und Tuning-Parameter
 const MATCH_TUNING = {
     baseGoalChance: {
@@ -224,10 +230,51 @@ class MatchEngine {
     }
 
     /**
+     * Liefert die Positionscodes der Formation eines Vereins (Slot-Reihenfolge)
+     */
+    static getFormationSlots(club) {
+        const formConfigs = (typeof FORMATION_CONFIGS !== 'undefined' && FORMATION_CONFIGS)
+            ? FORMATION_CONFIGS
+            : ((typeof window !== 'undefined' && window.FORMATION_CONFIGS)
+                ? window.FORMATION_CONFIGS
+                : (typeof require !== 'undefined' ? require('./gameState.js').FORMATION_CONFIGS : {}));
+
+        const key = club?.formation || "4-4-2";
+        const config = (formConfigs && formConfigs[key]) || (formConfigs && formConfigs["4-4-2"]) || null;
+        return (config && Array.isArray(config.positions)) ? config.positions : [];
+    }
+
+    /**
+     * Ordnet jedem Spieler der Startelf die Position zu, auf der er tatsächlich aufgestellt ist.
+     * Der Index in der Aufstellung entspricht dem Formations-Slot.
+     */
+    static getDeployedPositionMap(club, lineupPlayers) {
+        const slots = this.getFormationSlots(club);
+        const map = new Map();
+        (lineupPlayers || []).forEach((p, idx) => {
+            if (!p) return;
+            const slotPos = slots[idx]?.pos || p.pos;
+            map.set(p.id, slotPos);
+        });
+        return map;
+    }
+
+    /**
+     * Familiaritätsfaktor eines Spielers auf seiner Einsatzposition (1.0 = Stammposition)
+     */
+    static getPositionModifier(player, deployedPos) {
+        if (!player || !deployedPos || !_PositionEngine) return 1.0;
+        if (player.pos === deployedPos) return 1.0;
+        return _PositionEngine.getRatingModifier(_PositionEngine.getFamiliarity(player, deployedPos));
+    }
+
+    /**
      * Berechnet die effektive Spielerstärke aus positionsrelevanten Attributen (A1)
      * Gewichtung: ~60 % Attribute / 40 % overall (Fallback auf overall pro fehlendem Attribut)
+     * Wird eine abweichende Einsatzposition übergeben, sinkt die Stärke entsprechend
+     * der Positionseignung des Spielers.
      */
-    static calculateEffectivePlayerSkill(player) {
+    static calculateEffectivePlayerSkill(player, deployedPos = null) {
         if (!player) return 65;
         const ovr = player.overall || 68;
 
@@ -236,7 +283,8 @@ class MatchEngine {
         };
 
         let attrs = [];
-        const pos = player.pos || "ZM";
+        // Die Attributgewichtung richtet sich nach der Position, auf der gespielt wird
+        const pos = deployedPos || player.pos || "ZM";
 
         if (pos === "TW") {
             attrs = [getAttr("reflexes"), getAttr("handling"), getAttr("oneOnOne"), getAttr("positioning")];
@@ -254,8 +302,9 @@ class MatchEngine {
         const fitnessFactor = 0.6 + ((player.fitness || 100) / 100) * 0.4;
         const moraleFactor = 0.85 + ((player.morale || 75) / 100) * 0.2;
         const formFactor = 0.85 + ((player.form || 7.0) / 10) * 0.2;
+        const positionFactor = this.getPositionModifier(player, deployedPos);
 
-        return baseSkill * fitnessFactor * moraleFactor * formFactor;
+        return baseSkill * fitnessFactor * moraleFactor * formFactor * positionFactor;
     }
 
     /**
@@ -273,15 +322,20 @@ class MatchEngine {
         let defSum = 0, defCount = 0;
         let gkPower = 70;
 
-        lineupPlayers.forEach(p => {
-            const effectiveSkill = this.calculateEffectivePlayerSkill(p);
+        // Einsatzpositionen aus der Formation ableiten: ein Spieler wird dort bewertet,
+        // wo er aufgestellt ist - nicht dort, wo er eigentlich zuhause ist.
+        const deployedMap = this.getDeployedPositionMap(club, lineupPlayers);
 
-            if (p.pos === "TW") {
+        lineupPlayers.forEach(p => {
+            const deployedPos = deployedMap.get(p.id) || p.pos;
+            const effectiveSkill = this.calculateEffectivePlayerSkill(p, deployedPos);
+
+            if (deployedPos === "TW") {
                 gkPower = effectiveSkill * 1.05;
-            } else if (["IV", "LV", "RV"].includes(p.pos)) {
+            } else if (["IV", "LV", "RV"].includes(deployedPos)) {
                 defSum += effectiveSkill;
                 defCount++;
-            } else if (["DM", "ZM", "LM", "RM", "OM"].includes(p.pos)) {
+            } else if (["DM", "ZM", "LM", "RM", "OM"].includes(deployedPos)) {
                 midSum += effectiveSkill;
                 midCount++;
             } else { // ST, LA, RA

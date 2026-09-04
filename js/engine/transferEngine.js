@@ -2,6 +2,26 @@
  * TransferEngine - Steuert Transferangebote, Verhandlungen, Marktwerte und Marktaktivität
  */
 
+/**
+ * Geldbeträge formatieren - funktioniert im Browser wie in Node,
+ * auch wenn GameState (noch) nicht global verfügbar ist.
+ */
+const _formatTransferMoney = (amount) => {
+    const gameState = (typeof GameState !== 'undefined' && GameState)
+        ? GameState
+        : ((typeof window !== 'undefined' && window.GameState)
+            ? window.GameState
+            : ((typeof require !== 'undefined') ? require('./gameState.js').GameState : null));
+
+    if (gameState && typeof gameState.formatMoney === 'function') {
+        return gameState.formatMoney(amount);
+    }
+    const value = Number(amount) || 0;
+    if (Math.abs(value) >= 1000000) return `${(value / 1000000).toFixed(1)} Mio. €`;
+    if (Math.abs(value) >= 1000) return `${Math.round(value / 1000)} Tsd. €`;
+    return `${Math.round(value)} €`;
+};
+
 class TransferEngine {
     /**
      * Berechnet den geforderten Ablösepreis für einen Spieler
@@ -46,9 +66,9 @@ class TransferEngine {
         } else if (ratio >= 0.80) {
             // Gegenvorschlag
             const counterOffer = Math.round(askingPrice * 0.95);
-            return { accepted: false, counterOffer, reason: `Angebot zu niedrig. Gegenvorschlag: ${GameState.formatMoney(counterOffer)}` };
+            return { accepted: false, counterOffer, reason: `Angebot zu niedrig. Gegenvorschlag: ${_formatTransferMoney(counterOffer)}` };
         } else {
-            return { accepted: false, reason: `Angebot abgelehnt! Die Mindestforderung liegt bei ${GameState.formatMoney(askingPrice)}.` };
+            return { accepted: false, reason: `Angebot abgelehnt! Die Mindestforderung liegt bei ${_formatTransferMoney(askingPrice)}.` };
         }
     }
 
@@ -72,7 +92,7 @@ class TransferEngine {
             return {
                 success: false,
                 expectedWage,
-                message: `Der Spieler fordert mindestens ${GameState.formatMoney(expectedWage)} Gehalt pro Woche für die Rolle "${squadRole}".`
+                message: `Der Spieler fordert mindestens ${_formatTransferMoney(expectedWage)} Gehalt pro Woche für die Rolle "${squadRole}".`
             };
         }
     }
@@ -122,7 +142,7 @@ class TransferEngine {
             date: `Spieltag ${state.currentMatchday}`,
             sender: "Transferabteilung",
             subject: `Transfer vollzogen: ${player.name}`,
-            body: `Der Transfer von ${player.name} zu ${buyerClub.name} wurde für eine Ablösesumme von ${GameState.formatMoney(fee)} erfolgreich abgeschlossen. Der Spieler erhält einen ${contractYears}-Jahresvertrag mit einem Wochengehalt von ${GameState.formatMoney(wage)}.`,
+            body: `Der Transfer von ${player.name} zu ${buyerClub.name} wurde für eine Ablösesumme von ${_formatTransferMoney(fee)} erfolgreich abgeschlossen. Der Spieler erhält einen ${contractYears}-Jahresvertrag mit einem Wochengehalt von ${_formatTransferMoney(wage)}.`,
             read: false,
             type: "transfer"
         });
@@ -167,7 +187,7 @@ class TransferEngine {
                         date: `Spieltag ${state.currentMatchday}`,
                         sender: interestedClub.name,
                         subject: `Transferangebot für ${player.name}`,
-                        body: `${interestedClub.name} bietet ${GameState.formatMoney(offerFee)} Ablösesumme für Ihren Spieler ${player.name} (${player.pos}, Gesamtstärke ${player.overall}). Sie können das Angebot im Transfermenü prüfen und annehmen oder ablehnen.`,
+                        body: `${interestedClub.name} bietet ${_formatTransferMoney(offerFee)} Ablösesumme für Ihren Spieler ${player.name} (${player.pos}, Gesamtstärke ${player.overall}). Sie können das Angebot im Transfermenü prüfen und annehmen oder ablehnen.`,
                         read: false,
                         type: "transfer_offer"
                     });

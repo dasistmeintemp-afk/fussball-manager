@@ -1932,6 +1932,7 @@ class LiveMatch {
                 this.celebratingTeam = "away";
             }
             this.goalFlash = 1.0;
+            this.lastScorerName = ev.playerName || null;
             this.addEvent("goal", ev.clubId, ev.text);
         } else if (ev.type === "save") {
             if (ev.team === "away") {
@@ -2000,7 +2001,12 @@ class LiveMatch {
     }
 
     addEvent(type, clubId, text) {
+        // Fortlaufende Nummer, damit die Oberfläche neue Einträge auch dann
+        // erkennt, wenn die Liste bereits ihre Maximallänge erreicht hat.
+        this.eventSeq = (this.eventSeq || 0) + 1;
+
         this.events.unshift({
+            seq: this.eventSeq,
             minute: this.minute,
             type,
             clubId,

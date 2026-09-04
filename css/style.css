@@ -1823,6 +1823,34 @@ body {
     padding: 20px;
 }
 
+/*
+ * Live-Spiel: Der Weichzeichner des Overlays musste bei jedem Animationsframe
+ * über den gesamten Bildschirm neu berechnet werden - das war die Ursache für
+ * das Ruckeln der 2D-Simulation (ca. 16 statt 60 Bilder pro Sekunde).
+ * Das Vollbild-Modal verdeckt den Hintergrund ohnehin komplett, deshalb wird
+ * hier auf den Effekt verzichtet und stattdessen deckend gefüllt.
+ */
+#modalLiveMatch {
+    background: #020617;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    padding: 0;
+}
+
+/* Auch die Buttons im Live-Modal erzeugen sonst je eine eigene Blur-Ebene */
+#modalLiveMatch .btn,
+#modalLiveMatch .btn-secondary,
+#modalLiveMatch .modal-box {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+/* Der Canvas bekommt eine eigene Compositing-Ebene */
+#livePitchCanvas {
+    will-change: transform;
+    contain: paint;
+}
+
 .modal-box {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
@@ -2008,16 +2036,46 @@ body {
     justify-content: center;
     padding: 16px;
     position: relative;
+    overflow: hidden;
+    min-height: 0;
+    min-width: 0;
 }
 
 #livePitchCanvas {
-    background: radial-gradient(circle, #047857 0%, #064e3b 100%);
-    border: 3px solid rgba(255,255,255,0.7);
+    background: #0b4227;
+    border: 2px solid rgba(255,255,255,0.55);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-lg);
+    /* Größe wird per JS (DPR-korrekt) gesetzt - hier nur eine Obergrenze */
     max-width: 100%;
-    max-height: 440px;
+    display: block;
 }
+
+.live-clock {
+    display: inline-block;
+    margin-left: 8px;
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.72);
+    letter-spacing: 0.5px;
+}
+
+/* Farbcodierung der Ticker-Ereignisse */
+.ticker-event {
+    border-left: 3px solid transparent;
+    padding-left: 8px;
+}
+.ticker-event.ticker-goal { border-left-color: #22c55e; color: #bbf7d0; font-weight: 700; }
+.ticker-event.ticker-save { border-left-color: #38bdf8; }
+.ticker-event.ticker-shot_miss { border-left-color: #94a3b8; }
+.ticker-event.ticker-corner { border-left-color: #a78bfa; }
+.ticker-event.ticker-foul { border-left-color: #fb923c; }
+.ticker-event.ticker-yellow_card { border-left-color: #facc15; }
+.ticker-event.ticker-red_card { border-left-color: #ef4444; font-weight: 600; }
+.ticker-event.ticker-injury { border-left-color: #f87171; }
+.ticker-event.ticker-sub { border-left-color: #34d399; }
+.ticker-event.ticker-tactics { border-left-color: #60a5fa; }
 
 .live-commentary-bar {
     width: 100%;
@@ -3250,9 +3308,8 @@ body {
         padding: 6px;
     }
     #livePitchCanvas {
-        width: 100%;
-        height: auto;
         border-radius: var(--radius-sm);
+        border-width: 1px;
     }
     .live-match-controls {
         flex-wrap: wrap;

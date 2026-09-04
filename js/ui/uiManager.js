@@ -16,6 +16,19 @@ class UIManager {
         this.selectedInboxMessageId = null;
         this.inboxFilter = "all";
         this.inboxSearch = "";
+
+        // 2D-Rendering: vorgerenderter Rasen, Textbreiten-Cache und Feed-Status
+        this.pitchBackdrop = null;
+        this.pitchBackdropKey = "";
+        this.textWidthCache = new Map();
+        this.renderedEventCount = 0;
+        this.liveStatCache = {};
+
+        // Formations-Editor
+        this.formationEditMode = false;
+        this.formationDraft = null;
+        this.formationDirty = false;
+        this.draggingSlot = null;
     }
 
     /**
@@ -924,15 +937,179 @@ class UIManager {
         if (overlay) overlay.style.display = "none";
     }
 
+    /**
+     * Passt die Canvas-Auflösung an Containergröße und Pixeldichte an.
+     * Ohne diese Skalierung wird das Spielfeld auf HiDPI-Displays unscharf
+     * gestreckt und wirkt beim Scrollen ruckelig.
+     */
     resizeLiveCanvas() {
         const canvas = document.getElementById("livePitchCanvas");
         const wrapper = canvas?.parentElement;
-        if (!canvas || !wrapper) return;
-        const width = Math.min(wrapper.clientWidth, 960);
-        if (width > 0) {
-            canvas.style.width = "100%";
-            canvas.style.height = "auto";
+        if (!canvas || !wrapper) return false;
+
+        const PITCH_RATIO = 105 / 68; // Länge zu Breite eines echten Spielfeldes
+        const available = wrapper.clientWidth - 8;
+        if (available <= 0) return false;
+
+        const maxHeight = Math.max(220, wrapper.clientHeight - 74);
+        let cssWidth = Math.min(available, 1100);
+        let cssHeight = cssWidth / PITCH_RATIO;
+
+        if (cssHeight > maxHeight) {
+            cssHeight = maxHeight;
+            cssWidth = cssHeight * PITCH_RATIO;
         }
+
+        const dpr = Math.min(2.5, (typeof window !== "undefined" && window.devicePixelRatio) || 1);
+        const pixelWidth = Math.round(cssWidth * dpr);
+        const pixelHeight = Math.round(cssHeight * dpr);
+
+        const changed = canvas.width !== pixelWidth || canvas.height !== pixelHeight;
+        if (changed) {
+            canvas.width = pixelWidth;
+            canvas.height = pixelHeight;
+            this.pitchBackdrop = null; // Rasen muss neu gezeichnet werden
+        }
+
+        canvas.style.width = `${Math.round(cssWidth)}px`;
+        canvas.style.height = `${Math.round(cssHeight)}px`;
+
+        return changed;
+    }
+
+    /**
+     * Zeichnet Rasen, Linien und Tore einmalig in ein Offscreen-Canvas.
+     * Pro Frame wird nur noch dieses Bild kopiert - das spart bei 60 fps
+     * hunderte Zeichenbefehle und beseitigt das Ruckeln.
+     */
+    buildPitchBackdrop(width, height) {
+        const canvas = (typeof document !== "undefined") ? document.createElement("canvas") : null;
+        if (!canvas) return null;
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+
+        const margin = Math.round(Math.min(width, height) * 0.035);
+        const pitchX = margin;
+        const pitchY = margin;
+        const pitchW = width - margin * 2;
+        const pitchH = height - margin * 2;
+        const midX = pitchX + pitchW / 2;
+        const midY = pitchY + pitchH / 2;
+        const unit = pitchW / 105; // ein Meter in Pixeln
+
+        // Rasen mit Mähstreifen
+        ctx.fillStyle = "#0b4227";
+        ctx.fillRect(0, 0, width, height);
+
+        const stripes = 14;
+        const stripeW = pitchW / stripes;
+        for (let i = 0; i < stripes; i++) {
+            ctx.fillStyle = (i % 2 === 0) ? "#15803d" : "#137236";
+            ctx.fillRect(pitchX + i * stripeW, pitchY, stripeW + 1, pitchH);
+        }
+
+        // Flutlicht-Stimmung
+        const glow = ctx.createRadialGradient(midX, midY, pitchH * 0.1, midX, midY, pitchW * 0.7);
+        glow.addColorStop(0, "rgba(255, 255, 255, 0.07)");
+        glow.addColorStop(1, "rgba(0, 0, 0, 0.28)");
+        ctx.fillStyle = glow;
+        ctx.fillRect(pitchX, pitchY, pitchW, pitchH);
+
+        // Linien
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+        ctx.lineWidth = Math.max(1.5, unit * 0.14);
+
+        ctx.strokeRect(pitchX, pitchY, pitchW, pitchH);
+        ctx.beginPath();
+        ctx.moveTo(midX, pitchY);
+        ctx.lineTo(midX, pitchY + pitchH);
+        ctx.stroke();
+
+        const centreRadius = unit * 9.15;
+        ctx.beginPath();
+        ctx.arc(midX, midY, centreRadius, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+        ctx.beginPath();
+        ctx.arc(midX, midY, Math.max(2, unit * 0.3), 0, Math.PI * 2);
+        ctx.fill();
+
+        // Strafraum (16,5 m x 40,3 m) und Torraum (5,5 m x 18,3 m)
+        const penW = unit * 16.5;
+        const penH = (pitchH / 68) * 40.3;
+        const goalAreaW = unit * 5.5;
+        const goalAreaH = (pitchH / 68) * 18.3;
+        const penSpot = unit * 11;
+
+        [0, 1].forEach(side => {
+            const isLeft = side === 0;
+            const boxX = isLeft ? pitchX : pitchX + pitchW - penW;
+            ctx.strokeRect(boxX, midY - penH / 2, penW, penH);
+
+            const gaX = isLeft ? pitchX : pitchX + pitchW - goalAreaW;
+            ctx.strokeRect(gaX, midY - goalAreaH / 2, goalAreaW, goalAreaH);
+
+            const spotX = isLeft ? pitchX + penSpot : pitchX + pitchW - penSpot;
+            ctx.beginPath();
+            ctx.arc(spotX, midY, Math.max(1.8, unit * 0.28), 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.beginPath();
+            if (isLeft) ctx.arc(spotX, midY, centreRadius, -0.93, 0.93);
+            else ctx.arc(spotX, midY, centreRadius, Math.PI - 0.93, Math.PI + 0.93);
+            ctx.stroke();
+        });
+
+        // Eckviertelkreise
+        const cornerR = unit * 1;
+        ctx.beginPath(); ctx.arc(pitchX, pitchY, cornerR, 0, Math.PI / 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(pitchX, pitchY + pitchH, cornerR, -Math.PI / 2, 0); ctx.stroke();
+        ctx.beginPath(); ctx.arc(pitchX + pitchW, pitchY, cornerR, Math.PI / 2, Math.PI); ctx.stroke();
+        ctx.beginPath(); ctx.arc(pitchX + pitchW, pitchY + pitchH, cornerR, Math.PI, Math.PI * 1.5); ctx.stroke();
+
+        // Tore inklusive angedeutetem Netz
+        const goalH = (pitchH / 68) * 7.32;
+        const goalDepth = unit * 2;
+        ctx.lineWidth = Math.max(2, unit * 0.2);
+        [0, 1].forEach(side => {
+            const gx = side === 0 ? pitchX - goalDepth : pitchX + pitchW;
+            ctx.fillStyle = "rgba(255, 255, 255, 0.16)";
+            ctx.fillRect(gx, midY - goalH / 2, goalDepth, goalH);
+            ctx.strokeStyle = "#ffffff";
+            ctx.strokeRect(gx, midY - goalH / 2, goalDepth, goalH);
+
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+            ctx.lineWidth = 1;
+            for (let n = 1; n < 4; n++) {
+                const ny = midY - goalH / 2 + (goalH / 4) * n;
+                ctx.beginPath();
+                ctx.moveTo(gx, ny);
+                ctx.lineTo(gx + goalDepth, ny);
+                ctx.stroke();
+            }
+            ctx.lineWidth = Math.max(2, unit * 0.2);
+        });
+
+        return { canvas, pitchX, pitchY, pitchW, pitchH, midX, midY, unit };
+    }
+
+    /**
+     * Textbreiten werden gecacht - measureText pro Spieler und Frame
+     * ist einer der teuersten Aufrufe im Canvas-Rendering.
+     */
+    measureCached(ctx, text, font) {
+        const key = `${font}|${text}`;
+        let width = this.textWidthCache.get(key);
+        if (width === undefined) {
+            ctx.font = font;
+            width = ctx.measureText(text).width;
+            this.textWidthCache.set(key, width);
+            if (this.textWidthCache.size > 400) this.textWidthCache.clear();
+        }
+        return width;
     }
 
     /**
@@ -2804,264 +2981,243 @@ class UIManager {
         const canvas = document.getElementById("livePitchCanvas");
         const ctx = canvas.getContext("2d");
 
+        // Statistikfelder nur bei Änderung anfassen (weniger Layout-Arbeit)
+        const setText = (id, value) => {
+            if (this.liveStatCache[id] === value) return;
+            this.liveStatCache[id] = value;
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        };
+
+        const setWidth = (id, value) => {
+            const key = `w_${id}`;
+            if (this.liveStatCache[key] === value) return;
+            this.liveStatCache[key] = value;
+            const el = document.getElementById(id);
+            if (el) el.style.width = value;
+        };
+
+        this.liveStatCache = {};
+        this.renderedEventCount = 0;
+
         const updateLiveUI = () => {
-            document.getElementById("lmHomeScore").textContent = liveMatch.homeScore;
-            document.getElementById("lmAwayScore").textContent = liveMatch.awayScore;
-            document.getElementById("lmMinute").textContent = liveMatch.minute;
-            document.getElementById("lmCommentary").textContent = liveMatch.lastCommentary;
+            setText("lmHomeScore", String(liveMatch.homeScore));
+            setText("lmAwayScore", String(liveMatch.awayScore));
+            setText("lmMinute", String(liveMatch.minute));
+            setText("lmCommentary", liveMatch.lastCommentary);
 
-            // Stats Bars
-            document.getElementById("lmStatPossHome").textContent = `${liveMatch.stats.possession[0]}%`;
-            document.getElementById("lmStatPossAway").textContent = `${liveMatch.stats.possession[1]}%`;
-            document.getElementById("lmBarPossHome").style.width = `${liveMatch.stats.possession[0]}%`;
-            document.getElementById("lmBarPossAway").style.width = `${liveMatch.stats.possession[1]}%`;
+            const clockEl = document.getElementById("lmClock");
+            if (clockEl) setText("lmClock", liveMatch.getClockText ? liveMatch.getClockText() : `${liveMatch.minute}:00`);
 
-            document.getElementById("lmStatShotsHome").textContent = `${liveMatch.stats.shots[0]} (${liveMatch.stats.shotsOnTarget[0]})`;
-            document.getElementById("lmStatShotsAway").textContent = `${liveMatch.stats.shots[1]} (${liveMatch.stats.shotsOnTarget[1]})`;
+            setText("lmStatPossHome", `${liveMatch.stats.possession[0]}%`);
+            setText("lmStatPossAway", `${liveMatch.stats.possession[1]}%`);
+            setWidth("lmBarPossHome", `${liveMatch.stats.possession[0]}%`);
+            setWidth("lmBarPossAway", `${liveMatch.stats.possession[1]}%`);
 
-            document.getElementById("lmStatXgHome").textContent = liveMatch.stats.xG[0].toFixed(2);
-            document.getElementById("lmStatXgAway").textContent = liveMatch.stats.xG[1].toFixed(2);
+            setText("lmStatShotsHome", `${liveMatch.stats.shots[0]} (${liveMatch.stats.shotsOnTarget[0]})`);
+            setText("lmStatShotsAway", `${liveMatch.stats.shots[1]} (${liveMatch.stats.shotsOnTarget[1]})`);
 
-            document.getElementById("lmStatCornersHome").textContent = liveMatch.stats.corners[0];
-            document.getElementById("lmStatCornersAway").textContent = liveMatch.stats.corners[1];
+            setText("lmStatXgHome", liveMatch.stats.xG[0].toFixed(2));
+            setText("lmStatXgAway", liveMatch.stats.xG[1].toFixed(2));
 
-            document.getElementById("lmStatFoulsHome").textContent = liveMatch.stats.fouls[0];
-            document.getElementById("lmStatFoulsAway").textContent = liveMatch.stats.fouls[1];
+            setText("lmStatCornersHome", String(liveMatch.stats.corners[0]));
+            setText("lmStatCornersAway", String(liveMatch.stats.corners[1]));
 
-            // Ticker Feed aktualisieren
+            setText("lmStatFoulsHome", String(liveMatch.stats.fouls[0]));
+            setText("lmStatFoulsAway", String(liveMatch.stats.fouls[1]));
+
+            // Ticker: nur neue Ereignisse einfügen statt die Liste neu aufzubauen.
+            // Die laufende Nummer funktioniert auch, wenn die Ereignisliste
+            // bereits ihre Maximallänge erreicht hat.
             const feed = document.getElementById("lmEventFeed");
-            feed.innerHTML = liveMatch.events.slice().reverse().map(e => `
-                <div class="ticker-event">${e.text}</div>
-            `).join("");
+            const newestSeq = liveMatch.events[0]?.seq || 0;
+            if (feed && newestSeq > this.renderedEventCount) {
+                const fresh = liveMatch.events.filter(e => (e.seq || 0) > this.renderedEventCount);
+                for (let i = fresh.length - 1; i >= 0; i--) {
+                    const node = document.createElement("div");
+                    node.className = `ticker-event ticker-${fresh[i].type || "info"}`;
+                    node.textContent = fresh[i].text;
+                    feed.insertBefore(node, feed.firstChild);
+                }
+                this.renderedEventCount = newestSeq;
+                while (feed.childElementCount > 60) feed.removeChild(feed.lastChild);
+            }
         };
 
         const render2DCanvas = () => {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            const pitchX = 20;
-            const pitchY = 20;
-            const pitchW = canvas.width - 40;
-            const pitchH = canvas.height - 40;
-            const midX = canvas.width / 2;
-            const midY = canvas.height / 2;
-
-            // 1. Spielfeld Hintergrund (Satter Stadionrasen mit 12 Streifen)
-            ctx.fillStyle = "#0f5132";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            const stripes = 12;
-            const stripeW = pitchW / stripes;
-            for (let i = 0; i < stripes; i++) {
-                ctx.fillStyle = (i % 2 === 0) ? "#15803d" : "#166534";
-                ctx.fillRect(pitchX + i * stripeW, pitchY, stripeW, pitchH);
+            if (!this.pitchBackdrop || this.pitchBackdrop.canvas.width !== canvas.width || this.pitchBackdrop.canvas.height !== canvas.height) {
+                this.pitchBackdrop = this.buildPitchBackdrop(canvas.width, canvas.height);
             }
+            const bg = this.pitchBackdrop;
+            if (!bg) return;
 
-            // Flutlicht-Vignette / sanfter Glanz
-            const pitchGlow = ctx.createRadialGradient(midX, midY, 50, midX, midY, canvas.width * 0.6);
-            pitchGlow.addColorStop(0, "rgba(255, 255, 255, 0.06)");
-            pitchGlow.addColorStop(1, "rgba(0, 0, 0, 0.22)");
-            ctx.fillStyle = pitchGlow;
-            ctx.fillRect(pitchX, pitchY, pitchW, pitchH);
+            const { pitchX, pitchY, pitchW, pitchH, midX, midY } = bg;
+            const scale = pitchW / 105;
 
-            // 2. Weiße Spielfeldlinien
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
-            ctx.lineWidth = 2;
+            // 1. Vorgerenderter Rasen
+            ctx.drawImage(bg.canvas, 0, 0);
 
-            // Umrandung & Mittellinie
-            ctx.strokeRect(pitchX, pitchY, pitchW, pitchH);
-            ctx.beginPath();
-            ctx.moveTo(midX, pitchY);
-            ctx.lineTo(midX, pitchY + pitchH);
-            ctx.stroke();
+            const toX = px => pitchX + (px / 100) * pitchW;
+            const toY = py => pitchY + (py / 100) * pitchH;
 
-            // Mittelkreis & Mittelpunkt
-            ctx.beginPath();
-            ctx.arc(midX, midY, 50, 0, Math.PI * 2);
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.arc(midX, midY, 3.5, 0, Math.PI * 2);
-            ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-            ctx.fill();
-
-            // Strafräume (16-Meter-Raum)
-            const penBoxW = 92;
-            const penBoxH = 148;
-            ctx.strokeRect(pitchX, midY - penBoxH / 2, penBoxW, penBoxH);
-            ctx.strokeRect(pitchX + pitchW - penBoxW, midY - penBoxH / 2, penBoxW, penBoxH);
-
-            // Torräume (5-Meter-Raum)
-            const goalAreaW = 34;
-            const goalAreaH = 68;
-            ctx.strokeRect(pitchX, midY - goalAreaH / 2, goalAreaW, goalAreaH);
-            ctx.strokeRect(pitchX + pitchW - goalAreaW, midY - goalAreaH / 2, goalAreaW, goalAreaH);
-
-            // Elfmeterpunkte & Bögen am Sechzehner (Halbkreise)
-            const penSpotDist = 68;
-            // Links
-            ctx.beginPath();
-            ctx.arc(pitchX + penSpotDist, midY, 3, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(pitchX + penSpotDist, midY, 38, -0.65, 0.65);
-            ctx.stroke();
-
-            // Rechts
-            ctx.beginPath();
-            ctx.arc(pitchX + pitchW - penSpotDist, midY, 3, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(pitchX + pitchW - penSpotDist, midY, 38, Math.PI - 0.65, Math.PI + 0.65);
-            ctx.stroke();
-
-            // Eckfahnen-Viertelkreise
-            const cornerRadius = 9;
-            ctx.beginPath(); ctx.arc(pitchX, pitchY, cornerRadius, 0, Math.PI / 2); ctx.stroke();
-            ctx.beginPath(); ctx.arc(pitchX, pitchY + pitchH, cornerRadius, -Math.PI / 2, 0); ctx.stroke();
-            ctx.beginPath(); ctx.arc(pitchX + pitchW, pitchY, cornerRadius, Math.PI / 2, Math.PI); ctx.stroke();
-            ctx.beginPath(); ctx.arc(pitchX + pitchW, pitchY + pitchH, cornerRadius, Math.PI, Math.PI * 1.5); ctx.stroke();
-
-            // Tore mit Tornetz-Gitterstruktur
-            const goalH = 64;
-            const goalDepth = 12;
-            // Linkes Tor
-            ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
-            ctx.fillRect(pitchX - goalDepth, midY - goalH / 2, goalDepth, goalH);
-            ctx.strokeStyle = "#ffffff";
-            ctx.lineWidth = 2.5;
-            ctx.strokeRect(pitchX - goalDepth, midY - goalH / 2, goalDepth, goalH);
-            // Rechtes Tor
-            ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
-            ctx.fillRect(pitchX + pitchW, midY - goalH / 2, goalDepth, goalH);
-            ctx.strokeRect(pitchX + pitchW, midY - goalH / 2, goalDepth, goalH);
-
-            // 3. Ball-Schweifspur (Motion Trail bei schnellen Pässen / Schüssen)
-            if (liveMatch.ballTrail && liveMatch.ballTrail.length > 1) {
-                for (let i = 0; i < liveMatch.ballTrail.length - 1; i++) {
-                    const p1 = liveMatch.ballTrail[i];
-                    const p2 = liveMatch.ballTrail[i + 1];
-                    const t1x = pitchX + (p1.x / 100) * pitchW;
-                    const t1y = pitchY + (p1.y / 100) * pitchH;
-                    const t2x = pitchX + (p2.x / 100) * pitchW;
-                    const t2y = pitchY + (p2.y / 100) * pitchH;
-
+            // 2. Ballschweif
+            const trail = liveMatch.ballTrail || [];
+            if (trail.length > 1) {
+                ctx.lineCap = "round";
+                for (let i = 0; i < trail.length - 1; i++) {
+                    const alpha = Math.max(0, trail[i].life / 0.28) * 0.5;
+                    if (alpha <= 0.02) continue;
                     ctx.beginPath();
-                    ctx.moveTo(t1x, t1y);
-                    ctx.lineTo(t2x, t2y);
-                    ctx.strokeStyle = `rgba(255, 255, 255, ${p1.alpha * 0.45})`;
-                    ctx.lineWidth = 2.5;
+                    ctx.moveTo(toX(trail[i].x), toY(trail[i].y));
+                    ctx.lineTo(toX(trail[i + 1].x), toY(trail[i + 1].y));
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+                    ctx.lineWidth = scale * 0.5;
                     ctx.stroke();
                 }
+                ctx.lineCap = "butt";
             }
 
-            // 4. 2D Spieler zeichnen (mit Schatten, Trikots, Glow und Namens-Pills)
+            const radius = Math.max(7, scale * 1.25);
+            const numberFont = `bold ${Math.round(radius * 0.95)}px 'Inter', system-ui, sans-serif`;
+            const nameFont = `600 ${Math.round(radius * 0.82)}px 'Inter', system-ui, sans-serif`;
+
+            // 3. Schatten aller Spieler in einem Durchgang
+            ctx.fillStyle = "rgba(0, 0, 0, 0.34)";
             liveMatch.players2D.forEach(p => {
-                const px = pitchX + (p.x / 100) * pitchW;
-                const py = pitchY + (p.y / 100) * pitchH;
-                const isActive = liveMatch.activePlayerId === p.id;
-
-                // Spielerschatten auf dem Rasen
                 ctx.beginPath();
-                ctx.ellipse(px + 1.5, py + 3, 9, 4.5, 0, 0, Math.PI * 2);
-                ctx.fillStyle = "rgba(0, 0, 0, 0.38)";
+                ctx.ellipse(toX(p.x) + radius * 0.16, toY(p.y) + radius * 0.34, radius * 0.95, radius * 0.48, 0, 0, Math.PI * 2);
                 ctx.fill();
-
-                // Ballführender / Aktiver Spieler Glow-Ring
-                if (isActive) {
-                    const pulse = 13 + Math.sin(Date.now() * 0.008) * 2;
-                    ctx.beginPath();
-                    ctx.arc(px, py, pulse, 0, Math.PI * 2);
-                    ctx.strokeStyle = "#facc15";
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
-                }
-
-                // Spielerkörper mit dezentem 3D-Verlauf
-                ctx.beginPath();
-                ctx.arc(px, py, 9.5, 0, Math.PI * 2);
-                const playerGrad = ctx.createRadialGradient(px - 2, py - 2, 1, px, py, 10);
-                playerGrad.addColorStop(0, "#ffffff");
-                playerGrad.addColorStop(0.3, p.color || "#3b82f6");
-                playerGrad.addColorStop(1, p.color || "#1d4ed8");
-                ctx.fillStyle = playerGrad;
-                ctx.fill();
-
-                ctx.strokeStyle = p.textColor && p.textColor !== p.color ? p.textColor : "#ffffff";
-                ctx.lineWidth = 1.5;
-                ctx.stroke();
-
-                // Trikotnummer
-                ctx.fillStyle = p.textColor || "#ffffff";
-                ctx.font = "bold 9px 'Inter', sans-serif";
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-                ctx.fillText(p.number, px, py);
-
-                // Namens-Pill für perfekte Lesbarkeit
-                const lastName = p.name ? p.name.split(' ').pop() : "";
-                if (lastName) {
-                    ctx.font = "bold 8.5px 'Inter', sans-serif";
-                    const textWidth = ctx.measureText(lastName).width;
-                    const pillX = px - textWidth / 2 - 4;
-                    const pillY = py + 11;
-                    const pillW = textWidth + 8;
-                    const pillH = 12;
-
-                    ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
-                    ctx.beginPath();
-                    ctx.roundRect ? ctx.roundRect(pillX, pillY, pillW, pillH, 4) : ctx.rect(pillX, pillY, pillW, pillH);
-                    ctx.fill();
-
-                    ctx.fillStyle = "#f8fafc";
-                    ctx.fillText(lastName, px, py + 17);
-                }
             });
 
-            // 5. Ball zeichnen (3D-Look mit Schatten)
-            const bx = pitchX + (liveMatch.ball.x / 100) * pitchW;
-            const by = pitchY + (liveMatch.ball.y / 100) * pitchH;
+            // 4. Spieler
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            const pulse = 1 + Math.sin(performance.now() * 0.006) * 0.12;
 
-            // Ballschatten
+            liveMatch.players2D.forEach(p => {
+                const px = toX(p.x);
+                const py = toY(p.y);
+                const isActive = liveMatch.activePlayerId === p.id;
+
+                if (isActive) {
+                    ctx.beginPath();
+                    ctx.arc(px, py, radius * 1.55 * pulse, 0, Math.PI * 2);
+                    ctx.strokeStyle = "rgba(250, 204, 21, 0.9)";
+                    ctx.lineWidth = Math.max(1.5, radius * 0.16);
+                    ctx.stroke();
+                }
+
+                ctx.beginPath();
+                ctx.arc(px, py, radius, 0, Math.PI * 2);
+                ctx.fillStyle = p.color || "#3b82f6";
+                ctx.fill();
+
+                // Leichte Aufhellung oben statt eines teuren Verlaufs pro Spieler
+                ctx.beginPath();
+                ctx.arc(px - radius * 0.24, py - radius * 0.28, radius * 0.58, 0, Math.PI * 2);
+                ctx.fillStyle = "rgba(255, 255, 255, 0.16)";
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(px, py, radius, 0, Math.PI * 2);
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+                ctx.lineWidth = Math.max(1, radius * 0.13);
+                ctx.stroke();
+
+                ctx.fillStyle = p.textColor || "#ffffff";
+                ctx.font = numberFont;
+                ctx.fillText(p.number, px, py + radius * 0.05);
+            });
+
+            // 5. Namensschilder nur für die Spieler rund um den Ball - das hält
+            //    das Bild lesbar und spart Zeichenaufwand
+            const ball = liveMatch.ball;
+            const nearBall = liveMatch.players2D
+                .filter(p => liveMatch.activePlayerId === p.id || Math.hypot(p.x - ball.x, p.y - ball.y) < 26)
+                .slice(0, 10);
+
+            nearBall.forEach(p => {
+                const lastName = p.name ? p.name.split(" ").pop() : "";
+                if (!lastName) return;
+
+                const px = toX(p.x);
+                const py = toY(p.y);
+                const textWidth = this.measureCached(ctx, lastName, nameFont);
+                const padX = radius * 0.42;
+                const pillH = radius * 1.12;
+                const pillY = py + radius * 1.1;
+
+                ctx.fillStyle = "rgba(15, 23, 42, 0.82)";
+                ctx.beginPath();
+                if (ctx.roundRect) {
+                    ctx.roundRect(px - textWidth / 2 - padX, pillY, textWidth + padX * 2, pillH, pillH / 2);
+                } else {
+                    ctx.rect(px - textWidth / 2 - padX, pillY, textWidth + padX * 2, pillH);
+                }
+                ctx.fill();
+
+                ctx.fillStyle = "#f1f5f9";
+                ctx.font = nameFont;
+                ctx.fillText(lastName, px, pillY + pillH / 2);
+            });
+
+            // 6. Ball mit Flughöhe (Schatten wandert, Ball wird größer)
+            const bx = toX(ball.x);
+            const by = toY(ball.y);
+            const height = ball.height || 0;
+            const ballR = Math.max(3.5, scale * 0.62) * (1 + height * 0.45);
+
             ctx.beginPath();
-            ctx.ellipse(bx + 2, by + 3.5, 5, 2.5, 0, 0, Math.PI * 2);
-            ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+            ctx.ellipse(bx + ballR * 0.4 + height * scale * 1.2, by + ballR * 0.8 + height * scale * 1.6,
+                ballR * 0.9, ballR * 0.45, 0, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(0, 0, 0, ${0.45 - height * 0.15})`;
             ctx.fill();
 
-            // Ballkugel
             ctx.beginPath();
-            ctx.arc(bx, by, 5.5, 0, Math.PI * 2);
-            const ballGrad = ctx.createRadialGradient(bx - 1.5, by - 1.5, 1, bx, by, 6);
-            ballGrad.addColorStop(0, "#ffffff");
-            ballGrad.addColorStop(0.7, "#f1f5f9");
-            ballGrad.addColorStop(1, "#94a3b8");
-            ctx.fillStyle = ballGrad;
+            ctx.arc(bx, by - height * scale * 1.4, ballR, 0, Math.PI * 2);
+            ctx.fillStyle = "#f8fafc";
             ctx.fill();
-            ctx.strokeStyle = "#0f172a";
-            ctx.lineWidth = 1;
+            ctx.strokeStyle = "rgba(15, 23, 42, 0.75)";
+            ctx.lineWidth = Math.max(1, ballR * 0.22);
             ctx.stroke();
 
-            // 6. Tor-Effekt (Goal Flash & Wasserzeichen)
-            if (liveMatch.goalFlash && liveMatch.goalFlash > 0) {
+            // 7. Torjubel-Effekt inklusive Torschütze
+            if (liveMatch.goalFlash > 0) {
+                const alpha = Math.min(1, liveMatch.goalFlash);
                 ctx.save();
-                ctx.fillStyle = `rgba(250, 204, 21, ${liveMatch.goalFlash * 0.22})`;
+                ctx.fillStyle = `rgba(250, 204, 21, ${alpha * 0.18})`;
                 ctx.fillRect(pitchX, pitchY, pitchW, pitchH);
 
-                ctx.font = "bold 44px 'Inter', sans-serif";
-                ctx.fillStyle = `rgba(255, 255, 255, ${liveMatch.goalFlash * 0.85})`;
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
-                ctx.shadowColor = "rgba(0, 0, 0, 0.6)";
-                ctx.shadowBlur = 12;
-                ctx.fillText("⚽ TOOOOR!", midX, midY);
+                ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
+                ctx.shadowBlur = 16;
+
+                ctx.font = `800 ${Math.round(pitchH * 0.13)}px 'Inter', system-ui, sans-serif`;
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.fillText("TOOOOR!", midX, midY - pitchH * 0.04);
+
+                const scorer = liveMatch.lastScorerName;
+                if (scorer) {
+                    ctx.font = `700 ${Math.round(pitchH * 0.055)}px 'Inter', system-ui, sans-serif`;
+                    ctx.fillStyle = `rgba(250, 204, 21, ${alpha})`;
+                    ctx.fillText(scorer, midX, midY + pitchH * 0.07);
+                }
                 ctx.restore();
             }
         };
 
-        let lastTickTimestamp = performance.now();
+        this.resizeLiveCanvas();
+        let lastFrameTime = performance.now();
 
         const tickLoop = (now) => {
             if (liveMatch.isFinished) {
                 cancelAnimationFrame(this.liveMatchAnimFrame);
+                this.liveMatchAnimFrame = null;
+                if (this.liveResizeHandler) {
+                    window.removeEventListener("resize", this.liveResizeHandler);
+                    this.liveResizeHandler = null;
+                }
                 updateLiveUI();
                 render2DCanvas();
                 this.playSound("whistle");
@@ -3072,22 +3228,30 @@ class UIManager {
                 return;
             }
 
-            if (!lastTickTimestamp) lastTickTimestamp = now;
-            const elapsed = now - lastTickTimestamp;
-            const interval = liveMatch.getTickIntervalMs();
+            // Delta-Zeit begrenzen, damit ein Tabwechsel keinen Sprung verursacht
+            const deltaMs = Math.min(120, now - lastFrameTime);
+            lastFrameTime = now;
 
-            if (!liveMatch.isPaused && elapsed >= interval) {
-                liveMatch.tick();
-                lastTickTimestamp = now;
-                updateLiveUI();
+            const prevScore = liveMatch.homeScore + liveMatch.awayScore;
+
+            liveMatch.advanceRealTime(deltaMs);
+            liveMatch.updateBallAndPlayers(deltaMs);
+
+            if (liveMatch.homeScore + liveMatch.awayScore > prevScore) {
+                this.playSound("goal");
             }
 
-            // Smooth 2D animation on every frame
-            liveMatch.updateBallAndPlayers();
+            updateLiveUI();
             render2DCanvas();
 
             this.liveMatchAnimFrame = requestAnimationFrame(tickLoop);
         };
+
+        // Canvas an Fenstergröße anpassen, solange das Modal offen ist
+        this.liveResizeHandler = () => {
+            if (this.resizeLiveCanvas()) render2DCanvas();
+        };
+        window.addEventListener("resize", this.liveResizeHandler);
 
         this.liveMatchAnimFrame = requestAnimationFrame(tickLoop);
 
@@ -3095,6 +3259,7 @@ class UIManager {
         document.getElementById("btnLmPause").onclick = () => {
             liveMatch.isPaused = !liveMatch.isPaused;
             document.getElementById("btnLmPause").textContent = liveMatch.isPaused ? "▶ Weiter" : "⏸ Pause";
+            lastFrameTime = performance.now();
         };
 
         document.querySelectorAll(".speed-btn").forEach(btn => {
@@ -3103,7 +3268,7 @@ class UIManager {
                 btn.classList.add("active");
                 const speedVal = btn.dataset.speed;
                 liveMatch.speed = isNaN(speedVal) ? speedVal : parseInt(speedVal, 10);
-                lastTickTimestamp = performance.now();
+                lastFrameTime = performance.now();
             };
         });
 

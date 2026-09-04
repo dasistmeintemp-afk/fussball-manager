@@ -574,7 +574,8 @@ class LiveMatchDirector {
         this.match.ball.holderId = receiver.id;
         this.match.activePlayerId = receiver.id;
 
-        if (Math.random() < 0.3) {
+        // Der Kommentarbalken soll auch zwischen den Highlights lebendig bleiben
+        if (Math.random() < 0.55) {
             this.setAmbientCommentary(AMBIENT_COMMENTARY, carrier, receiver);
         }
     }
@@ -598,7 +599,7 @@ class LiveMatchDirector {
         this.match.activePlayerId = winner.id;
         this.setBallTravel(winner.x, winner.y, 0.25, "pass");
 
-        if (Math.random() < 0.45) {
+        if (Math.random() < 0.7) {
             this.setAmbientCommentary(AMBIENT_PRESSURE, winner, carrier);
         }
     }
@@ -837,14 +838,18 @@ class LiveMatchDirector {
     computeTarget(p, ball, pressers) {
         const match = this.match;
 
-        // 1. Torjubel
-        if (this.mode === "celebration" && match.celebratingTeam === p.team) {
-            const cornerX = p.team === "home" ? 88 : 12;
-            return {
-                x: cornerX + (p.seed % 1.4) * 5,
-                y: 14 + (p.seed % 2.2) * 8,
-                urgency: 1.6
-            };
+        // 1. Torjubel: Torschützen zur Eckfahne, das andere Team sortiert sich
+        //    für den Anstoß neu - sonst würden sich alle im eigenen Tor stapeln.
+        if (this.mode === "celebration") {
+            if (match.celebratingTeam === p.team) {
+                const cornerX = p.team === "home" ? 88 : 12;
+                return {
+                    x: cornerX + (p.seed % 1.4) * 5,
+                    y: 14 + (p.seed % 2.2) * 8,
+                    urgency: 1.6
+                };
+            }
+            return { x: p.baseX, y: p.baseY, urgency: 1.2 };
         }
 
         // 2. Feste Rollen während eines Highlights
@@ -902,12 +907,17 @@ class LiveMatchDirector {
         tx += Math.sin(t * 0.9 + p.seed) * 1.3;
         ty += Math.cos(t * 0.75 + p.seed * 1.7) * 1.6;
 
-        // Feldspieler laufen nicht ins eigene Tor
+        // Auch bei einem Ball an der eigenen Grundlinie behält die Mannschaft
+        // ihre Staffelung: Je offensiver die Rolle, desto weiter bleibt der
+        // Spieler vom eigenen Tor entfernt.
         const goalX = this.ownGoalX(p.team);
-        if (dir > 0) tx = Math.max(goalX + 3, Math.min(97, tx));
-        else tx = Math.max(3, Math.min(goalX - 3, tx));
+        const minGap = p.group === "def" ? 3 : (p.group === "mid" ? 11 : 21);
+        const maxGap = 92;
 
-        return { x: tx, y: Math.max(4, Math.min(96, ty)), urgency };
+        if (dir > 0) tx = Math.max(goalX + minGap, Math.min(goalX + maxGap, tx));
+        else tx = Math.max(goalX - maxGap, Math.min(goalX - minGap, tx));
+
+        return { x: Math.max(2, Math.min(98, tx)), y: Math.max(4, Math.min(96, ty)), urgency };
     }
 
     computeKeeperTarget(p, ball) {

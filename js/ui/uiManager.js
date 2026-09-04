@@ -947,18 +947,15 @@ class UIManager {
         const wrapper = canvas?.parentElement;
         if (!canvas || !wrapper) return false;
 
-        const PITCH_RATIO = 105 / 68; // Länge zu Breite eines echten Spielfeldes
+        // Seit es eine Kameraführung gibt, muss der Canvas nicht mehr das
+        // Seitenverhältnis des Spielfelds haben: Er füllt die verfügbare
+        // Fläche, die Kamera entscheidet über den sichtbaren Ausschnitt.
+        // Das vermeidet die breiten leeren Ränder von vorher.
         const available = wrapper.clientWidth - 8;
         if (available <= 0) return false;
 
-        const maxHeight = Math.max(220, wrapper.clientHeight - 74);
-        let cssWidth = Math.min(available, 1100);
-        let cssHeight = cssWidth / PITCH_RATIO;
-
-        if (cssHeight > maxHeight) {
-            cssHeight = maxHeight;
-            cssWidth = cssHeight * PITCH_RATIO;
-        }
+        const cssWidth = Math.min(available, 1400);
+        const cssHeight = Math.max(240, wrapper.clientHeight - 70);
 
         const dpr = Math.min(2.5, (typeof window !== "undefined" && window.devicePixelRatio) || 1);
         const pixelWidth = Math.round(cssWidth * dpr);
@@ -990,11 +987,20 @@ class UIManager {
         canvas.height = height;
         const ctx = canvas.getContext("2d");
 
-        const margin = Math.round(Math.min(width, height) * 0.035);
-        const pitchX = margin;
-        const pitchY = margin;
-        const pitchW = width - margin * 2;
-        const pitchH = height - margin * 2;
+        // Das Spielfeld behält sein echtes Seitenverhältnis (105 x 68 m) und
+        // wird mittig in den Rasen gelegt; ringsum bleibt etwas Umfeld sichtbar.
+        const PITCH_RATIO = 105 / 68;
+        const margin = Math.round(Math.min(width, height) * 0.05);
+
+        let pitchW = width - margin * 2;
+        let pitchH = pitchW / PITCH_RATIO;
+        if (pitchH > height - margin * 2) {
+            pitchH = height - margin * 2;
+            pitchW = pitchH * PITCH_RATIO;
+        }
+
+        const pitchX = Math.round((width - pitchW) / 2);
+        const pitchY = Math.round((height - pitchH) / 2);
         const midX = pitchX + pitchW / 2;
         const midY = pitchY + pitchH / 2;
         const unit = pitchW / 105; // ein Meter in Pixeln
@@ -1094,6 +1100,177 @@ class UIManager {
         });
 
         return { canvas, pitchX, pitchY, pitchW, pitchH, midX, midY, unit };
+    }
+
+    /**
+     * Kleines Übersichtsfeld oben rechts, solange die Kamera herangezoomt ist.
+     * Ohne diese Hilfe verliert man beim Zoomen die Ordnung der Mannschaften.
+     */
+    drawRadar(ctx, canvas, liveMatch, camX, camY, halfW, halfH) {
+        const w = Math.min(190, canvas.width * 0.19);
+        const h = w * 0.62;
+        const x = canvas.width - w - 16;
+        const y = 16;
+
+        ctx.save();
+        ctx.globalAlpha = 0.92;
+
+        // Hintergrund
+        ctx.fillStyle = "rgba(6, 40, 25, 0.88)";
+        ctx.strokeStyle = "rgba(255,255,255,0.35)";
+        ctx.lineWidth = 1;
+        if (ctx.roundRect) {
+            ctx.beginPath();
+            ctx.roundRect(x, y, w, h, 6);
+            ctx.fill();
+            ctx.stroke();
+        } else {
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeRect(x, y, w, h);
+        }
+
+        // Mittellinie, Mittelkreis und Strafräume als Orientierung
+        ctx.strokeStyle = "rgba(255,255,255,0.28)";
+        ctx.beginPath();
+        ctx.moveTo(x + w / 2, y);
+        ctx.lineTo(x + w / 2, y + h);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(x + w / 2, y + h / 2, h * 0.14, 0, Math.PI * 2);
+        ctx.stroke();
+
+        const boxW = w * 0.16;
+        const boxH = h * 0.42;
+        ctx.strokeRect(x, y + (h - boxH) / 2, boxW, boxH);
+        ctx.strokeRect(x + w - boxW, y + (h - boxH) / 2, boxW, boxH);
+
+        const rx = px => x + (px / 100) * w;
+        const ry = py => y + (py / 100) * h;
+
+        // Aktueller Kameraausschnitt
+        ctx.strokeStyle = "rgba(250, 204, 21, 0.75)";
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(rx(camX - halfW), ry(camY - halfH), (halfW * 2 / 100) * w, (halfH * 2 / 100) * h);
+
+        // Spieler als Punkte
+        (liveMatch.players2D || []).forEach(p => {
+            ctx.beginPath();
+            ctx.arc(rx(p.x), ry(p.y), 2.2, 0, Math.PI * 2);
+            ctx.fillStyle = p.pos === "TW"
+                ? (p.team === "home" ? "#facc15" : "#22d3ee")
+                : (p.color || "#3b82f6");
+            ctx.fill();
+        });
+
+        // Ball
+        ctx.beginPath();
+        ctx.arc(rx(liveMatch.ball.x), ry(liveMatch.ball.y), 2, 0, Math.PI * 2);
+        ctx.fillStyle = "#ffffff";
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    /**
+     * Einblendungen wie im Fernsehen: Spielphasen, Standardsituationen,
+     * Torsequenz, Karten und Auswechslungen.
+     */
+    drawBroadcastOverlays(ctx, canvas, liveMatch, bg) {
+        const { pitchH } = bg;
+        const midX = canvas.width / 2;
+        const midY = canvas.height / 2;
+
+        // Torjubel
+        if (liveMatch.goalFlash > 0) {
+            const alpha = Math.min(1, liveMatch.goalFlash);
+            ctx.save();
+            ctx.fillStyle = `rgba(250, 204, 21, ${alpha * 0.16})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
+            ctx.shadowBlur = 16;
+
+            ctx.font = `800 ${Math.round(pitchH * 0.13)}px 'Inter', system-ui, sans-serif`;
+            ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+            ctx.fillText("TOOOOR!", midX, midY - pitchH * 0.05);
+
+            if (liveMatch.lastScorerName) {
+                ctx.font = `700 ${Math.round(pitchH * 0.055)}px 'Inter', system-ui, sans-serif`;
+                ctx.fillStyle = `rgba(250, 204, 21, ${alpha})`;
+                ctx.fillText(liveMatch.lastScorerName, midX, midY + pitchH * 0.055);
+            }
+            if (liveMatch.lastAssistName) {
+                ctx.font = `600 ${Math.round(pitchH * 0.034)}px 'Inter', system-ui, sans-serif`;
+                ctx.fillStyle = `rgba(226, 232, 240, ${alpha * 0.9})`;
+                ctx.fillText(`Vorlage: ${liveMatch.lastAssistName}`, midX, midY + pitchH * 0.11);
+            }
+            ctx.restore();
+        }
+
+        // Banner für Spielphasen und Ereignisse
+        const banner = liveMatch.banner;
+        if (banner && banner.timer > 0) {
+            const fade = Math.min(1, banner.timer * 1.6);
+            const boxH = Math.round(pitchH * 0.115);
+            const boxY = Math.round(canvas.height * 0.13);
+
+            ctx.save();
+            ctx.globalAlpha = fade;
+            ctx.fillStyle = banner.color || "rgba(15, 23, 42, 0.92)";
+            ctx.fillRect(0, boxY, canvas.width, boxH);
+
+            ctx.fillStyle = "#f8fafc";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.font = `800 ${Math.round(boxH * 0.42)}px 'Inter', system-ui, sans-serif`;
+            ctx.fillText(banner.title, canvas.width / 2, boxY + boxH * 0.36);
+
+            if (banner.subtitle) {
+                ctx.font = `600 ${Math.round(boxH * 0.26)}px 'Inter', system-ui, sans-serif`;
+                ctx.fillStyle = "rgba(226, 232, 240, 0.92)";
+                ctx.fillText(banner.subtitle, canvas.width / 2, boxY + boxH * 0.74);
+            }
+            ctx.restore();
+        }
+
+        // Hinweis auf die ruhende Spielsituation
+        const setPiece = liveMatch.setPiece;
+        if (setPiece) {
+            const labels = {
+                throwin: "Einwurf",
+                goalkick: "Abstoß",
+                corner: "Eckball",
+                freekick: "Freistoß"
+            };
+            const club = setPiece.team === "home" ? liveMatch.homeClub?.name : liveMatch.awayClub?.name;
+            const text = `${labels[setPiece.kind] || "Standard"} · ${club || ""}`;
+
+            ctx.save();
+            ctx.font = `700 ${Math.round(pitchH * 0.036)}px 'Inter', system-ui, sans-serif`;
+            const tw = ctx.measureText(text).width;
+            const padX = pitchH * 0.022;
+            const boxH = pitchH * 0.062;
+            const bx = 16;
+            const by = canvas.height - boxH - 16;
+
+            ctx.fillStyle = "rgba(15, 23, 42, 0.86)";
+            if (ctx.roundRect) {
+                ctx.beginPath();
+                ctx.roundRect(bx, by, tw + padX * 2, boxH, boxH / 2);
+                ctx.fill();
+            } else {
+                ctx.fillRect(bx, by, tw + padX * 2, boxH);
+            }
+
+            ctx.fillStyle = "#fbbf24";
+            ctx.textAlign = "left";
+            ctx.textBaseline = "middle";
+            ctx.fillText(text, bx + padX, by + boxH / 2);
+            ctx.restore();
+        }
     }
 
     /**
@@ -3569,21 +3746,93 @@ class UIManager {
             }
         };
 
-        const render2DCanvas = () => {
+        // Kamera: folgt dem Ball und zoomt je nach Spielsituation
+        this.camera = { x: 50, y: 50, zoom: 1.25, targetZoom: 1.25 };
+
+        const updateCamera = (dt) => {
+            const cam = this.camera;
+            const dir = liveMatch.director;
+            const mode = dir?.mode || "ambient";
+            const phase = dir?.scene?.phase;
+
+            // Zoomstufe nach Situation. Im Spielaufbau bleibt die Totale, damit
+            // man die Ordnung beider Mannschaften liest; erst zur Aktion wird
+            // herangefahren - wie in einer Fernsehübertragung.
+            let zoom = 1.06;
+            if (dir?.deadBall) {
+                zoom = dir.deadBall.kind === "corner" ? 1.85 : 1.55;
+            } else if (mode === "celebration") {
+                zoom = 1.45;
+            } else if (mode === "highlight") {
+                zoom = (phase === "action" || phase === "resolve") ? 1.85 : 1.45;
+            }
+            cam.targetZoom = zoom;
+
+            // Blickpunkt: Ball, leicht in Spielrichtung vorgehalten
+            const ball = liveMatch.ball;
+            const lead = (ball.targetX - ball.x) * 0.25;
+            const focusX = ball.x + lead;
+            const focusY = ball.y + (ball.targetY - ball.y) * 0.2;
+
+            const follow = Math.min(1, dt * (mode === "highlight" ? 4.5 : 2.6));
+            cam.x += (focusX - cam.x) * follow;
+            cam.y += (focusY - cam.y) * follow;
+            cam.zoom += (cam.targetZoom - cam.zoom) * Math.min(1, dt * 2.2);
+        };
+
+        const render2DCanvas = (dt = 0.016) => {
             if (!this.pitchBackdrop || this.pitchBackdrop.canvas.width !== canvas.width || this.pitchBackdrop.canvas.height !== canvas.height) {
                 this.pitchBackdrop = this.buildPitchBackdrop(canvas.width, canvas.height);
             }
             const bg = this.pitchBackdrop;
             if (!bg) return;
 
-            const { pitchX, pitchY, pitchW, pitchH, midX, midY } = bg;
-            const scale = pitchW / 105;
+            updateCamera(dt);
 
-            // 1. Vorgerenderter Rasen
+            const { pitchX, pitchY, pitchW, pitchH } = bg;
+            const cam = this.camera;
+
+            const scaleX = (pitchW / 100) * cam.zoom;
+            const scaleY = (pitchH / 100) * cam.zoom;
+
+            // Sichtbarer Ausschnitt in Feldkoordinaten. Weil das Bild breiter
+            // als hoch ist, unterscheiden sich die Halbachsen - ohne diese
+            // Rechnung schob sich der Rasen aus dem Bild.
+            const halfW = (canvas.width / scaleX) / 2;
+            const halfH = (canvas.height / scaleY) / 2;
+
+            // Etwas Rand um das Spielfeld darf sichtbar bleiben
+            const marginX = (pitchX / pitchW) * 100;
+            const marginY = (pitchY / pitchH) * 100;
+
+            const clampAxis = (value, half, margin) => {
+                const min = half - margin;
+                const max = 100 + margin - half;
+                if (min > max) return 50;
+                return Math.max(min, Math.min(max, value));
+            };
+
+            const camX = clampAxis(cam.x, halfW, marginX);
+            const camY = clampAxis(cam.y, halfH, marginY);
+            const originX = canvas.width / 2 - camX * scaleX;
+            const originY = canvas.height / 2 - camY * scaleY;
+
+            const toX = px => originX + px * scaleX;
+            const toY = py => originY + py * scaleY;
+            const unit = pitchW / 105 * cam.zoom; // ein Meter in Bildpunkten
+
+            // 1. Rasen im Kameraausschnitt.
+            //    Ein Punkt (bx) des vorgerenderten Rasens liegt auf dem Bildschirm
+            //    bei originX + (bx - pitchX) * zoom - also eine reine Verschiebung
+            //    plus Skalierung.
+            ctx.fillStyle = "#08301d";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.setTransform(cam.zoom, 0, 0, cam.zoom,
+                originX - pitchX * cam.zoom, originY - pitchY * cam.zoom);
             ctx.drawImage(bg.canvas, 0, 0);
-
-            const toX = px => pitchX + (px / 100) * pitchW;
-            const toY = py => pitchY + (py / 100) * pitchH;
+            ctx.restore();
 
             // 2. Ballschweif
             const trail = liveMatch.ballTrail || [];
@@ -3596,19 +3845,23 @@ class UIManager {
                     ctx.moveTo(toX(trail[i].x), toY(trail[i].y));
                     ctx.lineTo(toX(trail[i + 1].x), toY(trail[i + 1].y));
                     ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
-                    ctx.lineWidth = scale * 0.5;
+                    ctx.lineWidth = unit * 0.45;
                     ctx.stroke();
                 }
                 ctx.lineCap = "butt";
             }
 
-            const radius = Math.max(7, scale * 1.25);
-            const numberFont = `bold ${Math.round(radius * 0.95)}px 'Inter', system-ui, sans-serif`;
-            const nameFont = `600 ${Math.round(radius * 0.82)}px 'Inter', system-ui, sans-serif`;
+            // Spielergröße wächst mit dem Zoom, aber gedämpft
+            const radius = Math.max(6, (pitchW / 105) * 1.3 * (0.5 * cam.zoom + 0.5));
+            const numberFont = `bold ${Math.round(radius * 0.92)}px 'Inter', system-ui, sans-serif`;
+            const nameFont = `600 ${Math.round(radius * 0.78)}px 'Inter', system-ui, sans-serif`;
 
-            // 3. Schatten aller Spieler in einem Durchgang
+            const players = liveMatch.players2D || [];
+            const ball = liveMatch.ball;
+
+            // 3. Schatten
             ctx.fillStyle = "rgba(0, 0, 0, 0.34)";
-            liveMatch.players2D.forEach(p => {
+            players.forEach(p => {
                 ctx.beginPath();
                 ctx.ellipse(toX(p.x) + radius * 0.16, toY(p.y) + radius * 0.34, radius * 0.95, radius * 0.48, 0, 0, Math.PI * 2);
                 ctx.fill();
@@ -3619,10 +3872,26 @@ class UIManager {
             ctx.textBaseline = "middle";
             const pulse = 1 + Math.sin(performance.now() * 0.006) * 0.12;
 
-            liveMatch.players2D.forEach(p => {
+            players.forEach(p => {
                 const px = toX(p.x);
                 const py = toY(p.y);
+                if (px < -60 || px > canvas.width + 60 || py < -60 || py > canvas.height + 60) return;
+
                 const isActive = liveMatch.activePlayerId === p.id;
+                const isKeeper = p.pos === "TW";
+
+                // Sprintanzeige: kurze Bewegungsspur hinter dem Spieler
+                if (p.sprinting && p.speed > 2) {
+                    const back = Math.atan2(p.vy, p.vx) + Math.PI;
+                    ctx.beginPath();
+                    ctx.moveTo(px, py);
+                    ctx.lineTo(px + Math.cos(back) * radius * 1.9, py + Math.sin(back) * radius * 1.9);
+                    ctx.strokeStyle = "rgba(255,255,255,0.22)";
+                    ctx.lineWidth = radius * 0.5;
+                    ctx.lineCap = "round";
+                    ctx.stroke();
+                    ctx.lineCap = "butt";
+                }
 
                 if (isActive) {
                     ctx.beginPath();
@@ -3632,12 +3901,12 @@ class UIManager {
                     ctx.stroke();
                 }
 
+                // Körper
                 ctx.beginPath();
                 ctx.arc(px, py, radius, 0, Math.PI * 2);
-                ctx.fillStyle = p.color || "#3b82f6";
+                ctx.fillStyle = isKeeper ? (p.team === "home" ? "#facc15" : "#22d3ee") : (p.color || "#3b82f6");
                 ctx.fill();
 
-                // Leichte Aufhellung oben statt eines teuren Verlaufs pro Spieler
                 ctx.beginPath();
                 ctx.arc(px - radius * 0.24, py - radius * 0.28, radius * 0.58, 0, Math.PI * 2);
                 ctx.fillStyle = "rgba(255, 255, 255, 0.16)";
@@ -3649,17 +3918,41 @@ class UIManager {
                 ctx.lineWidth = Math.max(1, radius * 0.13);
                 ctx.stroke();
 
-                ctx.fillStyle = p.textColor || "#ffffff";
+                // Blickrichtung als kleiner Keil
+                if (typeof p.facing === "number") {
+                    ctx.beginPath();
+                    ctx.moveTo(px + Math.cos(p.facing) * radius * 1.42, py + Math.sin(p.facing) * radius * 1.42);
+                    ctx.lineTo(px + Math.cos(p.facing + 2.5) * radius * 0.82, py + Math.sin(p.facing + 2.5) * radius * 0.82);
+                    ctx.lineTo(px + Math.cos(p.facing - 2.5) * radius * 0.82, py + Math.sin(p.facing - 2.5) * radius * 0.82);
+                    ctx.closePath();
+                    ctx.fillStyle = "rgba(255,255,255,0.55)";
+                    ctx.fill();
+                }
+
+                ctx.fillStyle = isKeeper ? "#0f172a" : (p.textColor || "#ffffff");
                 ctx.font = numberFont;
                 ctx.fillText(p.number, px, py + radius * 0.05);
+
+                // Erschöpfung: roter Ring, wenn die Kondition deutlich nachlässt
+                if (p.freshness < 0.78) {
+                    ctx.beginPath();
+                    ctx.arc(px, py, radius * 1.24, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - (p.freshness - 0.6) / 0.4));
+                    ctx.strokeStyle = "rgba(248, 113, 113, 0.75)";
+                    ctx.lineWidth = Math.max(1, radius * 0.14);
+                    ctx.stroke();
+                }
             });
 
-            // 5. Namensschilder nur für die Spieler rund um den Ball - das hält
-            //    das Bild lesbar und spart Zeichenaufwand
-            const ball = liveMatch.ball;
-            const nearBall = liveMatch.players2D
-                .filter(p => liveMatch.activePlayerId === p.id || Math.hypot(p.x - ball.x, p.y - ball.y) < 26)
-                .slice(0, 10);
+            // 5. Namensschilder: nur der Ballführende und die nächsten Spieler,
+            //    sonst überlagern sich die Schilder im Getümmel.
+            const nearBall = players
+                .filter(p => liveMatch.activePlayerId === p.id || Math.hypot(p.x - ball.x, p.y - ball.y) < 20)
+                .sort((a, b) => {
+                    if (liveMatch.activePlayerId === a.id) return -1;
+                    if (liveMatch.activePlayerId === b.id) return 1;
+                    return Math.hypot(a.x - ball.x, a.y - ball.y) - Math.hypot(b.x - ball.x, b.y - ball.y);
+                })
+                .slice(0, 5);
 
             nearBall.forEach(p => {
                 const lastName = p.name ? p.name.split(" ").pop() : "";
@@ -3669,8 +3962,8 @@ class UIManager {
                 const py = toY(p.y);
                 const textWidth = this.measureCached(ctx, lastName, nameFont);
                 const padX = radius * 0.42;
-                const pillH = radius * 1.12;
-                const pillY = py + radius * 1.1;
+                const pillH = radius * 1.06;
+                const pillY = py + radius * 1.15;
 
                 ctx.fillStyle = "rgba(15, 23, 42, 0.82)";
                 ctx.beginPath();
@@ -3686,51 +3979,35 @@ class UIManager {
                 ctx.fillText(lastName, px, pillY + pillH / 2);
             });
 
-            // 6. Ball mit Flughöhe (Schatten wandert, Ball wird größer)
+            // 6. Ball mit Flughöhe
             const bx = toX(ball.x);
             const by = toY(ball.y);
             const height = ball.height || 0;
-            const ballR = Math.max(3.5, scale * 0.62) * (1 + height * 0.45);
+            const ballR = Math.max(3, (pitchW / 105) * 0.62 * cam.zoom) * (1 + height * 0.45);
 
             ctx.beginPath();
-            ctx.ellipse(bx + ballR * 0.4 + height * scale * 1.2, by + ballR * 0.8 + height * scale * 1.6,
+            ctx.ellipse(bx + ballR * 0.4 + height * unit * 1.2, by + ballR * 0.8 + height * unit * 1.6,
                 ballR * 0.9, ballR * 0.45, 0, 0, Math.PI * 2);
             ctx.fillStyle = `rgba(0, 0, 0, ${0.45 - height * 0.15})`;
             ctx.fill();
 
             ctx.beginPath();
-            ctx.arc(bx, by - height * scale * 1.4, ballR, 0, Math.PI * 2);
+            ctx.arc(bx, by - height * unit * 1.4, ballR, 0, Math.PI * 2);
             ctx.fillStyle = "#f8fafc";
             ctx.fill();
             ctx.strokeStyle = "rgba(15, 23, 42, 0.75)";
             ctx.lineWidth = Math.max(1, ballR * 0.22);
             ctx.stroke();
 
-            // 7. Torjubel-Effekt inklusive Torschütze
-            if (liveMatch.goalFlash > 0) {
-                const alpha = Math.min(1, liveMatch.goalFlash);
-                ctx.save();
-                ctx.fillStyle = `rgba(250, 204, 21, ${alpha * 0.18})`;
-                ctx.fillRect(pitchX, pitchY, pitchW, pitchH);
-
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-                ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
-                ctx.shadowBlur = 16;
-
-                ctx.font = `800 ${Math.round(pitchH * 0.13)}px 'Inter', system-ui, sans-serif`;
-                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-                ctx.fillText("TOOOOR!", midX, midY - pitchH * 0.04);
-
-                const scorer = liveMatch.lastScorerName;
-                if (scorer) {
-                    ctx.font = `700 ${Math.round(pitchH * 0.055)}px 'Inter', system-ui, sans-serif`;
-                    ctx.fillStyle = `rgba(250, 204, 21, ${alpha})`;
-                    ctx.fillText(scorer, midX, midY + pitchH * 0.07);
-                }
-                ctx.restore();
+            // 7. Übersichtsradar, sobald herangezoomt wird
+            if (cam.zoom > 1.3) {
+                this.drawRadar(ctx, canvas, liveMatch, camX, camY, halfW, halfH);
             }
+
+            // 8. Einblendungen der Regie
+            this.drawBroadcastOverlays(ctx, canvas, liveMatch, bg);
         };
+
 
         this.resizeLiveCanvas();
         let lastFrameTime = performance.now();
@@ -3767,7 +4044,7 @@ class UIManager {
             }
 
             updateLiveUI();
-            render2DCanvas();
+            render2DCanvas(deltaMs / 1000);
 
             this.liveMatchAnimFrame = requestAnimationFrame(tickLoop);
         };

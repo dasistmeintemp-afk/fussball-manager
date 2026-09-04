@@ -1831,6 +1831,8 @@ class LiveMatch {
                 targetX: fieldX,
                 targetY: fieldY,
                 pace: p.pace || p.overall || 70,
+                stamina: p.stamina || 75,
+                freshness: 1,
                 color: this.homeClub.color || "#1d4ed8",
                 textColor: this.homeClub.textColor || "#ffffff"
             });
@@ -1854,6 +1856,8 @@ class LiveMatch {
                 targetX: fieldX,
                 targetY: fieldY,
                 pace: p.pace || p.overall || 70,
+                stamina: p.stamina || 75,
+                freshness: 1,
                 color: this.awayClub.color || "#dc2626",
                 textColor: this.awayClub.textColor || "#ffffff"
             });
@@ -1933,6 +1937,7 @@ class LiveMatch {
             }
             this.goalFlash = 1.0;
             this.lastScorerName = ev.playerName || null;
+            this.lastAssistName = ev.assistName || null;
             this.addEvent("goal", ev.clubId, ev.text);
         } else if (ev.type === "save") {
             if (ev.team === "away") {
@@ -2089,6 +2094,9 @@ class LiveMatch {
             // Der Slot auf dem Feld bleibt bestehen, nur der Spieler wechselt
             p2d.naturalPos = playerIn.pos;
             p2d.pace = playerIn.pace || playerIn.overall || 70;
+            p2d.stamina = playerIn.stamina || 75;
+            // Ein eingewechselter Spieler kommt frisch aufs Feld
+            p2d.freshness = 1;
             if (this.director) this.director.initPlayers();
         }
 

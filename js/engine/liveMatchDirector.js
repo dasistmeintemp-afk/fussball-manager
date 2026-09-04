@@ -38,6 +38,12 @@ const RESOLVE_ON_ARRIVAL = ["goal", "save", "shot_miss"];
 /** Wie stark ein Mannschaftsteil der Ballbewegung über das Feld folgt */
 const LINE_FOLLOW_WEIGHT = { gk: 0.10, def: 0.52, mid: 0.70, att: 0.86 };
 
+/**
+ * Wie stark rückt ein Mannschaftsteil im Ballbesitz mit auf?
+ * Die Kette bleibt zurück, das Mittelfeld schiebt nach, der Angriff geht ganz vor.
+ */
+const GROUP_PUSH = { gk: 0.25, def: 0.85, mid: 1.1, att: 1.5 };
+
 /** Tempo (Feldeinheiten pro Sekunde) je Mannschaftsteil als Basiswert */
 const LINE_BASE_SPEED = { gk: 9, def: 11, mid: 12, att: 12.5 };
 
@@ -162,6 +168,10 @@ class LiveMatchDirector {
             p.baseSpeed = (LINE_BASE_SPEED[p.group] || 11) * (0.86 + ((p.pace || 70) / 100) * 0.32);
             p.followWeight = LINE_FOLLOW_WEIGHT[p.group] || 0.7;
             p.urgency = 1;
+            // Frische: sinkt über die 90 Minuten und bremst den Spieler
+            if (typeof p.freshness !== "number") p.freshness = 1;
+            p.sprinting = false;
+            p.facing = this.attackDir(p.team) > 0 ? 0 : Math.PI;
         });
     }
 
@@ -226,8 +236,11 @@ class LiveMatchDirector {
         if (dt <= 0) return;
 
         this.elapsedReal += dt;
-        this.clock += dt * this.getClockRate();
+        const matchSecondsDelta = dt * this.getClockRate();
+        this.clock += matchSecondsDelta;
 
+        this.drainStamina(matchSecondsDelta);
+        this.updateBanner(dt);
         this.syncMinute();
         this.updatePossessionStats(dt);
         this.step(dt, false);
@@ -257,14 +270,70 @@ class LiveMatchDirector {
         this.match.checkForFinish();
     }
 
+    /**
+     * Kondition über die Spielzeit: Sprints kosten deutlich mehr als Traben,
+     * und ein ausdauernder Spieler hält länger durch. Die Rechnung hängt an
+     * der Spielminute, damit die gewählte Abspielgeschwindigkeit sie nicht
+     * verfälscht.
+     */
+    drainStamina(matchSeconds) {
+        if (!(matchSeconds > 0)) return;
+
+        (this.match.players2D || []).forEach(p => {
+            const stamina = typeof p.stamina === "number" ? p.stamina : 75;
+            const endurance = Math.max(0.35, 1.35 - stamina / 100);
+            const rate = (p.sprinting ? 0.00009 : 0.00003) * endurance;
+            p.freshness = Math.max(0.6, (p.freshness ?? 1) - rate * matchSeconds);
+        });
+    }
+
     syncMinute() {
         const match = this.match;
         const minute = Math.floor(this.clock / 60);
         if (minute !== match.minute) {
+            const previous = match.minute;
             match.minute = minute;
             match.updatePhaseLabel();
+            this.checkPhaseBanners(previous, minute);
         }
         match.seconds = Math.floor(this.clock % 60);
+    }
+
+    /**
+     * Einblendungen zu den Spielphasen, wie man sie aus der Übertragung kennt
+     */
+    checkPhaseBanners(previousMinute, minute) {
+        if (previousMinute < 1 && minute >= 1) {
+            this.showBanner("ANPFIFF", `${this.match.homeClub?.name || "Heim"} – ${this.match.awayClub?.name || "Gast"}`);
+        } else if (previousMinute < 45 && minute >= 45) {
+            const extra = this.match.timeline?.extraTime?.firstHalf;
+            this.showBanner("HALBZEIT", extra ? `+${extra} Minuten Nachspielzeit` : null, "rgba(30, 41, 59, 0.94)");
+        } else if (previousMinute < 46 && minute >= 46) {
+            this.showBanner("ZWEITE HALBZEIT", `${this.match.homeScore} : ${this.match.awayScore}`);
+        } else if (previousMinute < 90 && minute >= 90) {
+            const extra = this.match.timeline?.extraTime?.secondHalf;
+            this.showBanner("NACHSPIELZEIT", extra ? `+${extra} Minuten` : null, "rgba(120, 53, 15, 0.92)");
+        }
+    }
+
+    /**
+     * Zeigt eine Einblendung für ein paar Sekunden
+     */
+    showBanner(title, subtitle = null, color = null) {
+        this.match.banner = {
+            title,
+            subtitle,
+            color: color || "rgba(15, 23, 42, 0.92)",
+            timer: 2.6 * Math.max(0.5, this.getSpeedScale())
+        };
+    }
+
+    /** Zählt die Anzeigedauer der Einblendung herunter */
+    updateBanner(dt) {
+        const banner = this.match.banner;
+        if (!banner) return;
+        banner.timer -= dt;
+        if (banner.timer <= 0) this.match.banner = null;
     }
 
     /**
@@ -345,9 +414,32 @@ class LiveMatchDirector {
         this.clock = Math.max(this.clock, this.eventTime(events[0]));
         this.syncMinute();
 
+        // Der Ballbesitz muss zur Szene passen, sonst behandelt das
+        // Bewegungsmodell die angreifende Mannschaft als verteidigend und
+        // ihre Spieler bleiben tief stehen, statt mit aufzurücken.
+        const attackingTeam = this.attackingTeamOf(events[0]);
+        if (attackingTeam) {
+            this.possessionTeam = attackingTeam;
+            this.possessionChain = 0;
+        }
+
         this.mode = "highlight";
         this.scene = { events, index: 0, phase: null };
         this.beginEventPhase("approach");
+    }
+
+    /**
+     * Welche Mannschaft greift in dieser Szene an?
+     * Bei Paraden und Fouls ist "team" die verteidigende Seite.
+     */
+    attackingTeamOf(ev) {
+        if (!ev || !ev.team) return null;
+        const defensiveEvents = ["save", "foul", "tackle", "yellow_card", "red_card"];
+        if (defensiveEvents.includes(ev.type)) {
+            return ev.team === "home" ? "away" : "home";
+        }
+        if (ev.type === "substitution" || ev.type === "injury") return null;
+        return ev.team;
     }
 
     currentEvent() {
@@ -493,6 +585,27 @@ class LiveMatchDirector {
         ev._resolved = true;
         this.match.processEvent(ev);
         this.applyEventBallState(ev, false);
+        this.bannerForEvent(ev);
+    }
+
+    /**
+     * Passende Einblendung zu einem Spielereignis
+     */
+    bannerForEvent(ev) {
+        const club = ev.team === "home"
+            ? (this.match.homeClub?.name || "Heim")
+            : (this.match.awayClub?.name || "Gast");
+
+        if (ev.type === "yellow_card") {
+            this.showBanner(ev.isSecondYellow ? "🟨🟥 GELB-ROT" : "🟨 GELBE KARTE",
+                `${ev.playerName || "Spieler"} · ${club}`, "rgba(133, 100, 4, 0.94)");
+        } else if (ev.type === "red_card") {
+            this.showBanner("🟥 ROTE KARTE", `${ev.playerName || "Spieler"} · ${club}`, "rgba(127, 29, 29, 0.94)");
+        } else if (ev.type === "substitution") {
+            this.showBanner("🔄 WECHSEL", `${ev.playerInName || "?"} für ${ev.playerOutName || "?"} · ${club}`, "rgba(6, 78, 59, 0.94)");
+        } else if (ev.type === "injury") {
+            this.showBanner("🚑 VERLETZUNG", `${ev.playerName || "Spieler"} · ${club}`, "rgba(127, 29, 29, 0.9)");
+        }
     }
 
     /**
@@ -1106,7 +1219,7 @@ class LiveMatchDirector {
             let dx = (target.x - p.x) * k;
             let dy = (target.y - p.y) * k;
 
-            const maxStep = p.baseSpeed * (target.urgency || 1) * dt;
+            const maxStep = p.baseSpeed * (target.urgency || 1) * (0.62 + p.freshness * 0.38) * dt;
             const stepLen = Math.hypot(dx, dy);
             if (stepLen > maxStep && stepLen > 0) {
                 dx *= maxStep / stepLen;
@@ -1119,6 +1232,20 @@ class LiveMatchDirector {
             p.vy = dt > 0 ? dy / dt : 0;
             p.targetX = target.x;
             p.targetY = target.y;
+
+            // Blickrichtung folgt der Laufrichtung (weich, damit es nicht zuckt)
+            const speed = Math.hypot(p.vx, p.vy);
+            if (speed > 0.6) {
+                const desired = Math.atan2(p.vy, p.vx);
+                let diff = desired - p.facing;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+                p.facing += diff * Math.min(1, dt * 9);
+            }
+            p.speed = speed;
+
+            // Die Kondition sinkt mit der Spielzeit, nicht mit der Echtzeit -
+            // siehe drainStamina()
 
             p.x = Math.max(2, Math.min(98, p.x));
             p.y = Math.max(3, Math.min(97, p.y));
@@ -1182,32 +1309,89 @@ class LiveMatchDirector {
         const attacking = p.team === this.possessionTeam;
         const dir = this.attackDir(p.team);
 
-        // Grundverschiebung: die Mannschaft folgt dem Ball über das Feld
-        const follow = p.followWeight * (attacking ? 1.12 : 0.94);
-        let tx = p.baseX + (ball.x - 50) * follow;
+        // 4. Ruhender Ball: Spieler beziehen ihre Position für die Situation
+        if (this.deadBall) {
+            const setPieceTarget = this.computeSetPieceTarget(p, this.deadBall);
+            if (setPieceTarget) return setPieceTarget;
+        }
+
+        // Wie weit ist der Ball in Angriffsrichtung vorgedrungen? (0..1)
+        const ballProgress = dir > 0 ? ball.x / 100 : 1 - ball.x / 100;
+
+        let tx;
         let ty = p.baseY + (ball.y - 50) * 0.42;
 
-        // Angreifend breiter, verteidigend kompakter
         if (attacking) {
-            ty += (p.baseY - 50) * 0.12;
-            tx += dir * 2.5;
+            // Die angreifende Mannschaft rückt als Block mit dem Ball auf.
+            // Ohne dieses Aufrücken blieb die Abwehrkette in der eigenen Hälfte
+            // stehen, während der Ball vorne war - das Bild wirkte leer.
+            const push = Math.max(0, ballProgress - 0.35) * 55;
+            const groupPush = GROUP_PUSH[p.group] ?? 1.0;
+            tx = p.baseX + dir * push * groupPush + dir * 2.5;
+
+            // Im Angriff wird das Feld breit gemacht
+            ty += (p.baseY - 50) * 0.14;
         } else {
+            // Verteidigend kompakt und ballnah verschoben
+            const follow = p.followWeight * 0.94;
+            tx = p.baseX + (ball.x - 50) * follow - dir * 2.0;
             ty -= (p.baseY - 50) * 0.16;
-            tx -= dir * 2.0;
         }
 
         let urgency = 1;
+        let sprinting = false;
+
+        // Die Abwehrkette hält eine gemeinsame Linie, statt dass jeder
+        // Verteidiger einzeln dem Ball hinterherläuft.
+        if (!attacking && p.group === "def") {
+            const line = this.getDefensiveLineX(p.team, ball);
+            tx = line + (p.baseX - this.getTeamLineBase(p.team)) * 0.35;
+        }
+
+        // Außenverteidiger hinterlaufen, wenn der Ball auf ihrer Seite
+        // in der gegnerischen Hälfte ist.
+        if (attacking && (p.pos === "LV" || p.pos === "RV")) {
+            const onHisSide = Math.abs(ball.y - p.baseY) < 30;
+            const inFinalThird = dir > 0 ? ball.x > 58 : ball.x < 42;
+            if (onHisSide && inFinalThird) {
+                tx += dir * 16;
+                ty += (p.baseY < 50 ? -6 : 6);
+                urgency = 1.45;
+                sprinting = true;
+            }
+        }
+
+        // Stürmer starten in die Tiefe, sobald der Ball im Mittelfeld
+        // aufgerückt ist - der Tiefenlauf ist der Kern jedes Angriffs.
+        if (attacking && p.group === "att") {
+            const advanced = dir > 0 ? ball.x > 45 : ball.x < 55;
+            if (advanced) {
+                tx += dir * 9;
+                urgency = 1.3;
+                sprinting = true;
+            }
+        }
 
         // Pressing des Ballführenden
         if (pressers.has(p.id)) {
             const back = dir * -2.5;
             tx = ball.x + back;
             ty = ball.y + (p.seed % 1) * 3 - 1.5;
-            urgency = 1.75;
+            urgency = 1.85;
+            sprinting = true;
+        } else if (!attacking && p.group !== "def") {
+            // Deckungsschatten: Mittelfeld und Angriff stellen die
+            // nächstgelegene Anspielstation zu
+            const mark = this.findMarkingTarget(p);
+            if (mark) {
+                tx = mark.x - dir * 3.5;
+                ty = mark.y + (p.seed % 1) * 2 - 1;
+                urgency = 1.2;
+            }
         } else {
             const dist = Math.hypot(p.x - ball.x, p.y - ball.y);
             if (dist < 26) {
-                // Ballnahe Spieler rücken zusammen bzw. bieten sich an
+                // Ballnahe Spieler bieten sich an
                 const pull = (attacking ? 0.26 : 0.44) * (1 - dist / 26);
                 tx += (ball.x - tx) * pull;
                 ty += (ball.y - ty) * pull;
@@ -1219,7 +1403,8 @@ class LiveMatchDirector {
         if (this.mode === "ambient" && p.id === this.carrierId) {
             tx = ball.x + dir * 1.2;
             ty = ball.y;
-            urgency = 1.35;
+            urgency = 1.4;
+            sprinting = true;
         }
 
         // Leichte Eigenbewegung, damit nichts starr wirkt
@@ -1237,7 +1422,108 @@ class LiveMatchDirector {
         if (dir > 0) tx = Math.max(goalX + minGap, Math.min(goalX + maxGap, tx));
         else tx = Math.max(goalX - maxGap, Math.min(goalX - minGap, tx));
 
+        p.sprinting = sprinting;
+
         return { x: Math.max(2, Math.min(98, tx)), y: Math.max(4, Math.min(96, ty)), urgency };
+    }
+
+    /**
+     * Höhe der Abwehrkette: folgt dem Ball, bleibt aber innerhalb sinnvoller
+     * Grenzen und richtet sich nach der eingestellten Abwehrlinie.
+     */
+    getDefensiveLineX(team, ball) {
+        const dir = this.attackDir(team);
+        const goalX = this.ownGoalX(team);
+        const tactics = (team === "home" ? this.match.homeClub?.tactics : this.match.awayClub?.tactics) || {};
+
+        let depth = 30;
+        if (tactics.defensiveLine === "high") depth = 42;
+        else if (tactics.defensiveLine === "deep") depth = 20;
+
+        // Die Kette rückt mit dem Ball auf, hält aber Abstand zum eigenen Tor
+        const ballAdvance = dir > 0 ? ball.x : 100 - ball.x;
+        const line = Math.max(10, Math.min(depth + 18, ballAdvance - 12));
+
+        return dir > 0 ? goalX + line : goalX - line;
+    }
+
+    /** Mittlere Grundposition der Mannschaft entlang des Feldes */
+    getTeamLineBase(team) {
+        if (!this._teamLineBase) this._teamLineBase = {};
+        if (this._teamLineBase[team] === undefined) {
+            const defenders = this.teamPlayers(team).filter(p => p.group === "def");
+            const list = defenders.length > 0 ? defenders : this.teamPlayers(team);
+            this._teamLineBase[team] = list.reduce((s, p) => s + p.baseX, 0) / (list.length || 1);
+        }
+        return this._teamLineBase[team];
+    }
+
+    /**
+     * Sucht den nächstgelegenen Gegenspieler, den dieser Spieler zustellt
+     */
+    findMarkingTarget(player) {
+        const opponents = this.teamPlayers(player.team === "home" ? "away" : "home")
+            .filter(o => o.pos !== "TW" && o.id !== this.carrierId);
+
+        let best = null;
+        let bestDist = 26;
+        opponents.forEach(o => {
+            const d = Math.hypot(o.x - player.x, o.y - player.y);
+            if (d < bestDist) { bestDist = d; best = o; }
+        });
+        return best;
+    }
+
+    /**
+     * Aufstellung bei ruhendem Ball: Einwurf, Abstoß, Ecke oder Freistoß
+     */
+    computeSetPieceTarget(p, info) {
+        const dir = this.attackDir(info.team);
+        const isTaker = p.id === this.carrierId;
+
+        if (isTaker) {
+            // Der Ausführende stellt sich an den Ball
+            return { x: info.x - dir * 1.5, y: info.y, urgency: 1.7 };
+        }
+
+        if (p.pos === "TW") return this.computeKeeperTarget(p, this.match.ball);
+
+        const attacking = p.team === info.team;
+
+        if (info.kind === "corner") {
+            // Beide Mannschaften versammeln sich im Strafraum
+            const boxX = info.x + dir * (attacking ? 10 : 7);
+            const spread = (p.seed % 3) - 1;
+            return {
+                x: boxX + spread * 3,
+                y: 42 + (p.seed % 5) * 4,
+                urgency: 1.4
+            };
+        }
+
+        if (info.kind === "goalkick") {
+            if (attacking) {
+                // Die eigene Mannschaft bietet sich breit an
+                return { x: p.baseX + dir * 4, y: p.baseY + (p.baseY < 50 ? -5 : 5), urgency: 1.1 };
+            }
+            // Der Gegner schiebt auf und erwartet den langen Ball
+            return { x: p.baseX - dir * 6, y: p.baseY, urgency: 1.1 };
+        }
+
+        if (info.kind === "throwin") {
+            // Nahe Spieler bieten sich an, der Rest hält die Ordnung
+            const dist = Math.hypot(p.x - info.x, p.y - info.y);
+            if (dist < 28) {
+                const offset = attacking ? 8 : 5;
+                return {
+                    x: info.x + dir * (p.seed % 2 === 0 ? offset : -offset * 0.6),
+                    y: info.y + (info.y < 50 ? 1 : -1) * (6 + (p.seed % 4) * 4),
+                    urgency: 1.25
+                };
+            }
+        }
+
+        return null;
     }
 
     computeKeeperTarget(p, ball) {
@@ -1259,7 +1545,7 @@ class LiveMatchDirector {
      * Verhindert, dass Spieler exakt übereinander stehen
      */
     separatePlayers(players, dt) {
-        const MIN_DIST = 3.4;
+        const MIN_DIST = 4.2;
         for (let i = 0; i < players.length; i++) {
             for (let j = i + 1; j < players.length; j++) {
                 const a = players[i];

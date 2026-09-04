@@ -181,6 +181,17 @@ function runWizardTests() {
                 throw new Error(`Script ${srcPath} fehlt im Service-Worker-Cache`);
             }
         });
+
+        // Umgekehrt: Jede Engine muss auch tatsächlich eingebunden sein.
+        // Fehlt ein Script, greifen im Browser stillschweigend die
+        // Rückfallpfade - im Node-Test fällt das nicht auf, weil dort
+        // require() verwendet wird.
+        const engineFiles = fs.readdirSync('./js/engine').filter(f => f.endsWith('.js'));
+        engineFiles.forEach(file => {
+            if (!html.includes(`js/engine/${file}`)) {
+                throw new Error(`Engine ${file} ist in index.html nicht eingebunden`);
+            }
+        });
     });
 
     // 3b. CSS-Regressionen: Badges und Rasterbreiten

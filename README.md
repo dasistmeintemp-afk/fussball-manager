@@ -81,13 +81,22 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 ### 3. 🎮 2D-Live-Match-Engine & Sofort-Simulation
 - **Echtzeit-Regie (`LiveMatchDirector`):** Die Spieluhr läuft kontinuierlich statt in Minutensprüngen. Während eines Highlights läuft sie langsam, dazwischen holt sie auf – so passen Minute, Kommentar und Bild jederzeit zusammen.
 - **Feld und Spielbericht Hand in Hand:** Jede Szene wird inszeniert (Anlauf zum Ausgangspunkt, Aktion, Auflösung). Aufbau-Kommentare erscheinen, während der Ball läuft; Torschuss, Parade und Fehlschuss werden exakt beim Eintreffen des Balls gemeldet.
-- **Lebendige Ruhephasen:** Zwischen den Highlights zirkuliert der Ball über echte Spieler des Teams in Ballbesitz – mit Aufbau- und Pressing-Kommentar, Ballverlusten und wechselndem Ballbesitz.
-- **Rollenabhängige Laufwege:** Abwehrkette, Mittelfeld und Angriff verschieben unterschiedlich stark, ballnahe Spieler pressen, der Ballführende dribbelt, Torhüter bleiben an ihrem Tor. Spieler stehen nie übereinander.
+- **Echtes Ballbesitzspiel (`MatchFlowEngine`):** Zwischen den Highlights wird nicht zufällig gepasst, sondern gespielt. Die Engine bewertet den Druck auf den Ballführenden, projiziert Gegner auf die Passwege, misst den Freiraum der Anspielstationen und wählt daraus die Option: kurzer Pass, Verlagerung, langer Ball, Dribbling oder Befreiungsschlag. Der Ausgang folgt den Attributen – Passgenauigkeit aus Passen, Übersicht und Technik gegen Druck und zugestellte Wege; Dribblings aus Dribbling und Tempo gegen die Defensivwerte des Gegenspielers.
+- **Ballverluste haben Folgen:** Fehlpässe werden abgefangen, liegen frei oder gehen ins Aus. Über ein komplettes Spiel entstehen so rund 120 Spielaktionen mit realistischer Passquote und rund 19 Standardsituationen.
+- **Standardsituationen:** Seitenaus führt zum Einwurf, Toraus zum Abstoß – jeweils mit Ausführendem, Schiedsrichterpfiff, kurzer Ruhephase und passender Aufstellung beider Mannschaften. Der Abstoß wird kurz aufgebaut oder lang geschlagen, je nach eingestelltem Passspiel.
+- **Mannschaftsblöcke statt Punktehaufen:** Die angreifende Mannschaft rückt gestaffelt mit dem Ball auf, die verteidigende hält eine gemeinsame Abwehrlinie nach eingestellter Abwehrhöhe. Außenverteidiger hinterlaufen auf ihrer Seite, Stürmer starten in die Tiefe, Mittelfeld und Angriff stellen beim Verteidigen Gegenspieler zu.
+- **Taktik ist sichtbar:** Direktes Passspiel erzeugt messbar längere Pässe als Kurzpassspiel, der Angriffsfokus verschiebt das Spiel auf die gewählte Seite, und eine sehr offensive Mannschaft spielt 80 % ihrer Pässe nach vorne (bei niedrigerer Erfolgsquote) gegenüber 40 % bei sehr defensiver Ausrichtung.
+- **Kameraführung wie im Fernsehen:** Die Kamera folgt dem Ball mit Vorhalt und zoomt nach Situation – Totale im Spielaufbau, näher bei Highlights, eng bei Standardsituationen. Ein Übersichtsradar blendet sich ein, sobald herangezoomt wird.
+- **Spieler mit Physis:** Blickrichtung, Sprintspur, abgesetzte Torwarttrikots und eine Kondition, die über die Spielminuten sinkt (unabhängig von der gewählten Abspielgeschwindigkeit) und das Tempo drückt. Eingewechselte Spieler kommen frisch aufs Feld.
+- **Einblendungen:** Anpfiff, Halbzeit, Nachspielzeit, Abpfiff, Karten, Auswechslungen, Verletzungen sowie eine Torsequenz mit Schütze und Vorlagengeber.
+- **Stadionatmosphäre:** Ein Publikumsteppich, dessen Pegel sich nach der Spielsituation richtet, Schiedsrichterpfiff bei Fouls und Standards, Raunen bei vergebenen Chancen.
 - **Flüssige Darstellung mit 60 Bildern pro Sekunde:** Delta-Zeit-basierte Bewegung, Mindestflugzeit für den Ball (keine Sprünge), Ballflughöhe mit wanderndem Schatten und Bewegungsschweif.
 - **Optimiertes Canvas-Rendering:** DPR-korrekte Auflösung, einmalig vorgerenderter Rasen, Spielfeldmaße in echten Metern, zwischengespeicherte Textbreiten und ein inkrementell aktualisierter Ticker.
 - **Live-Ticker auf Deutsch:** Farbcodierter Spielbericht für Tore, Karten, Auswechslungen und Glanzparaden.
 - **Echtzeit-Statistiken:** Ballbesitz %, Schüsse, Schüsse aufs Tor, Fouls, Ecken und Expected Goals (xG).
 - **In-Game Coaching:** Live-Taktikanpassungen und bis zu 5 Auswechslungen während des Spiels.
+
+> **Warum Ecken weiterhin nur aus der Timeline kommen:** Alle zählbaren Ereignisse (Tore, Schüsse, Karten, Fouls, Ecken) stammen ausschließlich aus der vorab erzeugten Timeline. Nur so zeigt eine sofort berechnete Partie exakt dieselben Zahlen wie eine im 2D-Modus verfolgte. Der Spielfluss erzeugt deshalb nur Einwürfe und Abstöße – Ereignisse, die in keiner Statistik auftauchen.
 
 ### 4. 🔄 Transfersystem, Scouting & Verträge
 - **Transfermarkt mit Suchfiltern:** Nach Position, Stärke, Potenzial und Preisklasse filtern.
@@ -153,6 +162,7 @@ untitled/
 │   │   ├── gameState.js        # Zentraler Zustand & Liga-Generator
 │   │   ├── matchEngine.js      # Timeline-basierte Spielberechnung & synchrone 2D-Live-Canvas-Engine
 │   │   ├── liveMatchDirector.js# Echtzeit-Regie der 2D-Simulation: Highlights, Ballführung, Laufwege
+│   │   ├── matchFlowEngine.js  # Ballbesitz-Mikrosimulation: Druck, Passwege, Dribblings, Zweikämpfe
 │   │   ├── positionEngine.js   # Positionsprofile, Eignungsmodell, Zonen- & Formationserkennung
 │   │   ├── seasonEngine.js     # Spieltagsfortschritt & Saisonabschluss
 │   │   ├── competitionEngine.js# Ligen, Pokalrunden, Europapokal & Auf-/Abstieg

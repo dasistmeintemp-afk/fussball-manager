@@ -215,6 +215,102 @@ class PlayerRatingEngine {
     }
 
     /**
+     * Deterministische Pseudo-Zufallszahl aus Spieler-ID und Merkmalsname.
+     * Dadurch bleibt eine Schätzung über alle Neuzeichnungen hinweg gleich -
+     * die Werte flackern nicht bei jedem Rendern.
+     */
+    static seededOffset(playerId, key) {
+        const text = `${playerId}|${key}`;
+        let hash = 2166136261;
+        for (let i = 0; i < text.length; i++) {
+            hash ^= text.charCodeAt(i);
+            hash = Math.imul(hash, 16777619);
+        }
+        // Ergebnis im Bereich -1 .. +1
+        return (((hash >>> 0) % 2001) - 1000) / 1000;
+    }
+
+    /**
+     * Rendert eine Sternebewertung als HTML.
+     * Bei unsicherer Einschätzung wird eine Spanne dargestellt: sichere Sterne
+     * voll, mögliche Sterne blass - je besser gescoutet, desto schmaler.
+     */
+    static renderStarRange(minStars, maxStars, options = {}) {
+        const min = Math.max(0, Math.min(5, minStars || 0));
+        const max = Math.max(min, Math.min(5, maxStars ?? min));
+        const color = options.color || "#f59e0b";
+
+        const solid = Math.floor(min);
+        const hasHalf = (min - solid) >= 0.5;
+        const upper = Math.ceil(max);
+
+        let html = `<span class="star-rating" style="color:${color};">`;
+        html += "★".repeat(solid);
+        if (hasHalf) html += "½";
+
+        // Mögliche, aber noch nicht bestätigte Sterne
+        const uncertain = Math.max(0, upper - solid - (hasHalf ? 1 : 0));
+        if (uncertain > 0) {
+            html += `<span class="star-uncertain">${"★".repeat(uncertain)}</span>`;
+        }
+
+        const empty = 5 - solid - (hasHalf ? 1 : 0) - uncertain;
+        if (empty > 0) html += `<span class="star-empty">${"☆".repeat(empty)}</span>`;
+
+        html += "</span>";
+        return html;
+    }
+
+    /**
+     * Macht einen Attributwert entsprechend dem Scoutwissen unscharf.
+     * Bei voller Kenntnis wird der exakte Wert geliefert, sonst eine Spanne,
+     * deren Breite mit sinkendem Wissen zunimmt.
+     */
+    static getVisibleAttribute(player, attrName, confidence) {
+        const raw = (typeof player?.[attrName] === "number") ? player[attrName] : null;
+        if (raw === null) {
+            return { known: false, exact: null, min: null, max: null, text: "?", spread: 0 };
+        }
+
+        const conf = Math.max(0, Math.min(100, confidence ?? 25));
+        if (conf >= 88) {
+            return { known: true, exact: raw, min: raw, max: raw, text: String(raw), spread: 0 };
+        }
+
+        // Spanne: bei 25 % Wissen rund +/- 8 Punkte, bei 80 % nur noch +/- 2
+        const spread = Math.max(1, Math.round((100 - conf) * 0.11));
+        const bias = Math.round(PlayerRatingEngine.seededOffset(player.id, attrName) * spread * 0.5);
+
+        const min = Math.max(1, Math.min(99, raw - spread + bias));
+        const max = Math.max(min + 1, Math.min(99, raw + spread + bias));
+
+        return { known: false, exact: null, min, max, text: `${min}–${max}`, spread };
+    }
+
+    /**
+     * Liefert alle sichtbaren Attribute eines Spielers samt Genauigkeitsstufe
+     */
+    static getVisibleAttributes(player, confidence, attrNames = []) {
+        const result = {};
+        attrNames.forEach(name => {
+            result[name] = PlayerRatingEngine.getVisibleAttribute(player, name, confidence);
+        });
+        return result;
+    }
+
+    /**
+     * Beschreibt, wie belastbar die angezeigten Werte sind
+     */
+    static getConfidenceDescriptor(confidence) {
+        const conf = Math.max(0, Math.min(100, confidence ?? 25));
+        if (conf >= 88) return { key: "exact", label: "Vollständig bekannt", color: "#22c55e", hint: "Alle Werte sind gesichert." };
+        if (conf >= 70) return { key: "good", label: "Gut gescoutet", color: "#4ade80", hint: "Die Werte sind weitgehend belastbar." };
+        if (conf >= 50) return { key: "partial", label: "Teilweise gescoutet", color: "#facc15", hint: "Grobe Einschätzung – weitere Berichte schärfen das Bild." };
+        if (conf >= 30) return { key: "vague", label: "Grobe Einschätzung", color: "#fb923c", hint: "Nur Beobachtungen aus der Ferne. Bitte scouten." };
+        return { key: "unknown", label: "Kaum bekannt", color: "#ef4444", hint: "Über diesen Spieler ist fast nichts bekannt. Scout entsenden!" };
+    }
+
+    /**
      * Erzeugt verbale Qualitätslabels für die aktuelle Stärke
      */
     static getAbilityLabel(ability, leagueContext = {}) {
@@ -304,19 +400,28 @@ class PlayerRatingEngine {
         }
         confidence = Math.max(10, Math.min(100, confidence));
 
+        // Ab dieser Schwelle gilt ein Spieler als vollständig durchleuchtet:
+        // dann werden überall exakte Werte statt Spannen gezeigt.
+        const PRECISE_THRESHOLD = 85;
+        const isPrecise = isUserPlayer || confidence >= PRECISE_THRESHOLD;
+
         // Spannen-Größe abhängig von Konfidenz (Confidence 100% -> Spanne 0; Confidence 20% -> Spanne ~30 CA)
-        const caSpread = Math.round((100 - confidence) * 0.35);
-        const paSpread = Math.round((100 - confidence) * 0.45);
+        const caSpread = isPrecise ? 0 : Math.round((100 - confidence) * 0.35);
+        const paSpread = isPrecise ? 0 : Math.round((100 - confidence) * 0.45);
 
-        // Pseudozufällige Verschiebung anhand von Player-ID (deterministisch)
-        const hash = String(player.id || "0").split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
-        const bias = ((hash % 7) - 3) * ((100 - confidence) / 100);
+        // Deterministische Verschiebung der Schätzung: Bei wenig Scoutwissen
+        // liegt nicht nur die Spanne weit auseinander, auch ihre Mitte kann
+        // daneben liegen. Genau das macht Scouten überhaupt lohnend.
+        // Die Verschiebung bleibt kleiner als die Spanne, der wahre Wert liegt
+        // also immer noch innerhalb der angezeigten Grenzen.
+        const caBias = Math.round(PlayerRatingEngine.seededOffset(player.id, "ca") * caSpread * 0.45);
+        const paBias = Math.round(PlayerRatingEngine.seededOffset(player.id, "pa") * paSpread * 0.45);
 
-        const estCaMin = Math.max(20, Math.round(trueCa - caSpread + bias));
-        const estCaMax = Math.min(200, Math.max(estCaMin + 2, Math.round(trueCa + caSpread + bias)));
+        const estCaMin = Math.max(20, Math.round(trueCa - caSpread + caBias));
+        const estCaMax = Math.min(200, Math.max(estCaMin, Math.round(trueCa + caSpread + caBias)));
 
-        const estPaMin = Math.max(estCaMin, Math.round(truePa - paSpread + bias));
-        const estPaMax = Math.min(200, Math.max(estPaMin + 2, Math.round(truePa + paSpread + bias)));
+        const estPaMin = Math.max(estCaMin, Math.round(truePa - paSpread + paBias));
+        const estPaMax = Math.min(200, Math.max(estPaMin, Math.round(truePa + paSpread + paBias)));
 
         // OVR Spannen zur Darstellung
         const ovrMin = PlayerRatingEngine.abilityToOverall(estCaMin);
@@ -329,19 +434,33 @@ class PlayerRatingEngine {
         const valMin = Math.round(trueVal * (1 - valFactor));
         const valMax = Math.round(trueVal * (1 + valFactor));
 
-        // Relative Sternebewertung (zum User-Kader)
+        // Relative Sternebewertung (zum User-Kader).
+        // Wichtig: Die Sterne folgen der GESCHÄTZTEN Stärke, nicht der wahren.
+        // Sonst würde ein völlig unbekannter Spieler seine echte Qualität
+        // verraten, obwohl daneben "21 % Scout-Wissen" steht.
         const refContext = {
             squadAverageAbility: context.userSquadAvgAbility || 140
         };
-        const starsCa = PlayerRatingEngine.calculateStarRating(trueCa, refContext);
-        const starsPa = PlayerRatingEngine.calculateStarRating(truePa, refContext);
 
-        // Rollenanalyse
+        const starsCaMin = PlayerRatingEngine.calculateStarRating(estCaMin, refContext);
+        const starsCaMax = PlayerRatingEngine.calculateStarRating(estCaMax, refContext);
+        const starsPaMin = PlayerRatingEngine.calculateStarRating(estPaMin, refContext);
+        const starsPaMax = PlayerRatingEngine.calculateStarRating(estPaMax, refContext);
+
+        // Für Sortierungen und Vergleiche wird die Mitte der Spanne verwendet
+        const starsCa = Math.round(((starsCaMin + starsCaMax) / 2) * 2) / 2;
+        const starsPa = Math.round(((starsPaMin + starsPaMax) / 2) * 2) / 2;
+
+        // Rollenanalyse: Die Rollenbezeichnung ergibt sich aus der öffentlich
+        // sichtbaren Position, die Bewertung darin bleibt eine Schätzung.
         const roleData = PlayerRatingEngine.getBestRolesForPlayer(player, refContext);
 
-        // Label
-        const abilityLabel = PlayerRatingEngine.getAbilityLabel(trueCa, context);
+        // Label aus der geschätzten Mitte, bei Unsicherheit als Näherung markiert
+        const estCaMid = Math.round((estCaMin + estCaMax) / 2);
+        const rawAbilityLabel = PlayerRatingEngine.getAbilityLabel(estCaMid, context);
+        const abilityLabel = isPrecise || confidence >= 70 ? rawAbilityLabel : `ca. ${rawAbilityLabel}`;
         const potentialLabel = PlayerRatingEngine.getPotentialLabel(player);
+        const confidenceInfo = PlayerRatingEngine.getConfidenceDescriptor(confidence);
 
         // Hidden attributes Text-Highlights
         const hiddenTraits = PlayerRatingEngine.getHiddenTraitDescriptions(player, { knowledgeLevel: confidence });
@@ -351,15 +470,21 @@ class PlayerRatingEngine {
             confidence,
             estimatedCa: { min: estCaMin, max: estCaMax },
             estimatedPa: { min: estPaMin, max: estPaMax },
-            visibleOvr: (isUserPlayer || confidence >= 85) ? player.overall : `${ovrMin} - ${ovrMax}`,
-            visiblePot: (isUserPlayer && player.age >= 26) ? player.pot : `${potMin} - ${potMax}`,
-            visibleValueText: (isUserPlayer || confidence >= 80)
+            isPrecise,
+            visibleOvr: isPrecise ? player.overall : `${ovrMin} - ${ovrMax}`,
+            visiblePot: (isPrecise && player.age >= 26) ? player.pot : `${potMin} - ${potMax}`,
+            visibleValueText: isPrecise
                 ? (typeof Formatters !== 'undefined' ? Formatters.formatMoney(trueVal) : `${(trueVal / 1e6).toFixed(1)} Mio. €`)
                 : `${(valMin / 1e6).toFixed(1)} - ${(valMax / 1e6).toFixed(1)} Mio. €`,
             starsCa,
             starsPa,
-            starsCaHtml: "★".repeat(Math.floor(starsCa)) + (starsCa % 1 !== 0 ? "½" : "") + "☆".repeat(5 - Math.ceil(starsCa)),
-            starsPaHtml: "★".repeat(Math.floor(starsPa)) + (starsPa % 1 !== 0 ? "½" : "") + "☆".repeat(5 - Math.ceil(starsPa)),
+            starsCaMin,
+            starsCaMax,
+            starsPaMin,
+            starsPaMax,
+            starsCaHtml: PlayerRatingEngine.renderStarRange(starsCaMin, starsCaMax, { color: "#f59e0b" }),
+            starsPaHtml: PlayerRatingEngine.renderStarRange(starsPaMin, starsPaMax, { color: "#38bdf8" }),
+            confidenceInfo,
             bestRole: roleData.best,
             alternativeRole: roleData.alternative,
             allRoles: roleData.all,

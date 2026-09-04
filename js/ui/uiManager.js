@@ -2260,27 +2260,31 @@ class UIManager {
                 const abilityText = card ? card.abilityLabel : "Unbekannt";
                 const valDisplay = card ? card.visibleValueText : this.formatMoneySafe(p.value);
                 const confPercent = card ? card.confidence : (p.scoutingKnowledge?.knowledgeLevel || 30);
-                const confBadgeClass = confPercent >= 70 ? "badge-success" : confPercent >= 40 ? "badge-warning" : "badge-neutral";
+                const confBadgeClass = confPercent >= 70 ? "badge-success" : confPercent >= 40 ? "badge-warning" : "badge-danger";
+
+                const confInfo = card?.confidenceInfo || { label: "Unbekannt", color: "#94a3b8", hint: "" };
+                // Bei geringem Wissen ist auch die Marktwertschätzung nur eine Näherung
+                const valueClass = card && !card.isPrecise ? "estimated-value" : "";
 
                 return `
-                    <tr>
+                    <tr class="row-clickable" data-player-id="${p.id}" title="Details zu ${this.escapeHtml(p.name)} anzeigen">
                         <td>
-                            <strong>${p.name}</strong>
-                            <div style="font-size:10px; color:var(--text-muted);">${p.nationality || 'Profi'}</div>
+                            <strong>${this.escapeHtml(p.name)}</strong>
+                            <div style="font-size:10px; color:var(--text-muted);">${this.escapeHtml(p.nationality || 'Profi')}</div>
                         </td>
-                        <td>${club ? club.name : 'Vereinslos'}</td>
+                        <td>${club ? this.escapeHtml(club.name) : 'Vereinslos'}</td>
                         <td><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span></td>
                         <td>${p.age}</td>
                         <td>
-                            <span title="${abilityText}" style="color:#f59e0b; font-size:13px; font-weight:600;">${starsDisplay}</span>
+                            <span title="${abilityText}">${starsDisplay}</span>
                             <div style="font-size:10px; color:var(--text-muted);">${abilityText}</div>
                         </td>
                         <td>
-                            <span title="Potenzial: ${card?.potentialLabel || ''}" style="color:#38bdf8; font-size:12px;">${potStarsDisplay}</span>
+                            <span title="Potenzial: ${card?.potentialLabel || ''}">${potStarsDisplay}</span>
                         </td>
-                        <td><span class="badge badge-neutral" style="font-size:11px; color:var(--accent-primary); border:1px solid rgba(56,189,248,0.3);">${roleDisplay}</span></td>
-                        <td><strong>${valDisplay}</strong></td>
-                        <td><span class="badge ${confBadgeClass}" style="font-size:11px;">${confPercent}%</span></td>
+                        <td><span class="badge badge-info">${roleDisplay}</span></td>
+                        <td><strong class="${valueClass}">${valDisplay}</strong></td>
+                        <td><span class="badge ${confBadgeClass}" title="${confInfo.label}: ${confInfo.hint}">${confPercent}%</span></td>
                         <td>${this.formatMoneySafe(p.wage)}</td>
                         <td>${p.contractYears} J.</td>
                         <td>
@@ -2292,6 +2296,15 @@ class UIManager {
                     </tr>
                 `;
             }).join("");
+
+            // Klick auf die Zeile öffnet die Spielerdetails (Buttons ausgenommen)
+            tbody.querySelectorAll("tr.row-clickable").forEach(row => {
+                row.addEventListener("click", (e) => {
+                    if (e.target.closest("button")) return;
+                    const pId = parseInt(row.dataset.playerId, 10);
+                    if (!isNaN(pId)) this.showPlayerDetailsModal(pId);
+                });
+            });
 
             document.querySelectorAll(".btn-bid-player").forEach(btn => {
                 btn.addEventListener("click", () => {
@@ -3097,13 +3110,50 @@ class UIManager {
     }
 
     /**
+     * Zeigt an, wie belastbar die Werte eines Spielers sind (Scoutwissen)
+     */
+    buildScoutConfidenceHtml(confidence, confInfo, isUserPlayer) {
+        const pct = Math.max(0, Math.min(100, Math.round(confidence)));
+        const note = isUserPlayer
+            ? "Eigene Spieler sind vollständig bekannt."
+            : (confInfo?.hint || "");
+
+        return `
+            <div class="scout-confidence-bar">
+                <span style="font-weight:700; color:${confInfo?.color || '#94a3b8'};">🔍 ${confInfo?.label || 'Unbekannt'}</span>
+                <div class="scout-confidence-track">
+                    <div class="scout-confidence-fill" style="width:${pct}%; background:${confInfo?.color || '#94a3b8'};"></div>
+                </div>
+                <span style="font-weight:700;">${pct}%</span>
+                <span style="color:var(--text-muted); flex-basis:100%;">${note}</span>
+            </div>
+        `;
+    }
+
+    /**
      * Positionsprofil eines Spielers: Auf welchen Positionen ist er wie stark?
      */
-    buildPositionMapHtml(player) {
+    buildPositionMapHtml(player, confidence = 100) {
         const posEngine = this.getPositionEngine();
         if (!posEngine || !player) return "";
 
-        const ranking = posEngine.getPositionRanking(player);
+        // Bei geringem Scoutwissen darf das Profil nicht die wahre Stärke
+        // verraten - gerechnet wird deshalb mit der geschätzten Stärke.
+        const ratingEngine = (typeof PlayerRatingEngine !== "undefined" && PlayerRatingEngine)
+            ? PlayerRatingEngine
+            : ((typeof window !== "undefined" && window.PlayerRatingEngine) ? window.PlayerRatingEngine : null);
+
+        let basePlayer = player;
+        let isEstimate = false;
+
+        if (ratingEngine && confidence < 85) {
+            const card = ratingEngine.calculateVisiblePlayerCard(player, { userClubId: null, leagueDataCoverage: 100 });
+            const estOverall = ratingEngine.abilityToOverall(Math.round((card.estimatedCa.min + card.estimatedCa.max) / 2));
+            basePlayer = { ...player, overall: estOverall };
+            isEstimate = true;
+        }
+
+        const ranking = posEngine.getPositionRanking(basePlayer);
         const usable = ranking.filter(r => r.familiarity >= 0.55);
         const shown = usable.length > 0 ? usable.slice(0, 8) : ranking.slice(0, 4);
 
@@ -3120,8 +3170,9 @@ class UIManager {
                 <h4 style="font-size:13px; margin-bottom:4px; color:var(--text-muted);">🧭 Positionsprofil</h4>
                 <p style="font-size:11px; color:var(--text-muted); margin:0 0 10px 0;">
                     Effektive Stärke je Einsatzposition – abseits der Stammposition verliert der Spieler an Wirkung.
+                    ${isEstimate ? '<em>Die Werte beruhen auf einer Schätzung; mehr Scoutwissen macht sie genauer.</em>' : ''}
                 </p>
-                <div class="position-map">${rows}</div>
+                <div class="position-map${isEstimate ? ' estimated-value' : ''}">${rows}</div>
             </div>
         `;
     }
@@ -3209,17 +3260,89 @@ class UIManager {
             `;
         }
 
+        // Genauigkeit der angezeigten Werte hängt am Scoutwissen
+        const confidence = card ? card.confidence : (player.scoutingKnowledge?.knowledgeLevel || 25);
+
         // Positionsprofil: Wo kann dieser Spieler wirklich spielen?
-        const positionMapHtml = this.buildPositionMapHtml(player);
+        const positionMapHtml = this.buildPositionMapHtml(player, isUserClub ? 100 : confidence);
+        const confInfo = card?.confidenceInfo
+            || (ratingEngine ? ratingEngine.getConfidenceDescriptor(confidence) : { label: "Unbekannt", color: "#94a3b8", hint: "" });
+        const confidenceBarHtml = this.buildScoutConfidenceHtml(confidence, confInfo, isUserClub);
+
+        // Attributzeile: exakter Wert bei gutem Wissen, sonst eine Spanne
+        const attrLine = (label, attrName) => {
+            if (!ratingEngine) {
+                return `<div class="club-stat-line"><span>${label}:</span><strong>${player[attrName] ?? "?"}</strong></div>`;
+            }
+            const vis = ratingEngine.getVisibleAttribute(player, attrName, confidence);
+            const cls = vis.known ? "" : "estimated-value";
+            const title = vis.known ? "Gesicherter Wert" : `Geschätzt (${confInfo.label})`;
+            return `<div class="club-stat-line"><span>${label}:</span><strong class="${cls}" title="${title}">${vis.text}</strong></div>`;
+        };
+
+        // Torhüter und Feldspieler haben unterschiedliche Attributprofile.
+        // Feldspielern fehlen die Torwartwerte (sie stehen pauschal auf 30),
+        // sie wurden bisher trotzdem als "Stellungsspiel" ausgewiesen.
+        const isKeeper = player.pos === "TW";
+        const attributeBlocks = isKeeper
+            ? `
+                <div class="dash-card" style="padding:14px;">
+                    <h4 style="font-size:13px; margin-bottom:8px; color:var(--text-muted);">Torwartspiel</h4>
+                    ${attrLine("Reflexe", "reflexes")}
+                    ${attrLine("Fangsicherheit", "handling")}
+                    ${attrLine("Eins gegen eins", "oneOnOne")}
+                    ${attrLine("Stellungsspiel", "positioning")}
+                    ${attrLine("Abschlag", "kicking")}
+                </div>
+
+                <div class="dash-card" style="padding:14px;">
+                    <h4 style="font-size:13px; margin-bottom:8px; color:var(--text-muted);">Spielaufbau & Physis</h4>
+                    ${attrLine("Passen", "passing")}
+                    ${attrLine("Übersicht", "vision")}
+                    ${attrLine("Physis", "physical")}
+                    ${attrLine("Ausdauer", "stamina")}
+                    ${attrLine("Technik", "technique")}
+                </div>
+            `
+            : `
+                <div class="dash-card" style="padding:14px;">
+                    <h4 style="font-size:13px; margin-bottom:8px; color:var(--text-muted);">Offensive & Technik</h4>
+                    ${attrLine("Tempo", "pace")}
+                    ${attrLine("Schuss", "shooting")}
+                    ${attrLine("Passen", "passing")}
+                    ${attrLine("Dribbling", "dribbling")}
+                    ${attrLine("Technik", "technique")}
+                </div>
+
+                <div class="dash-card" style="padding:14px;">
+                    <h4 style="font-size:13px; margin-bottom:8px; color:var(--text-muted);">Defensive & Physis</h4>
+                    ${attrLine("Defensive", "defense")}
+                    ${attrLine("Physis", "physical")}
+                    ${attrLine("Ausdauer", "stamina")}
+                    ${attrLine("Übersicht", "vision")}
+                </div>
+            `;
 
         const starsCaHtml = card ? card.starsCaHtml : "★★★☆☆";
         const starsPaHtml = card ? card.starsPaHtml : "★★★★☆";
         const abilityLabel = card ? card.abilityLabel : "Ligaspieler";
         const potentialLabel = card ? card.potentialLabel : "Entwicklungspotenzial";
+        // Auch die Rollenbewertung ist bei wenig Scoutwissen nur eine Spanne
+        const roleStarsHtml = (roleEntry) => {
+            if (!roleEntry) return null;
+            if (!ratingEngine) return roleEntry.starsHtml;
+            if (card?.isPrecise) return ratingEngine.renderStarRange(roleEntry.stars, roleEntry.stars);
+            const delta = ((100 - confidence) / 100) * 1.5;
+            return ratingEngine.renderStarRange(
+                Math.max(0.5, roleEntry.stars - delta),
+                Math.min(5, roleEntry.stars + delta)
+            );
+        };
+
         const bestRoleName = card?.bestRole?.role || "Allrounder";
-        const bestRoleStars = card?.bestRole?.starsHtml || "★★★☆☆";
+        const bestRoleStars = roleStarsHtml(card?.bestRole) || "★★★☆☆";
         const altRoleName = card?.alternativeRole?.role || null;
-        const altRoleStars = card?.alternativeRole?.starsHtml || null;
+        const altRoleStars = roleStarsHtml(card?.alternativeRole);
 
         body.innerHTML = `
             <div class="player-detail-top">
@@ -3253,24 +3376,10 @@ class UIManager {
                 </div>
             </div>
 
-            <div class="stats-grid" style="grid-template-columns: 1fr 1fr; gap:14px; margin-bottom:16px;">
-                <div class="dash-card" style="padding:14px;">
-                    <h4 style="font-size:13px; margin-bottom:8px; color:var(--text-muted);">Offensive & Technik</h4>
-                    <div class="club-stat-line"><span>Tempo:</span><strong>${player.pace}</strong></div>
-                    <div class="club-stat-line"><span>Schuss:</span><strong>${player.shooting}</strong></div>
-                    <div class="club-stat-line"><span>Passen:</span><strong>${player.passing}</strong></div>
-                    <div class="club-stat-line"><span>Dribbling:</span><strong>${player.dribbling}</strong></div>
-                    <div class="club-stat-line"><span>Technik:</span><strong>${player.technique}</strong></div>
-                </div>
+            ${confidenceBarHtml}
 
-                <div class="dash-card" style="padding:14px;">
-                    <h4 style="font-size:13px; margin-bottom:8px; color:var(--text-muted);">Defensive & Physis</h4>
-                    <div class="club-stat-line"><span>Defensive:</span><strong>${player.defense}</strong></div>
-                    <div class="club-stat-line"><span>Physis:</span><strong>${player.physical}</strong></div>
-                    <div class="club-stat-line"><span>Ausdauer:</span><strong>${player.stamina}</strong></div>
-                    <div class="club-stat-line"><span>Übersicht:</span><strong>${player.vision}</strong></div>
-                    <div class="club-stat-line"><span>Stellungsspiel:</span><strong>${player.positioning}</strong></div>
-                </div>
+            <div class="stats-grid" style="grid-template-columns: 1fr 1fr; gap:14px; margin-bottom:16px;">
+                ${attributeBlocks}
             </div>
 
             <!-- Zufriedenheit & Rolle -->
@@ -3321,6 +3430,8 @@ class UIManager {
                     if (res.success) {
                         this.playSound("whistle");
                         this.showToast(`Scoutbericht für ${player.name} erstellt! Wissen auf ${res.knowledgeLevel}% gestiegen.`, "success");
+                        // Auch die Liste im Hintergrund zeigt jetzt genauere Werte
+                        if (this.activeTab === "transfers") this.renderTransfers();
                         this.showPlayerDetailsModal(player.id);
                     }
                 }

@@ -183,6 +183,39 @@ function runWizardTests() {
         });
     });
 
+    // 3b. CSS-Regressionen: Badges und Rasterbreiten
+    test("CSS: Badges bleiben inline und Rasterkarten haben eine Standardbreite", () => {
+        const css = fs.readFileSync('./css/style.css', 'utf8');
+
+        // ".badge" darf nicht global absolut positioniert sein - sonst rutschen
+        // Inline-Badges (Beste Rolle, Scout-Wissen) aus ihrer Tabellenzelle
+        const badgeRule = css.match(/\.badge \{[^}]*\}/);
+        if (!badgeRule) throw new Error("Basisregel für .badge nicht gefunden");
+        if (/position:\s*absolute/.test(badgeRule[0])) {
+            throw new Error(".badge ist global absolut positioniert - Inline-Badges verlassen ihre Zelle");
+        }
+        if (!/display:\s*inline-block/.test(badgeRule[0])) {
+            throw new Error(".badge sollte als Inline-Pille dargestellt werden");
+        }
+
+        // Die Zählerblasen der Navigation brauchen die absolute Positionierung weiterhin
+        if (!/\.nav-item > \.badge[\s\S]{0,260}position:\s*absolute/.test(css)) {
+            throw new Error("Navigations-Badges verlieren ihre absolute Positionierung");
+        }
+
+        // Alle verwendeten Badge-Varianten müssen definiert sein
+        ["badge-neutral", "badge-info", "badge-success", "badge-warning", "badge-danger",
+         "badge-status-fit", "badge-status-inj", "badge-status-susp",
+         "badge-status-lineup", "badge-status-bench"].forEach(cls => {
+            if (!css.includes(`.${cls}`)) throw new Error(`Badge-Variante .${cls} fehlt im Stylesheet`);
+        });
+
+        // Karten ohne eigene Spannweite dürfen nicht auf eine Rasterspalte schrumpfen
+        if (!/\.dashboard-grid > \.dash-card \{[^}]*grid-column:\s*span 4/.test(css)) {
+            throw new Error("Karten im 12-Spalten-Raster haben keine Standardbreite");
+        }
+    });
+
     // 4. Service Worker Cache & Activation Prüfung
     test("Service Worker implementiert Versions-Cache und automatisches Löschen alter Caches", () => {
         const sw = fs.readFileSync('./service-worker.js', 'utf8');
@@ -512,7 +545,9 @@ function runWizardTests() {
             // Formations-Editor & Live-Uhr
             "selectFormation", "btnFormationEdit", "formationEditorBar", "formationShapeBadge",
             "selectSlotPosition", "chkFormationSnap", "inputFormationName", "btnFormationSave",
-            "btnFormationReset", "btnFormationDelete", "pitchGridOverlay", "lmClock"
+            "btnFormationReset", "btnFormationDelete", "pitchGridOverlay", "lmClock",
+            // Transfermarkt & Spielerdetails
+            "transferTableBody", "modalPlayerDetails", "playerDetailsContent", "pdPlayerName"
         ];
 
         requiredStaticIds.forEach(id => {

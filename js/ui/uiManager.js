@@ -3097,6 +3097,36 @@ class UIManager {
     }
 
     /**
+     * Positionsprofil eines Spielers: Auf welchen Positionen ist er wie stark?
+     */
+    buildPositionMapHtml(player) {
+        const posEngine = this.getPositionEngine();
+        if (!posEngine || !player) return "";
+
+        const ranking = posEngine.getPositionRanking(player);
+        const usable = ranking.filter(r => r.familiarity >= 0.55);
+        const shown = usable.length > 0 ? usable.slice(0, 8) : ranking.slice(0, 4);
+
+        const rows = shown.map(r => `
+            <div class="position-map-item" title="${r.label} (${r.familiarityPercent} % Vertrautheit)">
+                <span class="position-map-code" style="border-color:${r.color};">${r.position}</span>
+                <span class="position-map-value" style="color:${r.color};">${r.effectiveOverall}</span>
+                <span class="position-map-label">${r.shortLabel}</span>
+            </div>
+        `).join("");
+
+        return `
+            <div class="dash-card mb-3" style="padding:14px;">
+                <h4 style="font-size:13px; margin-bottom:4px; color:var(--text-muted);">🧭 Positionsprofil</h4>
+                <p style="font-size:11px; color:var(--text-muted); margin:0 0 10px 0;">
+                    Effektive Stärke je Einsatzposition – abseits der Stammposition verliert der Spieler an Wirkung.
+                </p>
+                <div class="position-map">${rows}</div>
+            </div>
+        `;
+    }
+
+    /**
      * Modal: Spieler Details & Vertragsverlängerung
      */
     showPlayerDetailsModal(playerId) {
@@ -3179,6 +3209,9 @@ class UIManager {
             `;
         }
 
+        // Positionsprofil: Wo kann dieser Spieler wirklich spielen?
+        const positionMapHtml = this.buildPositionMapHtml(player);
+
         const starsCaHtml = card ? card.starsCaHtml : "★★★☆☆";
         const starsPaHtml = card ? card.starsPaHtml : "★★★★☆";
         const abilityLabel = card ? card.abilityLabel : "Ligaspieler";
@@ -3248,6 +3281,8 @@ class UIManager {
                 <div class="club-stat-line"><span>Spielzeit / Vertrag:</span><span>${happy.playingTime}% / ${happy.contract}%</span></div>
                 <div style="font-size:12px; color:var(--text-muted); margin-top:4px; font-style:italic;">"${happy.reason || 'Zufrieden mit der Situation.'}"</div>
             </div>
+
+            ${positionMapHtml}
 
             ${traitsHtml}
 

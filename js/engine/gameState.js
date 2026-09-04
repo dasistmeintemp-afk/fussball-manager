@@ -179,15 +179,19 @@ class GameState {
             const y = Math.max(3, Math.min(97, Number(slot?.y)));
             if (!isFinite(x) || !isFinite(y)) return null;
 
+            // Die Position folgt der Zone auf dem Feld. Nur wenn sie im Editor
+            // ausdrücklich von Hand gesetzt wurde (manualPos), bleibt sie erhalten.
             let pos = slot?.pos;
             if (posEngine) {
-                pos = posEngine.normalizePosition(pos) || posEngine.detectPositionFromCoords(x, y);
+                const manual = slot?.manualPos ? posEngine.normalizePosition(pos) : null;
+                pos = manual || posEngine.detectPositionFromCoords(x, y);
             }
             pos = pos || "ZM";
 
             return {
                 id: idx,
                 pos,
+                manualPos: !!slot?.manualPos,
                 role: slot?.role || (posEngine?.POSITION_META?.[pos]?.name) || pos,
                 x: Math.round(x * 10) / 10,
                 y: Math.round(y * 10) / 10

@@ -480,20 +480,33 @@ class LiveMatchDirector {
         const receiver = this.getPlayer2D(receiverId);
         const keeper = this.getPlayer2D(ev.gkId);
 
+        // Ein Torwart wird nie quer über das Feld geschickt - er bleibt in
+        // seinem Strafraum, auch wenn er an einer Szene beteiligt ist
+        // (z. B. bei einer Verletzung).
+        const setRole = (player, x, y, urgency) => {
+            if (!player) return;
+            if (player.pos === "TW") {
+                const goalX = this.ownGoalX(player.team);
+                const dir = this.attackDir(player.team);
+                const limited = dir > 0
+                    ? Math.min(goalX + 20, Math.max(goalX, x))
+                    : Math.max(goalX - 20, Math.min(goalX, x));
+                match.sceneRoles.set(player.id, { x: limited, y: 50 + (y - 50) * 0.55, urgency });
+                return;
+            }
+            match.sceneRoles.set(player.id, { x, y, urgency });
+        };
+
         if (passer) {
-            match.sceneRoles.set(passer.id, { x: start.x, y: start.y, urgency: 1.6 });
+            setRole(passer, start.x, start.y, 1.6);
         }
         if (receiver && receiver !== passer) {
             const tx = phase === "approach" ? (start.x + end.x) / 2 : Math.max(4, Math.min(96, end.x - this.attackDir(receiver.team) * 5));
             const ty = phase === "approach" ? (start.y + end.y) / 2 : end.y;
-            match.sceneRoles.set(receiver.id, { x: tx, y: ty, urgency: 1.8 });
+            setRole(receiver, tx, ty, 1.8);
         }
         if (keeper) {
-            match.sceneRoles.set(keeper.id, {
-                x: this.ownGoalX(keeper.team) + this.attackDir(keeper.team) * 3,
-                y: 50 + (end.y - 50) * 0.5,
-                urgency: 1.7
-            });
+            setRole(keeper, this.ownGoalX(keeper.team) + this.attackDir(keeper.team) * 3, 50 + (end.y - 50) * 0.5, 1.7);
         }
 
         match.activePlayerId = (phase === "action" && receiver) ? receiver.id : (passer?.id ?? receiver?.id ?? match.activePlayerId);
@@ -842,6 +855,12 @@ class LiveMatchDirector {
         //    für den Anstoß neu - sonst würden sich alle im eigenen Tor stapeln.
         if (this.mode === "celebration") {
             if (match.celebratingTeam === p.team) {
+                // Der Torwart jubelt vor seinem eigenen Strafraum mit,
+                // die Feldspieler laufen zur Eckfahne
+                if (p.pos === "TW") {
+                    const goalX = this.ownGoalX(p.team);
+                    return { x: goalX + this.attackDir(p.team) * 16, y: 50, urgency: 1.2 };
+                }
                 const cornerX = p.team === "home" ? 88 : 12;
                 return {
                     x: cornerX + (p.seed % 1.4) * 5,

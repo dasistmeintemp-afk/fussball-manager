@@ -100,8 +100,10 @@ const PositionEngine = {
         if (!a || !b) return 0.4;
         if (fromPos === toPos) return 1.0;
 
-        // Der Torwart ist ein Sonderfall: Feldspieler im Tor (und umgekehrt) sind Notlösungen
-        if (fromPos === "TW" || toPos === "TW") return 0.15;
+        // Der Torwart ist ein Sonderfall: Ein Feldspieler im Tor (und umgekehrt)
+        // ist die schlechteste aller Notlösungen - schlechter als jede
+        // Fehlbesetzung im Feld.
+        if (fromPos === "TW" || toPos === "TW") return 0.05;
 
         const depthDelta = Math.abs(a.depth - b.depth);
         let factor = 1 - Math.pow(depthDelta, 1.15) * 0.26;
@@ -110,7 +112,7 @@ const PositionEngine = {
         if (flankDelta === 1) factor *= 0.86;      // Zentrum <-> Flügel
         else if (flankDelta === 2) factor *= 0.72; // Links <-> Rechts
 
-        return Math.max(0.1, Math.min(1.0, factor));
+        return Math.max(0.08, Math.min(1.0, factor));
     },
 
     /**
@@ -140,7 +142,7 @@ const PositionEngine = {
             best += ((adaptability - 12) / 20) * 0.12 * (1 - best);
         }
 
-        return Math.max(0.1, Math.min(1.0, best));
+        return Math.max(0.05, Math.min(1.0, best));
     },
 
     /**
@@ -212,9 +214,10 @@ const PositionEngine = {
         const isWide = isLeft || isRight;
 
         if (py >= 65) {
-            // Abwehrkette
-            if (isLeft) return "LV";
-            if (isRight) return "RV";
+            // Abwehrkette: hier ist der zentrale Korridor breiter, damit eine
+            // Dreierkette nicht fälschlich zu Außenverteidigern wird
+            if (px < 22) return "LV";
+            if (px > 78) return "RV";
             return "IV";
         }
         if (py >= 51) {

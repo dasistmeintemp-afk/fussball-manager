@@ -961,6 +961,16 @@ body {
     gap: 24px;
 }
 
+/*
+ * Rasterkinder duerfen unter ihre Inhaltsbreite schrumpfen. Ohne min-width: 0
+ * behaelt ein Grid-Item seine intrinsische Mindestbreite - auf schmalen
+ * Displays ragte die Aufstellungskarte dadurch ueber den Bildschirmrand
+ * hinaus und wurde abgeschnitten.
+ */
+.tactics-layout > * {
+    min-width: 0;
+}
+
 .pitch-container-card {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
@@ -971,8 +981,14 @@ body {
 .pitch-header-bar {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 12px;
     margin-bottom: 16px;
+}
+
+.pitch-header-bar .styled-select {
+    flex: 1 1 160px;
+    min-width: 0;
 }
 
 .soccer-pitch {
@@ -1233,6 +1249,10 @@ body {
 
 .data-table tbody tr.row-clickable:hover {
     background: rgba(56, 189, 248, 0.08);
+}
+
+.stats-grid > * {
+    min-width: 0;
 }
 
 .position-map {

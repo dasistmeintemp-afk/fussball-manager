@@ -203,15 +203,24 @@ class GameState {
             return { valid: false, error: "Eine Formation braucht genau einen Torwart." };
         }
 
+        // Ursprüngliche Reihenfolge merken, damit die Aufstellung mitsortiert
+        // werden kann und jeder Spieler auf seinem Platz stehen bleibt
+        normalized.forEach((slot, idx) => { slot.sourceIndex = idx; });
+
         // Torwart immer an Position 0, danach von hinten nach vorne sortieren
         const gk = keepers[0];
         const outfield = normalized
             .filter(s => s !== gk)
             .sort((a, b) => b.y - a.y || a.x - b.x);
 
-        const ordered = [gk, ...outfield].map((slot, idx) => ({ ...slot, id: idx }));
+        const sorted = [gk, ...outfield];
+        const order = sorted.map(s => s.sourceIndex);
+        const ordered = sorted.map((slot, idx) => {
+            const { sourceIndex, ...rest } = slot;
+            return { ...rest, id: idx };
+        });
 
-        return { valid: true, positions: ordered };
+        return { valid: true, positions: ordered, order };
     }
 
     /**
@@ -276,7 +285,7 @@ class GameState {
 
         GameState.registerCustomFormations(state);
 
-        return { success: true, key, shape, name: cleanName };
+        return { success: true, key, shape, name: cleanName, order: normalized.order };
     }
 
     /**
@@ -926,6 +935,8 @@ class GameState {
             if (!raw) return null;
             const parsed = JSON.parse(raw);
             const state = Object.assign(new GameState(), parsed);
+            // Eigene Formationen des Spielstands wieder global bekannt machen
+            GameState.registerCustomFormations(state);
             return state;
         } catch (e) {
             console.error("Laden fehlgeschlagen:", e);

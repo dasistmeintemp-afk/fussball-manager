@@ -1116,6 +1116,17 @@ class UIManager {
      * Tab wechseln
      */
     switchTab(tabId) {
+        // Beim Verlassen des Taktik-Tabs den Formations-Editor sauber schließen
+        if (this.activeTab === "tactics" && tabId !== "tactics" && this.formationEditMode) {
+            this.formationEditMode = false;
+            this.formationDraft = null;
+            this.formationDirty = false;
+            this.selectedPitchSlot = null;
+            document.getElementById("tacticsPitch")?.classList.remove("editing");
+            const bar = document.getElementById("formationEditorBar");
+            if (bar) bar.style.display = "none";
+        }
+
         this.activeTab = tabId;
         document.querySelectorAll(".nav-item").forEach(b => {
             b.classList.toggle("active", b.dataset.tab === tabId);
@@ -1519,6 +1530,45 @@ class UIManager {
     }
 
     /**
+     * Auflösung der PositionEngine (Browser & Node)
+     */
+    getPositionEngine() {
+        if (typeof PositionEngine !== "undefined" && PositionEngine) return PositionEngine;
+        if (typeof window !== "undefined" && window.PositionEngine) return window.PositionEngine;
+        return null;
+    }
+
+    /**
+     * Alle verfügbaren Formationen (Standard + eigene) als Liste
+     */
+    getFormationOptions() {
+        const configs = (typeof FORMATION_CONFIGS !== "undefined" && FORMATION_CONFIGS)
+            ? FORMATION_CONFIGS
+            : ((typeof window !== "undefined" && window.FORMATION_CONFIGS) ? window.FORMATION_CONFIGS : {});
+
+        return Object.entries(configs).map(([key, cfg]) => ({
+            key,
+            name: cfg.name || key,
+            custom: !!cfg.custom
+        }));
+    }
+
+    /**
+     * Positionen der aktuell angezeigten Formation.
+     * Im Bearbeitungsmodus wird der Entwurf verwendet, sonst die gespeicherte Formation.
+     */
+    getActiveFormationPositions(userClub) {
+        if (this.formationEditMode && Array.isArray(this.formationDraft)) {
+            return this.formationDraft;
+        }
+        const configs = (typeof FORMATION_CONFIGS !== "undefined" && FORMATION_CONFIGS)
+            ? FORMATION_CONFIGS
+            : ((typeof window !== "undefined" && window.FORMATION_CONFIGS) ? window.FORMATION_CONFIGS : {});
+        const cfg = configs[userClub.formation] || configs["4-4-2"] || { positions: [] };
+        return cfg.positions || [];
+    }
+
+    /**
      * Aufstellung & Taktik rendern
      */
     renderTactics() {
@@ -1526,9 +1576,27 @@ class UIManager {
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
 
-        // Formation Dropdown
+        const posEngine = this.getPositionEngine();
+
+        // Formations-Dropdown mit Standard- und eigenen Formationen befüllen
         const selectFormation = document.getElementById("selectFormation");
-        selectFormation.value = userClub.formation || "4-4-2";
+        if (selectFormation) {
+            const options = this.getFormationOptions();
+            const builtins = options.filter(o => !o.custom);
+            const customs = options.filter(o => o.custom);
+
+            const optionHtml = (o) => `<option value="${o.key}">${o.name}</option>`;
+            let html = builtins.map(optionHtml).join("");
+            if (customs.length > 0) {
+                html += `<optgroup label="Eigene Formationen">${customs.map(optionHtml).join("")}</optgroup>`;
+            }
+            selectFormation.innerHTML = html;
+            selectFormation.value = userClub.formation || "4-4-2";
+            if (!selectFormation.value) {
+                userClub.formation = "4-4-2";
+                selectFormation.value = "4-4-2";
+            }
+        }
 
         // Taktik Einstellungen
         document.getElementById("tacMentality").value = userClub.tactics?.mentality || "balanced";
@@ -1537,43 +1605,61 @@ class UIManager {
         document.getElementById("tacPassing").value = userClub.tactics?.passing || "mixed";
         document.getElementById("tacFocus").value = userClub.tactics?.focus || "balanced";
 
+        const slots = this.getActiveFormationPositions(userClub);
+
         // 2D Pitch Slots rendern
         const pitchLayer = document.getElementById("pitchPlayersLayer");
         pitchLayer.innerHTML = "";
 
-        const formConfigs = (typeof FORMATION_CONFIGS !== 'undefined' && FORMATION_CONFIGS) 
-            ? FORMATION_CONFIGS 
-            : ((typeof window !== 'undefined' && window.FORMATION_CONFIGS) ? window.FORMATION_CONFIGS : (typeof require !== 'undefined' ? require('../engine/gameState.js').FORMATION_CONFIGS : {}));
-        const formConfig = (formConfigs && formConfigs[userClub.formation]) || (formConfigs && formConfigs["4-4-2"]) || { name: "4-4-2 Standard", positions: [] };
-        const slots = formConfig.positions;
+        const misfits = [];
 
         slots.forEach((slot, index) => {
             const playerId = userClub.lineup[index];
             const player = state.players.find(p => p.id === playerId);
 
             const node = document.createElement("div");
-            node.className = `pitch-node ${this.selectedPitchSlot === index ? 'selected' : ''}`;
+            node.className = `pitch-node ${this.selectedPitchSlot === index ? "selected" : ""}`;
             node.style.left = `${slot.x}%`;
             node.style.top = `${slot.y}%`;
             node.dataset.slotIndex = index;
 
             const isSelected = this.selectedPitchSlot === index;
 
+            // Eignung des Spielers auf genau dieser Position
+            let fit = null;
+            if (player && posEngine) {
+                fit = posEngine.getSuitability(player, slot.pos);
+                if (fit.familiarity < 0.7) {
+                    misfits.push({ player, slot, fit });
+                }
+            }
+
+            const shirtValue = player ? (fit ? fit.effectiveOverall : player.overall) : "?";
+            const fitClass = fit ? `fit-${fit.level}` : "";
+            const selectedStyle = isSelected ? "border-color:#f59e0b; box-shadow:0 0 12px #f59e0b;" : "";
+
             node.innerHTML = `
-                <div class="pitch-node-shirt" style="background: ${userClub.primaryColor}; color: ${userClub.secondaryColor}; ${isSelected ? 'border-color: #f59e0b; box-shadow: 0 0 12px #f59e0b;' : ''}">
-                    ${player ? player.overall : '?'}
+                <div class="pitch-node-shirt ${fitClass}" style="background: ${userClub.primaryColor}; color: ${userClub.secondaryColor}; ${selectedStyle}">
+                    ${shirtValue}
+                    <span class="pitch-node-pos">${slot.pos}</span>
                 </div>
                 <div class="pitch-node-name">
-                    ${player ? player.name.split(' ').pop() : 'Leer'} (${slot.pos})
+                    ${player ? this.escapeHtml(player.name.split(" ").pop()) : "Leer"}
+                    ${fit ? `<span class="pitch-node-fit" style="color:${fit.color};">${fit.shortLabel}${fit.penalty > 0 ? ` −${fit.penalty}` : ""}</span>` : ""}
                 </div>
             `;
 
-            node.addEventListener("click", () => {
-                this.handlePitchSlotClick(index);
-            });
+            if (this.formationEditMode) {
+                node.addEventListener("pointerdown", (e) => this.startSlotDrag(e, index));
+            } else {
+                node.addEventListener("click", () => this.handlePitchSlotClick(index));
+            }
 
             pitchLayer.appendChild(node);
         });
+
+        document.getElementById("tacticsPitch")?.classList.toggle("editing", this.formationEditMode);
+        this.renderFormationEditorBar(userClub, slots);
 
         // Ersatzbank rendern
         const benchContainer = document.getElementById("benchSlots");
@@ -1583,6 +1669,9 @@ class UIManager {
         const benchPlayers = userClub.bench.map(id => squadPlayers.find(p => p.id === id)).filter(Boolean);
         const reservePlayers = squadPlayers.filter(p => !userClub.lineup.includes(p.id) && !userClub.bench.includes(p.id));
 
+        // Ist ein Slot gewählt, zeigt die Bank die Eignung für genau diese Position
+        const targetSlot = (this.selectedPitchSlot !== null) ? slots[this.selectedPitchSlot] : null;
+
         [...benchPlayers, ...reservePlayers].forEach(p => {
             const isBench = userClub.bench.includes(p.id);
             const isInj = p.injuredWeeks > 0;
@@ -1590,10 +1679,20 @@ class UIManager {
 
             const benchEl = document.createElement("div");
             benchEl.className = "bench-node";
+
+            let fitHtml = "";
+            if (targetSlot && posEngine) {
+                const fit = posEngine.getSuitability(p, targetSlot.pos);
+                fitHtml = `<span class="bench-fit" style="color:${fit.color};" title="${fit.label} auf ${targetSlot.pos}">
+                    ${targetSlot.pos}: ${fit.effectiveOverall}
+                </span>`;
+            }
+
             benchEl.innerHTML = `
                 <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>
-                <strong>${p.name}</strong> (${p.overall})
-                ${isInj ? '🚑' : isSusp ? '🟥' : isBench ? '<span style="color:#34d399">Bank</span>' : '<span style="color:#94a3b8">Res</span>'}
+                <strong>${this.escapeHtml(p.name)}</strong> (${p.overall})
+                ${fitHtml}
+                ${isInj ? "🚑" : isSusp ? "🟥" : isBench ? '<span style="color:#34d399">Bank</span>' : '<span style="color:#94a3b8">Res</span>'}
             `;
 
             benchEl.addEventListener("click", () => {
@@ -1603,12 +1702,14 @@ class UIManager {
             benchContainer.appendChild(benchEl);
         });
 
+        this.renderLineupWarnings(misfits);
+
         // Rollen Dropdowns befüllen
         const lineupPlayers = userClub.lineup.map(id => state.players.find(p => p.id === id)).filter(Boolean);
         const populateRoleSelect = (elId, currentId) => {
             const el = document.getElementById(elId);
             el.innerHTML = lineupPlayers.map(p => `
-                <option value="${p.id}" ${p.id === currentId ? 'selected' : ''}>${p.name} (${p.pos}, OVR ${p.overall})</option>
+                <option value="${p.id}" ${p.id === currentId ? "selected" : ""}>${this.escapeHtml(p.name)} (${p.pos}, OVR ${p.overall})</option>
             `).join("");
         };
 
@@ -1616,6 +1717,284 @@ class UIManager {
         populateRoleSelect("rolePenalty", userClub.roles.penaltyTaker);
         populateRoleSelect("roleFreeKick", userClub.roles.freeKickTaker);
         populateRoleSelect("roleCorner", userClub.roles.cornerTaker);
+    }
+
+    escapeHtml(text) {
+        return String(text ?? "").replace(/[&<>"']/g, ch => ({
+            "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+        }[ch]));
+    }
+
+    /**
+     * Hinweisbox mit Spielern, die deutlich außerhalb ihrer Position spielen
+     */
+    renderLineupWarnings(misfits) {
+        const benchSection = document.querySelector(".bench-section");
+        if (!benchSection) return;
+
+        let box = document.getElementById("lineupWarnings");
+        if (!box) {
+            box = document.createElement("div");
+            box.id = "lineupWarnings";
+            box.className = "lineup-warning";
+            benchSection.parentElement.appendChild(box);
+        }
+
+        if (!misfits || misfits.length === 0) {
+            box.style.display = "none";
+            return;
+        }
+
+        const items = misfits
+            .sort((a, b) => a.fit.familiarity - b.fit.familiarity)
+            .slice(0, 5)
+            .map(m => `<li><strong>${this.escapeHtml(m.player.name)}</strong> (${m.player.pos}) auf ${m.slot.pos}: ${m.fit.label} · ${m.player.overall} → <strong>${m.fit.effectiveOverall}</strong></li>`)
+            .join("");
+
+        box.style.display = "block";
+        box.innerHTML = `
+            <strong>⚠️ Spieler außerhalb ihrer Position</strong>
+            <ul style="margin:6px 0 0 16px; padding:0;">${items}</ul>
+        `;
+    }
+
+    // ------------------------------------------------------- Formations-Editor
+
+    /**
+     * Zustand der Editorleiste aktualisieren
+     */
+    renderFormationEditorBar(userClub, slots) {
+        const bar = document.getElementById("formationEditorBar");
+        const btnEdit = document.getElementById("btnFormationEdit");
+        if (!bar || !btnEdit) return;
+
+        bar.style.display = this.formationEditMode ? "flex" : "none";
+        btnEdit.textContent = this.formationEditMode ? "✔ Bearbeitung beenden" : "✏️ Formation bearbeiten";
+        btnEdit.classList.toggle("btn-primary", this.formationEditMode);
+
+        if (!this.formationEditMode) return;
+
+        const posEngine = this.getPositionEngine();
+        const badge = document.getElementById("formationShapeBadge");
+        if (badge && posEngine) {
+            badge.textContent = posEngine.detectFormationShape(slots);
+        }
+
+        // Positionsauswahl für den markierten Slot
+        const select = document.getElementById("selectSlotPosition");
+        if (select && posEngine) {
+            const slot = (this.selectedPitchSlot !== null) ? slots[this.selectedPitchSlot] : null;
+            if (!slot) {
+                select.innerHTML = `<option value="">– Spieler auswählen –</option>`;
+                select.disabled = true;
+            } else {
+                select.disabled = false;
+                select.innerHTML = posEngine.ALL_POSITIONS.map(p =>
+                    `<option value="${p}" ${p === slot.pos ? "selected" : ""}>${p} – ${posEngine.POSITION_META[p].name}</option>`
+                ).join("");
+            }
+        }
+
+        const hint = document.getElementById("formationEditorHint");
+        if (hint) {
+            hint.textContent = this.formationDirty
+                ? "Geändert – als eigene Formation speichern, um die Aufstellung zu behalten."
+                : "Spieler mit der Maus (oder dem Finger) auf dem Raster verschieben.";
+        }
+
+        const nameInput = document.getElementById("inputFormationName");
+        if (nameInput && !nameInput.dataset.touched) {
+            const configs = (typeof FORMATION_CONFIGS !== "undefined" && FORMATION_CONFIGS) ? FORMATION_CONFIGS : (window.FORMATION_CONFIGS || {});
+            const current = configs[userClub.formation];
+            nameInput.value = (current && current.custom) ? current.name : "";
+            nameInput.placeholder = `z. B. ${posEngine ? posEngine.detectFormationShape(slots) : "4-4-2"} Gegenpressing`;
+        }
+
+        const btnDelete = document.getElementById("btnFormationDelete");
+        if (btnDelete) {
+            const isCustom = GameState.isCustomFormation(userClub.formation);
+            btnDelete.style.display = isCustom ? "inline-flex" : "none";
+        }
+    }
+
+    /**
+     * Bearbeitungsmodus umschalten
+     */
+    toggleFormationEditMode() {
+        const state = this.app.state;
+        const userClub = state.clubs.find(c => c.id === state.userClubId);
+        if (!userClub) return;
+
+        this.formationEditMode = !this.formationEditMode;
+
+        if (this.formationEditMode) {
+            // Arbeitskopie der aktuellen Formation anlegen
+            const configs = (typeof FORMATION_CONFIGS !== "undefined" && FORMATION_CONFIGS) ? FORMATION_CONFIGS : (window.FORMATION_CONFIGS || {});
+            const cfg = configs[userClub.formation] || configs["4-4-2"];
+            this.formationDraft = (cfg?.positions || []).map(s => ({ ...s }));
+            this.formationDirty = false;
+            const nameInput = document.getElementById("inputFormationName");
+            if (nameInput) delete nameInput.dataset.touched;
+        } else {
+            if (this.formationDirty) {
+                this.showToast("Änderungen verworfen – nicht gespeicherte Formation.", "info");
+            }
+            this.formationDraft = null;
+            this.formationDirty = false;
+            this.selectedPitchSlot = null;
+        }
+
+        this.playSound("click");
+        this.renderTactics();
+    }
+
+    /**
+     * Zieht einen Spieler frei über das Raster
+     */
+    startSlotDrag(event, slotIndex) {
+        if (!this.formationEditMode || !Array.isArray(this.formationDraft)) return;
+
+        const pitch = document.getElementById("tacticsPitch");
+        const node = event.currentTarget;
+        if (!pitch || !node) return;
+
+        event.preventDefault();
+        this.selectedPitchSlot = slotIndex;
+        node.classList.add("dragging");
+        node.setPointerCapture?.(event.pointerId);
+
+        const snapEnabled = () => document.getElementById("chkFormationSnap")?.checked !== false;
+        const posEngine = this.getPositionEngine();
+
+        const moveTo = (clientX, clientY) => {
+            const rect = pitch.getBoundingClientRect();
+            let x = ((clientX - rect.left) / rect.width) * 100;
+            let y = ((clientY - rect.top) / rect.height) * 100;
+
+            x = Math.max(4, Math.min(96, x));
+            y = Math.max(4, Math.min(96, y));
+
+            if (snapEnabled()) {
+                // 20 Spalten x 12 Reihen wie im Raster-Overlay
+                x = Math.round(x / 5) * 5;
+                y = Math.round(y / (100 / 12)) * (100 / 12);
+                x = Math.max(4, Math.min(96, x));
+                y = Math.max(4, Math.min(96, y));
+            }
+
+            const slot = this.formationDraft[slotIndex];
+            slot.x = Math.round(x * 10) / 10;
+            slot.y = Math.round(y * 10) / 10;
+
+            // Position folgt automatisch der Zone, solange sie nicht manuell gesetzt wurde
+            if (posEngine && !slot.manualPos) {
+                const detected = posEngine.detectPositionFromCoords(slot.x, slot.y);
+                slot.pos = detected;
+                slot.role = posEngine.POSITION_META[detected]?.name || detected;
+            }
+
+            node.style.left = `${slot.x}%`;
+            node.style.top = `${slot.y}%`;
+            const posBadge = node.querySelector(".pitch-node-pos");
+            if (posBadge) posBadge.textContent = slot.pos;
+
+            this.formationDirty = true;
+        };
+
+        const onMove = (e) => moveTo(e.clientX, e.clientY);
+
+        const onUp = () => {
+            node.classList.remove("dragging");
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+            window.removeEventListener("pointercancel", onUp);
+            this.renderTactics();
+        };
+
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+        window.addEventListener("pointercancel", onUp);
+    }
+
+    /**
+     * Eigene Formation speichern
+     */
+    saveCustomFormation() {
+        const state = this.app.state;
+        const userClub = state.clubs.find(c => c.id === state.userClubId);
+        if (!userClub || !Array.isArray(this.formationDraft)) return;
+
+        const nameInput = document.getElementById("inputFormationName");
+        const posEngine = this.getPositionEngine();
+        const shape = posEngine ? posEngine.detectFormationShape(this.formationDraft) : "Eigene";
+        const name = (nameInput?.value || "").trim() || `${shape} (eigene)`;
+
+        const existingKey = GameState.isCustomFormation(userClub.formation) ? userClub.formation : null;
+        const result = GameState.saveCustomFormation(state, name, this.formationDraft, existingKey);
+
+        if (!result.success) {
+            this.showToast(result.error, "error");
+            return;
+        }
+
+        // Die Slots werden beim Speichern von hinten nach vorne sortiert -
+        // die Aufstellung wird identisch umsortiert, damit jeder Spieler
+        // auf genau der Position stehen bleibt, auf die er gezogen wurde.
+        if (Array.isArray(result.order) && Array.isArray(userClub.lineup)) {
+            userClub.lineup = result.order.map(sourceIndex => userClub.lineup[sourceIndex]).filter(id => id !== undefined);
+        }
+
+        userClub.formation = result.key;
+        this.formationDraft = (FORMATION_CONFIGS[result.key].positions || []).map(s => ({ ...s }));
+        this.formationDirty = false;
+        this.selectedPitchSlot = null;
+
+        if (nameInput) delete nameInput.dataset.touched;
+
+        this.playSound("click");
+        this.showToast(`Formation "${result.name}" (${result.shape}) gespeichert.`, "success");
+        this.renderTactics();
+    }
+
+    /**
+     * Entwurf auf die gespeicherte Formation zurücksetzen
+     */
+    resetFormationDraft() {
+        const state = this.app.state;
+        const userClub = state.clubs.find(c => c.id === state.userClubId);
+        if (!userClub) return;
+
+        const configs = (typeof FORMATION_CONFIGS !== "undefined" && FORMATION_CONFIGS) ? FORMATION_CONFIGS : (window.FORMATION_CONFIGS || {});
+        const cfg = configs[userClub.formation] || configs["4-4-2"];
+        this.formationDraft = (cfg?.positions || []).map(s => ({ ...s }));
+        this.formationDirty = false;
+        this.selectedPitchSlot = null;
+        this.renderTactics();
+    }
+
+    /**
+     * Eigene Formation löschen
+     */
+    deleteCustomFormation() {
+        const state = this.app.state;
+        const userClub = state.clubs.find(c => c.id === state.userClubId);
+        if (!userClub || !GameState.isCustomFormation(userClub.formation)) return;
+
+        const key = userClub.formation;
+        const result = GameState.deleteCustomFormation(state, key);
+        if (!result.success) {
+            this.showToast(result.error, "error");
+            return;
+        }
+
+        this.formationEditMode = false;
+        this.formationDraft = null;
+        this.formationDirty = false;
+        this.selectedPitchSlot = null;
+        GameState.autoSetLineupForClub(userClub, state.players);
+
+        this.showToast("Eigene Formation gelöscht – zurück auf 4-4-2.", "info");
+        this.renderTactics();
     }
 
     handlePitchSlotClick(slotIndex) {
@@ -3705,8 +4084,58 @@ class UIManager {
         document.getElementById("selectFormation").onchange = (e) => {
             const userClub = this.app.state.clubs.find(c => c.id === this.app.state.userClubId);
             userClub.formation = e.target.value;
+
+            // Beim Wechsel den Editor-Entwurf mitziehen und die Elf neu ordnen
+            if (this.formationEditMode) {
+                this.resetFormationDraft();
+            }
+            GameState.autoSetLineupForClub(userClub, this.app.state.players);
+            this.selectedPitchSlot = null;
             this.renderTactics();
         };
+
+        // Formations-Editor
+        const btnFormationEdit = document.getElementById("btnFormationEdit");
+        if (btnFormationEdit) {
+            btnFormationEdit.onclick = () => this.toggleFormationEditMode();
+        }
+
+        const btnFormationSave = document.getElementById("btnFormationSave");
+        if (btnFormationSave) {
+            btnFormationSave.onclick = () => this.saveCustomFormation();
+        }
+
+        const btnFormationReset = document.getElementById("btnFormationReset");
+        if (btnFormationReset) {
+            btnFormationReset.onclick = () => this.resetFormationDraft();
+        }
+
+        const btnFormationDelete = document.getElementById("btnFormationDelete");
+        if (btnFormationDelete) {
+            btnFormationDelete.onclick = () => this.deleteCustomFormation();
+        }
+
+        const inputFormationName = document.getElementById("inputFormationName");
+        if (inputFormationName) {
+            inputFormationName.oninput = () => { inputFormationName.dataset.touched = "1"; };
+        }
+
+        // Position eines einzelnen Slots manuell festlegen
+        const selectSlotPosition = document.getElementById("selectSlotPosition");
+        if (selectSlotPosition) {
+            selectSlotPosition.onchange = (e) => {
+                if (!this.formationEditMode || this.selectedPitchSlot === null) return;
+                const slot = this.formationDraft?.[this.selectedPitchSlot];
+                if (!slot) return;
+
+                const posEngine = this.getPositionEngine();
+                slot.pos = e.target.value;
+                slot.manualPos = true;
+                slot.role = posEngine?.POSITION_META?.[slot.pos]?.name || slot.pos;
+                this.formationDirty = true;
+                this.renderTactics();
+            };
+        }
 
         // Taktik Dropdowns
         ["tacMentality", "tacPressing", "tacTempo", "tacPassing", "tacFocus"].forEach(id => {

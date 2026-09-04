@@ -309,11 +309,11 @@ function runEngineTests() {
 
     // 10. YouthEngine
     test("YouthEngine: Jugendtalente fördern, befördern und Akademie ausbauen", () => {
-        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const state = GameState.createNewGame("svw", "normal", { name: "Trainer" });
         const prospect = state.youthAcademy.prospects[0];
-        const promoteRes = YouthEngine.promoteProspect(state, "muc", prospect.id);
+        const promoteRes = YouthEngine.promoteProspect(state, "svw", prospect.id);
         if (!promoteRes.success) throw new Error("Youth prospect promotion failed: " + promoteRes.error);
-        const upgradeRes = YouthEngine.upgradeAcademy(state, "muc");
+        const upgradeRes = YouthEngine.upgradeAcademy(state, "svw");
         if (!upgradeRes.success) throw new Error("Youth academy upgrade failed: " + upgradeRes.error);
     });
 
@@ -386,6 +386,169 @@ function runEngineTests() {
         SeasonEngine.startNextSeason(state);
         if (state.seasonYear !== 2 || state.currentMatchday !== 1) {
             throw new Error("Next season start failed");
+        }
+    });
+
+    // 15. Kalibrierungstest über 500 Spiele
+    test("MatchEngine Kalibrierung: 500 Spiele Liga-Mittelwerte (Tore, Schüsse, Gelb/Rot, Elfmeter, Ballbesitz)", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const clubs = state.clubs;
+        const players = state.players;
+
+        let totalGoals = 0;
+        let totalShots = 0;
+        let totalYellows = 0;
+        let totalReds = 0;
+        let totalPenalties = 0;
+        const totalMatches = 500;
+
+        for (let i = 0; i < totalMatches; i++) {
+            const homeIdx = i % clubs.length;
+            const awayIdx = (i + 1 + Math.floor(i / clubs.length)) % clubs.length;
+            const home = clubs[homeIdx];
+            const away = clubs[awayIdx];
+
+            const match = { id: `m_calib_${i}`, played: false, homeClubId: home.id, awayClubId: away.id };
+            MatchEngine.simulateFullMatch(match, home, away, players);
+
+            // Ballbesitz Summe prüfen
+            if (match.stats.possession[0] + match.stats.possession[1] !== 100) {
+                throw new Error(`Ballbesitz-Summe != 100: ${match.stats.possession[0]} + ${match.stats.possession[1]}`);
+            }
+
+            totalGoals += (match.homeGoals + match.awayGoals);
+            totalShots += (match.stats.shots[0] + match.stats.shots[1]);
+            totalYellows += (match.stats.yellowCards[0] + match.stats.yellowCards[1]);
+            totalReds += (match.stats.redCards[0] + match.stats.redCards[1]);
+
+            // Elfmeter zählen aus Timeline
+            const pens = match.events.filter(e => e.type === "goal" && e.text && e.text.includes("Elfmeter") || e.type === "save" && e.text && e.text.includes("Elfmeter"));
+            totalPenalties += pens.length;
+
+            // Idempotenz testen
+            const goalsBefore = match.homeGoals;
+            MatchEngine.applyTimelineToMatch(match, match.timeline, home, away, players);
+            if (match.homeGoals !== goalsBefore) {
+                throw new Error("applyTimelineToMatch ist nicht idempotent!");
+            }
+        }
+
+        const avgGoals = totalGoals / totalMatches;
+        const avgShotsPerTeam = totalShots / (totalMatches * 2);
+        const avgYellows = totalYellows / totalMatches;
+        const avgReds = totalReds / totalMatches;
+        const avgPenalties = totalPenalties / totalMatches;
+
+        if (avgGoals < 2.2 || avgGoals > 3.4) {
+            throw new Error(`Tore/Spiel außerhalb des Bereichs [2.2, 3.4]: ${avgGoals.toFixed(2)}`);
+        }
+        if (avgShotsPerTeam < 8 || avgShotsPerTeam > 18) {
+            throw new Error(`Schüsse/Team außerhalb des Bereichs [8, 18]: ${avgShotsPerTeam.toFixed(2)}`);
+        }
+        if (avgYellows < 2.5 || avgYellows > 6.0) {
+            throw new Error(`Gelbe Karten/Spiel außerhalb des Bereichs [2.5, 6.0]: ${avgYellows.toFixed(2)}`);
+        }
+        if (avgReds >= 0.25) {
+            throw new Error(`Rote Karten/Spiel >= 0.25: ${avgReds.toFixed(2)}`);
+        }
+        if (avgPenalties >= 0.50) {
+            throw new Error(`Elfmeter/Spiel >= 0.50: ${avgPenalties.toFixed(2)}`);
+        }
+    });
+
+    // 16. Wirksamkeitstest: Taktiken (very_defensive vs very_offensive)
+    test("MatchEngine Wirksamkeit: very_defensive vs. very_offensive (je 200 Durchläufe)", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = JSON.parse(JSON.stringify(state.clubs.find(c => c.id === "muc")));
+        const awayClub = JSON.parse(JSON.stringify(state.clubs.find(c => c.id === "dor")));
+        const players = state.players;
+
+        const runs = 200;
+        let defGoalsFor = 0, defGoalsAgainst = 0;
+        let offGoalsFor = 0, offGoalsAgainst = 0;
+
+        // Defensive Taktik
+        homeClub.tactics = { mentality: "very_defensive", pressing: "low", tempo: "slow" };
+        awayClub.tactics = { mentality: "balanced", pressing: "medium", tempo: "normal" };
+
+        for (let i = 0; i < runs; i++) {
+            const mDef = { id: `m_tact_def_${i}`, played: false, homeClubId: homeClub.id, awayClubId: awayClub.id };
+            MatchEngine.simulateFullMatch(mDef, homeClub, awayClub, players);
+            defGoalsFor += mDef.homeGoals;
+            defGoalsAgainst += mDef.awayGoals;
+        }
+
+        // Offensive Taktik
+        homeClub.tactics = { mentality: "very_offensive", pressing: "high", tempo: "fast" };
+        awayClub.tactics = { mentality: "balanced", pressing: "medium", tempo: "normal" };
+
+        for (let i = 0; i < runs; i++) {
+            const mOff = { id: `m_tact_off_${i}`, played: false, homeClubId: homeClub.id, awayClubId: awayClub.id };
+            MatchEngine.simulateFullMatch(mOff, homeClub, awayClub, players);
+            offGoalsFor += mOff.homeGoals;
+            offGoalsAgainst += mOff.awayGoals;
+        }
+
+        const avgDefGoalsFor = defGoalsFor / runs;
+        const avgOffGoalsFor = offGoalsFor / runs;
+        const avgDefGoalsAgainst = defGoalsAgainst / runs;
+        const avgOffGoalsAgainst = offGoalsAgainst / runs;
+
+        if (avgOffGoalsFor <= avgDefGoalsFor) {
+            throw new Error(`Offensive erzielte nicht mehr Tore als Defensive: Off=${avgOffGoalsFor.toFixed(2)}, Def=${avgDefGoalsFor.toFixed(2)}`);
+        }
+        if (avgOffGoalsAgainst <= avgDefGoalsAgainst) {
+            throw new Error(`Offensive kassierte nicht mehr Gegentore als Defensive: Off=${avgOffGoalsAgainst.toFixed(2)}, Def=${avgDefGoalsAgainst.toFixed(2)}`);
+        }
+    });
+
+    // 17. Finanz-Integritätstest (C3 & C4)
+    test("FinanceEngine & SeasonEngine: Buchungsjournal-Integrität nach Spieltagssimulation", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const userClub = state.clubs.find(c => c.id === "muc");
+        const initialBalance = userClub.balance;
+
+        SeasonEngine.advanceToNextMatchday(state);
+
+        const userTxns = (state.finances?.transactions || []).filter(t => t.clubId === "muc");
+        if (userTxns.length === 0) {
+            throw new Error("Transaktionsjournal ist nach Spieltagssimulation leer!");
+        }
+
+        const txSum = userTxns.reduce((sum, t) => sum + t.amount, 0);
+        const actualBalanceDiff = userClub.balance - initialBalance;
+
+        if (txSum !== actualBalanceDiff) {
+            throw new Error(`Buchungssumme (${txSum}) weicht von tatsächlicher Kontoveränderung (${actualBalanceDiff}) ab!`);
+        }
+    });
+
+    // 18. Infrastruktur-Wirksamkeitstest: Stufe 5 vs. Stufe 1 Akademie (C2 & C7)
+    test("Infrastruktur-Wirksamkeit: Akademie Stufe 5 vs. Stufe 1 Talente", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const clubTop = state.clubs.find(c => c.id === "muc");
+        const clubSmall = state.clubs.find(c => c.id === "svw");
+
+        clubTop.facilities.youthCenter = 5;
+        clubSmall.facilities.youthCenter = 1;
+
+        let ovrSumTop = 0, potSumTop = 0;
+        let ovrSumSmall = 0, potSumSmall = 0;
+        const runs = 20;
+
+        for (let r = 0; r < runs; r++) {
+            const topProspects = YouthEngine.generateProspects(state, clubTop.id);
+            const smallProspects = YouthEngine.generateProspects(state, clubSmall.id);
+
+            topProspects.forEach(p => { ovrSumTop += p.overall; potSumTop += p.pot; });
+            smallProspects.forEach(p => { ovrSumSmall += p.overall; potSumSmall += p.pot; });
+        }
+
+        const avgPotTop = potSumTop / (runs * 3);
+        const avgPotSmall = potSumSmall / (runs * 3);
+
+        if (avgPotTop <= avgPotSmall) {
+            throw new Error(`Akademie Stufe 5 generiert im Mittel nicht bessere Talente als Stufe 1: Top=${avgPotTop.toFixed(1)}, Small=${avgPotSmall.toFixed(1)}`);
         }
     });
 

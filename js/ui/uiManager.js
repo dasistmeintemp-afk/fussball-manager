@@ -965,6 +965,9 @@ class UIManager {
             case "dashboard":
                 this.renderDashboard();
                 break;
+            case "club":
+                this.renderClub();
+                break;
             case "squad":
                 this.renderSquad();
                 break;
@@ -1184,10 +1187,23 @@ class UIManager {
             `;
         }).join("");
 
-        // 3. Board Confidence & Goal
+        // 3. Board Confidence, Fan Mood & Media Pressure (D4)
         document.getElementById("dashBoardGoal").textContent = GameState.getExpectationText(userClub.boardExpectation);
         document.getElementById("dashBoardFill").style.width = `${state.boardConfidence}%`;
         document.getElementById("dashBoardPct").textContent = `${state.boardConfidence}%`;
+
+        const fanMood = state.fanMood !== undefined ? state.fanMood : 75;
+        const mediaPressure = state.mediaPressure !== undefined ? state.mediaPressure : 45;
+
+        const fanMoodFill = document.getElementById("dashFanMoodFill");
+        const fanMoodPct = document.getElementById("dashFanMoodPct");
+        if (fanMoodFill) fanMoodFill.style.width = `${fanMood}%`;
+        if (fanMoodPct) fanMoodPct.textContent = `${fanMood}%`;
+
+        const mediaFill = document.getElementById("dashMediaFill");
+        const mediaPct = document.getElementById("dashMediaPct");
+        if (mediaFill) mediaFill.style.width = `${mediaPressure}%`;
+        if (mediaPct) mediaPct.textContent = `${mediaPressure}%`;
 
         let msg = "Der Vorstand ist mit dem aktuellen Saisonverlauf zufrieden.";
         if (state.boardConfidence >= 85) msg = "Der Vorstand und die Fans sind von Ihren Leistungen begeistert!";
@@ -1861,7 +1877,7 @@ class UIManager {
         const squad = state.players.filter(p => userClub.playerIds.includes(p.id));
         const weeklyWages = squad.reduce((sum, p) => sum + (p.wage || 0), 0);
         const sponsorWeekly = userClub.sponsor?.amountPerMatchday || Math.round((userClub.reputation || 70) * 15000);
-        const matchIncomeEst = Math.round((userClub.capacity || 30000) * 0.85 * 35);
+        const matchIncomeEst = Math.round((userClub.capacity || 30000) * 0.85 * (userClub.ticketPrice || 35));
 
         DOM.setText("finBalance", GameState.formatMoney(userClub.balance));
         DOM.setText("finTransferBudget", GameState.formatMoney(userClub.transferBudget));
@@ -1880,10 +1896,10 @@ class UIManager {
             DOM.setText("facStadium", `Stufe ${userClub.facilities.stadium || 1}`);
         }
 
-        // Transaktionshistorie
+        // Transaktionshistorie (D5)
         const txnsBody = document.getElementById("finTransactionsBody");
         if (txnsBody) {
-            const txns = (state.finances?.transactions || []).filter(t => t.clubId === userClub.id).slice(0, 15);
+            const txns = (state.finances?.transactions || []).filter(t => t.clubId === userClub.id).slice(0, 30);
             if (txns.length === 0) {
                 txnsBody.innerHTML = `<tr><td colspan="3" class="text-center text-muted">Noch keine Buchungen erfasst.</td></tr>`;
             } else {
@@ -1901,6 +1917,81 @@ class UIManager {
                 }).join("");
             }
         }
+    }
+
+    /**
+     * Vereins-Tab rendern (D3 & C6)
+     */
+    renderClub() {
+        const state = this.app.state;
+        const userClub = state.clubs.find(c => c.id === state.userClubId);
+        if (!userClub) return;
+
+        DOM.setText("clubTabName", userClub.name);
+        DOM.setText("clubTabCity", userClub.city || "Deutschland");
+        DOM.setText("clubTabReputation", userClub.reputation || 70);
+        DOM.setText("clubTabFanbase", (userClub.fanBase || 25000).toLocaleString("de-DE"));
+        DOM.setText("clubTabFanMood", state.fanMood || 75);
+        DOM.setText("clubTabChemistry", userClub.chemistry?.overall || 75);
+
+        DOM.setText("clubTabStadium", userClub.stadium || "Stadion");
+        DOM.setText("clubTabCapacity", (userClub.capacity || 30000).toLocaleString("de-DE"));
+        DOM.setText("clubTabStadiumLvl", `Stufe ${userClub.facilities?.stadium || 2}`);
+
+        // Sponsor
+        DOM.setText("clubTabSponsorName", userClub.sponsor?.name || "Global Tech");
+        DOM.setText("clubTabSponsorAmount", `${GameState.formatMoney(userClub.sponsor?.amountPerMatchday || 1000000)} / Spieltag`);
+        DOM.setText("clubTabSponsorYears", userClub.sponsor?.yearsRemaining || 2);
+
+        // Facility Stufen
+        DOM.setText("lvlTrainingGround", `Stufe ${userClub.facilities?.trainingGround || 2} / 5`);
+        DOM.setText("lvlYouthCenter", `Stufe ${userClub.facilities?.youthCenter || 1} / 5`);
+        DOM.setText("lvlMedicalCenter", `Stufe ${userClub.facilities?.medicalCenter || 1} / 5`);
+        DOM.setText("lvlStadium", `Stufe ${userClub.facilities?.stadium || 2} / 5`);
+
+        // Ticketpreis Slider
+        const slider = document.getElementById("inputTicketPrice");
+        const valText = document.getElementById("valTicketPrice");
+        const forecastText = document.getElementById("txtTicketForecast");
+
+        if (slider) {
+            slider.value = userClub.ticketPrice || 35;
+            if (valText) valText.textContent = `${slider.value} €`;
+            
+            const updateForecast = (price) => {
+                const rep = userClub.reputation || 70;
+                const priceFactor = 1.0 - ((price - 35) / 100) * 0.6;
+                const estPct = Math.round(Math.min(100, Math.max(35, (0.68 + (rep / 200) * 0.22) * priceFactor * 100)));
+                if (forecastText) forecastText.textContent = `Prognostizierte Auslastung: ~${estPct}% (Kapazität: ${userClub.capacity.toLocaleString('de-DE')})`;
+            };
+            updateForecast(slider.value);
+
+            slider.oninput = (e) => {
+                const p = parseInt(e.target.value, 10);
+                userClub.ticketPrice = p;
+                if (valText) valText.textContent = `${p} €`;
+                updateForecast(p);
+            };
+        }
+
+        // Upgrade Buttons
+        document.querySelectorAll(".btn-upgrade-fac").forEach(btn => {
+            btn.onclick = () => {
+                const facKey = btn.dataset.facility;
+                const facilityEngine = (typeof FacilityEngine !== 'undefined') ? FacilityEngine : null;
+                if (facilityEngine) {
+                    const res = facilityEngine.upgrade(state, userClub.id, facKey);
+                    if (res.success) {
+                        this.playSound("whistle");
+                        this.showToast(res.message, "success");
+                        this.renderClub();
+                        this.renderHeader();
+                    } else {
+                        this.showToast(res.error, "error");
+                    }
+                }
+            };
+        });
     }
 
     /**
@@ -3035,11 +3126,28 @@ class UIManager {
         document.getElementById("lmLiveMentality").onchange = (e) => {
             liveMatch.updateTactics("home", { mentality: e.target.value });
         };
+        const livePressingEl = document.getElementById("lmLivePressing");
+        if (livePressingEl) {
+            livePressingEl.onchange = (e) => {
+                liveMatch.updateTactics("home", { pressing: e.target.value });
+            };
+        }
+        const liveTempoEl = document.getElementById("lmLiveTempo");
+        if (liveTempoEl) {
+            liveTempoEl.onchange = (e) => {
+                liveMatch.updateTactics("home", { tempo: e.target.value });
+            };
+        }
     }
 
     renderLiveSubsControls(liveMatch) {
         const subsContainer = document.getElementById("lmLiveSubsList");
         const userClub = this.app.state.clubs.find(c => c.id === this.app.state.userClubId);
+
+        const subsCounter = document.getElementById("lmSubsCounter");
+        if (subsCounter) {
+            subsCounter.textContent = `${liveMatch.substitutionsUsed?.home || 0} / 5`;
+        }
 
         subsContainer.innerHTML = `
             <div style="font-size:12px; margin-bottom:8px; color:var(--text-muted);">
@@ -3072,9 +3180,10 @@ class UIManager {
             const res = liveMatch.substitute("home", outId, inId);
             if (res.success) {
                 this.playSound("whistle");
+                this.showToast(res.message, "success");
                 this.renderLiveSubsControls(liveMatch);
             } else {
-                alert(res.message);
+                this.showToast(res.message, "error");
             }
         };
     }
@@ -3092,6 +3201,46 @@ class UIManager {
 
         const goals = match.events.filter(e => e.type === "goal");
         const cards = match.events.filter(e => e.type === "yellow_card" || e.type === "red_card");
+        const injuries = match.injuries || [];
+        const suspensions = match.suspensions || [];
+
+        const homeRatings = (match.playerRatings || []).filter(r => r.clubId === home.id);
+        const awayRatings = (match.playerRatings || []).filter(r => r.clubId === away.id);
+
+        const renderRatingsTable = (ratings, teamName) => {
+            if (!ratings || ratings.length === 0) return '<div class="text-muted" style="font-size:12px;">Keine Noten verfügbar</div>';
+            return `
+                <div style="margin-bottom:12px;">
+                    <h5 style="font-size:13px; font-weight:700; margin-bottom:6px; color:var(--text-primary);">${teamName}</h5>
+                    <table style="width:100%; font-size:12px; border-collapse:collapse;">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border-color); color:var(--text-muted); text-align:left;">
+                                <th style="padding:4px 2px;">Spieler</th>
+                                <th style="padding:4px 2px; text-align:center;">Pos</th>
+                                <th style="padding:4px 2px; text-align:center;">Min</th>
+                                <th style="padding:4px 2px; text-align:center;">T/A/P</th>
+                                <th style="padding:4px 2px; text-align:center;">Note</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${ratings.map(r => {
+                                const tap = `${r.goals || 0}/${r.assists || 0}/${r.saves || 0}`;
+                                const noteColor = r.rating >= 7.5 ? "#10b981" : (r.rating <= 5.8 ? "#ef4444" : "var(--accent-gold)");
+                                return `
+                                    <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+                                        <td style="padding:4px 2px;">${r.name} ${r.cards || ''}</td>
+                                        <td style="padding:4px 2px; text-align:center; color:var(--text-muted);">${r.pos}</td>
+                                        <td style="padding:4px 2px; text-align:center;">${r.minutes}'</td>
+                                        <td style="padding:4px 2px; text-align:center; font-size:11px; color:var(--text-muted);">${tap}</td>
+                                        <td style="padding:4px 2px; text-align:center; font-weight:700; color:${noteColor};">${r.rating.toFixed(1)}</td>
+                                    </tr>
+                                `;
+                            }).join("")}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        };
 
         body.innerHTML = `
             <div style="text-align:center; padding:16px 0; border-bottom:1px solid var(--border-color); margin-bottom:16px;">
@@ -3100,28 +3249,60 @@ class UIManager {
                 <p class="text-muted" style="font-size:13px;">${home.stadium}</p>
             </div>
 
+            ${match.summaryText ? `
+                <div style="font-size:13px; line-height:1.4; padding:10px 14px; background:rgba(255,255,255,0.03); border-radius:6px; margin-bottom:16px; border-left:3px solid var(--accent-gold);">
+                    ${match.summaryText}
+                </div>
+            ` : ''}
+
+            ${match.manOfTheMatch ? `
+                <div class="dash-card" style="padding:12px; text-align:center; background:rgba(245, 158, 11, 0.1); border-color:#f59e0b; margin-bottom:16px;">
+                    ⭐ <strong>Man of the Match:</strong> ${match.manOfTheMatch.name} (${match.manOfTheMatch.clubName}) — Note <strong>${match.manOfTheMatch.rating}</strong>
+                </div>
+            ` : ''}
+
             <div class="stats-grid" style="grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:16px;">
                 <div class="dash-card" style="padding:14px;">
                     <h4 style="font-size:14px; margin-bottom:10px;">⚽ Torschützen</h4>
                     ${goals.length > 0 ? goals.map(g => `<div>${g.text}</div>`).join("") : '<div class="text-muted">Keine Tore</div>'}
                 </div>
                 <div class="dash-card" style="padding:14px;">
-                    <h4 style="font-size:14px; margin-bottom:10px;">🟨 Karten & Ereignisse</h4>
+                    <h4 style="font-size:14px; margin-bottom:10px;">🟨 Karten & Disziplin</h4>
                     ${cards.length > 0 ? cards.map(c => `<div>${c.text}</div>`).join("") : '<div class="text-muted">Faires Spiel ohne Platzverweise</div>'}
                 </div>
             </div>
 
-            ${match.manOfTheMatch ? `
-                <div class="dash-card" style="padding:12px; text-align:center; background:rgba(245, 158, 11, 0.1); border-color:#f59e0b; margin-bottom:16px;">
-                    ⭐ <strong>Man of the Match:</strong> ${match.manOfTheMatch.name} (${match.manOfTheMatch.clubName})
+            ${(injuries.length > 0 || suspensions.length > 0) ? `
+                <div class="dash-card" style="padding:14px; margin-bottom:16px; background:rgba(239, 68, 68, 0.05); border-color:rgba(239, 68, 68, 0.3);">
+                    <h4 style="font-size:14px; margin-bottom:10px; color:#ef4444;">🚑 Verletzungen & Sperren</h4>
+                    ${injuries.map(inj => `<div style="font-size:13px;">🩹 <strong>${inj.playerName}</strong>: ${inj.injuryName} (${inj.weeks} Wochen Ausfall)</div>`).join("")}
+                    ${suspensions.map(s => `<div style="font-size:13px;">🚫 <strong>${s.playerName}</strong>: ${s.reason} (${s.matches} Spiel(e) gesperrt)</div>`).join("")}
                 </div>
             ` : ''}
 
-            <div class="stats-grid" style="grid-template-columns: 1fr 1fr; gap:14px;">
-                <div class="club-stat-line"><span>Ballbesitz:</span><strong>${match.stats.possession[0]}% - ${match.stats.possession[1]}%</strong></div>
-                <div class="club-stat-line"><span>Schüsse:</span><strong>${match.stats.shots[0]} - ${match.stats.shots[1]}</strong></div>
-                <div class="club-stat-line"><span>Schüsse aufs Tor:</span><strong>${match.stats.shotsOnTarget[0]} - ${match.stats.shotsOnTarget[1]}</strong></div>
-                <div class="club-stat-line"><span>Expected Goals (xG):</span><strong>${match.stats.xG[0]} - ${match.stats.xG[1]}</strong></div>
+            <div class="dash-card" style="padding:14px; margin-bottom:16px;">
+                <h4 style="font-size:14px; margin-bottom:12px;">⭐ Spielernoten & Leistungsdaten</h4>
+                <div class="stats-grid" style="grid-template-columns: 1fr 1fr; gap:16px;">
+                    <div>${renderRatingsTable(homeRatings, home.name)}</div>
+                    <div>${renderRatingsTable(awayRatings, away.name)}</div>
+                </div>
+            </div>
+
+            <div class="dash-card" style="padding:14px;">
+                <h4 style="font-size:14px; margin-bottom:12px;">📊 Spielstatistik</h4>
+                <div class="stats-grid" style="grid-template-columns: 1fr 1fr; gap:12px;">
+                    <div class="club-stat-line"><span>Ballbesitz:</span><strong>${match.stats.possession[0]}% - ${match.stats.possession[1]}%</strong></div>
+                    <div class="club-stat-line"><span>Passquote:</span><strong>${match.stats.passAccuracy ? `${match.stats.passAccuracy[0]}% - ${match.stats.passAccuracy[1]}%` : '-'}</strong></div>
+                    <div class="club-stat-line"><span>Zweikämpfe gewonnen:</span><strong>${match.stats.tacklesWon ? `${match.stats.tacklesWon[0]}% - ${match.stats.tacklesWon[1]}%` : '-'}</strong></div>
+                    <div class="club-stat-line"><span>Schüsse gesamt:</span><strong>${match.stats.shots[0]} - ${match.stats.shots[1]}</strong></div>
+                    <div class="club-stat-line"><span>Schüsse aufs Tor:</span><strong>${match.stats.shotsOnTarget[0]} - ${match.stats.shotsOnTarget[1]}</strong></div>
+                    <div class="club-stat-line"><span>Expected Goals (xG):</span><strong>${match.stats.xG[0]} - ${match.stats.xG[1]}</strong></div>
+                    <div class="club-stat-line"><span>Eckbälle:</span><strong>${match.stats.corners ? `${match.stats.corners[0]} - ${match.stats.corners[1]}` : '-'}</strong></div>
+                    <div class="club-stat-line"><span>Fouls:</span><strong>${match.stats.fouls ? `${match.stats.fouls[0]} - ${match.stats.fouls[1]}` : '-'}</strong></div>
+                    <div class="club-stat-line"><span>Gelbe Karten:</span><strong>${match.stats.yellowCards ? `${match.stats.yellowCards[0]} - ${match.stats.yellowCards[1]}` : '-'}</strong></div>
+                    <div class="club-stat-line"><span>Rote Karten:</span><strong>${match.stats.redCards ? `${match.stats.redCards[0]} - ${match.stats.redCards[1]}` : '-'}</strong></div>
+                    <div class="club-stat-line"><span>Torwartparaden:</span><strong>${match.stats.saves ? `${match.stats.saves[0]} - ${match.stats.saves[1]}` : '-'}</strong></div>
+                </div>
             </div>
         `;
 

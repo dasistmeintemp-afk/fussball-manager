@@ -195,13 +195,40 @@ class GameState {
         const teamsData = JSON.parse(JSON.stringify(rawTeams || []));
 
         // Clubs klonen und Spieler initialisieren
-        teamsData.forEach(clubData => {
+        const SPONSOR_NAMES = [
+            "Deutsche Telekom", "Telekom", "Evonik Industries", "Barmenia Versicherungen", "SAP SE",
+            "Volkswagen", "Mercedes-Benz", "Red Bull", "Wiesenhof", "Talanx", "Mainova",
+            "Schwarzwaldmilch", "Covestro", "Allianz", "BMW Group", "Puma SE", "Adidas", "Global Tech"
+        ];
+
+        teamsData.forEach((clubData, cIdx) => {
+            const rep = clubData.reputation || 70;
+            const cap = clubData.capacity || 25000;
+            
+            // C1 · Infrastruktur nach Prestige ableiten (Stufen 1-5)
+            let stadiumLvl = 2, trainingLvl = 2, youthLvl = 1, medicalLvl = 1;
+            if (rep >= 88 || cap >= 65000) {
+                stadiumLvl = 5; trainingLvl = 5; youthLvl = 5; medicalLvl = 5;
+            } else if (rep >= 80 || cap >= 45000) {
+                stadiumLvl = 4; trainingLvl = 4; youthLvl = 4; medicalLvl = 4;
+            } else if (rep >= 72 || cap >= 28000) {
+                stadiumLvl = 3; trainingLvl = 3; youthLvl = 3; medicalLvl = 3;
+            } else if (rep >= 64 || cap >= 18000) {
+                stadiumLvl = 2; trainingLvl = 2; youthLvl = 2; medicalLvl = 2;
+            } else {
+                stadiumLvl = 1; trainingLvl = 1; youthLvl = 1; medicalLvl = 1;
+            }
+
+            const sponsorName = SPONSOR_NAMES[cIdx % SPONSOR_NAMES.length];
+            const sponsorAmount = Math.round(rep * 18000 + (stadiumLvl * 50000));
+
             const club = {
                 id: clubData.id,
                 name: clubData.name,
                 city: clubData.city,
                 stadium: clubData.stadium,
                 capacity: clubData.capacity,
+                ticketPrice: 35, // C4 Managerregler für Ticketpreise
                 balance: clubData.balance,
                 transferBudget: clubData.transferBudget,
                 wageBudget: clubData.wageBudget,
@@ -212,15 +239,19 @@ class GameState {
                 secondaryColor: clubData.secondaryColor,
                 confidence: 75,
                 facilities: {
-                    trainingGround: 2,
-                    youthCenter: 1,
-                    medicalCenter: 1,
-                    stadium: 2
+                    trainingGround: trainingLvl,
+                    youthCenter: youthLvl,
+                    medicalCenter: medicalLvl,
+                    stadium: stadiumLvl
+                },
+                youthAcademy: {
+                    prospects: [],
+                    level: youthLvl
                 },
                 sponsor: {
-                    name: "Global Tech",
-                    amountPerMatchday: Math.round((clubData.reputation || 70) * 15000),
-                    yearsRemaining: 2
+                    name: sponsorName,
+                    amountPerMatchday: sponsorAmount,
+                    yearsRemaining: (cIdx % 3) + 1
                 },
                 chemistry: {
                     overall: 75,

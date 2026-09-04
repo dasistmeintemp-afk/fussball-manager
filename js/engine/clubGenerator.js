@@ -165,10 +165,14 @@ class ClubGenerator {
             form: ["-", "-", "-", "-", "-"],
             fanMood: 70 + Math.floor(Math.random() * 20),
             facilities: {
-                stadiumLevel: Math.max(1, 8 - level),
-                trainingGroundLevel: Math.max(1, 8 - level),
-                youthAcademyLevel: Math.max(1, 8 - level),
-                medicalCenterLevel: Math.max(1, 8 - level)
+                stadium: Math.max(1, Math.min(5, 6 - level)),
+                trainingGround: Math.max(1, Math.min(5, 6 - level)),
+                youthCenter: Math.max(1, Math.min(5, 6 - level)),
+                medicalCenter: Math.max(1, Math.min(5, 6 - level))
+            },
+            youthAcademy: {
+                prospects: [],
+                level: Math.max(1, Math.min(5, 6 - level))
             }
         };
     }

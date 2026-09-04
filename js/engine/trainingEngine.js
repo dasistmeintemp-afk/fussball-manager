@@ -12,14 +12,17 @@ class TrainingEngine {
             const focus = club.id === state.userClubId ? (state.trainingSettings.focus || "allround") : "allround";
             const intensity = club.id === state.userClubId ? (state.trainingSettings.intensity || "normal") : "normal";
 
+            const trainingLvl = club?.facilities?.trainingGround || 2;
+            const medicalLvl = club?.facilities?.medicalCenter || 1;
+
             clubPlayers.forEach(player => {
-                // 1. Fitness-Regeneration
-                let fitnessGain = 8;
-                if (focus === "regeneration") fitnessGain = 16;
+                // 1. Fitness-Regeneration (C2: beeinflusst durch trainingGround)
+                let fitnessGain = 7 + trainingLvl * 1.5;
+                if (focus === "regeneration") fitnessGain = 14 + trainingLvl * 2;
                 if (intensity === "low") fitnessGain += 4;
                 if (intensity === "high") fitnessGain -= 3;
 
-                player.fitness = Math.min(100, player.fitness + fitnessGain);
+                player.fitness = Math.min(100, player.fitness + Math.round(fitnessGain));
 
                 // 2. Moral-Entwicklung
                 if (player.stats.matches > 0 && player.form >= 7.0) {
@@ -28,11 +31,12 @@ class TrainingEngine {
                     player.morale = Math.max(40, player.morale - 1);
                 }
 
-                // 3. Attributs- und Stärkeentwicklung (Potential vs. Age)
-                TrainingEngine.developPlayer(player, focus, intensity);
+                // 3. Attributs- und Stärkeentwicklung (C2: trainingGround verstärkt Entwicklung)
+                TrainingEngine.developPlayer(player, focus, intensity, trainingLvl);
 
-                // 4. Verletzungsrisiko beim Training (sehr gering)
-                if (player.injuredWeeks === 0 && Math.random() < (intensity === "high" ? 0.015 : 0.005)) {
+                // 4. Verletzungsrisiko beim Training (C2: medicalCenter senkt Risiko)
+                const baseInjRisk = (intensity === "high" ? 0.015 : 0.005) * (1.0 - (medicalLvl - 1) * 0.12);
+                if (player.injuredWeeks === 0 && Math.random() < Math.max(0.001, baseInjRisk)) {
                     TrainingEngine.inflictInjury(state, player, club);
                 }
             });
@@ -42,14 +46,14 @@ class TrainingEngine {
     /**
      * Entwickelt einen Spieler basierend auf Fokus, Alter und Potenzial
      */
-    static developPlayer(player, focus, intensity) {
+    static developPlayer(player, focus, intensity, facilityLevel = 2) {
         const potentialRoom = player.pot - player.overall;
-        let growthChance = 0.05;
+        let growthChance = 0.05 + (facilityLevel - 1) * 0.02;
 
         // Junge Spieler (unter 23) entwickeln sich schneller
-        if (player.age <= 21) growthChance = 0.15;
-        else if (player.age <= 24) growthChance = 0.10;
-        else if (player.age >= 32) growthChance = -0.08; // Ältere Spieler bauen allmählich ab
+        if (player.age <= 21) growthChance += 0.10;
+        else if (player.age <= 24) growthChance += 0.05;
+        else if (player.age >= 32) growthChance = -0.08 + (facilityLevel - 1) * 0.01; // Ältere Spieler bauen allmählich ab
         else if (player.age >= 30) growthChance = 0.01;
 
         if (focus === "youth" && player.age <= 22) growthChance += 0.08;

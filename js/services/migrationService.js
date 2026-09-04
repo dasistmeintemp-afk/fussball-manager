@@ -38,6 +38,33 @@ const MigrationService = {
                             medicalCenter: 1,
                             stadium: 2
                         };
+                    } else {
+                        // Vereinheitlichung von alten *Level-Schlüsseln
+                        if (club.facilities.trainingGroundLevel !== undefined) {
+                            club.facilities.trainingGround = club.facilities.trainingGroundLevel;
+                            delete club.facilities.trainingGroundLevel;
+                        }
+                        if (club.facilities.youthAcademyLevel !== undefined) {
+                            club.facilities.youthCenter = club.facilities.youthAcademyLevel;
+                            delete club.facilities.youthAcademyLevel;
+                        }
+                        if (club.facilities.medicalCenterLevel !== undefined) {
+                            club.facilities.medicalCenter = club.facilities.medicalCenterLevel;
+                            delete club.facilities.medicalCenterLevel;
+                        }
+                        if (club.facilities.stadiumLevel !== undefined) {
+                            club.facilities.stadium = club.facilities.stadiumLevel;
+                            delete club.facilities.stadiumLevel;
+                        }
+                    }
+                    if (club.ticketPrice === undefined) {
+                        club.ticketPrice = 35;
+                    }
+                    if (!club.youthAcademy) {
+                        club.youthAcademy = {
+                            prospects: [],
+                            level: club.facilities.youthCenter || 1
+                        };
                     }
                     if (!club.sponsor) {
                         club.sponsor = {

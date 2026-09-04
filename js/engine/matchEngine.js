@@ -1,68 +1,268 @@
 /**
- * MatchEngine - Detaillierte Spielberechnung & synchrone 2D-Timeline-Match-Engine
+ * MatchEngine - Realistisches FM-Simulationsmodell & synchrone 2D-Timeline-Match-Engine
  */
 
-// Zentrale Stellschrauben für die Realismus-Balance. Hier lässt sich die
-// Torquote justieren, ohne die Berechnungslogik selbst anfassen zu müssen.
+const _Random = (typeof Random !== 'undefined' && Random)
+    ? Random
+    : ((typeof require !== 'undefined') ? require('../core/random.js').Random : {
+        int: (min, max) => Math.floor(Math.random() * (max - min + 1)) + min,
+        float: (min, max) => Math.random() * (max - min) + min,
+        choice: arr => (Array.isArray(arr) && arr.length > 0) ? arr[Math.floor(Math.random() * arr.length)] : null,
+        chance: prob => Math.random() < (prob > 1 ? prob / 100 : prob),
+        clamp: (val, min, max) => Math.max(min, Math.min(max, val)),
+        gaussian: (mean = 0, stdev = 1) => {
+            const u1 = 1 - Math.random();
+            const u2 = 1 - Math.random();
+            return mean + stdev * (Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2.0 * Math.PI * u2));
+        }
+    });
+
+// Zentrale Kalibrierungs- und Tuning-Parameter
 const MATCH_TUNING = {
-    // Basis-Torwahrscheinlichkeit je Chancentyp (wird durch Spielerqualität
-    // noch nach oben/unten verschoben). Reale Konversionsraten liegen grob
-    // zwischen 8% (Distanzschuss) und 16% (klare Chance).
     baseGoalChance: {
-        through_ball: 0.105,
-        cross: 0.07,
-        dribble: 0.055,
-        corner: 0.05
+        through_ball: 0.12,
+        cross: 0.08,
+        dribble: 0.07,
+        corner: 0.055,
+        penalty: 0.77
     },
-    // Wie stark der Qualitätsunterschied (Angreifer vs. Torwart/Abwehr)
-    // die Basis-Wahrscheinlichkeit verschiebt.
-    skillInfluence: 380,
-    // Wahrscheinlichkeit, dass ein Eckball überhaupt zu einem Torschuss führt
-    cornerShotChance: 0.25,
-    // Cap für maximale/minimale Torwahrscheinlichkeit pro Abschluss
+    skillInfluence: 340,
+    cornerShotChance: 0.28,
     minGoalChance: 0.03,
-    maxGoalChance: 0.38
+    maxGoalChance: 0.40,
+
+    // Raten für Nebenereignisse
+    foulRate: 0.28,
+    yellowCardRate: 0.36,       // Anteil Fouls, die Gelb geben (~3.5-4.5 Gelbe pro Spiel)
+    redCardRate: 0.009,         // Direkte Rote Karte (~0.05 pro Spiel)
+    penaltyRate: 0.032,         // Elfmeterquote pro Foul-Szene (~0.25 pro Spiel)
+    injuryRatePerTeam: 0.06     // Verletzungswahrscheinlichkeit pro Team & Spiel (~0.06-0.10)
 };
+
+const INJURY_CATALOG = [
+    { name: "Muskelverhärtung", weeks: 1, severity: "leicht" },
+    { name: "Knöchelstauchung", weeks: 2, severity: "leicht" },
+    { name: "Muskelfaserriss", weeks: 3, severity: "mittel" },
+    { name: "Bänderdehnung", weeks: 4, severity: "mittel" },
+    { name: "Meniskusschaden", weeks: 6, severity: "schwer" },
+    { name: "Kreuzbandanriss", weeks: 10, severity: "schwer" }
+];
+
+const MATCH_COMMENTARY = {
+    through_ball: [
+        "{minute}' - 🎯 Genialer Steilpass von {passer} in die Schnittstelle auf {shooter}!",
+        "{minute}' - ⚡ {passer} hebelt mit einem feinen Steilpass die Abwehr aus, {shooter} läuft frei aufs Tor zu!",
+        "{minute}' - 🎯 Traumpass durchs Zentrum von {passer}! {shooter} nimmt den Ball direkt mit Tempo mit.",
+        "{minute}' - 🚀 Schnelles Umschalten über {passer}, der {shooter} perfekt in Szene setzt!"
+    ],
+    cross: [
+        "{minute}' - 🌪️ Maßflanke von der Außenbahn durch {winger} in den Strafraum auf {shooter}!",
+        "{minute}' - 📐 {winger} tankt sich auf dem Flügel durch und flankt scharf an den Fünfmeterraum auf {shooter}!",
+        "{minute}' - 🚀 Schöne Hereingabe von {winger}, {shooter} steigt am höchsten zum Kopfball hoch!",
+        "{minute}' - 🌪️ Hohe Flanke von {winger} – {shooter} lauert am zweiten Pfosten!"
+    ],
+    dribble: [
+        "{minute}' - 🪄 Starkes Dribbling von {shooter}! Lässt zwei Abwehrspieler stehen und zieht ab!",
+        "{minute}' - 🔥 {shooter} zieht mit einer feinen Körpertäuschung nach innen und sucht den Abschluss!",
+        "{minute}' - ⚡ {shooter} bricht mit Dynamik durch die Abwehrreihe und kommt zum Schuss!",
+        "{minute}' - 🪄 Klasse Einzelaktion von {shooter}, der sich im Sechzehner Platz für den Torschuss verschafft!"
+    ],
+    corner: [
+        "{minute}' - 🚩 Eckball für {club}! {passer} schlägt die Kugel mit Zug vor das gegnerische Tor.",
+        "{minute}' - 🚩 Gefährliche Ecke von {passer}! Der Ball segelt gefährlich ins Zentrum.",
+        "{minute}' - 🚩 Standard für {club}: {passer} bringt die Ecke scharf an den kurzen Pfosten.",
+        "{minute}' - 🚩 Eckstoß für {club}, getreten von {passer} – Kopfballduell im Strafraum!"
+    ],
+    goal: [
+        "{minute}' - ⚽ TOOOOOOR für {club}! {shooter} schließt eiskalt ab!",
+        "{minute}' - ⚽ TOOOOOOR für {club}! Traumhafter Treffer von {shooter} unhaltbar ins Netz!",
+        "{minute}' - ⚽ TOOOOOOR! {shooter} vollendet souverän zur Freude der {club}-Fans!",
+        "{minute}' - ⚽ TOOOOOOR für {club}! {shooter} lässt dem Keeper absolut keine Abwehrchance!"
+    ],
+    save: [
+        "{minute}' - 🧤 Glanztat! {gk} taucht blitzschnell ab und pariert den Schuss von {shooter}!",
+        "{minute}' - 🧤 Was für eine Parade! {gk} lenkt den Ball von {shooter} mit den Fingerspitzen um den Pfosten!",
+        "{minute}' - 🧤 Starke Reaktion von {gk}, der den Abschluss von {shooter} sicher entschärft!",
+        "{minute}' - 🧤 {gk} bleibt im 1-gegen-1 gegen {shooter} Sieger und klärt überragend!"
+    ],
+    woodwork: [
+        "{minute}' - 💥 ALUTREFFER! {shooter} trifft nur den Pfosten/die Latte!",
+        "{minute}' - 💥 PECH! Der stramme Schuss von {shooter} klatscht lautstark ans Torgebälk!",
+        "{minute}' - 💥 Aluminium! {shooter} hämmert den Ball an die Latte – großes Glück für {defClub}!",
+        "{minute}' - 💥 Pfosten! {shooter} verpasst die Führung um wenige Millimeter!"
+    ],
+    missed: [
+        "{minute}' - 💨 Knapp vorbei! Der Versuch von {shooter} verzieht um Haaresbreite.",
+        "{minute}' - 💨 Verzogen! {shooter} zielt über das Gehäuse.",
+        "{minute}' - 💨 Chance vertan: {shooter} trifft den Ball nicht voll, Abstoß.",
+        "{minute}' - 💨 Schuss von {shooter} geht deutlich am langen Eck vorbei ins Toraus."
+    ],
+    foul: [
+        "{minute}' - 🛑 Pfiff des Schiedsrichters: Foulspiel von {defender} ({defClub}).",
+        "{minute}' - 🛑 Taktisches Zupfen von {defender} ({defClub}), Freistoß.",
+        "{minute}' - 🛑 {defender} kommt einen Schritt zu spät und stoppt den Angriff per Foul.",
+        "{minute}' - 🛑 Unsportlicher Einsatz von {defender} – Freistoß für {attClub}."
+    ],
+    yellow_card: [
+        "{minute}' - 🟨 Gelbe Karte für {defender} ({defClub}) nach wiederholtem Foulspiel.",
+        "{minute}' - 🟨 Taktisches Foul von {defender} ({defClub}) – klare Gelbe Karte!",
+        "{minute}' - 🟨 Schiedsrichter zückt Gelb für {defender} nach einem rüden Einsteigen.",
+        "{minute}' - 🟨 Verwarnung für {defender} ({defClub}) wegen Reklamierens/Foulspiels."
+    ],
+    second_yellow_card: [
+        "{minute}' - 🟨🟥 GELB-ROT! {defender} ({defClub}) muss nach dem zweiten Foul vorzeitig vom Platz!",
+        "{minute}' - 🟨🟥 Platzverweis! {defender} sieht die Ampelkarte und schwächt sein Team!",
+        "{minute}' - 🟨🟥 Zweite Gelbe Karte für {defender} – Gelb-Rot! {defClub} spielt in Unterzahl!"
+    ],
+    red_card: [
+        "{minute}' - 🟥 GLATT ROT! Brutales Foul von {defender} ({defClub}) – sofortiger Platzverweis!",
+        "{minute}' - 🟥 ROTE KARTE! {defender} begeht eine Notbremse und muss sofort runter!",
+        "{minute}' - 🟥 Schiedsrichter zeigt {defender} ({defClub}) nach einer Tätlichkeit direkt Rot!"
+    ],
+    penalty: [
+        "{minute}' - 🛑 PFIFF! Foul im Strafraum! Schiedsrichter zeigt auf den Punkt: ELFMETER für {attClub}!",
+        "{minute}' - 🛑 ELFMETER für {attClub}! {defender} bringt den Angreifer im Sechzehner zu Fall!",
+        "{minute}' - 🛑 Strafstoßpfiff! Handspiel/Foul im Strafraum – Riesenchance für {attClub}!"
+    ],
+    tackle: [
+        "{minute}' - 🛡️ Perfektes Tackling: {defender} klärt die Situation mit einer sauberen Grätsche.",
+        "{minute}' - 🛡️ Starke Abwehraktion von {defender}, der den Ball souverän abläuft.",
+        "{minute}' - 🛡️ {defender} antizipiert den Pass glänzend und gewinnt den Zweikampf.",
+        "{minute}' - 🛡️ Wichtige Rettungstat von {defender} am eigenen Sechzehner!"
+    ],
+    injury: [
+        "{minute}' - 🚑 Verletzung bei {club}! {player} greift sich ans Bein und muss behandelt werden ({injury}).",
+        "{minute}' - 🚑 Bittere Szene: {player} ({club}) verletzt sich im Zweikampf ({injury}) und kann wohl nicht weiterspielen.",
+        "{minute}' - 🚑 {player} bleibt nach einem Sprint mit Schmerzen am Boden liegen ({injury})."
+    ],
+    substitution: [
+        "{minute}' - 🔄 Auswechslung {club}: {playerIn} kommt für {playerOut} ins Spiel.",
+        "{minute}' - 🔄 Frische Kräfte bei {club}: {playerIn} ersetzt {playerOut}.",
+        "{minute}' - 🔄 Taktischer Wechsel bei {club}: {playerOut} geht vom Platz, neu dabei ist {playerIn}."
+    ],
+    tactics: [
+        "{minute}' - 📋 Traineranweisung bei {club}: Taktik angepasst auf Mentalität \"{mentality}\".",
+        "{minute}' - 📋 {club} reagiert von der Seitenlinie: Neue Ausrichtung mit \"{mentality}\".",
+        "{minute}' - 📋 Taktische Umstellung bei {club}: Spielstil neu justiert."
+    ],
+    halftime: [
+        "{minute}' - ⏸️ Halbzeitpfiff! Die Teams gehen beim Stand von {score} in die Kabinen.",
+        "{minute}' - ⏸️ Pause! Der Unparteiische pfeift zur Halbzeit ({score}).",
+        "{minute}' - ⏸️ Nach intensiven ersten 45 Minuten steht es zur Pause {score}."
+    ],
+    fulltime: [
+        "{minute}' - 🏁 Schlusspfiff! Das Spiel endet mit dem Endstand von {score}.",
+        "{minute}' - 🏁 Abpfiff! Der Schiedsrichter beendet die Partie beim Stand von {score}.",
+        "{minute}' - 🏁 Ende der Begegnung! Endergebnis: {score}."
+    ]
+};
+
+function formatCommentary(type, data = {}) {
+    const list = MATCH_COMMENTARY[type] || MATCH_COMMENTARY.goal;
+    let text = _Random.choice(list) || "";
+    for (const key in data) {
+        text = text.replace(new RegExp(`\\{${key}\\}`, 'g'), data[key] ?? "");
+    }
+    return text;
+}
 
 class MatchEngine {
     /**
-     * Ermittelt anhand von Schützen-/Torwartqualität und Team-Stärken, ob ein
-     * Abschluss zu einem Tor, einer Parade, einem Aluminiumtreffer oder einem
-     * Fehlschuss führt. Ersetzt die vorherigen, zu goldgünstigen Doppel-Zufallswerte
-     * durch ein einziges, klar kalibriertes Wahrscheinlichkeitsmodell.
+     * Säubert die Aufstellung eines Vereins (A3):
+     * Verletzte (injuredWeeks > 0) und Gesperrte (suspendedMatches > 0) fliegen aus der Elf,
+     * fitte Ersatzspieler rücken von der Bank bzw. dem Kader nach.
      */
-    static resolveShotAttempt(shotType, shooter, gk, attPower, defPower) {
-        const shooterSkill = shooter?.overall || 68;
-        const gkSkill = gk?.overall || 68;
+    static getCleanLineup(club, allPlayers) {
+        const lineupIds = [...(club.lineup || [])];
+        const benchIds = [...(club.bench || [])];
+        const clean = [];
+        const seenIds = new Set();
 
-        const skillEdge = (shooterSkill - gkSkill) * 0.6
-            + ((attPower?.attack || 62) - (defPower?.defense || 62)) * 0.35;
+        const isPlayerFitAndEligible = p => p && (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0;
 
-        const base = MATCH_TUNING.baseGoalChance[shotType] ?? 0.1;
-        let pGoal = base + skillEdge / MATCH_TUNING.skillInfluence;
-        pGoal = Math.min(MATCH_TUNING.maxGoalChance, Math.max(MATCH_TUNING.minGoalChance, pGoal));
+        // Fitte Spieler aus der Bank bereitstellen
+        const availableBench = benchIds
+            .map(id => allPlayers.find(p => p.id === id))
+            .filter(isPlayerFitAndEligible);
 
-        let pSave = 0.42 - skillEdge / 500;
-        pSave = Math.min(0.62, Math.max(0.22, pSave));
+        // 1. Stammelf prüfen
+        lineupIds.forEach(id => {
+            const p = allPlayers.find(pl => pl.id === id);
+            if (isPlayerFitAndEligible(p) && !seenIds.has(p.id)) {
+                clean.push(p);
+                seenIds.add(p.id);
+            } else {
+                // Ersatz von der Bank
+                const replacement = availableBench.find(bp => !seenIds.has(bp.id));
+                if (replacement) {
+                    clean.push(replacement);
+                    seenIds.add(replacement.id);
+                }
+            }
+        });
 
-        const pWoodwork = 0.05;
+        // 2. Falls noch < 11, aus Restkader auffüllen
+        if (clean.length < 11) {
+            const squadPlayers = allPlayers.filter(p =>
+                (club.playerIds || []).includes(p.id) &&
+                !seenIds.has(p.id) &&
+                isPlayerFitAndEligible(p)
+            );
+            while (clean.length < 11 && squadPlayers.length > 0) {
+                const addP = squadPlayers.shift();
+                clean.push(addP);
+                seenIds.add(addP.id);
+            }
+        }
 
-        const xG = parseFloat(Math.min(0.68, Math.max(0.03, base + skillEdge / 300)).toFixed(2));
+        // Falls Notstand (z.B. < 11 fitte Spieler), ungefiltert auffüllen
+        if (clean.length === 0 && lineupIds.length > 0) {
+            return lineupIds.map(id => allPlayers.find(p => p.id === id)).filter(Boolean);
+        }
 
-        const roll = Math.random();
-        if (roll < pGoal) return { outcome: "goal", xG };
-        if (roll < pGoal + pSave) return { outcome: "saved", xG };
-        if (roll < pGoal + pSave + pWoodwork) return { outcome: "woodwork", xG };
-        return { outcome: "missed", xG };
+        return clean;
     }
 
     /**
-     * Berechnet die effektive Stärke eines Teams für das Spiel
+     * Berechnet die effektive Spielerstärke aus positionsrelevanten Attributen (A1)
+     * Gewichtung: ~60 % Attribute / 40 % overall (Fallback auf overall pro fehlendem Attribut)
      */
-    static calculateTeamPower(club, allPlayers, isHome = false) {
-        const lineupPlayers = (club.lineup || [])
-            .map(id => allPlayers.find(p => p.id === id))
-            .filter(Boolean);
+    static calculateEffectivePlayerSkill(player) {
+        if (!player) return 65;
+        const ovr = player.overall || 68;
+
+        const getAttr = (attrName) => {
+            return (typeof player[attrName] === 'number') ? player[attrName] : ovr;
+        };
+
+        let attrs = [];
+        const pos = player.pos || "ZM";
+
+        if (pos === "TW") {
+            attrs = [getAttr("reflexes"), getAttr("handling"), getAttr("oneOnOne"), getAttr("positioning")];
+        } else if (["IV", "LV", "RV"].includes(pos)) {
+            attrs = [getAttr("defense"), getAttr("physical"), getAttr("positioning"), getAttr("pace")];
+        } else if (["DM", "ZM", "OM", "LM", "RM"].includes(pos)) {
+            attrs = [getAttr("passing"), getAttr("vision"), getAttr("technique"), getAttr("stamina")];
+        } else { // ST, LA, RA
+            attrs = [getAttr("shooting"), getAttr("pace"), getAttr("dribbling"), getAttr("technique")];
+        }
+
+        const attrAvg = attrs.reduce((sum, val) => sum + val, 0) / attrs.length;
+        const baseSkill = (attrAvg * 0.6) + (ovr * 0.4);
+
+        const fitnessFactor = 0.6 + ((player.fitness || 100) / 100) * 0.4;
+        const moraleFactor = 0.85 + ((player.morale || 75) / 100) * 0.2;
+        const formFactor = 0.85 + ((player.form || 7.0) / 10) * 0.2;
+
+        return baseSkill * fitnessFactor * moraleFactor * formFactor;
+    }
+
+    /**
+     * Berechnet die effektive Teamstärke unter Berücksichtigung aller 7 Taktikregler (A1 & A2)
+     */
+    static calculateTeamPower(club, allPlayers, isHome = false, customLineup = null) {
+        const lineupPlayers = customLineup || this.getCleanLineup(club, allPlayers);
 
         if (lineupPlayers.length === 0) {
             return { attack: 50, midfield: 50, defense: 50, goalkeeper: 50, total: 50 };
@@ -74,10 +274,7 @@ class MatchEngine {
         let gkPower = 70;
 
         lineupPlayers.forEach(p => {
-            const fitnessFactor = 0.6 + ((p.fitness || 100) / 100) * 0.4;
-            const moraleFactor = 0.85 + ((p.morale || 75) / 100) * 0.2;
-            const formFactor = 0.85 + ((p.form || 7.0) / 10) * 0.2;
-            const effectiveSkill = (p.overall || 70) * fitnessFactor * moraleFactor * formFactor;
+            const effectiveSkill = this.calculateEffectivePlayerSkill(p);
 
             if (p.pos === "TW") {
                 gkPower = effectiveSkill * 1.05;
@@ -97,28 +294,70 @@ class MatchEngine {
         let midfield = midCount > 0 ? midSum / midCount : 65;
         let defense = defCount > 0 ? defSum / defCount : 65;
 
-        // Taktische Modifikatoren
+        // Taktische Modifikatoren für alle 7 Taktikregler (A2)
         const tactics = club.tactics || {};
+
+        // 1. Mentality
         switch (tactics.mentality) {
-            case "very_offensive": attack *= 1.18; defense *= 0.86; break;
-            case "offensive": attack *= 1.09; defense *= 0.94; break;
-            case "defensive": attack *= 0.92; defense *= 1.09; break;
-            case "very_defensive": attack *= 0.82; defense *= 1.18; break;
+            case "very_offensive": attack *= 1.20; defense *= 0.84; break;
+            case "offensive": attack *= 1.10; defense *= 0.93; break;
+            case "defensive": attack *= 0.91; defense *= 1.10; break;
+            case "very_defensive": attack *= 0.80; defense *= 1.20; break;
         }
 
+        // 2. Pressing
         if (tactics.pressing === "high") {
-            midfield *= 1.05;
+            midfield *= 1.06;
             defense *= 1.03;
         } else if (tactics.pressing === "low") {
             defense *= 1.04;
-            midfield *= 0.96;
+            midfield *= 0.95;
         }
 
-        // Heimvorteil
-        if (isHome) {
-            attack *= 1.06;
+        // 3. Tempo
+        if (tactics.tempo === "fast") {
+            attack *= 1.05;
+            defense *= 0.96;
+        } else if (tactics.tempo === "slow") {
+            defense *= 1.03;
+            attack *= 0.97;
+        }
+
+        // 4. Defensive Line
+        if (tactics.defensiveLine === "high") {
+            midfield *= 1.04;
+            defense *= 0.95;
+        } else if (tactics.defensiveLine === "deep") {
+            defense *= 1.06;
+            attack *= 0.95;
+        }
+
+        // 5. Passing
+        if (tactics.passing === "direct") {
+            attack *= 1.04;
+            midfield *= 0.97;
+        } else if (tactics.passing === "short") {
             midfield *= 1.05;
-            defense *= 1.05;
+            attack *= 0.97;
+        }
+
+        // E2: Teamchemie aktivieren (Multiplikator)
+        if (club.chemistry) {
+            const chemAvg = ((club.chemistry.overall || 75) + (club.chemistry.tacticalFamiliarity || 70) + (club.chemistry.dressingRoom || 75)) / 3;
+            const chemFactor = 0.90 + (chemAvg / 100) * 0.13; // 0.90 bis 1.03
+            attack *= chemFactor;
+            midfield *= chemFactor;
+            defense *= chemFactor;
+            gkPower *= chemFactor;
+        }
+
+        // Heimvorteil (beeinflusst durch Stadion-Infrastruktur C2 & Atmosphäre)
+        if (isHome) {
+            const stadiumLvl = club.facilities?.stadium || 2;
+            const homeAtmosphere = 1.03 + (stadiumLvl * 0.008);
+            attack *= homeAtmosphere;
+            midfield *= homeAtmosphere;
+            defense *= homeAtmosphere;
         }
 
         const total = (attack * 0.35 + midfield * 0.35 + defense * 0.2 + gkPower * 0.1);
@@ -127,417 +366,477 @@ class MatchEngine {
     }
 
     /**
-     * Generiert eine vollständige, deterministische Timeline von Spielszenen (Pässe, Schüsse, Paraden, Tore, Karten)
-     * Diese Timeline wird 1:1 sowohl für die Sofortberechnung als auch für das 2D-LiveMatch verwendet.
+     * Schussmodell mit echten Attributen (A4)
      */
-    static generateTimeline(match, homeClub, awayClub, allPlayers) {
-        const homePower = this.calculateTeamPower(homeClub, allPlayers, true);
-        const awayPower = this.calculateTeamPower(awayClub, allPlayers, false);
+    static resolveShotAttempt(shotType, shooter, gk, attPower, defPower, tactics = {}) {
+        const getVal = (pl, attr) => (pl && typeof pl[attr] === 'number') ? pl[attr] : (pl?.overall || 68);
 
-        const homeLineup = (homeClub.lineup || []).map(id => allPlayers.find(p => p.id === id)).filter(Boolean);
-        const awayLineup = (awayClub.lineup || []).map(id => allPlayers.find(p => p.id === id)).filter(Boolean);
+        let shooterSkill = getVal(shooter, "overall");
+        let gkSkill = getVal(gk, "overall");
+
+        if (shotType === "through_ball") {
+            shooterSkill = getVal(shooter, "shooting") * 0.5 + getVal(shooter, "technique") * 0.3 + getVal(shooter, "pace") * 0.2;
+            gkSkill = getVal(gk, "oneOnOne") * 0.55 + getVal(gk, "reflexes") * 0.45;
+        } else if (shotType === "cross") {
+            shooterSkill = getVal(shooter, "physical") * 0.45 + getVal(shooter, "shooting") * 0.35 + getVal(shooter, "pace") * 0.2;
+            gkSkill = getVal(gk, "positioning") * 0.5 + getVal(gk, "handling") * 0.5;
+        } else if (shotType === "dribble") {
+            shooterSkill = getVal(shooter, "dribbling") * 0.5 + getVal(shooter, "technique") * 0.3 + getVal(shooter, "shooting") * 0.2;
+            gkSkill = getVal(gk, "oneOnOne") * 0.5 + getVal(gk, "reflexes") * 0.5;
+        } else if (shotType === "corner") {
+            shooterSkill = getVal(shooter, "physical") * 0.5 + getVal(shooter, "shooting") * 0.3 + getVal(shooter, "technique") * 0.2;
+            gkSkill = getVal(gk, "positioning") * 0.55 + getVal(gk, "handling") * 0.45;
+        } else if (shotType === "penalty") {
+            shooterSkill = getVal(shooter, "shooting") * 0.7 + getVal(shooter, "technique") * 0.3;
+            gkSkill = getVal(gk, "reflexes") * 0.6 + getVal(gk, "oneOnOne") * 0.4;
+        }
+
+        const skillEdge = (shooterSkill - gkSkill) * 0.6 +
+            ((attPower?.attack || 65) - (defPower?.defense || 65)) * 0.35;
+
+        let base = MATCH_TUNING.baseGoalChance[shotType] ?? 0.10;
+
+        // Taktischer Regler: risk
+        const risk = tactics.risk || "normal";
+        if (risk === "risky") {
+            base *= 1.15;
+        } else if (risk === "safe") {
+            base *= 0.88;
+        }
+
+        let pGoal = base + skillEdge / MATCH_TUNING.skillInfluence;
+        pGoal = _Random.clamp(pGoal, MATCH_TUNING.minGoalChance, MATCH_TUNING.maxGoalChance);
+
+        let pSave = 0.42 - skillEdge / 500;
+        pSave = _Random.clamp(pSave, 0.22, 0.62);
+
+        const pWoodwork = 0.05;
+
+        const xG = parseFloat(_Random.clamp(base + skillEdge / 300, 0.03, 0.76).toFixed(2));
+
+        const roll = Math.random();
+        if (roll < pGoal) return { outcome: "goal", xG };
+        if (roll < pGoal + pSave) return { outcome: "saved", xG };
+        if (roll < pGoal + pSave + pWoodwork) return { outcome: "woodwork", xG };
+        return { outcome: "missed", xG };
+    }
+
+    /**
+     * Generiert eine vollständige, deterministische Timeline von Spielszenen.
+     * Unterstützt flexible Parameter und Resimulation für LiveMatch.
+     */
+    static generateTimeline(arg1, arg2, arg3, arg4, arg5) {
+        let match = null;
+        let homeClub, awayClub, allPlayers, options;
+
+        if (Array.isArray(arg4)) {
+            match = arg1;
+            homeClub = arg2;
+            awayClub = arg3;
+            allPlayers = arg4;
+            options = arg5 || {};
+        } else if (Array.isArray(arg3)) {
+            homeClub = arg1;
+            awayClub = arg2;
+            allPlayers = arg3;
+            options = arg4 || {};
+            match = arg5 || null;
+        } else {
+            homeClub = arg1;
+            awayClub = arg2;
+            allPlayers = arg3 || [];
+            options = arg4 || {};
+        }
+
+        const startMinute = options.startMinute || 1;
+        let currentHomeScore = options.currentHomeScore || 0;
+        let currentAwayScore = options.currentAwayScore || 0;
+
+        // Startaufstellungen säubern (A3)
+        const homeLineup = options.homeLineup || this.getCleanLineup(homeClub, allPlayers);
+        const awayLineup = options.awayLineup || this.getCleanLineup(awayClub, allPlayers);
+
+        if (match && !match.lineups) {
+            match.lineups = {
+                home: homeLineup.map(p => p.id),
+                away: awayLineup.map(p => p.id)
+            };
+        }
+
+        // Aktive Feldspieler während des Spielverlaufs
+        let activeHomePlayers = [...homeLineup];
+        let activeAwayPlayers = [...awayLineup];
+
+        let homeSubsUsed = options.usedSubsHome || 0;
+        let awaySubsUsed = options.usedSubsAway || 0;
+        const maxSubs = 5;
+
+        // Teamstärken
+        const homePower = this.calculateTeamPower(homeClub, allPlayers, true, activeHomePlayers);
+        const awayPower = this.calculateTeamPower(awayClub, allPlayers, false, activeAwayPlayers);
+
+        // Ballbesitz & Passquote (B11)
+        const homeTactics = homeClub.tactics || {};
+        const awayTactics = awayClub.tactics || {};
+
+        let posModifier = 0;
+        if (homeTactics.tempo === "slow") posModifier += 2;
+        if (homeTactics.tempo === "fast") posModifier -= 2;
+        if (homeTactics.passing === "short") posModifier += 3;
+        if (homeTactics.passing === "direct") posModifier -= 3;
+        if (homeTactics.pressing === "high") posModifier += 2;
+        if (homeTactics.pressing === "low") posModifier -= 2;
+
+        if (awayTactics.tempo === "slow") posModifier -= 2;
+        if (awayTactics.tempo === "fast") posModifier += 2;
+        if (awayTactics.passing === "short") posModifier -= 3;
+        if (awayTactics.passing === "direct") posModifier += 3;
+
+        const baseMidRatio = homePower.midfield / (homePower.midfield + awayPower.midfield);
+        let calculatedHomePossession = Math.round(baseMidRatio * 100 + posModifier + 2);
+        calculatedHomePossession = _Random.clamp(calculatedHomePossession, 28, 72);
+        const calculatedAwayPossession = 100 - calculatedHomePossession;
+
+        // Nachspielzeit (A5)
+        const extraTime1 = _Random.int(1, 3);
+        const extraTime2 = _Random.int(1, 5);
 
         const timeline = [];
 
-        // Erhöhte Ereignisdichte für mehr Aktionen & mitreißenden Spielfluss
+        // Szenenanzahl basierend auf Tempo
+        let totalScenesBase = 32;
+        if (homeTactics.tempo === "fast" || awayTactics.tempo === "fast") totalScenesBase += 4;
+        if (homeTactics.tempo === "slow" || awayTactics.tempo === "slow") totalScenesBase -= 3;
+
         const powerDiff = homePower.total - awayPower.total;
-        const baseScenesHome = Math.max(10, Math.round(15 + (powerDiff / 5) + (Math.random() * 6 - 3)));
-        const baseScenesAway = Math.max(8, Math.round(13 - (powerDiff / 5) + (Math.random() * 6 - 3)));
-        const totalScenes = baseScenesHome + baseScenesAway + 8; // ca. 30-42 Spielszenen pro Match
+        const totalScenes = Math.max(20, Math.round(totalScenesBase + (powerDiff / 8) + _Random.float(-3, 3)));
 
-        // Verteile Spielminuten dynamisch über die gesamten 90 Minuten
-        const minutes = [];
+        // Generiere chronologische Minuten über das Spiel
+        const sceneMinutes = [];
         for (let i = 0; i < totalScenes; i++) {
-            const min = Math.min(90, Math.max(2, Math.floor(((i + 0.5) / totalScenes) * 90 + (Math.random() * 3 - 1.5))));
-            minutes.push(min);
+            const rawMin = Math.round(((i + 0.5) / totalScenes) * 90 + _Random.float(-1.5, 1.5));
+            const min = _Random.clamp(rawMin, 1, 90);
+            if (min >= startMinute) {
+                sceneMinutes.push(min);
+            }
         }
-        minutes.sort((a, b) => a - b);
+        sceneMinutes.sort((a, b) => a - b);
 
-        minutes.forEach(min => {
-            const homeAdvantageProb = homePower.midfield / (homePower.midfield + awayPower.midfield);
-            const isHome = Math.random() < homeAdvantageProb;
-            const attClub = isHome ? homeClub : awayClub;
-            const defClub = isHome ? awayClub : homeClub;
-            const attLineup = isHome ? homeLineup : awayLineup;
-            const defLineup = isHome ? awayLineup : homeLineup;
-            const attPower = isHome ? homePower : awayPower;
-            const defPower = isHome ? awayPower : homePower;
+        // Tracking von Verwarnungen / Platzverweisen pro Spieler im Spiel (A8)
+        const playerYellows = new Map();
+        const sentOffPlayerIds = new Set();
 
-            const attackers = attLineup.filter(p => ["ST", "LA", "RA", "OM"].includes(p.pos));
-            const midfielders = attLineup.filter(p => ["ZM", "DM", "LM", "RM"].includes(p.pos));
-            const wingers = attLineup.filter(p => ["LA", "RA", "LM", "RM"].includes(p.pos));
-            const defenders = defLineup.filter(p => ["IV", "LV", "RV", "DM"].includes(p.pos));
-            const gk = defLineup.find(p => p.pos === "TW") || defLineup[0];
+        // Hilfsfunktion: Schuss/Angriff erzeugen (E20)
+        const buildAttackScene = (min, isHomeAttacking, attackType) => {
+            const attClub = isHomeAttacking ? homeClub : awayClub;
+            const defClub = isHomeAttacking ? awayClub : homeClub;
+            const attPlayers = (isHomeAttacking ? activeHomePlayers : activeAwayPlayers).filter(p => !sentOffPlayerIds.has(p.id));
+            const defPlayers = (isHomeAttacking ? activeAwayPlayers : activeHomePlayers).filter(p => !sentOffPlayerIds.has(p.id));
 
-            const shooter = attackers.length > 0 ? attackers[Math.floor(Math.random() * attackers.length)] : (midfielders[0] || attLineup[0]);
-            const passer = midfielders.length > 0 ? midfielders[Math.floor(Math.random() * midfielders.length)] : attLineup[1] || attLineup[0];
-            const winger = wingers.length > 0 ? wingers[Math.floor(Math.random() * wingers.length)] : passer;
-            const defender = defenders.length > 0 ? defenders[Math.floor(Math.random() * defenders.length)] : defLineup[0];
+            if (attPlayers.length === 0 || defPlayers.length === 0) return;
 
-            const actionTypeRoll = Math.random();
+            const attPowerLocal = isHomeAttacking ? homePower : awayPower;
+            const defPowerLocal = isHomeAttacking ? awayPower : homePower;
+            const attTactics = isHomeAttacking ? homeTactics : awayTactics;
 
-            if (actionTypeRoll < 0.38) {
-                // 1. ZENTRALER ANGRIFF / STEILPASS & TORSCHUSS
-                const startX = isHome ? 32 + Math.random() * 18 : 68 - Math.random() * 18;
-                const startY = 30 + Math.random() * 40;
-                const midX = isHome ? 68 + Math.random() * 14 : 32 - Math.random() * 14;
-                const midY = 32 + Math.random() * 36;
-                const goalX = isHome ? 96 : 4;
-                const goalY = 46 + Math.random() * 8;
+            const attackers = attPlayers.filter(p => ["ST", "LA", "RA", "OM"].includes(p.pos));
+            const midfielders = attPlayers.filter(p => ["ZM", "DM", "LM", "RM"].includes(p.pos));
+            const wingers = attPlayers.filter(p => ["LA", "RA", "LM", "RM"].includes(p.pos));
+            const defenders = defPlayers.filter(p => ["IV", "LV", "RV", "DM"].includes(p.pos));
+            const gk = defPlayers.find(p => p.pos === "TW") || defPlayers[0];
 
+            const shooter = attackers.length > 0 ? _Random.choice(attackers) : (midfielders[0] || attPlayers[0]);
+            const passer = midfielders.length > 0 ? _Random.choice(midfielders) : (attPlayers[1] || attPlayers[0]);
+            const winger = wingers.length > 0 ? _Random.choice(wingers) : passer;
+            const defender = defenders.length > 0 ? _Random.choice(defenders) : defPlayers[0];
+
+            // Koordinaten für das 2D-Feld
+            const startX = isHomeAttacking ? _Random.float(32, 50) : _Random.float(50, 68);
+            const startY = _Random.float(25, 75);
+            const midX = isHomeAttacking ? _Random.float(65, 80) : _Random.float(20, 35);
+            const midY = _Random.float(28, 72);
+            const goalX = isHomeAttacking ? 96 : 4;
+            const goalY = _Random.float(46, 54);
+
+            let eventType = attackType;
+            let prepText = "";
+
+            if (attackType === "through_ball") {
+                prepText = formatCommentary("through_ball", { minute: min, passer: passer?.name, shooter: shooter?.name });
+            } else if (attackType === "cross") {
+                prepText = formatCommentary("cross", { minute: min, winger: winger?.name, shooter: shooter?.name });
+            } else if (attackType === "dribble") {
+                prepText = formatCommentary("dribble", { minute: min, shooter: shooter?.name });
+            } else if (attackType === "corner") {
+                prepText = formatCommentary("corner", { minute: min, passer: passer?.name, club: attClub.name });
+            }
+
+            // Vorbereitende Pass-/Flankenaktion
+            timeline.push({
+                minute: min,
+                second: 12,
+                type: eventType,
+                team: isHomeAttacking ? "home" : "away",
+                clubId: attClub.id,
+                clubName: attClub.name,
+                fromPlayerId: attackType === "cross" ? winger?.id : passer?.id,
+                fromPlayerName: attackType === "cross" ? winger?.name : passer?.name,
+                toPlayerId: shooter?.id,
+                toPlayerName: shooter?.name,
+                start: { x: startX, y: startY },
+                end: { x: midX, y: midY },
+                success: true,
+                text: prepText
+            });
+
+            // Momentum & Stamina-Einfluss (A5)
+            // Ab Minute 65 wirkt Stamina/Fitness auf die Torwahrscheinlichkeit
+            let staminaBonus = 0;
+            if (min >= 65) {
+                const attAvgStamina = attPlayers.reduce((s, p) => s + (p.stamina || 70), 0) / (attPlayers.length || 1);
+                const defAvgStamina = defPlayers.reduce((s, p) => s + (p.stamina || 70), 0) / (defPlayers.length || 1);
+                staminaBonus = (attAvgStamina - defAvgStamina) * 0.15;
+            }
+
+            // Rückstand erhöht Offensive / Chancenqualität (Momentum)
+            const scoreDiff = isHomeAttacking ? (currentAwayScore - currentHomeScore) : (currentHomeScore - currentAwayScore);
+            const momentumBonus = scoreDiff > 0 ? 4 : (scoreDiff < 0 ? -2 : 0);
+
+            const modifiedAttPower = { ...attPowerLocal, attack: attPowerLocal.attack + staminaBonus + momentumBonus };
+            const { outcome, xG } = MatchEngine.resolveShotAttempt(attackType, shooter, gk, modifiedAttPower, defPowerLocal, attTactics);
+
+            if (outcome === "goal") {
+                if (isHomeAttacking) currentHomeScore++; else currentAwayScore++;
                 timeline.push({
                     minute: min,
-                    second: 10,
-                    type: "through_ball",
-                    team: isHome ? "home" : "away",
-                    clubId: attClub.id,
-                    clubName: attClub.name,
-                    fromPlayerId: passer?.id,
-                    fromPlayerName: passer?.name,
-                    toPlayerId: shooter?.id,
-                    toPlayerName: shooter?.name,
-                    start: { x: startX, y: startY },
-                    end: { x: midX, y: midY },
-                    success: true,
-                    text: `${min}' - 🎯 Genialer Steilpass von ${passer?.name || "Mittelfeldakteur"} in den Lauf von ${shooter?.name || "Angreifer"}!`
-                });
-
-                // Abschlussberechnung über das zentrale, realistisch kalibrierte Modell
-                const { outcome: throughOutcome, xG } = this.resolveShotAttempt("through_ball", shooter, gk, attPower, defPower);
-
-                if (throughOutcome === "goal") {
-                    // Tor!
-                    timeline.push({
-                        minute: min,
-                        second: 24,
-                        type: "goal",
-                        team: isHome ? "home" : "away",
-                        clubId: attClub.id,
-                        clubName: attClub.name,
-                        playerId: shooter?.id,
-                        playerName: shooter?.name,
-                        assistId: passer?.id,
-                        assistName: passer?.name,
-                        start: { x: midX, y: midY },
-                        end: { x: goalX, y: goalY },
-                        xG: xG,
-                        outcome: "goal",
-                        text: `${min}' - ⚽ TOOOOR für ${attClub.name}! ${shooter?.name || "Stürmer"} vollstreckt eiskalt im Eck nach Pass von ${passer?.name || "Vorlagengeber"}!`
-                    });
-                } else if (throughOutcome === "saved") {
-                    // Starke Parade
-                    timeline.push({
-                        minute: min,
-                        second: 24,
-                        type: "save",
-                        team: isHome ? "away" : "home",
-                        clubId: defClub.id,
-                        clubName: defClub.name,
-                        shooterId: shooter?.id,
-                        shooterName: shooter?.name,
-                        gkId: gk?.id,
-                        gkName: gk?.name,
-                        start: { x: midX, y: midY },
-                        end: { x: goalX, y: goalY },
-                        xG: xG,
-                        outcome: "saved",
-                        text: `${min}' - 🧤 Weltklasse-Parade! ${gk?.name || "Schlussmann"} wirft sich in den Schuss von ${shooter?.name || "Stürmer"} und lenkt ihn ab!`
-                    });
-                } else if (throughOutcome === "woodwork") {
-                    // Aluminiumtreffer (Pfosten / Latte)
-                    timeline.push({
-                        minute: min,
-                        second: 24,
-                        type: "shot_miss",
-                        team: isHome ? "home" : "away",
-                        clubId: attClub.id,
-                        clubName: attClub.name,
-                        playerId: shooter?.id,
-                        playerName: shooter?.name,
-                        start: { x: midX, y: midY },
-                        end: { x: goalX, y: isHome ? (Math.random() > 0.5 ? 36 : 64) : (Math.random() > 0.5 ? 36 : 64) },
-                        xG: xG,
-                        outcome: "woodwork",
-                        text: `${min}' - 💥 Lattenkracher! ${shooter?.name || "Angreifer"} hämmert den Ball ans Torgebälk!`
-                    });
-                } else {
-                    // Knapper Fehlschuss
-                    timeline.push({
-                        minute: min,
-                        second: 24,
-                        type: "shot_miss",
-                        team: isHome ? "home" : "away",
-                        clubId: attClub.id,
-                        clubName: attClub.name,
-                        playerId: shooter?.id,
-                        playerName: shooter?.name,
-                        start: { x: midX, y: midY },
-                        end: { x: goalX, y: goalY + (Math.random() > 0.5 ? 16 : -16) },
-                        xG: xG,
-                        outcome: "missed",
-                        text: `${min}' - Chance für ${attClub.name}: ${shooter?.name || "Spieler"} verfehlt das Tor um Haaresbreite.`
-                    });
-                }
-            } else if (actionTypeRoll < 0.62) {
-                // 2. FLÜGELANGRIFF & FLANKE IN DEN STRAFRAUM
-                const flankSide = Math.random() > 0.5 ? "right" : "left";
-                const startX = isHome ? 45 + Math.random() * 20 : 55 - Math.random() * 20;
-                const startY = flankSide === "right" ? 82 + Math.random() * 12 : 6 + Math.random() * 12;
-                const crossEndX = isHome ? 88 + Math.random() * 6 : 12 - Math.random() * 6;
-                const crossEndY = 42 + Math.random() * 16;
-                const goalX = isHome ? 96 : 4;
-                const goalY = 48 + Math.random() * 6;
-
-                timeline.push({
-                    minute: min,
-                    second: 12,
-                    type: "cross",
-                    team: isHome ? "home" : "away",
-                    clubId: attClub.id,
-                    clubName: attClub.name,
-                    fromPlayerId: winger?.id,
-                    fromPlayerName: winger?.name,
-                    toPlayerId: shooter?.id,
-                    toPlayerName: shooter?.name,
-                    start: { x: startX, y: startY },
-                    end: { x: crossEndX, y: crossEndY },
-                    success: true,
-                    text: `${min}' - ⚡ Rasante Flügelaktion: ${winger?.name || "Flügelspieler"} schlägt eine maßgenaue Flanke in den Sechzehner!`
-                });
-
-                const { outcome: crossOutcome, xG } = this.resolveShotAttempt("cross", shooter, gk, attPower, defPower);
-
-                if (crossOutcome === "goal") {
-                    // Kopfballtor / Volleytor!
-                    timeline.push({
-                        minute: min,
-                        second: 26,
-                        type: "goal",
-                        team: isHome ? "home" : "away",
-                        clubId: attClub.id,
-                        clubName: attClub.name,
-                        playerId: shooter?.id,
-                        playerName: shooter?.name,
-                        assistId: winger?.id,
-                        assistName: winger?.name,
-                        start: { x: crossEndX, y: crossEndY },
-                        end: { x: goalX, y: goalY },
-                        xG: xG,
-                        outcome: "goal",
-                        text: `${min}' - ⚽ TOOOOR für ${attClub.name}! ${shooter?.name || "Stürmer"} wuchtet die Flanke von ${winger?.name || "Flankengeber"} per Kopf in die Maschen!`
-                    });
-                } else if (crossOutcome === "saved") {
-                    timeline.push({
-                        minute: min,
-                        second: 26,
-                        type: "save",
-                        team: isHome ? "away" : "home",
-                        clubId: defClub.id,
-                        clubName: defClub.name,
-                        shooterId: shooter?.id,
-                        shooterName: shooter?.name,
-                        gkId: gk?.id,
-                        gkName: gk?.name,
-                        start: { x: crossEndX, y: crossEndY },
-                        end: { x: goalX, y: goalY },
-                        xG: xG,
-                        outcome: "saved",
-                        text: `${min}' - 🧤 ${gk?.name || "Keeper"} hechtet blitzschnell und fischt den Kopfball von ${shooter?.name || "Stürmer"} aus dem Winkel!`
-                    });
-                } else {
-                    timeline.push({
-                        minute: min,
-                        second: 26,
-                        type: "shot_miss",
-                        team: isHome ? "home" : "away",
-                        clubId: attClub.id,
-                        clubName: attClub.name,
-                        playerId: shooter?.id,
-                        playerName: shooter?.name,
-                        start: { x: crossEndX, y: crossEndY },
-                        end: { x: goalX, y: goalY + (Math.random() > 0.5 ? 20 : -20) },
-                        xG: xG,
-                        outcome: "missed",
-                        text: `${min}' - ${shooter?.name || "Kopfballspezialist"} steigt hoch, setzt den Kopfball aber knapp über den Querbalken.`
-                    });
-                }
-            } else if (actionTypeRoll < 0.78) {
-                // 3. DRIBBLING, SCHNELLER KONTER & WEITSCHUSS
-                const startX = isHome ? 25 + Math.random() * 25 : 75 - Math.random() * 25;
-                const startY = 35 + Math.random() * 30;
-                const dribbleEndX = isHome ? 60 + Math.random() * 15 : 40 - Math.random() * 15;
-                const dribbleEndY = 38 + Math.random() * 24;
-                const goalX = isHome ? 96 : 4;
-                const goalY = 46 + Math.random() * 8;
-
-                timeline.push({
-                    minute: min,
-                    second: 8,
-                    type: "dribble",
-                    team: isHome ? "home" : "away",
+                    second: 24,
+                    type: "goal",
+                    team: isHomeAttacking ? "home" : "away",
                     clubId: attClub.id,
                     clubName: attClub.name,
                     playerId: shooter?.id,
                     playerName: shooter?.name,
-                    start: { x: startX, y: startY },
-                    end: { x: dribbleEndX, y: dribbleEndY },
-                    success: true,
-                    text: `${min}' - 🏃‍♂️ Starkes Dribbling: ${shooter?.name || "Angreifer"} lässt zwei Gegenspieler stehen und zieht nach innen!`
+                    assistId: attackType === "cross" ? winger?.id : (attackType === "through_ball" ? passer?.id : null),
+                    assistName: attackType === "cross" ? winger?.name : (attackType === "through_ball" ? passer?.name : null),
+                    start: { x: midX, y: midY },
+                    end: { x: goalX, y: goalY },
+                    xG,
+                    outcome: "goal",
+                    text: formatCommentary("goal", { minute: min, club: attClub.name, shooter: shooter?.name })
                 });
-
-                const { outcome: dribbleOutcome, xG } = this.resolveShotAttempt("dribble", shooter, gk, attPower, defPower);
-
-                if (dribbleOutcome === "goal") {
+            } else if (outcome === "saved") {
+                timeline.push({
+                    minute: min,
+                    second: 24,
+                    type: "save",
+                    team: isHomeAttacking ? "away" : "home",
+                    clubId: defClub.id,
+                    clubName: defClub.name,
+                    shooterId: shooter?.id,
+                    shooterName: shooter?.name,
+                    gkId: gk?.id,
+                    gkName: gk?.name,
+                    start: { x: midX, y: midY },
+                    end: { x: goalX, y: goalY },
+                    xG,
+                    outcome: "saved",
+                    text: formatCommentary("save", { minute: min, gk: gk?.name, shooter: shooter?.name })
+                });
+                // 25% Chance auf eine anschließende Ecke nach Parade
+                if (_Random.chance(0.25)) {
                     timeline.push({
                         minute: min,
-                        second: 20,
-                        type: "goal",
-                        team: isHome ? "home" : "away",
+                        second: 40,
+                        type: "corner",
+                        team: isHomeAttacking ? "home" : "away",
                         clubId: attClub.id,
                         clubName: attClub.name,
-                        playerId: shooter?.id,
-                        playerName: shooter?.name,
-                        start: { x: dribbleEndX, y: dribbleEndY },
-                        end: { x: goalX, y: goalY },
-                        xG: xG,
-                        outcome: "goal",
-                        text: `${min}' - ⚽ TRAUMTOR für ${attClub.name}! ${shooter?.name || "Schütze"} hämmert den Ball aus 20 Metern unhaltbar in den Knick!`
-                    });
-                } else if (dribbleOutcome === "saved") {
-                    timeline.push({
-                        minute: min,
-                        second: 20,
-                        type: "save",
-                        team: isHome ? "away" : "home",
-                        clubId: defClub.id,
-                        clubName: defClub.name,
-                        shooterId: shooter?.id,
-                        shooterName: shooter?.name,
-                        gkId: gk?.id,
-                        gkName: gk?.name,
-                        start: { x: dribbleEndX, y: dribbleEndY },
-                        end: { x: goalX, y: goalY },
-                        xG: xG,
-                        outcome: "saved",
-                        text: `${min}' - 🧤 Glanztat von ${gk?.name || "Keeper"}, der den wuchtigen Distanzkracher von ${shooter?.name || "Schütze"} entschärft.`
-                    });
-                } else {
-                    timeline.push({
-                        minute: min,
-                        second: 20,
-                        type: "shot_miss",
-                        team: isHome ? "home" : "away",
-                        clubId: attClub.id,
-                        clubName: attClub.name,
-                        playerId: shooter?.id,
-                        playerName: shooter?.name,
-                        start: { x: dribbleEndX, y: dribbleEndY },
-                        end: { x: goalX, y: goalY + (Math.random() > 0.5 ? 18 : -18) },
-                        xG: xG,
-                        outcome: "missed",
-                        text: `${min}' - ${shooter?.name || "Schütze"} sucht den Abschluss aus der zweiten Reihe, zielt aber etwas zu hoch.`
+                        start: { x: isHomeAttacking ? 98 : 2, y: _Random.choice([2, 98]) },
+                        end: { x: isHomeAttacking ? 88 : 12, y: 50 },
+                        text: `${min}' - 🚩 Ecke für ${attClub.name} nach der Parade!`
                     });
                 }
-            } else if (actionTypeRoll < 0.90) {
-                // 4. ECKBALL ODER FREISTOSS-STANDARDSITUATION
-                const isCorner = Math.random() < 0.65;
-                if (isCorner) {
-                    const cPos = { x: isHome ? 98 : 2, y: Math.random() > 0.5 ? 4 : 96 };
-                    const centerBox = { x: isHome ? 88 : 12, y: 50 };
-                    const goalX = isHome ? 96 : 4;
-                    const goalY = 48 + Math.random() * 6;
+            } else if (outcome === "woodwork") {
+                timeline.push({
+                    minute: min,
+                    second: 24,
+                    type: "shot_miss",
+                    team: isHomeAttacking ? "home" : "away",
+                    clubId: attClub.id,
+                    clubName: attClub.name,
+                    playerId: shooter?.id,
+                    playerName: shooter?.name,
+                    start: { x: midX, y: midY },
+                    end: { x: goalX, y: goalY + (_Random.chance(0.5) ? 3 : -3) },
+                    xG,
+                    outcome: "woodwork",
+                    text: formatCommentary("woodwork", { minute: min, shooter: shooter?.name, defClub: defClub.name })
+                });
+            } else {
+                timeline.push({
+                    minute: min,
+                    second: 24,
+                    type: "shot_miss",
+                    team: isHomeAttacking ? "home" : "away",
+                    clubId: attClub.id,
+                    clubName: attClub.name,
+                    playerId: shooter?.id,
+                    playerName: shooter?.name,
+                    start: { x: midX, y: midY },
+                    end: { x: goalX + (isHomeAttacking ? 4 : -4), y: goalY + _Random.float(-10, 10) },
+                    xG,
+                    outcome: "missed",
+                    text: formatCommentary("missed", { minute: min, shooter: shooter?.name })
+                });
+            }
+        };
 
-                    timeline.push({
-                        minute: min,
-                        second: 30,
-                        type: "corner",
-                        team: isHome ? "home" : "away",
-                        clubId: attClub.id,
-                        clubName: attClub.name,
-                        playerId: passer?.id,
-                        playerName: passer?.name,
-                        start: cPos,
-                        end: centerBox,
-                        outcome: "corner",
-                        text: `${min}' - 🚩 Eckball für ${attClub.name}: ${passer?.name || "Vorlagengeber"} bringt das Leder mit Schnitt vors Tor!`
-                    });
+        // Simuliere jede Szene chronologisch
+        sceneMinutes.forEach(min => {
+            // KI-Wechsel ab Minute 60 (C17)
+            if (min >= 60 && min <= 82) {
+                ['home', 'away'].forEach(teamSide => {
+                    const isHomeTeam = teamSide === 'home';
+                    const subsUsed = isHomeTeam ? homeSubsUsed : awaySubsUsed;
+                    const club = isHomeTeam ? homeClub : awayClub;
+                    const activePlayers = isHomeTeam ? activeHomePlayers : activeAwayPlayers;
 
-                    // Gefahr nach Eckball: nur ein Teil der Ecken führt überhaupt zu einem
-                    // echten Abschluss, und davon nur ein kleiner, realistischer Anteil zum Tor.
-                    if (Math.random() < MATCH_TUNING.cornerShotChance) {
-                        const { outcome: cornerOutcome, xG } = this.resolveShotAttempt("corner", shooter, gk, attPower, defPower);
-                        if (cornerOutcome === "goal") {
-                            timeline.push({
-                                minute: min,
-                                second: 36,
-                                type: "goal",
-                                team: isHome ? "home" : "away",
-                                clubId: attClub.id,
-                                clubName: attClub.name,
-                                playerId: shooter?.id,
-                                playerName: shooter?.name,
-                                assistId: passer?.id,
-                                assistName: passer?.name,
-                                start: centerBox,
-                                end: { x: goalX, y: goalY },
-                                xG: xG,
-                                outcome: "goal",
-                                text: `${min}' - ⚽ TOOOOR nach Ecke! ${shooter?.name || "Abnehmer"} schraubt sich am Fünfmeterraum hoch und köpft ein!`
-                            });
-                        } else if (cornerOutcome === "saved") {
-                            timeline.push({
-                                minute: min,
-                                second: 36,
-                                type: "save",
-                                team: isHome ? "away" : "home",
-                                clubId: defClub.id,
-                                clubName: defClub.name,
-                                shooterId: shooter?.id,
-                                shooterName: shooter?.name,
-                                gkId: gk?.id,
-                                gkName: gk?.name,
-                                start: centerBox,
-                                end: { x: goalX, y: goalY },
-                                xG: xG,
-                                outcome: "saved",
-                                text: `${min}' - 🧤 ${gk?.name || "Torwart"} klärt den Kopfball nach der Ecke stark über die Latte bzw. hält sicher!`
-                            });
+                    if (subsUsed < maxSubs && _Random.chance(0.20)) {
+                        const benchAvailable = (club.bench || [])
+                            .map(id => allPlayers.find(p => p.id === id))
+                            .filter(p => p && (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0 && !activePlayers.some(ap => ap.id === p.id));
+
+                        if (benchAvailable.length > 0) {
+                            // Erschöpften oder schwachen Spieler auswechseln
+                            const candidateOut = [...activePlayers]
+                                .filter(p => p.pos !== "TW")
+                                .sort((a, b) => (a.fitness || 100) - (b.fitness || 100))[0];
+
+                            const subIn = benchAvailable[0];
+                            if (candidateOut && subIn) {
+                                const outIdx = activePlayers.findIndex(p => p.id === candidateOut.id);
+                                if (outIdx !== -1) {
+                                    activePlayers[outIdx] = subIn;
+                                    if (isHomeTeam) homeSubsUsed++; else awaySubsUsed++;
+
+                                    timeline.push({
+                                        minute: min,
+                                        second: 5,
+                                        type: "substitution",
+                                        team: teamSide,
+                                        clubId: club.id,
+                                        clubName: club.name,
+                                        playerOutId: candidateOut.id,
+                                        playerOutName: candidateOut.name,
+                                        playerInId: subIn.id,
+                                        playerInName: subIn.name,
+                                        text: formatCommentary("substitution", { minute: min, club: club.name, playerIn: subIn.name, playerOut: candidateOut.name })
+                                    });
+                                }
+                            }
                         }
                     }
-                } else {
-                    // Freistoß
-                    const fPos = { x: isHome ? 74 + Math.random() * 10 : 26 - Math.random() * 10, y: 30 + Math.random() * 40 };
-                    timeline.push({
-                        minute: min,
-                        second: 30,
-                        type: "foul",
-                        team: isHome ? "away" : "home",
-                        clubId: defClub.id,
-                        clubName: defClub.name,
-                        playerId: defender?.id,
-                        playerName: defender?.name,
-                        start: fPos,
-                        end: fPos,
-                        outcome: "foul",
-                        text: `${min}' - Foul von ${defender?.name || "Verteidiger"} (${defClub.name}) in aussichtsreicher Freistoßposition.`
-                    });
+                });
+            }
+
+            // Verletzungswahrscheinlichkeit im Spiel (A7)
+            ['home', 'away'].forEach(teamSide => {
+                const isHomeTeam = teamSide === 'home';
+                const club = isHomeTeam ? homeClub : awayClub;
+                const activePlayers = isHomeTeam ? activeHomePlayers : activeAwayPlayers;
+                const tactics = isHomeTeam ? homeTactics : awayTactics;
+
+                const pressingMod = tactics.pressing === "high" ? 1.3 : (tactics.pressing === "low" ? 0.8 : 1.0);
+                const injuryRoll = MATCH_TUNING.injuryRatePerTeam * (1 / (totalScenes || 30)) * pressingMod;
+
+                if (_Random.chance(injuryRoll)) {
+                    const victim = _Random.choice(activePlayers.filter(p => !sentOffPlayerIds.has(p.id)));
+                    if (victim) {
+                        const inj = _Random.choice(INJURY_CATALOG);
+                        timeline.push({
+                            minute: min,
+                            second: 8,
+                            type: "injury",
+                            team: teamSide,
+                            clubId: club.id,
+                            clubName: club.name,
+                            playerId: victim.id,
+                            playerName: victim.name,
+                            injuryName: inj.name,
+                            injuredWeeks: inj.weeks,
+                            text: formatCommentary("injury", { minute: min, club: club.name, player: victim.name, injury: inj.name })
+                        });
+
+                        // Auswechslung des Verletzten versuchen
+                        const benchAvailable = (club.bench || [])
+                            .map(id => allPlayers.find(p => p.id === id))
+                            .filter(p => p && (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0 && !activePlayers.some(ap => ap.id === p.id));
+
+                        if (benchAvailable.length > 0 && (isHomeTeam ? homeSubsUsed : awaySubsUsed) < maxSubs) {
+                            const subIn = benchAvailable[0];
+                            const outIdx = activePlayers.findIndex(p => p.id === victim.id);
+                            if (outIdx !== -1) {
+                                activePlayers[outIdx] = subIn;
+                                if (isHomeTeam) homeSubsUsed++; else awaySubsUsed++;
+
+                                timeline.push({
+                                    minute: min,
+                                    second: 15,
+                                    type: "substitution",
+                                    team: teamSide,
+                                    clubId: club.id,
+                                    clubName: club.name,
+                                    playerOutId: victim.id,
+                                    playerOutName: victim.name,
+                                    playerInId: subIn.id,
+                                    playerInName: subIn.name,
+                                    text: formatCommentary("substitution", { minute: min, club: club.name, playerIn: subIn.name, playerOut: victim.name })
+                                });
+                            }
+                        }
+                    }
                 }
-            } else {
-                // 5. ZWEIKÄMPFE, GRÄTSCHEN, KARTEN & ELFMETER
-                const fPos = { x: 30 + Math.random() * 40, y: 15 + Math.random() * 70 };
-                const isPenalty = Math.random() < 0.12;
-                const isRed = !isPenalty && Math.random() < 0.06;
-                const isYellow = !isPenalty && !isRed && Math.random() < 0.35;
+            });
+
+            // Ermittle angreifendes Team
+            let homeProb = homePower.midfield / (homePower.midfield + awayPower.midfield);
+            // Momentum: Zurückliegendes Team drückt mehr
+            if (currentHomeScore < currentAwayScore) homeProb += 0.08;
+            else if (currentAwayScore < currentHomeScore) homeProb -= 0.08;
+
+            const isHomeAttacking = _Random.chance(homeProb);
+            const attClub = isHomeAttacking ? homeClub : awayClub;
+            const defClub = isHomeAttacking ? awayClub : homeClub;
+            const attTactics = isHomeAttacking ? homeTactics : awayTactics;
+            const defTactics = isHomeAttacking ? awayTactics : homeTactics;
+
+            const attPlayers = isHomeAttacking ? activeHomePlayers : activeAwayPlayers;
+            const defPlayers = isHomeAttacking ? activeAwayPlayers : activeHomePlayers;
+
+            const sceneTypeRoll = Math.random();
+
+            if (sceneTypeRoll < MATCH_TUNING.foulRate) {
+                // 1. ZWEIKÄMPFE, FOULS, KARTEN & ELFMETER (A6, A8)
+                const foulEligible = defPlayers.filter(p => !sentOffPlayerIds.has(p.id));
+                const defender = _Random.choice(foulEligible) || defPlayers[0];
+                const shooter = _Random.choice(attPlayers.filter(p => ["ST", "LA", "RA", "OM"].includes(p.pos))) || attPlayers[0];
+                const gk = defPlayers.find(p => p.pos === "TW") || defPlayers[0];
+                const fPos = { x: _Random.float(25, 75), y: _Random.float(20, 80) };
+
+                const isPenalty = _Random.chance(MATCH_TUNING.penaltyRate);
+                const isRed = !isPenalty && _Random.chance(0.003);
+                const isYellow = !isPenalty && !isRed && _Random.chance(MATCH_TUNING.yellowCardRate);
 
                 if (isPenalty) {
-                    const penSpot = { x: isHome ? 88 : 12, y: 50 };
-                    const goalX = isHome ? 96 : 4;
+                    const penSpot = { x: isHomeAttacking ? 88 : 12, y: 50 };
+                    const goalX = isHomeAttacking ? 96 : 4;
                     const goalY = 50;
+
                     timeline.push({
                         minute: min,
-                        second: 32,
+                        second: 20,
                         type: "foul",
-                        team: isHome ? "away" : "home",
+                        team: isHomeAttacking ? "away" : "home",
                         clubId: defClub.id,
                         clubName: defClub.name,
                         playerId: defender?.id,
@@ -545,31 +844,34 @@ class MatchEngine {
                         start: penSpot,
                         end: penSpot,
                         outcome: "penalty",
-                        text: `${min}' - 🛑 PFIFF! Foul im Strafraum! Schiedsrichter zeigt auf den Punkt: ELFMETER für ${attClub.name}!`
+                        text: formatCommentary("penalty", { minute: min, attClub: attClub.name, defender: defender?.name })
                     });
 
-                    if (Math.random() < 0.78) {
+                    const { outcome, xG } = MatchEngine.resolveShotAttempt("penalty", shooter, gk, isHomeAttacking ? homePower : awayPower, isHomeAttacking ? awayPower : homePower, attTactics);
+
+                    if (outcome === "goal") {
+                        if (isHomeAttacking) currentHomeScore++; else currentAwayScore++;
                         timeline.push({
                             minute: min,
-                            second: 42,
+                            second: 35,
                             type: "goal",
-                            team: isHome ? "home" : "away",
+                            team: isHomeAttacking ? "home" : "away",
                             clubId: attClub.id,
                             clubName: attClub.name,
                             playerId: shooter?.id,
                             playerName: shooter?.name,
                             start: penSpot,
-                            end: { x: goalX, y: goalY + (Math.random() > 0.5 ? 4 : -4) },
-                            xG: 0.76,
+                            end: { x: goalX, y: goalY + (_Random.chance(0.5) ? 4 : -4) },
+                            xG: 0.77,
                             outcome: "goal",
-                            text: `${min}' - ⚽ TOOOOR durch Elfmeter! ${shooter?.name || "Schütze"} verlädt den Torwart souverän!`
+                            text: `${min}' - ⚽ TOOOOR durch Elfmeter! ${shooter?.name || "Schütze"} verwandelt eiskalt!`
                         });
                     } else {
                         timeline.push({
                             minute: min,
-                            second: 42,
+                            second: 35,
                             type: "save",
-                            team: isHome ? "away" : "home",
+                            team: isHomeAttacking ? "away" : "home",
                             clubId: defClub.id,
                             clubName: defClub.name,
                             shooterId: shooter?.id,
@@ -578,17 +880,18 @@ class MatchEngine {
                             gkName: gk?.name,
                             start: penSpot,
                             end: { x: goalX, y: goalY },
-                            xG: 0.76,
+                            xG: 0.77,
                             outcome: "saved",
-                            text: `${min}' - 🧤 GEHALTEN! ${gk?.name || "Elfmeterkiller"} pariert den Strafstoß von ${shooter?.name || "Schütze"}!`
+                            text: `${min}' - 🧤 GEHALTEN! ${gk?.name || "Torwart"} pariert den Elfmeter von ${shooter?.name || "Schütze"}!`
                         });
                     }
                 } else if (isRed) {
+                    sentOffPlayerIds.add(defender?.id);
                     timeline.push({
                         minute: min,
-                        second: 35,
+                        second: 25,
                         type: "red_card",
-                        team: isHome ? "away" : "home",
+                        team: isHomeAttacking ? "away" : "home",
                         clubId: defClub.id,
                         clubName: defClub.name,
                         playerId: defender?.id,
@@ -596,50 +899,176 @@ class MatchEngine {
                         start: fPos,
                         end: fPos,
                         outcome: "red_card",
-                        text: `${min}' - 🟥 ROTE KARTE für ${defender?.name || "Abwehrspieler"} (${defClub.name}) nach einer Notbremse!`
+                        text: formatCommentary("red_card", { minute: min, defender: defender?.name, defClub: defClub.name })
                     });
                 } else if (isYellow) {
-                    timeline.push({
-                        minute: min,
-                        second: 35,
-                        type: "yellow_card",
-                        team: isHome ? "away" : "home",
-                        clubId: defClub.id,
-                        clubName: defClub.name,
-                        playerId: defender?.id,
-                        playerName: defender?.name,
-                        start: fPos,
-                        end: fPos,
-                        outcome: "yellow_card",
-                        text: `${min}' - 🟨 Gelbe Karte für ${defender?.name || "Verteidiger"} (${defClub.name}) nach taktischem Foul.`
-                    });
+                    let cardTarget = defender;
+                    const prevYellows = playerYellows.get(cardTarget?.id) || 0;
+                    if (prevYellows >= 1 && !_Random.chance(0.08)) {
+                        const cleanPlayers = foulEligible.filter(p => !playerYellows.has(p.id));
+                        if (cleanPlayers.length > 0) {
+                            cardTarget = _Random.choice(cleanPlayers);
+                        }
+                    }
+
+                    const targetYellows = playerYellows.get(cardTarget?.id) || 0;
+                    if (targetYellows >= 1) {
+                        // Gelb-Rot!
+                        sentOffPlayerIds.add(cardTarget?.id);
+                        timeline.push({
+                            minute: min,
+                            second: 25,
+                            type: "yellow_card",
+                            isSecondYellow: true,
+                            team: isHomeAttacking ? "away" : "home",
+                            clubId: defClub.id,
+                            clubName: defClub.name,
+                            playerId: cardTarget?.id,
+                            playerName: cardTarget?.name,
+                            start: fPos,
+                            end: fPos,
+                            outcome: "second_yellow_card",
+                            text: formatCommentary("second_yellow_card", { minute: min, defender: cardTarget?.name, defClub: defClub.name })
+                        });
+                    } else {
+                        playerYellows.set(cardTarget?.id, 1);
+                        timeline.push({
+                            minute: min,
+                            second: 25,
+                            type: "yellow_card",
+                            team: isHomeAttacking ? "away" : "home",
+                            clubId: defClub.id,
+                            clubName: defClub.name,
+                            playerId: cardTarget?.id,
+                            playerName: cardTarget?.name,
+                            start: fPos,
+                            end: fPos,
+                            outcome: "yellow_card",
+                            text: formatCommentary("yellow_card", { minute: min, defender: cardTarget?.name, defClub: defClub.name })
+                        });
+                    }
                 } else {
-                    timeline.push({
-                        minute: min,
-                        second: 35,
-                        type: "tackle",
-                        team: isHome ? "away" : "home",
-                        clubId: defClub.id,
-                        clubName: defClub.name,
-                        playerId: defender?.id,
-                        playerName: defender?.name,
-                        start: fPos,
-                        end: fPos,
-                        outcome: "tackle",
-                        text: `${min}' - 🛡️ Perfektes Tackling: ${defender?.name || "Abwehrchef"} klärt die Situation mit einer sauberen Grätsche.`
-                    });
+                    // Normales Tackling / Freistoß
+                    if (_Random.chance(0.55)) {
+                        timeline.push({
+                            minute: min,
+                            second: 25,
+                            type: "tackle",
+                            team: isHomeAttacking ? "away" : "home",
+                            clubId: defClub.id,
+                            clubName: defClub.name,
+                            playerId: defender?.id,
+                            playerName: defender?.name,
+                            start: fPos,
+                            end: fPos,
+                            outcome: "tackle",
+                            text: formatCommentary("tackle", { minute: min, defender: defender?.name })
+                        });
+                    } else {
+                        timeline.push({
+                            minute: min,
+                            second: 25,
+                            type: "foul",
+                            team: isHomeAttacking ? "away" : "home",
+                            clubId: defClub.id,
+                            clubName: defClub.name,
+                            playerId: defender?.id,
+                            playerName: defender?.name,
+                            start: fPos,
+                            end: fPos,
+                            outcome: "foul",
+                            text: formatCommentary("foul", { minute: min, defender: defender?.name, defClub: defClub.name, attClub: attClub.name })
+                        });
+                    }
+                }
+            } else {
+                // 2. TORSZENEN & ANGRIFFE (A2, A4, E20)
+                // Wähle Angriffsmuster anhand von passing & focus
+                let throughWeight = 0.35;
+                let crossWeight = 0.30;
+                let dribbleWeight = 0.20;
+                let cornerWeight = 0.15;
+
+                if (attTactics.passing === "direct") {
+                    throughWeight += 0.15;
+                    crossWeight += 0.05;
+                } else if (attTactics.passing === "short") {
+                    dribbleWeight += 0.10;
+                    throughWeight += 0.05;
+                }
+
+                if (attTactics.attackFocus === "left" || attTactics.attackFocus === "right") {
+                    crossWeight += 0.15;
+                    throughWeight -= 0.10;
+                } else if (attTactics.attackFocus === "center") {
+                    throughWeight += 0.10;
+                    dribbleWeight += 0.10;
+                    crossWeight -= 0.15;
+                }
+
+                if (defTactics.defensiveLine === "high") {
+                    throughWeight += 0.10;
+                } else if (defTactics.defensiveLine === "deep") {
+                    crossWeight += 0.10;
+                    cornerWeight += 0.05;
+                }
+
+                const totalW = throughWeight + crossWeight + dribbleWeight + cornerWeight;
+                const rollType = Math.random() * totalW;
+
+                if (rollType < throughWeight) {
+                    buildAttackScene(min, isHomeAttacking, "through_ball");
+                } else if (rollType < throughWeight + crossWeight) {
+                    buildAttackScene(min, isHomeAttacking, "cross");
+                } else if (rollType < throughWeight + crossWeight + dribbleWeight) {
+                    buildAttackScene(min, isHomeAttacking, "dribble");
+                } else {
+                    buildAttackScene(min, isHomeAttacking, "corner");
                 }
             }
         });
 
-        timeline.sort((a, b) => a.minute !== b.minute ? a.minute - b.minute : a.second - b.second);
+        // Spielphasen & Nachspielzeit Events einfügen (A5, C15)
+        const halfTimeMinute = 45 + extraTime1;
+        const fullTimeMinute = 90 + extraTime2;
+
+        timeline.push({
+            minute: halfTimeMinute,
+            second: 59,
+            type: "halftime",
+            text: formatCommentary("halftime", { minute: halfTimeMinute, score: `${currentHomeScore}:${currentAwayScore}` }),
+            score: [currentHomeScore, currentAwayScore]
+        });
+
+        timeline.push({
+            minute: fullTimeMinute,
+            second: 59,
+            type: "fulltime",
+            text: formatCommentary("fulltime", { minute: fullTimeMinute, score: `${currentHomeScore}:${currentAwayScore}` }),
+            score: [currentHomeScore, currentAwayScore]
+        });
+
+        timeline.sort((a, b) => {
+            if (a.minute !== b.minute) return a.minute - b.minute;
+            return (a.second || 0) - (b.second || 0);
+        });
+
+        // Metadaten für Ballbesitz & Nachspielzeit an der Timeline hinterlegen
+        timeline.possession = [calculatedHomePossession, calculatedAwayPossession];
+        timeline.extraTime = { firstHalf: extraTime1, secondHalf: extraTime2 };
+
         return timeline;
     }
 
     /**
-     * Wendet eine Timeline deterministisch auf das Match-Objekt an
+     * Wendet eine Timeline deterministisch auf das Match-Objekt an (B9 - B13)
      */
     static applyTimelineToMatch(match, timeline, homeClub, awayClub, allPlayers) {
+        // Idempotenzprüfung (B13)
+        if (match.played) {
+            return match;
+        }
+
         let homeGoals = 0;
         let awayGoals = 0;
         let homeShots = 0;
@@ -654,27 +1083,59 @@ class MatchEngine {
         let awayYellowCards = 0;
         let homeRedCards = 0;
         let awayRedCards = 0;
+        let homeTackles = 0;
+        let awayTackles = 0;
+        let homeSaves = 0;
+        let awaySaves = 0;
         let homeXg = 0.0;
         let awayXg = 0.0;
 
         const events = [];
+        const matchInjuries = [];
+        const matchSuspensions = [];
+
+        // Tracking pro Spieler für Noten & Stats
+        const playerMatchStats = new Map();
+        const getOrCreateStats = (playerId) => {
+            if (!playerMatchStats.has(playerId)) {
+                playerMatchStats.set(playerId, {
+                    goals: 0,
+                    assists: 0,
+                    saves: 0,
+                    tackles: 0,
+                    yellowCards: 0,
+                    redCards: 0,
+                    hasSecondYellow: false,
+                    penaltySaved: false,
+                    subInMinute: null,
+                    subOutMinute: null,
+                    sentOffMinute: null
+                });
+            }
+            return playerMatchStats.get(playerId);
+        };
 
         timeline.forEach(event => {
             if (event.type === "goal") {
-                if (event.team === "home") homeGoals++; else awayGoals++;
-                if (event.team === "home") homeShotsOnTarget++; else awayShotsOnTarget++;
-                if (event.team === "home") homeShots++; else awayShots++;
-                if (event.team === "home") homeXg += (event.xG || 0.3); else awayXg += (event.xG || 0.3);
-
-                const player = allPlayers.find(p => p.id === event.playerId);
-                if (player) {
-                    player.stats.goals = (player.stats.goals || 0) + 1;
-                    player.stats.ratingSum = (player.stats.ratingSum || 0) + 1.2;
+                if (event.team === "home") {
+                    homeGoals++;
+                    homeShotsOnTarget++;
+                    homeShots++;
+                    homeXg += (event.xG || 0.35);
+                } else {
+                    awayGoals++;
+                    awayShotsOnTarget++;
+                    awayShots++;
+                    awayXg += (event.xG || 0.35);
                 }
-                const assistPlayer = allPlayers.find(p => p.id === event.assistId);
-                if (assistPlayer) {
-                    assistPlayer.stats.assists = (assistPlayer.stats.assists || 0) + 1;
-                    assistPlayer.stats.ratingSum = (assistPlayer.stats.ratingSum || 0) + 0.6;
+
+                if (event.playerId) {
+                    const st = getOrCreateStats(event.playerId);
+                    st.goals++;
+                }
+                if (event.assistId) {
+                    const st = getOrCreateStats(event.assistId);
+                    st.assists++;
                 }
 
                 events.push({
@@ -688,12 +1149,23 @@ class MatchEngine {
                     assistName: event.assistName
                 });
             } else if (event.type === "save") {
-                if (event.team === "away") homeShotsOnTarget++; else awayShotsOnTarget++;
-                if (event.team === "away") homeShots++; else awayShots++;
-                if (event.team === "away") homeXg += (event.xG || 0.15); else awayXg += (event.xG || 0.15);
+                if (event.team === "away") {
+                    homeShotsOnTarget++;
+                    homeShots++;
+                    homeXg += (event.xG || 0.15);
+                    awaySaves++;
+                } else {
+                    awayShotsOnTarget++;
+                    awayShots++;
+                    awayXg += (event.xG || 0.15);
+                    homeSaves++;
+                }
 
-                const gk = allPlayers.find(p => p.id === event.gkId);
-                if (gk) gk.stats.ratingSum = (gk.stats.ratingSum || 0) + 0.3;
+                if (event.gkId) {
+                    const st = getOrCreateStats(event.gkId);
+                    st.saves++;
+                    if (event.outcome === "penalty_saved") st.penaltySaved = true;
+                }
 
                 events.push({
                     minute: event.minute,
@@ -702,19 +1174,45 @@ class MatchEngine {
                     text: event.text
                 });
             } else if (event.type === "shot_miss") {
-                if (event.team === "home") homeShots++; else awayShots++;
-                if (event.team === "home") homeXg += (event.xG || 0.1); else awayXg += (event.xG || 0.1);
+                if (event.team === "home") {
+                    homeShots++;
+                    homeXg += (event.xG || 0.1);
+                } else {
+                    awayShots++;
+                    awayXg += (event.xG || 0.1);
+                }
             } else if (event.type === "corner") {
                 if (event.team === "home") homeCorners++; else awayCorners++;
             } else if (event.type === "foul") {
                 if (event.team === "home") homeFouls++; else awayFouls++;
-            } else if (event.type === "yellow_card") {
-                if (event.team === "home") { homeFouls++; homeYellowCards++; } else { awayFouls++; awayYellowCards++; }
-                const player = allPlayers.find(p => p.id === event.playerId);
-                if (player) {
-                    player.stats.yellowCards = (player.stats.yellowCards || 0) + 1;
-                    player.yellowCardsTotal = (player.yellowCardsTotal || 0) + 1;
+            } else if (event.type === "tackle") {
+                if (event.team === "home") homeTackles++; else awayTackles++;
+                if (event.playerId) {
+                    const st = getOrCreateStats(event.playerId);
+                    st.tackles++;
                 }
+            } else if (event.type === "yellow_card") {
+                if (event.isSecondYellow) {
+                    if (event.team === "home") { homeFouls++; homeYellowCards++; homeRedCards++; }
+                    else { awayFouls++; awayYellowCards++; awayRedCards++; }
+
+                    if (event.playerId) {
+                        const st = getOrCreateStats(event.playerId);
+                        st.yellowCards++;
+                        st.redCards++;
+                        st.hasSecondYellow = true;
+                        st.sentOffMinute = event.minute;
+                    }
+                } else {
+                    if (event.team === "home") { homeFouls++; homeYellowCards++; }
+                    else { awayFouls++; awayYellowCards++; }
+
+                    if (event.playerId) {
+                        const st = getOrCreateStats(event.playerId);
+                        st.yellowCards++;
+                    }
+                }
+
                 events.push({
                     minute: event.minute,
                     type: "yellow_card",
@@ -724,12 +1222,15 @@ class MatchEngine {
                     playerName: event.playerName
                 });
             } else if (event.type === "red_card") {
-                if (event.team === "home") { homeFouls++; homeRedCards++; } else { awayFouls++; awayRedCards++; }
-                const player = allPlayers.find(p => p.id === event.playerId);
-                if (player) {
-                    player.stats.redCards = (player.stats.redCards || 0) + 1;
-                    player.suspendedMatches = 2;
+                if (event.team === "home") { homeFouls++; homeRedCards++; }
+                else { awayFouls++; awayRedCards++; }
+
+                if (event.playerId) {
+                    const st = getOrCreateStats(event.playerId);
+                    st.redCards++;
+                    st.sentOffMinute = event.minute;
                 }
+
                 events.push({
                     minute: event.minute,
                     type: "red_card",
@@ -738,34 +1239,212 @@ class MatchEngine {
                     playerId: event.playerId,
                     playerName: event.playerName
                 });
+            } else if (event.type === "injury") {
+                if (event.playerId) {
+                    const player = allPlayers.find(p => p.id === event.playerId);
+                    if (player) {
+                        matchInjuries.push({
+                            playerId: player.id,
+                            playerName: player.name,
+                            clubId: event.clubId,
+                            injuryName: event.injuryName || "Muskelverletzung",
+                            weeks: event.injuredWeeks || 2
+                        });
+                    }
+                }
+                events.push({
+                    minute: event.minute,
+                    type: "injury",
+                    clubId: event.clubId,
+                    text: event.text,
+                    playerId: event.playerId,
+                    playerName: event.playerName
+                });
+            } else if (event.type === "substitution") {
+                if (event.playerOutId) {
+                    const stOut = getOrCreateStats(event.playerOutId);
+                    if (stOut.subOutMinute === null) stOut.subOutMinute = event.minute;
+                }
+                if (event.playerInId) {
+                    const stIn = getOrCreateStats(event.playerInId);
+                    if (stIn.subInMinute === null) stIn.subInMinute = event.minute;
+                }
+                events.push({
+                    minute: event.minute,
+                    type: "substitution",
+                    clubId: event.clubId,
+                    text: event.text,
+                    playerOutId: event.playerOutId,
+                    playerOutName: event.playerOutName,
+                    playerInId: event.playerInId,
+                    playerInName: event.playerInName
+                });
             }
         });
 
-        const homeLineup = (homeClub.lineup || []).map(id => allPlayers.find(p => p.id === id)).filter(Boolean);
-        const awayLineup = (awayClub.lineup || []).map(id => allPlayers.find(p => p.id === id)).filter(Boolean);
+        // Startaufstellungen ermitteln (B12)
+        const initialHomeLineupIds = match.lineups?.home || clubLineup(homeClub);
+        const initialAwayLineupIds = match.lineups?.away || clubLineup(awayClub);
 
-        // Spieler-Updates
-        homeLineup.forEach(p => {
-            p.stats.matches = (p.stats.matches || 0) + 1;
-            p.stats.minutes = (p.stats.minutes || 0) + 90;
-            p.fitness = Math.max(50, (p.fitness || 100) - (10 + Math.floor(Math.random() * 8)));
-            const matchRating = Math.min(10, Math.max(4.0, (6.0 + (homeGoals - awayGoals) * 0.4 + (Math.random() * 1.5 - 0.75))));
-            p.stats.ratingSum = (p.stats.ratingSum || 0) + matchRating;
-            p.form = parseFloat((((p.form || 7.0) * 0.7) + (matchRating * 0.3)).toFixed(1));
-            if (awayGoals === 0 && p.pos === "TW") p.stats.cleanSheets = (p.stats.cleanSheets || 0) + 1;
+        function clubLineup(c) {
+            return (c.lineup || []).slice(0, 11);
+        }
+
+        const homeStartingPlayers = initialHomeLineupIds.map(id => allPlayers.find(p => p.id === id)).filter(Boolean);
+        const awayStartingPlayers = initialAwayLineupIds.map(id => allPlayers.find(p => p.id === id)).filter(Boolean);
+
+        // Alle Spieler erfassen, die zum Einsatz kamen
+        const allPlayedPlayerIds = new Set([...initialHomeLineupIds, ...initialAwayLineupIds]);
+        timeline.forEach(ev => {
+            if (ev.type === "substitution" && ev.playerInId) {
+                allPlayedPlayerIds.add(ev.playerInId);
+            }
         });
 
-        awayLineup.forEach(p => {
-            p.stats.matches = (p.stats.matches || 0) + 1;
-            p.stats.minutes = (p.stats.minutes || 0) + 90;
-            p.fitness = Math.max(50, (p.fitness || 100) - (10 + Math.floor(Math.random() * 8)));
-            const matchRating = Math.min(10, Math.max(4.0, (6.0 + (awayGoals - homeGoals) * 0.4 + (Math.random() * 1.5 - 0.75))));
-            p.stats.ratingSum = (p.stats.ratingSum || 0) + matchRating;
-            p.form = parseFloat((((p.form || 7.0) * 0.7) + (matchRating * 0.3)).toFixed(1));
-            if (homeGoals === 0 && p.pos === "TW") p.stats.cleanSheets = (p.stats.cleanSheets || 0) + 1;
+        const playerRatings = [];
+
+        // Noten- und Einsatzminutenberechnung (B9, B12)
+        allPlayedPlayerIds.forEach(playerId => {
+            const player = allPlayers.find(p => p.id === playerId);
+            if (!player) return;
+
+            const isHome = initialHomeLineupIds.includes(playerId) || (homeClub.playerIds || []).includes(playerId);
+            const teamClub = isHome ? homeClub : awayClub;
+            const teamGoals = isHome ? homeGoals : awayGoals;
+            const oppGoals = isHome ? awayGoals : homeGoals;
+            const teamWon = teamGoals > oppGoals;
+            const teamLost = teamGoals < oppGoals;
+
+            const st = getOrCreateStats(playerId);
+            const isStarter = initialHomeLineupIds.includes(playerId) || initialAwayLineupIds.includes(playerId);
+
+            // Einsatzminuten ermitteln
+            let startMin = isStarter ? 0 : (st.subInMinute !== null ? st.subInMinute : 0);
+            let endMin = 90;
+            if (st.subOutMinute !== null) endMin = st.subOutMinute;
+            if (st.sentOffMinute !== null) endMin = Math.min(endMin, st.sentOffMinute);
+
+            let minutes = Math.max(0, endMin - startMin);
+            if (!isStarter && st.subInMinute === null) minutes = 0;
+
+            if (minutes <= 0) return;
+
+            // FM-Noten-Berechnung (B9)
+            let rating = 6.3;
+            rating += (st.goals * 1.0);
+            rating += (st.assists * 0.6);
+
+            const isTW = player.pos === "TW";
+            const isDef = ["IV", "LV", "RV", "DM"].includes(player.pos);
+
+            if (isTW) {
+                rating += (st.saves * 0.25);
+                if (st.penaltySaved) rating += 0.8;
+            }
+
+            if (isTW || isDef) {
+                if (minutes >= 60 && oppGoals === 0) rating += 0.4;
+                rating -= (oppGoals * 0.15);
+            }
+
+            rating += (st.tackles * 0.1);
+            rating -= (st.yellowCards * 0.3);
+            if (st.redCards > 0 || st.hasSecondYellow) rating -= 1.5;
+
+            if (teamWon) rating += 0.2;
+            else if (teamLost) rating -= 0.2;
+
+            rating += _Random.float(-0.15, 0.15);
+
+            // Nach Einsatzminuten dämpfen
+            const weight = Math.min(1.0, minutes / 60);
+            rating = 6.0 + (rating - 6.0) * weight;
+            rating = parseFloat(_Random.clamp(rating, 3.0, 10.0).toFixed(1));
+
+            // Spielerstatistiken einmalig aktualisieren (Invariante)
+            player.stats.matches = (player.stats.matches || 0) + 1;
+            player.stats.minutes = (player.stats.minutes || 0) + minutes;
+            player.stats.goals = (player.stats.goals || 0) + st.goals;
+            player.stats.assists = (player.stats.assists || 0) + st.assists;
+            player.stats.ratingSum = (player.stats.ratingSum || 0) + rating;
+            player.form = parseFloat((((player.form || 7.0) * 0.7) + (rating * 0.3)).toFixed(1));
+
+            if (oppGoals === 0 && isTW && minutes >= 60) {
+                player.stats.cleanSheets = (player.stats.cleanSheets || 0) + 1;
+            }
+
+            // Fitness-Verlust dynamisch (B12)
+            const pressingFactor = teamClub.tactics?.pressing === "high" ? 1.25 : (teamClub.tactics?.pressing === "low" ? 0.85 : 1.0);
+            const staminaVal = player.stamina || 70;
+            const ageMod = (player.age || 25) >= 31 ? 1.15 : 1.0;
+            const fitLoss = Math.round(13 * (minutes / 90) * (1.3 - staminaVal / 250) * ageMod * pressingFactor);
+            player.fitness = Math.max(35, (player.fitness || 100) - fitLoss);
+
+            // Gelbe Karten & Sperren (A8)
+            if (st.yellowCards > 0) {
+                player.stats.yellowCards = (player.stats.yellowCards || 0) + st.yellowCards;
+                player.yellowCardsTotal = (player.yellowCardsTotal || 0) + st.yellowCards;
+
+                if (player.yellowCardsTotal % 5 === 0) {
+                    player.suspendedMatches = Math.max(player.suspendedMatches || 0, 1);
+                    matchSuspensions.push({
+                        playerId: player.id,
+                        playerName: player.name,
+                        clubId: teamClub.id,
+                        reason: "5. Gelbe Karte",
+                        matches: 1
+                    });
+                }
+            }
+
+            if (st.hasSecondYellow) {
+                player.stats.redCards = (player.stats.redCards || 0) + 1;
+                player.suspendedMatches = Math.max(player.suspendedMatches || 0, 1);
+                matchSuspensions.push({
+                    playerId: player.id,
+                    playerName: player.name,
+                    clubId: teamClub.id,
+                    reason: "Gelb-Rote Karte",
+                    matches: 1
+                });
+            } else if (st.redCards > 0) {
+                player.stats.redCards = (player.stats.redCards || 0) + 1;
+                player.suspendedMatches = Math.max(player.suspendedMatches || 0, 2);
+                matchSuspensions.push({
+                    playerId: player.id,
+                    playerName: player.name,
+                    clubId: teamClub.id,
+                    reason: "Rote Karte",
+                    matches: 2
+                });
+            }
+
+            playerRatings.push({
+                playerId: player.id,
+                name: player.name,
+                clubId: teamClub.id,
+                clubName: teamClub.name,
+                pos: player.pos,
+                rating,
+                minutes,
+                goals: st.goals,
+                assists: st.assists,
+                saves: st.saves,
+                cards: st.redCards > 0 ? "🟥" : (st.yellowCards > 0 ? "🟨" : "")
+            });
         });
 
-        // Formkurven
+        // Verletzungen auf Spielerobjekte anwenden (A7)
+        matchInjuries.forEach(inj => {
+            const p = allPlayers.find(pl => pl.id === inj.playerId);
+            if (p) {
+                p.injuredWeeks = inj.weeks;
+                p.injuryName = inj.injuryName;
+                p.fitness = Math.max(30, (p.fitness || 100) - 20);
+            }
+        });
+
+        // Formkurven der Vereine
         if (Array.isArray(homeClub.form)) {
             homeClub.form.shift();
             homeClub.form.push(homeGoals > awayGoals ? "W" : homeGoals === awayGoals ? "D" : "L");
@@ -775,21 +1454,58 @@ class MatchEngine {
             awayClub.form.push(awayGoals > homeGoals ? "W" : homeGoals === awayGoals ? "D" : "L");
         }
 
-        // Man of the Match
-        const allPlayed = [...homeLineup, ...awayLineup];
-        allPlayed.sort((a, b) => ((b.stats?.goals || 0) * 3 + (b.stats?.assists || 0) * 2 + (b.overall || 70)) - ((a.stats?.goals || 0) * 3 + (a.stats?.assists || 0) * 2 + (a.overall || 70)));
-        const motm = allPlayed[0] ? allPlayed[0].name : "Ausgeglichen";
+        // MOTM aus der Spielleistung (B10)
+        const eligibleMotm = playerRatings.filter(p => p.minutes >= 45);
+        const motmPool = eligibleMotm.length > 0 ? eligibleMotm : playerRatings;
+        motmPool.sort((a, b) => b.rating - a.rating);
+        const topRated = motmPool[0];
 
-        const homePossession = Math.min(75, Math.max(25, 50 + (homeGoals - awayGoals) * 3 + Math.floor(Math.random() * 8 - 4)));
+        const motm = topRated ? {
+            id: topRated.playerId,
+            name: topRated.name,
+            clubId: topRated.clubId,
+            clubName: topRated.clubName,
+            rating: topRated.rating
+        } : null;
 
-        // Taktische Zusammenfassung
+        // Ballbesitz, Passquote, Zweikämpfe (B11)
+        const pos = timeline.possession || [50, 50];
+        const homePossession = pos[0];
+        const awayPossession = pos[1];
+
+        const homePassAcc = _Random.clamp(Math.round(80 + (homeClub.tactics?.passing === "short" ? 5 : (homeClub.tactics?.passing === "direct" ? -5 : 0)) + _Random.int(-3, 3)), 70, 92);
+        const awayPassAcc = _Random.clamp(Math.round(80 + (awayClub.tactics?.passing === "short" ? 5 : (awayClub.tactics?.passing === "direct" ? -5 : 0)) + _Random.int(-3, 3)), 70, 92);
+
+        const homeTacklesWon = _Random.clamp(Math.round(55 + (homeClub.tactics?.pressing === "high" ? 6 : -4) + _Random.int(-4, 4)), 45, 75);
+        const awayTacklesWon = _Random.clamp(Math.round(55 + (awayClub.tactics?.pressing === "high" ? 6 : -4) + _Random.int(-4, 4)), 45, 75);
+
+        // Aussagekräftige Zusammenfassung (D19)
         let summaryText = "";
+        const xgDiff = homeXg - awayXg;
+        const motmText = motm ? ` Spieler des Spiels: ${motm.name} (${motm.rating}).` : "";
+
         if (homeGoals > awayGoals) {
-            summaryText = `${homeClub.name} setzte sich mit ${homeGoals}:${awayGoals} gegen ${awayClub.name} durch. Mit ${homePossession}% Ballbesitz und ${homeXg.toFixed(2)} xG kontrollierten die Hausherren das Spiel. Spieler des Spiels: ${motm}.`;
+            if (awayXg > homeXg + 0.5) {
+                summaryText = `Eiskalte Effizienz: ${homeClub.name} bezwingt ${awayClub.name} mit ${homeGoals}:${awayGoals}, obwohl die Gäste mit ${awayXg.toFixed(2)} xG die besseren Chancen verbuchten.${motmText}`;
+            } else if (homePossession >= 58) {
+                summaryText = `Dominanter Auftritt: ${homeClub.name} kontrollierte mit ${homePossession}% Ballbesitz das Geschehen und siegte hochverdient ${homeGoals}:${awayGoals} gegen ${awayClub.name}.${motmText}`;
+            } else {
+                summaryText = `${homeClub.name} setzt sich in einer intensiven Partie mit ${homeGoals}:${awayGoals} gegen ${awayClub.name} durch (${homeXg.toFixed(2)} : ${awayXg.toFixed(2)} xG).${motmText}`;
+            }
         } else if (awayGoals > homeGoals) {
-            summaryText = `${awayClub.name} feierte einen ${awayGoals}:${homeGoals}-Auswärtssieg bei ${homeClub.name}. Durch hohe Effizienz vor dem Tor und ${awayXg.toFixed(2)} xG entführten die Gäste verdient alle drei Punkte.`;
+            if (homeXg > awayXg + 0.5) {
+                summaryText = `Chancenwucher bestraft: Trotz ${homeXg.toFixed(2)} xG unterliegt ${homeClub.name} den eiskalten Gästen von ${awayClub.name} mit ${homeGoals}:${awayGoals}.${motmText}`;
+            } else if (awayPossession >= 58) {
+                summaryText = `Reife Leistung: ${awayClub.name} bestimmte auswärts das Tempo (${awayPossession}% Ballbesitz) und entführt verdient mit ${awayGoals}:${homeGoals} alle drei Punkte.${motmText}`;
+            } else {
+                summaryText = `${awayClub.name} feiert einen hart erkämpften ${awayGoals}:${homeGoals}-Auswärtssieg bei ${homeClub.name} (${awayXg.toFixed(2)} xG).${motmText}`;
+            }
         } else {
-            summaryText = `In einem intensiven Duell trennten sich ${homeClub.name} und ${awayClub.name} ${homeGoals}:${awayGoals} unentschieden (${homeXg.toFixed(2)} : ${awayXg.toFixed(2)} xG).`;
+            if (homeSaves >= 4 || awaySaves >= 4) {
+                summaryText = `Torwart-Glanzleistung: Dank starker Paraden trennen sich ${homeClub.name} und ${awayClub.name} ${homeGoals}:${awayGoals} unentschieden (${homeXg.toFixed(2)} : ${awayXg.toFixed(2)} xG).${motmText}`;
+            } else {
+                summaryText = `Gerechte Punkteteilung: In einem ausgeglichenen Duell endete die Begegnung zwischen ${homeClub.name} und ${awayClub.name} ${homeGoals}:${awayGoals}.${motmText}`;
+            }
         }
 
         match.played = true;
@@ -798,18 +1514,23 @@ class MatchEngine {
         match.events = events;
         match.timeline = timeline;
         match.summaryText = summaryText;
+        match.playerRatings = playerRatings;
+        match.manOfTheMatch = motm;
+        match.injuries = matchInjuries;
+        match.suspensions = matchSuspensions;
+
         match.stats = {
-            possession: [homePossession, 100 - homePossession],
+            possession: [homePossession, awayPossession],
             shots: [Math.max(homeGoals, homeShots), Math.max(awayGoals, awayShots)],
             shotsOnTarget: [Math.max(homeGoals, homeShotsOnTarget), Math.max(awayGoals, awayShotsOnTarget)],
-            corners: [homeCorners || 3, awayCorners || 2],
-            fouls: [homeFouls || 8, awayFouls || 9],
+            corners: [homeCorners, awayCorners],
+            fouls: [homeFouls, awayFouls],
             yellowCards: [homeYellowCards, awayYellowCards],
             redCards: [homeRedCards, awayRedCards],
-            passAccuracy: [83, 81],
-            tacklesWon: [65, 62],
-            saves: [awayShotsOnTarget, homeShotsOnTarget],
-            motm: motm,
+            passAccuracy: [homePassAcc, awayPassAcc],
+            tacklesWon: [homeTacklesWon, awayTacklesWon],
+            saves: [homeSaves, awaySaves],
+            motm: motm ? motm.name : "Ausgeglichen",
             xG: [parseFloat(homeXg.toFixed(2)), parseFloat(awayXg.toFixed(2))]
         };
 
@@ -845,12 +1566,22 @@ class LiveMatch {
         this.awayClub = awayClub;
         this.allPlayers = allPlayers;
 
-        this.homeLineup = (homeClub.lineup || []).map(id => allPlayers.find(p => p.id === id)).filter(Boolean);
-        this.awayLineup = (awayClub.lineup || []).map(id => allPlayers.find(p => p.id === id)).filter(Boolean);
+        this.homeLineup = MatchEngine.getCleanLineup(homeClub, allPlayers);
+        this.awayLineup = MatchEngine.getCleanLineup(awayClub, allPlayers);
+
+        if (!match.lineups) {
+            match.lineups = {
+                home: this.homeLineup.map(p => p.id),
+                away: this.awayLineup.map(p => p.id)
+            };
+        }
 
         // Timeline generieren falls noch nicht vorhanden
         if (!match.timeline || match.timeline.length === 0) {
-            match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, allPlayers);
+            match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, allPlayers, {
+                homeLineup: this.homeLineup,
+                awayLineup: this.awayLineup
+            });
         }
         this.timeline = match.timeline;
         this.timelineIndex = 0;
@@ -862,11 +1593,13 @@ class LiveMatch {
         this.awayScore = 0;
         this.isFinished = false;
         this.isPaused = false;
-        this.speed = 1; // Standard: langsam / realistisch (1 = slow, 2 = normal, 4 = fast)
+        this.speed = 1;
+
+        const targetPos = this.timeline.possession || [50, 50];
 
         // Live Stats
         this.stats = {
-            possession: [50, 50],
+            possession: [targetPos[0], targetPos[1]],
             possessionTicks: [0, 0],
             shots: [0, 0],
             shotsOnTarget: [0, 0],
@@ -875,6 +1608,8 @@ class LiveMatch {
             yellowCards: [0, 0],
             redCards: [0, 0],
             passAccuracy: [82, 80],
+            tacklesWon: [55, 55],
+            saves: [0, 0],
             xG: [0.0, 0.0]
         };
 
@@ -925,13 +1660,10 @@ class LiveMatch {
 
         const players = [];
 
-        // Heimspieler (Torwart links bei x~4, Abwehr x~16, Mittelfeld x~26-34, Sturm x~42; greift nach rechts an)
         this.homeLineup.forEach((p, idx) => {
             const slot = homePositions[idx] || { x: 50, y: 90 };
-            // In FORMATION_CONFIGS: TW hat y=92 (unten am eigenen Tor), ST hat y=18 (oben an der Front)
-            // Auf dem 2D-Feld (links->rechts): TW muss links sein (x nahe 0), ST muss rechts sein (x nahe 50/Mittellinie)
             const fieldX = Math.max(3, Math.min(48, ((100 - slot.y) / 100) * 44 + 4));
-            const fieldY = slot.x; // Vertikale Achse (Breite des Feldes 0-100)
+            const fieldY = slot.x;
             players.push({
                 id: p.id,
                 name: p.name,
@@ -944,17 +1676,15 @@ class LiveMatch {
                 y: fieldY,
                 targetX: fieldX,
                 targetY: fieldY,
-                color: this.homeClub.primaryColor || "#dc2626",
-                textColor: this.homeClub.secondaryColor || "#ffffff",
-                rating: 6.0,
-                locked: 0
+                pace: p.pace || p.overall || 70,
+                color: this.homeClub.color || "#1d4ed8",
+                textColor: this.homeClub.textColor || "#ffffff"
             });
         });
 
-        // Auswärtsspieler (Torwart rechts bei x~96, Abwehr x~84, Mittelfeld x~66-74, Sturm x~58; greift nach links an)
         this.awayLineup.forEach((p, idx) => {
             const slot = awayPositions[idx] || { x: 50, y: 90 };
-            const fieldX = Math.max(52, Math.min(97, 100 - (((100 - slot.y) / 100) * 44 + 4)));
+            const fieldX = Math.max(52, Math.min(97, 96 - ((100 - slot.y) / 100) * 44));
             const fieldY = slot.x;
             players.push({
                 id: p.id,
@@ -968,10 +1698,9 @@ class LiveMatch {
                 y: fieldY,
                 targetX: fieldX,
                 targetY: fieldY,
-                color: this.awayClub.primaryColor || "#2563eb",
-                textColor: this.awayClub.secondaryColor || "#ffffff",
-                rating: 6.0,
-                locked: 0
+                pace: p.pace || p.overall || 70,
+                color: this.awayClub.color || "#dc2626",
+                textColor: this.awayClub.textColor || "#ffffff"
             });
         });
 
@@ -979,252 +1708,233 @@ class LiveMatch {
     }
 
     /**
-     * Simulationsschritt (wird periodisch anhand des Tick-Intervalls aufgerufen)
+     * Resimuliert den verbleibenden Spielverlauf ab der aktuellen Minute (C14)
      */
-    tick(step = null) {
+    resimulateRemainder() {
+        const playedEvents = this.timeline.slice(0, this.timelineIndex);
+        const startMin = Math.max(1, this.minute + 1);
+
+        const newRemainder = MatchEngine.generateTimeline(this.homeClub, this.awayClub, this.allPlayers, {
+            startMinute: startMin,
+            currentHomeScore: this.homeScore,
+            currentAwayScore: this.awayScore,
+            homeLineup: this.homeLineup,
+            awayLineup: this.awayLineup,
+            usedSubsHome: this.substitutionsUsed.home,
+            usedSubsAway: this.substitutionsUsed.away
+        });
+
+        this.timeline = [...playedEvents, ...newRemainder];
+        this.match.timeline = this.timeline;
+    }
+
+    tick() {
         if (this.isFinished || this.isPaused) return;
 
-        const minuteInc = step || this.getMinuteStep();
-        this.minute += minuteInc;
+        const minuteStep = this.getMinuteStep();
+        this.minute += minuteStep;
 
-        // Pro Tick wird bewusst nur EIN Timeline-Event abgespielt (statt alle,
-        // die bis zur aktuellen Minute fällig sind, sofort hintereinander).
-        // So bleibt genug echte Zeit zwischen z.B. Steilpass und Torschuss,
-        // damit Ball und Spieler die Aktion sichtbar "ausspielen" können,
-        // statt dass mehrere Ereignisse unsichtbar im selben Frame passieren.
-        if (this.timelineIndex < this.timeline.length && this.timeline[this.timelineIndex].minute <= this.minute) {
+        // Phasen aktualisieren (C15)
+        if (this.minute === 0) {
+            this.currentPhase = "kickoff";
+        } else if (this.minute <= 45) {
+            this.currentPhase = "first_half";
+        } else if (this.minute === 46 && this.currentPhase === "first_half") {
+            this.currentPhase = "half_time";
+            this.lastCommentary = `Halbzeit! Spielstand: ${this.homeScore}:${this.awayScore}.`;
+        } else if (this.minute > 46 && this.minute <= 90) {
+            this.currentPhase = "second_half";
+        }
+
+        // Timeline-Events verarbeiten (C16 - Ticker holt auf bei mehreren Szenen)
+        let processedEventsCount = 0;
+        const maxEventsPerTick = 3;
+
+        while (this.timelineIndex < this.timeline.length && processedEventsCount < maxEventsPerTick) {
             const ev = this.timeline[this.timelineIndex];
-            this.playTimelineEvent(ev);
+            if (ev.minute > this.minute) break;
+
+            this.processEvent(ev);
             this.timelineIndex++;
+            processedEventsCount++;
         }
 
-        // Bei Ballbesitz-Verteilung leichte Anpassungen
-        if (this.stats.shots[0] + this.stats.shots[1] > 0) {
-            const totalShots = Math.max(1, this.stats.shots[0] + this.stats.shots[1]);
-            const homeRatio = Math.round((this.stats.shots[0] / totalShots) * 100);
-            this.stats.possession[0] = Math.max(35, Math.min(65, Math.round(50 + (homeRatio - 50) * 0.3)));
-            this.stats.possession[1] = 100 - this.stats.possession[0];
-        }
-
-        if (this.minute >= 90 + this.extraTime) {
-            // Etwaige noch nicht abgespielte Restereignisse (z.B. wenn die Timeline
-            // schneller "voll" ist als die Ticks sie konsumieren) noch einspielen,
-            // damit Ergebnis & Statistik am Ende garantiert vollständig sind.
-            while (this.timelineIndex < this.timeline.length) {
-                this.playTimelineEvent(this.timeline[this.timelineIndex]);
-                this.timelineIndex++;
-            }
+        if (this.minute >= 90 && this.timelineIndex >= this.timeline.length) {
             this.finishMatch();
         }
     }
 
-    /**
-     * Sofortiges Zu-Ende-Spielen der Timeline (Sofortmodus)
-     */
-    skipToEnd() {
-        while (!this.isFinished) {
-            if (this.timelineIndex < this.timeline.length) {
-                const ev = this.timeline[this.timelineIndex];
-                this.minute = Math.max(this.minute, ev.minute);
-                this.playTimelineEvent(ev);
-                this.timelineIndex++;
+    processEvent(ev) {
+        if (ev.type === "goal") {
+            if (ev.team === "home") {
+                this.homeScore++;
+                this.stats.shotsOnTarget[0]++;
+                this.stats.shots[0]++;
+                this.stats.xG[0] = parseFloat((this.stats.xG[0] + (ev.xG || 0.3)).toFixed(2));
+                this.celebratingTeam = "home";
             } else {
-                this.minute = 90 + this.extraTime;
-                this.finishMatch();
+                this.awayScore++;
+                this.stats.shotsOnTarget[1]++;
+                this.stats.shots[1]++;
+                this.stats.xG[1] = parseFloat((this.stats.xG[1] + (ev.xG || 0.3)).toFixed(2));
+                this.celebratingTeam = "away";
+            }
+            this.goalFlash = 20;
+            this.goalCelebrationTimer = 40; // Jubelphase für Spieler (B6)
+            this.addEvent("goal", ev.clubId, ev.text);
+        } else if (ev.type === "save") {
+            if (ev.team === "away") {
+                this.stats.shotsOnTarget[0]++;
+                this.stats.shots[0]++;
+                this.stats.xG[0] = parseFloat((this.stats.xG[0] + (ev.xG || 0.15)).toFixed(2));
+                this.stats.saves[1]++;
+            } else {
+                this.stats.shotsOnTarget[1]++;
+                this.stats.shots[1]++;
+                this.stats.xG[1] = parseFloat((this.stats.xG[1] + (ev.xG || 0.15)).toFixed(2));
+                this.stats.saves[0]++;
+            }
+            this.addEvent("save", ev.clubId, ev.text);
+        } else if (ev.type === "shot_miss") {
+            if (ev.team === "home") {
+                this.stats.shots[0]++;
+                this.stats.xG[0] = parseFloat((this.stats.xG[0] + (ev.xG || 0.1)).toFixed(2));
+            } else {
+                this.stats.shots[1]++;
+                this.stats.xG[1] = parseFloat((this.stats.xG[1] + (ev.xG || 0.1)).toFixed(2));
+            }
+            this.addEvent("shot_miss", ev.clubId, ev.text);
+        } else if (ev.type === "corner") {
+            if (ev.team === "home") this.stats.corners[0]++; else this.stats.corners[1]++;
+            this.addEvent("corner", ev.clubId, ev.text);
+        } else if (ev.type === "foul") {
+            if (ev.team === "home") this.stats.fouls[0]++; else this.stats.fouls[1]++;
+            this.addEvent("foul", ev.clubId, ev.text);
+        } else if (ev.type === "yellow_card") {
+            if (ev.team === "home") { this.stats.fouls[0]++; this.stats.yellowCards[0]++; }
+            else { this.stats.fouls[1]++; this.stats.yellowCards[1]++; }
+            this.addEvent("yellow_card", ev.clubId, ev.text);
+        } else if (ev.type === "red_card") {
+            if (ev.team === "home") { this.stats.fouls[0]++; this.stats.redCards[0]++; }
+            else { this.stats.fouls[1]++; this.stats.redCards[1]++; }
+            this.addEvent("red_card", ev.clubId, ev.text);
+        } else if (ev.type === "injury") {
+            this.addEvent("injury", ev.clubId, ev.text);
+        } else if (ev.type === "substitution") {
+            this.addEvent("sub", ev.clubId, ev.text);
+        } else if (ev.type === "halftime") {
+            this.currentPhase = "half_time";
+        } else if (ev.type === "fulltime") {
+            this.currentPhase = "full_time";
+        }
+
+        if (ev.start && ev.end) {
+            // Ball wandert sanft zum Zielpunkt statt zu springen (B1)
+            this.ball.targetX = ev.end.x;
+            this.ball.targetY = ev.end.y;
+            // Bestimme Ballgeschwindigkeit nach Aktionstyp (B3)
+            if (ev.type === "goal" || ev.type === "save" || ev.type === "shot_miss") {
+                this.ball.actionType = "shot";
+            } else if (ev.text && (ev.text.includes("Flanke") || ev.text.includes("Ecke"))) {
+                this.ball.actionType = "cross";
+            } else {
+                this.ball.actionType = "pass";
             }
         }
+
+        if (ev.fromPlayerId) this.activePlayerId = ev.fromPlayerId;
+        else if (ev.playerId) this.activePlayerId = ev.playerId;
+
+        if (ev.text) {
+            this.lastCommentary = ev.text;
+        }
     }
 
-    /**
-     * Führt ein konkretes Timeline-Event im 2D-Feld aus
-     */
-    playTimelineEvent(event) {
-        this.lastCommentary = event.text;
-        this.activePlayerId = event.playerId || event.fromPlayerId || event.shooterId || event.toPlayerId || null;
-
-        if (event.start && event.end) {
-            this.ball.x = event.start.x;
-            this.ball.y = event.start.y;
-            this.ball.targetX = event.end.x;
-            this.ball.targetY = event.end.y;
-            this.ball.speed = (event.type === "goal" || event.type === "through_ball") ? 0.055 : 0.042;
-        }
-
-        const teamIndex = event.team === "home" ? 0 : 1;
-
-        if (event.type === "goal") {
-            if (event.team === "home") this.homeScore++; else this.awayScore++;
-            this.stats.shots[teamIndex]++;
-            this.stats.shotsOnTarget[teamIndex]++;
-            this.stats.xG[teamIndex] = parseFloat((this.stats.xG[teamIndex] + (event.xG || 0.3)).toFixed(2));
-            this.goalFlash = 1.0; // Tor-Effekt aktivieren
-            this.addEvent("goal", event.clubId, event.text, { id: event.playerId, name: event.playerName }, { id: event.assistId, name: event.assistName });
-        } else if (event.type === "save") {
-            const attIndex = event.team === "home" ? 1 : 0;
-            this.stats.shots[attIndex]++;
-            this.stats.shotsOnTarget[attIndex]++;
-            this.stats.xG[attIndex] = parseFloat((this.stats.xG[attIndex] + (event.xG || 0.15)).toFixed(2));
-            this.addEvent("save", event.clubId, event.text);
-        } else if (event.type === "shot_miss") {
-            this.stats.shots[teamIndex]++;
-            this.stats.xG[teamIndex] = parseFloat((this.stats.xG[teamIndex] + (event.xG || 0.1)).toFixed(2));
-        } else if (event.type === "corner") {
-            this.stats.corners[teamIndex]++;
-            this.addEvent("corner", event.clubId, event.text);
-        } else if (event.type === "yellow_card") {
-            this.stats.fouls[teamIndex]++;
-            this.stats.yellowCards[teamIndex]++;
-            this.addEvent("yellow_card", event.clubId, event.text, { id: event.playerId, name: event.playerName });
-        } else if (event.type === "red_card") {
-            this.stats.fouls[teamIndex]++;
-            this.stats.redCards[teamIndex]++;
-            this.addEvent("red_card", event.clubId, event.text, { id: event.playerId, name: event.playerName });
-        } else if (event.type === "foul" || event.type === "tackle") {
-            this.stats.fouls[teamIndex]++;
-        }
-
-        // Dynamische Spielerbewegung passend zum Event: die an der Aktion beteiligten
-        // Spieler werden für ein paar Frames an die exakten Ball-Koordinaten "gelockt",
-        // damit updateBallAndPlayers() ihre Position nicht sofort wieder mit der
-        // generischen Formationslogik überschreibt. Dadurch sieht man Passgeber,
-        // Passempfänger/Schütze und Torwart tatsächlich am Ball, statt dass der Ball
-        // sichtbar durch leeren Raum fliegt.
-        const LOCK_TICKS = 30;
-        const startPos = event.start || event.end;
-        const endPos = event.end || event.start;
-
-        const lockPlayer = (id, pos, ticks = LOCK_TICKS) => {
-            if (!id || !pos) return;
-            const p = this.players2D.find(pl => pl.id === id);
-            if (!p) return;
-            p.x = pos.x;
-            p.y = pos.y;
-            p.targetX = pos.x;
-            p.targetY = pos.y;
-            p.locked = ticks;
-        };
-
-        // Ballgeber / Schütze startet exakt dort, wo die Aktion beginnt
-        lockPlayer(event.playerId || event.fromPlayerId || event.shooterId, startPos);
-        // Empfänger (bei Pässen/Flanken) bewegt sich zum Ballziel
-        lockPlayer(event.toPlayerId, endPos);
-        // Torwart reagiert sichtbar auf Schüsse/Paraden
-        lockPlayer(event.gkId, endPos, LOCK_TICKS + 10);
-    }
-
-    addEvent(type, clubId, text, mainPlayer = null, assistPlayer = null) {
-        this.events.push({
+    addEvent(type, clubId, text) {
+        this.events.unshift({
             minute: this.minute,
             type,
             clubId,
-            text,
-            playerId: mainPlayer?.id,
-            playerName: mainPlayer?.name,
-            assistId: assistPlayer?.id,
-            assistName: assistPlayer?.name
+            text
         });
+        if (this.events.length > 50) this.events.pop();
     }
 
-    /**
-     * Aktualisiert Ball- und Spielerkoordinaten flüssig (für jeden Frame)
-     * Ermöglicht realistische Team-Verschiebungen über das gesamte Spielfeld!
-     */
-    updateBallAndPlayers() {
-        const ballSpeed = this.ball.speed || 0.042;
-        this.ball.x += (this.ball.targetX - this.ball.x) * ballSpeed;
-        this.ball.y += (this.ball.targetY - this.ball.y) * ballSpeed;
+    updateBallAndPlayers(deltaMs) {
+        // Delta-Zeit-basierte Normalisierung (Standard 16.6ms für 60fps) (B3)
+        const dt = (typeof deltaMs === "number" && deltaMs > 0 && deltaMs < 200) ? deltaMs / 16.667 : 1.0;
 
-        // Ball-Schweifspur (Trail) aufzeichnen
-        if (!this.ballTrail) this.ballTrail = [];
-        this.ballTrail.push({ x: this.ball.x, y: this.ball.y, alpha: 1.0 });
-        if (this.ballTrail.length > 7) this.ballTrail.shift();
-        this.ballTrail.forEach(t => t.alpha *= 0.82);
+        // Ballgeschwindigkeit nach Aktionstyp (Schuss schnell, Flanke mittel, Kurzpass langsam) (B3)
+        let ballLerp = 0.12;
+        if (this.ball.actionType === "shot") ballLerp = 0.22;
+        else if (this.ball.actionType === "cross") ballLerp = 0.14;
+        else if (this.ball.actionType === "pass") ballLerp = 0.09;
 
-        // Goal flash abklingen lassen
-        if (this.goalFlash > 0) {
-            this.goalFlash = Math.max(0, this.goalFlash - 0.015);
+        const effectiveBallLerp = Math.min(1.0, ballLerp * dt);
+        this.ball.x += (this.ball.targetX - this.ball.x) * effectiveBallLerp;
+        this.ball.y += (this.ball.targetY - this.ball.y) * effectiveBallLerp;
+
+        // B4: Ballschweif mit alterungsbasiertem Fade statt kumulativem Verblassen
+        const ballDist = Math.hypot(this.ball.targetX - this.ball.x, this.ball.targetY - this.ball.y);
+        if (ballDist > 1.5) {
+            this.ballTrail.unshift({ x: this.ball.x, y: this.ball.y, born: Date.now() });
+        }
+        const now = Date.now();
+        this.ballTrail = this.ballTrail.filter(t => (now - t.born) < 280);
+        if (this.ballTrail.length > 12) this.ballTrail.pop();
+
+        if (this.goalFlash > 0) this.goalFlash--;
+
+        // B5: Ruhephasen mit Ballzirkulation & Raumkompression
+        if (ballDist < 1.0 && this.goalCelebrationTimer <= 0) {
+            this.idleTick = (this.idleTick || 0) + dt;
+            if (this.idleTick > 25) {
+                this.idleTick = 0;
+                // Zirkulieren im Mittelfeld / Defensive
+                const possessionTeam = this.stats.possession[0] >= 50 ? "home" : "away";
+                const circX = possessionTeam === "home" ? (35 + Math.sin(now * 0.002) * 15) : (65 + Math.sin(now * 0.002) * 15);
+                const circY = 50 + Math.cos(now * 0.003) * 20;
+                this.ball.targetX = circX;
+                this.ball.targetY = circY;
+                this.ball.actionType = "pass";
+            }
         }
 
-        // Wenn der Ball sein Ziel fast erreicht hat, leichtes Weiterdriften / Trudeln
-        if (Math.abs(this.ball.targetX - this.ball.x) < 1.5 && Math.abs(this.ball.targetY - this.ball.y) < 1.5) {
-            // Ball bleibt in der Nähe des aktuellen Geschehens
-            this.ball.targetX += (Math.random() - 0.5) * 1.5;
-            this.ball.targetY += (Math.random() - 0.5) * 1.5;
+        // B6: Torjubel Steuerung
+        if (this.goalCelebrationTimer > 0) {
+            this.goalCelebrationTimer -= dt;
+            if (this.goalCelebrationTimer <= 0) {
+                // Anstoß Reset nach Jubel
+                this.ball.x = 50;
+                this.ball.y = 50;
+                this.ball.targetX = 50;
+                this.ball.targetY = 50;
+            }
         }
 
-        const ballX = this.ball.x;
-        const ballY = this.ball.y;
+        const ballShiftX = (this.ball.x - 50) * 0.85;
+        const ballShiftY = (this.ball.y - 50) * 0.35;
 
         this.players2D.forEach(p => {
-            // Spieler, die gerade aktiv an einer Timeline-Aktion beteiligt sind
-            // (Passgeber, Empfänger, Torwart), werden zügig zu ihrer exakten
-            // Aktionsposition gezogen statt von der generischen Formationslogik
-            // "weggeschoben" zu werden. So bleiben Ball und Spieler sichtbar zusammen.
-            if (p.locked > 0) {
-                p.locked--;
-                p.x += (p.targetX - p.x) * 0.18;
-                p.y += (p.targetY - p.y) * 0.18;
-                return;
-            }
-
-            const isHome = p.team === "home";
-            const isGK = p.pos === "TW";
-            const isDef = ["IV", "LV", "RV"].includes(p.pos);
-            const isMid = ["DM", "ZM", "LM", "RM", "OM"].includes(p.pos);
-            const isAtt = ["ST", "LA", "RA"].includes(p.pos);
-
-            let pushX = 0;
-            let pushY = (ballY - 50) * 0.25;
-
-            if (isGK) {
-                // Torwart bleibt in und um seinen Strafraum / Torlinie
-                if (isHome) {
-                    p.targetX = Math.max(3, Math.min(14, 4 + (ballX * 0.08)));
-                    p.targetY = Math.max(36, Math.min(64, 50 + (ballY - 50) * 0.35));
-                } else {
-                    p.targetX = Math.min(97, Math.max(86, 96 - ((100 - ballX) * 0.08)));
-                    p.targetY = Math.max(36, Math.min(64, 50 + (ballY - 50) * 0.35));
-                }
+            if (this.goalCelebrationTimer > 0 && this.celebratingTeam === p.team) {
+                // Torjubel: Spieler laufen zur Eckfahne (B6)
+                const cornerFlagX = p.team === "home" ? 95 : 5;
+                const cornerFlagY = 10;
+                p.targetX = cornerFlagX + (p.number % 3) * 2;
+                p.targetY = cornerFlagY + (p.number % 4) * 2;
+            } else if (p.pos === "TW") {
+                p.targetX = p.baseX + ballShiftX * 0.15;
+                p.targetY = p.baseY + ballShiftY * 0.4;
             } else {
-                // Feldspieler rücken je nach Ballposition und Rolle über das gesamte Feld auf und ab
-                if (isHome) {
-                    // Heim greift nach rechts an (Richtung 100)
-                    if (isAtt) {
-                        // Stürmer rücken bis tief in den gegnerischen Strafraum (x=50 bis x=94)
-                        pushX = (ballX - 35) * 0.85;
-                        p.targetX = Math.max(30, Math.min(94, p.baseX + pushX));
-                    } else if (isMid) {
-                        // Mittelfeldspieler bewegen sich im Bereich x=20 bis x=82
-                        pushX = (ballX - 40) * 0.65;
-                        p.targetX = Math.max(18, Math.min(84, p.baseX + pushX));
-                    } else if (isDef) {
-                        // Verteidiger rücken bei Ballbesitz bis zur Mittellinie/Gegnerhälfte auf (x=8 bis x=62)
-                        pushX = (ballX - 40) * 0.45;
-                        p.targetX = Math.max(6, Math.min(64, p.baseX + pushX));
-                    }
-                } else {
-                    // Auswärts greift nach links an (Richtung 0)
-                    if (isAtt) {
-                        // Stürmer rücken bis tief in den gegnerischen Strafraum (x=6 bis x=50)
-                        pushX = (65 - ballX) * 0.85;
-                        p.targetX = Math.min(70, Math.max(6, p.baseX - pushX));
-                    } else if (isMid) {
-                        // Mittelfeldspieler bewegen sich im Bereich x=16 bis x=80
-                        pushX = (60 - ballX) * 0.65;
-                        p.targetX = Math.min(82, Math.max(16, p.baseX - pushX));
-                    } else if (isDef) {
-                        // Verteidiger rücken bis zur Mittellinie/Gegnerhälfte vor (x=36 bis x=92)
-                        pushX = (60 - ballX) * 0.45;
-                        p.targetX = Math.min(94, Math.max(36, p.baseX - pushX));
-                    }
-                }
-
-                p.targetY = Math.max(6, Math.min(94, p.baseY + pushY));
+                p.targetX = Math.max(2, Math.min(98, p.baseX + ballShiftX));
+                p.targetY = Math.max(2, Math.min(98, p.baseY + ballShiftY));
             }
 
-            // Sanfte Annäherung an die Zielposition (flüssige Animation)
-            p.x += (p.targetX - p.x) * 0.04;
-            p.y += (p.targetY - p.y) * 0.04;
+            // Spielergeschwindigkeit abhängig von pace-Attribut (B3)
+            const paceFactor = ((p.pace || 70) / 75) * 0.11;
+            const playerLerp = Math.min(1.0, paceFactor * dt);
+            p.x += (p.targetX - p.x) * playerLerp;
+            p.y += (p.targetY - p.y) * playerLerp;
         });
     }
 
@@ -1236,7 +1946,7 @@ class LiveMatch {
             return { success: false, message: "Maximales Auswechselkontingent (5) bereits erschöpft!" };
         }
 
-        const outIndex = (club.lineup || []).indexOf(playerOutId);
+        const outIndex = lineup.findIndex(p => p.id === playerOutId);
         const inBenchIndex = (club.bench || []).indexOf(playerInId);
 
         if (outIndex === -1 || inBenchIndex === -1) {
@@ -1246,37 +1956,73 @@ class LiveMatch {
         const playerOut = this.allPlayers.find(p => p.id === playerOutId);
         const playerIn = this.allPlayers.find(p => p.id === playerInId);
 
-        club.lineup[outIndex] = playerInId;
+        if (!playerIn) {
+            return { success: false, message: "Einzuwechselnder Spieler nicht gefunden." };
+        }
+
+        if (Array.isArray(club.lineup)) {
+            const lineupIdx = club.lineup.indexOf(playerOutId);
+            if (lineupIdx !== -1) club.lineup[lineupIdx] = playerInId;
+        }
         club.bench.splice(inBenchIndex, 1);
         club.bench.push(playerOutId);
 
         lineup[outIndex] = playerIn;
 
         const p2d = this.players2D.find(p => p.id === playerOutId);
-        if (p2d && playerIn) {
+        if (p2d) {
             p2d.id = playerIn.id;
             p2d.name = playerIn.name;
             p2d.pos = playerIn.pos;
         }
 
         this.substitutionsUsed[teamType]++;
-        const eventText = `${this.minute}' - 🔄 Auswechslung ${club.name}: ${playerIn?.name} kommt für ${playerOut?.name}.`;
+        const eventText = formatCommentary("substitution", {
+            minute: this.minute,
+            club: club.name,
+            playerIn: playerIn.name,
+            playerOut: playerOut?.name || "Spieler"
+        });
+
         this.addEvent("sub", club.id, eventText);
         this.lastCommentary = eventText;
 
-        return { success: true, message: `Auswechslung erfolgreich: ${playerIn?.name} für ${playerOut?.name}` };
+        // Re-simuliere den verbleibenden Spielverlauf mit der neuen Elf (C14)
+        this.resimulateRemainder();
+
+        return { success: true, message: `Auswechslung erfolgreich: ${playerIn.name} für ${playerOut?.name}` };
     }
 
     updateTactics(teamType, newTactics) {
         const club = teamType === "home" ? this.homeClub : this.awayClub;
         club.tactics = Object.assign(club.tactics || {}, newTactics);
-        const eventText = `${this.minute}' - 📋 Traineranweisung bei ${club.name}: Mentalität auf "${club.tactics.mentality}" angepasst.`;
+        const mentality = club.tactics.mentality || "balanced";
+        const eventText = formatCommentary("tactics", {
+            minute: this.minute,
+            club: club.name,
+            mentality: mentality
+        });
         this.addEvent("tactics", club.id, eventText);
         this.lastCommentary = eventText;
+
+        // Re-simuliere den verbleibenden Spielverlauf mit der neuen Taktik (C14)
+        this.resimulateRemainder();
+    }
+
+    skipToEnd() {
+        while (this.timelineIndex < this.timeline.length) {
+            const ev = this.timeline[this.timelineIndex];
+            this.minute = Math.max(this.minute, ev.minute);
+            this.processEvent(ev);
+            this.timelineIndex++;
+        }
+        this.minute = 90;
+        this.finishMatch();
     }
 
     finishMatch() {
         this.isFinished = true;
+        this.currentPhase = "full_time";
         MatchEngine.applyTimelineToMatch(this.match, this.timeline, this.homeClub, this.awayClub, this.allPlayers);
         this.homeScore = this.match.homeGoals;
         this.awayScore = this.match.awayGoals;
@@ -1285,10 +2031,11 @@ class LiveMatch {
 }
 
 if (typeof window !== "undefined") {
+    window.MATCH_TUNING = MATCH_TUNING;
     window.MatchEngine = MatchEngine;
     window.LiveMatch = LiveMatch;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { MatchEngine, LiveMatch };
+    module.exports = { MATCH_TUNING, MatchEngine, LiveMatch };
 }

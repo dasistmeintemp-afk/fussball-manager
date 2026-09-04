@@ -50,46 +50,23 @@ class SeasonEngine {
 
         const userClub = state.clubs.find(c => c.id === state.userClubId);
 
-        // 2. Wöchentliche Finanzen abrechnen
-        state.clubs.forEach(club => {
-            const clubPlayers = state.players.filter(p => club.playerIds.includes(p.id));
-            const totalWeeklyWages = clubPlayers.reduce((sum, p) => sum + p.wage, 0);
+        // 2. Wöchentliche Finanzen & Spieltagseinnahmen sauber über FinanceEngine abrechnen (C3)
+        const financeEngine = (typeof FinanceEngine !== 'undefined' && FinanceEngine)
+            ? FinanceEngine
+            : ((typeof window !== 'undefined' && window.FinanceEngine) ? window.FinanceEngine : (typeof require !== 'undefined' ? require('./financeEngine.js').FinanceEngine : null));
 
-            club.balance -= totalWeeklyWages;
+        if (financeEngine) {
+            // Wöchentliche Kosten & Sponsoren verbuchen
+            financeEngine.applyWeeklyCosts(state);
 
-            // Feste Sponsoring-Einnahmen pro Woche
-            const sponsorIncome = Math.round(club.reputation * 6500);
-            club.balance += sponsorIncome;
-
-            // Zuschauereinnahmen bei Heimspiel am abgelaufenen Spieltag
+            // Ticketeinnahmen für alle Heimspiele dieses Spieltags verbuchen
             const round = state.schedule.find(r => r.matchday === state.currentMatchday);
-            const userMatch = round?.matches.find(m => m.homeClubId === club.id);
-            if (userMatch) {
-                const ticketPrice = 35;
-                const attendanceRate = 0.75 + (club.reputation / 400) + (Math.random() * 0.1);
-                const spectators = Math.min(club.capacity, Math.round(club.capacity * attendanceRate));
-                const matchIncome = spectators * ticketPrice;
-                club.balance += matchIncome;
-
-                if (club.id === state.userClubId) {
-                    const gameState = _getGameState();
-                    const formatMoney = (gameState && typeof gameState.formatMoney === 'function')
-                        ? gameState.formatMoney
-                        : (amt) => `${amt} €`;
-
-                    state.inbox.unshift({
-                        id: Date.now() + 2,
-                        matchday: state.currentMatchday,
-                        date: `Spieltag ${state.currentMatchday}`,
-                        sender: "Finanzabteilung",
-                        subject: `Zuschauereinnahmen: ${spectators.toLocaleString("de-DE")} Fans`,
-                        body: `Beim vergangenen Heimspiel in der ${club.stadium} waren ${spectators.toLocaleString("de-DE")} Zuschauer anwesend. Die Ticketeinnahmen belaufen sich auf ${formatMoney(matchIncome)}.`,
-                        read: false,
-                        type: "finances"
-                    });
-                }
+            if (round && Array.isArray(round.matches)) {
+                round.matches.forEach(m => {
+                    financeEngine.applyMatchdayIncome(state, m);
+                });
             }
-        });
+        }
 
         // 3. Wöchentliches Training & Entwicklung
         const trainingEngine = _getTrainingEngine();
@@ -248,6 +225,16 @@ class SeasonEngine {
             }
         });
 
+        // Saisonauszeichnungen ermitteln (E5)
+        const sortedScorers = [...state.players].filter(p => (p.stats.goals || 0) > 0).sort((a, b) => (b.stats.goals || 0) - (a.stats.goals || 0));
+        const topScorer = sortedScorers[0] || null;
+
+        const sortedAssists = [...state.players].filter(p => (p.stats.assists || 0) > 0).sort((a, b) => (b.stats.assists || 0) - (a.stats.assists || 0));
+        const topAssister = sortedAssists[0] || null;
+
+        const ratedPlayers = [...state.players].filter(p => (p.stats.matches || 0) >= 10).sort((a, b) => ((b.stats.ratingSum || 0) / (b.stats.matches || 1)) - ((a.stats.ratingSum || 0) / (a.stats.matches || 1)));
+        const playerOfTheSeason = ratedPlayers[0] || null;
+
         // Historie archivieren
         state.history.pastSeasons.push({
             season: state.seasonYear,
@@ -255,7 +242,12 @@ class SeasonEngine {
             championName: championClub.name,
             standings: JSON.parse(JSON.stringify(state.standings)),
             userClubId: userClub.id,
-            userRank
+            userRank,
+            awards: {
+                topScorer: topScorer ? { name: topScorer.name, goals: topScorer.stats.goals, clubId: topScorer.clubId } : null,
+                topAssists: topAssister ? { name: topAssister.name, assists: topAssister.stats.assists, clubId: topAssister.clubId } : null,
+                playerOfTheSeason: playerOfTheSeason ? { name: playerOfTheSeason.name, rating: ((playerOfTheSeason.stats.ratingSum || 0) / (playerOfTheSeason.stats.matches || 1)).toFixed(2), clubId: playerOfTheSeason.clubId } : null
+            }
         });
 
         // Spieler altern um 1 Jahr & Verträge um 1 Jahr reduzieren

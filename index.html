@@ -66,6 +66,10 @@
                         <span class="nav-icon">📊</span>
                         <span class="nav-text">Dashboard</span>
                     </button>
+                    <button class="nav-item" data-tab="club">
+                        <span class="nav-icon">🏛️</span>
+                        <span class="nav-text">Verein</span>
+                    </button>
                     <button class="nav-item" data-tab="squad">
                         <span class="nav-icon">👥</span>
                         <span class="nav-text">Kader</span>
@@ -202,7 +206,7 @@
                         <!-- Board & Season Goals Card -->
                         <div class="dash-card board-card">
                             <div class="card-header">
-                                <h3>Vorstand & Saisonziel</h3>
+                                <h3>Vorstand, Fans & Medien</h3>
                             </div>
                             <div class="board-body">
                                 <div class="goal-item">
@@ -215,6 +219,20 @@
                                         <div class="progress-fill" id="dashBoardFill" style="width: 75%;"></div>
                                     </div>
                                     <span class="goal-pct" id="dashBoardPct">75%</span>
+                                </div>
+                                <div class="goal-item">
+                                    <span class="goal-label">Fanstimmung:</span>
+                                    <div class="progress-bar-lg">
+                                        <div class="progress-fill" id="dashFanMoodFill" style="width: 75%; background:#10b981;"></div>
+                                    </div>
+                                    <span class="goal-pct" id="dashFanMoodPct">75%</span>
+                                </div>
+                                <div class="goal-item">
+                                    <span class="goal-label">Mediendruck:</span>
+                                    <div class="progress-bar-lg">
+                                        <div class="progress-fill" id="dashMediaFill" style="width: 45%; background:#f59e0b;"></div>
+                                    </div>
+                                    <span class="goal-pct" id="dashMediaPct">45%</span>
                                 </div>
                                 <div class="board-msg-box" id="dashBoardMsg">
                                     Der Vorstand ist mit dem aktuellen Saisonverlauf zufrieden.
@@ -240,6 +258,101 @@
                             </div>
                             <div class="news-list-dash" id="dashNewsList">
                                 <!-- Dynamisch -->
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab: Club (Neuer Tab Verein - D3) -->
+                <section class="tab-pane" id="pane-club">
+                    <div class="pane-header">
+                        <h2>Vereinszentrum & Infrastruktur</h2>
+                    </div>
+                    <div class="dashboard-grid">
+                        <!-- Club Overview Card -->
+                        <div class="dash-card">
+                            <div class="card-header">
+                                <h3>🏛️ Vereinsübersicht</h3>
+                            </div>
+                            <div style="font-size:14px; line-height:1.8;">
+                                <div>Verein: <strong id="clubTabName">-</strong></div>
+                                <div>Stadt: <strong id="clubTabCity">-</strong></div>
+                                <div>Reputation / Prestige: <strong id="clubTabReputation">-</strong> / 100</div>
+                                <div>Fanbasis: <strong id="clubTabFanbase">-</strong> Mitglieder</div>
+                                <div>Fanstimmung: <strong id="clubTabFanMood">-</strong>%</div>
+                                <div>Teamchemie: <strong id="clubTabChemistry">-</strong>%</div>
+                            </div>
+                        </div>
+
+                        <!-- Stadium & Tickets Card -->
+                        <div class="dash-card">
+                            <div class="card-header">
+                                <h3>🏟️ Stadion & Ticketpreise</h3>
+                            </div>
+                            <div style="font-size:14px; line-height:1.8; margin-bottom:12px;">
+                                <div>Stadion: <strong id="clubTabStadium">-</strong></div>
+                                <div>Kapazität: <strong id="clubTabCapacity">-</strong> Plätze</div>
+                                <div>Ausbaustufe: <strong id="clubTabStadiumLvl">Stufe 2</strong></div>
+                            </div>
+                            <div style="background:rgba(255,255,255,0.03); padding:12px; border-radius:6px;">
+                                <label style="display:block; font-size:13px; font-weight:600; margin-bottom:6px;">
+                                    Ticketpreis-Regler (Einfluss auf Auslastung & Stimmung):
+                                </label>
+                                <div style="display:flex; align-items:center; gap:12px;">
+                                    <input type="range" id="inputTicketPrice" min="20" max="70" step="1" value="35" style="flex:1;">
+                                    <strong id="valTicketPrice" style="color:var(--accent-gold); font-size:16px;">35 €</strong>
+                                </div>
+                                <div class="text-muted" id="txtTicketForecast" style="font-size:12px; margin-top:4px;">
+                                    Prognostizierte Auslastung: ~82%
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Sponsor Card -->
+                        <div class="dash-card">
+                            <div class="card-header">
+                                <h3>💼 Hauptsponsor</h3>
+                            </div>
+                            <div style="font-size:14px; line-height:1.8;">
+                                <div>Sponsor: <strong id="clubTabSponsorName">-</strong></div>
+                                <div>Zahlung pro Spieltag: <strong id="clubTabSponsorAmount" style="color:#10b981;">-</strong></div>
+                                <div>Vertragslaufzeit: <strong id="clubTabSponsorYears">-</strong> Jahr(e) verbleibend</div>
+                            </div>
+                        </div>
+
+                        <!-- Facilities Upgrade Center Card -->
+                        <div class="dash-card" style="grid-column: 1 / -1;">
+                            <div class="card-header">
+                                <h3>🏗️ Infrastruktur- & Ausbauzentrum</h3>
+                            </div>
+                            <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px;">
+                                <div style="background:rgba(255,255,255,0.03); padding:14px; border-radius:8px; border:1px solid var(--border-color);">
+                                    <h4 style="font-size:14px; margin-bottom:6px;">🏋️ Trainingsgelände</h4>
+                                    <p class="text-muted" style="font-size:12px; margin-bottom:10px;">Beschleunigt Spielerentwicklung & Fitness-Regeneration.</p>
+                                    <div style="font-size:13px; margin-bottom:10px;">Aktuell: <strong id="lvlTrainingGround">Stufe 2 / 5</strong></div>
+                                    <button class="btn btn-sm btn-primary w-100 btn-upgrade-fac" data-facility="trainingGround">Ausbauen</button>
+                                </div>
+
+                                <div style="background:rgba(255,255,255,0.03); padding:14px; border-radius:8px; border:1px solid var(--border-color);">
+                                    <h4 style="font-size:14px; margin-bottom:6px;">🎓 Jugendakademie</h4>
+                                    <p class="text-muted" style="font-size:12px; margin-bottom:10px;">Erhöht Talentqualität, Potenzial & Anzahl an Nachwuchsstars.</p>
+                                    <div style="font-size:13px; margin-bottom:10px;">Aktuell: <strong id="lvlYouthCenter">Stufe 1 / 5</strong></div>
+                                    <button class="btn btn-sm btn-primary w-100 btn-upgrade-fac" data-facility="youthCenter">Ausbauen</button>
+                                </div>
+
+                                <div style="background:rgba(255,255,255,0.03); padding:14px; border-radius:8px; border:1px solid var(--border-color);">
+                                    <h4 style="font-size:14px; margin-bottom:6px;">🏥 Medizinisches Zentrum</h4>
+                                    <p class="text-muted" style="font-size:12px; margin-bottom:10px;">Senkt Verletzungsrisiko & verkürzt Ausfallzeiten spürbar.</p>
+                                    <div style="font-size:13px; margin-bottom:10px;">Aktuell: <strong id="lvlMedicalCenter">Stufe 1 / 5</strong></div>
+                                    <button class="btn btn-sm btn-primary w-100 btn-upgrade-fac" data-facility="medicalCenter">Ausbauen</button>
+                                </div>
+
+                                <div style="background:rgba(255,255,255,0.03); padding:14px; border-radius:8px; border:1px solid var(--border-color);">
+                                    <h4 style="font-size:14px; margin-bottom:6px;">🏟️ Stadionausbau</h4>
+                                    <p class="text-muted" style="font-size:12px; margin-bottom:10px;">Erweitert Zuschauerkapazität & verstärkt den Heimvorteil.</p>
+                                    <div style="font-size:13px; margin-bottom:10px;">Aktuell: <strong id="lvlStadium">Stufe 2 / 5</strong></div>
+                                    <button class="btn btn-sm btn-primary w-100 btn-upgrade-fac" data-facility="stadium">Ausbauen</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1264,15 +1377,37 @@
                         <!-- Subtab: In-Game Coaching -->
                         <div class="live-subtab-pane" id="lmSubtab-coaching">
                             <h4>Live-Taktik ändern</h4>
-                            <select id="lmLiveMentality" class="styled-select mb-2">
-                                <option value="very_defensive">Sehr defensiv</option>
-                                <option value="defensive">Defensiv</option>
-                                <option value="balanced" selected>Ausgeglichen</option>
-                                <option value="offensive">Offensiv</option>
-                                <option value="very_offensive">Sehr offensiv</option>
-                            </select>
+                            <div class="mb-2">
+                                <label style="font-size:11px; color:var(--text-muted);">Mentalität:</label>
+                                <select id="lmLiveMentality" class="styled-select mb-1">
+                                    <option value="very_defensive">Sehr defensiv</option>
+                                    <option value="defensive">Defensiv</option>
+                                    <option value="balanced" selected>Ausgeglichen</option>
+                                    <option value="offensive">Offensiv</option>
+                                    <option value="very_offensive">Sehr offensiv</option>
+                                </select>
+                            </div>
+                            <div class="mb-2">
+                                <label style="font-size:11px; color:var(--text-muted);">Pressing:</label>
+                                <select id="lmLivePressing" class="styled-select mb-1">
+                                    <option value="low">Niedrig</option>
+                                    <option value="medium" selected>Mittel</option>
+                                    <option value="high">Hoch</option>
+                                </select>
+                            </div>
+                            <div class="mb-2">
+                                <label style="font-size:11px; color:var(--text-muted);">Tempo:</label>
+                                <select id="lmLiveTempo" class="styled-select mb-1">
+                                    <option value="slow">Bedächtig</option>
+                                    <option value="normal" selected>Normal</option>
+                                    <option value="fast">Hoch</option>
+                                </select>
+                            </div>
 
-                            <h4>Auswechslung (Klick auf Spieler):</h4>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; margin-bottom:6px;">
+                                <h4 style="margin:0;">Auswechslungen:</h4>
+                                <span class="badge badge-info" id="lmSubsCounter">0 / 5</span>
+                            </div>
                             <div class="live-subs-list" id="lmLiveSubsList">
                                 <!-- Dynamisch Auswechselbare Spieler -->
                             </div>
@@ -1369,6 +1504,10 @@
                     <button class="modal-close" id="btnCloseMobileDrawer">×</button>
                 </div>
                 <div class="mobile-drawer-grid">
+                    <button class="mobile-drawer-item" data-tab="club">
+                        <span class="drawer-icon">🏛️</span>
+                        <span class="drawer-text">Verein</span>
+                    </button>
                     <button class="mobile-drawer-item" data-tab="fixtures">
                         <span class="drawer-icon">📅</span>
                         <span class="drawer-text">Spielplan & Tabelle</span>

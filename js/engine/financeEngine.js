@@ -41,16 +41,25 @@ const FinanceEngine = {
         const awayClub = state.clubs.find(c => c.id === match.awayClubId);
         if (!homeClub) return 0;
 
-        // Stadionauslastung abhängig von Reputation und Form
-        const repFactor = ((homeClub.reputation || 70) + (awayClub?.reputation || 60)) / 200;
-        const baseAttendancePct = 0.70 + (repFactor * 0.28);
-        const randVariation = (Math.random() * 0.08) - 0.04;
-        const finalPct = Math.min(1.0, Math.max(0.4, baseAttendancePct + randVariation));
+        // C4: Auslastung abhängig von Reputation, Tabellenplatz, Form, fanMood, Stadionstufe
+        const repFactor = ((homeClub.reputation || 70) * 1.2 + (awayClub?.reputation || 60) * 0.8) / 200;
+        const stadiumLevel = homeClub.facilities?.stadium || 2;
+        const stadiumBonus = (stadiumLevel - 1) * 0.03;
+        const moodFactor = ((state.fanMood || 75) - 50) / 250; // -0.1 bis +0.2
+
+        const ticketPrice = homeClub.ticketPrice || 35;
+        // Preis-Elastizität: Höherer Preis senkt Auslastung, tieferer Preis füllt das Stadion
+        const priceFactor = 1.0 - ((ticketPrice - 35) / 100) * 0.6;
+
+        let baseAttendancePct = 0.68 + (repFactor * 0.22) + stadiumBonus + moodFactor;
+        baseAttendancePct *= Math.max(0.4, Math.min(1.2, priceFactor));
+
+        const randVariation = (Math.random() * 0.06) - 0.03;
+        const finalPct = Math.min(1.0, Math.max(0.35, baseAttendancePct + randVariation));
 
         const capacity = homeClub.capacity || 30000;
-        const attendance = Math.round(capacity * finalPct);
-        const avgTicketPrice = 35; // 35 Euro Durchschnittspreis
-        const ticketIncome = Math.round(attendance * avgTicketPrice);
+        const attendance = Math.min(capacity, Math.round(capacity * finalPct));
+        const ticketIncome = Math.round(attendance * ticketPrice);
 
         homeClub.balance = (homeClub.balance || 0) + ticketIncome;
         match.attendance = attendance;
@@ -61,7 +70,7 @@ const FinanceEngine = {
             homeClub.id, 
             "ticket_income", 
             ticketIncome, 
-            `Ticketeinnahmen Heimspiel vs. ${awayClub?.name || 'Gegner'} (${attendance.toLocaleString('de-DE')} Zuschauer)`
+            `Ticketeinnahmen Heimspiel vs. ${awayClub?.name || 'Gegner'} (${attendance.toLocaleString('de-DE')} Zuschauer zu ${ticketPrice} €)`
         );
 
         return ticketIncome;

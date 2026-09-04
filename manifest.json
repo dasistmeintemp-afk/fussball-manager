@@ -4,8 +4,9 @@
   "description": "Leichtgewichtiger, vollwertiger Browser-Fußballmanager mit Live-Simulation, Transfers, Jugendakademie und Scouting.",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#1e293b",
+  "orientation": "portrait-primary",
+  "background_color": "#07111f",
+  "theme_color": "#0f172a",
   "icons": [
     {
       "src": "icon.png",

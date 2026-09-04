@@ -138,6 +138,15 @@ const NEWS_TYPES = {
     SEASON_END: "season_end"
 };
 
+const LIVE_MATCH_SPEEDS = {
+    1: { key: "slow", label: "Langsam", tickIntervalMs: 2200, minuteStep: 1 },
+    2: { key: "normal", label: "Normal", tickIntervalMs: 1200, minuteStep: 1 },
+    4: { key: "fast", label: "Schnell", tickIntervalMs: 500, minuteStep: 2 },
+    slow: { key: "slow", label: "Langsam", tickIntervalMs: 2200, minuteStep: 1 },
+    normal: { key: "normal", label: "Normal", tickIntervalMs: 1200, minuteStep: 1 },
+    fast: { key: "fast", label: "Schnell", tickIntervalMs: 500, minuteStep: 2 }
+};
+
 if (typeof window !== "undefined") {
     window.APP_VERSION = APP_VERSION;
     window.SAVE_SCHEMA_VERSION = SAVE_SCHEMA_VERSION;
@@ -151,6 +160,7 @@ if (typeof window !== "undefined") {
     window.SQUAD_ROLES = SQUAD_ROLES;
     window.INJURY_TYPES = INJURY_TYPES;
     window.NEWS_TYPES = NEWS_TYPES;
+    window.LIVE_MATCH_SPEEDS = LIVE_MATCH_SPEEDS;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -166,6 +176,7 @@ if (typeof module !== 'undefined' && module.exports) {
         TRAINING_INTENSITY,
         SQUAD_ROLES,
         INJURY_TYPES,
-        NEWS_TYPES
+        NEWS_TYPES,
+        LIVE_MATCH_SPEEDS
     };
 }

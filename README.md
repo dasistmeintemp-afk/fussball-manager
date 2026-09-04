@@ -162,6 +162,25 @@ untitled/
 
 ---
 
+## 📱 Auf dem Smartphone / Tablet spielen (Mobile & PWA)
+
+FM PRO ist vollständig responsive und speziell für Smartphones und Tablets optimiert:
+
+1. **Im mobilen Browser öffnen:**
+   - Öffne das gehostete Spiel oder deinen lokalen Server auf deinem Smartphone (z. B. Chrome für Android oder Safari für iOS).
+2. **Als App auf dem Homescreen installieren (PWA):**
+   - **Android / Google Chrome:** Tippe oben rechts auf das Menü (`⋮`) -> **„Zum Startbildschirm hinzufügen“** bzw. **„App installieren“**.
+   - **iPhone / Apple Safari:** Tippe unten auf das Teilen-Symbol (`⎙` / Pfeil nach oben) -> **„Zum Home-Bildschirm“**.
+3. **App-Feeling & Touch-Optimierung:**
+   - Startet im Vollbildmodus ohne Browserleisten (`standalone`).
+   - Touch-optimierte **Bottom Navigation** mit Schnellzugriff auf *Dashboard*, *Kader*, *Taktik*, *Kalender* und das *Mehr*-Menü.
+   - Alle Tabellen (Kader, Liga, Transfers) sind mobil horizontal wischbar (`touch-scroll`).
+   - Modale, Taktik-Aufstellungsfeld und 2D-Live-Simulation passen sich dynamisch an jede Displaygröße (von 375px bis 1200px+) an.
+4. **Offline & Speichern:**
+   - Spielstände werden lokal auf deinem Smartphone im Browser gespeichert und können jederzeit als JSON exportiert oder importiert werden.
+
+---
+
 ## 🧪 Tests ausführen
 
 Führe im Projektverzeichnis den zentralen Test-Runner aus:

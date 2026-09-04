@@ -859,9 +859,10 @@ class UIManager {
     }
 
     /**
-     * Bindet Navigations-Klicks
+     * Bindet Navigations-Klicks (Desktop & Mobile)
      */
     bindNavigation() {
+        // Desktop Sidebar Items
         document.querySelectorAll(".nav-item").forEach(btn => {
             btn.addEventListener("click", () => {
                 const targetTab = btn.dataset.tab;
@@ -869,6 +870,69 @@ class UIManager {
                 this.playSound("click");
             });
         });
+
+        // Mobile Bottom Nav Items
+        document.querySelectorAll(".mobile-nav-item[data-tab]").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const targetTab = btn.dataset.tab;
+                this.switchTab(targetTab);
+                this.playSound("click");
+            });
+        });
+
+        // Mobile Drawer Items ("Mehr")
+        document.querySelectorAll(".mobile-drawer-item[data-tab]").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const targetTab = btn.dataset.tab;
+                this.closeMobileDrawer();
+                this.switchTab(targetTab);
+                this.playSound("click");
+            });
+        });
+
+        // Mobile "Mehr" Button & Close
+        document.getElementById("btnMobileNavMore")?.addEventListener("click", () => {
+            this.toggleMobileDrawer();
+            this.playSound("click");
+        });
+
+        document.getElementById("btnCloseMobileDrawer")?.addEventListener("click", () => {
+            this.closeMobileDrawer();
+        });
+
+        document.getElementById("mobileDrawerOverlay")?.addEventListener("click", (e) => {
+            if (e.target.id === "mobileDrawerOverlay") {
+                this.closeMobileDrawer();
+            }
+        });
+
+        // Responsive Window Resize für Canvas etc.
+        window.addEventListener("resize", () => {
+            this.resizeLiveCanvas();
+        });
+    }
+
+    toggleMobileDrawer() {
+        const overlay = document.getElementById("mobileDrawerOverlay");
+        if (overlay) {
+            overlay.style.display = overlay.style.display === "none" ? "flex" : "none";
+        }
+    }
+
+    closeMobileDrawer() {
+        const overlay = document.getElementById("mobileDrawerOverlay");
+        if (overlay) overlay.style.display = "none";
+    }
+
+    resizeLiveCanvas() {
+        const canvas = document.getElementById("livePitchCanvas");
+        const wrapper = canvas?.parentElement;
+        if (!canvas || !wrapper) return;
+        const width = Math.min(wrapper.clientWidth, 960);
+        if (width > 0) {
+            canvas.style.width = "100%";
+            canvas.style.height = "auto";
+        }
     }
 
     /**
@@ -877,6 +941,12 @@ class UIManager {
     switchTab(tabId) {
         this.activeTab = tabId;
         document.querySelectorAll(".nav-item").forEach(b => {
+            b.classList.toggle("active", b.dataset.tab === tabId);
+        });
+        document.querySelectorAll(".mobile-nav-item").forEach(b => {
+            b.classList.toggle("active", b.dataset.tab === tabId);
+        });
+        document.querySelectorAll(".mobile-drawer-item").forEach(b => {
             b.classList.toggle("active", b.dataset.tab === tabId);
         });
         document.querySelectorAll(".tab-pane").forEach(pane => {
@@ -1185,7 +1255,11 @@ class UIManager {
         else if (posFilter === "ATT") players = players.filter(p => ["ST", "LA", "RA"].includes(p.pos));
 
         // Nach Position und Stärke sortieren
-        players.sort((a, b) => b.overall - a.overall);
+        players.sort((a, b) => (b.trueCurrentAbility || b.overall * 2) - (a.trueCurrentAbility || a.overall * 2));
+
+        const ratingEngine = (typeof PlayerRatingEngine !== 'undefined' && PlayerRatingEngine) 
+            ? PlayerRatingEngine 
+            : ((typeof window !== 'undefined' && window.PlayerRatingEngine) ? window.PlayerRatingEngine : null);
 
         const tbody = document.getElementById("squadTableBody");
         tbody.innerHTML = players.map(p => {
@@ -1197,9 +1271,15 @@ class UIManager {
             else if (isLineup) statusBadge = `<span class="badge-status-lineup">Startelf</span>`;
             else if (isBench) statusBadge = `<span class="badge-status-bench">Bank</span>`;
 
-            const ovrClass = p.overall >= 82 ? "ovr-high" : p.overall >= 76 ? "ovr-mid" : "ovr-low";
             const happyOverall = p.happiness?.overall || 75;
             const happyIcon = happyOverall >= 80 ? "😊" : happyOverall >= 60 ? "😐" : "😞";
+
+            const card = ratingEngine ? ratingEngine.calculateVisiblePlayerCard(p, { userClubId: userClub.id, leagueDataCoverage: 95 }) : null;
+            const starsCa = card ? card.starsCaHtml : "★★★☆☆";
+            const starsPa = card ? card.starsPaHtml : "★★★★☆";
+            const roleName = card?.bestRole?.role || p.squadRole || "Stammspieler";
+            const abilityText = card?.abilityLabel || "Guter Spieler";
+            const valText = card ? card.visibleValueText : this.formatMoneySafe(p.value);
 
             return `
                 <tr>
@@ -1207,16 +1287,20 @@ class UIManager {
                     <td><strong>${p.name}</strong> <span style="font-size:11px; color:var(--text-muted);">(${p.squadRole || 'Kader'})</span></td>
                     <td><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span></td>
                     <td>${p.age}</td>
-                    <td><span class="ovr-badge ${ovrClass}">${p.overall}</span></td>
-                    <td><span class="text-muted">⭐ ${p.pot}</span></td>
+                    <td>
+                        <span title="${abilityText} (${p.overall} OVR)" style="color:#f59e0b; font-size:13px; font-weight:600;">${starsCa}</span>
+                        <div style="font-size:10px; color:var(--text-muted);">${abilityText}</div>
+                    </td>
+                    <td><span title="Entwicklungspotenzial" style="color:#38bdf8; font-size:12px;">${starsPa}</span></td>
+                    <td><span class="role-chip" title="${roleName}">${roleName}</span></td>
                     <td>
                         <span class="mini-bar"><span class="mini-bar-fill" style="width:${p.fitness}%"></span></span>
                         ${p.fitness}%
                     </td>
                     <td>${happyIcon} ${happyOverall}%</td>
                     <td>${p.form.toFixed(1)}</td>
-                    <td>${GameState.formatMoney(p.value)}</td>
-                    <td>${GameState.formatMoney(p.wage)}</td>
+                    <td>${valText}</td>
+                    <td>${this.formatMoneySafe(p.wage)}</td>
                     <td>${p.contractYears} J.</td>
                     <td>
                         <button class="btn btn-sm btn-secondary btn-player-details" data-player-id="${p.id}">Details</button>
@@ -1597,31 +1681,39 @@ class UIManager {
             tbody.innerHTML = marketPlayers.map(p => {
                 const club = state.clubs.find(c => c.id === p.clubId);
                 const card = ratingEngine ? ratingEngine.calculateVisiblePlayerCard(p, { userClubId: state.userClubId, leagueDataCoverage: 85 }) : null;
-                const ovrClass = p.overall >= 82 ? "ovr-high" : p.overall >= 76 ? "ovr-mid" : "ovr-low";
 
-                const ovrDisplay = card ? card.visibleOvr : p.overall;
-                const potDisplay = card ? card.visiblePot : p.pot;
                 const starsDisplay = card ? card.starsCaHtml : "★★★☆☆";
-                const valDisplay = card ? card.visibleValueText : GameState.formatMoney(p.value);
+                const potStarsDisplay = card ? card.starsPaHtml : "★★★★☆";
+                const roleDisplay = card?.bestRole?.role || "Allrounder";
+                const abilityText = card ? card.abilityLabel : "Unbekannt";
+                const valDisplay = card ? card.visibleValueText : this.formatMoneySafe(p.value);
                 const confPercent = card ? card.confidence : (p.scoutingKnowledge?.knowledgeLevel || 30);
+                const confBadgeClass = confPercent >= 70 ? "badge-success" : confPercent >= 40 ? "badge-warning" : "badge-neutral";
 
                 return `
                     <tr>
                         <td>
                             <strong>${p.name}</strong>
-                            <div style="font-size:10px; color:var(--text-muted);">Scouting-Wissen: ${confPercent}%</div>
+                            <div style="font-size:10px; color:var(--text-muted);">${p.nationality || 'Profi'}</div>
                         </td>
                         <td>${club ? club.name : 'Vereinslos'}</td>
                         <td><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span></td>
                         <td>${p.age}</td>
-                        <td><span class="ovr-badge ${ovrClass}" title="Geschätzte Stärke">${ovrDisplay}</span></td>
-                        <td><span title="Relative Qualität: ${card?.abilityLabel || ''}" style="color:#f59e0b; font-size:12px;">${starsDisplay}</span></td>
+                        <td>
+                            <span title="${abilityText}" style="color:#f59e0b; font-size:13px; font-weight:600;">${starsDisplay}</span>
+                            <div style="font-size:10px; color:var(--text-muted);">${abilityText}</div>
+                        </td>
+                        <td>
+                            <span title="Potenzial: ${card?.potentialLabel || ''}" style="color:#38bdf8; font-size:12px;">${potStarsDisplay}</span>
+                        </td>
+                        <td><span class="badge badge-neutral" style="font-size:11px; color:var(--accent-primary); border:1px solid rgba(56,189,248,0.3);">${roleDisplay}</span></td>
                         <td><strong>${valDisplay}</strong></td>
-                        <td>${GameState.formatMoney(p.wage)}</td>
+                        <td><span class="badge ${confBadgeClass}" style="font-size:11px;">${confPercent}%</span></td>
+                        <td>${this.formatMoneySafe(p.wage)}</td>
                         <td>${p.contractYears} J.</td>
                         <td>
                             <div style="display:flex; gap:6px;">
-                                <button class="btn btn-sm btn-secondary btn-scout-direct" data-player-id="${p.id}" title="Scouten für präzisere Daten">🔍</button>
+                                <button class="btn btn-sm btn-secondary btn-scout-direct" data-player-id="${p.id}" title="Scouten für präzisere Daten">🔍 Scouten</button>
                                 <button class="btn btn-sm btn-primary btn-bid-player" data-player-id="${p.id}">Verhandeln</button>
                             </div>
                         </td>
@@ -1639,14 +1731,17 @@ class UIManager {
             document.querySelectorAll(".btn-scout-direct").forEach(btn => {
                 btn.addEventListener("click", () => {
                     const pId = parseInt(btn.dataset.playerId, 10);
-                    const player = state.players.find(p => p.id === pId);
-                    if (player && typeof ScoutingEngine !== 'undefined') {
-                        const rep = ScoutingEngine.generatePlayerReport(player, state);
-                        if (!state.scouting) state.scouting = { assignments: [], reports: [], shortlist: [] };
-                        if (!Array.isArray(state.scouting.reports)) state.scouting.reports = [];
-                        state.scouting.reports.unshift(rep);
-                        this.showToast(`Scoutbericht für ${player.name} erstellt! Wissen auf ${player.scoutingKnowledge.knowledgeLevel}% gestiegen.`, "success");
-                        this.renderTransfers();
+                    const scoutingEngine = (typeof ScoutingEngine !== 'undefined' && ScoutingEngine)
+                        ? ScoutingEngine
+                        : ((typeof window !== 'undefined' && window.ScoutingEngine) ? window.ScoutingEngine : null);
+
+                    if (scoutingEngine && typeof scoutingEngine.scoutPlayer === 'function') {
+                        const res = scoutingEngine.scoutPlayer(state, pId, { source: "transfer_market", notify: true });
+                        if (res.success) {
+                            this.playSound("whistle");
+                            this.showToast(`Scoutbericht für ${res.player.name} erstellt! Wissen auf ${res.knowledgeLevel}% gestiegen.`, "success");
+                            this.renderTransfers();
+                        }
                     }
                 });
             });
@@ -2005,19 +2100,30 @@ class UIManager {
             const priorityBadge = msg.priority === "high" ? '<span class="msg-priority-badge">Wichtig</span>' : '';
 
             let icon = "✉️";
-            if (msg.type === "board_message" || msg.type === "welcome") icon = "👔";
-            if (msg.type === "match_report" || msg.type === "match_preview") icon = "⚽";
-            if (msg.type === "transfer_done" || msg.type === "transfer_offer") icon = "🔄";
-            if (msg.type === "training_report" || msg.type === "injury") icon = "🏥";
+            let typeLabel = "Info";
+            if (msg.type === "board_message" || msg.type === "welcome") { icon = "👔"; typeLabel = "Vorstand"; }
+            else if (msg.type === "match_report" || msg.type === "match_preview") { icon = "⚽"; typeLabel = "Spiel"; }
+            else if (msg.type === "transfer_done" || msg.type === "transfer_offer") { icon = "🔄"; typeLabel = "Transfer"; }
+            else if (msg.type === "training_report" || msg.type === "injury") { icon = "🏥"; typeLabel = "Training / Lazarett"; }
+            else if (msg.type === "scout_report") { icon = "🔍"; typeLabel = "Scouting"; }
+            else if (msg.type === "finance_warning" || msg.type === "sponsor") { icon = "💰"; typeLabel = "Finanzen"; }
+
+            const displayDate = msg.date || "Saisonstart";
 
             return `
                 <div class="inbox-item ${isUnread ? 'unread' : ''} ${isSelected ? 'selected' : ''}" data-msg-id="${msg.id}">
-                    <div class="inbox-item-header">
-                        <span>${icon} <strong>${msg.sender}</strong></span>
-                        <span class="text-muted" style="font-size:11px;">${msg.date}</span>
+                    <div class="inbox-item-topline">
+                        <div class="inbox-sender-wrap">
+                            <span class="inbox-icon">${icon}</span>
+                            <span class="inbox-sender">${msg.sender || 'System'}</span>
+                        </div>
+                        <span class="inbox-date">${displayDate}</span>
                     </div>
-                    <div class="inbox-item-title">${msg.subject}</div>
-                    ${priorityBadge}
+                    <div class="inbox-item-title">${msg.subject || msg.title || 'Nachricht'}</div>
+                    <div class="inbox-item-meta">
+                        <span class="inbox-type">${typeLabel}</span>
+                        ${priorityBadge}
+                    </div>
                 </div>
             `;
         }).join("");
@@ -2052,22 +2158,35 @@ class UIManager {
         if (!detailContainer) return;
 
         let icon = "✉️";
-        if (msg.type === "board_message" || msg.type === "welcome") icon = "👔";
-        if (msg.type === "match_report" || msg.type === "match_preview") icon = "⚽";
-        if (msg.type === "transfer_done" || msg.type === "transfer_offer") icon = "🔄";
-        if (msg.type === "training_report" || msg.type === "injury") icon = "🏥";
+        let typeLabel = "Info";
+        if (msg.type === "board_message" || msg.type === "welcome") { icon = "👔"; typeLabel = "Vorstand"; }
+        else if (msg.type === "match_report" || msg.type === "match_preview") { icon = "⚽"; typeLabel = "Spiel"; }
+        else if (msg.type === "transfer_done" || msg.type === "transfer_offer") { icon = "🔄"; typeLabel = "Transfer"; }
+        else if (msg.type === "training_report" || msg.type === "injury") { icon = "🏥"; typeLabel = "Training / Lazarett"; }
+        else if (msg.type === "scout_report") { icon = "🔍"; typeLabel = "Scouting"; }
+        else if (msg.type === "finance_warning" || msg.type === "sponsor") { icon = "💰"; typeLabel = "Finanzen"; }
 
         const formattedBody = (msg.body || msg.text || "").replace(/\n/g, "<br>");
+        const displayDate = msg.date || "Saisonstart";
 
         detailContainer.innerHTML = `
             <div class="inbox-detail-header">
-                <h2>${icon} ${msg.subject || msg.title}</h2>
-                <div style="display:flex; justify-content:space-between; color:var(--text-muted); font-size:13px; margin-top:8px; border-bottom:1px solid var(--border-color); padding-bottom:10px;">
-                    <span>Absender: <strong style="color:var(--text-main);">${msg.sender}</strong></span>
-                    <span>Datum: <strong>${msg.date}</strong></span>
+                <div class="inbox-detail-title-row">
+                    <h2>${icon} ${msg.subject || msg.title || 'Nachricht'}</h2>
+                    <span class="inbox-detail-date">${displayDate}</span>
+                </div>
+                <div class="inbox-detail-meta-grid">
+                    <div>
+                        <span class="meta-label">Absender</span>
+                        <strong style="color:var(--text-main); font-size:13px;">${msg.sender || 'System'}</strong>
+                    </div>
+                    <div>
+                        <span class="meta-label">Kategorie</span>
+                        <strong style="color:var(--text-main); font-size:13px;">${typeLabel}</strong>
+                    </div>
                 </div>
             </div>
-            <div class="inbox-detail-body" style="padding-top:16px; line-height:1.7; font-size:14px;">
+            <div class="inbox-detail-body">
                 ${formattedBody}
             </div>
         `;
@@ -2152,12 +2271,28 @@ class UIManager {
             </div>
 
             <div class="dash-card">
-                <h4 style="margin-bottom:12px;">⭐ Schlüsselspieler im Fokus</h4>
+                <h4 style="margin-bottom:12px;">⭐ Schlüsselspieler im Fokus & Scouting</h4>
                 <div style="display:flex; gap:14px; flex-wrap:wrap;">
                     ${report.keyPlayers.map(p => `
-                        <div style="background:rgba(255,255,255,0.04); padding:8px 14px; border-radius:8px; border:1px solid var(--border-color); flex:1; min-width:140px;">
-                            <strong>${p.name}</strong> <span class="pos-tag">${p.pos}</span>
-                            <div style="font-size:12px; color:var(--text-muted); margin-top:3px;">${p.overall} OVR • Tore: ${p.goals} • Vorlagen: ${p.assists}</div>
+                        <div style="background:rgba(255,255,255,0.04); padding:10px 14px; border-radius:8px; border:1px solid var(--border-color); flex:1; min-width:180px; display:flex; flex-direction:column; justify-content:space-between;">
+                            <div>
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <strong>${p.name}</strong>
+                                    <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>
+                                </div>
+                                <div style="margin-top:6px; font-size:13px; color:#f59e0b;">
+                                    ${p.starsCaHtml} <span style="font-size:11px; color:var(--text-muted);">(${p.abilityLabel})</span>
+                                </div>
+                                <div style="font-size:11px; color:var(--accent-primary); margin-top:2px;">
+                                    Rolle: <strong>${p.bestRole?.role || 'Stammspieler'}</strong>
+                                </div>
+                                <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">
+                                    Gefahr: <span class="badge ${p.dangerBadgeClass}" style="font-size:10px; padding:2px 6px;">${p.danger}</span> • Scouthinweis: <strong>${p.confidence}%</strong>
+                                </div>
+                            </div>
+                            <button class="btn btn-sm btn-secondary btn-scout-opponent-player mt-2" data-player-id="${p.id}" style="width:100%;">
+                                🔍 Spieler scouten
+                            </button>
                         </div>
                     `).join("")}
                 </div>
@@ -2166,6 +2301,24 @@ class UIManager {
 
         modal.style.display = "flex";
         this.playSound("click");
+
+        content.querySelectorAll(".btn-scout-opponent-player").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const pId = parseInt(btn.dataset.playerId, 10);
+                const scoutingEngine = (typeof ScoutingEngine !== 'undefined' && ScoutingEngine) 
+                    ? ScoutingEngine 
+                    : ((typeof window !== 'undefined' && window.ScoutingEngine) ? window.ScoutingEngine : null);
+
+                if (scoutingEngine && typeof scoutingEngine.scoutPlayer === 'function') {
+                    const res = scoutingEngine.scoutPlayer(state, pId, { source: "opponent_analysis", notify: true });
+                    if (res.success) {
+                        this.playSound("whistle");
+                        this.showToast(`Scoutbericht für ${res.player.name} angefordert! Scouting-Wissen: ${res.knowledgeLevel}%`, "success");
+                        this.showOpponentAnalysisModal();
+                    }
+                }
+            });
+        });
     }
 
 
@@ -2369,14 +2522,54 @@ class UIManager {
             `;
         }
 
+        let scoutExternalHtml = "";
+        if (!isUserClub) {
+            scoutExternalHtml = `
+                <div style="display:flex; gap:10px; margin-top:14px;">
+                    <button class="btn btn-secondary" id="btnPdScoutPlayer" style="flex:1;">🔍 Spieler jetzt scouten</button>
+                    <button class="btn btn-primary" id="btnPdBidPlayer" style="flex:1;">💼 Transfer verhandeln</button>
+                </div>
+            `;
+        }
+
+        const starsCaHtml = card ? card.starsCaHtml : "★★★☆☆";
+        const starsPaHtml = card ? card.starsPaHtml : "★★★★☆";
+        const abilityLabel = card ? card.abilityLabel : "Ligaspieler";
+        const potentialLabel = card ? card.potentialLabel : "Entwicklungspotenzial";
+        const bestRoleName = card?.bestRole?.role || "Allrounder";
+        const bestRoleStars = card?.bestRole?.starsHtml || "★★★☆☆";
+        const altRoleName = card?.alternativeRole?.role || null;
+        const altRoleStars = card?.alternativeRole?.starsHtml || null;
+
         body.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
-                <div>
+            <div class="player-detail-top">
+                <div class="player-detail-meta">
                     <span class="pos-tag pos-${this.getPosGroup(player.pos)}" style="font-size:13px;">${player.pos}</span>
                     <span style="font-size:14px; margin-left:8px; color:var(--text-muted);">${club ? club.name : ''} • Alter: ${player.age}</span>
                 </div>
-                <div>
-                    <span class="ovr-badge ovr-high" style="font-size:16px;">${player.overall} OVR</span>
+                <div class="player-detail-rating">
+                    <div class="player-detail-stars">${starsCaHtml}</div>
+                    <div class="player-detail-label">${abilityLabel}</div>
+                </div>
+            </div>
+
+            <!-- Rollen & Potenzial -->
+            <div class="player-role-summary-card">
+                <div class="player-role-box">
+                    <span class="role-box-label">Hauptrolle</span>
+                    <div class="role-box-main">
+                        <span class="role-name">${bestRoleName}</span>
+                        <span class="role-stars">${bestRoleStars}</span>
+                    </div>
+                    ${altRoleName ? `<div class="role-box-sub">Alt: ${altRoleName} <span>${altRoleStars}</span></div>` : ''}
+                </div>
+
+                <div class="player-role-box">
+                    <span class="role-box-label">Potenzial</span>
+                    <div class="role-box-main">
+                        <span class="role-stars role-stars-potential">${starsPaHtml}</span>
+                    </div>
+                    <div class="role-box-sub">${potentialLabel}</div>
                 </div>
             </div>
 
@@ -2402,7 +2595,7 @@ class UIManager {
 
             <!-- Zufriedenheit & Rolle -->
             <div class="dash-card mb-3" style="padding:14px;">
-                <h4 style="font-size:13px; margin-bottom:8px; color:var(--text-muted);">😊 Spielerzufriedenheit & Rolle</h4>
+                <h4 style="font-size:13px; margin-bottom:8px; color:var(--text-muted);">😊 Spielerzufriedenheit & Status</h4>
                 <div class="club-stat-line"><span>Kaderrolle:</span><strong>${player.squadRole || 'Kader'}</strong></div>
                 <div class="club-stat-line"><span>Gesamtzufriedenheit:</span><strong>${happy.overall}%</strong></div>
                 <div class="club-stat-line"><span>Spielzeit / Vertrag:</span><span>${happy.playingTime}% / ${happy.contract}%</span></div>
@@ -2417,21 +2610,46 @@ class UIManager {
             </div>
             <div class="finance-stat-row">
                 <span>Marktwert:</span>
-                <strong>${GameState.formatMoney(player.value)}</strong>
+                <strong>${card ? card.visibleValueText : this.formatMoneySafe(player.value)}</strong>
             </div>
             <div class="finance-stat-row">
-                <span>Wochengehalt:</span>
-                <strong>${GameState.formatMoney(player.wage)}</strong>
+                <span>Gehalt:</span>
+                <strong>${this.formatMoneySafe(player.wage)} / Woche</strong>
             </div>
             <div class="finance-stat-row">
-                <span>Restvertrag:</span>
+                <span>Vertragslaufzeit:</span>
                 <strong>${player.contractYears} Jahr(e)</strong>
             </div>
 
+            ${scoutExternalHtml}
             ${contractSectionHtml}
         `;
 
         modal.style.display = "flex";
+        this.playSound("click");
+
+        // External buttons binden
+        if (!isUserClub) {
+            document.getElementById("btnPdScoutPlayer")?.addEventListener("click", () => {
+                const scoutingEngine = (typeof ScoutingEngine !== 'undefined' && ScoutingEngine)
+                    ? ScoutingEngine
+                    : ((typeof window !== 'undefined' && window.ScoutingEngine) ? window.ScoutingEngine : null);
+                if (scoutingEngine && typeof scoutingEngine.scoutPlayer === 'function') {
+                    const res = scoutingEngine.scoutPlayer(state, player.id, { source: "player_profile", notify: true });
+                    if (res.success) {
+                        this.playSound("whistle");
+                        this.showToast(`Scoutbericht für ${player.name} erstellt! Wissen auf ${res.knowledgeLevel}% gestiegen.`, "success");
+                        this.showPlayerDetailsModal(player.id);
+                    }
+                }
+            });
+
+            document.getElementById("btnPdBidPlayer")?.addEventListener("click", () => {
+                modal.style.display = "none";
+                this.showTransferOfferModal(player.id);
+            });
+        }
+
         document.getElementById("btnClosePlayerDetails").onclick = () => {
             modal.style.display = "none";
         };
@@ -2492,8 +2710,6 @@ class UIManager {
         // Live Subs Controls vorbereiten
         this.renderLiveSubsControls(liveMatch);
 
-        // Simulation Loop starten
-        let lastTimestamp = performance.now();
         const canvas = document.getElementById("livePitchCanvas");
         const ctx = canvas.getContext("2d");
 
@@ -2531,74 +2747,226 @@ class UIManager {
         const render2DCanvas = () => {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Spielfeld Hintergrund
-            ctx.fillStyle = "#15803d";
+            const pitchX = 20;
+            const pitchY = 20;
+            const pitchW = canvas.width - 40;
+            const pitchH = canvas.height - 40;
+            const midX = canvas.width / 2;
+            const midY = canvas.height / 2;
+
+            // 1. Spielfeld Hintergrund (Satter Stadionrasen mit 12 Streifen)
+            ctx.fillStyle = "#0f5132";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Weiße Linien
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
+            const stripes = 12;
+            const stripeW = pitchW / stripes;
+            for (let i = 0; i < stripes; i++) {
+                ctx.fillStyle = (i % 2 === 0) ? "#15803d" : "#166534";
+                ctx.fillRect(pitchX + i * stripeW, pitchY, stripeW, pitchH);
+            }
+
+            // Flutlicht-Vignette / sanfter Glanz
+            const pitchGlow = ctx.createRadialGradient(midX, midY, 50, midX, midY, canvas.width * 0.6);
+            pitchGlow.addColorStop(0, "rgba(255, 255, 255, 0.06)");
+            pitchGlow.addColorStop(1, "rgba(0, 0, 0, 0.22)");
+            ctx.fillStyle = pitchGlow;
+            ctx.fillRect(pitchX, pitchY, pitchW, pitchH);
+
+            // 2. Weiße Spielfeldlinien
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
             ctx.lineWidth = 2;
 
             // Umrandung & Mittellinie
-            ctx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+            ctx.strokeRect(pitchX, pitchY, pitchW, pitchH);
             ctx.beginPath();
-            ctx.moveTo(canvas.width / 2, 20);
-            ctx.lineTo(canvas.width / 2, canvas.height - 20);
+            ctx.moveTo(midX, pitchY);
+            ctx.lineTo(midX, pitchY + pitchH);
             ctx.stroke();
 
-            // Mittelkreis
+            // Mittelkreis & Mittelpunkt
             ctx.beginPath();
-            ctx.arc(canvas.width / 2, canvas.height / 2, 50, 0, Math.PI * 2);
+            ctx.arc(midX, midY, 50, 0, Math.PI * 2);
             ctx.stroke();
 
-            // Strafräume (Links & Rechts)
-            ctx.strokeRect(20, canvas.height / 2 - 70, 90, 140);
-            ctx.strokeRect(canvas.width - 110, canvas.height / 2 - 70, 90, 140);
+            ctx.beginPath();
+            ctx.arc(midX, midY, 3.5, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+            ctx.fill();
 
-            // Tore
-            ctx.fillStyle = "rgba(255,255,255,0.3)";
-            ctx.fillRect(8, canvas.height / 2 - 35, 12, 70);
-            ctx.fillRect(canvas.width - 20, canvas.height / 2 - 35, 12, 70);
+            // Strafräume (16-Meter-Raum)
+            const penBoxW = 92;
+            const penBoxH = 148;
+            ctx.strokeRect(pitchX, midY - penBoxH / 2, penBoxW, penBoxH);
+            ctx.strokeRect(pitchX + pitchW - penBoxW, midY - penBoxH / 2, penBoxW, penBoxH);
 
-            // 2D Spieler zeichnen
+            // Torräume (5-Meter-Raum)
+            const goalAreaW = 34;
+            const goalAreaH = 68;
+            ctx.strokeRect(pitchX, midY - goalAreaH / 2, goalAreaW, goalAreaH);
+            ctx.strokeRect(pitchX + pitchW - goalAreaW, midY - goalAreaH / 2, goalAreaW, goalAreaH);
+
+            // Elfmeterpunkte & Bögen am Sechzehner (Halbkreise)
+            const penSpotDist = 68;
+            // Links
+            ctx.beginPath();
+            ctx.arc(pitchX + penSpotDist, midY, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(pitchX + penSpotDist, midY, 38, -0.65, 0.65);
+            ctx.stroke();
+
+            // Rechts
+            ctx.beginPath();
+            ctx.arc(pitchX + pitchW - penSpotDist, midY, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(pitchX + pitchW - penSpotDist, midY, 38, Math.PI - 0.65, Math.PI + 0.65);
+            ctx.stroke();
+
+            // Eckfahnen-Viertelkreise
+            const cornerRadius = 9;
+            ctx.beginPath(); ctx.arc(pitchX, pitchY, cornerRadius, 0, Math.PI / 2); ctx.stroke();
+            ctx.beginPath(); ctx.arc(pitchX, pitchY + pitchH, cornerRadius, -Math.PI / 2, 0); ctx.stroke();
+            ctx.beginPath(); ctx.arc(pitchX + pitchW, pitchY, cornerRadius, Math.PI / 2, Math.PI); ctx.stroke();
+            ctx.beginPath(); ctx.arc(pitchX + pitchW, pitchY + pitchH, cornerRadius, Math.PI, Math.PI * 1.5); ctx.stroke();
+
+            // Tore mit Tornetz-Gitterstruktur
+            const goalH = 64;
+            const goalDepth = 12;
+            // Linkes Tor
+            ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
+            ctx.fillRect(pitchX - goalDepth, midY - goalH / 2, goalDepth, goalH);
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 2.5;
+            ctx.strokeRect(pitchX - goalDepth, midY - goalH / 2, goalDepth, goalH);
+            // Rechtes Tor
+            ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
+            ctx.fillRect(pitchX + pitchW, midY - goalH / 2, goalDepth, goalH);
+            ctx.strokeRect(pitchX + pitchW, midY - goalH / 2, goalDepth, goalH);
+
+            // 3. Ball-Schweifspur (Motion Trail bei schnellen Pässen / Schüssen)
+            if (liveMatch.ballTrail && liveMatch.ballTrail.length > 1) {
+                for (let i = 0; i < liveMatch.ballTrail.length - 1; i++) {
+                    const p1 = liveMatch.ballTrail[i];
+                    const p2 = liveMatch.ballTrail[i + 1];
+                    const t1x = pitchX + (p1.x / 100) * pitchW;
+                    const t1y = pitchY + (p1.y / 100) * pitchH;
+                    const t2x = pitchX + (p2.x / 100) * pitchW;
+                    const t2y = pitchY + (p2.y / 100) * pitchH;
+
+                    ctx.beginPath();
+                    ctx.moveTo(t1x, t1y);
+                    ctx.lineTo(t2x, t2y);
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${p1.alpha * 0.45})`;
+                    ctx.lineWidth = 2.5;
+                    ctx.stroke();
+                }
+            }
+
+            // 4. 2D Spieler zeichnen (mit Schatten, Trikots, Glow und Namens-Pills)
             liveMatch.players2D.forEach(p => {
-                const px = 20 + (p.x / 100) * (canvas.width - 40);
-                const py = 20 + (p.y / 100) * (canvas.height - 40);
+                const px = pitchX + (p.x / 100) * pitchW;
+                const py = pitchY + (p.y / 100) * pitchH;
+                const isActive = liveMatch.activePlayerId === p.id;
 
-                // Spielerkreis
+                // Spielerschatten auf dem Rasen
                 ctx.beginPath();
-                ctx.arc(px, py, 9, 0, Math.PI * 2);
-                ctx.fillStyle = p.color;
+                ctx.ellipse(px + 1.5, py + 3, 9, 4.5, 0, 0, Math.PI * 2);
+                ctx.fillStyle = "rgba(0, 0, 0, 0.38)";
                 ctx.fill();
-                ctx.strokeStyle = "#ffffff";
+
+                // Ballführender / Aktiver Spieler Glow-Ring
+                if (isActive) {
+                    const pulse = 13 + Math.sin(Date.now() * 0.008) * 2;
+                    ctx.beginPath();
+                    ctx.arc(px, py, pulse, 0, Math.PI * 2);
+                    ctx.strokeStyle = "#facc15";
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+
+                // Spielerkörper mit dezentem 3D-Verlauf
+                ctx.beginPath();
+                ctx.arc(px, py, 9.5, 0, Math.PI * 2);
+                const playerGrad = ctx.createRadialGradient(px - 2, py - 2, 1, px, py, 10);
+                playerGrad.addColorStop(0, "#ffffff");
+                playerGrad.addColorStop(0.3, p.color || "#3b82f6");
+                playerGrad.addColorStop(1, p.color || "#1d4ed8");
+                ctx.fillStyle = playerGrad;
+                ctx.fill();
+
+                ctx.strokeStyle = p.textColor && p.textColor !== p.color ? p.textColor : "#ffffff";
                 ctx.lineWidth = 1.5;
                 ctx.stroke();
 
-                // Nummer / Kürzel
+                // Trikotnummer
                 ctx.fillStyle = p.textColor || "#ffffff";
-                ctx.font = "bold 9px sans-serif";
+                ctx.font = "bold 9px 'Inter', sans-serif";
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
                 ctx.fillText(p.number, px, py);
 
-                // Name
-                ctx.fillStyle = "#ffffff";
-                ctx.font = "9px sans-serif";
-                ctx.fillText(p.name.split(' ').pop(), px, py + 14);
+                // Namens-Pill für perfekte Lesbarkeit
+                const lastName = p.name ? p.name.split(' ').pop() : "";
+                if (lastName) {
+                    ctx.font = "bold 8.5px 'Inter', sans-serif";
+                    const textWidth = ctx.measureText(lastName).width;
+                    const pillX = px - textWidth / 2 - 4;
+                    const pillY = py + 11;
+                    const pillW = textWidth + 8;
+                    const pillH = 12;
+
+                    ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
+                    ctx.beginPath();
+                    ctx.roundRect ? ctx.roundRect(pillX, pillY, pillW, pillH, 4) : ctx.rect(pillX, pillY, pillW, pillH);
+                    ctx.fill();
+
+                    ctx.fillStyle = "#f8fafc";
+                    ctx.fillText(lastName, px, py + 17);
+                }
             });
 
-            // Ball zeichnen
-            const bx = 20 + (liveMatch.ball.x / 100) * (canvas.width - 40);
-            const by = 20 + (liveMatch.ball.y / 100) * (canvas.height - 40);
+            // 5. Ball zeichnen (3D-Look mit Schatten)
+            const bx = pitchX + (liveMatch.ball.x / 100) * pitchW;
+            const by = pitchY + (liveMatch.ball.y / 100) * pitchH;
 
+            // Ballschatten
             ctx.beginPath();
-            ctx.arc(bx, by, 5, 0, Math.PI * 2);
-            ctx.fillStyle = "#ffffff";
+            ctx.ellipse(bx + 2, by + 3.5, 5, 2.5, 0, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
             ctx.fill();
-            ctx.strokeStyle = "#000000";
+
+            // Ballkugel
+            ctx.beginPath();
+            ctx.arc(bx, by, 5.5, 0, Math.PI * 2);
+            const ballGrad = ctx.createRadialGradient(bx - 1.5, by - 1.5, 1, bx, by, 6);
+            ballGrad.addColorStop(0, "#ffffff");
+            ballGrad.addColorStop(0.7, "#f1f5f9");
+            ballGrad.addColorStop(1, "#94a3b8");
+            ctx.fillStyle = ballGrad;
+            ctx.fill();
+            ctx.strokeStyle = "#0f172a";
             ctx.lineWidth = 1;
             ctx.stroke();
+
+            // 6. Tor-Effekt (Goal Flash & Wasserzeichen)
+            if (liveMatch.goalFlash && liveMatch.goalFlash > 0) {
+                ctx.save();
+                ctx.fillStyle = `rgba(250, 204, 21, ${liveMatch.goalFlash * 0.22})`;
+                ctx.fillRect(pitchX, pitchY, pitchW, pitchH);
+
+                ctx.font = "bold 44px 'Inter', sans-serif";
+                ctx.fillStyle = `rgba(255, 255, 255, ${liveMatch.goalFlash * 0.85})`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.shadowColor = "rgba(0, 0, 0, 0.6)";
+                ctx.shadowBlur = 12;
+                ctx.fillText("⚽ TOOOOR!", midX, midY);
+                ctx.restore();
+            }
         };
+
+        let lastTickTimestamp = performance.now();
 
         const tickLoop = (now) => {
             if (liveMatch.isFinished) {
@@ -2613,12 +2981,19 @@ class UIManager {
                 return;
             }
 
-            if (!liveMatch.isPaused) {
+            if (!lastTickTimestamp) lastTickTimestamp = now;
+            const elapsed = now - lastTickTimestamp;
+            const interval = liveMatch.getTickIntervalMs();
+
+            if (!liveMatch.isPaused && elapsed >= interval) {
                 liveMatch.tick();
+                lastTickTimestamp = now;
+                updateLiveUI();
             }
 
+            // Smooth 2D animation on every frame
+            liveMatch.updateBallAndPlayers();
             render2DCanvas();
-            updateLiveUI();
 
             this.liveMatchAnimFrame = requestAnimationFrame(tickLoop);
         };
@@ -2635,14 +3010,16 @@ class UIManager {
             btn.onclick = () => {
                 document.querySelectorAll(".speed-btn").forEach(b => b.classList.remove("active"));
                 btn.classList.add("active");
-                liveMatch.speed = parseInt(btn.dataset.speed, 10);
+                const speedVal = btn.dataset.speed;
+                liveMatch.speed = isNaN(speedVal) ? speedVal : parseInt(speedVal, 10);
+                lastTickTimestamp = performance.now();
             };
         });
 
         document.getElementById("btnLmSkip").onclick = () => {
-            while (!liveMatch.isFinished) {
-                liveMatch.tick();
-            }
+            liveMatch.skipToEnd();
+            updateLiveUI();
+            render2DCanvas();
         };
 
         // Subtabs

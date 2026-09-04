@@ -169,7 +169,7 @@
                             <div class="calendar-timeline-list" id="dashCalendarList">
                                 <!-- Dynamische Tagesliste -->
                             </div>
-                            <div class="calendar-action-bar" style="margin-top:14px; display:flex; gap:10px;">
+                            <div class="calendar-action-bar">
                                 <button class="btn btn-primary btn-sm" id="btnDashAdvanceDay">⏭️ Nächsten Tag simulieren</button>
                                 <button class="btn btn-secondary btn-sm" id="btnDashAdvanceMatchday">⏩ Bis zum Spieltag vorspulen</button>
                             </div>
@@ -267,8 +267,9 @@
                                     <th>Name</th>
                                     <th>Pos</th>
                                     <th>Alter</th>
-                                    <th>Stärke (OVR)</th>
+                                    <th>Aktuelle Qualität</th>
                                     <th>Potenzial</th>
+                                    <th>Beste Rolle</th>
                                     <th>Fitness</th>
                                     <th>Moral</th>
                                     <th>Form</th>
@@ -511,9 +512,11 @@
                                         <th>Verein</th>
                                         <th>Pos</th>
                                         <th>Alter</th>
-                                        <th>Stärke</th>
+                                        <th>Aktuelle Qualität</th>
                                         <th>Potenzial</th>
+                                        <th>Beste Rolle</th>
                                         <th>Marktwert</th>
+                                        <th>Scout-Wissen</th>
                                         <th>Gehalt</th>
                                         <th>Vertrag</th>
                                         <th>Aktion</th>
@@ -1186,9 +1189,9 @@
                     <div class="live-controls-bar">
                         <button class="btn btn-sm btn-icon" id="btnLmPause">⏸ Pause</button>
                         <div class="speed-selector">
-                            <button class="btn btn-sm speed-btn active" data-speed="1">1x</button>
-                            <button class="btn btn-sm speed-btn" data-speed="2">2x</button>
-                            <button class="btn btn-sm speed-btn" data-speed="4">4x</button>
+                            <button class="btn btn-sm speed-btn active" data-speed="1" title="Langsam (realistisch)">Langsam</button>
+                            <button class="btn btn-sm speed-btn" data-speed="2" title="Normal">Normal</button>
+                            <button class="btn btn-sm speed-btn" data-speed="4" title="Schnell">Schnell</button>
                         </div>
                         <button class="btn btn-sm btn-secondary" id="btnLmSkip">⚡ Sofort-Ergebnis</button>
                     </div>
@@ -1355,6 +1358,74 @@
                 </div>
             </div>
         </div>
+
+        <!-- Mobile Drawer Menu ("Mehr") -->
+        <div class="mobile-drawer-overlay" id="mobileDrawerOverlay" style="display: none;">
+            <div class="mobile-drawer">
+                <div class="mobile-drawer-header">
+                    <div class="mobile-drawer-title">
+                        <span>📱</span> Menü & Schnellzugriff
+                    </div>
+                    <button class="modal-close" id="btnCloseMobileDrawer">×</button>
+                </div>
+                <div class="mobile-drawer-grid">
+                    <button class="mobile-drawer-item" data-tab="fixtures">
+                        <span class="drawer-icon">📅</span>
+                        <span class="drawer-text">Spielplan & Tabelle</span>
+                    </button>
+                    <button class="mobile-drawer-item" data-tab="transfers">
+                        <span class="drawer-icon">🔄</span>
+                        <span class="drawer-text">Transfermarkt</span>
+                    </button>
+                    <button class="mobile-drawer-item" data-tab="training">
+                        <span class="drawer-icon">🏋️</span>
+                        <span class="drawer-text">Training</span>
+                    </button>
+                    <button class="mobile-drawer-item" data-tab="finances">
+                        <span class="drawer-icon">💼</span>
+                        <span class="drawer-text">Finanzen</span>
+                    </button>
+                    <button class="mobile-drawer-item" data-tab="stats">
+                        <span class="drawer-icon">🏆</span>
+                        <span class="drawer-text">Statistiken</span>
+                    </button>
+                    <button class="mobile-drawer-item" data-tab="inbox">
+                        <span class="drawer-icon">📬</span>
+                        <span class="drawer-text">Postfach</span>
+                        <span class="badge" id="mobileInboxBadge" style="display:none;">0</span>
+                    </button>
+                    <button class="mobile-drawer-item" data-tab="settings">
+                        <span class="drawer-icon">⚙️</span>
+                        <span class="drawer-text">Spielstand / Save</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Bottom Navigation Bar -->
+        <nav class="mobile-bottom-nav">
+            <button class="mobile-nav-item active" data-tab="dashboard">
+                <span class="nav-icon">📊</span>
+                <span class="nav-label">Dashboard</span>
+            </button>
+            <button class="mobile-nav-item" data-tab="squad">
+                <span class="nav-icon">👥</span>
+                <span class="nav-label">Kader</span>
+            </button>
+            <button class="mobile-nav-item" data-tab="tactics">
+                <span class="nav-icon">📋</span>
+                <span class="nav-label">Taktik</span>
+            </button>
+            <button class="mobile-nav-item" data-tab="calendar">
+                <span class="nav-icon">🗓️</span>
+                <span class="nav-label">Kalender</span>
+            </button>
+            <button class="mobile-nav-item" id="btnMobileNavMore">
+                <span class="nav-icon">☰</span>
+                <span class="nav-label">Mehr</span>
+                <span class="badge-dot" id="mobileMoreBadgeDot" style="display:none;"></span>
+            </button>
+        </nav>
     </div>
 
     <!-- Scripts in richtiger Reihenfolge einbinden -->

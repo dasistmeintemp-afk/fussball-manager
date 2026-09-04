@@ -50,6 +50,29 @@
     padding: 0;
 }
 
+.dash-card,
+.inbox-item,
+.inbox-detail,
+.calendar-timeline-item,
+.calendar-day-card,
+.finance-stat-row,
+.club-stat-line,
+.player-role-summary-card,
+.player-role-box {
+    min-width: 0;
+}
+
+.text-muted,
+.inbox-item-title,
+.cal-day-title,
+.cal-day-desc,
+.role-card-title,
+.role-card-subtitle,
+.role-name,
+.role-box-sub {
+    overflow-wrap: anywhere;
+}
+
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background-color: var(--bg-main);
@@ -540,19 +563,23 @@ body {
 }
 
 .next-match-card {
-    grid-column: span 7;
+    grid-column: span 6;
+}
+
+.calendar-snapshot-card {
+    grid-column: span 6;
 }
 
 .table-snapshot-card {
-    grid-column: span 5;
+    grid-column: span 4;
 }
 
 .board-card {
-    grid-column: span 6;
+    grid-column: span 4;
 }
 
 .squad-status-card {
-    grid-column: span 6;
+    grid-column: span 4;
 }
 
 .full-width {
@@ -1197,8 +1224,9 @@ body {
    ========================================================================== */
 .inbox-layout {
     display: grid;
-    grid-template-columns: 5fr 7fr;
-    gap: 20px;
+    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+    gap: 18px;
+    align-items: stretch;
     min-height: 520px;
 }
 
@@ -1227,6 +1255,7 @@ body {
 }
 
 .inbox-list {
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -1236,19 +1265,29 @@ body {
 }
 
 .inbox-item {
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     padding: 14px 16px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    background: rgba(15, 23, 42, 0.72);
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+    min-width: 0;
     position: relative;
 }
 
 .inbox-item:hover {
-    background: var(--bg-card-hover);
-    border-color: rgba(56, 189, 248, 0.3);
-    transform: translateX(2px);
+    background: rgba(30, 41, 59, 0.88);
+    border-color: rgba(56, 189, 248, 0.35);
+    transform: translateY(-1px);
+}
+
+.inbox-item.selected {
+    border-color: var(--accent-primary);
+    background: rgba(56, 189, 248, 0.10);
+    box-shadow: 0 0 14px rgba(56, 189, 248, 0.2);
 }
 
 .inbox-item.unread {
@@ -1256,10 +1295,44 @@ body {
     background: rgba(56, 189, 248, 0.06);
 }
 
-.inbox-item.selected {
-    border-color: var(--accent-primary);
-    background: rgba(56, 189, 248, 0.12);
-    box-shadow: 0 0 14px rgba(56, 189, 248, 0.2);
+.inbox-item-topline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+}
+
+.inbox-sender-wrap {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+}
+
+.inbox-icon {
+    flex: 0 0 auto;
+}
+
+.inbox-sender {
+    min-width: 0;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.inbox-date {
+    flex: 0 0 auto;
+    font-size: 11px;
+    color: var(--text-muted);
+    background: rgba(148, 163, 184, 0.10);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 999px;
+    padding: 3px 8px;
+    white-space: nowrap;
 }
 
 .inbox-item-header {
@@ -1267,46 +1340,117 @@ body {
     justify-content: space-between;
     font-size: 12px;
     color: var(--text-muted);
-    margin-bottom: 6px;
+    margin-bottom: 2px;
 }
 
 .inbox-item-title {
     font-size: 14px;
-    font-weight: 700;
+    line-height: 1.35;
+    font-weight: 800;
     color: var(--text-main);
+    overflow-wrap: anywhere;
+}
+
+.inbox-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+}
+
+.inbox-type {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 2px 6px;
 }
 
 .msg-priority-badge {
-    position: absolute;
-    top: 10px;
-    right: 12px;
-    background: rgba(239, 68, 68, 0.2);
-    color: #ef4444;
-    border: 1px solid rgba(239, 68, 68, 0.4);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(239, 68, 68, 0.14);
+    color: #fecaca;
+    border: 1px solid rgba(239, 68, 68, 0.30);
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 800;
     padding: 2px 6px;
-    border-radius: 4px;
+    border-radius: 999px;
     text-transform: uppercase;
+    white-space: nowrap;
 }
 
 .inbox-detail {
-    background: var(--bg-card);
-    border: 1px solid var(--border-color);
+    min-width: 0;
+    padding: 22px;
     border-radius: var(--radius-lg);
-    padding: 26px;
+    background: rgba(15, 23, 42, 0.82);
+    border: 1px solid var(--border-color);
     box-shadow: var(--shadow-sm);
     min-height: 400px;
 }
 
 .inbox-detail-header {
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border-color);
     margin-bottom: 16px;
+}
+
+.inbox-detail-title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.inbox-detail-title-row h2 {
+    min-width: 0;
+    margin: 0;
+    font-size: clamp(17px, 2vw, 22px);
+    line-height: 1.25;
+    color: var(--text-main);
+    overflow-wrap: anywhere;
+}
+
+.inbox-detail-date {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--accent-gold);
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.30);
+}
+
+.inbox-detail-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.meta-label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--text-muted);
+    margin-bottom: 3px;
+    font-weight: 700;
 }
 
 .inbox-detail-body {
     font-size: 14px;
-    line-height: 1.75;
-    color: #e2e8f0;
+    line-height: 1.7;
+    color: var(--text-soft);
+    overflow-wrap: anywhere;
 }
 
 /* ==========================================================================
@@ -1315,132 +1459,306 @@ body {
 .calendar-timeline-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
 }
 
 .calendar-timeline-item {
-    display: flex;
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr) auto;
     align-items: center;
-    gap: 14px;
-    padding: 10px 14px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border-color);
+    gap: 12px;
+    padding: 12px 14px;
     border-radius: var(--radius-md);
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid var(--border-color);
+    min-width: 0;
     transition: all 0.2s ease;
 }
 
 .calendar-timeline-item:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(30, 41, 59, 0.88);
+    border-color: rgba(56, 189, 248, 0.3);
 }
 
 .calendar-timeline-item.current-day {
-    border-color: var(--accent-primary);
-    background: rgba(56, 189, 248, 0.08);
-    box-shadow: 0 0 12px rgba(56, 189, 248, 0.15);
+    border-color: rgba(34, 197, 94, 0.45);
+    background: rgba(34, 197, 94, 0.08);
+    box-shadow: 0 0 14px rgba(34, 197, 94, 0.18);
+}
+
+.calendar-timeline-item .badge {
+    justify-self: end;
+    align-self: center;
+    white-space: nowrap;
 }
 
 .cal-day-date {
     display: flex;
     flex-direction: column;
     align-items: center;
-    min-width: 44px;
-    padding: 4px 8px;
-    background: rgba(0, 0, 0, 0.25);
-    border-radius: var(--radius-sm);
+    justify-content: center;
+    gap: 2px;
+    border-radius: 12px;
+    padding: 8px 6px;
+    background: rgba(255, 255, 255, 0.05);
+    min-width: 64px;
 }
 
 .cal-day-date strong {
-    font-size: 13px;
+    font-size: 12px;
     color: var(--accent-primary);
 }
 
 .cal-day-date span {
     font-size: 11px;
     color: var(--text-muted);
+    white-space: nowrap;
 }
 
 .cal-day-info {
-    flex: 1;
+    min-width: 0;
 }
 
 .cal-day-title {
     font-size: 13px;
-    font-weight: 700;
-    color: #f8fafc;
+    font-weight: 800;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .cal-day-desc {
+    margin-top: 3px;
     font-size: 12px;
     color: var(--text-muted);
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.calendar-action-bar {
+    margin-top: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.calendar-action-bar .btn {
+    flex: 1 1 180px;
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 9px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.25;
+    text-align: center;
+    white-space: normal;
 }
 
 .calendar-grid-week {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    grid-template-columns: repeat(7, minmax(130px, 1fr));
     gap: 12px;
     margin-top: 14px;
 }
 
 .calendar-day-card {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    padding: 14px;
+    position: relative;
+    min-width: 0;
+    min-height: 165px;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    text-align: center;
+    gap: 8px;
+    padding: 14px;
+    border-radius: var(--radius-md);
+    background: rgba(15, 23, 42, 0.74);
+    border: 1px solid var(--border-color);
     transition: all 0.2s ease;
-    position: relative;
 }
 
 .calendar-day-card.active-today {
-    border-color: var(--accent-primary);
-    background: rgba(56, 189, 248, 0.1);
-    box-shadow: 0 0 16px rgba(56, 189, 248, 0.25);
+    border-color: rgba(34, 197, 94, 0.45);
+    background: rgba(34, 197, 94, 0.10);
+    box-shadow: 0 0 16px rgba(34, 197, 94, 0.22);
     transform: translateY(-2px);
 }
 
 .cal-card-top {
     display: flex;
+    align-items: center;
     justify-content: space-between;
+    gap: 8px;
     width: 100%;
+}
+
+.cal-dow,
+.cal-date {
+    white-space: nowrap;
     font-size: 11px;
-    color: var(--text-muted);
-    margin-bottom: 8px;
 }
 
 .cal-dow {
-    font-weight: 700;
+    font-weight: 800;
     color: var(--accent-primary);
 }
 
+.cal-date {
+    color: var(--text-muted);
+}
+
 .cal-card-icon {
-    font-size: 28px;
-    margin: 6px 0;
+    font-size: 26px;
+    margin: 2px 0;
 }
 
 .cal-card-title {
+    font-weight: 800;
     font-size: 13px;
-    font-weight: 700;
-    color: #f8fafc;
-    margin-bottom: 4px;
+    color: var(--text-main);
+    line-height: 1.25;
 }
 
 .cal-card-desc {
-    font-size: 11px;
     color: var(--text-muted);
+    font-size: 12px;
     line-height: 1.4;
+    overflow-wrap: anywhere;
 }
 
 .cal-status-badge {
-    margin-top: 8px;
-    background: var(--accent-primary);
-    color: #fff;
-    font-size: 10px;
+    margin-top: auto;
+    align-self: flex-start;
+    border-radius: 999px;
+    padding: 4px 9px;
+    font-size: 11px;
     font-weight: 800;
-    padding: 2px 8px;
-    border-radius: 10px;
+    color: #bbf7d0;
+    background: rgba(34, 197, 94, 0.14);
+    border: 1px solid rgba(34, 197, 94, 0.30);
+    white-space: nowrap;
+}
+
+/* ==========================================================================
+   Player Role & Detail Cards
+   ========================================================================== */
+.player-detail-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.player-detail-meta {
+    min-width: 0;
+}
+
+.player-detail-rating {
+    flex: 0 0 auto;
+    text-align: right;
+}
+
+.player-detail-stars {
+    color: var(--accent-gold);
+    font-size: 18px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.player-detail-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.player-role-summary-card {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding: 14px;
+    margin-bottom: 16px;
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid var(--border-color);
+}
+
+.player-role-box {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.role-box-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    font-weight: 800;
+}
+
+.role-box-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+}
+
+.role-name {
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--accent-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.role-stars {
+    flex: 0 0 auto;
+    color: var(--accent-gold);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.role-stars-potential {
+    color: #38bdf8;
+    font-size: 14px;
+}
+
+.role-box-sub {
+    min-width: 0;
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.35;
+}
+
+.role-chip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 160px;
+    min-height: 24px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(56, 189, 248, 0.30);
+    background: rgba(56, 189, 248, 0.08);
+    color: var(--accent-primary);
+    font-size: 11px;
+    font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+}
+
+.role-chip:hover {
+    max-width: none;
 }
 
 .calendar-full-list {
@@ -2519,11 +2837,183 @@ body {
 }
 
 /* ==========================================================================
-   Responsive Breakpoints
+   Mobile Bottom Navigation & Drawer Styles
    ========================================================================== */
+.mobile-bottom-nav {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    background: rgba(10, 20, 36, 0.95);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid var(--border-color);
+    z-index: 2000;
+    justify-content: space-around;
+    align-items: center;
+    padding: 0 4px;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.mobile-nav-item {
+    background: transparent;
+    border: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    flex: 1;
+    min-height: 48px;
+    transition: all 0.2s ease;
+    position: relative;
+    user-select: none;
+}
+
+.mobile-nav-item .nav-icon {
+    font-size: 18px;
+    line-height: 1;
+}
+
+.mobile-nav-item .nav-label {
+    letter-spacing: 0.2px;
+}
+
+.mobile-nav-item:hover {
+    color: var(--text-main);
+}
+
+.mobile-nav-item.active {
+    color: var(--accent-primary);
+}
+
+.mobile-nav-item.active .nav-icon {
+    transform: scale(1.1);
+}
+
+.badge-dot {
+    position: absolute;
+    top: 6px;
+    right: 18px;
+    width: 8px;
+    height: 8px;
+    background: var(--accent-danger);
+    border-radius: 50%;
+    box-shadow: 0 0 6px var(--accent-danger);
+}
+
+/* Mobile Drawer Overlay ("Mehr") */
+.mobile-drawer-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 2600;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    animation: fadeIn 0.2s ease-out;
+}
+
+.mobile-drawer {
+    background: var(--bg-card);
+    border-top: 1px solid var(--border-color);
+    border-radius: 24px 24px 0 0;
+    padding: 20px 18px 34px 18px;
+    box-shadow: var(--shadow-card);
+    max-height: 80vh;
+    overflow-y: auto;
+    animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+}
+
+.mobile-drawer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.mobile-drawer-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #f8fafc;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mobile-drawer-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+.mobile-drawer-item {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 14px 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #f8fafc;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 52px;
+    transition: all 0.2s ease;
+    text-align: left;
+    position: relative;
+}
+
+.mobile-drawer-item:hover,
+.mobile-drawer-item:active {
+    background: rgba(56, 189, 248, 0.12);
+    border-color: var(--accent-primary);
+    transform: translateY(-1px);
+}
+
+.mobile-drawer-item.active {
+    background: rgba(56, 189, 248, 0.18);
+    border-color: var(--accent-primary);
+    color: var(--accent-primary);
+}
+
+.drawer-icon {
+    font-size: 20px;
+}
+
+.drawer-text {
+    flex: 1;
+}
+
+/* ==========================================================================
+   Responsive Breakpoints & Mobile Optimization
+   ========================================================================== */
+
+/* 1. Large Screens & Tablets Landscape (<= 1200px) */
 @media (max-width: 1200px) {
     .dashboard-grid { grid-template-columns: 1fr; }
-    .next-match-card, .table-snapshot-card, .board-card, .squad-status-card { grid-column: span 12; }
+    .next-match-card, .calendar-snapshot-card, .table-snapshot-card, .board-card, .squad-status-card { grid-column: span 12; }
     .tactics-layout { grid-template-columns: 1fr; }
     .inbox-layout { grid-template-columns: 1fr; }
     .live-match-body { grid-template-columns: 1fr; }
@@ -2532,20 +3022,306 @@ body {
     .wizard-form-grid { grid-template-columns: 1fr; }
 }
 
+/* 2. Tablets Portrait & Mobile Landscape (<= 900px) */
 @media (max-width: 900px) {
-    .main-wrapper { flex-direction: column; }
-    .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border-color); }
-    .nav-menu { flex-direction: row; overflow-x: auto; padding: 10px; }
-    .nav-item { padding: 8px 14px; font-size: 13px; white-space: nowrap; }
-    .app-header { flex-direction: column; height: auto; padding: 14px; gap: 12px; }
-    .header-left, .header-center, .header-right { width: 100%; justify-content: space-between; }
+    .main-wrapper { 
+        display: block; 
+    }
+    .sidebar { 
+        display: none !important; 
+    }
+    .mobile-bottom-nav { 
+        display: flex; 
+    }
+    .content-area { 
+        width: 100%; 
+        padding: 14px; 
+        padding-bottom: 84px; /* Freiraum für Bottom Navigation */
+    }
+
+    /* Header Anpassung */
+    .app-header {
+        flex-wrap: wrap;
+        height: auto;
+        padding: 10px 14px;
+        gap: 10px;
+    }
+    .header-left {
+        order: 1;
+        flex: 1;
+        min-width: 200px;
+    }
+    .header-center {
+        order: 2;
+        width: auto;
+    }
+    .header-right {
+        order: 3;
+        width: 100%;
+        justify-content: space-between;
+        margin-top: 4px;
+        gap: 8px;
+    }
+    .btn-advance {
+        flex: 1;
+        min-height: 44px;
+    }
+    .finance-pill, .confidence-pill {
+        min-height: 44px;
+    }
+
+    /* Tabellen Scrollbarkeit */
+    .table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin-bottom: 14px;
+    }
+    .data-table {
+        min-width: 600px;
+    }
+
+    /* Modals auf Tablets */
+    .modal-box {
+        max-width: 95vw;
+        max-height: 90vh;
+    }
+    .modal-lg, .modal-fullscreen {
+        max-width: 96vw;
+    }
 }
 
+/* 3. Smartphones Standard (<= 640px) */
 @media (max-width: 640px) {
-    .start-hero-header .start-logo-title { font-size: 32px; }
-    .start-actions-card, .start-saveinfo-card { padding: 18px; }
-    .wizard-modal-box { height: 96vh; }
-    .wizard-header, .wizard-body, .wizard-footer { padding: 14px 18px; }
-    .filter-controls-row { flex-direction: column; }
-    .cd-grid-meta { grid-template-columns: 1fr; }
+    /* Touch Targets min. 44px */
+    .btn, 
+    .styled-input, 
+    .styled-select, 
+    .filter-chip, 
+    .mobile-nav-item, 
+    .mobile-drawer-item {
+        min-height: 44px;
+    }
+
+    /* Header Compact */
+    .app-header {
+        padding: 8px 12px;
+        gap: 8px;
+    }
+    .brand-title {
+        font-size: 18px;
+    }
+    .club-badge-container {
+        padding: 4px 10px;
+    }
+    .club-name {
+        font-size: 13px;
+        max-width: 130px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .season-info-pill {
+        font-size: 11px;
+        padding: 4px 8px;
+    }
+
+    /* Startscreen */
+    .start-screen-overlay {
+        padding: 10px;
+    }
+    .start-screen-container {
+        padding: 16px 12px;
+        gap: 16px;
+    }
+    .start-hero-header .start-logo-title {
+        font-size: 28px;
+    }
+    .start-actions-card, .start-saveinfo-card {
+        padding: 16px 14px;
+    }
+
+    /* Setup Wizard Fullscreen Mobile */
+    .wizard-modal-box {
+        width: 100vw;
+        height: 100dvh;
+        max-height: 100dvh;
+        border-radius: 0;
+        margin: 0;
+    }
+    .wizard-header {
+        padding: 12px 14px;
+    }
+    .wizard-body {
+        padding: 12px;
+        overflow-y: auto;
+    }
+    .wizard-footer {
+        padding: 12px 14px;
+        position: sticky;
+        bottom: 0;
+        background: rgba(10, 20, 36, 0.98);
+        z-index: 20;
+    }
+    .wizard-steps-indicator {
+        gap: 6px;
+    }
+    .wizard-step-node {
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+    .filter-controls-row {
+        flex-direction: column;
+        gap: 8px;
+    }
+    .club-select-layout {
+        grid-template-columns: 1fr;
+        gap: 14px;
+    }
+    .club-selection-list {
+        max-height: 280px;
+    }
+    .cd-grid-meta {
+        grid-template-columns: 1fr;
+    }
+
+    /* Dashboard Mobile */
+    .dash-card {
+        padding: 16px 14px;
+    }
+    .match-preview-content {
+        flex-direction: column;
+        gap: 12px;
+        text-align: center;
+    }
+    .preview-team {
+        width: 100%;
+    }
+    .match-action-row {
+        flex-direction: column;
+        gap: 8px;
+    }
+    .match-action-row .btn {
+        width: 100%;
+    }
+    .calendar-grid-week {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .calendar-action-bar, .pane-actions {
+        flex-direction: column;
+        gap: 8px;
+    }
+    .calendar-action-bar .btn, .pane-actions .btn {
+        width: 100%;
+    }
+
+    /* Taktik & Spielfeld */
+    .soccer-pitch {
+        width: 100%;
+        min-height: 420px;
+        max-height: 520px;
+    }
+    .pitch-node {
+        min-width: 44px;
+        min-height: 44px;
+    }
+    .tactics-sidebar {
+        padding: 14px;
+    }
+
+    /* Live Match Simulation Mobile */
+    .live-match-box {
+        width: 100vw;
+        height: 100dvh;
+        max-height: 100dvh;
+        border-radius: 0;
+    }
+    .live-match-header {
+        padding: 10px 14px;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .lm-scoreboard {
+        gap: 10px;
+    }
+    .lm-score-big {
+        font-size: 26px;
+    }
+    .live-pitch-wrapper {
+        padding: 6px;
+    }
+    #livePitchCanvas {
+        width: 100%;
+        height: auto;
+        border-radius: var(--radius-sm);
+    }
+    .live-match-controls {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .live-match-controls .btn {
+        flex: 1;
+        min-width: 80px;
+    }
+
+    /* Postfach Mobile */
+    .inbox-layout {
+        grid-template-columns: 1fr;
+    }
+    .inbox-filter-tags {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding-bottom: 6px;
+        -webkit-overflow-scrolling: touch;
+    }
+    .filter-chip {
+        white-space: nowrap;
+    }
+    .inbox-detail {
+        min-height: 280px;
+        padding: 16px 14px;
+    }
+
+    /* Modals Allgemein */
+    .modal-box {
+        width: 100vw;
+        height: 100dvh;
+        max-height: 100dvh;
+        border-radius: 0;
+    }
+    .modal-header, .modal-footer {
+        padding: 12px 16px;
+    }
+    .modal-body {
+        padding: 14px;
+    }
+
+    /* Toasts */
+    .toast-container {
+        bottom: 74px; /* Über Bottom Nav */
+        right: 12px;
+        left: 12px;
+    }
+    .toast-item {
+        padding: 12px 14px;
+        font-size: 13px;
+    }
+}
+
+/* 4. Small Smartphones (<= 420px) */
+@media (max-width: 420px) {
+    .calendar-grid-week {
+        grid-template-columns: 1fr;
+    }
+    .mobile-drawer-grid {
+        grid-template-columns: 1fr;
+    }
+    .start-hero-header .start-logo-title {
+        font-size: 24px;
+    }
+    .lm-score-big {
+        font-size: 22px;
+    }
+    .brand-accent {
+        display: inline;
+    }
 }

@@ -440,6 +440,128 @@ function runWizardTests() {
         }
     });
 
+    // 6. Mobile & Responsive PWA Checks
+    test("Mobile & Responsive PWA-Prüfungen: HTML, CSS und Manifest-Integrität", () => {
+        const html = fs.readFileSync('./index.html', 'utf8');
+        const css = fs.readFileSync('./css/style.css', 'utf8');
+        const manifest = JSON.parse(fs.readFileSync('./manifest.json', 'utf8'));
+
+        // Viewport Meta
+        if (!html.includes('<meta name="viewport" content="width=device-width, initial-scale=1.0">')) {
+            throw new Error("Viewport Meta Tag fehlt oder ist nicht responsiv konfiguriert");
+        }
+
+        // Manifest Link
+        if (!html.includes('rel="manifest" href="manifest.json"')) {
+            throw new Error("Manifest ist in index.html nicht korrekt verlinkt");
+        }
+
+        // Manifest Validierung
+        if (manifest.display !== "standalone" || manifest.orientation !== "portrait-primary") {
+            throw new Error("Manifest PWA display oder orientation ungültig");
+        }
+
+        // CSS Mobile Media Queries
+        if (!css.includes("@media (max-width: 1200px)") || !css.includes("@media (max-width: 900px)") || !css.includes("@media (max-width: 640px)") || !css.includes("@media (max-width: 420px)")) {
+            throw new Error("Responsive CSS Media Queries für 1200px, 900px, 640px und 420px fehlen!");
+        }
+
+        // Horizontal Scrollable Tables & Touch Targets
+        if (!css.includes("overflow-x: auto") || !css.includes("-webkit-overflow-scrolling: touch")) {
+            throw new Error("Tabellen-Scrollbarkeit (overflow-x: auto) fehlt im CSS");
+        }
+        if (!css.includes(".mobile-bottom-nav") || !css.includes(".mobile-drawer")) {
+            throw new Error("Mobile Bottom Navigation oder Drawer CSS-Klassen fehlen");
+        }
+
+        // HTML Mobile Navigation
+        if (!html.includes('class="mobile-bottom-nav"') || !html.includes('id="mobileDrawerOverlay"')) {
+            throw new Error("Mobile Bottom Navigation oder Mobile Drawer fehlt im HTML");
+        }
+
+        // Kritische statische IDs und dynamische Hooks
+        const requiredStaticIds = [
+            "app", "startScreenOverlay", "btnStartNewGame", "btnStartContinueGame", "startFileInput",
+            "modalNewGame", "btnWizardNext", "btnWizardBack", "clubSelectionList", "clubDetailPanel",
+            "filterClubSearch", "filterClubSort", "filterClubDifficulty",
+            "pane-dashboard", "pane-squad", "pane-tactics", "pane-fixtures", "pane-calendar",
+            "pane-transfers", "pane-training", "pane-finances", "pane-stats", "pane-inbox", "pane-settings",
+            "btnDashLiveMatch", "btnDashInstantSim", "btnDashOpponentAnalysis", "btnHeaderAdvance",
+            "livePitchCanvas", "modalLiveMatch", "inboxList", "inboxDetail"
+        ];
+
+        requiredStaticIds.forEach(id => {
+            if (!html.includes(`id="${id}"`)) {
+                throw new Error(`Kritische DOM-ID '#${id}' fehlt in index.html!`);
+            }
+        });
+
+        const uiJs = fs.readFileSync('./js/ui/uiManager.js', 'utf8');
+        if (!uiJs.includes('btnAdoptClub')) {
+            throw new Error("Dynamischer Hook 'btnAdoptClub' fehlt in uiManager.js");
+        }
+
+        const requiredTabs = [
+            "dashboard", "squad", "tactics", "fixtures", "calendar",
+            "transfers", "training", "finances", "stats", "inbox", "settings"
+        ];
+
+        requiredTabs.forEach(tab => {
+            if (!html.includes(`data-tab="${tab}"`)) {
+                throw new Error(`Kritisches data-tab="${tab}" fehlt in index.html!`);
+            }
+        });
+    });
+
+    // 7. UI Layout Polish: Postfach, Rollenkarten, Dashboard-Timeline & Role-Chips
+    test("UI Layout Polish: CSS-Klassen & semantische Templates für Postfach, Timeline und Spielerrollen", () => {
+        const css = fs.readFileSync('./css/style.css', 'utf8');
+        const uiJs = fs.readFileSync('./js/ui/uiManager.js', 'utf8');
+
+        // CSS-Prüfungen
+        const requiredCssClasses = [
+            ".calendar-timeline-item",
+            ".cal-day-date",
+            ".cal-day-info",
+            ".cal-day-title",
+            ".cal-day-desc",
+            ".inbox-item-topline",
+            ".inbox-sender-wrap",
+            ".inbox-date",
+            ".inbox-detail-title-row",
+            ".inbox-detail-meta-grid",
+            ".inbox-detail-date",
+            ".player-role-summary-card",
+            ".player-role-box",
+            ".role-box-label",
+            ".role-box-main",
+            ".role-name",
+            ".role-stars",
+            ".role-chip",
+            ".player-detail-top"
+        ];
+
+        requiredCssClasses.forEach(cls => {
+            if (!css.includes(cls)) {
+                throw new Error(`CSS-Klasse '${cls}' fehlt im Stylesheet!`);
+            }
+        });
+
+        // Template-Prüfungen in uiManager.js
+        if (!uiJs.includes('class="inbox-item-topline"') || !uiJs.includes('class="inbox-sender-wrap"')) {
+            throw new Error("Postfach-Template in uiManager.js verwendet nicht die neuen Klassen .inbox-item-topline / .inbox-sender-wrap");
+        }
+        if (!uiJs.includes('class="inbox-detail-title-row"') || !uiJs.includes('class="inbox-detail-meta-grid"')) {
+            throw new Error("Postfach-Detail in uiManager.js verwendet nicht die neuen Klassen .inbox-detail-title-row / .inbox-detail-meta-grid");
+        }
+        if (!uiJs.includes('class="player-role-summary-card"') || !uiJs.includes('class="player-role-box"')) {
+            throw new Error("Spieler-Detail in uiManager.js verwendet nicht .player-role-summary-card / .player-role-box");
+        }
+        if (!uiJs.includes('class="role-chip"')) {
+            throw new Error("Kader-Tabelle in uiManager.js verwendet nicht .role-chip");
+        }
+    });
+
     console.log(`\n  Ergebnis Wizard-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Wizard-Tests fehlgeschlagen.`);
     return { passed, failed };

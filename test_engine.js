@@ -121,16 +121,61 @@ function runEngineTests() {
             throw new Error("Timeline event is missing required attributes (minute, type, text, start, end)");
         }
 
-        // LiveMatch mit derselben Timeline ablaufen lassen
+        // LiveMatch mit derselben Timeline ablaufen lassen & Geschwindigkeiten testen
         match.timeline = timeline;
         const liveMatch = new LiveMatch(match, homeClub, awayClub, state.players);
+
+        // 2D Formationen & Torwartpositionen testen
+        const homeGk = liveMatch.players2D.find(p => p.team === "home" && p.pos === "TW");
+        const awayGk = liveMatch.players2D.find(p => p.team === "away" && p.pos === "TW");
+        const homeSt = liveMatch.players2D.find(p => p.team === "home" && (p.pos === "ST" || p.pos === "LA" || p.pos === "RA"));
+        const awaySt = liveMatch.players2D.find(p => p.team === "away" && (p.pos === "ST" || p.pos === "LA" || p.pos === "RA"));
+
+        if (!homeGk || !awayGk || homeGk.baseX > 15 || awayGk.baseX < 85) {
+            throw new Error(`Torwart-Positionen im 2D-Feld fehlerhaft: Heim-TW=${homeGk?.baseX}, Auswärts-TW=${awayGk?.baseX}`);
+        }
+
+        if (homeSt && homeSt.baseX <= homeGk.baseX) {
+            throw new Error(`Heim-Stürmer (${homeSt.baseX}) steht hinter dem Torwart (${homeGk.baseX})`);
+        }
+        if (awaySt && awaySt.baseX >= awayGk.baseX) {
+            throw new Error(`Auswärts-Stürmer (${awaySt.baseX}) steht hinter dem Torwart (${awayGk.baseX})`);
+        }
+
+        // Teste dynamisches Aufrücken über das Spielfeld
+        liveMatch.ball.x = 80;
+        liveMatch.ball.y = 50;
+        liveMatch.ball.targetX = 80;
+        liveMatch.ball.targetY = 50;
+        for (let t = 0; t < 30; t++) liveMatch.updateBallAndPlayers();
+
+        if (homeSt && homeSt.x < 50) {
+            throw new Error(`Heim-Stürmer rückt bei Ball im gegnerischen Drittel nicht auf: x=${homeSt.x}`);
+        }
         
-        // Simuliere alle Ticks
-        for (let i = 0; i < 95; i++) {
-            liveMatch.minute = i;
+        liveMatch.speed = 1;
+        const slowInterval = liveMatch.getTickIntervalMs();
+        liveMatch.speed = 2;
+        const normalInterval = liveMatch.getTickIntervalMs();
+        liveMatch.speed = 4;
+        const fastInterval = liveMatch.getTickIntervalMs();
+
+        if (slowInterval <= normalInterval || normalInterval <= fastInterval) {
+            throw new Error(`LiveMatch speed intervals invalid: slow=${slowInterval}, normal=${normalInterval}, fast=${fastInterval}`);
+        }
+
+        // Simuliere schrittweise Ticks mit kontrolliertem Fortschritt
+        liveMatch.speed = 1;
+        while (!liveMatch.isFinished && liveMatch.minute < 45) {
             liveMatch.tick();
         }
-        liveMatch.finishMatch();
+
+        // Sofortmodus testen
+        liveMatch.skipToEnd();
+
+        if (!liveMatch.isFinished) {
+            throw new Error("LiveMatch did not finish after skipToEnd");
+        }
 
         if (match.homeGoals !== liveMatch.homeScore || match.awayGoals !== liveMatch.awayScore) {
             throw new Error(`LiveMatch scores (${liveMatch.homeScore}:${liveMatch.awayScore}) do not match match object (${match.homeGoals}:${match.awayGoals})`);
@@ -201,7 +246,7 @@ function runEngineTests() {
     });
 
     // 9. ScoutingEngine & PlayerRatingEngine
-    test("ScoutingEngine & PlayerRatingEngine: FM-Rating-Modell, Schätzspannen, relative Sterne und Scoutberichte", () => {
+    test("ScoutingEngine & PlayerRatingEngine: FM-Rating-Modell, Schätzspannen, relative Sterne, Rollen und Scoutberichte", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         
         // 1. PlayerRatingEngine Tests
@@ -215,14 +260,41 @@ function runEngineTests() {
         const starsLow = PlayerRatingEngine.calculateStarRating(170, { squadAverageAbility: 180 });
         if (starsHigh <= starsLow) throw new Error("Relative star rating calculation incorrect");
 
+        // Positionsgewichtung & Rollen
+        const striker = state.players.find(p => p.pos === "ST");
+        const posRating = PlayerRatingEngine.calculatePositionWeightedRating(striker, "ST");
+        if (typeof posRating !== "number" || posRating <= 0) throw new Error("calculatePositionWeightedRating failed");
+
+        const roleRes = PlayerRatingEngine.calculateRoleRating(striker, "Stoßstürmer", { squadAverageAbility: 140 });
+        if (!roleRes || !roleRes.stars || !roleRes.starsHtml) throw new Error("calculateRoleRating failed");
+
+        const bestRoles = PlayerRatingEngine.getBestRolesForPlayer(striker, { squadAverageAbility: 140 });
+        if (!bestRoles.best || !bestRoles.best.role) throw new Error("getBestRolesForPlayer failed");
+
+        // Hidden Traits
+        const traits = PlayerRatingEngine.getHiddenTraitDescriptions(striker, { knowledgeLevel: 80 });
+        if (!Array.isArray(traits)) throw new Error("getHiddenTraitDescriptions must return an array");
+
         // Visible Player Card
         const testTarget = state.players.find(p => p.clubId !== "muc");
         const cardUnknown = PlayerRatingEngine.calculateVisiblePlayerCard(testTarget, { userClubId: "muc" });
         if (typeof cardUnknown.visibleOvr !== "string" || !cardUnknown.visibleOvr.includes("-")) {
             throw new Error("Unknown player should have an estimated OVR range");
         }
+        if (!cardUnknown.bestRole || !cardUnknown.starsCaHtml) {
+            throw new Error("Player card missing bestRole or starsCaHtml");
+        }
 
-        // 2. ScoutingEngine Assignment & Report
+        // 2. Gezieltes Scouten eines Spielers (Gegner / Transfermarkt)
+        const scoutTargetRes = ScoutingEngine.scoutPlayer(state, testTarget.id, { source: "opponent_analysis", notify: true });
+        if (!scoutTargetRes.success || scoutTargetRes.knowledgeLevel < 50) {
+            throw new Error("scoutPlayer failed to increase knowledge");
+        }
+        if (!scoutTargetRes.report || !scoutTargetRes.report.starsCa) {
+            throw new Error("scoutPlayer report missing starsCa");
+        }
+
+        // 3. ScoutingEngine Assignment & Report
         const scoutRes = ScoutingEngine.startAssignment(state, { position: "ST", maxAge: 24, minOverall: 75 });
         if (!scoutRes.success) throw new Error("Scouting assignment failed: " + scoutRes.error);
         ScoutingEngine.processWeeklyScouting(state);
@@ -296,6 +368,9 @@ function runEngineTests() {
         const oppReport = OpponentAnalysisEngine.generateReport(state, "dor", "muc");
         if (!oppReport || oppReport.opponentClubId !== "dor" || !Array.isArray(oppReport.strengths) || !oppReport.recommendation) {
             throw new Error("OpponentAnalysisEngine generateReport invalid");
+        }
+        if (!Array.isArray(oppReport.keyPlayers) || oppReport.keyPlayers.length === 0 || !oppReport.keyPlayers[0].starsCaHtml) {
+            throw new Error("OpponentAnalysisEngine keyPlayers missing star ratings");
         }
     });
 

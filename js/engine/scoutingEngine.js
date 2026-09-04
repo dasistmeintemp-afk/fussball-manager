@@ -72,13 +72,17 @@ const ScoutingEngine = {
         const shuffled = pool.sort(() => 0.5 - Math.random()).slice(0, 3);
 
         shuffled.forEach(player => {
-            const report = this.generatePlayerReport(player);
+            const report = this.generatePlayerReport(player, state);
             state.scouting.reports.unshift(report);
         });
 
         // Nachricht senden
-        if (typeof NewsEngine !== 'undefined') {
-            NewsEngine.addMessage(state, "scouting", {
+        const newsEng = (typeof NewsEngine !== 'undefined' && NewsEngine) 
+            ? NewsEngine 
+            : ((typeof window !== 'undefined' && window.NewsEngine) ? window.NewsEngine : null);
+
+        if (newsEng && typeof newsEng.addMessage === 'function') {
+            newsEng.addMessage(state, "scouting", {
                 title: "Scouting-Auftrag abgeschlossen",
                 sender: "Chefscout",
                 text: `Unser Scouting-Team hat die Beobachtung für die Position ${assignment.position} abgeschlossen und ${shuffled.length} vielversprechende Spielerberichte vorgelegt.`,
@@ -88,16 +92,99 @@ const ScoutingEngine = {
     },
 
     /**
+     * Gezieltes Scouten eines konkreten Spielers (aus Gegneranalyse, Transfermarkt, Kader, Spielbericht)
+     */
+    scoutPlayer(state, playerId, options = {}) {
+        if (!state || !Array.isArray(state.players)) {
+            return { success: false, error: "Ungültiger Spielstand." };
+        }
+
+        const player = state.players.find(p => p.id === playerId || String(p.id) === String(playerId));
+        if (!player) {
+            return { success: false, error: "Spieler nicht gefunden." };
+        }
+
+        const source = options.source || "transfer_market";
+        const scoutQuality = options.scoutQuality || 75;
+        const amount = options.amount || (source === "opponent_analysis" ? 35 : (source === "quick" ? 25 : 40));
+
+        this.increaseKnowledge(player, amount, scoutQuality);
+        player.scoutingKnowledge.lastScoutedDate = state.currentDate || "Aktuell";
+
+        const report = this.generatePlayerReport(player, state, options);
+
+        if (!state.scouting) state.scouting = { assignments: [], reports: [], shortlist: [] };
+        if (!Array.isArray(state.scouting.reports)) state.scouting.reports = [];
+
+        // Vorherige Berichte für diesen Spieler aktualisieren oder anheften
+        const existingIdx = state.scouting.reports.findIndex(r => String(r.playerId) === String(player.id));
+        if (existingIdx !== -1) {
+            state.scouting.reports[existingIdx] = report;
+        } else {
+            state.scouting.reports.unshift(report);
+        }
+
+        if (options.notify) {
+            const newsEng = (typeof NewsEngine !== 'undefined' && NewsEngine) 
+                ? NewsEngine 
+                : ((typeof window !== 'undefined' && window.NewsEngine) ? window.NewsEngine : null);
+            if (newsEng && typeof newsEng.addMessage === 'function') {
+                newsEng.addMessage(state, "scouting", {
+                    title: `Scoutbericht: ${player.name}`,
+                    sender: "Scouting-Abteilung",
+                    text: `Unser Scout hat ${player.name} (${player.pos}, ${player.age} Jahre) analysiert. Aktuelle Einschätzung: ${report.starsCa} Sterne (${report.abilityLabel}).`,
+                    priority: "normal"
+                });
+            }
+        }
+
+        return {
+            success: true,
+            report,
+            player,
+            knowledgeLevel: player.scoutingKnowledge.knowledgeLevel
+        };
+    },
+
+    /**
+     * Erhöht das Scouting-Wissen über einen Spieler
+     */
+    increaseKnowledge(player, amount = 25, scoutQuality = 70) {
+        if (!player.scoutingKnowledge) {
+            player.scoutingKnowledge = { known: false, knowledgeLevel: 25, accuracy: 25, reportsCount: 0 };
+        }
+        const effectiveGain = Math.round(amount * (scoutQuality / 70));
+        player.scoutingKnowledge.reportsCount = (player.scoutingKnowledge.reportsCount || 0) + 1;
+        player.scoutingKnowledge.knowledgeLevel = Math.min(95, (player.scoutingKnowledge.knowledgeLevel || 25) + effectiveGain);
+        player.scoutingKnowledge.accuracy = player.scoutingKnowledge.knowledgeLevel;
+        return player.scoutingKnowledge;
+    },
+
+    /**
+     * Ermittelt den aktuellen Wissensstand zu einem Spieler
+     */
+    getScoutingKnowledge(player, userClubId = null) {
+        if (!player) return { known: false, knowledgeLevel: 0, accuracy: 0 };
+        const isUserPlayer = player.clubId && userClubId && player.clubId === userClubId;
+        if (isUserPlayer) {
+            return { known: true, knowledgeLevel: 95, accuracy: 95, reportsCount: 10 };
+        }
+        return player.scoutingKnowledge || { known: false, knowledgeLevel: 25, accuracy: 25, reportsCount: 0 };
+    },
+
+    /**
      * Erstellt einen detaillierten Spieler-Scoutbericht mit Schätzspannen, Konfidenz und Stärken/Schwächen
      */
-    generatePlayerReport(player, state = null) {
-        // Spieler-Scouting-Knowledge anheben
+    generatePlayerReport(player, state = null, options = {}) {
+        // Spieler-Scouting-Knowledge anheben falls nicht vorhanden
         if (!player.scoutingKnowledge) {
             player.scoutingKnowledge = { known: false, knowledgeLevel: 25, accuracy: 25, reportsCount: 0 };
         }
         player.scoutingKnowledge.reportsCount = (player.scoutingKnowledge.reportsCount || 0) + 1;
-        player.scoutingKnowledge.knowledgeLevel = Math.min(95, (player.scoutingKnowledge.knowledgeLevel || 25) + 30);
-        player.scoutingKnowledge.accuracy = player.scoutingKnowledge.knowledgeLevel;
+        if (!options.skipGain) {
+            player.scoutingKnowledge.knowledgeLevel = Math.min(95, (player.scoutingKnowledge.knowledgeLevel || 25) + (options.amount || 25));
+            player.scoutingKnowledge.accuracy = player.scoutingKnowledge.knowledgeLevel;
+        }
         player.scoutingKnowledge.lastScoutedDate = state ? state.currentDate : "Aktuell";
 
         const ratingEngine = (typeof PlayerRatingEngine !== 'undefined' && PlayerRatingEngine)
@@ -136,6 +223,9 @@ const ScoutingEngine = {
         if (player.defense <= 50 && player.pos !== 'ST' && player.pos !== 'TW') weaknesses.push("Mäßiges Defensivverhalten");
         if (weaknesses.length === 0) weaknesses.push("Ausbaufähiges Kopfballspiel");
 
+        const scoutNames = ["Karl Weber", "Markus Becker", "Sven Lindemann", "Christoph Baum", "Jürgen Schmidt"];
+        const scoutName = options.scoutName || scoutNames[Math.abs(Number(player.id || 0)) % scoutNames.length];
+
         return {
             id: "rep_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
             playerId: player.id,
@@ -143,11 +233,17 @@ const ScoutingEngine = {
             clubId: player.clubId,
             position: player.pos,
             age: player.age,
+            scoutName: scoutName,
+            source: options.source || "allgemein",
             confidence: conf,
             estimatedOverall: estOvr,
             estimatedPotential: estPot,
             starsCa: card ? card.starsCa : 3.0,
             starsPa: card ? card.starsPa : 3.5,
+            starsCaHtml: card ? card.starsCaHtml : "★★★☆☆",
+            starsPaHtml: card ? card.starsPaHtml : "★★★★☆",
+            bestRole: card ? card.bestRole : { role: "Allrounder", stars: 3.0, starsHtml: "★★★☆☆" },
+            alternativeRole: card ? card.alternativeRole : null,
             abilityLabel: card ? card.abilityLabel : "Ligaspieler",
             potentialLabel: card ? card.potentialLabel : "Entwicklungspotenzial",
             strengths: strengths,
@@ -157,6 +253,7 @@ const ScoutingEngine = {
             actualPotential: player.pot,
             marketValueFormatted: card ? card.visibleValueText : ((typeof Formatters !== 'undefined') ? Formatters.formatMoney(player.value, true) : `${player.value} €`),
             recommendation: recommendation,
+            summary: `Spieler mit ${card ? card.abilityLabel : "guter Qualität"}. Empfohlene Hauptrolle: ${card?.bestRole?.role || "Stammspieler"}.`,
             date: state ? state.currentDate : `Saison ${player.season || 1}`
         };
     }

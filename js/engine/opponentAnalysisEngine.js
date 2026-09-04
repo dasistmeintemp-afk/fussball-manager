@@ -29,10 +29,56 @@ const OpponentAnalysisEngine = {
         const attackRating = attackers.length ? Math.round(attackers.reduce((s, p) => s + p.overall, 0) / attackers.length) : avgOverall;
         const gkRating = goalkeepers.length ? goalkeepers[0].overall : avgOverall;
 
-        // Top-Spieler ermitteln
-        const sortedPlayers = [...allPlayers].sort((a, b) => b.overall - a.overall);
+        // Top-Spieler ermitteln mit Scouting- & Sterne-Analyse
+        const ratingEngine = (typeof PlayerRatingEngine !== 'undefined' && PlayerRatingEngine) 
+            ? PlayerRatingEngine 
+            : ((typeof window !== 'undefined' && window.PlayerRatingEngine) ? window.PlayerRatingEngine : (typeof require !== 'undefined' ? require('./playerRatingEngine.js').PlayerRatingEngine : null));
+
+        const userSquad = userClub ? state.players.filter(p => userClub.playerIds.includes(p.id)) : [];
+        const userSquadAvgCa = userSquad.length 
+            ? Math.round(userSquad.reduce((s, p) => s + (p.trueCurrentAbility || (p.overall * 2)), 0) / userSquad.length)
+            : 140;
+
+        const sortedPlayers = [...allPlayers].sort((a, b) => (b.trueCurrentAbility || b.overall * 2) - (a.trueCurrentAbility || a.overall * 2));
         const topScorer = [...allPlayers].sort((a, b) => (b.stats?.goals || 0) - (a.stats?.goals || 0))[0];
         const topAssister = [...allPlayers].sort((a, b) => (b.stats?.assists || 0) - (a.stats?.assists || 0))[0];
+
+        const evaluatedKeyPlayers = sortedPlayers.slice(0, 3).map(p => {
+            let card = null;
+            if (ratingEngine && typeof ratingEngine.calculateVisiblePlayerCard === 'function') {
+                card = ratingEngine.calculateVisiblePlayerCard(p, {
+                    userClubId: userClubId,
+                    userSquadAvgAbility: userSquadAvgCa,
+                    leagueDataCoverage: 85
+                });
+            }
+            const starsCa = card ? card.starsCa : 3.0;
+            const starsCaHtml = card ? card.starsCaHtml : "★★★☆☆";
+            const starsPaHtml = card ? card.starsPaHtml : "★★★★☆";
+            const abilityLabel = card ? card.abilityLabel : "Stammspieler";
+            const bestRole = card ? card.bestRole : { role: "Allrounder", stars: 3.0, starsHtml: "★★★☆☆" };
+            const confidence = card ? card.confidence : (p.scoutingKnowledge?.knowledgeLevel || 25);
+            const danger = starsCa >= 4.0 ? "Hoch" : (starsCa >= 3.0 ? "Mittel" : "Gering");
+            const dangerBadgeClass = starsCa >= 4.0 ? "badge-danger" : (starsCa >= 3.0 ? "badge-warning" : "badge-info");
+
+            return {
+                id: p.id,
+                name: p.name,
+                pos: p.pos,
+                age: p.age,
+                overall: p.overall,
+                starsCa,
+                starsCaHtml,
+                starsPaHtml,
+                abilityLabel,
+                bestRole,
+                confidence,
+                danger,
+                dangerBadgeClass,
+                goals: p.stats?.goals || 0,
+                assists: p.stats?.assists || 0
+            };
+        });
 
         // Formkurve
         const form = opponent.form || ["-", "-", "-", "-", "-"];
@@ -131,14 +177,7 @@ const OpponentAnalysisEngine = {
             gkRating: gkRating,
             likelyFormation: opponent.formation || "4-4-2",
             tacticalTrend: tacticalTrend,
-            keyPlayers: sortedPlayers.slice(0, 3).map(p => ({
-                id: p.id,
-                name: p.name,
-                pos: p.pos,
-                overall: p.overall,
-                goals: p.stats?.goals || 0,
-                assists: p.stats?.assists || 0
-            })),
+            keyPlayers: evaluatedKeyPlayers,
             topScorer: topScorer && (topScorer.stats?.goals || 0) > 0 ? {
                 name: topScorer.name,
                 goals: topScorer.stats.goals

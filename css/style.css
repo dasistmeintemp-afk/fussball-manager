@@ -4028,3 +4028,269 @@ body {
     padding: 14px 4px;
     text-align: center;
 }
+
+/* ============================================================
+   Filterleisten & Handy-Tauglichkeit der Tabellen
+   ============================================================ */
+
+/* Positionsfilter im Kader: Chips statt weißer Standardknöpfe */
+.filter-group {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.btn.filter-btn {
+    background: rgba(30, 41, 59, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--text-muted);
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.btn.filter-btn:hover {
+    border-color: rgba(56, 189, 248, 0.6);
+    color: #e2e8f0;
+}
+
+.btn.filter-btn.active {
+    background: var(--accent-primary, #38bdf8);
+    border-color: var(--accent-primary, #38bdf8);
+    color: #04121f;
+}
+
+@media (max-width: 900px) {
+    /* Überschrift und Filter untereinander statt nebeneinander */
+    .pane-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+    .pane-header h2 { font-size: 20px; }
+
+    .pane-actions { width: 100%; }
+
+    /* Filterchips wandern in eine wischbare Zeile */
+    .filter-group {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding-bottom: 2px;
+    }
+    .filter-group::-webkit-scrollbar { display: none; }
+}
+
+@media (max-width: 768px) {
+    /*
+     * Auf dem Telefon zeigen die großen Tabellen nur die Spalten, die man
+     * unterwegs wirklich braucht. Alles Weitere steht in den Spielerdetails,
+     * die ein Tippen auf die Zeile öffnet.
+     *
+     * Kader: Status, Name, Position, Qualität, Fitness
+     */
+    #pane-squad .data-table th:nth-child(4),   /* Alter */
+    #pane-squad .data-table td:nth-child(4),
+    #pane-squad .data-table th:nth-child(6),   /* Potenzial */
+    #pane-squad .data-table td:nth-child(6),
+    #pane-squad .data-table th:nth-child(7),   /* Rolle */
+    #pane-squad .data-table td:nth-child(7),
+    #pane-squad .data-table th:nth-child(9),   /* Zufriedenheit */
+    #pane-squad .data-table td:nth-child(9),
+    #pane-squad .data-table th:nth-child(10),  /* Form */
+    #pane-squad .data-table td:nth-child(10),
+    #pane-squad .data-table th:nth-child(11),  /* Marktwert */
+    #pane-squad .data-table td:nth-child(11),
+    #pane-squad .data-table th:nth-child(12),  /* Gehalt */
+    #pane-squad .data-table td:nth-child(12),
+    #pane-squad .data-table th:nth-child(13),  /* Vertrag */
+    #pane-squad .data-table td:nth-child(13),
+    #pane-squad .data-table th:nth-child(14),  /* Aktionsknopf */
+    #pane-squad .data-table td:nth-child(14) {
+        display: none;
+    }
+
+    /* Tabelle: Spieltag, Siege, Unentschieden, Niederlagen und Form ausblenden */
+    #viewStandings .data-table th:nth-child(4),
+    #viewStandings .data-table td:nth-child(4),
+    #viewStandings .data-table th:nth-child(5),
+    #viewStandings .data-table td:nth-child(5),
+    #viewStandings .data-table th:nth-child(6),
+    #viewStandings .data-table td:nth-child(6),
+    #viewStandings .data-table th:nth-child(10),
+    #viewStandings .data-table td:nth-child(10) {
+        display: none;
+    }
+
+    /* Trainingsbericht: Tageslast und Entwicklung sind Feinheiten für den PC */
+    #trainingReportBody tr td:nth-child(5),
+    #pane-training .compact-table th:nth-child(5),
+    #trainingReportBody tr td:nth-child(8),
+    #pane-training .compact-table th:nth-child(8) {
+        display: none;
+    }
+
+    /* Tabellen dürfen notfalls waagerecht gescrollt werden statt zu brechen */
+    .table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .data-table, .compact-table { font-size: 12px; }
+    .data-table th, .data-table td { padding: 8px 6px; }
+
+    /* Ein Hinweis, dass hinter der Zeile mehr steckt */
+    .data-table tbody tr.row-clickable td:first-child { position: relative; }
+}
+
+@media (max-width: 640px) {
+    /* Kopfzeile kompakter: auf dem Telefon zählt jeder Pixel Höhe */
+    .app-header { padding: 6px 10px; }
+    .header-stats-group { gap: 6px; }
+    .header-stat-box { padding: 4px 8px; font-size: 11px; }
+    .header-advance-btn { padding: 8px 12px; font-size: 13px; }
+
+    /* Verhandlungen und Ansprachen bleiben bedienbar */
+    .negotiation-inputs { grid-template-columns: 1fr; }
+    .team-talk-option { padding: 10px 12px; }
+    .tt-icon { font-size: 19px; }
+    .attention-card { grid-column: 1 / -1; }
+}
+
+.squad-role-hint { font-size: 11px; color: var(--text-muted); }
+.squad-ability-hint { font-size: 10px; color: var(--text-muted); }
+
+@media (max-width: 768px) {
+    /*
+     * Auf dem Telefon zählt jede Spalte. Zusatzangaben, die auch in den
+     * Spielerdetails stehen, treten hier zurück, damit die fünf wichtigen
+     * Spalten ohne Wischen nebeneinander passen.
+     */
+    .squad-role-hint,
+    .squad-ability-hint { display: none; }
+
+    #pane-squad .data-table .mini-bar { display: none; }
+
+    #pane-squad .data-table td {
+        padding: 8px 4px;
+        white-space: nowrap;
+    }
+    /* Überschriften dürfen umbrechen - sonst diktiert "Aktuelle Qualität"
+       die Spaltenbreite und die Tabelle passt nie auf den Bildschirm. */
+    #pane-squad .data-table th {
+        padding: 8px 4px;
+        white-space: normal;
+        line-height: 1.2;
+        font-size: 10px;
+    }
+
+    #pane-squad .data-table td:nth-child(2) {
+        white-space: normal;
+        line-height: 1.25;
+    }
+}
+
+@media (max-width: 768px) {
+    /*
+     * Die allgemeine Mindestbreite von 600px erzwang auch dort Wischen, wo
+     * die Tabelle längst auf den Bildschirm passt. Wo Spalten ausgeblendet
+     * sind, darf sie sich wieder auf die Bildschirmbreite legen.
+     */
+    #pane-squad .data-table,
+    #viewStandings .data-table,
+    #pane-training .compact-table {
+        min-width: 0;
+        width: 100%;
+    }
+}
+
+@media (max-width: 768px) {
+    /* Kader: kompaktere Statusmarke schafft den letzten Platz */
+    #pane-squad .data-table td:first-child span {
+        font-size: 10px;
+        padding: 3px 7px;
+    }
+    #pane-squad .data-table .pos-tag { padding: 2px 4px; font-size: 10px; }
+
+    /* Trainingsbericht: auch die Spielschärfe tritt zurück, die
+       Einschätzung darf umbrechen statt die Tabelle zu sprengen */
+    #trainingReportBody tr td:nth-child(6),
+    #pane-training .compact-table th:nth-child(6) {
+        display: none;
+    }
+    #pane-training .compact-table th,
+    #pane-training .compact-table td {
+        padding: 7px 4px;
+        font-size: 11px;
+    }
+    #trainingReportBody tr td:last-child {
+        white-space: normal;
+        line-height: 1.25;
+        min-width: 90px;
+    }
+    #pane-training .compact-table .mini-bar { display: none; }
+}
+
+@media (max-width: 768px) {
+    /* Die Sternebewertung ist die breiteste Spalte. Kleiner gesetzt bleibt
+       sie lesbar, gibt aber dem Namen den Platz zurück. */
+    #pane-squad .data-table td:nth-child(5),
+    #pane-squad .data-table td:nth-child(5) .star-rating,
+    #pane-squad .data-table td:nth-child(5) span {
+        font-size: 10px !important;
+        letter-spacing: -1px;
+    }
+    #pane-squad .data-table td:nth-child(2) { min-width: 92px; }
+}
+
+@media (max-width: 640px) {
+    /*
+     * Die Kopfzeile belegte auf dem Telefon fast ein Drittel des Bildschirms,
+     * weil Kontostand, Vorstandsbalken und Spieltagsknopf in zwei Reihen
+     * umbrachen. Auf dem Handy zählt jede Zeile für das Spiel selbst.
+     */
+    .header-right {
+        gap: 6px;
+        flex-wrap: nowrap;
+    }
+
+    .finance-pill {
+        padding: 4px 8px;
+        gap: 4px;
+    }
+    .finance-pill .fin-val { font-size: 12px; white-space: nowrap; }
+    .finance-pill .fin-sub { display: none; }   /* Transferbudget steht im Finanzreiter */
+
+    .confidence-pill { padding: 4px 8px; gap: 5px; }
+    .confidence-pill .conf-bar-wrap { width: 42px; }
+    .confidence-pill .conf-val { font-size: 11px; }
+
+    .btn-advance {
+        padding: 8px 12px;
+        font-size: 12px;
+        white-space: nowrap;
+        min-height: 40px;
+    }
+    /* Der Pfeil trägt die Aussage, der lange Text darf weichen */
+    .btn-advance .btn-arrow { font-size: 14px; }
+}
+
+@media (max-width: 420px) {
+    .finance-pill .fin-icon,
+    .confidence-pill .conf-icon { display: none; }
+    .btn-advance span:not(.btn-arrow) { display: none; }
+    .btn-advance::after {
+        content: "Spieltag";
+        font-weight: 700;
+    }
+}
+
+@media (max-width: 420px) {
+    /* Auf sehr schmalen Geräten steht der Schwierigkeitsgrad über den
+       rechten Rand hinaus - er steht ohnehin im Spielstand-Reiter. */
+    .difficulty-tag,
+    #headerDifficulty { display: none; }
+}

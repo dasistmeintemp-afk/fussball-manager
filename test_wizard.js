@@ -658,6 +658,64 @@ function runWizardTests() {
         if (suche.length !== 16) throw new Error(`Suche nach der Liga liefert ${suche.length} Treffer`);
     });
 
+    // Installation auf dem Telefon: Manifest, Symbole und Offline-Vorrat
+    test("PWA: Manifest, Symbole und Offline-Vorrat sind vollständig", () => {
+        const manifest = JSON.parse(fs.readFileSync('./manifest.json', 'utf8'));
+
+        ["name", "short_name", "start_url", "display", "icons"].forEach(feld => {
+            if (!manifest[feld]) throw new Error(`Im Manifest fehlt ${feld}`);
+        });
+        if (manifest.display !== "standalone") {
+            throw new Error(`display ist "${manifest.display}" - zum Startbildschirm gehört "standalone"`);
+        }
+
+        // Jedes angegebene Symbol muss es auch geben, sonst schlägt
+        // "Zum Startbildschirm hinzufügen" wortlos fehl
+        if (manifest.icons.length === 0) throw new Error("Das Manifest nennt keine Symbole");
+        manifest.icons.forEach(icon => {
+            if (!fs.existsSync('./' + icon.src)) {
+                throw new Error(`Das Manifest verweist auf ${icon.src}, die Datei fehlt aber`);
+            }
+        });
+        if (!manifest.icons.some(i => i.sizes === "512x512")) {
+            throw new Error("Es fehlt ein 512x512-Symbol für den Startbildschirm");
+        }
+        if (!manifest.icons.some(i => (i.purpose || "").includes("maskable"))) {
+            throw new Error("Es fehlt ein maskierbares Symbol für Android");
+        }
+
+        // iOS wertet das Manifest nur teilweise aus und braucht eigene Angaben
+        const html = fs.readFileSync('./index.html', 'utf8');
+        [
+            ['meta name="viewport"', "Viewport-Angabe"],
+            ['rel="manifest"', "Verweis auf das Manifest"],
+            ['name="apple-mobile-web-app-capable"', "iOS-Vollbildangabe"],
+            ['rel="apple-touch-icon"', "iOS-Startbildschirmsymbol"],
+            ['name="theme-color"', "Farbe der Statusleiste"]
+        ].forEach(([schnipsel, was]) => {
+            if (!html.includes(schnipsel)) throw new Error(`In index.html fehlt die ${was}`);
+        });
+
+        // Der Offline-Vorrat muss jede Datei enthalten, die die Seite lädt
+        const sw = fs.readFileSync('./service-worker.js', 'utf8');
+        const geladen = [
+            ...[...html.matchAll(/<script src="(js\/[^"]+)"><\/script>/g)].map(m => m[1]),
+            ...[...html.matchAll(/<link rel="stylesheet" href="([^"]+)"/g)].map(m => m[1])
+        ];
+        if (geladen.length < 25) throw new Error(`Nur ${geladen.length} Dateien in index.html gefunden`);
+
+        const fehlend = geladen.filter(datei => !sw.includes('"./' + datei + '"'));
+        if (fehlend.length > 0) {
+            throw new Error(`Ohne Netz fehlen diese Dateien: ${fehlend.join(", ")}`);
+        }
+
+        manifest.icons.forEach(icon => {
+            if (!sw.includes('"./' + icon.src + '"')) {
+                throw new Error(`${icon.src} fehlt im Offline-Vorrat`);
+            }
+        });
+    });
+
     console.log(`\n  Ergebnis Wizard-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Wizard-Tests fehlgeschlagen.`);
     return { passed, failed };

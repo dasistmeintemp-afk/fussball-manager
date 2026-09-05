@@ -6,6 +6,8 @@ Ein leichtgewichtiger, detailreicher und vollständig spielbarer **Fußballmanag
 
 ## 🚀 Spiel starten & Spielanleitung
 
+> 📱 **Auf dem Handy spielen?** Siehe [Auf dem Smartphone spielen](#-auf-dem-smartphone-spielen) weiter unten – auf dem Telefon reicht ein Doppelklick auf `index.html` nicht, dafür lässt sich das Spiel dort als App installieren und läuft dann offline.
+
 ### 1. Spiel starten (Keine Installation nötig!)
 * **Einfacher Doppelklick:** Öffne die Datei **`index.html`** in einem modernen Webbrowser (Chrome, Firefox, Safari, Edge).
 * **Oder via lokalem Webserver:**
@@ -102,12 +104,6 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 
 > **Warum Ecken weiterhin nur aus der Timeline kommen:** Alle zählbaren Ereignisse (Tore, Schüsse, Karten, Fouls, Ecken) stammen ausschließlich aus der vorab erzeugten Timeline. Nur so zeigt eine sofort berechnete Partie exakt dieselben Zahlen wie eine im 2D-Modus verfolgte. Der Spielfluss erzeugt deshalb nur Einwürfe und Abstöße – Ereignisse, die in keiner Statistik auftauchen.
 
-### 4. 🔄 Transfersystem, Scouting & Verträge
-- **Transfermarkt mit Suchfiltern:** Nach Position, Stärke, Potenzial und Preisklasse filtern.
-- **Vertragsverlängerungen (`ContractEngine`):** Individuelle Gehaltsforderungen, Rollenabsprachen und Vertragslaufzeiten direkt im Spielermenü verhandeln.
-- **Scouting-Zentrale (`ScoutingEngine`):** Scouts für gezielte Positionen, Altersklassen und Mindeststärken entsenden und detaillierte Spielerberichte erhalten.
-- **KI-Manager (`AIManagerEngine`):** KI-Vereine optimieren vor jedem Spieltag ihre Aufstellung und unterbreiten Angebote für deine Stars.
-
 ### 3b. 🗣️ Kabinenansprache & Pressekonferenz (`ManagerEngine`)
 Ein Manager verwaltet keine Tabellen, er redet mit Leuten.
 
@@ -125,6 +121,12 @@ Jeder Spieler reagiert eigen: Temperament verstärkt jede Ansprache, Professiona
 
 ### 3c. 📌 Der Schreibtisch
 Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit sortiert, ein Klick springt in den zuständigen Reiter: unvollständige Startelf, Verhandlungen mit uns am Zug, Ausfälle, überlastete Spieler, auslaufende Verträge, unzufriedene Spieler, ungelesene Post.
+
+### 4. 🔄 Transfersystem, Scouting & Verträge
+- **Transfermarkt mit Suchfiltern:** Nach Position, Stärke, Potenzial und Preisklasse filtern.
+- **Vertragsverlängerungen (`ContractEngine`):** Individuelle Gehaltsforderungen, Rollenabsprachen und Vertragslaufzeiten direkt im Spielermenü verhandeln.
+- **Scouting-Zentrale (`ScoutingEngine`):** Scouts für gezielte Positionen, Altersklassen und Mindeststärken entsenden und detaillierte Spielerberichte erhalten.
+- **KI-Manager (`AIManagerEngine`):** KI-Vereine optimieren vor jedem Spieltag ihre Aufstellung und unterbreiten Angebote für deine Stars.
 
 ### 4b. 🤝 Verhandlungen mit Vereinen und Beratern (`NegotiationEngine`)
 Ein Transfer ist kein Knopfdruck mehr, sondern ein Vorgang über mehrere Tage:
@@ -213,7 +215,9 @@ Eine komplette Welt mit über 4300 Spielern belegt als gewöhnliches JSON knapp 
 ```plain text
 untitled/
 ├── index.html                  # Hauptoberfläche & Responsive Shell
-├── manifest.json               # PWA-Web-App-Manifest
+├── manifest.json               # PWA-Manifest (Name, Symbole, Vollbildmodus)
+├── icon-192.png                # App-Symbol für den Startbildschirm
+├── icon-512.png                # App-Symbol in hoher Auflösung (auch maskierbar)
 ├── service-worker.js           # Offline-Caching & PWA Service Worker
 ├── css/
 │   └── style.css               # Modernes Dark-Mode UI Theme
@@ -270,22 +274,86 @@ untitled/
 
 ---
 
-## 📱 Auf dem Smartphone / Tablet spielen (Mobile & PWA)
+## 📱 Auf dem Smartphone spielen
 
-FM PRO ist vollständig responsive und speziell für Smartphones und Tablets optimiert:
+### Die kurze Antwort auf „einfach index.html doppelklicken?"
 
-1. **Im mobilen Browser öffnen:**
-   - Öffne das gehostete Spiel oder deinen lokalen Server auf deinem Smartphone (z. B. Chrome für Android oder Safari für iOS).
-2. **Als App auf dem Homescreen installieren (PWA):**
-   - **Android / Google Chrome:** Tippe oben rechts auf das Menü (`⋮`) -> **„Zum Startbildschirm hinzufügen“** bzw. **„App installieren“**.
-   - **iPhone / Apple Safari:** Tippe unten auf das Teilen-Symbol (`⎙` / Pfeil nach oben) -> **„Zum Home-Bildschirm“**.
-3. **App-Feeling & Touch-Optimierung:**
-   - Startet im Vollbildmodus ohne Browserleisten (`standalone`).
-   - Touch-optimierte **Bottom Navigation** mit Schnellzugriff auf *Dashboard*, *Kader*, *Taktik*, *Kalender* und das *Mehr*-Menü.
-   - Alle Tabellen (Kader, Liga, Transfers) sind mobil horizontal wischbar (`touch-scroll`).
-   - Modale, Taktik-Aufstellungsfeld und 2D-Live-Simulation passen sich dynamisch an jede Displaygröße (von 375px bis 1200px+) an.
-4. **Offline & Speichern:**
-   - Spielstände werden lokal auf deinem Smartphone im Browser gespeichert und können jederzeit als JSON exportiert oder importiert werden.
+**Auf dem Handy geht das leider nicht.** Am PC lädt der Browser bei einem Doppelklick auf `index.html` auch die 39 JavaScript-Dateien und das Stylesheet aus dem Ordner daneben. Auf dem Telefon ist genau das gesperrt: Android Chrome und iOS Safari erlauben einer lokal geöffneten HTML-Datei nicht, ihre Nachbardateien nachzuladen – die Seite bliebe schwarz. Das ist eine Sicherheitsentscheidung der Browser, keine Eigenheit dieses Projekts.
+
+Der Ersatz ist aber genauso bequem und muss nur **einmal** eingerichtet werden. Danach liegt das Spiel als Symbol auf dem Startbildschirm und läuft **auch ohne Internet**.
+
+---
+
+### Weg 1: Einmal veröffentlichen, dann für immer auf dem Startbildschirm ⭐
+
+Das ist der empfohlene Weg. GitHub stellt das Projekt kostenlos als Webseite bereit, das Handy installiert es als App.
+
+**Einmalig am PC (etwa zwei Minuten):**
+
+1. Repository auf GitHub öffnen → **Settings** → links **Pages**
+2. Unter *Build and deployment* → *Source*: **Deploy from a branch**
+3. Branch: **`master`**, Ordner: **`/ (root)`** → **Save**
+4. Eine Minute warten, dann steht oben auf derselben Seite die Adresse:
+   `https://<dein-benutzername>.github.io/fussball-manager/`
+
+**Einmalig auf dem Handy:**
+
+| | |
+|---|---|
+| **Android (Chrome)** | Adresse öffnen → Menü `⋮` → **„App installieren"** bzw. **„Zum Startbildschirm hinzufügen"** |
+| **iPhone (Safari)** | Adresse öffnen → Teilen-Symbol `⎙` unten → **„Zum Home-Bildschirm"** |
+
+> Auf dem iPhone muss es **Safari** sein. Chrome auf iOS kann keine Web-Apps auf den Startbildschirm legen.
+
+Danach startet das Spiel im Vollbild ohne Browserleisten, hat ein eigenes Symbol und funktioniert **im Flugmodus**: Beim ersten Aufruf legt der Service Worker alle 45 Dateien im Gerätespeicher ab.
+
+### Weg 2: Nur im Heimnetz, ohne etwas zu veröffentlichen
+
+Wenn das Spiel nicht öffentlich im Netz stehen soll: PC und Handy ins selbe WLAN, dann am PC im Projektordner einen kleinen Server starten.
+
+```bash
+# Im Projektordner (Python ist auf macOS und Linux vorinstalliert)
+python3 -m http.server 8000
+
+# Windows mit Python
+py -m http.server 8000
+
+# Alternativ mit Node.js, falls installiert
+npx --yes serve -l 8000
+```
+
+Dann die IP-Adresse des PCs herausfinden:
+
+```bash
+hostname -I | awk '{print $1}'     # Linux
+ipconfig getifaddr en0             # macOS
+ipconfig                           # Windows: "IPv4-Adresse" ablesen
+```
+
+Am Handy im Browser `http://<IP-des-PCs>:8000` aufrufen, zum Beispiel `http://192.168.178.42:8000`.
+
+> Der PC muss dabei laufen, und über `http://` (ohne S) im lokalen Netz installiert Android die App nicht dauerhaft. Zum Ausprobieren ist der Weg ideal, zum täglichen Spielen ist Weg 1 der bessere.
+
+### Weg 3: Am PC bleibt alles wie gehabt
+
+`index.html` doppelklicken genügt weiterhin. Nur der Offline-Modus (Service Worker) bleibt dabei aus – der braucht `http://` oder `https://`. Fürs Spielen macht das keinen Unterschied, der Spielstand liegt so oder so lokal im Browser.
+
+---
+
+### Was auf dem Telefon anders aussieht
+
+Das Spiel ist bis 375 px Breite hinunter bedienbar:
+
+- **Untere Navigationsleiste** mit *Dashboard*, *Kader*, *Taktik*, *Kalender* und einem *Mehr*-Menü für die übrigen Bereiche.
+- **Kader und Tabelle** zeigen die fünf bzw. sechs wichtigen Spalten und passen ohne Wischen auf den Bildschirm. Alle übrigen Werte stehen in den Spielerdetails – ein Tippen auf die Zeile öffnet sie.
+- **Positionsfilter** im Kader sind wischbare Chips.
+- **Verhandlungen, Ansprachen und Pressekonferenzen** stapeln ihre Eingabefelder untereinander.
+- **Modale** schließen per Tippen daneben.
+- Alle Bedienelemente sind mindestens 44 px hoch.
+
+### Spielstand mitnehmen
+
+Der Spielstand liegt im Browser des jeweiligen Geräts und wandert nicht automatisch mit. Zum Umziehen: **Spielstand & Optionen → Exportieren** am alten Gerät, die JSON-Datei übertragen (Mail, Cloud, Messenger) und am neuen Gerät importieren.
 
 ---
 
@@ -302,7 +370,7 @@ node test_data.js && node test_wizard.js && node test_engine.js && node test_e2e
 ```
 Alle 4 Testsuiten validieren lückenlos:
 1. **Datenintegrität (`test_data.js`):** Alle 18 handgepflegten Vereine, Attribute, Torhüter, Gehalts- und Transferbudgets.
-2. **Wizard & UI Regression (`test_wizard.js`):** Suchfilter, Schwierigkeitsstufen, Sortierungen, Edge-Cases, DOM-Simulation und Code-Regressionsprüfungen gegen Legacy-IDs.
+2. **Wizard & UI Regression (`test_wizard.js`):** Suchfilter, Schwierigkeitsstufen, Sortierungen, Edge-Cases, DOM-Simulation, Code-Regressionsprüfungen gegen Legacy-IDs sowie die Installierbarkeit auf dem Telefon (Manifest, vorhandene Symbole, vollständiger Offline-Vorrat).
 3. **Engines (`test_engine.js`):** MatchEngine, SeasonEngine, Finance, Board, News, Contracts, Scouting, Youth, AIManager, SaveService & MigrationService sowie PositionEngine (Familiarität, Zonen- und Formationserkennung), eigene Formationen und die Echtzeit-Regie der 2D-Simulation. Dazu die Spielwelt: alle zwölf Ligen gefüllt, Stärkestaffelung über die Ligastufen, Karrierestart in der Landesliga, Europapokal-Besetzung, Auf-/Abstieg und die verlustfreie Kodierung des Spielstands.
 3b. Dazu die Sandbox-Systeme: Kabinenansprachen mit lageabhängiger Wirkung, Pressekonferenzen, mehrtägige Transferverhandlungen über alle drei Phasen, das Scheitern von Lowball-Angeboten, Vertragsgespräche für Nachwuchsspieler, Trainingsbelastung mit Ermüdungs- und Risikokurve sowie Nebenpositionen und erlernte Routine.
 4. **E2E & Integration (`test_e2e.js`):** Vollständiger Karrierestart, 2D-LiveMatch, Auswechslungen, Transfers, Training, Multi-Saison-Läufe und der komplette Weg von der selbst gezeichneten Formation über das Live-Spiel bis zu Export und Import.

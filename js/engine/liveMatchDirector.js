@@ -135,6 +135,8 @@ class LiveMatchDirector {
 
         // Halbzeit Status für Seitenwechsel
         this.isSecondHalf = false;
+        // Restzeit des Seitenwechsels: solange traben alle auf ihre neue Seite
+        this.sideSwapTimer = 0;
 
         // Regiezustand
         this.mode = "ambient"; // ambient | highlight | celebration
@@ -208,10 +210,26 @@ class LiveMatchDirector {
         });
     }
 
+    /**
+     * Mannschaftsteil einer Position.
+     *
+     * Die Formationen benennen Halbpositionen fein (ZDM, RZM, LOM ...). Ohne
+     * Übersetzung landete jeder Sechser im Sturm - die Mannschaft stand auf
+     * dem Feld dadurch komplett falsch.
+     */
     getGroup(pos) {
-        if (pos === "TW") return "gk";
-        if (["IV", "LV", "RV"].includes(pos)) return "def";
-        if (["DM", "ZM", "OM", "LM", "RM"].includes(pos)) return "mid";
+        const posEngine = (typeof PositionEngine !== "undefined" && PositionEngine)
+            ? PositionEngine
+            : ((typeof window !== "undefined" && window.PositionEngine) ? window.PositionEngine
+                : (typeof require !== "undefined" ? require("./positionEngine.js").PositionEngine : null));
+
+        const clean = (posEngine && typeof posEngine.normalizePosition === "function")
+            ? (posEngine.normalizePosition(pos) || pos)
+            : pos;
+
+        if (clean === "TW") return "gk";
+        if (["IV", "LV", "RV"].includes(clean)) return "def";
+        if (["DM", "ZM", "OM", "LM", "RM"].includes(clean)) return "mid";
         return "att";
     }
 
@@ -396,6 +414,14 @@ class LiveMatchDirector {
     }
 
     /** Führt den Seitenwechsel (Positionen & Richtungen spiegeln) durch */
+    /**
+     * Seitenwechsel zur zweiten Halbzeit.
+     *
+     * Gespiegelt wird nur das taktische Grundgerüst. Die Spieler traben
+     * anschließend selbst auf ihre neue Hälfte - würde man auch ihre
+     * aktuellen Koordinaten spiegeln, sprängen in einem einzigen Bild
+     * zweiundzwanzig Spieler quer über den Platz.
+     */
     swapSides() {
         this.isSecondHalf = true;
         const players = this.match.players2D || [];
@@ -404,18 +430,14 @@ class LiveMatchDirector {
             // Grundpositionen spiegeln
             p.baseX = 100 - p.baseX;
             p.baseY = 100 - p.baseY;
-            p.facing = this.attackDir(p.team) > 0 ? 0 : Math.PI;
-
-            // Aktuelle Positionen sofort spiegeln, um langes Über-den-Platz-Rennen zu vermeiden
-            p.x = 100 - p.x;
-            p.y = 100 - p.y;
-            p.targetX = 100 - p.targetX;
-            p.targetY = 100 - p.targetY;
         });
 
         // Referee ebenfalls spiegeln
         this.referee.x = 100 - this.referee.x;
         this.referee.y = 100 - this.referee.y;
+
+        // Während des Seitenwechsels laufen alle zügig auf ihre neue Position
+        this.sideSwapTimer = 9;
 
         this._teamLineBase = {}; // Zwischenspeicher leeren
     }
@@ -434,6 +456,9 @@ class LiveMatchDirector {
                 this.swapSides();
                 const kickoffTeam = this.targetPossession[0] >= 50 ? "away" : "home";
                 this.startDeadBall("kickoff", kickoffTeam, 50, 50);
+                // Der Anstoß wartet, bis beide Mannschaften die Seiten
+                // tatsächlich getauscht haben
+                this.deadBallTimer = Math.max(this.deadBallTimer, this.sideSwapTimer);
             }
         } else if (previousMinute < 90 && minute >= 90) {
             const extra = this.match.timeline?.extraTime?.secondHalf;
@@ -1313,8 +1338,12 @@ class LiveMatchDirector {
             return;
         }
 
+        if (this.sideSwapTimer > 0) this.sideSwapTimer = Math.max(0, this.sideSwapTimer - dt);
+
         players.forEach(p => {
-            const target = this.computeTarget(p, ball, pressers);
+            const target = this.sideSwapTimer > 0
+                ? { x: p.baseX, y: p.baseY, urgency: 1.25 }
+                : this.computeTarget(p, ball, pressers);
 
             const responsiveness = 7.5 * (target.urgency || 1);
             const k = 1 - Math.exp(-responsiveness * dt);

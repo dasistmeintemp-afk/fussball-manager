@@ -150,7 +150,15 @@ function runEngineTests() {
             throw new Error(`Auswärts-Stürmer (${awaySt.baseX}) steht hinter dem Torwart (${awayGk.baseX})`);
         }
 
-        // Teste dynamisches Aufrücken über das Spielfeld
+        // Teste dynamisches Aufrücken über das Spielfeld.
+        // Erst den Anstoß auflösen lassen - solange der Ball ruht, stehen alle
+        // in Anstoßformation und rücken zu Recht nicht auf.
+        for (let t = 0; t < 150; t++) {
+            liveMatch.advanceRealTime(1000 / 60);
+            liveMatch.updateBallAndPlayers(1000 / 60);
+        }
+
+        liveMatch.director.possessionTeam = "home";
         liveMatch.ball.x = 80;
         liveMatch.ball.y = 50;
         liveMatch.ball.targetX = 80;
@@ -638,11 +646,13 @@ function runEngineTests() {
             }
         });
 
-        // Alle mitgelieferten Formationen müssen korrekt benannt werden
+        // Alle mitgelieferten Formationen müssen korrekt benannt werden.
+        // Namen mit erklärendem Zusatz ("4-3-3 mit offensiverem Mittelfeld")
+        // gelten als erkannt, wenn die Grundform stimmt.
         Object.keys(FORMATION_CONFIGS).forEach(key => {
             if (GameState.isCustomFormation(key)) return;
             const shape = PositionEngine.detectFormationShape(FORMATION_CONFIGS[key].positions);
-            if (shape !== key) {
+            if (shape !== key && !key.startsWith(shape + " ")) {
                 throw new Error(`Formation ${key} wurde als ${shape} erkannt`);
             }
         });
@@ -1039,7 +1049,11 @@ function runEngineTests() {
                         const ty = action.to.y ?? action.from.y;
                         agg.dist += Math.hypot(tx - action.from.x, ty - action.from.y);
                         agg.n++;
-                        if (tx > action.from.x) agg.forward++;
+                        // Nach dem Seitenwechsel greift die Heimmannschaft in
+                        // die andere Richtung an - ohne Vorzeichen würden sich
+                        // beide Halbzeiten gegenseitig aufheben.
+                        const dir = director.attackDir("home");
+                        if ((tx - action.from.x) * dir > 0) agg.forward++;
                         if (ty < 38) agg.left++;
                         else if (ty > 62) agg.right++;
                     }
@@ -1166,9 +1180,17 @@ function runEngineTests() {
         match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, state.players);
 
         const live = new LiveMatch(match, homeClub, awayClub, state.players);
-        live.director.possessionTeam = "home";
+
+        // Anstoß auflösen: bei ruhendem Ball steht die Mannschaft in
+        // Anstoßformation und rückt zu Recht nicht auf.
+        for (let i = 0; i < 150; i++) {
+            live.advanceRealTime(1000 / 60);
+            live.updateBallAndPlayers(1000 / 60);
+        }
 
         const settle = (ballX) => {
+            live.director.possessionTeam = "home";
+            live.director.deadBall = null;
             for (let i = 0; i < 420; i++) {
                 live.ball.targetX = ballX;
                 live.ball.targetY = 50;

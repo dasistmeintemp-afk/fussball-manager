@@ -320,8 +320,11 @@ const PositionEngine = {
 
         if (outfield.length === 0) return "0";
 
-        // 1. Ketten bilden: benachbarte Spieler mit geringem Tiefenabstand
-        const LINE_GAP = 10;
+        // 1. Ketten bilden: benachbarte Spieler mit geringem Tiefenabstand.
+        // Der Abstand ist bewusst knapp: Eine hängende Spitze steht rund zehn
+        // Einheiten vor dem Mittelstürmer und darf nicht mit ihm verschmelzen,
+        // sonst wird aus einem 4-4-1-1 ein 4-4-2.
+        const LINE_GAP = 8;
         const lines = [];
         outfield.forEach(y => {
             const current = lines[lines.length - 1];
@@ -334,8 +337,19 @@ const PositionEngine = {
 
         const centerOf = line => line.values.reduce((s, v) => s + v, 0) / line.values.length;
         const DEF_BOUNDARY = 62;   // Abwehrkette nie mit dem Mittelfeld verschmelzen
-        const MERGE_DISTANCE = 14;
+        const MERGE_DISTANCE = 13;
         const MAX_LINES = 4;
+
+        // Eine Raute im Mittelfeld (Sechser, zwei Halbpositionen, Zehner)
+        // heißt im Fußball "4-4-2 Raute" und nicht "4-1-2-1-2". Sie wird vor
+        // dem Zusammenfassen erkannt, weil ihre Bänder eng beieinander liegen
+        // und sonst verschmelzen würden.
+        if (lines.length === 5) {
+            const mitte = lines.slice(1, 4).map(l => l.values.length);
+            if (mitte[0] === 1 && mitte[1] === 2 && mitte[2] === 1) {
+                return `${lines[0].values.length}-4-${lines[4].values.length} Raute`;
+            }
+        }
 
         // 2. Zu eng beieinander liegende Ketten zusammenfassen
         let guard = 0;
@@ -349,6 +363,12 @@ const PositionEngine = {
                 const cB = centerOf(lines[i + 1]);
                 const sameBlock = (cA >= DEF_BOUNDARY) === (cB >= DEF_BOUNDARY);
                 if (!sameBlock && !forceMerge) continue;
+
+                // Hängende Spitze hinter einem einzelnen Mittelstürmer bleibt
+                // ein eigenes Band: aus 4-4-1-1 darf kein 4-4-2 werden.
+                const beideVorn = i + 2 >= lines.length;
+                const einzelspitzen = lines[i].values.length === 1 && lines[i + 1].values.length === 1;
+                if (beideVorn && einzelspitzen && !forceMerge) continue;
 
                 const dist = Math.abs(cA - cB);
                 if (dist < bestDist) {

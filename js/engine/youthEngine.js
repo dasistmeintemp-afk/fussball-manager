@@ -174,7 +174,7 @@ const YouthEngine = {
     /**
      * Befördert ein Akademie-Talent in die 1. Mannschaft
      */
-    promoteProspect(state, clubId, prospectId) {
+    promoteProspect(state, clubId, prospectId, terms = {}) {
         if (!state) return { success: false, error: "Kein State vorhanden." };
         const club = state.clubs.find(c => c.id === clubId);
         if (!club) return { success: false, error: "Verein nicht gefunden." };
@@ -186,36 +186,61 @@ const YouthEngine = {
         if (!prospect) return { success: false, error: "Jugendspieler nicht gefunden." };
         if (prospect.promoted) return { success: false, error: "Spieler wurde bereits befördert." };
 
-        // Neuen vollwertigen Spieler in state.players erzeugen
-        const maxPlayerId = (state.players && state.players.length > 0)
-            ? state.players.reduce((max, p) => Math.max(max, (p && p.id) ? p.id : 0), 0)
-            : 100;
-        const newPlayerId = maxPlayerId + 1;
-        const initialWage = 8000;
-        const initialValue = Math.round(prospect.overall * prospect.overall * 1200);
+        // Neuen vollwertigen Spieler in state.players erzeugen.
+        // Die IDs der handgepflegten Vereine sind Zahlen, erzeugte Vereine
+        // nutzen Text - deshalb wird hier eine eindeutige Text-ID gebildet.
+        const newPlayerId = `youth_${clubId}_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 5)}`;
 
-        const newPlayer = {
+        const playerGen = _youthResolve("PlayerGenerator", "./playerGenerator.js");
+        const level = club.level || 1;
+        const werte = playerGen && typeof playerGen.getValueAndWage === "function"
+            ? playerGen.getValueAndWage(prospect.overall, level, prospect.age || 18)
+            : { value: Math.round(prospect.overall * prospect.overall * 1200), wage: 8000 };
+
+        const initialWage = Math.max(120, Math.round(terms.wage ?? werte.wage));
+        const initialValue = werte.value;
+        const contractYears = Math.max(1, Math.min(5, Math.round(terms.contractYears ?? 3)));
+
+        // Attributprofil passend zur Position statt fester Zufallswerte
+        const attribute = (playerGen && typeof playerGen.generateAttributes === "function")
+            ? playerGen.generateAttributes(prospect.pos, prospect.overall)
+            : {};
+
+        const posEngine = _youthResolve("PositionEngine", "./positionEngine.js");
+        const nebenpositionen = Array.isArray(prospect.positions) && prospect.positions.length > 0
+            ? prospect.positions
+            : (posEngine ? posEngine.generateSecondaryPositions(prospect.pos) : []);
+
+        const newPlayer = Object.assign({
             id: newPlayerId,
             name: prospect.name,
             age: prospect.age,
             nationality: prospect.nationality || "Deutschland",
             clubId: clubId,
             pos: prospect.pos,
+            secondPos: nebenpositionen[0] || null,
+            positions: nebenpositionen,
             overall: prospect.overall,
             pot: prospect.pot,
+            trueCurrentAbility: prospect.trueCurrentAbility || prospect.overall * 2,
+            truePotentialAbility: prospect.truePotentialAbility || prospect.pot * 2,
+            trueMarketValue: initialValue,
             value: initialValue,
             wage: initialWage,
-            contractYears: 3,
+            contractYears: contractYears,
             fitness: 100,
             morale: 88,
             form: 7,
             injured: false,
             injuredWeeks: 0,
+            injuryWeeks: 0,
+            injuryName: null,
             suspended: false,
             suspendedMatches: 0,
             yellowCards: 0,
             yellowCardsTotal: 0,
             squadRole: "Zukunftstalent",
+            agent: prospect.agent || null,
             happiness: {
                 overall: 85,
                 playingTime: 80,
@@ -224,24 +249,24 @@ const YouthEngine = {
                 training: 85,
                 reason: "Glücklich über die Beförderung in die 1. Mannschaft!"
             },
-            stats: { appearances: 0, goals: 0, assists: 0, yellowCards: 0, redCards: 0, avgRating: 0.0 },
-            // Basiswerte
-            pace: 70 + Math.floor(Math.random() * 15),
-            shooting: 60 + Math.floor(Math.random() * 15),
-            passing: 65 + Math.floor(Math.random() * 15),
-            dribbling: 65 + Math.floor(Math.random() * 15),
-            defense: 55 + Math.floor(Math.random() * 15),
-            physical: 65 + Math.floor(Math.random() * 15),
-            stamina: 75,
-            vision: 68,
-            technique: 70
-        };
+            scoutingKnowledge: {
+                known: true,
+                knowledgeLevel: 95,
+                lastScoutedDate: "Eigene Akademie",
+                reportsCount: 0,
+                accuracy: 95
+            },
+            stats: {
+                matches: 0, goals: 0, assists: 0, yellowCards: 0,
+                redCards: 0, minutes: 0, cleanSheets: 0, ratingSum: 0
+            }
+        }, attribute);
 
         state.players.push(newPlayer);
         club.playerIds.push(newPlayer.id);
         prospect.promoted = true;
 
-        if (typeof NewsEngine !== 'undefined' && clubId === state.userClubId) {
+        if (!terms.skipNews && typeof NewsEngine !== 'undefined' && clubId === state.userClubId) {
             NewsEngine.addMessage(state, "youth", {
                 title: `Nachwuchstalent befördert: ${newPlayer.name}`,
                 sender: "Jugendakademie",

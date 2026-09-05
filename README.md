@@ -72,8 +72,10 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Spezialrollen:** Kapitän, Elfmeterschütze, Freistoßschütze, Eckenschütze.
 - **Teamchemie & Spielerzufriedenheit:** Individuelle Zufriedenheit je Spieler (Spielzeit, Vertrag, Teamleistung) und Einfluss auf Spielgeschehen.
 
-### 2b. 🧭 Positionseignung – nicht jeder kann überall spielen (`PositionEngine`)
+### 2b. 🧭 Positionseignung & Nebenpositionen (`PositionEngine`)
 - **Familiaritätsmodell:** Jeder Spieler hat eine Naturposition und – je nach Profil – Nebenpositionen. Wie gut er eine andere Position ausfüllt, ergibt sich aus dem Abstand der Mannschaftsteile und dem Seitenwechsel, verfeinert durch das versteckte Attribut *Anpassungsfähigkeit*.
+- **Rund drei von vier Feldspielern** haben eine zweite Position, gut ein Viertel sogar eine dritte – immer passend zur Stammposition. Torhüter bleiben im Tor. Im Kader stehen die Nebenpositionen als gestrichelte Marker direkt neben der Hauptposition.
+- **Positionen lassen sich erlernen:** Wer regelmäßig woanders aufläuft oder dort trainiert, wächst in die Position hinein (`gainPositionExperience`). Ein Einsatz über 90 Minuten bringt deutlich mehr als eine Trainingseinheit, und anpassungsfähige Spieler lernen schneller. Ist die Routine voll, gilt die Position dauerhaft als Nebenposition – die echte Naturposition bleibt ihr aber immer eine Nasenlänge voraus.
 - **Sechs Eignungsstufen:** Stammposition, Sehr gut geeignet, Geeignet, Ungewohnt, Deplatziert, Fehlbesetzung – mit Farbcode direkt am Spielerknoten.
 - **Spürbare Auswirkung:** Die effektive Stärke sinkt auf bis zu 55 % der Grundstärke. Ein Stürmer als Innenverteidiger verliert rund ein Drittel seiner Wirkung, ein Feldspieler im Tor ist die schlechteste aller Notlösungen.
 - **Überall wirksam:** `MatchEngine.calculateEffectivePlayerSkill` und `calculateTeamPower` bewerten Spieler auf der Position, auf der sie tatsächlich aufgestellt sind. Auch Torschützen und Zweikampfgegner im Spielbericht richten sich nach der Einsatzposition.
@@ -106,10 +108,38 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Scouting-Zentrale (`ScoutingEngine`):** Scouts für gezielte Positionen, Altersklassen und Mindeststärken entsenden und detaillierte Spielerberichte erhalten.
 - **KI-Manager (`AIManagerEngine`):** KI-Vereine optimieren vor jedem Spieltag ihre Aufstellung und unterbreiten Angebote für deine Stars.
 
+### 4b. 🤝 Verhandlungen mit Vereinen und Beratern (`NegotiationEngine`)
+Ein Transfer ist kein Knopfdruck mehr, sondern ein Vorgang über mehrere Tage:
+
+1. **Ablöse** – Sie eröffnen mit einem Gebot, der abgebende Verein antwortet nach ein bis drei Tagen mit Zusage oder Gegenforderung.
+2. **Persönliche Konditionen** – Der Berater verhandelt über Wochengehalt, Laufzeit und Handgeld.
+3. **Medizincheck** – Zwei Tage später steht fest, ob der Wechsel hält. Verletzungsanfällige Spieler fallen hier durch.
+
+- **Berater mit Charakter:** Fünf Profile von *Unerfahren* bis *Lautstark* bestimmen, wie hoch gefordert, wie schnell geantwortet und wie viel Geduld mitgebracht wird. Ein Spieler behält seinen Berater über die Jahre.
+- **Geduld und Frist:** Jedes zu niedrige Gebot kostet Geduld. Bei 0 % oder nach 14 Tagen platzen die Gespräche. Ein Angebot unter 60 % der Forderung beendet sie sofort.
+- **Die Gegenseite bewegt sich:** Mit jeder Runde gibt sie ein Stück nach – wer hart, aber fair verhandelt, spart Millionen.
+- **Alles im Blick:** Der Reiter *Transfermarkt* zeigt jede laufende Verhandlung mit Phase, aktueller Forderung, Restgeduld, Frist und dem letzten Satz der Gegenseite.
+
 ### 5. 🏋️ Training & Jugendakademie
 - **Trainingsschwerpunkte:** Allround, Angriff, Defensive, Technik, Taktik, Regeneration, Jugendförderung.
 - **Nachwuchsakademie (`YouthEngine`):** Akademie-Ausbau (Stufe 1 bis 5) für stärkere Talente und direkte Beförderung von Jugendspielern mit Profi-Vertrag in die 1. Mannschaft.
 - **Verletzungen & Sperren:** Realistische Ausfallzeiten (Leicht/Mittel/Schwer) und Gelb-/Rotsperren.
+
+### 5b. 📋 Trainingsbericht: Belastung, Ermüdung und Risiko
+Das Training läuft **Tag für Tag** über den Kalender statt im Wochenblock. Zwischen den Spieltagen zeigt der Trainingsbericht für jeden Spieler:
+
+| Wert | Bedeutung |
+|---|---|
+| **Fitness / Ermüdung** | Wie frisch der Spieler ist. Ermüdung erhöht Belastung *und* Risiko. |
+| **Tageslast** | Was die nächste Einheit kostet – abhängig von Intensität, Alter, Ausdauer und aktueller Ermüdung. |
+| **Spielschärfe** | Steigt nur durch Einsatzminuten, sinkt auf der Bank und im Training. |
+| **Verletzungsrisiko** | Prozentwert für die nächste Einheit. Der Bericht ist danach sortiert – die Wackelkandidaten stehen oben. |
+| **Entwicklung** | Was der Spieler in den letzten Einheiten an Gesamtstärke gewonnen hat. |
+
+Die Intensität ist eine echte Abwägung: Über Wochen pendelt sich die Kaderfitness bei *Schonend* auf rund 99 %, bei *Standard* auf 95 % und bei *Vollgas* auf etwa 72 % ein – dafür entwickeln sich die Spieler schneller. Ein Spieltag kostet deutlich mehr Substanz als jede Trainingseinheit.
+
+### 5c. 🎓 Nachwuchs: Beförderung über den Berater
+Ein Talent in den Profikader zu holen dauert jetzt seine Zeit. *Vertragsgespräche aufnehmen* startet die Verhandlung mit dem Berater über Gehalt, Laufzeit und Handgeld; erst nach der Einigung – meist drei bis sechs Tage – unterschreibt der Spieler seinen ersten Profivertrag und taucht im Kader auf. Die Forderung richtet sich nach Potenzial und Ligastufe.
 
 ### 6. 💼 Finanzen, Sponsoren & Buchungsjournal
 - **Finanzübersicht (`FinanceEngine`):** Kontostand, Transferbudget, Gehaltsetat, Ticketeinnahmen und wöchentliche Sponsorenzahlungen.
@@ -199,7 +229,8 @@ untitled/
 │   │   ├── clubGenerator.js    # Landestypische Vereine mit Ruf, Stadion und Etat je Ligastufe
 │   │   ├── playerGenerator.js  # Kader nach Ligastufe & Vereinsruf, Attributprofile je Position
 │   │   ├── transferEngine.js   # Markt- & Transferlogik
-│   │   ├── trainingEngine.js   # Wöchentliche Trainings- & Spielerentwicklung
+│   │   ├── negotiationEngine.js# Mehrtägige Verhandlungen mit Vereinen und Beratern
+│   │   ├── trainingEngine.js   # Tägliche Belastung, Ermüdung, Risiko & Entwicklung
 │   │   ├── financeEngine.js    # Spieltagseinnahmen, Gehälter & Journal
 │   │   ├── boardEngine.js      # Vorstandszufriedenheit & Saisonziele
 │   │   ├── newsEngine.js       # Zentrales Nachrichtensystem & Postfach
@@ -254,6 +285,7 @@ Alle 4 Testsuiten validieren lückenlos:
 1. **Datenintegrität (`test_data.js`):** Alle 18 handgepflegten Vereine, Attribute, Torhüter, Gehalts- und Transferbudgets.
 2. **Wizard & UI Regression (`test_wizard.js`):** Suchfilter, Schwierigkeitsstufen, Sortierungen, Edge-Cases, DOM-Simulation und Code-Regressionsprüfungen gegen Legacy-IDs.
 3. **Engines (`test_engine.js`):** MatchEngine, SeasonEngine, Finance, Board, News, Contracts, Scouting, Youth, AIManager, SaveService & MigrationService sowie PositionEngine (Familiarität, Zonen- und Formationserkennung), eigene Formationen und die Echtzeit-Regie der 2D-Simulation. Dazu die Spielwelt: alle zwölf Ligen gefüllt, Stärkestaffelung über die Ligastufen, Karrierestart in der Landesliga, Europapokal-Besetzung, Auf-/Abstieg und die verlustfreie Kodierung des Spielstands.
+3b. Dazu die Sandbox-Systeme: mehrtägige Transferverhandlungen über alle drei Phasen, das Scheitern von Lowball-Angeboten, Vertragsgespräche für Nachwuchsspieler, Trainingsbelastung mit Ermüdungs- und Risikokurve sowie Nebenpositionen und erlernte Routine.
 4. **E2E & Integration (`test_e2e.js`):** Vollständiger Karrierestart, 2D-LiveMatch, Auswechslungen, Transfers, Training, Multi-Saison-Läufe und der komplette Weg von der selbst gezeichneten Formation über das Live-Spiel bis zu Export und Import.
 
 ---

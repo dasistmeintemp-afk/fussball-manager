@@ -305,10 +305,6 @@ const CalendarEngine = {
      */
     applyDailyEffects(state, currentDay) {
         const userClub = state.clubs.find(c => c.id === state.userClubId);
-        const players = state.players.filter(p => userClub && userClub.playerIds.includes(p.id));
-        const newsEngine = (typeof NewsEngine !== 'undefined' && NewsEngine) 
-            ? NewsEngine 
-            : ((typeof window !== 'undefined' && window.NewsEngine) ? window.NewsEngine : (typeof require !== 'undefined' ? require('./newsEngine.js').NewsEngine : null));
 
         const summary = {
             type: currentDay.type,
@@ -316,56 +312,45 @@ const CalendarEngine = {
             messages: []
         };
 
-        // 1. Regeneration
-        if (currentDay.type === CALENDAR_DAY_TYPES.RECOVERY) {
-            players.forEach(p => {
-                if (p.fitness < 100) {
-                    p.fitness = Math.min(100, p.fitness + 5 + Math.floor(Math.random() * 5));
-                }
-            });
-            summary.messages.push("Fitness des Kaders regeneriert (+5 bis +10%).");
-        }
+        // 1. Trainingsbetrieb: Belastung, Erholung, Entwicklung und Risiko
+        // laufen jetzt Tag für Tag statt im Wochenblock.
+        const trainingEngine = (typeof TrainingEngine !== 'undefined' && TrainingEngine)
+            ? TrainingEngine
+            : ((typeof window !== 'undefined' && window.TrainingEngine) ? window.TrainingEngine : (typeof require !== 'undefined' ? require('./trainingEngine.js').TrainingEngine : null));
 
-        // 2. Trainingstag
-        else if (currentDay.type === CALENDAR_DAY_TYPES.TRAINING) {
-            const focus = state.trainingSettings?.focus || "allround";
-            const intensity = state.trainingSettings?.intensity || "normal";
-            let fitnessDelta = intensity === "high" ? -4 : (intensity === "low" ? 0 : -2);
-            
-            players.forEach(p => {
-                p.fitness = Math.max(50, p.fitness + fitnessDelta);
-                p.form = Math.min(100, Math.max(40, p.form + (Math.random() > 0.5 ? 1 : 0)));
-                
-                // Talent-Chance
-                if (p.age <= 21 && Math.random() < 0.15 && p.overall < p.pot) {
-                    p.overall = Math.min(p.pot, p.overall + 1);
-                    if (newsEngine) {
-                        newsEngine.addMessage(state, "training_report", {
-                            subject: `Entwicklungssprung: ${p.name}`,
-                            sender: "Cheftrainer",
-                            body: `${p.name} (Talent, ${p.age} Jahre) hat im Training überzeugt und seine Gesamtstärke auf ${p.overall} gesteigert!`,
-                            priority: "normal"
-                        });
-                    }
-                }
-            });
+        if (trainingEngine && typeof trainingEngine.processDailyTraining === 'function') {
+            const tag = trainingEngine.processDailyTraining(state, currentDay.type);
+            summary.training = tag;
 
-            // Verletzungsrisiko bei harter Intensität
-            if (intensity === "high" && Math.random() < 0.05 && players.length > 0) {
-                const injured = players[Math.floor(Math.random() * players.length)];
-                if (injured && injured.injuredWeeks === 0) {
-                    injured.injuredWeeks = 1 + Math.floor(Math.random() * 2);
-                    if (newsEngine) {
-                        newsEngine.createInjuryNews(state, injured, injured.injuredWeeks, "Muskelverhärtung im Training");
-                    }
-                }
+            if (currentDay.type === CALENDAR_DAY_TYPES.RECOVERY) {
+                summary.messages.push("Regenerationseinheit absolviert. Der Kader erholt sich.");
+            } else if (currentDay.type === CALENDAR_DAY_TYPES.TRAINING) {
+                const focus = state.trainingSettings?.focus || "allround";
+                const intensity = state.trainingSettings?.intensity || "normal";
+                summary.messages.push(`Training absolviert (Schwerpunkt: ${focus}, Intensität: ${intensity}).`);
             }
 
-            summary.messages.push(`Training absolviert (Schwerpunkt: ${focus}, Intensität: ${intensity}).`);
+            tag.injuries.forEach(name => {
+                summary.messages.push(`⚠️ ${name} hat sich im Training verletzt.`);
+            });
+        }
+
+        // 2. Verhandlungen mit Vereinen und Beratern laufen weiter
+        const negotiationEngine = (typeof NegotiationEngine !== 'undefined' && NegotiationEngine)
+            ? NegotiationEngine
+            : ((typeof window !== 'undefined' && window.NegotiationEngine) ? window.NegotiationEngine : (typeof require !== 'undefined' ? require('./negotiationEngine.js').NegotiationEngine : null));
+
+        if (negotiationEngine && typeof negotiationEngine.processDay === 'function') {
+            const schritte = negotiationEngine.processDay(state);
+            summary.negotiations = schritte;
+            schritte.forEach(schritt => {
+                if (!schritt || !schritt.negotiation) return;
+                summary.messages.push(`💬 ${schritt.negotiation.playerName}: ${negotiationEngine.describe(schritt.negotiation)}`);
+            });
         }
 
         // 3. Medientag / Pressekonferenz
-        else if (currentDay.type === CALENDAR_DAY_TYPES.MEDIA) {
+        if (currentDay.type === CALENDAR_DAY_TYPES.MEDIA) {
             state.mediaPressure = state.mediaPressure || 50;
             // Ausgeglichene Pressearbeit stabilisiert Medien und Fans
             state.fanMood = Math.min(100, Math.max(20, (state.fanMood || 75) + (Math.random() > 0.4 ? 1 : -1)));

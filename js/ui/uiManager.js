@@ -40,6 +40,41 @@ class UIManager {
         this.bindGlobalEvents();
         this.bindStartScreenEvents();
         this.bindWizardEvents();
+        this.bindModalDismiss();
+    }
+
+    /**
+     * Modale schließen sich per Klick auf den Hintergrund und mit Escape.
+     *
+     * Das kleine × oben rechts bleibt erhalten, ist aber nicht mehr der
+     * einzige Weg heraus. Das Live-Spiel und der Karriere-Assistent sind
+     * bewusst ausgenommen: Dort würde ein versehentlicher Klick daneben
+     * ein laufendes Spiel oder eine halb ausgefüllte Karriere verwerfen.
+     */
+    bindModalDismiss() {
+        const geschuetzt = ["modalLiveMatch", "modalNewGame", "modalSeasonEnd"];
+
+        const schliesse = (modal) => {
+            if (!modal || geschuetzt.includes(modal.id)) return false;
+            modal.style.display = "none";
+            return true;
+        };
+
+        document.querySelectorAll(".modal-overlay").forEach(modal => {
+            modal.addEventListener("click", (event) => {
+                // Nur ein Klick auf die Fläche neben dem Inhalt schließt
+                if (event.target !== modal) return;
+                schliesse(modal);
+            });
+        });
+
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            const offen = [...document.querySelectorAll(".modal-overlay")]
+                .filter(m => m.style.display && m.style.display !== "none");
+            if (offen.length === 0) return;
+            schliesse(offen[offen.length - 1]);
+        });
     }
 
     /**
@@ -1851,11 +1886,22 @@ class UIManager {
             const abilityText = card?.abilityLabel || "Guter Spieler";
             const valText = card ? card.visibleValueText : this.formatMoneySafe(p.value);
 
+            // Nebenpositionen sichtbar machen: nicht jeder kann überall spielen
+            const secondary = (Array.isArray(p.positions) ? p.positions : [])
+                .filter(pos => pos && pos !== p.pos)
+                .slice(0, 2);
+            const secondaryHtml = secondary.length
+                ? secondary.map(pos => `<span class="pos-tag pos-secondary" title="Nebenposition">${pos}</span>`).join("")
+                : "";
+
             return `
-                <tr>
+                <tr class="row-clickable" data-player-id="${p.id}" title="Details zu ${this.escapeHtml(p.name)} öffnen">
                     <td>${statusBadge}</td>
                     <td><strong>${p.name}</strong> <span style="font-size:11px; color:var(--text-muted);">(${p.squadRole || 'Kader'})</span></td>
-                    <td><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span></td>
+                    <td>
+                        <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>
+                        ${secondaryHtml}
+                    </td>
                     <td>${p.age}</td>
                     <td>
                         <span title="${abilityText} (${p.overall} OVR)" style="color:#f59e0b; font-size:13px; font-weight:600;">${starsCa}</span>
@@ -1879,13 +1925,39 @@ class UIManager {
             `;
         }).join("");
 
-        // Event Listeners für Details
-        document.querySelectorAll(".btn-player-details").forEach(btn => {
-            btn.addEventListener("click", () => {
-                const pId = parseInt(btn.dataset.playerId, 10);
-                this.showPlayerDetailsModal(pId);
+        // Ein Klick irgendwo in der Zeile öffnet die Spielerdetails
+        tbody.querySelectorAll("tr.row-clickable").forEach(row => {
+            row.addEventListener("click", (e) => {
+                if (e.target.closest("button")) return;
+                const pId = this.resolvePlayerId(row.dataset.playerId);
+                if (pId !== null) this.showPlayerDetailsModal(pId);
             });
         });
+
+        document.querySelectorAll(".btn-player-details").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const pId = this.resolvePlayerId(btn.dataset.playerId);
+                if (pId !== null) this.showPlayerDetailsModal(pId);
+            });
+        });
+    }
+
+    /**
+     * Spieler-ID aus einem data-Attribut auflösen.
+     *
+     * Die handgepflegten Vereine nutzen fortlaufende Zahlen als ID, erzeugte
+     * Spieler dagegen Text (z. B. "rlw_02_5"). Ein blindes parseInt lieferte
+     * für jeden erzeugten Spieler NaN - die Detailansicht blieb im gesamten
+     * Amateurbereich stumm.
+     */
+    resolvePlayerId(raw) {
+        if (raw === undefined || raw === null || raw === "") return null;
+        const state = this.app?.state;
+        if (state && Array.isArray(state.players)) {
+            const match = state.players.find(p => String(p.id) === String(raw));
+            if (match) return match.id;
+        }
+        return /^-?\d+$/.test(String(raw)) ? Number(raw) : raw;
     }
 
     getPosGroup(pos) {
@@ -2606,10 +2678,152 @@ class UIManager {
     /**
      * Transfers & Scouting rendern
      */
+    /** Auflösung der NegotiationEngine (Browser & Node) */
+    getNegotiationEngine() {
+        if (typeof NegotiationEngine !== "undefined" && NegotiationEngine) return NegotiationEngine;
+        if (typeof window !== "undefined" && window.NegotiationEngine) return window.NegotiationEngine;
+        return null;
+    }
+
+    /**
+     * Laufende Verhandlungen mit Vereinen und Beratern.
+     *
+     * Jede Verhandlung zeigt die aktuelle Phase, die Forderung der Gegenseite,
+     * die verbleibende Geduld und die Frist. Sind wir am Zug, lässt sich hier
+     * direkt nachbessern.
+     */
+    renderNegotiations() {
+        const state = this.app.state;
+        const engine = this.getNegotiationEngine();
+        const container = document.getElementById("negotiationsContainer");
+        const list = document.getElementById("negotiationsList");
+        if (!container || !list) return;
+
+        if (!engine) {
+            container.style.display = "none";
+            return;
+        }
+
+        const offen = engine.getOpenNegotiations(state).filter(n => n.clubId === state.userClubId);
+        if (offen.length === 0) {
+            container.style.display = "none";
+            return;
+        }
+
+        container.style.display = "block";
+        const heute = state.currentDayIndex || 0;
+
+        list.innerHTML = offen.map(n => {
+            const amZug = n.status === engine.STATUS.AWAITING_US;
+            const istAblöse = n.stage === engine.STAGES.FEE;
+            const restTage = Math.max(0, n.deadlineDay - heute);
+            const geduldFarbe = n.patience >= 60 ? "#34d399" : n.patience >= 30 ? "#f59e0b" : "#f87171";
+
+            const phaseText = n.type === "youth_promotion"
+                ? "Erstvertrag mit dem Berater"
+                : (istAblöse ? `Ablöse mit ${this.escapeHtml(n.sellerClubName || "dem Verein")}` : "Persönliche Konditionen");
+
+            const forderung = istAblöse
+                ? `Forderung: <strong>${this.formatMoneySafe(n.demand.fee)}</strong> Ablöse`
+                : `Forderung: <strong>${this.formatMoneySafe(n.demand.wage)}</strong> / Woche, Handgeld ${this.formatMoneySafe(n.demand.signingBonus)}`;
+
+            const letzterEintrag = (n.log || [])[n.log.length - 1];
+
+            const eingabe = amZug ? (istAblöse ? `
+                <div class="negotiation-inputs">
+                    <label>Ablöse (€)
+                        <input type="number" class="styled-input neg-fee" data-neg-id="${n.id}" value="${n.demand.fee}" step="100000" min="0">
+                    </label>
+                </div>
+            ` : `
+                <div class="negotiation-inputs">
+                    <label>Gehalt (€ / Woche)
+                        <input type="number" class="styled-input neg-wage" data-neg-id="${n.id}" value="${n.demand.wage}" step="500" min="0">
+                    </label>
+                    <label>Laufzeit
+                        <select class="styled-select neg-years" data-neg-id="${n.id}">
+                            ${[1, 2, 3, 4, 5].map(j => `<option value="${j}" ${j === (n.demand.years || 3) ? "selected" : ""}>${j} Jahr${j > 1 ? "e" : ""}</option>`).join("")}
+                        </select>
+                    </label>
+                    <label>Handgeld (€)
+                        <input type="number" class="styled-input neg-bonus" data-neg-id="${n.id}" value="${n.demand.signingBonus}" step="10000" min="0">
+                    </label>
+                </div>
+            `) : "";
+
+            return `
+                <div class="negotiation-card ${amZug ? "our-turn" : ""}">
+                    <div class="negotiation-head">
+                        <div>
+                            <strong>${this.escapeHtml(n.playerName)}</strong>
+                            <span class="text-muted" style="font-size:12px;">(${this.escapeHtml(n.playerPos || "")})</span>
+                            <div style="font-size:12px; color:var(--text-muted);">
+                                ${phaseText} · Berater ${this.escapeHtml(n.agentName)} (${this.escapeHtml(n.agentLabel || "")})
+                            </div>
+                        </div>
+                        <span class="badge ${amZug ? "badge-warning" : "badge-info"}">${this.escapeHtml(engine.describe(n))}</span>
+                    </div>
+
+                    <div class="negotiation-meta">
+                        <span>${forderung}</span>
+                        <span>Geduld: <strong style="color:${geduldFarbe};">${n.patience}%</strong></span>
+                        <span>Frist: noch <strong>${restTage}</strong> Tage</span>
+                    </div>
+
+                    ${letzterEintrag ? `<div class="negotiation-log">„${this.escapeHtml(letzterEintrag.text)}"</div>` : ""}
+
+                    ${eingabe}
+
+                    <div class="negotiation-actions">
+                        ${amZug ? `<button class="btn btn-sm btn-primary btn-neg-submit" data-neg-id="${n.id}">Angebot abgeben</button>` : ""}
+                        <button class="btn btn-sm btn-secondary btn-neg-withdraw" data-neg-id="${n.id}">Abbrechen</button>
+                    </div>
+                </div>
+            `;
+        }).join("");
+
+        list.querySelectorAll(".btn-neg-submit").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const id = btn.dataset.negId;
+                const n = engine.findNegotiation(state, id);
+                if (!n) return;
+
+                const angebot = n.stage === engine.STAGES.FEE
+                    ? { fee: Number(list.querySelector(`.neg-fee[data-neg-id="${id}"]`)?.value || 0) }
+                    : {
+                        wage: Number(list.querySelector(`.neg-wage[data-neg-id="${id}"]`)?.value || 0),
+                        years: Number(list.querySelector(`.neg-years[data-neg-id="${id}"]`)?.value || 3),
+                        signingBonus: Number(list.querySelector(`.neg-bonus[data-neg-id="${id}"]`)?.value || 0)
+                    };
+
+                const res = engine.submitOffer(state, id, angebot);
+                if (res.success) {
+                    this.playSound("click");
+                    this.showToast(res.message || "Angebot abgegeben.", "success");
+                    this.renderNegotiations();
+                } else {
+                    this.showToast(res.error || "Angebot nicht möglich.", "error");
+                }
+            });
+        });
+
+        list.querySelectorAll(".btn-neg-withdraw").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const res = engine.withdraw(state, btn.dataset.negId);
+                if (res.success) {
+                    this.showToast(`Verhandlung um ${res.negotiation.playerName} abgebrochen.`, "warning");
+                    this.renderNegotiations();
+                }
+            });
+        });
+    }
+
     renderTransfers() {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
+
+        this.renderNegotiations();
 
         // 1. Eingehende KI-Angebote
         const offersContainer = document.getElementById("aiOffersContainer");
@@ -2731,21 +2945,21 @@ class UIManager {
             tbody.querySelectorAll("tr.row-clickable").forEach(row => {
                 row.addEventListener("click", (e) => {
                     if (e.target.closest("button")) return;
-                    const pId = parseInt(row.dataset.playerId, 10);
-                    if (!isNaN(pId)) this.showPlayerDetailsModal(pId);
+                    const pId = this.resolvePlayerId(row.dataset.playerId);
+                    if (pId !== null) this.showPlayerDetailsModal(pId);
                 });
             });
 
             document.querySelectorAll(".btn-bid-player").forEach(btn => {
                 btn.addEventListener("click", () => {
-                    const pId = parseInt(btn.dataset.playerId, 10);
+                    const pId = this.resolvePlayerId(btn.dataset.playerId);
                     this.showTransferOfferModal(pId);
                 });
             });
 
             document.querySelectorAll(".btn-scout-direct").forEach(btn => {
                 btn.addEventListener("click", () => {
-                    const pId = parseInt(btn.dataset.playerId, 10);
+                    const pId = this.resolvePlayerId(btn.dataset.playerId);
                     const scoutingEngine = (typeof ScoutingEngine !== 'undefined' && ScoutingEngine)
                         ? ScoutingEngine
                         : ((typeof window !== 'undefined' && window.ScoutingEngine) ? window.ScoutingEngine : null);
@@ -2798,7 +3012,7 @@ class UIManager {
 
                 document.querySelectorAll(".btn-scout-bid").forEach(btn => {
                     btn.addEventListener("click", () => {
-                        const pId = parseInt(btn.dataset.playerId, 10);
+                        const pId = this.resolvePlayerId(btn.dataset.playerId);
                         this.showTransferOfferModal(pId);
                     });
                 });
@@ -2828,41 +3042,135 @@ class UIManager {
             levelBadge.textContent = `Akademie: Stufe ${level}`;
         }
 
+        this.renderTrainingReport();
+
+        const engine = this.getNegotiationEngine();
         const prospectsBody = document.getElementById("youthProspectsBody");
         if (prospectsBody) {
             const prospects = (state.youthAcademy?.prospects || []).filter(p => !p.promoted);
             if (prospects.length === 0) {
-                prospectsBody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">Aktuell keine unbeförderten Jugendspieler in der Akademie.</td></tr>`;
+                prospectsBody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">Aktuell keine unbeförderten Jugendspieler in der Akademie.</td></tr>`;
             } else {
-                prospectsBody.innerHTML = prospects.map(p => `
+                const laufende = engine
+                    ? engine.getOpenNegotiations(state).filter(n => n.type === "youth_promotion")
+                    : [];
+
+                prospectsBody.innerHTML = prospects.map(p => {
+                    const gespraech = laufende.find(n => String(n.prospectId) === String(p.id));
+
+                    const standHtml = gespraech
+                        ? `<div style="font-size:12px;">
+                               <strong>${this.escapeHtml(gespraech.agentName)}</strong>
+                               <div class="text-muted">${this.escapeHtml(engine.describe(gespraech))}</div>
+                           </div>`
+                        : `<span class="text-muted" style="font-size:12px;">Noch keine Gespräche</span>`;
+
+                    const aktion = gespraech
+                        ? `<button class="btn btn-sm btn-secondary btn-goto-negotiation">Zu den Verhandlungen</button>`
+                        : `<button class="btn btn-sm btn-primary btn-promote-prospect" data-prospect-id="${p.id}">Vertragsgespräche aufnehmen</button>`;
+
+                    return `
                     <tr>
-                        <td><strong>${p.name}</strong></td>
+                        <td><strong>${this.escapeHtml(p.name)}</strong></td>
                         <td><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span></td>
                         <td>${p.age} Jahre</td>
                         <td><span class="ovr-badge ovr-low">${p.overall} OVR</span></td>
                         <td><strong style="color:#38bdf8;">⭐ ${p.pot}</strong></td>
-                        <td>
-                            <button class="btn btn-sm btn-primary btn-promote-prospect" data-prospect-id="${p.id}">Profi-Vertrag (Befördern)</button>
-                        </td>
+                        <td>${standHtml}</td>
+                        <td>${aktion}</td>
                     </tr>
-                `).join("");
+                `;
+                }).join("");
 
+                // Die Beförderung läuft über den Berater und dauert einige Tage
                 document.querySelectorAll(".btn-promote-prospect").forEach(btn => {
                     btn.addEventListener("click", () => {
-                        const prId = btn.dataset.prospectId;
-                        const res = YouthEngine.promoteProspect(state, userClub.id, prId);
+                        if (!engine) {
+                            this.showToast("Verhandlungen sind derzeit nicht verfügbar.", "error");
+                            return;
+                        }
+                        const res = engine.startYouthPromotion(state, userClub.id, btn.dataset.prospectId);
                         if (res.success) {
-                            this.playSound("goal");
-                            this.showToast(`🎉 ${res.player.name} wurde in die 1. Mannschaft befördert!`, "success");
+                            this.playSound("click");
+                            this.showToast(
+                                `Berater ${res.negotiation.agentName} verhandelt über den Erstvertrag. Erste Forderung: ${this.formatMoneySafe(res.negotiation.demand.wage)} pro Woche.`,
+                                "success", 6000);
                             this.renderTraining();
-                            this.renderHeader();
                         } else {
-                            this.showToast(res.error || "Beförderung fehlgeschlagen", "error");
+                            this.showToast(res.error || "Gespräche konnten nicht aufgenommen werden.", "error");
                         }
                     });
                 });
+
+                document.querySelectorAll(".btn-goto-negotiation").forEach(btn => {
+                    btn.addEventListener("click", () => this.switchTab("transfers"));
+                });
             }
         }
+    }
+
+    /**
+     * Trainingsbericht zwischen den Spieltagen: Belastung, Ermüdung,
+     * Spielschärfe, Verletzungsrisiko und Entwicklung je Spieler.
+     */
+    renderTrainingReport() {
+        const state = this.app.state;
+        const body = document.getElementById("trainingReportBody");
+        const meta = document.getElementById("trainingReportMeta");
+        if (!body) return;
+
+        const trainingEngine = (typeof TrainingEngine !== "undefined" && TrainingEngine)
+            ? TrainingEngine
+            : ((typeof window !== "undefined" && window.TrainingEngine) ? window.TrainingEngine : null);
+
+        const report = (trainingEngine && typeof trainingEngine.buildTrainingReport === "function")
+            ? trainingEngine.buildTrainingReport(state, state.userClubId)
+            : state.trainingReport;
+
+        if (!report || !Array.isArray(report.entries) || report.entries.length === 0) {
+            body.innerHTML = `<tr><td colspan="9" class="text-center text-muted">Noch kein Trainingstag absolviert.</td></tr>`;
+            return;
+        }
+
+        const INTENSITAET = { low: "Locker", normal: "Normal", high: "Intensiv" };
+        if (meta) {
+            meta.textContent = `${report.date || "Aktuell"} · Intensität: ${INTENSITAET[report.intensity] || report.intensity}`;
+        }
+
+        body.innerHTML = report.entries.map(e => {
+            const risikoFarbe = e.injuryRiskPercent >= 5 ? "#f87171" : e.injuryRiskPercent >= 2 ? "#f59e0b" : "#34d399";
+            const ermuedungFarbe = e.fatigue >= 45 ? "#f87171" : e.fatigue >= 28 ? "#f59e0b" : "#34d399";
+            const entwicklung = e.developmentWeek > 0
+                ? `<span style="color:#34d399;">+${e.developmentWeek}</span>`
+                : (e.developmentWeek < 0 ? `<span style="color:#f87171;">${e.developmentWeek}</span>` : `<span class="text-muted">–</span>`);
+
+            return `
+                <tr class="row-clickable" data-player-id="${e.playerId}" title="Details zu ${this.escapeHtml(e.name)} öffnen">
+                    <td><strong>${this.escapeHtml(e.name)}</strong> <span class="text-muted" style="font-size:11px;">${e.age} J.</span></td>
+                    <td><span class="pos-tag pos-${this.getPosGroup(e.pos)}">${e.pos}</span></td>
+                    <td>
+                        <span class="mini-bar"><span class="mini-bar-fill" style="width:${e.fitness}%"></span></span>
+                        ${e.fitness}%
+                    </td>
+                    <td><strong style="color:${ermuedungFarbe};">${e.fatigue}</strong></td>
+                    <td>${e.load}</td>
+                    <td>
+                        <span class="mini-bar"><span class="mini-bar-fill" style="width:${e.sharpness}%; background:#38bdf8;"></span></span>
+                        ${e.sharpness}%
+                    </td>
+                    <td><strong style="color:${risikoFarbe};">${e.injuryRiskPercent.toFixed(1)} %</strong></td>
+                    <td>${entwicklung}</td>
+                    <td style="font-size:12px; color:var(--text-muted);">${this.escapeHtml(e.note)}</td>
+                </tr>
+            `;
+        }).join("");
+
+        body.querySelectorAll("tr.row-clickable").forEach(row => {
+            row.addEventListener("click", () => {
+                const pId = this.resolvePlayerId(row.dataset.playerId);
+                if (pId !== null) this.showPlayerDetailsModal(pId);
+            });
+        });
     }
 
     /**
@@ -3394,7 +3702,7 @@ class UIManager {
 
         content.querySelectorAll(".btn-scout-opponent-player").forEach(btn => {
             btn.addEventListener("click", () => {
-                const pId = parseInt(btn.dataset.playerId, 10);
+                const pId = this.resolvePlayerId(btn.dataset.playerId);
                 const scoutingEngine = (typeof ScoutingEngine !== 'undefined' && ScoutingEngine) 
                     ? ScoutingEngine 
                     : ((typeof window !== 'undefined' && window.ScoutingEngine) ? window.ScoutingEngine : null);
@@ -3455,40 +3763,21 @@ class UIManager {
             </div>
 
             <div class="tactic-field" style="margin-top:16px;">
-                <label>Ablösesumme bieten (€):</label>
-                <input type="number" id="offerFeeInput" class="styled-input" value="${askingPriceEst}" step="100000" min="100000">
+                <label>Eröffnungsangebot Ablöse (€):</label>
+                <input type="number" id="offerFeeInput" class="styled-input" value="${askingPriceEst}" step="100000" min="0">
             </div>
 
-            <div class="tactic-field">
-                <label>Wochengehalt bieten (€):</label>
-                <input type="number" id="offerWageInput" class="styled-input" value="${Math.round(player.wage * 1.1)}" step="5000" min="5000">
-            </div>
-
-            <div class="tactic-field">
-                <label>Vertragslaufzeit:</label>
-                <select id="offerYearsSelect" class="styled-select">
-                    <option value="2">2 Jahre</option>
-                    <option value="3" selected>3 Jahre</option>
-                    <option value="4">4 Jahre</option>
-                    <option value="5">5 Jahre</option>
-                </select>
-            </div>
-
-            <div class="tactic-field">
-                <label>Rolle im Team:</label>
-                <select id="offerRoleSelect" class="styled-select">
-                    <option value="Schlüsselspieler">Schlüsselspieler</option>
-                    <option value="Stammspieler" selected>Stammspieler</option>
-                    <option value="Rotation">Rotationsspieler</option>
-                    <option value="Talent">Nachwuchstalent</option>
-                </select>
+            <div class="hint-box" style="margin-top:12px;">
+                So läuft es ab: Zuerst einigen wir uns mit ${this.escapeHtml(sellerClub.name)} auf die Ablöse,
+                danach verhandelt der Berater über Gehalt, Laufzeit und Handgeld, zum Schluss folgt der Medizincheck.
+                Jede Antwort dauert ein bis drei Tage – den Stand sehen Sie im Reiter <strong>Transfers</strong>.
             </div>
 
             <div id="transferFeedback" style="margin-top:14px; font-size:13px; font-weight:600;"></div>
 
             <div class="modal-footer" style="padding:16px 0 0 0;">
                 <button class="btn btn-secondary" id="btnCancelBid">Abbrechen</button>
-                <button class="btn btn-primary" id="btnSubmitBid">Angebot einreichen</button>
+                <button class="btn btn-primary" id="btnSubmitBid">Verhandlung eröffnen</button>
             </div>
         `;
 
@@ -3501,41 +3790,35 @@ class UIManager {
             modal.style.display = "none";
         };
 
+        // Der Transfer ist kein Knopfdruck mehr: Hier wird nur die
+        // Verhandlung eröffnet, der Rest läuft über die nächsten Tage.
         document.getElementById("btnSubmitBid").onclick = () => {
-            const fee = parseInt(document.getElementById("offerFeeInput").value, 10);
-            const wage = parseInt(document.getElementById("offerWageInput").value, 10);
-            const years = parseInt(document.getElementById("offerYearsSelect").value, 10);
-            const role = document.getElementById("offerRoleSelect").value;
-
+            const fee = Number(document.getElementById("offerFeeInput").value) || 0;
             const feedback = document.getElementById("transferFeedback");
+            const engine = this.getNegotiationEngine();
 
-            // 1. Verein verhandeln
-            const clubEval = TransferEngine.evaluateTransferOffer(state, player.id, userClub.id, fee);
-            if (!clubEval.accepted) {
+            if (!engine) {
                 feedback.style.color = "#ef4444";
-                feedback.textContent = `❌ ${clubEval.reason}`;
+                feedback.textContent = "❌ Verhandlungen sind derzeit nicht verfügbar.";
                 return;
             }
 
-            // 2. Spieler verhandeln
-            const playerEval = TransferEngine.negotiateContract(player, userClub, wage, years, role);
-            if (!playerEval.success) {
+            const res = engine.startTransferNegotiation(state, player.id, userClub.id, fee);
+            if (!res.success) {
                 feedback.style.color = "#ef4444";
-                feedback.textContent = `❌ ${playerEval.message}`;
+                feedback.textContent = `❌ ${res.error}`;
                 return;
             }
 
-            // Transfer durchführen!
-            TransferEngine.executeTransfer(state, player.id, userClub.id, fee, wage, years);
             feedback.style.color = "#34d399";
-            feedback.textContent = "✅ Transfer erfolgreich abgeschlossen! Der Spieler wechselt in Ihren Kader.";
-            this.playSound("goal");
+            feedback.textContent = `✅ Angebot über ${this.formatMoneySafe(fee)} liegt ${sellerClub.name} vor. Berater ${res.negotiation.agentName} begleitet die Gespräche.`;
+            this.playSound("click");
 
             setTimeout(() => {
                 modal.style.display = "none";
-                this.renderCurrentTab();
+                this.switchTab("transfers");
                 this.renderHeader();
-            }, 1200);
+            }, 1400);
         };
     }
 
@@ -3587,19 +3870,37 @@ class UIManager {
         const usable = ranking.filter(r => r.familiarity >= 0.55);
         const shown = usable.length > 0 ? usable.slice(0, 8) : ranking.slice(0, 4);
 
-        const rows = shown.map(r => `
-            <div class="position-map-item" title="${r.label} (${r.familiarityPercent} % Vertrautheit)">
-                <span class="position-map-code" style="border-color:${r.color};">${r.position}</span>
+        const stamm = player.pos;
+        const neben = (Array.isArray(player.positions) ? player.positions : []).filter(p => p !== stamm);
+        const erfahrung = player.positionExperience || {};
+
+        const rows = shown.map(r => {
+            const istStamm = r.position === stamm;
+            const istNeben = neben.includes(r.position);
+            const lernt = !istStamm && !istNeben && (erfahrung[r.position] || 0) > 0;
+            const titel = lernt
+                ? `${r.label} · wird gerade eingelernt (${Math.round(erfahrung[r.position] * 100)} % Routine)`
+                : `${r.label} (${r.familiarityPercent} % Vertrautheit)`;
+
+            return `
+            <div class="position-map-item${lernt ? " pos-learned" : ""}" title="${titel}">
+                <span class="position-map-code" style="border-color:${r.color};${lernt ? "border-style:dashed;" : ""}">${r.position}</span>
                 <span class="position-map-value" style="color:${r.color};">${r.effectiveOverall}</span>
-                <span class="position-map-label">${r.shortLabel}</span>
+                <span class="position-map-label">${istStamm ? "Stammposition" : (istNeben ? "Nebenposition" : r.shortLabel)}</span>
             </div>
-        `).join("");
+        `;
+        }).join("");
+
+        const nebenText = neben.length > 0
+            ? `Nebenpositionen: <strong>${neben.map(p => this.escapeHtml(p)).join(", ")}</strong>.`
+            : "Der Spieler ist auf keiner weiteren Position eingespielt.";
 
         return `
             <div class="dash-card mb-3" style="padding:14px;">
                 <h4 style="font-size:13px; margin-bottom:4px; color:var(--text-muted);">🧭 Positionsprofil</h4>
                 <p style="font-size:11px; color:var(--text-muted); margin:0 0 10px 0;">
                     Effektive Stärke je Einsatzposition – abseits der Stammposition verliert der Spieler an Wirkung.
+                    ${nebenText} Wer regelmäßig woanders aufläuft, wächst mit der Zeit in die Position hinein.
                     ${isEstimate ? '<em>Die Werte beruhen auf einer Schätzung; mehr Scoutwissen macht sie genauer.</em>' : ''}
                 </p>
                 <div class="position-map${isEstimate ? ' estimated-value' : ''}">${rows}</div>

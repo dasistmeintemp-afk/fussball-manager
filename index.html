@@ -636,6 +636,15 @@
                             <div class="ai-offers-list" id="aiOffersList"></div>
                         </div>
 
+                        <!-- Laufende Verhandlungen -->
+                        <div class="ai-offers-container" id="negotiationsContainer" style="display:none;">
+                            <h3>🤝 Laufende Verhandlungen</h3>
+                            <p class="text-muted" style="font-size:12px; margin:2px 0 10px;">
+                                Ablöse, persönliche Konditionen und Medizincheck brauchen ihre Zeit. Die Gegenseite antwortet nach ein bis drei Tagen.
+                            </p>
+                            <div id="negotiationsList"></div>
+                        </div>
+
                         <!-- Transfer Market Table -->
                         <div class="table-container full-page">
                             <table class="data-table">
@@ -785,7 +794,38 @@
                                 </label>
                             </div>
                             <div class="training-info-alert">
-                                ℹ️ Die Trainingseffekte werden mit jedem Spieltagswochenwechsel automatisch auf alle Spieler angewendet.
+                                ℹ️ Das Training läuft Tag für Tag: Belastung, Erholung und Entwicklung werden mit jedem Kalendertag verrechnet.
+                            </div>
+                        </div>
+
+                        <!-- Trainingsbericht: Belastung, Ermüdung, Risiko -->
+                        <div class="dash-card" style="grid-column: 1 / -1;">
+                            <div class="card-header">
+                                <h3>📋 Trainingsbericht</h3>
+                                <span id="trainingReportMeta" class="header-tag">-</span>
+                            </div>
+                            <p class="text-muted" style="font-size:12px; margin:4px 0 10px;">
+                                Wer steht kurz vor dem Überziehen? Sortiert nach Verletzungsrisiko der nächsten Einheit.
+                            </p>
+                            <div class="table-container">
+                                <table class="compact-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Spieler</th>
+                                            <th>Pos.</th>
+                                            <th>Fitness</th>
+                                            <th>Ermüdung</th>
+                                            <th>Tageslast</th>
+                                            <th>Spielschärfe</th>
+                                            <th>Verletzungsrisiko</th>
+                                            <th>Entwicklung</th>
+                                            <th>Einschätzung</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="trainingReportBody">
+                                        <tr><td colspan="9" class="text-center text-muted">Noch kein Trainingstag absolviert.</td></tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
 
@@ -807,6 +847,7 @@
                                             <th>Alter</th>
                                             <th>Aktuelle Stärke</th>
                                             <th>Potenzial</th>
+                                            <th>Berater / Stand</th>
                                             <th>Aktion</th>
                                         </tr>
                                     </thead>
@@ -1625,6 +1666,7 @@
     <script src="js/engine/liveMatchDirector.js"></script>
     <script src="js/engine/matchEngine.js"></script>
     <script src="js/engine/transferEngine.js"></script>
+    <script src="js/engine/negotiationEngine.js"></script>
     <script src="js/engine/trainingEngine.js"></script>
     <script src="js/engine/seasonEngine.js"></script>
     <script src="js/ui/uiManager.js"></script>

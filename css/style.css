@@ -935,6 +935,15 @@ body {
 .pos-mid { background: #059669; color: white; }
 .pos-att { background: #dc2626; color: white; }
 
+/* Nebenposition: gedämpft, damit die Hauptposition führend bleibt */
+.pos-tag.pos-secondary {
+    background: transparent;
+    border: 1px dashed rgba(148, 163, 184, 0.55);
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-left: 3px;
+}
+
 /* Mini Progress Bar in Tables */
 .mini-bar {
     width: 60px;
@@ -3779,4 +3788,92 @@ body {
     .brand-accent {
         display: inline;
     }
+}
+
+/* ============================================================
+   Verhandlungen, Trainingsbericht & Positionsprofil
+   ============================================================ */
+
+.hint-box {
+    background: rgba(56, 189, 248, 0.08);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+
+.negotiation-card {
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-left: 4px solid #475569;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+}
+
+/* Wir sind am Zug: die Karte hebt sich deutlich ab */
+.negotiation-card.our-turn {
+    border-left-color: var(--accent-gold, #f59e0b);
+    background: rgba(245, 158, 11, 0.07);
+}
+
+.negotiation-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.negotiation-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.negotiation-log {
+    font-size: 12px;
+    font-style: italic;
+    color: #cbd5e1;
+    border-left: 2px solid rgba(148, 163, 184, 0.4);
+    padding-left: 10px;
+    margin-bottom: 10px;
+}
+
+.negotiation-inputs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.negotiation-inputs > * { min-width: 0; }
+
+.negotiation-inputs label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.negotiation-inputs input,
+.negotiation-inputs select {
+    width: 100%;
+}
+
+.negotiation-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Erlernte Nebenposition im Positionsprofil */
+.position-map .pos-learned {
+    border-style: dashed;
 }

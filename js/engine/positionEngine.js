@@ -142,7 +142,53 @@ const PositionEngine = {
             best += ((adaptability - 12) / 20) * 0.12 * (1 - best);
         }
 
+        // Erlernte Routine: Wer eine Position regelmäßig spielt oder dort
+        // trainiert, wächst dort hinein. Der Wert liegt zwischen 0 und 1 und
+        // hebt die Vertrautheit auf bis zu 0,93 - eine echte Naturposition
+        // bleibt der erlernten immer eine Nasenlänge voraus.
+        const erfahrung = player.positionExperience?.[target];
+        if (typeof erfahrung === "number" && erfahrung > 0) {
+            const gelernt = 0.55 + 0.38 * Math.max(0, Math.min(1, erfahrung));
+            best = Math.max(best, gelernt);
+        }
+
         return Math.max(0.05, Math.min(1.0, best));
+    },
+
+    /**
+     * Lässt einen Spieler auf einer Position dazulernen.
+     *
+     * Ein Einsatz über 90 Minuten bringt spürbar mehr als eine Trainingseinheit,
+     * und wer sich leicht anpasst, lernt schneller. Sobald die Routine 1,0
+     * erreicht, wird die Position dauerhaft als Nebenposition geführt.
+     */
+    gainPositionExperience(player, targetPos, amount = 0.02) {
+        const target = this.normalizePosition(targetPos);
+        if (!player || !target) return 0;
+
+        const known = this.getKnownPositions(player);
+        if (known.includes(target)) return 1;
+
+        if (!player.positionExperience || typeof player.positionExperience !== "object") {
+            player.positionExperience = {};
+        }
+
+        const adaptability = player.hiddenAttributes?.adaptability;
+        const tempo = typeof adaptability === "number" ? 0.6 + (adaptability / 20) * 0.8 : 1.0;
+        // Grundverwandte Positionen lernt man schneller als artfremde
+        const verwandt = this.getBaseFamiliarity(known[0] || target, target);
+
+        const bisher = player.positionExperience[target] || 0;
+        const neu = Math.min(1, bisher + amount * tempo * (0.5 + verwandt));
+        player.positionExperience[target] = Math.round(neu * 1000) / 1000;
+
+        if (neu >= 1) {
+            if (!Array.isArray(player.positions)) player.positions = [];
+            if (!player.positions.includes(target)) player.positions.push(target);
+            if (!player.secondPos) player.secondPos = target;
+        }
+
+        return player.positionExperience[target];
     },
 
     /**
@@ -381,21 +427,24 @@ const PositionEngine = {
         if (!main) return [];
         if (main === "TW") return [];
 
-        // Kandidaten sind Positionen mit hoher Grundverwandtschaft
+        // Kandidaten sind Positionen mit brauchbarer Grundverwandtschaft
         const candidates = this.ALL_POSITIONS
             .filter(p => p !== main && p !== "TW")
             .map(p => ({ pos: p, fam: this.getBaseFamiliarity(main, p) }))
-            .filter(c => c.fam >= 0.7)
+            .filter(c => c.fam >= 0.58)
             .sort((a, b) => b.fam - a.fam);
 
         if (candidates.length === 0) return [];
 
+        // Rund drei von vier Feldspielern haben eine zweite Position, gut ein
+        // Viertel sogar eine dritte. Die Auswahl bleibt nach Verwandtschaft
+        // gewichtet: Ein Innenverteidiger wird eher Sechser als Flügelstürmer.
         const result = [];
         const roll = rng();
-        if (roll < 0.55) {
+        if (roll >= 0.26) {
             result.push(candidates[0].pos);
-            // Ein Teil der Spieler ist auf einer dritten Position zuhause
-            if (roll < 0.18 && candidates[1]) result.push(candidates[1].pos);
+            if (roll >= 0.72 && candidates[1]) result.push(candidates[1].pos);
+            if (roll >= 0.93 && candidates[2]) result.push(candidates[2].pos);
         }
         return result;
     }

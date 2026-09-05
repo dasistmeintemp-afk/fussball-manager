@@ -28,6 +28,7 @@ const { TrainingEngine } = require('./js/engine/trainingEngine.js');
 const { SeasonEngine } = require('./js/engine/seasonEngine.js');
 const { WorldGenerator } = require('./js/engine/worldGenerator.js');
 const { SaveCodec } = require('./js/services/saveCodec.js');
+const { NegotiationEngine } = require('./js/engine/negotiationEngine.js');
 
 function runEngineTests() {
     console.log("\n=======================================================");
@@ -333,7 +334,7 @@ function runEngineTests() {
     });
 
     // 12. SaveService & MigrationService
-    test("SaveService & MigrationService: Export, Import und Schema-Migration von v1 nach v6", () => {
+    test("SaveService & MigrationService: Export, Import und Schema-Migration von v1 nach v7", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const exportedJson = SaveService.exportJson(state);
         const importRes = SaveService.importJson(exportedJson);
@@ -350,8 +351,15 @@ function runEngineTests() {
             }
         };
         const migRes = MigrationService.migrateSave(legacySave);
-        if (!migRes.success || migRes.saveVersion !== 6 || !migRes.state.scouting || !migRes.state.calendar || !migRes.state.competitions || !migRes.state.customFormations) {
-            throw new Error("MigrationService failed to migrate to version 6");
+        if (!migRes.success || migRes.saveVersion !== 7 || !migRes.state.scouting || !migRes.state.calendar || !migRes.state.competitions || !migRes.state.customFormations) {
+            throw new Error("MigrationService failed to migrate to version 7");
+        }
+        if (!Array.isArray(migRes.state.negotiations)) {
+            throw new Error("Migration legt keine Verhandlungsliste an");
+        }
+        const beispiel = migRes.state.players[0];
+        if (typeof beispiel.matchSharpness !== "number" || !beispiel.trainingLog || !beispiel.positionExperience) {
+            throw new Error("Migration ergänzt keine Trainings- und Positionswerte");
         }
     });
 
@@ -1505,6 +1513,248 @@ function runEngineTests() {
         while (dir.drama && guard++ < 4000) dir.updateDrama(1 / 60);
         if (live.motionFreeze) throw new Error("Standbild wird nach der Unterbrechung nicht aufgehoben");
         if (dir.getMotionScale() !== 1) throw new Error("Bewegung läuft nach der Unterbrechung nicht normal weiter");
+    });
+
+    // 36. Transferverhandlung über mehrere Tage
+    test("NegotiationEngine: Transfer läuft über Ablöse, Konditionen und Medizincheck", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        state.clubs.find(c => c.id === "muc").transferBudget = 90000000;
+
+        const ziel = state.players.find(p => p.clubId === "dor" && p.overall >= 78);
+        if (!ziel) throw new Error("Kein Transferziel gefunden");
+
+        const start = NegotiationEngine.startTransferNegotiation(state, ziel.id, "muc");
+        if (!start.success) throw new Error("Verhandlung ließ sich nicht eröffnen: " + start.error);
+
+        const neg = start.negotiation;
+        if (neg.stage !== NegotiationEngine.STAGES.FEE) throw new Error("Verhandlung startet nicht bei der Ablöse");
+        if (!neg.agentName) throw new Error("Dem Spieler wurde kein Berater zugeordnet");
+        if (ziel.clubId !== "dor") throw new Error("Der Spieler wechselt schon beim Eröffnen der Gespräche");
+
+        // Ein Angebot darf nicht sofort entschieden werden
+        NegotiationEngine.submitOffer(state, neg.id, { fee: neg.demand.fee });
+        if (neg.status !== NegotiationEngine.STATUS.WAITING_REPLY) {
+            throw new Error("Das Angebot wurde ohne Wartezeit beantwortet");
+        }
+        if (ziel.clubId !== "dor") throw new Error("Der Transfer wurde sofort vollzogen");
+
+        const phasen = new Set();
+        let tage = 0;
+        while (tage < 40 && [NegotiationEngine.STATUS.WAITING_REPLY, NegotiationEngine.STATUS.AWAITING_US].includes(neg.status)) {
+            phasen.add(neg.stage);
+            if (neg.status === NegotiationEngine.STATUS.AWAITING_US) {
+                const angebot = neg.stage === NegotiationEngine.STAGES.FEE
+                    ? { fee: neg.demand.fee }
+                    : { wage: neg.demand.wage, years: 3, signingBonus: neg.demand.signingBonus };
+                const res = NegotiationEngine.submitOffer(state, neg.id, angebot);
+                if (!res.success) throw new Error("Angebot abgelehnt: " + res.error);
+            }
+            CalendarEngine.advanceOneDay(state);
+            tage++;
+        }
+
+        if (neg.status !== NegotiationEngine.STATUS.ACCEPTED) {
+            throw new Error(`Faire Angebote führen nicht zum Abschluss (Status ${neg.status})`);
+        }
+        if (tage < 4) throw new Error(`Der Transfer war nach ${tage} Tagen zu schnell durch`);
+        if (!phasen.has(NegotiationEngine.STAGES.FEE) || !phasen.has(NegotiationEngine.STAGES.TERMS)) {
+            throw new Error("Die Verhandlung hat nicht alle Phasen durchlaufen");
+        }
+
+        const gewechselt = state.players.find(p => String(p.id) === String(ziel.id));
+        if (gewechselt.clubId !== "muc") throw new Error("Der Spieler steht nach dem Abschluss nicht im eigenen Kader");
+        if (!state.clubs.find(c => c.id === "muc").playerIds.includes(gewechselt.id)) {
+            throw new Error("Der Spieler fehlt in der Kaderliste des Vereins");
+        }
+    });
+
+    // 37. Zu niedrige Gebote kosten Geduld und lassen die Gespräche platzen
+    test("NegotiationEngine: Lowball-Angebote zehren an der Geduld und scheitern", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        state.clubs.find(c => c.id === "muc").transferBudget = 90000000;
+
+        const ziel = state.players.find(p => p.clubId === "dor" && p.overall >= 78);
+        const neg = NegotiationEngine.startTransferNegotiation(state, ziel.id, "muc").negotiation;
+        const geduldStart = neg.patience;
+
+        let tage = 0;
+        while (tage < 30 && [NegotiationEngine.STATUS.WAITING_REPLY, NegotiationEngine.STATUS.AWAITING_US].includes(neg.status)) {
+            if (neg.status === NegotiationEngine.STATUS.AWAITING_US) {
+                NegotiationEngine.submitOffer(state, neg.id, { fee: Math.round(neg.demand.fee * 0.5) });
+            }
+            CalendarEngine.advanceOneDay(state);
+            tage++;
+        }
+
+        if (neg.status === NegotiationEngine.STATUS.ACCEPTED) {
+            throw new Error("Ein Angebot bei halber Forderung wurde angenommen");
+        }
+        if (neg.patience >= geduldStart) throw new Error("Die Geduld der Gegenseite bleibt unberührt");
+        if (state.players.find(p => String(p.id) === String(ziel.id)).clubId === "muc") {
+            throw new Error("Der Spieler wechselt trotz gescheiterter Gespräche");
+        }
+    });
+
+    // 38. Jugendbeförderung über den Berater
+    test("NegotiationEngine: Jugendbeförderung braucht Vertragsgespräche mit dem Berater", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const talent = (club.youthAcademy?.prospects || state.youthAcademy.prospects).find(p => !p.promoted);
+        if (!talent) throw new Error("Kein Jugendspieler in der Akademie");
+
+        const kaderVorher = club.playerIds.length;
+        const start = NegotiationEngine.startYouthPromotion(state, "muc", talent.id);
+        if (!start.success) throw new Error("Vertragsgespräche ließen sich nicht aufnehmen: " + start.error);
+
+        const neg = start.negotiation;
+        if (club.playerIds.length !== kaderVorher) {
+            throw new Error("Der Jugendspieler steht sofort im Kader - die Gespräche wurden übersprungen");
+        }
+        if (!neg.demand.wage || neg.demand.wage <= 0) throw new Error("Der Berater stellt keine Gehaltsforderung");
+
+        // Zweite Anfrage darf keine parallele Verhandlung eröffnen
+        const doppelt = NegotiationEngine.startYouthPromotion(state, "muc", talent.id);
+        if (doppelt.success) throw new Error("Für dasselbe Talent laufen zwei Verhandlungen");
+
+        let tage = 0;
+        while (tage < 25 && [NegotiationEngine.STATUS.WAITING_REPLY, NegotiationEngine.STATUS.AWAITING_US].includes(neg.status)) {
+            if (neg.status === NegotiationEngine.STATUS.AWAITING_US) {
+                NegotiationEngine.submitOffer(state, neg.id, {
+                    wage: neg.demand.wage,
+                    years: 3,
+                    signingBonus: neg.demand.signingBonus
+                });
+            }
+            CalendarEngine.advanceOneDay(state);
+            tage++;
+        }
+
+        if (neg.status !== NegotiationEngine.STATUS.ACCEPTED) {
+            throw new Error(`Die Vertragsgespräche kamen nicht zum Abschluss (${neg.status})`);
+        }
+        if (tage < 2) throw new Error("Die Beförderung war ohne Wartezeit durch");
+
+        const neuerProfi = state.players.find(p => p.name === talent.name && p.clubId === "muc");
+        if (!neuerProfi) throw new Error("Das Talent steht nach dem Abschluss nicht im Kader");
+        if (neuerProfi.contractYears !== 3) throw new Error("Die verhandelte Laufzeit wurde nicht übernommen");
+        if (typeof neuerProfi.pace !== "number" || typeof neuerProfi.defense !== "number") {
+            throw new Error("Der beförderte Spieler hat kein Attributprofil");
+        }
+        if (neuerProfi.injuredWeeks !== 0 || neuerProfi.suspendedMatches !== 0) {
+            throw new Error("Der beförderte Spieler nutzt abweichende Feldnamen für Verletzung und Sperre");
+        }
+    });
+
+    // 39. Trainingsbelastung, Ermüdung und Verletzungsrisiko
+    test("TrainingEngine: Tagesbelastung, Ermüdung und Verletzungsrisiko im Bericht", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const kader = state.players.filter(p => club.playerIds.includes(p.id));
+
+        // Intensives Training zehrt deutlich mehr als lockeres
+        const spieler = kader[0];
+        const lastLocker = TrainingEngine.calculateDailyLoad(spieler, "training", "low");
+        const lastHart = TrainingEngine.calculateDailyLoad(spieler, "training", "high");
+        if (!(lastHart > lastLocker * 1.5)) {
+            throw new Error(`Intensität wirkt sich kaum aus: locker ${lastLocker}, intensiv ${lastHart}`);
+        }
+
+        const risikoLocker = TrainingEngine.calculateInjuryRisk(spieler, "low", 3);
+        const risikoHart = TrainingEngine.calculateInjuryRisk(spieler, "high", 3);
+        if (!(risikoHart > risikoLocker * 2)) {
+            throw new Error("Intensives Training erhöht das Verletzungsrisiko nicht");
+        }
+
+        // Ein müder Spieler trägt ein höheres Risiko als ein frischer
+        const muede = { ...spieler, fitness: 55 };
+        if (!(TrainingEngine.calculateInjuryRisk(muede, "normal", 3) > TrainingEngine.calculateInjuryRisk(spieler, "normal", 3))) {
+            throw new Error("Ermüdung erhöht das Verletzungsrisiko nicht");
+        }
+
+        // Über mehrere Wochen pendelt sich die Fitness je Intensität auf einem
+        // eigenen Niveau ein: locker bleibt frisch, intensiv zehrt spürbar.
+        const fitnessNachWochen = (intensity) => {
+            const s = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+            s.trainingSettings = { focus: "allround", intensity };
+            const c = s.clubs.find(x => x.id === "muc");
+            const k = s.players.filter(p => c.playerIds.includes(p.id));
+            for (let i = 0; i < 24; i++) CalendarEngine.advanceOneDay(s);
+            return k.reduce((sum, p) => sum + p.fitness, 0) / k.length;
+        };
+
+        const fitLocker = fitnessNachWochen("low");
+        const fitHart = fitnessNachWochen("high");
+
+        if (!(fitHart < fitLocker - 10)) {
+            throw new Error(`Intensives Training zehrt nicht stärker als lockeres: locker ${fitLocker.toFixed(0)}, intensiv ${fitHart.toFixed(0)}`);
+        }
+        if (fitHart < 45) {
+            throw new Error(`Intensives Training ruiniert den Kader: ${fitHart.toFixed(0)} % Fitness`);
+        }
+        if (fitLocker < 90) {
+            throw new Error(`Lockeres Training erholt den Kader nicht: ${fitLocker.toFixed(0)} % Fitness`);
+        }
+
+        // Der Bericht des laufenden Spielstands muss danach gefüllt sein
+        state.trainingSettings = { focus: "allround", intensity: "high" };
+        for (let i = 0; i < 6; i++) CalendarEngine.advanceOneDay(state);
+
+        const bericht = state.trainingReport;
+        if (!bericht || !Array.isArray(bericht.entries) || bericht.entries.length !== kader.length) {
+            throw new Error("Der Trainingsbericht deckt nicht den ganzen Kader ab");
+        }
+        const eintrag = bericht.entries[0];
+        ["fitness", "fatigue", "load", "sharpness", "injuryRiskPercent"].forEach(feld => {
+            if (typeof eintrag[feld] !== "number") throw new Error(`Im Trainingsbericht fehlt ${feld}`);
+        });
+        if (!eintrag.note) throw new Error("Der Trainingsbericht gibt keine Einschätzung ab");
+
+        // Nach der Sortierung steht das größte Risiko oben
+        for (let i = 1; i < bericht.entries.length; i++) {
+            if (bericht.entries[i - 1].injuryRiskPercent < bericht.entries[i].injuryRiskPercent) {
+                throw new Error("Der Bericht ist nicht nach Verletzungsrisiko sortiert");
+            }
+        }
+    });
+
+    // 40. Nebenpositionen und erlernte Routine
+    test("PositionEngine: Nebenpositionen und erlernte Routine auf neuen Positionen", () => {
+        // Rund drei Viertel der Feldspieler haben eine zweite Position
+        let mitNeben = 0;
+        const laeufe = 600;
+        for (let i = 0; i < laeufe; i++) {
+            const pos = ["IV", "LV", "RV", "DM", "ZM", "OM", "LM", "RM", "LA", "RA", "ST"][i % 11];
+            if (PositionEngine.generateSecondaryPositions(pos).length > 0) mitNeben++;
+        }
+        const anteil = mitNeben / laeufe;
+        if (anteil < 0.6 || anteil > 0.9) {
+            throw new Error(`Unplausibel viele/wenige Nebenpositionen: ${(anteil * 100).toFixed(0)} %`);
+        }
+        if (PositionEngine.generateSecondaryPositions("TW").length !== 0) {
+            throw new Error("Torhüter bekommen Feldpositionen zugewiesen");
+        }
+
+        // Nebenpositionen müssen zur Stammposition passen
+        for (let i = 0; i < 50; i++) {
+            const neben = PositionEngine.generateSecondaryPositions("IV");
+            neben.forEach(pos => {
+                if (PositionEngine.getBaseFamiliarity("IV", pos) < 0.55) {
+                    throw new Error(`Unpassende Nebenposition für IV: ${pos}`);
+                }
+            });
+        }
+
+        // Wer eine Position spielt, wächst hinein
+        const spieler = { pos: "IV", positions: ["IV"], overall: 70, hiddenAttributes: { adaptability: 13 } };
+        const vorher = PositionEngine.getSuitability(spieler, "DM").familiarity;
+        for (let i = 0; i < 25; i++) PositionEngine.gainPositionExperience(spieler, "DM", 0.05);
+        const nachher = PositionEngine.getSuitability(spieler, "DM").familiarity;
+
+        if (!(nachher > vorher)) throw new Error("Einsätze auf einer Position bringen keine Routine");
+        if (!spieler.positions.includes("DM")) throw new Error("Die erlernte Position wird nicht übernommen");
+        if (PositionEngine.getSuitability(spieler, "DM").familiarity > PositionEngine.getSuitability(spieler, "IV").familiarity) {
+            throw new Error("Die erlernte Position übertrifft die Stammposition");
+        }
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

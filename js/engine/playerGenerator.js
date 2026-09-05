@@ -67,7 +67,7 @@ class PlayerGenerator {
      */
     static getAbilityRangeForLevel(level = 1) {
         switch (level) {
-            case 1: return { minCA: 130, maxCA: 185, minPA: 135, maxPA: 195 }; // Top-5 / Bundesliga
+            case 1: return { minCA: 128, maxCA: 176, minPA: 134, maxPA: 184 }; // Top-5 / Bundesliga
             case 2: return { minCA: 110, maxCA: 150, minPA: 115, maxPA: 165 }; // 2. Liga
             case 3: return { minCA: 95, maxCA: 135, minPA: 100, maxPA: 145 };  // 3. Liga
             case 4: return { minCA: 75, maxCA: 115, minPA: 80, maxPA: 130 };   // Regionalliga
@@ -92,14 +92,19 @@ class PlayerGenerator {
 
         const caSpan = range.maxCA - range.minCA;
         const paSpan = range.maxPA - range.minPA;
-        const caShift = Math.round((strength - 0.5) * caSpan * 0.45);
-        const paShift = Math.round((strength - 0.5) * paSpan * 0.45);
+        const caShift = Math.round((strength - 0.5) * caSpan * 0.32);
+        const paShift = Math.round((strength - 0.5) * paSpan * 0.32);
+
+        // Obergrenze je Ligastufe: Auch der Spitzenklub der stärksten Liga
+        // stellt keine Spieler jenseits der handgepflegten Bundesligastars.
+        const caDeckel = Math.round(range.maxCA * 1.03);
+        const paDeckel = Math.round(range.maxPA * 1.03);
 
         return {
             minCA: Math.max(15, range.minCA + caShift),
-            maxCA: Math.min(200, range.maxCA + caShift),
+            maxCA: Math.min(caDeckel, range.maxCA + caShift),
             minPA: Math.max(20, range.minPA + paShift),
-            maxPA: Math.min(200, range.maxPA + paShift)
+            maxPA: Math.min(paDeckel, range.maxPA + paShift)
         };
     }
 

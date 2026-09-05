@@ -1414,6 +1414,99 @@ function runEngineTests() {
         if (gespielt === 0) throw new Error("Keine gespielten Partien im Spielplan gefunden");
     });
 
+    // Taktung der 2D-Simulation: Spielaufbau muss sichtbar bleiben
+    test("LiveMatchDirector: Spieltempo bleibt beobachtbar und je Stufe unterscheidbar", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+        const match = { id: "tempo", played: false, homeClubId: "muc", awayClubId: "dor" };
+        const live = new LiveMatch(match, homeClub, awayClub, state.players);
+
+        live.speed = 1;
+        const slow = live.director.getBaseClockRate();
+        live.speed = 2;
+        const normal = live.director.getBaseClockRate();
+        live.speed = 4;
+        const fast = live.director.getBaseClockRate();
+
+        if (!(slow < normal && normal < fast)) {
+            throw new Error(`Uhrtempo nicht gestaffelt: langsam=${slow}, normal=${normal}, schnell=${fast}`);
+        }
+
+        // Auf der langsamsten Stufe sollen 90 Minuten mindestens acht echte
+        // Minuten dauern - sonst huscht der Spielaufbau wieder vorbei.
+        const minutesForFullMatch = (90 * 60) / slow / 60;
+        if (minutesForFullMatch < 8) {
+            throw new Error(`Langsamste Stufe spielt 90 Minuten in nur ${minutesForFullMatch.toFixed(1)} echten Minuten ab`);
+        }
+
+        // Der Ballaufbau zwischen den Höhepunkten muss den Großteil der Zeit
+        // einnehmen, nicht die Highlight-Inszenierung.
+        live.speed = 1;
+        let frames = 0;
+        let ambientMs = 0;
+        while (!live.isFinished && frames < 60 * 1500) {
+            live.advanceRealTime(1000 / 60);
+            live.updateBallAndPlayers(1000 / 60);
+            if (live.director.mode === "ambient") ambientMs += 1000 / 60;
+            frames++;
+        }
+        if (!live.isFinished) throw new Error("Livespiel wurde im Tempotest nicht beendet");
+
+        const totalMs = frames * (1000 / 60);
+        const ambientShare = ambientMs / totalMs;
+        if (ambientShare < 0.5) {
+            throw new Error(`Nur ${(ambientShare * 100).toFixed(0)} % Spielaufbau - zu wenig sichtbarer Spielfluss`);
+        }
+    });
+
+    // Regie-Einlagen: Zeitlupe beim Tor, Standbild bei Karten
+    test("LiveMatchDirector: Tor läuft in Zeitlupe, Karten unterbrechen das Spiel", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+        const match = { id: "regie", played: false, homeClubId: "muc", awayClubId: "dor" };
+        const live = new LiveMatch(match, homeClub, awayClub, state.players);
+        const dir = live.director;
+
+        // Tor: erst Zeitlupe, dann Jubel, dann Anstoß
+        dir.startCelebration({ type: "goal", team: "home", playerName: "Testtorschütze" });
+        if (live.slowMotion !== 1) throw new Error("Tor startet ohne Zeitlupe");
+        if (dir.getMotionScale() >= 1) throw new Error("Bewegung läuft in der Zeitlupe unverändert weiter");
+        if (dir.getTimeScale() >= 0.1) throw new Error("Spieluhr läuft in der Zeitlupe zu schnell");
+
+        let guard = 0;
+        while (dir.celebrationPhase === "slowmo" && guard++ < 2000) dir.step(1 / 60, false);
+        if (dir.celebrationPhase !== "jubel") throw new Error("Nach der Zeitlupe folgt kein Jubel");
+        if (live.slowMotion !== 0) throw new Error("Zeitlupe endet nicht mit dem Jubel");
+
+        guard = 0;
+        while (dir.mode === "celebration" && guard++ < 4000) dir.step(1 / 60, false);
+        if (live.celebratingTeam !== null) throw new Error("Jubel wird nicht aufgelöst");
+
+        // Gelbe Karte: Spiel steht still, Schiedsrichter zeigt die Karte
+        dir.bannerForEvent({
+            type: "yellow_card", team: "away", playerName: "Grätscher",
+            start: { x: 40, y: 60 }
+        });
+        if (!dir.drama || dir.drama.kind !== "card") throw new Error("Gelbe Karte unterbricht das Spiel nicht");
+        if (dir.drama.card !== "yellow") throw new Error(`Falsche Karte hinterlegt: ${dir.drama.card}`);
+        if (dir.getMotionScale() !== 0) throw new Error("Spieler laufen während der Unterbrechung weiter");
+
+        // Der Unparteiische geht zum Tatort
+        for (let i = 0; i < 400; i++) dir.updateReferee(1 / 60);
+        if (live.refereeCard !== "yellow") throw new Error("Karte wird nicht angezeigt");
+        if (Math.hypot(live.referee.x - 40, live.referee.y - 56.5) > 8) {
+            throw new Error(`Schiedsrichter läuft nicht zum Tatort (${live.referee.x.toFixed(1)}/${live.referee.y.toFixed(1)})`);
+        }
+
+        // Nach Ablauf läuft das Spiel normal weiter
+        guard = 0;
+        while (dir.drama && guard++ < 4000) dir.updateDrama(1 / 60);
+        if (live.motionFreeze) throw new Error("Standbild wird nach der Unterbrechung nicht aufgehoben");
+        if (dir.getMotionScale() !== 1) throw new Error("Bewegung läuft nach der Unterbrechung nicht normal weiter");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

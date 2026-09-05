@@ -2,7 +2,7 @@
  * Liga-Definitionen, Ligapyramide, Pokale und europäische Wettbewerbe
  */
 
-const COUNTRIES_DATA = [
+let COUNTRIES_DATA = [
     { id: "de", name: "Deutschland", code: "GER", flag: "🇩🇪", reputation: 88 },
     { id: "en", name: "England", code: "ENG", flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", reputation: 95 },
     { id: "es", name: "Spanien", code: "ESP", flag: "🇪🇸", reputation: 90 },
@@ -17,7 +17,7 @@ const LEAGUES_DATA = [
         code: "de1",
         name: "Deutschland Liga 1",
         countryId: "de",
-        shortName: "1. Bundesliga",
+        shortName: "Bundesliga",
         level: 1,
         tier: "professional",
         teamCount: 18,
@@ -39,7 +39,7 @@ const LEAGUES_DATA = [
         code: "en1",
         name: "England Liga 1",
         countryId: "en",
-        shortName: "Premier Division",
+        shortName: "Premier League",
         level: 1,
         tier: "professional",
         teamCount: 20,
@@ -61,7 +61,7 @@ const LEAGUES_DATA = [
         code: "es1",
         name: "Spanien Liga 1",
         countryId: "es",
-        shortName: "Primera Division",
+        shortName: "La Liga",
         level: 1,
         tier: "professional",
         teamCount: 20,
@@ -83,7 +83,7 @@ const LEAGUES_DATA = [
         code: "it1",
         name: "Italien Liga 1",
         countryId: "it",
-        shortName: "Serie Campionato",
+        shortName: "Serie A",
         level: 1,
         tier: "professional",
         teamCount: 20,
@@ -105,7 +105,7 @@ const LEAGUES_DATA = [
         code: "fr1",
         name: "Frankreich Liga 1",
         countryId: "fr",
-        shortName: "Ligue Supérieure",
+        shortName: "Ligue 1",
         level: 1,
         tier: "professional",
         teamCount: 18,
@@ -146,7 +146,7 @@ const LEAGUES_DATA = [
         code: "de3",
         name: "Deutschland Liga 3",
         countryId: "de",
-        shortName: "3. Profi-Liga",
+        shortName: "3. Liga",
         level: 3,
         tier: "professional",
         teamCount: 20,

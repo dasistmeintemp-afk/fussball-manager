@@ -1333,12 +1333,49 @@ class UIManager {
         const midX = canvas.width / 2;
         const midY = canvas.height / 2;
 
+        // Zeitlupe: dunkler Rahmen und Hinweis, solange der Treffer nachwirkt
+        if (liveMatch.slowMotion > 0) {
+            ctx.save();
+            const vignette = ctx.createRadialGradient(
+                midX, midY, Math.min(canvas.width, canvas.height) * 0.25,
+                midX, midY, Math.max(canvas.width, canvas.height) * 0.72
+            );
+            vignette.addColorStop(0, "rgba(0, 0, 0, 0)");
+            vignette.addColorStop(1, "rgba(0, 0, 0, 0.55)");
+            ctx.fillStyle = vignette;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.textAlign = "left";
+            ctx.textBaseline = "middle";
+            ctx.font = `700 ${Math.round(pitchH * 0.032)}px 'Inter', system-ui, sans-serif`;
+            ctx.fillStyle = "rgba(248, 250, 252, 0.85)";
+            ctx.fillText("▶▶ ZEITLUPE", 24, canvas.height - 26);
+            ctx.restore();
+        }
+
         // Torjubel
         if (liveMatch.goalFlash > 0) {
             const alpha = Math.min(1, liveMatch.goalFlash);
             ctx.save();
             ctx.fillStyle = `rgba(250, 204, 21, ${alpha * 0.16})`;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Fankurve: Lichtermeer am oberen und unteren Spielfeldrand
+            const flicker = liveMatch.celebratingTeam ? alpha : 0;
+            if (flicker > 0) {
+                for (let i = 0; i < 46; i++) {
+                    const fx = (i / 45) * canvas.width;
+                    const jitter = Math.abs(Math.sin(Date.now() * 0.006 + i * 1.7));
+                    const r = 2 + jitter * 3.2;
+                    ctx.fillStyle = `rgba(255, 255, 255, ${flicker * (0.25 + jitter * 0.55)})`;
+                    ctx.beginPath();
+                    ctx.arc(fx, 10 + jitter * 6, r, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(fx, canvas.height - 10 - jitter * 6, r, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
 
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
@@ -4069,6 +4106,48 @@ class UIManager {
 
             // Spielergröße wächst mit dem Zoom, aber gedämpft
             const radius = Math.max(6, (pitchW / 105) * 1.3 * (0.5 * cam.zoom + 0.5));
+
+            // 3. Schiedsrichter: läuft im Diagonalsystem mit und zückt bei einer
+            //    Unterbrechung die Karte am Tatort.
+            const ref = liveMatch.referee;
+            if (ref) {
+                const rx = toX(ref.x);
+                const ry = toY(ref.y);
+                const rRad = radius * 0.78;
+
+                ctx.beginPath();
+                ctx.ellipse(rx, ry + rRad * 0.75, rRad * 0.85, rRad * 0.38, 0, 0, Math.PI * 2);
+                ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(rx, ry, rRad, 0, Math.PI * 2);
+                ctx.fillStyle = "#18181b";
+                ctx.fill();
+                ctx.strokeStyle = "rgba(250, 204, 21, 0.9)";
+                ctx.lineWidth = Math.max(1, rRad * 0.18);
+                ctx.stroke();
+
+                const card = liveMatch.refereeCard;
+                if (card) {
+                    const cw = rRad * 0.8;
+                    const ch = rRad * 1.15;
+                    const cx = rx + rRad * 1.15;
+                    const cy = ry - rRad * 1.5;
+                    ctx.fillStyle = card === "yellow" ? "#facc15" : "#dc2626";
+                    ctx.fillRect(cx, cy, cw, ch);
+                    ctx.strokeStyle = "rgba(0,0,0,0.65)";
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(cx, cy, cw, ch);
+
+                    // Gelb-Rot: beide Karten nebeneinander
+                    if (card === "second_yellow") {
+                        ctx.fillStyle = "#facc15";
+                        ctx.fillRect(cx - cw * 1.25, cy, cw, ch);
+                        ctx.strokeRect(cx - cw * 1.25, cy, cw, ch);
+                    }
+                }
+            }
             const numberFont = `bold ${Math.round(radius * 0.92)}px 'Inter', system-ui, sans-serif`;
             const nameFont = `600 ${Math.round(radius * 0.78)}px 'Inter', system-ui, sans-serif`;
 

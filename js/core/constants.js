@@ -138,13 +138,18 @@ const NEWS_TYPES = {
     SEASON_END: "season_end"
 };
 
+// matchSecondsPerRealSecond bestimmt, wie schnell die Spieluhr im 2D-Livespiel
+// läuft. Der Wert ist der eigentliche Tempo-Regler: bei 8 dauern 90 Minuten rund
+// elf echte Minuten, sodass Spielaufbau, Passstafetten und Laufwege sichtbar
+// bleiben. tickIntervalMs/minuteStep gelten weiterhin für den Minutentakt der
+// Sofortsimulation und als Rückfallebene ohne Regie.
 const LIVE_MATCH_SPEEDS = {
-    1: { key: "slow", label: "Langsam", tickIntervalMs: 2200, minuteStep: 1 },
-    2: { key: "normal", label: "Normal", tickIntervalMs: 1200, minuteStep: 1 },
-    4: { key: "fast", label: "Schnell", tickIntervalMs: 500, minuteStep: 2 },
-    slow: { key: "slow", label: "Langsam", tickIntervalMs: 2200, minuteStep: 1 },
-    normal: { key: "normal", label: "Normal", tickIntervalMs: 1200, minuteStep: 1 },
-    fast: { key: "fast", label: "Schnell", tickIntervalMs: 500, minuteStep: 2 }
+    1: { key: "slow", label: "Langsam", tickIntervalMs: 2200, minuteStep: 1, matchSecondsPerRealSecond: 8 },
+    2: { key: "normal", label: "Normal", tickIntervalMs: 1200, minuteStep: 1, matchSecondsPerRealSecond: 18 },
+    4: { key: "fast", label: "Schnell", tickIntervalMs: 500, minuteStep: 2, matchSecondsPerRealSecond: 42 },
+    slow: { key: "slow", label: "Langsam", tickIntervalMs: 2200, minuteStep: 1, matchSecondsPerRealSecond: 8 },
+    normal: { key: "normal", label: "Normal", tickIntervalMs: 1200, minuteStep: 1, matchSecondsPerRealSecond: 18 },
+    fast: { key: "fast", label: "Schnell", tickIntervalMs: 500, minuteStep: 2, matchSecondsPerRealSecond: 42 }
 };
 
 if (typeof window !== "undefined") {

@@ -205,6 +205,10 @@ function runE2ETests() {
         const live = MatchEngine.createLiveMatch(userMatch, home, away, s.players);
         if (live.players2D.length !== 22) throw new Error("Live-Spiel hat nicht 22 Spieler im Feld");
 
+        // Hier geht es um die eigene Formation, nicht um die Taktung: auf der
+        // schnellsten Stufe ist die Partie nach gut 170 Sekunden Spielzeit durch.
+        live.speed = 4;
+
         let frames = 0;
         while (!live.isFinished && frames < 60 * 400) {
             live.advanceRealTime(1000 / 60);

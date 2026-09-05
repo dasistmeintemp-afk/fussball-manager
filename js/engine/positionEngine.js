@@ -64,7 +64,16 @@ const PositionEngine = {
             LB: "LV", RB: "RV", LWB: "LV", RWB: "RV",
             CDM: "DM", CM: "ZM", CAM: "OM",
             LW: "LA", RW: "RA", LF: "LA", RF: "RA",
-            SS: "ST", CF: "ST", STL: "ST", STR: "ST"
+            SS: "ST", CF: "ST", STL: "ST", STR: "ST",
+
+            // Feinere Slotbezeichnungen der Formationen: Sie unterscheiden
+            // linke und rechte Halbpositionen, für die Eignung zählt aber
+            // der Mannschaftsteil.
+            ZDM: "DM", RDM: "DM", LDM: "DM",
+            RZM: "ZM", LZM: "ZM",
+            ZOM: "OM", ROM: "OM", LOM: "OM",
+            RAV: "RV", LAV: "LV",
+            HS: "ST", MS: "ST"
         };
         return aliases[clean] || null;
     },

@@ -1055,8 +1055,11 @@ function runEngineTests() {
                         // beide Halbzeiten gegenseitig aufheben.
                         const dir = director.attackDir("home");
                         if ((tx - action.from.x) * dir > 0) agg.forward++;
-                        if (ty < 38) agg.left++;
-                        else if (ty > 62) agg.right++;
+                        // Der linke Flügel liegt aus Sicht der Angriffsrichtung
+                        // nach dem Seitenwechsel bei hohen y-Werten.
+                        const relY = dir > 0 ? ty : 100 - ty;
+                        if (relY < 38) agg.left++;
+                        else if (relY > 62) agg.right++;
                     }
                     original(action);
                 };
@@ -1546,6 +1549,11 @@ function runEngineTests() {
         const ziel = state.players.find(p => p.clubId === "dor" && p.overall >= 78);
         if (!ziel) throw new Error("Kein Transferziel gefunden");
 
+        // Der Medizincheck scheitert je nach Verletzungsanfälligkeit in bis zu
+        // 16 % der Fälle. Hier geht es um den Verhandlungsablauf, nicht um die
+        // Medizin-Lotterie - deshalb ein robuster Spieler.
+        ziel.hiddenAttributes = Object.assign({}, ziel.hiddenAttributes, { injuryProneness: 1 });
+
         const start = NegotiationEngine.startTransferNegotiation(state, ziel.id, "muc");
         if (!start.success) throw new Error("Verhandlung ließ sich nicht eröffnen: " + start.error);
 
@@ -1561,26 +1569,44 @@ function runEngineTests() {
         }
         if (ziel.clubId !== "dor") throw new Error("Der Transfer wurde sofort vollzogen");
 
-        const phasen = new Set();
-        let tage = 0;
-        while (tage < 40 && [NegotiationEngine.STATUS.WAITING_REPLY, NegotiationEngine.STATUS.AWAITING_US].includes(neg.status)) {
-            phasen.add(neg.stage);
-            if (neg.status === NegotiationEngine.STATUS.AWAITING_US) {
-                const angebot = neg.stage === NegotiationEngine.STAGES.FEE
-                    ? { fee: neg.demand.fee }
-                    : { wage: neg.demand.wage, years: 3, signingBonus: neg.demand.signingBonus };
-                const res = NegotiationEngine.submitOffer(state, neg.id, angebot);
-                if (!res.success) throw new Error("Angebot abgelehnt: " + res.error);
+        // Eine Verhandlung mit fairen Angeboten bis zum Ende durchspielen
+        const durchspielen = (verhandlung) => {
+            const phasen = new Set();
+            let tage = 0;
+            while (tage < 40 && [NegotiationEngine.STATUS.WAITING_REPLY, NegotiationEngine.STATUS.AWAITING_US].includes(verhandlung.status)) {
+                phasen.add(verhandlung.stage);
+                if (verhandlung.status === NegotiationEngine.STATUS.AWAITING_US) {
+                    const angebot = verhandlung.stage === NegotiationEngine.STAGES.FEE
+                        ? { fee: verhandlung.demand.fee }
+                        : { wage: verhandlung.demand.wage, years: 3, signingBonus: verhandlung.demand.signingBonus };
+                    const res = NegotiationEngine.submitOffer(state, verhandlung.id, angebot);
+                    if (!res.success) throw new Error("Angebot abgelehnt: " + res.error);
+                }
+                CalendarEngine.advanceOneDay(state);
+                tage++;
             }
-            CalendarEngine.advanceOneDay(state);
-            tage++;
+            return { phasen, tage };
+        };
+
+        let lauf = durchspielen(neg);
+        let aktuell = neg;
+
+        // Der Medizincheck lässt jeden Transfer mit kleiner Wahrscheinlichkeit
+        // platzen - das ist so gewollt. Für den Ablauftest wird es dann eben
+        // noch einmal versucht.
+        let versuche = 0;
+        while (aktuell.status !== NegotiationEngine.STATUS.ACCEPTED && versuche++ < 4) {
+            const neuStart = NegotiationEngine.startTransferNegotiation(state, ziel.id, "muc");
+            if (!neuStart.success) throw new Error("Neuer Anlauf scheiterte: " + neuStart.error);
+            aktuell = neuStart.negotiation;
+            lauf = durchspielen(aktuell);
         }
 
-        if (neg.status !== NegotiationEngine.STATUS.ACCEPTED) {
-            throw new Error(`Faire Angebote führen nicht zum Abschluss (Status ${neg.status})`);
+        if (aktuell.status !== NegotiationEngine.STATUS.ACCEPTED) {
+            throw new Error(`Faire Angebote führen nicht zum Abschluss (Status ${aktuell.status})`);
         }
-        if (tage < 4) throw new Error(`Der Transfer war nach ${tage} Tagen zu schnell durch`);
-        if (!phasen.has(NegotiationEngine.STAGES.FEE) || !phasen.has(NegotiationEngine.STAGES.TERMS)) {
+        if (lauf.tage < 4) throw new Error(`Der Transfer war nach ${lauf.tage} Tagen zu schnell durch`);
+        if (!lauf.phasen.has(NegotiationEngine.STAGES.FEE) || !lauf.phasen.has(NegotiationEngine.STAGES.TERMS)) {
             throw new Error("Die Verhandlung hat nicht alle Phasen durchlaufen");
         }
 

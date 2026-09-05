@@ -180,11 +180,16 @@ class MatchFlowEngine {
                 ? Math.min(1, forward / 30) * forwardDrive
                 : Math.max(-0.5, forward / 45) * forwardDrive;
 
-            // Flügelfokus
+            // Flügelfokus: "links" ist die linke Seite aus Sicht der
+            // Angriffsrichtung, nicht die linke Bildschirmhälfte. Wer nach
+            // links angreift (Gastmannschaft in Halbzeit eins, Heim nach dem
+            // Seitenwechsel), hat seinen linken Flügel bei hohen y-Werten -
+            // deshalb wird die Koordinate dann gespiegelt.
+            const focusY = dir > 0 ? mate.y : 100 - mate.y;
             let focusScore = 0;
-            if (focus === "left" && mate.y < 35) focusScore = 0.28;
-            else if (focus === "right" && mate.y > 65) focusScore = 0.28;
-            else if (focus === "center" && mate.y > 32 && mate.y < 68) focusScore = 0.24;
+            if (focus === "left" && focusY < 35) focusScore = 0.28;
+            else if (focus === "right" && focusY > 65) focusScore = 0.28;
+            else if (focus === "center" && focusY > 32 && focusY < 68) focusScore = 0.24;
 
             // Stürmer im letzten Drittel sind attraktive Ziele
             const roleScore = (mate.group === "att" && context.phase === FLOW_PHASES.FINAL_THIRD) ? 0.25 : 0;

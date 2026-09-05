@@ -134,10 +134,23 @@ class SeasonEngine {
             }
         }
 
-        // 3. Wöchentliches Training & Entwicklung
+        // 3. Wöchentliches Training der KI-Vereine (der eigene Verein
+        // trainiert tageweise über den Kalender)
         const trainingEngine = _getTrainingEngine();
         if (trainingEngine && typeof trainingEngine.processWeeklyTraining === 'function') {
             trainingEngine.processWeeklyTraining(state);
+        }
+
+        // Der Spieltag kostet Substanz: Einsatzminuten zehren an Fitness und
+        // bringen Spielschärfe. Danach ist der Trainingsbericht wieder aktuell.
+        if (trainingEngine && typeof trainingEngine.applyMatchdayStrain === 'function') {
+            trainingEngine.applyMatchdayStrain(state);
+        }
+
+        // Laufende Verhandlungen einen Schritt weiterbringen
+        const negotiationEngine = _resolve('NegotiationEngine', './negotiationEngine.js');
+        if (negotiationEngine && typeof negotiationEngine.processDay === 'function') {
+            negotiationEngine.processDay(state);
         }
 
         // 4. Verletzungen & Sperren um 1 reduzieren

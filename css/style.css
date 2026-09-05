@@ -935,6 +935,15 @@ body {
 .pos-mid { background: #059669; color: white; }
 .pos-att { background: #dc2626; color: white; }
 
+/* Nebenposition: gedämpft, damit die Hauptposition führend bleibt */
+.pos-tag.pos-secondary {
+    background: transparent;
+    border: 1px dashed rgba(148, 163, 184, 0.55);
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-left: 3px;
+}
+
 /* Mini Progress Bar in Tables */
 .mini-bar {
     width: 60px;
@@ -3779,4 +3788,243 @@ body {
     .brand-accent {
         display: inline;
     }
+}
+
+/* ============================================================
+   Verhandlungen, Trainingsbericht & Positionsprofil
+   ============================================================ */
+
+.hint-box {
+    background: rgba(56, 189, 248, 0.08);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-muted);
+}
+
+.negotiation-card {
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-left: 4px solid #475569;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+}
+
+/* Wir sind am Zug: die Karte hebt sich deutlich ab */
+.negotiation-card.our-turn {
+    border-left-color: var(--accent-gold, #f59e0b);
+    background: rgba(245, 158, 11, 0.07);
+}
+
+.negotiation-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.negotiation-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.negotiation-log {
+    font-size: 12px;
+    font-style: italic;
+    color: #cbd5e1;
+    border-left: 2px solid rgba(148, 163, 184, 0.4);
+    padding-left: 10px;
+    margin-bottom: 10px;
+}
+
+.negotiation-inputs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.negotiation-inputs > * { min-width: 0; }
+
+.negotiation-inputs label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.negotiation-inputs input,
+.negotiation-inputs select {
+    width: 100%;
+}
+
+.negotiation-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* Erlernte Nebenposition im Positionsprofil */
+.position-map .pos-learned {
+    border-style: dashed;
+}
+
+/* ============================================================
+   Kabinenansprache, Pressekonferenz & Schreibtisch
+   ============================================================ */
+
+.team-talk-situation {
+    font-size: 14px;
+    color: #e2e8f0;
+    background: rgba(56, 189, 248, 0.08);
+    border-left: 3px solid #38bdf8;
+    padding: 10px 12px;
+    border-radius: 0 8px 8px 0;
+    margin-bottom: 14px;
+}
+
+.team-talk-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.team-talk-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    width: 100%;
+    text-align: left;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(30, 41, 59, 0.7);
+    color: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+
+.team-talk-option:hover:not(:disabled) {
+    border-color: var(--accent-gold, #f59e0b);
+    background: rgba(245, 158, 11, 0.09);
+    transform: translateX(2px);
+}
+
+.team-talk-option:disabled { opacity: 0.45; cursor: default; }
+
+.tt-icon { font-size: 22px; line-height: 1.2; }
+.tt-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tt-line { font-size: 12px; font-style: italic; color: #cbd5e1; }
+.tt-hint { font-size: 11px; color: var(--text-muted); }
+
+.team-talk-result,
+.press-result {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tt-delta { font-size: 12px; color: var(--text-muted); margin: 4px 0 8px; }
+
+.tt-reaction {
+    font-size: 12px;
+    padding: 3px 0 3px 10px;
+    border-left: 2px solid rgba(148, 163, 184, 0.4);
+}
+.tt-reaction.positive { border-left-color: #34d399; }
+.tt-reaction.negative { border-left-color: #f87171; }
+
+.press-question {
+    font-size: 15px;
+    font-style: italic;
+    color: #e2e8f0;
+    margin-bottom: 14px;
+}
+
+.press-answers { display: flex; flex-direction: column; gap: 8px; }
+
+.press-answer {
+    width: 100%;
+    text-align: left;
+    padding: 11px 14px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(30, 41, 59, 0.7);
+    color: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.press-answer:hover:not(:disabled) {
+    border-color: #38bdf8;
+    background: rgba(56, 189, 248, 0.09);
+}
+.press-answer:disabled { opacity: 0.45; cursor: default; }
+
+.press-effects {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 8px;
+}
+
+.press-player { font-size: 12px; color: #cbd5e1; margin-top: 6px; }
+
+/* Schreibtisch: Was heute ansteht */
+.attention-card { grid-column: span 4; min-width: 0; }
+
+.attention-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    padding: 9px 10px;
+    margin-bottom: 6px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: rgba(30, 41, 59, 0.55);
+    color: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.attention-item:hover {
+    border-color: var(--accent-gold, #f59e0b);
+    background: rgba(245, 158, 11, 0.08);
+}
+
+.attention-icon { font-size: 18px; }
+
+.attention-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+.attention-text strong { font-size: 13px; }
+.attention-text span { font-size: 11px; color: var(--text-muted); }
+
+.attention-arrow { color: var(--text-muted); font-size: 18px; }
+
+.attention-empty {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 14px 4px;
+    text-align: center;
 }

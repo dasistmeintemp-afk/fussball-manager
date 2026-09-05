@@ -556,6 +556,8 @@ class GameState {
             autosaveEnabled: true
         };
         this.customFormations = {};
+        // Laufende Verhandlungen mit Vereinen und Beratern
+        this.negotiations = [];
     }
 
     static buildBaseWorld() {

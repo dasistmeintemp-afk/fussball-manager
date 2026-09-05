@@ -3,7 +3,7 @@
  */
 
 const MigrationService = {
-    CURRENT_SAVE_VERSION: 6,
+    CURRENT_SAVE_VERSION: 7,
 
     /**
      * Migriert einen Spielstand auf die aktuelle Version
@@ -247,6 +247,25 @@ const MigrationService = {
             }
 
             state.schemaVersion = 6;
+        }
+
+        // Migration Version 6 -> 7: Verhandlungen, Trainingswerte und
+        // erlernte Positionen
+        if (currentVersion < 7) {
+            console.log(`[MigrationService] Migriere Spielstand auf Version 7 (Verhandlungen & Trainingsbelastung)...`);
+
+            if (!Array.isArray(state.negotiations)) state.negotiations = [];
+
+            if (Array.isArray(state.players)) {
+                state.players.forEach(player => {
+                    if (typeof player.matchSharpness !== "number") player.matchSharpness = 60;
+                    if (!player.trainingLog) player.trainingLog = { sessions: 0, gain: 0, load: 0 };
+                    if (!player.positionExperience) player.positionExperience = {};
+                    if (typeof player.daysSinceInjury !== "number") player.daysSinceInjury = 999;
+                });
+            }
+
+            state.schemaVersion = 7;
         }
 
         return {

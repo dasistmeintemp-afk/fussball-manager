@@ -1588,6 +1588,106 @@ class UIManager {
     }
 
     /**
+     * Der Schreibtisch des Managers: Was braucht heute eine Entscheidung?
+     * Ein Klick springt direkt in den zuständigen Reiter.
+     */
+    renderAttentionList() {
+        const state = this.app.state;
+        const engine = this.getManagerEngine();
+        const list = document.getElementById("dashAttentionList");
+        const count = document.getElementById("dashAttentionCount");
+        if (!list) return;
+
+        const items = engine ? engine.getAttentionItems(state) : [];
+        if (count) count.textContent = String(items.length);
+
+        if (items.length === 0) {
+            list.innerHTML = `<div class="attention-empty">Alles erledigt. Der Kader ist fit, die Post gelesen.</div>`;
+            return;
+        }
+
+        list.innerHTML = items.map(item => `
+            <button class="attention-item" data-tab="${this.escapeHtml(item.tab)}">
+                <span class="attention-icon">${item.icon}</span>
+                <span class="attention-text">
+                    <strong>${this.escapeHtml(item.title)}</strong>
+                    <span>${this.escapeHtml(item.detail)}</span>
+                </span>
+                <span class="attention-arrow">›</span>
+            </button>
+        `).join("");
+
+        list.querySelectorAll(".attention-item").forEach(btn => {
+            btn.addEventListener("click", () => this.switchTab(btn.dataset.tab));
+        });
+    }
+
+    /**
+     * Pressekonferenz am Medientag.
+     *
+     * Die Antwort verschiebt Fanstimmung, Medienrummel, Vorstandsvertrauen
+     * und die Moral der Mannschaft - wer sich vor seine Spieler stellt,
+     * nimmt Druck vom Team, zahlt aber bei den Fans drauf.
+     */
+    showPressConferenceModal() {
+        const state = this.app.state;
+        const engine = this.getManagerEngine();
+        const modal = document.getElementById("modalPressConference");
+        const body = document.getElementById("pressConferenceContent");
+        if (!engine || !modal || !body) return;
+
+        const pk = engine.buildPressConference(state);
+        if (!pk) return;
+
+        body.innerHTML = `
+            <p class="press-question">„${this.escapeHtml(pk.question)}"</p>
+            <div class="press-answers">
+                ${pk.answers.map(a => `
+                    <button class="press-answer" data-answer="${this.escapeHtml(a.key)}">${this.escapeHtml(a.label)}</button>
+                `).join("")}
+            </div>
+            <div id="pressResult"></div>
+        `;
+
+        modal.style.display = "flex";
+
+        body.querySelectorAll(".press-answer").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const res = engine.answerPressConference(state, pk.topicId, btn.dataset.answer);
+                if (!res.success) return;
+
+                const zeile = (label, wert, einheit = "") => {
+                    if (!wert) return "";
+                    const farbe = wert > 0 ? "#34d399" : "#f87171";
+                    return `<span>${label}: <strong style="color:${farbe};">${wert > 0 ? "+" : ""}${wert}${einheit}</strong></span>`;
+                };
+
+                document.getElementById("pressResult").innerHTML = `
+                    <div class="press-result">
+                        <strong>${this.escapeHtml(res.response)}</strong>
+                        <div class="press-effects">
+                            ${zeile("Fanstimmung", res.effects.fanMood)}
+                            ${zeile("Medienrummel", res.effects.mediaPressure)}
+                            ${zeile("Vorstand", res.effects.boardConfidence)}
+                            ${zeile("Teammoral", res.effects.squadMorale)}
+                        </div>
+                        ${res.affectedPlayer ? `<div class="press-player">${this.escapeHtml(res.affectedPlayer.name)}: ${res.affectedPlayer.delta > 0 ? "+" : ""}${res.affectedPlayer.delta} Moral</div>` : ""}
+                        <button class="btn btn-primary mt-2" id="btnPressDone">Termin beenden</button>
+                    </div>
+                `;
+                body.querySelectorAll(".press-answer").forEach(b => { b.disabled = true; });
+                this.playSound("click");
+
+                document.getElementById("btnPressDone").onclick = () => {
+                    modal.style.display = "none";
+                    this.renderCurrentTab();
+                    this.renderHeader();
+                };
+            });
+        });
+    }
+
+    /**
      * Header & Sidebar Quick-Status rendern
      */
     renderHeader() {
@@ -1708,6 +1808,9 @@ class UIManager {
                 btnInstant.disabled = false;
             }
         }
+
+        // 1a. Was heute ansteht
+        this.renderAttentionList();
 
         // 1b. Kalender & Wochenplan Snapshot
         const calBadge = document.getElementById("dashCurrentDateBadge");
@@ -4211,10 +4314,112 @@ class UIManager {
     /**
      * Startet die 2D Live Match Simulation im Vollbild-Modal
      */
+    /** Auflösung der ManagerEngine (Browser & Node) */
+    getManagerEngine() {
+        if (typeof ManagerEngine !== "undefined" && ManagerEngine) return ManagerEngine;
+        if (typeof window !== "undefined" && window.ManagerEngine) return window.ManagerEngine;
+        return null;
+    }
+
+    /**
+     * Kabinenansprache vor dem Anpfiff oder in der Halbzeit.
+     *
+     * Der Ton wird nicht bewertet, sondern wirkt: Wer eine 2:0 führende
+     * Mannschaft anbrüllt, nimmt ihr die Lockerheit. Die Wirkung landet in
+     * Moral und Form und damit direkt in der Spielstärke.
+     */
+    showTeamTalkModal(options = {}, onDone = null) {
+        const state = this.app.state;
+        const engine = this.getManagerEngine();
+        const modal = document.getElementById("modalTeamTalk");
+        const body = document.getElementById("teamTalkContent");
+
+        if (!engine || !modal || !body) {
+            if (onDone) onDone(null);
+            return;
+        }
+
+        const ctx = engine.buildTalkContext(state, options);
+        const istHalbzeit = ctx.phase === "halftime";
+
+        const lage = istHalbzeit
+            ? (ctx.scoreDiff > 0 ? `Sie führen mit ${ctx.scoreDiff} Tor${ctx.scoreDiff === 1 ? "" : "en"}.`
+                : ctx.scoreDiff < 0 ? `Sie liegen mit ${Math.abs(ctx.scoreDiff)} Tor${ctx.scoreDiff === -1 ? "" : "en"} zurück.`
+                : "Es steht unentschieden.")
+            : (ctx.isFavourite ? `Ihre Mannschaft geht als Favorit in das Spiel gegen ${this.escapeHtml(ctx.opponentName)}.`
+                : ctx.isUnderdog ? `Gegen ${this.escapeHtml(ctx.opponentName)} sind Sie Außenseiter.`
+                : `Ein Spiel auf Augenhöhe gegen ${this.escapeHtml(ctx.opponentName)}.`);
+
+        const stimmung = ctx.avgMorale >= 82 ? "Die Mannschaft strotzt vor Selbstvertrauen."
+            : ctx.avgMorale >= 62 ? "Die Stimmung in der Kabine ist gelöst."
+            : "Die Mannschaft wirkt verunsichert.";
+
+        document.getElementById("ttModalTitle").textContent = istHalbzeit
+            ? "Halbzeitansprache"
+            : "Ansprache vor dem Anpfiff";
+
+        body.innerHTML = `
+            <p class="team-talk-situation">${lage} ${stimmung}</p>
+            <div class="team-talk-options">
+                ${engine.TEAM_TALK_TONES.map(t => `
+                    <button class="team-talk-option" data-tone="${t.key}">
+                        <span class="tt-icon">${t.icon}</span>
+                        <span class="tt-body">
+                            <strong>${this.escapeHtml(t.label)}</strong>
+                            <span class="tt-line">„${this.escapeHtml(t.line)}"</span>
+                            <span class="tt-hint">${this.escapeHtml(t.hint)}</span>
+                        </span>
+                    </button>
+                `).join("")}
+            </div>
+            <div id="teamTalkResult"></div>
+        `;
+
+        modal.style.display = "flex";
+
+        body.querySelectorAll(".team-talk-option").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const res = engine.applyTeamTalk(state, btn.dataset.tone, options);
+                if (!res.success) return;
+
+                const farbe = res.moraleDelta >= 1.5 ? "#34d399" : res.moraleDelta <= -1.5 ? "#f87171" : "#94a3b8";
+                document.getElementById("teamTalkResult").innerHTML = `
+                    <div class="team-talk-result">
+                        <strong style="color:${farbe};">${this.escapeHtml(res.summary)}</strong>
+                        <div class="tt-delta">Moral im Schnitt ${res.moraleDelta > 0 ? "+" : ""}${res.moraleDelta}</div>
+                        ${res.reactions.map(r => `<div class="tt-reaction ${r.positive ? "positive" : "negative"}">${this.escapeHtml(r.text)}</div>`).join("")}
+                        <button class="btn btn-primary mt-2" id="btnTeamTalkContinue">
+                            ${istHalbzeit ? "Zweite Halbzeit ▶" : "Auf den Platz ▶"}
+                        </button>
+                    </div>
+                `;
+                body.querySelectorAll(".team-talk-option").forEach(b => { b.disabled = true; });
+                this.playSound("click");
+
+                document.getElementById("btnTeamTalkContinue").onclick = () => {
+                    modal.style.display = "none";
+                    if (onDone) onDone(res);
+                };
+            });
+        });
+    }
+
     startLiveMatchSimulation(match) {
         const state = this.app.state;
         const homeClub = state.clubs.find(c => c.id === match.homeClubId);
         const awayClub = state.clubs.find(c => c.id === match.awayClubId);
+
+        // Vor dem Anpfiff steht die Ansprache - erst danach rollt der Ball
+        if (!this._teamTalkDone) {
+            const gegnerId = match.homeClubId === state.userClubId ? match.awayClubId : match.homeClubId;
+            this._teamTalkDone = true;
+            this.showTeamTalkModal(
+                { phase: "prematch", clubId: state.userClubId, opponentClubId: gegnerId },
+                () => this.startLiveMatchSimulation(match)
+            );
+            return;
+        }
+        this._teamTalkDone = false;
 
         const liveMatch = MatchEngine.createLiveMatch(match, homeClub, awayClub, state.players);
         this.app.currentLiveMatch = liveMatch;
@@ -4255,8 +4460,33 @@ class UIManager {
 
         this.liveStatCache = {};
         this.renderedEventCount = 0;
+        this._halftimeTalkShown = false;
 
         const updateLiveUI = () => {
+            // Halbzeitansprache: einmal, sobald die Pause erreicht ist
+            if (!this._halftimeTalkShown && liveMatch.minute >= 45 && liveMatch.minute < 47 && !liveMatch.isFinished) {
+                this._halftimeTalkShown = true;
+                const warPausiert = liveMatch.isPaused;
+                liveMatch.isPaused = true;
+
+                const istHeim = liveMatch.homeClub.id === state.userClubId;
+                const stand = istHeim
+                    ? liveMatch.homeScore - liveMatch.awayScore
+                    : liveMatch.awayScore - liveMatch.homeScore;
+                const gegnerId = istHeim ? liveMatch.awayClub.id : liveMatch.homeClub.id;
+
+                this.showTeamTalkModal(
+                    { phase: "halftime", clubId: state.userClubId, opponentClubId: gegnerId, scoreDiff: stand },
+                    (res) => {
+                        // Eine wirksame Ansprache verändert den weiteren Verlauf
+                        if (res && Math.abs(res.moraleDelta) >= 1.5 && typeof liveMatch.resimulateRemainder === "function") {
+                            liveMatch.resimulateRemainder();
+                        }
+                        liveMatch.isPaused = warPausiert;
+                    }
+                );
+            }
+
             setText("lmHomeScore", String(liveMatch.homeScore));
             setText("lmAwayScore", String(liveMatch.awayScore));
             setText("lmMinute", String(liveMatch.minute));
@@ -4895,6 +5125,15 @@ class UIManager {
             : ((typeof window !== 'undefined' && window.CalendarEngine) ? window.CalendarEngine : null);
 
         if (!calendarEngine) return;
+
+        // Am Medientag steht der Manager zuerst den Journalisten Rede und Antwort
+        const heute = calendarEngine.getCurrentDay(state);
+        if (heute && heute.type === "media" && !this._pressDone) {
+            this._pressDone = true;
+            this.showPressConferenceModal();
+            return;
+        }
+        this._pressDone = false;
 
         const res = calendarEngine.advanceOneDay(state);
         if (res.success) {

@@ -29,6 +29,7 @@ const { SeasonEngine } = require('./js/engine/seasonEngine.js');
 const { WorldGenerator } = require('./js/engine/worldGenerator.js');
 const { SaveCodec } = require('./js/services/saveCodec.js');
 const { NegotiationEngine } = require('./js/engine/negotiationEngine.js');
+const { ManagerEngine } = require('./js/engine/managerEngine.js');
 
 function runEngineTests() {
     console.log("\n=======================================================");
@@ -1776,6 +1777,125 @@ function runEngineTests() {
         if (!spieler.positions.includes("DM")) throw new Error("Die erlernte Position wird nicht übernommen");
         if (PositionEngine.getSuitability(spieler, "DM").familiarity > PositionEngine.getSuitability(spieler, "IV").familiarity) {
             throw new Error("Die erlernte Position übertrifft die Stammposition");
+        }
+    });
+
+    // 43. Kabinenansprache: der Ton muss zur Lage passen
+    test("ManagerEngine: Ansprache wirkt je nach Spielstand unterschiedlich", () => {
+        const basis = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+
+        const ansprache = (tone, scoreDiff) => {
+            const state = JSON.parse(JSON.stringify(basis));
+            const res = ManagerEngine.applyTeamTalk(state, tone, {
+                phase: "halftime", clubId: "muc", opponentClubId: "dor", scoreDiff
+            });
+            if (!res.success) throw new Error(`Ansprache ${tone} scheiterte: ${res.error}`);
+            return res;
+        };
+
+        // Anbrüllen bei Führung zerlegt die Kabine, bei klarem Rückstand hilft es
+        const wuetendVorn = ansprache("angry", 2);
+        const wuetendHinten = ansprache("angry", -2);
+        if (!(wuetendVorn.moraleDelta < -1)) {
+            throw new Error(`Anbrüllen bei Führung bleibt folgenlos: ${wuetendVorn.moraleDelta}`);
+        }
+        if (!(wuetendHinten.moraleDelta > wuetendVorn.moraleDelta + 4)) {
+            throw new Error("Anbrüllen wirkt bei Rückstand nicht anders als bei Führung");
+        }
+
+        // Ruhig bleiben ist nie ein Desaster
+        [-2, 0, 2].forEach(diff => {
+            if (ansprache("calm", diff).moraleDelta < -0.5) {
+                throw new Error(`"Ruhig bleiben" schadet bei Stand ${diff}`);
+            }
+        });
+
+        // Die Ansprache landet tatsächlich bei den Spielern
+        const state = JSON.parse(JSON.stringify(basis));
+        const club = state.clubs.find(c => c.id === "muc");
+        const kader = state.players.filter(p => club.playerIds.includes(p.id));
+        const moralVorher = kader.reduce((s, p) => s + p.morale, 0);
+        ManagerEngine.applyTeamTalk(state, "motivate", { clubId: "muc", opponentClubId: "dor", scoreDiff: -1 });
+        const moralNachher = kader.reduce((s, p) => s + p.morale, 0);
+        if (moralNachher <= moralVorher) throw new Error("Die Ansprache verändert die Spielermoral nicht");
+        if (!state.lastTeamTalk || state.lastTeamTalk.tone !== "motivate") {
+            throw new Error("Die Ansprache wird nicht im Spielstand vermerkt");
+        }
+
+        // Jede Tonlage muss eine Beschreibung mitbringen
+        ManagerEngine.TEAM_TALK_TONES.forEach(t => {
+            if (!t.label || !t.line || !t.hint) throw new Error(`Tonlage ${t.key} ist unvollständig`);
+        });
+    });
+
+    // 44. Pressekonferenz verschiebt Stimmung und Druck
+    test("ManagerEngine: Pressekonferenz wirkt auf Fans, Medien, Vorstand und Kabine", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        state.fanMood = 70;
+        state.mediaPressure = 45;
+        state.boardConfidence = 75;
+
+        const pk = ManagerEngine.buildPressConference(state);
+        if (!pk || !pk.question || pk.answers.length < 2) throw new Error("Keine Pressekonferenz erzeugt");
+
+        const vorher = { fan: state.fanMood, medien: state.mediaPressure, vorstand: state.boardConfidence };
+        const res = ManagerEngine.answerPressConference(state, pk.topicId, pk.answers[0].key);
+        if (!res.success) throw new Error("Antwort wurde nicht ausgewertet: " + res.error);
+        if (!res.response) throw new Error("Die Antwort liefert keine Reaktion");
+
+        const veraendert = state.fanMood !== vorher.fan
+            || state.mediaPressure !== vorher.medien
+            || state.boardConfidence !== vorher.vorstand;
+        if (!veraendert) throw new Error("Die Pressekonferenz verändert nichts");
+
+        if (!state.lastPressConference || state.lastPressConference.topicId !== pk.topicId) {
+            throw new Error("Der Termin wird nicht im Spielstand vermerkt");
+        }
+
+        // Alle Themen müssen vollständig beantwortbar sein
+        ManagerEngine.PRESS_TOPICS.forEach(topic => {
+            if (topic.answers.length < 3) throw new Error(`Thema ${topic.id} hat zu wenige Antworten`);
+            topic.answers.forEach(a => {
+                if (!a.label || !a.response) throw new Error(`Antwort ${a.key} in ${topic.id} ist unvollständig`);
+            });
+        });
+    });
+
+    // 45. Der Schreibtisch zeigt, was ansteht
+    test("ManagerEngine: Schreibtisch meldet offene Aufgaben nach Dringlichkeit", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const kader = state.players.filter(p => club.playerIds.includes(p.id));
+
+        // Lage künstlich zuspitzen
+        kader[0].injuredWeeks = 3;
+        kader[1].fitness = 55;
+        kader[2].contractYears = 1;
+        kader[3].happiness = { overall: 40 };
+
+        const items = ManagerEngine.getAttentionItems(state);
+        if (items.length === 0) throw new Error("Der Schreibtisch bleibt trotz offener Punkte leer");
+
+        // Nach Dringlichkeit sortiert
+        for (let i = 1; i < items.length; i++) {
+            if (items[i - 1].priority > items[i].priority) {
+                throw new Error("Die Aufgaben sind nicht nach Dringlichkeit sortiert");
+            }
+        }
+        items.forEach(item => {
+            if (!item.title || !item.detail || !item.tab) throw new Error("Ein Eintrag ist unvollständig");
+        });
+
+        const themen = items.map(i => i.title).join(" | ");
+        ["nicht einsatzbereit", "überlastet", "Verträge laufen aus", "unzufrieden"].forEach(erwartet => {
+            if (!themen.includes(erwartet)) throw new Error(`Der Schreibtisch übersieht: ${erwartet}`);
+        });
+
+        // Eine unvollständige Startelf steht ganz oben
+        club.lineup = club.lineup.slice(0, 8);
+        const mitWarnung = ManagerEngine.getAttentionItems(state);
+        if (!mitWarnung[0].title.includes("Startelf")) {
+            throw new Error("Eine unvollständige Startelf wird nicht zuerst gemeldet");
         }
     });
 

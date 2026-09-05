@@ -1932,7 +1932,9 @@ class LiveMatch {
         const playedEvents = this.timeline.slice(0, this.timelineIndex);
         const startMin = Math.max(1, this.minute + 1);
 
-        const newRemainder = MatchEngine.generateTimeline(this.homeClub, this.awayClub, this.allPlayers, {
+        // Signatur ist (match, homeClub, awayClub, allPlayers, options) - ohne
+        // das Match als erstes Argument lief die Resimulation ins Leere.
+        const newRemainder = MatchEngine.generateTimeline(this.match, this.homeClub, this.awayClub, this.allPlayers, {
             startMinute: startMin,
             currentHomeScore: this.homeScore,
             currentAwayScore: this.awayScore,

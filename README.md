@@ -108,6 +108,24 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Scouting-Zentrale (`ScoutingEngine`):** Scouts für gezielte Positionen, Altersklassen und Mindeststärken entsenden und detaillierte Spielerberichte erhalten.
 - **KI-Manager (`AIManagerEngine`):** KI-Vereine optimieren vor jedem Spieltag ihre Aufstellung und unterbreiten Angebote für deine Stars.
 
+### 3b. 🗣️ Kabinenansprache & Pressekonferenz (`ManagerEngine`)
+Ein Manager verwaltet keine Tabellen, er redet mit Leuten.
+
+**Vor dem Anpfiff und in der Halbzeit** wählen Sie den Ton: *Ruhig bleiben*, *Anfeuern*, *Mehr fordern*, *Vertrauen aussprechen* oder *Lautstark werden*. Der Ton wird nicht bewertet, sondern wirkt – und zwar abhängig von der Lage:
+
+| Situation | Anbrüllen | Mehr fordern | Vertrauen |
+|---|---|---|---|
+| 0:2 zurück, Favorit | **+6** Moral | **+7** Moral | ±0 |
+| 2:0 vorn | **−8** Moral | +2 | ±0 |
+| Verunsicherte Mannschaft | stark negativ | negativ | **+8** |
+
+Jeder Spieler reagiert eigen: Temperament verstärkt jede Ansprache, Professionalität dämpft Kritik. Zwei, drei Spieler melden sich sichtbar zurück („nickt und klatscht in die Hände" / „schaut zu Boden und sagt nichts"). Die Wirkung landet in Moral und Form – und damit direkt in der Spielstärke. Eine wirksame **Halbzeitansprache** lässt den weiteren Spielverlauf neu berechnen.
+
+**Am Medientag** stellen sich die Journalisten. Vier Themen (Form, ein Spieler in der Kritik, das Saisonziel, die Erwartung der Fans) mit je drei Antworten, die Fanstimmung, Medienrummel, Vorstandsvertrauen und Teammoral verschieben. Wer sich vor einen kritisierten Spieler stellt, gewinnt ihn zurück (+12 Moral) und zahlt beim Boulevard drauf.
+
+### 3c. 📌 Der Schreibtisch
+Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit sortiert, ein Klick springt in den zuständigen Reiter: unvollständige Startelf, Verhandlungen mit uns am Zug, Ausfälle, überlastete Spieler, auslaufende Verträge, unzufriedene Spieler, ungelesene Post.
+
 ### 4b. 🤝 Verhandlungen mit Vereinen und Beratern (`NegotiationEngine`)
 Ein Transfer ist kein Knopfdruck mehr, sondern ein Vorgang über mehrere Tage:
 
@@ -230,6 +248,7 @@ untitled/
 │   │   ├── playerGenerator.js  # Kader nach Ligastufe & Vereinsruf, Attributprofile je Position
 │   │   ├── transferEngine.js   # Markt- & Transferlogik
 │   │   ├── negotiationEngine.js# Mehrtägige Verhandlungen mit Vereinen und Beratern
+│   │   ├── managerEngine.js    # Kabinenansprachen, Pressekonferenzen & Aufgabenliste
 │   │   ├── trainingEngine.js   # Tägliche Belastung, Ermüdung, Risiko & Entwicklung
 │   │   ├── financeEngine.js    # Spieltagseinnahmen, Gehälter & Journal
 │   │   ├── boardEngine.js      # Vorstandszufriedenheit & Saisonziele
@@ -285,7 +304,7 @@ Alle 4 Testsuiten validieren lückenlos:
 1. **Datenintegrität (`test_data.js`):** Alle 18 handgepflegten Vereine, Attribute, Torhüter, Gehalts- und Transferbudgets.
 2. **Wizard & UI Regression (`test_wizard.js`):** Suchfilter, Schwierigkeitsstufen, Sortierungen, Edge-Cases, DOM-Simulation und Code-Regressionsprüfungen gegen Legacy-IDs.
 3. **Engines (`test_engine.js`):** MatchEngine, SeasonEngine, Finance, Board, News, Contracts, Scouting, Youth, AIManager, SaveService & MigrationService sowie PositionEngine (Familiarität, Zonen- und Formationserkennung), eigene Formationen und die Echtzeit-Regie der 2D-Simulation. Dazu die Spielwelt: alle zwölf Ligen gefüllt, Stärkestaffelung über die Ligastufen, Karrierestart in der Landesliga, Europapokal-Besetzung, Auf-/Abstieg und die verlustfreie Kodierung des Spielstands.
-3b. Dazu die Sandbox-Systeme: mehrtägige Transferverhandlungen über alle drei Phasen, das Scheitern von Lowball-Angeboten, Vertragsgespräche für Nachwuchsspieler, Trainingsbelastung mit Ermüdungs- und Risikokurve sowie Nebenpositionen und erlernte Routine.
+3b. Dazu die Sandbox-Systeme: Kabinenansprachen mit lageabhängiger Wirkung, Pressekonferenzen, mehrtägige Transferverhandlungen über alle drei Phasen, das Scheitern von Lowball-Angeboten, Vertragsgespräche für Nachwuchsspieler, Trainingsbelastung mit Ermüdungs- und Risikokurve sowie Nebenpositionen und erlernte Routine.
 4. **E2E & Integration (`test_e2e.js`):** Vollständiger Karrierestart, 2D-LiveMatch, Auswechslungen, Transfers, Training, Multi-Saison-Läufe und der komplette Weg von der selbst gezeichneten Formation über das Live-Spiel bis zu Export und Import.
 
 ---

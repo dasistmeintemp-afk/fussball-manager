@@ -14,6 +14,7 @@ const ASSETS_TO_CACHE = [
     "./js/core/random.js",
     "./js/core/validators.js",
     "./js/data/namePools.js",
+    "./js/core/moduleResolver.js",
     "./js/data/leagueData.js",
     "./js/data/countryNamePools.js",
     "./js/data/initialData.js",

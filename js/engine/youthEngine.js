@@ -2,6 +2,18 @@
  * YouthEngine - Nachwuchsakademie, Jugendförderung und Talentbeförderung
  */
 
+/** Auflösung der Module in Browser- und Node-Umgebung */
+const _youthResolve = (() => {
+    const factory = (typeof createResolver !== "undefined" && createResolver)
+        ? createResolver
+        : ((typeof window !== "undefined" && window.createResolver)
+            ? window.createResolver
+            : (typeof require !== "undefined" ? require("../core/moduleResolver.js").createResolver : null));
+
+    if (factory) return factory(typeof require !== "undefined" ? require : null);
+    return (name) => (typeof window !== "undefined" ? window[name] : null) || null;
+})();
+
 /**
  * FacilityEngine - Universelle Infrastruktur-Verwaltung & Ausbauten (C6)
  */

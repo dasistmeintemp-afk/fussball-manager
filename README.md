@@ -26,11 +26,13 @@ Ein leichtgewichtiger, detailreicher und vollständig spielbarer **Fußballmanag
 ### 2. Neues Spiel erstellen & Verein auswählen
 1. Klicke im Startbildschirm auf **"⭐ Neues Spiel starten"**.
 2. **Schritt 1 (Managerprofil):** Gib deinen Namen ein, wähle Nationalität, Geburtsdatum und deinen gewünschten Schwierigkeitsgrad (*Leicht*, *Normal*, *Schwer*).
-3. **Schritt 2 (Liga):** Bestätige die Spielklasse (*Deutschland Liga 1* mit 18 Klubs und 34 Spieltagen).
-4. **Schritt 3 (Vereinsauswahl & Kaderanalyse):** 
-   - Filtere nach Name/Stadt, sortiere nach Kaderstärke oder Budget.
-   - Wähle links einen Verein aus, um rechts sofort die detaillierte Analyse (Top-Spieler, Talente, Schwächen, Finanzen und Vorstandsziel) einzusehen.
+3. **Schritt 2 (Liga):** Bestätige die Rahmenbedingungen deiner Karriere.
+4. **Schritt 3 (Vereinsauswahl & Kaderanalyse):**
+   - Zur Auswahl stehen **alle 218 Vereine der Spielwelt** – von den fünf europäischen Topligen bis hinunter zur Landesliga.
+   - Filtere nach Liga, suche nach Name, Stadt oder Ligennamen und sortiere nach Kaderstärke oder Budget.
+   - Wähle links einen Verein aus, um rechts sofort die detaillierte Analyse (Liga, Top-Spieler, Talente, Finanzen und Vorstandsziel) einzusehen.
    - Klicke auf **"✅ Diesen Verein übernehmen & Saison starten"**.
+   - Startest du in der Landesliga, spielst du 30 Spieltage gegen 15 Amateurvereine – der Weg nach oben führt über den Aufstieg.
 5. Du landest direkt in deinem Manager-Dashboard.
 
 ---
@@ -122,11 +124,35 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Detaillierte Spielberichte:** Textzusammenfassungen, xG-Vergleiche, Zweikampfquoten, Paraden und Auszeichnungen für den Mann des Spiels.
 - **Verbessertes Postfach (`NewsEngine`):** Vollständige Suche, Filterleiste (Vorstand, Spiel, Transfers, Training, Finanzen) und dauerhafte Mail-Historie.
 
-### 8. 🌐 Multi-League, Wettbewerbe & deutsche Ligapyramide
-- **Top-5-Ligen & Länder:** Deutschland, England, Spanien, Italien, Frankreich mit eigenen Liga- und Wettbewerbsregeln.
-- **Deutsche Ligapyramide (Level 1 bis 7):** Bundesliga, 2. Bundesliga, 3. Liga, Regionalligen (West, Bayern, etc.), Oberligen, Verbandsliga und Landesliga mit fiktiver Generierung via `ClubGenerator` & `PlayerGenerator`.
-- **Nationale Pokale & Europapokal:** Deutschland Pokal (`de_cup`), Champions League (`ucl`), Europa League (`uel`) und Conference League (`uecl`) mit Gruppen- und K.O.-Runden via `CompetitionEngine`.
-- **Europäische Qualifikation:** Automatische Ermittlung der Teilnehmer für internationale Pokale am Saisonende nach Liga-Platzierung.
+### 8. 🌐 Die Spielwelt: 218 Vereine aus fünf Ländern (`WorldGenerator`)
+- **Zwölf spielbare Ligen, 218 Vereine, über 4300 Spieler.** Die komplette Welt wird beim Karrierestart erzeugt und läuft Saison für Saison mit.
+- **Top-5-Ligen:** Deutschland, England, Spanien, Italien und Frankreich – jede mit landestypischen Vereins-, Städte- und Spielernamen. In England spielen *Rovers* und *Wanderers*, in Spanien *Real* und *Deportivo*, in Italien *AC* und *Calcio*, in Frankreich *Olympique* und *Stade*.
+- **Deutsche Ligapyramide (Stufe 1 bis 7):** Bundesliga, 2. Bundesliga, 3. Liga, Regionalliga West & Bayern, Oberliga Nord, Verbandsliga und Landesliga.
+- **Spielerstärke nach Ligastufe – wie bei FM:** Der `PlayerGenerator` staffelt Fähigkeit (CA) und Potenzial (PA) nach Ligastufe *und* Ruf des Vereins. Ein Landesligist spielt mit Spielern um 20 Gesamtstärke, ein Bundesliga-Spitzenklub um 80. Zwischen benachbarten Stufen bleibt eine Überschneidung: Der Zweitligameister kann stärker sein als der Bundesliga-Absteiger.
+
+| Ligastufe | schwacher Klub | Mittelfeld | Spitzenklub |
+|---|---|---|---|
+| Bundesliga | 67 | 76 | 82 |
+| 2. Bundesliga | 58 | 61 | 68 |
+| 3. Liga | 51 | 56 | 59 |
+| Regionalliga | 43 | 46 | 49 |
+| Oberliga | 32 | 38 | 39 |
+| Verbandsliga | 23 | 28 | 33 |
+| Landesliga | 17 | 19 | 23 |
+
+- **Alle Ligen laufen mit:** Pro Spieltag simuliert die `SeasonEngine` auch die elf übrigen Ligen. Da die Ligen 30, 34 oder 38 Spieltage haben, wird der Fortschritt anteilig umgerechnet – alle Ligen enden gemeinsam.
+- **Ruf, Stadion und Etat nach Rangfolge:** Ein Spitzenklub hat rund das Siebenfache des Etats des Schlusslichts derselben Liga; die Stadionkapazität reicht von 82.000 (Topliga) bis 400 Plätzen (Landesliga).
+- **Nationale Pokale & Europapokal:** Der Pokal deines Landes sowie Champions League (`ucl`), Europa League (`uel`) und Conference League (`uecl`) mit Gruppen- und K.O.-Runden via `CompetitionEngine`.
+- **Echte Europapokal-Qualifikanten:** Die Startplätze folgen den `europeanSpots` der Ligadefinition – England, Spanien und Italien stellen vier Champions-League-Teilnehmer, Frankreich drei. Kein Verein startet in zwei Wettbewerben.
+- **Auf- und Abstieg über die gesamte Pyramide:** Aus jeder Liga steigen genauso viele Vereine ab, wie von unten aufsteigen; alle Ligen behalten ihre Mannschaftszahl. Aufsteiger nehmen ihren Kader mit und starten bewusst als Außenseiter.
+- **Ligawechsel in der Tabellenansicht:** Der Wettbewerbswähler im Reiter *Wettbewerbe & Spielplan* zeigt jede Liga der Welt mit eigener Tabelle und eigenem Spielplan.
+
+### 8b. 💾 Kompaktes Speicherformat (`SaveCodec`)
+Eine komplette Welt mit über 4300 Spielern belegt als gewöhnliches JSON knapp 6 MB – mehr, als der LocalStorage der Browser üblicherweise zulässt (rund 5 MB). Der `SaveCodec` wandelt Spieler und Spielplan-Partien deshalb in positionale Arrays um und legt alle Zeichenketten in einer gemeinsamen Tabelle ab. Namen, Nationalitäten und Positionen tauchen nur noch einmal auf.
+
+- **5,9 MB → 1,6 MB** bei verlustfreier Rückwandlung; unbekannte Zusatzfelder überleben die Umwandlung in einem Restobjekt.
+- Gespielte Partien geben ihre Timeline frei (rund 22 KB je Spiel) – die Zähler stecken danach ohnehin in `stats` und `events`.
+- Partien fremder Ligen behalten nur das Ergebnis; nur die eigenen Spiele behalten Einzelkritiken, Ereignisse und Aufstellungen.
 
 ### 9. 🎯 100% Synchrone Timeline-MatchEngine & 2D-Visualisierung
 - **Deterministische Match-Timeline (`MatchEngine.generateTimeline`):** Generiert chronologische Ketten von Spielzügen (Pässe, Flanken, Dribblings, Schüsse, xG, Glanzparaden, Tore, Karten) inklusive 2D-Koordinaten (`start`, `end`).
@@ -147,6 +173,7 @@ untitled/
 │   ├── app.js                  # App-Initialisierung & Controller
 │   ├── core/
 │   │   ├── constants.js        # Zentrale Konstanten & Enums
+│   │   ├── moduleResolver.js   # Einheitliche Modulauflösung für Browser und Node
 │   │   ├── dom.js              # Fehlertolerante DOM-Hilfsfunktionen
 │   │   ├── formatters.js       # Formatierer für Geld, Datum, Prozente
 │   │   ├── random.js           # Mathematische Zufallsgeneratoren
@@ -154,9 +181,11 @@ untitled/
 │   ├── data/
 │   │   ├── initialData.js      # 18 Bundesliga-Vereine & Spielerdaten
 │   │   ├── leagueData.js       # Top-5-Ligen, Ligapyramide, Pokale & Europa-Wettbewerbe
+│   │   ├── countryNamePools.js # Landestypische Spieler-, Städte- und Vereinsnamen (DE/EN/ES/IT/FR)
 │   │   └── namePools.js        # Namenspools für Jugend & Neugenerierungen
 │   ├── services/
 │   │   ├── saveService.js      # Speichern, Laden, Exportieren, Importieren
+│   │   ├── saveCodec.js        # Kompaktes Speicherformat: 5,9 MB Welt werden zu 1,6 MB
 │   │   └── migrationService.js # Schema-Migrationen für Abwärtskompatibilität (v1 -> v6)
 │   ├── engine/
 │   │   ├── gameState.js        # Zentraler Zustand & Liga-Generator
@@ -166,8 +195,9 @@ untitled/
 │   │   ├── positionEngine.js   # Positionsprofile, Eignungsmodell, Zonen- & Formationserkennung
 │   │   ├── seasonEngine.js     # Spieltagsfortschritt & Saisonabschluss
 │   │   ├── competitionEngine.js# Ligen, Pokalrunden, Europapokal & Auf-/Abstieg
-│   │   ├── clubGenerator.js    # Generator für Amateur- und Pyramidenvereine
-│   │   ├── playerGenerator.js  # Generator für fiktive Kader und Jugendtalente
+│   │   ├── worldGenerator.js   # Baut die Welt: 218 Vereine in zwölf Ligen samt Spielplänen
+│   │   ├── clubGenerator.js    # Landestypische Vereine mit Ruf, Stadion und Etat je Ligastufe
+│   │   ├── playerGenerator.js  # Kader nach Ligastufe & Vereinsruf, Attributprofile je Position
 │   │   ├── transferEngine.js   # Markt- & Transferlogik
 │   │   ├── trainingEngine.js   # Wöchentliche Trainings- & Spielerentwicklung
 │   │   ├── financeEngine.js    # Spieltagseinnahmen, Gehälter & Journal
@@ -221,9 +251,9 @@ Oder führe die individuellen Test-Suiten aus:
 node test_data.js && node test_wizard.js && node test_engine.js && node test_e2e.js
 ```
 Alle 4 Testsuiten validieren lückenlos:
-1. **Datenintegrität (`test_data.js`):** Alle 18 Vereine, Attribute, Torhüter, Gehalts- und Transferbudgets.
+1. **Datenintegrität (`test_data.js`):** Alle 18 handgepflegten Vereine, Attribute, Torhüter, Gehalts- und Transferbudgets.
 2. **Wizard & UI Regression (`test_wizard.js`):** Suchfilter, Schwierigkeitsstufen, Sortierungen, Edge-Cases, DOM-Simulation und Code-Regressionsprüfungen gegen Legacy-IDs.
-3. **Engines (`test_engine.js`):** MatchEngine, SeasonEngine, Finance, Board, News, Contracts, Scouting, Youth, AIManager, SaveService & MigrationService sowie PositionEngine (Familiarität, Zonen- und Formationserkennung), eigene Formationen und die Echtzeit-Regie der 2D-Simulation.
+3. **Engines (`test_engine.js`):** MatchEngine, SeasonEngine, Finance, Board, News, Contracts, Scouting, Youth, AIManager, SaveService & MigrationService sowie PositionEngine (Familiarität, Zonen- und Formationserkennung), eigene Formationen und die Echtzeit-Regie der 2D-Simulation. Dazu die Spielwelt: alle zwölf Ligen gefüllt, Stärkestaffelung über die Ligastufen, Karrierestart in der Landesliga, Europapokal-Besetzung, Auf-/Abstieg und die verlustfreie Kodierung des Spielstands.
 4. **E2E & Integration (`test_e2e.js`):** Vollständiger Karrierestart, 2D-LiveMatch, Auswechslungen, Transfers, Training, Multi-Saison-Läufe und der komplette Weg von der selbst gezeichneten Formation über das Live-Spiel bis zu Export und Import.
 
 ---

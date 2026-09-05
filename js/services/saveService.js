@@ -6,21 +6,29 @@ const STORAGE_KEY = "footballManagerSave_v2";
 const LEGACY_STORAGE_KEY = "footballManagerSave";
 
 const SaveService = {
-    /** Auflösung der Hilfsdienste in Browser- und Node-Umgebung */
-    _codec() {
-        if (typeof SaveCodec !== 'undefined' && SaveCodec) return SaveCodec;
-        if (typeof window !== 'undefined' && window.SaveCodec) return window.SaveCodec;
+    /**
+     * Auflösung der Hilfsdienste. Prüft Modulscope, window und require der
+     * Reihe nach - eine window-Attrappe ohne das gesuchte Modul darf die
+     * require-Auflösung nicht abschneiden.
+     */
+    _resolve(name, path) {
+        if (typeof globalThis !== 'undefined' && globalThis[name]) return globalThis[name];
+        if (typeof window !== 'undefined' && window[name]) return window[name];
         if (typeof require !== 'undefined') {
-            try { return require('./saveCodec.js').SaveCodec; } catch (e) { return null; }
+            try {
+                const mod = require(path);
+                if (mod && mod[name]) return mod[name];
+            } catch (e) { /* im Browser nicht vorhanden */ }
         }
         return null;
     },
 
+    _codec() {
+        return this._resolve('SaveCodec', './saveCodec.js');
+    },
+
     _saveVersion() {
-        const migrator = (typeof MigrationService !== 'undefined' && MigrationService)
-            ? MigrationService
-            : ((typeof window !== 'undefined' && window.MigrationService) ? window.MigrationService : null);
-        return migrator?.CURRENT_SAVE_VERSION || 6;
+        return this._resolve('MigrationService', './migrationService.js')?.CURRENT_SAVE_VERSION || 6;
     },
 
     /**

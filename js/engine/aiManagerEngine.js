@@ -2,6 +2,18 @@
  * AIManagerEngine - Intelligente Aufstellungen, Taktiken und Transfers für KI-Vereine
  */
 
+/** Auflösung der Module in Browser- und Node-Umgebung */
+const _aiResolve = (() => {
+    const factory = (typeof createResolver !== "undefined" && createResolver)
+        ? createResolver
+        : ((typeof window !== "undefined" && window.createResolver)
+            ? window.createResolver
+            : (typeof require !== "undefined" ? require("../core/moduleResolver.js").createResolver : null));
+
+    if (factory) return factory(typeof require !== "undefined" ? require : null);
+    return (name) => (typeof window !== "undefined" ? window[name] : null) || null;
+})();
+
 const AIManagerEngine = {
     /**
      * Wählt die beste Aufstellung für einen KI-Verein unter Berücksichtigung von Verletzungen & Sperren

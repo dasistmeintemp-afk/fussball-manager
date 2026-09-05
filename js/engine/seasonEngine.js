@@ -2,17 +2,28 @@
  * SeasonEngine - Spieltagsabwicklung, wöchentliche Finanzen, Tabellenaktualisierung und Saisonübergang
  */
 
-const _getMatchEngine = () => typeof MatchEngine !== 'undefined' ? MatchEngine : (typeof window !== 'undefined' ? window.MatchEngine : (typeof require !== 'undefined' ? require('./matchEngine.js').MatchEngine : null));
-const _getGameState = () => typeof GameState !== 'undefined' ? GameState : (typeof window !== 'undefined' ? window.GameState : (typeof require !== 'undefined' ? require('./gameState.js').GameState : null));
-const _getTrainingEngine = () => typeof TrainingEngine !== 'undefined' ? TrainingEngine : (typeof window !== 'undefined' ? window.TrainingEngine : (typeof require !== 'undefined' ? require('./trainingEngine.js').TrainingEngine : null));
-const _getTransferEngine = () => typeof TransferEngine !== 'undefined' ? TransferEngine : (typeof window !== 'undefined' ? window.TransferEngine : (typeof require !== 'undefined' ? require('./transferEngine.js').TransferEngine : null));
-const _getAIManagerEngine = () => typeof AIManagerEngine !== 'undefined' ? AIManagerEngine : (typeof window !== 'undefined' ? window.AIManagerEngine : (typeof require !== 'undefined' ? require('./aiManagerEngine.js').AIManagerEngine : null));
-const _getScoutingEngine = () => typeof ScoutingEngine !== 'undefined' ? ScoutingEngine : (typeof window !== 'undefined' ? window.ScoutingEngine : (typeof require !== 'undefined' ? require('./scoutingEngine.js').ScoutingEngine : null));
-const _getYouthEngine = () => typeof YouthEngine !== 'undefined' ? YouthEngine : (typeof window !== 'undefined' ? window.YouthEngine : (typeof require !== 'undefined' ? require('./youthEngine.js').YouthEngine : null));
-const _getBoardEngine = () => typeof BoardEngine !== 'undefined' ? BoardEngine : (typeof window !== 'undefined' ? window.BoardEngine : (typeof require !== 'undefined' ? require('./boardEngine.js').BoardEngine : null));
-const _getNewsEngine = () => typeof NewsEngine !== 'undefined' ? NewsEngine : (typeof window !== 'undefined' ? window.NewsEngine : (typeof require !== 'undefined' ? require('./newsEngine.js').NewsEngine : null));
-const _getContractEngine = () => typeof ContractEngine !== 'undefined' ? ContractEngine : (typeof window !== 'undefined' ? window.ContractEngine : (typeof require !== 'undefined' ? require('./contractEngine.js').ContractEngine : null));
-const _getFinanceEngine = () => typeof FinanceEngine !== 'undefined' ? FinanceEngine : (typeof window !== 'undefined' ? window.FinanceEngine : (typeof require !== 'undefined' ? require('./financeEngine.js').FinanceEngine : null));
+/** Auflösung der Module in Browser- und Node-Umgebung */
+const _resolve = (() => {
+    const factory = (typeof createResolver !== "undefined" && createResolver)
+        ? createResolver
+        : ((typeof window !== "undefined" && window.createResolver)
+            ? window.createResolver
+            : (typeof require !== "undefined" ? require("../core/moduleResolver.js").createResolver : null));
+
+    if (factory) return factory(typeof require !== "undefined" ? require : null);
+    return (name) => (typeof window !== "undefined" ? window[name] : null) || null;
+})();
+const _getMatchEngine = () => _resolve('MatchEngine', './matchEngine.js');
+const _getGameState = () => _resolve('GameState', './gameState.js');
+const _getTrainingEngine = () => _resolve('TrainingEngine', './trainingEngine.js');
+const _getTransferEngine = () => _resolve('TransferEngine', './transferEngine.js');
+const _getAIManagerEngine = () => _resolve('AIManagerEngine', './aiManagerEngine.js');
+const _getScoutingEngine = () => _resolve('ScoutingEngine', './scoutingEngine.js');
+const _getYouthEngine = () => _resolve('YouthEngine', './youthEngine.js');
+const _getBoardEngine = () => _resolve('BoardEngine', './boardEngine.js');
+const _getNewsEngine = () => _resolve('NewsEngine', './newsEngine.js');
+const _getContractEngine = () => _resolve('ContractEngine', './contractEngine.js');
+const _getFinanceEngine = () => _resolve('FinanceEngine', './financeEngine.js');
 
 class SeasonEngine {
     /**
@@ -108,9 +119,7 @@ class SeasonEngine {
         const userClub = state.clubs.find(c => c.id === state.userClubId);
 
         // 2. Wöchentliche Finanzen & Spieltagseinnahmen sauber über FinanceEngine abrechnen (C3)
-        const financeEngine = (typeof FinanceEngine !== 'undefined' && FinanceEngine)
-            ? FinanceEngine
-            : ((typeof window !== 'undefined' && window.FinanceEngine) ? window.FinanceEngine : (typeof require !== 'undefined' ? require('./financeEngine.js').FinanceEngine : null));
+        const financeEngine = _getFinanceEngine();
 
         if (financeEngine) {
             // Wöchentliche Kosten & Sponsoren verbuchen
@@ -355,10 +364,7 @@ class SeasonEngine {
         const gameState = _getGameState();
 
         // Auf- und Abstieg über die gesamte Ligapyramide abwickeln
-        const competitionEngine = (typeof CompetitionEngine !== 'undefined' && CompetitionEngine)
-            ? CompetitionEngine
-            : ((typeof window !== 'undefined' && window.CompetitionEngine) ? window.CompetitionEngine
-                : (typeof require !== 'undefined' ? require('./competitionEngine.js').CompetitionEngine : null));
+        const competitionEngine = _resolve('CompetitionEngine', './competitionEngine.js');
 
         let movements = { promoted: [], relegated: [] };
         if (competitionEngine && typeof competitionEngine.processSeasonEndPromotionsRelegations === 'function') {
@@ -374,10 +380,7 @@ class SeasonEngine {
         }
 
         // Spielpläne aller Ligen neu auslosen
-        const worldGen = (typeof WorldGenerator !== 'undefined' && WorldGenerator)
-            ? WorldGenerator
-            : ((typeof window !== 'undefined' && window.WorldGenerator) ? window.WorldGenerator
-                : (typeof require !== 'undefined' ? require('./worldGenerator.js').WorldGenerator : null));
+        const worldGen = _resolve('WorldGenerator', './worldGenerator.js');
 
         const userLeagueId = gameState ? gameState.getUserLeagueId(state) : state.userLeagueId;
         state.userLeagueId = userLeagueId;

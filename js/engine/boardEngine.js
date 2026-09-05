@@ -2,6 +2,18 @@
  * BoardEngine - Vorstandszufriedenheit, Zielverfolgung und Management-Bewertung
  */
 
+/** Auflösung der Module in Browser- und Node-Umgebung */
+const _boardResolve = (() => {
+    const factory = (typeof createResolver !== "undefined" && createResolver)
+        ? createResolver
+        : ((typeof window !== "undefined" && window.createResolver)
+            ? window.createResolver
+            : (typeof require !== "undefined" ? require("../core/moduleResolver.js").createResolver : null));
+
+    if (factory) return factory(typeof require !== "undefined" ? require : null);
+    return (name) => (typeof window !== "undefined" ? window[name] : null) || null;
+})();
+
 const BoardEngine = {
     /**
      * Aktualisiert die Vorstandszufriedenheit basierend auf Tabelle, Zielen, Finanzen und Form
@@ -66,7 +78,7 @@ const BoardEngine = {
         // Vorstandsnachricht bei kritischer Zufriedenheit
         if (newConf < 35 && (!userClub.lastWarningMatchday || state.currentMatchday - userClub.lastWarningMatchday > 4)) {
             userClub.lastWarningMatchday = state.currentMatchday;
-            const newsEngine = (typeof NewsEngine !== 'undefined') ? NewsEngine : (typeof window !== 'undefined' ? window.NewsEngine : (typeof require !== 'undefined' ? require('./newsEngine.js').NewsEngine : null));
+            const newsEngine = _boardResolve('NewsEngine', './newsEngine.js');
             if (newsEngine) {
                 newsEngine.createBoardMessage(state, {
                     title: "Krise: Ultimatum des Vorstands",

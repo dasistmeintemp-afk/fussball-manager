@@ -129,16 +129,7 @@ class GameState {
      * Auflösung der PositionEngine in Browser- und Node-Umgebung
      */
     static _getPositionEngine() {
-        if (typeof PositionEngine !== 'undefined' && PositionEngine) return PositionEngine;
-        if (typeof window !== 'undefined' && window.PositionEngine) return window.PositionEngine;
-        if (typeof require !== 'undefined') {
-            try {
-                return require('./positionEngine.js').PositionEngine;
-            } catch (e) {
-                return null;
-            }
-        }
-        return null;
+        return GameState._resolveEngine('PositionEngine', './positionEngine.js');
     }
 
     /**
@@ -574,12 +565,7 @@ class GameState {
 
     /** Auflösung des WorldGenerators in Browser- und Node-Umgebung */
     static _getWorldGenerator() {
-        if (typeof WorldGenerator !== "undefined" && WorldGenerator) return WorldGenerator;
-        if (typeof window !== "undefined" && window.WorldGenerator) return window.WorldGenerator;
-        if (typeof require !== "undefined") {
-            try { return require("./worldGenerator.js").WorldGenerator; } catch (e) { return null; }
-        }
-        return null;
+        return GameState._resolveEngine("WorldGenerator", "./worldGenerator.js");
     }
 
     /**
@@ -626,7 +612,16 @@ class GameState {
                 countryId: club.countryId || "de",
                 level: club.level || 1,
                 avgOverall: avg,
-                squadSize: squad.length
+                squadSize: squad.length,
+                // Schlanke Kaderliste für die Detailansicht im Assistenten
+                players: squad.map(p => ({
+                    name: p.name,
+                    pos: p.pos,
+                    age: p.age,
+                    overall: p.overall,
+                    pot: p.pot,
+                    value: p.value
+                }))
             };
         });
     }
@@ -718,7 +713,7 @@ class GameState {
         const leagueData = GameState._resolveLeagueData('LEAGUES_DATA');
         const countryData = GameState._resolveLeagueData('COUNTRIES_DATA');
         const compData = GameState._resolveLeagueData('COMPETITIONS_DATA');
-        const compEngine = typeof CompetitionEngine !== 'undefined' ? CompetitionEngine : (typeof window !== 'undefined' ? window.CompetitionEngine : (typeof require !== 'undefined' ? require('./competitionEngine.js').CompetitionEngine : null));
+        const compEngine = GameState._resolveEngine('CompetitionEngine', './competitionEngine.js');
 
         state.countries = countryData;
         state.leagues = leagueData;
@@ -913,15 +908,7 @@ class GameState {
      * abschneiden (das passiert in den Node-Tests mit window-Attrappe).
      */
     static _resolveLeagueData(name) {
-        if (typeof globalThis !== 'undefined' && globalThis[name]) return globalThis[name];
-        if (typeof window !== 'undefined' && window[name]) return window[name];
-        if (typeof require !== 'undefined') {
-            try {
-                const mod = require('../data/leagueData.js');
-                if (mod && mod[name]) return mod[name];
-            } catch (e) { /* im Browser nicht vorhanden */ }
-        }
-        return [];
+        return GameState._resolveEngine(name, '../data/leagueData.js') || [];
     }
 
     /** Alle Vereine einer Liga */
@@ -1042,8 +1029,9 @@ class GameState {
     saveToLocalStorage(slotKey = "football_manager_savegame") {
         try {
             this.lastSaved = new Date().toISOString();
-            const serialized = JSON.stringify(this);
-            localStorage.setItem(slotKey, serialized);
+            const codec = GameState._getSaveCodec();
+            const payload = codec ? codec.encodeState(this) : this;
+            localStorage.setItem(slotKey, JSON.stringify(payload));
             return true;
         } catch (e) {
             console.error("Speichern fehlgeschlagen:", e);
@@ -1052,16 +1040,54 @@ class GameState {
     }
 
     /**
+     * Auflösung einer Engine. Prüft Modulscope, window und require der Reihe
+     * nach, damit eine window-Attrappe ohne das gesuchte Modul die
+     * require-Auflösung nicht abschneidet.
+     */
+    static _resolveEngine(name, path) {
+        if (typeof globalThis !== "undefined" && globalThis[name]) return globalThis[name];
+        if (typeof window !== "undefined" && window[name]) return window[name];
+        if (typeof require !== "undefined") {
+            try {
+                const mod = require(path);
+                if (mod && mod[name]) return mod[name];
+            } catch (e) { /* im Browser nicht vorhanden */ }
+        }
+        return null;
+    }
+
+    /** Auflösung des SaveCodec in Browser- und Node-Umgebung */
+    static _getSaveCodec() {
+        return GameState._resolveEngine("SaveCodec", "../services/saveCodec.js");
+    }
+
+    /**
+     * Liest einen Spielstand aus dem LocalStorage und faltet das kompakte
+     * Speicherformat wieder auf.
+     */
+    static _readStoredState(slotKey) {
+        const raw = localStorage.getItem(slotKey);
+        if (!raw) return null;
+
+        const parsed = JSON.parse(raw);
+        const codec = GameState._getSaveCodec();
+        return (codec && codec.isEncoded(parsed)) ? codec.decodeState(parsed) : parsed;
+    }
+
+    /**
      * Gibt Metadaten über den Spielstand zurück (ohne den gesamten Spielstand zu laden)
      */
     static getSaveSummary(slotKey = "football_manager_savegame") {
         try {
-            const raw = localStorage.getItem(slotKey);
-            if (!raw) return null;
-            const parsed = JSON.parse(raw);
-            if (!parsed.userClubId || !parsed.clubs) return null;
+            const parsed = GameState._readStoredState(slotKey);
+            if (!parsed || !parsed.userClubId || !parsed.clubs) return null;
             const userClub = parsed.clubs.find(c => c.id === parsed.userClubId);
-            const standings = GameState.calculateStandings(parsed.clubs, parsed.schedule, parsed.currentMatchday - 1);
+            const leagueClubs = parsed.clubs.filter(c => c.leagueId === userClub?.leagueId);
+            const standings = GameState.calculateStandings(
+                leagueClubs.length > 1 ? leagueClubs : parsed.clubs,
+                parsed.schedule,
+                parsed.currentMatchday - 1
+            );
             const userRank = standings.findIndex(s => s.clubId === parsed.userClubId) + 1;
 
             return {
@@ -1089,9 +1115,8 @@ class GameState {
      */
     static loadFromLocalStorage(slotKey = "football_manager_savegame") {
         try {
-            const raw = localStorage.getItem(slotKey);
-            if (!raw) return null;
-            const parsed = JSON.parse(raw);
+            const parsed = GameState._readStoredState(slotKey);
+            if (!parsed) return null;
             const state = Object.assign(new GameState(), parsed);
             // Eigene Formationen des Spielstands wieder global bekannt machen
             GameState.registerCustomFormations(state);

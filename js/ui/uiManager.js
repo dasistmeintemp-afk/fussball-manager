@@ -308,16 +308,67 @@ class UIManager {
         const searchInput = document.getElementById("filterClubSearch");
         const sortSelect = document.getElementById("filterClubSort");
         const difficultySelect = document.getElementById("filterClubDifficulty");
+        const leagueSelect = document.getElementById("filterClubLeague");
 
         if (searchInput) searchInput.value = "";
         if (sortSelect) sortSelect.value = "strength_desc";
         if (difficultySelect) difficultySelect.value = "all";
+        if (leagueSelect) leagueSelect.value = "all";
+    }
+
+    /**
+     * Alle wählbaren Vereine der Spielwelt.
+     *
+     * Die Auswahl umfasst inzwischen 218 Vereine aus fünf Ländern - von der
+     * Champions-League-Anwärterin bis zum Landesligisten. Die Welt wird dabei
+     * genau einmal erzeugt und später unverändert vom Karrierestart
+     * übernommen: der gewählte Verein hat also exakt den gezeigten Kader.
+     */
+    getWizardTeams() {
+        const gameState = (typeof GameState !== "undefined" && GameState)
+            ? GameState
+            : ((typeof window !== "undefined" && window.GameState) ? window.GameState : null);
+
+        if (gameState && typeof gameState.getSelectableClubs === "function") {
+            try {
+                const clubs = gameState.getSelectableClubs();
+                if (Array.isArray(clubs) && clubs.length > 0) return clubs;
+            } catch (err) {
+                console.error("[Wizard] Weltgenerierung fehlgeschlagen, nutze Startdaten:", err);
+            }
+        }
+
+        return Array.isArray(window.INITIAL_TEAMS_DATA)
+            ? window.INITIAL_TEAMS_DATA
+            : (typeof INITIAL_TEAMS_DATA !== "undefined" && Array.isArray(INITIAL_TEAMS_DATA) ? INITIAL_TEAMS_DATA : []);
+    }
+
+    /** Füllt die Ligaauswahl des Assistenten einmalig */
+    populateWizardLeagueFilter(teams) {
+        const select = document.getElementById("filterClubLeague");
+        if (!select || select._leagueFilterFilled) return;
+
+        const seen = new Map();
+        teams.forEach(club => {
+            if (!club.leagueId || seen.has(club.leagueId)) return;
+            seen.set(club.leagueId, { name: club.leagueName || club.leagueId, level: club.level || 1 });
+        });
+        if (seen.size === 0) return;
+
+        const entries = [...seen.entries()].sort((a, b) => (a[1].level - b[1].level) || a[1].name.localeCompare(b[1].name));
+        select.innerHTML = `<option value="all">Alle Ligen (${teams.length} Vereine)</option>` +
+            entries.map(([id, meta]) => `<option value="${this.escapeHtml(id)}">${this.escapeHtml(meta.name)}</option>`).join("");
+        select._leagueFilterFilled = true;
+
+        if (typeof select.addEventListener === "function") {
+            select.addEventListener("change", () => this.renderWizardClubs());
+        }
     }
 
     /**
      * Reines Filtern und Sortieren von Vereinen für die Wizard-Auswahl
      */
-    static getFilteredWizardClubs(teams, { search = "", difficulty = "all", sort = "strength_desc" } = {}) {
+    static getFilteredWizardClubs(teams, { search = "", difficulty = "all", sort = "strength_desc", league = "all" } = {}) {
         if (!Array.isArray(teams)) return [];
         let filtered = [...teams];
 
@@ -327,8 +378,14 @@ class UIManager {
                 const name = (club.name || "").toLowerCase();
                 const city = (club.city || "").toLowerCase();
                 const stadium = (club.stadium || "").toLowerCase();
-                return name.includes(searchVal) || city.includes(searchVal) || stadium.includes(searchVal);
+                const leagueName = (club.leagueName || "").toLowerCase();
+                return name.includes(searchVal) || city.includes(searchVal)
+                    || stadium.includes(searchVal) || leagueName.includes(searchVal);
             });
+        }
+
+        if (league && league !== "all") {
+            filtered = filtered.filter(club => club.leagueId === league);
         }
 
         const diffVal = difficulty || "all";
@@ -344,17 +401,17 @@ class UIManager {
         }
 
         const sortVal = sort || "strength_desc";
+        const averageOverall = (club) => {
+            if (typeof club.avgOverall === "number") return club.avgOverall;
+            const squad = Array.isArray(club.players) ? club.players : [];
+            return squad.length
+                ? Math.round(squad.reduce((sum, p) => sum + (p.overall || 0), 0) / squad.length)
+                : 0;
+        };
+
         filtered.sort((a, b) => {
-            const playersA = Array.isArray(a.players) ? a.players : [];
-            const playersB = Array.isArray(b.players) ? b.players : [];
-
-            const ovrA = playersA.length
-                ? Math.round(playersA.reduce((sum, p) => sum + (p.overall || 0), 0) / playersA.length)
-                : 0;
-
-            const ovrB = playersB.length
-                ? Math.round(playersB.reduce((sum, p) => sum + (p.overall || 0), 0) / playersB.length)
-                : 0;
+            const ovrA = averageOverall(a);
+            const ovrB = averageOverall(b);
 
             if (sortVal === "strength_desc") return ovrB - ovrA;
             if (sortVal === "strength_asc") return ovrA - ovrB;
@@ -429,15 +486,8 @@ class UIManager {
             return;
         }
 
-        const teams = Array.isArray(window.INITIAL_TEAMS_DATA)
-            ? window.INITIAL_TEAMS_DATA
-            : (typeof INITIAL_TEAMS_DATA !== "undefined" && Array.isArray(INITIAL_TEAMS_DATA) ? INITIAL_TEAMS_DATA : []);
-
-        console.log("[Wizard] INITIAL_TEAMS_DATA Status:", {
-            windowType: typeof window !== "undefined" ? typeof window.INITIAL_TEAMS_DATA : "no-window",
-            isArray: Array.isArray(teams),
-            length: teams.length
-        });
+        const teams = this.getWizardTeams();
+        this.populateWizardLeagueFilter(teams);
 
         if (!teams.length) {
             listContainer.innerHTML = `
@@ -452,22 +502,18 @@ class UIManager {
         const sortSelect = document.getElementById("filterClubSort");
         const difficultySelect = document.getElementById("filterClubDifficulty");
 
+        const leagueSelect = document.getElementById("filterClubLeague");
+
         const searchVal = (searchInput?.value || "").toLowerCase().trim();
         const sortVal = sortSelect?.value || "strength_desc";
         const diffVal = difficultySelect?.value || "all";
+        const leagueVal = leagueSelect?.value || "all";
 
         const filtered = UIManager.getFilteredWizardClubs(teams, {
             search: searchVal,
             difficulty: diffVal,
-            sort: sortVal
-        });
-
-        console.log("[Wizard] Vereinsfilter Ergebnis:", {
-            totalTeams: teams.length,
-            filteredTeams: filtered.length,
-            searchVal,
-            sortVal,
-            diffVal
+            sort: sortVal,
+            league: leagueVal
         });
 
         if (!filtered.length) {
@@ -493,21 +539,26 @@ class UIManager {
             return;
         }
 
+        const FLAGS = { de: "🇩🇪", en: "🏴", es: "🇪🇸", it: "🇮🇹", fr: "🇫🇷" };
+
         listContainer.innerHTML = filtered.map(club => {
             const players = Array.isArray(club.players) ? club.players : [];
-            const ovr = players.length
-                ? Math.round(players.reduce((sum, p) => sum + (p.overall || 0), 0) / players.length)
-                : 0;
+            const ovr = typeof club.avgOverall === "number"
+                ? club.avgOverall
+                : (players.length ? Math.round(players.reduce((sum, p) => sum + (p.overall || 0), 0) / players.length) : 0);
 
             const isSelected = this.wizardSelectedClubId === club.id;
+            const leagueLabel = club.leagueName
+                ? `${FLAGS[club.countryId] || ""} ${this.escapeHtml(club.leagueName)}`
+                : "";
 
             return `
                 <div class="club-list-item ${isSelected ? "selected" : ""}" data-club-id="${club.id}">
                     <div class="club-item-left">
                         <div class="club-color-badge" style="background: ${club.primaryColor || "#334155"}; border: 1px solid ${club.secondaryColor || "#fff"};"></div>
                         <div>
-                            <div class="club-item-title">${club.name || "Unbekannter Verein"}</div>
-                            <div class="club-item-sub">${club.city || "Unbekannte Stadt"} • ${club.stadium || "Unbekanntes Stadion"}</div>
+                            <div class="club-item-title">${this.escapeHtml(club.name || "Unbekannter Verein")}</div>
+                            <div class="club-item-sub">${this.escapeHtml(club.city || "Unbekannte Stadt")} • ${leagueLabel}</div>
                         </div>
                     </div>
                     <div class="club-item-right">
@@ -549,9 +600,7 @@ class UIManager {
         const panel = document.getElementById("clubDetailPanel");
         if (!panel) return;
 
-        const teams = Array.isArray(window.INITIAL_TEAMS_DATA)
-            ? window.INITIAL_TEAMS_DATA
-            : (typeof INITIAL_TEAMS_DATA !== "undefined" && Array.isArray(INITIAL_TEAMS_DATA) ? INITIAL_TEAMS_DATA : []);
+        const teams = this.getWizardTeams();
         const club = teams.find(c => c.id === clubId);
         if (!club) {
             panel.innerHTML = `
@@ -578,8 +627,9 @@ class UIManager {
                     <div class="cd-title-wrap">
                         <span class="cd-badge" style="background: ${club.primaryColor || '#334155'}; border: 1px solid ${club.secondaryColor || '#fff'};"></span>
                         <div>
-                            <div class="cd-name">${club.name}</div>
-                            <div class="cd-city">📍 ${club.city || ''} • 🏟️ ${club.stadium || ''} (${(club.capacity || 0).toLocaleString('de-DE')} Plätze)</div>
+                            <div class="cd-name">${this.escapeHtml(club.name)}</div>
+                            <div class="cd-city">📍 ${this.escapeHtml(club.city || '')} • 🏟️ ${this.escapeHtml(club.stadium || '')} (${(club.capacity || 0).toLocaleString('de-DE')} Plätze)</div>
+                            ${club.leagueName ? `<div class="cd-city">🏆 ${this.escapeHtml(club.leagueName)} • Ligastufe ${club.level || 1}</div>` : ''}
                         </div>
                     </div>
                     <div style="text-align:right;">
@@ -662,10 +712,7 @@ class UIManager {
                 return;
             }
 
-            const teams = Array.isArray(window.INITIAL_TEAMS_DATA)
-                ? window.INITIAL_TEAMS_DATA
-                : (typeof INITIAL_TEAMS_DATA !== "undefined" && Array.isArray(INITIAL_TEAMS_DATA) ? INITIAL_TEAMS_DATA : []);
-
+            const teams = this.getWizardTeams();
             const selectedClub = teams.find(c => c.id === this.wizardSelectedClubId);
             if (!selectedClub) {
                 this.showToast("Der ausgewählte Verein wurde nicht gefunden.", "error");
@@ -2322,17 +2369,18 @@ class UIManager {
     renderFixturesAndStandings() {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
-        const activeComp = this.activeCompetitionId || "de_liga_1";
+        const userLeagueId = this.getUserLeagueId(state);
+        const activeComp = this.activeCompetitionId || state.activeCompetitionId || userLeagueId;
 
-        const compSelect = document.getElementById("selectCompetitionView");
-        if (compSelect) compSelect.value = activeComp;
+        this.populateCompetitionSelect(state, activeComp);
 
         const tbody = document.getElementById("fullStandingsBody");
         const fixturesList = document.getElementById("fixturesList");
 
-        if (activeComp === "de_cup") {
+        const cupIds = Object.keys(state.cups || {});
+        if (cupIds.includes(activeComp)) {
             // Pokal-Runde rendern
-            const cup = state.cups?.de_cup;
+            const cup = state.cups[activeComp];
             if (cup) {
                 tbody.innerHTML = `
                     <tr>
@@ -2410,8 +2458,19 @@ class UIManager {
             return;
         }
 
-        // 1. Standard-Liga Tabelle rendern
-        tbody.innerHTML = state.standings.map((s, idx) => {
+        // 1. Standard-Liga Tabelle rendern - auch für fremde Ligen der Welt
+        const isOwnLeague = activeComp === userLeagueId;
+        const table = isOwnLeague
+            ? state.standings
+            : ((state.standingsByLeague && state.standingsByLeague[activeComp]) || []);
+
+        if (!table.length) {
+            tbody.innerHTML = `<tr><td colspan="10" class="text-muted" style="text-align:center; padding:20px;">Für diesen Wettbewerb liegt noch keine Tabelle vor.</td></tr>`;
+            if (fixturesList) fixturesList.innerHTML = "";
+            return;
+        }
+
+        tbody.innerHTML = table.map((s, idx) => {
             const isUser = s.clubId === userClub.id;
             return `
                 <tr class="${isUser ? 'row-user-club' : ''}">
@@ -2426,7 +2485,7 @@ class UIManager {
                     <td><strong>${s.points}</strong></td>
                     <td>
                         <div class="form-indicators">
-                            ${s.form.map(f => `<span class="form-dot ${f.toLowerCase()}">${f}</span>`).join("")}
+                            ${(s.form || []).map(f => `<span class="form-dot ${String(f).toLowerCase()}">${f}</span>`).join("")}
                         </div>
                     </td>
                 </tr>
@@ -2434,25 +2493,77 @@ class UIManager {
         }).join("");
 
         // 2. Spielplan rendern
-        document.getElementById("fixtureMatchdayTitle").textContent = `Spieltag ${this.currentFixtureMatchday} von ${state.totalMatchdays}`;
-        const round = state.schedule.find(r => r.matchday === this.currentFixtureMatchday);
+        const schedule = this.getScheduleForLeague(state, activeComp);
+        const totalRounds = schedule.length || state.totalMatchdays;
+        const matchday = Math.min(Math.max(1, this.currentFixtureMatchday), Math.max(1, totalRounds));
+
+        document.getElementById("fixtureMatchdayTitle").textContent = `Spieltag ${matchday} von ${totalRounds}`;
+        const round = schedule.find(r => r.matchday === matchday);
 
         if (round) {
             fixturesList.innerHTML = round.matches.map(m => {
                 const home = state.clubs.find(c => c.id === m.homeClubId);
                 const away = state.clubs.find(c => c.id === m.awayClubId);
-                const isUserMatch = home.id === userClub.id || away.id === userClub.id;
+                const isUserMatch = home?.id === userClub.id || away?.id === userClub.id;
                 const scoreText = m.played ? `${m.homeGoals} : ${m.awayGoals}` : "vs";
 
                 return `
                     <div class="fixture-card ${isUserMatch ? 'user-match' : ''}">
-                        <div class="fixture-team home">${home.name}</div>
+                        <div class="fixture-team home">${this.escapeHtml(home?.name || "Heim")}</div>
                         <div class="fixture-score-badge">${scoreText}</div>
-                        <div class="fixture-team away">${away.name}</div>
+                        <div class="fixture-team away">${this.escapeHtml(away?.name || "Auswärts")}</div>
                     </div>
                 `;
             }).join("");
+        } else {
+            fixturesList.innerHTML = `<div class="text-muted text-center" style="padding:20px;">Für diesen Spieltag liegen keine Partien vor.</div>`;
         }
+    }
+
+    /** Liga des Nutzervereins */
+    getUserLeagueId(state) {
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        return club?.leagueId || state.userLeagueId || "de_liga_1";
+    }
+
+    /** Spielplan einer beliebigen Liga */
+    getScheduleForLeague(state, leagueId) {
+        if (!leagueId || leagueId === this.getUserLeagueId(state)) return state.schedule || [];
+        return (state.otherSchedules && state.otherSchedules[leagueId]) || [];
+    }
+
+    /**
+     * Baut die Wettbewerbsauswahl aus der tatsächlichen Spielwelt: alle zwölf
+     * Ligen, der nationale Pokal und die drei europäischen Wettbewerbe.
+     */
+    populateCompetitionSelect(state, activeComp) {
+        const select = document.getElementById("selectCompetitionView");
+        if (!select) return;
+
+        const FLAGS = { de: "🇩🇪", en: "🏴", es: "🇪🇸", it: "🇮🇹", fr: "🇫🇷" };
+        const leagues = [...(state.leagues || [])].sort((a, b) =>
+            (a.countryId || "").localeCompare(b.countryId || "") || (a.level || 1) - (b.level || 1));
+
+        const options = leagues.map(l =>
+            `<option value="${this.escapeHtml(l.id)}">${FLAGS[l.countryId] || "🏆"} ${this.escapeHtml(l.shortName || l.name)}</option>`);
+
+        Object.keys(state.cups || {}).forEach(cupId => {
+            const comp = (state.competitions || []).find(c => c.id === cupId);
+            options.push(`<option value="${this.escapeHtml(cupId)}">🏆 ${this.escapeHtml(comp?.name || cupId)}</option>`);
+        });
+
+        [["ucl", "⭐ Champions League"], ["uel", "🌍 Europa League"], ["uecl", "🏆 Conference League"]].forEach(([id, label]) => {
+            if (state.europeanCompetitions?.[id]) {
+                options.push(`<option value="${id}">${label}</option>`);
+            }
+        });
+
+        const signature = options.length + "|" + (state.seasonYear || 1);
+        if (select._competitionSignature !== signature) {
+            select.innerHTML = options.join("");
+            select._competitionSignature = signature;
+        }
+        select.value = activeComp;
     }
 
     /**
@@ -4723,7 +4834,10 @@ class UIManager {
         };
 
         document.getElementById("btnNextMatchday").onclick = () => {
-            if (this.currentFixtureMatchday < this.app.state.totalMatchdays) {
+            const state = this.app.state;
+            const activeComp = this.activeCompetitionId || state.activeCompetitionId || this.getUserLeagueId(state);
+            const rounds = this.getScheduleForLeague(state, activeComp).length || state.totalMatchdays;
+            if (this.currentFixtureMatchday < rounds) {
                 this.currentFixtureMatchday++;
                 this.renderFixturesAndStandings();
             }

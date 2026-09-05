@@ -19,7 +19,7 @@ const COUNTRY_NAME_POOLS = {
         lastNames: ["Smith", "Jones", "Taylor", "Brown", "Williams", "Wilson", "Johnson", "Davies", "Robinson", "Wright", "Thompson", "Evans", "Walker", "White", "Roberts", "Green", "Hall", "Wood", "Jackson", "Clarke", "Turner", "Hughes", "Edwards", "Harris", "Cooper", "Ward", "Baker", "Morris", "King", "Bennett", "Foster", "Gray", "Bell", "Cox", "Marshall", "Palmer", "Rice", "Barnes", "Fletcher", "Reid", "Doyle", "Chambers", "Sterling", "Grealish", "Maddison", "Trippier", "Gallagher", "Colwill", "Ramsdale", "Shaw"],
         nationalities: ["England", "England", "England", "England", "England", "England", "Schottland", "Wales", "Irland", "Frankreich", "Brasilien", "Argentinien", "Portugal", "Niederlande", "Ghana", "Nigeria", "Norwegen"],
         cities: ["Manchester", "Liverpool", "Birmingham", "Leeds", "Sheffield", "Newcastle", "Nottingham", "Bristol", "Leicester", "Southampton", "Brighton", "Norwich", "Ipswich", "Coventry", "Sunderland", "Middlesbrough", "Blackburn", "Bolton", "Stoke", "Derby", "Preston", "Portsmouth", "Plymouth", "Hull", "Wolverhampton", "Watford", "Reading", "Luton", "Swindon", "Oxford", "Cambridge", "York", "Exeter", "Bournemouth", "Blackpool", "Burnley", "Rotherham", "Barnsley", "Wigan", "Millwall", "Fulham", "Brentford", "Charlton", "Peterborough", "Doncaster", "Northampton", "Colchester", "Gillingham", "Crewe", "Walsall"],
-        clubPrefixes: ["", "", "", "", "AFC", "Real"],
+        clubPrefixes: ["", "", "", "", "", "", "", "AFC"],
         clubSuffixes: ["United", "City", "Town", "Rovers", "Athletic", "Wanderers", "Albion", "County", "Rangers", "FC"],
         stadiumSuffixes: [" Park", " Road", " Stadium", " Lane", " Ground", " Arena", " Bridge", " Meadow"]
     },

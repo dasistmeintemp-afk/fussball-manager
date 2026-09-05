@@ -1,0 +1,58 @@
+/**
+ * Länderspezifische Namens- und Städtepools.
+ *
+ * Werden von PlayerGenerator und WorldGenerator genutzt, damit ein spanischer
+ * Erstligist spanische Spieler in spanischen Städten hat.
+ */
+
+const COUNTRY_NAME_POOLS = {
+    de: {
+        firstNames: ["Lukas", "Leon", "Finn", "Elias", "Jonas", "Felix", "Maximilian", "Noah", "Paul", "Julian", "Moritz", "Niklas", "David", "Tim", "Jan", "Tobias", "Alexander", "Simon", "Florian", "Fabian", "Marco", "Kevin", "Sebastian", "Marvin", "Nico", "Daniel", "Christian", "Marcel", "Dennis", "Robin", "Matteo", "Luca", "Jakob", "Emil", "Anton", "Ben", "Theo", "Mats", "Hannes", "Erik", "Tom", "Oskar", "Mika", "Rafael", "Jannik", "Philipp", "Lars", "Sven", "Malte", "Torben"],
+        lastNames: ["Müller", "Schmidt", "Schneider", "Fischer", "Weber", "Meyer", "Wagner", "Becker", "Schulz", "Hoffmann", "Schäfer", "Koch", "Bauer", "Richter", "Klein", "Wolf", "Schröder", "Neumann", "Schwarz", "Zimmermann", "Braun", "Krüger", "Hofmann", "Hartmann", "Lange", "Schmitt", "Werner", "Schmitz", "Krause", "Meier", "Lehmann", "Herrmann", "König", "Walter", "Mayer", "Huber", "Kaiser", "Fuchs", "Peters", "Lang", "Scholz", "Möller", "Jung", "Hahn", "Vogel", "Friedrich", "Günther", "Keller", "Berger", "Winkler"],
+        nationalities: ["Deutschland", "Deutschland", "Deutschland", "Deutschland", "Deutschland", "Deutschland", "Österreich", "Schweiz", "Frankreich", "Niederlande", "Spanien", "Italien", "Brasilien", "Kroatien", "Polen", "Dänemark", "Türkei"],
+        cities: ["München", "Berlin", "Hamburg", "Köln", "Frankfurt", "Stuttgart", "Leipzig", "Dortmund", "Essen", "Bremen", "Hannover", "Nürnberg", "Duisburg", "Bochum", "Wuppertal", "Bielefeld", "Bonn", "Münster", "Karlsruhe", "Mannheim", "Augsburg", "Wiesbaden", "Mönchengladbach", "Gelsenkirchen", "Braunschweig", "Kiel", "Chemnitz", "Halle", "Magdeburg", "Freiburg", "Krefeld", "Mainz", "Lübeck", "Erfurt", "Rostock", "Kassel", "Hagen", "Potsdam", "Saarbrücken", "Hamm", "Oldenburg", "Osnabrück", "Leverkusen", "Heidelberg", "Darmstadt", "Solingen", "Neuss", "Regensburg", "Paderborn", "Ingolstadt", "Offenbach", "Fürth", "Ulm", "Heilbronn", "Pforzheim", "Wolfsburg", "Göttingen", "Reutlingen", "Koblenz", "Jena", "Siegen", "Hildesheim", "Kaiserslautern", "Gütersloh", "Schwerin", "Witten", "Iserlohn", "Ludwigsburg", "Hanau", "Esslingen", "Zwickau", "Düren", "Tübingen", "Flensburg", "Gießen", "Worms", "Konstanz", "Minden", "Celle", "Aschaffenburg", "Kempten", "Landshut", "Bamberg", "Bayreuth", "Schweinfurt", "Passau", "Rosenheim", "Hof", "Coburg", "Weiden", "Amberg", "Ansbach", "Memmingen", "Verden", "Cuxhaven", "Emden", "Goslar", "Lingen", "Peine", "Stade", "Uelzen"],
+        clubPrefixes: ["FC", "SV", "SC", "VfB", "SpVgg", "TuS", "TSV", "FV", "VfL", "1. FC", "Borussia", "Eintracht", "Viktoria", "Fortuna", "Union", "Rot-Weiß", "Blau-Weiß", "Teutonia", "Preußen", "Germania", "Concordia", "Hertha", "Alemannia", "Arminia", "Wacker"],
+        stadiumSuffixes: ["-Stadion", "-Arena", "-Park", " Kampfbahn", " Sportpark", " Waldstadion", " Jahnstadion", " Am Stadtpark", " Sportanlage", " Bezirkssportanlage"]
+    },
+    en: {
+        firstNames: ["Harry", "Jack", "Oliver", "George", "Charlie", "Jacob", "Thomas", "Oscar", "William", "James", "Ben", "Callum", "Reece", "Mason", "Declan", "Phil", "Jude", "Bukayo", "Marcus", "Jordan", "Kyle", "Aaron", "Conor", "Ollie", "Dominic", "Ethan", "Tyler", "Louie", "Freddie", "Alfie", "Archie", "Toby", "Ryan", "Lewis", "Connor", "Adam", "Nathan", "Joel", "Elliot", "Curtis", "Levi", "Tariq", "Kane", "Rico", "Morgan", "Sonny", "Bailey", "Finley", "Rhys", "Owen"],
+        lastNames: ["Smith", "Jones", "Taylor", "Brown", "Williams", "Wilson", "Johnson", "Davies", "Robinson", "Wright", "Thompson", "Evans", "Walker", "White", "Roberts", "Green", "Hall", "Wood", "Jackson", "Clarke", "Turner", "Hughes", "Edwards", "Harris", "Cooper", "Ward", "Baker", "Morris", "King", "Bennett", "Foster", "Gray", "Bell", "Cox", "Marshall", "Palmer", "Rice", "Barnes", "Fletcher", "Reid", "Doyle", "Chambers", "Sterling", "Grealish", "Maddison", "Trippier", "Gallagher", "Colwill", "Ramsdale", "Shaw"],
+        nationalities: ["England", "England", "England", "England", "England", "England", "Schottland", "Wales", "Irland", "Frankreich", "Brasilien", "Argentinien", "Portugal", "Niederlande", "Ghana", "Nigeria", "Norwegen"],
+        cities: ["Manchester", "Liverpool", "Birmingham", "Leeds", "Sheffield", "Newcastle", "Nottingham", "Bristol", "Leicester", "Southampton", "Brighton", "Norwich", "Ipswich", "Coventry", "Sunderland", "Middlesbrough", "Blackburn", "Bolton", "Stoke", "Derby", "Preston", "Portsmouth", "Plymouth", "Hull", "Wolverhampton", "Watford", "Reading", "Luton", "Swindon", "Oxford", "Cambridge", "York", "Exeter", "Bournemouth", "Blackpool", "Burnley", "Rotherham", "Barnsley", "Wigan", "Millwall", "Fulham", "Brentford", "Charlton", "Peterborough", "Doncaster", "Northampton", "Colchester", "Gillingham", "Crewe", "Walsall"],
+        clubPrefixes: ["", "", "", "", "AFC", "Real"],
+        clubSuffixes: ["United", "City", "Town", "Rovers", "Athletic", "Wanderers", "Albion", "County", "Rangers", "FC"],
+        stadiumSuffixes: [" Park", " Road", " Stadium", " Lane", " Ground", " Arena", " Bridge", " Meadow"]
+    },
+    es: {
+        firstNames: ["Sergio", "Álvaro", "Pablo", "Javier", "Carlos", "Marcos", "Rodrigo", "Iker", "Mikel", "Unai", "Gerard", "Marc", "Pau", "Ferran", "Dani", "Iago", "Aitor", "Borja", "Rubén", "Óscar", "Nacho", "Fran", "Diego", "Adrián", "Raúl", "Jorge", "Hugo", "Bryan", "Yeremy", "Ansu", "Nico", "Gavi", "Álex", "Isco", "Koke", "Saúl", "Rodri", "Ander", "Iñaki", "Jesús", "Antonio", "Manuel", "José", "Juan", "Luis", "Miguel", "Alberto", "Víctor", "Roberto", "Samuel"],
+        lastNames: ["García", "Rodríguez", "Martínez", "López", "Sánchez", "Pérez", "González", "Fernández", "Gómez", "Ruiz", "Díaz", "Moreno", "Álvarez", "Romero", "Torres", "Navarro", "Ramos", "Gil", "Serrano", "Blanco", "Molina", "Castro", "Ortega", "Rubio", "Marín", "Sanz", "Iglesias", "Medina", "Cortés", "Garrido", "Santos", "Vargas", "Herrera", "Peña", "Cabrera", "Flores", "Campos", "Vega", "Fuentes", "Carmona", "Reyes", "Aguilar", "Pardo", "Soler", "Bravo", "Nieto", "Lorenzo", "Vidal", "Casillas", "Llorente"],
+        nationalities: ["Spanien", "Spanien", "Spanien", "Spanien", "Spanien", "Spanien", "Argentinien", "Brasilien", "Uruguay", "Kolumbien", "Portugal", "Marokko", "Frankreich", "Mexiko", "Chile", "Paraguay"],
+        cities: ["Madrid", "Barcelona", "Valencia", "Sevilla", "Zaragoza", "Málaga", "Bilbao", "Murcia", "Palma", "Las Palmas", "Alicante", "Córdoba", "Valladolid", "Vigo", "Gijón", "Granada", "Vitoria", "A Coruña", "Elche", "Oviedo", "Badalona", "Cartagena", "Terrassa", "Jerez", "Sabadell", "Móstoles", "Santa Cruz", "Pamplona", "Almería", "Alcalá", "San Sebastián", "Getafe", "Burgos", "Albacete", "Santander", "Castellón", "Logroño", "Badajoz", "Salamanca", "Huelva", "Lleida", "Tarragona", "León", "Cádiz", "Jaén", "Ourense", "Girona", "Lugo", "Cáceres", "Melilla"],
+        clubPrefixes: ["Real", "Atlético", "Deportivo", "CD", "CF", "UD", "RC", "Sporting", "Racing", "Club"],
+        stadiumSuffixes: [" Estadio", " Coliseum", " Municipal", " Arena", " La Rosaleda", " El Molinón", " Nuevo Campo"]
+    },
+    it: {
+        firstNames: ["Marco", "Alessandro", "Lorenzo", "Matteo", "Andrea", "Francesco", "Giovanni", "Luca", "Davide", "Simone", "Nicolò", "Federico", "Riccardo", "Gianluca", "Stefano", "Antonio", "Giuseppe", "Salvatore", "Emanuele", "Fabio", "Manuel", "Sandro", "Giacomo", "Tommaso", "Filippo", "Mattia", "Samuele", "Cristian", "Daniele", "Michele", "Alberto", "Enrico", "Roberto", "Massimo", "Vincenzo", "Domenico", "Raffaele", "Pietro", "Paolo", "Gabriele", "Edoardo", "Leonardo", "Alessio", "Nicola", "Diego", "Sergio", "Claudio", "Bryan", "Wilfried", "Moise"],
+        lastNames: ["Rossi", "Russo", "Ferrari", "Esposito", "Bianchi", "Romano", "Colombo", "Ricci", "Marino", "Greco", "Bruno", "Gallo", "Conti", "De Luca", "Mancini", "Costa", "Giordano", "Rizzo", "Lombardi", "Moretti", "Barbieri", "Fontana", "Santoro", "Mariani", "Rinaldi", "Caruso", "Ferrara", "Galli", "Martini", "Leone", "Longo", "Gentile", "Martinelli", "Vitale", "Lombardo", "Serra", "Coppola", "De Santis", "Marchetti", "Parisi", "Villa", "Conte", "Ferretti", "Bianco", "Marini", "Grasso", "Valentini", "Messina", "Sala", "Verratti"],
+        nationalities: ["Italien", "Italien", "Italien", "Italien", "Italien", "Italien", "Argentinien", "Brasilien", "Frankreich", "Serbien", "Kroatien", "Albanien", "Niederlande", "Polen", "Senegal", "Marokko"],
+        cities: ["Milano", "Roma", "Napoli", "Torino", "Firenze", "Genova", "Bologna", "Bergamo", "Verona", "Udine", "Cagliari", "Palermo", "Bari", "Venezia", "Parma", "Empoli", "Salerno", "Lecce", "Sassuolo", "Brescia", "Catania", "Reggio", "Perugia", "Pescara", "Ancona", "Livorno", "Modena", "Cremona", "Como", "Vicenza", "Ferrara", "Trieste", "Padova", "Terni", "Frosinone", "Monza", "Pisa", "Cesena", "Spezia", "Benevento", "Avellino", "Foggia", "Taranto", "Cosenza", "Crotone", "Trapani", "Alessandria", "Novara", "Pordenone", "Latina"],
+        clubPrefixes: ["AC", "AS", "US", "FC", "SS", "Calcio", "Atalanta", "Inter", "Real", "Virtus"],
+        stadiumSuffixes: [" Stadio", " Arena", " Comunale", " Olimpico", " Marassi", " Del Duca", " Città"]
+    },
+    fr: {
+        firstNames: ["Kylian", "Antoine", "Olivier", "Hugo", "Lucas", "Théo", "Jules", "Benjamin", "Raphaël", "Adrien", "Ousmane", "Marcus", "Randal", "Aurélien", "Eduardo", "Youssouf", "Ibrahima", "Dayot", "Mattéo", "Enzo", "Warren", "Manu", "Nordi", "Wesley", "Bradley", "Axel", "Nathan", "Maxime", "Florian", "Kévin", "Romain", "Thomas", "Nicolas", "Julien", "Clément", "Baptiste", "Quentin", "Corentin", "Valentin", "Alexis", "Rémi", "Gaëtan", "Loïc", "Yannick", "Sébastien", "Pierre", "Paul", "Louis", "Arthur", "Gabriel"],
+        lastNames: ["Martin", "Bernard", "Dubois", "Thomas", "Robert", "Richard", "Petit", "Durand", "Leroy", "Moreau", "Simon", "Laurent", "Lefebvre", "Michel", "Garcia", "David", "Bertrand", "Roux", "Vincent", "Fournier", "Morel", "Girard", "André", "Lefèvre", "Mercier", "Dupont", "Lambert", "Bonnet", "François", "Martinez", "Legrand", "Garnier", "Faure", "Rousseau", "Blanc", "Guerin", "Muller", "Henry", "Roussel", "Nicolas", "Perrin", "Morin", "Mathieu", "Clement", "Gauthier", "Dumont", "Lopez", "Fontaine", "Chevalier", "Robin"],
+        nationalities: ["Frankreich", "Frankreich", "Frankreich", "Frankreich", "Frankreich", "Frankreich", "Senegal", "Elfenbeinküste", "Mali", "Algerien", "Marokko", "Kamerun", "Brasilien", "Argentinien", "Portugal", "Belgien"],
+        cities: ["Paris", "Marseille", "Lyon", "Toulouse", "Nice", "Nantes", "Montpellier", "Strasbourg", "Bordeaux", "Lille", "Rennes", "Reims", "Saint-Étienne", "Le Havre", "Toulon", "Grenoble", "Dijon", "Angers", "Nîmes", "Clermont", "Brest", "Metz", "Auxerre", "Lorient", "Caen", "Troyes", "Amiens", "Nancy", "Sochaux", "Guingamp", "Ajaccio", "Bastia", "Valenciennes", "Niort", "Orléans", "Tours", "Pau", "Annecy", "Chambéry", "Béziers", "Perpignan", "Avignon", "Limoges", "Poitiers", "La Rochelle", "Rouen", "Dunkerque", "Roubaix", "Cannes", "Sète"],
+        clubPrefixes: ["FC", "AS", "Olympique", "Racing", "Stade", "US", "SC", "RC", "Paris", "Union"],
+        stadiumSuffixes: [" Stade", " Parc", " Arena", " Municipal", " Vélodrome", " Bollaert", " Beaujoire"]
+    }
+};
+
+if (typeof window !== "undefined") {
+    window.COUNTRY_NAME_POOLS = COUNTRY_NAME_POOLS;
+}
+
+if (typeof module !== "undefined" && module.exports) {
+    module.exports = { COUNTRY_NAME_POOLS };
+}

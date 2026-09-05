@@ -68,9 +68,12 @@ function runEngineTests() {
 
     // 2. ClubGenerator & PlayerGenerator (Amateure & Ligapyramide)
     test("ClubGenerator & PlayerGenerator: Vereine und Spieler über Ligastufen (Level 1-7) generieren", () => {
-        const genClub = ClubGenerator.generateClub("de", "de_ll_1", 7, "Bayern");
+        const genClub = ClubGenerator.generateClub({ countryId: "de", leagueId: "de_ll_1", level: 7, region: "Bayern" });
         if (!genClub.id || !genClub.name || !genClub.stadium || genClub.tier !== "amateur") {
             throw new Error("ClubGenerator for level 7 invalid");
+        }
+        if (!genClub.reputation || genClub.reputation > 25) {
+            throw new Error(`Landesligist hat unrealistischen Ruf: ${genClub.reputation}`);
         }
 
         const genSquad = PlayerGenerator.generateSquad(genClub.id, 7, 22);
@@ -394,8 +397,12 @@ function runEngineTests() {
     // 15. Kalibrierungstest über 500 Spiele
     test("MatchEngine Kalibrierung: 500 Spiele Liga-Mittelwerte (Tore, Schüsse, Gelb/Rot, Elfmeter, Ballbesitz)", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
-        const clubs = state.clubs;
+        // Liga-Mittelwerte nur über die eigene Liga - die Welt enthält
+        // inzwischen auch Amateurvereine bis hinunter zur Landesliga
+        const clubs = state.clubs.filter(c => c.leagueId === "de_liga_1");
         const players = state.players;
+
+        if (clubs.length < 10) throw new Error("Liga-Vereine fehlen für die Kalibrierung");
 
         let totalGoals = 0;
         let totalShots = 0;
@@ -427,9 +434,15 @@ function runEngineTests() {
             const pens = match.events.filter(e => e.type === "goal" && e.text && e.text.includes("Elfmeter") || e.type === "save" && e.text && e.text.includes("Elfmeter"));
             totalPenalties += pens.length;
 
+            // Die Timeline wird nach der Auswertung verworfen - sie belegte
+            // rund 22 KB je Partie im Spielstand
+            if (match.timeline) {
+                throw new Error("Gespieltes Match trägt die Timeline weiterhin mit sich!");
+            }
+
             // Idempotenz testen
             const goalsBefore = match.homeGoals;
-            MatchEngine.applyTimelineToMatch(match, match.timeline, home, away, players);
+            MatchEngine.applyTimelineToMatch(match, [], home, away, players);
             if (match.homeGoals !== goalsBefore) {
                 throw new Error("applyTimelineToMatch ist nicht idempotent!");
             }

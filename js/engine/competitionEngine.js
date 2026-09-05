@@ -107,57 +107,133 @@ class CompetitionEngine {
     /**
      * Erzeugt europäische Wettbewerbe (Champions League, Europa League, Conference League)
      */
-    static generateEuropeanCompetitions(allClubs) {
-        // Clubs nach Stärke / Reputation sortieren
-        const eligibleClubs = [...allClubs].sort((a, b) => {
-            const ovrA = a.players?.length ? a.players.reduce((sum, p) => sum + (p.overall || 0), 0) / a.players.length : 70;
-            const ovrB = b.players?.length ? b.players.reduce((sum, p) => sum + (p.overall || 0), 0) / b.players.length : 70;
-            return ovrB - ovrA;
-        });
+    /**
+     * Setzt die drei europäischen Wettbewerbe aus den echten Qualifikanten
+     * der fünf Topligen zusammen.
+     *
+     * Grundlage sind die europeanSpots der Ligadefinition: Deutschland und
+     * Frankreich stellen weniger Startplätze als England, Spanien und Italien.
+     * Liegt bereits eine Abschlusstabelle vor, entscheidet die Platzierung;
+     * zum Start einer Karriere wird nach dem Ruf der Vereine gesetzt.
+     */
+    static generateEuropeanCompetitions(allClubs, options = {}) {
+        const leagues = options.leagues || CompetitionEngine._resolveLeagues();
+        const standingsByLeague = options.standingsByLeague || {};
 
-        const uclTeams = eligibleClubs.slice(0, 16).map(c => c.id);
-        const uelTeams = eligibleClubs.slice(16, 32).map(c => c.id);
-        const ueclTeams = eligibleClubs.slice(32, 48).map(c => c.id);
+        const qualified = { ucl: [], uel: [], uecl: [] };
+        const reserves = [];
+        const taken = new Set();
 
-        const createCupStructure = (id, name, teams) => {
-            const groups = [];
-            for (let g = 0; g < 4; g++) {
-                const groupTeams = teams.slice(g * 4, (g + 1) * 4);
-                if (groupTeams.length >= 2) {
-                    groups.push({
-                        groupName: `Gruppe ${String.fromCharCode(65 + g)}`,
-                        teams: groupTeams,
-                        standings: groupTeams.map(tid => ({
-                            clubId: tid,
-                            played: 0,
-                            won: 0,
-                            drawn: 0,
-                            lost: 0,
-                            goalsFor: 0,
-                            goalsAgainst: 0,
-                            points: 0
-                        }))
-                    });
-                }
+        const topLeagues = leagues.filter(l => (l.level || 1) === 1 && l.europeanSpots);
+
+        topLeagues.forEach(league => {
+            const leagueClubs = allClubs.filter(c => c.leagueId === league.id);
+            if (leagueClubs.length === 0) return;
+
+            // Rangfolge: echte Tabelle, sonst nach Ruf
+            const table = standingsByLeague[league.id];
+            let ranked;
+            if (Array.isArray(table) && table.length > 0) {
+                ranked = table.map(entry => leagueClubs.find(c => c.id === entry.clubId)).filter(Boolean);
+            } else {
+                ranked = [...leagueClubs].sort((a, b) => (b.reputation || 0) - (a.reputation || 0));
             }
 
-            return {
-                id: id,
-                name: name,
-                type: "continental",
-                participants: teams,
-                groups: groups,
-                currentRound: "Gruppenphase",
-                completed: false,
-                winnerId: null
+            const spots = league.europeanSpots;
+            const assign = (positions, bucket) => {
+                (positions || []).forEach(pos => {
+                    const club = ranked[pos - 1];
+                    if (club && !taken.has(club.id)) {
+                        qualified[bucket].push(club.id);
+                        taken.add(club.id);
+                    }
+                });
             };
+
+            assign(spots.championsLeague, "ucl");
+            assign(spots.europaLeague, "uel");
+            assign(spots.conferenceLeague, "uecl");
+
+            // Die nächstbesten Vereine rücken bei Bedarf nach
+            ranked.forEach(club => {
+                if (!taken.has(club.id)) reserves.push(club);
+            });
+        });
+
+        // Fallback für Spielstände ohne Ligazuordnung
+        if (qualified.ucl.length === 0) {
+            const byReputation = [...allClubs].sort((a, b) => (b.reputation || 0) - (a.reputation || 0));
+            qualified.ucl = byReputation.slice(0, 16).map(c => c.id);
+            qualified.uel = byReputation.slice(16, 32).map(c => c.id);
+            qualified.uecl = byReputation.slice(32, 48).map(c => c.id);
+        }
+
+        reserves.sort((a, b) => (b.reputation || 0) - (a.reputation || 0));
+        const fillTo = (bucket, target) => {
+            while (qualified[bucket].length < target && reserves.length > 0) {
+                const club = reserves.shift();
+                qualified[bucket].push(club.id);
+                taken.add(club.id);
+            }
+            // Auf ein Vielfaches von vier kürzen, damit die Gruppen aufgehen
+            const groups = Math.floor(qualified[bucket].length / 4);
+            qualified[bucket] = qualified[bucket].slice(0, groups * 4);
         };
 
+        fillTo("ucl", 20);
+        fillTo("uel", 16);
+        fillTo("uecl", 16);
+
         return {
-            ucl: createCupStructure("ucl", "Champions League", uclTeams),
-            uel: createCupStructure("uel", "Europa League", uelTeams),
-            uecl: createCupStructure("uecl", "Conference League", ueclTeams)
+            ucl: CompetitionEngine.createEuropeanCup("ucl", "Champions League", qualified.ucl),
+            uel: CompetitionEngine.createEuropeanCup("uel", "Europa League", qualified.uel),
+            uecl: CompetitionEngine.createEuropeanCup("uecl", "Conference League", qualified.uecl)
         };
+    }
+
+    /** Baut Gruppenphase und Grundgerüst eines europäischen Wettbewerbs */
+    static createEuropeanCup(id, name, teams) {
+        const groups = [];
+        const groupCount = Math.floor(teams.length / 4);
+
+        for (let g = 0; g < groupCount; g++) {
+            const groupTeams = teams.slice(g * 4, (g + 1) * 4);
+            groups.push({
+                groupName: `Gruppe ${String.fromCharCode(65 + g)}`,
+                teams: groupTeams,
+                standings: groupTeams.map(tid => ({
+                    clubId: tid,
+                    played: 0,
+                    won: 0,
+                    drawn: 0,
+                    lost: 0,
+                    goalsFor: 0,
+                    goalsAgainst: 0,
+                    points: 0
+                }))
+            });
+        }
+
+        return {
+            id: id,
+            name: name,
+            type: "continental",
+            participants: teams,
+            groups: groups,
+            currentRound: "Gruppenphase",
+            completed: false,
+            winnerId: null
+        };
+    }
+
+    /** Auflösung der Ligadefinitionen in Browser- und Node-Umgebung */
+    static _resolveLeagues() {
+        if (typeof LEAGUES_DATA !== "undefined" && LEAGUES_DATA) return LEAGUES_DATA;
+        if (typeof window !== "undefined" && window.LEAGUES_DATA) return window.LEAGUES_DATA;
+        if (typeof require !== "undefined") {
+            try { return require("../data/leagueData.js").LEAGUES_DATA; } catch (e) { return []; }
+        }
+        return [];
     }
 
     /**
@@ -177,28 +253,90 @@ class CompetitionEngine {
     }
 
     /**
-     * Führt Auf- und Abstieg zwischen Ligen durch
+     * Führt Auf- und Abstieg zwischen allen verbundenen Ligen durch.
+     *
+     * Für jede Liga wird gezählt, wie viele Vereine von unten aufsteigen -
+     * genauso viele steigen aus ihr ab. Dadurch behalten alle Ligen ihre
+     * Mannschaftszahl, auch wenn mehrere Staffeln in dieselbe Liga aufsteigen
+     * (etwa die beiden Regionalligen in die 3. Liga).
      */
     static processSeasonEndPromotionsRelegations(state) {
         if (!state.leagues || state.leagues.length <= 1) return { promoted: [], relegated: [] };
 
         const promoted = [];
         const relegated = [];
+        const standingsByLeague = state.standingsByLeague || {};
+        const clubById = new Map((state.clubs || []).map(c => [c.id, c]));
 
-        // Für verbundene Ligen
-        state.leagues.forEach(league => {
-            if (league.relegationTo && league.relegationTo.length > 0) {
-                const leagueStandings = (state.standingsByLeague && state.standingsByLeague[league.id]) || [];
-                if (leagueStandings.length >= 18) {
-                    const rel1 = leagueStandings[leagueStandings.length - 1]?.clubId;
-                    const rel2 = leagueStandings[leagueStandings.length - 2]?.clubId;
-                    if (rel1) relegated.push({ clubId: rel1, fromLeague: league.id, toLeague: league.relegationTo[0] });
-                    if (rel2) relegated.push({ clubId: rel2, fromLeague: league.id, toLeague: league.relegationTo[0] });
-                }
-            }
+        // Aufsteiger nach Zielliga gruppieren
+        const risingByParent = new Map();
+
+        state.leagues.forEach(child => {
+            if (!child.promotionTo) return;
+            const table = standingsByLeague[child.id];
+            if (!Array.isArray(table) || table.length === 0) return;
+
+            const spots = (child.promotionSpots && child.promotionSpots.length) ? child.promotionSpots : [1];
+            spots.forEach(pos => {
+                const entry = table[pos - 1];
+                if (!entry) return;
+                if (!risingByParent.has(child.promotionTo)) risingByParent.set(child.promotionTo, []);
+                risingByParent.get(child.promotionTo).push({ clubId: entry.clubId, fromLeague: child.id });
+            });
+        });
+
+        risingByParent.forEach((risers, parentId) => {
+            const parent = state.leagues.find(l => l.id === parentId);
+            if (!parent) return;
+
+            const parentTable = standingsByLeague[parentId];
+            const dropCount = Math.min(risers.length, Array.isArray(parentTable) ? parentTable.length - 1 : 0);
+            if (dropCount <= 0) return;
+
+            const droppers = parentTable.slice(parentTable.length - dropCount);
+
+            // Absteiger landen in der Staffel, aus der ihr Gegenpart aufsteigt
+            droppers.forEach((entry, idx) => {
+                const targetLeagueId = risers[idx].fromLeague;
+                const club = clubById.get(entry.clubId);
+                if (!club) return;
+                CompetitionEngine.moveClubToLeague(club, state.leagues.find(l => l.id === targetLeagueId));
+                relegated.push({ clubId: club.id, fromLeague: parentId, toLeague: targetLeagueId });
+            });
+
+            risers.slice(0, dropCount).forEach(riser => {
+                const club = clubById.get(riser.clubId);
+                if (!club) return;
+                CompetitionEngine.moveClubToLeague(club, parent);
+                promoted.push({ clubId: club.id, fromLeague: riser.fromLeague, toLeague: parentId });
+            });
         });
 
         return { promoted, relegated };
+    }
+
+    /**
+     * Verschiebt einen Verein in eine andere Liga und passt Ruf und Etat an.
+     * Der Kader bleibt unverändert - ein Aufsteiger startet also bewusst als
+     * Außenseiter in der höheren Liga.
+     */
+    static moveClubToLeague(club, league) {
+        if (!club || !league) return;
+
+        const oldLevel = club.level || 1;
+        const newLevel = league.level || 1;
+        const step = oldLevel - newLevel; // positiv = Aufstieg
+
+        club.leagueId = league.id;
+        club.level = newLevel;
+        club.countryId = league.countryId || club.countryId || "de";
+        club.tier = newLevel <= 3 ? "professional" : newLevel <= 4 ? "semi-pro" : "amateur";
+        club.reputation = Math.max(1, Math.min(99, Math.round((club.reputation || 40) + step * 6)));
+        club.boardExpectation = step > 0 ? "avoid_relegation" : "promotion";
+
+        const budgetFactor = step > 0 ? 2.2 : 0.5;
+        club.transferBudget = Math.round((club.transferBudget || 0) * budgetFactor);
+        club.wageBudget = Math.round((club.wageBudget || 0) * budgetFactor);
     }
 }
 

@@ -186,6 +186,33 @@ class MatchEngine {
      * Verletzte (injuredWeeks > 0) und Gesperrte (suspendedMatches > 0) fliegen aus der Elf,
      * fitte Ersatzspieler rücken von der Bank bzw. dem Kader nach.
      */
+    /**
+     * Nachschlagetabelle Spieler-ID -> Spieler.
+     *
+     * Mit über 4000 Spielern in der Welt kostet ein lineares find() je
+     * Aufstellung spürbar Zeit: pro Spieltag laufen rund 190 Hintergrundspiele,
+     * jedes mit 25 Nachschlägen für beide Mannschaften. Der Index wird an das
+     * Spieler-Array gehängt und neu gebaut, sobald sich dessen Länge ändert.
+     */
+    static getPlayerIndex(allPlayers) {
+        if (!Array.isArray(allPlayers)) return new Map();
+
+        if (!MatchEngine._playerIndexCache) MatchEngine._playerIndexCache = new WeakMap();
+        const cached = MatchEngine._playerIndexCache.get(allPlayers);
+        if (cached && cached.size === allPlayers.length) return cached.map;
+
+        const map = new Map();
+        allPlayers.forEach(p => { if (p) map.set(p.id, p); });
+        MatchEngine._playerIndexCache.set(allPlayers, { size: allPlayers.length, map });
+        return map;
+    }
+
+    static findPlayer(allPlayers, id) {
+        const found = this.getPlayerIndex(allPlayers).get(id);
+        if (found) return found;
+        return Array.isArray(allPlayers) ? allPlayers.find(p => p && p.id === id) : undefined;
+    }
+
     static getCleanLineup(club, allPlayers) {
         const lineupIds = [...(club.lineup || [])];
         const benchIds = [...(club.bench || [])];
@@ -196,12 +223,12 @@ class MatchEngine {
 
         // Fitte Spieler aus der Bank bereitstellen
         const availableBench = benchIds
-            .map(id => allPlayers.find(p => p.id === id))
+            .map(id => MatchEngine.findPlayer(allPlayers, id))
             .filter(isPlayerFitAndEligible);
 
         // 1. Stammelf prüfen
         lineupIds.forEach(id => {
-            const p = allPlayers.find(pl => pl.id === id);
+            const p = MatchEngine.findPlayer(allPlayers, id);
             if (isPlayerFitAndEligible(p) && !seenIds.has(p.id)) {
                 clean.push(p);
                 seenIds.add(p.id);
@@ -217,8 +244,9 @@ class MatchEngine {
 
         // 2. Falls noch < 11, aus Restkader auffüllen
         if (clean.length < 11) {
+            const squadIds = new Set(club.playerIds || []);
             const squadPlayers = allPlayers.filter(p =>
-                (club.playerIds || []).includes(p.id) &&
+                squadIds.has(p.id) &&
                 !seenIds.has(p.id) &&
                 isPlayerFitAndEligible(p)
             );
@@ -231,7 +259,7 @@ class MatchEngine {
 
         // Falls Notstand (z.B. < 11 fitte Spieler), ungefiltert auffüllen
         if (clean.length === 0 && lineupIds.length > 0) {
-            return lineupIds.map(id => allPlayers.find(p => p.id === id)).filter(Boolean);
+            return lineupIds.map(id => MatchEngine.findPlayer(allPlayers, id)).filter(Boolean);
         }
 
         return clean;
@@ -781,7 +809,7 @@ class MatchEngine {
 
                     if (subsUsed < maxSubs && _Random.chance(0.20)) {
                         const benchAvailable = (club.bench || [])
-                            .map(id => allPlayers.find(p => p.id === id))
+                            .map(id => MatchEngine.findPlayer(allPlayers, id))
                             .filter(p => p && (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0 && !activePlayers.some(ap => ap.id === p.id));
 
                         if (benchAvailable.length > 0) {
@@ -847,7 +875,7 @@ class MatchEngine {
 
                         // Auswechslung des Verletzten versuchen
                         const benchAvailable = (club.bench || [])
-                            .map(id => allPlayers.find(p => p.id === id))
+                            .map(id => MatchEngine.findPlayer(allPlayers, id))
                             .filter(p => p && (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0 && !activePlayers.some(ap => ap.id === p.id));
 
                         if (benchAvailable.length > 0 && (isHomeTeam ? homeSubsUsed : awaySubsUsed) < maxSubs) {
@@ -1323,7 +1351,7 @@ class MatchEngine {
                 });
             } else if (event.type === "injury") {
                 if (event.playerId) {
-                    const player = allPlayers.find(p => p.id === event.playerId);
+                    const player = MatchEngine.findPlayer(allPlayers, event.playerId);
                     if (player) {
                         matchInjuries.push({
                             playerId: player.id,
@@ -1372,8 +1400,8 @@ class MatchEngine {
             return (c.lineup || []).slice(0, 11);
         }
 
-        const homeStartingPlayers = initialHomeLineupIds.map(id => allPlayers.find(p => p.id === id)).filter(Boolean);
-        const awayStartingPlayers = initialAwayLineupIds.map(id => allPlayers.find(p => p.id === id)).filter(Boolean);
+        const homeStartingPlayers = initialHomeLineupIds.map(id => MatchEngine.findPlayer(allPlayers, id)).filter(Boolean);
+        const awayStartingPlayers = initialAwayLineupIds.map(id => MatchEngine.findPlayer(allPlayers, id)).filter(Boolean);
 
         // Alle Spieler erfassen, die zum Einsatz kamen
         const allPlayedPlayerIds = new Set([...initialHomeLineupIds, ...initialAwayLineupIds]);
@@ -1387,7 +1415,7 @@ class MatchEngine {
 
         // Noten- und Einsatzminutenberechnung (B9, B12)
         allPlayedPlayerIds.forEach(playerId => {
-            const player = allPlayers.find(p => p.id === playerId);
+            const player = MatchEngine.findPlayer(allPlayers, playerId);
             if (!player) return;
 
             const isHome = initialHomeLineupIds.includes(playerId) || (homeClub.playerIds || []).includes(playerId);
@@ -1518,7 +1546,7 @@ class MatchEngine {
 
         // Verletzungen auf Spielerobjekte anwenden (A7)
         matchInjuries.forEach(inj => {
-            const p = allPlayers.find(pl => pl.id === inj.playerId);
+            const p = MatchEngine.findPlayer(allPlayers, inj.playerId);
             if (p) {
                 p.injuredWeeks = inj.weeks;
                 p.injuryName = inj.injuryName;
@@ -1594,7 +1622,6 @@ class MatchEngine {
         match.homeGoals = homeGoals;
         match.awayGoals = awayGoals;
         match.events = events;
-        match.timeline = timeline;
         match.summaryText = summaryText;
         match.playerRatings = playerRatings;
         match.manOfTheMatch = motm;
@@ -1615,6 +1642,38 @@ class MatchEngine {
             motm: motm ? motm.name : "Ausgeglichen",
             xG: [parseFloat(homeXg.toFixed(2)), parseFloat(awayXg.toFixed(2))]
         };
+
+        // Die Timeline hat ihren Zweck erfüllt: alle Zähler stecken jetzt in
+        // stats, events und playerRatings. Behalten würde sie rund 22 KB je
+        // Partie im Spielstand belegen - bei über 3000 Saisonspielen das
+        // Vielfache dessen, was der LocalStorage fasst.
+        delete match.timeline;
+        delete match.timelineIndex;
+
+        return match;
+    }
+
+    /**
+     * Verkleinert eine gespielte Partie auf das, was später noch angezeigt wird.
+     *
+     * Fremde Ligen brauchen nur das Ergebnis. Nur Spiele des eigenen Vereins
+     * behalten Einzelkritiken, Ereignisse und Aufstellungen.
+     */
+    static compactPlayedMatch(match, keepDetail = false) {
+        if (!match || !match.played) return match;
+
+        delete match.timeline;
+        delete match.timelineIndex;
+        if (keepDetail) return match;
+
+        delete match.playerRatings;
+        delete match.lineups;
+        delete match.injuries;
+        delete match.suspensions;
+        delete match.manOfTheMatch;
+        delete match.stats;
+        delete match.summaryText;
+        match.events = [];
 
         return match;
     }

@@ -6,20 +6,43 @@ const STORAGE_KEY = "footballManagerSave_v2";
 const LEGACY_STORAGE_KEY = "footballManagerSave";
 
 const SaveService = {
+    /** Auflösung der Hilfsdienste in Browser- und Node-Umgebung */
+    _codec() {
+        if (typeof SaveCodec !== 'undefined' && SaveCodec) return SaveCodec;
+        if (typeof window !== 'undefined' && window.SaveCodec) return window.SaveCodec;
+        if (typeof require !== 'undefined') {
+            try { return require('./saveCodec.js').SaveCodec; } catch (e) { return null; }
+        }
+        return null;
+    },
+
+    _saveVersion() {
+        const migrator = (typeof MigrationService !== 'undefined' && MigrationService)
+            ? MigrationService
+            : ((typeof window !== 'undefined' && window.MigrationService) ? window.MigrationService : null);
+        return migrator?.CURRENT_SAVE_VERSION || 6;
+    },
+
     /**
-     * Speichert den aktuellen Spielstand im LocalStorage
+     * Speichert den aktuellen Spielstand im LocalStorage.
+     *
+     * Eine komplette Fußballwelt mit zwölf Ligen bringt über 4000 Spieler mit
+     * und belegt als rohes JSON knapp 6 MB - mehr, als der LocalStorage der
+     * Browser üblicherweise zulässt. Der SaveCodec verdichtet Spieler und
+     * Spielpläne deshalb auf rund ein Fünftel.
      */
     save(state) {
         if (!state) return { success: false, error: "Kein State zum Speichern vorhanden." };
 
         state.lastSavedAt = new Date().toISOString();
 
+        const codec = this._codec();
         const payload = {
-            saveVersion: 2,
+            saveVersion: this._saveVersion(),
             gameVersion: "0.2.0",
             createdAt: state.createdAt || new Date().toISOString(),
             lastSavedAt: state.lastSavedAt,
-            state: state
+            state: codec ? codec.encodeState(state) : state
         };
 
         try {
@@ -48,6 +71,13 @@ const SaveService = {
             if (!rawData) return null;
 
             const parsed = JSON.parse(rawData);
+
+            // Kompakt gespeicherte Spielstände zuerst wieder auffalten
+            const codec = this._codec();
+            if (codec && parsed.state && codec.isEncoded(parsed.state)) {
+                parsed.state = codec.decodeState(parsed.state);
+            }
+
             const migrator = (typeof MigrationService !== 'undefined') ? MigrationService : (typeof window !== 'undefined' ? window.MigrationService : null);
             const validator = (typeof StateValidator !== 'undefined') ? StateValidator : (typeof window !== 'undefined' ? window.StateValidator : null);
 
@@ -125,12 +155,12 @@ const SaveService = {
     exportJson(state) {
         if (!state) return null;
         const payload = {
-            saveVersion: 2,
+            saveVersion: this._saveVersion(),
             gameVersion: "0.2.0",
             exportDate: new Date().toISOString(),
             state: state
         };
-        return JSON.stringify(payload, null, 2);
+        return JSON.stringify(payload);
     },
 
     /**
@@ -143,6 +173,12 @@ const SaveService = {
             }
 
             const parsed = JSON.parse(jsonString);
+
+            const codec = this._codec();
+            if (codec && parsed.state && codec.isEncoded(parsed.state)) {
+                parsed.state = codec.decodeState(parsed.state);
+            }
+
             const validator = (typeof StateValidator !== 'undefined') ? StateValidator : (typeof window !== 'undefined' ? window.StateValidator : null);
             const migrator = (typeof MigrationService !== 'undefined') ? MigrationService : (typeof window !== 'undefined' ? window.MigrationService : null);
 

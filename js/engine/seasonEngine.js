@@ -32,13 +32,70 @@ class SeasonEngine {
                     matchEngine.simulateFullMatch(match, homeClub, awayClub, state.players);
                 }
             }
+            // Nur die eigenen Partien behalten Einzelkritiken und Ereignisse
+            if (matchEngine && typeof matchEngine.compactPlayedMatch === 'function') {
+                const isUserMatch = match.homeClubId === state.userClubId || match.awayClubId === state.userClubId;
+                matchEngine.compactPlayedMatch(match, isUserMatch);
+            }
         });
+
+        // Die übrigen elf Ligen laufen im Hintergrund mit
+        SeasonEngine.simulateOtherLeagues(state);
 
         // Tabelle aktualisieren
         const gameState = _getGameState();
         if (gameState && typeof gameState.calculateStandings === 'function') {
-            state.standings = gameState.calculateStandings(state.clubs, state.schedule, state.currentMatchday);
+            state.standings = gameState.calculateStandings(gameState.getLeagueClubs(state), state.schedule, state.currentMatchday);
+            state.standingsByLeague = state.standingsByLeague || {};
+            state.standingsByLeague[gameState.getUserLeagueId(state)] = state.standings;
         }
+    }
+
+    /**
+     * Spielt alle übrigen Ligen der Welt bis zum passenden Spieltag durch.
+     *
+     * Die Ligen haben unterschiedlich viele Spieltage (30, 34 oder 38). Damit
+     * am Saisonende überall dieselbe Anzahl Runden gespielt ist, wird der
+     * Fortschritt anteilig auf die eigene Liga umgerechnet. Ergebnisse fremder
+     * Ligen werden sofort auf das Ergebnis eingedampft - alles andere würde
+     * den Spielstand um ein Vielfaches aufblähen.
+     */
+    static simulateOtherLeagues(state) {
+        if (!state.otherSchedules) return;
+
+        const matchEngine = _getMatchEngine();
+        const gameState = _getGameState();
+        if (!matchEngine || !gameState) return;
+
+        const userTotal = Math.max(1, state.totalMatchdays || (state.schedule ? state.schedule.length : 34));
+        const progress = Math.min(1, (state.currentMatchday || 1) / userTotal);
+
+        Object.keys(state.otherSchedules).forEach(leagueId => {
+            const schedule = state.otherSchedules[leagueId];
+            if (!Array.isArray(schedule) || schedule.length === 0) return;
+
+            const targetRound = Math.min(schedule.length, Math.ceil(progress * schedule.length));
+            const clubs = state.clubs.filter(c => c.leagueId === leagueId);
+            if (clubs.length < 2) return;
+
+            const clubById = new Map(clubs.map(c => [c.id, c]));
+
+            schedule.forEach(round => {
+                if (round.matchday > targetRound) return;
+                round.matches.forEach(match => {
+                    if (match.played) return;
+                    const homeClub = clubById.get(match.homeClubId);
+                    const awayClub = clubById.get(match.awayClubId);
+                    if (!homeClub || !awayClub) return;
+
+                    matchEngine.simulateFullMatch(match, homeClub, awayClub, state.players);
+                    matchEngine.compactPlayedMatch(match, false);
+                });
+            });
+
+            state.standingsByLeague = state.standingsByLeague || {};
+            state.standingsByLeague[leagueId] = gameState.calculateStandings(clubs, schedule, targetRound);
+        });
     }
 
     /**
@@ -297,11 +354,43 @@ class SeasonEngine {
 
         const gameState = _getGameState();
 
-        // Spielplan neu auslosen
-        if (gameState && typeof gameState.generateSchedule === 'function') {
+        // Auf- und Abstieg über die gesamte Ligapyramide abwickeln
+        const competitionEngine = (typeof CompetitionEngine !== 'undefined' && CompetitionEngine)
+            ? CompetitionEngine
+            : ((typeof window !== 'undefined' && window.CompetitionEngine) ? window.CompetitionEngine
+                : (typeof require !== 'undefined' ? require('./competitionEngine.js').CompetitionEngine : null));
+
+        let movements = { promoted: [], relegated: [] };
+        if (competitionEngine && typeof competitionEngine.processSeasonEndPromotionsRelegations === 'function') {
+            movements = competitionEngine.processSeasonEndPromotionsRelegations(state);
+        }
+
+        // Europapokal aus den Abschlusstabellen der fünf Topligen neu besetzen
+        if (competitionEngine && typeof competitionEngine.generateEuropeanCompetitions === 'function') {
+            state.europeanCompetitions = competitionEngine.generateEuropeanCompetitions(state.clubs, {
+                leagues: state.leagues,
+                standingsByLeague: state.standingsByLeague
+            });
+        }
+
+        // Spielpläne aller Ligen neu auslosen
+        const worldGen = (typeof WorldGenerator !== 'undefined' && WorldGenerator)
+            ? WorldGenerator
+            : ((typeof window !== 'undefined' && window.WorldGenerator) ? window.WorldGenerator
+                : (typeof require !== 'undefined' ? require('./worldGenerator.js').WorldGenerator : null));
+
+        const userLeagueId = gameState ? gameState.getUserLeagueId(state) : state.userLeagueId;
+        state.userLeagueId = userLeagueId;
+
+        if (worldGen && typeof worldGen.generateAllSchedules === 'function') {
+            worldGen.generateAllSchedules(state, userLeagueId);
+        } else if (gameState && typeof gameState.generateSchedule === 'function') {
             state.schedule = gameState.generateSchedule(state.clubs);
             state.totalMatchdays = state.schedule.length;
         }
+
+        const userLeague = (state.leagues || []).find(l => l.id === userLeagueId);
+        if (userLeague) state.leagueName = userLeague.shortName || userLeague.name;
 
         // Form zurücksetzen
         state.clubs.forEach(club => {
@@ -314,7 +403,28 @@ class SeasonEngine {
 
         // Tabelle zurücksetzen
         if (gameState && typeof gameState.calculateStandings === 'function') {
-            state.standings = gameState.calculateStandings(state.clubs, state.schedule, 1);
+            state.standings = gameState.calculateStandings(gameState.getLeagueClubs(state), state.schedule, 1);
+            state.standingsByLeague = state.standingsByLeague || {};
+            state.standingsByLeague[userLeagueId] = state.standings;
+        }
+
+        // Auf- oder Abstieg des eigenen Vereins vermelden
+        const userMove = [...movements.promoted, ...movements.relegated].find(m => m.clubId === state.userClubId);
+        if (userMove) {
+            const target = (state.leagues || []).find(l => l.id === userMove.toLeague);
+            const isPromotion = movements.promoted.some(m => m.clubId === state.userClubId);
+            state.inbox.unshift({
+                id: Date.now() + 16,
+                matchday: 1,
+                date: `Saisonstart ${state.seasonYear}`,
+                sender: "Ligavorstand",
+                subject: isPromotion ? "🎉 Aufstieg geschafft!" : "Abstieg besiegelt",
+                body: isPromotion
+                    ? `Herzlichen Glückwunsch! Ihr Verein spielt in der neuen Saison in der ${target ? target.shortName || target.name : "höheren Liga"}.`
+                    : `Der Abstieg ist besiegelt. Ihr Verein tritt in der neuen Saison in der ${target ? target.shortName || target.name : "tieferen Liga"} an.`,
+                read: false,
+                type: isPromotion ? "promotion" : "relegation"
+            });
         }
 
         // Neue Jugendspieler generieren

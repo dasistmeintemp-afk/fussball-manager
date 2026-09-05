@@ -11,6 +11,11 @@ const FinanceEngine = {
         if (!state.finances) state.finances = { transactions: [] };
         if (!Array.isArray(state.finances.transactions)) state.finances.transactions = [];
 
+        // Das Buchungsjournal zeigt ausschließlich den eigenen Verein. Mit 218
+        // Vereinen in der Welt würden pro Spieltag über 650 fremde Buchungen
+        // anfallen und die eigenen Einträge aus dem Journal verdrängen.
+        if (state.userClubId && clubId !== state.userClubId) return null;
+
         const txn = {
             id: "txn_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
             clubId: clubId,

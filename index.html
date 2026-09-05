@@ -548,12 +548,8 @@
                     <div class="pane-header">
                         <div style="display:flex; align-items:center; gap:16px;">
                             <h2>Wettbewerbe & Spielplan</h2>
-                            <select id="selectCompetitionView" class="styled-select" style="min-width:200px; padding:6px 12px; font-weight:700;">
-                                <option value="de_liga_1">🇩🇪 Deutschland Liga 1 (1. Bundesliga)</option>
-                                <option value="de_cup">🏆 Deutschland Pokal</option>
-                                <option value="ucl">⭐ Champions League</option>
-                                <option value="uel">🌍 Europa League</option>
-                                <option value="uecl">🏆 Conference League</option>
+                            <select id="selectCompetitionView" class="styled-select" style="min-width:230px; padding:6px 12px; font-weight:700;">
+                                <!-- Wird aus den Ligen der Spielwelt befüllt -->
                             </select>
                         </div>
                         <div class="view-switch-buttons">
@@ -1263,6 +1259,9 @@
                                 <div class="club-filter-bar">
                                     <input type="text" id="filterClubSearch" class="styled-input" placeholder="🔍 Verein oder Stadt suchen...">
                                     <div class="filter-controls-row">
+                                        <select id="filterClubLeague" class="styled-select">
+                                            <option value="all">Alle Ligen</option>
+                                        </select>
                                         <select id="filterClubSort" class="styled-select">
                                             <option value="strength_desc">Sortieren: Stärke (Absteigend)</option>
                                             <option value="strength_asc">Sortieren: Stärke (Aufsteigend)</option>
@@ -1598,10 +1597,13 @@
     <script src="js/core/formatters.js"></script>
     <script src="js/core/random.js"></script>
     <script src="js/core/validators.js"></script>
+    <script src="js/core/moduleResolver.js"></script>
     <script src="js/data/namePools.js"></script>
     <script src="js/data/leagueData.js"></script>
+    <script src="js/data/countryNamePools.js"></script>
     <script src="js/data/initialData.js"></script>
     <script src="js/services/migrationService.js"></script>
+    <script src="js/services/saveCodec.js"></script>
     <script src="js/services/saveService.js"></script>
     <script src="js/engine/newsEngine.js"></script>
     <script src="js/engine/boardEngine.js"></script>
@@ -1613,6 +1615,7 @@
     <script src="js/engine/aiManagerEngine.js"></script>
     <script src="js/engine/clubGenerator.js"></script>
     <script src="js/engine/playerGenerator.js"></script>
+    <script src="js/engine/worldGenerator.js"></script>
     <script src="js/engine/competitionEngine.js"></script>
     <script src="js/engine/playerRatingEngine.js"></script>
     <script src="js/engine/calendarEngine.js"></script>

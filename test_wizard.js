@@ -297,38 +297,15 @@ function runWizardTests() {
 
     test("Browser-Global-Simulation: Alle Core-, Engine- und Service-Module binden sich an window.*", () => {
         const vm = require('vm');
-        const files = [
-            './js/core/constants.js',
-            './js/core/dom.js',
-            './js/core/formatters.js',
-            './js/core/random.js',
-            './js/core/validators.js',
-            './js/data/namePools.js',
-            './js/data/leagueData.js',
-            './js/data/initialData.js',
-            './js/services/migrationService.js',
-            './js/services/saveService.js',
-            './js/engine/newsEngine.js',
-            './js/engine/boardEngine.js',
-            './js/engine/financeEngine.js',
-            './js/engine/contractEngine.js',
-            './js/engine/scoutingEngine.js',
-            './js/engine/youthEngine.js',
-            './js/engine/aiManagerEngine.js',
-            './js/engine/clubGenerator.js',
-            './js/engine/playerGenerator.js',
-            './js/engine/competitionEngine.js',
-            './js/engine/playerRatingEngine.js',
-            './js/engine/calendarEngine.js',
-            './js/engine/opponentAnalysisEngine.js',
-            './js/engine/gameState.js',
-            './js/engine/matchEngine.js',
-            './js/engine/transferEngine.js',
-            './js/engine/trainingEngine.js',
-            './js/engine/seasonEngine.js',
-            './js/ui/uiManager.js',
-            './js/app.js'
-        ];
+        // Die Ladeliste stammt direkt aus index.html - so kann sie nicht
+        // mehr von der tatsächlichen Reihenfolge im Browser abweichen.
+        const indexHtml = fs.readFileSync('./index.html', 'utf8');
+        const files = [...indexHtml.matchAll(/<script src="(js\/[^"]+)"><\/script>/g)]
+            .map(m => './' + m[1]);
+
+        if (files.length < 25) {
+            throw new Error(`Nur ${files.length} Skripte in index.html gefunden - die Ladeliste ist unvollständig`);
+        }
 
         const mockWindow = {
             addEventListener: () => {}
@@ -631,6 +608,54 @@ function runWizardTests() {
         if (!uiJs.includes('class="role-chip"')) {
             throw new Error("Kader-Tabelle in uiManager.js verwendet nicht .role-chip");
         }
+    });
+
+    // Vereinsauswahl über die gesamte Spielwelt
+    test("Wizard-Vereinsauswahl: alle Ligen wählbar und nach Liga filterbar", () => {
+        const { GameState } = require('./js/engine/gameState.js');
+        const { LEAGUES_DATA } = require('./js/data/leagueData.js');
+        const { UIManager } = require('./js/ui/uiManager.js');
+
+        const clubs = GameState.getSelectableClubs();
+        const erwartet = LEAGUES_DATA.reduce((sum, l) => sum + l.teamCount, 0);
+
+        if (clubs.length !== erwartet) {
+            throw new Error(`Auswahl umfasst ${clubs.length} statt ${erwartet} Vereine`);
+        }
+
+        const ligen = new Set(clubs.map(c => c.leagueId));
+        LEAGUES_DATA.forEach(l => {
+            if (!ligen.has(l.id)) throw new Error(`Liga ${l.id} fehlt in der Vereinsauswahl`);
+        });
+
+        clubs.forEach(c => {
+            if (!c.name || !c.leagueName || !c.stadium) throw new Error(`Unvollständiger Auswahleintrag: ${c.id}`);
+            if (!Array.isArray(c.players) || c.players.length < 16) {
+                throw new Error(`${c.name} liefert keinen Kader für die Detailansicht`);
+            }
+            if (typeof c.avgOverall !== "number" || c.avgOverall <= 0) {
+                throw new Error(`${c.name} hat keine Kaderstärke`);
+            }
+        });
+
+        // Ligafilter grenzt korrekt ein
+        const landesliga = UIManager.getFilteredWizardClubs(clubs, { league: "de_ll_1" });
+        if (landesliga.length !== 16) throw new Error(`Landesliga-Filter liefert ${landesliga.length} statt 16 Vereine`);
+        if (landesliga.some(c => c.leagueId !== "de_ll_1")) throw new Error("Ligafilter lässt fremde Vereine durch");
+
+        // Ohne Filter bleibt die Sortierung nach Stärke erhalten
+        const sortiert = UIManager.getFilteredWizardClubs(clubs, { sort: "strength_desc" });
+        for (let i = 1; i < sortiert.length; i++) {
+            if (sortiert[i - 1].avgOverall < sortiert[i].avgOverall) {
+                throw new Error("Sortierung nach Stärke ist nicht absteigend");
+            }
+        }
+        if (sortiert[0].level !== 1) throw new Error("Stärkster Verein kommt nicht aus einer Topliga");
+        if (sortiert[sortiert.length - 1].level < 6) throw new Error("Schwächster Verein kommt nicht aus dem Amateurbereich");
+
+        // Die Suche findet auch über den Ligennamen
+        const suche = UIManager.getFilteredWizardClubs(clubs, { search: "landesliga" });
+        if (suche.length !== 16) throw new Error(`Suche nach der Liga liefert ${suche.length} Treffer`);
     });
 
     console.log(`\n  Ergebnis Wizard-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

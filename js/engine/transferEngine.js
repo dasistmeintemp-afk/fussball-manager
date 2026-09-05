@@ -2,6 +2,16 @@
  * TransferEngine - Steuert Transferangebote, Verhandlungen, Marktwerte und Marktaktivität
  */
 
+/** Auflösung der FinanceEngine in Browser- und Node-Umgebung */
+const _getTransferFinanceEngine = () => {
+    if (typeof FinanceEngine !== 'undefined' && FinanceEngine) return FinanceEngine;
+    if (typeof window !== 'undefined' && window.FinanceEngine) return window.FinanceEngine;
+    if (typeof require !== 'undefined') {
+        try { return require('./financeEngine.js').FinanceEngine; } catch (e) { return null; }
+    }
+    return null;
+};
+
 /**
  * Geldbeträge formatieren - funktioniert im Browser wie in Node,
  * auch wenn GameState (noch) nicht global verfügbar ist.
@@ -107,13 +117,22 @@ class TransferEngine {
 
         if (!player || !buyerClub) return false;
 
-        // Finanzen verbuchen
+        // Finanzen verbuchen - inklusive Eintrag im Buchungsjournal, damit
+        // Kontostand und Journal auch nach Transfers übereinstimmen
+        const financeEngine = _getTransferFinanceEngine();
+
         buyerClub.balance -= fee;
         buyerClub.transferBudget -= fee;
+        if (financeEngine && fee !== 0) {
+            financeEngine.recordTransaction(state, buyerClub.id, "transfer_out", -fee, `Ablöse für ${player.name}`);
+        }
 
         if (sellerClub) {
             sellerClub.balance += fee;
             sellerClub.transferBudget += Math.round(fee * 0.85); // 85% reinvestierbar
+            if (financeEngine && fee !== 0) {
+                financeEngine.recordTransaction(state, sellerClub.id, "transfer_in", fee, `Verkauf von ${player.name}`);
+            }
             // Aus Kader des alten Vereins entfernen
             sellerClub.playerIds = sellerClub.playerIds.filter(id => id !== player.id);
             sellerClub.lineup = sellerClub.lineup.filter(id => id !== player.id);

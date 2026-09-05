@@ -26,6 +26,8 @@ const { MatchEngine, LiveMatch } = require('./js/engine/matchEngine.js');
 const { TransferEngine } = require('./js/engine/transferEngine.js');
 const { TrainingEngine } = require('./js/engine/trainingEngine.js');
 const { SeasonEngine } = require('./js/engine/seasonEngine.js');
+const { WorldGenerator } = require('./js/engine/worldGenerator.js');
+const { SaveCodec } = require('./js/services/saveCodec.js');
 
 function runEngineTests() {
     console.log("\n=======================================================");
@@ -68,9 +70,12 @@ function runEngineTests() {
 
     // 2. ClubGenerator & PlayerGenerator (Amateure & Ligapyramide)
     test("ClubGenerator & PlayerGenerator: Vereine und Spieler über Ligastufen (Level 1-7) generieren", () => {
-        const genClub = ClubGenerator.generateClub("de", "de_ll_1", 7, "Bayern");
+        const genClub = ClubGenerator.generateClub({ countryId: "de", leagueId: "de_ll_1", level: 7, region: "Bayern" });
         if (!genClub.id || !genClub.name || !genClub.stadium || genClub.tier !== "amateur") {
             throw new Error("ClubGenerator for level 7 invalid");
+        }
+        if (!genClub.reputation || genClub.reputation > 25) {
+            throw new Error(`Landesligist hat unrealistischen Ruf: ${genClub.reputation}`);
         }
 
         const genSquad = PlayerGenerator.generateSquad(genClub.id, 7, 22);
@@ -394,8 +399,12 @@ function runEngineTests() {
     // 15. Kalibrierungstest über 500 Spiele
     test("MatchEngine Kalibrierung: 500 Spiele Liga-Mittelwerte (Tore, Schüsse, Gelb/Rot, Elfmeter, Ballbesitz)", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
-        const clubs = state.clubs;
+        // Liga-Mittelwerte nur über die eigene Liga - die Welt enthält
+        // inzwischen auch Amateurvereine bis hinunter zur Landesliga
+        const clubs = state.clubs.filter(c => c.leagueId === "de_liga_1");
         const players = state.players;
+
+        if (clubs.length < 10) throw new Error("Liga-Vereine fehlen für die Kalibrierung");
 
         let totalGoals = 0;
         let totalShots = 0;
@@ -427,9 +436,15 @@ function runEngineTests() {
             const pens = match.events.filter(e => e.type === "goal" && e.text && e.text.includes("Elfmeter") || e.type === "save" && e.text && e.text.includes("Elfmeter"));
             totalPenalties += pens.length;
 
+            // Die Timeline wird nach der Auswertung verworfen - sie belegte
+            // rund 22 KB je Partie im Spielstand
+            if (match.timeline) {
+                throw new Error("Gespieltes Match trägt die Timeline weiterhin mit sich!");
+            }
+
             // Idempotenz testen
             const goalsBefore = match.homeGoals;
-            MatchEngine.applyTimelineToMatch(match, match.timeline, home, away, players);
+            MatchEngine.applyTimelineToMatch(match, [], home, away, players);
             if (match.homeGoals !== goalsBefore) {
                 throw new Error("applyTimelineToMatch ist nicht idempotent!");
             }
@@ -1008,7 +1023,10 @@ function runEngineTests() {
                 const director = live.director;
                 const original = director.applyFlowAction.bind(director);
                 director.applyFlowAction = (action) => {
-                    if (action.from?.team === "home" && action.to) {
+                    // Nur echte Pässe zählen: Klärungsversuche und Spielfortsetzungen
+                    // haben feste Längen und würden die Messung verwässern.
+                    const isPass = action.type === "pass" || action.type === "longball";
+                    if (isPass && action.from?.team === "home" && action.to) {
                         const tx = action.to.x ?? action.from.x;
                         const ty = action.to.y ?? action.from.y;
                         agg.dist += Math.hypot(tx - action.from.x, ty - action.from.y);
@@ -1187,6 +1205,213 @@ function runEngineTests() {
         if (!(awayAvg > 65)) {
             throw new Error(`Verteidigende Mannschaft sichert nicht ab: Schnitt ${awayAvg.toFixed(0)}`);
         }
+    });
+
+    // 31. Die Spielwelt umfasst alle Ligen mit passend abgestuften Kadern
+    test("WorldGenerator: alle zwölf Ligen gefüllt, Stärke nach Ligastufe gestaffelt", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const leagues = LEAGUES_DATA;
+
+        leagues.forEach(league => {
+            const clubs = state.clubs.filter(c => c.leagueId === league.id);
+            if (clubs.length !== league.teamCount) {
+                throw new Error(`${league.id} hat ${clubs.length} statt ${league.teamCount} Vereine`);
+            }
+            clubs.forEach(club => {
+                const squad = state.players.filter(p => p.clubId === club.id);
+                if (squad.length < 16) {
+                    throw new Error(`${club.name} (${league.id}) hat nur ${squad.length} Spieler`);
+                }
+                if (!squad.some(p => p.pos === "TW")) {
+                    throw new Error(`${club.name} hat keinen Torwart`);
+                }
+                if (club.lineup.length !== 11) {
+                    throw new Error(`${club.name} hat keine vollständige Startelf (${club.lineup.length})`);
+                }
+                club.lineup.forEach(id => {
+                    if (!state.players.some(p => p.id === id)) {
+                        throw new Error(`${club.name}: Aufstellung verweist auf unbekannten Spieler ${id}`);
+                    }
+                });
+            });
+        });
+
+        // Fünf Länder müssen vertreten sein
+        const countries = new Set(state.clubs.map(c => c.countryId));
+        ["de", "en", "es", "it", "fr"].forEach(id => {
+            if (!countries.has(id)) throw new Error(`Land ${id} fehlt in der Spielwelt`);
+        });
+
+        // Kaderstärke muss über die Ligastufen deutlich fallen
+        const avgByLevel = {};
+        [1, 2, 3, 4, 5, 6, 7].forEach(level => {
+            const clubIds = new Set(state.clubs.filter(c => c.level === level).map(c => c.id));
+            const squad = state.players.filter(p => clubIds.has(p.clubId));
+            avgByLevel[level] = squad.reduce((sum, p) => sum + p.overall, 0) / Math.max(1, squad.length);
+        });
+
+        for (let level = 1; level < 7; level++) {
+            if (!(avgByLevel[level] > avgByLevel[level + 1] + 3)) {
+                throw new Error(`Ligastufe ${level} (${avgByLevel[level].toFixed(1)}) ist nicht deutlich stärker als Stufe ${level + 1} (${avgByLevel[level + 1].toFixed(1)})`);
+            }
+        }
+        if (!(avgByLevel[1] > avgByLevel[7] + 35)) {
+            throw new Error(`Bundesliga (${avgByLevel[1].toFixed(1)}) und Landesliga (${avgByLevel[7].toFixed(1)}) liegen zu dicht beieinander`);
+        }
+    });
+
+    // 32. Karriere in der Landesliga: eigener Spielplan, alle Ligen laufen mit
+    test("WorldGenerator: Karrierestart in der Landesliga mit eigener Liga und Hintergrundligen", () => {
+        const landesligist = GameState.getSelectableClubs().find(c => c.leagueId === "de_ll_1");
+        if (!landesligist) throw new Error("Kein Landesligist zur Auswahl vorhanden");
+
+        const state = GameState.createNewGame(landesligist.id, "normal", { name: "Trainer" });
+
+        if (state.userLeagueId !== "de_ll_1") throw new Error(`Falsche Nutzerliga: ${state.userLeagueId}`);
+        if (state.totalMatchdays !== 30) throw new Error(`Landesliga hat ${state.totalMatchdays} statt 30 Spieltage`);
+        if (Object.keys(state.otherSchedules || {}).length !== LEAGUES_DATA.length - 1) {
+            throw new Error(`Es fehlen Spielpläne fremder Ligen (${Object.keys(state.otherSchedules || {}).length})`);
+        }
+
+        // Der Spielplan der eigenen Liga enthält ausschließlich Landesligisten
+        const leagueClubIds = new Set(state.clubs.filter(c => c.leagueId === "de_ll_1").map(c => c.id));
+        state.schedule.forEach(round => round.matches.forEach(m => {
+            if (!leagueClubIds.has(m.homeClubId) || !leagueClubIds.has(m.awayClubId)) {
+                throw new Error("Der Spielplan der Landesliga enthält ligafremde Vereine");
+            }
+        }));
+
+        // Ein Spieltag lässt auch die anderen Ligen mitspielen
+        SeasonEngine.advanceToNextMatchday(state);
+        const bundesliga = state.standingsByLeague?.de_liga_1 || [];
+        if (bundesliga.length !== 18) throw new Error(`Bundesliga-Tabelle hat ${bundesliga.length} Einträge`);
+        if (!bundesliga.some(entry => entry.played > 0)) {
+            throw new Error("Die Bundesliga hat am ersten Spieltag nicht mitgespielt");
+        }
+        if (state.standings.length !== 16) {
+            throw new Error(`Landesliga-Tabelle hat ${state.standings.length} statt 16 Einträge`);
+        }
+    });
+
+    // 33. Europapokal wird aus den echten Startplätzen der Topligen besetzt
+    test("CompetitionEngine: Europapokal aus den Startplätzen aller fünf Topligen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const comps = state.europeanCompetitions;
+
+        ["ucl", "uel", "uecl"].forEach(id => {
+            const comp = comps[id];
+            if (!comp || comp.participants.length < 8) throw new Error(`${id} hat zu wenige Teilnehmer`);
+            if (comp.participants.length % 4 !== 0) throw new Error(`${id}: Teilnehmerzahl passt nicht zu Vierergruppen`);
+            if (comp.groups.length !== comp.participants.length / 4) throw new Error(`${id}: Gruppenzahl passt nicht`);
+
+            const countries = new Set(comp.participants.map(cid => state.clubs.find(c => c.id === cid)?.countryId));
+            if (countries.size < 4) throw new Error(`${id} wird nur aus ${countries.size} Ländern besetzt`);
+
+            comp.participants.forEach(cid => {
+                const club = state.clubs.find(c => c.id === cid);
+                if (!club) throw new Error(`${id}: unbekannter Verein ${cid}`);
+                if (club.level !== 1) throw new Error(`${id}: ${club.name} ist kein Erstligist`);
+            });
+        });
+
+        // Kein Verein darf in zwei Wettbewerben stehen
+        const all = [...comps.ucl.participants, ...comps.uel.participants, ...comps.uecl.participants];
+        if (new Set(all).size !== all.length) throw new Error("Ein Verein startet in mehreren europäischen Wettbewerben");
+    });
+
+    // 34. Auf- und Abstieg über die Ligapyramide
+    test("CompetitionEngine: Auf- und Abstieg erhält die Größe aller Ligen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+
+        // Tabellen aller Ligen bereitstellen
+        state.leagues.forEach(league => {
+            const clubs = state.clubs.filter(c => c.leagueId === league.id);
+            const schedule = GameState.getScheduleForLeague(state, league.id);
+            state.standingsByLeague[league.id] = GameState.calculateStandings(clubs, schedule, 999);
+        });
+
+        const sizesBefore = {};
+        state.leagues.forEach(l => { sizesBefore[l.id] = state.clubs.filter(c => c.leagueId === l.id).length; });
+
+        const meister = state.standingsByLeague.de_liga_2[0].clubId;
+        const result = CompetitionEngine.processSeasonEndPromotionsRelegations(state);
+
+        if (result.promoted.length === 0) throw new Error("Es ist kein Verein aufgestiegen");
+        if (result.relegated.length !== result.promoted.length) {
+            throw new Error(`Auf- und Absteiger stimmen nicht überein: ${result.promoted.length} / ${result.relegated.length}`);
+        }
+
+        state.leagues.forEach(l => {
+            const now = state.clubs.filter(c => c.leagueId === l.id).length;
+            if (now !== sizesBefore[l.id]) {
+                throw new Error(`${l.id} hat nach dem Auf-/Abstieg ${now} statt ${sizesBefore[l.id]} Vereine`);
+            }
+        });
+
+        const aufsteiger = state.clubs.find(c => c.id === meister);
+        if (aufsteiger.leagueId !== "de_liga_1" || aufsteiger.level !== 1) {
+            throw new Error(`Der Zweitligameister ist nicht aufgestiegen (${aufsteiger.leagueId})`);
+        }
+    });
+
+    // 35. Kompaktes Speicherformat: verlustfrei und klein genug für den Browser
+    test("SaveCodec: Spielstand der ganzen Welt passt kodiert in den LocalStorage", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        for (let i = 0; i < 3; i++) SeasonEngine.advanceToNextMatchday(state);
+
+        const rawSize = JSON.stringify(state).length;
+        const encoded = SaveCodec.encodeState(state);
+        const encodedSize = JSON.stringify(encoded).length;
+
+        if (encodedSize > 3 * 1024 * 1024) {
+            throw new Error(`Kodierter Spielstand ist mit ${(encodedSize / 1048576).toFixed(2)} MB zu groß für den LocalStorage`);
+        }
+        if (!(encodedSize < rawSize * 0.45)) {
+            throw new Error(`Kodierung spart zu wenig: ${(encodedSize / rawSize * 100).toFixed(0)} % der Rohgröße`);
+        }
+
+        const decoded = SaveCodec.decodeState(JSON.parse(JSON.stringify(encoded)));
+
+        if (decoded.players.length !== state.players.length) throw new Error("Spieleranzahl geht beim Dekodieren verloren");
+        if (decoded.clubs.length !== state.clubs.length) throw new Error("Vereinsanzahl geht beim Dekodieren verloren");
+        if (decoded.schedule.length !== state.schedule.length) throw new Error("Spielplan geht beim Dekodieren verloren");
+        if (Object.keys(decoded.otherSchedules).length !== Object.keys(state.otherSchedules).length) {
+            throw new Error("Spielpläne fremder Ligen gehen verloren");
+        }
+
+        // Wichtige Spielerfelder müssen identisch zurückkommen - inklusive
+        // der numerischen IDs der handgepflegten Vereine
+        const felder = ["id", "name", "age", "pos", "overall", "pot", "value", "wage", "clubId",
+                        "trueCurrentAbility", "pace", "shooting", "defense", "injuredWeeks", "suspendedMatches"];
+        state.players.forEach((original, idx) => {
+            const back = decoded.players[idx];
+            felder.forEach(feld => {
+                if (JSON.stringify(original[feld]) !== JSON.stringify(back[feld])) {
+                    throw new Error(`Spielerfeld ${feld} verändert sich: ${JSON.stringify(original[feld])} -> ${JSON.stringify(back[feld])}`);
+                }
+            });
+        });
+
+        // Aufstellungen müssen weiterhin auflösbar sein
+        decoded.clubs.forEach(club => {
+            club.lineup.forEach(id => {
+                if (!decoded.players.some(p => p.id === id)) {
+                    throw new Error(`${club.name}: Aufstellung nach dem Dekodieren nicht mehr auflösbar`);
+                }
+            });
+        });
+
+        // Ergebnisse gespielter Partien bleiben erhalten, die Timeline nicht
+        let gespielt = 0;
+        decoded.schedule.forEach(round => round.matches.forEach(m => {
+            if (!m.played) return;
+            gespielt++;
+            if (typeof m.homeGoals !== "number" || typeof m.awayGoals !== "number") {
+                throw new Error("Ergebnis einer gespielten Partie fehlt nach dem Dekodieren");
+            }
+            if (m.timeline) throw new Error("Gespielte Partie schleppt die Timeline in den Spielstand");
+        }));
+        if (gespielt === 0) throw new Error("Keine gespielten Partien im Spielplan gefunden");
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

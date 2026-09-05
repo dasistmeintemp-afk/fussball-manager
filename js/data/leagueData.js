@@ -14,6 +14,7 @@ const LEAGUES_DATA = [
     // --- TOP 5 LIGEN (Level 1) ---
     {
         id: "de_liga_1",
+        code: "de1",
         name: "Deutschland Liga 1",
         countryId: "de",
         shortName: "1. Bundesliga",
@@ -35,6 +36,7 @@ const LEAGUES_DATA = [
     },
     {
         id: "en_liga_1",
+        code: "en1",
         name: "England Liga 1",
         countryId: "en",
         shortName: "Premier Division",
@@ -56,6 +58,7 @@ const LEAGUES_DATA = [
     },
     {
         id: "es_liga_1",
+        code: "es1",
         name: "Spanien Liga 1",
         countryId: "es",
         shortName: "Primera Division",
@@ -77,6 +80,7 @@ const LEAGUES_DATA = [
     },
     {
         id: "it_liga_1",
+        code: "it1",
         name: "Italien Liga 1",
         countryId: "it",
         shortName: "Serie Campionato",
@@ -98,6 +102,7 @@ const LEAGUES_DATA = [
     },
     {
         id: "fr_liga_1",
+        code: "fr1",
         name: "Frankreich Liga 1",
         countryId: "fr",
         shortName: "Ligue Supérieure",
@@ -121,6 +126,7 @@ const LEAGUES_DATA = [
     // --- DEUTSCHE LIGAPYRAMIDE (Level 2 - 7) ---
     {
         id: "de_liga_2",
+        code: "de2",
         name: "Deutschland Liga 2",
         countryId: "de",
         shortName: "2. Bundesliga",
@@ -137,6 +143,7 @@ const LEAGUES_DATA = [
     },
     {
         id: "de_liga_3",
+        code: "de3",
         name: "Deutschland Liga 3",
         countryId: "de",
         shortName: "3. Profi-Liga",
@@ -152,6 +159,7 @@ const LEAGUES_DATA = [
     },
     {
         id: "de_rl_west",
+        code: "rlw",
         name: "Regionalliga West",
         countryId: "de",
         shortName: "Regionalliga West",
@@ -166,6 +174,7 @@ const LEAGUES_DATA = [
     },
     {
         id: "de_rl_bayern",
+        code: "rlb",
         name: "Regionalliga Bayern",
         countryId: "de",
         shortName: "Regionalliga Bayern",
@@ -180,6 +189,7 @@ const LEAGUES_DATA = [
     },
     {
         id: "de_ol_nord",
+        code: "oln",
         name: "Oberliga Nord",
         countryId: "de",
         shortName: "Oberliga Nord",
@@ -194,6 +204,7 @@ const LEAGUES_DATA = [
     },
     {
         id: "de_vl_1",
+        code: "vl1",
         name: "Verbandsliga",
         countryId: "de",
         shortName: "Verbandsliga",
@@ -208,6 +219,7 @@ const LEAGUES_DATA = [
     },
     {
         id: "de_ll_1",
+        code: "ll1",
         name: "Landesliga",
         countryId: "de",
         shortName: "Landesliga",

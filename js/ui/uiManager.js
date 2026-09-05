@@ -2000,7 +2000,7 @@ class UIManager {
             return `
                 <tr class="row-clickable" data-player-id="${p.id}" title="Details zu ${this.escapeHtml(p.name)} öffnen">
                     <td>${statusBadge}</td>
-                    <td><strong>${p.name}</strong> <span style="font-size:11px; color:var(--text-muted);">(${p.squadRole || 'Kader'})</span></td>
+                    <td><strong>${p.name}</strong> <span class="squad-role-hint">(${p.squadRole || 'Kader'})</span></td>
                     <td>
                         <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>
                         ${secondaryHtml}
@@ -2008,7 +2008,7 @@ class UIManager {
                     <td>${p.age}</td>
                     <td>
                         <span title="${abilityText} (${p.overall} OVR)" style="color:#f59e0b; font-size:13px; font-weight:600;">${starsCa}</span>
-                        <div style="font-size:10px; color:var(--text-muted);">${abilityText}</div>
+                        <div class="squad-ability-hint">${abilityText}</div>
                     </td>
                     <td><span title="Entwicklungspotenzial" style="color:#38bdf8; font-size:12px;">${starsPa}</span></td>
                     <td><span class="role-chip" title="${roleName}">${roleName}</span></td>

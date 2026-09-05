@@ -125,9 +125,16 @@ function runEngineTests() {
             throw new Error("MatchEngine.generateTimeline returned empty timeline");
         }
 
-        const firstEv = timeline[0];
-        if (firstEv.minute === undefined || !firstEv.type || !firstEv.text || !firstEv.start || !firstEv.end) {
-            throw new Error("Timeline event is missing required attributes (minute, type, text, start, end)");
+        // Jedes Ereignis braucht Minute, Typ und Text. Start- und Zielpunkt
+        // hat nur, was auf dem Rasen stattfindet: Verletzungen, Wechsel und
+        // die Abschnittsmarken kommen ohne Koordinaten aus. Vorher prüfte der
+        // Test blind das erste Ereignis - fiel dort in Minute eins jemand aus,
+        // schlug er grundlos fehl.
+        const ohneOrt = new Set(["halftime", "fulltime", "substitution", "injury"]);
+        const luecke = timeline.find(ev => ev.minute === undefined || !ev.type || !ev.text
+            || (!ohneOrt.has(ev.type) && (!ev.start || !ev.end)));
+        if (luecke) {
+            throw new Error(`Ereignis ohne Pflichtangaben: Minute ${luecke.minute}, Typ ${luecke.type}`);
         }
 
         // LiveMatch mit derselben Timeline ablaufen lassen & Geschwindigkeiten testen
@@ -772,21 +779,36 @@ function runEngineTests() {
         let prevBall = { x: live.ball.x, y: live.ball.y };
         const prevPlayers = live.players2D.map(p => ({ x: p.x, y: p.y }));
 
+        let seitenwechselFrames = 0;
+
         while (!live.isFinished && frames < 60 * 400) {
+            const vorHalbzeit = live.director.isSecondHalf;
             live.advanceRealTime(FRAME);
             live.updateBallAndPlayers(FRAME);
             frames++;
+
+            // Der Seitenwechsel ist ein Schnitt in der Pause: beide
+            // Mannschaften kommen auf der anderen Seite aus der Kabine. Genau
+            // dieses eine Bild darf springen, jedes andere nicht.
+            const seitenwechsel = !vorHalbzeit && live.director.isSecondHalf;
+            if (seitenwechsel) seitenwechselFrames++;
 
             maxBallStep = Math.max(maxBallStep, Math.hypot(live.ball.x - prevBall.x, live.ball.y - prevBall.y));
             prevBall = { x: live.ball.x, y: live.ball.y };
 
             live.players2D.forEach((p, i) => {
-                maxPlayerStep = Math.max(maxPlayerStep, Math.hypot(p.x - prevPlayers[i].x, p.y - prevPlayers[i].y));
+                if (!seitenwechsel) {
+                    maxPlayerStep = Math.max(maxPlayerStep, Math.hypot(p.x - prevPlayers[i].x, p.y - prevPlayers[i].y));
+                }
                 prevPlayers[i].x = p.x;
                 prevPlayers[i].y = p.y;
             });
 
             commentaries.add(live.lastCommentary);
+        }
+
+        if (seitenwechselFrames !== 1) {
+            throw new Error(`Der Seitenwechsel findet ${seitenwechselFrames}-mal statt, erwartet wird genau einer`);
         }
 
         if (!live.isFinished) throw new Error(`Spiel wurde in ${frames} Frames nicht beendet (Minute ${live.minute})`);
@@ -1467,11 +1489,19 @@ function runEngineTests() {
             throw new Error(`Uhrtempo nicht gestaffelt: langsam=${slow}, normal=${normal}, schnell=${fast}`);
         }
 
-        // Auf der langsamsten Stufe sollen 90 Minuten mindestens acht echte
-        // Minuten dauern - sonst huscht der Spielaufbau wieder vorbei.
-        const minutesForFullMatch = (90 * 60) / slow / 60;
-        if (minutesForFullMatch < 8) {
-            throw new Error(`Langsamste Stufe spielt 90 Minuten in nur ${minutesForFullMatch.toFixed(1)} echten Minuten ab`);
+        // Die langsamste Stufe bleibt eine Übertragung zum Zuschauen, die
+        // schnellste ist der Schnelldurchlauf. Dazwischen liegt "Normal": drei
+        // bis vier echte Minuten für ein ganzes Spiel.
+        const echteMinuten = (rate) => (90 * 60) / rate / 60;
+
+        if (echteMinuten(slow) < 5) {
+            throw new Error(`Langsamste Stufe spielt 90 Minuten in nur ${echteMinuten(slow).toFixed(1)} echten Minuten ab`);
+        }
+        if (echteMinuten(normal) > 4) {
+            throw new Error(`Normalstufe braucht ${echteMinuten(normal).toFixed(1)} echte Minuten - zu zäh`);
+        }
+        if (echteMinuten(fast) > 2.5) {
+            throw new Error(`Schnellste Stufe braucht ${echteMinuten(fast).toFixed(1)} echte Minuten - kein Schnelldurchlauf`);
         }
 
         // Der Ballaufbau zwischen den Höhepunkten muss den Großteil der Zeit
@@ -1539,6 +1569,191 @@ function runEngineTests() {
         while (dir.drama && guard++ < 4000) dir.updateDrama(1 / 60);
         if (live.motionFreeze) throw new Error("Standbild wird nach der Unterbrechung nicht aufgehoben");
         if (dir.getMotionScale() !== 1) throw new Error("Bewegung läuft nach der Unterbrechung nicht normal weiter");
+    });
+
+    // Anstoß: aufstellen, anpfeifen, anspielen
+    test("LiveMatchDirector: Anstoß wird aufgestellt und vom Schiedsrichter angepfiffen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+        const match = { id: "anstoss", played: false, homeClubId: "muc", awayClubId: "dor" };
+        match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, state.players);
+
+        const live = new LiveMatch(match, homeClub, awayClub, state.players);
+        live.speed = 2;
+        const dir = live.director;
+
+        if (!dir.kickoff) throw new Error("Das Spiel beginnt ohne Anstoß-Zeremonie");
+        if (live.setPiece?.kind !== "kickoff") throw new Error("Der Anstoß wird nicht als Spielsituation angezeigt");
+
+        const laufen = (bedingung, grenze = 4000) => {
+            let guard = 0;
+            while (bedingung() && guard++ < grenze) {
+                live.advanceRealTime(1000 / 60);
+                live.updateBallAndPlayers(1000 / 60);
+            }
+        };
+
+        live.soundCues = [];
+        laufen(() => dir.kickoff && dir.kickoff.phase === "lineup");
+        if (!dir.kickoff || dir.kickoff.phase !== "whistle") {
+            throw new Error("Der Schiedsrichter pfeift den Anstoß nicht an");
+        }
+
+        // Beim Pfiff steht jede Mannschaft in ihrer eigenen Hälfte
+        const falscheHaelfte = (live.players2D || []).filter(p => {
+            const angriff = dir.attackDir(p.team);
+            return angriff > 0 ? p.x > 52 : p.x < 48;
+        });
+        if (falscheHaelfte.length > 0) {
+            throw new Error(`${falscheHaelfte.length} Spieler stehen beim Anpfiff in der gegnerischen Hälfte`);
+        }
+
+        // Der Mittelkreis gehört allein der anstoßenden Mannschaft
+        const imKreis = (live.players2D || []).filter(p => p.team !== dir.kickoff.team
+            && Math.hypot((p.x - 50) / 8.7, (p.y - 50) / 13.5) < 1);
+        if (imKreis.length > 0) {
+            throw new Error(`${imKreis.length} Gegenspieler stehen im Mittelkreis`);
+        }
+
+        // Der Ball liegt auf dem Anstoßpunkt und wartet auf den Pfiff
+        if (Math.hypot(live.ball.x - 50, live.ball.y - 50) > 2.5) {
+            throw new Error(`Der Ball liegt nicht auf dem Anstoßpunkt (${live.ball.x.toFixed(1)}/${live.ball.y.toFixed(1)})`);
+        }
+        if (!live.soundCues.includes("whistle")) throw new Error("Zum Anstoß ist kein Pfiff zu hören");
+
+        // Erst nach dem Pfiff rollt der Ball wieder
+        laufen(() => !!dir.kickoff);
+        if (dir.kickoff) throw new Error("Die Anstoß-Zeremonie endet nicht");
+        if (live.setPiece) throw new Error("Der Anstoß bleibt als ruhende Spielsituation stehen");
+
+        // Zur zweiten Halbzeit stehen beide Mannschaften auf der neuen Seite -
+        // samt Torhütern. Vorher stand der Keeper beim Anpfiff noch am
+        // Mittelkreis, weil er den ganzen Platz überqueren musste.
+        laufen(() => !dir.kickoff || dir.kickoff.reason !== "halftime", 60 * 900);
+        if (!dir.kickoff || dir.kickoff.reason !== "halftime") {
+            throw new Error("Zur zweiten Halbzeit gibt es keine Anstoß-Zeremonie");
+        }
+        laufen(() => dir.kickoff && dir.kickoff.phase === "lineup");
+
+        const verirrt = (live.players2D || []).filter(p => {
+            const angriff = dir.attackDir(p.team);
+            return angriff > 0 ? p.x > 52 : p.x < 48;
+        });
+        if (verirrt.length > 0) {
+            throw new Error(`${verirrt.length} Spieler stehen zur zweiten Halbzeit noch auf der alten Seite`);
+        }
+
+        const torhueter = (live.players2D || []).filter(p => p.pos === "TW");
+        torhueter.forEach(tw => {
+            const abstand = Math.abs(tw.x - dir.ownGoalX(tw.team));
+            if (abstand > 14) {
+                throw new Error(`Der Torwart steht beim Anstoß ${abstand.toFixed(0)} Einheiten von seinem Tor entfernt`);
+            }
+        });
+
+        // Nach einem Tor wird erneut aufgestellt - und zwar für die Mannschaft,
+        // die das Tor kassiert hat
+        laufen(() => !!dir.kickoff);
+        dir.startCelebration({ type: "goal", team: "home", playerName: "Torschütze" });
+        laufen(() => dir.mode === "celebration", 12000);
+        if (!dir.kickoff) throw new Error("Nach dem Tor folgt keine Anstoß-Zeremonie");
+        if (dir.kickoff.team !== "away") throw new Error("Nach dem Tor stößt die falsche Mannschaft an");
+        if (dir.kickoff.phase !== "lineup") throw new Error("Nach dem Tor wird sofort angepfiffen, ohne Aufstellung");
+    });
+
+    // Spielfluss: Pässe kommen an, der Ball bleibt im Spiel
+    test("MatchFlowEngine: Pässe kommen an, der lange Ball bleibt die Ausnahme", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+
+        const zaehler = { aktionen: 0, pass: 0, passOk: 0, lang: 0 };
+        const standards = {};
+
+        for (let run = 0; run < 3; run++) {
+            const match = { id: `fluss_${run}`, played: false, homeClubId: "muc", awayClubId: "dor" };
+            match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, state.players);
+
+            const live = new LiveMatch(match, homeClub, awayClub, state.players);
+            live.speed = 2;
+            const dir = live.director;
+
+            const origFlow = dir.applyFlowAction.bind(dir);
+            dir.applyFlowAction = (action) => {
+                zaehler.aktionen++;
+                if (action.type === "pass") {
+                    zaehler.pass++;
+                    if (action.outcome === "complete") zaehler.passOk++;
+                } else if (action.type === "longball") {
+                    zaehler.lang++;
+                }
+                origFlow(action);
+            };
+
+            const origDead = dir.startDeadBall.bind(dir);
+            dir.startDeadBall = (kind, team, x, y) => {
+                standards[kind] = (standards[kind] || 0) + 1;
+                origDead(kind, team, x, y);
+            };
+
+            let frames = 0;
+            while (!live.isFinished && frames++ < 60 * 900) {
+                live.advanceRealTime(1000 / 60);
+                live.updateBallAndPlayers(1000 / 60);
+            }
+        }
+
+        if (zaehler.aktionen < 200) throw new Error(`Zu wenige Spielaktionen für eine Auswertung (${zaehler.aktionen})`);
+
+        const quote = zaehler.passOk / Math.max(1, zaehler.pass);
+        if (quote < 0.68) {
+            throw new Error(`Nur ${(quote * 100).toFixed(0)} % der Pässe kommen an - das Spiel bleibt ein Hin und Her`);
+        }
+
+        const langAnteil = zaehler.lang / zaehler.aktionen;
+        if (langAnteil > 0.3) {
+            throw new Error(`${(langAnteil * 100).toFixed(0)} % der Aktionen sind lange Bälle`);
+        }
+
+        // Abstöße sind die Ausnahme, nicht die Spielfortsetzung schlechthin
+        const abstoesse = standards.goalkick || 0;
+        if (abstoesse > zaehler.aktionen * 0.06) {
+            throw new Error(`${abstoesse} Abstöße bei ${zaehler.aktionen} Aktionen - der Torwart hat ständig den Ball`);
+        }
+    });
+
+    // Der Abstoß gehört der Mannschaft, die diese Linie verteidigt
+    test("LiveMatchDirector: Abstoß wechselt mit dem Seitenwechsel die Mannschaft", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+        const match = { id: "abstoss", played: false, homeClubId: "muc", awayClubId: "dor" };
+        const live = new LiveMatch(match, homeClub, awayClub, state.players);
+        const dir = live.director;
+
+        const notiert = [];
+        dir.startDeadBall = (kind, team) => notiert.push({ kind, team });
+
+        // Halbzeit eins: rechts verteidigt die Auswärtsmannschaft
+        dir.isSecondHalf = false;
+        dir.handleOutOfPlay({ from: { team: "home" } }, { x: 99.5, y: 50 });
+        if (notiert[0]?.kind !== "goalkick" || notiert[0]?.team !== "away") {
+            throw new Error(`Abstoß in Halbzeit eins falsch vergeben: ${JSON.stringify(notiert[0])}`);
+        }
+
+        // Halbzeit zwei: dieselbe Linie verteidigt jetzt die Heimmannschaft
+        dir.isSecondHalf = true;
+        dir.handleOutOfPlay({ from: { team: "away" } }, { x: 99.5, y: 50 });
+        if (notiert[1]?.kind !== "goalkick" || notiert[1]?.team !== "home") {
+            throw new Error(`Abstoß nach dem Seitenwechsel falsch vergeben: ${JSON.stringify(notiert[1])}`);
+        }
+
+        // Seitenaus bleibt Seitenaus - und gehört der anderen Mannschaft
+        dir.handleOutOfPlay({ from: { team: "home" } }, { x: 40, y: 99.5 });
+        if (notiert[2]?.kind !== "throwin" || notiert[2]?.team !== "away") {
+            throw new Error(`Einwurf falsch vergeben: ${JSON.stringify(notiert[2])}`);
+        }
     });
 
     // 36. Transferverhandlung über mehrere Tage

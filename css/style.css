@@ -2940,12 +2940,92 @@ body {
 }
 
 .league-option-card {
-    background: var(--bg-dark);
+    /* --bg-dark gibt es nicht, die Karte war deshalb durchsichtig */
+    background: var(--bg-elevated);
     border: 2px solid var(--accent-primary);
     border-radius: var(--radius-xl);
     padding: 24px;
     display: flex;
     gap: 20px;
+}
+
+/* Ligaauswahl: alle Ligen der Spielwelt, nach Ländern gruppiert */
+.league-pick-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.league-country-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.league-country-title .lc-flag {
+    font-size: 18px;
+}
+
+.league-country-title .lc-count {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+.league-pick-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.league-pick-card {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    text-align: left;
+    padding: 12px 14px;
+    border-radius: var(--radius-lg);
+    border: 2px solid var(--border-color);
+    background: var(--bg-elevated);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.league-pick-card:hover {
+    border-color: var(--accent-primary);
+    transform: translateY(-1px);
+}
+
+.league-pick-card.selected {
+    border-color: var(--accent-primary);
+    background: rgba(59, 130, 246, 0.12);
+}
+
+.league-pick-card .lp-level {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.league-pick-card .lp-name {
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.league-pick-card .lp-meta {
+    font-size: 11px;
+    color: var(--text-muted);
 }
 
 .league-badge-big {

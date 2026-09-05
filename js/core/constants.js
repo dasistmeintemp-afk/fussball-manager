@@ -139,17 +139,19 @@ const NEWS_TYPES = {
 };
 
 // matchSecondsPerRealSecond bestimmt, wie schnell die Spieluhr im 2D-Livespiel
-// läuft. Der Wert ist der eigentliche Tempo-Regler: bei 8 dauern 90 Minuten rund
-// elf echte Minuten, sodass Spielaufbau, Passstafetten und Laufwege sichtbar
-// bleiben. tickIntervalMs/minuteStep gelten weiterhin für den Minutentakt der
+// läuft. Der Wert ist der eigentliche Tempo-Regler: 90 Minuten dauern damit
+// rund sieben (langsam), drei (normal) beziehungsweise anderthalb echte
+// Minuten. Während Höhepunkten, Standards und der Anstoß-Zeremonie bremst die
+// Regie die Uhr ohnehin ab, sodass die entscheidenden Szenen in Ruhe laufen.
+// tickIntervalMs/minuteStep gelten weiterhin für den Minutentakt der
 // Sofortsimulation und als Rückfallebene ohne Regie.
 const LIVE_MATCH_SPEEDS = {
-    1: { key: "slow", label: "Langsam", tickIntervalMs: 2200, minuteStep: 1, matchSecondsPerRealSecond: 8 },
-    2: { key: "normal", label: "Normal", tickIntervalMs: 1200, minuteStep: 1, matchSecondsPerRealSecond: 18 },
-    4: { key: "fast", label: "Schnell", tickIntervalMs: 500, minuteStep: 2, matchSecondsPerRealSecond: 42 },
-    slow: { key: "slow", label: "Langsam", tickIntervalMs: 2200, minuteStep: 1, matchSecondsPerRealSecond: 8 },
-    normal: { key: "normal", label: "Normal", tickIntervalMs: 1200, minuteStep: 1, matchSecondsPerRealSecond: 18 },
-    fast: { key: "fast", label: "Schnell", tickIntervalMs: 500, minuteStep: 2, matchSecondsPerRealSecond: 42 }
+    1: { key: "slow", label: "Langsam", tickIntervalMs: 2200, minuteStep: 1, matchSecondsPerRealSecond: 13 },
+    2: { key: "normal", label: "Normal", tickIntervalMs: 1200, minuteStep: 1, matchSecondsPerRealSecond: 30 },
+    4: { key: "fast", label: "Schnell", tickIntervalMs: 500, minuteStep: 2, matchSecondsPerRealSecond: 66 },
+    slow: { key: "slow", label: "Langsam", tickIntervalMs: 2200, minuteStep: 1, matchSecondsPerRealSecond: 13 },
+    normal: { key: "normal", label: "Normal", tickIntervalMs: 1200, minuteStep: 1, matchSecondsPerRealSecond: 30 },
+    fast: { key: "fast", label: "Schnell", tickIntervalMs: 500, minuteStep: 2, matchSecondsPerRealSecond: 66 }
 };
 
 if (typeof window !== "undefined") {

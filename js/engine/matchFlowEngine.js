@@ -158,8 +158,20 @@ class MatchFlowEngine {
         const chain = Math.min(8, context.chainLength || 0);
         forwardDrive *= 1 + chain * 0.07;
 
+        // Die Absicht hängt daran, wo der Ball ist. Im eigenen Drittel wird
+        // gesichert zirkuliert - auch quer, auch zurück -, im Mittelfeld
+        // gesucht, im letzten Drittel der Abschluss vorbereitet. Ohne diese
+        // Staffelung sah jeder Ballbesitz gleich aus: ein Hin und Her ohne
+        // erkennbare Richtung.
+        const istAufbau = context.phase === FLOW_PHASES.BUILDUP;
+        const istAbschluss = context.phase === FLOW_PHASES.FINAL_THIRD;
+
+        const progressWeight = istAufbau ? 0.72 : (istAbschluss ? 1.45 : 1.25);
+        const riskWeight = istAufbau ? 2.1 : (istAbschluss ? 1.15 : 1.4);
+        const spaceWeight = istAufbau ? 1.2 : 0.85;
+
         // Bevorzugte Passlänge
-        const preferred = passing === "short" ? 14 : (passing === "direct" ? 34 : 22);
+        const preferred = passing === "short" ? 13 : (passing === "direct" ? 32 : 19);
 
         return mates.map(mate => {
             const dist = this.distance(carrier, mate);
@@ -170,7 +182,14 @@ class MatchFlowEngine {
             const forward = (mate.x - carrier.x) * dir;
 
             // Passlänge: nahe an der bevorzugten Distanz ist am besten
-            const lengthScore = 1 - Math.min(1, Math.abs(dist - preferred) / 42);
+            const lengthScore = 1 - Math.min(1, Math.abs(dist - preferred) / 26);
+
+            // Der lange Ball ist die Ausnahme. Ohne diesen Abschlag war fast
+            // jede zweite Aktion ein Schlag über dreißig Meter - daher das
+            // ewige Hin und Her, denn nur jeder zweite kam an.
+            const longMalus = dist > 30
+                ? Math.min(0.75, (dist - 30) / 28) * (passing === "direct" ? 0.55 : 1.15)
+                : 0;
 
             // Raumgewinn zählt, Rückpässe sind nur die Notlösung
             // Defensive Mannschaften nehmen den Rückpass eher in Kauf,
@@ -192,14 +211,20 @@ class MatchFlowEngine {
             else if (focus === "center" && focusY > 32 && focusY < 68) focusScore = 0.24;
 
             // Stürmer im letzten Drittel sind attraktive Ziele
-            const roleScore = (mate.group === "att" && context.phase === FLOW_PHASES.FINAL_THIRD) ? 0.25 : 0;
+            const roleScore = (mate.group === "att" && istAbschluss) ? 0.25 : 0;
+
+            // Der Torwart ist im Aufbau die Notlösung, nie das Ziel einer
+            // Kombination - er wird nur angespielt, wenn es vorne zu ist.
+            const keeperScore = mate.pos === "TW" ? -0.55 + (context.pressure || 0) * 0.5 : 0;
 
             const score = lengthScore * 0.8
-                + progressScore * 1.25
-                + space * 0.85
+                + progressScore * progressWeight
+                + space * spaceWeight
                 + focusScore
                 + roleScore
-                - laneRisk * 1.35 * riskAversion
+                + keeperScore
+                - longMalus
+                - laneRisk * riskWeight * riskAversion
                 + _flowRandom.float(-0.18, 0.18);
 
             return { type: "pass", target: mate, dist, laneRisk, space, forward, score };
@@ -241,10 +266,12 @@ class MatchFlowEngine {
         const forwardMost = mates.slice().sort((a, b) => (b.x - a.x) * dir)[0];
         const target = forwardMost || { x: carrier.x + dir * 30, y: 50 };
 
-        const score = pressure * 0.9
+        // Der Befreiungsschlag ist eine Notlösung und keine Spielidee: ohne
+        // Druck steht er gar nicht zur Debatte.
+        const score = pressure * 1.15
             + directBonus
-            + (carrier.group === "def" ? 0.25 : -0.1)
-            - 0.35
+            + (carrier.group === "def" ? 0.3 : -0.15)
+            - 0.85
             + _flowRandom.float(-0.15, 0.15);
 
         return { type: "clearance", target, score };
@@ -264,17 +291,33 @@ class MatchFlowEngine {
         const pressure = this.getPressure(carrier, opponents);
         const phase = options.phase || this.derivePhase(carrier, team);
 
+        // Im eigenen Drittel gehört der Torwart zum Aufbau. Er ist die
+        // Station, über die eine Mannschaft verlagert, wenn vorne alles
+        // zusteht - und nicht mehr der Mann, der aus dem Nichts den Ball hat.
+        if (phase === FLOW_PHASES.BUILDUP && carrier.pos !== "TW") {
+            const keeper = this.teamOf(team).find(p => p.pos === "TW");
+            if (keeper) mates.push(keeper);
+        }
+
         const candidates = this.ratePassOptions(carrier, mates, opponents, tactics, {
             phase,
+            pressure,
             chainLength: options.chainLength || 0
         });
         candidates.push(this.rateDribble(carrier, opponents, tactics, pressure));
-        candidates.push(this.rateClearance(carrier, mates, tactics, pressure));
-
-        if (candidates.length === 0) return null;
-
         candidates.sort((a, b) => b.score - a.score);
-        const best = candidates[0];
+
+        let best = candidates[0] || null;
+
+        // Der Befreiungsschlag ist kein gleichberechtigter Vorschlag, sondern
+        // die Reißleine. Als Kandidat unter Kandidaten hat er fast jede zweite
+        // Aktion gewonnen - das Ergebnis war ein Spiel aus langen Bällen, von
+        // denen nur die Hälfte ankam.
+        if (!best || (pressure > 0.6 && best.score < 0.5)) {
+            best = this.rateClearance(carrier, mates, tactics, pressure);
+        }
+
+        if (!best) return null;
 
         return this.resolve(carrier, best, opponents, tactics, pressure, phase);
     }
@@ -295,16 +338,22 @@ class MatchFlowEngine {
         const vision = this.attr(carrier, "vision");
         const technique = this.attr(carrier, "technique");
 
-        // Genauigkeit aus Attributen, gemindert durch Druck, Distanz und Passweg
+        // Genauigkeit aus Attributen, gemindert durch Druck, Distanz und Passweg.
+        // Profis bringen rund vier von fünf Pässen an den Mann; mit der alten
+        // Grundgenauigkeit von 52 % wechselte der Ball ständig die Seite und
+        // das Spiel wirkte wie ein Pingpong ohne Absicht.
         const skill = (passing * 0.5 + vision * 0.3 + technique * 0.2) / 100;
-        let accuracy = 0.52 + skill * 0.46;
-        accuracy -= pressure * 0.16;
-        accuracy -= (action.laneRisk || 0) * 0.22;
-        if (isLong) accuracy -= 0.14;
+        let accuracy = 0.74 + skill * 0.24;
+        accuracy -= pressure * 0.11;
+        accuracy -= (action.laneRisk || 0) * 0.17;
+        if (isLong) accuracy -= 0.13;
         if (tactics.tempo === "fast") accuracy -= 0.04;
         if (tactics.passing === "short") accuracy += 0.05;
 
-        accuracy = Math.max(0.28, Math.min(0.97, accuracy));
+        // Der sichere Ball zur Seite oder zurück kommt fast immer an
+        if ((action.forward ?? 1) <= 0) accuracy += 0.07;
+
+        accuracy = Math.max(0.34, Math.min(0.97, accuracy));
 
         const success = _flowRandom.chance(accuracy);
 
@@ -335,9 +384,10 @@ class MatchFlowEngine {
             };
         }
 
-        // Rund ein Fünftel der Fehlpässe landet im Aus - das erzeugt die
-        // Einwürfe, Abstöße und Ecken, die ein Spiel erst gliedern.
-        if (roll > 0.72) {
+        // Ein guter Teil der Fehlpässe bleibt im Spiel und wird zum Kampf um
+        // den zweiten Ball. Nur jeder achte segelt ins Aus - sonst zerfällt
+        // die Partie in eine Kette von Einwürfen.
+        if (roll > 0.88) {
             return {
                 type: isLong ? "longball" : "pass",
                 outcome: "out",
@@ -368,7 +418,7 @@ class MatchFlowEngine {
         const defSkill = defender ? (this.attr(defender, "defense") * 0.6 + this.attr(defender, "pace") * 0.4) : 60;
 
         const edge = (dribbling * 0.6 + pace * 0.4) - defSkill;
-        let chance = 0.55 + edge / 210 - pressure * 0.13;
+        let chance = 0.6 + edge / 210 - pressure * 0.13;
         chance = Math.max(0.2, Math.min(0.92, chance));
 
         if (_flowRandom.chance(chance)) {
@@ -409,29 +459,36 @@ class MatchFlowEngine {
      * Streut ein Ziel, damit ein verunglückter Ball nicht exakt ankommt
      */
     scatterTarget(target) {
+        // Der zweite Ball bleibt im Feld - ins Aus geht nur, was oben als
+        // "out" gewürfelt wurde.
         return {
-            x: target.x + _flowRandom.float(-14, 14),
-            y: target.y + _flowRandom.float(-16, 16)
+            x: Math.max(3, Math.min(97, target.x + _flowRandom.float(-11, 11))),
+            y: Math.max(3, Math.min(97, target.y + _flowRandom.float(-12, 12)))
         };
     }
 
     /**
      * Zielpunkt für einen Ball, der das Spielfeld verlässt.
-     * Es wird die nächstgelegene Linie gewählt, damit die daraus folgende
-     * Standardsituation zur Spielsituation passt.
+     *
+     * Über die Grundlinie rollt nur der zu scharf gespielte Ball nach vorne -
+     * daraus wird der Abstoß des Gegners. Alles andere geht ins Seitenaus.
+     * Genau so ist auch das Verhältnis im echten Spiel: auf einen Abstoß
+     * kommen etliche Einwürfe. Vorher landete fast jeder zweite Fehlpass
+     * hinter der Grundlinie, und der Torwart hatte ständig den Ball.
      */
     outOfPlayTarget(carrier, target) {
+        const dir = this.attackDir(carrier.team);
         const x = target.x ?? carrier.x;
         const y = target.y ?? carrier.y;
 
-        const distToSide = Math.min(y, 100 - y);
-        const distToGoalLine = Math.min(x, 100 - x);
+        // Wie tief liegt der Zielpunkt in der gegnerischen Hälfte?
+        const tiefe = dir > 0 ? x : 100 - x;
 
-        // Nahe der Grundlinie wird es ein Toraus, sonst ein Seitenaus
-        if (distToGoalLine < distToSide * 0.8) {
-            return { x: x < 50 ? -1 : 101, y: Math.max(4, Math.min(96, y + _flowRandom.float(-10, 10))) };
+        if (tiefe > 82 && Math.abs(y - 50) < 27) {
+            return { x: dir > 0 ? 101 : -1, y: Math.max(8, Math.min(92, y)) };
         }
-        return { x: Math.max(4, Math.min(96, x + _flowRandom.float(-8, 8))), y: y < 50 ? -1 : 101 };
+
+        return { x: Math.max(4, Math.min(96, x + _flowRandom.float(-6, 6))), y: y < 50 ? -1 : 101 };
     }
 
     /**

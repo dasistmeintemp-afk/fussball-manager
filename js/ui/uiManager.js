@@ -332,6 +332,7 @@ class UIManager {
         modal.style.display = "flex";
         this.wizardStep = 1;
         this.wizardSelectedClubId = null;
+        this.wizardSelectedLeagueId = this.wizardSelectedLeagueId || "de_liga_1";
         this.resetWizardClubFilters();
         this.renderWizardStep();
     }
@@ -348,7 +349,8 @@ class UIManager {
         if (searchInput) searchInput.value = "";
         if (sortSelect) sortSelect.value = "strength_desc";
         if (difficultySelect) difficultySelect.value = "all";
-        if (leagueSelect) leagueSelect.value = "all";
+        // Die Liga bleibt: sie ist die Entscheidung aus Schritt zwei und kein Filter
+        if (leagueSelect && this.wizardSelectedLeagueId) leagueSelect.value = this.wizardSelectedLeagueId;
     }
 
     /**
@@ -378,26 +380,247 @@ class UIManager {
             : (typeof INITIAL_TEAMS_DATA !== "undefined" && Array.isArray(INITIAL_TEAMS_DATA) ? INITIAL_TEAMS_DATA : []);
     }
 
-    /** Füllt die Ligaauswahl des Assistenten einmalig */
+    /**
+     * Alle Ligen der Spielwelt mit ihren Kennzahlen.
+     *
+     * Grundlage sind die Ligadaten; die Vereinszahl kommt aus der tatsächlich
+     * erzeugten Welt, damit im Assistenten keine Wunschzahl steht.
+     */
+    getWizardLeagues(teams) {
+        const ligen = (typeof LEAGUES_DATA !== "undefined" && Array.isArray(LEAGUES_DATA))
+            ? LEAGUES_DATA
+            : (Array.isArray(window.LEAGUES_DATA) ? window.LEAGUES_DATA : []);
+        const laender = (typeof COUNTRIES_DATA !== "undefined" && Array.isArray(COUNTRIES_DATA))
+            ? COUNTRIES_DATA
+            : (Array.isArray(window.COUNTRIES_DATA) ? window.COUNTRIES_DATA : []);
+
+        const anzahl = new Map();
+        (Array.isArray(teams) ? teams : []).forEach(club => {
+            if (!club.leagueId) return;
+            anzahl.set(club.leagueId, (anzahl.get(club.leagueId) || 0) + 1);
+        });
+
+        // Ohne Ligadaten bleiben immerhin die Ligen der geladenen Vereine
+        if (ligen.length === 0) {
+            const ausVereinen = new Map();
+            (Array.isArray(teams) ? teams : []).forEach(club => {
+                if (!club.leagueId || ausVereinen.has(club.leagueId)) return;
+                ausVereinen.set(club.leagueId, {
+                    id: club.leagueId,
+                    name: club.leagueName || club.leagueId,
+                    shortName: club.leagueName || club.leagueId,
+                    level: club.level || 1,
+                    countryId: club.countryId || "de",
+                    countryName: "",
+                    flag: "🏳️",
+                    clubCount: 0
+                });
+            });
+            const liste = [...ausVereinen.values()];
+            liste.forEach(l => { l.clubCount = anzahl.get(l.id) || 0; });
+            return liste.sort((a, b) => (a.level - b.level) || a.name.localeCompare(b.name));
+        }
+
+        const landInfo = (id) => laender.find(c => c.id === id) || null;
+
+        return ligen.map(liga => {
+            const land = landInfo(liga.countryId);
+            return {
+                id: liga.id,
+                name: liga.name,
+                shortName: liga.shortName || liga.name,
+                level: liga.level || 1,
+                tier: liga.tier || "professional",
+                countryId: liga.countryId,
+                countryName: land?.name || liga.countryId,
+                countryReputation: land?.reputation || 0,
+                flag: land?.flag || "🏳️",
+                matchdays: liga.matchdays,
+                teamCount: liga.teamCount,
+                clubCount: anzahl.get(liga.id) || liga.teamCount || 0,
+                pointsPerWin: liga.pointsPerWin ?? 3,
+                pointsPerDraw: liga.pointsPerDraw ?? 1,
+                europeanSpots: liga.europeanSpots || null,
+                promotionTo: liga.promotionTo || null,
+                relegationTo: liga.relegationTo || null
+            };
+        }).sort((a, b) =>
+            // Deutschland zuerst - dort liegt die ganze Ligapyramide bis zur
+            // Landesliga, der Rest folgt nach Ansehen des Landes
+            (a.countryId === "de" ? 0 : 1) - (b.countryId === "de" ? 0 : 1)
+            || (b.countryReputation - a.countryReputation)
+            || a.countryName.localeCompare(b.countryName)
+            || (a.level - b.level)
+        );
+    }
+
+    /** Bezeichnung der Spielklasse */
+    wizardTierLabel(tier) {
+        if (tier === "semi-pro") return "Halbprofis";
+        if (tier === "amateur") return "Amateurliga";
+        return "Profiliga";
+    }
+
+    /**
+     * Ligaauswahl in Schritt 2: alle Ligen, nach Ländern gruppiert.
+     *
+     * Vorher stand hier eine fest verdrahtete Karte mit der Bundesliga, obwohl
+     * die Spielwelt zwölf Ligen kennt - man konnte also nichts auswählen und
+     * bekam trotzdem in Schritt drei sämtliche Vereine aller Ligen angeboten.
+     */
+    renderWizardLeagues() {
+        const grid = document.getElementById("leaguePickGrid");
+        const detail = document.getElementById("leagueDetailCard");
+        if (!grid) return;
+
+        const teams = this.getWizardTeams();
+        const ligen = this.getWizardLeagues(teams);
+        if (ligen.length === 0) {
+            grid.innerHTML = `<div class="text-muted" style="padding:16px;">Keine Ligadaten gefunden.</div>`;
+            return;
+        }
+
+        if (!ligen.some(l => l.id === this.wizardSelectedLeagueId)) {
+            this.wizardSelectedLeagueId = ligen[0].id;
+        }
+
+        // Nach Ländern gruppieren, damit die Pyramide erkennbar bleibt
+        const gruppen = [];
+        ligen.forEach(liga => {
+            let gruppe = gruppen.find(g => g.countryId === liga.countryId);
+            if (!gruppe) {
+                gruppe = { countryId: liga.countryId, name: liga.countryName, flag: liga.flag, ligen: [] };
+                gruppen.push(gruppe);
+            }
+            gruppe.ligen.push(liga);
+        });
+        gruppen.forEach(g => g.ligen.sort((a, b) => a.level - b.level));
+
+        grid.innerHTML = gruppen.map(gruppe => `
+            <div class="league-country-group">
+                <div class="league-country-title">
+                    <span class="lc-flag">${gruppe.flag}</span>
+                    <span>${this.escapeHtml(gruppe.name)}</span>
+                    <span class="lc-count">${gruppe.ligen.length} ${gruppe.ligen.length === 1 ? "Liga" : "Ligen"}</span>
+                </div>
+                <div class="league-pick-row">
+                    ${gruppe.ligen.map(liga => `
+                        <button type="button"
+                                class="league-pick-card${liga.id === this.wizardSelectedLeagueId ? " selected" : ""}"
+                                data-league="${this.escapeHtml(liga.id)}">
+                            <span class="lp-level">Liga ${liga.level}</span>
+                            <strong class="lp-name">${this.escapeHtml(liga.shortName)}</strong>
+                            <span class="lp-meta">${liga.clubCount} Vereine · ${this.wizardTierLabel(liga.tier)}</span>
+                        </button>
+                    `).join("")}
+                </div>
+            </div>
+        `).join("");
+
+        grid.querySelectorAll(".league-pick-card").forEach(btn => {
+            btn.addEventListener("click", () => this.selectWizardLeague(btn.dataset.league));
+        });
+
+        if (!detail) return;
+
+        const liga = ligen.find(l => l.id === this.wizardSelectedLeagueId) || ligen[0];
+        const europa = liga.europeanSpots
+            ? [
+                liga.europeanSpots.championsLeague?.length ? `Champions League: Platz ${liga.europeanSpots.championsLeague.join(", ")}` : null,
+                liga.europeanSpots.europaLeague?.length ? `Europa League: Platz ${liga.europeanSpots.europaLeague.join(", ")}` : null,
+                liga.europeanSpots.conferenceLeague?.length ? `Conference League: Platz ${liga.europeanSpots.conferenceLeague.join(", ")}` : null
+            ].filter(Boolean).join(" • ")
+            : "";
+
+        detail.innerHTML = `
+            <div class="league-option-card selected">
+                <div class="league-badge-big">${liga.flag}</div>
+                <div class="league-info">
+                    <div class="league-title-row">
+                        <h3>${this.escapeHtml(liga.name)}</h3>
+                        <span class="badge badge-success">Gewählt</span>
+                    </div>
+                    <p class="league-sub">
+                        ${this.escapeHtml(liga.shortName)} · ${this.escapeHtml(liga.countryName)} ·
+                        ${this.wizardTierLabel(liga.tier)} der ${liga.level}. Spielklasse
+                    </p>
+                    <div class="league-meta-grid">
+                        <div class="l-meta-item">
+                            <span class="l-meta-label">Vereine:</span>
+                            <span class="l-meta-val">${liga.clubCount} Klubs</span>
+                        </div>
+                        <div class="l-meta-item">
+                            <span class="l-meta-label">Saisonlänge:</span>
+                            <span class="l-meta-val">${liga.matchdays || (liga.clubCount - 1) * 2} Spieltage (Hin- &amp; Rückrunde)</span>
+                        </div>
+                        <div class="l-meta-item">
+                            <span class="l-meta-label">Wertung:</span>
+                            <span class="l-meta-val">Sieg: ${liga.pointsPerWin} Pkt • Remis: ${liga.pointsPerDraw} Pkt</span>
+                        </div>
+                        <div class="l-meta-item">
+                            <span class="l-meta-label">${europa ? "Europapokal:" : "Abstieg:"}</span>
+                            <span class="l-meta-val">${europa
+                                ? this.escapeHtml(europa)
+                                : (liga.relegationTo ? "In die nächsttiefere Klasse" : "Unterste Spielklasse")}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    /** Wählt eine Liga für die Karriere und richtet Schritt 3 darauf aus */
+    selectWizardLeague(leagueId) {
+        if (!leagueId || leagueId === this.wizardSelectedLeagueId) return;
+
+        this.wizardSelectedLeagueId = leagueId;
+
+        // Ein Verein aus einer anderen Liga darf nicht ausgewählt bleiben
+        const gewaehlt = this.getWizardTeams().find(c => String(c.id) === String(this.wizardSelectedClubId));
+        if (gewaehlt && gewaehlt.leagueId !== leagueId) {
+            this.wizardSelectedClubId = null;
+        }
+
+        this.renderWizardLeagues();
+
+        const select = document.getElementById("filterClubLeague");
+        if (select) select.value = leagueId;
+    }
+
+    /**
+     * Füllt die Ligaauswahl über der Vereinsliste.
+     *
+     * Es gibt bewusst kein "Alle Ligen" mehr: Eine Karriere beginnt in genau
+     * einer Liga, also stehen hier auch nur deren Vereine zur Wahl. Wer die
+     * Liga wechseln möchte, tut das hier oder in Schritt zwei - beides bleibt
+     * synchron.
+     */
     populateWizardLeagueFilter(teams) {
         const select = document.getElementById("filterClubLeague");
-        if (!select || select._leagueFilterFilled) return;
+        if (!select) return;
 
-        const seen = new Map();
-        teams.forEach(club => {
-            if (!club.leagueId || seen.has(club.leagueId)) return;
-            seen.set(club.leagueId, { name: club.leagueName || club.leagueId, level: club.level || 1 });
-        });
-        if (seen.size === 0) return;
+        const ligen = this.getWizardLeagues(teams).filter(l => l.clubCount > 0);
+        if (ligen.length === 0) return;
 
-        const entries = [...seen.entries()].sort((a, b) => (a[1].level - b[1].level) || a[1].name.localeCompare(b[1].name));
-        select.innerHTML = `<option value="all">Alle Ligen (${teams.length} Vereine)</option>` +
-            entries.map(([id, meta]) => `<option value="${this.escapeHtml(id)}">${this.escapeHtml(meta.name)}</option>`).join("");
-        select._leagueFilterFilled = true;
-
-        if (typeof select.addEventListener === "function") {
-            select.addEventListener("change", () => this.renderWizardClubs());
+        if (!ligen.some(l => l.id === this.wizardSelectedLeagueId)) {
+            this.wizardSelectedLeagueId = ligen[0].id;
         }
+
+        if (!select._leagueFilterFilled) {
+            select.innerHTML = ligen
+                .map(l => `<option value="${this.escapeHtml(l.id)}">${l.flag} ${this.escapeHtml(l.name)} (${l.clubCount})</option>`)
+                .join("");
+            select._leagueFilterFilled = true;
+
+            if (typeof select.addEventListener === "function") {
+                select.addEventListener("change", () => {
+                    this.selectWizardLeague(select.value);
+                    this.renderWizardClubs();
+                });
+            }
+        }
+
+        select.value = this.wizardSelectedLeagueId;
     }
 
     /**
@@ -483,6 +706,10 @@ class UIManager {
 
         if (backBtn) backBtn.style.display = this.wizardStep > 1 ? "block" : "none";
 
+        if (this.wizardStep === 2) {
+            this.renderWizardLeagues();
+        }
+
         if (this.wizardStep === 3) {
             if (nextBtn) {
                 nextBtn.textContent = "Karriere starten ▶";
@@ -542,7 +769,8 @@ class UIManager {
         const searchVal = (searchInput?.value || "").toLowerCase().trim();
         const sortVal = sortSelect?.value || "strength_desc";
         const diffVal = difficultySelect?.value || "all";
-        const leagueVal = leagueSelect?.value || "all";
+        // Gespielt wird in genau einer Liga - der aus Schritt zwei
+        const leagueVal = leagueSelect?.value || this.wizardSelectedLeagueId || "all";
 
         const filtered = UIManager.getFilteredWizardClubs(teams, {
             search: searchVal,
@@ -1467,10 +1695,15 @@ class UIManager {
                 throwin: "Einwurf",
                 goalkick: "Abstoß",
                 corner: "Eckball",
-                freekick: "Freistoß"
+                freekick: "Freistoß",
+                kickoff: "Anstoß"
             };
             const club = setPiece.team === "home" ? liveMatch.homeClub?.name : liveMatch.awayClub?.name;
-            const text = `${labels[setPiece.kind] || "Standard"} · ${club || ""}`;
+            const kickoff = liveMatch.kickoff;
+            const zusatz = setPiece.kind === "kickoff" && kickoff
+                ? (kickoff.phase === "whistle" ? " · Anpfiff" : " · Mannschaften stellen sich auf")
+                : "";
+            const text = `${labels[setPiece.kind] || "Standard"} · ${club || ""}${zusatz}`;
 
             ctx.save();
             ctx.font = `700 ${Math.round(pitchH * 0.036)}px 'Inter', system-ui, sans-serif`;
@@ -1490,6 +1723,44 @@ class UIManager {
             }
 
             ctx.fillStyle = "#fbbf24";
+            ctx.textAlign = "left";
+            ctx.textBaseline = "middle";
+            ctx.fillText(text, bx + padX, by + boxH / 2);
+            ctx.restore();
+        }
+
+        // Angriffsphase: zeigt, was die Mannschaft am Ball gerade vorhat
+        const attack = liveMatch.attack;
+        if (attack && !setPiece && !liveMatch.celebratingTeam) {
+            const phasen = {
+                buildup: "Spielaufbau",
+                progression: "Angriff",
+                final_third: "Im letzten Drittel"
+            };
+            const club = attack.team === "home" ? liveMatch.homeClub?.name : liveMatch.awayClub?.name;
+            const label = phasen[attack.phase] || "Ballbesitz";
+            const kette = attack.chain >= 3 ? ` · ${attack.chain} Stationen` : "";
+            const text = `${label} · ${club || ""}${kette}`;
+
+            ctx.save();
+            ctx.font = `700 ${Math.round(pitchH * 0.034)}px 'Inter', system-ui, sans-serif`;
+            const tw = ctx.measureText(text).width;
+            const padX = pitchH * 0.022;
+            const boxH = pitchH * 0.058;
+            const bx = canvas.width - tw - padX * 2 - 16;
+            const by = canvas.height - boxH - 16;
+
+            ctx.fillStyle = "rgba(15, 23, 42, 0.78)";
+            if (ctx.roundRect) {
+                ctx.beginPath();
+                ctx.roundRect(bx, by, tw + padX * 2, boxH, boxH / 2);
+                ctx.fill();
+            } else {
+                ctx.fillRect(bx, by, tw + padX * 2, boxH);
+            }
+
+            ctx.fillStyle = attack.phase === "final_third" ? "#fca5a5"
+                : (attack.phase === "progression" ? "#bae6fd" : "#cbd5e1");
             ctx.textAlign = "left";
             ctx.textBaseline = "middle";
             ctx.fillText(text, bx + padX, by + boxH / 2);

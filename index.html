@@ -1275,36 +1275,14 @@
                     <div class="wizard-step-content" id="wizardStep2" style="display:none;">
                         <div class="wizard-card-center">
                             <h2>Schritt 2: Liga auswählen</h2>
-                            <p class="wizard-desc">Wählen Sie den Wettbewerb für Ihre Karriere.</p>
+                            <p class="wizard-desc">Wählen Sie den Wettbewerb für Ihre Karriere – von der Champions-League-Anwärterin bis zum Landesligisten.</p>
 
                             <div class="league-selection-container">
-                                <div class="league-option-card selected">
-                                    <div class="league-badge-big">🇩🇪</div>
-                                    <div class="league-info">
-                                        <div class="league-title-row">
-                                            <h3>Deutschland Liga 1</h3>
-                                            <span class="badge badge-success">Aktiv</span>
-                                        </div>
-                                        <p class="league-sub">Die höchste deutsche Spielklasse mit 18 Traditions- und Spitzenvereinen.</p>
-                                        <div class="league-meta-grid">
-                                            <div class="l-meta-item">
-                                                <span class="l-meta-label">Vereine:</span>
-                                                <span class="l-meta-val">18 Klubs</span>
-                                            </div>
-                                            <div class="l-meta-item">
-                                                <span class="l-meta-label">Saisonlänge:</span>
-                                                <span class="l-meta-val">34 Spieltage (Hin- & Rückrunde)</span>
-                                            </div>
-                                            <div class="l-meta-item">
-                                                <span class="l-meta-label">Wertung:</span>
-                                                <span class="l-meta-val">Sieg: 3 Pkt • Remis: 1 Pkt • Niederlage: 0 Pkt</span>
-                                            </div>
-                                            <div class="l-meta-item">
-                                                <span class="l-meta-label">Wettbewerbsmodus:</span>
-                                                <span class="l-meta-val">Vollständige Round-Robin-Simulation</span>
-                                            </div>
-                                        </div>
-                                    </div>
+                                <div class="league-pick-grid" id="leaguePickGrid">
+                                    <!-- Dynamische Ligakarten -->
+                                </div>
+                                <div id="leagueDetailCard">
+                                    <!-- Dynamische Ligadetails -->
                                 </div>
                             </div>
                         </div>
@@ -1319,7 +1297,7 @@
                                     <input type="text" id="filterClubSearch" class="styled-input" placeholder="🔍 Verein oder Stadt suchen...">
                                     <div class="filter-controls-row">
                                         <select id="filterClubLeague" class="styled-select">
-                                            <option value="all">Alle Ligen</option>
+                                            <!-- Wird mit den Ligen der Spielwelt gefüllt -->
                                         </select>
                                         <select id="filterClubSort" class="styled-select">
                                             <option value="strength_desc">Sortieren: Stärke (Absteigend)</option>

@@ -475,10 +475,85 @@ function runWizardTests() {
             throw new Error("Detailpanel zeigt Vereinsdaten von FC München nicht an");
         }
 
-        // 4. Karriere bestätigen
+        // 4. Die Liga aus Schritt zwei bestimmt, welche Vereine zur Wahl
+        //    stehen. Vorher standen dort alle Vereine aller Ligen.
+        ui.selectWizardLeague("de_ll_1");
+        ui.renderWizardClubs();
+
+        const ligaHtml = domElements["clubSelectionList"].innerHTML;
+        if (ligaHtml.includes("FC München")) {
+            throw new Error("Die Vereinsliste zeigt nach dem Ligawechsel weiterhin Vereine anderer Ligen");
+        }
+        if (!ligaHtml.includes("Landesliga")) {
+            throw new Error("Die Vereinsliste zeigt keine Vereine der gewählten Liga");
+        }
+        if (ui.wizardSelectedClubId !== null) {
+            throw new Error("Ein Verein aus einer anderen Liga bleibt nach dem Ligawechsel ausgewählt");
+        }
+
+        // 5. Zurück in die Bundesliga und Karriere bestätigen
+        ui.selectWizardLeague("de_liga_1");
+        ui.renderWizardClubs();
+        if (!domElements["clubSelectionList"].innerHTML.includes("FC München")) {
+            throw new Error("Nach dem Wechsel zurück fehlen die Vereine der Bundesliga");
+        }
+
+        ui.wizardSelectedClubId = "muc";
         ui.confirmStartGameWithSelectedClub();
         if (!mockApp.state || mockApp.state.userClubId !== "muc") {
             throw new Error("Karrierestart hat userClubId 'muc' nicht in app.state gesetzt");
+        }
+    });
+
+    // Ligaauswahl im Assistenten
+    test("Wizard-Ligaauswahl: alle Ligen zur Wahl, keine Sammelauswahl mehr", () => {
+        const html = fs.readFileSync('./index.html', 'utf8');
+        const uiJs = fs.readFileSync('./js/ui/uiManager.js', 'utf8');
+        const { LEAGUES_DATA, COUNTRIES_DATA } = require('./js/data/leagueData.js');
+        const { GameState } = require('./js/engine/gameState.js');
+        const { UIManager } = require('./js/ui/uiManager.js');
+
+        // Schritt 2 ist nicht mehr fest auf die Bundesliga verdrahtet
+        if (!html.includes('id="leaguePickGrid"')) {
+            throw new Error("Schritt 2 besitzt kein Raster für die Ligaauswahl");
+        }
+        if (html.includes("Die höchste deutsche Spielklasse mit 18 Traditions- und Spitzenvereinen")) {
+            throw new Error("Schritt 2 zeigt weiterhin die fest verdrahtete Bundesliga-Karte");
+        }
+        if (!uiJs.includes("renderWizardLeagues")) {
+            throw new Error("Die Ligaauswahl wird nicht dynamisch aufgebaut");
+        }
+
+        // In der Vereinsauswahl gibt es kein "Alle Ligen" mehr
+        if (/<option value="all">\s*Alle Ligen/.test(html)) {
+            throw new Error("Die Vereinsauswahl bietet weiterhin alle Ligen gleichzeitig an");
+        }
+
+        const vorherigesWindow = global.window;
+        global.window = { LEAGUES_DATA, COUNTRIES_DATA };
+
+        try {
+            const ui = Object.create(UIManager.prototype);
+            const clubs = GameState.getSelectableClubs();
+            const ligen = ui.getWizardLeagues(clubs);
+
+            if (ligen.length !== LEAGUES_DATA.length) {
+                throw new Error(`Der Assistent kennt ${ligen.length} von ${LEAGUES_DATA.length} Ligen`);
+            }
+            ligen.forEach(liga => {
+                if (liga.clubCount <= 0) throw new Error(`Liga ${liga.id} hat keine Vereine`);
+                if (!liga.flag || !liga.countryName) throw new Error(`Liga ${liga.id} ohne Länderangabe`);
+            });
+            if (ligen[0].countryId !== "de") {
+                throw new Error("Die deutsche Ligapyramide steht nicht am Anfang der Auswahl");
+            }
+
+            const landesliga = ligen.find(l => l.id === "de_ll_1");
+            if (!landesliga || landesliga.clubCount !== 16 || landesliga.level !== 7) {
+                throw new Error("Die Landesliga wird im Assistenten falsch beschrieben");
+            }
+        } finally {
+            global.window = vorherigesWindow;
         }
     });
 

@@ -173,6 +173,11 @@ class LiveMatchDirector {
         this.deadBall = null;
         this.flowStats = { actions: 0, passesCompleted: 0, turnovers: 0, setPieces: 0 };
 
+        // Anstoß-Zeremonie: beide Mannschaften stellen sich auf, dann pfeift
+        // der Schiedsrichter an. Solange läuft die Uhr nur im Schneckentempo.
+        this.kickoff = null;
+        this.kickoffPartnerId = null;
+
         // Ballbesitz-Mikrosimulation
         this.flow = _MatchFlowEngine ? new _MatchFlowEngine({
             getPlayers: () => this.match.players2D || [],
@@ -183,9 +188,9 @@ class LiveMatchDirector {
 
         this.initPlayers();
 
-        // Start mit einem Anstoß anstelle von reinem "startAmbient"
+        // Start mit einer richtigen Anstoß-Zeremonie statt eines Anpfiffs ins Nichts
         this.mode = "ambient";
-        this.startDeadBall("kickoff", this.targetPossession[0] >= 50 ? "home" : "away", 50, 50);
+        this.startKickoff(this.targetPossession[0] >= 50 ? "home" : "away", "matchstart");
     }
 
     // ---------------------------------------------------------------- Setup
@@ -275,6 +280,10 @@ class LiveMatchDirector {
         if (this.mode === "celebration") {
             return this.celebrationPhase === "slowmo" ? 0.04 : 0.12;
         }
+        // Während sich beide Mannschaften zum Anstoß aufstellen, kriecht die
+        // Uhr - sonst würde die Zeremonie bei schnellem Tempo mehrere
+        // Spielminuten verschlingen.
+        if (this.kickoff) return 0.18;
         if (this.mode === "highlight") return 0.45;
         if (this.deadBall) return 0.55;
         return 1;
@@ -356,6 +365,10 @@ class LiveMatchDirector {
         } else if (this.mode === "celebration") {
             tx = 50;
             ty = 57;
+        } else if (this.kickoff) {
+            // Zum Anpfiff steht der Unparteiische am Mittelkreis
+            tx = 50 + (this.kickoff.team === "home" ? -7 : 7);
+            ty = this.kickoff.phase === "whistle" ? 40 : 36;
         } else {
             tx = ball.x - (this.possessionTeam === "home" ? 8 : -8);
             ty = ball.y + (ball.y < 50 ? 8 : -8);
@@ -413,31 +426,37 @@ class LiveMatchDirector {
         match.seconds = Math.floor(this.clock % 60);
     }
 
-    /** Führt den Seitenwechsel (Positionen & Richtungen spiegeln) durch */
     /**
      * Seitenwechsel zur zweiten Halbzeit.
      *
-     * Gespiegelt wird nur das taktische Grundgerüst. Die Spieler traben
-     * anschließend selbst auf ihre neue Hälfte - würde man auch ihre
-     * aktuellen Koordinaten spiegeln, sprängen in einem einzigen Bild
-     * zweiundzwanzig Spieler quer über den Platz.
+     * Der Wechsel passiert in der Pause, also zwischen zwei Spielabschnitten:
+     * Beide Mannschaften kommen auf der anderen Seite aus der Kabine. Deshalb
+     * werden Grundgerüst und aktuelle Positionen gespiegelt - liefe stattdessen
+     * jeder Spieler quer über den Platz, stünde der Torwart beim Anpfiff noch
+     * am Mittelkreis. Anschließend rückt die anschließende Anstoß-Zeremonie
+     * alle auf ihre Anstoßposition.
      */
     swapSides() {
         this.isSecondHalf = true;
         const players = this.match.players2D || [];
 
         players.forEach(p => {
-            // Grundpositionen spiegeln
             p.baseX = 100 - p.baseX;
             p.baseY = 100 - p.baseY;
+            p.x = 100 - p.x;
+            p.y = 100 - p.y;
+            p.vx = 0;
+            p.vy = 0;
+            p.speed = 0;
+            p.facing = (p.facing || 0) + Math.PI;
         });
 
         // Referee ebenfalls spiegeln
         this.referee.x = 100 - this.referee.x;
         this.referee.y = 100 - this.referee.y;
 
-        // Während des Seitenwechsels laufen alle zügig auf ihre neue Position
-        this.sideSwapTimer = 9;
+        // Kurzer Moment, in dem sich alle sortieren
+        this.sideSwapTimer = 2;
 
         this._teamLineBase = {}; // Zwischenspeicher leeren
     }
@@ -455,10 +474,9 @@ class LiveMatchDirector {
             if (!this.isSecondHalf) {
                 this.swapSides();
                 const kickoffTeam = this.targetPossession[0] >= 50 ? "away" : "home";
-                this.startDeadBall("kickoff", kickoffTeam, 50, 50);
-                // Der Anstoß wartet, bis beide Mannschaften die Seiten
-                // tatsächlich getauscht haben
-                this.deadBallTimer = Math.max(this.deadBallTimer, this.sideSwapTimer);
+                // Die Zeremonie wartet von sich aus, bis alle auf der neuen
+                // Seite stehen - erst dann pfeift der Schiedsrichter an.
+                this.startKickoff(kickoffTeam, "halftime");
             }
         } else if (previousMinute < 90 && minute >= 90) {
             const extra = this.match.timeline?.extraTime?.secondHalf;
@@ -537,7 +555,9 @@ class LiveMatchDirector {
             return;
         }
 
-        if (this.hasDueEvent()) {
+        // Eine Anstoß-Zeremonie wird nicht von einem fälligen Ereignis
+        // überrannt - erst pfeift der Schiedsrichter an, dann geht es weiter.
+        if (!this.kickoff && this.hasDueEvent()) {
             this.startHighlight();
             return;
         }
@@ -722,7 +742,7 @@ class LiveMatchDirector {
 
         if (!this.scene) {
             this.mode = "ambient";
-            this.startDeadBall("kickoff", kickoffTeam, 50, 50);
+            this.startKickoff(kickoffTeam, "goal");
             return;
         }
 
@@ -730,7 +750,7 @@ class LiveMatchDirector {
         if (this.scene.index >= this.scene.events.length) {
             this.scene = null;
             this.mode = "ambient";
-            this.startDeadBall("kickoff", kickoffTeam, 50, 50);
+            this.startKickoff(kickoffTeam, "goal");
         } else {
             this.mode = "highlight";
             this.beginEventPhase("approach");
@@ -906,10 +926,26 @@ class LiveMatchDirector {
         this.carrierId = player.id;
         this.match.ball.holderId = player.id;
         this.match.activePlayerId = player.id;
-        this.match.flowPhase = this.flow ? this.flow.derivePhase(player, player.team) : null;
+
+        const phase = this.flow ? this.flow.derivePhase(player, player.team) : null;
+        this.match.flowPhase = phase;
+
+        // Für die Anzeige: Wer ist am Ball, in welcher Phase, seit wie vielen
+        // Stationen? Daraus wird auf dem Feld ein erkennbarer Angriff statt
+        // eines Balls, der irgendwo herumliegt.
+        this.match.attack = {
+            team: player.team,
+            phase,
+            chain: this.possessionChain || 0
+        };
     }
 
     updateAmbient(dt) {
+        if (this.kickoff) {
+            this.updateKickoff(dt);
+            return;
+        }
+
         if (this.deadBallTimer > 0) {
             this.deadBallTimer -= dt;
             if (this.deadBallTimer <= 0) this.resumeFromDeadBall();
@@ -1016,11 +1052,27 @@ class LiveMatchDirector {
     }
 
     claimLooseBall(point) {
-        const contenders = (this.match.players2D || [])
-            .filter(p => p.pos !== "TW")
-            .sort((a, b) => Math.hypot(a.x - point.x, a.y - point.y) - Math.hypot(b.x - point.x, b.y - point.y));
+        let winner = null;
+        let bestScore = Infinity;
 
-        const winner = contenders[0];
+        (this.match.players2D || []).forEach(p => {
+            if (p.pos === "TW") {
+                // Der Torwart greift nur zu, wenn der Ball in seinen
+                // Strafraum trudelt - und dann ganz selbstverständlich.
+                const goalX = this.ownGoalX(p.team);
+                if (Math.abs(point.x - goalX) > 15 || Math.abs(point.y - 50) > 23) return;
+            }
+
+            // Wer den Ball verloren hat, ist einen Schritt zu spät
+            const score = Math.hypot(p.x - point.x, p.y - point.y)
+                * (p.team === this.possessionTeam ? 1.08 : 1.0);
+
+            if (score < bestScore) {
+                bestScore = score;
+                winner = p;
+            }
+        });
+
         if (!winner) return;
         this.possessionTeam = winner.team;
         this.setCarrier(winner);
@@ -1041,7 +1093,11 @@ class LiveMatchDirector {
         }
 
         if (x < 1.5 || x > 98.5) {
-            const defendingTeam = x < 1.5 ? "home" : "away";
+            // Welche Mannschaft verteidigt diese Linie? In Halbzeit zwei ist
+            // das die jeweils andere - vorher bekam nach dem Seitenwechsel
+            // stets der falsche Verein den Abstoß.
+            const linie = x < 1.5 ? 0 : 100;
+            const defendingTeam = Math.abs(this.ownGoalX("home") - linie) < 50 ? "home" : "away";
             const goalX = x < 1.5 ? 8 : 92;
             this.startDeadBall("goalkick", defendingTeam, goalX, 50);
             return true;
@@ -1050,7 +1106,113 @@ class LiveMatchDirector {
         return false;
     }
 
+    // ------------------------------------------------------------- Anstoß
+
+    /**
+     * Anstoß mit Zeremonie: Erst stellen sich beide Mannschaften in ihrer
+     * eigenen Hälfte auf, der Mittelkreis bleibt der anstoßenden Mannschaft
+     * vorbehalten. Der Schiedsrichter geht zum Anstoßpunkt, pfeift an - und
+     * erst dann rollt der Ball. Vorher sprang das Spiel nach einem Tor oder
+     * zur zweiten Halbzeit einfach weiter, egal wo die zweiundzwanzig
+     * Spieler gerade standen.
+     */
+    startKickoff(team, reason = "goal") {
+        const scale = this.getSpeedScale();
+
+        this.mode = "ambient";
+        this.scene = null;
+        this.match.sceneRoles = null;
+        this.deadBall = { kind: "kickoff", team, x: 50, y: 50 };
+        this.match.setPiece = { kind: "kickoff", team, x: 50, y: 50 };
+        this.possessionTeam = team;
+        this.possessionChain = 0;
+        this.deadBallTimer = 0;
+        this.flowStats.setPieces++;
+
+        // Der Ball wird auf den Anstoßpunkt gelegt
+        const ball = this.match.ball;
+        const dist = Math.hypot(50 - ball.x, 50 - ball.y);
+        this.setBallTravel(50, 50, Math.max(0.3, Math.min(1.1, dist / 90)) * scale + 0.2, "pass");
+
+        const { taker, partner } = this.pickKickoffTakers(team);
+        this.carrierId = taker ? taker.id : null;
+        this.kickoffPartnerId = partner ? partner.id : null;
+        this.match.ball.holderId = null;
+        this.match.activePlayerId = taker ? taker.id : this.match.activePlayerId;
+
+        // Höchstdauer der Aufstellung: Wer nach einem Tor von der Eckfahne
+        // zurücktrabt, braucht am längsten.
+        const maxLineup = (reason === "goal" ? 9 : reason === "halftime" ? 7 : 5) * scale + 2.2;
+
+        this.kickoff = { team, reason, phase: "lineup", timer: maxLineup };
+        this.match.kickoff = { team, phase: "lineup", reason };
+    }
+
+    /** Anstoßschütze und sein Partner: zwei zentrale Spieler am Mittelkreis */
+    pickKickoffTakers(team) {
+        const outfield = this.teamPlayers(team).filter(p => p.pos !== "TW");
+        if (outfield.length === 0) return { taker: null, partner: null };
+
+        const zentral = outfield.slice().sort((a, b) => {
+            const rank = (p) => (p.group === "att" ? 0 : p.group === "mid" ? 1 : 2) * 40
+                + Math.abs(p.baseY - 50);
+            return rank(a) - rank(b);
+        });
+
+        return { taker: zentral[0] || null, partner: zentral[1] || null };
+    }
+
+    /** Stehen alle auf ihren Anstoßpositionen? */
+    kickoffReady() {
+        const players = this.match.players2D || [];
+        if (players.length === 0) return true;
+
+        return players.every(p => {
+            const target = this.computeSetPieceTarget(p, this.deadBall);
+            if (!target) return true;
+            return Math.hypot(p.x - target.x, p.y - target.y) < 4.5;
+        });
+    }
+
+    /**
+     * Ablauf der Zeremonie: aufstellen -> Pfiff -> Anspiel
+     */
+    updateKickoff(dt) {
+        const k = this.kickoff;
+        k.timer -= dt;
+
+        if (k.phase === "lineup") {
+            // Der Ball muss liegen und alle müssen stehen
+            const ballLiegt = !this.match.ball.inFlight;
+            if ((ballLiegt && this.kickoffReady()) || k.timer <= 0) {
+                k.phase = "whistle";
+                k.timer = 0.7 * this.getSpeedScale() + 0.45;
+                this.match.kickoff = { team: k.team, phase: "whistle", reason: k.reason };
+                this.cueSound("whistle");
+
+                const club = k.team === "home"
+                    ? (this.match.homeClub?.name || "Heim")
+                    : (this.match.awayClub?.name || "Gast");
+                this.match.lastCommentary = k.reason === "halftime"
+                    ? `${this.match.minute}' - Der Schiedsrichter pfeift die zweite Halbzeit an, ${club} stößt an.`
+                    : `${this.match.minute}' - Anstoß für ${club}, der Schiedsrichter gibt das Spiel frei.`;
+            }
+            return;
+        }
+
+        if (k.timer > 0) return;
+
+        this.kickoff = null;
+        this.match.kickoff = null;
+        this.resumeFromDeadBall();
+    }
+
     startDeadBall(kind, team, x, y) {
+        if (kind === "kickoff") {
+            this.startKickoff(team, "goal");
+            return;
+        }
+
         const speedScale = this.getSpeedScale();
         this.deadBall = { kind, team, x, y };
         this.possessionTeam = team;
@@ -1123,12 +1285,14 @@ class LiveMatchDirector {
             return;
         }
 
-        // Anstoß-Verarbeitung: Kurzer Pass zum nächsten Mitspieler zurück
+        // Anstoß: kurzer Anspielpass zum Partner am Mittelkreis
         if (info.kind === "kickoff") {
             const mates = this.teamPlayers(info.team).filter(p => p.pos !== "TW" && p.id !== this.carrierId);
-            const receiver = mates.sort((a, b) =>
+            const partner = mates.find(p => p.id === this.kickoffPartnerId);
+            const receiver = partner || mates.sort((a, b) =>
                 Math.hypot(a.x - info.x, a.y - info.y) - Math.hypot(b.x - info.x, b.y - info.y)
             )[0];
+            this.kickoffPartnerId = null;
 
             if (receiver) {
                 const dist = Math.hypot(receiver.x - info.x, receiver.y - info.y);
@@ -1341,7 +1505,10 @@ class LiveMatchDirector {
         if (this.sideSwapTimer > 0) this.sideSwapTimer = Math.max(0, this.sideSwapTimer - dt);
 
         players.forEach(p => {
-            const target = this.sideSwapTimer > 0
+            // Beim Seitenwechsel ohne Anstoß-Zeremonie traben alle stur auf
+            // ihre neue Grundposition; läuft die Zeremonie, gibt sie die
+            // Aufstellung vor.
+            const target = (this.sideSwapTimer > 0 && !this.kickoff)
                 ? { x: p.baseX, y: p.baseY, urgency: 1.25 }
                 : this.computeTarget(p, ball, pressers);
 
@@ -1439,7 +1606,11 @@ class LiveMatchDirector {
         let ty = p.baseY + (ball.y - 50) * 0.42;
 
         if (attacking) {
-            const push = Math.max(0, ballProgress - 0.35) * 55;
+            // Je länger eine Mannschaft den Ball hält, desto mutiger rückt
+            // die ganze Elf nach - dadurch wird aus Ballbesitz ein Angriff,
+            // den man auf dem Feld auch sieht.
+            const chainPush = Math.min(1, (this.possessionChain || 0) / 6);
+            const push = Math.max(0, ballProgress - 0.33) * (52 + chainPush * 18);
             const groupPush = GROUP_PUSH[p.group] ?? 1.0;
             tx = p.baseX + dir * push * groupPush + dir * 2.5;
 
@@ -1566,18 +1737,40 @@ class LiveMatchDirector {
         const dir = this.attackDir(info.team);
         const isTaker = p.id === this.carrierId;
 
-        // Anstoß: Die eigene Mannschaft muss sich strikt in der eigenen Hälfte aufhalten
+        // Anstoß: Beide Mannschaften stehen in der eigenen Hälfte, und der
+        // Mittelkreis gehört allein der anstoßenden Mannschaft.
         if (info.kind === "kickoff") {
-            if (isTaker) {
-                return { x: info.x, y: info.y, urgency: 1.7 };
-            }
-            if (p.pos === "TW") return this.computeKeeperTarget(p, this.match.ball);
-
             const pDir = this.attackDir(p.team);
-            // Begrenzung auf die korrekte Spielfeldhälfte
-            const ownHalfX = pDir > 0 ? Math.min(p.baseX, 48) : Math.max(p.baseX, 52);
 
-            return { x: ownHalfX, y: p.baseY, urgency: 1.2 };
+            if (isTaker) {
+                return { x: 50 - pDir * 1.4, y: 50, urgency: 1.7 };
+            }
+            if (p.id === this.kickoffPartnerId) {
+                return { x: 50 - pDir * 4.5, y: 53.5, urgency: 1.6 };
+            }
+            if (p.pos === "TW") {
+                const goalX = this.ownGoalX(p.team);
+                return { x: goalX + pDir * 3, y: 50, urgency: 1.1 };
+            }
+
+            // Strikt in der eigenen Hälfte
+            let x = pDir > 0 ? Math.min(p.baseX, 46) : Math.max(p.baseX, 54);
+            const y = p.baseY;
+
+            // Der Mittelkreis misst 9,15 m: auf dem 105x68-Feld sind das rund
+            // 8,7 Einheiten in der Länge und 13,5 in der Breite. Wer nicht
+            // anstößt, muss draußen bleiben.
+            if (p.team !== info.team) {
+                const rx = (x - 50) / 8.7;
+                const ry = (y - 50) / 13.5;
+                const r = Math.hypot(rx, ry);
+                if (r < 1) {
+                    // Nach hinten aus dem Kreis heraus, nicht zur Seite
+                    x = 50 - pDir * (8.7 * Math.sqrt(Math.max(0, 1 - ry * ry)) + 1.5);
+                }
+            }
+
+            return { x, y, urgency: 1.3 };
         }
 
         if (isTaker) {
@@ -1623,6 +1816,16 @@ class LiveMatchDirector {
     computeKeeperTarget(p, ball) {
         const goalX = this.ownGoalX(p.team);
         const dir = this.attackDir(p.team);
+
+        // Hat der Torwart selbst den Ball, schiebt er ein Stück heraus und
+        // sucht die Anspielstation, statt auf der Linie zu kleben.
+        if (this.carrierId === p.id && this.mode === "ambient") {
+            return {
+                x: goalX + dir * 8,
+                y: Math.max(32, Math.min(68, ball.y)),
+                urgency: 1.15
+            };
+        }
 
         const distToGoal = Math.abs(ball.x - goalX);
         const threat = Math.max(0, 1 - distToGoal / 45);

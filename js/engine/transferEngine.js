@@ -34,6 +34,59 @@ const _formatTransferMoney = (amount) => {
 
 class TransferEngine {
     /**
+     * Wie weit reicht der Markt eines Vereins nach oben?
+     *
+     * Ein Landesligist hatte bisher die komplette Serie A im Transfermarkt
+     * stehen. In Wahrheit sichtet ein Verein seine eigene Spielklasse und alles
+     * darunter, dazu eine Stufe darüber - und wer einen großen Namen hat, wird
+     * auch noch eine Etage höher zurückgerufen. Zurückgegeben wird die höchste
+     * (also kleinste) Ligastufe, die überhaupt in Frage kommt.
+     */
+    static marketReach(club) {
+        const stufe = club?.level || 1;
+        const ruf = club?.reputation || 50;
+
+        let hoechste = stufe - 1;
+        if (ruf >= 68) hoechste -= 1;
+        if (ruf >= 84) hoechste -= 1;
+
+        return Math.max(1, hoechste);
+    }
+
+    /**
+     * Steht dieser Spieler dem Verein überhaupt offen?
+     * Vereinslose sind immer verfügbar - sie haben keine Liga, die abschreckt.
+     */
+    static isWithinReach(player, userClub, clubs = []) {
+        if (!player) return false;
+        if (!player.clubId) return true;
+        if (!userClub) return true;
+
+        const seinVerein = clubs.find(c => c.id === player.clubId);
+        if (!seinVerein) return true;
+
+        return (seinVerein.level || 1) >= TransferEngine.marketReach(userClub);
+    }
+
+    /**
+     * Beschreibt die Marktreichweite in Worten - für den Hinweis über der Liste
+     */
+    static describeReach(userClub, leagues = []) {
+        const grenze = TransferEngine.marketReach(userClub);
+        const namen = leagues
+            .filter(l => (l.level || 1) === grenze)
+            .map(l => l.shortName || l.name);
+
+        return {
+            level: grenze,
+            leagueNames: namen,
+            text: grenze <= 1
+                ? "Ihr Verein hat weltweit Zugang - auch Spieler der europäischen Topligen nehmen Gespräche an."
+                : `Ihr Verein sichtet Spieler ab Ligastufe ${grenze} abwärts. Für höherklassige Profis fehlt Ihnen derzeit das Standing - mit sportlichem Erfolg und wachsendem Ruf ändert sich das.`
+        };
+    }
+
+    /**
      * Berechnet den geforderten Ablösepreis für einen Spieler
      */
     static calculateAskingPrice(player, sellerClub) {

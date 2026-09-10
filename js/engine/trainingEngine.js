@@ -161,6 +161,16 @@ class TrainingEngine {
         const medicalLevel = club.facilities?.medicalCenter || 1;
         const trainingLevel = club.facilities?.trainingGround || 2;
 
+        // Die Güte des Trainerstabs entscheidet mit, wie viel eine Einheit
+        // bringt: Beim Landesligisten leitet ein Übungsleiter das Training,
+        // beim Spitzenklub eine ganze Abteilung.
+        const staffEngine = (typeof CoachingStaffEngine !== "undefined" && CoachingStaffEngine)
+            ? CoachingStaffEngine
+            : ((typeof window !== "undefined" && window.CoachingStaffEngine) ? window.CoachingStaffEngine
+                : (typeof require !== "undefined" ? require("./coachingStaffEngine.js").CoachingStaffEngine : null));
+        const stab = staffEngine ? staffEngine.staffQuality(club) : null;
+        const stabFaktor = stab?.entwicklungsFaktor ?? 1;
+
         const kader = state.players.filter(p => club.playerIds.includes(p.id));
         const verletzungen = [];
         let einheiten = 0;
@@ -199,8 +209,9 @@ class TrainingEngine {
                 einheiten++;
                 player.trainingLog.sessions++;
                 const vorher = player.overall;
-                this.developPlayer(player, focus, intensity, trainingLevel, profil.gain * 0.22);
+                this.developPlayer(player, focus, intensity, trainingLevel, profil.gain * 0.22 * stabFaktor);
                 player.trainingLog.gain += (player.overall - vorher);
+                player.trainingLog.lastGain = player.overall - vorher;
 
                 // Auf der eigenen Position wächst die Routine, wer woanders
                 // aufgestellt ist, lernt die neue Position kennen
@@ -234,7 +245,72 @@ class TrainingEngine {
 
         state.trainingReport = this.buildTrainingReport(state, club.id);
 
-        return { sessions: einheiten, injuries: verletzungen };
+        return Object.assign(
+            { sessions: einheiten, injuries: verletzungen },
+            this.beobachtungenDesTages(kader, dayType, focus)
+        );
+    }
+
+    /**
+     * Was der Trainerstab heute gesehen hat.
+     *
+     * Ein Tag, an dem nur "Training absolviert" dasteht, ist kein Tag. Hier
+     * entstehen die Sätze, die im Tagesbericht auftauchen: Wer einen Sprung
+     * gemacht hat, wer über seine Grenze geht, wer aus dem Formtief kommt.
+     */
+    static beobachtungenDesTages(kader, dayType, focus) {
+        const standouts = [];
+        const concerns = [];
+        const trainingstag = dayType === "training" || dayType === "tactics";
+
+        const einsatzbereit = kader.filter(p => (p.injuredWeeks || 0) <= 0);
+        if (einsatzbereit.length === 0) return { standouts, concerns };
+
+        if (trainingstag) {
+            // Wer heute einen Schritt gemacht hat
+            const gewachsen = einsatzbereit
+                .filter(p => (p.trainingLog?.lastGain || 0) > 0)
+                .sort((a, b) => (b.trainingLog.lastGain) - (a.trainingLog.lastGain));
+
+            gewachsen.slice(0, 2).forEach(p => {
+                const jung = (p.age || 25) <= 21;
+                standouts.push(jung
+                    ? `${p.name} (${p.age}) macht einen Sprung - der Stab traut ihm den nächsten Schritt zu.`
+                    : `${p.name} hat sich in der Einheit verbessert.`);
+            });
+
+            // Wer heute besonders gut drauf war, auch ohne Wertsprung
+            if (standouts.length === 0) {
+                const stark = einsatzbereit
+                    .filter(p => (p.fitness ?? 100) > 88 && (p.morale ?? 75) > 82)
+                    .sort((a, b) => (b.morale || 0) - (a.morale || 0))[0];
+                if (stark) standouts.push(`${stark.name} zieht die Einheit mit - bester Mann des Tages.`);
+            }
+        }
+
+        // Überlastung: der wichtigste Hinweis vor dem Spieltag
+        const ueberzogen = einsatzbereit
+            .filter(p => (p.fitness ?? 100) < 68)
+            .sort((a, b) => (a.fitness ?? 100) - (b.fitness ?? 100));
+        ueberzogen.slice(0, 2).forEach(p => {
+            concerns.push(`${p.name} ist bei ${Math.round(p.fitness)} % Kondition - hier droht eine Überlastung.`);
+        });
+
+        // Unzufriedenheit fällt im Training auf, lange bevor sie eskaliert
+        const unzufrieden = einsatzbereit
+            .filter(p => (p.morale ?? 75) < 55)
+            .sort((a, b) => (a.morale || 0) - (b.morale || 0))[0];
+        if (unzufrieden) {
+            concerns.push(`${unzufrieden.name} wirkt lustlos (Moral ${Math.round(unzufrieden.morale)} %) - ein Gespräch wäre angebracht.`);
+        }
+
+        // Wer aus einer Verletzung zurückkommt, braucht Aufbau
+        const aufbau = kader.filter(p => (p.injuredWeeks || 0) <= 0 && (p.daysSinceInjury ?? 999) < 8)[0];
+        if (aufbau) {
+            concerns.push(`${aufbau.name} ist zurück im Mannschaftstraining, aber noch nicht bei hundert Prozent.`);
+        }
+
+        return { standouts, concerns };
     }
 
     /**

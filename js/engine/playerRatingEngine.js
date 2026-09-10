@@ -262,6 +262,56 @@ class PlayerRatingEngine {
     }
 
     /**
+     * Kompakte Sternewertung für enge Stellen - Trikot auf dem Spielfeld,
+     * Bankeintrag, Auswahllisten. Wo eine volle Sternereihe nicht hinpasst,
+     * steht ein einzelner Stern mit der Zahl dahinter.
+     */
+    static renderStarChip(stars, options = {}) {
+        const wert = Math.max(0.5, Math.min(5, Number(stars) || 0.5));
+        const text = PlayerRatingEngine.formatStars(wert);
+        const color = options.color || "#f59e0b";
+        const title = options.title ? ` title="${options.title}"` : "";
+        return `<span class="star-chip" style="color:${color};"${title}>★ ${text}</span>`;
+    }
+
+    /** Sterne als Zahl mit deutschem Komma: 3.5 -> "3,5" */
+    static formatStars(stars) {
+        const wert = Math.round((Number(stars) || 0) * 2) / 2;
+        return wert.toFixed(1).replace(".", ",");
+    }
+
+    /**
+     * Durchschnittliche Fähigkeit eines Kaders - der Maßstab, an dem sich die
+     * Sterne messen. Fünf Sterne heißen nicht "Weltklasse", sondern
+     * "deutlich besser als alles, was ich sonst im Kader habe".
+     */
+    static squadAverageAbility(players = []) {
+        const echte = (players || []).filter(p => p && (p.trueCurrentAbility || p.overall));
+        if (echte.length === 0) return 140;
+        const summe = echte.reduce((s, p) => s + (p.trueCurrentAbility || PlayerRatingEngine.overallToAbility(p.overall)), 0);
+        return summe / echte.length;
+    }
+
+    /** Sterne direkt aus einer Gesamtstärke, ohne den Umweg über die Spielerkarte */
+    static starsForOverall(overall, referenceContext = {}) {
+        return PlayerRatingEngine.calculateStarRating(
+            PlayerRatingEngine.overallToAbility(overall),
+            referenceContext
+        );
+    }
+
+    /**
+     * Gegenrichtung: Welche Gesamtstärke braucht ein Spieler, um so viele
+     * Sterne zu erreichen? Damit lassen sich Filter und Scoutaufträge in
+     * Sternen formulieren, obwohl darunter weiter mit Zahlen verglichen wird.
+     */
+    static overallForStars(stars, referenceContext = {}) {
+        const ref = referenceContext.squadAverageAbility || referenceContext.clubAverageAbility || 140;
+        const ability = ref + ((Number(stars) || 3) - 3.0) * 20.0;
+        return PlayerRatingEngine.abilityToOverall(ability);
+    }
+
+    /**
      * Macht einen Attributwert entsprechend dem Scoutwissen unscharf.
      * Bei voller Kenntnis wird der exakte Wert geliefert, sonst eine Spanne,
      * deren Breite mit sinkendem Wissen zunimmt.

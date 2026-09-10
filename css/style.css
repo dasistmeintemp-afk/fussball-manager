@@ -1212,6 +1212,36 @@ body {
     opacity: 0.22;
 }
 
+/* Kompakte Sternewertung dort, wo eine ganze Reihe nicht hinpasst */
+.star-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 2px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.pitch-node-shirt .star-chip {
+    font-size: 12px;
+    gap: 1px;
+}
+
+.bench-node .star-chip,
+.cd-tag .star-chip {
+    font-size: 11px;
+}
+
+.club-item-ovr .star-chip {
+    font-size: 13px;
+}
+
+.position-map-value .star-chip {
+    font-size: 11px;
+}
+
 /* Werte, die nur geschätzt sind */
 .estimated-value {
     font-style: italic;
@@ -3181,13 +3211,22 @@ body {
 }
 
 .club-item-ovr {
-    font-size: 19px;
+    font-size: 15px;
     font-weight: 800;
-    color: #38bdf8;
     background: rgba(56, 189, 248, 0.12);
     padding: 2px 10px;
     border-radius: var(--radius-sm);
     border: 1px solid rgba(56, 189, 248, 0.25);
+}
+
+/* Kaderstärke in der Vereinsakte des Karrierestarts */
+.cd-squad-rating {
+    font-size: 17px;
+    font-weight: 800;
+    background: rgba(245, 158, 11, 0.12);
+    padding: 4px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(245, 158, 11, 0.28);
 }
 
 /* Club Detail Panel */
@@ -4373,4 +4412,23 @@ body {
        rechten Rand hinaus - er steht ohnehin im Spielstand-Reiter. */
     .difficulty-tag,
     #headerDifficulty { display: none; }
+}
+
+/* Tagesbericht im Kalender: was der Verein an einem Tag erlebt hat */
+.day-report-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.day-report-list li {
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 7px 10px;
+    border-radius: var(--radius-sm);
+    background: rgba(148, 163, 184, 0.08);
+    border-left: 3px solid rgba(148, 163, 184, 0.35);
 }

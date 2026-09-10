@@ -104,6 +104,34 @@ function runDataTests() {
         });
     });
 
+    test("Die Bundesligakader liegen weit genug auseinander", () => {
+        // Lagen die achtzehn Kader zu eng beieinander, entschied über die
+        // Meisterschaft am Ende der Zufall: Bei 8.5 Punkten Abstand zwischen
+        // dem besten und dem schwächsten Kader holte der Tabellenletzte
+        // dreißig Punkte und der Meister kam auf achtzehn Siege.
+        const kader = INITIAL_TEAMS_DATA.map(t => {
+            const top11 = [...t.players].sort((a, b) => b.overall - a.overall).slice(0, 11);
+            return { name: t.name, ruf: t.reputation, staerke: top11.reduce((s, p) => s + p.overall, 0) / 11 };
+        }).sort((a, b) => b.staerke - a.staerke);
+
+        const spanne = kader[0].staerke - kader[kader.length - 1].staerke;
+        if (spanne < 11 || spanne > 17) {
+            throw new Error(`Spanne zwischen bestem und schwächstem Kader: ${spanne.toFixed(1)} Punkte (erwartet 11-17)`);
+        }
+
+        // Und der Ruf eines Vereins muss zu seinem Kader passen - sonst spielt
+        // ein Spitzenklub mit einem Abstiegskader oder umgekehrt.
+        const mr = kader.reduce((s, k) => s + k.ruf, 0) / kader.length;
+        const ms = kader.reduce((s, k) => s + k.staerke, 0) / kader.length;
+        const cov = kader.reduce((s, k) => s + (k.ruf - mr) * (k.staerke - ms), 0);
+        const vr = Math.sqrt(kader.reduce((s, k) => s + (k.ruf - mr) ** 2, 0));
+        const vs = Math.sqrt(kader.reduce((s, k) => s + (k.staerke - ms) ** 2, 0));
+        const korrelation = cov / (vr * vs);
+        if (korrelation < 0.8) {
+            throw new Error(`Ruf und Kaderstärke passen nicht zusammen (Korrelation ${korrelation.toFixed(2)}, erwartet ab 0.80)`);
+        }
+    });
+
     test("Node.js und Browser Export-Verfügbarkeit", () => {
         const fs = require('fs');
         const content = fs.readFileSync('./js/data/initialData.js', 'utf8');

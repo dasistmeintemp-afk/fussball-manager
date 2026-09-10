@@ -85,15 +85,23 @@ class PlayerGenerator {
      * Dadurch bekommt der Meisterschaftsanwärter einer Liga spürbar bessere
      * Spieler als der Aufsteiger - und die Stufen überschneiden sich
      * realistisch an den Rändern.
+     *
+     * Der Faktor bestimmt, wie weit eine Liga auseinanderliegt. Er ist bewusst
+     * auf die handgepflegten Bundesligakader abgestimmt: Ein aufgefüllter
+     * Spieler beim Tabellenletzten darf nicht besser sein als dessen
+     * Stammpersonal, sonst zieht die Ergänzung den Verein wieder auf
+     * Ligadurchschnitt hoch und der Abstand in der Tabelle verschwindet.
      */
+    static KADER_SPREIZUNG = 0.46;
+
     static getAbilityRangeForClub(level = 1, clubStrength = 0.5) {
         const range = this.getAbilityRangeForLevel(level);
         const strength = Math.max(0, Math.min(1, clubStrength));
 
         const caSpan = range.maxCA - range.minCA;
         const paSpan = range.maxPA - range.minPA;
-        const caShift = Math.round((strength - 0.5) * caSpan * 0.32);
-        const paShift = Math.round((strength - 0.5) * paSpan * 0.32);
+        const caShift = Math.round((strength - 0.5) * caSpan * this.KADER_SPREIZUNG);
+        const paShift = Math.round((strength - 0.5) * paSpan * this.KADER_SPREIZUNG);
 
         // Obergrenze je Ligastufe: Auch der Spitzenklub der stärksten Liga
         // stellt keine Spieler jenseits der handgepflegten Bundesligastars.

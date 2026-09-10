@@ -206,9 +206,9 @@ class MatchFlowEngine {
             // deshalb wird die Koordinate dann gespiegelt.
             const focusY = dir > 0 ? mate.y : 100 - mate.y;
             let focusScore = 0;
-            if (focus === "left" && focusY < 35) focusScore = 0.28;
-            else if (focus === "right" && focusY > 65) focusScore = 0.28;
-            else if (focus === "center" && focusY > 32 && focusY < 68) focusScore = 0.24;
+            if (focus === "left" && focusY < 35) focusScore = 0.42;
+            else if (focus === "right" && focusY > 65) focusScore = 0.42;
+            else if (focus === "center" && focusY > 32 && focusY < 68) focusScore = 0.34;
 
             // Stürmer im letzten Drittel sind attraktive Ziele
             const roleScore = (mate.group === "att" && istAbschluss) ? 0.25 : 0;

@@ -1696,7 +1696,8 @@ class UIManager {
                 goalkick: "Abstoß",
                 corner: "Eckball",
                 freekick: "Freistoß",
-                kickoff: "Anstoß"
+                kickoff: "Anstoß",
+                penalty: "Elfmeter"
             };
             const club = setPiece.team === "home" ? liveMatch.homeClub?.name : liveMatch.awayClub?.name;
             const kickoff = liveMatch.kickoff;
@@ -4998,19 +4999,31 @@ class UIManager {
                     ctx.stroke();
                 }
 
-                // Körper
-                ctx.beginPath();
-                ctx.arc(px, py, radius, 0, Math.PI * 2);
+                // Körper - der Torwart streckt sich beim Hechtsprung
+                const hechtet = p.diving > 0 && ctx.ellipse;
+                const koerper = () => {
+                    ctx.beginPath();
+                    if (hechtet) {
+                        const streckung = 1 + Math.min(1, p.diving / 0.85) * 0.95;
+                        ctx.ellipse(px, py, radius * streckung, radius * 0.78,
+                            p.diveAngle || 0, 0, Math.PI * 2);
+                    } else {
+                        ctx.arc(px, py, radius, 0, Math.PI * 2);
+                    }
+                };
+
+                koerper();
                 ctx.fillStyle = isKeeper ? (p.team === "home" ? "#facc15" : "#22d3ee") : (p.color || "#3b82f6");
                 ctx.fill();
 
-                ctx.beginPath();
-                ctx.arc(px - radius * 0.24, py - radius * 0.28, radius * 0.58, 0, Math.PI * 2);
-                ctx.fillStyle = "rgba(255, 255, 255, 0.16)";
-                ctx.fill();
+                if (!hechtet) {
+                    ctx.beginPath();
+                    ctx.arc(px - radius * 0.24, py - radius * 0.28, radius * 0.58, 0, Math.PI * 2);
+                    ctx.fillStyle = "rgba(255, 255, 255, 0.16)";
+                    ctx.fill();
+                }
 
-                ctx.beginPath();
-                ctx.arc(px, py, radius, 0, Math.PI * 2);
+                koerper();
                 ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
                 ctx.lineWidth = Math.max(1, radius * 0.13);
                 ctx.stroke();

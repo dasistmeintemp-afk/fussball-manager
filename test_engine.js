@@ -1691,10 +1691,16 @@ function runEngineTests() {
                 origFlow(action);
             };
 
-            const origDead = dir.startDeadBall.bind(dir);
-            dir.startDeadBall = (kind, team, x, y) => {
-                standards[kind] = (standards[kind] || 0) + 1;
-                origDead(kind, team, x, y);
+            // Nur die Standards aus dem Aufbauspiel zählen: Abstöße nach einem
+            // Schuss neben das Tor sind richtig so und gehören nicht dazu.
+            const origAus = dir.handleOutOfPlay.bind(dir);
+            dir.handleOutOfPlay = (action, to) => {
+                const vorher = dir.deadBall?.kind;
+                const behandelt = origAus(action, to);
+                if (behandelt && dir.deadBall?.kind !== vorher) {
+                    standards[dir.deadBall.kind] = (standards[dir.deadBall.kind] || 0) + 1;
+                }
+                return behandelt;
             };
 
             let frames = 0;
@@ -1720,6 +1726,199 @@ function runEngineTests() {
         const abstoesse = standards.goalkick || 0;
         if (abstoesse > zaehler.aktionen * 0.06) {
             throw new Error(`${abstoesse} Abstöße bei ${zaehler.aktionen} Aktionen - der Torwart hat ständig den Ball`);
+        }
+    });
+
+    // Bild und Ticker müssen dasselbe erzählen
+    test("LiveMatchDirector: Ereignisse laufen auf der richtigen Seite und beim richtigen Spieler", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+
+        const zahl = { schuesse: 0, richtigesTor: 0, ereignisse: 0, amBall: 0, amOrt: 0 };
+
+        for (let run = 0; run < 2; run++) {
+            const match = { id: `treue_${run}`, played: false, homeClubId: "muc", awayClubId: "dor" };
+            match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, state.players);
+
+            const live = new LiveMatch(match, homeClub, awayClub, state.players);
+            live.speed = 2;
+            const dir = live.director;
+
+            const orig = dir.beginEventPhase.bind(dir);
+            dir.beginEventPhase = (phase) => {
+                const ev = dir.currentEvent();
+                if (ev && phase === "action" && ev.end && ev.start) {
+                    const ziel = dir.eventPoint(ev.end);
+
+                    if (["goal", "save", "shot_miss"].includes(ev.type)) {
+                        // Auf welches Tor fliegt der Ball? Bei einer Parade
+                        // steht in der Timeline die verteidigende Mannschaft.
+                        const schiessend = ev.type === "save"
+                            ? (ev.team === "home" ? "away" : "home")
+                            : ev.team;
+                        const gegnertor = dir.ownGoalX(schiessend === "home" ? "away" : "home");
+                        zahl.schuesse++;
+                        if (Math.abs(ziel.x - gegnertor) < 50) zahl.richtigesTor++;
+                    }
+
+                    const start = dir.eventPoint(ev.start);
+                    const held = dir.getPlayer2D(dir.protagonistId(ev));
+                    if (held) {
+                        zahl.ereignisse++;
+                        if (Math.hypot(held.x - live.ball.x, held.y - live.ball.y) < 6) zahl.amBall++;
+                        if (Math.hypot(held.x - start.x, held.y - start.y) < 7) zahl.amOrt++;
+                    }
+                }
+                orig(phase);
+            };
+
+            let frames = 0;
+            while (!live.isFinished && frames++ < 60 * 900) {
+                live.advanceRealTime(1000 / 60);
+                live.updateBallAndPlayers(1000 / 60);
+            }
+        }
+
+        if (zahl.schuesse < 20) throw new Error(`Zu wenige Schüsse für eine Auswertung (${zahl.schuesse})`);
+
+        // Die Timeline beschreibt jedes Spiel im Bild der ersten Halbzeit.
+        // Ohne Spiegelung flog in Halbzeit zwei jeder Schuss ins eigene Tor.
+        if (zahl.richtigesTor !== zahl.schuesse) {
+            throw new Error(`${zahl.schuesse - zahl.richtigesTor} von ${zahl.schuesse} Schüssen gehen aufs falsche Tor`);
+        }
+
+        const amBall = zahl.amBall / Math.max(1, zahl.ereignisse);
+        const amOrt = zahl.amOrt / Math.max(1, zahl.ereignisse);
+        if (amBall < 0.85) {
+            throw new Error(`Nur bei ${(amBall * 100).toFixed(0)} % der Ereignisse hat der genannte Spieler den Ball`);
+        }
+        if (amOrt < 0.85) {
+            throw new Error(`Nur bei ${(amOrt * 100).toFixed(0)} % der Ereignisse steht der genannte Spieler am Ereignisort`);
+        }
+    });
+
+    // Jede Unterbrechung hat ihre Spielfortsetzung
+    test("LiveMatchDirector: Foul wird zum Freistoß, Fehlschuss zum Abstoß, Ecke von der Fahne", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+
+        let fouls = 0, freistoesse = 0, fehlschuesse = 0, abstoesse = 0, abseits = 0;
+        let mauern = 0, mitMauer = 0;
+        const eckenAbstand = [];
+
+        for (let run = 0; run < 2; run++) {
+            const match = { id: `standard_${run}`, played: false, homeClubId: "muc", awayClubId: "dor" };
+            match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, state.players);
+            fouls += match.timeline.filter(e => e.type === "foul" && e.outcome !== "penalty").length;
+            fehlschuesse += match.timeline.filter(e => e.type === "shot_miss" && e.outcome !== "woodwork").length;
+
+            const live = new LiveMatch(match, homeClub, awayClub, state.players);
+            live.speed = 2;
+            const dir = live.director;
+
+            const origDead = dir.startDeadBall.bind(dir);
+            dir.startDeadBall = (kind, team, x, y) => {
+                if (kind === "freekick") {
+                    freistoesse++;
+                    mauern++;
+                }
+                if (kind === "goalkick") abstoesse++;
+                origDead(kind, team, x, y);
+                if (kind === "freekick" && dir.setPieceWall.length > 0) mitMauer++;
+            };
+
+            const origFlag = dir.flagOffside.bind(dir);
+            dir.flagOffside = (p, r) => { abseits++; origFlag(p, r); };
+
+            // Ecken müssen an der Eckfahne beginnen
+            const origPhase = dir.beginEventPhase.bind(dir);
+            dir.beginEventPhase = (phase) => {
+                const ev = dir.currentEvent();
+                if (ev && ev.type === "corner" && phase === "approach") {
+                    const ecke = dir.eventPoint(ev.start);
+                    const naechsteFahne = Math.min(
+                        Math.hypot(ecke.x - 0, ecke.y - 0), Math.hypot(ecke.x - 0, ecke.y - 100),
+                        Math.hypot(ecke.x - 100, ecke.y - 0), Math.hypot(ecke.x - 100, ecke.y - 100));
+                    eckenAbstand.push(naechsteFahne);
+                }
+                origPhase(phase);
+            };
+
+            let frames = 0;
+            while (!live.isFinished && frames++ < 60 * 900) {
+                live.advanceRealTime(1000 / 60);
+                live.updateBallAndPlayers(1000 / 60);
+            }
+        }
+
+        // Praktisch jedes Foul und jedes Abseits ergibt einen Freistoß. Fällt
+        // ein Foul in dieselbe Szene wie ein Tor oder der Halbzeitpfiff, hat
+        // der Anstoß Vorrang - deshalb kein starres Gleich.
+        if (freistoesse < (fouls + abseits) * 0.9) {
+            throw new Error(`Nur ${freistoesse} Freistöße bei ${fouls} Fouls und ${abseits} Abseitsentscheidungen`);
+        }
+        if (fouls < 8) throw new Error(`Nur ${fouls} Fouls in zwei Spielen - zu wenig Zweikampf`);
+
+        // Ein Schuss neben das Tor ist ein Abstoß - außer der Abpfiff oder der
+        // Halbzeitpfiff kommt dazwischen.
+        if (abstoesse < fehlschuesse * 0.9) {
+            throw new Error(`Nur ${abstoesse} Abstöße bei ${fehlschuesse} Schüssen neben das Tor`);
+        }
+
+        // In Schussweite steht eine Mauer
+        if (mitMauer === 0) throw new Error("Kein einziger Freistoß mit Mauer");
+
+        // Ecken beginnen an der Eckfahne
+        if (eckenAbstand.length === 0) throw new Error("Keine Ecke gespielt");
+        const weiteste = Math.max(...eckenAbstand);
+        if (weiteste > 4) {
+            throw new Error(`Eine Ecke wurde ${weiteste.toFixed(0)} Einheiten neben der Eckfahne getreten`);
+        }
+    });
+
+    // Live-Anzeige und Spielbericht zeigen dieselbe Partie
+    test("MatchEngine: Live-Statistik und Spielbericht derselben Timeline sind deckungsgleich", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+
+        const felder = ["shots", "shotsOnTarget", "corners", "fouls", "yellowCards", "redCards", "saves", "xG"];
+
+        // Vier Partien: Der Fehler, der hier gefunden wurde - vom Halbzeitpfiff
+        // abgeräumte Ereignisse fehlten in der Live-Statistik - trat nur in
+        // etwa jedem vierten Spiel auf.
+        for (let run = 0; run < 4; run++) {
+            const timeline = MatchEngine.generateTimeline(
+                { id: `par_${run}`, played: false, homeClubId: "muc", awayClubId: "dor" },
+                homeClub, awayClub, state.players);
+
+            const liveMatch = { id: `par_${run}`, played: false, homeClubId: "muc", awayClubId: "dor", timeline };
+            const live = new LiveMatch(liveMatch, homeClub, awayClub, state.players);
+            live.speed = 4;
+
+            let frames = 0;
+            while (!live.isFinished && frames++ < 60 * 900) {
+                live.advanceRealTime(1000 / 60);
+                live.updateBallAndPlayers(1000 / 60);
+            }
+            if (!live.isFinished) throw new Error("Livespiel wurde nicht beendet");
+
+            const bericht = { id: `par_${run}`, played: false, homeClubId: "muc", awayClubId: "dor", timeline };
+            MatchEngine.simulateFullMatch(bericht, homeClub, awayClub, state.players);
+
+            if (live.homeScore !== bericht.homeGoals || live.awayScore !== bericht.awayGoals) {
+                throw new Error(`Endstand weicht ab: live ${live.homeScore}:${live.awayScore}, Bericht ${bericht.homeGoals}:${bericht.awayGoals}`);
+            }
+
+            felder.forEach(feld => {
+                const l = JSON.stringify(live.stats[feld]);
+                const b = JSON.stringify(bericht.stats[feld]);
+                if (l !== b) {
+                    throw new Error(`${feld} weicht ab: live ${l}, Bericht ${b}`);
+                }
+            });
         }
     });
 

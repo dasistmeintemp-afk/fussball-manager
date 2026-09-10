@@ -825,7 +825,7 @@ class UIManager {
                         </div>
                     </div>
                     <div class="club-item-right">
-                        <span class="club-item-ovr">${this.wizardStarsFor(ovr, { title: "Kaderstärke im Vergleich zur Auswahl" })}</span>
+                        <span class="club-item-ovr">${this.wizardTeamStars(players, { compact: true })}</span>
                         <span style="font-size:11px; color:#34d399;">${this.formatMoneySafe(club.transferBudget || 0)}</span>
                     </div>
                 </div>
@@ -896,7 +896,7 @@ class UIManager {
                         </div>
                     </div>
                     <div style="text-align:right;">
-                        <span class="cd-squad-rating" title="Kaderstärke im Vergleich zu den übrigen Vereinen">${this.wizardStarsFor(avgOvr)}</span>
+                        <span class="cd-squad-rating team-strength-stars" title="Kaderstärke im Vergleich zu den übrigen Vereinen">${this.wizardTeamStars(players)}</span>
                     </div>
                 </div>
 
@@ -932,7 +932,7 @@ class UIManager {
                         ${topPlayers.map(p => `
                             <div class="cd-player-row">
                                 <div><strong>${p.name}</strong> <span class="text-muted">(${p.pos})</span></div>
-                                <div><span class="cd-tag">${this.wizardStarsFor(p.overall)}</span> <span class="text-muted">${this.formatMoneySafe(p.value)}</span></div>
+                                <div>${this.abilityStarsFor(p, { wizard: true, compact: true })} <span class="text-muted">${this.formatMoneySafe(p.value)}</span></div>
                             </div>
                         `).join("")}
                     </div>
@@ -945,7 +945,7 @@ class UIManager {
                             ${topTalents.map(p => `
                                 <div class="cd-player-row">
                                     <div><strong>${p.name}</strong> <span class="text-muted">(${p.pos}, ${p.age} J.)</span></div>
-                                    <div><span class="cd-tag" style="background:rgba(16, 185, 129, 0.2);">Potenzial: ${this.wizardStarsFor(p.pot, { color: "#34d399" })}</span></div>
+                                    <div>${this.abilityStarsFor(p, { wizard: true, compact: true })}</div>
                                 </div>
                             `).join("")}
                         </div>
@@ -2255,8 +2255,9 @@ class UIManager {
             const happyIcon = happyOverall >= 80 ? "😊" : happyOverall >= 60 ? "😐" : "😞";
 
             const card = ratingEngine ? ratingEngine.calculateVisiblePlayerCard(p, Object.assign({ userClubId: userClub.id, leagueDataCoverage: 95 }, this.starContext())) : null;
-            const starsCa = card ? card.starsCaHtml : "★★★☆☆";
-            const starsPa = card ? card.starsPaHtml : "★★★★☆";
+            // Eine Reihe für beides: gefüllt ist die heutige Stärke,
+            // schraffiert das, was noch aus ihm werden kann
+            const sterne = card ? card.abilityStarsHtml : "";
             const roleName = card?.bestRole?.role || p.squadRole || "Stammspieler";
             const abilityText = card?.abilityLabel || "Guter Spieler";
             const valText = card ? card.visibleValueText : this.formatMoneySafe(p.value);
@@ -2279,10 +2280,9 @@ class UIManager {
                     </td>
                     <td>${p.age}</td>
                     <td>
-                        <span title="${abilityText}" style="color:#f59e0b; font-size:13px; font-weight:600;">${starsCa}</span>
+                        ${sterne}
                         <div class="squad-ability-hint">${abilityText}</div>
                     </td>
-                    <td><span title="Entwicklungspotenzial" style="color:#38bdf8; font-size:12px;">${starsPa}</span></td>
                     <td><span class="role-chip" title="${roleName}">${roleName}</span></td>
                     <td>
                         <span class="mini-bar"><span class="mini-bar-fill" style="width:${p.fitness}%"></span></span>
@@ -2423,6 +2423,42 @@ class UIManager {
         return engine.renderStarChip(sterne, options);
     }
 
+    /**
+     * Die volle Sternereihe für einen Spieler: heutige Stärke gefüllt,
+     * Potenzial schraffiert. Für alles, was keine Scoutingkarte hat -
+     * Nachwuchsspieler, Mannschaftsteile, schnelle Übersichten.
+     */
+    abilityStarsFor(player, options = {}) {
+        const engine = this.getRatingEngine();
+        if (!engine || !player) return "";
+
+        const kontext = options.wizard ? this.wizardStarContext() : this.starContext();
+        const ca = engine.starsForOverall(player.overall ?? 50, kontext);
+        const pa = Math.max(ca, engine.starsForOverall(player.pot ?? player.overall ?? 50, kontext));
+
+        return engine.renderAbilityStars({ caMin: ca, caMax: ca, paMax: pa }, {
+            compact: options.compact,
+            title: options.title || engine.describeAbilityStars({ caMin: ca, caMax: ca, paMax: pa })
+        });
+    }
+
+    /**
+     * Die Sternereihe einer Mannschaft - für Gegner, den eigenen Verein und
+     * jede Vereinsübersicht. Gemessen wird wie überall am eigenen Kader.
+     */
+    teamStarsFor(club, options = {}) {
+        const engine = this.getRatingEngine();
+        const state = this.app?.state;
+        if (!engine || !club || !state) return "";
+
+        const kader = (club.playerIds || [])
+            .map(id => state.players.find(p => p.id === id))
+            .filter(Boolean);
+        if (kader.length === 0) return "";
+
+        return engine.renderTeamStars(kader, this.starContext(), options);
+    }
+
     /** Sternewert als Zahl, etwa zum Sortieren oder für Beschriftungen */
     starValueFor(overall) {
         const engine = this.getRatingEngine();
@@ -2464,6 +2500,16 @@ class UIManager {
         const engine = this.getRatingEngine();
         if (!engine) return "★★★";
         return engine.renderStarChip(engine.starsForOverall(overall, this.wizardStarContext()), options);
+    }
+
+    /**
+     * Mannschaftsstärke im Karrierestart. Dort gibt es noch keinen eigenen
+     * Kader, deshalb ist der Maßstab die Auswahl, die vor einem liegt.
+     */
+    wizardTeamStars(players, options = {}) {
+        const engine = this.getRatingEngine();
+        if (!engine || !Array.isArray(players) || players.length === 0) return "";
+        return engine.renderTeamStars(players, this.wizardStarContext(), options);
     }
 
     getPosGroup(pos) {
@@ -3453,6 +3499,13 @@ class UIManager {
 
         marketPlayers.sort((a, b) => b.overall - a.overall);
 
+        // Niemand liest viertausend Zeilen. Der Markt zeigt die besten
+        // Treffer und sagt, wie viele es insgesamt sind - alles andere
+        // erschlug beim Öffnen des Reiters auch noch das Handy.
+        const TREFFER_PRO_SEITE = 120;
+        const gesamtTreffer = marketPlayers.length;
+        marketPlayers = marketPlayers.slice(0, TREFFER_PRO_SEITE);
+
         const ratingEngine = (typeof PlayerRatingEngine !== 'undefined' && PlayerRatingEngine) ? PlayerRatingEngine : ((typeof window !== 'undefined' && window.PlayerRatingEngine) ? window.PlayerRatingEngine : null);
 
         const tbody = document.getElementById("transferTableBody");
@@ -3469,8 +3522,7 @@ class UIManager {
                 const club = state.clubs.find(c => c.id === p.clubId);
                 const card = ratingEngine ? ratingEngine.calculateVisiblePlayerCard(p, Object.assign({ userClubId: state.userClubId, leagueDataCoverage: 85 }, this.starContext())) : null;
 
-                const starsDisplay = card ? card.starsCaHtml : "★★★☆☆";
-                const potStarsDisplay = card ? card.starsPaHtml : "★★★★☆";
+                const sterne = card ? card.abilityStarsHtml : "";
                 const roleDisplay = card?.bestRole?.role || "Allrounder";
                 const abilityText = card ? card.abilityLabel : "Unbekannt";
                 const valDisplay = card ? card.visibleValueText : this.formatMoneySafe(p.value);
@@ -3491,11 +3543,8 @@ class UIManager {
                         <td><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span></td>
                         <td>${p.age}</td>
                         <td>
-                            <span title="${abilityText}">${starsDisplay}</span>
+                            ${sterne}
                             <div style="font-size:10px; color:var(--text-muted);">${abilityText}</div>
-                        </td>
-                        <td>
-                            <span title="Potenzial: ${card?.potentialLabel || ''}">${potStarsDisplay}</span>
                         </td>
                         <td><span class="badge badge-info">${roleDisplay}</span></td>
                         <td><strong class="${valueClass}">${valDisplay}</strong></td>
@@ -3511,6 +3560,14 @@ class UIManager {
                     </tr>
                 `;
             }).join("");
+
+            // Wie viele es wirklich gibt, gehört unter die Liste
+            if (gesamtTreffer > marketPlayers.length) {
+                tbody.innerHTML += `<tr><td colspan="11" class="text-center text-muted" style="padding:14px;">
+                    Die ${marketPlayers.length} stärksten von ${gesamtTreffer.toLocaleString("de-DE")} passenden Spielern.
+                    Grenzen Sie die Suche über Position, Sterne oder den Namen weiter ein.
+                </td></tr>`;
+            }
 
             // Klick auf die Zeile öffnet die Spielerdetails (Buttons ausgenommen)
             tbody.querySelectorAll("tr.row-clickable").forEach(row => {
@@ -3656,8 +3713,7 @@ class UIManager {
                         <td><strong>${this.escapeHtml(p.name)}</strong></td>
                         <td><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span></td>
                         <td>${p.age} Jahre</td>
-                        <td>${this.starsFor(p.overall, { title: "Heutige Stärke im Vergleich zum Profikader" })}</td>
-                        <td>${this.starsFor(p.pot, { color: "#38bdf8", title: "Mögliche Stärke am Ende der Entwicklung" })}</td>
+                        <td colspan="2">${this.abilityStarsFor(p)}</td>
                         <td>${standHtml}</td>
                         <td>${aktion}</td>
                     </tr>
@@ -4274,6 +4330,78 @@ class UIManager {
     }
 
     /**
+     * Mannschaftsvergleich in Sternen.
+     *
+     * Zahlen wie "Angriff 81" sagen einem Manager wenig, solange er nicht
+     * weiß, was seine eigene Mannschaft dort stehen hat. Nebeneinander in
+     * derselben Sternesprache sieht man sofort, wo man überlegen ist und wo
+     * es eng wird.
+     */
+    buildTeamComparisonHtml(eigenerClub, gegnerClub) {
+        const engine = this.getRatingEngine();
+        const state = this.app?.state;
+        if (!engine || !state || !eigenerClub || !gegnerClub) return "";
+
+        const kaderVon = (club) => (club.playerIds || [])
+            .map(id => state.players.find(p => p.id === id))
+            .filter(Boolean);
+
+        const TEILE = [
+            { name: "Tor", positionen: ["TW"] },
+            { name: "Abwehr", positionen: ["IV", "LV", "RV"] },
+            { name: "Mittelfeld", positionen: ["ZM", "DM", "OM", "LM", "RM"] },
+            { name: "Angriff", positionen: ["ST", "LA", "RA"] }
+        ];
+
+        const kontext = this.starContext();
+        const eigen = kaderVon(eigenerClub);
+        const gegner = kaderVon(gegnerClub);
+
+        // Ein Mannschaftsteil zählt nur mit seinen Besten - die Ersatzbank
+        // steht am Spieltag nicht auf dem Platz.
+        const teilSterne = (kader, positionen, anzahl) => {
+            const passend = kader
+                .filter(p => positionen.includes(p.pos) && (p.injuredWeeks || 0) <= 0)
+                .sort((a, b) => (b.overall || 0) - (a.overall || 0))
+                .slice(0, anzahl);
+            if (passend.length === 0) return null;
+            return engine.renderTeamStars(passend, kontext, { compact: true });
+        };
+
+        const zeilen = TEILE.map(teil => {
+            const anzahl = teil.name === "Tor" ? 1 : teil.name === "Angriff" ? 3 : 4;
+            const meins = teilSterne(eigen, teil.positionen, anzahl);
+            const seins = teilSterne(gegner, teil.positionen, anzahl);
+            if (!meins || !seins) return "";
+            return `
+                <div class="team-compare-row">
+                    <div class="team-compare-side">${meins}</div>
+                    <div class="team-compare-label">${teil.name}</div>
+                    <div class="team-compare-side">${seins}</div>
+                </div>`;
+        }).join("");
+
+        return `
+            <div class="dash-card mb-3">
+                <div class="team-compare-head">
+                    <span>${this.escapeHtml(eigenerClub.name)}</span>
+                    <span class="text-muted">Mannschaftsvergleich</span>
+                    <span>${this.escapeHtml(gegnerClub.name)}</span>
+                </div>
+                <div class="team-compare-row team-compare-total">
+                    <div class="team-compare-side">${engine.renderTeamStars(eigen, kontext)}</div>
+                    <div class="team-compare-label">Gesamt</div>
+                    <div class="team-compare-side">${engine.renderTeamStars(gegner, kontext)}</div>
+                </div>
+                ${zeilen}
+                <div class="star-legend" style="justify-content:center;">
+                    <span><i class="star-solid"></i> heutige Stärke</span>
+                    <span><i class="star-growth"></i> Potenzial der Mannschaft</span>
+                </div>
+            </div>`;
+    }
+
+    /**
      * Modal: Gegneranalyse vor Spielbeginn anzeigen
      */
     showOpponentAnalysisModal() {
@@ -4300,6 +4428,10 @@ class UIManager {
         const modal = document.getElementById("modalOpponentAnalysis");
         const content = document.getElementById("opponentAnalysisContent");
 
+        // Mannschaftsvergleich in Sternen: Wo sind wir besser, wo schlechter?
+        const gegnerClub = state.clubs.find(c => c.id === opponentId);
+        const vergleichHtml = this.buildTeamComparisonHtml(userClub, gegnerClub);
+
         content.innerHTML = `
             <div class="scout-report-top" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
                 <div>
@@ -4311,24 +4443,7 @@ class UIManager {
                 </div>
             </div>
 
-            <div class="opponent-stats-grid" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:20px;">
-                <div class="dash-card text-center" style="padding:12px;">
-                    <span style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Kaderstärke</span>
-                    <h4 style="font-size:20px; color:#38bdf8; margin:4px 0 0 0;">${report.avgOverall}</h4>
-                </div>
-                <div class="dash-card text-center" style="padding:12px;">
-                    <span style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Angriff</span>
-                    <h4 style="font-size:20px; color:#f59e0b; margin:4px 0 0 0;">${report.attackRating}</h4>
-                </div>
-                <div class="dash-card text-center" style="padding:12px;">
-                    <span style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Mittelfeld</span>
-                    <h4 style="font-size:20px; color:#22c55e; margin:4px 0 0 0;">${report.midfieldRating}</h4>
-                </div>
-                <div class="dash-card text-center" style="padding:12px;">
-                    <span style="font-size:11px; color:var(--text-muted); text-transform:uppercase;">Abwehr & TW</span>
-                    <h4 style="font-size:20px; color:#a855f7; margin:4px 0 0 0;">${report.defenseRating} / ${report.gkRating}</h4>
-                </div>
-            </div>
+            ${vergleichHtml}
 
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">
                 <div class="dash-card" style="border-left:3px solid #22c55e;">
@@ -4362,7 +4477,7 @@ class UIManager {
                                     <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>
                                 </div>
                                 <div style="margin-top:6px; font-size:13px; color:#f59e0b;">
-                                    ${p.starsCaHtml} <span style="font-size:11px; color:var(--text-muted);">(${p.abilityLabel})</span>
+                                    ${p.abilityStarsHtml || p.starsCaHtml} <span style="font-size:11px; color:var(--text-muted);">(${p.abilityLabel})</span>
                                 </div>
                                 <div style="font-size:11px; color:var(--accent-primary); margin-top:2px;">
                                     Rolle: <strong>${p.bestRole?.role || 'Stammspieler'}</strong>
@@ -4769,8 +4884,8 @@ class UIManager {
                 </div>
             `;
 
-        const starsCaHtml = card ? card.starsCaHtml : "★★★☆☆";
-        const starsPaHtml = card ? card.starsPaHtml : "★★★★☆";
+        const abilityStars = card ? card.abilityStarsHtml : "";
+        const abilityStarsText = card ? card.abilityStarsText : "";
         const abilityLabel = card ? card.abilityLabel : "Ligaspieler";
         const potentialLabel = card ? card.potentialLabel : "Entwicklungspotenzial";
         // Auch die Rollenbewertung ist bei wenig Scoutwissen nur eine Spanne
@@ -4797,13 +4912,26 @@ class UIManager {
                     <span style="font-size:14px; margin-left:8px; color:var(--text-muted);">${club ? club.name : ''} • Alter: ${player.age}</span>
                 </div>
                 <div class="player-detail-rating">
-                    <div class="player-detail-stars">${starsCaHtml}</div>
+                    <div class="player-detail-stars team-strength-stars">${abilityStars}</div>
                     <div class="player-detail-label">${abilityLabel}</div>
                 </div>
             </div>
 
-            <!-- Rollen & Potenzial -->
+            <!-- Stärke, Potenzial und Rolle auf einen Blick -->
             <div class="player-role-summary-card">
+                <div class="player-role-box">
+                    <span class="role-box-label">Stärke &amp; Potenzial</span>
+                    <div class="role-box-main">
+                        <span class="role-stars">${abilityStars}</span>
+                    </div>
+                    <div class="role-box-sub">${this.escapeHtml(abilityStarsText)}</div>
+                    <div class="star-legend">
+                        <span><i class="star-solid"></i> heute</span>
+                        ${card && !card.isPrecise ? '<span><i class="star-maybe"></i> geschätzt</span>' : ''}
+                        <span><i class="star-growth"></i> Potenzial</span>
+                    </div>
+                </div>
+
                 <div class="player-role-box">
                     <span class="role-box-label">Hauptrolle</span>
                     <div class="role-box-main">
@@ -4811,13 +4939,6 @@ class UIManager {
                         <span class="role-stars">${bestRoleStars}</span>
                     </div>
                     ${altRoleName ? `<div class="role-box-sub">Alt: ${altRoleName} <span>${altRoleStars}</span></div>` : ''}
-                </div>
-
-                <div class="player-role-box">
-                    <span class="role-box-label">Potenzial</span>
-                    <div class="role-box-main">
-                        <span class="role-stars role-stars-potential">${starsPaHtml}</span>
-                    </div>
                     <div class="role-box-sub">${potentialLabel}</div>
                 </div>
             </div>

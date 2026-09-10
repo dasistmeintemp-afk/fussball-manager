@@ -262,6 +262,77 @@ class PlayerRatingEngine {
     }
 
     /**
+     * Die Sternereihe, wie man sie aus dem Football Manager kennt.
+     *
+     * Alles steht in EINER Zeile aus fünf Sternen, und jeder Stern erzählt
+     * etwas anderes:
+     *
+     *   ★ ★ ★     voll und golden - so stark ist der Spieler heute, gesichert
+     *   ★ ★       blass - so stark könnte er heute schon sein (Scoutwissen fehlt)
+     *   ☆ ☆       umrandet - dahin kann er sich noch entwickeln
+     *   · ·       leer - außerhalb seiner Möglichkeiten
+     *
+     * Zwei getrennte Reihen für Stärke und Potenzial zwangen den Blick zum
+     * Vergleichen. Nebeneinander in einer Reihe sieht man auf einen Schlag,
+     * wie weit ein Spieler noch kommen kann - genau darum geht es beim
+     * Kaderplanen.
+     */
+    static renderAbilityStars(werte = {}, options = {}) {
+        const grenze = (v, min = 0) => Math.max(min, Math.min(5, Number(v) || 0));
+
+        const caMin = grenze(werte.caMin ?? werte.ca ?? 0);
+        const caMax = grenze(werte.caMax ?? caMin, caMin);
+        const paMax = grenze(werte.paMax ?? werte.pa ?? caMax, caMax);
+
+        // In Halbsternen rechnen: zehn Hälften ergeben fünf Sterne
+        const halb = (v) => Math.round(v * 2);
+        const sicher = halb(caMin);
+        const moeglich = halb(caMax);
+        const potenzial = halb(paMax);
+
+        const klasse = (i) => {
+            if (i < sicher) return "star-solid";
+            if (i < moeglich) return "star-maybe";
+            if (i < potenzial) return "star-growth";
+            return "star-none";
+        };
+
+        let html = `<span class="ability-stars${options.compact ? " ability-stars-sm" : ""}"`;
+        if (options.title) html += ` title="${options.title}"`;
+        html += ">";
+
+        for (let stern = 0; stern < 5; stern++) {
+            const links = klasse(stern * 2);
+            const rechts = klasse(stern * 2 + 1);
+            html += `<span class="ability-star">`
+                + `<span class="ability-star-half ability-star-left ${links}"></span>`
+                + `<span class="ability-star-half ability-star-right ${rechts}"></span>`
+                + `</span>`;
+        }
+
+        html += "</span>";
+        return html;
+    }
+
+    /**
+     * Dieselbe Aussage in Worten - für Titelzeilen, Tabellen und alles, was
+     * kein HTML verträgt.
+     */
+    static describeAbilityStars(werte = {}) {
+        const ca = Number(werte.caMin ?? werte.ca ?? 0);
+        const caMax = Number(werte.caMax ?? ca);
+        const pa = Number(werte.paMax ?? werte.pa ?? caMax);
+
+        const heute = caMax > ca + 0.01
+            ? `${PlayerRatingEngine.formatStars(ca)} bis ${PlayerRatingEngine.formatStars(caMax)}`
+            : PlayerRatingEngine.formatStars(ca);
+
+        return pa > caMax + 0.01
+            ? `Heute ${heute} Sterne, Potenzial bis ${PlayerRatingEngine.formatStars(pa)}`
+            : `Heute ${heute} Sterne, am Leistungslimit`;
+    }
+
+    /**
      * Kompakte Sternewertung für enge Stellen - Trikot auf dem Spielfeld,
      * Bankeintrag, Auswahllisten. Wo eine volle Sternereihe nicht hinpasst,
      * steht ein einzelner Stern mit der Zahl dahinter.
@@ -298,6 +369,40 @@ class PlayerRatingEngine {
             PlayerRatingEngine.overallToAbility(overall),
             referenceContext
         );
+    }
+
+    /**
+     * Sterne für eine ganze Mannschaft.
+     *
+     * Gewertet wird die Startelf, nicht der Durchschnitt aller Kaderspieler -
+     * ein Verein mit elf guten Spielern und zehn Reservisten ist am Spieltag
+     * genauso stark wie einer mit einem durchweg guten Kader. Das Potenzial
+     * ergibt sich aus dem, was die Mannschaft in ein paar Jahren sein könnte.
+     */
+    static teamStars(players = [], referenceContext = {}) {
+        const einsatzbereit = (players || []).filter(p => p && (p.injuredWeeks || 0) <= 0);
+        const basis = einsatzbereit.length >= 11 ? einsatzbereit : (players || []);
+        if (basis.length === 0) return { ca: 0.5, pa: 0.5 };
+
+        const nachStaerke = basis.slice().sort((a, b) => (b.overall || 0) - (a.overall || 0));
+        const elf = nachStaerke.slice(0, Math.min(11, nachStaerke.length));
+
+        const schnitt = (werte) => werte.reduce((a, b) => a + b, 0) / werte.length;
+        const ca = PlayerRatingEngine.starsForOverall(schnitt(elf.map(p => p.overall || 50)), referenceContext);
+        const pa = Math.max(ca, PlayerRatingEngine.starsForOverall(
+            schnitt(elf.map(p => Math.max(p.overall || 50, p.pot || p.overall || 50))), referenceContext));
+
+        return { ca, pa };
+    }
+
+    /** Die Sternereihe einer Mannschaft, fertig als HTML */
+    static renderTeamStars(players = [], referenceContext = {}, options = {}) {
+        const { ca, pa } = PlayerRatingEngine.teamStars(players, referenceContext);
+        return PlayerRatingEngine.renderAbilityStars({ caMin: ca, caMax: ca, paMax: pa }, {
+            compact: options.compact,
+            title: options.title || `Mannschaftsstärke ${PlayerRatingEngine.formatStars(ca)} Sterne`
+                + (pa > ca ? `, Potenzial bis ${PlayerRatingEngine.formatStars(pa)}` : "")
+        });
     }
 
     /**
@@ -534,6 +639,18 @@ class PlayerRatingEngine {
             starsPaMax,
             starsCaHtml: PlayerRatingEngine.renderStarRange(starsCaMin, starsCaMax, { color: "#f59e0b" }),
             starsPaHtml: PlayerRatingEngine.renderStarRange(starsPaMin, starsPaMax, { color: "#38bdf8" }),
+            // Stärke und Potenzial in einer Reihe, so wie man es aus dem
+            // Football Manager kennt
+            abilityStarsHtml: PlayerRatingEngine.renderAbilityStars({
+                caMin: starsCaMin, caMax: starsCaMax, paMax: starsPaMax
+            }, {
+                title: PlayerRatingEngine.describeAbilityStars({
+                    caMin: starsCaMin, caMax: starsCaMax, paMax: starsPaMax
+                })
+            }),
+            abilityStarsText: PlayerRatingEngine.describeAbilityStars({
+                caMin: starsCaMin, caMax: starsCaMax, paMax: starsPaMax
+            }),
             confidenceInfo,
             bestRole: roleData.best,
             alternativeRole: roleData.alternative,

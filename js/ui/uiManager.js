@@ -3173,11 +3173,21 @@ class UIManager {
                 const isUserMatch = home?.id === userClub.id || away?.id === userClub.id;
                 const scoreText = m.played ? `${m.homeGoals} : ${m.awayGoals}` : "vs";
 
+                // Ein Derby steht im Spielplan, nicht im Kleingedruckten
+                const derby = m.isDerby
+                    ? `<div class="fixture-derby">🔥 ${this.escapeHtml(m.derbyTitle || "Derby")}</div>`
+                    : "";
+                const zuschauer = m.played && m.attendance
+                    ? `<div class="fixture-crowd">${m.attendance.toLocaleString("de-DE")} Zuschauer${m.soldOut ? " · ausverkauft" : ""}</div>`
+                    : "";
+
                 return `
-                    <div class="fixture-card ${isUserMatch ? 'user-match' : ''}">
+                    <div class="fixture-card ${isUserMatch ? 'user-match' : ''} ${m.isDerby ? 'derby-match' : ''}">
+                        ${derby}
                         <div class="fixture-team home">${this.escapeHtml(home?.name || "Heim")}</div>
                         <div class="fixture-score-badge">${scoreText}</div>
                         <div class="fixture-team away">${this.escapeHtml(away?.name || "Auswärts")}</div>
+                        ${zuschauer}
                     </div>
                 `;
             }).join("");
@@ -4738,6 +4748,19 @@ class UIManager {
                 Object.assign({ userClubId: state.userClubId, leagueDataCoverage: 85 }, this.starContext()))
             : null;
 
+        // Eigenheiten: was diesem Spieler auf dem Platz eigen ist
+        let eigenheitenHtml = "";
+        if (Array.isArray(player.traits) && player.traits.length > 0) {
+            eigenheitenHtml = `
+                <div class="dash-card mb-3" style="padding:14px; background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.2);">
+                    <h4 style="font-size:13px; margin-bottom:8px; color:#f59e0b;">⚽ Auf dem Platz</h4>
+                    <ul style="margin:0; padding-left:18px; font-size:12px; color:#e2e8f0; line-height:1.6;">
+                        ${player.traits.map(t => `<li>${this.escapeHtml(t.text)}</li>`).join("")}
+                    </ul>
+                </div>
+            `;
+        }
+
         let traitsHtml = "";
         if (card && card.hiddenTraits && card.hiddenTraits.length > 0) {
             traitsHtml = `
@@ -4909,7 +4932,7 @@ class UIManager {
             <div class="player-detail-top">
                 <div class="player-detail-meta">
                     <span class="pos-tag pos-${this.getPosGroup(player.pos)}" style="font-size:13px;">${player.pos}</span>
-                    <span style="font-size:14px; margin-left:8px; color:var(--text-muted);">${club ? club.name : ''} • Alter: ${player.age}</span>
+                    <span style="font-size:14px; margin-left:8px; color:var(--text-muted);">${club ? club.name : ''} • Alter: ${player.age}${player.foot ? ` • ${this.escapeHtml(player.foot === "beidfüßig" ? "beidfüßig" : player.foot + "er Fuß")}` : ''}</span>
                 </div>
                 <div class="player-detail-rating">
                     <div class="player-detail-stars team-strength-stars">${abilityStars}</div>
@@ -4960,6 +4983,8 @@ class UIManager {
             </div>`}
 
             ${positionMapHtml}
+
+            ${eigenheitenHtml}
 
             ${traitsHtml}
 

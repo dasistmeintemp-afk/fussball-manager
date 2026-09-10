@@ -433,6 +433,16 @@ const CalendarEngine = {
             });
         }
 
+        // 6b. Die Kabine beruhigt sich langsam wieder. Ohne das bliebe eine
+        // Mannschaft nach einer Klatsche für immer am Boden.
+        const dressingRoom = (typeof DressingRoomEngine !== 'undefined' && DressingRoomEngine)
+            ? DressingRoomEngine
+            : ((typeof window !== 'undefined' && window.DressingRoomEngine) ? window.DressingRoomEngine : (typeof require !== 'undefined' ? require('./dressingRoomEngine.js').DressingRoomEngine : null));
+
+        if (dressingRoom && typeof dressingRoom.settleDaily === 'function') {
+            dressingRoom.settleDaily(state);
+        }
+
         // 7. Vereinsleben: Zwischen den Spieltagen passiert im echten Verein
         // ständig etwas. Ohne das war "nächsten Tag simulieren" ein Knopf, der
         // nur das Datum weiterschob.

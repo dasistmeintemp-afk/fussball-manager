@@ -211,6 +211,8 @@ class PlayerGenerator {
             : { professionalism: 12, ambition: 12, consistency: 12, importantMatches: 12, injuryProneness: 8, adaptability: 12, loyalty: 14, temperament: 12 };
 
         const knownByUser = options.knownByUser === true;
+        // Einmal würfeln, dann überall dieselben Werte verwenden
+        const attribute = this.generateAttributes(pos, overall);
 
         return Object.assign({
             id: id,
@@ -268,7 +270,80 @@ class PlayerGenerator {
                 training: 75,
                 reason: "Zufrieden mit der aktuellen Situation."
             }
-        }, this.generateAttributes(pos, overall));
+        }, attribute, this.buildCharacter(pos, attribute));
+    }
+
+    /**
+     * Fuß und Eigenheiten.
+     *
+     * Die Eigenheiten müssen aus GENAU den Werten entstehen, die der Spieler
+     * am Ende trägt - sonst steht bei einem Spieler mit Ausdauer 60 "Läuft
+     * neunzig Minuten durch". Deshalb bekommt diese Funktion die fertigen
+     * Attribute übergeben, statt neue zu würfeln.
+     */
+    static buildCharacter(pos, attribute) {
+        return {
+            foot: this.rollFoot(pos),
+            traits: this.rollTraits(Object.assign({ pos }, attribute))
+        };
+    }
+
+    /**
+     * Starker Fuß.
+     *
+     * Rechtsfüßer sind die Mehrheit, auf der linken Außenbahn dreht sich das
+     * Verhältnis, und ein paar wenige können beides. Das ist keine
+     * Fachsimpelei: Jeder versteht sofort, warum ein Linksfuß auf links
+     * anders wirkt als ein Rechtsfuß.
+     */
+    static rollFoot(pos) {
+        const linksLastig = ["LV", "LM", "LA"].includes(pos);
+        const wurf = Math.random();
+
+        if (wurf < 0.06) return "beidfüßig";
+        if (linksLastig) return wurf < 0.62 ? "links" : "rechts";
+        if (["RV", "RM", "RA"].includes(pos)) return wurf < 0.88 ? "rechts" : "links";
+        return wurf < 0.76 ? "rechts" : "links";
+    }
+
+    /**
+     * Eigenheiten, die man einem Spieler ansieht.
+     *
+     * Ein Kader aus lauter Zahlenkolonnen fühlt sich austauschbar an. Zwei
+     * Sätze pro Spieler - "sucht den Abschluss aus der Distanz", "geht in
+     * jeden Zweikampf" - machen daraus Charaktere, ohne dass man dafür etwas
+     * lernen oder einstellen müsste. Sie ergeben sich aus den Werten, die der
+     * Spieler ohnehin hat, und stehen deshalb nie im Widerspruch dazu.
+     */
+    static EIGENHEITEN = [
+        { key: "distanzschuss", text: "Sucht den Abschluss aus der Distanz.", passt: (p) => p.shooting >= 78 && p.technique >= 72 },
+        { key: "dribbler", text: "Geht gern ins Eins-gegen-eins.", passt: (p) => p.dribbling >= 80 && p.pace >= 74 },
+        { key: "flanken", text: "Bringt den Ball früh und scharf in den Strafraum.", passt: (p) => ["LV", "RV", "LM", "RM", "LA", "RA"].includes(p.pos) && p.passing >= 72 },
+        { key: "tiefenpass", text: "Sieht den Pass in die Tiefe vor allen anderen.", passt: (p) => p.vision >= 80 && p.passing >= 78 },
+        { key: "zweikampf", text: "Geht in jeden Zweikampf, koste es was es wolle.", passt: (p) => p.defense >= 76 && p.physical >= 74 },
+        { key: "kopfball", text: "Bei Standards immer gefährlich in der Luft.", passt: (p) => p.physical >= 80 },
+        { key: "antritt", text: "Über die ersten zehn Meter kaum einzuholen.", passt: (p) => p.pace >= 85 },
+        { key: "ausdauer", text: "Läuft neunzig Minuten durch, ohne langsamer zu werden.", passt: (p) => p.stamina >= 85 },
+        { key: "ruhe", text: "Behält vor dem Tor die Ruhe.", passt: (p) => p.shooting >= 75 && ["ST", "LA", "RA", "OM"].includes(p.pos) },
+        { key: "aufbau", text: "Holt sich den Ball tief und macht das Spiel.", passt: (p) => ["ZM", "DM"].includes(p.pos) && p.passing >= 74 },
+        { key: "strafraum", text: "Steht immer da, wo der Ball hinfällt.", passt: (p) => ["ST"].includes(p.pos) && p.positioning >= 74 },
+        { key: "mitspielen", text: "Spielt mit dem Fuß wie ein Feldspieler.", passt: (p) => p.pos === "TW" && p.passing >= 62 },
+        { key: "reaktion", text: "Reagiert auf der Linie außergewöhnlich schnell.", passt: (p) => p.pos === "TW" && p.reflexes >= 82 }
+    ];
+
+    /** Wählt bis zu zwei passende Eigenheiten aus */
+    static rollTraits(player) {
+        const passende = this.EIGENHEITEN.filter(e => {
+            try { return e.passt(player); } catch (err) { return false; }
+        });
+        if (passende.length === 0) return [];
+
+        // Nicht jeder hat eine Marke - das macht sie erst besonders
+        const anzahl = Math.random() < 0.32 ? 0 : (Math.random() < 0.78 ? 1 : 2);
+        if (anzahl === 0) return [];
+
+        const gemischt = passende.slice().sort(() => Math.random() - 0.5);
+        return gemischt.slice(0, anzahl).map(e => ({ key: e.key, text: e.text }));
     }
 
     /**
@@ -447,6 +522,7 @@ class PlayerGenerator {
      */
     static buildYouthProfile(pos, overall, age) {
         const ratingEngine = this.getRatingEngine();
+        const jugendAttribute = this.generateAttributes(pos, overall);
         return Object.assign({
             hiddenAttributes: ratingEngine
                 ? ratingEngine.generateHiddenAttributes({ age, overall })
@@ -464,7 +540,7 @@ class PlayerGenerator {
             morale: 80 + Math.floor(Math.random() * 15),
             form: 6.5 + parseFloat((Math.random() * 1.2).toFixed(1)),
             stats: { matches: 0, goals: 0, assists: 0, yellowCards: 0, redCards: 0, minutes: 0, cleanSheets: 0, ratingSum: 0 }
-        }, this.generateAttributes(pos, overall));
+        }, jugendAttribute, this.buildCharacter(pos, jugendAttribute));
     }
 
     /**

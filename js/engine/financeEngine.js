@@ -2,6 +2,16 @@
  * FinanceEngine - Finanzhaushalt, Spieltagseinnahmen, Gehälter, Sponsoring und Buchhaltung
  */
 
+/** Auflösung der Module in Browser- und Node-Umgebung */
+const _feResolve = (globalName, path) => {
+    if (typeof globalThis !== "undefined" && globalThis[globalName]) return globalThis[globalName];
+    if (typeof window !== "undefined" && window[globalName]) return window[globalName];
+    if (typeof require !== "undefined") {
+        try { return require(path)[globalName]; } catch (e) { return null; }
+    }
+    return null;
+};
+
 const FinanceEngine = {
     /**
      * Anteil der Einnahmen, der für den laufenden Betrieb draufgeht.
@@ -88,11 +98,47 @@ const FinanceEngine = {
         // Preis-Elastizität: Höherer Preis senkt Auslastung, tieferer Preis füllt das Stadion
         const priceFactor = 1.0 - ((ticketPrice - 35) / 100) * 0.6;
 
-        let baseAttendancePct = 0.68 + (repFactor * 0.22) + stadiumBonus + moodFactor;
+        let baseAttendancePct = 0.62 + (repFactor * 0.2) + stadiumBonus + moodFactor;
         baseAttendancePct *= Math.max(0.4, Math.min(1.2, priceFactor));
 
-        const randVariation = (Math.random() * 0.06) - 0.03;
-        const finalPct = Math.min(1.0, Math.max(0.35, baseAttendancePct + randVariation));
+        // Das Stadion atmet mit der Saison. Vorher war ein Spitzenverein immer
+        // ausverkauft - beim Derby genauso wie beim Kellerduell im Februar.
+        const gruende = [];
+
+        // Wie läuft es gerade? Eine Serie füllt das Haus, eine Krise leert es.
+        const form = (homeClub.form || []).filter(r => r && r !== "-").slice(-5);
+        if (form.length >= 3) {
+            const siege = form.filter(r => r === "W").length;
+            const pleiten = form.filter(r => r === "L").length;
+            const formEffekt = (siege - pleiten) * 0.025;
+            baseAttendancePct += formEffekt;
+            if (formEffekt >= 0.05) gruende.push("gute Form");
+            else if (formEffekt <= -0.05) gruende.push("sportliche Krise");
+        }
+
+        // Ein Spitzenspiel zieht, ein Duell zweier Abstiegskandidaten nicht
+        const tabelle = state.standingsByLeague?.[homeClub.leagueId] || state.standings || [];
+        const platz = (id) => {
+            const i = tabelle.findIndex(e => e.clubId === id);
+            return i === -1 ? null : i + 1;
+        };
+        const eigenerPlatz = platz(homeClub.id);
+        const gegnerPlatz = awayClub ? platz(awayClub.id) : null;
+        if (eigenerPlatz !== null && gegnerPlatz !== null && tabelle.length > 4) {
+            const spitzenNaehe = 1 - ((eigenerPlatz + gegnerPlatz) / 2) / tabelle.length;
+            baseAttendancePct += (spitzenNaehe - 0.5) * 0.12;
+            if (eigenerPlatz <= 3 && gegnerPlatz <= 3) gruende.push("Spitzenspiel");
+        }
+
+        // Und dann gibt es Spiele, die immer voll sind
+        const rivalry = _feResolve("RivalryEngine", "./rivalryEngine.js");
+        if (match.isDerby && rivalry && typeof rivalry.matchdayEffects === "function") {
+            baseAttendancePct += rivalry.matchdayEffects(match).zuschauerBonus;
+            gruende.push(match.derbyTitle || "Derby");
+        }
+
+        const randVariation = (Math.random() * 0.08) - 0.04;
+        const finalPct = Math.min(1.0, Math.max(0.3, baseAttendancePct + randVariation));
 
         const capacity = homeClub.capacity || 30000;
         const attendance = Math.min(capacity, Math.round(capacity * finalPct));
@@ -101,13 +147,17 @@ const FinanceEngine = {
         homeClub.balance = (homeClub.balance || 0) + ticketIncome;
         match.attendance = attendance;
         match.ticketIncome = ticketIncome;
+        match.attendancePct = Math.round(finalPct * 100);
+        match.attendanceReason = gruende.join(", ") || null;
+        match.soldOut = attendance >= capacity;
 
         this.recordTransaction(
-            state, 
-            homeClub.id, 
-            "ticket_income", 
-            ticketIncome, 
-            `Ticketeinnahmen Heimspiel vs. ${awayClub?.name || 'Gegner'} (${attendance.toLocaleString('de-DE')} Zuschauer zu ${ticketPrice} €)`
+            state,
+            homeClub.id,
+            "ticket_income",
+            ticketIncome,
+            `Ticketeinnahmen Heimspiel vs. ${awayClub?.name || 'Gegner'} (${attendance.toLocaleString('de-DE')} Zuschauer zu ${ticketPrice} €`
+                + (match.soldOut ? ", ausverkauft" : `, ${match.attendancePct} % Auslastung`) + ")"
         );
 
         return ticketIncome;

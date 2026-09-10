@@ -4615,3 +4615,28 @@ body {
 @media (max-width: 600px) {
     .team-compare-label { min-width: 62px; font-size: 10px; }
 }
+
+/* Derbys im Spielplan hervorheben */
+.fixture-card.derby-match {
+    border-color: rgba(239, 68, 68, 0.45);
+    background: linear-gradient(180deg, rgba(239, 68, 68, 0.08), transparent 60%);
+}
+
+.fixture-derby {
+    grid-column: 1 / -1;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #f87171;
+    margin-bottom: 4px;
+}
+
+.fixture-crowd {
+    grid-column: 1 / -1;
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}

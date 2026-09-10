@@ -335,9 +335,16 @@ class MatchEngine {
         const attrAvg = attrs.reduce((sum, val) => sum + val, 0) / attrs.length;
         const baseSkill = (attrAvg * 0.6) + (ovr * 0.4);
 
-        const fitnessFactor = 0.6 + ((player.fitness || 100) / 100) * 0.4;
-        const moraleFactor = 0.85 + ((player.morale || 75) / 100) * 0.2;
-        const formFactor = 0.85 + ((player.form || 7.0) / 10) * 0.2;
+        // Kondition, Stimmung und Form färben die Leistung ein - sie ersetzen
+        // sie aber nicht. Vorher verschob allein die Moral die Spielstärke um
+        // dreizehn Prozent, während zwischen dem besten und dem schwächsten
+        // Bundesligakader nur sieben Prozent liegen: Eine Formkrise machte aus
+        // dem Meister rechnerisch einen Abstiegskandidaten, und weil schlechte
+        // Ergebnisse die Moral weiter drückten, kam kein Verein aus dieser
+        // Spirale wieder heraus.
+        const fitnessFactor = 0.72 + ((player.fitness || 100) / 100) * 0.28;
+        const moraleFactor = 0.94 + ((player.morale || 75) / 100) * 0.08;
+        const formFactor = 0.92 + ((player.form || 7.0) / 10) * 0.11;
         const positionFactor = this.getPositionModifier(player, deployedPos);
 
         return baseSkill * fitnessFactor * moraleFactor * formFactor * positionFactor;

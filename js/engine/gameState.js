@@ -718,7 +718,7 @@ class GameState {
                     reflexes: pData.reflexes || 30,
                     handling: pData.handling || 30,
                     oneOnOne: pData.oneOnOne || 30,
-                    positioning: pData.positioning || 30,
+                    positioning: pData.positioning || GameState.stellungsspielAus(pData),
                     kicking: pData.kicking || 30,
                     pace: pData.pace || 70,
                     shooting: pData.shooting || 65,
@@ -923,6 +923,38 @@ class GameState {
     }
 
     /**
+     * Stellungsspiel für handgepflegte Spieler ableiten.
+     *
+     * "positioning" ist ein Feldspielerwert - er beschreibt, ob einer zur
+     * richtigen Zeit am richtigen Ort steht. In der Vereinsdatei ist er nur
+     * bei den Torhütern hinterlegt; alle übrigen Spieler bekamen deshalb den
+     * Vorgabewert 30, der eigentlich für die Torwartwerte eines Feldspielers
+     * gedacht war.
+     *
+     * Für Innen- und Außenverteidiger ist das Stellungsspiel einer von vier
+     * Werten, aus denen die Spielstärke gebildet wird. Ein Weltklasse-
+     * verteidiger rutschte damit rechnerisch auf Kreisliganiveau: Joshua Kimm,
+     * Gesamtstärke 87, kam auf effektive 66. Weil der Fehler alle handgepflegten
+     * Kader gleichmäßig traf, schrumpfte der Abstand zwischen dem besten und
+     * dem schwächsten Bundesligakader von neun auf fünf Punkte - und damit
+     * auch der Abstand in der Tabelle am Saisonende.
+     *
+     * Die Zuschläge entsprechen denen, mit denen der Spielergenerator
+     * erzeugte Spieler ausstattet.
+     */
+    static STELLUNGSSPIEL_PROFIL = {
+        IV: 4, LV: 1, RV: 1, DM: 3, ZM: 0,
+        LM: -2, RM: -2, OM: -6, LA: -8, RA: -8, ST: -4
+    };
+
+    static stellungsspielAus(pData) {
+        const staerke = pData?.overall || 68;
+        if (!pData || pData.pos === "TW") return staerke;
+        const zuschlag = GameState.STELLUNGSSPIEL_PROFIL[pData.pos] ?? 0;
+        return Math.max(20, Math.min(99, Math.round(staerke + zuschlag)));
+    }
+
+    /**
      * Ausgefallene Spieler in Startelf und Bank ersetzen.
      *
      * Verletzte und Gesperrte werden aus der Aufstellung genommen - bisher
@@ -930,6 +962,15 @@ class GameState {
      * dauerhaft auf zehn Mann, und ein Livespiel ließ sich gar nicht mehr
      * starten. Hier rückt der beste verfügbare Ersatz nach; die übrige
      * Aufstellung des Trainers bleibt unangetastet.
+     *
+     * Entscheidend ist dabei die *Position im Array*: Die Einsatzposition
+     * eines Spielers ergibt sich aus seinem Platz in der Aufstellung. Wer den
+     * Ausfall einfach herausfiltert, lässt alle dahinter um einen Platz
+     * aufrücken - der Torwart steht dann in der Innenverteidigung, der
+     * Mittelstürmer auf dem Flügel. Nach ein paar Ausfällen spielte die halbe
+     * Mannschaft auf fremden Positionen, ohne dass man es der Aufstellung
+     * ansah. Deshalb bleibt jeder Platz hier erhalten: Ein Ausfall hinterlässt
+     * eine Lücke, die genau dort wieder gefüllt wird.
      *
      * Gibt true zurück, wenn etwas verändert wurde.
      */
@@ -950,19 +991,6 @@ class GameState {
         const lineupVorher = Array.isArray(club.lineup) ? club.lineup.slice() : [];
         const benchVorher = Array.isArray(club.bench) ? club.bench.slice() : [];
 
-        const lineup = lineupVorher.filter(einsatzfaehig);
-        const bench = benchVorher.filter(id => einsatzfaehig(id) && !lineup.includes(id));
-
-        const vergeben = new Set([...lineup, ...bench]);
-        const frei = club.playerIds
-            .filter(id => einsatzfaehig(id) && !vergeben.has(id))
-            .map(id => byId.get(id));
-
-        if (lineup.length >= 11 && frei.length === 0) {
-            const unveraendert = lineup.length === lineupVorher.length && bench.length === benchVorher.length;
-            if (unveraendert) return false;
-        }
-
         const posEngine = GameState._getPositionEngine();
         const bewerte = (player, pos) => {
             if (posEngine && typeof posEngine.getEffectiveRating === "function") {
@@ -971,31 +999,99 @@ class GameState {
             return (player.overall || 0) - (player.pos === pos ? 0 : 8);
         };
 
-        // Welche Positionen fehlen in der Elf?
         const slots = (GameState.getFormationConfig(club.formation).positions || []).map(s => s.pos);
-        const besetzt = lineup.map(id => byId.get(id)).filter(Boolean);
-        const offeneSlots = [];
-        const nochDa = besetzt.slice();
-        slots.forEach(pos => {
-            const idx = nochDa.findIndex(p => p.pos === pos);
-            if (idx >= 0) nochDa.splice(idx, 1);
-            else offeneSlots.push(pos);
+        const plaetze = new Array(slots.length || 11).fill(null);
+        lineupVorher.slice(0, plaetze.length).forEach((id, i) => { plaetze[i] = id; });
+
+        // Wer für wen einspringt, wird notiert. Kommt der Stammspieler zurück,
+        // bekommt er seinen Platz wieder - sonst behielte die Vertretung das
+        // Trikot bis zum Saisonende, und der Kader würde von Ausfall zu
+        // Ausfall schwächer, ohne dass der Manager je etwas falsch gemacht hat.
+        const vertretungen = (club.lineupCover && typeof club.lineupCover === "object")
+            ? { ...club.lineupCover } : {};
+        const zurueckAufBank = [];
+
+        Object.keys(vertretungen).forEach(schluessel => {
+            const platz = Number(schluessel);
+            const eintrag = vertretungen[schluessel] || {};
+            const stammId = eintrag.stamm;
+            const vertreterId = eintrag.vertreter;
+
+            // Hat der Manager den Platz selbst neu besetzt, gilt seine Wahl
+            if (!(platz >= 0 && platz < plaetze.length) || plaetze[platz] !== vertreterId) {
+                delete vertretungen[schluessel];
+                return;
+            }
+            if (plaetze.includes(stammId)) { delete vertretungen[schluessel]; return; }
+            if (!einsatzfaehig(stammId)) return; // noch nicht zurück
+
+            plaetze[platz] = stammId;
+            if (vertreterId) zurueckAufBank.push(vertreterId);
+            delete vertretungen[schluessel];
         });
 
-        // Zuerst von der Bank, dann aus dem Restkader nachrücken
-        const ersatzbank = [...bench.map(id => byId.get(id)).filter(Boolean), ...frei];
+        // Ausfälle hinterlassen ihre Lücke - der Platz bleibt bestehen
+        const ausgefallen = new Map();
+        plaetze.forEach((id, i) => {
+            if (!id) return;
+            if (!einsatzfaehig(id)) { ausgefallen.set(i, id); plaetze[i] = null; return; }
+            if (plaetze.indexOf(id) !== i) plaetze[i] = null; // Doppelnennung
+        });
 
-        while (lineup.length < 11 && ersatzbank.length > 0) {
-            const gesucht = offeneSlots.shift() || "ZM";
+        const inElf = new Set(plaetze.filter(Boolean));
+        const bench = benchVorher.filter(id => einsatzfaehig(id) && !inElf.has(id));
+        const vergeben = new Set([...inElf, ...bench]);
+        const frei = club.playerIds
+            .filter(id => einsatzfaehig(id) && !vergeben.has(id))
+            .map(id => byId.get(id));
+
+        const offeneSlots = [];
+        plaetze.forEach((id, i) => { if (!id) offeneSlots.push(i); });
+
+        if (offeneSlots.length === 0 && zurueckAufBank.length === 0) {
+            const unveraendert = plaetze.length === lineupVorher.length
+                && plaetze.every((id, i) => lineupVorher[i] === id)
+                && bench.length === benchVorher.length
+                && bench.every((id, i) => benchVorher[i] === id);
+            if (unveraendert) {
+                club.lineupCover = vertretungen;
+                return false;
+            }
+        }
+
+        // Zuerst von der Bank, dann aus dem Restkader nachrücken - immer für
+        // genau die Position, die frei geworden ist
+        const ersatzbank = [
+            ...zurueckAufBank.map(id => byId.get(id)).filter(p => p && einsatzfaehig(p.id)),
+            ...bench.map(id => byId.get(id)).filter(Boolean),
+            ...frei
+        ];
+
+        offeneSlots.forEach(platz => {
+            const gesucht = slots[platz] || "ZM";
             ersatzbank.sort((a, b) => bewerte(b, gesucht) - bewerte(a, gesucht));
             const gewaehlt = ersatzbank.shift();
-            if (!gewaehlt) break;
-            lineup.push(gewaehlt.id);
+            if (!gewaehlt) return;
+            plaetze[platz] = gewaehlt.id;
             const bankIdx = bench.indexOf(gewaehlt.id);
             if (bankIdx >= 0) bench.splice(bankIdx, 1);
             const freiIdx = frei.indexOf(gewaehlt);
             if (freiIdx >= 0) frei.splice(freiIdx, 1);
-        }
+
+            const stammId = ausgefallen.get(platz);
+            if (stammId && stammId !== gewaehlt.id) {
+                vertretungen[platz] = { stamm: stammId, vertreter: gewaehlt.id };
+            }
+        });
+
+        // Wer verdrängt wurde und keinen Platz fand, setzt sich auf die Bank
+        ersatzbank.forEach(p => {
+            if (!p || bench.includes(p.id) || plaetze.includes(p.id)) return;
+            if (zurueckAufBank.includes(p.id) && bench.length < 7) bench.unshift(p.id);
+        });
+
+        const lineup = plaetze.filter(Boolean);
+        club.lineupCover = vertretungen;
 
         // Bank wieder auffüllen, Ersatztorwart zuerst
         const restlich = frei.filter(p => !lineup.includes(p.id) && !bench.includes(p.id));

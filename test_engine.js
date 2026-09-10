@@ -642,6 +642,122 @@ function runEngineTests() {
         if (summeDiff !== 0) throw new Error(`Die Tordifferenzen summieren sich auf ${summeDiff} statt auf null`);
     });
 
+    // 14a2. Ein Ausfall darf nicht die halbe Mannschaft verschieben
+    test("GameState: Ein Ausfall lässt alle anderen auf ihrer Position stehen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const slots = GameState.getFormationConfig(club.formation).positions.map(s => s.pos);
+
+        // Wer stand vor dem Ausfall auf welcher Position?
+        const vorher = new Map();
+        club.lineup.forEach((id, i) => vorher.set(id, slots[i]));
+
+        // Der Torwart fällt aus - der denkbar schlimmste Fall, denn er steht
+        // ganz vorne im Array und würde alle anderen um einen Platz schieben.
+        const torwartId = club.lineup[0];
+        const torwart = state.players.find(p => p.id === torwartId);
+        torwart.injuredWeeks = 4;
+
+        GameState.repairLineup(club, state.players);
+
+        if (club.lineup.length !== 11) {
+            throw new Error(`Nach dem Ausfall stehen ${club.lineup.length} Spieler in der Elf`);
+        }
+        if (club.lineup.includes(torwartId)) {
+            throw new Error("Der verletzte Torwart steht weiterhin in der Startelf");
+        }
+
+        club.lineup.forEach((id, i) => {
+            const alt = vorher.get(id);
+            if (alt && alt !== slots[i]) {
+                const spieler = state.players.find(p => p.id === id);
+                throw new Error(`${spieler?.name || id} stand auf ${alt} und steht jetzt auf ${slots[i]}`);
+            }
+        });
+
+        // Auf dem frei gewordenen Platz muss ein Torwart stehen
+        const ersatz = state.players.find(p => p.id === club.lineup[0]);
+        if (!ersatz || ersatz.pos !== "TW") {
+            throw new Error(`Auf der Torwartposition steht jetzt ein ${ersatz?.pos || "niemand"}`);
+        }
+
+        // Und wenn der Stammtorwart zurück ist, gehört ihm sein Platz wieder
+        torwart.injuredWeeks = 0;
+        GameState.repairLineup(club, state.players);
+        if (club.lineup[0] !== torwartId) {
+            throw new Error("Der genesene Stammtorwart bekommt seinen Platz nicht zurück");
+        }
+    });
+
+    // 14a3. Stellungsspiel ist ein Feldspielerwert, kein Torwartwert
+    test("GameState: Feldspieler bekommen ein Stellungsspiel passend zu ihrer Stärke", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const handgepflegt = state.players.filter(p => !String(p.id).startsWith("p_"));
+        const abwehr = handgepflegt.filter(p => ["IV", "LV", "RV"].includes(p.pos));
+        if (abwehr.length < 20) throw new Error("Zu wenige handgepflegte Verteidiger für den Test");
+
+        abwehr.forEach(p => {
+            if (p.positioning < p.overall - 15) {
+                throw new Error(`${p.name} (${p.pos}, Stärke ${p.overall}) hat nur ${p.positioning} Stellungsspiel`);
+            }
+        });
+
+        // Das Stellungsspiel ist einer von vier Werten, aus denen die Engine die
+        // Spielstärke eines Verteidigers bildet. Steht er zu tief, rutscht ein
+        // Weltklassemann auf Kreisliganiveau - und weil das alle handgepflegten
+        // Kader gleich trifft, verschwindet der Abstand zwischen den Vereinen.
+        const stark = abwehr.filter(p => p.overall >= 82);
+        stark.forEach(p => {
+            const eff = MatchEngine.calculateEffectivePlayerSkill({ ...p, fitness: 100, morale: 75, form: 7 }, p.pos);
+            if (eff < p.overall - 12) {
+                throw new Error(`${p.name} hat Stärke ${p.overall}, spielt aber wie ${eff.toFixed(1)}`);
+            }
+        });
+    });
+
+    // 14a4. Der bessere Kader muss sich über viele Spiele durchsetzen
+    test("MatchEngine: Kaderqualität entscheidet Spiele, ohne sie vorherzusagen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const liga = state.clubs.filter(c => c.leagueId === "de_liga_1");
+        const heim = liga.find(c => c.id === "muc");
+        const gast = liga.find(c => c.id !== "muc");
+
+        const felder = ["pace", "shooting", "passing", "dribbling", "defense", "physical",
+            "stamina", "vision", "technique", "positioning"];
+        const gastKader = new Set(gast.playerIds);
+        state.players.forEach(p => {
+            if (!gastKader.has(p.id)) return;
+            p.overall = Math.max(30, p.overall - 12);
+            felder.forEach(f => { if (typeof p[f] === "number") p[f] = Math.max(20, p[f] - 12); });
+        });
+
+        let siege = 0, tore = 0;
+        const partien = 200;
+        for (let i = 0; i < partien; i++) {
+            const m = { id: "q" + i, played: false, homeClubId: heim.id, awayClubId: gast.id, leagueId: "de_liga_1" };
+            MatchEngine.simulateFullMatch(m, heim, gast, state.players);
+            if (m.homeGoals > m.awayGoals) siege++;
+            tore += m.homeGoals + m.awayGoals;
+            state.players.forEach(p => {
+                p.fitness = 95; p.morale = 78; p.form = 7;
+                p.suspendedMatches = 0; p.injuredWeeks = 0;
+            });
+        }
+
+        const quote = siege / partien * 100;
+        // Ein Kader, der zwölf Punkte besser ist, gewinnt daheim deutlich - aber
+        // längst nicht immer. Vorher lag die Quote bei 63 Prozent: Der Meister
+        // wurde damit zum Mittelfeldverein, weil sich Qualität über 34 Spieltage
+        // nicht mehr durchsetzen konnte.
+        if (quote < 66 || quote > 88) {
+            throw new Error(`Der klar bessere Kader gewinnt ${quote.toFixed(0)} % der Heimspiele (erwartet 66-88 %)`);
+        }
+        const schnitt = tore / partien;
+        if (schnitt < 2.4 || schnitt > 4.2) {
+            throw new Error(`${schnitt.toFixed(2)} Tore pro Spiel in diesen Partien (erwartet 2.4-4.2)`);
+        }
+    });
+
     // 14b. Verträge, Ablösefreie und Karriereenden über zwei Saisonwechsel
     test("SeasonEngine: Verträge laufen aus, Spieler treten zurück, Kader bleiben spielfähig", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });

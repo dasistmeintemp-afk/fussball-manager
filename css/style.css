@@ -4432,3 +4432,211 @@ body {
     background: rgba(148, 163, 184, 0.08);
     border-left: 3px solid rgba(148, 163, 184, 0.35);
 }
+
+/* ==========================================================================
+   Sternereihe nach Vorbild des Football Manager
+
+   Fünf Sterne, jeder aus zwei Hälften. Jede Hälfte kennt vier Zustände:
+   golden gefüllt (gesicherte Stärke), blass (mögliche Stärke, noch nicht
+   gescoutet), umrandet (Entwicklungspotenzial) und leer.
+   ========================================================================== */
+.ability-stars {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    line-height: 1;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.ability-star {
+    position: relative;
+    display: inline-block;
+    width: 15px;
+    height: 15px;
+}
+
+.ability-stars-sm .ability-star {
+    width: 11px;
+    height: 11px;
+}
+
+.ability-star-half {
+    position: absolute;
+    top: 0;
+    width: 50%;
+    height: 100%;
+    /* Sternform als Maske: so lässt sich jede Hälfte einzeln einfärben */
+    -webkit-mask-image: var(--star-shape);
+    mask-image: var(--star-shape);
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-size: 200% 100%;
+    mask-size: 200% 100%;
+}
+
+.ability-star-left {
+    left: 0;
+    -webkit-mask-position: left center;
+    mask-position: left center;
+}
+
+.ability-star-right {
+    right: 0;
+    -webkit-mask-position: right center;
+    mask-position: right center;
+}
+
+:root {
+    --star-shape: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 1.6l3.1 6.9 7.4.8-5.5 5 1.5 7.3-6.5-3.7-6.5 3.7 1.5-7.3-5.5-5 7.4-.8z'/></svg>");
+}
+
+/* Gesicherte heutige Stärke */
+.ability-star-half.star-solid {
+    background: linear-gradient(180deg, #fbbf24, #f59e0b);
+}
+
+/* Könnte er heute schon sein - das Scoutwissen reicht nicht aus */
+.ability-star-half.star-maybe {
+    background: #f59e0b;
+    opacity: 0.42;
+}
+
+/* Dahin kann er sich noch entwickeln */
+.ability-star-half.star-growth {
+    background: repeating-linear-gradient(
+        135deg,
+        rgba(56, 189, 248, 0.85) 0 2px,
+        rgba(56, 189, 248, 0.18) 2px 4px
+    );
+}
+
+/* Außerhalb seiner Möglichkeiten */
+.ability-star-half.star-none {
+    background: rgba(148, 163, 184, 0.22);
+}
+
+/* Legende, damit die vier Zustände nicht erraten werden müssen */
+.star-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 8px;
+}
+
+.star-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.star-legend i {
+    width: 11px;
+    height: 11px;
+    display: inline-block;
+    -webkit-mask-image: var(--star-shape);
+    mask-image: var(--star-shape);
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+}
+
+.star-legend i.star-solid { background: linear-gradient(180deg, #fbbf24, #f59e0b); }
+.star-legend i.star-maybe { background: #f59e0b; opacity: 0.42; }
+.star-legend i.star-growth {
+    background: repeating-linear-gradient(135deg, rgba(56,189,248,0.85) 0 2px, rgba(56,189,248,0.18) 2px 4px);
+}
+.star-legend i.star-none { background: rgba(148, 163, 184, 0.22); }
+
+/* Mannschaftsstärke: dieselbe Sprache, nur größer */
+.team-strength-stars .ability-star {
+    width: 19px;
+    height: 19px;
+}
+
+/* Mannschaftsvergleich: eigene Elf links, Gegner rechts */
+.team-compare-head {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 12px;
+    font-weight: 700;
+    font-size: 13px;
+    padding-bottom: 10px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.team-compare-head span:first-child { text-align: right; }
+.team-compare-head span:last-child { text-align: left; }
+.team-compare-head .text-muted {
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.team-compare-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 12px;
+    padding: 5px 0;
+}
+
+.team-compare-side { display: flex; }
+.team-compare-row .team-compare-side:first-child { justify-content: flex-end; }
+.team-compare-row .team-compare-side:last-child { justify-content: flex-start; }
+
+.team-compare-label {
+    min-width: 92px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.team-compare-total {
+    padding: 9px 0;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.team-compare-total .team-compare-label {
+    color: var(--text-primary);
+    font-size: 12px;
+}
+
+@media (max-width: 600px) {
+    .team-compare-label { min-width: 62px; font-size: 10px; }
+}
+
+/* Derbys im Spielplan hervorheben */
+.fixture-card.derby-match {
+    border-color: rgba(239, 68, 68, 0.45);
+    background: linear-gradient(180deg, rgba(239, 68, 68, 0.08), transparent 60%);
+}
+
+.fixture-derby {
+    grid-column: 1 / -1;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #f87171;
+    margin-bottom: 4px;
+}
+
+.fixture-crowd {
+    grid-column: 1 / -1;
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}

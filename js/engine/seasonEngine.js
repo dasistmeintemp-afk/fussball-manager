@@ -147,6 +147,22 @@ class SeasonEngine {
             trainingEngine.applyMatchdayStrain(state);
         }
 
+        // Und das Ergebnis kommt in der Kabine an. Vorher ließ ein 5:0 die
+        // Mannschaft exakt so zurück wie ein 0:4.
+        const dressingRoom = _resolve('DressingRoomEngine', './dressingRoomEngine.js');
+        if (dressingRoom && typeof dressingRoom.processMatch === 'function') {
+            const runde = (state.schedule || []).find(r => r.matchday === state.currentMatchday);
+            const eigenesSpiel = runde?.matches?.find(m => m.homeClubId === state.userClubId || m.awayClubId === state.userClubId);
+            if (eigenesSpiel && eigenesSpiel.played) {
+                state.lastDressingRoom = dressingRoom.processMatch(state, eigenesSpiel);
+            }
+            // Die Gegner haben ebenfalls eine Kabine - sonst spielt der Nutzer
+            // das ganze Jahr gegen dauerhaft bestens gelaunte Mannschaften
+            if (typeof dressingRoom.settleAiClubs === 'function') {
+                dressingRoom.settleAiClubs(state);
+            }
+        }
+
         // Laufende Verhandlungen einen Schritt weiterbringen
         const negotiationEngine = _resolve('NegotiationEngine', './negotiationEngine.js');
         if (negotiationEngine && typeof negotiationEngine.processDay === 'function') {
@@ -233,15 +249,25 @@ class SeasonEngine {
                 const opponent = state.clubs.find(c => c.id === opponentId);
                 const isHome = nextMatch.homeClubId === userClub.id;
 
+                // Ein Derby kündigt sich an - das ist kein Spiel wie jedes andere
+                const derbyKopf = nextMatch.isDerby
+                    ? `🔥 ${nextMatch.derbyTitle}: `
+                    : "";
+                const derbyText = nextMatch.isDerby
+                    ? `\n\nDas ist kein Spieltag wie jeder andere. Die Stadt spricht seit Wochen über nichts anderes, `
+                      + `das Stadion wird voll, und die Kabine weiß genau, was auf dem Spiel steht. `
+                      + `Ein Sieg trägt uns durch Wochen - eine Niederlage auch, nur andersherum.`
+                    : "";
+
                 state.inbox.unshift({
                     id: Date.now() + 5,
                     matchday: state.currentMatchday,
                     date: `Spieltag ${state.currentMatchday}`,
                     sender: "Co-Trainer",
-                    subject: `Spieltag ${state.currentMatchday}: Vorbericht gegen ${opponent?.name}`,
-                    body: `Am ${state.currentMatchday}. Spieltag treffen wir ${isHome ? "vor heimischer Kulisse" : "auswärts"} auf ${opponent?.name} (Tabellenplatz: ${SeasonEngine.getClubRank(state, opponentId)}).\n\nBereiten Sie die Mannschaft im Taktik- und Aufstellungsmenü optimal auf die Begegnung vor!`,
+                    subject: `${derbyKopf}Spieltag ${state.currentMatchday}: Vorbericht gegen ${opponent?.name}`,
+                    body: `Am ${state.currentMatchday}. Spieltag treffen wir ${isHome ? "vor heimischer Kulisse" : "auswärts"} auf ${opponent?.name} (Tabellenplatz: ${SeasonEngine.getClubRank(state, opponentId)}).${derbyText}\n\nBereiten Sie die Mannschaft im Taktik- und Aufstellungsmenü optimal auf die Begegnung vor!`,
                     read: false,
-                    type: "preview"
+                    type: nextMatch.isDerby ? "derby_preview" : "preview"
                 });
             }
             return { seasonEnded: false };
@@ -283,6 +309,112 @@ class SeasonEngine {
         if (userClub.balance > 25000000) newConfidence += 5;
 
         state.boardConfidence = Math.min(100, Math.max(10, Math.round(newConfidence)));
+
+        SeasonEngine.checkJobSecurity(state, userClub, currentRank, targetRank);
+    }
+
+    /**
+     * Der Vorstand macht Ernst.
+     *
+     * Bisher konnte das Vertrauen auf fünfundzwanzig Prozent fallen, ohne dass
+     * je etwas geschah - der Balken im Kopf der Seite war reine Dekoration und
+     * der Satz "Der Vorstand fordert dringend bessere Ergebnisse" eine leere
+     * Drohung. Jetzt gibt es erst ein Gespräch, dann ein Ultimatum mit einer
+     * klaren Frist, und wer sie verstreichen lässt, wird entlassen.
+     *
+     * Man muss dafür nichts verstehen: Es steht wörtlich im Postfach, was
+     * verlangt wird und bis wann.
+     */
+    static checkJobSecurity(state, userClub, currentRank, targetRank) {
+        if (!state.jobSecurity) {
+            state.jobSecurity = { stage: "ruhig", ultimatumUntil: null, ultimatumRank: null, warnedAt: null };
+        }
+
+        const lage = state.jobSecurity;
+        const vertrauen = state.boardConfidence;
+        const spieltag = state.currentMatchday || 1;
+
+        // Ein laufendes Ultimatum läuft irgendwann ab
+        if (lage.stage === "ultimatum" && lage.ultimatumUntil !== null) {
+            if (currentRank <= lage.ultimatumRank) {
+                lage.stage = "ruhig";
+                lage.ultimatumUntil = null;
+                SeasonEngine.boardMessage(state, "🤝 Der Vorstand stellt sich hinter Sie",
+                    `Sie haben geliefert. Mit Tabellenplatz ${currentRank} haben Sie die Vorgabe erfüllt.\n\n`
+                    + `Das Ultimatum ist vom Tisch. Machen Sie weiter so.`, "board_relief");
+                return;
+            }
+
+            if (spieltag >= lage.ultimatumUntil) {
+                lage.stage = "entlassen";
+                state.managerDismissed = {
+                    matchday: spieltag,
+                    rank: currentRank,
+                    seasonYear: state.seasonYear,
+                    clubName: userClub.name
+                };
+                SeasonEngine.boardMessage(state, "❌ Der Vorstand beendet die Zusammenarbeit",
+                    `Die gesetzte Frist ist verstrichen, ohne dass sich die sportliche Lage gebessert hat. `
+                    + `Zum ${spieltag}. Spieltag steht ${userClub.name} auf Platz ${currentRank}.\n\n`
+                    + `Der Vorstand hat entschieden, sich von Ihnen zu trennen. Wir danken für Ihre Arbeit.`,
+                    "board_dismissal");
+                return;
+            }
+        }
+
+        // Vor dem sechsten Spieltag bekommt jeder Trainer Zeit
+        if (spieltag < 6) return;
+
+        // Ultimatum: Es steht wirklich schlecht
+        if (vertrauen <= 28 && lage.stage !== "ultimatum") {
+            const frist = Math.min(state.totalMatchdays || 34, spieltag + 5);
+            const zielPlatz = Math.max(1, Math.min(currentRank - 2, targetRank + 3));
+
+            lage.stage = "ultimatum";
+            lage.ultimatumUntil = frist;
+            lage.ultimatumRank = zielPlatz;
+
+            SeasonEngine.boardMessage(state, "⏳ Ultimatum des Vorstands",
+                `So kann es nicht weitergehen. ${userClub.name} steht auf Platz ${currentRank}, `
+                + `erwartet war Platz ${targetRank} oder besser.\n\n`
+                + `Sie haben bis zum ${frist}. Spieltag Zeit, die Mannschaft mindestens auf Platz ${zielPlatz} zu führen. `
+                + `Gelingt das nicht, trennen wir uns.`, "board_ultimatum");
+            return;
+        }
+
+        // Warnung: Es läuft nicht rund
+        if (vertrauen <= 45 && lage.stage === "ruhig") {
+            lage.stage = "warnung";
+            lage.warnedAt = spieltag;
+            SeasonEngine.boardMessage(state, "⚠️ Der Vorstand ist besorgt",
+                `Wir haben uns die Entwicklung angesehen und sind unzufrieden. Platz ${currentRank} `
+                + `entspricht nicht dem, was wir uns vorgenommen haben.\n\n`
+                + `Wir erwarten in den kommenden Wochen eine deutliche Steigerung.`, "board_warning");
+            return;
+        }
+
+        // Entspannung, wenn es wieder läuft
+        if (vertrauen >= 62 && lage.stage === "warnung") {
+            lage.stage = "ruhig";
+            SeasonEngine.boardMessage(state, "👍 Der Vorstand ist wieder zufrieden",
+                `Die Entwicklung stimmt wieder. Platz ${currentRank} liest sich deutlich besser.\n\n`
+                + `Wir sehen der weiteren Saison gelassen entgegen.`, "board_relief");
+        }
+    }
+
+    /** Kurze Nachricht des Vorstands ins Postfach */
+    static boardMessage(state, subject, body, type) {
+        if (!Array.isArray(state.inbox)) state.inbox = [];
+        state.inbox.unshift({
+            id: Date.now() + Math.floor(Math.random() * 1000),
+            matchday: state.currentMatchday,
+            date: `Spieltag ${state.currentMatchday}`,
+            sender: "Vorstand",
+            subject,
+            body,
+            read: false,
+            type: type || "board_message"
+        });
     }
 
     /**

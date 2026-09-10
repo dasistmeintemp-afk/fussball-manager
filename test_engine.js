@@ -421,6 +421,72 @@ function runEngineTests() {
         }
     });
 
+    // 13a. Stärke und Potenzial in einer Sternereihe
+    test("PlayerRatingEngine: Eine Sternereihe zeigt heutige Stärke und Potenzial", () => {
+        const haelften = (html) => (html.match(/star-(solid|maybe|growth|none)/g) || []).map(s => s.replace("star-", ""));
+        const zaehle = (html, art) => haelften(html).filter(h => h === art).length;
+
+        // Fünf Sterne heißen zehn Hälften - immer, egal welche Werte
+        const reihe = PlayerRatingEngine.renderAbilityStars({ caMin: 2, caMax: 2, paMax: 4.5 });
+        if (haelften(reihe).length !== 10) {
+            throw new Error(`Die Reihe hat ${haelften(reihe).length} Sternhälften statt zehn`);
+        }
+        if (zaehle(reihe, "solid") !== 4) throw new Error("Zwei Sterne heutige Stärke müssen vier gefüllte Hälften ergeben");
+        if (zaehle(reihe, "growth") !== 5) throw new Error("Das Potenzial bis 4,5 muss fünf schraffierte Hälften ergeben");
+        if (zaehle(reihe, "none") !== 1) throw new Error("Der Rest oberhalb des Potenzials muss leer bleiben");
+
+        // Ohne Scoutwissen kommt die unsichere Spanne dazu
+        const unsicher = PlayerRatingEngine.renderAbilityStars({ caMin: 1.5, caMax: 3, paMax: 5 });
+        if (zaehle(unsicher, "solid") !== 3) throw new Error("Die gesicherte Stärke stimmt nicht");
+        if (zaehle(unsicher, "maybe") !== 3) throw new Error("Die geschätzte Spanne fehlt in der Reihe");
+        if (zaehle(unsicher, "growth") !== 4) throw new Error("Das Potenzial fehlt in der Reihe");
+
+        // Wer am Limit ist, hat keinen schraffierten Anteil
+        const amLimit = PlayerRatingEngine.renderAbilityStars({ caMin: 3, caMax: 3, paMax: 3 });
+        if (zaehle(amLimit, "growth") !== 0) {
+            throw new Error("Ein Spieler am Leistungslimit darf kein Entwicklungspotenzial anzeigen");
+        }
+        if (!/Leistungslimit/.test(PlayerRatingEngine.describeAbilityStars({ caMin: 3, caMax: 3, paMax: 3 }))) {
+            throw new Error("Der Klartext nennt das Leistungslimit nicht");
+        }
+
+        // Die Spielerkarte liefert die Reihe direkt mit
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const eigener = state.players.find(p => p.clubId === "muc");
+        const karte = PlayerRatingEngine.calculateVisiblePlayerCard(eigener, {
+            userClubId: "muc", userSquadAvgAbility: 150
+        });
+        if (!karte.abilityStarsHtml || !karte.abilityStarsHtml.includes("ability-stars")) {
+            throw new Error("Die Spielerkarte enthält keine Sternereihe");
+        }
+        if (!karte.abilityStarsText || !/Sterne/.test(karte.abilityStarsText)) {
+            throw new Error("Die Spielerkarte enthält keine Klartextfassung der Sterne");
+        }
+
+        // Ein junger Spieler mit Luft nach oben zeigt Potenzial
+        const talent = { overall: 55, pot: 85, trueCurrentAbility: 110, truePotentialAbility: 170, age: 18, clubId: "muc", id: "t1" };
+        const talentKarte = PlayerRatingEngine.calculateVisiblePlayerCard(talent, {
+            userClubId: "muc", userSquadAvgAbility: 150
+        });
+        if (zaehle(talentKarte.abilityStarsHtml, "growth") === 0) {
+            throw new Error("Ein 18-jähriges Talent muss Entwicklungspotenzial in der Reihe zeigen");
+        }
+
+        // Mannschaftssterne: die Startelf zählt, nicht der ganze Kader
+        const club = state.clubs.find(c => c.id === "muc");
+        const kader = state.players.filter(p => club.playerIds.includes(p.id));
+        const mannschaft = PlayerRatingEngine.teamStars(kader, { squadAverageAbility: 150 });
+        if (!(mannschaft.ca > 0 && mannschaft.ca <= 5)) throw new Error(`Mannschaftssterne außerhalb der Skala: ${mannschaft.ca}`);
+        if (mannschaft.pa < mannschaft.ca) throw new Error("Das Mannschaftspotenzial darf nicht unter der heutigen Stärke liegen");
+
+        // Eine schwächere Mannschaft bekommt weniger Sterne
+        const schwach = kader.map(p => Object.assign({}, p, { overall: Math.max(20, p.overall - 25), pot: Math.max(20, p.overall - 20) }));
+        const schwachSterne = PlayerRatingEngine.teamStars(schwach, { squadAverageAbility: 150 });
+        if (!(schwachSterne.ca < mannschaft.ca)) {
+            throw new Error(`Ein deutlich schwächerer Kader bekommt nicht weniger Sterne (${schwachSterne.ca} statt unter ${mannschaft.ca})`);
+        }
+    });
+
     // 13b. Der Trainerstab plant selbst, der Manager behält das letzte Wort
     test("CoachingStaffEngine: Der Stab plant, der Manager kann ein Veto einlegen", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });

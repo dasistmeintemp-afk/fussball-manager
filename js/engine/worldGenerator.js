@@ -342,6 +342,13 @@ class WorldGenerator {
 
             state.standingsByLeague[league.id] = gameState.calculateStandings(clubs, schedule, 0);
         });
+
+        // Derbys im Spielplan markieren - sie stehen dann überall dort, wo
+        // Paarungen auftauchen, und wirken am Spieltag
+        const rivalry = _wgResolve("RivalryEngine", "./rivalryEngine.js", "RivalryEngine");
+        if (rivalry && typeof rivalry.tagAllSchedules === "function") {
+            rivalry.tagAllSchedules(state);
+        }
     }
 
     /** Liefert den Spielplan einer beliebigen Liga */

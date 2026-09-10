@@ -55,6 +55,7 @@ const OpponentAnalysisEngine = {
             const starsCa = card ? card.starsCa : 3.0;
             const starsCaHtml = card ? card.starsCaHtml : "★★★☆☆";
             const starsPaHtml = card ? card.starsPaHtml : "★★★★☆";
+            const abilityStarsHtml = card ? card.abilityStarsHtml : "";
             const abilityLabel = card ? card.abilityLabel : "Stammspieler";
             const bestRole = card ? card.bestRole : { role: "Allrounder", stars: 3.0, starsHtml: "★★★☆☆" };
             const confidence = card ? card.confidence : (p.scoutingKnowledge?.knowledgeLevel || 25);
@@ -70,6 +71,7 @@ const OpponentAnalysisEngine = {
                 starsCa,
                 starsCaHtml,
                 starsPaHtml,
+                abilityStarsHtml,
                 abilityLabel,
                 bestRole,
                 confidence,

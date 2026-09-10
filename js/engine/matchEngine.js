@@ -32,18 +32,36 @@ const _PositionEngine = (typeof PositionEngine !== 'undefined' && PositionEngine
 // Zentrale Kalibrierungs- und Tuning-Parameter
 const MATCH_TUNING = {
     baseGoalChance: {
-        // Kalibriert auf ca. 2.6 - 2.8 Tore pro Spiel, nachdem die Positionseignung
-        // die effektiven Teamstärken realistischer (und leicht niedriger) macht
-        through_ball: 0.145,
-        cross: 0.097,
-        dribble: 0.085,
-        corner: 0.066,
+        // Kalibriert auf rund 3.0 Tore pro Spiel - der Schnitt der letzten
+        // Bundesligajahre. Bei 2.7 Toren endeten zu viele Partien unentschieden:
+        // Der Meister kam auf achtzehn Siege und neun Remis, während es in
+        // Wirklichkeit zweiundzwanzig Siege und sechs Remis sind. Wer die
+        // besseren Chancen hat, muss sie auch zu Punkten machen können.
+        through_ball: 0.166,
+        cross: 0.112,
+        dribble: 0.098,
+        corner: 0.076,
         penalty: 0.77
     },
     skillInfluence: 340,
     cornerShotChance: 0.28,
     minGoalChance: 0.03,
     maxGoalChance: 0.40,
+
+    // Wie stark der Kaderunterschied darüber entscheidet, wer eine Szene hat.
+    //
+    // Vorher stand hier ein Verhältnis zweier fast gleich großer Zahlen:
+    // Mittelfeld geteilt durch die Summe beider Mittelfelder. Zwischen dem
+    // besten und dem schwächsten Bundesligakader liegen rund sieben Punkte -
+    // daraus wurden 52 Prozent der Szenen. Ein Spitzenteam kam also kaum
+    // häufiger vor das Tor als ein Abstiegskandidat, und die Tabelle war am
+    // Saisonende auf zehn Punkte zusammengeschnurrt.
+    //
+    // Jetzt zählt der Abstand selbst, gemessen am Niveau der Liga. Der
+    // Heimvorteil steckt bewusst in einer eigenen Zahl: Er ist überall
+    // gleich groß und darf nicht mitwachsen, wenn eine Mannschaft besser wird.
+    sceneShare: 1.15,
+    homeSceneEdge: 0.034,
 
     // Raten für Nebenereignisse
     foulRate: 0.28,
@@ -572,6 +590,11 @@ class MatchEngine {
         const homePower = this.calculateTeamPower(homeClub, allPlayers, true, activeHomePlayers);
         const awayPower = this.calculateTeamPower(awayClub, allPlayers, false, activeAwayPlayers);
 
+        // Dieselbe Heimelf ohne Heimbonus. Für die Verteilung der Szenen zählt
+        // allein, wie gut die beiden Kader sind - sonst steckte der Heimvorteil
+        // zweimal im Spiel und wüchse obendrein mit der Stärke der Mannschaft.
+        const homePowerNeutral = this.calculateTeamPower(homeClub, allPlayers, false, activeHomePlayers);
+
         // Ballbesitz & Passquote (B11)
         const homeTactics = homeClub.tactics || {};
         const awayTactics = awayClub.tactics || {};
@@ -605,8 +628,33 @@ class MatchEngine {
         if (homeTactics.tempo === "fast" || awayTactics.tempo === "fast") totalScenesBase += 4;
         if (homeTactics.tempo === "slow" || awayTactics.tempo === "slow") totalScenesBase -= 3;
 
+        // Ein überlegenes Team drückt die andere Mannschaft in die eigene
+        // Hälfte: Es entstehen nicht nur anteilig mehr Szenen, sondern
+        // insgesamt mehr.
         const powerDiff = homePower.total - awayPower.total;
-        const totalScenes = Math.max(20, Math.round(totalScenesBase + (powerDiff / 8) + _Random.float(-3, 3)));
+        const totalScenes = Math.max(20, Math.round(totalScenesBase + (powerDiff / 6) + _Random.float(-3, 3)));
+
+        // Kaderunterschied für die Szenenverteilung: Das Mittelfeld erobert den
+        // Ball, die beiden anderen Mannschaftsteile entscheiden, wer ihn behält.
+        //
+        // Angriff und Abwehr zählen bewusst gemeinsam. Die Taktikregler
+        // verschieben Stärke zwischen beiden - eine offensive Ausrichtung macht
+        // den Angriff stark und die Abwehr schwach. Zählte hier nur der Angriff,
+        // bekäme eine offensive Mannschaft dafür auch noch mehr Szenen, und der
+        // Nachteil ihrer offenen Abwehr fiele nicht mehr auf. Die Summe hebt die
+        // Verschiebung auf: Die Taktik wirkt dort, wo sie hingehört - beim
+        // Abschluss und in der Verteidigung -, während hier nur zählt, wie gut
+        // die beiden Kader wirklich sind.
+        //
+        // Gemessen wird am Niveau der Begegnung, damit dieselben Zahlen in der
+        // Kreisliga und in der Bundesliga dasselbe bedeuten.
+        const szenenAbstand = (homePowerNeutral.midfield - awayPower.midfield) * 0.65
+            + ((homePowerNeutral.attack + homePowerNeutral.defense)
+                - (awayPower.attack + awayPower.defense)) * 0.175;
+        const szenenBezug = Math.max(40,
+            (homePowerNeutral.midfield + awayPower.midfield
+                + homePowerNeutral.attack + awayPower.attack
+                + homePowerNeutral.defense + awayPower.defense) / 6);
 
         // Generiere chronologische Minuten über das Spiel
         const sceneMinutes = [];
@@ -947,11 +995,17 @@ class MatchEngine {
                 }
             });
 
-            // Ermittle angreifendes Team
-            let homeProb = homePower.midfield / (homePower.midfield + awayPower.midfield);
+            // Ermittle angreifendes Team: Wer die besseren Spieler hat, kommt
+            // öfter vor das Tor - im Mittelfeld entsteht die Szene, vorne wird
+            // sie zu einer echten Gelegenheit.
+            let homeProb = 0.5 + MATCH_TUNING.homeSceneEdge
+                + (szenenAbstand / szenenBezug) * MATCH_TUNING.sceneShare;
             // Momentum: Zurückliegendes Team drückt mehr
             if (currentHomeScore < currentAwayScore) homeProb += 0.08;
             else if (currentAwayScore < currentHomeScore) homeProb -= 0.08;
+
+            // Auch der klar schwächere Gegner kommt noch vor das Tor
+            homeProb = _Random.clamp(homeProb, 0.18, 0.82);
 
             const isHomeAttacking = _Random.chance(homeProb);
             const attClub = isHomeAttacking ? homeClub : awayClub;

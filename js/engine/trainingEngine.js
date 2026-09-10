@@ -489,9 +489,22 @@ class TrainingEngine {
         player.matchSharpness = Math.max(0, (player.matchSharpness ?? 60) - 25);
         player.daysSinceInjury = 0;
 
-        // Aus Startelf / Bank nehmen wenn verletzt
-        club.lineup = club.lineup.filter(id => id !== player.id);
+        // Aus Startelf / Bank nehmen wenn verletzt. Der Platz in der
+        // Aufstellung bestimmt die Einsatzposition - würde der Verletzte hier
+        // einfach herausgefiltert, rückten alle dahinter eine Position auf.
+        // Deshalb schließt GameState.repairLineup die Lücke gleich darauf an
+        // genau der Stelle, an der sie entstanden ist.
         club.bench = club.bench.filter(id => id !== player.id);
+
+        const gameStateRef = (typeof GameState !== "undefined" && GameState)
+            ? GameState
+            : ((typeof window !== "undefined" && window.GameState) ? window.GameState
+                : (typeof require !== "undefined" ? require("./gameState.js").GameState : null));
+        if (gameStateRef && typeof gameStateRef.repairLineup === "function") {
+            gameStateRef.repairLineup(club, state.players);
+        } else {
+            club.lineup = club.lineup.filter(id => id !== player.id);
+        }
 
         if (club.id === state.userClubId) {
             state.inbox.unshift({

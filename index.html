@@ -623,6 +623,7 @@
                     </div>
 
                     <div id="viewTransferMarket">
+                        <div class="hint-box mb-2" id="transferReachHint"></div>
                         <div class="transfer-filters mb-3">
                             <input type="text" id="tfSearch" class="styled-input" placeholder="Spielername suchen...">
                             <select id="tfPosFilter" class="styled-select">
@@ -642,9 +643,10 @@
                             </select>
                             <select id="tfRatingFilter" class="styled-select">
                                 <option value="0">Stärke beliebig</option>
-                                <option value="75">Ab 75 OVR</option>
-                                <option value="80">Ab 80 OVR</option>
-                                <option value="85">Ab 85 OVR</option>
+                                <option value="3">Ab ★ 3,0 (Kaderschnitt)</option>
+                                <option value="3.5">Ab ★ 3,5</option>
+                                <option value="4">Ab ★ 4,0 (Verstärkung)</option>
+                                <option value="4.5">Ab ★ 4,5 (Topzugang)</option>
                             </select>
                         </div>
 
@@ -709,9 +711,9 @@
                                     <option value="35">Keine Altersgrenze</option>
                                 </select>
                                 <select id="scoutOvrSelect" class="styled-select">
-                                    <option value="65">Ab 65 Stärke</option>
-                                    <option value="75" selected>Ab 75 Stärke</option>
-                                    <option value="80">Ab 80 Stärke (Topspieler)</option>
+                                    <option value="2.5">Ab ★ 2,5 (Kaderbreite)</option>
+                                    <option value="3.5" selected>Ab ★ 3,5 (Verstärkung)</option>
+                                    <option value="4.5">Ab ★ 4,5 (Topspieler)</option>
                                 </select>
                                 <button class="btn btn-primary" id="btnStartScoutAssignment">Scout entsenden ➔</button>
                             </div>
@@ -737,6 +739,20 @@
                 <section class="tab-pane" id="pane-training">
                     <div class="pane-header">
                         <h2>Trainingssteuerung & Entwicklung</h2>
+                    </div>
+
+                    <!-- Trainerstab: er plant, der Manager kann eingreifen -->
+                    <div class="dash-card mb-3" id="coachingStaffCard">
+                        <div class="card-header">
+                            <h3>🧑‍🏫 Trainerstab</h3>
+                            <span id="staffQualityTag" class="header-tag">-</span>
+                        </div>
+                        <div id="staffPlanBody" style="font-size:13px; line-height:1.6;"></div>
+                        <div style="margin-top:10px;">
+                            <button class="btn btn-sm btn-secondary" id="btnStaffTakeOver" style="display:none;">
+                                Trainerstab wieder übernehmen lassen
+                            </button>
+                        </div>
                     </div>
 
                     <div class="training-grid">
@@ -1021,6 +1037,15 @@
                         </div>
                     </div>
                     <div class="calendar-layout">
+                        <!-- Was gestern im Verein passiert ist -->
+                        <div class="dash-card mb-3" id="dayReportCard" style="display:none;">
+                            <div class="card-header">
+                                <h3>📋 Tagesbericht</h3>
+                                <span id="dayReportMeta" class="header-tag">-</span>
+                            </div>
+                            <ul id="dayReportList" class="day-report-list"></ul>
+                        </div>
+
                         <div class="dash-card">
                             <div class="card-header">
                                 <h3>Aktuelle Saisonwoche</h3>
@@ -1687,6 +1712,7 @@
     <script src="js/engine/negotiationEngine.js"></script>
     <script src="js/engine/managerEngine.js"></script>
     <script src="js/engine/trainingEngine.js"></script>
+    <script src="js/engine/coachingStaffEngine.js"></script>
     <script src="js/engine/seasonEngine.js"></script>
     <script src="js/ui/uiManager.js"></script>
     <script src="js/app.js"></script>

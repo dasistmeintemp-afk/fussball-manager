@@ -11,6 +11,7 @@ const { BoardEngine } = require('./js/engine/boardEngine.js');
 const { FinanceEngine } = require('./js/engine/financeEngine.js');
 const { ContractEngine } = require('./js/engine/contractEngine.js');
 const { ScoutingEngine } = require('./js/engine/scoutingEngine.js');
+const { CoachingStaffEngine } = require('./js/engine/coachingStaffEngine.js');
 const { YouthEngine } = require('./js/engine/youthEngine.js');
 const { AIManagerEngine } = require('./js/engine/aiManagerEngine.js');
 const { ClubGenerator } = require('./js/engine/clubGenerator.js');
@@ -418,6 +419,161 @@ function runEngineTests() {
         if (state.seasonYear !== 2 || state.currentMatchday !== 1) {
             throw new Error("Next season start failed");
         }
+    });
+
+    // 13b. Der Trainerstab plant selbst, der Manager behält das letzte Wort
+    test("CoachingStaffEngine: Der Stab plant, der Manager kann ein Veto einlegen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const bundesligist = state.clubs.find(c => c.id === "muc");
+        const amateur = state.clubs.filter(c => (c.level || 1) === 7)[0];
+
+        // Die Güte des Stabs richtet sich nach der Spielklasse
+        const stabProfi = CoachingStaffEngine.staffQuality(bundesligist);
+        const stabAmateur = CoachingStaffEngine.staffQuality(amateur);
+        if (!(stabProfi.overall > stabAmateur.overall + 25)) {
+            throw new Error(`Trainerstab kaum unterschieden: Profi ${stabProfi.overall}, Amateur ${stabAmateur.overall}`);
+        }
+        if (!(stabProfi.entwicklungsFaktor > stabAmateur.entwicklungsFaktor)) {
+            throw new Error("Ein besserer Stab muss die Entwicklung auch stärker beschleunigen");
+        }
+
+        // Am Tag vor dem Spiel wird nicht mehr geschunden
+        const vorSpiel = CoachingStaffEngine.planTraining(state, "opponent_analysis");
+        if (vorSpiel.intensity !== "low") {
+            throw new Error(`Abschlusstraining mit Intensität "${vorSpiel.intensity}" statt locker`);
+        }
+
+        // Ein ausgelaugter Kader wird geschont, egal was sonst ansteht
+        const kader = state.players.filter(p => bundesligist.playerIds.includes(p.id));
+        kader.forEach(p => { p.fitness = 60; });
+        const muede = CoachingStaffEngine.planTraining(state, "training");
+        if (muede.intensity !== "low") {
+            throw new Error(`Der Stab lässt einen ausgelaugten Kader mit "${muede.intensity}" trainieren`);
+        }
+        if (!muede.grund || muede.grund.length < 10) {
+            throw new Error("Der Stab begründet seine Entscheidung nicht");
+        }
+        kader.forEach(p => { p.fitness = 95; });
+
+        // Ohne Veto plant der Stab und überschreibt die Einstellung
+        state.trainingSettings = { focus: "attack", intensity: "high" };
+        CoachingStaffEngine.applyDailyPlan(state, "recovery");
+        if (state.trainingSettings.intensity !== "low") {
+            throw new Error("Der Stab hat den Regenerationstag nicht durchgesetzt");
+        }
+
+        // Mit Veto gilt die Vorgabe des Managers - und läuft danach aus
+        CoachingStaffEngine.setManagerVeto(state, "defense", "high", 2);
+        CoachingStaffEngine.applyDailyPlan(state, "recovery");
+        if (state.trainingSettings.focus !== "defense" || state.trainingSettings.intensity !== "high") {
+            throw new Error("Das Veto des Managers wurde übergangen");
+        }
+        CoachingStaffEngine.applyDailyPlan(state, "recovery");
+        if (CoachingStaffEngine.activeVeto(state)) {
+            throw new Error("Das Veto läuft nach der vereinbarten Dauer nicht aus");
+        }
+        CoachingStaffEngine.applyDailyPlan(state, "recovery");
+        if (state.trainingSettings.intensity !== "low") {
+            throw new Error("Nach Ablauf des Vetos übernimmt der Trainerstab nicht wieder");
+        }
+    });
+
+    // 13c. Der Markt endet dort, wo das Standing des Vereins endet
+    test("TransferEngine & ScoutingEngine: Der Markt richtet sich nach der eigenen Ligastufe", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+
+        const bundesligist = state.clubs.find(c => c.id === "muc");
+        const landesligist = state.clubs.filter(c => (c.level || 1) === 7)[0];
+        if (!landesligist) throw new Error("Kein Landesligist in der Welt gefunden");
+
+        // Der Spitzenverein erreicht die gesamte Welt
+        if (TransferEngine.marketReach(bundesligist) !== 1) {
+            throw new Error("Ein Bundesliga-Spitzenverein muss bis in die höchste Spielklasse reichen");
+        }
+
+        // Der Amateurverein nicht
+        const reichweiteAmateur = TransferEngine.marketReach(landesligist);
+        if (reichweiteAmateur <= 3) {
+            throw new Error(`Ein Landesligist reicht bis Stufe ${reichweiteAmateur} - das ist unrealistisch weit`);
+        }
+
+        const bundesligaSpieler = state.players.find(p => {
+            const c = state.clubs.find(x => x.id === p.clubId);
+            return c && (c.level || 1) === 1;
+        });
+        if (TransferEngine.isWithinReach(bundesligaSpieler, landesligist, state.clubs)) {
+            throw new Error("Ein Landesligist darf keine Erstligaprofis im Transfermarkt sehen");
+        }
+
+        // Vereinslose stehen jedem offen
+        const frei = { id: "frei_test", clubId: null, overall: 60 };
+        if (!TransferEngine.isWithinReach(frei, landesligist, state.clubs)) {
+            throw new Error("Ablösefreie Spieler müssen auch für Amateurvereine sichtbar sein");
+        }
+
+        // Der Scout bringt nur Berichte aus erreichbaren Ligen zurück
+        state.userClubId = landesligist.id;
+        state.scouting = { assignments: [], reports: [], shortlist: [] };
+        const auftrag = ScoutingEngine.startAssignment(state, { position: "ALL", maxAge: 32, minOverall: 1 });
+        ScoutingEngine.completeAssignment(state, auftrag.assignment);
+
+        if (state.scouting.reports.length === 0) {
+            throw new Error("Der Scout eines Landesligisten kam ohne einen einzigen Bericht zurück");
+        }
+        state.scouting.reports.forEach(r => {
+            const p = state.players.find(x => String(x.id) === String(r.playerId));
+            const c = p ? state.clubs.find(x => x.id === p.clubId) : null;
+            if (c && (c.level || 1) < reichweiteAmateur) {
+                throw new Error(`Scoutbericht über ${p.name} aus Ligastufe ${c.level} - außerhalb der Reichweite ${reichweiteAmateur}`);
+            }
+        });
+
+        // Und ein Erstligaprofi lässt sich nur zäh durchleuchten
+        const daempfung = ScoutingEngine.reachPenalty(state, bundesligaSpieler);
+        if (daempfung >= 0.6) {
+            throw new Error(`Ein Erstligaprofi ist für den Amateurscout zu leicht zu durchleuchten (Faktor ${daempfung})`);
+        }
+    });
+
+    // 14a. Die Tabelle muss die tatsächlichen Ergebnisse widerspiegeln
+    test("GameState: Tabelle stimmt Tor für Tor mit den gespielten Partien überein", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        for (let i = 0; i < 6; i++) SeasonEngine.advanceToNextMatchday(state);
+
+        const soll = {};
+        state.schedule.forEach(runde => runde.matches.forEach(m => {
+            if (!m.played || m.homeGoals === null || m.awayGoals === null) return;
+            [m.homeClubId, m.awayClubId].forEach(id => {
+                soll[id] = soll[id] || { gespielt: 0, fuer: 0, gegen: 0, punkte: 0 };
+            });
+            soll[m.homeClubId].gespielt++; soll[m.awayClubId].gespielt++;
+            soll[m.homeClubId].fuer += m.homeGoals; soll[m.homeClubId].gegen += m.awayGoals;
+            soll[m.awayClubId].fuer += m.awayGoals; soll[m.awayClubId].gegen += m.homeGoals;
+            if (m.homeGoals > m.awayGoals) soll[m.homeClubId].punkte += 3;
+            else if (m.homeGoals < m.awayGoals) soll[m.awayClubId].punkte += 3;
+            else { soll[m.homeClubId].punkte++; soll[m.awayClubId].punkte++; }
+        }));
+
+        state.standings.forEach(eintrag => {
+            const s = soll[eintrag.clubId] || { gespielt: 0, fuer: 0, gegen: 0, punkte: 0 };
+            if (eintrag.played !== s.gespielt) throw new Error(`${eintrag.clubName}: ${eintrag.played} Spiele in der Tabelle, tatsächlich ${s.gespielt}`);
+            if (eintrag.goalsFor !== s.fuer) throw new Error(`${eintrag.clubName}: ${eintrag.goalsFor} eigene Tore in der Tabelle, tatsächlich ${s.fuer}`);
+            if (eintrag.goalsAgainst !== s.gegen) throw new Error(`${eintrag.clubName}: ${eintrag.goalsAgainst} Gegentore in der Tabelle, tatsächlich ${s.gegen}`);
+            if (eintrag.points !== s.punkte) throw new Error(`${eintrag.clubName}: ${eintrag.points} Punkte in der Tabelle, tatsächlich ${s.punkte}`);
+            if (eintrag.goalDiff !== s.fuer - s.gegen) throw new Error(`${eintrag.clubName}: Tordifferenz ${eintrag.goalDiff} statt ${s.fuer - s.gegen}`);
+        });
+
+        // In einer Liga fällt jedes Tor bei einem anderen als Gegentor an
+        const summeFuer = state.standings.reduce((a, e) => a + e.goalsFor, 0);
+        const summeGegen = state.standings.reduce((a, e) => a + e.goalsAgainst, 0);
+        if (summeFuer !== summeGegen) {
+            throw new Error(`Ligaweit ${summeFuer} erzielte, aber ${summeGegen} kassierte Tore`);
+        }
+        if (summeFuer === 0) throw new Error("Nach sechs Spieltagen steht kein einziges Tor in der Tabelle");
+
+        // Und die Tordifferenzen einer Liga heben sich gegenseitig auf
+        const summeDiff = state.standings.reduce((a, e) => a + e.goalDiff, 0);
+        if (summeDiff !== 0) throw new Error(`Die Tordifferenzen summieren sich auf ${summeDiff} statt auf null`);
     });
 
     // 14b. Verträge, Ablösefreie und Karriereenden über zwei Saisonwechsel
@@ -2195,12 +2351,16 @@ function runEngineTests() {
 
         // Über mehrere Wochen pendelt sich die Fitness je Intensität auf einem
         // eigenen Niveau ein: locker bleibt frisch, intensiv zehrt spürbar.
+        // Der Trainerstab plant sonst selbst, deshalb legt der Manager hier
+        // ein dauerhaftes Veto ein - so wie im Spiel, wenn er es besser weiß.
         const fitnessNachWochen = (intensity) => {
             const s = GameState.createNewGame("muc", "normal", { name: "Trainer" });
-            s.trainingSettings = { focus: "allround", intensity };
             const c = s.clubs.find(x => x.id === "muc");
             const k = s.players.filter(p => c.playerIds.includes(p.id));
-            for (let i = 0; i < 24; i++) CalendarEngine.advanceOneDay(s);
+            for (let i = 0; i < 24; i++) {
+                CoachingStaffEngine.setManagerVeto(s, "allround", intensity, 99);
+                CalendarEngine.advanceOneDay(s);
+            }
             return k.reduce((sum, p) => sum + p.fitness, 0) / k.length;
         };
 
@@ -2218,8 +2378,10 @@ function runEngineTests() {
         }
 
         // Der Bericht des laufenden Spielstands muss danach gefüllt sein
-        state.trainingSettings = { focus: "allround", intensity: "high" };
-        for (let i = 0; i < 6; i++) CalendarEngine.advanceOneDay(state);
+        for (let i = 0; i < 6; i++) {
+            CoachingStaffEngine.setManagerVeto(state, "allround", "high", 99);
+            CalendarEngine.advanceOneDay(state);
+        }
 
         const bericht = state.trainingReport;
         if (!bericht || !Array.isArray(bericht.entries) || bericht.entries.length !== kader.length) {

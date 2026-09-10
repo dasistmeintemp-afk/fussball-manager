@@ -825,7 +825,7 @@ class UIManager {
                         </div>
                     </div>
                     <div class="club-item-right">
-                        <span class="club-item-ovr">${ovr}</span>
+                        <span class="club-item-ovr">${this.wizardStarsFor(ovr, { title: "Kaderstärke im Vergleich zur Auswahl" })}</span>
                         <span style="font-size:11px; color:#34d399;">${this.formatMoneySafe(club.transferBudget || 0)}</span>
                     </div>
                 </div>
@@ -896,7 +896,7 @@ class UIManager {
                         </div>
                     </div>
                     <div style="text-align:right;">
-                        <span class="ovr-badge ovr-high" style="font-size:16px;">${avgOvr} OVR</span>
+                        <span class="cd-squad-rating" title="Kaderstärke im Vergleich zu den übrigen Vereinen">${this.wizardStarsFor(avgOvr)}</span>
                     </div>
                 </div>
 
@@ -932,7 +932,7 @@ class UIManager {
                         ${topPlayers.map(p => `
                             <div class="cd-player-row">
                                 <div><strong>${p.name}</strong> <span class="text-muted">(${p.pos})</span></div>
-                                <div><span class="cd-tag">⭐ ${p.overall} OVR</span> <span class="text-muted">${this.formatMoneySafe(p.value)}</span></div>
+                                <div><span class="cd-tag">${this.wizardStarsFor(p.overall)}</span> <span class="text-muted">${this.formatMoneySafe(p.value)}</span></div>
                             </div>
                         `).join("")}
                     </div>
@@ -945,7 +945,7 @@ class UIManager {
                             ${topTalents.map(p => `
                                 <div class="cd-player-row">
                                     <div><strong>${p.name}</strong> <span class="text-muted">(${p.pos}, ${p.age} J.)</span></div>
-                                    <div><span class="cd-tag" style="background:rgba(16, 185, 129, 0.2); color:#34d399;">Potenzial: ${p.pot}</span></div>
+                                    <div><span class="cd-tag" style="background:rgba(16, 185, 129, 0.2);">Potenzial: ${this.wizardStarsFor(p.pot, { color: "#34d399" })}</span></div>
                                 </div>
                             `).join("")}
                         </div>
@@ -2254,7 +2254,7 @@ class UIManager {
             const happyOverall = p.happiness?.overall || 75;
             const happyIcon = happyOverall >= 80 ? "😊" : happyOverall >= 60 ? "😐" : "😞";
 
-            const card = ratingEngine ? ratingEngine.calculateVisiblePlayerCard(p, { userClubId: userClub.id, leagueDataCoverage: 95 }) : null;
+            const card = ratingEngine ? ratingEngine.calculateVisiblePlayerCard(p, Object.assign({ userClubId: userClub.id, leagueDataCoverage: 95 }, this.starContext())) : null;
             const starsCa = card ? card.starsCaHtml : "★★★☆☆";
             const starsPa = card ? card.starsPaHtml : "★★★★☆";
             const roleName = card?.bestRole?.role || p.squadRole || "Stammspieler";
@@ -2279,7 +2279,7 @@ class UIManager {
                     </td>
                     <td>${p.age}</td>
                     <td>
-                        <span title="${abilityText} (${p.overall} OVR)" style="color:#f59e0b; font-size:13px; font-weight:600;">${starsCa}</span>
+                        <span title="${abilityText}" style="color:#f59e0b; font-size:13px; font-weight:600;">${starsCa}</span>
                         <div class="squad-ability-hint">${abilityText}</div>
                     </td>
                     <td><span title="Entwicklungspotenzial" style="color:#38bdf8; font-size:12px;">${starsPa}</span></td>
@@ -2333,6 +2333,137 @@ class UIManager {
             if (match) return match.id;
         }
         return /^-?\d+$/.test(String(raw)) ? Number(raw) : raw;
+    }
+
+    /** PlayerRatingEngine in Browser und Test-Umgebung auflösen */
+    getRatingEngine() {
+        if (typeof PlayerRatingEngine !== "undefined" && PlayerRatingEngine) return PlayerRatingEngine;
+        if (typeof window !== "undefined" && window.PlayerRatingEngine) return window.PlayerRatingEngine;
+        return null;
+    }
+
+    /** CoachingStaffEngine in Browser und Test-Umgebung auflösen */
+    getCoachingStaffEngine() {
+        if (typeof CoachingStaffEngine !== "undefined" && CoachingStaffEngine) return CoachingStaffEngine;
+        if (typeof window !== "undefined" && window.CoachingStaffEngine) return window.CoachingStaffEngine;
+        return null;
+    }
+
+    /** PlayerGenerator in Browser und Test-Umgebung auflösen */
+    getPlayerGenerator() {
+        if (typeof PlayerGenerator !== "undefined" && PlayerGenerator) return PlayerGenerator;
+        if (typeof window !== "undefined" && window.PlayerGenerator) return window.PlayerGenerator;
+        return null;
+    }
+
+    /**
+     * Findet einen Spieler - egal ob er im Profikader steht oder noch in der
+     * Jugendakademie. Talente leben in einer eigenen Liste und tauchten
+     * deshalb in der Spielerakte bisher gar nicht auf.
+     */
+    findAnyPlayer(playerId) {
+        const state = this.app?.state;
+        if (!state || playerId === undefined || playerId === null) return null;
+
+        const profi = (state.players || []).find(p => String(p.id) === String(playerId));
+        if (profi) return { player: profi, isProspect: false };
+
+        const talent = (state.youthAcademy?.prospects || []).find(p => String(p.id) === String(playerId));
+        if (talent) {
+            const generator = this.getPlayerGenerator();
+            if (generator && typeof generator.completeYouthProspect === "function") {
+                generator.completeYouthProspect(talent);
+            }
+            return { player: talent, isProspect: true };
+        }
+
+        return null;
+    }
+
+    /**
+     * Maßstab für die Sterne: der eigene Kader.
+     *
+     * Drei Sterne sind der Schnitt der eigenen Mannschaft, fünf Sterne heißen
+     * "deutlich besser als alles, was ich habe". Ohne diesen Bezug hätte ein
+     * Landesligist lauter Halbsterne und ein Bundesligist lauter Fünfer - die
+     * Sterne würden gar nichts aussagen.
+     */
+    starContext() {
+        const state = this.app?.state;
+        const engine = this.getRatingEngine();
+        if (!state || !engine) return { squadAverageAbility: 140 };
+
+        // Der Schnitt ändert sich nur bei Kaderbewegungen, deshalb gemerkt
+        const club = state.clubs?.find(c => c.id === state.userClubId);
+        const schluessel = `${state.userClubId}|${(club?.playerIds || []).length}|${state.currentMatchday}|${state.seasonYear}`;
+        if (this._starContextKey === schluessel && this._starContext) return this._starContext;
+
+        const kader = (club?.playerIds || [])
+            .map(id => state.players.find(p => p.id === id))
+            .filter(Boolean);
+
+        // Beide Schlüssel: calculateStarRating liest squadAverageAbility,
+        // calculateVisiblePlayerCard userSquadAvgAbility. Ohne beide messen
+        // Spielerakte und Kadertabelle an verschiedenen Maßstäben - derselbe
+        // Spieler stand dann mit zwei und mit drei Sternen da.
+        const schnitt = engine.squadAverageAbility(kader);
+        this._starContextKey = schluessel;
+        this._starContext = { squadAverageAbility: schnitt, userSquadAvgAbility: schnitt };
+        return this._starContext;
+    }
+
+    /**
+     * Sternewertung eines Spielers auf einer bestimmten Stärke - wird überall
+     * dort verwendet, wo früher eine nackte OVR-Zahl stand.
+     */
+    starsFor(overall, options = {}) {
+        const engine = this.getRatingEngine();
+        if (!engine) return "★★★";
+        const sterne = engine.starsForOverall(overall, this.starContext());
+        return engine.renderStarChip(sterne, options);
+    }
+
+    /** Sternewert als Zahl, etwa zum Sortieren oder für Beschriftungen */
+    starValueFor(overall) {
+        const engine = this.getRatingEngine();
+        if (!engine) return 3;
+        return engine.starsForOverall(overall, this.starContext());
+    }
+
+    /**
+     * Im Karrierestart gibt es noch keinen eigenen Kader. Maßstab sind dort
+     * die Vereine, die zur Auswahl stehen: Drei Sterne heißen "Mittelfeld
+     * dieser Auswahl", fünf Sterne "der stärkste Kader weit und breit".
+     */
+    wizardStarContext() {
+        const teams = this.getWizardTeams() || [];
+        const schluessel = `${teams.length}|${this.wizardSelectedLeagueId || "alle"}`;
+        if (this._wizardStarKey === schluessel && this._wizardStarContext) return this._wizardStarContext;
+
+        const engine = this.getRatingEngine();
+        const schnitte = teams
+            .map(c => typeof c.avgOverall === "number"
+                ? c.avgOverall
+                : (Array.isArray(c.players) && c.players.length
+                    ? c.players.reduce((s, p) => s + (p.overall || 0), 0) / c.players.length
+                    : null))
+            .filter(v => typeof v === "number" && v > 0);
+
+        const mittel = schnitte.length
+            ? schnitte.reduce((a, b) => a + b, 0) / schnitte.length
+            : 58;
+
+        const bezug = engine ? engine.overallToAbility(mittel) : 116;
+        this._wizardStarKey = schluessel;
+        this._wizardStarContext = { squadAverageAbility: bezug, userSquadAvgAbility: bezug };
+        return this._wizardStarContext;
+    }
+
+    /** Sterne im Karrierestart - gemessen an den anderen Vereinen der Auswahl */
+    wizardStarsFor(overall, options = {}) {
+        const engine = this.getRatingEngine();
+        if (!engine) return "★★★";
+        return engine.renderStarChip(engine.starsForOverall(overall, this.wizardStarContext()), options);
     }
 
     getPosGroup(pos) {
@@ -2447,7 +2578,12 @@ class UIManager {
                 }
             }
 
-            const shirtValue = player ? (fit ? fit.effectiveOverall : player.overall) : "?";
+            // Auf dem Trikot stehen Sterne, keine Zahl: Sie sagen sofort, ob
+            // der Spieler für diese Position im eigenen Kader gut genug ist.
+            const wirkStaerke = player ? (fit ? fit.effectiveOverall : player.overall) : null;
+            const shirtValue = player
+                ? this.starsFor(wirkStaerke, { title: `${player.name} auf ${slot.pos}`, color: "inherit" })
+                : "–";
             const fitClass = fit ? `fit-${fit.level}` : "";
             const selectedStyle = isSelected ? "border-color:#f59e0b; box-shadow:0 0 12px #f59e0b;" : "";
 
@@ -2497,13 +2633,13 @@ class UIManager {
             if (targetSlot && posEngine) {
                 const fit = posEngine.getSuitability(p, targetSlot.pos);
                 fitHtml = `<span class="bench-fit" style="color:${fit.color};" title="${fit.label} auf ${targetSlot.pos}">
-                    ${targetSlot.pos}: ${fit.effectiveOverall}
+                    ${targetSlot.pos}: ${this.starsFor(fit.effectiveOverall, { color: fit.color })}
                 </span>`;
             }
 
             benchEl.innerHTML = `
                 <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>
-                <strong>${this.escapeHtml(p.name)}</strong> (${p.overall})
+                <strong>${this.escapeHtml(p.name)}</strong> ${this.starsFor(p.overall, { title: `Stärke im Vergleich zum eigenen Kader` })}
                 ${fitHtml}
                 ${isInj ? "🚑" : isSusp ? "🟥" : isBench ? '<span style="color:#34d399">Bank</span>' : '<span style="color:#94a3b8">Res</span>'}
             `;
@@ -2522,7 +2658,7 @@ class UIManager {
         const populateRoleSelect = (elId, currentId) => {
             const el = document.getElementById(elId);
             el.innerHTML = lineupPlayers.map(p => `
-                <option value="${p.id}" ${p.id === currentId ? "selected" : ""}>${this.escapeHtml(p.name)} (${p.pos}, OVR ${p.overall})</option>
+                <option value="${p.id}" ${p.id === currentId ? "selected" : ""}>${this.escapeHtml(p.name)} (${p.pos}, ${this.starValueFor(p.overall).toFixed(1).replace(".", ",")} Sterne)</option>
             `).join("");
         };
 
@@ -3061,6 +3197,30 @@ class UIManager {
     }
 
     /**
+     * Nach dem eigenen Spiel den Spieltag zu Ende bringen.
+     *
+     * Bisher stand nach dem Abpfiff nur das eigene Ergebnis fest - die übrigen
+     * Partien der Liga wurden erst beim Weiterschalten des Tages ausgespielt.
+     * Die Tabelle zeigte deshalb noch den Stand von vorher, teils über Tage
+     * hinweg. Jetzt läuft der Spieltag zu Ende, sobald die eigene Partie
+     * abgepfiffen ist - wie im echten Fußball, wo parallel gespielt wird.
+     */
+    finishMatchdayAroundUser() {
+        const state = this.app?.state;
+        const engine = (typeof SeasonEngine !== "undefined" && SeasonEngine)
+            ? SeasonEngine
+            : ((typeof window !== "undefined" && window.SeasonEngine) ? window.SeasonEngine : null);
+        if (!state || !engine || typeof engine.simulateRemainingMatchesOfDay !== "function") return;
+
+        engine.simulateRemainingMatchesOfDay(state);
+
+        if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+        this.renderHeader();
+        if (this.activeTab === "fixtures") this.renderFixturesAndStandings();
+        if (this.activeTab === "dashboard") this.renderDashboard();
+    }
+
+    /**
      * Laufende Verhandlungen mit Vereinen und Beratern.
      *
      * Jede Verhandlung zeigt die aktuelle Phase, die Forderung der Gegenseite,
@@ -3255,23 +3415,59 @@ class UIManager {
         // 2. Transfermarkt Tabelle
         const searchVal = document.getElementById("tfSearch")?.value.toLowerCase() || "";
         const posVal = document.getElementById("tfPosFilter")?.value || "all";
-        const minRating = parseInt(document.getElementById("tfRatingFilter")?.value || "0", 10);
+        // Der Filter ist in Sternen formuliert; verglichen wird darunter weiter
+        // mit der Stärke, die zu dieser Sternezahl im eigenen Kader gehört.
+        const minStars = parseFloat(document.getElementById("tfRatingFilter")?.value || "0");
 
         let marketPlayers = state.players.filter(p => p.clubId !== userClub.id);
 
+        // Marktreichweite: Ein Landesligist hatte bisher die komplette Serie A
+        // im Angebot. Sichtbar ist jetzt, was zum Standing des Vereins passt.
+        const transferEngine = (typeof TransferEngine !== "undefined" && TransferEngine)
+            ? TransferEngine
+            : ((typeof window !== "undefined" && window.TransferEngine) ? window.TransferEngine : null);
+
+        let ausserReichweite = 0;
+        if (transferEngine && typeof transferEngine.isWithinReach === "function") {
+            const vorher = marketPlayers.length;
+            marketPlayers = marketPlayers.filter(p => transferEngine.isWithinReach(p, userClub, state.clubs));
+            ausserReichweite = vorher - marketPlayers.length;
+        }
+
+        const reichweiteEl = document.getElementById("transferReachHint");
+        if (reichweiteEl && transferEngine && typeof transferEngine.describeReach === "function") {
+            const reich = transferEngine.describeReach(userClub, state.leagues || []);
+            reichweiteEl.innerHTML = `🌍 <strong>Marktreichweite:</strong> ${this.escapeHtml(reich.text)}`
+                + (ausserReichweite > 0
+                    ? ` <span class="text-muted">(${ausserReichweite.toLocaleString("de-DE")} Spieler höherer Ligen sind für Sie außer Reichweite.)</span>`
+                    : "");
+        }
+
         if (searchVal) marketPlayers = marketPlayers.filter(p => p.name.toLowerCase().includes(searchVal));
         if (posVal !== "all") marketPlayers = marketPlayers.filter(p => p.pos === posVal);
-        if (minRating > 0) marketPlayers = marketPlayers.filter(p => p.overall >= minRating);
+        if (minStars > 0) {
+            const engine = this.getRatingEngine();
+            const grenze = engine ? engine.overallForStars(minStars, this.starContext()) : 0;
+            marketPlayers = marketPlayers.filter(p => p.overall >= grenze);
+        }
 
         marketPlayers.sort((a, b) => b.overall - a.overall);
 
         const ratingEngine = (typeof PlayerRatingEngine !== 'undefined' && PlayerRatingEngine) ? PlayerRatingEngine : ((typeof window !== 'undefined' && window.PlayerRatingEngine) ? window.PlayerRatingEngine : null);
 
         const tbody = document.getElementById("transferTableBody");
-        if (tbody) {
+        if (tbody && marketPlayers.length === 0) {
+            // Sterne messen sich am eigenen Kader. Bei einem Spitzenverein
+            // gibt es oberhalb von vier Sternen schlicht niemanden mehr -
+            // das soll dastehen und nicht als leere Tabelle wirken.
+            tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted" style="padding:22px;">
+                Kein Spieler entspricht diesen Kriterien. Gemessen wird an Ihrem eigenen Kader –
+                je stärker Ihre Mannschaft, desto seltener sind echte Verstärkungen.
+            </td></tr>`;
+        } else if (tbody) {
             tbody.innerHTML = marketPlayers.map(p => {
                 const club = state.clubs.find(c => c.id === p.clubId);
-                const card = ratingEngine ? ratingEngine.calculateVisiblePlayerCard(p, { userClubId: state.userClubId, leagueDataCoverage: 85 }) : null;
+                const card = ratingEngine ? ratingEngine.calculateVisiblePlayerCard(p, Object.assign({ userClubId: state.userClubId, leagueDataCoverage: 85 }, this.starContext())) : null;
 
                 const starsDisplay = card ? card.starsCaHtml : "★★★☆☆";
                 const potStarsDisplay = card ? card.starsPaHtml : "★★★★☆";
@@ -3361,7 +3557,7 @@ class UIManager {
                 assignList.innerHTML = assignments.map(a => `
                     <div class="news-item-dash" style="justify-content: space-between;">
                         <div>
-                            🔭 <strong>Scout-Fokus:</strong> Position: ${a.position} | Alter bis: ${a.maxAge} | Mindeststärke: ${a.minOverall} OVR
+                            🔭 <strong>Scout-Fokus:</strong> Position: ${a.position} | Alter bis: ${a.maxAge} | Mindestens ${this.starsFor(a.minOverall)}
                         </div>
                         <span class="header-tag" style="background:var(--accent-primary); color:#000;">⏳ Noch ${a.matchdaysRemaining} Spieltag(e)</span>
                     </div>
@@ -3409,6 +3605,8 @@ class UIManager {
         const intensityRadio = document.querySelector(`input[name="trainIntensity"][value="${currentIntensity}"]`);
         if (intensityRadio) intensityRadio.checked = true;
 
+        this.renderCoachingStaffCard();
+
         // Jugendakademie rendern
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         const levelBadge = document.getElementById("youthAcademyLevelBadge");
@@ -3430,6 +3628,15 @@ class UIManager {
                     ? engine.getOpenNegotiations(state).filter(n => n.type === "youth_promotion")
                     : [];
 
+                // Ältere Spielstände kennen noch keine Talentwerte - nachrüsten,
+                // sonst bliebe die Spielerakte des Jungen leer
+                const generator = this.getPlayerGenerator();
+                if (generator && typeof generator.completeYouthProspect === "function") {
+                    let ergaenzt = false;
+                    prospects.forEach(p => { if (generator.completeYouthProspect(p)) ergaenzt = true; });
+                    if (ergaenzt && typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                }
+
                 prospectsBody.innerHTML = prospects.map(p => {
                     const gespraech = laufende.find(n => String(n.prospectId) === String(p.id));
 
@@ -3445,17 +3652,25 @@ class UIManager {
                         : `<button class="btn btn-sm btn-primary btn-promote-prospect" data-prospect-id="${p.id}">Vertragsgespräche aufnehmen</button>`;
 
                     return `
-                    <tr>
+                    <tr class="row-clickable" data-prospect-id="${p.id}" title="Spielerakte von ${this.escapeHtml(p.name)} öffnen">
                         <td><strong>${this.escapeHtml(p.name)}</strong></td>
                         <td><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span></td>
                         <td>${p.age} Jahre</td>
-                        <td><span class="ovr-badge ovr-low">${p.overall} OVR</span></td>
-                        <td><strong style="color:#38bdf8;">⭐ ${p.pot}</strong></td>
+                        <td>${this.starsFor(p.overall, { title: "Heutige Stärke im Vergleich zum Profikader" })}</td>
+                        <td>${this.starsFor(p.pot, { color: "#38bdf8", title: "Mögliche Stärke am Ende der Entwicklung" })}</td>
                         <td>${standHtml}</td>
                         <td>${aktion}</td>
                     </tr>
                 `;
                 }).join("");
+
+                // Ein Klick auf die Zeile öffnet die vollständige Spielerakte
+                prospectsBody.querySelectorAll("tr.row-clickable").forEach(row => {
+                    row.addEventListener("click", (e) => {
+                        if (e.target.closest("button")) return;
+                        this.showPlayerDetailsModal(row.dataset.prospectId);
+                    });
+                });
 
                 // Die Beförderung läuft über den Berater und dauert einige Tage
                 document.querySelectorAll(".btn-promote-prospect").forEach(btn => {
@@ -3482,6 +3697,66 @@ class UIManager {
                 });
             }
         }
+    }
+
+    /**
+     * Der Trainerstab und sein aktueller Plan.
+     *
+     * Der Manager sieht, wer gerade entscheidet und warum. Ändert er einen
+     * Schwerpunkt, wird daraus automatisch ein Veto - hier steht dann, wie
+     * lange es noch gilt.
+     */
+    renderCoachingStaffCard() {
+        const body = document.getElementById("staffPlanBody");
+        const tag = document.getElementById("staffQualityTag");
+        const btn = document.getElementById("btnStaffTakeOver");
+        if (!body) return;
+
+        const state = this.app.state;
+        const staff = this.getCoachingStaffEngine();
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        if (!staff || !club) return;
+
+        const stab = staff.staffQuality(club);
+        const veto = staff.activeVeto(state);
+        const plan = state.trainingSettings?.lastPlan;
+
+        if (tag) {
+            tag.textContent = `${stab.titel} · ${stab.overall}`;
+            tag.style.background = stab.overall >= 68 ? "rgba(34,197,94,0.18)"
+                : stab.overall >= 48 ? "rgba(56,189,248,0.18)" : "rgba(148,163,184,0.18)";
+        }
+
+        const fach = (name, wert) => `
+            <div class="club-stat-line"><span>${name}:</span>
+                <strong><span class="mini-bar" style="width:70px;"><span class="mini-bar-fill" style="width:${wert}%"></span></span> ${wert}</strong>
+            </div>`;
+
+        const planText = plan
+            ? `<div class="hint-box" style="margin:10px 0 0;">
+                   <strong>${plan.vomManager ? "Ihre Vorgabe" : "Plan des Stabs"}:</strong>
+                   ${this.escapeHtml(staff.focusLabel(plan.focus))}, ${this.escapeHtml(staff.intensityLabel(plan.intensity))}<br>
+                   <span class="text-muted">${this.escapeHtml(plan.grund || "")}</span>
+               </div>`
+            : `<div class="hint-box" style="margin:10px 0 0;">Der Stab plant die erste Einheit, sobald der nächste Tag beginnt.</div>`;
+
+        body.innerHTML = `
+            <p class="text-muted" style="margin:0 0 10px; font-size:12px;">
+                Sie führen den Verein, nicht die Trainingsgruppe: Der Stab plant die Einheiten selbst.
+                Ändern Sie Schwerpunkt oder Intensität, gilt Ihre Vorgabe für ${staff.VETO_DAUER_TAGE} Tage.
+            </p>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:4px 18px;">
+                ${fach("Athletik & Fitness", stab.fitness)}
+                ${fach("Spielanalyse", stab.analyse)}
+                ${fach("Medizinische Abteilung", stab.medizin)}
+                ${fach("Nachwuchsarbeit", stab.nachwuchs)}
+            </div>
+            ${planText}
+            ${veto ? `<div style="margin-top:8px; color:#f59e0b; font-weight:600; font-size:12px;">
+                ⏳ Ihr Veto gilt noch ${veto.daysRemaining} Tag(e).</div>` : ""}
+        `;
+
+        if (btn) btn.style.display = veto ? "inline-flex" : "none";
     }
 
     /**
@@ -3780,6 +4055,33 @@ class UIManager {
     /**
      * Kalender rendern
      */
+    /**
+     * Der Bericht des vergangenen Tages.
+     *
+     * "Nächsten Tag simulieren" hat vorher nur das Datum weitergeschoben und
+     * eine einzelne Zeile als Hinweis eingeblendet. Hier steht jetzt, was der
+     * Trainerstab entschieden hat, wer aufgefallen ist und was im Verein
+     * sonst passiert ist.
+     */
+    renderDayReport() {
+        const card = document.getElementById("dayReportCard");
+        const list = document.getElementById("dayReportList");
+        const meta = document.getElementById("dayReportMeta");
+        if (!card || !list) return;
+
+        const bericht = this.app.state.lastDayReport;
+        if (!bericht || !Array.isArray(bericht.messages) || bericht.messages.length === 0) {
+            card.style.display = "none";
+            return;
+        }
+
+        card.style.display = "";
+        if (meta) meta.textContent = `${bericht.dayOfWeek || ""} ${bericht.date || ""} · ${bericht.title || ""}`.trim();
+        list.innerHTML = bericht.messages
+            .map(m => `<li>${this.escapeHtml(m)}</li>`)
+            .join("");
+    }
+
     renderCalendar() {
         const state = this.app.state;
         const calendarEngine = (typeof CalendarEngine !== 'undefined' && CalendarEngine) 
@@ -3790,6 +4092,8 @@ class UIManager {
 
         const calText = document.getElementById("calCurrentDateText");
         if (calText) calText.textContent = `${state.currentDate} (Tag ${state.currentDayIndex + 1})`;
+
+        this.renderDayReport();
 
         const weekGrid = document.getElementById("calendarWeekGrid");
         const upcomingWeek = calendarEngine.getUpcomingDays(state, 7);
@@ -4123,8 +4427,8 @@ class UIManager {
                     <p class="text-muted">Aktueller Verein: ${sellerClub.name}</p>
                 </div>
                 <div style="text-align:right;">
-                    <span class="ovr-badge ovr-high">${player.overall} OVR</span>
-                    <p class="text-muted">Potenzial: ⭐ ${player.pot}</p>
+                    <div>${this.starsFor(player.overall, { title: "Stärke im Vergleich zum eigenen Kader" })}</div>
+                    <p class="text-muted">Potenzial: ${this.starsFor(player.pot, { color: "#38bdf8", title: "Mögliche Entwicklung" })}</p>
                 </div>
             </div>
 
@@ -4239,7 +4543,7 @@ class UIManager {
         let isEstimate = false;
 
         if (ratingEngine && confidence < 85) {
-            const card = ratingEngine.calculateVisiblePlayerCard(player, { userClubId: null, leagueDataCoverage: 100 });
+            const card = ratingEngine.calculateVisiblePlayerCard(player, Object.assign({ userClubId: null, leagueDataCoverage: 100 }, this.starContext()));
             const estOverall = ratingEngine.abilityToOverall(Math.round((card.estimatedCa.min + card.estimatedCa.max) / 2));
             basePlayer = { ...player, overall: estOverall };
             isEstimate = true;
@@ -4264,7 +4568,7 @@ class UIManager {
             return `
             <div class="position-map-item${lernt ? " pos-learned" : ""}" title="${titel}">
                 <span class="position-map-code" style="border-color:${r.color};${lernt ? "border-style:dashed;" : ""}">${r.position}</span>
-                <span class="position-map-value" style="color:${r.color};">${r.effectiveOverall}</span>
+                <span class="position-map-value" style="color:${r.color};">${this.starsFor(r.effectiveOverall, { color: r.color })}</span>
                 <span class="position-map-label">${istStamm ? "Stammposition" : (istNeben ? "Nebenposition" : r.shortLabel)}</span>
             </div>
         `;
@@ -4292,20 +4596,32 @@ class UIManager {
      */
     showPlayerDetailsModal(playerId) {
         const state = this.app.state;
-        const player = state.players.find(p => p.id === playerId);
+        const treffer = this.findAnyPlayer(playerId);
+        if (!treffer) return;
+
+        const player = treffer.player;
+        const isProspect = treffer.isProspect;
         const club = state.clubs.find(c => c.id === player.clubId);
-        if (!player) return;
 
         const modal = document.getElementById("modalPlayerDetails");
         const body = document.getElementById("playerDetailsContent");
-        document.getElementById("pdPlayerName").textContent = `${player.name} (${player.pos})`;
+        document.getElementById("pdPlayerName").textContent = isProspect
+            ? `${player.name} (${player.pos}) · Nachwuchs`
+            : `${player.name} (${player.pos})`;
 
         const happy = player.happiness || { overall: 75, playingTime: 75, contract: 75, teamPerformance: 75, reason: "Zufrieden mit der Rolle im Team." };
-        const isUserClub = player.clubId === state.userClubId;
-        const demand = (typeof ContractEngine !== 'undefined' && isUserClub) ? ContractEngine.getExtensionDemand(player, club) : { demandWage: Math.round((player.wage || 20000) * 1.15) };
+        // Talente der eigenen Akademie gehören zum Verein, auch ohne Profivertrag
+        const isUserClub = isProspect || player.clubId === state.userClubId;
+        const demand = (typeof ContractEngine !== 'undefined' && isUserClub && !isProspect) ? ContractEngine.getExtensionDemand(player, club) : { demandWage: Math.round((player.wage || 20000) * 1.15) };
 
-        const ratingEngine = (typeof PlayerRatingEngine !== 'undefined' && PlayerRatingEngine) ? PlayerRatingEngine : ((typeof window !== 'undefined' && window.PlayerRatingEngine) ? window.PlayerRatingEngine : null);
-        const card = ratingEngine ? ratingEngine.calculateVisiblePlayerCard(player, { userClubId: state.userClubId, leagueDataCoverage: 85 }) : null;
+        const ratingEngine = this.getRatingEngine();
+        // Das eigene Talent wird täglich im Training gesehen - für die Karte
+        // zählt es deshalb wie ein Spieler des eigenen Vereins.
+        const karteSpieler = isProspect ? Object.assign({}, player, { clubId: state.userClubId }) : player;
+        const card = ratingEngine
+            ? ratingEngine.calculateVisiblePlayerCard(karteSpieler,
+                Object.assign({ userClubId: state.userClubId, leagueDataCoverage: 85 }, this.starContext()))
+            : null;
 
         let traitsHtml = "";
         if (card && card.hiddenTraits && card.hiddenTraits.length > 0) {
@@ -4320,7 +4636,27 @@ class UIManager {
         }
 
         let contractSectionHtml = "";
-        if (isUserClub) {
+        if (isProspect) {
+            // Ein Talent hat noch keinen Profivertrag zu verlängern - hier geht
+            // es darum, ob er überhaupt einen bekommt.
+            const engine = this.getNegotiationEngine();
+            const laufend = engine
+                ? engine.getOpenNegotiations(state).find(n => n.type === "youth_promotion" && String(n.prospectId) === String(player.id))
+                : null;
+
+            contractSectionHtml = `
+                <div class="dash-card mt-3" style="padding:14px; background: rgba(30, 41, 59, 0.7); border:1px solid rgba(255,255,255,0.1);">
+                    <h4 style="font-size:14px; margin-bottom:8px; color:#38bdf8;">🎓 Aus der Jugendakademie</h4>
+                    <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">
+                        ${player.name} spielt in der eigenen Nachwuchsabteilung und hat noch keinen Profivertrag.
+                        Entwicklungstempo: <strong>${((player.developmentRate || 1) * 100).toFixed(0)} %</strong>.
+                    </p>
+                    ${laufend
+                        ? `<div class="hint-box" style="margin:0;">Berater <strong>${this.escapeHtml(laufend.agentName)}</strong> verhandelt bereits: ${this.escapeHtml(engine.describe(laufend))}</div>`
+                        : `<button class="btn btn-primary" id="btnPdPromoteProspect" style="width:100%;">Vertragsgespräche aufnehmen</button>`}
+                </div>
+            `;
+        } else if (isUserClub) {
             contractSectionHtml = `
                 <div class="dash-card mt-3" style="padding:14px; background: rgba(30, 41, 59, 0.7); border:1px solid rgba(255,255,255,0.1);">
                     <h4 style="font-size:14px; margin-bottom:8px; color:#38bdf8;">💼 Vertragsverlängerung verhandeln</h4>
@@ -4492,6 +4828,7 @@ class UIManager {
                 ${attributeBlocks}
             </div>
 
+            ${isProspect ? "" : `
             <!-- Zufriedenheit & Rolle -->
             <div class="dash-card mb-3" style="padding:14px;">
                 <h4 style="font-size:13px; margin-bottom:8px; color:var(--text-muted);">😊 Spielerzufriedenheit & Status</h4>
@@ -4499,12 +4836,22 @@ class UIManager {
                 <div class="club-stat-line"><span>Gesamtzufriedenheit:</span><strong>${happy.overall}%</strong></div>
                 <div class="club-stat-line"><span>Spielzeit / Vertrag:</span><span>${happy.playingTime}% / ${happy.contract}%</span></div>
                 <div style="font-size:12px; color:var(--text-muted); margin-top:4px; font-style:italic;">"${happy.reason || 'Zufrieden mit der Situation.'}"</div>
-            </div>
+            </div>`}
 
             ${positionMapHtml}
 
             ${traitsHtml}
 
+            ${isProspect ? `
+            <div class="finance-stat-row">
+                <span>Jahrgang:</span>
+                <strong>${player.age} Jahre – noch ${Math.max(0, 21 - (player.age || 17))} Jahre Nachwuchsalter</strong>
+            </div>
+            <div class="finance-stat-row">
+                <span>Kondition / Moral:</span>
+                <strong>${player.fitness ?? 95} % / ${player.morale ?? 85} %</strong>
+            </div>
+            ` : `
             <div class="finance-stat-row">
                 <span>Saison-Statistiken:</span>
                 <strong>${player.stats.matches} Spiele | ${player.stats.goals} Tore | ${player.stats.assists} Assists | Notenschnitt: ${(player.stats.matches > 0 ? (player.stats.ratingSum / player.stats.matches).toFixed(2) : '-')}</strong>
@@ -4520,7 +4867,7 @@ class UIManager {
             <div class="finance-stat-row">
                 <span>Vertragslaufzeit:</span>
                 <strong>${player.contractYears} Jahr(e)</strong>
-            </div>
+            </div>`}
 
             ${scoutExternalHtml}
             ${contractSectionHtml}
@@ -4557,9 +4904,29 @@ class UIManager {
             modal.style.display = "none";
         };
 
+        // Aus der Akte heraus die Vertragsgespräche mit dem Talent eröffnen
+        document.getElementById("btnPdPromoteProspect")?.addEventListener("click", () => {
+            const engine = this.getNegotiationEngine();
+            if (!engine) {
+                this.showToast("Verhandlungen sind derzeit nicht verfügbar.", "error");
+                return;
+            }
+            const res = engine.startYouthPromotion(state, state.userClubId, player.id);
+            if (res.success) {
+                this.playSound("click");
+                this.showToast(
+                    `Berater ${res.negotiation.agentName} verhandelt über den Erstvertrag. Erste Forderung: ${this.formatMoneySafe(res.negotiation.demand.wage)} pro Woche.`,
+                    "success", 6000);
+                modal.style.display = "none";
+                if (this.activeTab === "training") this.renderTraining();
+            } else {
+                this.showToast(res.error || "Gespräche konnten nicht aufgenommen werden.", "error");
+            }
+        });
+
         // Event-Binding für Vertragsverlängerung
         const submitExtBtn = document.getElementById("btnSubmitExtension");
-        if (submitExtBtn && isUserClub) {
+        if (submitExtBtn && isUserClub && !isProspect) {
             submitExtBtn.onclick = () => {
                 const offWage = parseInt(document.getElementById("extWageInput").value, 10);
                 const offYears = parseInt(document.getElementById("extYearsSelect").value, 10);
@@ -5139,6 +5506,9 @@ class UIManager {
                 updateLiveUI();
                 render2DCanvas();
                 this.playSound("whistle");
+                // Die übrigen Partien des Spieltags laufen parallel - beim
+                // Abpfiff steht auch die Tabelle
+                this.finishMatchdayAroundUser();
                 setTimeout(() => {
                     modal.style.display = "none";
                     this.showMatchReportModal(match);
@@ -5252,7 +5622,7 @@ class UIManager {
                 <select id="selectSubIn" class="styled-select mb-2">
                     ${userClub.bench.map(id => {
                         const p = this.app.state.players.find(pl => pl.id === id);
-                        return `<option value="${p.id}">${p.name} (${p.pos}, OVR: ${p.overall})</option>`;
+                        return `<option value="${p.id}">${p.name} (${p.pos}, ${this.starValueFor(p.overall).toFixed(1).replace(".", ",")} Sterne)</option>`;
                     }).join("")}
                 </select>
 
@@ -5439,8 +5809,18 @@ class UIManager {
                 this.playSound("whistle");
                 this.showToast(`⚽ Spieltag ${state.currentMatchday - 1} wurde simuliert!`, "success");
             } else {
-                const msg = res.summary?.messages?.[0] || `${res.day?.title} abgeschlossen.`;
-                this.showToast(`📅 ${res.day?.date}: ${msg}`, "info");
+                // Der volle Tagesbericht landet im Kalender, die Kurzfassung im Toast
+                state.lastDayReport = {
+                    date: res.day?.date,
+                    dayOfWeek: res.day?.dayOfWeek,
+                    title: res.day?.title,
+                    messages: res.summary?.messages || []
+                };
+                const anzahl = state.lastDayReport.messages.length;
+                const msg = state.lastDayReport.messages[0] || `${res.day?.title} abgeschlossen.`;
+                this.showToast(
+                    `📅 ${res.day?.date}: ${msg}${anzahl > 1 ? ` (+${anzahl - 1} weitere im Tagesbericht)` : ""}`,
+                    "info");
             }
 
             this.renderHeader();
@@ -5639,6 +6019,7 @@ class UIManager {
                 const away = state.clubs.find(c => c.id === userMatch.awayClubId);
                 MatchEngine.simulateFullMatch(userMatch, home, away, state.players);
                 this.playSound("whistle");
+                this.finishMatchdayAroundUser();
                 this.showMatchReportModal(userMatch);
             }
         };
@@ -5798,9 +6179,14 @@ class UIManager {
         document.getElementById("btnStartScoutAssignment")?.addEventListener("click", () => {
             const pos = document.getElementById("scoutPosSelect")?.value || "ALL";
             const maxAge = parseInt(document.getElementById("scoutAgeSelect")?.value || "25", 10);
-            const minOvr = parseInt(document.getElementById("scoutOvrSelect")?.value || "75", 10);
+            // Der Auftrag wird in Sternen erteilt und in eine Stärke übersetzt
+            const minStars = parseFloat(document.getElementById("scoutOvrSelect")?.value || "3.5");
+            const engine = this.getRatingEngine();
+            const minOvr = engine ? engine.overallForStars(minStars, this.starContext()) : 75;
 
-            const res = ScoutingEngine.startAssignment(this.app.state, { position: pos, maxAge: maxAge, minOverall: minOvr });
+            const res = ScoutingEngine.startAssignment(this.app.state, {
+                position: pos, maxAge: maxAge, minOverall: minOvr, minStars: minStars
+            });
             if (res.success) {
                 this.playSound("click");
                 this.showToast("🔭 Scout erfolgreich für die Suche entsandt!", "success");
@@ -5832,17 +6218,39 @@ class UIManager {
         document.getElementById("tfPosFilter")?.addEventListener("change", () => this.renderTransfers());
         document.getElementById("tfRatingFilter")?.addEventListener("change", () => this.renderTransfers());
 
-        // Training Settings
+        // Training: Jede Änderung des Managers ist ein Veto gegen den Stab und
+        // gilt für einige Tage - danach übernimmt der Trainerstab wieder.
+        const vetoEinlegen = () => {
+            const staff = this.getCoachingStaffEngine();
+            const focus = document.querySelector('input[name="trainFocus"]:checked')?.value;
+            const intensity = document.querySelector('input[name="trainIntensity"]:checked')?.value;
+            if (!staff) {
+                this.app.state.trainingSettings.focus = focus;
+                this.app.state.trainingSettings.intensity = intensity;
+                return;
+            }
+            const veto = staff.setManagerVeto(this.app.state, focus, intensity);
+            this.showToast(
+                `Ihre Vorgabe gilt für ${veto.daysRemaining} Tage: ${staff.focusLabel(veto.focus)}, ${staff.intensityLabel(veto.intensity)}.`,
+                "success");
+            this.renderTraining();
+        };
+
         document.querySelectorAll('input[name="trainFocus"]').forEach(r => {
-            r.addEventListener("change", (e) => {
-                this.app.state.trainingSettings.focus = e.target.value;
-            });
+            r.addEventListener("change", vetoEinlegen);
         });
 
         document.querySelectorAll('input[name="trainIntensity"]').forEach(r => {
-            r.addEventListener("change", (e) => {
-                this.app.state.trainingSettings.intensity = e.target.value;
-            });
+            r.addEventListener("change", vetoEinlegen);
+        });
+
+        document.getElementById("btnStaffTakeOver")?.addEventListener("click", () => {
+            const staff = this.getCoachingStaffEngine();
+            if (!staff) return;
+            staff.clearManagerVeto(this.app.state);
+            this.playSound("click");
+            this.showToast("Der Trainerstab übernimmt die Trainingsplanung wieder.", "success");
+            this.renderTraining();
         });
 
         // Quick Link Buttons

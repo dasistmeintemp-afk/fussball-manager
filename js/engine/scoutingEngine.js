@@ -2,7 +2,45 @@
  * ScoutingEngine - Scouts beauftragen, Talente sichten und Spielerberichte erstellen
  */
 
+/** Auflösung der Module in Browser- und Node-Umgebung */
+const _seResolve = (globalName, path) => {
+    if (typeof globalThis !== "undefined" && globalThis[globalName]) return globalThis[globalName];
+    if (typeof window !== "undefined" && window[globalName]) return window[globalName];
+    if (typeof require !== "undefined") {
+        try { return require(path)[globalName]; } catch (e) { return null; }
+    }
+    return null;
+};
+
 const ScoutingEngine = {
+    /**
+     * Wie viel bringt ein Scoutbericht über einen Spieler aus einer höheren
+     * Liga?
+     *
+     * Einen Kreisligaspieler schaut sich der Scout an einem Nachmittag an. An
+     * einen Serie-A-Profi kommt er kaum heran: keine Trainingsbesuche, keine
+     * Gespräche mit dem Umfeld, nur das, was ohnehin im Fernsehen läuft. Jede
+     * Ligastufe Unterschied kostet daher spürbar Ertrag.
+     */
+    reachPenalty(state, player) {
+        if (!state || !player || !player.clubId) return 1;
+
+        const userClub = (state.clubs || []).find(c => c.id === state.userClubId);
+        const seinVerein = (state.clubs || []).find(c => c.id === player.clubId);
+        if (!userClub || !seinVerein) return 1;
+
+        const transferEngine = _seResolve("TransferEngine", "./transferEngine.js");
+        const reichweite = transferEngine && typeof transferEngine.marketReach === "function"
+            ? transferEngine.marketReach(userClub)
+            : 1;
+
+        // Innerhalb der Reichweite arbeitet der Scout ungehindert
+        const abstand = reichweite - (seinVerein.level || 1);
+        if (abstand <= 0) return 1;
+
+        return Math.max(0.2, 1 - abstand * 0.3);
+    },
+
     /**
      * Startet einen neuen Scouting-Auftrag
      */
@@ -58,6 +96,15 @@ const ScoutingEngine = {
         // Passende Spieler filtern
         let pool = state.players.filter(p => p.clubId !== state.userClubId && !p.injured);
 
+        // Der Scout fährt nur dorthin, wo der Verein auch Chancen hätte.
+        // Sonst kam der Chefscout eines Landesligisten mit drei Berichten über
+        // Mailänder Stammspieler zurück.
+        const userClub = (state.clubs || []).find(c => c.id === state.userClubId);
+        const transferEngine = _seResolve("TransferEngine", "./transferEngine.js");
+        if (userClub && transferEngine && typeof transferEngine.isWithinReach === "function") {
+            pool = pool.filter(p => transferEngine.isWithinReach(p, userClub, state.clubs));
+        }
+
         if (assignment.position && assignment.position !== "ALL") {
             pool = pool.filter(p => p.pos === assignment.position || p.secondPos === assignment.position);
         }
@@ -106,7 +153,12 @@ const ScoutingEngine = {
 
         const source = options.source || "transfer_market";
         const scoutQuality = options.scoutQuality || 75;
-        const amount = options.amount || (source === "opponent_analysis" ? 35 : (source === "quick" ? 25 : 40));
+        const basis = options.amount || (source === "opponent_analysis" ? 35 : (source === "quick" ? 25 : 40));
+
+        // An einen Profi aus einer deutlich höheren Liga kommt der Scout nur
+        // schwer heran - ein Bericht bringt dann weit weniger Klarheit.
+        const daempfung = this.reachPenalty(state, player);
+        const amount = Math.max(4, Math.round(basis * daempfung));
 
         this.increaseKnowledge(player, amount, scoutQuality);
         player.scoutingKnowledge.lastScoutedDate = state.currentDate || "Aktuell";

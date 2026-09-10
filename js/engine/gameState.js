@@ -1199,10 +1199,15 @@ class GameState {
                         if (homeEntry && awayEntry) {
                             homeEntry.played++;
                             awayEntry.played++;
+                            // Die Tore des Gastes gingen bisher ebenfalls auf
+                            // das Konto des Gastgebers. Dadurch stand bei jeder
+                            // Mannschaft dieselbe Zahl vor und hinter dem
+                            // Doppelpunkt, die Tordifferenz war immer null und
+                            // der Gast blieb bei 0:0 stehen.
                             homeEntry.goalsFor += m.homeGoals;
                             homeEntry.goalsAgainst += m.awayGoals;
-                            homeEntry.goalsFor += m.awayGoals;
-                            homeEntry.goalsAgainst += m.homeGoals;
+                            awayEntry.goalsFor += m.awayGoals;
+                            awayEntry.goalsAgainst += m.homeGoals;
 
                             if (m.homeGoals > m.awayGoals) {
                                 homeEntry.won++;

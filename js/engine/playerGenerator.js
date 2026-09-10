@@ -418,22 +418,63 @@ class PlayerGenerator {
 
         const overall = this.toOverall(baseCA);
         const pot = Math.max(overall, this.toOverall(truePA));
+        const nebenpositionen = this.getPositionEngine()?.generateSecondaryPositions(pos) || [];
 
-        return {
+        return Object.assign({
             id: `youth_${clubId}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
             name: `${firstName} ${lastName}`,
             age: age,
             nationality: "Deutschland",
             pos: pos,
-            secondPos: (this.getPositionEngine()?.generateSecondaryPositions(pos) || [])[0] || null,
-            positions: this.getPositionEngine()?.generateSecondaryPositions(pos) || [],
+            secondPos: nebenpositionen[0] || null,
+            positions: nebenpositionen,
             overall: overall,
             pot: pot,
             trueCurrentAbility: baseCA,
             truePotentialAbility: truePA,
             developmentRate: 1.0 + (academyLevel * 0.1),
             promoted: false
-        };
+        }, this.buildYouthProfile(pos, overall, age));
+    }
+
+    /**
+     * Ergänzt einen Nachwuchsspieler um alles, was die Detailansicht braucht.
+     *
+     * Talente kamen bisher nur mit Gesamtstärke und Potenzial zur Welt. In der
+     * Spielerakte stand deshalb überall die Gesamtstärke als Platzhalter - man
+     * konnte nicht erkennen, ob der Junge schnell, technisch oder kopfballstark
+     * ist, und damit auch nicht, ob er zur Mannschaft passt.
+     */
+    static buildYouthProfile(pos, overall, age) {
+        const ratingEngine = this.getRatingEngine();
+        return Object.assign({
+            hiddenAttributes: ratingEngine
+                ? ratingEngine.generateHiddenAttributes({ age, overall })
+                : { professionalism: 12, ambition: 14, consistency: 10, importantMatches: 11, injuryProneness: 8, adaptability: 14, loyalty: 15, temperament: 11 },
+            // Der eigene Nachwuchs wird täglich beobachtet - hier gibt es
+            // nichts zu scouten, die Werte sind bekannt.
+            scoutingKnowledge: {
+                known: true,
+                knowledgeLevel: 95,
+                lastScoutedDate: "Eigene Akademie",
+                reportsCount: 1,
+                accuracy: 95
+            },
+            fitness: 92 + Math.floor(Math.random() * 8),
+            morale: 80 + Math.floor(Math.random() * 15),
+            form: 6.5 + parseFloat((Math.random() * 1.2).toFixed(1)),
+            stats: { matches: 0, goals: 0, assists: 0, yellowCards: 0, redCards: 0, minutes: 0, cleanSheets: 0, ratingSum: 0 }
+        }, this.generateAttributes(pos, overall));
+    }
+
+    /**
+     * Rüstet einen Nachwuchsspieler aus einem älteren Spielstand nach.
+     * Gibt zurück, ob etwas ergänzt wurde.
+     */
+    static completeYouthProspect(prospect) {
+        if (!prospect || typeof prospect.pace === "number") return false;
+        Object.assign(prospect, this.buildYouthProfile(prospect.pos || "ZM", prospect.overall || 45, prospect.age || 16));
+        return true;
     }
 }
 

@@ -46,6 +46,7 @@ const ASSETS_TO_CACHE = [
     "./js/engine/matchEngine.js",
     "./js/engine/transferEngine.js",
     "./js/engine/trainingEngine.js",
+    "./js/engine/coachingStaffEngine.js",
     "./js/engine/seasonEngine.js",
     "./js/ui/uiManager.js",
     "./js/app.js"

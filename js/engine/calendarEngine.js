@@ -315,7 +315,18 @@ const CalendarEngine = {
             messages: []
         };
 
-        // 1. Trainingsbetrieb: Belastung, Erholung, Entwicklung und Risiko
+        // 1. Der Trainerstab plant den Tag - sofern der Manager ihn lässt.
+        // Ein Manager stellt keine Hütchen auf; er gibt die Richtung vor und
+        // legt notfalls ein Veto ein.
+        const staffEngine = (typeof CoachingStaffEngine !== 'undefined' && CoachingStaffEngine)
+            ? CoachingStaffEngine
+            : ((typeof window !== 'undefined' && window.CoachingStaffEngine) ? window.CoachingStaffEngine : (typeof require !== 'undefined' ? require('./coachingStaffEngine.js').CoachingStaffEngine : null));
+
+        if (staffEngine && typeof staffEngine.applyDailyPlan === 'function') {
+            summary.plan = staffEngine.applyDailyPlan(state, currentDay.type);
+        }
+
+        // 2. Trainingsbetrieb: Belastung, Erholung, Entwicklung und Risiko
         // laufen jetzt Tag für Tag statt im Wochenblock.
         const trainingEngine = (typeof TrainingEngine !== 'undefined' && TrainingEngine)
             ? TrainingEngine
@@ -325,12 +336,19 @@ const CalendarEngine = {
             const tag = trainingEngine.processDailyTraining(state, currentDay.type);
             summary.training = tag;
 
-            if (currentDay.type === CALENDAR_DAY_TYPES.RECOVERY) {
-                summary.messages.push("Regenerationseinheit absolviert. Der Kader erholt sich.");
-            } else if (currentDay.type === CALENDAR_DAY_TYPES.TRAINING) {
-                const focus = state.trainingSettings?.focus || "allround";
-                const intensity = state.trainingSettings?.intensity || "normal";
-                summary.messages.push(`Training absolviert (Schwerpunkt: ${focus}, Intensität: ${intensity}).`);
+            if (summary.plan) {
+                const kopf = summary.plan.vomManager
+                    ? "🧑‍💼 Ihre Vorgabe"
+                    : `🧑‍🏫 ${summary.plan.stabTitel || "Trainerstab"}`;
+                summary.messages.push(`${kopf}: ${staffEngine.focusLabel(summary.plan.focus)}, ${staffEngine.intensityLabel(summary.plan.intensity)}. ${summary.plan.grund}`);
+            }
+
+            // Wer stach heraus, wer hing hinterher?
+            if (Array.isArray(tag.standouts)) {
+                tag.standouts.forEach(s => summary.messages.push(`📈 ${s}`));
+            }
+            if (Array.isArray(tag.concerns)) {
+                tag.concerns.forEach(s => summary.messages.push(`📉 ${s}`));
             }
 
             tag.injuries.forEach(name => {
@@ -415,7 +433,77 @@ const CalendarEngine = {
             });
         }
 
+        // 7. Vereinsleben: Zwischen den Spieltagen passiert im echten Verein
+        // ständig etwas. Ohne das war "nächsten Tag simulieren" ein Knopf, der
+        // nur das Datum weiterschob.
+        this.clubLifeEvents(state, currentDay, userClub).forEach(m => summary.messages.push(m));
+
         return summary;
+    },
+
+    /**
+     * Kleine Ereignisse aus dem Vereinsalltag.
+     *
+     * Nichts davon entscheidet eine Saison - aber zusammen sorgen sie dafür,
+     * dass ein Dienstag nach etwas aussieht. Pro Tag kommt höchstens eines
+     * durch, damit der Bericht lesbar bleibt.
+     */
+    clubLifeEvents(state, currentDay, userClub) {
+        if (!userClub) return [];
+
+        const kader = state.players.filter(p => userClub.playerIds.includes(p.id));
+        if (kader.length === 0) return [];
+
+        const zufall = (liste) => liste[Math.floor(Math.random() * liste.length)];
+        const ereignisse = [];
+
+        // a) Ein Spieler sucht das Gespräch
+        const unzufrieden = kader.filter(p => (p.happiness?.overall ?? 75) < 58 && (p.injuredWeeks || 0) <= 0);
+        if (unzufrieden.length > 0 && Math.random() < 0.16) {
+            const p = zufall(unzufrieden);
+            ereignisse.push(`💬 ${p.name} hat um ein Gespräch gebeten - er ist mit seiner Rolle unzufrieden.`);
+            p.happiness = p.happiness || {};
+            p.happiness.overall = Math.min(100, (p.happiness.overall ?? 55) + 4);
+        }
+
+        // b) Ein Talent aus der Akademie drängt nach oben
+        const talente = (state.youthAcademy?.prospects || []).filter(t => !t.promoted);
+        if (talente.length > 0 && Math.random() < 0.1) {
+            const t = zufall(talente);
+            ereignisse.push(`🎓 Der Nachwuchstrainer meldet ${t.name} (${t.pos}, ${t.age}) für das Mannschaftstraining an.`);
+        }
+
+        // c) Die Medizinabteilung meldet sich
+        const angeschlagen = kader.filter(p => (p.injuredWeeks || 0) <= 0 && (p.fitness ?? 100) < 65);
+        if (angeschlagen.length > 0 && Math.random() < 0.14) {
+            const p = zufall(angeschlagen);
+            ereignisse.push(`🏥 Die Medizinabteilung rät, ${p.name} eine Einheit auszusetzen.`);
+        }
+
+        // d) Presse und Umfeld
+        if (currentDay.type === CALENDAR_DAY_TYPES.MEDIA || Math.random() < 0.08) {
+            const stimmung = state.fanMood || 75;
+            const themen = stimmung >= 78
+                ? [`📰 Die Lokalpresse lobt die Entwicklung der Mannschaft.`,
+                   `📰 Ein Fanclub lädt die Mannschaft zum Grillabend - die Stimmung im Umfeld ist ausgezeichnet.`]
+                : stimmung >= 55
+                    ? [`📰 Die Presse fragt nach der Ausrichtung für die kommenden Wochen.`,
+                       `📰 Im Umfeld wird über die Aufstellung diskutiert.`]
+                    : [`📰 Kritische Töne in der Presse - das Umfeld wird ungeduldig.`,
+                       `📰 Ein Fanbanner fordert Veränderungen.`];
+            ereignisse.push(zufall(themen));
+        }
+
+        // e) Der Vorstand schaut auf die Zahlen
+        if (Math.random() < 0.06) {
+            const kontostand = userClub.balance || 0;
+            ereignisse.push(kontostand < 0
+                ? `👔 Der Vorstand mahnt: Das Konto steht bei ${(kontostand / 1e6).toFixed(1)} Mio. €.`
+                : `👔 Der Vorstand ist mit der wirtschaftlichen Entwicklung zufrieden.`);
+        }
+
+        // Höchstens zwei Meldungen am Tag, sonst ertrinkt der Bericht
+        return ereignisse.slice(0, 2);
     },
 
     formatDate(d) {

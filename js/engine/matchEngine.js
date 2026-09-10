@@ -656,12 +656,48 @@ class MatchEngine {
             const winger = wingers.length > 0 ? _Random.choice(wingers) : passer;
             const defender = defenders.length > 0 ? _Random.choice(defenders) : defPlayers[0];
 
-            // Koordinaten für das 2D-Feld
-            const startX = isHomeAttacking ? _Random.float(32, 50) : _Random.float(50, 68);
-            const startY = _Random.float(25, 75);
-            const midX = isHomeAttacking ? _Random.float(65, 80) : _Random.float(20, 35);
-            const midY = _Random.float(28, 72);
-            const goalX = isHomeAttacking ? 96 : 4;
+            // Koordinaten für das 2D-Feld.
+            //
+            // Jede Angriffsart hat ihre eigene Geometrie, damit das Bild zum
+            // Text passt: Eine Ecke beginnt an der Eckfahne, eine Flanke am
+            // Flügel, ein Steilpass in der Zentrale, ein Dribbling im
+            // Halbfeld. Vorher zogen alle vier dieselben Zufallszahlen aus
+            // der Mitte - die Ecke wurde also mitten auf dem Platz getreten.
+            //
+            // Gerechnet wird im Bild "Heim greift nach rechts an"; für die
+            // Auswärtsmannschaft wird gespiegelt.
+            const spiegel = (v) => isHomeAttacking ? v : 100 - v;
+            const flanke = _Random.chance(0.5) ? "oben" : "unten";
+            const flankenY = (nah, fern) => flanke === "oben"
+                ? _Random.float(nah, fern)
+                : 100 - _Random.float(nah, fern);
+
+            let startX, startY, midX, midY;
+
+            if (attackType === "corner") {
+                startX = spiegel(98.5);
+                startY = flanke === "oben" ? 1.5 : 98.5;
+                midX = spiegel(_Random.float(84, 91));
+                midY = _Random.float(40, 60);
+            } else if (attackType === "cross") {
+                startX = spiegel(_Random.float(70, 88));
+                startY = flankenY(6, 20);
+                midX = spiegel(_Random.float(82, 90));
+                midY = _Random.float(38, 62);
+            } else if (attackType === "through_ball") {
+                startX = spiegel(_Random.float(42, 60));
+                startY = _Random.float(28, 72);
+                midX = spiegel(_Random.float(74, 87));
+                midY = _Random.float(30, 70);
+            } else {
+                // Dribbling: der Schütze zieht selbst aus dem Halbfeld nach innen
+                startX = spiegel(_Random.float(56, 72));
+                startY = flankenY(18, 40);
+                midX = spiegel(_Random.float(76, 88));
+                midY = _Random.float(34, 66);
+            }
+
+            const goalX = spiegel(96);
             const goalY = _Random.float(46, 54);
 
             let eventType = attackType;
@@ -931,7 +967,15 @@ class MatchEngine {
                 const defender = _Random.choice(foulEligible) || defPlayers.find(p => p.pos !== "TW") || defPlayers[0];
                 const shooter = _Random.choice(attPlayers.filter(p => ["ST", "LA", "RA", "OM"].includes(foulAttPos(p)))) || attPlayers[0];
                 const gk = defPlayers.find(p => foulDefPos(p) === "TW") || defPlayers.find(p => p.pos === "TW") || defPlayers[0];
-                const fPos = { x: _Random.float(25, 75), y: _Random.float(20, 80) };
+                // Gefoult wird dort, wo die angreifende Mannschaft gerade
+                // hinwill: im Mittelfeld und im letzten Drittel. Vorher lag
+                // der Tatort zufällig irgendwo zwischen beiden Strafräumen,
+                // sodass die Hälfte der Fouls in der eigenen Hälfte der
+                // angreifenden Mannschaft passierte.
+                const fPos = {
+                    x: isHomeAttacking ? _Random.float(38, 84) : 100 - _Random.float(38, 84),
+                    y: _Random.float(16, 84)
+                };
 
                 const isPenalty = _Random.chance(MATCH_TUNING.penaltyRate);
                 const isRed = !isPenalty && _Random.chance(0.003);
@@ -1137,6 +1181,47 @@ class MatchEngine {
                 }
             }
         });
+
+        // Kleine Fouls über das ganze Spiel verteilt.
+        //
+        // Die Szenen oben erzeugen nur die Fouls, aus denen Karten, Elfmeter
+        // oder Konter entstehen - rund drei pro Spiel. Ein echtes Spiel hat
+        // gut zwanzig Unterbrechungen, und jede davon ist ein Freistoß, den
+        // man auf dem Feld auch sieht. Diese Fouls kosten keine Torchance:
+        // Sie treten neben die Angriffsszenen, nicht an ihre Stelle.
+        const kleineFouls = _Random.int(7, 13);
+        for (let i = 0; i < kleineFouls; i++) {
+            const min = _Random.int(Math.max(2, startMinute), 89);
+            const heimFoult = _Random.chance(0.5);
+            const foulClub = heimFoult ? homeClub : awayClub;
+            const kandidaten = (heimFoult ? activeHomePlayers : activeAwayPlayers)
+                .filter(p => !sentOffPlayerIds.has(p.id) && p.pos !== "TW");
+            const suender = _Random.choice(kandidaten);
+            if (!suender) continue;
+
+            // Gefoult wird der Gegner: Foult die Heimmannschaft, tritt der
+            // Gast den Freistoß Richtung x=4, der Tatort liegt also in der
+            // Heimhälfte oder im Mittelfeld - und umgekehrt.
+            const gefoulteGreiftRechtsAn = !heimFoult;
+            const x = gefoulteGreiftRechtsAn
+                ? 100 - _Random.float(20, 62)
+                : _Random.float(20, 62);
+
+            timeline.push({
+                minute: min,
+                second: _Random.int(5, 50),
+                type: "foul",
+                team: heimFoult ? "home" : "away",
+                clubId: foulClub.id,
+                clubName: foulClub.name,
+                playerId: suender.id,
+                playerName: suender.name,
+                start: { x, y: _Random.float(10, 90) },
+                end: { x, y: _Random.float(10, 90) },
+                outcome: "freekick",
+                text: `${min}' - 🛑 Freistoß: ${suender.name} stoppt den Gegenspieler unfair.`
+            });
+        }
 
         // Spielphasen & Nachspielzeit Events einfügen (A5, C15)
         const halfTimeMinute = 45 + extraTime1;
@@ -1804,6 +1889,13 @@ class LiveMatch {
     checkForFinish() {
         if (this.isFinished) return false;
         if (this.minute >= 90 && this.timelineIndex >= this.timeline.length) {
+            // Der Zähler timelineIndex steht auf den Ereignissen, die die Regie
+            // in ihre Szene geholt hat - abgespielt sind sie damit noch nicht.
+            // Was beim Abpfiff offen ist, wird nachgetragen, sonst zeigte die
+            // Live-Statistik am Ende weniger als der Spielbericht.
+            if (this.director && typeof this.director.flushScene === "function") {
+                this.director.flushScene();
+            }
             this.finishMatch();
             return true;
         }
@@ -2029,8 +2121,14 @@ class LiveMatch {
             if (ev.team === "home") this.stats.fouls[0]++; else this.stats.fouls[1]++;
             this.addEvent("foul", ev.clubId, ev.text);
         } else if (ev.type === "yellow_card") {
-            if (ev.team === "home") { this.stats.fouls[0]++; this.stats.yellowCards[0]++; }
-            else { this.stats.fouls[1]++; this.stats.yellowCards[1]++; }
+            // Gelb-Rot ist auch ein Platzverweis. Der Spielbericht zählt ihn
+            // seit jeher mit, die Live-Anzeige nicht - dadurch stand am Ende
+            // eines Spiels mit Ampelkarte "Rote Karten 0" auf der Tafel und
+            // "1" im Bericht.
+            const seite = ev.team === "home" ? 0 : 1;
+            this.stats.fouls[seite]++;
+            this.stats.yellowCards[seite]++;
+            if (ev.isSecondYellow) this.stats.redCards[seite]++;
             this.addEvent("yellow_card", ev.clubId, ev.text);
         } else if (ev.type === "red_card") {
             if (ev.team === "home") { this.stats.fouls[0]++; this.stats.redCards[0]++; }

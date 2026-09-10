@@ -922,6 +922,117 @@ class GameState {
         return state;
     }
 
+    /**
+     * Ausgefallene Spieler in Startelf und Bank ersetzen.
+     *
+     * Verletzte und Gesperrte werden aus der Aufstellung genommen - bisher
+     * blieb die Lücke einfach stehen. Über eine Saison rutschte der Kader so
+     * dauerhaft auf zehn Mann, und ein Livespiel ließ sich gar nicht mehr
+     * starten. Hier rückt der beste verfügbare Ersatz nach; die übrige
+     * Aufstellung des Trainers bleibt unangetastet.
+     *
+     * Gibt true zurück, wenn etwas verändert wurde.
+     */
+    static repairLineup(club, allPlayers) {
+        if (!club || !Array.isArray(club.playerIds) || !Array.isArray(allPlayers)) return false;
+
+        const byId = new Map();
+        allPlayers.forEach(p => { if (p) byId.set(p.id, p); });
+
+        const kaderIds = new Set(club.playerIds);
+        const einsatzfaehig = (id) => {
+            const p = byId.get(id);
+            return !!p && kaderIds.has(id)
+                && (p.injuredWeeks || 0) <= 0
+                && (p.suspendedMatches || 0) <= 0;
+        };
+
+        const lineupVorher = Array.isArray(club.lineup) ? club.lineup.slice() : [];
+        const benchVorher = Array.isArray(club.bench) ? club.bench.slice() : [];
+
+        const lineup = lineupVorher.filter(einsatzfaehig);
+        const bench = benchVorher.filter(id => einsatzfaehig(id) && !lineup.includes(id));
+
+        const vergeben = new Set([...lineup, ...bench]);
+        const frei = club.playerIds
+            .filter(id => einsatzfaehig(id) && !vergeben.has(id))
+            .map(id => byId.get(id));
+
+        if (lineup.length >= 11 && frei.length === 0) {
+            const unveraendert = lineup.length === lineupVorher.length && bench.length === benchVorher.length;
+            if (unveraendert) return false;
+        }
+
+        const posEngine = GameState._getPositionEngine();
+        const bewerte = (player, pos) => {
+            if (posEngine && typeof posEngine.getEffectiveRating === "function") {
+                return posEngine.getEffectiveRating(player, pos);
+            }
+            return (player.overall || 0) - (player.pos === pos ? 0 : 8);
+        };
+
+        // Welche Positionen fehlen in der Elf?
+        const slots = (GameState.getFormationConfig(club.formation).positions || []).map(s => s.pos);
+        const besetzt = lineup.map(id => byId.get(id)).filter(Boolean);
+        const offeneSlots = [];
+        const nochDa = besetzt.slice();
+        slots.forEach(pos => {
+            const idx = nochDa.findIndex(p => p.pos === pos);
+            if (idx >= 0) nochDa.splice(idx, 1);
+            else offeneSlots.push(pos);
+        });
+
+        // Zuerst von der Bank, dann aus dem Restkader nachrücken
+        const ersatzbank = [...bench.map(id => byId.get(id)).filter(Boolean), ...frei];
+
+        while (lineup.length < 11 && ersatzbank.length > 0) {
+            const gesucht = offeneSlots.shift() || "ZM";
+            ersatzbank.sort((a, b) => bewerte(b, gesucht) - bewerte(a, gesucht));
+            const gewaehlt = ersatzbank.shift();
+            if (!gewaehlt) break;
+            lineup.push(gewaehlt.id);
+            const bankIdx = bench.indexOf(gewaehlt.id);
+            if (bankIdx >= 0) bench.splice(bankIdx, 1);
+            const freiIdx = frei.indexOf(gewaehlt);
+            if (freiIdx >= 0) frei.splice(freiIdx, 1);
+        }
+
+        // Bank wieder auffüllen, Ersatztorwart zuerst
+        const restlich = frei.filter(p => !lineup.includes(p.id) && !bench.includes(p.id));
+        const hatBankKeeper = bench.some(id => byId.get(id)?.pos === "TW");
+        if (!hatBankKeeper) {
+            const keeper = restlich.find(p => p.pos === "TW");
+            if (keeper && bench.length < 7) {
+                bench.push(keeper.id);
+                restlich.splice(restlich.indexOf(keeper), 1);
+            }
+        }
+        restlich.sort((a, b) => (b.overall || 0) - (a.overall || 0));
+        restlich.forEach(p => {
+            if (bench.length < 7 && !bench.includes(p.id)) bench.push(p.id);
+        });
+
+        const veraendert = lineup.length !== lineupVorher.length
+            || bench.length !== benchVorher.length
+            || lineup.some((id, i) => lineupVorher[i] !== id)
+            || bench.some((id, i) => benchVorher[i] !== id);
+
+        club.lineup = lineup;
+        club.bench = bench;
+
+        return veraendert;
+    }
+
+    /** Aufstellungen aller Vereine prüfen und Lücken schließen */
+    static repairAllLineups(state) {
+        if (!state || !Array.isArray(state.clubs)) return 0;
+        let repariert = 0;
+        state.clubs.forEach(club => {
+            if (GameState.repairLineup(club, state.players)) repariert++;
+        });
+        return repariert;
+    }
+
     static autoSetLineupForClub(club, allPlayers) {
         const clubPlayers = allPlayers.filter(p => club.playerIds.includes(p.id) && p.injuredWeeks === 0 && p.suspendedMatches === 0);
         clubPlayers.sort((a, b) => b.overall - a.overall);

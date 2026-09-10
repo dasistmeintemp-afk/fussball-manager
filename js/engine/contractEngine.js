@@ -2,6 +2,16 @@
  * ContractEngine - Vertragsverhandlungen, Gehaltsforderungen, auslaufende Verträge
  */
 
+/** Auflösung der Module in Browser- und Node-Umgebung */
+const _ceResolve = (globalName, path) => {
+    if (typeof globalThis !== "undefined" && globalThis[globalName]) return globalThis[globalName];
+    if (typeof window !== "undefined" && window[globalName]) return window[globalName];
+    if (typeof require !== "undefined") {
+        try { return require(path)[globalName]; } catch (e) { return null; }
+    }
+    return null;
+};
+
 const ContractEngine = {
     /**
      * Ermittelt die Gehaltsforderung eines Spielers für eine Vertragsverlängerung
@@ -102,24 +112,31 @@ const ContractEngine = {
     processSeasonContractUpdates(state) {
         if (!state || !Array.isArray(state.players)) return;
 
+        const newsEngine = _ceResolve("NewsEngine", "./newsEngine.js");
+        const auslaufend = [];
+
         state.players.forEach(p => {
             if (p.contractYears !== undefined) {
                 p.contractYears = Math.max(0, p.contractYears - 1);
             }
 
             // Auslaufende Verträge des Spielervereins warnen
-            if (p.clubId === state.userClubId && p.contractYears === 1) {
-                if (typeof NewsEngine !== 'undefined') {
-                    NewsEngine.addMessage(state, "contract_expiring", {
-                        title: `Auslaufender Vertrag: ${p.name}`,
-                        sender: "Sportdirektor",
-                        text: `Der Vertrag von ${p.name} läuft am Ende dieser Saison aus. Verhandeln Sie zeitnah eine Verlängerung, um einen ablösefreien Abgang zu verhindern.`,
-                        priority: "high",
-                        relatedEntity: { playerId: p.id }
-                    });
-                }
-            }
+            if (p.clubId === state.userClubId && p.contractYears === 1) auslaufend.push(p);
         });
+
+        if (newsEngine && typeof newsEngine.addMessage === 'function') {
+            auslaufend.forEach(p => {
+                newsEngine.addMessage(state, "contract_expiring", {
+                    title: `Auslaufender Vertrag: ${p.name}`,
+                    sender: "Sportdirektor",
+                    text: `Der Vertrag von ${p.name} läuft am Ende dieser Saison aus. Verhandeln Sie zeitnah eine Verlängerung, um einen ablösefreien Abgang zu verhindern.`,
+                    priority: "high",
+                    relatedEntity: { playerId: p.id }
+                });
+            });
+        }
+
+        return auslaufend;
     }
 };
 

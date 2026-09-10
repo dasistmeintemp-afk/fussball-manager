@@ -3291,7 +3291,7 @@ class UIManager {
                             <strong>${this.escapeHtml(p.name)}</strong>
                             <div style="font-size:10px; color:var(--text-muted);">${this.escapeHtml(p.nationality || 'Profi')}</div>
                         </td>
-                        <td>${club ? this.escapeHtml(club.name) : 'Vereinslos'}</td>
+                        <td>${club ? this.escapeHtml(club.name) : '<span class="badge badge-success">Ablösefrei</span>'}</td>
                         <td><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span></td>
                         <td>${p.age}</td>
                         <td>
@@ -3305,7 +3305,7 @@ class UIManager {
                         <td><strong class="${valueClass}">${valDisplay}</strong></td>
                         <td><span class="badge ${confBadgeClass}" title="${confInfo.label}: ${confInfo.hint}">${confPercent}%</span></td>
                         <td>${this.formatMoneySafe(p.wage)}</td>
-                        <td>${p.contractYears} J.</td>
+                        <td>${p.clubId ? `${p.contractYears} J.` : "-"}</td>
                         <td>
                             <div style="display:flex; gap:6px;">
                                 <button class="btn btn-sm btn-secondary btn-scout-direct" data-player-id="${p.id}" title="Scouten für präzisere Daten">🔍 Scouten</button>
@@ -3880,6 +3880,8 @@ class UIManager {
             else if (msg.type === "training_report" || msg.type === "injury") { icon = "🏥"; typeLabel = "Training / Lazarett"; }
             else if (msg.type === "scout_report") { icon = "🔍"; typeLabel = "Scouting"; }
             else if (msg.type === "finance_warning" || msg.type === "sponsor") { icon = "💰"; typeLabel = "Finanzen"; }
+            else if (msg.type === "contract" || msg.type === "contract_expiring") { icon = "📝"; typeLabel = "Verträge"; }
+            else if (msg.type === "retirement") { icon = "🎖️"; typeLabel = "Karriereende"; }
 
             const displayDate = msg.date || "Saisonstart";
 
@@ -3938,6 +3940,8 @@ class UIManager {
         else if (msg.type === "training_report" || msg.type === "injury") { icon = "🏥"; typeLabel = "Training / Lazarett"; }
         else if (msg.type === "scout_report") { icon = "🔍"; typeLabel = "Scouting"; }
         else if (msg.type === "finance_warning" || msg.type === "sponsor") { icon = "💰"; typeLabel = "Finanzen"; }
+        else if (msg.type === "contract" || msg.type === "contract_expiring") { icon = "📝"; typeLabel = "Verträge"; }
+        else if (msg.type === "retirement") { icon = "🎖️"; typeLabel = "Karriereende"; }
 
         const formattedBody = (msg.body || msg.text || "").replace(/\n/g, "<br>");
         const displayDate = msg.date || "Saisonstart";
@@ -5421,6 +5425,16 @@ class UIManager {
 
         const res = calendarEngine.advanceOneDay(state);
         if (res.success) {
+            // Am letzten Spieltag endet die Saison. Ohne diese Abfrage wurde
+            // das Saisonende im Kalender verschluckt: keine Ehrung, keine neue
+            // Saison - das Spiel blieb für immer am 34. Spieltag stehen.
+            if (res.matchResult && res.matchResult.seasonEnded) {
+                this.playSound("whistle");
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.showSeasonEndCelebration(res.matchResult);
+                return;
+            }
+
             if (res.type === "matchday" && res.matchResult) {
                 this.playSound("whistle");
                 this.showToast(`⚽ Spieltag ${state.currentMatchday - 1} wurde simuliert!`, "success");
@@ -5450,6 +5464,16 @@ class UIManager {
 
         const res = calendarEngine.advanceToNextMatchday(state);
         if (res.success) {
+            const saisonEnde = (res.simulatedDays || [])
+                .map(tag => tag.matchResult)
+                .find(m => m && m.seasonEnded);
+            if (saisonEnde) {
+                this.playSound("whistle");
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.showSeasonEndCelebration(saisonEnde);
+                return;
+            }
+
             const count = res.simulatedDays?.length || 0;
             this.showToast(`⏩ ${count} Tage simuliert. Bereit für Spieltag ${state.currentMatchday}!`, "success");
             this.renderHeader();

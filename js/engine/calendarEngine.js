@@ -34,8 +34,11 @@ const CalendarEngine = {
         const totalMatchdays = state.totalMatchdays || (state.schedule ? state.schedule.length : 34);
         const calendar = [];
 
-        // Startdatum festlegen: 2026-08-01 (Samstag vor Spieltag 1)
-        const startDate = new Date(2026, 7, 1); // 1. August 2026
+        // Startdatum: 1. August der laufenden Saison. Die Saisonzählung beginnt
+        // bei 1, deshalb der Versatz - sonst stünde in jeder Saison wieder 2026
+        // im Kalender.
+        const saison = Math.max(1, state.seasonYear || 1);
+        const startDate = new Date(2025 + saison, 7, 1);
         let currentDate = new Date(startDate);
         let dayCounter = 1;
 
@@ -333,6 +336,23 @@ const CalendarEngine = {
             tag.injuries.forEach(name => {
                 summary.messages.push(`⚠️ ${name} hat sich im Training verletzt.`);
             });
+        }
+
+        // 1b. Lücken in den Aufstellungen schließen. Wer sich verletzt, fällt
+        // aus Elf und Bank - ohne Nachrücker stand ein Verein nach ein paar
+        // Wochen dauerhaft mit zehn Mann da.
+        const gameState = (typeof GameState !== 'undefined' && GameState)
+            ? GameState
+            : ((typeof window !== 'undefined' && window.GameState) ? window.GameState : (typeof require !== 'undefined' ? require('./gameState.js').GameState : null));
+
+        if (gameState && typeof gameState.repairLineup === 'function') {
+            const eigeneGeaendert = userClub ? gameState.repairLineup(userClub, state.players) : false;
+            state.clubs.forEach(club => {
+                if (club !== userClub) gameState.repairLineup(club, state.players);
+            });
+            if (eigeneGeaendert) {
+                summary.messages.push("Die Aufstellung wurde um die Ausfälle ergänzt.");
+            }
         }
 
         // 2. Verhandlungen mit Vereinen und Beratern laufen weiter

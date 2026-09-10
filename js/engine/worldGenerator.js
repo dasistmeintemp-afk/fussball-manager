@@ -19,7 +19,41 @@ const _wgResolve = (globalName, path, exportName) => {
 
 class WorldGenerator {
     /** Kadergröße nach Ligastufe - Amateure haben kleinere Kader */
-    static SQUAD_SIZES = { 1: 22, 2: 21, 3: 20, 4: 19, 5: 18, 6: 18, 7: 18 };
+    static SQUAD_SIZES = { 1: 24, 2: 22, 3: 21, 4: 20, 5: 19, 6: 19, 7: 19 };
+
+    /**
+     * Harte Untergrenzen, ohne die eine Mannschaft nicht spielfähig ist.
+     * Nicht der Sollplan, sondern das Existenzminimum: Wer darunter fällt,
+     * bekommt Nachschub, auch wenn der Kader zahlenmäßig voll ist.
+     */
+    static MINDESTBESETZUNG = [
+        { positionen: ["TW"], anzahl: 2, ersatz: "TW" },
+        { positionen: ["IV"], anzahl: 3, ersatz: "IV" },
+        { positionen: ["LV", "RV"], anzahl: 2, ersatz: "LV" },
+        { positionen: ["ZM", "DM", "OM", "LM", "RM"], anzahl: 4, ersatz: "ZM" },
+        { positionen: ["ST", "LA", "RA"], anzahl: 3, ersatz: "ST" }
+    ];
+
+    /** Welche Positionen fehlen dem Kader, um überhaupt spielfähig zu sein? */
+    static fehlendeMindestbesetzung(ist) {
+        const offen = [];
+        this.MINDESTBESETZUNG.forEach(regel => {
+            const vorhanden = regel.positionen.reduce((summe, pos) => summe + (ist[pos] || 0), 0);
+            for (let i = vorhanden; i < regel.anzahl; i++) offen.push(regel.ersatz);
+        });
+        return offen;
+    }
+
+    /** Die Mannschaftsteil-Regel, zu der eine Position gehört */
+    static gruppeZu(pos) {
+        return this.MINDESTBESETZUNG.find(regel => regel.positionen.includes(pos)) || null;
+    }
+
+    /** Wie viele Spieler stellt der Kader in diesem Mannschaftsteil? */
+    static gruppenStaerke(ist, regel) {
+        if (!regel) return 99;
+        return regel.positionen.reduce((summe, pos) => summe + (ist[pos] || 0), 0);
+    }
 
     static getLeagues() {
         return _wgResolve("LEAGUES_DATA", "../data/leagueData.js", "LEAGUES_DATA") || [];
@@ -117,7 +151,7 @@ class WorldGenerator {
                     club.id,
                     league.level || 1,
                     this.SQUAD_SIZES[league.level] || 18,
-                    { clubStrength: club.clubStrength, countryId: league.countryId || "de" }
+                    { clubStrength: club.clubStrength, countryId: league.countryId || "de", idOffset: 0 }
                 );
 
                 squad.forEach(player => {
@@ -136,7 +170,147 @@ class WorldGenerator {
             });
         });
 
+        playersCreated += this.fillUpExistingSquads(state, leagues, playerGen);
+
         return { clubsCreated, playersCreated };
+    }
+
+    /**
+     * Bestehende Vereine auf Ligagröße auffüllen.
+     *
+     * Die von Hand gepflegten Bundesligisten kamen mit sechzehn Spielern zur
+     * Welt - weniger als jeder Landesligist - und standen nach der ersten
+     * Verletzung ohne Ersatz da. Ergänzt wird gezielt dort, wo der Kader dünn
+     * ist: Wer keinen zweiten Torwart hat, bekommt einen, und nicht noch einen
+     * vierten Innenverteidiger.
+     */
+    static fillUpExistingSquads(state, leagues, playerGen, options = {}) {
+        let erzeugt = 0;
+        const gameState = this.getGameState();
+        // Der Nutzerverein darf eine kleinere Zielgröße bekommen: Er soll seine
+        // Lücken selbst auf dem Transfermarkt schließen dürfen.
+        const zielGroesse = typeof options.sizeFor === "function" ? options.sizeFor : null;
+
+        state.clubs.forEach(club => {
+            const league = leagues.find(l => l.id === club.leagueId);
+            if (!league) return;
+
+            const voll = this.SQUAD_SIZES[league.level] || 18;
+            const ziel = zielGroesse ? zielGroesse(club, voll) : voll;
+            const kader = (club.playerIds || [])
+                .map(id => state.players.find(sp => sp.id === id))
+                .filter(Boolean);
+
+            // Was fehlt dem Kader? Sollplan gegen Istbestand halten.
+            const ist = {};
+            kader.forEach(p => { ist[p.pos] = (ist[p.pos] || 0) + 1; });
+
+            const rest = Object.assign({}, ist);
+            const offen = [];
+            playerGen.buildSquadPlan(ziel).forEach(pos => {
+                if ((rest[pos] || 0) > 0) rest[pos]--;
+                else offen.push(pos);
+            });
+
+            // Manche Lücken tun weh, auch wenn der Kader zahlenmäßig voll ist:
+            // Ein Verein ohne zweiten Torwart oder ohne Stürmer läuft sonst
+            // Saison für Saison mit einem Feldspieler im Tor auf.
+            const kritisch = this.fehlendeMindestbesetzung(ist);
+            const luecken = ziel - kader.length;
+
+            // Jeder Verein zieht Jahr für Jahr Talente nach. Ohne diesen
+            // Nachwuchs altert die Spielwelt Saison für Saison weiter, bis es
+            // in der ganzen Liga keinen einzigen Zwanzigjährigen mehr gibt.
+            const mindestJugend = options.mindestJugend || 0;
+            const jung = kader.filter(p => (p.age || 25) <= 21).length;
+            const jugendLuecke = Math.max(0, mindestJugend - jung);
+
+            const anzahl = Math.max(luecken, kritisch.length, jugendLuecke);
+            if (anzahl <= 0) return;
+
+            // Die dünnsten Mannschaftsteile zuerst bedienen - sonst bekommt ein
+            // Verein mit zwei Stürmern erst einmal den vierten Innenverteidiger,
+            // weil die Angreifer im Sollplan hinten stehen.
+            const knappheit = (pos) => {
+                const regel = this.gruppeZu(pos);
+                if (!regel) return 9;
+                return this.gruppenStaerke(ist, regel) / regel.anzahl;
+            };
+            const wunsch = kritisch.concat(offen.slice().sort((a, b) => knappheit(a) - knappheit(b)));
+            while (wunsch.length < anzahl) wunsch.push("ZM");
+
+            // Ist der Kader schon voll, macht der schwächste Überzählige Platz -
+            // er wird vereinslos und steht dem Transfermarkt zur Verfügung.
+            // Wer für die Mindestbesetzung gebraucht wird, bleibt tabu.
+            let ueberzaehlig = kader.length + anzahl - ziel;
+            if (ueberzaehlig > 0) {
+                const gruppe = {};
+                Object.keys(ist).forEach(pos => {
+                    const regel = this.gruppeZu(pos);
+                    if (regel && gruppe[regel.ersatz] === undefined) {
+                        gruppe[regel.ersatz] = this.gruppenStaerke(ist, regel) - regel.anzahl;
+                    }
+                });
+
+                // Wer gehen muss: der schwächste Überzählige, wobei ein
+                // Routinier jenseits der Dreißig eher weicht als ein Talent
+                const wert = (p) => (p.overall || 0) - Math.max(0, (p.age || 25) - 29) * 4;
+                const ueberhang = kader
+                    .filter(p => (rest[p.pos] || 0) > 0)
+                    .sort((a, b) => wert(a) - wert(b));
+
+                while (ueberzaehlig > 0 && ueberhang.length > 0) {
+                    const weg = ueberhang.shift();
+                    const regel = this.gruppeZu(weg.pos);
+                    const schluessel = regel ? regel.ersatz : null;
+                    if (schluessel !== null && (gruppe[schluessel] || 0) <= 0) continue;
+
+                    if (schluessel !== null) gruppe[schluessel]--;
+                    rest[weg.pos]--;
+                    club.playerIds = club.playerIds.filter(id => id !== weg.id);
+                    club.lineup = (club.lineup || []).filter(id => id !== weg.id);
+                    club.bench = (club.bench || []).filter(id => id !== weg.id);
+                    weg.clubId = null;
+                    weg.contractYears = 0;
+                    ueberzaehlig--;
+                }
+            }
+
+            const fehlend = anzahl;
+            const gewuenscht = wunsch.slice(0, fehlend);
+            const grundlage = {
+                clubStrength: typeof club.clubStrength === "number" ? club.clubStrength : 0.5,
+                countryId: league.countryId || "de"
+            };
+
+            // Die Nachwuchsplätze werden mit Talenten besetzt, der Rest mit
+            // Spielern aus dem gesamten Altersbogen.
+            const jugendPlaetze = Math.min(jugendLuecke, fehlend);
+            const nachschub = [];
+            if (jugendPlaetze > 0) {
+                nachschub.push(...playerGen.generateSquad(club.id, league.level || 1, jugendPlaetze, Object.assign({}, grundlage, {
+                    positions: gewuenscht.slice(0, jugendPlaetze),
+                    ageRange: [17, 20]
+                })));
+            }
+            if (fehlend > jugendPlaetze) {
+                nachschub.push(...playerGen.generateSquad(club.id, league.level || 1, fehlend - jugendPlaetze, Object.assign({}, grundlage, {
+                    positions: gewuenscht.slice(jugendPlaetze)
+                })));
+            }
+
+            nachschub.forEach(player => {
+                state.players.push(player);
+                club.playerIds.push(player.id);
+            });
+            erzeugt += nachschub.length;
+
+            if (gameState && typeof gameState.autoSetLineupForClub === "function") {
+                gameState.autoSetLineupForClub(club, state.players);
+            }
+        });
+
+        return erzeugt;
     }
 
     /**

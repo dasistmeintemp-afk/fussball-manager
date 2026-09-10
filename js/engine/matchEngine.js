@@ -1066,7 +1066,28 @@ class MatchEngine {
                     }
 
                     const targetYellows = playerYellows.get(cardTarget?.id) || 0;
-                    if (targetYellows >= 1) {
+                    // Steht ohnehin schon jeder Verbliebene im Buch, lässt der
+                    // Schiedsrichter meistens laufen. Ohne diese Bremse fielen
+                    // in ausgedünnten Mannschaften drei und vier Platzverweise
+                    // in einer einzigen Partie.
+                    const zweiteGelbe = targetYellows >= 1 && _Random.chance(0.4);
+                    if (targetYellows >= 1 && !zweiteGelbe) {
+                        // Ermahnung statt Karte - gepfiffen wird trotzdem
+                        timeline.push({
+                            minute: min,
+                            second: 25,
+                            type: "foul",
+                            team: isHomeAttacking ? "away" : "home",
+                            clubId: defClub.id,
+                            clubName: defClub.name,
+                            playerId: cardTarget?.id,
+                            playerName: cardTarget?.name,
+                            start: fPos,
+                            end: fPos,
+                            outcome: "foul",
+                            text: formatCommentary("foul", { minute: min, defender: cardTarget?.name, defClub: defClub.name, attClub: attClub.name })
+                        });
+                    } else if (zweiteGelbe) {
                         // Gelb-Rot!
                         sentOffPlayerIds.add(cardTarget?.id);
                         timeline.push({

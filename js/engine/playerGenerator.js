@@ -170,7 +170,12 @@ class PlayerGenerator {
         const nationality = pool.nationalities[Math.floor(Math.random() * pool.nationalities.length)];
 
         const pos = preferredPosition || this.POSITIONS[Math.floor(Math.random() * this.POSITIONS.length)];
-        const age = 17 + Math.floor(Math.random() * 18); // 17 - 34
+        // Standard ist der volle Altersbogen eines Kaders. Beim Nachziehen von
+        // Talenten wird der Bogen von außen enger gesetzt.
+        const [minAlter, maxAlter] = Array.isArray(options.ageRange) && options.ageRange.length === 2
+            ? options.ageRange
+            : [17, 34];
+        const age = minAlter + Math.floor(Math.random() * Math.max(1, maxAlter - minAlter + 1));
 
         // Nebenpositionen: nicht jeder Spieler kann überall spielen
         const positionEngine = this.getPositionEngine();
@@ -329,12 +334,53 @@ class PlayerGenerator {
     /**
      * Erzeugt einen kompletten Kader für einen Verein
      */
+    /**
+     * Positionsplan für einen Kader beliebiger Größe.
+     *
+     * Vorher wurde die feste Liste SQUAD_DISTRIBUTION einfach abgeschnitten -
+     * und da die Stürmer am Ende standen, hatte ab der 3. Liga abwärts kein
+     * einziger Verein einen Angreifer im Kader, dafür überall drei Torhüter.
+     * Jetzt richtet sich der Plan nach der Kadergröße: erst die Torhüter,
+     * dann Abwehr, Mittelfeld und Angriff im üblichen Verhältnis.
+     */
+    static buildSquadPlan(squadSize = 22) {
+        const groesse = Math.max(11, Math.round(squadSize));
+        const plan = [];
+
+        const torhueter = groesse >= 20 ? 3 : 2;
+        for (let i = 0; i < torhueter; i++) plan.push("TW");
+
+        const feldspieler = groesse - torhueter;
+        const abwehr = Math.max(5, Math.round(feldspieler * 0.37));
+        const angriff = Math.max(3, Math.round(feldspieler * 0.26));
+        const mittelfeld = Math.max(4, feldspieler - abwehr - angriff);
+
+        const reihum = (muster, anzahl) => {
+            for (let i = 0; i < anzahl; i++) plan.push(muster[i % muster.length]);
+        };
+
+        reihum(["IV", "IV", "LV", "RV", "IV", "LV", "RV", "IV"], abwehr);
+        reihum(["ZM", "DM", "ZM", "RM", "LM", "DM", "OM", "ZM"], mittelfeld);
+        reihum(["ST", "LA", "RA", "ST", "ST", "LA", "RA"], angriff);
+
+        return plan.slice(0, groesse);
+    }
+
     static generateSquad(clubId, level = 1, squadSize = 22, options = {}) {
         const squad = [];
-        const distribution = this.SQUAD_DISTRIBUTION.slice(0, squadSize);
+        const distribution = Array.isArray(options.positions) && options.positions.length > 0
+            ? options.positions
+            : this.buildSquadPlan(squadSize);
 
+        // Beim Erstaufbau bekommen die Spieler durchnummerierte Kennungen.
+        // Für spätere Nachverpflichtungen wäre das fatal: Die Nummern liefen
+        // wieder von vorne los und ein Verein hätte zwei Spieler mit derselben
+        // Kennung im Kader gehabt - der neue Stürmer wäre nie aufgetaucht.
+        const durchnummeriert = typeof options.idOffset === "number";
+        const nummernVersatz = options.idOffset || 0;
         distribution.forEach((pos, idx) => {
-            const player = this.generatePlayer(clubId, level, pos, `p_${clubId}_${idx + 1}`, options);
+            const kennung = durchnummeriert ? `p_${clubId}_${nummernVersatz + idx + 1}` : null;
+            const player = this.generatePlayer(clubId, level, pos, kennung, options);
             squad.push(player);
         });
 

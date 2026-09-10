@@ -420,6 +420,55 @@ function runEngineTests() {
         }
     });
 
+    // 14b. Verträge, Ablösefreie und Karriereenden über zwei Saisonwechsel
+    test("SeasonEngine: Verträge laufen aus, Spieler treten zurück, Kader bleiben spielfähig", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const gruppen = { TW: ["TW"], ABW: ["IV", "LV", "RV"], MIT: ["ZM", "DM", "OM", "LM", "RM"], ANG: ["ST", "LA", "RA"] };
+
+        const pruefeWelt = (phase) => {
+            const doppelt = state.players.length - new Set(state.players.map(p => p.id)).size;
+            if (doppelt > 0) throw new Error(`${phase}: ${doppelt} doppelte Spieler-Kennungen`);
+
+            const abgelaufen = state.players.filter(p => p.clubId && (p.contractYears || 0) <= 0).length;
+            if (abgelaufen > 0) throw new Error(`${phase}: ${abgelaufen} Spieler ohne Restlaufzeit stehen weiter im Verein`);
+
+            const rentner = state.players.filter(p => (p.age || 0) >= 40).length;
+            if (rentner > 0) throw new Error(`${phase}: ${rentner} Spieler jenseits der 40 laufen noch auf`);
+
+            state.clubs.forEach(club => {
+                const kader = (club.playerIds || []).map(id => state.players.find(p => p.id === id));
+                if (kader.some(p => !p)) throw new Error(`${phase}: ${club.name} führt Spieler, die es nicht gibt`);
+                const zaehler = {};
+                kader.forEach(p => { zaehler[p.pos] = (zaehler[p.pos] || 0) + 1; });
+                const teil = (posListe) => posListe.reduce((s, pos) => s + (zaehler[pos] || 0), 0);
+                if (teil(gruppen.TW) < 2) throw new Error(`${phase}: ${club.name} hat nur ${teil(gruppen.TW)} Torhüter`);
+                if (teil(gruppen.ANG) < 3) throw new Error(`${phase}: ${club.name} hat nur ${teil(gruppen.ANG)} Angreifer`);
+                if (teil(gruppen.ABW) < 5) throw new Error(`${phase}: ${club.name} hat nur ${teil(gruppen.ABW)} Verteidiger`);
+                if (teil(gruppen.MIT) < 4) throw new Error(`${phase}: ${club.name} hat nur ${teil(gruppen.MIT)} Mittelfeldspieler`);
+            });
+        };
+
+        pruefeWelt("Start");
+
+        for (let saison = 0; saison < 2; saison++) {
+            while (state.currentMatchday < state.totalMatchdays) SeasonEngine.advanceToNextMatchday(state);
+            SeasonEngine.advanceToNextMatchday(state);
+            SeasonEngine.startNextSeason(state);
+            pruefeWelt(`Saison ${state.seasonYear}`);
+        }
+
+        // Nach zwei Wechseln muss es einen freien Markt geben
+        const frei = state.players.filter(p => !p.clubId);
+        if (frei.length < 5) throw new Error(`Nur ${frei.length} ablösefreie Spieler auf dem Markt`);
+        if (frei.some(p => state.clubs.some(c => (c.playerIds || []).includes(p.id)))) {
+            throw new Error("Ein vereinsloser Spieler steht noch in einem Kader");
+        }
+
+        // Und der Transfermarkt muss sie ablösefrei anbieten
+        const preis = TransferEngine.calculateAskingPrice(frei[0], null);
+        if (preis !== 0) throw new Error(`Ablösefreier Spieler kostet ${preis} € Ablöse`);
+    });
+
     // 15. Kalibrierungstest über 500 Spiele
     test("MatchEngine Kalibrierung: 500 Spiele Liga-Mittelwerte (Tore, Schüsse, Gelb/Rot, Elfmeter, Ballbesitz)", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
@@ -442,6 +491,16 @@ function runEngineTests() {
             const awayIdx = (i + 1 + Math.floor(i / clubs.length)) % clubs.length;
             const home = clubs[homeIdx];
             const away = clubs[awayIdx];
+
+            // Zwischen den Partien erholen sich die Mannschaften wieder.
+            // Ohne das häufen sich Sperren und Verletzungen über 500 Spiele
+            // an, bis beide Vereine nur noch mit Restkadern antreten - und
+            // gemessen würde dann nicht mehr das normale Ligaspiel.
+            players.forEach(p => {
+                p.suspendedMatches = 0;
+                p.injuredWeeks = 0;
+                p.fitness = 92;
+            });
 
             const match = { id: `m_calib_${i}`, played: false, homeClubId: home.id, awayClubId: away.id };
             MatchEngine.simulateFullMatch(match, home, away, players);

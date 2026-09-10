@@ -4,6 +4,38 @@
 
 const FinanceEngine = {
     /**
+     * Anteil der Einnahmen, der für den laufenden Betrieb draufgeht.
+     * Gehälter und Stadionunterhalt kommen obendrauf.
+     */
+    OPERATING_COST_SHARE: 0.05,
+
+    /**
+     * Wirtschaftskraft nach Ligastufe.
+     *
+     * Die Gehälter fielen von der Bundesliga zur Landesliga um den Faktor 270,
+     * die Sponsorenzahlung aber nur um den Faktor acht - ein Landesligist nahm
+     * 150.000 € pro Spieltag ein und zahlte 2.850 € Gehälter. Nach fünf
+     * Saisons saß jeder Amateurverein auf einem zweistelligen Millionenbetrag.
+     */
+    LEVEL_ECONOMY: { 1: 1.0, 2: 0.55, 3: 0.28, 4: 0.15, 5: 0.11, 6: 0.09, 7: 0.08 },
+
+    /** Sponsorenzahlung eines Vereins je Spieltag */
+    sponsorPerMatchday(club) {
+        if (!club) return 0;
+        if (club.sponsor && club.sponsor.amountPerMatchday) return club.sponsor.amountPerMatchday;
+        const faktor = this.LEVEL_ECONOMY[club.level || 1] ?? 0.05;
+        return Math.round((club.reputation || 70) * 15000 * faktor);
+    },
+
+    /** Unterhalt für Stadion und Infrastruktur je Spieltag */
+    maintenancePerMatchday(club) {
+        if (!club) return 0;
+        const stufen = club.facilities ? Object.values(club.facilities).reduce((a, b) => a + b, 0) : 5;
+        const faktor = this.LEVEL_ECONOMY[club.level || 1] ?? 0.05;
+        return Math.round(stufen * 25000 * faktor);
+    },
+
+    /**
      * Erfasst eine Finanztransaktion im Vereinsbuch
      */
     recordTransaction(state, clubId, type, amount, description) {
@@ -89,7 +121,7 @@ const FinanceEngine = {
 
         state.clubs.forEach(club => {
             // 1. Sponsoreneinnahmen
-            const sponsorIncome = club.sponsor?.amountPerMatchday || Math.round((club.reputation || 70) * 15000);
+            const sponsorIncome = this.sponsorPerMatchday(club);
             club.balance = (club.balance || 0) + sponsorIncome;
             this.recordTransaction(
                 state, 
@@ -113,17 +145,66 @@ const FinanceEngine = {
             );
 
             // 3. Stadion- & Infrastrukturunterhalt
-            const facilityLevel = club.facilities ? Object.values(club.facilities).reduce((a, b) => a + b, 0) : 5;
-            const maintenanceCosts = Math.round(facilityLevel * 25000);
+            const maintenanceCosts = this.maintenancePerMatchday(club);
             club.balance -= maintenanceCosts;
 
             this.recordTransaction(
-                state, 
-                club.id, 
-                "facility_cost", 
-                -maintenanceCosts, 
+                state,
+                club.id,
+                "facility_cost",
+                -maintenanceCosts,
                 `Infrastruktur- und Stadionunterhalt`
             );
+
+            // 4. Betriebsaufwand: Trainerstab, Verwaltung, Nachwuchsabteilung,
+            //    Reisen, Spieltagsorganisation. Ohne diesen Posten kannte die
+            //    Bilanz jedes Vereins nur eine Richtung - nach fünf Saisons
+            //    saß selbst der Landesligist auf einem Millionenpolster.
+            const ticketSchnitt = Math.round((club.stadiumCapacity || club.capacity || 20000) * 0.8 * (club.ticketPrice || 35) / 2);
+            const operatingCosts = Math.round((sponsorIncome + ticketSchnitt) * this.OPERATING_COST_SHARE);
+            club.balance -= operatingCosts;
+
+            this.recordTransaction(
+                state,
+                club.id,
+                "operating_cost",
+                -operatingCosts,
+                `Betriebsaufwand (Stab, Verwaltung, Nachwuchs, Reisen)`
+            );
+
+            // 5. Notbremse: Kein Verein rutscht unbegrenzt ins Minus. Wird die
+            //    Schuldengrenze gerissen, springt der Vorstand ein - dafür ist
+            //    der Transferetat für den Rest der Saison aufgebraucht.
+            const schuldengrenze = -Math.round(sponsorIncome * 12);
+            if ((club.balance || 0) < schuldengrenze) {
+                const hilfe = schuldengrenze - club.balance;
+                club.balance = schuldengrenze;
+                club.transferBudget = 0;
+
+                this.recordTransaction(
+                    state,
+                    club.id,
+                    "board_support",
+                    hilfe,
+                    `Kapitalspritze des Vorstands - der Transferetat ist gestrichen`
+                );
+
+                if (club.id === state.userClubId && Array.isArray(state.inbox)) {
+                    const schonGemeldet = state.inbox.some(m => m.type === "finance_warning" && m.matchday === state.currentMatchday);
+                    if (!schonGemeldet) {
+                        state.inbox.unshift({
+                            id: Date.now() + 31,
+                            matchday: state.currentMatchday,
+                            date: `Spieltag ${state.currentMatchday}`,
+                            sender: "Vorstand",
+                            subject: "⚠️ Der Verein ist an der Schuldengrenze",
+                            body: `Wir mussten Geld nachschießen, um den Spielbetrieb zu sichern. Der Transferetat ist gestrichen, bis die Bilanz wieder stimmt.\n\nSenken Sie die Gehaltslast, verkaufen Sie Spieler oder erhöhen Sie die Einnahmen.`,
+                            read: false,
+                            type: "finance_warning"
+                        });
+                    }
+                }
+            }
         });
     },
 
@@ -137,8 +218,8 @@ const FinanceEngine = {
 
         const clubPlayers = state.players.filter(p => p.clubId === clubId);
         const weeklyWages = clubPlayers.reduce((sum, p) => sum + (p.wage || 0), 0);
-        const sponsorPerWeek = club.sponsor?.amountPerMatchday || Math.round((club.reputation || 70) * 15000);
-        const estTicketPerMatch = Math.round((club.capacity || 30000) * 0.85 * 35);
+        const sponsorPerWeek = this.sponsorPerMatchday(club);
+        const estTicketPerMatch = Math.round((club.stadiumCapacity || club.capacity || 30000) * 0.85 * (club.ticketPrice || 35));
 
         const txns = (state.finances?.transactions || []).filter(t => t.clubId === clubId);
 

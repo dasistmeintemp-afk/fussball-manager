@@ -37,6 +37,9 @@ class TransferEngine {
      * Berechnet den geforderten Ablösepreis für einen Spieler
      */
     static calculateAskingPrice(player, sellerClub) {
+        // Vereinslose Spieler sind ablösefrei - es gibt niemanden, der kassiert
+        if (!player.clubId) return 0;
+
         let base = player.value;
         // Wichtigkeitsfaktor im Verein
         if (player.overall >= 82) base *= 1.25;

@@ -749,8 +749,12 @@ function runEngineTests() {
         // längst nicht immer. Vorher lag die Quote bei 63 Prozent: Der Meister
         // wurde damit zum Mittelfeldverein, weil sich Qualität über 34 Spieltage
         // nicht mehr durchsetzen konnte.
-        if (quote < 66 || quote > 88) {
-            throw new Error(`Der klar bessere Kader gewinnt ${quote.toFixed(0)} % der Heimspiele (erwartet 66-88 %)`);
+        // Die Obergrenze war auf die alten, enger beieinanderliegenden Kader
+        // geeicht. Seit die Bundesligakader um den Ligaschnitt gespreizt sind,
+        // ist ein um zwoelf Punkte geschwaechter Gegner relativ schwaecher als
+        // vorher - neunzig Prozent Heimsiege sind dann kein Fehler mehr.
+        if (quote < 66 || quote > 93) {
+            throw new Error(`Der klar bessere Kader gewinnt ${quote.toFixed(0)} % der Heimspiele (erwartet 66-93 %)`);
         }
         const schnitt = tore / partien;
         if (schnitt < 2.4 || schnitt > 4.2) {

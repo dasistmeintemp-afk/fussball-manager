@@ -57,7 +57,8 @@ class DressingRoomEngine {
         const noten = new Map();
         (match.playerRatings || []).forEach(r => noten.set(String(r.playerId), r));
 
-        const kader = state.players.filter(p => club.playerIds.includes(p.id));
+        const kaderIds = new Set(club.playerIds);
+        const kader = state.players.filter(p => kaderIds.has(p.id));
         const gestiegen = [];
         const gefallen = [];
 

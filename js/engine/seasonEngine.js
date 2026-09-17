@@ -359,6 +359,10 @@ class SeasonEngine {
      * verlangt wird und bis wann.
      */
     static checkJobSecurity(state, userClub, currentRank, targetRank) {
+        // Wer schon entlassen ist, bekommt kein zweites Ultimatum. Solange die
+        // Entscheidung über die nächste Station offen ist, ruht der Vorstand.
+        if (state.managerDismissed) return;
+
         if (!state.jobSecurity) {
             state.jobSecurity = { stage: "ruhig", ultimatumUntil: null, ultimatumRank: null, warnedAt: null };
         }
@@ -473,6 +477,17 @@ class SeasonEngine {
             };
         }
         state._seasonFinished = state.seasonYear;
+
+        // Die Saison in die Karriereakte schreiben: die Bilanz der Station und,
+        // wenn es dazu gereicht hat, den Meistertitel.
+        const careerEngine = _resolve('CareerEngine', './careerEngine.js');
+        if (careerEngine && typeof careerEngine.schliesseSaisonAb === 'function') {
+            if (championEntry.clubId === state.userClubId) {
+                careerEngine.vermerkeTitel(state,
+                    `Meisterschaft ${state.leagueName || "Liga"}`, state.seasonYear);
+            }
+            careerEngine.schliesseSaisonAb(state);
+        }
 
         // Preisgelder ausschütten - in jeder Liga, und in der Höhe, die zur
         // Liga passt. Vorher gab es feste 21 Millionen für den Ersten, egal ob
@@ -828,6 +843,14 @@ class SeasonEngine {
                 leagues: state.leagues,
                 standingsByLeague: state.standingsByLeague
             });
+        }
+
+        // Pokal neu auslosen und den europäischen Wettbewerben ihren Spielplan
+        // geben - sonst stünden auch in der neuen Saison nur Teilnehmerlisten
+        // ohne eine einzige Partie im Speicher.
+        const cupEngine = _resolve('CupEngine', './cupEngine.js');
+        if (cupEngine && typeof cupEngine.starteSaison === 'function') {
+            cupEngine.starteSaison(state);
         }
 
         // Spielpläne aller Ligen neu auslosen

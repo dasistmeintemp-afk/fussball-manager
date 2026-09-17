@@ -123,7 +123,8 @@ class TrainingEngine {
             : "allround";
         const medicalLevel = club.facilities?.medicalCenter || 1;
 
-        const kader = state.players.filter(p => club.playerIds.includes(p.id));
+        const kaderIds = new Set(club.playerIds);
+        const kader = state.players.filter(p => kaderIds.has(p.id));
         const heute = state.currentDayIndex || 0;
 
         const entries = kader.map(player => {
@@ -195,7 +196,8 @@ class TrainingEngine {
         const stab = staffEngine ? staffEngine.staffQuality(club) : null;
         const stabFaktor = stab?.entwicklungsFaktor ?? 1;
 
-        const kader = state.players.filter(p => club.playerIds.includes(p.id));
+        const kaderIds = new Set(club.playerIds);
+        const kader = state.players.filter(p => kaderIds.has(p.id));
         const verletzungen = [];
         let einheiten = 0;
 
@@ -400,12 +402,30 @@ class TrainingEngine {
      * Führt das wöchentliche Training für alle Vereine durch
      */
     static processWeeklyTraining(state) {
+        // Einmal nachschlagen statt dreihundertmal suchen.
+        //
+        // Vorher lief für jeden Verein ein `filter` über alle viertausend-
+        // achthundert Spieler der Welt, und für jeden davon ein `includes`
+        // über den Kader - sechsunddreißig Millionen Vergleiche je Trainings-
+        // woche. Dazu baute jede Verletzung darin ein eigenes Spieler-
+        // verzeichnis auf. Zusammen war das der teuerste Posten am Spieltag.
+        const gsRef = (typeof GameState !== "undefined" && GameState)
+            ? GameState
+            : ((typeof window !== "undefined" && window.GameState) ? window.GameState
+                : (typeof require !== "undefined" ? require("./gameState.js").GameState : null));
+
+        const byId = (gsRef && typeof gsRef.buildPlayerIndex === "function")
+            ? gsRef.buildPlayerIndex(state.players)
+            : null;
+
         state.clubs.forEach(club => {
             // Der eigene Verein trainiert Tag für Tag über den Kalender -
             // eine zusätzliche Wochenrunde würde ihn doppelt entwickeln.
             if (club.id === state.userClubId) return;
 
-            const clubPlayers = state.players.filter(p => club.playerIds.includes(p.id));
+            const clubPlayers = byId
+                ? (club.playerIds || []).map(id => byId.get(id)).filter(Boolean)
+                : state.players.filter(p => club.playerIds.includes(p.id));
             const focus = club.id === state.userClubId ? (state.trainingSettings.focus || "allround") : "allround";
             const intensity = club.id === state.userClubId ? (state.trainingSettings.intensity || "normal") : "normal";
 
@@ -437,7 +457,7 @@ class TrainingEngine {
                 //    Medizinzentrum half der KI kaum.
                 const wochenRisiko = TrainingEngine.weeklyInjuryRisk(player, intensity, medicalLvl);
                 if ((player.injuredWeeks || 0) === 0 && Math.random() < wochenRisiko) {
-                    TrainingEngine.inflictInjury(state, player, club);
+                    TrainingEngine.inflictInjury(state, player, club, byId);
                 }
             });
         });
@@ -537,7 +557,7 @@ class TrainingEngine {
     /**
      * Erzeugt eine Verletzung für einen Spieler
      */
-    static inflictInjury(state, player, club) {
+    static inflictInjury(state, player, club, playerIndex = null) {
         const injuryTypes = [
             { name: "Muskelverhärtung", weeks: 1, severity: "leicht" },
             { name: "Knöchelstauchung", weeks: 2, severity: "leicht" },
@@ -572,7 +592,7 @@ class TrainingEngine {
             : ((typeof window !== "undefined" && window.GameState) ? window.GameState
                 : (typeof require !== "undefined" ? require("./gameState.js").GameState : null));
         if (gameStateRef && typeof gameStateRef.repairLineup === "function") {
-            gameStateRef.repairLineup(club, state.players);
+            gameStateRef.repairLineup(club, state.players, playerIndex);
         } else {
             club.lineup = club.lineup.filter(id => id !== player.id);
         }

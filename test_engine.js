@@ -32,6 +32,8 @@ const { WorldGenerator } = require('./js/engine/worldGenerator.js');
 const { SaveCodec } = require('./js/services/saveCodec.js');
 const { NegotiationEngine } = require('./js/engine/negotiationEngine.js');
 const { ManagerEngine } = require('./js/engine/managerEngine.js');
+const { CupEngine } = require('./js/engine/cupEngine.js');
+const { CareerEngine } = require('./js/engine/careerEngine.js');
 
 function runEngineTests() {
     console.log("\n=======================================================");
@@ -3310,6 +3312,359 @@ function runEngineTests() {
         const mitWarnung = ManagerEngine.getAttentionItems(state);
         if (!mitWarnung[0].title.includes("Startelf")) {
             throw new Error("Eine unvollständige Startelf wird nicht zuerst gemeldet");
+        }
+    });
+
+
+    // ---------------------------------------------------------------
+    // Pokal und Europapokal finden wirklich statt
+    // ---------------------------------------------------------------
+
+    test("CupEngine: Der Pokal wird komplett ausgespielt und bekommt einen Sieger", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Pokalpruefer" });
+        const cup = state.cups?.de_cup;
+        if (!cup) throw new Error("Kein Pokal angelegt");
+        if (cup.teilnehmer.length !== CupEngine.POKAL_TEILNEHMER) {
+            throw new Error(`Der Pokal hat ${cup.teilnehmer.length} statt ${CupEngine.POKAL_TEILNEHMER} Teilnehmer`);
+        }
+        if (!cup.teilnehmer.includes(state.userClubId)) {
+            throw new Error("Der eigene Verein ist nicht im Pokal");
+        }
+
+        // Alle sechs Runden austragen
+        for (let runde = 0; runde < CupEngine.POKAL_RUNDEN.length; runde++) {
+            const ergebnis = CupEngine.spieleTermin(state, "cup", runde);
+            if (ergebnis && ergebnis.eigenePartie && !ergebnis.eigenePartie.played) {
+                CupEngine.austragen(state, ergebnis.eigenePartie, true);
+            }
+            CupEngine.schliesseTerminAb(state, "cup", runde);
+        }
+
+        if (!cup.completed) throw new Error("Der Pokal ist nach sechs Runden nicht entschieden");
+        if (!cup.winnerId) throw new Error("Der Pokal hat keinen Sieger");
+
+        const gespielt = cup.runden.reduce((s, r) => s + r.matches.filter(m => m.played).length, 0);
+        if (gespielt !== 63) throw new Error(`Es wurden ${gespielt} statt 63 Pokalpartien gespielt`);
+        if (cup.runden.some(r => r.matches.some(m => !m.played))) {
+            throw new Error("Es sind Pokalpartien offen geblieben");
+        }
+    });
+
+    test("CupEngine: Ein unentschiedenes K.-o.-Spiel entscheidet das Elfmeterschießen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Elferpruefer" });
+        const zwei = state.clubs.slice(0, 2);
+        const match = {
+            id: "m_test", homeClubId: zwei[0].id, awayClubId: zwei[1].id,
+            played: true, homeGoals: 1, awayGoals: 1
+        };
+
+        const sieger = CupEngine.elfmeterschiessen(state, match);
+        if (!sieger) throw new Error("Das Elfmeterschießen hat keinen Sieger");
+        if (![match.homeClubId, match.awayClubId].includes(sieger)) {
+            throw new Error("Der Sieger gehört keiner der beiden Mannschaften an");
+        }
+        if (!Array.isArray(match.penaltyScore) || match.penaltyScore.length !== 2) {
+            throw new Error("Kein Ergebnis des Elfmeterschießens vermerkt");
+        }
+        if (match.penaltyScore[0] === match.penaltyScore[1]) {
+            throw new Error("Das Elfmeterschießen endete unentschieden");
+        }
+        const gewinntMehr = match.penaltyScore[0] > match.penaltyScore[1]
+            ? match.homeClubId : match.awayClubId;
+        if (sieger !== gewinntMehr) throw new Error("Der Sieger passt nicht zum Ergebnis");
+
+        // Der Schnitt muss im Bereich echter Elfmeterschießen liegen
+        let treffer = 0, schuesse = 0;
+        for (let i = 0; i < 60; i++) {
+            const m = { homeClubId: zwei[0].id, awayClubId: zwei[1].id, played: true, homeGoals: 0, awayGoals: 0 };
+            CupEngine.elfmeterschiessen(state, m);
+            treffer += m.penaltyScore[0] + m.penaltyScore[1];
+            schuesse += 10 + (m.penaltyScore[0] + m.penaltyScore[1] > 10 ? 2 : 0);
+        }
+        const quote = treffer / schuesse;
+        if (quote < 0.55 || quote > 0.95) {
+            throw new Error(`Trefferquote beim Elfmeterschießen unrealistisch: ${(quote * 100).toFixed(0)} %`);
+        }
+    });
+
+    test("CalendarEngine: Pokal- und Europapokalabende stehen im Kalender", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Terminpruefer" });
+        const pokaltage = state.calendar.filter(d => d.type === "cup");
+        const europatage = state.calendar.filter(d => d.type === "euro");
+
+        if (pokaltage.length !== 6) throw new Error(`${pokaltage.length} statt 6 Pokalabende im Kalender`);
+        if (europatage.length !== 9) throw new Error(`${europatage.length} statt 9 Europapokalabende im Kalender`);
+
+        // Jeder Termin des Plans kommt genau einmal vor
+        CupEngine.TERMINPLAN.forEach(t => {
+            const passend = state.calendar.filter(d =>
+                d.cupArt === t.art && d.cupRunde === t.runde);
+            if (passend.length !== 1) {
+                throw new Error(`Termin ${t.art}/${t.runde} kommt ${passend.length}-mal vor`);
+            }
+        });
+
+        // Und sie liegen unter der Woche zwischen den Spieltagen
+        const ersterPokal = state.calendar.findIndex(d => d.type === "cup");
+        const ersterSpieltag = state.calendar.findIndex(d => d.type === "matchday");
+        if (ersterPokal <= ersterSpieltag) {
+            throw new Error("Der erste Pokalabend liegt vor dem ersten Ligaspieltag");
+        }
+    });
+
+    test("CalendarEngine: Ein Pokalabend trägt die Runde aus und schaltet weiter", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Ablaufpruefer" });
+        const index = state.calendar.findIndex(d => d.type === "cup");
+        state.currentDayIndex = index;
+
+        const cup = state.cups.de_cup;
+        const vorher = cup.runden[0].matches.filter(m => m.played).length;
+        if (vorher !== 0) throw new Error("Die erste Pokalrunde war schon gespielt");
+
+        const res = CalendarEngine.advanceOneDay(state);
+        if (!res.success) throw new Error("Der Pokalabend ließ sich nicht abschließen");
+        if (res.type !== "cup") throw new Error(`Tagesart ${res.type} statt cup`);
+
+        if (cup.runden[0].matches.some(m => !m.played)) {
+            throw new Error("Nach dem Pokalabend sind noch Partien offen");
+        }
+        if (!cup.runden[0].completed) throw new Error("Die Runde wurde nicht abgeschlossen");
+        if (cup.rundenIndex !== 1) throw new Error("Es wurde keine zweite Runde ausgelost");
+        if (cup.runden.length !== 2) throw new Error("Die nächste Runde fehlt");
+        if (cup.runden[1].matches.length !== 16) {
+            throw new Error(`Die 2. Runde hat ${cup.runden[1].matches.length} statt 16 Paarungen`);
+        }
+        if (state.currentDayIndex !== index + 1) throw new Error("Der Kalender ist nicht weitergerückt");
+    });
+
+    test("CupEngine: Europapokal spielt Gruppenphase und Endrunde aus", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Europapruefer" });
+        const ucl = state.europeanCompetitions?.ucl;
+        if (!ucl) throw new Error("Keine Champions League angelegt");
+        if (!Array.isArray(ucl.spieltage) || ucl.spieltage.length !== 6) {
+            throw new Error("Die Gruppenphase hat keine sechs Spieltage");
+        }
+
+        for (let i = 0; i < 9; i++) {
+            const erg = CupEngine.spieleTermin(state, "euro", i);
+            if (erg && erg.eigenePartie && !erg.eigenePartie.played) {
+                CupEngine.austragen(state, erg.eigenePartie, i >= 6);
+            }
+            CupEngine.schliesseTerminAb(state, "euro", i);
+        }
+
+        if (!ucl.completed) throw new Error("Die Champions League hat keinen Sieger");
+        const gruppenspiele = ucl.spieltage.reduce((s, t) => s + t.matches.filter(m => m.played).length, 0);
+        const alle = ucl.spieltage.reduce((s, t) => s + t.matches.length, 0);
+        if (gruppenspiele !== alle) throw new Error("Nicht alle Gruppenspiele wurden ausgetragen");
+
+        // Die Tabellen wurden genau einmal fortgeschrieben - sechs Spiele je Verein
+        ucl.groups.forEach(g => {
+            g.standings.forEach(s => {
+                if (s.played !== 6) throw new Error(`${s.clubId} hat ${s.played} statt 6 Gruppenspiele`);
+                if (s.won + s.drawn + s.lost !== 6) throw new Error("Die Bilanz passt nicht zur Anzahl Spiele");
+                if (s.points !== s.won * 3 + s.drawn) throw new Error("Die Punkte passen nicht zur Bilanz");
+            });
+        });
+
+        if (ucl.endrunde.length !== 3) throw new Error("Die Endrunde hat nicht drei Runden");
+        if (ucl.endrunde[0].matches.length !== 4) throw new Error("Das Viertelfinale hat nicht vier Partien");
+    });
+
+    test("CupEngine: Ein zweiter Abschluss verdoppelt die Gruppentabelle nicht", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Doppelpruefer" });
+
+        // Die eigene Partie bleibt der Live-Simulation vorbehalten - sie wird
+        // hier von Hand ausgetragen, wie es die Oberfläche nach dem Abpfiff tut
+        const erg = CupEngine.spieleTermin(state, "euro", 0);
+        if (erg && erg.eigenePartie) CupEngine.austragen(state, erg.eigenePartie, false);
+        CupEngine.schliesseTerminAb(state, "euro", 0);
+        const nachEinmal = state.europeanCompetitions.ucl.groups[0].standings.map(s => s.points);
+
+        // So passiert es im Spiel: erst die Live-Partie, dann schaltet der Kalender weiter
+        CupEngine.spieleTermin(state, "euro", 0);
+        CupEngine.schliesseTerminAb(state, "euro", 0);
+        const nachZweimal = state.europeanCompetitions.ucl.groups[0].standings.map(s => s.points);
+
+        if (JSON.stringify(nachEinmal) !== JSON.stringify(nachZweimal)) {
+            throw new Error("Der zweite Abschluss hat die Tabelle erneut fortgeschrieben");
+        }
+        state.europeanCompetitions.ucl.groups[0].standings.forEach(s => {
+            if (s.played !== 1) throw new Error(`${s.clubId} hat ${s.played} statt 1 Spiel`);
+        });
+    });
+
+    // ---------------------------------------------------------------
+    // Die Entlassung hat Folgen
+    // ---------------------------------------------------------------
+
+    test("CareerEngine: Die Entlassung beendet die Station und bringt Angebote", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Entlassener" });
+        // Eine halbe Saison spielen, damit es eine Bilanz gibt
+        for (let i = 0; i < 12; i++) SeasonEngine.advanceToNextMatchday(state);
+
+        state.managerDismissed = {
+            matchday: state.currentMatchday, rank: 17,
+            seasonYear: state.seasonYear,
+            clubName: state.clubs.find(c => c.id === state.userClubId).name
+        };
+
+        const daten = CareerEngine.verarbeiteEntlassung(state);
+        if (!daten) throw new Error("Die Entlassung wurde nicht verarbeitet");
+        if (!state.arbeitslos) throw new Error("Der Manager gilt nicht als vereinslos");
+        if (state.career.entlassungen !== 1) throw new Error("Die Entlassung steht nicht in der Akte");
+
+        const station = state.career.stationen[0];
+        if (station.ende !== "entlassen") throw new Error("Die Station wurde nicht geschlossen");
+        if (station.spiele !== daten.bilanz.spiele) throw new Error("Die Bilanz der Station stimmt nicht");
+
+        if (typeof daten.ruf !== "number" || daten.ruf < 8 || daten.ruf > 95) {
+            throw new Error(`Der Ruf ist unplausibel: ${daten.ruf}`);
+        }
+        if (!Array.isArray(daten.angebote)) throw new Error("Es gibt keine Angebotsliste");
+        daten.angebote.forEach(a => {
+            if (a.clubId === state.userClubId) throw new Error("Der eigene Verein macht ein Angebot");
+            if (!a.clubName || !a.leagueName) throw new Error("Ein Angebot ist unvollständig");
+            const liga = a.leagueId === state.userLeagueId
+                ? state.schedule
+                : (state.otherSchedules || {})[a.leagueId];
+            if ((liga || []).length !== state.schedule.length) {
+                throw new Error(`${a.clubName} spielt eine Saison anderer Länge`);
+            }
+        });
+
+        // Ein zweiter Aufruf darf nichts doppelt zählen
+        CareerEngine.verarbeiteEntlassung(state);
+        if (state.career.entlassungen !== 1) throw new Error("Die Entlassung wurde doppelt gezählt");
+    });
+
+    test("CareerEngine: Ein neuer Verein übernimmt Spielplan, Tabelle und Kalender", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Wechsler" });
+        for (let i = 0; i < 8; i++) SeasonEngine.advanceToNextMatchday(state);
+
+        state.managerDismissed = {
+            matchday: state.currentMatchday, rank: 16,
+            seasonYear: state.seasonYear, clubName: "FC München"
+        };
+        const daten = CareerEngine.verarbeiteEntlassung(state);
+        if (!daten.angebote.length) throw new Error("Keine Angebote zum Wechseln");
+
+        const ziel = daten.angebote[0];
+        const spieltagVorher = state.currentMatchday;
+        const tagVorher = state.currentDayIndex;
+
+        const res = CareerEngine.uebernimm(state, ziel.clubId);
+        if (!res.erfolg) throw new Error("Die Übernahme ist fehlgeschlagen");
+        if (state.userClubId !== ziel.clubId) throw new Error("Der Verein wurde nicht gewechselt");
+        if (state.managerDismissed) throw new Error("Die Entlassung steht noch im Spielstand");
+        if (state.arbeitslos) throw new Error("Der Manager gilt weiter als vereinslos");
+        if (state.career.stationen.length !== 2) throw new Error("Die neue Station fehlt in der Akte");
+        if (state.jobSecurity.stage !== "ruhig") throw new Error("Der Vorstand ist nicht zurückgesetzt");
+
+        // Der Spielplan muss zum neuen Verein gehören
+        const eigene = state.schedule.some(r =>
+            r.matches.some(m => m.homeClubId === ziel.clubId || m.awayClubId === ziel.clubId));
+        if (!eigene) throw new Error("Der Spielplan enthält den neuen Verein nicht");
+        if (!state.standings.some(s => s.clubId === ziel.clubId)) {
+            throw new Error("Die Tabelle enthält den neuen Verein nicht");
+        }
+        if (state.currentMatchday !== spieltagVorher) throw new Error("Der Spieltag hat sich verschoben");
+        if (state.currentDayIndex !== tagVorher) throw new Error("Der Kalender hat sich verschoben");
+
+        // Und die Saison läuft weiter
+        const weiter = SeasonEngine.advanceToNextMatchday(state);
+        if (!weiter) throw new Error("Nach dem Wechsel lässt sich kein Spieltag mehr spielen");
+    });
+
+    test("CareerEngine: Das Zeugnis fasst Stationen, Titel und Bilanz zusammen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Ruheständler" });
+        for (let i = 0; i < 6; i++) SeasonEngine.advanceToNextMatchday(state);
+
+        CareerEngine.vermerkeTitel(state, "DFB-Pokal", 1);
+        state.managerDismissed = { matchday: 6, rank: 15, seasonYear: 1, clubName: "FC München" };
+        CareerEngine.verarbeiteEntlassung(state);
+
+        const zeugnis = CareerEngine.beendeKarriere(state);
+        if (!state.careerOver) throw new Error("Die Laufbahn gilt nicht als beendet");
+        if (zeugnis.stationen.length !== 1) throw new Error("Die Stationen fehlen im Zeugnis");
+        if (zeugnis.titel.length !== 1) throw new Error("Der Titel fehlt im Zeugnis");
+        if (zeugnis.entlassungen !== 1) throw new Error("Die Entlassung fehlt im Zeugnis");
+        if (zeugnis.gesamt.spiele !== zeugnis.stationen[0].spiele) {
+            throw new Error("Die Gesamtbilanz passt nicht zu den Stationen");
+        }
+        if (zeugnis.siegquote < 0 || zeugnis.siegquote > 100) {
+            throw new Error(`Siegquote unplausibel: ${zeugnis.siegquote}`);
+        }
+    });
+
+    test("SeasonEngine: Nach der Entlassung stellt der Vorstand kein neues Ultimatum", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Gefeuerter" });
+        state.boardConfidence = 15;
+        state.currentMatchday = 12;
+        state.jobSecurity = { stage: "entlassen", ultimatumUntil: null, ultimatumRank: null, warnedAt: null };
+        state.managerDismissed = { matchday: 11, rank: 18, seasonYear: 1, clubName: "FC München" };
+
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        SeasonEngine.checkJobSecurity(state, club, 18, 3);
+
+        if (state.jobSecurity.stage !== "entlassen") {
+            throw new Error(`Der Vorstand handelt weiter: ${state.jobSecurity.stage}`);
+        }
+    });
+
+    // ---------------------------------------------------------------
+    // Geschwindigkeit: der Tagesklick darf nicht hängen
+    // ---------------------------------------------------------------
+
+    test("GameState.repairLineup: unveränderte Aufstellungen werden übersprungen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Tempopruefer" });
+        const index = GameState.buildPlayerIndex(state.players);
+        if (index.size !== state.players.length) throw new Error("Das Spielerverzeichnis ist unvollständig");
+
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        GameState.repairLineup(club, state.players, index);
+        const elfVorher = club.lineup.slice();
+
+        // Ohne Ausfall ändert sich nichts
+        if (GameState.repairLineup(club, state.players, index)) {
+            throw new Error("Eine intakte Aufstellung wurde verändert");
+        }
+        if (JSON.stringify(club.lineup) !== JSON.stringify(elfVorher)) {
+            throw new Error("Die Elf hat sich ohne Grund geändert");
+        }
+
+        // Mit Ausfall rückt jemand nach - an genau dieselbe Stelle
+        const opfer = state.players.find(p => p.id === club.lineup[5]);
+        opfer.injuredWeeks = 3;
+        if (!GameState.repairLineup(club, state.players, index)) {
+            throw new Error("Der Ausfall wurde nicht ersetzt");
+        }
+        if (club.lineup.length !== 11) throw new Error("Die Elf ist unvollständig");
+        if (club.lineup.includes(opfer.id)) throw new Error("Der Verletzte steht weiter in der Elf");
+        if (club.lineup[5] === elfVorher[5]) throw new Error("Der Platz wurde nicht neu besetzt");
+    });
+
+    test("SaveCodec: Das zwischengespeicherte Schema liefert dasselbe Ergebnis", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Codecpruefer" });
+
+        const einmal = JSON.stringify(SaveCodec.encodeState(state));
+        const zweimal = JSON.stringify(SaveCodec.encodeState(state));
+        if (einmal !== zweimal) throw new Error("Zwei Durchläufe liefern verschiedene Ergebnisse");
+
+        // Unbekannte Felder überleben die Umwandlung
+        const spieler = state.players[0];
+        spieler.eigeneNotiz = "Trainingsweltmeister";
+        spieler.happiness.eigeneLaune = 42;
+
+        const zurueck = SaveCodec.decodeState(SaveCodec.encodeState(state));
+        const wieder = zurueck.players.find(p => String(p.id) === String(spieler.id));
+        if (!wieder) throw new Error("Der Spieler ging verloren");
+        if (wieder.eigeneNotiz !== "Trainingsweltmeister") throw new Error("Ein unbekanntes Feld ging verloren");
+        if (wieder.happiness.eigeneLaune !== 42) throw new Error("Ein unbekanntes Unterfeld ging verloren");
+        if (wieder.name !== spieler.name) throw new Error("Der Name ging verloren");
+        if (wieder.overall !== spieler.overall) throw new Error("Die Stärke ging verloren");
+        if (wieder.hiddenAttributes.loyalty !== spieler.hiddenAttributes.loyalty) {
+            throw new Error("Die versteckten Werte gingen verloren");
         }
     });
 

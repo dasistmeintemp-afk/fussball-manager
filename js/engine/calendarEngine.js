@@ -16,7 +16,11 @@ const CALENDAR_DAY_TYPES = {
     // Die Wochen vor dem ersten Spieltag: Stab zusammenstellen, Sponsor
     // aushandeln, Testspiele bestreiten.
     PRESEASON: "preseason",
-    FRIENDLY: "friendly"
+    FRIENDLY: "friendly",
+    // Die englischen Wochen: Pokal und Europapokal liegen zwischen den
+    // Ligaspieltagen. Vorher gab es beide Wettbewerbe nur im Menü.
+    CUP: "cup",
+    EURO: "euro"
 };
 
 function _getPreseasonEngine() {
@@ -24,6 +28,15 @@ function _getPreseasonEngine() {
     if (typeof window !== "undefined" && window.PreseasonEngine) return window.PreseasonEngine;
     if (typeof require !== "undefined") {
         try { return require("./preseasonEngine.js").PreseasonEngine; } catch (e) { /* ohne Bundler */ }
+    }
+    return null;
+}
+
+function _getCupEngineCal() {
+    if (typeof CupEngine !== "undefined" && CupEngine) return CupEngine;
+    if (typeof window !== "undefined" && window.CupEngine) return window.CupEngine;
+    if (typeof require !== "undefined") {
+        try { return require("./cupEngine.js").CupEngine; } catch (e) { /* ohne Bundler */ }
     }
     return null;
 }
@@ -126,6 +139,36 @@ const CalendarEngine = {
             currentDate.setDate(currentDate.getDate() + 1);
             dayCounter++;
         }
+
+        // Pokal und Europapokal liegen unter der Woche zwischen den
+        // Ligaspieltagen - genau daraus entstehen die englischen Wochen, in
+        // denen ein Kader Breite braucht.
+        const cupEngine = _getCupEngineCal();
+        const termine = cupEngine ? (cupEngine.TERMINPLAN || []) : [];
+        const offeneTermine = termine.slice();
+
+        const legeTerminAn = (termin) => {
+            const istPokal = termin.art === "cup";
+            calendar.push({
+                id: `day_${dayCounter}`,
+                dayIndex: dayCounter,
+                date: this.formatDate(currentDate),
+                dateObj: new Date(currentDate).toISOString(),
+                dayOfWeek: this.getDayName(currentDate),
+                type: istPokal ? CALENDAR_DAY_TYPES.CUP : CALENDAR_DAY_TYPES.EURO,
+                title: istPokal ? "🏆 Pokalabend" : "⭐ Europapokal-Abend",
+                description: istPokal
+                    ? "Der Landespokal wird ausgespielt - ein Spiel, eine Runde, kein zweiter Versuch."
+                    : "Internationaler Spieltag. Europa spielt unter Flutlicht.",
+                matchday: null,
+                cupArt: termin.art,
+                cupRunde: termin.runde,
+                actionsAvailable: ["match", "lineup", "live_match"],
+                completed: false
+            });
+            currentDate.setDate(currentDate.getDate() + 1);
+            dayCounter++;
+        };
 
         // Für jeden Spieltag eine typische Vorbereitungswoche generieren
         for (let md = 1; md <= totalMatchdays; md++) {
@@ -235,7 +278,19 @@ const CalendarEngine = {
             });
             currentDate.setDate(currentDate.getDate() + 1);
             dayCounter++;
+
+            // 7. Unter der Woche: Pokal oder Europapokal
+            for (let t = offeneTermine.length - 1; t >= 0; t--) {
+                if (offeneTermine[t].nachSpieltag !== md) continue;
+                legeTerminAn(offeneTermine[t]);
+                offeneTermine.splice(t, 1);
+            }
         }
+
+        // In kleineren Ligen ist die Saison kürzer als der Terminplan. Was
+        // dann noch offen ist, wird vor dem Saisonende nachgeholt - sonst
+        // bliebe der Pokal ohne Sieger.
+        offeneTermine.forEach(legeTerminAn);
 
         // Tag: Saisonabschluss
         calendar.push({
@@ -461,6 +516,10 @@ const CalendarEngine = {
                 };
             }
 
+            case CALENDAR_DAY_TYPES.CUP:
+            case CALENDAR_DAY_TYPES.EURO:
+                return this.pokalInhalt(state, day, marken);
+
             case CALENDAR_DAY_TYPES.SEASON_START:
                 return { titel: day.title, text: "Kader sichten, Taktik festlegen, Vorbereitung planen.", marken };
 
@@ -470,6 +529,57 @@ const CalendarEngine = {
             default:
                 return { titel: day.title, text: day.description || "", marken };
         }
+    },
+
+    /**
+     * Was an einem Pokal- oder Europapokalabend ansteht.
+     *
+     * Spielt der eigene Verein, steht hier der Gegner und die Runde; ist er
+     * ausgeschieden, steht hier, was ohne ihn gespielt wird.
+     */
+    pokalInhalt(state, day, marken) {
+        const cupEngine = _getCupEngineCal();
+        const art = day.cupArt || (day.type === CALENDAR_DAY_TYPES.CUP ? "cup" : "euro");
+        const runde = day.cupRunde || 0;
+
+        const eigene = (cupEngine && typeof cupEngine.eigenePartieAm === "function")
+            ? cupEngine.eigenePartieAm(state, art, runde)
+            : null;
+
+        if (eigene) {
+            const heim = eigene.partie.homeClubId === state.userClubId;
+            const gegnerId = heim ? eigene.partie.awayClubId : eigene.partie.homeClubId;
+            const gegner = (state.clubs || []).find(c => c.id === gegnerId);
+            const lage = this.kaderLage(state);
+            if (lage.verletzt > 0) marken.push(`${lage.verletzt} verletzt`);
+            marken.unshift(heim ? "Heimspiel" : "Auswärtsspiel");
+            if (eigene.ko) marken.push("K.-o.-Spiel");
+
+            return {
+                titel: `${eigene.wettbewerb.name} · ${eigene.runde.roundName}`,
+                text: `${heim ? "Gegen" : "Bei"} ${gegner?.name || "unbekannt"}.`
+                    + (eigene.ko ? " Wer verliert, ist raus." : ""),
+                marken
+            };
+        }
+
+        if (art === "cup") {
+            const cup = state.cups?.de_cup;
+            const raus = cup && (cup.ausgeschieden || []).includes(state.userClubId);
+            return {
+                titel: cup ? cup.name : "Pokalabend",
+                text: raus
+                    ? "Ohne uns - der Pokal wird ohne unsere Beteiligung weitergespielt."
+                    : "Die Pokalrunde wird ausgetragen.",
+                marken
+            };
+        }
+
+        return {
+            titel: "Europapokal",
+            text: "Internationaler Spieltag. Für uns steht heute nichts an.",
+            marken
+        };
     },
 
     FOKUS_TEXT: {
@@ -497,6 +607,20 @@ const CalendarEngine = {
 
             if (tag.type === CALENDAR_DAY_TYPES.MATCHDAY) {
                 return { index: i, tag, grund: "matchday", heute };
+            }
+            // Ein Pokalabend hält den Manager nur auf, wenn er selbst spielt -
+            // sonst läuft der Kalender darüber hinweg wie über jeden anderen
+            // Tag.
+            if (tag.type === CALENDAR_DAY_TYPES.CUP || tag.type === CALENDAR_DAY_TYPES.EURO) {
+                const cupEngine = _getCupEngineCal();
+                const art = tag.cupArt || (tag.type === CALENDAR_DAY_TYPES.CUP ? "cup" : "euro");
+                const eigene = (cupEngine && typeof cupEngine.eigenePartieAm === "function")
+                    ? cupEngine.eigenePartieAm(state, art, tag.cupRunde || 0)
+                    : null;
+                if (eigene) {
+                    return { index: i, tag, grund: art === "cup" ? "cup" : "euro", heute, partie: eigene };
+                }
+                continue;
             }
             if (tag.type === CALENDAR_DAY_TYPES.FRIENDLY) {
                 return { index: i, tag, grund: "friendly", heute };
@@ -572,6 +696,39 @@ const CalendarEngine = {
                 success: true,
                 type: "friendly",
                 friendly: ergebnis,
+                day: currentDay,
+                nextDay: this.getCurrentDay(state)
+            };
+        }
+
+        // Pokal- und Europapokalabend: Die Partien der Welt werden ausgetragen,
+        // die eigene übernimmt der Computer nur, wenn der Manager sie nicht
+        // selbst gespielt hat.
+        if (currentDay.type === CALENDAR_DAY_TYPES.CUP
+            || currentDay.type === CALENDAR_DAY_TYPES.EURO) {
+            const cupEngine = _getCupEngineCal();
+            const art = currentDay.cupArt || (currentDay.type === CALENDAR_DAY_TYPES.CUP ? "cup" : "euro");
+            const runde = currentDay.cupRunde || 0;
+            let ergebnis = null;
+
+            if (cupEngine) {
+                ergebnis = cupEngine.spieleTermin(state, art, runde);
+                const eigene = ergebnis && ergebnis.eigenePartie;
+                if (eigene && !eigene.played) {
+                    cupEngine.austragen(state, eigene, art === "cup" || runde >= 6);
+                }
+                cupEngine.schliesseTerminAb(state, art, runde);
+            }
+
+            currentDay.completed = true;
+            if (state.currentDayIndex < state.calendar.length - 1) {
+                state.currentDayIndex++;
+                state.currentDate = state.calendar[state.currentDayIndex].date;
+            }
+            return {
+                success: true,
+                type: currentDay.type,
+                cup: ergebnis,
                 day: currentDay,
                 nextDay: this.getCurrentDay(state)
             };
@@ -722,9 +879,14 @@ const CalendarEngine = {
             : ((typeof window !== 'undefined' && window.GameState) ? window.GameState : (typeof require !== 'undefined' ? require('./gameState.js').GameState : null));
 
         if (gameState && typeof gameState.repairLineup === 'function') {
-            const eigeneGeaendert = userClub ? gameState.repairLineup(userClub, state.players) : false;
+            // Das Spielerverzeichnis wird einmal gebaut und an alle Vereine
+            // weitergereicht - nicht je Verein neu.
+            const index = typeof gameState.buildPlayerIndex === 'function'
+                ? gameState.buildPlayerIndex(state.players)
+                : null;
+            const eigeneGeaendert = userClub ? gameState.repairLineup(userClub, state.players, index) : false;
             state.clubs.forEach(club => {
-                if (club !== userClub) gameState.repairLineup(club, state.players);
+                if (club !== userClub) gameState.repairLineup(club, state.players, index);
             });
             if (eigeneGeaendert) {
                 summary.messages.push("Die Aufstellung wurde um die Ausfälle ergänzt.");
@@ -819,7 +981,8 @@ const CalendarEngine = {
     clubLifeEvents(state, currentDay, userClub) {
         if (!userClub) return [];
 
-        const kader = state.players.filter(p => userClub.playerIds.includes(p.id));
+        const kaderIds = new Set(userClub.playerIds);
+        const kader = state.players.filter(p => kaderIds.has(p.id));
         if (kader.length === 0) return [];
 
         const zufall = (liste) => liste[Math.floor(Math.random() * liste.length)];

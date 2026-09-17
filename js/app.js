@@ -136,6 +136,7 @@ class App {
             this.ui.playSound("click");
             this.ui.renderCurrentTab();
             this.ui.renderHeader();
+            this.ui.pruefeEntlassung();
         }
     }
 }

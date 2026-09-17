@@ -138,20 +138,28 @@ const NEWS_TYPES = {
     SEASON_END: "season_end"
 };
 
-// matchSecondsPerRealSecond bestimmt, wie schnell die Spieluhr im 2D-Livespiel
-// läuft. Der Wert ist der eigentliche Tempo-Regler: 90 Minuten dauern damit
-// rund sieben (langsam), drei (normal) beziehungsweise anderthalb echte
-// Minuten. Während Höhepunkten, Standards und der Anstoß-Zeremonie bremst die
-// Regie die Uhr ohnehin ab, sodass die entscheidenden Szenen in Ruhe laufen.
-// tickIntervalMs/minuteStep gelten weiterhin für den Minutentakt der
-// Sofortsimulation und als Rückfallebene ohne Regie.
+/**
+ * Tempostufen der Liveübertragung.
+ *
+ * matchSecondsPerRealSecond ist der eigentliche Tempo-Regler: Er bestimmt, wie
+ * schnell die Spieluhr laeuft. tickIntervalMs/minuteStep gelten weiterhin fuer
+ * den Minutentakt der Sofortsimulation und als Rueckfallebene ohne Regie -
+ * zusaetzlich steuert tickIntervalMs ueber LiveMatchDirector.getSpeedScale,
+ * wie lang eine inszenierte Szene in echten Sekunden dauern darf.
+ *
+ * Gemessen an ganzen Partien dauerte "Normal" vorher fuenf echte Minuten und
+ * "Schnell" knapp drei - fuer ein Spiel, das man nebenbei verfolgt, zu lang.
+ * Jetzt sind es rund sechs, vier und zwei Minuten, wobei "Langsam" bewusst die
+ * Stufe zum Zuschauen bleibt: Dort muss der Ballaufbau zwischen den
+ * Hoehepunkten mehr als die Haelfte der Uebertragung ausmachen.
+ */
 const LIVE_MATCH_SPEEDS = {
-    1: { key: "slow", label: "Langsam", tickIntervalMs: 2200, minuteStep: 1, matchSecondsPerRealSecond: 13 },
-    2: { key: "normal", label: "Normal", tickIntervalMs: 1200, minuteStep: 1, matchSecondsPerRealSecond: 30 },
-    4: { key: "fast", label: "Schnell", tickIntervalMs: 500, minuteStep: 2, matchSecondsPerRealSecond: 66 },
-    slow: { key: "slow", label: "Langsam", tickIntervalMs: 2200, minuteStep: 1, matchSecondsPerRealSecond: 13 },
-    normal: { key: "normal", label: "Normal", tickIntervalMs: 1200, minuteStep: 1, matchSecondsPerRealSecond: 30 },
-    fast: { key: "fast", label: "Schnell", tickIntervalMs: 500, minuteStep: 2, matchSecondsPerRealSecond: 66 }
+    1: { key: "slow", label: "Langsam", tickIntervalMs: 1800, minuteStep: 1, matchSecondsPerRealSecond: 17 },
+    2: { key: "normal", label: "Normal", tickIntervalMs: 900, minuteStep: 1, matchSecondsPerRealSecond: 45 },
+    4: { key: "fast", label: "Schnell", tickIntervalMs: 380, minuteStep: 2, matchSecondsPerRealSecond: 95 },
+    slow: { key: "slow", label: "Langsam", tickIntervalMs: 1800, minuteStep: 1, matchSecondsPerRealSecond: 17 },
+    normal: { key: "normal", label: "Normal", tickIntervalMs: 900, minuteStep: 1, matchSecondsPerRealSecond: 45 },
+    fast: { key: "fast", label: "Schnell", tickIntervalMs: 380, minuteStep: 2, matchSecondsPerRealSecond: 95 }
 };
 
 if (typeof window !== "undefined") {

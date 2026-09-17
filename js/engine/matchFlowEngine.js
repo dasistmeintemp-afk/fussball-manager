@@ -181,22 +181,29 @@ class MatchFlowEngine {
             const space = this.getSpace(mate, opponents);
             const forward = (mate.x - carrier.x) * dir;
 
-            // Passlänge: nahe an der bevorzugten Distanz ist am besten
-            const lengthScore = 1 - Math.min(1, Math.abs(dist - preferred) / 26);
+            // Passlänge: nahe an der bevorzugten Distanz ist am besten. Die
+            // Toleranz war mit 26 so weit, dass ein Ball über das halbe Feld
+            // genauso bewertet wurde wie einer über fünfundzwanzig Meter.
+            const lengthScore = 1 - Math.min(1, Math.abs(dist - preferred) / 17);
 
-            // Der lange Ball ist die Ausnahme. Ohne diesen Abschlag war fast
-            // jede zweite Aktion ein Schlag über dreißig Meter - daher das
-            // ewige Hin und Her, denn nur jeder zweite kam an.
-            const longMalus = dist > 30
-                ? Math.min(0.75, (dist - 30) / 28) * (passing === "direct" ? 0.55 : 1.15)
+            // Der lange Ball ist die Ausnahme, und der Abschlag muss gegen den
+            // Raumgewinn ankommen können. Vorher war er auf 0.75 gedeckelt,
+            // während ein weiter Ball nach vorne über den Raumgewinn auf fast
+            // vier Punkte kam - jeder fünfte Ball segelte deshalb über
+            // sechsunddreißig Meter, in echten Spielen ist es jeder achte.
+            const longMalus = dist > 24
+                ? Math.min(2.4, ((dist - 24) / 15) ** 1.4) * (passing === "direct" ? 0.62 : 1.0)
                 : 0;
 
-            // Raumgewinn zählt, Rückpässe sind nur die Notlösung
-            // Defensive Mannschaften nehmen den Rückpass eher in Kauf,
-            // offensive meiden ihn - der Abschlag wird also mit der
-            // Offensivfreude staerker bestraft.
+            // Raumgewinn zählt, Rückpässe sind nur die Notlösung. Ein Ball ist
+            // aber nicht deshalb gut, weil er weit ist: Wer den Gegner um
+            // fünfzehn Meter überspielt, hat das Wesentliche erreicht - alles
+            // darüber ist Zufall, kein Spielaufbau. Deshalb ist die Belohnung
+            // hier gedeckelt, statt mit der Offensivfreude immer weiter zu
+            // wachsen.
+            const nutzbarerRaumgewinn = 15;
             const progressScore = forward > 0
-                ? Math.min(1, forward / 30) * forwardDrive
+                ? Math.min(1, forward / nutzbarerRaumgewinn) * Math.min(1.35, forwardDrive)
                 : Math.max(-0.5, forward / 45) * forwardDrive;
 
             // Flügelfokus: "links" ist die linke Seite aus Sicht der
@@ -262,9 +269,18 @@ class MatchFlowEngine {
         const dir = this.attackDir(carrier.team);
         const directBonus = tactics.passing === "direct" ? 0.3 : 0;
 
-        // Ziel ist der vorderste eigene Spieler
-        const forwardMost = mates.slice().sort((a, b) => (b.x - a.x) * dir)[0];
-        const target = forwardMost || { x: carrier.x + dir * 30, y: 50 };
+        // Ziel ist der vorderste eigene Spieler - aber in Reichweite. Ein
+        // Befreiungsschlag geht in der Wirklichkeit fünfzig, sechzig Meter
+        // weit, nicht über das ganze Feld: Vorher landete er beim vordersten
+        // Mitspieler, auch wenn der fünfundachtzig Meter entfernt stand.
+        const REICHWEITE = 42;
+        const inReichweite = mates.filter(m => this.distance(carrier, m) <= REICHWEITE);
+        const forwardMost = (inReichweite.length ? inReichweite : mates)
+            .slice().sort((a, b) => (b.x - a.x) * dir)[0];
+
+        const target = forwardMost && this.distance(carrier, forwardMost) <= REICHWEITE
+            ? forwardMost
+            : { x: carrier.x + dir * REICHWEITE * 0.8, y: _flowRandom.float(20, 80) };
 
         // Der Befreiungsschlag ist eine Notlösung und keine Spielidee: ohne
         // Druck steht er gar nicht zur Debatte.

@@ -1525,6 +1525,22 @@ body {
     gap: 20px;
 }
 
+/*
+ * Der Trainingsbereich besteht aus vier Karten: oben Schwerpunkt und
+ * Intensität nebeneinander, darunter zwei über die volle Breite.
+ *
+ * Mit "auto-fit, minmax(360px, 1fr)" stellte ein breiter Monitor daraus drei
+ * Spalten - die beiden Auswahlkarten oben bekamen dann nur ein Drittel der
+ * Breite, und in den Optionen brach jede Beschreibung über mehrere Zeilen um.
+ * Zwei Spalten sind hier die richtige Aufteilung, egal wie breit der
+ * Bildschirm ist.
+ */
+@media (min-width: 900px) {
+    .training-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
 .training-focus-options {
     display: flex;
     flex-direction: column;

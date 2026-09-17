@@ -245,6 +245,17 @@ const FinanceEngine = {
     applyWeeklyCosts(state) {
         if (!state || !Array.isArray(state.clubs)) return;
 
+        // Gehälter einmal je Verein aufsummieren statt für jeden der
+        // dreihundert Vereine erneut durch alle viertausendachthundert Spieler
+        // zu laufen.
+        const lohnsumme = new Map();
+        const kadergroesse = new Map();
+        (state.players || []).forEach(p => {
+            if (!p || !p.clubId) return;
+            lohnsumme.set(p.clubId, (lohnsumme.get(p.clubId) || 0) + (p.wage || 10000));
+            kadergroesse.set(p.clubId, (kadergroesse.get(p.clubId) || 0) + 1);
+        });
+
         state.clubs.forEach(club => {
             // 1. Sponsoreneinnahmen
             const sponsorIncome = this.sponsorPerMatchday(club);
@@ -258,16 +269,16 @@ const FinanceEngine = {
             );
 
             // 2. Spielergehälter
-            const clubPlayers = state.players.filter(p => p.clubId === club.id);
-            const totalWeeklyWages = clubPlayers.reduce((sum, p) => sum + (p.wage || 10000), 0);
+            const totalWeeklyWages = lohnsumme.get(club.id) || 0;
+            const anzahlSpieler = kadergroesse.get(club.id) || 0;
             club.balance -= totalWeeklyWages;
 
             this.recordTransaction(
-                state, 
-                club.id, 
-                "wages", 
-                -totalWeeklyWages, 
-                `Spielergehälter Spieltag ${state.currentMatchday} (${clubPlayers.length} Spieler)`
+                state,
+                club.id,
+                "wages",
+                -totalWeeklyWages,
+                `Spielergehälter Spieltag ${state.currentMatchday} (${anzahlSpieler} Spieler)`
             );
 
             // 3. Stadion- & Infrastrukturunterhalt

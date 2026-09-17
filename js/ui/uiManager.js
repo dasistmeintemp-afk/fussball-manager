@@ -176,6 +176,16 @@ class UIManager {
     hideStartScreen() {
         const overlay = document.getElementById("startScreenOverlay");
         if (overlay) overlay.style.display = "none";
+
+        // Wer mitten in einer offenen Entlassung gespeichert hat, landet nicht
+        // stillschweigend wieder im Verein, aus dem er geflogen ist.
+        const state = this.app?.state;
+        if (state && state.careerOver) {
+            const career = this.getCareerEngine();
+            if (career) this.zeigeZeugnis(career.zeugnis(state));
+            return;
+        }
+        this.pruefeEntlassung();
     }
 
     /**
@@ -3391,87 +3401,21 @@ class UIManager {
 
         this.populateCompetitionSelect(state, activeComp);
 
+        // Der gewählte Wettbewerb färbt den ganzen Reiter
+        this.setzeThema(document.getElementById("pane-fixtures"),
+            this.wettbewerbsThema(activeComp));
+
         const tbody = document.getElementById("fullStandingsBody");
         const fixturesList = document.getElementById("fixturesList");
 
         const cupIds = Object.keys(state.cups || {});
         if (cupIds.includes(activeComp)) {
-            // Pokal-Runde rendern
-            const cup = state.cups[activeComp];
-            if (cup) {
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="10" style="text-align:center; padding:16px; font-weight:700; color:#f59e0b;">
-                            🏆 Deutschland Pokal - Aktuelle Runde: ${cup.roundName || "Runde 1"}
-                        </td>
-                    </tr>
-                ` + cup.matches.map((m, idx) => {
-                    const home = state.clubs.find(c => c.id === m.homeClubId);
-                    const away = state.clubs.find(c => c.id === m.awayClubId);
-                    const score = m.played ? `${m.homeGoals} : ${m.awayGoals}` : "noch nicht gespielt";
-                    const isUser = home?.id === userClub?.id || away?.id === userClub?.id;
-                    return `
-                        <tr class="${isUser ? 'row-user-club' : ''}">
-                            <td><strong>${idx + 1}</strong></td>
-                            <td colspan="5"><strong>${home?.name || 'Heim'}</strong> vs <strong>${away?.name || 'Auswärts'}</strong></td>
-                            <td colspan="4"><span class="badge ${m.played ? 'badge-status-fit' : ''}">${score}</span></td>
-                        </tr>
-                    `;
-                }).join("");
-
-                document.getElementById("fixtureMatchdayTitle").textContent = `Pokal: ${cup.roundName || "Runde 1"}`;
-                fixturesList.innerHTML = cup.matches.map(m => {
-                    const home = state.clubs.find(c => c.id === m.homeClubId);
-                    const away = state.clubs.find(c => c.id === m.awayClubId);
-                    const isUserMatch = home?.id === userClub?.id || away?.id === userClub?.id;
-                    const scoreText = m.played ? `${m.homeGoals} : ${m.awayGoals}` : "vs";
-
-                    return `
-                        <div class="fixture-card ${isUserMatch ? 'user-match' : ''}">
-                            <div class="fixture-team home">${home?.name || 'Heim'}</div>
-                            <div class="fixture-score-badge">${scoreText}</div>
-                            <div class="fixture-team away">${away?.name || 'Auswärts'}</div>
-                        </div>
-                    `;
-                }).join("");
-            }
+            this.renderPokalTableau(state, state.cups[activeComp], tbody, fixturesList, userClub);
             return;
         }
 
         if (["ucl", "uel", "uecl"].includes(activeComp)) {
-            // Europapokal Gruppen rendern
-            const euroComp = state.europeanCompetitions?.[activeComp];
-            if (euroComp && euroComp.groups) {
-                let html = "";
-                euroComp.groups.forEach(g => {
-                    html += `
-                        <tr style="background: rgba(56, 189, 248, 0.15);">
-                            <td colspan="10" style="font-weight:700; color:#38bdf8;">${euroComp.name} - ${g.groupName}</td>
-                        </tr>
-                    `;
-                    g.standings.forEach((s, idx) => {
-                        const club = state.clubs.find(c => c.id === s.clubId);
-                        const isUser = s.clubId === userClub?.id;
-                        html += `
-                            <tr class="${isUser ? 'row-user-club' : ''}">
-                                <td><strong>${idx + 1}</strong></td>
-                                <td><strong>${club?.name || s.clubId}</strong></td>
-                                <td>${s.played}</td>
-                                <td>${s.won}</td>
-                                <td>${s.drawn}</td>
-                                <td>${s.lost}</td>
-                                <td>${s.goalsFor}:${s.goalsAgainst}</td>
-                                <td>${s.goalsFor - s.goalsAgainst}</td>
-                                <td><strong>${s.points}</strong></td>
-                                <td><span class="badge ${idx < 2 ? 'badge-status-fit' : ''}">${idx < 2 ? 'Qualifiziert' : 'Gruppe'}</span></td>
-                            </tr>
-                        `;
-                    });
-                });
-                tbody.innerHTML = html;
-                document.getElementById("fixtureMatchdayTitle").textContent = `${euroComp.name} - Gruppenphase`;
-                fixturesList.innerHTML = `<div class="text-muted text-center" style="padding:20px;">Europapokal-Spiele finden an den internationalen Spieltagen im Kalender statt.</div>`;
-            }
+            this.renderEuropapokal(state, state.europeanCompetitions?.[activeComp], tbody, fixturesList, userClub);
             return;
         }
 
@@ -3547,6 +3491,187 @@ class UIManager {
         }
     }
 
+    /**
+     * Das Pokal-Tableau: alle gespielten Runden, die aktuelle oben.
+     *
+     * Vorher stand hier eine einzige, nie ausgetragene erste Runde - der
+     * Wettbewerb bestand aus 32 Paarungen, die nie ein Ergebnis bekamen.
+     */
+    renderPokalTableau(state, cup, tbody, fixturesList, userClub) {
+        const titel = document.getElementById("fixtureMatchdayTitle");
+        if (!cup || !Array.isArray(cup.runden)) {
+            tbody.innerHTML = `<tr><td colspan="10" class="text-muted" style="text-align:center;padding:20px;">Für diesen Pokal liegt noch kein Tableau vor.</td></tr>`;
+            if (fixturesList) fixturesList.innerHTML = "";
+            return;
+        }
+
+        const aktuelle = cup.runden[cup.rundenIndex] || cup.runden[cup.runden.length - 1];
+        const sieger = cup.winnerId ? state.clubs.find(c => c.id === cup.winnerId) : null;
+
+        if (titel) {
+            titel.textContent = sieger
+                ? `${cup.name}: Sieger ${sieger.name}`
+                : `${cup.name}: ${aktuelle?.roundName || "Auslosung"}`;
+        }
+
+        // Tabelle: der Weg durch das Turnier, Runde für Runde
+        tbody.innerHTML = [...cup.runden].reverse().map(runde => {
+            const kopf = `
+                <tr style="background: rgba(245, 158, 11, 0.15);">
+                    <td colspan="10" style="font-weight:700; color:#f59e0b;">
+                        🏆 ${this.escapeHtml(runde.roundName)}
+                        ${runde.completed ? "" : " · läuft"}
+                    </td>
+                </tr>`;
+
+            const zeilen = runde.matches.map(m => {
+                const home = state.clubs.find(c => c.id === m.homeClubId);
+                const away = state.clubs.find(c => c.id === m.awayClubId);
+                const isUser = m.homeClubId === userClub?.id || m.awayClubId === userClub?.id;
+                const elfer = m.penaltyScore ? ` <small>(${m.penaltyScore[0]}:${m.penaltyScore[1]} i. E.)</small>` : "";
+                const score = m.played ? `${m.homeGoals} : ${m.awayGoals}${elfer}` : "offen";
+                const weiter = m.played ? this.siegerName(state, m) : "";
+                return `
+                    <tr class="${isUser ? 'row-user-club' : ''}">
+                        <td colspan="5">${this.escapeHtml(home?.name || "Heim")} – ${this.escapeHtml(away?.name || "Auswärts")}</td>
+                        <td colspan="3"><span class="badge ${m.played ? 'badge-status-fit' : ''}">${score}</span></td>
+                        <td colspan="2">${this.escapeHtml(weiter)}</td>
+                    </tr>`;
+            }).join("");
+
+            return kopf + zeilen;
+        }).join("");
+
+        // Spielplan: die aktuelle Runde als Karten
+        if (fixturesList && aktuelle) {
+            fixturesList.innerHTML = aktuelle.matches.map(m => {
+                const home = state.clubs.find(c => c.id === m.homeClubId);
+                const away = state.clubs.find(c => c.id === m.awayClubId);
+                const isUserMatch = m.homeClubId === userClub?.id || m.awayClubId === userClub?.id;
+                const elfer = m.penaltyScore ? ` (${m.penaltyScore[0]}:${m.penaltyScore[1]} i. E.)` : "";
+                const scoreText = m.played ? `${m.homeGoals} : ${m.awayGoals}${elfer}` : "vs";
+                return `
+                    <div class="fixture-card ${isUserMatch ? 'user-match' : ''}">
+                        <div class="fixture-team home">${this.escapeHtml(home?.name || "Heim")}</div>
+                        <div class="fixture-score-badge">${scoreText}</div>
+                        <div class="fixture-team away">${this.escapeHtml(away?.name || "Auswärts")}</div>
+                    </div>`;
+            }).join("");
+        }
+    }
+
+    siegerName(state, match) {
+        const cup = this.getCupEngine();
+        if (!cup || typeof cup.siegerVon !== "function") return "";
+        const club = state.clubs.find(c => c.id === cup.siegerVon(match));
+        return club ? `${club.name} weiter` : "";
+    }
+
+    /**
+     * Europapokal: Gruppentabellen in der Gruppenphase, Tableau in der
+     * Endrunde.
+     */
+    renderEuropapokal(state, comp, tbody, fixturesList, userClub) {
+        const titel = document.getElementById("fixtureMatchdayTitle");
+        if (!comp) {
+            tbody.innerHTML = `<tr><td colspan="10" class="text-muted" style="text-align:center;padding:20px;">Dieser Wettbewerb läuft gerade nicht.</td></tr>`;
+            if (fixturesList) fixturesList.innerHTML = "";
+            return;
+        }
+
+        const inEndrunde = (comp.endrunde || []).length > 0;
+
+        if (inEndrunde) {
+            const sieger = comp.winnerId ? state.clubs.find(c => c.id === comp.winnerId) : null;
+            if (titel) {
+                titel.textContent = sieger
+                    ? `${comp.name}: Sieger ${sieger.name}`
+                    : `${comp.name} - Endrunde`;
+            }
+            tbody.innerHTML = [...comp.endrunde].reverse().map(runde => {
+                const kopf = `
+                    <tr style="background: rgba(56, 189, 248, 0.15);">
+                        <td colspan="10" style="font-weight:700; color:#38bdf8;">⭐ ${this.escapeHtml(runde.roundName)}</td>
+                    </tr>`;
+                const zeilen = runde.matches.map(m => {
+                    const home = state.clubs.find(c => c.id === m.homeClubId);
+                    const away = state.clubs.find(c => c.id === m.awayClubId);
+                    const isUser = m.homeClubId === userClub?.id || m.awayClubId === userClub?.id;
+                    const elfer = m.penaltyScore ? ` <small>(${m.penaltyScore[0]}:${m.penaltyScore[1]} i. E.)</small>` : "";
+                    return `
+                        <tr class="${isUser ? 'row-user-club' : ''}">
+                            <td colspan="6">${this.escapeHtml(home?.name || "Heim")} – ${this.escapeHtml(away?.name || "Auswärts")}</td>
+                            <td colspan="4"><span class="badge ${m.played ? 'badge-status-fit' : ''}">${m.played ? `${m.homeGoals} : ${m.awayGoals}${elfer}` : "offen"}</span></td>
+                        </tr>`;
+                }).join("");
+                return kopf + zeilen;
+            }).join("");
+
+            if (fixturesList) {
+                const aktuelle = comp.endrunde[comp.endrundeIndex] || comp.endrunde[comp.endrunde.length - 1];
+                fixturesList.innerHTML = (aktuelle?.matches || []).map(m => {
+                    const home = state.clubs.find(c => c.id === m.homeClubId);
+                    const away = state.clubs.find(c => c.id === m.awayClubId);
+                    const isUserMatch = m.homeClubId === userClub?.id || m.awayClubId === userClub?.id;
+                    return `
+                        <div class="fixture-card ${isUserMatch ? 'user-match' : ''}">
+                            <div class="fixture-team home">${this.escapeHtml(home?.name || "Heim")}</div>
+                            <div class="fixture-score-badge">${m.played ? `${m.homeGoals} : ${m.awayGoals}` : "vs"}</div>
+                            <div class="fixture-team away">${this.escapeHtml(away?.name || "Auswärts")}</div>
+                        </div>`;
+                }).join("");
+            }
+            return;
+        }
+
+        // Gruppenphase
+        tbody.innerHTML = (comp.groups || []).map(g => {
+            const kopf = `
+                <tr style="background: rgba(56, 189, 248, 0.15);">
+                    <td colspan="10" style="font-weight:700; color:#38bdf8;">${this.escapeHtml(comp.name)} - ${this.escapeHtml(g.groupName)}</td>
+                </tr>`;
+            const zeilen = (g.standings || []).map((s, idx) => {
+                const club = state.clubs.find(c => c.id === s.clubId);
+                const isUser = s.clubId === userClub?.id;
+                return `
+                    <tr class="${isUser ? 'row-user-club' : ''}">
+                        <td><strong>${idx + 1}</strong></td>
+                        <td><strong>${this.escapeHtml(club?.name || s.clubId)}</strong></td>
+                        <td>${s.played}</td>
+                        <td>${s.won}</td>
+                        <td>${s.drawn}</td>
+                        <td>${s.lost}</td>
+                        <td>${s.goalsFor}:${s.goalsAgainst}</td>
+                        <td>${s.goalsFor - s.goalsAgainst}</td>
+                        <td><strong>${s.points}</strong></td>
+                        <td><span class="badge ${idx < 2 ? 'badge-status-fit' : ''}">${idx < 2 ? 'Qualifiziert' : 'Gruppe'}</span></td>
+                    </tr>`;
+            }).join("");
+            return kopf + zeilen;
+        }).join("");
+
+        const spieltag = (comp.spieltage || [])[comp.spieltagIndex || 0]
+            || (comp.spieltage || []).find(t => !t.completed)
+            || (comp.spieltage || [])[(comp.spieltage || []).length - 1];
+
+        if (titel) titel.textContent = `${comp.name} - ${spieltag?.roundName || "Gruppenphase"}`;
+
+        if (fixturesList) {
+            fixturesList.innerHTML = (spieltag?.matches || []).map(m => {
+                const home = state.clubs.find(c => c.id === m.homeClubId);
+                const away = state.clubs.find(c => c.id === m.awayClubId);
+                const isUserMatch = m.homeClubId === userClub?.id || m.awayClubId === userClub?.id;
+                return `
+                    <div class="fixture-card ${isUserMatch ? 'user-match' : ''}">
+                        <div class="fixture-team home">${this.escapeHtml(home?.name || "Heim")}</div>
+                        <div class="fixture-score-badge">${m.played ? `${m.homeGoals} : ${m.awayGoals}` : "vs"}</div>
+                        <div class="fixture-team away">${this.escapeHtml(away?.name || "Auswärts")}</div>
+                    </div>`;
+            }).join("")
+                || `<div class="text-muted text-center" style="padding:20px;">Für diesen Spieltag liegen keine Partien vor.</div>`;
+        }
+    }
+
     /** Liga des Nutzervereins */
     getUserLeagueId(state) {
         const club = (state.clubs || []).find(c => c.id === state.userClubId);
@@ -3576,7 +3701,8 @@ class UIManager {
 
         Object.keys(state.cups || {}).forEach(cupId => {
             const comp = (state.competitions || []).find(c => c.id === cupId);
-            options.push(`<option value="${this.escapeHtml(cupId)}">🏆 ${this.escapeHtml(comp?.name || cupId)}</option>`);
+            const name = state.cups[cupId]?.name || comp?.name || cupId;
+            options.push(`<option value="${this.escapeHtml(cupId)}">🏆 ${this.escapeHtml(name)}</option>`);
         });
 
         [["ucl", "⭐ Champions League"], ["uel", "🌍 Europa League"], ["uecl", "🏆 Conference League"]].forEach(([id, label]) => {
@@ -3625,6 +3751,10 @@ class UIManager {
         this.renderHeader();
         if (this.activeTab === "fixtures") this.renderFixturesAndStandings();
         if (this.activeTab === "dashboard") this.renderDashboard();
+
+        // Der Vorstand entscheidet nach dem Spieltag - wenn er sich trennt,
+        // geht es hier nicht einfach weiter.
+        this.pruefeEntlassung();
     }
 
     /**
@@ -4553,7 +4683,7 @@ class UIManager {
             fullList.innerHTML = kommend.map((d, i) => {
                 const isCurrent = i === 0;
                 const inhalt = calendarEngine.tagesInhalt(state, d);
-                const wichtig = ["matchday", "friendly", "media", "season_end"].includes(d.type);
+                const wichtig = ["matchday", "friendly", "media", "season_end", "cup", "euro"].includes(d.type);
                 return `
                     <div class="cal-full-item ${isCurrent ? 'current' : ''} ${wichtig ? 'wichtig' : ''}">
                         <div class="cal-full-date">${d.date} (${d.dayOfWeek})</div>
@@ -4580,7 +4710,8 @@ class UIManager {
         return ({
             training: "🏋️", recovery: "🧘", media: "🎙️", sponsor: "🤝",
             tactics: "📋", opponent_analysis: "🔍", matchday: "⚽",
-            season_start: "⭐", season_end: "🏆", preseason: "☀️", friendly: "🥅"
+            season_start: "⭐", season_end: "🏆", preseason: "☀️", friendly: "🥅",
+            cup: "🏆", euro: "⭐"
         })[typ] || "📅";
     }
 
@@ -5642,6 +5773,10 @@ class UIManager {
         const modal = document.getElementById("modalLiveMatch");
         modal.style.display = "flex";
 
+        // Der Wettbewerb färbt den Abend: Pokalnächte sehen anders aus als
+        // der 14. Spieltag.
+        this.setzeLiveThema(match);
+
         document.getElementById("lmHomeName").textContent = homeClub.name;
         document.getElementById("lmAwayName").textContent = awayClub.name;
         document.getElementById("lmHomeScore").textContent = "0";
@@ -6078,9 +6213,13 @@ class UIManager {
                 updateLiveUI();
                 render2DCanvas();
                 this.playSound("whistle");
-                // Die übrigen Partien des Spieltags laufen parallel - beim
-                // Abpfiff steht auch die Tabelle
-                this.finishMatchdayAroundUser();
+                // Die übrigen Partien laufen parallel - beim Abpfiff steht
+                // auch die Tabelle beziehungsweise das Tableau der Runde
+                if (this._laufenderPokaltermin) {
+                    this.finishCupTieAroundUser();
+                } else {
+                    this.finishMatchdayAroundUser();
+                }
                 setTimeout(() => {
                     modal.style.display = "none";
                     this.showMatchReportModal(match);
@@ -6377,6 +6516,22 @@ class UIManager {
             }
         }
 
+        // Pokal- oder Europapokalabend mit eigener Beteiligung
+        if (heute && (heute.type === "cup" || heute.type === "euro")) {
+            const eigene = this.eigenePokalpartie(heute);
+            if (eigene) {
+                const heim = eigene.partie.homeClubId === state.userClubId;
+                const gegnerId = heim ? eigene.partie.awayClubId : eigene.partie.homeClubId;
+                const gegner = state.clubs.find(c => c.id === gegnerId);
+                return {
+                    art: "pokalspiel",
+                    text: `${eigene.runde.roundName} ${heim ? "gegen" : "bei"} ${this.kurzName(gegner?.name || "")}`,
+                    kurz: heute.type === "cup" ? "Pokal" : "Europa",
+                    pokal: eigene
+                };
+            }
+        }
+
         // Heute ist Medientag - erst die Pressekonferenz
         if (heute && heute.type === "media" && !this._pressDone) {
             return { art: "presse", text: "Pressekonferenz", kurz: "Presse" };
@@ -6399,6 +6554,9 @@ class UIManager {
             }
             if (halt.grund === "season_end") return { art: "tag", text: "Saison abschließen", kurz: "Saisonende" };
             if (halt.grund === "matchday") return { art: "tag", text: "Spieltag abschließen", kurz: "Spieltag" };
+            if (halt.grund === "cup" || halt.grund === "euro") {
+                return { art: "tag", text: "Pokalabend abschließen", kurz: "Pokal" };
+            }
             return { art: "tag", text: "Weiter" };
         }
 
@@ -6409,9 +6567,14 @@ class UIManager {
             },
             friendly: () => "Weiter zum Spieltermin",
             media: () => "Weiter zur Pressekonferenz",
-            season_end: () => "Weiter zum Saisonabschluss"
+            season_end: () => "Weiter zum Saisonabschluss",
+            cup: () => `Weiter zum ${halt.partie?.runde?.roundName || "Pokalspiel"}`,
+            euro: () => `Weiter zum ${halt.partie?.wettbewerb?.name || "Europapokal"}`
         };
-        const kurzformen = { matchday: "Spiel", friendly: "Termin", media: "Presse", season_end: "Saisonende" };
+        const kurzformen = {
+            matchday: "Spiel", friendly: "Termin", media: "Presse",
+            season_end: "Saisonende", cup: "Pokal", euro: "Europa"
+        };
         const text = (beschriftung[halt.grund] || (() => "Weiter"))();
         return { art: "sprung", text, kurz: kurzformen[halt.grund] || "Weiter", tage, zielIndex: halt.index };
     }
@@ -6428,16 +6591,38 @@ class UIManager {
         return null;
     }
 
+    getCupEngine() {
+        if (typeof CupEngine !== "undefined" && CupEngine) return CupEngine;
+        if (typeof window !== "undefined" && window.CupEngine) return window.CupEngine;
+        return null;
+    }
+
+    /** Die eigene Partie an einem Pokal- oder Europapokaltag */
+    eigenePokalpartie(tag) {
+        if (!tag || (tag.type !== "cup" && tag.type !== "euro")) return null;
+        const cup = this.getCupEngine();
+        if (!cup || typeof cup.eigenePartieAm !== "function") return null;
+        const art = tag.cupArt || (tag.type === "cup" ? "cup" : "euro");
+        return cup.eigenePartieAm(this.app.state, art, tag.cupRunde || 0);
+    }
+
     /**
      * Der eine Weiter-Knopf: Er läuft Tag für Tag bis zum nächsten Termin,
      * an dem der Manager gebraucht wird - und geht dabei immer über den
      * Kalender, damit es nur eine Zeitrechnung gibt.
      */
     handleWeiter() {
+        // Ohne Verein läuft die Zeit nicht weiter - erst die Entscheidung
+        if (this.pruefeEntlassung()) return;
+
         const ziel = this.beschreibeWeiter();
 
         if (ziel.art === "spiel") {
             this.app.handleAdvanceAction();
+            return;
+        }
+        if (ziel.art === "pokalspiel") {
+            this.startePokalpartie(ziel.pokal);
             return;
         }
         if (ziel.art === "presse") {
@@ -6449,6 +6634,388 @@ class UIManager {
             return;
         }
         this.handleCalendarAdvanceDay();
+    }
+
+    /**
+     * Die eigene Pokalpartie live spielen.
+     *
+     * Der Weg ist derselbe wie am Ligaspieltag - nur wird nach dem Abpfiff
+     * nicht die Liga zu Ende gespielt, sondern die Pokalrunde: die übrigen
+     * Partien, die Prämien und die Auslosung der nächsten Runde.
+     */
+    startePokalpartie(eigene) {
+        if (!eigene || !eigene.partie) return;
+
+        const val = this.validateLineupForMatch();
+        if (!val.valid) {
+            this.showToast(val.message, "error");
+            this.switchTab("tactics");
+            return;
+        }
+
+        const tag = this.getCalendarEngine()?.getCurrentDay(this.app.state);
+        this._laufenderPokaltermin = {
+            art: tag?.cupArt || (tag?.type === "cup" ? "cup" : "euro"),
+            runde: tag?.cupRunde || 0,
+            ko: !!eigene.ko,
+            partie: eigene.partie
+        };
+        this.startLiveMatchSimulation(eigene.partie);
+    }
+
+    /**
+     * Nach dem eigenen Pokalspiel die Runde zu Ende bringen.
+     *
+     * Ein K.-o.-Spiel braucht einen Sieger: Steht es nach 90 Minuten
+     * unentschieden, entscheidet das Elfmeterschießen - und zwar mit echten
+     * Schützen, nicht per Münzwurf.
+     */
+    finishCupTieAroundUser() {
+        const termin = this._laufenderPokaltermin;
+        this._laufenderPokaltermin = null;
+        const state = this.app?.state;
+        const cup = this.getCupEngine();
+        if (!termin || !state || !cup) return;
+
+        const partie = termin.partie;
+        if (termin.ko && partie && partie.played && partie.homeGoals === partie.awayGoals
+            && !partie.penaltyWinner) {
+            cup.elfmeterschiessen(state, partie);
+            const sieger = state.clubs.find(c => c.id === partie.penaltyWinner);
+            const stand = partie.penaltyScore || [];
+            this.showToast(
+                `🥅 Elfmeterschießen ${stand[0]}:${stand[1]} - ${sieger?.name || "Sieger"} steht in der nächsten Runde.`,
+                partie.penaltyWinner === state.userClubId ? "success" : "error");
+        }
+
+        // Die übrigen Partien des Abends laufen parallel
+        cup.spieleTermin(state, termin.art, termin.runde);
+        cup.schliesseTerminAb(state, termin.art, termin.runde);
+
+        if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+        this.renderHeader();
+        this.renderCurrentTab();
+    }
+
+    /**
+     * Jeder Wettbewerb hat sein eigenes Gesicht.
+     *
+     * Ein Pokalabend soll sich nicht anfühlen wie der 14. Spieltag: Die
+     * Champions League ist nachtblau mit Sternenlicht, der Landespokal
+     * rot-golden, die Conference League grün. Die Farben gehen als
+     * CSS-Variablen an die Oberfläche, so dass Anzeigetafel, Tabelle und
+     * Spielplan mitziehen, ohne dass jede Stelle den Wettbewerb kennen muss.
+     */
+    static WETTBEWERB_THEMEN = {
+        ucl: {
+            icon: "⭐", name: "Champions League", kurz: "UCL",
+            accent: "#4f8bff", accent2: "#c7dcff", flaeche: "rgba(15, 30, 78, 0.92)"
+        },
+        uel: {
+            icon: "🌍", name: "Europa League", kurz: "UEL",
+            accent: "#f97316", accent2: "#fdba74", flaeche: "rgba(66, 27, 4, 0.9)"
+        },
+        uecl: {
+            icon: "🏆", name: "Conference League", kurz: "UECL",
+            accent: "#22c55e", accent2: "#86efac", flaeche: "rgba(8, 48, 26, 0.9)"
+        },
+        cup: {
+            icon: "🏆", name: "Pokal", kurz: "Pokal",
+            accent: "#f5c542", accent2: "#fde68a", flaeche: "rgba(74, 20, 20, 0.92)"
+        },
+        liga: {
+            icon: "⚽", name: "Liga", kurz: "Liga",
+            accent: "#38bdf8", accent2: "#7dd3fc", flaeche: "rgba(15, 23, 42, 0.92)"
+        },
+        friendly: {
+            icon: "🥅", name: "Testspiel", kurz: "Test",
+            accent: "#a78bfa", accent2: "#ddd6fe", flaeche: "rgba(35, 25, 60, 0.9)"
+        }
+    };
+
+    /**
+     * Die Live-Ansicht in die Farben des Wettbewerbs tauchen und oben
+     * hinschreiben, worum es geht: "Champions League · Viertelfinale".
+     */
+    setzeLiveThema(match) {
+        const state = this.app?.state;
+        const modal = document.getElementById("modalLiveMatch");
+        if (!modal) return;
+
+        const compId = match?.competitionId
+            || (this._laufenderPokaltermin ? null : state?.userLeagueId);
+        const thema = this.wettbewerbsThema(compId);
+        this.setzeThema(modal, thema);
+
+        const runde = match?.roundName
+            || (match?.matchday ? `${match.matchday}. Spieltag` : "")
+            || (state?.currentMatchday ? `${state.currentMatchday}. Spieltag` : "");
+
+        DOM.setText("lmCompIcon", thema.icon);
+        DOM.setText("lmCompName", thema.name);
+        DOM.setText("lmCompRound", runde ? `· ${runde}` : "");
+    }
+
+    /** Das Thema eines Wettbewerbs - mit dem echten Namen aus dem Spielstand */
+    wettbewerbsThema(compId) {
+        const state = this.app?.state;
+        const themen = UIManager.WETTBEWERB_THEMEN;
+
+        if (compId && themen[compId]) {
+            const thema = { ...themen[compId], id: compId };
+            const w = state?.europeanCompetitions?.[compId];
+            if (w?.name) thema.name = w.name;
+            return thema;
+        }
+        if (compId && state?.cups?.[compId]) {
+            return { ...themen.cup, id: compId, name: state.cups[compId].name || themen.cup.name };
+        }
+        if (compId === "friendly") return { ...themen.friendly, id: "friendly" };
+
+        return {
+            ...themen.liga,
+            id: compId || state?.userLeagueId || "liga",
+            name: (state?.leagues || []).find(l => l.id === compId)?.shortName
+                || (compId === state?.userLeagueId ? (state?.leagueName || "Liga") : null)
+                || state?.leagueName || "Liga"
+        };
+    }
+
+    /**
+     * Das Thema auf ein Element legen: Farben als Variablen, Kennung als
+     * data-Attribut.
+     */
+    setzeThema(element, thema) {
+        if (!element || !thema) return;
+        element.dataset.comp = thema.id || "liga";
+        element.style.setProperty("--comp-accent", thema.accent);
+        element.style.setProperty("--comp-accent-2", thema.accent2);
+        element.style.setProperty("--comp-flaeche", thema.flaeche);
+    }
+
+    getCareerEngine() {
+        if (typeof CareerEngine !== "undefined" && CareerEngine) return CareerEngine;
+        if (typeof window !== "undefined" && window.CareerEngine) return window.CareerEngine;
+        return null;
+    }
+
+    /**
+     * Prüft nach jedem Zeitschritt, ob der Vorstand die Zusammenarbeit beendet
+     * hat - und hält dann alles an.
+     *
+     * Vorher wurde `state.managerDismissed` gesetzt und von niemandem gelesen:
+     * Man wurde entlassen und managte am nächsten Spieltag weiter denselben
+     * Verein.
+     *
+     * Gibt true zurück, wenn die Entlassung den Ablauf unterbrochen hat.
+     */
+    pruefeEntlassung() {
+        const state = this.app?.state;
+        const career = this.getCareerEngine();
+        if (!state || !career) return false;
+        if (!state.managerDismissed || state.careerOver) return false;
+        if (this._entlassungOffen) return true;
+
+        const daten = career.verarbeiteEntlassung(state);
+        if (!daten) return false;
+
+        this._entlassungOffen = true;
+        if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+        this.zeigeEntlassung(daten);
+        return true;
+    }
+
+    /**
+     * Das Ende einer Station: was war, und was jetzt möglich ist.
+     */
+    zeigeEntlassung(daten) {
+        const state = this.app.state;
+        const modal = document.getElementById("modalDismissal");
+        if (!modal) return;
+
+        const b = daten.bilanz || { spiele: 0, siege: 0, unentschieden: 0, niederlagen: 0, punkteSchnitt: 0 };
+
+        DOM.setText("dismissSubtitle",
+            `${daten.clubName} trennt sich zum ${daten.matchday}. Spieltag von Ihnen.`);
+
+        const body = document.getElementById("dismissBody");
+        if (body) {
+            body.innerHTML = `
+                <div class="dash-card">
+                    <h4>Ihre Bilanz bei ${this.escapeHtml(daten.clubName)}</h4>
+                    <div class="dismiss-stats">
+                        <div><span>${b.spiele}</span><small>Spiele</small></div>
+                        <div><span>${b.siege}</span><small>Siege</small></div>
+                        <div><span>${b.unentschieden}</span><small>Remis</small></div>
+                        <div><span>${b.niederlagen}</span><small>Pleiten</small></div>
+                        <div><span>${b.punkteSchnitt}</span><small>Punkte/Spiel</small></div>
+                    </div>
+                    <p class="text-muted" style="margin-top:10px;">
+                        Tabellenplatz zum Zeitpunkt der Trennung: <strong>${daten.rank}.</strong> ·
+                        Ihr Ruf in der Branche: <strong>${daten.ruf}</strong> von 100
+                    </p>
+                </div>
+            `;
+        }
+
+        const offers = document.getElementById("dismissOffers");
+        const angebote = daten.angebote || [];
+        if (offers) {
+            offers.innerHTML = angebote.length
+                ? `<h4 class="dismiss-offers-title">Diese Vereine würden Sie nehmen</h4>`
+                    + angebote.map((a, i) => `
+                        <button class="dismiss-offer" data-offer="${i}">
+                            <div class="dismiss-offer-main">
+                                <strong>${this.escapeHtml(a.clubName)}</strong>
+                                <span class="dismiss-offer-league">${this.escapeHtml(a.leagueName)}</span>
+                            </div>
+                            <div class="dismiss-offer-meta">
+                                Platz ${a.platz} von ${a.vonWievielen} ·
+                                Etat ${this.formatMoneySafe(a.budget)} ·
+                                Ziel: ${this.erwartungText(a.erwartung)}
+                            </div>
+                        </button>
+                    `).join("")
+                : `<p class="text-muted" style="text-align:center; padding:12px;">
+                       Im Moment sucht kein Verein einen Trainer mit Ihrem Werdegang.
+                       Es bleibt nur, die Laufbahn zu beenden.
+                   </p>`;
+
+            offers.querySelectorAll("[data-offer]").forEach(btn => {
+                btn.onclick = () => {
+                    const angebot = angebote[parseInt(btn.dataset.offer, 10)];
+                    if (!angebot) return;
+                    this.nimmAngebotAn(angebot);
+                };
+            });
+        }
+
+        const btnEnde = document.getElementById("btnEndCareer");
+        if (btnEnde) btnEnde.onclick = () => this.beendeLaufbahn();
+
+        modal.style.display = "flex";
+        this.playSound("click");
+    }
+
+    erwartungText(key) {
+        return ({
+            championship: "Meisterschaft", top3: "unter die ersten Drei",
+            midfield: "gesichertes Mittelfeld", avoid_relegation: "Klassenerhalt"
+        })[key] || "Mittelfeld";
+    }
+
+    /** Ein Angebot annehmen und bei einem neuen Verein anfangen */
+    nimmAngebotAn(angebot) {
+        const state = this.app.state;
+        const career = this.getCareerEngine();
+        if (!career) return;
+
+        const res = career.uebernimm(state, angebot.clubId);
+        if (!res.erfolg) {
+            this.showToast(res.grund || "Der Wechsel hat nicht geklappt.", "error");
+            return;
+        }
+
+        this._entlassungOffen = false;
+        const modal = document.getElementById("modalDismissal");
+        if (modal) modal.style.display = "none";
+
+        if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage(null, true);
+        this.showToast(`🤝 Sie übernehmen ${res.club.name}.`, "success");
+        this.renderHeader();
+        this.switchTab("dashboard");
+    }
+
+    /** Die Laufbahn beenden - und das Zeugnis zeigen */
+    beendeLaufbahn() {
+        const state = this.app.state;
+        const career = this.getCareerEngine();
+        if (!career) return;
+
+        const zeugnis = career.beendeKarriere(state);
+        this._entlassungOffen = false;
+
+        const modal = document.getElementById("modalDismissal");
+        if (modal) modal.style.display = "none";
+        if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage(null, true);
+
+        this.zeigeZeugnis(zeugnis);
+    }
+
+    zeigeZeugnis(zeugnis) {
+        const modal = document.getElementById("modalCareerEnd");
+        if (!modal) return;
+
+        DOM.setText("careerEndSubtitle",
+            `${zeugnis.name} · ${zeugnis.stationen.length} Station${zeugnis.stationen.length === 1 ? "" : "en"} · `
+            + `${zeugnis.titel.length} Titel · ${zeugnis.siegquote} % Siege`);
+
+        const details = document.getElementById("careerEndDetails");
+        if (details) {
+            const stationen = zeugnis.stationen.map(s => `
+                <div class="career-station">
+                    <div class="career-station-club">${this.escapeHtml(s.clubName)}</div>
+                    <div class="career-station-time">
+                        Saison ${s.vonSaison}${s.bisSaison && s.bisSaison !== s.vonSaison ? `–${s.bisSaison}` : ""}
+                        · ${s.spiele} Spiele, ${s.siege} S / ${s.unentschieden} U / ${s.niederlagen} N
+                        ${s.ende === "entlassen" ? " · entlassen" : ""}
+                    </div>
+                </div>
+            `).join("");
+
+            const titel = zeugnis.titel.length
+                ? `<h4 style="margin-top:14px;">Titel</h4>`
+                    + zeugnis.titel.map(t =>
+                        `<div class="career-title-row">🏆 ${this.escapeHtml(t.wettbewerb)} · Saison ${t.saison} · ${this.escapeHtml(t.clubName)}</div>`).join("")
+                : `<p class="text-muted" style="margin-top:14px;">Ohne Titel - aber nicht ohne Geschichten.</p>`;
+
+            details.innerHTML = `
+                <div class="dash-card" style="text-align:left;">
+                    <h4>Stationen</h4>
+                    ${stationen || '<p class="text-muted">Keine Stationen verzeichnet.</p>'}
+                    ${titel}
+                    <p class="text-muted" style="margin-top:14px;">
+                        Gesamt: ${zeugnis.gesamt.spiele} Spiele ·
+                        ${zeugnis.gesamt.siege} Siege ·
+                        ${zeugnis.entlassungen} Entlassung${zeugnis.entlassungen === 1 ? "" : "en"}
+                    </p>
+                </div>
+            `;
+        }
+
+        const btn = document.getElementById("btnCareerEndNewGame");
+        if (btn) {
+            btn.onclick = () => {
+                modal.style.display = "none";
+                this.showStartScreen();
+            };
+        }
+
+        modal.style.display = "flex";
+    }
+
+    /**
+     * Was ein simulierter Pokalabend gebracht hat - in einem Satz.
+     *
+     * Wenn der eigene Verein beteiligt war, steht das Ergebnis vorn: Es ist
+     * die Information, wegen der man hinschaut.
+     */
+    pokalabendMeldung(state, res) {
+        const eigene = res.cup?.eigenePartie;
+        if (eigene && eigene.played) {
+            const heim = eigene.homeClubId === state.userClubId;
+            const eigeneTore = heim ? eigene.homeGoals : eigene.awayGoals;
+            const gegenTore = heim ? eigene.awayGoals : eigene.homeGoals;
+            const gegner = state.clubs.find(c =>
+                c.id === (heim ? eigene.awayClubId : eigene.homeClubId));
+            const elfer = eigene.penaltyScore
+                ? ` (${heim ? eigene.penaltyScore[0] : eigene.penaltyScore[1]}:${heim ? eigene.penaltyScore[1] : eigene.penaltyScore[0]} i. E.)`
+                : "";
+            return `🏆 ${eigeneTore}:${gegenTore}${elfer} gegen ${gegner?.name || "den Gegner"}`;
+        }
+        return res.type === "cup"
+            ? "🏆 Die Pokalrunde wurde ausgespielt."
+            : "⭐ Der europäische Spieltag wurde ausgetragen.";
     }
 
     /** Mehrere Tage am Stück, aber über denselben Weg wie ein einzelner */
@@ -6464,6 +7031,9 @@ class UIManager {
             if (!heute) break;
             // Vor einem Termin, der den Manager braucht, wird angehalten
             if (gelaufen > 0 && ["matchday", "friendly", "media", "season_end"].includes(heute.type)) break;
+            // Ein Pokalabend hält nur auf, wenn der eigene Verein spielt
+            if (gelaufen > 0 && (heute.type === "cup" || heute.type === "euro")
+                && this.eigenePokalpartie(heute)) break;
 
             const res = cal.advanceOneDay(state);
             if (!res || !res.success) break;
@@ -6475,6 +7045,9 @@ class UIManager {
                 return;
             }
             (res.summary?.messages || []).forEach(m => berichte.push(m));
+
+            // Eine Entlassung beendet den Vorlauf sofort
+            if (state.managerDismissed) break;
         }
 
         state.lastDayReport = {
@@ -6488,6 +7061,7 @@ class UIManager {
         this.renderHeader();
         this.renderCurrentTab();
         if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+        this.pruefeEntlassung();
     }
 
     handleCalendarAdvanceDay() {
@@ -6522,6 +7096,9 @@ class UIManager {
             if (res.type === "matchday" && res.matchResult) {
                 this.playSound("whistle");
                 this.showToast(`⚽ Spieltag ${state.currentMatchday - 1} wurde simuliert!`, "success");
+            } else if (res.type === "cup" || res.type === "euro") {
+                this.playSound("whistle");
+                this.showToast(this.pokalabendMeldung(state, res), "info");
             } else {
                 // Der volle Tagesbericht landet im Kalender, die Kurzfassung im Toast
                 state.lastDayReport = {
@@ -6542,6 +7119,7 @@ class UIManager {
             if (typeof state.saveToLocalStorage === "function") {
                 state.saveToLocalStorage();
             }
+            this.pruefeEntlassung();
         }
     }
 

@@ -4849,3 +4849,214 @@ body {
 .calendar-full-list {
     max-height: 520px;
 }
+
+/* ------------------------------------------------------------------
+   Pokal- und Europapokalabende im Kalender
+   ------------------------------------------------------------------ */
+
+.calendar-day-card.cal-type-cup,
+.calendar-day-card.cal-type-euro {
+    border-color: rgba(250, 204, 21, 0.45);
+    background: linear-gradient(180deg, rgba(250, 204, 21, 0.10), transparent 70%);
+}
+
+.calendar-day-card.cal-type-euro {
+    border-color: rgba(56, 189, 248, 0.45);
+    background: linear-gradient(180deg, rgba(56, 189, 248, 0.10), transparent 70%);
+}
+
+/* ------------------------------------------------------------------
+   Entlassung und Karriereende
+   ------------------------------------------------------------------ */
+
+.dismissal-head {
+    text-align: center;
+    padding-bottom: 8px;
+}
+
+.dismissal-icon {
+    font-size: 42px;
+    line-height: 1;
+    margin-bottom: 6px;
+}
+
+.dismissal-head h1 {
+    font-size: 22px;
+    margin: 0 0 6px;
+}
+
+.dismiss-stats {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.dismiss-stats > div {
+    text-align: center;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
+    padding: 8px 4px;
+}
+
+.dismiss-stats span {
+    display: block;
+    font-size: 18px;
+    font-weight: 800;
+}
+
+.dismiss-stats small {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.dismiss-offers-title {
+    margin: 16px 0 8px;
+    font-size: 14px;
+}
+
+.dismiss-offer {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 10px;
+    padding: 11px 13px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    color: inherit;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.dismiss-offer:hover {
+    border-color: rgba(56, 189, 248, 0.6);
+    background: rgba(56, 189, 248, 0.08);
+}
+
+.dismiss-offer-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.dismiss-offer-league {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.dismiss-offer-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 3px;
+}
+
+.career-station {
+    border-left: 2px solid rgba(56, 189, 248, 0.5);
+    padding: 4px 0 4px 10px;
+    margin-bottom: 8px;
+}
+
+.career-station-club {
+    font-weight: 700;
+}
+
+.career-station-time,
+.career-title-row {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.career-title-row {
+    padding: 2px 0;
+}
+
+@media (max-width: 560px) {
+    .dismiss-stats {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* ------------------------------------------------------------------
+   Wettbewerbs-Themen: jeder Pokal hat sein eigenes Gesicht
+   ------------------------------------------------------------------ */
+
+[data-comp] {
+    --comp-accent: #38bdf8;
+    --comp-accent-2: #7dd3fc;
+    --comp-flaeche: rgba(15, 23, 42, 0.92);
+}
+
+.live-comp-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--comp-accent-2);
+    background: linear-gradient(90deg, transparent, var(--comp-flaeche) 22%, var(--comp-flaeche) 78%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--comp-accent) 45%, transparent);
+}
+
+.live-comp-icon {
+    font-size: 15px;
+    letter-spacing: 0;
+}
+
+.live-comp-round {
+    color: rgba(255, 255, 255, 0.6);
+    font-weight: 600;
+    letter-spacing: 0.6px;
+}
+
+/* Die Anzeigetafel nimmt die Farbe des Wettbewerbs auf */
+#modalLiveMatch[data-comp] .live-match-header {
+    background: linear-gradient(180deg, var(--comp-flaeche), rgba(9, 12, 20, 0.96));
+    border-bottom: 2px solid var(--comp-accent);
+}
+
+#modalLiveMatch[data-comp] .match-time-badge {
+    border-color: color-mix(in srgb, var(--comp-accent) 60%, transparent);
+    box-shadow: 0 0 22px color-mix(in srgb, var(--comp-accent) 28%, transparent);
+}
+
+#modalLiveMatch[data-comp] .time-label {
+    color: var(--comp-accent);
+}
+
+/* Champions-League-Nächte bekommen ihr Sternenlicht */
+#modalLiveMatch[data-comp="ucl"] .live-comp-banner {
+    text-shadow: 0 0 12px color-mix(in srgb, var(--comp-accent) 70%, transparent);
+}
+
+/* Der Wettbewerbsreiter zieht mit */
+#pane-fixtures[data-comp] .pane-header h2 {
+    border-left: 4px solid var(--comp-accent);
+    padding-left: 10px;
+}
+
+#pane-fixtures[data-comp] .fixture-card.user-match {
+    border-color: var(--comp-accent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--comp-accent) 40%, transparent);
+}
+
+#pane-fixtures[data-comp] .row-user-club {
+    box-shadow: inset 3px 0 0 var(--comp-accent);
+}
+
+/* Ältere Browser ohne color-mix bekommen wenigstens die Grundfarbe */
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+    .live-comp-banner {
+        border-bottom-color: var(--comp-accent);
+    }
+    #modalLiveMatch[data-comp] .match-time-badge {
+        border-color: var(--comp-accent);
+    }
+}

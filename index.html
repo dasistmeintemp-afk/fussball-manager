@@ -1433,6 +1433,11 @@
         <div class="modal-overlay" id="modalLiveMatch" style="display: none;">
             <div class="modal-box modal-fullscreen">
                 <div class="live-match-header">
+                    <div class="live-comp-banner" id="lmCompetition">
+                        <span class="live-comp-icon" id="lmCompIcon">⚽</span>
+                        <span class="live-comp-name" id="lmCompName">Liga</span>
+                        <span class="live-comp-round" id="lmCompRound"></span>
+                    </div>
                     <div class="live-scoreboard">
                         <div class="team-score home">
                             <span class="team-name" id="lmHomeName">FC München</span>
@@ -1666,6 +1671,35 @@
             </div>
         </div>
 
+        <!-- Entlassung: Die Zusammenarbeit ist beendet -->
+        <div class="modal-overlay" id="modalDismissal" style="display: none;">
+            <div class="modal-box modal-md">
+                <div class="dismissal-head">
+                    <div class="dismissal-icon">📄</div>
+                    <h1 id="dismissTitle">Der Vorstand beendet die Zusammenarbeit</h1>
+                    <p id="dismissSubtitle" class="lead-text"></p>
+                </div>
+                <div class="dismissal-body" id="dismissBody"></div>
+                <div class="dismissal-offers" id="dismissOffers"></div>
+                <div class="modal-footer center">
+                    <button class="btn btn-ghost" id="btnEndCareer">Laufbahn beenden</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Karriereende: das Zeugnis -->
+        <div class="modal-overlay" id="modalCareerEnd" style="display: none;">
+            <div class="modal-box modal-md text-center">
+                <div class="trophy-anim">🎖️</div>
+                <h1 id="careerEndTitle">Die Laufbahn ist beendet</h1>
+                <p id="careerEndSubtitle" class="lead-text"></p>
+                <div class="se-details" id="careerEndDetails"></div>
+                <div class="modal-footer center">
+                    <button class="btn btn-primary btn-lg" id="btnCareerEndNewGame">Neue Karriere starten ▶</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Mobile Drawer Menu ("Mehr") -->
         <div class="mobile-drawer-overlay" id="mobileDrawerOverlay" style="display: none;">
             <div class="mobile-drawer">
@@ -1766,6 +1800,8 @@
     <script src="js/engine/worldGenerator.js"></script>
     <script src="js/engine/competitionEngine.js"></script>
     <script src="js/engine/playerRatingEngine.js"></script>
+    <script src="js/engine/cupEngine.js"></script>
+    <script src="js/engine/careerEngine.js"></script>
     <script src="js/engine/calendarEngine.js"></script>
     <script src="js/engine/opponentAnalysisEngine.js"></script>
     <script src="js/engine/gameState.js"></script>

@@ -901,12 +901,22 @@ class GameState {
 
         if (compEngine) {
             state.europeanCompetitions = compEngine.generateEuropeanCompetitions(state.clubs);
+        }
 
-            const cupCountry = userClub?.countryId || "de";
-            const cupId = `${cupCountry}_cup`;
-            const cupClubIds = state.clubs.filter(c => (c.countryId || "de") === cupCountry).map(c => c.id);
-            state.cups = {};
-            state.cups[cupId] = compEngine.generateCupRound(cupClubIds, "Runde 1", cupId, 1);
+        // Pokal und Europapokal bekommen einen Spielplan, der auch abgearbeitet
+        // wird. Vorher stand nur eine erste Pokalrunde im Speicher, die nie
+        // jemand austrug, und die europäischen Gruppen hatten gar keine
+        // Partien.
+        const cupEngine = GameState._resolveEngine('CupEngine', './cupEngine.js');
+        if (cupEngine && typeof cupEngine.starteSaison === 'function') {
+            cupEngine.starteSaison(state);
+        }
+
+        // Die Karriereakte beginnt mit der ersten Station. Sie entscheidet
+        // später, wer sich meldet, wenn der Vorstand die Zusammenarbeit beendet.
+        const careerEngine = GameState._resolveEngine('CareerEngine', './careerEngine.js');
+        if (careerEngine && typeof careerEngine.beginneStation === 'function') {
+            careerEngine.beginneStation(state, userClubId);
         }
 
         const youthEngine = (typeof YouthEngine !== 'undefined' && YouthEngine)
@@ -985,11 +995,27 @@ class GameState {
      *
      * Gibt true zurück, wenn etwas verändert wurde.
      */
-    static repairLineup(club, allPlayers) {
+    /**
+     * Ein Nachschlagewerk aller Spieler nach ID.
+     *
+     * Wer die Aufstellungen aller Vereine prüft, braucht es genau einmal -
+     * nicht je Verein neu. Vorher baute `repairLineup` diese Map bei jedem
+     * Aufruf auf: dreihundert Vereine mal viertausendachthundert Spieler,
+     * jeden Kalendertag. Das waren rund 1,4 Millionen Einträge pro Tag und
+     * damit der größte Einzelposten am Tagesklick.
+     */
+    static buildPlayerIndex(allPlayers) {
+        const byId = new Map();
+        if (Array.isArray(allPlayers)) {
+            allPlayers.forEach(p => { if (p) byId.set(p.id, p); });
+        }
+        return byId;
+    }
+
+    static repairLineup(club, allPlayers, playerIndex = null) {
         if (!club || !Array.isArray(club.playerIds) || !Array.isArray(allPlayers)) return false;
 
-        const byId = new Map();
-        allPlayers.forEach(p => { if (p) byId.set(p.id, p); });
+        const byId = playerIndex instanceof Map ? playerIndex : GameState.buildPlayerIndex(allPlayers);
 
         const kaderIds = new Set(club.playerIds);
         const einsatzfaehig = (id) => {
@@ -998,6 +1024,19 @@ class GameState {
                 && (p.injuredWeeks || 0) <= 0
                 && (p.suspendedMatches || 0) <= 0;
         };
+
+        // An den allermeisten Tagen ist an den allermeisten Aufstellungen
+        // nichts zu tun. Diese Prüfung kostet ein paar Nachschläge und erspart
+        // das Sortieren und Neubesetzen einer vollständigen Elf.
+        const ohneVertretung = !club.lineupCover || Object.keys(club.lineupCover).length === 0;
+        if (ohneVertretung
+            && Array.isArray(club.lineup) && club.lineup.length === 11
+            && Array.isArray(club.bench) && club.bench.length > 0
+            && new Set(club.lineup).size === 11
+            && club.lineup.every(einsatzfaehig)
+            && club.bench.every(einsatzfaehig)) {
+            return false;
+        }
 
         const lineupVorher = Array.isArray(club.lineup) ? club.lineup.slice() : [];
         const benchVorher = Array.isArray(club.bench) ? club.bench.slice() : [];
@@ -1133,15 +1172,17 @@ class GameState {
     /** Aufstellungen aller Vereine prüfen und Lücken schließen */
     static repairAllLineups(state) {
         if (!state || !Array.isArray(state.clubs)) return 0;
+        const index = GameState.buildPlayerIndex(state.players);
         let repariert = 0;
         state.clubs.forEach(club => {
-            if (GameState.repairLineup(club, state.players)) repariert++;
+            if (GameState.repairLineup(club, state.players, index)) repariert++;
         });
         return repariert;
     }
 
     static autoSetLineupForClub(club, allPlayers) {
-        const clubPlayers = allPlayers.filter(p => club.playerIds.includes(p.id) && p.injuredWeeks === 0 && p.suspendedMatches === 0);
+        const kaderIds = new Set(club.playerIds);
+        const clubPlayers = allPlayers.filter(p => kaderIds.has(p.id) && p.injuredWeeks === 0 && p.suspendedMatches === 0);
         clubPlayers.sort((a, b) => b.overall - a.overall);
 
         const formationConfig = GameState.getFormationConfig(club.formation);
@@ -1385,6 +1426,18 @@ class GameState {
      * `sofort` erzwingt das synchrone Schreiben - beim Verlassen der Seite
      * oder vor einem Export darf nichts in der Warteschlange hängen.
      */
+    /**
+     * Wie lange gesammelt wird, bevor wirklich geschrieben wird.
+     *
+     * Ein Speichervorgang kostet auch nach der Beschleunigung des Codecs rund
+     * sechzig Millisekunden, in denen die Oberfläche steht. Wer den
+     * Weiter-Knopf mehrmals hintereinander drückt, soll das nicht bei jedem
+     * Klick spüren - eine Sekunde Sammelzeit fasst eine ganze Klickfolge zu
+     * einem einzigen Schreibvorgang zusammen. Verloren gehen kann dabei
+     * nichts: `flushSave` schreibt beim Verlassen der Seite sofort.
+     */
+    static SAVE_SAMMELZEIT_MS = 1000;
+
     saveToLocalStorage(slotKey = "football_manager_savegame", sofort = false) {
         if (!sofort && typeof setTimeout === "function") {
             this._saveAusstehend = slotKey;
@@ -1394,7 +1447,7 @@ class GameState {
                 const ziel = this._saveAusstehend || slotKey;
                 this._saveAusstehend = null;
                 this.saveToLocalStorage(ziel, true);
-            }, 180);
+            }, GameState.SAVE_SAMMELZEIT_MS);
             return true;
         }
 

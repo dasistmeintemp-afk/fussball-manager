@@ -101,49 +101,98 @@ const SaveCodec = {
         cur[parts[parts.length - 1]] = value;
     },
 
+    /**
+     * Das Schema einmal auflösen statt viertausendmal.
+     *
+     * `encodeRecord` zerlegte jeden der 72 Feldpfade für jeden einzelnen
+     * Spieler neu in seine Bestandteile - und suchte für jedes Unterobjekt mit
+     * einem vollständigen Durchlauf durch alle 72 Felder heraus, welche
+     * Schlüssel das Schema kennt. Bei viertausendachthundert Spielern waren das
+     * über eine Million Zeichenkettenoperationen je Speichervorgang: Das
+     * Speichern dauerte 358 Millisekunden, und weil nach fast jeder Handlung
+     * gespeichert wird, stand die Oberfläche dabei still.
+     *
+     * Die Auflösung hängt nur am Schema, nicht an den Daten - sie wird deshalb
+     * einmal berechnet und am Schema-Array selbst gemerkt.
+     */
+    schemaOf(fields) {
+        if (fields._schema) return fields._schema;
+
+        const eintraege = fields.map(([path, type]) => {
+            const parts = path.split(".");
+            return { path, type, parts, wurzel: parts[0], tief: parts.length > 1 };
+        });
+
+        const bekannteWurzeln = new Set(eintraege.map(e => e.wurzel));
+        // Je Wurzel: welche Unterschlüssel deckt das Schema ab?
+        const abgedeckt = new Map();
+        eintraege.forEach(e => {
+            if (!e.tief) return;
+            if (!abgedeckt.has(e.wurzel)) abgedeckt.set(e.wurzel, new Set());
+            abgedeckt.get(e.wurzel).add(e.parts[1]);
+        });
+
+        const schema = { eintraege, bekannteWurzeln, abgedeckt };
+        Object.defineProperty(fields, "_schema", { value: schema, enumerable: false });
+        return schema;
+    },
+
+    /** Wert eines vorzerlegten Pfads lesen */
+    readParts(obj, parts) {
+        let cur = obj;
+        for (let i = 0; i < parts.length; i++) {
+            if (cur === null || cur === undefined) return undefined;
+            cur = cur[parts[i]];
+        }
+        return cur;
+    },
+
     /** Wandelt ein Objekt anhand eines Schemas in ein positionales Array */
     encodeRecord(obj, fields, dict) {
-        const row = [];
-        const used = new Set();
+        const { eintraege, bekannteWurzeln, abgedeckt } = this.schemaOf(fields);
+        const row = new Array(eintraege.length);
 
-        fields.forEach(([path, type]) => {
-            const raw = this.getPath(obj, path);
-            used.add(path.split(".")[0]);
+        for (let i = 0; i < eintraege.length; i++) {
+            const e = eintraege[i];
+            const raw = e.tief ? this.readParts(obj, e.parts) : obj[e.path];
 
             if (raw === undefined || raw === null) {
-                row.push(null);
-            } else if (type === "s" || type === "sn") {
-                row.push(dict.put(raw));
-            } else if (type === "sa") {
-                row.push(Array.isArray(raw) ? raw.map(v => dict.put(v)) : null);
-            } else if (type === "b") {
-                row.push(raw ? 1 : 0);
+                row[i] = null;
+            } else if (e.type === "s" || e.type === "sn") {
+                row[i] = dict.put(raw);
+            } else if (e.type === "sa") {
+                row[i] = Array.isArray(raw) ? raw.map(v => dict.put(v)) : null;
+            } else if (e.type === "b") {
+                row[i] = raw ? 1 : 0;
             } else {
-                row.push(typeof raw === "number" ? raw : null);
+                row[i] = typeof raw === "number" ? raw : null;
             }
-        });
+        }
 
         // Alles, was das Schema nicht kennt, bleibt als Restobjekt erhalten
         const rest = {};
         let hasRest = false;
-        Object.keys(obj).forEach(key => {
-            if (used.has(key)) {
+        const schluessel = Object.keys(obj);
+        for (let k = 0; k < schluessel.length; k++) {
+            const key = schluessel[k];
+            if (bekannteWurzeln.has(key)) {
                 // Teilweise abgedeckte Unterobjekte auf unbekannte Schlüssel prüfen
+                const covered = abgedeckt.get(key);
                 const sub = obj[key];
-                const covered = fields.filter(f => f[0].startsWith(key + ".")).map(f => f[0].split(".")[1]);
-                if (covered.length > 0 && sub && typeof sub === "object" && !Array.isArray(sub)) {
-                    Object.keys(sub).forEach(subKey => {
-                        if (!covered.includes(subKey)) {
-                            rest[key + "." + subKey] = sub[subKey];
+                if (covered && sub && typeof sub === "object" && !Array.isArray(sub)) {
+                    const subKeys = Object.keys(sub);
+                    for (let s = 0; s < subKeys.length; s++) {
+                        if (!covered.has(subKeys[s])) {
+                            rest[key + "." + subKeys[s]] = sub[subKeys[s]];
                             hasRest = true;
                         }
-                    });
+                    }
                 }
-                return;
+                continue;
             }
             rest[key] = obj[key];
             hasRest = true;
-        });
+        }
 
         row.push(hasRest ? rest : null);
 

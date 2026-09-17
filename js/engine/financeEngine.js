@@ -16,8 +16,27 @@ const FinanceEngine = {
     /**
      * Anteil der Einnahmen, der für den laufenden Betrieb draufgeht.
      * Gehälter und Stadionunterhalt kommen obendrauf.
+     *
+     * Mit fünf Prozent blieb jedem Verein Saison für Saison ein zweistelliger
+     * Millionenbetrag übrig, der nie wieder ausgegeben wurde: Nach fünf Jahren
+     * lag die durchschnittliche Vereinskasse bei 253 Millionen, der Transferetat
+     * bei 45. Geld war damit keine Entscheidung mehr - man konnte sich alles
+     * leisten, und das nahm dem Transfermarkt jede Bedeutung.
+     *
+     * Ein Fußballverein gibt aus, was er einnimmt. Neben Gehältern und
+     * Stadionunterhalt kostet der Betrieb Ablösesummen und deren Abschreibung,
+     * Beraterhonorare, Scouting, Nachwuchsleistungszentrum, Verwaltung und
+     * Reisen - zusammen der größte Posten nach den Gehältern.
      */
-    OPERATING_COST_SHARE: 0.05,
+    OPERATING_COST_SHARE: 0.26,
+
+    /**
+     * Ein Teil des Apparats hängt am Kader, nicht am Umsatz: Wer 24 Profis
+     * beschäftigt, unterhält auch die Betreuer, Ärzte und Berater dazu. Ohne
+     * diesen Anteil würde ein Verein mit teurem Kader und kleinem Stadion
+     * unrealistisch gut dastehen.
+     */
+    OPERATING_WAGE_SHARE: 0.16,
 
     /**
      * Wirtschaftskraft nach Ligastufe.
@@ -29,12 +48,32 @@ const FinanceEngine = {
      */
     LEVEL_ECONOMY: { 1: 1.0, 2: 0.55, 3: 0.28, 4: 0.15, 5: 0.11, 6: 0.09, 7: 0.08 },
 
+    /**
+     * Sockel und Spanne der Sponsorenzahlung innerhalb einer Liga.
+     *
+     * Vorher hingen die Einnahmen fast linear am Ruf: Der FC München nahm
+     * 1.91 Millionen je Spieltag ein, der FC Augsburg 1.50 - ein Viertel
+     * weniger, bei einem Fünftel der Gehaltslast. Die kleinen Vereine haben
+     * damit Geld gedruckt: Über eine Saison legte Schalke 36.9 Millionen
+     * zurück, Frankfurt 41.9, während München bei plus 0.9 landete. Nach fünf
+     * Saisons lag die durchschnittliche Vereinskasse bei einer Viertelmilliarde.
+     *
+     * In Wirklichkeit ist der Abstand gewaltig: Ein Spitzenklub setzt ein
+     * Vielfaches eines Abstiegskandidaten um. Gemessen wird der Rang innerhalb
+     * der eigenen Liga, damit dieselbe Rechnung in der Bundesliga und in der
+     * Landesliga funktioniert.
+     */
+    SPONSOR_SOCKEL: 500000,
+    SPONSOR_SPANNE: 1400000,
+
     /** Sponsorenzahlung eines Vereins je Spieltag */
     sponsorPerMatchday(club) {
         if (!club) return 0;
-        if (club.sponsor && club.sponsor.amountPerMatchday) return club.sponsor.amountPerMatchday;
         const faktor = this.LEVEL_ECONOMY[club.level || 1] ?? 0.05;
-        return Math.round((club.reputation || 70) * 15000 * faktor);
+        const rang = typeof club.clubStrength === "number"
+            ? Math.max(0, Math.min(1, club.clubStrength))
+            : 0.5;
+        return Math.round((this.SPONSOR_SOCKEL + Math.pow(rang, 1.5) * this.SPONSOR_SPANNE) * faktor);
     },
 
     /** Unterhalt für Stadion und Infrastruktur je Spieltag */
@@ -211,7 +250,9 @@ const FinanceEngine = {
             //    Bilanz jedes Vereins nur eine Richtung - nach fünf Saisons
             //    saß selbst der Landesligist auf einem Millionenpolster.
             const ticketSchnitt = Math.round((club.stadiumCapacity || club.capacity || 20000) * 0.8 * (club.ticketPrice || 35) / 2);
-            const operatingCosts = Math.round((sponsorIncome + ticketSchnitt) * this.OPERATING_COST_SHARE);
+            const operatingCosts = Math.round(
+                (sponsorIncome + ticketSchnitt) * this.OPERATING_COST_SHARE
+                + totalWeeklyWages * this.OPERATING_WAGE_SHARE);
             club.balance -= operatingCosts;
 
             this.recordTransaction(

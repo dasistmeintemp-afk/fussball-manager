@@ -68,7 +68,12 @@ const MATCH_TUNING = {
     yellowCardRate: 0.36,       // Anteil Fouls, die Gelb geben (~3.5-4.5 Gelbe pro Spiel)
     redCardRate: 0.009,         // Direkte Rote Karte (~0.05 pro Spiel)
     penaltyRate: 0.032,         // Elfmeterquote pro Foul-Szene (~0.25 pro Spiel)
-    injuryRatePerTeam: 0.06     // Verletzungswahrscheinlichkeit pro Team & Spiel (~0.06-0.10)
+    // Verletzungen je Team und Spiel. Vorher 0.06 - das sind zwei Verletzungen
+    // pro Verein und Saison, praktisch alles andere kam aus dem Training. In
+    // Wirklichkeit passiert der groessere Teil im Spiel: im Zweikampf, im
+    // Sprint, bei der Landung. 0.30 ergibt rund zehn Spielverletzungen je
+    // Verein und Saison und damit etwa ein Drittel aller Ausfaelle.
+    injuryRatePerTeam: 0.30
 };
 
 const INJURY_CATALOG = [

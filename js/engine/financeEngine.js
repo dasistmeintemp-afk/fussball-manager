@@ -31,6 +31,33 @@ const FinanceEngine = {
     OPERATING_COST_SHARE: 0.26,
 
     /**
+     * Der Betriebsaufwand je Ligastufe - ein Apparat wächst nicht im gleichen
+     * Maß wie der Umsatz.
+     *
+     * Mit einem festen Viertel für alle bezahlte die erste Liga drauf: Der
+     * Median-Erstligist nahm 1,65 Mio je Spieltag ein und gab 809k für
+     * Gehälter (49 % - realistisch), 500k für Unterhalt und 571k für den
+     * Betrieb aus. Zusammen 114 % des Umsatzes, also 228k Verlust je
+     * Spieltag oder rund acht Millionen je Saison. Gemessen über eine ganze
+     * Saison waren es sogar 26 Millionen, und nach einer Saison stand die
+     * Hälfte aller Erstligisten im Minus - während die Stufen zwei bis sieben
+     * durchweg Gewinn machten.
+     *
+     * Ein großer Verein verwaltet nicht fünfmal so viel, nur weil er fünfmal
+     * so viel einnimmt: Geschäftsstelle, Nachwuchs und Reisen skalieren
+     * schwächer als der Umsatz. Unten dagegen frisst schon der Grundbetrieb
+     * einen spürbaren Anteil - und dort ist die Gehaltslast winzig: In der
+     * ersten Liga gehen 42 % des Umsatzes an die Spieler, in der siebten nur
+     * 3 %. Was die Kader nicht kosten, kostet der Apparat.
+     */
+    OPERATING_COST_BY_LEVEL: { 1: 0.28, 2: 0.40, 3: 0.45, 4: 0.48, 5: 0.50, 6: 0.52, 7: 0.54 },
+
+    /** Betriebsaufwandsquote eines Vereins */
+    operatingShare(club) {
+        return this.OPERATING_COST_BY_LEVEL[club?.level || 1] ?? this.OPERATING_COST_SHARE;
+    },
+
+    /**
      * Ein Teil des Apparats hängt am Kader, nicht am Umsatz: Wer 24 Profis
      * beschäftigt, unterhält auch die Betreuer, Ärzte und Berater dazu. Ohne
      * diesen Anteil würde ein Verein mit teurem Kader und kleinem Stadion
@@ -261,7 +288,7 @@ const FinanceEngine = {
             //    saß selbst der Landesligist auf einem Millionenpolster.
             const ticketSchnitt = Math.round((club.stadiumCapacity || club.capacity || 20000) * 0.8 * (club.ticketPrice || 35) / 2);
             const operatingCosts = Math.round(
-                (sponsorIncome + ticketSchnitt) * this.OPERATING_COST_SHARE
+                (sponsorIncome + ticketSchnitt) * this.operatingShare(club)
                 + totalWeeklyWages * this.OPERATING_WAGE_SHARE);
             club.balance -= operatingCosts;
 

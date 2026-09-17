@@ -84,6 +84,30 @@ class TrainingEngine {
     }
 
     /**
+     * Was eine Trainingswoche an Belastung wiegt.
+     *
+     * Der eigene Verein trainiert Tag fuer Tag ueber den Kalender, die
+     * KI-Vereine einmal je Woche. Eine typische Woche bringt drei
+     * Trainingseinheiten, eine Taktikeinheit und drei ruhige Tage.
+     */
+    static WOCHENGEWICHT = 3 * 1.0 + 1 * 0.5 + 3 * 0.15;
+
+    /**
+     * Verletzungsrisiko eines Spielers ueber eine ganze Woche.
+     *
+     * Das ist die gemeinsame Waehrung beider Wege. Vorher wuerfelte der eigene
+     * Verein an jedem Kalendertag mit dem vollen Einheitenrisiko, die KI nur
+     * einmal je Woche mit einer festen Pauschale - der Mensch trug damit das
+     * 6,6-fache Risiko der Rechner. Und weil die Pauschale der KI weder Alter
+     * noch Ermuedung noch das Medizinzentrum kannte, nuetzte ihr ein guter
+     * Arzt nichts.
+     */
+    static weeklyInjuryRisk(player, intensity = "normal", medicalLevel = 1) {
+        const proEinheit = this.calculateInjuryRisk(player, intensity, medicalLevel);
+        return Math.min(0.5, proEinheit * this.WOCHENGEWICHT);
+    }
+
+    /**
      * Trainingsbericht für einen Verein: Last, Ermüdung, Spielschärfe,
      * Verletzungsrisiko und Entwicklung der letzten Tage je Spieler.
      */
@@ -233,8 +257,11 @@ class TrainingEngine {
                 }
             }
 
-            const risiko = this.calculateInjuryRisk(player, intensity, medicalLevel) *
-                (dayType === "training" ? 1 : dayType === "tactics" ? 0.5 : 0.15);
+            // Der Tagesanteil einer Woche - so summieren sich sieben Tage auf
+            // genau das Wochenrisiko, mit dem auch die KI-Vereine rechnen.
+            const tagesanteil = (dayType === "training" ? 1 : dayType === "tactics" ? 0.5 : 0.15)
+                / TrainingEngine.WOCHENGEWICHT;
+            const risiko = this.weeklyInjuryRisk(player, intensity, medicalLevel) * tagesanteil;
 
             if (Math.random() < risiko) {
                 this.inflictInjury(state, player, club);
@@ -404,9 +431,12 @@ class TrainingEngine {
                 // 3. Attributs- und Stärkeentwicklung (C2: trainingGround verstärkt Entwicklung)
                 TrainingEngine.developPlayer(player, focus, intensity, trainingLvl);
 
-                // 4. Verletzungsrisiko beim Training (C2: medicalCenter senkt Risiko)
-                const baseInjRisk = (intensity === "high" ? 0.015 : 0.005) * (1.0 - (medicalLvl - 1) * 0.12);
-                if (player.injuredWeeks === 0 && Math.random() < Math.max(0.001, baseInjRisk)) {
+                // 4. Verletzungsrisiko beim Training - dieselbe Rechnung wie
+                //    beim eigenen Verein. Die alte Pauschale kannte weder
+                //    Alter noch Ermuedung noch Anfaelligkeit, und ein gutes
+                //    Medizinzentrum half der KI kaum.
+                const wochenRisiko = TrainingEngine.weeklyInjuryRisk(player, intensity, medicalLvl);
+                if ((player.injuredWeeks || 0) === 0 && Math.random() < wochenRisiko) {
                     TrainingEngine.inflictInjury(state, player, club);
                 }
             });

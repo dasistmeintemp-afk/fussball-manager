@@ -168,6 +168,49 @@ class PlayerGenerator {
     }
 
     /**
+     * Das Alter eines Spielers.
+     *
+     * Vorher wurde gleichverteilt zwischen 17 und 34 gewürfelt. Ein Kader sah
+     * dadurch aus wie eine Stichprobe aus der Bevölkerung, nicht wie eine
+     * Mannschaft: Gemessen waren 22 % höchstens zwanzig, 17 % zwischen 24 und
+     * 26, und 11 % dreiunddreißig oder älter. In Wirklichkeit ballt sich ein
+     * Kader in den besten Jahren - rund 8 % sind Jugendliche, gut ein Viertel
+     * ist 24 bis 26, und nur jeder Zwanzigste ist über 32.
+     *
+     * Die Gewichte bilden diesen Bogen nach: Anstieg bis Mitte zwanzig,
+     * langes Plateau, danach ein deutlicher Abfall. Ein von außen gesetzter
+     * Altersbogen (etwa beim Nachziehen von Talenten) schneidet den Bogen
+     * einfach zurecht.
+     */
+    static ALTERSGEWICHTE = {
+        16: 0.2, 17: 0.6, 18: 1.2, 19: 2.0, 20: 3.2,
+        21: 4.6, 22: 6.0, 23: 7.2, 24: 8.2, 25: 8.8,
+        26: 8.8, 27: 8.4, 28: 7.8, 29: 7.0, 30: 6.0,
+        31: 4.8, 32: 3.6, 33: 2.4, 34: 1.5, 35: 0.9,
+        36: 0.5, 37: 0.3
+    };
+
+    static wuerfleAlter(minAlter, maxAlter) {
+        const von = Math.min(minAlter, maxAlter);
+        const bis = Math.max(minAlter, maxAlter);
+
+        let summe = 0;
+        const eintraege = [];
+        for (let a = von; a <= bis; a++) {
+            const g = this.ALTERSGEWICHTE[a] ?? 0.2;
+            summe += g;
+            eintraege.push([a, summe]);
+        }
+        if (summe <= 0) return von;
+
+        const wurf = Math.random() * summe;
+        for (const [alter, grenze] of eintraege) {
+            if (wurf <= grenze) return alter;
+        }
+        return bis;
+    }
+
+    /**
      * Erzeugt einen einzelnen Spieler
      */
     static generatePlayer(clubId, level = 1, preferredPosition = null, customId = null, options = {}) {
@@ -183,7 +226,7 @@ class PlayerGenerator {
         const [minAlter, maxAlter] = Array.isArray(options.ageRange) && options.ageRange.length === 2
             ? options.ageRange
             : [17, 34];
-        const age = minAlter + Math.floor(Math.random() * Math.max(1, maxAlter - minAlter + 1));
+        const age = this.wuerfleAlter(minAlter, maxAlter);
 
         // Nebenpositionen: nicht jeder Spieler kann überall spielen
         const positionEngine = this.getPositionEngine();

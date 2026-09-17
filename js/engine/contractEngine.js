@@ -124,6 +124,9 @@ const ContractEngine = {
             if (p.clubId === state.userClubId && p.contractYears === 1) auslaufend.push(p);
         });
 
+        // Die KI-Vereine verlängern, bevor der Vertrag ausläuft
+        this.verlaengereBeiKiVereinen(state);
+
         if (newsEngine && typeof newsEngine.addMessage === 'function') {
             auslaufend.forEach(p => {
                 newsEngine.addMessage(state, "contract_expiring", {
@@ -137,6 +140,70 @@ const ContractEngine = {
         }
 
         return auslaufend;
+    },
+
+    /**
+     * Wie lange ein neuer Vertrag läuft - nach Alter, nicht nach Zufall.
+     *
+     * Ein Zwanzigjähriger unterschreibt lang, ein Zweiunddreißigjähriger wird
+     * von Jahr zu Jahr verlängert.
+     */
+    laufzeitFuer(player) {
+        const alter = player?.age || 25;
+        if (alter <= 22) return 4 + Math.floor(Math.random() * 2);   // 4-5 Jahre
+        if (alter <= 27) return 3 + Math.floor(Math.random() * 2);   // 3-4 Jahre
+        if (alter <= 30) return 2 + Math.floor(Math.random() * 2);   // 2-3 Jahre
+        return 1 + Math.floor(Math.random() * 2);                    // 1-2 Jahre
+    },
+
+    /**
+     * Die KI verlängert, bevor ein Vertrag ausläuft - nicht erst danach.
+     *
+     * Vorher wurde ein Vertrag erst verlängert, wenn er schon auf null stand,
+     * und dann nur um ein bis drei Jahre. Weil jede Saison ein Jahr abgeht,
+     * rutschte damit die ganze Spielwelt ins letzte Vertragsjahr: Zu Beginn
+     * lagen die Restlaufzeiten noch gleichmäßig bei ein bis vier Jahren
+     * (24/26/25/25 %), eine Saison später gab es praktisch keinen
+     * Vierjahresvertrag mehr (32/32/32/3 %), und nach drei Saisons standen
+     * 82 % aller Spieler im letzten Jahr. In Wirklichkeit sind das eher 25
+     * bis 30 %.
+     *
+     * Der eigene Verein bleibt ausgenommen - dort entscheidet der Manager.
+     */
+    verlaengereBeiKiVereinen(state) {
+        if (!state || !Array.isArray(state.players)) return 0;
+
+        let verlaengert = 0;
+        state.players.forEach(p => {
+            if (!p.clubId || p.clubId === state.userClubId) return;
+            if ((p.contractYears ?? 0) !== 1) return;
+
+            const staerke = p.overall || 50;
+            const alter = p.age || 25;
+
+            // Wen ein Verein halten will: wer stark ist, oder jung genug, um
+            // noch besser zu werden. Wer alt und schwach ist, läuft aus.
+            //
+            // Der Sockel ist bewusst hoch: Ein Verein verlängert mit dem
+            // Großteil seines Kaders, sonst müsste er ihn jede Saison neu
+            // zusammenkaufen. Mit einem Sockel von 0.35 wurde rund jeder
+            // zweite Durchschnittsspieler nicht verlängert - nach drei
+            // Saisons trieben 387 Vereinslose durch die Welt.
+            let chance = 0.48;
+            if (staerke >= 70) chance += 0.35;
+            else if (staerke >= 60) chance += 0.22;
+            else if (staerke >= 52) chance += 0.10;
+
+            if (alter <= 23) chance += 0.20;
+            else if (alter >= 33) chance -= 0.35;
+            else if (alter >= 30) chance -= 0.15;
+
+            if (Math.random() > Math.max(0.05, Math.min(0.94, chance))) return;
+
+            p.contractYears = this.laufzeitFuer(p);
+            verlaengert++;
+        });
+        return verlaengert;
     }
 };
 

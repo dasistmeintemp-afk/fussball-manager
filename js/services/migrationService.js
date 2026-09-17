@@ -3,7 +3,7 @@
  */
 
 const MigrationService = {
-    CURRENT_SAVE_VERSION: 7,
+    CURRENT_SAVE_VERSION: 8,
 
     /**
      * Migriert einen Spielstand auf die aktuelle Version
@@ -102,6 +102,10 @@ const MigrationService = {
                     if (p.fitness === undefined) p.fitness = 100;
                     if (p.injured === undefined) p.injured = false;
                     if (p.injuryWeeks === undefined) p.injuryWeeks = 0;
+                    // Altlast reparieren: Das Kennzeichen wurde beim Heilen nie
+                    // zurueckgesetzt, deshalb galten laengst genesene Spieler
+                    // weiter als verletzt.
+                    if (p.injured && !((p.injuredWeeks || 0) > 0)) p.injured = false;
                     if (p.suspended === undefined) p.suspended = false;
                     if (p.yellowCards === undefined) p.yellowCards = 0;
                     if (p.stats === undefined) p.stats = { appearances: 0, goals: 0, assists: 0, yellowCards: 0, redCards: 0, avgRating: 0.0 };
@@ -266,6 +270,32 @@ const MigrationService = {
             }
 
             state.schemaVersion = 7;
+        }
+
+        // Migration Version 7 -> 8: Haengengebliebene Verletzungsvermerke
+        //
+        // Das Kennzeichen `injured` wurde beim Heilen nie zurueckgesetzt - nur
+        // die Restdauer lief herunter. Dadurch galt jeder je verletzte Spieler
+        // dauerhaft als verletzt: Die KI stellte ihn nie wieder auf, das
+        // Scouting uebersah ihn, die Warnung in der Aufstellung blieb stehen.
+        // Nach einer halben Saison betraf das ueber 250 Spieler.
+        if (currentVersion < 8) {
+            console.log(`[MigrationService] Migriere Spielstand auf Version 8 (haengengebliebene Verletzungsvermerke)...`);
+
+            if (Array.isArray(state.players)) {
+                let repariert = 0;
+                state.players.forEach(player => {
+                    if (player.injured && !((player.injuredWeeks || 0) > 0)) {
+                        player.injured = false;
+                        repariert++;
+                    }
+                });
+                if (repariert > 0) {
+                    console.log(`[MigrationService] ${repariert} Spieler von einem haengengebliebenen Verletzungsvermerk befreit.`);
+                }
+            }
+
+            state.schemaVersion = 8;
         }
 
         return {

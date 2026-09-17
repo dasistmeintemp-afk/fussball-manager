@@ -352,7 +352,7 @@ function runEngineTests() {
     });
 
     // 12. SaveService & MigrationService
-    test("SaveService & MigrationService: Export, Import und Schema-Migration von v1 nach v7", () => {
+    test("SaveService & MigrationService: Export, Import und Schema-Migration von v1 nach v8", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const exportedJson = SaveService.exportJson(state);
         const importRes = SaveService.importJson(exportedJson);
@@ -369,8 +369,8 @@ function runEngineTests() {
             }
         };
         const migRes = MigrationService.migrateSave(legacySave);
-        if (!migRes.success || migRes.saveVersion !== 7 || !migRes.state.scouting || !migRes.state.calendar || !migRes.state.competitions || !migRes.state.customFormations) {
-            throw new Error("MigrationService failed to migrate to version 7");
+        if (!migRes.success || migRes.saveVersion !== 8 || !migRes.state.scouting || !migRes.state.calendar || !migRes.state.competitions || !migRes.state.customFormations) {
+            throw new Error("MigrationService failed to migrate to version 8");
         }
         if (!Array.isArray(migRes.state.negotiations)) {
             throw new Error("Migration legt keine Verhandlungsliste an");
@@ -794,6 +794,77 @@ function runEngineTests() {
         if (alt >= 0) throw new Error(`Ein 34-Jähriger baut nicht ab (${alt.toFixed(2)} Punkte)`);
         if (jung <= zenit || zenit <= alt) {
             throw new Error(`Die Alterskurve fällt nicht: 18J ${jung.toFixed(2)}, 27J ${zenit.toFixed(2)}, 34J ${alt.toFixed(2)}`);
+        }
+    });
+
+    // 14a5b. Die Spielwelt muss über Jahre glaubwürdig bleiben
+    test("Spielwelt: Altersaufbau, Vertragslaufzeiten und Verletzungen bleiben realistisch", () => {
+        // 1. Die Altersverteilung eines Kaders ist keine Gleichverteilung.
+        //    Vorher wurde zwischen 17 und 34 gleichverteilt gewürfelt: 22 %
+        //    waren höchstens zwanzig, nur 17 % zwischen 24 und 26.
+        const proben = 40000;
+        const eimer = {};
+        for (let i = 0; i < proben; i++) {
+            const a = PlayerGenerator.wuerfleAlter(17, 34);
+            const k = a <= 20 ? "jung" : a <= 29 ? "beste" : a <= 32 ? "spaet" : "alt";
+            eimer[k] = (eimer[k] || 0) + 1;
+        }
+        const anteil = k => (eimer[k] || 0) / proben * 100;
+        if (anteil("jung") > 14) {
+            throw new Error(`${anteil("jung").toFixed(0)} % der Spieler sind höchstens 20 - ein Kader ist keine Jugendmannschaft`);
+        }
+        if (anteil("beste") < 45) {
+            throw new Error(`Nur ${anteil("beste").toFixed(0)} % sind zwischen 21 und 29 - die besten Jahre fehlen`);
+        }
+        if (anteil("alt") > 8) {
+            throw new Error(`${anteil("alt").toFixed(0)} % sind 33 oder älter - real sind es rund 4 %`);
+        }
+
+        // 2. Der Verletzungsvermerk muss mit heilen. Vorher blieb `injured`
+        //    für immer auf true - die KI stellte solche Spieler nie wieder auf.
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const opfer = state.players.find(p => p.clubId === state.userClubId);
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        TrainingEngine.inflictInjury(state, opfer, club);
+        if (!opfer.injured || !(opfer.injuredWeeks > 0)) {
+            throw new Error("inflictInjury setzt den Spieler nicht außer Gefecht");
+        }
+        for (let w = 0; w < 15 && opfer.injuredWeeks > 0; w++) {
+            state.players.forEach(p => {
+                if (p.injuredWeeks > 0) {
+                    p.injuredWeeks--;
+                    if (p.injuredWeeks === 0) p.injured = false;
+                }
+            });
+        }
+        if (opfer.injured) {
+            throw new Error("Der Verletzungsvermerk bleibt hängen, obwohl der Spieler geheilt ist");
+        }
+
+        // 3. Eigener Verein und KI tragen dasselbe Verletzungsrisiko. Vorher
+        //    würfelte der eigene Verein an jedem Kalendertag mit dem vollen
+        //    Einheitenrisiko, die KI einmal je Woche mit einer Pauschale -
+        //    das 6,6-fache Risiko für den Menschen.
+        const muster = { fitness: 92, age: 26, hiddenAttributes: { injuryProneness: 10 }, daysSinceInjury: 999 };
+        const woche = TrainingEngine.weeklyInjuryRisk(muster, "normal", 2);
+        const tage = [1, 1, 1, 0.5, 0.15, 0.15, 0.15]
+            .reduce((s, f) => s + woche * f / TrainingEngine.WOCHENGEWICHT, 0);
+        if (Math.abs(tage - woche) > woche * 0.02) {
+            throw new Error(`Sieben Tage ergeben ${(tage * 100).toFixed(2)} %, die Woche aber ${(woche * 100).toFixed(2)} %`);
+        }
+
+        // 4. Die KI verlängert, bevor ein Vertrag ausläuft. Sonst rutscht die
+        //    ganze Welt binnen drei Saisons ins letzte Vertragsjahr (gemessen
+        //    82 %, real 25-30 %).
+        const fremde = state.players.filter(p => p.clubId && p.clubId !== state.userClubId);
+        fremde.slice(0, 400).forEach(p => { p.contractYears = 1; });
+        const verlaengert = ContractEngine.verlaengereBeiKiVereinen(state);
+        if (verlaengert < 100) {
+            throw new Error(`Nur ${verlaengert} von 400 auslaufenden Verträgen verlängert - die KI lässt ihren Kader verfallen`);
+        }
+        const mehrjaehrig = fremde.slice(0, 400).filter(p => (p.contractYears || 0) >= 3).length;
+        if (mehrjaehrig < 40) {
+            throw new Error(`Nur ${mehrjaehrig} Verlängerungen laufen drei Jahre oder länger`);
         }
     });
 

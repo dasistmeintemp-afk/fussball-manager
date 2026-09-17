@@ -76,6 +76,7 @@ class SeasonEngine {
 
         const matchEngine = _getMatchEngine();
         const gameState = _getGameState();
+        const financeEngine = _getFinanceEngine();
         if (!matchEngine || !gameState) return;
 
         const userTotal = Math.max(1, state.totalMatchdays || (state.schedule ? state.schedule.length : 34));
@@ -100,6 +101,20 @@ class SeasonEngine {
                     if (!homeClub || !awayClub) return;
 
                     matchEngine.simulateFullMatch(match, homeClub, awayClub, state.players);
+
+                    // Auch fremde Ligen spielen vor Zuschauern. Vorher wurden
+                    // die Ticketeinnahmen nur fuer die eigene Liga verbucht,
+                    // waehrend applyWeeklyCosts Gehaelter, Unterhalt und
+                    // Betrieb bei allen 218 Vereinen der Welt abzog. Zweihundert
+                    // Vereine zahlten damit jeden Spieltag, ohne je Eintritt
+                    // einzunehmen - gemessen verlor der Median-Erstligist
+                    // ausserhalb der eigenen Liga rund zwoelf Millionen je
+                    // Saison, und nach einer Saison stand die Haelfte aller
+                    // Erstligisten im Minus.
+                    if (financeEngine && typeof financeEngine.applyMatchdayIncome === "function") {
+                        financeEngine.applyMatchdayIncome(state, match);
+                    }
+
                     matchEngine.compactPlayedMatch(match, false);
                 });
             });
@@ -173,6 +188,15 @@ class SeasonEngine {
         state.players.forEach(p => {
             if (p.injuredWeeks > 0) {
                 p.injuredWeeks--;
+                // Das Kennzeichen muss mit heilen. Vorher wurde nur die
+                // Restdauer heruntergezaehlt, `injured` blieb fuer immer auf
+                // true - und damit galt ein Spieler, der sich einmal verletzt
+                // hatte, dauerhaft als verletzt: Die KI stellte ihn nie wieder
+                // auf (aiManagerEngine filtert auf !injured), das Scouting
+                // uebersah ihn, und die Warnung in der Aufstellung blieb
+                // stehen. Nach einer halben Saison hingen so ueber 250 Spieler
+                // in diesem Zustand fest.
+                if (p.injuredWeeks === 0) p.injured = false;
                 if (p.injuredWeeks === 0 && p.clubId === state.userClubId) {
                     state.inbox.unshift({
                         id: Date.now() + 3,

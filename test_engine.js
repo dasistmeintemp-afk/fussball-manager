@@ -935,6 +935,74 @@ function runEngineTests() {
         }
     });
 
+    // 14a5d. Der Kalender muss etwas aussagen
+    test("CalendarEngine: Jeder Tag trägt Inhalt, und der Weiter-Knopf hat ein Ziel", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+
+        // Bis in die Punkterunde, dort ist der Kalender am dichtesten
+        let schutz = 0;
+        while (schutz++ < 300) {
+            const t = CalendarEngine.getCurrentDay(state);
+            if (!t || (state.currentMatchday >= 2 && t.type === "recovery")) break;
+            CalendarEngine.advanceOneDay(state);
+        }
+
+        const woche = CalendarEngine.getUpcomingDays(state, 7);
+        if (woche.length < 7) throw new Error("Die Wochenansicht liefert keine sieben Tage");
+
+        // Vorher stand auf fünf von sieben Karten derselbe Satz:
+        // "Grundlagenarbeit fuer die Saison."
+        const texte = woche.map(d => CalendarEngine.tagesInhalt(state, d).text);
+        texte.forEach((t, i) => {
+            if (!t || t.length < 12) throw new Error(`Tag ${i + 1} (${woche[i].type}) hat keinen Inhalt`);
+        });
+        const haeufigster = Math.max(...texte.map(t => texte.filter(x => x === t).length));
+        if (haeufigster > 3) {
+            throw new Error(`Derselbe Satz steht auf ${haeufigster} von 7 Tagen - der Kalender sagt nichts aus`);
+        }
+
+        // Ein Spieltag nennt den Gegner
+        const spieltag = woche.find(d => d.type === "matchday")
+            || state.calendar.slice(state.currentDayIndex).find(d => d.type === "matchday");
+        if (spieltag) {
+            const inhalt = CalendarEngine.tagesInhalt(state, spieltag);
+            const gegner = CalendarEngine.naechstesSpiel(state, spieltag.matchday);
+            if (!gegner) throw new Error("Zu einem Spieltag lässt sich kein Gegner ermitteln");
+            if (!inhalt.text.includes(gegner.gegnerName)) {
+                throw new Error(`Der Spieltag nennt den Gegner nicht: "${inhalt.text}"`);
+            }
+        }
+
+        // Die Tage einer Spieltagswoche gehören zu ihrem Spieltag. Vorher
+        // trugen sie matchday: null, und die Wochenansicht zeigte auf ihnen
+        // den Gegner der vorigen Partie.
+        const wochentage = state.calendar.filter(d =>
+            ["recovery", "training", "tactics", "media", "sponsor", "opponent_analysis"].includes(d.type)
+            && !d.preseason);
+        const ohneSpieltag = wochentage.filter(d => !d.matchday).length;
+        if (ohneSpieltag > 0) {
+            throw new Error(`${ohneSpieltag} Tage einer Spieltagswoche kennen ihren Spieltag nicht`);
+        }
+
+        // Der Weiter-Knopf braucht immer ein Ziel
+        const halt = CalendarEngine.naechsterHalt(state);
+        if (!halt) throw new Error("Kein nächster Termin gefunden");
+        if (!["matchday", "friendly", "media", "season_end"].includes(halt.grund)) {
+            throw new Error(`Unerwarteter Haltegrund: ${halt.grund}`);
+        }
+        if (halt.index < (state.currentDayIndex || 0)) {
+            throw new Error("Der nächste Termin liegt in der Vergangenheit");
+        }
+
+        // Und er darf nie über einen Spieltag hinwegspringen
+        const bis = halt.index;
+        const dazwischen = state.calendar.slice((state.currentDayIndex || 0) + 1, bis)
+            .filter(d => d.type === "matchday" || d.type === "friendly").length;
+        if (dazwischen > 0) {
+            throw new Error(`${dazwischen} Spieltermine liegen zwischen heute und dem nächsten Halt`);
+        }
+    });
+
     // 14a6. Geld muss eine Entscheidung bleiben
     test("FinanceEngine: Große und kleine Vereine nehmen unterschiedlich viel ein", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });

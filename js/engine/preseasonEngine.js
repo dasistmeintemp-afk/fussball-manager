@@ -987,6 +987,29 @@ class PreseasonEngine {
         return offen;
     }
 
+    /**
+     * Was an einem Vorbereitungstermin gespielt wird - für den Kalender.
+     */
+    static terminBeschreibung(state, index) {
+        const pre = this.sichereStruktur(state?.preseason);
+        if (!pre) return null;
+        const eintrag = pre.plan[index];
+        if (!eintrag) return null;
+
+        if (eintrag.art === "turnier") {
+            const turnier = pre.turniere.find(t => t.id === eintrag.turnierId);
+            if (!turnier) return null;
+            const runde = eintrag.runde === "halbfinale"
+                ? "Halbfinale"
+                : (turnier.halbfinale && !turnier.halbfinale.gewonnen ? "Spiel um Platz drei" : "Endspiel");
+            return `${turnier.name} · ${runde}`;
+        }
+
+        const test = pre.testspiele.find(t => t.id === eintrag.testId);
+        if (!test) return null;
+        return `Testspiel ${test.heim ? "gegen" : "bei"} ${test.gegnerName} (Ruf ${test.gegnerRuf})`;
+    }
+
     /** Liegt dieser Termin schon hinter uns? */
     static terminGespielt(pre, index) {
         const bisher = Math.floor(((pre.tagIndex || 0)) / 5);

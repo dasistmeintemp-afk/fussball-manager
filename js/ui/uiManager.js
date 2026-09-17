@@ -1998,14 +1998,15 @@ class UIManager {
         document.getElementById("headerConfidenceBar").style.width = `${state.boardConfidence}%`;
         document.getElementById("headerConfidenceVal").textContent = `${state.boardConfidence}%`;
 
-        // Advance Button Beschriftung
-        const round = state.schedule.find(r => r.matchday === state.currentMatchday);
-        const userMatch = round?.matches.find(m => m.homeClubId === userClub.id || m.awayClubId === userClub.id);
-        const isMatchPlayed = userMatch ? userMatch.played : false;
-
-        document.getElementById("btnHeaderAdvance").innerHTML = isMatchPlayed
-            ? `<span>Nächster Spieltag</span> <span class="btn-arrow">➔</span>`
-            : `<span>Spieltag starten</span> <span class="btn-arrow">➔</span>`;
+        // Der eine Weiter-Knopf sagt, wohin er springt. Vorher gab es fünf
+        // Knöpfe für drei Vorgänge, und der im Kopf ging einen anderen Weg als
+        // die im Kalender: Er sprang über SeasonEngine direkt zum nächsten
+        // Spieltag und übersprang damit Training, Presse und Vorbereitung.
+        const ziel = this.beschreibeWeiter();
+        const knopf = document.getElementById("btnHeaderAdvance");
+        knopf.innerHTML = `<span>${ziel.text}</span> <span class="btn-arrow">➔</span>`;
+        // Auf schmalen Geräten zeigt der Knopf nur die Kurzfassung
+        knopf.dataset.kurz = ziel.kurz || "Weiter";
 
         // Sidebar Quick-Status
         const getRankSafe = (clubId) => {
@@ -4513,52 +4514,125 @@ class UIManager {
 
         this.renderDayReport();
 
+        this.renderNextMatchCard(state, calendarEngine);
+
         const weekGrid = document.getElementById("calendarWeekGrid");
         const upcomingWeek = calendarEngine.getUpcomingDays(state, 7);
 
         if (weekGrid) {
             weekGrid.innerHTML = upcomingWeek.map((day, idx) => {
                 const isToday = idx === 0;
-                let icon = "📅";
-                if (day.type === "training") icon = "🏋️";
-                if (day.type === "recovery") icon = "🧘";
-                if (day.type === "media") icon = "🎙️";
-                if (day.type === "sponsor") icon = "🤝";
-                if (day.type === "tactics") icon = "📋";
-                if (day.type === "opponent_analysis") icon = "🔍";
-                if (day.type === "matchday") icon = "⚽";
-                if (day.type === "season_start") icon = "⭐";
-                if (day.type === "season_end") icon = "🏆";
+                const inhalt = calendarEngine.tagesInhalt(state, day);
+                const marken = (inhalt.marken || []).slice(0, 2)
+                    .map(m => `<span class="cal-mark">${m}</span>`).join("");
 
                 return `
-                    <div class="calendar-day-card ${isToday ? 'active-today' : ''}">
+                    <div class="calendar-day-card ${isToday ? 'active-today' : ''} cal-type-${day.type}">
                         <div class="cal-card-top">
                             <span class="cal-dow">${day.dayOfWeek}</span>
                             <span class="cal-date">${day.date}</span>
                         </div>
-                        <div class="cal-card-icon">${icon}</div>
-                        <div class="cal-card-title">${day.title}</div>
-                        <div class="cal-card-desc">${day.description}</div>
-                        ${isToday ? '<span class="cal-status-badge">AKTUELL</span>' : ''}
+                        <div class="cal-card-icon">${this.tagIcon(day.type)}</div>
+                        <div class="cal-card-title">${inhalt.titel || day.title}</div>
+                        <div class="cal-card-desc">${inhalt.text || ""}</div>
+                        ${marken ? `<div class="cal-marks">${marken}</div>` : ""}
+                        ${isToday ? '<span class="cal-status-badge">HEUTE</span>' : ''}
                     </div>
                 `;
             }).join("");
         }
 
+        // Die Liste zeigt, was kommt - nicht, was war. Vorher stand dort die
+        // ganze Saison ab Tag eins, fast alles abgehakt: eine Liste aus
+        // Häkchen, durch die man erst scrollen musste, um zu heute zu kommen.
         const fullList = document.getElementById("calendarFullList");
         if (fullList && Array.isArray(state.calendar)) {
-            fullList.innerHTML = state.calendar.map((d, i) => {
-                const isPast = i < state.currentDayIndex;
-                const isCurrent = i === state.currentDayIndex;
+            const ab = state.currentDayIndex || 0;
+            const kommend = state.calendar.slice(ab, ab + 28);
+
+            fullList.innerHTML = kommend.map((d, i) => {
+                const isCurrent = i === 0;
+                const inhalt = calendarEngine.tagesInhalt(state, d);
+                const wichtig = ["matchday", "friendly", "media", "season_end"].includes(d.type);
                 return `
-                    <div class="cal-full-item ${isPast ? 'past' : ''} ${isCurrent ? 'current' : ''}">
+                    <div class="cal-full-item ${isCurrent ? 'current' : ''} ${wichtig ? 'wichtig' : ''}">
                         <div class="cal-full-date">${d.date} (${d.dayOfWeek})</div>
-                        <div class="cal-full-title">${d.title}</div>
-                        <div class="cal-full-status">${isPast ? '✓ Erledigt' : isCurrent ? '⏳ Heute' : 'Ausstehend'}</div>
+                        <div class="cal-full-title">
+                            ${this.tagIcon(d.type)} ${inhalt.titel || d.title}
+                            <span class="cal-full-sub">${inhalt.text || ""}</span>
+                        </div>
+                        <div class="cal-full-status">${isCurrent ? '⏳ Heute' : ''}</div>
                     </div>
                 `;
             }).join("");
+
+            const rest = state.calendar.length - ab - kommend.length;
+            const hint = document.getElementById("calListHint");
+            if (hint) {
+                hint.textContent = rest > 0
+                    ? `nächste ${kommend.length} Tage · ${rest} weitere bis Saisonende`
+                    : `${kommend.length} Tage bis Saisonende`;
+            }
         }
+    }
+
+    tagIcon(typ) {
+        return ({
+            training: "🏋️", recovery: "🧘", media: "🎙️", sponsor: "🤝",
+            tactics: "📋", opponent_analysis: "🔍", matchday: "⚽",
+            season_start: "⭐", season_end: "🏆", preseason: "☀️", friendly: "🥅"
+        })[typ] || "📅";
+    }
+
+    /**
+     * Das nächste Pflichtspiel als Karte - in FM und EA FC das Erste, was man
+     * sieht: gegen wen, wo, welcher Tabellenplatz, welche Form.
+     */
+    renderNextMatchCard(state, calendarEngine) {
+        const karte = document.getElementById("nextMatchCard");
+        if (!karte) return;
+
+        const n = calendarEngine.naechstesSpiel(state);
+        if (!n) { karte.style.display = "none"; return; }
+        karte.style.display = "";
+
+        const eigener = state.clubs.find(c => c.id === state.userClubId);
+        const heimClub = n.heim ? eigener : n.gegner;
+        const gastClub = n.heim ? n.gegner : eigener;
+
+        // Wie viele Tage sind es noch?
+        const idx = (state.calendar || []).findIndex((d, i) =>
+            i >= (state.currentDayIndex || 0) && d.type === "matchday");
+        const tage = idx >= 0 ? idx - (state.currentDayIndex || 0) : null;
+
+        DOM.setText("nextMatchLabel", `${n.spieltag}. Spieltag · ${state.leagueName || "Liga"}`);
+        DOM.setText("nextMatchWhen",
+            tage === 0 ? "heute" : tage === 1 ? "morgen" : tage > 1 ? `in ${tage} Tagen` : "");
+
+        const seite = (club, istEigener) => `
+            <div class="nm-club ${istEigener ? "nm-own" : ""}">
+                <span class="nm-name">${club?.name || "-"}</span>
+                <span class="nm-sub">${this.tabellenPlatzText(state, club?.id)}</span>
+            </div>`;
+        const home = document.getElementById("nextMatchHome");
+        const away = document.getElementById("nextMatchAway");
+        if (home) home.innerHTML = seite(heimClub, n.heim);
+        if (away) away.innerHTML = seite(gastClub, !n.heim);
+
+        const lage = calendarEngine.kaderLage(state);
+        const hinweise = [];
+        hinweise.push(n.heim ? "Heimspiel" : "Auswärtsspiel");
+        if (n.gegnerForm.length) hinweise.push(`Gegner-Form: ${n.gegnerForm.join(" ")}`);
+        if (lage.verletzt > 0) hinweise.push(`${lage.verletzt} eigene Spieler verletzt`);
+        if (lage.gesperrt > 0) hinweise.push(`${lage.gesperrt} gesperrt`);
+        DOM.setText("nextMatchMeta", hinweise.join("  ·  "));
+    }
+
+    tabellenPlatzText(state, clubId) {
+        const i = (state.standings || []).findIndex(t => t.clubId === clubId);
+        if (i < 0) return "";
+        const eintrag = state.standings[i];
+        return `${i + 1}. · ${eintrag.points ?? 0} Pkt`;
     }
 
     /**
@@ -6274,6 +6348,148 @@ class UIManager {
     /**
      * Führt einen einzelnen Tag im Kalender fort
      */
+    /**
+     * Was der Weiter-Knopf als Nächstes tut - und wie er heißt.
+     *
+     * In FM heißt der Knopf nie "einen Tag simulieren", sondern nennt das
+     * Ziel: das Spiel, die Pressekonferenz, den nächsten Termin. Das ist
+     * hier nachgebaut - ein Knopf, der immer verrät, was passiert.
+     */
+    beschreibeWeiter() {
+        const state = this.app.state;
+        const cal = this.getCalendarEngine();
+        if (!state || !cal) return { art: "tag", text: "Weiter" };
+
+        const heute = cal.getCurrentDay(state);
+
+        // Steht heute das eigene Spiel an, geht es direkt hinein
+        if (heute && heute.type === "matchday") {
+            const runde = state.schedule?.find(r => r.matchday === state.currentMatchday);
+            const partie = runde?.matches.find(m =>
+                m.homeClubId === state.userClubId || m.awayClubId === state.userClubId);
+            if (partie && !partie.played) {
+                const naechstes = cal.naechstesSpiel(state);
+                return {
+                    art: "spiel",
+                    text: naechstes ? `Spiel ${naechstes.heim ? "gegen" : "bei"} ${this.kurzName(naechstes.gegnerName)}` : "Spiel beginnen",
+                    kurz: "Anpfiff"
+                };
+            }
+        }
+
+        // Heute ist Medientag - erst die Pressekonferenz
+        if (heute && heute.type === "media" && !this._pressDone) {
+            return { art: "presse", text: "Pressekonferenz", kurz: "Presse" };
+        }
+
+        const halt = cal.naechsterHalt(state);
+        if (!halt) return { art: "tag", text: "Weiter" };
+
+        const tage = halt.index - (state.currentDayIndex || 0);
+
+        // Der Termin ist heute - dann heisst der Knopf nach dem Termin, nicht
+        // nach dem Weg dorthin.
+        if (tage <= 0) {
+            if (halt.grund === "friendly") {
+                const pre = this.getPreseasonEngine();
+                const geplant = (pre && state.preseason && typeof pre.terminBeschreibung === "function")
+                    ? pre.terminBeschreibung(state, heute?.friendlyIndex ?? 0)
+                    : null;
+                return { art: "tag", text: geplant ? "Spieltermin austragen" : "Termin austragen", kurz: "Termin" };
+            }
+            if (halt.grund === "season_end") return { art: "tag", text: "Saison abschließen", kurz: "Saisonende" };
+            if (halt.grund === "matchday") return { art: "tag", text: "Spieltag abschließen", kurz: "Spieltag" };
+            return { art: "tag", text: "Weiter" };
+        }
+
+        const beschriftung = {
+            matchday: () => {
+                const n = cal.naechstesSpiel(state);
+                return n ? `Weiter zum Spiel ${n.heim ? "gegen" : "bei"} ${this.kurzName(n.gegnerName)}` : "Weiter zum Spieltag";
+            },
+            friendly: () => "Weiter zum Spieltermin",
+            media: () => "Weiter zur Pressekonferenz",
+            season_end: () => "Weiter zum Saisonabschluss"
+        };
+        const kurzformen = { matchday: "Spiel", friendly: "Termin", media: "Presse", season_end: "Saisonende" };
+        const text = (beschriftung[halt.grund] || (() => "Weiter"))();
+        return { art: "sprung", text, kurz: kurzformen[halt.grund] || "Weiter", tage, zielIndex: halt.index };
+    }
+
+    /** Vereinsnamen für einen Knopf kürzen */
+    kurzName(name) {
+        if (!name) return "";
+        return name.length <= 18 ? name : name.slice(0, 16).trim() + "…";
+    }
+
+    getCalendarEngine() {
+        if (typeof CalendarEngine !== "undefined" && CalendarEngine) return CalendarEngine;
+        if (typeof window !== "undefined" && window.CalendarEngine) return window.CalendarEngine;
+        return null;
+    }
+
+    /**
+     * Der eine Weiter-Knopf: Er läuft Tag für Tag bis zum nächsten Termin,
+     * an dem der Manager gebraucht wird - und geht dabei immer über den
+     * Kalender, damit es nur eine Zeitrechnung gibt.
+     */
+    handleWeiter() {
+        const ziel = this.beschreibeWeiter();
+
+        if (ziel.art === "spiel") {
+            this.app.handleAdvanceAction();
+            return;
+        }
+        if (ziel.art === "presse") {
+            this.handleCalendarAdvanceDay();
+            return;
+        }
+        if (ziel.art === "sprung" && ziel.tage > 1) {
+            this.laufeBisTermin(ziel.tage);
+            return;
+        }
+        this.handleCalendarAdvanceDay();
+    }
+
+    /** Mehrere Tage am Stück, aber über denselben Weg wie ein einzelner */
+    laufeBisTermin(maxTage) {
+        const state = this.app.state;
+        const cal = this.getCalendarEngine();
+        if (!cal) return;
+
+        let gelaufen = 0;
+        const berichte = [];
+        while (gelaufen < maxTage) {
+            const heute = cal.getCurrentDay(state);
+            if (!heute) break;
+            // Vor einem Termin, der den Manager braucht, wird angehalten
+            if (gelaufen > 0 && ["matchday", "friendly", "media", "season_end"].includes(heute.type)) break;
+
+            const res = cal.advanceOneDay(state);
+            if (!res || !res.success) break;
+            gelaufen++;
+
+            if (res.matchResult && res.matchResult.seasonEnded) {
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.showSeasonEndCelebration(res.matchResult);
+                return;
+            }
+            (res.summary?.messages || []).forEach(m => berichte.push(m));
+        }
+
+        state.lastDayReport = {
+            date: cal.getCurrentDay(state)?.date,
+            dayOfWeek: cal.getCurrentDay(state)?.dayOfWeek,
+            title: `${gelaufen} Tage übersprungen`,
+            messages: berichte.slice(-12)
+        };
+
+        this.showToast(`📅 ${gelaufen} Tage weiter - ${cal.getCurrentDay(state)?.title || ""}`, "info");
+        this.renderHeader();
+        this.renderCurrentTab();
+        if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+    }
+
     handleCalendarAdvanceDay() {
         const state = this.app.state;
         const calendarEngine = (typeof CalendarEngine !== 'undefined' && CalendarEngine) 
@@ -6395,7 +6611,7 @@ class UIManager {
     bindGlobalEvents() {
         // Spieltag starten / weiter button im Header
         document.getElementById("btnHeaderAdvance").onclick = () => {
-            this.app.handleAdvanceAction();
+            this.handleWeiter();
         };
 
         // Dashboard Schnell-Aktionen
@@ -6420,32 +6636,19 @@ class UIManager {
             };
         }
 
-        // Kalender Tagesfortschritt Buttons
-        const btnDashAdvanceDay = document.getElementById("btnDashAdvanceDay");
-        if (btnDashAdvanceDay) {
-            btnDashAdvanceDay.onclick = () => {
-                this.handleCalendarAdvanceDay();
-            };
-        }
-
-        const btnDashAdvanceMatchday = document.getElementById("btnDashAdvanceMatchday");
-        if (btnDashAdvanceMatchday) {
-            btnDashAdvanceMatchday.onclick = () => {
-                this.handleCalendarAdvanceMatchday();
-            };
+        // Zeit läuft nur noch über zwei Knöpfe: den Weiter-Knopf im Kopf, der
+        // bis zum nächsten Termin springt, und einen Feinschritt im Kalender.
+        // Vorher waren es fünf, und der im Kopf ging einen anderen Weg als die
+        // anderen.
+        const btnDashOpenCal = document.getElementById("btnDashOpenCalendar");
+        if (btnDashOpenCal) {
+            btnDashOpenCal.onclick = () => this.switchTab("calendar");
         }
 
         const btnCalAdvanceDay = document.getElementById("btnCalendarAdvanceDay");
         if (btnCalAdvanceDay) {
             btnCalAdvanceDay.onclick = () => {
                 this.handleCalendarAdvanceDay();
-            };
-        }
-
-        const btnCalAdvanceMatchday = document.getElementById("btnCalendarAdvanceMatchday");
-        if (btnCalAdvanceMatchday) {
-            btnCalAdvanceMatchday.onclick = () => {
-                this.handleCalendarAdvanceMatchday();
             };
         }
 

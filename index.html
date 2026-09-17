@@ -197,8 +197,7 @@
                                 <!-- Dynamische Tagesliste -->
                             </div>
                             <div class="calendar-action-bar">
-                                <button class="btn btn-primary btn-sm" id="btnDashAdvanceDay">⏭️ Nächsten Tag simulieren</button>
-                                <button class="btn btn-secondary btn-sm" id="btnDashAdvanceMatchday">⏩ Bis zum Spieltag vorspulen</button>
+                                <button class="btn btn-secondary btn-sm" id="btnDashOpenCalendar">📅 Kalender öffnen</button>
                             </div>
                         </div>
 
@@ -1084,11 +1083,23 @@
                     <div class="pane-header">
                         <h2>Saisonkalender & Tagesablauf</h2>
                         <div class="pane-actions" style="display:flex; gap:10px;">
-                            <button class="btn btn-primary" id="btnCalendarAdvanceDay">⏭️ 1 Tag simulieren</button>
-                            <button class="btn btn-secondary" id="btnCalendarAdvanceMatchday">⏩ Zum nächsten Spieltag</button>
+                            <button class="btn btn-secondary" id="btnCalendarAdvanceDay">⏭️ Einen Tag weiter</button>
                         </div>
                     </div>
                     <div class="calendar-layout">
+                        <!-- Das naechste Pflichtspiel, immer sichtbar -->
+                        <div class="dash-card next-match-card mb-3" id="nextMatchCard" style="display:none;">
+                            <div class="next-match-head">
+                                <span class="next-match-label" id="nextMatchLabel">Nächstes Spiel</span>
+                                <span class="next-match-when" id="nextMatchWhen">-</span>
+                            </div>
+                            <div class="next-match-body">
+                                <div class="next-match-side" id="nextMatchHome"></div>
+                                <div class="next-match-vs">–</div>
+                                <div class="next-match-side" id="nextMatchAway"></div>
+                            </div>
+                            <div class="next-match-meta" id="nextMatchMeta"></div>
+                        </div>
                         <!-- Was gestern im Verein passiert ist -->
                         <div class="dash-card mb-3" id="dayReportCard" style="display:none;">
                             <div class="card-header">
@@ -1109,8 +1120,9 @@
                         </div>
 
                         <div class="dash-card" style="margin-top:20px;">
-                            <div class="card-header">
-                                <h3>Kommende Termine & Spieltage der Saison</h3>
+                            <div class="card-header-row">
+                                <h3>Kommende Termine</h3>
+                                <span class="header-tag" id="calListHint">-</span>
                             </div>
                             <div class="calendar-full-list" id="calendarFullList">
                                 <!-- Gesamte Terminliste -->

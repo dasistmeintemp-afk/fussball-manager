@@ -4416,9 +4416,11 @@ body {
 @media (max-width: 420px) {
     .finance-pill .fin-icon,
     .confidence-pill .conf-icon { display: none; }
+    /* Auf dem Handy nur die Kurzfassung - aber die echte. Vorher stand hier
+       fest "Spieltag", auch wenn der Knopf zur Pressekonferenz sprang. */
     .btn-advance span:not(.btn-arrow) { display: none; }
     .btn-advance::after {
-        content: "Spieltag";
+        content: attr(data-kurz);
         font-weight: 700;
     }
 }
@@ -4713,4 +4715,137 @@ body {
 
 .pre-candidate button {
     flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------
+   Kalender: Das naechste Spiel und Tage, die etwas aussagen
+   --------------------------------------------------------------- */
+
+.next-match-card {
+    border-left: 3px solid var(--accent-primary);
+}
+
+.next-match-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 12px;
+}
+
+.next-match-label {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.next-match-when {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent-primary);
+}
+
+.next-match-body {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 14px;
+}
+
+.next-match-vs {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-muted);
+}
+
+.nm-club {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.next-match-body > div:last-child .nm-club {
+    align-items: flex-end;
+    text-align: right;
+}
+
+.nm-name {
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.nm-club.nm-own .nm-name {
+    color: var(--accent-primary);
+}
+
+.nm-sub {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.next-match-meta {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+/* Kurze Hinweise auf einer Tageskarte */
+.cal-marks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.cal-mark {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+/* Ein Spieltag hebt sich ab - man soll die Woche auf einen Blick lesen */
+.calendar-day-card.cal-type-matchday {
+    border-color: rgba(56, 189, 248, 0.45);
+    background: rgba(56, 189, 248, 0.06);
+}
+
+.calendar-day-card.cal-type-friendly {
+    border-color: rgba(168, 162, 158, 0.4);
+}
+
+.calendar-day-card.cal-type-media {
+    border-color: rgba(245, 158, 11, 0.35);
+}
+
+/* Terminliste: Titel und Zeile darunter */
+.cal-full-item .cal-full-title {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    padding: 0 12px;
+}
+
+.cal-full-sub {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-muted);
+}
+
+.cal-full-item.wichtig {
+    background: rgba(56, 189, 248, 0.05);
+}
+
+.cal-full-item.wichtig .cal-full-title {
+    font-weight: 700;
+}
+
+.calendar-full-list {
+    max-height: 520px;
 }

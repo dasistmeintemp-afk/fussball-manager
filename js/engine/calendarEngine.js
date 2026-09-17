@@ -99,11 +99,11 @@ const CalendarEngine = {
                 dayOfWeek: this.getDayName(currentDate),
                 type: art,
                 title: istTestspiel
-                    ? `Testspiel ${testspielNr}`
+                    ? `Spieltermin ${testspielNr}`
                     : (art === CALENDAR_DAY_TYPES.PRESEASON ? "Vorbereitung: Stab, Sponsoren, Planung"
                         : (art === CALENDAR_DAY_TYPES.RECOVERY ? "Regeneration" : "Vorbereitungstraining")),
                 description: istTestspiel
-                    ? "Ein Testspiel zaehlt fuer keine Tabelle - aber fuer Spielpraxis und Einspielzeit."
+                    ? "Testspiel oder Turnierrunde - was hier gespielt wird, planen Sie im Reiter Vorbereitung."
                     : (art === CALENDAR_DAY_TYPES.PRESEASON
                         ? "Bewerbungen sichten, Sponsorenangebote pruefen, den Kader planen."
                         : "Grundlagenarbeit fuer die Saison."),
@@ -296,11 +296,11 @@ const CalendarEngine = {
         if (currentDay.type === CALENDAR_DAY_TYPES.FRIENDLY) {
             const preseasonEngine = _getPreseasonEngine();
             let ergebnis = null;
-            if (preseasonEngine && state.preseason) {
-                const test = (state.preseason.testspiele || [])[currentDay.friendlyIndex ?? 0];
-                if (test && !test.gespielt) {
-                    ergebnis = preseasonEngine.spieleTestspiel(state, test.id);
-                }
+            // Was an diesem Termin gespielt wird, hat der Manager selbst
+            // geplant: ein Testspiel, eine Turnierrunde - oder nichts, dann
+            // besetzt die Engine den Termin kurzfristig.
+            if (preseasonEngine && state.preseason && typeof preseasonEngine.spieleSlot === "function") {
+                ergebnis = preseasonEngine.spieleSlot(state, currentDay.friendlyIndex ?? 0);
             }
             currentDay.completed = true;
             if (state.currentDayIndex < state.calendar.length - 1) {

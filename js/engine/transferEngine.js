@@ -12,6 +12,24 @@ const _getTransferFinanceEngine = () => {
     return null;
 };
 
+/** Modulauflösung in Browser- und Node-Umgebung */
+const _transferResolve = (name, pfad) => {
+    if (typeof globalThis !== "undefined" && globalThis[name]) return globalThis[name];
+    if (typeof window !== "undefined" && window[name]) return window[name];
+    if (typeof require !== "undefined") {
+        try { return require(pfad)[name]; } catch (e) { return null; }
+    }
+    return null;
+};
+const _getTransferGameState = () => _transferResolve("GameState", "./gameState.js");
+const _getTransferPlayerGenerator = () => _transferResolve("PlayerGenerator", "./playerGenerator.js");
+const _getTransferWorldGenerator = () => _transferResolve("WorldGenerator", "./worldGenerator.js");
+
+/** Ein zufälliger Eintrag aus einer Liste */
+const _preZufall = (liste) => (Array.isArray(liste) && liste.length)
+    ? liste[Math.floor(Math.random() * liste.length)]
+    : null;
+
 /**
  * Geldbeträge formatieren - funktioniert im Browser wie in Node,
  * auch wenn GameState (noch) nicht global verfügbar ist.
@@ -191,8 +209,19 @@ class TransferEngine {
             }
             // Aus Kader des alten Vereins entfernen
             sellerClub.playerIds = sellerClub.playerIds.filter(id => id !== player.id);
-            sellerClub.lineup = sellerClub.lineup.filter(id => id !== player.id);
             sellerClub.bench = sellerClub.bench.filter(id => id !== player.id);
+
+            // Die Aufstellung nicht einfach zusammenschieben: Der Platz in
+            // club.lineup bestimmt die Einsatzposition, ein Filter würde alle
+            // dahinter eine Position nach vorne rücken. repairLineup schließt
+            // die Lücke an genau der Stelle, an der sie entstanden ist.
+            const gs = _getTransferGameState();
+            if (gs && typeof gs.repairLineup === "function") {
+                sellerClub.lineup = sellerClub.lineup.filter(id => id !== player.id);
+                gs.repairLineup(sellerClub, state.players);
+            } else {
+                sellerClub.lineup = sellerClub.lineup.filter(id => id !== player.id);
+            }
         }
 
         // Spieler aktualisieren
@@ -208,9 +237,17 @@ class TransferEngine {
         }
 
         // Transfermarkt bereinigen
-        state.transferMarket.listedPlayerIds = state.transferMarket.listedPlayerIds.filter(id => id !== player.id);
+        if (state.transferMarket && Array.isArray(state.transferMarket.listedPlayerIds)) {
+            state.transferMarket.listedPlayerIds = state.transferMarket.listedPlayerIds.filter(id => id !== player.id);
+        }
 
-        // Nachricht ins Postfach
+        // Nachricht ins Postfach - aber nur, wenn es den eigenen Verein
+        // betrifft. Seit die KI-Vereine untereinander handeln, sind das sonst
+        // mehrere hundert fremde Transfers je Saison im eigenen Postfach.
+        const betrifftUns = buyerClub.id === state.userClubId
+            || (sellerClub && sellerClub.id === state.userClubId);
+        if (!betrifftUns) return true;
+
         state.inbox.unshift({
             id: Date.now(),
             matchday: state.currentMatchday,
@@ -223,6 +260,264 @@ class TransferEngine {
         });
 
         return true;
+    }
+
+    // ------------------------------------------------- Markt der KI-Vereine
+    //
+    // Bisher bewegte sich in der Spielwelt kein einziger Spieler: Beide
+    // KI-Funktionen boten ausschliesslich auf Spieler des Nutzers, einen Weg
+    // von KI-Verein A zu KI-Verein B gab es nicht. Gemessen ueber drei
+    // Saisons standen danach 92 Prozent aller Spieler noch bei ihrem
+    // Startverein, nach der ersten Saison sogar jeder einzelne. Ein Rivale
+    // verstaerkte sich nie, man wurde nie ueberboten, und der Kader des
+    // Tabellenzweiten war im Mai derselbe wie im August.
+
+    /** Laeuft gerade ein Transferfenster? */
+    static istTransferfenster(state) {
+        if (state?.preseason?.aktiv) return true;
+        const md = state?.currentMatchday || 0;
+        const gesamt = state?.totalMatchdays || 34;
+        // Ein spaetes Sommerfenster und ein Winterfenster zur Halbserie
+        if (md <= 2) return true;
+        const winter = Math.round(gesamt / 2);
+        return md >= winter && md <= winter + 1;
+    }
+
+    /**
+     * Was einem Kader fehlt.
+     *
+     * Verglichen wird der Ist-Bestand je Position mit dem Sollplan der
+     * Ligastufe. Fehlt eine Position ganz, ist das die dringendste Luecke;
+     * sonst zaehlt, wo der beste Mann des Vereins am weitesten unter dem
+     * eigenen Niveau bleibt.
+     */
+    /**
+     * Nachschlagewerk für ein Transferfenster.
+     *
+     * Ohne Index kostete ein einziger Transferversuch gemessen 54 Millisekunden,
+     * weil für jeden der 4752 Spieler erneut über alle Spieler und Vereine
+     * gesucht wurde - quadratischer Aufwand. Der Index wird einmal je Fenster
+     * gebaut und danach nur noch fortgeschrieben.
+     */
+    static baueMarktIndex(state) {
+        const spieler = new Map();
+        state.players.forEach(p => spieler.set(p.id, p));
+
+        const vereine = new Map();
+        state.clubs.forEach(c => vereine.set(c.id, c));
+
+        const nachPosition = new Map();
+        state.players.forEach(p => {
+            if (!nachPosition.has(p.pos)) nachPosition.set(p.pos, []);
+            nachPosition.get(p.pos).push(p);
+        });
+
+        const kaderNachPos = new Map();
+        state.clubs.forEach(c => {
+            const m = {};
+            (c.playerIds || []).forEach(id => {
+                const p = spieler.get(id);
+                if (p) (m[p.pos] = m[p.pos] || []).push(p);
+            });
+            kaderNachPos.set(c.id, m);
+        });
+
+        return { spieler, vereine, nachPosition, kaderNachPos };
+    }
+
+    /** Den Index nach einem Wechsel nachziehen */
+    static aktualisiereIndex(markt, spieler, vonId, zuId) {
+        if (!markt) return;
+        const raus = markt.kaderNachPos.get(vonId);
+        if (raus && raus[spieler.pos]) {
+            raus[spieler.pos] = raus[spieler.pos].filter(p => p.id !== spieler.id);
+        }
+        const rein = markt.kaderNachPos.get(zuId);
+        if (rein) (rein[spieler.pos] = rein[spieler.pos] || []).push(spieler);
+    }
+
+    static kaderBedarf(state, club, markt = null) {
+        const gen = _getTransferPlayerGenerator();
+        const welt = _getTransferWorldGenerator();
+        if (!gen || typeof gen.buildSquadPlan !== "function") return null;
+
+        const soll = (welt?.SQUAD_SIZES?.[club.level || 1]) || 20;
+
+        const bestand = markt
+            ? (markt.kaderNachPos.get(club.id) || {})
+            : (() => {
+                const m = {};
+                (club.playerIds || []).forEach(id => {
+                    const p = state.players.find(x => x.id === id);
+                    if (p) (m[p.pos] = m[p.pos] || []).push(p);
+                });
+                return m;
+            })();
+
+        const kader = Object.values(bestand).flat();
+        if (kader.length === 0) return null;
+
+        const plan = gen.buildSquadPlan(soll);
+        const bedarfZahl = {};
+        plan.forEach(pos => { bedarfZahl[pos] = (bedarfZahl[pos] || 0) + 1; });
+
+        // 1. Echte Luecken zuerst
+        const luecken = Object.keys(bedarfZahl)
+            .filter(pos => (bestand[pos] || []).length < bedarfZahl[pos]);
+        if (luecken.length > 0 && kader.length < soll + 3) {
+            return { pos: _preZufall(luecken), art: "luecke", messlatte: 0 };
+        }
+
+        // 2. Sonst die schwaechste Position gemessen am eigenen Niveau
+        const niveau = kader.reduce((a, p) => a + (p.overall || 50), 0) / kader.length;
+        let schwaechste = null;
+        Object.keys(bedarfZahl).forEach(pos => {
+            const beste = (bestand[pos] || []).map(p => p.overall || 0).sort((a, b) => b - a)[0] || 0;
+            if (!schwaechste || beste < schwaechste.beste) schwaechste = { pos, beste };
+        });
+        if (!schwaechste) return null;
+        // Nur wenn die Position wirklich hinterherhinkt
+        if (schwaechste.beste >= niveau + 4) return null;
+        return { pos: schwaechste.pos, art: "verstaerkung", messlatte: schwaechste.beste };
+    }
+
+    /**
+     * Ein Transferfenster der KI-Vereine.
+     *
+     * Je Versuch sucht sich ein Verein mit Etat eine Luecke, einen passenden
+     * Spieler und bietet. Der abgebende Verein verkauft nur, wenn er die
+     * Position danach noch besetzt hat - sonst entstuenden Kader ohne Torwart.
+     */
+    static processAiTransferWindow(state, versuche = 10) {
+        if (!state || !Array.isArray(state.clubs)) return 0;
+
+        const kaeufer = state.clubs.filter(c =>
+            c.id !== state.userClubId && (c.transferBudget || 0) > 250000);
+        if (kaeufer.length === 0) return 0;
+
+        const markt = this.baueMarktIndex(state);
+        let vollzogen = 0;
+        for (let i = 0; i < versuche; i++) {
+            const club = _preZufall(kaeufer);
+            if (!club) continue;
+            if (this.versucheEinenTransfer(state, club, markt)) vollzogen++;
+        }
+        return vollzogen;
+    }
+
+    /** Ein einzelner Transferversuch eines Vereins */
+    static versucheEinenTransfer(state, club, markt = null) {
+        if (!markt) markt = this.baueMarktIndex(state);
+
+        const bedarf = this.kaderBedarf(state, club, markt);
+        if (!bedarf) return false;
+
+        const eigenerRuf = club.reputation || 60;
+
+        // Wen ein Verein überhaupt in Betracht zieht: die gesuchte Position,
+        // besser als das, was er hat, und kein Spieler des Nutzers - dessen
+        // Kader rührt die KI nur über ein Angebot an, das er annehmen kann.
+        const kandidaten = [];
+        for (const p of (markt.nachPosition.get(bedarf.pos) || [])) {
+            if (p.clubId === club.id) continue;
+            if (p.clubId === state.userClubId) continue;
+            if ((p.injuredWeeks || 0) > 0) continue;
+            if ((p.overall || 0) <= bedarf.messlatte) continue;
+
+            const verkaeufer = p.clubId ? markt.vereine.get(p.clubId) : null;
+
+            // Niemand gibt seinen letzten Mann auf einer Position her. Ein
+            // Kader hat auf den meisten Positionen aber nur zwei Leute -
+            // verlangte man drei, kam der Markt gar nicht erst in Gang
+            // (gemessen scheiterten 288 von 300 Versuchen genau daran).
+            // Massgeblich ist deshalb, was nach dem Verkauf uebrig bleibt:
+            // beim Torwart zwei, im Feld einer.
+            let istBester = false;
+            if (verkaeufer) {
+                const gleichePos = (markt.kaderNachPos.get(verkaeufer.id) || {})[p.pos] || [];
+                const mindestNachher = p.pos === "TW" ? 2 : 1;
+                if (gleichePos.length - 1 < mindestNachher) continue;
+
+                istBester = !gleichePos.some(x => x.id !== p.id && (x.overall || 0) >= (p.overall || 0));
+
+                // Ein Spieler wechselt nicht in eine deutlich kleinere Nummer
+                if ((verkaeufer.reputation || 60) > eigenerRuf + 12) continue;
+            }
+
+            const preis = this.calculateAskingPrice(p, verkaeufer);
+            if (preis > (club.transferBudget || 0)) continue;
+
+            // Wie sehr will dieser Verein genau diesen Spieler?
+            const gewinn = (p.overall || 0) - bedarf.messlatte;
+            const jung = (p.age || 25) <= 24 ? 4 : 0;
+            const ablauf = (p.contractYears ?? 3) <= 1 ? 5 : 0;
+            kandidaten.push({ p, verkaeufer, preis, istBester, reiz: gewinn + jung + ablauf });
+        }
+
+        if (kandidaten.length === 0) return false;
+
+        // Unter den besten fünf wird gewürfelt - sonst kaufen alle denselben
+        kandidaten.sort((a, b) => b.reiz - a.reiz);
+        const wahl = _preZufall(kandidaten.slice(0, 5));
+        if (!wahl) return false;
+
+        const { p, verkaeufer, preis, istBester } = wahl;
+
+        // Das Gebot: knapp über der Forderung, damit es meist durchgeht.
+        // Für den besten Mann einer Position legt der Käufer drauf.
+        const aufschlag = istBester ? 1.38 : 1.0;
+        const gebot = Math.round(preis * aufschlag * (0.98 + Math.random() * 0.22));
+        if (gebot > (club.transferBudget || 0)) return false;
+
+        // Der abgebende Verein muss zustimmen: Wer seinen besten Mann auf
+        // einer Position hergibt, will dafür deutlich mehr sehen als für
+        // einen Ersatzspieler.
+        if (verkaeufer) {
+            const noetig = preis * (istBester ? 1.35 : 0.95);
+            if (gebot < noetig) return false;
+        }
+
+        // Das Gehalt muss in den Etat passen
+        const lohn = Math.round((p.wage || 10000) * (1.05 + Math.random() * 0.25));
+        const lohnsumme = (club.playerIds || [])
+            .reduce((s, id) => s + (markt.spieler.get(id)?.wage || 0), 0);
+        if (lohnsumme + lohn > (club.wageBudget || Infinity) * 1.1) return false;
+
+        const laufzeit = (p.age || 25) <= 24 ? 4 : (p.age || 25) <= 30 ? 3 : 2;
+        const vonId = p.clubId;
+        const ok = this.executeTransfer(state, p.id, club.id, verkaeufer ? gebot : 0, lohn, laufzeit);
+        if (!ok) return false;
+
+        this.aktualisiereIndex(markt, p, vonId, club.id);
+
+        // Für die Anzeige: die letzten Wechsel der Spielwelt
+        if (!state.transferMarket) state.transferMarket = { offers: [], history: [], shortlist: [] };
+        if (!Array.isArray(state.transferMarket.history)) state.transferMarket.history = [];
+        state.transferMarket.history.unshift({
+            playerName: p.name,
+            pos: p.pos,
+            overall: p.overall,
+            vonId: verkaeufer?.id || null,
+            von: verkaeufer?.name || "vereinslos",
+            zuId: club.id,
+            zu: club.name,
+            fee: verkaeufer ? gebot : 0,
+            matchday: state.currentMatchday || 0,
+            season: state.seasonYear || 1
+        });
+        if (state.transferMarket.history.length > 60) {
+            state.transferMarket.history = state.transferMarket.history.slice(0, 60);
+        }
+        return true;
+    }
+
+    /** Durchschnittliche Stärke eines Kaders */
+    static kaderNiveau(state, club) {
+        const kader = (club.playerIds || [])
+            .map(id => state.players.find(p => p.id === id))
+            .filter(Boolean);
+        if (kader.length === 0) return 50;
+        return kader.reduce((a, p) => a + (p.overall || 50), 0) / kader.length;
     }
 
     /**

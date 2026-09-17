@@ -145,6 +145,19 @@ window.addEventListener("DOMContentLoaded", () => {
     window.appInstance = new App();
     window.appInstance.start();
 
+    // Gespeichert wird gebündelt, damit nicht jeder Klick eine Drittelsekunde
+    // stillsteht. Wer die Seite verlässt, darf dadurch aber nichts verlieren -
+    // also wird eine noch offene Sicherung hier sofort geschrieben.
+    const sichern = () => {
+        const st = window.appInstance?.state;
+        if (st && typeof st.flushSave === "function") st.flushSave();
+    };
+    window.addEventListener("beforeunload", sichern);
+    window.addEventListener("pagehide", sichern);
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") sichern();
+    });
+
     // PWA Service Worker registrieren (wenn über HTTP/HTTPS ausgeführt)
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
         navigator.serviceWorker.register('./service-worker.js').catch(err => {

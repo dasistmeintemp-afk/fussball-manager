@@ -1369,16 +1369,77 @@ class GameState {
         }
     }
 
-    saveToLocalStorage(slotKey = "football_manager_savegame") {
+    /**
+     * Speichert den Spielstand.
+     *
+     * Ein Durchgang kostet gemessen 310 Millisekunden, davon 305 allein für
+     * das Codieren - und gespeichert wird an siebzehn Stellen: Tageswechsel,
+     * Trainerverpflichtung, Sponsorwahl, Turnier-Zusage, Aufstellung. Jeder
+     * dieser Klicks stand damit eine Drittelsekunde still.
+     *
+     * Deshalb wird jetzt gebündelt: Der Aufruf merkt sich nur, dass etwas zu
+     * sichern ist, und der eigentliche Schreibvorgang läuft kurz darauf,
+     * wenn der Browser ohnehin Luft hat. Mehrere Aufrufe hintereinander
+     * kosten so einen einzigen Durchgang statt fünf.
+     *
+     * `sofort` erzwingt das synchrone Schreiben - beim Verlassen der Seite
+     * oder vor einem Export darf nichts in der Warteschlange hängen.
+     */
+    saveToLocalStorage(slotKey = "football_manager_savegame", sofort = false) {
+        if (!sofort && typeof setTimeout === "function") {
+            this._saveAusstehend = slotKey;
+            if (this._saveTimer) return true;
+            this._saveTimer = setTimeout(() => {
+                this._saveTimer = null;
+                const ziel = this._saveAusstehend || slotKey;
+                this._saveAusstehend = null;
+                this.saveToLocalStorage(ziel, true);
+            }, 180);
+            return true;
+        }
+
         try {
             this.lastSaved = new Date().toISOString();
             const codec = GameState._getSaveCodec();
             const payload = codec ? codec.encodeState(this) : this;
             localStorage.setItem(slotKey, JSON.stringify(payload));
+            this._saveFehler = null;
             return true;
         } catch (e) {
+            // Ein fehlgeschlagener Speichervorgang wurde bisher nur auf die
+            // Konsole geschrieben, und kein Aufrufer prüfte den Rückgabewert.
+            // Man spielte also weiter und verlor beim nächsten Laden alles.
             console.error("Speichern fehlgeschlagen:", e);
+            this._saveFehler = (e && e.name === "QuotaExceededError")
+                ? "Der Speicher des Browsers ist voll - der Spielstand konnte nicht gesichert werden. Exportieren Sie ihn als Datei."
+                : `Der Spielstand konnte nicht gesichert werden (${e?.name || "Fehler"}).`;
+            GameState._meldeSpeicherfehler(this._saveFehler);
             return false;
+        }
+    }
+
+    /** Sicherstellen, dass nichts mehr in der Warteschlange hängt */
+    flushSave(slotKey = "football_manager_savegame") {
+        if (this._saveTimer && typeof clearTimeout === "function") {
+            clearTimeout(this._saveTimer);
+            this._saveTimer = null;
+        }
+        const ziel = this._saveAusstehend || slotKey;
+        this._saveAusstehend = null;
+        return this.saveToLocalStorage(ziel, true);
+    }
+
+    /** Ein Speicherfehler darf nicht stumm bleiben */
+    static _meldeSpeicherfehler(text) {
+        if (typeof window === "undefined") return;
+        // Nicht bei jedem Versuch aufs Neue anschlagen
+        if (window.__speicherfehlerGemeldet === text) return;
+        window.__speicherfehlerGemeldet = text;
+        const ui = window.appInstance?.ui;
+        if (ui && typeof ui.showToast === "function") {
+            ui.showToast(text, "error");
+        } else if (typeof window.alert === "function") {
+            window.alert(text);
         }
     }
 

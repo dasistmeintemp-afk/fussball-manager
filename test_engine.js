@@ -868,6 +868,73 @@ function runEngineTests() {
         }
     });
 
+    // 14a5c. Die Spielwelt muss sich auch ohne den Spieler bewegen
+    test("TransferEngine: KI-Vereine handeln untereinander, ohne Kader zu zerstören", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const ki = state.clubs.filter(c => c.id !== state.userClubId);
+
+        // Ein Transferfenster muss überhaupt erkannt werden
+        if (!TransferEngine.istTransferfenster(state)) {
+            throw new Error("Zum Karrierestart ist kein Transferfenster offen");
+        }
+
+        const vorher = new Map(state.players.filter(p => p.clubId).map(p => [p.id, p.clubId]));
+        const eigeneVorher = (state.clubs.find(c => c.id === state.userClubId).playerIds || []).slice();
+        const postfachVorher = state.inbox.length;
+
+        let vollzogen = 0;
+        for (let i = 0; i < 400; i++) {
+            const club = ki[Math.floor(Math.random() * ki.length)];
+            if (TransferEngine.versucheEinenTransfer(state, club)) vollzogen++;
+        }
+
+        // Vorher bewegte sich in einer ganzen Saison kein einziger Spieler
+        if (vollzogen < 15) {
+            throw new Error(`Nur ${vollzogen} von 400 Versuchen wurden ein Transfer - der Markt steht still`);
+        }
+
+        // Kader müssen spielfähig bleiben
+        state.clubs.forEach(c => {
+            const kader = (c.playerIds || []).map(id => state.players.find(p => p.id === id)).filter(Boolean);
+            if (kader.length < 15) {
+                throw new Error(`${c.name} hat nur noch ${kader.length} Spieler`);
+            }
+            if (kader.filter(p => p.pos === "TW").length < 2) {
+                throw new Error(`${c.name} hat weniger als zwei Torwarte`);
+            }
+        });
+
+        // Der eigene Kader wird nicht hinter dem Rücken des Managers geplündert
+        const eigeneNachher = (state.clubs.find(c => c.id === state.userClubId).playerIds || []);
+        if (eigeneNachher.length !== eigeneVorher.length) {
+            throw new Error("Die KI hat sich am Kader des Spielers bedient");
+        }
+
+        // Und das Postfach wird nicht mit fremden Transfers geflutet
+        if (state.inbox.length - postfachVorher > 5) {
+            throw new Error(`${state.inbox.length - postfachVorher} neue Postfachnachrichten durch fremde Transfers`);
+        }
+
+        // Spieler dürfen nicht doppelt oder gar nicht zugeordnet sein
+        const doppelt = [];
+        state.clubs.forEach(c => (c.playerIds || []).forEach(id => doppelt.push(id)));
+        if (doppelt.length !== new Set(doppelt).size) {
+            throw new Error("Ein Spieler steht nach einem Transfer in zwei Kadern");
+        }
+        state.players.filter(p => p.clubId).forEach(p => {
+            const c = state.clubs.find(x => x.id === p.clubId);
+            if (!c || !(c.playerIds || []).includes(p.id)) {
+                throw new Error(`${p.name} zeigt auf einen Verein, der ihn nicht führt`);
+            }
+        });
+
+        // Es muss wirklich gewechselt worden sein
+        const wechsler = state.players.filter(p => p.clubId && vorher.has(p.id) && vorher.get(p.id) !== p.clubId).length;
+        if (wechsler < 15) {
+            throw new Error(`Nur ${wechsler} Spieler haben den Verein gewechselt`);
+        }
+    });
+
     // 14a6. Geld muss eine Entscheidung bleiben
     test("FinanceEngine: Große und kleine Vereine nehmen unterschiedlich viel ein", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });

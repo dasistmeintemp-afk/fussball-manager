@@ -158,7 +158,21 @@ function runE2ETests() {
 
             // Nächste Saison starten
             SeasonEngine.startNextSeason(state);
-            if (state.totalMatchdays !== 34) throw new Error(`Saison ${state.seasonYear} hat keine 34 Spieltage`);
+
+            // Der Spielplan muss zur Liga passen, in der der Verein jetzt
+            // steht - nicht zu der, in der er angefangen hat. Ein Auf- oder
+            // Abstieg kann in eine Liga anderer Größe führen, und dann sind
+            // es eben nicht 34 Spieltage. Vorher stand hier eine feste 34,
+            // was den Test von der Platzierung des Vereins abhängig machte.
+            const meineLiga = state.clubs.find(c => c.id === state.userClubId).leagueId;
+            const ligaGroesse = state.clubs.filter(c => c.leagueId === meineLiga).length;
+            const erwartet = (ligaGroesse - 1) * 2;
+            if (state.totalMatchdays !== erwartet) {
+                throw new Error(`Saison ${state.seasonYear}: ${ligaGroesse} Vereine ergeben ${erwartet} Spieltage, der Plan hat ${state.totalMatchdays}`);
+            }
+            if (state.schedule.length !== state.totalMatchdays) {
+                throw new Error(`Saison ${state.seasonYear}: Spielplan und Spieltagszahl gehen auseinander`);
+            }
         }
     });
 

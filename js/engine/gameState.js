@@ -863,6 +863,17 @@ class GameState {
             state.calendar = [];
         }
 
+        // Die Vorbereitung beginnt: Trainerstab, Sponsoren, Testspiele. Sie
+        // steht vor jeder Saison, nicht nur vor der ersten.
+        const preseasonEngine = (typeof PreseasonEngine !== "undefined" && PreseasonEngine)
+            ? PreseasonEngine
+            : ((typeof window !== "undefined" && window.PreseasonEngine) ? window.PreseasonEngine
+                : (typeof require !== "undefined" ? require("./preseasonEngine.js").PreseasonEngine : null));
+        if (preseasonEngine && typeof preseasonEngine.start === "function") {
+            preseasonEngine.start(state);
+        }
+
+
         state.fanMood = 75;
         state.mediaPressure = 45;
 

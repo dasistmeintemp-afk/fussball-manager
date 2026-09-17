@@ -55,14 +55,32 @@ class CoachingStaffEngine {
             basis + (gelaende - 2) * 2.6 + (ruf - 50) * 0.13
         )));
 
-        const stufe = this.STAB_STUFEN.find(s => overall >= s.ab) || this.STAB_STUFEN[this.STAB_STUFEN.length - 1];
+        // Wer in der Vorbereitung jemanden verpflichtet hat, bekommt dessen
+        // Guete - sonst arbeitet der Verein mit Bordmitteln weiter. So macht
+        // die Entscheidung am Trainerstab einen messbaren Unterschied, statt
+        // nur eine Zeile im Vereinsprofil zu sein.
+        const eigen = (bereich, ersatz) => {
+            const mitglied = club.staff && club.staff[bereich];
+            return mitglied && typeof mitglied.guete === "number"
+                ? Math.max(10, Math.min(97, mitglied.guete))
+                : Math.max(10, Math.min(97, Math.round(ersatz)));
+        };
+
+        const fitness = eigen("fitness", overall + (gelaende - 2) * 3);
+        const analyse = eigen("analyse", overall + (ruf - 50) * 0.12);
+        const medizinWert = eigen("medizin", overall + (medizin - 1) * 5);
+        const nachwuchs = eigen("nachwuchs", overall + (jugend - 1) * 5);
+
+        // Der Gesamtwert folgt dem tatsaechlichen Stab
+        const gesamt = Math.round((fitness + analyse + medizinWert + nachwuchs) / 4);
+        const stufe = this.STAB_STUFEN.find(s => gesamt >= s.ab) || this.STAB_STUFEN[this.STAB_STUFEN.length - 1];
 
         return {
-            overall,
-            fitness: Math.max(10, Math.min(97, Math.round(overall + (gelaende - 2) * 3))),
-            analyse: Math.max(10, Math.min(97, Math.round(overall + (ruf - 50) * 0.12))),
-            medizin: Math.max(10, Math.min(97, Math.round(overall + (medizin - 1) * 5))),
-            nachwuchs: Math.max(10, Math.min(97, Math.round(overall + (jugend - 1) * 5))),
+            overall: gesamt,
+            fitness,
+            analyse,
+            medizin: medizinWert,
+            nachwuchs,
             titel: stufe.titel,
             kurz: stufe.kurz,
             // Wie stark der Stab die Entwicklung der Spieler beschleunigt.

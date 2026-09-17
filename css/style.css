@@ -4656,3 +4656,61 @@ body {
     color: var(--text-muted);
     margin-top: 4px;
 }
+
+/* ---------------------------------------------------------- Vorbereitung
+ * Der Reiter vor dem ersten Spieltag: Trainerstab, Sponsoren, Testspiele.
+ * Jede Zeile stellt eine Entscheidung dar - links steht, worum es geht,
+ * rechts die Handlung. */
+.card-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.muted-note {
+    color: var(--text-muted, #94a3b8);
+    font-size: 12.5px;
+    line-height: 1.55;
+}
+
+.pre-area {
+    border: 1px solid var(--border, rgba(148, 163, 184, 0.22));
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+}
+
+.pre-area-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 14px;
+    margin-bottom: 4px;
+}
+
+.pre-area-head > span:first-child {
+    font-weight: 700;
+}
+
+.pre-candidate {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 9px 0;
+    border-top: 1px solid var(--border, rgba(148, 163, 184, 0.16));
+    font-size: 13px;
+    flex-wrap: wrap;
+}
+
+.pre-candidate:first-child {
+    border-top: none;
+}
+
+.pre-candidate button {
+    flex-shrink: 0;
+}

@@ -12,8 +12,21 @@ const CALENDAR_DAY_TYPES = {
     MATCHDAY: "matchday",
     REST: "rest",
     SEASON_START: "season_start",
-    SEASON_END: "season_end"
+    SEASON_END: "season_end",
+    // Die Wochen vor dem ersten Spieltag: Stab zusammenstellen, Sponsor
+    // aushandeln, Testspiele bestreiten.
+    PRESEASON: "preseason",
+    FRIENDLY: "friendly"
 };
+
+function _getPreseasonEngine() {
+    if (typeof PreseasonEngine !== "undefined" && PreseasonEngine) return PreseasonEngine;
+    if (typeof window !== "undefined" && window.PreseasonEngine) return window.PreseasonEngine;
+    if (typeof require !== "undefined") {
+        try { return require("./preseasonEngine.js").PreseasonEngine; } catch (e) { /* ohne Bundler */ }
+    }
+    return null;
+}
 
 const CalendarEngine = {
     DAY_TYPES: CALENDAR_DAY_TYPES,
@@ -60,6 +73,50 @@ const CalendarEngine = {
 
         currentDate.setDate(currentDate.getDate() + 1);
         dayCounter++;
+
+        // Die Vorbereitung: vier Wochen, in denen der Manager arbeitet, bevor
+        // es zaehlt. Vorher stand der erste Spieltag sofort an - es gab nichts
+        // zu entscheiden, bevor Punkte vergeben wurden.
+        const preseasonEngine = _getPreseasonEngine();
+        const vorbereitungsTage = preseasonEngine ? preseasonEngine.DAUER_TAGE : 24;
+        let testspielNr = 0;
+
+        for (let v = 1; v <= vorbereitungsTage; v++) {
+            // Alle fuenf Tage ein Testspiel - dazwischen Training und Arbeit
+            const istTestspiel = v % 5 === 0 && testspielNr < 4;
+            if (istTestspiel) testspielNr++;
+
+            const art = istTestspiel
+                ? CALENDAR_DAY_TYPES.FRIENDLY
+                : (v % 5 === 1 ? CALENDAR_DAY_TYPES.PRESEASON
+                    : (v % 5 === 3 ? CALENDAR_DAY_TYPES.RECOVERY : CALENDAR_DAY_TYPES.TRAINING));
+
+            calendar.push({
+                id: `day_${dayCounter}`,
+                dayIndex: dayCounter,
+                date: this.formatDate(currentDate),
+                dateObj: new Date(currentDate).toISOString(),
+                dayOfWeek: this.getDayName(currentDate),
+                type: art,
+                title: istTestspiel
+                    ? `Testspiel ${testspielNr}`
+                    : (art === CALENDAR_DAY_TYPES.PRESEASON ? "Vorbereitung: Stab, Sponsoren, Planung"
+                        : (art === CALENDAR_DAY_TYPES.RECOVERY ? "Regeneration" : "Vorbereitungstraining")),
+                description: istTestspiel
+                    ? "Ein Testspiel zaehlt fuer keine Tabelle - aber fuer Spielpraxis und Einspielzeit."
+                    : (art === CALENDAR_DAY_TYPES.PRESEASON
+                        ? "Bewerbungen sichten, Sponsorenangebote pruefen, den Kader planen."
+                        : "Grundlagenarbeit fuer die Saison."),
+                matchday: null,
+                friendlyIndex: istTestspiel ? testspielNr - 1 : null,
+                actionsAvailable: ["preseason", "training", "tactics", "transfers"],
+                preseason: true,
+                completed: false
+            });
+
+            currentDate.setDate(currentDate.getDate() + 1);
+            dayCounter++;
+        }
 
         // Für jeden Spieltag eine typische Vorbereitungswoche generieren
         for (let md = 1; md <= totalMatchdays; md++) {
@@ -226,6 +283,46 @@ const CalendarEngine = {
         const currentDay = this.getCurrentDay(state);
         if (!currentDay) {
             return { success: false, error: "Ungültiger Kalendertag" };
+        }
+
+        // Vorbereitung: Der Fortschritt zaehlt mit, damit die Oberflaeche
+        // zeigen kann, wie viel Zeit bis zum ersten Spieltag bleibt.
+        if (currentDay.preseason && state.preseason && state.preseason.aktiv) {
+            state.preseason.tagIndex = Math.min(state.preseason.dauer,
+                (state.preseason.tagIndex || 0) + 1);
+        }
+
+        // Testspiel: zaehlt fuer keine Tabelle, aber fuer Spielpraxis
+        if (currentDay.type === CALENDAR_DAY_TYPES.FRIENDLY) {
+            const preseasonEngine = _getPreseasonEngine();
+            let ergebnis = null;
+            if (preseasonEngine && state.preseason) {
+                const test = (state.preseason.testspiele || [])[currentDay.friendlyIndex ?? 0];
+                if (test && !test.gespielt) {
+                    ergebnis = preseasonEngine.spieleTestspiel(state, test.id);
+                }
+            }
+            currentDay.completed = true;
+            if (state.currentDayIndex < state.calendar.length - 1) {
+                state.currentDayIndex++;
+                state.currentDate = state.calendar[state.currentDayIndex].date;
+            }
+            return {
+                success: true,
+                type: "friendly",
+                friendly: ergebnis,
+                day: currentDay,
+                nextDay: this.getCurrentDay(state)
+            };
+        }
+
+        // Mit dem ersten Spieltag ist die Vorbereitung vorbei
+        if (currentDay.type === CALENDAR_DAY_TYPES.MATCHDAY
+            && state.preseason && state.preseason.aktiv) {
+            const preseasonEngine = _getPreseasonEngine();
+            if (preseasonEngine && typeof preseasonEngine.beende === "function") {
+                preseasonEngine.beende(state);
+            }
         }
 
         // Wenn heute ein Spieltag ist, muss das Spiel simuliert werden

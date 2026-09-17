@@ -853,6 +853,17 @@ class SeasonEngine {
             calendarEngine.generateSeasonCalendar(state);
         }
 
+        // Die Vorbereitung beginnt: Trainerstab, Sponsoren, Testspiele. Sie
+        // steht vor jeder Saison, nicht nur vor der ersten.
+        const preseasonEngine = (typeof PreseasonEngine !== "undefined" && PreseasonEngine)
+            ? PreseasonEngine
+            : ((typeof window !== "undefined" && window.PreseasonEngine) ? window.PreseasonEngine
+                : (typeof require !== "undefined" ? require("./preseasonEngine.js").PreseasonEngine : null));
+        if (preseasonEngine && typeof preseasonEngine.start === "function") {
+            preseasonEngine.start(state);
+        }
+
+
         // Auf- oder Abstieg des eigenen Vereins vermelden
         const userMove = [...movements.promoted, ...movements.relegated].find(m => m.clubId === state.userClubId);
         if (userMove) {

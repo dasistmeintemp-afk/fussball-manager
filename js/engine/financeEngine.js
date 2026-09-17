@@ -69,6 +69,16 @@ const FinanceEngine = {
     /** Sponsorenzahlung eines Vereins je Spieltag */
     sponsorPerMatchday(club) {
         if (!club) return 0;
+
+        // Ein in der Vorbereitung ausgehandelter Vertrag gilt. Der gespeicherte
+        // Betrag wurde vorher bewusst ignoriert, weil ihn niemand aushandeln
+        // konnte und er nur eine veraltete Zahl bei der Vereinsgruendung war -
+        // jetzt waehlt der Manager sein Angebot selbst aus, und dann muss es
+        // auch das sein, was auf dem Konto landet.
+        if (club.sponsor && club.sponsor.amountPerMatchday > 0 && club.sponsor.ausgehandelt) {
+            return club.sponsor.amountPerMatchday;
+        }
+
         const faktor = this.LEVEL_ECONOMY[club.level || 1] ?? 0.05;
         const rang = typeof club.clubStrength === "number"
             ? Math.max(0, Math.min(1, club.clubStrength))

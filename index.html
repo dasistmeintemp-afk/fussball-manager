@@ -100,6 +100,11 @@
                         <span class="nav-text">Transfermarkt</span>
                         <span class="badge" id="navOffersBadge" style="display:none;">0</span>
                     </button>
+                    <button class="nav-item" data-tab="preseason" id="navPreseason" style="display:none;">
+                        <span class="nav-icon">☀️</span>
+                        <span class="nav-text">Vorbereitung</span>
+                        <span class="badge" id="navPreseasonBadge" style="display:none;">0</span>
+                    </button>
                     <button class="nav-item" data-tab="training">
                         <span class="nav-icon">🏋️</span>
                         <span class="nav-text">Training</span>
@@ -734,6 +739,38 @@
                 </section>
 
                 <!-- Tab: Training -->
+                <section class="tab-pane" id="pane-preseason">
+                    <h2 class="pane-title">Saisonvorbereitung</h2>
+
+                    <div class="dash-card" style="margin-bottom:20px;">
+                        <div class="card-header-row">
+                            <h3>☀️ Bis zum ersten Spieltag</h3>
+                            <span id="preCountdown" class="header-tag">-</span>
+                        </div>
+                        <div id="preOpenItems" style="font-size:13px; line-height:1.7;"></div>
+                    </div>
+
+                    <div class="training-grid">
+                        <div class="dash-card">
+                            <h3>🧑‍🏫 Trainerstab zusammenstellen</h3>
+                            <p class="muted-note">Vier Fachbereiche. Wer gut einkauft, entwickelt seine Spieler schneller und haelt sie laenger fit. Der Stab darf hoechstens ein Viertel des Gehaltsetats kosten.</p>
+                            <div id="preStaffList"></div>
+                        </div>
+
+                        <div class="dash-card">
+                            <h3>🤝 Sponsorenangebote</h3>
+                            <p class="muted-note">Ein Angebot gilt fuer die gewaehlte Laufzeit. Mehr Geld heisst nicht immer mehr Ruhe.</p>
+                            <div id="preSponsorList"></div>
+                        </div>
+
+                        <div class="dash-card" style="grid-column: 1 / -1;">
+                            <h3>⚽ Testspiele</h3>
+                            <p class="muted-note">Testspiele zaehlen fuer keine Tabelle, bringen aber Spielpraxis und Einspielzeit. Sie werden an ihrem Kalendertag ausgetragen.</p>
+                            <div id="preFriendlyList"></div>
+                        </div>
+                    </div>
+                </section>
+
                 <section class="tab-pane" id="pane-training">
                     <div class="pane-header">
                         <h2>Trainingssteuerung & Entwicklung</h2>
@@ -1709,6 +1746,7 @@
     <script src="js/engine/negotiationEngine.js"></script>
     <script src="js/engine/managerEngine.js"></script>
     <script src="js/engine/trainingEngine.js"></script>
+    <script src="js/engine/preseasonEngine.js"></script>
     <script src="js/engine/coachingStaffEngine.js"></script>
     <script src="js/engine/dressingRoomEngine.js"></script>
     <script src="js/engine/rivalryEngine.js"></script>

@@ -12,6 +12,7 @@ const { FinanceEngine } = require('./js/engine/financeEngine.js');
 const { ContractEngine } = require('./js/engine/contractEngine.js');
 const { ScoutingEngine } = require('./js/engine/scoutingEngine.js');
 const { CoachingStaffEngine } = require('./js/engine/coachingStaffEngine.js');
+const { PreseasonEngine } = require('./js/engine/preseasonEngine.js');
 const { YouthEngine } = require('./js/engine/youthEngine.js');
 const { AIManagerEngine } = require('./js/engine/aiManagerEngine.js');
 const { ClubGenerator } = require('./js/engine/clubGenerator.js');
@@ -887,6 +888,67 @@ function runEngineTests() {
         }
         if (engOhneBall >= breitMitBall - 3) {
             throw new Error(`Die Form ändert sich kaum: mit Ball ${breitMitBall.toFixed(1)}, ohne ${engOhneBall.toFixed(1)}`);
+        }
+    });
+
+    // 14a8. Vor der Saison steht die Vorbereitung - und sie hat Folgen
+    test("PreseasonEngine: Vorbereitung vor jeder Saison mit Stab, Sponsor und Testspielen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+
+        // Der erste Spieltag steht nicht sofort an
+        if (!state.preseason || !state.preseason.aktiv) {
+            throw new Error("Nach dem Karrierestart läuft keine Vorbereitung");
+        }
+        const ersterSpieltag = state.calendar.findIndex(d => d.type === "matchday");
+        if (ersterSpieltag < 20) {
+            throw new Error(`Der erste Spieltag steht schon an Kalendertag ${ersterSpieltag} - zu wenig Vorbereitung`);
+        }
+
+        // Für jeden Fachbereich liegen Bewerbungen vor
+        PreseasonEngine.BEREICHE.forEach(b => {
+            const liste = state.preseason.bewerber?.[b.key] || [];
+            if (liste.length < 2) throw new Error(`Zu wenige Bewerber für ${b.titel}`);
+        });
+
+        // Ein verpflichteter Trainer verändert die Güte des Stabs messbar
+        const vorher = CoachingStaffEngine.staffQuality(club);
+        const kandidaten = state.preseason.bewerber.fitness;
+        const bester = kandidaten[0];
+        const r = PreseasonEngine.verpflichte(state, "fitness", bester.id);
+        if (!r.ok && !/Gehaltsetat/.test(r.grund || "")) {
+            throw new Error(`Verpflichtung fehlgeschlagen: ${r.grund}`);
+        }
+        if (r.ok) {
+            const nachher = CoachingStaffEngine.staffQuality(club);
+            if (nachher.fitness !== bester.guete) {
+                throw new Error(`Der verpflichtete Athletiktrainer wirkt nicht: ${nachher.fitness} statt ${bester.guete}`);
+            }
+        }
+
+        // Ein angenommenes Sponsorenangebot bestimmt die Einnahmen
+        const angebot = state.preseason.sponsorAngebote[2];
+        const sr = PreseasonEngine.waehleSponsor(state, angebot.id);
+        if (!sr.ok) throw new Error(`Sponsor konnte nicht gewählt werden: ${sr.grund}`);
+        if (FinanceEngine.sponsorPerMatchday(club) !== angebot.amountPerMatchday) {
+            throw new Error("Der ausgehandelte Sponsorenvertrag wirkt sich nicht auf die Einnahmen aus");
+        }
+
+        // Ein Testspiel zählt für keine Tabelle
+        const tabelleVorher = JSON.stringify(state.standings || []);
+        const test = state.preseason.testspiele[0];
+        const ergebnis = PreseasonEngine.spieleTestspiel(state, test.id);
+        if (!ergebnis) throw new Error("Testspiel konnte nicht gespielt werden");
+        if (!test.gespielt || !test.ergebnis) throw new Error("Testspiel ohne Ergebnis");
+        if (JSON.stringify(state.standings || []) !== tabelleVorher) {
+            throw new Error("Ein Testspiel hat die Tabelle verändert");
+        }
+
+        // Und sie steht auch vor der zweiten Saison
+        state.preseason.aktiv = false;
+        SeasonEngine.startNextSeason(state);
+        if (!state.preseason || !state.preseason.aktiv) {
+            throw new Error("Vor der zweiten Saison läuft keine Vorbereitung");
         }
     });
 

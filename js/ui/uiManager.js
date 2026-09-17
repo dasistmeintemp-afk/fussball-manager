@@ -1841,6 +1841,9 @@ class UIManager {
             case "transfers":
                 this.renderTransfers();
                 break;
+            case "preseason":
+                this.renderPreseason();
+                break;
             case "training":
                 this.renderTraining();
                 break;
@@ -1966,6 +1969,23 @@ class UIManager {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
+
+        // Der Vorbereitungsreiter erscheint nur, solange die Vorbereitung
+        // laeuft - mit dem ersten Spieltag verschwindet er wieder. Die Zahl
+        // daneben zeigt, was noch zu erledigen ist.
+        const preNav = document.getElementById("navPreseason");
+        if (preNav) {
+            const engine = this.getPreseasonEngine();
+            const laeuft = !!(state.preseason && state.preseason.aktiv);
+            preNav.style.display = laeuft ? "" : "none";
+            const badge = document.getElementById("navPreseaonBadgeFallback")
+                || document.getElementById("navPreseasonBadge");
+            if (badge) {
+                const offen = (laeuft && engine) ? engine.offenePunkte(state).length : 0;
+                badge.textContent = offen;
+                badge.style.display = offen > 0 ? "" : "none";
+            }
+        }
 
         document.getElementById("headerClubName").textContent = userClub.name;
         document.getElementById("headerClubDot").style.backgroundColor = userClub.primaryColor;
@@ -2353,6 +2373,143 @@ class UIManager {
      * Sponsorenzahlung je Spieltag - immer aus der Finanz-Engine, damit im
      * Vereins-Reiter dieselbe Zahl steht, die dem Konto gutgeschrieben wird.
      */
+    /** PreseasonEngine in Browser und Test-Umgebung aufloesen */
+    getPreseasonEngine() {
+        if (typeof PreseasonEngine !== "undefined" && PreseasonEngine) return PreseasonEngine;
+        if (typeof window !== "undefined" && window.PreseasonEngine) return window.PreseasonEngine;
+        return null;
+    }
+
+    /**
+     * Der Vorbereitungsreiter. Er ist nur sichtbar, solange die Vorbereitung
+     * laeuft - sobald der erste Spieltag ansteht, verschwindet er wieder.
+     */
+    renderPreseason() {
+        const state = this.app.state;
+        const engine = this.getPreseasonEngine();
+        const pre = state?.preseason;
+        const club = state?.clubs?.find(c => c.id === state.userClubId);
+        if (!engine || !pre || !club) return;
+
+        const verbleibend = Math.max(0, (pre.dauer || 0) - (pre.tagIndex || 0));
+        DOM.setText("preCountdown", pre.aktiv ? `noch ${verbleibend} Tage` : "abgeschlossen");
+
+        const offen = engine.offenePunkte(state);
+        const offenEl = document.getElementById("preOpenItems");
+        if (offenEl) {
+            offenEl.innerHTML = offen.length
+                ? `<strong>Noch zu erledigen:</strong><ul style="margin:6px 0 0 18px;">${offen.map(o => `<li>${o}</li>`).join("")}</ul>`
+                : `<span style="color:var(--success, #22c55e);">Alles erledigt - die Mannschaft ist bereit fuer den ersten Spieltag.</span>`;
+        }
+
+        this.renderPreseasonStaff(state, engine, club, pre);
+        this.renderPreseasonSponsors(state, engine, club, pre);
+        this.renderPreseasonFriendlies(pre);
+    }
+
+    renderPreseasonStaff(state, engine, club, pre) {
+        const el = document.getElementById("preStaffList");
+        if (!el) return;
+
+        const kosten = engine.stabKosten(club);
+        const grenze = Math.round((club.wageBudget || 0) * 0.25);
+        const staffEngine = this.getCoachingStaffEngine();
+        const aktuell = staffEngine ? staffEngine.staffQuality(club) : null;
+
+        el.innerHTML = `<div class="muted-note" style="margin-bottom:10px;">
+                Stabskosten: <strong>${GameState.formatMoney(kosten)}</strong> / Woche
+                &middot; Rahmen: ${GameState.formatMoney(grenze)}
+            </div>` +
+            engine.BEREICHE.map(b => {
+                const besetzt = club.staff?.[b.key];
+                const bewerber = pre.bewerber?.[b.key] || [];
+                // Ohne eigenen Mann arbeitet der Verein mit Bordmitteln - und
+                // die sind bei einem Spitzenklub schon gut. Ohne diese Zahl
+                // verpflichtet man ahnungslos jemanden, der schlechter ist als
+                // das, was man ohnehin hat, und zahlt dafuer auch noch Gehalt.
+                const jetzt = aktuell ? aktuell[b.key] : null;
+                const kopf = besetzt
+                    ? `<strong>${besetzt.name}</strong> &middot; Guete ${besetzt.guete} &middot; ${GameState.formatMoney(besetzt.gehalt)}/Wo`
+                    : `<span class="muted-note">mit Bordmitteln: Guete ${jetzt ?? "?"}</span>`;
+                const liste = bewerber.map(k => `
+                    <div class="pre-candidate">
+                        <div>
+                            <strong>${k.name}</strong> <span class="muted-note">(${k.alter})</span><br>
+                            <span class="muted-note">${k.ruf} &middot; Guete ${k.guete}${(jetzt !== null && k.guete < jetzt) ? " (schlechter als jetzt)" : ""} &middot; ${GameState.formatMoney(k.gehalt)}/Wo</span>
+                        </div>
+                        <button class="btn btn-sm btn-primary" data-hire-area="${b.key}" data-hire-id="${k.id}">
+                            Verpflichten
+                        </button>
+                    </div>`).join("");
+                return `<div class="pre-area">
+                        <div class="pre-area-head"><span>${b.titel}</span>${kopf}</div>
+                        <div class="muted-note" style="margin-bottom:6px;">${b.wirkung}</div>
+                        ${liste || '<div class="muted-note">Keine weiteren Bewerbungen.</div>'}
+                    </div>`;
+            }).join("");
+
+        el.querySelectorAll("[data-hire-id]").forEach(btn => {
+            btn.onclick = () => {
+                const r = engine.verpflichte(state, btn.dataset.hireArea, btn.dataset.hireId);
+                if (!r.ok) { this.showToast(r.grund, "error"); return; }
+                this.showToast(`${r.staff.name} verpflichtet.`, "success");
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.renderPreseason();
+                this.renderHeader();
+            };
+        });
+    }
+
+    renderPreseasonSponsors(state, engine, club, pre) {
+        const el = document.getElementById("preSponsorList");
+        if (!el) return;
+
+        if (pre.sponsorGewaehlt && club.sponsor) {
+            el.innerHTML = `<div class="pre-area">
+                    <div class="pre-area-head"><span>Vertrag steht</span><strong>${club.sponsor.name}</strong></div>
+                    <div>${GameState.formatMoney(club.sponsor.amountPerMatchday)} je Spieltag
+                        &middot; ${club.sponsor.yearsRemaining} Jahr(e)</div>
+                    ${club.sponsor.zielPlatz ? `<div class="muted-note">Praemie ${GameState.formatMoney(club.sponsor.praemie)} bei Platz ${club.sponsor.zielPlatz} oder besser.</div>` : ""}
+                </div>`;
+            return;
+        }
+
+        el.innerHTML = (pre.sponsorAngebote || []).map(a => `
+            <div class="pre-candidate">
+                <div>
+                    <strong>${a.name}</strong><br>
+                    <span class="muted-note">${GameState.formatMoney(a.amountPerMatchday)} je Spieltag &middot; ${a.yearsRemaining} Jahr(e)</span><br>
+                    <span class="muted-note">${a.beschreibung}</span>
+                    ${a.zielPlatz ? `<br><span class="muted-note">Praemie ${GameState.formatMoney(a.praemie)} bei Platz ${a.zielPlatz} oder besser.</span>` : ""}
+                </div>
+                <button class="btn btn-sm btn-primary" data-sponsor-id="${a.id}">Annehmen</button>
+            </div>`).join("");
+
+        el.querySelectorAll("[data-sponsor-id]").forEach(btn => {
+            btn.onclick = () => {
+                const r = engine.waehleSponsor(state, btn.dataset.sponsorId);
+                if (!r.ok) { this.showToast(r.grund, "error"); return; }
+                this.showToast(`Vertrag mit ${r.sponsor.name} geschlossen.`, "success");
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.renderPreseason();
+                this.renderHeader();
+            };
+        });
+    }
+
+    renderPreseasonFriendlies(pre) {
+        const el = document.getElementById("preFriendlyList");
+        if (!el) return;
+        el.innerHTML = (pre.testspiele || []).map((t, i) => `
+            <div class="pre-candidate">
+                <div>
+                    <strong>Testspiel ${i + 1}</strong> &middot; ${t.heim ? "gegen" : "bei"} ${t.gegnerName}
+                    <span class="muted-note">(Ruf ${t.gegnerRuf})</span>
+                </div>
+                <div>${t.gespielt ? `<strong>${t.ergebnis}</strong>` : '<span class="muted-note">noch offen</span>'}</div>
+            </div>`).join("") || '<div class="muted-note">Keine Testspiele angesetzt.</div>';
+    }
+
     sponsorProSpieltag(club) {
         const finance = (typeof FinanceEngine !== "undefined" && FinanceEngine)
             ? FinanceEngine

@@ -1,0 +1,3 @@
+# Die gebündelte Einzeldatei entsteht aus dem Projekt und gehört nicht ins Repository.
+# Bauen mit: node build-einzeldatei.js
+fussball-manager-komplett.html

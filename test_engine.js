@@ -891,6 +891,81 @@ function runEngineTests() {
         }
     });
 
+    // 14a7b. Der Ball gehört immer jemandem - auch auf der schnellsten Stufe
+    test("LiveMatchDirector: Der Ball liegt nicht allein herum, auch nicht im Schnelldurchlauf", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+
+        // Das Lauftempo der Spieler muss der eingestellten Stufe folgen. Sonst
+        // laeuft die Uhr den Spielern davon: Der Ball wird an die Eckfahne
+        // gelegt, das Fenster ist fuenfmal kuerzer - und der Schuetze ist noch
+        // auf halbem Weg.
+        const tempoMessung = (speed) => {
+            const m = { id: `t${speed}`, played: false, homeClubId: "muc", awayClubId: "dor" };
+            const l = new LiveMatch(m, homeClub, awayClub, state.players);
+            l.speed = speed;
+            return l.director.getMotionTempo();
+        };
+        if (!(tempoMessung(4) > tempoMessung(1) * 1.4)) {
+            throw new Error("Auf der schnellsten Stufe laufen die Spieler nicht spuerbar schneller");
+        }
+
+        // Und dann die Probe am ganzen Spiel, auf der schnellsten Stufe -
+        // dort war der Abstand am groessten.
+        const match = { id: "allein", played: false, homeClubId: "muc", awayClubId: "dor" };
+        const live = new LiveMatch(match, homeClub, awayClub, state.players);
+        live.speed = 4;
+        const dir = live.director;
+
+        let frames = 0, gesamt = 0, allein = 0, ruhend = 0, ruhendAllein = 0;
+        const abstaende = [];
+
+        while (!live.isFinished && frames < 60 * 1800) {
+            live.advanceRealTime(1000 / 60);
+            live.updateBallAndPlayers(1000 / 60);
+            frames++;
+            const dt = 1 / 60;
+            gesamt += dt;
+
+            const ball = live.ball;
+            let naechster = 999;
+            (live.players2D || []).forEach(p => {
+                const d = Math.hypot(p.x - ball.x, p.y - ball.y);
+                if (d < naechster) naechster = d;
+            });
+            abstaende.push(naechster);
+
+            // Acht Feldeinheiten sind gut acht Meter - so weit weg gehoert der
+            // Ball sichtbar niemandem mehr.
+            if (naechster > 8) allein += dt;
+            if (dir.deadBall || dir.kickoff) {
+                ruhend += dt;
+                if (naechster > 8) ruhendAllein += dt;
+            }
+        }
+
+        abstaende.sort((a, b) => a - b);
+        const median = abstaende[Math.floor(abstaende.length / 2)] || 0;
+        if (median > 4) {
+            throw new Error(`Der Ball liegt im Mittel ${median.toFixed(1)} Einheiten vom naechsten Spieler weg`);
+        }
+
+        // Ein ruhender Ball war der schlimmste Fall: Bei einer Ecke lag er in
+        // siebenundachtzig Prozent der Zeit allein an der Fahne, weil der
+        // Schuetze nach Technik statt nach Weg bestimmt wurde und in echten
+        // Sekunden dorthin trabte.
+        const ruhendPct = ruhend > 0 ? ruhendAllein / ruhend * 100 : 0;
+        if (ruhendPct > 35) {
+            throw new Error(`Bei ruhendem Ball liegt er in ${ruhendPct.toFixed(0)} % der Zeit allein da`);
+        }
+
+        const alleinPct = allein / gesamt * 100;
+        if (alleinPct > 14) {
+            throw new Error(`Der Ball gehoert in ${alleinPct.toFixed(0)} % der Uebertragung niemandem`);
+        }
+    });
+
     // 14a8. Vor der Saison steht die Vorbereitung - und sie hat Folgen
     test("PreseasonEngine: Vorbereitung vor jeder Saison mit Stab, Sponsor und Testspielen", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });

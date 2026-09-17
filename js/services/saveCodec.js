@@ -194,6 +194,10 @@ const SaveCodec = {
 
         Object.keys(state).forEach(key => {
             if (key === "players" || key === "schedule" || key === "otherSchedules") return;
+            // Interne Felder des Speichervorgangs selbst gehören nicht in den
+            // Spielstand - der Zeitgeber ist im Browser eine Zahl, in Node ein
+            // Objekt mit Selbstbezug, an dem JSON.stringify scheitert.
+            if (key.startsWith("_save")) return;
             encoded[key] = state[key];
         });
 

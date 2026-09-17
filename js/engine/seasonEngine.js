@@ -234,6 +234,15 @@ class SeasonEngine {
             transferEngine.processAITransferMarket(state);
         }
 
+        // Die Vereine untereinander handeln ebenfalls - aber nur, solange ein
+        // Fenster offen ist. Ohne diesen Weg bewegte sich in der ganzen
+        // Spielwelt kein einziger Spieler.
+        if (transferEngine && typeof transferEngine.processAiTransferWindow === 'function'
+            && typeof transferEngine.istTransferfenster === 'function'
+            && transferEngine.istTransferfenster(state)) {
+            transferEngine.processAiTransferWindow(state, 400);
+        }
+
         const aiManagerEngine = _getAIManagerEngine();
         if (aiManagerEngine) {
             if (typeof aiManagerEngine.generateAiTransferOffers === 'function') {

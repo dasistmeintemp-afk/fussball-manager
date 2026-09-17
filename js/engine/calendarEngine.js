@@ -28,6 +28,15 @@ function _getPreseasonEngine() {
     return null;
 }
 
+function _getTransferEngineCal() {
+    if (typeof TransferEngine !== "undefined" && TransferEngine) return TransferEngine;
+    if (typeof window !== "undefined" && window.TransferEngine) return window.TransferEngine;
+    if (typeof require !== "undefined") {
+        try { return require("./transferEngine.js").TransferEngine; } catch (e) { /* ohne Bundler */ }
+    }
+    return null;
+}
+
 const CalendarEngine = {
     DAY_TYPES: CALENDAR_DAY_TYPES,
 
@@ -290,6 +299,15 @@ const CalendarEngine = {
         if (currentDay.preseason && state.preseason && state.preseason.aktiv) {
             state.preseason.tagIndex = Math.min(state.preseason.dauer,
                 (state.preseason.tagIndex || 0) + 1);
+
+            // Die Vorbereitung ist die Zeit, in der sich die Kader der Welt
+            // umbauen. Verteilt auf die vier Wochen statt an einem Tag - so
+            // sieht man im Postfach und in der Tabelle, wie sich die Rivalen
+            // nach und nach verstaerken.
+            const transferEngine = _getTransferEngineCal();
+            if (transferEngine && typeof transferEngine.processAiTransferWindow === "function") {
+                transferEngine.processAiTransferWindow(state, 220);
+            }
         }
 
         // Testspiel: zaehlt fuer keine Tabelle, aber fuer Spielpraxis

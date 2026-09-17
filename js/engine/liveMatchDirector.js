@@ -67,6 +67,13 @@ const GROUP_PUSH = { gk: 0.25, def: 0.85, mid: 1.1, att: 1.5 };
 /** Tempo (Feldeinheiten pro Sekunde) je Mannschaftsteil als Basiswert */
 const LINE_BASE_SPEED = { gk: 9, def: 11, mid: 12, att: 12.5 };
 
+/**
+ * Wer im Angriff die Breite haelt. Fluegelspieler und Aussenverteidiger
+ * schieben nicht mit ein, wenn die eigene Mannschaft den Ball hat - sie ziehen
+ * das Feld auseinander. Ohne Ball ruecken auch sie in den Block.
+ */
+const BREITE_ROLLEN = ["LM", "RM", "LA", "RA", "LV", "RV"];
+
 const AMBIENT_COMMENTARY = [
     "{minute}' - {a} verlagert das Spiel ruhig auf {b}.",
     "{minute}' - Geduldiger Aufbau: {a} findet {b} im Zwischenraum.",
@@ -504,14 +511,12 @@ class LiveMatchDirector {
     }
 
     checkPhaseBanners(previousMinute, minute) {
-        if (previousMinute < 1 && minute >= 1) {
-            this.showBanner("ANPFIFF", `${this.match.homeClub?.name || "Heim"} – ${this.match.awayClub?.name || "Gast"}`);
-        } else if (previousMinute < 45 && minute >= 45) {
+        // "ANPFIFF" und "ZWEITE HALBZEIT" blendet die Anstoss-Zeremonie selbst
+        // ein, sobald der Schiedsrichter pfeift - nicht der Minutenzaehler.
+        if (previousMinute < 45 && minute >= 45) {
             const extra = this.match.timeline?.extraTime?.firstHalf;
             this.showBanner("HALBZEIT", extra ? `+${extra} Minuten Nachspielzeit` : null, "rgba(30, 41, 59, 0.94)");
         } else if (previousMinute < 46 && minute >= 46) {
-            this.showBanner("ZWEITE HALBZEIT", `${this.match.homeScore} : ${this.match.awayScore}`);
-
             // Seitenwechsel und Anstoß für die 2. Halbzeit durchführen
             if (!this.isSecondHalf) {
                 this.swapSides();
@@ -1607,6 +1612,18 @@ class LiveMatchDirector {
                 this.match.kickoff = { team: k.team, phase: "whistle", reason: k.reason };
                 this.cueSound("whistle");
 
+                // Der Banner gehoert an den Pfiff. Vorher hing er am
+                // Minutenzaehler und erschien erst, wenn die erste Spielminute
+                // voll war - da lief das Spiel laengst, und die Einblendung kam
+                // sichtbar zu spaet.
+                if (k.reason === "matchstart") {
+                    this.showBanner("ANPFIFF",
+                        `${this.match.homeClub?.name || "Heim"} - ${this.match.awayClub?.name || "Gast"}`);
+                } else if (k.reason === "halftime") {
+                    this.showBanner("ZWEITE HALBZEIT",
+                        `${this.match.homeScore} : ${this.match.awayScore}`);
+                }
+
                 const club = k.team === "home"
                     ? (this.match.homeClub?.name || "Heim")
                     : (this.match.awayClub?.name || "Gast");
@@ -2289,8 +2306,27 @@ class LiveMatchDirector {
 
         const ballProgress = dir > 0 ? ball.x / 100 : 1 - ball.x / 100;
 
+        // Die Elf steht als Block, nicht über die ganze Feldbreite verteilt.
+        //
+        // Gemessen war sie einundsiebzig Einheiten breit - auf einem Feld, das
+        // hundert breit ist. Jeder stand auf seiner Grundposition und schob nur
+        // ein wenig mit dem Ball mit; ob die Mannschaft den Ball hatte oder
+        // nicht, änderte an ihrer Form so gut wie nichts (71 gegen 67). Das
+        // sah aus wie ein Seestern, nicht wie eine Mannschaft.
+        //
+        // Im Football Manager und in EA FC ist genau das der Kern: Ohne Ball
+        // schiebt die Elf als kompakter Block zur Ballseite und macht das Feld
+        // eng, mit Ball zieht sie es auseinander. Der Abstand zum Ball
+        // entscheidet mit - wer weit weg ist, rückt stärker ein.
+        const ballAbstand = Math.min(1, Math.abs(ball.y - p.baseY) / 45);
+        const kompakt = attacking
+            ? 0.80 + (BREITE_ROLLEN.includes(p.pos) ? 0.20 : 0)
+            : 0.42 - ballAbstand * 0.05;
+        const blockVerschiebung = attacking ? 0.24 : 0.58;
+        const blockY = 50 + (ball.y - 50) * blockVerschiebung;
+
         let tx;
-        let ty = p.baseY + (ball.y - 50) * 0.42;
+        let ty = blockY + (p.baseY - 50) * kompakt;
 
         if (attacking) {
             // Je länger eine Mannschaft den Ball hält, desto mutiger rückt
@@ -2300,8 +2336,6 @@ class LiveMatchDirector {
             const push = Math.max(0, ballProgress - 0.33) * (52 + chainPush * 18);
             const groupPush = GROUP_PUSH[p.group] ?? 1.0;
             tx = p.baseX + dir * push * groupPush + dir * 2.5;
-
-            ty += (p.baseY - 50) * 0.14;
 
             // Der Angriffsfokus verschiebt die ganze Mannschaft auf eine
             // Seite - so wird aus einer Zeile im Taktikbogen ein sichtbares
@@ -2315,8 +2349,17 @@ class LiveMatchDirector {
         } else {
             const follow = p.followWeight * 0.94;
             tx = p.baseX + (ball.x - 50) * follow - dir * 2.0;
-            ty -= (p.baseY - 50) * 0.16;
         }
+
+        // Mit Ball zieht die Elf das Feld auch in die Laenge: Die Spitzen
+        // schieben, die Kette haelt dagegen. Ohne diese Streckung stand die
+        // Mannschaft nur sechsundzwanzig Einheiten lang - ein Block, aus dem
+        // heraus kein Angriff entstehen kann.
+        if (attacking) tx += dir * ((GROUP_PUSH[p.group] ?? 1) - 1) * 13;
+
+        // Die Position im Verbund, bevor Zweikampf und Pressing sie ueberschreiben
+        const blockTx = tx;
+        const blockTy = ty;
 
         let urgency = 1;
         let sprinting = false;
@@ -2353,20 +2396,45 @@ class LiveMatchDirector {
             urgency = 1.85;
             sprinting = true;
         } else if (!attacking && p.group !== "def") {
+            // Raumdeckung statt Manndeckung.
+            //
+            // Vorher übernahm jeder ohne Ball schlicht die Position seines
+            // Gegenspielers und lief ihm über das ganze Feld hinterher. Damit
+            // hatte der Block keine Form mehr: Die verteidigende Mannschaft
+            // stand am Ende genauso breit wie die angreifende - gemessen
+            // sechsundfünfzig Einheiten, wo ein Block vierzig steht.
+            //
+            // Jetzt hält jeder seine Position im Verbund und geht nur heraus,
+            // wenn ein Gegner tatsächlich in seine Zone kommt. Je näher der
+            // Gegenspieler, desto entschlossener der Zugriff.
             const mark = this.findMarkingTarget(p);
             if (mark) {
-                tx = mark.x - dir * 3.5;
-                ty = mark.y + (p.seed % 1) * 2 - 1;
-                urgency = 1.2;
+                const ausDerZone = Math.hypot(mark.x - tx, mark.y - ty);
+                const zugriff = Math.max(0, 1 - ausDerZone / 20);
+                tx += (mark.x - dir * 3.5 - tx) * zugriff;
+                ty += (mark.y + (p.seed % 1) * 2 - 1 - ty) * zugriff;
+                if (zugriff > 0.45) urgency = 1.2;
             }
         } else {
+            // Die Anziehung des Balls darf den Block nicht auseinanderziehen -
+            // ohne Ball zieht es die Kette sonst aus der Ordnung.
             const dist = Math.hypot(p.x - ball.x, p.y - ball.y);
             if (dist < 26) {
-                const pull = (attacking ? 0.26 : 0.44) * (1 - dist / 26);
+                const pull = (attacking ? 0.26 : 0.2) * (1 - dist / 26);
                 tx += (ball.x - tx) * pull;
                 ty += (ball.y - ty) * pull;
                 urgency = 1.25;
             }
+        }
+
+        // Eine Zone hat eine Grenze. Wer verteidigt, darf herausruecken - aber
+        // nicht beliebig weit: Sonst folgt am Ende doch wieder jeder seinem
+        // Gegenspieler ueber das Feld, und der Block loest sich auf. Nur wer
+        // aktiv presst, verlaesst seine Zone ganz.
+        if (!attacking && !pressers.has(p.id)) {
+            const zone = p.group === "def" ? 7 : 10;
+            tx = Math.max(blockTx - zone, Math.min(blockTx + zone, tx));
+            ty = Math.max(blockTy - zone, Math.min(blockTy + zone, ty));
         }
 
         if (this.mode === "ambient" && p.id === this.carrierId) {

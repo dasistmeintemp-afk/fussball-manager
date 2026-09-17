@@ -586,14 +586,20 @@ class MatchEngine {
         let awaySubsUsed = options.usedSubsAway || 0;
         const maxSubs = 5;
 
-        // Teamstärken
-        const homePower = this.calculateTeamPower(homeClub, allPlayers, true, activeHomePlayers);
-        const awayPower = this.calculateTeamPower(awayClub, allPlayers, false, activeAwayPlayers);
+        // Turnierspiele in der Vorbereitung finden auf neutralem Platz statt -
+        // dort hat keiner der beiden ein Publikum im Rücken.
+        const neutralerPlatz = !!(match && match.neutralerPlatz) || options.neutralerPlatz === true;
 
         // Dieselbe Heimelf ohne Heimbonus. Für die Verteilung der Szenen zählt
         // allein, wie gut die beiden Kader sind - sonst steckte der Heimvorteil
         // zweimal im Spiel und wüchse obendrein mit der Stärke der Mannschaft.
         const homePowerNeutral = this.calculateTeamPower(homeClub, allPlayers, false, activeHomePlayers);
+
+        // Teamstärken
+        const homePower = neutralerPlatz
+            ? homePowerNeutral
+            : this.calculateTeamPower(homeClub, allPlayers, true, activeHomePlayers);
+        const awayPower = this.calculateTeamPower(awayClub, allPlayers, false, activeAwayPlayers);
 
         // Ballbesitz & Passquote (B11)
         const homeTactics = homeClub.tactics || {};
@@ -998,7 +1004,7 @@ class MatchEngine {
             // Ermittle angreifendes Team: Wer die besseren Spieler hat, kommt
             // öfter vor das Tor - im Mittelfeld entsteht die Szene, vorne wird
             // sie zu einer echten Gelegenheit.
-            let homeProb = 0.5 + MATCH_TUNING.homeSceneEdge
+            let homeProb = 0.5 + (neutralerPlatz ? 0 : MATCH_TUNING.homeSceneEdge)
                 + (szenenAbstand / szenenBezug) * MATCH_TUNING.sceneShare;
             // Momentum: Zurückliegendes Team drückt mehr
             if (currentHomeScore < currentAwayScore) homeProb += 0.08;

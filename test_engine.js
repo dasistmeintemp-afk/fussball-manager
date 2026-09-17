@@ -934,9 +934,16 @@ function runEngineTests() {
             throw new Error("Der ausgehandelte Sponsorenvertrag wirkt sich nicht auf die Einnahmen aus");
         }
 
-        // Ein Testspiel zählt für keine Tabelle
+        // Ein Testspiel zählt für keine Tabelle. Es muss erst vereinbart
+        // werden - der Spielplan ist zu Beginn leer.
         const tabelleVorher = JSON.stringify(state.standings || []);
-        const test = state.preseason.testspiele[0];
+        let test = null;
+        for (const k of state.preseason.kontakte) {
+            const anfrage = PreseasonEngine.frageTestspielAn(state, k.clubId);
+            if (anfrage.ok && anfrage.zugesagt) { test = anfrage.test; break; }
+        }
+        if (!test) throw new Error("Kein einziger Verein war zu einem Testspiel bereit");
+
         const ergebnis = PreseasonEngine.spieleTestspiel(state, test.id);
         if (!ergebnis) throw new Error("Testspiel konnte nicht gespielt werden");
         if (!test.gespielt || !test.ergebnis) throw new Error("Testspiel ohne Ergebnis");
@@ -950,6 +957,95 @@ function runEngineTests() {
         if (!state.preseason || !state.preseason.aktiv) {
             throw new Error("Vor der zweiten Saison läuft keine Vorbereitung");
         }
+    });
+
+    // 14a2. Der Manager plant seine Vorbereitung selbst: Turniere oder Anfragen
+    test("PreseasonEngine: Turniere und selbst vereinbarte Testspiele belegen die Termine", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const pre = state.preseason;
+
+        // Zu Beginn ist nichts verplant - das ist der Sinn der Sache
+        if (PreseasonEngine.freieSlots(pre).length !== PreseasonEngine.SLOTS) {
+            throw new Error("Der Spielplan ist schon vorbelegt - es gibt nichts zu entscheiden");
+        }
+        if (!pre.turniere.length) throw new Error("Keine Turniereinladungen erzeugt");
+        pre.turniere.forEach(t => {
+            if (t.teilnehmer.length !== 3) throw new Error(`${t.name} hat ${t.teilnehmer.length} Gegner statt 3`);
+            if (!(t.praemien[1] > t.praemien[4])) throw new Error(`${t.name}: Der Sieg bringt nicht mehr als Platz 4`);
+        });
+
+        // Ein Turnier belegt zwei Termine und bringt Antrittsgeld
+        const kontoVorher = club.balance;
+        const turnier = pre.turniere[0];
+        const an = PreseasonEngine.nimmTurnierAn(state, turnier.id);
+        if (!an.ok) throw new Error(`Turnier konnte nicht angenommen werden: ${an.grund}`);
+        if (turnier.slots.length !== 2) throw new Error("Ein Turnier belegt nicht zwei Termine");
+        if (PreseasonEngine.freieSlots(pre).length !== PreseasonEngine.SLOTS - 2) {
+            throw new Error("Nach der Zusage sind die Termine nicht belegt");
+        }
+        if (club.balance !== kontoVorher + turnier.antrittsgeld) {
+            throw new Error("Das Antrittsgeld wurde nicht gutgeschrieben");
+        }
+
+        // Zurückziehen gibt die Termine und das Geld wieder her
+        const zurueck = PreseasonEngine.storniereTurnier(state, turnier.id);
+        if (!zurueck.ok) throw new Error(`Rückzug fehlgeschlagen: ${zurueck.grund}`);
+        if (PreseasonEngine.freieSlots(pre).length !== PreseasonEngine.SLOTS) {
+            throw new Error("Nach dem Rückzug sind die Termine nicht wieder frei");
+        }
+        if (club.balance !== kontoVorher) throw new Error("Das Antrittsgeld kam nicht zurück");
+        PreseasonEngine.nimmTurnierAn(state, turnier.id);
+
+        // Eine Anfrage kann scheitern - aber nie stillschweigend
+        let zusagen = 0, absagen = 0;
+        pre.kontakte.forEach(k => {
+            const r = PreseasonEngine.frageTestspielAn(state, k.clubId);
+            if (!r.ok) return;
+            if (r.zugesagt) zusagen++;
+            else {
+                absagen++;
+                if (!r.kontakt.grund) throw new Error("Eine Absage kommt ohne Begründung");
+            }
+        });
+        if (zusagen === 0) throw new Error("Kein einziger Verein hat zugesagt");
+        if (PreseasonEngine.freieSlots(pre).length !== 0) {
+            throw new Error("Trotz Zusagen sind noch Termine frei");
+        }
+        // Ein voller Spielplan nimmt keine weitere Anfrage mehr an
+        const zuviel = pre.kontakte.find(k => k.status === "offen");
+        if (zuviel) {
+            const r = PreseasonEngine.frageTestspielAn(state, zuviel.clubId);
+            if (r.ok) throw new Error("Eine Anfrage wurde angenommen, obwohl kein Termin frei ist");
+        }
+
+        // Die vier Termine werden im Kalender abgearbeitet: Halbfinale,
+        // Endspiel, Testspiele - und die Tabelle bleibt unberührt.
+        const tabelleVorher = JSON.stringify(state.standings || []);
+        for (let i = 0; i < PreseasonEngine.SLOTS; i++) {
+            pre.tagIndex = 5 * i;
+            const r = PreseasonEngine.spieleSlot(state, i);
+            if (!r) throw new Error(`Termin ${i + 1} wurde nicht gespielt`);
+        }
+        if (JSON.stringify(state.standings || []) !== tabelleVorher) {
+            throw new Error("Die Vorbereitungsspiele haben die Tabelle verändert");
+        }
+        if (!turnier.halbfinale || !turnier.endspiel) throw new Error("Das Turnier wurde nicht zu Ende gespielt");
+        if (![1, 2, 3, 4].includes(turnier.platz)) throw new Error(`Unmögliche Platzierung: ${turnier.platz}`);
+        if (turnier.halbfinale.gewonnen && turnier.platz > 2) {
+            throw new Error("Trotz gewonnenem Halbfinale nur Platz " + turnier.platz);
+        }
+        if (!turnier.halbfinale.gewonnen && turnier.platz < 3) {
+            throw new Error("Trotz verlorenem Halbfinale Platz " + turnier.platz);
+        }
+
+        // Wer nichts plant, spielt trotzdem - der Sportdirektor stellt einen Gegner
+        const zweiter = GameState.createNewGame("dor", "normal", { name: "Trainer" });
+        const r2 = PreseasonEngine.spieleSlot(zweiter, 0);
+        if (!r2) throw new Error("Ein unverplanter Termin blieb ungespielt");
+        const auto = zweiter.preseason.testspiele[0];
+        if (!auto || !auto.gespielt) throw new Error("Der Sportdirektor hat keinen Gegner gestellt");
+        if (auto.selbstVereinbart !== false) throw new Error("Das Notfallspiel gilt als selbst vereinbart");
     });
 
     // 14b. Verträge, Ablösefreie und Karriereenden über zwei Saisonwechsel

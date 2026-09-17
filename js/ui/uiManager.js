@@ -2404,7 +2404,10 @@ class UIManager {
 
         this.renderPreseasonStaff(state, engine, club, pre);
         this.renderPreseasonSponsors(state, engine, club, pre);
-        this.renderPreseasonFriendlies(pre);
+        this.renderPreseasonPlan(state, engine, pre);
+        this.renderPreseasonTournaments(state, engine, pre);
+        this.renderPreseasonContacts(state, engine, club, pre);
+        this.renderPreseasonReports(pre);
     }
 
     renderPreseasonStaff(state, engine, club, pre) {
@@ -2497,17 +2500,193 @@ class UIManager {
         });
     }
 
-    renderPreseasonFriendlies(pre) {
-        const el = document.getElementById("preFriendlyList");
+    /**
+     * Der Terminplan: vier Plaetze, und was an ihnen gespielt wird. Ein freier
+     * Platz ist kein Fehler - er wird nur kurzfristig und schlecht besetzt.
+     */
+    renderPreseasonPlan(state, engine, pre) {
+        const el = document.getElementById("prePlanList");
         if (!el) return;
-        el.innerHTML = (pre.testspiele || []).map((t, i) => `
-            <div class="pre-candidate">
-                <div>
-                    <strong>Testspiel ${i + 1}</strong> &middot; ${t.heim ? "gegen" : "bei"} ${t.gegnerName}
-                    <span class="muted-note">(Ruf ${t.gegnerRuf})</span>
-                </div>
-                <div>${t.gespielt ? `<strong>${t.ergebnis}</strong>` : '<span class="muted-note">noch offen</span>'}</div>
-            </div>`).join("") || '<div class="muted-note">Keine Testspiele angesetzt.</div>';
+        engine.sichereStruktur(pre);
+
+        const zeilen = pre.plan.map((eintrag, i) => {
+            const gespielt = engine.terminGespielt(pre, i);
+            let titel = '<span class="muted-note">frei - der Sportdirektor besetzt ihn kurzfristig</span>';
+            let rechts = gespielt ? "" : '<span class="muted-note">offen</span>';
+            let aktion = "";
+
+            if (eintrag && eintrag.art === "test") {
+                const t = pre.testspiele.find(x => x.id === eintrag.testId);
+                if (t) {
+                    titel = `<strong>Testspiel</strong> ${t.heim ? "gegen" : "bei"} ${t.gegnerName}
+                        <span class="muted-note">(Ruf ${t.gegnerRuf}${t.selbstVereinbart === false ? ", vom Verein gestellt" : ""})</span>`;
+                    rechts = t.gespielt
+                        ? `<strong>${t.ergebnis}</strong>`
+                        : '<span class="muted-note">angesetzt</span>';
+                    if (!t.gespielt && t.selbstVereinbart) {
+                        aktion = `<button class="btn btn-sm btn-secondary" data-drop-test="${t.id}">Absetzen</button>`;
+                    }
+                }
+            } else if (eintrag && eintrag.art === "turnier") {
+                const turnier = pre.turniere.find(x => x.id === eintrag.turnierId);
+                const runde = eintrag.runde === "halbfinale"
+                    ? "Halbfinale"
+                    : (turnier?.halbfinale && !turnier.halbfinale.gewonnen ? "Spiel um Platz drei" : "Endspiel");
+                titel = `<strong>${turnier?.name || "Turnier"}</strong> &middot; ${runde}`;
+                const partie = eintrag.runde === "halbfinale" ? turnier?.halbfinale : turnier?.endspiel;
+                rechts = partie
+                    ? `<strong>${partie.ergebnis}</strong>`
+                    : '<span class="muted-note">angesetzt</span>';
+            }
+
+            return `<div class="pre-candidate">
+                    <div><span class="muted-note">Termin ${i + 1}</span><br>${titel}</div>
+                    <div style="text-align:right;">${rechts} ${aktion}</div>
+                </div>`;
+        }).join("");
+
+        const frei = engine.freieSlots(pre).filter(i => !engine.terminGespielt(pre, i)).length;
+        el.innerHTML = zeilen + (frei
+            ? `<div class="muted-note" style="margin-top:8px;">Noch ${frei} Termin${frei === 1 ? "" : "e"} zu vergeben.</div>`
+            : `<div class="muted-note" style="margin-top:8px;">Das Programm steht.</div>`);
+
+        el.querySelectorAll("[data-drop-test]").forEach(btn => {
+            btn.onclick = () => {
+                const r = engine.sageTestspielAb(state, btn.dataset.dropTest);
+                if (!r.ok) { this.showToast(r.grund, "error"); return; }
+                this.showToast("Testspiel abgesetzt.", "info");
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.renderPreseason();
+            };
+        });
+    }
+
+    renderPreseasonTournaments(state, engine, pre) {
+        const el = document.getElementById("preTournamentList");
+        if (!el) return;
+        engine.sichereStruktur(pre);
+
+        if (!pre.turniere.length) {
+            el.innerHTML = '<div class="muted-note">Keine Einladungen eingegangen.</div>';
+            return;
+        }
+
+        el.innerHTML = pre.turniere.map(t => {
+            const gegner = t.teilnehmer.map(g => `${g.name} (${g.ruf})`).join(", ");
+            const geld = `Antrittsgeld ${GameState.formatMoney(t.antrittsgeld)} &middot; Sieg ${GameState.formatMoney(t.praemien[1])}`;
+
+            let stand = "";
+            if (t.halbfinale) {
+                stand = `<div class="muted-note">Halbfinale ${t.halbfinale.ergebnis} &middot; ${t.halbfinale.gewonnen ? "Endspiel erreicht" : "Spiel um Platz drei"}</div>`;
+            }
+            if (t.endspiel) {
+                stand += `<div class="muted-note">${t.endspiel.umPlatzDrei ? "Spiel um Platz drei" : "Endspiel"} ${t.endspiel.ergebnis} &middot; <strong>Platz ${t.platz}</strong></div>`;
+            }
+
+            let knoepfe = "";
+            if (t.status === "offen") {
+                knoepfe = `<button class="btn btn-sm btn-primary" data-join-cup="${t.id}">Zusagen</button>
+                    <button class="btn btn-sm btn-secondary" data-skip-cup="${t.id}">Absagen</button>`;
+            } else if (t.status === "angenommen" && !t.halbfinale) {
+                knoepfe = `<span class="muted-note">zugesagt</span>
+                    <button class="btn btn-sm btn-secondary" data-cancel-cup="${t.id}">Zurückziehen</button>`;
+            } else if (t.status === "abgelehnt") {
+                knoepfe = '<span class="muted-note">abgesagt</span>';
+            } else {
+                knoepfe = `<span class="muted-note">Platz ${t.platz ?? "-"}</span>`;
+            }
+
+            return `<div class="pre-area">
+                    <div class="pre-area-head"><span>${t.name}</span><span class="muted-note">belegt 2 Termine</span></div>
+                    <div class="muted-note" style="margin-bottom:4px;">${t.hinweis}</div>
+                    <div class="muted-note">Teilnehmer: ${gegner}</div>
+                    <div class="muted-note" style="margin-bottom:6px;">${geld}</div>
+                    ${stand}
+                    <div style="display:flex; gap:6px; margin-top:6px;">${knoepfe}</div>
+                </div>`;
+        }).join("");
+
+        const handle = (attribut, methode, erfolg) => {
+            el.querySelectorAll(`[${attribut}]`).forEach(btn => {
+                btn.onclick = () => {
+                    const r = engine[methode](state, btn.getAttribute(attribut));
+                    if (!r.ok) { this.showToast(r.grund, "error"); return; }
+                    this.showToast(erfolg(r), "success");
+                    if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                    this.renderPreseason();
+                    this.renderHeader();
+                };
+            });
+        };
+        handle("data-join-cup", "nimmTurnierAn", r => `Zusage für ${r.turnier.name}.`);
+        handle("data-skip-cup", "sageTurnierAb", r => `${r.turnier.name} abgesagt.`);
+        handle("data-cancel-cup", "storniereTurnier", r => `Zusage für ${r.turnier.name} zurückgezogen.`);
+    }
+
+    /**
+     * Vereine anfragen. Eine Anfrage kostet nichts als den Termin - aber sie
+     * kann scheitern, und dann ist dieser Verein für diese Vorbereitung weg.
+     */
+    renderPreseasonContacts(state, engine, club, pre) {
+        const el = document.getElementById("preContactList");
+        if (!el) return;
+        engine.sichereStruktur(pre);
+
+        const frei = engine.freieSlots(pre).length;
+        el.innerHTML = `<div class="muted-note" style="margin-bottom:8px;">
+                ${frei ? `${frei} freie${frei === 1 ? "r" : ""} Termin${frei === 1 ? "" : "e"}.` : "Kein Termin mehr frei."}
+                Eine Absage gilt für diese Vorbereitung.
+            </div>` +
+            pre.kontakte.map(k => {
+                const p = engine.bereitschaft(club, k.ruf);
+                let rechts;
+                if (k.status === "zugesagt") {
+                    rechts = '<span class="muted-note">zugesagt</span>';
+                } else if (k.status === "abgesagt") {
+                    rechts = '<span class="muted-note">abgesagt</span>';
+                } else if (!frei) {
+                    rechts = '<span class="muted-note">kein Termin frei</span>';
+                } else {
+                    rechts = `<button class="btn btn-sm btn-primary" data-ask-club="${k.clubId}">Anfragen</button>`;
+                }
+                const hinweis = k.status === "abgesagt" && k.grund
+                    ? `<br><span class="muted-note">${k.grund}</span>`
+                    : `<br><span class="muted-note">${engine.bereitschaftText(p)}</span>`;
+                return `<div class="pre-candidate">
+                        <div>
+                            <strong>${k.name}</strong>
+                            <span class="muted-note">&middot; Ruf ${k.ruf} &middot; Liga ${k.liga}</span>
+                            ${hinweis}
+                        </div>
+                        <div>${rechts}</div>
+                    </div>`;
+            }).join("");
+
+        el.querySelectorAll("[data-ask-club]").forEach(btn => {
+            btn.onclick = () => {
+                const r = engine.frageTestspielAn(state, btn.dataset.askClub);
+                if (!r.ok) { this.showToast(r.grund, "error"); return; }
+                if (r.zugesagt) {
+                    this.showToast(`${r.kontakt.name} sagt zu - Termin steht.`, "success");
+                } else {
+                    this.showToast(`${r.kontakt.name} ${r.kontakt.grund}.`, "warning");
+                }
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.renderPreseason();
+            };
+        });
+    }
+
+    renderPreseasonReports(pre) {
+        const el = document.getElementById("preReportList");
+        if (!el) return;
+        const berichte = pre.berichte || [];
+        el.innerHTML = berichte.length
+            ? berichte.slice(0, 8).map(b => `
+                <div class="pre-candidate">
+                    <div><strong>${b.titel}</strong><br><span class="muted-note">${b.text}</span></div>
+                </div>`).join("")
+            : '<div class="muted-note">Noch nichts gespielt.</div>';
     }
 
     sponsorProSpieltag(club) {

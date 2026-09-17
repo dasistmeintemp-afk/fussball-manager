@@ -139,7 +139,9 @@ const CalendarEngine = {
                 type: CALENDAR_DAY_TYPES.RECOVERY,
                 title: "Regeneration & Erholung",
                 description: "Leichte Erholungseinheit. Spieler frischen ihre Fitness auf.",
-                matchday: null,
+                // Auch die Tage vor einem Spieltag gehoeren zu ihm - sonst
+                // zeigt die Wochenansicht auf ihnen den falschen Gegner.
+                matchday: md,
                 actionsAvailable: ["recovery", "training", "physio"],
                 completed: false
             });
@@ -156,7 +158,7 @@ const CalendarEngine = {
                 type: CALENDAR_DAY_TYPES.TRAINING,
                 title: "Schwerpunkt-Training",
                 description: "Intensives Mannschaftstraining gemäß gewähltem Trainingsfokus.",
-                matchday: null,
+                matchday: md,
                 actionsAvailable: ["training", "individual_training"],
                 completed: false
             });
@@ -176,7 +178,7 @@ const CalendarEngine = {
                 description: isMedia 
                     ? "Stellen Sie sich den Fragen der Journalisten vor dem kommenden Spieltag." 
                     : "Pflege der Klub-Sponsoren. Generiert wichtige Zusatzeinnahmen.",
-                matchday: null,
+                matchday: md,
                 actionsAvailable: isMedia ? ["press", "interview"] : ["sponsor", "finance"],
                 completed: false
             });
@@ -193,7 +195,7 @@ const CalendarEngine = {
                 type: CALENDAR_DAY_TYPES.TACTICS,
                 title: "Taktik- & Standardschulung",
                 description: "Einstudieren von Spielzügen und Standardsituationen (Ecken, Freistöße).",
-                matchday: null,
+                matchday: md,
                 actionsAvailable: ["tactics", "setpieces"],
                 completed: false
             });
@@ -266,6 +268,247 @@ const CalendarEngine = {
         }
         const idx = state.currentDayIndex || 0;
         return state.calendar[idx] || state.calendar[state.calendar.length - 1];
+    },
+
+    // ------------------------------------------------------- Inhalt der Tage
+    //
+    // Der Kalender war eine Liste aus Titeln und einem Satz, der auf fuenf von
+    // sieben Tagen derselbe war: "Grundlagenarbeit fuer die Saison." Kein
+    // Gegner, kein Spiel, kein Grund hinzuschauen. In FM und EA FC traegt der
+    // Kalender dagegen die Woche: Man sieht, gegen wen es geht, wer angeschlagen
+    // ist, worauf trainiert wird und was demnaechst entschieden werden muss.
+
+    /**
+     * Das Pflichtspiel des eigenen Vereins.
+     *
+     * Ohne Spieltagsnummer das naechste ungespielte; mit Nummer genau das
+     * dieses Spieltags. Letzteres braucht die Wochenansicht: Sie zeigt sieben
+     * Tage, und die Tage nach dem naechsten Spiel gehoeren schon zum
+     * uebernaechsten Gegner. Vorher stand auf allen sieben Karten derselbe
+     * Gegner - auch auf denen, die nach dieser Partie liegen.
+     */
+    naechstesSpiel(state, spieltag = null) {
+        if (!state || !Array.isArray(state.schedule)) return null;
+        const eigene = state.userClubId;
+
+        const runden = spieltag
+            ? state.schedule.filter(r => r.matchday === spieltag)
+            : state.schedule;
+
+        for (const runde of runden) {
+            const partie = (runde.matches || []).find(m =>
+                (spieltag || !m.played) && (m.homeClubId === eigene || m.awayClubId === eigene));
+            if (!partie) continue;
+
+            const heim = partie.homeClubId === eigene;
+            const gegnerId = heim ? partie.awayClubId : partie.homeClubId;
+            const gegner = (state.clubs || []).find(c => c.id === gegnerId);
+            const tabelle = state.standings || [];
+            const platz = tabelle.findIndex(t => t.clubId === gegnerId) + 1;
+
+            return {
+                partie,
+                spieltag: runde.matchday,
+                heim,
+                gegner,
+                gegnerName: gegner?.name || "Gegner",
+                gegnerPlatz: platz > 0 ? platz : null,
+                gegnerForm: (gegner?.form || []).filter(f => f && f !== "-").slice(-5)
+            };
+        }
+        return null;
+    },
+
+    /** Wie viele Spieler gerade ausfallen */
+    kaderLage(state) {
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        if (!club) return { verletzt: 0, gesperrt: 0, muede: 0, kader: 0 };
+
+        const kader = (club.playerIds || [])
+            .map(id => (state.players || []).find(p => p.id === id))
+            .filter(Boolean);
+
+        return {
+            kader: kader.length,
+            verletzt: kader.filter(p => (p.injuredWeeks || 0) > 0).length,
+            gesperrt: kader.filter(p => (p.suspendedMatches || 0) > 0).length,
+            muede: kader.filter(p => (p.fitness ?? 100) < 75 && (p.injuredWeeks || 0) <= 0).length
+        };
+    },
+
+    /**
+     * Was an diesem Tag ansteht - als Satz, der etwas aussagt.
+     *
+     * Rueckgabe: { titel, text, marken[] }. Die Marken sind kurze Hinweise
+     * fuer die Anzeige ("3 verletzt", "Transferfenster"), der Text die Zeile
+     * darunter.
+     */
+    tagesInhalt(state, day) {
+        if (!day) return { titel: "", text: "", marken: [] };
+
+        const marken = [];
+        const lage = this.kaderLage(state);
+        // Der Gegner richtet sich nach dem Spieltag, zu dem dieser Tag
+        // gehoert - nicht nach dem, der heute als naechster ansteht.
+        const naechstes = this.naechstesSpiel(state, day.matchday || null);
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+
+        // Ausfälle sind nur dort eine Meldung, wo sie etwas ändern: vor dem
+        // Spiel und in der Gegnervorbereitung. Auf jeder Tageskarte zu stehen
+        // macht sie zu Tapete.
+        const vorDemSpiel = day.type === CALENDAR_DAY_TYPES.MATCHDAY
+            || day.type === CALENDAR_DAY_TYPES.OPPONENT_ANALYSIS;
+        if (vorDemSpiel && lage.verletzt > 0) marken.push(`${lage.verletzt} verletzt`);
+        if (vorDemSpiel && lage.gesperrt > 0) marken.push(`${lage.gesperrt} gesperrt`);
+
+        const gegnerSatz = () => {
+            if (!naechstes) return "Kein Pflichtspiel angesetzt.";
+            const wo = naechstes.heim ? "zu Hause gegen" : "auswärts bei";
+            const rang = naechstes.gegnerPlatz ? `, Tabellenplatz ${naechstes.gegnerPlatz}` : "";
+            return `${wo} ${naechstes.gegnerName}${rang}`;
+        };
+
+        switch (day.type) {
+            case CALENDAR_DAY_TYPES.MATCHDAY: {
+                if (!naechstes) {
+                    return { titel: day.title, text: "Der Spieltag wird ausgetragen.", marken };
+                }
+                const form = naechstes.gegnerForm.length
+                    ? ` Letzte Spiele: ${naechstes.gegnerForm.join(" ")}.`
+                    : "";
+                marken.unshift(naechstes.heim ? "Heimspiel" : "Auswärtsspiel");
+                return {
+                    titel: `${naechstes.spieltag}. Spieltag`,
+                    text: `${naechstes.heim ? "Gegen" : "Bei"} ${naechstes.gegnerName}${naechstes.gegnerPlatz ? ` (${naechstes.gegnerPlatz}.)` : ""}.${form}`,
+                    marken
+                };
+            }
+
+            case CALENDAR_DAY_TYPES.OPPONENT_ANALYSIS:
+                return {
+                    titel: "Gegnervorbereitung",
+                    text: `Videoanalyse und Abschlusstraining ${gegnerSatz()}.`,
+                    marken
+                };
+
+            case CALENDAR_DAY_TYPES.TRAINING: {
+                const fokus = this.FOKUS_TEXT[state.trainingSettings?.focus || "allround"] || "Grundlagen";
+                const intensitaet = this.INTENSITAET_TEXT[state.trainingSettings?.intensity || "normal"] || "normal";
+                if (lage.muede >= 3) marken.push(`${lage.muede} belastet`);
+                return {
+                    titel: day.title,
+                    text: `Schwerpunkt ${fokus}, Intensität ${intensitaet}.`
+                        + (lage.muede >= 4 ? ` ${lage.muede} Spieler sind deutlich belastet.` : ""),
+                    marken
+                };
+            }
+
+            case CALENDAR_DAY_TYPES.RECOVERY:
+                if (lage.muede > 0) marken.push(`${lage.muede} unter 75 %`);
+                return {
+                    titel: "Regeneration",
+                    text: lage.muede > 0
+                        ? `Lockere Einheit - ${lage.muede === 1 ? "ein Spieler liegt" : `${lage.muede} Spieler liegen`} unter 75 % Fitness.`
+                        : "Lockere Einheit, die Mannschaft ist frisch.",
+                    marken
+                };
+
+            case CALENDAR_DAY_TYPES.TACTICS:
+                return {
+                    titel: "Taktiktraining",
+                    text: `Abläufe und Standards ${gegnerSatz()}.`,
+                    marken
+                };
+
+            case CALENDAR_DAY_TYPES.MEDIA:
+                return {
+                    titel: "Pressekonferenz",
+                    text: naechstes
+                        ? `Die Journalisten fragen nach dem Spiel ${gegnerSatz()}.`
+                        : "Die Journalisten fragen nach der Lage im Verein.",
+                    marken: [...marken, "Ihre Antwort zählt"]
+                };
+
+            case CALENDAR_DAY_TYPES.SPONSOR:
+                return {
+                    titel: "Sponsorentermin",
+                    text: club?.sponsor?.name
+                        ? `Empfang bei ${club.sponsor.name}.`
+                        : "Empfang der Partner des Vereins.",
+                    marken
+                };
+
+            case CALENDAR_DAY_TYPES.PRESEASON: {
+                const pre = _getPreseasonEngine();
+                const offen = (pre && state.preseason) ? pre.offenePunkte(state) : [];
+                if (offen.length) marken.push(`${offen.length} offen`);
+                return {
+                    titel: "Vorbereitung",
+                    text: offen.length ? offen.slice(0, 2).join(" · ") : "Alles erledigt - die Mannschaft ist bereit.",
+                    marken
+                };
+            }
+
+            case CALENDAR_DAY_TYPES.FRIENDLY: {
+                const pre = _getPreseasonEngine();
+                const geplant = (pre && state.preseason && typeof pre.terminBeschreibung === "function")
+                    ? pre.terminBeschreibung(state, day.friendlyIndex ?? 0)
+                    : null;
+                return {
+                    titel: day.title,
+                    text: geplant || "Noch nicht verplant - der Sportdirektor besetzt den Termin kurzfristig.",
+                    marken
+                };
+            }
+
+            case CALENDAR_DAY_TYPES.SEASON_START:
+                return { titel: day.title, text: "Kader sichten, Taktik festlegen, Vorbereitung planen.", marken };
+
+            case CALENDAR_DAY_TYPES.SEASON_END:
+                return { titel: day.title, text: "Meisterehrung, Abrechnung und Planung der neuen Saison.", marken };
+
+            default:
+                return { titel: day.title, text: day.description || "", marken };
+        }
+    },
+
+    FOKUS_TEXT: {
+        allround: "Grundlagen", attack: "Offensive", defense: "Defensive",
+        fitness: "Athletik", technique: "Technik", regeneration: "Regeneration",
+        setpieces: "Standards", tactics: "Taktik"
+    },
+
+    INTENSITAET_TEXT: { low: "locker", normal: "normal", high: "hoch" },
+
+    /**
+     * Der naechste Termin, an dem der Manager gebraucht wird.
+     *
+     * Danach richtet sich der eine Weiter-Knopf: Er sagt, wohin er springt,
+     * statt "1 Tag simulieren" oder "Zum naechsten Spieltag" nebeneinander
+     * anzubieten.
+     */
+    naechsterHalt(state) {
+        if (!state || !Array.isArray(state.calendar)) return null;
+        const start = (state.currentDayIndex || 0);
+
+        for (let i = start; i < state.calendar.length; i++) {
+            const tag = state.calendar[i];
+            const heute = i === start;
+
+            if (tag.type === CALENDAR_DAY_TYPES.MATCHDAY) {
+                return { index: i, tag, grund: "matchday", heute };
+            }
+            if (tag.type === CALENDAR_DAY_TYPES.FRIENDLY) {
+                return { index: i, tag, grund: "friendly", heute };
+            }
+            if (tag.type === CALENDAR_DAY_TYPES.MEDIA) {
+                return { index: i, tag, grund: "media", heute };
+            }
+            if (tag.type === CALENDAR_DAY_TYPES.SEASON_END) {
+                return { index: i, tag, grund: "season_end", heute };
+            }
+        }
+        return null;
     },
 
     /**

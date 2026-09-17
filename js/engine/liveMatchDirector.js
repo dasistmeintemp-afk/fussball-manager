@@ -336,6 +336,27 @@ class LiveMatchDirector {
     }
 
     /**
+     * Wie schnell die Spieler laufen dürfen, gemessen am gewählten Tempo.
+     *
+     * Die Spieler bewegten sich in echten Sekunden - immer gleich schnell,
+     * egal welche Stufe eingestellt war. Die Uhr lief auf der schnellsten
+     * Stufe aber fünfmal so schnell. Damit lief das Spiel den Spielern davon:
+     * Der Ball wurde an die Eckfahne gelegt, das Fenster für die Ausführung
+     * war fünfmal kürzer - und der Schütze war noch auf halbem Weg. Gemessen
+     * lag der Ball bei einer Ecke auf der schnellsten Stufe in siebenundacht-
+     * zig Prozent der Zeit allein, weiter als acht Einheiten von jedem
+     * Spieler entfernt. Genau das sieht aus wie ein Ball, der ohne Zutun
+     * durch die Gegend fliegt.
+     *
+     * Vollständig mitzuskalieren wäre falsch - bei fünffachem Tempo wäre das
+     * Feld ein Flimmern. Die Wurzel trifft die Mitte: Auf der schnellsten
+     * Stufe laufen die Spieler gut doppelt so schnell, nicht fünfmal.
+     */
+    getMotionTempo() {
+        return Math.sqrt(0.78 / this.getSpeedScale());
+    }
+
+    /**
      * Wie lang eine inszenierte Szene in echten Sekunden dauern darf.
      *
      * Die Stufen waren grob gerastert: Ab einem Tickabstand unter einer
@@ -1730,8 +1751,15 @@ class LiveMatchDirector {
         const pool = outfield.length > 0 ? outfield : squad;
 
         if (kind === "corner") {
+            // Wer die Ecke tritt, wurde allein nach Technik bestimmt - auch
+            // wenn der Beste gerade am anderen Ende des Feldes stand. Dann lag
+            // der Ball an der Fahne, während er quer über den Platz trabte.
+            // Eine Mannschaft hat zwar ihren Schützen, aber nicht jeder Weg
+            // lohnt sich: Zwanzig Einheiten Anmarsch wiegen hier zwölf Punkte
+            // Technik auf.
             return pool.slice().sort((a, b) =>
-                (this.setPieceSkill(b) - this.setPieceSkill(a))
+                (this.setPieceSkill(b) - Math.hypot(b.x - x, b.y - y) * 0.6)
+                - (this.setPieceSkill(a) - Math.hypot(a.x - x, a.y - y) * 0.6)
             )[0];
         }
 
@@ -2216,13 +2244,17 @@ class LiveMatchDirector {
                 ? { x: p.baseX, y: p.baseY, urgency: 1.25 }
                 : this.computeTarget(p, ball, pressers);
 
-            const responsiveness = 7.5 * (target.urgency || 1);
+            // Das Lauftempo folgt der eingestellten Stufe, nicht der echten
+            // Sekunde - sonst läuft die Uhr den Spielern davon.
+            const tempo = this.getMotionTempo();
+            const responsiveness = 7.5 * (target.urgency || 1) * tempo;
             const k = 1 - Math.exp(-responsiveness * dt);
 
             let dx = (target.x - p.x) * k;
             let dy = (target.y - p.y) * k;
 
-            const maxStep = p.baseSpeed * (target.urgency || 1) * (0.62 + p.freshness * 0.38) * dt;
+            const maxStep = p.baseSpeed * (target.urgency || 1)
+                * (0.62 + p.freshness * 0.38) * tempo * dt;
             const stepLen = Math.hypot(dx, dy);
             if (stepLen > maxStep && stepLen > 0) {
                 dx *= maxStep / stepLen;
@@ -2539,7 +2571,11 @@ class LiveMatchDirector {
         }
 
         if (isTaker) {
-            return { x: info.x - dir * 1.5, y: info.y, urgency: 1.7 };
+            // Wer den Ball holt, geht nicht spazieren. Solange er weit weg
+            // ist, läuft er - sonst liegt der Ball allein da und das Spiel
+            // wartet auf ihn.
+            const weg = Math.hypot(p.x - info.x, p.y - info.y);
+            return { x: info.x - dir * 1.5, y: info.y, urgency: weg > 6 ? 2.8 : 1.7 };
         }
 
         if (p.pos === "TW") return this.computeKeeperTarget(p, this.match.ball);

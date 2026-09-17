@@ -758,6 +758,71 @@ function runEngineTests() {
         }
     });
 
+    // 14a5. Eine Karriere hat einen Zenit, kein ewiges Aufwärts
+    test("TrainingEngine: Spieler erreichen ihren Zenit und bauen danach ab", () => {
+        const einheiten = 70; // ungefähr eine Saison Training
+        const kohorte = (age) => {
+            const spieler = [];
+            for (let i = 0; i < 200; i++) {
+                spieler.push({
+                    age, overall: 74, pot: 88, value: 5000000,
+                    pace: 74, shooting: 74, passing: 74, dribbling: 74, defense: 74,
+                    physical: 74, stamina: 74, vision: 74, technique: 74, positioning: 74
+                });
+            }
+            spieler.forEach(p => {
+                for (let e = 0; e < einheiten; e++) {
+                    TrainingEngine.developPlayer(p, "allround", "normal", 3, 0.22);
+                }
+            });
+            return spieler.reduce((s, p) => s + (p.overall - 74), 0) / spieler.length;
+        };
+
+        const jung = kohorte(18);
+        const zenit = kohorte(27);
+        const alt = kohorte(34);
+
+        if (jung < 1.5) throw new Error(`Talente entwickeln sich zu langsam: ${jung.toFixed(2)} Punkte`);
+        if (jung > 9) throw new Error(`Talente entwickeln sich zu schnell: ${jung.toFixed(2)} Punkte`);
+        // Im besten Alter geht es weder deutlich rauf noch runter
+        if (Math.abs(zenit) > 1.6) throw new Error(`Ein 27-Jähriger verändert sich um ${zenit.toFixed(2)} Punkte statt zu plateauen`);
+        if (alt >= 0) throw new Error(`Ein 34-Jähriger baut nicht ab (${alt.toFixed(2)} Punkte)`);
+        if (jung <= zenit || zenit <= alt) {
+            throw new Error(`Die Alterskurve fällt nicht: 18J ${jung.toFixed(2)}, 27J ${zenit.toFixed(2)}, 34J ${alt.toFixed(2)}`);
+        }
+    });
+
+    // 14a6. Geld muss eine Entscheidung bleiben
+    test("FinanceEngine: Große und kleine Vereine nehmen unterschiedlich viel ein", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const liga = state.clubs.filter(c => c.leagueId === "de_liga_1")
+            .sort((a, b) => (b.clubStrength ?? 0) - (a.clubStrength ?? 0));
+        const oben = FinanceEngine.sponsorPerMatchday(liga[0]);
+        const unten = FinanceEngine.sponsorPerMatchday(liga[liga.length - 1]);
+
+        // Vorher nahm der Letzte drei Viertel dessen ein, was der Erste bekam,
+        // bei einem Fünftel der Gehaltslast - die kleinen Vereine haben damit
+        // Geld gedruckt und nach fünf Saisons saß jeder auf Hunderten Millionen.
+        if (!(oben / unten >= 2.5)) {
+            throw new Error(`Spitzenklub nimmt nur das ${(oben / unten).toFixed(2)}-fache des Letzten ein (erwartet ab 2.5)`);
+        }
+
+        // Der Betriebsaufwand muss mit der Gehaltslast mitwachsen
+        if (!(FinanceEngine.OPERATING_WAGE_SHARE > 0)) {
+            throw new Error("Der Betriebsaufwand hängt nicht am Kader");
+        }
+
+        // Und eine Liga tiefer fließt bei gleichem Rang deutlich weniger Geld.
+        // Verglichen wird der jeweilige Spitzenklub - dass der beste Zweitligist
+        // mehr einnimmt als der schwächste Erstligist, ist dagegen richtig so:
+        // an den Rändern überlappen die Ligen.
+        const zweite = state.clubs.filter(c => c.leagueId === "de_liga_2")
+            .sort((a, b) => (b.clubStrength ?? 0) - (a.clubStrength ?? 0))[0];
+        if (zweite && !(FinanceEngine.sponsorPerMatchday(zweite) < oben * 0.75)) {
+            throw new Error("Der beste Zweitligist nimmt fast so viel ein wie der beste Erstligist");
+        }
+    });
+
     // 14b. Verträge, Ablösefreie und Karriereenden über zwei Saisonwechsel
     test("SeasonEngine: Verträge laufen aus, Spieler treten zurück, Kader bleiben spielfähig", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });

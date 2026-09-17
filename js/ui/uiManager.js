@@ -2349,6 +2349,20 @@ class UIManager {
         return null;
     }
 
+    /**
+     * Sponsorenzahlung je Spieltag - immer aus der Finanz-Engine, damit im
+     * Vereins-Reiter dieselbe Zahl steht, die dem Konto gutgeschrieben wird.
+     */
+    sponsorProSpieltag(club) {
+        const finance = (typeof FinanceEngine !== "undefined" && FinanceEngine)
+            ? FinanceEngine
+            : ((typeof window !== "undefined" && window.FinanceEngine) ? window.FinanceEngine : null);
+        if (finance && typeof finance.sponsorPerMatchday === "function") {
+            return finance.sponsorPerMatchday(club);
+        }
+        return club?.sponsor?.amountPerMatchday || 0;
+    }
+
     /** PlayerGenerator in Browser und Test-Umgebung auflösen */
     getPlayerGenerator() {
         if (typeof PlayerGenerator !== "undefined" && PlayerGenerator) return PlayerGenerator;
@@ -3899,7 +3913,9 @@ class UIManager {
 
         const squad = state.players.filter(p => userClub.playerIds.includes(p.id));
         const weeklyWages = squad.reduce((sum, p) => sum + (p.wage || 0), 0);
-        const sponsorWeekly = userClub.sponsor?.amountPerMatchday || Math.round((userClub.reputation || 70) * 15000);
+        // Die Sponsorenzahlung kommt aus der Finanz-Engine, damit im Verein
+        // dieselbe Zahl steht, die auch gebucht wird.
+        const sponsorWeekly = this.sponsorProSpieltag(userClub);
         const matchIncomeEst = Math.round((userClub.capacity || 30000) * 0.85 * (userClub.ticketPrice || 35));
 
         DOM.setText("finBalance", GameState.formatMoney(userClub.balance));
@@ -3963,7 +3979,7 @@ class UIManager {
 
         // Sponsor
         DOM.setText("clubTabSponsorName", userClub.sponsor?.name || "Global Tech");
-        DOM.setText("clubTabSponsorAmount", `${GameState.formatMoney(userClub.sponsor?.amountPerMatchday || 1000000)} / Spieltag`);
+        DOM.setText("clubTabSponsorAmount", `${GameState.formatMoney(this.sponsorProSpieltag(userClub))} / Spieltag`);
         DOM.setText("clubTabSponsorYears", userClub.sponsor?.yearsRemaining || 2);
 
         // Facility Stufen

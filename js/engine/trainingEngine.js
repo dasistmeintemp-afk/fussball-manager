@@ -416,20 +416,61 @@ class TrainingEngine {
     /**
      * Entwickelt einen Spieler basierend auf Fokus, Alter und Potenzial
      */
+    /**
+     * Die Alterskurve eines Fußballers.
+     *
+     * Vorher kannte die Entwicklung nur eine Richtung: Wer unter dreißig war,
+     * wurde jede Saison besser, und schlechter wurde überhaupt erst ab
+     * zweiunddreißig jemand. Gemessen über eine Saison hieß das: Von 1083
+     * Spielern zwischen 17 und 20 verbesserten sich 1082 - im Schnitt um 6.7
+     * Punkte - und selbst die 27- bis 29-Jährigen legten noch 2.6 Punkte zu,
+     * ohne dass ein einziger von ihnen je nachließ. Die ganze Liga stieg so um
+     * dreieinhalb Punkte pro Saison; nach fünf Jahren war aus dem
+     * Abstiegskandidaten rechnerisch ein Spitzenteam und die Sternewertung
+     * sagte nichts mehr aus.
+     *
+     * Echte Karrieren verlaufen anders: Es geht schnell aufwärts bis Anfang
+     * zwanzig, um das siebenundzwanzigste Lebensjahr ist das Niveau erreicht,
+     * danach geht es wieder abwärts - erst kaum merklich, ab Mitte dreißig
+     * deutlich. Und in jedem Alter gibt es Spieler, die stehen bleiben oder
+     * nachlassen: eine hartnäckige Verletzung, ein verlorener Stammplatz, der
+     * ausbleibende letzte Schritt.
+     *
+     * "wachstum" und "abbau" sind Wahrscheinlichkeiten je Trainingseinheit.
+     */
+    static ALTERSKURVE = [
+        { bis: 19, wachstum: 0.150, abbau: 0.004 },
+        { bis: 22, wachstum: 0.105, abbau: 0.006 },
+        { bis: 25, wachstum: 0.048, abbau: 0.012 },
+        { bis: 27, wachstum: 0.022, abbau: 0.020 },
+        { bis: 29, wachstum: 0.010, abbau: 0.032 },
+        { bis: 31, wachstum: 0.004, abbau: 0.052 },
+        { bis: 33, wachstum: 0.002, abbau: 0.082 },
+        { bis: 99, wachstum: 0.000, abbau: 0.120 }
+    ];
+
+    static alterskurveFuer(age) {
+        return this.ALTERSKURVE.find(k => (age || 25) <= k.bis) || this.ALTERSKURVE[this.ALTERSKURVE.length - 1];
+    }
+
     static developPlayer(player, focus, intensity, facilityLevel = 2, scale = 1) {
+        const kurve = this.alterskurveFuer(player.age);
         const potentialRoom = player.pot - player.overall;
-        let growthChance = (0.05 + (facilityLevel - 1) * 0.02) * scale;
 
-        // Junge Spieler (unter 23) entwickeln sich schneller
-        if (player.age <= 21) growthChance += 0.10 * scale;
-        else if (player.age <= 24) growthChance += 0.05 * scale;
-        else if (player.age >= 32) growthChance = (-0.08 + (facilityLevel - 1) * 0.01) * scale; // Ältere Spieler bauen allmählich ab
-        else if (player.age >= 30) growthChance = 0.01 * scale;
+        // Je näher einer an seinem Potenzial ist, desto zäher die letzten
+        // Schritte. Sonst erreicht jeder Spieler sein Maximum in zwei Saisons.
+        const naeheZumPotenzial = potentialRoom <= 0 ? 0 : Math.min(1, potentialRoom / 12);
 
-        if (focus === "youth" && player.age <= 22) growthChance += 0.08 * scale;
-        if (intensity === "high") growthChance += 0.03 * scale;
+        let growthChance = kurve.wachstum * (0.35 + naeheZumPotenzial * 0.65) * scale;
+        growthChance *= 0.8 + (facilityLevel - 1) * 0.12;
 
-        // Positives Wachstum
+        if (focus === "youth" && player.age <= 22) growthChance *= 1.35;
+        if (intensity === "high") growthChance *= 1.15;
+
+        // Der Abbau lässt sich mit guter Arbeit verzögern, aber nicht aufhalten
+        let declineChance = kurve.abbau * scale * (1.18 - (facilityLevel - 1) * 0.06);
+        if (intensity === "low") declineChance *= 1.1;
+
         if (potentialRoom > 0 && Math.random() < growthChance) {
             player.overall = Math.min(player.pot, player.overall + 1);
             player.value = Math.round(player.value * 1.08); // Marktwert steigt
@@ -451,15 +492,15 @@ class TrainingEngine {
                 player.stamina = Math.min(99, player.stamina + 1);
                 player.pace = Math.min(99, player.pace + 1);
             }
-        } 
-        // Altersbedingter Abbau
-        else if (growthChance < 0 && Math.random() < Math.abs(growthChance)) {
-            if (player.overall > 60) {
-                player.overall -= 1;
-                player.pace = Math.max(40, player.pace - 1);
-                player.stamina = Math.max(45, player.stamina - 1);
-                player.value = Math.max(500000, Math.round(player.value * 0.9));
-            }
+            return;
+        }
+
+        // Nachlassen: im besten Alter selten, später der Normalfall
+        if (Math.random() < declineChance && player.overall > 45) {
+            player.overall -= 1;
+            player.pace = Math.max(35, (player.pace ?? 60) - 1);
+            player.stamina = Math.max(40, (player.stamina ?? 60) - 1);
+            player.value = Math.max(150000, Math.round(player.value * 0.9));
         }
     }
 

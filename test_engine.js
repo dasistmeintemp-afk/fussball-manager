@@ -14,6 +14,7 @@ const { ScoutingEngine } = require('./js/engine/scoutingEngine.js');
 const { CoachingStaffEngine } = require('./js/engine/coachingStaffEngine.js');
 const { PreseasonEngine } = require('./js/engine/preseasonEngine.js');
 const { YouthEngine } = require('./js/engine/youthEngine.js');
+const { FacilityEngine } = require('./js/engine/facilityEngine.js');
 const { AIManagerEngine } = require('./js/engine/aiManagerEngine.js');
 const { ClubGenerator } = require('./js/engine/clubGenerator.js');
 const { PlayerGenerator } = require('./js/engine/playerGenerator.js');
@@ -342,6 +343,11 @@ function runEngineTests() {
         const prospect = state.youthAcademy.prospects[0];
         const promoteRes = YouthEngine.promoteProspect(state, "svw", prospect.id);
         if (!promoteRes.success) throw new Error("Youth prospect promotion failed: " + promoteRes.error);
+        // Seit jeder Verein einen Anlagenschwerpunkt hat, kann die Akademie
+        // schon auf Stufe vier stehen - dann kostet der Ausbau mehr, als in
+        // der Kasse liegt. Geprueft wird hier die Mechanik, nicht der Etat.
+        const svw = state.clubs.find(c => c.id === "svw");
+        svw.balance = 100000000;
         const upgradeRes = YouthEngine.upgradeAcademy(state, "svw");
         if (!upgradeRes.success) throw new Error("Youth academy upgrade failed: " + upgradeRes.error);
     });
@@ -1541,8 +1547,13 @@ function runEngineTests() {
         const clubTop = state.clubs.find(c => c.id === "muc");
         const clubSmall = state.clubs.find(c => c.id === "svw");
 
+        // Beide Akademien in demselben Zustand, nur die Stufe unterscheidet sich
+        FacilityEngine.hole(clubTop, 1);
+        FacilityEngine.hole(clubSmall, 1);
         clubTop.facilities.youthCenter = 5;
         clubSmall.facilities.youthCenter = 1;
+        Object.assign(clubTop.anlagen.youthCenter, { stufe: 5, zustand: 100, projekt: null });
+        Object.assign(clubSmall.anlagen.youthCenter, { stufe: 1, zustand: 100, projekt: null });
 
         let ovrSumTop = 0, potSumTop = 0;
         let ovrSumSmall = 0, potSumSmall = 0;
@@ -2642,7 +2653,12 @@ function runEngineTests() {
         const zaehler = { aktionen: 0, pass: 0, passOk: 0, lang: 0 };
         const standards = {};
 
-        for (let run = 0; run < 3; run++) {
+        // Fünf Partien statt drei: Seit die Regie den Ball nicht mehr an den
+        // Ereignisort schiebt, sondern hinspielen lässt, entfallen auf eine
+        // Partie rund fünfundsechzig freie Entscheidungen statt hundert. Die
+        // Stichprobe von zweihundert Aktionen bleibt - sie wird nur über mehr
+        // Partien gezogen.
+        for (let run = 0; run < 5; run++) {
             const match = { id: `fluss_${run}`, played: false, homeClubId: "muc", awayClubId: "dor" };
             match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, state.players);
 
@@ -3937,27 +3953,33 @@ function runEngineTests() {
         const heim = state.clubs.find(c => c.id === partie.homeClubId);
         const gast = state.clubs.find(c => c.id === partie.awayClubId);
 
-        const live = MatchEngine.createLiveMatch(partie, heim, gast, state.players);
-        live.speed = 1;
-        const dir = live.director;
-
+        // Zwei Partien statt einer: Auf eine Partie entfallen zwischen zwei
+        // und elf Einwuerfe - ueber eine einzelne gemessen entschied darueber
+        // der Zufall, nicht die Regie. Gemessen wird ohnehin die Strecke, die
+        // der Ball zum Einwurfpunkt zurueckgelegt hat, nicht ihre Anzahl.
         const wege = [];
-        const echt = dir.startDeadBall.bind(dir);
-        dir.startDeadBall = function (kind, team, x, y) {
-            if (kind === "throwin") {
-                wege.push(Math.hypot(x - this.match.ball.x, y - this.match.ball.y) * 1.05);
-            }
-            return echt(kind, team, x, y);
-        };
+        for (let runde2 = 0; runde2 < 2; runde2++) {
+            const live = MatchEngine.createLiveMatch(partie, heim, gast, state.players);
+            live.speed = 1;
+            const dir = live.director;
 
-        let frames = 0;
-        while (!live.isFinished && frames < 30 * 900) {
-            live.advanceRealTime(1000 / 30);
-            live.updateBallAndPlayers(1000 / 30);
-            frames++;
+            const echt = dir.startDeadBall.bind(dir);
+            dir.startDeadBall = function (kind, team, x, y) {
+                if (kind === "throwin") {
+                    wege.push(Math.hypot(x - this.match.ball.x, y - this.match.ball.y) * 1.05);
+                }
+                return echt(kind, team, x, y);
+            };
+
+            let frames = 0;
+            while (!live.isFinished && frames < 30 * 900) {
+                live.advanceRealTime(1000 / 30);
+                live.updateBallAndPlayers(1000 / 30);
+                frames++;
+            }
         }
 
-        if (wege.length < 5) throw new Error(`Nur ${wege.length} Einwürfe in einer Partie`);
+        if (wege.length < 5) throw new Error(`Nur ${wege.length} Einwürfe in zwei Partien`);
 
         // Der Ball liegt schon im Aus, wenn er zum Einwurfpunkt geholt wird -
         // er wird nicht quer über das Feld dorthin gezogen.
@@ -3969,6 +3991,227 @@ function runEngineTests() {
         if (weiteste > 25) {
             throw new Error(`Ein Einwurf holt den Ball über ${weiteste.toFixed(0)} m heran`);
         }
+    });
+
+    // ---------------------------------------------------------------------
+    // Anlagen: Stufe, Zustand, Bauzeit
+    // ---------------------------------------------------------------------
+
+    test("Anlagen: Keine Anlage startet perfekt", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const uebersicht = FacilityEngine.uebersicht(state, "muc");
+
+        if (uebersicht.length !== 4) {
+            throw new Error(`Erwartet 4 Anlagen, bekommen ${uebersicht.length}`);
+        }
+        const perfekt = uebersicht.filter(a => a.zustand >= 100);
+        if (perfekt.length > 0) {
+            throw new Error(`Diese Anlagen starten fabrikneu: ${perfekt.map(a => a.name).join(", ")}`);
+        }
+        uebersicht.forEach(a => {
+            if (a.zustand < 0 || a.zustand > 100) throw new Error(`${a.name}: Zustand ${a.zustand} außerhalb 0-100`);
+            if (a.wirksameStufe > a.stufe + 0.001) {
+                throw new Error(`${a.name}: wirksame Stufe ${a.wirksameStufe} über der gebauten ${a.stufe}`);
+            }
+        });
+    });
+
+    test("Anlagen: Höchstens eine Dauerbaustelle je Verein", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+
+        let schlimmste = 0;
+        state.clubs.forEach(club => {
+            FacilityEngine.hole(club, 1);
+            const marode = FacilityEngine.ANLAGEN.filter(k => club.anlagen[k].zustand < 45).length;
+            if (marode > schlimmste) schlimmste = marode;
+            if (marode > 1) {
+                throw new Error(`${club.name} startet mit ${marode} maroden Anlagen`);
+            }
+        });
+
+        // Und es darf nicht so sein, dass gar nichts alt ist - sonst gäbe es
+        // nichts zu sanieren und die ganze Mechanik liefe leer.
+        const irgendwoAlt = state.clubs.some(c =>
+            FacilityEngine.ANLAGEN.some(k => c.anlagen[k].zustand < 55));
+        if (!irgendwoAlt) throw new Error("Keine einzige Anlage in der Welt ist in die Jahre gekommen");
+    });
+
+    test("Anlagen: Eine gepflegte Drei schlägt eine verfallene Fünf", () => {
+        const gepflegt = { id: "a", facilities: { trainingGround: 3 }, anlagen: { trainingGround: { stufe: 3, zustand: 96, baujahr: 1, projekt: null } } };
+        const verfallen = { id: "b", facilities: { trainingGround: 5 }, anlagen: { trainingGround: { stufe: 5, zustand: 20, baujahr: 1, projekt: null } } };
+
+        const w3 = FacilityEngine.wirksameStufe(gepflegt, "trainingGround", 1);
+        const w5 = FacilityEngine.wirksameStufe(verfallen, "trainingGround", 1);
+        if (!(w3 > w5)) {
+            throw new Error(`Gepflegte Drei (${w3}) leistet nicht mehr als verfallene Fünf (${w5})`);
+        }
+    });
+
+    test("Anlagen: Ausbau braucht Zeit und hebt die Stufe erst am Ende", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        FacilityEngine.hole(club, 1);
+        Object.assign(club.anlagen.medicalCenter, { stufe: 2, zustand: 80, projekt: null });
+        club.facilities.medicalCenter = 2;
+        club.balance = 200000000;
+
+        const vorher = club.balance;
+        const res = FacilityEngine.starteProjekt(state, "muc", "medicalCenter", "ausbau");
+        if (!res.erfolg) throw new Error("Ausbau ließ sich nicht starten: " + res.grund);
+        if (club.anlagen.medicalCenter.stufe !== 2) throw new Error("Die Stufe stieg sofort statt nach der Bauzeit");
+        if (club.balance >= vorher) throw new Error("Der Ausbau kostete nichts");
+
+        const dauer = FacilityEngine.dauer("medicalCenter", "ausbau");
+        for (let i = 0; i < dauer - 1; i++) FacilityEngine.tickSpieltag(state);
+        if (club.anlagen.medicalCenter.stufe !== 2) throw new Error("Die Stufe stieg vor dem Ende der Bauzeit");
+
+        FacilityEngine.tickSpieltag(state);
+        if (club.anlagen.medicalCenter.stufe !== 3) {
+            throw new Error(`Nach ${dauer} Spieltagen steht die Anlage auf Stufe ${club.anlagen.medicalCenter.stufe}, nicht auf 3`);
+        }
+        if (club.facilities.medicalCenter !== 3) throw new Error("Der alte facilities-Wert wurde nicht nachgezogen");
+        if (club.anlagen.medicalCenter.projekt) throw new Error("Das Bauvorhaben läuft nach Fertigstellung weiter");
+    });
+
+    test("Anlagen: Während des Stadionumbaus fehlen Plätze", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        club.balance = 500000000;
+        FacilityEngine.hole(club, 1);
+        Object.assign(club.anlagen.stadium, { stufe: 3, zustand: 70, projekt: null });
+
+        const voll = FacilityEngine.verfuegbareKapazitaet(club, 1);
+        const res = FacilityEngine.starteProjekt(state, "muc", "stadium", "ausbau");
+        if (!res.erfolg) throw new Error("Stadionausbau ließ sich nicht starten: " + res.grund);
+
+        const waehrend = FacilityEngine.verfuegbareKapazitaet(club, 1);
+        if (!(waehrend < voll)) {
+            throw new Error(`Kapazität blieb bei ${waehrend} von ${voll} - der Umbau kostet keine Plätze`);
+        }
+        const wirksam = FacilityEngine.wirksameStufe(club, "stadium", 1);
+        if (!(wirksam < 3)) throw new Error("Die Baustelle drückt die wirksame Stufe nicht");
+    });
+
+    test("Anlagen: Sanierung hebt den Zustand, nicht die Stufe", () => {
+        const state = GameState.createNewGame("svw", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === "svw");
+        club.balance = 100000000;
+        FacilityEngine.hole(club, 1);
+        Object.assign(club.anlagen.trainingGround, { stufe: 3, zustand: 30, projekt: null });
+        club.facilities.trainingGround = 3;
+
+        const res = FacilityEngine.starteProjekt(state, "svw", "trainingGround", "sanierung");
+        if (!res.erfolg) throw new Error("Sanierung ließ sich nicht starten: " + res.grund);
+
+        const dauer = FacilityEngine.dauer("trainingGround", "sanierung");
+        for (let i = 0; i < dauer; i++) FacilityEngine.tickSpieltag(state);
+
+        const a = club.anlagen.trainingGround;
+        if (a.stufe !== 3) throw new Error(`Die Sanierung hob die Stufe auf ${a.stufe}`);
+        if (!(a.zustand > 65)) throw new Error(`Zustand nach der Sanierung nur ${a.zustand}`);
+    });
+
+    test("Anlagen: Ohne Geld wird nicht gebaut", () => {
+        const state = GameState.createNewGame("svw", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === "svw");
+        FacilityEngine.hole(club, 1);
+        club.anlagen.stadium.projekt = null;
+        club.balance = 1000;
+
+        const res = FacilityEngine.starteProjekt(state, "svw", "stadium", "ausbau");
+        if (res.erfolg) throw new Error("Ein Stadionausbau gelang mit 1000 Euro auf dem Konto");
+        if (club.balance !== 1000) throw new Error("Das Konto wurde trotz Absage belastet");
+        if (club.anlagen.stadium.projekt) throw new Error("Ein Bauvorhaben wurde trotz Absage angelegt");
+    });
+
+    test("Anlagen: Wer ein Jahrzehnt nicht saniert, hat ein Camp Nou", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        FacilityEngine.hole(club, 1);
+        Object.assign(club.anlagen.stadium, { stufe: 5, zustand: 95, baujahr: 1, projekt: null });
+
+        const start = FacilityEngine.wirksameStufe(club, "stadium", 1);
+        // Zwölf Spielzeiten: Ein Gebäude altert in Jahrzehnten, nicht in
+        // Saisons. Genau das ist die Geschichte des Camp Nou - 1957 gebaut,
+        // Jahrzehnte später eine Baustelle.
+        for (let s = 0; s < 12; s++) {
+            state.seasonYear = (state.seasonYear || 1) + 1;
+            FacilityEngine.saisonwechsel(state);
+        }
+        const ende = FacilityEngine.wirksameStufe(club, "stadium", state.seasonYear);
+
+        if (!(club.anlagen.stadium.zustand < 50)) {
+            throw new Error(`Nach zwölf Saisons ohne Pflege steht der Zustand noch bei ${club.anlagen.stadium.zustand}`);
+        }
+        // ... aber nach zwei Saisons darf noch nichts zerfallen sein
+        const frisch = state.clubs.find(c => c.id === "dor");
+        FacilityEngine.hole(frisch, 1);
+        Object.assign(frisch.anlagen.stadium, { stufe: 5, zustand: 95, baujahr: 1, projekt: null });
+        const zwei = { ...state, seasonYear: 2, clubs: [frisch] };
+        FacilityEngine.saisonwechsel(zwei);
+        FacilityEngine.saisonwechsel(zwei);
+        if (frisch.anlagen.stadium.zustand < 80) {
+            throw new Error(`Nach zwei Saisons ist der Zustand schon auf ${frisch.anlagen.stadium.zustand} gefallen`);
+        }
+        if (!(ende < start - 0.4)) {
+            throw new Error(`Die wirksame Stufe fiel kaum: ${start} -> ${ende}`);
+        }
+        if (club.anlagen.stadium.stufe !== 5) throw new Error("Der Verfall hat die gebaute Stufe verändert");
+    });
+
+    test("Anlagen: Eine Baustelle blockiert eine zweite an derselben Anlage", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        club.balance = 500000000;
+        FacilityEngine.hole(club, 1);
+        Object.assign(club.anlagen.youthCenter, { stufe: 2, zustand: 50, projekt: null });
+
+        const erste = FacilityEngine.starteProjekt(state, "muc", "youthCenter", "sanierung");
+        if (!erste.erfolg) throw new Error("Erste Arbeit ließ sich nicht starten: " + erste.grund);
+        const zweite = FacilityEngine.starteProjekt(state, "muc", "youthCenter", "ausbau");
+        if (zweite.erfolg) throw new Error("An derselben Anlage wurde zweimal gleichzeitig gebaut");
+    });
+
+    test("Akademie: Die Schule prägt die Talente, ohne sie besser zu machen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+
+        const werte = (profil) => {
+            const club = state.clubs.find(c => c.id === "muc");
+            club.akademieProfil = profil;
+            let technik = 0, koerper = 0;
+            for (let i = 0; i < 60; i++) {
+                const attr = PlayerGenerator.generateAttributes("ZM", 70);
+                YouthEngine.praegeSchule(attr, { schule: profil }, club);
+                technik += attr.technique;
+                koerper += attr.physical;
+            }
+            return { technik: technik / 60, koerper: koerper / 60 };
+        };
+
+        const masia = werte("technik");
+        const athletik = werte("athletik");
+
+        if (!(masia.technik > athletik.technik + 4)) {
+            throw new Error(`Technikschule bildet nicht technischer aus: ${masia.technik.toFixed(1)} vs ${athletik.technik.toFixed(1)}`);
+        }
+        if (!(athletik.koerper > masia.koerper + 4)) {
+            throw new Error(`Athletikschule bildet nicht athletischer aus: ${athletik.koerper.toFixed(1)} vs ${masia.koerper.toFixed(1)}`);
+        }
+    });
+
+    test("Akademie: Jeder Verein hat eine Handschrift, und sie steht am Talent", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === "muc");
+
+        const schule = YouthEngine.schuleVon(club);
+        if (!schule || !schule.name) throw new Error("Der Verein hat keine Akademie-Handschrift");
+        if (!FacilityEngine.AKADEMIE_PROFILE[schule.key]) throw new Error("Unbekanntes Profil: " + schule.key);
+
+        const talente = YouthEngine.generateProspects(state, "muc");
+        if (!talente.length) throw new Error("Keine Talente erzeugt");
+        talente.forEach(t => {
+            if (t.schule !== schule.key) throw new Error(`Talent ${t.name} trägt die Schule ${t.schule} statt ${schule.key}`);
+        });
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

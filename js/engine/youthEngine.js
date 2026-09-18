@@ -14,81 +14,47 @@ const _youthResolve = (() => {
     return (name) => (typeof window !== "undefined" ? window[name] : null) || null;
 })();
 
-/**
- * FacilityEngine - Universelle Infrastruktur-Verwaltung & Ausbauten (C6)
- */
-const FacilityEngine = {
-    FACILITY_NAMES: {
-        trainingGround: "Trainingsgelände",
-        youthCenter: "Jugendakademie",
-        medicalCenter: "Medizinisches Zentrum",
-        stadium: "Stadionausbau"
-    },
-
-    FACILITY_COSTS: {
-        trainingGround: [1500000, 3000000, 6000000, 12000000],
-        youthCenter: [2000000, 4000000, 8000000, 16000000],
-        medicalCenter: [1200000, 2500000, 5000000, 10000000],
-        stadium: [3000000, 7000000, 15000000, 30000000]
-    },
-
-    upgrade(state, clubId, facilityKey) {
-        if (!state) return { success: false, error: "Kein State vorhanden." };
-        const club = state.clubs.find(c => c.id === clubId);
-        if (!club) return { success: false, error: "Verein nicht gefunden." };
-
-        if (!club.facilities) {
-            club.facilities = { trainingGround: 2, youthCenter: 1, medicalCenter: 1, stadium: 2 };
-        }
-
-        const curLvl = club.facilities[facilityKey] || 1;
-        if (curLvl >= 5) {
-            return { success: false, error: `${FacilityEngine.FACILITY_NAMES[facilityKey] || facilityKey} hat bereits die maximale Stufe 5 erreicht.` };
-        }
-
-        const costList = FacilityEngine.FACILITY_COSTS[facilityKey] || [2000000, 4000000, 8000000, 15000000];
-        const cost = costList[curLvl - 1] || (curLvl * 2500000);
-
-        if (club.balance < cost) {
-            return {
-                success: false,
-                error: `Nicht genug Budget. Ausbau auf Stufe ${curLvl + 1} kostet ${(cost / 1000000).toFixed(1)} Mio. €.`
-            };
-        }
-
-        club.balance -= cost;
-        club.facilities[facilityKey] = curLvl + 1;
-
-        if (facilityKey === "youthCenter") {
-            if (club.youthAcademy) club.youthAcademy.level = club.facilities.youthCenter;
-            if (club.id === state.userClubId && state.youthAcademy) {
-                state.youthAcademy.level = club.facilities.youthCenter;
-            }
-        } else if (facilityKey === "stadium") {
-            // Stadionkapazität vergrößern (+15-20%)
-            club.capacity = Math.round((club.capacity || 25000) * 1.15);
-        }
-
-        const financeEngine = (typeof FinanceEngine !== 'undefined') ? FinanceEngine : ((typeof window !== 'undefined') ? window.FinanceEngine : null);
-        if (financeEngine && typeof financeEngine.recordTransaction === 'function') {
-            financeEngine.recordTransaction(
-                state,
-                club.id,
-                "facility_cost",
-                -cost,
-                `Ausbau: ${FacilityEngine.FACILITY_NAMES[facilityKey] || facilityKey} auf Stufe ${club.facilities[facilityKey]}`
-            );
-        }
-
-        return {
-            success: true,
-            newLevel: club.facilities[facilityKey],
-            message: `${FacilityEngine.FACILITY_NAMES[facilityKey] || facilityKey} erfolgreich auf Stufe ${club.facilities[facilityKey]} ausgebaut!`
-        };
-    }
-};
-
 const YouthEngine = {
+    /**
+     * Die Handschrift der Akademie - welche Positionen sie bevorzugt ausbildet.
+     *
+     * Eine Technikschule wie La Masia bringt Mittelfeldspieler und Flügel
+     * hervor, eine Zweikampfschule Innenverteidiger und Sechser. Das ist keine
+     * Frage der Qualität, sondern der Ausrichtung.
+     */
+    SCHUL_POSITIONEN: {
+        technik:   ["ZM", "OM", "LM", "RM", "LA", "RA"],
+        athletik:  ["ST", "LV", "RV", "LA", "RA", "IV"],
+        spielwitz: ["ZM", "OM", "DM", "IV", "TW"],
+        kampf:     ["IV", "DM", "LV", "RV", "ZM"],
+        ausgewogen: []
+    },
+
+    /** Das Anlagenprofil der Jugendakademie eines Vereins */
+    schuleVon(club) {
+        const fac = _youthResolve("FacilityEngine", "./facilityEngine.js");
+        if (!fac || !club) return null;
+        const key = club.akademieProfil || (fac.waehleProfil ? fac.waehleProfil(club) : "ausgewogen");
+        if (club && !club.akademieProfil) club.akademieProfil = key;
+        const profil = (fac.AKADEMIE_PROFILE || {})[key];
+        return profil ? { key, ...profil } : null;
+    },
+
+    /**
+     * Wie gut die Akademie gerade arbeitet.
+     *
+     * Nicht die gebaute Stufe zählt, sondern die wirksame: Eine Akademie, die
+     * seit acht Jahren niemand angefasst hat, bildet schlechter aus als eine
+     * kleinere, die gepflegt wird.
+     */
+    akademieStufe(state, club) {
+        const fac = _youthResolve("FacilityEngine", "./facilityEngine.js");
+        if (fac && club && typeof fac.wirksameStufe === "function") {
+            return fac.wirksameStufe(club, "youthCenter", state?.seasonYear || 1);
+        }
+        return club?.facilities?.youthCenter || club?.youthAcademy?.level || state?.youthAcademy?.level || 1;
+    },
+
     /**
      * Erzeugt neue Jugendspieler für die Akademie eines Vereins (C7: auch KI-Vereine)
      */
@@ -101,9 +67,13 @@ const YouthEngine = {
         if (club && !club.youthAcademy) {
             club.youthAcademy = { prospects: [], level: club.facilities?.youthCenter || 1 };
         }
-        const academyLevel = club?.facilities?.youthCenter || club?.youthAcademy?.level || state.youthAcademy.level || 1;
+        const academyLevel = this.akademieStufe(state, club);
+        const schule = this.schuleVon(club);
 
+        // Die Schule zieht ihre Lieblingspositionen häufiger - aber nie allein
         const positions = ["TW", "IV", "LV", "RV", "DM", "ZM", "OM", "LM", "RM", "LA", "RA", "ST"];
+        const bevorzugt = (schule && this.SCHUL_POSITIONEN[schule.key]) || [];
+        const posTopf = positions.concat(bevorzugt, bevorzugt);
         const namePools = (typeof NAME_POOLS !== 'undefined') ? NAME_POOLS : (typeof window !== 'undefined' ? window.NAME_POOLS : (typeof require !== 'undefined' ? require('../data/namePools.js').NAME_POOLS : {}));
         const poolFirst = (namePools && namePools.firstNames) ? namePools.firstNames : ["Max", "Lukas", "Leon", "Finn", "Elias"];
         const poolLast = (namePools && namePools.lastNames) ? namePools.lastNames : ["Müller", "Schmidt", "Weber", "Bauer", "Fischer"];
@@ -116,12 +86,12 @@ const YouthEngine = {
             const firstName = poolFirst[Math.floor(Math.random() * poolFirst.length)];
             const lastName = poolLast[Math.floor(Math.random() * poolLast.length)];
             const nat = poolNat[Math.floor(Math.random() * poolNat.length)];
-            const pos = positions[Math.floor(Math.random() * positions.length)];
+            const pos = posTopf[Math.floor(Math.random() * posTopf.length)];
             const age = 15 + Math.floor(Math.random() * 3); // 15, 16 oder 17
 
             // Gesamtstärke und Potenzial abhängig vom Akademie-Level (C2 & C7)
-            const baseOvr = 50 + (academyLevel * 3) + Math.floor(Math.random() * 8);
-            const basePot = 72 + (academyLevel * 4) + Math.floor(Math.random() * 12);
+            const baseOvr = Math.round(50 + (academyLevel * 3) + Math.floor(Math.random() * 8));
+            const basePot = Math.round(72 + (academyLevel * 4) + Math.floor(Math.random() * 12));
             const pot = Math.min(95, Math.max(baseOvr + 8, basePot));
 
             const prospect = {
@@ -134,6 +104,8 @@ const YouthEngine = {
                 overall: baseOvr,
                 pot: pot,
                 developmentRate: 1.0 + (academyLevel * 0.1),
+                schule: schule ? schule.key : null,
+                schulName: schule ? schule.name : null,
                 promoted: false
             };
 
@@ -155,7 +127,7 @@ const YouthEngine = {
     trainProspects(state, clubId) {
         if (!state) return;
         const club = state.clubs?.find(c => c.id === clubId);
-        const academyLvl = club?.facilities?.youthCenter || 1;
+        const academyLvl = this.akademieStufe(state, club);
 
         const prospects = (club?.youthAcademy?.prospects) || (clubId === state.userClubId ? state.youthAcademy?.prospects : []);
         if (!Array.isArray(prospects)) return;
@@ -205,6 +177,11 @@ const YouthEngine = {
         const attribute = (playerGen && typeof playerGen.generateAttributes === "function")
             ? playerGen.generateAttributes(prospect.pos, prospect.overall)
             : {};
+
+        // Die Handschrift der Schule: Ein Talent aus einer Technikschule kommt
+        // mit besserem Fuss und schwaecherem Koerper heraus als eines aus einer
+        // Athletikschule - gleich stark, aber anders stark.
+        this.praegeSchule(attribute, prospect, club);
 
         const posEngine = _youthResolve("PositionEngine", "./positionEngine.js");
         const nebenpositionen = Array.isArray(prospect.positions) && prospect.positions.length > 0
@@ -280,18 +257,46 @@ const YouthEngine = {
     },
 
     /**
+     * Drückt einem Talent die Handschrift seiner Schule auf.
+     *
+     * Die Stärken steigen, die Schwächen sinken - in Summe bleibt der Spieler
+     * ungefähr gleich stark. Das ist der Unterschied zwischen einer besseren
+     * und einer anderen Ausbildung.
+     */
+    praegeSchule(attribute, prospect, club) {
+        if (!attribute) return attribute;
+
+        const fac = _youthResolve("FacilityEngine", "./facilityEngine.js");
+        const key = prospect?.schule || club?.akademieProfil;
+        const profil = (fac?.AKADEMIE_PROFILE || {})[key];
+        if (!profil || !profil.staerken?.length) return attribute;
+
+        const setze = (feld, delta) => {
+            if (typeof attribute[feld] !== "number") return;
+            attribute[feld] = Math.max(20, Math.min(99, Math.round(attribute[feld] + delta)));
+        };
+
+        profil.staerken.forEach(f => setze(f, 5 + Math.floor(Math.random() * 4)));
+        (profil.schwaechen || []).forEach(f => setze(f, -(4 + Math.floor(Math.random() * 4))));
+
+        prospect.schulName = profil.name;
+        return attribute;
+    },
+
+    /**
      * Baut die Jugendakademie aus
      */
     upgradeAcademy(state, clubId) {
-        return FacilityEngine.upgrade(state, clubId, "youthCenter");
+        const fac = _youthResolve("FacilityEngine", "./facilityEngine.js");
+        if (!fac) return { success: false, error: "Anlagenverwaltung nicht verfügbar." };
+        return fac.upgrade(state, clubId, "youthCenter");
     }
 };
 
 if (typeof window !== "undefined") {
-    window.FacilityEngine = FacilityEngine;
     window.YouthEngine = YouthEngine;
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { FacilityEngine, YouthEngine };
+    module.exports = { YouthEngine };
 }

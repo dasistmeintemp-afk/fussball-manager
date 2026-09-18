@@ -168,7 +168,7 @@ class LiveMatchDirector {
      * endet, laesst den im Ticker genannten Spieler ohne Ball dastehen - ein
      * Anlauf, der zu lange dauert, kostet nur einen Augenblick.
      */
-    static ETAPPEN_ANNAHME = [0.28, 0.58];
+    static ETAPPEN_ANNAHME = [0.14, 0.26];
 
     /**
      * Wie schnell ein Spieler einen liegenden Ball zu sich heranholt, in
@@ -178,6 +178,33 @@ class LiveMatchDirector {
      * sprang der Ball beim Aufnehmen ueber mehrere Meter in einem Bild.
      */
     static AUFNAHME_TEMPO = 72;
+
+    /**
+     * Wie lange vor einem Ereignis das Aufbauspiel beginnt, es zu suchen -
+     * in Spielsekunden.
+     *
+     * Die Regie holte den Ball bisher zur Szene: Sobald ein Ereignis faellig
+     * war, wanderte er ueber bis zu drei Stationen quer ueber das Feld zu dem
+     * Spieler, den der Ticker nennt. Gemessen verbrachte die Uebertragung
+     * damit dreissig bis fuenfzig Prozent ihrer Zeit im Anlauf, und der Ball
+     * war die halbe Partie unterwegs.
+     *
+     * Jetzt laeuft es andersherum: Das Aufbauspiel bekommt den kommenden
+     * Protagonisten als Ziel und sucht ihn mit gewoehnlichen Zuspielen. Hat er
+     * den Ball, wenn das Ereignis faellig wird, entfaellt der Anlauf ganz -
+     * die Szene entsteht aus dem Spiel, statt an es angeklebt zu werden.
+     */
+    static ANLAUF_VORLAUF = 75;
+
+    /**
+     * Wie lange ein Spieler den Ball annimmt, bevor er ihn weiterspielt -
+     * in Bildschirmsekunden.
+     *
+     * Ohne diese Pause verliess der Ball den Fuss im selben Moment, in dem er
+     * ankam; er war dadurch weit mehr als die Haelfte der Partie unterwegs. Im
+     * Fussball liegt er die meiste Zeit bei jemandem.
+     */
+    static ANNAHME = [0.18, 0.36];
 
     constructor(liveMatch) {
         this.match = liveMatch;
@@ -208,6 +235,8 @@ class LiveMatchDirector {
         this.carryTarget = null;
         // Vorgemerkte Spielfortsetzung, sobald der Ball im Aus liegt
         this._offenerStandard = null;
+        // Ballannahme: solange sie laeuft, bleibt der Ball beim Spieler
+        this._annahmeTimer = 0;
 
         this.celebrationTimer = 0;
         this.celebrationPhase = null;
@@ -721,10 +750,44 @@ class LiveMatchDirector {
             this.possessionChain = 0;
         }
 
+        // Ein Foul passiert dort, wo der Ball ist - nicht dort, wo die
+        // Zeitleiste zufaellig einen Punkt notiert hat.
+        this.verankereAmBall(events);
+
         this.mode = "highlight";
         this.carryTarget = null;
+        this._annahmeTimer = 0;
         this.scene = { events, index: 0, phase: null };
         this.beginEventPhase("approach");
+    }
+
+    /**
+     * Ereignisse ohne Ballfuehrung finden dort statt, wo der Ball liegt.
+     *
+     * Ein Foul, eine Karte, eine Verletzung: Fuer solche Ereignisse notiert
+     * die Zeitleiste einen Ort, der mit dem laufenden Spiel nichts zu tun hat.
+     * Die Regie holte den Ball bisher dorthin - gemessen war das der haeufigste
+     * Grund fuer einen Balltransport quer ueber das Feld: In vierhundert-
+     * sechsundvierzig von siebenhundertsechsundfuenfzig Faellen war das
+     * naechste Ereignis eines ohne Ballfuehrung.
+     *
+     * Umgekehrt ist es richtig: Gefoult wird da, wo gespielt wird. Also wandert
+     * das Ereignis zum Ball, nicht der Ball zum Ereignis.
+     */
+    verankereAmBall(events) {
+        const ball = this.match.ball;
+        // eventPoint spiegelt in Halbzeit zwei - hier also rueckwaerts rechnen
+        const roh = this.isSecondHalf
+            ? { x: 100 - ball.x, y: 100 - ball.y }
+            : { x: ball.x, y: ball.y };
+
+        events.forEach(ev => {
+            if (!OHNE_BALLFUEHRUNG.includes(ev.type)) return;
+            // Wechsel und Halbzeitpfiff haben ohnehin keinen Ort
+            if (["substitution", "halftime", "fulltime"].includes(ev.type)) return;
+            ev.start = { x: roh.x, y: roh.y };
+            ev.end = { x: roh.x, y: roh.y };
+        });
     }
 
     attackingTeamOf(ev) {
@@ -864,14 +927,31 @@ class LiveMatchDirector {
                 // seine Mitspieler, wenn er weit weg ist, und läuft dann mit
                 // ihm, bis er am Ereignisort ist.
                 //
-                // Gezielt wird auf die Mitte zwischen seinem Standort und dem
-                // Ereignisort: Der Ball fliegt ihm entgegen, waehrend er laeuft.
-                // Auf seine alte Position gezielt kam der Ball an, als er schon
-                // weg war; auf den Ereignisort gezielt lag er lange vor ihm da.
                 this.possessionTeam = held.team;
-                const zielX = held.x + (start.x - held.x) * 0.5;
-                const zielY = held.y + (start.y - held.y) * 0.5;
-                this.routeBallTo(zielX, zielY, held.team, "pass", scale, held.id);
+
+                // Hat er den Ball schon, gibt es nichts zu transportieren.
+                //
+                // Das ist der Normalfall, seit das Aufbauspiel den kommenden
+                // Protagonisten sucht: Der Ball ist ueber gewoehnliche Zuspiele
+                // bei ihm angekommen, und die Szene beginnt dort, wo gespielt
+                // wird. Er nimmt den Ball dann mit zum Ereignisort - der Anlauf
+                // ist ein Lauf mit dem Ball statt eines Balltransports.
+                const hatBall = this.carrierId === held.id
+                    && Math.hypot(held.x - ball.x, held.y - ball.y) < 6;
+
+                if (hatBall) {
+                    this.ballRoute = [];
+                    this._routeHolder = held.id;
+                    this._routeDauer = 0;
+                } else {
+                    // Sonst wie bisher: Der Ball kommt ihm entgegen, waehrend
+                    // er laeuft. Auf seine alte Position gezielt kaeme er an,
+                    // wenn der Spieler schon weg ist; auf den Ereignisort
+                    // gezielt laege er lange vor ihm da.
+                    const zielX = held.x + (start.x - held.x) * 0.5;
+                    const zielY = held.y + (start.y - held.y) * 0.5;
+                    this.routeBallTo(zielX, zielY, held.team, "pass", scale, held.id);
+                }
             } else {
                 this.routeBallTo(start.x, start.y, ev.team || this.possessionTeam, "pass", scale, null);
             }
@@ -1368,6 +1448,30 @@ class LiveMatchDirector {
         };
     }
 
+    /**
+     * Der Spieler, auf den das Aufbauspiel gerade zuspielt.
+     *
+     * Das ist der Protagonist des naechsten Ereignisses - aber nur, wenn es
+     * bald ansteht, wenn er mitspielt und wenn seine Mannschaft am Ball ist.
+     * Sonst gibt es kein Ziel und das Aufbauspiel laeuft frei.
+     */
+    anlaufZiel() {
+        const ev = this.match.timeline[this.match.timelineIndex];
+        if (!ev || OHNE_BALLFUEHRUNG.includes(ev.type)) return null;
+
+        const vorlauf = this.eventTime(ev) - this.clock;
+        if (vorlauf > LiveMatchDirector.ANLAUF_VORLAUF) return null;
+
+        const held = this.getPlayer2D(this.protagonistId(ev));
+        if (!held || held.pos === "TW") return null;
+
+        // Nur die Mannschaft, der das Ereignis gehoert, spielt darauf zu
+        const team = this.attackingTeamOf(ev);
+        if (team && held.team !== team) return null;
+
+        return held;
+    }
+
     updateAmbient(dt) {
         if (this.kickoff) {
             this.updateKickoff(dt);
@@ -1377,6 +1481,17 @@ class LiveMatchDirector {
         if (this.deadBallTimer > 0) {
             this.deadBallTimer -= dt;
             if (this.deadBallTimer <= 0) this.resumeFromDeadBall();
+            return;
+        }
+
+        // Ein Ball, der noch unterwegs ist, wird nicht weitergespielt - und wer
+        // ihn gerade bekommen hat, nimmt ihn erst an. Der Wartetakt laeuft
+        // dabei weiter: Wuerde er hier zurueckgesetzt, kaeme nach jeder
+        // Annahme noch die volle Wartezeit obendrauf und das Aufbauspiel
+        // verhungerte.
+        if (this.match.ball.inFlight) return;
+        if (this._annahmeTimer > 0) {
+            this._annahmeTimer -= dt;
             return;
         }
 
@@ -1429,15 +1544,24 @@ class LiveMatchDirector {
             return;
         }
 
-        const action = this.flow.decide(carrier, { chainLength: this.possessionChain || 0 });
+        const ziel = this.anlaufZiel();
+        const action = this.flow.decide(carrier, {
+            chainLength: this.possessionChain || 0,
+            zielSpieler: (ziel && ziel.team === carrier.team && ziel.id !== carrier.id) ? ziel : null
+        });
         if (!action) {
             this.ambientInterval = 0.8;
             return;
         }
 
         this.applyFlowAction(action);
-        this.ambientInterval = this.flow.getActionInterval(carrier.team, action.type)
-            * (0.55 + this.getSpeedScale() * 0.65);
+
+        // Die Pause zwischen zwei Ballkontakten steckt jetzt in der echten
+        // Flugzeit des Balls und in der Ballannahme. Der Wartetakt obendrauf
+        // war die alte, einzige Taktung - beide zusammen zaehlen dieselbe
+        // Pause doppelt.
+        // Nur noch ein kurzer Rest, damit nicht alles im Gleichtakt laeuft.
+        this.ambientInterval = this.flow.getActionInterval(carrier.team, action.type) * 0.18;
     }
 
     applyFlowAction(action) {
@@ -1478,6 +1602,7 @@ class LiveMatchDirector {
             this.flowStats.passesCompleted++;
             this.setBallTravel(to.x, to.y, duration, actionType);
             this.setCarrier(to);
+            this.setzeAnnahme();
             this.narrateFlow(action);
             return;
         }
@@ -1588,6 +1713,12 @@ class LiveMatchDirector {
             this.setCarrier(defender);
         }
         this.narrateFlow(action);
+    }
+
+    /** Die Pause, in der ein Spieler den Ball annimmt und sich umschaut */
+    setzeAnnahme() {
+        const [min, max] = LiveMatchDirector.ANNAHME;
+        this._annahmeTimer = min + Math.random() * (max - min);
     }
 
     claimLooseBall(point) {
@@ -1792,6 +1923,7 @@ class LiveMatchDirector {
     startDeadBall(kind, team, x, y) {
         this.carryTarget = null;
         this._offenerStandard = null;
+        this._annahmeTimer = 0;
         if (kind === "kickoff") {
             this.startKickoff(team, "goal");
             return;
@@ -2059,10 +2191,10 @@ class LiveMatchDirector {
      * Strecke wird in Etappen über die Mitspieler zurückgelegt, die ohnehin
      * auf dem Weg stehen.
      */
-    MAX_ETAPPE = 18;
+    MAX_ETAPPE = 30;
 
     /** Dichte des Ballbesitzspiels zwischen den Hoehepunkten (kleiner = mehr Zuspiele) */
-    AMBIENT_TAKT = 0.5;
+    AMBIENT_TAKT = 0.34;
 
     routeBallTo(targetX, targetY, team, actionType, scale, finalHolderId = null) {
         const ball = this.match.ball;
@@ -2079,10 +2211,19 @@ class LiveMatchDirector {
             return;
         }
 
-        // So viele Etappen, wie der Weg braucht - eine feste Obergrenze würde
-        // bei einem Weg über das ganze Feld wieder Dreißig-Meter-Schläge
-        // erzeugen, also genau das, was abgestellt werden soll.
-        const etappen = Math.min(6, Math.ceil(gesamt / this.MAX_ETAPPE));
+        // Höchstens drei Stationen, auch über das ganze Feld.
+        //
+        // Sechs Etappen mit je einer Annahme dazwischen dauerten gemessen über
+        // fünf Bildschirmsekunden - bei einem Höhepunkt alle drei bis vier
+        // Sekunden. Der Anlauf fraß damit ein Drittel der gesamten Übertragung,
+        // und zwischen zwei Szenen blieb Zeit für genau ein freies Zuspiel.
+        // Genau deshalb sah man keine Passstaffetten: Es gab keine.
+        //
+        // Mit drei Stationen sind die einzelnen Zuspiele länger - aber sie sind
+        // immer noch Zuspiele mit glaubwürdiger Flugzeit, kein Sprung. Die
+        // gewonnene Zeit geht ans freie Spiel: gemessen 51 statt 58 Prozent
+        // Szenenanteil und ein Viertel mehr Aktionen im Aufbauspiel.
+        const etappen = Math.min(3, Math.ceil(gesamt / this.MAX_ETAPPE));
         const mates = (this.match.players2D || [])
             .filter(p => p.team === team && p.id !== finalHolderId && p.pos !== "TW");
 

@@ -21,6 +21,16 @@ const _csResolve = (globalName, path) => {
     return null;
 };
 
+
+function _facStufe(club, key, state) {
+    const fe = (typeof FacilityEngine !== "undefined" && FacilityEngine)
+        ? FacilityEngine
+        : ((typeof window !== "undefined" && window.FacilityEngine) ? window.FacilityEngine
+            : (typeof require !== "undefined" ? (() => { try { return require("./facilityEngine.js").FacilityEngine; } catch (e) { return null; } })() : null));
+    if (!fe || typeof fe.stufeGerundet !== "function") return club?.facilities?.[key] || 1;
+    return fe.stufeGerundet(club, key, state?.seasonYear || 1);
+}
+
 class CoachingStaffEngine {
     /** Wie lange ein Veto des Managers gilt, bevor der Stab wieder übernimmt */
     static VETO_DAUER_TAGE = 7;
@@ -46,9 +56,9 @@ class CoachingStaffEngine {
         const STUFEN_BASIS = { 1: 74, 2: 64, 3: 56, 4: 48, 5: 42, 6: 37, 7: 33 };
         const basis = STUFEN_BASIS[club.level || 1] ?? 45;
 
-        const gelaende = club.facilities?.trainingGround || 2;
-        const medizin = club.facilities?.medicalCenter || 1;
-        const jugend = club.facilities?.youthCenter || 1;
+        const gelaende = _facStufe(club, "trainingGround", null);
+        const medizin = _facStufe(club, "medicalCenter", null);
+        const jugend = _facStufe(club, "youthCenter", null);
         const ruf = club.reputation || 50;
 
         const overall = Math.max(15, Math.min(96, Math.round(

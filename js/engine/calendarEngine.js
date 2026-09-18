@@ -591,6 +591,132 @@ const CalendarEngine = {
     INTENSITAET_TEXT: { low: "locker", normal: "normal", high: "hoch" },
 
     /**
+     * Darf der Manager jetzt ein Spiel bestreiten - und welches?
+     *
+     * Das ist die einzige Stelle, die das entscheidet. Vorher fragte jede
+     * Schaltflaeche den Spielplan selbst: Das Dashboard suchte die Partie des
+     * laufenden Spieltags und bot sie an, ganz gleich, welcher Kalendertag
+     * gerade war. In der Vorbereitung stand der erste Spieltag damit dreissig
+     * Tage zu frueh zum Anpfiff bereit - ein Klick auf "Sofort berechnen"
+     * spielte ihn aus, waehrend der Kalender noch auf Tag null stand. Vier
+     * Wochen Vorbereitung, Testspiele und Turniere waren damit uebersprungen,
+     * und der Kalender lief spaeter in denselben Spieltag noch einmal hinein.
+     *
+     * Rueckgabe: null, wenn heute nicht gespielt wird.
+     */
+    spielbarHeute(state) {
+        if (!state || !state.userClubId) return null;
+        const tag = this.getCurrentDay(state);
+        if (!tag) return null;
+
+        if (tag.type === CALENDAR_DAY_TYPES.MATCHDAY) {
+            const runde = (state.schedule || []).find(r => r.matchday === state.currentMatchday);
+            const partie = (runde?.matches || []).find(m =>
+                m.homeClubId === state.userClubId || m.awayClubId === state.userClubId);
+            if (!partie) return null;
+            return {
+                art: "liga",
+                partie,
+                gespielt: !!partie.played,
+                rundenName: `${state.currentMatchday}. Spieltag`,
+                wettbewerbId: state.userLeagueId,
+                wettbewerbName: state.leagueName || "Liga",
+                ko: false
+            };
+        }
+
+        if (tag.type === CALENDAR_DAY_TYPES.CUP || tag.type === CALENDAR_DAY_TYPES.EURO) {
+            const cupEngine = _getCupEngineCal();
+            if (!cupEngine || typeof cupEngine.eigenePartieAm !== "function") return null;
+            const art = tag.cupArt || (tag.type === CALENDAR_DAY_TYPES.CUP ? "cup" : "euro");
+            const eigene = cupEngine.eigenePartieAm(state, art, tag.cupRunde || 0);
+            if (!eigene) return null;
+            return {
+                art: tag.type === CALENDAR_DAY_TYPES.CUP ? "pokal" : "euro",
+                partie: eigene.partie,
+                gespielt: !!eigene.partie.played,
+                rundenName: eigene.runde.roundName,
+                wettbewerbId: eigene.wettbewerb.id || art,
+                wettbewerbName: eigene.wettbewerb.name || "Pokal",
+                ko: !!eigene.ko
+            };
+        }
+
+        return null;
+    },
+
+    /**
+     * Der naechste Termin, an dem der eigene Verein spielt.
+     *
+     * Anders als `naechsterHalt` zaehlt hier nur, was wirklich ein Spiel ist -
+     * Pflichtspiel, Pokalabend oder Vorbereitungstermin. Die Karte auf dem
+     * Dashboard lebt davon: Sie soll sagen, was als Naechstes kommt und wann,
+     * statt unbesehen den ersten Spieltag anzuzeigen.
+     */
+    naechsterTermin(state) {
+        if (!state || !Array.isArray(state.calendar)) return null;
+        const start = state.currentDayIndex || 0;
+        const cupEngine = _getCupEngineCal();
+        const pre = _getPreseasonEngine();
+
+        for (let i = start; i < state.calendar.length; i++) {
+            const tag = state.calendar[i];
+            const tage = i - start;
+
+            if (tag.type === CALENDAR_DAY_TYPES.MATCHDAY) {
+                const spiel = this.naechstesSpiel(state, tag.matchday || null);
+                if (!spiel || spiel.partie.played) continue;
+                return {
+                    art: "liga", index: i, tage, tag,
+                    titel: `${spiel.spieltag}. Spieltag`,
+                    wettbewerb: state.leagueName || "Liga",
+                    partie: spiel.partie,
+                    heim: spiel.heim,
+                    gegner: spiel.gegner,
+                    gegnerName: spiel.gegnerName,
+                    gegnerPlatz: spiel.gegnerPlatz
+                };
+            }
+
+            if (tag.type === CALENDAR_DAY_TYPES.CUP || tag.type === CALENDAR_DAY_TYPES.EURO) {
+                if (!cupEngine || typeof cupEngine.eigenePartieAm !== "function") continue;
+                const art = tag.cupArt || (tag.type === CALENDAR_DAY_TYPES.CUP ? "cup" : "euro");
+                const eigene = cupEngine.eigenePartieAm(state, art, tag.cupRunde || 0);
+                if (!eigene) continue;
+                const heim = eigene.partie.homeClubId === state.userClubId;
+                const gegnerId = heim ? eigene.partie.awayClubId : eigene.partie.homeClubId;
+                const gegner = (state.clubs || []).find(c => c.id === gegnerId);
+                return {
+                    art: tag.type === CALENDAR_DAY_TYPES.CUP ? "pokal" : "euro",
+                    index: i, tage, tag,
+                    titel: eigene.runde.roundName,
+                    wettbewerb: eigene.wettbewerb.name || "Pokal",
+                    partie: eigene.partie,
+                    heim,
+                    gegner,
+                    gegnerName: gegner?.name || "Gegner",
+                    gegnerPlatz: null,
+                    ko: !!eigene.ko
+                };
+            }
+
+            if (tag.type === CALENDAR_DAY_TYPES.FRIENDLY) {
+                const geplant = (pre && state.preseason && typeof pre.terminBeschreibung === "function")
+                    ? pre.terminBeschreibung(state, tag.friendlyIndex ?? 0)
+                    : null;
+                return {
+                    art: "vorbereitung", index: i, tage, tag,
+                    titel: tag.title || "Spieltermin",
+                    wettbewerb: "Vorbereitung",
+                    beschreibung: geplant,
+                    offen: !geplant
+                };
+            }
+        }
+        return null;
+    },
+
+    /**
      * Der naechste Termin, an dem der Manager gebraucht wird.
      *
      * Danach richtet sich der eine Weiter-Knopf: Er sagt, wohin er springt,

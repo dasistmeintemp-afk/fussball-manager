@@ -2057,60 +2057,191 @@ class UIManager {
     /**
      * Dashboard rendern
      */
+    /**
+     * Die Karte "Als Nächstes" - nach dem Vorbild von FM und EA FC.
+     *
+     * Vorher hiess sie "Nächste Begegnung" und zeigte immer die Partie des
+     * laufenden Spieltags, ganz gleich wie weit sie noch weg war. Am ersten
+     * Vorbereitungstag stand dort der erste Spieltag, dreissig Tage im Voraus,
+     * mit einem einsatzbereiten Knopf "2D-Live-Spiel starten" darunter - und
+     * der spielte ihn dann auch wirklich.
+     *
+     * Jetzt zeigt die Karte den naechsten Termin, den es wirklich gibt -
+     * Testspiel, Pokalabend oder Pflichtspiel -, sagt, wie viele Tage es noch
+     * sind, und bietet den Anpfiff nur an dem Tag an, an dem gespielt wird.
+     */
+    renderNextUpCard(state, userClub) {
+        const cal = this.getCalendarEngine();
+        const termin = (cal && typeof cal.naechsterTermin === "function")
+            ? cal.naechsterTermin(state) : null;
+        const heuteSpiel = this.heutigesSpiel();
+
+        this.renderDayRail(state, cal, termin);
+
+        const tag = document.getElementById("dashMatchdayTag");
+        const heading = document.getElementById("dashNextHeading");
+        const preview = document.getElementById("dashMatchPreview");
+        const note = document.getElementById("dashNextNote");
+        const actions = document.getElementById("dashMatchActions");
+        const btnLive = document.getElementById("btnDashLiveMatch");
+        const btnInstant = document.getElementById("btnDashInstantSim");
+        const btnAnalyse = document.getElementById("btnDashOpponentAnalysis");
+        if (!preview || !actions) return;
+
+        // Ein Knopf, der nicht sichtbar ist, darf auch nicht auslösen
+        const sperreKnoepfe = () => {
+            if (btnLive) btnLive.disabled = true;
+            if (btnInstant) btnInstant.disabled = true;
+        };
+
+        // Kein Termin mehr in dieser Saison
+        if (!termin) {
+            preview.style.display = "none";
+            actions.style.display = "none";
+            sperreKnoepfe();
+            if (heading) heading.textContent = "Als Nächstes";
+            if (tag) tag.textContent = "Saisonende";
+            if (note) {
+                note.style.display = "";
+                note.textContent = "Kein Spiel mehr angesetzt - die Saison läuft aus.";
+            }
+            return;
+        }
+
+        if (tag) tag.textContent = termin.wettbewerb;
+        if (heading) heading.textContent = termin.tage === 0 ? "Heute" : "Als Nächstes";
+
+        // Ein Vorbereitungstermin hat keine zwei Wappen - er hat ein Programm
+        if (termin.art === "vorbereitung") {
+            preview.style.display = "none";
+            actions.style.display = "none";
+            sperreKnoepfe();
+            if (note) {
+                note.style.display = "";
+                note.innerHTML = `<strong>${this.escapeHtml(termin.titel)}</strong> ${this.wannText(termin.tage)}`
+                    + `<span>${this.escapeHtml(termin.beschreibung
+                        || "Noch nicht verplant - im Reiter Vorbereitung festlegen, sonst besetzt der Sportdirektor den Termin.")}</span>`;
+            }
+            return;
+        }
+
+        // Pflichtspiel, Pokal oder Europapokal: die beiden Mannschaften
+        preview.style.display = "";
+        const heimClub = termin.heim ? userClub : termin.gegner;
+        const gastClub = termin.heim ? termin.gegner : userClub;
+
+        const platz = (cid) => {
+            const i = (state.standings || []).findIndex(s => s.clubId === cid);
+            return i >= 0 ? `${i + 1}.` : "—";
+        };
+
+        DOM.setText("dashHomeName", heimClub?.name || "Heim");
+        DOM.setText("dashAwayName", gastClub?.name || "Auswärts");
+        DOM.setText("dashHomeRank", termin.art === "liga" ? platz(heimClub?.id) : "");
+        DOM.setText("dashAwayRank", termin.art === "liga" ? platz(gastClub?.id) : "");
+        DOM.setText("dashVenue", heimClub?.stadium || "");
+        DOM.setText("dashNextWhen", this.wannText(termin.tage));
+
+        const wappen = (id, club) => {
+            const el = document.getElementById(id);
+            if (!el || !club) return;
+            el.style.backgroundColor = club.primaryColor;
+            el.textContent = club.name.substring(0, 3).toUpperCase();
+        };
+        wappen("dashHomeCrest", heimClub);
+        wappen("dashAwayCrest", gastClub);
+
+        // Gespielt wird nur heute. An jedem anderen Tag sagt die Karte, wann.
+        const spielbar = !!heuteSpiel && !heuteSpiel.gespielt;
+        actions.style.display = "";
+        if (btnAnalyse) btnAnalyse.style.display = termin.art === "liga" ? "" : "none";
+
+        if (spielbar) {
+            btnLive.disabled = false;
+            btnLive.textContent = "▶ 2D-Live-Spiel starten";
+            btnInstant.disabled = false;
+            btnInstant.style.display = "";
+            if (note) note.style.display = "none";
+        } else if (heuteSpiel && heuteSpiel.gespielt) {
+            const p = heuteSpiel.partie;
+            btnLive.disabled = true;
+            btnLive.textContent = `Beendet (${p.homeGoals}:${p.awayGoals})`;
+            btnInstant.disabled = true;
+            if (note) note.style.display = "none";
+        } else {
+            btnLive.disabled = true;
+            btnLive.textContent = `Anpfiff ${this.wannText(termin.tage)}`;
+            btnInstant.disabled = true;
+            btnInstant.style.display = "none";
+            if (note) {
+                note.style.display = "";
+                note.innerHTML = `<strong>${this.escapeHtml(termin.titel)} ${this.wannText(termin.tage)}</strong>`
+                    + `<span>${this.escapeHtml(this.wegBisZumSpiel(state, termin))}</span>`;
+            }
+        }
+    }
+
+    /**
+     * Was zwischen heute und dem Spiel noch liegt - in einem Satz.
+     */
+    wegBisZumSpiel(state, termin) {
+        if (termin.tage <= 0) return "";
+        const bis = (state.calendar || []).slice(state.currentDayIndex || 0, termin.index);
+        const zaehler = {};
+        bis.forEach(t => { zaehler[t.type] = (zaehler[t.type] || 0) + 1; });
+
+        const worte = {
+            training: "Training", recovery: "Regeneration", tactics: "Taktik",
+            opponent_analysis: "Gegneranalyse", media: "Pressekonferenz",
+            sponsor: "Sponsorentermin", preseason: "Vorbereitung",
+            matchday: "Pflichtspiel", cup: "Pokalabend", euro: "Europapokal",
+            friendly: "Spieltermin"
+        };
+        const teile = Object.keys(zaehler)
+            .filter(k => worte[k])
+            .sort((a, b) => zaehler[b] - zaehler[a])
+            .slice(0, 3)
+            .map(k => `${zaehler[k]}× ${worte[k]}`);
+
+        return teile.length ? `Bis dahin: ${teile.join(", ")}.` : "";
+    }
+
+    /**
+     * Die Tagesleiste - wie der Kalenderstreifen in EA FC.
+     *
+     * Zehn Tage nebeneinander, heute hervorgehoben, der naechste Termin
+     * markiert. Sie bewegt die Zeit nicht; sie zeigt nur, wo man steht. Zeit
+     * bewegt in diesem Spiel genau ein Knopf.
+     */
+    renderDayRail(state, cal, termin) {
+        const rail = document.getElementById("dashDayRail");
+        if (!rail || !cal) return;
+
+        const tage = cal.getUpcomingDays(state, 10);
+        const zielIndex = termin ? termin.index : -1;
+        const start = state.currentDayIndex || 0;
+
+        rail.innerHTML = tage.map((d, i) => {
+            const heute = i === 0;
+            const istZiel = (start + i) === zielIndex;
+            const inhalt = cal.tagesInhalt(state, d);
+            return `
+                <div class="rail-day ${heute ? "is-today" : ""} ${istZiel ? "is-target" : ""} rail-${d.type}"
+                     title="${this.escapeHtml(d.date)} · ${this.escapeHtml(inhalt.titel || d.title)}">
+                    <span class="rail-dow">${this.escapeHtml((d.dayOfWeek || "").substring(0, 2))}</span>
+                    <span class="rail-icon">${this.tagIcon(d.type)}</span>
+                    <span class="rail-num">${this.escapeHtml((d.date || "").substring(0, 2))}</span>
+                </div>`;
+        }).join("");
+    }
+
     renderDashboard() {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
 
-        // 1. Next Match Preview
-        const round = state.schedule.find(r => r.matchday === state.currentMatchday);
-        const userMatch = round?.matches.find(m => m.homeClubId === userClub.id || m.awayClubId === userClub.id);
-
-        document.getElementById("dashMatchdayTag").textContent = `Spieltag ${state.currentMatchday}`;
-
-        if (userMatch) {
-            const homeClub = state.clubs.find(c => c.id === userMatch.homeClubId);
-            const awayClub = state.clubs.find(c => c.id === userMatch.awayClubId);
-
-            const getRank = (cid) => {
-                if (typeof SeasonEngine !== 'undefined' && typeof SeasonEngine.getClubRank === 'function') {
-                    return SeasonEngine.getClubRank(state, cid);
-                }
-                if (state.standings && Array.isArray(state.standings)) {
-                    const idx = state.standings.findIndex(s => s.clubId === cid);
-                    return idx !== -1 ? idx + 1 : "-";
-                }
-                return "-";
-            };
-
-            document.getElementById("dashHomeName").textContent = homeClub.name;
-            document.getElementById("dashAwayName").textContent = awayClub.name;
-            document.getElementById("dashHomeRank").textContent = getRank(homeClub.id);
-            document.getElementById("dashAwayRank").textContent = getRank(awayClub.id);
-            document.getElementById("dashVenue").textContent = homeClub.stadium;
-
-            const homeCrest = document.getElementById("dashHomeCrest");
-            homeCrest.style.backgroundColor = homeClub.primaryColor;
-            homeCrest.textContent = homeClub.name.substring(0, 3).toUpperCase();
-
-            const awayCrest = document.getElementById("dashAwayCrest");
-            awayCrest.style.backgroundColor = awayClub.primaryColor;
-            awayCrest.textContent = awayClub.name.substring(0, 3).toUpperCase();
-
-            // Action Buttons anzeigen / deaktivieren falls schon gespielt
-            const btnLive = document.getElementById("btnDashLiveMatch");
-            const btnInstant = document.getElementById("btnDashInstantSim");
-
-            if (userMatch.played) {
-                btnLive.disabled = true;
-                btnLive.textContent = `Beendet (${userMatch.homeGoals}:${userMatch.awayGoals})`;
-                btnInstant.disabled = true;
-            } else {
-                btnLive.disabled = false;
-                btnLive.textContent = `▶ 2D-Live-Spiel starten`;
-                btnInstant.disabled = false;
-            }
-        }
+        // 1. Was als Nächstes ansteht - und ob heute gespielt wird
+        this.renderNextUpCard(state, userClub);
 
         // 1a. Was heute ansteht
         this.renderAttentionList();
@@ -2129,25 +2260,18 @@ class UIManager {
             if (upcoming.length > 0) {
                 calList.innerHTML = upcoming.map((day, idx) => {
                     const isToday = idx === 0;
-                    let typeIcon = "📅";
-                    if (day.type === "training") typeIcon = "🏋️";
-                    if (day.type === "recovery") typeIcon = "🧘";
-                    if (day.type === "media") typeIcon = "🎙️";
-                    if (day.type === "sponsor") typeIcon = "🤝";
-                    if (day.type === "tactics") typeIcon = "📋";
-                    if (day.type === "opponent_analysis") typeIcon = "🔍";
-                    if (day.type === "matchday") typeIcon = "⚽";
-                    if (day.type === "season_start") typeIcon = "⭐";
-
+                    // Derselbe Inhalt wie im Kalenderreiter - nicht noch einmal
+                    // eigene Symbole und Texte danebenstellen.
+                    const inhalt = calendarEngine.tagesInhalt(state, day);
                     return `
                         <div class="calendar-timeline-item ${isToday ? 'current-day' : ''}">
                             <div class="cal-day-date">
-                                <strong>${day.dayOfWeek}</strong>
-                                <span>${day.date.substring(0, 5)}</span>
+                                <strong>${this.escapeHtml(day.dayOfWeek)}</strong>
+                                <span>${this.escapeHtml((day.date || "").substring(0, 5))}</span>
                             </div>
                             <div class="cal-day-info">
-                                <div class="cal-day-title">${typeIcon} ${day.title}</div>
-                                <div class="cal-day-desc">${day.description}</div>
+                                <div class="cal-day-title">${this.tagIcon(day.type)} ${this.escapeHtml(inhalt.titel || day.title)}</div>
+                                <div class="cal-day-desc">${this.escapeHtml(inhalt.text || day.description || "")}</div>
                             </div>
                             ${isToday ? '<span class="badge badge-success">HEUTE</span>' : ''}
                         </div>
@@ -6501,35 +6625,27 @@ class UIManager {
 
         const heute = cal.getCurrentDay(state);
 
-        // Steht heute das eigene Spiel an, geht es direkt hinein
-        if (heute && heute.type === "matchday") {
-            const runde = state.schedule?.find(r => r.matchday === state.currentMatchday);
-            const partie = runde?.matches.find(m =>
-                m.homeClubId === state.userClubId || m.awayClubId === state.userClubId);
-            if (partie && !partie.played) {
-                const naechstes = cal.naechstesSpiel(state);
+        // Steht heute ein eigenes Spiel an - Liga, Pokal oder Europa -, dann
+        // geht es direkt hinein. Welches das ist, beantwortet der Kalender.
+        const spiel = this.heutigesSpiel();
+        if (spiel && !spiel.gespielt) {
+            const heim = spiel.partie.homeClubId === state.userClubId;
+            const gegnerId = heim ? spiel.partie.awayClubId : spiel.partie.homeClubId;
+            const gegner = state.clubs.find(c => c.id === gegnerId);
+            const wo = heim ? "gegen" : "bei";
+
+            if (spiel.art === "liga") {
                 return {
                     art: "spiel",
-                    text: naechstes ? `Spiel ${naechstes.heim ? "gegen" : "bei"} ${this.kurzName(naechstes.gegnerName)}` : "Spiel beginnen",
+                    text: gegner ? `Spiel ${wo} ${this.kurzName(gegner.name)}` : "Spiel beginnen",
                     kurz: "Anpfiff"
                 };
             }
-        }
-
-        // Pokal- oder Europapokalabend mit eigener Beteiligung
-        if (heute && (heute.type === "cup" || heute.type === "euro")) {
-            const eigene = this.eigenePokalpartie(heute);
-            if (eigene) {
-                const heim = eigene.partie.homeClubId === state.userClubId;
-                const gegnerId = heim ? eigene.partie.awayClubId : eigene.partie.homeClubId;
-                const gegner = state.clubs.find(c => c.id === gegnerId);
-                return {
-                    art: "pokalspiel",
-                    text: `${eigene.runde.roundName} ${heim ? "gegen" : "bei"} ${this.kurzName(gegner?.name || "")}`,
-                    kurz: heute.type === "cup" ? "Pokal" : "Europa",
-                    pokal: eigene
-                };
-            }
+            return {
+                art: "spiel",
+                text: `${spiel.rundenName} ${wo} ${this.kurzName(gegner?.name || "")}`,
+                kurz: spiel.art === "pokal" ? "Pokal" : "Europa"
+            };
         }
 
         // Heute ist Medientag - erst die Pressekonferenz
@@ -6579,6 +6695,24 @@ class UIManager {
         return { art: "sprung", text, kurz: kurzformen[halt.grund] || "Weiter", tage, zielIndex: halt.index };
     }
 
+    /** Wenn heute kein Spiel ist, sagt die Oberfläche auch, wann eines ist */
+    meldeKeinSpielHeute() {
+        const cal = this.getCalendarEngine();
+        const termin = cal && typeof cal.naechsterTermin === "function"
+            ? cal.naechsterTermin(this.app.state)
+            : null;
+        this.showToast(termin
+            ? `Heute wird nicht gespielt. Nächster Termin: ${termin.titel} ${this.wannText(termin.tage)}.`
+            : "Heute wird nicht gespielt.", "info");
+    }
+
+    /** "heute", "morgen", "in 12 Tagen" */
+    wannText(tage) {
+        if (tage <= 0) return "heute";
+        if (tage === 1) return "morgen";
+        return `in ${tage} Tagen`;
+    }
+
     /** Vereinsnamen für einen Knopf kürzen */
     kurzName(name) {
         if (!name) return "";
@@ -6589,6 +6723,68 @@ class UIManager {
         if (typeof CalendarEngine !== "undefined" && CalendarEngine) return CalendarEngine;
         if (typeof window !== "undefined" && window.CalendarEngine) return window.CalendarEngine;
         return null;
+    }
+
+    /**
+     * Das Spiel, das heute ansteht - oder nichts.
+     *
+     * Jede Stelle, die einen Anpfiff anbietet, fragt hier nach. Damit gibt es
+     * genau eine Antwort auf die Frage "darf jetzt gespielt werden?", statt
+     * dass Dashboard, Kopfleiste und Kalender sie sich je einzeln aus dem
+     * Spielplan zusammenreimen.
+     */
+    heutigesSpiel() {
+        const cal = this.getCalendarEngine();
+        if (!cal || typeof cal.spielbarHeute !== "function") return null;
+        return cal.spielbarHeute(this.app?.state);
+    }
+
+    /**
+     * Das heutige Spiel anpfeifen - live.
+     *
+     * Gibt true zurueck, wenn ein Spiel begonnen wurde (oder die Aufstellung
+     * den Anpfiff verhindert hat). false heisst: Heute ist kein Spiel.
+     */
+    starteHeutigesSpiel(sofort = false) {
+        const heute = this.heutigesSpiel();
+        if (!heute || heute.gespielt) return false;
+
+        const val = this.validateLineupForMatch();
+        if (!val.valid) {
+            this.showToast(val.message, "error");
+            this.switchTab("tactics");
+            return true;
+        }
+
+        // Pokal- und Europapokalpartien muessen nach dem Abpfiff ihre Runde
+        // abschliessen - dafuer merkt sich die Oberflaeche den Termin.
+        if (heute.art === "pokal" || heute.art === "euro") {
+            const tag = this.getCalendarEngine()?.getCurrentDay(this.app.state);
+            this._laufenderPokaltermin = {
+                art: tag?.cupArt || (heute.art === "pokal" ? "cup" : "euro"),
+                runde: tag?.cupRunde || 0,
+                ko: !!heute.ko,
+                partie: heute.partie
+            };
+        }
+
+        if (sofort) {
+            const state = this.app.state;
+            const home = state.clubs.find(c => c.id === heute.partie.homeClubId);
+            const away = state.clubs.find(c => c.id === heute.partie.awayClubId);
+            MatchEngine.simulateFullMatch(heute.partie, home, away, state.players);
+            this.playSound("whistle");
+            if (this._laufenderPokaltermin) {
+                this.finishCupTieAroundUser();
+            } else {
+                this.finishMatchdayAroundUser();
+            }
+            this.showMatchReportModal(heute.partie);
+            return true;
+        }
+
+        this.startLiveMatchSimulation(heute.partie);
+        return true;
     }
 
     getCupEngine() {
@@ -6621,10 +6817,6 @@ class UIManager {
             this.app.handleAdvanceAction();
             return;
         }
-        if (ziel.art === "pokalspiel") {
-            this.startePokalpartie(ziel.pokal);
-            return;
-        }
         if (ziel.art === "presse") {
             this.handleCalendarAdvanceDay();
             return;
@@ -6634,33 +6826,6 @@ class UIManager {
             return;
         }
         this.handleCalendarAdvanceDay();
-    }
-
-    /**
-     * Die eigene Pokalpartie live spielen.
-     *
-     * Der Weg ist derselbe wie am Ligaspieltag - nur wird nach dem Abpfiff
-     * nicht die Liga zu Ende gespielt, sondern die Pokalrunde: die übrigen
-     * Partien, die Prämien und die Auslosung der nächsten Runde.
-     */
-    startePokalpartie(eigene) {
-        if (!eigene || !eigene.partie) return;
-
-        const val = this.validateLineupForMatch();
-        if (!val.valid) {
-            this.showToast(val.message, "error");
-            this.switchTab("tactics");
-            return;
-        }
-
-        const tag = this.getCalendarEngine()?.getCurrentDay(this.app.state);
-        this._laufenderPokaltermin = {
-            art: tag?.cupArt || (tag?.type === "cup" ? "cup" : "euro"),
-            runde: tag?.cupRunde || 0,
-            ko: !!eigene.ko,
-            partie: eigene.partie
-        };
-        this.startLiveMatchSimulation(eigene.partie);
     }
 
     /**
@@ -7266,41 +7431,15 @@ class UIManager {
             };
         }
 
+        // Beide Knöpfe pfeifen dasselbe Spiel an - das von heute. Vorher
+        // holten sie sich die Partie des laufenden Spieltags aus dem
+        // Spielplan und boten sie an, ganz gleich welcher Tag war.
         document.getElementById("btnDashLiveMatch").onclick = () => {
-            const val = this.validateLineupForMatch();
-            if (!val.valid) {
-                this.showToast(val.message, "error");
-                this.switchTab("tactics");
-                return;
-            }
-
-            const state = this.app.state;
-            const round = state.schedule.find(r => r.matchday === state.currentMatchday);
-            const userMatch = round?.matches.find(m => m.homeClubId === state.userClubId || m.awayClubId === state.userClubId);
-            if (userMatch && !userMatch.played) {
-                this.startLiveMatchSimulation(userMatch);
-            }
+            if (!this.starteHeutigesSpiel(false)) this.meldeKeinSpielHeute();
         };
 
         document.getElementById("btnDashInstantSim").onclick = () => {
-            const val = this.validateLineupForMatch();
-            if (!val.valid) {
-                this.showToast(val.message, "error");
-                this.switchTab("tactics");
-                return;
-            }
-
-            const state = this.app.state;
-            const round = state.schedule.find(r => r.matchday === state.currentMatchday);
-            const userMatch = round?.matches.find(m => m.homeClubId === state.userClubId || m.awayClubId === state.userClubId);
-            if (userMatch && !userMatch.played) {
-                const home = state.clubs.find(c => c.id === userMatch.homeClubId);
-                const away = state.clubs.find(c => c.id === userMatch.awayClubId);
-                MatchEngine.simulateFullMatch(userMatch, home, away, state.players);
-                this.playSound("whistle");
-                this.finishMatchdayAroundUser();
-                this.showMatchReportModal(userMatch);
-            }
+            if (!this.starteHeutigesSpiel(true)) this.meldeKeinSpielHeute();
         };
 
         // Auto Lineup Button

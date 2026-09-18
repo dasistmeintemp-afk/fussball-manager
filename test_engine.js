@@ -34,6 +34,7 @@ const { NegotiationEngine } = require('./js/engine/negotiationEngine.js');
 const { ManagerEngine } = require('./js/engine/managerEngine.js');
 const { CupEngine } = require('./js/engine/cupEngine.js');
 const { CareerEngine } = require('./js/engine/careerEngine.js');
+const { REAL_CLUBS_BY_LEAGUE } = require('./js/data/realClubs.js');
 
 function runEngineTests() {
     console.log("\n=======================================================");
@@ -3544,7 +3545,7 @@ function runEngineTests() {
 
         state.managerDismissed = {
             matchday: state.currentMatchday, rank: 16,
-            seasonYear: state.seasonYear, clubName: "FC München"
+            seasonYear: state.seasonYear, clubName: "FC Bayern München"
         };
         const daten = CareerEngine.verarbeiteEntlassung(state);
         if (!daten.angebote.length) throw new Error("Keine Angebote zum Wechseln");
@@ -3581,7 +3582,7 @@ function runEngineTests() {
         for (let i = 0; i < 6; i++) SeasonEngine.advanceToNextMatchday(state);
 
         CareerEngine.vermerkeTitel(state, "DFB-Pokal", 1);
-        state.managerDismissed = { matchday: 6, rank: 15, seasonYear: 1, clubName: "FC München" };
+        state.managerDismissed = { matchday: 6, rank: 15, seasonYear: 1, clubName: "FC Bayern München" };
         CareerEngine.verarbeiteEntlassung(state);
 
         const zeugnis = CareerEngine.beendeKarriere(state);
@@ -3602,7 +3603,7 @@ function runEngineTests() {
         state.boardConfidence = 15;
         state.currentMatchday = 12;
         state.jobSecurity = { stage: "entlassen", ultimatumUntil: null, ultimatumRank: null, warnedAt: null };
-        state.managerDismissed = { matchday: 11, rank: 18, seasonYear: 1, clubName: "FC München" };
+        state.managerDismissed = { matchday: 11, rank: 18, seasonYear: 1, clubName: "FC Bayern München" };
 
         const club = state.clubs.find(c => c.id === state.userClubId);
         SeasonEngine.checkJobSecurity(state, club, 18, 3);
@@ -3666,6 +3667,91 @@ function runEngineTests() {
         if (wieder.hiddenAttributes.loyalty !== spieler.hiddenAttributes.loyalty) {
             throw new Error("Die versteckten Werte gingen verloren");
         }
+    });
+
+
+    // ---------------------------------------------------------------
+    // Echte Vereine in allen Ligen
+    // ---------------------------------------------------------------
+
+    test("Spielwelt: Jede Liga ist mit echten Vereinen besetzt", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Namenspruefer" });
+
+        LEAGUES_DATA.forEach(liga => {
+            const clubs = state.clubs.filter(c => c.leagueId === liga.id);
+            if (clubs.length !== liga.teamCount) {
+                throw new Error(`${liga.shortName} hat ${clubs.length} statt ${liga.teamCount} Vereine`);
+            }
+
+            // Die Bundesliga kommt aus der handgepflegten Vereinsdatei
+            if (liga.id === "de_liga_1") return;
+
+            const echte = new Set((REAL_CLUBS_BY_LEAGUE[liga.id] || []).map(v => v.name));
+            if (echte.size < liga.teamCount) {
+                throw new Error(`Für ${liga.shortName} sind nur ${echte.size} echte Vereine hinterlegt`);
+            }
+            const erzeugt = clubs.filter(c => !echte.has(c.name));
+            if (erzeugt.length) {
+                throw new Error(`${liga.shortName} enthält erzeugte Vereine: ${erzeugt.map(c => c.name).join(", ")}`);
+            }
+        });
+
+        // Kein Verein darf doppelt vorkommen - weder im Namen noch in der ID
+        const namen = state.clubs.map(c => c.name);
+        const doppelt = namen.filter((n, i) => namen.indexOf(n) !== i);
+        if (doppelt.length) throw new Error(`Vereinsnamen doppelt vergeben: ${[...new Set(doppelt)].join(", ")}`);
+
+        const ids = state.clubs.map(c => c.id);
+        const doppelteIds = ids.filter((n, i) => ids.indexOf(n) !== i);
+        if (doppelteIds.length) throw new Error(`Vereins-IDs doppelt vergeben: ${[...new Set(doppelteIds)].join(", ")}`);
+    });
+
+    test("Echte Vereine: Stadion und Kapazität kommen aus der Vereinsdatei", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Stadionpruefer" });
+
+        Object.keys(REAL_CLUBS_BY_LEAGUE).forEach(ligaId => {
+            REAL_CLUBS_BY_LEAGUE[ligaId].slice(0, 6).forEach(echt => {
+                const club = state.clubs.find(c => c.name === echt.name);
+                if (!club) return;   // mehr Vereine hinterlegt als die Liga Plätze hat
+                if (club.stadium !== echt.stadium) {
+                    throw new Error(`${echt.name} spielt in "${club.stadium}" statt "${echt.stadium}"`);
+                }
+                if (club.stadiumCapacity !== echt.capacity) {
+                    throw new Error(`${echt.name}: Kapazität ${club.stadiumCapacity} statt ${echt.capacity}`);
+                }
+                if (club.city !== echt.city) {
+                    throw new Error(`${echt.name} liegt in ${club.city} statt ${echt.city}`);
+                }
+            });
+        });
+    });
+
+    test("Echte Vereine: Die Rangfolge der Datei bestimmt den Ruf", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Rangpruefer" });
+
+        // In jeder Liga muss die erste Hälfte der Liste im Schnitt deutlich
+        // besser dastehen als die zweite - sonst wäre die Reihenfolge nutzlos
+        ["en_liga_1", "es_liga_1", "it_liga_1", "fr_liga_1", "de_liga_2", "de_liga_3"].forEach(ligaId => {
+            const liste = REAL_CLUBS_BY_LEAGUE[ligaId];
+            const ruf = name => state.clubs.find(c => c.name === name)?.reputation ?? 0;
+            const mitte = Math.floor(liste.length / 2);
+            const oben = liste.slice(0, mitte).map(v => ruf(v.name));
+            const unten = liste.slice(mitte).map(v => ruf(v.name));
+            const schnitt = a => a.reduce((s, v) => s + v, 0) / a.length;
+
+            if (schnitt(oben) <= schnitt(unten) + 3) {
+                throw new Error(`${ligaId}: Die obere Hälfte (${schnitt(oben).toFixed(1)}) hebt sich nicht `
+                    + `von der unteren ab (${schnitt(unten).toFixed(1)})`);
+            }
+        });
+
+        // Und die Spitzenklubs Europas müssen über allen anderen stehen
+        const spitze = ["Real Madrid", "FC Barcelona", "Manchester City", "Paris Saint-Germain"];
+        spitze.forEach(name => {
+            const club = state.clubs.find(c => c.name === name);
+            if (!club) throw new Error(`${name} fehlt in der Spielwelt`);
+            if (club.reputation < 85) throw new Error(`${name} hat nur Ruf ${club.reputation}`);
+        });
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

@@ -144,6 +144,41 @@ const AMBIENT_PRESSURE = [
 ];
 
 class LiveMatchDirector {
+    /**
+     * Hoechstgeschwindigkeit des Balls je Spielart, in Feldeinheiten je
+     * Bildschirmsekunde. Eine Einheit ist gut ein Meter.
+     *
+     * Hier stand vorher nichts - der Deckel lag bei hundertzehn fuer einen
+     * Pass, also hundertfuenfzehn Metern je Sekunde. Schneller als jeder
+     * Schuss, den es je gab. Gemessen sprang der Ball dadurch in jedem
+     * sechsten Bild ueber drei Meter weiter: genau der Eindruck eines Balls,
+     * der durch die Gegend springt.
+     *
+     * Die Spieluhr laeuft gut zwoelffach gerafft, ein Pass darf auf dem
+     * Bildschirm also schneller sein als auf dem Rasen - aber er muss als
+     * Pass erkennbar bleiben.
+     */
+    static BALL_TEMPO = { pass: 40, cross: 50, shot: 72, dead: 32 };
+
+    /**
+     * Wie lange der Ball zwischen zwei Etappen einer Kombination bei einem
+     * Spieler liegt - kuerzeste und laengste Annahme.
+     *
+     * Die Anlaufplanung rechnet mit der laengsten: Ein Anlauf, der zu frueh
+     * endet, laesst den im Ticker genannten Spieler ohne Ball dastehen - ein
+     * Anlauf, der zu lange dauert, kostet nur einen Augenblick.
+     */
+    static ETAPPEN_ANNAHME = [0.28, 0.58];
+
+    /**
+     * Wie schnell ein Spieler einen liegenden Ball zu sich heranholt, in
+     * Feldeinheiten je Bildschirmsekunde.
+     *
+     * Er rollt ihn sich zu, er reisst ihn nicht heran: ohne diese Grenze
+     * sprang der Ball beim Aufnehmen ueber mehrere Meter in einem Bild.
+     */
+    static AUFNAHME_TEMPO = 72;
+
     constructor(liveMatch) {
         this.match = liveMatch;
 
@@ -169,6 +204,10 @@ class LiveMatchDirector {
         this.carrierId = null;
         this.ambientTimer = 0;
         this.ambientInterval = 1.1;
+        // Laufweg eines Spielers, der den Ball mitnimmt
+        this.carryTarget = null;
+        // Vorgemerkte Spielfortsetzung, sobald der Ball im Aus liegt
+        this._offenerStandard = null;
 
         this.celebrationTimer = 0;
         this.celebrationPhase = null;
@@ -632,7 +671,10 @@ class LiveMatchDirector {
         // Tor - von neunzehn Fehlschüssen wurden nur noch fünfzehn ausgeführt.
         // Eine Spielfortsetzung darf nicht verschluckt werden, nur weil das
         // nächste Ereignis drängt.
-        if (!this.kickoff && !this.deadBall && this.hasDueEvent()) {
+        // Eine vorgemerkte Spielfortsetzung wird nicht von einer Szene
+        // ueberrannt - sonst bliebe der Ball an der Seitenlinie liegen und
+        // der naechste Anlauf muesste ihn von dort quer ueber das Feld holen.
+        if (!this.kickoff && !this.deadBall && !this._offenerStandard && this.hasDueEvent()) {
             this.startHighlight();
             return;
         }
@@ -680,6 +722,7 @@ class LiveMatchDirector {
         }
 
         this.mode = "highlight";
+        this.carryTarget = null;
         this.scene = { events, index: 0, phase: null };
         this.beginEventPhase("approach");
     }
@@ -820,8 +863,15 @@ class LiveMatchDirector {
                 // Der Ball geht zu dem Spieler, den der Ticker nennt - über
                 // seine Mitspieler, wenn er weit weg ist, und läuft dann mit
                 // ihm, bis er am Ereignisort ist.
+                //
+                // Gezielt wird auf die Mitte zwischen seinem Standort und dem
+                // Ereignisort: Der Ball fliegt ihm entgegen, waehrend er laeuft.
+                // Auf seine alte Position gezielt kam der Ball an, als er schon
+                // weg war; auf den Ereignisort gezielt lag er lange vor ihm da.
                 this.possessionTeam = held.team;
-                this.routeBallTo(held.x, held.y, held.team, "pass", scale, held.id);
+                const zielX = held.x + (start.x - held.x) * 0.5;
+                const zielY = held.y + (start.y - held.y) * 0.5;
+                this.routeBallTo(zielX, zielY, held.team, "pass", scale, held.id);
             } else {
                 this.routeBallTo(start.x, start.y, ev.team || this.possessionTeam, "pass", scale, null);
             }
@@ -836,8 +886,13 @@ class LiveMatchDirector {
                 : Math.hypot(ball.x - start.x, ball.y - start.y);
             const obergrenze = ev.type === "corner" ? 6.5 : 4.2;
             this.phaseTimer = Math.min(obergrenze, 0.55 + laufweg / 16) * scale + 0.4;
-            // Der Anlauf endet nie, bevor der Ball seinen Weg hinter sich hat
-            this.phaseTimer = Math.max(this.phaseTimer, (this._routeDauer || 0) + 0.25);
+            // Der Anlauf endet nie, bevor der Ball seinen Weg hinter sich hat -
+            // und danach braucht der Spieler noch einen Augenblick, um ihn
+            // anzunehmen. Mit dem langsameren, glaubwuerdigen Ball reichte der
+            // alte Zuschlag von einer Viertelsekunde nicht mehr: Der Anlauf
+            // lief aus, waehrend der Ball noch unterwegs war, und der im Ticker
+            // genannte Spieler stand ohne ihn da.
+            this.phaseTimer = Math.max(this.phaseTimer, (this._routeDauer || 0) + 0.7);
 
             // Ein ruhender Ball braucht seine Zeit: Ecke und Elfmeter werden
             // zurechtgelegt, auch wenn der Schütze schon dasteht.
@@ -1286,6 +1341,10 @@ class LiveMatchDirector {
 
     setCarrier(player) {
         if (!player) return;
+
+        // Ein Lauf mit dem Ball endet, sobald ihn jemand anders hat
+        if (this.carryTarget && this.carryTarget.id !== player.id) this.carryTarget = null;
+
         if (player.team === this.possessionTeam) {
             this.possessionChain = (this.possessionChain || 0) + 1;
         } else {
@@ -1321,6 +1380,14 @@ class LiveMatchDirector {
             return;
         }
 
+        // Der Ball ist über die Linie gerollt - jetzt wird er geholt und für
+        // die Spielfortsetzung hingelegt.
+        if (this._offenerStandard) {
+            if (this.match.ball.inFlight) return;
+            this.fuehreOffenenStandardAus();
+            return;
+        }
+
         // Die Taktung des Ballbesitzspiels folgt der Spielzeit, nicht der
         // Bildschirmzeit. Vorher zählte hier die echte Sekunde: Wer schneller
         // zusah, bekam weniger Aktionen zu sehen - bei gleicher Spieldauer von
@@ -1333,6 +1400,17 @@ class LiveMatchDirector {
         this.ambientTimer += dt;
         if (this.ambientTimer < this.ambientInterval * this.getSpeedScale() * this.AMBIENT_TAKT) return;
         this.ambientTimer = 0;
+
+        // Ein Lauf mit dem Ball wird zu Ende gelaufen, bevor der naechste
+        // Ballkontakt kommt - sonst waere er nach einem Wimpernschlag vorbei.
+        if (this.carryTarget) {
+            const laeufer = this.getPlayer2D(this.carryTarget.id);
+            const fertig = !laeufer
+                || (this.carryTarget.rest -= dt) <= 0
+                || Math.hypot(laeufer.x - this.carryTarget.x, laeufer.y - this.carryTarget.y) < 1.8;
+            if (!fertig) return;
+            this.carryTarget = null;
+        }
 
         const carrier = this.getPlayer2D(this.carrierId);
         if (!carrier) {
@@ -1367,17 +1445,23 @@ class LiveMatchDirector {
         const to = action.to;
         const dist = Math.hypot((to.x ?? from.x) - from.x, (to.y ?? from.y) - from.y);
 
-        if (action.outcome === "out" || this.handleOutOfPlay(action, to)) {
-            if (action.outcome === "out") {
-                this.flowStats.turnovers++;
-                this.handleOutOfPlay(action, to);
-            }
-            return;
-        }
-
         const speedScale = 0.55 + this.getSpeedScale() * 0.6;
         const actionType = action.type === "longball" ? "cross" : "pass";
         const duration = Math.max(0.2, Math.min(0.95, dist / (action.type === "longball" ? 62 : 78))) * speedScale;
+
+        // Ein Ball, der ins Aus geht, geht erst einmal ins Aus.
+        //
+        // Vorher sprang er von der Stelle des Passgebers sofort an den
+        // Einwurfpunkt - gemessen im Schnitt sechsundvierzig Meter weit, im
+        // Extremfall sechsundsechzig. Genau das sah aus wie ein Ball, der von
+        // Einwurf zu Eckball zu Abstoß springt. Jetzt sind es zwei sichtbare
+        // Vorgänge: Der Ball rollt über die Linie, und erst dort wird er für
+        // die Spielfortsetzung geholt und hingelegt.
+        if (this.planeStandard(action, to)) {
+            if (action.outcome === "out") this.flowStats.turnovers++;
+            this.setBallTravel(to.x, to.y, duration, actionType);
+            return;
+        }
 
         this.flowStats.actions++;
 
@@ -1469,10 +1553,27 @@ class LiveMatchDirector {
             `${this.match.minute}' - Die Fahne geht hoch, ${receiver.name || "der Angreifer"} stand im Abseits.`;
     }
 
+    /**
+     * Ein gewonnenes Dribbling ist ein Lauf mit dem Ball - kein Zuspiel an
+     * sich selbst.
+     *
+     * Vorher wurde auch das gewonnene Dribbling als `setBallTravel` gespielt:
+     * Der Ball flog voraus, der Spieler kam hinterher. Auf dem Feld sah man
+     * davon nur einen weiteren Ball, der wegsprang; Laeufe mit dem Ball gab es
+     * gar nicht. Jetzt bekommt der Spieler ein Laufziel, der Ball bleibt an
+     * seinem Fuss, und beide bewegen sich zusammen.
+     */
     handleDribbleAction(action, duration) {
         const carrier = action.from;
         if (action.outcome === "beaten") {
-            this.setBallTravel(action.to.x, action.to.y, duration * 1.1, "pass");
+            const strecke = Math.hypot(action.to.x - carrier.x, action.to.y - carrier.y);
+            this.carryTarget = {
+                id: carrier.id,
+                x: action.to.x,
+                y: action.to.y,
+                // Notbremse, falls der Laeufer haengen bleibt
+                rest: Math.max(0.5, strecke / 13) + 0.5
+            };
             this.setCarrier(carrier);
             this.narrateFlow(action);
             return;
@@ -1480,6 +1581,7 @@ class LiveMatchDirector {
 
         const defender = action.defender;
         this.flowStats.turnovers++;
+        this.carryTarget = null;
         if (defender) {
             this.possessionTeam = defender.team;
             this.setBallTravel(defender.x, defender.y, duration * 0.7, "pass");
@@ -1517,7 +1619,12 @@ class LiveMatchDirector {
 
     // --------------------------------------------------- Standardsituationen
 
-    handleOutOfPlay(action, to) {
+    /**
+     * Verlässt der Ball hier das Feld? Dann wird die Spielfortsetzung
+     * vorgemerkt - ausgeführt wird sie erst, wenn der Ball wirklich über der
+     * Linie liegt.
+     */
+    planeStandard(action, to) {
         const x = to.x ?? 0;
         const y = to.y ?? 0;
         const team = action.from?.team || this.possessionTeam;
@@ -1525,7 +1632,9 @@ class LiveMatchDirector {
         if (y < 1.5 || y > 98.5) {
             const spotY = y < 1.5 ? 1.5 : 98.5;
             const spotX = Math.max(4, Math.min(96, x));
-            this.startDeadBall("throwin", team === "home" ? "away" : "home", spotX, spotY);
+            this._offenerStandard = {
+                kind: "throwin", team: team === "home" ? "away" : "home", x: spotX, y: spotY
+            };
             return true;
         }
 
@@ -1536,11 +1645,29 @@ class LiveMatchDirector {
             const linie = x < 1.5 ? 0 : 100;
             const defendingTeam = Math.abs(this.ownGoalX("home") - linie) < 50 ? "home" : "away";
             const goalX = x < 1.5 ? 8 : 92;
-            this.startDeadBall("goalkick", defendingTeam, goalX, 50);
+            this._offenerStandard = { kind: "goalkick", team: defendingTeam, x: goalX, y: 50 };
             return true;
         }
 
         return false;
+    }
+
+    /**
+     * Rückwärtskompatibler Name - führt die Fortsetzung sofort aus.
+     */
+    handleOutOfPlay(action, to) {
+        if (!this.planeStandard(action, to)) return false;
+        this.fuehreOffenenStandardAus();
+        return true;
+    }
+
+    /** Die vorgemerkte Spielfortsetzung ausführen, sobald der Ball liegt */
+    fuehreOffenenStandardAus() {
+        const s = this._offenerStandard;
+        if (!s) return false;
+        this._offenerStandard = null;
+        this.startDeadBall(s.kind, s.team, s.x, s.y);
+        return true;
     }
 
     // ------------------------------------------------------------- Anstoß
@@ -1663,6 +1790,8 @@ class LiveMatchDirector {
     }
 
     startDeadBall(kind, team, x, y) {
+        this.carryTarget = null;
+        this._offenerStandard = null;
         if (kind === "kickoff") {
             this.startKickoff(team, "goal");
             return;
@@ -1673,8 +1802,12 @@ class LiveMatchDirector {
         this.possessionTeam = team;
         this.flowStats.setPieces++;
 
+        // Der Ball wird zum Einwurf-, Eck- oder Abstoßpunkt gebracht, nicht
+        // dorthin geschossen. Deshalb läuft er mit dem Tempo eines ruhenden
+        // Balls - vorher ging er als "pass" auf die Reise und legte den Weg
+        // von der Strafraumgrenze zur Eckfahne in einem Wimpernschlag zurück.
         const dist = Math.hypot(x - this.match.ball.x, y - this.match.ball.y);
-        this.setBallTravel(x, y, Math.max(0.25, Math.min(0.9, dist / 90)) * speedScale + 0.15, "pass");
+        this.setBallTravel(x, y, Math.max(0.35, Math.min(1.1, dist / 70)) * speedScale + 0.2, "dead");
 
         const executor = this.pickSetPieceTaker(kind, team, x, y);
         if (executor) {
@@ -1939,7 +2072,9 @@ class LiveMatchDirector {
 
         if (gesamt <= this.MAX_ETAPPE) {
             this._routeHolder = finalHolderId;
-            this._routeDauer = Math.max(0.16, Math.min(0.55, gesamt / 88)) * scale + 0.08;
+            const geplant = Math.max(0.16, Math.min(0.55, gesamt / 88)) * scale + 0.08;
+            this._routeDauer = Math.max(geplant, gesamt
+                / (LiveMatchDirector.BALL_TEMPO[actionType] || LiveMatchDirector.BALL_TEMPO.pass));
             this.setBallTravel(targetX, targetY, this._routeDauer, actionType);
             return;
         }
@@ -1985,8 +2120,8 @@ class LiveMatchDirector {
         let vx = ball.x, vy = ball.y, dauer = 0;
         route.forEach((r, i) => {
             const d = Math.hypot(r.x - vx, r.y - vy);
-            dauer += Math.max(0.14, Math.min(0.45, d / 95)) * scale + 0.06;
-            if (i < route.length - 1) dauer += 0.43 * scale;
+            dauer += this.etappenDauer(d, scale);
+            if (i < route.length - 1) dauer += LiveMatchDirector.ETAPPEN_ANNAHME[1] * scale;
             vx = r.x; vy = r.y;
         });
         this._routeDauer = dauer;
@@ -2028,6 +2163,17 @@ class LiveMatchDirector {
         }
     }
 
+    /**
+     * Wie lange eine Etappe wirklich dauert.
+     *
+     * Dieselbe Rechnung, mit der `routeBallTo` den Anlauf plant - sonst endet
+     * der Anlauf, bevor der Ball beim genannten Spieler ist.
+     */
+    etappenDauer(distanz, scale) {
+        const geplant = Math.max(0.14, Math.min(0.45, distanz / 95)) * scale + 0.06;
+        return Math.max(geplant, distanz / LiveMatchDirector.BALL_TEMPO.pass);
+    }
+
     /** Startet die nächste Etappe einer Ballroute */
     startNextRouteLeg() {
         if (!this.ballRoute || this.ballRoute.length === 0) return false;
@@ -2039,8 +2185,7 @@ class LiveMatchDirector {
         this._routeHolder = etappe.holderId;
         ball.holderId = null;
         this._routeLegRunning = true;
-        this.setBallTravel(etappe.x, etappe.y,
-            Math.max(0.14, Math.min(0.45, d / 95)) * scale + 0.06, etappe.type || "pass");
+        this.setBallTravel(etappe.x, etappe.y, this.etappenDauer(d, scale), etappe.type || "pass");
         this._routeLegRunning = false;
         return true;
     }
@@ -2061,8 +2206,8 @@ class LiveMatchDirector {
         ball.targetY = Math.max(1, Math.min(99, targetY));
         ball.distance = Math.hypot(ball.targetX - ball.originX, ball.targetY - ball.originY);
 
-        const maxSpeedPerSecond = actionType === "shot" ? 190 : (actionType === "cross" ? 130 : 110);
-        const minDuration = ball.distance / maxSpeedPerSecond;
+        const tempo = LiveMatchDirector.BALL_TEMPO[actionType] || LiveMatchDirector.BALL_TEMPO.pass;
+        const minDuration = ball.distance / tempo;
 
         ball.travelDuration = Math.max(0.01, durationSeconds, minDuration);
         ball.travelElapsed = 0;
@@ -2093,7 +2238,28 @@ class LiveMatchDirector {
         ball.holderId = null;
     }
 
+    /**
+     * Der Ball wird in kleinen Schritten bewegt, nie in einem Satz.
+     *
+     * Ein Bild kann viel Spielzeit umfassen - bei hohem Tempo, nach einem
+     * Tabwechsel oder auf einem langsamen Geraet. Wurde die ganze Zeitspanne
+     * in einem Rutsch verrechnet, sprang der Ball ueber mehrere Meter: gemessen
+     * bis zu neun Meter in einem einzigen Bild. Sichtbar ist das ein Ball, der
+     * teleportiert. Mit Teilschritten bleibt die Bewegung eine Bewegung,
+     * unabhaengig davon, wie gross der Zeitschritt ist.
+     */
     updateBall(dt) {
+        const MAX_SCHRITT = 0.034;
+        if (dt > MAX_SCHRITT) {
+            const schritte = Math.min(12, Math.ceil(dt / MAX_SCHRITT));
+            const teil = dt / schritte;
+            for (let i = 0; i < schritte; i++) this.updateBallSchritt(teil);
+            return;
+        }
+        this.updateBallSchritt(dt);
+    }
+
+    updateBallSchritt(dt) {
         const ball = this.match.ball;
 
         this.syncExternalBallOverride();
@@ -2139,7 +2305,8 @@ class LiveMatchDirector {
                 this.match.activePlayerId = this._routeHolder;
                 ball.holderId = this._routeHolder;
                 this._routeHolder = null;
-                this._routeDwell = (0.28 + Math.random() * 0.3) * (this._routeScale || 1);
+                const [dMin, dMax] = LiveMatchDirector.ETAPPEN_ANNAHME;
+                this._routeDwell = (dMin + Math.random() * (dMax - dMin)) * (this._routeScale || 1);
             }
             if (this.ballRoute && this.ballRoute.length > 0) {
                 this._routeDwell = Math.max(0, (this._routeDwell || 0) - dt);
@@ -2161,11 +2328,23 @@ class LiveMatchDirector {
 
                 // Im Anlauf einer Szene nimmt der Spieler den Ball auch über
                 // eine größere Strecke mit - er dribbelt ihn zum Ereignisort.
-                const reichweite = this.mode === "highlight" ? 30 : 8;
+                // Im Anlauf einer Szene holt sich der Spieler den Ball auch
+                // ueber eine groessere Strecke - gemessen war "Ball liegt,
+                // Spieler weg" mit Abstand der haeufigste Grund dafuer, dass
+                // der im Ticker genannte Spieler bei Szenenbeginn ohne Ball
+                // dastand: zweiundzwanzig von vierundzwanzig Faellen.
+                const reichweite = this.mode === "highlight" ? 999 : 8;
 
-                if (Math.hypot(anchorX - ball.x, anchorY - ball.y) < reichweite) {
-                    ball.x += (anchorX - ball.x) * Math.min(1, dt * 9);
-                    ball.y += (anchorY - ball.y) * Math.min(1, dt * 9);
+                const weg = Math.hypot(anchorX - ball.x, anchorY - ball.y);
+                if (weg < reichweite) {
+                    // Auch beim Aufnehmen rollt der Ball, er springt nicht.
+                    // Ohne diese Grenze riss ein Spieler, der weit weg stand,
+                    // den Ball in einem einzigen Bild zu sich heran.
+                    const anteil = Math.min(1, dt * 9);
+                    const grenze = LiveMatchDirector.AUFNAHME_TEMPO * dt;
+                    const faktor = weg * anteil > grenze ? grenze / weg : anteil;
+                    ball.x += (anchorX - ball.x) * faktor;
+                    ball.y += (anchorY - ball.y) * faktor;
                     ball.targetX = ball.x;
                     ball.targetY = ball.y;
                     ball.originX = ball.x;
@@ -2325,6 +2504,11 @@ class LiveMatchDirector {
 
         const sceneRole = match.sceneRoles?.get(p.id);
         if (sceneRole) return sceneRole;
+
+        // Wer mit dem Ball laeuft, laeuft dorthin, wohin er ihn mitnimmt
+        if (this.carryTarget && p.id === this.carryTarget.id) {
+            return { x: this.carryTarget.x, y: this.carryTarget.y, urgency: 1.45, sprint: true };
+        }
 
         if (p.pos === "TW") return this.computeKeeperTarget(p, ball);
 

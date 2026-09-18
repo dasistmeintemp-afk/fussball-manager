@@ -109,35 +109,15 @@ class App {
             return;
         }
 
-        const round = this.state.schedule.find(r => r.matchday === this.state.currentMatchday);
-        const userMatch = round?.matches.find(m => m.homeClubId === this.state.userClubId || m.awayClubId === this.state.userClubId);
+        // Gespielt wird nur an dem Tag, an dem das Spiel angesetzt ist - und
+        // welches Spiel das ist, sagt der Kalender, nicht der Spielplan.
+        if (this.ui.starteHeutigesSpiel()) return;
 
-        // Falls das Spiel des Users noch nicht gespielt wurde:
-        if (userMatch && !userMatch.played) {
-            // Aufstellung vor Spielbeginn validieren
-            const val = this.ui.validateLineupForMatch();
-            if (!val.valid) {
-                this.ui.showToast(val.message, "error");
-                this.ui.switchTab("tactics");
-                return;
-            }
-
-            this.ui.startLiveMatchSimulation(userMatch);
-            return;
-        }
-
-        // Falls das Spiel bereits gespielt wurde: Weiter zum nächsten Spieltag
-        const result = SeasonEngine.advanceToNextMatchday(this.state);
-        this.state.saveToLocalStorage();
-
-        if (result.seasonEnded) {
-            this.ui.showSeasonEndCelebration(result);
-        } else {
-            this.ui.playSound("click");
-            this.ui.renderCurrentTab();
-            this.ui.renderHeader();
-            this.ui.pruefeEntlassung();
-        }
+        // Sonst laeuft die Zeit ueber denselben Weg weiter wie ueberall:
+        // Tag fuer Tag durch den Kalender. Vorher sprang diese Stelle ueber
+        // SeasonEngine direkt in den naechsten Spieltag und uebersprang dabei
+        // Training, Presse, Pokal und Vorbereitung.
+        this.ui.handleCalendarAdvanceDay();
     }
 }
 

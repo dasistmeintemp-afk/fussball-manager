@@ -150,18 +150,23 @@
                 <section class="tab-pane active" id="pane-dashboard">
                     <div class="dashboard-grid">
                         <!-- Next Match Card -->
-                        <div class="dash-card next-match-card">
+                        <div class="dash-card next-match-card" id="dashNextCard">
                             <div class="card-header">
-                                <h3>Nächste Begegnung</h3>
+                                <h3 id="dashNextHeading">Als Nächstes</h3>
                                 <span class="matchday-tag" id="dashMatchdayTag">Spieltag 1</span>
                             </div>
-                            <div class="match-preview-content">
+
+                            <!-- Die Tagesleiste: wo wir stehen und was kommt -->
+                            <div class="day-rail" id="dashDayRail"></div>
+
+                            <div class="match-preview-content" id="dashMatchPreview">
                                 <div class="preview-team home-team">
                                     <div class="preview-crest" id="dashHomeCrest"></div>
                                     <h4 id="dashHomeName">FC Bayern München</h4>
                                     <span class="preview-rank" id="dashHomeRank">Platz 1</span>
                                 </div>
                                 <div class="preview-vs">
+                                    <span class="vs-countdown" id="dashNextWhen">heute</span>
                                     <span class="vs-text">VS</span>
                                     <span class="preview-venue" id="dashVenue">Allianz Arena</span>
                                 </div>
@@ -171,7 +176,11 @@
                                     <span class="preview-rank" id="dashAwayRank">Platz 2</span>
                                 </div>
                             </div>
-                            <div class="match-action-row">
+
+                            <!-- Steht kein Spiel an, erklärt diese Zeile, was stattdessen läuft -->
+                            <div class="next-note" id="dashNextNote"></div>
+
+                            <div class="match-action-row" id="dashMatchActions">
                                 <button class="btn btn-secondary" id="btnDashOpponentAnalysis">🔍 Gegneranalyse anzeigen</button>
                                 <button class="btn btn-secondary" id="btnDashInstantSim">⚡ Sofort berechnen</button>
                                 <button class="btn btn-primary btn-lg" id="btnDashLiveMatch">▶ 2D-Live-Spiel starten</button>

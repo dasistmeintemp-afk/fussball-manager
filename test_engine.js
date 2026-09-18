@@ -3754,6 +3754,98 @@ function runEngineTests() {
         });
     });
 
+
+    // ---------------------------------------------------------------
+    // Gespielt wird nur an dem Tag, an dem das Spiel angesetzt ist
+    // ---------------------------------------------------------------
+
+    test("CalendarEngine: In der Vorbereitung ist kein Pflichtspiel spielbar", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Vorbereiter" });
+
+        if (!state.preseason?.aktiv) throw new Error("Die Vorbereitung läuft gar nicht");
+        const ersterSpieltag = state.calendar.findIndex(d => d.type === "matchday");
+        if (ersterSpieltag < 20) {
+            throw new Error(`Der erste Spieltag liegt schon auf Tag ${ersterSpieltag}`);
+        }
+
+        // Über die gesamte Vorbereitung darf an keinem Tag ein Pflichtspiel
+        // zum Anpfiff bereitstehen
+        for (let i = 0; i < ersterSpieltag; i++) {
+            state.currentDayIndex = i;
+            const spielbar = CalendarEngine.spielbarHeute(state);
+            const tag = state.calendar[i];
+            if (spielbar) {
+                throw new Error(`An Tag ${i} (${tag.type}) ist "${spielbar.rundenName}" spielbar`);
+            }
+        }
+
+        // Am Spieltag selbst dann schon
+        state.currentDayIndex = ersterSpieltag;
+        const amSpieltag = CalendarEngine.spielbarHeute(state);
+        if (!amSpieltag) throw new Error("Am ersten Spieltag ist kein Spiel spielbar");
+        if (amSpieltag.art !== "liga") throw new Error(`Art ${amSpieltag.art} statt liga`);
+        if (amSpieltag.gespielt) throw new Error("Das Spiel gilt schon als gespielt");
+    });
+
+    test("CalendarEngine: Pokal- und Europapokaltage melden ihre eigene Partie", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Pokalpruefer" });
+
+        let gefundenCup = false;
+        let gefundenEuro = false;
+
+        state.calendar.forEach((tag, i) => {
+            if (tag.type !== "cup" && tag.type !== "euro") return;
+            state.currentDayIndex = i;
+            const spielbar = CalendarEngine.spielbarHeute(state);
+            if (!spielbar) return;
+            if (spielbar.partie.homeClubId !== state.userClubId
+                && spielbar.partie.awayClubId !== state.userClubId) {
+                throw new Error("Es wird eine fremde Partie zum Anpfiff angeboten");
+            }
+            if (tag.type === "cup") {
+                gefundenCup = true;
+                if (spielbar.art !== "pokal") throw new Error(`Art ${spielbar.art} statt pokal`);
+                if (!spielbar.ko) throw new Error("Eine Pokalpartie ist kein K.-o.-Spiel");
+            } else {
+                gefundenEuro = true;
+                if (spielbar.art !== "euro") throw new Error(`Art ${spielbar.art} statt euro`);
+            }
+        });
+
+        if (!gefundenCup) throw new Error("An keinem Pokalabend war die eigene Partie spielbar");
+        if (!gefundenEuro) throw new Error("An keinem Europapokalabend war die eigene Partie spielbar");
+    });
+
+    test("CalendarEngine: Der nächste Termin ist der nächste, nicht der erste Spieltag", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Terminpruefer" });
+
+        // Am ersten Tag der Vorbereitung muss der nächste Termin ein
+        // Vorbereitungstermin sein - nicht der Spieltag in dreißig Tagen
+        const ersterTermin = CalendarEngine.naechsterTermin(state);
+        if (!ersterTermin) throw new Error("Kein nächster Termin gefunden");
+        if (ersterTermin.art !== "vorbereitung") {
+            throw new Error(`Der nächste Termin ist "${ersterTermin.art}" statt eines Vorbereitungstermins`);
+        }
+        if (ersterTermin.tage <= 0 || ersterTermin.tage > 10) {
+            throw new Error(`Der Vorbereitungstermin liegt in ${ersterTermin.tage} Tagen`);
+        }
+
+        // Der Termin muss immer in der Zukunft oder heute liegen und zum
+        // Kalendertag passen, auf den er zeigt
+        for (let i = 0; i < Math.min(120, state.calendar.length); i += 7) {
+            state.currentDayIndex = i;
+            const t = CalendarEngine.naechsterTermin(state);
+            if (!t) continue;
+            if (t.tage < 0) throw new Error(`Tag ${i}: Termin liegt ${t.tage} Tage in der Vergangenheit`);
+            if (t.index !== i + t.tage) throw new Error(`Tag ${i}: Index und Tagesabstand passen nicht zusammen`);
+            const ziel = state.calendar[t.index];
+            const passt = { liga: "matchday", pokal: "cup", euro: "euro", vorbereitung: "friendly" };
+            if (ziel.type !== passt[t.art]) {
+                throw new Error(`Tag ${i}: Termin "${t.art}" zeigt auf einen ${ziel.type}-Tag`);
+            }
+        }
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

@@ -3846,6 +3846,131 @@ function runEngineTests() {
         }
     });
 
+
+    // ---------------------------------------------------------------
+    // Der Ball läuft, er springt nicht
+    // ---------------------------------------------------------------
+
+    test("LiveMatchDirector: Der Ball bewegt sich in Spielgeschwindigkeit, nicht in Sprüngen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Ballprüfer" });
+        const runde = state.schedule.find(r => r.matchday === 1);
+        const partie = runde.matches.find(m =>
+            m.homeClubId === state.userClubId || m.awayClubId === state.userClubId);
+        const heim = state.clubs.find(c => c.id === partie.homeClubId);
+        const gast = state.clubs.find(c => c.id === partie.awayClubId);
+
+        const live = MatchEngine.createLiveMatch(partie, heim, gast, state.players);
+        live.speed = 1;
+
+        let frames = 0, grob = 0, groesster = 0;
+        let lx = live.ball.x, ly = live.ball.y;
+        while (!live.isFinished && frames < 30 * 900) {
+            live.advanceRealTime(1000 / 30);
+            live.updateBallAndPlayers(1000 / 30);
+            frames++;
+            // Das Feld ist hundert Einheiten breit für hundertfünf Meter
+            const weg = Math.hypot(live.ball.x - lx, live.ball.y - ly) * 1.05;
+            lx = live.ball.x; ly = live.ball.y;
+            if (weg > 3) grob++;
+            groesster = Math.max(groesster, weg);
+        }
+
+        if (frames < 1000) throw new Error(`Zu wenige Bilder für eine Auswertung (${frames})`);
+
+        // Drei Meter in einem Bild sind bei dreißig Bildern je Sekunde
+        // neunzig Meter je Sekunde. Vereinzelt geht das für einen Schuss in
+        // Ordnung, als Regel ist es ein Ball, der durch die Gegend springt.
+        const anteil = grob / frames;
+        if (anteil > 0.06) {
+            throw new Error(`In ${(anteil * 100).toFixed(1)} % der Bilder springt der Ball über drei Meter`);
+        }
+        if (groesster > 16) {
+            throw new Error(`Größter Ballsprung in einem Bild: ${groesster.toFixed(1)} m`);
+        }
+    });
+
+    test("LiveMatchDirector: Ein gewonnenes Dribbling ist ein Lauf mit dem Ball", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Dribbler" });
+        const runde = state.schedule.find(r => r.matchday === 1);
+        const partie = runde.matches.find(m =>
+            m.homeClubId === state.userClubId || m.awayClubId === state.userClubId);
+        const heim = state.clubs.find(c => c.id === partie.homeClubId);
+        const gast = state.clubs.find(c => c.id === partie.awayClubId);
+
+        const live = MatchEngine.createLiveMatch(partie, heim, gast, state.players);
+        live.speed = 1;
+        const dir = live.director;
+
+        const laeufe = [];
+        let aktiv = null, startX = 0, startY = 0, frames = 0;
+        while (!live.isFinished && frames < 30 * 900) {
+            live.advanceRealTime(1000 / 30);
+            live.updateBallAndPlayers(1000 / 30);
+            frames++;
+
+            const ziel = dir.carryTarget;
+            if (ziel && !aktiv) {
+                aktiv = ziel.id;
+                const p = dir.getPlayer2D(ziel.id);
+                startX = p ? p.x : 0; startY = p ? p.y : 0;
+            } else if (!ziel && aktiv) {
+                const p = dir.getPlayer2D(aktiv);
+                if (p) laeufe.push(Math.hypot(p.x - startX, p.y - startY) * 1.05);
+                aktiv = null;
+            }
+        }
+
+        if (laeufe.length < 5) {
+            throw new Error(`Nur ${laeufe.length} Läufe mit dem Ball in einer ganzen Partie`);
+        }
+        const schnitt = laeufe.reduce((s, v) => s + v, 0) / laeufe.length;
+        if (schnitt < 3) {
+            throw new Error(`Die Läufe sind im Schnitt nur ${schnitt.toFixed(1)} m lang`);
+        }
+    });
+
+    test("LiveMatchDirector: Der Ball geht erst ins Aus, dann zum Einwurfpunkt", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Einwerfer" });
+        const runde = state.schedule.find(r => r.matchday === 1);
+        const partie = runde.matches.find(m =>
+            m.homeClubId === state.userClubId || m.awayClubId === state.userClubId);
+        const heim = state.clubs.find(c => c.id === partie.homeClubId);
+        const gast = state.clubs.find(c => c.id === partie.awayClubId);
+
+        const live = MatchEngine.createLiveMatch(partie, heim, gast, state.players);
+        live.speed = 1;
+        const dir = live.director;
+
+        const wege = [];
+        const echt = dir.startDeadBall.bind(dir);
+        dir.startDeadBall = function (kind, team, x, y) {
+            if (kind === "throwin") {
+                wege.push(Math.hypot(x - this.match.ball.x, y - this.match.ball.y) * 1.05);
+            }
+            return echt(kind, team, x, y);
+        };
+
+        let frames = 0;
+        while (!live.isFinished && frames < 30 * 900) {
+            live.advanceRealTime(1000 / 30);
+            live.updateBallAndPlayers(1000 / 30);
+            frames++;
+        }
+
+        if (wege.length < 5) throw new Error(`Nur ${wege.length} Einwürfe in einer Partie`);
+
+        // Der Ball liegt schon im Aus, wenn er zum Einwurfpunkt geholt wird -
+        // er wird nicht quer über das Feld dorthin gezogen.
+        const schnitt = wege.reduce((s, v) => s + v, 0) / wege.length;
+        if (schnitt > 8) {
+            throw new Error(`Der Ball wird im Schnitt ${schnitt.toFixed(1)} m weit zum Einwurfpunkt gezogen`);
+        }
+        const weiteste = Math.max(...wege);
+        if (weiteste > 25) {
+            throw new Error(`Ein Einwurf holt den Ball über ${weiteste.toFixed(0)} m heran`);
+        }
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

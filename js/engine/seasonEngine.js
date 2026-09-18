@@ -149,6 +149,9 @@ class SeasonEngine {
             }
         }
 
+        // 2b. Bauvorhaben kommen einen Spieltag voran - bei allen Vereinen
+        SeasonEngine.tickAnlagen(state);
+
         // 3. Wöchentliches Training der KI-Vereine (der eigene Verein
         // trainiert tageweise über den Kalender)
         const trainingEngine = _getTrainingEngine();
@@ -457,6 +460,12 @@ class SeasonEngine {
     /**
      * Saisonabschluss, Meisterehrung, Prämien und Vorbereitung der nächsten Saison
      */
+    /** Bauvorhaben aller Vereine einen Spieltag weiterbringen */
+    static tickAnlagen(state) {
+        const fac = _resolve('FacilityEngine', './facilityEngine.js');
+        if (fac && typeof fac.tickSpieltag === 'function') fac.tickSpieltag(state);
+    }
+
     static finishSeason(state) {
         const championEntry = state.standings[0];
         const championClub = state.clubs.find(c => c.id === championEntry.clubId);
@@ -843,6 +852,13 @@ class SeasonEngine {
                 leagues: state.leagues,
                 standingsByLeague: state.standingsByLeague
             });
+        }
+
+        // Die Anlagen werden ein Jahr aelter. Wer nie saniert, steht
+        // irgendwann mit einem grossen, maroden Stadion da.
+        const facilityEngine = _resolve('FacilityEngine', './facilityEngine.js');
+        if (facilityEngine && typeof facilityEngine.saisonwechsel === 'function') {
+            facilityEngine.saisonwechsel(state);
         }
 
         // Pokal neu auslosen und den europäischen Wettbewerben ihren Spielplan

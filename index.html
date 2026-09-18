@@ -356,35 +356,11 @@
                             <div class="card-header">
                                 <h3>🏗️ Infrastruktur- & Ausbauzentrum</h3>
                             </div>
-                            <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px;">
-                                <div style="background:rgba(255,255,255,0.03); padding:14px; border-radius:8px; border:1px solid var(--border-color);">
-                                    <h4 style="font-size:14px; margin-bottom:6px;">🏋️ Trainingsgelände</h4>
-                                    <p class="text-muted" style="font-size:12px; margin-bottom:10px;">Beschleunigt Spielerentwicklung & Fitness-Regeneration.</p>
-                                    <div style="font-size:13px; margin-bottom:10px;">Aktuell: <strong id="lvlTrainingGround">Stufe 2 / 5</strong></div>
-                                    <button class="btn btn-sm btn-primary w-100 btn-upgrade-fac" data-facility="trainingGround">Ausbauen</button>
-                                </div>
-
-                                <div style="background:rgba(255,255,255,0.03); padding:14px; border-radius:8px; border:1px solid var(--border-color);">
-                                    <h4 style="font-size:14px; margin-bottom:6px;">🎓 Jugendakademie</h4>
-                                    <p class="text-muted" style="font-size:12px; margin-bottom:10px;">Erhöht Talentqualität, Potenzial & Anzahl an Nachwuchsstars.</p>
-                                    <div style="font-size:13px; margin-bottom:10px;">Aktuell: <strong id="lvlYouthCenter">Stufe 1 / 5</strong></div>
-                                    <button class="btn btn-sm btn-primary w-100 btn-upgrade-fac" data-facility="youthCenter">Ausbauen</button>
-                                </div>
-
-                                <div style="background:rgba(255,255,255,0.03); padding:14px; border-radius:8px; border:1px solid var(--border-color);">
-                                    <h4 style="font-size:14px; margin-bottom:6px;">🏥 Medizinisches Zentrum</h4>
-                                    <p class="text-muted" style="font-size:12px; margin-bottom:10px;">Senkt Verletzungsrisiko & verkürzt Ausfallzeiten spürbar.</p>
-                                    <div style="font-size:13px; margin-bottom:10px;">Aktuell: <strong id="lvlMedicalCenter">Stufe 1 / 5</strong></div>
-                                    <button class="btn btn-sm btn-primary w-100 btn-upgrade-fac" data-facility="medicalCenter">Ausbauen</button>
-                                </div>
-
-                                <div style="background:rgba(255,255,255,0.03); padding:14px; border-radius:8px; border:1px solid var(--border-color);">
-                                    <h4 style="font-size:14px; margin-bottom:6px;">🏟️ Stadionausbau</h4>
-                                    <p class="text-muted" style="font-size:12px; margin-bottom:10px;">Erweitert Zuschauerkapazität & verstärkt den Heimvorteil.</p>
-                                    <div style="font-size:13px; margin-bottom:10px;">Aktuell: <strong id="lvlStadium">Stufe 2 / 5</strong></div>
-                                    <button class="btn btn-sm btn-primary w-100 btn-upgrade-fac" data-facility="stadium">Ausbauen</button>
-                                </div>
-                            </div>
+                            <p class="text-muted" style="font-size:12px; margin:-4px 0 14px;">
+                                Keine Anlage bleibt von allein in Schuss. Die <strong>Stufe</strong> sagt, was sie
+                                könnte &ndash; der <strong>Zustand</strong>, was sie davon noch leistet.
+                            </p>
+                            <div id="facilityGrid" class="facility-grid"></div>
                         </div>
                     </div>
                 </section>
@@ -1810,6 +1786,7 @@
     <script src="js/engine/worldGenerator.js"></script>
     <script src="js/engine/competitionEngine.js"></script>
     <script src="js/engine/playerRatingEngine.js"></script>
+    <script src="js/engine/facilityEngine.js"></script>
     <script src="js/engine/cupEngine.js"></script>
     <script src="js/engine/careerEngine.js"></script>
     <script src="js/engine/calendarEngine.js"></script>

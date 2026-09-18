@@ -2,6 +2,16 @@
  * TrainingEngine - Wöchentliches Training, Fitness-Regeneration, Spielerentwicklung & Verletzungen
  */
 
+
+function _facStufe(club, key, state) {
+    const fe = (typeof FacilityEngine !== "undefined" && FacilityEngine)
+        ? FacilityEngine
+        : ((typeof window !== "undefined" && window.FacilityEngine) ? window.FacilityEngine
+            : (typeof require !== "undefined" ? (() => { try { return require("./facilityEngine.js").FacilityEngine; } catch (e) { return null; } })() : null));
+    if (!fe || typeof fe.stufeGerundet !== "function") return club?.facilities?.[key] || 1;
+    return fe.stufeGerundet(club, key, state?.seasonYear || 1);
+}
+
 class TrainingEngine {
     /** Intensitätsstufen: Belastung, Entwicklung und Risiko hängen daran */
     static INTENSITY_PROFILE = {
@@ -121,7 +131,7 @@ class TrainingEngine {
         const focus = clubId === state.userClubId
             ? (state.trainingSettings?.focus || "allround")
             : "allround";
-        const medicalLevel = club.facilities?.medicalCenter || 1;
+        const medicalLevel = _facStufe(club, "medicalCenter", state);
 
         const kaderIds = new Set(club.playerIds);
         const kader = state.players.filter(p => kaderIds.has(p.id));
@@ -183,8 +193,8 @@ class TrainingEngine {
         const intensity = state.trainingSettings?.intensity || "normal";
         const focus = state.trainingSettings?.focus || "allround";
         const profil = this.INTENSITY_PROFILE[intensity] || this.INTENSITY_PROFILE.normal;
-        const medicalLevel = club.facilities?.medicalCenter || 1;
-        const trainingLevel = club.facilities?.trainingGround || 2;
+        const medicalLevel = _facStufe(club, "medicalCenter", state);
+        const trainingLevel = _facStufe(club, "trainingGround", state);
 
         // Die Güte des Trainerstabs entscheidet mit, wie viel eine Einheit
         // bringt: Beim Landesligisten leitet ein Übungsleiter das Training,
@@ -429,8 +439,8 @@ class TrainingEngine {
             const focus = club.id === state.userClubId ? (state.trainingSettings.focus || "allround") : "allround";
             const intensity = club.id === state.userClubId ? (state.trainingSettings.intensity || "normal") : "normal";
 
-            const trainingLvl = club?.facilities?.trainingGround || 2;
-            const medicalLvl = club?.facilities?.medicalCenter || 1;
+            const trainingLvl = _facStufe(club, "trainingGround", state);
+            const medicalLvl = _facStufe(club, "medicalCenter", state);
 
             clubPlayers.forEach(player => {
                 // 1. Fitness-Regeneration (C2: beeinflusst durch trainingGround)

@@ -113,11 +113,42 @@ const FinanceEngine = {
         return Math.round((this.SPONSOR_SOCKEL + Math.pow(rang, 1.5) * this.SPONSOR_SPANNE) * faktor);
     },
 
-    /** Unterhalt für Stadion und Infrastruktur je Spieltag */
-    maintenancePerMatchday(club) {
+    /**
+     * Unterhalt für Stadion und Infrastruktur je Spieltag
+     *
+     * Zwei Dinge machen den Unterhalt zu einer echten Last:
+     *
+     * Er wächst quadratisch mit der Größe. Ein Stadion für achtzigtausend
+     * kostet mehr als vier für zwanzigtausend - Sicherheitsdienst, Rasen,
+     * Beleuchtung, Sanitär skalieren nicht linear. Wer alles auf Stufe fünf
+     * baut, zahlt dafür jeden Spieltag.
+     *
+     * Und was verfällt, kostet mehr, nicht weniger. Flickwerk an einer maroden
+     * Anlage ist teurer als die Pflege einer intakten. Das ist der Grund, eine
+     * Sanierung nicht ewig aufzuschieben.
+     */
+    maintenancePerMatchday(club, state = null) {
         if (!club) return 0;
-        const stufen = club.facilities ? Object.values(club.facilities).reduce((a, b) => a + b, 0) : 5;
         const faktor = this.LEVEL_ECONOMY[club.level || 1] ?? 0.05;
+
+        const fac = (typeof FacilityEngine !== "undefined" && FacilityEngine)
+            ? FacilityEngine
+            : ((typeof window !== "undefined" && window.FacilityEngine) ? window.FacilityEngine
+                : (typeof require !== "undefined" ? (() => { try { return require("./facilityEngine.js").FacilityEngine; } catch (e) { return null; } })() : null));
+
+        if (fac && Array.isArray(fac.ANLAGEN)) {
+            const anlagen = fac.hole(club, state?.seasonYear || 1);
+            let summe = 0;
+            fac.ANLAGEN.forEach(key => {
+                const a = anlagen?.[key];
+                if (!a) return;
+                const flickwerk = 1 + (100 - Math.max(0, Math.min(100, a.zustand))) / 100 * 0.55;
+                summe += a.stufe * a.stufe * 4300 * flickwerk;
+            });
+            return Math.round(summe * faktor);
+        }
+
+        const stufen = club.facilities ? Object.values(club.facilities).reduce((a, b) => a + b, 0) : 5;
         return Math.round(stufen * 25000 * faktor);
     },
 
@@ -166,7 +197,9 @@ const FinanceEngine = {
 
         // C4: Auslastung abhängig von Reputation, Tabellenplatz, Form, fanMood, Stadionstufe
         const repFactor = ((homeClub.reputation || 70) * 1.2 + (awayClub?.reputation || 60) * 0.8) / 200;
-        const stadiumLevel = homeClub.facilities?.stadium || 2;
+        const stadiumLevel = (typeof FacilityEngine !== "undefined" && FacilityEngine?.stufeGerundet)
+            ? FacilityEngine.stufeGerundet(homeClub, "stadium", state.seasonYear || 1)
+            : (homeClub.facilities?.stadium || 2);
         const stadiumBonus = (stadiumLevel - 1) * 0.03;
         const moodFactor = ((state.fanMood || 75) - 50) / 250; // -0.1 bis +0.2
 
@@ -216,7 +249,16 @@ const FinanceEngine = {
         const randVariation = (Math.random() * 0.08) - 0.04;
         const finalPct = Math.min(1.0, Math.max(0.3, baseAttendancePct + randVariation));
 
-        const capacity = homeClub.capacity || 30000;
+        // Waehrend eines Stadionumbaus fehlen Raenge - Barcelona spielte
+        // waehrend der Sanierung des Camp Nou vor der halben Kulisse.
+        const facEngine = (typeof FacilityEngine !== "undefined" && FacilityEngine)
+            ? FacilityEngine
+            : ((typeof window !== "undefined" && window.FacilityEngine) ? window.FacilityEngine
+                : (typeof require !== "undefined" ? (() => { try { return require("./facilityEngine.js").FacilityEngine; } catch (e) { return null; } })() : null));
+
+        const capacity = (facEngine && typeof facEngine.verfuegbareKapazitaet === "function")
+            ? facEngine.verfuegbareKapazitaet(homeClub, state.seasonYear || 1)
+            : (homeClub.capacity || 30000);
         const attendance = Math.min(capacity, Math.round(capacity * finalPct));
         const ticketIncome = Math.round(attendance * ticketPrice);
 
@@ -282,7 +324,7 @@ const FinanceEngine = {
             );
 
             // 3. Stadion- & Infrastrukturunterhalt
-            const maintenanceCosts = this.maintenancePerMatchday(club);
+            const maintenanceCosts = this.maintenancePerMatchday(club, state);
             club.balance -= maintenanceCosts;
 
             this.recordTransaction(

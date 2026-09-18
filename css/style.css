@@ -5162,3 +5162,156 @@ body {
     .rail-day { min-width: 34px; padding: 5px 1px; }
     .rail-icon { font-size: 13px; }
 }
+
+/* ============================================================
+   Infrastruktur - Anlagen mit Stufe, Zustand und Baustelle
+   ============================================================ */
+
+.facility-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+}
+
+.fac-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+}
+
+.fac-card.is-building {
+    border-color: rgba(245, 158, 11, 0.55);
+    background: rgba(245, 158, 11, 0.06);
+}
+
+.fac-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.fac-head h4 {
+    font-size: 14px;
+    margin: 0;
+}
+
+.fac-stufe {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.fac-stufe strong { color: var(--text-color, #fff); }
+
+.fac-pips {
+    display: flex;
+    gap: 3px;
+}
+
+.fac-pip {
+    width: 100%;
+    height: 5px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.10);
+}
+
+.fac-pip.on { background: #3b82f6; }
+.fac-pip.part { background: linear-gradient(90deg, #3b82f6 50%, rgba(255,255,255,0.10) 50%); }
+
+.fac-bar {
+    height: 7px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+
+.fac-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.fac-zustand {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-muted);
+    gap: 8px;
+}
+
+.fac-note {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.45;
+    margin: 0;
+}
+
+.fac-profil {
+    font-size: 12px;
+    line-height: 1.45;
+    padding: 7px 9px;
+    border-radius: 7px;
+    background: rgba(59, 130, 246, 0.10);
+    border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
+.fac-bau {
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 8px 9px;
+    border-radius: 7px;
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.30);
+}
+
+.fac-bau-fortschritt {
+    height: 5px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.30);
+    margin-top: 6px;
+    overflow: hidden;
+}
+
+.fac-bau-fortschritt > span {
+    display: block;
+    height: 100%;
+    background: #f59e0b;
+}
+
+.fac-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: auto;
+}
+
+.fac-actions .btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    line-height: 1.25;
+    padding: 7px 6px;
+}
+
+.fac-actions .btn small {
+    font-size: 10px;
+    opacity: 0.78;
+    font-weight: 400;
+}
+
+.fac-actions .btn:disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+}
+
+@media (max-width: 560px) {
+    .facility-grid { grid-template-columns: 1fr; }
+}

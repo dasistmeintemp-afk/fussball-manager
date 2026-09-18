@@ -4283,8 +4283,23 @@ class UIManager {
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         const levelBadge = document.getElementById("youthAcademyLevelBadge");
         if (levelBadge && userClub) {
-            const level = userClub.facilities?.youthCenter || state.youthAcademy?.level || 1;
-            levelBadge.textContent = `Akademie: Stufe ${level}`;
+            const fac = (typeof FacilityEngine !== "undefined") ? FacilityEngine : null;
+            const anlage = userClub.anlagen?.youthCenter;
+            const level = anlage?.stufe ?? userClub.facilities?.youthCenter ?? state.youthAcademy?.level ?? 1;
+            const schule = (typeof YouthEngine !== "undefined" && YouthEngine.schuleVon)
+                ? YouthEngine.schuleVon(userClub) : null;
+
+            let text = `Akademie: Stufe ${level}`;
+            if (anlage && fac) text += ` · ${fac.zustandsText(anlage.zustand)}`;
+            if (schule) text += ` · ${schule.name}`;
+            if (anlage?.projekt) {
+                text += ` · Umbau (noch ${anlage.projekt.restSpieltage} ST)`;
+            }
+            levelBadge.textContent = text;
+            levelBadge.title = anlage
+                ? `Wirksame Stufe: ${fac ? fac.wirksameStufe(userClub, "youthCenter", state.seasonYear || 1) : level}`
+                  + ` — Zustand ${Math.round(anlage.zustand)} %`
+                : "";
         }
 
         this.renderTrainingReport();
@@ -4564,20 +4579,28 @@ class UIManager {
         DOM.setText("clubTabFanMood", state.fanMood || 75);
         DOM.setText("clubTabChemistry", userClub.chemistry?.overall || 75);
 
+        const facEngine = (typeof FacilityEngine !== "undefined") ? FacilityEngine : null;
+        const nutzbar = facEngine
+            ? facEngine.verfuegbareKapazitaet(userClub, state.seasonYear || 1)
+            : (userClub.capacity || 30000);
+        const vollePlaetze = userClub.stadiumCapacity || userClub.capacity || 30000;
+
         DOM.setText("clubTabStadium", userClub.stadium || "Stadion");
-        DOM.setText("clubTabCapacity", (userClub.capacity || 30000).toLocaleString("de-DE"));
-        DOM.setText("clubTabStadiumLvl", `Stufe ${userClub.facilities?.stadium || 2}`);
+        DOM.setText("clubTabCapacity", nutzbar < vollePlaetze
+            ? `${nutzbar.toLocaleString("de-DE")} (Umbau, sonst ${vollePlaetze.toLocaleString("de-DE")})`
+            : vollePlaetze.toLocaleString("de-DE"));
+        DOM.setText("clubTabStadiumLvl", facEngine
+            ? `Stufe ${userClub.anlagen?.stadium?.stufe ?? userClub.facilities?.stadium ?? 2}`
+              + ` (${facEngine.zustandsText(userClub.anlagen?.stadium?.zustand ?? 100)})`
+            : `Stufe ${userClub.facilities?.stadium || 2}`);
 
         // Sponsor
         DOM.setText("clubTabSponsorName", userClub.sponsor?.name || "Global Tech");
         DOM.setText("clubTabSponsorAmount", `${GameState.formatMoney(this.sponsorProSpieltag(userClub))} / Spieltag`);
         DOM.setText("clubTabSponsorYears", userClub.sponsor?.yearsRemaining || 2);
 
-        // Facility Stufen
-        DOM.setText("lvlTrainingGround", `Stufe ${userClub.facilities?.trainingGround || 2} / 5`);
-        DOM.setText("lvlYouthCenter", `Stufe ${userClub.facilities?.youthCenter || 1} / 5`);
-        DOM.setText("lvlMedicalCenter", `Stufe ${userClub.facilities?.medicalCenter || 1} / 5`);
-        DOM.setText("lvlStadium", `Stufe ${userClub.facilities?.stadium || 2} / 5`);
+        // Anlagen: Stufe, Zustand, Baustellen
+        this.renderFacilities(userClub);
 
         // Ticketpreis Slider
         const slider = document.getElementById("inputTicketPrice");
@@ -4604,24 +4627,158 @@ class UIManager {
             };
         }
 
-        // Upgrade Buttons
-        document.querySelectorAll(".btn-upgrade-fac").forEach(btn => {
+    }
+
+    /**
+     * Die Anlagen des Vereins.
+     *
+     * Eine Anlage ist keine Zahl von eins bis fünf, die man einmal hochkauft.
+     * Sie hat eine Stufe - was sie könnte - und einen Zustand - was sie davon
+     * noch leistet. Das Camp Nou war Stufe fünf und trotzdem eine Baustelle.
+     * Deshalb zeigt jede Karte beides und bietet zwei verschiedene Arbeiten an:
+     * Ausbauen hebt die Stufe, Sanieren holt den Zustand zurück.
+     */
+    renderFacilities(userClub) {
+        const host = document.getElementById("facilityGrid");
+        if (!host) return;
+
+        const state = this.app.state;
+        const fac = (typeof FacilityEngine !== "undefined") ? FacilityEngine : null;
+        if (!fac || typeof fac.uebersicht !== "function") {
+            host.innerHTML = `<p class="text-muted">Anlagendaten nicht verfügbar.</p>`;
+            return;
+        }
+
+        const ICONS = {
+            stadium: "🏟️",
+            trainingGround: "🏋️",
+            youthCenter: "🎓",
+            medicalCenter: "🏥"
+        };
+        const NUTZEN = {
+            stadium: "Mehr Plätze, mehr Zuschauereinnahmen, lauterer Heimvorteil.",
+            trainingGround: "Schnellere Entwicklung und bessere Erholung zwischen den Spielen.",
+            youthCenter: "Mehr und bessere Talente aus dem eigenen Nachwuchs.",
+            medicalCenter: "Weniger Verletzungen, kürzere Ausfallzeiten."
+        };
+
+        const geld = (b) => (typeof GameState !== "undefined" && GameState.formatMoney)
+            ? GameState.formatMoney(b) : `${Math.round(b / 1000)} Tsd. €`;
+
+        const zustandsFarbe = (z) => z >= 80 ? "#10b981" : z >= 60 ? "#84cc16"
+            : z >= 42 ? "#f59e0b" : "#ef4444";
+
+        const kasse = userClub.balance || 0;
+        const liste = fac.uebersicht(state, userClub.id);
+
+        host.innerHTML = liste.map(a => {
+            // Stufenbalken: die volle Stufe hell, der Verfall als halber Balken
+            const pips = [1, 2, 3, 4, 5].map(i => {
+                if (i <= Math.floor(a.wirksameStufe)) return `<div class="fac-pip on"></div>`;
+                if (i <= a.stufe) return `<div class="fac-pip part"></div>`;
+                return `<div class="fac-pip"></div>`;
+            }).join("");
+
+            const verlust = a.stufe - a.wirksameStufe;
+            const stufenText = verlust >= 0.15
+                ? `Stufe ${a.stufe} &middot; wirksam <strong>${a.wirksameStufe.toFixed(1)}</strong>`
+                : `Stufe <strong>${a.stufe}</strong> / 5`;
+
+            let extra = "";
+            if (a.key === "stadium" && a.vollKapazitaet) {
+                extra = a.kapazitaet < a.vollKapazitaet
+                    ? `<p class="fac-note">Zurzeit nutzbar: <strong>${a.kapazitaet.toLocaleString("de-DE")}</strong>
+                       von ${a.vollKapazitaet.toLocaleString("de-DE")} Plätzen.</p>`
+                    : `<p class="fac-note">Kapazität: <strong>${a.vollKapazitaet.toLocaleString("de-DE")}</strong> Plätze.</p>`;
+            }
+            if (a.key === "youthCenter" && a.profil) {
+                const st = (a.profil.staerken || []).length
+                    ? `Die Schule bringt vor allem ${this.profilWorte(a.profil.staerken)} hervor.`
+                    : `Die Schule bildet breit aus, ohne besondere Handschrift.`;
+                extra += `<div class="fac-profil"><strong>${a.profil.name}</strong><br>${st}</div>`;
+            }
+
+            let bau = "";
+            if (a.projekt) {
+                const anteil = Math.round((1 - a.projekt.restSpieltage / a.projekt.spieltage) * 100);
+                bau = `
+                    <div class="fac-bau">
+                        🏗️ <strong>${a.projekt.art === "ausbau" ? `Ausbau auf Stufe ${a.stufe + 1}` : "Sanierung"}</strong>
+                        läuft &middot; noch ${a.projekt.restSpieltage} Spieltage.<br>
+                        Betrieb eingeschränkt um ${Math.round(a.projekt.beeintraechtigung * 100)} %.
+                        <div class="fac-bau-fortschritt"><span style="width:${anteil}%"></span></div>
+                    </div>`;
+            }
+
+            const sperre = !!a.projekt;
+            const maxStufe = a.stufe >= 5;
+            const neuwertig = a.zustand >= 85;
+
+            const ausbauBtn = `
+                <button class="btn btn-sm btn-primary btn-fac" data-facility="${a.key}" data-art="ausbau"
+                        ${sperre || maxStufe ? "disabled" : ""}
+                        title="${maxStufe ? "Stufe 5 ist die höchste" : `${a.dauerAusbau} Spieltage Bauzeit`}">
+                    Ausbauen
+                    <small>${maxStufe ? "Stufe 5 erreicht" : `${geld(a.kostenAusbau)} &middot; ${a.dauerAusbau} ST`}</small>
+                </button>`;
+
+            const sanierBtn = `
+                <button class="btn btn-sm btn-secondary btn-fac" data-facility="${a.key}" data-art="sanierung"
+                        ${sperre || neuwertig ? "disabled" : ""}
+                        title="${neuwertig ? "Noch in gutem Zustand" : `${a.dauerSanierung} Spieltage Bauzeit`}">
+                    Sanieren
+                    <small>${neuwertig ? "nicht nötig" : `${geld(a.kostenSanierung)} &middot; ${a.dauerSanierung} ST`}</small>
+                </button>`;
+
+            const teuer = !sperre && !maxStufe && a.kostenAusbau > kasse;
+
+            return `
+                <div class="fac-card ${a.projekt ? "is-building" : ""}">
+                    <div class="fac-head">
+                        <h4>${ICONS[a.key] || "🏗️"} ${a.name}</h4>
+                        <span class="fac-stufe">${stufenText}</span>
+                    </div>
+                    <div class="fac-pips">${pips}</div>
+                    <div class="fac-zustand">
+                        <span>Zustand: <strong style="color:${zustandsFarbe(a.zustand)};">${a.zustandsText}</strong></span>
+                        <span>${a.zustand} %${a.alter > 0 ? ` &middot; ${a.alter} J. alt` : " &middot; neu"}</span>
+                    </div>
+                    <div class="fac-bar"><span style="width:${a.zustand}%; background:${zustandsFarbe(a.zustand)};"></span></div>
+                    <p class="fac-note">${NUTZEN[a.key] || ""}</p>
+                    ${extra}
+                    ${bau}
+                    <div class="fac-actions">${ausbauBtn}${sanierBtn}</div>
+                    ${teuer ? `<p class="fac-note" style="color:#f59e0b;">Für den Ausbau fehlen ${geld(a.kostenAusbau - kasse)}.</p>` : ""}
+                </div>`;
+        }).join("");
+
+        host.querySelectorAll(".btn-fac").forEach(btn => {
             btn.onclick = () => {
-                const facKey = btn.dataset.facility;
-                const facilityEngine = (typeof FacilityEngine !== 'undefined') ? FacilityEngine : null;
-                if (facilityEngine) {
-                    const res = facilityEngine.upgrade(state, userClub.id, facKey);
-                    if (res.success) {
-                        this.playSound("whistle");
-                        this.showToast(res.message, "success");
-                        this.renderClub();
-                        this.renderHeader();
-                    } else {
-                        this.showToast(res.error, "error");
-                    }
+                const res = fac.starteProjekt(state, userClub.id, btn.dataset.facility, btn.dataset.art);
+                if (res.erfolg) {
+                    this.playSound("whistle");
+                    this.showToast(
+                        `${res.name}: ${btn.dataset.art === "ausbau" ? "Ausbau" : "Sanierung"} begonnen — `
+                        + `${res.spieltage} Spieltage, ${geld(res.kosten)}.`, "success");
+                    this.renderClub();
+                    this.renderHeader();
+                } else {
+                    this.showToast(res.grund, "error");
                 }
             };
         });
+    }
+
+    /** "Techniker, Passgeber und Dribbler" statt "technique, passing, dribbling" */
+    profilWorte(schluessel) {
+        const W = {
+            technique: "Techniker", passing: "Passgeber", dribbling: "Dribbler",
+            pace: "Sprinter", physical: "Athleten", stamina: "Dauerläufer",
+            vision: "Spielmacher", positioning: "Raumdeuter", defense: "Zweikämpfer"
+        };
+        const worte = schluessel.map(k => W[k] || k);
+        if (worte.length <= 1) return worte[0] || "";
+        return `${worte.slice(0, -1).join(", ")} und ${worte[worte.length - 1]}`;
     }
 
     /**

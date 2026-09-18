@@ -173,6 +173,12 @@ class MatchFlowEngine {
         // Bevorzugte Passlänge
         const preferred = passing === "short" ? 13 : (passing === "direct" ? 32 : 19);
 
+        // Wohin das Spiel gerade strebt: der Spieler, bei dem die naechste
+        // Szene beginnt. Er wird gesucht wie ein freistehender Stuermer -
+        // nicht erzwungen, aber deutlich bevorzugt.
+        const ziel = context.zielSpieler || null;
+        const zielAbstand = ziel ? Math.hypot(carrier.x - ziel.x, carrier.y - ziel.y) : 0;
+
         return mates.map(mate => {
             const dist = this.distance(carrier, mate);
             if (dist < 3.5) return null;
@@ -224,7 +230,20 @@ class MatchFlowEngine {
             // Kombination - er wird nur angespielt, wenn es vorne zu ist.
             const keeperScore = mate.pos === "TW" ? -0.55 + (context.pressure || 0) * 0.5 : 0;
 
+            // Der Weg zur naechsten Szene: Der Zielspieler selbst ist das
+            // beste Zuspiel, ein Ball, der ihm naeher kommt, das zweitbeste.
+            let anlaufScore = 0;
+            if (ziel) {
+                if (mate.id === ziel.id) {
+                    anlaufScore = 1.3;
+                } else {
+                    const danach = Math.hypot(mate.x - ziel.x, mate.y - ziel.y);
+                    anlaufScore = Math.max(-0.25, Math.min(0.6, (zielAbstand - danach) / 22));
+                }
+            }
+
             const score = lengthScore * 0.8
+                + anlaufScore
                 + progressScore * progressWeight
                 + space * spaceWeight
                 + focusScore
@@ -253,9 +272,17 @@ class MatchFlowEngine {
         const skill = (dribbling * 0.6 + pace * 0.4) / 100;
         const tempoBonus = tactics.tempo === "fast" ? 0.15 : (tactics.tempo === "slow" ? -0.1 : 0);
 
+        // Der Lauf mit dem Ball war als Vorschlag chancenlos: Gemessen ueber
+        // drei Partien entfielen von 744 Aktionen nur 21 auf ein Dribbling -
+        // also 2,8 Prozent. In echten Spielen versucht eine Mannschaft
+        // zwanzig bis dreissig Mal, ihren Gegenspieler zu ueberlaufen. Weil
+        // Zuspiele bis zu drei Punkte erreichen, ein Dribbling aber kaum ueber
+        // eineinhalb kam, gewann es fast nie - und auf dem Feld sah man
+        // entsprechend keine Laeufe mit dem Ball.
         const score = skill * 1.15
             + space * 0.9
             + tempoBonus
+            + 0.3
             - pressure * 0.75
             + _flowRandom.float(-0.2, 0.2);
 
@@ -318,7 +345,11 @@ class MatchFlowEngine {
         const candidates = this.ratePassOptions(carrier, mates, opponents, tactics, {
             phase,
             pressure,
-            chainLength: options.chainLength || 0
+            chainLength: options.chainLength || 0,
+            // Der Spieler, auf den die naechste Szene zulaeuft. Das Aufbauspiel
+            // sucht ihn - dadurch entsteht die Szene aus dem Spiel heraus,
+            // statt dass der Ball zu ihr transportiert wird.
+            zielSpieler: options.zielSpieler || null
         });
         candidates.push(this.rateDribble(carrier, opponents, tactics, pressure));
         candidates.sort((a, b) => b.score - a.score);

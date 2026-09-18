@@ -15,6 +15,10 @@ const { CoachingStaffEngine } = require('./js/engine/coachingStaffEngine.js');
 const { PreseasonEngine } = require('./js/engine/preseasonEngine.js');
 const { YouthEngine } = require('./js/engine/youthEngine.js');
 const { FacilityEngine } = require('./js/engine/facilityEngine.js');
+
+/** Dieselbe Liste wie im LiveMatchDirector - Ereignisse ohne Ballfuehrung */
+const OHNE_BALLFUEHRUNG_TEST = ["foul", "yellow_card", "red_card", "injury", "substitution", "halftime", "fulltime"];
+const RUHENDER_BALL_TEST = ["corner", "penalty", "freekick", "throwin", "goalkick", "kickoff"];
 const { AIManagerEngine } = require('./js/engine/aiManagerEngine.js');
 const { ClubGenerator } = require('./js/engine/clubGenerator.js');
 const { PlayerGenerator } = require('./js/engine/playerGenerator.js');
@@ -4016,6 +4020,88 @@ function runEngineTests() {
         });
     });
 
+    test("Wirtschaft: Jede Liga trägt sich selbst", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+
+        const bilanz = (club) => {
+            const einnahmen = FinanceEngine.einnahmenSchaetzung(club, state);
+            const gehalt = state.players
+                .filter(p => p.clubId === club.id)
+                .reduce((s, p) => s + (p.wage || 0), 0);
+            const unterhalt = FinanceEngine.maintenancePerMatchday(club, state);
+            const betrieb = Math.round(einnahmen * FinanceEngine.operatingShare(club)
+                + gehalt * FinanceEngine.OPERATING_WAGE_SHARE);
+            return { einnahmen, gehalt, saldo: einnahmen - gehalt - unterhalt - betrieb };
+        };
+
+        const ligen = [...new Set(state.clubs.map(c => c.level || 1))].sort((a, b) => a - b);
+        ligen.forEach(lvl => {
+            const clubs = state.clubs.filter(c => (c.level || 1) === lvl)
+                .sort((a, b) => (a.clubStrength || 0) - (b.clubStrength || 0));
+            if (clubs.length < 3) return;
+
+            const med = bilanz(clubs[Math.floor(clubs.length / 2)]);
+            const marge = med.saldo / med.einnahmen;
+            if (marge < -0.08) {
+                throw new Error(`Liga ${lvl}: Der Median-Verein verliert ${(-marge * 100).toFixed(0)} % seiner Einnahmen je Spieltag`);
+            }
+            if (marge > 0.30) {
+                throw new Error(`Liga ${lvl}: Der Median-Verein legt ${(marge * 100).toFixed(0)} % je Spieltag zurück - Geld ist keine Entscheidung mehr`);
+            }
+
+            const quote = med.gehalt / med.einnahmen;
+            if (quote > 0.62) {
+                throw new Error(`Liga ${lvl}: Gehaltsquote ${(quote * 100).toFixed(0)} % - der Kader ist nicht bezahlbar`);
+            }
+        });
+    });
+
+    test("Wirtschaft: Der Spitzenverein steht besser da als der Tabellenletzte", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const erste = state.clubs.filter(c => (c.level || 1) === 1)
+            .sort((a, b) => (a.clubStrength || 0) - (b.clubStrength || 0));
+
+        const quote = (club) => {
+            const gehalt = state.players.filter(p => p.clubId === club.id)
+                .reduce((s, p) => s + (p.wage || 0), 0);
+            return gehalt / Math.max(1, FinanceEngine.einnahmenSchaetzung(club, state));
+        };
+
+        const top = quote(erste[erste.length - 1]);
+        const unten = quote(erste[0]);
+
+        // In Wirklichkeit hat der grosse Verein die kleinere Gehaltsquote -
+        // sein Umsatz waechst schneller als seine Gehaltsliste. Vorher war es
+        // andersherum: 74 % beim Meister, 53 % beim Abstiegskandidaten.
+        if (!(top < unten)) {
+            throw new Error(`Der Spitzenverein zahlt anteilig mehr (${(top * 100).toFixed(0)} %) als der Letzte (${(unten * 100).toFixed(0)} %)`);
+        }
+    });
+
+    test("Wirtschaft: Ein Absteiger passt seine Gehaltsliste an", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => (c.level || 1) === 1 && c.id !== state.userClubId);
+        const kader = state.players.filter(p => p.clubId === club.id);
+        if (!kader.length) throw new Error("Verein ohne Kader");
+
+        const vorher = kader.reduce((s, p) => s + (p.wage || 0), 0);
+
+        // Zwei Ligen tiefer - die Einnahmen brechen weg
+        club.level = 3;
+        FinanceEngine.normalisiereGehaelter(state, [club]);
+        const nachher = state.players.filter(p => p.clubId === club.id)
+            .reduce((s, p) => s + (p.wage || 0), 0);
+
+        if (!(nachher < vorher * 0.6)) {
+            throw new Error(`Die Gehaltsliste fiel nur von ${Math.round(vorher / 1000)}k auf ${Math.round(nachher / 1000)}k`);
+        }
+        // Die Spanne im Kader bleibt erhalten - es wird verschoben, nicht eingeebnet
+        const neu = state.players.filter(p => p.clubId === club.id).map(p => p.wage);
+        if (Math.max(...neu) / Math.max(1, Math.min(...neu)) < 2) {
+            throw new Error("Nach der Anpassung verdienen alle Spieler ungefähr gleich viel");
+        }
+    });
+
     test("Anlagen: Höchstens eine Dauerbaustelle je Verein", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
 
@@ -4170,6 +4256,57 @@ function runEngineTests() {
         if (!erste.erfolg) throw new Error("Erste Arbeit ließ sich nicht starten: " + erste.grund);
         const zweite = FacilityEngine.starteProjekt(state, "muc", "youthCenter", "ausbau");
         if (zweite.erfolg) throw new Error("An derselben Anlage wurde zweimal gleichzeitig gebaut");
+    });
+
+    test("2D: Eine Passage laeuft durch, statt in Einzelszenen zu zerfallen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+
+        let gebuendelt = 0, szenen = 0, spruenge = 0;
+
+        for (let r = 0; r < 2; r++) {
+            const match = { id: `passage_${r}`, played: false, homeClubId: "muc", awayClubId: "dor" };
+            match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, state.players);
+
+            const live = new LiveMatch(match, homeClub, awayClub, state.players);
+            live.speed = 2;
+            const dir = live.director;
+
+            const orig = dir.startHighlight.bind(dir);
+            dir.startHighlight = function () {
+                orig();
+                if (!this.scene?.events?.length) return;
+                szenen++;
+                if (this.scene.events.length > 1) gebuendelt++;
+
+                // Innerhalb einer Passage darf der Ball nicht quer ueber das
+                // Feld springen: Jede Aktion beginnt da, wo die vorige endete.
+                const evs = this.scene.events;
+                for (let i = 1; i < evs.length; i++) {
+                    const vor = evs[i - 1].end, jetzt = evs[i].start;
+                    if (!vor || !jetzt) continue;
+                    if (OHNE_BALLFUEHRUNG_TEST.includes(evs[i].type)) continue;
+                    if (RUHENDER_BALL_TEST.includes(evs[i].type)) continue;
+                    if (Math.hypot(jetzt.x - vor.x, jetzt.y - vor.y) > 6) spruenge++;
+                }
+            };
+
+            let frames = 0;
+            while (!live.isFinished && frames++ < 60 * 500) {
+                live.advanceRealTime(1000 / 60);
+                live.updateBallAndPlayers(1000 / 60);
+            }
+        }
+
+        if (szenen < 20) throw new Error(`Nur ${szenen} Szenen in zwei Partien`);
+        const anteil = gebuendelt / szenen;
+        if (anteil < 0.15) {
+            throw new Error(`Nur ${(anteil * 100).toFixed(0)} % der Szenen bündeln mehr als ein Ereignis - jeder Angriff zerfällt in Einzelbilder`);
+        }
+        if (spruenge > 0) {
+            throw new Error(`${spruenge} Mal springt der Ball innerhalb einer Passage über das Feld`);
+        }
     });
 
     test("Akademie: Die Schule prägt die Talente, ohne sie besser zu machen", () => {

@@ -217,6 +217,11 @@ const YouthEngine = {
             yellowCards: 0,
             yellowCardsTotal: 0,
             squadRole: "Zukunftstalent",
+            // Woher er kommt, bleibt an ihm haengen - ein Eigengewaechs aus
+            // der Technikschule ist kein beliebiger Neuzugang.
+            schule: prospect.schule || club.akademieProfil || null,
+            schulName: prospect.schulName || null,
+            eigengewaechsVon: club.id,
             agent: prospect.agent || null,
             happiness: {
                 overall: 85,

@@ -49,8 +49,18 @@ const FinanceEngine = {
      * einen spürbaren Anteil - und dort ist die Gehaltslast winzig: In der
      * ersten Liga gehen 42 % des Umsatzes an die Spieler, in der siebten nur
      * 3 %. Was die Kader nicht kosten, kostet der Apparat.
+     *
+     * Seit die Gehälter an das Budget des Vereins gebunden sind (siehe
+     * GEHALTSQUOTE), trägt der Kader in jeder Liga einen ähnlichen Anteil. Der
+     * Apparat darf deshalb oben etwas weniger fressen als vorher - der
+     * Erstligist verlor sonst weiter Geld, obwohl seine Gehaltsliste passte.
+     *
+     * Unten muss der Anteil dagegen deutlich hoeher liegen, als er es tat: Ein
+     * Amateurverein hat kaum Gehaelter, aber trotzdem Platzmiete, Schiedsrichter,
+     * Fahrten, Ausruestung und eine Jugendabteilung. Mit einem halben Anteil
+     * legte die siebte Liga jeden Spieltag 30 Prozent ihrer Einnahmen zurueck.
      */
-    OPERATING_COST_BY_LEVEL: { 1: 0.28, 2: 0.40, 3: 0.45, 4: 0.48, 5: 0.50, 6: 0.52, 7: 0.54 },
+    OPERATING_COST_BY_LEVEL: { 1: 0.24, 2: 0.36, 3: 0.44, 4: 0.53, 5: 0.59, 6: 0.63, 7: 0.66 },
 
     /** Betriebsaufwandsquote eines Vereins */
     operatingShare(club) {
@@ -72,8 +82,14 @@ const FinanceEngine = {
      * die Sponsorenzahlung aber nur um den Faktor acht - ein Landesligist nahm
      * 150.000 € pro Spieltag ein und zahlte 2.850 € Gehälter. Nach fünf
      * Saisons saß jeder Amateurverein auf einem zweistelligen Millionenbetrag.
+     *
+     * Nach unten muss die Kurve steiler fallen, als sie es tat: Mit 0.08 nahm
+     * ein Siebtligist 91.000 € je Spieltag ein - drei Millionen je Saison für
+     * einen Verein, der in Wirklichkeit mit einem sechsstelligen Etat auskommt.
+     * Er legte damit jeden Spieltag 36.000 € zurück, während die Bundesliga
+     * draufzahlte.
      */
-    LEVEL_ECONOMY: { 1: 1.0, 2: 0.55, 3: 0.28, 4: 0.15, 5: 0.11, 6: 0.09, 7: 0.08 },
+    LEVEL_ECONOMY: { 1: 1.0, 2: 0.40, 3: 0.17, 4: 0.075, 5: 0.038, 6: 0.026, 7: 0.019 },
 
     /**
      * Sockel und Spanne der Sponsorenzahlung innerhalb einer Liga.
@@ -89,9 +105,17 @@ const FinanceEngine = {
      * Vielfaches eines Abstiegskandidaten um. Gemessen wird der Rang innerhalb
      * der eigenen Liga, damit dieselbe Rechnung in der Bundesliga und in der
      * Landesliga funktioniert.
+     *
+     * Der Sockel war zu hoch und die Spanne zu klein: Meister und Absteiger
+     * trennte der Faktor 2,2, ihre Gehaltslisten aber der Faktor 2,9. Genau
+     * deshalb stand der Spitzenverein bei 74 % Gehaltsquote und der Mittelfeld-
+     * verein bei 46 % - andersherum, als es sein müsste.
      */
-    SPONSOR_SOCKEL: 500000,
-    SPONSOR_SPANNE: 1400000,
+    SPONSOR_SOCKEL: 320000,
+    SPONSOR_SPANNE: 2400000,
+
+    /** Wie stark die Zahlung mit dem Rang steigt (>1 bevorzugt die Spitze) */
+    SPONSOR_KURVE: 1.5,
 
     /** Sponsorenzahlung eines Vereins je Spieltag */
     sponsorPerMatchday(club) {
@@ -110,7 +134,99 @@ const FinanceEngine = {
         const rang = typeof club.clubStrength === "number"
             ? Math.max(0, Math.min(1, club.clubStrength))
             : 0.5;
-        return Math.round((this.SPONSOR_SOCKEL + Math.pow(rang, 1.5) * this.SPONSOR_SPANNE) * faktor);
+        return Math.round((this.SPONSOR_SOCKEL + Math.pow(rang, this.SPONSOR_KURVE) * this.SPONSOR_SPANNE) * faktor);
+    },
+
+    /**
+     * Was ein Verein je Spieltag ungefähr einnimmt.
+     *
+     * Ohne Tabellenplatz, Form und Gegner - die Zahl soll nur die Größenordnung
+     * treffen, damit sich ein Gehaltsbudget daran bemessen lässt. Heimspiele
+     * gibt es nur jeden zweiten Spieltag, deshalb die Halbierung.
+     */
+    einnahmenSchaetzung(club, state = null) {
+        if (!club) return 0;
+        const fac = _feResolve("FacilityEngine", "./facilityEngine.js");
+        const kapazitaet = (fac && typeof fac.verfuegbareKapazitaet === "function")
+            ? fac.verfuegbareKapazitaet(club, state?.seasonYear || 1)
+            : (club.stadiumCapacity || club.capacity || 20000);
+
+        const ticket = kapazitaet * 0.78 * (club.ticketPrice || 35) / 2;
+        return Math.round(this.sponsorPerMatchday(club) + ticket);
+    },
+
+    /**
+     * Wie viel von den Einnahmen an die Spieler gehen darf.
+     *
+     * Gemessen ging die Rechnung vorher nicht auf: Der Median-Erstligist zahlte
+     * 59 Prozent seiner Einnahmen an Gehälter und verlor 421.000 € je Spieltag
+     * - nach vier Saisons standen 86 von 96 Erstligisten im Minus, während die
+     * siebte Liga jeden Spieltag Geld zurücklegte. Die Pyramide stand auf dem
+     * Kopf.
+     *
+     * Der Grund war struktureller Natur: Gehälter entstehen aus der Kaderstärke,
+     * Einnahmen aus dem Rang in der Liga. Das sind zwei verschiedene Achsen, und
+     * in der Mitte der Tabelle klafften sie auseinander.
+     *
+     * Deshalb wird es jetzt andersherum gerechnet: Ein Verein baut den Kader,
+     * den er bezahlen kann - so wie in Wirklichkeit auch. Je tiefer die Liga,
+     * desto kleiner der Anteil: Ein Amateurverein zahlt Aufwandsentschädigungen,
+     * keine Gehälter. Und der Spitzenverein zahlt einen kleineren Anteil als der
+     * Abstiegskandidat, weil sein Umsatz schneller wächst als seine Gehaltsliste.
+     */
+    GEHALTSQUOTE: { 1: 0.50, 2: 0.45, 3: 0.38, 4: 0.30, 5: 0.24, 6: 0.20, 7: 0.17 },
+
+    gehaltsbudgetJeSpieltag(club, state = null) {
+        if (!club) return 0;
+        const grund = this.GEHALTSQUOTE[club.level || 1] ?? 0.30;
+        const rang = typeof club.clubStrength === "number"
+            ? Math.max(0, Math.min(1, club.clubStrength))
+            : 0.5;
+        // Wer oben steht, gibt anteilig weniger aus
+        return Math.round(this.einnahmenSchaetzung(club, state) * grund * (1 - rang * 0.18));
+    },
+
+    /**
+     * Die Kadergehälter auf das legen, was der Verein tragen kann.
+     *
+     * Wird einmal nach dem Aufbau der Welt gerufen und danach bei jedem
+     * Ligawechsel: Ein Absteiger kann die Bundesligagehälter nicht weiterzahlen,
+     * ein Aufsteiger muss mehr bieten.
+     *
+     * Die Spanne innerhalb des Kaders bleibt erhalten - es werden alle Gehälter
+     * mit demselben Faktor verschoben, nicht eingeebnet. Und der Faktor ist
+     * begrenzt, damit ein Ausreißer keinen Kader verzerrt.
+     */
+    normalisiereGehaelter(state, clubs = null) {
+        if (!state || !Array.isArray(state.players)) return 0;
+        const liste = clubs || state.clubs || [];
+
+        const nachVerein = new Map();
+        state.players.forEach(p => {
+            if (!nachVerein.has(p.clubId)) nachVerein.set(p.clubId, []);
+            nachVerein.get(p.clubId).push(p);
+        });
+
+        let angepasst = 0;
+        liste.forEach(club => {
+            const kader = nachVerein.get(club.id);
+            if (!kader || !kader.length) return;
+
+            const ist = kader.reduce((s, p) => s + (p.wage || 0), 0);
+            if (ist <= 0) return;
+            const ziel = this.gehaltsbudgetJeSpieltag(club, state);
+            if (ziel <= 0) return;
+
+            const faktor = Math.max(0.25, Math.min(3.0, ziel / ist));
+            if (Math.abs(faktor - 1) < 0.02) return;
+
+            kader.forEach(p => {
+                p.wage = Math.max(120, Math.round((p.wage || 0) * faktor / 10) * 10);
+            });
+            angepasst++;
+        });
+
+        return angepasst;
     },
 
     /**
@@ -143,7 +259,7 @@ const FinanceEngine = {
                 const a = anlagen?.[key];
                 if (!a) return;
                 const flickwerk = 1 + (100 - Math.max(0, Math.min(100, a.zustand))) / 100 * 0.55;
-                summe += a.stufe * a.stufe * 4300 * flickwerk;
+                summe += a.stufe * a.stufe * 1500 * flickwerk;
             });
             return Math.round(summe * faktor);
         }

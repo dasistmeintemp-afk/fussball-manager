@@ -4533,13 +4533,7 @@ class UIManager {
         DOM.setText("finSponsorWeekly", GameState.formatMoney(sponsorWeekly));
         DOM.setText("finFanbase", `${(userClub.fanBase || 0).toLocaleString("de-DE")} Fans`);
 
-        // Fazilitäten
-        if (userClub.facilities) {
-            DOM.setText("facTraining", `Stufe ${userClub.facilities.trainingGround || 1}`);
-            DOM.setText("facYouth", `Stufe ${userClub.facilities.youthCenter || 1}`);
-            DOM.setText("facMedical", `Stufe ${userClub.facilities.medicalCenter || 1}`);
-            DOM.setText("facStadium", `Stufe ${userClub.facilities.stadium || 1}`);
-        }
+        this.renderFacilityCosts(userClub);
 
         // Transaktionshistorie (D5)
         const txnsBody = document.getElementById("finTransactionsBody");
@@ -4627,6 +4621,58 @@ class UIManager {
             };
         }
 
+    }
+
+    /**
+     * Was jede Anlage je Spieltag kostet.
+     *
+     * Vorher standen hier vier Stufenzahlen, die schon im Verein-Reiter
+     * stehen. Interessant ist an dieser Stelle etwas anderes: dass eine
+     * verfallene Anlage teurer im Unterhalt ist als eine gepflegte. Das ist
+     * der Grund, eine Sanierung nicht ewig aufzuschieben - und man sieht ihn
+     * nur, wenn die Rechnung aufgeschlüsselt dasteht.
+     */
+    renderFacilityCosts(userClub) {
+        const host = document.getElementById("finFacilityRows");
+        if (!host) return;
+
+        const state = this.app.state;
+        const fac = (typeof FacilityEngine !== "undefined") ? FacilityEngine : null;
+        const finance = (typeof FinanceEngine !== "undefined") ? FinanceEngine : null;
+        if (!fac || !finance) { host.innerHTML = ""; return; }
+
+        const saison = state.seasonYear || 1;
+        const anlagen = fac.hole(userClub, saison);
+        const ligaFaktor = finance.LEVEL_ECONOMY?.[userClub.level || 1] ?? 0.05;
+
+        const ICONS = { stadium: "🏟️", trainingGround: "🏋️", youthCenter: "🎓", medicalCenter: "🏥" };
+
+        let summe = 0;
+        host.innerHTML = fac.ANLAGEN.map(key => {
+            const a = anlagen?.[key];
+            if (!a) return "";
+
+            // Dieselbe Rechnung wie in maintenancePerMatchday
+            const flickwerk = 1 + (100 - Math.max(0, Math.min(100, a.zustand))) / 100 * 0.55;
+            const kosten = Math.round(a.stufe * a.stufe * 1500 * flickwerk * ligaFaktor);
+            const gepflegt = Math.round(a.stufe * a.stufe * 1500 * ligaFaktor);
+            const aufschlag = kosten - gepflegt;
+            summe += kosten;
+
+            const hinweis = aufschlag > 0
+                ? `<span style="color:#f59e0b; font-size:11px;"> (+${GameState.formatMoney(aufschlag)} wegen Zustand)</span>`
+                : "";
+
+            return `
+                <div class="finance-stat-row">
+                    <span>${ICONS[key] || "🏗️"} ${fac.FACILITY_NAMES[key]}
+                        <span class="text-muted" style="font-size:11px;">Stufe ${a.stufe} &middot; ${fac.zustandsText(a.zustand)}</span>
+                    </span>
+                    <strong>${GameState.formatMoney(kosten)}${hinweis}</strong>
+                </div>`;
+        }).join("");
+
+        DOM.setText("finFacilityTotal", `${GameState.formatMoney(summe)} / Spieltag`);
     }
 
     /**
@@ -5599,6 +5645,32 @@ class UIManager {
             `;
         }
 
+        // Woher er kommt: die Handschrift der Schule, die ihn ausgebildet hat
+        let schuleHtml = "";
+        const schulKey = player.schule;
+        if (schulKey) {
+            const fac = (typeof FacilityEngine !== "undefined") ? FacilityEngine : null;
+            const profil = fac?.AKADEMIE_PROFILE?.[schulKey];
+            if (profil) {
+                const heimat = player.eigengewaechsVon
+                    ? state.clubs.find(c => c.id === player.eigengewaechsVon)
+                    : state.clubs.find(c => c.id === player.clubId);
+                const praegung = (profil.staerken || []).length
+                    ? `Dort werden vor allem ${this.profilWorte(profil.staerken)} ausgebildet`
+                    : "Eine Schule ohne besondere Handschrift";
+                schuleHtml = `
+                    <div class="dash-card mb-3" style="padding:14px; background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2);">
+                        <h4 style="font-size:13px; margin-bottom:8px; color:#10b981;">🎓 Aus der eigenen Jugend</h4>
+                        <div style="font-size:12px; color:#e2e8f0; line-height:1.6;">
+                            <strong>${this.escapeHtml(profil.name)}</strong>${heimat ? ` &middot; ${this.escapeHtml(heimat.name)}` : ""}<br>
+                            ${this.escapeHtml(praegung)}${(profil.schwaechen || []).length
+                                ? ` &ndash; auf Kosten von ${this.escapeHtml(this.profilWorte(profil.schwaechen))}` : ""}.
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
         let traitsHtml = "";
         if (card && card.hiddenTraits && card.hiddenTraits.length > 0) {
             traitsHtml = `
@@ -5823,6 +5895,8 @@ class UIManager {
             ${positionMapHtml}
 
             ${eigenheitenHtml}
+
+            ${schuleHtml}
 
             ${traitsHtml}
 

@@ -480,7 +480,34 @@ class ManagerEngine {
             });
         }
 
-        // 7. Aufstellung unvollständig
+        // 7. Laufende Bauvorhaben
+        //
+        // Ein Stadionumbau läuft dreißig Spieltage und drückt so lange die
+        // Zuschauereinnahmen. Er stand bisher nur im Verein-Reiter - wer dort
+        // nicht nachsah, wunderte sich über die Einnahmen und fand den Grund
+        // nicht.
+        const fac = _mgrResolve("FacilityEngine", "./facilityEngine.js");
+        if (fac && club.anlagen) {
+            const baustellen = (fac.ANLAGEN || [])
+                .map(k => ({ key: k, anlage: club.anlagen[k] }))
+                .filter(x => x.anlage?.projekt);
+
+            baustellen.forEach(({ key, anlage }) => {
+                const p = anlage.projekt;
+                const einbusse = key === "stadium"
+                    ? `${Math.round(p.beeintraechtigung * 100)} % der Plätze fehlen`
+                    : `Betrieb um ${Math.round(p.beeintraechtigung * 100)} % eingeschränkt`;
+                items.push({
+                    priority: 7,
+                    icon: "🏗️",
+                    tab: "club",
+                    title: `${fac.FACILITY_NAMES[key]}: ${p.art === "ausbau" ? "Ausbau" : "Sanierung"} läuft`,
+                    detail: `Noch ${p.restSpieltage} von ${p.spieltage} Spieltagen · ${einbusse}.`
+                });
+            });
+        }
+
+        // 8. Aufstellung unvollständig
         if ((club.lineup || []).length < 11) {
             items.unshift({
                 priority: 0,

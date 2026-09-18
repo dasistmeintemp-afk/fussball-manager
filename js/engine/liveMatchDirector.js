@@ -55,6 +55,12 @@ const RESOLVE_ON_ARRIVAL = ["goal", "save", "shot_miss"];
  */
 const OHNE_BALLFUEHRUNG = ["foul", "yellow_card", "red_card", "injury", "substitution", "halftime", "fulltime"];
 
+/** Zaesuren, ueber die hinweg keine Szene weiterlaeuft */
+const SZENEN_ENDE = ["halftime", "fulltime", "substitution", "goal", "injury", "red_card"];
+
+/** Ruhende Baelle haben ihren festen Platz auf dem Feld */
+const RUHENDER_BALL = ["corner", "penalty", "freekick", "throwin", "goalkick", "kickoff"];
+
 /** Wie stark ein Mannschaftsteil der Ballbewegung über das Feld folgt */
 const LINE_FOLLOW_WEIGHT = { gk: 0.10, def: 0.52, mid: 0.70, att: 0.86 };
 
@@ -205,6 +211,16 @@ class LiveMatchDirector {
      * Fussball liegt er die meiste Zeit bei jemandem.
      */
     static ANNAHME = [0.18, 0.36];
+
+    /**
+     * Wie weit eine Szene nach vorne greift - in Spielsekunden.
+     *
+     * Eine Passage ist keine Minute: Aufbau, Verlagerung und Abschluss liegen
+     * in der Zeitleiste oft eine halbe Minute auseinander, standen aber als
+     * drei getrennte Szenen mit drei getrennten Anlaeufen da. Mit diesem
+     * Fenster laeuft der Angriff durch, und geschnitten wird danach.
+     */
+    static SZENEN_FENSTER = 100;
 
     constructor(liveMatch) {
         this.match = liveMatch;
@@ -727,16 +743,45 @@ class LiveMatchDirector {
             || (ev.type === "foul" && ev.outcome !== "penalty");
         let schonUnterbrochen = false;
 
-        while (match.timelineIndex < match.timeline.length && guard++ < 6) {
+        // Eine Szene ist eine Passage, keine Minute.
+        //
+        // Gebündelt wurde bisher nur, was in derselben Spielminute stand. Bei
+        // rund hundertfünfzig Ereignissen auf neunzig Minuten liegt aber in den
+        // meisten Minuten genau eines, also bündelte sich so gut wie nie etwas:
+        // Jedes Ereignis bekam seinen eigenen Anlauf, und gemessen gingen ein
+        // Drittel der Übertragung dafür drauf. Zwischen zwei Szenen blieb Platz
+        // für ein einziges freies Zuspiel - deshalb sah man keine Passstaffetten.
+        //
+        // Jetzt zieht eine Szene alles heran, was innerhalb des Fensters folgt,
+        // auch wenn die Uhr noch nicht dort ist. Genau so überträgt das
+        // Fernsehen auch: Der Angriff läuft durch, vom Aufbau bis zum Abschluss,
+        // und danach wird geschnitten.
+        const fenster = LiveMatchDirector.SZENEN_FENSTER;
+        const eigeneMannschaft = this.attackingTeamOf(match.timeline[match.timelineIndex]);
+
+        while (match.timelineIndex < match.timeline.length && guard++ < 8) {
             const ev = match.timeline[match.timelineIndex];
-            if (this.eventTime(ev) > this.clock) break;
-            if (events.length > 0 && ev.minute !== events[0].minute) break;
+
+            if (events.length === 0) {
+                // Das erste Ereignis muss fällig sein - vorgezogen wird nichts
+                if (this.eventTime(ev) > this.clock) break;
+            } else {
+                // Die Passage endet, wenn zu viel Zeit vergeht ...
+                if (this.eventTime(ev) - this.eventTime(events[0]) > fenster) break;
+                // ... wenn die andere Mannschaft übernimmt ...
+                const team = this.attackingTeamOf(ev);
+                if (team && eigeneMannschaft && team !== eigeneMannschaft) break;
+                // ... und an jeder Zäsur, die keine Fortsetzung kennt
+                if (SZENEN_ENDE.includes(ev.type)) break;
+                if (SZENEN_ENDE.includes(events[events.length - 1].type)) break;
+            }
+
             if (schonUnterbrochen && unterbricht(ev)) break;
 
             if (unterbricht(ev)) schonUnterbrochen = true;
             events.push(ev);
             match.timelineIndex++;
-            if (events.length >= 4) break;
+            if (events.length >= 5) break;
         }
 
         if (events.length === 0) return;
@@ -753,6 +798,10 @@ class LiveMatchDirector {
         // Ein Foul passiert dort, wo der Ball ist - nicht dort, wo die
         // Zeitleiste zufaellig einen Punkt notiert hat.
         this.verankereAmBall(events);
+
+        // Und innerhalb einer Passage beginnt jede Aktion da, wo die vorige
+        // aufgehoert hat.
+        this.verketteSzene(events);
 
         this.mode = "highlight";
         this.carryTarget = null;
@@ -788,6 +837,62 @@ class LiveMatchDirector {
             ev.start = { x: roh.x, y: roh.y };
             ev.end = { x: roh.x, y: roh.y };
         });
+    }
+
+    /**
+     * Innerhalb einer Passage beginnt jede Aktion dort, wo die vorige endete.
+     *
+     * Die Zeitleiste notiert für jedes Ereignis eigene Koordinaten, die nichts
+     * voneinander wissen: Ein Steilpass endet auf dem rechten Flügel, und die
+     * Flanke danach beginnt laut Zeitleiste im linken Halbfeld. Die Regie holte
+     * den Ball dann quer über das Feld - mitten in einem laufenden Angriff.
+     *
+     * Gemessen bekam deshalb jedes Ereignis seinen eigenen Anlauf, im Mittel
+     * über achtundzwanzig Einheiten lang. Ein Angriff bestand aus drei
+     * Balltransporten statt aus drei Zuspielen.
+     *
+     * Der Ball ist aber nach dem Steilpass genau dort, wo der Steilpass endete.
+     * Also fängt die Flanke dort an. Nur das erste Ereignis einer Szene behält
+     * seinen Ort - dorthin wird noch gespielt.
+     */
+    verketteSzene(events) {
+        for (let i = 1; i < events.length; i++) {
+            const vorher = events[i - 1];
+            const jetzt = events[i];
+
+            // Ein Ereignis ohne Ballführung wurde schon an den Ball geheftet
+            if (OHNE_BALLFUEHRUNG.includes(jetzt.type)) continue;
+            // Ein ruhender Ball hat seinen festen Platz: Eine Ecke wird von der
+            // Fahne getreten, ein Elfmeter vom Punkt. Die dürfen nicht dorthin
+            // wandern, wo die vorige Aktion endete.
+            if (RUHENDER_BALL.includes(jetzt.type)) continue;
+            if (!vorher.end || typeof vorher.end.x !== "number") continue;
+
+            const richtung = { x: jetzt.end?.x, y: jetzt.end?.y };
+            jetzt.start = { x: vorher.end.x, y: vorher.end.y };
+
+            // Der Zielpunkt bleibt, wo er war - ein Schuss geht weiter aufs
+            // Tor, eine Flanke weiter in den Strafraum. Nur wenn Start und
+            // Ziel dadurch zusammenfallen, bekommt die Aktion wieder Länge.
+            if (typeof richtung.x === "number"
+                && Math.hypot(richtung.x - jetzt.start.x, richtung.y - jetzt.start.y) < 4) {
+                jetzt.end = {
+                    x: Math.max(3, Math.min(97, jetzt.start.x + this.attackDirRaw(jetzt.team) * 12)),
+                    y: Math.max(5, Math.min(95, jetzt.start.y + (Math.random() - 0.5) * 18))
+                };
+            }
+        }
+    }
+
+    /**
+     * Die Angriffsrichtung einer Mannschaft in Zeitleisten-Koordinaten.
+     *
+     * attackDir() rechnet in Bildschirmkoordinaten und dreht in Halbzeit zwei
+     * mit. Hier werden Ereignisorte umgeschrieben, und die stehen ungespiegelt
+     * in der Zeitleiste.
+     */
+    attackDirRaw(team) {
+        return team === "home" ? 1 : -1;
     }
 
     attackingTeamOf(ev) {

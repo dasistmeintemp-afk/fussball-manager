@@ -861,6 +861,20 @@ class SeasonEngine {
             facilityEngine.saisonwechsel(state);
         }
 
+        // Auf- und Absteiger haben ueber Nacht eine andere Wirtschaftskraft.
+        //
+        // Ein Absteiger kann die Bundesligagehaelter nicht weiterzahlen, ein
+        // Aufsteiger muss mehr bieten. Ohne diesen Abgleich schleppte ein
+        // Absteiger seine alte Gehaltsliste in eine Liga mit einem Drittel der
+        // Einnahmen und war binnen einer Saison zahlungsunfaehig.
+        const finanzenGehalt = _getFinanceEngine();
+        if (finanzenGehalt && typeof finanzenGehalt.normalisiereGehaelter === 'function') {
+            const gewechselt = (movements?.promoted || []).concat(movements?.relegated || [])
+                .map(m => state.clubs.find(c => c.id === (m.clubId || m.id || m)))
+                .filter(Boolean);
+            if (gewechselt.length) finanzenGehalt.normalisiereGehaelter(state, gewechselt);
+        }
+
         // Pokal neu auslosen und den europäischen Wettbewerben ihren Spielplan
         // geben - sonst stünden auch in der neuen Saison nur Teilnehmerlisten
         // ohne eine einzige Partie im Speicher.

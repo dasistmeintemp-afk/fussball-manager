@@ -41,6 +41,15 @@ function _getCupEngineCal() {
     return null;
 }
 
+function _getCalFacilityEngine() {
+    if (typeof FacilityEngine !== "undefined" && FacilityEngine) return FacilityEngine;
+    if (typeof window !== "undefined" && window.FacilityEngine) return window.FacilityEngine;
+    if (typeof require !== "undefined") {
+        try { return require("./facilityEngine.js").FacilityEngine; } catch (e) { /* ohne Bundler */ }
+    }
+    return null;
+}
+
 function _getTransferEngineCal() {
     if (typeof TransferEngine !== "undefined" && TransferEngine) return TransferEngine;
     if (typeof window !== "undefined" && window.TransferEngine) return window.TransferEngine;
@@ -415,6 +424,19 @@ const CalendarEngine = {
             || day.type === CALENDAR_DAY_TYPES.OPPONENT_ANALYSIS;
         if (vorDemSpiel && lage.verletzt > 0) marken.push(`${lage.verletzt} verletzt`);
         if (vorDemSpiel && lage.gesperrt > 0) marken.push(`${lage.gesperrt} gesperrt`);
+
+        // Ein Heimspiel waehrend des Stadionumbaus ist eine andere Partie:
+        // Ein Teil der Raenge ist gesperrt, und das sieht man an den Einnahmen.
+        if (day.type === CALENDAR_DAY_TYPES.MATCHDAY && club?.anlagen) {
+            const fac = _getCalFacilityEngine();
+            (fac?.ANLAGEN || []).forEach(k => {
+                const p = club.anlagen[k]?.projekt;
+                if (!p) return;
+                marken.push(k === "stadium"
+                    ? `Stadionumbau (noch ${p.restSpieltage})`
+                    : `${fac.FACILITY_NAMES[k]}: Baustelle`);
+            });
+        }
 
         const gegnerSatz = () => {
             if (!naechstes) return "Kein Pflichtspiel angesetzt.";

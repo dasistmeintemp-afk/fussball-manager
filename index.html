@@ -976,24 +976,16 @@
                             </div>
                         </div>
 
-                        <!-- Vereinsfazilitäten -->
+                        <!-- Was die Anlagen je Spieltag kosten -->
                         <div class="dash-card">
-                            <h3>🏟️ Vereinsinfrastruktur</h3>
-                            <div class="finance-stat-row">
-                                <span>Trainingsgelände:</span>
-                                <strong id="facTraining">Stufe 2</strong>
-                            </div>
-                            <div class="finance-stat-row">
-                                <span>Jugendzentrum:</span>
-                                <strong id="facYouth">Stufe 1</strong>
-                            </div>
-                            <div class="finance-stat-row">
-                                <span>Medizinische Abteilung:</span>
-                                <strong id="facMedical">Stufe 1</strong>
-                            </div>
-                            <div class="finance-stat-row">
-                                <span>Stadion-Ausbaustufe:</span>
-                                <strong id="facStadium">Stufe 2</strong>
+                            <h3>🏟️ Unterhalt der Anlagen</h3>
+                            <p class="text-muted" style="font-size:12px; margin:-2px 0 10px;">
+                                Je Spieltag. Was verfällt, kostet mehr &ndash; Flickwerk ist teurer als Pflege.
+                            </p>
+                            <div id="finFacilityRows"></div>
+                            <div class="finance-stat-row" style="border-top:1px solid var(--border-color); margin-top:6px; padding-top:8px;">
+                                <span><strong>Summe</strong></span>
+                                <strong id="finFacilityTotal">0 €</strong>
                             </div>
                         </div>
 

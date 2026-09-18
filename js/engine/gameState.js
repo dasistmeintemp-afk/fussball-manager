@@ -745,6 +745,18 @@ class GameState {
             worldGen.generateWorld(world);
         }
 
+        // Jeder Verein baut den Kader, den er bezahlen kann.
+        //
+        // Die Gehälter entstehen beim Erzeugen eines Spielers aus seiner Stärke,
+        // die Einnahmen aber aus dem Rang des Vereins in seiner Liga. Ohne
+        // diesen Abgleich klafften beide in der Tabellenmitte auseinander: Der
+        // Median-Erstligist verlor 421.000 € je Spieltag, während ein
+        // Siebtligist jeden Spieltag Geld zurücklegte.
+        const finance = GameState._resolveEngine("FinanceEngine", "./financeEngine.js");
+        if (finance && typeof finance.normalisiereGehaelter === "function") {
+            finance.normalisiereGehaelter(world);
+        }
+
         return world;
     }
 

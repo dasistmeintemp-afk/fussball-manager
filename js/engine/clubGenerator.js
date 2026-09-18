@@ -22,6 +22,23 @@ class ClubGenerator {
         7: [7, 6]
     };
 
+    /**
+     * Die echten Vereine einer Liga, falls hinterlegt.
+     *
+     * Ist für eine Liga nichts hinterlegt - oder reicht die Liste nicht -,
+     * greift wie bisher der Namensgenerator.
+     */
+    static getRealClubs(leagueId) {
+        const daten = (typeof REAL_CLUBS_BY_LEAGUE !== "undefined" && REAL_CLUBS_BY_LEAGUE)
+            ? REAL_CLUBS_BY_LEAGUE
+            : ((typeof window !== "undefined" && window.REAL_CLUBS_BY_LEAGUE)
+                ? window.REAL_CLUBS_BY_LEAGUE
+                : (typeof require !== "undefined" ? require("../data/realClubs.js").REAL_CLUBS_BY_LEAGUE : null));
+
+        if (!daten) return [];
+        return daten[leagueId] || [];
+    }
+
     static getPool(countryId) {
         const pools = (typeof COUNTRY_NAME_POOLS !== "undefined" && COUNTRY_NAME_POOLS)
             ? COUNTRY_NAME_POOLS
@@ -146,7 +163,12 @@ class ClubGenerator {
 
         const city = options.city || this.pick(pool ? pool.cities : [], "Neustadt");
         const name = options.name || this.generateClubName(countryId, city, options.usedNames);
-        const stadiumData = this.generateStadium(city, level, clubStrength, countryId);
+
+        // Echte Vereine bringen ihr eigenes Stadion mit - der Ruf entscheidet
+        // dann nur noch über Etat und Erwartung, nicht mehr über die Kapazität.
+        const stadiumData = (options.stadium && options.stadiumCapacity)
+            ? { stadium: options.stadium, stadiumCapacity: options.stadiumCapacity }
+            : this.generateStadium(city, level, clubStrength, countryId);
         const finances = this.generateFinances(level, clubStrength);
         const reputation = this.calculateReputation(level, clubStrength, options.countryReputation ?? 88);
 
@@ -227,14 +249,30 @@ class ClubGenerator {
         const pool = this.getPool(league.countryId || "de");
         const clubs = [];
 
+        // Die echten Vereine der Liga, in der Reihenfolge ihrer Stärke. Wer
+        // schon im Spielstand steht (die handgepflegte Bundesliga), wird
+        // uebersprungen, damit niemand doppelt antritt.
+        const echte = this.getRealClubs(league.id)
+            .filter(v => !usedNames.has(v.name));
+
         for (let i = 0; i < total; i++) {
             // Stärkeleiter von 1 (Spitzenreiter) bis 0 (Schlusslicht), leicht verrauscht
             const ladder = total > 1 ? 1 - (i / (total - 1)) : 0.5;
             const clubStrength = Math.max(0, Math.min(1, ladder + (Math.random() - 0.5) * 0.12));
 
-            let city = this.pick(pool ? pool.cities : [], "Neustadt");
-            for (let attempt = 0; attempt < 12 && usedCities.has(city); attempt++) {
+            const echt = echte[i] || null;
+
+            let city;
+            if (echt) {
+                // Mailand hat zwei Vereine, London fünf - bei echten Vereinen
+                // ist eine Stadt kein Ausschlusskriterium.
+                city = echt.city;
+                usedNames.add(echt.name);
+            } else {
                 city = this.pick(pool ? pool.cities : [], "Neustadt");
+                for (let attempt = 0; attempt < 12 && usedCities.has(city); attempt++) {
+                    city = this.pick(pool ? pool.cities : [], "Neustadt");
+                }
             }
             usedCities.add(city);
 
@@ -247,9 +285,12 @@ class ClubGenerator {
                 region: league.region || "Zentral",
                 clubStrength: clubStrength,
                 city: city,
+                name: echt ? echt.name : undefined,
+                stadium: echt ? echt.stadium : undefined,
+                stadiumCapacity: echt ? echt.capacity : undefined,
                 usedNames: usedNames,
                 code: league.code || "gen",
-                id: `${league.code || "gen"}_${String(index).padStart(2, "0")}`
+                id: echt ? echt.id : `${league.code || "gen"}_${String(index).padStart(2, "0")}`
             }));
         }
 

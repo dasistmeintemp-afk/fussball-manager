@@ -2039,7 +2039,12 @@ function runEngineTests() {
         const measure = (tactics) => {
             const agg = { dist: 0, n: 0, forward: 0, left: 0, right: 0 };
 
-            for (let run = 0; run < 4; run++) {
+            // Acht Partien statt vier: Seit Spieler und Ball auf glaubwuerdigem
+            // Tempo laufen, entfallen auf eine Partie rund zweiunddreissig freie
+            // Entscheidungen statt vierundsechzig - die Anlaeufe brauchen die
+            // Zeit, die ein Laufweg wirklich kostet. Die Stichprobe bleibt, sie
+            // wird nur ueber mehr Partien gezogen.
+            for (let run = 0; run < 8; run++) {
                 Object.assign(homeClub.tactics, tactics);
                 const match = { id: `flow_${run}_${tactics.passing}_${tactics.focus}_${tactics.mentality}`, played: false, homeClubId: "muc", awayClubId: "dor" };
                 match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, state.players);
@@ -2155,7 +2160,12 @@ function runEngineTests() {
         }
 
         const stats = live.director.flowStats;
-        if (stats.actions < 40) throw new Error(`Zu wenig Spielfluss: nur ${stats.actions} Aktionen`);
+        // Zwanzig statt vierzig: Gemessen ueber zehn Partien liegt die Rate bei
+        // zweiunddreissig freien Entscheidungen je Partie, vorher bei
+        // vierundsechzig. Die Haelfte davon geht jetzt in Laufwege, die ein
+        // Spieler mit glaubwuerdigem Tempo wirklich braucht. Geprueft wird hier,
+        // ob ueberhaupt durchgehend gespielt wird - nicht wie dicht.
+        if (stats.actions < 20) throw new Error(`Zu wenig Spielfluss: nur ${stats.actions} Aktionen`);
 
         const completionRate = stats.passesCompleted / Math.max(1, stats.actions);
         if (completionRate < 0.35 || completionRate > 0.9) {
@@ -2657,12 +2667,12 @@ function runEngineTests() {
         const zaehler = { aktionen: 0, pass: 0, passOk: 0, lang: 0 };
         const standards = {};
 
-        // Fünf Partien statt drei: Seit die Regie den Ball nicht mehr an den
-        // Ereignisort schiebt, sondern hinspielen lässt, entfallen auf eine
-        // Partie rund fünfundsechzig freie Entscheidungen statt hundert. Die
-        // Stichprobe von zweihundert Aktionen bleibt - sie wird nur über mehr
-        // Partien gezogen.
-        for (let run = 0; run < 5; run++) {
+        // Acht Partien: Seit die Regie den Ball nicht mehr an den Ereignisort
+        // schiebt und Spieler wie Ball auf glaubwuerdigem Tempo laufen,
+        // entfallen auf eine Partie rund zweiunddreissig freie Entscheidungen
+        // statt hundert. Die Stichprobe von zweihundert Aktionen bleibt - sie
+        // wird nur ueber mehr Partien gezogen.
+        for (let run = 0; run < 8; run++) {
             const match = { id: `fluss_${run}`, played: false, homeClubId: "muc", awayClubId: "dor" };
             match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, state.players);
 

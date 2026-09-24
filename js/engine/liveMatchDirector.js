@@ -380,6 +380,31 @@ class LiveMatchDirector {
             p.sprinting = false;
             p.facing = this.attackDir(p.team) > 0 ? 0 : Math.PI;
         });
+        // Nach einem Wechsel, einer Umstellung oder einem Platzverweis stimmt
+        // die gemerkte Hoehe der Abwehrkette nicht mehr.
+        this._teamLineBase = {};
+    }
+
+    /**
+     * Ein Spieler hat das Feld verlassen (Platzverweis). Alles, was noch auf
+     * ihn zeigt, wird geloest - sonst hielte ein Mann den Ball, der gar nicht
+     * mehr auf dem Platz steht.
+     */
+    spielerEntfernt(playerId) {
+        const match = this.match;
+        if (this.carrierId === playerId) this.carrierId = null;
+        if (match.ball && match.ball.holderId === playerId) match.ball.holderId = null;
+        if (match.activePlayerId === playerId) match.activePlayerId = null;
+        if (this.sceneProtagonist === playerId) this.sceneProtagonist = null;
+        if (this.kickoffTakerId === playerId) this.kickoffTakerId = null;
+        if (this.kickoffPartnerId === playerId) this.kickoffPartnerId = null;
+        if (this._routeHolder === playerId) this._routeHolder = null;
+        if (this.carryTarget && this.carryTarget.id === playerId) this.carryTarget = null;
+        if (match.sceneRoles instanceof Map) match.sceneRoles.delete(playerId);
+        if (Array.isArray(this.setPieceWall)) {
+            this.setPieceWall = this.setPieceWall.filter(id => id !== playerId);
+        }
+        this.initPlayers();
     }
 
     /**
@@ -668,6 +693,8 @@ class LiveMatchDirector {
             const endurance = Math.max(0.35, 1.35 - stamina / 100);
             const rate = (p.sprinting ? 0.00009 : 0.00003) * endurance;
             p.freshness = Math.max(0.6, (p.freshness ?? 1) - rate * matchSeconds);
+            // Wer angeschlagen weiterspielt, humpelt - langsamer als jeder Muede.
+            if (p.verletzt) p.freshness = Math.min(p.freshness, 0.62);
         });
     }
 

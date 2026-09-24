@@ -73,7 +73,14 @@ const MATCH_TUNING = {
     // Wirklichkeit passiert der groessere Teil im Spiel: im Zweikampf, im
     // Sprint, bei der Landung. 0.30 ergibt rund zehn Spielverletzungen je
     // Verein und Saison und damit etwa ein Drittel aller Ausfaelle.
-    injuryRatePerTeam: 0.30
+    injuryRatePerTeam: 0.30,
+
+    // Wer einen Mann weniger hat, kommt seltener vor das Tor. Vorher war ein
+    // Platzverweis nur eine Zeile im Ticker: Der Spieler tauchte in keiner
+    // Szene mehr auf, die Verteilung der Szenen blieb aber dieselbe - zehn
+    // spielten so stark wie elf. Sieben Prozentpunkte je fehlendem Spieler
+    // entsprechen grob dem, was Unterzahl im echten Fussball kostet.
+    unterzahlSzenen: 0.07
 };
 
 const INJURY_CATALOG = [
@@ -591,6 +598,38 @@ class MatchEngine {
         let awaySubsUsed = options.usedSubsAway || 0;
         const maxSubs = 5;
 
+        // Wer auf der Bank sitzt. Im Livespiel fuehrt LiveMatch die Bank selbst:
+        // Ein ausgewechselter Spieler darf nicht zurueck, und wer schon drin
+        // ist, sitzt nicht mehr draussen. Ohne diese Angabe gilt die Bank des
+        // Vereins.
+        const bankVon = (isHomeTeam) => (isHomeTeam
+            ? (options.homeBench || homeClub.bench)
+            : (options.awayBench || awayClub.bench)) || [];
+
+        // Wechselt die Simulation fuer diese Mannschaft selbst? Fuer die
+        // Mannschaft des Spielers nur, wenn er die Wechsel dem Co-Trainer
+        // ueberlassen hat - sonst entscheidet er.
+        const autoWechsel = {
+            home: options.autoWechselHome !== false,
+            away: options.autoWechselAway !== false
+        };
+
+        // Fuenf Wechsel in hoechstens drei Unterbrechungen. Wechsel in derselben
+        // Minute zaehlen als eine Unterbrechung.
+        const wechselFenster = {
+            home: { genutzt: options.wechselFensterHome || 0, minute: null },
+            away: { genutzt: options.wechselFensterAway || 0, minute: null }
+        };
+        const fensterFrei = (side, min) => {
+            const f = wechselFenster[side];
+            return f.minute === min || f.genutzt < 3;
+        };
+        const fensterBelegen = (side, min) => {
+            const f = wechselFenster[side];
+            if (f.minute !== min) f.genutzt++;
+            f.minute = min;
+        };
+
         // Turnierspiele in der Vorbereitung finden auf neutralem Platz statt -
         // dort hat keiner der beiden ein Publikum im Rücken.
         const neutralerPlatz = !!(match && match.neutralerPlatz) || options.neutralerPlatz === true;
@@ -679,8 +718,13 @@ class MatchEngine {
         sceneMinutes.sort((a, b) => a - b);
 
         // Tracking von Verwarnungen / Platzverweisen pro Spieler im Spiel (A8)
-        const playerYellows = new Map();
-        const sentOffPlayerIds = new Set();
+        //
+        // Beim Neuberechnen des Restspiels kommt mit, was schon passiert ist.
+        // Vorher begann jede Neuberechnung mit einem leeren Buch: Ein
+        // Verwarnter bekam nach einer Taktikaenderung eine "erste" Gelbe, und
+        // ein Platzverwiesener stand wieder in den Szenen.
+        const playerYellows = new Map((options.gelbIds || []).map(id => [id, 1]));
+        const sentOffPlayerIds = new Set(options.sentOffIds || []);
 
         // Einsatzpositionen aus den Formationen ableiten: Wer auf der Sechs spielt,
         // taucht auch im Spielbericht als Sechser auf - nicht als Stürmer.
@@ -693,6 +737,23 @@ class MatchEngine {
             const slots = isHomeTeam ? homeSlots : awaySlots;
             const idx = arr.indexOf(player);
             return (idx >= 0 && slots[idx]?.pos) || player.pos || "ZM";
+        };
+
+        // Wer kommt fuer ihn? Der Bankspieler, der auf der frei werdenden
+        // Position am besten aufgehoben ist - nicht einfach der erste auf der
+        // Liste. Vorher kam "benchAvailable[0]", und das war nicht selten der
+        // Ersatztorwart, der dann fuer einen Stuermer auflief. Ein Torwart
+        // kommt nur fuer einen Torwart, ein Feldspieler nur fuer einen
+        // Feldspieler.
+        const ersatzFuer = (outPlayer, isHomeTeam, benchAvailable) => {
+            const slotPos = deployedPosOf(outPlayer, isHomeTeam);
+            const istTorwart = slotPos === "TW";
+            const passend = benchAvailable.filter(p => (p.pos === "TW") === istTorwart);
+            if (passend.length === 0) return null;
+            const wert = p => (_PositionEngine && typeof _PositionEngine.scorePlayerForSlot === "function")
+                ? _PositionEngine.scorePlayerForSlot(p, slotPos)
+                : (p.overall || 60);
+            return passend.slice().sort((a, b) => wert(b) - wert(a))[0];
         };
 
         // Hilfsfunktion: Schuss/Angriff erzeugen (E20)
@@ -909,23 +970,25 @@ class MatchEngine {
                     const club = isHomeTeam ? homeClub : awayClub;
                     const activePlayers = isHomeTeam ? activeHomePlayers : activeAwayPlayers;
 
-                    if (subsUsed < maxSubs && _Random.chance(0.20)) {
-                        const benchAvailable = (club.bench || [])
+                    if (autoWechsel[teamSide] && subsUsed < maxSubs && fensterFrei(teamSide, min) && _Random.chance(0.20)) {
+                        const benchAvailable = bankVon(isHomeTeam)
                             .map(id => MatchEngine.findPlayer(allPlayers, id))
                             .filter(p => p && (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0 && !activePlayers.some(ap => ap.id === p.id));
 
                         if (benchAvailable.length > 0) {
-                            // Erschöpften oder schwachen Spieler auswechseln
+                            // Erschöpften oder schwachen Spieler auswechseln -
+                            // aber keinen, der schon vom Platz gestellt ist.
                             const candidateOut = [...activePlayers]
-                                .filter(p => p.pos !== "TW")
+                                .filter(p => p.pos !== "TW" && !sentOffPlayerIds.has(p.id))
                                 .sort((a, b) => (a.fitness || 100) - (b.fitness || 100))[0];
 
-                            const subIn = benchAvailable[0];
+                            const subIn = candidateOut ? ersatzFuer(candidateOut, isHomeTeam, benchAvailable) : null;
                             if (candidateOut && subIn) {
                                 const outIdx = activePlayers.findIndex(p => p.id === candidateOut.id);
                                 if (outIdx !== -1) {
                                     activePlayers[outIdx] = subIn;
                                     if (isHomeTeam) homeSubsUsed++; else awaySubsUsed++;
+                                    fensterBelegen(teamSide, min);
 
                                     timeline.push({
                                         minute: min,
@@ -975,17 +1038,22 @@ class MatchEngine {
                             text: formatCommentary("injury", { minute: min, club: club.name, player: victim.name, injury: inj.name })
                         });
 
-                        // Auswechslung des Verletzten versuchen
-                        const benchAvailable = (club.bench || [])
+                        // Auswechslung des Verletzten versuchen. Bei der
+                        // Mannschaft des Spielers nur, wenn er die Wechsel dem
+                        // Co-Trainer ueberlassen hat - sonst fragt das Spiel
+                        // ihn, und bis dahin spielt der Verletzte angeschlagen.
+                        const benchAvailable = bankVon(isHomeTeam)
                             .map(id => MatchEngine.findPlayer(allPlayers, id))
                             .filter(p => p && (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0 && !activePlayers.some(ap => ap.id === p.id));
 
-                        if (benchAvailable.length > 0 && (isHomeTeam ? homeSubsUsed : awaySubsUsed) < maxSubs) {
-                            const subIn = benchAvailable[0];
+                        const subIn = benchAvailable.length > 0 ? ersatzFuer(victim, isHomeTeam, benchAvailable) : null;
+                        if (autoWechsel[teamSide] && subIn && fensterFrei(teamSide, min)
+                            && (isHomeTeam ? homeSubsUsed : awaySubsUsed) < maxSubs) {
                             const outIdx = activePlayers.findIndex(p => p.id === victim.id);
                             if (outIdx !== -1) {
                                 activePlayers[outIdx] = subIn;
                                 if (isHomeTeam) homeSubsUsed++; else awaySubsUsed++;
+                                fensterBelegen(teamSide, min);
 
                                 timeline.push({
                                     minute: min,
@@ -1014,6 +1082,11 @@ class MatchEngine {
             // Momentum: Zurückliegendes Team drückt mehr
             if (currentHomeScore < currentAwayScore) homeProb += 0.08;
             else if (currentAwayScore < currentHomeScore) homeProb -= 0.08;
+
+            // Unterzahl kostet Szenen
+            const heimFehlt = activeHomePlayers.filter(p => sentOffPlayerIds.has(p.id)).length;
+            const gastFehlt = activeAwayPlayers.filter(p => sentOffPlayerIds.has(p.id)).length;
+            homeProb += (gastFehlt - heimFehlt) * MATCH_TUNING.unterzahlSzenen;
 
             // Auch der klar schwächere Gegner kommt noch vor das Tor
             homeProb = _Random.clamp(homeProb, 0.18, 0.82);
@@ -1870,8 +1943,8 @@ class MatchEngine {
     /**
      * Erstellt eine interaktive LiveMatch-Instanz für die 2D-Live-Simulation
      */
-    static createLiveMatch(match, homeClub, awayClub, allPlayers) {
-        return new LiveMatch(match, homeClub, awayClub, allPlayers);
+    static createLiveMatch(match, homeClub, awayClub, allPlayers, options = {}) {
+        return new LiveMatch(match, homeClub, awayClub, allPlayers, options);
     }
 }
 
@@ -1879,11 +1952,34 @@ class MatchEngine {
  * Klasse zur Durchführung der Live 2D Match Simulation (spielt Timeline synchron ab)
  */
 class LiveMatch {
-    constructor(match, homeClub, awayClub, allPlayers) {
+    /**
+     * @param {Object} [options]
+     * @param {"home"|"away"} [options.userSide] Die Mannschaft des Spielers. Alle
+     *        Eingriffe von der Seitenlinie gelten ihr - vorher waren sie fest auf
+     *        "home" verdrahtet, und wer auswaerts spielte, wechselte beim Gegner.
+     * @param {{wechsel?: boolean, taktik?: boolean}} [options.delegation] Was der
+     *        Co-Trainer uebernimmt. Ohne Angabe entscheidet der Spieler selbst.
+     */
+    constructor(match, homeClub, awayClub, allPlayers, options = {}) {
         this.match = match;
         this.homeClub = homeClub;
         this.awayClub = awayClub;
         this.allPlayers = allPlayers;
+
+        this.userSide = (options.userSide === "home" || options.userSide === "away") ? options.userSide : null;
+        const del = options.delegation || {};
+        this.delegation = {
+            wechsel: this.userSide ? !!del.wechsel : true,
+            taktik: this.userSide ? !!del.taktik : false
+        };
+
+        // Was der Verein vor dem Anpfiff eingestellt hatte. Umstellungen an der
+        // Seitenlinie gelten fuer dieses Spiel - wer in der 80. Minute auf
+        // "sehr offensiv" stellt, will das nicht fuer den naechsten Spieltag.
+        this._vorSpiel = {
+            home: { tactics: { ...(homeClub.tactics || {}) }, formation: homeClub.formation },
+            away: { tactics: { ...(awayClub.tactics || {}) }, formation: awayClub.formation }
+        };
 
         this.homeLineup = MatchEngine.getCleanLineup(homeClub, allPlayers);
         this.awayLineup = MatchEngine.getCleanLineup(awayClub, allPlayers);
@@ -1895,16 +1991,6 @@ class LiveMatch {
             };
         }
 
-        // Timeline generieren falls noch nicht vorhanden
-        if (!match.timeline || match.timeline.length === 0) {
-            match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, allPlayers, {
-                homeLineup: this.homeLineup,
-                awayLineup: this.awayLineup
-            });
-        }
-        this.timeline = match.timeline;
-        this.timelineIndex = 0;
-
         this.minute = 0;
         this.seconds = 0;
         this.extraTime = 0;
@@ -1913,6 +1999,48 @@ class LiveMatch {
         this.isFinished = false;
         this.isPaused = false;
         this.speed = 1;
+
+        // Der Stand an der Seitenlinie. LiveMatch fuehrt ihn selbst, statt die
+        // Kaderlisten des Vereins umzuschreiben: Vorher landete ein
+        // ausgewechselter Spieler wieder auf der Bank des Vereins - und konnte
+        // zurueckgewechselt werden -, und die Einwechslung stand nach dem Spiel
+        // dauerhaft in der Stammelf.
+        const bankAus = (club, lineup) => (club.bench || [])
+            .filter(id => !lineup.some(p => p.id === id))
+            .map(id => MatchEngine.findPlayer(allPlayers, id))
+            .filter(p => p && (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0)
+            .map(p => p.id);
+        this.bank = { home: bankAus(homeClub, this.homeLineup), away: bankAus(awayClub, this.awayLineup) };
+        this.ausgewechselt = { home: [], away: [] };
+        this.platzverweise = { home: [], away: [] };
+        this.verwarnt = { home: [], away: [] };
+        this.angeschlagen = { home: [], away: [] };
+        this.substitutionsUsed = { home: 0, away: 0 };
+        this.maxSubstitutions = 5;
+        // Fuenf Wechsel in hoechstens drei Unterbrechungen; die Halbzeitpause
+        // zaehlt nicht mit.
+        this.wechselFenster = { home: 0, away: 0 };
+        this.maxWechselFenster = 3;
+        this._fensterMinute = { home: null, away: null };
+        // Angemeldete Wechsel warten auf die naechste Unterbrechung
+        this.angemeldeteWechsel = [];
+        // Was die Oberflaeche dem Spieler vorlegen soll (Verletzung, Platzverweis)
+        this.offeneEntscheidungen = [];
+        // Wann der Co-Trainer die Lage prueft, wenn er die Taktik anpassen darf
+        this._coTrainerPunkte = [55, 65, 75, 83];
+
+        // Timeline generieren falls noch nicht vorhanden. Eine vorab erzeugte
+        // Timeline, in der die Simulation fuer den Spieler wechselt, obwohl er
+        // selbst entscheiden will, wird neu gewuerfelt - gespielt ist noch nichts.
+        const selbstEntscheiden = this.userSide && !this.delegation.wechsel;
+        const fremdeWechsel = selbstEntscheiden && Array.isArray(match.timeline)
+            && match.timeline.some(ev => ev.type === "substitution" && ev.team === this.userSide);
+        if (!match.timeline || match.timeline.length === 0 || fremdeWechsel) {
+            match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, allPlayers,
+                this._timelineOptionen(1));
+        }
+        this.timeline = match.timeline;
+        this.timelineIndex = 0;
 
         const targetPos = this.timeline.possession || [50, 50];
 
@@ -1933,8 +2061,6 @@ class LiveMatch {
         };
 
         this.events = [];
-        this.substitutionsUsed = { home: 0, away: 0 };
-        this.maxSubstitutions = 5;
 
         // 2D Match Visualizer Zustand
         this.ball = {
@@ -1952,6 +2078,9 @@ class LiveMatch {
         this.celebratingTeam = null;
         this.sceneRoles = null;
         this.players2D = this.initialize2DPositions();
+        // Wer das Feld verlaesst (Platzverweis, Auswechslung), geht noch sichtbar
+        // zur Seitenlinie - nur fuer das Bild, in der Simulation ist er weg.
+        this.abgaenge = [];
         this.currentPhase = "kickoff";
         this.lastCommentary = "Das Spiel wird angepfiffen!";
 
@@ -2011,7 +2140,10 @@ class LiveMatch {
             }
             return;
         }
+        if (this.isFinished || this.isPaused) return;
         this.director.advanceRealTime(realDeltaMs);
+        this.bewegeAbgaenge(Math.min(0.25, (Number(realDeltaMs) || 0) / 1000));
+        this.seitenlinie();
     }
 
     /**
@@ -2119,18 +2251,91 @@ class LiveMatch {
 
         // Signatur ist (match, homeClub, awayClub, allPlayers, options) - ohne
         // das Match als erstes Argument lief die Resimulation ins Leere.
-        const newRemainder = MatchEngine.generateTimeline(this.match, this.homeClub, this.awayClub, this.allPlayers, {
-            startMinute: startMin,
-            currentHomeScore: this.homeScore,
-            currentAwayScore: this.awayScore,
-            homeLineup: this.homeLineup,
-            awayLineup: this.awayLineup,
-            usedSubsHome: this.substitutionsUsed.home,
-            usedSubsAway: this.substitutionsUsed.away
-        });
+        const newRemainder = MatchEngine.generateTimeline(this.match, this.homeClub, this.awayClub, this.allPlayers,
+            this._timelineOptionen(startMin));
 
         this.timeline = [...playedEvents, ...newRemainder];
         this.match.timeline = this.timeline;
+    }
+
+    /**
+     * Alles, was die Simulation ueber den bisherigen Verlauf wissen muss.
+     *
+     * Vorher kannte eine Neuberechnung nur die Aufstellung und die Zahl der
+     * eigenen Wechsel des Spielers: Die Wechsel der KI zaehlten nicht mit
+     * (danach durfte sie noch einmal fuenf), Platzverweisene standen wieder in
+     * den Szenen, und Verwarnte bekamen eine zweite "erste" Gelbe.
+     */
+    _timelineOptionen(startMinute) {
+        return {
+            startMinute,
+            currentHomeScore: this.homeScore || 0,
+            currentAwayScore: this.awayScore || 0,
+            homeLineup: this.homeLineup,
+            awayLineup: this.awayLineup,
+            homeBench: this.bank.home.slice(),
+            awayBench: this.bank.away.slice(),
+            usedSubsHome: this.substitutionsUsed.home,
+            usedSubsAway: this.substitutionsUsed.away,
+            wechselFensterHome: this.wechselFenster.home,
+            wechselFensterAway: this.wechselFenster.away,
+            autoWechselHome: this.userSide !== "home" || this.delegation.wechsel,
+            autoWechselAway: this.userSide !== "away" || this.delegation.wechsel,
+            sentOffIds: [...this.platzverweise.home, ...this.platzverweise.away],
+            gelbIds: [...this.verwarnt.home, ...this.verwarnt.away]
+        };
+    }
+
+    // ---------------------------------------------------------- Seitenlinie
+
+    seiteVon(team) {
+        return team === "away" ? "away" : "home";
+    }
+
+    clubVon(side) {
+        return side === "away" ? this.awayClub : this.homeClub;
+    }
+
+    lineupVon(side) {
+        return side === "away" ? this.awayLineup : this.homeLineup;
+    }
+
+    /** Wer von dieser Seite gerade auf dem Platz steht (ohne Platzverweise) */
+    aufDemPlatz(side) {
+        const raus = new Set(this.platzverweise[side]);
+        return this.lineupVon(side).filter(p => p && !raus.has(p.id));
+    }
+
+    /** Wer von der Bank noch kommen darf */
+    bankSpieler(side) {
+        return this.bank[side]
+            .map(id => MatchEngine.findPlayer(this.allPlayers, id))
+            .filter(Boolean);
+    }
+
+    /**
+     * Ist gerade Halbzeitpause? Wechsel dort kosten keine Unterbrechung.
+     *
+     * Mit Regie zaehlt allein die Aufstellung zum Wiederanpfiff: Die Phase
+     * "half_time" setzt das Halbzeit-Ereignis, und im Echtzeitbetrieb setzt
+     * sie niemand zurueck - daran gemessen waere die ganze zweite Halbzeit
+     * eine Pause gewesen, und keine Unterbrechung haette mehr gezaehlt.
+     */
+    istHalbzeitpause() {
+        if (this.director) return this.director.kickoff?.reason === "halftime";
+        return this.currentPhase === "half_time";
+    }
+
+    /** Wie viele Wechsel und Unterbrechungen einer Seite noch bleiben */
+    wechselStand(side) {
+        const angemeldet = this.angemeldeteWechsel.filter(w => w.side === side).length;
+        return {
+            genutzt: this.substitutionsUsed[side],
+            angemeldet,
+            frei: Math.max(0, this.maxSubstitutions - this.substitutionsUsed[side] - angemeldet),
+            fensterGenutzt: this.wechselFenster[side],
+            fensterFrei: Math.max(0, this.maxWechselFenster - this.wechselFenster[side])
+        };
     }
 
     /**
@@ -2145,6 +2350,7 @@ class LiveMatch {
 
         if (this.director) {
             this.director.advanceMatchSeconds(minuteStep * 60);
+            this.seitenlinie();
             return;
         }
 
@@ -2223,14 +2429,30 @@ class LiveMatch {
             this.stats.yellowCards[seite]++;
             if (ev.isSecondYellow) this.stats.redCards[seite]++;
             this.addEvent("yellow_card", ev.clubId, ev.text);
+
+            // Verwarnung merken - beim Neuberechnen und fuer den Co-Trainer.
+            // Gelb-Rot schickt den Spieler vom Platz, auch auf dem Bild.
+            const kartenSeite = this.seiteVon(ev.team);
+            if (ev.isSecondYellow) {
+                this._platzverweis(kartenSeite, ev.playerId, ev.playerName);
+            } else if (ev.playerId && !this.verwarnt[kartenSeite].includes(ev.playerId)) {
+                this.verwarnt[kartenSeite].push(ev.playerId);
+            }
         } else if (ev.type === "red_card") {
             if (ev.team === "home") { this.stats.fouls[0]++; this.stats.redCards[0]++; }
             else { this.stats.fouls[1]++; this.stats.redCards[1]++; }
             this.addEvent("red_card", ev.clubId, ev.text);
+            // Vorher lief der Platzverwiesene auf dem Bild weiter - es blieb
+            // bis zum Abpfiff elf gegen elf.
+            this._platzverweis(this.seiteVon(ev.team), ev.playerId, ev.playerName);
         } else if (ev.type === "injury") {
             this.addEvent("injury", ev.clubId, ev.text);
+            this._verletzung(ev);
         } else if (ev.type === "substitution") {
             this.addEvent("sub", ev.clubId, ev.text);
+            // Vorher gab es nur die Einblendung - auf dem Platz lief der
+            // Ausgewechselte weiter, und die Bank kannte den Wechsel nicht.
+            this._timelineWechsel(ev);
         } else if (ev.type === "halftime") {
             this.currentPhase = "half_time";
         } else if (ev.type === "fulltime") {
@@ -2308,39 +2530,178 @@ class LiveMatch {
         if (this.goalFlash > 0) this.goalFlash = Math.max(0, this.goalFlash - dt * 1.4);
     }
 
-    substitute(teamType, playerOutId, playerInId) {
-        const club = teamType === "home" ? this.homeClub : this.awayClub;
-        const lineup = teamType === "home" ? this.homeLineup : this.awayLineup;
+    /**
+     * Prueft einen Wechsel gegen die Regeln, ohne ihn auszufuehren.
+     * @returns {{ok: boolean, grund?: string, playerOut?: Object, playerIn?: Object}}
+     */
+    pruefeWechsel(teamType, playerOutId, playerInId, { fensterNoetig = true, mitAngemeldeten = false } = {}) {
+        const side = this.seiteVon(teamType);
+        const angemeldet = mitAngemeldeten ? this.angemeldeteWechsel.filter(w => w.side === side).length : 0;
+        if (this.substitutionsUsed[side] + angemeldet >= this.maxSubstitutions) {
+            return { ok: false, grund: `Alle ${this.maxSubstitutions} Wechsel sind aufgebraucht.` };
+        }
+        if (fensterNoetig && !this.istHalbzeitpause()
+            && this.wechselFenster[side] >= this.maxWechselFenster
+            && this._fensterMinute[side] !== this.minute) {
+            return { ok: false, grund: "Alle drei Unterbrechungen fuer Wechsel sind genutzt." };
+        }
+        if (this.platzverweise[side].includes(playerOutId)) {
+            return { ok: false, grund: "Ein vom Platz gestellter Spieler kann nicht ausgewechselt werden." };
+        }
+        const playerOut = this.lineupVon(side).find(p => p && p.id === playerOutId);
+        if (!playerOut) {
+            return { ok: false, grund: "Dieser Spieler steht nicht auf dem Platz." };
+        }
+        if (this.ausgewechselt[side].includes(playerInId)) {
+            return { ok: false, grund: "Ein ausgewechselter Spieler darf nicht zurueck." };
+        }
+        if (!this.bank[side].includes(playerInId)) {
+            return { ok: false, grund: "Dieser Spieler sitzt nicht auf der Bank." };
+        }
+        const playerIn = MatchEngine.findPlayer(this.allPlayers, playerInId);
+        if (!playerIn) return { ok: false, grund: "Einzuwechselnder Spieler nicht gefunden." };
+        if (mitAngemeldeten && this.angemeldeteWechsel.some(w => w.side === side && (w.outId === playerOutId || w.inId === playerInId))) {
+            return { ok: false, grund: "Fuer diesen Spieler ist schon ein Wechsel angemeldet." };
+        }
+        return { ok: true, playerOut, playerIn };
+    }
 
-        if (this.substitutionsUsed[teamType] >= this.maxSubstitutions) {
-            return { success: false, message: "Maximales Auswechselkontingent (5) bereits erschöpft!" };
+    /**
+     * Wechsel sofort ausfuehren. Die Oberflaeche meldet Wechsel an
+     * (wechselAnmelden) - sie laufen dann bei der naechsten Unterbrechung.
+     */
+    substitute(teamType, playerOutId, playerInId, opts = {}) {
+        const side = this.seiteVon(teamType);
+        const pruefung = this.pruefeWechsel(side, playerOutId, playerInId, { fensterNoetig: !opts.imFenster });
+        if (!pruefung.ok) return { success: false, message: pruefung.grund };
+        const { playerOut, playerIn } = pruefung;
+        const club = this.clubVon(side);
+
+        this._wechsleEin(side, playerOut, playerIn);
+        if (!opts.imFenster) this._belegeFenster(side);
+
+        const eventText = formatCommentary("substitution", {
+            minute: this.minute,
+            club: club.name,
+            playerIn: playerIn.name,
+            playerOut: playerOut?.name || "Spieler"
+        });
+
+        // Der Wechsel gehoert in die Timeline. Vorher stand er nur im Ticker:
+        // Im Spielbericht hatte der Eingewechselte null Minuten und keine
+        // Note, der Ausgewechselte neunzig.
+        const ev = {
+            minute: this.minute,
+            second: Math.floor(this.seconds || 0),
+            type: "substitution",
+            team: side,
+            clubId: club.id,
+            clubName: club.name,
+            playerOutId: playerOut.id,
+            playerOutName: playerOut.name,
+            playerInId: playerIn.id,
+            playerInName: playerIn.name,
+            text: eventText,
+            vonDerSeitenlinie: true,
+            _angewendet: true,
+            _resolved: true
+        };
+        this.timeline.splice(this.timelineIndex, 0, ev);
+        this.timelineIndex++;
+
+        this.addEvent("sub", club.id, eventText);
+        this.lastCommentary = eventText;
+        if (this.director && typeof this.director.bannerForEvent === "function") {
+            this.director.bannerForEvent(ev);
         }
 
-        const outIndex = lineup.findIndex(p => p.id === playerOutId);
-        const inBenchIndex = (club.bench || []).indexOf(playerInId);
+        // Re-simuliere den verbleibenden Spielverlauf mit der neuen Elf (C14)
+        if (!opts.ohneNeuberechnung) this.resimulateRemainder();
 
-        if (outIndex === -1 || inBenchIndex === -1) {
-            return { success: false, message: "Spieler nicht in Startelf oder Bank gefunden." };
-        }
+        return { success: true, message: `Auswechslung: ${playerIn.name} für ${playerOut?.name}` };
+    }
 
-        const playerOut = this.allPlayers.find(p => p.id === playerOutId);
-        const playerIn = this.allPlayers.find(p => p.id === playerInId);
+    /**
+     * Einen Wechsel anmelden. Er wird bei der naechsten Unterbrechung
+     * ausgefuehrt - wie im echten Spiel, wo der vierte Offizielle die Tafel
+     * erst hebt, wenn der Ball ruht. So platzt er auch nicht in eine laufende
+     * Szene, deren Ereignisse den ausgewechselten Spieler noch brauchen.
+     */
+    wechselAnmelden(teamType, playerOutId, playerInId) {
+        const side = this.seiteVon(teamType);
+        const pruefung = this.pruefeWechsel(side, playerOutId, playerInId, { mitAngemeldeten: true });
+        if (!pruefung.ok) return { success: false, message: pruefung.grund };
+        this.angemeldeteWechsel.push({
+            side, outId: playerOutId, inId: playerInId,
+            seitUhr: this.director ? this.director.clock : this.minute * 60
+        });
+        return { success: true, message: `Wechsel angemeldet: ${pruefung.playerIn.name} für ${pruefung.playerOut.name}` };
+    }
 
-        if (!playerIn) {
-            return { success: false, message: "Einzuwechselnder Spieler nicht gefunden." };
-        }
+    wechselAbmelden(teamType, playerOutId) {
+        const side = this.seiteVon(teamType);
+        const vorher = this.angemeldeteWechsel.length;
+        this.angemeldeteWechsel = this.angemeldeteWechsel.filter(w => !(w.side === side && w.outId === playerOutId));
+        return this.angemeldeteWechsel.length < vorher;
+    }
 
-        if (Array.isArray(club.lineup)) {
-            const lineupIdx = club.lineup.indexOf(playerOutId);
-            if (lineupIdx !== -1) club.lineup[lineupIdx] = playerInId;
-        }
-        club.bench.splice(inBenchIndex, 1);
-        club.bench.push(playerOutId);
+    /**
+     * Ist jetzt Gelegenheit fuer angemeldete Wechsel? Der Ball muss ruhen, und
+     * es darf keine Szene laufen. Wartet ein Wechsel laenger als eine halbe
+     * Spielminute, reicht eine Phase ohne Szene - sonst stuende der Spieler
+     * bei einem langen Ballbesitz minutenlang an der Linie.
+     */
+    wechselGelegenheit() {
+        if (this.angemeldeteWechsel.length === 0) return false;
+        const d = this.director;
+        if (!d) return true;
+        if (d.scene || d.mode === "highlight" || d.mode === "celebration") return false;
+        if (d.kickoff || d.deadBall) return true;
+        const aelteste = Math.min(...this.angemeldeteWechsel.map(w => w.seitUhr));
+        return (d.clock - aelteste) >= 30;
+    }
 
-        lineup[outIndex] = playerIn;
+    /** Fuehrt alle angemeldeten Wechsel aus - je Seite in einer Unterbrechung */
+    fuehreAngemeldeteWechselAus() {
+        if (this.angemeldeteWechsel.length === 0) return [];
+        const offen = this.angemeldeteWechsel;
+        this.angemeldeteWechsel = [];
+        const ergebnisse = [];
+        const seiten = new Set();
+        offen.forEach(w => {
+            const r = this.substitute(w.side, w.outId, w.inId, { imFenster: true, ohneNeuberechnung: true });
+            ergebnisse.push({ ...w, ...r });
+            if (r.success) seiten.add(w.side);
+        });
+        seiten.forEach(side => this._belegeFenster(side));
+        if (seiten.size > 0) this.resimulateRemainder();
+        return ergebnisse;
+    }
 
-        const p2d = this.players2D.find(p => p.id === playerOutId);
+    _belegeFenster(side) {
+        if (this.istHalbzeitpause()) return;
+        if (this._fensterMinute[side] !== this.minute) this.wechselFenster[side]++;
+        this._fensterMinute[side] = this.minute;
+    }
+
+    /** Tauscht einen Spieler in Aufstellung, Bank und auf dem Feld */
+    _wechsleEin(side, playerOut, playerIn) {
+        const lineup = this.lineupVon(side);
+        const idx = lineup.findIndex(p => p && p.id === playerOut.id);
+        if (idx === -1) return false;
+        lineup[idx] = playerIn;
+        this.bank[side] = this.bank[side].filter(id => id !== playerIn.id);
+        if (!this.ausgewechselt[side].includes(playerOut.id)) this.ausgewechselt[side].push(playerOut.id);
+        this.angeschlagen[side] = this.angeschlagen[side].filter(id => id !== playerOut.id);
+        this.verwarnt[side] = this.verwarnt[side].filter(id => id !== playerOut.id);
+        this.substitutionsUsed[side]++;
+        this.offeneEntscheidungen = this.offeneEntscheidungen.filter(e => e.spielerId !== playerOut.id);
+
+        const p2d = this.players2D.find(p => p.id === playerOut.id);
         if (p2d) {
+            // Der Ausgewechselte verlaesst das Feld an der naechsten Linie,
+            // der Neue kommt an der Mittellinie herein.
+            this._abgang(p2d);
             p2d.id = playerIn.id;
             p2d.name = playerIn.name;
             // Der Slot auf dem Feld bleibt bestehen, nur der Spieler wechselt
@@ -2349,31 +2710,162 @@ class LiveMatch {
             p2d.stamina = playerIn.stamina || 75;
             // Ein eingewechselter Spieler kommt frisch aufs Feld
             p2d.freshness = 1;
+            p2d.verletzt = false;
+            // An der Mittellinie, auf der Seitenlinie - genau dort, wo die
+            // Regie Spieler im Feld haelt (3..97). Weiter draussen haette sie
+            // ihn im naechsten Bild hereingeschoben: ein Sprung.
+            p2d.x = 50;
+            p2d.y = p2d.y < 50 ? 3 : 97;
             if (this.director) this.director.initPlayers();
         }
-
-        this.substitutionsUsed[teamType]++;
-        const eventText = formatCommentary("substitution", {
-            minute: this.minute,
-            club: club.name,
-            playerIn: playerIn.name,
-            playerOut: playerOut?.name || "Spieler"
-        });
-
-        this.addEvent("sub", club.id, eventText);
-        this.lastCommentary = eventText;
-
-        // Re-simuliere den verbleibenden Spielverlauf mit der neuen Elf (C14)
-        this.resimulateRemainder();
-
-        return { success: true, message: `Auswechslung erfolgreich: ${playerIn.name} für ${playerOut?.name}` };
+        return true;
     }
 
-    updateTactics(teamType, newTactics) {
-        const club = teamType === "home" ? this.homeClub : this.awayClub;
+    _abgang(p2d) {
+        if (!p2d) return;
+        this.abgaenge.push({
+            name: p2d.name, number: p2d.number, team: p2d.team, pos: p2d.pos,
+            color: p2d.color, textColor: p2d.textColor,
+            x: p2d.x, y: p2d.y,
+            zielX: p2d.x, zielY: p2d.y < 50 ? -3 : 103,
+            rest: 8
+        });
+    }
+
+    /** Die Abgaenge laufen zur Linie und verschwinden dort */
+    bewegeAbgaenge(dt) {
+        if (!this.abgaenge || this.abgaenge.length === 0) return;
+        const schritt = 3.2 * (this.director ? this.director.getMotionTempo() : 1) * dt;
+        this.abgaenge.forEach(a => {
+            const dx = a.zielX - a.x, dy = a.zielY - a.y;
+            const weg = Math.hypot(dx, dy);
+            if (weg > 0.01) {
+                const k = Math.min(1, schritt / weg);
+                a.x += dx * k;
+                a.y += dy * k;
+            }
+            a.rest -= dt;
+        });
+        this.abgaenge = this.abgaenge.filter(a => a.rest > 0 && Math.hypot(a.zielX - a.x, a.zielY - a.y) > 0.3);
+    }
+
+    /** Ein Spieler muss vom Platz - er verschwindet aus der Simulation */
+    _platzverweis(side, playerId, name) {
+        if (!playerId || this.platzverweise[side].includes(playerId)) return;
+        this.platzverweise[side].push(playerId);
+        this.angeschlagen[side] = this.angeschlagen[side].filter(id => id !== playerId);
+        this.angemeldeteWechsel = this.angemeldeteWechsel.filter(w => !(w.side === side && w.outId === playerId));
+
+        const idx = this.players2D.findIndex(p => p.id === playerId);
+        if (idx >= 0) {
+            this._abgang(this.players2D[idx]);
+            this.players2D.splice(idx, 1);
+            if (this.director && typeof this.director.spielerEntfernt === "function") {
+                this.director.spielerEntfernt(playerId);
+            }
+        }
+
+        if (side === this.userSide) {
+            this.offeneEntscheidungen.push({
+                art: "platzverweis", side, spielerId: playerId,
+                text: `${name || "Ein Spieler"} muss vom Platz - wir spielen in Unterzahl.`
+            });
+        }
+    }
+
+    _verletzung(ev) {
+        const side = this.seiteVon(ev.team);
+        if (!ev.playerId) return;
+        const stehtNoch = this.lineupVon(side).some(p => p && p.id === ev.playerId)
+            && !this.platzverweise[side].includes(ev.playerId);
+        if (!stehtNoch) return;
+        if (!this.angeschlagen[side].includes(ev.playerId)) this.angeschlagen[side].push(ev.playerId);
+        const p2d = this.players2D.find(p => p.id === ev.playerId);
+        if (p2d) p2d.verletzt = true;
+
+        // Entscheidet der Spieler selbst, muss er gefragt werden - sonst spielt
+        // der Verletzte einfach weiter.
+        if (side === this.userSide && !this.delegation.wechsel) {
+            this.offeneEntscheidungen.push({
+                art: "verletzung", side, spielerId: ev.playerId,
+                text: `${ev.playerName || "Ein Spieler"} ist verletzt (${ev.injuryName || "Verletzung"}). Wer kommt für ihn?`
+            });
+        }
+    }
+
+    /** Ein Wechsel aus der Timeline (Co-Trainer oder Gegner) */
+    _timelineWechsel(ev) {
+        if (ev._angewendet) return;
+        ev._angewendet = true;
+        const side = this.seiteVon(ev.team);
+        const playerOut = this.lineupVon(side).find(p => p && p.id === ev.playerOutId);
+        const playerIn = MatchEngine.findPlayer(this.allPlayers, ev.playerInId);
+        if (!playerOut || !playerIn || !this.bank[side].includes(playerIn.id)) return;
+        if (this.platzverweise[side].includes(playerOut.id)) return;
+        this._wechsleEin(side, playerOut, playerIn);
+        this._belegeFenster(side);
+    }
+
+    /**
+     * Die Formation umstellen. Die Spieler auf dem Platz werden neu auf die
+     * Positionen verteilt - der Innenverteidiger wandert nicht in den Sturm,
+     * nur weil er in der Liste an der Stelle stand.
+     */
+    stelleFormationUm(teamType, formationKey, opts = {}) {
+        const side = this.seiteVon(teamType);
+        const configs = (typeof FORMATION_CONFIGS !== 'undefined' && FORMATION_CONFIGS)
+            ? FORMATION_CONFIGS
+            : ((typeof window !== 'undefined' && window.FORMATION_CONFIGS) ? window.FORMATION_CONFIGS
+                : (typeof require !== 'undefined' ? require('./gameState.js').FORMATION_CONFIGS : {}));
+        const cfg = configs && configs[formationKey];
+        if (!cfg || !Array.isArray(cfg.positions) || cfg.positions.length < 11) {
+            return { success: false, message: "Unbekannte Formation." };
+        }
+        const club = this.clubVon(side);
+        if (club.formation === formationKey) return { success: true, message: "Formation unveraendert." };
+        club.formation = formationKey;
+
+        const lineup = this.lineupVon(side);
+        const raus = new Set(this.platzverweise[side]);
+        const imSpiel = lineup.filter(p => p && !raus.has(p.id));
+        const verteilt = _PositionEngine && typeof _PositionEngine.assignBestLineup === "function"
+            ? _PositionEngine.assignBestLineup(imSpiel, cfg.positions)
+            : imSpiel.slice();
+        // Platzverweisene fuellen die Luecken, damit die Liste elf Eintraege
+        // behaelt - in den Szenen kommen sie ohnehin nicht mehr vor.
+        const rest = lineup.filter(p => p && raus.has(p.id));
+        const neu = verteilt.map(p => p || rest.shift()).filter(Boolean);
+        lineup.splice(0, lineup.length, ...neu);
+
+        const spiegeln = !!this.director?.isSecondHalf;
+        lineup.forEach((p, idx) => {
+            const p2d = this.players2D.find(q => q.id === p.id);
+            const slot = cfg.positions[idx];
+            if (!p2d || !slot) return;
+            let fieldX = side === "home"
+                ? Math.max(3, Math.min(48, ((100 - slot.y) / 100) * 44 + 4))
+                : Math.max(52, Math.min(97, 96 - ((100 - slot.y) / 100) * 44));
+            let fieldY = slot.x;
+            if (spiegeln) { fieldX = 100 - fieldX; fieldY = 100 - fieldY; }
+            p2d.baseX = fieldX;
+            p2d.baseY = fieldY;
+            p2d.pos = slot.pos || p.pos;
+        });
+        if (this.director) this.director.initPlayers();
+
+        const text = `${this.minute}' - ${club.name} stellt um: ${cfg.name || formationKey}.`;
+        this.addEvent("tactics", club.id, text);
+        this.lastCommentary = text;
+        if (!opts.ohneNeuberechnung) this.resimulateRemainder();
+        return { success: true, message: text };
+    }
+
+    updateTactics(teamType, newTactics, opts = {}) {
+        const side = this.seiteVon(teamType);
+        const club = this.clubVon(side);
         club.tactics = Object.assign(club.tactics || {}, newTactics);
         const mentality = club.tactics.mentality || "balanced";
-        const eventText = formatCommentary("tactics", {
+        const eventText = opts.text || formatCommentary("tactics", {
             minute: this.minute,
             club: club.name,
             mentality: mentality
@@ -2382,10 +2874,162 @@ class LiveMatch {
         this.lastCommentary = eventText;
 
         // Re-simuliere den verbleibenden Spielverlauf mit der neuen Taktik (C14)
-        this.resimulateRemainder();
+        if (!opts.ohneNeuberechnung) this.resimulateRemainder();
+    }
+
+    /**
+     * Was der Co-Trainer uebernimmt. Aendert sich die Zustaendigkeit fuer
+     * Wechsel, wird das Restspiel neu berechnet - sonst wechselte die
+     * Simulation weiter (oder nicht mehr), als waere nichts gewesen.
+     */
+    setzeDelegation(teamType, neu = {}, opts = {}) {
+        const side = this.seiteVon(teamType);
+        if (side !== this.userSide) return false;
+        const vorher = { ...this.delegation };
+        if (typeof neu.wechsel === "boolean") this.delegation.wechsel = neu.wechsel;
+        if (typeof neu.taktik === "boolean") this.delegation.taktik = neu.taktik;
+        const wechselGeaendert = vorher.wechsel !== this.delegation.wechsel;
+        if (wechselGeaendert && !this.isFinished && !opts.ohneNeuberechnung) this.resimulateRemainder();
+        return wechselGeaendert;
+    }
+
+    /**
+     * Die Einschaetzung des Co-Trainers - aus dem, was auf dem Platz passiert,
+     * nicht aus Floskeln. Jede Zeile nennt den Grund.
+     */
+    coTrainerHinweise(teamType) {
+        const side = this.seiteVon(teamType || this.userSide || "home");
+        const gegner = side === "home" ? "away" : "home";
+        const idx = side === "home" ? 0 : 1;
+        const gIdx = 1 - idx;
+        const hinweise = [];
+        const namen = id => (MatchEngine.findPlayer(this.allPlayers, id)?.name || "Ein Spieler");
+
+        // Kondition aus der Simulation
+        const platt = (this.players2D || [])
+            .filter(p => p.team === side && p.pos !== "TW" && typeof p.freshness === "number" && p.freshness < 0.74)
+            .sort((a, b) => a.freshness - b.freshness)
+            .slice(0, 3);
+        platt.forEach(p => hinweise.push({
+            art: "kondition", spielerId: p.id, gewicht: 2,
+            text: `${p.name} geht die Luft aus (Kondition ${Math.round(p.freshness * 100)} %).`
+        }));
+
+        this.angeschlagen[side].forEach(id => hinweise.push({
+            art: "verletzung", spielerId: id, gewicht: 3,
+            text: `${namen(id)} spielt angeschlagen weiter - er ist langsamer und das Risiko steigt.`
+        }));
+
+        this.verwarnt[side].forEach(id => {
+            const p = this.lineupVon(side).find(x => x && x.id === id);
+            if (!p) return;
+            const defensiv = ["IV", "LV", "RV", "DM"].includes(p.pos);
+            hinweise.push({
+                art: "gelb", spielerId: id, gewicht: defensiv ? 2 : 1,
+                text: `${p.name} ist verwarnt${defensiv ? " - in seinen Zweikaempfen droht Gelb-Rot" : ""}.`
+            });
+        });
+
+        if (this.platzverweise[side].length > this.platzverweise[gegner].length) {
+            hinweise.push({ art: "unterzahl", gewicht: 3,
+                text: "Wir sind in Unterzahl. Kompakter stehen oder eine Offensivkraft fuer einen Verteidiger bringen." });
+        } else if (this.platzverweise[gegner].length > this.platzverweise[side].length) {
+            hinweise.push({ art: "ueberzahl", gewicht: 2,
+                text: "Der Gegner ist in Unterzahl - jetzt lohnt es sich, das Spiel zu machen." });
+        }
+
+        const eigene = side === "home" ? this.homeScore : this.awayScore;
+        const fremde = side === "home" ? this.awayScore : this.homeScore;
+        const schuesse = this.stats?.shots || [0, 0];
+        if (this.minute >= 55 && eigene < fremde) {
+            hinweise.push({ art: "rueckstand", gewicht: 2,
+                text: `Wir liegen ${eigene}:${fremde} zurueck und haben noch ${Math.max(0, 90 - this.minute)} Minuten - mehr Risiko?` });
+        } else if (this.minute >= 70 && eigene > fremde) {
+            hinweise.push({ art: "fuehrung", gewicht: 1,
+                text: `Wir fuehren ${eigene}:${fremde}. Tempo rausnehmen und sicher stehen bringt es nach Hause.` });
+        }
+        if (this.minute >= 20 && schuesse[gIdx] >= schuesse[idx] + 5) {
+            hinweise.push({ art: "druck", gewicht: 2,
+                text: `Der Gegner kommt zu deutlich mehr Abschluessen (${schuesse[gIdx]}:${schuesse[idx]}) - tiefer verteidigen oder frueher stoeren.` });
+        }
+        const ballbesitz = this.stats?.possession?.[idx];
+        if (this.minute >= 25 && typeof ballbesitz === "number" && ballbesitz <= 38) {
+            hinweise.push({ art: "zugriff", gewicht: 1,
+                text: `Nur ${ballbesitz} % Ballbesitz - kuerzere Passwege koennten helfen.` });
+        }
+
+        const wechsel = this.wechselStand(side);
+        if (wechsel.frei > 0 && wechsel.fensterFrei === 0 && !this.istHalbzeitpause()) {
+            const zweiteHaelfte = this.director ? !!this.director.isSecondHalf : this.minute > 45;
+            hinweise.push({ art: "regel", gewicht: 1,
+                text: zweiteHaelfte
+                    ? "Alle drei Unterbrechungen fuer Wechsel sind genutzt - es geht kein Wechsel mehr."
+                    : "Alle drei Unterbrechungen fuer Wechsel sind genutzt - weitere Wechsel nur noch in der Halbzeitpause." });
+        }
+
+        return hinweise.sort((a, b) => b.gewicht - a.gewicht);
+    }
+
+    /**
+     * Der Co-Trainer passt die Taktik an den Spielstand an, wenn er darf.
+     * Er prueft zu festen Zeitpunkten und aendert nur, was der Spielstand
+     * verlangt - er dreht nicht wild an allen Reglern.
+     */
+    coTrainerTakt() {
+        if (!this.userSide || !this.delegation.taktik || this.isFinished) return null;
+        const punkt = this._coTrainerPunkte.find(m => this.minute >= m);
+        if (punkt === undefined) return null;
+        this._coTrainerPunkte = this._coTrainerPunkte.filter(m => m > this.minute);
+
+        const side = this.userSide;
+        const club = this.clubVon(side);
+        const t = club.tactics || {};
+        const eigene = side === "home" ? this.homeScore : this.awayScore;
+        const fremde = side === "home" ? this.awayScore : this.homeScore;
+        const stufen = ["very_defensive", "defensive", "balanced", "offensive", "very_offensive"];
+        const jetzt = Math.max(0, stufen.indexOf(t.mentality || "balanced"));
+        const aenderung = {};
+        let grund = "";
+
+        if (eigene < fremde) {
+            const ziel = Math.min(this.minute >= 75 ? 4 : 3, jetzt + 1);
+            if (ziel > jetzt) aenderung.mentality = stufen[ziel];
+            if (this.minute >= 70 && t.pressing !== "high") aenderung.pressing = "high";
+            grund = "Wir brauchen ein Tor";
+        } else if (eigene > fremde && this.minute >= 75) {
+            if (jetzt > 1) aenderung.mentality = stufen[Math.max(1, jetzt - 1)];
+            if (t.tempo !== "slow") aenderung.tempo = "slow";
+            grund = "Das Ergebnis halten";
+        } else if (eigene === fremde && this.minute >= 83 && jetzt < 3) {
+            aenderung.mentality = "offensive";
+            grund = "Noch einmal auf Sieg spielen";
+        }
+
+        if (Object.keys(aenderung).length === 0) return null;
+        const namen = { very_defensive: "sehr defensiv", defensive: "defensiv", balanced: "ausgeglichen", offensive: "offensiv", very_offensive: "sehr offensiv" };
+        const teile = [];
+        if (aenderung.mentality) teile.push(namen[aenderung.mentality]);
+        if (aenderung.pressing) teile.push("hohes Pressing");
+        if (aenderung.tempo) teile.push("Tempo raus");
+        const text = `${this.minute}' - 📋 Der Co-Trainer stellt um (${grund}): ${teile.join(", ")}.`;
+        this.updateTactics(side, aenderung, { text });
+        return { aenderung, text };
+    }
+
+    /**
+     * Was zwischen zwei Bildern an der Seitenlinie zu tun ist: angemeldete
+     * Wechsel bei Gelegenheit ausfuehren, Co-Trainer pruefen lassen.
+     */
+    seitenlinie() {
+        if (this.isFinished) return;
+        if (this.wechselGelegenheit()) this.fuehreAngemeldeteWechselAus();
+        this.coTrainerTakt();
     }
 
     skipToEnd() {
+        // Was angemeldet war, wird noch ausgefuehrt - sonst ginge der Wechsel
+        // beim Sofort-Ergebnis stillschweigend verloren.
+        if (this.angemeldeteWechsel.length > 0) this.fuehreAngemeldeteWechselAus();
         while (this.timelineIndex < this.timeline.length) {
             const ev = this.timeline[this.timelineIndex];
             this.minute = Math.max(this.minute, ev.minute);
@@ -2403,6 +3047,17 @@ class LiveMatch {
         this.homeScore = this.match.homeGoals;
         this.awayScore = this.match.awayGoals;
         this.lastCommentary = `Abpfiff! Das Spiel endet ${this.homeScore}:${this.awayScore}.`;
+        this.angemeldeteWechsel = [];
+        this.offeneEntscheidungen = [];
+
+        // Umstellungen an der Seitenlinie galten fuer dieses Spiel
+        ["home", "away"].forEach(side => {
+            const club = this.clubVon(side);
+            const vorher = this._vorSpiel?.[side];
+            if (!club || !vorher) return;
+            club.tactics = { ...vorher.tactics };
+            if (vorher.formation) club.formation = vorher.formation;
+        });
     }
 }
 

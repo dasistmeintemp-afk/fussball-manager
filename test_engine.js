@@ -1775,7 +1775,12 @@ function runEngineTests() {
         let maxPlayerStep = 0;
         const commentaries = new Set();
         let prevBall = { x: live.ball.x, y: live.ball.y };
-        const prevPlayers = live.players2D.map(p => ({ x: p.x, y: p.y }));
+        // Verfolgt wird jeder Spieler über seine Kennung, nicht über seinen
+        // Platz in der Liste: Seit Wechsel und Platzverweise auf dem Feld
+        // stattfinden, betritt ein Eingewechselter an der Mittellinie das Feld
+        // (eine neue Spur, kein Sprung), und ein Platzverwiesener verlässt die
+        // Liste - danach stünde jeder Folgende auf einem fremden Index.
+        const prevPlayers = new Map(live.players2D.map(p => [p.id, { x: p.x, y: p.y }]));
 
         let seitenwechselFrames = 0;
 
@@ -1794,12 +1799,12 @@ function runEngineTests() {
             maxBallStep = Math.max(maxBallStep, Math.hypot(live.ball.x - prevBall.x, live.ball.y - prevBall.y));
             prevBall = { x: live.ball.x, y: live.ball.y };
 
-            live.players2D.forEach((p, i) => {
-                if (!seitenwechsel) {
-                    maxPlayerStep = Math.max(maxPlayerStep, Math.hypot(p.x - prevPlayers[i].x, p.y - prevPlayers[i].y));
+            live.players2D.forEach(p => {
+                const vorher = prevPlayers.get(p.id);
+                if (vorher && !seitenwechsel) {
+                    maxPlayerStep = Math.max(maxPlayerStep, Math.hypot(p.x - vorher.x, p.y - vorher.y));
                 }
-                prevPlayers[i].x = p.x;
-                prevPlayers[i].y = p.y;
+                prevPlayers.set(p.id, { x: p.x, y: p.y });
             });
 
             commentaries.add(live.lastCommentary);
@@ -4371,6 +4376,239 @@ function runEngineTests() {
         talente.forEach(t => {
             if (t.schule !== schule.key) throw new Error(`Talent ${t.name} trägt die Schule ${t.schule} statt ${schule.key}`);
         });
+    });
+
+    // --- Seitenlinie: Wechsel, Taktik und Co-Trainer im Livespiel ---------
+
+    // Spielt der eigene Verein auswärts, galt jeder Eingriff bisher dem Gegner:
+    // Alle Knöpfe waren fest auf "home" verdrahtet.
+    test("Seitenlinie: Eingriffe gelten der eigenen Mannschaft, auch auswärts", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "dor");
+        const gast = state.clubs.find(c => c.id === "muc");
+        const heimElf = heim.lineup.slice();
+        const partie = { id: "sl_away", played: false, homeClubId: "dor", awayClubId: "muc" };
+        const live = MatchEngine.createLiveMatch(partie, heim, gast, state.players, { userSide: "away" });
+
+        if (live.timeline.some(e => e.type === "substitution" && e.team === "away")) {
+            throw new Error("Die Simulation wechselt für die eigene Mannschaft, obwohl der Spieler selbst entscheidet");
+        }
+
+        const raus = live.awayLineup.find(p => p.pos !== "TW");
+        const reinId = live.bank.away.find(id => state.players.find(p => p.id === id).pos !== "TW");
+        const r = live.substitute("away", raus.id, reinId);
+        if (!r.success) throw new Error("Wechsel auswärts abgelehnt: " + r.message);
+        if (!live.awayLineup.some(p => p.id === reinId)) throw new Error("Der Eingewechselte steht nicht in der eigenen Elf");
+        if (JSON.stringify(live.homeLineup.map(p => p.id)) !== JSON.stringify(heimElf.slice(0, 11))
+            && live.homeLineup.some(p => p.id === reinId)) {
+            throw new Error("Der Wechsel hat die Heimelf verändert");
+        }
+        const aufDemFeld = live.players2D.find(p => p.id === reinId);
+        if (!aufDemFeld || aufDemFeld.team !== "away") throw new Error("Der Eingewechselte steht nicht auf dem Feld");
+
+        live.updateTactics("away", { mentality: "very_offensive" });
+        if (gast.tactics.mentality !== "very_offensive") throw new Error("Die Taktikänderung ging nicht an die eigene Mannschaft");
+        if (heim.tactics.mentality === "very_offensive" && live._vorSpiel.home.tactics.mentality !== "very_offensive") {
+            throw new Error("Die Taktikänderung ging an den Gegner");
+        }
+
+        // Die KI des Gegners bringt keinen Ersatztorwart für einen Feldspieler
+        for (let i = 0; i < 12; i++) {
+            const tl = MatchEngine.generateTimeline({ id: `sl_tw_${i}`, played: false }, heim, gast, state.players);
+            tl.filter(e => e.type === "substitution").forEach(e => {
+                const rein = state.players.find(p => p.id === e.playerInId);
+                const raus2 = state.players.find(p => p.id === e.playerOutId);
+                if ((rein.pos === "TW") !== (raus2.pos === "TW")) {
+                    throw new Error(`${rein.name} (${rein.pos}) kam für ${raus2.name} (${raus2.pos})`);
+                }
+            });
+        }
+    });
+
+    test("Seitenlinie: kein Zurückwechseln, drei Unterbrechungen, Halbzeit zählt nicht", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const live = MatchEngine.createLiveMatch({ id: "sl_regeln", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { userSide: "home" });
+
+        const feld = () => live.homeLineup.filter(p => p.pos !== "TW" && !live.bank.home.includes(p.id));
+        const bank = () => live.bank.home.filter(id => state.players.find(p => p.id === id).pos !== "TW");
+        const bankVorher = heim.bench.slice();
+
+        live.minute = 20;
+        const ersterRaus = feld()[0];
+        if (!live.substitute("home", ersterRaus.id, bank()[0]).success) throw new Error("Erster Wechsel abgelehnt");
+        const zurueck = live.substitute("home", feld()[1].id, ersterRaus.id);
+        if (zurueck.success) throw new Error("Ein ausgewechselter Spieler durfte zurück");
+        if (JSON.stringify(heim.bench) !== JSON.stringify(bankVorher)) throw new Error("Die Vereinsbank wurde umgeschrieben");
+
+        // Halbzeitpause: kostet keine Unterbrechung. Die Pause ist die
+        // Aufstellung zum Wiederanpfiff.
+        live.minute = 46;
+        const kickoffVorher = live.director.kickoff;
+        live.director.kickoff = { team: "home", reason: "halftime", phase: "lineup", timer: 5 };
+        if (!live.istHalbzeitpause()) throw new Error("Die Aufstellung zum Wiederanpfiff gilt nicht als Halbzeitpause");
+        if (!live.substitute("home", feld()[2].id, bank()[0]).success) throw new Error("Halbzeitwechsel abgelehnt");
+        live.director.kickoff = kickoffVorher;
+        if (live.wechselFenster.home !== 1) throw new Error(`Die Halbzeit hat eine Unterbrechung gekostet (${live.wechselFenster.home})`);
+
+        // Die Phase "half_time" bleibt im Echtzeitbetrieb stehen - sie darf die
+        // zweite Halbzeit nicht zur Dauerpause machen.
+        live.currentPhase = "half_time";
+        if (live.istHalbzeitpause()) throw new Error("Die zweite Halbzeit gilt als Halbzeitpause");
+
+        live.minute = 60;
+        if (!live.substitute("home", feld()[3].id, bank()[0]).success) throw new Error("Zweite Unterbrechung abgelehnt");
+        live.minute = 70;
+        if (!live.substitute("home", feld()[4].id, bank()[0]).success) throw new Error("Dritte Unterbrechung abgelehnt");
+        live.minute = 80;
+        const vierte = live.substitute("home", feld()[5].id, bank()[0]);
+        if (vierte.success) throw new Error("Eine vierte Unterbrechung wurde erlaubt");
+        live.minute = 70;
+        const gleicheMinute = live.substitute("home", feld()[5].id, bank()[0]);
+        if (!gleicheMinute.success) throw new Error("Ein Wechsel in derselben Unterbrechung wurde abgelehnt: " + gleicheMinute.message);
+        if (live.substitutionsUsed.home !== 5) throw new Error(`Fünf Wechsel erwartet, gezählt ${live.substitutionsUsed.home}`);
+        if (live.substitute("home", feld()[6].id, bank()[0]).success) throw new Error("Ein sechster Wechsel wurde erlaubt");
+    });
+
+    test("Seitenlinie: Einwechslung steht im Spielbericht, die Stammelf bleibt", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const elfVorher = heim.lineup.slice();
+        const formationVorher = heim.formation;
+        const partie = { id: "sl_bericht", played: false, homeClubId: "muc", awayClubId: "dor" };
+        const live = MatchEngine.createLiveMatch(partie, heim, gast, state.players, { userSide: "home" });
+
+        while (live.minute < 30) live.tick();
+        const raus = live.homeLineup.find(p => p.pos !== "TW");
+        const reinId = live.bank.home.find(id => state.players.find(p => p.id === id).pos !== "TW");
+        const min = live.minute;
+        if (!live.substitute("home", raus.id, reinId).success) throw new Error("Wechsel abgelehnt");
+        const andere = Object.keys(FORMATION_CONFIGS).find(k => k !== heim.formation);
+        if (!live.stelleFormationUm("home", andere).success) throw new Error("Formationswechsel abgelehnt");
+        while (!live.isFinished) live.tick();
+
+        const noteRein = (partie.playerRatings || []).find(r => r.playerId === reinId);
+        const noteRaus = (partie.playerRatings || []).find(r => r.playerId === raus.id);
+        if (!noteRein || noteRein.minutes < 90 - min - 1) {
+            throw new Error(`Eingewechselter hat ${noteRein ? noteRein.minutes : 0} Minuten statt ${90 - min}`);
+        }
+        if (!noteRaus || noteRaus.minutes > min + 1) {
+            throw new Error(`Ausgewechselter hat ${noteRaus ? noteRaus.minutes : "keine"} Minuten statt ${min}`);
+        }
+        if (JSON.stringify(heim.lineup) !== JSON.stringify(elfVorher)) throw new Error("Der Wechsel steht nach dem Spiel in der Stammelf");
+        if (heim.formation !== formationVorher) throw new Error("Die Umstellung gilt über das Spiel hinaus");
+    });
+
+    test("Seitenlinie: Wechsel laufen bei der nächsten Unterbrechung, Platzverweise verlassen das Feld", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const live = MatchEngine.createLiveMatch({ id: "sl_lauf", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { userSide: "home" });
+        live.speed = 4;
+        const lauf = (bis) => {
+            let f = 0;
+            while (!live.isFinished && live.minute < bis && f++ < 60 * 3000) {
+                live.advanceRealTime(1000 / 60);
+                live.updateBallAndPlayers(1000 / 60);
+            }
+        };
+
+        lauf(10);
+        const raus = live.homeLineup.find(p => p.pos !== "TW");
+        const reinId = live.bank.home.find(id => state.players.find(p => p.id === id).pos !== "TW");
+        const r = live.wechselAnmelden("home", raus.id, reinId);
+        if (!r.success) throw new Error("Anmeldung abgelehnt: " + r.message);
+        if (live.homeLineup.some(p => p.id === reinId)) throw new Error("Der Wechsel lief sofort statt bei der Unterbrechung");
+        lauf(16);
+        if (live.angemeldeteWechsel.length > 0) throw new Error("Der angemeldete Wechsel wurde nach sechs Minuten nicht ausgeführt");
+        if (!live.players2D.some(p => p.id === reinId)) throw new Error("Der Eingewechselte ist nicht auf dem Feld");
+        if (live.players2D.some(p => p.id === raus.id)) throw new Error("Der Ausgewechselte ist noch auf dem Feld");
+
+        // Rote Karte für den Gegner - er spielt danach sichtbar zu zehnt
+        const opfer = live.awayLineup.find(p => p.pos !== "TW");
+        live.timeline.splice(live.timelineIndex, 0, {
+            minute: live.minute + 1, second: 10, type: "red_card", team: "away", clubId: gast.id, clubName: gast.name,
+            playerId: opfer.id, playerName: opfer.name, start: { x: 50, y: 50 }, end: { x: 50, y: 50 },
+            outcome: "red_card", text: `${live.minute + 1}' - Rote Karte für ${opfer.name}`
+        });
+        lauf(live.minute + 4);
+        const gastAufDemFeld = live.players2D.filter(p => p.team === "away").length;
+        if (gastAufDemFeld !== 10) throw new Error(`Nach Rot stehen ${gastAufDemFeld} Gäste auf dem Feld`);
+        if (live.pruefeWechsel("away", opfer.id, live.bank.away[0]).ok) throw new Error("Ein Platzverwiesener durfte ausgewechselt werden");
+
+        lauf(200);
+        if (!live.isFinished) throw new Error("Spiel wurde nicht beendet");
+    });
+
+    test("Seitenlinie: Unterzahl kostet Torszenen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const heimElf = MatchEngine.getCleanLineup(heim, state.players);
+        const zweiRaus = heimElf.filter(p => p.pos !== "TW").slice(0, 2).map(p => p.id);
+
+        const anteil = (sentOffIds) => {
+            let heimSzenen = 0, alle = 0;
+            for (let i = 0; i < 120; i++) {
+                const tl = MatchEngine.generateTimeline({ id: `uz_${i}`, played: false }, heim, gast, state.players, { sentOffIds });
+                tl.filter(e => ["goal", "save", "shot_miss"].includes(e.type)).forEach(e => {
+                    const heimSchiesst = e.type === "save" ? e.team === "away" : e.team === "home";
+                    if (heimSchiesst) heimSzenen++;
+                    alle++;
+                });
+            }
+            return heimSzenen / Math.max(1, alle);
+        };
+        const voll = anteil([]);
+        const unterzahl = anteil(zweiRaus);
+        if (!(unterzahl < voll - 0.06)) {
+            throw new Error(`Zu neunt kaum weniger Abschlüsse: ${(voll * 100).toFixed(0)} % gegen ${(unterzahl * 100).toFixed(0)} %`);
+        }
+    });
+
+    test("Co-Trainer: passt bei Rückstand die Taktik an und gibt begründete Hinweise", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const vorher = heim.tactics.mentality;
+        const partie = { id: "sl_co", played: false, homeClubId: "muc", awayClubId: "dor" };
+        const live = MatchEngine.createLiveMatch(partie, heim, gast, state.players,
+            { userSide: "home", delegation: { taktik: true } });
+
+        while (live.minute < 54) live.tick();
+        live.homeScore = 0;
+        live.awayScore = 2;
+        live.minute = 55;
+        const r = live.coTrainerTakt();
+        if (!r || !r.aenderung.mentality) throw new Error("Der Co-Trainer reagiert nicht auf einen Rückstand");
+        const stufen = ["very_defensive", "defensive", "balanced", "offensive", "very_offensive"];
+        if (stufen.indexOf(heim.tactics.mentality) <= stufen.indexOf(vorher)) {
+            throw new Error(`Bei Rückstand defensiver gestellt: ${vorher} -> ${heim.tactics.mentality}`);
+        }
+        if (!live.events.some(e => /Co-Trainer/.test(e.text))) throw new Error("Die Umstellung fehlt im Ticker");
+        if (live.coTrainerTakt()) throw new Error("Der Co-Trainer stellt zweimal am selben Prüfpunkt um");
+
+        // Ohne Auftrag greift er nicht ein
+        const ohne = MatchEngine.createLiveMatch({ id: "sl_co2", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { userSide: "home" });
+        ohne.homeScore = 0; ohne.awayScore = 2; ohne.minute = 60;
+        if (ohne.coTrainerTakt()) throw new Error("Der Co-Trainer stellt ohne Auftrag um");
+
+        // Hinweise nennen Gründe aus dem Spiel
+        const p2d = live.players2D.find(p => p.team === "home" && p.pos !== "TW");
+        p2d.freshness = 0.65;
+        const hinweise = live.coTrainerHinweise("home");
+        if (!hinweise.some(h => h.art === "kondition" && h.spielerId === p2d.id)) {
+            throw new Error("Ein platter Spieler taucht in den Hinweisen nicht auf");
+        }
+        if (!hinweise.some(h => h.art === "rueckstand")) throw new Error("Der Rückstand fehlt in den Hinweisen");
+
+        while (!live.isFinished) live.tick();
+        if (heim.tactics.mentality !== vorher) throw new Error("Die Umstellung des Co-Trainers gilt über das Spiel hinaus");
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

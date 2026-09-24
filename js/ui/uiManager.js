@@ -1984,17 +1984,28 @@ class UIManager {
         // laeuft - mit dem ersten Spieltag verschwindet er wieder. Die Zahl
         // daneben zeigt, was noch zu erledigen ist.
         const preNav = document.getElementById("navPreseason");
+        const engine = this.getPreseasonEngine();
+        const vorbereitungLaeuft = !!(state.preseason && state.preseason.aktiv);
+        const vorbereitungOffen = (vorbereitungLaeuft && engine) ? engine.offenePunkte(state).length : 0;
         if (preNav) {
-            const engine = this.getPreseasonEngine();
-            const laeuft = !!(state.preseason && state.preseason.aktiv);
-            preNav.style.display = laeuft ? "" : "none";
+            preNav.style.display = vorbereitungLaeuft ? "" : "none";
             const badge = document.getElementById("navPreseaonBadgeFallback")
                 || document.getElementById("navPreseasonBadge");
             if (badge) {
-                const offen = (laeuft && engine) ? engine.offenePunkte(state).length : 0;
-                badge.textContent = offen;
-                badge.style.display = offen > 0 ? "" : "none";
+                badge.textContent = vorbereitungOffen;
+                badge.style.display = vorbereitungOffen > 0 ? "" : "none";
             }
+        }
+
+        // Auf dem Handy fehlte die Vorbereitung im Menü ganz - man konnte sie
+        // dort nicht gestalten. Jetzt steht sie oben im "Mehr"-Menü, solange
+        // sie läuft, und der Punkt am "Mehr"-Knopf zeigt, dass etwas offen ist.
+        const mobilPre = document.getElementById("mobileNavPreseason");
+        if (mobilPre) mobilPre.style.display = vorbereitungLaeuft ? "" : "none";
+        const mobilPreBadge = document.getElementById("mobilePreseasonBadge");
+        if (mobilPreBadge) {
+            mobilPreBadge.textContent = vorbereitungOffen;
+            mobilPreBadge.style.display = vorbereitungOffen > 0 ? "" : "none";
         }
 
         document.getElementById("headerClubName").textContent = userClub.name;
@@ -2042,6 +2053,19 @@ class UIManager {
             navInboxBadge.textContent = unreadCount;
         } else {
             navInboxBadge.style.display = "none";
+        }
+
+        // Die Handy-Gegenstücke waren nur Markup - niemand setzte sie.
+        const mobileInboxBadge = document.getElementById("mobileInboxBadge");
+        if (mobileInboxBadge) {
+            mobileInboxBadge.textContent = unreadCount;
+            mobileInboxBadge.style.display = unreadCount > 0 ? "inline-block" : "none";
+        }
+        const mehrPunkt = document.getElementById("mobileMoreBadgeDot");
+        if (mehrPunkt) {
+            const preOffen = (state.preseason && state.preseason.aktiv && this.getPreseasonEngine())
+                ? this.getPreseasonEngine().offenePunkte(state).length : 0;
+            mehrPunkt.style.display = (unreadCount > 0 || preOffen > 0) ? "" : "none";
         }
 
         const pendingOffers = state.transferMarket.offers.filter(o => o.status === "pending").length;
@@ -6122,8 +6146,18 @@ class UIManager {
         }
         this._teamTalkDone = false;
 
-        const liveMatch = MatchEngine.createLiveMatch(match, homeClub, awayClub, state.players);
+        // Die eigene Seite - alle Eingriffe von der Seitenlinie gelten ihr.
+        // Vorher waren Wechsel und Taktik fest auf "home" verdrahtet: Wer
+        // auswaerts spielte, wechselte beim Gegner.
+        const userSide = match.homeClubId === state.userClubId ? "home"
+            : (match.awayClubId === state.userClubId ? "away" : null);
+        const einstellungen = this.liveEinstellungen();
+        const liveMatch = MatchEngine.createLiveMatch(match, homeClub, awayClub, state.players, {
+            userSide,
+            delegation: { ...einstellungen.delegation }
+        });
         this.app.currentLiveMatch = liveMatch;
+        this.coach = null;
 
         const modal = document.getElementById("modalLiveMatch");
         modal.style.display = "flex";
@@ -6140,9 +6174,6 @@ class UIManager {
         document.getElementById("lmEventFeed").innerHTML = "";
 
         this.playSound("whistle");
-
-        // Live Subs Controls vorbereiten
-        this.renderLiveSubsControls(liveMatch);
 
         const canvas = document.getElementById("livePitchCanvas");
         const ctx = canvas.getContext("2d");
@@ -6168,8 +6199,14 @@ class UIManager {
         this._halftimeTalkShown = false;
 
         const updateLiveUI = () => {
-            // Halbzeitansprache: einmal, sobald die Pause erreicht ist
-            if (!this._halftimeTalkShown && liveMatch.minute >= 45 && liveMatch.minute < 47 && !liveMatch.isFinished) {
+            // Halbzeitansprache: einmal, sobald die Pause erreicht ist - also
+            // nach dem Halbzeitpfiff, wenn beide Mannschaften zum Wiederanpfiff
+            // bereitstehen. Vorher hing sie an Minute 45: Die Nachspielzeit lief
+            // noch, und ein "Halbzeitwechsel" kostete eine der drei Unterbrechungen.
+            const halbzeitErreicht = typeof liveMatch.istHalbzeitpause === "function"
+                ? liveMatch.istHalbzeitpause()
+                : (liveMatch.minute >= 45 && liveMatch.minute < 47);
+            if (!this._halftimeTalkShown && halbzeitErreicht && !liveMatch.isFinished) {
                 this._halftimeTalkShown = true;
                 const warPausiert = liveMatch.isPaused;
                 liveMatch.isPaused = true;
@@ -6187,10 +6224,35 @@ class UIManager {
                         if (res && Math.abs(res.moraleDelta) >= 1.5 && typeof liveMatch.resimulateRemainder === "function") {
                             liveMatch.resimulateRemainder();
                         }
-                        liveMatch.isPaused = warPausiert;
+                        // Nach der Ansprache kommt die Kabinenbesprechung: Die
+                        // Halbzeit ist der Moment für Wechsel, und sie kosten
+                        // dort keine der drei Unterbrechungen.
+                        if (liveMatch.userSide && this.liveEinstellungen().autoOeffnen.halbzeit) {
+                            this.openCoachingWindow({
+                                art: "halbzeit",
+                                text: "Halbzeit - Wechsel in der Pause kosten keine der drei Unterbrechungen."
+                            }, warPausiert);
+                        } else {
+                            liveMatch.isPaused = warPausiert;
+                        }
                     }
                 );
             }
+
+            // Was der Trainer entscheiden muss, stoppt das Spiel: ein verletzter
+            // eigener Spieler, ein Platzverweis. Ohne Nachfrage spielte der
+            // Verletzte einfach weiter, bis man es im Ticker bemerkte.
+            if (liveMatch.offeneEntscheidungen && liveMatch.offeneEntscheidungen.length > 0 && !this.coach) {
+                const anlass = liveMatch.offeneEntscheidungen.shift();
+                const auto = this.liveEinstellungen().autoOeffnen;
+                if ((anlass.art === "verletzung" && auto.verletzung) || (anlass.art === "platzverweis" && auto.platzverweis)) {
+                    this.openCoachingWindow(anlass);
+                } else {
+                    this.showToast(anlass.text, "warning");
+                }
+            }
+
+            this.updateLiveSidelineHints(liveMatch);
 
             setText("lmHomeScore", String(liveMatch.homeScore));
             setText("lmAwayScore", String(liveMatch.awayScore));
@@ -6484,6 +6546,39 @@ class UIManager {
                     ctx.lineWidth = Math.max(1, radius * 0.14);
                     ctx.stroke();
                 }
+
+                // Angeschlagen: kleines Sanitätskreuz über dem Spieler
+                if (p.verletzt) {
+                    const kx = px + radius * 0.95;
+                    const ky = py - radius * 1.25;
+                    const k = radius * 0.5;
+                    ctx.fillStyle = "#ffffff";
+                    ctx.fillRect(kx - k, ky - k, k * 2, k * 2);
+                    ctx.fillStyle = "#dc2626";
+                    ctx.fillRect(kx - k * 0.22, ky - k * 0.75, k * 0.44, k * 1.5);
+                    ctx.fillRect(kx - k * 0.75, ky - k * 0.22, k * 1.5, k * 0.44);
+                }
+            });
+
+            // Wer das Feld verlässt - ausgewechselt oder vom Platz gestellt -
+            // geht blass zur Linie. In der Simulation spielt er nicht mehr mit.
+            (liveMatch.abgaenge || []).forEach(a => {
+                const ax = toX(a.x);
+                const ay = toY(a.y);
+                if (ax < -60 || ax > canvas.width + 60 || ay < -60 || ay > canvas.height + 60) return;
+                ctx.save();
+                ctx.globalAlpha = 0.45;
+                ctx.beginPath();
+                ctx.arc(ax, ay, radius, 0, Math.PI * 2);
+                ctx.fillStyle = a.pos === "TW" ? (a.team === "home" ? "#facc15" : "#22d3ee") : (a.color || "#64748b");
+                ctx.fill();
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
+                ctx.lineWidth = Math.max(1, radius * 0.13);
+                ctx.stroke();
+                ctx.fillStyle = a.pos === "TW" ? "#0f172a" : (a.textColor || "#ffffff");
+                ctx.font = numberFont;
+                ctx.fillText(a.number, ax, ay + radius * 0.05);
+                ctx.restore();
             });
 
             // 5. Namensschilder: nur der Ballführende und die nächsten Spieler,
@@ -6560,6 +6655,14 @@ class UIManager {
             if (liveMatch.isFinished) {
                 cancelAnimationFrame(this.liveMatchAnimFrame);
                 this.liveMatchAnimFrame = null;
+                if (this.coach) {
+                    this.coach = null;
+                    const coachModal = document.getElementById("modalCoaching");
+                    if (coachModal) coachModal.style.display = "none";
+                }
+                const strip = document.getElementById("lmPendingStrip");
+                if (strip) strip.style.display = "none";
+                this._lmPendingKey = null;
                 if (this.liveResizeHandler) {
                     window.removeEventListener("resize", this.liveResizeHandler);
                     this.liveResizeHandler = null;
@@ -6611,12 +6714,24 @@ class UIManager {
 
         this.liveMatchAnimFrame = requestAnimationFrame(tickLoop);
 
+        // Nach einer Pause darf das erste Bild nicht die ganze Pausenzeit
+        // nachholen - das Seitenlinienfenster setzt die Uhr hierüber zurück.
+        this._liveFrameReset = () => { lastFrameTime = performance.now(); };
+
         // Controls Binden
         document.getElementById("btnLmPause").onclick = () => {
             liveMatch.isPaused = !liveMatch.isPaused;
-            document.getElementById("btnLmPause").textContent = liveMatch.isPaused ? "▶ Weiter" : "⏸ Pause";
+            this.updateLivePauseButton(liveMatch);
             lastFrameTime = performance.now();
         };
+        this.updateLivePauseButton(liveMatch);
+
+        const coachBtn = document.getElementById("btnLmCoaching");
+        if (coachBtn) {
+            // Nur wer eine eigene Mannschaft auf dem Platz hat, steht an der Linie
+            coachBtn.style.display = liveMatch.userSide ? "" : "none";
+            coachBtn.onclick = () => this.openCoachingWindow(null);
+        }
 
         document.querySelectorAll(".speed-btn").forEach(btn => {
             btn.onclick = () => {
@@ -6644,70 +6759,463 @@ class UIManager {
                 document.getElementById(`lmSubtab-${tab.dataset.subtab}`).classList.add("active");
             };
         });
+    }
 
-        document.getElementById("lmLiveMentality").onchange = (e) => {
-            liveMatch.updateTactics("home", { mentality: e.target.value });
-        };
-        const livePressingEl = document.getElementById("lmLivePressing");
-        if (livePressingEl) {
-            livePressingEl.onchange = (e) => {
-                liveMatch.updateTactics("home", { pressing: e.target.value });
-            };
+    // ------------------------------------------------------------ Seitenlinie
+
+    /** Einstellungen fuer das Livespiel - sie gelten fuer jede Partie */
+    liveEinstellungen() {
+        const state = this.app.state;
+        if (!state.liveEinstellungen || typeof state.liveEinstellungen !== "object") state.liveEinstellungen = {};
+        const e = state.liveEinstellungen;
+        e.delegation = { wechsel: false, taktik: false, ...(e.delegation || {}) };
+        e.autoOeffnen = { halbzeit: true, verletzung: true, platzverweis: true, ...(e.autoOeffnen || {}) };
+        return e;
+    }
+
+    updateLivePauseButton(liveMatch) {
+        const btn = document.getElementById("btnLmPause");
+        if (!btn) return;
+        btn.innerHTML = liveMatch.isPaused
+            ? '▶<span class="lm-btn-text"> Weiter</span>'
+            : '⏸<span class="lm-btn-text"> Pause</span>';
+    }
+
+    /**
+     * Unter der Steuerung: welche Wechsel angemeldet sind, und am Knopf der
+     * Seitenlinie, wie viele wichtige Hinweise der Co-Trainer hat.
+     */
+    updateLiveSidelineHints(liveMatch) {
+        if (!liveMatch || !liveMatch.userSide) return;
+        const side = liveMatch.userSide;
+        const strip = document.getElementById("lmPendingStrip");
+        const offen = (liveMatch.angemeldeteWechsel || []).filter(w => w.side === side);
+        const key = offen.map(w => `${w.outId}>${w.inId}`).join(",");
+        if (strip && this._lmPendingKey !== key) {
+            this._lmPendingKey = key;
+            if (offen.length > 0) {
+                const name = id => this.escapeHtml(MatchEngine.findPlayer(liveMatch.allPlayers, id)?.name || "?");
+                strip.innerHTML = `🔄 ${offen.map(w => `${name(w.inId)} für ${name(w.outId)}`).join(" · ")}
+                    <span class="lm-pending-note">- bei der nächsten Unterbrechung</span>`;
+                strip.style.display = "";
+            } else {
+                strip.style.display = "none";
+            }
         }
-        const liveTempoEl = document.getElementById("lmLiveTempo");
-        if (liveTempoEl) {
-            liveTempoEl.onchange = (e) => {
-                liveMatch.updateTactics("home", { tempo: e.target.value });
-            };
+
+        const jetzt = (typeof performance !== "undefined") ? performance.now() : Date.now();
+        if (!this._lmHintTime || jetzt - this._lmHintTime > 1000) {
+            this._lmHintTime = jetzt;
+            const wichtig = liveMatch.coTrainerHinweise(side).filter(h => h.gewicht >= 2).length;
+            const badge = document.getElementById("lmCoachBadge");
+            if (badge) {
+                badge.textContent = wichtig;
+                badge.style.display = wichtig > 0 ? "" : "none";
+            }
         }
     }
 
-    renderLiveSubsControls(liveMatch) {
-        const subsContainer = document.getElementById("lmLiveSubsList");
-        const userClub = this.app.state.clubs.find(c => c.id === this.app.state.userClubId);
-
-        const subsCounter = document.getElementById("lmSubsCounter");
-        if (subsCounter) {
-            subsCounter.textContent = `${liveMatch.substitutionsUsed?.home || 0} / 5`;
+    /**
+     * Das Seitenlinienfenster: Das Spiel steht, solange es offen ist. Alles,
+     * was man hier einstellt, wird erst mit "Übernehmen" wirksam - Wechsel
+     * laufen dann bei der nächsten Unterbrechung, Taktik und Formation sofort.
+     *
+     * @param {Object|null} anlass  Warum das Fenster aufgeht (Halbzeit, Verletzung, Platzverweis)
+     * @param {boolean} [warPausiert] Pausenzustand vor dem Öffnen, falls schon angehalten wurde
+     */
+    openCoachingWindow(anlass = null, warPausiert) {
+        const liveMatch = this.app.currentLiveMatch;
+        if (!liveMatch || !liveMatch.userSide || liveMatch.isFinished) return;
+        if (this.coach) {
+            if (anlass) {
+                this.coach.anlass = anlass;
+                if (anlass.art === "verletzung") {
+                    this.coach.tab = "wechsel";
+                    this.coach.auswahlRaus = anlass.spielerId;
+                }
+                this.renderCoaching();
+            }
+            return;
         }
 
-        subsContainer.innerHTML = `
-            <div style="font-size:12px; margin-bottom:8px; color:var(--text-muted);">
-                Klicken Sie auf einen Startelf-Spieler und dann auf einen Bank-Spieler:
-            </div>
-            <div class="live-sub-picker">
-                <h5>Startelf (Auswechseln):</h5>
-                <select id="selectSubOut" class="styled-select mb-2">
-                    ${userClub.lineup.map(id => {
-                        const p = this.app.state.players.find(pl => pl.id === id);
-                        return `<option value="${p.id}">${p.name} (${p.pos}, Fitness: ${p.fitness}%)</option>`;
-                    }).join("")}
-                </select>
+        const side = liveMatch.userSide;
+        const club = liveMatch.clubVon(side);
+        const t = club.tactics || {};
+        const einst = this.liveEinstellungen();
 
-                <h5>Einwechselspieler (Bank):</h5>
-                <select id="selectSubIn" class="styled-select mb-2">
-                    ${userClub.bench.map(id => {
-                        const p = this.app.state.players.find(pl => pl.id === id);
-                        return `<option value="${p.id}">${p.name} (${p.pos}, ${this.starValueFor(p.overall).toFixed(1).replace(".", ",")} Sterne)</option>`;
-                    }).join("")}
-                </select>
+        this.coach = {
+            liveMatch,
+            side,
+            warPausiert: warPausiert !== undefined ? warPausiert : liveMatch.isPaused,
+            anlass,
+            tab: anlass && anlass.art === "platzverweis" ? "taktik" : "wechsel",
+            wechsel: [],
+            auswahlRaus: anlass && anlass.art === "verletzung" ? anlass.spielerId : null,
+            taktik: {
+                mentality: t.mentality || "balanced",
+                pressing: t.pressing || "medium",
+                tempo: t.tempo || "normal",
+                passing: t.passing || "mixed",
+                focus: t.focus || "balanced"
+            },
+            formation: club.formation,
+            delegation: { ...liveMatch.delegation },
+            autoOeffnen: { ...einst.autoOeffnen }
+        };
 
-                <button class="btn btn-sm btn-primary" id="btnExecuteSub">Auswechslung durchführen</button>
+        liveMatch.isPaused = true;
+        this.updateLivePauseButton(liveMatch);
+
+        const modal = document.getElementById("modalCoaching");
+        if (!modal) return;
+        modal.style.display = "flex";
+        modal.querySelectorAll(".coaching-tab").forEach(tab => {
+            tab.onclick = () => {
+                this.coach.tab = tab.dataset.coachtab;
+                this.renderCoaching();
+            };
+        });
+        document.getElementById("btnCoachApply").onclick = () => this.closeCoachingWindow(true);
+        document.getElementById("btnCoachDiscard").onclick = () => this.closeCoachingWindow(false);
+        this.renderCoaching();
+    }
+
+    /** Fenster schließen - mit oder ohne die vorgenommenen Änderungen */
+    closeCoachingWindow(uebernehmen) {
+        const c = this.coach;
+        if (!c) return;
+        const lm = c.liveMatch;
+        const state = this.app.state;
+
+        if (uebernehmen && !lm.isFinished) {
+            const einst = this.liveEinstellungen();
+            einst.autoOeffnen = { ...c.autoOeffnen };
+            einst.delegation = { ...c.delegation };
+
+            const club = lm.clubVon(c.side);
+            let neuRechnen = lm.setzeDelegation(c.side, c.delegation, { ohneNeuberechnung: true });
+
+            if (c.formation && c.formation !== club.formation) {
+                const r = lm.stelleFormationUm(c.side, c.formation, { ohneNeuberechnung: true });
+                if (r.success) neuRechnen = true;
+                else this.showToast(r.message, "error");
+            }
+
+            const alt = club.tactics || {};
+            const vorgabe = { mentality: "balanced", pressing: "medium", tempo: "normal", passing: "mixed", focus: "balanced" };
+            const diff = {};
+            Object.keys(c.taktik).forEach(k => {
+                if (c.taktik[k] !== (alt[k] ?? vorgabe[k])) diff[k] = c.taktik[k];
+            });
+            if (Object.keys(diff).length > 0) {
+                lm.updateTactics(c.side, diff, { ohneNeuberechnung: true });
+                neuRechnen = true;
+            }
+            if (neuRechnen) lm.resimulateRemainder();
+
+            let angemeldet = 0;
+            c.wechsel.forEach(w => {
+                const r = lm.wechselAnmelden(c.side, w.outId, w.inId);
+                if (r.success) angemeldet++;
+                else this.showToast(r.message, "error");
+            });
+            if (angemeldet > 0) {
+                this.showToast(lm.istHalbzeitpause()
+                    ? `${angemeldet} Wechsel - sie kommen zum Wiederanpfiff.`
+                    : `${angemeldet} Wechsel angemeldet - bei der nächsten Unterbrechung.`, "success");
+            }
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+        }
+
+        this.coach = null;
+        const modal = document.getElementById("modalCoaching");
+        if (modal) modal.style.display = "none";
+        // "Übernehmen & weiter" - das Spiel läuft wieder an
+        lm.isPaused = false;
+        if (typeof this._liveFrameReset === "function") this._liveFrameReset();
+        this.updateLivePauseButton(lm);
+        this._lmPendingKey = null;
+        this._lmHintTime = 0;
+    }
+
+    /** Zu einer Kennung aus einem data-Attribut die echte Spielerkennung finden */
+    coachIdVon(wert) {
+        const c = this.coach;
+        if (!c) return wert;
+        const lm = c.liveMatch;
+        const alle = [...lm.lineupVon(c.side), ...lm.bankSpieler(c.side)];
+        const treffer = alle.find(p => p && String(p.id) === String(wert));
+        return treffer ? treffer.id : wert;
+    }
+
+    renderCoaching() {
+        const c = this.coach;
+        if (!c) return;
+        const lm = c.liveMatch;
+        const club = lm.clubVon(c.side);
+        const gegner = lm.clubVon(c.side === "home" ? "away" : "home");
+        const eigene = c.side === "home" ? lm.homeScore : lm.awayScore;
+        const fremde = c.side === "home" ? lm.awayScore : lm.homeScore;
+
+        DOM.setText("coachSub", `${lm.minute}' · ${club.name} ${eigene}:${fremde} ${gegner.name}`);
+
+        const alert = document.getElementById("coachAlert");
+        if (alert) {
+            if (c.anlass) {
+                const icon = { verletzung: "🚑", platzverweis: "🟥", halbzeit: "⏱️" }[c.anlass.art] || "ℹ️";
+                alert.textContent = `${icon} ${c.anlass.text}`;
+                alert.className = `coaching-alert coaching-alert-${c.anlass.art}`;
+                alert.style.display = "";
+            } else {
+                alert.style.display = "none";
+            }
+        }
+
+        document.querySelectorAll("#modalCoaching .coaching-tab").forEach(tab => {
+            tab.classList.toggle("active", tab.dataset.coachtab === c.tab);
+        });
+        document.querySelectorAll("#modalCoaching .coaching-pane").forEach(pane => {
+            pane.classList.toggle("active", pane.id === `coachPane-${c.tab}`);
+        });
+
+        const hinweise = lm.coTrainerHinweise(c.side);
+        const wichtig = hinweise.filter(h => h.gewicht >= 2).length;
+        const tipCount = document.getElementById("coachTipCount");
+        if (tipCount) {
+            tipCount.textContent = wichtig > 0 ? wichtig : "";
+            tipCount.style.display = wichtig > 0 ? "" : "none";
+        }
+
+        if (c.tab === "wechsel") this.renderCoachWechsel();
+        else if (c.tab === "taktik") this.renderCoachTaktik();
+        else this.renderCoachCoTrainer(hinweise);
+
+        // Fußzeile: was mit "Übernehmen" passiert
+        const teile = [];
+        if (c.wechsel.length) teile.push(`${c.wechsel.length} Wechsel`);
+        if (c.formation !== club.formation) teile.push("Formation");
+        const t = club.tactics || {};
+        const vorgabe = { mentality: "balanced", pressing: "medium", tempo: "normal", passing: "mixed", focus: "balanced" };
+        if (Object.keys(c.taktik).some(k => c.taktik[k] !== (t[k] ?? vorgabe[k]))) teile.push("Taktik");
+        if (c.delegation.wechsel !== lm.delegation.wechsel || c.delegation.taktik !== lm.delegation.taktik) teile.push("Co-Trainer");
+        DOM.setText("coachFootInfo", teile.length ? `Geändert: ${teile.join(", ")}` : "Keine Änderungen");
+    }
+
+    renderCoachWechsel() {
+        const c = this.coach;
+        const lm = c.liveMatch;
+        const side = c.side;
+        const el = document.getElementById("coachPane-wechsel");
+        if (!el) return;
+        const esc = v => this.escapeHtml(String(v ?? ""));
+        const posEngine = (typeof PositionEngine !== "undefined") ? PositionEngine : null;
+
+        const stand = lm.wechselStand(side);
+        const halbzeit = lm.istHalbzeitpause();
+        const frei = Math.max(0, stand.frei - c.wechsel.length);
+        const fensterZu = !halbzeit && stand.fensterFrei <= 0 && lm._fensterMinute[side] !== lm.minute;
+        const gesperrt = frei <= 0 || fensterZu;
+
+        const angemeldetRaus = new Map(lm.angemeldeteWechsel.filter(w => w.side === side).map(w => [w.outId, w.inId]));
+        const angemeldetRein = new Set(lm.angemeldeteWechsel.filter(w => w.side === side).map(w => w.inId));
+        const gestagedRaus = new Map(c.wechsel.map(w => [w.outId, w.inId]));
+        const gestagedRein = new Set(c.wechsel.map(w => w.inId));
+        const name = id => esc(MatchEngine.findPlayer(lm.allPlayers, id)?.name || "?");
+
+        const platzverweise = new Set(lm.platzverweise[side]);
+        const gewaehlt = c.auswahlRaus;
+        const gewaehltP2d = gewaehlt != null ? lm.players2D.find(p => p.id === gewaehlt) : null;
+        const zielPos = gewaehltP2d?.pos || lm.lineupVon(side).find(p => p && p.id === gewaehlt)?.pos || null;
+
+        const kopf = `<div class="coach-info">
+                <span><strong>${stand.genutzt + stand.angemeldet + c.wechsel.length}</strong> von ${lm.maxSubstitutions} Wechseln</span>
+                <span>${halbzeit ? "Halbzeit - zählt nicht als Unterbrechung" : `${stand.fensterFrei} von ${lm.maxWechselFenster} Unterbrechungen frei`}</span>
             </div>
+            <div class="coach-hint">${gesperrt
+                ? (frei <= 0 ? "Alle Wechsel sind vergeben." : "Alle drei Unterbrechungen sind genutzt.")
+                : (gewaehlt != null ? "Jetzt auf der Bank antippen, wer reinkommt." : "Tippe auf den Spieler, der raus soll.")}</div>`;
+
+        const zeilenFeld = lm.lineupVon(side).map((p, idx) => {
+            if (!p) return "";
+            const p2d = lm.players2D.find(x => x.id === p.id);
+            const vomPlatz = platzverweise.has(p.id);
+            const slotPos = p2d?.pos || p.pos;
+            const fit = p2d ? Math.round((p2d.freshness ?? 1) * 100) : null;
+            const fitFarbe = fit === null ? "#64748b" : (fit >= 86 ? "#22c55e" : fit >= 74 ? "#f59e0b" : "#ef4444");
+            const gelb = lm.verwarnt[side].includes(p.id);
+            const verletzt = lm.angeschlagen[side].includes(p.id);
+            let rechts = "";
+            if (vomPlatz) rechts = '<span class="coach-tag coach-tag-rot">🟥 vom Platz</span>';
+            else if (gestagedRaus.has(p.id)) rechts = `<span class="coach-tag">↔ ${name(gestagedRaus.get(p.id))}</span>
+                    <button class="coach-x" data-unstage="${esc(p.id)}" aria-label="Wechsel zurücknehmen">✕</button>`;
+            else if (angemeldetRaus.has(p.id)) rechts = `<span class="coach-tag">⏳ ${name(angemeldetRaus.get(p.id))}</span>
+                    <button class="coach-x" data-abmelden="${esc(p.id)}" aria-label="Anmeldung zurückziehen">✕</button>`;
+            const waehlbar = !vomPlatz && !gestagedRaus.has(p.id) && !angemeldetRaus.has(p.id) && !gesperrt;
+            return `<div class="coach-row ${gewaehlt === p.id ? "selected" : ""} ${vomPlatz ? "off" : ""} ${waehlbar ? "tappable" : ""}"
+                        ${waehlbar ? `data-raus="${esc(p.id)}" role="button" tabindex="0"` : ""}>
+                    <span class="coach-pos">${esc(slotPos)}</span>
+                    <span class="coach-name">${esc(p.name)}${gelb ? ' <span title="verwarnt">🟨</span>' : ""}${verletzt ? ' <span title="angeschlagen">🚑</span>' : ""}</span>
+                    ${fit !== null && !vomPlatz ? `<span class="coach-fit" title="Kondition ${fit} %"><span class="coach-fit-bar" style="width:${Math.max(0, Math.min(100, (fit - 55) / 45 * 100))}%; background:${fitFarbe};"></span></span>
+                        <span class="coach-fit-num">${fit}%</span>` : ""}
+                    ${rechts}
+                </div>`;
+        }).join("");
+
+        const bank = lm.bankSpieler(side).filter(p => !angemeldetRein.has(p.id) && !gestagedRein.has(p.id));
+        const zeilenBank = bank.map(p => {
+            const sterne = this.starValueFor(p.overall || 60).toFixed(1).replace(".", ",");
+            let eignung = "";
+            if (zielPos && posEngine) {
+                const s = posEngine.getSuitability(p, zielPos);
+                eignung = `<span class="coach-eignung" style="color:${s.color};">${esc(s.shortLabel || s.label)} als ${esc(zielPos)}</span>`;
+            }
+            const waehlbar = gewaehlt != null && !gesperrt;
+            return `<div class="coach-row bank ${waehlbar ? "tappable" : "dim"}" ${waehlbar ? `data-rein="${esc(p.id)}" role="button" tabindex="0"` : ""}>
+                    <span class="coach-pos">${esc(p.pos)}</span>
+                    <span class="coach-name">${esc(p.name)} <span class="coach-stars">★ ${sterne}</span></span>
+                    ${eignung}
+                </div>`;
+        }).join("");
+
+        const raus = lm.ausgewechselt[side];
+        el.innerHTML = kopf
+            + `<h4 class="coach-h">Auf dem Platz</h4><div class="coach-list">${zeilenFeld}</div>`
+            + `<h4 class="coach-h">Bank</h4><div class="coach-list">${zeilenBank || '<div class="coach-empty">Niemand mehr auf der Bank.</div>'}</div>`
+            + (raus.length ? `<div class="coach-muted">Ausgewechselt: ${raus.map(name).join(", ")}</div>` : "");
+
+        const aktiv = (node, fn) => {
+            node.onclick = fn;
+            node.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } };
+        };
+        el.querySelectorAll("[data-raus]").forEach(n => aktiv(n, () => {
+            const id = this.coachIdVon(n.dataset.raus);
+            c.auswahlRaus = c.auswahlRaus === id ? null : id;
+            this.renderCoaching();
+        }));
+        el.querySelectorAll("[data-rein]").forEach(n => aktiv(n, () => {
+            if (c.auswahlRaus == null) return;
+            const inId = this.coachIdVon(n.dataset.rein);
+            const test = lm.pruefeWechsel(side, c.auswahlRaus, inId, { mitAngemeldeten: true });
+            const zuViele = stand.genutzt + stand.angemeldet + c.wechsel.length >= lm.maxSubstitutions;
+            if (!test.ok || zuViele) {
+                this.showToast(test.ok ? `Alle ${lm.maxSubstitutions} Wechsel sind vergeben.` : test.grund, "error");
+                return;
+            }
+            c.wechsel.push({ outId: c.auswahlRaus, inId });
+            c.auswahlRaus = null;
+            this.renderCoaching();
+        }));
+        el.querySelectorAll("[data-unstage]").forEach(n => n.onclick = (e) => {
+            e.stopPropagation();
+            const id = this.coachIdVon(n.dataset.unstage);
+            c.wechsel = c.wechsel.filter(w => w.outId !== id);
+            this.renderCoaching();
+        });
+        el.querySelectorAll("[data-abmelden]").forEach(n => n.onclick = (e) => {
+            e.stopPropagation();
+            lm.wechselAbmelden(side, this.coachIdVon(n.dataset.abmelden));
+            this.renderCoaching();
+        });
+    }
+
+    renderCoachTaktik() {
+        const c = this.coach;
+        const lm = c.liveMatch;
+        const el = document.getElementById("coachPane-taktik");
+        if (!el) return;
+        const esc = v => this.escapeHtml(String(v ?? ""));
+        const configs = (typeof FORMATION_CONFIGS !== "undefined") ? FORMATION_CONFIGS : {};
+
+        const gruppen = [
+            ["mentality", "Mentalität", [["very_defensive", "Sehr defensiv"], ["defensive", "Defensiv"], ["balanced", "Ausgeglichen"], ["offensive", "Offensiv"], ["very_offensive", "Sehr offensiv"]]],
+            ["pressing", "Pressing", [["low", "Niedrig"], ["medium", "Mittel"], ["high", "Hoch"]]],
+            ["tempo", "Tempo", [["slow", "Geduldig"], ["normal", "Normal"], ["fast", "Schnell"]]],
+            ["passing", "Passspiel", [["short", "Kurz"], ["mixed", "Gemischt"], ["direct", "Direkt"]]],
+            ["focus", "Angriffsseite", [["left", "Links"], ["center", "Zentrum"], ["right", "Rechts"], ["balanced", "Überall"]]]
+        ];
+
+        const schnell = [
+            ["alles", "⚡ Alles nach vorn", { mentality: "very_offensive", pressing: "high", tempo: "fast", passing: "direct" }],
+            ["halten", "🔒 Ergebnis halten", { mentality: "defensive", pressing: "low", tempo: "slow", passing: "short" }],
+            ["normal", "⚖️ Ausgewogen", { mentality: "balanced", pressing: "medium", tempo: "normal", passing: "mixed" }]
+        ];
+
+        const optionen = Object.keys(configs).map(k =>
+            `<option value="${esc(k)}" ${k === c.formation ? "selected" : ""}>${esc(configs[k].name || k)}</option>`).join("");
+
+        el.innerHTML = `
+            <div class="coach-hint">Gilt nur für dieses Spiel - deine gespeicherte Taktik bleibt unverändert.${c.delegation.taktik ? " Der Co-Trainer darf zusätzlich nachsteuern." : ""}</div>
+            <div class="coach-quick">${schnell.map(([k, t]) => `<button class="coach-chip coach-quick-btn" data-schnell="${k}">${t}</button>`).join("")}</div>
+            <label class="coach-label" for="coachFormation">Formation</label>
+            <select id="coachFormation" class="styled-select">${optionen}</select>
+            ${lm.platzverweise[c.side].length ? '<div class="coach-muted">In Unterzahl: Die Formation verteilt die verbliebenen Spieler neu.</div>' : ""}
+            ${gruppen.map(([feld, titel, werte]) => `
+                <div class="coach-label">${titel}</div>
+                <div class="coach-chips">${werte.map(([w, t]) =>
+                    `<button class="coach-chip ${c.taktik[feld] === w ? "active" : ""}" data-feld="${feld}" data-wert="${w}">${t}</button>`).join("")}</div>`).join("")}
         `;
 
-        document.getElementById("btnExecuteSub").onclick = () => {
-            const outId = parseInt(document.getElementById("selectSubOut").value, 10);
-            const inId = parseInt(document.getElementById("selectSubIn").value, 10);
-            const res = liveMatch.substitute("home", outId, inId);
-            if (res.success) {
-                this.playSound("whistle");
-                this.showToast(res.message, "success");
-                this.renderLiveSubsControls(liveMatch);
-            } else {
-                this.showToast(res.message, "error");
-            }
+        el.querySelector("#coachFormation").onchange = (e) => {
+            c.formation = e.target.value;
+            this.renderCoaching();
         };
+        el.querySelectorAll("[data-feld]").forEach(b => b.onclick = () => {
+            c.taktik[b.dataset.feld] = b.dataset.wert;
+            this.renderCoaching();
+        });
+        el.querySelectorAll("[data-schnell]").forEach(b => b.onclick = () => {
+            const eintrag = schnell.find(x => x[0] === b.dataset.schnell);
+            if (eintrag) Object.assign(c.taktik, eintrag[2]);
+            this.renderCoaching();
+        });
+    }
+
+    renderCoachCoTrainer(hinweise) {
+        const c = this.coach;
+        const el = document.getElementById("coachPane-cotrainer");
+        if (!el) return;
+        const esc = v => this.escapeHtml(String(v ?? ""));
+        const icons = { kondition: "🔋", verletzung: "🚑", gelb: "🟨", unterzahl: "🟥", ueberzahl: "➕", rueckstand: "⏱️", fuehrung: "🔒", druck: "🧱", zugriff: "🎯", regel: "📋" };
+
+        const liste = hinweise.length
+            ? hinweise.map(h => `<div class="coach-tip ${h.gewicht >= 2 ? "wichtig" : ""}">
+                    <span class="coach-tip-icon">${icons[h.art] || "💬"}</span>
+                    <span class="coach-tip-text">${esc(h.text)}</span>
+                    ${h.spielerId != null && ["kondition", "verletzung", "gelb"].includes(h.art)
+                        ? `<button class="btn btn-sm btn-secondary" data-tip-raus="${esc(h.spielerId)}">Auswechseln</button>` : ""}
+                </div>`).join("")
+            : '<div class="coach-empty">Keine Auffälligkeiten - die Mannschaft liegt im Plan.</div>';
+
+        const schalter = (key, titel, text, gruppe) => {
+            const an = gruppe === "delegation" ? c.delegation[key] : c.autoOeffnen[key];
+            return `<label class="coach-switch">
+                    <input type="checkbox" data-gruppe="${gruppe}" data-key="${key}" ${an ? "checked" : ""}>
+                    <span class="coach-switch-text"><strong>${titel}</strong><br><span class="coach-muted">${text}</span></span>
+                </label>`;
+        };
+
+        el.innerHTML = `
+            <h4 class="coach-h">Einschätzung</h4>
+            <div class="coach-tips">${liste}</div>
+            <h4 class="coach-h">Dem Co-Trainer überlassen</h4>
+            ${schalter("wechsel", "Wechsel", "Er wechselt Müde und Verletzte positionsgerecht aus - du wirst nicht mehr gefragt.", "delegation")}
+            ${schalter("taktik", "Taktik anpassen", "Bei Rückstand stellt er offensiver, bei später Führung sicherer.", "delegation")}
+            <h4 class="coach-h">Seitenlinie automatisch öffnen</h4>
+            ${schalter("halbzeit", "Zur Halbzeit", "Nach der Kabinenansprache.", "auto")}
+            ${schalter("verletzung", "Bei einer Verletzung", "Wenn einer deiner Spieler nicht weiterkann.", "auto")}
+            ${schalter("platzverweis", "Bei einem Platzverweis", "Um die Mannschaft neu zu ordnen.", "auto")}
+        `;
+
+        el.querySelectorAll("input[data-gruppe]").forEach(inp => inp.onchange = () => {
+            const ziel = inp.dataset.gruppe === "delegation" ? c.delegation : c.autoOeffnen;
+            ziel[inp.dataset.key] = inp.checked;
+            this.renderCoaching();
+        });
+        el.querySelectorAll("[data-tip-raus]").forEach(b => b.onclick = () => {
+            c.auswahlRaus = this.coachIdVon(b.dataset.tipRaus);
+            c.tab = "wechsel";
+            this.renderCoaching();
+        });
     }
 
     /**

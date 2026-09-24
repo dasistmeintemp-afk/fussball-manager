@@ -5315,3 +5315,396 @@ body {
 @media (max-width: 560px) {
     .facility-grid { grid-template-columns: 1fr; }
 }
+
+/* ------------------------------------------------------------------
+   Seitenlinie: Wechsel, Taktik und Co-Trainer im Livespiel.
+   Das Fenster liegt über dem Livespiel und hält es an. Auf dem Handy
+   füllt es den Bildschirm, damit jede Zeile mit dem Daumen erreichbar ist.
+   ------------------------------------------------------------------ */
+
+.coaching-overlay {
+    z-index: 2600;
+    background: rgba(2, 6, 23, 0.82);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.coaching-box {
+    width: 100%;
+    max-width: 640px;
+    max-height: 92vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    animation: zoomIn 0.18s ease-out;
+}
+
+.coaching-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border-color);
+    background: #090d16;
+}
+
+.coaching-title { font-size: 17px; font-weight: 800; }
+.coaching-sub { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+
+.coaching-paused {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent-gold);
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    border-radius: 999px;
+    padding: 3px 10px;
+    white-space: nowrap;
+}
+
+.coaching-alert {
+    padding: 10px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    background: rgba(56, 189, 248, 0.12);
+    border-bottom: 1px solid var(--border-color);
+}
+.coaching-alert-verletzung { background: rgba(239, 68, 68, 0.16); }
+.coaching-alert-platzverweis { background: rgba(127, 29, 29, 0.35); }
+.coaching-alert-halbzeit { background: rgba(245, 158, 11, 0.14); }
+
+.coaching-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.coaching-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: var(--text-muted);
+    font: inherit;
+    font-weight: 700;
+    font-size: 14px;
+    padding: 12px 6px;
+    min-height: 46px;
+    cursor: pointer;
+}
+.coaching-tab.active {
+    color: var(--text-main);
+    border-bottom-color: var(--accent-primary);
+    background: rgba(56, 189, 248, 0.06);
+}
+
+.coach-tab-badge {
+    display: inline-block;
+    min-width: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--accent-danger);
+    color: #fff;
+    font-size: 11px;
+    line-height: 18px;
+}
+.coach-tab-badge:empty { display: none; }
+
+.coaching-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px 16px;
+    -webkit-overflow-scrolling: touch;
+    min-height: 0;
+}
+
+.coaching-pane { display: none; }
+.coaching-pane.active { display: block; }
+
+.coaching-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border-color);
+    background: #090d16;
+}
+.coaching-foot-info { font-size: 12px; color: var(--text-muted); }
+.coaching-foot-actions { display: flex; gap: 8px; }
+
+.coach-info {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-soft);
+}
+.coach-hint { font-size: 13px; color: var(--accent-primary); margin: 8px 0 4px; }
+.coach-h { font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin: 14px 0 6px; }
+.coach-muted { font-size: 12px; color: var(--text-dim); margin-top: 8px; }
+.coach-empty { font-size: 13px; color: var(--text-muted); padding: 8px 0; }
+
+.coach-list { display: flex; flex-direction: column; gap: 4px; }
+
+.coach-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.02);
+    font-size: 14px;
+}
+.coach-row.tappable { cursor: pointer; }
+.coach-row.tappable:hover,
+.coach-row.tappable:focus-visible { border-color: var(--border-strong); outline: none; }
+.coach-row.selected { border-color: var(--accent-gold); background: rgba(245, 158, 11, 0.12); }
+.coach-row.off { opacity: 0.5; }
+.coach-row.dim { opacity: 0.6; }
+
+.coach-pos {
+    flex: 0 0 38px;
+    font-size: 11px;
+    font-weight: 800;
+    text-align: center;
+    color: var(--text-soft);
+    background: rgba(148, 163, 184, 0.14);
+    border-radius: 6px;
+    padding: 3px 0;
+}
+.coach-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coach-stars { color: var(--accent-gold); font-size: 12px; }
+.coach-eignung { font-size: 12px; font-weight: 700; white-space: nowrap; }
+
+.coach-fit {
+    flex: 0 0 54px;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+}
+.coach-fit-bar { display: block; height: 100%; }
+.coach-fit-num { flex: 0 0 34px; font-size: 12px; color: var(--text-muted); text-align: right; font-variant-numeric: tabular-nums; }
+
+.coach-tag {
+    font-size: 12px;
+    color: var(--accent-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 40%;
+}
+.coach-tag-rot { color: #fca5a5; }
+
+.coach-x {
+    background: transparent;
+    border: 1px solid var(--border-light);
+    color: var(--text-soft);
+    border-radius: 6px;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    cursor: pointer;
+}
+
+.coach-label { display: block; font-size: 12px; font-weight: 700; color: var(--text-muted); margin: 12px 0 6px; }
+.coach-chips, .coach-quick { display: flex; flex-wrap: wrap; gap: 6px; }
+.coach-quick { margin: 10px 0 4px; }
+
+.coach-chip {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-light);
+    color: var(--text-soft);
+    border-radius: 999px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 14px;
+    min-height: 38px;
+    cursor: pointer;
+}
+.coach-chip.active { background: var(--accent-primary); border-color: var(--accent-primary); color: #04121f; }
+.coach-quick-btn { border-style: dashed; }
+
+.coach-tips { display: flex; flex-direction: column; gap: 6px; }
+.coach-tip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    font-size: 14px;
+}
+.coach-tip.wichtig { border-color: rgba(245, 158, 11, 0.5); background: rgba(245, 158, 11, 0.08); }
+.coach-tip-icon { flex: 0 0 auto; font-size: 18px; }
+.coach-tip-text { flex: 1; }
+
+.coach-switch {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    font-size: 14px;
+}
+.coach-switch input { width: 20px; height: 20px; margin-top: 2px; flex: 0 0 20px; accent-color: var(--accent-primary); }
+
+/* Knopf der Seitenlinie in der Steuerleiste und die Leiste der angemeldeten Wechsel */
+.lm-coach-btn { position: relative; }
+.lm-coach-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--accent-danger);
+    color: #fff;
+    font-size: 11px;
+    line-height: 18px;
+}
+
+.lm-pending-strip {
+    width: 100%;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #bbf7d0;
+    background: rgba(6, 78, 59, 0.55);
+    border-top: 1px solid rgba(34, 197, 94, 0.35);
+    text-align: center;
+}
+.lm-pending-note { color: var(--text-muted); font-weight: 500; }
+
+.live-controls-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Handy: Die Anzeigetafel wird kompakt, die Steuerung eine Zeile aus
+   Symbolen, und das Seitenlinienfenster füllt den Bildschirm. Vorher
+   zielten die Handy-Regeln auf Klassen, die es im Livespiel gar nicht gibt
+   (.lm-scoreboard, .live-match-controls) - die Vereinsnamen liefen aus dem
+   Bild, und die Knöpfe stapelten sich über drei Zeilen. */
+@media (max-width: 640px) {
+    #modalLiveMatch .modal-box {
+        width: 100vw;
+        height: 100dvh;
+        max-height: 100dvh;
+        border-radius: 0;
+    }
+    #modalLiveMatch .live-match-header {
+        flex-direction: column;
+        gap: 6px;
+        padding: 8px 10px;
+    }
+    #modalLiveMatch .live-scoreboard {
+        width: 100%;
+        gap: 6px;
+        justify-content: space-between;
+    }
+    #modalLiveMatch .team-score {
+        flex: 1;
+        min-width: 0;
+        gap: 6px;
+    }
+    #modalLiveMatch .team-score.away { justify-content: flex-end; }
+    #modalLiveMatch .team-name {
+        font-size: 13px;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    #modalLiveMatch .score-digit { font-size: 24px; padding: 0 8px; }
+    #modalLiveMatch .match-time-badge { padding: 3px 8px; font-size: 12px; gap: 4px; }
+    #modalLiveMatch .live-clock { margin-left: 2px; font-size: 11px; }
+    #modalLiveMatch .time-label { display: none; }
+    #modalLiveMatch .live-controls-bar {
+        width: 100%;
+        flex-wrap: nowrap;
+        justify-content: space-between;
+    }
+    #modalLiveMatch .live-controls-bar .btn { min-height: 40px; padding: 6px 10px; }
+    #modalLiveMatch .speed-selector { display: flex; gap: 4px; }
+    #modalLiveMatch .speed-btn { padding: 6px 8px; font-size: 12px; }
+    #modalLiveMatch .lm-btn-text { display: none; }
+    #modalLiveMatch .lm-coach-btn .lm-btn-text { display: inline; }
+    #modalLiveMatch .live-comp-banner { padding: 4px 8px; font-size: 11px; }
+    #modalLiveMatch .live-pitch-wrapper { padding: 6px; }
+    #modalLiveMatch .live-commentary-bar { margin-top: 6px; font-size: 13px; padding: 8px 10px; }
+    #modalLiveMatch .live-match-sidebar { padding: 10px; }
+
+    .coaching-overlay { padding: 0; align-items: stretch; }
+    .coaching-box {
+        max-width: none;
+        max-height: none;
+        height: 100dvh;
+        border-radius: 0;
+        border: none;
+    }
+    .coaching-head { padding: 12px 14px; }
+    .coaching-body { padding: 10px 12px 14px; }
+    .coaching-foot { flex-direction: column; align-items: stretch; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
+    .coaching-foot-actions { display: grid; grid-template-columns: 1fr 2fr; }
+    .coaching-foot-actions .btn { min-height: 46px; }
+    .coach-fit { flex-basis: 40px; }
+}
+
+@media (max-width: 380px) {
+    #modalLiveMatch .speed-btn { padding: 6px 6px; font-size: 11px; }
+    #modalLiveMatch .lm-coach-btn .lm-btn-text { display: none; }
+}
+
+/* Solange die Vorbereitung läuft, steht sie hervorgehoben oben im Handymenü */
+.mobile-drawer-item.drawer-item-highlight {
+    border-color: rgba(245, 158, 11, 0.55);
+    background: rgba(245, 158, 11, 0.1);
+}
+.mobile-drawer-item { position: relative; }
+
+/* Tempoknöpfe: am Handy die Abspielgeschwindigkeit statt des Wortes */
+.lm-speed-kurz { display: none; }
+@media (max-width: 640px) {
+    #modalLiveMatch .lm-speed-lang { display: none; }
+    #modalLiveMatch .lm-speed-kurz { display: inline; }
+    #modalLiveMatch .speed-btn { min-width: 40px; }
+}
+
+/* Tablet und Desktop: Wettbewerb über die volle Breite, darunter Anzeigetafel
+   und Steuerung - jede in sich ohne Umbruch. Vorher teilten sich drei Blöcke
+   eine Zeile: Die Vereinsnamen brachen in zwei Zeilen, und die Knöpfe
+   stapelten sich auf dem Tablet senkrecht übereinander. */
+@media (min-width: 641px) {
+    #modalLiveMatch .live-match-header {
+        flex-wrap: wrap;
+        justify-content: center;
+        column-gap: 28px;
+        row-gap: 8px;
+        padding: 10px 20px 12px;
+    }
+    #modalLiveMatch .live-comp-banner { flex: 1 1 100%; }
+    #modalLiveMatch .live-scoreboard { flex: 0 1 auto; min-width: 0; }
+    #modalLiveMatch .team-name {
+        white-space: nowrap;
+        max-width: 230px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    #modalLiveMatch .live-controls-bar { flex-wrap: nowrap; }
+    #modalLiveMatch .lm-pending-strip { flex: 1 1 100%; border-radius: var(--radius-sm); }
+}
+@media (max-width: 640px) {
+    #modalLiveMatch .lm-pending-strip { margin: 0 -10px -8px; width: calc(100% + 20px); }
+}

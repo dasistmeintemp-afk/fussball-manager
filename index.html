@@ -1432,14 +1432,19 @@
                     </div>
 
                     <div class="live-controls-bar">
-                        <button class="btn btn-sm btn-icon" id="btnLmPause">⏸ Pause</button>
+                        <button class="btn btn-sm btn-icon" id="btnLmPause" aria-label="Pause">⏸<span class="lm-btn-text"> Pause</span></button>
                         <div class="speed-selector">
-                            <button class="btn btn-sm speed-btn active" data-speed="1" title="Langsam (realistisch)">Langsam</button>
-                            <button class="btn btn-sm speed-btn" data-speed="2" title="Normal">Normal</button>
-                            <button class="btn btn-sm speed-btn" data-speed="4" title="Schnell">Schnell</button>
+                            <button class="btn btn-sm speed-btn active" data-speed="1" title="Langsam - echtes Tempo"><span class="lm-speed-lang">Langsam</span><span class="lm-speed-kurz">1×</span></button>
+                            <button class="btn btn-sm speed-btn" data-speed="2" title="Normal - knapp dreifach"><span class="lm-speed-lang">Normal</span><span class="lm-speed-kurz">3×</span></button>
+                            <button class="btn btn-sm speed-btn" data-speed="4" title="Schnell - gut sechsfach"><span class="lm-speed-lang">Schnell</span><span class="lm-speed-kurz">6×</span></button>
                         </div>
-                        <button class="btn btn-sm btn-secondary" id="btnLmSkip">⚡ Sofort-Ergebnis</button>
+                        <button class="btn btn-sm btn-primary lm-coach-btn" id="btnLmCoaching" title="Wechsel, Taktik und Co-Trainer - das Spiel pausiert">
+                            📋<span class="lm-btn-text"> Seitenlinie</span>
+                            <span class="lm-coach-badge" id="lmCoachBadge" style="display:none;"></span>
+                        </button>
+                        <button class="btn btn-sm btn-secondary" id="btnLmSkip" aria-label="Sofort-Ergebnis">⚡<span class="lm-btn-text"> Sofort-Ergebnis</span></button>
                     </div>
+                    <div class="lm-pending-strip" id="lmPendingStrip" style="display:none;"></div>
                 </div>
 
                 <div class="live-match-body">
@@ -1455,7 +1460,6 @@
                     <div class="live-match-sidebar">
                         <div class="live-tab-buttons">
                             <button class="btn btn-sm live-subtab active" data-subtab="stats">Statistiken</button>
-                            <button class="btn btn-sm live-subtab" data-subtab="coaching">Taktik & Wechsel</button>
                             <button class="btn btn-sm live-subtab" data-subtab="events">Ticker</button>
                         </div>
 
@@ -1506,51 +1510,43 @@
                             </div>
                         </div>
 
-                        <!-- Subtab: In-Game Coaching -->
-                        <div class="live-subtab-pane" id="lmSubtab-coaching">
-                            <h4>Live-Taktik ändern</h4>
-                            <div class="mb-2">
-                                <label style="font-size:11px; color:var(--text-muted);">Mentalität:</label>
-                                <select id="lmLiveMentality" class="styled-select mb-1">
-                                    <option value="very_defensive">Sehr defensiv</option>
-                                    <option value="defensive">Defensiv</option>
-                                    <option value="balanced" selected>Ausgeglichen</option>
-                                    <option value="offensive">Offensiv</option>
-                                    <option value="very_offensive">Sehr offensiv</option>
-                                </select>
-                            </div>
-                            <div class="mb-2">
-                                <label style="font-size:11px; color:var(--text-muted);">Pressing:</label>
-                                <select id="lmLivePressing" class="styled-select mb-1">
-                                    <option value="low">Niedrig</option>
-                                    <option value="medium" selected>Mittel</option>
-                                    <option value="high">Hoch</option>
-                                </select>
-                            </div>
-                            <div class="mb-2">
-                                <label style="font-size:11px; color:var(--text-muted);">Tempo:</label>
-                                <select id="lmLiveTempo" class="styled-select mb-1">
-                                    <option value="slow">Bedächtig</option>
-                                    <option value="normal" selected>Normal</option>
-                                    <option value="fast">Hoch</option>
-                                </select>
-                            </div>
-
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; margin-bottom:6px;">
-                                <h4 style="margin:0;">Auswechslungen:</h4>
-                                <span class="badge badge-info" id="lmSubsCounter">0 / 5</span>
-                            </div>
-                            <div class="live-subs-list" id="lmLiveSubsList">
-                                <!-- Dynamisch Auswechselbare Spieler -->
-                            </div>
-                        </div>
-
                         <!-- Subtab: Event Ticker -->
                         <div class="live-subtab-pane" id="lmSubtab-events">
                             <div class="event-ticker-feed" id="lmEventFeed">
                                 <!-- Events -->
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Seitenlinie (Wechsel, Taktik, Co-Trainer) - pausiert das Livespiel -->
+        <div class="modal-overlay coaching-overlay" id="modalCoaching" style="display: none;">
+            <div class="coaching-box" role="dialog" aria-modal="true" aria-labelledby="coachTitle">
+                <div class="coaching-head">
+                    <div class="coaching-head-text">
+                        <div class="coaching-title" id="coachTitle">📋 Seitenlinie</div>
+                        <div class="coaching-sub" id="coachSub">Spiel pausiert</div>
+                    </div>
+                    <span class="coaching-paused">⏸ pausiert</span>
+                </div>
+                <div class="coaching-alert" id="coachAlert" style="display: none;"></div>
+                <div class="coaching-tabs" role="tablist">
+                    <button class="coaching-tab active" data-coachtab="wechsel" role="tab">🔄 Wechsel</button>
+                    <button class="coaching-tab" data-coachtab="taktik" role="tab">🧭 Taktik</button>
+                    <button class="coaching-tab" data-coachtab="cotrainer" role="tab">🗣️ Co-Trainer <span class="coach-tab-badge" id="coachTipCount"></span></button>
+                </div>
+                <div class="coaching-body">
+                    <div class="coaching-pane active" id="coachPane-wechsel"></div>
+                    <div class="coaching-pane" id="coachPane-taktik"></div>
+                    <div class="coaching-pane" id="coachPane-cotrainer"></div>
+                </div>
+                <div class="coaching-foot">
+                    <div class="coaching-foot-info" id="coachFootInfo"></div>
+                    <div class="coaching-foot-actions">
+                        <button class="btn btn-secondary" id="btnCoachDiscard">Verwerfen</button>
+                        <button class="btn btn-primary" id="btnCoachApply">✓ Übernehmen &amp; weiter</button>
                     </div>
                 </div>
             </div>
@@ -1687,6 +1683,11 @@
                     <button class="modal-close" id="btnCloseMobileDrawer">×</button>
                 </div>
                 <div class="mobile-drawer-grid">
+                    <button class="mobile-drawer-item drawer-item-highlight" data-tab="preseason" id="mobileNavPreseason" style="display:none;">
+                        <span class="drawer-icon">☀️</span>
+                        <span class="drawer-text">Vorbereitung</span>
+                        <span class="badge" id="mobilePreseasonBadge" style="display:none;">0</span>
+                    </button>
                     <button class="mobile-drawer-item" data-tab="club">
                         <span class="drawer-icon">🏛️</span>
                         <span class="drawer-text">Verein</span>

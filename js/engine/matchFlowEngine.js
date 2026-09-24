@@ -148,10 +148,10 @@ class MatchFlowEngine {
         // Wie viel Risiko darf ein Pass haben?
         let forwardDrive = 1.0;
         let riskAversion = 1.0;
-        if (mentality === "very_offensive") { forwardDrive = 1.7; riskAversion = 0.72; }
-        else if (mentality === "offensive") { forwardDrive = 1.3; riskAversion = 0.86; }
-        else if (mentality === "defensive") { forwardDrive = 0.68; riskAversion = 1.2; }
-        else if (mentality === "very_defensive") { forwardDrive = 0.42; riskAversion = 1.45; }
+        if (mentality === "very_offensive") { forwardDrive = 2.3; riskAversion = 0.66; }
+        else if (mentality === "offensive") { forwardDrive = 1.45; riskAversion = 0.84; }
+        else if (mentality === "defensive") { forwardDrive = 0.58; riskAversion = 1.25; }
+        else if (mentality === "very_defensive") { forwardDrive = 0.24; riskAversion = 1.6; }
 
         // Je länger eine Mannschaft den Ball hält, desto entschlossener rückt
         // sie auf - so entstehen echte Angriffszüge statt Dauerquerpässe.
@@ -209,8 +209,37 @@ class MatchFlowEngine {
             // wachsen.
             const nutzbarerRaumgewinn = 15;
             const progressScore = forward > 0
-                ? Math.min(1, forward / nutzbarerRaumgewinn) * Math.min(1.35, forwardDrive)
+                // Die Kappe lag bei 1.35 und schnitt damit genau das ab, was
+                // "sehr offensiv" ausmacht: Der Regler stand auf 1.7, wirkte
+                // aber wie 1.35. Gemessen trennte die Mentalitaet das
+                // Vorwaertsspiel nur um neun Prozentpunkte statt der
+                // erwarteten zwoelf.
+                ? Math.min(1, forward / nutzbarerRaumgewinn) * Math.min(2.4, forwardDrive)
                 : Math.max(-0.5, forward / 45) * forwardDrive;
+
+            // Die Mentalitaet als eigene Stimme, nicht nur als Faktor auf den
+            // Raumgewinn.
+            //
+            // Als blosser Multiplikator verschwand sie, sobald etwas anderes
+            // den Ausschlag gab - Passlaenge, freier Raum, der Weg zur
+            // naechsten Szene. Und sie verschwand asymmetrisch: Ein kleiner
+            // Faktor macht den Raumgewinn nur *unwichtig*, er macht den
+            // Rueckpass nicht attraktiv. Eine sehr defensive Mannschaft spielte
+            // deshalb fast genauso viel nach vorne wie eine sehr offensive -
+            // gemessen 56 gegen 46 Prozent.
+            //
+            // Hier steht die Absicht selbst: Wer offensiv spielt, sucht den
+            // Ball nach vorne und meidet den Rueckpass; wer defensiv spielt,
+            // genau umgekehrt. Bei ausgeglichener Einstellung ist der Term
+            // null - die Voreinstellung bleibt unberuehrt.
+            //
+            // Mit 0.55 lag der Abstand ueber drei Messungen bei 19 bis 40
+            // Prozentpunkten - im unguenstigsten Fall knapp ueber der Grenze.
+            // 0.75 gibt der Einstellung genug Gewicht, dass sie auch in einer
+            // Partie wirkt, in der die eigene Mannschaft kaum ueber die
+            // Mittellinie kommt.
+            const richtung = Math.sign(forward) * Math.min(1, Math.abs(forward) / 12);
+            const mentalScore = richtung * (forwardDrive - 1) * 0.75;
 
             // Flügelfokus: "links" ist die linke Seite aus Sicht der
             // Angriffsrichtung, nicht die linke Bildschirmhälfte. Wer nach
@@ -235,15 +264,20 @@ class MatchFlowEngine {
             let anlaufScore = 0;
             if (ziel) {
                 if (mate.id === ziel.id) {
-                    anlaufScore = 1.3;
+                    // Schwaecher als die Taktik, nicht staerker: Mit 1.3 schlug
+                    // die Steuerung auf den naechsten Protagonisten jede
+                    // Mentalitaet - offensiv und defensiv spielten dieselben
+                    // Paesse, weil beide vor allem denselben Mann suchten.
+                    anlaufScore = 0.75;
                 } else {
                     const danach = Math.hypot(mate.x - ziel.x, mate.y - ziel.y);
-                    anlaufScore = Math.max(-0.25, Math.min(0.6, (zielAbstand - danach) / 22));
+                    anlaufScore = Math.max(-0.2, Math.min(0.38, (zielAbstand - danach) / 26));
                 }
             }
 
             const score = lengthScore * 0.8
                 + anlaufScore
+                + mentalScore
                 + progressScore * progressWeight
                 + space * spaceWeight
                 + focusScore

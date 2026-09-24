@@ -61,6 +61,15 @@ const SZENEN_ENDE = ["halftime", "fulltime", "substitution", "goal", "injury", "
 /** Ruhende Baelle haben ihren festen Platz auf dem Feld */
 const RUHENDER_BALL = ["corner", "penalty", "freekick", "throwin", "goalkick", "kickoff"];
 
+/**
+ * Ereignisse, deren Ort nicht vorgeschrieben ist.
+ *
+ * Ein Schuss muss aus einer Schussposition kommen, eine Flanke vom Fluegel.
+ * Ein Steilpass, ein Dribbling oder ein Zweikampf passiert dagegen dort, wo
+ * der Spieler gerade steht - fuer die darf die Szene zu ihm kommen.
+ */
+const ORTSFREI = ["through_ball", "dribble", "tackle", "pass"];
+
 /** Wie stark ein Mannschaftsteil der Ballbewegung über das Feld folgt */
 const LINE_FOLLOW_WEIGHT = { gk: 0.10, def: 0.52, mid: 0.70, att: 0.86 };
 
@@ -71,7 +80,34 @@ const LINE_FOLLOW_WEIGHT = { gk: 0.10, def: 0.52, mid: 0.70, att: 0.86 };
 const GROUP_PUSH = { gk: 0.25, def: 0.85, mid: 1.1, att: 1.5 };
 
 /** Tempo (Feldeinheiten pro Sekunde) je Mannschaftsteil als Basiswert */
-const LINE_BASE_SPEED = { gk: 9, def: 11, mid: 12, att: 12.5 };
+/**
+ * Tempo (Feldeinheiten pro Sekunde) je Mannschaftsteil als Basiswert.
+ *
+ * Gemessen liefen die Spieler mit vierzehn Metern je Sekunde im Median und
+ * zweiundzwanzig im oberen Zehntel - ein Weltklassesprinter schafft zehn.
+ * Auf dem Bildschirm sah das nicht nach Fussball aus, sondern nach Flipper:
+ * Zweiundzwanzig Spieler, die mit Mopedgeschwindigkeit ueber den Platz
+ * schiessen.
+ *
+ * Halbiert liegt der Median bei knapp acht und die Spitze bei knapp dreissig.
+ * Immer noch schneller als echt - das Spiel ist neunundzwanzigfach gerafft und
+ * kaeme sonst nirgends an -, aber in einer Groessenordnung, in der eine
+ * Bewegung als Lauf lesbar ist und nicht als Sprung.
+ */
+const LINE_BASE_SPEED = { gk: 4.5, def: 5.5, mid: 6, att: 6.25 };
+
+/** Wie sehr ein Spieler im Anlauf zulegt - ein Sprint, keine Rakete */
+const ANLAUF_URGENZ = 2.2;
+
+/**
+ * Was niemand ueberschreitet, egal wie dringend es ist.
+ *
+ * Ein Weltklassesprinter laeuft zehn Meter je Sekunde. Auf dem gerafften
+ * Bildschirm darf es mehr sein, sonst kaeme niemand rechtzeitig an - aber
+ * dreiundvierzig Meter je Sekunde, wie gemessen, ist kein Sprint mehr,
+ * sondern ein Sprung. Diese Decke gilt ueber alle Dringlichkeiten hinweg.
+ */
+const SPRINT_DECKE = 14;
 
 /**
  * Wer im Angriff die Breite haelt. Fluegelspieler und Aussenverteidiger
@@ -163,8 +199,19 @@ class LiveMatchDirector {
      * Die Spieluhr laeuft gut zwoelffach gerafft, ein Pass darf auf dem
      * Bildschirm also schneller sein als auf dem Rasen - aber er muss als
      * Pass erkennbar bleiben.
+     *
+     * Gemessen war es vor allem das obere Ende, das nicht stimmte: Der Median
+     * lag bei vierunddreissig Metern je Sekunde, das obere Zehntel aber bei
+     * siebzig - und ein Schuss durfte mit sechsundsiebzig fliegen, dreimal so
+     * schnell wie ein echter. Das war das Springen durch die Gegend.
+     *
+     * Also sind die Spitzen gekappt statt jeden kurzen Pass gebremst: Flanke
+     * und Schuss liegen jetzt auf Passniveau. Gemessen faellt das obere
+     * Zehntel von siebzig auf fuenfundfuenfzig, der Median von vierunddreissig
+     * auf neunundzwanzig - und das Aufbauspiel verliert dabei fast nichts,
+     * waehrend eine gleichmaessige Bremsung ein Drittel der Aktionen kostete.
      */
-    static BALL_TEMPO = { pass: 40, cross: 50, shot: 72, dead: 32 };
+    static BALL_TEMPO = { pass: 34, cross: 30, shot: 34, dead: 32 };
 
     /**
      * Wie lange der Ball zwischen zwei Etappen einer Kombination bei einem
@@ -837,6 +884,44 @@ class LiveMatchDirector {
             ev.start = { x: roh.x, y: roh.y };
             ev.end = { x: roh.x, y: roh.y };
         });
+
+        this.verankereBeimSpieler(events[0]);
+    }
+
+    /**
+     * Wo die Geometrie es zulaesst, kommt das Ereignis zum Spieler.
+     *
+     * Der Protagonist stand im Median zwanzig Meter von dem Punkt entfernt, den
+     * die Zeitleiste fuer sein Ereignis notiert hat - und musste dorthin
+     * laufen, bevor die Szene beginnen konnte. Gemessen ging dafuer knapp die
+     * Haelfte der Uebertragung drauf.
+     *
+     * Fuer einen Schuss ist dieser Punkt wichtig: Er muss aus einer Lage
+     * kommen, aus der man schiesst. Ein Steilpass, ein Dribbling oder ein
+     * Zweikampf hat dagegen keinen vorgeschriebenen Ort - so etwas passiert da,
+     * wo der Spieler gerade ist. Also wandert das Ereignis zu ihm, statt ihn zu
+     * sich zu rufen, und die Richtung der Aktion bleibt erhalten.
+     */
+    verankereBeimSpieler(ev) {
+        if (!ev || !ORTSFREI.includes(ev.type)) return;
+        const held = this.getPlayer2D(this.protagonistId(ev));
+        if (!held || !ev.start) return;
+
+        // Bildschirm- zurueck in Zeitleisten-Koordinaten
+        const rohX = this.isSecondHalf ? 100 - held.x : held.x;
+        const rohY = this.isSecondHalf ? 100 - held.y : held.y;
+
+        const dx = rohX - ev.start.x;
+        const dy = rohY - ev.start.y;
+        if (Math.hypot(dx, dy) < 6) return;
+
+        ev.start = { x: rohX, y: rohY };
+        if (ev.end && typeof ev.end.x === "number") {
+            ev.end = {
+                x: Math.max(3, Math.min(97, ev.end.x + dx)),
+                y: Math.max(5, Math.min(95, ev.end.y + dy))
+            };
+        }
     }
 
     /**
@@ -1069,8 +1154,22 @@ class LiveMatchDirector {
             const laufweg = held
                 ? Math.hypot(held.x - start.x, held.y - start.y)
                 : Math.hypot(ball.x - start.x, ball.y - start.y);
-            const obergrenze = ev.type === "corner" ? 6.5 : 4.2;
-            this.phaseTimer = Math.min(obergrenze, 0.55 + laufweg / 16) * scale + 0.4;
+            // Der Anlauf bekommt die Zeit, die der Weg braucht - nicht
+            // umgekehrt.
+            //
+            // Vorher wurde die Hoechstdauer mit der Zeitraffung multipliziert:
+            // Bei Tempo 2 blieben rund sieben Zehntelsekunden, um zwanzig Meter
+            // zu ueberbruecken. Der Spieler musste dafuer mit dreissig Metern
+            // je Sekunde laufen - und genau das sah man, ein Zucken statt eines
+            // Laufs. Gemessen erreichte das obere Ende dreiundvierzig Meter je
+            // Sekunde.
+            //
+            // Ein Laufweg ist aber kein Teil der Spieluhr: Er braucht
+            // Bildschirmzeit, egal wie schnell die Minuten vergehen. Also wird
+            // hier mit dem Tempo gerechnet, das ein Spieler wirklich hat.
+            const laufTempo = LINE_BASE_SPEED.mid * ANLAUF_URGENZ * this.getMotionTempo();
+            const obergrenze = ev.type === "corner" ? 4.5 : 3.2;
+            this.phaseTimer = Math.min(obergrenze, 0.35 + laufweg / laufTempo) + 0.25;
             // Der Anlauf endet nie, bevor der Ball seinen Weg hinter sich hat -
             // und danach braucht der Spieler noch einen Augenblick, um ihn
             // anzunehmen. Mit dem langsameren, glaubwuerdigen Ball reichte der
@@ -1459,13 +1558,20 @@ class LiveMatchDirector {
         };
 
         if (passer) {
-            // Im Anlauf wird gesprintet - der Ausführende soll rechtzeitig da sein
-            setRole(passer, start.x, start.y, phase === "approach" ? 2.1 : 1.6);
+            // Im Anlauf wird gesprintet - der Ausfuehrende soll rechtzeitig da
+            // sein. Seit das Grundtempo halbiert ist, muss dieser Zuschlag
+            // groesser ausfallen: Mit dem alten Wert stand der im Ticker
+            // genannte Spieler nur noch bei 76 statt bei 99 Prozent der
+            // Ereignisse am Ort - er kam schlicht nicht mehr an.
+            //
+            // Das ist auch richtig so: Wer zur Szene muss, sprintet. Das
+            // ruhige Trabtempo gilt fuer die zweiundzwanzig anderen.
+            setRole(passer, start.x, start.y, phase === "approach" ? ANLAUF_URGENZ : 1.9);
         }
         if (receiver && receiver !== passer) {
             const tx = phase === "approach" ? (start.x + end.x) / 2 : Math.max(4, Math.min(96, end.x - this.attackDir(receiver.team) * 5));
             const ty = phase === "approach" ? (start.y + end.y) / 2 : end.y;
-            setRole(receiver, tx, ty, 1.8);
+            setRole(receiver, tx, ty, phase === "approach" ? ANLAUF_URGENZ * 0.8 : 1.8);
         }
         if (keeper) {
             if (ev.type === "save" && phase === "action") {
@@ -1589,11 +1695,23 @@ class LiveMatchDirector {
             return;
         }
 
+        // Der Wartetakt laeuft, waehrend der Ball unterwegs ist.
+        //
+        // Vorher begann er erst, wenn der Ball angekommen und angenommen war -
+        // Flugzeit, Annahme und Takt addierten sich also. Solange der Ball mit
+        // vierzig Metern je Sekunde durch die Gegend schoss, fiel das nicht
+        // auf. Mit glaubwuerdigem Balltempo dagegen brach das Aufbauspiel
+        // zusammen: gemessen von sechsundvierzig auf sechzehn Aktionen je
+        // Partie, weil der Ball zwei Drittel der Zeit unterwegs war und in
+        // dieser Zeit nichts gezaehlt wurde.
+        //
+        // Ein Spieler entscheidet aber, waehrend der Ball zu ihm unterwegs
+        // ist, nicht erst danach. Also laeuft die Uhr mit, und gespielt wird,
+        // sobald der Ball liegt.
+        this.ambientTimer += dt;
+
         // Ein Ball, der noch unterwegs ist, wird nicht weitergespielt - und wer
-        // ihn gerade bekommen hat, nimmt ihn erst an. Der Wartetakt laeuft
-        // dabei weiter: Wuerde er hier zurueckgesetzt, kaeme nach jeder
-        // Annahme noch die volle Wartezeit obendrauf und das Aufbauspiel
-        // verhungerte.
+        // ihn gerade bekommen hat, nimmt ihn erst an.
         if (this.match.ball.inFlight) return;
         if (this._annahmeTimer > 0) {
             this._annahmeTimer -= dt;
@@ -1617,7 +1735,6 @@ class LiveMatchDirector {
         // tausend Zuspiele. Weil der Anlauf einer Szene jetzt abwartet, bis
         // der Ball seinen Weg über die Mitspieler hinter sich hat, bleibt für
         // das laufende Spiel weniger Zeit - die muss dafür mehr zeigen.
-        this.ambientTimer += dt;
         if (this.ambientTimer < this.ambientInterval * this.getSpeedScale() * this.AMBIENT_TAKT) return;
         this.ambientTimer = 0;
 
@@ -1938,17 +2055,32 @@ class LiveMatchDirector {
         // Der Ball wird auf den Anstoßpunkt gelegt
         const ball = this.match.ball;
         const dist = Math.hypot(50 - ball.x, 50 - ball.y);
-        this.setBallTravel(50, 50, Math.max(0.3, Math.min(1.1, dist / 90)) * scale + 0.2, "pass");
+        this.setBallTravel(50, 50, Math.max(0.3, Math.min(1.1, dist / 90)) * scale + 0.2, "dead");
+        const legeDauer = this.match.ball.travelDuration || 0;
 
+        // Vor dem Pfiff liegt der Ball auf dem Punkt - niemand traegt ihn.
+        //
+        // Der Anstossschuetze war schon waehrend der Aufstellung Ballfuehrender,
+        // und die Ballbindung zog den Ball mit ihm mit. Solange er in einem
+        // Wimpernschlag auf seiner Position stand, fiel das nicht auf; seit er
+        // dorthin trabt, wanderte der Ball drei Meter neben den Anstosspunkt -
+        // und der Schiedsrichter pfiff das an.
         const { taker, partner } = this.pickKickoffTakers(team);
-        this.carrierId = taker ? taker.id : null;
+        this.kickoffTakerId = taker ? taker.id : null;
+        this.carrierId = null;
         this.kickoffPartnerId = partner ? partner.id : null;
         this.match.ball.holderId = null;
         this.match.activePlayerId = taker ? taker.id : this.match.activePlayerId;
 
         // Höchstdauer der Aufstellung: Wer nach einem Tor von der Eckfahne
         // zurücktrabt, braucht am längsten.
-        const maxLineup = (reason === "goal" ? 9 : reason === "halftime" ? 7 : 5) * scale + 2.2;
+        // Die Aufstellung endet nie, bevor der Ball auf dem Punkt liegt.
+        // Seit der Ball glaubwuerdig langsam rollt, lief die Hoechstdauer sonst
+        // ab, waehrend er noch unterwegs war - der Schiedsrichter pfiff einen
+        // Anstoss an, bei dem der Ball zwei Meter neben dem Punkt lag.
+        const maxLineup = Math.max(
+            (reason === "goal" ? 9 : reason === "halftime" ? 7 : 5) * scale + 2.2,
+            legeDauer + 0.6);
 
         this.kickoff = { team, reason, phase: "lineup", timer: maxLineup };
         this.match.kickoff = { team, phase: "lineup", reason };
@@ -1992,6 +2124,8 @@ class LiveMatchDirector {
             const ballLiegt = !this.match.ball.inFlight;
             if ((ballLiegt && this.kickoffReady()) || k.timer <= 0) {
                 k.phase = "whistle";
+                // Jetzt erst nimmt sich der Schuetze den Ball
+                this.carrierId = this.kickoffTakerId || this.carrierId;
                 k.timer = 0.7 * this.getSpeedScale() + 0.45;
                 this.match.kickoff = { team: k.team, phase: "whistle", reason: k.reason };
                 this.cueSound("whistle");
@@ -2057,8 +2191,21 @@ class LiveMatchDirector {
         // Verteidiger neun Meter vor dem Ball auf der Linie zum eigenen Tor.
         this.setPieceWall = kind === "freekick" ? this.buildWall(team, x, y) : [];
 
-        this.deadBallTimer = (kind === "goalkick" ? 1.2 : kind === "corner" ? 1.5
+        // Der ruhende Ball wartet, bis der Schuetze bei ihm ist.
+        //
+        // Auch hier wurde die Wartezeit mit der Zeitraffung multipliziert: Bei
+        // Tempo 2 blieben einem Eckenschuetzen rund eine halbe Bildsekunde, um
+        // an die Fahne zu kommen. Gemessen lag der Ball dadurch in siebenund-
+        // dreissig Prozent der Ruhendball-Zeit allein da - und ein Ball, neben
+        // dem niemand steht, sieht nach Standbild aus, nicht nach Fussball.
+        const grund = (kind === "goalkick" ? 1.2 : kind === "corner" ? 1.5
             : kind === "freekick" ? (this.setPieceWall.length > 0 ? 2.0 : 1.1) : 0.85) * speedScale + 0.3;
+
+        const wegZumBall = executor
+            ? Math.hypot(executor.x - x, executor.y - y)
+            : 0;
+        const laufTempo = LINE_BASE_SPEED.mid * ANLAUF_URGENZ * this.getMotionTempo();
+        this.deadBallTimer = Math.max(grund, Math.min(3.2, wegZumBall / laufTempo + 0.35));
         if (kind !== "throwin") this.cueSound("whistle");
         this.match.setPiece = { kind, team, x, y };
 
@@ -2678,8 +2825,9 @@ class LiveMatchDirector {
             let dx = (target.x - p.x) * k;
             let dy = (target.y - p.y) * k;
 
-            const maxStep = p.baseSpeed * (target.urgency || 1)
-                * (0.62 + p.freshness * 0.38) * tempo * dt;
+            const maxStep = Math.min(
+                p.baseSpeed * (target.urgency || 1) * (0.62 + p.freshness * 0.38),
+                SPRINT_DECKE) * tempo * dt;
             const stepLen = Math.hypot(dx, dy);
             if (stepLen > maxStep && stepLen > 0) {
                 dx *= maxStep / stepLen;
@@ -2729,6 +2877,54 @@ class LiveMatchDirector {
         return set;
     }
 
+    /**
+     * Worauf sich die Mannschaft ausrichtet: nicht auf den Ball dort, wo er
+     * gerade ist, sondern dort, wo er ankommt.
+     *
+     * Die Elf schob sich bisher nach der aktuellen Ballposition. Waehrend eines
+     * Zuspiels lief der Ball damit allen davon: Gemessen war er in siebzehn
+     * Prozent der Uebertragung weiter als acht Meter von jedem Spieler entfernt
+     * - er lag sichtbar allein auf dem Rasen. Den Ball zu bremsen half nicht
+     * (achtzehn Prozent), weil das Problem nicht sein Tempo ist, sondern dass
+     * niemand vorauslaeuft.
+     *
+     * Im Fussball setzt sich die ganze Mannschaft in Bewegung, sobald der Ball
+     * abgespielt ist - keiner wartet ab, wo er niedergeht.
+     */
+    ballBezug() {
+        const ball = this.match.ball;
+        if (!ball.inFlight || typeof ball.targetX !== "number") {
+            return { x: ball.x, y: ball.y };
+        }
+        const W = 0.85;
+        return {
+            x: ball.x + (ball.targetX - ball.x) * W,
+            y: ball.y + (ball.targetY - ball.y) * W
+        };
+    }
+
+    /**
+     * Wer dem fliegenden Ball entgegengeht: der Angespielte und der naechste
+     * Gegenspieler. Alle anderen behalten ihre Form.
+     */
+    laeuftDemBallEntgegen(p) {
+        if (p.pos === "TW") return false;
+        if (p.id === this.carrierId) return true;
+
+        const ball = this.match.ball;
+        const ziel = { x: ball.targetX, y: ball.targetY };
+        const gegner = (this.match.players2D || [])
+            .filter(q => q.team !== this.possessionTeam && q.pos !== "TW");
+        if (!gegner.length) return false;
+
+        let naechster = gegner[0], best = Infinity;
+        gegner.forEach(q => {
+            const d = Math.hypot(q.x - ziel.x, q.y - ziel.y);
+            if (d < best) { best = d; naechster = q; }
+        });
+        return naechster.id === p.id;
+    }
+
     computeTarget(p, ball, pressers) {
         const match = this.match;
 
@@ -2754,6 +2950,17 @@ class LiveMatchDirector {
         // Wer mit dem Ball laeuft, laeuft dorthin, wohin er ihn mitnimmt
         if (this.carryTarget && p.id === this.carryTarget.id) {
             return { x: this.carryTarget.x, y: this.carryTarget.y, urgency: 1.45, sprint: true };
+        }
+
+        // Wer dem Ball am naechsten ist, laeuft dorthin, wo er ankommt.
+        //
+        // Die Mannschaftsform bleibt am echten Ball - sie an den Landepunkt zu
+        // haengen machte offensive und defensive Mentalitaet ununterscheidbar
+        // (siebenundvierzig gegen siebenundvierzig Prozent Vorwaertsspiel).
+        // Antizipiert wird dort, wo es im Fussball auch passiert: beim
+        // Angespielten und bei dem, der ihn attackieren will.
+        if (ball.inFlight && typeof ball.targetX === "number" && this.laeuftDemBallEntgegen(p)) {
+            return { x: ball.targetX, y: ball.targetY, urgency: p.id === this.carrierId ? 1.9 : 1.55, sprint: true };
         }
 
         if (p.pos === "TW") return this.computeKeeperTarget(p, ball);

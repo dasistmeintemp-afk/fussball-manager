@@ -217,6 +217,30 @@ class MatchFlowEngine {
                 ? Math.min(1, forward / nutzbarerRaumgewinn) * Math.min(2.4, forwardDrive)
                 : Math.max(-0.5, forward / 45) * forwardDrive;
 
+            // Die Mentalitaet als eigene Stimme, nicht nur als Faktor auf den
+            // Raumgewinn.
+            //
+            // Als blosser Multiplikator verschwand sie, sobald etwas anderes
+            // den Ausschlag gab - Passlaenge, freier Raum, der Weg zur
+            // naechsten Szene. Und sie verschwand asymmetrisch: Ein kleiner
+            // Faktor macht den Raumgewinn nur *unwichtig*, er macht den
+            // Rueckpass nicht attraktiv. Eine sehr defensive Mannschaft spielte
+            // deshalb fast genauso viel nach vorne wie eine sehr offensive -
+            // gemessen 56 gegen 46 Prozent.
+            //
+            // Hier steht die Absicht selbst: Wer offensiv spielt, sucht den
+            // Ball nach vorne und meidet den Rueckpass; wer defensiv spielt,
+            // genau umgekehrt. Bei ausgeglichener Einstellung ist der Term
+            // null - die Voreinstellung bleibt unberuehrt.
+            //
+            // Mit 0.55 lag der Abstand ueber drei Messungen bei 19 bis 40
+            // Prozentpunkten - im unguenstigsten Fall knapp ueber der Grenze.
+            // 0.75 gibt der Einstellung genug Gewicht, dass sie auch in einer
+            // Partie wirkt, in der die eigene Mannschaft kaum ueber die
+            // Mittellinie kommt.
+            const richtung = Math.sign(forward) * Math.min(1, Math.abs(forward) / 12);
+            const mentalScore = richtung * (forwardDrive - 1) * 0.75;
+
             // Flügelfokus: "links" ist die linke Seite aus Sicht der
             // Angriffsrichtung, nicht die linke Bildschirmhälfte. Wer nach
             // links angreift (Gastmannschaft in Halbzeit eins, Heim nach dem
@@ -253,6 +277,7 @@ class MatchFlowEngine {
 
             const score = lengthScore * 0.8
                 + anlaufScore
+                + mentalScore
                 + progressScore * progressWeight
                 + space * spaceWeight
                 + focusScore

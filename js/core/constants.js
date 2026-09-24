@@ -174,10 +174,11 @@ const NEWS_TYPES = {
  * (Grundtakt 8 Spielsekunden je Bildschirmsekunde) und bleibt fuer alles
  * stehen, was die Zahl direkt liest.
  *
- * Gemessen ueber vier Partien je Stufe: 833 / 284 / 128 Sekunden, also rund
+ * Gemessen ueber drei Partien je Stufe: 854 / 299 / 133 Sekunden, also rund
  * vierzehn, fuenf und zwei Minuten - und dabei auf jeder Stufe dieselben Werte
- * fuer Ballflug (43 %), Szenenanteil (25 %) und freie Spielaktionen (rund 230
- * je Partie). Genau das heisst "eine Simulation, drei Abspielgeschwindigkeiten".
+ * fuer Ballflug (rund 42 %), Szenenanteil (31 bis 33 %) und freie
+ * Spielaktionen (200 bis 220 je Partie). Genau das heisst "eine Simulation,
+ * drei Abspielgeschwindigkeiten".
  *
  * "Langsam" ist damit die Stufe, auf der Fussball wie Fussball aussieht:
  * Spieler laufen mit 2.8 Metern je Sekunde im Mittel, der Ball mit 16.7 - das

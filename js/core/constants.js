@@ -153,13 +153,44 @@ const NEWS_TYPES = {
  * Stufe zum Zuschauen bleibt: Dort muss der Ballaufbau zwischen den
  * Hoehepunkten mehr als die Haelfte der Uebertragung ausmachen.
  */
+/**
+ * Die Geschwindigkeitsstufen sind Abspielgeschwindigkeiten - nicht drei
+ * verschiedene Spiele.
+ *
+ * Vorher skalierte die Spieluhr linear mit der Stufe, die Bewegung auf dem
+ * Feld aber nur mit der Wurzel: Wer schneller zusah, bekam eine Uhr, die den
+ * Spielern davonlief. Gemessen war das keine Tempostufe, sondern eine andere
+ * Simulation - auf "Langsam" entfielen 37 Prozent der Uebertragung auf Szenen
+ * und es gab 258 freie Spielaktionen, auf "Schnell" 70 Prozent und ganze drei.
+ * Die schnellste Stufe zeigte kein Fussballspiel mehr, sondern eine Diaschau
+ * aus Skriptszenen.
+ *
+ * Jetzt laeuft eine einzige, glaubwuerdige Simulation, und die Stufe bestimmt,
+ * wie schnell sie abgespielt wird - wie bei einem Videorekorder. Uhr, Laufwege
+ * und Ballflug skalieren gemeinsam, also sieht "Schnell" aus wie derselbe
+ * Fussball im Vorlauf und nicht wie ein anderes Spiel.
+ *
+ * abspielTempo ist der Faktor; matchSecondsPerRealSecond ist daraus abgeleitet
+ * (Grundtakt 8 Spielsekunden je Bildschirmsekunde) und bleibt fuer alles
+ * stehen, was die Zahl direkt liest.
+ *
+ * Gemessen ueber vier Partien je Stufe: 833 / 284 / 128 Sekunden, also rund
+ * vierzehn, fuenf und zwei Minuten - und dabei auf jeder Stufe dieselben Werte
+ * fuer Ballflug (43 %), Szenenanteil (25 %) und freie Spielaktionen (rund 230
+ * je Partie). Genau das heisst "eine Simulation, drei Abspielgeschwindigkeiten".
+ *
+ * "Langsam" ist damit die Stufe, auf der Fussball wie Fussball aussieht:
+ * Spieler laufen mit 2.8 Metern je Sekunde im Mittel, der Ball mit 16.7 - das
+ * sind die Werte einer echten Uebertragung. "Normal" und "Schnell" zeigen
+ * dasselbe Spiel im Vorlauf.
+ */
 const LIVE_MATCH_SPEEDS = {
-    1: { key: "slow", label: "Langsam", tickIntervalMs: 1800, minuteStep: 1, matchSecondsPerRealSecond: 17 },
-    2: { key: "normal", label: "Normal", tickIntervalMs: 900, minuteStep: 1, matchSecondsPerRealSecond: 45 },
-    4: { key: "fast", label: "Schnell", tickIntervalMs: 380, minuteStep: 2, matchSecondsPerRealSecond: 95 },
-    slow: { key: "slow", label: "Langsam", tickIntervalMs: 1800, minuteStep: 1, matchSecondsPerRealSecond: 17 },
-    normal: { key: "normal", label: "Normal", tickIntervalMs: 900, minuteStep: 1, matchSecondsPerRealSecond: 45 },
-    fast: { key: "fast", label: "Schnell", tickIntervalMs: 380, minuteStep: 2, matchSecondsPerRealSecond: 95 }
+    1: { key: "slow", label: "Langsam", tickIntervalMs: 1800, minuteStep: 1, abspielTempo: 1.0, matchSecondsPerRealSecond: 8 },
+    2: { key: "normal", label: "Normal", tickIntervalMs: 900, minuteStep: 1, abspielTempo: 2.9, matchSecondsPerRealSecond: 23.2 },
+    4: { key: "fast", label: "Schnell", tickIntervalMs: 380, minuteStep: 2, abspielTempo: 6.5, matchSecondsPerRealSecond: 52 },
+    slow: { key: "slow", label: "Langsam", tickIntervalMs: 1800, minuteStep: 1, abspielTempo: 1.0, matchSecondsPerRealSecond: 8 },
+    normal: { key: "normal", label: "Normal", tickIntervalMs: 900, minuteStep: 1, abspielTempo: 2.9, matchSecondsPerRealSecond: 23.2 },
+    fast: { key: "fast", label: "Schnell", tickIntervalMs: 380, minuteStep: 2, abspielTempo: 6.5, matchSecondsPerRealSecond: 52 }
 };
 
 if (typeof window !== "undefined") {

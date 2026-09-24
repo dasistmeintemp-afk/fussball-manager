@@ -171,6 +171,14 @@ function runEngineTests() {
         // Teste dynamisches Aufrücken über das Spielfeld.
         // Erst den Anstoß auflösen lassen - solange der Ball ruht, stehen alle
         // in Anstoßformation und rücken zu Recht nicht auf.
+        // Gewartet wird, bis die Zeremonie durch ist - nicht eine feste Zahl
+        // Bilder lang. Seit der Anstoss auf den Ball und den Schuetzen wartet,
+        // dauert er laenger als zweieinhalb Sekunden, und solange steht die Elf
+        // zu Recht in Anstossformation.
+        for (let t = 0; t < 3000 && (liveMatch.director.kickoff || liveMatch.director.deadBall); t++) {
+            liveMatch.advanceRealTime(1000 / 60);
+            liveMatch.updateBallAndPlayers(1000 / 60);
+        }
         for (let t = 0; t < 150; t++) {
             liveMatch.advanceRealTime(1000 / 60);
             liveMatch.updateBallAndPlayers(1000 / 60);
@@ -181,7 +189,11 @@ function runEngineTests() {
         liveMatch.ball.y = 50;
         liveMatch.ball.targetX = 80;
         liveMatch.ball.targetY = 50;
-        for (let t = 0; t < 30; t++) liveMatch.updateBallAndPlayers();
+        // Hundert Schritte statt dreissig: Geprueft wird, ob der Block bei Ball
+        // im gegnerischen Drittel aufrueckt - nicht, wie schnell. Seit die
+        // Spieler mit glaubwuerdigem Tempo laufen, sind zwanzig Meter kein
+        // Drei-Sekunden-Weg mehr, sondern einer von zehn.
+        for (let t = 0; t < 100; t++) liveMatch.updateBallAndPlayers();
 
         if (homeSt && homeSt.x < 50) {
             throw new Error(`Heim-Stürmer rückt bei Ball im gegnerischen Drittel nicht auf: x=${homeSt.x}`);

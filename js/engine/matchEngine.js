@@ -1163,6 +1163,7 @@ class MatchEngine {
                             end: { x: goalX, y: goalY + (_Random.chance(0.5) ? 4 : -4) },
                             xG: 0.77,
                             outcome: "goal",
+                            isPenalty: true,
                             text: `${min}' - ⚽ TOOOOR durch Elfmeter! ${shooter?.name || "Schütze"} verwandelt eiskalt!`
                         });
                     } else {
@@ -1948,6 +1949,83 @@ class MatchEngine {
     }
 }
 
+// ------------------------------------------------------------ Trikotfarben
+
+const _hexZuRgb = (hex) => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || "").trim());
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+
+/** Wahrgenommener Farbabstand ("redmean"-Näherung) - 0 gleich, rund 765 maximal */
+const _farbAbstand = (a, b) => {
+    const r = (a[0] + b[0]) / 2;
+    const dr = a[0] - b[0], dg = a[1] - b[1], db = a[2] - b[2];
+    return Math.sqrt((2 + r / 256) * dr * dr + 4 * dg * dg + (2 + (255 - r) / 256) * db * db);
+};
+
+const _helligkeit = (c) => (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255;
+
+/**
+ * Welche Farben beide Mannschaften auf dem Feld tragen.
+ *
+ * Das 2D-Bild las bisher "club.color" - ein Feld, das kein Verein hat. Jede
+ * Partie lief deshalb Blau gegen Rot, der FC Bayern daheim in Blau. Jetzt
+ * tragen beide ihre Vereinsfarben. Wo sie sich zu ähnlich sind (Bayern gegen
+ * Leverkusen, beide rot) oder ein Trikot auf dem Rasen verschwindet (grün auf
+ * grün), weicht der Gast auf sein Zweittrikot aus, notfalls auf Weiß oder
+ * Schwarz. Die Torhüter bekommen eine Farbe, die sich von beiden abhebt.
+ */
+function ermittleTrikots(homeClub, awayClub) {
+    const RASEN = [34, 120, 60];
+    const GRENZE = 170;
+    const kandidaten = (club, reserve) => [club?.primaryColor || club?.color, club?.secondaryColor, ...reserve]
+        .map(hex => ({ hex, rgb: _hexZuRgb(hex) }))
+        .filter(k => k.rgb);
+    const lesbar = (k) => _farbAbstand(k.rgb, RASEN) >= GRENZE;
+
+    const heimListe = kandidaten(homeClub, ["#1d4ed8", "#ffffff", "#111827"]);
+    const heim = heimListe.find(lesbar) || heimListe[0];
+    const gastListe = kandidaten(awayClub, ["#ffffff", "#111827", "#f97316", "#7c3aed"]);
+    const gast = gastListe.find(k => lesbar(k) && _farbAbstand(k.rgb, heim.rgb) >= GRENZE) || gastListe[0];
+
+    const schrift = (k) => _helligkeit(k.rgb) > 0.6 ? "#0f172a" : "#ffffff";
+    const torwartPalette = ["#facc15", "#22d3ee", "#f472b6", "#a3e635", "#fb923c", "#e5e7eb", "#111827"]
+        .map(hex => ({ hex, rgb: _hexZuRgb(hex) }));
+    const torwartFuer = (eigene, andere, vergeben) => torwartPalette.find(k =>
+        _farbAbstand(k.rgb, eigene.rgb) >= GRENZE
+        && _farbAbstand(k.rgb, andere.rgb) >= GRENZE
+        && _farbAbstand(k.rgb, RASEN) >= 150
+        && (!vergeben || _farbAbstand(k.rgb, vergeben.rgb) >= 150)) || torwartPalette[0];
+    const twHeim = torwartFuer(heim, gast, null);
+    const twGast = torwartFuer(gast, heim, twHeim);
+
+    // Akzentfarbe für Anzeigetafel, Balken und Ticker auf dunklem Grund:
+    // Schwarze oder dunkelblaue Trikots wären dort unsichtbar, dann nimmt
+    // die Tafel die hellere Vereinsfarbe. Sind sich beide Akzente zu nah,
+    // weicht der Gast aus - die Balken müssen auseinanderzuhalten sein.
+    const HINTERGRUND = [15, 23, 42];
+    const hellGenug = (k) => k && _farbAbstand(k.rgb, HINTERGRUND) >= 190 && _helligkeit(k.rgb) >= 0.3;
+    const akzentFuer = (trikot, liste) => hellGenug(trikot) ? trikot
+        : (liste.slice(0, 2).find(hellGenug) || { hex: "#cbd5e1", rgb: _hexZuRgb("#cbd5e1") });
+    const akzentHeim = akzentFuer(heim, heimListe);
+    let akzentGast = akzentFuer(gast, gastListe);
+    if (_farbAbstand(akzentGast.rgb, akzentHeim.rgb) < 150) {
+        akzentGast = [gastListe[1], ...["#f59e0b", "#e5e7eb", "#38bdf8"].map(hex => ({ hex, rgb: _hexZuRgb(hex) }))]
+            .find(k => hellGenug(k) && _farbAbstand(k.rgb, akzentHeim.rgb) >= 150) || akzentGast;
+    }
+    // Die zweite Vereinsfarbe als Streifen im Farbchip - sofern sie sich abhebt
+    const zweitFarbe = (trikot, liste) => (liste.slice(0, 2).find(k => k !== trikot && _farbAbstand(k.rgb, trikot.rgb) >= 120) || { hex: schrift(trikot) }).hex;
+
+    return {
+        home: { farbe: heim.hex, text: schrift(heim), tw: twHeim.hex, twText: schrift(twHeim), ausweich: heim !== heimListe[0],
+            akzent: akzentHeim.hex, zweit: zweitFarbe(heim, heimListe) },
+        away: { farbe: gast.hex, text: schrift(gast), tw: twGast.hex, twText: schrift(twGast), ausweich: gast !== gastListe[0],
+            akzent: akzentGast.hex, zweit: zweitFarbe(gast, gastListe) }
+    };
+}
+
 /**
  * Klasse zur Durchführung der Live 2D Match Simulation (spielt Timeline synchron ab)
  */
@@ -2061,6 +2139,11 @@ class LiveMatch {
         };
 
         this.events = [];
+        // Alles, was abgepfiffen ist, in Spielreihenfolge - der Ticker behält
+        // nur die letzten fünfzig Zeilen, Zeitleiste und Druckphasen brauchen
+        // die ganze Partie.
+        this.verlauf = [];
+        this._imVerlauf = new WeakSet();
 
         // 2D Match Visualizer Zustand
         this.ball = {
@@ -2077,6 +2160,7 @@ class LiveMatch {
         this.goalFlash = 0;
         this.celebratingTeam = null;
         this.sceneRoles = null;
+        this.kits = ermittleTrikots(homeClub, awayClub);
         this.players2D = this.initialize2DPositions();
         // Wer das Feld verlaesst (Platzverweis, Auswechslung), geht noch sichtbar
         // zur Seitenlinie - nur fuer das Bild, in der Simulation ist er weg.
@@ -2209,8 +2293,8 @@ class LiveMatch {
                 pace: p.pace || p.overall || 70,
                 stamina: p.stamina || 75,
                 freshness: 1,
-                color: this.homeClub.color || "#1d4ed8",
-                textColor: this.homeClub.textColor || "#ffffff"
+                color: this.kits.home.farbe,
+                textColor: this.kits.home.text
             });
         });
 
@@ -2234,8 +2318,8 @@ class LiveMatch {
                 pace: p.pace || p.overall || 70,
                 stamina: p.stamina || 75,
                 freshness: 1,
-                color: this.awayClub.color || "#dc2626",
-                textColor: this.awayClub.textColor || "#ffffff"
+                color: this.kits.away.farbe,
+                textColor: this.kits.away.text
             });
         });
 
@@ -2373,6 +2457,7 @@ class LiveMatch {
     }
 
     processEvent(ev) {
+        this._protokolliere(ev);
         if (ev.type === "goal") {
             if (ev.team === "home") {
                 this.homeScore++;
@@ -2449,10 +2534,13 @@ class LiveMatch {
             this.addEvent("injury", ev.clubId, ev.text);
             this._verletzung(ev);
         } else if (ev.type === "substitution") {
-            this.addEvent("sub", ev.clubId, ev.text);
             // Vorher gab es nur die Einblendung - auf dem Platz lief der
             // Ausgewechselte weiter, und die Bank kannte den Wechsel nicht.
-            this._timelineWechsel(ev);
+            // Ein Wechsel, der nicht mehr geht (der Spieler sah inzwischen
+            // Rot), erscheint weder im Ticker noch auf der Zeitleiste.
+            if (!this._timelineWechsel(ev)) return;
+            this._protokolliere(ev, true);
+            this.addEvent("sub", ev.clubId, ev.text);
         } else if (ev.type === "halftime") {
             this.currentPhase = "half_time";
         } else if (ev.type === "fulltime") {
@@ -2477,6 +2565,31 @@ class LiveMatch {
         if (ev.text) {
             this.lastCommentary = ev.text;
         }
+    }
+
+    /**
+     * Haelt ein abgespieltes Ereignis im Verlauf fest - einmal pro Ereignis,
+     * auch wenn es auf zwei Wegen (Szene, Sofortmodus) ankommt.
+     */
+    _protokolliere(ev, wechselAusgefuehrt = false) {
+        if (!ev || !ev.type || ev.type === "halftime" || ev.type === "fulltime") return;
+        if (ev.type === "substitution" && !wechselAusgefuehrt) return;
+        if (this._imVerlauf.has(ev)) return;
+        this._imVerlauf.add(ev);
+        const team = (ev.team === "home" || ev.team === "away") ? ev.team
+            : (ev.clubId != null && ev.clubId === this.homeClub?.id ? "home"
+                : (ev.clubId != null && ev.clubId === this.awayClub?.id ? "away" : null));
+        this.verlauf.push({
+            minute: Math.max(0, Number.isFinite(ev.minute) ? ev.minute : (this.minute || 0)),
+            type: ev.type,
+            team,
+            playerId: ev.playerId ?? ev.playerInId ?? null,
+            name: ev.playerName || ev.playerInName || null,
+            outId: ev.playerOutId ?? null,
+            outName: ev.playerOutName || null,
+            zweiteGelbe: !!ev.isSecondYellow,
+            elfmeter: ev.type === "goal" && !!ev.isPenalty
+        });
     }
 
     addEvent(type, clubId, text) {
@@ -2608,6 +2721,8 @@ class LiveMatch {
         };
         this.timeline.splice(this.timelineIndex, 0, ev);
         this.timelineIndex++;
+        // Am Ereignisweg vorbei - also selbst in den Verlauf schreiben
+        this._protokolliere(ev, true);
 
         this.addEvent("sub", club.id, eventText);
         this.lastCommentary = eventText;
@@ -2794,16 +2909,18 @@ class LiveMatch {
     }
 
     /** Ein Wechsel aus der Timeline (Co-Trainer oder Gegner) */
+    /** @returns {boolean} ob der Wechsel jetzt stattgefunden hat */
     _timelineWechsel(ev) {
-        if (ev._angewendet) return;
+        if (ev._angewendet) return false;
         ev._angewendet = true;
         const side = this.seiteVon(ev.team);
         const playerOut = this.lineupVon(side).find(p => p && p.id === ev.playerOutId);
         const playerIn = MatchEngine.findPlayer(this.allPlayers, ev.playerInId);
-        if (!playerOut || !playerIn || !this.bank[side].includes(playerIn.id)) return;
-        if (this.platzverweise[side].includes(playerOut.id)) return;
+        if (!playerOut || !playerIn || !this.bank[side].includes(playerIn.id)) return false;
+        if (this.platzverweise[side].includes(playerOut.id)) return false;
         this._wechsleEin(side, playerOut, playerIn);
         this._belegeFenster(side);
+        return true;
     }
 
     /**
@@ -3068,5 +3185,5 @@ if (typeof window !== "undefined") {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { MATCH_TUNING, MatchEngine, LiveMatch };
+    module.exports = { MATCH_TUNING, MatchEngine, LiveMatch, ermittleTrikots };
 }

@@ -1417,22 +1417,30 @@
                     </div>
                     <div class="live-scoreboard">
                         <div class="team-score home">
-                            <span class="team-name" id="lmHomeName">FC Bayern München</span>
+                            <span class="lm-kit" id="lmHomeKit" aria-hidden="true"></span>
+                            <div class="lm-team-block">
+                                <span class="team-name" id="lmHomeName">FC Bayern München</span>
+                                <span class="lm-scorers" id="lmHomeScorers"></span>
+                            </div>
                             <span class="score-digit" id="lmHomeScore">0</span>
                         </div>
-                        <div class="match-time-badge">
-                            <span id="lmMinute">0</span>'
+                        <div class="match-time-badge" id="lmTimeBadge">
                             <span class="live-clock" id="lmClock">00:00</span>
-                            <span class="time-label">LIVE</span>
+                            <span class="time-label" id="lmPhaseLabel">LIVE</span>
+                            <span id="lmMinute" hidden>0</span>
                         </div>
                         <div class="team-score away">
                             <span class="score-digit" id="lmAwayScore">0</span>
-                            <span class="team-name" id="lmAwayName">Borussia Dortmund</span>
+                            <div class="lm-team-block">
+                                <span class="team-name" id="lmAwayName">Borussia Dortmund</span>
+                                <span class="lm-scorers" id="lmAwayScorers"></span>
+                            </div>
+                            <span class="lm-kit" id="lmAwayKit" aria-hidden="true"></span>
                         </div>
                     </div>
 
                     <div class="live-controls-bar">
-                        <button class="btn btn-sm btn-icon" id="btnLmPause" aria-label="Pause">⏸<span class="lm-btn-text"> Pause</span></button>
+                        <button class="btn btn-sm btn-icon lm-pause-btn" id="btnLmPause" aria-label="Pause"><svg class="lm-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="3.6" height="12" rx="1"/><rect x="9.4" y="2" width="3.6" height="12" rx="1"/></svg><span class="lm-btn-text"> Pause</span></button>
                         <div class="speed-selector">
                             <button class="btn btn-sm speed-btn active" data-speed="1" title="Langsam - echtes Tempo"><span class="lm-speed-lang">Langsam</span><span class="lm-speed-kurz">1×</span></button>
                             <button class="btn btn-sm speed-btn" data-speed="2" title="Normal - knapp dreifach"><span class="lm-speed-lang">Normal</span><span class="lm-speed-kurz">3×</span></button>
@@ -1443,6 +1451,13 @@
                             <span class="lm-coach-badge" id="lmCoachBadge" style="display:none;"></span>
                         </button>
                         <button class="btn btn-sm btn-secondary" id="btnLmSkip" aria-label="Sofort-Ergebnis">⚡<span class="lm-btn-text"> Sofort-Ergebnis</span></button>
+                    </div>
+                    <div class="lm-timeline" id="lmTimeline" aria-hidden="true">
+                        <div class="lm-tl-track">
+                            <div class="lm-tl-fill" id="lmTlFill"></div>
+                            <span class="lm-tl-ht"></span>
+                        </div>
+                        <div class="lm-tl-marks" id="lmTlMarks"></div>
                     </div>
                     <div class="lm-pending-strip" id="lmPendingStrip" style="display:none;"></div>
                 </div>
@@ -1458,55 +1473,23 @@
 
                     <!-- Right: Live Stats & In-Game Coaching -->
                     <div class="live-match-sidebar">
-                        <div class="live-tab-buttons">
-                            <button class="btn btn-sm live-subtab active" data-subtab="stats">Statistiken</button>
-                            <button class="btn btn-sm live-subtab" data-subtab="events">Ticker</button>
+                        <div class="live-tab-buttons lm-seg" role="tablist">
+                            <button class="live-subtab active" data-subtab="stats" role="tab">Statistik</button>
+                            <button class="live-subtab" data-subtab="events" role="tab">Ticker</button>
+                            <button class="live-subtab" data-subtab="lineups" role="tab">Aufstellungen</button>
                         </div>
 
                         <!-- Subtab: Stats -->
                         <div class="live-subtab-pane active" id="lmSubtab-stats">
-                            <div class="live-stat-bar-item">
-                                <div class="stat-labels">
-                                    <span id="lmStatPossHome">50%</span>
-                                    <span>Ballbesitz</span>
-                                    <span id="lmStatPossAway">50%</span>
-                                </div>
-                                <div class="dual-bar">
-                                    <div class="dual-bar-left" id="lmBarPossHome" style="width: 50%;"></div>
-                                    <div class="dual-bar-right" id="lmBarPossAway" style="width: 50%;"></div>
-                                </div>
+                            <div class="lm-stats-head">
+                                <span class="lm-stats-team" id="lmStatsHome"></span>
+                                <span class="lm-stats-team away" id="lmStatsAway"></span>
                             </div>
-
-                            <div class="live-stat-bar-item">
-                                <div class="stat-labels">
-                                    <span id="lmStatShotsHome">0</span>
-                                    <span>Schüsse (Aufs Tor)</span>
-                                    <span id="lmStatShotsAway">0</span>
-                                </div>
-                            </div>
-
-                            <div class="live-stat-bar-item">
-                                <div class="stat-labels">
-                                    <span id="lmStatXgHome">0.00</span>
-                                    <span>Expected Goals (xG)</span>
-                                    <span id="lmStatXgAway">0.00</span>
-                                </div>
-                            </div>
-
-                            <div class="live-stat-bar-item">
-                                <div class="stat-labels">
-                                    <span id="lmStatCornersHome">0</span>
-                                    <span>Ecken</span>
-                                    <span id="lmStatCornersAway">0</span>
-                                </div>
-                            </div>
-
-                            <div class="live-stat-bar-item">
-                                <div class="stat-labels">
-                                    <span id="lmStatFoulsHome">0</span>
-                                    <span>Fouls</span>
-                                    <span id="lmStatFoulsAway">0</span>
-                                </div>
+                            <div class="lm-stats-list" id="lmStatsList"></div>
+                            <div class="lm-momentum-block">
+                                <div class="lm-block-title">Druckphasen <span class="lm-block-sub">wer wann Chancen erspielt</span></div>
+                                <div class="lm-momentum" id="lmMomentum"></div>
+                                <div class="lm-momentum-axis"><span>0'</span><span>45'</span><span>90'</span></div>
                             </div>
                         </div>
 
@@ -1515,6 +1498,11 @@
                             <div class="event-ticker-feed" id="lmEventFeed">
                                 <!-- Events -->
                             </div>
+                        </div>
+
+                        <!-- Subtab: Aufstellungen -->
+                        <div class="live-subtab-pane" id="lmSubtab-lineups">
+                            <div class="lm-lineups" id="lmLineups"></div>
                         </div>
                     </div>
                 </div>

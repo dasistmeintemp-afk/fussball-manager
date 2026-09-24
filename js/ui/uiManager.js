@@ -1583,7 +1583,7 @@ class UIManager {
             ctx.beginPath();
             ctx.arc(rx(p.x), ry(p.y), 2.2, 0, Math.PI * 2);
             ctx.fillStyle = p.pos === "TW"
-                ? (p.team === "home" ? "#facc15" : "#22d3ee")
+                ? (liveMatch.kits?.[p.team]?.tw || (p.team === "home" ? "#facc15" : "#22d3ee"))
                 : (p.color || "#3b82f6");
             ctx.fill();
         });
@@ -6172,6 +6172,7 @@ class UIManager {
         document.getElementById("lmAwayScore").textContent = "0";
         document.getElementById("lmMinute").textContent = "0";
         document.getElementById("lmEventFeed").innerHTML = "";
+        this.bereiteMatchCenterVor(liveMatch);
 
         this.playSound("whistle");
 
@@ -6257,27 +6258,31 @@ class UIManager {
             setText("lmHomeScore", String(liveMatch.homeScore));
             setText("lmAwayScore", String(liveMatch.awayScore));
             setText("lmMinute", String(liveMatch.minute));
-            setText("lmCommentary", liveMatch.lastCommentary);
+            setText("lmClock", liveMatch.getClockText ? liveMatch.getClockText() : `${liveMatch.minute}:00`);
 
-            const clockEl = document.getElementById("lmClock");
-            if (clockEl) setText("lmClock", liveMatch.getClockText ? liveMatch.getClockText() : `${liveMatch.minute}:00`);
+            // Was die Uhr gerade bedeutet: läuft, steht in der Pause, ist aus
+            const phase = liveMatch.isFinished ? "abpfiff"
+                : (halbzeitErreicht ? "halbzeit" : (liveMatch.isPaused ? "pause" : "live"));
+            if (this.liveStatCache.phase !== phase) {
+                this.liveStatCache.phase = phase;
+                const badge = document.getElementById("lmTimeBadge");
+                if (badge) badge.dataset.phase = phase;
+                setText("lmPhaseLabel", { abpfiff: "Abpfiff", halbzeit: "Halbzeit", pause: "Pause", live: "Live" }[phase]);
+            }
 
-            setText("lmStatPossHome", `${liveMatch.stats.possession[0]}%`);
-            setText("lmStatPossAway", `${liveMatch.stats.possession[1]}%`);
-            setWidth("lmBarPossHome", `${liveMatch.stats.possession[0]}%`);
-            setWidth("lmBarPossAway", `${liveMatch.stats.possession[1]}%`);
+            // Kommentar mit Minute als Plakette statt "62' - " im Fließtext
+            if (this.liveStatCache.kommentar !== liveMatch.lastCommentary) {
+                this.liveStatCache.kommentar = liveMatch.lastCommentary;
+                const bar = document.getElementById("lmCommentary");
+                if (bar) bar.innerHTML = this.liveZeileHtml(liveMatch.lastCommentary);
+            }
 
-            setText("lmStatShotsHome", `${liveMatch.stats.shots[0]} (${liveMatch.stats.shotsOnTarget[0]})`);
-            setText("lmStatShotsAway", `${liveMatch.stats.shots[1]} (${liveMatch.stats.shotsOnTarget[1]})`);
-
-            setText("lmStatXgHome", liveMatch.stats.xG[0].toFixed(2));
-            setText("lmStatXgAway", liveMatch.stats.xG[1].toFixed(2));
-
-            setText("lmStatCornersHome", String(liveMatch.stats.corners[0]));
-            setText("lmStatCornersAway", String(liveMatch.stats.corners[1]));
-
-            setText("lmStatFoulsHome", String(liveMatch.stats.fouls[0]));
-            setText("lmStatFoulsAway", String(liveMatch.stats.fouls[1]));
+            this.renderLiveStats(liveMatch);
+            this.renderLiveVerlauf(liveMatch);
+            setWidth("lmTlFill", `${Math.min(100, Math.max(0, liveMatch.minute / 90 * 100)).toFixed(1)}%`);
+            if (document.getElementById("lmSubtab-lineups")?.classList.contains("active")) {
+                this.renderLiveLineups(liveMatch);
+            }
 
             // Ticker: nur neue Ereignisse einfügen statt die Liste neu aufzubauen.
             // Die laufende Nummer funktioniert auch, wenn die Ereignisliste
@@ -6287,9 +6292,12 @@ class UIManager {
             if (feed && newestSeq > this.renderedEventCount) {
                 const fresh = liveMatch.events.filter(e => (e.seq || 0) > this.renderedEventCount);
                 for (let i = fresh.length - 1; i >= 0; i--) {
+                    const ev = fresh[i];
                     const node = document.createElement("div");
-                    node.className = `ticker-event ticker-${fresh[i].type || "info"}`;
-                    node.textContent = fresh[i].text;
+                    const seite = ev.clubId === liveMatch.homeClub.id ? "home"
+                        : (ev.clubId === liveMatch.awayClub.id ? "away" : "");
+                    node.className = `ticker-event ticker-${ev.type || "info"}${seite ? ` ticker-${seite}` : ""}`;
+                    node.innerHTML = this.liveZeileHtml(ev.text, ev.minute);
                     feed.insertBefore(node, feed.firstChild);
                 }
                 this.renderedEventCount = newestSeq;
@@ -6403,7 +6411,10 @@ class UIManager {
             }
 
             // Spielergröße wächst mit dem Zoom, aber gedämpft
-            const radius = Math.max(6, (pitchW / 105) * 1.3 * (0.5 * cam.zoom + 0.5));
+            // Gut ein Siebtel größer als vorher: Die Rückennummern waren in der
+            // Totale kaum zu lesen, auf dem Handy gar nicht.
+            const radius = Math.max(7, (pitchW / 105) * 1.5 * (0.5 * cam.zoom + 0.5));
+            const torwartFarbe = team => liveMatch.kits?.[team]?.tw || (team === "home" ? "#facc15" : "#22d3ee");
 
             // 3. Schiedsrichter: läuft im Diagonalsystem mit und zückt bei einer
             //    Unterbrechung die Karte am Tatort.
@@ -6508,7 +6519,7 @@ class UIManager {
                 };
 
                 koerper();
-                ctx.fillStyle = isKeeper ? (p.team === "home" ? "#facc15" : "#22d3ee") : (p.color || "#3b82f6");
+                ctx.fillStyle = isKeeper ? torwartFarbe(p.team) : (p.color || "#3b82f6");
                 ctx.fill();
 
                 if (!hechtet) {
@@ -6534,7 +6545,7 @@ class UIManager {
                     ctx.fill();
                 }
 
-                ctx.fillStyle = isKeeper ? "#0f172a" : (p.textColor || "#ffffff");
+                ctx.fillStyle = isKeeper ? (liveMatch.kits?.[p.team]?.twText || "#0f172a") : (p.textColor || "#ffffff");
                 ctx.font = numberFont;
                 ctx.fillText(p.number, px, py + radius * 0.05);
 
@@ -6570,12 +6581,12 @@ class UIManager {
                 ctx.globalAlpha = 0.45;
                 ctx.beginPath();
                 ctx.arc(ax, ay, radius, 0, Math.PI * 2);
-                ctx.fillStyle = a.pos === "TW" ? (a.team === "home" ? "#facc15" : "#22d3ee") : (a.color || "#64748b");
+                ctx.fillStyle = a.pos === "TW" ? torwartFarbe(a.team) : (a.color || "#64748b");
                 ctx.fill();
                 ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
                 ctx.lineWidth = Math.max(1, radius * 0.13);
                 ctx.stroke();
-                ctx.fillStyle = a.pos === "TW" ? "#0f172a" : (a.textColor || "#ffffff");
+                ctx.fillStyle = a.pos === "TW" ? (liveMatch.kits?.[a.team]?.twText || "#0f172a") : (a.textColor || "#ffffff");
                 ctx.font = numberFont;
                 ctx.fillText(a.number, ax, ay + radius * 0.05);
                 ctx.restore();
@@ -6757,6 +6768,10 @@ class UIManager {
                 document.querySelectorAll(".live-subtab-pane").forEach(p => p.classList.remove("active"));
                 tab.classList.add("active");
                 document.getElementById(`lmSubtab-${tab.dataset.subtab}`).classList.add("active");
+                if (tab.dataset.subtab === "lineups") {
+                    this._lmLineupKey = null;
+                    this.renderLiveLineups(liveMatch);
+                }
             };
         });
     }
@@ -6776,9 +6791,255 @@ class UIManager {
     updateLivePauseButton(liveMatch) {
         const btn = document.getElementById("btnLmPause");
         if (!btn) return;
+        // Zeichen als SVG: Das Emoji ⏸ erschien auf manchen Geräten als
+        // schmaler Strich, auf anderen als buntes Bildchen.
         btn.innerHTML = liveMatch.isPaused
-            ? '▶<span class="lm-btn-text"> Weiter</span>'
-            : '⏸<span class="lm-btn-text"> Pause</span>';
+            ? '<svg class="lm-ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.2v11.6a.8.8 0 0 0 1.2.7l9.4-5.8a.8.8 0 0 0 0-1.4L5.2 1.5A.8.8 0 0 0 4 2.2z"/></svg><span class="lm-btn-text"> Weiter</span>'
+            : '<svg class="lm-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="3.6" height="12" rx="1"/><rect x="9.4" y="2" width="3.6" height="12" rx="1"/></svg><span class="lm-btn-text"> Pause</span>';
+        btn.setAttribute("aria-label", liveMatch.isPaused ? "Weiter" : "Pause");
+        btn.classList.toggle("is-paused", !!liveMatch.isPaused);
+    }
+
+    // ---------------------------------------------------------- Match-Center
+
+    /**
+     * Setzt die Anzeigetafel für eine neue Partie auf: Vereinsfarben als
+     * Farbchip und Akzent, leere Zeitleiste, leere Listen. Die Tafel war
+     * vorher einfarbig blau gegen grün, egal wer spielte.
+     */
+    bereiteMatchCenterVor(liveMatch) {
+        const kits = liveMatch.kits || {};
+        const modal = document.getElementById("modalLiveMatch");
+        if (modal) {
+            modal.style.setProperty("--lm-home", kits.home?.akzent || "#38bdf8");
+            modal.style.setProperty("--lm-away", kits.away?.akzent || "#f59e0b");
+        }
+        [["lmHomeKit", kits.home], ["lmAwayKit", kits.away]].forEach(([id, kit]) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.style.setProperty("--kit", kit?.farbe || "#64748b");
+            el.style.setProperty("--kit-2", kit?.zweit || "#ffffff");
+        });
+        const leeren = (id, html = "") => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+        ["lmHomeScorers", "lmAwayScorers", "lmTlMarks", "lmMomentum", "lmLineups", "lmStatsList"].forEach(id => leeren(id));
+        const fill = document.getElementById("lmTlFill");
+        if (fill) fill.style.width = "0%";
+        const setzeName = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+        setzeName("lmStatsHome", liveMatch.homeClub?.name || "Heim");
+        setzeName("lmStatsAway", liveMatch.awayClub?.name || "Gast");
+        this._lmStatsKey = null;
+        this._lmVerlaufKey = null;
+        this._lmLineupKey = null;
+    }
+
+    /** Ticker- oder Kommentarzeile: Minute als Plakette, Rest als Text */
+    liveZeileHtml(text, minute) {
+        const roh = String(text ?? "");
+        const m = /^\s*(\d{1,3}(?:\+\d{1,2})?)'\s*[-–]\s*/.exec(roh);
+        const min = m ? m[1] : (Number.isFinite(minute) ? String(minute) : "");
+        const rest = m ? roh.slice(m[0].length) : roh;
+        return (min ? `<span class="lm-min">${this.escapeHtml(min)}'</span>` : "")
+            + `<span class="lm-zeile">${this.escapeHtml(rest)}</span>`;
+    }
+
+    /**
+     * Statistik als Duell-Balken: jede Zeile wächst aus der Mitte zur
+     * Mannschaft, die mehr davon hat - in deren Farbe.
+     */
+    renderLiveStats(liveMatch) {
+        const st = liveMatch.stats;
+        const liste = document.getElementById("lmStatsList");
+        if (!liste || !st) return;
+        const zeilen = [
+            ["Ballbesitz", st.possession[0], st.possession[1], v => `${v}%`],
+            ["Torschüsse", st.shots[0], st.shots[1]],
+            ["Aufs Tor", st.shotsOnTarget[0], st.shotsOnTarget[1]],
+            ["Expected Goals", st.xG[0], st.xG[1], v => Number(v).toFixed(2).replace(".", ",")],
+            ["Ecken", st.corners[0], st.corners[1]],
+            ["Paraden", st.saves[0], st.saves[1]],
+            ["Fouls", st.fouls[0], st.fouls[1]],
+            ["Gelbe Karten", st.yellowCards[0], st.yellowCards[1]]
+        ];
+        if (st.redCards[0] + st.redCards[1] > 0) zeilen.push(["Rote Karten", st.redCards[0], st.redCards[1]]);
+
+        const key = zeilen.map(z => `${z[1]}:${z[2]}`).join("|");
+        if (this._lmStatsKey === key) return;
+        this._lmStatsKey = key;
+
+        liste.innerHTML = zeilen.map(([label, h, a, fmt]) => {
+            const heim = Number(h) || 0, gast = Number(a) || 0;
+            const summe = heim + gast;
+            const anteilH = summe > 0 ? heim / summe * 100 : 0;
+            const anteilA = summe > 0 ? gast / summe * 100 : 0;
+            const f = fmt || (v => String(v));
+            return `<div class="lm-stat">
+                    <div class="lm-stat-top">
+                        <span class="lm-stat-val home ${heim > gast ? "lead" : ""}">${this.escapeHtml(f(h))}</span>
+                        <span class="lm-stat-label">${label}</span>
+                        <span class="lm-stat-val away ${gast > heim ? "lead" : ""}">${this.escapeHtml(f(a))}</span>
+                    </div>
+                    <div class="lm-stat-bars">
+                        <span class="lm-stat-half home"><i style="width:${anteilH.toFixed(1)}%"></i></span>
+                        <span class="lm-stat-half away"><i style="width:${anteilA.toFixed(1)}%"></i></span>
+                    </div>
+                </div>`;
+        }).join("");
+    }
+
+    /**
+     * Alles, was sich aus dem Spielverlauf ergibt: Torschützen unter den
+     * Vereinsnamen, Marken auf der Zeitleiste, Druckphasen. Neu gezeichnet
+     * wird nur, wenn ein Ereignis dazukommt oder eine Minute vergeht.
+     */
+    renderLiveVerlauf(liveMatch) {
+        const verlauf = liveMatch.verlauf || [];
+        const key = `${verlauf.length}|${liveMatch.minute}`;
+        if (this._lmVerlaufKey === key) return;
+        const neueEreignisse = !this._lmVerlaufKey || this._lmVerlaufKey.split("|")[0] !== String(verlauf.length);
+        this._lmVerlaufKey = key;
+        const esc = v => this.escapeHtml(String(v ?? ""));
+        const nachname = n => String(n || "?").trim().split(/\s+/).slice(-1)[0];
+        const minText = m => `${Math.max(1, Math.round(m))}'`;
+        const links = m => Math.min(100, Math.max(0, m / 90 * 100)).toFixed(2);
+
+        if (neueEreignisse) {
+            // Torschützen: "Müller 12', 67' · Kane 80' (E)"
+            ["home", "away"].forEach(seite => {
+                const el = document.getElementById(seite === "home" ? "lmHomeScorers" : "lmAwayScorers");
+                if (!el) return;
+                const schuetzen = new Map();
+                verlauf.forEach(e => {
+                    if (e.type === "goal" && e.team === seite) {
+                        const n = nachname(e.name);
+                        if (!schuetzen.has(n)) schuetzen.set(n, []);
+                        schuetzen.get(n).push(minText(e.minute) + (e.elfmeter ? " (E)" : ""));
+                    }
+                });
+                const platzverweise = verlauf.filter(e => e.team === seite
+                    && (e.type === "red_card" || (e.type === "yellow_card" && e.zweiteGelbe)));
+                const teile = [...schuetzen].map(([n, mins]) => `<span class="lm-scorer">⚽ ${esc(n)} ${esc(mins.join(", "))}</span>`);
+                platzverweise.forEach(e => teile.push(`<span class="lm-scorer rot"><i class="lm-card ${e.zweiteGelbe ? "gelbrot" : "rot"}"></i>${esc(nachname(e.name))} ${esc(minText(e.minute))}</span>`));
+                el.innerHTML = teile.join("");
+                el.title = el.textContent;
+            });
+
+            // Marken auf der Zeitleiste - Heim oberhalb, Gast unterhalb
+            const marks = document.getElementById("lmTlMarks");
+            if (marks) {
+                const art = {
+                    goal: e => ({ cls: "tor", inhalt: "", titel: `Tor ${nachname(e.name)}` }),
+                    red_card: e => ({ cls: "karte rot", inhalt: "", titel: `Rot ${nachname(e.name)}` }),
+                    yellow_card: e => ({ cls: `karte ${e.zweiteGelbe ? "gelbrot" : "gelb"}`, inhalt: "", titel: `${e.zweiteGelbe ? "Gelb-Rot" : "Gelb"} ${nachname(e.name)}` }),
+                    substitution: e => ({ cls: "wechsel", inhalt: "", titel: `Wechsel: ${nachname(e.name)} für ${nachname(e.outName)}` }),
+                    injury: e => ({ cls: "verletzt", inhalt: "", titel: `Verletzt: ${nachname(e.name)}` })
+                };
+                marks.innerHTML = verlauf.filter(e => art[e.type] && e.team).map(e => {
+                    const a = art[e.type](e);
+                    return `<span class="lm-tl-m ${a.cls} ${e.team}" style="left:${links(e.minute)}%" title="${esc(minText(e.minute) + " " + a.titel)}">${a.inhalt}</span>`;
+                }).join("");
+            }
+        }
+
+        // Druckphasen in Fünf-Minuten-Abschnitten: Heim nach oben, Gast nach
+        // unten. Gewichtet nach Gefahr - ein Tor zählt mehr als eine Flanke.
+        const mom = document.getElementById("lmMomentum");
+        if (mom) {
+            const ABSCHNITTE = 18;
+            const druck = Array.from({ length: ABSCHNITTE }, () => [0, 0]);
+            const gegner = s => s === "home" ? "away" : "home";
+            const gewicht = {
+                goal: [4, false], shot_miss: [1.5, false], corner: [1, false], cross: [1, false],
+                through_ball: [1, false], dribble: [0.8, false],
+                save: [2.5, true], foul: [0.5, true], tackle: [0.3, true]
+            };
+            verlauf.forEach(e => {
+                const g = gewicht[e.type];
+                if (!g || !e.team) return;
+                const seite = g[1] ? gegner(e.team) : e.team;
+                const i = Math.min(ABSCHNITTE - 1, Math.max(0, Math.floor(e.minute / 5)));
+                druck[i][seite === "home" ? 0 : 1] += g[0];
+            });
+            const hoechster = Math.max(4, ...druck.map(d => Math.max(d[0], d[1])));
+            const jetzt = Math.floor(Math.min(89.9, liveMatch.minute) / 5);
+            mom.innerHTML = druck.map((d, i) => {
+                const zukunft = i > jetzt && !liveMatch.isFinished;
+                const h = (d[0] / hoechster * 100).toFixed(0), a = (d[1] / hoechster * 100).toFixed(0);
+                return `<span class="lm-mom-col${zukunft ? " offen" : ""}${i === jetzt && !liveMatch.isFinished ? " jetzt" : ""}" title="${i * 5}.–${i * 5 + 5}. Minute">
+                        <span class="lm-mom-up"><i style="height:${h}%"></i></span>
+                        <span class="lm-mom-down"><i style="height:${a}%"></i></span>
+                    </span>`;
+            }).join("");
+        }
+    }
+
+    /**
+     * Beide Aufstellungen, wie sie gerade auf dem Platz stehen: Tore, Karten,
+     * Wechsel und Kondition, darunter Ausgewechselte und Bank.
+     */
+    renderLiveLineups(liveMatch) {
+        const el = document.getElementById("lmLineups");
+        if (!el) return;
+        const verlauf = liveMatch.verlauf || [];
+        const key = [verlauf.length, Math.floor(liveMatch.minute / 3),
+            liveMatch.ausgewechselt.home.length, liveMatch.ausgewechselt.away.length,
+            liveMatch.bank.home.length, liveMatch.bank.away.length].join("|");
+        if (this._lmLineupKey === key) return;
+        this._lmLineupKey = key;
+        const esc = v => this.escapeHtml(String(v ?? ""));
+        const finde = id => MatchEngine.findPlayer(liveMatch.allPlayers, id);
+
+        const spalte = (seite) => {
+            const club = liveMatch.clubVon(seite);
+            const tore = new Map(), rein = new Map(), raus = new Map();
+            verlauf.forEach(e => {
+                if (e.team !== seite) return;
+                if (e.type === "goal" && e.playerId != null) tore.set(e.playerId, (tore.get(e.playerId) || 0) + 1);
+                if (e.type === "substitution") {
+                    if (e.playerId != null) rein.set(e.playerId, e.minute);
+                    if (e.outId != null) raus.set(e.outId, e.minute);
+                }
+            });
+            const platzverweise = new Set(liveMatch.platzverweise[seite]);
+            const zeile = (p, extra = "") => {
+                const p2d = liveMatch.players2D.find(x => x.id === p.id);
+                const nr = p2d?.number ?? p.number ?? "";
+                const pos = p2d?.pos || p.pos || "";
+                const icons = [];
+                const t = tore.get(p.id) || 0;
+                if (t > 0) icons.push(`<span class="lm-lu-ico" title="${t} Tor${t > 1 ? "e" : ""}">⚽${t > 1 ? `<sub>${t}</sub>` : ""}</span>`);
+                if (liveMatch.verwarnt[seite].includes(p.id)) icons.push('<i class="lm-card gelb" title="Gelbe Karte"></i>');
+                if (platzverweise.has(p.id)) icons.push('<i class="lm-card rot" title="Platzverweis"></i>');
+                if (liveMatch.angeschlagen[seite].includes(p.id)) icons.push('<span class="lm-lu-ico" title="angeschlagen">🚑</span>');
+                if (rein.has(p.id)) icons.push(`<span class="lm-lu-sub rein" title="eingewechselt">▲ ${Math.max(1, Math.round(rein.get(p.id)))}'</span>`);
+                const fit = p2d && !platzverweise.has(p.id) ? Math.round((p2d.freshness ?? 1) * 100) : null;
+                const fitFarbe = fit === null ? "" : (fit >= 86 ? "#22c55e" : fit >= 74 ? "#f59e0b" : "#ef4444");
+                return `<div class="lm-lu-row${platzverweise.has(p.id) ? " off" : ""}">
+                        <span class="lm-lu-nr">${esc(nr)}</span>
+                        <span class="lm-lu-pos">${esc(pos)}</span>
+                        <span class="lm-lu-name">${esc(p.name)}</span>
+                        <span class="lm-lu-icons">${icons.join("")}${extra}</span>
+                        ${fit !== null ? `<span class="lm-lu-fit" title="Kondition ${fit} %"><i style="width:${Math.max(4, Math.min(100, (fit - 50) * 2))}%;background:${fitFarbe}"></i></span>` : '<span class="lm-lu-fit leer"></span>'}
+                    </div>`;
+            };
+            const feld = liveMatch.lineupVon(seite).filter(Boolean).map(p => zeile(p)).join("");
+            const ausgewechselt = liveMatch.ausgewechselt[seite].map(finde).filter(Boolean).map(p =>
+                `<div class="lm-lu-row klein"><span class="lm-lu-sub raus">▼ ${raus.has(p.id) ? `${Math.max(1, Math.round(raus.get(p.id)))}'` : ""}</span><span class="lm-lu-name">${esc(p.name)}</span><span class="lm-lu-pos">${esc(p.pos || "")}</span></div>`).join("");
+            const bank = liveMatch.bankSpieler(seite).map(p =>
+                `<div class="lm-lu-row klein"><span class="lm-lu-pos">${esc(p.pos || "")}</span><span class="lm-lu-name">${esc(p.name)}</span></div>`).join("");
+            const eigene = liveMatch.userSide === seite;
+            return `<div class="lm-lu-team ${seite}">
+                    <div class="lm-lu-head">
+                        <span class="lm-kit klein" style="--kit:${esc(liveMatch.kits?.[seite]?.farbe || "#64748b")};--kit-2:${esc(liveMatch.kits?.[seite]?.zweit || "#fff")}"></span>
+                        <span class="lm-lu-club">${esc(club?.name || "")}</span>
+                        <span class="lm-lu-form">${esc(club?.formation || "")}${eigene ? " · Du" : ""}</span>
+                    </div>
+                    <div class="lm-lu-list">${feld}</div>
+                    ${ausgewechselt ? `<div class="lm-lu-h">Ausgewechselt</div><div class="lm-lu-list">${ausgewechselt}</div>` : ""}
+                    <div class="lm-lu-h">Bank</div>
+                    <div class="lm-lu-list">${bank || '<div class="lm-lu-leer">Niemand mehr auf der Bank</div>'}</div>
+                </div>`;
+        };
+        el.innerHTML = spalte("home") + spalte("away");
     }
 
     /**

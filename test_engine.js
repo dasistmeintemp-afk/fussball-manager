@@ -4611,6 +4611,97 @@ function runEngineTests() {
         if (heim.tactics.mentality !== vorher) throw new Error("Die Umstellung des Co-Trainers gilt über das Spiel hinaus");
     });
 
+    // --- Match-Center: Trikotfarben und Spielverlauf ------------------------
+
+    // Das 2D-Bild las "club.color" - ein Feld, das kein Verein hat. Jede
+    // Partie lief Blau gegen Rot, der FC Bayern daheim in Blau.
+    test("Match-Center: Vereinsfarben auf dem Feld, kein Farbduell, Torhüter heben sich ab", () => {
+        const { ermittleTrikots } = require('./js/engine/matchEngine.js');
+        const rgb = hex => { const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+        const abstand = (a, b) => {
+            const x = rgb(a), y = rgb(b), r = (x[0] + y[0]) / 2;
+            const dr = x[0] - y[0], dg = x[1] - y[1], db = x[2] - y[2];
+            return Math.sqrt((2 + r / 256) * dr * dr + 4 * dg * dg + (2 + (255 - r) / 256) * db * db);
+        };
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const bundesliga = state.clubs.filter(c => INITIAL_TEAMS_DATA.some(t => t.id === c.id));
+        let paare = 0;
+        bundesliga.forEach(h => bundesliga.forEach(g => {
+            if (h === g) return;
+            paare++;
+            const k = ermittleTrikots(h, g);
+            const was = `${h.id} (${k.home.farbe}) - ${g.id} (${k.away.farbe})`;
+            if (abstand(k.home.farbe, k.away.farbe) < 170) throw new Error(`Zu ähnliche Trikots: ${was}`);
+            ["home", "away"].forEach(s => {
+                if (abstand(k[s].farbe, "#22783c") < 170) throw new Error(`Trikot verschwindet auf dem Rasen: ${was}`);
+                if (abstand(k[s].tw, k.home.farbe) < 170 || abstand(k[s].tw, k.away.farbe) < 170) {
+                    throw new Error(`Torwart ${s} (${k[s].tw}) nicht von den Feldspielern zu unterscheiden: ${was}`);
+                }
+            });
+            if (abstand(k.home.akzent, k.away.akzent) < 150) throw new Error(`Akzentfarben auf der Tafel zu ähnlich: ${was}`);
+        }));
+        if (paare < 100) throw new Error(`Nur ${paare} Paarungen geprüft`);
+
+        // Rot gegen Rot: Der Gastgeber behält sein Trikot, der Gast weicht aus
+        const bayern = state.clubs.find(c => c.id === "muc");
+        const leverkusen = state.clubs.find(c => c.id === "lev");
+        const k = ermittleTrikots(bayern, leverkusen);
+        if (k.home.farbe !== bayern.primaryColor || k.home.ausweich) throw new Error("Der Gastgeber spielt nicht in seinen Farben");
+        if (!k.away.ausweich) throw new Error("Leverkusen weicht in Rot gegen Rot nicht aus");
+
+        // Auf dem Feld kommen die Farben an
+        const live = MatchEngine.createLiveMatch({ id: "mc_kit", played: false, homeClubId: "muc", awayClubId: "lev" },
+            bayern, leverkusen, state.players, { userSide: "home" });
+        const feld = live.players2D.filter(p => p.pos !== "TW");
+        if (!feld.filter(p => p.team === "home").every(p => p.color === k.home.farbe)) throw new Error("Bayern spielt nicht in Rot");
+        if (!feld.filter(p => p.team === "away").every(p => p.color === k.away.farbe)) throw new Error("Leverkusen trägt nicht das Ausweichtrikot");
+    });
+
+    // Zeitleiste, Torschützen und Druckphasen lesen den Verlauf - er muss
+    // jedes Ereignis genau einmal enthalten, auch die Wechsel von der Linie.
+    test("Match-Center: Der Spielverlauf hält jedes Ereignis genau einmal fest", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const live = MatchEngine.createLiveMatch({ id: "mc_verlauf", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { userSide: "home" });
+
+        for (let i = 0; i < 20; i++) live.tick();
+        const raus = live.homeLineup.find(p => p && p.pos !== "TW");
+        const reinId = live.bank.home.find(id => state.players.find(p => p.id === id).pos !== "TW");
+        const r = live.substitute("home", raus.id, reinId, { imFenster: true });
+        if (!r.success) throw new Error("Wechsel abgelehnt: " + r.message);
+
+        // Ein Wechsel, der nicht mehr möglich ist, erscheint nirgends
+        const tickerVorher = live.events.filter(e => e.type === "sub").length;
+        live.processEvent({
+            minute: live.minute, type: "substitution", team: "away", clubId: gast.id,
+            playerOutId: "gibt_es_nicht", playerOutName: "Niemand", playerInId: live.bank.away[0], playerInName: "Ersatz",
+            text: `${live.minute}' - Wechsel, der nicht stattfindet`
+        });
+        if (live.events.filter(e => e.type === "sub").length !== tickerVorher) throw new Error("Ein unmöglicher Wechsel steht im Ticker");
+
+        while (!live.isFinished) live.tick();
+        const v = live.verlauf;
+        const zaehle = (typ, seite) => v.filter(e => e.type === typ && (!seite || e.team === seite)).length;
+        if (zaehle("goal", "home") !== live.homeScore || zaehle("goal", "away") !== live.awayScore) {
+            throw new Error(`Tore im Verlauf ${zaehle("goal", "home")}:${zaehle("goal", "away")}, Spielstand ${live.homeScore}:${live.awayScore}`);
+        }
+        if (zaehle("yellow_card") !== live.stats.yellowCards[0] + live.stats.yellowCards[1]) throw new Error("Gelbe Karten im Verlauf weichen ab");
+        const wechsel = v.filter(e => e.type === "substitution");
+        if (wechsel.length !== live.substitutionsUsed.home + live.substitutionsUsed.away) {
+            throw new Error(`${wechsel.length} Wechsel im Verlauf, ${live.substitutionsUsed.home + live.substitutionsUsed.away} ausgeführt`);
+        }
+        const eigener = wechsel.filter(e => e.team === "home" && e.outId === raus.id && e.playerId === reinId);
+        if (eigener.length !== 1) throw new Error(`Der Wechsel von der Seitenlinie steht ${eigener.length}-mal im Verlauf`);
+        if (v.some(e => e.team !== "home" && e.team !== "away" && e.type !== "tactics")) {
+            throw new Error("Ein Ereignis im Verlauf gehört keiner Mannschaft");
+        }
+        for (let i = 1; i < v.length; i++) {
+            if (v[i].minute + 3 < v[i - 1].minute) throw new Error(`Verlauf nicht in Spielreihenfolge (${v[i - 1].minute}' vor ${v[i].minute}')`);
+        }
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

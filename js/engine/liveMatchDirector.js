@@ -759,6 +759,22 @@ class LiveMatchDirector {
                 // Die Zeremonie wartet von sich aus, bis alle auf der neuen
                 // Seite stehen - erst dann pfeift der Schiedsrichter an.
                 this.startKickoff(kickoffTeam, "halftime");
+
+                // Der Seitenwechsel ist ein Schnitt: Beide Mannschaften kommen
+                // aus der Kabine und stellen sich gleich auf ihrer neuen Seite
+                // auf. Vorher wurden nur die Positionen vom Ende der ersten
+                // Halbzeit gespiegelt - wer tief in der gegnerischen Hälfte
+                // stand, stand danach wieder dort und schaffte den Weg bis zum
+                // Pfiff oft nicht. Der Anstoß lief dann mit Stürmern in der
+                // falschen Hälfte.
+                (this.match.players2D || []).forEach(p => {
+                    const ziel = this.computeSetPieceTarget(p, this.deadBall);
+                    if (!ziel) return;
+                    p.x = ziel.x;
+                    p.y = ziel.y;
+                    p.targetX = ziel.x;
+                    p.targetY = ziel.y;
+                });
             }
         } else if (previousMinute < 90 && minute >= 90) {
             const extra = this.match.timeline?.extraTime?.secondHalf;
@@ -869,8 +885,11 @@ class LiveMatchDirector {
         // mit der schnelleren Spieluhr wurden mehr Ereignisse gleichzeitig
         // fällig, und es fehlten mal Abstöße, mal Freistöße. Deshalb bündelt
         // eine Szene höchstens ein Ereignis, das den Ball aus dem Spiel bringt.
+        // Ein Foul, aus dem ein direkter Freistoß wird, gehört mit dem Schuss
+        // in dieselbe Szene - sonst würde der Freistoß erst in den Strafraum
+        // geflankt und der Ball danach für den Schuss zurückgeholt.
         const unterbricht = (ev) => ["goal", "save", "shot_miss"].includes(ev.type)
-            || (ev.type === "foul" && ev.outcome !== "penalty");
+            || (ev.type === "foul" && ev.outcome !== "penalty" && !ev.direkterFreistoss);
         let schonUnterbrochen = false;
 
         // Eine Szene ist eine Passage, keine Minute.
@@ -964,6 +983,8 @@ class LiveMatchDirector {
             if (!OHNE_BALLFUEHRUNG.includes(ev.type)) return;
             // Wechsel und Halbzeitpfiff haben ohnehin keinen Ort
             if (["substitution", "halftime", "fulltime"].includes(ev.type)) return;
+            // Ein direkter Freistoß braucht seine Schussposition
+            if (ev.direkterFreistoss) return;
             ev.start = { x: roh.x, y: roh.y };
             ev.end = { x: roh.x, y: roh.y };
         });
@@ -1034,6 +1055,7 @@ class LiveMatchDirector {
             // Fahne getreten, ein Elfmeter vom Punkt. Die dürfen nicht dorthin
             // wandern, wo die vorige Aktion endete.
             if (RUHENDER_BALL.includes(jetzt.type)) continue;
+            if (jetzt.isFreekick) continue;
             if (!vorher.end || typeof vorher.end.x !== "number") continue;
 
             const richtung = { x: jetzt.end?.x, y: jetzt.end?.y };
@@ -1167,6 +1189,17 @@ class LiveMatchDirector {
                 this.pendingPenalty = null;
             }
 
+            // Direkter Freistoß: Die Mauer stellt sich, der Schütze legt sich
+            // den Ball zurecht - dann geht er aufs Tor.
+            const freistoss = !elfmeter && !!ev.isFreekick && ["goal", "save", "shot_miss"].includes(ev.type);
+            if (freistoss) {
+                const schuetzenTeam = ev.type === "save" ? (ev.team === "home" ? "away" : "home") : ev.team;
+                this.deadBall = { kind: "freekick", team: schuetzenTeam, x: start.x, y: start.y, direkt: true };
+                this.match.setPiece = { kind: "freekick", team: schuetzenTeam, x: start.x, y: start.y };
+                this.setPieceWall = this.buildWall(schuetzenTeam, start.x, start.y);
+                this.cueSound("whistle");
+            }
+
             // Wer die Ecke tritt, steht nicht immer in der Timeline - dann
             // übernimmt der beste Standardschütze der Mannschaft.
             let held = this.getPlayer2D(this.protagonistId(ev));
@@ -1175,7 +1208,7 @@ class LiveMatchDirector {
             }
             this.sceneProtagonist = held ? held.id : null;
 
-            if (ev.type === "corner" || elfmeter) {
+            if (ev.type === "corner" || elfmeter || freistoss) {
                 // Der ruhende Ball wird hingelegt, der Schütze kommt dazu -
                 // niemand dribbelt den Ball zum Elfmeterpunkt.
                 //
@@ -1226,7 +1259,10 @@ class LiveMatchDirector {
                     this.routeBallTo(zielX, zielY, held.team, "pass", scale, held.id);
                 }
             } else {
-                this.routeBallTo(start.x, start.y, ev.team || this.possessionTeam, "pass", scale, null);
+                // Vor einem direkten Freistoß trägt die gefoulte Mannschaft den
+                // Ball zum Tatort, nicht der Foulende
+                const traeger = ev.direkterFreistoss ? this.attackingTeamOf(ev) : (ev.team || this.possessionTeam);
+                this.routeBallTo(start.x, start.y, traeger, "pass", scale, null);
             }
 
             this.assignSceneRoles(ev, "approach");
@@ -1277,7 +1313,7 @@ class LiveMatchDirector {
 
             // Ein ruhender Ball braucht seine Zeit: Ecke und Elfmeter werden
             // zurechtgelegt, auch wenn der Schütze schon dasteht.
-            this.phaseMinRest = (ev.type === "corner" || elfmeter)
+            this.phaseMinRest = (ev.type === "corner" || elfmeter || freistoss)
                 ? 1.7 * scale + this.bildschirmZeit(0.35)
                 : 0;
             return;
@@ -1588,6 +1624,11 @@ class LiveMatchDirector {
         } else if (ev.type === "injury") {
             this.showBanner("🚑 VERLETZUNG", `${ev.playerName || "Spieler"} · ${club}`, "rgba(127, 29, 29, 0.9)");
             this.startDrama("injury", { duration: 2.2, refereeTarget: tatort });
+        } else if (ev.type === "foul" && ev.direkterFreistoss) {
+            const gefoult = ev.team === "home"
+                ? (this.match.awayClub?.name || "Gast")
+                : (this.match.homeClub?.name || "Heim");
+            this.showBanner("🎯 FREISTOSS", `in Schussweite · ${gefoult}`, "rgba(30, 64, 175, 0.94)");
         } else if (ev.type === "foul" && (ev.outcome === "penalty" || ev.isPenalty)) {
             // Der Schuss vom Punkt kommt als eigenes Ereignis - hier wird
             // vorgemerkt, dass er als Elfmeter zu inszenieren ist.
@@ -2417,6 +2458,16 @@ class LiveMatchDirector {
 
         const outfield = squad.filter(p => p.pos !== "TW");
         const pool = outfield.length > 0 ? outfield : squad;
+
+        // Von der Seitenlinie vorgegeben: Er tritt die Ecken und die
+        // Freistöße in Schussweite, egal wo er gerade steht.
+        const vorgabe = this.match.standards?.[team] || {};
+        const vorgabeId = kind === "corner" ? vorgabe.ecken
+            : (kind === "freekick" && this.wallSpot(team, x, y).entfernung < 34 ? vorgabe.freistoss : null);
+        if (vorgabeId !== null && vorgabeId !== undefined) {
+            const schuetze = pool.find(p => p.id === vorgabeId);
+            if (schuetze) return schuetze;
+        }
 
         if (kind === "corner") {
             // Wer die Ecke tritt, wurde allein nach Technik bestimmt - auch

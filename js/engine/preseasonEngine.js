@@ -9,7 +9,7 @@
  * Genau das ist im Fußball aber die Zeit, in der ein Manager arbeitet. Diese
  * Engine füllt sie mit drei Entscheidungen, die alle Folgen haben:
  *
- *  - Der Trainerstab: Vier Fachbereiche, für jeden gibt es Bewerber mit
+ *  - Der Trainerstab: Fünf Fachbereiche, für jeden gibt es Bewerber mit
  *    unterschiedlicher Güte und unterschiedlichem Gehalt. Wer gut einkauft,
  *    entwickelt seine Spieler schneller und hält sie länger fit.
  *  - Die Sponsoren: Mehrere Angebote, die sich in Höhe, Laufzeit und
@@ -45,8 +45,9 @@ function _preResolve(globalName, pfad) {
 }
 
 class PreseasonEngine {
-    /** Die vier Fachbereiche eines Trainerstabs */
+    /** Die fünf Fachbereiche eines Trainerstabs */
     static BEREICHE = [
+        { key: "cotrainer", titel: "Co-Trainer", wirkung: "Hinweise, Gegneranalyse und delegierte Entscheidungen im Livespiel" },
         { key: "fitness", titel: "Athletiktrainer", wirkung: "Kondition und Belastungssteuerung" },
         { key: "analyse", titel: "Spielanalyst", wirkung: "Gegneranalyse und Taktikarbeit" },
         { key: "medizin", titel: "Mannschaftsarzt", wirkung: "Verletzungen und Genesungszeiten" },
@@ -232,6 +233,22 @@ class PreseasonEngine {
      * Aeltere Spielstaende kennen nur die fertige Testspielliste. Damit sie
      * weiterlaufen, wird daraus eine Planung gebaut, statt sie zu verwerfen.
      */
+    /**
+     * Bewerber für Fachbereiche, die es beim Start der Vorbereitung noch
+     * nicht gab - ein Spielstand aus der Zeit vor dem Co-Trainer hätte sonst
+     * einen offenen Posten ohne eine einzige Bewerbung.
+     */
+    static sichereBewerber(pre, club) {
+        if (!pre || !club) return pre;
+        if (!pre.bewerber || typeof pre.bewerber !== "object") pre.bewerber = {};
+        this.BEREICHE.forEach(b => {
+            if (!Array.isArray(pre.bewerber[b.key]) && !club.staff?.[b.key]) {
+                pre.bewerber[b.key] = this.erzeugeBewerber(club, b);
+            }
+        });
+        return pre;
+    }
+
     static sichereStruktur(pre) {
         if (!pre) return pre;
         if (!Array.isArray(pre.turniere)) pre.turniere = [];
@@ -963,6 +980,7 @@ class PreseasonEngine {
         if (!pre || !club) return [];
 
         this.sichereStruktur(pre);
+        this.sichereBewerber(pre, club);
         const offen = [];
         this.BEREICHE.forEach(b => {
             if (!club.staff?.[b.key]) offen.push(`${b.titel} nicht besetzt`);

@@ -29,7 +29,7 @@ const { OpponentAnalysisEngine } = require('./js/engine/opponentAnalysisEngine.j
 const { PositionEngine } = require('./js/engine/positionEngine.js');
 const { MatchFlowEngine } = require('./js/engine/matchFlowEngine.js');
 const { GameState, FORMATION_CONFIGS } = require('./js/engine/gameState.js');
-const { MatchEngine, LiveMatch } = require('./js/engine/matchEngine.js');
+const { MatchEngine, LiveMatch, MATCH_TUNING } = require('./js/engine/matchEngine.js');
 const { TransferEngine } = require('./js/engine/transferEngine.js');
 const { TrainingEngine } = require('./js/engine/trainingEngine.js');
 const { SeasonEngine } = require('./js/engine/seasonEngine.js');
@@ -4700,6 +4700,290 @@ function runEngineTests() {
         for (let i = 1; i < v.length; i++) {
             if (v[i].minute + 3 < v[i - 1].minute) throw new Error(`Verlauf nicht in Spielreihenfolge (${v[i - 1].minute}' vor ${v[i].minute}')`);
         }
+    });
+
+    // --- Seitenlinie, Teil zwei ------------------------------------------------
+
+    const schussVon = (e) => e.type === "save" ? (e.team === "home" ? "away" : "home")
+        : (["goal", "shot_miss"].includes(e.type) ? e.team : null);
+
+    test("Zurufe: zehn Minuten Wirkung, danach Pause - und sie verändern das Spiel", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const live = MatchEngine.createLiveMatch({ id: "zr_live", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { userSide: "home" });
+        while (live.minute < 20) live.tick();
+
+        const r = live.zuruf("home", "druck");
+        if (!r.success) throw new Error("Zuruf abgelehnt: " + r.message);
+        const stand = live.zurufStand("home");
+        if (stand.art !== "druck" || stand.restMinuten < 8) throw new Error(`Zuruf wirkt nicht: ${JSON.stringify(stand)}`);
+        if (live.zuruf("home", "ruhe").success) throw new Error("Zwei Zurufe gleichzeitig angenommen");
+        if (!live.events.some(e => e.type === "zuruf")) throw new Error("Der Zuruf fehlt im Ticker");
+        const z = live.zurufe[0];
+        if (z.bis - z.von + 1 !== MATCH_TUNING.zurufDauer) throw new Error(`Zuruf wirkt ${z.bis - z.von + 1} statt ${MATCH_TUNING.zurufDauer} Minuten`);
+
+        while (live.minute <= z.bis) live.tick();
+        if (live.zurufStand("home").aktiv) throw new Error("Der Zuruf wirkt über seine Zeit hinaus");
+        if (live.minute < z.bis + MATCH_TUNING.zurufPause && live.zurufStand("home").bereit) {
+            throw new Error("Nach dem Zuruf gibt es keine Pause");
+        }
+        while (live.minute < z.bis + MATCH_TUNING.zurufPause) live.tick();
+        if (!live.zurufStand("home").bereit) throw new Error("Nach der Pause ist kein neuer Zuruf möglich");
+
+        // Wirkung: im Fenster gemessen über viele Partien
+        const N = 300;
+        const fenster = (zurufe) => {
+            let schuesse = 0, gelb = 0, alle = 0;
+            for (let i = 0; i < N; i++) {
+                const tl = MatchEngine.generateTimeline({ id: `zr_${i}` }, heim, gast, state.players, { startMinute: 60, zurufe });
+                tl.filter(e => e.minute >= 61 && e.minute <= 70).forEach(e => {
+                    if (schussVon(e) === "away") schuesse++;
+                    if (schussVon(e)) alle++;
+                });
+                gelb += tl.filter(e => e.type === "yellow_card" && e.team === "away").length;
+            }
+            return { schuesse: schuesse / N, alle: alle / N, gelb: gelb / N };
+        };
+        const ohne = fenster([]);
+        const druck = fenster([{ side: "away", art: "druck", von: 61, bis: 70 }]);
+        const zeit = fenster([{ side: "away", art: "zeit", von: 61, bis: 70 }]);
+        const ruhe = fenster([{ side: "away", art: "ruhe", von: 61, bis: 90 }]);
+        if (druck.schuesse < ohne.schuesse * 1.25) {
+            throw new Error(`"Mehr Druck!" bringt kaum Abschlüsse: ${druck.schuesse.toFixed(2)} statt ${ohne.schuesse.toFixed(2)}`);
+        }
+        if (zeit.alle > ohne.alle * 0.85) {
+            throw new Error(`"Zeit schinden" beruhigt das Spiel nicht: ${zeit.alle.toFixed(2)} Abschlüsse statt ${ohne.alle.toFixed(2)}`);
+        }
+        if (ruhe.gelb > ohne.gelb * 0.85) {
+            throw new Error(`"Ruhe bewahren" spart keine Karten: ${ruhe.gelb.toFixed(2)} statt ${ohne.gelb.toFixed(2)}`);
+        }
+    });
+
+    test("Standardschützen: Der Vorgegebene tritt an, direkte Freistöße gibt es", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const elf = MatchEngine.getCleanLineup(heim, state.players).filter(p => p.pos !== "TW");
+        // Absichtlich ein schwacher Schütze - damit er nicht zufällig auch der Beste ist
+        const nachSchuss = elf.slice().sort((a, b) => MatchEngine.standardWert("elfmeter", a) - MatchEngine.standardWert("elfmeter", b));
+        const elfer = nachSchuss[0];
+        const ecke = elf.find(p => p.id !== elfer.id && p.pos !== "ST") || elf[1];
+        const frei = nachSchuss[1];
+        const bester = MatchEngine.standardSchuetze("elfmeter", elf, null);
+
+        let freistoesse = 0, elfmeter = 0, ecken = 0, elferOhne = 0;
+        for (let i = 0; i < 150; i++) {
+            // Ohne automatische Wechsel bleiben die Schützen auf dem Platz -
+            // außer einer von ihnen fliegt vom Platz, dann tritt ein anderer an.
+            const tl = MatchEngine.generateTimeline({ id: `std_${i}` }, heim, gast, state.players,
+                { standardsHome: { elfmeter: elfer.id, ecken: ecke.id, freistoss: frei.id }, autoWechselHome: false });
+            const runter = new Map();
+            tl.forEach(e => {
+                if ((e.type === "red_card" || (e.type === "yellow_card" && e.isSecondYellow)) && !runter.has(e.playerId)) runter.set(e.playerId, e.minute);
+                const imSpiel = (id, min) => !runter.has(id) || runter.get(id) > min;
+                const heimSchuss = schussVon(e) === "home";
+                const schuetze = e.type === "save" ? e.shooterId : e.playerId;
+                if (heimSchuss && e.isPenalty && imSpiel(elfer.id, e.minute)) {
+                    elfmeter++;
+                    if (schuetze !== elfer.id) throw new Error(`Den Elfmeter schoss ${schuetze} statt ${elfer.name}`);
+                }
+                if (heimSchuss && e.isFreekick && imSpiel(frei.id, e.minute)) {
+                    freistoesse++;
+                    if (schuetze !== frei.id) throw new Error(`Den Freistoß schoss ${schuetze} statt ${frei.name}`);
+                }
+                if (e.type === "corner" && e.team === "home" && e.fromPlayerId !== undefined && imSpiel(ecke.id, e.minute)) {
+                    ecken++;
+                    if (e.fromPlayerId !== ecke.id) throw new Error(`Die Ecke trat ${e.fromPlayerId} statt ${ecke.name}`);
+                }
+            });
+            // Ohne Vorgabe schießt der beste Elfmeterschütze
+            const ohneTl = MatchEngine.generateTimeline({ id: `std_o_${i}` }, heim, gast, state.players, { autoWechselHome: false });
+            const besterRaus = ohneTl.find(e => e.playerId === bester.id && (e.type === "red_card" || e.isSecondYellow));
+            ohneTl.forEach(e => {
+                if (schussVon(e) === "home" && e.isPenalty && !(besterRaus && besterRaus.minute <= e.minute)) {
+                    elferOhne++;
+                    const schuetze = e.type === "save" ? e.shooterId : e.playerId;
+                    if (schuetze !== bester.id) throw new Error(`Ohne Vorgabe schoss ${schuetze} den Elfmeter statt ${bester.name}`);
+                }
+            });
+        }
+        if (freistoesse === 0) throw new Error("In 150 Partien kein einziger direkter Freistoß");
+        if (ecken === 0 || elfmeter + elferOhne === 0) throw new Error("Zu wenig Standards für eine Aussage");
+
+        // Live: nur wer auf dem Platz steht, darf antreten
+        const live = MatchEngine.createLiveMatch({ id: "std_live", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { userSide: "home" });
+        const bankId = live.bank.home[0];
+        if (live.setzeStandards("home", { elfmeter: bankId }, { ohneNeuberechnung: true })) {
+            throw new Error("Ein Bankspieler wurde zum Elfmeterschützen");
+        }
+        live.setzeStandards("home", { ecken: ecke.id }, { ohneNeuberechnung: true });
+        const schuetzen = live.standardSchuetzen("home");
+        if (schuetzen.ecken?.id !== ecke.id || !schuetzen.ecken.vorgegeben) throw new Error("Der Eckenschütze wird nicht übernommen");
+        // Die Regie holt ihn an die Fahne
+        const taker = live.director.pickSetPieceTaker("corner", "home", 98, 2);
+        if (!taker || taker.id !== ecke.id) throw new Error("In der 2D-Ansicht tritt ein anderer die Ecke");
+    });
+
+    test("Positionstausch: zwei Spieler tauschen die Plätze, der Torwart bleibt im Tor", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const live = MatchEngine.createLiveMatch({ id: "tausch", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { userSide: "home" });
+        while (live.minute < 30) live.tick();
+        const feld = live.homeLineup.filter(p => p.pos !== "TW");
+        const a = feld[1], b = feld[feld.length - 1];
+        const ia = live.homeLineup.indexOf(a), ib = live.homeLineup.indexOf(b);
+        const posA = live.players2D.find(p => p.id === a.id).pos;
+        const posB = live.players2D.find(p => p.id === b.id).pos;
+        const formation = heim.formation;
+
+        const r = live.tauschePositionen("home", a.id, b.id);
+        if (!r.success) throw new Error("Tausch abgelehnt: " + r.message);
+        if (live.homeLineup[ia] !== b || live.homeLineup[ib] !== a) throw new Error("Die Aufstellung ist nicht getauscht");
+        if (live.players2D.find(p => p.id === a.id).pos !== posB || live.players2D.find(p => p.id === b.id).pos !== posA) {
+            throw new Error("Auf dem Feld spielen beide noch auf ihrer alten Position");
+        }
+        if (heim.formation !== formation) throw new Error("Der Tausch hat die Formation geändert");
+        const tw = live.homeLineup.find(p => p.pos === "TW");
+        if (live.tauschePositionen("home", tw.id, a.id).success) throw new Error("Der Torwart durfte ins Feld");
+        if (live.tauschePositionen("home", a.id, live.bank.home[0]).success) throw new Error("Ein Bankspieler durfte tauschen");
+        while (!live.isFinished) live.tick();
+    });
+
+    test("Live-Noten: dieselbe Rechnung wie der Spielbericht", () => {
+        // Die Rechnung selbst
+        const leer = { goals: 0, assists: 0, saves: 0, tackles: 0, chancen: 0, aufsTor: 0, fouls: 0, yellowCards: 0, redCards: 0 };
+        const ctx = { pos: "ST", minutes: 90, teamGoals: 1, oppGoals: 1 };
+        const basis = MatchEngine.noteBerechnen(leer, ctx);
+        if (MatchEngine.noteBerechnen({ ...leer, goals: 2 }, ctx) < basis + 1.5) throw new Error("Zwei Tore heben die Note kaum");
+        if (MatchEngine.noteBerechnen({ ...leer, chancen: 4 }, ctx) <= basis) throw new Error("Vorbereitete Chancen zählen nicht");
+        if (MatchEngine.noteBerechnen({ ...leer, redCards: 1 }, ctx) > basis - 1) throw new Error("Eine Rote Karte kostet zu wenig");
+        const kurz = MatchEngine.noteBerechnen({ ...leer, goals: 1 }, { ...ctx, minutes: 10 });
+        if (kurz > 6.5) throw new Error(`Nach zehn Minuten schon Note ${kurz}`);
+
+        // Live und Bericht derselben Partie
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const live = MatchEngine.createLiveMatch({ id: "noten", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { userSide: "home" });
+        while (!live.isFinished) live.tick();
+        const noten = live.liveNoten();
+        let verglichen = 0;
+        live.match.playerRatings.forEach(r => {
+            const n = noten.get(r.playerId);
+            if (!n) throw new Error(`${r.name} hat eine Berichtsnote, aber keine Live-Note`);
+            if (Math.abs(n.note - r.rating) > 0.21) throw new Error(`${r.name}: live ${n.note}, im Bericht ${r.rating}`);
+            verglichen++;
+        });
+        if (verglichen < 22) throw new Error(`Nur ${verglichen} Noten verglichen`);
+    });
+
+    test("Gegneranalyse: Angriffsseite, Angriffsart und gefährlichster Spieler", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const live = MatchEngine.createLiveMatch({ id: "analyse", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { userSide: "home" });
+        const stuermer = live.awayLineup.find(p => p.pos === "ST") || live.awayLineup[10];
+        // Der Gast greift in der Zeitleiste nach links an - seine linke Seite liegt unten (großes y)
+        for (let i = 0; i < 6; i++) {
+            live._protokolliere({ minute: 10 + i, type: "cross", team: "away", clubId: gast.id, fromPlayerId: stuermer.id, start: { x: 20, y: 85 } });
+            live._protokolliere({ minute: 10 + i, type: "shot_miss", team: "away", clubId: gast.id, playerId: stuermer.id, playerName: stuermer.name, start: { x: 12, y: 50 } });
+        }
+        live._protokolliere({ minute: 20, type: "through_ball", team: "away", clubId: gast.id, start: { x: 40, y: 50 } });
+        const a = live.gegnerAnalyse("home");
+        if (!a.genugGesehen) throw new Error("Sieben Angriffe reichen nicht für eine Einschätzung");
+        if (a.hauptSeite !== "links") throw new Error(`Hauptseite ${a.hauptSeite} statt links`);
+        if (a.arten[0]?.art !== "cross") throw new Error("Die Flanken werden nicht als Hauptwaffe erkannt");
+        if (a.gefaehrlich[0]?.id !== stuermer.id) throw new Error("Der gefährlichste Spieler wird nicht erkannt");
+        if (!a.empfehlungen.some(t => /bei uns rechts/.test(t))) throw new Error("Die Empfehlung nennt nicht die eigene Seite");
+        // Die eigenen Angriffe zählen nicht mit
+        live._protokolliere({ minute: 30, type: "cross", team: "home", clubId: heim.id, start: { x: 80, y: 10 } });
+        if (live.gegnerAnalyse("home").angriffe !== a.angriffe) throw new Error("Eigene Angriffe landen in der Gegneranalyse");
+    });
+
+    test("Co-Trainer: Seine Güte kommt aus dem Trainerstab und entscheidet, was er sieht", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        if (!PreseasonEngine.BEREICHE.some(b => b.key === "cotrainer")) throw new Error("Der Co-Trainer fehlt im Trainerstab");
+        // Ein alter Spielstand ohne Bewerber für den neuen Posten bekommt welche
+        const pre = { bewerber: { fitness: [] } };
+        PreseasonEngine.sichereBewerber(pre, heim);
+        if (!Array.isArray(pre.bewerber.cotrainer) || pre.bewerber.cotrainer.length < 2) throw new Error("Keine Bewerber für den Co-Trainer");
+
+        const neu = (guete) => {
+            heim.staff = { ...(heim.staff || {}), cotrainer: { name: "Test Assistent", guete, gehalt: 1000 } };
+            return MatchEngine.createLiveMatch({ id: `co_${guete}`, played: false, homeClubId: "muc", awayClubId: "dor" },
+                heim, gast, state.players, { userSide: "home" });
+        };
+        const schwach = neu(30);
+        const stark = neu(92);
+        if (schwach.coTrainer.home.guete !== 30 || schwach.coTrainer.home.name !== "Test Assistent") throw new Error("Die Güte kommt nicht aus dem Trainerstab");
+        if (stark._coTrainerPunkte.length <= schwach._coTrainerPunkte.length) throw new Error("Ein guter Co-Trainer prüft nicht häufiger");
+
+        // Gleiche Lage, verschiedene Co-Trainer: Nur der gute liest den Gegner
+        [schwach, stark].forEach(live => {
+            live.minute = 40;
+            for (let i = 0; i < 6; i++) {
+                live._protokolliere({ minute: 10 + i, type: "cross", team: "away", clubId: gast.id, start: { x: 20, y: 85 } });
+            }
+        });
+        const hs = schwach.coTrainerHinweise("home").map(h => h.art);
+        const hg = stark.coTrainerHinweise("home").map(h => h.art);
+        if (hs.includes("gegner")) throw new Error("Ein schwacher Co-Trainer liest den Gegner");
+        if (!hg.includes("gegner")) throw new Error("Ein guter Co-Trainer übersieht, wie der Gegner angreift");
+
+        // Delegierte Wechsel: Der gute nimmt den Müdesten, der schwache greift öfter daneben
+        const muede = MatchEngine.getCleanLineup(heim, state.players).find(p => p.pos === "ZM" || p.pos === "DM");
+        const frische = new Map([[muede.id, 0.55]]);
+        const treffer = (guete) => {
+            let erste = 0, richtig = 0;
+            for (let i = 0; i < 120; i++) {
+                const tl = MatchEngine.generateTimeline({ id: `cw_${guete}_${i}` }, heim, gast, state.players,
+                    { frische, wechselGueteHome: guete });
+                const w = tl.find(e => e.type === "substitution" && e.team === "home" && e.minute >= 60);
+                if (!w) continue;
+                erste++;
+                if (w.playerOutId === muede.id) richtig++;
+            }
+            return erste > 0 ? richtig / erste : 0;
+        };
+        const gut = treffer(95), schlecht = treffer(10);
+        if (gut < 0.85) throw new Error(`Der gute Co-Trainer wechselt nur in ${Math.round(gut * 100)} % den Müdesten aus`);
+        if (schlecht > gut - 0.15) throw new Error(`Kein Unterschied: gut ${Math.round(gut * 100)} %, schwach ${Math.round(schlecht * 100)} %`);
+        delete heim.staff.cotrainer;
+    });
+
+    test("Angriffsseite aus der Taktik wirkt auf die Flanken, Sofort-Ergebnis räumt das Bild", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const vorher = { ...heim.tactics };
+        heim.tactics = { ...heim.tactics, focus: "left" };
+        let links = 0, alle = 0;
+        for (let i = 0; i < 80; i++) {
+            MatchEngine.generateTimeline({ id: `fk_${i}` }, heim, gast, state.players)
+                .filter(e => e.type === "cross" && e.team === "home")
+                .forEach(e => { alle++; if (e.start.y < 50) links++; });
+        }
+        heim.tactics = vorher;
+        if (alle < 30) throw new Error("Zu wenige Flanken für eine Aussage");
+        if (links / alle < 0.65) throw new Error(`Nur ${Math.round(links / alle * 100)} % der Flanken kommen über links`);
+
+        const live = MatchEngine.createLiveMatch({ id: "sofort", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { userSide: "home" });
+        for (let i = 0; i < 10; i++) live.tick();
+        live.banner = { title: "TOR", timer: 5 };
+        live.goalFlash = 1;
+        live.celebratingTeam = "home";
+        live.skipToEnd();
+        if (live.banner || live.goalFlash > 0 || live.celebratingTeam) throw new Error("Nach dem Sofort-Ergebnis bleiben Einblendungen stehen");
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

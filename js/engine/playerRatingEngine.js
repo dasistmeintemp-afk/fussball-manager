@@ -629,8 +629,9 @@ class PlayerRatingEngine {
             visibleOvr: isPrecise ? player.overall : `${ovrMin} - ${ovrMax}`,
             visiblePot: (isPrecise && player.age >= 26) ? player.pot : `${potMin} - ${potMax}`,
             visibleValueText: isPrecise
-                ? (typeof Formatters !== 'undefined' ? Formatters.formatMoney(trueVal) : `${(trueVal / 1e6).toFixed(1)} Mio. €`)
-                : `${(valMin / 1e6).toFixed(1)} - ${(valMax / 1e6).toFixed(1)} Mio. €`,
+                ? (typeof Formatters !== 'undefined' ? Formatters.formatMoney(trueVal, true) : `${(trueVal / 1e6).toFixed(1).replace(".", ",")} Mio. €`)
+                // Deutsche Schreibweise: "46,2–89,0 Mio. €" statt "46.2 - 89.0 Mio. €"
+                : `${(valMin / 1e6).toFixed(1).replace(".", ",")}–${(valMax / 1e6).toFixed(1).replace(".", ",")} Mio. €`,
             starsCa,
             starsPa,
             starsCaMin,

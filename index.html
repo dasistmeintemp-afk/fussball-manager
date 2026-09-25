@@ -49,11 +49,14 @@
             <div class="header-right">
                 <div class="finance-pill" title="Aktueller Kontostand / Transferbudget">
                     <span class="fin-icon">💰</span>
-                    <span class="fin-val" id="headerBalance">0 €</span>
-                    <span class="fin-sub" id="headerTransferBudget">TB: 0 €</span>
+                    <span class="fin-text">
+                        <span class="fin-val" id="headerBalance">0 €</span>
+                        <span class="fin-sub" id="headerTransferBudget">TB: 0 €</span>
+                    </span>
                 </div>
                 <div class="confidence-pill" title="Vorstandszufriedenheit">
                     <span class="conf-icon">👔</span>
+                    <span class="conf-label">Vorstand</span>
                     <div class="conf-bar-wrap">
                         <div class="conf-bar-fill" id="headerConfidenceBar" style="width: 75%;"></div>
                     </div>
@@ -383,19 +386,20 @@
                         <table class="data-table" id="squadTable">
                             <thead>
                                 <tr>
-                                    <th>Status</th>
-                                    <th>Name</th>
-                                    <th>Pos</th>
-                                    <th>Alter</th>
-                                    <th>Stärke &amp; Potenzial</th>
-                                    <th>Beste Rolle</th>
-                                    <th>Fitness</th>
-                                    <th>Moral</th>
-                                    <th>Form</th>
-                                    <th>Marktwert</th>
-                                    <th>Gehalt/Woche</th>
-                                    <th>Vertrag</th>
-                                    <th>Aktionen</th>
+                                    <th class="sq-status">Status</th>
+                                    <th class="sq-name">Name</th>
+                                    <th class="sq-pos">Pos</th>
+                                    <th class="sq-alter">Alter</th>
+                                    <th class="sq-staerke">Stärke &amp; Potenzial</th>
+                                    <th class="sq-rolle">Beste Rolle</th>
+                                    <th class="sq-fit">Fitness</th>
+                                    <th class="sq-moral">Moral</th>
+                                    <th class="sq-form">Form</th>
+                                    <th class="sq-wert">Marktwert</th>
+                                    <th class="sq-gehalt">Gehalt/Wo.</th>
+                                    <th class="sq-vertrag">Vertrag</th>
+                                    <th class="sq-meta"></th>
+                                    <th class="sq-aktion"></th>
                                 </tr>
                             </thead>
                             <tbody id="squadTableBody">
@@ -552,9 +556,9 @@
                 <!-- Tab: Fixtures & League Table (Spielplan & Tabelle) -->
                 <section class="tab-pane" id="pane-fixtures">
                     <div class="pane-header">
-                        <div style="display:flex; align-items:center; gap:16px;">
+                        <div class="wettbewerb-kopf">
                             <h2>Wettbewerbe & Spielplan</h2>
-                            <select id="selectCompetitionView" class="styled-select" style="min-width:230px; padding:6px 12px; font-weight:700;">
+                            <select id="selectCompetitionView" class="styled-select">
                                 <!-- Wird aus den Ligen der Spielwelt befüllt -->
                             </select>
                         </div>
@@ -566,25 +570,26 @@
 
                     <!-- View 1: Full Standings Table -->
                     <div id="viewStandings" class="table-container full-page">
-                        <table class="data-table">
+                        <table class="data-table tabelle-liga" id="fullStandingsTable">
                             <thead>
                                 <tr>
-                                    <th>Platz</th>
-                                    <th>Verein</th>
-                                    <th>Spiele</th>
-                                    <th>S</th>
-                                    <th>U</th>
-                                    <th>N</th>
-                                    <th>Tore</th>
-                                    <th>Diff</th>
-                                    <th>Punkte</th>
-                                    <th>Form (letzte 5)</th>
+                                    <th class="tb-platz" title="Platz">#</th>
+                                    <th class="tb-verein">Verein</th>
+                                    <th class="tb-sp" title="Spiele">Sp.</th>
+                                    <th class="tb-s" title="Siege">S</th>
+                                    <th class="tb-u" title="Unentschieden">U</th>
+                                    <th class="tb-n" title="Niederlagen">N</th>
+                                    <th class="tb-tore">Tore</th>
+                                    <th class="tb-diff" title="Tordifferenz">Diff.</th>
+                                    <th class="tb-pkt" title="Punkte">Pkt.</th>
+                                    <th class="tb-form">Form</th>
                                 </tr>
                             </thead>
                             <tbody id="fullStandingsBody">
                                 <!-- Dynamisch -->
                             </tbody>
                         </table>
+                        <div class="tabellen-legende" id="standingsLegend"></div>
                     </div>
 
                     <!-- View 2: Full Schedule Fixtures -->
@@ -612,6 +617,21 @@
 
                     <div id="viewTransferMarket">
                         <div class="hint-box mb-2" id="transferReachHint"></div>
+                        <!-- AI Offers Card if available -->
+                        <div class="ai-offers-container" id="aiOffersContainer" style="display:none;">
+                            <h3>Eingehende Transferangebote für Ihre Spieler</h3>
+                            <div class="ai-offers-list" id="aiOffersList"></div>
+                        </div>
+
+                        <!-- Laufende Verhandlungen -->
+                        <div class="ai-offers-container" id="negotiationsContainer" style="display:none;">
+                            <h3>🤝 Laufende Verhandlungen</h3>
+                            <p class="text-muted" style="font-size:12px; margin:2px 0 10px;">
+                                Ablöse, persönliche Konditionen und Medizincheck brauchen ihre Zeit. Die Gegenseite antwortet nach ein bis drei Tagen.
+                            </p>
+                            <div id="negotiationsList"></div>
+                        </div>
+
                         <div class="transfer-filters mb-3">
                             <input type="text" id="tfSearch" class="styled-input" placeholder="Spielername suchen...">
                             <select id="tfPosFilter" class="styled-select">
@@ -638,37 +658,23 @@
                             </select>
                         </div>
 
-                        <!-- AI Offers Card if available -->
-                        <div class="ai-offers-container" id="aiOffersContainer" style="display:none;">
-                            <h3>Eingehende Transferangebote für Ihre Spieler</h3>
-                            <div class="ai-offers-list" id="aiOffersList"></div>
-                        </div>
-
-                        <!-- Laufende Verhandlungen -->
-                        <div class="ai-offers-container" id="negotiationsContainer" style="display:none;">
-                            <h3>🤝 Laufende Verhandlungen</h3>
-                            <p class="text-muted" style="font-size:12px; margin:2px 0 10px;">
-                                Ablöse, persönliche Konditionen und Medizincheck brauchen ihre Zeit. Die Gegenseite antwortet nach ein bis drei Tagen.
-                            </p>
-                            <div id="negotiationsList"></div>
-                        </div>
-
                         <!-- Transfer Market Table -->
                         <div class="table-container full-page">
                             <table class="data-table">
                                 <thead>
                                     <tr>
-                                        <th>Name</th>
-                                        <th>Verein</th>
-                                        <th>Pos</th>
-                                        <th>Alter</th>
-                                        <th>Stärke &amp; Potenzial</th>
-                                        <th>Beste Rolle</th>
-                                        <th>Marktwert</th>
-                                        <th>Scout-Wissen</th>
-                                        <th>Gehalt</th>
-                                        <th>Vertrag</th>
-                                        <th>Aktion</th>
+                                        <th class="tm-name">Name</th>
+                                        <th class="tm-verein">Verein</th>
+                                        <th class="tm-pos">Pos</th>
+                                        <th class="tm-alter">Alter</th>
+                                        <th class="tm-staerke">Stärke &amp; Potenzial</th>
+                                        <th class="tm-rolle">Beste Rolle</th>
+                                        <th class="tm-wert">Marktwert</th>
+                                        <th class="tm-wissen">Scout</th>
+                                        <th class="tm-gehalt">Gehalt/Wo.</th>
+                                        <th class="tm-vertrag">Vertrag</th>
+                                        <th class="tm-meta"></th>
+                                        <th class="tm-aktion"></th>
                                     </tr>
                                 </thead>
                                 <tbody id="transferTableBody">
@@ -728,7 +734,7 @@
 
                     <div class="dash-card" style="margin-bottom:20px;">
                         <div class="card-header-row">
-                            <h3>☀️ Bis zum ersten Spieltag</h3>
+                            <h3 id="preHeadTitle">☀️ Bis zum ersten Spieltag</h3>
                             <span id="preCountdown" class="header-tag">-</span>
                         </div>
                         <div id="preOpenItems" style="font-size:13px; line-height:1.7;"></div>
@@ -737,13 +743,13 @@
                     <div class="training-grid">
                         <div class="dash-card">
                             <h3>🧑‍🏫 Trainerstab zusammenstellen</h3>
-                            <p class="muted-note">Vier Fachbereiche. Wer gut einkauft, entwickelt seine Spieler schneller und haelt sie laenger fit. Der Stab darf hoechstens ein Viertel des Gehaltsetats kosten.</p>
+                            <p class="muted-note">Fünf Fachbereiche. Wer gut einkauft, entwickelt seine Spieler schneller, hält sie länger fit und hat im Spiel einen besseren Co-Trainer an der Seite. Der Stab darf höchstens ein Viertel des Gehaltsetats kosten.</p>
                             <div id="preStaffList"></div>
                         </div>
 
                         <div class="dash-card">
                             <h3>🤝 Sponsorenangebote</h3>
-                            <p class="muted-note">Ein Angebot gilt fuer die gewaehlte Laufzeit. Mehr Geld heisst nicht immer mehr Ruhe.</p>
+                            <p class="muted-note">Ein Angebot gilt für die gewählte Laufzeit. Mehr Geld heißt nicht immer mehr Ruhe.</p>
                             <div id="preSponsorList"></div>
                         </div>
 
@@ -755,13 +761,13 @@
 
                         <div class="dash-card">
                             <h3>🏆 Turniereinladungen</h3>
-                            <p class="muted-note">Antrittsgeld gibt es fuers Kommen, die Praemie fuer die Platzierung. Zwei Runden: Halbfinale, danach Endspiel oder Spiel um Platz drei.</p>
+                            <p class="muted-note">Antrittsgeld gibt es fürs Kommen, die Prämie für die Platzierung. Zwei Runden: Halbfinale, danach Endspiel oder Spiel um Platz drei.</p>
                             <div id="preTournamentList"></div>
                         </div>
 
                         <div class="dash-card">
                             <h3>📞 Testspiele vereinbaren</h3>
-                            <p class="muted-note">Wer lieber selbst plant, fragt Vereine einzeln an. Zusagen muessen die selbst - und wer absagt, ist fuer diese Vorbereitung weg.</p>
+                            <p class="muted-note">Wer lieber selbst plant, fragt Vereine einzeln an. Zusagen müssen die selbst - und wer absagt, ist für diese Vorbereitung weg.</p>
                             <div id="preContactList"></div>
                         </div>
 
@@ -1014,22 +1020,23 @@
                 <section class="tab-pane" id="pane-stats">
                     <div class="pane-header">
                         <h2>Liga-Statistiken & Ranglisten</h2>
+                        <select id="statsLeagueSelect" class="styled-select stats-liga-wahl" aria-label="Liga für die Ranglisten"></select>
                     </div>
                     <div class="stats-grid">
                         <div class="dash-card">
-                            <h3>⚽ Torjägerkanone (Tore)</h3>
+                            <h3>⚽ Torjäger</h3>
                             <div class="leaderboard-list" id="statsTopScorers"></div>
                         </div>
                         <div class="dash-card">
-                            <h3>🎯 Beste Vorlagengeber (Assists)</h3>
+                            <h3>🎯 Vorlagengeber</h3>
                             <div class="leaderboard-list" id="statsTopAssists"></div>
                         </div>
                         <div class="dash-card">
-                            <h3>🧤 Weiße Westen (Clean Sheets)</h3>
+                            <h3>🧤 Weiße Westen</h3>
                             <div class="leaderboard-list" id="statsCleanSheets"></div>
                         </div>
                         <div class="dash-card">
-                            <h3>⭐ Notenbeste Spieler</h3>
+                            <h3>⭐ Notenbeste Spieler <span class="muted-note stats-hinweis" id="statsRatingHint"></span></h3>
                             <div class="leaderboard-list" id="statsTopRatings"></div>
                         </div>
 
@@ -1041,9 +1048,10 @@
                                     <thead>
                                         <tr>
                                             <th>Saison</th>
-                                            <th>Deutscher Meister</th>
+                                            <th>Meister</th>
                                             <th>Eigener Verein</th>
-                                            <th>Eigener Tabellenplatz</th>
+                                            <th>Platzierung</th>
+                                            <th>Torschützenkönig</th>
                                         </tr>
                                     </thead>
                                     <tbody id="statsHistoryBody">
@@ -1180,6 +1188,12 @@
                             <h3>Sound & Audio-Effekte</h3>
                             <p>Synthetisierte Soundeffekte für Stadion-Atmosphäre, Pfiffe und Tore.</p>
                             <button class="btn btn-secondary" id="btnToggleSound">🔊 Sound: Aktiviert</button>
+                        </div>
+
+                        <div class="dash-card einstellungen-live">
+                            <h3>⚽ Livespiel</h3>
+                            <p>Gilt für jede Partie und lässt sich auch während des Spiels an der Seitenlinie ändern.</p>
+                            <div id="settingsLiveBody"></div>
                         </div>
                     </div>
                 </section>

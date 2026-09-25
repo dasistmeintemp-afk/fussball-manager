@@ -186,7 +186,7 @@ const AIManagerEngine = {
                     playerId: targetPlayer.id,
                     playerName: targetPlayer.name,
                     fee: offerFee,
-                    feeFormatted: (typeof Formatters !== 'undefined') ? Formatters.formatMoney(offerFee) : `${offerFee} €`,
+                    feeFormatted: (typeof Formatters !== 'undefined') ? Formatters.formatMoney(offerFee, true) : `${offerFee} €`,
                     playerValue: targetPlayer.value,
                     wage: Math.round(targetPlayer.wage * 1.2),
                     status: "pending"
@@ -201,7 +201,7 @@ const AIManagerEngine = {
                     newsEngine.addMessage(state, "transfer_offer", {
                         title: `Transferangebot für ${targetPlayer.name}`,
                         sender: `${buyer.name}`,
-                        text: `${buyer.name} bietet eine Ablösesumme von ${offerObj.feeFormatted} für Ihren Spieler ${targetPlayer.name} (Marktwert: ${(targetPlayer.value / 1000000).toFixed(1)} Mio. €).`,
+                        text: `${buyer.name} bietet eine Ablösesumme von ${offerObj.feeFormatted} für Ihren Spieler ${targetPlayer.name} (Marktwert: ${(targetPlayer.value / 1000000).toFixed(1).replace(".", ",")} Mio. €).`,
                         priority: "high",
                         relatedEntity: offerObj
                     });

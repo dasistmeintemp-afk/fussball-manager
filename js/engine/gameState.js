@@ -1403,13 +1403,18 @@ class GameState {
     }
 
     static formatMoney(amount) {
-        if (amount >= 1000000) {
-            return (amount / 1000000).toFixed(2).replace(".", ",") + " Mio. €";
+        // Negative Beträge liefen bisher an allen Stufen vorbei und kamen als
+        // Rohzahl heraus - im Buchungsjournal stand "-1150387 €".
+        const zahl = Number(amount) || 0;
+        const vorzeichen = zahl < 0 ? "-" : "";
+        const betrag = Math.abs(zahl);
+        if (betrag >= 1000000) {
+            return vorzeichen + (betrag / 1000000).toFixed(2).replace(".", ",") + " Mio. €";
         }
-        if (amount >= 1000) {
-            return (amount / 1000).toFixed(0) + " Tsd. €";
+        if (betrag >= 1000) {
+            return vorzeichen + (betrag / 1000).toFixed(0) + " Tsd. €";
         }
-        return amount + " €";
+        return vorzeichen + Math.round(betrag) + " €";
     }
 
     static getExpectationText(exp) {

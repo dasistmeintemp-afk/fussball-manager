@@ -1466,6 +1466,13 @@
                     <!-- Left: 2D Pitch Canvas -->
                     <div class="live-pitch-wrapper">
                         <canvas id="livePitchCanvas" width="800" height="500"></canvas>
+                        <div class="lm-zurufe" id="lmZurufe" style="display:none;">
+                            <span class="lm-zuruf-titel">📣 <span class="lm-btn-text">Zuruf</span></span>
+                            <button class="lm-zuruf-btn" data-zuruf="druck" title="Mehr Druck! - zehn Minuten lang mehr Chancen, hinten offener"><span class="lm-zuruf-ico">🔥</span><span class="lm-zuruf-lang">Mehr Druck!</span><span class="lm-zuruf-kurz">Druck</span></button>
+                            <button class="lm-zuruf-btn" data-zuruf="ruhe" title="Ruhe bewahren - zehn Minuten lang weniger Karten, der Gegner findet schwerer Lücken"><span class="lm-zuruf-ico">🧊</span><span class="lm-zuruf-lang">Ruhe bewahren</span><span class="lm-zuruf-kurz">Ruhe</span></button>
+                            <button class="lm-zuruf-btn" data-zuruf="zeit" title="Zeit schinden - zehn Minuten lang passiert weniger, aber Karten drohen"><span class="lm-zuruf-ico">⏳</span><span class="lm-zuruf-lang">Zeit schinden</span><span class="lm-zuruf-kurz">Zeit</span></button>
+                            <span class="lm-zuruf-status" id="lmZurufStatus"></span>
+                        </div>
                         <div class="live-commentary-bar" id="lmCommentary">
                             Das Spiel wird angepfiffen!
                         </div>
@@ -1523,11 +1530,13 @@
                 <div class="coaching-tabs" role="tablist">
                     <button class="coaching-tab active" data-coachtab="wechsel" role="tab">🔄 Wechsel</button>
                     <button class="coaching-tab" data-coachtab="taktik" role="tab">🧭 Taktik</button>
-                    <button class="coaching-tab" data-coachtab="cotrainer" role="tab">🗣️ Co-Trainer <span class="coach-tab-badge" id="coachTipCount"></span></button>
+                    <button class="coaching-tab" data-coachtab="gegner" role="tab">🔍 Gegner</button>
+                    <button class="coaching-tab" data-coachtab="cotrainer" role="tab">🗣️ <span class="coach-tab-lang">Co-Trainer</span><span class="coach-tab-kurz">Co</span> <span class="coach-tab-badge" id="coachTipCount"></span></button>
                 </div>
                 <div class="coaching-body">
                     <div class="coaching-pane active" id="coachPane-wechsel"></div>
                     <div class="coaching-pane" id="coachPane-taktik"></div>
+                    <div class="coaching-pane" id="coachPane-gegner"></div>
                     <div class="coaching-pane" id="coachPane-cotrainer"></div>
                 </div>
                 <div class="coaching-foot">

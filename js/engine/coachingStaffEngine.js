@@ -51,7 +51,7 @@ class CoachingStaffEngine {
      * verschieben ihn. Daraus ergeben sich die einzelnen Fachbereiche.
      */
     static staffQuality(club) {
-        if (!club) return { overall: 50, fitness: 50, analyse: 50, medizin: 50, nachwuchs: 50, titel: "Trainerstab", kurz: "Solide" };
+        if (!club) return { overall: 50, fitness: 50, analyse: 50, medizin: 50, nachwuchs: 50, coTrainer: 50, titel: "Trainerstab", kurz: "Solide" };
 
         const STUFEN_BASIS = { 1: 74, 2: 64, 3: 56, 4: 48, 5: 42, 6: 37, 7: 33 };
         const basis = STUFEN_BASIS[club.level || 1] ?? 45;
@@ -80,9 +80,12 @@ class CoachingStaffEngine {
         const analyse = eigen("analyse", overall + (ruf - 50) * 0.12);
         const medizinWert = eigen("medizin", overall + (medizin - 1) * 5);
         const nachwuchs = eigen("nachwuchs", overall + (jugend - 1) * 5);
+        // Der Co-Trainer steht im Spiel an der Seitenlinie: Hinweise,
+        // delegierte Wechsel und Umstellungen hängen an ihm.
+        const coTrainer = eigen("cotrainer", overall + (ruf - 50) * 0.08);
 
         // Der Gesamtwert folgt dem tatsaechlichen Stab
-        const gesamt = Math.round((fitness + analyse + medizinWert + nachwuchs) / 4);
+        const gesamt = Math.round((fitness + analyse + medizinWert + nachwuchs + coTrainer) / 5);
         const stufe = this.STAB_STUFEN.find(s => gesamt >= s.ab) || this.STAB_STUFEN[this.STAB_STUFEN.length - 1];
 
         return {
@@ -91,6 +94,7 @@ class CoachingStaffEngine {
             analyse,
             medizin: medizinWert,
             nachwuchs,
+            coTrainer,
             titel: stufe.titel,
             kurz: stufe.kurz,
             // Wie stark der Stab die Entwicklung der Spieler beschleunigt.

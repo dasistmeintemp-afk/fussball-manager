@@ -1289,7 +1289,17 @@ class UIManager {
         if (available <= 0) return false;
 
         const cssWidth = Math.min(available, 1400);
-        const cssHeight = Math.max(240, wrapper.clientHeight - 70);
+        // Unter dem Feld stehen Zurufleiste und Kommentarzeile - ihre Höhe
+        // wird abgezogen, statt pauschal siebzig Pixel zu schätzen.
+        let darunter = 0;
+        [...wrapper.children].forEach(el => {
+            if (el === canvas || el.offsetParent === null) return;
+            const cs = getComputedStyle(el);
+            darunter += el.offsetHeight + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
+        });
+        const wcs = getComputedStyle(wrapper);
+        const polster = (parseFloat(wcs.paddingTop) || 0) + (parseFloat(wcs.paddingBottom) || 0);
+        const cssHeight = Math.max(200, wrapper.clientHeight - polster - (darunter || 55) - 6);
 
         const dpr = Math.min(2.5, (typeof window !== "undefined" && window.devicePixelRatio) || 1);
         const pixelWidth = Math.round(cssWidth * dpr);
@@ -2573,6 +2583,7 @@ class UIManager {
         const el = document.getElementById("preStaffList");
         if (!el) return;
 
+        if (typeof engine.sichereBewerber === "function") engine.sichereBewerber(pre, club);
         const kosten = engine.stabKosten(club);
         const grenze = Math.round((club.wageBudget || 0) * 0.25);
         const staffEngine = this.getCoachingStaffEngine();
@@ -2589,7 +2600,7 @@ class UIManager {
                 // die sind bei einem Spitzenklub schon gut. Ohne diese Zahl
                 // verpflichtet man ahnungslos jemanden, der schlechter ist als
                 // das, was man ohnehin hat, und zahlt dafuer auch noch Gehalt.
-                const jetzt = aktuell ? aktuell[b.key] : null;
+                const jetzt = aktuell ? (b.key === "cotrainer" ? aktuell.coTrainer : aktuell[b.key]) : null;
                 const kopf = besetzt
                     ? `<strong>${besetzt.name}</strong> &middot; Guete ${besetzt.guete} &middot; ${GameState.formatMoney(besetzt.gehalt)}/Wo`
                     : `<span class="muted-note">mit Bordmitteln: Guete ${jetzt ?? "?"}</span>`;
@@ -4456,6 +4467,7 @@ class UIManager {
                 Ändern Sie Schwerpunkt oder Intensität, gilt Ihre Vorgabe für ${staff.VETO_DAUER_TAGE} Tage.
             </p>
             <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:4px 18px;">
+                ${fach("Co-Trainer an der Seitenlinie", stab.coTrainer ?? stab.analyse)}
                 ${fach("Athletik & Fitness", stab.fitness)}
                 ${fach("Spielanalyse", stab.analyse)}
                 ${fach("Medizinische Abteilung", stab.medizin)}
@@ -6279,6 +6291,7 @@ class UIManager {
 
             this.renderLiveStats(liveMatch);
             this.renderLiveVerlauf(liveMatch);
+            this.updateLiveZurufe(liveMatch);
             setWidth("lmTlFill", `${Math.min(100, Math.max(0, liveMatch.minute / 90 * 100)).toFixed(1)}%`);
             if (document.getElementById("lmSubtab-lineups")?.classList.contains("active")) {
                 this.renderLiveLineups(liveMatch);
@@ -6658,6 +6671,21 @@ class UIManager {
         };
 
 
+        // Zurufe von der Seitenlinie - ohne Pause, nur für die eigene Mannschaft
+        const zurufLeiste = document.getElementById("lmZurufe");
+        if (zurufLeiste) {
+            zurufLeiste.style.display = liveMatch.userSide ? "" : "none";
+            zurufLeiste.querySelectorAll("[data-zuruf]").forEach(btn => {
+                btn.onclick = () => {
+                    const r = liveMatch.zuruf(liveMatch.userSide, btn.dataset.zuruf);
+                    this.showToast(r.message, r.success ? "success" : "error");
+                    this._lmZurufKey = null;
+                    this.updateLiveZurufe(liveMatch);
+                };
+            });
+        }
+        this._lmZurufKey = null;
+
         this.resizeLiveCanvas();
         this.startCrowdAmbience();
         let lastFrameTime = performance.now();
@@ -6798,6 +6826,28 @@ class UIManager {
             : '<svg class="lm-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="3.6" height="12" rx="1"/><rect x="9.4" y="2" width="3.6" height="12" rx="1"/></svg><span class="lm-btn-text"> Pause</span>';
         btn.setAttribute("aria-label", liveMatch.isPaused ? "Weiter" : "Pause");
         btn.classList.toggle("is-paused", !!liveMatch.isPaused);
+    }
+
+    /** Zurufleiste: welcher Zuruf wirkt, wann der nächste möglich ist */
+    updateLiveZurufe(liveMatch) {
+        const leiste = document.getElementById("lmZurufe");
+        if (!leiste || !liveMatch || !liveMatch.userSide || typeof liveMatch.zurufStand !== "function") return;
+        const stand = liveMatch.zurufStand(liveMatch.userSide);
+        const key = `${liveMatch.minute}|${stand.art}|${stand.bereit}|${liveMatch.isFinished}`;
+        if (this._lmZurufKey === key) return;
+        this._lmZurufKey = key;
+        leiste.querySelectorAll("[data-zuruf]").forEach(btn => {
+            const aktiv = stand.art === btn.dataset.zuruf;
+            btn.classList.toggle("aktiv", aktiv);
+            btn.disabled = !stand.bereit && !aktiv;
+            btn.setAttribute("aria-pressed", aktiv ? "true" : "false");
+        });
+        const status = document.getElementById("lmZurufStatus");
+        if (status) {
+            status.textContent = liveMatch.isFinished ? ""
+                : (stand.aktiv ? `wirkt noch ${stand.restMinuten}'`
+                    : (stand.bereit ? "" : `wieder ab ${stand.wiederAb}'`));
+        }
     }
 
     // ---------------------------------------------------------- Match-Center
@@ -6987,6 +7037,7 @@ class UIManager {
         this._lmLineupKey = key;
         const esc = v => this.escapeHtml(String(v ?? ""));
         const finde = id => MatchEngine.findPlayer(liveMatch.allPlayers, id);
+        const noten = typeof liveMatch.liveNoten === "function" ? liveMatch.liveNoten() : new Map();
 
         const spalte = (seite) => {
             const club = liveMatch.clubVon(seite);
@@ -7018,6 +7069,7 @@ class UIManager {
                         <span class="lm-lu-pos">${esc(pos)}</span>
                         <span class="lm-lu-name">${esc(p.name)}</span>
                         <span class="lm-lu-icons">${icons.join("")}${extra}</span>
+                        ${this.liveNoteHtml(noten.get(p.id))}
                         ${fit !== null ? `<span class="lm-lu-fit" title="Kondition ${fit} %"><i style="width:${Math.max(4, Math.min(100, (fit - 50) * 2))}%;background:${fitFarbe}"></i></span>` : '<span class="lm-lu-fit leer"></span>'}
                     </div>`;
             };
@@ -7121,7 +7173,11 @@ class UIManager {
             },
             formation: club.formation,
             delegation: { ...liveMatch.delegation },
-            autoOeffnen: { ...einst.autoOeffnen }
+            autoOeffnen: { ...einst.autoOeffnen },
+            // Positionstausch: vorgemerkte Paare und der gerade angetippte Spieler
+            tausch: [],
+            tauschAuswahl: null,
+            standards: { ...(liveMatch.standards?.[side] || {}) }
         };
 
         liveMatch.isPaused = true;
@@ -7160,6 +7216,16 @@ class UIManager {
                 const r = lm.stelleFormationUm(c.side, c.formation, { ohneNeuberechnung: true });
                 if (r.success) neuRechnen = true;
                 else this.showToast(r.message, "error");
+            }
+
+            (c.tausch || []).forEach(([a, b]) => {
+                const r = lm.tauschePositionen(c.side, a, b, { ohneNeuberechnung: true });
+                if (r.success) neuRechnen = true;
+                else this.showToast(r.message, "error");
+            });
+            if (c.standards && typeof lm.setzeStandards === "function"
+                && lm.setzeStandards(c.side, c.standards, { ohneNeuberechnung: true })) {
+                neuRechnen = true;
             }
 
             const alt = club.tactics || {};
@@ -7249,6 +7315,7 @@ class UIManager {
 
         if (c.tab === "wechsel") this.renderCoachWechsel();
         else if (c.tab === "taktik") this.renderCoachTaktik();
+        else if (c.tab === "gegner") this.renderCoachGegner();
         else this.renderCoachCoTrainer(hinweise);
 
         // Fußzeile: was mit "Übernehmen" passiert
@@ -7259,6 +7326,9 @@ class UIManager {
         const vorgabe = { mentality: "balanced", pressing: "medium", tempo: "normal", passing: "mixed", focus: "balanced" };
         if (Object.keys(c.taktik).some(k => c.taktik[k] !== (t[k] ?? vorgabe[k]))) teile.push("Taktik");
         if (c.delegation.wechsel !== lm.delegation.wechsel || c.delegation.taktik !== lm.delegation.taktik) teile.push("Co-Trainer");
+        if ((c.tausch || []).length) teile.push("Positionen");
+        const stdAlt = lm.standards?.[c.side] || {};
+        if (["elfmeter", "freistoss", "ecken"].some(k => (c.standards?.[k] ?? null) !== (stdAlt[k] ?? null))) teile.push("Standards");
         DOM.setText("coachFootInfo", teile.length ? `Geändert: ${teile.join(", ")}` : "Keine Änderungen");
     }
 
@@ -7284,6 +7354,7 @@ class UIManager {
         const name = id => esc(MatchEngine.findPlayer(lm.allPlayers, id)?.name || "?");
 
         const platzverweise = new Set(lm.platzverweise[side]);
+        const noten = typeof lm.liveNoten === "function" ? lm.liveNoten() : new Map();
         const gewaehlt = c.auswahlRaus;
         const gewaehltP2d = gewaehlt != null ? lm.players2D.find(p => p.id === gewaehlt) : null;
         const zielPos = gewaehltP2d?.pos || lm.lineupVon(side).find(p => p && p.id === gewaehlt)?.pos || null;
@@ -7316,6 +7387,7 @@ class UIManager {
                         ${waehlbar ? `data-raus="${esc(p.id)}" role="button" tabindex="0"` : ""}>
                     <span class="coach-pos">${esc(slotPos)}</span>
                     <span class="coach-name">${esc(p.name)}${gelb ? ' <span title="verwarnt">🟨</span>' : ""}${verletzt ? ' <span title="angeschlagen">🚑</span>' : ""}</span>
+                    ${this.liveNoteHtml(noten.get(p.id))}
                     ${fit !== null && !vomPlatz ? `<span class="coach-fit" title="Kondition ${fit} %"><span class="coach-fit-bar" style="width:${Math.max(0, Math.min(100, (fit - 55) / 45 * 100))}%; background:${fitFarbe};"></span></span>
                         <span class="coach-fit-num">${fit}%</span>` : ""}
                     ${rechts}
@@ -7416,6 +7488,9 @@ class UIManager {
                     `<button class="coach-chip ${c.taktik[feld] === w ? "active" : ""}" data-feld="${feld}" data-wert="${w}">${t}</button>`).join("")}</div>`).join("")}
         `;
 
+        el.insertAdjacentHTML("beforeend", this.coachPositionenHtml() + this.coachStandardsHtml());
+        this.bindeCoachPositionen(el);
+
         el.querySelector("#coachFormation").onchange = (e) => {
             c.formation = e.target.value;
             this.renderCoaching();
@@ -7436,13 +7511,13 @@ class UIManager {
         const el = document.getElementById("coachPane-cotrainer");
         if (!el) return;
         const esc = v => this.escapeHtml(String(v ?? ""));
-        const icons = { kondition: "🔋", verletzung: "🚑", gelb: "🟨", unterzahl: "🟥", ueberzahl: "➕", rueckstand: "⏱️", fuehrung: "🔒", druck: "🧱", zugriff: "🎯", regel: "📋" };
+        const icons = { kondition: "🔋", verletzung: "🚑", gelb: "🟨", unterzahl: "🟥", ueberzahl: "➕", rueckstand: "⏱️", fuehrung: "🔒", druck: "🧱", zugriff: "🎯", regel: "📋", note: "📉", gegner: "🔍" };
 
         const liste = hinweise.length
             ? hinweise.map(h => `<div class="coach-tip ${h.gewicht >= 2 ? "wichtig" : ""}">
                     <span class="coach-tip-icon">${icons[h.art] || "💬"}</span>
                     <span class="coach-tip-text">${esc(h.text)}</span>
-                    ${h.spielerId != null && ["kondition", "verletzung", "gelb"].includes(h.art)
+                    ${h.spielerId != null && ["kondition", "verletzung", "gelb", "note"].includes(h.art)
                         ? `<button class="btn btn-sm btn-secondary" data-tip-raus="${esc(h.spielerId)}">Auswechseln</button>` : ""}
                 </div>`).join("")
             : '<div class="coach-empty">Keine Auffälligkeiten - die Mannschaft liegt im Plan.</div>';
@@ -7456,6 +7531,7 @@ class UIManager {
         };
 
         el.innerHTML = `
+            ${this.coachCoTrainerKarte()}
             <h4 class="coach-h">Einschätzung</h4>
             <div class="coach-tips">${liste}</div>
             <h4 class="coach-h">Dem Co-Trainer überlassen</h4>
@@ -7477,6 +7553,197 @@ class UIManager {
             c.tab = "wechsel";
             this.renderCoaching();
         });
+    }
+
+    /** Live-Note als kleine Plakette - vor zehn Minuten Einsatz noch ohne Aussage */
+    liveNoteHtml(n) {
+        if (!n || n.minuten < 10) return '<span class="coach-note leer" title="Noch zu wenig gespielt">–</span>';
+        // 6,3 ist ein gewöhnliches Spiel - erst darunter wird es gelb
+        const farbe = n.note >= 7.3 ? "gut" : (n.note >= 6.2 ? "ok" : (n.note >= 5.6 ? "mau" : "schwach"));
+        return `<span class="coach-note ${farbe}" title="Live-Note nach ${n.minuten} Minuten">${n.note.toFixed(1).replace(".", ",")}</span>`;
+    }
+
+    /**
+     * Positionstausch: zwei Spieler antippen, sie tauschen die Plätze. Die
+     * Farbe zeigt, wie gut jemand auf die neue Position passt.
+     */
+    coachPositionenHtml() {
+        const c = this.coach;
+        const lm = c.liveMatch;
+        const esc = v => this.escapeHtml(String(v ?? ""));
+        const posEngine = (typeof PositionEngine !== "undefined") ? PositionEngine : null;
+        const raus = new Set(lm.platzverweise[c.side]);
+        const plaetze = lm.lineupVon(c.side).filter(p => p && !raus.has(p.id)).map(p => ({
+            p, pos: lm.players2D.find(x => x.id === p.id)?.pos || p.pos, getauscht: false
+        }));
+        (c.tausch || []).forEach(([a, b]) => {
+            const ia = plaetze.findIndex(x => x.p.id === a);
+            const ib = plaetze.findIndex(x => x.p.id === b);
+            if (ia < 0 || ib < 0) return;
+            [plaetze[ia].pos, plaetze[ib].pos] = [plaetze[ib].pos, plaetze[ia].pos];
+            plaetze[ia].getauscht = plaetze[ib].getauscht = true;
+        });
+        const zeilen = plaetze.map(({ p, pos, getauscht }) => {
+            const eignung = posEngine ? posEngine.getSuitability(p, pos) : null;
+            const gewaehlt = c.tauschAuswahl !== null && c.tauschAuswahl !== undefined && c.tauschAuswahl === p.id;
+            return `<div class="coach-row tappable ${gewaehlt ? "selected" : ""}" data-tausch="${esc(p.id)}" role="button" tabindex="0">
+                    <span class="coach-pos">${esc(pos)}</span>
+                    <span class="coach-name">${esc(p.name)}${getauscht ? ' <span class="coach-tag">↔ neu</span>' : ""}</span>
+                    ${eignung ? `<span class="coach-eignung" style="color:${eignung.color};">${esc(eignung.shortLabel || eignung.label)}</span>` : ""}
+                </div>`;
+        }).join("");
+        return `<h4 class="coach-h">Positionen tauschen</h4>
+            <div class="coach-hint">${c.tauschAuswahl !== null && c.tauschAuswahl !== undefined
+                ? "Jetzt den Spieler antippen, mit dem er tauschen soll."
+                : "Zwei Spieler antippen - sie tauschen die Positionen, ohne dass die Formation wechselt."}</div>
+            <div class="coach-list">${zeilen}</div>
+            ${(c.tausch || []).length ? '<button class="btn btn-sm btn-secondary coach-reset" data-tausch-reset>Tausch zurücknehmen</button>' : ""}`;
+    }
+
+    /** Standardschützen: vorgeben oder dem Besten überlassen */
+    coachStandardsHtml() {
+        const c = this.coach;
+        const lm = c.liveMatch;
+        if (typeof lm.standardSchuetzen !== "function") return "";
+        const esc = v => this.escapeHtml(String(v ?? ""));
+        const imSpiel = lm.aufDemPlatz(c.side).filter(p => p.pos !== "TW");
+        const arten = [["elfmeter", "🎯 Elfmeter"], ["freistoss", "🧱 Freistöße"], ["ecken", "🚩 Ecken"]];
+        const zeilen = arten.map(([art, titel]) => {
+            const bester = MatchEngine.standardSchuetze(art, imSpiel, null);
+            const liste = imSpiel.slice().sort((a, b) => MatchEngine.standardWert(art, b) - MatchEngine.standardWert(art, a));
+            const wahl = c.standards?.[art] ?? null;
+            const optionen = [`<option value="">Automatisch${bester ? ` (${esc(bester.name)})` : ""}</option>`]
+                .concat(liste.map(p => `<option value="${esc(p.id)}" ${wahl !== null && p.id === wahl ? "selected" : ""}>${esc(p.name)} · ${Math.round(MatchEngine.standardWert(art, p))}</option>`))
+                .join("");
+            return `<label class="coach-std-row"><span class="coach-std-titel">${titel}</span>
+                    <select class="styled-select" data-standard="${art}">${optionen}</select></label>`;
+        }).join("");
+        return `<h4 class="coach-h">Standardschützen</h4>
+            <div class="coach-hint">Die Zahl ist die Schussqualität für diesen Standard. Direkte Freistöße gibt es aus Schussweite.</div>
+            <div class="coach-std">${zeilen}</div>`;
+    }
+
+    bindeCoachPositionen(el) {
+        const c = this.coach;
+        const lm = c.liveMatch;
+        const aktiv = (node, fn) => {
+            node.onclick = fn;
+            node.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } };
+        };
+        el.querySelectorAll("[data-tausch]").forEach(n => aktiv(n, () => {
+            const id = this.coachIdVon(n.dataset.tausch);
+            if (c.tauschAuswahl === null || c.tauschAuswahl === undefined) {
+                c.tauschAuswahl = id;
+            } else if (c.tauschAuswahl === id) {
+                c.tauschAuswahl = null;
+            } else {
+                const posVon = (pid) => {
+                    let pos = lm.players2D.find(x => x.id === pid)?.pos;
+                    (c.tausch || []).forEach(([a, b]) => {
+                        if (pid === a) pos = lm.players2D.find(x => x.id === b)?.pos;
+                        else if (pid === b) pos = lm.players2D.find(x => x.id === a)?.pos;
+                    });
+                    return pos;
+                };
+                if ((posVon(c.tauschAuswahl) === "TW") !== (posVon(id) === "TW")) {
+                    this.showToast("Der Torwart bleibt im Tor.", "error");
+                } else {
+                    c.tausch.push([c.tauschAuswahl, id]);
+                }
+                c.tauschAuswahl = null;
+            }
+            this.renderCoaching();
+        }));
+        const reset = el.querySelector("[data-tausch-reset]");
+        if (reset) reset.onclick = () => { c.tausch = []; c.tauschAuswahl = null; this.renderCoaching(); };
+        el.querySelectorAll("[data-standard]").forEach(sel => sel.onchange = () => {
+            if (!c.standards) c.standards = {};
+            c.standards[sel.dataset.standard] = sel.value === "" ? null : this.coachIdVon(sel.value);
+            this.renderCoaching();
+        });
+    }
+
+    /** Wer an der Seitenlinie steht und was er kann */
+    coachCoTrainerKarte() {
+        const c = this.coach;
+        const co = c.liveMatch.coTrainer?.[c.side];
+        if (!co) return "";
+        const esc = v => this.escapeHtml(String(v ?? ""));
+        const g = co.guete;
+        const ruf = g >= 88 ? "Weltklasse" : g >= 78 ? "Hervorragend" : g >= 68 ? "Stark" : g >= 58 ? "Solide" : g >= 46 ? "Durchwachsen" : "Schwach";
+        const kann = g >= 75
+            ? "Sieht Müdigkeit früh, liest den Gegner genau und greift bei Wechseln kaum daneben."
+            : (g >= 50 ? "Meldet Müdigkeit und schwache Leistungen, liest den Gegner in groben Zügen."
+                : "Meldet nur das Offensichtliche und greift bei delegierten Wechseln auch mal daneben.");
+        return `<div class="coach-co-card">
+                <div class="coach-co-kopf"><strong>${co.name ? esc(co.name) : "Assistent aus dem Trainerstab"}</strong>
+                    <span class="coach-co-ruf">${ruf} · ${g}</span></div>
+                <span class="coach-co-bar"><i style="width:${Math.max(4, Math.min(100, g))}%"></i></span>
+                <div class="coach-muted">${kann}${co.eigen ? "" : " Einen eigenen Co-Trainer verpflichtest du in der Vorbereitung."}</div>
+            </div>`;
+    }
+
+    /**
+     * Gegneranalyse live: über welche Seite er kommt, womit, und wer bei ihm
+     * gefährlich ist. Wie viel davon zu sehen ist, hängt am Co-Trainer.
+     */
+    renderCoachGegner() {
+        const c = this.coach;
+        const lm = c.liveMatch;
+        const el = document.getElementById("coachPane-gegner");
+        if (!el || typeof lm.gegnerAnalyse !== "function") return;
+        const esc = v => this.escapeHtml(String(v ?? ""));
+        const a = lm.gegnerAnalyse(c.side);
+        const g = lm.coTrainer?.[c.side]?.guete ?? 60;
+        const gegner = lm.clubVon(c.side === "home" ? "away" : "home");
+
+        if (!a.genugGesehen) {
+            el.innerHTML = `<div class="coach-empty">Noch zu wenig gesehen - nach ein paar Angriffen von ${esc(gegner.name)} gibt es hier eine Einschätzung.</div>`;
+            return;
+        }
+
+        const bei = { links: "bei uns rechts", mitte: "Zentrum", rechts: "bei uns links" };
+        const seineSeite = { links: "seine linke", rechts: "seine rechte", mitte: "Mitte" };
+        const seiten = g >= 45
+            ? `<div class="coach-seiten">${["links", "mitte", "rechts"].map(k => `
+                    <div class="coach-seite ${a.hauptSeite === k ? "haupt" : ""}">
+                        <span class="coach-seite-wert">${a.anteile[k]} %</span>
+                        <span class="coach-seite-bar"><i style="height:${Math.max(4, a.anteile[k])}%"></i></span>
+                        <span class="coach-seite-name">${seineSeite[k]}</span>
+                        <span class="coach-muted">${bei[k]}</span>
+                    </div>`).join("")}</div>`
+            : `<div class="coach-hint">${a.hauptSeite
+                ? `Dein Co-Trainer hat den Eindruck, ${esc(gegner.name)} komme eher über ${a.hauptSeite === "mitte" ? "die Mitte" : `${seineSeite[a.hauptSeite]} Seite`}.`
+                : "Dein Co-Trainer kann kein Muster erkennen."} Genauer liest das Spiel nur ein besserer Co-Trainer.</div>`;
+
+        const arten = g >= 50 && a.arten.length
+            ? `<h4 class="coach-h">Womit er angreift</h4><div class="coach-chips">${a.arten.map(x =>
+                `<span class="coach-chip statisch">${esc(x.titel)} <strong>${x.anzahl}</strong></span>`).join("")}</div>`
+            : "";
+        const gefahr = g >= 65 && a.gefaehrlich.length
+            ? `<h4 class="coach-h">Gefährlichste Spieler</h4><div class="coach-list">${a.gefaehrlich.map(p => `
+                    <div class="coach-row">
+                        <span class="coach-name">${esc(p.name)}</span>
+                        <span class="coach-muted">${p.tore ? `${p.tore} Tor${p.tore > 1 ? "e" : ""} · ` : ""}${p.schuesse} ${p.schuesse === 1 ? "Schuss" : "Schüsse"} · ${p.chancen} vorbereitet</span>
+                    </div>`).join("")}</div>`
+            : "";
+        const rat = g >= 55 && a.empfehlungen.length
+            ? `<h4 class="coach-h">Empfehlung</h4><div class="coach-tips">${a.empfehlungen.map(t =>
+                `<div class="coach-tip"><span class="coach-tip-icon">💡</span><span class="coach-tip-text">${esc(t)}</span></div>`).join("")}</div>
+                <button class="btn btn-sm btn-secondary" data-zur-taktik>🧭 Zur Taktik</button>`
+            : "";
+        const fehlt = g < 65 ? '<div class="coach-muted" style="margin-top:10px;">Ein besserer Co-Trainer erkennt hier mehr - etwa die gefährlichsten Spieler.</div>' : "";
+
+        el.innerHTML = `
+            <h4 class="coach-h">Über welche Seite ${esc(gegner.name)} kommt</h4>
+            ${seiten}
+            ${arten}
+            ${gefahr}
+            ${rat}
+            ${fehlt}
+            <div class="coach-muted" style="margin-top:10px;">Grundlage: ${a.angriffe} Angriffe und ${a.schuesse} Abschlüsse des Gegners.</div>`;
+        const zurTaktik = el.querySelector("[data-zur-taktik]");
+        if (zurTaktik) zurTaktik.onclick = () => { c.tab = "taktik"; this.renderCoaching(); };
     }
 
     /**

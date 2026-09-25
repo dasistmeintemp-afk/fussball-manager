@@ -248,55 +248,70 @@ class UIManager {
         const detailsContainer = document.getElementById("startSaveDetailsContent");
         const continueBtn = document.getElementById("btnStartContinueGame");
         const continueSubText = document.getElementById("startContinueSubText");
+        const ico = (name) => `<svg class="ico" aria-hidden="true"><use href="#${name}"/></svg>`;
+
+        // Die Welt in Zahlen - aus den Ligadaten, nicht aus einem Werbetext
+        const fakten = document.getElementById("startWorldFacts");
+        const ligen = (typeof LEAGUES_DATA !== "undefined" && Array.isArray(LEAGUES_DATA)) ? LEAGUES_DATA : [];
+        if (fakten && ligen.length) {
+            const vereine = ligen.reduce((summe, l) => summe + (l.teamCount || 0), 0);
+            const laender = new Set(ligen.map(l => l.countryId)).size;
+            fakten.textContent = `Übernimm einen von ${vereine} Vereinen aus ${ligen.length} Ligen in ${laender} Ländern – von der Champions League bis zur Landesliga. Kader, Taktik, Transfers und jedes Spiel live in 2D.`;
+        }
+        if (!detailsContainer || !continueBtn) return;
 
         if (summary) {
             continueBtn.disabled = false;
             if (continueSubText) {
-                continueSubText.textContent = `${summary.clubName} • Saison ${summary.seasonYear}, Spieltag ${summary.currentMatchday}`;
+                continueSubText.textContent = `${summary.clubName} · Saison ${summary.seasonYear}, Spieltag ${summary.currentMatchday}`;
             }
 
             const dateStr = new Date(summary.lastSaved).toLocaleString("de-DE", {
                 day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"
             });
-
             const diffName = summary.difficulty === "easy" ? "Leicht" : summary.difficulty === "hard" ? "Schwer" : "Normal";
+            const fortschritt = Math.max(0, Math.min(100, Math.round(((summary.currentMatchday - 1) / Math.max(1, summary.totalMatchdays)) * 100)));
+            const club = { name: summary.clubName, primaryColor: summary.primaryColor, secondaryColor: summary.secondaryColor };
 
             detailsContainer.innerHTML = `
                 <div class="save-card-summary">
+                    <div class="save-card-kicker">Letzter Spielstand</div>
                     <div class="save-club-badge">
-                        <span class="save-club-dot" style="background-color: var(--accent-primary);"></span>
-                        <div>
-                            <div class="save-club-name">${summary.clubName}</div>
-                            <div style="font-size:12px; color:var(--text-muted);">Manager: ${summary.managerName} (${summary.managerNationality})</div>
+                        ${this.wappenHtml(club, "crest-lg")}
+                        <div class="save-club-text">
+                            <div class="save-club-name">${this.escapeHtml(summary.clubName)}</div>
+                            <div class="save-club-sub">${this.escapeHtml(summary.leagueName)} · ${this.escapeHtml(summary.managerName)}</div>
                         </div>
                     </div>
 
                     <div class="save-meta-grid">
                         <div class="save-meta-item">
-                            <span class="save-meta-label">Wettbewerb</span>
-                            <span class="save-meta-val">${summary.leagueName}</span>
+                            <span class="save-meta-label">Platz</span>
+                            <span class="save-meta-val">${summary.userRank}.</span>
                         </div>
                         <div class="save-meta-item">
-                            <span class="save-meta-label">Fortschritt</span>
-                            <span class="save-meta-val">Saison ${summary.seasonYear} (Spieltag ${summary.currentMatchday}/${summary.totalMatchdays})</span>
+                            <span class="save-meta-label">Saison</span>
+                            <span class="save-meta-val">${summary.seasonYear}</span>
                         </div>
                         <div class="save-meta-item">
-                            <span class="save-meta-label">Tabellenplatz</span>
-                            <span class="save-meta-val">${summary.userRank}. Platz</span>
+                            <span class="save-meta-label">Spieltag</span>
+                            <span class="save-meta-val">${summary.currentMatchday}<small>/${summary.totalMatchdays}</small></span>
                         </div>
                         <div class="save-meta-item">
-                            <span class="save-meta-label">Schwierigkeitsgrad</span>
-                            <span class="save-meta-val">${diffName}</span>
+                            <span class="save-meta-label">Stufe</span>
+                            <span class="save-meta-val save-meta-text">${diffName}</span>
                         </div>
                     </div>
 
-                    <div class="save-timestamp">
-                        🕒 Zuletzt gespeichert: <strong>${dateStr}</strong>
+                    <div class="save-progress" title="Saisonfortschritt">
+                        <span style="width:${fortschritt}%"></span>
                     </div>
 
-                    <div style="display:flex; gap:10px; margin-top:8px;">
-                        <button class="btn btn-sm btn-primary" id="btnQuickLoadGame" style="flex:1;">▶ Spielstand fortsetzen</button>
-                        <button class="btn btn-sm btn-danger" id="btnDeleteLocalSave" title="Spielstand löschen">🗑️</button>
+                    <div class="save-timestamp">Gespeichert am ${dateStr}</div>
+
+                    <div class="save-actions">
+                        <button class="btn btn-primary" id="btnQuickLoadGame" type="button">${ico("i-play")}<span>Fortsetzen</span></button>
+                        <button class="btn btn-secondary btn-icon-only" id="btnDeleteLocalSave" type="button" title="Spielstand löschen" aria-label="Spielstand löschen">${ico("i-trash")}</button>
                     </div>
                 </div>
             `;
@@ -323,9 +338,9 @@ class UIManager {
             if (continueSubText) continueSubText.textContent = "Kein lokaler Spielstand gefunden";
             detailsContainer.innerHTML = `
                 <div class="no-save-placeholder">
-                    <span class="placeholder-icon">📂</span>
-                    <p>Noch kein aktiver Spielstand im Browser gespeichert.</p>
-                    <span class="placeholder-hint">Klicke auf "Neues Spiel starten", um deine Trainerkarriere zu beginnen.</span>
+                    <span class="placeholder-icon">${ico("i-trophy")}</span>
+                    <p>Noch kein Spielstand auf diesem Gerät.</p>
+                    <span class="placeholder-hint">Starte eine neue Karriere – gespeichert wird automatisch im Browser.</span>
                 </div>
             `;
         }
@@ -396,7 +411,63 @@ class UIManager {
         this.wizardSelectedClubId = null;
         this.wizardSelectedLeagueId = this.wizardSelectedLeagueId || "de_liga_1";
         this.resetWizardClubFilters();
+        this.waehleSchwierigkeit(document.getElementById("selectDifficulty")?.value || "normal");
         this.renderWizardStep();
+    }
+
+    /** Schwierigkeitskarten und das (verborgene) Auswahlfeld gleichziehen */
+    waehleSchwierigkeit(wert) {
+        const gueltig = ["easy", "normal", "hard"].includes(wert) ? wert : "normal";
+        const select = document.getElementById("selectDifficulty");
+        if (select) select.value = gueltig;
+        document.querySelectorAll(".difficulty-card").forEach(karte => {
+            const an = karte.dataset.diff === gueltig;
+            karte.classList.toggle("selected", an);
+            if (typeof karte.setAttribute === "function") karte.setAttribute("aria-checked", an ? "true" : "false");
+        });
+        this.renderWizardSummary();
+    }
+
+    /** Beschriftung des Weiter-Knopfs: "Weiter" oder im letzten Schritt "Karriere starten" */
+    setzeWizardWeiter(btn, letzterSchritt) {
+        if (!btn) return;
+        btn.innerHTML = `<span>${letzterSchritt ? "Karriere starten" : "Weiter"}</span><svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg>`;
+    }
+
+    /**
+     * Die linke Leiste des Assistenten: was bisher gewählt ist. So sieht man
+     * in Schritt drei noch, mit welchem Namen und in welcher Liga man antritt.
+     */
+    renderWizardSummary() {
+        const el = document.getElementById("wizardSummary");
+        if (!el) return;
+        const esc = (v) => this.escapeHtml(String(v ?? ""));
+        const name = (document.getElementById("inputManagerName")?.value || "").trim();
+        const herkunft = document.getElementById("inputManagerNationality")?.value || "";
+        const stufe = { easy: "Leicht", normal: "Normal", hard: "Schwer" }[document.getElementById("selectDifficulty")?.value] || "Normal";
+
+        const teams = this.getWizardTeams();
+        const liga = this.wizardSelectedLeagueId
+            ? this.getWizardLeagues(teams).find(l => l.id === this.wizardSelectedLeagueId)
+            : null;
+        const club = this.wizardSelectedClubId
+            ? teams.find(c => String(c.id) === String(this.wizardSelectedClubId))
+            : null;
+
+        el.innerHTML = `
+            <div class="ws-title">Deine Karriere</div>
+            <div class="ws-row"><span class="ws-label">Manager</span><span class="ws-val">${name ? esc(name) : "–"}</span></div>
+            <div class="ws-row"><span class="ws-label">Herkunft</span><span class="ws-val">${esc(herkunft) || "–"}</span></div>
+            <div class="ws-row"><span class="ws-label">Stufe</span><span class="ws-val">${stufe}</span></div>
+            <div class="ws-row"><span class="ws-label">Liga</span><span class="ws-val">${liga ? `${liga.flag} ${esc(liga.shortName)}` : "–"}</span></div>
+            <div class="ws-club${club ? "" : " ws-leer"}">
+                ${club ? this.wappenHtml(club, "crest-md") : '<span class="crest crest-md crest-leer" aria-hidden="true">?</span>'}
+                <span class="ws-club-text">
+                    <span class="ws-label">Verein</span>
+                    <span class="ws-val">${club ? esc(club.name) : "noch offen"}</span>
+                </span>
+            </div>
+        `;
     }
 
     /**
@@ -504,6 +575,7 @@ class UIManager {
                 pointsPerDraw: liga.pointsPerDraw ?? 1,
                 europeanSpots: liga.europeanSpots || null,
                 promotionTo: liga.promotionTo || null,
+                promotionSpots: liga.promotionSpots || null,
                 relegationTo: liga.relegationTo || null
             };
         }).sort((a, b) =>
@@ -558,25 +630,29 @@ class UIManager {
         });
         gruppen.forEach(g => g.ligen.sort((a, b) => a.level - b.level));
 
+        const ico = (name) => `<svg class="ico" aria-hidden="true"><use href="#${name}"/></svg>`;
         grid.innerHTML = gruppen.map(gruppe => `
-            <div class="league-country-group">
+            <section class="league-country-group">
                 <div class="league-country-title">
                     <span class="lc-flag">${gruppe.flag}</span>
-                    <span>${this.escapeHtml(gruppe.name)}</span>
+                    <span class="lc-name">${this.escapeHtml(gruppe.name)}</span>
                     <span class="lc-count">${gruppe.ligen.length} ${gruppe.ligen.length === 1 ? "Liga" : "Ligen"}</span>
                 </div>
                 <div class="league-pick-row">
                     ${gruppe.ligen.map(liga => `
                         <button type="button"
                                 class="league-pick-card${liga.id === this.wizardSelectedLeagueId ? " selected" : ""}"
-                                data-league="${this.escapeHtml(liga.id)}">
-                            <span class="lp-level">Liga ${liga.level}</span>
-                            <strong class="lp-name">${this.escapeHtml(liga.shortName)}</strong>
-                            <span class="lp-meta">${liga.clubCount} Vereine · ${this.wizardTierLabel(liga.tier)}</span>
+                                data-league="${this.escapeHtml(liga.id)}" data-tier="${this.escapeHtml(liga.tier)}">
+                            <span class="lp-level" title="${liga.level}. Spielklasse">${liga.level}</span>
+                            <span class="lp-body">
+                                <strong class="lp-name">${this.escapeHtml(liga.shortName)}</strong>
+                                <span class="lp-meta">${liga.clubCount} Vereine · ${this.wizardTierLabel(liga.tier)}</span>
+                            </span>
+                            <span class="lp-check">${ico("i-check")}</span>
                         </button>
                     `).join("")}
                 </div>
-            </div>
+            </section>
         `).join("");
 
         grid.querySelectorAll(".league-pick-card").forEach(btn => {
@@ -586,46 +662,61 @@ class UIManager {
         if (!detail) return;
 
         const liga = ligen.find(l => l.id === this.wizardSelectedLeagueId) || ligen[0];
-        const europa = liga.europeanSpots
-            ? [
-                liga.europeanSpots.championsLeague?.length ? `Champions League: Platz ${liga.europeanSpots.championsLeague.join(", ")}` : null,
-                liga.europeanSpots.europaLeague?.length ? `Europa League: Platz ${liga.europeanSpots.europaLeague.join(", ")}` : null,
-                liga.europeanSpots.conferenceLeague?.length ? `Conference League: Platz ${liga.europeanSpots.conferenceLeague.join(", ")}` : null
-            ].filter(Boolean).join(" • ")
-            : "";
+        const plaetze = (liste) => {
+            if (!Array.isArray(liste) || !liste.length) return "";
+            return liste.length > 1 && liste[liste.length - 1] - liste[0] === liste.length - 1
+                ? `Platz ${liste[0]}–${liste[liste.length - 1]}`
+                : `Platz ${liste.join(", ")}`;
+        };
+        const zeilen = [];
+        if (liga.europeanSpots) {
+            const e = liga.europeanSpots;
+            if (e.championsLeague?.length) zeilen.push(["Champions League", plaetze(e.championsLeague), "ucl"]);
+            if (e.europaLeague?.length) zeilen.push(["Europa League", plaetze(e.europaLeague), "uel"]);
+            if (e.conferenceLeague?.length) zeilen.push(["Conference League", plaetze(e.conferenceLeague), "uecl"]);
+        }
+        if (liga.promotionTo) {
+            const ziel = ligen.find(l => l.id === liga.promotionTo);
+            zeilen.push([`Aufstieg${ziel ? ` in die ${ziel.shortName}` : ""}`, plaetze(liga.promotionSpots || [1]), "auf"]);
+        }
+        if (liga.relegationTo && liga.relegationTo.length) zeilen.push(["Abstieg", "in die nächsttiefere Klasse", "ab"]);
+        if (!liga.promotionTo && !liga.europeanSpots) zeilen.push(["Ligaspitze", "Kein Aufstieg möglich", ""]);
 
         detail.innerHTML = `
             <div class="league-option-card selected">
-                <div class="league-badge-big">${liga.flag}</div>
-                <div class="league-info">
-                    <div class="league-title-row">
-                        <h3>${this.escapeHtml(liga.name)}</h3>
-                        <span class="badge badge-success">Gewählt</span>
+                <div class="lo-head">
+                    <span class="league-badge-big">${liga.flag}</span>
+                    <div class="lo-title">
+                        <span class="lo-kicker">${this.escapeHtml(liga.countryName)} · ${liga.level}. Spielklasse</span>
+                        <h3>${this.escapeHtml(liga.shortName)}</h3>
                     </div>
-                    <p class="league-sub">
-                        ${this.escapeHtml(liga.shortName)} · ${this.escapeHtml(liga.countryName)} ·
-                        ${this.wizardTierLabel(liga.tier)} der ${liga.level}. Spielklasse
-                    </p>
-                    <div class="league-meta-grid">
-                        <div class="l-meta-item">
-                            <span class="l-meta-label">Vereine:</span>
-                            <span class="l-meta-val">${liga.clubCount} Klubs</span>
-                        </div>
-                        <div class="l-meta-item">
-                            <span class="l-meta-label">Saisonlänge:</span>
-                            <span class="l-meta-val">${liga.matchdays || (liga.clubCount - 1) * 2} Spieltage (Hin- &amp; Rückrunde)</span>
-                        </div>
-                        <div class="l-meta-item">
-                            <span class="l-meta-label">Wertung:</span>
-                            <span class="l-meta-val">Sieg: ${liga.pointsPerWin} Pkt • Remis: ${liga.pointsPerDraw} Pkt</span>
-                        </div>
-                        <div class="l-meta-item">
-                            <span class="l-meta-label">${europa ? "Europapokal:" : "Abstieg:"}</span>
-                            <span class="l-meta-val">${europa
-                                ? this.escapeHtml(europa)
-                                : (liga.relegationTo ? "In die nächsttiefere Klasse" : "Unterste Spielklasse")}</span>
-                        </div>
+                </div>
+                <div class="league-meta-grid">
+                    <div class="l-meta-item">
+                        <span class="l-meta-label">Vereine</span>
+                        <span class="l-meta-val">${liga.clubCount}</span>
                     </div>
+                    <div class="l-meta-item">
+                        <span class="l-meta-label">Spieltage</span>
+                        <span class="l-meta-val">${liga.matchdays || (liga.clubCount - 1) * 2}</span>
+                    </div>
+                    <div class="l-meta-item">
+                        <span class="l-meta-label">Niveau</span>
+                        <span class="l-meta-val l-meta-text">${this.wizardTierLabel(liga.tier)}</span>
+                    </div>
+                    <div class="l-meta-item">
+                        <span class="l-meta-label">Punkte</span>
+                        <span class="l-meta-val l-meta-text">${liga.pointsPerWin}/${liga.pointsPerDraw}/0</span>
+                    </div>
+                </div>
+                <div class="lo-zonen">
+                    ${zeilen.map(([was, wo, zone]) => `
+                        <div class="lo-zone">
+                            <span class="rang ${zone ? `rang-${zone}` : "rang-leer"}" aria-hidden="true"></span>
+                            <span class="lo-zone-was">${this.escapeHtml(was)}</span>
+                            <span class="lo-zone-wo">${this.escapeHtml(wo)}</span>
+                        </div>
+                    `).join("")}
                 </div>
             </div>
         `;
@@ -644,6 +735,7 @@ class UIManager {
         }
 
         this.renderWizardLeagues();
+        this.renderWizardSummary();
 
         const select = document.getElementById("filterClubLeague");
         if (select) select.value = leagueId;
@@ -749,11 +841,17 @@ class UIManager {
     }
 
     renderWizardStep() {
-        // Step indicator nodes
+        const SCHRITTE = 3;
+        // Schrittanzeige: aktuell, erledigt, offen
         document.querySelectorAll(".wizard-step-node").forEach(node => {
             const nodeStep = parseInt(node.dataset.step, 10);
             node.classList.toggle("active", nodeStep === this.wizardStep);
+            node.classList.toggle("done", nodeStep < this.wizardStep);
         });
+        const balken = document.getElementById("wizardProgressBar");
+        if (balken) balken.style.width = `${Math.round((this.wizardStep / SCHRITTE) * 100)}%`;
+        const zaehler = document.getElementById("wizardStepCounter");
+        if (zaehler) zaehler.textContent = `Schritt ${this.wizardStep} von ${SCHRITTE}`;
 
         // Step contents
         const s1 = document.getElementById("wizardStep1");
@@ -766,7 +864,7 @@ class UIManager {
         const backBtn = document.getElementById("btnWizardBack");
         const nextBtn = document.getElementById("btnWizardNext");
 
-        if (backBtn) backBtn.style.display = this.wizardStep > 1 ? "block" : "none";
+        if (backBtn) backBtn.style.display = this.wizardStep > 1 ? "inline-flex" : "none";
 
         if (this.wizardStep === 2) {
             this.renderWizardLeagues();
@@ -774,7 +872,7 @@ class UIManager {
 
         if (this.wizardStep === 3) {
             if (nextBtn) {
-                nextBtn.textContent = "Karriere starten ▶";
+                this.setzeWizardWeiter(nextBtn, true);
                 nextBtn.disabled = !this.wizardSelectedClubId;
             }
             this.renderWizardClubs();
@@ -785,17 +883,23 @@ class UIManager {
                 if (panel) {
                     panel.innerHTML = `
                         <div class="club-detail-placeholder">
-                            <span>👈 Bitte wählen Sie links einen Verein aus, um detaillierte Kaderanalysen, Finanzen und Vorstandserwartungen einzusehen.</span>
+                            <svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg>
+                            <span>Wähle links einen Verein, um Kader, Finanzen und die Erwartungen des Vorstands zu sehen.</span>
                         </div>
                     `;
                 }
             }
-        } else {
-            if (nextBtn) {
-                nextBtn.textContent = "Weiter ▶";
-                nextBtn.disabled = false;
-            }
+        } else if (nextBtn) {
+            this.setzeWizardWeiter(nextBtn, false);
+            nextBtn.disabled = false;
         }
+
+        // Nach dem Schrittwechsel oben anfangen - sonst steht man am Handy
+        // mitten in der Vereinsliste des vorigen Besuchs
+        const body = typeof document.querySelector === "function" ? document.querySelector(".wizard-body") : null;
+        if (body && typeof body.scrollTo === "function") body.scrollTo(0, 0);
+
+        this.renderWizardSummary();
     }
 
     /**
@@ -864,31 +968,31 @@ class UIManager {
             return;
         }
 
-        const FLAGS = { de: "🇩🇪", en: "🏴", es: "🇪🇸", it: "🇮🇹", fr: "🇫🇷" };
+        // Kurzform der Vorstandserwartung als Etikett in der Liste
+        const ZIEL = {
+            championship: ["Titel", "ziel-titel"],
+            top3: ["Top 3", "ziel-top"],
+            promotion: ["Aufstieg", "ziel-top"],
+            midfield: ["Mittelfeld", "ziel-mitte"],
+            avoid_relegation: ["Klassenerhalt", "ziel-unten"]
+        };
 
         listContainer.innerHTML = filtered.map(club => {
             const players = Array.isArray(club.players) ? club.players : [];
-            const ovr = typeof club.avgOverall === "number"
-                ? club.avgOverall
-                : (players.length ? Math.round(players.reduce((sum, p) => sum + (p.overall || 0), 0) / players.length) : 0);
-
             const isSelected = this.wizardSelectedClubId === club.id;
-            const leagueLabel = club.leagueName
-                ? `${FLAGS[club.countryId] || ""} ${this.escapeHtml(club.leagueName)}`
-                : "";
+            const ziel = ZIEL[club.boardExpectation];
 
             return `
-                <div class="club-list-item ${isSelected ? "selected" : ""}" data-club-id="${club.id}">
+                <div class="club-list-item ${isSelected ? "selected" : ""}" data-club-id="${club.id}" role="button" tabindex="0"
+                     aria-label="${this.escapeHtml([club.name, club.city, club.leagueName].filter(Boolean).join(", "))}">
+                    ${this.wappenHtml(club, "crest-md")}
                     <div class="club-item-left">
-                        <div class="club-color-badge" style="background: ${club.primaryColor || "#334155"}; border: 1px solid ${club.secondaryColor || "#fff"};"></div>
-                        <div>
-                            <div class="club-item-title">${this.escapeHtml(club.name || "Unbekannter Verein")}</div>
-                            <div class="club-item-sub">${this.escapeHtml(club.city || "Unbekannte Stadt")} • ${leagueLabel}</div>
-                        </div>
+                        <div class="club-item-title">${this.escapeHtml(club.name || "Unbekannter Verein")}</div>
+                        <div class="club-item-sub">${this.escapeHtml(club.city || "Unbekannte Stadt")}${ziel ? ` <span class="ziel-tag ${ziel[1]}">${ziel[0]}</span>` : ""}</div>
                     </div>
                     <div class="club-item-right">
                         <span class="club-item-ovr">${this.wizardTeamStars(players, { compact: true })}</span>
-                        <span style="font-size:11px; color:#34d399;">${this.formatMoneySafe(club.transferBudget || 0)}</span>
+                        <span class="club-item-budget">${this.formatMoneySafe(club.transferBudget || 0)}</span>
                     </div>
                 </div>
             `;
@@ -906,14 +1010,28 @@ class UIManager {
                 this.wizardSelectedClubId = clubId;
                 this.renderWizardClubs();
                 this.renderWizardClubDetails(clubId);
+                this.renderWizardSummary();
 
                 const nextBtn = document.getElementById("btnWizardNext");
                 if (nextBtn) {
                     nextBtn.disabled = false;
-                    nextBtn.textContent = "Karriere starten ▶";
+                    this.setzeWizardWeiter(nextBtn, true);
+                }
+
+                // Am Handy steht das Detail unter der Liste - dorthin springen
+                const panel = document.getElementById("clubDetailPanel");
+                if (panel && typeof window !== "undefined" && window.matchMedia
+                    && window.matchMedia("(max-width: 1200px)").matches && typeof panel.scrollIntoView === "function") {
+                    panel.scrollIntoView({ behavior: "smooth", block: "start" });
                 }
 
                 this.playSound("click");
+            });
+            item.addEventListener("keydown", (e) => {
+                if (e && (e.key === "Enter" || e.key === " ")) {
+                    if (typeof e.preventDefault === "function") e.preventDefault();
+                    if (typeof item.click === "function") item.click();
+                }
             });
         });
     }
@@ -937,86 +1055,89 @@ class UIManager {
         }
 
         const players = Array.isArray(club.players) ? club.players : [];
-        const avgOvr = players.length ? Math.round(players.reduce((sum, p) => sum + (p.overall || 0), 0) / players.length) : 0;
-        const avgAge = players.length ? (players.reduce((sum, p) => sum + (p.age || 0), 0) / players.length).toFixed(1) : "0";
+        const avgAge = players.length ? (players.reduce((sum, p) => sum + (p.age || 0), 0) / players.length).toFixed(1).replace(".", ",") : "0";
         const totalValue = players.reduce((sum, p) => sum + (p.value || 0), 0);
+        const ico = (name) => `<svg class="ico" aria-hidden="true"><use href="#${name}"/></svg>`;
+        const esc = (v) => this.escapeHtml(String(v ?? ""));
+        const farben = this.wappenFarben(club);
+        const FLAGS = { de: "🇩🇪", en: "🏴", es: "🇪🇸", it: "🇮🇹", fr: "🇫🇷" };
 
         // Top Spieler & Talente
         const sortedPlayers = [...players].sort((a, b) => (b.overall || 0) - (a.overall || 0));
         const topPlayers = sortedPlayers.slice(0, 3);
         const topTalents = [...players].filter(p => (p.age || 99) <= 22).sort((a, b) => (b.pot || 0) - (a.pot || 0)).slice(0, 2);
+        const spielerZeile = (p, zusatz) => `
+            <div class="cd-player-row">
+                <span class="pos-tag cd-pos">${esc(p.pos)}</span>
+                <span class="cd-player-name"><strong>${esc(p.name)}</strong>${zusatz ? `<span class="text-muted">${zusatz}</span>` : ""}</span>
+                <span class="cd-player-stars">${this.abilityStarsFor(p, { wizard: true, compact: true })}</span>
+            </div>`;
 
         panel.innerHTML = `
-            <div class="club-detail-container">
-                <div class="cd-header">
-                    <div class="cd-title-wrap">
-                        <span class="cd-badge" style="background: ${club.primaryColor || '#334155'}; border: 1px solid ${club.secondaryColor || '#fff'};"></span>
-                        <div>
-                            <div class="cd-name">${this.escapeHtml(club.name)}</div>
-                            <div class="cd-city">📍 ${this.escapeHtml(club.city || '')} • 🏟️ ${this.escapeHtml(club.stadium || '')} (${(club.capacity || 0).toLocaleString('de-DE')} Plätze)</div>
-                            ${club.leagueName ? `<div class="cd-city">🏆 ${this.escapeHtml(club.leagueName)} • Ligastufe ${club.level || 1}</div>` : ''}
+            <div class="club-detail-container" style="--club-farbe:${farben.farbe};--club-zweit:${farben.zweit};">
+                <div class="cd-hero">
+                    ${this.wappenHtml(club, "crest-xl")}
+                    <div class="cd-hero-text">
+                        <span class="cd-kicker">${FLAGS[club.countryId] || ""} ${esc(club.leagueName || "")}${club.level ? ` · Ligastufe ${club.level}` : ""}</span>
+                        <div class="cd-name">${esc(club.name)}</div>
+                        <div class="cd-city">
+                            <span>${ico("i-pin")}${esc(club.city || "")}</span>
+                            <span>${ico("i-stadium")}${esc(club.stadium || "")} · ${(club.capacity || 0).toLocaleString("de-DE")} Plätze</span>
                         </div>
                     </div>
-                    <div style="text-align:right;">
-                        <span class="cd-squad-rating team-strength-stars" title="Kaderstärke im Vergleich zu den übrigen Vereinen">${this.wizardTeamStars(players)}</span>
-                    </div>
+                </div>
+
+                <div class="cd-strength">
+                    <span class="cd-label">Kaderstärke</span>
+                    <span class="cd-squad-rating team-strength-stars" title="Kaderstärke im Vergleich zu den übrigen Vereinen">${this.wizardTeamStars(players)}</span>
                 </div>
 
                 <div class="cd-grid-meta">
                     <div class="cd-box">
                         <div class="cd-box-title">Transferbudget</div>
-                        <div class="cd-box-val" style="color:#34d399;">${this.formatMoneySafe(club.transferBudget || 0)}</div>
+                        <div class="cd-box-val cd-val-geld">${this.formatMoneySafe(club.transferBudget || 0)}</div>
                     </div>
                     <div class="cd-box">
-                        <div class="cd-box-title">Gehaltsbudget / Woche</div>
+                        <div class="cd-box-title">Gehälter / Woche</div>
                         <div class="cd-box-val">${this.formatMoneySafe(club.wageBudget || 0)}</div>
                     </div>
                     <div class="cd-box">
-                        <div class="cd-box-title">Kadergesamtwert</div>
+                        <div class="cd-box-title">Kaderwert</div>
                         <div class="cd-box-val">${this.formatMoneySafe(totalValue)}</div>
                     </div>
                     <div class="cd-box">
-                        <div class="cd-box-title">Durchschnittsalter</div>
-                        <div class="cd-box-val">${avgAge} Jahre</div>
+                        <div class="cd-box-title">Altersschnitt</div>
+                        <div class="cd-box-val">${avgAge} J.</div>
                     </div>
                 </div>
 
-                <div class="cd-box" style="border-left: 4px solid var(--accent-gold);">
-                    <div class="cd-box-title">🎯 Vorstandsziel für Saison 1:</div>
-                    <div style="font-size:15px; font-weight:700; color:#f59e0b; margin-top:2px;">
-                        ${this.getExpectationTextSafe(club.boardExpectation)}
+                <div class="cd-goal">
+                    ${ico("i-target")}
+                    <div>
+                        <div class="cd-label">Vorstandsziel Saison 1</div>
+                        <div class="cd-goal-text">${esc(this.getExpectationTextSafe(club.boardExpectation))}</div>
                     </div>
                 </div>
 
                 <div>
-                    <div class="cd-section-title">⭐ Schlüssel- & Top-Spieler</div>
+                    <div class="cd-section-title">Schlüsselspieler</div>
                     <div class="cd-player-list">
-                        ${topPlayers.map(p => `
-                            <div class="cd-player-row">
-                                <div><strong>${p.name}</strong> <span class="text-muted">(${p.pos})</span></div>
-                                <div>${this.abilityStarsFor(p, { wizard: true, compact: true })} <span class="text-muted">${this.formatMoneySafe(p.value)}</span></div>
-                            </div>
-                        `).join("")}
+                        ${topPlayers.map(p => spielerZeile(p, "")).join("")}
                     </div>
                 </div>
 
                 ${topTalents.length > 0 ? `
                     <div>
-                        <div class="cd-section-title">🚀 Top-Talente im Kader</div>
+                        <div class="cd-section-title">Talente</div>
                         <div class="cd-player-list">
-                            ${topTalents.map(p => `
-                                <div class="cd-player-row">
-                                    <div><strong>${p.name}</strong> <span class="text-muted">(${p.pos}, ${p.age} J.)</span></div>
-                                    <div>${this.abilityStarsFor(p, { wizard: true, compact: true })}</div>
-                                </div>
-                            `).join("")}
+                            ${topTalents.map(p => spielerZeile(p, ` · ${p.age} J.`)).join("")}
                         </div>
                     </div>
-                ` : ''}
+                ` : ""}
 
                 <div class="cd-action-btn-wrap">
-                    <button class="btn btn-primary btn-lg" id="btnAdoptClub" style="width:100%;">
-                        ✅ Diesen Verein übernehmen & Saison starten
+                    <button class="btn btn-primary btn-lg" id="btnAdoptClub" type="button">
+                        <span>${esc(club.name)} übernehmen</span>${ico("i-arrow")}
                     </button>
                 </div>
             </div>
@@ -1109,6 +1230,17 @@ class UIManager {
 
         document.getElementById("btnCloseWizard")?.addEventListener("click", () => {
             document.getElementById("modalNewGame").style.display = "none";
+        });
+
+        document.querySelectorAll(".difficulty-card").forEach(karte => {
+            karte.addEventListener("click", () => this.waehleSchwierigkeit(karte.dataset.diff));
+        });
+        ["inputManagerName", "inputManagerNationality"].forEach(id => {
+            const feld = document.getElementById(id);
+            if (feld) {
+                feld.addEventListener("input", () => this.renderWizardSummary());
+                feld.addEventListener("change", () => this.renderWizardSummary());
+            }
         });
 
         document.getElementById("btnWizardBack")?.addEventListener("click", () => {
@@ -1743,7 +1875,7 @@ class UIManager {
 
             ctx.save();
             ctx.globalAlpha = fade;
-            ctx.fillStyle = banner.color || "rgba(15, 23, 42, 0.92)";
+            ctx.fillStyle = banner.color || "rgba(12, 16, 22, 0.92)";
             ctx.fillRect(0, boxY, canvas.width, boxH);
 
             ctx.fillStyle = "#f8fafc";
@@ -1786,7 +1918,7 @@ class UIManager {
             const bx = 16;
             const by = canvas.height - boxH - 16;
 
-            ctx.fillStyle = "rgba(15, 23, 42, 0.86)";
+            ctx.fillStyle = "rgba(12, 16, 22, 0.86)";
             if (ctx.roundRect) {
                 ctx.beginPath();
                 ctx.roundRect(bx, by, tw + padX * 2, boxH, boxH / 2);
@@ -1823,7 +1955,7 @@ class UIManager {
             const bx = canvas.width - tw - padX * 2 - 16;
             const by = canvas.height - boxH - 16;
 
-            ctx.fillStyle = "rgba(15, 23, 42, 0.78)";
+            ctx.fillStyle = "rgba(12, 16, 22, 0.78)";
             if (ctx.roundRect) {
                 ctx.beginPath();
                 ctx.roundRect(bx, by, tw + padX * 2, boxH, boxH / 2);
@@ -1967,7 +2099,7 @@ class UIManager {
             if (typeof this.app.state.saveToLocalStorage === "function") this.app.state.saveToLocalStorage();
         });
         const sound = document.getElementById("btnToggleSound");
-        if (sound) sound.textContent = this.soundEnabled ? "🔊 Sound: Aktiviert" : "🔇 Sound: Stummgeschaltet";
+        if (sound) sound.innerHTML = this.soundKnopfHtml();
     }
 
     /**
@@ -1991,12 +2123,12 @@ class UIManager {
 
         list.innerHTML = items.map(item => `
             <button class="attention-item" data-tab="${this.escapeHtml(item.tab)}">
-                <span class="attention-icon">${item.icon}</span>
+                <span class="attention-icon ton-${({ "🚑": "bad", "⚠️": "bad", "🥵": "warn", "😞": "warn", "🤝": "ok" })[item.icon] || "info"}">${this.symbolHtml(item.icon)}</span>
                 <span class="attention-text">
                     <strong>${this.escapeHtml(item.title)}</strong>
                     <span>${this.escapeHtml(item.detail)}</span>
                 </span>
-                <span class="attention-arrow">›</span>
+                <span class="attention-arrow"><svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg></span>
             </button>
         `).join("");
 
@@ -2107,7 +2239,10 @@ class UIManager {
         }
 
         document.getElementById("headerClubName").textContent = userClub.name;
-        document.getElementById("headerClubDot").style.backgroundColor = userClub.primaryColor;
+        const punkt = document.getElementById("headerClubDot");
+        punkt.style.backgroundColor = userClub.primaryColor;
+        // Zweitfarbe als Ring - ein weißer Verein verschwand sonst im Kopf
+        punkt.style.boxShadow = `inset 0 0 0 2px ${userClub.secondaryColor || "#ffffff"}`;
         document.getElementById("headerDifficulty").textContent = state.difficulty === "easy" ? "Leicht" : state.difficulty === "hard" ? "Schwer" : "Normal";
         document.getElementById("headerSeason").textContent = state.seasonYear;
         document.getElementById("headerMatchday").textContent = `${state.currentMatchday} / ${state.totalMatchdays}`;
@@ -2123,7 +2258,7 @@ class UIManager {
         // Spieltag und übersprang damit Training, Presse und Vorbereitung.
         const ziel = this.beschreibeWeiter();
         const knopf = document.getElementById("btnHeaderAdvance");
-        knopf.innerHTML = `<span>${ziel.text}</span> <span class="btn-arrow">➔</span>`;
+        knopf.innerHTML = `<span class="btn-advance-text">${ziel.text}</span> <span class="btn-arrow"><svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg></span>`;
         // Auf schmalen Geräten zeigt der Knopf nur die Kurzfassung
         // (Ohne dataset - etwa im Test-DOM - brach hier der ganze Kopf ab.)
         if (knopf.dataset) knopf.dataset.kurz = ziel.kurz || "Weiter";
@@ -2280,7 +2415,7 @@ class UIManager {
 
         if (spielbar) {
             btnLive.disabled = false;
-            btnLive.textContent = "▶ 2D-Live-Spiel starten";
+            btnLive.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#i-play"/></svg><span>Live-Spiel starten</span>`;
             btnInstant.disabled = false;
             btnInstant.style.display = "";
             if (note) note.style.display = "none";
@@ -2292,7 +2427,7 @@ class UIManager {
             if (note) note.style.display = "none";
         } else {
             btnLive.disabled = true;
-            btnLive.textContent = `Anpfiff ${this.wannText(termin.tage)}`;
+            btnLive.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#i-clock"/></svg><span>Anpfiff ${this.escapeHtml(this.wannText(termin.tage))}</span>`;
             btnInstant.disabled = true;
             btnInstant.style.display = "none";
             if (note) {
@@ -2479,7 +2614,7 @@ class UIManager {
                 if (p.injuredWeeks > 0) {
                     return `
                         <div class="medical-item">
-                            <span>🏥 <strong>${p.name}</strong> (${p.pos})</span>
+                            <span class="medical-name"><svg class="ico" aria-hidden="true"><use href="#i-medical"/></svg><strong>${this.escapeHtml(p.name)}</strong> <span class="text-muted">${this.escapeHtml(p.pos)}</span></span>
                             <span class="medical-badge">${p.injuryName} (${p.injuredWeeks} Wo.)</span>
                         </div>
                     `;
@@ -4913,7 +5048,12 @@ class UIManager {
         const anlagen = fac.hole(userClub, saison);
         const ligaFaktor = finance.LEVEL_ECONOMY?.[userClub.level || 1] ?? 0.05;
 
-        const ICONS = { stadium: "🏟️", trainingGround: "🏋️", youthCenter: "🎓", medicalCenter: "🏥" };
+        const ICONS = {
+            stadium: '<svg class="ico" aria-hidden="true"><use href="#i-stadium"/></svg>',
+            trainingGround: '<svg class="ico" aria-hidden="true"><use href="#i-dumbbell"/></svg>',
+            youthCenter: '<svg class="ico" aria-hidden="true"><use href="#i-leaf"/></svg>',
+            medicalCenter: '<svg class="ico" aria-hidden="true"><use href="#i-medical"/></svg>'
+        };
 
         let summe = 0;
         host.innerHTML = fac.ANLAGEN.map(key => {
@@ -4934,7 +5074,7 @@ class UIManager {
             return `
                 <div class="finance-stat-row unterhalt-zeile">
                     <span class="unterhalt-name">
-                        <span>${ICONS[key] || "🏗️"} ${fac.FACILITY_NAMES[key]}</span>
+                        <span class="unterhalt-titel">${ICONS[key] || ""} ${fac.FACILITY_NAMES[key]}</span>
                         <span class="unterhalt-sub">Stufe ${a.stufe} &middot; ${fac.zustandsText(a.zustand)}</span>
                     </span>
                     <span class="unterhalt-betrag">
@@ -4968,10 +5108,10 @@ class UIManager {
         }
 
         const ICONS = {
-            stadium: "🏟️",
-            trainingGround: "🏋️",
-            youthCenter: "🎓",
-            medicalCenter: "🏥"
+            stadium: '<svg class="ico" aria-hidden="true"><use href="#i-stadium"/></svg>',
+            trainingGround: '<svg class="ico" aria-hidden="true"><use href="#i-dumbbell"/></svg>',
+            youthCenter: '<svg class="ico" aria-hidden="true"><use href="#i-leaf"/></svg>',
+            medicalCenter: '<svg class="ico" aria-hidden="true"><use href="#i-medical"/></svg>'
         };
         const NUTZEN = {
             stadium: "Mehr Plätze, mehr Zuschauereinnahmen, lauterer Heimvorteil.",
@@ -5053,7 +5193,7 @@ class UIManager {
             return `
                 <div class="fac-card ${a.projekt ? "is-building" : ""}">
                     <div class="fac-head">
-                        <h4>${ICONS[a.key] || "🏗️"} ${a.name}</h4>
+                        <h4 class="fac-titel">${ICONS[a.key] || ""} ${a.name}</h4>
                         <span class="fac-stufe">${stufenText}</span>
                     </div>
                     <div class="fac-pips">${pips}</div>
@@ -5323,13 +5463,42 @@ class UIManager {
         }
     }
 
+    /** Absender-Symbol im Postfach aus dem Iconset */
+    postfachSymbol(emoji) {
+        const id = ({
+            "✉️": "i-mail", "👔": "i-briefcase", "⚽": "i-ball", "🔄": "i-transfer", "🏥": "i-medical",
+            "🔍": "i-search", "💰": "i-wallet", "📝": "i-doc", "🎖️": "i-trophy"
+        })[emoji] || "i-mail";
+        return `<svg class="ico" aria-hidden="true"><use href="#${id}"/></svg>`;
+    }
+
+    soundKnopfHtml() {
+        return this.soundEnabled
+            ? `<svg class="ico" aria-hidden="true"><use href="#i-volume"/></svg><span>Sound: Aktiviert</span>`
+            : `<svg class="ico" aria-hidden="true"><use href="#i-volume-off"/></svg><span>Sound: Stummgeschaltet</span>`;
+    }
+
+    /** Symbol eines Kalendertags - aus dem Iconset statt als Emoji */
     tagIcon(typ) {
-        return ({
-            training: "🏋️", recovery: "🧘", media: "🎙️", sponsor: "🤝",
-            tactics: "📋", opponent_analysis: "🔍", matchday: "⚽",
-            season_start: "⭐", season_end: "🏆", preseason: "☀️", friendly: "🥅",
-            cup: "🏆", euro: "⭐"
-        })[typ] || "📅";
+        const id = ({
+            training: "i-dumbbell", recovery: "i-leaf", media: "i-mic", sponsor: "i-briefcase",
+            tactics: "i-tactics", opponent_analysis: "i-search", matchday: "i-ball",
+            season_start: "i-star", season_end: "i-trophy", preseason: "i-sun", friendly: "i-ball",
+            cup: "i-trophy", euro: "i-star"
+        })[typ] || "i-calendar";
+        return `<svg class="ico tag-ico tag-${this.escapeHtml(String(typ || "tag"))}" aria-hidden="true"><use href="#${id}"/></svg>`;
+    }
+
+    /** Emoji-Symbole aus den Engines auf das Iconset abbilden */
+    symbolHtml(emoji) {
+        const id = ({
+            "🚑": "i-medical", "🥵": "i-flame", "📄": "i-doc", "😞": "i-frown", "📬": "i-mail",
+            "🏗️": "i-build", "⚠️": "i-alert", "🤝": "i-briefcase", "🧊": "i-leaf", "🔥": "i-flame",
+            "📣": "i-mic", "💢": "i-alert"
+        })[emoji];
+        return id
+            ? `<svg class="ico" aria-hidden="true"><use href="#${id}"/></svg>`
+            : this.escapeHtml(String(emoji || ""));
     }
 
     /**
@@ -5433,7 +5602,7 @@ class UIManager {
                 <div class="inbox-item ${isUnread ? 'unread' : ''} ${isSelected ? 'selected' : ''}" data-msg-id="${msg.id}">
                     <div class="inbox-item-topline">
                         <div class="inbox-sender-wrap">
-                            <span class="inbox-icon">${icon}</span>
+                            <span class="inbox-icon">${this.postfachSymbol(icon)}</span>
                             <span class="inbox-sender">${msg.sender || 'System'}</span>
                         </div>
                         <span class="inbox-date">${displayDate}</span>
@@ -5493,7 +5662,7 @@ class UIManager {
         detailContainer.innerHTML = `
             <div class="inbox-detail-header">
                 <div class="inbox-detail-title-row">
-                    <h2>${icon} ${msg.subject || msg.title || 'Nachricht'}</h2>
+                    <h2><span class="inbox-detail-icon">${this.postfachSymbol(icon)}</span>${msg.subject || msg.title || 'Nachricht'}</h2>
                     <span class="inbox-detail-date">${displayDate}</span>
                 </div>
                 <div class="inbox-detail-meta-grid">
@@ -5983,7 +6152,7 @@ class UIManager {
                 : null;
 
             contractSectionHtml = `
-                <div class="dash-card mt-3" style="padding:14px; background: rgba(30, 41, 59, 0.7); border:1px solid rgba(255,255,255,0.1);">
+                <div class="dash-card mt-3" style="padding:14px; background: var(--surface-2); border:1px solid var(--line);">
                     <h4 style="font-size:14px; margin-bottom:8px; color:#38bdf8;">🎓 Aus der Jugendakademie</h4>
                     <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">
                         ${player.name} spielt in der eigenen Nachwuchsabteilung und hat noch keinen Profivertrag.
@@ -5996,7 +6165,7 @@ class UIManager {
             `;
         } else if (isUserClub) {
             contractSectionHtml = `
-                <div class="dash-card mt-3" style="padding:14px; background: rgba(30, 41, 59, 0.7); border:1px solid rgba(255,255,255,0.1);">
+                <div class="dash-card mt-3" style="padding:14px; background: var(--surface-2); border:1px solid var(--line);">
                     <h4 style="font-size:14px; margin-bottom:8px; color:#38bdf8;">💼 Vertragsverlängerung verhandeln</h4>
                     <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">Forderung des Spielers: ca. <strong>${GameState.formatMoney(demand.demandWage)} / Woche</strong></p>
                     
@@ -6881,7 +7050,7 @@ class UIManager {
                 const pillH = radius * 1.06;
                 const pillY = py + radius * 1.15;
 
-                ctx.fillStyle = "rgba(15, 23, 42, 0.82)";
+                ctx.fillStyle = "rgba(12, 16, 22, 0.82)";
                 ctx.beginPath();
                 if (ctx.roundRect) {
                     ctx.roundRect(px - textWidth / 2 - padX, pillY, textWidth + padX * 2, pillH, pillH / 2);
@@ -6911,7 +7080,7 @@ class UIManager {
             ctx.arc(bx, by - height * unit * 1.4, ballR, 0, Math.PI * 2);
             ctx.fillStyle = "#f8fafc";
             ctx.fill();
-            ctx.strokeStyle = "rgba(15, 23, 42, 0.75)";
+            ctx.strokeStyle = "rgba(12, 16, 22, 0.75)";
             ctx.lineWidth = Math.max(1, ballR * 0.22);
             ctx.stroke();
 
@@ -8250,19 +8419,36 @@ class UIManager {
         return kern.replace(/[^A-Za-zÄÖÜäöüß]/g, "").slice(0, 3).toUpperCase() || "?";
     }
 
-    /** Wappen in Vereinsfarben - mit lesbarer Schrift auch auf weißem Grund */
-    setzeWappen(el, club) {
-        const farbe = club.primaryColor || "#334155";
-        const zweit = club.secondaryColor || "#ffffff";
+    /**
+     * Farben eines Wappens: Grund in der Hauptfarbe, Ring in der Zweitfarbe,
+     * Schrift so gewählt, dass sie auch auf weißem Grund lesbar bleibt.
+     */
+    wappenFarben(club) {
+        const farbe = (club && club.primaryColor) || "#334155";
+        const zweit = (club && club.secondaryColor) || "#ffffff";
         const hell = (hex) => {
             const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ""));
             if (!m) return false;
             const n = parseInt(m[1], 16);
             return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255 > 0.62;
         };
-        el.style.backgroundColor = farbe;
-        el.style.color = hell(farbe) ? (hell(zweit) ? "#0f172a" : zweit) : (hell(zweit) ? zweit : "#ffffff");
-        el.style.boxShadow = `inset 0 0 0 3px ${zweit}, 0 0 0 1px rgba(255,255,255,0.25)`;
+        const schrift = hell(farbe) ? (hell(zweit) ? "#0f172a" : zweit) : (hell(zweit) ? zweit : "#ffffff");
+        return { farbe, zweit, schrift };
+    }
+
+    /** Wappen als HTML-Schnipsel für Vorlagen (Assistent, Startbildschirm) */
+    wappenHtml(club, klasse = "") {
+        const f = this.wappenFarben(club);
+        const zeichen = this.escapeHtml(this.vereinsKuerzel(club && (club.name || club.clubName)));
+        return `<span class="crest ${klasse}" style="background-color:${f.farbe};color:${f.schrift};--crest-ring:${f.zweit};" aria-hidden="true">${zeichen}</span>`;
+    }
+
+    /** Wappen in Vereinsfarben - mit lesbarer Schrift auch auf weißem Grund */
+    setzeWappen(el, club) {
+        const f = this.wappenFarben(club);
+        el.style.backgroundColor = f.farbe;
+        el.style.color = f.schrift;
+        el.style.boxShadow = `inset 0 0 0 3px ${f.zweit}, 0 0 0 1px rgba(255,255,255,0.25)`;
         el.textContent = this.vereinsKuerzel(club.name);
     }
 
@@ -8442,7 +8628,7 @@ class UIManager {
         },
         liga: {
             icon: "⚽", name: "Liga", kurz: "Liga",
-            accent: "#38bdf8", accent2: "#7dd3fc", flaeche: "rgba(15, 23, 42, 0.92)"
+            accent: "#38bdf8", accent2: "#7dd3fc", flaeche: "rgba(12, 16, 22, 0.92)"
         },
         friendly: {
             icon: "🥅", name: "Testspiel", kurz: "Test",
@@ -9294,10 +9480,10 @@ class UIManager {
         try {
             if (typeof localStorage !== "undefined" && localStorage.getItem("fm_sound") === "aus") this.soundEnabled = false;
         } catch (e) { /* ohne Speicher bleibt der Ton an */ }
-        document.getElementById("btnToggleSound").textContent = this.soundEnabled ? "🔊 Sound: Aktiviert" : "🔇 Sound: Stummgeschaltet";
+        document.getElementById("btnToggleSound").innerHTML = this.soundKnopfHtml();
         document.getElementById("btnToggleSound").onclick = () => {
             this.soundEnabled = !this.soundEnabled;
-            document.getElementById("btnToggleSound").textContent = this.soundEnabled ? "🔊 Sound: Aktiviert" : "🔇 Sound: Stummgeschaltet";
+            document.getElementById("btnToggleSound").innerHTML = this.soundKnopfHtml();
             try {
                 if (typeof localStorage !== "undefined") localStorage.setItem("fm_sound", this.soundEnabled ? "an" : "aus");
             } catch (e) { /* nicht speicherbar - gilt dann nur für diese Sitzung */ }

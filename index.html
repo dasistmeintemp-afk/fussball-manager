@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fußballmanager Pro - Saison Edition</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/design.css">
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#0f172a">
+    <meta name="theme-color" content="#090c11">
 
     <!-- Zum Startbildschirm hinzufügen: iOS kennt das Web-App-Manifest nicht
          vollständig und braucht diese eigenen Angaben. -->
@@ -18,15 +19,73 @@
     <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
+    <!-- Iconset: eine Strichstärke, eine Formensprache - statt bunter Emojis -->
+    <svg class="icon-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+        <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/></symbol>
+        <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2l7 2.9v5.5c0 4.3-2.9 7.9-7 9.4-4.1-1.5-7-5.1-7-9.4V6.1z"/><path d="M9 11.8l2.1 2.1L15.2 9.8"/></symbol>
+        <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.2" r="3.2"/><path d="M3.4 19.5c.7-3.2 2.9-5 5.6-5s4.9 1.8 5.6 5"/><path d="M15.6 5.3a3 3 0 010 5.8"/><path d="M17.6 14.7c1.7.6 2.8 2.2 3 4.8"/></symbol>
+        <symbol id="i-tactics" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M12 4.5v15"/><circle cx="12" cy="12" r="2.6"/><path d="M3 9.2h2.6v5.6H3M21 9.2h-2.6v5.6H21"/></symbol>
+        <symbol id="i-table" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6.5h11M9 12h11M9 17.5h11"/><path d="M4.2 5.2h1.3v2.6M4 12.4c0-.8.6-1.3 1.2-1.3.7 0 1.2.5 1.2 1.1 0 .9-2.4 1.6-2.4 2.6h2.4M4.1 16.6h2.2l-1.2 1.2c.8 0 1.3.4 1.3 1s-.5 1-1.2 1c-.5 0-.9-.2-1.1-.5"/></symbol>
+        <symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.2"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M7.5 14h2M11 14h2M14.5 14h2M7.5 17h2M11 17h2"/></symbol>
+        <symbol id="i-transfer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5h14.5L15 5M20 15.5H5.5L9 19"/></symbol>
+        <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.8v2M12 19.2v2M2.8 12h2M19.2 12h2M5.5 5.5l1.4 1.4M17.1 17.1l1.4 1.4M5.5 18.5l1.4-1.4M17.1 6.9l1.4-1.4"/></symbol>
+        <symbol id="i-dumbbell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5v11M17.5 6.5v11M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/></symbol>
+        <symbol id="i-wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7.2V6.5A2 2 0 017 4.5h10.5v2.7"/><rect x="3.5" y="7.2" width="17" height="12.3" rx="2.2"/><path d="M15.5 13.3h2.2"/></symbol>
+        <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><rect x="5.5" y="11" width="3" height="6.5" rx="1"/><rect x="10.5" y="6" width="3" height="11.5" rx="1"/><rect x="15.5" y="13" width="3" height="4.5" rx="1"/></symbol>
+        <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.2"/><path d="M3.8 6.8l8.2 6.2 8.2-6.2"/></symbol>
+        <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></symbol>
+        <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h10"/></symbol>
+        <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+        <symbol id="i-arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+        <symbol id="i-briefcase" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2.2"/><path d="M9 7V5.6A1.6 1.6 0 0110.6 4h2.8A1.6 1.6 0 0115 5.6V7M3 12.5h18"/></symbol>
+        <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5.8v12.4a.8.8 0 001.2.7l9.6-6.2a.8.8 0 000-1.4L9.2 5.1A.8.8 0 008 5.8z"/></symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></symbol>
+        <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4.5M7.5 9L12 4.5 16.5 9M4.5 15v3.5A1.5 1.5 0 006 20h12a1.5 1.5 0 001.5-1.5V15"/></symbol>
+        <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.8v.2"/></symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 13h9l1-13"/></symbol>
+        <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+        <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></symbol>
+        <symbol id="i-stadium" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="8.5" rx="9" ry="3.5"/><path d="M3 8.5v6.5c0 1.9 4 3.5 9 3.5s9-1.6 9-3.5V8.5M8 11.6v6.6M16 11.6v6.6"/></symbol>
+        <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-6-6.5-11A6.5 6.5 0 0112 3.5 6.5 6.5 0 0118.5 10c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></symbol>
+        <symbol id="i-trophy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 4h9v5a4.5 4.5 0 01-9 0z"/><path d="M7.5 6H4.5v1.5a3 3 0 003 3M16.5 6h3v1.5a3 3 0 01-3 3M12 13.5V17M8.5 20h7M9.5 17h5"/></symbol>
+        <symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3L5 13.5h6L10.5 21 19 10.5h-6z"/></symbol>
+        <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.7 5.6 3.7 9s-1.2 6.4-3.7 9c-2.5-2.6-3.7-5.6-3.7-9S9.5 5.6 12 3z"/></symbol>
+        <symbol id="i-offline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13.5a8 8 0 0114.9-4M20 13.5a8 8 0 01-14.9 4"/><path d="M19 4.5v5h-5M5 19.5v-5h5"/></symbol>
+        <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.8"/><path d="M4.5 20c.9-3.9 3.8-6 7.5-6s6.6 2.1 7.5 6"/></symbol>
+        <symbol id="i-target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".8"/></symbol>
+        <symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.8l2.5 5.2 5.7.8-4.1 4 1 5.6L12 16.8l-5.1 2.6 1-5.6-4.1-4 5.7-.8z"/></symbol>
+        <symbol id="i-ball" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.6l3.8 2.8-1.5 4.4H9.7l-1.5-4.4z"/><path d="M12 3v4.6M15.8 10.4l4.4-1.5M14.3 14.8l2.7 3.8M9.7 14.8L7 18.6M8.2 10.4L3.8 8.9"/></symbol>
+        <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0013 0M12 17.5V21M8.5 21h7"/></symbol>
+        <symbol id="i-leaf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19c0-8 5.5-13.5 14-14-.5 8.5-6 14-14 14z"/><path d="M5 19l7-7"/></symbol>
+        <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l9 16H3z"/><path d="M12 10v4.5M12 17.3v.2"/></symbol>
+        <symbol id="i-medical" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6" width="17" height="13" rx="2.5"/><path d="M9 6V4.5h6V6M12 9.5v6M9 12.5h6"/></symbol>
+        <symbol id="i-flame" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21c-3.9 0-6.5-2.7-6.5-6.2 0-3.6 3-5.7 3.7-9.3 2.3 1.5 3.3 3.5 3.3 5.3 1-.6 1.8-1.7 2-3 1.9 1.6 4 4.2 4 7 0 3.5-2.6 6.2-6.5 6.2z"/></symbol>
+        <symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7l4 4V20a.5.5 0 01-.5.5h-10.5a.5.5 0 01-.5-.5V4a.5.5 0 01.5-.5z"/><path d="M14 3.5V8h4M9.5 12.5h5M9.5 16h5"/></symbol>
+        <symbol id="i-build" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V8l6-3.5V21M10 9h9l-2.5 3.5M3 21h18M14 21v-4h4v4"/></symbol>
+        <symbol id="i-frown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 16.2c1-1.2 2.2-1.8 3.5-1.8s2.5.6 3.5 1.8M9 9.8h.01M15 9.8h.01"/></symbol>
+        <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
+        <symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.8 2.8 0 00-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></symbol>
+        <symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3.5h11l3.5 3.5V19a1.5 1.5 0 01-1.5 1.5H6A1.5 1.5 0 014.5 19V5A1.5 1.5 0 016 3.5z"/><path d="M8 3.5v5h7v-5M8 20.5v-6h8v6"/></symbol>
+        <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7A1.5 1.5 0 015 5.5h4.5l2 2.5H19a1.5 1.5 0 011.5 1.5V18a1.5 1.5 0 01-1.5 1.5H5A1.5 1.5 0 013.5 18z"/></symbol>
+        <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5V15M7.5 10.5L12 15l4.5-4.5M4.5 15v3.5A1.5 1.5 0 006 20h12a1.5 1.5 0 001.5-1.5V15"/></symbol>
+        <symbol id="i-volume" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 010 6M18 6.5a7.5 7.5 0 010 11"/></symbol>
+        <symbol id="i-volume-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></symbol>
+        <symbol id="i-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="5" width="3.6" height="14" rx="1"/><rect x="13.9" y="5" width="3.6" height="14" rx="1"/></symbol>
+        <symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5h16v10.5H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/></symbol>
+        <symbol id="i-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4.5" width="14" height="16" rx="2"/><path d="M9 4.5V3.5h6v1M9 10h6M9 14h6M9 17.5h3.5"/></symbol>
+        <symbol id="i-snow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9"/><path d="M9.5 4.6L12 6l2.5-1.4M9.5 19.4L12 18l2.5 1.4"/></symbol>
+        <symbol id="logo-mark" viewBox="0 0 32 32"><rect x="1" y="1" width="30" height="30" rx="9" fill="#b6f23d"/><rect x="7.2" y="8" width="17.6" height="16" rx="2.6" fill="none" stroke="#0b1004" stroke-width="2.2"/><path d="M16 8v16" stroke="#0b1004" stroke-width="2.2"/><circle cx="16" cy="16" r="3.3" fill="none" stroke="#0b1004" stroke-width="2.2"/></symbol>
+    </svg>
     <div id="app" class="app-container">
         <!-- Top Navigation / Header -->
         <header class="app-header">
             <div class="header-left">
                 <div class="brand">
-                    <span class="brand-icon">⚽</span>
+                    <svg class="brand-icon logo-mark" aria-hidden="true"><use href="#logo-mark"/></svg>
                     <span class="brand-title">FM<span class="brand-accent">PRO</span></span>
                 </div>
                 <div class="club-badge-container" id="headerClubInfo">
@@ -48,14 +107,14 @@
 
             <div class="header-right">
                 <div class="finance-pill" title="Aktueller Kontostand / Transferbudget">
-                    <span class="fin-icon">💰</span>
+                    <span class="fin-icon"><svg class="ico" aria-hidden="true"><use href="#i-wallet"/></svg></span>
                     <span class="fin-text">
                         <span class="fin-val" id="headerBalance">0 €</span>
                         <span class="fin-sub" id="headerTransferBudget">TB: 0 €</span>
                     </span>
                 </div>
                 <div class="confidence-pill" title="Vorstandszufriedenheit">
-                    <span class="conf-icon">👔</span>
+                    <span class="conf-icon"><svg class="ico" aria-hidden="true"><use href="#i-briefcase"/></svg></span>
                     <span class="conf-label">Vorstand</span>
                     <div class="conf-bar-wrap">
                         <div class="conf-bar-fill" id="headerConfidenceBar" style="width: 75%;"></div>
@@ -64,7 +123,7 @@
                 </div>
                 <button class="btn btn-primary btn-advance" id="btnHeaderAdvance">
                     <span>Spieltag starten</span>
-                    <span class="btn-arrow">➔</span>
+                    <span class="btn-arrow"><svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg></span>
                 </button>
             </div>
         </header>
@@ -75,58 +134,58 @@
             <aside class="sidebar">
                 <nav class="nav-menu">
                     <button class="nav-item active" data-tab="dashboard">
-                        <span class="nav-icon">📊</span>
+                        <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-grid"/></svg></span>
                         <span class="nav-text">Dashboard</span>
                     </button>
                     <button class="nav-item" data-tab="club">
-                        <span class="nav-icon">🏛️</span>
+                        <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span>
                         <span class="nav-text">Verein</span>
                     </button>
                     <button class="nav-item" data-tab="squad">
-                        <span class="nav-icon">👥</span>
+                        <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg></span>
                         <span class="nav-text">Kader</span>
                     </button>
                     <button class="nav-item" data-tab="tactics">
-                        <span class="nav-icon">📋</span>
+                        <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-tactics"/></svg></span>
                         <span class="nav-text">Aufstellung & Taktik</span>
                     </button>
                     <button class="nav-item" data-tab="fixtures">
-                        <span class="nav-icon">📅</span>
+                        <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-table"/></svg></span>
                         <span class="nav-text">Spielplan & Tabelle</span>
                     </button>
                     <button class="nav-item" data-tab="calendar">
-                        <span class="nav-icon">🗓️</span>
+                        <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-calendar"/></svg></span>
                         <span class="nav-text">Kalender & Ablauf</span>
                     </button>
                     <button class="nav-item" data-tab="transfers">
-                        <span class="nav-icon">🔄</span>
+                        <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-transfer"/></svg></span>
                         <span class="nav-text">Transfermarkt</span>
                         <span class="badge" id="navOffersBadge" style="display:none;">0</span>
                     </button>
                     <button class="nav-item" data-tab="preseason" id="navPreseason" style="display:none;">
-                        <span class="nav-icon">☀️</span>
+                        <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-sun"/></svg></span>
                         <span class="nav-text">Vorbereitung</span>
                         <span class="badge" id="navPreseasonBadge" style="display:none;">0</span>
                     </button>
                     <button class="nav-item" data-tab="training">
-                        <span class="nav-icon">🏋️</span>
+                        <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-dumbbell"/></svg></span>
                         <span class="nav-text">Training</span>
                     </button>
                     <button class="nav-item" data-tab="finances">
-                        <span class="nav-icon">💼</span>
+                        <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-wallet"/></svg></span>
                         <span class="nav-text">Finanzen</span>
                     </button>
                     <button class="nav-item" data-tab="stats">
-                        <span class="nav-icon">🏆</span>
+                        <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg></span>
                         <span class="nav-text">Statistiken</span>
                     </button>
                     <button class="nav-item" data-tab="inbox">
-                        <span class="nav-icon">📬</span>
+                        <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-mail"/></svg></span>
                         <span class="nav-text">Postfach</span>
                         <span class="badge" id="navInboxBadge" style="display:none;">0</span>
                     </button>
                     <button class="nav-item" data-tab="settings">
-                        <span class="nav-icon">⚙️</span>
+                        <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-sliders"/></svg></span>
                         <span class="nav-text">Spielstand & Optionen</span>
                     </button>
                 </nav>
@@ -184,16 +243,16 @@
                             <div class="next-note" id="dashNextNote"></div>
 
                             <div class="match-action-row" id="dashMatchActions">
-                                <button class="btn btn-secondary" id="btnDashOpponentAnalysis">🔍 Gegneranalyse anzeigen</button>
-                                <button class="btn btn-secondary" id="btnDashInstantSim">⚡ Sofort berechnen</button>
-                                <button class="btn btn-primary btn-lg" id="btnDashLiveMatch">▶ 2D-Live-Spiel starten</button>
+                                <button class="btn btn-secondary" id="btnDashOpponentAnalysis"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg><span>Gegneranalyse</span></button>
+                                <button class="btn btn-secondary" id="btnDashInstantSim"><svg class="ico" aria-hidden="true"><use href="#i-bolt"/></svg><span>Sofort berechnen</span></button>
+                                <button class="btn btn-primary btn-lg" id="btnDashLiveMatch"><svg class="ico" aria-hidden="true"><use href="#i-play"/></svg><span>Live-Spiel starten</span></button>
                             </div>
                         </div>
 
                         <!-- Was heute ansteht -->
                         <div class="dash-card attention-card">
                             <div class="card-header">
-                                <h3>📌 Auf Ihrem Schreibtisch</h3>
+                                <h3>Auf Ihrem Schreibtisch</h3>
                                 <span class="badge badge-info" id="dashAttentionCount">0</span>
                             </div>
                             <div id="dashAttentionList"></div>
@@ -209,7 +268,7 @@
                                 <!-- Dynamische Tagesliste -->
                             </div>
                             <div class="calendar-action-bar">
-                                <button class="btn btn-secondary btn-sm" id="btnDashOpenCalendar">📅 Kalender öffnen</button>
+                                <button class="btn btn-secondary btn-sm" id="btnDashOpenCalendar"><svg class="ico" aria-hidden="true"><use href="#i-calendar"/></svg><span>Kalender öffnen</span></button>
                             </div>
                         </div>
 
@@ -306,7 +365,7 @@
                         <!-- Club Overview Card -->
                         <div class="dash-card">
                             <div class="card-header">
-                                <h3>🏛️ Vereinsübersicht</h3>
+                                <h3>Vereinsübersicht</h3>
                             </div>
                             <div style="font-size:14px; line-height:1.8;">
                                 <div>Verein: <strong id="clubTabName">-</strong></div>
@@ -321,7 +380,7 @@
                         <!-- Stadium & Tickets Card -->
                         <div class="dash-card">
                             <div class="card-header">
-                                <h3>🏟️ Stadion & Ticketpreise</h3>
+                                <h3>Stadion & Ticketpreise</h3>
                             </div>
                             <div style="font-size:14px; line-height:1.8; margin-bottom:12px;">
                                 <div>Stadion: <strong id="clubTabStadium">-</strong></div>
@@ -345,7 +404,7 @@
                         <!-- Sponsor Card -->
                         <div class="dash-card">
                             <div class="card-header">
-                                <h3>💼 Hauptsponsor</h3>
+                                <h3>Hauptsponsor</h3>
                             </div>
                             <div style="font-size:14px; line-height:1.8;">
                                 <div>Sponsor: <strong id="clubTabSponsorName">-</strong></div>
@@ -357,7 +416,7 @@
                         <!-- Facilities Upgrade Center Card -->
                         <div class="dash-card" style="grid-column: 1 / -1;">
                             <div class="card-header">
-                                <h3>🏗️ Infrastruktur- & Ausbauzentrum</h3>
+                                <h3>Infrastruktur- & Ausbauzentrum</h3>
                             </div>
                             <p class="text-muted" style="font-size:12px; margin:-4px 0 14px;">
                                 Keine Anlage bleibt von allein in Schuss. Die <strong>Stufe</strong> sagt, was sie
@@ -414,7 +473,7 @@
                     <div class="pane-header">
                         <h2>Aufstellung & Taktik</h2>
                         <div class="pane-actions">
-                            <button class="btn btn-secondary" id="btnAutoLineup">⚡ Beste 11 automatisch aufstellen</button>
+                            <button class="btn btn-secondary" id="btnAutoLineup"><svg class="ico" aria-hidden="true"><use href="#i-bolt"/></svg><span>Beste 11 automatisch aufstellen</span></button>
                         </div>
                     </div>
 
@@ -427,7 +486,7 @@
                                     <!-- Wird dynamisch befüllt (Standard + eigene Formationen) -->
                                 </select>
                                 <button class="btn btn-sm btn-secondary" id="btnFormationEdit" title="Positionen frei auf dem Raster verschieben">
-                                    ✏️ Formation bearbeiten
+                                    <svg class="ico" aria-hidden="true"><use href="#i-edit"/></svg><span>Formation bearbeiten</span>
                                 </button>
                             </div>
 
@@ -451,9 +510,9 @@
                                 </div>
                                 <div class="formation-editor-row">
                                     <input type="text" id="inputFormationName" class="styled-input" maxlength="28" placeholder="Name der eigenen Formation">
-                                    <button class="btn btn-sm btn-primary" id="btnFormationSave">💾 Speichern</button>
+                                    <button class="btn btn-sm btn-primary" id="btnFormationSave"><svg class="ico" aria-hidden="true"><use href="#i-save"/></svg><span>Speichern</span></button>
                                     <button class="btn btn-sm btn-secondary" id="btnFormationReset">↺ Zurücksetzen</button>
-                                    <button class="btn btn-sm btn-danger" id="btnFormationDelete" style="display:none;">🗑 Löschen</button>
+                                    <button class="btn btn-sm btn-danger" id="btnFormationDelete" style="display:none;"><svg class="ico" aria-hidden="true"><use href="#i-trash"/></svg><span>Löschen</span></button>
                                 </div>
                             </div>
 
@@ -611,7 +670,7 @@
                         <h2>Transfermarkt & Scouting</h2>
                         <div class="view-switch-buttons">
                             <button class="btn btn-sm active" id="btnSubTransfersMarket">Transfermarkt</button>
-                            <button class="btn btn-sm" id="btnSubTransfersScouting">🔭 Scouting-Zentrale</button>
+                            <button class="btn btn-sm" id="btnSubTransfersScouting"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg><span>Scouting-Zentrale</span></button>
                         </div>
                     </div>
 
@@ -625,7 +684,7 @@
 
                         <!-- Laufende Verhandlungen -->
                         <div class="ai-offers-container" id="negotiationsContainer" style="display:none;">
-                            <h3>🤝 Laufende Verhandlungen</h3>
+                            <h3>Laufende Verhandlungen</h3>
                             <p class="text-muted" style="font-size:12px; margin:2px 0 10px;">
                                 Ablöse, persönliche Konditionen und Medizincheck brauchen ihre Zeit. Die Gegenseite antwortet nach ein bis drei Tagen.
                             </p>
@@ -734,7 +793,7 @@
 
                     <div class="dash-card" style="margin-bottom:20px;">
                         <div class="card-header-row">
-                            <h3 id="preHeadTitle">☀️ Bis zum ersten Spieltag</h3>
+                            <h3 id="preHeadTitle">Bis zum ersten Spieltag</h3>
                             <span id="preCountdown" class="header-tag">-</span>
                         </div>
                         <div id="preOpenItems" style="font-size:13px; line-height:1.7;"></div>
@@ -742,37 +801,37 @@
 
                     <div class="training-grid">
                         <div class="dash-card">
-                            <h3>🧑‍🏫 Trainerstab zusammenstellen</h3>
+                            <h3>Trainerstab zusammenstellen</h3>
                             <p class="muted-note">Fünf Fachbereiche. Wer gut einkauft, entwickelt seine Spieler schneller, hält sie länger fit und hat im Spiel einen besseren Co-Trainer an der Seite. Der Stab darf höchstens ein Viertel des Gehaltsetats kosten.</p>
                             <div id="preStaffList"></div>
                         </div>
 
                         <div class="dash-card">
-                            <h3>🤝 Sponsorenangebote</h3>
+                            <h3>Sponsorenangebote</h3>
                             <p class="muted-note">Ein Angebot gilt für die gewählte Laufzeit. Mehr Geld heißt nicht immer mehr Ruhe.</p>
                             <div id="preSponsorList"></div>
                         </div>
 
                         <div class="dash-card" style="grid-column: 1 / -1;">
-                            <h3>📅 Terminplan</h3>
+                            <h3>Terminplan</h3>
                             <p class="muted-note">Vier Termine stehen im Kalender. Ein Turnier belegt zwei davon, ein vereinbartes Testspiel einen. Was Sie nicht verplanen, besetzt der Sportdirektor kurzfristig - mit dem, was kurzfristig zu haben ist.</p>
                             <div id="prePlanList"></div>
                         </div>
 
                         <div class="dash-card">
-                            <h3>🏆 Turniereinladungen</h3>
+                            <h3>Turniereinladungen</h3>
                             <p class="muted-note">Antrittsgeld gibt es fürs Kommen, die Prämie für die Platzierung. Zwei Runden: Halbfinale, danach Endspiel oder Spiel um Platz drei.</p>
                             <div id="preTournamentList"></div>
                         </div>
 
                         <div class="dash-card">
-                            <h3>📞 Testspiele vereinbaren</h3>
+                            <h3>Testspiele vereinbaren</h3>
                             <p class="muted-note">Wer lieber selbst plant, fragt Vereine einzeln an. Zusagen müssen die selbst - und wer absagt, ist für diese Vorbereitung weg.</p>
                             <div id="preContactList"></div>
                         </div>
 
                         <div class="dash-card" style="grid-column: 1 / -1;">
-                            <h3>📝 Berichte</h3>
+                            <h3>Berichte</h3>
                             <p class="muted-note">Was die Vorbereitungsspiele gezeigt haben.</p>
                             <div id="preReportList"></div>
                         </div>
@@ -787,7 +846,7 @@
                     <!-- Trainerstab: er plant, der Manager kann eingreifen -->
                     <div class="dash-card mb-3" id="coachingStaffCard">
                         <div class="card-header">
-                            <h3>🧑‍🏫 Trainerstab</h3>
+                            <h3>Trainerstab</h3>
                             <span id="staffQualityTag" class="header-tag">-</span>
                         </div>
                         <div id="staffPlanBody" style="font-size:13px; line-height:1.6;"></div>
@@ -805,49 +864,49 @@
                                 <label class="focus-option-card">
                                     <input type="radio" name="trainFocus" value="allround" checked>
                                     <div class="focus-card-content">
-                                        <h4>🔄 Ausgewogen (Allround)</h4>
+                                        <h4>Ausgewogen (Allround)</h4>
                                         <p>Harmonische Entwicklung aller Mannschaftsteile.</p>
                                     </div>
                                 </label>
                                 <label class="focus-option-card">
                                     <input type="radio" name="trainFocus" value="attack">
                                     <div class="focus-card-content">
-                                        <h4>🎯 Angriffsdrill & Torabschluss</h4>
+                                        <h4>Angriffsdrill & Torabschluss</h4>
                                         <p>Verbessert Schusspräzision, Dribbling und Chancenverwertung.</p>
                                     </div>
                                 </label>
                                 <label class="focus-option-card">
                                     <input type="radio" name="trainFocus" value="defense">
                                     <div class="focus-card-content">
-                                        <h4>🛡️ Defensivorganisation & Zweikampf</h4>
+                                        <h4>Defensivorganisation & Zweikampf</h4>
                                         <p>Fördert Tackling, Stellungsspiel und Physis der Verteidigung.</p>
                                     </div>
                                 </label>
                                 <label class="focus-option-card">
                                     <input type="radio" name="trainFocus" value="technique">
                                     <div class="focus-card-content">
-                                        <h4>⚽ Technik & Kurzpassspiel</h4>
+                                        <h4>Technik & Kurzpassspiel</h4>
                                         <p>Steigert Ballsicherheit, Technik und Spielaufbau.</p>
                                     </div>
                                 </label>
                                 <label class="focus-option-card">
                                     <input type="radio" name="trainFocus" value="tactics">
                                     <div class="focus-card-content">
-                                        <h4>🧠 Taktikverständnis & Übersicht</h4>
+                                        <h4>Taktikverständnis & Übersicht</h4>
                                         <p>Schärft das Auge für den freien Raum und die Positionierung.</p>
                                     </div>
                                 </label>
                                 <label class="focus-option-card">
                                     <input type="radio" name="trainFocus" value="regeneration">
                                     <div class="focus-card-content">
-                                        <h4>💆 Regeneration & Wellness</h4>
+                                        <h4>Regeneration & Wellness</h4>
                                         <p>Maximale Erholung von Fitness und Frische. Senkt Verletzungsrisiko.</p>
                                     </div>
                                 </label>
                                 <label class="focus-option-card">
                                     <input type="radio" name="trainFocus" value="youth">
                                     <div class="focus-card-content">
-                                        <h4>⭐ Jugend- & Talentförderung</h4>
+                                        <h4>Jugend- & Talentförderung</h4>
                                         <p>Fokussiertes Fördertraining für Spieler unter 23 Jahren.</p>
                                     </div>
                                 </label>
@@ -871,14 +930,14 @@
                                 </label>
                             </div>
                             <div class="training-info-alert">
-                                ℹ️ Das Training läuft Tag für Tag: Belastung, Erholung und Entwicklung werden mit jedem Kalendertag verrechnet.
+                                <svg class="ico" aria-hidden="true"><use href="#i-info"/></svg> Das Training läuft Tag für Tag: Belastung, Erholung und Entwicklung werden mit jedem Kalendertag verrechnet.
                             </div>
                         </div>
 
                         <!-- Trainingsbericht: Belastung, Ermüdung, Risiko -->
                         <div class="dash-card" style="grid-column: 1 / -1;">
                             <div class="card-header">
-                                <h3>📋 Trainingsbericht</h3>
+                                <h3>Trainingsbericht</h3>
                                 <span id="trainingReportMeta" class="header-tag">-</span>
                             </div>
                             <p class="text-muted" style="font-size:12px; margin:4px 0 10px;">
@@ -909,7 +968,7 @@
                         <!-- Jugendakademie -->
                         <div class="dash-card" style="grid-column: 1 / -1;">
                             <div class="card-header">
-                                <h3>🌟 Nachwuchsakademie & Jugendförderung</h3>
+                                <h3>Nachwuchsakademie & Jugendförderung</h3>
                                 <div>
                                     <span id="youthAcademyLevelBadge" class="header-tag">Akademie: Stufe 1</span>
                                     <button class="btn btn-sm btn-secondary ml-2" id="btnUpgradeYouthAcademy">Akademie ausbauen (+2.5 Mio. €)</button>
@@ -984,7 +1043,7 @@
 
                         <!-- Was die Anlagen je Spieltag kosten -->
                         <div class="dash-card">
-                            <h3>🏟️ Unterhalt der Anlagen</h3>
+                            <h3>Unterhalt der Anlagen</h3>
                             <p class="text-muted" style="font-size:12px; margin:-2px 0 10px;">
                                 Je Spieltag. Was verfällt, kostet mehr &ndash; Flickwerk ist teurer als Pflege.
                             </p>
@@ -997,7 +1056,7 @@
 
                         <!-- Transaktionshistorie -->
                         <div class="dash-card" style="grid-column: 1 / -1;">
-                            <h3>📒 Buchungs- und Transaktionsjournal</h3>
+                            <h3>Buchungs- und Transaktionsjournal</h3>
                             <div class="table-container mt-2" style="max-height: 260px; overflow-y: auto;">
                                 <table class="compact-table">
                                     <thead>
@@ -1024,25 +1083,25 @@
                     </div>
                     <div class="stats-grid">
                         <div class="dash-card">
-                            <h3>⚽ Torjäger</h3>
+                            <h3>Torjäger</h3>
                             <div class="leaderboard-list" id="statsTopScorers"></div>
                         </div>
                         <div class="dash-card">
-                            <h3>🎯 Vorlagengeber</h3>
+                            <h3>Vorlagengeber</h3>
                             <div class="leaderboard-list" id="statsTopAssists"></div>
                         </div>
                         <div class="dash-card">
-                            <h3>🧤 Weiße Westen</h3>
+                            <h3>Weiße Westen</h3>
                             <div class="leaderboard-list" id="statsCleanSheets"></div>
                         </div>
                         <div class="dash-card">
-                            <h3>⭐ Notenbeste Spieler <span class="muted-note stats-hinweis" id="statsRatingHint"></span></h3>
+                            <h3>Notenbeste Spieler <span class="muted-note stats-hinweis" id="statsRatingHint"></span></h3>
                             <div class="leaderboard-list" id="statsTopRatings"></div>
                         </div>
 
                         <!-- Historie -->
                         <div class="dash-card" style="grid-column: 1 / -1;">
-                            <h3>🏆 Historie der vergangenen Saisons</h3>
+                            <h3>Historie der vergangenen Saisons</h3>
                             <div class="table-container mt-2">
                                 <table class="compact-table">
                                     <thead>
@@ -1088,7 +1147,7 @@
                         <!-- Was gestern im Verein passiert ist -->
                         <div class="dash-card mb-3" id="dayReportCard" style="display:none;">
                             <div class="card-header">
-                                <h3>📋 Tagesbericht</h3>
+                                <h3>Tagesbericht</h3>
                                 <span id="dayReportMeta" class="header-tag">-</span>
                             </div>
                             <ul id="dayReportList" class="day-report-list"></ul>
@@ -1121,7 +1180,7 @@
                     <div class="pane-header">
                         <h2>Postfach & Vereinsnachrichten</h2>
                         <div class="pane-actions" style="display:flex; gap:10px;">
-                            <button class="btn btn-secondary btn-sm" id="btnInboxMarkAllRead">✓ Alle als gelesen markieren</button>
+                            <button class="btn btn-secondary btn-sm" id="btnInboxMarkAllRead"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span>Alle als gelesen markieren</span></button>
                         </div>
                     </div>
                     
@@ -1161,8 +1220,8 @@
                             <h3>Speichern & Laden (Lokal)</h3>
                             <p>Speichern Sie Ihren aktuellen Karrierefortschritt sicher im Browser.</p>
                             <div class="btn-group-column">
-                                <button class="btn btn-primary" id="btnSaveLocal">💾 Spielstand im Browser speichern</button>
-                                <button class="btn btn-secondary" id="btnLoadLocal">📂 Gespeicherten Spielstand laden</button>
+                                <button class="btn btn-primary" id="btnSaveLocal"><svg class="ico" aria-hidden="true"><use href="#i-save"/></svg><span>Spielstand im Browser speichern</span></button>
+                                <button class="btn btn-secondary" id="btnLoadLocal"><svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg><span>Gespeicherten Spielstand laden</span></button>
                             </div>
                         </div>
 
@@ -1170,9 +1229,9 @@
                             <h3>Spielstand weitergeben (Datei Export / Import)</h3>
                             <p>Exportieren Sie Ihren Spielstand als JSON-Datei, um ihn an Freunde zu verschicken oder auf anderen Geräten weiterzuspielen!</p>
                             <div class="btn-group-column">
-                                <button class="btn btn-primary" id="btnExportJson">📤 Spielstand als Datei herunterladen</button>
+                                <button class="btn btn-primary" id="btnExportJson"><svg class="ico" aria-hidden="true"><use href="#i-download"/></svg><span>Spielstand als Datei herunterladen</span></button>
                                 <label class="btn btn-secondary file-upload-btn">
-                                    📥 Spielstand-Datei importieren
+                                    <svg class="ico" aria-hidden="true"><use href="#i-upload"/></svg><span>Spielstand-Datei importieren</span>
                                     <input type="file" id="fileImportJson" accept=".json" style="display:none;">
                                 </label>
                             </div>
@@ -1181,17 +1240,17 @@
                         <div class="dash-card">
                             <h3>Neues Spiel / Karriere</h3>
                             <p>Starten Sie eine neue Managersaison mit einem Verein Ihrer Wahl.</p>
-                            <button class="btn btn-danger" id="btnNewGamePrompt">➕ Neues Spiel starten</button>
+                            <button class="btn btn-danger" id="btnNewGamePrompt"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg><span>Neues Spiel starten</span></button>
                         </div>
 
                         <div class="dash-card">
                             <h3>Sound & Audio-Effekte</h3>
                             <p>Synthetisierte Soundeffekte für Stadion-Atmosphäre, Pfiffe und Tore.</p>
-                            <button class="btn btn-secondary" id="btnToggleSound">🔊 Sound: Aktiviert</button>
+                            <button class="btn btn-secondary" id="btnToggleSound"><svg class="ico" aria-hidden="true"><use href="#i-volume"/></svg><span>Sound: Aktiviert</span></button>
                         </div>
 
                         <div class="dash-card einstellungen-live">
-                            <h3>⚽ Livespiel</h3>
+                            <h3>Livespiel</h3>
                             <p>Gilt für jede Partie und lässt sich auch während des Spiels an der Seitenlinie ändern.</p>
                             <div id="settingsLiveBody"></div>
                         </div>
@@ -1202,64 +1261,69 @@
 
         <!-- ================= MODALS & OVERLAYS ================= -->
 
-        <!-- Start Screen / Main Menu Screen Overlay -->
+        <!-- Startbildschirm: Flutlicht über dem Rasen, rechts der letzte Spielstand -->
         <div class="start-screen-overlay" id="startScreenOverlay">
+            <div class="start-bg" aria-hidden="true">
+                <div class="start-pitch"></div>
+                <div class="start-glow start-glow-links"></div>
+                <div class="start-glow start-glow-rechts"></div>
+            </div>
             <div class="start-screen-container">
-                <div class="start-hero-header">
-                    <div class="start-logo">
-                        <span class="start-logo-icon">⚽</span>
-                        <h1 class="start-logo-title">FUSSBALL<span class="brand-accent">MANAGER</span> <span class="start-pro-tag">PRO</span></h1>
+                <header class="start-top">
+                    <div class="start-brand">
+                        <svg class="logo-mark" aria-hidden="true"><use href="#logo-mark"/></svg>
+                        <span class="start-brand-name">Fußballmanager <span class="start-pro-tag">Pro</span></span>
                     </div>
-                    <p class="start-subtitle">Deine Karriere als Cheftrainer & Sportdirektor. Übernimm die Kontrolle.</p>
-                </div>
+                    <button class="start-link" id="btnStartAbout" type="button"><svg class="ico" aria-hidden="true"><use href="#i-info"/></svg><span>Über das Spiel</span></button>
+                </header>
 
                 <div class="start-screen-grid">
-                    <!-- Linke Spalte: Hauptmenü-Aktionen -->
-                    <div class="start-actions-card">
-                        <h2 class="start-card-title">Hauptmenü</h2>
-                        
+                    <section class="start-hero">
+                        <span class="start-kicker">Karrieremodus</span>
+                        <h1 class="start-logo-title">Dein Verein.<br><span class="brand-accent">Deine Handschrift.</span></h1>
+                        <p class="start-subtitle" id="startWorldFacts">Übernimm einen Verein – von der Champions League bis zur Landesliga. Kader, Taktik, Transfers und jedes Spiel live in 2D.</p>
+
                         <div class="start-menu-buttons">
-                            <button class="btn btn-primary btn-lg start-btn" id="btnStartNewGame">
-                                <span class="btn-icon">⭐</span>
+                            <button class="btn btn-primary btn-lg start-btn" id="btnStartNewGame" type="button">
+                                <span class="btn-icon"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg></span>
                                 <span class="btn-text-wrap">
-                                    <span class="btn-main-text">Neues Spiel starten</span>
-                                    <span class="btn-sub-text">Erstelle ein neues Managerprofil & wähle einen Verein</span>
+                                    <span class="btn-main-text">Neue Karriere</span>
+                                    <span class="btn-sub-text">Profil anlegen, Liga und Verein wählen</span>
                                 </span>
                             </button>
 
-                            <button class="btn btn-success btn-lg start-btn" id="btnStartContinueGame" disabled>
-                                <span class="btn-icon">▶️</span>
+                            <button class="btn btn-secondary btn-lg start-btn" id="btnStartContinueGame" type="button" disabled>
+                                <span class="btn-icon"><svg class="ico" aria-hidden="true"><use href="#i-play"/></svg></span>
                                 <span class="btn-text-wrap">
-                                    <span class="btn-main-text">Spielstand fortsetzen</span>
+                                    <span class="btn-main-text">Weiterspielen</span>
                                     <span class="btn-sub-text" id="startContinueSubText">Kein lokaler Spielstand gefunden</span>
                                 </span>
                             </button>
-
-                            <div class="start-btn-row">
-                                <label class="btn btn-secondary start-btn-half" for="startFileInput">
-                                    <span>📁 Spielstand importieren</span>
-                                </label>
-                                <input type="file" id="startFileInput" accept=".json" style="display:none;">
-
-                                <button class="btn btn-secondary start-btn-half" id="btnStartAbout">
-                                    <span>ℹ️ Über das Spiel</span>
-                                </button>
-                            </div>
                         </div>
-                    </div>
 
-                    <!-- Rechte Spalte: Aktueller Spielstand-Status -->
-                    <div class="start-saveinfo-card" id="startSaveInfoCard">
-                        <h2 class="start-card-title">Lokaler Spielstand</h2>
+                        <div class="start-btn-row">
+                            <label class="start-link" for="startFileInput"><svg class="ico" aria-hidden="true"><use href="#i-upload"/></svg><span>Spielstand importieren</span></label>
+                            <input type="file" id="startFileInput" accept=".json" style="display:none;">
+                        </div>
+                    </section>
+
+                    <aside class="start-saveinfo-card" id="startSaveInfoCard">
                         <div id="startSaveDetailsContent">
                             <div class="no-save-placeholder">
-                                <span class="placeholder-icon">📂</span>
-                                <p>Noch kein aktiver Spielstand im Browser gespeichert.</p>
-                                <span class="placeholder-hint">Klicke auf "Neues Spiel starten", um deine Trainerkarriere zu beginnen.</span>
+                                <span class="placeholder-icon"><svg class="ico" aria-hidden="true"><use href="#i-trophy"/></svg></span>
+                                <p>Noch kein Spielstand auf diesem Gerät.</p>
+                                <span class="placeholder-hint">Starte eine neue Karriere – gespeichert wird automatisch im Browser.</span>
                             </div>
                         </div>
-                    </div>
+                    </aside>
                 </div>
+
+                <footer class="start-features">
+                    <div class="start-feature"><svg class="ico" aria-hidden="true"><use href="#i-play"/></svg><span><strong>2D-Livespiel</strong>Eingreifen von der Seitenlinie</span></div>
+                    <div class="start-feature"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg><span><strong>Ganze Ligapyramide</strong>Fünf Länder, zwölf Ligen</span></div>
+                    <div class="start-feature"><svg class="ico" aria-hidden="true"><use href="#i-transfer"/></svg><span><strong>Transfers</strong>Verhandeln mit Beratern</span></div>
+                    <div class="start-feature"><svg class="ico" aria-hidden="true"><use href="#i-offline"/></svg><span><strong>Offline</strong>Kein Konto, kein Server</span></div>
+                </footer>
             </div>
         </div>
 
@@ -1288,133 +1352,183 @@
         </div>
 
         <!-- Modal: Setup-Assistent für Neues Spiel -->
-        <div class="modal-overlay" id="modalNewGame" style="display: none;">
+        <div class="modal-overlay wizard-overlay" id="modalNewGame" style="display: none;">
             <div class="modal-box modal-fullscreen wizard-modal-box">
-                <div class="wizard-header">
+                <!-- Linke Leiste: Schritte und was bisher gewählt ist -->
+                <aside class="wizard-rail">
+                    <div class="wizard-rail-brand">
+                        <svg class="logo-mark" aria-hidden="true"><use href="#logo-mark"/></svg>
+                        <span>Neue Karriere</span>
+                    </div>
                     <div class="wizard-steps-indicator">
-                        <div class="wizard-step-node active" data-step="1">
+                        <button type="button" class="wizard-step-node active" data-step="1">
                             <span class="step-num">1</span>
-                            <span class="step-label">Managerprofil</span>
-                        </div>
+                            <span class="step-text">
+                                <span class="step-label">Managerprofil</span>
+                                <span class="step-hint">Name, Herkunft, Schwierigkeit</span>
+                            </span>
+                        </button>
                         <div class="step-line"></div>
-                        <div class="wizard-step-node" data-step="2">
+                        <button type="button" class="wizard-step-node" data-step="2">
                             <span class="step-num">2</span>
-                            <span class="step-label">Liga</span>
-                        </div>
+                            <span class="step-text">
+                                <span class="step-label">Liga</span>
+                                <span class="step-hint">Land und Spielklasse</span>
+                            </span>
+                        </button>
                         <div class="step-line"></div>
-                        <div class="wizard-step-node" data-step="3">
+                        <button type="button" class="wizard-step-node" data-step="3">
                             <span class="step-num">3</span>
-                            <span class="step-label">Vereinsauswahl</span>
-                        </div>
+                            <span class="step-text">
+                                <span class="step-label">Vereinsauswahl</span>
+                                <span class="step-hint">Kader, Budget, Ziel</span>
+                            </span>
+                        </button>
                     </div>
-                    <button class="modal-close" id="btnCloseWizard">×</button>
-                </div>
+                    <div class="wizard-summary" id="wizardSummary"></div>
+                </aside>
 
-                <div class="wizard-body">
-                    <!-- Schritt 1: Managerprofil -->
-                    <div class="wizard-step-content active" id="wizardStep1">
-                        <div class="wizard-card-center">
-                            <h2>Schritt 1: Ihr Managerprofil</h2>
-                            <p class="wizard-desc">Legen Sie Ihre persönlichen Trainerdaten und den gewünschten Schwierigkeitsgrad fest.</p>
-
-                            <div class="wizard-form-grid">
-                                <div class="form-col">
-                                    <label for="inputManagerName">Managername / Trainername:</label>
-                                    <input type="text" id="inputManagerName" class="styled-input" value="Trainer Schmidt" placeholder="z. B. Hansi Flick">
-                                </div>
-                                <div class="form-col">
-                                    <label for="inputManagerNationality">Nationalität:</label>
-                                    <select id="inputManagerNationality" class="styled-select">
-                                        <option value="Deutschland" selected>🇩🇪 Deutschland</option>
-                                        <option value="Österreich">🇦🇹 Österreich</option>
-                                        <option value="Schweiz">🇨🇭 Schweiz</option>
-                                        <option value="Spanien">🇪🇸 Spanien</option>
-                                        <option value="Italien">🇮🇹 Italien</option>
-                                        <option value="Frankreich">🇫🇷 Frankreich</option>
-                                        <option value="England">🏴󠁧󠁢󠁥󠁮󠁧󠁿 England</option>
-                                        <option value="Niederlande">🇳🇱 Niederlande</option>
-                                    </select>
-                                </div>
-                                <div class="form-col">
-                                    <label for="inputManagerBirthdate">Geburtsdatum:</label>
-                                    <input type="date" id="inputManagerBirthdate" class="styled-input" value="1985-05-15">
-                                </div>
-                                <div class="form-col">
-                                    <label for="selectDifficulty">Schwierigkeitsgrad:</label>
-                                    <select id="selectDifficulty" class="styled-select">
-                                        <option value="easy">Leicht (+35% Budget, hohe Vorstandstoleranz)</option>
-                                        <option value="normal" selected>Normal (Ausgewogenes und realistisches Gameplay)</option>
-                                        <option value="hard">Schwer (-25% Budget, anspruchsvolle Vorstände)</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
+                <div class="wizard-main">
+                    <div class="wizard-header">
+                        <div class="wizard-progress" aria-hidden="true"><span class="wizard-progress-bar" id="wizardProgressBar"></span></div>
+                        <span class="wizard-step-counter" id="wizardStepCounter">Schritt 1 von 3</span>
+                        <button class="modal-close" id="btnCloseWizard" type="button" aria-label="Assistent schließen"><svg class="ico" aria-hidden="true"><use href="#i-close"/></svg></button>
                     </div>
 
-                    <!-- Schritt 2: Ligaauswahl -->
-                    <div class="wizard-step-content" id="wizardStep2" style="display:none;">
-                        <div class="wizard-card-center">
-                            <h2>Schritt 2: Liga auswählen</h2>
-                            <p class="wizard-desc">Wählen Sie den Wettbewerb für Ihre Karriere – von der Champions-League-Anwärterin bis zum Landesligisten.</p>
-
-                            <div class="league-selection-container">
-                                <div class="league-pick-grid" id="leaguePickGrid">
-                                    <!-- Dynamische Ligakarten -->
+                    <div class="wizard-body">
+                        <!-- Schritt 1: Managerprofil -->
+                        <div class="wizard-step-content active" id="wizardStep1">
+                            <div class="wizard-card-center">
+                                <div class="wizard-step-head">
+                                    <span class="wizard-eyebrow">Schritt 1 · Managerprofil</span>
+                                    <h2>Wer steht an der Seitenlinie?</h2>
+                                    <p class="wizard-desc">Dein Name steht in Presse, Verträgen und Postfach. Der Schwierigkeitsgrad bestimmt Budget und Geduld des Vorstands.</p>
                                 </div>
-                                <div id="leagueDetailCard">
-                                    <!-- Dynamische Ligadetails -->
-                                </div>
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- Schritt 3: Vereinsauswahl & Detailanalyse -->
-                    <div class="wizard-step-content" id="wizardStep3" style="display:none;">
-                        <div class="club-select-layout">
-                            <!-- Linke Spalte: Filter & Vereinsliste -->
-                            <div class="club-select-left">
-                                <div class="club-filter-bar">
-                                    <input type="text" id="filterClubSearch" class="styled-input" placeholder="🔍 Verein oder Stadt suchen...">
-                                    <div class="filter-controls-row">
-                                        <select id="filterClubLeague" class="styled-select">
-                                            <!-- Wird mit den Ligen der Spielwelt gefüllt -->
+                                <div class="wizard-form-grid">
+                                    <div class="form-col form-col-wide">
+                                        <label for="inputManagerName">Name</label>
+                                        <input type="text" id="inputManagerName" class="styled-input input-hero" value="Trainer Schmidt" placeholder="z. B. Hansi Flick" autocomplete="off">
+                                    </div>
+                                    <div class="form-col">
+                                        <label for="inputManagerNationality">Nationalität</label>
+                                        <select id="inputManagerNationality" class="styled-select">
+                                            <option value="Deutschland" selected>🇩🇪 Deutschland</option>
+                                            <option value="Österreich">🇦🇹 Österreich</option>
+                                            <option value="Schweiz">🇨🇭 Schweiz</option>
+                                            <option value="Spanien">🇪🇸 Spanien</option>
+                                            <option value="Italien">🇮🇹 Italien</option>
+                                            <option value="Frankreich">🇫🇷 Frankreich</option>
+                                            <option value="England">🏴󠁧󠁢󠁥󠁮󠁧󠁿 England</option>
+                                            <option value="Niederlande">🇳🇱 Niederlande</option>
                                         </select>
-                                        <select id="filterClubSort" class="styled-select">
-                                            <option value="strength_desc">Sortieren: Stärke (Absteigend)</option>
-                                            <option value="strength_asc">Sortieren: Stärke (Aufsteigend)</option>
-                                            <option value="budget_desc">Sortieren: Budget (Höchstes zuerst)</option>
-                                            <option value="name_asc">Sortieren: Name (A - Z)</option>
-                                        </select>
-                                        <select id="filterClubDifficulty" class="styled-select">
-                                            <option value="all">Alle Schwierigkeiten</option>
-                                            <option value="easy">Favoriten (Meisterschaft)</option>
-                                            <option value="medium">Verfolger (Top 3 / Europa)</option>
-                                            <option value="hard">Herausforderer (Mittelfeld/Abstieg)</option>
-                                        </select>
+                                    </div>
+                                    <div class="form-col">
+                                        <label for="inputManagerBirthdate">Geburtsdatum</label>
+                                        <input type="date" id="inputManagerBirthdate" class="styled-input" value="1985-05-15">
                                     </div>
                                 </div>
 
-                                <div class="club-selection-list" id="clubSelectionList">
-                                    <!-- Dynamische Vereinskarten -->
+                                <div class="wizard-subhead">Schwierigkeitsgrad</div>
+                                <div class="difficulty-cards" id="difficultyCards" role="radiogroup" aria-label="Schwierigkeitsgrad">
+                                    <button type="button" class="difficulty-card" data-diff="easy" role="radio" aria-checked="false">
+                                        <span class="dc-meter" aria-hidden="true"><i></i><i></i><i></i></span>
+                                        <span class="dc-title">Leicht</span>
+                                        <span class="dc-desc">35 % mehr Budget, ein geduldiger Vorstand. Zum Kennenlernen.</span>
+                                    </button>
+                                    <button type="button" class="difficulty-card selected" data-diff="normal" role="radio" aria-checked="true">
+                                        <span class="dc-meter" aria-hidden="true"><i></i><i></i><i></i></span>
+                                        <span class="dc-title">Normal</span>
+                                        <span class="dc-desc">Realistische Budgets und Erwartungen. So ist das Spiel gedacht.</span>
+                                    </button>
+                                    <button type="button" class="difficulty-card" data-diff="hard" role="radio" aria-checked="false">
+                                        <span class="dc-meter" aria-hidden="true"><i></i><i></i><i></i></span>
+                                        <span class="dc-title">Schwer</span>
+                                        <span class="dc-desc">25 % weniger Budget, ein Vorstand ohne Nachsicht.</span>
+                                    </button>
                                 </div>
+                                <select id="selectDifficulty" class="styled-select visually-hidden" tabindex="-1" aria-hidden="true">
+                                    <option value="easy">Leicht</option>
+                                    <option value="normal" selected>Normal</option>
+                                    <option value="hard">Schwer</option>
+                                </select>
                             </div>
+                        </div>
 
-                            <!-- Rechte Spalte: Vereins-Detailanalyse -->
-                            <div class="club-select-right">
-                                <div class="club-detail-panel" id="clubDetailPanel">
-                                    <div class="club-detail-placeholder">
-                                        <span>👈 Bitte wählen Sie links einen Verein aus, um detaillierte Kaderanalysen, Finanzen und Vorstandserwartungen einzusehen.</span>
+                        <!-- Schritt 2: Ligaauswahl -->
+                        <div class="wizard-step-content" id="wizardStep2" style="display:none;">
+                            <div class="wizard-card-center wizard-card-wide">
+                                <div class="wizard-step-head">
+                                    <span class="wizard-eyebrow">Schritt 2 · Liga</span>
+                                    <h2>Wo beginnt deine Karriere?</h2>
+                                    <p class="wizard-desc">Vom Champions-League-Anwärter bis zum Landesligisten – je tiefer die Liga, desto weiter der Weg nach oben.</p>
+                                </div>
+                                <div class="league-selection-container">
+                                    <div class="league-pick-grid" id="leaguePickGrid">
+                                        <!-- Dynamische Ligakarten -->
+                                    </div>
+                                    <div id="leagueDetailCard">
+                                        <!-- Dynamische Ligadetails -->
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </div>
 
-                <div class="wizard-footer">
-                    <button class="btn btn-secondary btn-lg" id="btnWizardBack" style="display: none;">◀ Zurück</button>
-                    <div class="wizard-footer-right">
-                        <button class="btn btn-primary btn-lg" id="btnWizardNext">Weiter ▶</button>
+                        <!-- Schritt 3: Vereinsauswahl & Detailanalyse -->
+                        <div class="wizard-step-content" id="wizardStep3" style="display:none;">
+                            <div class="club-select-layout">
+                                <!-- Linke Spalte: Filter & Vereinsliste -->
+                                <div class="club-select-left">
+                                    <div class="wizard-step-head wizard-step-head-compact">
+                                        <span class="wizard-eyebrow">Schritt 3 · Verein</span>
+                                        <h2>Welchen Verein übernimmst du?</h2>
+                                    </div>
+                                    <div class="club-filter-bar">
+                                        <div class="search-field">
+                                            <svg class="ico" aria-hidden="true"><use href="#i-search"/></svg>
+                                            <input type="text" id="filterClubSearch" class="styled-input" placeholder="Verein, Stadt oder Stadion suchen">
+                                        </div>
+                                        <div class="filter-controls-row">
+                                            <select id="filterClubLeague" class="styled-select" aria-label="Liga">
+                                                <!-- Wird mit den Ligen der Spielwelt gefüllt -->
+                                            </select>
+                                            <select id="filterClubSort" class="styled-select" aria-label="Sortierung">
+                                                <option value="strength_desc">Stärkste zuerst</option>
+                                                <option value="strength_asc">Schwächste zuerst</option>
+                                                <option value="budget_desc">Höchstes Budget</option>
+                                                <option value="name_asc">Name A–Z</option>
+                                            </select>
+                                            <select id="filterClubDifficulty" class="styled-select" aria-label="Erwartung">
+                                                <option value="all">Jede Erwartung</option>
+                                                <option value="easy">Favoriten (Meisterschaft)</option>
+                                                <option value="medium">Verfolger (Top 3 / Europa)</option>
+                                                <option value="hard">Herausforderer (Mittelfeld/Abstieg)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div class="club-selection-list" id="clubSelectionList">
+                                        <!-- Dynamische Vereinskarten -->
+                                    </div>
+                                </div>
+
+                                <!-- Rechte Spalte: Vereins-Detailanalyse -->
+                                <div class="club-select-right">
+                                    <div class="club-detail-panel" id="clubDetailPanel">
+                                        <div class="club-detail-placeholder">
+                                            <span>Wähle links einen Verein, um Kader, Finanzen und die Erwartungen des Vorstands zu sehen.</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="wizard-footer">
+                        <button class="btn btn-secondary btn-lg" id="btnWizardBack" type="button" style="display: none;"><svg class="ico" aria-hidden="true"><use href="#i-arrow-left"/></svg><span>Zurück</span></button>
+                        <div class="wizard-footer-right">
+                            <button class="btn btn-primary btn-lg" id="btnWizardNext" type="button">Weiter</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1461,10 +1575,10 @@
                             <button class="btn btn-sm speed-btn" data-speed="4" title="Schnell - gut sechsfach"><span class="lm-speed-lang">Schnell</span><span class="lm-speed-kurz">6×</span></button>
                         </div>
                         <button class="btn btn-sm btn-primary lm-coach-btn" id="btnLmCoaching" title="Wechsel, Taktik und Co-Trainer - das Spiel pausiert">
-                            📋<span class="lm-btn-text"> Seitenlinie</span>
+                            <svg class="ico" aria-hidden="true"><use href="#i-clipboard"/></svg><span class="lm-btn-text"> Seitenlinie</span>
                             <span class="lm-coach-badge" id="lmCoachBadge" style="display:none;"></span>
                         </button>
-                        <button class="btn btn-sm btn-secondary" id="btnLmSkip" aria-label="Sofort-Ergebnis">⚡<span class="lm-btn-text"> Sofort-Ergebnis</span></button>
+                        <button class="btn btn-sm btn-secondary" id="btnLmSkip" aria-label="Sofort-Ergebnis"><svg class="ico" aria-hidden="true"><use href="#i-bolt"/></svg><span class="lm-btn-text"> Sofort-Ergebnis</span></button>
                     </div>
                     <div class="lm-timeline" id="lmTimeline" aria-hidden="true">
                         <div class="lm-tl-track">
@@ -1481,10 +1595,10 @@
                     <div class="live-pitch-wrapper">
                         <canvas id="livePitchCanvas" width="800" height="500"></canvas>
                         <div class="lm-zurufe" id="lmZurufe" style="display:none;">
-                            <span class="lm-zuruf-titel">📣 <span class="lm-btn-text">Zuruf</span></span>
-                            <button class="lm-zuruf-btn" data-zuruf="druck" title="Mehr Druck! - zehn Minuten lang mehr Chancen, hinten offener"><span class="lm-zuruf-ico">🔥</span><span class="lm-zuruf-lang">Mehr Druck!</span><span class="lm-zuruf-kurz">Druck</span></button>
-                            <button class="lm-zuruf-btn" data-zuruf="ruhe" title="Ruhe bewahren - zehn Minuten lang weniger Karten, der Gegner findet schwerer Lücken"><span class="lm-zuruf-ico">🧊</span><span class="lm-zuruf-lang">Ruhe bewahren</span><span class="lm-zuruf-kurz">Ruhe</span></button>
-                            <button class="lm-zuruf-btn" data-zuruf="zeit" title="Zeit schinden - zehn Minuten lang passiert weniger, aber Karten drohen"><span class="lm-zuruf-ico">⏳</span><span class="lm-zuruf-lang">Zeit schinden</span><span class="lm-zuruf-kurz">Zeit</span></button>
+                            <span class="lm-zuruf-titel"><svg class="ico" aria-hidden="true"><use href="#i-mic"/></svg> <span class="lm-btn-text">Zuruf</span></span>
+                            <button class="lm-zuruf-btn" data-zuruf="druck" title="Mehr Druck! - zehn Minuten lang mehr Chancen, hinten offener"><span class="lm-zuruf-ico"><svg class="ico" aria-hidden="true"><use href="#i-flame"/></svg></span><span class="lm-zuruf-lang">Mehr Druck!</span><span class="lm-zuruf-kurz">Druck</span></button>
+                            <button class="lm-zuruf-btn" data-zuruf="ruhe" title="Ruhe bewahren - zehn Minuten lang weniger Karten, der Gegner findet schwerer Lücken"><span class="lm-zuruf-ico"><svg class="ico" aria-hidden="true"><use href="#i-snow"/></svg></span><span class="lm-zuruf-lang">Ruhe bewahren</span><span class="lm-zuruf-kurz">Ruhe</span></button>
+                            <button class="lm-zuruf-btn" data-zuruf="zeit" title="Zeit schinden - zehn Minuten lang passiert weniger, aber Karten drohen"><span class="lm-zuruf-ico"><svg class="ico" aria-hidden="true"><use href="#i-clock"/></svg></span><span class="lm-zuruf-lang">Zeit schinden</span><span class="lm-zuruf-kurz">Zeit</span></button>
                             <span class="lm-zuruf-status" id="lmZurufStatus"></span>
                         </div>
                         <div class="live-commentary-bar" id="lmCommentary">
@@ -1535,17 +1649,17 @@
             <div class="coaching-box" role="dialog" aria-modal="true" aria-labelledby="coachTitle">
                 <div class="coaching-head">
                     <div class="coaching-head-text">
-                        <div class="coaching-title" id="coachTitle">📋 Seitenlinie</div>
+                        <div class="coaching-title" id="coachTitle"><svg class="ico" aria-hidden="true"><use href="#i-clipboard"/></svg> Seitenlinie</div>
                         <div class="coaching-sub" id="coachSub">Spiel pausiert</div>
                     </div>
-                    <span class="coaching-paused">⏸ pausiert</span>
+                    <span class="coaching-paused"><svg class="ico" aria-hidden="true"><use href="#i-pause"/></svg> pausiert</span>
                 </div>
                 <div class="coaching-alert" id="coachAlert" style="display: none;"></div>
                 <div class="coaching-tabs" role="tablist">
-                    <button class="coaching-tab active" data-coachtab="wechsel" role="tab">🔄 Wechsel</button>
-                    <button class="coaching-tab" data-coachtab="taktik" role="tab">🧭 Taktik</button>
-                    <button class="coaching-tab" data-coachtab="gegner" role="tab">🔍 Gegner</button>
-                    <button class="coaching-tab" data-coachtab="cotrainer" role="tab">🗣️ <span class="coach-tab-lang">Co-Trainer</span><span class="coach-tab-kurz">Co</span> <span class="coach-tab-badge" id="coachTipCount"></span></button>
+                    <button class="coaching-tab active" data-coachtab="wechsel" role="tab"><svg class="ico" aria-hidden="true"><use href="#i-transfer"/></svg> Wechsel</button>
+                    <button class="coaching-tab" data-coachtab="taktik" role="tab"><svg class="ico" aria-hidden="true"><use href="#i-tactics"/></svg> Taktik</button>
+                    <button class="coaching-tab" data-coachtab="gegner" role="tab"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg> Gegner</button>
+                    <button class="coaching-tab" data-coachtab="cotrainer" role="tab"><svg class="ico" aria-hidden="true"><use href="#i-chat"/></svg> <span class="coach-tab-lang">Co-Trainer</span><span class="coach-tab-kurz">Co</span> <span class="coach-tab-badge" id="coachTipCount"></span></button>
                 </div>
                 <div class="coaching-body">
                     <div class="coaching-pane active" id="coachPane-wechsel"></div>
@@ -1557,7 +1671,7 @@
                     <div class="coaching-foot-info" id="coachFootInfo"></div>
                     <div class="coaching-foot-actions">
                         <button class="btn btn-secondary" id="btnCoachDiscard">Verwerfen</button>
-                        <button class="btn btn-primary" id="btnCoachApply">✓ Übernehmen &amp; weiter</button>
+                        <button class="btn btn-primary" id="btnCoachApply"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span>Übernehmen &amp; weiter</span></button>
                     </div>
                 </div>
             </div>
@@ -1582,7 +1696,7 @@
         <div class="modal-overlay" id="modalOpponentAnalysis" style="display: none;">
             <div class="modal-box modal-lg">
                 <div class="modal-header">
-                    <h2>🔍 Taktische Gegneranalyse & Scoutingbericht</h2>
+                    <h2>Taktische Gegneranalyse & Scoutingbericht</h2>
                     <button class="modal-close" id="btnCloseOpponentAnalysis">×</button>
                 </div>
                 <div class="modal-body" id="opponentAnalysisContent">
@@ -1623,7 +1737,7 @@
         <div class="modal-overlay" id="modalPressConference" style="display: none;">
             <div class="modal-box" style="max-width: 620px;">
                 <div class="modal-header">
-                    <h3 id="pcModalTitle">🎙️ Pressekonferenz</h3>
+                    <h3 id="pcModalTitle">Pressekonferenz</h3>
                     <button class="modal-close" id="btnClosePressConference">×</button>
                 </div>
                 <div class="modal-body" id="pressConferenceContent"></div>
@@ -1650,7 +1764,7 @@
                 <p id="seSubtitle" class="lead-text">Der Deutsche Meister steht fest.</p>
                 <div class="se-details" id="seDetails"></div>
                 <div class="modal-footer center">
-                    <button class="btn btn-primary btn-lg" id="btnStartNextSeason">Nächste Saison starten ▶</button>
+                    <button class="btn btn-primary btn-lg" id="btnStartNextSeason"><span>Nächste Saison starten</span><svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg></button>
                 </div>
             </div>
         </div>
@@ -1689,48 +1803,48 @@
             <div class="mobile-drawer">
                 <div class="mobile-drawer-header">
                     <div class="mobile-drawer-title">
-                        <span>📱</span> Menü & Schnellzugriff
+                        Alle Bereiche
                     </div>
                     <button class="modal-close" id="btnCloseMobileDrawer">×</button>
                 </div>
                 <div class="mobile-drawer-grid">
                     <button class="mobile-drawer-item drawer-item-highlight" data-tab="preseason" id="mobileNavPreseason" style="display:none;">
-                        <span class="drawer-icon">☀️</span>
+                        <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-sun"/></svg></span>
                         <span class="drawer-text">Vorbereitung</span>
                         <span class="badge" id="mobilePreseasonBadge" style="display:none;">0</span>
                     </button>
                     <button class="mobile-drawer-item" data-tab="club">
-                        <span class="drawer-icon">🏛️</span>
+                        <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span>
                         <span class="drawer-text">Verein</span>
                     </button>
                     <button class="mobile-drawer-item" data-tab="fixtures">
-                        <span class="drawer-icon">📅</span>
+                        <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-table"/></svg></span>
                         <span class="drawer-text">Spielplan & Tabelle</span>
                     </button>
                     <button class="mobile-drawer-item" data-tab="transfers">
-                        <span class="drawer-icon">🔄</span>
+                        <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-transfer"/></svg></span>
                         <span class="drawer-text">Transfermarkt</span>
                     </button>
                     <button class="mobile-drawer-item" data-tab="training">
-                        <span class="drawer-icon">🏋️</span>
+                        <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-dumbbell"/></svg></span>
                         <span class="drawer-text">Training</span>
                     </button>
                     <button class="mobile-drawer-item" data-tab="finances">
-                        <span class="drawer-icon">💼</span>
+                        <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-wallet"/></svg></span>
                         <span class="drawer-text">Finanzen</span>
                     </button>
                     <button class="mobile-drawer-item" data-tab="stats">
-                        <span class="drawer-icon">🏆</span>
+                        <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg></span>
                         <span class="drawer-text">Statistiken</span>
                     </button>
                     <button class="mobile-drawer-item" data-tab="inbox">
-                        <span class="drawer-icon">📬</span>
+                        <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-mail"/></svg></span>
                         <span class="drawer-text">Postfach</span>
                         <span class="badge" id="mobileInboxBadge" style="display:none;">0</span>
                     </button>
                     <button class="mobile-drawer-item" data-tab="settings">
-                        <span class="drawer-icon">⚙️</span>
-                        <span class="drawer-text">Spielstand / Save</span>
+                        <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-sliders"/></svg></span>
+                        <span class="drawer-text">Spielstand & Optionen</span>
                     </button>
                 </div>
             </div>
@@ -1739,23 +1853,23 @@
         <!-- Mobile Bottom Navigation Bar -->
         <nav class="mobile-bottom-nav">
             <button class="mobile-nav-item active" data-tab="dashboard">
-                <span class="nav-icon">📊</span>
+                <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-grid"/></svg></span>
                 <span class="nav-label">Dashboard</span>
             </button>
             <button class="mobile-nav-item" data-tab="squad">
-                <span class="nav-icon">👥</span>
+                <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg></span>
                 <span class="nav-label">Kader</span>
             </button>
             <button class="mobile-nav-item" data-tab="tactics">
-                <span class="nav-icon">📋</span>
+                <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-tactics"/></svg></span>
                 <span class="nav-label">Taktik</span>
             </button>
             <button class="mobile-nav-item" data-tab="calendar">
-                <span class="nav-icon">🗓️</span>
+                <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-calendar"/></svg></span>
                 <span class="nav-label">Kalender</span>
             </button>
             <button class="mobile-nav-item" id="btnMobileNavMore">
-                <span class="nav-icon">☰</span>
+                <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-menu"/></svg></span>
                 <span class="nav-label">Mehr</span>
                 <span class="badge-dot" id="mobileMoreBadgeDot" style="display:none;"></span>
             </button>

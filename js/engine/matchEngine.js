@@ -2581,6 +2581,8 @@ class LiveMatch {
                 targetY: fieldY,
                 pace: p.pace || p.overall || 70,
                 stamina: p.stamina || 75,
+                // Spielverstaendnis: wie frueh er Ballverlust und Verlagerung liest
+                vision: p.vision || p.overall || 65,
                 freshness: 1,
                 color: this.kits.home.farbe,
                 textColor: this.kits.home.text
@@ -2606,6 +2608,8 @@ class LiveMatch {
                 targetY: fieldY,
                 pace: p.pace || p.overall || 70,
                 stamina: p.stamina || 75,
+                // Spielverstaendnis: wie frueh er Ballverlust und Verlagerung liest
+                vision: p.vision || p.overall || 65,
                 freshness: 1,
                 color: this.kits.away.farbe,
                 textColor: this.kits.away.text
@@ -3438,6 +3442,7 @@ class LiveMatch {
             p2d.naturalPos = playerIn.pos;
             p2d.pace = playerIn.pace || playerIn.overall || 70;
             p2d.stamina = playerIn.stamina || 75;
+            p2d.vision = playerIn.vision || playerIn.overall || 65;
             // Ein eingewechselter Spieler kommt frisch aufs Feld
             p2d.freshness = 1;
             p2d.verletzt = false;

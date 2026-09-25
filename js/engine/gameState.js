@@ -333,6 +333,16 @@ const BUILTIN_FORMATION_KEYS = Object.keys(FORMATION_CONFIGS);
 
 class GameState {
 
+    /** Um so viel muss eine andere Formation besser sein, damit umgestellt wird */
+    static FORMATION_TOLERANZ = 0.004;
+
+    /**
+     * Abschlag je Platz in der Formationsliste: Je ungewoehnlicher ein System,
+     * desto deutlicher muss sein Vorteil sein. Das 4-4-2 steht vorn, das 6-3-1
+     * hinten; eigene Formationen zaehlen wie die Mitte der Liste.
+     */
+    static FORMATION_EXOTIK = 0.001;
+
     /**
      * Auflösung der PositionEngine in Browser- und Node-Umgebung
      */
@@ -1192,9 +1202,72 @@ class GameState {
         return repariert;
     }
 
+    /** Die Spieler eines Kaders, die spielen koennen: nicht verletzt, nicht gesperrt */
+    static einsatzfaehigeSpieler(club, allPlayers) {
+        const kaderIds = new Set(club?.playerIds || []);
+        return (allPlayers || []).filter(p => kaderIds.has(p.id) && p.injuredWeeks === 0 && p.suspendedMatches === 0);
+    }
+
+    /**
+     * Wie gut eine Formation zu den verfuegbaren Spielern passt: die Staerke
+     * der besten Elf, die sich damit aufstellen laesst - jeder Spieler mit
+     * seiner effektiven Bewertung auf dem Platz, den er dort bekommt.
+     */
+    static bewerteFormation(formationKey, spieler) {
+        const posEngine = GameState._getPositionEngine();
+        const slots = FORMATION_CONFIGS[formationKey]?.positions || [];
+        if (!posEngine || slots.length !== 11) return { key: formationKey, wert: 0, elf: [] };
+
+        const elf = posEngine.assignBestLineup(spieler, slots);
+        let wert = 0;
+        elf.forEach((p, i) => {
+            if (p) wert += posEngine.scorePlayerForSlot(p, slots[i].pos);
+        });
+        return { key: formationKey, wert, elf };
+    }
+
+    /**
+     * Die Formation, die am besten zu den verfuegbaren Spielern passt.
+     *
+     * "Beste 11 automatisch aufstellen" besetzte bisher nur die eingestellte
+     * Formation - wer drei starke Fluegelspieler und nur einen Stuermer hatte,
+     * bekam im 4-4-2 trotzdem einen Aussenspieler in die Spitze gestellt.
+     * Jetzt wird jede Formation mit dem Kader durchgespielt, auch die eigenen.
+     *
+     * Bei einem breiten Kader liegen viele Formationen fast gleichauf - gemessen
+     * trennten die beste und die zehntbeste oft nur wenige Zehntel Prozent. Die
+     * reine Summe brachte dann Zufallssieger hervor, bei jedem zwanzigsten
+     * Verein ein 6-3-1. Deshalb muss ein ungewoehnliches System seinen Vorteil
+     * deutlicher zeigen als ein gebraeuchliches, und die bisherige Formation
+     * bleibt, solange keine andere spuerbar besser ist. Umgestellt wird, wenn
+     * eine Formation den Kader wirklich besser nutzt - etwa weil sonst ein
+     * Fluegelspieler im Sturm aushelfen muesste.
+     */
+    static findBestFormation(club, allPlayers) {
+        const spieler = GameState.einsatzfaehigeSpieler(club, allPlayers);
+        if (spieler.length < 11) return null;
+
+        const reihenfolge = Object.keys(FORMATION_CONFIGS);
+        const platz = key => BUILTIN_FORMATION_KEYS.includes(key)
+            ? reihenfolge.indexOf(key)
+            : Math.round(BUILTIN_FORMATION_KEYS.length / 2);
+        const rangliste = reihenfolge
+            .map(key => GameState.bewerteFormation(key, spieler))
+            .filter(e => e.wert > 0)
+            .map(e => ({ ...e, gewichtet: e.wert * (1 - GameState.FORMATION_EXOTIK * platz(e.key)) }))
+            .sort((a, b) => b.wert - a.wert);
+        if (rangliste.length === 0) return null;
+
+        const beste = rangliste.reduce((a, b) => (b.gewichtet > a.gewichtet ? b : a));
+        const bisher = rangliste.find(e => e.key === club.formation) || null;
+        const wahl = (bisher && bisher.gewichtet >= beste.gewichtet * (1 - GameState.FORMATION_TOLERANZ))
+            ? bisher
+            : beste;
+        return { key: wahl.key, wert: wahl.wert, bisher, beste, rangliste };
+    }
+
     static autoSetLineupForClub(club, allPlayers) {
-        const kaderIds = new Set(club.playerIds);
-        const clubPlayers = allPlayers.filter(p => kaderIds.has(p.id) && p.injuredWeeks === 0 && p.suspendedMatches === 0);
+        const clubPlayers = GameState.einsatzfaehigeSpieler(club, allPlayers);
         clubPlayers.sort((a, b) => b.overall - a.overall);
 
         const formationConfig = GameState.getFormationConfig(club.formation);

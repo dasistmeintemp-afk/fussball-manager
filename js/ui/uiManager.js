@@ -9181,11 +9181,32 @@ class UIManager {
         };
 
         // Auto Lineup Button
+        // Beste 11: erst die Formation, die zum verfuegbaren Kader passt, dann
+        // die beste Elf darin
         document.getElementById("btnAutoLineup").onclick = () => {
             const userClub = this.app.state.clubs.find(c => c.id === this.app.state.userClubId);
+            const vorher = userClub.formation;
+            const wahl = GameState.findBestFormation(userClub, this.app.state.players);
+            if (wahl && wahl.key) userClub.formation = wahl.key;
+            if (this.formationEditMode && userClub.formation !== vorher) {
+                this.resetFormationDraft();
+            }
             GameState.autoSetLineupForClub(userClub, this.app.state.players);
+            this.selectedPitchSlot = null;
             this.playSound("click");
             this.renderTactics();
+
+            const name = GameState.getFormationConfig(userClub.formation).name || userClub.formation;
+            if (!wahl) {
+                this.showToast("Zu wenige einsatzfähige Spieler - die Formation bleibt.", "warning");
+            } else if (userClub.formation !== vorher) {
+                const plus = wahl.bisher && wahl.bisher.wert > 0
+                    ? ` (+${((wahl.wert / wahl.bisher.wert - 1) * 100).toLocaleString("de-DE", { maximumFractionDigits: 1 })} % Stärke)`
+                    : "";
+                this.showToast(`Umgestellt auf ${name}: Diese Formation passt am besten zu deinen verfügbaren Spielern${plus}.`, "success", 5000);
+            } else {
+                this.showToast(`${name} passt bereits am besten zum Kader - die beste Elf steht.`, "success");
+            }
         };
 
         // Formation Switcher

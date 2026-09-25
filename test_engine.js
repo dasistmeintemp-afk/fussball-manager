@@ -1122,6 +1122,89 @@ function runEngineTests() {
         }
     });
 
+    // 14a7a. Die Spieler laufen wie Menschen: eigene Wege, Antritt, Bremsen
+    test("LiveMatchDirector: Spieler laufen eigene Wege im Positionsraum statt als Schablone", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+        const match = { id: "laufwege", played: false, homeClubId: "muc", awayClubId: "dor" };
+        const live = new LiveMatch(match, homeClub, awayClub, state.players);
+        live.speed = 1;
+        const dir = live.director;
+        const DT = 1 / 60;
+
+        let frames = 0;
+        const beschleunigung = [];
+        const vorher = new Map();
+        let start = null, frei = true, eigen = 0, gesamt = 0;
+        const arten = { angriff: new Set(), abwehr: new Set() };
+
+        while (!live.isFinished && live.minute < 45 && frames < 60 * 900) {
+            live.advanceRealTime(1000 / 60);
+            live.updateBallAndPlayers(1000 / 60);
+            frames++;
+            const laufend = dir.mode === "ambient" && !dir.deadBall && !dir.kickoff;
+            if (!laufend) frei = false;
+
+            live.players2D.forEach(p => {
+                const v = vorher.get(p.id);
+                const vx = v ? (p.x - v.x) / DT : 0, vy = v ? (p.y - v.y) / DT : 0;
+                if (v && v.laufend && laufend && p.pos !== "TW") {
+                    beschleunigung.push(Math.hypot(vx - v.vx, vy - v.vy) / DT);
+                }
+                vorher.set(p.id, { x: p.x, y: p.y, vx, vy, laufend });
+                if (laufend && p.lauf && p.lauf.team === dir.possessionTeam) {
+                    arten[p.team === dir.possessionTeam ? "angriff" : "abwehr"].add(p.lauf.art);
+                }
+            });
+
+            // Die Wege ueber je zwei Sekunden: Wie viel davon ist eigene
+            // Bewegung, wie viel das gemeinsame Verschieben der Elf?
+            if (frames % 120 === 0) {
+                if (start && frei) {
+                    ["home", "away"].forEach(team => {
+                        const feld = live.players2D.filter(p => p.team === team && p.pos !== "TW" && start.has(p.id));
+                        if (feld.length < 9) return;
+                        const wege = feld.map(p => ({ x: p.x - start.get(p.id).x, y: p.y - start.get(p.id).y }));
+                        const mx = wege.reduce((s, w) => s + w.x, 0) / wege.length;
+                        const my = wege.reduce((s, w) => s + w.y, 0) / wege.length;
+                        wege.forEach(w => {
+                            eigen += Math.hypot(w.x - mx, w.y - my);
+                            gesamt += Math.hypot(w.x, w.y);
+                        });
+                    });
+                }
+                start = new Map(live.players2D.map(p => [p.id, { x: p.x, y: p.y }]));
+                frei = true;
+            }
+        }
+
+        // Die Elf glitt vorher wie eine Schablone ueber den Rasen: Ueber zwei
+        // Sekunden war nur gut die Haelfte der Bewegung eigene Bewegung
+        // (gemessen 52 bis 54 Prozent), der Rest gemeinsames Verschieben.
+        const eigenanteil = eigen / Math.max(1, gesamt);
+        if (eigenanteil < 0.57) {
+            throw new Error(`Nur ${(eigenanteil * 100).toFixed(0)} % der Laufwege sind eigene Wege - die Elf läuft als Schablone`);
+        }
+
+        // Antritt und Bremsen statt Sprung: Vorher sprang die Geschwindigkeit
+        // in einem Bild von null auf voll, gemessen fast vierhundert Einheiten
+        // je Sekunde im Quadrat.
+        beschleunigung.sort((a, b) => a - b);
+        const spitze = beschleunigung[Math.floor(beschleunigung.length * 0.999)] || 0;
+        if (spitze > 60) {
+            throw new Error(`Spieler ändern ihr Tempo sprunghaft: ${spitze.toFixed(0)} Einheiten/s²`);
+        }
+
+        // Mit und ohne Ball sucht sich jeder seinen Weg
+        if (arten.angriff.size < 4) {
+            throw new Error(`Mit Ball kaum eigene Laufwege: ${[...arten.angriff].join(", ")}`);
+        }
+        if (arten.abwehr.size < 3) {
+            throw new Error(`Ohne Ball kaum eigene Laufwege: ${[...arten.abwehr].join(", ")}`);
+        }
+    });
+
     // 14a7b. Der Ball gehört immer jemandem - auch auf der schnellsten Stufe
     test("LiveMatchDirector: Der Ball liegt nicht allein herum, auch nicht im Schnelldurchlauf", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
@@ -1757,6 +1840,77 @@ function runEngineTests() {
         if (club.formation !== "4-4-2") throw new Error("Verein wurde nach dem Löschen nicht zurückgesetzt");
     });
 
+    // Beste 11: Die Formation richtet sich nach den verfuegbaren Spielern
+    test("GameState: Beste 11 wählt die Formation, die zum verfügbaren Kader passt", () => {
+        let nr = 0;
+        const spieler = (pos, overall = 80) => ({
+            id: `bf_${++nr}`, name: `Spieler ${nr}`, pos, secondPos: null, positions: [pos],
+            overall, fitness: 100, form: 7, injuredWeeks: 0, suspendedMatches: 0,
+            shooting: 60, passing: 60
+        });
+        const kader = (positionen, formation) => {
+            const liste = positionen.map(p => spieler(p))
+                // Eine schwache Bank, damit die Elf nicht aus ihr kommt
+                .concat(["TW", "IV", "ZM", "LV"].map(p => spieler(p, 50)));
+            const club = { id: `bf_club_${nr}`, formation, playerIds: liste.map(p => p.id), roles: {} };
+            return { club, liste };
+        };
+
+        // Drei Stuermer, davon zwei Aussen, und kein Mann fuer die Fluegel im
+        // Mittelfeld: Im 4-4-2 muesste ein Aussenstuermer ins Zentrum.
+        const fluegel = kader(["TW", "LV", "IV", "IV", "RV", "DM", "ZM", "ZM", "LA", "RA", "ST"], "4-4-2");
+        const wahl = GameState.findBestFormation(fluegel.club, fluegel.liste);
+        if (!wahl) throw new Error("Für einen vollständigen Kader wurde keine Formation gefunden");
+        const slots = FORMATION_CONFIGS[wahl.key].positions.map(s => PositionEngine.normalizePosition(s.pos));
+        if (!slots.includes("LA") || !slots.includes("RA") || slots.filter(p => p === "ST").length !== 1) {
+            throw new Error(`Mit zwei Außenstürmern und einer Spitze wurde ${wahl.key} gewählt`);
+        }
+        if (!(wahl.wert > wahl.bisher.wert * 1.01)) {
+            throw new Error(`Die neue Formation ist nicht spürbar stärker: ${wahl.wert.toFixed(0)} gegen ${wahl.bisher.wert.toFixed(0)}`);
+        }
+
+        // Umgekehrt: Zwei Spitzen und klassische Aussenbahnspieler
+        const klassisch = kader(["TW", "LV", "IV", "IV", "RV", "LM", "ZM", "ZM", "RM", "ST", "ST"], "4-3-3");
+        const wahl442 = GameState.findBestFormation(klassisch.club, klassisch.liste);
+        if (wahl442.key !== "4-4-2") throw new Error(`Ein 4-4-2-Kader bekommt ${wahl442.key}`);
+
+        // Passt die eingestellte Formation schon, bleibt sie
+        klassisch.club.formation = "4-4-2";
+        if (GameState.findBestFormation(klassisch.club, klassisch.liste).key !== "4-4-2") {
+            throw new Error("Eine passende Formation wird trotzdem umgestellt");
+        }
+
+        // Verletzte und Gesperrte zaehlen nicht - in keiner der bewerteten
+        // Formationen stehen sie in der Elf
+        const ausfall = kader(["TW", "LV", "IV", "IV", "RV", "DM", "ZM", "ZM", "LA", "RA", "ST", "ST", "RM"], "4-3-3");
+        const verletzt = ausfall.liste.find(p => p.pos === "RA");
+        const gesperrt = ausfall.liste.find(p => p.pos === "DM");
+        verletzt.injuredWeeks = 3;
+        gesperrt.suspendedMatches = 1;
+        const wahlAusfall = GameState.findBestFormation(ausfall.club, ausfall.liste);
+        wahlAusfall.rangliste.forEach(e => {
+            if (e.elf.some(p => p && (p.id === verletzt.id || p.id === gesperrt.id))) {
+                throw new Error(`In ${e.key} steht ein verletzter oder gesperrter Spieler`);
+            }
+        });
+
+        // Ein Exot gewinnt nicht durch Rundungsglueck: Mit einem echten 4-4-2-
+        // Kader bleibt das 6-3-1 aussen vor, auch wenn es rechnerisch knapp
+        // mithalten kann
+        const breit = kader(["TW", "LV", "IV", "IV", "IV", "IV", "RV", "LM", "ZM", "ZM", "RM", "ST", "ST"], "4-4-2");
+        const wahlBreit = GameState.findBestFormation(breit.club, breit.liste);
+        if (wahlBreit.key === "6-3-1") throw new Error("Ein Kader mit vier Innenverteidigern landet im 6-3-1");
+
+        // Die Elf danach ist vollständig und doppelt niemanden
+        fluegel.club.formation = wahl.key;
+        GameState.autoSetLineupForClub(fluegel.club, fluegel.liste);
+        if (fluegel.club.lineup.length !== 11 || new Set(fluegel.club.lineup).size !== 11) {
+            throw new Error("Die beste Elf ist nicht vollständig");
+        }
+        const aufgestellt = fluegel.club.lineup.map(id => fluegel.liste.find(p => p.id === id));
+        if (aufgestellt.some(p => p.overall < 80)) throw new Error("Ein Bankspieler steht in der besten Elf");
+    });
+
     // 23. LiveMatchDirector: Echtzeit-Regie der 2D-Simulation
     test("LiveMatchDirector: flüssige Echtzeit-Simulation mit synchronem Kommentar", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
@@ -2053,6 +2207,27 @@ function runEngineTests() {
         const homeClub = state.clubs.find(c => c.id === "muc");
         const awayClub = state.clubs.find(c => c.id === "dor");
 
+        // Gepaarte Stichprobe: Jede Einstellung spielt dieselben Partien mit
+        // denselben Zufallsfolgen. Sonst misst der Vergleich vor allem, welche
+        // Partien zufaellig gezogen wurden - der Abstand zwischen kurzem und
+        // direktem Passspiel schwankte ueber sechsundzwanzig Messungen von 0.8
+        // bis 8.3, und das alte wie das neue Laufmodell fielen damit in jedem
+        // zehnten Lauf durch. Die Startwerte werden bei jedem Lauf neu
+        // gewuerfelt, der Test haengt also an keinem gluecklichen Wert.
+        const saatBasis = Math.floor(Math.random() * 1e9);
+        const mitSaat = (saat, fn) => {
+            const zufall = Math.random;
+            let s = saat >>> 0;
+            Math.random = () => {
+                s = (s + 0x6D2B79F5) >>> 0;
+                let t = s;
+                t = Math.imul(t ^ (t >>> 15), t | 1);
+                t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+                return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+            };
+            try { return fn(); } finally { Math.random = zufall; }
+        };
+
         const measure = (tactics) => {
             const agg = { dist: 0, n: 0, forward: 0, left: 0, right: 0 };
 
@@ -2061,7 +2236,7 @@ function runEngineTests() {
             // Entscheidungen statt vierundsechzig - die Anlaeufe brauchen die
             // Zeit, die ein Laufweg wirklich kostet. Die Stichprobe bleibt, sie
             // wird nur ueber mehr Partien gezogen.
-            for (let run = 0; run < 8; run++) {
+            for (let run = 0; run < 8; run++) mitSaat(saatBasis + run * 7919, () => {
                 Object.assign(homeClub.tactics, tactics);
                 const match = { id: `flow_${run}_${tactics.passing}_${tactics.focus}_${tactics.mentality}`, played: false, homeClubId: "muc", awayClubId: "dor" };
                 match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, state.players);
@@ -2100,7 +2275,7 @@ function runEngineTests() {
                     live.updateBallAndPlayers(1000 / 60);
                     frames++;
                 }
-            }
+            });
 
             return {
                 avgDist: agg.dist / Math.max(1, agg.n),

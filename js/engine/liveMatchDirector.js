@@ -116,6 +116,45 @@ const SPRINT_DECKE = 6.5;
  */
 const BREITE_ROLLEN = ["LM", "RM", "LA", "RA", "LV", "RV"];
 
+/**
+ * Der Raum, den eine Position bespielt - laengs (x) und quer (y) um den Platz
+ * im Verbund, in Feldeinheiten.
+ *
+ * Vorher stand jeder Spieler exakt auf seinem Formationspunkt, verschoben um
+ * dieselbe Strecke wie alle anderen. Gemessen liefen im Schnitt drei Viertel
+ * einer Elf in dieselbe Richtung, und fast niemand stand je still: Die ganze
+ * Mannschaft glitt wie eine Schablone mit dem Ball ueber den Rasen.
+ *
+ * Im Fussball ist die Formation ein Rahmen, kein Gitter. Ein Innenverteidiger
+ * weicht kaum von seinem Platz, ein Achter pendelt ueber die halbe Breite, ein
+ * Stuermer laeuft sich frei, kommt entgegen oder geht in die Tiefe. Innerhalb
+ * dieses Raums sucht sich jeder Spieler selbst seinen Weg.
+ */
+const POSITIONS_RADIUS = {
+    IV: { x: 4, y: 4.5 }, LV: { x: 7, y: 5 }, RV: { x: 7, y: 5 },
+    DM: { x: 6, y: 7 }, ZM: { x: 8, y: 8.5 }, OM: { x: 8, y: 9 },
+    LM: { x: 9, y: 6 }, RM: { x: 9, y: 6 },
+    ST: { x: 8, y: 9 }, LA: { x: 8.5, y: 7 }, RA: { x: 8.5, y: 7 }
+};
+
+/**
+ * Antritt und Bremsen in Feldeinheiten je Sekunde im Quadrat.
+ *
+ * Die Spieler folgten ihrem Ziel bisher ohne jede Masse: Die Geschwindigkeit
+ * sprang in einem Bild von null auf voll und zurueck, jede Richtungsaenderung
+ * war ein Knick. Ein Mensch muss antreten, und wer die Richtung wechselt, muss
+ * erst abbremsen - daraus entstehen die Boegen, an denen man einen Lauf als
+ * Lauf erkennt.
+ */
+const ANTRITT = 6.5;
+const BREMSKRAFT = 11;
+
+/** Wie lange ein Spieler bei seinem gewaehlten Laufweg bleibt (Sekunden) */
+const LAUFWEG_DAUER = { angriff: [1.6, 4.2], abwehr: [2.2, 5.0] };
+
+/** Wie lange nach einem Ballverlust die Mannschaft umschaltet (Sekunden) */
+const UMSCHALT_DAUER = 2.2;
+
 const AMBIENT_COMMENTARY = [
     "{minute}' - {a} verlagert das Spiel ruhig auf {b}.",
     "{minute}' - Geduldiger Aufbau: {a} findet {b} im Zwischenraum.",
@@ -379,6 +418,18 @@ class LiveMatchDirector {
             if (typeof p.freshness !== "number") p.freshness = 1;
             p.sprinting = false;
             p.facing = this.attackDir(p.team) > 0 ? 0 : Math.PI;
+
+            // Die eigene Rolle ohne Seitenzusatz (ZDM -> DM, LAV -> LV)
+            p.rolle = this.normRolle(p.pos);
+            // Spielverstaendnis: Wer das Spiel liest, reagiert frueher auf
+            // Ballverlust und Verlagerung.
+            const lesen = Math.max(0, Math.min(1, ((p.vision || 65) - 40) / 55));
+            p.reaktion = 0.42 - lesen * 0.28 + ((idx * 0.37) % 1) * 0.08;
+            p.traegheit = 0.5 - lesen * 0.22 + ((idx * 0.53) % 1) * 0.1;
+            // Laufgeschwindigkeit und Absicht ueberleben einen Wechsel oder
+            // eine Umstellung - sonst bliebe die ganze Elf kurz stehen.
+            if (typeof p.lvx !== "number") { p.lvx = 0; p.lvy = 0; }
+            if (!p.sicht) p.sicht = { x: this.match.ball?.x ?? 50, y: this.match.ball?.y ?? 50 };
         });
         // Nach einem Wechsel, einer Umstellung oder einem Platzverweis stimmt
         // die gemerkte Hoehe der Abwehrkette nicht mehr.
@@ -415,19 +466,24 @@ class LiveMatchDirector {
      * dem Feld dadurch komplett falsch.
      */
     getGroup(pos) {
-        const posEngine = (typeof PositionEngine !== "undefined" && PositionEngine)
-            ? PositionEngine
-            : ((typeof window !== "undefined" && window.PositionEngine) ? window.PositionEngine
-                : (typeof require !== "undefined" ? require("./positionEngine.js").PositionEngine : null));
-
-        const clean = (posEngine && typeof posEngine.normalizePosition === "function")
-            ? (posEngine.normalizePosition(pos) || pos)
-            : pos;
+        const clean = this.normRolle(pos);
 
         if (clean === "TW") return "gk";
         if (["IV", "LV", "RV"].includes(clean)) return "def";
         if (["DM", "ZM", "OM", "LM", "RM"].includes(clean)) return "mid";
         return "att";
+    }
+
+    /** Die Position ohne Seiten- und Halbraumzusatz (ZDM -> DM, LAV -> LV) */
+    normRolle(pos) {
+        const posEngine = (typeof PositionEngine !== "undefined" && PositionEngine)
+            ? PositionEngine
+            : ((typeof window !== "undefined" && window.PositionEngine) ? window.PositionEngine
+                : (typeof require !== "undefined" ? require("./positionEngine.js").PositionEngine : null));
+
+        return (posEngine && typeof posEngine.normalizePosition === "function")
+            ? (posEngine.normalizePosition(pos) || pos)
+            : pos;
     }
 
     /** Torlinie des eigenen Tores, wechselt in Halbzeit 2 die Seite */
@@ -3008,7 +3064,30 @@ class LiveMatchDirector {
             if (p.diving > 0) p.diving = Math.max(0, p.diving - dt);
         });
 
+        // Das Lauftempo folgt der eingestellten Stufe, nicht der echten
+        // Sekunde - sonst läuft die Uhr den Spielern davon. Gerechnet wird
+        // deshalb in Laufzeit: Eine hoehere Stufe ist derselbe Lauf im Vorlauf.
+        const tempo = this.getMotionTempo();
+        const lauf = dt * tempo;
+        this._laufUhr = (this._laufUhr || 0) + lauf;
+
+        // Ballverlust: Ab jetzt schaltet die Mannschaft um
+        if (this._letzterBesitz !== this.possessionTeam) {
+            if (this._letzterBesitz) this._wechselUhr = this._laufUhr;
+            this._letzterBesitz = this.possessionTeam;
+        }
+        this._abseitsLinie = { home: this.abseitsLinie("home"), away: this.abseitsLinie("away") };
+
         players.forEach(p => {
+            // Ein Sprung auf dem Feld (Seitenwechsel, Einwechslung) nimmt den
+            // Schwung mit - wer versetzt wurde, laeuft nicht weiter.
+            if (typeof p._lx === "number" && Math.hypot(p.x - p._lx, p.y - p._ly) > 3) {
+                p.lvx = 0; p.lvy = 0;
+                if (p.sicht) { p.sicht.x = ball.x; p.sicht.y = ball.y; }
+            }
+
+            this.nimmBallWahr(p, ball, lauf);
+
             // Beim Seitenwechsel ohne Anstoß-Zeremonie traben alle stur auf
             // ihre neue Grundposition; läuft die Zeremonie, gibt sie die
             // Aufstellung vor.
@@ -3016,38 +3095,30 @@ class LiveMatchDirector {
                 ? { x: p.baseX, y: p.baseY, urgency: 1.25 }
                 : this.computeTarget(p, ball, pressers);
 
-            // Das Lauftempo folgt der eingestellten Stufe, nicht der echten
-            // Sekunde - sonst läuft die Uhr den Spielern davon.
-            const tempo = this.getMotionTempo();
-            const responsiveness = 7.5 * (target.urgency || 1) * tempo;
-            const k = 1 - Math.exp(-responsiveness * dt);
+            const x0 = p.x, y0 = p.y;
+            this.laufeZu(p, target, lauf);
 
-            let dx = (target.x - p.x) * k;
-            let dy = (target.y - p.y) * k;
-
-            const maxStep = Math.min(
-                p.baseSpeed * (target.urgency || 1) * (0.62 + p.freshness * 0.38),
-                SPRINT_DECKE) * tempo * dt;
-            const stepLen = Math.hypot(dx, dy);
-            if (stepLen > maxStep && stepLen > 0) {
-                dx *= maxStep / stepLen;
-                dy *= maxStep / stepLen;
-            }
-
-            p.x += dx;
-            p.y += dy;
-            p.vx = dt > 0 ? dx / dt : 0;
-            p.vy = dt > 0 ? dy / dt : 0;
+            p.vx = (p.x - x0) / dt;
+            p.vy = (p.y - y0) / dt;
             p.targetX = target.x;
             p.targetY = target.y;
 
             const speed = Math.hypot(p.vx, p.vy);
-            if (speed > 0.6) {
-                const desired = Math.atan2(p.vy, p.vx);
-                let diff = desired - p.facing;
+            // Wer laeuft, schaut in Laufrichtung. Wer steht oder trabt, dreht
+            // sich zum Ball - im Fussball schaut niemand ins Leere.
+            let blick = null;
+            let drehen = 9;
+            if (speed > 0.9 * tempo) {
+                blick = Math.atan2(p.vy, p.vx);
+            } else if (Math.hypot(ball.x - p.x, ball.y - p.y) > 1) {
+                blick = Math.atan2(ball.y - p.y, ball.x - p.x);
+                drehen = 4;
+            }
+            if (blick !== null) {
+                let diff = blick - p.facing;
                 while (diff > Math.PI) diff -= Math.PI * 2;
                 while (diff < -Math.PI) diff += Math.PI * 2;
-                p.facing += diff * Math.min(1, dt * 9);
+                p.facing += diff * Math.min(1, dt * drehen);
             }
             p.speed = speed;
 
@@ -3056,9 +3127,352 @@ class LiveMatchDirector {
         });
 
         this.separatePlayers(players, dt);
+        players.forEach(p => { p._lx = p.x; p._ly = p.y; });
 
         if (match.goalFlash > 0) {
             match.goalFlash = Math.max(0, match.goalFlash - rawDt * 1.4);
+        }
+    }
+
+    /**
+     * Die Abseitslinie, auf die eine Mannschaft zulaeuft: der vorletzte
+     * Gegenspieler, der Torwart zaehlt mit.
+     */
+    abseitsLinie(team) {
+        const dir = this.attackDir(team);
+        const gegner = this.teamPlayers(team === "home" ? "away" : "home");
+        if (gegner.length < 2) return null;
+        const tiefe = gegner.map(g => g.x).sort((a, b) => (b - a) * dir);
+        return tiefe[1];
+    }
+
+    /**
+     * Der Platz, den ein Spieler im Verbund gerade haelt.
+     *
+     * Bisher folgte jeder Spieler seinem Platz im Block stufenlos - wanderte
+     * der Ball, wanderten alle zweiundzwanzig im selben Moment mit. Gemessen
+     * liefen im laufenden Ballbesitz vier von fuenf Spielern einer Elf in
+     * dieselbe Richtung, und praktisch niemand stand je still.
+     *
+     * Im Fussball rueckt ein Spieler nach, wenn sein Platz spuerbar gewandert
+     * ist, und steht sonst. Wer nah am Ball ist, folgt jeder Bewegung; wer auf
+     * der anderen Seite steht, rueckt in groesseren Schueben nach. Die
+     * Abwehrkette verschiebt eng, damit die Linie eine Linie bleibt.
+     */
+    haltePlatz(p, x, y, ball) {
+        const uhr = this._laufUhr || 0;
+        const nah = Math.hypot(p.x - ball.x, p.y - ball.y);
+        const schwelle = p.group === "def"
+            ? 1.8
+            : Math.max(1.4, Math.min(6.5, 1.4 + (nah - 10) * 0.14));
+
+        let a = p.platz;
+        if (!a || uhr >= a.bis || Math.hypot(x - a.x, y - a.y) > schwelle) {
+            a = { x, y, bis: uhr + 1.2 + Math.random() * 1.8 };
+            p.platz = a;
+        }
+        return a;
+    }
+
+    /**
+     * Der Laufweg, den sich ein Spieler in seinem Raum sucht - als Versatz zu
+     * seinem Platz im Verbund.
+     *
+     * Einmal gewaehlt, bleibt er ein paar Sekunden dabei: So entsteht ein Lauf
+     * statt eines Zappelns. Neu entschieden wird, wenn die Zeit um ist oder der
+     * Ball weit gewandert ist. Wechselt der Ballbesitz, laeuft er erst noch
+     * seine Reaktionszeit lang weiter wie bisher - wer das Spiel liest,
+     * schaltet schneller um.
+     */
+    laufwegFuer(p, anker, attacking, dir, ball) {
+        if (p.pos === "TW") return { ox: 0, oy: 0, urgency: 0 };
+        const uhr = this._laufUhr || 0;
+        let weg = p.lauf;
+        let neu = !weg || uhr >= weg.bis
+            || Math.hypot(ball.x - weg.bx, ball.y - weg.by) > 24;
+        if (weg && !neu && weg.team !== this.possessionTeam) {
+            if (weg.wechselAb === undefined) weg.wechselAb = uhr + (p.reaktion ?? 0.3);
+            if (uhr >= weg.wechselAb) neu = true;
+        }
+        if (neu) {
+            weg = attacking
+                ? this.waehleFreilaufen(p, anker, dir, ball)
+                : this.waehleZustellen(p, anker, dir, ball);
+            const [von, bis] = attacking ? LAUFWEG_DAUER.angriff : LAUFWEG_DAUER.abwehr;
+            // Nah am Ball aendert sich die Lage schneller
+            const nah = Math.hypot(p.x - ball.x, p.y - ball.y) < 20 ? 0.65 : 1;
+            weg.bis = uhr + (von + Math.random() * (bis - von)) * nah;
+            weg.team = this.possessionTeam;
+            weg.bx = ball.x;
+            weg.by = ball.y;
+            p.lauf = weg;
+        }
+
+        // Nicht ins Abseits laufen, solange der Ball noch hinter der Linie ist
+        let ox = weg.ox;
+        if (attacking && p.group !== "def") {
+            const linie = this._abseitsLinie?.[p.team];
+            if (typeof linie === "number" && (linie - ball.x) * dir > 0) {
+                const ueber = (anker.x + ox - (linie - dir)) * dir;
+                if (ueber > 0) ox -= dir * Math.min(ueber, Math.max(0, ox * dir));
+            }
+        }
+        // Wer noch den Laufweg der anderen Phase laeuft, laeuft ihn ruhig aus
+        const passt = weg.team === this.possessionTeam;
+        return { ox, oy: weg.oy, urgency: passt ? (weg.urgency || 0) : 0, sprint: passt && !!weg.sprint };
+    }
+
+    /** Freilaufen: der Punkt im eigenen Raum, an dem man anspielbar ist */
+    waehleFreilaufen(p, anker, dir, ball) {
+        const r = POSITIONS_RADIUS[p.rolle] || { x: 7, y: 7 };
+        const gegner = this.teamPlayers(p.team === "home" ? "away" : "home").filter(o => o.pos !== "TW");
+        const mitspieler = this.teamPlayers(p.team).filter(o => o.id !== p.id && o.pos !== "TW");
+        const vorne = dir > 0 ? ball.x / 100 : 1 - ball.x / 100;
+        const zumBall = Math.sign(ball.y - anker.y) || 1;
+
+        // Die Taktik bestimmt die Laufwege mit: Wer direkt spielen soll, geht
+        // in die Tiefe, statt sich kurz anzubieten; wer kurz spielen soll,
+        // kommt dem Ball entgegen. Die Mentalitaet entscheidet, wie viele
+        // absichern und wie viele nach vorn gehen.
+        const taktik = (p.team === "home" ? this.match.homeClub?.tactics : this.match.awayClub?.tactics) || {};
+        const kurz = taktik.passing === "short";
+        const direkt = taktik.passing === "direct";
+        const mutig = taktik.mentality === "offensive" || taktik.mentality === "very_offensive";
+        const vorsichtig = taktik.mentality === "defensive" || taktik.mentality === "very_defensive";
+
+        // Stehenbleiben ist eine Wahl fuer den, der weit weg vom Ball ist. Wer
+        // im Spiel ist, bewegt sich.
+        const imSpiel = Math.hypot(p.x - ball.x, p.y - ball.y) < 32;
+        const kandidaten = imSpiel ? [] : [{ ox: 0, oy: 0, art: "halten", urgency: 0 }];
+        const alt = p.lauf;
+        if (alt && alt.team === this.possessionTeam) {
+            kandidaten.push({ ox: alt.ox, oy: alt.oy, art: alt.art, urgency: alt.urgency, sprint: alt.sprint, bleibt: true });
+        }
+        for (let i = 0; i < 6; i++) {
+            const w = Math.random() * Math.PI * 2;
+            const s = 0.35 + Math.random() * 0.65;
+            kandidaten.push({ ox: Math.cos(w) * r.x * s, oy: Math.sin(w) * r.y * s, art: "freilaufen", urgency: s > 0.7 ? 1.12 : 0 });
+        }
+        if (p.group === "att") {
+            kandidaten.push({ ox: dir * r.x, oy: (Math.random() - 0.5) * r.y, art: "tiefe",
+                urgency: 1.45, sprint: true,
+                bonus: (vorne > (direkt ? 0.3 : 0.45) ? 2.2 : -1) + (direkt ? 1.5 : kurz ? -0.8 : 0) + (mutig ? 0.8 : 0) });
+            kandidaten.push({ ox: -dir * r.x * 0.9, oy: zumBall * r.y * 0.4, art: "entgegen",
+                urgency: 1.2, bonus: (vorne < 0.55 ? 1.6 : 0) + (kurz ? 1.0 : direkt ? -0.8 : 0) });
+        }
+        if (p.group === "att" && vorne > 0.68) {
+            // Liegt der Ball im letzten Drittel, gehen die Spitzen in den
+            // Strafraum - an den ersten oder an den zweiten Pfosten
+            const torX = this.ownGoalX(p.team === "home" ? "away" : "home");
+            const zx = torX - dir * (7 + Math.random() * 7);
+            const zy = 50 + (Math.random() - 0.5) * 20;
+            kandidaten.push({ ox: zx - anker.x, oy: zy - anker.y, art: "strafraum",
+                urgency: 1.3, sprint: true, bonus: 2.5, frei: true });
+        }
+        if (BREITE_ROLLEN.includes(p.rolle)) {
+            const aussen = anker.y < 50 ? -1 : 1;
+            kandidaten.push({ ox: dir * r.x * 0.4, oy: aussen * r.y, art: "breite", urgency: 1.1, bonus: 1.2 });
+            if (p.group !== "def") {
+                kandidaten.push({ ox: dir * r.x * 0.3, oy: -aussen * r.y, art: "einruecken",
+                    urgency: 1.15, bonus: vorne > 0.6 ? 1.4 : 0 });
+            }
+        }
+        if (p.group === "mid") {
+            const d = Math.hypot(ball.x - anker.x, ball.y - anker.y) || 1;
+            const k = Math.min(1, 7 / d);
+            kandidaten.push({ ox: (ball.x - anker.x) * k * 0.9, oy: (ball.y - anker.y) * k, art: "anbieten",
+                urgency: 1.2, bonus: (d > 10 && d < 32 ? 1.8 : 0) + (kurz ? 1.2 : direkt ? -1.0 : 0) });
+        }
+        if (p.group === "def" || p.rolle === "DM") {
+            kandidaten.push({ ox: -dir * r.x * 0.5, oy: 0, art: "absichern", urgency: 0,
+                bonus: 0.8 + (vorsichtig ? 1.2 : mutig ? -0.6 : 0) });
+        }
+
+        const linie = this._abseitsLinie?.[p.team];
+        const ballHinterLinie = typeof linie === "number" && (linie - ball.x) * dir > 0;
+
+        let beste = kandidaten[0], besterWert = -Infinity;
+        kandidaten.forEach(k => {
+            if (!k.frei) LiveMatchDirector.inEllipse(k, r);
+            let qx = Math.max(4, Math.min(96, anker.x + k.ox));
+            const qy = Math.max(5, Math.min(95, anker.y + k.oy));
+            if (ballHinterLinie && p.group !== "def") {
+                const grenze = linie - dir;
+                if ((qx - grenze) * dir > 0) {
+                    // Steht sein Platz selbst schon jenseits der Linie, geht
+                    // es wenigstens nicht noch weiter nach vorn
+                    const platzDrueber = (anker.x - grenze) * dir > 0;
+                    qx = !platzDrueber ? grenze : (dir > 0 ? Math.min(qx, anker.x) : Math.max(qx, anker.x));
+                }
+                k.ox = qx - anker.x;
+            }
+
+            let frei = 12;
+            gegner.forEach(o => { const d = Math.hypot(o.x - qx, o.y - qy); if (d < frei) frei = d; });
+            let passweg = 8;
+            const zumPunkt = Math.hypot(qx - ball.x, qy - ball.y);
+            if (zumPunkt > 5) {
+                gegner.forEach(o => {
+                    const d = LiveMatchDirector.abstandZurStrecke(o.x, o.y, ball.x, ball.y, qx, qy);
+                    if (d < passweg) passweg = d;
+                });
+            }
+            let enge = 0;
+            mitspieler.forEach(m => {
+                const mx = typeof m.targetX === "number" ? m.targetX : m.x;
+                const my = typeof m.targetY === "number" ? m.targetY : m.y;
+                const d = Math.hypot(mx - qx, my - qy);
+                if (d < 8) enge += (8 - d) * 0.9;
+            });
+            const weit = Math.hypot(k.ox / r.x, k.oy / r.y) * 0.7;
+            const zuNah = zumPunkt < 6 ? (6 - zumPunkt) * 0.8 : 0;
+
+            const wert = frei * 0.55 + passweg * 0.5 - enge - weit - zuNah
+                + (k.bonus || 0) + (k.bleibt ? 1.8 : 0) + Math.random() * 3;
+            if (wert > besterWert) { besterWert = wert; beste = k; }
+        });
+        return { ox: beste.ox, oy: beste.oy, art: beste.art, urgency: beste.urgency || 0, sprint: !!beste.sprint };
+    }
+
+    /** Ohne Ball: im eigenen Raum die Passwege zum naechsten Gegner zustellen */
+    waehleZustellen(p, anker, dir, ball) {
+        const basis = POSITIONS_RADIUS[p.rolle] || { x: 7, y: 7 };
+        // Die Kette haelt ihre Linie, das Mittelfeld hat mehr Spielraum
+        const r = { x: p.group === "def" ? 1.5 : basis.x * 0.6, y: basis.y * 0.7 };
+        const gegner = this.teamPlayers(p.team === "home" ? "away" : "home")
+            .filter(o => o.pos !== "TW" && o.id !== this.carrierId)
+            .map(o => ({ o, d: Math.hypot(o.x - anker.x, o.y - anker.y) }))
+            .filter(e => e.d < 26)
+            .sort((a, b) => a.d - b.d);
+        const mitspieler = this.teamPlayers(p.team).filter(o => o.id !== p.id && o.pos !== "TW");
+
+        const imSpiel = Math.hypot(p.x - ball.x, p.y - ball.y) < 32;
+        const kandidaten = imSpiel ? [] : [{ ox: 0, oy: 0, art: "halten", urgency: 0 }];
+        const alt = p.lauf;
+        if (alt && alt.team === this.possessionTeam) {
+            kandidaten.push({ ox: alt.ox, oy: alt.oy, art: alt.art, urgency: alt.urgency, bleibt: true });
+        }
+        for (let i = 0; i < 4; i++) {
+            const w = Math.random() * Math.PI * 2;
+            const s = Math.random();
+            kandidaten.push({ ox: Math.cos(w) * r.x * s, oy: Math.sin(w) * r.y * s, art: "verschieben", urgency: 0 });
+        }
+        const zumBall = Math.sign(ball.y - anker.y) || 1;
+        kandidaten.push({ ox: -dir * r.x * 0.5, oy: zumBall * r.y * 0.8, art: "ballseite", urgency: 1.05 });
+        gegner.slice(0, 2).forEach(e => {
+            // Auf der Linie zwischen Ball und Gegenspieler, naeher am Gegner
+            const zx = ball.x + (e.o.x - ball.x) * 0.62;
+            const zy = ball.y + (e.o.y - ball.y) * 0.62;
+            kandidaten.push({ ox: zx - anker.x, oy: zy - anker.y, art: "zustellen", urgency: 1.1 });
+        });
+
+        let beste = kandidaten[0], besterWert = -Infinity;
+        kandidaten.forEach(k => {
+            LiveMatchDirector.inEllipse(k, r);
+            const qx = anker.x + k.ox;
+            const qy = anker.y + k.oy;
+            let deckung = 0;
+            gegner.forEach(e => {
+                const d = LiveMatchDirector.abstandZurStrecke(qx, qy, ball.x, ball.y, e.o.x, e.o.y);
+                if (d < 6) deckung += (6 - d) * 0.6;
+            });
+            let enge = 0;
+            mitspieler.forEach(m => {
+                const mx = typeof m.targetX === "number" ? m.targetX : m.x;
+                const my = typeof m.targetY === "number" ? m.targetY : m.y;
+                const d = Math.hypot(mx - qx, my - qy);
+                if (d < 7) enge += (7 - d) * 0.9;
+            });
+            const weit = Math.hypot(k.ox / (r.x || 1), k.oy / (r.y || 1)) * 1.0;
+            const wert = deckung - enge - weit + (k.bleibt ? 1.5 : 0) + Math.random() * 1.5;
+            if (wert > besterWert) { besterWert = wert; beste = k; }
+        });
+        return { ox: beste.ox, oy: beste.oy, art: beste.art, urgency: beste.urgency || 0, sprint: false };
+    }
+
+    /** Stutzt einen Versatz auf die Ellipse des Positionsraums */
+    static inEllipse(k, r) {
+        const rx = r.x || 0.01, ry = r.y || 0.01;
+        const n = Math.hypot(k.ox / rx, k.oy / ry);
+        if (n > 1) { k.ox /= n; k.oy /= n; }
+        return k;
+    }
+
+    /** Abstand eines Punkts zur Strecke a-b */
+    static abstandZurStrecke(px, py, ax, ay, bx, by) {
+        const vx = bx - ax, vy = by - ay;
+        const l2 = vx * vx + vy * vy;
+        const t = l2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / l2)) : 0;
+        return Math.hypot(px - (ax + vx * t), py - (ay + vy * t));
+    }
+
+    /**
+     * Wo ein Spieler den Ball sieht.
+     *
+     * Die Mannschaft verschob bisher in einem einzigen Bild gemeinsam mit dem
+     * Ball - wie an Faeden gezogen. Im Fussball reagiert jeder einen
+     * Wimpernschlag spaeter als der Ball: der Nachbar sofort, wer weit weg
+     * steht und das Spiel schlechter liest, eine halbe Sekunde danach.
+     */
+    nimmBallWahr(p, ball, lauf) {
+        if (!p.sicht) p.sicht = { x: ball.x, y: ball.y };
+        if (lauf <= 0) return;
+        const d = Math.hypot(p.x - ball.x, p.y - ball.y);
+        const traeg = (p.traegheit || 0.4) * (0.6 + Math.min(1, d / 45) * 0.9);
+        const a = 1 - Math.exp(-lauf / traeg);
+        p.sicht.x += (ball.x - p.sicht.x) * a;
+        p.sicht.y += (ball.y - p.sicht.y) * a;
+    }
+
+    /**
+     * Ein Spieler laeuft zu seinem Ziel: Er tritt an, erreicht sein Tempo und
+     * bremst rechtzeitig ab, statt auf dem Punkt zu kleben.
+     *
+     * Gerechnet wird in kleinen Teilschritten, damit auch der Vorlauf auf der
+     * schnellsten Stufe dieselben Boegen laeuft wie das Grundtempo.
+     */
+    laufeZu(p, target, lauf) {
+        if (!(lauf > 0)) return;
+        if (typeof p.lvx !== "number") { p.lvx = 0; p.lvy = 0; }
+
+        const u = target.urgency || 1;
+        const vmax = Math.min(p.baseSpeed * u * (0.62 + (p.freshness ?? 1) * 0.38), SPRINT_DECKE);
+        // Wer es eilig hat, tritt auch haerter an
+        const antritt = ANTRITT * Math.max(0.8, Math.min(2.4, u));
+        const bremsen = BREMSKRAFT * Math.max(1, Math.min(2.2, u));
+        const nachziehen = 3.2 * Math.max(1, u);
+
+        const schritte = Math.max(1, Math.ceil(lauf * 45));
+        const h = lauf / schritte;
+        for (let i = 0; i < schritte; i++) {
+            const dx = target.x - p.x;
+            const dy = target.y - p.y;
+            const dist = Math.hypot(dx, dy);
+
+            // Die Wunschgeschwindigkeit: volles Tempo, aber so, dass er am
+            // Ziel auch zum Stehen kommt
+            let wx = 0, wy = 0;
+            if (dist > 0.2) {
+                const v = Math.min(vmax, nachziehen * dist, Math.sqrt(2 * bremsen * (dist - 0.2)));
+                wx = dx / dist * v;
+                wy = dy / dist * v;
+            }
+
+            let sx = wx - p.lvx;
+            let sy = wy - p.lvy;
+            const tempo2 = p.lvx * p.lvx + p.lvy * p.lvy;
+            // Abbremsen und Wenden geht schneller als Antreten
+            const bremst = (wx * p.lvx + wy * p.lvy) < tempo2 - 1e-6;
+            const grenze = (bremst ? bremsen : antritt) * h;
+            const aenderung = Math.hypot(sx, sy);
+            if (aenderung > grenze) {
+                sx *= grenze / aenderung;
+                sy *= grenze / aenderung;
+            }
+            p.lvx += sx;
+            p.lvy += sy;
+            p.x += p.lvx * h;
+            p.y += p.lvy * h;
         }
     }
 
@@ -3067,14 +3481,23 @@ class LiveMatchDirector {
         const ball = match.ball;
         const defendingTeam = this.possessionTeam === "home" ? "away" : "home";
 
+        const abstand = p => Math.hypot(p.x - ball.x, p.y - ball.y);
         const sorted = this.teamPlayers(defendingTeam)
             .filter(p => p.pos !== "TW")
-            .sort((a, b) => Math.hypot(a.x - ball.x, a.y - ball.y) - Math.hypot(b.x - ball.x, b.y - ball.y));
+            .sort((a, b) => abstand(a) - abstand(b));
 
-        const set = new Set();
-        if (sorted[0]) set.add(sorted[0].id);
-        if (sorted[1]) set.add(sorted[1].id);
-        return set;
+        // Wer schon presst, bleibt dran, bis ein anderer deutlich naeher ist.
+        // Vorher wechselte die Rolle fast mit jedem Bild zwischen zwei
+        // gleich weit entfernten Spielern - beide rannten abwechselnd los und
+        // zurueck.
+        const bisher = (this._presser && this._presser.team === defendingTeam) ? this._presser.ids : [];
+        const gewaehlt = sorted.slice(0, 4)
+            .map(p => ({ id: p.id, wert: abstand(p) - (bisher.includes(p.id) ? 4 : 0) }))
+            .sort((a, b) => a.wert - b.wert)
+            .slice(0, 2)
+            .map(e => e.id);
+        this._presser = { team: defendingTeam, ids: gewaehlt };
+        return new Set(gewaehlt);
     }
 
     /**
@@ -3173,58 +3596,23 @@ class LiveMatchDirector {
             if (setPieceTarget) return setPieceTarget;
         }
 
-        const ballProgress = dir > 0 ? ball.x / 100 : 1 - ball.x / 100;
+        // Den Block richtet jeder danach aus, wo er den Ball sieht - nicht nach
+        // dem Ball selbst. Zweikampf, Pressing und Ballnaehe bleiben am echten
+        // Ball.
+        const gesehen = p.sicht || ball;
+        const ballProgress = dir > 0 ? gesehen.x / 100 : 1 - gesehen.x / 100;
 
-        // Die Elf steht als Block, nicht über die ganze Feldbreite verteilt.
-        //
-        // Gemessen war sie einundsiebzig Einheiten breit - auf einem Feld, das
-        // hundert breit ist. Jeder stand auf seiner Grundposition und schob nur
-        // ein wenig mit dem Ball mit; ob die Mannschaft den Ball hatte oder
-        // nicht, änderte an ihrer Form so gut wie nichts (71 gegen 67). Das
-        // sah aus wie ein Seestern, nicht wie eine Mannschaft.
-        //
-        // Im Football Manager und in EA FC ist genau das der Kern: Ohne Ball
-        // schiebt die Elf als kompakter Block zur Ballseite und macht das Feld
-        // eng, mit Ball zieht sie es auseinander. Der Abstand zum Ball
-        // entscheidet mit - wer weit weg ist, rückt stärker ein.
-        const ballAbstand = Math.min(1, Math.abs(ball.y - p.baseY) / 45);
-        const kompakt = attacking
-            ? 0.80 + (BREITE_ROLLEN.includes(p.pos) ? 0.20 : 0)
-            : 0.42 - ballAbstand * 0.05;
-        const blockVerschiebung = attacking ? 0.24 : 0.58;
-        const blockY = 50 + (ball.y - 50) * blockVerschiebung;
-
-        let tx;
-        let ty = blockY + (p.baseY - 50) * kompakt;
-
-        if (attacking) {
-            // Je länger eine Mannschaft den Ball hält, desto mutiger rückt
-            // die ganze Elf nach - dadurch wird aus Ballbesitz ein Angriff,
-            // den man auf dem Feld auch sieht.
-            const chainPush = Math.min(1, (this.possessionChain || 0) / 6);
-            const push = Math.max(0, ballProgress - 0.33) * (52 + chainPush * 18);
-            const groupPush = GROUP_PUSH[p.group] ?? 1.0;
-            tx = p.baseX + dir * push * groupPush + dir * 2.5;
-
-            // Der Angriffsfokus verschiebt die ganze Mannschaft auf eine
-            // Seite - so wird aus einer Zeile im Taktikbogen ein sichtbares
-            // Übergewicht auf dem Flügel. "Links" meint dabei die linke Seite
-            // aus Sicht der Angriffsrichtung.
-            const tactics = (p.team === "home" ? this.match.homeClub?.tactics : this.match.awayClub?.tactics) || {};
-            const fokus = tactics.focus || tactics.attackFocus;
-            if (fokus === "left" || fokus === "right") {
-                ty += (fokus === "left" ? -1 : 1) * (dir > 0 ? 1 : -1) * 5.5;
-            }
-        } else {
-            const follow = p.followWeight * 0.94;
-            tx = p.baseX + (ball.x - 50) * follow - dir * 2.0;
-        }
-
-        // Mit Ball zieht die Elf das Feld auch in die Laenge: Die Spitzen
-        // schieben, die Kette haelt dagegen. Ohne diese Streckung stand die
-        // Mannschaft nur sechsundzwanzig Einheiten lang - ein Block, aus dem
-        // heraus kein Angriff entstehen kann.
-        if (attacking) tx += dir * ((GROUP_PUSH[p.group] ?? 1) - 1) * 13;
+        // Die Elf steht als Block: mit Ball breit, ohne Ball eng (siehe
+        // formMitBall und formOhneBall). Zwischen beiden Formen liegt das
+        // Umschalten. Bisher sprang die Elf mit jedem Ballwechsel von der einen
+        // in die andere - fuer die Spitzen gut dreissig Einheiten, bei einem
+        // Ballwechsel alle paar Sekunden. Die ganze Mannschaft rannte dadurch
+        // staendig geschlossen hin und her.
+        const form = this.umschaltgrad(p);
+        const mitBall = this.formMitBall(p, gesehen, ball, dir, ballProgress);
+        const ohneBall = this.formOhneBall(p, gesehen, dir);
+        let tx = ohneBall.x + (mitBall.x - ohneBall.x) * form;
+        let ty = ohneBall.y + (mitBall.y - ohneBall.y) * form;
 
         // Die Position im Verbund, bevor Zweikampf und Pressing sie ueberschreiben
         const blockTx = tx;
@@ -3232,30 +3620,27 @@ class LiveMatchDirector {
 
         let urgency = 1;
         let sprinting = false;
-
-        if (!attacking && p.group === "def") {
-            const line = this.getDefensiveLineX(p.team, ball);
-            tx = line + (p.baseX - this.getTeamLineBase(p.team)) * 0.35;
+        if (attacking && form > 0.5 && mitBall.urgency) {
+            urgency = mitBall.urgency;
+            sprinting = true;
         }
 
-        if (attacking && (p.pos === "LV" || p.pos === "RV")) {
-            const onHisSide = Math.abs(ball.y - p.baseY) < 30;
-            const inFinalThird = dir > 0 ? ball.x > 58 : ball.x < 42;
-            if (onHisSide && inFinalThird) {
-                tx += dir * 16;
-                ty += (p.baseY < 50 ? -6 : 6);
-                urgency = 1.45;
-                sprinting = true;
-            }
+        // Der Platz im Verbund wird nicht stufenlos nachgefuehrt: Wer weit
+        // vom Ball steht, rueckt in Schueben nach und steht dazwischen.
+        if (!pressers.has(p.id) && p.id !== this.carrierId) {
+            const platz = this.haltePlatz(p, tx, ty, ball);
+            tx = platz.x;
+            ty = platz.y;
         }
 
-        if (attacking && p.group === "att") {
-            const advanced = dir > 0 ? ball.x > 45 : ball.x < 55;
-            if (advanced) {
-                tx += dir * 9;
-                urgency = 1.3;
-                sprinting = true;
-            }
+        // Der eigene Laufweg im Raum der Position: freilaufen, entgegenkommen,
+        // in die Tiefe gehen - oder ohne Ball einen Passweg zustellen.
+        if (!pressers.has(p.id) && p.id !== this.carrierId) {
+            const weg = this.laufwegFuer(p, { x: tx, y: ty }, attacking, dir, ball);
+            tx += weg.ox;
+            ty += weg.oy;
+            if (weg.urgency > urgency) urgency = weg.urgency;
+            if (weg.sprint) sprinting = true;
         }
 
         if (pressers.has(p.id)) {
@@ -3313,9 +3698,33 @@ class LiveMatchDirector {
             sprinting = true;
         }
 
-        const t = this.elapsedReal;
-        tx += Math.sin(t * 0.9 + p.seed) * 1.3;
-        ty += Math.cos(t * 0.75 + p.seed * 1.7) * 1.6;
+        // Umschalten: Nach einem Ballverlust sprintet zurueck, wer vor dem
+        // Ball steht; nach einem Ballgewinn gehen die Angreifer sofort in die
+        // Tiefe. Vorher trabte die ganze Elf in beiden Faellen gleich weiter.
+        const seitWechsel = (this._laufUhr || 0) - (this._wechselUhr ?? -99);
+        if (seitWechsel < UMSCHALT_DAUER && this.mode === "ambient") {
+            if (!attacking && p.group !== "att" && (p.x - ball.x) * dir > 4 && (p.x - tx) * dir > 6 && urgency < 1.6) {
+                urgency = 1.6;
+                sprinting = true;
+            } else if (attacking && p.group === "att" && urgency < 1.4) {
+                urgency = 1.4;
+                sprinting = true;
+            }
+        }
+
+        // Gangart: Wer weit weg vom Ball steht und seinen Platz fast erreicht
+        // hat, geht. Wer weit hinter seinem Platz ist, zieht das Tempo an.
+        // Vorher trabte jeder immer im selben Tempo.
+        if (this.mode === "ambient") {
+            const zumBall = Math.hypot(p.x - ball.x, p.y - ball.y);
+            const zumZiel = Math.hypot(tx - p.x, ty - p.y);
+            if (urgency <= 1 && !sprinting && zumBall > 28 && zumZiel < 7) {
+                urgency = 0.6;
+            } else if (zumZiel > 10) {
+                urgency = Math.max(urgency, Math.min(1.8, 1 + (zumZiel - 10) / 18));
+                if (urgency >= 1.3) sprinting = true;
+            }
+        }
 
         const goalX = this.ownGoalX(p.team);
         const minGap = p.group === "def" ? 3 : (p.group === "mid" ? 11 : 21);
@@ -3327,6 +3736,116 @@ class LiveMatchDirector {
         p.sprinting = sprinting;
 
         return { x: Math.max(2, Math.min(98, tx)), y: Math.max(4, Math.min(96, ty)), urgency };
+    }
+
+    /**
+     * Wie weit ein Spieler von der Abwehr- in die Angriffsform umgeschaltet
+     * hat: null ohne Ball, eins mit Ball.
+     *
+     * Umgeschaltet wird erst nach der eigenen Reaktionszeit und dann zuegig,
+     * aber nicht in einem Bild. Ein Ball, der nach einer Sekunde zurueckerobert
+     * ist, schickt deshalb nicht mehr die ganze Mannschaft auf die Reise.
+     */
+    umschaltgrad(p) {
+        const ziel = p.team === this.possessionTeam ? 1 : 0;
+        const uhr = this._laufUhr || 0;
+        if (typeof p.form !== "number") p.form = ziel;
+        const vergangen = Math.max(0, uhr - (p._formUhr ?? uhr));
+        p._formUhr = uhr;
+        if (uhr - (this._wechselUhr ?? -99) < (p.reaktion ?? 0.3)) return p.form;
+        const schritt = vergangen / 1.6;
+        p.form += Math.max(-schritt, Math.min(schritt, ziel - p.form));
+        return p.form;
+    }
+
+    /**
+     * Die Form mit Ball: breit, gestaffelt, nach vorn geschoben.
+     *
+     * Die Elf steht als Block, nicht über die ganze Feldbreite verteilt. Mit
+     * Ball zieht sie das Feld auseinander, ohne Ball (formOhneBall) macht sie
+     * es eng - das ist im Football Manager und in EA FC der Kern.
+     */
+    formMitBall(p, gesehen, ball, dir, ballProgress) {
+        const kompakt = 0.80 + (BREITE_ROLLEN.includes(p.rolle || p.pos) ? 0.20 : 0);
+        const blockY = 50 + (gesehen.y - 50) * 0.24;
+        let y = blockY + (p.baseY - 50) * kompakt;
+
+        // Je länger eine Mannschaft den Ball hält, desto mutiger rückt die
+        // ganze Elf nach - dadurch wird aus Ballbesitz ein Angriff, den man auf
+        // dem Feld auch sieht.
+        const chainPush = Math.min(1, (this.possessionChain || 0) / 6);
+        const push = Math.max(0, ballProgress - 0.33) * (52 + chainPush * 18);
+        const groupPush = GROUP_PUSH[p.group] ?? 1.0;
+        let x = p.baseX + dir * push * groupPush + dir * 2.5;
+
+        // Der Angriffsfokus verschiebt die ganze Mannschaft auf eine Seite -
+        // so wird aus einer Zeile im Taktikbogen ein sichtbares Übergewicht auf
+        // dem Flügel. "Links" meint die linke Seite aus Sicht der
+        // Angriffsrichtung.
+        const tactics = (p.team === "home" ? this.match.homeClub?.tactics : this.match.awayClub?.tactics) || {};
+        const fokus = tactics.focus || tactics.attackFocus;
+        if (fokus === "left" || fokus === "right") {
+            y += (fokus === "left" ? -1 : 1) * (dir > 0 ? 1 : -1) * 5.5;
+        }
+
+        // Mit Ball zieht die Elf das Feld auch in die Laenge: Die Spitzen
+        // schieben, die Kette haelt dagegen. Ohne diese Streckung stand die
+        // Mannschaft nur sechsundzwanzig Einheiten lang - ein Block, aus dem
+        // heraus kein Angriff entstehen kann.
+        x += dir * (groupPush - 1) * 13;
+
+        let urgency = 0;
+        if (p.rolle === "LV" || p.rolle === "RV") {
+            const onHisSide = Math.abs(ball.y - p.baseY) < 30;
+            const inFinalThird = dir > 0 ? ball.x > 58 : ball.x < 42;
+            if (onHisSide && inFinalThird) {
+                x += dir * 16;
+                y += (p.baseY < 50 ? -6 : 6);
+                urgency = 1.45;
+            }
+        }
+        if (p.group === "att") {
+            const advanced = dir > 0 ? ball.x > 45 : ball.x < 55;
+            if (advanced) {
+                x += dir * 9;
+                urgency = 1.3;
+            }
+        }
+        return { x, y, urgency };
+    }
+
+    /**
+     * Die Form ohne Ball: eng, zur Ballseite verschoben, die Kette auf einer
+     * Linie.
+     *
+     * Gemessen stand die Elf einmal einundsiebzig Einheiten breit, mit wie ohne
+     * Ball gleich - wie ein Seestern. Ohne Ball schiebt sie als kompakter Block
+     * zur Ballseite; wer weit weg ist, rückt stärker ein.
+     */
+    formOhneBall(p, gesehen, dir) {
+        const ballAbstand = Math.min(1, Math.abs(gesehen.y - p.baseY) / 45);
+        const kompakt = 0.42 - ballAbstand * 0.05;
+        const blockY = 50 + (gesehen.y - 50) * 0.5;
+        let y = blockY + (p.baseY - 50) * kompakt;
+        let x = p.baseX + (gesehen.x - 50) * p.followWeight * 0.94 - dir * 2.0;
+
+        // Die Form zieht sich zum Ball zusammen, statt als Ganzes parallel zu
+        // verschieben: Wer nah am Ball steht, rueckt heran, wer weit weg ist,
+        // bleibt. So bewegt sich jeder anders, wenn der Ball wandert.
+        const zumBallX = gesehen.x - x;
+        const zumBallY = gesehen.y - y;
+        const zug = 0.32 * Math.exp(-Math.hypot(zumBallX, zumBallY) / 20);
+        x += zumBallX * zug * 0.6;
+        y += zumBallY * zug;
+
+        if (p.group === "def") {
+            // Die Kette steht auf ihrer Linie - aber nicht weiter als eine
+            // Zone von ihrem Platz im Block entfernt
+            const line = this.getDefensiveLineX(p.team, gesehen);
+            const aufLinie = line + (p.baseX - this.getTeamLineBase(p.team)) * 0.35;
+            x = Math.max(x - 7, Math.min(x + 7, aufLinie));
+        }
+        return { x, y };
     }
 
     getDefensiveLineX(team, ball) {
@@ -3358,12 +3877,18 @@ class LiveMatchDirector {
         const opponents = this.teamPlayers(player.team === "home" ? "away" : "home")
             .filter(o => o.pos !== "TW" && o.id !== this.carrierId);
 
+        // Den Gegenspieler, den er schon aufgenommen hat, gibt er nur ab, wenn
+        // ein anderer deutlich naeher kommt - sonst pendelt er zwischen zwei
+        // Gegnern hin und her.
         let best = null;
-        let bestDist = 26;
+        let bestWert = 26;
         opponents.forEach(o => {
             const d = Math.hypot(o.x - player.x, o.y - player.y);
-            if (d < bestDist) { bestDist = d; best = o; }
+            if (d >= 26) return;
+            const wert = d - (o.id === player.markiertId ? 5 : 0);
+            if (wert < bestWert) { bestWert = wert; best = o; }
         });
+        player.markiertId = best ? best.id : null;
         return best;
     }
 

@@ -3984,12 +3984,13 @@ function runEngineTests() {
         const heim = state.clubs.find(c => c.id === partie.homeClubId);
         const gast = state.clubs.find(c => c.id === partie.awayClubId);
 
-        // Zwei Partien statt einer: Auf eine Partie entfallen zwischen zwei
-        // und elf Einwuerfe - ueber eine einzelne gemessen entschied darueber
-        // der Zufall, nicht die Regie. Gemessen wird ohnehin die Strecke, die
-        // der Ball zum Einwurfpunkt zurueckgelegt hat, nicht ihre Anzahl.
+        // So viele Partien, bis genug Einwürfe für eine Aussage vorliegen:
+        // Auf eine Partie entfallen zwischen null und zehn, im Schnitt knapp
+        // vier. Mit fest zwei Partien scheiterte der Test in jedem vierten
+        // Lauf an der Anzahl - gemessen wird aber die Strecke, die der Ball
+        // zum Einwurfpunkt zurücklegt, nicht wie oft er ins Aus geht.
         const wege = [];
-        for (let runde2 = 0; runde2 < 2; runde2++) {
+        for (let runde2 = 0; runde2 < 6 && wege.length < 8; runde2++) {
             const live = MatchEngine.createLiveMatch(partie, heim, gast, state.players);
             live.speed = 1;
             const dir = live.director;
@@ -4010,7 +4011,7 @@ function runEngineTests() {
             }
         }
 
-        if (wege.length < 5) throw new Error(`Nur ${wege.length} Einwürfe in zwei Partien`);
+        if (wege.length < 5) throw new Error(`Nur ${wege.length} Einwürfe in sechs Partien`);
 
         // Der Ball liegt schon im Aus, wenn er zum Einwurfpunkt geholt wird -
         // er wird nicht quer über das Feld dorthin gezogen.
@@ -4772,6 +4773,8 @@ function runEngineTests() {
         const ecke = elf.find(p => p.id !== elfer.id && p.pos !== "ST") || elf[1];
         const frei = nachSchuss[1];
         const bester = MatchEngine.standardSchuetze("elfmeter", elf, null);
+        // "Ohne Vorgabe" heißt auch: im Taktik-Reiter niemand bestimmt
+        heim.roles = { ...(heim.roles || {}), penaltyTaker: null, freeKickTaker: null, cornerTaker: null };
 
         let freistoesse = 0, elfmeter = 0, ecken = 0, elferOhne = 0;
         for (let i = 0; i < 150; i++) {
@@ -4779,10 +4782,15 @@ function runEngineTests() {
             // außer einer von ihnen fliegt vom Platz, dann tritt ein anderer an.
             const tl = MatchEngine.generateTimeline({ id: `std_${i}` }, heim, gast, state.players,
                 { standardsHome: { elfmeter: elfer.id, ecken: ecke.id, freistoss: frei.id }, autoWechselHome: false });
+            // Platzverweise vorab sammeln: Eine Rote Karte kann in derselben
+            // Minute nach einem Freistoß einsortiert sein, die Simulation hat
+            // den Spieler zu diesem Zeitpunkt aber schon vom Platz gestellt.
             const runter = new Map();
             tl.forEach(e => {
                 if ((e.type === "red_card" || (e.type === "yellow_card" && e.isSecondYellow)) && !runter.has(e.playerId)) runter.set(e.playerId, e.minute);
-                const imSpiel = (id, min) => !runter.has(id) || runter.get(id) > min;
+            });
+            const imSpiel = (id, min) => !runter.has(id) || runter.get(id) > min;
+            tl.forEach(e => {
                 const heimSchuss = schussVon(e) === "home";
                 const schuetze = e.type === "save" ? e.shooterId : e.playerId;
                 if (heimSchuss && e.isPenalty && imSpiel(elfer.id, e.minute)) {
@@ -4825,6 +4833,92 @@ function runEngineTests() {
         // Die Regie holt ihn an die Fahne
         const taker = live.director.pickSetPieceTaker("corner", "home", 98, 2);
         if (!taker || taker.id !== ecke.id) throw new Error("In der 2D-Ansicht tritt ein anderer die Ecke");
+    });
+
+    test("Standardschützen aus dem Taktik-Reiter gelten in Simulation und Livespiel", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const elf = MatchEngine.getCleanLineup(heim, state.players).filter(p => p.pos !== "TW");
+        // Der schwächste Schütze - so kann er nicht zufällig auch der Beste sein
+        const schwach = elf.slice().sort((a, b) => MatchEngine.standardWert("elfmeter", a) - MatchEngine.standardWert("elfmeter", b))[0];
+        heim.roles = { ...(heim.roles || {}), penaltyTaker: schwach.id, freeKickTaker: schwach.id, cornerTaker: schwach.id };
+
+        const vorgabe = MatchEngine.standardsAusRollen(heim);
+        if (vorgabe.elfmeter !== schwach.id || vorgabe.freistoss !== schwach.id || vorgabe.ecken !== schwach.id) {
+            throw new Error("Die Rollen des Vereins werden nicht als Vorgabe gelesen");
+        }
+
+        let geprueft = 0;
+        for (let i = 0; i < 120 && geprueft < 3; i++) {
+            const tl = MatchEngine.generateTimeline({ id: `rolle_${i}` }, heim, gast, state.players, { autoWechselHome: false });
+            const runter = tl.find(e => e.playerId === schwach.id && (e.type === "red_card" || e.isSecondYellow));
+            tl.forEach(e => {
+                if (runter && runter.minute <= e.minute) return;
+                if (schussVon(e) === "home" && (e.isPenalty || e.isFreekick)) {
+                    geprueft++;
+                    const schuetze = e.type === "save" ? e.shooterId : e.playerId;
+                    if (schuetze !== schwach.id) throw new Error(`Trotz Vorgabe schoss ${schuetze} statt ${schwach.name}`);
+                }
+            });
+        }
+        if (geprueft === 0) throw new Error("In 120 Partien kein Elfmeter oder Freistoß für die Heimelf");
+
+        const live = MatchEngine.createLiveMatch({ id: "rolle_live", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { userSide: "home" });
+        const s = live.standardSchuetzen("home");
+        if (s.elfmeter?.id !== schwach.id || !s.elfmeter.vorgegeben) {
+            throw new Error("Im Livespiel gilt der Elfmeterschütze aus dem Taktik-Reiter nicht");
+        }
+
+        // Kein Schütze bestimmt: der Beste tritt an, nichts bricht
+        heim.roles = { ...heim.roles, penaltyTaker: null, freeKickTaker: NaN, cornerTaker: undefined };
+        const leer = MatchEngine.standardsAusRollen(heim);
+        if (leer.elfmeter !== null || leer.freistoss !== null || leer.ecken !== null) {
+            throw new Error("Leere Rollen werden nicht als 'automatisch' gelesen");
+        }
+    });
+
+    test("Fouls und Freistöße laufen mit der Uhr, Ausgewechselte kommen nicht zurück", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        let geprueft = 0, pausen = 0;
+        for (let i = 0; i < 250; i++) {
+            const tl = MatchEngine.generateTimeline({ id: `uhr_${i}` }, heim, gast, state.players, {});
+            // Wer kommt wann, wer geht wann
+            const rein = new Map(), raus = new Map();
+            tl.forEach(e => {
+                if (e.type === "substitution") {
+                    // Wer draußen ist, bleibt draußen
+                    if (raus.has(e.playerInId)) throw new Error(`${e.minute}': ${e.playerInName} kommt zurück, obwohl er in der ${raus.get(e.playerInId)}. Minute ging`);
+                    rein.set(e.playerInId, e.minute);
+                    raus.set(e.playerOutId, e.minute);
+                }
+                if ((e.type === "red_card" || e.isSecondYellow) && !raus.has(e.playerId)) raus.set(e.playerId, e.minute);
+            });
+            tl.forEach(e => {
+                const id = e.type === "foul" ? e.playerId : (e.isFreekick ? (e.type === "save" ? e.shooterId : e.playerId) : null);
+                if (id === null || id === undefined) return;
+                geprueft++;
+                if (rein.has(id) && rein.get(id) > e.minute) {
+                    throw new Error(`${e.minute}': ${e.type} von einem Spieler, der erst in der ${rein.get(id)}. Minute kam`);
+                }
+                if (raus.has(id) && raus.get(id) < e.minute) {
+                    throw new Error(`${e.minute}': ${e.type} von einem Spieler, der schon in der ${raus.get(id)}. Minute vom Platz ging`);
+                }
+            });
+            // Der Pausenstand ist der Stand zur Pause, nicht der Endstand
+            const pause = tl.find(e => e.type === "halftime");
+            if (pause) {
+                const bis = seite => tl.filter(e => e.type === "goal" && e.team === seite && e.minute <= pause.minute).length;
+                if (pause.score[0] !== bis("home") || pause.score[1] !== bis("away")) {
+                    throw new Error(`Pausenstand ${pause.score.join(":")} statt ${bis("home")}:${bis("away")}`);
+                }
+                pausen++;
+            }
+        }
+        if (geprueft < 500 || pausen === 0) throw new Error("Zu wenige Fouls für eine Aussage");
     });
 
     test("Positionstausch: zwei Spieler tauschen die Plätze, der Torwart bleibt im Tor", () => {

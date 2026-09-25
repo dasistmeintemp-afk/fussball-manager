@@ -84,6 +84,58 @@ class UIManager {
         return UIManager.formatMoneySafe(amount);
     }
 
+    /**
+     * Formkürzel auf Deutsch: Sieg, Unentschieden, Niederlage. Gespeichert
+     * wird weiter W/D/L - angezeigt wurde es bisher auch so, mitten in
+     * einer Tabelle, deren Spalten S, U und N heißen.
+     */
+    /**
+     * Geld kurz für enge Spalten: "112,5 Mio. €" statt "112.546.000 €",
+     * das in der Kadertabelle auf zwei Zeilen umbrach.
+     */
+    geldKurz(betrag) {
+        const zahl = Number(betrag) || 0;
+        const abs = Math.abs(zahl);
+        const vz = zahl < 0 ? "-" : "";
+        if (abs >= 1e6) return `${vz}${(abs / 1e6).toFixed(abs >= 1e8 ? 0 : 1).replace(".", ",")} Mio. €`;
+        if (abs >= 1e3) return `${vz}${Math.round(abs / 1e3)} Tsd. €`;
+        return `${vz}${Math.round(abs)} €`;
+    }
+
+    /** Farbe für einen Fitnesswert: grün, gelb, rot */
+    fitnessFarbe(wert) {
+        const f = Number(wert) || 0;
+        return f >= 85 ? "#22c55e" : (f >= 70 ? "#f59e0b" : "#ef4444");
+    }
+
+    /** Beschriftung der Tabellenzonen (Europapokal, Auf- und Abstieg). */
+    static get ZONEN() {
+        return {
+            ucl: "Champions League",
+            uel: "Europa League",
+            uecl: "Conference League",
+            auf: "Aufstieg",
+            ab: "Abstieg"
+        };
+    }
+
+    /** Tordifferenz mit Vorzeichen: +5, 0, -3. */
+    vorzeichen(zahl) {
+        const n = Number(zahl) || 0;
+        return n > 0 ? `+${n}` : String(n);
+    }
+
+    static formKuerzel(f) {
+        const k = String(f || "").toUpperCase();
+        return { W: "S", D: "U", L: "N" }[k] || k;
+    }
+
+    formPunkt(f) {
+        const k = String(f || "").toLowerCase();
+        const titel = { w: "Sieg", d: "Unentschieden", l: "Niederlage" }[k] || "";
+        return `<span class="form-dot ${k}" title="${titel}">${UIManager.formKuerzel(f)}</span>`;
+    }
+
     static formatMoneySafe(amount) {
         if (typeof GameState !== 'undefined' && typeof GameState.formatMoney === 'function') {
             return GameState.formatMoney(amount);
@@ -1879,7 +1931,43 @@ class UIManager {
             case "inbox":
                 this.renderInbox();
                 break;
+            case "settings":
+                this.renderSettings();
+                break;
         }
+    }
+
+    /**
+     * Einstellungen: Livespiel-Vorgaben, die bisher nur mitten in einer
+     * Partie im Co-Trainer-Reiter zu finden waren.
+     */
+    renderSettings() {
+        const el = document.getElementById("settingsLiveBody");
+        if (!el || !this.app.state) return;
+        const e = this.liveEinstellungen();
+        const schalter = (gruppe, key, titel, text) => {
+            const an = gruppe === "delegation" ? e.delegation[key] : e.autoOeffnen[key];
+            return `<label class="coach-switch einstellung-schalter">
+                    <input type="checkbox" data-gruppe="${gruppe}" data-key="${key}" ${an ? "checked" : ""}>
+                    <span class="coach-switch-text"><strong>${titel}</strong><br><span class="coach-muted">${text}</span></span>
+                </label>`;
+        };
+        el.innerHTML = `
+            <h4 class="einstellung-h">Dem Co-Trainer überlassen</h4>
+            ${schalter("delegation", "wechsel", "Wechsel", "Er wechselt Müde und Verletzte positionsgerecht aus.")}
+            ${schalter("delegation", "taktik", "Taktik anpassen", "Bei Rückstand offensiver, bei später Führung sicherer.")}
+            <h4 class="einstellung-h">Seitenlinie automatisch öffnen</h4>
+            ${schalter("auto", "halbzeit", "Zur Halbzeit", "Nach der Kabinenansprache.")}
+            ${schalter("auto", "verletzung", "Bei einer Verletzung", "Wenn einer Ihrer Spieler nicht weiterkann.")}
+            ${schalter("auto", "platzverweis", "Bei einem Platzverweis", "Um die Mannschaft neu zu ordnen.")}
+        `;
+        el.querySelectorAll("input[data-gruppe]").forEach(inp => inp.onchange = () => {
+            const ziel = inp.dataset.gruppe === "delegation" ? e.delegation : e.autoOeffnen;
+            ziel[inp.dataset.key] = inp.checked;
+            if (typeof this.app.state.saveToLocalStorage === "function") this.app.state.saveToLocalStorage();
+        });
+        const sound = document.getElementById("btnToggleSound");
+        if (sound) sound.textContent = this.soundEnabled ? "🔊 Sound: Aktiviert" : "🔇 Sound: Stummgeschaltet";
     }
 
     /**
@@ -2037,7 +2125,8 @@ class UIManager {
         const knopf = document.getElementById("btnHeaderAdvance");
         knopf.innerHTML = `<span>${ziel.text}</span> <span class="btn-arrow">➔</span>`;
         // Auf schmalen Geräten zeigt der Knopf nur die Kurzfassung
-        knopf.dataset.kurz = ziel.kurz || "Weiter";
+        // (Ohne dataset - etwa im Test-DOM - brach hier der ganze Kopf ab.)
+        if (knopf.dataset) knopf.dataset.kurz = ziel.kurz || "Weiter";
 
         // Sidebar Quick-Status
         const getRankSafe = (clubId) => {
@@ -2053,7 +2142,7 @@ class UIManager {
 
         document.getElementById("sbRank").textContent = getRankSafe(userClub.id);
         const formContainer = document.getElementById("sbForm");
-        formContainer.innerHTML = (userClub.form || []).map(f => `<span class="form-dot ${f.toLowerCase()}">${f}</span>`).join("");
+        formContainer.innerHTML = (userClub.form || []).map(f => this.formPunkt(f)).join("");
 
         // Badges
         const unreadCount = state.inbox.filter(m => !m.read).length;
@@ -2179,8 +2268,7 @@ class UIManager {
         const wappen = (id, club) => {
             const el = document.getElementById(id);
             if (!el || !club) return;
-            el.style.backgroundColor = club.primaryColor;
-            el.textContent = club.name.substring(0, 3).toUpperCase();
+            this.setzeWappen(el, club);
         };
         wappen("dashHomeCrest", heimClub);
         wappen("dashAwayCrest", gastClub);
@@ -2318,27 +2406,43 @@ class UIManager {
 
         // 2. League Snapshot Table (Top 5 + User Club)
         const standingsBody = document.getElementById("dashStandingsBody");
-        const top5 = state.standings.slice(0, 5);
-        const userStanding = state.standings.find(s => s.clubId === userClub.id);
-        const displayed = [...top5];
-
-        if (userStanding && !top5.some(s => s.clubId === userClub.id)) {
-            displayed.push(userStanding);
+        const tabelle = state.standings || [];
+        const eigenerRang = tabelle.findIndex(s => s.clubId === userClub.id) + 1;
+        // Die Spitze und das eigene Umfeld: wer vor und hinter uns steht,
+        // ist wichtiger als Platz 4 und 5.
+        let plaetze;
+        if (eigenerRang <= 5) {
+            plaetze = [1, 2, 3, 4, 5, 6];
+        } else {
+            plaetze = [1, 2, 3, null, eigenerRang - 1, eigenerRang, eigenerRang + 1];
         }
+        plaetze = plaetze.filter(p => p === null || (p >= 1 && p <= tabelle.length));
+        const zonen = this.tabellenZonen(state, this.getUserLeagueId(state), tabelle.length);
 
-        standingsBody.innerHTML = displayed.map(s => {
+        standingsBody.innerHTML = plaetze.map(rank => {
+            if (rank === null) {
+                return `<tr class="tabelle-luecke"><td colspan="5">···</td></tr>`;
+            }
+            const s = tabelle[rank - 1];
             const isUser = s.clubId === userClub.id;
-            const rank = state.standings.indexOf(s) + 1;
+            const zone = zonen.get(rank);
             return `
                 <tr class="${isUser ? 'row-user-club' : ''}">
-                    <td><strong>${rank}</strong></td>
-                    <td>${s.clubName}</td>
+                    <td><span class="rang${zone ? ` rang-${zone}` : ""}" title="${zone ? UIManager.ZONEN[zone] : ""}">${rank}</span></td>
+                    <td class="tb-verein"><span class="tb-verein-inhalt"><span class="mini-wappen" data-club="${this.escapeHtml(s.clubId)}"></span><span class="tb-verein-name">${this.escapeHtml(s.clubName)}</span></span></td>
                     <td>${s.played}</td>
-                    <td>${s.goalDiff > 0 ? '+' + s.goalDiff : s.goalDiff}</td>
+                    <td>${this.vorzeichen(s.goalDiff)}</td>
                     <td><strong>${s.points}</strong></td>
                 </tr>
             `;
         }).join("");
+        standingsBody.querySelectorAll(".mini-wappen").forEach(el => {
+            const club = state.clubs.find(c => String(c.id) === el.dataset.club);
+            if (club) {
+                this.setzeWappen(el, club);
+                el.textContent = this.vereinsKuerzel(club.name).slice(0, 1);
+            }
+        });
 
         // 3. Board Confidence, Fan Mood & Media Pressure (D4)
         document.getElementById("dashBoardGoal").textContent = GameState.getExpectationText(userClub.boardExpectation);
@@ -2396,15 +2500,28 @@ class UIManager {
         if (recentInbox.length === 0) {
             newsList.innerHTML = `<div class="empty-state-sm">Keine neuen Nachrichten.</div>`;
         } else {
+            // Ganze Nachricht per Klick; der Vorschautext wird per CSS auf
+            // zwei Zeilen gekürzt statt immer "..." anzuhängen.
             newsList.innerHTML = recentInbox.map(item => `
-                <div class="news-item-dash">
-                    <div>
-                        <h5>${item.subject}</h5>
-                        <p>${item.body.substring(0, 95)}...</p>
-                    </div>
-                    <span class="news-date">${item.date}</span>
-                </div>
+                <button type="button" class="news-item-dash news-zeile${item.read ? "" : " ungelesen"}" data-msg-id="${this.escapeHtml(String(item.id))}">
+                    <span class="news-zeile-text">
+                        <span class="news-titel">${item.subject || item.title || "Nachricht"}</span>
+                        <span class="news-vorschau">${item.body || ""}</span>
+                    </span>
+                    <span class="news-date">${item.date || ""}</span>
+                </button>
             `).join("");
+            newsList.querySelectorAll(".news-zeile").forEach(el => {
+                el.addEventListener("click", () => {
+                    const msg = state.inbox.find(m => String(m.id) === el.dataset.msgId);
+                    if (msg) {
+                        msg.read = true;
+                        this.selectedInboxMessageId = String(msg.id);
+                    }
+                    this.switchTab("inbox");
+                    this.renderHeader();
+                });
+            });
         }
     }
 
@@ -2449,7 +2566,9 @@ class UIManager {
             const sterne = card ? card.abilityStarsHtml : "";
             const roleName = card?.bestRole?.role || p.squadRole || "Stammspieler";
             const abilityText = card?.abilityLabel || "Guter Spieler";
-            const valText = card ? card.visibleValueText : this.formatMoneySafe(p.value);
+            // Den eigenen Spieler kennt man genau - also die kurze, exakte Zahl
+            const valText = this.geldKurz(p.value);
+            const fitness = Math.round(p.fitness ?? 100);
 
             // Nebenpositionen sichtbar machen: nicht jeder kann überall spielen
             const secondary = (Array.isArray(p.positions) ? p.positions : [])
@@ -2459,31 +2578,31 @@ class UIManager {
                 ? secondary.map(pos => `<span class="pos-tag pos-secondary" title="Nebenposition">${pos}</span>`).join("")
                 : "";
 
+            const form = (Number(p.form) || 0).toFixed(1).replace(".", ",");
             return `
                 <tr class="row-clickable" data-player-id="${p.id}" title="Details zu ${this.escapeHtml(p.name)} öffnen">
-                    <td>${statusBadge}</td>
-                    <td><strong>${p.name}</strong> <span class="squad-role-hint">(${p.squadRole || 'Kader'})</span></td>
-                    <td>
-                        <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>
-                        ${secondaryHtml}
+                    <td class="sq-status">${statusBadge}</td>
+                    <td class="sq-name"><strong>${this.escapeHtml(p.name)}</strong><span class="squad-role-hint">${this.escapeHtml(p.squadRole || "Kader")} · ${p.age} J.</span></td>
+                    <td class="sq-pos nowrap">
+                        <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>${secondaryHtml}
                     </td>
-                    <td>${p.age}</td>
-                    <td>
+                    <td class="sq-alter">${p.age}</td>
+                    <td class="sq-staerke nowrap">
                         ${sterne}
                         <div class="squad-ability-hint">${abilityText}</div>
                     </td>
-                    <td><span class="role-chip" title="${roleName}">${roleName}</span></td>
-                    <td>
-                        <span class="mini-bar"><span class="mini-bar-fill" style="width:${p.fitness}%"></span></span>
-                        ${p.fitness}%
+                    <td class="sq-rolle"><span class="role-chip" title="${roleName}">${roleName}</span></td>
+                    <td class="sq-fit nowrap">
+                        <span class="mini-bar"><span class="mini-bar-fill" style="width:${fitness}%;background:${this.fitnessFarbe(fitness)}"></span></span>${fitness}%
                     </td>
-                    <td>${happyIcon} ${happyOverall}%</td>
-                    <td>${p.form.toFixed(1)}</td>
-                    <td>${valText}</td>
-                    <td>${this.formatMoneySafe(p.wage)}</td>
-                    <td>${p.contractYears} J.</td>
-                    <td>
-                        <button class="btn btn-sm btn-secondary btn-player-details" data-player-id="${p.id}">Details</button>
+                    <td class="sq-moral nowrap" title="Moral">${happyIcon} ${happyOverall}%</td>
+                    <td class="sq-form">${form}</td>
+                    <td class="sq-wert nowrap">${valText}</td>
+                    <td class="sq-gehalt nowrap">${this.geldKurz(p.wage)}</td>
+                    <td class="sq-vertrag nowrap">${p.contractYears} J.</td>
+                    <td class="sq-meta">Form ${form} · ${valText} · ${this.geldKurz(p.wage)}/Wo · ${p.contractYears} J. Vertrag</td>
+                    <td class="sq-aktion">
+                        <button class="btn btn-sm btn-secondary btn-player-details" data-player-id="${p.id}" aria-label="Details zu ${this.escapeHtml(p.name)}">›</button>
                     </td>
                 </tr>
             `;
@@ -2562,13 +2681,44 @@ class UIManager {
 
         const verbleibend = Math.max(0, (pre.dauer || 0) - (pre.tagIndex || 0));
         DOM.setText("preCountdown", pre.aktiv ? `noch ${verbleibend} Tage` : "abgeschlossen");
+        DOM.setText("preHeadTitle", pre.aktiv ? "☀️ Bis zum ersten Spieltag" : "☀️ Bilanz der Vorbereitung");
 
         const offen = engine.offenePunkte(state);
         const offenEl = document.getElementById("preOpenItems");
-        if (offenEl) {
+        if (offenEl && !pre.aktiv) {
+            // Nach dem Saisonstart ist das keine Aufgabenliste mehr, sondern
+            // eine Bilanz. Vorher stand hier "Noch zu erledigen" neben
+            // "abgeschlossen".
+            const besetzt = engine.BEREICHE.filter(b => club.staff?.[b.key]).length;
+            const gespielt = (pre.testspiele || []).filter(t => t.gespielt);
+            const bilanz = gespielt.reduce((b, t) => {
+                const [e, f] = String(t.ergebnis || "0:0").split(":").map(Number);
+                if (e > f) b.s++; else if (e === f) b.u++; else b.n++;
+                return b;
+            }, { s: 0, u: 0, n: 0 });
+            const turniere = (pre.turniere || []).filter(t => t.platz);
+            const kachel = (titel, wert, sub = "") => `
+                <div class="pre-fazit-kachel">
+                    <span class="pre-fazit-titel">${titel}</span>
+                    <strong>${wert}</strong>
+                    ${sub ? `<span class="muted-note">${sub}</span>` : ""}
+                </div>`;
+            offenEl.innerHTML = `
+                <div class="pre-fazit-kopf">✅ Die Vorbereitung ist abgeschlossen - die Punkterunde läuft.</div>
+                <div class="pre-fazit">
+                    ${kachel("Trainerstab", `${besetzt} von ${engine.BEREICHE.length} besetzt`,
+                        besetzt < engine.BEREICHE.length ? "Offene Stellen lassen sich unten weiter besetzen." : "Alle Fachbereiche besetzt.")}
+                    ${kachel("Sponsor", this.escapeHtml(club.sponsor?.name || "keiner"),
+                        club.sponsor ? `${this.geldKurz(club.sponsor.amountPerMatchday)} je Spieltag` : "")}
+                    ${kachel("Testspiele", gespielt.length ? `${bilanz.s} S · ${bilanz.u} U · ${bilanz.n} N` : "keine",
+                        gespielt.length ? `${gespielt.length} Partie${gespielt.length === 1 ? "" : "n"}` : "")}
+                    ${kachel("Turniere", turniere.length ? turniere.map(t => `Platz ${t.platz}`).join(", ") : "keine",
+                        turniere.map(t => this.escapeHtml(t.name)).join(", "))}
+                </div>`;
+        } else if (offenEl) {
             offenEl.innerHTML = offen.length
                 ? `<strong>Noch zu erledigen:</strong><ul style="margin:6px 0 0 18px;">${offen.map(o => `<li>${o}</li>`).join("")}</ul>`
-                : `<span style="color:var(--success, #22c55e);">Alles erledigt - die Mannschaft ist bereit fuer den ersten Spieltag.</span>`;
+                : `<span style="color:var(--success, #22c55e);">Alles erledigt - die Mannschaft ist bereit für den ersten Spieltag.</span>`;
         }
 
         this.renderPreseasonStaff(state, engine, club, pre);
@@ -2602,13 +2752,13 @@ class UIManager {
                 // das, was man ohnehin hat, und zahlt dafuer auch noch Gehalt.
                 const jetzt = aktuell ? (b.key === "cotrainer" ? aktuell.coTrainer : aktuell[b.key]) : null;
                 const kopf = besetzt
-                    ? `<strong>${besetzt.name}</strong> &middot; Guete ${besetzt.guete} &middot; ${GameState.formatMoney(besetzt.gehalt)}/Wo`
-                    : `<span class="muted-note">mit Bordmitteln: Guete ${jetzt ?? "?"}</span>`;
+                    ? `<strong>${besetzt.name}</strong> &middot; Güte ${besetzt.guete} &middot; ${GameState.formatMoney(besetzt.gehalt)}/Wo`
+                    : `<span class="muted-note">mit Bordmitteln: Güte ${jetzt ?? "?"}</span>`;
                 const liste = bewerber.map(k => `
                     <div class="pre-candidate">
                         <div>
                             <strong>${k.name}</strong> <span class="muted-note">(${k.alter})</span><br>
-                            <span class="muted-note">${k.ruf} &middot; Guete ${k.guete}${(jetzt !== null && k.guete < jetzt) ? " (schlechter als jetzt)" : ""} &middot; ${GameState.formatMoney(k.gehalt)}/Wo</span>
+                            <span class="muted-note">${k.ruf} &middot; Güte ${k.guete}${(jetzt !== null && k.guete < jetzt) ? " (schlechter als jetzt)" : ""} &middot; ${GameState.formatMoney(k.gehalt)}/Wo</span>
                         </div>
                         <button class="btn btn-sm btn-primary" data-hire-area="${b.key}" data-hire-id="${k.id}">
                             Verpflichten
@@ -2642,7 +2792,7 @@ class UIManager {
                     <div class="pre-area-head"><span>Vertrag steht</span><strong>${club.sponsor.name}</strong></div>
                     <div>${GameState.formatMoney(club.sponsor.amountPerMatchday)} je Spieltag
                         &middot; ${club.sponsor.yearsRemaining} Jahr(e)</div>
-                    ${club.sponsor.zielPlatz ? `<div class="muted-note">Praemie ${GameState.formatMoney(club.sponsor.praemie)} bei Platz ${club.sponsor.zielPlatz} oder besser.</div>` : ""}
+                    ${club.sponsor.zielPlatz ? `<div class="muted-note">Prämie ${GameState.formatMoney(club.sponsor.praemie)} bei Platz ${club.sponsor.zielPlatz} oder besser.</div>` : ""}
                 </div>`;
             return;
         }
@@ -2653,7 +2803,7 @@ class UIManager {
                     <strong>${a.name}</strong><br>
                     <span class="muted-note">${GameState.formatMoney(a.amountPerMatchday)} je Spieltag &middot; ${a.yearsRemaining} Jahr(e)</span><br>
                     <span class="muted-note">${a.beschreibung}</span>
-                    ${a.zielPlatz ? `<br><span class="muted-note">Praemie ${GameState.formatMoney(a.praemie)} bei Platz ${a.zielPlatz} oder besser.</span>` : ""}
+                    ${a.zielPlatz ? `<br><span class="muted-note">Prämie ${GameState.formatMoney(a.praemie)} bei Platz ${a.zielPlatz} oder besser.</span>` : ""}
                 </div>
                 <button class="btn btn-sm btn-primary" data-sponsor-id="${a.id}">Annehmen</button>
             </div>`).join("");
@@ -3221,14 +3371,18 @@ class UIManager {
 
         // Rollen Dropdowns befüllen
         const lineupPlayers = userClub.lineup.map(id => state.players.find(p => p.id === id)).filter(Boolean);
-        const populateRoleSelect = (elId, currentId) => {
+        // "Automatisch" heißt: der Beste auf dem Platz. Vorher stand hier
+        // immer der erste Spieler der Liste, auch wenn niemand bestimmt war.
+        const populateRoleSelect = (elId, currentId, autoText = "Automatisch (der Beste auf dem Platz)") => {
             const el = document.getElementById(elId);
-            el.innerHTML = lineupPlayers.map(p => `
-                <option value="${p.id}" ${p.id === currentId ? "selected" : ""}>${this.escapeHtml(p.name)} (${p.pos}, ${this.starValueFor(p.overall).toFixed(1).replace(".", ",")} Sterne)</option>
+            const bestimmt = lineupPlayers.some(p => String(p.id) === String(currentId));
+            el.innerHTML = `<option value="" ${bestimmt ? "" : "selected"}>${autoText}</option>` +
+                lineupPlayers.map(p => `
+                <option value="${this.escapeHtml(String(p.id))}" ${String(p.id) === String(currentId) ? "selected" : ""}>${this.escapeHtml(p.name)} (${p.pos}, ${this.starValueFor(p.overall).toFixed(1).replace(".", ",")} Sterne)</option>
             `).join("");
         };
 
-        populateRoleSelect("roleCaptain", userClub.roles.captain);
+        populateRoleSelect("roleCaptain", userClub.roles.captain, "Nicht bestimmt");
         populateRoleSelect("rolePenalty", userClub.roles.penaltyTaker);
         populateRoleSelect("roleFreeKick", userClub.roles.freeKickTaker);
         populateRoleSelect("roleCorner", userClub.roles.cornerTaker);
@@ -3552,6 +3706,38 @@ class UIManager {
     /**
      * Spielplan & Tabelle rendern
      */
+    /**
+     * Welche Tabellenplätze wohin führen - genau nach den Regeln, die die
+     * CompetitionEngine am Saisonende anwendet: Europapokalplätze der
+     * Topligen, Aufstiegsplätze laut Ligadefinition und so viele Absteiger,
+     * wie aus den Ligen darunter aufsteigen.
+     */
+    tabellenZonen(state, ligaId, anzahl) {
+        const zonen = new Map();
+        const ligen = state.leagues || [];
+        const liga = ligen.find(l => l.id === ligaId);
+        if (!liga || !anzahl) return zonen;
+
+        const eu = liga.europeanSpots;
+        if (eu && (liga.level || 1) === 1) {
+            (eu.championsLeague || []).forEach(p => zonen.set(p, "ucl"));
+            (eu.europaLeague || []).forEach(p => zonen.set(p, "uel"));
+            (eu.conferenceLeague || []).forEach(p => zonen.set(p, "uecl"));
+        }
+        if (ligen.length > 1) {
+            if (liga.promotionTo) {
+                const plaetze = (liga.promotionSpots && liga.promotionSpots.length) ? liga.promotionSpots : [1];
+                plaetze.forEach(p => zonen.set(p, "auf"));
+            }
+            const aufsteiger = ligen
+                .filter(l => l.promotionTo === liga.id)
+                .reduce((summe, l) => summe + ((l.promotionSpots && l.promotionSpots.length) || 1), 0);
+            const absteiger = Math.min(aufsteiger, anzahl - 1);
+            for (let p = anzahl - absteiger + 1; p <= anzahl; p++) zonen.set(p, "ab");
+        }
+        return zonen;
+    }
+
     renderFixturesAndStandings() {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
@@ -3566,14 +3752,23 @@ class UIManager {
 
         const tbody = document.getElementById("fullStandingsBody");
         const fixturesList = document.getElementById("fixturesList");
+        const tabelle = document.getElementById("fullStandingsTable");
+        const legende = document.getElementById("standingsLegend");
+        if (legende) legende.innerHTML = "";
 
+        // Pokal- und Endrunden haben keine Tabellenspalten; der Kopf "Platz,
+        // Spiele, Punkte" stand dort über Paarungen und Ergebnissen.
         const cupIds = Object.keys(state.cups || {});
+        const europa = ["ucl", "uel", "uecl"].includes(activeComp);
+        const endrunde = europa && (state.europeanCompetitions?.[activeComp]?.endrunde || []).length > 0;
+        if (tabelle) tabelle.classList.toggle("tabelle-runden", cupIds.includes(activeComp) || endrunde);
+
         if (cupIds.includes(activeComp)) {
             this.renderPokalTableau(state, state.cups[activeComp], tbody, fixturesList, userClub);
             return;
         }
 
-        if (["ucl", "uel", "uecl"].includes(activeComp)) {
+        if (europa) {
             this.renderEuropapokal(state, state.europeanCompetitions?.[activeComp], tbody, fixturesList, userClub);
             return;
         }
@@ -3590,27 +3785,45 @@ class UIManager {
             return;
         }
 
+        const zonen = this.tabellenZonen(state, activeComp, table.length);
         tbody.innerHTML = table.map((s, idx) => {
             const isUser = s.clubId === userClub.id;
+            const zone = zonen.get(idx + 1);
+            const club = state.clubs.find(c => c.id === s.clubId);
+            const naechsteZone = zonen.get(idx + 2);
+            const grenze = zone !== naechsteZone && idx < table.length - 1 ? " zonen-grenze" : "";
             return `
-                <tr class="${isUser ? 'row-user-club' : ''}">
-                    <td><strong>${idx + 1}</strong></td>
-                    <td><strong>${s.clubName}</strong></td>
-                    <td>${s.played}</td>
-                    <td>${s.won}</td>
-                    <td>${s.drawn}</td>
-                    <td>${s.lost}</td>
-                    <td>${s.goalsFor}:${s.goalsAgainst}</td>
-                    <td>${s.goalDiff > 0 ? '+' + s.goalDiff : s.goalDiff}</td>
-                    <td><strong>${s.points}</strong></td>
-                    <td>
+                <tr class="${isUser ? 'row-user-club' : ''}${grenze}">
+                    <td class="tb-platz"><span class="rang${zone ? ` rang-${zone}` : ""}" title="${zone ? UIManager.ZONEN[zone] : ""}">${idx + 1}</span></td>
+                    <td class="tb-verein"><span class="tb-verein-inhalt"><span class="mini-wappen" data-club="${this.escapeHtml(s.clubId)}"></span><strong>${this.escapeHtml(s.clubName || club?.name || "")}</strong></span></td>
+                    <td class="tb-sp">${s.played}</td>
+                    <td class="tb-s">${s.won}</td>
+                    <td class="tb-u">${s.drawn}</td>
+                    <td class="tb-n">${s.lost}</td>
+                    <td class="tb-tore nowrap">${s.goalsFor}:${s.goalsAgainst}</td>
+                    <td class="tb-diff">${this.vorzeichen(s.goalDiff)}</td>
+                    <td class="tb-pkt"><strong>${s.points}</strong></td>
+                    <td class="tb-form">
                         <div class="form-indicators">
-                            ${(s.form || []).map(f => `<span class="form-dot ${String(f).toLowerCase()}">${f}</span>`).join("")}
+                            ${(s.form || []).map(f => this.formPunkt(f)).join("")}
                         </div>
                     </td>
                 </tr>
             `;
         }).join("");
+        tbody.querySelectorAll(".mini-wappen").forEach(el => {
+            const club = state.clubs.find(c => String(c.id) === el.dataset.club);
+            if (club) {
+                this.setzeWappen(el, club);
+                el.textContent = this.vereinsKuerzel(club.name).slice(0, 1);
+            }
+        });
+        if (legende) {
+            const genutzt = [...new Set(zonen.values())];
+            legende.innerHTML = genutzt.map(z =>
+                `<span class="legende-eintrag"><span class="rang rang-${z}"></span>${UIManager.ZONEN[z]}</span>`
+            ).join("");
+        }
 
         // 2. Spielplan rendern
         const schedule = this.getScheduleForLeague(state, activeComp);
@@ -3793,17 +4006,17 @@ class UIManager {
                 const club = state.clubs.find(c => c.id === s.clubId);
                 const isUser = s.clubId === userClub?.id;
                 return `
-                    <tr class="${isUser ? 'row-user-club' : ''}">
-                        <td><strong>${idx + 1}</strong></td>
-                        <td><strong>${this.escapeHtml(club?.name || s.clubId)}</strong></td>
-                        <td>${s.played}</td>
-                        <td>${s.won}</td>
-                        <td>${s.drawn}</td>
-                        <td>${s.lost}</td>
-                        <td>${s.goalsFor}:${s.goalsAgainst}</td>
-                        <td>${s.goalsFor - s.goalsAgainst}</td>
-                        <td><strong>${s.points}</strong></td>
-                        <td><span class="badge ${idx < 2 ? 'badge-status-fit' : ''}">${idx < 2 ? 'Qualifiziert' : 'Gruppe'}</span></td>
+                    <tr class="${isUser ? 'row-user-club' : ''}${idx === 1 ? ' zonen-grenze' : ''}">
+                        <td class="tb-platz"><span class="rang${idx < 2 ? ' rang-ucl' : ''}">${idx + 1}</span></td>
+                        <td class="tb-verein"><strong>${this.escapeHtml(club?.name || s.clubId)}</strong></td>
+                        <td class="tb-sp">${s.played}</td>
+                        <td class="tb-s">${s.won}</td>
+                        <td class="tb-u">${s.drawn}</td>
+                        <td class="tb-n">${s.lost}</td>
+                        <td class="tb-tore nowrap">${s.goalsFor}:${s.goalsAgainst}</td>
+                        <td class="tb-diff">${this.vorzeichen(s.goalsFor - s.goalsAgainst)}</td>
+                        <td class="tb-pkt"><strong>${s.points}</strong></td>
+                        <td class="tb-form"><span class="badge ${idx < 2 ? 'badge-status-fit' : ''}">${idx < 2 ? 'Weiter' : 'Gruppe'}</span></td>
                     </tr>`;
             }).join("");
             return kopf + zeilen;
@@ -4064,17 +4277,20 @@ class UIManager {
         if (offersContainer && offersList) {
             if (pendingOffers.length > 0) {
                 offersContainer.style.display = "block";
-                offersList.innerHTML = pendingOffers.map(o => `
-                    <div class="news-item-dash">
-                        <div>
-                            <strong>${o.fromClubName || o.buyerClubName || 'Ein Verein'}</strong> bietet <strong>${o.feeFormatted || GameState.formatMoney(o.fee)}</strong> für <strong>${o.playerName}</strong>.
+                offersList.innerHTML = pendingOffers.map(o => {
+                    const spieler = (userClub.players || []).find(p => p.id === o.playerId);
+                    const wert = spieler && spieler.value ? ` <span class="angebot-wert">Marktwert ${this.geldKurz(spieler.value)}</span>` : "";
+                    return `
+                    <div class="news-item-dash angebot-zeile">
+                        <div class="angebot-text">
+                            <strong>${o.fromClubName || o.buyerClubName || 'Ein Verein'}</strong> bietet <strong>${this.geldKurz(o.fee)}</strong> für <strong>${o.playerName}</strong>.${wert}
                         </div>
-                        <div style="display:flex; gap:8px;">
+                        <div class="angebot-knoepfe">
                             <button class="btn btn-sm btn-primary btn-accept-offer" data-offer-id="${o.id}">Annehmen</button>
                             <button class="btn btn-sm btn-secondary btn-reject-offer" data-offer-id="${o.id}">Ablehnen</button>
                         </div>
-                    </div>
-                `).join("");
+                    </div>`;
+                }).join("");
 
                 document.querySelectorAll(".btn-accept-offer").forEach(b => {
                     b.addEventListener("click", () => {
@@ -4150,11 +4366,17 @@ class UIManager {
         marketPlayers.sort((a, b) => b.overall - a.overall);
 
         // Niemand liest viertausend Zeilen. Der Markt zeigt die besten
-        // Treffer und sagt, wie viele es insgesamt sind - alles andere
-        // erschlug beim Öffnen des Reiters auch noch das Handy.
-        const TREFFER_PRO_SEITE = 120;
+        // Treffer seitenweise - erst 30, auf Wunsch mehr. Vorher standen
+        // 120 Zeilen untereinander, über zehntausend Pixel Seite.
+        const TREFFER_PRO_SEITE = 30;
+        const filterKey = `${searchVal}|${posVal}|${minStars}`;
+        if (this._tfFilterKey !== filterKey) {
+            this._tfFilterKey = filterKey;
+            this._tfLimit = TREFFER_PRO_SEITE;
+        }
+        const limit = this._tfLimit || TREFFER_PRO_SEITE;
         const gesamtTreffer = marketPlayers.length;
-        marketPlayers = marketPlayers.slice(0, TREFFER_PRO_SEITE);
+        marketPlayers = marketPlayers.slice(0, limit);
 
         const ratingEngine = (typeof PlayerRatingEngine !== 'undefined' && PlayerRatingEngine) ? PlayerRatingEngine : ((typeof window !== 'undefined' && window.PlayerRatingEngine) ? window.PlayerRatingEngine : null);
 
@@ -4183,27 +4405,29 @@ class UIManager {
                 // Bei geringem Wissen ist auch die Marktwertschätzung nur eine Näherung
                 const valueClass = card && !card.isPrecise ? "estimated-value" : "";
 
+                const vereinsName = club ? this.escapeHtml(club.name) : "Ablösefrei";
                 return `
                     <tr class="row-clickable" data-player-id="${p.id}" title="Details zu ${this.escapeHtml(p.name)} anzeigen">
-                        <td>
+                        <td class="tm-name">
                             <strong>${this.escapeHtml(p.name)}</strong>
-                            <div style="font-size:10px; color:var(--text-muted);">${this.escapeHtml(p.nationality || 'Profi')}</div>
+                            <span class="tm-sub">${this.escapeHtml(p.nationality || "Profi")} · ${p.age} J.</span>
                         </td>
-                        <td>${club ? this.escapeHtml(club.name) : '<span class="badge badge-success">Ablösefrei</span>'}</td>
-                        <td><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span></td>
-                        <td>${p.age}</td>
-                        <td>
+                        <td class="tm-verein">${club ? vereinsName : '<span class="badge badge-success">Ablösefrei</span>'}</td>
+                        <td class="tm-pos"><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span></td>
+                        <td class="tm-alter">${p.age}</td>
+                        <td class="tm-staerke nowrap">
                             ${sterne}
-                            <div style="font-size:10px; color:var(--text-muted);">${abilityText}</div>
+                            <div class="tm-sub">${abilityText}</div>
                         </td>
-                        <td><span class="badge badge-info">${roleDisplay}</span></td>
-                        <td><strong class="${valueClass}">${valDisplay}</strong></td>
-                        <td><span class="badge ${confBadgeClass}" title="${confInfo.label}: ${confInfo.hint}">${confPercent}%</span></td>
-                        <td>${this.formatMoneySafe(p.wage)}</td>
-                        <td>${p.clubId ? `${p.contractYears} J.` : "-"}</td>
-                        <td>
-                            <div style="display:flex; gap:6px;">
-                                <button class="btn btn-sm btn-secondary btn-scout-direct" data-player-id="${p.id}" title="Scouten für präzisere Daten">🔍 Scouten</button>
+                        <td class="tm-rolle"><span class="badge badge-info">${roleDisplay}</span></td>
+                        <td class="tm-wert nowrap"><strong class="${valueClass}">${valDisplay}</strong></td>
+                        <td class="tm-wissen"><span class="badge ${confBadgeClass}" title="${confInfo.label}: ${confInfo.hint}">${confPercent}%</span></td>
+                        <td class="tm-gehalt nowrap">${this.geldKurz(p.wage)}</td>
+                        <td class="tm-vertrag nowrap">${p.clubId ? `${p.contractYears} J.` : "-"}</td>
+                        <td class="tm-meta">${vereinsName} · ${valDisplay} · Scout ${confPercent} %</td>
+                        <td class="tm-aktion">
+                            <div class="tm-knoepfe">
+                                <button class="btn btn-sm btn-secondary btn-scout-direct" data-player-id="${p.id}" title="Scouten für präzisere Daten">🔍<span class="tm-knopf-text"> Scouten</span></button>
                                 <button class="btn btn-sm btn-primary btn-bid-player" data-player-id="${p.id}">Verhandeln</button>
                             </div>
                         </td>
@@ -4211,12 +4435,18 @@ class UIManager {
                 `;
             }).join("");
 
-            // Wie viele es wirklich gibt, gehört unter die Liste
+            // Wie viele es wirklich gibt, gehört unter die Liste - und ein
+            // Knopf, der die nächsten dreißig holt
             if (gesamtTreffer > marketPlayers.length) {
-                tbody.innerHTML += `<tr><td colspan="11" class="text-center text-muted" style="padding:14px;">
-                    Die ${marketPlayers.length} stärksten von ${gesamtTreffer.toLocaleString("de-DE")} passenden Spielern.
-                    Grenzen Sie die Suche über Position, Sterne oder den Namen weiter ein.
+                tbody.innerHTML += `<tr class="tm-mehr-zeile"><td colspan="12" class="text-center text-muted" style="padding:14px;">
+                    <div>Die ${marketPlayers.length} stärksten von ${gesamtTreffer.toLocaleString("de-DE")} passenden Spielern.</div>
+                    <button class="btn btn-sm btn-secondary" id="btnTfMehr" style="margin-top:8px;">Weitere ${Math.min(TREFFER_PRO_SEITE, gesamtTreffer - marketPlayers.length)} anzeigen</button>
                 </td></tr>`;
+                const mehr = document.getElementById("btnTfMehr");
+                if (mehr) mehr.onclick = () => {
+                    this._tfLimit = (this._tfLimit || TREFFER_PRO_SEITE) + TREFFER_PRO_SEITE;
+                    this.renderTransfers();
+                };
             }
 
             // Klick auf die Zeile öffnet die Spielerdetails (Buttons ausgenommen)
@@ -4449,8 +4679,10 @@ class UIManager {
         }
 
         const fach = (name, wert) => `
-            <div class="club-stat-line"><span>${name}:</span>
-                <strong><span class="mini-bar" style="width:70px;"><span class="mini-bar-fill" style="width:${wert}%"></span></span> ${wert}</strong>
+            <div class="stab-fach">
+                <span class="stab-fach-name">${name}</span>
+                <span class="mini-bar"><span class="mini-bar-fill" style="width:${wert}%"></span></span>
+                <strong>${wert}</strong>
             </div>`;
 
         const planText = plan
@@ -4466,8 +4698,8 @@ class UIManager {
                 Sie führen den Verein, nicht die Trainingsgruppe: Der Stab plant die Einheiten selbst.
                 Ändern Sie Schwerpunkt oder Intensität, gilt Ihre Vorgabe für ${staff.VETO_DAUER_TAGE} Tage.
             </p>
-            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:4px 18px;">
-                ${fach("Co-Trainer an der Seitenlinie", stab.coTrainer ?? stab.analyse)}
+            <div class="stab-faecher">
+                ${fach("Co-Trainer (Livespiel)", stab.coTrainer ?? stab.analyse)}
                 ${fach("Athletik & Fitness", stab.fitness)}
                 ${fach("Spielanalyse", stab.analyse)}
                 ${fach("Medizinische Abteilung", stab.medizin)}
@@ -4518,19 +4750,19 @@ class UIManager {
 
             return `
                 <tr class="row-clickable" data-player-id="${e.playerId}" title="Details zu ${this.escapeHtml(e.name)} öffnen">
-                    <td><strong>${this.escapeHtml(e.name)}</strong> <span class="text-muted" style="font-size:11px;">${e.age} J.</span></td>
+                    <td class="nowrap"><strong>${this.escapeHtml(e.name)}</strong> <span class="text-muted" style="font-size:11px;">${e.age} J.</span></td>
                     <td><span class="pos-tag pos-${this.getPosGroup(e.pos)}">${e.pos}</span></td>
-                    <td>
-                        <span class="mini-bar"><span class="mini-bar-fill" style="width:${e.fitness}%"></span></span>
-                        ${e.fitness}%
+                    <td class="nowrap">
+                        <span class="mini-bar"><span class="mini-bar-fill" style="width:${Math.round(e.fitness)}%;background:${this.fitnessFarbe(e.fitness)}"></span></span>
+                        ${Math.round(e.fitness)}%
                     </td>
-                    <td><strong style="color:${ermuedungFarbe};">${e.fatigue}</strong></td>
-                    <td>${e.load}</td>
-                    <td>
-                        <span class="mini-bar"><span class="mini-bar-fill" style="width:${e.sharpness}%; background:#38bdf8;"></span></span>
-                        ${e.sharpness}%
+                    <td><strong style="color:${ermuedungFarbe};">${Math.round(e.fatigue)}</strong></td>
+                    <td>${String(e.load).replace(".", ",")}</td>
+                    <td class="nowrap">
+                        <span class="mini-bar"><span class="mini-bar-fill" style="width:${Math.round(e.sharpness)}%; background:#38bdf8;"></span></span>
+                        ${Math.round(e.sharpness)}%
                     </td>
-                    <td><strong style="color:${risikoFarbe};">${e.injuryRiskPercent.toFixed(1)} %</strong></td>
+                    <td class="nowrap"><strong style="color:${risikoFarbe};">${e.injuryRiskPercent.toFixed(1).replace(".", ",")} %</strong></td>
                     <td>${entwicklung}</td>
                     <td style="font-size:12px; color:var(--text-muted);">${this.escapeHtml(e.note)}</td>
                 </tr>
@@ -4696,15 +4928,19 @@ class UIManager {
             summe += kosten;
 
             const hinweis = aufschlag > 0
-                ? `<span style="color:#f59e0b; font-size:11px;"> (+${GameState.formatMoney(aufschlag)} wegen Zustand)</span>`
+                ? `<span class="unterhalt-aufschlag">+${GameState.formatMoney(aufschlag)} durch Zustand</span>`
                 : "";
 
             return `
-                <div class="finance-stat-row">
-                    <span>${ICONS[key] || "🏗️"} ${fac.FACILITY_NAMES[key]}
-                        <span class="text-muted" style="font-size:11px;">Stufe ${a.stufe} &middot; ${fac.zustandsText(a.zustand)}</span>
+                <div class="finance-stat-row unterhalt-zeile">
+                    <span class="unterhalt-name">
+                        <span>${ICONS[key] || "🏗️"} ${fac.FACILITY_NAMES[key]}</span>
+                        <span class="unterhalt-sub">Stufe ${a.stufe} &middot; ${fac.zustandsText(a.zustand)}</span>
                     </span>
-                    <strong>${GameState.formatMoney(kosten)}${hinweis}</strong>
+                    <span class="unterhalt-betrag">
+                        <strong>${GameState.formatMoney(kosten)}</strong>
+                        ${hinweis}
+                    </span>
                 </div>`;
         }).join("");
 
@@ -4868,95 +5104,113 @@ class UIManager {
      */
     renderStats() {
         const state = this.app.state;
+        const eigeneLiga = this.getUserLeagueId(state);
+        const ligen = state.leagues || [];
 
-        // Top Scorers
-        const scorers = [...state.players].filter(p => p.stats.goals > 0);
-        scorers.sort((a, b) => b.stats.goals - a.stats.goals);
-        const topScorersEl = document.getElementById("statsTopScorers");
-        if (topScorersEl) {
-            topScorersEl.innerHTML = scorers.slice(0, 5).map((p, i) => {
-                const club = state.clubs.find(c => c.id === p.clubId);
-                return `
-                    <div class="leaderboard-item">
-                        <span class="lb-rank">${i + 1}.</span>
-                        <span class="lb-name">${p.name}</span>
-                        <span class="lb-club">${club?.name || ''}</span>
-                        <span class="lb-val">${p.stats.goals} ⚽</span>
-                    </div>
-                `;
-            }).join("") || `<div class="empty-state-sm">Noch keine Tore erzielt.</div>`;
+        // Bisher liefen hier alle Ligen der Welt durcheinander: Torjäger aus
+        // Spanien, Vorlagengeber aus der Regionalliga. Standard ist jetzt die
+        // eigene Liga, jede andere lässt sich wählen.
+        const select = document.getElementById("statsLeagueSelect");
+        if (!this.statsLigaId || (this.statsLigaId !== "alle" && !ligen.some(l => l.id === this.statsLigaId))) {
+            this.statsLigaId = eigeneLiga;
+        }
+        const ligaId = this.statsLigaId;
+        if (select) {
+            const flagge = { de: "🇩🇪", en: "🏴", es: "🇪🇸", it: "🇮🇹", fr: "🇫🇷" };
+            const name = l => `${flagge[l.countryId] || "🌍"} ${l.shortName || l.name}`;
+            const eigene = ligen.find(l => l.id === eigeneLiga);
+            const andere = ligen
+                .filter(l => l.id !== eigeneLiga)
+                .sort((x, y) => String(x.countryId).localeCompare(String(y.countryId)) || (x.level || 1) - (y.level || 1));
+            select.innerHTML = [
+                eigene ? `<option value="${eigene.id}">${name(eigene)} (eigene Liga)</option>` : "",
+                `<option value="alle">🌍 Alle Ligen</option>`,
+                ...andere.map(l => `<option value="${l.id}">${name(l)}</option>`)
+            ].join("");
+            select.value = ligaId;
+            select.onchange = () => {
+                this.statsLigaId = select.value;
+                this.renderStats();
+            };
         }
 
-        // Top Assists
-        const assists = [...state.players].filter(p => p.stats.assists > 0);
-        assists.sort((a, b) => b.stats.assists - a.stats.assists);
-        const topAssistsEl = document.getElementById("statsTopAssists");
-        if (topAssistsEl) {
-            topAssistsEl.innerHTML = assists.slice(0, 5).map((p, i) => {
-                const club = state.clubs.find(c => c.id === p.clubId);
-                return `
-                    <div class="leaderboard-item">
-                        <span class="lb-rank">${i + 1}.</span>
-                        <span class="lb-name">${p.name}</span>
-                        <span class="lb-club">${club?.name || ''}</span>
-                        <span class="lb-val">${p.stats.assists} 🎯</span>
-                    </div>
-                `;
-            }).join("") || `<div class="empty-state-sm">Noch keine Vorlagen erfasst.</div>`;
-        }
+        const vereine = new Map((state.clubs || []).map(c => [c.id, c]));
+        const spieler = (state.players || []).filter(p => {
+            if (!p.stats) return false;
+            if (ligaId === "alle") return true;
+            return vereine.get(p.clubId)?.leagueId === ligaId;
+        });
+        const userClubId = state.userClubId;
+        const ANZAHL = 8;
 
-        // Clean Sheets
-        const keepers = [...state.players].filter(p => p.pos === "TW" && p.stats.cleanSheets > 0);
-        keepers.sort((a, b) => b.stats.cleanSheets - a.stats.cleanSheets);
-        const cleanSheetsEl = document.getElementById("statsCleanSheets");
-        if (cleanSheetsEl) {
-            cleanSheetsEl.innerHTML = keepers.slice(0, 5).map((p, i) => {
-                const club = state.clubs.find(c => c.id === p.clubId);
+        const rangliste = (elId, liste, wertText, leer) => {
+            const el = document.getElementById(elId);
+            if (!el) return;
+            el.innerHTML = liste.slice(0, ANZAHL).map((p, i) => {
+                const club = vereine.get(p.clubId);
                 return `
-                    <div class="leaderboard-item">
-                        <span class="lb-rank">${i + 1}.</span>
-                        <span class="lb-name">${p.name}</span>
-                        <span class="lb-club">${club?.name || ''}</span>
-                        <span class="lb-val">${p.stats.cleanSheets} 🧤</span>
-                    </div>
-                `;
-            }).join("") || `<div class="empty-state-sm">Noch keine Zu-Null-Spiele.</div>`;
-        }
+                    <div class="leaderboard-item${p.clubId === userClubId ? " lb-eigen" : ""}">
+                        <span class="lb-rank">${i + 1}</span>
+                        <span class="mini-wappen" data-club="${this.escapeHtml(String(p.clubId))}"></span>
+                        <span class="lb-person">
+                            <span class="lb-name">${this.escapeHtml(p.name)}</span>
+                            <span class="lb-club">${this.escapeHtml(club?.name || "")}</span>
+                        </span>
+                        <span class="lb-val">${wertText(p)}</span>
+                    </div>`;
+            }).join("") || `<div class="empty-state-sm">${leer}</div>`;
+            el.querySelectorAll(".mini-wappen").forEach(w => {
+                const club = vereine.get(w.dataset.club) || state.clubs.find(c => String(c.id) === w.dataset.club);
+                if (club) {
+                    this.setzeWappen(w, club);
+                    w.textContent = this.vereinsKuerzel(club.name).slice(0, 1);
+                }
+            });
+        };
 
-        // Best Ratings
-        const rated = [...state.players].filter(p => p.stats.matches >= 2);
-        rated.sort((a, b) => (b.stats.ratingSum / b.stats.matches) - (a.stats.ratingSum / a.stats.matches));
-        const topRatingsEl = document.getElementById("statsTopRatings");
-        if (topRatingsEl) {
-            topRatingsEl.innerHTML = rated.slice(0, 5).map((p, i) => {
-                const club = state.clubs.find(c => c.id === p.clubId);
-                const avg = (p.stats.ratingSum / p.stats.matches).toFixed(2);
-                return `
-                    <div class="leaderboard-item">
-                        <span class="lb-rank">${i + 1}.</span>
-                        <span class="lb-name">${p.name}</span>
-                        <span class="lb-club">${club?.name || ''}</span>
-                        <span class="lb-val">${avg} ⭐</span>
-                    </div>
-                `;
-            }).join("") || `<div class="empty-state-sm">Mindestens 2 Spiele erforderlich.</div>`;
-        }
+        rangliste("statsTopScorers",
+            spieler.filter(p => p.stats.goals > 0).sort((a, b) => b.stats.goals - a.stats.goals),
+            p => `${p.stats.goals} <small>Tore</small>`,
+            "Noch keine Tore erzielt.");
+
+        rangliste("statsTopAssists",
+            spieler.filter(p => p.stats.assists > 0).sort((a, b) => b.stats.assists - a.stats.assists),
+            p => `${p.stats.assists} <small>Vorl.</small>`,
+            "Noch keine Vorlagen erfasst.");
+
+        rangliste("statsCleanSheets",
+            spieler.filter(p => p.pos === "TW" && p.stats.cleanSheets > 0).sort((a, b) => b.stats.cleanSheets - a.stats.cleanSheets),
+            p => `${p.stats.cleanSheets} <small>zu null</small>`,
+            "Noch keine Zu-null-Spiele.");
+
+        // Ein Spieler mit zwei guten Einsätzen gehört nicht vor den, der jede
+        // Woche spielt: Mindesteinsätze wachsen mit der Saison.
+        const meisteEinsaetze = spieler.reduce((m, p) => Math.max(m, p.stats.matches || 0), 0);
+        const mindestens = Math.max(2, Math.ceil(meisteEinsaetze * 0.4));
+        const schnitt = p => p.stats.ratingSum / p.stats.matches;
+        rangliste("statsTopRatings",
+            spieler.filter(p => (p.stats.matches || 0) >= mindestens).sort((a, b) => schnitt(b) - schnitt(a)),
+            p => `${schnitt(p).toFixed(2).replace(".", ",")} <small>Ø</small>`,
+            `Mindestens ${mindestens} Einsätze erforderlich.`);
+        DOM.setText("statsRatingHint", `ab ${mindestens} Einsätzen`);
 
         // Historie der vergangenen Saisons
         const histBody = document.getElementById("statsHistoryBody");
         if (histBody) {
             const past = state.history?.pastSeasons || [];
             if (past.length === 0) {
-                histBody.innerHTML = `<tr><td colspan="4" class="text-center text-muted">Aktuell läuft Saison 1. Historische Daten werden nach Saisonende archiviert.</td></tr>`;
+                histBody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">Aktuell läuft die erste Saison. Meister, Platzierung und Torschützenkönig werden nach Saisonende hier archiviert.</td></tr>`;
             } else {
                 histBody.innerHTML = past.map(s => {
                     const myClub = state.clubs.find(c => c.id === s.userClubId);
+                    const kanone = s.awards?.topScorer;
                     return `
                         <tr>
                             <td><strong>Saison ${s.season}</strong></td>
-                            <td>🏆 ${s.championName}</td>
-                            <td>${myClub?.name || 'Mein Verein'}</td>
+                            <td>🏆 ${this.escapeHtml(s.championName || "-")}</td>
+                            <td>${this.escapeHtml(myClub?.name || 'Mein Verein')}</td>
                             <td><strong>Platz ${s.userRank}</strong></td>
+                            <td>${kanone ? `${this.escapeHtml(kanone.name)} (${kanone.goals})` : "-"}</td>
                         </tr>
                     `;
                 }).join("");
@@ -5116,7 +5370,7 @@ class UIManager {
         const lage = calendarEngine.kaderLage(state);
         const hinweise = [];
         hinweise.push(n.heim ? "Heimspiel" : "Auswärtsspiel");
-        if (n.gegnerForm.length) hinweise.push(`Gegner-Form: ${n.gegnerForm.join(" ")}`);
+        if (n.gegnerForm.length) hinweise.push(`Gegner-Form: ${n.gegnerForm.map(UIManager.formKuerzel).join(" ")}`);
         if (lage.verletzt > 0) hinweise.push(`${lage.verletzt} eigene Spieler verletzt`);
         if (lage.gesperrt > 0) hinweise.push(`${lage.gesperrt} gesperrt`);
         DOM.setText("nextMatchMeta", hinweise.join("  ·  "));
@@ -7911,7 +8165,8 @@ class UIManager {
             return {
                 art: "spiel",
                 text: `${spiel.rundenName} ${wo} ${this.kurzName(gegner?.name || "")}`,
-                kurz: spiel.art === "pokal" ? "Pokal" : "Europa"
+                // "Europa" allein sagte nicht, dass jetzt ein Spiel ansteht
+                kurz: "Anpfiff"
             };
         }
 
@@ -7981,6 +8236,36 @@ class UIManager {
     }
 
     /** Vereinsnamen für einen Knopf kürzen */
+    /**
+     * Kürzel eines Vereins für Wappen und enge Spalten: das prägende Wort,
+     * nicht das "FC" oder die "1." davor. Vorher stand "1. " im Wappen des
+     * 1. FC Köln und "FC " in dem des FC Bayern.
+     */
+    vereinsKuerzel(name) {
+        const allgemein = new Set(["FC", "SV", "SC", "VfB", "VfL", "TSG", "FSV", "RB", "SpVgg", "TSV", "BSC", "SG",
+            "Borussia", "Eintracht", "Bayer", "Werder", "Hertha", "Fortuna", "Union", "Rot-Weiß", "Rot-Weiss", "AC", "AS", "CF",
+            "CD", "RC", "OGC", "SS", "FK", "Real", "Club", "Sporting", "Olympique", "Stade", "Atlético", "Athletic"]);
+        const teile = String(name || "").split(/\s+/).filter(t => t && !/^\d+\.?$/.test(t));
+        const kern = teile.find(t => !allgemein.has(t)) || teile[0] || "?";
+        return kern.replace(/[^A-Za-zÄÖÜäöüß]/g, "").slice(0, 3).toUpperCase() || "?";
+    }
+
+    /** Wappen in Vereinsfarben - mit lesbarer Schrift auch auf weißem Grund */
+    setzeWappen(el, club) {
+        const farbe = club.primaryColor || "#334155";
+        const zweit = club.secondaryColor || "#ffffff";
+        const hell = (hex) => {
+            const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ""));
+            if (!m) return false;
+            const n = parseInt(m[1], 16);
+            return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255 > 0.62;
+        };
+        el.style.backgroundColor = farbe;
+        el.style.color = hell(farbe) ? (hell(zweit) ? "#0f172a" : zweit) : (hell(zweit) ? zweit : "#ffffff");
+        el.style.boxShadow = `inset 0 0 0 3px ${zweit}, 0 0 0 1px rgba(255,255,255,0.25)`;
+        el.textContent = this.vereinsKuerzel(club.name);
+    }
+
     kurzName(name) {
         if (!name) return "";
         return name.length <= 18 ? name : name.slice(0, 16).trim() + "…";
@@ -8789,7 +9074,12 @@ class UIManager {
             document.getElementById(id).onchange = (e) => {
                 const userClub = this.app.state.clubs.find(c => c.id === this.app.state.userClubId);
                 const roleMap = { roleCaptain: "captain", rolePenalty: "penaltyTaker", roleFreeKick: "freeKickTaker", roleCorner: "cornerTaker" };
-                userClub.roles[roleMap[id]] = parseInt(e.target.value, 10);
+                // IDs von Jugendspielern sind Texte - parseInt machte daraus NaN
+                const wert = e.target.value;
+                const spieler = wert === "" ? null
+                    : this.app.state.players.find(p => String(p.id) === wert);
+                userClub.roles[roleMap[id]] = spieler ? spieler.id : null;
+                if (typeof this.app.state.saveToLocalStorage === "function") this.app.state.saveToLocalStorage();
             };
         });
 
@@ -9000,9 +9290,17 @@ class UIManager {
             this.showNewGameModal();
         };
 
+        // Der Ton ist eine Vorliebe des Geräts, nicht des Spielstands
+        try {
+            if (typeof localStorage !== "undefined" && localStorage.getItem("fm_sound") === "aus") this.soundEnabled = false;
+        } catch (e) { /* ohne Speicher bleibt der Ton an */ }
+        document.getElementById("btnToggleSound").textContent = this.soundEnabled ? "🔊 Sound: Aktiviert" : "🔇 Sound: Stummgeschaltet";
         document.getElementById("btnToggleSound").onclick = () => {
             this.soundEnabled = !this.soundEnabled;
             document.getElementById("btnToggleSound").textContent = this.soundEnabled ? "🔊 Sound: Aktiviert" : "🔇 Sound: Stummgeschaltet";
+            try {
+                if (typeof localStorage !== "undefined") localStorage.setItem("fm_sound", this.soundEnabled ? "an" : "aus");
+            } catch (e) { /* nicht speicherbar - gilt dann nur für diese Sitzung */ }
         };
     }
 }

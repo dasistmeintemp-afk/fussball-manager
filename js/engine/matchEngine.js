@@ -547,6 +547,16 @@ class MatchEngine {
     }
 
     /**
+     * Die im Taktik-Reiter festgelegten Schützen eines Vereins. Vorher
+     * wurden sie gespeichert, aber von keiner Simulation gelesen.
+     */
+    static standardsAusRollen(club) {
+        const r = (club && club.roles) || {};
+        const id = v => (v === undefined || v === "" || (typeof v === "number" && isNaN(v))) ? null : v;
+        return { elfmeter: id(r.penaltyTaker), freistoss: id(r.freeKickTaker), ecken: id(r.cornerTaker) };
+    }
+
+    /**
      * Wer tritt an? Der vorgegebene Schütze, solange er auf dem Platz steht -
      * sonst der Beste unter den Feldspielern.
      */
@@ -717,9 +727,13 @@ class MatchEngine {
         // Ein ausgewechselter Spieler darf nicht zurueck, und wer schon drin
         // ist, sitzt nicht mehr draussen. Ohne diese Angabe gilt die Bank des
         // Vereins.
-        const bankVon = (isHomeTeam) => (isHomeTeam
+        // Wer ausgewechselt ist, kommt nicht zurück. Die Bank ist eine feste
+        // Liste - ohne diese Buchführung wurde ein verletzt Ausgewechselter
+        // drei Minuten später wieder eingewechselt.
+        const ausgewechselt = new Set();
+        const bankVon = (isHomeTeam) => ((isHomeTeam
             ? (options.homeBench || homeClub.bench)
-            : (options.awayBench || awayClub.bench)) || [];
+            : (options.awayBench || awayClub.bench)) || []).filter(id => !ausgewechselt.has(id));
 
         // Wechselt die Simulation fuer diese Mannschaft selbst? Fuer die
         // Mannschaft des Spielers nur, wenn er die Wechsel dem Co-Trainer
@@ -911,7 +925,10 @@ class MatchEngine {
         };
 
         // Standardschützen: vorgegeben, sonst der Beste auf dem Platz
-        const standards = { home: options.standardsHome || {}, away: options.standardsAway || {} };
+        const standards = {
+            home: options.standardsHome || this.standardsAusRollen(homeClub),
+            away: options.standardsAway || this.standardsAusRollen(awayClub)
+        };
         const schuetze = (art, isHomeTeam) => MatchEngine.standardSchuetze(art,
             (isHomeTeam ? activeHomePlayers : activeAwayPlayers).filter(p => !sentOffPlayerIds.has(p.id)),
             standards[isHomeTeam ? "home" : "away"][art],
@@ -1186,8 +1203,66 @@ class MatchEngine {
             }
         };
 
+        // Kleine Fouls über das ganze Spiel verteilt.
+        //
+        // Die Szenen oben erzeugen nur die Fouls, aus denen Karten, Elfmeter
+        // oder Konter entstehen - rund drei pro Spiel. Ein echtes Spiel hat
+        // gut zwanzig Unterbrechungen, und jede davon ist ein Freistoß, den
+        // man auf dem Feld auch sieht. Diese Fouls kosten keine Torchance:
+        // Sie treten neben die Angriffsszenen, nicht an ihre Stelle.
+        //
+        // Sie laufen mit der Uhr: Vorher entstanden sie erst nach der ganzen
+        // Partie und griffen auf die Schlussaufstellung zurück. Ein in der 70.
+        // Minute Eingewechselter foulte dann schon in der 5., und wer in der
+        // 76. Rot sah, fehlte beim Freistoß in der 5. Minute als Schütze.
+        const kleineFouls = _Random.int(7, 13);
+        const foulMinuten = [];
+        for (let i = 0; i < kleineFouls; i++) foulMinuten.push(_Random.int(Math.max(2, startMinute), 89));
+        foulMinuten.sort((x, y) => x - y);
+        const kleinesFoul = (min) => {
+            const heimFoult = _Random.chance(0.5);
+            const foulClub = heimFoult ? homeClub : awayClub;
+            const kandidaten = (heimFoult ? activeHomePlayers : activeAwayPlayers)
+                .filter(p => !sentOffPlayerIds.has(p.id) && p.pos !== "TW");
+            const suender = _Random.choice(kandidaten);
+            if (!suender) return;
+
+            // Gefoult wird der Gegner: Foult die Heimmannschaft, tritt der
+            // Gast den Freistoß Richtung x=4, der Tatort liegt also in der
+            // Heimhälfte oder im Mittelfeld - und umgekehrt.
+            const gefoulteGreiftRechtsAn = !heimFoult;
+            const x = gefoulteGreiftRechtsAn
+                ? 100 - _Random.float(20, 62)
+                : _Random.float(20, 62);
+
+            const sekunde = _Random.int(5, 50);
+            const tatort = { x, y: _Random.float(10, 90) };
+            const foulEreignis = {
+                minute: min,
+                second: sekunde,
+                type: "foul",
+                team: heimFoult ? "home" : "away",
+                clubId: foulClub.id,
+                clubName: foulClub.name,
+                playerId: suender.id,
+                playerName: suender.name,
+                start: tatort,
+                end: { x: tatort.x, y: tatort.y },
+                outcome: "freekick",
+                text: `${min}' - 🛑 Freistoß: ${suender.name} stoppt den Gegenspieler unfair.`
+            };
+            timeline.push(foulEreignis);
+            if (imSchussbereich(tatort, gefoulteGreiftRechtsAn) && _Random.chance(MATCH_TUNING.direkterFreistoss)
+                && direkterFreistoss(min, gefoulteGreiftRechtsAn, tatort, sekunde + 8)) {
+                foulEreignis.direkterFreistoss = true;
+            }
+        };
+
         // Simuliere jede Szene chronologisch
         sceneMinutes.forEach(min => {
+            // Kleine Fouls, die vor dieser Szene liegen, zuerst
+            while (foulMinuten.length > 0 && foulMinuten[0] < min) kleinesFoul(foulMinuten.shift());
+
             // KI-Wechsel ab Minute 60 (C17)
             if (min >= 60 && min <= 82) {
                 ['home', 'away'].forEach(teamSide => {
@@ -1217,6 +1292,7 @@ class MatchEngine {
                                 const outIdx = activePlayers.findIndex(p => p.id === candidateOut.id);
                                 if (outIdx !== -1) {
                                     activePlayers[outIdx] = subIn;
+                                    ausgewechselt.add(candidateOut.id);
                                     if (isHomeTeam) homeSubsUsed++; else awaySubsUsed++;
                                     fensterBelegen(teamSide, min);
 
@@ -1282,6 +1358,7 @@ class MatchEngine {
                             const outIdx = activePlayers.findIndex(p => p.id === victim.id);
                             if (outIdx !== -1) {
                                 activePlayers[outIdx] = subIn;
+                                ausgewechselt.add(victim.id);
                                 if (isHomeTeam) homeSubsUsed++; else awaySubsUsed++;
                                 fensterBelegen(teamSide, min);
 
@@ -1595,64 +1672,24 @@ class MatchEngine {
             }
         });
 
-        // Kleine Fouls über das ganze Spiel verteilt.
-        //
-        // Die Szenen oben erzeugen nur die Fouls, aus denen Karten, Elfmeter
-        // oder Konter entstehen - rund drei pro Spiel. Ein echtes Spiel hat
-        // gut zwanzig Unterbrechungen, und jede davon ist ein Freistoß, den
-        // man auf dem Feld auch sieht. Diese Fouls kosten keine Torchance:
-        // Sie treten neben die Angriffsszenen, nicht an ihre Stelle.
-        const kleineFouls = _Random.int(7, 13);
-        for (let i = 0; i < kleineFouls; i++) {
-            const min = _Random.int(Math.max(2, startMinute), 89);
-            const heimFoult = _Random.chance(0.5);
-            const foulClub = heimFoult ? homeClub : awayClub;
-            const kandidaten = (heimFoult ? activeHomePlayers : activeAwayPlayers)
-                .filter(p => !sentOffPlayerIds.has(p.id) && p.pos !== "TW");
-            const suender = _Random.choice(kandidaten);
-            if (!suender) continue;
-
-            // Gefoult wird der Gegner: Foult die Heimmannschaft, tritt der
-            // Gast den Freistoß Richtung x=4, der Tatort liegt also in der
-            // Heimhälfte oder im Mittelfeld - und umgekehrt.
-            const gefoulteGreiftRechtsAn = !heimFoult;
-            const x = gefoulteGreiftRechtsAn
-                ? 100 - _Random.float(20, 62)
-                : _Random.float(20, 62);
-
-            const sekunde = _Random.int(5, 50);
-            const tatort = { x, y: _Random.float(10, 90) };
-            const foulEreignis = {
-                minute: min,
-                second: sekunde,
-                type: "foul",
-                team: heimFoult ? "home" : "away",
-                clubId: foulClub.id,
-                clubName: foulClub.name,
-                playerId: suender.id,
-                playerName: suender.name,
-                start: tatort,
-                end: { x: tatort.x, y: tatort.y },
-                outcome: "freekick",
-                text: `${min}' - 🛑 Freistoß: ${suender.name} stoppt den Gegenspieler unfair.`
-            };
-            timeline.push(foulEreignis);
-            if (imSchussbereich(tatort, gefoulteGreiftRechtsAn) && _Random.chance(MATCH_TUNING.direkterFreistoss)
-                && direkterFreistoss(min, gefoulteGreiftRechtsAn, tatort, sekunde + 8)) {
-                foulEreignis.direkterFreistoss = true;
-            }
-        }
+        // Die restlichen kleinen Fouls nach der letzten Szene
+        while (foulMinuten.length > 0) kleinesFoul(foulMinuten.shift());
 
         // Spielphasen & Nachspielzeit Events einfügen (A5, C15)
         const halfTimeMinute = 45 + extraTime1;
         const fullTimeMinute = 90 + extraTime2;
 
+        // Der Pausenstand, nicht der Endstand: Das Ereignis entsteht erst
+        // nach der ganzen Partie und trug vorher das Schlussergebnis.
+        const toreBisPause = seite => timeline.filter(e => e.type === "goal" && e.team === seite && e.minute <= halfTimeMinute).length;
+        const pauseHeim = (options.currentHomeScore || 0) + toreBisPause("home");
+        const pauseGast = (options.currentAwayScore || 0) + toreBisPause("away");
         timeline.push({
             minute: halfTimeMinute,
             second: 59,
             type: "halftime",
-            text: formatCommentary("halftime", { minute: halfTimeMinute, score: `${currentHomeScore}:${currentAwayScore}` }),
-            score: [currentHomeScore, currentAwayScore]
+            text: formatCommentary("halftime", { minute: halfTimeMinute, score: `${pauseHeim}:${pauseGast}` }),
+            score: [pauseHeim, pauseGast]
         });
 
         timeline.push({
@@ -2355,8 +2392,8 @@ class LiveMatch {
         this.zurufe = [];
         // Vorgegebene Standardschützen - null heißt: der Beste auf dem Platz
         this.standards = {
-            home: { elfmeter: null, ecken: null, freistoss: null },
-            away: { elfmeter: null, ecken: null, freistoss: null }
+            home: { elfmeter: null, ecken: null, freistoss: null, ...MatchEngine.standardsAusRollen(homeClub) },
+            away: { elfmeter: null, ecken: null, freistoss: null, ...MatchEngine.standardsAusRollen(awayClub) }
         };
 
         // Timeline generieren falls noch nicht vorhanden. Eine vorab erzeugte
@@ -3234,7 +3271,7 @@ class LiveMatch {
         if (fensterNoetig && !this.istHalbzeitpause()
             && this.wechselFenster[side] >= this.maxWechselFenster
             && this._fensterMinute[side] !== this.minute) {
-            return { ok: false, grund: "Alle drei Unterbrechungen fuer Wechsel sind genutzt." };
+            return { ok: false, grund: "Alle drei Unterbrechungen für Wechsel sind genutzt." };
         }
         if (this.platzverweise[side].includes(playerOutId)) {
             return { ok: false, grund: "Ein vom Platz gestellter Spieler kann nicht ausgewechselt werden." };
@@ -3244,7 +3281,7 @@ class LiveMatch {
             return { ok: false, grund: "Dieser Spieler steht nicht auf dem Platz." };
         }
         if (this.ausgewechselt[side].includes(playerInId)) {
-            return { ok: false, grund: "Ein ausgewechselter Spieler darf nicht zurueck." };
+            return { ok: false, grund: "Ein ausgewechselter Spieler darf nicht zurück." };
         }
         if (!this.bank[side].includes(playerInId)) {
             return { ok: false, grund: "Dieser Spieler sitzt nicht auf der Bank." };
@@ -3252,7 +3289,7 @@ class LiveMatch {
         const playerIn = MatchEngine.findPlayer(this.allPlayers, playerInId);
         if (!playerIn) return { ok: false, grund: "Einzuwechselnder Spieler nicht gefunden." };
         if (mitAngemeldeten && this.angemeldeteWechsel.some(w => w.side === side && (w.outId === playerOutId || w.inId === playerInId))) {
-            return { ok: false, grund: "Fuer diesen Spieler ist schon ein Wechsel angemeldet." };
+            return { ok: false, grund: "Für diesen Spieler ist schon ein Wechsel angemeldet." };
         }
         return { ok: true, playerOut, playerIn };
     }
@@ -3517,7 +3554,7 @@ class LiveMatch {
             return { success: false, message: "Unbekannte Formation." };
         }
         const club = this.clubVon(side);
-        if (club.formation === formationKey) return { success: true, message: "Formation unveraendert." };
+        if (club.formation === formationKey) return { success: true, message: "Formation unverändert." };
         club.formation = formationKey;
 
         const lineup = this.lineupVon(side);
@@ -3631,7 +3668,7 @@ class LiveMatch {
 
         if (this.platzverweise[side].length > this.platzverweise[gegner].length) {
             hinweise.push({ art: "unterzahl", gewicht: 3,
-                text: "Wir sind in Unterzahl. Kompakter stehen oder eine Offensivkraft fuer einen Verteidiger bringen." });
+                text: "Wir sind in Unterzahl. Kompakter stehen oder eine Offensivkraft für einen Verteidiger bringen." });
         } else if (this.platzverweise[gegner].length > this.platzverweise[side].length) {
             hinweise.push({ art: "ueberzahl", gewicht: 2,
                 text: "Der Gegner ist in Unterzahl - jetzt lohnt es sich, das Spiel zu machen." });
@@ -3642,19 +3679,19 @@ class LiveMatch {
         const schuesse = this.stats?.shots || [0, 0];
         if (this.minute >= 55 && eigene < fremde) {
             hinweise.push({ art: "rueckstand", gewicht: 2,
-                text: `Wir liegen ${eigene}:${fremde} zurueck und haben noch ${Math.max(0, 90 - this.minute)} Minuten - mehr Risiko?` });
+                text: `Wir liegen ${eigene}:${fremde} zurück und haben noch ${Math.max(0, 90 - this.minute)} Minuten - mehr Risiko?` });
         } else if (this.minute >= 70 && eigene > fremde) {
             hinweise.push({ art: "fuehrung", gewicht: 1,
-                text: `Wir fuehren ${eigene}:${fremde}. Tempo rausnehmen und sicher stehen bringt es nach Hause.` });
+                text: `Wir führen ${eigene}:${fremde}. Tempo rausnehmen und sicher stehen bringt es nach Hause.` });
         }
         if (guete >= 40 && this.minute >= 20 && schuesse[gIdx] >= schuesse[idx] + 5) {
             hinweise.push({ art: "druck", gewicht: 2,
-                text: `Der Gegner kommt zu deutlich mehr Abschluessen (${schuesse[gIdx]}:${schuesse[idx]}) - tiefer verteidigen oder frueher stoeren.` });
+                text: `Der Gegner kommt zu deutlich mehr Abschlüssen (${schuesse[gIdx]}:${schuesse[idx]}) - tiefer verteidigen oder früher stören.` });
         }
         const ballbesitz = this.stats?.possession?.[idx];
         if (guete >= 40 && this.minute >= 25 && typeof ballbesitz === "number" && ballbesitz <= 38) {
             hinweise.push({ art: "zugriff", gewicht: 1,
-                text: `Nur ${ballbesitz} % Ballbesitz - kuerzere Passwege koennten helfen.` });
+                text: `Nur ${ballbesitz} % Ballbesitz - kürzere Passwege könnten helfen.` });
         }
 
         // Wer einen schwachen Tag hat - erst ab einem ordentlichen Co-Trainer
@@ -3684,8 +3721,8 @@ class LiveMatch {
             const zweiteHaelfte = this.director ? !!this.director.isSecondHalf : this.minute > 45;
             hinweise.push({ art: "regel", gewicht: 1,
                 text: zweiteHaelfte
-                    ? "Alle drei Unterbrechungen fuer Wechsel sind genutzt - es geht kein Wechsel mehr."
-                    : "Alle drei Unterbrechungen fuer Wechsel sind genutzt - weitere Wechsel nur noch in der Halbzeitpause." });
+                    ? "Alle drei Unterbrechungen für Wechsel sind genutzt - es geht kein Wechsel mehr."
+                    : "Alle drei Unterbrechungen für Wechsel sind genutzt - weitere Wechsel nur noch in der Halbzeitpause." });
         }
 
         return hinweise.sort((a, b) => b.gewicht - a.gewicht);

@@ -136,8 +136,8 @@ const CalendarEngine = {
                 description: istTestspiel
                     ? "Testspiel oder Turnierrunde - was hier gespielt wird, planen Sie im Reiter Vorbereitung."
                     : (art === CALENDAR_DAY_TYPES.PRESEASON
-                        ? "Bewerbungen sichten, Sponsorenangebote pruefen, den Kader planen."
-                        : "Grundlagenarbeit fuer die Saison."),
+                        ? "Bewerbungen sichten, Sponsorenangebote prüfen, den Kader planen."
+                        : "Grundlagenarbeit für die Saison."),
                 matchday: null,
                 friendlyIndex: istTestspiel ? testspielNr - 1 : null,
                 actionsAvailable: ["preseason", "training", "tactics", "transfers"],
@@ -451,7 +451,7 @@ const CalendarEngine = {
                     return { titel: day.title, text: "Der Spieltag wird ausgetragen.", marken };
                 }
                 const form = naechstes.gegnerForm.length
-                    ? ` Letzte Spiele: ${naechstes.gegnerForm.join(" ")}.`
+                    ? ` Letzte Spiele: ${naechstes.gegnerForm.map(f => ({ W: "S", D: "U", L: "N" }[f] || f)).join(" ")}.`
                     : "";
                 marken.unshift(naechstes.heim ? "Heimspiel" : "Auswärtsspiel");
                 return {
@@ -1177,7 +1177,7 @@ const CalendarEngine = {
         if (Math.random() < 0.06) {
             const kontostand = userClub.balance || 0;
             ereignisse.push(kontostand < 0
-                ? `👔 Der Vorstand mahnt: Das Konto steht bei ${(kontostand / 1e6).toFixed(1)} Mio. €.`
+                ? `👔 Der Vorstand mahnt: Das Konto steht bei ${(kontostand / 1e6).toFixed(1).replace(".", ",")} Mio. €.`
                 : `👔 Der Vorstand ist mit der wirtschaftlichen Entwicklung zufrieden.`);
         }
 

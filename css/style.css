@@ -957,7 +957,12 @@ body {
 }
 
 .mini-bar-fill {
+    /* Ein span ist inline - Breite und Höhe griffen nicht, und jeder
+       Balken der App (Fitness, Spielschärfe, Trainerstab) blieb leer. */
+    display: block;
     height: 100%;
+    max-width: 100%;
+    border-radius: inherit;
     background: var(--accent-primary);
 }
 
@@ -4227,26 +4232,8 @@ body {
      *
      * Kader: Status, Name, Position, Qualität, Fitness
      */
-    #pane-squad .data-table th:nth-child(4),   /* Alter */
-    #pane-squad .data-table td:nth-child(4),
-    #pane-squad .data-table th:nth-child(6),   /* Potenzial */
-    #pane-squad .data-table td:nth-child(6),
-    #pane-squad .data-table th:nth-child(7),   /* Rolle */
-    #pane-squad .data-table td:nth-child(7),
-    #pane-squad .data-table th:nth-child(9),   /* Zufriedenheit */
-    #pane-squad .data-table td:nth-child(9),
-    #pane-squad .data-table th:nth-child(10),  /* Form */
-    #pane-squad .data-table td:nth-child(10),
-    #pane-squad .data-table th:nth-child(11),  /* Marktwert */
-    #pane-squad .data-table td:nth-child(11),
-    #pane-squad .data-table th:nth-child(12),  /* Gehalt */
-    #pane-squad .data-table td:nth-child(12),
-    #pane-squad .data-table th:nth-child(13),  /* Vertrag */
-    #pane-squad .data-table td:nth-child(13),
-    #pane-squad .data-table th:nth-child(14),  /* Aktionsknopf */
-    #pane-squad .data-table td:nth-child(14) {
-        display: none;
-    }
+    /* Kader: siehe "UI-Rundgang: Kader" - dort nach Spaltenklassen statt
+       nach Position, die bei jeder neuen Spalte verrutschte. */
 
     /* Tabelle: Spieltag, Siege, Unentschieden, Niederlagen und Form ausblenden */
     #viewStandings .data-table th:nth-child(4),
@@ -4322,7 +4309,7 @@ body {
         font-size: 10px;
     }
 
-    #pane-squad .data-table td:nth-child(2) {
+    #pane-squad .data-table td.sq-name {
         white-space: normal;
         line-height: 1.25;
     }
@@ -4372,13 +4359,7 @@ body {
 @media (max-width: 768px) {
     /* Die Sternebewertung ist die breiteste Spalte. Kleiner gesetzt bleibt
        sie lesbar, gibt aber dem Namen den Platz zurück. */
-    #pane-squad .data-table td:nth-child(5),
-    #pane-squad .data-table td:nth-child(5) .star-rating,
-    #pane-squad .data-table td:nth-child(5) span {
-        font-size: 10px !important;
-        letter-spacing: -1px;
-    }
-    #pane-squad .data-table td:nth-child(2) { min-width: 92px; }
+    #pane-squad .data-table td.sq-name { min-width: 92px; }
 }
 
 @media (max-width: 640px) {
@@ -6440,4 +6421,524 @@ body {
 }
 @media (max-width: 640px) {
     #modalLiveMatch .live-commentary-bar { height: calc(2.7em + 16px); }
+}
+
+/* ==========================================================================
+   UI-Rundgang: Kopfleiste
+   Am Desktop standen die drei Kästen unterschiedlich hoch (das Geld-Kästchen
+   stieß oben an), und der Vorstandsbalken hatte keine Beschriftung. Am Handy
+   belegte die Kopfleiste drei Zeilen - rund 200 Pixel.
+   ========================================================================== */
+.finance-pill {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+.fin-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+}
+.conf-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+.finance-pill,
+.confidence-pill,
+.season-info-pill {
+    box-sizing: border-box;
+    min-height: 42px;
+}
+
+@media (max-width: 640px) {
+    .app-header {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+            "links mitte"
+            "rechts rechts";
+        align-items: center;
+        column-gap: 8px;
+        row-gap: 8px;
+        padding: 8px 12px;
+    }
+    .app-header .header-left { grid-area: links; min-width: 0; gap: 8px; flex: none; }
+    .app-header .header-center { grid-area: mitte; }
+    .app-header .header-right {
+        grid-area: rechts;
+        width: 100%;
+        margin: 0;
+        display: grid;
+        grid-template-columns: auto auto minmax(0, 1fr);
+        gap: 6px;
+    }
+    .brand-title { display: none; }
+    .club-badge-container { min-width: 0; flex: 1; }
+    .club-name { max-width: none; }
+    /* "Saison 1 •" weglassen - der Spieltag ist die Information */
+    .season-info-pill > :nth-child(-n+3) { display: none; }
+    .season-info-pill { min-height: 36px; padding: 4px 10px; }
+    .conf-label { display: none; }
+    .finance-pill,
+    .confidence-pill,
+    .app-header .btn-advance { min-height: 40px; height: 40px; }
+    .app-header .btn-advance { width: 100%; min-width: 0; overflow: hidden; }
+}
+
+/* ==========================================================================
+   UI-Rundgang: Tabellen allgemein und Kader
+   ========================================================================== */
+.data-table td.nowrap,
+.compact-table td.nowrap,
+td.nowrap { white-space: nowrap; }
+
+#pane-squad .sq-meta,
+#pane-squad .sq-alter { display: none; }
+#pane-squad .squad-role-hint {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-top: 1px;
+}
+#pane-squad .sq-name strong { white-space: nowrap; }
+#pane-squad .sq-pos .pos-tag + .pos-tag { margin-left: 3px; }
+#pane-squad .sq-aktion .btn { min-width: 32px; padding: 4px 10px; font-size: 16px; line-height: 1; }
+#pane-squad .data-table td { vertical-align: middle; }
+#pane-squad .squad-ability-hint { font-size: 10.5px; }
+
+/* Positionsfilter: am Handy wischen statt abschneiden */
+#pane-squad .filter-group {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+#pane-squad .filter-group .filter-btn { flex: none; }
+
+@media (max-width: 1500px) {
+    #pane-squad .sq-gehalt,
+    #pane-squad .sq-moral { display: none; }
+}
+@media (max-width: 1200px) {
+    #pane-squad .sq-rolle { display: none; }
+}
+
+/* Handy: jede Zeile eine Karte - Position, Name, Status, Sterne, Fitness,
+   darunter Form, Marktwert, Gehalt und Vertrag. Vorher war die Tabelle
+   rechts abgeschnitten, Moral und alles danach unerreichbar. */
+@media (max-width: 640px) {
+    #pane-squad .pane-header { flex-wrap: wrap; gap: 10px; }
+    #pane-squad .pane-actions { width: 100%; min-width: 0; }
+    #pane-squad .table-container { overflow: visible; }
+    #pane-squad .data-table { min-width: 0; width: 100%; display: block; }
+    #pane-squad .data-table thead { display: none; }
+    #pane-squad .data-table tbody { display: block; }
+    #pane-squad .data-table tr {
+        display: grid;
+        grid-template-columns: 44px minmax(0, 1fr) auto;
+        grid-template-areas:
+            "pos name status"
+            "pos staerke fit"
+            "pos meta meta";
+        column-gap: 10px;
+        row-gap: 4px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border-color);
+    }
+    #pane-squad .data-table td { display: none; padding: 0; border: 0; white-space: normal; }
+    #pane-squad .data-table td.sq-pos { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; grid-area: pos; }
+    #pane-squad .sq-pos .pos-tag + .pos-tag { margin-left: 0; }
+    #pane-squad .data-table td.sq-name { display: block; grid-area: name; min-width: 0; }
+    #pane-squad .data-table td.sq-status { display: block; grid-area: status; justify-self: end; }
+    #pane-squad .data-table td.sq-staerke { display: block; grid-area: staerke; }
+    #pane-squad .data-table td.sq-fit { display: flex; align-items: center; gap: 6px; grid-area: fit; justify-self: end; white-space: nowrap; }
+    #pane-squad .data-table td.sq-meta { display: block; grid-area: meta; font-size: 12px; color: var(--text-muted); }
+    #pane-squad .data-table .mini-bar { display: inline-block; width: 44px; margin: 0; }
+    #pane-squad .squad-role-hint { display: block; }
+    #pane-squad .squad-ability-hint { display: none; }
+}
+
+/* ==========================================================================
+   UI-Rundgang: Transfermarkt
+   Die Tabelle ragte rechts aus dem Bild - "Verhandeln" und der Reiter
+   "Scouting-Zentrale" waren abgeschnitten, am Handy war gar kein Knopf
+   erreichbar.
+   ========================================================================== */
+.data-table th, .data-table td { padding: 10px 12px; }
+
+#pane-transfers .pane-header { flex-wrap: wrap; gap: 10px; }
+#pane-transfers .view-switch-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+.transfer-filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.transfer-filters .styled-input { flex: 1 1 220px; min-width: 0; }
+.transfer-filters .styled-select { flex: 0 1 210px; min-width: 0; }
+
+#pane-transfers .tm-meta,
+#pane-transfers .tm-alter { display: none; }
+.tm-sub { display: block; font-size: 10.5px; font-weight: 500; color: var(--text-muted); margin-top: 1px; }
+#pane-transfers .tm-name strong,
+#pane-transfers .tm-verein { white-space: nowrap; }
+.tm-knoepfe { display: flex; gap: 6px; justify-content: flex-end; }
+.tm-knoepfe .btn { white-space: nowrap; }
+
+@media (max-width: 1500px) {
+    #pane-transfers .tm-gehalt,
+    #pane-transfers .tm-vertrag { display: none; }
+}
+@media (max-width: 1250px) {
+    #pane-transfers .tm-rolle,
+    #pane-transfers .tm-knopf-text { display: none; }
+}
+
+@media (max-width: 640px) {
+    #pane-transfers .table-container { overflow: visible; }
+    #pane-transfers .data-table { min-width: 0; width: 100%; display: block; }
+    #pane-transfers .data-table thead { display: none; }
+    #pane-transfers .data-table tbody { display: block; }
+    #pane-transfers .data-table tr.row-clickable {
+        display: grid;
+        grid-template-columns: 40px minmax(0, 1fr) auto;
+        grid-template-areas:
+            "pos name aktion"
+            "pos staerke aktion"
+            "pos meta meta";
+        column-gap: 10px;
+        row-gap: 3px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border-color);
+    }
+    #pane-transfers .data-table tr.row-clickable td { display: none; padding: 0; border: 0; }
+    #pane-transfers .data-table tr.row-clickable td.tm-pos { display: block; grid-area: pos; }
+    #pane-transfers .data-table tr.row-clickable td.tm-name { display: block; grid-area: name; min-width: 0; }
+    #pane-transfers .data-table tr.row-clickable td.tm-name strong { white-space: normal; }
+    #pane-transfers .data-table tr.row-clickable td.tm-staerke { display: block; grid-area: staerke; }
+    #pane-transfers .data-table tr.row-clickable td.tm-meta { display: block; grid-area: meta; font-size: 12px; color: var(--text-muted); }
+    #pane-transfers .data-table tr.row-clickable td.tm-aktion { display: block; grid-area: aktion; align-self: center; }
+    #pane-transfers .tm-knoepfe { flex-direction: column; gap: 6px; }
+    #pane-transfers .tm-knoepfe .btn { min-height: 38px; padding: 6px 10px; }
+    #pane-transfers .tm-mehr-zeile { display: block; }
+    #pane-transfers .tm-mehr-zeile td { display: block; }
+    .transfer-filters .styled-input,
+    .transfer-filters .styled-select { flex: 1 1 100%; }
+}
+
+/* Filterchips sind Chips, keine Vollbreiten-Knöpfe. Die allgemeine Regel
+   ".pane-actions .btn { width: 100% }" machte "Alle" bildschirmbreit und
+   schob die übrigen Filter aus dem Bild. */
+@media (max-width: 640px) {
+    .pane-actions .filter-group .btn.filter-btn { width: auto; flex: none; min-height: 38px; }
+}
+
+/* Eingehende Angebote: Text links, Knöpfe rechts - am Handy untereinander */
+.ai-offers-container { margin-bottom: 16px; }
+.ai-offers-container h3 { font-size: 16px; margin-bottom: 8px; }
+.ai-offers-list { display: flex; flex-direction: column; gap: 8px; }
+.angebot-zeile { gap: 12px; flex-wrap: wrap; }
+.angebot-text { flex: 1 1 260px; min-width: 0; font-size: 14px; line-height: 1.45; }
+.angebot-wert { display: block; font-size: 12px; color: var(--text-muted); }
+.angebot-knoepfe { display: flex; gap: 8px; flex: none; }
+@media (max-width: 640px) {
+    .angebot-knoepfe { width: 100%; }
+    .angebot-knoepfe .btn { flex: 1; min-height: 40px; }
+}
+
+/* ==========================================================================
+   UI-Rundgang: Wettbewerbe & Tabelle
+   Tabellenzonen wie im Fernsehen: Europapokal, Aufstieg, Abstieg. Am Handy
+   war die Spalte "Punkte" abgeschnitten und die Ligaauswahl ragte rechts
+   aus dem Bild.
+   ========================================================================== */
+.wettbewerb-kopf { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; min-width: 0; }
+.wettbewerb-kopf .styled-select { min-width: 230px; padding: 6px 12px; font-weight: 700; }
+
+.rang {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 26px;
+    height: 26px;
+    padding: 0 4px;
+    border-radius: 7px;
+    font-weight: 800;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+.rang-ucl  { background: #2563eb; color: #fff; }
+.rang-uel  { background: #ea580c; color: #fff; }
+.rang-uecl { background: #16a34a; color: #fff; }
+.rang-auf  { background: #0d9488; color: #fff; }
+.rang-ab   { background: #dc2626; color: #fff; }
+
+.tabelle-liga tr.zonen-grenze td { border-bottom: 2px dashed rgba(148, 163, 184, 0.35); }
+.tabelle-liga .tb-platz { width: 44px; }
+.tabelle-liga td.tb-pkt { font-size: 15px; }
+.tabelle-liga .tb-sp, .tabelle-liga .tb-s, .tabelle-liga .tb-u, .tabelle-liga .tb-n,
+.tabelle-liga .tb-tore, .tabelle-liga .tb-diff, .tabelle-liga .tb-pkt { text-align: center; font-variant-numeric: tabular-nums; }
+.tb-verein-inhalt { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.mini-wappen {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 800;
+    background: var(--bg-card-hover);
+}
+.tabelle-runden thead { display: none; }
+
+.tabellen-legende { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 12px 6px 4px; font-size: 12px; color: var(--text-muted); }
+.tabellen-legende:empty { display: none; }
+.legende-eintrag { display: inline-flex; align-items: center; gap: 7px; }
+.legende-eintrag .rang { min-width: 12px; width: 12px; height: 12px; padding: 0; border-radius: 3px; }
+
+@media (max-width: 640px) {
+    #pane-fixtures .pane-header { flex-direction: column; align-items: stretch; gap: 12px; }
+    .wettbewerb-kopf { flex-direction: column; align-items: stretch; gap: 10px; }
+    .wettbewerb-kopf .styled-select { min-width: 0; width: 100%; }
+    #pane-fixtures .view-switch-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    #pane-fixtures .view-switch-buttons .btn { width: 100%; white-space: normal; min-height: 42px; }
+    #viewStandings.table-container { overflow: visible; }
+    .tabelle-liga { min-width: 0 !important; width: 100%; }
+    .tabelle-liga th, .tabelle-liga td { padding: 9px 6px; }
+    .tabelle-liga .tb-s, .tabelle-liga .tb-u, .tabelle-liga .tb-n,
+    .tabelle-liga .tb-tore, .tabelle-liga .tb-form { display: none; }
+    .tabelle-liga .tb-platz { width: 36px; }
+    .tabelle-liga .tb-verein strong { font-size: 14px; line-height: 1.25; }
+    .tb-verein-inhalt { gap: 8px; }
+    .mini-wappen { width: 20px; height: 20px; font-size: 10px; }
+    .fixtures-nav-bar { padding: 10px 12px; gap: 8px; }
+    .fixtures-nav-bar .matchday-display-title { font-size: 15px; text-align: center; }
+}
+
+/* ==========================================================================
+   UI-Rundgang: Dashboard
+   Die Karten füllten nur zehn der zwölf Rasterspalten - rechts blieb ein
+   leerer Streifen. Jetzt geht jede Reihe auf.
+   ========================================================================== */
+@media (min-width: 1201px) {
+    .dashboard-grid > .next-match-card { grid-column: span 7; }
+    .dashboard-grid > .attention-card { grid-column: span 5; }
+    .dashboard-grid > .calendar-snapshot-card { grid-column: span 7; }
+    .dashboard-grid > .table-snapshot-card { grid-column: span 5; }
+    .dashboard-grid > .board-card { grid-column: span 6; }
+    .dashboard-grid > .squad-status-card { grid-column: span 6; }
+}
+/* Zwischen Tablet und kleinem Laptop: zwei Spalten statt einer langen */
+@media (min-width: 901px) and (max-width: 1200px) {
+    .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dashboard-grid > .next-match-card,
+    .dashboard-grid > .calendar-snapshot-card,
+    .dashboard-grid > .news-ticker-card { grid-column: 1 / -1; }
+    .dashboard-grid > .attention-card,
+    .dashboard-grid > .table-snapshot-card,
+    .dashboard-grid > .board-card,
+    .dashboard-grid > .squad-status-card { grid-column: span 1; }
+}
+
+#dashStandingsTable { width: 100%; }
+#dashStandingsTable td { vertical-align: middle; }
+#dashStandingsTable .tb-verein { max-width: 0; width: 100%; }
+#dashStandingsTable .tb-verein-inhalt { display: flex; }
+#dashStandingsTable .tb-verein-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+#dashStandingsTable .rang { min-width: 22px; height: 22px; font-size: 12px; border-radius: 6px; }
+#dashStandingsTable .mini-wappen { width: 20px; height: 20px; font-size: 10px; }
+.tabelle-luecke td { text-align: center; color: var(--text-muted); padding: 2px 0 !important; letter-spacing: 3px; line-height: 1; }
+
+/* Handy: Heim - VS - Gast nebeneinander statt drei Stockwerke. Die
+   Kalender-Knöpfe erbten ihre 180px-Basis in der Spaltenrichtung als Höhe. */
+@media (max-width: 768px) {
+    .calendar-action-bar .btn { flex: none; }
+    .match-preview-content {
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 6px;
+        padding: 16px 8px;
+    }
+    .preview-team { width: auto; flex: 1 1 0; min-width: 0; gap: 6px; }
+    .preview-team h4 { font-size: 14px; line-height: 1.25; overflow-wrap: anywhere; }
+    .preview-crest { width: 46px; height: 46px; font-size: 18px; }
+    .preview-vs { flex: none; padding-top: 4px; max-width: 96px; text-align: center; }
+    .vs-text { font-size: 20px; }
+    .preview-venue { font-size: 10.5px; line-height: 1.25; }
+    .news-ticker-card .card-header { flex-wrap: wrap; gap: 6px; }
+    .news-ticker-card .card-header .btn-link { white-space: nowrap; padding-left: 0; padding-right: 0; }
+}
+
+.news-zeile {
+    width: 100%;
+    border: 1px solid transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    gap: 14px;
+    align-items: flex-start;
+}
+.news-zeile:hover { border-color: var(--border-color); background: rgba(255, 255, 255, 0.04); }
+.news-zeile.ungelesen .news-titel::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent-secondary, #38bdf8); margin-right: 7px; vertical-align: middle; }
+.news-zeile-text { flex: 1; min-width: 0; }
+.news-titel { display: block; font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+.news-vorschau {
+    font-size: 12px;
+    color: var(--text-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.news-zeile .news-date { flex: none; white-space: nowrap; padding-top: 2px; }
+@media (max-width: 640px) {
+    #dashStandingsTable th, #dashStandingsTable td { padding: 8px 5px; }
+    #dashStandingsTable th:nth-child(3), #dashStandingsTable td:nth-child(3) { display: none; }
+}
+
+/* ==========================================================================
+   Abstands-Hilfsklassen. index.html und uiManager setzen mb-2, mb-3, mt-2
+   und mt-3 seit langem - definiert waren sie nie, deshalb klebten etwa im
+   Kalender die Spielkarte und die Saisonwoche aneinander.
+   ========================================================================== */
+.mt-1 { margin-top: 6px; }
+.mt-2 { margin-top: 10px; }
+.mt-3 { margin-top: 16px; }
+.mb-1 { margin-bottom: 6px; }
+.mb-2 { margin-bottom: 10px; }
+.mb-3 { margin-bottom: 16px; }
+
+/* Vorbereitung: Bilanz nach dem Saisonstart */
+.pre-fazit-kopf { font-weight: 700; color: var(--success, #22c55e); margin-bottom: 12px; }
+.pre-fazit { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.pre-fazit-kachel {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    background: rgba(0, 0, 0, 0.18);
+    border: 1px solid var(--border-color);
+    line-height: 1.35;
+    min-width: 0;
+}
+.pre-fazit-titel { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); }
+.pre-fazit-kachel strong { font-size: 15px; }
+
+/* Training: Güte des Stabs als saubere Balkenliste */
+.stab-faecher { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 22px; }
+.stab-fach { display: grid; grid-template-columns: minmax(0, 1fr) 80px 28px; align-items: center; gap: 10px; font-size: 13px; }
+.stab-fach-name { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stab-fach .mini-bar { width: 100%; }
+.stab-fach strong { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   UI-Rundgang: Statistiken
+   ========================================================================== */
+#pane-stats .pane-header { flex-wrap: wrap; gap: 12px; }
+.stats-liga-wahl { min-width: 240px; font-weight: 700; padding: 6px 12px; }
+#pane-stats .stats-grid { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) {
+    #pane-stats .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1750px) {
+    #pane-stats .stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+#pane-stats .dash-card h3 { margin-bottom: 12px; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.stats-hinweis { font-size: 11px; font-weight: 500; }
+.leaderboard-list { gap: 6px; }
+.leaderboard-item { gap: 10px; justify-content: flex-start; padding: 7px 10px; }
+.leaderboard-item .lb-rank { width: 18px; flex: none; text-align: right; }
+.leaderboard-item .mini-wappen { width: 22px; height: 22px; font-size: 10px; }
+.lb-person { display: flex; flex-direction: column; flex: 1; min-width: 0; line-height: 1.25; }
+.lb-person .lb-name, .lb-person .lb-club { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
+.lb-val { flex: none; font-variant-numeric: tabular-nums; }
+.lb-val small { font-size: 10px; font-weight: 600; color: var(--text-muted); }
+.leaderboard-item.lb-eigen { box-shadow: inset 3px 0 0 var(--accent-primary); background: rgba(16, 185, 129, 0.1); }
+@media (max-width: 640px) {
+    .stats-liga-wahl { width: 100%; min-width: 0; }
+}
+
+/* ==========================================================================
+   UI-Rundgang: Einstellungen
+   "btn-group-column" war nie definiert - die Knöpfe klebten untereinander.
+   ========================================================================== */
+.btn-group-column { display: flex; flex-direction: column; gap: 10px; }
+.btn-group-column .btn, .btn-group-column .file-upload-btn { width: 100%; justify-content: center; }
+#pane-settings .dash-card > p { color: var(--text-muted); font-size: 13px; line-height: 1.5; margin: 6px 0 14px; }
+#pane-settings .dash-card > h3 { margin-bottom: 4px; }
+#pane-settings .dash-card > .btn { width: 100%; }
+.einstellungen-live { grid-column: 1 / -1; }
+.einstellung-h { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); margin: 14px 0 2px; }
+.einstellung-h:first-child { margin-top: 0; }
+.einstellung-schalter:last-child { border-bottom: 0; }
+.einstellung-schalter .coach-muted { font-size: 12px; color: var(--text-muted); }
+@media (min-width: 900px) {
+    #settingsLiveBody { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; }
+    #settingsLiveBody .einstellung-h { grid-column: 1 / -1; }
+}
+
+/* Finanzen: Unterhalt als zweizeilige Posten statt gequetschter Einzeiler */
+.unterhalt-zeile { align-items: flex-start; gap: 12px; }
+.unterhalt-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.unterhalt-sub { font-size: 11px; color: var(--text-muted); }
+.unterhalt-betrag { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; flex: none; }
+.unterhalt-aufschlag { font-size: 11px; color: #f59e0b; white-space: nowrap; }
+.finance-stat-row strong { white-space: nowrap; }
+@media (min-width: 900px) {
+    #pane-settings .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* Die Seitenleiste bricht Beschriftungen nicht um - fett gesetzt passte
+   "Spielstand & Optionen" nicht mehr in eine Zeile. */
+.nav-item { white-space: nowrap; }
+.nav-item.active { letter-spacing: -0.01em; }
+
+/* ==========================================================================
+   UI-Rundgang: Kalender am Handy
+   Sieben Tageskarten mit je 220 px Höhe ergaben eine endlose Rolle. Jetzt
+   ist jeder Tag eine kompakte Zeile: Tag links, Symbol, Titel und Text.
+   ========================================================================== */
+@media (max-width: 640px) {
+    .calendar-grid-week { grid-template-columns: 1fr !important; gap: 8px; }
+    .calendar-day-card {
+        display: grid;
+        grid-template-columns: 52px 30px minmax(0, 1fr);
+        grid-template-areas:
+            "top icon title"
+            "top icon desc"
+            "top icon marks";
+        column-gap: 10px;
+        row-gap: 2px;
+        min-height: 0;
+        padding: 10px 12px;
+        align-items: start;
+    }
+    .calendar-day-card .cal-card-top {
+        grid-area: top;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1px;
+    }
+    .calendar-day-card .cal-date { font-size: 11px; }
+    .calendar-day-card .cal-card-icon { grid-area: icon; font-size: 22px; line-height: 1; margin: 0; }
+    .calendar-day-card .cal-card-title { grid-area: title; font-size: 14px; margin: 0; }
+    .calendar-day-card .cal-card-desc { grid-area: desc; font-size: 12px; margin: 0; }
+    .calendar-day-card .cal-marks { grid-area: marks; margin-top: 4px; }
+    .calendar-day-card .cal-status-badge { position: absolute; top: 8px; right: 10px; }
+    .calendar-day-card.active-today .cal-card-title { padding-right: 62px; }
+}
+@media (max-width: 640px) {
+    .cal-full-item {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas: "datum status" "titel titel";
+        row-gap: 4px;
+        align-items: center;
+    }
+    .cal-full-item .cal-full-date { grid-area: datum; min-width: 0; font-size: 12px; }
+    .cal-full-item .cal-full-title { grid-area: titel; min-width: 0; }
+    .cal-full-item .cal-full-status { grid-area: status; font-size: 12px; }
+    #pane-calendar .card-header { flex-wrap: wrap; gap: 6px; }
 }

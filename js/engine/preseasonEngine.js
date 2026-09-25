@@ -312,7 +312,7 @@ class PreseasonEngine {
             name: "Masters",
             versatz: 10,
             geld: 2.1,
-            hinweis: "Namhafte Gegner und hohe Praemien - dafuer ein hartes Programm."
+            hinweis: "Namhafte Gegner und hohe Prämien - dafür ein hartes Programm."
         }
     ];
 
@@ -435,13 +435,13 @@ class PreseasonEngine {
             return { ok: false, grund: "Dieses Turnier ist nicht zugesagt" };
         }
         if (turnier.halbfinale) {
-            return { ok: false, grund: "Das Turnier laeuft bereits - jetzt geht es nicht mehr zurueck." };
+            return { ok: false, grund: "Das Turnier läuft bereits - jetzt geht es nicht mehr zurück." };
         }
 
         (turnier.slots || []).forEach(i => { pre.plan[i] = null; });
         turnier.slots = [];
         turnier.status = "offen";
-        this.zahleAus(state, club, -turnier.antrittsgeld, `Antrittsgeld zurueck: ${turnier.name}`);
+        this.zahleAus(state, club, -turnier.antrittsgeld, `Antrittsgeld zurück: ${turnier.name}`);
         return { ok: true, turnier };
     }
 
@@ -496,7 +496,7 @@ class PreseasonEngine {
 
     static bereitschaftText(p) {
         if (p >= 0.8) return "sagt fast sicher zu";
-        if (p >= 0.6) return "duerfte zusagen";
+        if (p >= 0.6) return "dürfte zusagen";
         if (p >= 0.4) return "offener Ausgang";
         if (p >= 0.2) return "schwierig";
         return "kaum Chance";

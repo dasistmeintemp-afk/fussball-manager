@@ -1557,6 +1557,9 @@ class GameState {
                 managerNationality: parsed.managerNationality || "Deutschland",
                 clubId: parsed.userClubId,
                 clubName: userClub ? userClub.name : "Unbekannt",
+                // Für das Wappen auf der Weiterspielen-Karte
+                primaryColor: userClub?.primaryColor || null,
+                secondaryColor: userClub?.secondaryColor || null,
                 leagueName: parsed.leagueName || "Deutschland Liga 1",
                 seasonYear: parsed.seasonYear || 1,
                 currentMatchday: parsed.currentMatchday || 1,

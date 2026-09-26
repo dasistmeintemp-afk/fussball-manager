@@ -6325,6 +6325,46 @@ function runEngineTests() {
         if (uebernahmen === 0) throw new Error("Der Ticker sagt nicht, dass der Co-Trainer übernimmt");
     });
 
+    test("Jugendakademie: Talente passen zur Ligastufe - auch in der Landesliga keine fünf Sterne", () => {
+        const welt = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        [1, 4, 7].forEach(stufe => {
+            const vorlage = welt.clubs.find(c => c.level === stufe);
+            const state = GameState.createNewGame(vorlage.id, "normal", { name: "Prüfer" });
+            const club = state.clubs.find(c => c.id === vorlage.id);
+            const kader = state.players.filter(p => p.clubId === club.id);
+            const ctx = { squadAverageAbility: PlayerRatingEngine.squadAverageAbility(kader) };
+            const talente = [];
+            for (let i = 0; i < 20; i++) talente.push(...YouthEngine.generateProspects(state, club.id));
+            const heute = talente.map(t => PlayerRatingEngine.starsForOverall(t.overall, ctx));
+            const potenzial = talente.map(t => PlayerRatingEngine.starsForOverall(t.pot, ctx));
+            const schnitt = a => a.reduce((x, y) => x + y, 0) / a.length;
+            if (schnitt(heute) > 3) throw new Error(`Stufe ${stufe}: Die Talente sind heute schon ${schnitt(heute).toFixed(1)} Sterne stark`);
+            if (heute.some(x => x >= 5)) throw new Error(`Stufe ${stufe}: Ein Fünfzehnjähriger steht heute mit fünf Sternen da`);
+            if (schnitt(potenzial) < 2.5 || schnitt(potenzial) > 4.5) {
+                throw new Error(`Stufe ${stufe}: Das Potenzial liegt im Schnitt bei ${schnitt(potenzial).toFixed(1)} Sternen`);
+            }
+            if (talente.some(t => typeof t.trueCurrentAbility !== "number" || t.pot <= t.overall)) {
+                throw new Error(`Stufe ${stufe}: Talente ohne innere Stärke oder ohne Luft nach oben`);
+            }
+        });
+
+        // Ein Talent aus einem älteren Spielstand - noch wie für einen
+        // Bundesligisten erzeugt - wird an die Liga angepasst
+        const vorlage = welt.clubs.find(c => c.level === 7);
+        const state = GameState.createNewGame(vorlage.id, "normal", { name: "Prüfer" });
+        const alt = state.youthAcademy.prospects[0];
+        Object.assign(alt, { overall: 58, pot: 85 });
+        delete alt.trueCurrentAbility;
+        delete alt.truePotentialAbility;
+        if (YouthEngine.passeTalenteAnLigaAn(state, vorlage.id) < 1 || alt.overall >= 40 || typeof alt.trueCurrentAbility !== "number") {
+            throw new Error(`Das alte Talent bleibt bei Stärke ${alt.overall}`);
+        }
+        const befoerdert = YouthEngine.promoteProspect(state, vorlage.id, alt.id, { skipNews: true });
+        if (!befoerdert.success || befoerdert.player.overall !== alt.overall || befoerdert.player.trueCurrentAbility !== alt.trueCurrentAbility) {
+            throw new Error("Nach der Beförderung hat das Talent andere Werte als in der Akademie");
+        }
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

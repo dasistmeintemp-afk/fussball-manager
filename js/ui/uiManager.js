@@ -5607,7 +5607,7 @@ class UIManager {
         const stab = this.getCoachingStaffEngine();
         const leiterGuete = stab ? stab.staffQuality(club).nachwuchs : null;
         const leiter = club.staff?.nachwuchs;
-        const leiterBonus = leiterGuete === null ? 0 : Math.round((leiterGuete - 60) * 0.1);
+        const leiterBonus = typeof youth.leiterBonus === "function" ? youth.leiterBonus(state, club) : 0;
         const leiterText = leiterGuete === null ? ""
             : leiterBonus > 0 ? `holt mehr aus jedem Jahrgang heraus (Potenzial +${leiterBonus})`
             : leiterBonus < 0 ? `kostet jeden Jahrgang Potenzial (${leiterBonus})${leiter ? "" : " - der Posten ist offen"}`

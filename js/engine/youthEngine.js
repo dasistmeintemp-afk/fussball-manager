@@ -211,6 +211,30 @@ const YouthEngine = {
         return angepasst;
     },
 
+    /**
+     * Was der Nachwuchsleiter einem Jahrgang an Potenzial bringt (in
+     * Gesamtstärke-Punkten). Gemessen wird an dem, was für einen Verein
+     * dieser Liga normal ist - nicht an einem festen Wert: Sonst verlor ein
+     * Landesligist mit einem ordentlichen Mann trotzdem Potenzial, nur weil
+     * die Güten dort insgesamt niedriger sind.
+     */
+    leiterBonus(state, club) {
+        // Nur der eigene Verein führt einen Stab - die KI-Vereine ziehen
+        // ihre Jahrgänge wie gewohnt nach
+        if (!club || !state || club.id !== state.userClubId || !club.staff) return 0;
+        const mitglied = club.staff.nachwuchs;
+        // Ohne eigenen Nachwuchsleiter arbeitet eine Aushilfe - das kostet
+        if (!mitglied || typeof mitglied.guete !== "number") return -2;
+        // Gemessen am üblichen Niveau des Vereins, um das herum auch die
+        // Bewerber liegen: Ein überdurchschnittlicher Mann bringt etwas, ein
+        // schwacher kostet
+        const stab = _youthResolve("CoachingStaffEngine", "./coachingStaffEngine.js");
+        const normal = stab && typeof stab.staffQuality === "function"
+            ? stab.staffQuality({ ...club, staff: undefined }).overall
+            : 60;
+        return Math.max(-4, Math.min(5, Math.round((mitglied.guete - normal) * 0.15)));
+    },
+
     /** Das Land des Vereins, in Worten wie bei den Nationalitäten */
     heimatland(state, club) {
         const daten = (typeof COUNTRIES_DATA !== "undefined" && COUNTRIES_DATA)
@@ -267,9 +291,8 @@ const YouthEngine = {
         const sp = eigen ? this.schwerpunkteVon(club) : null;
         const jahrgang = this.JAHRGAENGE[sp?.jahrgang || "normal"];
         const einzug = this.EINZUG[sp?.einzug || "region"];
-        const leiter = this.nachwuchsleiterGuete(state, club);
         // Ein guter Nachwuchsleiter holt mehr heraus, ein schwacher weniger
-        const leiterBonus = leiter === null ? 0 : Math.round((leiter - 60) * 0.1);
+        const leiterBonus = this.leiterBonus(state, club);
 
         // Die Sichtung kostet - abgebucht, wenn der Jahrgang kommt
         if (eigen && einzug.kosten > 0) {
@@ -359,7 +382,7 @@ const YouthEngine = {
         if (!state) return;
         const club = state.clubs?.find(c => c.id === clubId);
         const academyLvl = this.akademieStufe(state, club);
-        const leiter = this.nachwuchsleiterGuete(state, club);
+        const leiterBonus = this.leiterBonus(state, club);
 
         const prospects = (club?.youthAcademy?.prospects) || (clubId === state.userClubId ? state.youthAcademy?.prospects : []);
         if (!Array.isArray(prospects)) return;
@@ -369,7 +392,7 @@ const YouthEngine = {
 
             // Chance auf Attributssteigerung abhängig vom Level - und beim
             // eigenen Verein vom Nachwuchsleiter
-            const growthChance = 0.20 + (academyLvl * 0.05) + (leiter === null ? 0 : (leiter - 60) * 0.002);
+            const growthChance = 0.20 + (academyLvl * 0.05) + leiterBonus * 0.01;
             if (Math.random() < growthChance && prospect.overall < prospect.pot) {
                 prospect.overall += 1;
                 if (typeof prospect.trueCurrentAbility === "number") prospect.trueCurrentAbility += 2;

@@ -62,8 +62,54 @@ class PreseasonEngine {
      */
     static PFLICHT = ["medizin", "fitness", "cotrainer"];
 
-    /** Anteil des Gehaltsetats, den der Stab höchstens kosten darf */
+    /** Anteil des Gehaltsetats, den der Stab höchstens kosten darf (Obergrenze) */
     static STAB_ANTEIL = 0.25;
+
+    /**
+     * Was ein durchschnittlicher Co-Trainer je Woche verdient - nach
+     * Ligastufe. Ein Bundesliga-Assistent kommt auf gut 800.000 € im Jahr,
+     * in der Landesliga gibt es eine Aufwandsentschädigung. Vorher folgte das
+     * Gehalt allein der Güte: Ein Co-Trainer in München verlangte bis zu
+     * 250.000 € - in der Woche.
+     */
+    static STAB_LOHN_STUFE = { 1: 16000, 2: 4500, 3: 1800, 4: 800, 5: 350, 6: 180, 7: 100 };
+
+    /** Die Posten verdienen unterschiedlich viel - der Co-Trainer am meisten */
+    static STAB_LOHN_POSTEN = { cotrainer: 1, medizin: 0.8, scout: 0.7, fitness: 0.65, analyse: 0.6, nachwuchs: 0.55 };
+
+    /** Etat des Stabs als Vielfaches eines durchschnittlich besetzten Stabs */
+    static STAB_ETAT_FAKTOR = 1.5;
+
+    /** Übliches Niveau eines Stabsmitglieds bei diesem Verein */
+    static stabNiveau(club) {
+        const staffEngine = _preResolve("CoachingStaffEngine", "./coachingStaffEngine.js");
+        return staffEngine ? (staffEngine.staffQuality({ ...club, staff: undefined })?.overall ?? 55) : 55;
+    }
+
+    /**
+     * Was ein Stabsmitglied dieser Güte bei diesem Verein üblicherweise
+     * verdient. Wer besser ist als das, was der Verein sonst bekommt,
+     * verlangt mehr - etwa das Doppelte bei 15 Punkten darüber.
+     */
+    static marktGehalt(club, bereichKey, guete) {
+        const basis = this.STAB_LOHN_STUFE[club?.level || 1] ?? 200;
+        const posten = this.STAB_LOHN_POSTEN[bereichKey] ?? 0.7;
+        const guete_ = Number(guete) || this.stabNiveau(club);
+        const faktor = Math.pow(1.05, guete_ - this.stabNiveau(club));
+        return Math.max(50, basis * posten * faktor);
+    }
+
+    /** Gehalt runden: ab 1.000 € auf 50 €, darunter auf 10 € */
+    static rundeGehalt(betrag) {
+        const b = Math.max(50, Number(betrag) || 0);
+        return b >= 1000 ? Math.round(b / 50) * 50 : Math.round(b / 10) * 10;
+    }
+
+    /** Was ein durchschnittlich besetzter Stab dieses Vereins je Woche kostet */
+    static erwarteteStabKosten(club) {
+        const basis = this.STAB_LOHN_STUFE[club?.level || 1] ?? 200;
+        return Math.round(this.BEREICHE.reduce((summe, b) => summe + basis * (this.STAB_LOHN_POSTEN[b.key] ?? 0.7), 0));
+    }
 
     /** Wie lange die Vorbereitung dauert */
     static DAUER_TAGE = 24;
@@ -100,10 +146,9 @@ class PreseasonEngine {
             const guete = Math.max(20, Math.min(97, Math.round(
                 basis + _preRandom.float(-14, 16)
             )));
-            // Das Gehalt folgt der Güte, aber nicht exakt - so entstehen
-            // Schnäppchen und überbezahlte Namen.
-            const marktwert = Math.round(Math.pow(1.085, guete - 30) * 900);
-            const gehalt = Math.max(600, Math.round(marktwert * _preRandom.float(0.72, 1.35) / 50) * 50);
+            // Das Gehalt folgt Liga, Posten und Güte, aber nicht exakt - so
+            // entstehen Schnäppchen und überbezahlte Namen.
+            const gehalt = this.rundeGehalt(this.marktGehalt(club, bereich.key, guete) * _preRandom.float(0.8, 1.25));
 
             bewerber.push({
                 id: `staff_${bereich.key}_${i}_${Math.random().toString(36).slice(2, 7)}`,
@@ -113,7 +158,7 @@ class PreseasonEngine {
                 guete,
                 gehalt,
                 // Was er mindestens nehmen würde - das erfährt man nur am Tisch
-                mindestGehalt: Math.max(500, Math.round(gehalt * _preRandom.float(0.8, 0.95) / 50) * 50),
+                mindestGehalt: this.rundeGehalt(gehalt * _preRandom.float(0.8, 0.95)),
                 alter: _preRandom.int(34, 62),
                 ruf: this.rufText(guete)
             });
@@ -608,8 +653,10 @@ class PreseasonEngine {
         const imTurnier = new Set();
         turniere.forEach(t => t.teilnehmer.forEach(g => imTurnier.add(g.id)));
 
-        // Ein bestehender Stab bleibt über die Saisons hinweg bestehen
+        // Ein bestehender Stab bleibt über die Saisons hinweg bestehen - mit
+        // Gehältern nach der aktuellen Formel
         if (!club.staff) club.staff = {};
+        this.rechneStabGehaelterUm(state);
 
         state.preseason = {
             aktiv: true,
@@ -715,9 +762,59 @@ class PreseasonEngine {
         return { ok: true, staff: club.staff[bereichKey], meldung, kosten: kostenJetzt, rahmen, offen };
     }
 
-    /** Wie viel der Stab je Woche höchstens kosten darf */
+    /**
+     * Wie viel der Stab je Woche höchstens kosten darf: anderthalb Mal ein
+     * durchschnittlich besetzter Stab. Sechs Spitzenleute auf einmal passen
+     * nicht hinein - man muss entscheiden, wo man Geld ausgibt. Und nie mehr
+     * als ein Viertel des Gehaltsetats.
+     */
     static stabRahmen(club) {
-        return Math.round((club?.wageBudget || 0) * this.STAB_ANTEIL);
+        const rahmen = this.erwarteteStabKosten(club) * this.STAB_ETAT_FAKTOR;
+        const obergrenze = (club?.wageBudget || 0) * this.STAB_ANTEIL;
+        return this.rundeGehalt(obergrenze > 0 ? Math.min(rahmen, obergrenze) : rahmen);
+    }
+
+    /**
+     * Was der Stab tatsächlich kostet - für die Finanzen. Ein offener Posten
+     * wird mit einer Aushilfe besetzt, die gut ein Drittel eines üblichen
+     * Gehalts kostet.
+     */
+    static stabLohnsumme(club) {
+        if (!club?.staff) return 0;
+        const basis = this.STAB_LOHN_STUFE[club.level || 1] ?? 200;
+        return Math.round(this.BEREICHE.reduce((summe, b) => {
+            const m = club.staff[b.key];
+            return summe + (m ? (m.gehalt || 0) : basis * (this.STAB_LOHN_POSTEN[b.key] ?? 0.7) * 0.35);
+        }, 0));
+    }
+
+    /**
+     * Spielstände aus der Zeit der alten Gehaltsformel: Verpflichtete und
+     * Bewerber bekommen einmalig ein Gehalt nach Liga, Posten und Güte.
+     * Liefert true, wenn etwas umgerechnet wurde.
+     */
+    static rechneStabGehaelterUm(state) {
+        const club = (state?.clubs || []).find(c => c.id === state.userClubId);
+        if (!club || club.stabGehaelterV2) return false;
+        club.stabGehaelterV2 = true;
+        let geaendert = false;
+        this.BEREICHE.forEach(b => {
+            const m = club.staff?.[b.key];
+            if (m && typeof m.guete === "number") {
+                const neu = this.rundeGehalt(this.marktGehalt(club, b.key, m.guete));
+                if ((m.gehalt || 0) > neu * 1.3) { m.gehalt = neu; geaendert = true; }
+            }
+            (state.preseason?.bewerber?.[b.key] || []).forEach(k => {
+                const neu = this.rundeGehalt(this.marktGehalt(club, b.key, k.guete));
+                if ((k.gehalt || 0) > neu * 1.3) {
+                    k.gehalt = neu;
+                    k.mindestGehalt = this.rundeGehalt(neu * 0.88);
+                    delete k.letzteForderung;
+                    geaendert = true;
+                }
+            });
+        });
+        return geaendert;
     }
 
     /** Güte eines Stabsmitglieds in Sternen (0,5 bis 5) */
@@ -750,11 +847,11 @@ class PreseasonEngine {
         if (!kandidat) return { status: "fehler", text: "Bewerber nicht gefunden." };
 
         if (!kandidat.mindestGehalt) {
-            kandidat.mindestGehalt = Math.max(500, Math.round(kandidat.gehalt * 0.88 / 50) * 50);
+            kandidat.mindestGehalt = this.rundeGehalt(kandidat.gehalt * 0.88);
         }
         const laufzeit = Math.max(1, Math.min(3, Math.round(jahre) || 2));
         const faktor = { 1: 1.06, 2: 1, 3: 0.95 }[laufzeit];
-        const minimum = Math.round(kandidat.mindestGehalt * faktor / 50) * 50;
+        const minimum = this.rundeGehalt(kandidat.mindestGehalt * faktor);
         const betrag = Math.round(Number(angebot) || 0);
 
         if (betrag >= minimum) {
@@ -779,8 +876,8 @@ class PreseasonEngine {
             };
         }
 
-        const vorher = kandidat.letzteForderung || Math.round(kandidat.gehalt * faktor / 50) * 50;
-        const gegen = Math.max(minimum, Math.round((vorher + minimum) / 2 / 50) * 50);
+        const vorher = kandidat.letzteForderung || this.rundeGehalt(kandidat.gehalt * faktor);
+        const gegen = Math.max(minimum, this.rundeGehalt((vorher + minimum) / 2));
         kandidat.letzteForderung = gegen;
         return {
             status: "gegenangebot",

@@ -6300,6 +6300,31 @@ function runEngineTests() {
         if (!verfallen.includes(zweites) || zweites.status !== "expired") throw new Error("Das Angebot verfällt nicht nach der Frist");
     });
 
+    test("Sofort beenden: Der Co-Trainer übernimmt Wechsel und Umstellungen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const taktikVorher = JSON.stringify(heim.tactics);
+        let wechsel = 0, uebernahmen = 0;
+        for (let i = 0; i < 6; i++) {
+            // Der Spieler entscheidet selbst - bis er auf "Sofort beenden" drückt
+            const live = MatchEngine.createLiveMatch({ id: `sofort_co_${i}`, played: false, homeClubId: "muc", awayClubId: "dor" },
+                heim, gast, state.players, { userSide: "home", delegation: { wechsel: false, taktik: false } });
+            if (live.timeline.some(e => e.type === "substitution" && e.team === "home")) {
+                throw new Error("Wer selbst wechselt, bekommt schon vorher Wechsel simuliert");
+            }
+            let n = 0;
+            while (live.minute < 30 && n++ < 5000) live.tick();
+            live.skipToEnd();
+            if (!live.delegation.wechsel || !live.delegation.taktik) throw new Error("Der Co-Trainer übernimmt beim Sofort-Ergebnis nicht");
+            wechsel += live.timeline.filter(e => e.type === "substitution" && e.team === "home" && e.minute > 30).length;
+            if ((live.events || []).concat(live.verlauf || []).some(e => /übernimmt für den Rest/.test(e.text || ""))) uebernahmen++;
+            if (JSON.stringify(heim.tactics) !== taktikVorher) throw new Error("Die Umstellungen des Co-Trainers bleiben nach dem Spiel stehen");
+        }
+        if (wechsel < 6) throw new Error(`Nach dem Sofort-Ergebnis wechselt der Co-Trainer kaum: ${wechsel} Wechsel in sechs Spielen`);
+        if (uebernahmen === 0) throw new Error("Der Ticker sagt nicht, dass der Co-Trainer übernimmt");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

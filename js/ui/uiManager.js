@@ -9611,7 +9611,7 @@ class UIManager {
         if (sofort) {
             const home = state.clubs.find(c => c.id === test.partie.homeClubId);
             const away = state.clubs.find(c => c.id === test.partie.awayClubId);
-            MatchEngine.simulateFullMatch(test.partie, home, away, state.players);
+            MatchEngine.simulateFullMatch(test.partie, home, away, state.players, this.sofortOptionen(test.partie));
             this.playSound("whistle");
             this.schliesseTestspielAb(test.partie);
             this.showMatchReportModal(test.partie);
@@ -9629,6 +9629,21 @@ class UIManager {
         this._testspielHeute = null;
         if (state.preseason) state.preseason.livePartie = partie;
         this.handleCalendarAdvanceDay();
+    }
+
+    /**
+     * Beim Sofort-Ergebnis steht der Co-Trainer an der Linie: Die Wechsel der
+     * eigenen Mannschaft trifft er - so gut, wie er ist.
+     */
+    sofortOptionen(partie) {
+        const state = this.app.state;
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const stab = this.getCoachingStaffEngine();
+        if (!club || !partie || !stab) return {};
+        const guete = stab.staffQuality(club).coTrainer;
+        if (partie.homeClubId === club.id) return { wechselGueteHome: guete };
+        if (partie.awayClubId === club.id) return { wechselGueteAway: guete };
+        return {};
     }
 
     starteHeutigesSpiel(sofort = false) {
@@ -9661,7 +9676,7 @@ class UIManager {
             const state = this.app.state;
             const home = state.clubs.find(c => c.id === heute.partie.homeClubId);
             const away = state.clubs.find(c => c.id === heute.partie.awayClubId);
-            MatchEngine.simulateFullMatch(heute.partie, home, away, state.players);
+            MatchEngine.simulateFullMatch(heute.partie, home, away, state.players, this.sofortOptionen(heute.partie));
             this.playSound("whistle");
             if (this._laufenderPokaltermin) {
                 this.finishCupTieAroundUser();

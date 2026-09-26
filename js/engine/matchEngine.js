@@ -2321,10 +2321,10 @@ class MatchEngine {
     /**
      * Schnelle Hintergrund-Simulation für Matches (nutzt dieselbe Timeline)
      */
-    static simulateFullMatch(match, homeClub, awayClub, allPlayers) {
+    static simulateFullMatch(match, homeClub, awayClub, allPlayers, options = {}) {
         const timeline = match.timeline && match.timeline.length > 0
             ? match.timeline
-            : this.generateTimeline(match, homeClub, awayClub, allPlayers);
+            : this.generateTimeline(match, homeClub, awayClub, allPlayers, options);
 
         return this.applyTimelineToMatch(match, timeline, homeClub, awayClub, allPlayers);
     }
@@ -3920,15 +3920,50 @@ class LiveMatch {
         this.coTrainerTakt();
     }
 
+    /**
+     * Der Co-Trainer uebernimmt den Rest der Partie: Wechsel und Umstellungen.
+     *
+     * Wer die Wechsel selbst macht, hat eine Simulation ohne eigene Wechsel -
+     * die setzt er ja an der Seitenlinie. Beim Sofort-Ergebnis steht aber
+     * niemand mehr dort, und das Restspiel lief ohne einen einzigen Wechsel
+     * durch. Jetzt wird es mit dem Co-Trainer an der Linie neu berechnet.
+     * Liefert true, wenn er etwas uebernommen hat.
+     */
+    coTrainerUebernimmt() {
+        if (!this.userSide || this.isFinished) return false;
+        const vorher = { ...this.delegation };
+        this.delegation.taktik = true;
+        if (!vorher.wechsel) {
+            this.delegation.wechsel = true;
+            // Was der Spieler noch haette entscheiden sollen (Verletzung,
+            // Platzverweis), regelt jetzt der Co-Trainer
+            this.offeneEntscheidungen = [];
+            this.resimulateRemainder();
+        }
+        if (vorher.wechsel && vorher.taktik) return false;
+
+        const co = this.coTrainer?.[this.userSide];
+        const club = this.clubVon(this.userSide);
+        const text = `${this.minute}' - 📋 ${co?.name ? `Co-Trainer ${co.name}` : "Der Co-Trainer"} übernimmt für den Rest der Partie: Wechsel und Umstellungen.`;
+        this.addEvent("tactics", club?.id, text);
+        this.lastCommentary = text;
+        return true;
+    }
+
     skipToEnd() {
         // Was angemeldet war, wird noch ausgefuehrt - sonst ginge der Wechsel
         // beim Sofort-Ergebnis stillschweigend verloren.
         if (this.angemeldeteWechsel.length > 0) this.fuehreAngemeldeteWechselAus();
+        // Den Rest verwaltet der Co-Trainer
+        this.coTrainerUebernimmt();
         while (this.timelineIndex < this.timeline.length) {
             const ev = this.timeline[this.timelineIndex];
             this.minute = Math.max(this.minute, ev.minute);
             this.processEvent(ev);
             this.timelineIndex++;
+            // Zu seinen Zeitpunkten prueft er Spielstand und Taktik - wie im
+            // Livespiel, nur ohne Bild
+            if (this.delegation.taktik) this.coTrainerTakt();
         }
         this.minute = 90;
         this.finishMatch();

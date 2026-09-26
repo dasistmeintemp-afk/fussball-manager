@@ -175,6 +175,11 @@ const FLOW_COMMENTARY = {
         "{minute}' - Der Ball springt {a} über den Fuß.",
         "{minute}' - Ungenau von {a}, der Ball läuft ins Niemandsland."
     ],
+    andribbeln: [
+        "{minute}' - {a} hat Platz und dribbelt an.",
+        "{minute}' - Niemand greift {a} an - er trägt den Ball nach vorn.",
+        "{minute}' - {a} nutzt den freien Raum und rückt mit dem Ball auf."
+    ],
     dribble: [
         "{minute}' - {a} setzt sich stark im Dribbling durch!",
         "{minute}' - {a} lässt seinen Gegenspieler stehen.",
@@ -789,6 +794,7 @@ class LiveMatchDirector {
 
         this._tiefenRahmen = {}; // Zwischenspeicher leeren
         this._schwerpunkt = {};
+        this._lageMitBall = {};
     }
 
     checkPhaseBanners(previousMinute, minute) {
@@ -2655,7 +2661,7 @@ class LiveMatchDirector {
             tackled: FLOW_COMMENTARY.tackle
         };
 
-        const pool = pools[action.outcome];
+        const pool = action.frei ? FLOW_COMMENTARY.andribbeln : pools[action.outcome];
         if (!pool) return;
 
         const chatty = action.outcome === "complete" ? 0.22 : 0.75;
@@ -3239,7 +3245,10 @@ class LiveMatchDirector {
 
     /** Freilaufen: der Punkt im eigenen Raum, an dem man anspielbar ist */
     waehleFreilaufen(p, anker, dir, ball) {
-        const r = POSITIONS_RADIUS[p.rolle] || { x: 7, y: 7 };
+        // Wer die Linie haelt, variiert entlang der Linie, nicht nach innen
+        const bahn = this.spielMitBall(p, null, ball).bahn;
+        const raum = POSITIONS_RADIUS[p.rolle] || { x: 7, y: 7 };
+        const r = bahn === "linie" ? { x: raum.x, y: 2.5 } : raum;
         const gegner = this.teamPlayers(p.team === "home" ? "away" : "home").filter(o => o.pos !== "TW");
         const mitspieler = this.teamPlayers(p.team).filter(o => o.id !== p.id && o.pos !== "TW");
         const vorne = dir > 0 ? ball.x / 100 : 1 - ball.x / 100;
@@ -3284,13 +3293,30 @@ class LiveMatchDirector {
             kandidaten.push({ ox: zx - anker.x, oy: zy - anker.y, art: "strafraum",
                 urgency: 1.3, sprint: true, bonus: 2.5, frei: true });
         }
-        if (BREITE_ROLLEN.includes(p.rolle)) {
-            const aussen = anker.y < 50 ? -1 : 1;
-            kandidaten.push({ ox: dir * r.x * 0.4, oy: aussen * r.y, art: "breite", urgency: 1.1, bonus: 1.2 });
+        // Die Bahn aus dem Positionsspiel: Wer die Linie haelt, zieht auch
+        // einmal nach innen; wer im Halbraum steht, geht auch einmal nach
+        // aussen, wenn dort Platz ist.
+        const aussen = anker.y < 50 ? -1 : 1;
+        if (bahn === "linie") {
+            kandidaten.push({ ox: dir * r.x * 0.4, oy: 0, art: "breite", urgency: 1.1, bonus: 1.4 });
             if (p.group !== "def") {
-                kandidaten.push({ ox: dir * r.x * 0.3, oy: -aussen * r.y, art: "einruecken",
-                    urgency: 1.15, bonus: vorne > 0.6 ? 1.4 : 0 });
+                kandidaten.push({ ox: dir * r.x * 0.3, oy: -aussen * raum.y * 1.4, art: "einruecken",
+                    urgency: 1.15, bonus: vorne > 0.6 ? 1.2 : -0.5, frei: true });
             }
+        } else if (bahn === "halbraum" && BREITE_ROLLEN.includes(p.rolle)) {
+            kandidaten.push({ ox: dir * r.x * 0.3, oy: aussen * r.y, art: "breite", urgency: 1.1, bonus: 0.4 });
+        }
+
+        // Ist vor einem Verteidiger frei, rueckt er ins Mittelfeld auf - aber
+        // nie beide zugleich, einer sichert immer ab
+        if (p.group === "def" && bahn === "kette" && vorne > 0.3) {
+            const vorX = anker.x + dir * 12;
+            let platzVorn = 99;
+            gegner.forEach(o => { const d = Math.hypot(o.x - vorX, o.y - anker.y); if (d < platzVorn) platzVorn = d; });
+            const schonVorn = mitspieler.some(m => m.group === "def" && m.lauf?.art === "aufruecken"
+                && m.lauf.team === this.possessionTeam);
+            kandidaten.push({ ox: dir * 11, oy: 0, art: "aufruecken", urgency: 1.1, frei: true,
+                bonus: platzVorn > 13 && !schonVorn ? 2.2 : -3 });
         }
         if (p.group === "mid") {
             const d = Math.hypot(ball.x - anker.x, ball.y - anker.y) || 1;
@@ -3511,8 +3537,35 @@ class LiveMatchDirector {
             .sort((a, b) => a.wert - b.wert)
             .slice(0, 2)
             .map(e => e.id);
-        this._presser = { team: defendingTeam, ids: gewaehlt };
-        return new Set(gewaehlt);
+        const zugriff = this.presstImRaum(defendingTeam, ball);
+        this._presser = { team: defendingTeam, ids: gewaehlt, zugriff };
+        // Ausserhalb der Pressingzone geht nur einer heraus - und der stellt
+        // zu, statt den Ball zu jagen.
+        return new Set(zugriff ? gewaehlt : gewaehlt.slice(0, 1));
+    }
+
+    /**
+     * Greift die verteidigende Mannschaft den Ballfuehrenden hier an?
+     *
+     * Vorher sprinteten immer die zwei Naechsten auf den Ball, egal wo er
+     * lag. Ein Innenverteidiger im eigenen Drittel hatte damit gemessen im
+     * Mittel knapp vier Meter Platz - er konnte nie andribbeln, und die
+     * Aufbauspieler standen staendig unter Druck. Im Fussball presst eine
+     * Mannschaft erst ab ihrer Pressinglinie: Ein Mittelfeldpressing laesst
+     * die Innenverteidiger den Ball haben und greift ab dem ersten Drittel
+     * an, ein hohes Pressing ueberall, ein tiefer Block erst an der
+     * Mittellinie. Direkt nach einem Ballverlust wird ueberall
+     * gegengepresst.
+     */
+    presstImRaum(team, ball) {
+        if (this.mode !== "ambient") return true;
+        const angreifer = team === "home" ? "away" : "home";
+        const fortschritt = (ball.x - this.ownGoalX(angreifer)) * this.attackDir(angreifer) / 92;
+        const taktik = (team === "home" ? this.match.homeClub?.tactics : this.match.awayClub?.tactics) || {};
+        const linie = taktik.pressing === "high" ? 0 : (taktik.pressing === "low" ? 0.5 : 0.33);
+        const seitWechsel = (this._laufUhr || 0) - (this._wechselUhr ?? -99);
+        const gegenpressing = seitWechsel < UMSCHALT_DAUER && taktik.pressing !== "low";
+        return gegenpressing || fortschritt > linie;
     }
 
     /**
@@ -3658,7 +3711,13 @@ class LiveMatchDirector {
             if (weg.sprint) sprinting = true;
         }
 
-        if (pressers.has(p.id)) {
+        if (pressers.has(p.id) && this._presser?.zugriff === false) {
+            // Anlaufen ohne Zugriff: Er stellt sich in den Passweg zur Mitte
+            // und laesst den Ball dem Gegner, bis der in die Zone kommt.
+            tx = ball.x - dir * 12;
+            ty = ball.y + (50 - ball.y) * 0.35;
+            urgency = 1.25;
+        } else if (pressers.has(p.id)) {
             const back = dir * -2.5;
             tx = ball.x + back;
             ty = ball.y + (p.seed % 1) * 3 - 1.5;
@@ -3776,34 +3835,36 @@ class LiveMatchDirector {
     }
 
     /**
-     * Die Form mit Ball: breit, gestaffelt, nach vorn geschoben.
+     * Die Form mit Ball: Positionsspiel statt verschobener Formation.
      *
-     * Die Elf steht als Block, nicht über die ganze Feldbreite verteilt. Mit
-     * Ball zieht sie das Feld auseinander, ohne Ball (formOhneBall) macht sie
-     * es eng - das ist im Football Manager und in EA FC der Kern.
+     * Mit Ball bleibt im Fussball kaum jemand auf seinem Platz. Auf jeder
+     * Seite haelt genau ein Spieler die Linie, die anderen besetzen die
+     * Halbraeume und das Zentrum; im letzten Drittel sind alle fuenf Bahnen
+     * besetzt. So spielen Guardiolas City (3-2-5), Napoli oder Juventus, und
+     * so baut der FM26 aus der Formation ohne Ball eine eigene mit Ball.
+     * Wer welche Rolle bekommt, legt spielMitBall fest.
      */
     formMitBall(p, gesehen, ball, dir, ballProgress) {
-        const kompakt = 0.80 + (BREITE_ROLLEN.includes(p.rolle || p.pos) ? 0.20 : 0);
-        const blockY = 50 + (gesehen.y - 50) * 0.24;
-        let y = blockY + (p.baseY - 50) * kompakt;
+        const plan = this.spielMitBall(p, gesehen, ball);
+        let y = plan.y;
 
         // Die ganze Elf greift an, nicht nur die Spitzen: Sie rueckt als
         // Einheit mit dem Ball auf (siehe hoeheImVerbund).
-        let x = this.hoeheImVerbund(p, ballProgress, true);
+        let x = this.hoeheImVerbund(p, ballProgress, true, plan.tiefe);
 
-        // Der Angriffsfokus verschiebt die ganze Mannschaft auf eine Seite -
-        // so wird aus einer Zeile im Taktikbogen ein sichtbares Übergewicht auf
-        // dem Flügel. "Links" meint die linke Seite aus Sicht der
-        // Angriffsrichtung.
+        // Der Angriffsfokus verschiebt die Mitte der Mannschaft auf eine Seite
+        // - so wird aus einer Zeile im Taktikbogen ein sichtbares Übergewicht
+        // auf dem Flügel. "Links" meint die linke Seite aus Sicht der
+        // Angriffsrichtung. Wer die Linie hält, bleibt an der Linie.
         const tactics = (p.team === "home" ? this.match.homeClub?.tactics : this.match.awayClub?.tactics) || {};
         const fokus = tactics.focus || tactics.attackFocus;
-        if (fokus === "left" || fokus === "right") {
+        if ((fokus === "left" || fokus === "right") && plan.bahn !== "linie") {
             y += (fokus === "left" ? -1 : 1) * (dir > 0 ? 1 : -1) * 5.5;
         }
 
         // Wer vorn steht, wartet auf der Abseitslinie, solange der Ball noch
         // dahinter ist - den Lauf in die Tiefe startet er von dort
-        if (p.group !== "def") {
+        if (p.group !== "def" || plan.bahn === "linie") {
             const abseits = this._abseitsLinie?.[p.team];
             if (typeof abseits === "number" && (abseits - ball.x) * dir > 0) {
                 const grenze = abseits + dir * 1.0;
@@ -3811,17 +3872,133 @@ class LiveMatchDirector {
             }
         }
 
-        let urgency = 0;
-        if (p.rolle === "LV" || p.rolle === "RV") {
-            const onHisSide = Math.abs(ball.y - p.baseY) < 30;
-            const inFinalThird = dir > 0 ? ball.x > 58 : ball.x < 42;
-            if (onHisSide && inFinalThird) {
-                x += dir * 12;
-                y += (p.baseY < 50 ? -6 : 6);
-                urgency = 1.45;
+        // Breite geben ist nach dem Ballgewinn das Erste: Wer die Linie halten
+        // soll und noch innen steht, sprintet hinaus. Ohne das kam er nie an -
+        // bis dahin war der Ball oft schon wieder weg.
+        let urgency = plan.hinterlaeuft ? 1.35 : 0;
+        if (plan.bahn === "linie" && Math.abs(p.y - y) > 8) urgency = Math.max(urgency, 1.4);
+
+        return { x, y: Math.max(4, Math.min(96, y)), urgency };
+    }
+
+    /**
+     * Die Rolle eines Spielers im Positionsspiel seiner Mannschaft: welche
+     * Bahn er besetzt (Linie, Halbraum, Zentrum) und wie weit vorn er steht.
+     *
+     * Die Regeln gelten fuer jede Formation, weil sie an den Rollen haengen,
+     * nicht an einem festen Bild:
+     *  - Je Fluegel haelt genau einer die Linie. Stehen dort zwei (Aussen-
+     *    verteidiger und Fluegelspieler), hinterlaeuft auf der Ballseite der
+     *    Aussenverteidiger, und der Fluegelspieler zieht in den Halbraum.
+     *    Auf der ballfernen Seite haelt der Fluegelspieler die Breite fuer die
+     *    Verlagerung, der Aussenverteidiger rueckt ein und bildet mit den
+     *    Innenverteidigern die Dreierkette - die Absicherung, falls der Ball
+     *    verloren geht.
+     *  - Im Aufbau spreizen die Innenverteidiger, die Aussenverteidiger stehen
+     *    breit auf halber Hoehe, die Fluegelspieler halten die Gegner hinten.
+     *  - Der Sechser bleibt zentral vor der Kette, die Achter besetzen die
+     *    Halbraeume, die Spitzen das Zentrum.
+     *  - Die Mitte lehnt sich zur Ballseite, die Linie bleibt, wo sie ist.
+     */
+    spielMitBall(p, gesehen, ball) {
+        const plan = this.planMitBall(p.team, ball);
+        const eintrag = plan.get(p.id);
+        if (eintrag) return eintrag;
+        return { y: p.baseY, tiefe: this.formationsTiefe(p), bahn: "zentrum" };
+    }
+
+    planMitBall(team, ball) {
+        const uhr = this._laufUhr || 0;
+        if (!this._planMitBall) this._planMitBall = {};
+        const vorhanden = this._planMitBall[team];
+        if (vorhanden && vorhanden.uhr === uhr) return vorhanden.rollen;
+
+        const rollen = new Map();
+        const feld = this.teamPlayers(team).filter(q => q.pos !== "TW");
+        const schwerpunkt = this._schwerpunkt?.[team];
+        const b = typeof schwerpunkt === "number" ? schwerpunkt : 0.5;
+
+        // Aufbau und Ballseite wechseln nicht bei jedem Zuspiel: Sonst
+        // tauschten Aussenverteidiger und Fluegelspieler ihre Rollen jedes Mal,
+        // wenn der Ball die Mitte kreuzt, und rannten nur noch quer uebers
+        // Feld, ohne je anzukommen.
+        if (!this._lageMitBall) this._lageMitBall = {};
+        const lage = this._lageMitBall[team] || { aufbau: b < 0.38, seite: ball.y < 50 ? -1 : 1 };
+        if (b < 0.33) lage.aufbau = true;
+        else if (b > 0.42) lage.aufbau = false;
+        if (ball.y < 36) lage.seite = -1;
+        else if (ball.y > 64) lage.seite = 1;
+        this._lageMitBall[team] = lage;
+        const aufbau = lage.aufbau;
+        const ballSeite = lage.seite;
+        const lehnen = (ball.y - 50) * 0.2;
+        const tiefe = q => this.formationsTiefe(q);
+        const FLUEGEL = ["LV", "RV", "LM", "RM", "LA", "RA"];
+
+        [-1, 1].forEach(seite => {
+            const linie = 50 + seite * 44;
+            const halbraum = 50 + seite * 21;
+            const dreierkette = 50 + seite * 27;
+            const flanke = feld
+                .filter(q => (FLUEGEL.includes(q.rolle) || Math.abs(q.baseY - 50) > 32)
+                    && Math.sign(q.baseY - 50) === seite && q.group !== "gk")
+                .sort((a, c) => tiefe(a) - tiefe(c));
+            if (flanke.length === 0) return;
+
+            if (flanke.length === 1) {
+                // Allein auf seiner Seite (Raute, Dreierkette mit Schienen):
+                // er ist die Breite, auch als Verteidiger
+                const q = flanke[0];
+                const hoch = q.group === "def" ? (aufbau ? 0.35 : 0.78) : Math.max(tiefe(q), aufbau ? tiefe(q) : 0.85);
+                rollen.set(q.id, { y: linie, tiefe: hoch, bahn: "linie", hinterlaeuft: q.group === "def" && !aufbau && seite === ballSeite });
+                return;
             }
-        }
-        return { x, y, urgency };
+
+            const hinten = flanke[0];
+            const vorn = flanke[flanke.length - 1];
+            flanke.slice(1, -1).forEach(q => rollen.set(q.id, { y: 50 + seite * 33 + lehnen, tiefe: tiefe(q), bahn: "halbraum" }));
+
+            if (aufbau) {
+                rollen.set(hinten.id, { y: 50 + seite * 40, tiefe: 0.3, bahn: "breit" });
+                rollen.set(vorn.id, { y: linie, tiefe: Math.max(tiefe(vorn), 0.8), bahn: "linie" });
+            } else if (seite === ballSeite && b > 0.6) {
+                // Im letzten Drittel auf der Ballseite hinterlaeuft der
+                // Aussenverteidiger, der Fluegelspieler zieht nach innen
+                rollen.set(hinten.id, { y: linie, tiefe: 0.85, bahn: "linie", hinterlaeuft: true });
+                rollen.set(vorn.id, { y: halbraum + lehnen * 0.5, tiefe: Math.max(tiefe(vorn), 0.92), bahn: "halbraum" });
+            } else if (seite === ballSeite) {
+                rollen.set(hinten.id, { y: 50 + seite * 33, tiefe: 0.5, bahn: "halbraum" });
+                rollen.set(vorn.id, { y: linie, tiefe: Math.max(tiefe(vorn), 0.85), bahn: "linie" });
+            } else {
+                rollen.set(hinten.id, { y: dreierkette, tiefe: 0.04, bahn: "kette" });
+                rollen.set(vorn.id, { y: linie, tiefe: Math.max(tiefe(vorn), 0.85), bahn: "linie" });
+            }
+        });
+
+        // Die Mitte: Kette spreizt, Sechser zentral, Achter in die Halbraeume
+        feld.forEach(q => {
+            if (rollen.has(q.id)) return;
+            const abstand = q.baseY - 50;
+            let y, t = tiefe(q), bahn = "zentrum";
+            if (q.group === "def") {
+                y = 50 + abstand * (aufbau ? 1.8 : 1.35);
+                y = Math.max(18, Math.min(82, y));
+                bahn = "kette";
+            } else if (q.rolle === "DM") {
+                y = 50 + abstand * 0.8 + lehnen * 0.5;
+            } else if (q.group === "mid") {
+                const breite = Math.abs(abstand) < 3 ? 0 : Math.sign(abstand) * Math.max(14, Math.abs(abstand) * 1.15);
+                y = 50 + breite + lehnen;
+                if (!aufbau) t = Math.min(1, t + 0.05);
+                bahn = breite ? "halbraum" : "zentrum";
+            } else {
+                y = 50 + abstand * 0.9 + lehnen * 0.6;
+            }
+            rollen.set(q.id, { y, tiefe: t, bahn });
+        });
+
+        this._planMitBall[team] = { uhr, rollen };
+        return rollen;
     }
 
     /**
@@ -3834,7 +4011,9 @@ class LiveMatchDirector {
      */
     formOhneBall(p, gesehen, dir) {
         const ballAbstand = Math.min(1, Math.abs(gesehen.y - p.baseY) / 45);
-        const kompakt = 0.42 - ballAbstand * 0.05;
+        // Die Aussenspieler bleiben auch im Block etwas breiter: Nach dem
+        // Ballgewinn ist ihr Weg an die Linie sonst zu weit
+        const kompakt = (BREITE_ROLLEN.includes(p.rolle) ? 0.55 : 0.42) - ballAbstand * 0.05;
         const blockY = 50 + (gesehen.y - 50) * 0.5;
         let y = blockY + (p.baseY - 50) * kompakt;
         const ballProgress = dir > 0 ? (gesehen.x - this.ownGoalX(p.team)) / 92 : (this.ownGoalX(p.team) - gesehen.x) / 92;
@@ -3876,7 +4055,7 @@ class LiveMatchDirector {
      *
      * Rueckgabe: x auf dem Feld.
      */
-    hoeheImVerbund(p, ballProgress, mitBall) {
+    hoeheImVerbund(p, ballProgress, mitBall, tiefeVorgabe = null) {
         const dir = this.attackDir(p.team);
         const torX = this.ownGoalX(p.team);
         const schwerpunkt = this._schwerpunkt?.[p.team];
@@ -3903,9 +4082,8 @@ class LiveMatchDirector {
         }
         const vorne = Math.min(0.9, hinten + laenge);
 
-        let tiefe = this.formationsTiefe(p);
-        // Aussenverteidiger schieben im Ballbesitz vor die Innenverteidiger
-        if (mitBall && (p.rolle === "LV" || p.rolle === "RV")) tiefe = Math.min(1, tiefe + 0.15);
+        // Mit Ball bestimmt das Positionsspiel, wie weit vorn einer steht
+        const tiefe = typeof tiefeVorgabe === "number" ? tiefeVorgabe : this.formationsTiefe(p);
 
         return torX + dir * 92 * (hinten + tiefe * (vorne - hinten));
     }

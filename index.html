@@ -806,6 +806,7 @@
 
                     <!-- Scouting View -->
                     <div id="viewScoutingCenter" style="display:none;">
+                        <div id="scoutStabInfo" class="stab-info mb-3"></div>
                         <div class="dash-card mb-3">
                             <h3>Neuen Scouting-Auftrag erteilen</h3>
                             <div class="transfer-filters mt-2">
@@ -1035,6 +1036,7 @@
                                     <button class="btn btn-sm btn-secondary ml-2" id="btnUpgradeYouthAcademy">Akademie ausbauen (+2.5 Mio. €)</button>
                                 </div>
                             </div>
+                            <div id="youthSchwerpunkte" class="akademie-sp mt-2"></div>
                             <div class="table-container mt-2">
                                 <table class="compact-table">
                                     <thead>
@@ -1826,6 +1828,18 @@
             </div>
         </div>
 
+        <!-- Entscheidungsdialog: Verhandlung, Saisonstart, Angebote -->
+        <div class="modal-overlay" id="modalEntscheidung" style="display: none;">
+            <div class="modal-box modal-md">
+                <div class="modal-header">
+                    <h2 id="entTitel">Entscheidung</h2>
+                    <button class="modal-close" id="btnCloseEntscheidung">×</button>
+                </div>
+                <div class="modal-body" id="entInhalt"></div>
+                <div class="modal-footer ent-knoepfe" id="entKnoepfe"></div>
+            </div>
+        </div>
+
         <!-- Modal: Season Champion Celebration -->
         <div class="modal-overlay" id="modalSeasonEnd" style="display: none;">
             <div class="modal-box modal-md text-center">
@@ -1894,6 +1908,7 @@
                     <button class="mobile-drawer-item" data-tab="transfers">
                         <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-transfer"/></svg></span>
                         <span class="drawer-text">Transfermarkt</span>
+                        <span class="badge badge-angebot" id="mobileOffersBadge" style="display:none;">0</span>
                     </button>
                     <button class="mobile-drawer-item" data-tab="training">
                         <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-dumbbell"/></svg></span>

@@ -2131,7 +2131,7 @@ class UIManager {
 
         list.innerHTML = items.map(item => `
             <button class="attention-item" data-tab="${this.escapeHtml(item.tab)}">
-                <span class="attention-icon ton-${({ "🚑": "bad", "⚠️": "bad", "🥵": "warn", "😞": "warn", "🤝": "ok" })[item.icon] || "info"}">${this.symbolHtml(item.icon)}</span>
+                <span class="attention-icon ton-${({ "🚑": "bad", "⚠️": "bad", "🩺": "bad", "🥵": "warn", "😞": "warn", "💰": "warn", "🤝": "ok" })[item.icon] || "info"}">${this.symbolHtml(item.icon)}</span>
                 <span class="attention-text">
                     <strong>${this.escapeHtml(item.title)}</strong>
                     <span>${this.escapeHtml(item.detail)}</span>
@@ -2307,7 +2307,8 @@ class UIManager {
         if (mehrPunkt) {
             const preOffen = (state.preseason && state.preseason.aktiv && this.getPreseasonEngine())
                 ? this.getPreseasonEngine().offenePunkte(state).length : 0;
-            mehrPunkt.style.display = (unreadCount > 0 || preOffen > 0) ? "" : "none";
+            const angeboteOffen = (state.transferMarket?.offers || []).filter(o => o.status === "pending").length;
+            mehrPunkt.style.display = (unreadCount > 0 || preOffen > 0 || angeboteOffen > 0) ? "" : "none";
         }
 
         const pendingOffers = state.transferMarket.offers.filter(o => o.status === "pending").length;
@@ -2317,6 +2318,11 @@ class UIManager {
             navOffersBadge.textContent = pendingOffers;
         } else {
             navOffersBadge.style.display = "none";
+        }
+        const mobileOffersBadge = document.getElementById("mobileOffersBadge");
+        if (mobileOffersBadge) {
+            mobileOffersBadge.textContent = pendingOffers;
+            mobileOffersBadge.style.display = pendingOffers > 0 ? "inline-block" : "none";
         }
     }
 
@@ -2940,52 +2946,258 @@ class UIManager {
 
         if (typeof engine.sichereBewerber === "function") engine.sichereBewerber(pre, club);
         const kosten = engine.stabKosten(club);
-        const grenze = Math.round((club.wageBudget || 0) * 0.25);
+        const rahmen = typeof engine.stabRahmen === "function" ? engine.stabRahmen(club) : Math.round((club.wageBudget || 0) * 0.25);
+        const anteil = rahmen > 0 ? Math.round(kosten / rahmen * 100) : 0;
+        const frei = Math.max(0, rahmen - kosten);
         const staffEngine = this.getCoachingStaffEngine();
         const aktuell = staffEngine ? staffEngine.staffQuality(club) : null;
+        const pflicht = engine.PFLICHT || [];
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const balkenKlasse = anteil >= 95 ? "gefahr" : (anteil >= 80 ? "warnung" : "");
 
-        el.innerHTML = `<div class="muted-note" style="margin-bottom:10px;">
-                Stabskosten: <strong>${GameState.formatMoney(kosten)}</strong> / Woche
-                &middot; Rahmen: ${GameState.formatMoney(grenze)}
-            </div>` +
-            engine.BEREICHE.map(b => {
-                const besetzt = club.staff?.[b.key];
-                const bewerber = pre.bewerber?.[b.key] || [];
-                // Ohne eigenen Mann arbeitet der Verein mit Bordmitteln - und
-                // die sind bei einem Spitzenklub schon gut. Ohne diese Zahl
-                // verpflichtet man ahnungslos jemanden, der schlechter ist als
-                // das, was man ohnehin hat, und zahlt dafuer auch noch Gehalt.
-                const jetzt = aktuell ? (b.key === "cotrainer" ? aktuell.coTrainer : aktuell[b.key]) : null;
-                const kopf = besetzt
-                    ? `<strong>${besetzt.name}</strong> &middot; Güte ${besetzt.guete} &middot; ${GameState.formatMoney(besetzt.gehalt)}/Wo`
-                    : `<span class="muted-note">mit Bordmitteln: Güte ${jetzt ?? "?"}</span>`;
-                const liste = bewerber.map(k => `
-                    <div class="pre-candidate">
-                        <div>
-                            <strong>${k.name}</strong> <span class="muted-note">(${k.alter})</span><br>
-                            <span class="muted-note">${k.ruf} &middot; Güte ${k.guete}${(jetzt !== null && k.guete < jetzt) ? " (schlechter als jetzt)" : ""} &middot; ${GameState.formatMoney(k.gehalt)}/Wo</span>
-                        </div>
-                        <button class="btn btn-sm btn-primary" data-hire-area="${b.key}" data-hire-id="${k.id}">
-                            Verpflichten
-                        </button>
-                    </div>`).join("");
-                return `<div class="pre-area">
-                        <div class="pre-area-head"><span>${b.titel}</span>${kopf}</div>
-                        <div class="muted-note" style="margin-bottom:6px;">${b.wirkung}</div>
-                        ${liste || '<div class="muted-note">Keine weiteren Bewerbungen.</div>'}
-                    </div>`;
+        // Oben der Etat: Was der Stab kostet, was noch frei ist
+        const kopf = `
+            <div class="stab-etat ${balkenKlasse}">
+                <div class="stab-etat-zeile">
+                    <span>Stab-Etat</span>
+                    <strong>${GameState.formatMoney(kosten)} von ${GameState.formatMoney(rahmen)} je Woche</strong>
+                    <span class="muted-note">${anteil} % · frei ${GameState.formatMoney(frei)}</span>
+                </div>
+                <div class="stab-etat-balken"><i style="width:${Math.min(100, anteil)}%"></i></div>
+                <div class="muted-note">Der Stab darf ein Viertel des Gehaltsetats kosten. Pflicht für den Saisonstart: ${pflicht.map(k => engine.BEREICHE.find(b => b.key === k)?.titel).filter(Boolean).join(", ")}.</div>
+            </div>`;
+
+        el.innerHTML = kopf + engine.BEREICHE.map(b => {
+            const besetzt = club.staff?.[b.key];
+            const bewerber = pre.bewerber?.[b.key] || [];
+            const istPflicht = pflicht.includes(b.key);
+            // Ohne eigenen Mann arbeitet der Verein mit Bordmitteln - und
+            // die sind bei einem Spitzenklub schon gut. Ohne diese Zahl
+            // verpflichtet man ahnungslos jemanden, der schlechter ist als
+            // das, was man ohnehin hat, und zahlt dafuer auch noch Gehalt.
+            const jetzt = aktuell ? (b.key === "cotrainer" ? aktuell.coTrainer : aktuell[b.key]) : null;
+            const stand = besetzt
+                ? `<strong>${esc(besetzt.name)}</strong> ${this.stabSterneHtml(besetzt.guete)} <span class="muted-note">${GameState.formatMoney(besetzt.gehalt)}/Wo · ${besetzt.jahre || 2} J.</span>`
+                : `<span class="muted-note">offen · Aushilfe ${jetzt !== null ? this.stabSterneHtml(jetzt) : ""}</span>`
+                    + (istPflicht ? ` <span class="stab-pflicht">Pflicht</span>` : "");
+            const ohneDiesen = kosten - (besetzt?.gehalt || 0);
+            const liste = bewerber.map(k => {
+                const passt = ohneDiesen + k.gehalt <= rahmen;
+                const schlechter = jetzt !== null && k.guete < jetzt;
+                return `
+                <div class="pre-candidate${passt ? "" : " zu-teuer"}">
+                    <div class="pre-cand-info">
+                        <div><strong>${esc(k.name)}</strong> <span class="muted-note">(${k.alter})</span> ${this.stabSterneHtml(k.guete)}</div>
+                        <span class="muted-note">${esc(k.ruf)} · fordert ${GameState.formatMoney(k.gehalt)}/Wo${k.letzteForderung ? ` · zuletzt ${GameState.formatMoney(k.letzteForderung)}` : ""}</span>
+                        ${schlechter ? `<span class="pre-cand-warn">schwächer als die Aushilfe</span>` : ""}
+                        ${passt ? "" : `<span class="pre-cand-warn">sprengt zur Forderung den Etat</span>`}
+                    </div>
+                    <div class="pre-cand-knoepfe">
+                        <button class="btn btn-sm btn-secondary" data-talk-area="${b.key}" data-talk-id="${k.id}">Verhandeln</button>
+                        <button class="btn btn-sm btn-primary" data-hire-area="${b.key}" data-hire-id="${k.id}"${passt ? "" : " disabled"}>Zur Forderung</button>
+                    </div>
+                </div>`;
             }).join("");
+            return `<div class="pre-area${!besetzt && istPflicht ? " pflicht-offen" : ""}">
+                    <div class="pre-area-head"><span>${b.titel}</span><span class="pre-area-stand">${stand}</span></div>
+                    <div class="muted-note" style="margin-bottom:6px;">${b.wirkung}</div>
+                    ${liste || '<div class="muted-note">Keine weiteren Bewerbungen.</div>'}
+                </div>`;
+        }).join("");
 
         el.querySelectorAll("[data-hire-id]").forEach(btn => {
             btn.onclick = () => {
                 const r = engine.verpflichte(state, btn.dataset.hireArea, btn.dataset.hireId);
                 if (!r.ok) { this.showToast(r.grund, "error"); return; }
-                this.showToast(`${r.staff.name} verpflichtet.`, "success");
-                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
-                this.renderPreseason();
-                this.renderHeader();
+                this.meldeStabVerpflichtung(r);
             };
         });
+        el.querySelectorAll("[data-talk-id]").forEach(btn => {
+            btn.onclick = () => this.zeigeStabVerhandlung(btn.dataset.talkArea, btn.dataset.talkId);
+        });
+    }
+
+    /** Nach einer Verpflichtung: Hinweis mit Etat und offenen Posten */
+    meldeStabVerpflichtung(r) {
+        const state = this.app.state;
+        const anteil = r.rahmen > 0 ? Math.round(r.kosten / r.rahmen * 100) : 0;
+        const offen = (r.offen || []).length ? ` Noch offen: ${r.offen.join(", ")}.` : " Der Stab ist komplett.";
+        this.playSound("click");
+        this.showToast(`✍️ ${r.meldung?.titel || `${r.staff.name} verpflichtet`}. Stab-Etat zu ${anteil} % ausgeschöpft.${offen}`,
+            anteil >= 95 ? "warning" : "success", 7000);
+        if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+        this.renderPreseason();
+        this.renderHeader();
+    }
+
+    /**
+     * Ein Entscheidungsdialog für alles, was eine Antwort braucht:
+     * Gehaltsverhandlung, Saisonstart ohne Arzt, Angebote für eigene Spieler.
+     * knoepfe: [{ text, klasse, aktion }] - gibt eine Aktion false zurück,
+     * bleibt der Dialog offen.
+     */
+    zeigeEntscheidung({ titel, html, knoepfe = [], nachOeffnen = null }) {
+        const modal = document.getElementById("modalEntscheidung");
+        const inhalt = document.getElementById("entInhalt");
+        const fuss = document.getElementById("entKnoepfe");
+        if (!modal || !inhalt || !fuss) return;
+        DOM.setText("entTitel", titel);
+        inhalt.innerHTML = html;
+        fuss.innerHTML = knoepfe.map((k, i) => `<button class="btn ${k.klasse || "btn-secondary"}" data-ent="${i}">${k.text}</button>`).join("");
+        const schliessen = () => { modal.style.display = "none"; };
+        fuss.querySelectorAll("[data-ent]").forEach(btn => {
+            btn.onclick = () => {
+                const k = knoepfe[Number(btn.dataset.ent)];
+                const ergebnis = k && typeof k.aktion === "function" ? k.aktion() : undefined;
+                if (ergebnis !== false) schliessen();
+            };
+        });
+        const x = document.getElementById("btnCloseEntscheidung");
+        if (x) x.onclick = schliessen;
+        modal.style.display = "flex";
+        if (typeof nachOeffnen === "function") nachOeffnen(inhalt);
+    }
+
+    /**
+     * Gehaltsverhandlung mit einem Bewerber für den Stab. Man bietet Gehalt
+     * und Laufzeit, er nimmt an oder macht ein Gegenangebot - bis zu drei
+     * Runden, danach oder bei einem zu niedrigen Angebot ist er weg.
+     */
+    zeigeStabVerhandlung(bereichKey, bewerberId) {
+        const state = this.app.state;
+        const engine = this.getPreseasonEngine();
+        const pre = state?.preseason;
+        const club = state?.clubs?.find(c => c.id === state.userClubId);
+        const kandidat = pre?.bewerber?.[bereichKey]?.find(b => b.id === bewerberId);
+        if (!engine || !kandidat || !club) return;
+
+        const bereich = engine.BEREICHE.find(b => b.key === bereichKey);
+        const rahmen = engine.stabRahmen(club);
+        const frei = Math.max(0, rahmen - (engine.stabKosten(club) - (club.staff?.[bereichKey]?.gehalt || 0)));
+        const vorschlag = Math.round((kandidat.letzteForderung || kandidat.gehalt) * 0.9 / 50) * 50;
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+
+        const html = `
+            <div class="verh-kopf">
+                <div><strong>${esc(kandidat.name)}</strong> <span class="muted-note">(${kandidat.alter}) · ${esc(bereich?.titel || kandidat.titel)}</span></div>
+                ${this.stabSterneHtml(kandidat.guete)} <span class="muted-note">${esc(kandidat.ruf)}</span>
+            </div>
+            <div class="verh-zahlen">
+                <div><span>Forderung</span><strong>${GameState.formatMoney(kandidat.letzteForderung || kandidat.gehalt)}/Wo</strong></div>
+                <div><span>Frei im Stab-Etat</span><strong>${GameState.formatMoney(frei)}/Wo</strong></div>
+            </div>
+            <div class="verh-eingabe">
+                <label>Ihr Angebot je Woche
+                    <input type="number" id="verhGehalt" class="styled-input" min="0" step="50" value="${vorschlag}">
+                </label>
+                <label>Laufzeit
+                    <select id="verhJahre" class="styled-select">
+                        <option value="1">1 Jahr (er will etwas mehr)</option>
+                        <option value="2" selected>2 Jahre</option>
+                        <option value="3">3 Jahre (er geht etwas herunter)</option>
+                    </select>
+                </label>
+            </div>
+            <div class="verh-antwort" id="verhAntwort">${kandidat.runden ? `Runde ${kandidat.runden + 1} von 3.` : "Zu tief angesetzt, bricht er ab. Nach drei Runden ist Schluss."}</div>`;
+
+        const bieten = () => {
+            const gehalt = Number(document.getElementById("verhGehalt")?.value) || 0;
+            const jahre = Number(document.getElementById("verhJahre")?.value) || 2;
+            const r = engine.verhandleStab(state, bereichKey, bewerberId, gehalt, jahre);
+            const antwort = document.getElementById("verhAntwort");
+            if (r.status === "einig") {
+                const kosten = engine.stabKosten(club);
+                this.meldeStabVerpflichtung({
+                    staff: r.staff, meldung: r.meldung, kosten, rahmen,
+                    offen: engine.BEREICHE.filter(b => !club.staff?.[b.key]).map(b => b.titel)
+                });
+                return true;
+            }
+            if (r.status === "gegenangebot") {
+                if (antwort) antwort.innerHTML = `<strong>${esc(r.text)}</strong>`;
+                const feld = document.getElementById("verhGehalt");
+                if (feld) feld.value = r.gegenangebot;
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.renderPreseason();
+                return false;
+            }
+            if (r.status === "abgebrochen") {
+                this.showToast(r.text, "warning", 6000);
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.renderPreseason();
+                return true;
+            }
+            if (antwort) antwort.innerHTML = `<span style="color:var(--accent-danger);">${esc(r.text || "Das hat nicht geklappt.")}</span>`;
+            return false;
+        };
+
+        this.zeigeEntscheidung({
+            titel: "Gehaltsverhandlung",
+            html,
+            knoepfe: [
+                { text: "Abbrechen", klasse: "btn-secondary" },
+                { text: "Angebot machen", klasse: "btn-primary", aktion: bieten }
+            ]
+        });
+    }
+
+    /**
+     * Vor dem ersten Spieltag: Sind Arzt, Athletiktrainer und Co-Trainer da?
+     * Wenn nicht, fragt der Sportdirektor nach - einmal je Saison lässt sich
+     * das bewusst übergehen. Gibt true zurück, wenn der Saisonstart wartet.
+     */
+    pruefePflichtpostenVorStart(weiter) {
+        const state = this.app.state;
+        const pre = state?.preseason;
+        const engine = this.getPreseasonEngine();
+        const cal = this.getCalendarEngine();
+        if (!pre || !pre.aktiv || !engine || typeof engine.pflichtLuecken !== "function" || !cal) return false;
+        const heute = cal.getCurrentDay(state);
+        if (!heute || heute.type !== "matchday") return false;
+        if (pre.pflichtUebergangen === (state.seasonYear || 1)) return false;
+        const luecken = engine.pflichtLuecken(state);
+        if (!luecken.length) return false;
+
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const frei = Math.max(0, engine.stabRahmen(club) - engine.stabKosten(club));
+        const folgen = {
+            medizin: "Verletzungen dauern länger, das Risiko steigt.",
+            fitness: "Die Kondition leidet, die Belastung wird schlechter gesteuert.",
+            cotrainer: "An der Seitenlinie gibt es keine Hinweise und keine Delegation."
+        };
+        const html = `
+            <p>Der erste Spieltag steht an - und diese Posten sind noch offen:</p>
+            <ul class="pflicht-liste">${luecken.map(b => `<li><strong>${b.titel}</strong> · ${folgen[b.key] || b.wirkung}</li>`).join("")}</ul>
+            <p class="muted-note">Im Stab-Etat sind noch ${GameState.formatMoney(frei)} je Woche frei. Der Sportdirektor kann kurzfristig den besten bezahlbaren Bewerber holen - zu dessen Forderung, für ein Jahr.</p>`;
+
+        this.zeigeEntscheidung({
+            titel: "⚠️ Ohne Arzt in die Saison?",
+            html,
+            knoepfe: [
+                { text: "Zur Vorbereitung", klasse: "btn-secondary", aktion: () => this.switchTab("preseason") },
+                {
+                    text: "Sportdirektor besetzt", klasse: "btn-primary", aktion: () => {
+                        const ergebnisse = luecken.map(b => ({ b, r: engine.besetzeKurzfristig(state, b.key) }));
+                        const ok = ergebnisse.filter(e => e.r.ok).map(e => `${e.b.titel}: ${e.r.staff.name}`);
+                        const fehl = ergebnisse.filter(e => !e.r.ok).map(e => e.b.titel);
+                        if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                        this.showToast(
+                            (ok.length ? `✍️ Verpflichtet - ${ok.join(", ")}.` : "")
+                            + (fehl.length ? ` Nicht bezahlbar: ${fehl.join(", ")}.` : ""),
+                            fehl.length ? "warning" : "success", 8000);
+                        this.renderHeader();
+                        this.renderCurrentTab();
+                    }
+                },
+                {
+                    text: "Trotzdem starten", klasse: "btn-danger", aktion: () => {
+                        pre.pflichtUebergangen = state.seasonYear || 1;
+                        if (typeof weiter === "function") setTimeout(weiter, 0);
+                    }
+                }
+            ]
+        });
+        return true;
     }
 
     renderPreseasonSponsors(state, engine, club, pre) {
@@ -4749,54 +4961,34 @@ class UIManager {
 
         this.renderNegotiations();
 
-        // 1. Eingehende KI-Angebote
+        // 1. Eingehende Angebote für eigene Spieler - als Karten ganz oben,
+        // mit Frist, Verhältnis zum Marktwert und allen drei Antworten
         const offersContainer = document.getElementById("aiOffersContainer");
         const offersList = document.getElementById("aiOffersList");
-        const pendingOffers = (state.transferMarket?.offers || []).filter(o => o.status === "pending");
+        const pendingOffers = TransferEngine.offeneAngebote
+            ? TransferEngine.offeneAngebote(state)
+            : (state.transferMarket?.offers || []).filter(o => o.status === "pending");
 
         if (offersContainer && offersList) {
             if (pendingOffers.length > 0) {
                 offersContainer.style.display = "block";
-                offersList.innerHTML = pendingOffers.map(o => {
-                    const spieler = (userClub.players || []).find(p => p.id === o.playerId);
-                    const wert = spieler && spieler.value ? ` <span class="angebot-wert">Marktwert ${this.geldKurz(spieler.value)}</span>` : "";
-                    return `
-                    <div class="news-item-dash angebot-zeile">
-                        <div class="angebot-text">
-                            <strong>${o.fromClubName || o.buyerClubName || 'Ein Verein'}</strong> bietet <strong>${this.geldKurz(o.fee)}</strong> für <strong>${o.playerName}</strong>.${wert}
-                        </div>
-                        <div class="angebot-knoepfe">
-                            <button class="btn btn-sm btn-primary btn-accept-offer" data-offer-id="${o.id}">Annehmen</button>
-                            <button class="btn btn-sm btn-secondary btn-reject-offer" data-offer-id="${o.id}">Ablehnen</button>
-                        </div>
-                    </div>`;
-                }).join("");
+                const titel = offersContainer.querySelector("h3");
+                if (titel) titel.textContent = `💰 ${pendingOffers.length} Angebot${pendingOffers.length === 1 ? "" : "e"} für Ihre Spieler`;
+                offersList.innerHTML = pendingOffers.map(o => this.angebotKarteHtml(o, state, userClub)).join("");
 
-                document.querySelectorAll(".btn-accept-offer").forEach(b => {
-                    b.addEventListener("click", () => {
-                        const oId = b.dataset.offerId;
-                        const offer = state.transferMarket.offers.find(o => String(o.id) === String(oId));
-                        if (offer) {
-                            const buyerId = offer.fromClubId || offer.buyerClubId;
-                            TransferEngine.executeTransfer(state, offer.playerId, buyerId, offer.fee, 50000, 3);
-                            offer.status = "accepted";
-                            this.playSound("goal");
-                            this.renderTransfers();
-                            this.renderHeader();
-                        }
-                    });
+                offersList.querySelectorAll(".btn-accept-offer").forEach(b => {
+                    b.addEventListener("click", () => this.nimmAngebotAn(b.dataset.offerId));
                 });
-
-                document.querySelectorAll(".btn-reject-offer").forEach(b => {
-                    b.addEventListener("click", () => {
-                        const oId = b.dataset.offerId;
-                        const offer = state.transferMarket.offers.find(o => String(o.id) === String(oId));
-                        if (offer) {
-                            offer.status = "rejected";
-                            this.playSound("click");
-                            this.renderTransfers();
-                            this.renderHeader();
-                        }
+                offersList.querySelectorAll(".btn-more-offer").forEach(b => {
+                    b.addEventListener("click", () => this.zeigeAngebotDialog(b.dataset.offerId, true));
+                });
+                offersList.querySelectorAll(".btn-reject-offer").forEach(b => {
+                    b.addEventListener("click", () => this.lehneAngebotAb(b.dataset.offerId));
+                });
+                offersList.querySelectorAll(".ak-spieler[data-player-id]").forEach(el => {
+                    el.addEventListener("click", () => {
+                        const pId = this.resolvePlayerId(el.dataset.playerId);
+                        if (pId !== null) this.showPlayerDetailsModal(pId);
                     });
                 });
             } else {
@@ -4982,30 +5174,125 @@ class UIManager {
             }
         }
 
+        // Wer die Berichte schreibt - und wie viel man auf sie geben kann
+        const stabInfo = document.getElementById("scoutStabInfo");
+        const scoutingEng = (typeof ScoutingEngine !== 'undefined' && ScoutingEngine)
+            ? ScoutingEngine
+            : ((typeof window !== 'undefined' && window.ScoutingEngine) ? window.ScoutingEngine : null);
+        if (stabInfo && scoutingEng && typeof scoutingEng.scoutInfo === "function") {
+            const scout = scoutingEng.scoutInfo(state);
+            const wirkung = scout.sterne >= 4 ? "Genaue Einschätzungen, ausführliche Berichte mit Charakter und Kadervergleich."
+                : scout.sterne >= 3 ? "Verlässliche Berichte mit Kadervergleich, zum Charakter nur das Nötigste."
+                : scout.sterne >= 2 ? "Brauchbare, aber knappe Berichte - die Sterne können eine Hälfte daneben liegen."
+                : "Nur grobe Eindrücke. Ein eigener Chefscout würde viel mehr sehen.";
+            stabInfo.innerHTML = `
+                <div class="stab-info-kopf">
+                    <span class="stab-info-titel">✍️ ${scout.eigen ? "Chefscout" : "Scouting ohne Chefscout"}</span>
+                    <strong>${this.escapeHtml(scout.name)}</strong>
+                    ${this.stabSterneHtml(scout.guete)}
+                </div>
+                <div class="stab-info-text">${wirkung}${scout.eigen ? "" : " Den Posten besetzen Sie in der Saisonvorbereitung."}</div>`;
+        }
+
         const repList = document.getElementById("scoutReportsList");
         if (repList) {
             const reports = state.scouting?.reports || [];
             if (reports.length === 0) {
                 repList.innerHTML = `<div class="empty-state-sm">Noch keine Scoutberichte eingetroffen.</div>`;
             } else {
-                repList.innerHTML = reports.map(r => `
-                    <div class="news-item-dash" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                        <div>
-                            <strong>${r.playerName}</strong> (${r.position}, ${r.age} J.) • Geschätzte Stärke: <strong>${r.estimatedOverall}</strong> • Potenzial: <strong>${r.estimatedPotential}</strong>
-                            <div style="font-size:12px; color:var(--text-muted); margin-top:3px;">Marktwert: ${r.marketValueFormatted} • Empfehlung: <span style="color:#38bdf8;">${r.recommendation}</span></div>
-                        </div>
-                        <button class="btn btn-sm btn-primary btn-scout-bid" data-player-id="${r.playerId}">Verhandeln</button>
-                    </div>
-                `).join("");
+                repList.innerHTML = reports.slice(0, 30).map(r => this.scoutBerichtHtml(r, state)).join("");
 
-                document.querySelectorAll(".btn-scout-bid").forEach(btn => {
+                repList.querySelectorAll(".btn-scout-bid").forEach(btn => {
                     btn.addEventListener("click", () => {
                         const pId = this.resolvePlayerId(btn.dataset.playerId);
                         this.showTransferOfferModal(pId);
                     });
                 });
+                repList.querySelectorAll(".btn-scout-akte").forEach(btn => {
+                    btn.addEventListener("click", () => {
+                        const pId = this.resolvePlayerId(btn.dataset.playerId);
+                        if (pId !== null) this.showPlayerDetailsModal(pId);
+                    });
+                });
+                repList.querySelectorAll(".btn-scout-weg").forEach(btn => {
+                    btn.addEventListener("click", () => {
+                        state.scouting.reports = (state.scouting.reports || []).filter(r => r.id !== btn.dataset.reportId);
+                        this.renderTransfers();
+                    });
+                });
             }
         }
+    }
+
+    /** Güte eines Stabsmitglieds als Sternereihe, wie bei den Spielern */
+    stabSterneHtml(guete) {
+        const stab = (typeof CoachingStaffEngine !== 'undefined' && CoachingStaffEngine)
+            ? CoachingStaffEngine
+            : ((typeof window !== 'undefined' && window.CoachingStaffEngine) ? window.CoachingStaffEngine : null);
+        const sterne = stab && typeof stab.sterne === "function"
+            ? stab.sterne(guete)
+            : Math.max(0.5, Math.min(5, Math.round((1 + ((Number(guete) || 50) - 25) / 18) * 2) / 2));
+        const text = sterne.toFixed(1).replace(".", ",");
+        const rating = (typeof PlayerRatingEngine !== 'undefined' && PlayerRatingEngine)
+            ? PlayerRatingEngine
+            : ((typeof window !== 'undefined' && window.PlayerRatingEngine) ? window.PlayerRatingEngine : null);
+        const reihe = rating && typeof rating.renderAbilityStars === "function"
+            ? rating.renderAbilityStars({ ca: sterne }, { compact: true, title: `${text} Sterne` })
+            : `★ ${text}`;
+        return `<span class="stab-sterne" title="${text} Sterne">${reihe}</span>`;
+    }
+
+    /**
+     * Ein Scoutbericht als Karte: Sterne und Einordnung oben, Stärken und
+     * Schwächen nebeneinander, darunter Charakter und wer ihn geschrieben hat.
+     * Wie viel drinsteht, entscheidet die Engine nach den Sternen des Scouts.
+     */
+    scoutBerichtHtml(r, state) {
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const verein = (state.clubs || []).find(c => c.id === r.clubId);
+        const zuv = r.zuverlaessigkeit || { label: "Unbekannt", farbe: "#94a3b8" };
+        const empfKlasse = {
+            "Top-Kaufempfehlung": "sb-empf-top",
+            "Talent mit Perspektive": "sb-empf-talent",
+            "Guter Transferkandidat": "sb-empf-gut",
+            "Keine Verpflichtung empfohlen": "sb-empf-nein"
+        }[r.recommendation] || "sb-empf-offen";
+        const sterne = r.abilityStarsHtml || r.starsCaHtml || "";
+        const scout = r.scout || { name: r.scoutName || "Scout", guete: null };
+        const liste = (eintraege, klasse) => (eintraege || []).length
+            ? `<ul class="${klasse}">${eintraege.map(e => `<li>${esc(e)}</li>`).join("")}</ul>`
+            : "";
+        return `
+            <article class="scout-bericht">
+                <header class="sb-kopf">
+                    <div class="sb-name">
+                        <strong>${esc(r.playerName)}</strong>
+                        <span class="pos-tag pos-${this.getPosGroup(r.position)}">${esc(r.position)}</span>
+                        <span class="sb-meta">${r.age} J. · ${verein ? esc(verein.name) : "vereinslos"}</span>
+                    </div>
+                    <span class="sb-zuv" style="--zuv:${zuv.farbe};" title="Wissensstand ${r.confidence} %">${esc(zuv.label)}</span>
+                </header>
+                <div class="sb-sterne">
+                    ${sterne}
+                    <span class="sb-label">${esc(String(r.abilityLabel || "").replace(/^ca\. /, ""))} · ${esc(r.potentialLabel || "")}</span>
+                </div>
+                <div class="sb-empf ${empfKlasse}">${esc(r.recommendation)}${r.kaderRolle ? ` <span class="sb-rolle">· ${esc(r.kaderRolle.text)}</span>` : ""}</div>
+                <div class="sb-listen">
+                    ${liste(r.strengths, "sb-plus")}
+                    ${liste(r.weaknesses, "sb-minus")}
+                </div>
+                ${(r.hiddenTraits || []).length ? `<div class="sb-charakter">${r.hiddenTraits.map(t => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
+                ${r.summary ? `<p class="sb-fazit">„${esc(r.summary)}“</p>` : ""}
+                <footer class="sb-fuss">
+                    <span class="sb-scout">✍️ ${esc(scout.name)} ${scout.guete != null ? this.stabSterneHtml(scout.guete) : ""}</span>
+                    <span class="sb-wert">Marktwert ${esc(r.marketValueFormatted || "-")}</span>
+                    <span class="sb-knoepfe">
+                        <button class="btn btn-sm btn-secondary btn-scout-akte" data-player-id="${r.playerId}">Akte</button>
+                        <button class="btn btn-sm btn-primary btn-scout-bid" data-player-id="${r.playerId}">Verhandeln</button>
+                        <button class="btn btn-sm btn-secondary btn-scout-weg" data-report-id="${esc(r.id)}" title="Bericht ablegen">✕</button>
+                    </span>
+                </footer>
+            </article>`;
     }
 
     /**
@@ -5048,6 +5335,7 @@ class UIManager {
         }
 
         this.renderTrainingReport();
+        this.renderAkademieSchwerpunkte(state, userClub);
 
         const engine = this.getNegotiationEngine();
         const prospectsBody = document.getElementById("youthProspectsBody");
@@ -5128,6 +5416,255 @@ class UIManager {
                 });
             }
         }
+    }
+
+    /** Ein Angebot für einen eigenen Spieler als Karte */
+    angebotKarteHtml(o, state, userClub) {
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const spieler = state.players.find(p => String(p.id) === String(o.playerId));
+        const wert = spieler?.value || o.playerValue || 0;
+        const quote = wert > 0 ? Math.round(o.fee / wert * 100) : null;
+        const rest = typeof o.frist === "number" ? Math.max(0, o.frist - (state.currentDayIndex || 0)) : null;
+        const stamm = spieler && (userClub.lineup || []).some(id => String(id) === String(spieler.id));
+        const quoteKlasse = quote === null ? "" : (quote >= 115 ? "gut" : (quote < 95 ? "schlecht" : ""));
+        return `
+            <article class="angebot-karte${rest !== null && rest <= 1 ? " dringend" : ""}">
+                <header class="ak-kopf">
+                    <span class="ak-verein">${esc(o.fromClubName || o.buyerClubName || "Ein Verein")}</span>
+                    ${rest !== null ? `<span class="ak-frist">${rest === 0 ? "läuft heute ab" : `noch ${rest} Tag${rest === 1 ? "" : "e"}`}</span>` : ""}
+                </header>
+                <div class="ak-spieler" ${spieler ? `data-player-id="${spieler.id}" title="Spielerakte öffnen"` : ""}>
+                    <strong>${esc(o.playerName)}</strong>
+                    <span class="pos-tag pos-${this.getPosGroup(o.playerPos || spieler?.pos)}">${esc(o.playerPos || spieler?.pos || "")}</span>
+                    ${spieler ? `<span class="sb-meta">${spieler.age} J. · ${stamm ? "Stammspieler" : "Ergänzung"}</span> ${this.abilityStarsFor(spieler, { compact: true })}` : ""}
+                </div>
+                <div class="angebot-zahlen">
+                    <div><span>Angebot</span><strong>${this.geldKurz(o.fee)}</strong></div>
+                    <div><span>Marktwert</span><strong>${wert ? this.geldKurz(wert) : "-"}</strong></div>
+                    <div><span>Verhältnis</span><strong class="ak-quote ${quoteKlasse}">${quote !== null ? `${quote} %` : "-"}</strong></div>
+                </div>
+                <div class="ak-knoepfe">
+                    <button class="btn btn-sm btn-primary btn-accept-offer" data-offer-id="${o.id}">Annehmen</button>
+                    <button class="btn btn-sm btn-secondary btn-more-offer" data-offer-id="${o.id}"${o.nachgebessert ? " disabled title=\"Der Verein hat schon nachgebessert\"" : ""}>Mehr fordern</button>
+                    <button class="btn btn-sm btn-secondary btn-reject-offer" data-offer-id="${o.id}">Ablehnen</button>
+                </div>
+            </article>`;
+    }
+
+    /** Angebot annehmen - der Spieler wechselt sofort */
+    nimmAngebotAn(offerId) {
+        const state = this.app.state;
+        const r = TransferEngine.nimmAngebotAn(state, offerId);
+        if (!r.ok) { this.showToast(r.grund || "Das Angebot liegt nicht mehr vor.", "error"); return false; }
+        this.playSound("goal");
+        this.showToast(`✅ ${r.offer.playerName} wechselt für ${this.geldKurz(r.offer.fee)} zu ${r.offer.fromClubName}.`, "success", 6000);
+        if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+        this.renderHeader();
+        this.renderCurrentTab();
+        return true;
+    }
+
+    lehneAngebotAb(offerId) {
+        const state = this.app.state;
+        const r = TransferEngine.lehneAngebotAb(state, offerId);
+        if (!r.ok) return false;
+        this.playSound("click");
+        this.showToast(`${r.offer.fromClubName} erhält eine Absage für ${r.offer.playerName}.`, "info");
+        if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+        this.renderHeader();
+        this.renderCurrentTab();
+        return true;
+    }
+
+    /**
+     * Ein Angebot im Dialog: beim Eingang oder wenn man mehr fordern will.
+     * Mehr fordern geht einmal - der Käufer geht mit, bessert bis zu seiner
+     * Grenze nach oder zieht zurück, wenn es maßlos wird.
+     */
+    zeigeAngebotDialog(offerId, fordern = false) {
+        const state = this.app.state;
+        const o = (state.transferMarket?.offers || []).find(x => String(x.id) === String(offerId));
+        if (!o || o.status !== "pending") return;
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const vorschlag = Math.round(o.fee * 1.2 / 50000) * 50000;
+        const kannFordern = !o.nachgebessert;
+
+        const html = `
+            <div class="angebot-dialog">${this.angebotKarteHtml(o, state, club).replace(/<div class="ak-knoepfe">[\s\S]*?<\/div>/, "")}</div>
+            ${kannFordern ? `<div class="verh-eingabe" style="margin-top:12px;">
+                <label>Ihre Forderung (Ablöse)
+                    <input type="number" id="angebotForderung" class="styled-input" min="0" step="50000" value="${vorschlag}">
+                </label>
+            </div>
+            <div class="verh-antwort" id="angebotAntwort">${fordern ? "Nachgebessert wird nur einmal. Wer zu viel verlangt, verliert das Angebot." : ""}</div>`
+            : `<div class="verh-antwort">${esc(o.fromClubName)} hat bereits nachgebessert - jetzt heißt es annehmen oder ablehnen.</div>`}`;
+
+        const knoepfe = [
+            { text: "Später entscheiden", klasse: "btn-secondary" },
+            { text: "Ablehnen", klasse: "btn-secondary", aktion: () => { this.lehneAngebotAb(o.id); } }
+        ];
+        if (kannFordern) {
+            knoepfe.push({
+                text: "Mehr fordern", klasse: "btn-secondary", aktion: () => {
+                    const betrag = Number(document.getElementById("angebotForderung")?.value) || 0;
+                    const r = TransferEngine.fordereMehr(state, o.id, betrag);
+                    if (r.status === "fehler") {
+                        const a = document.getElementById("angebotAntwort");
+                        if (a) a.innerHTML = `<span style="color:var(--accent-danger);">${esc(r.text)}</span>`;
+                        return false;
+                    }
+                    if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                    this.showToast(r.text, r.status === "zurueckgezogen" ? "warning" : "info", 6000);
+                    this.renderHeader();
+                    this.renderCurrentTab();
+                    // Wer mitgeht oder nachbessert, wartet auf die Antwort
+                    if (r.status !== "zurueckgezogen") setTimeout(() => this.zeigeAngebotDialog(o.id), 0);
+                }
+            });
+        }
+        knoepfe.push({ text: `Annehmen (${this.geldKurz(o.fee)})`, klasse: "btn-primary", aktion: () => { this.nimmAngebotAn(o.id); } });
+
+        this.zeigeEntscheidung({
+            titel: `💰 Angebot für ${o.playerName}`,
+            html,
+            knoepfe,
+            nachOeffnen: (inhalt) => {
+                const feld = inhalt.querySelector("#angebotForderung");
+                if (feld && fordern) feld.focus();
+            }
+        });
+    }
+
+    /**
+     * Neue Angebote melden sich selbst: Nach dem Weiterklicken geht für das
+     * erste noch nicht gemeldete Angebot ein Dialog auf - aber nur, wenn
+     * gerade kein anderes Fenster offen ist.
+     */
+    pruefeNeueAngebote() {
+        const state = this.app.state;
+        const neu = (state?.transferMarket?.offers || []).filter(o => o.status === "pending" && o.gemeldet === false);
+        if (!neu.length) return false;
+        const offen = [...document.querySelectorAll(".modal-overlay")].some(m => m.style.display && m.style.display !== "none");
+        if (offen) return false;
+        neu.forEach(o => { o.gemeldet = true; });
+        this.playSound("click");
+        this.zeigeAngebotDialog(neu[0].id);
+        if (neu.length > 1) {
+            this.showToast(`Dazu ${neu.length - 1} weitere${neu.length === 2 ? "s" : ""} Angebot${neu.length === 2 ? "" : "e"} - alle im Transfermarkt ganz oben.`, "info", 6000);
+        }
+        return true;
+    }
+
+    /**
+     * Schwerpunkte der Jugendakademie: Ausbildung, Positionen, Jahrgang und
+     * Einzugsgebiet. Alles wirkt auf den nächsten Jahrgang; darunter steht,
+     * was der Manager damit bekommt und was es kostet.
+     */
+    renderAkademieSchwerpunkte(state, club) {
+        const box = document.getElementById("youthSchwerpunkte");
+        const youth = (typeof YouthEngine !== "undefined" && YouthEngine) ? YouthEngine
+            : ((typeof window !== "undefined" && window.YouthEngine) ? window.YouthEngine : null);
+        if (!box || !club || !youth || typeof youth.schwerpunkteVon !== "function") return;
+
+        const fac = (typeof FacilityEngine !== "undefined" && FacilityEngine) ? FacilityEngine
+            : ((typeof window !== "undefined" && window.FacilityEngine) ? window.FacilityEngine : null);
+        const profile = fac?.AKADEMIE_PROFILE || {};
+        const sp = youth.schwerpunkteVon(club);
+        const saison = state.seasonYear || 1;
+        const profilGesperrt = sp.profilSaison === saison;
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const ATTR = {
+            technique: "Technik", passing: "Passspiel", dribbling: "Dribbling", physical: "Physis", pace: "Tempo",
+            stamina: "Ausdauer", vision: "Übersicht", positioning: "Stellungsspiel", defense: "Zweikampf"
+        };
+
+        const chip = (gruppe, wert, text, aktiv, titel = "", gesperrt = false) =>
+            `<button type="button" class="sp-chip${aktiv ? " aktiv" : ""}" data-sp="${gruppe}" data-wert="${esc(wert)}"`
+            + `${titel ? ` title="${esc(titel)}"` : ""}${gesperrt && !aktiv ? " disabled" : ""}>${esc(text)}</button>`;
+
+        const profilChips = Object.entries(profile).map(([key, p]) => {
+            const titel = p.staerken?.length
+                ? `Stärker: ${p.staerken.map(a => ATTR[a] || a).join(", ")}${p.schwaechen?.length ? ` · schwächer: ${p.schwaechen.map(a => ATTR[a] || a).join(", ")}` : ""}`
+                : "Keine Handschrift - alle Fähigkeiten gleich gewichtet";
+            return chip("profil", key, p.name, sp.profil === key, titel, profilGesperrt);
+        }).join("");
+        const posChips = Object.entries(youth.SCHWERPUNKT_POSITIONEN).map(([key, g]) =>
+            chip("positionen", key, g.name, sp.positionen.includes(key), g.positionen.join(", "))).join("");
+        const jahrgangChips = Object.entries(youth.JAHRGAENGE).map(([key, j]) =>
+            chip("jahrgang", key, `${j.name} (${j.anzahl})`, sp.jahrgang === key, j.text)).join("");
+        const einzugChips = Object.entries(youth.EINZUG).map(([key, e]) => {
+            const kosten = youth.einzugKosten(club, key);
+            return chip("einzug", key, `${e.name}${kosten > 0 ? ` · ${this.geldKurz(kosten)}` : ""}`, sp.einzug === key, e.text);
+        }).join("");
+
+        // Der Nachwuchsleiter entscheidet mit
+        const stab = this.getCoachingStaffEngine();
+        const leiterGuete = stab ? stab.staffQuality(club).nachwuchs : null;
+        const leiter = club.staff?.nachwuchs;
+        const leiterBonus = leiterGuete === null ? 0 : Math.round((leiterGuete - 60) * 0.1);
+        const leiterText = leiterGuete === null ? ""
+            : leiterBonus > 0 ? `holt mehr aus jedem Jahrgang heraus (Potenzial +${leiterBonus})`
+            : leiterBonus < 0 ? `kostet jeden Jahrgang Potenzial (${leiterBonus})${leiter ? "" : " - der Posten ist offen"}`
+            : "arbeitet solide";
+
+        const jahrgang = youth.JAHRGAENGE[sp.jahrgang];
+        const einzug = youth.EINZUG[sp.einzug];
+        const potSumme = jahrgang.pot + einzug.pot + leiterBonus;
+        const kosten = youth.einzugKosten(club, sp.einzug);
+        const posText = sp.positionen.length
+            ? sp.positionen.map(k => youth.SCHWERPUNKT_POSITIONEN[k].name).join(" und ")
+            : "alle Positionen";
+
+        box.innerHTML = `
+            ${leiterGuete !== null ? `<div class="akademie-leiter">🎓 <span class="stab-info-titel">Nachwuchsleiter</span>
+                <strong>${esc(leiter?.name || "Posten offen · Aushilfe")}</strong> ${this.stabSterneHtml(leiterGuete)}
+                <span class="text-muted">${esc(leiterText)}</span></div>` : ""}
+            <div class="sp-gruppe">
+                <div class="sp-titel">Ausbildung <span class="sp-hinweis">${profilGesperrt ? "in dieser Saison schon umgestellt" : "einmal je Saison änderbar"}</span></div>
+                <div class="sp-reihe">${profilChips}</div>
+            </div>
+            <div class="sp-gruppe">
+                <div class="sp-titel">Positionen <span class="sp-hinweis">bis zu zwei Schwerpunkte</span></div>
+                <div class="sp-reihe">${posChips}</div>
+            </div>
+            <div class="sp-gruppe">
+                <div class="sp-titel">Jahrgang</div>
+                <div class="sp-reihe">${jahrgangChips}</div>
+            </div>
+            <div class="sp-gruppe">
+                <div class="sp-titel">Einzugsgebiet <span class="sp-hinweis">Kosten je Jahrgang</span></div>
+                <div class="sp-reihe">${einzugChips}</div>
+            </div>
+            <div class="sp-fazit">Nächster Jahrgang zum Saisonstart: <strong>${jahrgang.anzahl} Talente</strong>, Schwerpunkt ${esc(posText)},
+                Potenzial <strong>${potSumme >= 0 ? "+" : ""}${potSumme}</strong> gegenüber einem normalen Jahrgang${kosten > 0 ? `, Sichtung ${this.geldKurz(kosten)}` : ""}.</div>`;
+
+        box.querySelectorAll(".sp-chip").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const gruppe = btn.dataset.sp;
+                const wert = btn.dataset.wert;
+                let aenderung;
+                if (gruppe === "positionen") {
+                    const liste = sp.positionen.includes(wert)
+                        ? sp.positionen.filter(k => k !== wert)
+                        : [...sp.positionen, wert];
+                    // Beim dritten Klick fällt der älteste Schwerpunkt heraus
+                    aenderung = { positionen: liste.slice(-2) };
+                } else {
+                    aenderung = { [gruppe]: wert };
+                }
+                const res = youth.setzeSchwerpunkte(state, club.id, aenderung);
+                if (!res.ok) {
+                    this.showToast(res.meldung, "warning");
+                    return;
+                }
+                if (gruppe === "profil") {
+                    this.showToast(`Die Akademie bildet ab dem nächsten Jahrgang als ${profile[wert]?.name || wert} aus.`, "success");
+                }
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.renderTraining();
+            });
+        });
     }
 
     /**
@@ -5888,7 +6425,7 @@ class UIManager {
         const id = ({
             "🚑": "i-medical", "🥵": "i-flame", "📄": "i-doc", "😞": "i-frown", "📬": "i-mail",
             "🏗️": "i-build", "⚠️": "i-alert", "🤝": "i-briefcase", "🧊": "i-leaf", "🔥": "i-flame",
-            "📣": "i-mic", "💢": "i-alert"
+            "📣": "i-mic", "💢": "i-alert", "💰": "i-wallet", "🩺": "i-medical"
         })[emoji];
         return id
             ? `<svg class="ico" aria-hidden="true"><use href="#${id}"/></svg>`
@@ -6190,7 +6727,22 @@ class UIManager {
                 </div>
             </div>
 
+            ${report.analyst ? `<div class="stab-info mb-3">
+                <div class="stab-info-kopf">
+                    <span class="stab-info-titel">📋 Analyse</span>
+                    <strong>${this.escapeHtml(report.analyst.name)}</strong>
+                    ${this.stabSterneHtml(report.analyst.guete)}
+                    <span class="sb-zuv" style="--zuv:${report.analyst.sterne >= 3 ? "#4ade80" : (report.analyst.sterne >= 2 ? "#facc15" : "#ef4444")};">${report.genauigkeit}</span>
+                </div>
+                ${report.analyst.sterne < 3 ? `<div class="stab-info-text">Ein besserer Spielanalyst läse die Mannschaftsteile genauer, stellt mehr Schlüsselspieler vor und findet die Schwachstelle in ihrer Elf.</div>` : ""}
+            </div>` : ""}
+
             ${vergleichHtml}
+
+            ${report.schwachstelle ? `<div class="dash-card mb-3" style="border-left:3px solid var(--accent-gold);">
+                <h4 style="color:var(--accent-gold); margin-bottom:6px;">🎯 Schwachstelle in ihrer Elf</h4>
+                <p style="font-size:13px; margin:0;">${this.escapeHtml(report.schwachstelle.text)}</p>
+            </div>` : ""}
 
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px;">
                 <div class="dash-card" style="border-left:3px solid #22c55e;">
@@ -9147,6 +9699,8 @@ class UIManager {
     handleWeiter() {
         // Ohne Verein läuft die Zeit nicht weiter - erst die Entscheidung
         if (this.pruefeEntlassung()) return;
+        // Ohne Arzt, Athletik- und Co-Trainer beginnt die Saison nicht einfach so
+        if (this.pruefePflichtpostenVorStart(() => this.handleWeiter())) return;
 
         const ziel = this.beschreibeWeiter();
 
@@ -9563,7 +10117,7 @@ class UIManager {
         this.renderHeader();
         this.renderCurrentTab();
         if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
-        this.pruefeEntlassung();
+        if (!this.pruefeEntlassung()) this.pruefeNeueAngebote();
     }
 
     handleCalendarAdvanceDay() {
@@ -9621,7 +10175,7 @@ class UIManager {
             if (typeof state.saveToLocalStorage === "function") {
                 state.saveToLocalStorage();
             }
-            this.pruefeEntlassung();
+            if (!this.pruefeEntlassung()) this.pruefeNeueAngebote();
         }
     }
 
@@ -9635,6 +10189,7 @@ class UIManager {
             : ((typeof window !== 'undefined' && window.CalendarEngine) ? window.CalendarEngine : null);
 
         if (!calendarEngine) return;
+        if (this.pruefePflichtpostenVorStart(() => this.handleCalendarAdvanceMatchday())) return;
 
         const res = calendarEngine.advanceToNextMatchday(state);
         if (res.success) {
@@ -9655,6 +10210,7 @@ class UIManager {
             if (typeof state.saveToLocalStorage === "function") {
                 state.saveToLocalStorage();
             }
+            this.pruefeNeueAngebote();
         }
     }
 

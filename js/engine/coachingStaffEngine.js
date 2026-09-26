@@ -69,11 +69,18 @@ class CoachingStaffEngine {
         // Guete - sonst arbeitet der Verein mit Bordmitteln weiter. So macht
         // die Entscheidung am Trainerstab einen messbaren Unterschied, statt
         // nur eine Zeile im Vereinsprofil zu sein.
+        //
+        // Ein offener Posten ist beim eigenen Verein aber kein Selbstläufer:
+        // Wer einen Stab führt (club.staff) und keinen Arzt verpflichtet, hat
+        // keinen - dann behilft sich der Verein mit Aushilfen, und das ist
+        // spürbar schlechter als ein eigener Mann. Die KI-Vereine haben keinen
+        // Stab zum Verwalten; für sie gilt weiter die Güte aus dem Vereinsprofil.
+        const VAKANZ_ABZUG = 15;
         const eigen = (bereich, ersatz) => {
             const mitglied = club.staff && club.staff[bereich];
-            return mitglied && typeof mitglied.guete === "number"
-                ? Math.max(10, Math.min(97, mitglied.guete))
-                : Math.max(10, Math.min(97, Math.round(ersatz)));
+            if (mitglied && typeof mitglied.guete === "number") return Math.max(10, Math.min(97, mitglied.guete));
+            const abzug = club.staff ? VAKANZ_ABZUG : 0;
+            return Math.max(10, Math.min(97, Math.round(ersatz - abzug)));
         };
 
         const fitness = eigen("fitness", overall + (gelaende - 2) * 3);
@@ -83,9 +90,11 @@ class CoachingStaffEngine {
         // Der Co-Trainer steht im Spiel an der Seitenlinie: Hinweise,
         // delegierte Wechsel und Umstellungen hängen an ihm.
         const coTrainer = eigen("cotrainer", overall + (ruf - 50) * 0.08);
+        // Der Chefscout: Wie genau die Berichte sind und was drinsteht
+        const scout = eigen("scout", overall + (ruf - 50) * 0.1);
 
         // Der Gesamtwert folgt dem tatsaechlichen Stab
-        const gesamt = Math.round((fitness + analyse + medizinWert + nachwuchs + coTrainer) / 5);
+        const gesamt = Math.round((fitness + analyse + medizinWert + nachwuchs + coTrainer + scout) / 6);
         const stufe = this.STAB_STUFEN.find(s => gesamt >= s.ab) || this.STAB_STUFEN[this.STAB_STUFEN.length - 1];
 
         return {
@@ -95,12 +104,27 @@ class CoachingStaffEngine {
             medizin: medizinWert,
             nachwuchs,
             coTrainer,
+            scout,
             titel: stufe.titel,
             kurz: stufe.kurz,
             // Wie stark der Stab die Entwicklung der Spieler beschleunigt.
             // Ein Amateurstab bremst spürbar, ein Weltklasseteam beschleunigt.
             entwicklungsFaktor: Math.max(0.55, Math.min(1.45, 0.55 + (overall / 100) * 0.95))
         };
+    }
+
+    /**
+     * Die Güte eines Stabsmitglieds in Sternen, wie bei den Spielern: eine
+     * Sprache für alles. 25 ergibt einen Stern, 97 fünf.
+     */
+    static sterne(guete) {
+        return Math.max(0.5, Math.min(5, Math.round((1 + ((Number(guete) || 50) - 25) / 18) * 2) / 2));
+    }
+
+    /** Güte des Chefscouts - ohne eigenen Scout die Aushilfe */
+    static scoutGuete(state) {
+        const club = (state?.clubs || []).find(c => c.id === state.userClubId);
+        return this.staffQuality(club).scout;
     }
 
     /** Liegt ein gültiges Veto des Managers vor? */

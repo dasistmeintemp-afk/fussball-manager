@@ -1050,6 +1050,22 @@ const CalendarEngine = {
             }
         }
 
+        // 1c. Angebote für eigene Spieler haben eine Frist, und die Vorbereitung
+        // erinnert an offene Pflichtposten im Trainerstab
+        const transferEngineTag = _getTransferEngineCal();
+        if (transferEngineTag && typeof transferEngineTag.pruefeAngebotsfristen === "function") {
+            transferEngineTag.pruefeAngebotsfristen(state).forEach(o => {
+                summary.messages.push(`💰 Das Angebot von ${o.fromClubName} für ${o.playerName} ist verfallen.`);
+            });
+        }
+        const preseasonEngineTag = _getPreseasonEngine();
+        if (preseasonEngineTag && typeof preseasonEngineTag.erinnere === "function") {
+            const erinnerung = preseasonEngineTag.erinnere(state);
+            if (erinnerung) {
+                summary.messages.push(`⚠️ Noch ${erinnerung.rest} Tag(e) bis zum Saisonstart: ${erinnerung.luecken.map(b => b.titel).join(", ")} fehlt.`);
+            }
+        }
+
         // 2. Verhandlungen mit Vereinen und Beratern laufen weiter
         const negotiationEngine = (typeof NegotiationEngine !== 'undefined' && NegotiationEngine)
             ? NegotiationEngine

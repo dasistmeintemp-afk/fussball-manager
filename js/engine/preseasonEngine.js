@@ -51,8 +51,19 @@ class PreseasonEngine {
         { key: "fitness", titel: "Athletiktrainer", wirkung: "Kondition und Belastungssteuerung" },
         { key: "analyse", titel: "Spielanalyst", wirkung: "Gegneranalyse und Taktikarbeit" },
         { key: "medizin", titel: "Mannschaftsarzt", wirkung: "Verletzungen und Genesungszeiten" },
-        { key: "nachwuchs", titel: "Nachwuchsleiter", wirkung: "Entwicklung junger Spieler" }
+        { key: "nachwuchs", titel: "Nachwuchsleiter", wirkung: "Entwicklung junger Spieler und Qualität der Jahrgänge" },
+        { key: "scout", titel: "Chefscout", wirkung: "Scoutingberichte: Genauigkeit, Tiefe und Einschätzung" }
     ];
+
+    /**
+     * Posten, ohne die kein Verein in die Saison gehen sollte. Ohne Arzt
+     * dauern Verletzungen länger, ohne Athletiktrainer leidet die Kondition,
+     * ohne Co-Trainer steht der Manager an der Seitenlinie allein.
+     */
+    static PFLICHT = ["medizin", "fitness", "cotrainer"];
+
+    /** Anteil des Gehaltsetats, den der Stab höchstens kosten darf */
+    static STAB_ANTEIL = 0.25;
 
     /** Wie lange die Vorbereitung dauert */
     static DAUER_TAGE = 24;
@@ -101,6 +112,8 @@ class PreseasonEngine {
                 titel: bereich.titel,
                 guete,
                 gehalt,
+                // Was er mindestens nehmen würde - das erfährt man nur am Tisch
+                mindestGehalt: Math.max(500, Math.round(gehalt * _preRandom.float(0.8, 0.95) / 50) * 50),
                 alter: _preRandom.int(34, 62),
                 ruf: this.rufText(guete)
             });
@@ -242,8 +255,11 @@ class PreseasonEngine {
         if (!pre || !club) return pre;
         if (!pre.bewerber || typeof pre.bewerber !== "object") pre.bewerber = {};
         this.BEREICHE.forEach(b => {
-            if (!Array.isArray(pre.bewerber[b.key]) && !club.staff?.[b.key]) {
-                pre.bewerber[b.key] = this.erzeugeBewerber(club, b);
+            // Auch wer alle Bewerber vergrault hat, bekommt für einen offenen
+            // Posten neue Bewerbungen - nur eben weniger
+            const liste = pre.bewerber[b.key];
+            if (!club.staff?.[b.key] && (!Array.isArray(liste) || liste.length === 0)) {
+                pre.bewerber[b.key] = this.erzeugeBewerber(club, b, Array.isArray(liste) ? 2 : 3);
             }
         });
         return pre;
@@ -631,8 +647,11 @@ class PreseasonEngine {
 
     // --------------------------------------------------------- Entscheidungen
 
-    /** Einen Bewerber verpflichten */
-    static verpflichte(state, bereichKey, bewerberId) {
+    /**
+     * Einen Bewerber verpflichten - zu seiner Forderung oder zu dem Gehalt,
+     * auf das man sich geeinigt hat (opts.gehalt, opts.jahre).
+     */
+    static verpflichte(state, bereichKey, bewerberId, opts = {}) {
         const pre = state.preseason;
         const club = (state.clubs || []).find(c => c.id === state.userClubId);
         if (!pre || !club) return { ok: false, grund: "Keine Vorbereitung aktiv" };
@@ -641,23 +660,200 @@ class PreseasonEngine {
         const kandidat = liste.find(b => b.id === bewerberId);
         if (!kandidat) return { ok: false, grund: "Bewerber nicht gefunden" };
 
-        const wochenbudget = club.wageBudget || 0;
+        const gehalt = Math.round(opts.gehalt || kandidat.gehalt);
+        const rahmen = this.stabRahmen(club);
         const stabKosten = this.stabKosten(club) - (club.staff?.[bereichKey]?.gehalt || 0);
-        if (stabKosten + kandidat.gehalt > wochenbudget * 0.25) {
-            return { ok: false, grund: "Der Gehaltsetat gibt das nicht her - der Stab darf höchstens ein Viertel davon kosten." };
+        if (stabKosten + gehalt > rahmen) {
+            return {
+                ok: false,
+                grund: `Der Gehaltsetat gibt das nicht her: Der Stab darf höchstens ${this.geldText(rahmen)} je Woche kosten, `
+                    + `mit ${kandidat.name} wären es ${this.geldText(stabKosten + gehalt)}.`
+            };
         }
 
+        const bereich = this.BEREICHE.find(b => b.key === bereichKey);
+        const vorgaenger = club.staff?.[bereichKey] || null;
         if (!club.staff) club.staff = {};
         club.staff[bereichKey] = {
             id: kandidat.id,
             name: kandidat.name,
             guete: kandidat.guete,
-            gehalt: kandidat.gehalt,
+            gehalt,
+            jahre: opts.jahre || 2,
             titel: kandidat.titel
         };
 
         pre.bewerber[bereichKey] = liste.filter(b => b.id !== bewerberId);
-        return { ok: true, staff: club.staff[bereichKey] };
+
+        // Der Sportdirektor meldet die Verpflichtung - mit dem, was sie für den
+        // Etat bedeutet und was noch fehlt
+        const kostenJetzt = this.stabKosten(club);
+        const offen = this.BEREICHE.filter(b => !club.staff?.[b.key]).map(b => b.titel);
+        const sterne = this.sterneText(kandidat.guete);
+        const meldung = {
+            titel: `${kandidat.name} ist neuer ${bereich?.titel || kandidat.titel}`,
+            text: `${kandidat.name} (${kandidat.alter}) unterschreibt als ${bereich?.titel || kandidat.titel} `
+                + `für ${opts.jahre || 2} Jahr(e). Qualität ${sterne} (${kandidat.guete}), Gehalt ${this.geldText(gehalt)} je Woche.`
+                + (vorgaenger ? ` ${vorgaenger.name} verlässt den Verein.` : "")
+                + `\n\nDer Stab kostet jetzt ${this.geldText(kostenJetzt)} von höchstens ${this.geldText(rahmen)} je Woche `
+                + `(${Math.round(kostenJetzt / Math.max(1, rahmen) * 100)} %).`
+                + (offen.length ? `\nNoch offen: ${offen.join(", ")}.` : "\nDer Trainerstab ist komplett.")
+        };
+        if (Array.isArray(state.inbox)) {
+            state.inbox.unshift({
+                id: Date.now() + Math.floor(Math.random() * 1000),
+                matchday: 0,
+                date: state.currentDate || `Vorbereitung Saison ${state.seasonYear || 1}`,
+                sender: "Sportdirektor",
+                subject: `✍️ ${meldung.titel}`,
+                body: meldung.text,
+                read: false,
+                type: "preseason"
+            });
+        }
+
+        return { ok: true, staff: club.staff[bereichKey], meldung, kosten: kostenJetzt, rahmen, offen };
+    }
+
+    /** Wie viel der Stab je Woche höchstens kosten darf */
+    static stabRahmen(club) {
+        return Math.round((club?.wageBudget || 0) * this.STAB_ANTEIL);
+    }
+
+    /** Güte eines Stabsmitglieds in Sternen (0,5 bis 5) */
+    static sterne(guete) {
+        const staffEngine = _preResolve("CoachingStaffEngine", "./coachingStaffEngine.js");
+        if (staffEngine && typeof staffEngine.sterne === "function") return staffEngine.sterne(guete);
+        return Math.max(0.5, Math.min(5, Math.round((1 + (guete - 25) / 18) * 2) / 2));
+    }
+
+    static sterneText(guete) {
+        const s = this.sterne(guete);
+        return "★".repeat(Math.floor(s)) + (s % 1 ? "½" : "") + ` (${String(s).replace(".", ",")} Sterne)`;
+    }
+
+    /**
+     * Gehaltsverhandlung mit einem Bewerber.
+     *
+     * Jeder Bewerber hat eine Forderung und ein Minimum, das man nicht sieht.
+     * Eine längere Laufzeit ist ihm etwas wert: Für drei Jahre Sicherheit geht
+     * er etwas herunter, für ein Jahr will er mehr. Unter seinem Minimum macht
+     * er ein Gegenangebot, das sich ihm Runde für Runde nähert - wer ihn zu
+     * tief ansetzt oder zu lange feilscht, verliert ihn.
+     *
+     * Rückgabe: { status: "einig" | "gegenangebot" | "abgebrochen" | "fehler", ... }
+     */
+    static verhandleStab(state, bereichKey, bewerberId, angebot, jahre = 2) {
+        const pre = state.preseason;
+        const liste = pre?.bewerber?.[bereichKey] || [];
+        const kandidat = liste.find(b => b.id === bewerberId);
+        if (!kandidat) return { status: "fehler", text: "Bewerber nicht gefunden." };
+
+        if (!kandidat.mindestGehalt) {
+            kandidat.mindestGehalt = Math.max(500, Math.round(kandidat.gehalt * 0.88 / 50) * 50);
+        }
+        const laufzeit = Math.max(1, Math.min(3, Math.round(jahre) || 2));
+        const faktor = { 1: 1.06, 2: 1, 3: 0.95 }[laufzeit];
+        const minimum = Math.round(kandidat.mindestGehalt * faktor / 50) * 50;
+        const betrag = Math.round(Number(angebot) || 0);
+
+        if (betrag >= minimum) {
+            const r = this.verpflichte(state, bereichKey, bewerberId, { gehalt: betrag, jahre: laufzeit });
+            if (!r.ok) return { status: "fehler", text: r.grund };
+            return {
+                status: "einig", staff: r.staff, meldung: r.meldung,
+                text: `${kandidat.name} ist einverstanden: ${this.geldText(betrag)} je Woche für ${laufzeit} Jahr(e).`
+            };
+        }
+
+        kandidat.runden = (kandidat.runden || 0) + 1;
+        // Ein Angebot weit unter Wert empfindet er als Affront - und nach der
+        // dritten Runde hat er genug
+        if (betrag < minimum * 0.7 || kandidat.runden >= 3) {
+            pre.bewerber[bereichKey] = liste.filter(b => b.id !== bewerberId);
+            return {
+                status: "abgebrochen",
+                text: betrag < minimum * 0.7
+                    ? `${kandidat.name} bricht die Gespräche ab - das Angebot empfindet er als respektlos.`
+                    : `${kandidat.name} hat genug verhandelt und sagt ab.`
+            };
+        }
+
+        const vorher = kandidat.letzteForderung || Math.round(kandidat.gehalt * faktor / 50) * 50;
+        const gegen = Math.max(minimum, Math.round((vorher + minimum) / 2 / 50) * 50);
+        kandidat.letzteForderung = gegen;
+        return {
+            status: "gegenangebot",
+            gegenangebot: gegen,
+            runde: kandidat.runden,
+            text: `${kandidat.name} lehnt ab und verlangt ${this.geldText(gegen)} je Woche`
+                + ` bei ${laufzeit} Jahr(en) Laufzeit.${kandidat.runden === 2 ? " Viel Geduld hat er nicht mehr." : ""}`
+        };
+    }
+
+    /** Die Pflichtposten, die noch unbesetzt sind */
+    static pflichtLuecken(state) {
+        const club = (state?.clubs || []).find(c => c.id === state.userClubId);
+        if (!club) return [];
+        return this.PFLICHT
+            .filter(key => !club.staff?.[key])
+            .map(key => this.BEREICHE.find(b => b.key === key))
+            .filter(Boolean);
+    }
+
+    /**
+     * Der Sportdirektor besetzt einen Posten kurzfristig: den besten
+     * Bewerber, den der Etat noch hergibt - zu seiner Forderung.
+     */
+    static besetzeKurzfristig(state, bereichKey) {
+        const pre = state.preseason;
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        if (!pre || !club) return { ok: false, grund: "Keine Vorbereitung aktiv" };
+        this.sichereBewerber(pre, club);
+        const rahmen = this.stabRahmen(club);
+        const kosten = this.stabKosten(club) - (club.staff?.[bereichKey]?.gehalt || 0);
+        const bezahlbar = (pre.bewerber?.[bereichKey] || [])
+            .filter(k => kosten + k.gehalt <= rahmen)
+            .sort((a, b) => b.guete - a.guete);
+        if (!bezahlbar.length) {
+            return { ok: false, grund: "Kein Bewerber passt noch in den Etat des Stabs." };
+        }
+        return this.verpflichte(state, bereichKey, bezahlbar[0].id, { jahre: 1 });
+    }
+
+    /**
+     * Erinnerung des Sportdirektors, wenn der Saisonstart naht und noch
+     * Pflichtposten offen sind - eine Woche, drei Tage und einen Tag vorher.
+     */
+    static erinnere(state) {
+        const pre = state?.preseason;
+        if (!pre || !pre.aktiv) return null;
+        const rest = (pre.dauer || 0) - (pre.tagIndex || 0);
+        if (![7, 3, 1].includes(rest)) return null;
+        if (!Array.isArray(pre.erinnert)) pre.erinnert = [];
+        if (pre.erinnert.includes(rest)) return null;
+        const luecken = this.pflichtLuecken(state);
+        if (!luecken.length) return null;
+        pre.erinnert.push(rest);
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        const frei = Math.max(0, this.stabRahmen(club) - this.stabKosten(club));
+        const text = `Noch ${rest} Tag${rest === 1 ? "" : "e"} bis zum ersten Spieltag - und wir haben keinen `
+            + `${luecken.map(b => b.titel).join(", keinen ")}.\n\n`
+            + `Ohne Arzt dauern Verletzungen länger, ohne Athletiktrainer leidet die Kondition, ohne Co-Trainer `
+            + `stehen Sie an der Seitenlinie allein.\n\nIm Etat für den Stab sind noch ${this.geldText(frei)} je Woche frei.`;
+        if (Array.isArray(state.inbox)) {
+            state.inbox.unshift({
+                id: Date.now() + 43 + rest,
+                matchday: 0,
+                date: state.currentDate || `Vorbereitung Saison ${state.seasonYear || 1}`,
+                sender: "Sportdirektor",
+                subject: `⚠️ ${luecken.map(b => b.titel).join(", ")} fehlt noch`,
+                body: text,
+                read: false,
+                type: "preseason"
+            });
+        }
+        return { rest, luecken, text };
     }
 
     /** Wochengehalt des gesamten Stabs */

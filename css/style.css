@@ -7648,3 +7648,189 @@ td.nowrap { white-space: nowrap; }
 @media (max-width: 600px) {
     .kz-leiste { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 }
+
+/* Stabsmitglied in einer Zeile: wer, wie gut, was das bedeutet */
+.stab-info {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-left: 3px solid var(--accent-info);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+}
+.stab-info:empty { display: none; }
+.stab-info-kopf { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.stab-info-titel { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+.stab-info-text { margin-top: 4px; font-size: 13px; color: var(--text-soft); }
+.stab-sterne { display: inline-flex; align-items: center; vertical-align: middle; }
+
+/* Scoutbericht als Karte */
+#scoutReportsList { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+#scoutReportsList .empty-state-sm { grid-column: 1 / -1; }
+.scout-bericht {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    min-width: 0;
+}
+.sb-kopf { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.sb-name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.sb-name strong { font-size: 15px; }
+.sb-meta { font-size: 12px; color: var(--text-muted); }
+.sb-zuv {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--zuv);
+    border: 1px solid var(--zuv);
+    border-radius: 999px;
+    padding: 2px 8px;
+    white-space: nowrap;
+}
+.sb-sterne { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.sb-label { font-size: 12px; color: var(--text-muted); }
+.sb-empf { font-size: 13px; font-weight: 700; padding: 6px 10px; border-radius: var(--radius-sm); background: rgba(255,255,255,0.04); }
+.sb-empf .sb-rolle { font-weight: 500; color: var(--text-soft); }
+.sb-empf-top { color: var(--accent-primary); background: rgba(var(--accent-rgb), 0.10); }
+.sb-empf-talent { color: var(--accent-info); background: rgba(var(--info-rgb), 0.10); }
+.sb-empf-gut { color: var(--accent-secondary); background: rgba(52, 211, 153, 0.08); }
+.sb-empf-nein { color: var(--accent-danger); background: rgba(248, 113, 113, 0.08); }
+.sb-empf-offen { color: var(--accent-gold); background: rgba(251, 191, 36, 0.08); }
+.sb-listen { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sb-listen ul { margin: 0; padding: 0; list-style: none; font-size: 12.5px; display: flex; flex-direction: column; gap: 3px; }
+.sb-plus li::before { content: "+ "; color: var(--accent-secondary); font-weight: 700; }
+.sb-minus li::before { content: "− "; color: var(--accent-danger); font-weight: 700; }
+.sb-charakter { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--text-soft); font-style: italic; }
+.sb-fazit { margin: 0; font-size: 12.5px; color: var(--text-muted); }
+.sb-fuss { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; border-top: 1px solid var(--border-color); padding-top: 8px; font-size: 12px; color: var(--text-muted); }
+.sb-scout { display: inline-flex; align-items: center; gap: 6px; }
+.sb-knoepfe { margin-left: auto; display: inline-flex; gap: 6px; }
+@media (max-width: 600px) {
+    #scoutReportsList { grid-template-columns: minmax(0, 1fr); }
+    .sb-listen { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Schwerpunkte der Jugendakademie */
+.akademie-sp {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px 18px;
+    padding: 12px 14px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+}
+.akademie-sp:empty { display: none; }
+.akademie-leiter, .sp-fazit { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; }
+.sp-fazit { color: var(--text-soft); border-top: 1px solid var(--border-color); padding-top: 10px; display: block; }
+.sp-titel { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin-bottom: 6px; }
+.sp-hinweis { font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text-dim); margin-left: 6px; }
+.sp-reihe { display: flex; flex-wrap: wrap; gap: 6px; }
+.sp-chip {
+    background: rgba(148, 163, 184, 0.08);
+    border: 1px solid var(--border-color);
+    color: var(--text-soft);
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 32px;
+}
+.sp-chip:hover:not(:disabled) { background: rgba(148, 163, 184, 0.18); color: var(--text-main); }
+.sp-chip.aktiv { background: var(--accent-primary); color: var(--accent-ink); border-color: var(--accent-primary); }
+.sp-chip:disabled { opacity: .45; cursor: not-allowed; }
+@media (max-width: 600px) {
+    .akademie-sp { grid-template-columns: minmax(0, 1fr); padding: 10px; }
+}
+
+/* Vorbereitung: Stab-Etat, Pflichtposten, Bewerber */
+.stab-etat {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    background: var(--bg-elevated);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.stab-etat-zeile { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font-size: 13px; }
+.stab-etat-zeile > span:first-child { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+.stab-etat-balken { height: 8px; border-radius: 999px; background: rgba(148, 163, 184, 0.15); overflow: hidden; }
+.stab-etat-balken i { display: block; height: 100%; border-radius: inherit; background: var(--accent-primary); transition: width .3s ease; }
+.stab-etat.warnung .stab-etat-balken i { background: var(--accent-gold); }
+.stab-etat.gefahr .stab-etat-balken i { background: var(--accent-danger); }
+.stab-pflicht {
+    font-size: 11px; font-weight: 700; color: var(--accent-danger);
+    border: 1px solid var(--accent-danger); border-radius: 999px; padding: 1px 7px;
+}
+.pre-area.pflicht-offen { border-color: rgba(248, 113, 113, 0.45); }
+.pre-area-stand { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.pre-cand-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 220px; }
+.pre-cand-info > div { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.pre-cand-warn { font-size: 11.5px; color: var(--accent-gold); }
+.pre-cand-knoepfe { display: inline-flex; gap: 6px; flex-shrink: 0; }
+.pre-candidate.zu-teuer .pre-cand-info { opacity: .8; }
+
+/* Entscheidungsdialog */
+.ent-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.ent-knoepfe:empty { display: none; }
+.verh-kopf { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 12px; }
+.verh-zahlen { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.verh-zahlen > div, .angebot-zahlen > div {
+    display: flex; flex-direction: column; gap: 2px;
+    background: var(--bg-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 8px 10px;
+}
+.verh-zahlen span, .angebot-zahlen span { font-size: 11.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.verh-eingabe { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.verh-eingabe label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--text-soft); }
+.verh-antwort { margin-top: 12px; font-size: 13px; color: var(--text-soft); min-height: 1.4em; }
+.pflicht-liste { margin: 8px 0 12px 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+
+/* Angebote für eigene Spieler: nicht zu übersehen */
+#aiOffersContainer {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.10), rgba(251, 191, 36, 0.02));
+    border: 1px solid rgba(251, 191, 36, 0.45);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+}
+#aiOffersContainer h3 { color: var(--accent-gold); }
+#aiOffersList.ai-offers-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.angebot-karte {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    min-width: 0;
+}
+.angebot-karte.dringend { border-color: var(--accent-danger); box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.25); }
+.ak-kopf { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ak-verein { font-weight: 700; font-size: 14px; }
+.ak-frist { font-size: 11.5px; font-weight: 700; color: var(--accent-gold); border: 1px solid currentColor; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.angebot-karte.dringend .ak-frist { color: var(--accent-danger); }
+.ak-spieler { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.ak-spieler[data-player-id] { cursor: pointer; }
+.ak-spieler[data-player-id]:hover strong { text-decoration: underline; }
+.angebot-zahlen { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.angebot-zahlen strong { font-size: 14px; }
+.ak-quote.gut { color: var(--accent-secondary); }
+.ak-quote.schlecht { color: var(--accent-danger); }
+.ak-knoepfe { display: flex; flex-wrap: wrap; gap: 6px; }
+.ak-knoepfe .btn { flex: 1 1 auto; }
+.angebot-dialog .angebot-karte { border-color: rgba(251, 191, 36, 0.45); }
+@media (max-width: 600px) {
+    #aiOffersList.ai-offers-list { grid-template-columns: minmax(0, 1fr); }
+    .ak-knoepfe .btn { min-height: 40px; }
+}
+#navOffersBadge, .badge-angebot { background: var(--accent-gold); color: #1a1204; font-weight: 800; }
+@media (max-width: 600px) {
+    .ent-knoepfe .btn { flex: 1 1 calc(50% - 4px); min-height: 42px; }
+    .ent-knoepfe .btn-primary { flex-basis: 100%; order: -1; }
+}

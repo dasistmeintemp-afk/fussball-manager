@@ -149,7 +149,22 @@ Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit 
 - **Transfermarkt mit Suchfiltern:** Nach Position, Stärke, Potenzial und Preisklasse filtern.
 - **Vertragsverlängerungen (`ContractEngine`):** Individuelle Gehaltsforderungen, Rollenabsprachen und Vertragslaufzeiten direkt im Spielermenü verhandeln.
 - **Scouting-Zentrale (`ScoutingEngine`):** Scouts für gezielte Positionen, Altersklassen und Mindeststärken entsenden und detaillierte Spielerberichte erhalten.
+- **Berichte so gut wie der Scout:** Wer den Bericht schreibt, entscheidet über seinen Inhalt – der eigene Chefscout aus dem Trainerstab oder, solange der Posten offen ist, eine Aushilfe. Die Sterne des Scouts wirken so:
+
+  | Scout | Was im Bericht steht |
+  |---|---|
+  | ★ bis ★★ | Grobe Eindrücke: eine Stärke, eine Schwäche. Er verschätzt sich um bis zu eine Sternhälfte, das Potenzial junger Spieler kann er kaum einschätzen. |
+  | ★★★ | Zwei bis drei Stärken und Schwächen, Einordnung in den eigenen Kader („wäre bei uns Stammspieler“), erste Hinweise zum Charakter. |
+  | ★★★★ und mehr | Bis zu vier Stärken und drei Schwächen, Charakter, Verletzungsanfälligkeit, Loyalität, Nebenrolle und eine kaum verzerrte Schätzung. |
+
+  Jeder Bericht zeigt, wie verlässlich er ist. Die Empfehlung folgt der Schätzung des Scouts, nicht den wahren Werten. Ein guter Scout bringt von einem Auftrag bis zu vier Berichte mit und hält sich an die verlangte Mindeststärke, ein schwacher liegt dabei auch mal daneben.
 - **KI-Manager (`AIManagerEngine`):** KI-Vereine optimieren vor jedem Spieltag ihre Aufstellung und unterbreiten Angebote für deine Stars.
+- **Angebote für eigene Spieler – nicht zu übersehen:** Ein neues Angebot öffnet nach dem Weiterklicken ein eigenes Fenster und steht oben auf dem Schreibtisch. Im Transfermarkt erscheint es als Karte mit Frist, Verhältnis zum Marktwert und drei Antworten:
+  - **Annehmen:** Der Spieler wechselt sofort.
+  - **Mehr fordern:** Einmal möglich. Der Käufer geht mit, bessert bis zu seiner Grenze nach oder zieht bei einer maßlosen Forderung zurück.
+  - **Ablehnen.**
+
+  Ein Angebot gilt vier Tage. Wer nicht antwortet, hat abgelehnt.
 
 ### 4b. 🤝 Verhandlungen mit Vereinen und Beratern (`NegotiationEngine`)
 Ein Transfer ist kein Knopfdruck mehr, sondern ein Vorgang über mehrere Tage:
@@ -166,6 +181,16 @@ Ein Transfer ist kein Knopfdruck mehr, sondern ein Vorgang über mehrere Tage:
 ### 5. 🏋️ Training & Jugendakademie
 - **Trainingsschwerpunkte:** Allround, Angriff, Defensive, Technik, Taktik, Regeneration, Jugendförderung.
 - **Nachwuchsakademie (`YouthEngine`):** Akademie-Ausbau (Stufe 1 bis 5) für stärkere Talente und direkte Beförderung von Jugendspielern mit Profi-Vertrag in die 1. Mannschaft.
+- **Schwerpunkte der Akademie:** Im Reiter *Training* lassen sich vier Dinge einstellen. Alles wirkt auf den nächsten Jahrgang zum Saisonstart.
+
+  | Schwerpunkt | Auswahl | Wirkung |
+  |---|---|---|
+  | **Ausbildung** | Technik, Athletik, Spielintelligenz, Zweikampf, ausgewogen | prägt, wie die Talente spielen; einmal je Saison änderbar |
+  | **Positionen** | bis zu zwei aus Torhüter, Abwehr, Mittelfeld, Angriff | kommen deutlich häufiger nach |
+  | **Jahrgang** | Breite, ausgewogen, Spitze | fünf Talente mit etwas weniger Potenzial, drei wie gewohnt oder zwei mit deutlich mehr |
+  | **Einzugsgebiet** | Region, national, international | bringt mehr Potenzial und mehr ausländische Talente, kostet je Jahrgang (kleine Ligen zahlen weniger) |
+
+  Der Nachwuchsleiter aus dem Trainerstab entscheidet mit: Ein guter holt Potenzial heraus und lässt die Jungs schneller wachsen, ein schwacher kostet beides.
 - **Verletzungen & Sperren:** Realistische Ausfallzeiten (Leicht/Mittel/Schwer) und Gelb-/Rotsperren.
 
 ### 5b. 📋 Trainingsbericht: Belastung, Ermüdung und Risiko
@@ -195,7 +220,16 @@ Ein Talent in den Profikader zu holen dauert jetzt seine Zeit. *Vertragsgespräc
 - **Relative Sternebewertungen:** Qualitätssterne (0.5 bis 5.0) werden dynamisch relativ zur Stärke des eigenen Kaders berechnet.
 - **Testspiele werden angesagt:** Ein Spieltermin der Vorbereitung erscheint wie ein Spieltag – mit beiden Mannschaften und der Wahl zwischen Live-Spiel und Sofortergebnis. Das live gespielte Ergebnis wird so eingetragen, wie es auf dem Platz fiel.
 - **Saisonkalender & Wochenplan (`CalendarEngine`):** Realistischer Tagesablauf zwischen Spieltagen (Regeneration, Schwerpunkt-Training, Medien-/Sponsoren-Events, Taktikschulung und Gegneranalyse).
-- **Taktische Gegneranalyse (`OpponentAnalysisEngine`):** Vor jedem Ligaspiel detaillierte Stärken-/Schwächenprofile, gegnerische Taktiktendenzen, Gefahreinstufung und konkrete Trainer-Empfehlungen abrufen.
+- **Taktische Gegneranalyse (`OpponentAnalysisEngine`):** Vor jedem Ligaspiel detaillierte Stärken-/Schwächenprofile, gegnerische Taktiktendenzen, Gefahreinstufung und konkrete Trainer-Empfehlungen abrufen. Der Spielanalyst aus dem Trainerstab entscheidet, wie genau sie ist:
+  - Ein schwacher Analyst liest die Mannschaftsteile ungenauer und stellt nur zwei Schlüsselspieler vor.
+  - Ein guter Analyst stellt bis zu vier Schlüsselspieler vor und benennt die Schwachstelle der gegnerischen Elf samt Rat, wie man sie angeht.
+- **Trainerstab in der Vorbereitung:**
+  - **Posten:** Sechs Posten sind zu besetzen – Co-Trainer, Athletiktrainer, Spielanalyst, Mannschaftsarzt, Nachwuchsleiter und Chefscout.
+  - **Stab-Etat:** Der Etat (ein Viertel des Gehaltsetats) steht als Balken über der Liste. Jeder Bewerber zeigt Sterne, Forderung und ob er in den Etat passt.
+  - **Gehaltsverhandlung:** Wer verhandelt statt zur Forderung zu verpflichten, bietet Gehalt und Laufzeit. Längere Verträge machen den Bewerber günstiger. Er antwortet mit einem Gegenangebot. Wer ihn zu tief ansetzt oder drei Runden feilscht, verliert ihn.
+  - **Meldungen:** Jede Verpflichtung meldet der Sportdirektor mit dem Stand des Etats und den noch offenen Posten.
+  - **Pflichtposten:** Arzt, Athletiktrainer und Co-Trainer sind Pflicht. Eine Woche, drei Tage und einen Tag vor dem Start erinnert der Sportdirektor daran. Am ersten Spieltag fragt er nach, ob die Saison wirklich ohne sie beginnen soll, oder besetzt die Posten auf Wunsch kurzfristig.
+  - **Offene Posten:** Ein offener Posten wird mit Aushilfen besetzt und ist spürbar schwächer als ein eigener Mann.
 - **Detaillierte Spielberichte:** Textzusammenfassungen, xG-Vergleiche, Zweikampfquoten, Paraden und Auszeichnungen für den Mann des Spiels.
 - **Verbessertes Postfach (`NewsEngine`):** Vollständige Suche, Filterleiste (Vorstand, Spiel, Transfers, Training, Finanzen) und dauerhafte Mail-Historie.
 

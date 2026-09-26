@@ -6118,6 +6118,188 @@ function runEngineTests() {
         if (live.banner || live.goalFlash > 0 || live.celebratingTeam) throw new Error("Nach dem Sofort-Ergebnis bleiben Einblendungen stehen");
     });
 
+    test("Scouting: Ein besserer Chefscout schätzt genauer und schreibt ausführlicher", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const ziele = state.players.filter(p => p.clubId && p.clubId !== "muc").slice(0, 150);
+        const messe = (guete) => {
+            club.staff.scout = { id: `s${guete}`, name: `Scout ${guete}`, guete, gehalt: 1000, jahre: 2 };
+            let fehler = 0, punkte = 0, eigenheiten = 0, rollen = 0, n = 0;
+            ziele.forEach(p => {
+                p.scoutingKnowledge = null;
+                const r = ScoutingEngine.scoutPlayer(state, p.id, { source: "transfer_market" }).report;
+                const [a, b] = String(r.estimatedOverall).split(" - ").map(Number);
+                fehler += Math.abs((Number.isFinite(b) ? (a + b) / 2 : a) - p.overall);
+                punkte += r.strengths.length + r.weaknesses.length;
+                eigenheiten += r.hiddenTraits.length;
+                if (r.kaderRolle) rollen++;
+                if (r.scout.guete !== guete || !r.zuverlaessigkeit?.label || !r.recommendation) throw new Error("Bericht ohne Scout, Verlässlichkeit oder Empfehlung");
+                n++;
+            });
+            return { fehler: fehler / n, punkte: punkte / n, eigenheiten, rollen };
+        };
+        const schwach = messe(30), stark = messe(90);
+        if (!(stark.fehler < schwach.fehler - 1)) {
+            throw new Error(`Der gute Scout liegt nicht genauer: ${stark.fehler.toFixed(2)} gegen ${schwach.fehler.toFixed(2)}`);
+        }
+        if (!(stark.punkte > schwach.punkte + 1)) {
+            throw new Error(`Der gute Scout nennt nicht mehr Stärken und Schwächen: ${stark.punkte.toFixed(1)} gegen ${schwach.punkte.toFixed(1)}`);
+        }
+        if (schwach.eigenheiten !== 0 || schwach.rollen !== 0) throw new Error("Ein 1,5-Sterne-Scout sagt schon etwas zu Charakter oder Kaderrolle");
+        if (stark.rollen < ziele.length * 0.9) throw new Error("Der gute Scout ordnet die Spieler nicht in den Kader ein");
+
+        // Ohne eigenen Chefscout schreibt eine Aushilfe - mit Abzug
+        delete club.staff.scout;
+        const aushilfe = ScoutingEngine.scoutInfo(state);
+        if (aushilfe.eigen || aushilfe.name !== "Aushilfsscout") throw new Error("Ohne Chefscout schreibt keine Aushilfe");
+    });
+
+    test("Gegneranalyse: Der Spielanalyst entscheidet über Tiefe und Schwachstelle", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        club.staff.analyse = { id: "a1", name: "Guter Analyst", guete: 92, gehalt: 1000, jahre: 2 };
+        const gut = OpponentAnalysisEngine.generateReport(state, "dor", "muc");
+        club.staff.analyse = { id: "a2", name: "Schwacher Analyst", guete: 22, gehalt: 500, jahre: 1 };
+        const schwach = OpponentAnalysisEngine.generateReport(state, "dor", "muc");
+        if (gut.keyPlayers.length <= schwach.keyPlayers.length) {
+            throw new Error(`Der gute Analyst stellt nicht mehr Schlüsselspieler vor: ${gut.keyPlayers.length} gegen ${schwach.keyPlayers.length}`);
+        }
+        if (!gut.schwachstelle || schwach.schwachstelle) throw new Error("Nur der gute Analyst soll die Schwachstelle finden");
+        if (gut.analyst.name !== "Guter Analyst" || gut.genauigkeit === schwach.genauigkeit) throw new Error("Analyst oder Genauigkeit fehlen im Bericht");
+    });
+
+    test("Jugendakademie: Schwerpunkte steuern Jahrgang, Positionen, Herkunft und Kosten", () => {
+        const state = GameState.createNewGame("svw", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === "svw");
+        club.balance = 50000000;
+
+        const andere = Object.keys(FacilityEngine.AKADEMIE_PROFILE).filter(k => k !== club.akademieProfil);
+        const r1 = YouthEngine.setzeSchwerpunkte(state, "svw", { profil: andere[0], positionen: ["TW", "ST"], jahrgang: "breite", einzug: "international" });
+        if (!r1.ok || club.akademieProfil !== andere[0]) throw new Error("Schwerpunkte lassen sich nicht setzen");
+        const r2 = YouthEngine.setzeSchwerpunkte(state, "svw", { profil: andere[1] });
+        if (r2.ok) throw new Error("Die Ausbildung lässt sich zweimal in einer Saison umstellen");
+        if (YouthEngine.setzeSchwerpunkte(state, "svw", { positionen: ["TW", "ABW", "ST"] }).ok) throw new Error("Mehr als zwei Positionsschwerpunkte angenommen");
+
+        const vorher = club.balance;
+        const talente = [];
+        for (let i = 0; i < 20; i++) talente.push(...YouthEngine.generateProspects(state, "svw"));
+        if (talente.length !== 100) throw new Error(`Breiter Jahrgang bringt ${talente.length / 20} statt fünf Talente`);
+        const kosten = YouthEngine.einzugKosten(club, "international");
+        if (kosten <= 0 || vorher - club.balance !== kosten * 20) throw new Error("Die internationale Sichtung kostet nichts");
+        const schwerpunkt = talente.filter(t => ["TW", "ST", "LA", "RA"].includes(t.pos)).length / talente.length;
+        if (schwerpunkt < 0.4) throw new Error(`Nur ${Math.round(schwerpunkt * 100)} % Torhüter und Angreifer trotz Schwerpunkt`);
+        const ausland = talente.filter(t => t.nationality !== "Deutschland").length / talente.length;
+        if (ausland < 0.35) throw new Error(`Internationale Sichtung bringt nur ${Math.round(ausland * 100)} % aus dem Ausland`);
+
+        YouthEngine.setzeSchwerpunkte(state, "svw", { jahrgang: "spitze", einzug: "region", positionen: [] });
+        const spitze = YouthEngine.generateProspects(state, "svw");
+        if (spitze.length !== 2) throw new Error("Spitzenjahrgang bringt nicht zwei Talente");
+
+        // Die KI-Vereine ziehen ihre Jahrgänge unverändert nach
+        if (YouthEngine.generateProspects(state, "dor").length !== 3) throw new Error("KI-Verein bekommt keinen normalen Jahrgang");
+    });
+
+    test("Vorbereitung: Gehaltsverhandlung, Stab-Etat, Pflichtposten und Erinnerung", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const pre = state.preseason;
+        if (!pre || !pre.aktiv) throw new Error("Keine Vorbereitung aktiv");
+        club.staff = {};
+        PreseasonEngine.sichereBewerber(pre, club);
+
+        const luecken = PreseasonEngine.pflichtLuecken(state).map(b => b.key).sort();
+        if (luecken.join() !== ["cotrainer", "fitness", "medizin"].join()) throw new Error(`Pflichtposten falsch: ${luecken.join()}`);
+
+        // Zu tief angesetzt: Er bricht ab
+        const arzt = pre.bewerber.medizin[0];
+        const affront = PreseasonEngine.verhandleStab(state, "medizin", arzt.id, Math.round(arzt.mindestGehalt * 0.5), 2);
+        if (affront.status !== "abgebrochen" || pre.bewerber.medizin.some(b => b.id === arzt.id)) throw new Error("Ein Affront-Angebot beendet die Gespräche nicht");
+
+        // Knapp darunter: Gegenangebot, das dann angenommen wird
+        const zweiter = pre.bewerber.medizin[0];
+        const knapp = Math.round(zweiter.mindestGehalt * 0.9);
+        const gegen = PreseasonEngine.verhandleStab(state, "medizin", zweiter.id, knapp, 2);
+        if (gegen.status !== "gegenangebot" || !(gegen.gegenangebot >= zweiter.mindestGehalt && gegen.gegenangebot <= zweiter.gehalt)) {
+            throw new Error(`Kein sinnvolles Gegenangebot: ${JSON.stringify(gegen)}`);
+        }
+        const posteingang = (state.inbox || []).length;
+        const einig = PreseasonEngine.verhandleStab(state, "medizin", zweiter.id, gegen.gegenangebot, 2);
+        if (einig.status !== "einig" || club.staff.medizin?.gehalt !== gegen.gegenangebot) throw new Error("Die Einigung setzt den Arzt nicht zum vereinbarten Gehalt ein");
+        const meldung = state.inbox[0];
+        if (state.inbox.length !== posteingang + 1 || !/✍️/.test(meldung.subject) || !/Noch offen/.test(meldung.body)) {
+            throw new Error("Die Verpflichtung wird nicht mit Etat und offenen Posten gemeldet");
+        }
+
+        // Der Etat setzt eine Grenze
+        const etat = club.wageBudget;
+        club.wageBudget = 1000;
+        const teuer = pre.bewerber.fitness[0];
+        if (PreseasonEngine.verpflichte(state, "fitness", teuer.id).ok) throw new Error("Verpflichtung über dem Stab-Etat möglich");
+        club.wageBudget = etat;
+
+        // Eine Woche vor dem Start erinnert der Sportdirektor - einmal
+        pre.tagIndex = pre.dauer - 7;
+        const erinnerung = PreseasonEngine.erinnere(state);
+        if (!erinnerung || !erinnerung.luecken.some(b => b.key === "fitness")) throw new Error("Keine Erinnerung an die offenen Pflichtposten");
+        if (PreseasonEngine.erinnere(state)) throw new Error("Die Erinnerung kommt am selben Tag doppelt");
+
+        // Kurzfristig besetzen füllt die Lücken
+        ["fitness", "cotrainer"].forEach(k => {
+            const r = PreseasonEngine.besetzeKurzfristig(state, k);
+            if (!r.ok) throw new Error(`${k} lässt sich nicht kurzfristig besetzen: ${r.grund}`);
+        });
+        if (PreseasonEngine.pflichtLuecken(state).length) throw new Error("Nach dem Besetzen bleiben Pflichtposten offen");
+    });
+
+    test("Angebote für eigene Spieler: Frist, Mehr fordern, Annehmen und Verfall", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        if (!state.transferMarket) state.transferMarket = { offers: [] };
+        // Ein Spieler, für den sich sicher ein Käufer findet, an die Stelle,
+        // die der feste Zufallswert auswählt
+        const erzeuge = () => {
+            const kandidat = state.players
+                .filter(p => p.clubId === "muc" && p.overall >= 74)
+                .sort((a, b) => a.value - b.value)[0];
+            const ids = club.playerIds.filter(id => id !== kandidat.id);
+            ids.splice(Math.floor(0.1 * club.playerIds.length), 0, kandidat.id);
+            club.playerIds = ids;
+            state.clubs.forEach(c => { if (c.id !== "muc") c.transferBudget = Math.max(c.transferBudget || 0, kandidat.value * 2); });
+            const zufall = Math.random;
+            Math.random = () => 0.1;
+            try { TransferEngine.processAITransferMarket(state); } finally { Math.random = zufall; }
+            return state.transferMarket.offers[0];
+        };
+        const o = erzeuge();
+        if (!o || o.status !== "pending" || typeof o.frist !== "number" || o.gemeldet !== false || !(o.maxFee >= o.fee)) {
+            throw new Error(`Angebot ohne Frist, Meldestatus oder Obergrenze: ${JSON.stringify(o)}`);
+        }
+        const punkte = ManagerEngine.getAttentionItems(state);
+        if (!punkte.some(p => p.icon === "💰" && p.priority === 0)) throw new Error("Das Angebot steht nicht oben auf dem Dashboard");
+
+        // Maßlos: Der Verein zieht zurück
+        const zurueck = TransferEngine.fordereMehr(state, o.id, Math.round(o.maxFee * 1.5));
+        if (zurueck.status !== "zurueckgezogen" || o.status !== "withdrawn") throw new Error("Eine maßlose Forderung lässt das Angebot stehen");
+
+        // Knapp über der Grenze: Er bessert bis zur Grenze nach - einmal
+        o.status = "pending"; o.nachgebessert = false;
+        const nach = TransferEngine.fordereMehr(state, o.id, Math.round(o.maxFee * 1.1));
+        if (nach.status !== "nachgebessert" || o.fee !== o.maxFee) throw new Error(`Keine Nachbesserung bis zur Grenze: ${JSON.stringify(nach)}`);
+        if (TransferEngine.fordereMehr(state, o.id, o.fee + 100000).status !== "fehler") throw new Error("Es wird ein zweites Mal nachgebessert");
+
+        // Annehmen: Der Spieler wechselt
+        const r = TransferEngine.nimmAngebotAn(state, o.id);
+        const spieler = state.players.find(p => p.id === o.playerId);
+        if (!r.ok || spieler.clubId !== o.fromClubId || club.playerIds.includes(o.playerId)) throw new Error("Nach dem Annehmen wechselt der Spieler nicht");
+
+        // Ein neues Angebot verfällt nach der Frist
+        const zweites = erzeuge();
+        if (!zweites || zweites === o) throw new Error("Kein zweites Angebot erzeugt");
+        state.currentDayIndex = zweites.frist + 1;
+        const verfallen = TransferEngine.pruefeAngebotsfristen(state);
+        if (!verfallen.includes(zweites) || zweites.status !== "expired") throw new Error("Das Angebot verfällt nicht nach der Frist");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

@@ -520,6 +520,96 @@ class TransferEngine {
         return kader.reduce((a, p) => a + (p.overall || 50), 0) / kader.length;
     }
 
+    /** Wie viele Tage ein Angebot für einen eigenen Spieler gilt */
+    static ANGEBOTS_FRIST = 4;
+
+    /** Offene Angebote anderer Vereine für eigene Spieler, dringendste zuerst */
+    static offeneAngebote(state) {
+        return (state?.transferMarket?.offers || [])
+            .filter(o => o.status === "pending")
+            .sort((a, b) => (a.frist ?? Infinity) - (b.frist ?? Infinity));
+    }
+
+    /** Ein Angebot annehmen: Der Spieler wechselt zu der vereinbarten Ablöse */
+    static nimmAngebotAn(state, offerId) {
+        const offer = (state?.transferMarket?.offers || []).find(o => String(o.id) === String(offerId));
+        if (!offer || offer.status !== "pending") return { ok: false, grund: "Das Angebot liegt nicht mehr vor." };
+        const buyerId = offer.fromClubId || offer.buyerClubId;
+        const ok = this.executeTransfer(state, offer.playerId, buyerId, offer.fee, 50000, 3);
+        if (ok === false) return { ok: false, grund: "Der Wechsel ist gescheitert." };
+        offer.status = "accepted";
+        return { ok: true, offer };
+    }
+
+    /** Ein Angebot ablehnen */
+    static lehneAngebotAb(state, offerId) {
+        const offer = (state?.transferMarket?.offers || []).find(o => String(o.id) === String(offerId));
+        if (!offer || offer.status !== "pending") return { ok: false };
+        offer.status = "rejected";
+        return { ok: true, offer };
+    }
+
+    /**
+     * Mehr fordern.
+     *
+     * Der Käufer hat eine Grenze, die er nicht verrät. Liegt die Forderung
+     * darunter, geht er mit. Liegt sie knapp darüber, bessert er bis zu seiner
+     * Grenze nach. Ist sie maßlos, zieht er das Angebot zurück. Nachgebessert
+     * wird nur einmal - danach heißt es annehmen oder ablehnen.
+     */
+    static fordereMehr(state, offerId, forderung) {
+        const offer = (state?.transferMarket?.offers || []).find(o => String(o.id) === String(offerId));
+        if (!offer || offer.status !== "pending") return { status: "fehler", text: "Das Angebot liegt nicht mehr vor." };
+        const betrag = Math.round(Number(forderung) || 0);
+        if (betrag <= offer.fee) return { status: "fehler", text: "Die Forderung muss über dem Angebot liegen." };
+        if (offer.nachgebessert) {
+            return { status: "fehler", text: `${offer.fromClubName} hat bereits nachgebessert und geht nicht weiter.` };
+        }
+        const grenze = offer.maxFee || Math.round(offer.fee * 1.15);
+        offer.nachgebessert = true;
+        if (betrag <= grenze) {
+            offer.fee = betrag;
+            return { status: "angenommen", offer, text: `${offer.fromClubName} geht auf ${_formatTransferMoney(betrag)} mit.` };
+        }
+        if (betrag > grenze * 1.3) {
+            offer.status = "withdrawn";
+            return { status: "zurueckgezogen", offer, text: `${offer.fromClubName} zieht das Angebot zurück - die Forderung ist ihnen zu hoch.` };
+        }
+        offer.fee = grenze;
+        return { status: "nachgebessert", offer, text: `${offer.fromClubName} bessert auf ${_formatTransferMoney(grenze)} nach - mehr ist nicht drin.` };
+    }
+
+    /**
+     * Abgelaufene Angebote verfallen. Wer nicht antwortet, hat abgelehnt -
+     * der interessierte Verein meldet sich dann ab.
+     */
+    static pruefeAngebotsfristen(state) {
+        const tag = state?.currentDayIndex || 0;
+        const verfallen = [];
+        (state?.transferMarket?.offers || []).forEach(o => {
+            if (o.status !== "pending" || typeof o.frist !== "number") return;
+            // Der Kalender zählt jede Saison von vorn - ein Angebot aus der
+            // alten Saison ist mit dem Saisonwechsel verfallen
+            const alteSaison = typeof o.saison === "number" && o.saison !== (state.seasonYear || 1);
+            if (!alteSaison && tag <= o.frist) return;
+            o.status = "expired";
+            verfallen.push(o);
+            if (Array.isArray(state.inbox)) {
+                state.inbox.unshift({
+                    id: Date.now() + Math.floor(Math.random() * 1000),
+                    matchday: state.currentMatchday,
+                    date: state.currentDate || `Spieltag ${state.currentMatchday}`,
+                    sender: o.fromClubName || "Transfermarkt",
+                    subject: `Angebot für ${o.playerName} verfallen`,
+                    body: `Sie haben auf unser Angebot von ${_formatTransferMoney(o.fee)} für ${o.playerName} nicht reagiert. Wir betrachten die Sache als erledigt.`,
+                    read: false,
+                    type: "transfer_offer"
+                });
+            }
+        });
+        return verfallen;
+    }
+
     /**
      * Erzeugt gelegentliche Angebote von KI-Vereinen für Spieler des Spielers
      */
@@ -537,17 +627,28 @@ class TransferEngine {
                 if (aiClubs.length > 0) {
                     const interestedClub = aiClubs[Math.floor(Math.random() * aiClubs.length)];
                     const offerFee = Math.round(player.value * (0.95 + Math.random() * 0.3));
+                    // Wie weit der Verein höchstens gehen würde - verrät er nicht
+                    const maxFee = Math.min(interestedClub.transferBudget || offerFee,
+                        Math.round(offerFee * (1.06 + Math.random() * 0.24)));
 
+                    const tag = state.currentDayIndex || 0;
                     state.transferMarket.offers.unshift({
                         id: Date.now(),
                         playerId: player.id,
                         playerName: player.name,
                         playerOverall: player.overall,
                         playerPos: player.pos,
+                        playerAge: player.age,
+                        playerValue: player.value,
                         fromClubId: interestedClub.id,
                         fromClubName: interestedClub.name,
                         toClubId: userClub.id,
                         fee: offerFee,
+                        maxFee: Math.max(offerFee, maxFee),
+                        eingang: tag,
+                        frist: tag + this.ANGEBOTS_FRIST,
+                        saison: state.seasonYear || 1,
+                        gemeldet: false,
                         status: "pending"
                     });
 
@@ -556,8 +657,8 @@ class TransferEngine {
                         matchday: state.currentMatchday,
                         date: `Spieltag ${state.currentMatchday}`,
                         sender: interestedClub.name,
-                        subject: `Transferangebot für ${player.name}`,
-                        body: `${interestedClub.name} bietet ${_formatTransferMoney(offerFee)} Ablösesumme für Ihren Spieler ${player.name} (${player.pos}, Gesamtstärke ${player.overall}). Sie können das Angebot im Transfermenü prüfen und annehmen oder ablehnen.`,
+                        subject: `💰 Angebot: ${_formatTransferMoney(offerFee)} für ${player.name}`,
+                        body: `${interestedClub.name} bietet ${_formatTransferMoney(offerFee)} Ablösesumme für Ihren Spieler ${player.name} (${player.pos}, ${player.age} Jahre, Marktwert ${_formatTransferMoney(player.value)}).\n\nDas Angebot gilt ${this.ANGEBOTS_FRIST} Tage. Sie können annehmen, ablehnen oder mehr fordern - im Transfermarkt ganz oben.`,
                         read: false,
                         type: "transfer_offer"
                     });

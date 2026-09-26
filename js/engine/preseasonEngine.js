@@ -781,11 +781,16 @@ class PreseasonEngine {
      */
     static stabLohnsumme(club) {
         if (!club?.staff) return 0;
-        const basis = this.STAB_LOHN_STUFE[club.level || 1] ?? 200;
         return Math.round(this.BEREICHE.reduce((summe, b) => {
             const m = club.staff[b.key];
-            return summe + (m ? (m.gehalt || 0) : basis * (this.STAB_LOHN_POSTEN[b.key] ?? 0.7) * 0.35);
+            return summe + (m ? (m.gehalt || 0) : this.aushilfeKosten(club, b.key));
         }, 0));
+    }
+
+    /** Was die Aushilfe auf einem offenen Posten je Woche kostet */
+    static aushilfeKosten(club, bereichKey) {
+        const basis = this.STAB_LOHN_STUFE[club?.level || 1] ?? 200;
+        return Math.round(basis * (this.STAB_LOHN_POSTEN[bereichKey] ?? 0.7) * 0.35);
     }
 
     /**

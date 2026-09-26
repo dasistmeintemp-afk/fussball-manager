@@ -2959,6 +2959,13 @@ class UIManager {
         const balkenKlasse = anteil >= 95 ? "gefahr" : (anteil >= 80 ? "warnung" : "");
 
         // Oben der Etat: Was der Stab kostet, was noch frei ist
+        // Was der Stab jede Woche wirklich kostet: die Verträge plus die
+        // Aushilfen auf den offenen Posten. Der Balken zeigt nur die Verträge -
+        // nur die zählen gegen den Etat.
+        const offenePosten = engine.BEREICHE.filter(b => !club.staff?.[b.key]);
+        const aushilfen = typeof engine.aushilfeKosten === "function"
+            ? offenePosten.reduce((summe, b) => summe + engine.aushilfeKosten(club, b.key), 0)
+            : 0;
         const kopf = `
             <div class="stab-etat ${balkenKlasse}">
                 <div class="stab-etat-zeile">
@@ -2967,6 +2974,13 @@ class UIManager {
                     <span class="muted-note">${anteil} % · frei ${GameState.formatMoney(frei)}</span>
                 </div>
                 <div class="stab-etat-balken"><i style="width:${Math.min(100, anteil)}%"></i></div>
+                <div class="stab-etat-zeile stab-etat-kosten">
+                    <span>Kostet derzeit</span>
+                    <strong>${GameState.formatMoney(kosten + aushilfen)} je Woche</strong>
+                    <span class="muted-note">${offenePosten.length
+                        ? `davon ${GameState.formatMoney(aushilfen)} für Aushilfen auf ${offenePosten.length} offenen Posten`
+                        : "alle Posten besetzt, keine Aushilfen"}</span>
+                </div>
                 <div class="muted-note">Der Etat reicht für einen guten Stab - für lauter Spitzenleute wird es meist eng. Die Gehälter gehen jede Woche von der Kasse ab. Pflicht für den Saisonstart: ${pflicht.map(k => engine.BEREICHE.find(b => b.key === k)?.titel).filter(Boolean).join(", ")}.</div>
             </div>`;
 
@@ -2981,7 +2995,7 @@ class UIManager {
             const jetzt = aktuell ? (b.key === "cotrainer" ? aktuell.coTrainer : aktuell[b.key]) : null;
             const stand = besetzt
                 ? `<strong>${esc(besetzt.name)}</strong> ${this.stabSterneHtml(besetzt.guete)} <span class="muted-note">${GameState.formatMoney(besetzt.gehalt)}/Wo · ${besetzt.jahre || 2} J.</span>`
-                : `<span class="muted-note">offen · Aushilfe ${jetzt !== null ? this.stabSterneHtml(jetzt) : ""}</span>`
+                : `<span class="muted-note">offen · Aushilfe ${jetzt !== null ? this.stabSterneHtml(jetzt) : ""}${typeof engine.aushilfeKosten === "function" ? ` · ${GameState.formatMoney(engine.aushilfeKosten(club, b.key))}/Wo` : ""}</span>`
                     + (istPflicht ? ` <span class="stab-pflicht">Pflicht</span>` : "");
             const ohneDiesen = kosten - (besetzt?.gehalt || 0);
             const liste = bewerber.map(k => {

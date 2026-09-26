@@ -6365,6 +6365,42 @@ function runEngineTests() {
         }
     });
 
+    test("Trainerstab: Gehälter nach Liga und Posten, der Stab wird wirklich bezahlt", () => {
+        const welt = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const grenzen = { 1: { max: 40000, rahmen: 160000 }, 7: { max: 400, rahmen: 1200 } };
+        [1, 7].forEach(stufe => {
+            const vorlage = welt.clubs.find(c => c.level === stufe);
+            const state = GameState.createNewGame(vorlage.id, "normal", { name: "Prüfer" });
+            const club = state.clubs.find(c => c.id === vorlage.id);
+            const alle = Object.values(state.preseason.bewerber).flat();
+            const teuerster = Math.max(...alle.map(b => b.gehalt));
+            if (teuerster > grenzen[stufe].max) throw new Error(`Stufe ${stufe}: Ein Stabsmitglied verlangt ${teuerster} € je Woche`);
+            if (alle.some(b => b.gehalt < 50 || b.mindestGehalt > b.gehalt)) throw new Error(`Stufe ${stufe}: Gehalt oder Mindestgehalt unplausibel`);
+            const rahmen = PreseasonEngine.stabRahmen(club);
+            if (rahmen > grenzen[stufe].rahmen || rahmen < PreseasonEngine.erwarteteStabKosten(club)) {
+                throw new Error(`Stufe ${stufe}: Stab-Etat ${rahmen} € passt nicht zur Liga`);
+            }
+        });
+
+        // Der Stab wird jede Woche bezahlt
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const arzt = state.preseason.bewerber.medizin[0];
+        if (!PreseasonEngine.verpflichte(state, "medizin", arzt.id).ok) throw new Error("Arzt lässt sich nicht verpflichten");
+        FinanceEngine.applyWeeklyCosts(state);
+        const buchung = (state.finances?.transactions || []).find(t => t.type === "staff_wages");
+        if (!buchung || buchung.amount !== -PreseasonEngine.stabLohnsumme(club)) {
+            throw new Error(`Die Stabsgehälter werden nicht gebucht: ${JSON.stringify(buchung)}`);
+        }
+        if (PreseasonEngine.stabLohnsumme(club) <= arzt.gehalt) throw new Error("Offene Posten kosten keine Aushilfe");
+
+        // Ein Vertrag aus der Zeit der alten Gehaltsformel wird umgerechnet
+        club.staff.medizin.gehalt = 173000;
+        delete club.stabGehaelterV2;
+        PreseasonEngine.rechneStabGehaelterUm(state);
+        if (club.staff.medizin.gehalt > 30000) throw new Error(`Der alte Vertrag bleibt bei ${club.staff.medizin.gehalt} € je Woche`);
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

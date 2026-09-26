@@ -226,7 +226,9 @@ Ein Talent in den Profikader zu holen dauert jetzt seine Zeit. *Vertragsgespräc
   - Ein guter Analyst stellt bis zu vier Schlüsselspieler vor und benennt die Schwachstelle der gegnerischen Elf samt Rat, wie man sie angeht.
 - **Trainerstab in der Vorbereitung:**
   - **Posten:** Sechs Posten sind zu besetzen – Co-Trainer, Athletiktrainer, Spielanalyst, Mannschaftsarzt, Nachwuchsleiter und Chefscout.
-  - **Stab-Etat:** Der Etat (ein Viertel des Gehaltsetats) steht als Balken über der Liste. Jeder Bewerber zeigt Sterne, Forderung und ob er in den Etat passt.
+  - **Gehälter nach Liga und Posten:** Ein Co-Trainer in der Bundesliga verdient rund 16 Tsd. € je Woche, in der Landesliga gibt es 100 € Aufwandsentschädigung. Arzt, Scout, Athletiktrainer, Analyst und Nachwuchsleiter verdienen weniger. Wer besser ist als das übliche Niveau des Vereins, verlangt mehr, etwa das Doppelte bei 15 Punkten darüber.
+  - **Stab-Etat:** Der Etat ist anderthalb Mal ein durchschnittlich besetzter Stab. Er steht als Balken über der Liste. Jeder Bewerber zeigt Sterne, Forderung und ob er in den Etat passt.
+  - **Echte Kosten:** Die Gehälter gehen jede Woche als eigener Posten „Trainerstab“ von der Kasse ab. Der übliche Stabsanteil ist dafür aus dem Betriebsaufwand herausgenommen: Ein teurer Stab kostet mehr, ein sparsamer spart. Eine Aushilfe auf einem offenen Posten kostet gut ein Drittel eines üblichen Gehalts.
   - **Gehaltsverhandlung:** Wer verhandelt statt zur Forderung zu verpflichten, bietet Gehalt und Laufzeit. Längere Verträge machen den Bewerber günstiger. Er antwortet mit einem Gegenangebot. Wer ihn zu tief ansetzt oder drei Runden feilscht, verliert ihn.
   - **Meldungen:** Jede Verpflichtung meldet der Sportdirektor mit dem Stand des Etats und den noch offenen Posten.
   - **Pflichtposten:** Arzt, Athletiktrainer und Co-Trainer sind Pflicht. Eine Woche, drei Tage und einen Tag vor dem Start erinnert der Sportdirektor daran. Am ersten Spieltag fragt er nach, ob die Saison wirklich ohne sie beginnen soll, oder besetzt die Posten auf Wunsch kurzfristig.

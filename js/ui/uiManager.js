@@ -2945,6 +2945,9 @@ class UIManager {
         if (!el) return;
 
         if (typeof engine.sichereBewerber === "function") engine.sichereBewerber(pre, club);
+        // Spielstände mit den alten, viel zu hohen Stabsgehältern umrechnen
+        if (typeof engine.rechneStabGehaelterUm === "function" && engine.rechneStabGehaelterUm(state)
+            && typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
         const kosten = engine.stabKosten(club);
         const rahmen = typeof engine.stabRahmen === "function" ? engine.stabRahmen(club) : Math.round((club.wageBudget || 0) * 0.25);
         const anteil = rahmen > 0 ? Math.round(kosten / rahmen * 100) : 0;
@@ -2964,7 +2967,7 @@ class UIManager {
                     <span class="muted-note">${anteil} % · frei ${GameState.formatMoney(frei)}</span>
                 </div>
                 <div class="stab-etat-balken"><i style="width:${Math.min(100, anteil)}%"></i></div>
-                <div class="muted-note">Der Stab darf ein Viertel des Gehaltsetats kosten. Pflicht für den Saisonstart: ${pflicht.map(k => engine.BEREICHE.find(b => b.key === k)?.titel).filter(Boolean).join(", ")}.</div>
+                <div class="muted-note">Der Etat reicht für einen guten Stab - für lauter Spitzenleute wird es meist eng. Die Gehälter gehen jede Woche von der Kasse ab. Pflicht für den Saisonstart: ${pflicht.map(k => engine.BEREICHE.find(b => b.key === k)?.titel).filter(Boolean).join(", ")}.</div>
             </div>`;
 
         el.innerHTML = kopf + engine.BEREICHE.map(b => {

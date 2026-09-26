@@ -287,7 +287,7 @@ const FinanceEngine = {
             date: `Saison ${state.seasonYear || 1}, Spieltag ${state.currentMatchday || 1}`,
             matchday: state.currentMatchday || 1,
             season: state.seasonYear || 1,
-            type: type, // 'ticket_income', 'sponsor_income', 'wages', 'transfer_in', 'transfer_out', 'facility_cost', 'bonus'
+            type: type, // 'ticket_income', 'sponsor_income', 'wages', 'staff_wages', 'transfer_in', 'transfer_out', 'facility_cost', 'bonus'
             amount: amount,
             description: description || ""
         };
@@ -456,9 +456,25 @@ const FinanceEngine = {
             //    Bilanz jedes Vereins nur eine Richtung - nach fünf Saisons
             //    saß selbst der Landesligist auf einem Millionenpolster.
             const ticketSchnitt = Math.round((club.stadiumCapacity || club.capacity || 20000) * 0.8 * (club.ticketPrice || 35) / 2);
-            const operatingCosts = Math.round(
+            let operatingCosts = Math.round(
                 (sponsorIncome + ticketSchnitt) * this.operatingShare(club)
                 + totalWeeklyWages * this.OPERATING_WAGE_SHARE);
+
+            // 4a. Der eigene Trainerstab wird mit seinen echten Gehältern
+            //     bezahlt - wer teuer verpflichtet, zahlt mehr, wer spart,
+            //     spart. Der übliche Stabsanteil geht dafür aus dem
+            //     Betriebsaufwand heraus, ein durchschnittlicher Stab kostet
+            //     also so viel wie bisher.
+            const vorbereitung = club.staff ? _feResolve("PreseasonEngine", "./preseasonEngine.js") : null;
+            if (vorbereitung && typeof vorbereitung.stabLohnsumme === "function") {
+                // Verträge aus der Zeit der alten Gehaltsformel vorher umrechnen
+                if (typeof vorbereitung.rechneStabGehaelterUm === "function") vorbereitung.rechneStabGehaelterUm(state);
+                const stabLohn = vorbereitung.stabLohnsumme(club);
+                club.balance -= stabLohn;
+                this.recordTransaction(state, club.id, "staff_wages", -stabLohn, "Trainerstab (Gehälter)");
+                operatingCosts = Math.max(Math.round(operatingCosts * 0.5),
+                    operatingCosts - vorbereitung.erwarteteStabKosten(club));
+            }
             club.balance -= operatingCosts;
 
             this.recordTransaction(
@@ -466,7 +482,7 @@ const FinanceEngine = {
                 club.id,
                 "operating_cost",
                 -operatingCosts,
-                `Betriebsaufwand (Stab, Verwaltung, Nachwuchs, Reisen)`
+                club.staff ? "Betriebsaufwand (Verwaltung, Nachwuchs, Reisen)" : "Betriebsaufwand (Stab, Verwaltung, Nachwuchs, Reisen)"
             );
 
             // 5. Notbremse: Kein Verein rutscht unbegrenzt ins Minus. Wird die

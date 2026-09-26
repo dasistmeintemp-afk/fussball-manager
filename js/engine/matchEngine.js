@@ -1813,6 +1813,23 @@ class MatchEngine {
             return (a.second || 0) - (b.second || 0);
         });
 
+        // Ein direkter Freistoss folgt unmittelbar auf sein Foul. Er liegt in
+        // derselben Minute ein paar Sekunden spaeter - fiel ein anderes
+        // Ereignis dieser Minute dazwischen, wurde zwischen Pfiff und
+        // Freistoss noch ein Steilpass gespielt, und danach lag der Ball
+        // wieder am Tatort.
+        for (let i = 0; i < timeline.length; i++) {
+            const foul = timeline[i];
+            if (!foul.direkterFreistoss) continue;
+            const j = timeline.findIndex((ev, k) => k > i && ev.isFreekick && ev.minute === foul.minute);
+            if (j <= i + 1) continue;
+            const [freistoss] = timeline.splice(j, 1);
+            const naechster = timeline[i + 1];
+            freistoss.second = Math.max(foul.second || 0,
+                Math.min(freistoss.second || 0, (naechster?.minute === foul.minute ? (naechster.second || 0) : 60) - 0.5));
+            timeline.splice(i + 1, 0, freistoss);
+        }
+
         // Metadaten für Ballbesitz & Nachspielzeit an der Timeline hinterlegen
         timeline.possession = [calculatedHomePossession, calculatedAwayPossession];
         timeline.extraTime = { firstHalf: extraTime1, secondHalf: extraTime2 };

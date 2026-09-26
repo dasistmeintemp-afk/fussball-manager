@@ -1544,7 +1544,16 @@ class LiveMatchDirector {
             // in den Zweikampf
             const foulOpfer = FOUL_ARTEN.includes(ev.type) && !ev.direkterFreistoss
                 ? this.foulOpfer(ev) : null;
-            if (foulOpfer) this.verankereFoul(ev, foulOpfer);
+            if (foulOpfer) {
+                this.verankereFoul(ev, foulOpfer);
+                // Die Szene wurde verkettet, bevor das Foul seinen Ort beim
+                // Gefoulten bekam: Die Aktion danach (der Freistoss) begann
+                // noch dort, wo das Foul laut Zeitleiste lag, und der Ball
+                // sprang quer ueber das Feld. Also ab hier neu verketten.
+                const evs = this.scene?.events || [];
+                const idx = evs.indexOf(ev);
+                if (idx >= 0 && idx + 1 < evs.length) this.verketteSzene(evs.slice(idx));
+            }
 
             const start = this.eventPoint(ev.start) || { x: ball.x, y: ball.y };
 

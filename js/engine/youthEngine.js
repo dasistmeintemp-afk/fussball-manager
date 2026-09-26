@@ -137,6 +137,80 @@ const YouthEngine = {
         return stab && typeof stab.staffQuality === "function" ? stab.staffQuality(club).nachwuchs : null;
     },
 
+    /**
+     * Stärke und Potenzial eines neuen Talents - passend zur Liga.
+     *
+     * Die Akademie erzeugte bisher für jeden Verein Talente wie für einen
+     * Bundesligisten: Stärke um 55, Potenzial bis 95. In der Landesliga, wo
+     * der beste Spieler bei 30 liegt, stand damit jeder Sechzehnjährige mit
+     * fünf Sternen da. Jetzt richtet sich der Jahrgang nach der Ligastufe
+     * des Vereins - wie bei den Spielern, die ein Verein ohnehin hat.
+     *
+     * zusatz.ovr / zusatz.pot verschieben in Gesamtstärke-Punkten
+     * (Jahrgang, Einzugsgebiet, Nachwuchsleiter).
+     */
+    talentWerte(club, academyLevel, zusatz = {}) {
+        const gen = _youthResolve("PlayerGenerator", "./playerGenerator.js");
+        const bereich = gen && typeof gen.getAbilityRangeForLevel === "function"
+            ? gen.getAbilityRangeForLevel(club?.level || 1)
+            : { minCA: 128, maxCA: 176, minPA: 134, maxPA: 184 };
+        const zuStaerke = (ca) => gen && typeof gen.toOverall === "function"
+            ? gen.toOverall(ca)
+            : Math.max(1, Math.min(99, Math.round(ca / 2)));
+        const stufe = Math.max(1, Math.min(5, academyLevel || 1));
+
+        // Heute: deutlich unter dem Ligaschnitt - es sind Fünfzehnjährige
+        const ca = Math.max(15, Math.round(bereich.minCA * 0.72 + stufe * 3
+            + Math.floor(Math.random() * 16) + (zusatz.ovr || 0) * 2));
+        // Potenzial: innerhalb der Spanne der Liga, eine gute Akademie holt
+        // mehr heraus. Die Besten können über die Liga hinauswachsen.
+        const spanne = Math.max(20, (bereich.maxPA || bereich.minPA + 50) - bereich.minPA);
+        const pa = Math.min(190, Math.max(ca + 12, Math.round(bereich.minPA + spanne * (0.15 + stufe * 0.07)
+            + Math.random() * spanne * 0.5 + (zusatz.pot || 0) * 2)));
+        const overall = zuStaerke(ca);
+        return {
+            trueCurrentAbility: ca,
+            truePotentialAbility: pa,
+            overall,
+            pot: Math.max(overall + 4, zuStaerke(pa))
+        };
+    },
+
+    /**
+     * Talente aus älteren Spielständen, die noch nach der alten Formel - wie
+     * für einen Bundesligisten - erzeugt wurden, an die Liga anpassen.
+     * Liefert die Zahl der angepassten Talente.
+     */
+    passeTalenteAnLigaAn(state, clubId) {
+        const club = (state?.clubs || []).find(c => c.id === clubId);
+        if (!club) return 0;
+        const gen = _youthResolve("PlayerGenerator", "./playerGenerator.js");
+        if (!gen || typeof gen.getAbilityRangeForLevel !== "function") return 0;
+        // In der ersten und zweiten Liga passten die alten Werte ungefähr
+        if ((club.level || 1) <= 2) return 0;
+        const bereich = gen.getAbilityRangeForLevel(club.level || 1);
+        const grenze = gen.toOverall(bereich.minCA * 0.72 + 30) + 3;
+        const stufe = this.akademieStufe(state, club);
+
+        const listen = [club.youthAcademy?.prospects, clubId === state.userClubId ? state.youthAcademy?.prospects : null];
+        const gesehen = new Set();
+        let angepasst = 0;
+        listen.forEach(liste => (liste || []).forEach(t => {
+            if (!t || t.promoted || gesehen.has(t.id)) return;
+            gesehen.add(t.id);
+            if (typeof t.trueCurrentAbility === "number" || (t.overall || 0) <= grenze) return;
+            Object.assign(t, this.talentWerte(club, stufe));
+            // Die Fähigkeitswerte passen zur alten Stärke - neu auswürfeln
+            if (typeof gen.generateAttributes === "function") {
+                const attribute = gen.generateAttributes(t.pos || "ZM", t.overall);
+                this.praegeSchule(attribute, t, club);
+                Object.assign(t, attribute);
+            }
+            angepasst++;
+        }));
+        return angepasst;
+    },
+
     /** Das Land des Vereins, in Worten wie bei den Nationalitäten */
     heimatland(state, club) {
         const daten = (typeof COUNTRIES_DATA !== "undefined" && COUNTRIES_DATA)
@@ -244,12 +318,10 @@ const YouthEngine = {
             const pos = posTopf[Math.floor(Math.random() * posTopf.length)];
             const age = 15 + Math.floor(Math.random() * 3); // 15, 16 oder 17
 
-            // Gesamtstärke und Potenzial abhängig vom Akademie-Level (C2 & C7),
-            // beim eigenen Verein dazu Jahrgang, Einzugsgebiet und Nachwuchsleiter
+            // Stärke und Potenzial nach Ligastufe und Akademie-Level, beim
+            // eigenen Verein dazu Jahrgang, Einzugsgebiet und Nachwuchsleiter
             const potPlus = eigen ? jahrgang.pot + einzug.pot + leiterBonus : 0;
-            const baseOvr = Math.round(50 + (academyLevel * 3) + Math.floor(Math.random() * 8) + (eigen ? jahrgang.ovr : 0));
-            const basePot = Math.round(72 + (academyLevel * 4) + Math.floor(Math.random() * 12) + potPlus);
-            const pot = Math.min(95, Math.max(baseOvr + 8, basePot));
+            const werte = this.talentWerte(club, academyLevel, { ovr: eigen ? jahrgang.ovr : 0, pot: potPlus });
 
             const prospect = {
                 id: "youth_" + Date.now() + "_" + i + "_" + Math.floor(Math.random() * 1000),
@@ -258,8 +330,10 @@ const YouthEngine = {
                 age: age,
                 nationality: nat,
                 pos: pos,
-                overall: baseOvr,
-                pot: pot,
+                overall: werte.overall,
+                pot: werte.pot,
+                trueCurrentAbility: werte.trueCurrentAbility,
+                truePotentialAbility: werte.truePotentialAbility,
                 developmentRate: 1.0 + (academyLevel * 0.1),
                 schule: schule ? schule.key : null,
                 schulName: schule ? schule.name : null,
@@ -298,6 +372,7 @@ const YouthEngine = {
             const growthChance = 0.20 + (academyLvl * 0.05) + (leiter === null ? 0 : (leiter - 60) * 0.002);
             if (Math.random() < growthChance && prospect.overall < prospect.pot) {
                 prospect.overall += 1;
+                if (typeof prospect.trueCurrentAbility === "number") prospect.trueCurrentAbility += 2;
             }
         });
     },
@@ -316,6 +391,8 @@ const YouthEngine = {
         }
         if (!prospect) return { success: false, error: "Jugendspieler nicht gefunden." };
         if (prospect.promoted) return { success: false, error: "Spieler wurde bereits befördert." };
+        // Ein Talent aus einem älteren Spielstand kommt mit ligagerechten Werten
+        this.passeTalenteAnLigaAn(state, clubId);
 
         // Neuen vollwertigen Spieler in state.players erzeugen.
         // Die IDs der handgepflegten Vereine sind Zahlen, erzeugte Vereine

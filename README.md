@@ -191,6 +191,7 @@ Ein Transfer ist kein Knopfdruck mehr, sondern ein Vorgang über mehrere Tage:
   | **Einzugsgebiet** | Region, national, international | bringt mehr Potenzial und mehr ausländische Talente, kostet je Jahrgang (kleine Ligen zahlen weniger) |
 
   Der Nachwuchsleiter aus dem Trainerstab entscheidet mit: Ein guter holt Potenzial heraus und lässt die Jungs schneller wachsen, ein schwacher kostet beides.
+- **Talente passen zur Liga:** Ein Jahrgang richtet sich nach der Ligastufe des Vereins. In der Landesliga kommen Landesliga-Talente, in der Bundesliga Bundesliga-Talente. Überall haben sie heute 0,5 bis 2,5 Sterne und im Schnitt 3 bis 4 Sterne Potenzial. Fünf Sterne gibt es nur mit guten Schwerpunkten, einem guten Nachwuchsleiter und etwas Glück.
 - **Verletzungen & Sperren:** Realistische Ausfallzeiten (Leicht/Mittel/Schwer) und Gelb-/Rotsperren.
 
 ### 5b. 📋 Trainingsbericht: Belastung, Ermüdung und Risiko

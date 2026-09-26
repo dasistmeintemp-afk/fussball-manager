@@ -5354,6 +5354,11 @@ class UIManager {
                 if (generator && typeof generator.completeYouthProspect === "function") {
                     let ergaenzt = false;
                     prospects.forEach(p => { if (generator.completeYouthProspect(p)) ergaenzt = true; });
+                    // Talente, die noch wie für einen Bundesligisten erzeugt
+                    // wurden, bekommen ligagerechte Werte
+                    const youth = (typeof YouthEngine !== "undefined" && YouthEngine) ? YouthEngine : window.YouthEngine;
+                    if (youth && typeof youth.passeTalenteAnLigaAn === "function"
+                        && youth.passeTalenteAnLigaAn(state, state.userClubId) > 0) ergaenzt = true;
                     if (ergaenzt && typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
                 }
 

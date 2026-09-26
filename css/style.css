@@ -1474,6 +1474,386 @@ body {
     font-weight: 500;
 }
 
+/* Taktik nach Phasen: Hilfetexte, Ansicht, Rollen, Anweisungen, Check */
+.taktik-hilfe {
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-muted);
+    margin: 0 0 12px;
+}
+
+.taktik-ansicht {
+    display: flex;
+    gap: 6px;
+    margin: -4px 0 12px;
+    flex-wrap: wrap;
+}
+
+.taktik-ansicht-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 7px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--surface-2, rgba(255,255,255,0.03));
+    border: 1px solid var(--line, var(--border-color));
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+.taktik-ansicht-btn.active {
+    color: #fff;
+    background: var(--accent-soft, rgba(52,211,153,0.15));
+    border-color: var(--accent-line, var(--accent-primary));
+}
+
+.soccer-pitch.ansicht-mit .pitch-node,
+.soccer-pitch.ansicht-gegen .pitch-node {
+    transition: left 0.35s ease, top 0.35s ease;
+}
+
+.pitch-node-rolle {
+    display: block;
+    font-size: 9px;
+    line-height: 1.1;
+    color: rgba(255,255,255,0.78);
+    max-width: 86px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Taktiktafel im Stil des FM26: Ansichten, Rollenkuerzel, Verbindungen */
+.taktik-ansicht-leiste {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    margin: -4px 0 12px;
+}
+
+.taktik-ansicht-leiste .taktik-ansicht { flex: 1 1 auto; margin: 0; }
+
+.taktik-auge { position: relative; flex: none; }
+
+.taktik-auge > summary {
+    list-style: none;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 32px;
+    border-radius: 10px;
+    border: 1px solid var(--line, var(--border-color));
+    background: var(--surface-2, rgba(255,255,255,0.03));
+    color: var(--text-muted);
+}
+
+.taktik-auge > summary::-webkit-details-marker { display: none; }
+.taktik-auge[open] > summary { color: #fff; border-color: var(--accent-line, var(--accent-primary)); }
+
+.taktik-auge-menu {
+    position: absolute;
+    right: 0;
+    top: 38px;
+    z-index: 30;
+    min-width: 170px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: var(--surface-3, #1d2530);
+    border: 1px solid var(--line-strong, var(--border-color));
+    border-radius: 10px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.45);
+}
+
+.taktik-auge-menu label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    padding: 5px 6px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.taktik-auge-menu label:hover { background: rgba(255,255,255,0.05); }
+
+.taktik-links {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.taktik-links line { vector-effect: non-scaling-stroke; stroke-linecap: round; }
+.taktik-links .link-stark { stroke: #facc15; stroke-width: 4; opacity: 0.95; }
+.taktik-links .link-gut { stroke: #facc15; stroke-width: 2.5; opacity: 0.5; }
+.taktik-links .link-schwach { stroke: #f87171; stroke-width: 2.5; stroke-dasharray: 6 5; opacity: 0.9; }
+.taktik-links .weg { stroke: rgba(255,255,255,0.55); stroke-width: 1.5; stroke-dasharray: 3 4; }
+.taktik-links .geist { fill: rgba(255,255,255,0.14); stroke: rgba(255,255,255,0.55); stroke-width: 1; vector-effect: non-scaling-stroke; }
+
+.pitch-players-layer { z-index: 2; }
+
+.rolle-badges {
+    display: flex;
+    gap: 3px;
+    justify-content: center;
+    margin: 2px 0 1px;
+}
+
+.rolle-badge {
+    display: inline-block;
+    min-width: 30px;
+    padding: 1px 6px;
+    border-radius: 5px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    color: #fff;
+    text-align: center;
+    line-height: 1.5;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.35);
+}
+
+.rolle-badge.kat-tor { background: #475569; }
+.rolle-badge.kat-abwehr { background: #0f766e; }
+.rolle-badge.kat-aufbau { background: #15803d; }
+.rolle-badge.kat-kreativ { background: #1d4ed8; }
+.rolle-badge.kat-angriff { background: #7e22ce; }
+.rolle-badge.kat-standard { background: #0e7490; }
+.rolle-badge.kat-pressend { background: #b91c1c; }
+.rolle-badge.kat-zurueck { background: #047857; }
+.rolle-badge.kat-absichernd { background: #1e40af; }
+.rolle-badge.kat-konter { background: #7e22ce; }
+.rolle-badge.gegen { opacity: 0.92; outline: 1px dashed rgba(255,255,255,0.45); outline-offset: -1px; }
+
+.soccer-pitch.ohne-sterne .shirt-wert { visibility: hidden; }
+.soccer-pitch.ohne-namen .pitch-node-name > .spielername { display: none; }
+.soccer-pitch.ohne-rollen .rolle-badges { display: none; }
+.soccer-pitch.ohne-eignung .pitch-node-fit { display: none; }
+
+.link-legende {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+}
+
+.link-legende span { display: inline-flex; align-items: center; gap: 6px; }
+
+.link-muster { display: inline-block; width: 22px; height: 0; border-top: 3px solid #facc15; }
+.link-muster.gut { opacity: 0.55; border-top-width: 2px; }
+.link-muster.schwach { border-top: 2px dashed #f87171; }
+
+.taktik-check li.stark { border-left-color: #facc15; }
+.taktik-check li.schwach { border-left-color: var(--bad, #f87171); }
+
+@media (max-width: 600px) {
+    .pitch-node-rolle { display: none; }
+    .taktik-ansicht-btn { padding: 6px 6px; font-size: 11px; }
+    .rolle-badge { font-size: 9px; min-width: 24px; padding: 0 4px; }
+}
+
+.rollen-liste {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+/* Aufstellung wie im FM26: eine dichte Tabelle statt einzelner Kaesten */
+.aufstellung-kopf {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.aufstellung-kopf h3 { margin: 0; }
+.aufstellung-kopf .taktik-ansicht { margin: 0; flex: 1 1 200px; max-width: 280px; }
+
+.aufst-kopfzeile,
+.rollen-zeile {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) minmax(0, 1.25fr) 48px;
+    gap: 4px 10px;
+    align-items: center;
+}
+
+.aufst-kopfzeile {
+    padding: 7px 10px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    background: rgba(255, 255, 255, 0.025);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.rollen-zeile {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+}
+
+.rollen-zeile:last-child { border-bottom: 0; }
+.rollen-zeile:nth-child(odd) { background: rgba(255, 255, 255, 0.015); }
+.rollen-zeile:hover { background: rgba(255, 255, 255, 0.04); }
+
+.aufst-spieler { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.aufst-name {
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.aufst-name small { font-weight: 500; color: var(--text-muted); font-size: 12px; }
+.aufst-sterne { display: flex; line-height: 1; transform: scale(0.82); transform-origin: left center; }
+
+.aufst-rolle { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.aufst-rolle .rolle-badge { flex: 0 0 auto; }
+.aufst-rolle .styled-select {
+    width: 100%;
+    min-width: 0;
+    font-size: 12px;
+    padding: 5px 24px 5px 8px;
+    background-position: right 6px center;
+}
+
+.aufst-kond {
+    position: relative;
+    height: 18px;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.06);
+    overflow: hidden;
+}
+.aufst-kond i { position: absolute; inset: 0 auto 0 0; border-radius: 5px; }
+.aufst-kond.gut i { background: rgba(52, 211, 153, 0.55); }
+.aufst-kond.mittel i { background: rgba(251, 191, 36, 0.55); }
+.aufst-kond.schwach i { background: rgba(248, 113, 113, 0.6); }
+.aufst-kond b {
+    position: relative;
+    display: block;
+    text-align: center;
+    font-size: 11px;
+    line-height: 18px;
+    font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 600px) {
+    .aufst-kopfzeile, .rollen-zeile { grid-template-columns: 36px minmax(0, 1fr) minmax(0, 1.3fr) 40px; gap: 4px 6px; padding: 7px 8px; }
+    .aufst-rolle .rolle-badge { display: none; }
+}
+
+.rollen-zeile.aktiv {
+    background: rgba(var(--accent-rgb), 0.08);
+    box-shadow: inset 3px 0 0 var(--accent-primary);
+}
+
+.rollen-zeile .pos-tag { justify-self: start; }
+
+.rollen-name {
+    font-size: 13px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rollen-selects {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.rollen-selects label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--text-muted);
+    min-width: 0;
+}
+
+.rollen-selects .styled-select { width: 100%; min-width: 0; font-size: 12px; padding: 6px 8px; }
+
+.rollen-text {
+    grid-column: 1 / -1;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-muted);
+}
+
+.taktik-gruppe {
+    border: 1px solid var(--line, var(--border-color));
+    border-radius: 10px;
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+
+.taktik-gruppe > summary {
+    cursor: pointer;
+    padding: 10px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.taktik-gruppe > summary::-webkit-details-marker { display: none; }
+.taktik-gruppe > summary::after { content: "▾"; color: var(--text-muted); }
+.taktik-gruppe[open] > summary::after { content: "▴"; }
+
+.taktik-gruppe-inhalt {
+    padding: 4px 12px 8px;
+}
+
+.taktik-gruppe-inhalt h4 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin: 10px 0 8px;
+}
+
+.taktik-gruppe-inhalt .tactic-field { margin-bottom: 10px; }
+
+.taktik-check {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.taktik-check li {
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.03);
+    border-left: 3px solid var(--ok, #34d399);
+}
+
+.taktik-check li.warn { border-left-color: var(--warn, #fbbf24); }
+
 /* ==========================================================================
    Fixtures & Schedule
    ========================================================================== */
@@ -6953,4 +7333,504 @@ td.nowrap { white-space: nowrap; }
     .cal-full-item .cal-full-title { grid-area: titel; min-width: 0; }
     .cal-full-item .cal-full-status { grid-area: status; font-size: 12px; }
     #pane-calendar .card-header { flex-wrap: wrap; gap: 6px; }
+}
+
+/* ------------------------------------------------------------------
+   Mannschaftsanweisungen als Kacheln (nach dem FM26)
+   Jede Kachel zeigt Symbol, Anweisung und Wert; ein unsichtbares
+   Auswahlfeld liegt darüber - so öffnet sich auf dem Handy die
+   gewohnte Auswahl des Systems.
+   ------------------------------------------------------------------ */
+.anweisungen-flaeche {
+    margin-top: 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 18px 20px 14px;
+}
+
+.anweisungen-kopf {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+
+.anweisungen-kopf h3 {
+    font-family: var(--font-display);
+    font-size: 20px;
+    letter-spacing: 0.02em;
+    margin: 0;
+}
+
+.anweisungen-kopf .taktik-ansicht { margin: 0; flex: 0 1 340px; }
+
+.anweisungs-kacheln {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+}
+
+.anw-kachel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 96px;
+    padding: 12px 12px 10px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.anw-kachel:hover { background: var(--bg-card-hover); border-color: var(--border-light); }
+.anw-kachel:focus-within { outline: 2px solid rgba(var(--accent-rgb), 0.55); outline-offset: 1px; }
+
+.anw-kachel.geaendert {
+    border-color: rgba(var(--accent-rgb), 0.5);
+    background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.07), transparent 70%), var(--bg-elevated);
+}
+
+.anw-kopf {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-muted);
+}
+
+.anw-kopf .ico { width: 20px; height: 20px; flex: 0 0 auto; color: var(--text-soft); }
+.anw-kachel.geaendert .anw-kopf .ico { color: var(--accent-primary); }
+
+.anw-titel {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    hyphens: auto;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    line-height: 1.25;
+}
+
+.anw-wert {
+    margin-top: auto;
+    font-family: var(--font-display);
+    font-size: 19px;
+    font-weight: 600;
+    line-height: 1.1;
+    color: var(--text-main);
+}
+
+.anw-skala {
+    display: flex;
+    gap: 3px;
+}
+
+.anw-skala i {
+    flex: 1 1 0;
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.anw-skala i.an { background: var(--text-soft); }
+.anw-kachel.geaendert .anw-skala i.an { background: var(--accent-primary); }
+
+.anw-kachel select {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+    font-size: 16px; /* verhindert das Zoomen auf iOS */
+}
+
+@media (max-width: 600px) {
+    .anweisungen-flaeche { padding: 14px 12px 10px; margin-top: 14px; }
+    .anweisungen-kopf .taktik-ansicht { flex: 1 1 100%; }
+    .anweisungs-kacheln { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .anw-kachel { min-height: 84px; padding: 10px; }
+    .anw-wert { font-size: 17px; }
+}
+
+/* Anzeige des 2D-Felds: Namen und Formationslinien einblenden */
+.live-pitch-wrapper { position: relative; }
+
+.lm-ansicht {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 4;
+}
+
+.lm-ansicht > summary {
+    list-style: none;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: rgba(9, 12, 17, 0.72);
+    border: 1px solid var(--border-light);
+    color: var(--text-soft);
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+}
+
+.lm-ansicht > summary::-webkit-details-marker { display: none; }
+.lm-ansicht[open] > summary { color: var(--accent-primary); border-color: rgba(var(--accent-rgb), 0.5); }
+.lm-ansicht > summary .ico { width: 18px; height: 18px; }
+
+.lm-ansicht-menu {
+    position: absolute;
+    right: 0;
+    top: 40px;
+    min-width: 210px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: rgba(12, 16, 22, 0.95);
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    box-shadow: var(--shadow-md);
+}
+
+.lm-ansicht-menu label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px;
+    font-size: 13px;
+    color: var(--text-soft);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.lm-ansicht-menu label:hover { background: rgba(255, 255, 255, 0.05); }
+.lm-ansicht-menu input { accent-color: var(--accent-primary); width: 16px; height: 16px; }
+
+/* Kopf der Vereinsseite (nach dem FM26): Wappen, Liga, Kennzahlen */
+.vereins-kopf {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 16px 20px;
+    align-items: center;
+    padding: 20px 22px;
+    margin-bottom: 20px;
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--border-color);
+    background:
+        radial-gradient(120% 140% at 0% 0%, var(--vk-farbe, rgba(var(--accent-rgb), 0.18)) 0%, transparent 55%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent),
+        var(--bg-card);
+}
+
+.vk-wappen {
+    width: 76px;
+    height: 76px;
+    border-radius: 22px;
+    display: grid;
+    place-items: center;
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.vk-titel { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.vk-titel h2 {
+    font-family: var(--font-display);
+    font-size: 32px;
+    line-height: 1.05;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.vk-liga {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent-primary);
+}
+.vk-ort { font-size: 13px; color: var(--text-muted); }
+
+.vk-kacheln {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.vk-kachel {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    background: rgba(9, 12, 17, 0.55);
+    border: 1px solid var(--border-color);
+    min-width: 0;
+}
+
+.vk-kachel span {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.vk-kachel strong {
+    font-family: var(--font-display);
+    font-size: 24px;
+    line-height: 1.05;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.vk-kachel .vk-balken {
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+.vk-kachel .vk-balken i { display: block; height: 100%; background: var(--accent-primary); border-radius: 2px; }
+.vk-kachel small { font-size: 11px; color: var(--text-muted); }
+
+@media (max-width: 1100px) {
+    .vk-kacheln { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 600px) {
+    .vereins-kopf { padding: 16px; gap: 12px 14px; }
+    .vk-wappen { width: 56px; height: 56px; border-radius: 16px; font-size: 20px; }
+    .vk-titel h2 { font-size: 24px; white-space: normal; }
+    .vk-kacheln { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .vk-kachel strong { font-size: 20px; }
+}
+
+/* Werteliste: Bezeichnung links, Wert rechts - wie die Profilkarten im FM */
+.kv-liste { display: flex; flex-direction: column; }
+.kv-liste > div {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 14px;
+}
+.kv-liste > div:last-child { border-bottom: 0; }
+.kv-liste > div > span { color: var(--text-muted); font-size: 13px; }
+.kv-liste > div > strong { text-align: right; font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+.kv-liste > div > strong b { font-weight: 700; }
+
+/* Kennzahlenleiste oben in den Reitern - dieselben Kacheln wie im Vereinskopf */
+.kz-leiste {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+}
+.kz-leiste:empty { display: none; }
+.kz-leiste .vk-kachel { background: var(--bg-card); }
+.vk-kachel.warnung strong { color: var(--accent-gold); }
+.vk-kachel.gefahr strong { color: var(--accent-danger); }
+@media (max-width: 600px) {
+    .kz-leiste { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+}
+
+/* Stabsmitglied in einer Zeile: wer, wie gut, was das bedeutet */
+.stab-info {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-left: 3px solid var(--accent-info);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+}
+.stab-info:empty { display: none; }
+.stab-info-kopf { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.stab-info-titel { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+.stab-info-text { margin-top: 4px; font-size: 13px; color: var(--text-soft); }
+.stab-sterne { display: inline-flex; align-items: center; vertical-align: middle; }
+
+/* Scoutbericht als Karte */
+#scoutReportsList { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+#scoutReportsList .empty-state-sm { grid-column: 1 / -1; }
+.scout-bericht {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    min-width: 0;
+}
+.sb-kopf { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.sb-name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.sb-name strong { font-size: 15px; }
+.sb-meta { font-size: 12px; color: var(--text-muted); }
+.sb-zuv {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--zuv);
+    border: 1px solid var(--zuv);
+    border-radius: 999px;
+    padding: 2px 8px;
+    white-space: nowrap;
+}
+.sb-sterne { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.sb-label { font-size: 12px; color: var(--text-muted); }
+.sb-empf { font-size: 13px; font-weight: 700; padding: 6px 10px; border-radius: var(--radius-sm); background: rgba(255,255,255,0.04); }
+.sb-empf .sb-rolle { font-weight: 500; color: var(--text-soft); }
+.sb-empf-top { color: var(--accent-primary); background: rgba(var(--accent-rgb), 0.10); }
+.sb-empf-talent { color: var(--accent-info); background: rgba(var(--info-rgb), 0.10); }
+.sb-empf-gut { color: var(--accent-secondary); background: rgba(52, 211, 153, 0.08); }
+.sb-empf-nein { color: var(--accent-danger); background: rgba(248, 113, 113, 0.08); }
+.sb-empf-offen { color: var(--accent-gold); background: rgba(251, 191, 36, 0.08); }
+.sb-listen { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sb-listen ul { margin: 0; padding: 0; list-style: none; font-size: 12.5px; display: flex; flex-direction: column; gap: 3px; }
+.sb-plus li::before { content: "+ "; color: var(--accent-secondary); font-weight: 700; }
+.sb-minus li::before { content: "− "; color: var(--accent-danger); font-weight: 700; }
+.sb-charakter { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--text-soft); font-style: italic; }
+.sb-fazit { margin: 0; font-size: 12.5px; color: var(--text-muted); }
+.sb-fuss { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; border-top: 1px solid var(--border-color); padding-top: 8px; font-size: 12px; color: var(--text-muted); }
+.sb-scout { display: inline-flex; align-items: center; gap: 6px; }
+.sb-knoepfe { margin-left: auto; display: inline-flex; gap: 6px; }
+@media (max-width: 600px) {
+    #scoutReportsList { grid-template-columns: minmax(0, 1fr); }
+    .sb-listen { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Schwerpunkte der Jugendakademie */
+.akademie-sp {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px 18px;
+    padding: 12px 14px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+}
+.akademie-sp:empty { display: none; }
+.akademie-leiter, .sp-fazit { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; }
+.sp-fazit { color: var(--text-soft); border-top: 1px solid var(--border-color); padding-top: 10px; display: block; }
+.sp-titel { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin-bottom: 6px; }
+.sp-hinweis { font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text-dim); margin-left: 6px; }
+.sp-reihe { display: flex; flex-wrap: wrap; gap: 6px; }
+.sp-chip {
+    background: rgba(148, 163, 184, 0.08);
+    border: 1px solid var(--border-color);
+    color: var(--text-soft);
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 32px;
+}
+.sp-chip:hover:not(:disabled) { background: rgba(148, 163, 184, 0.18); color: var(--text-main); }
+.sp-chip.aktiv { background: var(--accent-primary); color: var(--accent-ink); border-color: var(--accent-primary); }
+.sp-chip:disabled { opacity: .45; cursor: not-allowed; }
+@media (max-width: 600px) {
+    .akademie-sp { grid-template-columns: minmax(0, 1fr); padding: 10px; }
+}
+
+/* Vorbereitung: Stab-Etat, Pflichtposten, Bewerber */
+.stab-etat {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    background: var(--bg-elevated);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.stab-etat-zeile { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; font-size: 13px; }
+.stab-etat-zeile > span:first-child { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+.stab-etat-balken { height: 8px; border-radius: 999px; background: rgba(148, 163, 184, 0.15); overflow: hidden; }
+.stab-etat-balken i { display: block; height: 100%; border-radius: inherit; background: var(--accent-primary); transition: width .3s ease; }
+.stab-etat.warnung .stab-etat-balken i { background: var(--accent-gold); }
+.stab-etat.gefahr .stab-etat-balken i { background: var(--accent-danger); }
+.stab-pflicht {
+    font-size: 11px; font-weight: 700; color: var(--accent-danger);
+    border: 1px solid var(--accent-danger); border-radius: 999px; padding: 1px 7px;
+}
+.pre-area.pflicht-offen { border-color: rgba(248, 113, 113, 0.45); }
+.pre-area-stand { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.pre-cand-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 220px; }
+.pre-cand-info > div { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.pre-cand-warn { font-size: 11.5px; color: var(--accent-gold); }
+.pre-cand-knoepfe { display: inline-flex; gap: 6px; flex-shrink: 0; }
+.pre-candidate.zu-teuer .pre-cand-info { opacity: .8; }
+
+/* Entscheidungsdialog */
+.ent-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.ent-knoepfe:empty { display: none; }
+.verh-kopf { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 12px; }
+.verh-zahlen { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.verh-zahlen > div, .angebot-zahlen > div {
+    display: flex; flex-direction: column; gap: 2px;
+    background: var(--bg-elevated); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 8px 10px;
+}
+.verh-zahlen span, .angebot-zahlen span { font-size: 11.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+.verh-eingabe { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.verh-eingabe label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--text-soft); }
+.verh-antwort { margin-top: 12px; font-size: 13px; color: var(--text-soft); min-height: 1.4em; }
+.pflicht-liste { margin: 8px 0 12px 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+
+/* Angebote für eigene Spieler: nicht zu übersehen */
+#aiOffersContainer {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.10), rgba(251, 191, 36, 0.02));
+    border: 1px solid rgba(251, 191, 36, 0.45);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+}
+#aiOffersContainer h3 { color: var(--accent-gold); }
+#aiOffersList.ai-offers-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.angebot-karte {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    min-width: 0;
+}
+.angebot-karte.dringend { border-color: var(--accent-danger); box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.25); }
+.ak-kopf { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ak-verein { font-weight: 700; font-size: 14px; }
+.ak-frist { font-size: 11.5px; font-weight: 700; color: var(--accent-gold); border: 1px solid currentColor; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.angebot-karte.dringend .ak-frist { color: var(--accent-danger); }
+.ak-spieler { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.ak-spieler[data-player-id] { cursor: pointer; }
+.ak-spieler[data-player-id]:hover strong { text-decoration: underline; }
+.angebot-zahlen { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.angebot-zahlen strong { font-size: 14px; }
+.ak-quote.gut { color: var(--accent-secondary); }
+.ak-quote.schlecht { color: var(--accent-danger); }
+.ak-knoepfe { display: flex; flex-wrap: wrap; gap: 6px; }
+.ak-knoepfe .btn { flex: 1 1 auto; }
+.angebot-dialog .angebot-karte { border-color: rgba(251, 191, 36, 0.45); }
+@media (max-width: 600px) {
+    #aiOffersList.ai-offers-list { grid-template-columns: minmax(0, 1fr); }
+    .ak-knoepfe .btn { min-height: 40px; }
+}
+#navOffersBadge, .badge-angebot { background: var(--accent-gold); color: #1a1204; font-weight: 800; }
+@media (max-width: 600px) {
+    .ent-knoepfe .btn { flex: 1 1 calc(50% - 4px); min-height: 42px; }
+    .ent-knoepfe .btn-primary { flex-basis: 100%; order: -1; }
 }

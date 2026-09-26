@@ -2,15 +2,51 @@
  * OpponentAnalysisEngine - Detaillierte taktische und statistische Gegneranalyse vor Spieltagen
  */
 
+const _oaResolve = (globalName, path) => {
+    if (typeof globalThis !== "undefined" && globalThis[globalName]) return globalThis[globalName];
+    if (typeof window !== "undefined" && window[globalName]) return window[globalName];
+    if (typeof require !== "undefined") {
+        try { return require(path)[globalName]; } catch (e) { return null; }
+    }
+    return null;
+};
+
 const OpponentAnalysisEngine = {
     /**
-     * Erstellt einen detaillierten Scoutingbericht für den kommenden Gegner
+     * Wer die Analyse schreibt: der Spielanalyst aus dem Trainerstab. Ohne
+     * eigenen Analysten behilft sich der Verein - mit spürbar schwächerem
+     * Blick (Abzug für den offenen Posten im Trainerstab).
+     */
+    analyst(state, userClub) {
+        const stab = _oaResolve("CoachingStaffEngine", "./coachingStaffEngine.js");
+        const guete = stab && userClub ? stab.staffQuality(userClub).analyse : 60;
+        const mitglied = userClub?.staff?.analyse;
+        const sterne = Math.max(0.5, Math.min(5, Math.round((1 + ((Number(guete) || 50) - 25) / 18) * 2) / 2));
+        return { name: mitglied?.name || "Videoanalyse", guete: guete ?? 60, sterne, eigen: !!mitglied };
+    },
+
+    /**
+     * Erstellt einen detaillierten Scoutingbericht für den kommenden Gegner.
+     *
+     * Wie genau er ist, hängt am Spielanalysten: Ein schwacher liest die
+     * Mannschaftsteile ungenauer (und benennt dann auch mal die falsche
+     * Stärke), stellt weniger Schlüsselspieler vor und findet keine
+     * Schwachstelle in der gegnerischen Elf.
      */
     generateReport(state, opponentClubId, userClubId) {
         if (!state) return null;
         const opponent = state.clubs.find(c => c.id === opponentClubId);
         const userClub = state.clubs.find(c => c.id === userClubId);
         if (!opponent) return null;
+        const analyst = this.analyst(state, userClub);
+        const schwaeche = Math.max(0, 100 - analyst.guete);
+        const blick = (wert, teil) => {
+            const text = `${opponent.id}|${analyst.name}|${teil}`;
+            let hash = 2166136261;
+            for (let i = 0; i < text.length; i++) { hash ^= text.charCodeAt(i); hash = Math.imul(hash, 16777619); }
+            const zahl = (((hash >>> 0) % 2001) - 1000) / 1000;
+            return Math.round(wert + zahl * schwaeche * 0.08);
+        };
 
         const allPlayers = state.players.filter(p => opponent.playerIds.includes(p.id));
         const lineupPlayers = state.players.filter(p => opponent.lineup.includes(p.id));
@@ -24,10 +60,10 @@ const OpponentAnalysisEngine = {
         const midfielders = availableLineup.filter(p => ["DM", "ZM", "OM", "LM", "RM"].includes(p.pos));
         const attackers = availableLineup.filter(p => ["ST", "LA", "RA"].includes(p.pos));
 
-        const defenseRating = defenders.length ? Math.round(defenders.reduce((s, p) => s + p.overall, 0) / defenders.length) : avgOverall;
-        const midfieldRating = midfielders.length ? Math.round(midfielders.reduce((s, p) => s + p.overall, 0) / midfielders.length) : avgOverall;
-        const attackRating = attackers.length ? Math.round(attackers.reduce((s, p) => s + p.overall, 0) / attackers.length) : avgOverall;
-        const gkRating = goalkeepers.length ? goalkeepers[0].overall : avgOverall;
+        const defenseRating = blick(defenders.length ? Math.round(defenders.reduce((s, p) => s + p.overall, 0) / defenders.length) : avgOverall, "abw");
+        const midfieldRating = blick(midfielders.length ? Math.round(midfielders.reduce((s, p) => s + p.overall, 0) / midfielders.length) : avgOverall, "mf");
+        const attackRating = blick(attackers.length ? Math.round(attackers.reduce((s, p) => s + p.overall, 0) / attackers.length) : avgOverall, "st");
+        const gkRating = blick(goalkeepers.length ? goalkeepers[0].overall : avgOverall, "tw");
 
         // Top-Spieler ermitteln mit Scouting- & Sterne-Analyse
         const ratingEngine = (typeof PlayerRatingEngine !== 'undefined' && PlayerRatingEngine) 
@@ -43,13 +79,18 @@ const OpponentAnalysisEngine = {
         const topScorer = [...allPlayers].sort((a, b) => (b.stats?.goals || 0) - (a.stats?.goals || 0))[0];
         const topAssister = [...allPlayers].sort((a, b) => (b.stats?.assists || 0) - (a.stats?.assists || 0))[0];
 
-        const evaluatedKeyPlayers = sortedPlayers.slice(0, 3).map(p => {
+        // Ein guter Analyst stellt mehr Schlüsselspieler vor - und sieht sie
+        // genauer (dieselbe Schätzung wie in den Scoutberichten)
+        const scouting = _oaResolve("ScoutingEngine", "./scoutingEngine.js");
+        const anzahlSchluessel = analyst.sterne >= 3.5 ? 4 : (analyst.sterne < 2 ? 2 : 3);
+        const evaluatedKeyPlayers = sortedPlayers.slice(0, anzahlSchluessel).map(p => {
             let card = null;
             if (ratingEngine && typeof ratingEngine.calculateVisiblePlayerCard === 'function') {
                 card = ratingEngine.calculateVisiblePlayerCard(p, {
                     userClubId: userClubId,
                     userSquadAvgAbility: userSquadAvgCa,
-                    leagueDataCoverage: 85
+                    leagueDataCoverage: 85,
+                    urteil: scouting && typeof scouting.urteilsFehler === "function" ? scouting.urteilsFehler(p, analyst) : null
                 });
             }
             const starsCa = card ? card.starsCa : 3.0;
@@ -125,6 +166,22 @@ const OpponentAnalysisEngine = {
         if (strengths.length === 0) strengths.push("Ausgeglichene Mannschaft ohne gravierende Spitzen");
         if (weaknesses.length === 0) weaknesses.push("Solide Grundordnung über alle Mannschaftsteile");
 
+        // Die schwächste Stelle der voraussichtlichen Elf findet nur ein
+        // Analyst, der genau hinschaut
+        let schwachstelle = null;
+        if (analyst.sterne >= 3 && availableLineup.length > 0) {
+            const feld = availableLineup.filter(p => p.pos !== "TW");
+            const kandidat = [...(feld.length ? feld : availableLineup)].sort((a, b) => a.overall - b.overall)[0];
+            if (kandidat) {
+                const langsam = (kandidat.pace || 70) < 62;
+                const zweikampf = (kandidat.defense || 70) < 55 && ["IV", "LV", "RV", "DM"].includes(kandidat.pos);
+                const grund = langsam ? "fehlt das Tempo - mit Läufen in die Tiefe anlaufen"
+                    : zweikampf ? "wackelt im Zweikampf - dort das Dribbling suchen"
+                    : "ist der schwächste Mann ihrer Elf - Angriffe über seine Seite lenken";
+                schwachstelle = { id: kandidat.id, name: kandidat.name, pos: kandidat.pos, text: `${kandidat.name} (${kandidat.pos}) ${grund}.` };
+            }
+        }
+
         // Taktische Tendenz
         let tacticalTrend = "Ausgeglichenes Spiel mit kontrolliertem Aufbau";
         if (attackRating > defenseRating + 4) {
@@ -192,7 +249,10 @@ const OpponentAnalysisEngine = {
             weaknesses: weaknesses,
             recommendation: recommendation,
             dangerLevel: dangerLevel,
-            dangerClass: dangerClass
+            dangerClass: dangerClass,
+            schwachstelle,
+            analyst,
+            genauigkeit: analyst.sterne >= 4 ? "Sehr genau" : analyst.sterne >= 3 ? "Genau" : analyst.sterne >= 2 ? "Grob" : "Nur ein Eindruck"
         };
     }
 };

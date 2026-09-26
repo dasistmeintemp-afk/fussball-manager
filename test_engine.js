@@ -27,6 +27,7 @@ const { PlayerRatingEngine } = require('./js/engine/playerRatingEngine.js');
 const { CalendarEngine } = require('./js/engine/calendarEngine.js');
 const { OpponentAnalysisEngine } = require('./js/engine/opponentAnalysisEngine.js');
 const { PositionEngine } = require('./js/engine/positionEngine.js');
+const { TacticsEngine } = require('./js/engine/tacticsEngine.js');
 const { MatchFlowEngine } = require('./js/engine/matchFlowEngine.js');
 const { GameState, FORMATION_CONFIGS } = require('./js/engine/gameState.js');
 const { MatchEngine, LiveMatch, MATCH_TUNING } = require('./js/engine/matchEngine.js');
@@ -1352,6 +1353,7 @@ function runEngineTests() {
         // Seitenwechsel spielt sie in die andere Richtung)
         const hoehe = anteil => ({ x: dir.ownGoalX("home") + dir.attackDir("home") * 92 * anteil, y: 50 });
         awayClub.tactics.pressing = "medium";
+        dir.taktikAnwenden();
         if (dir.presstImRaum("away", hoehe(0.12))) {
             throw new Error("Ein Mittelfeldpressing jagt den Innenverteidiger bis in dessen Strafraum");
         }
@@ -1359,6 +1361,7 @@ function runEngineTests() {
             throw new Error("Im letzten Drittel wird der Ballführende nicht angegriffen");
         }
         awayClub.tactics.pressing = "high";
+        dir.taktikAnwenden();
         if (!dir.presstImRaum("away", hoehe(0.12))) {
             throw new Error("Hohes Pressing greift den Aufbau nicht an");
         }
@@ -1387,6 +1390,552 @@ function runEngineTests() {
         const bedraengt = [{ id: 4, team: "away", pos: "ST", group: "att", x: 29, y: 36, defense: 40, pace: 70 }, ...gegner];
         if (flow.rateDribble(spieler[0], bedraengt, {}, flow.getPressure(spieler[0], bedraengt)).frei) {
             throw new Error("Ein bedrängter Verteidiger gilt als frei");
+        }
+    });
+
+    // 14a7a3. Taktik nach FM26: Formen, Rollen, Vorlagen, Verbindungen
+    test("TacticsEngine: Formen mit und gegen den Ball, Rollen, Vorlagen und Verbindungen", () => {
+        // Alte Spielstaende kennen nur fuenf Regler - sie bleiben erhalten,
+        // alles andere bekommt seinen Standard
+        const alt = TacticsEngine.normalisiere({ mentality: "offensive", attackFocus: "left", passStyle: "short" });
+        if (alt.mentality !== "offensive" || alt.focus !== "left" || alt.passing !== "short") {
+            throw new Error(`Alte Taktik geht verloren: ${JSON.stringify(alt)}`);
+        }
+        if (alt.deckung !== "raum" || alt.formMitBall !== "auto" || alt.formGegenBall !== "grund") {
+            throw new Error("Neue Anweisungen bekommen keinen Standard");
+        }
+
+        // Jede Formation laesst sich in jede andere ueberfuehren: jeder Platz
+        // genau einmal, der Torwart bleibt Torwart, kein Aussen wechselt die Seite
+        const formen = Object.keys(FORMATION_CONFIGS);
+        const ziele = [...formen, ...Object.keys(TacticsEngine.FORMEN_MIT_BALL)];
+        formen.forEach(a => ziele.forEach(b => {
+            const basis = FORMATION_CONFIGS[a].positions;
+            const ziel = TacticsEngine.positionenDerForm(b, FORMATION_CONFIGS);
+            const z = TacticsEngine.zuordnung(basis, ziel);
+            if (new Set(z).size !== basis.length) throw new Error(`${a} -> ${b}: Plätze doppelt belegt`);
+            basis.forEach((p, i) => {
+                const q = ziel[z[i]];
+                if ((p.pos === "TW") !== (q.pos === "TW")) throw new Error(`${a} -> ${b}: Torwart getauscht`);
+                if (Math.abs(p.x - 50) > 12 && Math.abs(q.x - 50) > 12 && Math.sign(p.x - 50) !== Math.sign(q.x - 50)) {
+                    throw new Error(`${a} -> ${b}: ${p.pos} wechselt die Seite`);
+                }
+            });
+        }));
+
+        // 4-3-3 gegen den Ball im 4-4-2: Die Fluegel fallen ins Mittelfeld,
+        // ein Achter schiebt neben die Spitze
+        const b433 = FORMATION_CONFIGS["4-3-3"].positions;
+        const z442 = TacticsEngine.plaetzeInForm(b433, "4-4-2", FORMATION_CONFIGS);
+        if (z442[8].pos !== "RM" || z442[10].pos !== "LM") throw new Error(`Flügel werden nicht zu Mittelfeldspielern: ${z442[8].pos}/${z442[10].pos}`);
+        if (z442.filter(p => p.pos === "ST").length !== 2) throw new Error("Im 4-4-2 gegen den Ball stehen nicht zwei Spitzen");
+
+        // Familien: Schienenspieler vor der Dreierkette, Aussenverteidiger in der Viererkette
+        if (TacticsEngine.familie("LAV", FORMATION_CONFIGS["3-5-2"].positions) !== "SCH") throw new Error("LAV im 3-5-2 ist kein Schienenspieler");
+        if (TacticsEngine.familie("RV", FORMATION_CONFIGS["5-3-2"].positions) !== "SCH") throw new Error("RV im 5-3-2 ist kein Schienenspieler");
+        if (TacticsEngine.familie("RV", FORMATION_CONFIGS["4-4-2"].positions) !== "AV") throw new Error("RV im 4-4-2 ist kein Außenverteidiger");
+
+        // Gespeicherte Rollen gelten, unpassende fallen auf den Standard zurueck
+        const club = { formation: "4-3-3", tactics: TacticsEngine.normalisiere({}) };
+        club.tactics.rollen = { 9: { mit: "st_neun", gegen: "st_pressend" }, 2: { mit: "st_neun", gegen: "fl_konter" } };
+        const rollen = TacticsEngine.rollenDerElf(club, b433);
+        if (rollen[9].mit !== "st_neun" || rollen[9].gegen !== "st_pressend") throw new Error("Gespeicherte Rolle geht verloren");
+        if (rollen[2].mit !== "iv" || rollen[2].gegen !== "iv") throw new Error("Ein Innenverteidiger spielt eine Stürmerrolle");
+
+        // Jede Rolle hat ein Kuerzel fuer die Taktiktafel
+        Object.values(TacticsEngine.ROLLEN_MIT_BALL).flat().forEach(r => {
+            if (TacticsEngine.kuerzel(r, "mit").kategorie === "standard") throw new Error(`Rolle ohne Kürzel: ${r.id}`);
+        });
+
+        // Vorlagen setzen alles auf einmal
+        const t = TacticsEngine.wendeVorlageAn({}, "positionsspiel");
+        if (t.formMitBall !== "3-2-5" || t.passing !== "short" || t.nachBallverlust !== "gegenpressing") {
+            throw new Error("Die Vorlage Positionsspiel setzt ihre Anweisungen nicht");
+        }
+        [50, 62, 75, 90].forEach(rep => {
+            const v = TacticsEngine.vorlageFuerVerein({ reputation: rep });
+            if (!TacticsEngine.VORLAGEN[v]) throw new Error(`Unbekannte Vorlage für Ruf ${rep}: ${v}`);
+        });
+
+        // Verbindungen: Schiene und Fluegel an derselben Linie haken,
+        // einrueckender Aussenverteidiger und Fluegel an der Linie passen
+        const seite = (mitAV, mitFL) => {
+            const c = { formation: "4-3-3", tactics: TacticsEngine.normalisiere({}) };
+            c.tactics.rollen = { 1: { mit: mitAV, gegen: "av" }, 8: { mit: mitFL, gegen: "fl" } };
+            return TacticsEngine.verbindungen(c, b433, "mit").find(v => (v.a === 1 && v.b === 8) || (v.a === 8 && v.b === 1));
+        };
+        if (seite("av_schiene", "fl")?.guete !== "schwach") throw new Error("Zwei Spieler an derselben Seitenlinie gelten nicht als Problem");
+        if (seite("av_invers", "fl")?.guete !== "stark") throw new Error("Einrückender Außenverteidiger mit Flügel an der Linie passt nicht");
+
+        // Der Taktik-Check merkt, wenn niemand die Linie haelt
+        const eng = { formation: "4-3-3", tactics: TacticsEngine.normalisiere({}) };
+        eng.tactics.rollen = { 4: { mit: "av_invers", gegen: "av" }, 10: { mit: "fl_invers", gegen: "fl" } };
+        if (!TacticsEngine.pruefe(eng, b433).some(h => h.art === "warn" && h.text.includes("linke Seitenlinie"))) {
+            throw new Error("Der Taktik-Check übersieht eine Seite ohne Breite");
+        }
+    });
+
+    // 14a7a4. Mit Ball: Form und Rollen bestimmen, wo jeder steht
+    test("LiveMatchDirector: Form und Rollen mit Ball - 3-2-5, einrückende Außenverteidiger, abkippender Sechser", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+        homeClub.formation = "4-3-3";
+        GameState.autoSetLineupForClub(homeClub, state.players);
+        homeClub.tactics = TacticsEngine.normalisiere({});
+        const live = new LiveMatch({ id: "rollen_mit", played: false, homeClubId: "muc", awayClubId: "dor" }, homeClub, awayClub, state.players);
+        const dir = live.director;
+        let uhr = 1000;
+        const plan = (b) => {
+            dir._laufUhr = ++uhr;
+            dir._planMitBall = {};
+            dir._lageMitBall = {};
+            dir._schwerpunkt = { home: b, away: 1 - b };
+            const ball = { x: dir.ownGoalX("home") + dir.attackDir("home") * 92 * b, y: 50 };
+            const erg = {};
+            dir.teamPlayers("home").filter(p => p.pos !== "TW").forEach(p => { erg[p.slot] = dir.planMitBall("home", ball).get(p.id); });
+            return erg;
+        };
+
+        // Feste Form 3-2-5: drei hinten, zwei davor, fuenf vorn auf allen Bahnen
+        homeClub.tactics.formMitBall = "3-2-5";
+        dir.taktikAnwenden();
+        const p325 = Object.values(plan(0.7));
+        const hinten = p325.filter(e => e.tiefe <= 0.1).length;
+        const vorn = p325.filter(e => e.tiefe >= 0.8);
+        if (hinten !== 3 || vorn.length !== 5) throw new Error(`3-2-5 steht als ${hinten} hinten / ${vorn.length} vorn`);
+        const quer = vorn.map(e => e.y).sort((a, b) => a - b);
+        if (!(quer[0] < 14 && quer[4] > 86)) throw new Error(`Im 3-2-5 sind die Seitenlinien nicht besetzt: ${quer.map(v => v.toFixed(0))}`);
+        if (vorn.filter(e => Math.abs(e.y - 50) > 14 && Math.abs(e.y - 50) < 36).length < 2) throw new Error("Im 3-2-5 sind die Halbräume nicht besetzt");
+
+        // Aus den Rollen: links rueckt der Aussenverteidiger ein, rechts geht
+        // er neben den Sechser, der inverse Fluegel zieht in den Halbraum
+        homeClub.tactics.formMitBall = "auto";
+        homeClub.tactics.rollen = {
+            4: { mit: "av_invers", gegen: "av" },
+            1: { mit: "av_invers_schiene", gegen: "av" },
+            10: { mit: "fl_invers", gegen: "fl" }
+        };
+        dir.taktikAnwenden();
+        const pr = plan(0.7);
+        if (pr[4].bahn !== "kette" || Math.abs(pr[4].y - 50) < 18 || Math.abs(pr[4].y - 50) > 30 || pr[4].tiefe > 0.1) {
+            throw new Error(`Der einrückende Außenverteidiger steht nicht in der Dreierkette: ${JSON.stringify(pr[4])}`);
+        }
+        if (pr[1].bahn !== "halbraum" || pr[1].tiefe < 0.25 || pr[1].tiefe > 0.45) {
+            throw new Error(`Der invertierte Außenverteidiger steht nicht neben dem Sechser: ${JSON.stringify(pr[1])}`);
+        }
+        if (pr[10].bahn !== "halbraum") throw new Error("Der inverse Flügel bleibt an der Linie");
+        if (Object.values(pr).some(e => e.y < 14)) throw new Error("Obwohl beide einrücken, steht jemand an der linken Linie");
+
+        // Abkippender Sechser: im Aufbau zwischen den Innenverteidigern, die
+        // dafuer weit auseinandergehen
+        homeClub.tactics.rollen = { 5: { mit: "dm_abkippend", gegen: "dm" } };
+        dir.taktikAnwenden();
+        const pk = plan(0.2);
+        if (pk[5].tiefe > 0.05 || Math.abs(pk[5].y - 50) > 3) throw new Error(`Der Sechser kippt nicht ab: ${JSON.stringify(pk[5])}`);
+        if (Math.abs(pk[2].y - 50) < 25 || Math.abs(pk[3].y - 50) < 25) throw new Error("Die Innenverteidiger machen dem abkippenden Sechser keinen Platz");
+
+        // Bahnregel: Niemand steht mit einem anderen auf demselben Fleck
+        homeClub.tactics.rollen = { 9: { mit: "st_kanal", gegen: "st" }, 6: { mit: "zm_halbraum", gegen: "zm" }, 8: { mit: "fl_invers", gegen: "fl" } };
+        dir.taktikAnwenden();
+        const pb = Object.values(plan(0.75));
+        for (let i = 0; i < pb.length; i++) for (let j = i + 1; j < pb.length; j++) {
+            if (Math.abs(pb[i].y - pb[j].y) < 8 && Math.abs(pb[i].tiefe - pb[j].tiefe) < 0.13) {
+                throw new Error("Zwei Spieler stehen mit Ball auf demselben Fleck");
+            }
+        }
+    });
+
+    // 14a7a5. Gegen den Ball: Form, Deckung, Pressing und Rollen
+    test("LiveMatchDirector: Gegen den Ball - Form, Manndeckung, Pressingfalle, Konterspieler", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+        homeClub.formation = "4-3-3";
+        GameState.autoSetLineupForClub(homeClub, state.players);
+        homeClub.tactics = TacticsEngine.normalisiere({});
+        awayClub.tactics = TacticsEngine.normalisiere({});
+        const live = new LiveMatch({ id: "gegen_ball", played: false, homeClubId: "muc", awayClubId: "dor" }, homeClub, awayClub, state.players);
+        const dir = live.director;
+        const hoehe = x => (x - dir.ownGoalX("home")) * dir.attackDir("home") / 92;
+        const slot = i => dir.teamPlayers("home").find(p => p.slot === i);
+        const block = (p, b) => {
+            const sicht = { x: dir.ownGoalX("home") + dir.attackDir("home") * 92 * b, y: 50 };
+            dir._schwerpunkt = { home: b, away: 1 - b };
+            return hoehe(dir.formOhneBall(p, sicht, dir.attackDir("home")).x);
+        };
+
+        // Form gegen den Ball: Im 4-4-2 steht der rechte Achter neben der
+        // Spitze, in der Grundform darunter
+        dir.taktikAnwenden();
+        const grundAbstand = block(slot(9), 0.5) - block(slot(6), 0.5);
+        homeClub.tactics.formGegenBall = "4-4-2";
+        dir.taktikAnwenden();
+        const formAbstand = block(slot(9), 0.5) - block(slot(6), 0.5);
+        if (!(grundAbstand > 0.08 && Math.abs(formAbstand) < 0.03)) {
+            throw new Error(`4-4-2 gegen den Ball wirkt nicht: Abstand zur Spitze ${grundAbstand.toFixed(2)} -> ${formAbstand.toFixed(2)}`);
+        }
+        homeClub.tactics.formGegenBall = "grund";
+
+        // Der Konterspieler bleibt vorn, der zurueckarbeitende Stuermer faellt zurueck
+        homeClub.tactics.rollen = { 9: { mit: "st", gegen: "st_konter" } };
+        dir.taktikAnwenden();
+        const konter = block(slot(9), 0.25);
+        homeClub.tactics.rollen = { 9: { mit: "st", gegen: "st_zurueck" } };
+        dir.taktikAnwenden();
+        const zurueck = block(slot(9), 0.25);
+        homeClub.tactics.rollen = {};
+        dir.taktikAnwenden();
+        const normal = block(slot(9), 0.25);
+        if (!(konter >= 0.55 && konter > normal + 0.05 && zurueck < normal - 0.05)) {
+            throw new Error(`Rollen gegen den Ball wirken nicht: Konter ${konter.toFixed(2)}, normal ${normal.toFixed(2)}, zurück ${zurueck.toFixed(2)}`);
+        }
+
+        // Pressingintensitaet schiebt die Linie, Gegenpressing gilt nach dem Ballverlust
+        dir.mode = "ambient";
+        dir._laufUhr = 500;
+        dir._wechselUhr = 400;
+        const ballBei = anteil => ({ x: dir.ownGoalX("away") + dir.attackDir("away") * 92 * anteil, y: 50 });
+        homeClub.tactics.pressing = "medium";
+        homeClub.tactics.anlaufen = "normal";
+        dir.taktikAnwenden();
+        if (dir.presstImRaum("home", ballBei(0.29))) throw new Error("Mittelfeldpressing greift schon im ersten Drittel an");
+        homeClub.tactics.anlaufen = "oefter";
+        dir.taktikAnwenden();
+        if (!dir.presstImRaum("home", ballBei(0.29))) throw new Error("Öfter pressen schiebt die Pressinglinie nicht nach vorn");
+        homeClub.tactics.anlaufen = "normal";
+        homeClub.tactics.nachBallverlust = "gegenpressing";
+        dir._wechselUhr = 497;
+        dir.taktikAnwenden();
+        if (!dir.presstImRaum("home", ballBei(0.1))) throw new Error("Gegenpressing greift nach dem Ballverlust nicht");
+        homeClub.tactics.nachBallverlust = "zurueckziehen";
+        dir.taktikAnwenden();
+        if (dir.presstImRaum("home", ballBei(0.1))) throw new Error("Wer sich zurückzieht, presst trotzdem gegen");
+
+        // Pressingfalle: Nach aussen lenken heisst von innen anlaufen
+        homeClub.tactics.nachBallverlust = "normal";
+        homeClub.tactics.pressing = "high";
+        const traeger = dir.teamPlayers("away").find(p => p.pos !== "TW");
+        dir.deadBall = null;
+        dir.kickoff = null;
+        const presserSeite = (falle) => {
+            homeClub.tactics.pressingfalle = falle;
+            dir.taktikAnwenden();
+            dir._wechselUhr = 0;
+            dir.possessionTeam = "away";
+            dir.carrierId = traeger.id;
+            live.ball.x = 60; live.ball.y = 22; live.ball.inFlight = false;
+            traeger.x = 60; traeger.y = 22;
+            const modus = dir.selectPressingPlayers();
+            const id = [...modus.entries()].find(([, m]) => m === "press")?.[0];
+            const p = dir.getPlayer2D(id);
+            return dir.computeTarget(p, live.ball, modus).y - live.ball.y;
+        };
+        const aussen = presserSeite("aussen");
+        const innen = presserSeite("innen");
+        if (!(aussen > 1 && innen < -1)) {
+            throw new Error(`Pressingfalle lenkt nicht: nach außen ${aussen.toFixed(1)}, nach innen ${innen.toFixed(1)}`);
+        }
+
+        // Manndeckung: Jeder klebt an seinem Gegenspieler - gemessen in
+        // einer Halbzeit gegen dieselbe Halbzeit in Raumdeckung
+        const abstandBeiDeckung = (deckung) => {
+            const s2 = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+            const h2 = s2.clubs.find(c => c.id === "muc"), a2 = s2.clubs.find(c => c.id === "dor");
+            h2.tactics = TacticsEngine.normalisiere({ deckung });
+            a2.tactics = TacticsEngine.normalisiere({});
+            const l2 = new LiveMatch({ id: "deckung_" + deckung, played: false, homeClubId: "muc", awayClubId: "dor" }, h2, a2, s2.players);
+            l2.speed = 1;
+            const d2 = l2.director;
+            let f = 0, bes = null, seit = 0, summe = 0, n = 0;
+            while (!l2.isFinished && l2.minute < 45 && f < 60 * 900) {
+                l2.advanceRealTime(1000 / 60);
+                l2.updateBallAndPlayers(1000 / 60);
+                f++;
+                // Gemessen wird erst zwei Sekunden nach einem Besitzwechsel -
+                // und nach einem Anstoss: Direkt danach stehen noch alle in
+                // der Anstossaufstellung, egal wie gedeckt wird.
+                if (d2.possessionTeam !== bes || d2.kickoff) { bes = d2.possessionTeam; seit = f; }
+                if (f % 15 || d2.mode !== "ambient" || d2.deadBall || f - seit < 120 || d2.possessionTeam !== "away") continue;
+                const gast = l2.players2D.filter(p => p.team === "away" && p.pos !== "TW");
+                l2.players2D.filter(p => p.team === "home" && p.pos !== "TW").forEach(p => {
+                    summe += Math.min(...gast.map(q => Math.hypot(p.x - q.x, p.y - q.y)));
+                    n++;
+                });
+            }
+            return summe / Math.max(1, n);
+        };
+        const raum = abstandBeiDeckung("raum");
+        const mann = abstandBeiDeckung("mann");
+        if (!(mann < raum - 1.5)) throw new Error(`Manndeckung rückt nicht an den Gegner: Raum ${raum.toFixed(1)}, Mann ${mann.toFixed(1)}`);
+    });
+
+    // 14a7a6. Die Anweisungen mit Ball wirken auf die Entscheidungen
+    test("MatchFlowEngine: Aufbau über innen oder außen, Torwartabspiel, Spielmacher, Dribblings", () => {
+        const spieler = [
+            { id: 1, team: "home", pos: "IV", group: "def", fam: "IV", x: 20, y: 40, passing: 70, vision: 65, technique: 65, dribbling: 55, pace: 60 },
+            { id: 2, team: "home", pos: "IV", group: "def", fam: "IV", x: 20, y: 62, passing: 70 },
+            { id: 3, team: "home", pos: "LV", group: "def", fam: "AV", x: 26, y: 20, passing: 68 },
+            { id: 4, team: "home", pos: "TW", group: "gk", fam: "TW", x: 6, y: 50, passing: 60 },
+            { id: 5, team: "home", pos: "ST", group: "att", fam: "ST", x: 60, y: 50, passing: 60 },
+            { id: 6, team: "away", pos: "ST", group: "att", x: 75, y: 50, defense: 40, pace: 70 },
+            { id: 7, team: "away", pos: "ZM", group: "mid", x: 80, y: 30, defense: 55, pace: 70 }
+        ];
+        let tactics = TacticsEngine.normalisiere({});
+        const flow = new MatchFlowEngine({
+            getPlayers: () => spieler,
+            getTactics: () => tactics,
+            attackDir: team => (team === "home" ? 1 : -1),
+            ownGoalX: team => (team === "home" ? 4 : 96)
+        });
+        const gegner = spieler.filter(p => p.team === "away");
+        const mittel = (traeger, ziele, ziel, runden = 80) => {
+            let s = 0;
+            for (let i = 0; i < runden; i++) {
+                const opts = flow.ratePassOptions(traeger, ziele, gegner, tactics, { phase: "buildup", pressure: 0 });
+                s += opts.find(o => o.target.id === ziel).score;
+            }
+            return s / runden;
+        };
+        const iv = spieler[0], iv2 = spieler[1], av = spieler[2], tw = spieler[3], st = spieler[4];
+
+        tactics = TacticsEngine.normalisiere({ aufbauUeber: "innen" });
+        const innen = mittel(iv, [iv2, av], 2) - mittel(iv, [iv2, av], 3);
+        tactics = TacticsEngine.normalisiere({ aufbauUeber: "aussen" });
+        const aussen = mittel(iv, [iv2, av], 2) - mittel(iv, [iv2, av], 3);
+        if (!(innen > aussen + 0.4)) throw new Error(`Aufbau über innen/außen wirkt nicht: ${innen.toFixed(2)} gegen ${aussen.toFixed(2)}`);
+
+        tactics = TacticsEngine.normalisiere({ torwartAbspiel: "kurz" });
+        const kurz = mittel(tw, [iv, st], 5) - mittel(tw, [iv, st], 1);
+        tactics = TacticsEngine.normalisiere({ torwartAbspiel: "lang" });
+        const lang = mittel(tw, [iv, st], 5) - mittel(tw, [iv, st], 1);
+        if (!(lang > kurz + 0.8)) throw new Error(`Torwartabspiel wirkt nicht: kurz ${kurz.toFixed(2)}, lang ${lang.toFixed(2)}`);
+
+        // Der Spielmacher wird gesucht
+        tactics = TacticsEngine.normalisiere({});
+        const ohne = mittel(iv, [iv2, av], 2);
+        iv2.rolleMit = TacticsEngine.rolleMitBall("DM", "dm_spielmacher");
+        const mitRolle = mittel(iv, [iv2, av], 2);
+        delete iv2.rolleMit;
+        if (!(mitRolle > ohne + 0.25)) throw new Error("Ein Spielmacher wird nicht häufiger angespielt");
+
+        // Mehr Dribblings
+        const dribbel = (wert) => {
+            tactics = TacticsEngine.normalisiere({ dribbling: wert });
+            let s = 0;
+            for (let i = 0; i < 80; i++) s += flow.rateDribble(iv, gegner, tactics, 0.2).score;
+            return s / 80;
+        };
+        if (!(dribbel("mehr") > dribbel("weniger") + 0.5)) throw new Error("Die Anweisung Dribblings wirkt nicht");
+    });
+
+    // 14a7a7. Zweikampfhaerte in der Ergebnissimulation
+    test("MatchEngine: Hart einsteigen bringt mehr Fouls, auf den Füßen bleiben weniger", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const home = state.clubs.find(c => c.id === "muc");
+        const away = state.clubs.find(c => c.id === "dor");
+        // Beide Einstellungen spielen dieselben Partien: Jede Partie bekommt
+        // eine feste Zufallsfolge, die fuer beide gleich ist. So misst der
+        // Vergleich die Zweikampfhaerte und nicht den Zufall - frei gewuerfelt
+        // lag der Unterschied von rund einem halben Foul je Spiel im Rauschen.
+        const folge = (a) => () => {
+            a = (a + 0x6D2B79F5) | 0;
+            let t = Math.imul(a ^ (a >>> 15), 1 | a);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+        const fouls = (zweikampf) => {
+            home.tactics = TacticsEngine.normalisiere({ zweikampf });
+            away.tactics = TacticsEngine.normalisiere({});
+            let summe = 0;
+            const zufall = Math.random;
+            try {
+                for (let i = 0; i < 120; i++) {
+                    Math.random = folge(7919 * (i + 1));
+                    state.players.forEach(p => { p.suspendedMatches = 0; p.injuredWeeks = 0; p.fitness = 92; });
+                    const m = { id: `zk_${i}`, played: false, homeClubId: "muc", awayClubId: "dor" };
+                    MatchEngine.simulateFullMatch(m, home, away, state.players);
+                    summe += m.stats.fouls[0];
+                }
+            } finally {
+                Math.random = zufall;
+            }
+            return summe / 120;
+        };
+        const hart = fouls("hart");
+        const sanft = fouls("zurueckhaltend");
+        if (!(hart > sanft + 0.4)) throw new Error(`Zweikampfhärte ändert die Fouls nicht: hart ${hart.toFixed(2)}, zurückhaltend ${sanft.toFixed(2)}`);
+    });
+
+    // 14a7a8. Alle Formationen laufen mit jeder Vorlage
+    test("Alle Formationen: Positionsspiel mit jeder Vorlage ohne Knoten und ohne Fehler", () => {
+        const formen = Object.keys(FORMATION_CONFIGS).filter(k => FORMATION_CONFIGS[k].positions.length === 11);
+        const vorlagen = Object.keys(TacticsEngine.VORLAGEN);
+        formen.forEach((form, fi) => {
+            const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+            const home = state.clubs.find(c => c.id === "muc");
+            const away = state.clubs.find(c => c.id === "dor");
+            home.formation = form;
+            GameState.autoSetLineupForClub(home, state.players);
+            const vorlage = vorlagen[fi % vorlagen.length];
+            home.tactics = TacticsEngine.wendeVorlageAn({}, vorlage);
+            home.tactics.formMitBall = "auto";
+            const live = new LiveMatch({ id: "form_" + fi, played: false, homeClubId: "muc", awayClubId: "dor" }, home, away, state.players);
+            live.speed = 2;
+            for (let f = 0; f < 60 * 25; f++) {
+                live.advanceRealTime(1000 / 60);
+                live.updateBallAndPlayers(1000 / 60);
+            }
+            if (live.players2D.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) {
+                throw new Error(`${form} (${vorlage}): Spieler ohne Position`);
+            }
+            const dir = live.director;
+            dir._laufUhr = (dir._laufUhr || 0) + 1;
+            dir._planMitBall = {};
+            dir._schwerpunkt = { home: 0.72, away: 0.28 };
+            const ball = { x: dir.ownGoalX("home") + dir.attackDir("home") * 92 * 0.72, y: 50 };
+            const plan = dir.teamPlayers("home").filter(p => p.pos !== "TW").map(p => dir.planMitBall("home", ball).get(p.id));
+            if (plan.some(e => !e || !Number.isFinite(e.y) || !Number.isFinite(e.tiefe))) throw new Error(`${form}: Plan mit Ball unvollständig`);
+            for (let i = 0; i < plan.length; i++) for (let j = i + 1; j < plan.length; j++) {
+                if (Math.abs(plan[i].y - plan[j].y) < 6 && Math.abs(plan[i].tiefe - plan[j].tiefe) < 0.1) {
+                    throw new Error(`${form} (${vorlage}): zwei Spieler auf demselben Fleck`);
+                }
+            }
+            // Mit den Standardrollen hat jede Formation Breite auf beiden Seiten
+            home.tactics = TacticsEngine.normalisiere({});
+            dir.taktikAnwenden();
+            dir._planMitBall = {};
+            dir._laufUhr += 1;
+            const std = dir.teamPlayers("home").filter(p => p.pos !== "TW").map(p => dir.planMitBall("home", ball).get(p.id));
+            if (!std.some(e => e.y < 14) || !std.some(e => e.y > 86)) throw new Error(`${form}: Mit Ball ist eine Seitenlinie leer`);
+        });
+    });
+
+    // Szenen entstehen aus dem Spiel: Der Gegner erobert den Ball sichtbar,
+    // gefoult wird am Ball, die Ecke liegt an der Fahne, der Torwart steht
+    // auf der Linie.
+    test("Livespiel: Ballgewinn vor der Szene, Foul am Ball, Ecke an der Fahne, Torwart auf der Linie", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const home = state.clubs.find(c => c.id === "muc");
+        const away = state.clubs.find(c => c.id === "dor");
+        let geschenkt = 0, erobert = 0;
+        const fouls = [], ecken = [];
+
+        for (let r = 0; r < 2; r++) {
+            const live = MatchEngine.createLiveMatch({ id: "szene_" + r, played: false, homeClubId: "muc", awayClubId: "dor" },
+                home, away, state.players);
+            live.speed = 2;
+            const d = live.director;
+
+            const start = d.startHighlight.bind(d);
+            d.startHighlight = () => {
+                const ev = live.timeline[live.timelineIndex];
+                const team = d.attackingTeamOf(ev);
+                const traeger = d.getPlayer2D(d.carrierId);
+                if (team && traeger && traeger.team !== team) geschenkt++;
+                return start();
+            };
+            const phase = d.beginEventPhase.bind(d);
+            d.beginEventPhase = (ph) => {
+                const ev = d.currentEvent();
+                if (ph === "action" && ev && ["foul", "yellow_card", "red_card"].includes(ev.type) && !ev.direkterFreistoss) {
+                    const t = d.getPlayer2D(ev.playerId);
+                    if (t) fouls.push(Math.hypot(t.x - live.ball.x, t.y - live.ball.y));
+                }
+                if (ph === "action" && ev && ev.type === "corner") {
+                    const verteidigt = ev.team === "home" ? "away" : "home";
+                    const torX = d.ownGoalX(verteidigt);
+                    const tw = live.players2D.find(p => p.team === verteidigt && p.pos === "TW");
+                    ecken.push({
+                        ballAnLinie: Math.abs(live.ball.x - torX) < 1.5,
+                        ballAnFahne: live.ball.y < 3 || live.ball.y > 97,
+                        torwart: tw ? Math.abs(tw.x - torX) : 0,
+                        hinterLinie: live.players2D.filter(p => (torX > 50 ? p.x > torX + 0.4 : p.x < torX - 0.4)).length
+                    });
+                }
+                return phase(ph);
+            };
+            let f = 0;
+            while (!live.isFinished && f++ < 60 * 900) {
+                live.advanceRealTime(1000 / 60);
+                live.updateBallAndPlayers(1000 / 60);
+            }
+            erobert += d.flowStats.ballgewinneVorSzene || 0;
+        }
+
+        // Vorher wechselte der Ball rund fünfundvierzigmal in zwei Partien
+        // ohne Zweikampf den Besitzer
+        if (geschenkt > 14) throw new Error(`${geschenkt} Mal bekam der Gegner den Ball ohne Zweikampf`);
+        if (erobert < 10) throw new Error(`Nur ${erobert} sichtbare Ballgewinne vor gegnerischen Szenen`);
+        if (fouls.length < 8) throw new Error(`Zu wenige Fouls gemessen (${fouls.length})`);
+        const amBall = fouls.filter(x => x < 4.5).length / fouls.length;
+        if (amBall < 0.85) throw new Error(`Nur ${(amBall * 100).toFixed(0)} % der Fouls mit dem Foulenden am Ball`);
+        if (ecken.length < 2) throw new Error(`Zu wenige Ecken gemessen (${ecken.length})`);
+        ecken.forEach((e, i) => {
+            if (!e.ballAnLinie || !e.ballAnFahne) throw new Error(`Ecke ${i + 1} wurde nicht an der Fahne getreten`);
+            if (e.torwart > 2.5) throw new Error(`Ecke ${i + 1}: Torwart ${e.torwart.toFixed(1)} vor der Linie`);
+            if (e.hinterLinie > 0) throw new Error(`Ecke ${i + 1}: ${e.hinterLinie} Spieler hinter der Torlinie`);
+        });
+    });
+
+    test("Anstoß: Der Schütze steht am Ball, nach einem Tor steht niemand in der falschen Hälfte", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const home = state.clubs.find(c => c.id === "muc");
+        const away = state.clubs.find(c => c.id === "dor");
+        const live = MatchEngine.createLiveMatch({ id: "anstoss", played: false, homeClubId: "muc", awayClubId: "dor" },
+            home, away, state.players);
+        live.speed = 1;
+        const d = live.director;
+        const pruefePfiff = (wann) => {
+            let f = 0;
+            while (d.kickoff && d.kickoff.phase !== "whistle" && f++ < 60 * 30) {
+                live.advanceRealTime(1000 / 60);
+                live.updateBallAndPlayers(1000 / 60);
+            }
+            if (!d.kickoff) throw new Error(`${wann}: Anstoß ohne Pfiff`);
+            const schuetze = d.getPlayer2D(d.kickoffTakerId);
+            if (!schuetze || Math.hypot(schuetze.x - 50, schuetze.y - 50) > 3) {
+                throw new Error(`${wann}: Der Anstoßschütze steht ${schuetze ? Math.hypot(schuetze.x - 50, schuetze.y - 50).toFixed(1) : "?"} vom Ball`);
+            }
+            const falsch = live.players2D.filter(p => (d.attackDir(p.team) > 0 ? p.x > 50.5 : p.x < 49.5));
+            if (falsch.length) throw new Error(`${wann}: ${falsch.length} Spieler in der gegnerischen Hälfte beim Pfiff`);
+        };
+        pruefePfiff("Anpfiff");
+
+        // Nach einem Tor: Die Torschützen stehen jubelnd an der Eckfahne
+        d.kickoff = null;
+        live.players2D.filter(p => p.team === "home").forEach(p => { p.x = 88; p.y = 14; });
+        d.startKickoff("away", "goal");
+        pruefePfiff("Anstoß nach Tor");
+    });
+
+    test("Vorbereitung: Ein Testspiel wird angesagt, live gespielt und mit diesem Ergebnis eingetragen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        let n = 0;
+        while (CalendarEngine.getCurrentDay(state).type !== "friendly" && n++ < 60) CalendarEngine.advanceOneDay(state);
+        const tag = CalendarEngine.getCurrentDay(state);
+        if (tag.type !== "friendly") throw new Error("Kein Spieltermin in der Vorbereitung gefunden");
+
+        const test = PreseasonEngine.partieFuerSlot(state, tag.friendlyIndex ?? 0);
+        if (!test || !test.gegner || !test.partie) throw new Error("Der Termin wird nicht angesagt");
+        if (test.partie.played) throw new Error("Die angesagte Partie ist schon gespielt");
+        if (test.partie.competitionId !== "friendly") throw new Error("Die Partie trägt nicht den Wettbewerb Testspiel");
+
+        // "Live" gespielt: Die Partie wird vorab ausgetragen und dem Kalender
+        // übergeben - er darf sie nicht ein zweites Mal ausspielen
+        const heim = state.clubs.find(c => c.id === test.partie.homeClubId);
+        const gast = state.clubs.find(c => c.id === test.partie.awayClubId);
+        MatchEngine.simulateFullMatch(test.partie, heim, gast, state.players);
+        const erwartet = test.heim
+            ? `${test.partie.homeGoals}:${test.partie.awayGoals}`
+            : `${test.partie.awayGoals}:${test.partie.homeGoals}`;
+        state.preseason.livePartie = test.partie;
+        const res = CalendarEngine.advanceOneDay(state);
+        if (!res.success || res.type !== "friendly") throw new Error("Der Termin wurde nicht abgeschlossen");
+        if ("livePartie" in state.preseason) throw new Error("Die Übergabe bleibt im Spielstand liegen");
+        const eingetragen = state.preseason.testspiele.find(t => t.gespielt);
+        if (!eingetragen || eingetragen.ergebnis !== erwartet) {
+            throw new Error(`Eingetragen ${eingetragen?.ergebnis}, live gespielt ${erwartet}`);
         }
     });
 
@@ -2125,22 +2674,26 @@ function runEngineTests() {
 
         while (!live.isFinished && frames < 60 * 400) {
             const vorHalbzeit = live.director.isSecondHalf;
+            const vorSchnitte = live.schnitte || 0;
             live.advanceRealTime(FRAME);
             live.updateBallAndPlayers(FRAME);
             frames++;
 
             // Der Seitenwechsel ist ein Schnitt in der Pause: beide
             // Mannschaften kommen auf der anderen Seite aus der Kabine. Genau
-            // dieses eine Bild darf springen, jedes andere nicht.
+            // dieses eine Bild darf springen, jedes andere nicht - ausser bei
+            // einem ausgewiesenen Schnitt der Uebertragung (Ecke, Anstoss
+            // nach einem Tor), bei dem die Wiedergabe abblendet.
             const seitenwechsel = !vorHalbzeit && live.director.isSecondHalf;
             if (seitenwechsel) seitenwechselFrames++;
+            const schnitt = seitenwechsel || (live.schnitte || 0) !== vorSchnitte;
 
             maxBallStep = Math.max(maxBallStep, Math.hypot(live.ball.x - prevBall.x, live.ball.y - prevBall.y));
             prevBall = { x: live.ball.x, y: live.ball.y };
 
             live.players2D.forEach(p => {
                 const vorher = prevPlayers.get(p.id);
-                if (vorher && !seitenwechsel) {
+                if (vorher && !schnitt) {
                     maxPlayerStep = Math.max(maxPlayerStep, Math.hypot(p.x - vorher.x, p.y - vorher.y));
                 }
                 prevPlayers.set(p.id, { x: p.x, y: p.y });
@@ -2581,11 +3134,15 @@ function runEngineTests() {
         const live = new LiveMatch(match, homeClub, awayClub, state.players);
 
         // Anstoß auflösen: bei ruhendem Ball steht die Mannschaft in
-        // Anstoßformation und rückt zu Recht nicht auf.
-        for (let i = 0; i < 150; i++) {
+        // Anstoßformation und rückt zu Recht nicht auf. Der Pfiff wartet auf
+        // den Schützen - also so lange laufen lassen, bis der Anstoß
+        // wirklich ausgeführt ist, sonst hält die Anstoßregie den Schützen
+        // noch am Mittelkreis fest.
+        for (let i = 0; i < 150 || (live.director.kickoff && i < 60 * 30); i++) {
             live.advanceRealTime(1000 / 60);
             live.updateBallAndPlayers(1000 / 60);
         }
+        if (live.director.kickoff) throw new Error("Der Anstoß wird nicht ausgeführt");
 
         const settle = (ballX) => {
             live.director.possessionTeam = "home";
@@ -3041,7 +3598,7 @@ function runEngineTests() {
         const homeClub = state.clubs.find(c => c.id === "muc");
         const awayClub = state.clubs.find(c => c.id === "dor");
 
-        const zaehler = { aktionen: 0, pass: 0, passOk: 0, lang: 0 };
+        const zaehler = { aktionen: 0, pass: 0, passOk: 0, lang: 0, erzwungen: 0, spiele: 0 };
         const standards = {};
 
         // Acht Partien: Seit die Regie den Ball nicht mehr an den Ereignisort
@@ -3057,17 +3614,32 @@ function runEngineTests() {
             live.speed = 2;
             const dir = live.director;
 
+            // Gemessen wird, was die MatchFlowEngine entscheidet. Steht als
+            // Nächstes eine Szene des Gegners an, macht die Regie danach aus
+            // einem angekommenen Pass einen sichtbaren Ballverlust - das ist
+            // der vorher feststehende Besitzwechsel, der früher unsichtbar
+            // passierte, und keine Frage der Passgenauigkeit. Diese
+            // erzwungenen Ballverluste werden getrennt gezählt und begrenzt.
+            const origDecide = dir.flow.decide.bind(dir.flow);
+            dir.flow.decide = (...args) => {
+                const action = origDecide(...args);
+                if (action) {
+                    zaehler.aktionen++;
+                    if (action.type === "pass") {
+                        zaehler.pass++;
+                        if (action.outcome === "complete") zaehler.passOk++;
+                    } else if (action.type === "longball") {
+                        zaehler.lang++;
+                    }
+                }
+                return action;
+            };
             const origFlow = dir.applyFlowAction.bind(dir);
             dir.applyFlowAction = (action) => {
-                zaehler.aktionen++;
-                if (action.type === "pass") {
-                    zaehler.pass++;
-                    if (action.outcome === "complete") zaehler.passOk++;
-                } else if (action.type === "longball") {
-                    zaehler.lang++;
-                }
+                if (action.erzwungen) zaehler.erzwungen++;
                 origFlow(action);
             };
+            zaehler.spiele++;
 
             // Nur die Standards aus dem Aufbauspiel zählen: Abstöße nach einem
             // Schuss neben das Tor sind richtig so und gehören nicht dazu.
@@ -3093,6 +3665,13 @@ function runEngineTests() {
         const quote = zaehler.passOk / Math.max(1, zaehler.pass);
         if (quote < 0.68) {
             throw new Error(`Nur ${(quote * 100).toFixed(0)} % der Pässe kommen an - das Spiel bleibt ein Hin und Her`);
+        }
+
+        // Die sichtbaren Ballgewinne vor einer gegnerischen Szene dürfen das
+        // Spiel nicht zum Hin und Her machen
+        const erzwungenJeSpiel = zaehler.erzwungen / Math.max(1, zaehler.spiele);
+        if (erzwungenJeSpiel > 30) {
+            throw new Error(`${erzwungenJeSpiel.toFixed(1)} erzwungene Ballverluste je Spiel - der Ball wechselt zu oft die Seite`);
         }
 
         const langAnteil = zaehler.lang / zaehler.aktionen;
@@ -3189,7 +3768,9 @@ function runEngineTests() {
         for (let run = 0; run < 2; run++) {
             const match = { id: `standard_${run}`, played: false, homeClubId: "muc", awayClubId: "dor" };
             match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, state.players);
-            fouls += match.timeline.filter(e => e.type === "foul" && e.outcome !== "penalty").length;
+            // Ein Foul mit direktem Freistoss wird in der Schussszene selbst
+            // ausgefuehrt - es braucht keine eigene Spielfortsetzung
+            fouls += match.timeline.filter(e => e.type === "foul" && e.outcome !== "penalty" && !e.direkterFreistoss).length;
             fehlschuesse += match.timeline.filter(e => e.type === "shot_miss" && e.outcome !== "woodwork").length;
 
             const live = new LiveMatch(match, homeClub, awayClub, state.players);
@@ -3216,9 +3797,11 @@ function runEngineTests() {
                 const ev = dir.currentEvent();
                 if (ev && ev.type === "corner" && phase === "approach") {
                     const ecke = dir.eventPoint(ev.start);
+                    // Die Fahnen stehen dort, wo Torlinie und Seitenlinie sich
+                    // treffen: Die Torlinien liegen bei 4 und 96
                     const naechsteFahne = Math.min(
-                        Math.hypot(ecke.x - 0, ecke.y - 0), Math.hypot(ecke.x - 0, ecke.y - 100),
-                        Math.hypot(ecke.x - 100, ecke.y - 0), Math.hypot(ecke.x - 100, ecke.y - 100));
+                        Math.hypot(ecke.x - 4, ecke.y - 0), Math.hypot(ecke.x - 4, ecke.y - 100),
+                        Math.hypot(ecke.x - 96, ecke.y - 0), Math.hypot(ecke.x - 96, ecke.y - 100));
                     eckenAbstand.push(naechsteFahne);
                 }
                 origPhase(phase);
@@ -5533,6 +6116,213 @@ function runEngineTests() {
         live.celebratingTeam = "home";
         live.skipToEnd();
         if (live.banner || live.goalFlash > 0 || live.celebratingTeam) throw new Error("Nach dem Sofort-Ergebnis bleiben Einblendungen stehen");
+    });
+
+    test("Scouting: Ein besserer Chefscout schätzt genauer und schreibt ausführlicher", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const ziele = state.players.filter(p => p.clubId && p.clubId !== "muc").slice(0, 150);
+        const messe = (guete) => {
+            club.staff.scout = { id: `s${guete}`, name: `Scout ${guete}`, guete, gehalt: 1000, jahre: 2 };
+            let fehler = 0, punkte = 0, eigenheiten = 0, rollen = 0, n = 0;
+            ziele.forEach(p => {
+                p.scoutingKnowledge = null;
+                const r = ScoutingEngine.scoutPlayer(state, p.id, { source: "transfer_market" }).report;
+                const [a, b] = String(r.estimatedOverall).split(" - ").map(Number);
+                fehler += Math.abs((Number.isFinite(b) ? (a + b) / 2 : a) - p.overall);
+                punkte += r.strengths.length + r.weaknesses.length;
+                eigenheiten += r.hiddenTraits.length;
+                if (r.kaderRolle) rollen++;
+                if (r.scout.guete !== guete || !r.zuverlaessigkeit?.label || !r.recommendation) throw new Error("Bericht ohne Scout, Verlässlichkeit oder Empfehlung");
+                n++;
+            });
+            return { fehler: fehler / n, punkte: punkte / n, eigenheiten, rollen };
+        };
+        const schwach = messe(30), stark = messe(90);
+        if (!(stark.fehler < schwach.fehler - 1)) {
+            throw new Error(`Der gute Scout liegt nicht genauer: ${stark.fehler.toFixed(2)} gegen ${schwach.fehler.toFixed(2)}`);
+        }
+        if (!(stark.punkte > schwach.punkte + 1)) {
+            throw new Error(`Der gute Scout nennt nicht mehr Stärken und Schwächen: ${stark.punkte.toFixed(1)} gegen ${schwach.punkte.toFixed(1)}`);
+        }
+        if (schwach.eigenheiten !== 0 || schwach.rollen !== 0) throw new Error("Ein 1,5-Sterne-Scout sagt schon etwas zu Charakter oder Kaderrolle");
+        if (stark.rollen < ziele.length * 0.9) throw new Error("Der gute Scout ordnet die Spieler nicht in den Kader ein");
+
+        // Ohne eigenen Chefscout schreibt eine Aushilfe - mit Abzug
+        delete club.staff.scout;
+        const aushilfe = ScoutingEngine.scoutInfo(state);
+        if (aushilfe.eigen || aushilfe.name !== "Aushilfsscout") throw new Error("Ohne Chefscout schreibt keine Aushilfe");
+    });
+
+    test("Gegneranalyse: Der Spielanalyst entscheidet über Tiefe und Schwachstelle", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        club.staff.analyse = { id: "a1", name: "Guter Analyst", guete: 92, gehalt: 1000, jahre: 2 };
+        const gut = OpponentAnalysisEngine.generateReport(state, "dor", "muc");
+        club.staff.analyse = { id: "a2", name: "Schwacher Analyst", guete: 22, gehalt: 500, jahre: 1 };
+        const schwach = OpponentAnalysisEngine.generateReport(state, "dor", "muc");
+        if (gut.keyPlayers.length <= schwach.keyPlayers.length) {
+            throw new Error(`Der gute Analyst stellt nicht mehr Schlüsselspieler vor: ${gut.keyPlayers.length} gegen ${schwach.keyPlayers.length}`);
+        }
+        if (!gut.schwachstelle || schwach.schwachstelle) throw new Error("Nur der gute Analyst soll die Schwachstelle finden");
+        if (gut.analyst.name !== "Guter Analyst" || gut.genauigkeit === schwach.genauigkeit) throw new Error("Analyst oder Genauigkeit fehlen im Bericht");
+    });
+
+    test("Jugendakademie: Schwerpunkte steuern Jahrgang, Positionen, Herkunft und Kosten", () => {
+        const state = GameState.createNewGame("svw", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === "svw");
+        club.balance = 50000000;
+
+        const andere = Object.keys(FacilityEngine.AKADEMIE_PROFILE).filter(k => k !== club.akademieProfil);
+        const r1 = YouthEngine.setzeSchwerpunkte(state, "svw", { profil: andere[0], positionen: ["TW", "ST"], jahrgang: "breite", einzug: "international" });
+        if (!r1.ok || club.akademieProfil !== andere[0]) throw new Error("Schwerpunkte lassen sich nicht setzen");
+        const r2 = YouthEngine.setzeSchwerpunkte(state, "svw", { profil: andere[1] });
+        if (r2.ok) throw new Error("Die Ausbildung lässt sich zweimal in einer Saison umstellen");
+        if (YouthEngine.setzeSchwerpunkte(state, "svw", { positionen: ["TW", "ABW", "ST"] }).ok) throw new Error("Mehr als zwei Positionsschwerpunkte angenommen");
+
+        const vorher = club.balance;
+        const talente = [];
+        for (let i = 0; i < 20; i++) talente.push(...YouthEngine.generateProspects(state, "svw"));
+        if (talente.length !== 100) throw new Error(`Breiter Jahrgang bringt ${talente.length / 20} statt fünf Talente`);
+        const kosten = YouthEngine.einzugKosten(club, "international");
+        if (kosten <= 0 || vorher - club.balance !== kosten * 20) throw new Error("Die internationale Sichtung kostet nichts");
+        const schwerpunkt = talente.filter(t => ["TW", "ST", "LA", "RA"].includes(t.pos)).length / talente.length;
+        if (schwerpunkt < 0.4) throw new Error(`Nur ${Math.round(schwerpunkt * 100)} % Torhüter und Angreifer trotz Schwerpunkt`);
+        const ausland = talente.filter(t => t.nationality !== "Deutschland").length / talente.length;
+        if (ausland < 0.35) throw new Error(`Internationale Sichtung bringt nur ${Math.round(ausland * 100)} % aus dem Ausland`);
+
+        YouthEngine.setzeSchwerpunkte(state, "svw", { jahrgang: "spitze", einzug: "region", positionen: [] });
+        const spitze = YouthEngine.generateProspects(state, "svw");
+        if (spitze.length !== 2) throw new Error("Spitzenjahrgang bringt nicht zwei Talente");
+
+        // Die KI-Vereine ziehen ihre Jahrgänge unverändert nach
+        if (YouthEngine.generateProspects(state, "dor").length !== 3) throw new Error("KI-Verein bekommt keinen normalen Jahrgang");
+    });
+
+    test("Vorbereitung: Gehaltsverhandlung, Stab-Etat, Pflichtposten und Erinnerung", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const pre = state.preseason;
+        if (!pre || !pre.aktiv) throw new Error("Keine Vorbereitung aktiv");
+        club.staff = {};
+        PreseasonEngine.sichereBewerber(pre, club);
+
+        const luecken = PreseasonEngine.pflichtLuecken(state).map(b => b.key).sort();
+        if (luecken.join() !== ["cotrainer", "fitness", "medizin"].join()) throw new Error(`Pflichtposten falsch: ${luecken.join()}`);
+
+        // Zu tief angesetzt: Er bricht ab
+        const arzt = pre.bewerber.medizin[0];
+        const affront = PreseasonEngine.verhandleStab(state, "medizin", arzt.id, Math.round(arzt.mindestGehalt * 0.5), 2);
+        if (affront.status !== "abgebrochen" || pre.bewerber.medizin.some(b => b.id === arzt.id)) throw new Error("Ein Affront-Angebot beendet die Gespräche nicht");
+
+        // Knapp darunter: Gegenangebot, das dann angenommen wird
+        const zweiter = pre.bewerber.medizin[0];
+        const knapp = Math.round(zweiter.mindestGehalt * 0.9);
+        const gegen = PreseasonEngine.verhandleStab(state, "medizin", zweiter.id, knapp, 2);
+        if (gegen.status !== "gegenangebot" || !(gegen.gegenangebot >= zweiter.mindestGehalt && gegen.gegenangebot <= zweiter.gehalt)) {
+            throw new Error(`Kein sinnvolles Gegenangebot: ${JSON.stringify(gegen)}`);
+        }
+        const posteingang = (state.inbox || []).length;
+        const einig = PreseasonEngine.verhandleStab(state, "medizin", zweiter.id, gegen.gegenangebot, 2);
+        if (einig.status !== "einig" || club.staff.medizin?.gehalt !== gegen.gegenangebot) throw new Error("Die Einigung setzt den Arzt nicht zum vereinbarten Gehalt ein");
+        const meldung = state.inbox[0];
+        if (state.inbox.length !== posteingang + 1 || !/✍️/.test(meldung.subject) || !/Noch offen/.test(meldung.body)) {
+            throw new Error("Die Verpflichtung wird nicht mit Etat und offenen Posten gemeldet");
+        }
+
+        // Der Etat setzt eine Grenze
+        const etat = club.wageBudget;
+        club.wageBudget = 1000;
+        const teuer = pre.bewerber.fitness[0];
+        if (PreseasonEngine.verpflichte(state, "fitness", teuer.id).ok) throw new Error("Verpflichtung über dem Stab-Etat möglich");
+        club.wageBudget = etat;
+
+        // Eine Woche vor dem Start erinnert der Sportdirektor - einmal
+        pre.tagIndex = pre.dauer - 7;
+        const erinnerung = PreseasonEngine.erinnere(state);
+        if (!erinnerung || !erinnerung.luecken.some(b => b.key === "fitness")) throw new Error("Keine Erinnerung an die offenen Pflichtposten");
+        if (PreseasonEngine.erinnere(state)) throw new Error("Die Erinnerung kommt am selben Tag doppelt");
+
+        // Kurzfristig besetzen füllt die Lücken
+        ["fitness", "cotrainer"].forEach(k => {
+            const r = PreseasonEngine.besetzeKurzfristig(state, k);
+            if (!r.ok) throw new Error(`${k} lässt sich nicht kurzfristig besetzen: ${r.grund}`);
+        });
+        if (PreseasonEngine.pflichtLuecken(state).length) throw new Error("Nach dem Besetzen bleiben Pflichtposten offen");
+    });
+
+    test("Angebote für eigene Spieler: Frist, Mehr fordern, Annehmen und Verfall", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        if (!state.transferMarket) state.transferMarket = { offers: [] };
+        // Ein Spieler, für den sich sicher ein Käufer findet, an die Stelle,
+        // die der feste Zufallswert auswählt
+        const erzeuge = () => {
+            const kandidat = state.players
+                .filter(p => p.clubId === "muc" && p.overall >= 74)
+                .sort((a, b) => a.value - b.value)[0];
+            const ids = club.playerIds.filter(id => id !== kandidat.id);
+            ids.splice(Math.floor(0.1 * club.playerIds.length), 0, kandidat.id);
+            club.playerIds = ids;
+            state.clubs.forEach(c => { if (c.id !== "muc") c.transferBudget = Math.max(c.transferBudget || 0, kandidat.value * 2); });
+            const zufall = Math.random;
+            Math.random = () => 0.1;
+            try { TransferEngine.processAITransferMarket(state); } finally { Math.random = zufall; }
+            return state.transferMarket.offers[0];
+        };
+        const o = erzeuge();
+        if (!o || o.status !== "pending" || typeof o.frist !== "number" || o.gemeldet !== false || !(o.maxFee >= o.fee)) {
+            throw new Error(`Angebot ohne Frist, Meldestatus oder Obergrenze: ${JSON.stringify(o)}`);
+        }
+        const punkte = ManagerEngine.getAttentionItems(state);
+        if (!punkte.some(p => p.icon === "💰" && p.priority === 0)) throw new Error("Das Angebot steht nicht oben auf dem Dashboard");
+
+        // Maßlos: Der Verein zieht zurück
+        const zurueck = TransferEngine.fordereMehr(state, o.id, Math.round(o.maxFee * 1.5));
+        if (zurueck.status !== "zurueckgezogen" || o.status !== "withdrawn") throw new Error("Eine maßlose Forderung lässt das Angebot stehen");
+
+        // Knapp über der Grenze: Er bessert bis zur Grenze nach - einmal
+        o.status = "pending"; o.nachgebessert = false;
+        const nach = TransferEngine.fordereMehr(state, o.id, Math.round(o.maxFee * 1.1));
+        if (nach.status !== "nachgebessert" || o.fee !== o.maxFee) throw new Error(`Keine Nachbesserung bis zur Grenze: ${JSON.stringify(nach)}`);
+        if (TransferEngine.fordereMehr(state, o.id, o.fee + 100000).status !== "fehler") throw new Error("Es wird ein zweites Mal nachgebessert");
+
+        // Annehmen: Der Spieler wechselt
+        const r = TransferEngine.nimmAngebotAn(state, o.id);
+        const spieler = state.players.find(p => p.id === o.playerId);
+        if (!r.ok || spieler.clubId !== o.fromClubId || club.playerIds.includes(o.playerId)) throw new Error("Nach dem Annehmen wechselt der Spieler nicht");
+
+        // Ein neues Angebot verfällt nach der Frist
+        const zweites = erzeuge();
+        if (!zweites || zweites === o) throw new Error("Kein zweites Angebot erzeugt");
+        state.currentDayIndex = zweites.frist + 1;
+        const verfallen = TransferEngine.pruefeAngebotsfristen(state);
+        if (!verfallen.includes(zweites) || zweites.status !== "expired") throw new Error("Das Angebot verfällt nicht nach der Frist");
+    });
+
+    test("Sofort beenden: Der Co-Trainer übernimmt Wechsel und Umstellungen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const taktikVorher = JSON.stringify(heim.tactics);
+        let wechsel = 0, uebernahmen = 0;
+        for (let i = 0; i < 6; i++) {
+            // Der Spieler entscheidet selbst - bis er auf "Sofort beenden" drückt
+            const live = MatchEngine.createLiveMatch({ id: `sofort_co_${i}`, played: false, homeClubId: "muc", awayClubId: "dor" },
+                heim, gast, state.players, { userSide: "home", delegation: { wechsel: false, taktik: false } });
+            if (live.timeline.some(e => e.type === "substitution" && e.team === "home")) {
+                throw new Error("Wer selbst wechselt, bekommt schon vorher Wechsel simuliert");
+            }
+            let n = 0;
+            while (live.minute < 30 && n++ < 5000) live.tick();
+            live.skipToEnd();
+            if (!live.delegation.wechsel || !live.delegation.taktik) throw new Error("Der Co-Trainer übernimmt beim Sofort-Ergebnis nicht");
+            wechsel += live.timeline.filter(e => e.type === "substitution" && e.team === "home" && e.minute > 30).length;
+            if ((live.events || []).concat(live.verlauf || []).some(e => /übernimmt für den Rest/.test(e.text || ""))) uebernahmen++;
+            if (JSON.stringify(heim.tactics) !== taktikVorher) throw new Error("Die Umstellungen des Co-Trainers bleiben nach dem Spiel stehen");
+        }
+        if (wechsel < 6) throw new Error(`Nach dem Sofort-Ergebnis wechselt der Co-Trainer kaum: ${wechsel} Wechsel in sechs Spielen`);
+        if (uebernahmen === 0) throw new Error("Der Ticker sagt nicht, dass der Co-Trainer übernimmt");
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

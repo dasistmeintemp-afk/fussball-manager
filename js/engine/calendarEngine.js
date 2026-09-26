@@ -838,7 +838,11 @@ const CalendarEngine = {
             // geplant: ein Testspiel, eine Turnierrunde - oder nichts, dann
             // besetzt die Engine den Termin kurzfristig.
             if (preseasonEngine && state.preseason && typeof preseasonEngine.spieleSlot === "function") {
-                ergebnis = preseasonEngine.spieleSlot(state, currentDay.friendlyIndex ?? 0);
+                // Live verfolgt: Die Oberflaeche reicht die gespielte Partie
+                // herein, statt sie ein zweites Mal ausspielen zu lassen
+                const gespielt = state.preseason.livePartie || null;
+                delete state.preseason.livePartie;
+                ergebnis = preseasonEngine.spieleSlot(state, currentDay.friendlyIndex ?? 0, gespielt);
             }
             currentDay.completed = true;
             if (state.currentDayIndex < state.calendar.length - 1) {
@@ -1043,6 +1047,22 @@ const CalendarEngine = {
             });
             if (eigeneGeaendert) {
                 summary.messages.push("Die Aufstellung wurde um die Ausfälle ergänzt.");
+            }
+        }
+
+        // 1c. Angebote für eigene Spieler haben eine Frist, und die Vorbereitung
+        // erinnert an offene Pflichtposten im Trainerstab
+        const transferEngineTag = _getTransferEngineCal();
+        if (transferEngineTag && typeof transferEngineTag.pruefeAngebotsfristen === "function") {
+            transferEngineTag.pruefeAngebotsfristen(state).forEach(o => {
+                summary.messages.push(`💰 Das Angebot von ${o.fromClubName} für ${o.playerName} ist verfallen.`);
+            });
+        }
+        const preseasonEngineTag = _getPreseasonEngine();
+        if (preseasonEngineTag && typeof preseasonEngineTag.erinnere === "function") {
+            const erinnerung = preseasonEngineTag.erinnere(state);
+            if (erinnerung) {
+                summary.messages.push(`⚠️ Noch ${erinnerung.rest} Tag(e) bis zum Saisonstart: ${erinnerung.luecken.map(b => b.titel).join(", ")} fehlt.`);
             }
         }
 

@@ -20,6 +20,16 @@
  * bleiben.
  */
 
+/** Die Taktik (Anweisungen und Rollen) - im Browser global, unter Node nachgeladen */
+const _flowTaktik = () => {
+    if (typeof TacticsEngine !== 'undefined' && TacticsEngine) return TacticsEngine;
+    if (typeof window !== 'undefined' && window.TacticsEngine) return window.TacticsEngine;
+    if (typeof require !== 'undefined') {
+        try { return require('./tacticsEngine.js').TacticsEngine; } catch (e) { /* ohne Taktikmodul */ }
+    }
+    return null;
+};
+
 const _flowRandom = (typeof Random !== 'undefined' && Random)
     ? Random
     : ((typeof require !== 'undefined') ? require('../core/random.js').Random : {
@@ -173,6 +183,23 @@ class MatchFlowEngine {
         // Bevorzugte Passlänge
         const preferred = passing === "short" ? 13 : (passing === "direct" ? 32 : 19);
 
+        // Die Anweisungen der Taktik und die Rolle des Ballfuehrenden
+        const wk = _flowTaktik()?.wirkung(tactics) || {};
+        const eigeneRolle = carrier.rolleMit || {};
+        const druck = context.pressure || 0;
+        // Nach dem Ballgewinn: Wer kontert, sucht sofort den Weg nach vorn,
+        // wer den Ball sichert, spielt erst einmal sicher
+        let progressFaktor = 1 + (eigeneRolle.passWeit || 0);
+        let risikoFaktor = 1;
+        if (chain <= 2 && wk.konter > 0) progressFaktor *= 1.35;
+        if (chain <= 3 && wk.konter < 0) { progressFaktor *= 0.8; risikoFaktor = 1.3; }
+        // Ballannahme: In den Lauf bringt Tiefe und nimmt mehr Risiko in Kauf,
+        // in den Fuss spielt sicher
+        if ((wk.ballannahme || 0) > 0) { progressFaktor *= 1.1; risikoFaktor *= 0.9; }
+        else if ((wk.ballannahme || 0) < 0) { progressFaktor *= 0.93; risikoFaktor *= 1.1; }
+        const istTorwart = carrier.pos === "TW";
+        const freiheit = wk.freiheit || 1;
+
         // Wohin das Spiel gerade strebt: der Spieler, bei dem die naechste
         // Szene beginnt. Er wird gesucht wie ein freistehender Stuermer -
         // nicht erzwungen, aber deutlich bevorzugt.
@@ -275,17 +302,51 @@ class MatchFlowEngine {
                 }
             }
 
+            // Taktik: Aufbau ueber innen oder aussen, Rollen als bevorzugte
+            // Anspielstation, Breite, der lange Ball gegen Pressing, Flanken
+            let taktikScore = 0;
+            const mateRolle = mate.rolleMit || {};
+            const fam = mate.fam || "";
+            if (istAufbau && wk.aufbauUeber === "innen" && (fam === "IV" || fam === "DM")) taktikScore += 0.3;
+            if (istAufbau && wk.aufbauUeber === "aussen" && (fam === "AV" || fam === "SCH" || fam === "FL")) taktikScore += 0.3;
+            taktikScore += (mateRolle.passZiel || 0) * 0.8;
+            if (dist > 26 && mateRolle.lang) taktikScore += mateRolle.lang;
+            const quer = Math.abs(mate.y - 50);
+            if ((wk.breite || 0) > 0 && quer > 30) taktikScore += 0.2;
+            if ((wk.breite || 0) < 0 && quer < 18) taktikScore += 0.2;
+            if (druck > 0.55 && dist > 26) taktikScore += (wk.durchsPressing || 0) * 1.2;
+            if (istTorwart) {
+                // Kurz: Innenverteidiger suchen; lang: auf die Spitze
+                if (dist > 30) taktikScore -= (wk.torwartKurz || 0) * 1.2;
+                else taktikScore += (wk.torwartKurz || 0) * 0.5;
+                // Die bevorzugte Anspielstation des Torwarts
+                const bevorzugt = {
+                    iv: ["IV"], av: ["AV", "SCH"], sechser: ["DM", "ZM"], fluegel: ["FL", "SCH"], spitze: ["ST"]
+                }[wk.torwartZiel];
+                if (bevorzugt && bevorzugt.includes(fam)) taktikScore += 0.45;
+            }
+            if (istAbschluss && Math.abs(carrier.y - 50) > 25) {
+                const imStrafraum = Math.abs(mate.y - 50) < 20 && (mate.x - carrier.x) * dir > -4
+                    && Math.abs(mate.x - (dir > 0 ? 96 : 4)) < 18;
+                if (imStrafraum) {
+                    if (wk.flanken === "frueh") taktikScore += 0.35;
+                    else if (wk.flanken === "wenig") taktikScore -= 0.35;
+                    else if (wk.flanken === "grundlinie") taktikScore += Math.abs(carrier.x - (dir > 0 ? 96 : 4)) < 12 ? 0.3 : -0.2;
+                }
+            }
+
             const score = lengthScore * 0.8
                 + anlaufScore
                 + mentalScore
-                + progressScore * progressWeight
+                + progressScore * progressWeight * progressFaktor
                 + space * spaceWeight
                 + focusScore
                 + roleScore
                 + keeperScore
+                + taktikScore
                 - longMalus
-                - laneRisk * riskWeight * riskAversion
-                + _flowRandom.float(-0.18, 0.18);
+                - laneRisk * riskWeight * riskAversion * risikoFaktor
+                + _flowRandom.float(-0.18, 0.18) * freiheit;
 
             return { type: "pass", target: mate, dist, laneRisk, space, forward, score };
         }).filter(Boolean);
@@ -322,12 +383,23 @@ class MatchFlowEngine {
             .reduce((m, o) => Math.min(m, this.distance(carrier, o)), Infinity);
         const frei = carrier.pos !== "TW" && pressure < 0.35 && space > 0.45 && naechster > 8;
 
+        // Die Anweisung (mehr oder weniger Dribblings), die Rolle (ein
+        // Spielmachender Innenverteidiger traegt den Ball, ein
+        // kompromissloser nie) und bis zur Grundlinie gehen
+        const wk = _flowTaktik()?.wirkung(tactics) || {};
+        let taktik = (wk.dribbling || 0) + (carrier.rolleMit?.dribbeln || 0) * 0.5;
+        if (wk.flanken === "grundlinie" && Math.abs(carrier.y - 50) > 25) {
+            const progress = dir > 0 ? carrier.x / 100 : 1 - carrier.x / 100;
+            if (progress > 0.66) taktik += 0.25;
+        }
+
         const score = skill * 1.15
             + space * 0.9
             + tempoBonus
             + 0.3
             - pressure * 0.75
             + (frei ? (carrier.group === "def" ? 0.8 : 0.55) : 0)
+            + taktik
             + _flowRandom.float(-0.2, 0.2);
 
         return { type: "dribble", target: ahead, space, score, frei };
@@ -404,7 +476,9 @@ class MatchFlowEngine {
         // die Reißleine. Als Kandidat unter Kandidaten hat er fast jede zweite
         // Aktion gewonnen - das Ergebnis war ein Spiel aus langen Bällen, von
         // denen nur die Hälfte ankam.
-        if (!best || (pressure > 0.6 && best.score < 0.5)) {
+        // Der Kompromisslose schlaegt den Ball schon bei weniger Druck weg
+        const sicher = carrier.rolleMit?.sicher || 0;
+        if (!best || (pressure > 0.6 - sicher && best.score < 0.5 + sicher)) {
             best = this.rateClearance(carrier, mates, tactics, pressure);
         }
 
@@ -433,8 +507,13 @@ class MatchFlowEngine {
         // Profis bringen rund vier von fünf Pässen an den Mann; mit der alten
         // Grundgenauigkeit von 52 % wechselte der Ball ständig die Seite und
         // das Spiel wirkte wie ein Pingpong ohne Absicht.
+        //
+        // Seit die Gegner mannorientiert decken und ihren Gegenspieler eng
+        // begleiten, sind Passwege und Druck spürbar größer - bei gleicher
+        // Grundgenauigkeit kamen nur noch sieben von zehn Pässen an. Die
+        // Grundgenauigkeit gleicht das aus.
         const skill = (passing * 0.5 + vision * 0.3 + technique * 0.2) / 100;
-        let accuracy = 0.74 + skill * 0.24;
+        let accuracy = 0.77 + skill * 0.24;
         accuracy -= pressure * 0.11;
         accuracy -= (action.laneRisk || 0) * 0.17;
         if (isLong) accuracy -= 0.13;
@@ -449,11 +528,17 @@ class MatchFlowEngine {
         const success = _flowRandom.chance(accuracy);
 
         if (success) {
+            // In den Lauf gespielt wird nach vorn und auf Spieler, die schon
+            // in Bewegung sind - nie auf den Torwart
+            const annahme = _flowTaktik()?.wirkung(tactics).ballannahme || 0;
+            const nachVorn = (action.forward ?? 0) > 4 && action.target?.pos !== "TW";
+            const inDenLauf = nachVorn && (annahme > 0 || (annahme === 0 && _flowRandom.chance(0.3)));
             return {
                 type: isLong ? "longball" : "pass",
                 outcome: "complete",
                 from: carrier,
                 to: action.target,
+                inDenLauf,
                 pressure,
                 phase
             };
@@ -514,7 +599,11 @@ class MatchFlowEngine {
         const defSkill = defender ? (this.attr(defender, "defense") * 0.6 + this.attr(defender, "pace") * 0.4) : 60;
 
         const edge = (dribbling * 0.6 + pace * 0.4) - defSkill;
-        let chance = 0.6 + edge / 210 - pressure * 0.13;
+        // Wer hart einsteigt, gewinnt mehr Zweikaempfe (und foult oefter -
+        // das zaehlt die Timeline); wer auf den Fuessen bleibt, weniger
+        const gegnerTaktik = defender ? this.getTactics(defender.team) || {} : {};
+        const haerte = _flowTaktik()?.wirkung(gegnerTaktik).zweikampf || 0;
+        let chance = 0.6 + edge / 210 - pressure * 0.13 - haerte * 0.05;
         chance = Math.max(0.2, Math.min(0.92, chance));
 
         if (_flowRandom.chance(chance)) {
@@ -522,6 +611,36 @@ class MatchFlowEngine {
         }
 
         return { type: "dribble", outcome: "tackled", from: carrier, to: action.target, defender, pressure, phase };
+    }
+
+    /**
+     * Macht aus einer Aktion einen Ballverlust, den man sieht.
+     *
+     * Der Spielverlauf steht vorher fest: Hat als Naechstes die andere
+     * Mannschaft ihre Szene, muss sie den Ball vorher bekommen. Frueher
+     * wechselte er dafuer einfach den Besitzer - der Gegner stand mit dem
+     * Ball da, ohne ihn erobert zu haben, und es sah aus, als spielten sich
+     * die Gegner den Ball zu. Jetzt faengt der naechste Gegner den Pass ab
+     * oder gewinnt den Zweikampf. Liefert null, wenn kein Gegner nah genug ist.
+     */
+    alsBallverlust(carrier, action) {
+        if (!carrier || !action) return null;
+        const opponents = this.opponentsOf(carrier.team).filter(o => o.pos !== "TW");
+        if (!opponents.length) return null;
+        const naechster = (punkt) => opponents
+            .slice()
+            .sort((a, b) => this.distance(punkt, a) - this.distance(punkt, b))[0];
+
+        if (action.type === "dribble") {
+            const defender = naechster(carrier);
+            if (!defender || this.distance(carrier, defender) > 14) return null;
+            return { ...action, outcome: "tackled", defender, frei: false, erzwungen: true };
+        }
+
+        const ziel = action.to && typeof action.to.x === "number" ? action.to : carrier;
+        const interceptor = this.findInterceptor(carrier, ziel, opponents) || naechster(ziel);
+        if (!interceptor || this.distance(ziel, interceptor) > 22) return null;
+        return { ...action, outcome: "intercepted", interceptor, erzwungen: true };
     }
 
     /**
@@ -556,9 +675,9 @@ class MatchFlowEngine {
      */
     scatterTarget(target) {
         // Der zweite Ball bleibt im Feld - ins Aus geht nur, was oben als
-        // "out" gewürfelt wurde.
+        // "out" gewürfelt wurde. Die Torlinien liegen bei 4 und 96.
         return {
-            x: Math.max(3, Math.min(97, target.x + _flowRandom.float(-11, 11))),
+            x: Math.max(5, Math.min(95, target.x + _flowRandom.float(-11, 11))),
             y: Math.max(3, Math.min(97, target.y + _flowRandom.float(-12, 12)))
         };
     }

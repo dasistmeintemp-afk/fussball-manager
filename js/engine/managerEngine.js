@@ -19,6 +19,13 @@ const _mgrResolve = (() => {
     return (name) => (typeof window !== "undefined" ? window[name] : null) || null;
 })();
 
+/** Geldbetrag kurz: "12,5 Mio. €" oder "850 Tsd. €" */
+const _mgrGeld = (betrag) => {
+    const b = Number(betrag) || 0;
+    if (Math.abs(b) >= 1000000) return `${(b / 1000000).toFixed(1).replace(".", ",")} Mio. €`;
+    return `${Math.round(b / 1000)} Tsd. €`;
+};
+
 class ManagerEngine {
     /**
      * Die fünf Tonlagen einer Ansprache.
@@ -418,6 +425,37 @@ class ManagerEngine {
                 title: `${n.playerName}: Wir sind am Zug`,
                 detail: `${negotiation.describe(n)} · noch ${Math.max(0, n.deadlineDay - (state.currentDayIndex || 0))} Tage Frist`
             }));
+        }
+
+        // 1b. Angebote anderer Vereine für eigene Spieler - mit Frist, also
+        // ganz nach oben
+        const offen = (state.transferMarket?.offers || []).filter(o => o.status === "pending");
+        offen.forEach(o => {
+            const rest = typeof o.frist === "number" ? Math.max(0, o.frist - (state.currentDayIndex || 0)) : null;
+            items.push({
+                priority: 0,
+                icon: "💰",
+                tab: "transfers",
+                title: `Angebot für ${o.playerName}: ${o.fromClubName || "ein Verein"}`,
+                detail: `${_mgrGeld(o.fee)} Ablöse`
+                    + (o.playerValue ? ` · Marktwert ${_mgrGeld(o.playerValue)}` : "")
+                    + (rest !== null ? ` · ${rest === 0 ? "läuft heute ab" : `noch ${rest} Tag${rest === 1 ? "" : "e"}`}` : "")
+            });
+        });
+
+        // 1c. Pflichtposten im Stab vor dem Saisonstart
+        const pre = _mgrResolve("PreseasonEngine", "./preseasonEngine.js");
+        if (pre && state.preseason?.aktiv && typeof pre.pflichtLuecken === "function") {
+            const luecken = pre.pflichtLuecken(state);
+            if (luecken.length) {
+                items.push({
+                    priority: 0,
+                    icon: "🩺",
+                    tab: "preseason",
+                    title: `Noch kein ${luecken.map(b => b.titel).join(", kein ")}`,
+                    detail: "Ohne sie startet die Saison nur auf ausdrücklichen Wunsch."
+                });
+            }
         }
 
         // 2. Gesperrte und verletzte Stammspieler

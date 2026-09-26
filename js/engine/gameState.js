@@ -865,6 +865,19 @@ class GameState {
             });
         }
 
+        // Jeder Verein bekommt eine vollstaendige Taktik: Rollen, Formen mit
+        // und gegen den Ball, Anweisungen. Die KI-Vereine spielen dabei nicht
+        // alle gleich - ihr Stil haengt an ihrer Staerke: Grosse spielen eher
+        // Ballbesitz und Pressing, kleine stehen tiefer und kontern.
+        const taktik = GameState._resolveEngine('TacticsEngine', './tacticsEngine.js');
+        if (taktik) {
+            state.clubs.forEach(club => {
+                club.tactics = club.id === state.userClubId
+                    ? taktik.normalisiere(club.tactics)
+                    : taktik.wendeVorlageAn(club.tactics, taktik.vorlageFuerVerein(club));
+            });
+        }
+
         state.userLeagueId = userClub?.leagueId || "de_liga_1";
         const worldGenForSchedule = GameState._getWorldGenerator();
         if (worldGenForSchedule) {

@@ -569,8 +569,13 @@ class PlayerRatingEngine {
         // daneben liegen. Genau das macht Scouten überhaupt lohnend.
         // Die Verschiebung bleibt kleiner als die Spanne, der wahre Wert liegt
         // also immer noch innerhalb der angezeigten Grenzen.
-        const caBias = Math.round(PlayerRatingEngine.seededOffset(player.id, "ca") * caSpread * 0.45);
-        const paBias = Math.round(PlayerRatingEngine.seededOffset(player.id, "pa") * paSpread * 0.45);
+        //
+        // Dazu kommt auf Wunsch das Urteil eines bestimmten Scouts
+        // (context.urteil, in CA-Punkten): Ein schwacher Scout verschätzt sich,
+        // und dann darf der wahre Wert auch außerhalb seiner Spanne liegen.
+        const urteil = (!isPrecise && context.urteil) ? context.urteil : { ca: 0, pa: 0 };
+        const caBias = Math.round(PlayerRatingEngine.seededOffset(player.id, "ca") * caSpread * 0.45 + (urteil.ca || 0));
+        const paBias = Math.round(PlayerRatingEngine.seededOffset(player.id, "pa") * paSpread * 0.45 + (urteil.pa || 0));
 
         const estCaMin = Math.max(20, Math.round(trueCa - caSpread + caBias));
         const estCaMax = Math.min(200, Math.max(estCaMin, Math.round(trueCa + caSpread + caBias)));

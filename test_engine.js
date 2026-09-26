@@ -1792,6 +1792,134 @@ function runEngineTests() {
         });
     });
 
+    // Szenen entstehen aus dem Spiel: Der Gegner erobert den Ball sichtbar,
+    // gefoult wird am Ball, die Ecke liegt an der Fahne, der Torwart steht
+    // auf der Linie.
+    test("Livespiel: Ballgewinn vor der Szene, Foul am Ball, Ecke an der Fahne, Torwart auf der Linie", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const home = state.clubs.find(c => c.id === "muc");
+        const away = state.clubs.find(c => c.id === "dor");
+        let geschenkt = 0, erobert = 0;
+        const fouls = [], ecken = [];
+
+        for (let r = 0; r < 2; r++) {
+            const live = MatchEngine.createLiveMatch({ id: "szene_" + r, played: false, homeClubId: "muc", awayClubId: "dor" },
+                home, away, state.players);
+            live.speed = 2;
+            const d = live.director;
+
+            const start = d.startHighlight.bind(d);
+            d.startHighlight = () => {
+                const ev = live.timeline[live.timelineIndex];
+                const team = d.attackingTeamOf(ev);
+                const traeger = d.getPlayer2D(d.carrierId);
+                if (team && traeger && traeger.team !== team) geschenkt++;
+                return start();
+            };
+            const phase = d.beginEventPhase.bind(d);
+            d.beginEventPhase = (ph) => {
+                const ev = d.currentEvent();
+                if (ph === "action" && ev && ["foul", "yellow_card", "red_card"].includes(ev.type) && !ev.direkterFreistoss) {
+                    const t = d.getPlayer2D(ev.playerId);
+                    if (t) fouls.push(Math.hypot(t.x - live.ball.x, t.y - live.ball.y));
+                }
+                if (ph === "action" && ev && ev.type === "corner") {
+                    const verteidigt = ev.team === "home" ? "away" : "home";
+                    const torX = d.ownGoalX(verteidigt);
+                    const tw = live.players2D.find(p => p.team === verteidigt && p.pos === "TW");
+                    ecken.push({
+                        ballAnLinie: Math.abs(live.ball.x - torX) < 1.5,
+                        ballAnFahne: live.ball.y < 3 || live.ball.y > 97,
+                        torwart: tw ? Math.abs(tw.x - torX) : 0,
+                        hinterLinie: live.players2D.filter(p => (torX > 50 ? p.x > torX + 0.4 : p.x < torX - 0.4)).length
+                    });
+                }
+                return phase(ph);
+            };
+            let f = 0;
+            while (!live.isFinished && f++ < 60 * 900) {
+                live.advanceRealTime(1000 / 60);
+                live.updateBallAndPlayers(1000 / 60);
+            }
+            erobert += d.flowStats.ballgewinneVorSzene || 0;
+        }
+
+        // Vorher wechselte der Ball rund fünfundvierzigmal in zwei Partien
+        // ohne Zweikampf den Besitzer
+        if (geschenkt > 14) throw new Error(`${geschenkt} Mal bekam der Gegner den Ball ohne Zweikampf`);
+        if (erobert < 10) throw new Error(`Nur ${erobert} sichtbare Ballgewinne vor gegnerischen Szenen`);
+        if (fouls.length < 8) throw new Error(`Zu wenige Fouls gemessen (${fouls.length})`);
+        const amBall = fouls.filter(x => x < 4.5).length / fouls.length;
+        if (amBall < 0.85) throw new Error(`Nur ${(amBall * 100).toFixed(0)} % der Fouls mit dem Foulenden am Ball`);
+        if (ecken.length < 2) throw new Error(`Zu wenige Ecken gemessen (${ecken.length})`);
+        ecken.forEach((e, i) => {
+            if (!e.ballAnLinie || !e.ballAnFahne) throw new Error(`Ecke ${i + 1} wurde nicht an der Fahne getreten`);
+            if (e.torwart > 2.5) throw new Error(`Ecke ${i + 1}: Torwart ${e.torwart.toFixed(1)} vor der Linie`);
+            if (e.hinterLinie > 0) throw new Error(`Ecke ${i + 1}: ${e.hinterLinie} Spieler hinter der Torlinie`);
+        });
+    });
+
+    test("Anstoß: Der Schütze steht am Ball, nach einem Tor steht niemand in der falschen Hälfte", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const home = state.clubs.find(c => c.id === "muc");
+        const away = state.clubs.find(c => c.id === "dor");
+        const live = MatchEngine.createLiveMatch({ id: "anstoss", played: false, homeClubId: "muc", awayClubId: "dor" },
+            home, away, state.players);
+        live.speed = 1;
+        const d = live.director;
+        const pruefePfiff = (wann) => {
+            let f = 0;
+            while (d.kickoff && d.kickoff.phase !== "whistle" && f++ < 60 * 30) {
+                live.advanceRealTime(1000 / 60);
+                live.updateBallAndPlayers(1000 / 60);
+            }
+            if (!d.kickoff) throw new Error(`${wann}: Anstoß ohne Pfiff`);
+            const schuetze = d.getPlayer2D(d.kickoffTakerId);
+            if (!schuetze || Math.hypot(schuetze.x - 50, schuetze.y - 50) > 3) {
+                throw new Error(`${wann}: Der Anstoßschütze steht ${schuetze ? Math.hypot(schuetze.x - 50, schuetze.y - 50).toFixed(1) : "?"} vom Ball`);
+            }
+            const falsch = live.players2D.filter(p => (d.attackDir(p.team) > 0 ? p.x > 50.5 : p.x < 49.5));
+            if (falsch.length) throw new Error(`${wann}: ${falsch.length} Spieler in der gegnerischen Hälfte beim Pfiff`);
+        };
+        pruefePfiff("Anpfiff");
+
+        // Nach einem Tor: Die Torschützen stehen jubelnd an der Eckfahne
+        d.kickoff = null;
+        live.players2D.filter(p => p.team === "home").forEach(p => { p.x = 88; p.y = 14; });
+        d.startKickoff("away", "goal");
+        pruefePfiff("Anstoß nach Tor");
+    });
+
+    test("Vorbereitung: Ein Testspiel wird angesagt, live gespielt und mit diesem Ergebnis eingetragen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        let n = 0;
+        while (CalendarEngine.getCurrentDay(state).type !== "friendly" && n++ < 60) CalendarEngine.advanceOneDay(state);
+        const tag = CalendarEngine.getCurrentDay(state);
+        if (tag.type !== "friendly") throw new Error("Kein Spieltermin in der Vorbereitung gefunden");
+
+        const test = PreseasonEngine.partieFuerSlot(state, tag.friendlyIndex ?? 0);
+        if (!test || !test.gegner || !test.partie) throw new Error("Der Termin wird nicht angesagt");
+        if (test.partie.played) throw new Error("Die angesagte Partie ist schon gespielt");
+        if (test.partie.competitionId !== "friendly") throw new Error("Die Partie trägt nicht den Wettbewerb Testspiel");
+
+        // "Live" gespielt: Die Partie wird vorab ausgetragen und dem Kalender
+        // übergeben - er darf sie nicht ein zweites Mal ausspielen
+        const heim = state.clubs.find(c => c.id === test.partie.homeClubId);
+        const gast = state.clubs.find(c => c.id === test.partie.awayClubId);
+        MatchEngine.simulateFullMatch(test.partie, heim, gast, state.players);
+        const erwartet = test.heim
+            ? `${test.partie.homeGoals}:${test.partie.awayGoals}`
+            : `${test.partie.awayGoals}:${test.partie.homeGoals}`;
+        state.preseason.livePartie = test.partie;
+        const res = CalendarEngine.advanceOneDay(state);
+        if (!res.success || res.type !== "friendly") throw new Error("Der Termin wurde nicht abgeschlossen");
+        if ("livePartie" in state.preseason) throw new Error("Die Übergabe bleibt im Spielstand liegen");
+        const eingetragen = state.preseason.testspiele.find(t => t.gespielt);
+        if (!eingetragen || eingetragen.ergebnis !== erwartet) {
+            throw new Error(`Eingetragen ${eingetragen?.ergebnis}, live gespielt ${erwartet}`);
+        }
+    });
+
     // 14a7b. Der Ball gehört immer jemandem - auch auf der schnellsten Stufe
     test("LiveMatchDirector: Der Ball liegt nicht allein herum, auch nicht im Schnelldurchlauf", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
@@ -3591,7 +3719,9 @@ function runEngineTests() {
         for (let run = 0; run < 2; run++) {
             const match = { id: `standard_${run}`, played: false, homeClubId: "muc", awayClubId: "dor" };
             match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, state.players);
-            fouls += match.timeline.filter(e => e.type === "foul" && e.outcome !== "penalty").length;
+            // Ein Foul mit direktem Freistoss wird in der Schussszene selbst
+            // ausgefuehrt - es braucht keine eigene Spielfortsetzung
+            fouls += match.timeline.filter(e => e.type === "foul" && e.outcome !== "penalty" && !e.direkterFreistoss).length;
             fehlschuesse += match.timeline.filter(e => e.type === "shot_miss" && e.outcome !== "woodwork").length;
 
             const live = new LiveMatch(match, homeClub, awayClub, state.players);
@@ -3618,9 +3748,11 @@ function runEngineTests() {
                 const ev = dir.currentEvent();
                 if (ev && ev.type === "corner" && phase === "approach") {
                     const ecke = dir.eventPoint(ev.start);
+                    // Die Fahnen stehen dort, wo Torlinie und Seitenlinie sich
+                    // treffen: Die Torlinien liegen bei 4 und 96
                     const naechsteFahne = Math.min(
-                        Math.hypot(ecke.x - 0, ecke.y - 0), Math.hypot(ecke.x - 0, ecke.y - 100),
-                        Math.hypot(ecke.x - 100, ecke.y - 0), Math.hypot(ecke.x - 100, ecke.y - 100));
+                        Math.hypot(ecke.x - 4, ecke.y - 0), Math.hypot(ecke.x - 4, ecke.y - 100),
+                        Math.hypot(ecke.x - 96, ecke.y - 0), Math.hypot(ecke.x - 96, ecke.y - 100));
                     eckenAbstand.push(naechsteFahne);
                 }
                 origPhase(phase);

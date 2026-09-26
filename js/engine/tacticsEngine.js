@@ -31,8 +31,10 @@
  */
 const TAKTIK_ANWEISUNGEN = [
     // ---------------------------------------------------------------- Mit Ball
+    // Reihenfolge wie im FM26: erst der Stil, dann Aufbau und Torwart, dann
+    // das Vorwaertsspiel und das letzte Drittel.
     {
-        key: "mentality", phase: "mitBall", gruppe: "Grundausrichtung", label: "Mentalität", standard: "balanced",
+        key: "mentality", phase: "mitBall", gruppe: "Grundausrichtung", label: "Mentalität", icon: "i-gauge", standard: "balanced",
         optionen: [
             { value: "very_defensive", label: "Sehr defensiv" },
             { value: "defensive", label: "Defensiv" },
@@ -43,111 +45,135 @@ const TAKTIK_ANWEISUNGEN = [
         hilfe: "Wie viel Risiko die Elf insgesamt eingeht - wie weit sie aufrückt und wie viele Spieler den Angriff tragen."
     },
     {
-        key: "torwartAbspiel", phase: "mitBall", gruppe: "Aufbau", label: "Abspiel des Torwarts", standard: "gemischt",
+        key: "passing", phase: "mitBall", gruppe: "Stil", label: "Passspiel", icon: "i-pass", standard: "mixed",
         optionen: [
-            { value: "kurz", label: "Kurz auf die Innenverteidiger" },
-            { value: "gemischt", label: "Gemischt" },
-            { value: "lang", label: "Lang auf die Spitze" }
-        ],
-        hilfe: "Kurz baut flach von hinten auf, lang überspringt das gegnerische Pressing."
-    },
-    {
-        key: "aufbauUeber", phase: "mitBall", gruppe: "Aufbau", label: "Aufbau über", standard: "gemischt",
-        optionen: [
-            { value: "innen", label: "Innenverteidiger und Sechser" },
-            { value: "gemischt", label: "Gemischt" },
-            { value: "aussen", label: "Außenverteidiger" }
-        ],
-        hilfe: "Über welche Spieler der Ball aus der eigenen Hälfte kommt."
-    },
-    {
-        key: "durchsPressing", phase: "mitBall", gruppe: "Aufbau", label: "Gegen Pressing", standard: "gemischt",
-        optionen: [
-            { value: "spielen", label: "Durchspielen" },
-            { value: "gemischt", label: "Gemischt" },
-            { value: "lang", label: "Überspielen (lang)" }
-        ],
-        hilfe: "Ob die Elf sich unter Druck flach befreit oder den langen Ball schlägt."
-    },
-    {
-        key: "passing", phase: "mitBall", gruppe: "Vorwärtsspiel", label: "Passspiel", standard: "mixed",
-        optionen: [
-            { value: "short", label: "Kurz (Ballbesitz)" },
+            { value: "short", label: "Kurz" },
             { value: "mixed", label: "Gemischt" },
-            { value: "direct", label: "Direkt, vertikal" }
-        ]
+            { value: "direct", label: "Direkt" }
+        ],
+        hilfe: "Kurze Pässe halten den Ball, direkte suchen früh den Weg nach vorn."
     },
     {
-        key: "tempo", phase: "mitBall", gruppe: "Vorwärtsspiel", label: "Tempo", standard: "normal",
+        key: "tempo", phase: "mitBall", gruppe: "Stil", label: "Tempo", icon: "i-speed", standard: "normal",
         optionen: [
             { value: "slow", label: "Geduldig" },
             { value: "normal", label: "Normal" },
             { value: "fast", label: "Hoch" }
-        ]
+        ],
+        hilfe: "Wie schnell der Ball weitergespielt wird."
     },
     {
-        key: "breite", phase: "mitBall", gruppe: "Vorwärtsspiel", label: "Breite im Angriff", standard: "normal",
+        key: "zeitspiel", phase: "mitBall", gruppe: "Stil", label: "Zeitspiel", icon: "i-clock", standard: "normal",
         optionen: [
-            { value: "eng", label: "Eng (durchs Zentrum)" },
+            { value: "nie", label: "Nie" },
             { value: "normal", label: "Normal" },
-            { value: "breit", label: "Breit (Seitenlinien besetzt)" }
+            { value: "oft", label: "Oft" }
+        ],
+        hilfe: "Bei Führung Tempo rausnehmen: länger am Ball, länger bis zum Einwurf. Der Schiedsrichter lässt dafür nachspielen und zeigt eher Gelb."
+    },
+    {
+        key: "nachBallgewinn", phase: "mitBall", gruppe: "Stil", label: "Nach Ballgewinn", icon: "i-bolt", standard: "normal",
+        optionen: [
+            { value: "kontern", label: "Kontern" },
+            { value: "normal", label: "Normal" },
+            { value: "ballsichern", label: "Ball sichern" }
+        ],
+        hilfe: "Kontern sucht sofort den Weg nach vorn, Ball sichern nimmt erst die Form mit Ball ein."
+    },
+    {
+        key: "breite", phase: "mitBall", gruppe: "Stil", label: "Breite im Angriff", icon: "i-width", standard: "normal",
+        optionen: [
+            { value: "eng", label: "Eng" },
+            { value: "normal", label: "Normal" },
+            { value: "breit", label: "Breit" }
         ],
         hilfe: "Wie weit die Außen an die Linie gehen. Breit zieht die gegnerische Kette auseinander, eng überlädt das Zentrum."
     },
     {
-        key: "freiheit", phase: "mitBall", gruppe: "Vorwärtsspiel", label: "Kreative Freiheit", standard: "normal",
+        key: "standards", phase: "mitBall", gruppe: "Stil", label: "Auf Standards spielen", icon: "i-flag", standard: "normal",
         optionen: [
-            { value: "diszipliniert", label: "Diszipliniert (Positionen halten)" },
             { value: "normal", label: "Normal" },
-            { value: "frei", label: "Frei (Positionen tauschen)" }
+            { value: "herausholen", label: "Standards herausholen" }
+        ],
+        hilfe: "Ecken und Freistöße gezielt suchen - lohnt sich mit kopfballstarken Spielern."
+    },
+    {
+        key: "freiheit", phase: "mitBall", gruppe: "Stil", label: "Kreative Freiheit", icon: "i-spark", standard: "normal",
+        optionen: [
+            { value: "diszipliniert", label: "Diszipliniert" },
+            { value: "normal", label: "Normal" },
+            { value: "frei", label: "Frei" }
         ],
         hilfe: "Diszipliniert hält jeder seine Zone, frei suchen sich die Spieler ihre Räume selbst."
     },
     {
-        key: "focus", phase: "mitBall", gruppe: "Vorwärtsspiel", label: "Angriffsfokus", standard: "balanced",
+        key: "durchsPressing", phase: "mitBall", gruppe: "Aufbau", label: "Aufbaustrategie", icon: "i-stairs", standard: "gemischt",
         optionen: [
-            { value: "left", label: "Linke Seite" },
-            { value: "center", label: "Zentrum" },
-            { value: "right", label: "Rechte Seite" },
-            { value: "balanced", label: "Ausgewogen" }
-        ]
+            { value: "spielen", label: "Durchspielen" },
+            { value: "gemischt", label: "Gemischt" },
+            { value: "lang", label: "Überspielen" }
+        ],
+        hilfe: "Ob die Elf sich unter Druck flach befreit oder das Pressing mit dem langen Ball überspielt."
     },
     {
-        key: "aussenLinks", phase: "mitBall", gruppe: "Vorwärtsspiel", label: "Linke Seite", standard: "normal",
+        key: "aufbauUeber", phase: "mitBall", gruppe: "Aufbau", label: "Aufbau über", icon: "i-stairs", standard: "gemischt",
+        optionen: [
+            { value: "innen", label: "Innen" },
+            { value: "gemischt", label: "Gemischt" },
+            { value: "aussen", label: "Außen" }
+        ],
+        hilfe: "Über Innenverteidiger und Sechser oder über die Außenverteidiger."
+    },
+    {
+        key: "torwartAbspiel", phase: "mitBall", gruppe: "Torwart", label: "Abstöße", icon: "i-goal", standard: "gemischt",
+        optionen: [
+            { value: "kurz", label: "Kurz" },
+            { value: "gemischt", label: "Gemischt" },
+            { value: "lang", label: "Lang" }
+        ],
+        hilfe: "Kurz baut flach von hinten auf, lang überspringt das gegnerische Pressing."
+    },
+    {
+        key: "torwartZiel", phase: "mitBall", gruppe: "Torwart", label: "Torwart spielt auf", icon: "i-glove", standard: "gemischt",
+        optionen: [
+            { value: "gemischt", label: "Gemischt" },
+            { value: "iv", label: "Innenverteidiger" },
+            { value: "av", label: "Außenverteidiger" },
+            { value: "sechser", label: "Sechser" },
+            { value: "fluegel", label: "Flügel" },
+            { value: "spitze", label: "Sturmspitze" }
+        ],
+        hilfe: "Wen der Torwart bevorzugt anspielt."
+    },
+    {
+        key: "torwartVerteilung", phase: "mitBall", gruppe: "Torwart", label: "Abwurf-Tempo", icon: "i-speed", standard: "normal",
+        optionen: [
+            { value: "schnell", label: "Schnell" },
+            { value: "normal", label: "Normal" },
+            { value: "ruhig", label: "Tempo raus" }
+        ],
+        hilfe: "Schnell abwerfen leitet den Konter ein, Tempo rausnehmen lässt die Elf die Form einnehmen."
+    },
+    {
+        key: "aussenLinks", phase: "mitBall", gruppe: "Vorwärtsspiel", label: "Läufe links", icon: "i-run", standard: "normal",
         optionen: [
             { value: "normal", label: "Nach Rolle" },
             { value: "hinterlaufen", label: "Hinterlaufen" },
-            { value: "unterlaufen", label: "Unterlaufen (innen)" }
+            { value: "unterlaufen", label: "Unterlaufen" }
         ],
         hilfe: "Ob der Außenverteidiger links außen um den Flügelspieler herum läuft oder innen durch den Halbraum."
     },
     {
-        key: "aussenRechts", phase: "mitBall", gruppe: "Vorwärtsspiel", label: "Rechte Seite", standard: "normal",
+        key: "aussenRechts", phase: "mitBall", gruppe: "Vorwärtsspiel", label: "Läufe rechts", icon: "i-run", standard: "normal",
         optionen: [
             { value: "normal", label: "Nach Rolle" },
             { value: "hinterlaufen", label: "Hinterlaufen" },
-            { value: "unterlaufen", label: "Unterlaufen (innen)" }
-        ]
+            { value: "unterlaufen", label: "Unterlaufen" }
+        ],
+        hilfe: "Dasselbe auf der rechten Seite."
     },
     {
-        key: "flanken", phase: "mitBall", gruppe: "Letztes Drittel", label: "Flanken", standard: "normal",
-        optionen: [
-            { value: "wenig", label: "Kaum flanken" },
-            { value: "normal", label: "Normal" },
-            { value: "frueh", label: "Früh flanken" },
-            { value: "grundlinie", label: "Bis zur Grundlinie" }
-        ]
-    },
-    {
-        key: "abschluss", phase: "mitBall", gruppe: "Letztes Drittel", label: "Abschluss", standard: "normal",
-        optionen: [
-            { value: "herausspielen", label: "Herausspielen (in den Strafraum)" },
-            { value: "normal", label: "Normal" },
-            { value: "weitschuss", label: "Auch aus der Distanz" }
-        ]
-    },
-    {
-        key: "dribbling", phase: "mitBall", gruppe: "Letztes Drittel", label: "Dribblings", standard: "normal",
+        key: "dribbling", phase: "mitBall", gruppe: "Vorwärtsspiel", label: "Dribblings", icon: "i-zigzag", standard: "normal",
         optionen: [
             { value: "weniger", label: "Weniger" },
             { value: "normal", label: "Normal" },
@@ -155,50 +181,79 @@ const TAKTIK_ANWEISUNGEN = [
         ]
     },
     {
-        key: "standards", phase: "mitBall", gruppe: "Letztes Drittel", label: "Standards", standard: "normal",
+        key: "focus", phase: "mitBall", gruppe: "Vorwärtsspiel", label: "Vorwärtsspiel über", icon: "i-up", standard: "balanced",
         optionen: [
-            { value: "normal", label: "Normal" },
-            { value: "herausholen", label: "Auf Standards spielen" }
-        ]
-    },
-    // --------------------------------------------------------------- Umschalten
-    {
-        key: "nachBallverlust", phase: "umschalten", gruppe: "Umschalten", label: "Nach Ballverlust", standard: "normal",
-        optionen: [
-            { value: "gegenpressing", label: "Gegenpressing" },
-            { value: "normal", label: "Normal" },
-            { value: "zurueckziehen", label: "Sofort zurückziehen" }
+            { value: "left", label: "Links" },
+            { value: "center", label: "Zentrum" },
+            { value: "right", label: "Rechts" },
+            { value: "balanced", label: "Ausgewogen" }
         ],
-        hilfe: "Gegenpressing jagt den Ball sofort zurück, zurückziehen stellt erst die Form her."
+        hilfe: "Über welche Seite der Angriff bevorzugt läuft."
     },
     {
-        key: "nachBallgewinn", phase: "umschalten", gruppe: "Umschalten", label: "Nach Ballgewinn", standard: "normal",
+        key: "ballannahme", phase: "mitBall", gruppe: "Vorwärtsspiel", label: "Ballannahme", icon: "i-foot", standard: "gemischt",
         optionen: [
-            { value: "kontern", label: "Kontern" },
+            { value: "fuss", label: "In den Fuß" },
+            { value: "gemischt", label: "Gemischt" },
+            { value: "raum", label: "In den Lauf" }
+        ],
+        hilfe: "In den Fuß ist sicher, in den Lauf bringt Tempo und Tiefe - und öfter einen Ballverlust."
+    },
+    {
+        key: "abschluss", phase: "mitBall", gruppe: "Letztes Drittel", label: "Geduld", icon: "i-hourglass", standard: "normal",
+        optionen: [
+            { value: "herausspielen", label: "Herausspielen" },
             { value: "normal", label: "Normal" },
-            { value: "ballsichern", label: "Ball sichern, Form einnehmen" }
+            { value: "weitschuss", label: "Früh abschließen" }
+        ],
+        hilfe: "Herausspielen trägt den Ball bis in den Strafraum, früh abschließen nimmt auch die halbe Chance."
+    },
+    {
+        key: "weitschuesse", phase: "mitBall", gruppe: "Letztes Drittel", label: "Distanzschüsse", icon: "i-target", standard: "normal",
+        optionen: [
+            { value: "weniger", label: "Weniger" },
+            { value: "normal", label: "Normal" },
+            { value: "mehr", label: "Mehr" }
         ]
     },
     {
-        key: "torwartVerteilung", phase: "umschalten", gruppe: "Umschalten", label: "Torwart nach Ballgewinn", standard: "normal",
+        key: "flanken", phase: "mitBall", gruppe: "Letztes Drittel", label: "Flanken", icon: "i-cross", standard: "normal",
         optionen: [
-            { value: "schnell", label: "Schnell abwerfen" },
+            { value: "wenig", label: "Kaum" },
             { value: "normal", label: "Normal" },
-            { value: "ruhig", label: "Tempo rausnehmen" }
+            { value: "frueh", label: "Früh" },
+            { value: "grundlinie", label: "Bis zur Grundlinie" }
         ]
+    },
+    {
+        key: "flankenart", phase: "mitBall", gruppe: "Letztes Drittel", label: "Flankenart", icon: "i-cross", standard: "gemischt",
+        optionen: [
+            { value: "flach", label: "Flach" },
+            { value: "gemischt", label: "Gemischt" },
+            { value: "hoch", label: "Hoch" }
+        ],
+        hilfe: "Flach und scharf für schnelle Stürmer, hoch für kopfballstarke."
     },
     // ---------------------------------------------------------- Gegen den Ball
     {
-        key: "pressing", phase: "gegenBall", gruppe: "Pressing", label: "Anlaufhöhe", standard: "medium",
+        key: "pressing", phase: "gegenBall", gruppe: "Pressing", label: "Pressinglinie", icon: "i-line", standard: "medium",
         optionen: [
-            { value: "low", label: "Tief (ab der Mittellinie)" },
-            { value: "medium", label: "Mittel (ab dem ersten Drittel)" },
-            { value: "high", label: "Hoch (bis in den Strafraum)" }
+            { value: "low", label: "Tief" },
+            { value: "medium", label: "Mittel" },
+            { value: "high", label: "Hoch" }
         ],
         hilfe: "Ab wo die Elf den ballführenden Gegner angreift - davor stellt sie nur die Passwege zu."
     },
     {
-        key: "anlaufen", phase: "gegenBall", gruppe: "Pressing", label: "Pressingintensität", standard: "normal",
+        key: "defensiveLine", phase: "gegenBall", gruppe: "Block", label: "Abwehrlinie", icon: "i-line", standard: "medium",
+        optionen: [
+            { value: "deep", label: "Tief" },
+            { value: "medium", label: "Normal" },
+            { value: "high", label: "Hoch" }
+        ]
+    },
+    {
+        key: "anlaufen", phase: "gegenBall", gruppe: "Pressing", label: "Pressing auslösen", icon: "i-flame", standard: "normal",
         optionen: [
             { value: "seltener", label: "Seltener" },
             { value: "normal", label: "Normal" },
@@ -207,68 +262,81 @@ const TAKTIK_ANWEISUNGEN = [
         hilfe: "Wie viele Spieler und wie früh sie in den Zweikampf gehen."
     },
     {
-        key: "pressingfalle", phase: "gegenBall", gruppe: "Pressing", label: "Pressingfalle", standard: "keine",
+        key: "nachBallverlust", phase: "gegenBall", gruppe: "Umschalten", label: "Nach Ballverlust", icon: "i-back", standard: "normal",
         optionen: [
-            { value: "keine", label: "Keine" },
-            { value: "aussen", label: "Nach außen lenken" },
-            { value: "innen", label: "Nach innen lenken" }
-        ],
-        hilfe: "Der erste Presser läuft so an, dass der Gegner auf die Seite oder in die Mitte muss - dort wartet die Überzahl."
-    },
-    {
-        key: "abstossStoeren", phase: "gegenBall", gruppe: "Pressing", label: "Kurzen Abstoß", standard: "zulassen",
-        optionen: [
-            { value: "zulassen", label: "Zulassen" },
-            { value: "verhindern", label: "Verhindern" }
-        ]
-    },
-    {
-        key: "defensiveLine", phase: "gegenBall", gruppe: "Block", label: "Abwehrlinie", standard: "medium",
-        optionen: [
-            { value: "deep", label: "Tief" },
-            { value: "medium", label: "Normal" },
-            { value: "high", label: "Hoch" }
-        ]
-    },
-    {
-        key: "kompaktheit", phase: "gegenBall", gruppe: "Block", label: "Breite des Blocks", standard: "normal",
-        optionen: [
-            { value: "eng", label: "Eng (Zentrum schließen)" },
+            { value: "gegenpressing", label: "Gegenpressing" },
             { value: "normal", label: "Normal" },
-            { value: "breit", label: "Breit (Flügel decken)" }
-        ]
-    },
-    {
-        key: "abseitsfalle", phase: "gegenBall", gruppe: "Block", label: "Abseitsfalle", standard: "nein",
-        optionen: [
-            { value: "nein", label: "Nein" },
-            { value: "ja", label: "Ja (Linie schiebt heraus)" }
-        ]
-    },
-    {
-        key: "flankenVerhindern", phase: "gegenBall", gruppe: "Block", label: "Gegnerische Flanken", standard: "normal",
-        optionen: [
-            { value: "zulassen", label: "Zulassen (Strafraum dicht)" },
-            { value: "normal", label: "Normal" },
-            { value: "verhindern", label: "Verhindern (Außen attackieren)" }
-        ]
-    },
-    {
-        key: "deckung", phase: "gegenBall", gruppe: "Zweikampf & Deckung", label: "Deckung", standard: "raum",
-        optionen: [
-            { value: "raum", label: "Raumdeckung" },
-            { value: "mannorientiert", label: "Mannorientiert in der Zone" },
-            { value: "mann", label: "Manndeckung" }
+            { value: "zurueckziehen", label: "Zurückziehen" }
         ],
-        hilfe: "Im Raum verteidigt jeder seine Zone. Mannorientiert übernimmt jeder den Gegner, der in seine Zone kommt. In Manndeckung folgt jeder seinem Gegenspieler über das ganze Feld."
+        hilfe: "Gegenpressing jagt den Ball sofort zurück, zurückziehen stellt erst die Form her."
     },
     {
-        key: "zweikampf", phase: "gegenBall", gruppe: "Zweikampf & Deckung", label: "Zweikampfverhalten", standard: "normal",
+        key: "zweikampf", phase: "gegenBall", gruppe: "Zweikampf & Deckung", label: "Zweikampfverhalten", icon: "i-shield", standard: "normal",
         optionen: [
             { value: "zurueckhaltend", label: "Auf den Füßen bleiben" },
             { value: "normal", label: "Normal" },
             { value: "hart", label: "Hart einsteigen" }
         ]
+    },
+    {
+        key: "flankenVerhindern", phase: "gegenBall", gruppe: "Block", label: "Gegnerische Flanken", icon: "i-cross", standard: "normal",
+        optionen: [
+            { value: "zulassen", label: "Zulassen" },
+            { value: "normal", label: "Normal" },
+            { value: "verhindern", label: "Verhindern" }
+        ],
+        hilfe: "Zulassen hält den Strafraum dicht, verhindern greift die Außen früh an."
+    },
+    {
+        key: "pressingfalle", phase: "gegenBall", gruppe: "Pressing", label: "Pressingfalle", icon: "i-trap", standard: "keine",
+        optionen: [
+            { value: "keine", label: "Keine" },
+            { value: "aussen", label: "Nach außen" },
+            { value: "innen", label: "Nach innen" }
+        ],
+        hilfe: "Der erste Presser läuft so an, dass der Gegner auf die Seite oder in die Mitte muss - dort wartet die Überzahl."
+    },
+    {
+        key: "abstossStoeren", phase: "gegenBall", gruppe: "Pressing", label: "Kurze Abstöße", icon: "i-goal", standard: "zulassen",
+        optionen: [
+            { value: "zulassen", label: "Zulassen" },
+            { value: "verhindern", label: "Verhindern" }
+        ],
+        hilfe: "Verhindern stellt die Innenverteidiger beim Abstoß zu - der Torwart muss lang schlagen."
+    },
+    {
+        key: "linienVerhalten", phase: "gegenBall", gruppe: "Block", label: "Verhalten der Abwehrlinie", icon: "i-line", standard: "ausgewogen",
+        optionen: [
+            { value: "fallenlassen", label: "Fallen lassen" },
+            { value: "ausgewogen", label: "Ausgewogen" },
+            { value: "herausruecken", label: "Herausrücken" }
+        ],
+        hilfe: "Fallen lassen schützt den Raum hinter der Kette, herausrücken hält die Mannschaft kompakt und stellt Abseits."
+    },
+    {
+        key: "abseitsfalle", phase: "gegenBall", gruppe: "Block", label: "Abseitsfalle", icon: "i-flag", standard: "nein",
+        optionen: [
+            { value: "nein", label: "Nein" },
+            { value: "ja", label: "Ja" }
+        ]
+    },
+    {
+        key: "deckung", phase: "gegenBall", gruppe: "Zweikampf & Deckung", label: "Deckung", icon: "i-users", standard: "raum",
+        optionen: [
+            { value: "raum", label: "Raumdeckung" },
+            { value: "mannorientiert", label: "Mannorientiert" },
+            { value: "mann", label: "Manndeckung" }
+        ],
+        hilfe: "Im Raum verteidigt jeder seine Zone. Mannorientiert übernimmt jeder den Gegner, der in seine Zone kommt. In Manndeckung folgt jeder seinem Gegenspieler über das ganze Feld."
+    },
+    {
+        key: "kompaktheit", phase: "gegenBall", gruppe: "Block", label: "Breite des Blocks", icon: "i-width", standard: "normal",
+        optionen: [
+            { value: "eng", label: "Eng" },
+            { value: "normal", label: "Normal" },
+            { value: "breit", label: "Breit" }
+        ],
+        hilfe: "Eng schließt das Zentrum, breit deckt die Flügel."
     }
 ];
 
@@ -534,7 +602,9 @@ const TAKTIK_VORLAGEN = {
             passing: "short", tempo: "slow", breite: "breit", torwartAbspiel: "kurz", aufbauUeber: "innen",
             durchsPressing: "spielen", freiheit: "diszipliniert", nachBallverlust: "gegenpressing",
             nachBallgewinn: "ballsichern", pressing: "high", defensiveLine: "high", anlaufen: "oefter",
-            abschluss: "herausspielen", flanken: "wenig", abseitsfalle: "ja"
+            abschluss: "herausspielen", flanken: "wenig", abseitsfalle: "ja",
+            torwartZiel: "iv", ballannahme: "fuss", flankenart: "flach", linienVerhalten: "herausruecken",
+            weitschuesse: "weniger"
         },
         formMitBall: "3-2-5", formGegenBall: "grund", rollenStil: "positionsspiel"
     },
@@ -544,7 +614,8 @@ const TAKTIK_VORLAGEN = {
         anweisungen: {
             pressing: "high", anlaufen: "oefter", defensiveLine: "high", nachBallverlust: "gegenpressing",
             nachBallgewinn: "kontern", tempo: "fast", passing: "direct",
-            abstossStoeren: "verhindern", pressingfalle: "aussen", deckung: "mannorientiert"
+            abstossStoeren: "verhindern", pressingfalle: "aussen", deckung: "mannorientiert",
+            ballannahme: "raum", linienVerhalten: "herausruecken", torwartVerteilung: "schnell"
         },
         formMitBall: "auto", formGegenBall: "grund", rollenStil: "pressing"
     },
@@ -554,7 +625,8 @@ const TAKTIK_VORLAGEN = {
         anweisungen: {
             pressing: "low", anlaufen: "seltener", defensiveLine: "deep", nachBallverlust: "zurueckziehen",
             nachBallgewinn: "kontern", tempo: "fast", passing: "direct", mentality: "defensive",
-            kompaktheit: "eng", torwartVerteilung: "schnell", torwartAbspiel: "lang"
+            kompaktheit: "eng", torwartVerteilung: "schnell", torwartAbspiel: "lang",
+            torwartZiel: "fluegel", ballannahme: "raum", linienVerhalten: "fallenlassen"
         },
         formMitBall: "auto", formGegenBall: "grund", rollenStil: "konter"
     },
@@ -564,7 +636,8 @@ const TAKTIK_VORLAGEN = {
         anweisungen: {
             pressing: "low", anlaufen: "seltener", defensiveLine: "deep", nachBallverlust: "zurueckziehen",
             mentality: "defensive", kompaktheit: "eng", flankenVerhindern: "zulassen", torwartAbspiel: "lang",
-            durchsPressing: "lang", nachBallgewinn: "normal"
+            durchsPressing: "lang", nachBallgewinn: "normal",
+            linienVerhalten: "fallenlassen", zeitspiel: "oft", torwartZiel: "spitze"
         },
         formMitBall: "grund", formGegenBall: "5-4-1", rollenStil: "defensiv"
     },
@@ -573,7 +646,8 @@ const TAKTIK_VORLAGEN = {
         beschreibung: "Breit angreifen, die Außenverteidiger hinterlaufen, früh in den Strafraum flanken.",
         anweisungen: {
             breite: "breit", flanken: "frueh", aussenLinks: "hinterlaufen", aussenRechts: "hinterlaufen",
-            focus: "balanced", passing: "mixed", tempo: "normal", flankenVerhindern: "verhindern"
+            focus: "balanced", passing: "mixed", tempo: "normal", flankenVerhindern: "verhindern",
+            flankenart: "hoch", torwartZiel: "av"
         },
         formMitBall: "auto", formGegenBall: "grund", rollenStil: "fluegel"
     },
@@ -582,7 +656,8 @@ const TAKTIK_VORLAGEN = {
         beschreibung: "Schnell nach vorn, lange Bälle auf den Zielspieler, zweite Bälle erobern.",
         anweisungen: {
             passing: "direct", tempo: "fast", torwartAbspiel: "lang", durchsPressing: "lang",
-            nachBallgewinn: "kontern", abschluss: "weitschuss", aufbauUeber: "aussen"
+            nachBallgewinn: "kontern", abschluss: "weitschuss", aufbauUeber: "aussen",
+            torwartZiel: "spitze", weitschuesse: "mehr", flankenart: "hoch", ballannahme: "raum"
         },
         formMitBall: "grund", formGegenBall: "grund", rollenStil: "direkt"
     },
@@ -591,7 +666,8 @@ const TAKTIK_VORLAGEN = {
         beschreibung: "Jeder übernimmt seinen Gegenspieler über das ganze Feld, hoch und aggressiv.",
         anweisungen: {
             deckung: "mann", pressing: "high", anlaufen: "oefter", zweikampf: "hart", defensiveLine: "high",
-            nachBallverlust: "gegenpressing", nachBallgewinn: "kontern", tempo: "fast"
+            nachBallverlust: "gegenpressing", nachBallgewinn: "kontern", tempo: "fast",
+            linienVerhalten: "herausruecken"
         },
         formMitBall: "auto", formGegenBall: "grund", rollenStil: "pressing"
     }
@@ -929,7 +1005,14 @@ const TacticsEngine = {
             flankenVerhindern: { zulassen: -1, normal: 0, verhindern: 1 }[w("flankenVerhindern")],
             abstossStoeren: w("abstossStoeren") === "verhindern",
             torwartSchnell: { schnell: 1, normal: 0, ruhig: -1 }[w("torwartVerteilung")],
-            standards: w("standards") === "herausholen"
+            standards: w("standards") === "herausholen",
+            // Neu nach dem FM26
+            zeitspiel: { nie: -1, normal: 0, oft: 1 }[w("zeitspiel")],
+            torwartZiel: w("torwartZiel"),
+            ballannahme: { fuss: -1, gemischt: 0, raum: 1 }[w("ballannahme")],
+            weitschuesse: { weniger: -1, normal: 0, mehr: 1 }[w("weitschuesse")],
+            flankenart: w("flankenart"),
+            linienVerhalten: { fallenlassen: -1, ausgewogen: 0, herausruecken: 1 }[w("linienVerhalten")]
         };
     },
 
@@ -1218,6 +1301,17 @@ const TacticsEngine = {
     },
 
     /** Setzt eine Vorlage: Anweisungen, Formen, Rollenstil */
+    /** Eine feste Zahl zwischen 0 und 1 aus der Kennung des Vereins */
+    _vereinsZahl(club) {
+        const text = String(club?.id ?? club?.name ?? "");
+        let h = 2166136261;
+        for (let i = 0; i < text.length; i++) {
+            h ^= text.charCodeAt(i);
+            h = Math.imul(h, 16777619);
+        }
+        return ((h >>> 0) % 10000) / 10000;
+    },
+
     wendeVorlageAn(tactics, key) {
         const v = TAKTIK_VORLAGEN[key];
         const t = this.normalisiere(tactics);
@@ -1237,9 +1331,12 @@ const TacticsEngine = {
      * nicht alle gleich spielen. Starke Vereine spielen eher Ballbesitz und
      * Pressing, schwache stehen tiefer und kontern.
      */
-    vorlageFuerVerein(club, zufall = Math.random) {
+    vorlageFuerVerein(club, zufall = null) {
         const rep = club?.reputation || 60;
-        const r = zufall();
+        // Fest je Verein statt gewuerfelt: Ein Verein hat seinen Stil, und
+        // jede neue Spielwelt hat dieselbe Mischung. Gewuerfelt schwankte
+        // der Torschnitt einer Liga je nach Welt um drei Zehntel.
+        const r = typeof zufall === "function" ? zufall() : this._vereinsZahl(club);
         if (rep >= 82) return r < 0.45 ? "positionsspiel" : (r < 0.8 ? "gegenpressing" : "ausgewogen");
         if (rep >= 70) return r < 0.3 ? "gegenpressing" : (r < 0.55 ? "ausgewogen" : (r < 0.75 ? "fluegelspiel" : (r < 0.88 ? "manndeckung" : "positionsspiel")));
         if (rep >= 58) return r < 0.35 ? "ausgewogen" : (r < 0.6 ? "konter" : (r < 0.8 ? "fluegelspiel" : "direkt"));

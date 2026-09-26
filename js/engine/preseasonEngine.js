@@ -699,21 +699,19 @@ class PreseasonEngine {
      * sind Freundschaftsspiele, sie unterscheiden sich nur in dem, was sie
      * bedeuten.
      */
-    static austragen(state, club, gegner, heim, kennung, neutral = false) {
+    static austragen(state, club, gegner, heim, kennung, neutral = false, gespielt = null) {
         const matchEngine = _preResolve("MatchEngine", "./matchEngine.js");
         if (!gegner || !matchEngine) return null;
 
-        const partie = {
-            id: `friendly_${state.seasonYear || 1}_${kennung}`,
-            played: false,
-            freundschaftsspiel: true,
-            // Ein Turnier wird nicht im eigenen Stadion gespielt
-            neutralerPlatz: neutral,
-            homeClubId: heim ? club.id : gegner.id,
-            awayClubId: heim ? gegner.id : club.id
-        };
+        // Hat der Manager die Partie live verfolgt, ist sie schon gespielt -
+        // dann zaehlt genau dieses Ergebnis.
+        const partieId = `friendly_${state.seasonYear || 1}_${kennung}`;
+        const livePartie = gespielt && gespielt.played && gespielt.id === partieId ? gespielt : null;
+        const partie = livePartie || this.neuePartie(state, club, gegner, heim, kennung, neutral);
 
-        matchEngine.simulateFullMatch(partie, heim ? club : gegner, heim ? gegner : club, state.players);
+        if (!livePartie) {
+            matchEngine.simulateFullMatch(partie, heim ? club : gegner, heim ? gegner : club, state.players);
+        }
 
         const eigene = heim ? partie.homeGoals : partie.awayGoals;
         const fremde = heim ? partie.awayGoals : partie.homeGoals;
@@ -742,8 +740,83 @@ class PreseasonEngine {
         return { eigene, fremde, partie, anspruch };
     }
 
+    /** Die Begegnung eines Termins - noch ungespielt */
+    static neuePartie(state, club, gegner, heim, kennung, neutral = false, roundName = "Testspiel") {
+        return {
+            id: `friendly_${state.seasonYear || 1}_${kennung}`,
+            played: false,
+            freundschaftsspiel: true,
+            competitionId: "friendly",
+            roundName,
+            // Ein Turnier wird nicht im eigenen Stadion gespielt
+            neutralerPlatz: neutral,
+            homeClubId: heim ? club.id : gegner.id,
+            awayClubId: heim ? gegner.id : club.id
+        };
+    }
+
+    /**
+     * Was heute gespielt wird - angesagt wie ein Spieltag.
+     *
+     * Die Testspiele liefen bisher ungesehen durch: Der Kalender spielte sie
+     * beim Weiterklicken aus, und der Manager erfuhr das Ergebnis aus einer
+     * Einblendung. Jetzt kann die Oberflaeche den Termin vorher ansagen und
+     * ihn live zeigen. Liefert die ungespielte Partie mit Gegner und Titel.
+     */
+    static partieFuerSlot(state, slotIndex) {
+        const pre = this.sichereStruktur(state?.preseason);
+        const club = (state?.clubs || []).find(c => c.id === state.userClubId);
+        if (!pre || !club) return null;
+
+        const index = Math.max(0, Math.min(this.SLOTS - 1, slotIndex || 0));
+        let eintrag = pre.plan[index];
+        if (!eintrag) {
+            if (!this.notfallTestspiel(state, club, index)) return null;
+            eintrag = pre.plan[index];
+        }
+        const finde = (id) => (state.clubs || []).find(c => c.id === id);
+
+        if (eintrag.art === "turnier") {
+            const turnier = pre.turniere.find(t => t.id === eintrag.turnierId);
+            if (!turnier) return null;
+            if (eintrag.runde === "halbfinale") {
+                if (turnier.halbfinale) return null;
+                const g = turnier.teilnehmer[0];
+                const gegner = finde(g?.id);
+                if (!gegner) return null;
+                return {
+                    art: "turnier", gegner, heim: true,
+                    titel: `${turnier.name} · Halbfinale`,
+                    partie: this.neuePartie(state, club, gegner, true, `${turnier.id}_hf`, true, `${turnier.name} · Halbfinale`)
+                };
+            }
+            if (!turnier.halbfinale || turnier.endspiel) return null;
+            const andere = turnier.anderesHalbfinale;
+            const gesuchteId = turnier.halbfinale.gewonnen ? andere?.siegerId : andere?.verliererId;
+            const g = turnier.teilnehmer.find(t => t.id === gesuchteId) || turnier.teilnehmer[1];
+            const gegner = finde(g?.id);
+            if (!gegner) return null;
+            const runde = turnier.halbfinale.gewonnen ? "Endspiel" : "Spiel um Platz drei";
+            return {
+                art: "turnier", gegner, heim: true,
+                titel: `${turnier.name} · ${runde}`,
+                partie: this.neuePartie(state, club, gegner, true, `${turnier.id}_f`, true, `${turnier.name} · ${runde}`)
+            };
+        }
+
+        const test = pre.testspiele.find(t => t.id === eintrag.testId);
+        if (!test || test.gespielt) return null;
+        const gegner = finde(test.gegnerId);
+        if (!gegner) return null;
+        return {
+            art: "test", gegner, heim: test.heim,
+            titel: `Testspiel ${test.heim ? "gegen" : "bei"} ${test.gegnerName}`,
+            partie: this.neuePartie(state, club, gegner, test.heim, test.id)
+        };
+    }
+
     /** Spielt ein vereinbartes Testspiel aus */
-    static spieleTestspiel(state, testId) {
+    static spieleTestspiel(state, testId, gespielt = null) {
         const pre = this.sichereStruktur(state?.preseason);
         const club = (state.clubs || []).find(c => c.id === state.userClubId);
         if (!pre || !club) return null;
@@ -752,7 +825,7 @@ class PreseasonEngine {
         if (!test || test.gespielt) return null;
 
         const gegner = (state.clubs || []).find(c => c.id === test.gegnerId);
-        const ergebnis = this.austragen(state, club, gegner, test.heim, testId);
+        const ergebnis = this.austragen(state, club, gegner, test.heim, testId, false, gespielt);
         if (!ergebnis) return null;
 
         test.gespielt = true;
@@ -776,7 +849,7 @@ class PreseasonEngine {
      * Sportdirektor besetzt ihn kurzfristig. Er findet aber nur das, was
      * kurzfristig zu haben ist: einen deutlich schwaecheren Gegner.
      */
-    static spieleSlot(state, slotIndex) {
+    static spieleSlot(state, slotIndex, gespielt = null) {
         const pre = this.sichereStruktur(state?.preseason);
         const club = (state.clubs || []).find(c => c.id === state.userClubId);
         if (!pre || !club) return null;
@@ -790,9 +863,9 @@ class PreseasonEngine {
         }
 
         if (eintrag.art === "turnier") {
-            return this.spieleTurnierRunde(state, eintrag.turnierId, eintrag.runde);
+            return this.spieleTurnierRunde(state, eintrag.turnierId, eintrag.runde, gespielt);
         }
-        const ergebnis = this.spieleTestspiel(state, eintrag.testId);
+        const ergebnis = this.spieleTestspiel(state, eintrag.testId, gespielt);
         return ergebnis ? { art: "test", ...ergebnis } : null;
     }
 
@@ -842,7 +915,7 @@ class PreseasonEngine {
         };
     }
 
-    static spieleTurnierRunde(state, turnierId, runde) {
+    static spieleTurnierRunde(state, turnierId, runde, gespielt = null) {
         const pre = this.sichereStruktur(state?.preseason);
         const club = (state.clubs || []).find(c => c.id === state.userClubId);
         if (!pre || !club) return null;
@@ -851,16 +924,16 @@ class PreseasonEngine {
         if (!turnier) return null;
 
         return runde === "halbfinale"
-            ? this.spieleTurnierHalbfinale(state, club, turnier)
-            : this.spieleTurnierEndspiel(state, club, turnier);
+            ? this.spieleTurnierHalbfinale(state, club, turnier, gespielt)
+            : this.spieleTurnierEndspiel(state, club, turnier, gespielt);
     }
 
-    static spieleTurnierHalbfinale(state, club, turnier) {
+    static spieleTurnierHalbfinale(state, club, turnier, gespielt = null) {
         if (turnier.halbfinale) return null;
 
         const gegnerEintrag = turnier.teilnehmer[0];
         const gegner = (state.clubs || []).find(c => c.id === gegnerEintrag.id);
-        const ergebnis = this.austragen(state, club, gegner, true, `${turnier.id}_hf`, true);
+        const ergebnis = this.austragen(state, club, gegner, true, `${turnier.id}_hf`, true, gespielt);
         if (!ergebnis) return null;
 
         // Im Turnier gibt es kein Unentschieden - bei Gleichstand entscheidet
@@ -887,14 +960,14 @@ class PreseasonEngine {
         return { art: "turnier", runde: "halbfinale", turnier, partie: ergebnis.partie };
     }
 
-    static spieleTurnierEndspiel(state, club, turnier) {
+    static spieleTurnierEndspiel(state, club, turnier, gespielt = null) {
         if (!turnier.halbfinale || turnier.endspiel) return null;
 
         const andere = turnier.anderesHalbfinale;
         const gesuchteId = turnier.halbfinale.gewonnen ? andere?.siegerId : andere?.verliererId;
         const gegnerEintrag = turnier.teilnehmer.find(t => t.id === gesuchteId) || turnier.teilnehmer[1];
         const gegner = (state.clubs || []).find(c => c.id === gegnerEintrag.id);
-        const ergebnis = this.austragen(state, club, gegner, true, `${turnier.id}_f`, true);
+        const ergebnis = this.austragen(state, club, gegner, true, `${turnier.id}_f`, true, gespielt);
         if (!ergebnis) return null;
 
         let gewonnen = ergebnis.eigene > ergebnis.fremde;

@@ -838,7 +838,11 @@ const CalendarEngine = {
             // geplant: ein Testspiel, eine Turnierrunde - oder nichts, dann
             // besetzt die Engine den Termin kurzfristig.
             if (preseasonEngine && state.preseason && typeof preseasonEngine.spieleSlot === "function") {
-                ergebnis = preseasonEngine.spieleSlot(state, currentDay.friendlyIndex ?? 0);
+                // Live verfolgt: Die Oberflaeche reicht die gespielte Partie
+                // herein, statt sie ein zweites Mal ausspielen zu lassen
+                const gespielt = state.preseason.livePartie || null;
+                delete state.preseason.livePartie;
+                ergebnis = preseasonEngine.spieleSlot(state, currentDay.friendlyIndex ?? 0, gespielt);
             }
             currentDay.completed = true;
             if (state.currentDayIndex < state.calendar.length - 1) {

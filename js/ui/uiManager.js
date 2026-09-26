@@ -2,6 +2,14 @@
  * UIManager - Rendert alle Tabs, Modale, Tabellen und steuert die 2D Canvas Match Visualisierung
  */
 
+/**
+ * Die Torlinien in Feldkoordinaten. Die Simulation legt die Tore bei x = 4
+ * und x = 96; das gezeichnete Feld reicht von Torlinie zu Torlinie.
+ */
+const TORLINIE_LINKS = 4;
+const TORLINIE_RECHTS = 96;
+const FELD_LAENGE = TORLINIE_RECHTS - TORLINIE_LINKS;
+
 class UIManager {
     constructor(app) {
         this.app = app;
@@ -1764,13 +1772,13 @@ class UIManager {
         ctx.strokeRect(x, y + (h - boxH) / 2, boxW, boxH);
         ctx.strokeRect(x + w - boxW, y + (h - boxH) / 2, boxW, boxH);
 
-        const rx = px => x + (px / 100) * w;
+        const rx = px => x + ((px - TORLINIE_LINKS) / FELD_LAENGE) * w;
         const ry = py => y + (py / 100) * h;
 
         // Aktueller Kameraausschnitt
         ctx.strokeStyle = "rgba(250, 204, 21, 0.75)";
         ctx.lineWidth = 1.2;
-        ctx.strokeRect(rx(camX - halfW), ry(camY - halfH), (halfW * 2 / 100) * w, (halfH * 2 / 100) * h);
+        ctx.strokeRect(rx(camX - halfW), ry(camY - halfH), (halfW * 2 / FELD_LAENGE) * w, (halfH * 2 / 100) * h);
 
         // Spieler als Punkte
         (liveMatch.players2D || []).forEach(p => {
@@ -2369,6 +2377,37 @@ class UIManager {
         if (tag) tag.textContent = termin.wettbewerb;
         if (heading) heading.textContent = termin.tage === 0 ? "Heute" : "Als Nächstes";
 
+        // Heute ist ein Testspiel: angesagt wie ein Spieltag - mit beiden
+        // Mannschaften, und live oder als Sofortergebnis zu spielen. Vorher
+        // lief der Termin beim Weiterklicken ungesehen durch.
+        const testHeute = termin.art === "vorbereitung" && termin.tage === 0 ? this.heutigesTestspiel() : null;
+        if (testHeute) {
+            if (tag) tag.textContent = testHeute.art === "turnier" ? "Turnier" : "Testspiel";
+            preview.style.display = "";
+            const heimClub = testHeute.heim ? userClub : testHeute.gegner;
+            const gastClub = testHeute.heim ? testHeute.gegner : userClub;
+            DOM.setText("dashHomeName", heimClub?.name || "Heim");
+            DOM.setText("dashAwayName", gastClub?.name || "Auswärts");
+            DOM.setText("dashHomeRank", "");
+            DOM.setText("dashAwayRank", "");
+            DOM.setText("dashVenue", testHeute.partie.neutralerPlatz ? "Neutraler Platz" : (heimClub?.stadium || ""));
+            DOM.setText("dashNextWhen", testHeute.titel);
+            const wappenEl = (id, club) => {
+                const el = document.getElementById(id);
+                if (el && club) this.setzeWappen(el, club);
+            };
+            wappenEl("dashHomeCrest", heimClub);
+            wappenEl("dashAwayCrest", gastClub);
+            actions.style.display = "";
+            if (btnAnalyse) btnAnalyse.style.display = "none";
+            btnLive.disabled = false;
+            btnLive.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#i-play"/></svg><span>Live-Spiel starten</span>`;
+            btnInstant.disabled = false;
+            btnInstant.style.display = "";
+            if (note) note.style.display = "none";
+            return;
+        }
+
         // Ein Vorbereitungstermin hat keine zwei Wappen - er hat ein Programm
         if (termin.art === "vorbereitung") {
             preview.style.display = "none";
@@ -2663,10 +2702,41 @@ class UIManager {
     /**
      * Kader rendern mit Filter
      */
+    /**
+     * Eine Leiste mit Kennzahlen-Kacheln - wie der Kopf der Vereinsseite.
+     * kacheln: [{ titel, wert, extra (HTML), klasse }]
+     */
+    renderKennzahlen(elId, kacheln) {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        const esc = (v) => this.escapeHtml(String(v ?? ""));
+        el.innerHTML = kacheln.map(k =>
+            `<div class="vk-kachel${k.klasse ? " " + k.klasse : ""}"><span>${esc(k.titel)}</span><strong>${esc(k.wert)}</strong>${k.extra || ""}</div>`).join("");
+    }
+
     renderSquad(posFilter = "all") {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
+
+        // Kennzahlen des ganzen Kaders - unabhaengig vom Filter
+        const kader = state.players.filter(p => userClub.playerIds.includes(p.id));
+        if (kader.length) {
+            const alter = kader.reduce((s, p) => s + (p.age || 0), 0) / kader.length;
+            const wert = kader.reduce((s, p) => s + (p.value || 0), 0);
+            const gehalt = kader.reduce((s, p) => s + (p.wage || 0), 0);
+            const ausfall = kader.filter(p => (p.injuredWeeks || 0) > 0 || (p.suspendedMatches || 0) > 0).length;
+            const fit = Math.round(kader.reduce((s, p) => s + (p.fitness ?? 100), 0) / kader.length);
+            const auslaufend = kader.filter(p => (p.contractYears ?? p.contract?.years ?? 2) <= 1).length;
+            this.renderKennzahlen("squadKennzahlen", [
+                { titel: "Spieler", wert: String(kader.length), extra: `<small>Ø ${alter.toFixed(1).replace(".", ",")} Jahre</small>` },
+                { titel: "Marktwert", wert: this.geldKurz(wert), extra: `<small>gesamt</small>` },
+                { titel: "Gehälter", wert: this.geldKurz(gehalt), extra: `<small>pro Woche</small>` },
+                { titel: "Fitness", wert: `${fit} %`, extra: `<span class="vk-balken"><i style="width:${fit}%"></i></span>`, klasse: fit < 80 ? "warnung" : "" },
+                { titel: "Ausfälle", wert: String(ausfall), extra: `<small>verletzt oder gesperrt</small>`, klasse: ausfall >= 3 ? "gefahr" : "" },
+                { titel: "Verträge", wert: String(auslaufend), extra: `<small>laufen bald aus</small>`, klasse: auslaufend >= 4 ? "warnung" : "" }
+            ]);
+        }
 
         let players = state.players.filter(p => userClub.playerIds.includes(p.id));
 
@@ -3654,36 +3724,60 @@ class UIManager {
             gegenSel.onchange = (e) => { t.formGegenBall = e.target.value; this.taktikAnsicht = "gegen"; this.taktikGeaendert(userClub); };
         }
 
-        // Rollen je Spieler
+        // Aufstellung wie im FM26: eine Zeile je Spieler, die Rolle der
+        // gewaehlten Phase mit Kuerzel, dazu Staerke und Kondition
         const rollenEl = document.getElementById("tacRollen");
         if (rollenEl) {
             const state = this.app.state;
             const rollen = T.rollenDerElf(userClub, slots);
-            rollenEl.innerHTML = slots.map((slot, i) => {
+            if (this.rollenPhase !== "gegen") this.rollenPhase = "mit";
+            // Die Tafel und die Tabelle zeigen dieselbe Phase
+            if (this.taktikAnsicht === "gegen") this.rollenPhase = "gegen";
+            else if (this.taktikAnsicht === "mit") this.rollenPhase = "mit";
+            const phase = this.rollenPhase;
+            document.querySelectorAll("#tacRollenPhase [data-phase]").forEach(b => {
+                b.classList.toggle("active", b.dataset.phase === phase);
+                b.onclick = () => {
+                    this.rollenPhase = b.dataset.phase;
+                    if (this.taktikAnsicht === "mit" || this.taktikAnsicht === "gegen") this.taktikAnsicht = b.dataset.phase;
+                    this.renderTactics();
+                };
+            });
+            const ratingEngine = this.getRatingEngine ? this.getRatingEngine() : null;
+            const ivAnzahl = slots.filter(q => this.getPositionEngine()?.normalizePosition(q.pos) === "IV").length;
+            rollenEl.innerHTML = `
+                <div class="aufst-kopfzeile" aria-hidden="true">
+                    <span>Pos.</span><span>Spieler</span><span>Rolle ${phase === "gegen" ? "gegen den Ball" : "mit Ball"}</span><span>Kond.</span>
+                </div>` + slots.map((slot, i) => {
                 const r = rollen[i];
                 const spieler = state.players.find(p => p.id === userClub.lineup[i]);
-                const mitListe = T.rollenMitBall(r.familie).filter(x => !x.nurDreier || slots.filter(q => this.getPositionEngine()?.normalizePosition(q.pos) === "IV").length >= 3);
-                const gegenListe = T.rollenGegenBall(r.familie);
+                const liste = phase === "gegen"
+                    ? T.rollenGegenBall(r.familie)
+                    : T.rollenMitBall(r.familie).filter(x => !x.nurDreier || ivAnzahl >= 3);
+                const aktuelleId = phase === "gegen" ? r.gegen : r.mit;
+                const rolle = phase === "gegen" ? T.rolleGegenBall(r.familie, r.gegen) : T.rolleMitBall(r.familie, r.mit);
+                const kz = T.kuerzel(rolle, phase);
                 const aktiv = this.selectedPitchSlot === i;
-                const mitRolle = T.rolleMitBall(r.familie, r.mit);
-                const gegenRolle = T.rolleGegenBall(r.familie, r.gegen);
+                const card = spieler && ratingEngine ? ratingEngine.calculateVisiblePlayerCard(spieler, Object.assign({ userClubId: userClub.id, leagueDataCoverage: 95 }, this.starContext())) : null;
+                const fit = Math.round(spieler?.fitness ?? 100);
+                const fitKlasse = fit >= 85 ? "gut" : (fit >= 70 ? "mittel" : "schwach");
+                const nachname = spieler ? spieler.name.split(" ").slice(-1)[0] : "Leer";
+                const vorname = spieler ? spieler.name.split(" ").slice(0, -1).join(" ") : "";
                 return `
                     <div class="rollen-zeile ${aktiv ? "aktiv" : ""}" data-rollen-slot="${i}">
                         <span class="pos-tag pos-${this.getPosGroup(slot.pos)}">${esc(slot.pos)}</span>
-                        <span class="rollen-name">${spieler ? esc(spieler.name) : "Leer"}</span>
-                        <div class="rollen-selects">
-                            <label>Mit Ball
-                                <select class="styled-select" data-rolle-mit="${i}" title="${esc(mitRolle.beschreibung)}">
-                                    ${mitListe.map(x => `<option value="${esc(x.id)}" ${x.id === r.mit ? "selected" : ""}>${esc(x.name)}</option>`).join("")}
-                                </select>
-                            </label>
-                            <label>Gegen den Ball
-                                <select class="styled-select" data-rolle-gegen="${i}" title="${esc(gegenRolle.beschreibung)}">
-                                    ${gegenListe.map(x => `<option value="${esc(x.id)}" ${x.id === r.gegen ? "selected" : ""}>${esc(x.name)}</option>`).join("")}
-                                </select>
-                            </label>
-                        </div>
-                        ${aktiv ? `<div class="rollen-text"><strong>Mit Ball:</strong> ${esc(mitRolle.beschreibung)}<br><strong>Gegen den Ball:</strong> ${esc(gegenRolle.beschreibung)}</div>` : ""}
+                        <span class="aufst-spieler">
+                            <span class="aufst-name">${vorname ? `<small>${esc(vorname.charAt(0))}.</small> ` : ""}${esc(nachname)}</span>
+                            <span class="aufst-sterne">${card ? card.abilityStarsHtml : ""}</span>
+                        </span>
+                        <span class="aufst-rolle">
+                            <span class="rolle-badge kat-${esc(kz.kategorie)}${phase === "gegen" ? " gegen" : ""}">${esc(kz.text)}</span>
+                            <select class="styled-select" data-rolle-${phase}="${i}" aria-label="Rolle von ${esc(nachname)}" title="${esc(rolle.beschreibung)}">
+                                ${liste.map(x => `<option value="${esc(x.id)}" ${x.id === aktuelleId ? "selected" : ""}>${esc(x.name)}</option>`).join("")}
+                            </select>
+                        </span>
+                        <span class="aufst-kond ${fitKlasse}" title="Kondition ${fit} %"><i style="width:${Math.max(4, Math.min(100, fit))}%"></i><b>${fit}</b></span>
+                        ${aktiv ? `<div class="rollen-text"><strong>${esc(rolle.name)}:</strong> ${esc(rolle.beschreibung)}</div>` : ""}
                     </div>`;
             }).join("");
             const setze = (i, feld, wert) => {
@@ -3709,33 +3803,39 @@ class UIManager {
             });
         }
 
-        // Anweisungen nach Phasen
+        // Mannschaftsanweisungen als Kacheln, getrennt nach Mit Ball und
+        // Gegen den Ball - wie im FM26
         const anwEl = document.getElementById("tacAnweisungen");
         if (anwEl) {
-            if (!this.taktikOffen) this.taktikOffen = { mitBall: true };
-            const phasen = [["mitBall", "Mit Ball"], ["umschalten", "Umschalten"], ["gegenBall", "Gegen den Ball"]];
-            anwEl.innerHTML = phasen.map(([phase, titel]) => {
-                const liste = T.ANWEISUNGEN.filter(a => a.phase === phase);
-                const gruppen = [...new Set(liste.map(a => a.gruppe))];
-                return `
-                    <details class="taktik-gruppe" data-phase="${phase}" ${this.taktikOffen[phase] ? "open" : ""}>
-                        <summary>${titel}</summary>
-                        <div class="taktik-gruppe-inhalt">
-                            ${gruppen.map(g => `
-                                <h4>${esc(g)}</h4>
-                                ${liste.filter(a => a.gruppe === g).map(a => `
-                                    <div class="tactic-field">
-                                        <label for="tac_${a.key}" ${a.hilfe ? `title="${esc(a.hilfe)}"` : ""}>${esc(a.label)}${a.hilfe ? " ⓘ" : ""}</label>
-                                        <select id="tac_${a.key}" class="styled-select" data-anweisung="${a.key}">
-                                            ${a.optionen.map(o => `<option value="${esc(o.value)}" ${T.wert(t, a.key) === o.value ? "selected" : ""}>${esc(o.label)}</option>`).join("")}
-                                        </select>
-                                    </div>`).join("")}`).join("")}
-                        </div>
-                    </details>`;
-            }).join("");
-            anwEl.querySelectorAll("details[data-phase]").forEach(d => {
-                d.ontoggle = () => { this.taktikOffen[d.dataset.phase] = d.open; };
+            if (this.anwPhase !== "gegenBall") this.anwPhase = "mitBall";
+            document.querySelectorAll("#tacAnwPhase [data-phase]").forEach(b => {
+                b.classList.toggle("active", b.dataset.phase === this.anwPhase);
+                b.setAttribute("aria-selected", b.dataset.phase === this.anwPhase ? "true" : "false");
+                b.onclick = () => { this.anwPhase = b.dataset.phase; this.renderTactics(); };
             });
+            const liste = T.ANWEISUNGEN.filter(a => a.phase === this.anwPhase);
+            anwEl.innerHTML = liste.map(a => {
+                const wert = T.wert(t, a.key);
+                const index = Math.max(0, a.optionen.findIndex(o => o.value === wert));
+                const option = a.optionen[index];
+                const geaendert = wert !== a.standard;
+                // Die Skala zeigt, wo der Wert zwischen den Optionen liegt
+                const skala = a.optionen.length <= 5
+                    ? `<span class="anw-skala" aria-hidden="true">${a.optionen.map((o, i) => `<i class="${i === index ? "an" : ""}"></i>`).join("")}</span>`
+                    : "";
+                return `
+                    <label class="anw-kachel${geaendert ? " geaendert" : ""}" ${a.hilfe ? `title="${esc(a.hilfe)}"` : ""}>
+                        <span class="anw-kopf">
+                            <svg class="ico" aria-hidden="true"><use href="#${esc(a.icon || "i-sliders")}"/></svg>
+                            <span class="anw-titel">${esc(a.label)}</span>
+                        </span>
+                        <span class="anw-wert">${esc(option ? option.label : wert)}</span>
+                        ${skala}
+                        <select data-anweisung="${a.key}" aria-label="${esc(a.label)}">
+                            ${a.optionen.map(o => `<option value="${esc(o.value)}" ${o.value === wert ? "selected" : ""}>${esc(o.label)}</option>`).join("")}
+                        </select>
+                    </label>`;
+            }).join("");
             anwEl.querySelectorAll("[data-anweisung]").forEach(sel => {
                 sel.onchange = (e) => {
                     t[sel.dataset.anweisung] = e.target.value;
@@ -5172,6 +5272,17 @@ class UIManager {
         const sponsorWeekly = this.sponsorProSpieltag(userClub);
         const matchIncomeEst = Math.round((userClub.capacity || 30000) * 0.85 * (userClub.ticketPrice || 35));
 
+        const gehaltsQuote = userClub.wageBudget ? Math.round(weeklyWages / userClub.wageBudget * 100) : 0;
+        this.renderKennzahlen("finKennzahlen", [
+            { titel: "Kontostand", wert: this.geldKurz(userClub.balance || 0), klasse: (userClub.balance || 0) < 0 ? "gefahr" : "" },
+            { titel: "Transferbudget", wert: this.geldKurz(userClub.transferBudget || 0) },
+            { titel: "Gehälter / Woche", wert: this.geldKurz(weeklyWages),
+                extra: `<span class="vk-balken"><i style="width:${Math.min(100, gehaltsQuote)}%"></i></span><small>${gehaltsQuote} % des Budgets</small>`,
+                klasse: gehaltsQuote > 100 ? "gefahr" : (gehaltsQuote > 90 ? "warnung" : "") },
+            { titel: "Sponsor / Spieltag", wert: this.geldKurz(sponsorWeekly) },
+            { titel: "Heimspiel", wert: this.geldKurz(matchIncomeEst), extra: `<small>geschätzte Einnahmen</small>` }
+        ]);
+
         DOM.setText("finBalance", GameState.formatMoney(userClub.balance));
         DOM.setText("finTransferBudget", GameState.formatMoney(userClub.transferBudget));
         DOM.setText("finWageBudget", GameState.formatMoney(userClub.wageBudget));
@@ -5209,6 +5320,42 @@ class UIManager {
     /**
      * Vereins-Tab rendern (D3 & C6)
      */
+    /**
+     * Der Kopf der Vereinsseite: Wappen, Liga und die Kennzahlen als Kacheln -
+     * so beginnt im FM26 die Vereinsseite.
+     */
+    renderVereinsKopf(state, club, plaetze) {
+        const esc = (v) => this.escapeHtml(String(v ?? ""));
+        const crest = document.getElementById("clubHeroCrest");
+        if (crest) this.setzeWappen(crest, club);
+        const hero = document.getElementById("clubHero");
+        if (hero) hero.style.setProperty("--vk-farbe", this.wappenFarben(club).farbe + "40");
+        const liga = (state.leagues || []).find(l => l.id === club.leagueId);
+        DOM.setText("clubHeroLiga", liga?.shortName || liga?.name || state.leagueName || "Liga");
+        DOM.setText("clubHeroName", club.name);
+        DOM.setText("clubHeroOrt", [club.city, club.stadium].filter(Boolean).join(" · "));
+
+        const tabelle = (state.standings || []);
+        const platzIndex = tabelle.findIndex(s => s.clubId === club.id);
+        const ruf = Math.round(club.reputation || 60);
+        const stimmung = Math.round(state.fanMood || 75);
+        const chemie = Math.round(club.chemistry?.overall || 75);
+        const balken = (wert) => `<span class="vk-balken"><i style="width:${Math.max(3, Math.min(100, wert))}%"></i></span>`;
+        const kacheln = [
+            ["Tabellenplatz", platzIndex >= 0 ? `${platzIndex + 1}.` : "—", `<small>${tabelle.length ? `von ${tabelle.length}` : ""}</small>`],
+            ["Ruf", `${ruf}`, balken(ruf)],
+            ["Fans", (club.fanBase || 25000).toLocaleString("de-DE"), `<small>${(plaetze || club.capacity || 0).toLocaleString("de-DE")} Plätze</small>`],
+            ["Stimmung", `${stimmung} %`, balken(stimmung)],
+            ["Teamchemie", `${chemie} %`, balken(chemie)],
+            ["Kontostand", this.geldKurz ? this.geldKurz(club.balance || 0) : GameState.formatMoney(club.balance || 0), `<small>${esc(club.sponsor?.name || "")}</small>`]
+        ];
+        const el = document.getElementById("clubHeroKacheln");
+        if (el) {
+            el.innerHTML = kacheln.map(([titel, wert, extra]) =>
+                `<div class="vk-kachel"><span>${esc(titel)}</span><strong>${esc(wert)}</strong>${extra || ""}</div>`).join("");
+        }
+    }
+
     renderClub() {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
@@ -5235,6 +5382,8 @@ class UIManager {
             ? `Stufe ${userClub.anlagen?.stadium?.stufe ?? userClub.facilities?.stadium ?? 2}`
               + ` (${facEngine.zustandsText(userClub.anlagen?.stadium?.zustand ?? 100)})`
             : `Stufe ${userClub.facilities?.stadium || 2}`);
+
+        this.renderVereinsKopf(state, userClub, nutzbar);
 
         // Sponsor
         DOM.setText("clubTabSponsorName", userClub.sponsor?.name || "Global Tech");
@@ -6809,6 +6958,29 @@ class UIManager {
         });
     }
 
+    /**
+     * Was das 2D-Feld zeigt - pro Geraet gemerkt. Namen sind wie im FM26
+     * voreingestellt, die Formationslinien schaltet man bei Bedarf dazu.
+     */
+    anzeige2D() {
+        if (this._anzeige2D) return this._anzeige2D;
+        let gespeichert = null;
+        try { gespeichert = JSON.parse(localStorage.getItem("fm_anzeige2d") || "null"); } catch (e) { gespeichert = null; }
+        this._anzeige2D = { namen: true, formEigene: false, formGegner: false, ...(gespeichert || {}) };
+        return this._anzeige2D;
+    }
+
+    verdrahteAnzeige2D() {
+        const anzeige = this.anzeige2D();
+        document.querySelectorAll("#lmAnsicht [data-anzeige2d]").forEach(box => {
+            box.checked = !!anzeige[box.dataset.anzeige2d];
+            box.onchange = () => {
+                anzeige[box.dataset.anzeige2d] = box.checked;
+                try { localStorage.setItem("fm_anzeige2d", JSON.stringify(anzeige)); } catch (e) { /* ohne Speicher */ }
+            };
+        });
+    }
+
     startLiveMatchSimulation(match) {
         const state = this.app.state;
         const homeClub = state.clubs.find(c => c.id === match.homeClubId);
@@ -6845,6 +7017,7 @@ class UIManager {
         // Der Wettbewerb färbt den Abend: Pokalnächte sehen anders aus als
         // der 14. Spieltag.
         this.setzeLiveThema(match);
+        this.verdrahteAnzeige2D();
 
         document.getElementById("lmHomeName").textContent = homeClub.name;
         document.getElementById("lmAwayName").textContent = awayClub.name;
@@ -7032,7 +7205,11 @@ class UIManager {
             const { pitchX, pitchY, pitchW, pitchH } = bg;
             const cam = this.camera;
 
-            const scaleX = (pitchW / 100) * cam.zoom;
+            // In der Laenge liegen die Torlinien bei x = 4 und x = 96 - so
+            // rechnet die ganze Simulation. Gezeichnet waren sie bei 0 und
+            // 100: Der Torwart stand dadurch vier Meter vor seinem Tor, und
+            // jede Ecke, jeder Schuss lag um dieses Stueck daneben.
+            const scaleX = (pitchW / FELD_LAENGE) * cam.zoom;
             const scaleY = (pitchH / 100) * cam.zoom;
 
             // Sichtbarer Ausschnitt in Feldkoordinaten. Weil das Bild breiter
@@ -7042,22 +7219,22 @@ class UIManager {
             const halfH = (canvas.height / scaleY) / 2;
 
             // Etwas Rand um das Spielfeld darf sichtbar bleiben
-            const marginX = (pitchX / pitchW) * 100;
+            const marginX = (pitchX / pitchW) * FELD_LAENGE;
             const marginY = (pitchY / pitchH) * 100;
 
-            const clampAxis = (value, half, margin) => {
-                const min = half - margin;
-                const max = 100 + margin - half;
-                if (min > max) return 50;
+            const clampAxis = (value, half, margin, lo = 0, hi = 100) => {
+                const min = lo + half - margin;
+                const max = hi + margin - half;
+                if (min > max) return (lo + hi) / 2;
                 return Math.max(min, Math.min(max, value));
             };
 
-            const camX = clampAxis(cam.x, halfW, marginX);
+            const camX = clampAxis(cam.x, halfW, marginX, TORLINIE_LINKS, TORLINIE_RECHTS);
             const camY = clampAxis(cam.y, halfH, marginY);
-            const originX = canvas.width / 2 - camX * scaleX;
+            const originX = canvas.width / 2 - (camX - TORLINIE_LINKS) * scaleX;
             const originY = canvas.height / 2 - camY * scaleY;
 
-            const toX = px => originX + px * scaleX;
+            const toX = px => originX + (px - TORLINIE_LINKS) * scaleX;
             const toY = py => originY + py * scaleY;
             const unit = pitchW / 105 * cam.zoom; // ein Meter in Bildpunkten
 
@@ -7144,6 +7321,52 @@ class UIManager {
             const players = liveMatch.players2D || [];
             const ball = liveMatch.ball;
 
+            const anzeige = this.anzeige2D();
+
+            // Formationslinien: Jede Mannschaftsreihe als Linie, dazu die
+            // Verbindung zur Reihe dahinter - so sieht man auf einen Blick,
+            // ob die Kette steht, wie kompakt der Block ist und wer seine
+            // Position verlassen hat.
+            const eigeneSeite = liveMatch.userSide || "home";
+            [["home", eigeneSeite === "home" ? anzeige.formEigene : anzeige.formGegner],
+                ["away", eigeneSeite === "away" ? anzeige.formEigene : anzeige.formGegner]].forEach(([team, an]) => {
+                if (!an) return;
+                const elf = players.filter(p => p.team === team && p.pos !== "TW");
+                const farbe = elf[0]?.color || (team === "home" ? "#3b82f6" : "#ef4444");
+                const reihen = ["def", "mid", "att"].map(g => elf.filter(p => p.group === g).sort((a, b) => a.y - b.y));
+                ctx.save();
+                ctx.lineCap = "round";
+                ctx.lineJoin = "round";
+                // Verbindungen zwischen den Reihen: zum naechsten Mitspieler dahinter
+                ctx.strokeStyle = farbe;
+                ctx.globalAlpha = 0.32;
+                ctx.lineWidth = Math.max(1, radius * 0.16);
+                ctx.setLineDash([radius * 0.5, radius * 0.45]);
+                for (let r = 1; r < reihen.length; r++) {
+                    const hinten = reihen[r - 1].length ? reihen[r - 1] : (reihen[r - 2] || []);
+                    reihen[r].forEach(p => {
+                        let best = null, bestD = Infinity;
+                        hinten.forEach(q => { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < bestD) { bestD = d; best = q; } });
+                        if (!best) return;
+                        ctx.beginPath();
+                        ctx.moveTo(toX(p.x), toY(p.y));
+                        ctx.lineTo(toX(best.x), toY(best.y));
+                        ctx.stroke();
+                    });
+                }
+                ctx.setLineDash([]);
+                // Die Reihen selbst
+                ctx.globalAlpha = 0.75;
+                ctx.lineWidth = Math.max(1.5, radius * 0.26);
+                reihen.forEach(reihe => {
+                    if (reihe.length < 2) return;
+                    ctx.beginPath();
+                    reihe.forEach((p, i) => i ? ctx.lineTo(toX(p.x), toY(p.y)) : ctx.moveTo(toX(p.x), toY(p.y)));
+                    ctx.stroke();
+                });
+                ctx.restore();
+            });
+
             // 3. Schatten
             ctx.fillStyle = "rgba(0, 0, 0, 0.34)";
             players.forEach(p => {
@@ -7203,16 +7426,10 @@ class UIManager {
                 ctx.fillStyle = isKeeper ? torwartFarbe(p.team) : (p.color || "#3b82f6");
                 ctx.fill();
 
-                if (!hechtet) {
-                    ctx.beginPath();
-                    ctx.arc(px - radius * 0.24, py - radius * 0.28, radius * 0.58, 0, Math.PI * 2);
-                    ctx.fillStyle = "rgba(255, 255, 255, 0.16)";
-                    ctx.fill();
-                }
-
+                // Flach wie im FM26: Vereinsfarbe, heller Rand, keine Glanzkante
                 koerper();
-                ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
-                ctx.lineWidth = Math.max(1, radius * 0.13);
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+                ctx.lineWidth = Math.max(1, radius * 0.11);
                 ctx.stroke();
 
                 // Blickrichtung als kleiner Keil
@@ -7273,8 +7490,29 @@ class UIManager {
                 ctx.restore();
             });
 
-            // 5. Namensschilder: nur der Ballführende und die nächsten Spieler,
-            //    sonst überlagern sich die Schilder im Getümmel.
+            // 5. Namen aller Spieler unter den Punkten - wie im FM26. Der
+            //    Ballführende bekommt zusätzlich sein Schild.
+            if (anzeige.namen) {
+                const kleinFont = `600 ${Math.round(radius * 0.7)}px 'Inter', system-ui, sans-serif`;
+                ctx.font = kleinFont;
+                ctx.lineJoin = "round";
+                players.forEach(p => {
+                    if (liveMatch.activePlayerId === p.id) return;
+                    const lastName = p.name ? p.name.split(" ").pop() : "";
+                    if (!lastName) return;
+                    const px = toX(p.x);
+                    const py = toY(p.y) + radius * 1.72;
+                    if (px < -60 || px > canvas.width + 60 || py < -60 || py > canvas.height + 60) return;
+                    ctx.strokeStyle = "rgba(6, 10, 14, 0.85)";
+                    ctx.lineWidth = Math.max(2, radius * 0.32);
+                    ctx.strokeText(lastName, px, py);
+                    ctx.fillStyle = "rgba(241, 245, 249, 0.92)";
+                    ctx.fillText(lastName, px, py);
+                });
+            }
+
+            // Namensschilder: nur der Ballführende und die nächsten Spieler,
+            // sonst überlagern sich die Schilder im Getümmel.
             const nearBall = players
                 .filter(p => liveMatch.activePlayerId === p.id || Math.hypot(p.x - ball.x, p.y - ball.y) < 20)
                 .sort((a, b) => {
@@ -7282,7 +7520,7 @@ class UIManager {
                     if (liveMatch.activePlayerId === b.id) return 1;
                     return Math.hypot(a.x - ball.x, a.y - ball.y) - Math.hypot(b.x - ball.x, b.y - ball.y);
                 })
-                .slice(0, 5);
+                .slice(0, anzeige.namen ? 1 : 5);
 
             nearBall.forEach(p => {
                 const lastName = p.name ? p.name.split(" ").pop() : "";
@@ -7382,6 +7620,8 @@ class UIManager {
                 // auch die Tabelle beziehungsweise das Tableau der Runde
                 if (this._laufenderPokaltermin) {
                     this.finishCupTieAroundUser();
+                } else if (this._laufendesTestspiel) {
+                    this.schliesseTestspielAb(match);
                 } else {
                     this.finishMatchdayAroundUser();
                 }
@@ -8149,8 +8389,8 @@ class UIManager {
         const T = this.getTacticsEngine();
 
         // Im Spiel die Regler, die sofort sichtbar wirken - nach Phasen
-        const LIVE_KEYS = ["mentality", "pressing", "anlaufen", "defensiveLine", "deckung", "nachBallverlust",
-            "nachBallgewinn", "tempo", "passing", "breite", "focus", "zweikampf"];
+        const LIVE_KEYS = ["mentality", "pressing", "anlaufen", "defensiveLine", "linienVerhalten", "deckung", "nachBallverlust",
+            "nachBallgewinn", "tempo", "passing", "breite", "focus", "zweikampf", "zeitspiel"];
         const gruppen = T
             ? LIVE_KEYS.map(k => T.ANWEISUNGEN.find(a => a.key === k)).filter(Boolean)
                 .map(a => [a.key, a.label, a.optionen.map(o => [o.value, o.label])])
@@ -8626,6 +8866,13 @@ class UIManager {
             };
         }
 
+        // Heute ist ein Testspiel oder eine Turnierrunde: angesagt wie ein
+        // Spieltag, mit Gegner - und live oder als Sofortergebnis zu spielen
+        const test = this.heutigesTestspiel();
+        if (test) {
+            return { art: "spiel", text: test.titel, kurz: "Anpfiff" };
+        }
+
         // Heute ist Medientag - erst die Pressekonferenz
         if (heute && heute.type === "media" && !this._pressDone) {
             return { art: "presse", text: "Pressekonferenz", kurz: "Presse" };
@@ -8770,7 +9017,64 @@ class UIManager {
      * Gibt true zurueck, wenn ein Spiel begonnen wurde (oder die Aufstellung
      * den Anpfiff verhindert hat). false heisst: Heute ist kein Spiel.
      */
+    /** Das heutige Testspiel der Vorbereitung - oder null */
+    heutigesTestspiel() {
+        const state = this.app?.state;
+        const cal = this.getCalendarEngine();
+        const pre = this.getPreseasonEngine();
+        if (!state || !cal || !pre || !state.preseason || typeof pre.partieFuerSlot !== "function") return null;
+        const tag = cal.getCurrentDay(state);
+        if (!tag || tag.type !== "friendly" || tag.completed) return null;
+        // Einmal je Tag bestimmen - sonst bekaeme jede Abfrage ein neues Objekt
+        const schluessel = `${state.seasonYear || 1}_${state.currentDayIndex}`;
+        if (this._testspielHeute?.schluessel === schluessel) return this._testspielHeute.test;
+        const test = pre.partieFuerSlot(state, tag.friendlyIndex ?? 0);
+        this._testspielHeute = { schluessel, test };
+        return test;
+    }
+
+    /**
+     * Ein Testspiel anpfeifen - live oder als Sofortergebnis.
+     *
+     * Vorher spielte der Kalender Testspiele beim Weiterklicken ungesehen aus.
+     * Jetzt laufen sie wie ein Spieltag: Aufstellung pruefen, Ansprache, Spiel.
+     * Das Ergebnis geht danach an den Kalender, der den Termin abschliesst.
+     */
+    starteTestspiel(test, sofort) {
+        const state = this.app.state;
+        const val = this.validateLineupForMatch();
+        if (!val.valid) {
+            this.showToast(val.message, "error");
+            this.switchTab("tactics");
+            return true;
+        }
+        if (sofort) {
+            const home = state.clubs.find(c => c.id === test.partie.homeClubId);
+            const away = state.clubs.find(c => c.id === test.partie.awayClubId);
+            MatchEngine.simulateFullMatch(test.partie, home, away, state.players);
+            this.playSound("whistle");
+            this.schliesseTestspielAb(test.partie);
+            this.showMatchReportModal(test.partie);
+            return true;
+        }
+        this._laufendesTestspiel = test;
+        this.startLiveMatchSimulation(test.partie);
+        return true;
+    }
+
+    /** Nach dem Abpfiff: Der Kalender traegt das gespielte Testspiel ein */
+    schliesseTestspielAb(partie) {
+        const state = this.app.state;
+        this._laufendesTestspiel = null;
+        this._testspielHeute = null;
+        if (state.preseason) state.preseason.livePartie = partie;
+        this.handleCalendarAdvanceDay();
+    }
+
     starteHeutigesSpiel(sofort = false) {
+        const test = this.heutigesTestspiel();
+        if (test) return this.starteTestspiel(test, sofort);
+
         const heute = this.heutigesSpiel();
         if (!heute || heute.gespielt) return false;
 

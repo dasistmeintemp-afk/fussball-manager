@@ -75,6 +75,9 @@ const RESOLVE_ON_ARRIVAL = ["goal", "save", "shot_miss"];
  */
 const OHNE_BALLFUEHRUNG = ["foul", "yellow_card", "red_card", "injury", "substitution", "halftime", "fulltime"];
 
+/** Ereignisse, bei denen ein Gegenspieler den Ballfuehrenden foult */
+const FOUL_ARTEN = ["foul", "yellow_card", "red_card"];
+
 /** Zaesuren, ueber die hinweg keine Szene weiterlaeuft */
 const SZENEN_ENDE = ["halftime", "fulltime", "substitution", "goal", "injury", "red_card"];
 
@@ -331,6 +334,31 @@ class LiveMatchDirector {
      * Fenster laeuft der Angriff durch, und geschnitten wird danach.
      */
     static SZENEN_FENSTER = 100;
+
+    /**
+     * Wie frueh die andere Mannschaft den Ball erobert, wenn ihr die naechste
+     * Szene gehoert - in Spielsekunden.
+     *
+     * Die Zeitleiste steht vorher fest. Gehoerte die naechste Szene dem
+     * Gegner, wechselte der Ball beim Anpfiff der Szene einfach den Besitzer:
+     * gemessen fuenfundvierzigmal je Partie, ohne Zweikampf und ohne
+     * abgefangenen Pass. Danach spielte der Gegner den Ball ueber die
+     * Mitspieler zum genannten Spieler - fuer den Zuschauer sah das aus, als
+     * spielten sich die Gegner den Ball zu. Jetzt wird der Ball vorher
+     * erobert: Ein Pass wird abgefangen, ein Dribbling gestoppt.
+     */
+    static BALLVERLUST_VORLAUF = 30;
+
+    /**
+     * Wie lange eine faellige Szene auf diese Eroberung wartet - in
+     * Bildschirmsekunden des Grundtempos, damit das freie Spiel auf jeder
+     * Abspielstufe Zeit fuer zwei, drei Ballkontakte hat. In Spielzeit
+     * gemessen blieb auf der schnellen Stufe nicht einmal eine Sekunde.
+     * Hoechstens aber eine Spielminute: Das Ereignis steht minutengenau
+     * im Ticker.
+     */
+    static BALLVERLUST_GNADE = 4.5;
+    static BALLVERLUST_GNADE_SPIELZEIT = 60;
 
     constructor(liveMatch) {
         this.match = liveMatch;
@@ -1042,13 +1070,176 @@ class LiveMatchDirector {
         // Eine vorgemerkte Spielfortsetzung wird nicht von einer Szene
         // ueberrannt - sonst bliebe der Ball an der Seitenlinie liegen und
         // der naechste Anlauf muesste ihn von dort quer ueber das Feld holen.
-        if (!this.kickoff && !this.deadBall && !this._offenerStandard && this.hasDueEvent()) {
+        if (!this.kickoff && !this.deadBall && !this._offenerStandard && this.hasDueEvent()
+            && !this.wartetAufBallgewinn()) {
             this.startHighlight();
             return;
         }
 
         this.updateAmbient(dt);
         this.match.checkForFinish();
+    }
+
+    /**
+     * Wohin das Spiel vor einer Ecke laeuft: zum Schuetzen, den der Ticker
+     * nennt - seine Hereingabe wird zur Ecke abgewehrt, und er steht dann
+     * schon nahe der Fahne. Ohne Namen der am weitesten vorn stehende
+     * Spieler auf der Seite der Ecke.
+     */
+    eckenZiel(ev) {
+        const schuetze = this.getPlayer2D(this.protagonistId(ev));
+        if (schuetze && schuetze.pos !== "TW" && schuetze.team === ev.team) return schuetze;
+        const punkt = this.eventPoint(ev.start);
+        if (!punkt || !ev.team) return null;
+        const dir = this.attackDir(ev.team);
+        const wert = (p) => p.x * dir - Math.abs(p.y - punkt.y) * 0.35;
+        return this.teamPlayers(ev.team)
+            .filter(p => p.pos !== "TW")
+            .sort((a, b) => wert(b) - wert(a))[0] || null;
+    }
+
+    /**
+     * Der Schnitt zur Eckfahne.
+     *
+     * Im Fernsehen wie im FM sieht man nicht, wie der Schuetze quer ueber
+     * den Platz zur Fahne trabt und sich der Strafraum fuellt - es wird
+     * geschnitten, und die Ecke ist fast aufgebaut. Vorher lag der Ball in
+     * der Wiedergabe sekundenlang allein an der Fahne. Die letzten Schritte
+     * laufen die Spieler sichtbar.
+     */
+    schnittZurEcke() {
+        const info = this.deadBall;
+        if (!info || info.kind !== "corner") return;
+        const schuetze = this.getPlayer2D(this.sceneProtagonist) || this.getPlayer2D(this.carrierId);
+        const dir = this.attackDir(info.team);
+        (this.match.players2D || []).forEach(p => {
+            let ziel;
+            if (schuetze && p.id === schuetze.id) {
+                ziel = { x: info.x - dir * 1.5, y: info.y + (info.y < 50 ? 1.2 : -1.2) };
+                p.x = ziel.x - dir * 1.2;
+                p.y = ziel.y + (info.y < 50 ? 1.5 : -1.5);
+            } else {
+                ziel = this.computeSetPieceTarget(p, info);
+                if (!ziel) return;
+                const rest = 0.22;
+                p.x = ziel.x + (p.x - ziel.x) * rest;
+                p.y = ziel.y + (p.y - ziel.y) * rest;
+            }
+            if (typeof p.vx === "number") { p.vx = 0; p.vy = 0; }
+        });
+        // Nach dem Schnitt steht die Ecke einen Moment, bevor sie kommt.
+        // Eine Einblendung gibt es bewusst nicht: Sie laege oben ueber dem
+        // Bild - genau dort, wo bei einer Ecke auf dieser Seite die Fahne steht.
+        this.phaseMinRest = Math.max(this.phaseMinRest || 0, 0.9 * this.getSpeedScale() + this.bildschirmZeit(0.3));
+    }
+
+    /**
+     * Eine Ecke entsteht, weil der Ball ueber die Torlinie geht.
+     *
+     * Vorher lag er einfach an der Fahne: Er rollte als ruhender Ball von da,
+     * wo gerade gespielt wurde, quer ueber den Platz dorthin - die Ecke kam
+     * aus dem Nichts. Jetzt wird die Hereingabe abgewehrt und geht zwischen
+     * Pfosten und Fahne ins Aus. Erst dann wird der Ball an der Fahne
+     * hingelegt.
+     */
+    eckeEinleiten(fahne, team, scale) {
+        const ball = this.match.ball;
+        const gegner = team === "home" ? "away" : "home";
+        const torX = this.ownGoalX(gegner);
+        const dir = this.attackDir(team);
+        const seite = fahne.y < 50 ? -1 : 1;
+        const aus = { x: torX + dir * 1.6, y: 50 + seite * _dirRandom.float(9, 28) };
+
+        this.ballRoute = [
+            { x: aus.x, y: aus.y, holderId: null, type: "cross" },
+            { x: fahne.x, y: fahne.y, holderId: null, type: "dead" }
+        ];
+        this._routeScale = scale;
+        this._routeHolder = null;
+        this._routeDauer = this.etappenDauer(Math.hypot(aus.x - ball.x, aus.y - ball.y), scale)
+            + LiveMatchDirector.ETAPPEN_ANNAHME[1] * scale
+            + this.etappenDauer(Math.hypot(fahne.x - aus.x, fahne.y - aus.y), scale);
+        this.startNextRouteLeg();
+    }
+
+    /**
+     * Wen der Foulende foult.
+     *
+     * Die Zeitleiste nennt nur den Taeter - und waehlt ihn, ohne zu wissen,
+     * wo er gerade steht. Gemessen stand er beim Pfiff im Median achtzehn
+     * Einheiten vom Ball entfernt: Der Freistoss entstand, ohne dass ein
+     * Gegner in der Naehe war. Gefoult wird deshalb der Gegenspieler, der
+     * dem Taeter am naechsten steht - oder der Ballfuehrende, wenn der Taeter
+     * schon bei ihm ist.
+     */
+    foulOpfer(ev, nurVorschau = false) {
+        const team = this.attackingTeamOf(ev);
+        if (!team) return null;
+        const taeter = this.getPlayer2D(ev.playerId);
+        const traeger = this.getPlayer2D(this.carrierId);
+        const traegerPasst = traeger && traeger.team === team && traeger.pos !== "TW";
+        if (!taeter) return traegerPasst ? traeger : null;
+        if (traegerPasst && Math.hypot(taeter.x - traeger.x, taeter.y - traeger.y) < 12) return traeger;
+        const kandidaten = this.teamPlayers(team).filter(p => p.pos !== "TW");
+        if (!kandidaten.length) return nurVorschau ? null : traeger;
+        return kandidaten.sort((a, b) =>
+            Math.hypot(a.x - taeter.x, a.y - taeter.y) - Math.hypot(b.x - taeter.x, b.y - taeter.y))[0];
+    }
+
+    /**
+     * Das Foul findet beim Gefoulten statt: Sein Ort wird zum Ereignisort.
+     * Ein Elfmeterfoul bleibt im Strafraum.
+     */
+    verankereFoul(ev, opfer) {
+        if (!ev || !opfer || ev.direkterFreistoss) return;
+        let x = opfer.x;
+        let y = opfer.y;
+        if (ev.outcome === "penalty") {
+            const torX = this.ownGoalX(ev.team);
+            const dir = this.attackDir(ev.team);
+            const tiefe = Math.max(2.5, Math.min(13.5, (x - torX) * dir));
+            x = torX + dir * tiefe;
+            y = Math.max(24, Math.min(76, y));
+        }
+        const rohX = this.isSecondHalf ? 100 - x : x;
+        const rohY = this.isSecondHalf ? 100 - y : y;
+        ev.start = { x: rohX, y: rohY };
+        ev.end = { x: rohX, y: rohY };
+    }
+
+    /**
+     * Die Mannschaft, die als Naechstes ihre Szene hat, wenn sie den Ball
+     * gerade nicht hat - sonst null.
+     */
+    kommenderBesitzwechsel(team, vorlauf = LiveMatchDirector.BALLVERLUST_VORLAUF) {
+        const ev = this.match.timeline[this.match.timelineIndex];
+        if (!ev || !team) return null;
+        const szenenTeam = this.attackingTeamOf(ev);
+        if (!szenenTeam || szenenTeam === team) return null;
+        if (this.eventTime(ev) - this.clock > vorlauf) return null;
+        return szenenTeam;
+    }
+
+    /**
+     * Eine faellige Szene wartet kurz, bis ihre Mannschaft den Ball im Spiel
+     * erobert hat - statt ihn geschenkt zu bekommen.
+     */
+    wartetAufBallgewinn() {
+        const ev = this.match.timeline[this.match.timelineIndex];
+        if (!ev || !this.flow) return false;
+        const traeger = this.getPlayer2D(this.carrierId);
+        if (!traeger) return false;
+        if (!this.kommenderBesitzwechsel(traeger.team, Infinity)) return false;
+        if (this.clock - this.eventTime(ev) > LiveMatchDirector.BALLVERLUST_GNADE_SPIELZEIT) return false;
+        // Gewartet wird ab dem Moment, ab dem gespielt wird: War das
+        // Ereignis schon faellig, als die vorige Szene endete, bekommt das
+        // freie Spiel trotzdem seine Zeit fuer die Eroberung.
+        const index = this.match.timelineIndex;
+        if (!this._ballgewinnWarten || this._ballgewinnWarten.index !== index) {
+            this._ballgewinnWarten = { index, seit: this.elapsedReal || 0 };
+        }
+        const seit = Math.max(this._ballgewinnWarten.seit, this._freiesSpielSeitReal || 0);
+        return (this.elapsedReal || 0) - seit < this.bildschirmZeit(LiveMatchDirector.BALLVERLUST_GNADE);
     }
 
     startHighlight() {
@@ -1319,6 +1510,15 @@ class LiveMatchDirector {
         if (this.match.ball.inFlight) return false;
 
         const ball = this.match.ball;
+
+        // Ein Foul braucht einen Foulenden: Gepfiffen wird erst, wenn er am
+        // Ballfuehrenden ist. Vorher kam der Pfiff, sobald der Ball am Tatort
+        // lag - oft mit dem naechsten Gegner zwanzig Meter weit weg.
+        if (FOUL_ARTEN.includes(ev.type)) {
+            const taeter = this.getPlayer2D(ev.playerId);
+            if (taeter && Math.hypot(taeter.x - ball.x, taeter.y - ball.y) > 2.6) return false;
+        }
+
         const held = this.getPlayer2D(this.sceneProtagonist);
         if (!held) return Math.hypot(ball.x - start.x, ball.y - start.y) < 4;
 
@@ -1339,13 +1539,28 @@ class LiveMatchDirector {
         this.scene.phase = phase;
 
         if (phase === "approach") {
+            // Ein Foul passiert beim Gefoulten, und der Foulende geht dort
+            // in den Zweikampf
+            const foulOpfer = FOUL_ARTEN.includes(ev.type) && !ev.direkterFreistoss
+                ? this.foulOpfer(ev) : null;
+            if (foulOpfer) this.verankereFoul(ev, foulOpfer);
+
             const start = this.eventPoint(ev.start) || { x: ball.x, y: ball.y };
 
             // Eine Ecke wird als ruhender Ball aufgebaut: Schütze an die
             // Fahne, der Strafraum füllt sich, dann erst kommt die Flanke.
             if (ev.type === "corner") {
-                this.deadBall = { kind: "corner", team: ev.team, x: start.x, y: start.y };
-                this.match.setPiece = { kind: "corner", team: ev.team, x: start.x, y: start.y };
+                const ecke = { kind: "corner", team: ev.team, x: start.x, y: start.y };
+                // Liegt der Ball noch im Feld, wird die Ecke erst eingeleitet:
+                // Ruhend ist er, sobald er an der Fahne liegt - vorher ist er
+                // noch im Spiel.
+                if (Math.hypot(start.x - ball.x, start.y - ball.y) > 6) {
+                    this._eckeNachRoute = ecke;
+                } else {
+                    this.deadBall = ecke;
+                    this.match.setPiece = { ...ecke };
+                    this._eckeSchnitt = true;
+                }
                 this.cueSound("whistle");
             }
 
@@ -1383,7 +1598,13 @@ class LiveMatchDirector {
             if (!held && ev.type === "corner") {
                 held = this.pickSetPieceTaker("corner", ev.team, start.x, start.y);
             }
+            if (!held && foulOpfer) held = foulOpfer;
             this.sceneProtagonist = held ? held.id : null;
+            if (this._eckeSchnitt) {
+                this._eckeSchnitt = false;
+                if (held) { this.carrierId = held.id; }
+                this.schnittZurEcke();
+            }
 
             if (ev.type === "corner" || elfmeter || freistoss) {
                 // Der ruhende Ball wird hingelegt, der Schütze kommt dazu -
@@ -1398,7 +1619,11 @@ class LiveMatchDirector {
                 // dasselbe Zucken, das den Ball vorher "durch die Gegend"
                 // fliegen liess - nur haerter.
                 const zurFahne = Math.hypot(start.x - ball.x, start.y - ball.y);
-                this.setBallTravel(start.x, start.y, Math.max(0.32, zurFahne / 240), "dead");
+                if (ev.type === "corner" && zurFahne > 6) {
+                    this.eckeEinleiten(start, ev.team, scale);
+                } else {
+                    this.setBallTravel(start.x, start.y, Math.max(0.32, zurFahne / 240), "dead");
+                }
                 if (held) {
                     this.carrierId = held.id;
                     this.possessionTeam = held.team;
@@ -1447,9 +1672,13 @@ class LiveMatchDirector {
             // Höchstdauer nach Laufweg: Wer von der eigenen Hälfte an die
             // Eckfahne muss, braucht länger als jemand, der schon dort steht.
             // Beendet wird der Anlauf ohnehin, sobald alle da sind.
-            const laufweg = held
-                ? Math.hypot(held.x - start.x, held.y - start.y)
-                : Math.hypot(ball.x - start.x, ball.y - start.y);
+            // Beim Foul zaehlt der Weg des Foulenden zum Ball
+            const taeter = FOUL_ARTEN.includes(ev.type) ? this.getPlayer2D(ev.playerId) : null;
+            const laufweg = taeter
+                ? Math.max(Math.hypot(taeter.x - start.x, taeter.y - start.y), Math.hypot(ball.x - start.x, ball.y - start.y))
+                : held
+                    ? Math.hypot(held.x - start.x, held.y - start.y)
+                    : Math.hypot(ball.x - start.x, ball.y - start.y);
             // Der Anlauf bekommt die Zeit, die der Weg braucht - nicht
             // umgekehrt.
             //
@@ -1504,11 +1733,18 @@ class LiveMatchDirector {
 
             const end = this.eventPoint(ev.end) || this.eventPoint(ev.start) || { x: ball.x, y: ball.y };
             const actionType = this.getActionType(ev);
-            const duration = this.getActionDuration(ev, actionType) * scale;
+            let duration = this.getActionDuration(ev, actionType) * scale;
+            // Flankenart: flach und scharf oder hoch und weich
+            if (actionType === "cross" && ev.team) {
+                const art = this.taktik(ev.team).w.flankenart;
+                this._flankenBogen = art === "flach" ? 0.35 : (art === "hoch" ? 1.35 : 1);
+                duration *= art === "flach" ? 0.8 : (art === "hoch" ? 1.12 : 1);
+            }
 
             // Der ruhende Ball des Anlaufs ist mit dem Abspiel vorbei
             this.deadBall = null;
             this.match.setPiece = null;
+            this._eckeNachRoute = null;
 
             this.assignSceneRoles(ev, "action");
 
@@ -1537,6 +1773,14 @@ class LiveMatchDirector {
         if (this.phaseMinRest > 0) this.phaseMinRest = Math.max(0, this.phaseMinRest - dt);
 
         const phase = this.scene?.phase;
+
+        // Die eingeleitete Ecke: Liegt der Ball an der Fahne, ist er ruhend
+        if (this._eckeNachRoute && !this.match.ball.inFlight && !(this.ballRoute && this.ballRoute.length)) {
+            this.deadBall = this._eckeNachRoute;
+            this.match.setPiece = { ...this._eckeNachRoute };
+            this._eckeNachRoute = null;
+            this.schnittZurEcke();
+        }
 
         // Der Anlauf endet, sobald der genannte Spieler mit dem Ball am
         // Ereignisort ist - der Timer ist nur die Notbremse. Ein ruhender
@@ -1913,6 +2157,8 @@ class LiveMatchDirector {
 
     startAmbient(team, options = {}) {
         this.mode = "ambient";
+        // Ab jetzt kann der Gegner den Ball im Spiel erobern
+        this._freiesSpielSeitReal = this.elapsedReal || 0;
         this.possessionTeam = team === "away" ? "away" : "home";
         this.match.sceneRoles = null;
         this.ambientTimer = 0;
@@ -1985,10 +2231,22 @@ class LiveMatchDirector {
      */
     anlaufZiel() {
         const ev = this.match.timeline[this.match.timelineIndex];
-        if (!ev || OHNE_BALLFUEHRUNG.includes(ev.type)) return null;
+        if (!ev) return null;
 
         const vorlauf = this.eventTime(ev) - this.clock;
         if (vorlauf > LiveMatchDirector.ANLAUF_VORLAUF) return null;
+
+        // Vor einer Ecke treibt die Mannschaft den Ball auf dieser Seite nach
+        // vorn - die Ecke entsteht aus dem Angriff
+        if (ev.type === "corner") return this.eckenZiel(ev);
+
+        // Vor einem Foul spielt die gefoulte Mannschaft dorthin, wo der
+        // Foulende steht - gefoult wird, wer ihm in die Arme laeuft
+        if (FOUL_ARTEN.includes(ev.type) && !ev.direkterFreistoss) {
+            const opfer = this.foulOpfer(ev, true);
+            return opfer && opfer.pos !== "TW" ? opfer : null;
+        }
+        if (OHNE_BALLFUEHRUNG.includes(ev.type)) return null;
 
         const held = this.getPlayer2D(this.protagonistId(ev));
         if (!held || held.pos === "TW") return null;
@@ -2084,13 +2342,28 @@ class LiveMatchDirector {
         }
 
         const ziel = this.anlaufZiel();
-        const action = this.flow.decide(carrier, {
+        let action = this.flow.decide(carrier, {
             chainLength: this.possessionChain || 0,
             zielSpieler: (ziel && ziel.team === carrier.team && ziel.id !== carrier.id) ? ziel : null
         });
         if (!action) {
             this.ambientInterval = 0.8;
             return;
+        }
+
+        // Die naechste Szene gehoert dem Gegner: Er erobert den Ball jetzt,
+        // sichtbar mit abgefangenem Pass oder gewonnenem Zweikampf. Der
+        // Torwart verliert ihn nicht - sein Abspiel landet beim Mitspieler,
+        // und der verliert ihn dann.
+        if (carrier.pos !== "TW"
+            && (action.outcome === "complete" || action.outcome === "beaten")
+            && this.kommenderBesitzwechsel(carrier.team)
+            && typeof this.flow.alsBallverlust === "function") {
+            const verlust = this.flow.alsBallverlust(carrier, action);
+            if (verlust) {
+                action = verlust;
+                this.flowStats.ballgewinneVorSzene = (this.flowStats.ballgewinneVorSzene || 0) + 1;
+            }
         }
 
         this.applyFlowAction(action);
@@ -2144,6 +2417,22 @@ class LiveMatchDirector {
                 return;
             }
             this.flowStats.passesCompleted++;
+            if (action.inDenLauf) {
+                // In den Lauf: Der Ball geht in den Raum vor den Mitspieler,
+                // und der startet hinein
+                const dir = this.attackDir(to.team);
+                const ziel = {
+                    x: Math.max(6, Math.min(94, to.x + dir * 4.5)),
+                    y: Math.max(4, Math.min(96, to.y))
+                };
+                this.setBallTravel(ziel.x, ziel.y, duration * 1.1, actionType);
+                this.setCarrier(to);
+                this.carryTarget = { id: to.id, x: ziel.x, y: ziel.y, rest: duration * 1.4 };
+                this.flowStats.inDenLauf = (this.flowStats.inDenLauf || 0) + 1;
+                this.setzeAnnahme();
+                this.narrateFlow(action);
+                return;
+            }
             this.setBallTravel(to.x, to.y, duration, actionType);
             this.setCarrier(to);
             this.setzeAnnahme();
@@ -2264,7 +2553,23 @@ class LiveMatchDirector {
         const [min, max] = LiveMatchDirector.ANNAHME;
         // Die Pause ist Bildschirmzeit und gehoert deshalb durch die
         // Abspielgeschwindigkeit geteilt - im Vorlauf nimmt man schneller an.
-        this._annahmeTimer = (min + Math.random() * (max - min)) / this.getAbspielTempo();
+        this._annahmeTimer = (min + Math.random() * (max - min)) / this.getAbspielTempo()
+            * this.zeitspielFaktor(this.possessionTeam);
+    }
+
+    /**
+     * Zeitspiel: Wer in der zweiten Halbzeit fuehrt und auf Zeit spielt,
+     * behaelt den Ball laenger am Fuss. Wer nie auf Zeit spielt, bleibt auch
+     * bei Fuehrung zuegig.
+     */
+    zeitspielFaktor(team) {
+        if (!team) return 1;
+        const zeitspiel = this.taktik(team).w.zeitspiel || 0;
+        if (!zeitspiel) return 1;
+        const m = this.match;
+        const fuehrung = team === "home" ? m.homeScore - m.awayScore : m.awayScore - m.homeScore;
+        if (fuehrung <= 0 || (m.minute || 0) < 60) return 1;
+        return zeitspiel > 0 ? 1.45 : 0.9;
     }
 
     claimLooseBall(point) {
@@ -2315,13 +2620,16 @@ class LiveMatchDirector {
             return true;
         }
 
-        if (x < 1.5 || x > 98.5) {
+        // Die Torlinien liegen bei 4 und 96, nicht am Rand des Modells -
+        // vorher zaehlte ein Ball erst eineinhalb Einheiten vor dem Rand als
+        // im Aus, also gut zwei Meter hinter der Torlinie.
+        if (x < 3.2 || x > 96.8) {
             // Welche Mannschaft verteidigt diese Linie? In Halbzeit zwei ist
             // das die jeweils andere - vorher bekam nach dem Seitenwechsel
             // stets der falsche Verein den Abstoß.
-            const linie = x < 1.5 ? 0 : 100;
+            const linie = x < 50 ? 0 : 100;
             const defendingTeam = Math.abs(this.ownGoalX("home") - linie) < 50 ? "home" : "away";
-            const goalX = x < 1.5 ? 8 : 92;
+            const goalX = x < 50 ? 9 : 91;
             this._offenerStandard = { kind: "goalkick", team: defendingTeam, x: goalX, y: 50 };
             return true;
         }
@@ -2448,6 +2756,30 @@ class LiveMatchDirector {
 
         this.kickoff = { team, reason, phase: "lineup", timer: maxLineup };
         this.match.kickoff = { team, phase: "lineup", reason };
+
+        // Nach einem Tor und zur Halbzeit schneidet die Uebertragung: Die
+        // Spieler stehen schon beinahe auf ihren Plaetzen. Vorher trabten
+        // sie von der Eckfahne zurueck, die Aufstellung lief ab, und der
+        // Schiedsrichter pfiff an, waehrend noch halbe Mannschaften in der
+        // gegnerischen Haelfte standen.
+        if (reason === "goal" || reason === "halftime") this.stelleZumAnstossAuf();
+    }
+
+    /** Setzt alle nahe an ihren Anstossplatz - der Schnitt der Uebertragung */
+    stelleZumAnstossAuf() {
+        (this.match.players2D || []).forEach(p => {
+            const ziel = this.computeSetPieceTarget(p, this.deadBall);
+            if (!ziel) return;
+            // Ein paar Schritte fehlen noch - die laufen sie sichtbar
+            const rest = 0.18;
+            p.x = ziel.x + (p.x - ziel.x) * rest;
+            p.y = ziel.y + (p.y - ziel.y) * rest;
+            // Aus der Rueckhand sicher in der eigenen Haelfte bleiben
+            const eigenDir = this.attackDir(p.team);
+            if (eigenDir > 0 && p.x > 49) p.x = Math.min(p.x, 49);
+            if (eigenDir < 0 && p.x < 51) p.x = Math.max(p.x, 51);
+            if (typeof p.vx === "number") { p.vx = 0; p.vy = 0; }
+        });
     }
 
     /** Anstoßschütze und sein Partner: zwei zentrale Spieler am Mittelkreis */
@@ -2484,9 +2816,15 @@ class LiveMatchDirector {
         k.timer -= dt;
 
         if (k.phase === "lineup") {
-            // Der Ball muss liegen und alle müssen stehen
+            // Der Ball muss liegen und alle müssen stehen - der Schuetze am
+            // Ball. Laeuft die Aufstellung ab, wartet der Pfiff noch kurz auf
+            // ihn, aber nicht ewig.
             const ballLiegt = !this.match.ball.inFlight;
-            if ((ballLiegt && this.kickoffReady()) || k.timer <= 0) {
+            const schuetze = this.getPlayer2D(this.kickoffTakerId);
+            const schuetzeDa = !schuetze || Math.hypot(schuetze.x - 50, schuetze.y - 50) < 2.6;
+            if ((ballLiegt && schuetzeDa && this.kickoffReady())
+                || (k.timer <= 0 && schuetzeDa)
+                || k.timer <= -this.bildschirmZeit(4)) {
                 k.phase = "whistle";
                 // Jetzt erst nimmt sich der Schuetze den Ball
                 this.carrierId = this.kickoffTakerId || this.carrierId;
@@ -2706,9 +3044,12 @@ class LiveMatchDirector {
         }
 
         if (info.kind === "corner") {
+            // Die Flanke geht vor das Tor - gerechnet von der Torlinie aus.
+            // Vorher von der Fahne aus und mit falschem Vorzeichen: Der Ball
+            // flog hinter die Torlinie statt in den Strafraum.
             const dir = this.attackDir(info.team);
-            const boxX = info.x + dir * 9;
-            const target = { x: boxX, y: 50 + _dirRandom.float(-9, 9) };
+            const torX = this.ownGoalX(info.team === "home" ? "away" : "home");
+            const target = { x: torX - dir * _dirRandom.float(4.5, 10.5), y: 50 + _dirRandom.float(-8, 8) };
             this.setBallTravel(target.x, target.y, 0.75 * this.getSpeedScale() + this.bildschirmZeit(0.2), "cross");
             this.claimLooseBall(target);
             return;
@@ -2982,6 +3323,8 @@ class LiveMatchDirector {
         ball.travelDuration = Math.max(0.01, durationSeconds, minDuration);
         ball.travelElapsed = 0;
         ball.actionType = actionType;
+        ball.bogen = actionType === "cross" ? (this._flankenBogen || 1) : 1;
+        this._flankenBogen = null;
 
         this._lastTargetX = ball.targetX;
         this._lastTargetY = ball.targetY;
@@ -3050,7 +3393,8 @@ class LiveMatchDirector {
         ball.x = ball.originX + (ball.targetX - ball.originX) * eased;
         ball.y = ball.originY + (ball.targetY - ball.originY) * eased;
 
-        const arc = ball.actionType === "cross" ? 1.0 : (ball.actionType === "shot" ? 0.45 : 0.2);
+        const arc = (ball.actionType === "cross" ? 1.0 : (ball.actionType === "shot" ? 0.45 : 0.2))
+            * (ball.actionType === "cross" ? (ball.bogen || 1) : 1);
         const weite = Math.min(1, (ball.distance || 0) / 35);
 
         // Flugkurve: Ein hoher Ball beschreibt eine Parabel und setzt danach
@@ -3086,8 +3430,11 @@ class LiveMatchDirector {
 
         // Der Ball klebt am Ballführenden - auch im Anlauf einer Szene, damit
         // der genannte Spieler ihn wirklich an den Ereignisort mitnimmt.
-        const amFuss = this.mode === "ambient"
-            || (this.mode === "highlight" && this.scene?.phase === "approach");
+        // Ein ruhender Ball bleibt liegen: Der Schuetze kommt zum Ball, nicht
+        // der Ball zum Schuetzen. Vorher zog der Schuetze ihn auf dem Weg zur
+        // Fahne mit - die Ecke wurde dann dort getreten, wo er gerade war.
+        const amFuss = !this.deadBall && !this._eckeNachRoute && (this.mode === "ambient"
+            || (this.mode === "highlight" && this.scene?.phase === "approach"));
 
         if (!ball.inFlight && amFuss) {
             const carrier = this.getPlayer2D(this.carrierId);
@@ -3803,7 +4150,12 @@ class LiveMatchDirector {
             return { x: ball.targetX, y: ball.targetY, urgency: p.id === this.carrierId ? 1.9 : 1.55, sprint: true };
         }
 
-        if (p.pos === "TW") return this.computeKeeperTarget(p, ball);
+        if (p.pos === "TW") {
+            // Bei Ecke, Elfmeter und Freistoss gehoert der Torwart auf die Linie
+            const standard = this.deadBall && p.id !== this.carrierId
+                ? this.torwartBeimStandard(p, this.deadBall) : null;
+            return standard || this.computeKeeperTarget(p, ball);
+        }
 
         const attacking = p.team === this.possessionTeam;
         const dir = this.attackDir(p.team);
@@ -4393,10 +4745,16 @@ class LiveMatchDirector {
             // Im Aufbau zieht die Elf das Feld lang, im letzten Drittel steht sie eng
             laenge = 0.47 - 0.14 * b;
         } else {
-            const falle = this.taktik(p.team).w.abseitsfalle ? 0.025 : 0;
-            hinten = 0.04 + 0.42 * b + linie * 0.07 + mentalitaet * 0.5 + falle;
+            const wk = this.taktik(p.team).w;
+            const falle = wk.abseitsfalle ? 0.025 : 0;
+            // Verhalten der Abwehrlinie: Herausruecken schiebt die Kette nach,
+            // sobald der Ball weiter weg ist; Fallenlassen gibt dem Gegner
+            // Raum vor der Kette, aber keinen dahinter.
+            const verhalten = wk.linienVerhalten || 0;
+            hinten = 0.04 + 0.42 * b + linie * 0.07 + mentalitaet * 0.5 + falle
+                + verhalten * (b > 0.45 ? 0.03 : 0.015);
             // Die Kette steht hinter dem Ball, nicht auf seiner Hoehe
-            hinten = Math.min(hinten, b - 0.06);
+            hinten = Math.min(hinten, b - (verhalten < 0 ? 0.1 : 0.06));
             hinten = Math.max(0.07, Math.min(0.5, hinten));
             laenge = 0.30;
         }
@@ -4509,7 +4867,12 @@ class LiveMatchDirector {
 
     computeSetPieceTarget(p, info) {
         const dir = this.attackDir(info.team);
-        const isTaker = p.id === this.carrierId;
+        // Beim Anstoss ist vor dem Pfiff niemand Ballfuehrender - der Schuetze
+        // steht trotzdem fest. Vorher blieb er deshalb auf seiner Position
+        // stehen, fuenfzehn Meter vom Ball, und das Spiel wurde ohne ihn
+        // angepfiffen.
+        const isTaker = p.id === this.carrierId
+            || (info.kind === "kickoff" && p.id === this.kickoffTakerId);
 
         // Anstoß: Beide Mannschaften stehen in der eigenen Hälfte, und der
         // Mittelkreis gehört allein der anstoßenden Mannschaft.
@@ -4555,18 +4918,12 @@ class LiveMatchDirector {
             return { x: info.x - dir * 1.5, y: info.y, urgency: weg > 6 ? 2.8 : 1.7 };
         }
 
-        if (p.pos === "TW") return this.computeKeeperTarget(p, this.match.ball);
+        if (p.pos === "TW") return this.torwartBeimStandard(p, info) || this.computeKeeperTarget(p, this.match.ball);
 
         const attacking = p.team === info.team;
 
         if (info.kind === "corner") {
-            const boxX = info.x + dir * (attacking ? 10 : 7);
-            const spread = (p.seed % 3) - 1;
-            return {
-                x: boxX + spread * 3,
-                y: 42 + (p.seed % 5) * 4,
-                urgency: 1.4
-            };
+            return this.eckenPlatz(p, info);
         }
 
         if (info.kind === "goalkick") {
@@ -4608,11 +4965,6 @@ class LiveMatchDirector {
         }
 
         if (info.kind === "penalty") {
-            if (p.pos === "TW") {
-                const torX = this.ownGoalX(p.team);
-                return { x: torX + this.attackDir(p.team) * 1.2, y: 50, urgency: 1.5 };
-            }
-
             // Alle außer Schütze und Torwart müssen aus dem Strafraum
             const torX = this.ownGoalX(info.team === "home" ? "away" : "home");
             const grenze = torX - dir * (19 + (p.seed % 3) * 2.5);
@@ -4636,6 +4988,142 @@ class LiveMatchDirector {
         }
 
         return null;
+    }
+
+    /**
+     * Der Torwart bei einem ruhenden Ball.
+     *
+     * Vorher galt fuer ihn dieselbe Regel wie im laufenden Spiel: Er rueckte
+     * mit der Gefahr heraus - und stand bei einer Ecke irgendwo im Strafraum.
+     * Bei Ecke, Elfmeter und Freistoss in Schussweite gehoert er aber auf die
+     * Linie, bei der Ecke leicht zum kurzen Pfosten. Bei eigener Ecke bleibt
+     * er vor dem eigenen Strafraum.
+     */
+    torwartBeimStandard(p, info) {
+        const torX = this.ownGoalX(p.team);
+        const eigenDir = this.attackDir(p.team);
+        const verteidigt = p.team !== info.team;
+
+        if (info.kind === "corner") {
+            if (!verteidigt) return { x: torX + eigenDir * 17, y: 50, urgency: 1.1 };
+            const nah = info.y < 50 ? -1 : 1;
+            return { x: torX + eigenDir * 0.9, y: 50 + nah * 2.2, urgency: 1.6 };
+        }
+        if (info.kind === "penalty") {
+            if (!verteidigt) return { x: torX + eigenDir * 12, y: 50, urgency: 1.1 };
+            return { x: torX + eigenDir * 0.5, y: 50, urgency: 1.6 };
+        }
+        if (info.kind === "freekick" && verteidigt) {
+            const spot = this.wallSpot(info.team, info.x, info.y);
+            if (spot.entfernung < 34) {
+                // Auf der Linie, einen Schritt zur Seite, die die Mauer nicht deckt
+                return { x: torX + eigenDir * 1.5, y: 50 - (info.y - 50) * 0.08, urgency: 1.5 };
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Die Aufstellung bei einer Ecke.
+     *
+     * Vorher rechnete die Regie die Plaetze von der Eckfahne aus - mit dem
+     * falschen Vorzeichen: Alle Spieler wollten hinter die Torlinie und
+     * standen am Rand geklemmt irgendwo. Jetzt wird vom Tor aus gerechnet,
+     * wie ein Trainer eine Ecke einstudiert:
+     *
+     * - Angreifer an den kurzen und langen Pfosten, in den Fuenfer, auf Hoehe
+     *   des Elfmeterpunkts und in den Rueckraum; eine kurze Anspielstation.
+     *   Die Aussenverteidiger und ein Sechser sichern gegen den Konter ab.
+     * - Verteidiger: einer am kurzen Pfosten, drei in Raumdeckung auf der
+     *   Linie des Fuenfers, der Rest in Manndeckung torseitig am Gegenspieler,
+     *   einer am Strafraumrand. Der Stuermer bleibt vorn fuer den Konter.
+     *
+     * Die Masse sind Einheiten des Modells: Laengs misst eine Einheit rund
+     * 1,14 m, quer 0,68 m. Der Fuenfer ist 4,8 Einheiten tief, der
+     * Elfmeterpunkt liegt bei 9,6, der Strafraumrand bei 14,5.
+     */
+    eckenPlatz(p, info) {
+        const plan = this.eckenPlan(info);
+        const platz = plan.get(p.id);
+        if (platz) return { x: platz.x, y: platz.y, urgency: 1.4 };
+        return { x: p.baseX, y: p.baseY, urgency: 1.1 };
+    }
+
+    eckenPlan(info) {
+        if (this._eckenPlan && this._eckenPlan.info === info) return this._eckenPlan.plan;
+
+        const dir = this.attackDir(info.team);
+        const gegner = info.team === "home" ? "away" : "home";
+        const torX = this.ownGoalX(gegner);
+        const nah = info.y < 50 ? -1 : 1;
+        const punkt = (tiefe, quer) => ({
+            x: torX - dir * tiefe,
+            y: Math.max(3, Math.min(97, 50 + quer))
+        });
+        const plan = new Map();
+
+        // --- Angreifer
+        const angreifer = this.teamPlayers(info.team)
+            .filter(q => q.pos !== "TW" && q.id !== this.carrierId);
+        const istAussenVert = (q) => q.fam === "AV" || q.fam === "SCH"
+            || (!q.fam && ["LV", "RV"].includes(this.normRolle(q.pos)));
+        const absicherung = [];
+        angreifer.filter(istAussenVert).slice(0, 2).forEach(q => absicherung.push(q));
+        if (absicherung.length < 2) {
+            const sechser = angreifer
+                .filter(q => !absicherung.includes(q) && q.group === "mid")
+                .sort((a, b) => (a.attack || 0) - (b.attack || 0))[0];
+            if (sechser) absicherung.push(sechser);
+        }
+        const restPlaetze = [punkt(47, -15), punkt(47, 15), punkt(40, 0)];
+        absicherung.forEach((q, i) => plan.set(q.id, restPlaetze[i]));
+
+        // Kopfballstarke zuerst in die Mitte: Stuermer und Innenverteidiger
+        const rang = (q) => (q.group === "att" ? 0 : (q.group === "def" ? 1 : 2));
+        const boxSpieler = angreifer
+            .filter(q => !absicherung.includes(q))
+            .sort((a, b) => rang(a) - rang(b) || (a.seed || 0) - (b.seed || 0));
+        const angriffsPlaetze = [
+            punkt(5.0, nah * 0.5),    // Fuenfer, Mitte
+            punkt(9.6, nah * 3),      // Elfmeterpunkt
+            punkt(3.6, nah * 6.5),    // kurzer Pfosten
+            punkt(5.6, -nah * 8.5),   // langer Pfosten
+            punkt(10.8, -nah * 7),    // Elfmeterpunkt, lang
+            punkt(15.5, nah * 3),     // Rueckraum
+            punkt(4.5, nah * 38),     // kurze Anspielstation
+            punkt(14.5, -nah * 16)    // Strafraumrand, lang
+        ];
+        const imStrafraum = [];
+        boxSpieler.forEach((q, i) => {
+            const pl = angriffsPlaetze[i] || punkt(18, ((i % 3) - 1) * 12);
+            plan.set(q.id, pl);
+            if (i < 6) imStrafraum.push(pl);
+        });
+
+        // --- Verteidiger
+        const verteidiger = this.teamPlayers(gegner).filter(q => q.pos !== "TW");
+        const vorn = verteidiger
+            .filter(q => q.group === "att")
+            .sort((a, b) => (b.attack || 0) - (a.attack || 0))[0];
+        const hinten = verteidiger.filter(q => q !== vorn)
+            .sort((a, b) => rang(b) - rang(a) || (a.seed || 0) - (b.seed || 0));
+        if (vorn) plan.set(vorn.id, punkt(42, -nah * 6));
+        const raum = [
+            punkt(1.3, nah * 4.4),    // kurzer Pfosten
+            punkt(4.8, nah * 3.5),    // Fuenferlinie kurz
+            punkt(4.8, -nah * 1),     // Fuenferlinie Mitte
+            punkt(4.8, -nah * 5.5)    // Fuenferlinie lang
+        ];
+        // Manndecker stehen torseitig und einen Schritt zur Mitte hin
+        const mann = imStrafraum.map(pl => ({
+            x: pl.x + dir * 1.1,
+            y: pl.y + (pl.y < 50 ? 1.2 : -1.2)
+        }));
+        const verteidigerPlaetze = [...raum, ...mann, punkt(15, 0), punkt(12, -nah * 14)];
+        hinten.forEach((q, i) => plan.set(q.id, verteidigerPlaetze[i] || punkt(16, ((i % 3) - 1) * 10)));
+
+        this._eckenPlan = { info, plan };
+        return plan;
     }
 
     computeKeeperTarget(p, ball) {

@@ -71,14 +71,16 @@ const _stabEngine = () => (typeof CoachingStaffEngine !== 'undefined' && Coachin
 const MATCH_TUNING = {
     baseGoalChance: {
         // Kalibriert auf rund 3.0 Tore pro Spiel - der Schnitt der letzten
-        // Bundesligajahre. Bei 2.7 Toren endeten zu viele Partien unentschieden:
-        // Der Meister kam auf achtzehn Siege und neun Remis, während es in
+        // Bundesligajahre - mit den Spielstilen der KI-Vereine: Pressing,
+        // hohe Linie und schnelles Umschalten oeffnen die Spiele. Bei 2.7
+        // Toren endeten zu viele Partien unentschieden: Der Meister kam auf
+        // achtzehn Siege und neun Remis, während es in
         // Wirklichkeit zweiundzwanzig Siege und sechs Remis sind. Wer die
         // besseren Chancen hat, muss sie auch zu Punkten machen können.
-        through_ball: 0.166,
-        cross: 0.112,
-        dribble: 0.098,
-        corner: 0.076,
+        through_ball: 0.143,
+        cross: 0.097,
+        dribble: 0.085,
+        corner: 0.067,
         penalty: 0.77,
         // Direkter Freistoß: selten ein Tor, und wenn, dann vom Spezialisten
         freekick: 0.055
@@ -847,14 +849,21 @@ class MatchEngine {
 
         // Nachspielzeit (A5)
         const extraTime1 = _Random.int(1, 3);
-        const extraTime2 = _Random.int(1, 5);
+        // Zeitspiel laesst der Schiedsrichter nachspielen
+        const zeitspielt = [homeTactics, awayTactics].some(t => (_mTaktik()?.wirkung(t).zeitspiel || 0) > 0);
+        const extraTime2 = Math.min(7, _Random.int(1, 5) + (zeitspielt ? 1 : 0));
 
         const timeline = [];
 
         // Szenenanzahl basierend auf Tempo
         let totalScenesBase = 32;
-        if (homeTactics.tempo === "fast" || awayTactics.tempo === "fast") totalScenesBase += 4;
-        if (homeTactics.tempo === "slow" || awayTactics.tempo === "slow") totalScenesBase -= 3;
+        // Jede Mannschaft bringt ihr eigenes Tempo ein. Vorher reichte eine
+        // schnelle Elf fuer vier Szenen mehr - seit die KI-Vereine eigene
+        // Spielstile haben, war das in fast zwei von drei Partien der Fall.
+        [homeTactics, awayTactics].forEach(t => {
+            if (t.tempo === "fast") totalScenesBase += 2;
+            else if (t.tempo === "slow") totalScenesBase -= 2;
+        });
 
         // Ein überlegenes Team drückt die andere Mannschaft in die eigene
         // Hälfte: Es entstehen nicht nur anteilig mehr Szenen, sondern
@@ -1085,8 +1094,10 @@ class MatchEngine {
             let startX, startY, midX, midY;
 
             if (attackType === "corner") {
-                startX = spiegel(98.5);
-                startY = flanke === "oben" ? 1.5 : 98.5;
+                // Der Eckstoss liegt im Viertelkreis an der Fahne: Die
+                // Torlinie verlaeuft bei 96, die Seitenlinien bei 0 und 100
+                startX = spiegel(95.6);
+                startY = flanke === "oben" ? 1.2 : 98.8;
                 midX = spiegel(_Random.float(84, 91));
                 midY = _Random.float(40, 60);
             } else if (attackType === "cross") {
@@ -1212,7 +1223,7 @@ class MatchEngine {
                         team: isHomeAttacking ? "home" : "away",
                         clubId: attClub.id,
                         clubName: attClub.name,
-                        start: { x: isHomeAttacking ? 98 : 2, y: _Random.choice([2, 98]) },
+                        start: { x: isHomeAttacking ? 95.6 : 4.4, y: _Random.choice([1.2, 98.8]) },
                         end: { x: isHomeAttacking ? 88 : 12, y: 50 },
                         text: `${min}' - 🚩 Ecke für ${attClub.name} nach der Parade!`
                     });
@@ -1490,11 +1501,14 @@ class MatchEngine {
                 const isPenalty = _Random.chance(MATCH_TUNING.penaltyRate);
                 const isRed = !isPenalty && _Random.chance(0.003);
                 // "Ruhe bewahren" halbiert die Karten, "Zeit schinden" provoziert welche
-                const kartenFaktor = zurufVon(isHomeAttacking ? "away" : "home", min)?.gelb || 1;
+                // Wer auf Zeit spielt, sieht in der Schlussphase eher Gelb
+                const zeitspielGelb = (min >= 70 && (_mTaktik()?.wirkung(defTactics).zeitspiel || 0) > 0) ? 1.12 : 1;
+                const kartenFaktor = (zurufVon(isHomeAttacking ? "away" : "home", min)?.gelb || 1) * zeitspielGelb;
                 const isYellow = !isPenalty && !isRed && _Random.chance(Math.min(0.9, MATCH_TUNING.yellowCardRate * kartenFaktor));
 
                 if (isPenalty) {
-                    const penSpot = { x: isHomeAttacking ? 88 : 12, y: 50 };
+                    // Elf Meter vor der Torlinie (96): 9,6 Einheiten
+                    const penSpot = { x: isHomeAttacking ? 86.4 : 13.6, y: 50 };
                     const goalX = isHomeAttacking ? 96 : 4;
                     const goalY = 50;
 
@@ -1730,8 +1744,16 @@ class MatchEngine {
                     crossWeight += Math.min(0.08, (rollen.st_ziel || 0) * 0.05 + ((rollen.av_schiene || 0) + (rollen.sch || 0) + (rollen.fl || 0) + (rollen.fl_stuermer || 0)) * 0.015);
                     throughWeight += Math.min(0.08, (rollen.st_neun || 0) * 0.05 + ((rollen.st_kanal || 0) + (rollen.zm_halbraum || 0) + (rollen.om_haengend || 0)) * 0.02);
                     dribbleWeight += Math.min(0.08, ((rollen.fl_invers || 0) + (rollen.om_freirolle || 0)) * 0.03);
+                    // In den Lauf gespielt gibt es mehr Steilpaesse, in den Fuss
+                    // mehr Kombinationen - umverteilt, nicht dazugegeben
+                    if (wAtt.ballannahme > 0) { throughWeight += 0.03; dribbleWeight -= 0.03; }
+                    else if (wAtt.ballannahme < 0) { throughWeight -= 0.03; dribbleWeight += 0.03; }
                 }
                 if (wDef) {
+                    // Eine herausrueckende Kette laesst Raum hinter sich, eine
+                    // fallengelassene laedt zum Flanken ein - umverteilt
+                    if (wDef.linienVerhalten > 0) { throughWeight += 0.03; crossWeight -= 0.03; }
+                    else if (wDef.linienVerhalten < 0) { throughWeight -= 0.03; crossWeight += 0.03; }
                     if (wDef.abseitsfalle) throughWeight += 0.06;
                     if (wDef.flankenVerhindern > 0) crossWeight -= 0.06;
                     else if (wDef.flankenVerhindern < 0) crossWeight += 0.06;

@@ -193,6 +193,10 @@ class MatchFlowEngine {
         let risikoFaktor = 1;
         if (chain <= 2 && wk.konter > 0) progressFaktor *= 1.35;
         if (chain <= 3 && wk.konter < 0) { progressFaktor *= 0.8; risikoFaktor = 1.3; }
+        // Ballannahme: In den Lauf bringt Tiefe und nimmt mehr Risiko in Kauf,
+        // in den Fuss spielt sicher
+        if ((wk.ballannahme || 0) > 0) { progressFaktor *= 1.1; risikoFaktor *= 0.9; }
+        else if ((wk.ballannahme || 0) < 0) { progressFaktor *= 0.93; risikoFaktor *= 1.1; }
         const istTorwart = carrier.pos === "TW";
         const freiheit = wk.freiheit || 1;
 
@@ -315,6 +319,11 @@ class MatchFlowEngine {
                 // Kurz: Innenverteidiger suchen; lang: auf die Spitze
                 if (dist > 30) taktikScore -= (wk.torwartKurz || 0) * 1.2;
                 else taktikScore += (wk.torwartKurz || 0) * 0.5;
+                // Die bevorzugte Anspielstation des Torwarts
+                const bevorzugt = {
+                    iv: ["IV"], av: ["AV", "SCH"], sechser: ["DM", "ZM"], fluegel: ["FL", "SCH"], spitze: ["ST"]
+                }[wk.torwartZiel];
+                if (bevorzugt && bevorzugt.includes(fam)) taktikScore += 0.45;
             }
             if (istAbschluss && Math.abs(carrier.y - 50) > 25) {
                 const imStrafraum = Math.abs(mate.y - 50) < 20 && (mate.x - carrier.x) * dir > -4
@@ -514,11 +523,17 @@ class MatchFlowEngine {
         const success = _flowRandom.chance(accuracy);
 
         if (success) {
+            // In den Lauf gespielt wird nach vorn und auf Spieler, die schon
+            // in Bewegung sind - nie auf den Torwart
+            const annahme = _flowTaktik()?.wirkung(tactics).ballannahme || 0;
+            const nachVorn = (action.forward ?? 0) > 4 && action.target?.pos !== "TW";
+            const inDenLauf = nachVorn && (annahme > 0 || (annahme === 0 && _flowRandom.chance(0.3)));
             return {
                 type: isLong ? "longball" : "pass",
                 outcome: "complete",
                 from: carrier,
                 to: action.target,
+                inDenLauf,
                 pressure,
                 phase
             };
@@ -594,6 +609,36 @@ class MatchFlowEngine {
     }
 
     /**
+     * Macht aus einer Aktion einen Ballverlust, den man sieht.
+     *
+     * Der Spielverlauf steht vorher fest: Hat als Naechstes die andere
+     * Mannschaft ihre Szene, muss sie den Ball vorher bekommen. Frueher
+     * wechselte er dafuer einfach den Besitzer - der Gegner stand mit dem
+     * Ball da, ohne ihn erobert zu haben, und es sah aus, als spielten sich
+     * die Gegner den Ball zu. Jetzt faengt der naechste Gegner den Pass ab
+     * oder gewinnt den Zweikampf. Liefert null, wenn kein Gegner nah genug ist.
+     */
+    alsBallverlust(carrier, action) {
+        if (!carrier || !action) return null;
+        const opponents = this.opponentsOf(carrier.team).filter(o => o.pos !== "TW");
+        if (!opponents.length) return null;
+        const naechster = (punkt) => opponents
+            .slice()
+            .sort((a, b) => this.distance(punkt, a) - this.distance(punkt, b))[0];
+
+        if (action.type === "dribble") {
+            const defender = naechster(carrier);
+            if (!defender || this.distance(carrier, defender) > 14) return null;
+            return { ...action, outcome: "tackled", defender, frei: false, erzwungen: true };
+        }
+
+        const ziel = action.to && typeof action.to.x === "number" ? action.to : carrier;
+        const interceptor = this.findInterceptor(carrier, ziel, opponents) || naechster(ziel);
+        if (!interceptor || this.distance(ziel, interceptor) > 22) return null;
+        return { ...action, outcome: "intercepted", interceptor, erzwungen: true };
+    }
+
+    /**
      * Wer kann einen Fehlpass abfangen? Der Gegner am dichtesten an der Passlinie.
      */
     findInterceptor(from, to, opponents) {
@@ -625,9 +670,9 @@ class MatchFlowEngine {
      */
     scatterTarget(target) {
         // Der zweite Ball bleibt im Feld - ins Aus geht nur, was oben als
-        // "out" gewürfelt wurde.
+        // "out" gewürfelt wurde. Die Torlinien liegen bei 4 und 96.
         return {
-            x: Math.max(3, Math.min(97, target.x + _flowRandom.float(-11, 11))),
+            x: Math.max(5, Math.min(95, target.x + _flowRandom.float(-11, 11))),
             y: Math.max(3, Math.min(97, target.y + _flowRandom.float(-12, 12)))
         };
     }

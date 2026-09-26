@@ -4812,20 +4812,32 @@ class LiveMatchDirector {
 
     /** Wohin einer geht, der deckt - je nach Art der Deckung */
     deckungsZiel(p, tx, ty, dir, w, r, ball) {
+        // Der Decker orientiert sich daran, wohin sein Gegenspieler laeuft,
+        // nicht nur daran, wo er gerade steht. Sonst stellt er sich torseitig
+        // genau in dessen Laufweg, der Stuermer rennt in ihn hinein, und
+        // weil der Decker nur so weit zurueckweicht, wie der Stuermer
+        // vorankommt, kleben beide sekundenlang aneinander fest.
+        const VORLAUF = 0.7;
+        const lauf = (o) => ({
+            x: o.x + (o.vx || 0) * VORLAUF,
+            y: o.y + (o.vy || 0) * VORLAUF
+        });
         if (w.deckung === "mann" && !this.deadBall) {
             // Manndeckung: Er klebt torseitig an seinem Gegenspieler, wohin der
             // auch laeuft. Nur die Kette bleibt hinter dem Ball.
             const zielId = this.mannZuordnung(p.team).get(p.id);
             const mann = zielId !== undefined ? this.getPlayer2D(zielId) : null;
             if (mann) {
-                let x = mann.x - dir * 2.2;
-                const y = mann.y + (50 - mann.y) * 0.06;
+                const wo = lauf(mann);
+                let x = wo.x - dir * 2.2;
+                const y = wo.y + (50 - wo.y) * 0.06;
                 if (p.group === "def" && (x - ball.x) * dir > -1) x = ball.x - dir * 1;
                 return { x, y, urgency: 1.3 };
             }
         }
-        const mark = this.findMarkingTarget(p);
-        if (!mark) return null;
+        const gegner = this.findMarkingTarget(p);
+        if (!gegner) return null;
+        const mark = lauf(gegner);
         // Raumdeckung: Zugriff nur, wenn der Gegner in die Zone kommt.
         // Mannorientiert und bei verfolgenden oder pressenden Rollen reicht
         // die Zone weiter, bei abschirmenden weniger.

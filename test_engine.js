@@ -3134,11 +3134,15 @@ function runEngineTests() {
         const live = new LiveMatch(match, homeClub, awayClub, state.players);
 
         // Anstoß auflösen: bei ruhendem Ball steht die Mannschaft in
-        // Anstoßformation und rückt zu Recht nicht auf.
-        for (let i = 0; i < 150; i++) {
+        // Anstoßformation und rückt zu Recht nicht auf. Der Pfiff wartet auf
+        // den Schützen - also so lange laufen lassen, bis der Anstoß
+        // wirklich ausgeführt ist, sonst hält die Anstoßregie den Schützen
+        // noch am Mittelkreis fest.
+        for (let i = 0; i < 150 || (live.director.kickoff && i < 60 * 30); i++) {
             live.advanceRealTime(1000 / 60);
             live.updateBallAndPlayers(1000 / 60);
         }
+        if (live.director.kickoff) throw new Error("Der Anstoß wird nicht ausgeführt");
 
         const settle = (ballX) => {
             live.director.possessionTeam = "home";
@@ -3594,7 +3598,7 @@ function runEngineTests() {
         const homeClub = state.clubs.find(c => c.id === "muc");
         const awayClub = state.clubs.find(c => c.id === "dor");
 
-        const zaehler = { aktionen: 0, pass: 0, passOk: 0, lang: 0 };
+        const zaehler = { aktionen: 0, pass: 0, passOk: 0, lang: 0, erzwungen: 0, spiele: 0 };
         const standards = {};
 
         // Acht Partien: Seit die Regie den Ball nicht mehr an den Ereignisort
@@ -3610,17 +3614,32 @@ function runEngineTests() {
             live.speed = 2;
             const dir = live.director;
 
+            // Gemessen wird, was die MatchFlowEngine entscheidet. Steht als
+            // Nächstes eine Szene des Gegners an, macht die Regie danach aus
+            // einem angekommenen Pass einen sichtbaren Ballverlust - das ist
+            // der vorher feststehende Besitzwechsel, der früher unsichtbar
+            // passierte, und keine Frage der Passgenauigkeit. Diese
+            // erzwungenen Ballverluste werden getrennt gezählt und begrenzt.
+            const origDecide = dir.flow.decide.bind(dir.flow);
+            dir.flow.decide = (...args) => {
+                const action = origDecide(...args);
+                if (action) {
+                    zaehler.aktionen++;
+                    if (action.type === "pass") {
+                        zaehler.pass++;
+                        if (action.outcome === "complete") zaehler.passOk++;
+                    } else if (action.type === "longball") {
+                        zaehler.lang++;
+                    }
+                }
+                return action;
+            };
             const origFlow = dir.applyFlowAction.bind(dir);
             dir.applyFlowAction = (action) => {
-                zaehler.aktionen++;
-                if (action.type === "pass") {
-                    zaehler.pass++;
-                    if (action.outcome === "complete") zaehler.passOk++;
-                } else if (action.type === "longball") {
-                    zaehler.lang++;
-                }
+                if (action.erzwungen) zaehler.erzwungen++;
                 origFlow(action);
             };
+            zaehler.spiele++;
 
             // Nur die Standards aus dem Aufbauspiel zählen: Abstöße nach einem
             // Schuss neben das Tor sind richtig so und gehören nicht dazu.
@@ -3646,6 +3665,13 @@ function runEngineTests() {
         const quote = zaehler.passOk / Math.max(1, zaehler.pass);
         if (quote < 0.68) {
             throw new Error(`Nur ${(quote * 100).toFixed(0)} % der Pässe kommen an - das Spiel bleibt ein Hin und Her`);
+        }
+
+        // Die sichtbaren Ballgewinne vor einer gegnerischen Szene dürfen das
+        // Spiel nicht zum Hin und Her machen
+        const erzwungenJeSpiel = zaehler.erzwungen / Math.max(1, zaehler.spiele);
+        if (erzwungenJeSpiel > 30) {
+            throw new Error(`${erzwungenJeSpiel.toFixed(1)} erzwungene Ballverluste je Spiel - der Ball wechselt zu oft die Seite`);
         }
 
         const langAnteil = zaehler.lang / zaehler.aktionen;

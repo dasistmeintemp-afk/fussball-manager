@@ -507,8 +507,13 @@ class MatchFlowEngine {
         // Profis bringen rund vier von fünf Pässen an den Mann; mit der alten
         // Grundgenauigkeit von 52 % wechselte der Ball ständig die Seite und
         // das Spiel wirkte wie ein Pingpong ohne Absicht.
+        //
+        // Seit die Gegner mannorientiert decken und ihren Gegenspieler eng
+        // begleiten, sind Passwege und Druck spürbar größer - bei gleicher
+        // Grundgenauigkeit kamen nur noch sieben von zehn Pässen an. Die
+        // Grundgenauigkeit gleicht das aus.
         const skill = (passing * 0.5 + vision * 0.3 + technique * 0.2) / 100;
-        let accuracy = 0.74 + skill * 0.24;
+        let accuracy = 0.77 + skill * 0.24;
         accuracy -= pressure * 0.11;
         accuracy -= (action.laneRisk || 0) * 0.17;
         if (isLong) accuracy -= 0.13;

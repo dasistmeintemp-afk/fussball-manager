@@ -313,14 +313,24 @@ class MatchFlowEngine {
         // Zuspiele bis zu drei Punkte erreichen, ein Dribbling aber kaum ueber
         // eineinhalb kam, gewann es fast nie - und auf dem Feld sah man
         // entsprechend keine Laeufe mit dem Ball.
+        // Liegt vor ihm freier Raum und ist kein Gegner in der Naehe, traegt
+        // er den Ball einfach nach vorn - auch ein Innenverteidiger. Vorher
+        // war jeder Lauf mit dem Ball ein Zweikampf, und wer nicht dribbeln
+        // konnte, spielte den Ball ab, selbst wenn vor ihm dreissig Meter frei
+        // waren. Nur der Torwart bleibt in seinem Strafraum und spielt ab.
+        const naechster = opponents.filter(o => o.pos !== "TW")
+            .reduce((m, o) => Math.min(m, this.distance(carrier, o)), Infinity);
+        const frei = carrier.pos !== "TW" && pressure < 0.35 && space > 0.45 && naechster > 8;
+
         const score = skill * 1.15
             + space * 0.9
             + tempoBonus
             + 0.3
             - pressure * 0.75
+            + (frei ? (carrier.group === "def" ? 0.8 : 0.55) : 0)
             + _flowRandom.float(-0.2, 0.2);
 
-        return { type: "dribble", target: ahead, space, score };
+        return { type: "dribble", target: ahead, space, score, frei };
     }
 
     /**
@@ -493,6 +503,11 @@ class MatchFlowEngine {
         const defender = opponents
             .filter(o => o.pos !== "TW")
             .sort((a, b) => this.distance(carrier, a) - this.distance(carrier, b))[0];
+
+        // Andribbeln in den freien Raum: kein Zweikampf, niemand zu schlagen
+        if (action.frei && (!defender || this.distance(carrier, defender) > 8)) {
+            return { type: "dribble", outcome: "beaten", frei: true, from: carrier, to: action.target, defender: null, pressure, phase };
+        }
 
         const dribbling = this.attr(carrier, "dribbling");
         const pace = this.attr(carrier, "pace");

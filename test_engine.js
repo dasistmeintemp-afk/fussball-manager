@@ -1286,6 +1286,110 @@ function runEngineTests() {
         }
     });
 
+    // 14a7a2. Mit Ball besetzt die Elf die Breite und die Halbraeume, und wer
+    // frei ist, traegt den Ball nach vorn - auch ein Innenverteidiger
+    test("LiveMatchDirector: Positionsspiel mit Ball - Flügel besetzt, Innenverteidiger gespreizt, freie Verteidiger dribbeln an", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+        [homeClub, awayClub].forEach(c => {
+            c.formation = "4-3-3";
+            GameState.autoSetLineupForClub(c, state.players);
+        });
+        const match = { id: "positionsspiel", played: false, homeClubId: "muc", awayClubId: "dor" };
+        const live = new LiveMatch(match, homeClub, awayClub, state.players);
+        live.speed = 1;
+        const dir = live.director;
+
+        // Eine ganze Partie: Wie lange ein Ballbesitz haelt, streut von
+        // Halbzeit zu Halbzeit stark.
+        let proben = 0, beideFluegel = 0, ivProben = 0, ivAbstand = 0;
+        let frames = 0, besitzer = null, seit = 0;
+        while (!live.isFinished && frames < 60 * 1800) {
+            live.advanceRealTime(1000 / 60);
+            live.updateBallAndPlayers(1000 / 60);
+            frames++;
+            if (dir.possessionTeam !== besitzer) { besitzer = dir.possessionTeam; seit = frames; }
+            // Nur gefestigter Ballbesitz: Nach dem Ballgewinn wird erst umgeschaltet
+            if (frames % 15 || dir.mode !== "ambient" || dir.deadBall || dir.kickoff || frames - seit < 180) continue;
+
+            const team = dir.possessionTeam;
+            const feld = live.players2D.filter(p => p.team === team && p.pos !== "TW");
+            const b = (live.ball.x - dir.ownGoalX(team)) * dir.attackDir(team) / 92;
+            if (b > 0.33) {
+                proben++;
+                if (feld.some(p => p.y < 14) && feld.some(p => p.y > 86)) beideFluegel++;
+            }
+            const iv = feld.filter(p => p.pos === "IV");
+            if (iv.length === 2 && b < 0.45) {
+                ivProben++;
+                ivAbstand += Math.abs(iv[0].y - iv[1].y) * 0.68;
+            }
+        }
+        if (proben < 100 || ivProben < 50) throw new Error(`Zu wenige Proben: ${proben}/${ivProben}`);
+
+        // Vorher standen im 4-3-3 bei Ball ab dem Mittelfeld nur in ein bis
+        // zwei Prozent der Zeit Spieler an beiden Seitenlinien - die Aussen
+        // zogen mit dem Ball zur Mitte. Jetzt sind es 25 bis 38 Prozent; der
+        // Rest ist die Zeit, die der ballferne Fluegel nach einem Ballgewinn
+        // bis an die Linie braucht.
+        const anteil = beideFluegel / proben;
+        if (anteil < 0.15) {
+            throw new Error(`Nur in ${(anteil * 100).toFixed(0)} % des Ballbesitzes sind beide Flügel besetzt`);
+        }
+        // Die Innenverteidiger gehen im Aufbau auseinander (vorher 11 bis 12
+        // Meter, jetzt 17 bis 19)
+        if (ivAbstand / ivProben < 14) {
+            throw new Error(`Die Innenverteidiger stehen im Aufbau ${(ivAbstand / ivProben).toFixed(1)} m auseinander - sie spreizen nicht`);
+        }
+
+        // Pressing hat eine Linie: Ein Mittelfeldpressing laesst den
+        // Innenverteidiger im eigenen Drittel den Ball haben, ein hohes
+        // Pressing nicht - im letzten Drittel wird immer angegriffen.
+        dir.mode = "ambient";
+        dir._wechselUhr = -99;
+        // Hoehe aus Sicht der Heimelf, die den Ball hat (nach dem
+        // Seitenwechsel spielt sie in die andere Richtung)
+        const hoehe = anteil => ({ x: dir.ownGoalX("home") + dir.attackDir("home") * 92 * anteil, y: 50 });
+        awayClub.tactics.pressing = "medium";
+        if (dir.presstImRaum("away", hoehe(0.12))) {
+            throw new Error("Ein Mittelfeldpressing jagt den Innenverteidiger bis in dessen Strafraum");
+        }
+        if (!dir.presstImRaum("away", hoehe(0.75))) {
+            throw new Error("Im letzten Drittel wird der Ballführende nicht angegriffen");
+        }
+        awayClub.tactics.pressing = "high";
+        if (!dir.presstImRaum("away", hoehe(0.12))) {
+            throw new Error("Hohes Pressing greift den Aufbau nicht an");
+        }
+
+        // Freier Raum vor dem Innenverteidiger: Er traegt den Ball, statt ihn
+        // abzuspielen oder in einen Zweikampf zu gehen, den es nicht gibt.
+        const spieler = [
+            { id: 1, team: "home", pos: "IV", group: "def", x: 25, y: 35, dribbling: 45, pace: 60 },
+            { id: 2, team: "away", pos: "ST", group: "att", x: 60, y: 50, defense: 40, pace: 70 },
+            { id: 3, team: "away", pos: "ZM", group: "mid", x: 70, y: 30, defense: 60, pace: 70 }
+        ];
+        const flow = new MatchFlowEngine({
+            getPlayers: () => spieler,
+            getTactics: () => ({ mentality: "balanced", passing: "mixed", tempo: "normal" }),
+            attackDir: team => (team === "home" ? 1 : -1),
+            ownGoalX: team => (team === "home" ? 4 : 96)
+        });
+        const gegner = spieler.filter(p => p.team === "away");
+        const lauf = flow.rateDribble(spieler[0], gegner, {}, flow.getPressure(spieler[0], gegner));
+        if (!lauf.frei) throw new Error("Ein Innenverteidiger mit dreißig Metern Platz gilt nicht als frei");
+        const ausgang = flow.resolve(spieler[0], lauf, gegner, {}, 0, "buildup");
+        if (ausgang.outcome !== "beaten" || ausgang.defender) {
+            throw new Error(`Das Andribbeln in den freien Raum wird zum Zweikampf: ${ausgang.outcome}`);
+        }
+        // Steht ein Gegner vor ihm, ist es kein freier Lauf
+        const bedraengt = [{ id: 4, team: "away", pos: "ST", group: "att", x: 29, y: 36, defense: 40, pace: 70 }, ...gegner];
+        if (flow.rateDribble(spieler[0], bedraengt, {}, flow.getPressure(spieler[0], bedraengt)).frei) {
+            throw new Error("Ein bedrängter Verteidiger gilt als frei");
+        }
+    });
+
     // 14a7b. Der Ball gehört immer jemandem - auch auf der schnellsten Stufe
     test("LiveMatchDirector: Der Ball liegt nicht allein herum, auch nicht im Schnelldurchlauf", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });

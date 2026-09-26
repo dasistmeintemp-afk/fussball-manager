@@ -48,6 +48,7 @@
         <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 13h9l1-13"/></symbol>
         <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
         <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+        <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></symbol>
         <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></symbol>
         <symbol id="i-stadium" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="8.5" rx="9" ry="3.5"/><path d="M3 8.5v6.5c0 1.9 4 3.5 9 3.5s9-1.6 9-3.5V8.5M8 11.6v6.6M16 11.6v6.6"/></symbol>
         <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-6-6.5-11A6.5 6.5 0 0112 3.5 6.5 6.5 0 0118.5 10c0 5-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></symbol>
@@ -489,6 +490,24 @@
                                     <svg class="ico" aria-hidden="true"><use href="#i-edit"/></svg><span>Formation bearbeiten</span>
                                 </button>
                             </div>
+                            <div class="taktik-ansicht-leiste">
+                                <div class="taktik-ansicht" id="tacAnsicht" role="tablist" aria-label="Ansicht der Taktiktafel">
+                                    <button class="taktik-ansicht-btn active" data-ansicht="grund" role="tab" title="Aufstellung mit beiden Rollen">Kombiniert</button>
+                                    <button class="taktik-ansicht-btn" data-ansicht="mit" role="tab" title="Form und Rollen mit Ball">Mit Ball</button>
+                                    <button class="taktik-ansicht-btn" data-ansicht="gegen" role="tab" title="Form und Rollen gegen den Ball">Gegen den Ball</button>
+                                    <button class="taktik-ansicht-btn" data-ansicht="beide" role="tab" title="Beide Formen übereinander, mit den Wegen dazwischen">Beide</button>
+                                </div>
+                                <details class="taktik-auge" id="tacAuge">
+                                    <summary title="Was die Tafel zeigt" aria-label="Anzeige"><svg class="ico" aria-hidden="true"><use href="#i-eye"/></svg></summary>
+                                    <div class="taktik-auge-menu">
+                                        <label><input type="checkbox" data-anzeige="rollen" checked> Rollen</label>
+                                        <label><input type="checkbox" data-anzeige="sterne" checked> Sterne</label>
+                                        <label><input type="checkbox" data-anzeige="namen" checked> Namen</label>
+                                        <label><input type="checkbox" data-anzeige="verbindungen" checked> Verbindungen</label>
+                                        <label><input type="checkbox" data-anzeige="eignung" checked> Eignung</label>
+                                    </div>
+                                </details>
+                            </div>
 
                             <!-- Editorleiste: nur im Bearbeitungsmodus sichtbar -->
                             <div class="formation-editor-bar" id="formationEditorBar" style="display:none;">
@@ -522,6 +541,7 @@
                                 <div class="pitch-marking penalty-box bottom"></div>
                                 <div class="pitch-marking center-circle"></div>
                                 <div class="pitch-marking center-line"></div>
+                                <svg class="taktik-links" id="tacLinks" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"></svg>
                                 <div class="pitch-players-layer" id="pitchPlayersLayer">
                                     <!-- 11 Spieler Slots interaktiv -->
                                 </div>
@@ -539,54 +559,52 @@
                         <!-- Right: Tactic Controls & Roles -->
                         <div class="tactics-sidebar-controls">
                             <div class="tactics-card">
-                                <h3>Taktische Ausrichtung</h3>
+                                <h3>Spielstil</h3>
                                 <div class="tactic-field">
-                                    <label>Grundmentalität:</label>
-                                    <select id="tacMentality" class="styled-select">
-                                        <option value="very_defensive">Sehr defensiv (Beton anrühren)</option>
-                                        <option value="defensive">Defensiv (Konterspiel)</option>
-                                        <option value="balanced" selected>Ausgeglichen</option>
-                                        <option value="offensive">Offensiv (Druckvoller Aufbau)</option>
-                                        <option value="very_offensive">Sehr offensiv (Volles Risiko)</option>
-                                    </select>
+                                    <label for="tacVorlage">Vorlage (setzt Formen, Rollen und Anweisungen):</label>
+                                    <select id="tacVorlage" class="styled-select"></select>
                                 </div>
+                                <p class="taktik-hilfe" id="tacVorlageText"></p>
+                            </div>
 
+                            <div class="tactics-card">
+                                <h3>Formation mit und gegen den Ball</h3>
                                 <div class="tactic-field">
-                                    <label>Pressing:</label>
-                                    <select id="tacPressing" class="styled-select">
-                                        <option value="low">Niedrig (Raumverknappung)</option>
-                                        <option value="medium" selected>Mittel (Geordnet)</option>
-                                        <option value="high">Hoch (Gegenpressing)</option>
-                                    </select>
+                                    <label for="tacFormMit">Mit Ball:</label>
+                                    <select id="tacFormMit" class="styled-select"></select>
                                 </div>
+                                <div class="tactic-field">
+                                    <label for="tacFormGegen">Gegen den Ball:</label>
+                                    <select id="tacFormGegen" class="styled-select"></select>
+                                </div>
+                                <p class="taktik-hilfe">Die Grundformation links bestimmt, wer wo aufgestellt ist. Mit und gegen den Ball rückt jeder auf den nächstgelegenen Platz der gewählten Form - die Ansicht über dem Feld zeigt es.</p>
+                            </div>
 
-                                <div class="tactic-field">
-                                    <label>Spieltempo:</label>
-                                    <select id="tacTempo" class="styled-select">
-                                        <option value="slow">Langsam (Geduldig)</option>
-                                        <option value="normal" selected>Normal</option>
-                                        <option value="fast">Schnell (Direktzüge)</option>
-                                    </select>
-                                </div>
+                            <div class="tactics-card">
+                                <h3>Rollen</h3>
+                                <p class="taktik-hilfe">Jeder Spieler hat eine Rolle mit Ball und eine gegen den Ball. Tippe einen Spieler auf dem Feld an, um seine Rollen zu sehen.</p>
+                                <div class="rollen-liste" id="tacRollen"></div>
+                            </div>
 
-                                <div class="tactic-field">
-                                    <label>Passspiel:</label>
-                                    <select id="tacPassing" class="styled-select">
-                                        <option value="short">Kurzpass (Ballbesitz)</option>
-                                        <option value="mixed" selected>Gemischt</option>
-                                        <option value="direct">Direkt & Weite Bälle</option>
-                                    </select>
+                            <div class="tactics-card">
+                                <h3>Verbindungen</h3>
+                                <p class="taktik-hilfe">Die Linien auf der Tafel zeigen, wer zusammenspielt - und wie gut die Rollen zueinander passen.</p>
+                                <div class="link-legende">
+                                    <span><i class="link-muster stark"></i>Passt stark</span>
+                                    <span><i class="link-muster gut"></i>Passt</span>
+                                    <span><i class="link-muster schwach"></i>Hakt</span>
                                 </div>
+                                <ul class="taktik-check" id="tacVerbindungen"></ul>
+                            </div>
 
-                                <div class="tactic-field">
-                                    <label>Angriffsfokus:</label>
-                                    <select id="tacFocus" class="styled-select">
-                                        <option value="left">Flügel links</option>
-                                        <option value="center">Durchs Zentrum</option>
-                                        <option value="right">Flügel rechts</option>
-                                        <option value="balanced" selected>Ausgewogen über alle Zonen</option>
-                                    </select>
-                                </div>
+                            <div class="tactics-card">
+                                <h3>Anweisungen</h3>
+                                <div id="tacAnweisungen"></div>
+                            </div>
+
+                            <div class="tactics-card" id="tacCheckKarte">
+                                <h3>Taktik-Check</h3>
+                                <ul class="taktik-check" id="tacCheck"></ul>
                             </div>
 
                             <div class="tactics-card">
@@ -1898,6 +1916,7 @@
     <script src="js/engine/scoutingEngine.js"></script>
     <script src="js/engine/youthEngine.js"></script>
     <script src="js/engine/positionEngine.js"></script>
+    <script src="js/engine/tacticsEngine.js"></script>
     <script src="js/engine/aiManagerEngine.js"></script>
     <script src="js/engine/clubGenerator.js"></script>
     <script src="js/engine/playerGenerator.js"></script>

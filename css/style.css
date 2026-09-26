@@ -1474,6 +1474,305 @@ body {
     font-weight: 500;
 }
 
+/* Taktik nach Phasen: Hilfetexte, Ansicht, Rollen, Anweisungen, Check */
+.taktik-hilfe {
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-muted);
+    margin: 0 0 12px;
+}
+
+.taktik-ansicht {
+    display: flex;
+    gap: 6px;
+    margin: -4px 0 12px;
+    flex-wrap: wrap;
+}
+
+.taktik-ansicht-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 7px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--surface-2, rgba(255,255,255,0.03));
+    border: 1px solid var(--line, var(--border-color));
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+.taktik-ansicht-btn.active {
+    color: #fff;
+    background: var(--accent-soft, rgba(52,211,153,0.15));
+    border-color: var(--accent-line, var(--accent-primary));
+}
+
+.soccer-pitch.ansicht-mit .pitch-node,
+.soccer-pitch.ansicht-gegen .pitch-node {
+    transition: left 0.35s ease, top 0.35s ease;
+}
+
+.pitch-node-rolle {
+    display: block;
+    font-size: 9px;
+    line-height: 1.1;
+    color: rgba(255,255,255,0.78);
+    max-width: 86px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Taktiktafel im Stil des FM26: Ansichten, Rollenkuerzel, Verbindungen */
+.taktik-ansicht-leiste {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    margin: -4px 0 12px;
+}
+
+.taktik-ansicht-leiste .taktik-ansicht { flex: 1 1 auto; margin: 0; }
+
+.taktik-auge { position: relative; flex: none; }
+
+.taktik-auge > summary {
+    list-style: none;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 32px;
+    border-radius: 10px;
+    border: 1px solid var(--line, var(--border-color));
+    background: var(--surface-2, rgba(255,255,255,0.03));
+    color: var(--text-muted);
+}
+
+.taktik-auge > summary::-webkit-details-marker { display: none; }
+.taktik-auge[open] > summary { color: #fff; border-color: var(--accent-line, var(--accent-primary)); }
+
+.taktik-auge-menu {
+    position: absolute;
+    right: 0;
+    top: 38px;
+    z-index: 30;
+    min-width: 170px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: var(--surface-3, #1d2530);
+    border: 1px solid var(--line-strong, var(--border-color));
+    border-radius: 10px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.45);
+}
+
+.taktik-auge-menu label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    padding: 5px 6px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.taktik-auge-menu label:hover { background: rgba(255,255,255,0.05); }
+
+.taktik-links {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.taktik-links line { vector-effect: non-scaling-stroke; stroke-linecap: round; }
+.taktik-links .link-stark { stroke: #facc15; stroke-width: 4; opacity: 0.95; }
+.taktik-links .link-gut { stroke: #facc15; stroke-width: 2.5; opacity: 0.5; }
+.taktik-links .link-schwach { stroke: #f87171; stroke-width: 2.5; stroke-dasharray: 6 5; opacity: 0.9; }
+.taktik-links .weg { stroke: rgba(255,255,255,0.55); stroke-width: 1.5; stroke-dasharray: 3 4; }
+.taktik-links .geist { fill: rgba(255,255,255,0.14); stroke: rgba(255,255,255,0.55); stroke-width: 1; vector-effect: non-scaling-stroke; }
+
+.pitch-players-layer { z-index: 2; }
+
+.rolle-badges {
+    display: flex;
+    gap: 3px;
+    justify-content: center;
+    margin: 2px 0 1px;
+}
+
+.rolle-badge {
+    display: inline-block;
+    min-width: 30px;
+    padding: 1px 6px;
+    border-radius: 5px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    color: #fff;
+    text-align: center;
+    line-height: 1.5;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.35);
+}
+
+.rolle-badge.kat-tor { background: #475569; }
+.rolle-badge.kat-abwehr { background: #0f766e; }
+.rolle-badge.kat-aufbau { background: #15803d; }
+.rolle-badge.kat-kreativ { background: #1d4ed8; }
+.rolle-badge.kat-angriff { background: #7e22ce; }
+.rolle-badge.kat-standard { background: #0e7490; }
+.rolle-badge.kat-pressend { background: #b91c1c; }
+.rolle-badge.kat-zurueck { background: #047857; }
+.rolle-badge.kat-absichernd { background: #1e40af; }
+.rolle-badge.kat-konter { background: #7e22ce; }
+.rolle-badge.gegen { opacity: 0.92; outline: 1px dashed rgba(255,255,255,0.45); outline-offset: -1px; }
+
+.soccer-pitch.ohne-sterne .shirt-wert { visibility: hidden; }
+.soccer-pitch.ohne-namen .pitch-node-name > .spielername { display: none; }
+.soccer-pitch.ohne-rollen .rolle-badges { display: none; }
+.soccer-pitch.ohne-eignung .pitch-node-fit { display: none; }
+
+.link-legende {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+}
+
+.link-legende span { display: inline-flex; align-items: center; gap: 6px; }
+
+.link-muster { display: inline-block; width: 22px; height: 0; border-top: 3px solid #facc15; }
+.link-muster.gut { opacity: 0.55; border-top-width: 2px; }
+.link-muster.schwach { border-top: 2px dashed #f87171; }
+
+.taktik-check li.stark { border-left-color: #facc15; }
+.taktik-check li.schwach { border-left-color: var(--bad, #f87171); }
+
+@media (max-width: 600px) {
+    .pitch-node-rolle { display: none; }
+    .taktik-ansicht-btn { padding: 6px 6px; font-size: 11px; }
+    .rolle-badge { font-size: 9px; min-width: 24px; padding: 0 4px; }
+}
+
+.rollen-liste {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.rollen-zeile {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 6px 10px;
+    align-items: center;
+    padding: 8px;
+    border: 1px solid var(--line, var(--border-color));
+    border-radius: 10px;
+    cursor: pointer;
+}
+
+.rollen-zeile.aktiv {
+    border-color: var(--accent-line, var(--accent-primary));
+    background: var(--accent-soft, rgba(52,211,153,0.08));
+}
+
+.rollen-zeile .pos-tag { justify-self: start; }
+
+.rollen-name {
+    font-size: 13px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rollen-selects {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.rollen-selects label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--text-muted);
+    min-width: 0;
+}
+
+.rollen-selects .styled-select { width: 100%; min-width: 0; font-size: 12px; padding: 6px 8px; }
+
+.rollen-text {
+    grid-column: 1 / -1;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-muted);
+}
+
+.taktik-gruppe {
+    border: 1px solid var(--line, var(--border-color));
+    border-radius: 10px;
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+
+.taktik-gruppe > summary {
+    cursor: pointer;
+    padding: 10px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.taktik-gruppe > summary::-webkit-details-marker { display: none; }
+.taktik-gruppe > summary::after { content: "▾"; color: var(--text-muted); }
+.taktik-gruppe[open] > summary::after { content: "▴"; }
+
+.taktik-gruppe-inhalt {
+    padding: 4px 12px 8px;
+}
+
+.taktik-gruppe-inhalt h4 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin: 10px 0 8px;
+}
+
+.taktik-gruppe-inhalt .tactic-field { margin-bottom: 10px; }
+
+.taktik-check {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.taktik-check li {
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.03);
+    border-left: 3px solid var(--ok, #34d399);
+}
+
+.taktik-check li.warn { border-left-color: var(--warn, #fbbf24); }
+
 /* ==========================================================================
    Fixtures & Schedule
    ========================================================================== */

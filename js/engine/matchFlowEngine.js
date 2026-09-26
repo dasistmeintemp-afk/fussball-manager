@@ -20,6 +20,16 @@
  * bleiben.
  */
 
+/** Die Taktik (Anweisungen und Rollen) - im Browser global, unter Node nachgeladen */
+const _flowTaktik = () => {
+    if (typeof TacticsEngine !== 'undefined' && TacticsEngine) return TacticsEngine;
+    if (typeof window !== 'undefined' && window.TacticsEngine) return window.TacticsEngine;
+    if (typeof require !== 'undefined') {
+        try { return require('./tacticsEngine.js').TacticsEngine; } catch (e) { /* ohne Taktikmodul */ }
+    }
+    return null;
+};
+
 const _flowRandom = (typeof Random !== 'undefined' && Random)
     ? Random
     : ((typeof require !== 'undefined') ? require('../core/random.js').Random : {
@@ -173,6 +183,19 @@ class MatchFlowEngine {
         // Bevorzugte Passlänge
         const preferred = passing === "short" ? 13 : (passing === "direct" ? 32 : 19);
 
+        // Die Anweisungen der Taktik und die Rolle des Ballfuehrenden
+        const wk = _flowTaktik()?.wirkung(tactics) || {};
+        const eigeneRolle = carrier.rolleMit || {};
+        const druck = context.pressure || 0;
+        // Nach dem Ballgewinn: Wer kontert, sucht sofort den Weg nach vorn,
+        // wer den Ball sichert, spielt erst einmal sicher
+        let progressFaktor = 1 + (eigeneRolle.passWeit || 0);
+        let risikoFaktor = 1;
+        if (chain <= 2 && wk.konter > 0) progressFaktor *= 1.35;
+        if (chain <= 3 && wk.konter < 0) { progressFaktor *= 0.8; risikoFaktor = 1.3; }
+        const istTorwart = carrier.pos === "TW";
+        const freiheit = wk.freiheit || 1;
+
         // Wohin das Spiel gerade strebt: der Spieler, bei dem die naechste
         // Szene beginnt. Er wird gesucht wie ein freistehender Stuermer -
         // nicht erzwungen, aber deutlich bevorzugt.
@@ -275,17 +298,46 @@ class MatchFlowEngine {
                 }
             }
 
+            // Taktik: Aufbau ueber innen oder aussen, Rollen als bevorzugte
+            // Anspielstation, Breite, der lange Ball gegen Pressing, Flanken
+            let taktikScore = 0;
+            const mateRolle = mate.rolleMit || {};
+            const fam = mate.fam || "";
+            if (istAufbau && wk.aufbauUeber === "innen" && (fam === "IV" || fam === "DM")) taktikScore += 0.3;
+            if (istAufbau && wk.aufbauUeber === "aussen" && (fam === "AV" || fam === "SCH" || fam === "FL")) taktikScore += 0.3;
+            taktikScore += (mateRolle.passZiel || 0) * 0.8;
+            if (dist > 26 && mateRolle.lang) taktikScore += mateRolle.lang;
+            const quer = Math.abs(mate.y - 50);
+            if ((wk.breite || 0) > 0 && quer > 30) taktikScore += 0.2;
+            if ((wk.breite || 0) < 0 && quer < 18) taktikScore += 0.2;
+            if (druck > 0.55 && dist > 26) taktikScore += (wk.durchsPressing || 0) * 1.2;
+            if (istTorwart) {
+                // Kurz: Innenverteidiger suchen; lang: auf die Spitze
+                if (dist > 30) taktikScore -= (wk.torwartKurz || 0) * 1.2;
+                else taktikScore += (wk.torwartKurz || 0) * 0.5;
+            }
+            if (istAbschluss && Math.abs(carrier.y - 50) > 25) {
+                const imStrafraum = Math.abs(mate.y - 50) < 20 && (mate.x - carrier.x) * dir > -4
+                    && Math.abs(mate.x - (dir > 0 ? 96 : 4)) < 18;
+                if (imStrafraum) {
+                    if (wk.flanken === "frueh") taktikScore += 0.35;
+                    else if (wk.flanken === "wenig") taktikScore -= 0.35;
+                    else if (wk.flanken === "grundlinie") taktikScore += Math.abs(carrier.x - (dir > 0 ? 96 : 4)) < 12 ? 0.3 : -0.2;
+                }
+            }
+
             const score = lengthScore * 0.8
                 + anlaufScore
                 + mentalScore
-                + progressScore * progressWeight
+                + progressScore * progressWeight * progressFaktor
                 + space * spaceWeight
                 + focusScore
                 + roleScore
                 + keeperScore
+                + taktikScore
                 - longMalus
-                - laneRisk * riskWeight * riskAversion
-                + _flowRandom.float(-0.18, 0.18);
+                - laneRisk * riskWeight * riskAversion * risikoFaktor
+                + _flowRandom.float(-0.18, 0.18) * freiheit;
 
             return { type: "pass", target: mate, dist, laneRisk, space, forward, score };
         }).filter(Boolean);
@@ -322,12 +374,23 @@ class MatchFlowEngine {
             .reduce((m, o) => Math.min(m, this.distance(carrier, o)), Infinity);
         const frei = carrier.pos !== "TW" && pressure < 0.35 && space > 0.45 && naechster > 8;
 
+        // Die Anweisung (mehr oder weniger Dribblings), die Rolle (ein
+        // Spielmachender Innenverteidiger traegt den Ball, ein
+        // kompromissloser nie) und bis zur Grundlinie gehen
+        const wk = _flowTaktik()?.wirkung(tactics) || {};
+        let taktik = (wk.dribbling || 0) + (carrier.rolleMit?.dribbeln || 0) * 0.5;
+        if (wk.flanken === "grundlinie" && Math.abs(carrier.y - 50) > 25) {
+            const progress = dir > 0 ? carrier.x / 100 : 1 - carrier.x / 100;
+            if (progress > 0.66) taktik += 0.25;
+        }
+
         const score = skill * 1.15
             + space * 0.9
             + tempoBonus
             + 0.3
             - pressure * 0.75
             + (frei ? (carrier.group === "def" ? 0.8 : 0.55) : 0)
+            + taktik
             + _flowRandom.float(-0.2, 0.2);
 
         return { type: "dribble", target: ahead, space, score, frei };
@@ -404,7 +467,9 @@ class MatchFlowEngine {
         // die Reißleine. Als Kandidat unter Kandidaten hat er fast jede zweite
         // Aktion gewonnen - das Ergebnis war ein Spiel aus langen Bällen, von
         // denen nur die Hälfte ankam.
-        if (!best || (pressure > 0.6 && best.score < 0.5)) {
+        // Der Kompromisslose schlaegt den Ball schon bei weniger Druck weg
+        const sicher = carrier.rolleMit?.sicher || 0;
+        if (!best || (pressure > 0.6 - sicher && best.score < 0.5 + sicher)) {
             best = this.rateClearance(carrier, mates, tactics, pressure);
         }
 
@@ -514,7 +579,11 @@ class MatchFlowEngine {
         const defSkill = defender ? (this.attr(defender, "defense") * 0.6 + this.attr(defender, "pace") * 0.4) : 60;
 
         const edge = (dribbling * 0.6 + pace * 0.4) - defSkill;
-        let chance = 0.6 + edge / 210 - pressure * 0.13;
+        // Wer hart einsteigt, gewinnt mehr Zweikaempfe (und foult oefter -
+        // das zaehlt die Timeline); wer auf den Fuessen bleibt, weniger
+        const gegnerTaktik = defender ? this.getTactics(defender.team) || {} : {};
+        const haerte = _flowTaktik()?.wirkung(gegnerTaktik).zweikampf || 0;
+        let chance = 0.6 + edge / 210 - pressure * 0.13 - haerte * 0.05;
         chance = Math.max(0.2, Math.min(0.92, chance));
 
         if (_flowRandom.chance(chance)) {

@@ -27,6 +27,7 @@ const { PlayerRatingEngine } = require('./js/engine/playerRatingEngine.js');
 const { CalendarEngine } = require('./js/engine/calendarEngine.js');
 const { OpponentAnalysisEngine } = require('./js/engine/opponentAnalysisEngine.js');
 const { PositionEngine } = require('./js/engine/positionEngine.js');
+const { TacticsEngine } = require('./js/engine/tacticsEngine.js');
 const { MatchFlowEngine } = require('./js/engine/matchFlowEngine.js');
 const { GameState, FORMATION_CONFIGS } = require('./js/engine/gameState.js');
 const { MatchEngine, LiveMatch, MATCH_TUNING } = require('./js/engine/matchEngine.js');
@@ -1352,6 +1353,7 @@ function runEngineTests() {
         // Seitenwechsel spielt sie in die andere Richtung)
         const hoehe = anteil => ({ x: dir.ownGoalX("home") + dir.attackDir("home") * 92 * anteil, y: 50 });
         awayClub.tactics.pressing = "medium";
+        dir.taktikAnwenden();
         if (dir.presstImRaum("away", hoehe(0.12))) {
             throw new Error("Ein Mittelfeldpressing jagt den Innenverteidiger bis in dessen Strafraum");
         }
@@ -1359,6 +1361,7 @@ function runEngineTests() {
             throw new Error("Im letzten Drittel wird der Ballführende nicht angegriffen");
         }
         awayClub.tactics.pressing = "high";
+        dir.taktikAnwenden();
         if (!dir.presstImRaum("away", hoehe(0.12))) {
             throw new Error("Hohes Pressing greift den Aufbau nicht an");
         }
@@ -1388,6 +1391,405 @@ function runEngineTests() {
         if (flow.rateDribble(spieler[0], bedraengt, {}, flow.getPressure(spieler[0], bedraengt)).frei) {
             throw new Error("Ein bedrängter Verteidiger gilt als frei");
         }
+    });
+
+    // 14a7a3. Taktik nach FM26: Formen, Rollen, Vorlagen, Verbindungen
+    test("TacticsEngine: Formen mit und gegen den Ball, Rollen, Vorlagen und Verbindungen", () => {
+        // Alte Spielstaende kennen nur fuenf Regler - sie bleiben erhalten,
+        // alles andere bekommt seinen Standard
+        const alt = TacticsEngine.normalisiere({ mentality: "offensive", attackFocus: "left", passStyle: "short" });
+        if (alt.mentality !== "offensive" || alt.focus !== "left" || alt.passing !== "short") {
+            throw new Error(`Alte Taktik geht verloren: ${JSON.stringify(alt)}`);
+        }
+        if (alt.deckung !== "raum" || alt.formMitBall !== "auto" || alt.formGegenBall !== "grund") {
+            throw new Error("Neue Anweisungen bekommen keinen Standard");
+        }
+
+        // Jede Formation laesst sich in jede andere ueberfuehren: jeder Platz
+        // genau einmal, der Torwart bleibt Torwart, kein Aussen wechselt die Seite
+        const formen = Object.keys(FORMATION_CONFIGS);
+        const ziele = [...formen, ...Object.keys(TacticsEngine.FORMEN_MIT_BALL)];
+        formen.forEach(a => ziele.forEach(b => {
+            const basis = FORMATION_CONFIGS[a].positions;
+            const ziel = TacticsEngine.positionenDerForm(b, FORMATION_CONFIGS);
+            const z = TacticsEngine.zuordnung(basis, ziel);
+            if (new Set(z).size !== basis.length) throw new Error(`${a} -> ${b}: Plätze doppelt belegt`);
+            basis.forEach((p, i) => {
+                const q = ziel[z[i]];
+                if ((p.pos === "TW") !== (q.pos === "TW")) throw new Error(`${a} -> ${b}: Torwart getauscht`);
+                if (Math.abs(p.x - 50) > 12 && Math.abs(q.x - 50) > 12 && Math.sign(p.x - 50) !== Math.sign(q.x - 50)) {
+                    throw new Error(`${a} -> ${b}: ${p.pos} wechselt die Seite`);
+                }
+            });
+        }));
+
+        // 4-3-3 gegen den Ball im 4-4-2: Die Fluegel fallen ins Mittelfeld,
+        // ein Achter schiebt neben die Spitze
+        const b433 = FORMATION_CONFIGS["4-3-3"].positions;
+        const z442 = TacticsEngine.plaetzeInForm(b433, "4-4-2", FORMATION_CONFIGS);
+        if (z442[8].pos !== "RM" || z442[10].pos !== "LM") throw new Error(`Flügel werden nicht zu Mittelfeldspielern: ${z442[8].pos}/${z442[10].pos}`);
+        if (z442.filter(p => p.pos === "ST").length !== 2) throw new Error("Im 4-4-2 gegen den Ball stehen nicht zwei Spitzen");
+
+        // Familien: Schienenspieler vor der Dreierkette, Aussenverteidiger in der Viererkette
+        if (TacticsEngine.familie("LAV", FORMATION_CONFIGS["3-5-2"].positions) !== "SCH") throw new Error("LAV im 3-5-2 ist kein Schienenspieler");
+        if (TacticsEngine.familie("RV", FORMATION_CONFIGS["5-3-2"].positions) !== "SCH") throw new Error("RV im 5-3-2 ist kein Schienenspieler");
+        if (TacticsEngine.familie("RV", FORMATION_CONFIGS["4-4-2"].positions) !== "AV") throw new Error("RV im 4-4-2 ist kein Außenverteidiger");
+
+        // Gespeicherte Rollen gelten, unpassende fallen auf den Standard zurueck
+        const club = { formation: "4-3-3", tactics: TacticsEngine.normalisiere({}) };
+        club.tactics.rollen = { 9: { mit: "st_neun", gegen: "st_pressend" }, 2: { mit: "st_neun", gegen: "fl_konter" } };
+        const rollen = TacticsEngine.rollenDerElf(club, b433);
+        if (rollen[9].mit !== "st_neun" || rollen[9].gegen !== "st_pressend") throw new Error("Gespeicherte Rolle geht verloren");
+        if (rollen[2].mit !== "iv" || rollen[2].gegen !== "iv") throw new Error("Ein Innenverteidiger spielt eine Stürmerrolle");
+
+        // Jede Rolle hat ein Kuerzel fuer die Taktiktafel
+        Object.values(TacticsEngine.ROLLEN_MIT_BALL).flat().forEach(r => {
+            if (TacticsEngine.kuerzel(r, "mit").kategorie === "standard") throw new Error(`Rolle ohne Kürzel: ${r.id}`);
+        });
+
+        // Vorlagen setzen alles auf einmal
+        const t = TacticsEngine.wendeVorlageAn({}, "positionsspiel");
+        if (t.formMitBall !== "3-2-5" || t.passing !== "short" || t.nachBallverlust !== "gegenpressing") {
+            throw new Error("Die Vorlage Positionsspiel setzt ihre Anweisungen nicht");
+        }
+        [50, 62, 75, 90].forEach(rep => {
+            const v = TacticsEngine.vorlageFuerVerein({ reputation: rep });
+            if (!TacticsEngine.VORLAGEN[v]) throw new Error(`Unbekannte Vorlage für Ruf ${rep}: ${v}`);
+        });
+
+        // Verbindungen: Schiene und Fluegel an derselben Linie haken,
+        // einrueckender Aussenverteidiger und Fluegel an der Linie passen
+        const seite = (mitAV, mitFL) => {
+            const c = { formation: "4-3-3", tactics: TacticsEngine.normalisiere({}) };
+            c.tactics.rollen = { 1: { mit: mitAV, gegen: "av" }, 8: { mit: mitFL, gegen: "fl" } };
+            return TacticsEngine.verbindungen(c, b433, "mit").find(v => (v.a === 1 && v.b === 8) || (v.a === 8 && v.b === 1));
+        };
+        if (seite("av_schiene", "fl")?.guete !== "schwach") throw new Error("Zwei Spieler an derselben Seitenlinie gelten nicht als Problem");
+        if (seite("av_invers", "fl")?.guete !== "stark") throw new Error("Einrückender Außenverteidiger mit Flügel an der Linie passt nicht");
+
+        // Der Taktik-Check merkt, wenn niemand die Linie haelt
+        const eng = { formation: "4-3-3", tactics: TacticsEngine.normalisiere({}) };
+        eng.tactics.rollen = { 4: { mit: "av_invers", gegen: "av" }, 10: { mit: "fl_invers", gegen: "fl" } };
+        if (!TacticsEngine.pruefe(eng, b433).some(h => h.art === "warn" && h.text.includes("linke Seitenlinie"))) {
+            throw new Error("Der Taktik-Check übersieht eine Seite ohne Breite");
+        }
+    });
+
+    // 14a7a4. Mit Ball: Form und Rollen bestimmen, wo jeder steht
+    test("LiveMatchDirector: Form und Rollen mit Ball - 3-2-5, einrückende Außenverteidiger, abkippender Sechser", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+        homeClub.formation = "4-3-3";
+        GameState.autoSetLineupForClub(homeClub, state.players);
+        homeClub.tactics = TacticsEngine.normalisiere({});
+        const live = new LiveMatch({ id: "rollen_mit", played: false, homeClubId: "muc", awayClubId: "dor" }, homeClub, awayClub, state.players);
+        const dir = live.director;
+        let uhr = 1000;
+        const plan = (b) => {
+            dir._laufUhr = ++uhr;
+            dir._planMitBall = {};
+            dir._lageMitBall = {};
+            dir._schwerpunkt = { home: b, away: 1 - b };
+            const ball = { x: dir.ownGoalX("home") + dir.attackDir("home") * 92 * b, y: 50 };
+            const erg = {};
+            dir.teamPlayers("home").filter(p => p.pos !== "TW").forEach(p => { erg[p.slot] = dir.planMitBall("home", ball).get(p.id); });
+            return erg;
+        };
+
+        // Feste Form 3-2-5: drei hinten, zwei davor, fuenf vorn auf allen Bahnen
+        homeClub.tactics.formMitBall = "3-2-5";
+        dir.taktikAnwenden();
+        const p325 = Object.values(plan(0.7));
+        const hinten = p325.filter(e => e.tiefe <= 0.1).length;
+        const vorn = p325.filter(e => e.tiefe >= 0.8);
+        if (hinten !== 3 || vorn.length !== 5) throw new Error(`3-2-5 steht als ${hinten} hinten / ${vorn.length} vorn`);
+        const quer = vorn.map(e => e.y).sort((a, b) => a - b);
+        if (!(quer[0] < 14 && quer[4] > 86)) throw new Error(`Im 3-2-5 sind die Seitenlinien nicht besetzt: ${quer.map(v => v.toFixed(0))}`);
+        if (vorn.filter(e => Math.abs(e.y - 50) > 14 && Math.abs(e.y - 50) < 36).length < 2) throw new Error("Im 3-2-5 sind die Halbräume nicht besetzt");
+
+        // Aus den Rollen: links rueckt der Aussenverteidiger ein, rechts geht
+        // er neben den Sechser, der inverse Fluegel zieht in den Halbraum
+        homeClub.tactics.formMitBall = "auto";
+        homeClub.tactics.rollen = {
+            4: { mit: "av_invers", gegen: "av" },
+            1: { mit: "av_invers_schiene", gegen: "av" },
+            10: { mit: "fl_invers", gegen: "fl" }
+        };
+        dir.taktikAnwenden();
+        const pr = plan(0.7);
+        if (pr[4].bahn !== "kette" || Math.abs(pr[4].y - 50) < 18 || Math.abs(pr[4].y - 50) > 30 || pr[4].tiefe > 0.1) {
+            throw new Error(`Der einrückende Außenverteidiger steht nicht in der Dreierkette: ${JSON.stringify(pr[4])}`);
+        }
+        if (pr[1].bahn !== "halbraum" || pr[1].tiefe < 0.25 || pr[1].tiefe > 0.45) {
+            throw new Error(`Der invertierte Außenverteidiger steht nicht neben dem Sechser: ${JSON.stringify(pr[1])}`);
+        }
+        if (pr[10].bahn !== "halbraum") throw new Error("Der inverse Flügel bleibt an der Linie");
+        if (Object.values(pr).some(e => e.y < 14)) throw new Error("Obwohl beide einrücken, steht jemand an der linken Linie");
+
+        // Abkippender Sechser: im Aufbau zwischen den Innenverteidigern, die
+        // dafuer weit auseinandergehen
+        homeClub.tactics.rollen = { 5: { mit: "dm_abkippend", gegen: "dm" } };
+        dir.taktikAnwenden();
+        const pk = plan(0.2);
+        if (pk[5].tiefe > 0.05 || Math.abs(pk[5].y - 50) > 3) throw new Error(`Der Sechser kippt nicht ab: ${JSON.stringify(pk[5])}`);
+        if (Math.abs(pk[2].y - 50) < 25 || Math.abs(pk[3].y - 50) < 25) throw new Error("Die Innenverteidiger machen dem abkippenden Sechser keinen Platz");
+
+        // Bahnregel: Niemand steht mit einem anderen auf demselben Fleck
+        homeClub.tactics.rollen = { 9: { mit: "st_kanal", gegen: "st" }, 6: { mit: "zm_halbraum", gegen: "zm" }, 8: { mit: "fl_invers", gegen: "fl" } };
+        dir.taktikAnwenden();
+        const pb = Object.values(plan(0.75));
+        for (let i = 0; i < pb.length; i++) for (let j = i + 1; j < pb.length; j++) {
+            if (Math.abs(pb[i].y - pb[j].y) < 8 && Math.abs(pb[i].tiefe - pb[j].tiefe) < 0.13) {
+                throw new Error("Zwei Spieler stehen mit Ball auf demselben Fleck");
+            }
+        }
+    });
+
+    // 14a7a5. Gegen den Ball: Form, Deckung, Pressing und Rollen
+    test("LiveMatchDirector: Gegen den Ball - Form, Manndeckung, Pressingfalle, Konterspieler", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+        homeClub.formation = "4-3-3";
+        GameState.autoSetLineupForClub(homeClub, state.players);
+        homeClub.tactics = TacticsEngine.normalisiere({});
+        awayClub.tactics = TacticsEngine.normalisiere({});
+        const live = new LiveMatch({ id: "gegen_ball", played: false, homeClubId: "muc", awayClubId: "dor" }, homeClub, awayClub, state.players);
+        const dir = live.director;
+        const hoehe = x => (x - dir.ownGoalX("home")) * dir.attackDir("home") / 92;
+        const slot = i => dir.teamPlayers("home").find(p => p.slot === i);
+        const block = (p, b) => {
+            const sicht = { x: dir.ownGoalX("home") + dir.attackDir("home") * 92 * b, y: 50 };
+            dir._schwerpunkt = { home: b, away: 1 - b };
+            return hoehe(dir.formOhneBall(p, sicht, dir.attackDir("home")).x);
+        };
+
+        // Form gegen den Ball: Im 4-4-2 steht der rechte Achter neben der
+        // Spitze, in der Grundform darunter
+        dir.taktikAnwenden();
+        const grundAbstand = block(slot(9), 0.5) - block(slot(6), 0.5);
+        homeClub.tactics.formGegenBall = "4-4-2";
+        dir.taktikAnwenden();
+        const formAbstand = block(slot(9), 0.5) - block(slot(6), 0.5);
+        if (!(grundAbstand > 0.08 && Math.abs(formAbstand) < 0.03)) {
+            throw new Error(`4-4-2 gegen den Ball wirkt nicht: Abstand zur Spitze ${grundAbstand.toFixed(2)} -> ${formAbstand.toFixed(2)}`);
+        }
+        homeClub.tactics.formGegenBall = "grund";
+
+        // Der Konterspieler bleibt vorn, der zurueckarbeitende Stuermer faellt zurueck
+        homeClub.tactics.rollen = { 9: { mit: "st", gegen: "st_konter" } };
+        dir.taktikAnwenden();
+        const konter = block(slot(9), 0.25);
+        homeClub.tactics.rollen = { 9: { mit: "st", gegen: "st_zurueck" } };
+        dir.taktikAnwenden();
+        const zurueck = block(slot(9), 0.25);
+        homeClub.tactics.rollen = {};
+        dir.taktikAnwenden();
+        const normal = block(slot(9), 0.25);
+        if (!(konter >= 0.55 && konter > normal + 0.05 && zurueck < normal - 0.05)) {
+            throw new Error(`Rollen gegen den Ball wirken nicht: Konter ${konter.toFixed(2)}, normal ${normal.toFixed(2)}, zurück ${zurueck.toFixed(2)}`);
+        }
+
+        // Pressingintensitaet schiebt die Linie, Gegenpressing gilt nach dem Ballverlust
+        dir.mode = "ambient";
+        dir._laufUhr = 500;
+        dir._wechselUhr = 400;
+        const ballBei = anteil => ({ x: dir.ownGoalX("away") + dir.attackDir("away") * 92 * anteil, y: 50 });
+        homeClub.tactics.pressing = "medium";
+        homeClub.tactics.anlaufen = "normal";
+        dir.taktikAnwenden();
+        if (dir.presstImRaum("home", ballBei(0.29))) throw new Error("Mittelfeldpressing greift schon im ersten Drittel an");
+        homeClub.tactics.anlaufen = "oefter";
+        dir.taktikAnwenden();
+        if (!dir.presstImRaum("home", ballBei(0.29))) throw new Error("Öfter pressen schiebt die Pressinglinie nicht nach vorn");
+        homeClub.tactics.anlaufen = "normal";
+        homeClub.tactics.nachBallverlust = "gegenpressing";
+        dir._wechselUhr = 497;
+        dir.taktikAnwenden();
+        if (!dir.presstImRaum("home", ballBei(0.1))) throw new Error("Gegenpressing greift nach dem Ballverlust nicht");
+        homeClub.tactics.nachBallverlust = "zurueckziehen";
+        dir.taktikAnwenden();
+        if (dir.presstImRaum("home", ballBei(0.1))) throw new Error("Wer sich zurückzieht, presst trotzdem gegen");
+
+        // Pressingfalle: Nach aussen lenken heisst von innen anlaufen
+        homeClub.tactics.nachBallverlust = "normal";
+        homeClub.tactics.pressing = "high";
+        const traeger = dir.teamPlayers("away").find(p => p.pos !== "TW");
+        dir.deadBall = null;
+        dir.kickoff = null;
+        const presserSeite = (falle) => {
+            homeClub.tactics.pressingfalle = falle;
+            dir.taktikAnwenden();
+            dir._wechselUhr = 0;
+            dir.possessionTeam = "away";
+            dir.carrierId = traeger.id;
+            live.ball.x = 60; live.ball.y = 22; live.ball.inFlight = false;
+            traeger.x = 60; traeger.y = 22;
+            const modus = dir.selectPressingPlayers();
+            const id = [...modus.entries()].find(([, m]) => m === "press")?.[0];
+            const p = dir.getPlayer2D(id);
+            return dir.computeTarget(p, live.ball, modus).y - live.ball.y;
+        };
+        const aussen = presserSeite("aussen");
+        const innen = presserSeite("innen");
+        if (!(aussen > 1 && innen < -1)) {
+            throw new Error(`Pressingfalle lenkt nicht: nach außen ${aussen.toFixed(1)}, nach innen ${innen.toFixed(1)}`);
+        }
+
+        // Manndeckung: Jeder klebt an seinem Gegenspieler - gemessen in
+        // einer Halbzeit gegen dieselbe Halbzeit in Raumdeckung
+        const abstandBeiDeckung = (deckung) => {
+            const s2 = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+            const h2 = s2.clubs.find(c => c.id === "muc"), a2 = s2.clubs.find(c => c.id === "dor");
+            h2.tactics = TacticsEngine.normalisiere({ deckung });
+            a2.tactics = TacticsEngine.normalisiere({});
+            const l2 = new LiveMatch({ id: "deckung_" + deckung, played: false, homeClubId: "muc", awayClubId: "dor" }, h2, a2, s2.players);
+            l2.speed = 1;
+            const d2 = l2.director;
+            let f = 0, bes = null, seit = 0, summe = 0, n = 0;
+            while (!l2.isFinished && l2.minute < 45 && f < 60 * 900) {
+                l2.advanceRealTime(1000 / 60);
+                l2.updateBallAndPlayers(1000 / 60);
+                f++;
+                if (d2.possessionTeam !== bes) { bes = d2.possessionTeam; seit = f; }
+                if (f % 15 || d2.mode !== "ambient" || d2.deadBall || f - seit < 120 || d2.possessionTeam !== "away") continue;
+                const gast = l2.players2D.filter(p => p.team === "away" && p.pos !== "TW");
+                l2.players2D.filter(p => p.team === "home" && p.pos !== "TW").forEach(p => {
+                    summe += Math.min(...gast.map(q => Math.hypot(p.x - q.x, p.y - q.y)));
+                    n++;
+                });
+            }
+            return summe / Math.max(1, n);
+        };
+        const raum = abstandBeiDeckung("raum");
+        const mann = abstandBeiDeckung("mann");
+        if (!(mann < raum - 1.5)) throw new Error(`Manndeckung rückt nicht an den Gegner: Raum ${raum.toFixed(1)}, Mann ${mann.toFixed(1)}`);
+    });
+
+    // 14a7a6. Die Anweisungen mit Ball wirken auf die Entscheidungen
+    test("MatchFlowEngine: Aufbau über innen oder außen, Torwartabspiel, Spielmacher, Dribblings", () => {
+        const spieler = [
+            { id: 1, team: "home", pos: "IV", group: "def", fam: "IV", x: 20, y: 40, passing: 70, vision: 65, technique: 65, dribbling: 55, pace: 60 },
+            { id: 2, team: "home", pos: "IV", group: "def", fam: "IV", x: 20, y: 62, passing: 70 },
+            { id: 3, team: "home", pos: "LV", group: "def", fam: "AV", x: 26, y: 20, passing: 68 },
+            { id: 4, team: "home", pos: "TW", group: "gk", fam: "TW", x: 6, y: 50, passing: 60 },
+            { id: 5, team: "home", pos: "ST", group: "att", fam: "ST", x: 60, y: 50, passing: 60 },
+            { id: 6, team: "away", pos: "ST", group: "att", x: 75, y: 50, defense: 40, pace: 70 },
+            { id: 7, team: "away", pos: "ZM", group: "mid", x: 80, y: 30, defense: 55, pace: 70 }
+        ];
+        let tactics = TacticsEngine.normalisiere({});
+        const flow = new MatchFlowEngine({
+            getPlayers: () => spieler,
+            getTactics: () => tactics,
+            attackDir: team => (team === "home" ? 1 : -1),
+            ownGoalX: team => (team === "home" ? 4 : 96)
+        });
+        const gegner = spieler.filter(p => p.team === "away");
+        const mittel = (traeger, ziele, ziel, runden = 80) => {
+            let s = 0;
+            for (let i = 0; i < runden; i++) {
+                const opts = flow.ratePassOptions(traeger, ziele, gegner, tactics, { phase: "buildup", pressure: 0 });
+                s += opts.find(o => o.target.id === ziel).score;
+            }
+            return s / runden;
+        };
+        const iv = spieler[0], iv2 = spieler[1], av = spieler[2], tw = spieler[3], st = spieler[4];
+
+        tactics = TacticsEngine.normalisiere({ aufbauUeber: "innen" });
+        const innen = mittel(iv, [iv2, av], 2) - mittel(iv, [iv2, av], 3);
+        tactics = TacticsEngine.normalisiere({ aufbauUeber: "aussen" });
+        const aussen = mittel(iv, [iv2, av], 2) - mittel(iv, [iv2, av], 3);
+        if (!(innen > aussen + 0.4)) throw new Error(`Aufbau über innen/außen wirkt nicht: ${innen.toFixed(2)} gegen ${aussen.toFixed(2)}`);
+
+        tactics = TacticsEngine.normalisiere({ torwartAbspiel: "kurz" });
+        const kurz = mittel(tw, [iv, st], 5) - mittel(tw, [iv, st], 1);
+        tactics = TacticsEngine.normalisiere({ torwartAbspiel: "lang" });
+        const lang = mittel(tw, [iv, st], 5) - mittel(tw, [iv, st], 1);
+        if (!(lang > kurz + 0.8)) throw new Error(`Torwartabspiel wirkt nicht: kurz ${kurz.toFixed(2)}, lang ${lang.toFixed(2)}`);
+
+        // Der Spielmacher wird gesucht
+        tactics = TacticsEngine.normalisiere({});
+        const ohne = mittel(iv, [iv2, av], 2);
+        iv2.rolleMit = TacticsEngine.rolleMitBall("DM", "dm_spielmacher");
+        const mitRolle = mittel(iv, [iv2, av], 2);
+        delete iv2.rolleMit;
+        if (!(mitRolle > ohne + 0.25)) throw new Error("Ein Spielmacher wird nicht häufiger angespielt");
+
+        // Mehr Dribblings
+        const dribbel = (wert) => {
+            tactics = TacticsEngine.normalisiere({ dribbling: wert });
+            let s = 0;
+            for (let i = 0; i < 80; i++) s += flow.rateDribble(iv, gegner, tactics, 0.2).score;
+            return s / 80;
+        };
+        if (!(dribbel("mehr") > dribbel("weniger") + 0.5)) throw new Error("Die Anweisung Dribblings wirkt nicht");
+    });
+
+    // 14a7a7. Zweikampfhaerte in der Ergebnissimulation
+    test("MatchEngine: Hart einsteigen bringt mehr Fouls, auf den Füßen bleiben weniger", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const home = state.clubs.find(c => c.id === "muc");
+        const away = state.clubs.find(c => c.id === "dor");
+        const fouls = (zweikampf) => {
+            home.tactics = TacticsEngine.normalisiere({ zweikampf });
+            away.tactics = TacticsEngine.normalisiere({});
+            let summe = 0;
+            for (let i = 0; i < 120; i++) {
+                state.players.forEach(p => { p.suspendedMatches = 0; p.injuredWeeks = 0; p.fitness = 92; });
+                const m = { id: `zk_${zweikampf}_${i}`, played: false, homeClubId: "muc", awayClubId: "dor" };
+                MatchEngine.simulateFullMatch(m, home, away, state.players);
+                summe += m.stats.fouls[0];
+            }
+            return summe / 120;
+        };
+        const hart = fouls("hart");
+        const sanft = fouls("zurueckhaltend");
+        if (!(hart > sanft + 0.4)) throw new Error(`Zweikampfhärte ändert die Fouls nicht: hart ${hart.toFixed(2)}, zurückhaltend ${sanft.toFixed(2)}`);
+    });
+
+    // 14a7a8. Alle Formationen laufen mit jeder Vorlage
+    test("Alle Formationen: Positionsspiel mit jeder Vorlage ohne Knoten und ohne Fehler", () => {
+        const formen = Object.keys(FORMATION_CONFIGS).filter(k => FORMATION_CONFIGS[k].positions.length === 11);
+        const vorlagen = Object.keys(TacticsEngine.VORLAGEN);
+        formen.forEach((form, fi) => {
+            const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+            const home = state.clubs.find(c => c.id === "muc");
+            const away = state.clubs.find(c => c.id === "dor");
+            home.formation = form;
+            GameState.autoSetLineupForClub(home, state.players);
+            const vorlage = vorlagen[fi % vorlagen.length];
+            home.tactics = TacticsEngine.wendeVorlageAn({}, vorlage);
+            home.tactics.formMitBall = "auto";
+            const live = new LiveMatch({ id: "form_" + fi, played: false, homeClubId: "muc", awayClubId: "dor" }, home, away, state.players);
+            live.speed = 2;
+            for (let f = 0; f < 60 * 25; f++) {
+                live.advanceRealTime(1000 / 60);
+                live.updateBallAndPlayers(1000 / 60);
+            }
+            if (live.players2D.some(p => !Number.isFinite(p.x) || !Number.isFinite(p.y))) {
+                throw new Error(`${form} (${vorlage}): Spieler ohne Position`);
+            }
+            const dir = live.director;
+            dir._laufUhr = (dir._laufUhr || 0) + 1;
+            dir._planMitBall = {};
+            dir._schwerpunkt = { home: 0.72, away: 0.28 };
+            const ball = { x: dir.ownGoalX("home") + dir.attackDir("home") * 92 * 0.72, y: 50 };
+            const plan = dir.teamPlayers("home").filter(p => p.pos !== "TW").map(p => dir.planMitBall("home", ball).get(p.id));
+            if (plan.some(e => !e || !Number.isFinite(e.y) || !Number.isFinite(e.tiefe))) throw new Error(`${form}: Plan mit Ball unvollständig`);
+            for (let i = 0; i < plan.length; i++) for (let j = i + 1; j < plan.length; j++) {
+                if (Math.abs(plan[i].y - plan[j].y) < 6 && Math.abs(plan[i].tiefe - plan[j].tiefe) < 0.1) {
+                    throw new Error(`${form} (${vorlage}): zwei Spieler auf demselben Fleck`);
+                }
+            }
+            // Mit den Standardrollen hat jede Formation Breite auf beiden Seiten
+            home.tactics = TacticsEngine.normalisiere({});
+            dir.taktikAnwenden();
+            dir._planMitBall = {};
+            dir._laufUhr += 1;
+            const std = dir.teamPlayers("home").filter(p => p.pos !== "TW").map(p => dir.planMitBall("home", ball).get(p.id));
+            if (!std.some(e => e.y < 14) || !std.some(e => e.y > 86)) throw new Error(`${form}: Mit Ball ist eine Seitenlinie leer`);
+        });
     });
 
     // 14a7b. Der Ball gehört immer jemandem - auch auf der schnellsten Stufe

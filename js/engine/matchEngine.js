@@ -29,6 +29,34 @@ const _PositionEngine = (typeof PositionEngine !== 'undefined' && PositionEngine
         ? window.PositionEngine
         : ((typeof require !== 'undefined') ? require('./positionEngine.js').PositionEngine : null));
 
+// Rollen, Formen und Anweisungen der Taktik (nach FM26). Erst bei Bedarf
+// aufgeloest - im Browser laden die Skripte in beliebiger Reihenfolge.
+const _mTaktik = () => (typeof TacticsEngine !== 'undefined' && TacticsEngine)
+    ? TacticsEngine
+    : ((typeof window !== 'undefined' && window.TacticsEngine)
+        ? window.TacticsEngine
+        : ((typeof require !== 'undefined')
+            ? (() => { try { return require('./tacticsEngine.js').TacticsEngine; } catch (e) { return null; } })()
+            : null));
+
+/**
+ * Welche Rollen eine Elf mit Ball spielt - gezaehlt, damit die Simulation
+ * weiss, ob vorn ein Zielspieler steht oder eine falsche Neun.
+ */
+const _rollenZaehlung = (club) => {
+    const T = _mTaktik();
+    const cfgs = (typeof FORMATION_CONFIGS !== 'undefined' && FORMATION_CONFIGS)
+        ? FORMATION_CONFIGS
+        : ((typeof window !== 'undefined' && window.FORMATION_CONFIGS) ? window.FORMATION_CONFIGS
+            : (typeof require !== 'undefined' ? (() => { try { return require('./gameState.js').FORMATION_CONFIGS; } catch (e) { return {}; } })() : {}));
+    const zaehlung = {};
+    if (!T || !club) return zaehlung;
+    const positions = (cfgs[club.formation] || cfgs["4-4-2"] || {}).positions || [];
+    if (!positions.length) return zaehlung;
+    T.rollenDerElf(club, positions).forEach(r => { zaehlung[r.mit] = (zaehlung[r.mit] || 0) + 1; });
+    return zaehlung;
+};
+
 // Der Trainerstab entscheidet, wie gut der Co-Trainer ist. Aufgeloest wird
 // erst bei Bedarf - die Skripte laden im Browser in beliebiger Reihenfolge.
 const _stabEngine = () => (typeof CoachingStaffEngine !== 'undefined' && CoachingStaffEngine)
@@ -506,6 +534,27 @@ class MatchEngine {
         } else if (tactics.passing === "short") {
             midfield *= 1.05;
             attack *= 0.97;
+        }
+
+        // 6. Anweisungen gegen den Ball und im Umschalten (nach FM26). Jede
+        // hat ihren Preis: Wer oefter presst und gegenpresst, gewinnt das
+        // Mittelfeld, laesst aber hinten Raum; wer sich zurueckzieht und eng
+        // steht, verteidigt besser und kommt weniger nach vorn.
+        const w = _mTaktik()?.wirkung(tactics);
+        if (w) {
+            if (w.presser === 3) { midfield *= 1.02; defense *= 0.99; }
+            else if (w.presser === 1) { midfield *= 0.99; defense *= 1.01; }
+            if (w.gegenpressing > 3) { midfield *= 1.02; defense *= 0.99; }
+            else if (w.gegenpressing === 0) { defense *= 1.02; attack *= 0.99; }
+            if (w.konter > 0) { attack *= 1.015; midfield *= 0.995; }
+            else if (w.konter < 0) { midfield *= 1.015; attack *= 0.99; }
+            if (w.kompakt < 0) { defense *= 1.015; midfield *= 0.99; }
+            else if (w.kompakt > 0) { defense *= 0.99; midfield *= 1.01; }
+            if (w.zweikampf > 0) defense *= 1.012;
+            else if (w.zweikampf < 0) defense *= 0.99;
+            if (w.abseitsfalle) defense *= 1.01;
+            if (w.freiheit > 1) { attack *= 1.01; defense *= 0.995; }
+            else if (w.freiheit < 1) { defense *= 1.005; attack *= 0.995; }
         }
 
         // E2: Teamchemie aktivieren (Multiplikator)
@@ -1416,7 +1465,9 @@ class MatchEngine {
 
             const sceneTypeRoll = Math.random();
 
-            if (sceneTypeRoll < MATCH_TUNING.foulRate) {
+            // Wer hart einsteigt, foult oefter; wer auf den Fuessen bleibt, seltener
+            const haerte = _mTaktik()?.wirkung(defTactics).zweikampf || 0;
+            if (sceneTypeRoll < MATCH_TUNING.foulRate + haerte * 0.03) {
                 // 1. ZWEIKÄMPFE, FOULS, KARTEN & ELFMETER (A6, A8)
                 const foulDefPos = p => deployedPosOf(p, !isHomeAttacking);
                 const foulAttPos = p => deployedPosOf(p, isHomeAttacking);
@@ -1641,10 +1692,11 @@ class MatchEngine {
                     throughWeight += 0.05;
                 }
 
-                if (attTactics.attackFocus === "left" || attTactics.attackFocus === "right") {
+                const angriffsFokus = attTactics.focus || attTactics.attackFocus;
+                if (angriffsFokus === "left" || angriffsFokus === "right") {
                     crossWeight += 0.15;
                     throughWeight -= 0.10;
-                } else if (attTactics.attackFocus === "center") {
+                } else if (angriffsFokus === "center") {
                     throughWeight += 0.10;
                     dribbleWeight += 0.10;
                     crossWeight -= 0.15;
@@ -1656,6 +1708,40 @@ class MatchEngine {
                     crossWeight += 0.10;
                     cornerWeight += 0.05;
                 }
+
+                // Anweisungen und Rollen formen die Angriffe: Breite und
+                // fruehe Flanken bringen Flanken, ein enger Angriff und eine
+                // falsche Neun Steilpaesse, inverse Fluegel Dribblings, ein
+                // Zielspieler Kopfbaelle. Gegen den Ball wirkt, was die
+                // andere Seite erlaubt: Eine Abseitsfalle lockt Steilpaesse,
+                // wer Flanken zulaesst, bekommt Flanken.
+                const wAtt = _mTaktik()?.wirkung(attTactics);
+                const wDef = _mTaktik()?.wirkung(defTactics);
+                if (wAtt) {
+                    if (wAtt.breite > 0) crossWeight += 0.08;
+                    else if (wAtt.breite < 0) { crossWeight -= 0.1; throughWeight += 0.05; dribbleWeight += 0.05; }
+                    if (wAtt.flanken === "frueh") crossWeight += 0.08;
+                    else if (wAtt.flanken === "wenig") crossWeight -= 0.12;
+                    else if (wAtt.flanken === "grundlinie") { crossWeight += 0.04; dribbleWeight += 0.04; }
+                    dribbleWeight += (wAtt.dribbling || 0) * 0.22;
+                    if (wAtt.standards) cornerWeight += 0.05;
+                    if (wAtt.abschluss === "herausspielen") { throughWeight += 0.04; dribbleWeight += 0.03; }
+                    const rollen = _rollenZaehlung(attClub);
+                    crossWeight += Math.min(0.08, (rollen.st_ziel || 0) * 0.05 + ((rollen.av_schiene || 0) + (rollen.sch || 0) + (rollen.fl || 0) + (rollen.fl_stuermer || 0)) * 0.015);
+                    throughWeight += Math.min(0.08, (rollen.st_neun || 0) * 0.05 + ((rollen.st_kanal || 0) + (rollen.zm_halbraum || 0) + (rollen.om_haengend || 0)) * 0.02);
+                    dribbleWeight += Math.min(0.08, ((rollen.fl_invers || 0) + (rollen.om_freirolle || 0)) * 0.03);
+                }
+                if (wDef) {
+                    if (wDef.abseitsfalle) throughWeight += 0.06;
+                    if (wDef.flankenVerhindern > 0) crossWeight -= 0.06;
+                    else if (wDef.flankenVerhindern < 0) crossWeight += 0.06;
+                    if (wDef.deckung === "mann") dribbleWeight += 0.05;
+                    if (wDef.kompakt < 0) { crossWeight += 0.05; throughWeight -= 0.05; }
+                    else if (wDef.kompakt > 0) throughWeight += 0.05;
+                }
+                throughWeight = Math.max(0.05, throughWeight);
+                crossWeight = Math.max(0.05, crossWeight);
+                dribbleWeight = Math.max(0.05, dribbleWeight);
 
                 const totalW = throughWeight + crossWeight + dribbleWeight + cornerWeight;
                 const rollType = Math.random() * totalW;
@@ -2008,7 +2094,15 @@ class MatchEngine {
             }
 
             // Fitness-Verlust dynamisch (B12)
-            const pressingFactor = teamClub.tactics?.pressing === "high" ? 1.25 : (teamClub.tactics?.pressing === "low" ? 0.85 : 1.0);
+            let pressingFactor = teamClub.tactics?.pressing === "high" ? 1.25 : (teamClub.tactics?.pressing === "low" ? 0.85 : 1.0);
+            // Pressingintensitaet und Gegenpressing kosten zusaetzlich Kraft
+            const wFit = _mTaktik()?.wirkung(teamClub.tactics || {});
+            if (wFit) {
+                if (wFit.presser === 3) pressingFactor *= 1.08;
+                else if (wFit.presser === 1) pressingFactor *= 0.95;
+                if (wFit.gegenpressing > 3) pressingFactor *= 1.06;
+                if (wFit.deckung === "mann") pressingFactor *= 1.05;
+            }
             const staminaVal = player.stamina || 70;
             const ageMod = (player.age || 25) >= 31 ? 1.15 : 1.0;
             const fitLoss = Math.round(13 * (minutes / 90) * (1.3 - staminaVal / 250) * ageMod * pressingFactor);
@@ -2569,6 +2663,8 @@ class LiveMatch {
                 id: p.id,
                 name: p.name,
                 number: idx + 1,
+                // Der Platz in der Formation: an ihm haengen die Rollen
+                slot: idx,
                 // Im 2D-Feld zählt die Position, auf der gespielt wird
                 pos: slot.pos || p.pos,
                 naturalPos: p.pos,
@@ -2592,11 +2688,15 @@ class LiveMatch {
         this.awayLineup.forEach((p, idx) => {
             const slot = awayPositions[idx] || { x: 50, y: 90, pos: p.pos };
             const fieldX = Math.max(52, Math.min(97, 96 - ((100 - slot.y) / 100) * 44));
-            const fieldY = slot.x;
+            // Die Gaeste spielen nach links: Ihr Linksverteidiger steht auf
+            // ihrer linken Seite, also bei hohen y-Werten. Vorher stand er
+            // gespiegelt auf der rechten, und "Fokus links" wirkte rechts.
+            const fieldY = 100 - slot.x;
             players.push({
                 id: p.id,
                 name: p.name,
                 number: idx + 1,
+                slot: idx,
                 pos: slot.pos || p.pos,
                 naturalPos: p.pos,
                 team: "away",
@@ -2967,6 +3067,7 @@ class LiveMatch {
             [pa.baseX, pb.baseX] = [pb.baseX, pa.baseX];
             [pa.baseY, pb.baseY] = [pb.baseY, pa.baseY];
             [pa.pos, pb.pos] = [pb.pos, pa.pos];
+            [pa.slot, pb.slot] = [pb.slot, pa.slot];
         }
         if (this.director) this.director.initPlayers();
 
@@ -3582,11 +3683,12 @@ class LiveMatch {
             let fieldX = side === "home"
                 ? Math.max(3, Math.min(48, ((100 - slot.y) / 100) * 44 + 4))
                 : Math.max(52, Math.min(97, 96 - ((100 - slot.y) / 100) * 44));
-            let fieldY = slot.x;
+            let fieldY = side === "home" ? slot.x : 100 - slot.x;
             if (spiegeln) { fieldX = 100 - fieldX; fieldY = 100 - fieldY; }
             p2d.baseX = fieldX;
             p2d.baseY = fieldY;
             p2d.pos = slot.pos || p.pos;
+            p2d.slot = idx;
         });
         if (this.director) this.director.initPlayers();
 
@@ -3609,6 +3711,9 @@ class LiveMatch {
         });
         this.addEvent("tactics", club.id, eventText);
         this.lastCommentary = eventText;
+
+        // Rollen und Formen gelten sofort auf dem Feld
+        if (this.director) this.director.taktikAnwenden();
 
         // Re-simuliere den verbleibenden Spielverlauf mit der neuen Taktik (C14)
         if (!opts.ohneNeuberechnung) this.resimulateRemainder();

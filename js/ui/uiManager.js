@@ -3393,14 +3393,68 @@ class UIManager {
             }
         }
 
-        // Taktik Einstellungen
-        document.getElementById("tacMentality").value = userClub.tactics?.mentality || "balanced";
-        document.getElementById("tacPressing").value = userClub.tactics?.pressing || "medium";
-        document.getElementById("tacTempo").value = userClub.tactics?.tempo || "normal";
-        document.getElementById("tacPassing").value = userClub.tactics?.passing || "mixed";
-        document.getElementById("tacFocus").value = userClub.tactics?.focus || "balanced";
-
         const slots = this.getActiveFormationPositions(userClub);
+
+        // Taktik nach Phasen: Spielstil, Formen mit und gegen den Ball,
+        // Rollen, Anweisungen, Check
+        const T = this.getTacticsEngine();
+        if (T) T.normalisiere(userClub.tactics || (userClub.tactics = {}));
+        this.renderTaktikPanels(userClub, slots);
+
+        // Die Ansicht ueber dem Feld: Aufstellung, mit oder gegen den Ball
+        const ansicht = (!this.formationEditMode && T) ? (this.taktikAnsicht || "grund") : "grund";
+        document.querySelectorAll("#tacAnsicht [data-ansicht]").forEach(btn => {
+            btn.classList.toggle("active", btn.dataset.ansicht === ansicht);
+            btn.disabled = !!this.formationEditMode;
+            btn.onclick = () => { this.taktikAnsicht = btn.dataset.ansicht; this.renderTactics(); };
+        });
+        const configs = (typeof FORMATION_CONFIGS !== "undefined") ? FORMATION_CONFIGS : {};
+        // "Beide": die Spieler stehen in der Form mit Ball, ihr Platz gegen
+        // den Ball ist als Schatten daneben - mit dem Weg dazwischen
+        const formAnsicht = ansicht === "beide" ? "mit" : ansicht;
+        const vorschau = (T && formAnsicht !== "grund") ? T.vorschau(userClub, slots, formAnsicht, configs) : null;
+        const schatten = (T && ansicht === "beide") ? T.vorschau(userClub, slots, "gegen", configs) : null;
+        const rollenElf = T ? T.rollenDerElf(userClub, slots) : [];
+        const anzeige = Object.assign({ rollen: true, sterne: true, namen: true, verbindungen: true, eignung: true }, this.taktikAnzeige || {});
+        this.taktikAnzeige = anzeige;
+        const pitchEl = document.getElementById("tacticsPitch");
+        if (pitchEl) {
+            pitchEl.classList.toggle("ansicht-mit", ansicht === "mit" || ansicht === "beide");
+            pitchEl.classList.toggle("ansicht-gegen", ansicht === "gegen");
+            pitchEl.classList.toggle("ohne-rollen", !anzeige.rollen || !T);
+            pitchEl.classList.toggle("ohne-sterne", !anzeige.sterne);
+            pitchEl.classList.toggle("ohne-namen", !anzeige.namen);
+            pitchEl.classList.toggle("ohne-eignung", !anzeige.eignung);
+        }
+        document.querySelectorAll("#tacAuge [data-anzeige]").forEach(cb => {
+            cb.checked = !!anzeige[cb.dataset.anzeige];
+            cb.onchange = () => { anzeige[cb.dataset.anzeige] = cb.checked; this.renderTactics(); };
+        });
+        // Wo ein Knoten auf dem Feld steht (die Vorschau leicht gestaucht,
+        // damit die Namensschilder nicht am Feldrand abgeschnitten werden)
+        const anzeigeOrt = (liste, i) => liste ? { x: 50 + (liste[i].x - 50) * 0.84, y: liste[i].y } : { x: slots[i].x, y: slots[i].y };
+        const orte = slots.map((_, i) => anzeigeOrt(vorschau, i));
+
+        // Die Linien: wer zusammenspielt, wie gut die Rollen passen - oder in
+        // "Beide" der Weg jedes Spielers zwischen den Formen
+        const linksSvg = document.getElementById("tacLinks");
+        if (linksSvg) {
+            let svg = "";
+            if (T && ansicht === "beide" && schatten) {
+                slots.forEach((_, i) => {
+                    const a = anzeigeOrt(schatten, i), b = orte[i];
+                    svg += `<line class="weg" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`;
+                    svg += `<ellipse class="geist" cx="${a.x}" cy="${a.y}" rx="2.1" ry="1.4"/>`;
+                });
+            } else if (T && anzeige.verbindungen && !this.formationEditMode) {
+                const phase = ansicht === "gegen" ? "gegen" : "mit";
+                T.verbindungen(userClub, slots, phase).forEach(v => {
+                    const a = orte[v.a], b = orte[v.b];
+                    svg += `<line class="link-${v.guete}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"><title>${this.escapeHtml(v.text)}</title></line>`;
+                });
+            }
+            linksSvg.innerHTML = svg;
+        }
 
         // 2D Pitch Slots rendern
         const pitchLayer = document.getElementById("pitchPlayersLayer");
@@ -3414,9 +3468,22 @@ class UIManager {
 
             const node = document.createElement("div");
             node.className = `pitch-node ${this.selectedPitchSlot === index ? "selected" : ""}`;
-            node.style.left = `${slot.x}%`;
-            node.style.top = `${slot.y}%`;
+            const ort = orte[index];
+            node.style.left = `${ort.x}%`;
+            node.style.top = `${ort.y}%`;
             node.dataset.slotIndex = index;
+            // Die Rolle als Kuerzel wie im FM26 - kombiniert beide Rollen
+            let rolleHtml = "";
+            if (rollenElf[index] && T) {
+                const rm = T.rolleMitBall(rollenElf[index].familie, rollenElf[index].mit);
+                const rg = T.rolleGegenBall(rollenElf[index].familie, rollenElf[index].gegen);
+                const km = T.kuerzel(rm, "mit"), kg = T.kuerzel(rg, "gegen");
+                const badge = (k, r, gegen) => `<span class="rolle-badge kat-${k.kategorie}${gegen ? " gegen" : ""}" title="${this.escapeHtml((gegen ? "Gegen den Ball: " : "Mit Ball: ") + r.name)}">${this.escapeHtml(k.text)}</span>`;
+                const teile = ansicht === "mit" ? [badge(km, rm, false)]
+                    : ansicht === "gegen" ? [badge(kg, rg, true)]
+                        : [badge(km, rm, false), badge(kg, rg, true)];
+                rolleHtml = `<div class="rolle-badges">${teile.join("")}</div>`;
+            }
 
             const isSelected = this.selectedPitchSlot === index;
 
@@ -3440,11 +3507,12 @@ class UIManager {
 
             node.innerHTML = `
                 <div class="pitch-node-shirt ${fitClass}" style="background: ${userClub.primaryColor}; color: ${userClub.secondaryColor}; ${selectedStyle}">
-                    ${shirtValue}
+                    <span class="shirt-wert">${shirtValue}</span>
                     <span class="pitch-node-pos">${slot.pos}</span>
                 </div>
+                ${rolleHtml}
                 <div class="pitch-node-name">
-                    ${player ? this.escapeHtml(player.name.split(" ").pop()) : "Leer"}
+                    <span class="spielername">${player ? this.escapeHtml(player.name.split(" ").pop()) : "Leer"}</span>
                     ${fit ? `<span class="pitch-node-fit" style="color:${fit.color};">${fit.shortLabel}${fit.penalty > 0 ? ` −${fit.penalty}` : ""}</span>` : ""}
                 </div>
             `;
@@ -3521,6 +3589,183 @@ class UIManager {
         populateRoleSelect("rolePenalty", userClub.roles.penaltyTaker);
         populateRoleSelect("roleFreeKick", userClub.roles.freeKickTaker);
         populateRoleSelect("roleCorner", userClub.roles.cornerTaker);
+    }
+
+    getTacticsEngine() {
+        if (typeof TacticsEngine !== "undefined" && TacticsEngine) return TacticsEngine;
+        if (typeof window !== "undefined" && window.TacticsEngine) return window.TacticsEngine;
+        return null;
+    }
+
+    /** Taktik geaendert: speichern und neu zeichnen */
+    taktikGeaendert(userClub, opts = {}) {
+        if (opts.angepasst !== false && userClub.tactics) userClub.tactics.vorlageAngepasst = true;
+        if (typeof this.app.state.saveToLocalStorage === "function") this.app.state.saveToLocalStorage();
+        this.renderTactics();
+    }
+
+    /**
+     * Die Taktik-Karten: Spielstil, Formen, Rollen, Anweisungen, Check.
+     * Alles wird aus dem Taktikmodul gezeichnet - kommt dort eine Anweisung
+     * oder Rolle dazu, erscheint sie hier von selbst.
+     */
+    renderTaktikPanels(userClub, slots) {
+        const T = this.getTacticsEngine();
+        if (!T) return;
+        const t = userClub.tactics;
+        const esc = v => this.escapeHtml(String(v ?? ""));
+        const configs = (typeof FORMATION_CONFIGS !== "undefined") ? FORMATION_CONFIGS : {};
+
+        // Spielstil
+        const vorlageSel = document.getElementById("tacVorlage");
+        if (vorlageSel) {
+            const aktuell = t.vorlage && T.VORLAGEN[t.vorlage] ? t.vorlage : "";
+            vorlageSel.innerHTML = `<option value="">Eigene Taktik</option>` + Object.entries(T.VORLAGEN)
+                .map(([k, v]) => `<option value="${esc(k)}" ${k === aktuell && !t.vorlageAngepasst ? "selected" : ""}>${esc(v.name)}${k === aktuell && t.vorlageAngepasst ? " (angepasst)" : ""}</option>`).join("");
+            if (aktuell && t.vorlageAngepasst) vorlageSel.value = "";
+            vorlageSel.onchange = (e) => {
+                if (!e.target.value) return;
+                T.wendeVorlageAn(t, e.target.value);
+                t.vorlageAngepasst = false;
+                this.taktikGeaendert(userClub, { angepasst: false });
+                this.showToast(`Spielstil „${T.VORLAGEN[e.target.value].name}“ übernommen.`, "success");
+            };
+            const text = document.getElementById("tacVorlageText");
+            if (text) text.textContent = aktuell ? T.VORLAGEN[aktuell].beschreibung : "Alle Einstellungen von Hand.";
+        }
+
+        // Formen mit und gegen den Ball
+        const mitSel = document.getElementById("tacFormMit");
+        if (mitSel) {
+            const liste = T.formenMitBall(configs);
+            const eigen = liste.filter(f => f.key === "auto" || f.key === "grund");
+            const nurMit = liste.filter(f => f.nurMitBall);
+            const rest = liste.filter(f => !f.nurMitBall && f.key !== "auto" && f.key !== "grund");
+            const opt = f => `<option value="${esc(f.key)}" ${f.key === t.formMitBall ? "selected" : ""}>${esc(f.name)}</option>`;
+            mitSel.innerHTML = eigen.map(opt).join("")
+                + `<optgroup label="Formen mit Ball">${nurMit.map(opt).join("")}</optgroup>`
+                + `<optgroup label="Formationen">${rest.map(opt).join("")}</optgroup>`;
+            mitSel.onchange = (e) => { t.formMitBall = e.target.value; this.taktikAnsicht = "mit"; this.taktikGeaendert(userClub); };
+        }
+        const gegenSel = document.getElementById("tacFormGegen");
+        if (gegenSel) {
+            gegenSel.innerHTML = T.formenGegenBall(configs)
+                .map(f => `<option value="${esc(f.key)}" ${f.key === t.formGegenBall ? "selected" : ""}>${esc(f.name)}</option>`).join("");
+            gegenSel.onchange = (e) => { t.formGegenBall = e.target.value; this.taktikAnsicht = "gegen"; this.taktikGeaendert(userClub); };
+        }
+
+        // Rollen je Spieler
+        const rollenEl = document.getElementById("tacRollen");
+        if (rollenEl) {
+            const state = this.app.state;
+            const rollen = T.rollenDerElf(userClub, slots);
+            rollenEl.innerHTML = slots.map((slot, i) => {
+                const r = rollen[i];
+                const spieler = state.players.find(p => p.id === userClub.lineup[i]);
+                const mitListe = T.rollenMitBall(r.familie).filter(x => !x.nurDreier || slots.filter(q => this.getPositionEngine()?.normalizePosition(q.pos) === "IV").length >= 3);
+                const gegenListe = T.rollenGegenBall(r.familie);
+                const aktiv = this.selectedPitchSlot === i;
+                const mitRolle = T.rolleMitBall(r.familie, r.mit);
+                const gegenRolle = T.rolleGegenBall(r.familie, r.gegen);
+                return `
+                    <div class="rollen-zeile ${aktiv ? "aktiv" : ""}" data-rollen-slot="${i}">
+                        <span class="pos-tag pos-${this.getPosGroup(slot.pos)}">${esc(slot.pos)}</span>
+                        <span class="rollen-name">${spieler ? esc(spieler.name) : "Leer"}</span>
+                        <div class="rollen-selects">
+                            <label>Mit Ball
+                                <select class="styled-select" data-rolle-mit="${i}" title="${esc(mitRolle.beschreibung)}">
+                                    ${mitListe.map(x => `<option value="${esc(x.id)}" ${x.id === r.mit ? "selected" : ""}>${esc(x.name)}</option>`).join("")}
+                                </select>
+                            </label>
+                            <label>Gegen den Ball
+                                <select class="styled-select" data-rolle-gegen="${i}" title="${esc(gegenRolle.beschreibung)}">
+                                    ${gegenListe.map(x => `<option value="${esc(x.id)}" ${x.id === r.gegen ? "selected" : ""}>${esc(x.name)}</option>`).join("")}
+                                </select>
+                            </label>
+                        </div>
+                        ${aktiv ? `<div class="rollen-text"><strong>Mit Ball:</strong> ${esc(mitRolle.beschreibung)}<br><strong>Gegen den Ball:</strong> ${esc(gegenRolle.beschreibung)}</div>` : ""}
+                    </div>`;
+            }).join("");
+            const setze = (i, feld, wert) => {
+                const aktuell = T.rollenDerElf(userClub, slots)[i];
+                t.rollen[i] = { mit: aktuell.mit, gegen: aktuell.gegen, [feld]: wert };
+                this.selectedPitchSlot = i;
+                this.taktikGeaendert(userClub);
+            };
+            rollenEl.querySelectorAll("[data-rolle-mit]").forEach(sel => {
+                sel.onchange = (e) => setze(Number(sel.dataset.rolleMit), "mit", e.target.value);
+                sel.onclick = (e) => e.stopPropagation();
+            });
+            rollenEl.querySelectorAll("[data-rolle-gegen]").forEach(sel => {
+                sel.onchange = (e) => setze(Number(sel.dataset.rolleGegen), "gegen", e.target.value);
+                sel.onclick = (e) => e.stopPropagation();
+            });
+            rollenEl.querySelectorAll("[data-rollen-slot]").forEach(z => {
+                z.onclick = () => {
+                    const i = Number(z.dataset.rollenSlot);
+                    this.selectedPitchSlot = this.selectedPitchSlot === i ? null : i;
+                    this.renderTactics();
+                };
+            });
+        }
+
+        // Anweisungen nach Phasen
+        const anwEl = document.getElementById("tacAnweisungen");
+        if (anwEl) {
+            if (!this.taktikOffen) this.taktikOffen = { mitBall: true };
+            const phasen = [["mitBall", "Mit Ball"], ["umschalten", "Umschalten"], ["gegenBall", "Gegen den Ball"]];
+            anwEl.innerHTML = phasen.map(([phase, titel]) => {
+                const liste = T.ANWEISUNGEN.filter(a => a.phase === phase);
+                const gruppen = [...new Set(liste.map(a => a.gruppe))];
+                return `
+                    <details class="taktik-gruppe" data-phase="${phase}" ${this.taktikOffen[phase] ? "open" : ""}>
+                        <summary>${titel}</summary>
+                        <div class="taktik-gruppe-inhalt">
+                            ${gruppen.map(g => `
+                                <h4>${esc(g)}</h4>
+                                ${liste.filter(a => a.gruppe === g).map(a => `
+                                    <div class="tactic-field">
+                                        <label for="tac_${a.key}" ${a.hilfe ? `title="${esc(a.hilfe)}"` : ""}>${esc(a.label)}${a.hilfe ? " ⓘ" : ""}</label>
+                                        <select id="tac_${a.key}" class="styled-select" data-anweisung="${a.key}">
+                                            ${a.optionen.map(o => `<option value="${esc(o.value)}" ${T.wert(t, a.key) === o.value ? "selected" : ""}>${esc(o.label)}</option>`).join("")}
+                                        </select>
+                                    </div>`).join("")}`).join("")}
+                        </div>
+                    </details>`;
+            }).join("");
+            anwEl.querySelectorAll("details[data-phase]").forEach(d => {
+                d.ontoggle = () => { this.taktikOffen[d.dataset.phase] = d.open; };
+            });
+            anwEl.querySelectorAll("[data-anweisung]").forEach(sel => {
+                sel.onchange = (e) => {
+                    t[sel.dataset.anweisung] = e.target.value;
+                    if (sel.dataset.anweisung === "focus") t.attackFocus = e.target.value;
+                    this.taktikGeaendert(userClub);
+                };
+            });
+        }
+
+        // Verbindungen mit Erklaerung - auf dem Handy gibt es kein Hovern
+        const verbEl = document.getElementById("tacVerbindungen");
+        if (verbEl) {
+            const phase = this.taktikAnsicht === "gegen" ? "gegen" : "mit";
+            const state = this.app.state;
+            const nameVon = i => {
+                const sp = state.players.find(p => p.id === userClub.lineup[i]);
+                return sp ? sp.name.split(" ").pop() : slots[i].pos;
+            };
+            const reihenfolge = { schwach: 0, stark: 1, gut: 2 };
+            const liste = T.verbindungen(userClub, slots, phase).sort((a, b) => reihenfolge[a.guete] - reihenfolge[b.guete]);
+            verbEl.innerHTML = `<li class="gut"><strong>${phase === "gegen" ? "Gegen den Ball" : "Mit Ball"}</strong></li>` + liste
+                .map(v => `<li class="${v.guete}"><strong>${esc(nameVon(v.a))} – ${esc(nameVon(v.b))}:</strong> ${esc(v.text)}</li>`).join("");
+        }
+
+        // Taktik-Check
+        const checkEl = document.getElementById("tacCheck");
+        if (checkEl) {
+            checkEl.innerHTML = T.pruefe(userClub, slots)
+                .map(h => `<li class="${h.art === "warn" ? "warn" : ""}">${esc(h.text)}</li>`).join("");
+        }
     }
 
     escapeHtml(text) {
@@ -7587,13 +7832,7 @@ class UIManager {
             tab: anlass && anlass.art === "platzverweis" ? "taktik" : "wechsel",
             wechsel: [],
             auswahlRaus: anlass && anlass.art === "verletzung" ? anlass.spielerId : null,
-            taktik: {
-                mentality: t.mentality || "balanced",
-                pressing: t.pressing || "medium",
-                tempo: t.tempo || "normal",
-                passing: t.passing || "mixed",
-                focus: t.focus || "balanced"
-            },
+            taktik: this.coachTaktikStart(t),
             formation: club.formation,
             delegation: { ...liveMatch.delegation },
             autoOeffnen: { ...einst.autoOeffnen },
@@ -7652,7 +7891,11 @@ class UIManager {
             }
 
             const alt = club.tactics || {};
-            const vorgabe = { mentality: "balanced", pressing: "medium", tempo: "normal", passing: "mixed", focus: "balanced" };
+            const T = this.getTacticsEngine();
+            const vorgabe = Object.assign(
+                { mentality: "balanced", pressing: "medium", tempo: "normal", passing: "mixed", focus: "balanced" },
+                T ? T.standardAnweisungen() : {},
+                { formMitBall: "auto", formGegenBall: "grund" });
             const diff = {};
             Object.keys(c.taktik).forEach(k => {
                 if (c.taktik[k] !== (alt[k] ?? vorgabe[k])) diff[k] = c.taktik[k];
@@ -7746,7 +7989,11 @@ class UIManager {
         if (c.wechsel.length) teile.push(`${c.wechsel.length} Wechsel`);
         if (c.formation !== club.formation) teile.push("Formation");
         const t = club.tactics || {};
-        const vorgabe = { mentality: "balanced", pressing: "medium", tempo: "normal", passing: "mixed", focus: "balanced" };
+        const TE = this.getTacticsEngine();
+        const vorgabe = Object.assign(
+            { mentality: "balanced", pressing: "medium", tempo: "normal", passing: "mixed", focus: "balanced" },
+            TE ? TE.standardAnweisungen() : {},
+            { formMitBall: "auto", formGegenBall: "grund" });
         if (Object.keys(c.taktik).some(k => c.taktik[k] !== (t[k] ?? vorgabe[k]))) teile.push("Taktik");
         if (c.delegation.wechsel !== lm.delegation.wechsel || c.delegation.taktik !== lm.delegation.taktik) teile.push("Co-Trainer");
         if ((c.tausch || []).length) teile.push("Positionen");
@@ -7874,6 +8121,24 @@ class UIManager {
         });
     }
 
+    /** Die Taktik fuer das Coaching-Fenster: alle Anweisungen und beide Formen */
+    coachTaktikStart(t = {}) {
+        const T = this.getTacticsEngine();
+        const basis = {
+            mentality: t.mentality || "balanced",
+            pressing: t.pressing || "medium",
+            tempo: t.tempo || "normal",
+            passing: t.passing || "mixed",
+            focus: t.focus || t.attackFocus || "balanced"
+        };
+        if (!T) return basis;
+        const taktik = {};
+        T.ANWEISUNGEN.forEach(a => { taktik[a.key] = T.wert(t, a.key); });
+        taktik.formMitBall = t.formMitBall || "auto";
+        taktik.formGegenBall = t.formGegenBall || "grund";
+        return Object.assign(taktik, basis);
+    }
+
     renderCoachTaktik() {
         const c = this.coach;
         const lm = c.liveMatch;
@@ -7881,23 +8146,36 @@ class UIManager {
         if (!el) return;
         const esc = v => this.escapeHtml(String(v ?? ""));
         const configs = (typeof FORMATION_CONFIGS !== "undefined") ? FORMATION_CONFIGS : {};
+        const T = this.getTacticsEngine();
 
-        const gruppen = [
-            ["mentality", "Mentalität", [["very_defensive", "Sehr defensiv"], ["defensive", "Defensiv"], ["balanced", "Ausgeglichen"], ["offensive", "Offensiv"], ["very_offensive", "Sehr offensiv"]]],
-            ["pressing", "Pressing", [["low", "Niedrig"], ["medium", "Mittel"], ["high", "Hoch"]]],
-            ["tempo", "Tempo", [["slow", "Geduldig"], ["normal", "Normal"], ["fast", "Schnell"]]],
-            ["passing", "Passspiel", [["short", "Kurz"], ["mixed", "Gemischt"], ["direct", "Direkt"]]],
-            ["focus", "Angriffsseite", [["left", "Links"], ["center", "Zentrum"], ["right", "Rechts"], ["balanced", "Überall"]]]
-        ];
+        // Im Spiel die Regler, die sofort sichtbar wirken - nach Phasen
+        const LIVE_KEYS = ["mentality", "pressing", "anlaufen", "defensiveLine", "deckung", "nachBallverlust",
+            "nachBallgewinn", "tempo", "passing", "breite", "focus", "zweikampf"];
+        const gruppen = T
+            ? LIVE_KEYS.map(k => T.ANWEISUNGEN.find(a => a.key === k)).filter(Boolean)
+                .map(a => [a.key, a.label, a.optionen.map(o => [o.value, o.label])])
+            : [
+                ["mentality", "Mentalität", [["very_defensive", "Sehr defensiv"], ["defensive", "Defensiv"], ["balanced", "Ausgeglichen"], ["offensive", "Offensiv"], ["very_offensive", "Sehr offensiv"]]],
+                ["pressing", "Pressing", [["low", "Niedrig"], ["medium", "Mittel"], ["high", "Hoch"]]],
+                ["tempo", "Tempo", [["slow", "Geduldig"], ["normal", "Normal"], ["fast", "Schnell"]]],
+                ["passing", "Passspiel", [["short", "Kurz"], ["mixed", "Gemischt"], ["direct", "Direkt"]]],
+                ["focus", "Angriffsseite", [["left", "Links"], ["center", "Zentrum"], ["right", "Rechts"], ["balanced", "Überall"]]]
+            ];
 
         const schnell = [
-            ["alles", "⚡ Alles nach vorn", { mentality: "very_offensive", pressing: "high", tempo: "fast", passing: "direct" }],
-            ["halten", "🔒 Ergebnis halten", { mentality: "defensive", pressing: "low", tempo: "slow", passing: "short" }],
-            ["normal", "⚖️ Ausgewogen", { mentality: "balanced", pressing: "medium", tempo: "normal", passing: "mixed" }]
+            ["alles", "⚡ Alles nach vorn", { mentality: "very_offensive", pressing: "high", tempo: "fast", passing: "direct", anlaufen: "oefter", nachBallverlust: "gegenpressing" }],
+            ["pressen", "🔥 Gegenpressing", { pressing: "high", anlaufen: "oefter", nachBallverlust: "gegenpressing", defensiveLine: "high" }],
+            ["halten", "🔒 Ergebnis halten", { mentality: "defensive", pressing: "low", tempo: "slow", passing: "short", nachBallverlust: "zurueckziehen", nachBallgewinn: "ballsichern" }],
+            ["mauern", "🧱 Mauern (5-4-1)", { mentality: "very_defensive", pressing: "low", defensiveLine: "deep", kompaktheit: "eng", nachBallverlust: "zurueckziehen", formGegenBall: configs["5-4-1"] ? "5-4-1" : "grund" }],
+            ["normal", "⚖️ Ausgewogen", { mentality: "balanced", pressing: "medium", tempo: "normal", passing: "mixed", anlaufen: "normal", nachBallverlust: "normal", nachBallgewinn: "normal", deckung: "raum" }]
         ];
 
         const optionen = Object.keys(configs).map(k =>
             `<option value="${esc(k)}" ${k === c.formation ? "selected" : ""}>${esc(configs[k].name || k)}</option>`).join("");
+        const formMit = T ? T.formenMitBall(configs).map(f =>
+            `<option value="${esc(f.key)}" ${f.key === c.taktik.formMitBall ? "selected" : ""}>${esc(f.name)}</option>`).join("") : "";
+        const formGegen = T ? T.formenGegenBall(configs).map(f =>
+            `<option value="${esc(f.key)}" ${f.key === c.taktik.formGegenBall ? "selected" : ""}>${esc(f.name)}</option>`).join("") : "";
 
         el.innerHTML = `
             <div class="coach-hint">Gilt nur für dieses Spiel - deine gespeicherte Taktik bleibt unverändert.${c.delegation.taktik ? " Der Co-Trainer darf zusätzlich nachsteuern." : ""}</div>
@@ -7905,10 +8183,15 @@ class UIManager {
             <label class="coach-label" for="coachFormation">Formation</label>
             <select id="coachFormation" class="styled-select">${optionen}</select>
             ${lm.platzverweise[c.side].length ? '<div class="coach-muted">In Unterzahl: Die Formation verteilt die verbliebenen Spieler neu.</div>' : ""}
+            ${T ? `
+            <label class="coach-label" for="coachFormMit">Mit Ball</label>
+            <select id="coachFormMit" class="styled-select">${formMit}</select>
+            <label class="coach-label" for="coachFormGegen">Gegen den Ball</label>
+            <select id="coachFormGegen" class="styled-select">${formGegen}</select>` : ""}
             ${gruppen.map(([feld, titel, werte]) => `
-                <div class="coach-label">${titel}</div>
+                <div class="coach-label">${esc(titel)}</div>
                 <div class="coach-chips">${werte.map(([w, t]) =>
-                    `<button class="coach-chip ${c.taktik[feld] === w ? "active" : ""}" data-feld="${feld}" data-wert="${w}">${t}</button>`).join("")}</div>`).join("")}
+                    `<button class="coach-chip ${c.taktik[feld] === w ? "active" : ""}" data-feld="${feld}" data-wert="${w}">${esc(t)}</button>`).join("")}</div>`).join("")}
         `;
 
         el.insertAdjacentHTML("beforeend", this.coachPositionenHtml() + this.coachStandardsHtml());
@@ -7918,6 +8201,10 @@ class UIManager {
             c.formation = e.target.value;
             this.renderCoaching();
         };
+        const mitSel = el.querySelector("#coachFormMit");
+        if (mitSel) mitSel.onchange = (e) => { c.taktik.formMitBall = e.target.value; this.renderCoaching(); };
+        const gegenSel = el.querySelector("#coachFormGegen");
+        if (gegenSel) gegenSel.onchange = (e) => { c.taktik.formGegenBall = e.target.value; this.renderCoaching(); };
         el.querySelectorAll("[data-feld]").forEach(b => b.onclick = () => {
             c.taktik[b.dataset.feld] = b.dataset.wert;
             this.renderCoaching();
@@ -9266,15 +9553,8 @@ class UIManager {
             };
         }
 
-        // Taktik Dropdowns
-        ["tacMentality", "tacPressing", "tacTempo", "tacPassing", "tacFocus"].forEach(id => {
-            document.getElementById(id).onchange = (e) => {
-                const userClub = this.app.state.clubs.find(c => c.id === this.app.state.userClubId);
-                const key = id.replace("tac", "").toLowerCase();
-                const map = { mentality: "mentality", pressing: "pressing", tempo: "tempo", passing: "passing", focus: "focus" };
-                userClub.tactics[map[key]] = e.target.value;
-            };
-        });
+        // Die Taktik-Anweisungen, Rollen und Formen binden sich beim Zeichnen
+        // selbst (renderTaktikPanels) - es sind zu viele fuer feste IDs.
 
         // Rollen Dropdowns
         ["roleCaptain", "rolePenalty", "roleFreeKick", "roleCorner"].forEach(id => {

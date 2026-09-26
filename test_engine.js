@@ -1652,7 +1652,10 @@ function runEngineTests() {
                 l2.advanceRealTime(1000 / 60);
                 l2.updateBallAndPlayers(1000 / 60);
                 f++;
-                if (d2.possessionTeam !== bes) { bes = d2.possessionTeam; seit = f; }
+                // Gemessen wird erst zwei Sekunden nach einem Besitzwechsel -
+                // und nach einem Anstoss: Direkt danach stehen noch alle in
+                // der Anstossaufstellung, egal wie gedeckt wird.
+                if (d2.possessionTeam !== bes || d2.kickoff) { bes = d2.possessionTeam; seit = f; }
                 if (f % 15 || d2.mode !== "ambient" || d2.deadBall || f - seit < 120 || d2.possessionTeam !== "away") continue;
                 const gast = l2.players2D.filter(p => p.team === "away" && p.pos !== "TW");
                 l2.players2D.filter(p => p.team === "home" && p.pos !== "TW").forEach(p => {
@@ -1731,15 +1734,31 @@ function runEngineTests() {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const home = state.clubs.find(c => c.id === "muc");
         const away = state.clubs.find(c => c.id === "dor");
+        // Beide Einstellungen spielen dieselben Partien: Jede Partie bekommt
+        // eine feste Zufallsfolge, die fuer beide gleich ist. So misst der
+        // Vergleich die Zweikampfhaerte und nicht den Zufall - frei gewuerfelt
+        // lag der Unterschied von rund einem halben Foul je Spiel im Rauschen.
+        const folge = (a) => () => {
+            a = (a + 0x6D2B79F5) | 0;
+            let t = Math.imul(a ^ (a >>> 15), 1 | a);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
         const fouls = (zweikampf) => {
             home.tactics = TacticsEngine.normalisiere({ zweikampf });
             away.tactics = TacticsEngine.normalisiere({});
             let summe = 0;
-            for (let i = 0; i < 120; i++) {
-                state.players.forEach(p => { p.suspendedMatches = 0; p.injuredWeeks = 0; p.fitness = 92; });
-                const m = { id: `zk_${zweikampf}_${i}`, played: false, homeClubId: "muc", awayClubId: "dor" };
-                MatchEngine.simulateFullMatch(m, home, away, state.players);
-                summe += m.stats.fouls[0];
+            const zufall = Math.random;
+            try {
+                for (let i = 0; i < 120; i++) {
+                    Math.random = folge(7919 * (i + 1));
+                    state.players.forEach(p => { p.suspendedMatches = 0; p.injuredWeeks = 0; p.fitness = 92; });
+                    const m = { id: `zk_${i}`, played: false, homeClubId: "muc", awayClubId: "dor" };
+                    MatchEngine.simulateFullMatch(m, home, away, state.players);
+                    summe += m.stats.fouls[0];
+                }
+            } finally {
+                Math.random = zufall;
             }
             return summe / 120;
         };
@@ -2655,22 +2674,26 @@ function runEngineTests() {
 
         while (!live.isFinished && frames < 60 * 400) {
             const vorHalbzeit = live.director.isSecondHalf;
+            const vorSchnitte = live.schnitte || 0;
             live.advanceRealTime(FRAME);
             live.updateBallAndPlayers(FRAME);
             frames++;
 
             // Der Seitenwechsel ist ein Schnitt in der Pause: beide
             // Mannschaften kommen auf der anderen Seite aus der Kabine. Genau
-            // dieses eine Bild darf springen, jedes andere nicht.
+            // dieses eine Bild darf springen, jedes andere nicht - ausser bei
+            // einem ausgewiesenen Schnitt der Uebertragung (Ecke, Anstoss
+            // nach einem Tor), bei dem die Wiedergabe abblendet.
             const seitenwechsel = !vorHalbzeit && live.director.isSecondHalf;
             if (seitenwechsel) seitenwechselFrames++;
+            const schnitt = seitenwechsel || (live.schnitte || 0) !== vorSchnitte;
 
             maxBallStep = Math.max(maxBallStep, Math.hypot(live.ball.x - prevBall.x, live.ball.y - prevBall.y));
             prevBall = { x: live.ball.x, y: live.ball.y };
 
             live.players2D.forEach(p => {
                 const vorher = prevPlayers.get(p.id);
-                if (vorher && !seitenwechsel) {
+                if (vorher && !schnitt) {
                     maxPlayerStep = Math.max(maxPlayerStep, Math.hypot(p.x - vorher.x, p.y - vorher.y));
                 }
                 prevPlayers.set(p.id, { x: p.x, y: p.y });

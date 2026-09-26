@@ -1110,6 +1110,7 @@ class LiveMatchDirector {
     schnittZurEcke() {
         const info = this.deadBall;
         if (!info || info.kind !== "corner") return;
+        this.markiereSchnitt();
         const schuetze = this.getPlayer2D(this.sceneProtagonist) || this.getPlayer2D(this.carrierId);
         const dir = this.attackDir(info.team);
         (this.match.players2D || []).forEach(p => {
@@ -2765,8 +2766,19 @@ class LiveMatchDirector {
         if (reason === "goal" || reason === "halftime") this.stelleZumAnstossAuf();
     }
 
+    /**
+     * Ein Schnitt der Uebertragung: Die Spieler stehen im naechsten Bild
+     * woanders. Gezaehlt, damit die Wiedergabe kurz abblendet - ein Sprung
+     * ohne Blende saehe aus wie ein Fehler.
+     */
+    markiereSchnitt() {
+        this.match.schnitte = (this.match.schnitte || 0) + 1;
+        this.match.blende = 0.45;
+    }
+
     /** Setzt alle nahe an ihren Anstossplatz - der Schnitt der Uebertragung */
     stelleZumAnstossAuf() {
+        this.markiereSchnitt();
         (this.match.players2D || []).forEach(p => {
             const ziel = this.computeSetPieceTarget(p, this.deadBall);
             if (!ziel) return;

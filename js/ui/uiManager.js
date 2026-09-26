@@ -7574,6 +7574,14 @@ class UIManager {
 
             // 8. Einblendungen der Regie
             this.drawBroadcastOverlays(ctx, canvas, liveMatch, bg);
+
+            // 9. Blende bei einem Schnitt der Uebertragung (Ecke, Anstoss
+            //    nach einem Tor): kurz dunkel, dann das neue Bild
+            if (liveMatch.blende > 0) {
+                ctx.fillStyle = `rgba(4, 7, 10, ${Math.min(0.9, liveMatch.blende / 0.45 * 0.9)})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                liveMatch.blende = Math.max(0, liveMatch.blende - dt);
+            }
         };
 
 

@@ -588,13 +588,18 @@ const CalendarEngine = {
         if (art === "cup") {
             const cup = state.cups?.de_cup;
             const raus = cup && (cup.ausgeschieden || []).includes(state.userClubId);
-            return {
-                titel: cup ? cup.name : "Pokalabend",
-                text: raus
-                    ? "Ohne uns - der Pokal wird ohne unsere Beteiligung weitergespielt."
-                    : "Die Pokalrunde wird ausgetragen.",
-                marken
-            };
+            const rundenName = cupEngine?.POKAL_RUNDEN?.[runde]?.name || "Pokalrunde";
+            let text = "Die Pokalrunde wird ausgetragen.";
+            if (raus) {
+                text = "Ohne uns - der Pokal wird ohne unsere Beteiligung weitergespielt.";
+            } else if (cup && cup.completed) {
+                text = "Der Pokal ist entschieden.";
+            } else if (cup && runde > cup.rundenIndex) {
+                text = `${rundenName} - die Auslosung folgt nach der ${cup.runden[cup.rundenIndex]?.roundName || "laufenden Runde"}.`;
+            } else if (cup && runde < cup.rundenIndex) {
+                text = `${rundenName} - bereits ausgespielt.`;
+            }
+            return { titel: cup ? cup.name : "Pokalabend", text, marken };
         }
 
         return {

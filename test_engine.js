@@ -1136,7 +1136,8 @@ function runEngineTests() {
         let frames = 0;
         const beschleunigung = [];
         const vorher = new Map();
-        let start = null, frei = true, eigen = 0, gesamt = 0;
+        let frei = true, gleichlauf = 0, proben = 0;
+        const tempoVorher = new Map(), orte = new Map();
         const arten = { angriff: new Set(), abwehr: new Set() };
 
         while (!live.isFinished && live.minute < 45 && frames < 60 * 900) {
@@ -1158,33 +1159,47 @@ function runEngineTests() {
                 }
             });
 
-            // Die Wege ueber je zwei Sekunden: Wie viel davon ist eigene
-            // Bewegung, wie viel das gemeinsame Verschieben der Elf?
-            if (frames % 120 === 0) {
-                if (start && frei) {
+            // Aendern die Spieler einer Elf ihr Tempo alle zugleich in dieselbe
+            // Richtung? Genau das ist eine Schablone: Alle folgen demselben
+            // Ball im selben Takt. Gemessen wird je Viertelsekunde, wie
+            // gleichgerichtet die Tempoaenderungen sind - eins hiesse alle
+            // gleich, zufaellige Richtungen laegen um 0.3.
+            if (frames % 15 === 0) {
+                const tempo = new Map();
+                live.players2D.forEach(p => {
+                    const o = orte.get(p.id);
+                    if (o) tempo.set(p.id, { x: (p.x - o.x) * 4, y: (p.y - o.y) * 4 });
+                    orte.set(p.id, { x: p.x, y: p.y });
+                });
+                if (frei) {
                     ["home", "away"].forEach(team => {
-                        const feld = live.players2D.filter(p => p.team === team && p.pos !== "TW" && start.has(p.id));
-                        if (feld.length < 9) return;
-                        const wege = feld.map(p => ({ x: p.x - start.get(p.id).x, y: p.y - start.get(p.id).y }));
-                        const mx = wege.reduce((s, w) => s + w.x, 0) / wege.length;
-                        const my = wege.reduce((s, w) => s + w.y, 0) / wege.length;
-                        wege.forEach(w => {
-                            eigen += Math.hypot(w.x - mx, w.y - my);
-                            gesamt += Math.hypot(w.x, w.y);
+                        let ux = 0, uy = 0, k = 0;
+                        live.players2D.filter(p => p.team === team && p.pos !== "TW").forEach(p => {
+                            const jetzt = tempo.get(p.id), davor = tempoVorher.get(p.id);
+                            if (!jetzt || !davor) return;
+                            const ax = jetzt.x - davor.x, ay = jetzt.y - davor.y, l = Math.hypot(ax, ay);
+                            if (l < 0.6) return;
+                            ux += ax / l; uy += ay / l; k++;
                         });
+                        if (k >= 5) { gleichlauf += Math.hypot(ux, uy) / k; proben++; }
                     });
                 }
-                start = new Map(live.players2D.map(p => [p.id, { x: p.x, y: p.y }]));
+                tempoVorher.clear();
+                tempo.forEach((v, id) => tempoVorher.set(id, v));
                 frei = true;
             }
         }
 
-        // Die Elf glitt vorher wie eine Schablone ueber den Rasen: Ueber zwei
-        // Sekunden war nur gut die Haelfte der Bewegung eigene Bewegung
-        // (gemessen 52 bis 54 Prozent), der Rest gemeinsames Verschieben.
-        const eigenanteil = eigen / Math.max(1, gesamt);
-        if (eigenanteil < 0.57) {
-            throw new Error(`Nur ${(eigenanteil * 100).toFixed(0)} % der Laufwege sind eigene Wege - die Elf läuft als Schablone`);
+        // Die Elf glitt vorher wie eine Schablone ueber den Rasen: Alle
+        // folgten ihrem Ziel mit derselben Nachfuehrung, und jede Ballbewegung
+        // liess die ganze Mannschaft im selben Moment gleich antreten -
+        // gemessen 0.64 bis 0.67. Mit eigener Wahrnehmung, eigenen Laufwegen
+        // und Schueben liegt der Wert um 0.55, auch wenn die Elf gemeinsam
+        // aufrueckt.
+        const gleich = gleichlauf / Math.max(1, proben);
+        if (proben < 50) throw new Error(`Zu wenige Proben: ${proben}`);
+        if (gleich > 0.60) {
+            throw new Error(`Die Elf tritt im Gleichtakt an (${gleich.toFixed(2)}) - sie läuft als Schablone`);
         }
 
         // Antritt und Bremsen statt Sprung: Vorher sprang die Geschwindigkeit
@@ -1202,6 +1217,72 @@ function runEngineTests() {
         }
         if (arten.abwehr.size < 3) {
             throw new Error(`Ohne Ball kaum eigene Laufwege: ${[...arten.abwehr].join(", ")}`);
+        }
+    });
+
+    // 14a7c. Ein Angriff wird mit der ganzen Mannschaft gespielt
+    test("LiveMatchDirector: Die ganze Elf rückt beim Angriff auf, nicht nur die Spitzen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const homeClub = state.clubs.find(c => c.id === "muc");
+        const awayClub = state.clubs.find(c => c.id === "dor");
+        const match = { id: "aufruecken_elf", played: false, homeClubId: "muc", awayClubId: "dor" };
+        const live = new LiveMatch(match, homeClub, awayClub, state.players);
+        live.speed = 1;
+        const dir = live.director;
+
+        // Hoehe als Anteil der Feldlaenge vom eigenen Tor aus
+        const drittel = { mitte: [], letztes: [] };
+        let frames = 0, besitzer = null, seit = 0;
+        while (!live.isFinished && live.minute < 60 && frames < 60 * 900) {
+            live.advanceRealTime(1000 / 60);
+            live.updateBallAndPlayers(1000 / 60);
+            frames++;
+            if (dir.possessionTeam !== besitzer) { besitzer = dir.possessionTeam; seit = frames; }
+            if (frames % 15 || dir.mode !== "ambient" || dir.deadBall || dir.kickoff) continue;
+            // Nach einem Ballwechsel braucht die Elf einen Moment zum Umschalten
+            if (frames - seit < 90) continue;
+
+            const team = dir.possessionTeam;
+            const richtung = dir.attackDir(team), tor = dir.ownGoalX(team);
+            const hoehe = x => (x - tor) * richtung / 92;
+            const b = hoehe(live.ball.x);
+            const reihe = g => {
+                const l = live.players2D.filter(p => p.team === team && p.group === g);
+                return l.reduce((s, p) => s + hoehe(p.x), 0) / (l.length || 1);
+            };
+            const probe = { ball: b, abwehr: reihe("def"), mittelfeld: reihe("mid"), angriff: reihe("att") };
+            if (b > 0.66) drittel.letztes.push(probe);
+            else if (b > 0.36) drittel.mitte.push(probe);
+        }
+
+        if (drittel.letztes.length < 20 || drittel.mitte.length < 20) {
+            throw new Error(`Zu wenige Proben: ${drittel.mitte.length}/${drittel.letztes.length}`);
+        }
+        const mw = (l, k) => l.reduce((s, e) => s + e[k], 0) / l.length;
+
+        // Vorher stand die Kette bei Ball im letzten Drittel bei 37 Prozent
+        // der Feldlaenge und das Mittelfeld zwanzig Prozent hinter dem Ball -
+        // es griffen im Grunde nur die Spitzen an.
+        const l = drittel.letztes;
+        if (mw(l, "abwehr") < 0.45) {
+            throw new Error(`Im letzten Drittel steht die Kette bei ${(mw(l, "abwehr") * 100).toFixed(0)} % - sie rückt nicht bis zur Mittellinie auf`);
+        }
+        if (mw(l, "ball") - mw(l, "mittelfeld") > 0.18) {
+            throw new Error(`Das Mittelfeld hängt ${((mw(l, "ball") - mw(l, "mittelfeld")) * 100).toFixed(0)} % hinter dem Ball`);
+        }
+        if (mw(l, "angriff") - mw(l, "abwehr") > 0.35) {
+            throw new Error(`Die Elf ist beim Angriff ${((mw(l, "angriff") - mw(l, "abwehr")) * 100).toFixed(0)} % des Feldes lang - sie reißt auseinander`);
+        }
+
+        // Auch bei Ball im Mittelfeld klebt die Kette nicht am eigenen Strafraum
+        // (vorher 18 Prozent)
+        if (mw(drittel.mitte, "abwehr") < 0.25) {
+            throw new Error(`Bei Ball im Mittelfeld steht die Kette bei ${(mw(drittel.mitte, "abwehr") * 100).toFixed(0)} %`);
+        }
+
+        // Die Reihenfolge bleibt: Kette hinter Mittelfeld hinter Angriff
+        if (!(mw(l, "abwehr") < mw(l, "mittelfeld") && mw(l, "mittelfeld") < mw(l, "angriff"))) {
+            throw new Error("Die Mannschaftsteile stehen beim Angriff nicht mehr gestaffelt");
         }
     });
 
@@ -3658,6 +3739,101 @@ function runEngineTests() {
             throw new Error(`Die 2. Runde hat ${cup.runden[1].matches.length} statt 16 Paarungen`);
         }
         if (state.currentDayIndex !== index + 1) throw new Error("Der Kalender ist nicht weitergerückt");
+    });
+
+    // Nach dem eigenen Pokalspiel geht es mit der Liga weiter - nicht mit der
+    // naechsten Pokalrunde am selben Abend
+    test("CalendarEngine: Nach dem eigenen Pokalspiel geht es mit der Liga weiter", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Pokalpruefer" });
+        const cup = state.cups.de_cup;
+        const pokaltage = state.calendar
+            .map((d, i) => ({ d, i }))
+            .filter(e => e.d.type === "cup");
+        const ersterAbend = pokaltage[0];
+        state.currentDayIndex = ersterAbend.i;
+
+        // Der eigene Verein kommt in jedem Fall weiter: Wir lassen ihn
+        // gewinnen, damit es eine naechste Runde fuer ihn gibt
+        const spiel = CalendarEngine.spielbarHeute(state);
+        if (!spiel || spiel.art !== "pokal") throw new Error("Am ersten Pokalabend ist die eigene Partie nicht spielbar");
+        if (spiel.rundenName !== CupEngine.POKAL_RUNDEN[0].name) {
+            throw new Error(`Am ersten Pokalabend steht "${spiel.rundenName}" an`);
+        }
+        const heim = spiel.partie.homeClubId === state.userClubId;
+        Object.assign(spiel.partie, { played: true, homeGoals: heim ? 3 : 0, awayGoals: heim ? 0 : 3 });
+
+        // So schliesst die Oberflaeche den Abend nach dem Abpfiff ab
+        const tag = state.calendar[state.currentDayIndex];
+        CupEngine.spieleTermin(state, "cup", tag.cupRunde);
+        CupEngine.schliesseTerminAb(state, "cup", tag.cupRunde);
+        if (cup.rundenIndex !== 1) throw new Error("Die zweite Runde wurde nicht ausgelost");
+
+        // Derselbe Abend darf keine weitere Pokalpartie anbieten. Vorher kam
+        // hier sofort die zweite Runde, dann die dritte - bis zum Aus.
+        const nochmal = CalendarEngine.spielbarHeute(state);
+        if (nochmal) {
+            throw new Error(`Nach dem Pokalspiel wird am selben Abend "${nochmal.rundenName}" angeboten`);
+        }
+
+        // Der Weiter-Knopf fuehrt zum naechsten Ligatermin, nicht in den Pokal
+        const halt = CalendarEngine.naechsterHalt(state);
+        if (!halt || halt.grund === "cup") {
+            throw new Error(`Der nächste Halt ist ${halt ? halt.grund : "keiner"} statt eines Ligatermins`);
+        }
+
+        // Den Kalender bis zum naechsten Pokalabend laufen lassen: Dazwischen
+        // wird Liga gespielt, und der Pokal bleibt bei der zweiten Runde
+        const zweiterAbend = pokaltage[1];
+        let ligaSpiele = 0;
+        while (state.currentDayIndex < zweiterAbend.i) {
+            const r = CalendarEngine.advanceOneDay(state);
+            if (!r.success) throw new Error("Der Kalender blieb stehen");
+            if (r.type === "matchday") ligaSpiele++;
+            if (cup.rundenIndex !== 1) {
+                throw new Error(`Zwischen den Pokalabenden wurde Runde ${cup.rundenIndex + 1} gespielt`);
+            }
+        }
+        if (ligaSpiele < 3) throw new Error(`Zwischen den Pokalabenden nur ${ligaSpiele} Ligaspiele`);
+
+        // Erst am zweiten Abend steht die zweite Runde an - einmal
+        const zweite = CalendarEngine.spielbarHeute(state);
+        if (!zweite || zweite.rundenName !== CupEngine.POKAL_RUNDEN[1].name) {
+            throw new Error(`Am zweiten Pokalabend steht ${zweite ? zweite.rundenName : "nichts"} an`);
+        }
+        CalendarEngine.advanceOneDay(state);
+        if (cup.rundenIndex !== 2) throw new Error("Der zweite Pokalabend hat nicht genau eine Runde gespielt");
+
+        // Ein Spielstand, in dem der Pokal durch den alten Fehler vorausgeeilt
+        // ist, spielt an den frueheren Abenden nichts nach und bricht nicht ab
+        const vorher = cup.runden.reduce((s, r) => s + r.matches.filter(m => m.played).length, 0);
+        CupEngine.spieleTermin(state, "cup", 1);
+        CupEngine.schliesseTerminAb(state, "cup", 1);
+        const nachher = cup.runden.reduce((s, r) => s + r.matches.filter(m => m.played).length, 0);
+        if (nachher !== vorher || cup.rundenIndex !== 2) {
+            throw new Error("Ein vergangener Pokalabend hat eine spätere Runde gespielt");
+        }
+
+        // Dasselbe im Europapokal: ein Abend, eine Partie
+        const euro = GameState.createNewGame("muc", "normal", { name: "Europapruefer" });
+        const europaTage = euro.calendar.map((d, i) => ({ d, i })).filter(e => e.d.type === "euro");
+        let geprueft = 0;
+        for (const { d, i } of europaTage) {
+            euro.currentDayIndex = i;
+            const eigene = CalendarEngine.spielbarHeute(euro);
+            if (!eigene) { CalendarEngine.advanceOneDay(euro); continue; }
+            const zuHause = eigene.partie.homeClubId === euro.userClubId;
+            Object.assign(eigene.partie, { played: true, homeGoals: zuHause ? 2 : 0, awayGoals: zuHause ? 0 : 2 });
+            CupEngine.spieleTermin(euro, "euro", d.cupRunde);
+            CupEngine.schliesseTerminAb(euro, "euro", d.cupRunde);
+            const danach = CalendarEngine.spielbarHeute(euro);
+            if (danach) {
+                throw new Error(`Nach dem Europapokalspiel wird am selben Abend "${danach.rundenName}" angeboten`);
+            }
+            CalendarEngine.advanceOneDay(euro);
+            geprueft++;
+            if (geprueft >= 3) break;
+        }
+        if (geprueft === 0) throw new Error("Kein Europapokalabend mit eigener Partie gefunden");
     });
 
     test("CupEngine: Europapokal spielt Gruppenphase und Endrunde aus", () => {

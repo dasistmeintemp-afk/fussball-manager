@@ -266,7 +266,7 @@ class CupEngine {
 
     /** Den Termin abschließen - Sieger, Prämien, nächste Auslosung */
     static schliesseTerminAb(state, art, rundenIndex) {
-        if (art === "cup") return this.schliessePokalrundeAb(state);
+        if (art === "cup") return this.schliessePokalrundeAb(state, rundenIndex);
         return this.schliesseEuropaTerminAb(state, rundenIndex);
     }
 
@@ -283,6 +283,12 @@ class CupEngine {
         if (art === "cup") {
             const cup = state.cups?.de_cup;
             if (!cup || cup.completed) return null;
+            // Nur die Runde, die an diesem Abend dran ist. Vorher zählte hier
+            // die laufende Runde des Pokals: War die eigene Partie gespielt und
+            // die nächste Runde ausgelost, bot derselbe Abend sofort die
+            // nächste Partie an - und danach die übernächste, bis zum Aus oder
+            // zum Pokalsieg, während die Liga stillstand.
+            if (typeof rundenIndex === "number" && cup.rundenIndex !== rundenIndex) return null;
             const runde = cup.runden[cup.rundenIndex];
             if (!runde || runde.completed) return null;
             const partie = runde.matches.find(m => !m.played && meine(m));
@@ -310,9 +316,27 @@ class CupEngine {
         return cup.runden[cup.rundenIndex] || null;
     }
 
-    static spielePokalrunde(state) {
+    /**
+     * Spielt die Pokalrunde eines Kalenderabends.
+     *
+     * Ist sie schon ausgetragen, passiert nichts - ein Abend spielt nie die
+     * Runde eines späteren Termins vor. Hinkt der Pokal dagegen hinterher,
+     * werden die offenen Runden erst nachgeholt, damit er nicht ohne Sieger
+     * endet.
+     */
+    static spielePokalrunde(state, rundenIndex) {
         const cup = state.cups?.de_cup;
         if (!cup || cup.completed) return null;
+
+        const ziel = typeof rundenIndex === "number" ? rundenIndex : cup.rundenIndex;
+        let schutz = 0;
+        while (!cup.completed && cup.rundenIndex < ziel && schutz++ < this.POKAL_RUNDEN.length) {
+            const offen = cup.runden[cup.rundenIndex];
+            if (!offen) break;
+            offen.matches.filter(m => !m.played).forEach(m => this.austragen(state, m, true));
+            this.schliessePokalrundeAb(state);
+        }
+        if (cup.completed || cup.rundenIndex !== ziel) return null;
 
         const runde = cup.runden[cup.rundenIndex];
         if (!runde || runde.completed) return null;
@@ -333,9 +357,11 @@ class CupEngine {
      * Wenn alle Partien einer Pokalrunde gespielt sind: Sieger ermitteln,
      * Prämien zahlen, nächste Runde auslosen.
      */
-    static schliessePokalrundeAb(state) {
+    static schliessePokalrundeAb(state, rundenIndex) {
         const cup = state.cups?.de_cup;
         if (!cup || cup.completed) return null;
+        // Ein Abend schließt nur seine eigene Runde ab
+        if (typeof rundenIndex === "number" && cup.rundenIndex !== rundenIndex) return null;
 
         const runde = cup.runden[cup.rundenIndex];
         if (!runde || runde.matches.some(m => !m.played)) return null;

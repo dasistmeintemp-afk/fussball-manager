@@ -70,16 +70,6 @@ const RUHENDER_BALL = ["corner", "penalty", "freekick", "throwin", "goalkick", "
  */
 const ORTSFREI = ["through_ball", "dribble", "tackle", "pass"];
 
-/** Wie stark ein Mannschaftsteil der Ballbewegung über das Feld folgt */
-const LINE_FOLLOW_WEIGHT = { gk: 0.10, def: 0.52, mid: 0.70, att: 0.86 };
-
-/**
- * Wie stark rückt ein Mannschaftsteil im Ballbesitz mit auf?
- * Die Kette bleibt zurück, das Mittelfeld schiebt nach, der Angriff geht ganz vor.
- */
-const GROUP_PUSH = { gk: 0.25, def: 0.85, mid: 1.1, att: 1.5 };
-
-/** Tempo (Feldeinheiten pro Sekunde) je Mannschaftsteil als Basiswert */
 /**
  * Tempo (Feldeinheiten pro Sekunde) je Mannschaftsteil als Basiswert.
  *
@@ -412,7 +402,6 @@ class LiveMatchDirector {
             p.seed = (idx * 1.7) % (Math.PI * 2);
             p.group = this.getGroup(p.pos);
             p.baseSpeed = (LINE_BASE_SPEED[p.group] || 11) * (0.86 + ((p.pace || 70) / 100) * 0.32);
-            p.followWeight = LINE_FOLLOW_WEIGHT[p.group] || 0.7;
             p.urgency = 1;
             // Frische: sinkt über die 90 Minuten und bremst den Spieler
             if (typeof p.freshness !== "number") p.freshness = 1;
@@ -432,8 +421,8 @@ class LiveMatchDirector {
             if (!p.sicht) p.sicht = { x: this.match.ball?.x ?? 50, y: this.match.ball?.y ?? 50 };
         });
         // Nach einem Wechsel, einer Umstellung oder einem Platzverweis stimmt
-        // die gemerkte Hoehe der Abwehrkette nicht mehr.
-        this._teamLineBase = {};
+        // die gemerkte Tiefe der Formation nicht mehr.
+        this._tiefenRahmen = {};
     }
 
     /**
@@ -798,7 +787,8 @@ class LiveMatchDirector {
         // Kurzer Moment, in dem sich alle sortieren
         this.sideSwapTimer = 2;
 
-        this._teamLineBase = {}; // Zwischenspeicher leeren
+        this._tiefenRahmen = {}; // Zwischenspeicher leeren
+        this._schwerpunkt = {};
     }
 
     checkPhaseBanners(previousMinute, minute) {
@@ -3077,6 +3067,7 @@ class LiveMatchDirector {
             this._letzterBesitz = this.possessionTeam;
         }
         this._abseitsLinie = { home: this.abseitsLinie("home"), away: this.abseitsLinie("away") };
+        this.fuehreSchwerpunktNach(lauf);
 
         players.forEach(p => {
             // Ein Sprung auf dem Feld (Seitenwechsel, Einwechslung) nimmt den
@@ -3132,6 +3123,30 @@ class LiveMatchDirector {
         if (match.goalFlash > 0) {
             match.goalFlash = Math.max(0, match.goalFlash - rawDt * 1.4);
         }
+    }
+
+    /**
+     * Der Spielschwerpunkt, nach dem eine Mannschaft ihre Hoehe richtet - als
+     * Anteil der Feldlaenge vom eigenen Tor aus.
+     *
+     * Die Elf folgte dem Ball in jedem Bild. Weil sie jetzt als Ganzes
+     * aufrueckt, musste sie dafuer rennen: Gemessen sprintete fast ein Drittel
+     * der Feldspieler, sobald der Ball nach vorn lief. Eine Mannschaft rueckt
+     * aber geordnet nach und faellt nur schnell zurueck, wenn es gefaehrlich
+     * wird - nach vorn folgt der Schwerpunkt deshalb gemaechlich, nach hinten
+     * zuegig.
+     */
+    fuehreSchwerpunktNach(lauf) {
+        const ball = this.match.ball;
+        if (!this._schwerpunkt) this._schwerpunkt = {};
+        ["home", "away"].forEach(team => {
+            const b = (ball.x - this.ownGoalX(team)) * this.attackDir(team) / 92;
+            const alt = this._schwerpunkt[team];
+            if (typeof alt !== "number") { this._schwerpunkt[team] = b; return; }
+            if (!(lauf > 0)) return;
+            const traeg = b < alt ? 0.6 : 1.6;
+            this._schwerpunkt[team] = alt + (b - alt) * (1 - Math.exp(-lauf / traeg));
+        });
     }
 
     /**
@@ -3675,7 +3690,9 @@ class LiveMatchDirector {
             const dist = Math.hypot(p.x - ball.x, p.y - ball.y);
             if (dist < 26) {
                 const pull = (attacking ? 0.26 : 0.2) * (1 - dist / 26);
-                tx += (ball.x - tx) * pull;
+                // Die Kette schiebt zur Ballseite, aber sie tritt nicht aus
+                // der Linie heraus - das tut nur, wer presst
+                if (attacking) tx += (ball.x - tx) * pull;
                 ty += (ball.y - ty) * pull;
                 urgency = 1.25;
             }
@@ -3720,8 +3737,8 @@ class LiveMatchDirector {
             const zumZiel = Math.hypot(tx - p.x, ty - p.y);
             if (urgency <= 1 && !sprinting && zumBall > 28 && zumZiel < 7) {
                 urgency = 0.6;
-            } else if (zumZiel > 10) {
-                urgency = Math.max(urgency, Math.min(1.8, 1 + (zumZiel - 10) / 18));
+            } else if (zumZiel > 14) {
+                urgency = Math.max(urgency, Math.min(1.7, 1 + (zumZiel - 14) / 20));
                 if (urgency >= 1.3) sprinting = true;
             }
         }
@@ -3770,13 +3787,9 @@ class LiveMatchDirector {
         const blockY = 50 + (gesehen.y - 50) * 0.24;
         let y = blockY + (p.baseY - 50) * kompakt;
 
-        // Je länger eine Mannschaft den Ball hält, desto mutiger rückt die
-        // ganze Elf nach - dadurch wird aus Ballbesitz ein Angriff, den man auf
-        // dem Feld auch sieht.
-        const chainPush = Math.min(1, (this.possessionChain || 0) / 6);
-        const push = Math.max(0, ballProgress - 0.33) * (52 + chainPush * 18);
-        const groupPush = GROUP_PUSH[p.group] ?? 1.0;
-        let x = p.baseX + dir * push * groupPush + dir * 2.5;
+        // Die ganze Elf greift an, nicht nur die Spitzen: Sie rueckt als
+        // Einheit mit dem Ball auf (siehe hoeheImVerbund).
+        let x = this.hoeheImVerbund(p, ballProgress, true);
 
         // Der Angriffsfokus verschiebt die ganze Mannschaft auf eine Seite -
         // so wird aus einer Zeile im Taktikbogen ein sichtbares Übergewicht auf
@@ -3788,27 +3801,24 @@ class LiveMatchDirector {
             y += (fokus === "left" ? -1 : 1) * (dir > 0 ? 1 : -1) * 5.5;
         }
 
-        // Mit Ball zieht die Elf das Feld auch in die Laenge: Die Spitzen
-        // schieben, die Kette haelt dagegen. Ohne diese Streckung stand die
-        // Mannschaft nur sechsundzwanzig Einheiten lang - ein Block, aus dem
-        // heraus kein Angriff entstehen kann.
-        x += dir * (groupPush - 1) * 13;
+        // Wer vorn steht, wartet auf der Abseitslinie, solange der Ball noch
+        // dahinter ist - den Lauf in die Tiefe startet er von dort
+        if (p.group !== "def") {
+            const abseits = this._abseitsLinie?.[p.team];
+            if (typeof abseits === "number" && (abseits - ball.x) * dir > 0) {
+                const grenze = abseits + dir * 1.0;
+                if ((x - grenze) * dir > 0) x = grenze;
+            }
+        }
 
         let urgency = 0;
         if (p.rolle === "LV" || p.rolle === "RV") {
             const onHisSide = Math.abs(ball.y - p.baseY) < 30;
             const inFinalThird = dir > 0 ? ball.x > 58 : ball.x < 42;
             if (onHisSide && inFinalThird) {
-                x += dir * 16;
+                x += dir * 12;
                 y += (p.baseY < 50 ? -6 : 6);
                 urgency = 1.45;
-            }
-        }
-        if (p.group === "att") {
-            const advanced = dir > 0 ? ball.x > 45 : ball.x < 55;
-            if (advanced) {
-                x += dir * 9;
-                urgency = 1.3;
             }
         }
         return { x, y, urgency };
@@ -3827,7 +3837,8 @@ class LiveMatchDirector {
         const kompakt = 0.42 - ballAbstand * 0.05;
         const blockY = 50 + (gesehen.y - 50) * 0.5;
         let y = blockY + (p.baseY - 50) * kompakt;
-        let x = p.baseX + (gesehen.x - 50) * p.followWeight * 0.94 - dir * 2.0;
+        const ballProgress = dir > 0 ? (gesehen.x - this.ownGoalX(p.team)) / 92 : (this.ownGoalX(p.team) - gesehen.x) / 92;
+        let x = this.hoeheImVerbund(p, ballProgress, false);
 
         // Die Form zieht sich zum Ball zusammen, statt als Ganzes parallel zu
         // verschieben: Wer nah am Ball steht, rueckt heran, wer weit weg ist,
@@ -3838,39 +3849,85 @@ class LiveMatchDirector {
         x += zumBallX * zug * 0.6;
         y += zumBallY * zug;
 
-        if (p.group === "def") {
-            // Die Kette steht auf ihrer Linie - aber nicht weiter als eine
-            // Zone von ihrem Platz im Block entfernt
-            const line = this.getDefensiveLineX(p.team, gesehen);
-            const aufLinie = line + (p.baseX - this.getTeamLineBase(p.team)) * 0.35;
-            x = Math.max(x - 7, Math.min(x + 7, aufLinie));
-        }
+        // Die Kette bleibt eine Linie: Der Zug zum Ball verschiebt sie nur
+        // seitlich, nicht aus der Reihe
+        if (p.group === "def") x = this.hoeheImVerbund(p, ballProgress, false);
         return { x, y };
     }
 
-    getDefensiveLineX(team, ball) {
-        const dir = this.attackDir(team);
-        const goalX = this.ownGoalX(team);
-        const tactics = (team === "home" ? this.match.homeClub?.tactics : this.match.awayClub?.tactics) || {};
+    /**
+     * Wo ein Spieler in der Laenge steht - als Teil einer Mannschaft, die als
+     * Einheit mit dem Ball wandert.
+     *
+     * Bisher rueckte jeder Mannschaftsteil fuer sich auf: die Spitzen weit,
+     * die Kette kaum. Gemessen stand die Abwehr der angreifenden Elf bei Ball
+     * an der Mittellinie noch bei achtzehn Prozent der Feldlaenge, das
+     * Mittelfeld bei siebenunddreissig - zwoelf Prozent hinter dem Ball. Im
+     * letzten Drittel war die Elf ueber vierzig Prozent des Feldes gestreckt.
+     * Das sah aus wie ein Angriff mit zwei Stuermern, waehrend der Rest
+     * zuschaut.
+     *
+     * Im Fussball verschiebt die ganze Mannschaft: Liegt der Ball im letzten
+     * Drittel, steht die Kette an der Mittellinie und das Mittelfeld direkt
+     * hinter dem Ball. Jede Mannschaft hat dazu ein Fenster - von der Kette
+     * bis zur Spitze -, das mit dem Ball wandert; jeder Spieler steht darin
+     * so tief, wie ihn seine Formation vorsieht. Ohne Ball ist das Fenster
+     * kuerzer und tiefer. Abwehrhoehe und Mentalitaet verschieben es.
+     *
+     * Rueckgabe: x auf dem Feld.
+     */
+    hoeheImVerbund(p, ballProgress, mitBall) {
+        const dir = this.attackDir(p.team);
+        const torX = this.ownGoalX(p.team);
+        const schwerpunkt = this._schwerpunkt?.[p.team];
+        const b = Math.max(0, Math.min(1, typeof schwerpunkt === "number" ? schwerpunkt : ballProgress));
+        const taktik = (p.team === "home" ? this.match.homeClub?.tactics : this.match.awayClub?.tactics) || {};
 
-        let depth = 30;
-        if (tactics.defensiveLine === "high") depth = 42;
-        else if (tactics.defensiveLine === "deep") depth = 20;
+        const linie = taktik.defensiveLine === "high" ? 1 : (taktik.defensiveLine === "deep" ? -1 : 0);
+        const mentalitaet = { very_offensive: 0.04, offensive: 0.02, defensive: -0.03, very_defensive: -0.06 }[taktik.mentality] || 0;
 
-        const ballAdvance = dir > 0 ? ball.x : 100 - ball.x;
-        const line = Math.max(10, Math.min(depth + 18, ballAdvance - 12));
+        let hinten, laenge;
+        if (mitBall) {
+            // Je laenger die Mannschaft den Ball hat, desto mutiger rueckt sie nach
+            const kette = Math.min(1, (this.possessionChain || 0) / 6) * 0.03;
+            hinten = 0.10 + 0.55 * b + linie * 0.05 + mentalitaet + kette;
+            hinten = Math.max(0.12, Math.min(0.62, hinten));
+            // Im Aufbau zieht die Elf das Feld lang, im letzten Drittel steht sie eng
+            laenge = 0.47 - 0.14 * b;
+        } else {
+            hinten = 0.04 + 0.42 * b + linie * 0.07 + mentalitaet * 0.5;
+            // Die Kette steht hinter dem Ball, nicht auf seiner Hoehe
+            hinten = Math.min(hinten, b - 0.06);
+            hinten = Math.max(0.07, Math.min(0.5, hinten));
+            laenge = 0.30;
+        }
+        const vorne = Math.min(0.9, hinten + laenge);
 
-        return dir > 0 ? goalX + line : goalX - line;
+        let tiefe = this.formationsTiefe(p);
+        // Aussenverteidiger schieben im Ballbesitz vor die Innenverteidiger
+        if (mitBall && (p.rolle === "LV" || p.rolle === "RV")) tiefe = Math.min(1, tiefe + 0.15);
+
+        return torX + dir * 92 * (hinten + tiefe * (vorne - hinten));
     }
 
-    getTeamLineBase(team) {
-        if (!this._teamLineBase) this._teamLineBase = {};
-        if (this._teamLineBase[team] === undefined) {
-            const defenders = this.teamPlayers(team).filter(p => p.group === "def");
-            const list = defenders.length > 0 ? defenders : this.teamPlayers(team);
-            this._teamLineBase[team] = list.reduce((s, p) => s + p.baseX, 0) / (list.length || 1);
+    /**
+     * Wie weit vorn ein Spieler in seiner Formation steht: null fuer die
+     * hinterste Kette, eins fuer die vorderste Spitze.
+     */
+    formationsTiefe(p) {
+        if (!this._tiefenRahmen) this._tiefenRahmen = {};
+        const prog = q => (q.baseX - this.ownGoalX(q.team)) * this.attackDir(q.team);
+        let rahmen = this._tiefenRahmen[p.team];
+        if (!rahmen) {
+            const werte = this.teamPlayers(p.team).filter(q => q.pos !== "TW").map(prog);
+            rahmen = werte.length
+                ? { min: Math.min(...werte), max: Math.max(...werte) }
+                : { min: 0, max: 1 };
+            this._tiefenRahmen[p.team] = rahmen;
         }
-        return this._teamLineBase[team];
+        const spanne = rahmen.max - rahmen.min;
+        if (spanne < 1) return 0.5;
+        return Math.max(0, Math.min(1, (prog(p) - rahmen.min) / spanne));
     }
 
     findMarkingTarget(player) {

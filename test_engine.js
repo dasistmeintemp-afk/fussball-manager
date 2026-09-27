@@ -6488,6 +6488,53 @@ function runEngineTests() {
         if (!YouthEngine.pruefeJugendtag(state)) throw new Error("In der nächsten Saison gibt es keinen Jugendtag");
     });
 
+    test("Scouting: Eine Beobachtung dauert Tage bis Wochen, dann kommt ein ausführlicher Bericht", () => {
+        const state = GameState.createNewGame("ll_han", "normal", { name: "Prüfer" });
+        const han = state.clubs.find(c => c.id === "ll_han");
+        const ligaGegner = state.players.find(p => {
+            const c = state.clubs.find(x => x.id === p.clubId);
+            return c && c.id !== han.id && c.leagueId === han.leagueId;
+        });
+        const ausland = state.players.find(p => {
+            const c = state.clubs.find(x => x.id === p.clubId);
+            return c && c.countryId && c.countryId !== (han.countryId || "de");
+        });
+        const tageLiga = ScoutingEngine.beobachtungsDauer(state, ligaGegner);
+        const tageAusland = ScoutingEngine.beobachtungsDauer(state, ausland);
+        if (tageLiga < 2 || tageLiga > 8) throw new Error(`Ein Ligaspieler braucht ${tageLiga} Tage`);
+        if (tageAusland < 10 || tageAusland > 28 || tageAusland <= tageLiga) throw new Error(`Ein Spieler aus dem Ausland braucht ${tageAusland} Tage (Liga: ${tageLiga})`);
+
+        state.inbox = [];
+        const wissenVorher = ligaGegner.scoutingKnowledge?.knowledgeLevel || 25;
+        const res = ScoutingEngine.beobachteSpieler(state, ligaGegner.id, { source: "transfer_market" });
+        if (!res.success) throw new Error("Beobachtung startet nicht: " + res.error);
+        if ((ligaGegner.scoutingKnowledge?.knowledgeLevel || 25) !== wissenVorher) throw new Error("Das Wissen springt sofort");
+        if (ScoutingEngine.beobachteSpieler(state, ligaGegner.id).success) throw new Error("Derselbe Spieler wird zweimal beobachtet");
+        const eigener = state.players.find(p => p.clubId === han.id);
+        if (ScoutingEngine.beobachteSpieler(state, eigener.id).success) throw new Error("Ein eigener Spieler wird gescoutet");
+
+        // Die Beobachtung übersteht Speichern und Laden
+        const geladen = SaveService.importJson(SaveService.exportJson(state));
+        if (!geladen.success || !geladen.state.scouting?.beobachtungen?.length) throw new Error("Die Beobachtung geht beim Speichern verloren");
+
+        for (let t = 1; t < res.tage; t++) {
+            if (ScoutingEngine.pruefeBeobachtungen(state).length) throw new Error(`Der Bericht kommt schon nach ${t} von ${res.tage} Tagen`);
+        }
+        const fertig = ScoutingEngine.pruefeBeobachtungen(state);
+        if (fertig.length !== 1 || ScoutingEngine.beobachtungVon(state, ligaGegner.id)) throw new Error("Nach der Frist kommt kein Bericht");
+        if (!(ligaGegner.scoutingKnowledge.knowledgeLevel > wissenVorher)) throw new Error("Der Bericht bringt kein Wissen");
+        const post = state.inbox.find(m => /Scoutbericht/.test(m.subject || ""));
+        if (!post || !/Stärken:/.test(post.body) || !/Empfehlung:/.test(post.body) || post.relatedEntity?.id !== ligaGegner.id) {
+            throw new Error(`Kein ausführlicher Bericht im Postfach: ${JSON.stringify(post)}`);
+        }
+        if (!state.scouting.reports.some(r => r.playerId === ligaGegner.id)) throw new Error("Der Bericht fehlt in der Berichtsliste");
+
+        // Der Scout hat nur begrenzt Zeit
+        const andere = state.players.filter(p => p.clubId && p.clubId !== han.id).slice(0, 8);
+        const ergebnisse = andere.map(p => ScoutingEngine.beobachteSpieler(state, p.id).success);
+        if (ergebnisse.filter(Boolean).length !== ScoutingEngine.MAX_BEOBACHTUNGEN) throw new Error(`${ergebnisse.filter(Boolean).length} Beobachtungen gleichzeitig`);
+    });
+
     test("Spielplan: Heim und Auswärts wechseln sich ab - keine langen Serien", () => {
         [16, 18, 20, 15].forEach(anzahl => {
             const clubs = Array.from({ length: anzahl }, (_, i) => ({ id: `v${i}` }));

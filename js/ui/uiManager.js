@@ -5123,7 +5123,12 @@ class UIManager {
                         <td class="tm-meta">${vereinsName} · ${valDisplay} · Scout ${confPercent} %</td>
                         <td class="tm-aktion">
                             <div class="tm-knoepfe">
-                                <button class="btn btn-sm btn-secondary btn-scout-direct" data-player-id="${p.id}" title="Scouten für präzisere Daten">🔍<span class="tm-knopf-text"> Scouten</span></button>
+                                ${(() => {
+                                    const laeuft = this.beobachtungsText(p.id);
+                                    return laeuft
+                                        ? `<button class="btn btn-sm btn-secondary btn-scout-direct" data-player-id="${p.id}" disabled title="Der Scout beobachtet ihn - Bericht ${laeuft}">👁<span class="tm-knopf-text"> ${laeuft}</span></button>`
+                                        : `<button class="btn btn-sm btn-secondary btn-scout-direct" data-player-id="${p.id}" title="Scout zur Beobachtung schicken - der Bericht kommt nach einigen Tagen">🔍<span class="tm-knopf-text"> Scouten</span></button>`;
+                                })()}
                                 <button class="btn btn-sm btn-primary btn-bid-player" data-player-id="${p.id}">Verhandeln</button>
                             </div>
                         </td>
@@ -5168,14 +5173,7 @@ class UIManager {
                         ? ScoutingEngine
                         : ((typeof window !== 'undefined' && window.ScoutingEngine) ? window.ScoutingEngine : null);
 
-                    if (scoutingEngine && typeof scoutingEngine.scoutPlayer === 'function') {
-                        const res = scoutingEngine.scoutPlayer(state, pId, { source: "transfer_market", notify: true });
-                        if (res.success) {
-                            this.playSound("whistle");
-                            this.showToast(`Scoutbericht für ${res.player.name} erstellt! Wissen auf ${res.knowledgeLevel}% gestiegen.`, "success");
-                            this.renderTransfers();
-                        }
-                    }
+                    if (scoutingEngine) this.beobachte(pId, "transfer_market", () => this.renderTransfers());
                 });
             });
         }
@@ -5184,10 +5182,16 @@ class UIManager {
         const assignList = document.getElementById("scoutAssignmentsList");
         if (assignList) {
             const assignments = (state.scouting?.assignments || []).filter(a => a.status === "active");
-            if (assignments.length === 0) {
-                assignList.innerHTML = `<div class="empty-state-sm">Keine aktiven Scouting-Aufträge. Entsenden Sie oben einen Scout.</div>`;
+            const beobachtungen = state.scouting?.beobachtungen || [];
+            const beobachtungenHtml = beobachtungen.map(b => `
+                    <div class="news-item-dash" style="justify-content: space-between;">
+                        <div>👁 <strong>${this.escapeHtml(b.playerName)}</strong> <span class="scout-beobachtung">· ${this.escapeHtml(b.clubName)} · ${this.escapeHtml(b.scoutName)}</span></div>
+                        <span class="header-tag" style="background:var(--accent-primary); color:#000;">⏳ Bericht in ${b.tageRest} Tag(en)</span>
+                    </div>`).join("");
+            if (assignments.length === 0 && beobachtungen.length === 0) {
+                assignList.innerHTML = `<div class="empty-state-sm">Keine aktiven Scouting-Aufträge. Entsenden Sie oben einen Scout oder lassen Sie einen Spieler beobachten.</div>`;
             } else {
-                assignList.innerHTML = assignments.map(a => `
+                assignList.innerHTML = beobachtungenHtml + assignments.map(a => `
                     <div class="news-item-dash" style="justify-content: space-between;">
                         <div>
                             🔭 <strong>Scout-Fokus:</strong> Position: ${a.position} | Alter bis: ${a.maxAge} | Mindestens ${this.starsFor(a.minOverall)}
@@ -6634,7 +6638,7 @@ class UIManager {
             else if (msg.type === "match_report" || msg.type === "match_preview") { icon = "⚽"; typeLabel = "Spiel"; }
             else if (msg.type === "transfer_done" || msg.type === "transfer_offer") { icon = "🔄"; typeLabel = "Transfer"; }
             else if (msg.type === "training_report" || msg.type === "injury") { icon = "🏥"; typeLabel = "Training / Lazarett"; }
-            else if (msg.type === "scout_report") { icon = "🔍"; typeLabel = "Scouting"; }
+            else if (msg.type === "scout_report" || msg.type === "scouting") { icon = "🔍"; typeLabel = "Scouting"; }
             else if (msg.type === "finance_warning" || msg.type === "sponsor") { icon = "💰"; typeLabel = "Finanzen"; }
             else if (msg.type === "contract" || msg.type === "contract_expiring") { icon = "📝"; typeLabel = "Verträge"; }
             else if (msg.type === "retirement") { icon = "🎖️"; typeLabel = "Karriereende"; }
@@ -6694,13 +6698,32 @@ class UIManager {
         else if (msg.type === "match_report" || msg.type === "match_preview") { icon = "⚽"; typeLabel = "Spiel"; }
         else if (msg.type === "transfer_done" || msg.type === "transfer_offer") { icon = "🔄"; typeLabel = "Transfer"; }
         else if (msg.type === "training_report" || msg.type === "injury") { icon = "🏥"; typeLabel = "Training / Lazarett"; }
-        else if (msg.type === "scout_report") { icon = "🔍"; typeLabel = "Scouting"; }
+        else if (msg.type === "scout_report" || msg.type === "scouting") { icon = "🔍"; typeLabel = "Scouting"; }
         else if (msg.type === "finance_warning" || msg.type === "sponsor") { icon = "💰"; typeLabel = "Finanzen"; }
         else if (msg.type === "contract" || msg.type === "contract_expiring") { icon = "📝"; typeLabel = "Verträge"; }
         else if (msg.type === "retirement") { icon = "🎖️"; typeLabel = "Karriereende"; }
 
-        const formattedBody = (msg.body || msg.text || "").replace(/\n/g, "<br>");
+        let formattedBody = (msg.body || msg.text || "").replace(/\n/g, "<br>");
         const displayDate = msg.date || "Saisonstart";
+
+        // Ein Scoutbericht erscheint als Berichtskarte, mit dem Weg zur Akte
+        // und zum Angebot
+        const state = this.app?.state;
+        const spielerId = msg.relatedEntity?.type === "player" ? msg.relatedEntity.id : null;
+        const spieler = spielerId !== null && state ? state.players.find(p => String(p.id) === String(spielerId)) : null;
+        let aktionen = "";
+        if (spieler) {
+            const bericht = (state.scouting?.reports || []).find(r => String(r.playerId) === String(spieler.id));
+            if (bericht && (msg.type === "scouting" || msg.type === "scout_report")) {
+                formattedBody = `<div class="scout-berichte">${this.scoutBerichtHtml(bericht, state)}</div>`;
+            }
+            const eigener = spieler.clubId === state.userClubId;
+            aktionen = `
+                <div class="inbox-detail-aktionen">
+                    <button class="btn btn-secondary btn-sm" data-inbox-akte="${this.escapeHtml(spieler.id)}">📋 Spielerakte</button>
+                    ${eigener ? "" : `<button class="btn btn-primary btn-sm" data-inbox-angebot="${this.escapeHtml(spieler.id)}">Verhandeln</button>`}
+                </div>`;
+        }
 
         detailContainer.innerHTML = `
             <div class="inbox-detail-header">
@@ -6722,7 +6745,16 @@ class UIManager {
             <div class="inbox-detail-body">
                 ${formattedBody}
             </div>
+            ${aktionen}
         `;
+        detailContainer.querySelector("[data-inbox-akte]")?.addEventListener("click", (e) => {
+            const pId = this.resolvePlayerId(e.currentTarget.dataset.inboxAkte);
+            if (pId !== null) this.showPlayerDetailsModal(pId);
+        });
+        detailContainer.querySelector("[data-inbox-angebot]")?.addEventListener("click", (e) => {
+            const pId = this.resolvePlayerId(e.currentTarget.dataset.inboxAngebot);
+            if (pId !== null) this.showTransferOfferModal(pId);
+        });
     }
 
     /**
@@ -6897,8 +6929,8 @@ class UIManager {
                                     Gefahr: <span class="badge ${p.dangerBadgeClass}" style="font-size:10px; padding:2px 6px;">${p.danger}</span> • Scouthinweis: <strong>${p.confidence}%</strong>
                                 </div>
                             </div>
-                            <button class="btn btn-sm btn-secondary btn-scout-opponent-player mt-2" data-player-id="${p.id}" style="width:100%;">
-                                🔍 Spieler scouten
+                            <button class="btn btn-sm btn-secondary btn-scout-opponent-player mt-2" data-player-id="${p.id}" style="width:100%;" ${this.beobachtungsText(p.id) ? "disabled" : ""}>
+                                ${this.beobachtungsText(p.id) ? `👁 In Beobachtung (${this.beobachtungsText(p.id)})` : "🔍 Spieler beobachten"}
                             </button>
                         </div>
                     `).join("")}
@@ -6916,14 +6948,7 @@ class UIManager {
                     ? ScoutingEngine 
                     : ((typeof window !== 'undefined' && window.ScoutingEngine) ? window.ScoutingEngine : null);
 
-                if (scoutingEngine && typeof scoutingEngine.scoutPlayer === 'function') {
-                    const res = scoutingEngine.scoutPlayer(state, pId, { source: "opponent_analysis", notify: true });
-                    if (res.success) {
-                        this.playSound("whistle");
-                        this.showToast(`Scoutbericht für ${res.player.name} angefordert! Scouting-Wissen: ${res.knowledgeLevel}%`, "success");
-                        this.showOpponentAnalysisModal();
-                    }
-                }
+                if (scoutingEngine) this.beobachte(pId, "opponent_analysis", () => this.showOpponentAnalysisModal());
             });
         });
     }
@@ -7120,6 +7145,32 @@ class UIManager {
     /**
      * Modal: Spieler Details & Vertragsverlängerung
      */
+    /**
+     * Einen Spieler vom Scout beobachten lassen. Der Bericht kommt nach
+     * einigen Tagen ins Postfach - nicht mehr sofort auf Knopfdruck.
+     */
+    beobachte(playerId, source, danach = null) {
+        const state = this.app?.state;
+        const engine = (typeof ScoutingEngine !== "undefined" && ScoutingEngine) ? ScoutingEngine : window.ScoutingEngine;
+        if (!state || !engine || typeof engine.beobachteSpieler !== "function") return;
+        const res = engine.beobachteSpieler(state, playerId, { source });
+        if (!res.success) {
+            this.showToast(res.error || "Der Scout kann gerade nicht los.", "warning", 5000);
+            return;
+        }
+        this.playSound("whistle");
+        this.showToast(`🔭 ${res.scout.name} beobachtet ${res.player.name} - Bericht in etwa ${res.tage} Tagen im Postfach.`, "success", 5000);
+        if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+        if (typeof danach === "function") danach();
+    }
+
+    /** Knopfbeschriftung: läuft schon eine Beobachtung? */
+    beobachtungsText(playerId) {
+        const engine = (typeof ScoutingEngine !== "undefined" && ScoutingEngine) ? ScoutingEngine : window.ScoutingEngine;
+        const b = engine && typeof engine.beobachtungVon === "function" ? engine.beobachtungVon(this.app?.state, playerId) : null;
+        return b ? `noch ${b.tageRest} T.` : null;
+    }
+
     /**
      * Vereinsdetails für jeden Verein der Welt - aus der Tabelle, dem
      * Dashboard und dem Spielplan. Wie im FM: Kopf mit Kennzahlen, Form und
@@ -7442,7 +7493,9 @@ class UIManager {
         if (!isUserClub) {
             scoutExternalHtml = `
                 <div style="display:flex; gap:10px; margin-top:14px;">
-                    <button class="btn btn-secondary" id="btnPdScoutPlayer" style="flex:1;">🔍 Spieler jetzt scouten</button>
+                    ${this.beobachtungsText(player.id)
+                        ? `<button class="btn btn-secondary" id="btnPdScoutPlayer" style="flex:1;" disabled>👁 In Beobachtung · Bericht ${this.beobachtungsText(player.id)}</button>`
+                        : `<button class="btn btn-secondary" id="btnPdScoutPlayer" style="flex:1;" title="Der Bericht kommt nach einigen Tagen ins Postfach">🔍 Scout entsenden</button>`}
                     <button class="btn btn-primary" id="btnPdBidPlayer" style="flex:1;">💼 Transfer verhandeln</button>
                 </div>
             `;
@@ -7634,16 +7687,10 @@ class UIManager {
                 const scoutingEngine = (typeof ScoutingEngine !== 'undefined' && ScoutingEngine)
                     ? ScoutingEngine
                     : ((typeof window !== 'undefined' && window.ScoutingEngine) ? window.ScoutingEngine : null);
-                if (scoutingEngine && typeof scoutingEngine.scoutPlayer === 'function') {
-                    const res = scoutingEngine.scoutPlayer(state, player.id, { source: "player_profile", notify: true });
-                    if (res.success) {
-                        this.playSound("whistle");
-                        this.showToast(`Scoutbericht für ${player.name} erstellt! Wissen auf ${res.knowledgeLevel}% gestiegen.`, "success");
-                        // Auch die Liste im Hintergrund zeigt jetzt genauere Werte
-                        if (this.activeTab === "transfers") this.renderTransfers();
-                        this.showPlayerDetailsModal(player.id);
-                    }
-                }
+                if (scoutingEngine) this.beobachte(player.id, "player_profile", () => {
+                    if (this.activeTab === "transfers") this.renderTransfers();
+                    this.showPlayerDetailsModal(player.id);
+                });
             });
 
             document.getElementById("btnPdBidPlayer")?.addEventListener("click", () => {

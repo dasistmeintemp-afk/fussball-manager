@@ -7869,3 +7869,5 @@ td.nowrap { white-space: nowrap; }
 }
 .fixture-team.vd-link { cursor: pointer; }
 .fixture-team.vd-link:hover { color: var(--accent-primary); text-decoration: underline; text-underline-offset: 3px; }
+.inbox-detail-aktionen { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+.scout-beobachtung { color: var(--text-muted); }

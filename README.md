@@ -155,6 +155,16 @@ Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit 
 - **Transfermarkt mit Suchfiltern:** Nach Position, Stärke, Potenzial und Preisklasse filtern.
 - **Vertragsverlängerungen (`ContractEngine`):** Individuelle Gehaltsforderungen, Rollenabsprachen und Vertragslaufzeiten direkt im Spielermenü verhandeln.
 - **Scouting-Zentrale (`ScoutingEngine`):** Scouts für gezielte Positionen, Altersklassen und Mindeststärken entsenden und detaillierte Spielerberichte erhalten.
+- **Spieler beobachten statt Sofortbericht:** *Scouten* (Transfermarkt, Spielerakte, Gegneranalyse) schickt den Scout los. Der ausführliche Bericht kommt nach einigen Tagen ins Postfach, erst dann wächst das Wissen. Er enthält Stärke, Potenzial, Rolle, Stärken, Schwächen, Charakter, Kaderrolle, Empfehlung und Verlässlichkeit, dazu Knöpfe zur Akte und zum Angebot. Wie lange es dauert:
+
+  | Wo spielt er? | Dauer (Beispiel) |
+  |---|---|
+  | eigene Liga | 3 bis 6 Tage |
+  | andere Liga im eigenen Land | etwa 1 bis 2 Wochen |
+  | Ausland | etwa 2 Wochen |
+  | weit außerhalb der eigenen Reichweite | bis 4 Wochen |
+
+  Ein guter Chefscout ist schneller, bei Gegnern aus der Spielvorbereitung geht es schneller, und jede laufende Beobachtung verlängert die nächste. Höchstens fünf Spieler sind gleichzeitig in Beobachtung. Laufende Beobachtungen stehen im Transfermarkt unter den Scouting-Aufträgen.
 - **Berichte so gut wie der Scout:** Wer den Bericht schreibt, entscheidet über seinen Inhalt – der eigene Chefscout aus dem Trainerstab oder, solange der Posten offen ist, eine Aushilfe. Die Sterne des Scouts wirken so:
 
   | Scout | Was im Bericht steht |

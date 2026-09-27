@@ -1066,6 +1066,16 @@ const CalendarEngine = {
             const jugend = youthEngineTag.pruefeJugendtag(state);
             if (jugend) summary.messages.push(jugend);
         }
+        // Beobachtungen der Scouts: Nach einigen Tagen kommt der Bericht
+        const scoutingEngineTag = (typeof ScoutingEngine !== "undefined" && ScoutingEngine)
+            ? ScoutingEngine
+            : ((typeof window !== "undefined" && window.ScoutingEngine) ? window.ScoutingEngine
+                : (typeof require !== "undefined" ? (() => { try { return require("./scoutingEngine.js").ScoutingEngine; } catch (e) { return null; } })() : null));
+        if (scoutingEngineTag && typeof scoutingEngineTag.pruefeBeobachtungen === "function") {
+            scoutingEngineTag.pruefeBeobachtungen(state).forEach(f => {
+                summary.messages.push(`🔍 Scoutbericht über ${f.player.name}: ${f.report.recommendation} (Postfach).`);
+            });
+        }
         const preseasonEngineTag = _getPreseasonEngine();
         if (preseasonEngineTag && typeof preseasonEngineTag.erinnere === "function") {
             const erinnerung = preseasonEngineTag.erinnere(state);

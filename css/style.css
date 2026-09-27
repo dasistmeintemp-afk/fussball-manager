@@ -7834,3 +7834,4 @@ td.nowrap { white-space: nowrap; }
     .ent-knoepfe .btn { flex: 1 1 calc(50% - 4px); min-height: 42px; }
     .ent-knoepfe .btn-primary { flex-basis: 100%; order: -1; }
 }
+.stab-etat-zeile.stab-etat-kosten { border-top: 1px dashed var(--border-color); padding-top: 6px; }

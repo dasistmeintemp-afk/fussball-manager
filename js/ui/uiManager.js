@@ -2270,6 +2270,10 @@ class UIManager {
         // Auf schmalen Geräten zeigt der Knopf nur die Kurzfassung
         // (Ohne dataset - etwa im Test-DOM - brach hier der ganze Kopf ab.)
         if (knopf.dataset) knopf.dataset.kurz = ziel.kurz || "Weiter";
+        // Einzelne Tage wie im FM: nur sinnvoll, wenn der Hauptknopf mehrere
+        // Tage überspringen würde
+        const tagKnopf = document.getElementById("btnHeaderTag");
+        if (tagKnopf) tagKnopf.style.display = ziel.art === "sprung" && ziel.tage > 1 ? "" : "none";
 
         // Sidebar Quick-Status
         const getRankSafe = (clubId) => {
@@ -10071,6 +10075,21 @@ class UIManager {
     }
 
     /**
+     * Nur einen Tag weiter - für den, der zwischen Pressekonferenz und
+     * Anpfiff jeden Trainingstag selbst sehen will.
+     */
+    handleEinTag() {
+        if (this.pruefeEntlassung()) return;
+        if (this.pruefePflichtpostenVorStart(() => this.handleEinTag())) return;
+        const ziel = this.beschreibeWeiter();
+        if (ziel.art === "spiel") {
+            this.handleWeiter();
+            return;
+        }
+        this.handleCalendarAdvanceDay();
+    }
+
+    /**
      * Nach dem eigenen Pokalspiel die Runde zu Ende bringen.
      *
      * Ein K.-o.-Spiel braucht einen Sieger: Steht es nach 90 Minuten
@@ -10432,6 +10451,7 @@ class UIManager {
         if (!cal) return;
 
         let gelaufen = 0;
+        let angehalten = null;
         const berichte = [];
         while (gelaufen < maxTage) {
             const heute = cal.getCurrentDay(state);
@@ -10442,6 +10462,7 @@ class UIManager {
             if (gelaufen > 0 && (heute.type === "cup" || heute.type === "euro")
                 && this.eigenePokalpartie(heute)) break;
 
+            const bekannt = new Set((state.inbox || []).map(m => String(m.id)));
             const res = cal.advanceOneDay(state);
             if (!res || !res.success) break;
             gelaufen++;
@@ -10455,16 +10476,27 @@ class UIManager {
 
             // Eine Entlassung beendet den Vorlauf sofort
             if (state.managerDismissed) break;
+
+            // Wie im FM: Passiert etwas, das den Manager angeht, hält die
+            // Zeit an - auch zwischen zwei Terminen
+            angehalten = typeof cal.unterbrechungsGrund === "function"
+                ? cal.unterbrechungsGrund(state, res, bekannt) : null;
+            if (angehalten) break;
         }
 
+        const heuteNeu = cal.getCurrentDay(state);
         state.lastDayReport = {
-            date: cal.getCurrentDay(state)?.date,
-            dayOfWeek: cal.getCurrentDay(state)?.dayOfWeek,
-            title: `${gelaufen} Tage übersprungen`,
+            date: heuteNeu?.date,
+            dayOfWeek: heuteNeu?.dayOfWeek,
+            title: angehalten ? `Angehalten: ${angehalten}` : `${gelaufen} Tage übersprungen`,
             messages: berichte.slice(-12)
         };
 
-        this.showToast(`📅 ${gelaufen} Tage weiter - ${cal.getCurrentDay(state)?.title || ""}`, "info");
+        if (angehalten) {
+            this.showToast(`⏸ ${heuteNeu?.date || ""}: ${angehalten}. Weiter geht es mit dem nächsten Klick.`, "warning", 6000);
+        } else {
+            this.showToast(`📅 ${gelaufen} Tage weiter - ${heuteNeu?.title || ""}`, "info");
+        }
         this.renderHeader();
         this.renderCurrentTab();
         if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
@@ -10600,6 +10632,8 @@ class UIManager {
         document.getElementById("btnHeaderAdvance").onclick = () => {
             this.handleWeiter();
         };
+        const tagKnopf = document.getElementById("btnHeaderTag");
+        if (tagKnopf) tagKnopf.onclick = () => this.handleEinTag();
 
         // Dashboard Schnell-Aktionen
         const btnOpponent = document.getElementById("btnDashOpponentAnalysis");

@@ -788,6 +788,34 @@ const CalendarEngine = {
         return null;
     },
 
+    /** Post, bei der das Weiterlaufen anhält - Spielberichte und Trainingsberichte nicht */
+    WICHTIGE_POST: ["scouting", "transfer_offer", "transfer_done", "injury", "board_message", "youth", "contract_expiring", "facility"],
+
+    /**
+     * Wie im Football Manager: Das Weiterlaufen hält nicht nur an festen
+     * Terminen, sondern auch dann, wenn an einem Tag etwas passiert, das den
+     * Manager angeht - ein Angebot, eine Antwort in einer Verhandlung, eine
+     * Verletzung, ein Scoutbericht, wichtige Post. Vorher lief der Knopf vom
+     * Medientag bis zum Anpfiff durch, und alles dazwischen stand erst
+     * hinterher im Postfach.
+     *
+     * res ist das Ergebnis von advanceOneDay, bekannteIds die Nachrichten,
+     * die vor dem Tag schon im Postfach lagen. Liefert den Grund oder null.
+     */
+    unterbrechungsGrund(state, res, bekannteIds = new Set()) {
+        if (!state) return null;
+        const angebot = (state.transferMarket?.offers || []).find(o => o.status === "pending" && o.gemeldet === false);
+        if (angebot) return `💰 Angebot von ${angebot.fromClubName || "einem Verein"} für ${angebot.playerName || "einen Spieler"}`;
+        const verhandlung = (res?.summary?.negotiations || []).find(s => s && s.negotiation);
+        if (verhandlung) return `💬 Neues in der Verhandlung um ${verhandlung.negotiation.playerName}`;
+        const verletzt = res?.summary?.training?.injuries?.[0];
+        if (verletzt) return `⚠️ ${verletzt} hat sich im Training verletzt`;
+        const post = (state.inbox || []).find(m => m && !bekannteIds.has(String(m.id))
+            && (this.WICHTIGE_POST.includes(m.type) || m.priority === "high"));
+        if (post) return `✉️ ${post.subject || post.title || "Neue Nachricht"}`;
+        return null;
+    },
+
     /**
      * Holt die nächsten X Tage ab dem aktuellen Tag
      */

@@ -6535,6 +6535,33 @@ function runEngineTests() {
         if (ergebnisse.filter(Boolean).length !== ScoutingEngine.MAX_BEOBACHTUNGEN) throw new Error(`${ergebnisse.filter(Boolean).length} Beobachtungen gleichzeitig`);
     });
 
+    test("Kalender: Das Weiterlaufen hält an, wenn etwas den Manager angeht (wie im FM)", () => {
+        const state = GameState.createNewGame("ll_han", "normal", { name: "Prüfer" });
+        const leer = { summary: { negotiations: [], training: { injuries: [] } } };
+        const bekannt = () => new Set((state.inbox || []).map(m => String(m.id)));
+        if (CalendarEngine.unterbrechungsGrund(state, leer, bekannt())) throw new Error("Ein ruhiger Tag hält an");
+
+        // Ein Spielbericht oder Trainingsbericht hält nicht an ...
+        let ids = bekannt();
+        NewsEngine.addMessage(state, "training_report", { title: "Trainingswoche", text: "..." });
+        if (CalendarEngine.unterbrechungsGrund(state, leer, ids)) throw new Error("Ein Trainingsbericht hält an");
+        // ... ein Scoutbericht schon
+        ids = bekannt();
+        NewsEngine.addMessage(state, "scouting", { title: "Scoutbericht: Max Muster", text: "..." });
+        if (!/Scoutbericht/.test(CalendarEngine.unterbrechungsGrund(state, leer, ids) || "")) throw new Error("Ein Scoutbericht hält nicht an");
+
+        ids = bekannt();
+        if (!/verletzt/.test(CalendarEngine.unterbrechungsGrund(state, { summary: { training: { injuries: ["Max Muster"] } } }, ids) || "")) {
+            throw new Error("Eine Trainingsverletzung hält nicht an");
+        }
+        if (!/Verhandlung/.test(CalendarEngine.unterbrechungsGrund(state, { summary: { negotiations: [{ negotiation: { playerName: "Max Muster" } }] } }, ids) || "")) {
+            throw new Error("Eine Antwort in der Verhandlung hält nicht an");
+        }
+        if (!state.transferMarket) state.transferMarket = {};
+        state.transferMarket.offers = [{ status: "pending", gemeldet: false, fromClubName: "FC Test", playerName: "Max Muster" }];
+        if (!/Angebot von FC Test/.test(CalendarEngine.unterbrechungsGrund(state, leer, ids) || "")) throw new Error("Ein neues Angebot hält nicht an");
+    });
+
     test("Spielplan: Heim und Auswärts wechseln sich ab - keine langen Serien", () => {
         [16, 18, 20, 15].forEach(anzahl => {
             const clubs = Array.from({ length: anzahl }, (_, i) => ({ id: `v${i}` }));

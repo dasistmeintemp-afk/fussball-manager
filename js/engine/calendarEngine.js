@@ -1058,6 +1058,14 @@ const CalendarEngine = {
                 summary.messages.push(`💰 Das Angebot von ${o.fromClubName} für ${o.playerName} ist verfallen.`);
             });
         }
+        const youthEngineTag = (typeof YouthEngine !== "undefined" && YouthEngine)
+            ? YouthEngine
+            : ((typeof window !== "undefined" && window.YouthEngine) ? window.YouthEngine
+                : (typeof require !== "undefined" ? (() => { try { return require("./youthEngine.js").YouthEngine; } catch (e) { return null; } })() : null));
+        if (youthEngineTag && typeof youthEngineTag.pruefeJugendtag === "function") {
+            const jugend = youthEngineTag.pruefeJugendtag(state);
+            if (jugend) summary.messages.push(jugend);
+        }
         const preseasonEngineTag = _getPreseasonEngine();
         if (preseasonEngineTag && typeof preseasonEngineTag.erinnere === "function") {
             const erinnerung = preseasonEngineTag.erinnere(state);

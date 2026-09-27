@@ -6401,6 +6401,48 @@ function runEngineTests() {
         if (club.staff.medizin.gehalt > 30000) throw new Error(`Der alte Vertrag bleibt bei ${club.staff.medizin.gehalt} € je Woche`);
     });
 
+    test("Jugendakademie: Beförderte bleiben nach dem Laden befördert, der neue Jahrgang kommt am Jugendtag", () => {
+        const neu = GameState.createNewGame("ll_han", "normal", { name: "Prüfer" });
+        const geladen = SaveService.importJson(SaveService.exportJson(neu));
+        if (!geladen.success) throw new Error("Spielstand lässt sich nicht laden: " + geladen.error);
+        const state = geladen.state;
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        // Nach dem Laden sind die beiden Listen Kopien - genau da lag der Fehler
+        const offen = () => YouthEngine.eigeneTalente(state).filter(p => !p.promoted);
+        const vorher = offen().length;
+        const talent = offen()[0];
+        if (!talent) throw new Error("Keine Talente in der Akademie");
+        if (!YouthEngine.promoteProspect(state, club.id, talent.id, { skipNews: true }).success) throw new Error("Beförderung scheitert");
+        if (offen().some(p => p.id === talent.id) || offen().length !== vorher - 1) throw new Error("Der Beförderte steht weiter in der Akademie");
+        if (state.youthAcademy.prospects.find(p => p.id === talent.id)?.promoted !== true) throw new Error("Der Reiter Training sieht den Beförderten noch als offen");
+        if (YouthEngine.promoteProspect(state, club.id, talent.id, { skipNews: true }).success) throw new Error("Ein Talent lässt sich zweimal befördern");
+        if (state.players.filter(p => p.name === talent.name && p.clubId === club.id).length !== 1) throw new Error("Der Beförderte steht doppelt im Kader");
+
+        // Der Jugendtag: drei Spieltage vorher die Vorschau, dann der Jahrgang
+        const tag = YouthEngine.jugendtagSpieltag(state);
+        if (tag < 10) throw new Error(`Der Jugendtag liegt schon am ${tag}. Spieltag`);
+        state.inbox = [];
+        state.currentMatchday = tag - 5;
+        if (YouthEngine.pruefeJugendtag(state)) throw new Error("Der Jugendtag meldet sich zu früh");
+        state.currentMatchday = tag - 3;
+        if (!/kündigt den Jugendtag an/.test(YouthEngine.pruefeJugendtag(state) || "")) throw new Error("Keine Vorschau vor dem Jugendtag");
+        if (YouthEngine.pruefeJugendtag(state)) throw new Error("Die Vorschau kommt zweimal");
+        const offenVorher = offen().length;
+        state.currentMatchday = tag;
+        if (!/Jugendtag: \d+ neue Talente/.test(YouthEngine.pruefeJugendtag(state) || "")) throw new Error("Am Jugendtag kommt kein Jahrgang");
+        if (offen().length <= offenVorher) throw new Error("Nach dem Jugendtag gibt es keine neuen Talente");
+        state.currentMatchday = tag + 1;
+        if (YouthEngine.pruefeJugendtag(state)) throw new Error("Der Jugendtag kommt zweimal in einer Saison");
+        const betreffe = state.inbox.map(m => m.subject);
+        if (!betreffe.some(b => /Jugendtag in drei Wochen/.test(b)) || !betreffe.some(b => /Jugendtag: \d+ neue Talente/.test(b))) {
+            throw new Error(`Postfach ohne Jugendtag: ${JSON.stringify(betreffe)}`);
+        }
+        // In der nächsten Saison kommt wieder einer
+        state.seasonYear = (state.seasonYear || 1) + 1;
+        state.currentMatchday = tag;
+        if (!YouthEngine.pruefeJugendtag(state)) throw new Error("In der nächsten Saison gibt es keinen Jugendtag");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

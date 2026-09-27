@@ -5357,7 +5357,13 @@ class UIManager {
         const engine = this.getNegotiationEngine();
         const prospectsBody = document.getElementById("youthProspectsBody");
         if (prospectsBody) {
-            const prospects = (state.youthAcademy?.prospects || []).filter(p => !p.promoted);
+            // Nach dem Laden standen die Talente in zwei getrennten Listen -
+            // die Beförderung erschien dann hier nicht
+            const youthListe = (typeof YouthEngine !== "undefined" && YouthEngine) ? YouthEngine : window.YouthEngine;
+            const alleTalente = youthListe && typeof youthListe.eigeneTalente === "function"
+                ? youthListe.eigeneTalente(state)
+                : (state.youthAcademy?.prospects || []);
+            const prospects = alleTalente.filter(p => !p.promoted);
             if (prospects.length === 0) {
                 prospectsBody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">Aktuell keine unbeförderten Jugendspieler in der Akademie.</td></tr>`;
             } else {
@@ -5634,6 +5640,16 @@ class UIManager {
         const einzug = youth.EINZUG[sp.einzug];
         const potSumme = jahrgang.pot + einzug.pot + leiterBonus;
         const kosten = youth.einzugKosten(club, sp.einzug);
+        // Wann der nächste Jahrgang kommt: am Jugendtag im Frühjahr
+        const tagJugend = typeof youth.jugendtagSpieltag === "function" ? youth.jugendtagSpieltag(state) : null;
+        const schonGewesen = state.youthAcademy?.jugendtagSaison === (state.seasonYear || 1);
+        const jugendtagText = tagJugend === null ? "zum Saisonstart"
+            : schonGewesen ? `am Jugendtag der nächsten Saison (um den ${tagJugend}. Spieltag)`
+            : (() => {
+                const rest = tagJugend - (state.currentMatchday || 1);
+                return `am Jugendtag um den ${tagJugend}. Spieltag`
+                    + (rest > 1 ? ` (noch ${rest} Spieltage)` : rest === 1 ? " (nächster Spieltag)" : "");
+            })();
         const posText = sp.positionen.length
             ? sp.positionen.map(k => youth.SCHWERPUNKT_POSITIONEN[k].name).join(" und ")
             : "alle Positionen";
@@ -5658,7 +5674,7 @@ class UIManager {
                 <div class="sp-titel">Einzugsgebiet <span class="sp-hinweis">Kosten je Jahrgang</span></div>
                 <div class="sp-reihe">${einzugChips}</div>
             </div>
-            <div class="sp-fazit">Nächster Jahrgang zum Saisonstart: <strong>${jahrgang.anzahl} Talente</strong>, Schwerpunkt ${esc(posText)},
+            <div class="sp-fazit">Nächster Jahrgang ${jugendtagText}: <strong>${jahrgang.anzahl} Talente</strong>, Schwerpunkt ${esc(posText)},
                 Potenzial <strong>${potSumme >= 0 ? "+" : ""}${potSumme}</strong> gegenüber einem normalen Jahrgang${kosten > 0 ? `, Sichtung ${this.geldKurz(kosten)}` : ""}.</div>`;
 
         box.querySelectorAll(".sp-chip").forEach(btn => {

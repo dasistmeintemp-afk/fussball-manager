@@ -2607,7 +2607,7 @@ class UIManager {
             const isUser = s.clubId === userClub.id;
             const zone = zonen.get(rank);
             return `
-                <tr class="${isUser ? 'row-user-club' : ''}">
+                <tr class="${isUser ? 'row-user-club' : ''}" data-club-id="${this.escapeHtml(s.clubId)}">
                     <td><span class="rang${zone ? ` rang-${zone}` : ""}" title="${zone ? UIManager.ZONEN[zone] : ""}">${rank}</span></td>
                     <td class="tb-verein"><span class="tb-verein-inhalt"><span class="mini-wappen" data-club="${this.escapeHtml(s.clubId)}"></span><span class="tb-verein-name">${this.escapeHtml(s.clubName)}</span></span></td>
                     <td>${s.played}</td>
@@ -2623,6 +2623,7 @@ class UIManager {
                 el.textContent = this.vereinsKuerzel(club.name).slice(0, 1);
             }
         });
+        this.bindVereinsZeilen(standingsBody);
 
         // 3. Board Confidence, Fan Mood & Media Pressure (D4)
         document.getElementById("dashBoardGoal").textContent = GameState.getExpectationText(userClub.boardExpectation);
@@ -4502,7 +4503,7 @@ class UIManager {
             const naechsteZone = zonen.get(idx + 2);
             const grenze = zone !== naechsteZone && idx < table.length - 1 ? " zonen-grenze" : "";
             return `
-                <tr class="${isUser ? 'row-user-club' : ''}${grenze}">
+                <tr class="${isUser ? 'row-user-club' : ''}${grenze}" data-club-id="${this.escapeHtml(s.clubId)}">
                     <td class="tb-platz"><span class="rang${zone ? ` rang-${zone}` : ""}" title="${zone ? UIManager.ZONEN[zone] : ""}">${idx + 1}</span></td>
                     <td class="tb-verein"><span class="tb-verein-inhalt"><span class="mini-wappen" data-club="${this.escapeHtml(s.clubId)}"></span><strong>${this.escapeHtml(s.clubName || club?.name || "")}</strong></span></td>
                     <td class="tb-sp">${s.played}</td>
@@ -4527,6 +4528,8 @@ class UIManager {
                 el.textContent = this.vereinsKuerzel(club.name).slice(0, 1);
             }
         });
+        // Ein Klick auf einen Verein öffnet seine Details
+        this.bindVereinsZeilen(tbody);
         if (legende) {
             const genutzt = [...new Set(zonen.values())];
             legende.innerHTML = genutzt.map(z =>
@@ -4560,13 +4563,17 @@ class UIManager {
                 return `
                     <div class="fixture-card ${isUserMatch ? 'user-match' : ''} ${m.isDerby ? 'derby-match' : ''}">
                         ${derby}
-                        <div class="fixture-team home">${this.escapeHtml(home?.name || "Heim")}</div>
+                        <div class="fixture-team home${home ? " vd-link" : ""}" ${home ? `data-club-link="${this.escapeHtml(home.id)}"` : ""}>${this.escapeHtml(home?.name || "Heim")}</div>
                         <div class="fixture-score-badge">${scoreText}</div>
-                        <div class="fixture-team away">${this.escapeHtml(away?.name || "Auswärts")}</div>
+                        <div class="fixture-team away${away ? " vd-link" : ""}" ${away ? `data-club-link="${this.escapeHtml(away.id)}"` : ""}>${this.escapeHtml(away?.name || "Auswärts")}</div>
                         ${zuschauer}
                     </div>
                 `;
             }).join("");
+            // Auch im Spielplan führt ein Vereinsname zu den Details
+            fixturesList.querySelectorAll("[data-club-link]").forEach(el => {
+                el.onclick = () => this.showClubDetailsModal(el.dataset.clubLink);
+            });
         } else {
             fixturesList.innerHTML = `<div class="text-muted text-center" style="padding:20px;">Für diesen Spieltag liegen keine Partien vor.</div>`;
         }
@@ -6241,7 +6248,7 @@ class UIManager {
             return true;
         };
 
-        const zeile = (t, w, stark = false) => `<div><span>${t}</span>${stark ? `<strong>${w}</strong>` : `<span>${w}</span>`}</div>`;
+        const zeile = (t, w, stark = false) => `<div${stark ? ` class="bau-eigen"` : ""}><span>${t}</span><strong>${w}</strong></div>`;
         const html = `
             <p><strong>${name}</strong>: ${art === "ausbau" ? `Ausbau von Stufe ${anlage.stufe} auf ${anlage.stufe + 1}` : `Sanierung (Zustand ${Math.round(anlage.zustand)} %)`}.
                ${dauer} Spieltage Bauzeit, der Betrieb läuft so lange um ${stoerung} % eingeschränkt.</p>
@@ -7113,6 +7120,183 @@ class UIManager {
     /**
      * Modal: Spieler Details & Vertragsverlängerung
      */
+    /**
+     * Vereinsdetails für jeden Verein der Welt - aus der Tabelle, dem
+     * Dashboard und dem Spielplan. Wie im FM: Kopf mit Kennzahlen, Form und
+     * Spiele, Spielweise, Anlagen und der Kader, gesehen durch die Augen des
+     * eigenen Scoutings (unbekannte Spieler bleiben geschätzt).
+     */
+    showClubDetailsModal(clubId) {
+        const state = this.app?.state;
+        const club = state?.clubs?.find(c => String(c.id) === String(clubId));
+        if (!club) return;
+        if (club.id === state.userClubId) {
+            this.switchTab("club");
+            return;
+        }
+        const modal = document.getElementById("modalVereinsDetails");
+        const body = document.getElementById("vereinsDetailsInhalt");
+        if (!modal || !body) return;
+        const esc = (v) => this.escapeHtml(String(v ?? ""));
+        const userClub = state.clubs.find(c => c.id === state.userClubId);
+        const liga = (state.leagues || []).find(l => l.id === club.leagueId);
+        const eigeneLiga = club.leagueId === this.getUserLeagueId(state);
+        const tabelle = eigeneLiga ? (state.standings || []) : (state.standingsByLeague?.[club.leagueId] || []);
+        const platz = tabelle.findIndex(s => s.clubId === club.id);
+        const zeile = platz >= 0 ? tabelle[platz] : null;
+        DOM.setText("vdTitel", club.name);
+
+        // Kopf: Wappen, Liga, Ort und die Kennzahlen
+        const kader = (club.playerIds || []).map(id => state.players.find(p => p.id === id)).filter(Boolean);
+        const alter = kader.length ? kader.reduce((s, p) => s + (p.age || 0), 0) / kader.length : 0;
+        const ruf = Math.round(club.reputation || 50);
+        const plaetze = club.stadiumCapacity || club.capacity || 0;
+        const balken = (wert) => `<span class="vk-balken"><i style="width:${Math.max(3, Math.min(100, wert))}%"></i></span>`;
+        const kacheln = [
+            ["Tabellenplatz", zeile ? `${platz + 1}.` : "—", `<small>${zeile ? `${zeile.points} Punkte · ${zeile.goalsFor}:${zeile.goalsAgainst}` : ""}</small>`],
+            ["Mannschaft", "", `<div class="vd-sterne">${this.teamStarsFor(club, { compact: true }) || "—"}</div><small>gemessen an Ihrem Kader</small>`],
+            ["Ruf", `${ruf}`, balken(ruf)],
+            ["Fans", (club.fanBase || 0).toLocaleString("de-DE"), `<small>${plaetze.toLocaleString("de-DE")} Plätze</small>`],
+            ["Kader", `${kader.length}`, `<small>Ø ${alter.toFixed(1).replace(".", ",")} Jahre</small>`],
+            ["Stimmung", `${Math.round(club.fanMood || 70)} %`, balken(club.fanMood || 70)]
+        ];
+
+        // Derby gegen den eigenen Verein?
+        const rivalen = (typeof RivalryEngine !== "undefined" && RivalryEngine && typeof RivalryEngine.findRivalry === "function" && userClub)
+            ? RivalryEngine.findRivalry(club, userClub) : null;
+
+        // Form und Spiele: die letzten fünf und die nächsten drei
+        const plan = this.getScheduleForLeague(state, club.leagueId) || [];
+        const spiele = [];
+        plan.forEach(runde => (runde.matches || []).forEach(m => {
+            if (m.homeClubId === club.id || m.awayClubId === club.id) spiele.push({ ...m, matchday: runde.matchday });
+        }));
+        const name = (id) => esc(state.clubs.find(c => c.id === id)?.name || "?");
+        const gespielt = spiele.filter(m => m.played).slice(-5).reverse();
+        const kommend = spiele.filter(m => !m.played).slice(0, 3);
+        const ergebnisZeile = (m) => {
+            const heim = m.homeClubId === club.id;
+            const eigene = heim ? m.homeGoals : m.awayGoals;
+            const fremde = heim ? m.awayGoals : m.homeGoals;
+            const f = eigene > fremde ? "W" : eigene < fremde ? "L" : "D";
+            return `<li>${this.formPunkt(f)}<span class="vd-gegner">${heim ? "" : "@ "}${name(heim ? m.awayClubId : m.homeClubId)}</span><strong>${eigene}:${fremde}</strong></li>`;
+        };
+        const naechstesZeile = (m) => {
+            const heim = m.homeClubId === club.id;
+            const gegenUns = (heim ? m.awayClubId : m.homeClubId) === state.userClubId;
+            return `<li class="${gegenUns ? "vd-gegen-uns" : ""}"><span class="vd-st">${m.matchday}.</span><span class="vd-gegner">${heim ? "" : "@ "}${name(heim ? m.awayClubId : m.homeClubId)}</span><small>${heim ? "Heim" : "Auswärts"}</small></li>`;
+        };
+
+        // Spielweise: Formation und Grundhaltung
+        const t = club.tactics || {};
+        const W = {
+            mentality: { defensive: "defensiv", balanced: "ausgewogen", attacking: "offensiv", "very-defensive": "sehr defensiv", "very-attacking": "sehr offensiv" },
+            pressing: { low: "tief", medium: "mittel", high: "hoch" },
+            tempo: { slow: "langsam", normal: "normal", fast: "schnell", high: "hoch" },
+            passStyle: { short: "kurz", mixed: "gemischt", long: "lang", direct: "direkt" },
+            defensiveLine: { deep: "tief", normal: "normal", high: "hoch" }
+        };
+        const wort = (k) => W[k]?.[t[k]] || (t[k] ? String(t[k]) : "—");
+        const torjaeger = [...kader].sort((a, b) => (b.seasonStats?.goals || 0) - (a.seasonStats?.goals || 0))[0];
+
+        // Anlagen: Stufe und Zustand
+        const fac = (typeof FacilityEngine !== "undefined") ? FacilityEngine : null;
+        const anlagen = fac ? fac.uebersicht(state, club.id) : [];
+        const anlagenHtml = anlagen.map(a => `
+            <div><span>${esc(a.name)}</span><strong>Stufe ${a.stufe}${a.projekt ? " · im Umbau" : ""}</strong></div>`).join("");
+
+        // Kader nach Mannschaftsteilen, jeweils die Stärksten oben
+        const ratingEngine = this.getRatingEngine();
+        const gruppen = [["tw", "Tor"], ["def", "Abwehr"], ["mid", "Mittelfeld"], ["att", "Angriff"]];
+        const kaderHtml = gruppen.map(([g, titel]) => {
+            const leute = kader.filter(p => this.getPosGroup(p.pos) === g).sort((a, b) => (b.overall || 0) - (a.overall || 0));
+            if (!leute.length) return "";
+            return `<tr class="vd-gruppe"><td colspan="5">${titel}</td></tr>` + leute.map(p => {
+                const card = ratingEngine ? ratingEngine.calculateVisiblePlayerCard(p,
+                    Object.assign({ userClubId: state.userClubId, leagueDataCoverage: 85 }, this.starContext())) : null;
+                return `<tr class="row-clickable" data-player-id="${esc(p.id)}">
+                    <td><span class="pos-tag pos-${g}">${esc(p.pos)}</span></td>
+                    <td><strong>${esc(p.name)}</strong><span class="tm-sub">${esc(p.nationality || "")}</span></td>
+                    <td>${p.age}</td>
+                    <td class="nowrap">${card ? card.abilityStarsHtml : this.abilityStarsFor(p, { compact: true })}</td>
+                    <td class="nowrap vd-wert">${card ? card.visibleValueText : this.geldKurz(p.value)}</td>
+                </tr>`;
+            }).join("");
+        }).join("");
+
+        body.innerHTML = `
+            <div class="vereins-kopf vd-kopf" style="--vk-farbe:${this.wappenFarben(club).farbe}40;">
+                <div class="vk-wappen" id="vdWappen"></div>
+                <div class="vk-titel">
+                    <span class="vk-liga">${esc(liga?.shortName || liga?.name || "")}</span>
+                    <h2>${esc(club.name)}</h2>
+                    <span class="vk-ort">${esc([club.city, club.stadium].filter(Boolean).join(" · "))}</span>
+                </div>
+                <div class="vk-kacheln">${kacheln.map(([titel, wert, extra]) =>
+                    `<div class="vk-kachel"><span>${esc(titel)}</span>${wert ? `<strong>${esc(wert)}</strong>` : ""}${extra || ""}</div>`).join("")}</div>
+            </div>
+            ${rivalen ? `<div class="hint-box vd-derby">🔥 <strong>${esc(rivalen.titel)}</strong> - gegen diesen Verein ist es mehr als ein Spiel.</div>` : ""}
+            <div class="vd-raster">
+                <div class="dash-card vd-karte">
+                    <h4>Form</h4>
+                    ${gespielt.length ? `<ul class="vd-spiele">${gespielt.map(ergebnisZeile).join("")}</ul>` : `<p class="muted-note">Noch keine Pflichtspiele.</p>`}
+                    <h4>Nächste Spiele</h4>
+                    ${kommend.length ? `<ul class="vd-spiele">${kommend.map(naechstesZeile).join("")}</ul>` : `<p class="muted-note">Keine Spiele mehr in dieser Saison.</p>`}
+                </div>
+                <div class="dash-card vd-karte">
+                    <h4>Spielweise</h4>
+                    <div class="kv-liste">
+                        <div><span>Formation</span><strong>${esc(club.formation || t.formation || "—")}</strong></div>
+                        <div><span>Grundhaltung</span><strong>${esc(wort("mentality"))}</strong></div>
+                        <div><span>Pressing</span><strong>${esc(wort("pressing"))}</strong></div>
+                        <div><span>Passspiel</span><strong>${esc(wort("passStyle"))}</strong></div>
+                        <div><span>Abwehrlinie</span><strong>${esc(wort("defensiveLine"))}</strong></div>
+                        ${torjaeger && (torjaeger.seasonStats?.goals || 0) > 0
+                            ? `<div><span>Torjäger</span><strong>${esc(torjaeger.name)} (${torjaeger.seasonStats.goals})</strong></div>` : ""}
+                    </div>
+                    <h4>Anlagen</h4>
+                    <div class="kv-liste">${anlagenHtml || `<div><span>—</span></div>`}</div>
+                </div>
+            </div>
+            <div class="dash-card vd-karte">
+                <h4>Kader <small class="muted-note">Sterne und Werte so, wie Ihre Scouts sie kennen - ein Klick öffnet die Akte</small></h4>
+                <div class="table-container">
+                    <table class="compact-table vd-kader">
+                        <thead><tr><th>Pos</th><th>Name</th><th>Alter</th><th>Stärke</th><th>Wert</th></tr></thead>
+                        <tbody>${kaderHtml || `<tr><td colspan="5" class="text-muted">Kein Kader bekannt.</td></tr>`}</tbody>
+                    </table>
+                </div>
+            </div>`;
+
+        const wappen = document.getElementById("vdWappen");
+        if (wappen) {
+            this.setzeWappen(wappen, club);
+        }
+        body.querySelectorAll("tr.row-clickable").forEach(row => {
+            row.addEventListener("click", () => {
+                const pId = this.resolvePlayerId(row.dataset.playerId);
+                if (pId !== null) this.showPlayerDetailsModal(pId);
+            });
+        });
+        const x = document.getElementById("btnCloseVereinsDetails");
+        if (x) x.onclick = () => { modal.style.display = "none"; };
+        modal.style.display = "flex";
+        body.scrollTop = 0;
+    }
+
+    /** Macht Tabellenzeilen mit data-club-id anklickbar: öffnet die Vereinsdetails */
+    bindVereinsZeilen(host) {
+        if (!host) return;
+        host.querySelectorAll("tr[data-club-id]").forEach(row => {
+            row.classList.add("row-clickable");
+            row.title = "Vereinsdetails anzeigen";
+            row.onclick = (e) => {
+                if (e.target.closest("button, a, select, input")) return;
+                this.showClubDetailsModal(row.dataset.clubId);
+            };
+        });
+    }
+
     showPlayerDetailsModal(playerId) {
         const state = this.app.state;
         const treffer = this.findAnyPlayer(playerId);

@@ -63,6 +63,12 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Vollständiger Spielplan**: 34 Spieltage (Hin- & Rückrunde) nach Round-Robin-Verfahren.
 - **Vollwertige Simulation**: An jedem Spieltag spielen alle 18 Klubs zeitgleich gegeneinander.
 - **Live-Tabelle & Historie**: Punkte (3/1/0-System), Tordifferenz, Tore, Gegentore, Formkurven sowie Archivierung vergangener Meisterschaften.
+- **Vereinsdetails per Klick:** Ein Klick auf einen Verein in der Tabelle, in der Dashboard-Tabelle oder im Spielplan öffnet seine Seite. Der eigene Verein führt in den Reiter *Verein*. Die Seite zeigt:
+  - Kopf mit Tabellenplatz, Mannschaftsstärke in Sternen, Ruf, Fans, Kader und Stimmung, dazu ein Hinweis bei einem Derby gegen den eigenen Verein.
+  - Die letzten fünf Ergebnisse und die nächsten drei Spiele.
+  - Spielweise (Formation, Grundhaltung, Pressing, Passspiel, Abwehrlinie, Torjäger) und Anlagen.
+  - Den Kader nach Mannschaftsteilen, mit Sternen und Werten so, wie das eigene Scouting sie kennt. Ein Klick öffnet die Spielerakte darüber.
+- **Spielplan mit wechselndem Heimrecht:** Heim- und Auswärtsspiele wechseln sich nach dem Berger-Verfahren ab, höchstens drei gleiche in Folge. Vorher hatte ein Verein bis zu 17 Heim- oder Auswärtsspiele am Stück.
 
 ### 2. 📋 Aufstellung, Taktik & Teamchemie
 - **Aufstellungsprüfung (`StateValidator`):** Verhindert Spielstart bei ungültiger Startelf (genau 11 Spieler, genau 1 TW, keine verletzten oder gesperrten Spieler).

@@ -6488,6 +6488,27 @@ function runEngineTests() {
         if (!YouthEngine.pruefeJugendtag(state)) throw new Error("In der nächsten Saison gibt es keinen Jugendtag");
     });
 
+    test("Spielplan: Heim und Auswärts wechseln sich ab - keine langen Serien", () => {
+        [16, 18, 20, 15].forEach(anzahl => {
+            const clubs = Array.from({ length: anzahl }, (_, i) => ({ id: `v${i}` }));
+            const plan = GameState.generateSchedule(clubs);
+            clubs.forEach(c => {
+                const folge = plan.map(r => {
+                    const m = r.matches.find(x => x.homeClubId === c.id || x.awayClubId === c.id);
+                    return m ? (m.homeClubId === c.id ? "H" : "A") : "";
+                }).join("");
+                const laengste = Math.max(...(folge.match(/H+|A+/g) || [""]).map(s => s.length));
+                if (laengste > 4) throw new Error(`${anzahl} Vereine: ${c.id} hat ${laengste} gleiche Spiele in Folge (${folge})`);
+                const heim = (folge.match(/H/g) || []).length;
+                if (Math.abs(heim - folge.length / 2) > 1) throw new Error(`${c.id}: ${heim} Heimspiele von ${folge.length}`);
+            });
+            // Jede Paarung genau einmal zu Hause und einmal auswärts
+            const paare = new Set();
+            plan.forEach(r => r.matches.forEach(m => paare.add(`${m.homeClubId}-${m.awayClubId}`)));
+            if (paare.size !== anzahl * (anzahl - 1)) throw new Error(`${anzahl} Vereine: ${paare.size} verschiedene Heimspiele statt ${anzahl * (anzahl - 1)}`);
+        });
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

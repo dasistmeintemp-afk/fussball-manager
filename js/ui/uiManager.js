@@ -2270,6 +2270,10 @@ class UIManager {
         // Auf schmalen Geräten zeigt der Knopf nur die Kurzfassung
         // (Ohne dataset - etwa im Test-DOM - brach hier der ganze Kopf ab.)
         if (knopf.dataset) knopf.dataset.kurz = ziel.kurz || "Weiter";
+        // Einzelne Tage wie im FM: nur sinnvoll, wenn der Hauptknopf mehrere
+        // Tage überspringen würde
+        const tagKnopf = document.getElementById("btnHeaderTag");
+        if (tagKnopf) tagKnopf.style.display = ziel.art === "sprung" && ziel.tage > 1 ? "" : "none";
 
         // Sidebar Quick-Status
         const getRankSafe = (clubId) => {
@@ -2607,7 +2611,7 @@ class UIManager {
             const isUser = s.clubId === userClub.id;
             const zone = zonen.get(rank);
             return `
-                <tr class="${isUser ? 'row-user-club' : ''}">
+                <tr class="${isUser ? 'row-user-club' : ''}" data-club-id="${this.escapeHtml(s.clubId)}">
                     <td><span class="rang${zone ? ` rang-${zone}` : ""}" title="${zone ? UIManager.ZONEN[zone] : ""}">${rank}</span></td>
                     <td class="tb-verein"><span class="tb-verein-inhalt"><span class="mini-wappen" data-club="${this.escapeHtml(s.clubId)}"></span><span class="tb-verein-name">${this.escapeHtml(s.clubName)}</span></span></td>
                     <td>${s.played}</td>
@@ -2623,6 +2627,7 @@ class UIManager {
                 el.textContent = this.vereinsKuerzel(club.name).slice(0, 1);
             }
         });
+        this.bindVereinsZeilen(standingsBody);
 
         // 3. Board Confidence, Fan Mood & Media Pressure (D4)
         document.getElementById("dashBoardGoal").textContent = GameState.getExpectationText(userClub.boardExpectation);
@@ -4502,7 +4507,7 @@ class UIManager {
             const naechsteZone = zonen.get(idx + 2);
             const grenze = zone !== naechsteZone && idx < table.length - 1 ? " zonen-grenze" : "";
             return `
-                <tr class="${isUser ? 'row-user-club' : ''}${grenze}">
+                <tr class="${isUser ? 'row-user-club' : ''}${grenze}" data-club-id="${this.escapeHtml(s.clubId)}">
                     <td class="tb-platz"><span class="rang${zone ? ` rang-${zone}` : ""}" title="${zone ? UIManager.ZONEN[zone] : ""}">${idx + 1}</span></td>
                     <td class="tb-verein"><span class="tb-verein-inhalt"><span class="mini-wappen" data-club="${this.escapeHtml(s.clubId)}"></span><strong>${this.escapeHtml(s.clubName || club?.name || "")}</strong></span></td>
                     <td class="tb-sp">${s.played}</td>
@@ -4527,6 +4532,8 @@ class UIManager {
                 el.textContent = this.vereinsKuerzel(club.name).slice(0, 1);
             }
         });
+        // Ein Klick auf einen Verein öffnet seine Details
+        this.bindVereinsZeilen(tbody);
         if (legende) {
             const genutzt = [...new Set(zonen.values())];
             legende.innerHTML = genutzt.map(z =>
@@ -4560,13 +4567,17 @@ class UIManager {
                 return `
                     <div class="fixture-card ${isUserMatch ? 'user-match' : ''} ${m.isDerby ? 'derby-match' : ''}">
                         ${derby}
-                        <div class="fixture-team home">${this.escapeHtml(home?.name || "Heim")}</div>
+                        <div class="fixture-team home${home ? " vd-link" : ""}" ${home ? `data-club-link="${this.escapeHtml(home.id)}"` : ""}>${this.escapeHtml(home?.name || "Heim")}</div>
                         <div class="fixture-score-badge">${scoreText}</div>
-                        <div class="fixture-team away">${this.escapeHtml(away?.name || "Auswärts")}</div>
+                        <div class="fixture-team away${away ? " vd-link" : ""}" ${away ? `data-club-link="${this.escapeHtml(away.id)}"` : ""}>${this.escapeHtml(away?.name || "Auswärts")}</div>
                         ${zuschauer}
                     </div>
                 `;
             }).join("");
+            // Auch im Spielplan führt ein Vereinsname zu den Details
+            fixturesList.querySelectorAll("[data-club-link]").forEach(el => {
+                el.onclick = () => this.showClubDetailsModal(el.dataset.clubLink);
+            });
         } else {
             fixturesList.innerHTML = `<div class="text-muted text-center" style="padding:20px;">Für diesen Spieltag liegen keine Partien vor.</div>`;
         }
@@ -5116,7 +5127,12 @@ class UIManager {
                         <td class="tm-meta">${vereinsName} · ${valDisplay} · Scout ${confPercent} %</td>
                         <td class="tm-aktion">
                             <div class="tm-knoepfe">
-                                <button class="btn btn-sm btn-secondary btn-scout-direct" data-player-id="${p.id}" title="Scouten für präzisere Daten">🔍<span class="tm-knopf-text"> Scouten</span></button>
+                                ${(() => {
+                                    const laeuft = this.beobachtungsText(p.id);
+                                    return laeuft
+                                        ? `<button class="btn btn-sm btn-secondary btn-scout-direct" data-player-id="${p.id}" disabled title="Der Scout beobachtet ihn - Bericht ${laeuft}">👁<span class="tm-knopf-text"> ${laeuft}</span></button>`
+                                        : `<button class="btn btn-sm btn-secondary btn-scout-direct" data-player-id="${p.id}" title="Scout zur Beobachtung schicken - der Bericht kommt nach einigen Tagen">🔍<span class="tm-knopf-text"> Scouten</span></button>`;
+                                })()}
                                 <button class="btn btn-sm btn-primary btn-bid-player" data-player-id="${p.id}">Verhandeln</button>
                             </div>
                         </td>
@@ -5161,14 +5177,7 @@ class UIManager {
                         ? ScoutingEngine
                         : ((typeof window !== 'undefined' && window.ScoutingEngine) ? window.ScoutingEngine : null);
 
-                    if (scoutingEngine && typeof scoutingEngine.scoutPlayer === 'function') {
-                        const res = scoutingEngine.scoutPlayer(state, pId, { source: "transfer_market", notify: true });
-                        if (res.success) {
-                            this.playSound("whistle");
-                            this.showToast(`Scoutbericht für ${res.player.name} erstellt! Wissen auf ${res.knowledgeLevel}% gestiegen.`, "success");
-                            this.renderTransfers();
-                        }
-                    }
+                    if (scoutingEngine) this.beobachte(pId, "transfer_market", () => this.renderTransfers());
                 });
             });
         }
@@ -5177,10 +5186,16 @@ class UIManager {
         const assignList = document.getElementById("scoutAssignmentsList");
         if (assignList) {
             const assignments = (state.scouting?.assignments || []).filter(a => a.status === "active");
-            if (assignments.length === 0) {
-                assignList.innerHTML = `<div class="empty-state-sm">Keine aktiven Scouting-Aufträge. Entsenden Sie oben einen Scout.</div>`;
+            const beobachtungen = state.scouting?.beobachtungen || [];
+            const beobachtungenHtml = beobachtungen.map(b => `
+                    <div class="news-item-dash" style="justify-content: space-between;">
+                        <div>👁 <strong>${this.escapeHtml(b.playerName)}</strong> <span class="scout-beobachtung">· ${this.escapeHtml(b.clubName)} · ${this.escapeHtml(b.scoutName)}</span></div>
+                        <span class="header-tag" style="background:var(--accent-primary); color:#000;">⏳ Bericht in ${b.tageRest} Tag(en)</span>
+                    </div>`).join("");
+            if (assignments.length === 0 && beobachtungen.length === 0) {
+                assignList.innerHTML = `<div class="empty-state-sm">Keine aktiven Scouting-Aufträge. Entsenden Sie oben einen Scout oder lassen Sie einen Spieler beobachten.</div>`;
             } else {
-                assignList.innerHTML = assignments.map(a => `
+                assignList.innerHTML = beobachtungenHtml + assignments.map(a => `
                     <div class="news-item-dash" style="justify-content: space-between;">
                         <div>
                             🔭 <strong>Scout-Fokus:</strong> Position: ${a.position} | Alter bis: ${a.maxAge} | Mindestens ${this.starsFor(a.minOverall)}
@@ -5349,6 +5364,15 @@ class UIManager {
                 ? `Wirksame Stufe: ${fac ? fac.wirksameStufe(userClub, "youthCenter", state.seasonYear || 1) : level}`
                   + ` — Zustand ${Math.round(anlage.zustand)} %`
                 : "";
+            // Der Knopf zeigt den echten Preis statt fester 2,5 Millionen
+            const knopf = document.getElementById("btnUpgradeYouthAcademy");
+            if (knopf && fac) {
+                const preis = level < 5 ? fac.kosten(userClub, "youthCenter", "ausbau", state.seasonYear || 1) : 0;
+                knopf.textContent = level >= 5 ? "Akademie: höchste Stufe"
+                    : anlage?.projekt ? "Akademie im Umbau"
+                    : `Akademie ausbauen (${this.geldKurz(preis)})`;
+                knopf.disabled = level >= 5 || !!anlage?.projekt;
+            }
         }
 
         this.renderTrainingReport();
@@ -5357,7 +5381,13 @@ class UIManager {
         const engine = this.getNegotiationEngine();
         const prospectsBody = document.getElementById("youthProspectsBody");
         if (prospectsBody) {
-            const prospects = (state.youthAcademy?.prospects || []).filter(p => !p.promoted);
+            // Nach dem Laden standen die Talente in zwei getrennten Listen -
+            // die Beförderung erschien dann hier nicht
+            const youthListe = (typeof YouthEngine !== "undefined" && YouthEngine) ? YouthEngine : window.YouthEngine;
+            const alleTalente = youthListe && typeof youthListe.eigeneTalente === "function"
+                ? youthListe.eigeneTalente(state)
+                : (state.youthAcademy?.prospects || []);
+            const prospects = alleTalente.filter(p => !p.promoted);
             if (prospects.length === 0) {
                 prospectsBody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">Aktuell keine unbeförderten Jugendspieler in der Akademie.</td></tr>`;
             } else {
@@ -5634,6 +5664,16 @@ class UIManager {
         const einzug = youth.EINZUG[sp.einzug];
         const potSumme = jahrgang.pot + einzug.pot + leiterBonus;
         const kosten = youth.einzugKosten(club, sp.einzug);
+        // Wann der nächste Jahrgang kommt: am Jugendtag im Frühjahr
+        const tagJugend = typeof youth.jugendtagSpieltag === "function" ? youth.jugendtagSpieltag(state) : null;
+        const schonGewesen = state.youthAcademy?.jugendtagSaison === (state.seasonYear || 1);
+        const jugendtagText = tagJugend === null ? "zum Saisonstart"
+            : schonGewesen ? `am Jugendtag der nächsten Saison (um den ${tagJugend}. Spieltag)`
+            : (() => {
+                const rest = tagJugend - (state.currentMatchday || 1);
+                return `am Jugendtag um den ${tagJugend}. Spieltag`
+                    + (rest > 1 ? ` (noch ${rest} Spieltage)` : rest === 1 ? " (nächster Spieltag)" : "");
+            })();
         const posText = sp.positionen.length
             ? sp.positionen.map(k => youth.SCHWERPUNKT_POSITIONEN[k].name).join(" und ")
             : "alle Positionen";
@@ -5658,7 +5698,7 @@ class UIManager {
                 <div class="sp-titel">Einzugsgebiet <span class="sp-hinweis">Kosten je Jahrgang</span></div>
                 <div class="sp-reihe">${einzugChips}</div>
             </div>
-            <div class="sp-fazit">Nächster Jahrgang zum Saisonstart: <strong>${jahrgang.anzahl} Talente</strong>, Schwerpunkt ${esc(posText)},
+            <div class="sp-fazit">Nächster Jahrgang ${jugendtagText}: <strong>${jahrgang.anzahl} Talente</strong>, Schwerpunkt ${esc(posText)},
                 Potenzial <strong>${potSumme >= 0 ? "+" : ""}${potSumme}</strong> gegenüber einem normalen Jahrgang${kosten > 0 ? `, Sichtung ${this.geldKurz(kosten)}` : ""}.</div>`;
 
         box.querySelectorAll(".sp-chip").forEach(btn => {
@@ -6142,6 +6182,15 @@ class UIManager {
                 </button>`;
 
             const teuer = !sperre && !maxStufe && a.kostenAusbau > kasse;
+            const bank = a.finanzierungAusbau;
+            const hinweisGeld = teuer
+                ? `<p class="fac-note" style="color:#f59e0b;">Für den Ausbau fehlen ${geld(a.kostenAusbau - kasse)}.`
+                  + (bank?.moeglich ? ` Die Hausbank finanziert: ${geld(bank.anzahlung)} Anzahlung, dann ${geld(bank.rate)} je Spieltag.` : "")
+                  + `</p>`
+                : "";
+            const hinweisFoerderung = !sperre && !maxStufe && a.foerderungAusbau > 0
+                ? `<p class="fac-note">Sportstättenförderung: Die Stadt trägt ${Math.round(a.foerderQuote * 100)} % (${geld(a.foerderungAusbau)}).</p>`
+                : "";
 
             return `
                 <div class="fac-card ${a.projekt ? "is-building" : ""}">
@@ -6159,25 +6208,74 @@ class UIManager {
                     ${extra}
                     ${bau}
                     <div class="fac-actions">${ausbauBtn}${sanierBtn}</div>
-                    ${teuer ? `<p class="fac-note" style="color:#f59e0b;">Für den Ausbau fehlen ${geld(a.kostenAusbau - kasse)}.</p>` : ""}
+                    ${hinweisFoerderung}
+                    ${hinweisGeld}
                 </div>`;
         }).join("");
 
         host.querySelectorAll(".btn-fac").forEach(btn => {
-            btn.onclick = () => {
-                const res = fac.starteProjekt(state, userClub.id, btn.dataset.facility, btn.dataset.art);
-                if (res.erfolg) {
-                    this.playSound("whistle");
-                    this.showToast(
-                        `${res.name}: ${btn.dataset.art === "ausbau" ? "Ausbau" : "Sanierung"} begonnen — `
-                        + `${res.spieltage} Spieltage, ${geld(res.kosten)}.`, "success");
-                    this.renderClub();
-                    this.renderHeader();
-                } else {
-                    this.showToast(res.grund, "error");
-                }
-            };
+            btn.onclick = () => this.starteBau(btn.dataset.facility, btn.dataset.art);
         });
+    }
+
+    /**
+     * Ein Bauvorhaben mit Blick auf die Rechnung starten: Baukosten,
+     * Fördermittel, Eigenanteil - und, wenn die Kasse nicht reicht, die
+     * Finanzierung über die Hausbank.
+     */
+    starteBau(key, art) {
+        const state = this.app.state;
+        const fac = (typeof FacilityEngine !== "undefined") ? FacilityEngine : window.FacilityEngine;
+        const club = state?.clubs?.find(c => c.id === state.userClubId);
+        if (!fac || !club) return;
+        const saison = state.seasonYear || 1;
+        const anlage = fac.hole(club, saison)?.[key];
+        if (!anlage) return;
+        const name = fac.FACILITY_NAMES[key];
+        const geld = (b) => GameState.formatMoney(b);
+        const detail = fac.kostenDetail(club, key, art, saison);
+        const bank = fac.finanzierung(state, club, key, art);
+        const kasse = club.balance || 0;
+        const barGeht = kasse >= detail.netto;
+        const dauer = fac.dauer(key, art);
+        const stoerung = Math.round(((fac.BEEINTRAECHTIGUNG[key] || {})[art] || 0.2) * 100);
+
+        const starte = (finanzierung) => {
+            const res = fac.starteProjekt(state, club.id, key, art, finanzierung ? { finanzierung } : {});
+            if (!res.erfolg) {
+                this.showToast(res.grund, "error", 6000);
+                return false;
+            }
+            this.playSound("whistle");
+            this.showToast(`${res.name}: ${art === "ausbau" ? "Ausbau" : "Sanierung"} begonnen — ${res.spieltage} Spieltage`
+                + (res.rate ? `, ${geld(res.rate)} je Spieltag an die Bank.` : `, ${geld(res.kosten)}.`), "success");
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.renderClub();
+            this.renderTraining();
+            this.renderHeader();
+            return true;
+        };
+
+        const zeile = (t, w, stark = false) => `<div${stark ? ` class="bau-eigen"` : ""}><span>${t}</span><strong>${w}</strong></div>`;
+        const html = `
+            <p><strong>${name}</strong>: ${art === "ausbau" ? `Ausbau von Stufe ${anlage.stufe} auf ${anlage.stufe + 1}` : `Sanierung (Zustand ${Math.round(anlage.zustand)} %)`}.
+               ${dauer} Spieltage Bauzeit, der Betrieb läuft so lange um ${stoerung} % eingeschränkt.</p>
+            <div class="verh-zahlen bau-rechnung">
+                ${zeile("Baukosten", geld(detail.brutto))}
+                ${detail.foerderung > 0 ? zeile(`Sportstättenförderung (${Math.round(detail.quote * 100)} %)`, `− ${geld(detail.foerderung)}`) : ""}
+                ${zeile("Eigenanteil", geld(detail.netto), true)}
+                ${zeile("In der Kasse", geld(kasse))}
+            </div>
+            ${bank.moeglich
+                ? `<p class="muted-note">Hausbank: ${geld(bank.anzahlung)} Anzahlung, danach ${geld(bank.rate)} je Spieltag über ${bank.spieltage} Spieltage.
+                   Zinsen ${geld(bank.zinsen)}, zusammen ${geld(bank.gesamt)}.</p>`
+                : `<p class="muted-note">Hausbank: ${this.escapeHtml(bank.grund || "keine Finanzierung möglich")}</p>`}
+            ${!barGeht && !bank.moeglich ? `<p style="color:var(--accent-danger);">Es fehlen ${geld(detail.netto - kasse)} - so lässt sich nicht bauen.</p>` : ""}`;
+
+        const knoepfe = [{ text: "Abbrechen", klasse: "btn-secondary" }];
+        if (bank.moeglich) knoepfe.push({ text: "In Raten finanzieren", klasse: barGeht ? "btn-secondary" : "btn-primary", aktion: () => starte("raten") });
+        if (barGeht) knoepfe.push({ text: `Sofort bezahlen (${this.geldKurz(detail.netto)})`, klasse: "btn-primary", aktion: () => starte(null) });
+        this.zeigeEntscheidung({ titel: art === "ausbau" ? "Ausbau planen" : "Sanierung planen", html, knoepfe });
     }
 
     /** "Techniker, Passgeber und Dribbler" statt "technique, passing, dribbling" */
@@ -6544,7 +6642,7 @@ class UIManager {
             else if (msg.type === "match_report" || msg.type === "match_preview") { icon = "⚽"; typeLabel = "Spiel"; }
             else if (msg.type === "transfer_done" || msg.type === "transfer_offer") { icon = "🔄"; typeLabel = "Transfer"; }
             else if (msg.type === "training_report" || msg.type === "injury") { icon = "🏥"; typeLabel = "Training / Lazarett"; }
-            else if (msg.type === "scout_report") { icon = "🔍"; typeLabel = "Scouting"; }
+            else if (msg.type === "scout_report" || msg.type === "scouting") { icon = "🔍"; typeLabel = "Scouting"; }
             else if (msg.type === "finance_warning" || msg.type === "sponsor") { icon = "💰"; typeLabel = "Finanzen"; }
             else if (msg.type === "contract" || msg.type === "contract_expiring") { icon = "📝"; typeLabel = "Verträge"; }
             else if (msg.type === "retirement") { icon = "🎖️"; typeLabel = "Karriereende"; }
@@ -6604,13 +6702,32 @@ class UIManager {
         else if (msg.type === "match_report" || msg.type === "match_preview") { icon = "⚽"; typeLabel = "Spiel"; }
         else if (msg.type === "transfer_done" || msg.type === "transfer_offer") { icon = "🔄"; typeLabel = "Transfer"; }
         else if (msg.type === "training_report" || msg.type === "injury") { icon = "🏥"; typeLabel = "Training / Lazarett"; }
-        else if (msg.type === "scout_report") { icon = "🔍"; typeLabel = "Scouting"; }
+        else if (msg.type === "scout_report" || msg.type === "scouting") { icon = "🔍"; typeLabel = "Scouting"; }
         else if (msg.type === "finance_warning" || msg.type === "sponsor") { icon = "💰"; typeLabel = "Finanzen"; }
         else if (msg.type === "contract" || msg.type === "contract_expiring") { icon = "📝"; typeLabel = "Verträge"; }
         else if (msg.type === "retirement") { icon = "🎖️"; typeLabel = "Karriereende"; }
 
-        const formattedBody = (msg.body || msg.text || "").replace(/\n/g, "<br>");
+        let formattedBody = (msg.body || msg.text || "").replace(/\n/g, "<br>");
         const displayDate = msg.date || "Saisonstart";
+
+        // Ein Scoutbericht erscheint als Berichtskarte, mit dem Weg zur Akte
+        // und zum Angebot
+        const state = this.app?.state;
+        const spielerId = msg.relatedEntity?.type === "player" ? msg.relatedEntity.id : null;
+        const spieler = spielerId !== null && state ? state.players.find(p => String(p.id) === String(spielerId)) : null;
+        let aktionen = "";
+        if (spieler) {
+            const bericht = (state.scouting?.reports || []).find(r => String(r.playerId) === String(spieler.id));
+            if (bericht && (msg.type === "scouting" || msg.type === "scout_report")) {
+                formattedBody = `<div class="scout-berichte">${this.scoutBerichtHtml(bericht, state)}</div>`;
+            }
+            const eigener = spieler.clubId === state.userClubId;
+            aktionen = `
+                <div class="inbox-detail-aktionen">
+                    <button class="btn btn-secondary btn-sm" data-inbox-akte="${this.escapeHtml(spieler.id)}">📋 Spielerakte</button>
+                    ${eigener ? "" : `<button class="btn btn-primary btn-sm" data-inbox-angebot="${this.escapeHtml(spieler.id)}">Verhandeln</button>`}
+                </div>`;
+        }
 
         detailContainer.innerHTML = `
             <div class="inbox-detail-header">
@@ -6632,7 +6749,16 @@ class UIManager {
             <div class="inbox-detail-body">
                 ${formattedBody}
             </div>
+            ${aktionen}
         `;
+        detailContainer.querySelector("[data-inbox-akte]")?.addEventListener("click", (e) => {
+            const pId = this.resolvePlayerId(e.currentTarget.dataset.inboxAkte);
+            if (pId !== null) this.showPlayerDetailsModal(pId);
+        });
+        detailContainer.querySelector("[data-inbox-angebot]")?.addEventListener("click", (e) => {
+            const pId = this.resolvePlayerId(e.currentTarget.dataset.inboxAngebot);
+            if (pId !== null) this.showTransferOfferModal(pId);
+        });
     }
 
     /**
@@ -6807,8 +6933,8 @@ class UIManager {
                                     Gefahr: <span class="badge ${p.dangerBadgeClass}" style="font-size:10px; padding:2px 6px;">${p.danger}</span> • Scouthinweis: <strong>${p.confidence}%</strong>
                                 </div>
                             </div>
-                            <button class="btn btn-sm btn-secondary btn-scout-opponent-player mt-2" data-player-id="${p.id}" style="width:100%;">
-                                🔍 Spieler scouten
+                            <button class="btn btn-sm btn-secondary btn-scout-opponent-player mt-2" data-player-id="${p.id}" style="width:100%;" ${this.beobachtungsText(p.id) ? "disabled" : ""}>
+                                ${this.beobachtungsText(p.id) ? `👁 In Beobachtung (${this.beobachtungsText(p.id)})` : "🔍 Spieler beobachten"}
                             </button>
                         </div>
                     `).join("")}
@@ -6826,14 +6952,7 @@ class UIManager {
                     ? ScoutingEngine 
                     : ((typeof window !== 'undefined' && window.ScoutingEngine) ? window.ScoutingEngine : null);
 
-                if (scoutingEngine && typeof scoutingEngine.scoutPlayer === 'function') {
-                    const res = scoutingEngine.scoutPlayer(state, pId, { source: "opponent_analysis", notify: true });
-                    if (res.success) {
-                        this.playSound("whistle");
-                        this.showToast(`Scoutbericht für ${res.player.name} angefordert! Scouting-Wissen: ${res.knowledgeLevel}%`, "success");
-                        this.showOpponentAnalysisModal();
-                    }
-                }
+                if (scoutingEngine) this.beobachte(pId, "opponent_analysis", () => this.showOpponentAnalysisModal());
             });
         });
     }
@@ -7030,6 +7149,209 @@ class UIManager {
     /**
      * Modal: Spieler Details & Vertragsverlängerung
      */
+    /**
+     * Einen Spieler vom Scout beobachten lassen. Der Bericht kommt nach
+     * einigen Tagen ins Postfach - nicht mehr sofort auf Knopfdruck.
+     */
+    beobachte(playerId, source, danach = null) {
+        const state = this.app?.state;
+        const engine = (typeof ScoutingEngine !== "undefined" && ScoutingEngine) ? ScoutingEngine : window.ScoutingEngine;
+        if (!state || !engine || typeof engine.beobachteSpieler !== "function") return;
+        const res = engine.beobachteSpieler(state, playerId, { source });
+        if (!res.success) {
+            this.showToast(res.error || "Der Scout kann gerade nicht los.", "warning", 5000);
+            return;
+        }
+        this.playSound("whistle");
+        this.showToast(`🔭 ${res.scout.name} beobachtet ${res.player.name} - Bericht in etwa ${res.tage} Tagen im Postfach.`, "success", 5000);
+        if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+        if (typeof danach === "function") danach();
+    }
+
+    /** Knopfbeschriftung: läuft schon eine Beobachtung? */
+    beobachtungsText(playerId) {
+        const engine = (typeof ScoutingEngine !== "undefined" && ScoutingEngine) ? ScoutingEngine : window.ScoutingEngine;
+        const b = engine && typeof engine.beobachtungVon === "function" ? engine.beobachtungVon(this.app?.state, playerId) : null;
+        return b ? `noch ${b.tageRest} T.` : null;
+    }
+
+    /**
+     * Vereinsdetails für jeden Verein der Welt - aus der Tabelle, dem
+     * Dashboard und dem Spielplan. Wie im FM: Kopf mit Kennzahlen, Form und
+     * Spiele, Spielweise, Anlagen und der Kader, gesehen durch die Augen des
+     * eigenen Scoutings (unbekannte Spieler bleiben geschätzt).
+     */
+    showClubDetailsModal(clubId) {
+        const state = this.app?.state;
+        const club = state?.clubs?.find(c => String(c.id) === String(clubId));
+        if (!club) return;
+        if (club.id === state.userClubId) {
+            this.switchTab("club");
+            return;
+        }
+        const modal = document.getElementById("modalVereinsDetails");
+        const body = document.getElementById("vereinsDetailsInhalt");
+        if (!modal || !body) return;
+        const esc = (v) => this.escapeHtml(String(v ?? ""));
+        const userClub = state.clubs.find(c => c.id === state.userClubId);
+        const liga = (state.leagues || []).find(l => l.id === club.leagueId);
+        const eigeneLiga = club.leagueId === this.getUserLeagueId(state);
+        const tabelle = eigeneLiga ? (state.standings || []) : (state.standingsByLeague?.[club.leagueId] || []);
+        const platz = tabelle.findIndex(s => s.clubId === club.id);
+        const zeile = platz >= 0 ? tabelle[platz] : null;
+        DOM.setText("vdTitel", club.name);
+
+        // Kopf: Wappen, Liga, Ort und die Kennzahlen
+        const kader = (club.playerIds || []).map(id => state.players.find(p => p.id === id)).filter(Boolean);
+        const alter = kader.length ? kader.reduce((s, p) => s + (p.age || 0), 0) / kader.length : 0;
+        const ruf = Math.round(club.reputation || 50);
+        const plaetze = club.stadiumCapacity || club.capacity || 0;
+        const balken = (wert) => `<span class="vk-balken"><i style="width:${Math.max(3, Math.min(100, wert))}%"></i></span>`;
+        const kacheln = [
+            ["Tabellenplatz", zeile ? `${platz + 1}.` : "—", `<small>${zeile ? `${zeile.points} Punkte · ${zeile.goalsFor}:${zeile.goalsAgainst}` : ""}</small>`],
+            ["Mannschaft", "", `<div class="vd-sterne">${this.teamStarsFor(club, { compact: true }) || "—"}</div><small>gemessen an Ihrem Kader</small>`],
+            ["Ruf", `${ruf}`, balken(ruf)],
+            ["Fans", (club.fanBase || 0).toLocaleString("de-DE"), `<small>${plaetze.toLocaleString("de-DE")} Plätze</small>`],
+            ["Kader", `${kader.length}`, `<small>Ø ${alter.toFixed(1).replace(".", ",")} Jahre</small>`],
+            ["Stimmung", `${Math.round(club.fanMood || 70)} %`, balken(club.fanMood || 70)]
+        ];
+
+        // Derby gegen den eigenen Verein?
+        const rivalen = (typeof RivalryEngine !== "undefined" && RivalryEngine && typeof RivalryEngine.findRivalry === "function" && userClub)
+            ? RivalryEngine.findRivalry(club, userClub) : null;
+
+        // Form und Spiele: die letzten fünf und die nächsten drei
+        const plan = this.getScheduleForLeague(state, club.leagueId) || [];
+        const spiele = [];
+        plan.forEach(runde => (runde.matches || []).forEach(m => {
+            if (m.homeClubId === club.id || m.awayClubId === club.id) spiele.push({ ...m, matchday: runde.matchday });
+        }));
+        const name = (id) => esc(state.clubs.find(c => c.id === id)?.name || "?");
+        const gespielt = spiele.filter(m => m.played).slice(-5).reverse();
+        const kommend = spiele.filter(m => !m.played).slice(0, 3);
+        const ergebnisZeile = (m) => {
+            const heim = m.homeClubId === club.id;
+            const eigene = heim ? m.homeGoals : m.awayGoals;
+            const fremde = heim ? m.awayGoals : m.homeGoals;
+            const f = eigene > fremde ? "W" : eigene < fremde ? "L" : "D";
+            return `<li>${this.formPunkt(f)}<span class="vd-gegner">${heim ? "" : "@ "}${name(heim ? m.awayClubId : m.homeClubId)}</span><strong>${eigene}:${fremde}</strong></li>`;
+        };
+        const naechstesZeile = (m) => {
+            const heim = m.homeClubId === club.id;
+            const gegenUns = (heim ? m.awayClubId : m.homeClubId) === state.userClubId;
+            return `<li class="${gegenUns ? "vd-gegen-uns" : ""}"><span class="vd-st">${m.matchday}.</span><span class="vd-gegner">${heim ? "" : "@ "}${name(heim ? m.awayClubId : m.homeClubId)}</span><small>${heim ? "Heim" : "Auswärts"}</small></li>`;
+        };
+
+        // Spielweise: Formation und Grundhaltung
+        const t = club.tactics || {};
+        const W = {
+            mentality: { defensive: "defensiv", balanced: "ausgewogen", attacking: "offensiv", "very-defensive": "sehr defensiv", "very-attacking": "sehr offensiv" },
+            pressing: { low: "tief", medium: "mittel", high: "hoch" },
+            tempo: { slow: "langsam", normal: "normal", fast: "schnell", high: "hoch" },
+            passStyle: { short: "kurz", mixed: "gemischt", long: "lang", direct: "direkt" },
+            defensiveLine: { deep: "tief", normal: "normal", high: "hoch" }
+        };
+        const wort = (k) => W[k]?.[t[k]] || (t[k] ? String(t[k]) : "—");
+        const torjaeger = [...kader].sort((a, b) => (b.seasonStats?.goals || 0) - (a.seasonStats?.goals || 0))[0];
+
+        // Anlagen: Stufe und Zustand
+        const fac = (typeof FacilityEngine !== "undefined") ? FacilityEngine : null;
+        const anlagen = fac ? fac.uebersicht(state, club.id) : [];
+        const anlagenHtml = anlagen.map(a => `
+            <div><span>${esc(a.name)}</span><strong>Stufe ${a.stufe}${a.projekt ? " · im Umbau" : ""}</strong></div>`).join("");
+
+        // Kader nach Mannschaftsteilen, jeweils die Stärksten oben
+        const ratingEngine = this.getRatingEngine();
+        const gruppen = [["tw", "Tor"], ["def", "Abwehr"], ["mid", "Mittelfeld"], ["att", "Angriff"]];
+        const kaderHtml = gruppen.map(([g, titel]) => {
+            const leute = kader.filter(p => this.getPosGroup(p.pos) === g).sort((a, b) => (b.overall || 0) - (a.overall || 0));
+            if (!leute.length) return "";
+            return `<tr class="vd-gruppe"><td colspan="5">${titel}</td></tr>` + leute.map(p => {
+                const card = ratingEngine ? ratingEngine.calculateVisiblePlayerCard(p,
+                    Object.assign({ userClubId: state.userClubId, leagueDataCoverage: 85 }, this.starContext())) : null;
+                return `<tr class="row-clickable" data-player-id="${esc(p.id)}">
+                    <td><span class="pos-tag pos-${g}">${esc(p.pos)}</span></td>
+                    <td><strong>${esc(p.name)}</strong><span class="tm-sub">${esc(p.nationality || "")}</span></td>
+                    <td>${p.age}</td>
+                    <td class="nowrap">${card ? card.abilityStarsHtml : this.abilityStarsFor(p, { compact: true })}</td>
+                    <td class="nowrap vd-wert">${card ? card.visibleValueText : this.geldKurz(p.value)}</td>
+                </tr>`;
+            }).join("");
+        }).join("");
+
+        body.innerHTML = `
+            <div class="vereins-kopf vd-kopf" style="--vk-farbe:${this.wappenFarben(club).farbe}40;">
+                <div class="vk-wappen" id="vdWappen"></div>
+                <div class="vk-titel">
+                    <span class="vk-liga">${esc(liga?.shortName || liga?.name || "")}</span>
+                    <h2>${esc(club.name)}</h2>
+                    <span class="vk-ort">${esc([club.city, club.stadium].filter(Boolean).join(" · "))}</span>
+                </div>
+                <div class="vk-kacheln">${kacheln.map(([titel, wert, extra]) =>
+                    `<div class="vk-kachel"><span>${esc(titel)}</span>${wert ? `<strong>${esc(wert)}</strong>` : ""}${extra || ""}</div>`).join("")}</div>
+            </div>
+            ${rivalen ? `<div class="hint-box vd-derby">🔥 <strong>${esc(rivalen.titel)}</strong> - gegen diesen Verein ist es mehr als ein Spiel.</div>` : ""}
+            <div class="vd-raster">
+                <div class="dash-card vd-karte">
+                    <h4>Form</h4>
+                    ${gespielt.length ? `<ul class="vd-spiele">${gespielt.map(ergebnisZeile).join("")}</ul>` : `<p class="muted-note">Noch keine Pflichtspiele.</p>`}
+                    <h4>Nächste Spiele</h4>
+                    ${kommend.length ? `<ul class="vd-spiele">${kommend.map(naechstesZeile).join("")}</ul>` : `<p class="muted-note">Keine Spiele mehr in dieser Saison.</p>`}
+                </div>
+                <div class="dash-card vd-karte">
+                    <h4>Spielweise</h4>
+                    <div class="kv-liste">
+                        <div><span>Formation</span><strong>${esc(club.formation || t.formation || "—")}</strong></div>
+                        <div><span>Grundhaltung</span><strong>${esc(wort("mentality"))}</strong></div>
+                        <div><span>Pressing</span><strong>${esc(wort("pressing"))}</strong></div>
+                        <div><span>Passspiel</span><strong>${esc(wort("passStyle"))}</strong></div>
+                        <div><span>Abwehrlinie</span><strong>${esc(wort("defensiveLine"))}</strong></div>
+                        ${torjaeger && (torjaeger.seasonStats?.goals || 0) > 0
+                            ? `<div><span>Torjäger</span><strong>${esc(torjaeger.name)} (${torjaeger.seasonStats.goals})</strong></div>` : ""}
+                    </div>
+                    <h4>Anlagen</h4>
+                    <div class="kv-liste">${anlagenHtml || `<div><span>—</span></div>`}</div>
+                </div>
+            </div>
+            <div class="dash-card vd-karte">
+                <h4>Kader <small class="muted-note">Sterne und Werte so, wie Ihre Scouts sie kennen - ein Klick öffnet die Akte</small></h4>
+                <div class="table-container">
+                    <table class="compact-table vd-kader">
+                        <thead><tr><th>Pos</th><th>Name</th><th>Alter</th><th>Stärke</th><th>Wert</th></tr></thead>
+                        <tbody>${kaderHtml || `<tr><td colspan="5" class="text-muted">Kein Kader bekannt.</td></tr>`}</tbody>
+                    </table>
+                </div>
+            </div>`;
+
+        const wappen = document.getElementById("vdWappen");
+        if (wappen) {
+            this.setzeWappen(wappen, club);
+        }
+        body.querySelectorAll("tr.row-clickable").forEach(row => {
+            row.addEventListener("click", () => {
+                const pId = this.resolvePlayerId(row.dataset.playerId);
+                if (pId !== null) this.showPlayerDetailsModal(pId);
+            });
+        });
+        const x = document.getElementById("btnCloseVereinsDetails");
+        if (x) x.onclick = () => { modal.style.display = "none"; };
+        modal.style.display = "flex";
+        body.scrollTop = 0;
+    }
+
+    /** Macht Tabellenzeilen mit data-club-id anklickbar: öffnet die Vereinsdetails */
+    bindVereinsZeilen(host) {
+        if (!host) return;
+        host.querySelectorAll("tr[data-club-id]").forEach(row => {
+            row.classList.add("row-clickable");
+            row.title = "Vereinsdetails anzeigen";
+            row.onclick = (e) => {
+                if (e.target.closest("button, a, select, input")) return;
+                this.showClubDetailsModal(row.dataset.clubId);
+            };
+        });
+    }
+
     showPlayerDetailsModal(playerId) {
         const state = this.app.state;
         const treffer = this.findAnyPlayer(playerId);
@@ -7175,7 +7497,9 @@ class UIManager {
         if (!isUserClub) {
             scoutExternalHtml = `
                 <div style="display:flex; gap:10px; margin-top:14px;">
-                    <button class="btn btn-secondary" id="btnPdScoutPlayer" style="flex:1;">🔍 Spieler jetzt scouten</button>
+                    ${this.beobachtungsText(player.id)
+                        ? `<button class="btn btn-secondary" id="btnPdScoutPlayer" style="flex:1;" disabled>👁 In Beobachtung · Bericht ${this.beobachtungsText(player.id)}</button>`
+                        : `<button class="btn btn-secondary" id="btnPdScoutPlayer" style="flex:1;" title="Der Bericht kommt nach einigen Tagen ins Postfach">🔍 Scout entsenden</button>`}
                     <button class="btn btn-primary" id="btnPdBidPlayer" style="flex:1;">💼 Transfer verhandeln</button>
                 </div>
             `;
@@ -7367,16 +7691,10 @@ class UIManager {
                 const scoutingEngine = (typeof ScoutingEngine !== 'undefined' && ScoutingEngine)
                     ? ScoutingEngine
                     : ((typeof window !== 'undefined' && window.ScoutingEngine) ? window.ScoutingEngine : null);
-                if (scoutingEngine && typeof scoutingEngine.scoutPlayer === 'function') {
-                    const res = scoutingEngine.scoutPlayer(state, player.id, { source: "player_profile", notify: true });
-                    if (res.success) {
-                        this.playSound("whistle");
-                        this.showToast(`Scoutbericht für ${player.name} erstellt! Wissen auf ${res.knowledgeLevel}% gestiegen.`, "success");
-                        // Auch die Liste im Hintergrund zeigt jetzt genauere Werte
-                        if (this.activeTab === "transfers") this.renderTransfers();
-                        this.showPlayerDetailsModal(player.id);
-                    }
-                }
+                if (scoutingEngine) this.beobachte(player.id, "player_profile", () => {
+                    if (this.activeTab === "transfers") this.renderTransfers();
+                    this.showPlayerDetailsModal(player.id);
+                });
             });
 
             document.getElementById("btnPdBidPlayer")?.addEventListener("click", () => {
@@ -9757,6 +10075,21 @@ class UIManager {
     }
 
     /**
+     * Nur einen Tag weiter - für den, der zwischen Pressekonferenz und
+     * Anpfiff jeden Trainingstag selbst sehen will.
+     */
+    handleEinTag() {
+        if (this.pruefeEntlassung()) return;
+        if (this.pruefePflichtpostenVorStart(() => this.handleEinTag())) return;
+        const ziel = this.beschreibeWeiter();
+        if (ziel.art === "spiel") {
+            this.handleWeiter();
+            return;
+        }
+        this.handleCalendarAdvanceDay();
+    }
+
+    /**
      * Nach dem eigenen Pokalspiel die Runde zu Ende bringen.
      *
      * Ein K.-o.-Spiel braucht einen Sieger: Steht es nach 90 Minuten
@@ -10118,6 +10451,7 @@ class UIManager {
         if (!cal) return;
 
         let gelaufen = 0;
+        let angehalten = null;
         const berichte = [];
         while (gelaufen < maxTage) {
             const heute = cal.getCurrentDay(state);
@@ -10128,6 +10462,7 @@ class UIManager {
             if (gelaufen > 0 && (heute.type === "cup" || heute.type === "euro")
                 && this.eigenePokalpartie(heute)) break;
 
+            const bekannt = new Set((state.inbox || []).map(m => String(m.id)));
             const res = cal.advanceOneDay(state);
             if (!res || !res.success) break;
             gelaufen++;
@@ -10141,16 +10476,27 @@ class UIManager {
 
             // Eine Entlassung beendet den Vorlauf sofort
             if (state.managerDismissed) break;
+
+            // Wie im FM: Passiert etwas, das den Manager angeht, hält die
+            // Zeit an - auch zwischen zwei Terminen
+            angehalten = typeof cal.unterbrechungsGrund === "function"
+                ? cal.unterbrechungsGrund(state, res, bekannt) : null;
+            if (angehalten) break;
         }
 
+        const heuteNeu = cal.getCurrentDay(state);
         state.lastDayReport = {
-            date: cal.getCurrentDay(state)?.date,
-            dayOfWeek: cal.getCurrentDay(state)?.dayOfWeek,
-            title: `${gelaufen} Tage übersprungen`,
+            date: heuteNeu?.date,
+            dayOfWeek: heuteNeu?.dayOfWeek,
+            title: angehalten ? `Angehalten: ${angehalten}` : `${gelaufen} Tage übersprungen`,
             messages: berichte.slice(-12)
         };
 
-        this.showToast(`📅 ${gelaufen} Tage weiter - ${cal.getCurrentDay(state)?.title || ""}`, "info");
+        if (angehalten) {
+            this.showToast(`⏸ ${heuteNeu?.date || ""}: ${angehalten}. Weiter geht es mit dem nächsten Klick.`, "warning", 6000);
+        } else {
+            this.showToast(`📅 ${gelaufen} Tage weiter - ${heuteNeu?.title || ""}`, "info");
+        }
         this.renderHeader();
         this.renderCurrentTab();
         if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
@@ -10286,6 +10632,8 @@ class UIManager {
         document.getElementById("btnHeaderAdvance").onclick = () => {
             this.handleWeiter();
         };
+        const tagKnopf = document.getElementById("btnHeaderTag");
+        if (tagKnopf) tagKnopf.onclick = () => this.handleEinTag();
 
         // Dashboard Schnell-Aktionen
         const btnOpponent = document.getElementById("btnDashOpponentAnalysis");
@@ -10568,16 +10916,7 @@ class UIManager {
             const userClub = this.app.state.clubs.find(c => c.id === this.app.state.userClubId);
             if (!userClub) return;
 
-            const res = YouthEngine.upgradeAcademy(this.app.state, userClub.id);
-            if (res.success) {
-                this.playSound("goal");
-                this.showToast(res.message, "success");
-                this.renderTraining();
-                this.renderFinances();
-                this.renderHeader();
-            } else {
-                this.showToast(res.error, "error");
-            }
+            this.starteBau("youthCenter", "ausbau");
         });
 
         // Transfer Filter

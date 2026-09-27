@@ -969,10 +969,12 @@ class SeasonEngine {
             });
         }
 
-        // Neue Jugendspieler generieren
+        // Neue Jugendspieler kommen nicht mehr zum Saisonstart, sondern am
+        // Jugendtag im Frühjahr (YouthEngine.pruefeJugendtag). Die Liste der
+        // eigenen Talente wird hier nur zusammengeführt.
         const youthEngine = _getYouthEngine();
-        if (youthEngine && typeof youthEngine.generateProspects === 'function') {
-            youthEngine.generateProspects(state, state.userClubId);
+        if (youthEngine && typeof youthEngine.eigeneTalente === 'function') {
+            youthEngine.eigeneTalente(state);
         }
 
         const userClub = state.clubs.find(c => c.id === state.userClubId);

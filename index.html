@@ -140,6 +140,9 @@
                     </div>
                     <span class="conf-val" id="headerConfidenceVal">75%</span>
                 </div>
+                <button class="btn btn-secondary btn-ein-tag" id="btnHeaderTag" title="Nur einen Tag weiter" style="display:none;">
+                    <span class="btn-ein-tag-text">+1 Tag</span>
+                </button>
                 <button class="btn btn-primary btn-advance" id="btnHeaderAdvance">
                     <span>Spieltag starten</span>
                     <span class="btn-arrow"><svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg></span>
@@ -1777,6 +1780,18 @@
                 <div class="modal-footer">
                     <button class="btn btn-primary" id="btnConfirmOpponentAnalysis">Verstanden & Zurück zum Dashboard</button>
                 </div>
+            </div>
+        </div>
+
+        <!-- Modal: Vereinsdetails (aus Tabelle und Dashboard) - steht vor der
+             Spielerakte, damit ein Spieler aus dem Kader darüber aufgeht -->
+        <div class="modal-overlay" id="modalVereinsDetails" style="display: none;">
+            <div class="modal-box modal-lg vd-box">
+                <div class="modal-header">
+                    <h2 id="vdTitel">Verein</h2>
+                    <button class="modal-close" id="btnCloseVereinsDetails">×</button>
+                </div>
+                <div class="modal-body" id="vereinsDetailsInhalt"></div>
             </div>
         </div>
 

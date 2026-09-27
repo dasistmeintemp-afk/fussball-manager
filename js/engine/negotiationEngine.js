@@ -289,6 +289,9 @@ class NegotiationEngine {
     }
 
     static findProspect(state, club, prospectId) {
+        // Beim eigenen Verein gibt es nur eine Liste der Talente
+        const youth = _negResolve("YouthEngine", "./youthEngine.js");
+        if (youth && typeof youth.eigeneTalente === "function" && club?.id === state?.userClubId) youth.eigeneTalente(state);
         let prospect = club?.youthAcademy?.prospects?.find(p => String(p.id) === String(prospectId));
         if (!prospect && Array.isArray(state.youthAcademy?.prospects)) {
             prospect = state.youthAcademy.prospects.find(p => String(p.id) === String(prospectId));

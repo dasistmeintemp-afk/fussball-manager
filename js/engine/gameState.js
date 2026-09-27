@@ -1367,7 +1367,15 @@ class GameState {
                 const away = teams[numTeams - 1 - match];
 
                 if (home !== "BYE" && away !== "BYE") {
-                    if (round % 2 === 1 && match === 0) {
+                    // Heimrecht nach Berger: Beim Rundlauf wandert jeder
+                    // Verein Runde für Runde eine Paarung weiter. Galt vorher
+                    // "linke Seite hat Heimrecht", hatte ein Verein erst sieben
+                    // Heimspiele am Stück und dann fünfzehn Auswärtsspiele.
+                    // Mit wechselndem Heimrecht je Paarung wechseln sich Heim
+                    // und Auswärts ab - höchstens drei in Folge, wie in einer
+                    // echten Liga. Der feste Verein wechselt je Runde.
+                    const tauschen = match === 0 ? round % 2 === 1 : match % 2 === 1;
+                    if (tauschen) {
                         roundMatches.push({ homeClubId: away, awayClubId: home, played: false, homeGoals: null, awayGoals: null, events: [] });
                     } else {
                         roundMatches.push({ homeClubId: home, awayClubId: away, played: false, homeGoals: null, awayGoals: null, events: [] });

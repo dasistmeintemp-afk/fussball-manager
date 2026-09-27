@@ -5311,6 +5311,51 @@ function runEngineTests() {
         if (club.anlagen.stadium.stufe !== 5) throw new Error("Der Verfall hat die gebaute Stufe verändert");
     });
 
+    test("Anlagen: Bauen kostet nach Ligastufe, Amateure bekommen Förderung und können in Raten zahlen", () => {
+        const welt = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        // Gemessen an den Einnahmen einer Saison kostet der nächste Ausbau
+        // in jeder Liga ungefähr gleich viel - nicht in der Landesliga das Dreifache
+        [1, 3, 5, 7].forEach(stufe => {
+            const club = welt.clubs.find(c => c.level === stufe);
+            FacilityEngine.hole(club, 1);
+            Object.assign(club.anlagen.trainingGround, { stufe: 2, zustand: 80, projekt: null });
+            const saisonEinnahmen = FinanceEngine.einnahmenSchaetzung(club, welt) * 34;
+            const anteil = FacilityEngine.kosten(club, "trainingGround", "ausbau", 1) / saisonEinnahmen;
+            if (anteil > 0.4 || anteil < 0.02) throw new Error(`Stufe ${stufe}: Der Ausbau kostet ${Math.round(anteil * 100)} % der Saisoneinnahmen`);
+        });
+        const profi = FacilityEngine.kostenDetail(welt.clubs.find(c => c.level === 1), "stadium", "ausbau", 1);
+        if (profi.foerderung !== 0) throw new Error("Ein Profiverein bekommt Sportstättenförderung");
+
+        // Der FC Hanau 93 kann bauen
+        const state = GameState.createNewGame("ll_han", "normal", { name: "Prüfer" });
+        const han = state.clubs.find(c => c.id === "ll_han");
+        FacilityEngine.hole(han, 1);
+        Object.assign(han.anlagen.stadium, { stufe: 1, zustand: 80, projekt: null });
+        const detail = FacilityEngine.kostenDetail(han, "stadium", "ausbau", 1);
+        if (detail.foerderung <= 0 || detail.netto !== detail.brutto - detail.foerderung) throw new Error(`Keine Förderung: ${JSON.stringify(detail)}`);
+        if (detail.netto > 200000) throw new Error(`Eine Tribüne kostet in der Landesliga ${detail.netto} €`);
+
+        // Zu wenig in der Kasse: bar geht nicht, die Hausbank finanziert
+        han.balance = Math.round(detail.netto * 0.5);
+        const bar = FacilityEngine.starteProjekt(state, han.id, "stadium", "ausbau");
+        if (bar.erfolg || !bar.ratenMoeglich) throw new Error("Ohne Geld wird bar gebaut oder keine Finanzierung angeboten");
+        const bank = FacilityEngine.finanzierung(state, han, "stadium", "ausbau");
+        const kasseVorher = han.balance;
+        const res = FacilityEngine.starteProjekt(state, han.id, "stadium", "ausbau", { finanzierung: "raten" });
+        if (!res.erfolg) throw new Error("Die Finanzierung klappt nicht: " + res.grund);
+        if (kasseVorher - han.balance !== bank.anzahlung) throw new Error("Es wurde mehr als die Anzahlung abgebucht");
+        const dauer = FacilityEngine.dauer("stadium", "ausbau");
+        for (let i = 0; i < dauer; i++) FacilityEngine.tickSpieltag(state);
+        if (han.anlagen.stadium.stufe !== 2 || han.anlagen.stadium.projekt) throw new Error("Der finanzierte Ausbau wird nicht fertig");
+        const gezahlt = kasseVorher - han.balance;
+        if (gezahlt !== bank.gesamt || bank.zinsen <= 0) throw new Error(`Gezahlt ${gezahlt} statt ${bank.gesamt} (mit Zinsen)`);
+
+        // Die Bank macht nicht alles mit
+        han.balance = 0;
+        if (FacilityEngine.finanzierung(state, han, "youthCenter", "ausbau").moeglich) throw new Error("Ohne Anzahlung finanziert die Bank");
+        if (FacilityEngine.starteProjekt(state, han.id, "youthCenter", "ausbau", { finanzierung: "raten" }).erfolg) throw new Error("Ohne Anzahlung wird gebaut");
+    });
+
     test("Anlagen: Eine Baustelle blockiert eine zweite an derselben Anlage", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
         const club = state.clubs.find(c => c.id === "muc");
@@ -6399,6 +6444,143 @@ function runEngineTests() {
         delete club.stabGehaelterV2;
         PreseasonEngine.rechneStabGehaelterUm(state);
         if (club.staff.medizin.gehalt > 30000) throw new Error(`Der alte Vertrag bleibt bei ${club.staff.medizin.gehalt} € je Woche`);
+    });
+
+    test("Jugendakademie: Beförderte bleiben nach dem Laden befördert, der neue Jahrgang kommt am Jugendtag", () => {
+        const neu = GameState.createNewGame("ll_han", "normal", { name: "Prüfer" });
+        const geladen = SaveService.importJson(SaveService.exportJson(neu));
+        if (!geladen.success) throw new Error("Spielstand lässt sich nicht laden: " + geladen.error);
+        const state = geladen.state;
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        // Nach dem Laden sind die beiden Listen Kopien - genau da lag der Fehler
+        const offen = () => YouthEngine.eigeneTalente(state).filter(p => !p.promoted);
+        const vorher = offen().length;
+        const talent = offen()[0];
+        if (!talent) throw new Error("Keine Talente in der Akademie");
+        if (!YouthEngine.promoteProspect(state, club.id, talent.id, { skipNews: true }).success) throw new Error("Beförderung scheitert");
+        if (offen().some(p => p.id === talent.id) || offen().length !== vorher - 1) throw new Error("Der Beförderte steht weiter in der Akademie");
+        if (state.youthAcademy.prospects.find(p => p.id === talent.id)?.promoted !== true) throw new Error("Der Reiter Training sieht den Beförderten noch als offen");
+        if (YouthEngine.promoteProspect(state, club.id, talent.id, { skipNews: true }).success) throw new Error("Ein Talent lässt sich zweimal befördern");
+        if (state.players.filter(p => p.name === talent.name && p.clubId === club.id).length !== 1) throw new Error("Der Beförderte steht doppelt im Kader");
+
+        // Der Jugendtag: drei Spieltage vorher die Vorschau, dann der Jahrgang
+        const tag = YouthEngine.jugendtagSpieltag(state);
+        if (tag < 10) throw new Error(`Der Jugendtag liegt schon am ${tag}. Spieltag`);
+        state.inbox = [];
+        state.currentMatchday = tag - 5;
+        if (YouthEngine.pruefeJugendtag(state)) throw new Error("Der Jugendtag meldet sich zu früh");
+        state.currentMatchday = tag - 3;
+        if (!/kündigt den Jugendtag an/.test(YouthEngine.pruefeJugendtag(state) || "")) throw new Error("Keine Vorschau vor dem Jugendtag");
+        if (YouthEngine.pruefeJugendtag(state)) throw new Error("Die Vorschau kommt zweimal");
+        const offenVorher = offen().length;
+        state.currentMatchday = tag;
+        if (!/Jugendtag: \d+ neue Talente/.test(YouthEngine.pruefeJugendtag(state) || "")) throw new Error("Am Jugendtag kommt kein Jahrgang");
+        if (offen().length <= offenVorher) throw new Error("Nach dem Jugendtag gibt es keine neuen Talente");
+        state.currentMatchday = tag + 1;
+        if (YouthEngine.pruefeJugendtag(state)) throw new Error("Der Jugendtag kommt zweimal in einer Saison");
+        const betreffe = state.inbox.map(m => m.subject);
+        if (!betreffe.some(b => /Jugendtag in drei Wochen/.test(b)) || !betreffe.some(b => /Jugendtag: \d+ neue Talente/.test(b))) {
+            throw new Error(`Postfach ohne Jugendtag: ${JSON.stringify(betreffe)}`);
+        }
+        // In der nächsten Saison kommt wieder einer
+        state.seasonYear = (state.seasonYear || 1) + 1;
+        state.currentMatchday = tag;
+        if (!YouthEngine.pruefeJugendtag(state)) throw new Error("In der nächsten Saison gibt es keinen Jugendtag");
+    });
+
+    test("Scouting: Eine Beobachtung dauert Tage bis Wochen, dann kommt ein ausführlicher Bericht", () => {
+        const state = GameState.createNewGame("ll_han", "normal", { name: "Prüfer" });
+        const han = state.clubs.find(c => c.id === "ll_han");
+        const ligaGegner = state.players.find(p => {
+            const c = state.clubs.find(x => x.id === p.clubId);
+            return c && c.id !== han.id && c.leagueId === han.leagueId;
+        });
+        const ausland = state.players.find(p => {
+            const c = state.clubs.find(x => x.id === p.clubId);
+            return c && c.countryId && c.countryId !== (han.countryId || "de");
+        });
+        const tageLiga = ScoutingEngine.beobachtungsDauer(state, ligaGegner);
+        const tageAusland = ScoutingEngine.beobachtungsDauer(state, ausland);
+        if (tageLiga < 2 || tageLiga > 8) throw new Error(`Ein Ligaspieler braucht ${tageLiga} Tage`);
+        if (tageAusland < 10 || tageAusland > 28 || tageAusland <= tageLiga) throw new Error(`Ein Spieler aus dem Ausland braucht ${tageAusland} Tage (Liga: ${tageLiga})`);
+
+        state.inbox = [];
+        const wissenVorher = ligaGegner.scoutingKnowledge?.knowledgeLevel || 25;
+        const res = ScoutingEngine.beobachteSpieler(state, ligaGegner.id, { source: "transfer_market" });
+        if (!res.success) throw new Error("Beobachtung startet nicht: " + res.error);
+        if ((ligaGegner.scoutingKnowledge?.knowledgeLevel || 25) !== wissenVorher) throw new Error("Das Wissen springt sofort");
+        if (ScoutingEngine.beobachteSpieler(state, ligaGegner.id).success) throw new Error("Derselbe Spieler wird zweimal beobachtet");
+        const eigener = state.players.find(p => p.clubId === han.id);
+        if (ScoutingEngine.beobachteSpieler(state, eigener.id).success) throw new Error("Ein eigener Spieler wird gescoutet");
+
+        // Die Beobachtung übersteht Speichern und Laden
+        const geladen = SaveService.importJson(SaveService.exportJson(state));
+        if (!geladen.success || !geladen.state.scouting?.beobachtungen?.length) throw new Error("Die Beobachtung geht beim Speichern verloren");
+
+        for (let t = 1; t < res.tage; t++) {
+            if (ScoutingEngine.pruefeBeobachtungen(state).length) throw new Error(`Der Bericht kommt schon nach ${t} von ${res.tage} Tagen`);
+        }
+        const fertig = ScoutingEngine.pruefeBeobachtungen(state);
+        if (fertig.length !== 1 || ScoutingEngine.beobachtungVon(state, ligaGegner.id)) throw new Error("Nach der Frist kommt kein Bericht");
+        if (!(ligaGegner.scoutingKnowledge.knowledgeLevel > wissenVorher)) throw new Error("Der Bericht bringt kein Wissen");
+        const post = state.inbox.find(m => /Scoutbericht/.test(m.subject || ""));
+        if (!post || !/Stärken:/.test(post.body) || !/Empfehlung:/.test(post.body) || post.relatedEntity?.id !== ligaGegner.id) {
+            throw new Error(`Kein ausführlicher Bericht im Postfach: ${JSON.stringify(post)}`);
+        }
+        if (!state.scouting.reports.some(r => r.playerId === ligaGegner.id)) throw new Error("Der Bericht fehlt in der Berichtsliste");
+
+        // Der Scout hat nur begrenzt Zeit
+        const andere = state.players.filter(p => p.clubId && p.clubId !== han.id).slice(0, 8);
+        const ergebnisse = andere.map(p => ScoutingEngine.beobachteSpieler(state, p.id).success);
+        if (ergebnisse.filter(Boolean).length !== ScoutingEngine.MAX_BEOBACHTUNGEN) throw new Error(`${ergebnisse.filter(Boolean).length} Beobachtungen gleichzeitig`);
+    });
+
+    test("Kalender: Das Weiterlaufen hält an, wenn etwas den Manager angeht (wie im FM)", () => {
+        const state = GameState.createNewGame("ll_han", "normal", { name: "Prüfer" });
+        const leer = { summary: { negotiations: [], training: { injuries: [] } } };
+        const bekannt = () => new Set((state.inbox || []).map(m => String(m.id)));
+        if (CalendarEngine.unterbrechungsGrund(state, leer, bekannt())) throw new Error("Ein ruhiger Tag hält an");
+
+        // Ein Spielbericht oder Trainingsbericht hält nicht an ...
+        let ids = bekannt();
+        NewsEngine.addMessage(state, "training_report", { title: "Trainingswoche", text: "..." });
+        if (CalendarEngine.unterbrechungsGrund(state, leer, ids)) throw new Error("Ein Trainingsbericht hält an");
+        // ... ein Scoutbericht schon
+        ids = bekannt();
+        NewsEngine.addMessage(state, "scouting", { title: "Scoutbericht: Max Muster", text: "..." });
+        if (!/Scoutbericht/.test(CalendarEngine.unterbrechungsGrund(state, leer, ids) || "")) throw new Error("Ein Scoutbericht hält nicht an");
+
+        ids = bekannt();
+        if (!/verletzt/.test(CalendarEngine.unterbrechungsGrund(state, { summary: { training: { injuries: ["Max Muster"] } } }, ids) || "")) {
+            throw new Error("Eine Trainingsverletzung hält nicht an");
+        }
+        if (!/Verhandlung/.test(CalendarEngine.unterbrechungsGrund(state, { summary: { negotiations: [{ negotiation: { playerName: "Max Muster" } }] } }, ids) || "")) {
+            throw new Error("Eine Antwort in der Verhandlung hält nicht an");
+        }
+        if (!state.transferMarket) state.transferMarket = {};
+        state.transferMarket.offers = [{ status: "pending", gemeldet: false, fromClubName: "FC Test", playerName: "Max Muster" }];
+        if (!/Angebot von FC Test/.test(CalendarEngine.unterbrechungsGrund(state, leer, ids) || "")) throw new Error("Ein neues Angebot hält nicht an");
+    });
+
+    test("Spielplan: Heim und Auswärts wechseln sich ab - keine langen Serien", () => {
+        [16, 18, 20, 15].forEach(anzahl => {
+            const clubs = Array.from({ length: anzahl }, (_, i) => ({ id: `v${i}` }));
+            const plan = GameState.generateSchedule(clubs);
+            clubs.forEach(c => {
+                const folge = plan.map(r => {
+                    const m = r.matches.find(x => x.homeClubId === c.id || x.awayClubId === c.id);
+                    return m ? (m.homeClubId === c.id ? "H" : "A") : "";
+                }).join("");
+                const laengste = Math.max(...(folge.match(/H+|A+/g) || [""]).map(s => s.length));
+                if (laengste > 4) throw new Error(`${anzahl} Vereine: ${c.id} hat ${laengste} gleiche Spiele in Folge (${folge})`);
+                const heim = (folge.match(/H/g) || []).length;
+                if (Math.abs(heim - folge.length / 2) > 1) throw new Error(`${c.id}: ${heim} Heimspiele von ${folge.length}`);
+            });
+            // Jede Paarung genau einmal zu Hause und einmal auswärts
+            const paare = new Set();
+            plan.forEach(r => r.matches.forEach(m => paare.add(`${m.homeClubId}-${m.awayClubId}`)));
+            if (paare.size !== anzahl * (anzahl - 1)) throw new Error(`${anzahl} Vereine: ${paare.size} verschiedene Heimspiele statt ${anzahl * (anzahl - 1)}`);
+        });
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

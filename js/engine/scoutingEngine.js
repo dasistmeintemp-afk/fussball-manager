@@ -231,6 +231,143 @@ const ScoutingEngine = {
         };
     },
 
+    /** Wie viele Spieler der Scout gleichzeitig beobachten kann */
+    MAX_BEOBACHTUNGEN: 5,
+
+    /**
+     * Wie lange eine Beobachtung dauert - in Tagen.
+     *
+     * Vorher kam der Bericht auf Knopfdruck, und das Wissen sprang im selben
+     * Augenblick. Im Football Manager fährt der Scout hin: Ein Spieler aus der
+     * eigenen Liga ist nach ein paar Tagen gesehen, einer aus dem Ausland
+     * braucht Wochen. Außerhalb der eigenen Reichweite (eine deutlich höhere
+     * Liga) kommt der Scout schwer heran, ein guter Scout ist schneller, und
+     * wer viele Spieler gleichzeitig beobachten lässt, wartet länger.
+     */
+    beobachtungsDauer(state, player, options = {}) {
+        const userClub = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        const seinVerein = (state?.clubs || []).find(c => c.id === player?.clubId);
+        let tage;
+        if (!seinVerein || !userClub) tage = 4;                                 // vereinslos: Probetraining
+        else if (seinVerein.leagueId === userClub.leagueId) tage = 4;           // eigene Liga
+        else if ((seinVerein.countryId || "de") === (userClub.countryId || "de")) {
+            tage = 6 + Math.abs((seinVerein.level || 1) - (userClub.level || 1));
+        } else tage = 13;                                                        // Ausland
+
+        tage *= 1 + (1 - this.reachPenalty(state, player)) * 1.2;
+        const scout = this.scoutInfo(state);
+        tage *= 1.35 - scout.sterne * 0.1;
+        if (options.source === "opponent_analysis") tage *= 0.6;               // den Gegner sieht er ohnehin
+        const laufend = (state?.scouting?.beobachtungen || []).length;
+        tage *= 1 + laufend * 0.12;
+        tage += _seZahl(`${player?.id}|${scout.name}`, "reise");                // mal ein Tag mehr, mal weniger
+        return Math.max(2, Math.min(28, Math.round(tage)));
+    },
+
+    /** Die laufende Beobachtung eines Spielers oder null */
+    beobachtungVon(state, playerId) {
+        return (state?.scouting?.beobachtungen || []).find(b => String(b.playerId) === String(playerId)) || null;
+    },
+
+    /**
+     * Einen Spieler beobachten lassen. Der Bericht kommt nach einigen Tagen
+     * ins Postfach (siehe pruefeBeobachtungen) - erst dann wächst das Wissen.
+     */
+    beobachteSpieler(state, playerId, options = {}) {
+        if (!state || !Array.isArray(state.players)) return { success: false, error: "Ungültiger Spielstand." };
+        const player = state.players.find(p => String(p.id) === String(playerId));
+        if (!player) return { success: false, error: "Spieler nicht gefunden." };
+        if (player.clubId && player.clubId === state.userClubId) {
+            return { success: false, error: "Die eigenen Spieler kennt der Trainerstab ohnehin." };
+        }
+        if (!state.scouting) state.scouting = { assignments: [], reports: [], shortlist: [] };
+        if (!Array.isArray(state.scouting.beobachtungen)) state.scouting.beobachtungen = [];
+
+        const laufend = this.beobachtungVon(state, player.id);
+        if (laufend) {
+            return {
+                success: false, beobachtung: laufend,
+                error: `${player.name} wird bereits beobachtet - der Bericht kommt in etwa ${laufend.tageRest} Tag(en).`
+            };
+        }
+        if (state.scouting.beobachtungen.length >= this.MAX_BEOBACHTUNGEN) {
+            return {
+                success: false,
+                error: `Der Scout ist ausgelastet: ${state.scouting.beobachtungen.length} Spieler sind in Beobachtung. Warten Sie auf die ersten Berichte.`
+            };
+        }
+
+        const tage = this.beobachtungsDauer(state, player, options);
+        const scout = this.scoutInfo(state);
+        const verein = (state.clubs || []).find(c => c.id === player.clubId);
+        const beobachtung = {
+            id: `beob_${player.id}_${state.currentDate || ""}`,
+            playerId: player.id,
+            playerName: player.name,
+            clubName: verein?.name || "vereinslos",
+            source: options.source || "transfer_market",
+            tage,
+            tageRest: tage,
+            start: state.currentDate || null,
+            scoutName: scout.name
+        };
+        state.scouting.beobachtungen.push(beobachtung);
+        return { success: true, beobachtung, tage, scout, player };
+    },
+
+    /**
+     * Ein Tag vergeht: Laufende Beobachtungen rücken vor, fertige liefern
+     * ihren ausführlichen Bericht ins Postfach. Gibt die fertigen zurück.
+     */
+    pruefeBeobachtungen(state) {
+        const liste = state?.scouting?.beobachtungen;
+        if (!Array.isArray(liste) || liste.length === 0) return [];
+        liste.forEach(b => { b.tageRest -= 1; });
+        const fertig = liste.filter(b => b.tageRest <= 0);
+        state.scouting.beobachtungen = liste.filter(b => b.tageRest > 0);
+
+        const ergebnisse = [];
+        fertig.forEach(b => {
+            const res = this.scoutPlayer(state, b.playerId, { source: b.source });
+            if (!res.success) return;
+            const newsEng = _seResolve("NewsEngine", "./newsEngine.js");
+            if (newsEng && typeof newsEng.addMessage === "function") {
+                newsEng.addMessage(state, "scouting", {
+                    title: `Scoutbericht: ${res.player.name}`,
+                    sender: res.report.scout.eigen ? `${res.report.scout.name} (Chefscout)` : "Scouting-Abteilung",
+                    text: this.berichtText(res.report, res.player, state, b),
+                    priority: "normal",
+                    relatedEntity: { type: "player", id: res.player.id }
+                });
+            }
+            ergebnisse.push({ beobachtung: b, report: res.report, player: res.player, knowledgeLevel: res.knowledgeLevel });
+        });
+        return ergebnisse;
+    },
+
+    /** Der Bericht in Worten, wie ihn der Scout ins Postfach schreibt */
+    berichtText(report, player, state, beobachtung = null) {
+        const verein = (state?.clubs || []).find(c => c.id === player.clubId);
+        const sterne = (x) => String(x).replace(".", ",");
+        const zeilen = [
+            `${player.name} · ${player.pos} · ${player.age} Jahre · ${verein ? verein.name : "vereinslos"}`
+                + (beobachtung ? ` · ${beobachtung.tage} Tage beobachtet` : ""),
+            "",
+            `Stärke heute: ${sterne(report.starsCaMin)}${report.starsCaMax !== report.starsCaMin ? ` bis ${sterne(report.starsCaMax)}` : ""} Sterne · Potenzial bis ${sterne(report.starsPaMax)} Sterne`,
+            `${report.abilityLabel} · ${report.potentialLabel}`
+        ];
+        if (report.bestRole?.role) zeilen.push(`Beste Rolle: ${report.bestRole.role}${report.alternativeRole?.role ? ` (auch ${report.alternativeRole.role})` : ""}`);
+        if (report.kaderRolle) zeilen.push(`${report.kaderRolle.text}.`);
+        zeilen.push("", "Stärken:", ...report.strengths.map(s => `• ${s}`));
+        zeilen.push("", "Schwächen:", ...report.weaknesses.map(s => `• ${s}`));
+        if (report.hiddenTraits?.length) zeilen.push("", "Charakter:", ...report.hiddenTraits.map(s => `• ${String(s).replace(/<[^>]+>/g, "")}`));
+        zeilen.push("", `Marktwert: ${report.marketValueFormatted}`,
+            `Empfehlung: ${report.recommendation}`,
+            `Verlässlichkeit: ${report.zuverlaessigkeit.label} (Wissen ${player.scoutingKnowledge?.knowledgeLevel || 0} %)`);
+        if (report.summary) zeilen.push("", report.summary);
+        return zeilen.join("\n");
+    },
+
     /**
      * Erhöht das Scouting-Wissen über einen Spieler
      */

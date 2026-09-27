@@ -63,6 +63,12 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Vollständiger Spielplan**: 34 Spieltage (Hin- & Rückrunde) nach Round-Robin-Verfahren.
 - **Vollwertige Simulation**: An jedem Spieltag spielen alle 18 Klubs zeitgleich gegeneinander.
 - **Live-Tabelle & Historie**: Punkte (3/1/0-System), Tordifferenz, Tore, Gegentore, Formkurven sowie Archivierung vergangener Meisterschaften.
+- **Vereinsdetails per Klick:** Ein Klick auf einen Verein in der Tabelle, in der Dashboard-Tabelle oder im Spielplan öffnet seine Seite. Der eigene Verein führt in den Reiter *Verein*. Die Seite zeigt:
+  - Kopf mit Tabellenplatz, Mannschaftsstärke in Sternen, Ruf, Fans, Kader und Stimmung, dazu ein Hinweis bei einem Derby gegen den eigenen Verein.
+  - Die letzten fünf Ergebnisse und die nächsten drei Spiele.
+  - Spielweise (Formation, Grundhaltung, Pressing, Passspiel, Abwehrlinie, Torjäger) und Anlagen.
+  - Den Kader nach Mannschaftsteilen, mit Sternen und Werten so, wie das eigene Scouting sie kennt. Ein Klick öffnet die Spielerakte darüber.
+- **Spielplan mit wechselndem Heimrecht:** Heim- und Auswärtsspiele wechseln sich nach dem Berger-Verfahren ab, höchstens drei gleiche in Folge. Vorher hatte ein Verein bis zu 17 Heim- oder Auswärtsspiele am Stück.
 
 ### 2. 📋 Aufstellung, Taktik & Teamchemie
 - **Aufstellungsprüfung (`StateValidator`):** Verhindert Spielstart bei ungültiger Startelf (genau 11 Spieler, genau 1 TW, keine verletzten oder gesperrten Spieler).
@@ -149,6 +155,16 @@ Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit 
 - **Transfermarkt mit Suchfiltern:** Nach Position, Stärke, Potenzial und Preisklasse filtern.
 - **Vertragsverlängerungen (`ContractEngine`):** Individuelle Gehaltsforderungen, Rollenabsprachen und Vertragslaufzeiten direkt im Spielermenü verhandeln.
 - **Scouting-Zentrale (`ScoutingEngine`):** Scouts für gezielte Positionen, Altersklassen und Mindeststärken entsenden und detaillierte Spielerberichte erhalten.
+- **Spieler beobachten statt Sofortbericht:** *Scouten* (Transfermarkt, Spielerakte, Gegneranalyse) schickt den Scout los. Der ausführliche Bericht kommt nach einigen Tagen ins Postfach, erst dann wächst das Wissen. Er enthält Stärke, Potenzial, Rolle, Stärken, Schwächen, Charakter, Kaderrolle, Empfehlung und Verlässlichkeit, dazu Knöpfe zur Akte und zum Angebot. Wie lange es dauert:
+
+  | Wo spielt er? | Dauer (Beispiel) |
+  |---|---|
+  | eigene Liga | 3 bis 6 Tage |
+  | andere Liga im eigenen Land | etwa 1 bis 2 Wochen |
+  | Ausland | etwa 2 Wochen |
+  | weit außerhalb der eigenen Reichweite | bis 4 Wochen |
+
+  Ein guter Chefscout ist schneller, bei Gegnern aus der Spielvorbereitung geht es schneller, und jede laufende Beobachtung verlängert die nächste. Höchstens fünf Spieler sind gleichzeitig in Beobachtung. Laufende Beobachtungen stehen im Transfermarkt unter den Scouting-Aufträgen.
 - **Berichte so gut wie der Scout:** Wer den Bericht schreibt, entscheidet über seinen Inhalt – der eigene Chefscout aus dem Trainerstab oder, solange der Posten offen ist, eine Aushilfe. Die Sterne des Scouts wirken so:
 
   | Scout | Was im Bericht steht |
@@ -181,7 +197,9 @@ Ein Transfer ist kein Knopfdruck mehr, sondern ein Vorgang über mehrere Tage:
 ### 5. 🏋️ Training & Jugendakademie
 - **Trainingsschwerpunkte:** Allround, Angriff, Defensive, Technik, Taktik, Regeneration, Jugendförderung.
 - **Nachwuchsakademie (`YouthEngine`):** Akademie-Ausbau (Stufe 1 bis 5) für stärkere Talente und direkte Beförderung von Jugendspielern mit Profi-Vertrag in die 1. Mannschaft.
-- **Schwerpunkte der Akademie:** Im Reiter *Training* lassen sich vier Dinge einstellen. Alles wirkt auf den nächsten Jahrgang zum Saisonstart.
+- **Jugendtag (wie im FM):** Einmal je Saison, im Frühjahr um den Spieltag bei 70 % der Saison (34 Spieltage: der 24.), stellt sich der neue Jahrgang vor. Drei Spieltage vorher kündigt der Nachwuchsleiter ihn im Postfach an und schätzt ein, wie gut er wird. Am Jugendtag selbst kommt eine Nachricht mit allen Namen.
+- **Befördert ist befördert:** Die Talente des eigenen Vereins stehen in genau einer Liste. Vorher waren es nach dem Laden zwei Kopien: Ein beförderter Spieler blieb in der Akademie stehen und ließ sich ein zweites Mal befördern.
+- **Schwerpunkte der Akademie:** Im Reiter *Training* lassen sich vier Dinge einstellen. Alles wirkt auf den nächsten Jahrgang am Jugendtag.
 
   | Schwerpunkt | Auswahl | Wirkung |
   |---|---|---|
@@ -213,7 +231,15 @@ Ein Talent in den Profikader zu holen dauert jetzt seine Zeit. *Vertragsgespräc
 ### 6. 💼 Finanzen, Sponsoren & Buchungsjournal
 - **Finanzübersicht (`FinanceEngine`):** Kontostand, Transferbudget, Gehaltsetat, Ticketeinnahmen und wöchentliche Sponsorenzahlungen.
 - **Transaktionsjournal:** Detailliertes Buchungsjournal mit lückenloser Historie aller Einnahmen und Ausgaben.
-- **Infrastruktur:** Stadion, Trainingsgelände, Jugendzentrum und medizinische Abteilung.
+- **Infrastruktur:** Stadion, Trainingsgelände, Jugendzentrum und medizinische Abteilung. Jede Anlage hat Stufe, Zustand und Alter. Ausbau und Sanierung dauern Spieltage, und so lange ist der Betrieb eingeschränkt.
+- **Bauen nach Ligastufe:** Die Preise richten sich nach der Liga. Ein Landesligist zahlt 4 % des Bundesliga-Preises, ein Drittligist 28 %. So kostet der nächste Ausbau überall ungefähr einen ähnlichen Teil der Saisoneinnahmen. Beim FC Hanau 93 kostet ein zweites Trainingsfeld jetzt knapp 40.000 € statt 1,5 Millionen.
+
+  | Liga | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+  |---|---|---|---|---|---|---|---|
+  | Preis gegenüber Liga 1 | 100 % | 55 % | 28 % | 14 % | 8 % | 5,5 % | 4 % |
+  | Sportstättenförderung | – | – | – | 15 % | 25 % | 30 % | 35 % |
+
+- **Finanzierung über die Hausbank:** Reicht die Kasse nicht, zahlt man ein Viertel an und den Rest mit 6 % Zinsen in Raten über die Bauzeit. Die Bank macht nur mit, wenn eine Rate höchstens ein Viertel der Einnahmen je Spieltag ausmacht. Vor jedem Bau zeigt ein Dialog Baukosten, Förderung, Eigenanteil und die Raten.
 - **Kennzahlen auf einen Blick (nach dem FM26):** Die Vereinsseite beginnt mit einem Kopf aus Wappen, Liga und Kacheln für Tabellenplatz, Ruf, Fans, Stimmung, Teamchemie und Kontostand. Kader und Finanzen haben dieselbe Kennzahlenleiste (Kadergröße und Alter, Marktwert, Gehälter, Fitness, Ausfälle, auslaufende Verträge bzw. Kontostand, Budgets, Gehaltsquote, Sponsor, Heimspiel).
 
 ### 7. 🗓️ Kalender-Tagesablauf, 🔍 Gegneranalyse & 🌟 FM-Scoutingsystem
@@ -221,6 +247,13 @@ Ein Talent in den Profikader zu holen dauert jetzt seine Zeit. *Vertragsgespräc
 - **Relative Sternebewertungen:** Qualitätssterne (0.5 bis 5.0) werden dynamisch relativ zur Stärke des eigenen Kaders berechnet.
 - **Testspiele werden angesagt:** Ein Spieltermin der Vorbereitung erscheint wie ein Spieltag – mit beiden Mannschaften und der Wahl zwischen Live-Spiel und Sofortergebnis. Das live gespielte Ergebnis wird so eingetragen, wie es auf dem Platz fiel.
 - **Saisonkalender & Wochenplan (`CalendarEngine`):** Realistischer Tagesablauf zwischen Spieltagen (Regeneration, Schwerpunkt-Training, Medien-/Sponsoren-Events, Taktikschulung und Gegneranalyse).
+- **Zeit wie im FM:** Der Weiter-Knopf läuft Tag für Tag bis zum nächsten Termin (Spiel, Testspiel, Pressekonferenz, Saisonende). Er hält aber auch dazwischen an, wenn etwas den Manager angeht:
+  - ein Angebot für einen eigenen Spieler,
+  - eine Antwort in einer Verhandlung,
+  - eine Verletzung im Training,
+  - ein Scoutbericht, Jugendtag, Vorstandspost, ein fertiger Bau oder ein auslaufender Vertrag.
+
+  Der Grund steht im Tagesbericht, der nächste Klick läuft weiter. Wer jeden Tag einzeln sehen will, etwa zwischen Pressekonferenz und Anpfiff, nimmt den Knopf **+1 Tag** daneben. Er erscheint, sobald der Weiter-Knopf mehrere Tage überspringen würde.
 - **Taktische Gegneranalyse (`OpponentAnalysisEngine`):** Vor jedem Ligaspiel detaillierte Stärken-/Schwächenprofile, gegnerische Taktiktendenzen, Gefahreinstufung und konkrete Trainer-Empfehlungen abrufen. Der Spielanalyst aus dem Trainerstab entscheidet, wie genau sie ist:
   - Ein schwacher Analyst liest die Mannschaftsteile ungenauer und stellt nur zwei Schlüsselspieler vor.
   - Ein guter Analyst stellt bis zu vier Schlüsselspieler vor und benennt die Schwachstelle der gegnerischen Elf samt Rat, wie man sie angeht.

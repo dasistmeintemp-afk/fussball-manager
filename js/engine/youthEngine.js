@@ -235,6 +235,110 @@ const YouthEngine = {
         return Math.max(-4, Math.min(5, Math.round((mitglied.guete - normal) * 0.15)));
     },
 
+    /**
+     * Die eine Liste der eigenen Talente.
+     *
+     * Die Talente des eigenen Vereins standen an zwei Stellen: am Verein und
+     * im Spielstand. Vor dem Speichern war es dieselbe Liste, nach dem Laden
+     * zwei Kopien - und die Beförderung markierte nur die am Verein. Der
+     * Reiter Training zeigt aber die andere: Der Beförderte stand weiter in
+     * der Akademie und ließ sich ein zweites Mal befördern. Jetzt werden
+     * beide wieder zu einer Liste zusammengeführt.
+     */
+    eigeneTalente(state) {
+        if (!state) return [];
+        if (!state.youthAcademy) state.youthAcademy = { prospects: [], level: 1 };
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        if (!club) {
+            if (!Array.isArray(state.youthAcademy.prospects)) state.youthAcademy.prospects = [];
+            return state.youthAcademy.prospects;
+        }
+        if (!club.youthAcademy) club.youthAcademy = { prospects: [], level: club.facilities?.youthCenter || 1 };
+        const amVerein = Array.isArray(club.youthAcademy.prospects) ? club.youthAcademy.prospects : [];
+        const imSpielstand = Array.isArray(state.youthAcademy.prospects) ? state.youthAcademy.prospects : [];
+        if (amVerein === imSpielstand) return amVerein;
+
+        const nachId = new Map();
+        [...amVerein, ...imSpielstand].forEach(t => {
+            if (!t || t.id === undefined) return;
+            const vorhanden = nachId.get(String(t.id));
+            if (!vorhanden) { nachId.set(String(t.id), t); return; }
+            // Wer in einer der beiden Listen befördert ist, ist befördert
+            if (t.promoted) vorhanden.promoted = true;
+        });
+        const liste = [...nachId.values()];
+        club.youthAcademy.prospects = liste;
+        state.youthAcademy.prospects = liste;
+        return liste;
+    },
+
+    /** Um welchen Spieltag der Jugendtag liegt - im Frühjahr, wie im FM */
+    jugendtagSpieltag(state) {
+        const gesamt = state?.totalMatchdays || (Array.isArray(state?.schedule) ? state.schedule.length : 34) || 34;
+        return Math.max(2, Math.round(gesamt * 0.7));
+    },
+
+    /**
+     * Jugendtag: Einmal je Saison stellt sich der neue Jahrgang vor - im
+     * Frühjahr, wie im Football Manager. Drei Spieltage vorher kündigt der
+     * Nachwuchsleiter ihn an. Vorher kamen Talente nur zum Saisonstart, und
+     * in der ersten Saison tat sich nach dem Anpfiff nichts mehr.
+     * Liefert eine Meldung für den Tagesbericht oder null.
+     */
+    pruefeJugendtag(state) {
+        if (!state || !state.userClubId) return null;
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        if (!club) return null;
+        const saison = state.seasonYear || 1;
+        const tag = this.jugendtagSpieltag(state);
+        const spieltag = state.currentMatchday || 1;
+        if (!state.youthAcademy) state.youthAcademy = { prospects: [], level: 1 };
+        const ya = state.youthAcademy;
+        const postfach = (betreff, text) => {
+            if (!Array.isArray(state.inbox)) return;
+            state.inbox.unshift({
+                id: Date.now() + Math.floor(Math.random() * 1000),
+                matchday: spieltag,
+                date: state.currentDate || `Spieltag ${spieltag}`,
+                sender: club.staff?.nachwuchs ? `${club.staff.nachwuchs.name} (Nachwuchsleiter)` : "Nachwuchsabteilung",
+                subject: betreff,
+                body: text,
+                read: false,
+                type: "youth"
+            });
+        };
+
+        // Die Vorschau: Wie der Jahrgang aussieht, schätzt der Nachwuchsleiter
+        if (spieltag >= tag - 3 && spieltag < tag && ya.vorschauSaison !== saison) {
+            ya.vorschauSaison = saison;
+            const bonus = this.leiterBonus(state, club);
+            const sp = this.schwerpunkteVon(club);
+            const jahrgang = this.JAHRGAENGE[sp.jahrgang];
+            const einschaetzung = bonus + (this.EINZUG[sp.einzug]?.pot || 0) + (jahrgang?.pot || 0) >= 4
+                ? "Nach allem, was wir gesehen haben, ist da ein richtig guter Jahrgang dabei."
+                : bonus < 0
+                    ? "Ehrlich gesagt kann ich den Jahrgang schwer einschätzen - ohne eigenen Nachwuchsleiter fehlt uns der Blick."
+                    : "Ein ordentlicher Jahrgang, vielleicht ist einer dabei, der es nach oben schafft.";
+            postfach("🎓 Jugendtag in drei Wochen",
+                `Um den ${tag}. Spieltag stellt sich unser neuer Jahrgang vor: ${jahrgang?.anzahl || 3} Talente. ${einschaetzung}\n\n`
+                + "Die Schwerpunkte der Akademie lassen sich bis dahin noch im Reiter Training anpassen.");
+            return `🎓 Der Nachwuchsleiter kündigt den Jugendtag an (um den ${tag}. Spieltag).`;
+        }
+
+        // Der Jugendtag selbst
+        if (spieltag >= tag && ya.jugendtagSaison !== saison) {
+            ya.jugendtagSaison = saison;
+            ya.vorschauSaison = saison;
+            const neu = this.generateProspects(state, club.id);
+            const namen = neu.map(t => `• ${t.name} (${t.pos}, ${t.age} Jahre)`).join("\n");
+            postfach(`🎓 Jugendtag: ${neu.length} neue Talente`,
+                `Der neue Jahrgang ist da:\n${namen}\n\nSie stehen ab sofort in der Akademie (Reiter Training). `
+                + "Wer einen Profivertrag bekommen soll, entscheiden Sie mit den Beratern.");
+            return `🎓 Jugendtag: ${neu.length} neue Talente in der Akademie.`;
+        }
+        return null;
+    },
+
     /** Das Land des Vereins, in Worten wie bei den Nationalitäten */
     heimatland(state, club) {
         const daten = (typeof COUNTRIES_DATA !== "undefined" && COUNTRIES_DATA)
@@ -363,11 +467,11 @@ const YouthEngine = {
                 promoted: false
             };
 
-            if (club && club.youthAcademy) {
-                club.youthAcademy.prospects.push(prospect);
-            }
             if (clubId === state.userClubId) {
-                state.youthAcademy.prospects.push(prospect);
+                // Beim eigenen Verein gibt es nur eine Liste
+                this.eigeneTalente(state).push(prospect);
+            } else if (club && club.youthAcademy) {
+                club.youthAcademy.prospects.push(prospect);
             }
             newProspects.push(prospect);
         }
@@ -407,10 +511,11 @@ const YouthEngine = {
         if (!state) return { success: false, error: "Kein State vorhanden." };
         const club = state.clubs.find(c => c.id === clubId);
         if (!club) return { success: false, error: "Verein nicht gefunden." };
+        if (clubId === state.userClubId) this.eigeneTalente(state);
 
-        let prospect = club.youthAcademy?.prospects?.find(p => p.id === prospectId);
+        let prospect = club.youthAcademy?.prospects?.find(p => String(p.id) === String(prospectId));
         if (!prospect && state.youthAcademy?.prospects) {
-            prospect = state.youthAcademy.prospects.find(p => p.id === prospectId);
+            prospect = state.youthAcademy.prospects.find(p => String(p.id) === String(prospectId));
         }
         if (!prospect) return { success: false, error: "Jugendspieler nicht gefunden." };
         if (prospect.promoted) return { success: false, error: "Spieler wurde bereits befördert." };

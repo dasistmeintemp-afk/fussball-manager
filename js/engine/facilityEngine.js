@@ -54,12 +54,44 @@ const FacilityEngine = {
     /** Reihenfolge für die Anzeige */
     ANLAGEN: ["stadium", "trainingGround", "youthCenter", "medicalCenter"],
 
+    /** Preise für einen Erstligisten - kleinere Ligen zahlen den BAU_FAKTOR davon */
     FACILITY_COSTS: {
         trainingGround: [1500000, 3000000, 6000000, 12000000],
         youthCenter: [2000000, 4000000, 8000000, 16000000],
         medicalCenter: [1200000, 2500000, 5000000, 10000000],
         stadium: [3000000, 7000000, 15000000, 30000000]
     },
+
+    /**
+     * Was Bauen in welcher Liga kostet, gemessen an der Bundesliga.
+     *
+     * Vorher kostete alles überall dasselbe: Der FC Hanau 93 (Landesliga,
+     * gut 70.000 € Einnahmen je Spieltag, 50.000 € in der Kasse) sollte für
+     * ein zweites Trainingsfeld 1,5 Millionen zahlen und für eine Tribüne
+     * drei - das Dreifache einer ganzen Saison. Gebaut wurde nie.
+     *
+     * Ein Landesligist baut keine Arena, sondern einen Kunstrasenplatz,
+     * ein Vereinsheim, eine überdachte Stehtribüne. Das kostet einen
+     * Bruchteil, fällt aber nicht so steil wie die Einnahmen - Beton und
+     * Handwerker kosten in der siebten Liga nicht ein Fünfzigstel. So kostet
+     * ein Ausbau in jeder Liga ungefähr einen ähnlichen Anteil der Saison-
+     * einnahmen: der erste Schritt etwa ein Zehntel bis ein Drittel.
+     */
+    BAU_FAKTOR: { 1: 1.0, 2: 0.55, 3: 0.28, 4: 0.14, 5: 0.08, 6: 0.055, 7: 0.04 },
+
+    /**
+     * Sportstättenförderung: Bei Amateurvereinen trägt die öffentliche Hand
+     * einen Teil der Baukosten (Stadt, Kreis, Landessportbund). Profivereine
+     * bauen auf eigene Rechnung.
+     */
+    FOERDER_QUOTE: { 4: 0.15, 5: 0.25, 6: 0.30, 7: 0.35 },
+
+    /**
+     * Baufinanzierung über die Hausbank: ein Viertel sofort, der Rest in
+     * gleichen Raten über die Bauzeit, mit Zinsen. Die Bank macht nur mit,
+     * wenn die Rate höchstens ein Viertel der Einnahmen je Spieltag frisst.
+     */
+    FINANZIERUNG: { anzahlung: 0.25, zins: 0.06, maxRatenAnteil: 0.25 },
 
     /**
      * Wie lange gebaut wird - in Spieltagen.
@@ -286,21 +318,67 @@ const FacilityEngine = {
 
     // -------------------------------------------------------------- Bauen
 
-    /** Was ein Ausbau oder eine Sanierung kostet */
+    /** Was ein Ausbau oder eine Sanierung den Verein kostet - nach Fördermitteln */
     kosten(club, key, art, saison = 1) {
+        return this.kostenDetail(club, key, art, saison).netto;
+    },
+
+    /** Baupreis, Fördermittel und Eigenanteil */
+    kostenDetail(club, key, art, saison = 1) {
         const anlagen = this.hole(club, saison);
         const a = anlagen[key];
-        if (!a) return 0;
+        if (!a) return { brutto: 0, foerderung: 0, netto: 0, quote: 0 };
+        const stufe = club?.level || 1;
+        const faktor = this.BAU_FAKTOR[stufe] ?? 0.04;
 
+        let preis;
         if (art === "ausbau") {
             const liste = this.FACILITY_COSTS[key] || [2000000, 4000000, 8000000, 15000000];
-            return liste[a.stufe - 1] || a.stufe * 2500000;
+            preis = liste[a.stufe - 1] || a.stufe * 2500000;
+        } else {
+            // Eine Sanierung kostet nach Größe und danach, wie viel aufzuholen ist
+            const luecke = Math.max(0, 100 - a.zustand) / 100;
+            const grundpreis = (this.FACILITY_COSTS[key] || [2000000])[0] || 2000000;
+            preis = grundpreis * (0.25 + a.stufe * 0.16) * (0.35 + luecke);
         }
+        // Auf glatte Beträge: 1.000 € in kleinen Ligen, 10.000 € darüber
+        const runde = (b) => { const s = b < 1000000 ? 1000 : 10000; return Math.round(b / s) * s; };
+        const brutto = runde(preis * faktor);
+        const quote = this.FOERDER_QUOTE[stufe] || 0;
+        const foerderung = runde(brutto * quote);
+        return { brutto, foerderung, netto: brutto - foerderung, quote };
+    },
 
-        // Eine Sanierung kostet nach Größe und danach, wie viel aufzuholen ist
-        const luecke = Math.max(0, 100 - a.zustand) / 100;
-        const grundpreis = (this.FACILITY_COSTS[key] || [2000000])[0] || 2000000;
-        return Math.round(grundpreis * (0.25 + a.stufe * 0.16) * (0.35 + luecke));
+    /**
+     * Ob und wie sich ein Vorhaben über die Hausbank finanzieren lässt.
+     *
+     * Liefert Anzahlung, Rate je Spieltag, Zinsen und ob die Bank mitmacht.
+     */
+    finanzierung(state, club, key, art = "ausbau") {
+        const saison = state?.seasonYear || 1;
+        const preis = this.kosten(club, key, art, saison);
+        const f = this.FINANZIERUNG;
+        const spieltage = this.dauer(key, art);
+        const anzahlung = Math.round(preis * f.anzahlung / 100) * 100;
+        const kredit = preis - anzahlung;
+        const zinsen = Math.round(kredit * f.zins / 100) * 100;
+        const rate = Math.ceil((kredit + zinsen) / spieltage / 100) * 100;
+
+        const finance = _facResolve("FinanceEngine", "./financeEngine.js");
+        const einnahmen = finance && typeof finance.einnahmenSchaetzung === "function"
+            ? finance.einnahmenSchaetzung(club, state) : 0;
+        const kasse = club?.balance || 0;
+        let grund = null;
+        if (kasse < anzahlung) {
+            grund = `Für die Anzahlung von ${this.geld(anzahlung)} reicht die Kasse nicht.`;
+        } else if (einnahmen > 0 && rate > einnahmen * f.maxRatenAnteil) {
+            grund = `Die Bank winkt ab: Eine Rate von ${this.geld(rate)} je Spieltag wäre mehr als ein Viertel der Einnahmen.`;
+        }
+        return {
+            preis, anzahlung, kredit, zinsen, rate, spieltage,
+            gesamt: anzahlung + kredit + zinsen,
+            moeglich: !grund, grund
+        };
     },
 
     /** Wie viele Spieltage die Arbeit dauert */
@@ -313,7 +391,7 @@ const FacilityEngine = {
      *
      * Es beginnt sofort, kostet sofort - und wirkt erst, wenn es fertig ist.
      */
-    starteProjekt(state, clubId, key, art = "ausbau") {
+    starteProjekt(state, clubId, key, art = "ausbau", optionen = {}) {
         if (!state) return { erfolg: false, grund: "Kein Spielstand." };
         const club = (state.clubs || []).find(c => c.id === clubId);
         if (!club) return { erfolg: false, grund: "Verein nicht gefunden." };
@@ -343,47 +421,66 @@ const FacilityEngine = {
             };
         }
 
-        const preis = this.kosten(club, key, art, saison);
-        if ((club.balance || 0) < preis) {
+        const detail = this.kostenDetail(club, key, art, saison);
+        const preis = detail.netto;
+        const raten = optionen.finanzierung === "raten" ? this.finanzierung(state, club, key, art) : null;
+        if (raten && !raten.moeglich) return { erfolg: false, grund: raten.grund };
+        if (!raten && (club.balance || 0) < preis) {
             const fehlt = preis - (club.balance || 0);
+            const bank = this.finanzierung(state, club, key, art);
             return {
                 erfolg: false,
                 grund: `Nicht genug Geld: ${name} ${art === "ausbau" ? "ausbauen" : "sanieren"} kostet `
                     + `${this.geld(preis)}, es fehlen ${this.geld(fehlt)}.`
+                    + (bank.moeglich ? ` Die Hausbank würde es in Raten finanzieren.` : ""),
+                ratenMoeglich: bank.moeglich
             };
         }
 
         const spieltage = this.dauer(key, art);
-        club.balance -= preis;
+        const sofort = raten ? raten.anzahlung : preis;
+        club.balance -= sofort;
 
         a.projekt = {
             art,
-            kosten: preis,
+            kosten: raten ? raten.gesamt : preis,
             spieltage,
             restSpieltage: spieltage,
             beeintraechtigung: (this.BEEINTRAECHTIGUNG[key] || {})[art] || 0.2,
             begonnen: state.currentMatchday || 1,
             saison
         };
+        if (raten) {
+            a.projekt.raten = { rate: raten.rate, offen: raten.kredit + raten.zinsen, zinsen: raten.zinsen };
+        }
 
         const finance = _facResolve("FinanceEngine", "./financeEngine.js");
         if (finance && typeof finance.recordTransaction === "function") {
-            finance.recordTransaction(state, club.id, "facility_cost", -preis,
-                `${art === "ausbau" ? "Ausbau" : "Sanierung"}: ${name}`);
+            finance.recordTransaction(state, club.id, "facility_cost", -sofort,
+                `${art === "ausbau" ? "Ausbau" : "Sanierung"}: ${name}${raten ? " (Anzahlung)" : ""}`);
         }
 
         if (club.id === state.userClubId) {
+            const zahlung = raten
+                ? `Anzahlung ${this.geld(raten.anzahlung)}, danach ${this.geld(raten.rate)} je Spieltag `
+                  + `(${this.geld(raten.zinsen)} Zinsen, zusammen ${this.geld(raten.gesamt)})`
+                : this.geld(preis);
             this.postfach(state, `Baubeginn: ${name}`,
                 `Die Arbeiten am ${name} haben begonnen.\n\n`
                 + `${art === "ausbau" ? `Ausbau auf Stufe ${a.stufe + 1}` : "Sanierung"} · `
-                + `${this.geld(preis)} · ${spieltage} Spieltage.\n\n`
+                + `${zahlung} · ${spieltage} Spieltage.`
+                + (detail.foerderung > 0 ? `\nDie Sportstättenförderung trägt ${this.geld(detail.foerderung)} der Baukosten.` : "")
+                + `\n\n`
                 + (key === "stadium"
                     ? `Während der Bauzeit stehen rund ${Math.round(a.projekt.beeintraechtigung * 100)} % `
                       + `der Plätze nicht zur Verfügung. Die Zuschauereinnahmen gehen entsprechend zurück.`
                     : `Der Betrieb läuft eingeschränkt weiter, bis die Arbeiten abgeschlossen sind.`));
         }
 
-        return { erfolg: true, projekt: a.projekt, name, kosten: preis, spieltage };
+        return {
+            erfolg: true, projekt: a.projekt, name, kosten: a.projekt.kosten, spieltage,
+            sofort, rate: raten ? raten.rate : 0, foerderung: detail.foerderung
+        };
     },
 
     /**
@@ -401,6 +498,19 @@ const FacilityEngine = {
             this.ANLAGEN.forEach(key => {
                 const a = anlagen[key];
                 if (!a || !a.projekt) return;
+
+                // Finanzierte Vorhaben zahlen je Spieltag eine Rate an die Bank
+                const raten = a.projekt.raten;
+                if (raten && raten.offen > 0) {
+                    const zahlung = a.projekt.restSpieltage <= 1 ? raten.offen : Math.min(raten.rate, raten.offen);
+                    club.balance = (club.balance || 0) - zahlung;
+                    raten.offen -= zahlung;
+                    const finance = _facResolve("FinanceEngine", "./financeEngine.js");
+                    if (finance && typeof finance.recordTransaction === "function") {
+                        finance.recordTransaction(state, club.id, "facility_cost", -zahlung,
+                            `Baurate: ${this.FACILITY_NAMES[key]}`);
+                    }
+                }
 
                 a.projekt.restSpieltage--;
                 if (a.projekt.restSpieltage > 0) return;
@@ -518,8 +628,11 @@ const FacilityEngine = {
             // Wer schon baut, fängt nichts Zweites an
             if (this.ANLAGEN.some(k => anlagen[k]?.projekt)) return;
 
-            // Eine Rücklage bleibt immer stehen - kein Verein baut sich pleite
-            const ruecklage = Math.max(2000000, (club.balance || 0) * 0.35);
+            // Eine Rücklage bleibt immer stehen - kein Verein baut sich pleite.
+            // Die feste Untergrenze wächst mit der Liga: Zwei Millionen hätten
+            // jedem Amateurverein das Bauen für immer verboten.
+            const faktor = this.BAU_FAKTOR[club.level || 1] ?? 0.04;
+            const ruecklage = Math.max(2000000 * faktor, (club.balance || 0) * 0.35);
             const frei = (club.balance || 0) - ruecklage;
             if (frei <= 0) return;
 
@@ -568,7 +681,11 @@ const FacilityEngine = {
         return this.ANLAGEN.map(key => {
             const a = anlagen[key];
             const wirksam = this.wirksameStufe(club, key, saison);
+            const ausbau = a.stufe < 5 ? this.kostenDetail(club, key, "ausbau", saison) : null;
             return {
+                foerderQuote: this.FOERDER_QUOTE[club.level || 1] || 0,
+                foerderungAusbau: ausbau ? ausbau.foerderung : 0,
+                finanzierungAusbau: a.stufe < 5 && !a.projekt ? this.finanzierung(state, club, key, "ausbau") : null,
                 key,
                 name: this.FACILITY_NAMES[key],
                 stufe: a.stufe,

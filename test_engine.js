@@ -5311,6 +5311,51 @@ function runEngineTests() {
         if (club.anlagen.stadium.stufe !== 5) throw new Error("Der Verfall hat die gebaute Stufe verändert");
     });
 
+    test("Anlagen: Bauen kostet nach Ligastufe, Amateure bekommen Förderung und können in Raten zahlen", () => {
+        const welt = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        // Gemessen an den Einnahmen einer Saison kostet der nächste Ausbau
+        // in jeder Liga ungefähr gleich viel - nicht in der Landesliga das Dreifache
+        [1, 3, 5, 7].forEach(stufe => {
+            const club = welt.clubs.find(c => c.level === stufe);
+            FacilityEngine.hole(club, 1);
+            Object.assign(club.anlagen.trainingGround, { stufe: 2, zustand: 80, projekt: null });
+            const saisonEinnahmen = FinanceEngine.einnahmenSchaetzung(club, welt) * 34;
+            const anteil = FacilityEngine.kosten(club, "trainingGround", "ausbau", 1) / saisonEinnahmen;
+            if (anteil > 0.4 || anteil < 0.02) throw new Error(`Stufe ${stufe}: Der Ausbau kostet ${Math.round(anteil * 100)} % der Saisoneinnahmen`);
+        });
+        const profi = FacilityEngine.kostenDetail(welt.clubs.find(c => c.level === 1), "stadium", "ausbau", 1);
+        if (profi.foerderung !== 0) throw new Error("Ein Profiverein bekommt Sportstättenförderung");
+
+        // Der FC Hanau 93 kann bauen
+        const state = GameState.createNewGame("ll_han", "normal", { name: "Prüfer" });
+        const han = state.clubs.find(c => c.id === "ll_han");
+        FacilityEngine.hole(han, 1);
+        Object.assign(han.anlagen.stadium, { stufe: 1, zustand: 80, projekt: null });
+        const detail = FacilityEngine.kostenDetail(han, "stadium", "ausbau", 1);
+        if (detail.foerderung <= 0 || detail.netto !== detail.brutto - detail.foerderung) throw new Error(`Keine Förderung: ${JSON.stringify(detail)}`);
+        if (detail.netto > 200000) throw new Error(`Eine Tribüne kostet in der Landesliga ${detail.netto} €`);
+
+        // Zu wenig in der Kasse: bar geht nicht, die Hausbank finanziert
+        han.balance = Math.round(detail.netto * 0.5);
+        const bar = FacilityEngine.starteProjekt(state, han.id, "stadium", "ausbau");
+        if (bar.erfolg || !bar.ratenMoeglich) throw new Error("Ohne Geld wird bar gebaut oder keine Finanzierung angeboten");
+        const bank = FacilityEngine.finanzierung(state, han, "stadium", "ausbau");
+        const kasseVorher = han.balance;
+        const res = FacilityEngine.starteProjekt(state, han.id, "stadium", "ausbau", { finanzierung: "raten" });
+        if (!res.erfolg) throw new Error("Die Finanzierung klappt nicht: " + res.grund);
+        if (kasseVorher - han.balance !== bank.anzahlung) throw new Error("Es wurde mehr als die Anzahlung abgebucht");
+        const dauer = FacilityEngine.dauer("stadium", "ausbau");
+        for (let i = 0; i < dauer; i++) FacilityEngine.tickSpieltag(state);
+        if (han.anlagen.stadium.stufe !== 2 || han.anlagen.stadium.projekt) throw new Error("Der finanzierte Ausbau wird nicht fertig");
+        const gezahlt = kasseVorher - han.balance;
+        if (gezahlt !== bank.gesamt || bank.zinsen <= 0) throw new Error(`Gezahlt ${gezahlt} statt ${bank.gesamt} (mit Zinsen)`);
+
+        // Die Bank macht nicht alles mit
+        han.balance = 0;
+        if (FacilityEngine.finanzierung(state, han, "youthCenter", "ausbau").moeglich) throw new Error("Ohne Anzahlung finanziert die Bank");
+        if (FacilityEngine.starteProjekt(state, han.id, "youthCenter", "ausbau", { finanzierung: "raten" }).erfolg) throw new Error("Ohne Anzahlung wird gebaut");
+    });
+
     test("Anlagen: Eine Baustelle blockiert eine zweite an derselben Anlage", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
         const club = state.clubs.find(c => c.id === "muc");

@@ -5349,6 +5349,15 @@ class UIManager {
                 ? `Wirksame Stufe: ${fac ? fac.wirksameStufe(userClub, "youthCenter", state.seasonYear || 1) : level}`
                   + ` — Zustand ${Math.round(anlage.zustand)} %`
                 : "";
+            // Der Knopf zeigt den echten Preis statt fester 2,5 Millionen
+            const knopf = document.getElementById("btnUpgradeYouthAcademy");
+            if (knopf && fac) {
+                const preis = level < 5 ? fac.kosten(userClub, "youthCenter", "ausbau", state.seasonYear || 1) : 0;
+                knopf.textContent = level >= 5 ? "Akademie: höchste Stufe"
+                    : anlage?.projekt ? "Akademie im Umbau"
+                    : `Akademie ausbauen (${this.geldKurz(preis)})`;
+                knopf.disabled = level >= 5 || !!anlage?.projekt;
+            }
         }
 
         this.renderTrainingReport();
@@ -6158,6 +6167,15 @@ class UIManager {
                 </button>`;
 
             const teuer = !sperre && !maxStufe && a.kostenAusbau > kasse;
+            const bank = a.finanzierungAusbau;
+            const hinweisGeld = teuer
+                ? `<p class="fac-note" style="color:#f59e0b;">Für den Ausbau fehlen ${geld(a.kostenAusbau - kasse)}.`
+                  + (bank?.moeglich ? ` Die Hausbank finanziert: ${geld(bank.anzahlung)} Anzahlung, dann ${geld(bank.rate)} je Spieltag.` : "")
+                  + `</p>`
+                : "";
+            const hinweisFoerderung = !sperre && !maxStufe && a.foerderungAusbau > 0
+                ? `<p class="fac-note">Sportstättenförderung: Die Stadt trägt ${Math.round(a.foerderQuote * 100)} % (${geld(a.foerderungAusbau)}).</p>`
+                : "";
 
             return `
                 <div class="fac-card ${a.projekt ? "is-building" : ""}">
@@ -6175,25 +6193,74 @@ class UIManager {
                     ${extra}
                     ${bau}
                     <div class="fac-actions">${ausbauBtn}${sanierBtn}</div>
-                    ${teuer ? `<p class="fac-note" style="color:#f59e0b;">Für den Ausbau fehlen ${geld(a.kostenAusbau - kasse)}.</p>` : ""}
+                    ${hinweisFoerderung}
+                    ${hinweisGeld}
                 </div>`;
         }).join("");
 
         host.querySelectorAll(".btn-fac").forEach(btn => {
-            btn.onclick = () => {
-                const res = fac.starteProjekt(state, userClub.id, btn.dataset.facility, btn.dataset.art);
-                if (res.erfolg) {
-                    this.playSound("whistle");
-                    this.showToast(
-                        `${res.name}: ${btn.dataset.art === "ausbau" ? "Ausbau" : "Sanierung"} begonnen — `
-                        + `${res.spieltage} Spieltage, ${geld(res.kosten)}.`, "success");
-                    this.renderClub();
-                    this.renderHeader();
-                } else {
-                    this.showToast(res.grund, "error");
-                }
-            };
+            btn.onclick = () => this.starteBau(btn.dataset.facility, btn.dataset.art);
         });
+    }
+
+    /**
+     * Ein Bauvorhaben mit Blick auf die Rechnung starten: Baukosten,
+     * Fördermittel, Eigenanteil - und, wenn die Kasse nicht reicht, die
+     * Finanzierung über die Hausbank.
+     */
+    starteBau(key, art) {
+        const state = this.app.state;
+        const fac = (typeof FacilityEngine !== "undefined") ? FacilityEngine : window.FacilityEngine;
+        const club = state?.clubs?.find(c => c.id === state.userClubId);
+        if (!fac || !club) return;
+        const saison = state.seasonYear || 1;
+        const anlage = fac.hole(club, saison)?.[key];
+        if (!anlage) return;
+        const name = fac.FACILITY_NAMES[key];
+        const geld = (b) => GameState.formatMoney(b);
+        const detail = fac.kostenDetail(club, key, art, saison);
+        const bank = fac.finanzierung(state, club, key, art);
+        const kasse = club.balance || 0;
+        const barGeht = kasse >= detail.netto;
+        const dauer = fac.dauer(key, art);
+        const stoerung = Math.round(((fac.BEEINTRAECHTIGUNG[key] || {})[art] || 0.2) * 100);
+
+        const starte = (finanzierung) => {
+            const res = fac.starteProjekt(state, club.id, key, art, finanzierung ? { finanzierung } : {});
+            if (!res.erfolg) {
+                this.showToast(res.grund, "error", 6000);
+                return false;
+            }
+            this.playSound("whistle");
+            this.showToast(`${res.name}: ${art === "ausbau" ? "Ausbau" : "Sanierung"} begonnen — ${res.spieltage} Spieltage`
+                + (res.rate ? `, ${geld(res.rate)} je Spieltag an die Bank.` : `, ${geld(res.kosten)}.`), "success");
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.renderClub();
+            this.renderTraining();
+            this.renderHeader();
+            return true;
+        };
+
+        const zeile = (t, w, stark = false) => `<div><span>${t}</span>${stark ? `<strong>${w}</strong>` : `<span>${w}</span>`}</div>`;
+        const html = `
+            <p><strong>${name}</strong>: ${art === "ausbau" ? `Ausbau von Stufe ${anlage.stufe} auf ${anlage.stufe + 1}` : `Sanierung (Zustand ${Math.round(anlage.zustand)} %)`}.
+               ${dauer} Spieltage Bauzeit, der Betrieb läuft so lange um ${stoerung} % eingeschränkt.</p>
+            <div class="verh-zahlen bau-rechnung">
+                ${zeile("Baukosten", geld(detail.brutto))}
+                ${detail.foerderung > 0 ? zeile(`Sportstättenförderung (${Math.round(detail.quote * 100)} %)`, `− ${geld(detail.foerderung)}`) : ""}
+                ${zeile("Eigenanteil", geld(detail.netto), true)}
+                ${zeile("In der Kasse", geld(kasse))}
+            </div>
+            ${bank.moeglich
+                ? `<p class="muted-note">Hausbank: ${geld(bank.anzahlung)} Anzahlung, danach ${geld(bank.rate)} je Spieltag über ${bank.spieltage} Spieltage.
+                   Zinsen ${geld(bank.zinsen)}, zusammen ${geld(bank.gesamt)}.</p>`
+                : `<p class="muted-note">Hausbank: ${this.escapeHtml(bank.grund || "keine Finanzierung möglich")}</p>`}
+            ${!barGeht && !bank.moeglich ? `<p style="color:var(--accent-danger);">Es fehlen ${geld(detail.netto - kasse)} - so lässt sich nicht bauen.</p>` : ""}`;
+
+        const knoepfe = [{ text: "Abbrechen", klasse: "btn-secondary" }];
+        if (bank.moeglich) knoepfe.push({ text: "In Raten finanzieren", klasse: barGeht ? "btn-secondary" : "btn-primary", aktion: () => starte("raten") });
+        if (barGeht) knoepfe.push({ text: `Sofort bezahlen (${this.geldKurz(detail.netto)})`, klasse: "btn-primary", aktion: () => starte(null) });
+        this.zeigeEntscheidung({ titel: art === "ausbau" ? "Ausbau planen" : "Sanierung planen", html, knoepfe });
     }
 
     /** "Techniker, Passgeber und Dribbler" statt "technique, passing, dribbling" */
@@ -10584,16 +10651,7 @@ class UIManager {
             const userClub = this.app.state.clubs.find(c => c.id === this.app.state.userClubId);
             if (!userClub) return;
 
-            const res = YouthEngine.upgradeAcademy(this.app.state, userClub.id);
-            if (res.success) {
-                this.playSound("goal");
-                this.showToast(res.message, "success");
-                this.renderTraining();
-                this.renderFinances();
-                this.renderHeader();
-            } else {
-                this.showToast(res.error, "error");
-            }
+            this.starteBau("youthCenter", "ausbau");
         });
 
         // Transfer Filter

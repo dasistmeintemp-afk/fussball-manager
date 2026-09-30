@@ -85,7 +85,8 @@ const MatchplanEngine = {
                 const bester = feld[0];
                 const ziel = zielId !== null && zielId !== undefined
                     ? feld.find(k => String(k.id) === String(zielId)) : bester;
-                const ragtHeraus = bester && (bester.danger === "Hoch" || (bester.overall || 0) >= (report.avgOverall || 0) + 6);
+                const ragtHeraus = bester && (bester.ragtHeraus || bester.danger === "Hoch"
+                    || (bester.overall || 0) >= (report.avgOverall || 0) + 6);
                 if (!ragtHeraus) return { passt: false, grund: "Kein Spieler ragt so heraus, dass es sich lohnt." };
                 return ziel && bester && String(ziel.id) === String(bester.id)
                     ? { passt: true, grund: `${bester.name} ist ihr gefährlichster Mann.` }
@@ -123,9 +124,33 @@ const MatchplanEngine = {
         }
     },
 
-    /** Wen man eng decken kann: die Schlüsselspieler ohne den Torwart */
-    deckungsZiele(report) {
-        return (report?.keyPlayers || []).filter(k => k.pos !== "TW");
+    /**
+     * Wen man eng decken kann: die Spieler, die das Spiel des Gegners nach
+     * vorn tragen - aus der voraussichtlichen Elf, die Stärksten zuerst.
+     * Einen Innenverteidiger in Manndeckung zu nehmen, ergibt keinen Sinn.
+     * Ohne Kader (nur Bericht) bleiben die Schlüsselspieler ohne Abwehr.
+     */
+    OHNE_DECKUNG: ["TW", "IV", "LV", "RV"],
+
+    deckungsZiele(report, state = null, gegner = null) {
+        if (report && report._deckungsZiele) return report._deckungsZiele;
+        const vorn = (p) => !this.OHNE_DECKUNG.includes(p.pos);
+        if (!state || !gegner) return (report?.keyPlayers || []).filter(vorn);
+        const kader = (state.players || []).filter(p => (gegner.playerIds || []).includes(p.id));
+        const elf = kader.filter(p => (gegner.lineup || []).includes(p.id));
+        const basis = elf.length >= 7 ? elf : kader;
+        const schnitt = basis.length ? basis.reduce((s, p) => s + (p.overall || 0), 0) / basis.length : 0;
+        const schluessel = new Map((report?.keyPlayers || []).map(k => [String(k.id), k]));
+        const ziele = basis.filter(p => vorn(p) && (p.injuredWeeks || 0) === 0)
+            .sort((a, b) => (b.overall || 0) - (a.overall || 0))
+            .slice(0, 4)
+            .map(p => ({
+                id: p.id, name: p.name, pos: p.pos, overall: p.overall,
+                danger: schluessel.get(String(p.id))?.danger || ((p.overall || 0) >= schnitt + 6 ? "Hoch" : "Mittel"),
+                ragtHeraus: (p.overall || 0) >= schnitt + 6
+            }));
+        if (report) report._deckungsZiele = ziele;
+        return ziele;
     },
 
     /** Der Schlüssel, unter dem ein Plan an seinem Spiel hängt */
@@ -145,6 +170,9 @@ const MatchplanEngine = {
         const gegner = (state.clubs || []).find(c => c.id === gegnerId);
         const analyse = _mpResolve("OpponentAnalysisEngine", "./opponentAnalysisEngine.js");
         const report = analyse ? analyse.generateReport(state, gegnerId, eigen) : null;
+        // Die Deckungsziele einmal aus der Elf bestimmen - Anzeige und Urteil
+        // greifen dann auf dieselbe Liste zu
+        if (report) this.deckungsZiele(report, state, gegner);
         // Der Analyst sagt nur, was er sieht: Unter drei Sternen bleibt er vage
         const sieht = (report?.analyst?.sterne || 0) >= 2.5;
         const plaene = Object.keys(this.PLAENE).map(key => {

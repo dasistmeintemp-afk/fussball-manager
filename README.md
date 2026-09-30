@@ -174,7 +174,28 @@ Ein Manager verwaltet keine Tabellen, er redet mit Leuten.
 
 Jeder Spieler reagiert eigen: Temperament verstärkt jede Ansprache, Professionalität dämpft Kritik. Zwei, drei Spieler melden sich sichtbar zurück („nickt und klatscht in die Hände" / „schaut zu Boden und sagt nichts"). Die Wirkung landet in Moral und Form – und damit direkt in der Spielstärke. Eine wirksame **Halbzeitansprache** lässt den weiteren Spielverlauf neu berechnen.
 
-**Am Medientag** stellen sich die Journalisten. Vier Themen (Form, ein Spieler in der Kritik, das Saisonziel, die Erwartung der Fans) mit je drei Antworten, die Fanstimmung, Medienrummel, Vorstandsvertrauen und Teammoral verschieben. Wer sich vor einen kritisierten Spieler stellt, gewinnt ihn zurück (+12 Moral) und zahlt beim Boulevard drauf.
+**Am Medientag** stellen sich die Journalisten – zwei bis drei Fragen, und zwar zu dem, was gerade los ist: das Derby vor der Tür, eine Sieges- oder Niederlagenserie, Tabellenspitze oder Abstiegskampf, ein Ultimatum des Vorstands, der verletzte Leistungsträger, ein Angebot für einen eigenen Spieler, der Star des Gegners, ein Kantersieg oder ein Debakel. Ohne besonderen Anlass bleiben die Dauerbrenner (Form, Saisonziel, Fans, ein Spieler in der Kritik). Jede Frage stellt ein Journalist eines bestimmten Blattes, und das Blatt verstärkt die Wirkung:
+
+| Blatt | Wirkung |
+|---|---|
+| 📰 Boulevard (*Sportblitz*) | Macht aus jedem Satz Druck (Medienrummel ×1,5) |
+| 📊 Fachpresse (*Taktikblatt*) | Liest der Vorstand (Vorstand ×1,4) |
+| 🏘️ Lokalzeitung | Erreicht die Kurve (Fanstimmung ×1,5) |
+
+Manche Antworten haben **Folgen**: Eine Kampfansage vor dem Derby liest auch der Gegner (seine Moral steigt). Wer einen Sieg ankündigt, hat ein **Versprechen** gegeben – nach dem Spiel wird abgerechnet: gehalten bringt Fans und Vorstand, gebrochen den Spott der Presse. Scharfe Sätze stehen am nächsten Tag als **Schlagzeile** im Postfach. Wer sich vor einen kritisierten Spieler stellt, gewinnt ihn zurück (+12 Moral); wer einen umworbenen Spieler für unverkäuflich erklärt, macht ihn glücklich und den Vorstand nachdenklich.
+
+**Nach dem Abpfiff** bietet der Spielbericht eine kurze Pressekonferenz an: ein, zwei Fragen zum Ergebnis, zum besten Mann auf dem Platz, zu einer Roten Karte – oder zu dem, was vorher versprochen wurde.
+
+### 3b-2. 📋 Taktikbesprechung vor dem Spiel (`MatchplanEngine`)
+Die Taktik im Taktik-Reiter ist die Grundordnung. Vor dem Anpfiff stellt der Trainer seine Elf aber auf **diesen** Gegner ein: Vor jedem Livespiel (und über den Knopf **Taktikbesprechung** auf dem Dashboard auch fürs Sofort-Ergebnis) zeigt die Besprechung die Analyse auf einen Blick – voraussichtliche Formation, Stärken, Schwächen, Schwachstelle, Schlüsselspieler – und bietet sieben Punkte an, von denen **höchstens zwei** gelten:
+
+*Schlüsselspieler eng decken* · *Früh stören* · *Tief stehen, schnell umschalten* · *Über die Flügel* · *Durch die Mitte* · *Ball laufen lassen* · *Die Schwachstelle anlaufen*
+
+- Die Punkte setzen Anweisungen **nur für dieses Spiel** – danach gilt wieder die gewohnte Taktik (in Livespiel und Sofort-Simulation gleich).
+- Der Spielanalyst sagt zu jedem Punkt, was er davon hält. Ab drei Sternen sieht er genau genug für Empfehlungen, darunter bleibt der Plan eine Vermutung.
+- Trifft ein Punkt eine echte Schwäche des Gegners, ist die Mannschaft spürbar besser eingestellt (+1,5 % je Treffer).
+- Der eng gedeckte Spieler verliert an Wirkung und kommt deutlich seltener zum Abschluss. Gedeckt werden Mittelfeld- und Angriffsspieler, keine Verteidiger.
+- Widersprüche schließt die Besprechung aus: Früh stören und tief stehen – oder Flügel und Mitte – gehen nicht gleichzeitig.
 
 ### 3c. 📌 Der Schreibtisch
 Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit sortiert, ein Klick springt in den zuständigen Reiter: unvollständige Startelf, Verhandlungen mit uns am Zug, Ausfälle, überlastete Spieler, auslaufende Verträge, unzufriedene Spieler, ungelesene Post.
@@ -378,6 +399,7 @@ untitled/
 │   │   ├── transferEngine.js   # Markt- & Transferlogik
 │   │   ├── negotiationEngine.js# Mehrtägige Verhandlungen mit Vereinen und Beratern
 │   │   ├── managerEngine.js    # Kabinenansprachen, Pressekonferenzen & Aufgabenliste
+│   │   ├── matchplanEngine.js  # Taktikbesprechung: Matchplan für ein Spiel
 │   │   ├── trainingEngine.js   # Tägliche Belastung, Ermüdung, Risiko & Entwicklung
 │   │   ├── financeEngine.js    # Spieltagseinnahmen, Gehälter & Journal
 │   │   ├── boardEngine.js      # Vorstandszufriedenheit & Saisonziele
@@ -497,7 +519,7 @@ Alle 4 Testsuiten validieren lückenlos:
 1. **Datenintegrität (`test_data.js`):** Alle 18 handgepflegten Vereine, Attribute, Torhüter, Gehalts- und Transferbudgets.
 2. **Wizard & UI Regression (`test_wizard.js`):** Suchfilter, Schwierigkeitsstufen, Sortierungen, Edge-Cases, DOM-Simulation, Code-Regressionsprüfungen gegen Legacy-IDs sowie die Installierbarkeit auf dem Telefon (Manifest, vorhandene Symbole, vollständiger Offline-Vorrat).
 3. **Engines (`test_engine.js`):** MatchEngine, SeasonEngine, Finance, Board, News, Contracts, Scouting, Youth, AIManager, SaveService & MigrationService sowie PositionEngine (Familiarität, Zonen- und Formationserkennung), eigene Formationen und die Echtzeit-Regie der 2D-Simulation. Dazu die Spielwelt: alle zwölf Ligen gefüllt, Stärkestaffelung über die Ligastufen, Karrierestart in der Landesliga, Europapokal-Besetzung, Auf-/Abstieg und die verlustfreie Kodierung des Spielstands.
-3b. Dazu die Sandbox-Systeme: Kabinenansprachen mit lageabhängiger Wirkung, Pressekonferenzen, mehrtägige Transferverhandlungen über alle drei Phasen, das Scheitern von Lowball-Angeboten, Vertragsgespräche für Nachwuchsspieler, Trainingsbelastung mit Ermüdungs- und Risikokurve sowie Nebenpositionen und erlernte Routine.
+3b. Dazu die Sandbox-Systeme: Kabinenansprachen mit lageabhängiger Wirkung, Pressekonferenzen mit Themen nach Lage, Versprechen und Kampfansagen, die Taktikbesprechung, mehrtägige Transferverhandlungen über alle drei Phasen, das Scheitern von Lowball-Angeboten, Vertragsgespräche für Nachwuchsspieler, Trainingsbelastung mit Ermüdungs- und Risikokurve sowie Nebenpositionen und erlernte Routine.
 4. **E2E & Integration (`test_e2e.js`):** Vollständiger Karrierestart, 2D-LiveMatch, Auswechslungen, Transfers, Training, Multi-Saison-Läufe und der komplette Weg von der selbst gezeichneten Formation über das Live-Spiel bis zu Export und Import.
 
 ---

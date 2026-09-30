@@ -2467,7 +2467,7 @@ class MatchEngine {
      * gedämpft, wenn er auf einer fremden Position spielt. Dazu kommen die
      * Wirkungen seiner Eigenheiten und seiner Signatur.
      */
-    static werte2D(player, deployedPos = null, versatz = 0) {
+    static werte2D(player, deployedPos = null, skala = 1) {
         const ovr = player?.overall || 60;
         const fitness = 0.9 + ((player?.fitness ?? 100) / 100) * 0.1;
         const moral = 0.97 + ((player?.morale ?? 75) / 100) * 0.04;
@@ -2475,13 +2475,12 @@ class MatchEngine {
         const position = 0.5 + this.getPositionModifier(player, deployedPos) * 0.5;
         const faktor = fitness * moral * form * position;
         const w = {};
-        // Erst aufs Niveau der Partie heben, dann Tagesform und Position -
-        // so kostet die falsche Position in jeder Liga gleich viel
+        // Erst aufs Niveau der Partie skalieren, dann Tagesform und Position
         this.WERTE_2D.forEach(k => {
             const v = typeof player?.[k] === "number" ? player[k] : ovr;
-            w[k] = Math.round(Math.max(1, Math.min(99, v + versatz)) * faktor * 10) / 10;
+            w[k] = Math.round(Math.max(1, Math.min(99, v * skala)) * faktor * 10) / 10;
         });
-        w.overall = Math.max(1, Math.min(99, ovr + versatz));
+        w.overall = Math.round(Math.max(1, Math.min(99, ovr * skala)) * 10) / 10;
         w.foot = player?.foot || null;
         w.signatur = player?.signatur || null;
         w.temperament = player?.hiddenAttributes?.temperament ?? 12;
@@ -2494,22 +2493,26 @@ class MatchEngine {
      * Erstellt eine interaktive LiveMatch-Instanz für die 2D-Live-Simulation
      */
     /**
-     * FM-Modus: Um wie viel die Werte einer Partie verschoben werden, damit
-     * ihr Schnitt bei 70 liegt.
+     * FM-Modus: Mit welchem Faktor die Werte einer Partie skaliert werden,
+     * damit ihr Schnitt bei 70 liegt.
      *
      * Die Werte sind absolut - in der Landesliga liegen sie um 25, in der
      * Bundesliga um 80. Das Livespiel rechnet aber an einigen Stellen mit
      * festen Schwellen (traut er sich den Schuss zu, kommt er aufs Tor).
      * Gemessen kamen zwei Landesligisten so auf zehn Schüsse im Spiel statt
-     * auf zwanzig. Wie im FM zählt, wer besser ist als sein Gegenüber: Die
-     * Verschiebung hebt beide Mannschaften gleich an, jeder Unterschied
-     * zwischen den Spielern bleibt erhalten.
+     * auf zwanzig.
+     *
+     * Skaliert wird, nicht verschoben: Wer in der Landesliga 26 hat und auf
+     * einen Gegner mit 19 trifft, ist ihm um ein gutes Drittel voraus - so
+     * rechnet auch die Sofort-Simulation. Eine Verschiebung um denselben
+     * Betrag machte daraus 73 gegen 66, und der klare Favorit verlor gemessen
+     * fast die Hälfte seiner Spiele.
      */
-    static fmVersatz(lineups) {
+    static fmSkala(lineups) {
         const alle = (lineups || []).flat().filter(Boolean);
-        if (!alle.length) return 0;
+        if (!alle.length) return 1;
         const schnitt = alle.reduce((s, p) => s + (p.overall || 60), 0) / alle.length;
-        return Math.round((70 - schnitt) * 10) / 10;
+        return Math.round(70 / Math.max(5, schnitt) * 1000) / 1000;
     }
 
     static createLiveMatch(match, homeClub, awayClub, allPlayers, options = {}) {
@@ -2685,8 +2688,14 @@ class LiveMatch {
         this.coTrainer = { home: this._ermittleCoTrainer(homeClub), away: this._ermittleCoTrainer(awayClub) };
         // Wann der Co-Trainer die Lage prueft, wenn er die Taktik anpassen darf
         const eigenerCo = this.userSide ? this.coTrainer[this.userSide].guete : 60;
-        this._coTrainerPunkte = eigenerCo >= 75 ? [50, 55, 60, 66, 72, 78, 84]
-            : (eigenerCo >= 50 ? [55, 65, 75, 83] : [62, 78]);
+        this._coTrainerPunkte = LiveMatch.trainerPunkte(eigenerCo);
+        // Auch der Trainer des Gegners liest das Spiel: Er stellt um, wenn
+        // sein Team zurueckliegt, und verteidigt eine Fuehrung. Vorher spielte
+        // die KI neunzig Minuten mit derselben Taktik, egal wie es stand.
+        this._kiTrainerPunkte = {};
+        ["home", "away"].forEach(side => {
+            if (side !== this.userSide) this._kiTrainerPunkte[side] = LiveMatch.trainerPunkte(this.coTrainer[side].guete);
+        });
         // Zurufe von der Seitenlinie: [{ side, art, von, bis }]
         this.zurufe = [];
         // Vorgegebene Standardschützen - null heißt: der Beste auf dem Platz
@@ -2759,7 +2768,7 @@ class LiveMatch {
         this.celebratingTeam = null;
         this.sceneRoles = null;
         this.kits = ermittleTrikots(homeClub, awayClub);
-        this.fmVersatz = this.modus === "fm" ? MatchEngine.fmVersatz([this.homeLineup, this.awayLineup]) : 0;
+        this.fmSkala = this.modus === "fm" ? MatchEngine.fmSkala([this.homeLineup, this.awayLineup]) : 1;
         this.players2D = this.initialize2DPositions();
         // Wer das Feld verlaesst (Platzverweis, Auswechslung), geht noch sichtbar
         // zur Seitenlinie - nur fuer das Bild, in der Simulation ist er weg.
@@ -2898,7 +2907,7 @@ class LiveMatch {
                 freshness: 1,
                 color: this.kits.home.farbe,
                 textColor: this.kits.home.text,
-                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmVersatz) : {})
+                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmSkala) : {})
             });
         });
 
@@ -2930,7 +2939,7 @@ class LiveMatch {
                 freshness: 1,
                 color: this.kits.away.farbe,
                 textColor: this.kits.away.text,
-                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmVersatz) : {})
+                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmSkala) : {})
             });
         });
 
@@ -3769,7 +3778,7 @@ class LiveMatch {
             p2d.pace = playerIn.pace || playerIn.overall || 70;
             p2d.stamina = playerIn.stamina || 75;
             p2d.vision = playerIn.vision || playerIn.overall || 65;
-            if (this.modus === "fm") Object.assign(p2d, MatchEngine.werte2D(playerIn, p2d.pos, this.fmVersatz));
+            if (this.modus === "fm") Object.assign(p2d, MatchEngine.werte2D(playerIn, p2d.pos, this.fmSkala));
             // Ein eingewechselter Spieler kommt frisch aufs Feld
             p2d.freshness = 1;
             p2d.verletzt = false;
@@ -4074,8 +4083,41 @@ class LiveMatch {
         const punkt = this._coTrainerPunkte.find(m => this.minute >= m);
         if (punkt === undefined) return null;
         this._coTrainerPunkte = this._coTrainerPunkte.filter(m => m > this.minute);
+        return this.trainerStelltUm(this.userSide, "co");
+    }
 
-        const side = this.userSide;
+    /**
+     * Wann ein Trainer die Lage prueft: ein guter frueher und oefter, ein
+     * schwacher erst spaet.
+     */
+    static trainerPunkte(guete) {
+        return guete >= 75 ? [50, 55, 60, 66, 72, 78, 84]
+            : (guete >= 50 ? [55, 65, 75, 83] : [62, 78]);
+    }
+
+    /**
+     * Der Trainer des Gegners (oder beider Mannschaften, wenn niemand
+     * zuschaut) passt die Taktik an den Spielstand an - mit derselben
+     * Ueberlegung wie der eigene Co-Trainer.
+     */
+    kiTrainerTakt() {
+        if (this.isFinished) return [];
+        const ergebnisse = [];
+        Object.keys(this._kiTrainerPunkte || {}).forEach(side => {
+            const punkte = this._kiTrainerPunkte[side];
+            if (!punkte.some(m => this.minute >= m)) return;
+            this._kiTrainerPunkte[side] = punkte.filter(m => m > this.minute);
+            const r = this.trainerStelltUm(side, "ki");
+            if (r) ergebnisse.push(r);
+        });
+        return ergebnisse;
+    }
+
+    /**
+     * Die eigentliche Umstellung nach Spielstand und Zeit.
+     * @param {string} wer "co" (Co-Trainer des Spielers) oder "ki" (Gegner)
+     */
+    trainerStelltUm(side, wer = "co") {
         const club = this.clubVon(side);
         const t = club.tactics || {};
         const eigene = side === "home" ? this.homeScore : this.awayScore;
@@ -4097,6 +4139,9 @@ class LiveMatch {
         } else if (eigene > fremde && this.minute >= 75) {
             if (jetzt > 1) aenderung.mentality = stufen[Math.max(1, jetzt - 1)];
             if (t.tempo !== "slow") aenderung.tempo = "slow";
+            // Eine knappe Fuehrung in der Schlussphase wird ueber die Zeit
+            // gebracht - der Gegner-Trainer tut das von sich aus
+            if (wer === "ki" && this.minute >= 80 && eigene - fremde === 1 && t.zeitspiel !== "oft") aenderung.zeitspiel = "oft";
             grund = "Das Ergebnis halten";
         } else if (eigene === fremde && this.minute >= 83 && jetzt < 3) {
             aenderung.mentality = "offensive";
@@ -4109,9 +4154,11 @@ class LiveMatch {
         if (aenderung.mentality) teile.push(namen[aenderung.mentality]);
         if (aenderung.pressing) teile.push("hohes Pressing");
         if (aenderung.tempo) teile.push("Tempo raus");
-        const text = `${this.minute}' - 📋 Der Co-Trainer stellt um (${grund}): ${teile.join(", ")}.`;
+        if (aenderung.zeitspiel) teile.push("auf Zeit spielen");
+        const wen = wer === "ki" ? (club?.name || "Der Gegner") : "Der Co-Trainer";
+        const text = `${this.minute}' - 📋 ${wen} stellt um (${grund}): ${teile.join(", ")}.`;
         this.updateTactics(side, aenderung, { text });
-        return { aenderung, text };
+        return { side, wer, aenderung, text };
     }
 
     /**
@@ -4122,6 +4169,7 @@ class LiveMatch {
         if (this.isFinished) return;
         if (this.wechselGelegenheit()) this.fuehreAngemeldeteWechselAus();
         this.coTrainerTakt();
+        this.kiTrainerTakt();
     }
 
     /**
@@ -4176,6 +4224,7 @@ class LiveMatch {
             // Zu seinen Zeitpunkten prueft er Spielstand und Taktik - wie im
             // Livespiel, nur ohne Bild
             if (this.delegation.taktik) this.coTrainerTakt();
+            this.kiTrainerTakt();
         }
         this.minute = 90;
         this.finishMatch();

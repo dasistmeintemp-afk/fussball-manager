@@ -6721,17 +6721,17 @@ function runEngineTests() {
         if (!(fremd.passing < w.passing)) throw new Error("Die Positionseignung wirkt nicht");
 
         // Die Werte wirken relativ zum Niveau der Partie: Zwei Landesligisten
-        // spielen auf dem Feld mit einem Schnitt von 70, der Abstand bleibt
+        // spielen auf dem Feld mit einem Schnitt von 70, das Verhältnis bleibt
         const heim = state.players.filter(p => p.clubId === "ll_han").slice(0, 11);
         const gast = state.players.filter(p => p.clubId === "ll_vil").slice(0, 11);
-        const versatz = MatchEngine.fmVersatz([heim, gast]);
-        if (!(versatz > 30)) throw new Error(`Landesliga wird nur um ${versatz} angehoben`);
+        const skala = MatchEngine.fmSkala([heim, gast]);
+        if (!(skala > 2)) throw new Error(`Landesliga wird nur mit ${skala} skaliert`);
         const a = { pos: "ZM", overall: 26, passing: 30, fitness: 100, morale: 75, form: 7 };
         const b = Object.assign({}, a, { passing: 20 });
-        const wa = MatchEngine.werte2D(a, "ZM", versatz), wb = MatchEngine.werte2D(b, "ZM", versatz);
-        if (!(wa.overall > 55 && wa.overall < 95)) throw new Error(`Angehobene Stärke ${wa.overall}`);
-        const vorher = MatchEngine.werte2D(a, "ZM").passing - MatchEngine.werte2D(b, "ZM").passing;
-        if (Math.abs((wa.passing - wb.passing) - vorher) > 0.3) throw new Error("Der Abstand zwischen zwei Spielern ändert sich");
+        const wa = MatchEngine.werte2D(a, "ZM", skala), wb = MatchEngine.werte2D(b, "ZM", skala);
+        if (!(wa.overall > 55 && wa.overall < 95)) throw new Error(`Skalierte Stärke ${wa.overall}`);
+        const vorher = MatchEngine.werte2D(a, "ZM").passing / MatchEngine.werte2D(b, "ZM").passing;
+        if (Math.abs(wa.passing / wb.passing - vorher) > 0.02) throw new Error("Das Verhältnis zwischen zwei Spielern ändert sich");
     });
 
     test("FM-Modus: Die Abspielstufe ändert nicht, wie eng gedeckt wird", () => {

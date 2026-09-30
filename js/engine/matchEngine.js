@@ -59,6 +59,12 @@ const _rollenZaehlung = (club) => {
 
 // Der Trainerstab entscheidet, wie gut der Co-Trainer ist. Aufgeloest wird
 // erst bei Bedarf - die Skripte laden im Browser in beliebiger Reihenfolge.
+/** Eigenheiten und Signaturen der Spieler */
+const _eigEngine = () => (typeof EigenschaftenEngine !== 'undefined' && EigenschaftenEngine)
+    ? EigenschaftenEngine
+    : ((typeof window !== 'undefined' && window.EigenschaftenEngine) ? window.EigenschaftenEngine
+        : (typeof require !== 'undefined' ? (() => { try { return require('./eigenschaftenEngine.js').EigenschaftenEngine; } catch (e) { return null; } })() : null));
+
 const _stabEngine = () => (typeof CoachingStaffEngine !== 'undefined' && CoachingStaffEngine)
     ? CoachingStaffEngine
     : ((typeof window !== 'undefined' && window.CoachingStaffEngine)
@@ -668,6 +674,64 @@ class MatchEngine {
         return parseFloat(_Random.clamp(rating, 3.0, 10.0).toFixed(1));
     }
 
+    /**
+     * Was Eigenheiten und Signaturen an einem Abschluss ändern.
+     *
+     * Beide Engines rechnen damit - das Livespiel im FM-Modus und die
+     * Sofort-Simulation. Abschlussstärke und Torwartreflexe verschieben die
+     * Chance anteilig (eine Großchance bleibt eine Großchance, sie wird nur
+     * öfter oder seltener verwandelt), Elfmeter dagegen absolut.
+     *
+     * @returns {{faktor:number, zuschlag:number}} pTor = pTor·faktor + zuschlag
+     */
+    static eigenschaftsWirkung(schuetze, torwart, art = "open") {
+        const eig = _eigEngine();
+        if (!eig) return { faktor: 1, zuschlag: 0 };
+        const es = schuetze ? eig.wirkung(schuetze) : {};
+        const eg = torwart ? eig.wirkung(torwart) : {};
+        if (art === "penalty") {
+            return {
+                faktor: 1,
+                zuschlag: (es.elfmeter || 0) + (es.abschluss || 0) * 0.3
+                    - (eg.twElfmeter || 0) * 0.5 - (eg.twReflex || 0) * 0.3
+            };
+        }
+        let faktor = (1 + (es.abschluss || 0) * 2.5) * (1 - (eg.twReflex || 0) * 2);
+        if (art === "freekick") faktor *= 1 + (es.freistoss || 0) * 5;
+        // Kopfbälle nach Flanke und Ecke: Wer in der Luft stark ist, kommt
+        // sauberer an den Ball
+        if (art === "cross" || art === "corner" || art === "header") faktor *= 1 + (es.luft || 0) / 60;
+        return { faktor, zuschlag: 0 };
+    }
+
+    /**
+     * Wer kommt zum Abschluss? Vorher war es ein Wurf unter allen Angreifern -
+     * der Linksaußen mit Abschluss 55 so oft wie der Mittelstürmer mit 85.
+     * Jetzt entscheiden Werte und Eigenschaften: wer gut abschließt, sich im
+     * Strafraum bewegt oder in der Luft stark ist, kommt öfter an den Ball.
+     */
+    static waehleSchuetze(kandidaten, attackType, posVon = null) {
+        if (!Array.isArray(kandidaten) || kandidaten.length === 0) return null;
+        const eig = _eigEngine();
+        const luftig = attackType === "cross" || attackType === "corner";
+        const gewichte = kandidaten.map(p => {
+            const v = k => typeof p[k] === "number" ? p[k] : (p.overall || 60);
+            const wert = luftig ? v("physical") * 0.6 + v("shooting") * 0.4 : v("shooting") * 0.8 + v("technique") * 0.2;
+            let g = Math.pow(Math.max(20, wert) / 60, 3);
+            const w = eig ? eig.wirkung(p) : {};
+            g *= 1 + (w.strafraum || 0) * 0.5 + (luftig ? (w.luft || 0) / 30 : 0);
+            if ((posVon ? posVon(p) : p.pos) === "ST") g *= 1.4;
+            return g;
+        });
+        const summe = gewichte.reduce((s, g) => s + g, 0);
+        let wurf = Math.random() * summe;
+        for (let i = 0; i < kandidaten.length; i++) {
+            wurf -= gewichte[i];
+            if (wurf <= 0) return kandidaten[i];
+        }
+        return kandidaten[kandidaten.length - 1];
+    }
+
     static resolveShotAttempt(shotType, shooter, gk, attPower, defPower, tactics = {}) {
         const getVal = (pl, attr) => (pl && typeof pl[attr] === 'number') ? pl[attr] : (pl?.overall || 68);
 
@@ -708,6 +772,11 @@ class MatchEngine {
         }
 
         let pGoal = base + skillEdge / MATCH_TUNING.skillInfluence;
+
+        // Eigenschaften und Signaturen wirken auch ohne Livespiel - ein
+        // eiskalter Vollstrecker trifft im Sofort-Ergebnis genauso öfter
+        const w = MatchEngine.eigenschaftsWirkung(shooter, gk, shotType);
+        pGoal = pGoal * w.faktor + w.zuschlag;
         pGoal = _Random.clamp(pGoal, MATCH_TUNING.minGoalChance, MATCH_TUNING.maxGoalChance);
 
         let pSave = 0.42 - skillEdge / 500;
@@ -1059,7 +1128,9 @@ class MatchEngine {
             const defenders = defPlayers.filter(p => ["IV", "LV", "RV", "DM"].includes(defPos(p)));
             const gk = defPlayers.find(p => defPos(p) === "TW") || defPlayers.find(p => p.pos === "TW") || defPlayers[0];
 
-            const shooter = attackers.length > 0 ? _Random.choice(attackers) : (midfielders[0] || attPlayers[0]);
+            const shooter = attackers.length > 0
+                ? MatchEngine.waehleSchuetze(attackers, attackType, attPos)
+                : (midfielders[0] || attPlayers[0]);
             // Die Ecke tritt der Standardschütze, nicht ein zufälliger Mittelfeldspieler
             const passer = (attackType === "corner" ? schuetze("ecken", isHomeAttacking) : null)
                 || (midfielders.length > 0 ? _Random.choice(midfielders) : (attPlayers[1] || attPlayers[0]));
@@ -2067,7 +2138,21 @@ class MatchEngine {
                     playerInName: event.playerInName
                 });
             }
+            // Im FM-Modus steht bei jedem Abschluss, wer ihn vorbereitet hat
+            if (event.vorbereiterId && ["goal", "save", "shot_miss"].includes(event.type)) {
+                getOrCreateStats(event.vorbereiterId).chancen++;
+            }
         });
+
+        // Gewonnene Zweikaempfe aus dem Livespiel (FM-Modus)
+        if (timeline.fmSpieler && typeof timeline.fmSpieler === "object") {
+            Object.keys(timeline.fmSpieler).forEach(id => {
+                const w = timeline.fmSpieler[id];
+                if (!w) return;
+                const echteId = allPlayers.some(p => String(p.id) === id) ? allPlayers.find(p => String(p.id) === id).id : id;
+                getOrCreateStats(echteId).tackles += Math.min(6, w.zweikampf || 0) * 0.5;
+            });
+        }
 
         // Startaufstellungen ermitteln (B12)
         const initialHomeLineupIds = match.lineups?.home || clubLineup(homeClub);
@@ -2240,11 +2325,17 @@ class MatchEngine {
         const homePossession = pos[0];
         const awayPossession = pos[1];
 
-        const homePassAcc = _Random.clamp(Math.round(80 + (homeClub.tactics?.passing === "short" ? 5 : (homeClub.tactics?.passing === "direct" ? -5 : 0)) + _Random.int(-3, 3)), 70, 92);
-        const awayPassAcc = _Random.clamp(Math.round(80 + (awayClub.tactics?.passing === "short" ? 5 : (awayClub.tactics?.passing === "direct" ? -5 : 0)) + _Random.int(-3, 3)), 70, 92);
+        const gemessen = (k, i) => Array.isArray(timeline[k]) && typeof timeline[k][i] === "number" ? timeline[k][i] : null;
+        const homePassAccZufall = _Random.clamp(Math.round(80 + (homeClub.tactics?.passing === "short" ? 5 : (homeClub.tactics?.passing === "direct" ? -5 : 0)) + _Random.int(-3, 3)), 70, 92);
+        const awayPassAccZufall = _Random.clamp(Math.round(80 + (awayClub.tactics?.passing === "short" ? 5 : (awayClub.tactics?.passing === "direct" ? -5 : 0)) + _Random.int(-3, 3)), 70, 92);
 
-        const homeTacklesWon = _Random.clamp(Math.round(55 + (homeClub.tactics?.pressing === "high" ? 6 : -4) + _Random.int(-4, 4)), 45, 75);
-        const awayTacklesWon = _Random.clamp(Math.round(55 + (awayClub.tactics?.pressing === "high" ? 6 : -4) + _Random.int(-4, 4)), 45, 75);
+        const homePassAcc = gemessen("passAccuracy", 0) ?? homePassAccZufall;
+        const awayPassAcc = gemessen("passAccuracy", 1) ?? awayPassAccZufall;
+        const homeTacklesWonZufall = _Random.clamp(Math.round(55 + (homeClub.tactics?.pressing === "high" ? 6 : -4) + _Random.int(-4, 4)), 45, 75);
+        const awayTacklesWonZufall = _Random.clamp(Math.round(55 + (awayClub.tactics?.pressing === "high" ? 6 : -4) + _Random.int(-4, 4)), 45, 75);
+
+        const homeTacklesWon = gemessen("tacklesWon", 0) ?? homeTacklesWonZufall;
+        const awayTacklesWon = gemessen("tacklesWon", 1) ?? awayTacklesWonZufall;
 
         // Aussagekräftige Zusammenfassung (D19)
         let summaryText = "";
@@ -2347,8 +2438,80 @@ class MatchEngine {
     }
 
     /**
+     * Was im FM-Modus vorab feststeht: der Rahmen der Partie. Wechsel der
+     * KI, Verletzungen, Halbzeit und Abpfiff. Alles, was auf dem Platz
+     * entschieden wird - Schüsse, Tore, Fouls, Karten, Ecken - entsteht erst
+     * im Spiel.
+     */
+    static RAHMEN_TYPEN = ["substitution", "injury", "halftime", "fulltime"];
+
+    static nurRahmen(timeline) {
+        const rahmen = (timeline || []).filter(ev => ev && MatchEngine.RAHMEN_TYPEN.includes(ev.type));
+        // Die Zusatzangaben (Nachspielzeit) haengen am Array selbst
+        ["extraTime", "possession"].forEach(k => { if (timeline && timeline[k] !== undefined) rahmen[k] = timeline[k]; });
+        return rahmen;
+    }
+
+    /** Die Werte, mit denen ein Spieler im Livespiel entscheidet und ausführt */
+    static WERTE_2D = ["shooting", "passing", "dribbling", "defense", "physical", "technique", "positioning",
+        "vision", "pace", "stamina", "reflexes", "handling", "oneOnOne", "kicking"];
+
+    /**
+     * Werte eines Spielers für das Feld - so, wie er heute drauf ist.
+     *
+     * Vorher kannte der Spieler auf dem 2D-Feld nur Tempo, Ausdauer und
+     * Übersicht. Passen, Dribbeln, Schießen und Zweikampf fielen in der
+     * Spielsimulation auf einen Einheitswert von 70 zurück - ein Weltstar
+     * passte genauso wie ein Kreisligaspieler. Jetzt trägt jeder seine
+     * eigenen Werte aufs Feld, eingefärbt von Kondition, Moral und Form und
+     * gedämpft, wenn er auf einer fremden Position spielt. Dazu kommen die
+     * Wirkungen seiner Eigenheiten und seiner Signatur.
+     */
+    static werte2D(player, deployedPos = null, versatz = 0) {
+        const ovr = player?.overall || 60;
+        const fitness = 0.9 + ((player?.fitness ?? 100) / 100) * 0.1;
+        const moral = 0.97 + ((player?.morale ?? 75) / 100) * 0.04;
+        const form = 0.96 + ((player?.form ?? 7) / 10) * 0.06;
+        const position = 0.5 + this.getPositionModifier(player, deployedPos) * 0.5;
+        const faktor = fitness * moral * form * position;
+        const w = {};
+        // Erst aufs Niveau der Partie heben, dann Tagesform und Position -
+        // so kostet die falsche Position in jeder Liga gleich viel
+        this.WERTE_2D.forEach(k => {
+            const v = typeof player?.[k] === "number" ? player[k] : ovr;
+            w[k] = Math.round(Math.max(1, Math.min(99, v + versatz)) * faktor * 10) / 10;
+        });
+        w.overall = Math.max(1, Math.min(99, ovr + versatz));
+        w.foot = player?.foot || null;
+        w.signatur = player?.signatur || null;
+        w.temperament = player?.hiddenAttributes?.temperament ?? 12;
+        const eig = _eigEngine();
+        w.eig = eig ? eig.wirkung(player) : {};
+        return w;
+    }
+
+    /**
      * Erstellt eine interaktive LiveMatch-Instanz für die 2D-Live-Simulation
      */
+    /**
+     * FM-Modus: Um wie viel die Werte einer Partie verschoben werden, damit
+     * ihr Schnitt bei 70 liegt.
+     *
+     * Die Werte sind absolut - in der Landesliga liegen sie um 25, in der
+     * Bundesliga um 80. Das Livespiel rechnet aber an einigen Stellen mit
+     * festen Schwellen (traut er sich den Schuss zu, kommt er aufs Tor).
+     * Gemessen kamen zwei Landesligisten so auf zehn Schüsse im Spiel statt
+     * auf zwanzig. Wie im FM zählt, wer besser ist als sein Gegenüber: Die
+     * Verschiebung hebt beide Mannschaften gleich an, jeder Unterschied
+     * zwischen den Spielern bleibt erhalten.
+     */
+    static fmVersatz(lineups) {
+        const alle = (lineups || []).flat().filter(Boolean);
+        if (!alle.length) return 0;
+        const schnitt = alle.reduce((s, p) => s + (p.overall || 60), 0) / alle.length;
+        return Math.round((70 - schnitt) * 10) / 10;
+    }
+
     static createLiveMatch(match, homeClub, awayClub, allPlayers, options = {}) {
         return new LiveMatch(match, homeClub, awayClub, allPlayers, options);
     }
@@ -2450,6 +2613,9 @@ class LiveMatch {
         this.allPlayers = allPlayers;
 
         this.userSide = (options.userSide === "home" || options.userSide === "away") ? options.userSide : null;
+        // "fm": Die Partie entsteht auf dem Platz aus den Entscheidungen der
+        // Spieler. "timeline": Die vorab erzeugte Zeitleiste wird inszeniert.
+        this.modus = options.modus === "fm" ? "fm" : "timeline";
         const del = options.delegation || {};
         this.delegation = {
             wechsel: this.userSide ? !!del.wechsel : true,
@@ -2535,11 +2701,21 @@ class LiveMatch {
         const selbstEntscheiden = this.userSide && !this.delegation.wechsel;
         const fremdeWechsel = selbstEntscheiden && Array.isArray(match.timeline)
             && match.timeline.some(ev => ev.type === "substitution" && ev.team === this.userSide);
-        if (!match.timeline || match.timeline.length === 0 || fremdeWechsel) {
+        if (this.modus === "fm") {
+            // Im FM-Modus steht vorab nur der Rahmen - gespielt wird live
+            match.timeline = MatchEngine.nurRahmen(MatchEngine.generateTimeline(match, homeClub, awayClub, allPlayers,
+                this._timelineOptionen(1)));
+        } else if (!match.timeline || match.timeline.length === 0 || fremdeWechsel) {
             match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, allPlayers,
                 this._timelineOptionen(1));
         }
         this.timeline = match.timeline;
+        // Was im FM-Modus gemessen wird: Ballbesitz in Spielsekunden, Paesse,
+        // Zweikaempfe - und je Spieler die gewonnenen Zweikaempfe
+        this.fmStats = {
+            besitz: [0, 0], paesse: [0, 0], angekommen: [0, 0],
+            zweikaempfe: [0, 0], gewonnen: [0, 0], spieler: {}
+        };
         this.timelineIndex = 0;
 
         const targetPos = this.timeline.possession || [50, 50];
@@ -2583,6 +2759,7 @@ class LiveMatch {
         this.celebratingTeam = null;
         this.sceneRoles = null;
         this.kits = ermittleTrikots(homeClub, awayClub);
+        this.fmVersatz = this.modus === "fm" ? MatchEngine.fmVersatz([this.homeLineup, this.awayLineup]) : 0;
         this.players2D = this.initialize2DPositions();
         // Wer das Feld verlaesst (Platzverweis, Auswechslung), geht noch sichtbar
         // zur Seitenlinie - nur fuer das Bild, in der Simulation ist er weg.
@@ -2720,7 +2897,8 @@ class LiveMatch {
                 vision: p.vision || p.overall || 65,
                 freshness: 1,
                 color: this.kits.home.farbe,
-                textColor: this.kits.home.text
+                textColor: this.kits.home.text,
+                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmVersatz) : {})
             });
         });
 
@@ -2751,7 +2929,8 @@ class LiveMatch {
                 vision: p.vision || p.overall || 65,
                 freshness: 1,
                 color: this.kits.away.farbe,
-                textColor: this.kits.away.text
+                textColor: this.kits.away.text,
+                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmVersatz) : {})
             });
         });
 
@@ -2767,10 +2946,17 @@ class LiveMatch {
 
         // Signatur ist (match, homeClub, awayClub, allPlayers, options) - ohne
         // das Match als erstes Argument lief die Resimulation ins Leere.
-        const newRemainder = MatchEngine.generateTimeline(this.match, this.homeClub, this.awayClub, this.allPlayers,
+        let newRemainder = MatchEngine.generateTimeline(this.match, this.homeClub, this.awayClub, this.allPlayers,
             this._timelineOptionen(startMin));
+        if (this.modus === "fm") newRemainder = MatchEngine.nurRahmen(newRemainder);
 
-        this.timeline = [...playedEvents, ...newRemainder];
+        const neu = [...playedEvents, ...newRemainder];
+        // Die Zusatzangaben bleiben die der Partie
+        ["extraTime", "possession"].forEach(k => {
+            if (this.timeline[k] !== undefined) neu[k] = this.timeline[k];
+            else if (newRemainder[k] !== undefined) neu[k] = newRemainder[k];
+        });
+        this.timeline = neu;
         this.match.timeline = this.timeline;
     }
 
@@ -3340,7 +3526,7 @@ class LiveMatch {
             // Für Live-Noten und Gegneranalyse
             assistId: ev.assistId ?? null,
             gkId: ev.gkId ?? null,
-            vonId: ev.fromPlayerId ?? null,
+            vonId: ev.fromPlayerId ?? ev.vorbereiterId ?? null,
             zuId: ev.toPlayerId ?? null,
             schuetzeId: ev.shooterId ?? null,
             schuetzeName: ev.shooterName || null,
@@ -3583,6 +3769,7 @@ class LiveMatch {
             p2d.pace = playerIn.pace || playerIn.overall || 70;
             p2d.stamina = playerIn.stamina || 75;
             p2d.vision = playerIn.vision || playerIn.overall || 65;
+            if (this.modus === "fm") Object.assign(p2d, MatchEngine.werte2D(playerIn, p2d.pos, this.fmVersatz));
             // Ein eingewechselter Spieler kommt frisch aufs Feld
             p2d.freshness = 1;
             p2d.verletzt = false;
@@ -3973,6 +4160,14 @@ class LiveMatch {
         if (this.angemeldeteWechsel.length > 0) this.fuehreAngemeldeteWechselAus();
         // Den Rest verwaltet der Co-Trainer
         this.coTrainerUebernimmt();
+        // Im FM-Modus wurde bisher live gespielt - der Rest der Partie wird
+        // jetzt in einem Zug berechnet, mit dem Stand, der auf dem Platz steht
+        if (this.modus === "fm") {
+            this._fmGemessen = true;
+            if (this.director) this.director.flushScene();
+            this.modus = "timeline";
+            this.resimulateRemainder();
+        }
         while (this.timelineIndex < this.timeline.length) {
             const ev = this.timeline[this.timelineIndex];
             this.minute = Math.max(this.minute, ev.minute);
@@ -4005,6 +4200,20 @@ class LiveMatch {
     finishMatch() {
         this.isFinished = true;
         this.currentPhase = "full_time";
+        // Was live gemessen wurde, steht so auch im Spielbericht
+        if (this.modus === "fm" || this._fmGemessen) {
+            const f = this.fmStats;
+            const summe = f.besitz[0] + f.besitz[1];
+            if (summe > 0) {
+                const heim = Math.round(f.besitz[0] / summe * 100);
+                this.timeline.possession = [heim, 100 - heim];
+            }
+            const quote = (i) => f.paesse[i] > 0 ? Math.round(f.angekommen[i] / f.paesse[i] * 100) : 80;
+            this.timeline.passAccuracy = [quote(0), quote(1)];
+            const zk = (i) => f.zweikaempfe[i] > 0 ? Math.round(f.gewonnen[i] / f.zweikaempfe[i] * 100) : 50;
+            this.timeline.tacklesWon = [zk(0), zk(1)];
+            this.timeline.fmSpieler = f.spieler;
+        }
         MatchEngine.applyTimelineToMatch(this.match, this.timeline, this.homeClub, this.awayClub, this.allPlayers);
         this.homeScore = this.match.homeGoals;
         this.awayScore = this.match.awayGoals;

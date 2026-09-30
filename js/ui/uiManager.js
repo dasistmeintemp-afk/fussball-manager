@@ -2798,7 +2798,7 @@ class UIManager {
             return `
                 <tr class="row-clickable" data-player-id="${p.id}" title="Details zu ${this.escapeHtml(p.name)} öffnen">
                     <td class="sq-status">${statusBadge}</td>
-                    <td class="sq-name"><strong>${this.escapeHtml(p.name)}</strong><span class="squad-role-hint">${this.escapeHtml(p.squadRole || "Kader")} · ${p.age} J.</span></td>
+                    <td class="sq-name"><strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}<span class="squad-role-hint">${this.escapeHtml(p.squadRole || "Kader")} · ${p.age} J.</span></td>
                     <td class="sq-pos nowrap">
                         <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>${secondaryHtml}
                     </td>
@@ -4108,6 +4108,19 @@ class UIManager {
         }[ch]));
     }
 
+    /** Die Signatur-Eigenschaft eines Topspielers (Name, Symbol, Text) oder null */
+    signaturVon(player) {
+        const eig = (typeof EigenschaftenEngine !== "undefined") ? EigenschaftenEngine
+            : (typeof window !== "undefined" ? window.EigenschaftenEngine : null);
+        return eig && player ? eig.signaturVon(player) : null;
+    }
+
+    /** Kleines Symbol hinter dem Namen in Listen - mit Namen als Tooltip */
+    signaturMarke(player) {
+        const s = this.signaturVon(player);
+        return s ? ` <span class="signatur-mini" title="${this.escapeHtml(s.name + ": " + s.text)}">${s.icon}</span>` : "";
+    }
+
     /**
      * Hinweisbox mit Spielern, die deutlich außerhalb ihrer Position spielen
      */
@@ -5109,7 +5122,7 @@ class UIManager {
                 return `
                     <tr class="row-clickable" data-player-id="${p.id}" title="Details zu ${this.escapeHtml(p.name)} anzeigen">
                         <td class="tm-name">
-                            <strong>${this.escapeHtml(p.name)}</strong>
+                            <strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}
                             <span class="tm-sub">${this.escapeHtml(p.nationality || "Profi")} · ${p.age} J.</span>
                         </td>
                         <td class="tm-verein">${club ? vereinsName : '<span class="badge badge-success">Ablösefrei</span>'}</td>
@@ -7271,7 +7284,7 @@ class UIManager {
                     Object.assign({ userClubId: state.userClubId, leagueDataCoverage: 85 }, this.starContext())) : null;
                 return `<tr class="row-clickable" data-player-id="${esc(p.id)}">
                     <td><span class="pos-tag pos-${g}">${esc(p.pos)}</span></td>
-                    <td><strong>${esc(p.name)}</strong><span class="tm-sub">${esc(p.nationality || "")}</span></td>
+                    <td><strong>${esc(p.name)}</strong>${this.signaturMarke(p)}<span class="tm-sub">${esc(p.nationality || "")}</span></td>
                     <td>${p.age}</td>
                     <td class="nowrap">${card ? card.abilityStarsHtml : this.abilityStarsFor(p, { compact: true })}</td>
                     <td class="nowrap vd-wert">${card ? card.visibleValueText : this.geldKurz(p.value)}</td>
@@ -7383,13 +7396,25 @@ class UIManager {
 
         // Eigenheiten: was diesem Spieler auf dem Platz eigen ist
         let eigenheitenHtml = "";
-        if (Array.isArray(player.traits) && player.traits.length > 0) {
+        const signatur = this.signaturVon(player);
+        const eigenheiten = Array.isArray(player.traits) ? player.traits : [];
+        if (eigenheiten.length > 0 || signatur) {
             eigenheitenHtml = `
                 <div class="dash-card mb-3" style="padding:14px; background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.2);">
                     <h4 style="font-size:13px; margin-bottom:8px; color:#f59e0b;">⚽ Auf dem Platz</h4>
+                    ${signatur ? `
+                        <div class="signatur-karte">
+                            <span class="signatur-icon">${signatur.icon}</span>
+                            <div>
+                                <div class="signatur-name">${this.escapeHtml(signatur.name)} <span class="signatur-marke">Signatur</span></div>
+                                <div class="signatur-text">${this.escapeHtml(signatur.text)}</div>
+                            </div>
+                        </div>` : ""}
+                    ${eigenheiten.length ? `
                     <ul style="margin:0; padding-left:18px; font-size:12px; color:#e2e8f0; line-height:1.6;">
-                        ${player.traits.map(t => `<li>${this.escapeHtml(t.text)}</li>`).join("")}
-                    </ul>
+                        ${eigenheiten.map(t => `<li>${this.escapeHtml(t.text)}</li>`).join("")}
+                    </ul>` : ""}
+                    <div style="font-size:11px; color:var(--text-muted, #94a3b8); margin-top:8px;">Im Livespiel entscheiden diese Eigenschaften mit: wie er spielt und wie gut es gelingt.</div>
                 </div>
             `;
         }
@@ -7898,7 +7923,10 @@ class UIManager {
         const einstellungen = this.liveEinstellungen();
         const liveMatch = MatchEngine.createLiveMatch(match, homeClub, awayClub, state.players, {
             userSide,
-            delegation: { ...einstellungen.delegation }
+            delegation: { ...einstellungen.delegation },
+            // Wie im Football Manager: Das Spiel entsteht auf dem Platz aus den
+            // Entscheidungen der Spieler - nach ihren Werten und Eigenschaften
+            modus: "fm"
         });
         this.app.currentLiveMatch = liveMatch;
         this.coach = null;

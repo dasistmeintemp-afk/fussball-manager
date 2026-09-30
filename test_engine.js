@@ -29,6 +29,7 @@ const { OpponentAnalysisEngine } = require('./js/engine/opponentAnalysisEngine.j
 const { PositionEngine } = require('./js/engine/positionEngine.js');
 const { TacticsEngine } = require('./js/engine/tacticsEngine.js');
 const { MatchFlowEngine } = require('./js/engine/matchFlowEngine.js');
+const { EigenschaftenEngine } = require('./js/engine/eigenschaftenEngine.js');
 const { GameState, FORMATION_CONFIGS } = require('./js/engine/gameState.js');
 const { MatchEngine, LiveMatch, MATCH_TUNING } = require('./js/engine/matchEngine.js');
 const { TransferEngine } = require('./js/engine/transferEngine.js');
@@ -6581,6 +6582,270 @@ function runEngineTests() {
             plan.forEach(r => r.matches.forEach(m => paare.add(`${m.homeClubId}-${m.awayClubId}`)));
             if (paare.size !== anzahl * (anzahl - 1)) throw new Error(`${anzahl} Vereine: ${paare.size} verschiedene Heimspiele statt ${anzahl * (anzahl - 1)}`);
         });
+    });
+
+    // ------------------------------------------------------------------
+    // FM-Modus: Das Livespiel entsteht aus Entscheidungen nach Spielerwerten
+    // ------------------------------------------------------------------
+
+    const fmSpiel = (state, heimId, gastId, id, optionen = {}) => {
+        const heim = state.clubs.find(c => c.id === heimId);
+        const gast = state.clubs.find(c => c.id === gastId);
+        const partie = { id, played: false, homeClubId: heim.id, awayClubId: gast.id };
+        const live = MatchEngine.createLiveMatch(partie, heim, gast, optionen.spieler || state.players,
+            Object.assign({ modus: "fm" }, optionen.live || {}));
+        live.speed = optionen.speed || 1;
+        const schritt = optionen.schritt || 100;
+        let k = 0;
+        while (!live.isFinished && k++ < 200000) {
+            // Ohne updateBallAndPlayers bewegt sich niemand - und wer sich
+            // nicht bewegt, kommt nie zum Abschluss
+            live.advanceRealTime(schritt);
+            live.updateBallAndPlayers(schritt);
+            if (optionen.jeBild) optionen.jeBild(live);
+        }
+        return { live, partie };
+    };
+
+    test("FM-Modus: Die Zeitleiste gibt nur den Rahmen vor, Tore und Schüsse entstehen im Spiel", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "FM" });
+        const { live, partie } = fmSpiel(state, "lev", "fca", "fm_rahmen");
+        if (!live.isFinished) throw new Error("Das Spiel wurde nicht beendet");
+
+        const schuesse = live.timeline.filter(e => ["goal", "save", "shot_miss"].includes(e.type));
+        if (schuesse.length < 8) throw new Error(`Nur ${schuesse.length} Abschlüsse in neunzig Minuten`);
+        const ohneFm = schuesse.filter(e => !e.fm);
+        if (ohneFm.length) throw new Error(`${ohneFm.length} Abschlüsse stammen aus der vorab gewürfelten Zeitleiste`);
+        const tore = live.timeline.filter(e => e.type === "goal");
+        if (tore.length !== partie.homeGoals + partie.awayGoals) {
+            throw new Error(`${tore.length} Tore in der Zeitleiste, Ergebnis ${partie.homeGoals}:${partie.awayGoals}`);
+        }
+        // Jeder Abschluss hat einen Schützen und eine Chancenqualität
+        const ohneXg = schuesse.filter(e => !(e.xG > 0) || !(e.playerId || e.shooterId));
+        if (ohneXg.length) throw new Error(`${ohneXg.length} Abschlüsse ohne Schützen oder xG`);
+
+        // Gemessen statt gewürfelt: Ballbesitz ergibt hundert, die Passquote ist plausibel
+        const st = partie.stats;
+        if (Math.abs(st.possession[0] + st.possession[1] - 100) > 1) throw new Error(`Ballbesitz ${st.possession.join(":")}`);
+        st.passAccuracy.forEach(q => {
+            if (!(q >= 55 && q <= 95)) throw new Error(`Passquote ${st.passAccuracy.join(":")} ist nicht gemessen`);
+        });
+        if (!(live.timeline.passAccuracy && live.timeline.possession)) throw new Error("Die Messwerte fehlen in der Zeitleiste");
+    });
+
+    test("FM-Modus: Live-Anzeige und Spielbericht zählen dasselbe - auch mit Wechsel", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "FM" });
+        const heim = state.clubs.find(c => c.id === "lev");
+        let gewechselt = false;
+        const { live, partie } = fmSpiel(state, "lev", "fca", "fm_paritaet", {
+            speed: 2, schritt: 40,
+            live: { userSide: "home", delegation: { wechsel: false, taktik: false } },
+            jeBild: (l) => {
+                if (gewechselt || l.minute < 60) return;
+                const raus = l.homeLineup.find(p => p.pos !== "TW");
+                const rein = l.bank.home[0];
+                if (raus && rein) l.substitute("home", raus.id, rein);
+                gewechselt = true;
+            }
+        });
+        if (!heim) throw new Error("Heimverein fehlt");
+        ["shots", "shotsOnTarget", "corners", "fouls", "yellowCards", "redCards"].forEach(k => {
+            const a = live.stats[k], b = partie.stats[k];
+            if (a[0] !== b[0] || a[1] !== b[1]) throw new Error(`${k}: live ${a.join(":")}, Bericht ${b.join(":")}`);
+        });
+        if (live.homeScore !== partie.homeGoals || live.awayScore !== partie.awayGoals) {
+            throw new Error(`Ergebnis live ${live.homeScore}:${live.awayScore}, Bericht ${partie.homeGoals}:${partie.awayGoals}`);
+        }
+    });
+
+    test("FM-Modus: Sofort beenden übernimmt den Spielstand und rechnet den Rest weiter", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "FM" });
+        const heim = state.clubs.find(c => c.id === "lev");
+        const gast = state.clubs.find(c => c.id === "fca");
+        const partie = { id: "fm_sofort", played: false, homeClubId: heim.id, awayClubId: gast.id };
+        const live = MatchEngine.createLiveMatch(partie, heim, gast, state.players, { modus: "fm" });
+        live.speed = 1;
+        let k = 0;
+        while (!live.isFinished && live.minute < 35 && k++ < 100000) {
+            live.advanceRealTime(100);
+            live.updateBallAndPlayers(100);
+        }
+        const stand = [live.homeScore, live.awayScore];
+        live.skipToEnd();
+        if (!live.isFinished) throw new Error("Nach Sofort beenden läuft das Spiel noch");
+        if (partie.homeGoals < stand[0] || partie.awayGoals < stand[1]) {
+            throw new Error(`Stand ${stand.join(":")} zur Pause, Endstand ${partie.homeGoals}:${partie.awayGoals}`);
+        }
+        const tore = live.timeline.filter(e => e.type === "goal");
+        if (tore.length !== partie.homeGoals + partie.awayGoals) throw new Error("Tore und Endstand passen nicht zusammen");
+    });
+
+    test("FM-Modus: Werte entscheiden - die deutlich bessere Elf erspielt sich mehr", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "FM" });
+        const WERTE = ["passing", "vision", "technique", "dribbling", "shooting", "pace", "physical",
+            "defense", "positioning", "reflexes", "handling", "oneOnOne", "kicking", "stamina", "overall"];
+        const heimIds = new Set(state.players.filter(p => p.clubId === "fca").map(p => p.id));
+        const gastIds = new Set(state.players.filter(p => p.clubId === "boc").map(p => p.id));
+        // Dieselben Spieler, nur mit anderen Werten: Der Gast wird stark, der Gastgeber schwach
+        const spieler = state.players.map(p => {
+            if (!heimIds.has(p.id) && !gastIds.has(p.id)) return p;
+            const q = Object.assign({}, p);
+            const d = gastIds.has(p.id) ? 16 : -16;
+            WERTE.forEach(w => { if (typeof q[w] === "number") q[w] = Math.max(25, Math.min(99, q[w] + d)); });
+            return q;
+        });
+        const summe = { xg: [0, 0], schuesse: [0, 0], paesse: [0, 0] };
+        for (let i = 0; i < 3; i++) {
+            const { partie } = fmSpiel(state, "fca", "boc", "fm_werte" + i, { spieler });
+            [0, 1].forEach(j => {
+                summe.xg[j] += partie.stats.xG[j];
+                summe.schuesse[j] += partie.stats.shots[j];
+                summe.paesse[j] += partie.stats.passAccuracy[j];
+            });
+        }
+        if (!(summe.xg[1] > summe.xg[0] * 1.3)) throw new Error(`xG schwach ${summe.xg[0].toFixed(2)} - stark ${summe.xg[1].toFixed(2)}`);
+        if (!(summe.schuesse[1] > summe.schuesse[0])) throw new Error(`Schüsse ${summe.schuesse.join(":")}`);
+        if (!(summe.paesse[1] > summe.paesse[0])) throw new Error(`Passquote ${summe.paesse.join(":")}`);
+    });
+
+    test("FM-Modus: Spieler auf dem Feld tragen ihre echten Werte und Eigenschaften", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "FM" });
+        const star = state.players.find(p => p.clubId === "muc" && p.signatur);
+        if (!star) throw new Error("Der FC Bayern hat keinen Spieler mit Signatur");
+        const w = MatchEngine.werte2D(star, star.pos);
+        if (w.signatur !== star.signatur) throw new Error("Die Signatur fehlt auf dem Feld");
+        if (!w.eig || Object.keys(w.eig).length === 0) throw new Error("Die Wirkung der Eigenschaften fehlt auf dem Feld");
+        if (!(w.shooting > 0 && w.passing > 0)) throw new Error("Die Werte fehlen auf dem Feld");
+        // Außerhalb der eigenen Position spielt er schlechter
+        const fremd = MatchEngine.werte2D(star, star.pos === "TW" ? "ST" : "TW");
+        if (!(fremd.passing < w.passing)) throw new Error("Die Positionseignung wirkt nicht");
+
+        // Die Werte wirken relativ zum Niveau der Partie: Zwei Landesligisten
+        // spielen auf dem Feld mit einem Schnitt von 70, der Abstand bleibt
+        const heim = state.players.filter(p => p.clubId === "ll_han").slice(0, 11);
+        const gast = state.players.filter(p => p.clubId === "ll_vil").slice(0, 11);
+        const versatz = MatchEngine.fmVersatz([heim, gast]);
+        if (!(versatz > 30)) throw new Error(`Landesliga wird nur um ${versatz} angehoben`);
+        const a = { pos: "ZM", overall: 26, passing: 30, fitness: 100, morale: 75, form: 7 };
+        const b = Object.assign({}, a, { passing: 20 });
+        const wa = MatchEngine.werte2D(a, "ZM", versatz), wb = MatchEngine.werte2D(b, "ZM", versatz);
+        if (!(wa.overall > 55 && wa.overall < 95)) throw new Error(`Angehobene Stärke ${wa.overall}`);
+        const vorher = MatchEngine.werte2D(a, "ZM").passing - MatchEngine.werte2D(b, "ZM").passing;
+        if (Math.abs((wa.passing - wb.passing) - vorher) > 0.3) throw new Error("Der Abstand zwischen zwei Spielern ändert sich");
+    });
+
+    test("FM-Modus: Die Abspielstufe ändert nicht, wie eng gedeckt wird", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Tempo" });
+        const heim = state.clubs.find(c => c.id === "lev");
+        const gast = state.clubs.find(c => c.id === "fca");
+        // Zwei Spieler zu dicht beieinander: Nach einer Spielsekunde stehen sie
+        // auf jeder Stufe gleich weit auseinander, egal in wie vielen Bildern
+        const abstandNach = (speed, bilder) => {
+            const live = MatchEngine.createLiveMatch({ id: "t" + speed, played: false, homeClubId: heim.id, awayClubId: gast.id },
+                heim, gast, state.players, { modus: "fm" });
+            live.speed = speed;
+            const d = live.director;
+            const a = { x: 50, y: 50 }, b = { x: 51, y: 50 };
+            const laufJeSpielsekunde = d.getMotionTempo() / d.getClockRate();
+            for (let i = 0; i < bilder; i++) d.separatePlayers([a, b], laufJeSpielsekunde / bilder);
+            return Math.hypot(a.x - b.x, a.y - b.y);
+        };
+        const langsam = abstandNach(1, 8), schnell = abstandNach(4, 1);
+        if (Math.abs(langsam - schnell) > 0.05) throw new Error(`Abstand nach einer Spielsekunde: ${langsam.toFixed(2)} gegen ${schnell.toFixed(2)}`);
+
+        // Die Vorausschau des Deckers: gleiche Laufgeschwindigkeit in Spielzeit,
+        // gleiches Ziel - auf jeder Stufe
+        const ziel = (speed) => {
+            const live = MatchEngine.createLiveMatch({ id: "v" + speed, played: false, homeClubId: heim.id, awayClubId: gast.id },
+                heim, gast, state.players, { modus: "fm" });
+            live.speed = speed;
+            const d = live.director;
+            const decker = live.players2D.find(p => p.team === "home" && p.group === "mid");
+            const gegner = live.players2D.find(p => p.team === "away" && p.pos === "ST");
+            // vx ist je Bildschirmsekunde: auf der schnelleren Stufe entsprechend größer
+            gegner.vx = 4 * d.getMotionTempo(); gegner.vy = 0;
+            d.findMarkingTarget = () => gegner;
+            const z = d.deckungsZiel(decker, decker.x, decker.y, 1, { deckung: "raum" }, {}, live.ball);
+            return z ? z.x : null;
+        };
+        const z1 = ziel(1), z4 = ziel(4);
+        if (z1 !== null && z4 !== null && Math.abs(z1 - z4) > 0.5) throw new Error(`Deckungsziel ${z1.toFixed(1)} gegen ${z4.toFixed(1)}`);
+    });
+
+    test("Eigenschaften: Signaturen gehen an die Besten jeder Liga, höchstens fünf je Verein", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Sig" });
+        if (state.signaturenVersion !== 1) throw new Error("Signaturen wurden nicht vergeben");
+        const mit = state.players.filter(p => p.signatur);
+        if (mit.length < 50) throw new Error(`Nur ${mit.length} Signaturen in der ganzen Welt`);
+        mit.forEach(p => {
+            if (!EigenschaftenEngine.SIGNATUREN[p.signatur]) throw new Error(`Unbekannte Signatur ${p.signatur}`);
+        });
+        const jeVerein = {};
+        mit.forEach(p => { jeVerein[p.clubId] = (jeVerein[p.clubId] || 0) + 1; });
+        const voll = Object.entries(jeVerein).filter(([, n]) => n > EigenschaftenEngine.SIGNATUR_JE_VEREIN);
+        if (voll.length) throw new Error(`Zu viele Signaturen: ${voll.map(([c, n]) => c + " " + n).join(", ")}`);
+
+        // Nur Spitzenspieler ihrer Liga, und es passt zum Profil: kein Torwart als Dribbelkünstler
+        const liga = new Map(state.clubs.map(c => [c.id, c.leagueId]));
+        const staerke = p => p.trueCurrentAbility ?? p.overall * 2;
+        const grenzeJeLiga = {};
+        state.clubs.forEach(c => {
+            if (grenzeJeLiga[c.leagueId]) return;
+            const alle = state.players.filter(p => liga.get(p.clubId) === c.leagueId).map(staerke).sort((a, b) => b - a);
+            grenzeJeLiga[c.leagueId] = alle[Math.floor(alle.length * 0.2)] ?? 0;
+        });
+        const schwach = mit.filter(p => staerke(p) < grenzeJeLiga[liga.get(p.clubId)]);
+        if (schwach.length > mit.length * 0.05) throw new Error(`${schwach.length} Signaturen an Spieler außerhalb der Spitze ihrer Liga`);
+        const torwartFalsch = mit.filter(p => p.pos === "TW" && !["katze", "elfmetertoeter", "mentalitaet"].includes(p.signatur));
+        if (torwartFalsch.length) throw new Error(`Torwart mit Feldspieler-Signatur: ${torwartFalsch[0].signatur}`);
+        const feldFalsch = mit.filter(p => p.pos !== "TW" && ["katze", "elfmetertoeter"].includes(p.signatur));
+        if (feldFalsch.length) throw new Error(`Feldspieler mit Torwart-Signatur: ${feldFalsch[0].signatur}`);
+
+        // Nachreichen für alte Stände verteilt nicht doppelt
+        if (EigenschaftenEngine.sicherstellen(state) !== 0) throw new Error("Signaturen wurden ein zweites Mal vergeben");
+        const alt = { players: state.players.map(p => Object.assign({}, p, { signatur: undefined })), clubs: state.clubs };
+        if (EigenschaftenEngine.sicherstellen(alt) < 50) throw new Error("Ein alter Spielstand bekommt keine Signaturen");
+    });
+
+    test("Eigenschaften: Signaturen und Eigenheiten wirken auf den Abschluss", () => {
+        const w = (sig, traits, art, tw = null) => MatchEngine.eigenschaftsWirkung(
+            { signatur: sig, traits: (traits || []).map(key => ({ key })) }, tw, art);
+        if (!(w("eiskalt", [], "open").faktor >= 1.25)) throw new Error("Der Eiskalte trifft nicht öfter");
+        if (!(w(null, ["knipser"], "open").faktor > 1.1)) throw new Error("Die Eigenheit Knipser wirkt nicht");
+        if (w(null, [], "open").faktor !== 1) throw new Error("Ohne Eigenschaft muss alles beim Alten bleiben");
+        if (!(w("zauberfuss", [], "freekick").faktor > 1.5)) throw new Error("Der Standardkünstler trifft den Freistoß nicht öfter");
+        if (!(w("luftherrscher", [], "corner").faktor > 1.2)) throw new Error("Das Kopfballungeheuer wirkt nach Ecken nicht");
+        const katze = w(null, [], "open", { signatur: "katze" });
+        if (!(katze.faktor <= 0.8)) throw new Error("Die Katze im Tor hält nicht mehr");
+        const killer = w(null, [], "penalty", { signatur: "elfmetertoeter" });
+        if (!(killer.zuschlag < -0.1)) throw new Error("Der Elfmeterkiller hält nicht mehr Elfmeter");
+
+        // Und in der Sofort-Simulation: derselbe Schütze, einmal mit Signatur
+        const basis = { id: 1, overall: 75, shooting: 78, technique: 74, pace: 70, dribbling: 72, physical: 70, pos: "ST" };
+        const tw = { id: 2, overall: 72, reflexes: 72, oneOnOne: 70, positioning: 70, handling: 70, pos: "TW" };
+        const quote = (schuetze) => {
+            let tore = 0;
+            for (let i = 0; i < 6000; i++) {
+                if (MatchEngine.resolveShotAttempt("through_ball", schuetze, tw, { attack: 70 }, { defense: 70 }).outcome === "goal") tore++;
+            }
+            return tore / 6000;
+        };
+        const ohne = quote(basis), mit = quote(Object.assign({}, basis, { signatur: "eiskalt" }));
+        if (!(mit > ohne * 1.12)) throw new Error(`Torquote ohne ${(ohne * 100).toFixed(1)} %, mit Signatur ${(mit * 100).toFixed(1)} %`);
+    });
+
+    test("Eigenschaften: Wer gut abschließt, kommt öfter zum Abschluss", () => {
+        const stark = { id: "a", pos: "ST", shooting: 86, technique: 80, overall: 80 };
+        const schwach = { id: "b", pos: "LA", shooting: 55, technique: 60, overall: 64 };
+        let a = 0;
+        for (let i = 0; i < 3000; i++) if (MatchEngine.waehleSchuetze([stark, schwach], "through_ball").id === "a") a++;
+        if (!(a / 3000 > 0.7)) throw new Error(`Der Torjäger schießt nur in ${(a / 30).toFixed(0)} % der Fälle`);
+        // Nach Flanken zählt die Luft: Das Kopfballungeheuer setzt sich durch
+        const kopf = { id: "k", pos: "ST", shooting: 70, physical: 70, overall: 72, signatur: "luftherrscher" };
+        const klein = { id: "l", pos: "ST", shooting: 70, physical: 70, overall: 72 };
+        let k = 0;
+        for (let i = 0; i < 3000; i++) if (MatchEngine.waehleSchuetze([kopf, klein], "cross").id === "k") k++;
+        if (!(k / 3000 > 0.58)) throw new Error(`Das Kopfballungeheuer kommt nur in ${(k / 30).toFixed(0)} % an den Ball`);
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

@@ -836,6 +836,11 @@ class SeasonEngine {
         SeasonEngine.processRetirements(state);
         SeasonEngine.processContractExpiries(state);
 
+        // Wer sich zum Star entwickelt hat, bekommt seine Signatur - die
+        // Anteile je Liga werden neu aufgefüllt, bestehende bleiben
+        const eigenschaften = _resolve('EigenschaftenEngine', './eigenschaftenEngine.js');
+        if (eigenschaften && typeof eigenschaften.vergebeSignaturen === 'function') eigenschaften.vergebeSignaturen(state);
+
         const gameState = _getGameState();
 
         // Auf- und Abstieg über die gesamte Ligapyramide abwickeln

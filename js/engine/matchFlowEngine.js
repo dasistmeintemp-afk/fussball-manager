@@ -538,6 +538,28 @@ class MatchFlowEngine {
         return { x: this.ownGoalX(team === "home" ? "away" : "home"), y: 50 };
     }
 
+    /** Liegt ein Punkt im Strafraum, auf den diese Mannschaft spielt? */
+    imGegnerStrafraum(punkt, team) {
+        if (!punkt || typeof punkt.x !== "number") return false;
+        const tor = this.gegnerTor(team);
+        return Math.abs(tor.x - punkt.x) < 16 && Math.abs(punkt.y - 50) < 30;
+    }
+
+    /**
+     * Wie dicht der gegnerische Strafraum steht: Feldspieler darin über
+     * vier hinaus. Ein tiefer Block schützt so seinen Strafraum - Pässe
+     * hinein werden abgefangen, Dribblings bleiben hängen, Abschlüsse darin
+     * werden verstellt. Vorher zählte nur der nächste Gegner, und gegen
+     * einen tiefen Block fielen gemessen drei von vier Schüssen im Strafraum.
+     */
+    strafraumDichte(team) {
+        if (!this.fm()) return 0;
+        const tor = this.gegnerTor(team);
+        const drin = this.opponentsOf(team).filter(o => o.pos !== "TW"
+            && Math.abs(tor.x - o.x) < 16 && Math.abs(o.y - 50) < 30).length;
+        return Math.max(0, drin - 4);
+    }
+
     /**
      * Abstand und Sichtwinkel zum Tor in Metern. Das Feld misst 105 x 68
      * Meter, eine Einheit laengs ist also gut ein Meter, quer zwei Drittel.
@@ -566,6 +588,8 @@ class MatchFlowEngine {
         xg *= 1 - 0.2 * Math.min(1, druck);
         const block = this.getLaneRisk(schuetze, this.gegnerTor(schuetze.team), feldspieler);
         xg *= 1 - Math.min(0.3, block * 0.2);
+        // Ein dicht besetzter Strafraum verstellt Winkel und Schussbahn
+        if (this.imGegnerStrafraum(schuetze, schuetze.team)) xg *= 1 - Math.min(0.35, this.strafraumDichte(schuetze.team) * 0.08);
         return { xg: Math.max(0.01, Math.min(0.85, xg)), dist: g.dist, winkel: g.winkel, druck, block };
     }
 
@@ -614,6 +638,8 @@ class MatchFlowEngine {
         const zutrauen = 0.7 + koennen * 0.55 + (e.abschluss || 0) * 2 + (e.ruhe ? 0.08 : 0)
             + (carrier.group === "att" ? 0.12 : carrier.group === "def" ? -0.2 : 0);
         let score = -0.12 + q.xg * 13 * zutrauen;
+        // Im vollen Strafraum sucht er eher den Mitspieler als die Lücke
+        if (this.imGegnerStrafraum(carrier, carrier.team)) score -= this.strafraumDichte(carrier.team) * 0.12;
         // Aus der Distanz schiesst, wer es kann oder soll - die anderen suchen
         // lieber den Weg in den Strafraum
         if (g.dist > 18) score += (e.distanz ? 0.55 : -0.2) + (e.abschlussDistanz || 0) * 5 + (wk.fernschuesse || 0) * 0.4;
@@ -981,6 +1007,11 @@ class MatchFlowEngine {
         // Wer druckfest ist, spielt auch bedraengt sauber
         accuracy -= pressure * 0.11 * (1 - Math.min(0.7, (eg.druckfest || 0) * 0.5));
         accuracy -= (action.laneRisk || 0) * 0.17;
+        // Pässe in einen vollen Strafraum werden eher abgefangen
+        const passZiel = action.target || action.to;
+        if (passZiel && this.imGegnerStrafraum(passZiel, carrier.team)) {
+            accuracy -= Math.min(0.16, this.strafraumDichte(carrier.team) * 0.045);
+        }
         if (isLong) accuracy -= 0.13;
         if (tactics.tempo === "fast") accuracy -= 0.04;
         if (tactics.passing === "short") accuracy += 0.05;
@@ -1078,6 +1109,8 @@ class MatchFlowEngine {
         const fm = this.fm();
         // Im FM-Modus entscheiden die Werte den Zweikampf deutlich
         let chance = 0.6 + edge / (fm ? 140 : 210) - pressure * 0.13 - haerte * 0.05;
+        // In einen vollen Strafraum kommt man nicht einfach hineingedribbelt
+        if (fm && this.imGegnerStrafraum(action.target, carrier.team)) chance -= Math.min(0.2, this.strafraumDichte(carrier.team) * 0.05);
         const ea = fm ? this.eig(carrier) : {};
         const ed = fm && defender ? this.eig(defender) : {};
         chance += (ea.dribbelKoennen || 0) - (ed.zweikampf || 0);

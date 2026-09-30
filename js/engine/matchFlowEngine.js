@@ -581,7 +581,7 @@ class MatchFlowEngine {
      */
     chancenQualitaet(schuetze, opponents, opts = {}) {
         const g = this.torGeometrie(schuetze, schuetze.team);
-        let xg = 1 / (1 + Math.exp(-(-0.75 + 1.7 * g.winkel - 0.12 * g.dist)));
+        let xg = 1 / (1 + Math.exp(-(-0.45 + 1.7 * g.winkel - 0.12 * g.dist)));
         if (opts.kopfball) xg *= 0.6;
         const feldspieler = opponents.filter(o => o.pos !== "TW");
         const druck = Math.min(1.2, this.getPressure(schuetze, feldspieler));
@@ -685,7 +685,9 @@ class MatchFlowEngine {
         const halter = this.torwartWert(gk, nah);
         // Torhueter haben ihre Werte genau dort, wo es zaehlt; ein Schuetze
         // nur zum Teil. Gleich gute Spieler sollen sich die Waage halten.
-        const edge = abschluss - halter + 6;
+        // Der Ausgleich ist so gewählt, dass ein durchschnittlicher Schütze
+        // gegen einen durchschnittlichen Torwart im Mittel seine xG trifft
+        const edge = abschluss - halter + 14;
 
         // Die Chance, verschoben um das Duell Schuetze gegen Torwart
         let pTor = q.xg * Math.max(0.45, Math.min(1.8, 1 + edge / 55));

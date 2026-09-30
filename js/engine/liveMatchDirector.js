@@ -2749,6 +2749,8 @@ class LiveMatchDirector {
         const fremde = team === "home" ? m.awayScore : m.homeScore;
         const minute = m.minute || 0;
         return {
+            minute,
+            derby: !!m.match?.isDerby,
             grosserMoment: !!m.match?.isDerby || (minute >= 70 && eigene < fremde) || (minute >= 85 && eigene === fremde)
         };
     }

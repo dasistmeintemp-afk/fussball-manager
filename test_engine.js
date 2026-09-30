@@ -6125,7 +6125,8 @@ function runEngineTests() {
             for (let i = 0; i < 120; i++) {
                 const tl = MatchEngine.generateTimeline({ id: `cw_${guete}_${i}` }, heim, gast, state.players,
                     { frische, wechselGueteHome: guete });
-                const w = tl.find(e => e.type === "substitution" && e.team === "home" && e.minute >= 60);
+                // Ab der 55. Minute: Wer zurückliegt, wechselt früher
+                const w = tl.find(e => e.type === "substitution" && e.team === "home" && e.minute >= 55);
                 if (!w) continue;
                 erste++;
                 if (w.playerOutId === muede.id) richtig++;
@@ -6846,6 +6847,111 @@ function runEngineTests() {
         let k = 0;
         for (let i = 0; i < 3000; i++) if (MatchEngine.waehleSchuetze([kopf, klein], "cross").id === "k") k++;
         if (!(k / 3000 > 0.58)) throw new Error(`Das Kopfballungeheuer kommt nur in ${(k / 30).toFixed(0)} % an den Ball`);
+    });
+
+    // ------------------------------------------------------------------
+    // Realismus: KI-Trainer, mentale Werte, Heimvorteil
+    // ------------------------------------------------------------------
+
+    test("KI-Trainer: Der Gegner stellt bei Rückstand um und bringt eine Führung über die Zeit", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "KI" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const vorher = JSON.parse(JSON.stringify(gast.tactics));
+        const stufen = ["very_defensive", "defensive", "balanced", "offensive", "very_offensive"];
+        const live = MatchEngine.createLiveMatch({ id: "ki_trainer", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { userSide: "home", modus: "fm" });
+
+        // Der eigene Verein wird nie von der KI umgestellt
+        if (live._kiTrainerPunkte.home) throw new Error("Die KI stellt auch die Mannschaft des Spielers um");
+
+        live.minute = 66; live.homeScore = 1; live.awayScore = 0;
+        const r = live.kiTrainerTakt();
+        const neu = stufen.indexOf(gast.tactics.mentality || "balanced");
+        if (!r.length || !(neu > stufen.indexOf(vorher.mentality || "balanced"))) {
+            throw new Error(`Bei Rückstand keine offensivere Einstellung: ${vorher.mentality} -> ${gast.tactics.mentality}`);
+        }
+        if (!r[0].text.includes(gast.name)) throw new Error("Die Umstellung des Gegners steht nicht im Ticker");
+
+        // Spät knapp in Führung: absichern und auf Zeit spielen
+        live.minute = 84; live.homeScore = 1; live.awayScore = 2;
+        live._kiTrainerPunkte.away = [84];
+        live.kiTrainerTakt();
+        if (gast.tactics.zeitspiel !== "oft") throw new Error("Eine knappe Führung wird nicht über die Zeit gebracht");
+
+        // Nach dem Abpfiff spielt der Gegner wieder mit seiner eigenen Taktik
+        live.finishMatch();
+        if (gast.tactics.mentality !== vorher.mentality || gast.tactics.zeitspiel !== vorher.zeitspiel) {
+            throw new Error("Die Umstellungen des Gegners bleiben nach dem Spiel bestehen");
+        }
+    });
+
+    test("KI-Trainer: In der Sofort-Simulation drückt, wer spät zurückliegt", () => {
+        // Szenen in der Schlussphase: Wer zurückliegt, kommt öfter vor das Tor
+        const state = GameState.createNewGame("muc", "normal", { name: "KI" });
+        const heim = state.clubs.find(c => c.id === "sge");
+        const gast = state.clubs.find(c => c.id === "wob");
+        const szenen = (heimTore, gastTore) => {
+            let heimSzenen = 0, alle = 0;
+            for (let i = 0; i < 60; i++) {
+                const tl = MatchEngine.generateTimeline(heim, gast, state.players,
+                    { startMinute: 76, currentHomeScore: heimTore, currentAwayScore: gastTore });
+                tl.filter(e => ["goal", "save", "shot_miss"].includes(e.type)).forEach(e => {
+                    const angreifer = e.type === "save" ? (e.team === "home" ? "away" : "home") : e.team;
+                    alle++; if (angreifer === "home") heimSzenen++;
+                });
+            }
+            return heimSzenen / Math.max(1, alle);
+        };
+        const zurueck = szenen(0, 1), vorn = szenen(1, 0);
+        if (!(zurueck > vorn + 0.05)) throw new Error(`Heimanteil an Abschlüssen: zurück ${(zurueck * 100).toFixed(0)} %, vorn ${(vorn * 100).toFixed(0)} %`);
+    });
+
+    test("Mentale Werte: Tagesform, Entscheidungen und Nerven hängen an der Persönlichkeit", () => {
+        // Unbeständige Spieler haben gute und schlechte Tage
+        const streuung = (bestaendigkeit) => {
+            const p = { hiddenAttributes: { consistency: bestaendigkeit } };
+            const werte = Array.from({ length: 3000 }, () => MatchEngine.tagesform(p));
+            const m = werte.reduce((s, v) => s + v, 0) / werte.length;
+            return Math.sqrt(werte.reduce((s, v) => s + (v - m) ** 2, 0) / werte.length);
+        };
+        const launisch = streuung(8), bestaendig = streuung(18);
+        if (!(launisch > bestaendig * 2.5)) throw new Error(`Tagesform schwankt ${launisch.toFixed(3)} gegen ${bestaendig.toFixed(3)}`);
+
+        const flow = new MatchFlowEngine({ fm: true });
+        const klug = { vision: 88, positioning: 80, mental: { alter: 30, grosseSpiele: 17, bestaendigkeit: 16, professionalitaet: 16 } };
+        const jung = { vision: 45, positioning: 50, mental: { alter: 18, grosseSpiele: 8, bestaendigkeit: 8, professionalitaet: 9 } };
+        if (!(flow.entscheidungsRauschen(klug) < flow.entscheidungsRauschen(jung) - 0.2)) {
+            throw new Error("Ein erfahrener Spielmacher entscheidet nicht sicherer als ein unerfahrener Spieler");
+        }
+        if (!(flow.nerven(klug) > flow.nerven(jung) + 4)) throw new Error("Die Nervenstärke hängt nicht an großen Spielen und Erfahrung");
+        if (!(flow.konzentration(klug) > flow.konzentration(jung))) throw new Error("Die Konzentration hängt nicht an der Professionalität");
+
+        // Vom Punkt trifft der Nervenstarke öfter
+        const tw = { id: "tw", pos: "TW", team: "away", x: 96, y: 50, reflexes: 70, handling: 70, positioning: 70, oneOnOne: 70 };
+        const quote = (schuetze) => {
+            let tore = 0;
+            for (let i = 0; i < 4000; i++) {
+                if (flow.schussAusgang(schuetze, [tw], { elfmeter: true, xg: 0.76 }).ausgang === "goal") tore++;
+            }
+            return tore / 4000;
+        };
+        const basis = { id: "s", team: "home", pos: "ST", x: 85, y: 50, shooting: 75, technique: 72 };
+        const kalt = quote({ ...basis, mental: klug.mental }), nervoes = quote({ ...basis, mental: jung.mental });
+        if (!(kalt > nervoes + 0.03)) throw new Error(`Elfmeter: nervenstark ${(kalt * 100).toFixed(0)} %, nervös ${(nervoes * 100).toFixed(0)} %`);
+    });
+
+    test("Heimvorteil: Im Livespiel spielt die Heimelf mit dem Publikum im Rücken", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Heim" });
+        const heim = state.clubs.find(c => c.id === "sge");
+        const gast = state.clubs.find(c => c.id === "wob");
+        const live = MatchEngine.createLiveMatch({ id: "heim", played: false, homeClubId: "sge", awayClubId: "wob" },
+            heim, gast, state.players, { modus: "fm" });
+        if (!(live.fmHeim > 1)) throw new Error("Kein Heimvorteil im Livespiel");
+        if (Math.abs((live.fmHeim - 1) - (MatchEngine.heimvorteil(heim) - 1) * 0.5) > 1e-9) throw new Error("Der Heimvorteil im Livespiel folgt nicht dem Stadion");
+        const neutral = MatchEngine.createLiveMatch({ id: "neutral", played: false, homeClubId: "sge", awayClubId: "wob", neutralerPlatz: true },
+            heim, gast, state.players, { modus: "fm" });
+        if (neutral.fmHeim !== 1) throw new Error("Auf neutralem Platz gibt es einen Heimvorteil");
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

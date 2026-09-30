@@ -135,9 +135,12 @@ class MatchFlowEngine {
     attr(player, name, fallback = 70) {
         const v = player?.[name];
         let wert = (typeof v === "number" && v > 0) ? v : fallback;
-        // Ein Mentalitaetsmonster waechst in grossen Momenten ueber sich hinaus
-        const gross = player?.eig?.grossesSpiel;
-        if (gross && player.team && this.lage(player.team)?.grosserMoment) wert += gross;
+        // Ein Mentalitaetsmonster waechst in grossen Momenten ueber sich hinaus,
+        // und wer in grossen Spielen nervenstark ist, auch ein wenig - wer
+        // es nicht ist, verkrampft
+        if (player?.team && (player.eig?.grossesSpiel || player.mental) && this.lage(player.team)?.grosserMoment) {
+            wert += (player.eig?.grossesSpiel || 0) + ((player.mental?.grosseSpiele ?? 12) - 12) * 0.5;
+        }
         // Wer muede ist, macht mehr Fehler - nicht nur beim Laufen
         if (this.fm() && typeof player?.freshness === "number" && player.freshness < 1 && name !== "pace" && name !== "stamina") {
             wert *= 0.88 + 0.12 * Math.max(0, (player.freshness - 0.6) / 0.4);
@@ -148,6 +151,36 @@ class MatchFlowEngine {
     /** Wirkungen der Eigenschaften eines Spielers auf dem Feld (EigenschaftenEngine) */
     eig(player) {
         return (player && player.eig) || {};
+    }
+
+    /**
+     * Mentale Werte im FM-Modus.
+     *
+     * Entscheidungen: Wer das Spiel liest (Übersicht, Stellungsspiel,
+     * Erfahrung), wählt öfter die beste Option. Alle Bewertungen tragen etwas
+     * Zufall - bei ihm weniger, bei einem unerfahrenen Spieler mit wenig
+     * Übersicht mehr. Liefert den Faktor auf diesen Zufall.
+     */
+    entscheidungsRauschen(player) {
+        if (!this.fm() || !player) return 1;
+        const alter = player.mental?.alter ?? 26;
+        const erfahrung = Math.max(35, Math.min(95, 35 + (alter - 17) * 6));
+        const lesen = this.attr(player, "vision") * 0.55 + this.attr(player, "positioning", 60) * 0.25 + erfahrung * 0.2;
+        return Math.max(0.75, Math.min(1.3, 1.45 - lesen / 100 * 0.65));
+    }
+
+    /** Nervenstärke (1-20): große Spiele, Beständigkeit und Erfahrung */
+    nerven(player) {
+        const m = player?.mental;
+        if (!m) return 12;
+        const erfahrung = Math.max(8, Math.min(18, 8 + (m.alter - 18) * 0.7));
+        return m.grosseSpiele * 0.5 + m.bestaendigkeit * 0.3 + erfahrung * 0.2;
+    }
+
+    /** Konzentration (1-20): Professionalität und Beständigkeit */
+    konzentration(player) {
+        const m = player?.mental;
+        return m ? (m.professionalitaet + m.bestaendigkeit) / 2 : 12;
     }
 
     /**
@@ -186,6 +219,13 @@ class MatchFlowEngine {
         // sie auf - so entstehen echte Angriffszüge statt Dauerquerpässe.
         const chain = Math.min(8, context.chainLength || 0);
         forwardDrive *= 1 + chain * 0.07;
+        // Der Konter kennt keine defensive Grundhaltung: Direkt nach dem
+        // Ballgewinn geht es nach vorn, solange der Gegner ungeordnet ist.
+        // Vorher bremste die defensive Mentalitaet auch diesen Moment - ein
+        // Konterteam spielte den eroberten Ball quer und zurueck und kam
+        // gemessen auf neun Schuesse gegen zweiundzwanzig.
+        const kontertGerade = chain <= 2 && (_flowTaktik()?.wirkung(tactics).konter || 0) > 0;
+        if (kontertGerade) forwardDrive = Math.max(forwardDrive, 1.3);
 
         // Die Absicht hängt daran, wo der Ball ist. Im eigenen Drittel wird
         // gesichert zirkuliert - auch quer, auch zurück -, im Mittelfeld
@@ -224,6 +264,7 @@ class MatchFlowEngine {
         // nicht erzwungen, aber deutlich bevorzugt.
         const ziel = context.zielSpieler || null;
         const fm = this.fm();
+        const rauschen = this.entscheidungsRauschen(carrier);
         const zielAbstand = ziel ? Math.hypot(carrier.x - ziel.x, carrier.y - ziel.y) : 0;
 
         return mates.map(mate => {
@@ -379,7 +420,7 @@ class MatchFlowEngine {
                 + taktikScore
                 - longMalus
                 - laneRisk * riskWeight * riskAversion * risikoFaktor
-                + _flowRandom.float(-0.18, 0.18) * freiheit;
+                + _flowRandom.float(-0.18, 0.18) * freiheit * rauschen;
 
             return { type: "pass", target: mate, dist, laneRisk, space, forward, score };
         }).filter(Boolean);
@@ -448,7 +489,7 @@ class MatchFlowEngine {
             + (frei ? (carrier.group === "def" ? 0.8 : 0.55) : 0)
             + taktik
             + eigen
-            + _flowRandom.float(-0.2, 0.2);
+            + _flowRandom.float(-0.2, 0.2) * this.entscheidungsRauschen(carrier);
 
         return { type: "dribble", target: ahead, space, score, frei };
     }
@@ -577,7 +618,7 @@ class MatchFlowEngine {
         // lieber den Weg in den Strafraum
         if (g.dist > 18) score += (e.distanz ? 0.55 : -0.2) + (e.abschlussDistanz || 0) * 5 + (wk.fernschuesse || 0) * 0.4;
         if (tactics.mentality === "offensive" || tactics.mentality === "very_offensive") score += 0.12;
-        score += _flowRandom.float(-0.2, 0.2);
+        score += _flowRandom.float(-0.2, 0.2) * this.entscheidungsRauschen(carrier);
         return { type: "shot", score, xg: q.xg, dist: q.dist, druck: q.druck, block: q.block };
     }
 
@@ -636,6 +677,12 @@ class MatchFlowEngine {
         }
         // Ruhe vor dem Tor: Der Druck des Gegners wiegt weniger
         if (e.ruhe) pTor *= 1 + Math.min(1, q.druck) * 0.1 * e.ruhe;
+        // Nervenstärke: Unter Druck und vom Punkt trifft der Nervenstarke
+        // öfter, der Nervöse seltener
+        if (this.fm() && schuetze.mental) {
+            const nerv = (this.nerven(schuetze) - 12) / 100;
+            pTor *= 1 + nerv * (opts.elfmeter ? 1.5 : 0.4 + Math.min(1, q.druck) * 0.9);
+        }
         pTor = Math.max(0.005, Math.min(opts.elfmeter ? 0.93 : 0.9, pTor));
 
         // Aufs Tor kommt, wer sauber trifft - unabhaengig davon, ob es reicht
@@ -926,6 +973,11 @@ class MatchFlowEngine {
             accuracy += (skill - 0.72) * 0.12;
         }
         accuracy += eg.passKoennen || 0;
+        // Konzentration: In der Schlussphase unterlaufen dem Unkonzentrierten
+        // mehr Fehler, der Profi bleibt bei der Sache
+        if (this.fm() && carrier.mental && (this.lage(carrier.team)?.minute || 0) >= 75) {
+            accuracy += (this.konzentration(carrier) - 12) * 0.003;
+        }
         // Wer druckfest ist, spielt auch bedraengt sauber
         accuracy -= pressure * 0.11 * (1 - Math.min(0.7, (eg.druckfest || 0) * 0.5));
         accuracy -= (action.laneRisk || 0) * 0.17;

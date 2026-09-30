@@ -577,8 +577,7 @@ class MatchEngine {
 
         // Heimvorteil (beeinflusst durch Stadion-Infrastruktur C2 & Atmosphäre)
         if (isHome) {
-            const stadiumLvl = club.facilities?.stadium || 2;
-            const homeAtmosphere = 1.03 + (stadiumLvl * 0.008);
+            const homeAtmosphere = MatchEngine.heimvorteil(club);
             attack *= homeAtmosphere;
             midfield *= homeAtmosphere;
             defense *= homeAtmosphere;
@@ -894,6 +893,20 @@ class MatchEngine {
             : this.calculateTeamPower(homeClub, allPlayers, true, activeHomePlayers);
         const awayPower = this.calculateTeamPower(awayClub, allPlayers, false, activeAwayPlayers);
 
+        // Tagesform: der Schnitt der Elf, wie im Livespiel je Spieler gewürfelt
+        // (oder von dort übernommen, damit eine Neuberechnung sie nicht neu würfelt)
+        const teamForm = (lineup, gegeben) => {
+            if (typeof gegeben === "number") return gegeben;
+            if (!lineup.length) return 1;
+            return lineup.reduce((sum, p) => sum + MatchEngine.tagesform(p), 0) / lineup.length;
+        };
+        const formHeim = teamForm(activeHomePlayers, options.tagesformHome);
+        const formGast = teamForm(activeAwayPlayers, options.tagesformAway);
+        [[homePower, formHeim], [homePowerNeutral, formHeim], [awayPower, formGast]].forEach(([pw, f]) => {
+            pw.attack *= f; pw.midfield *= f; pw.defense *= f; pw.goalkeeper *= f;
+            pw.total *= f;
+        });
+
         // Ballbesitz & Passquote (B11)
         const homeTactics = homeClub.tactics || {};
         const awayTactics = awayClub.tactics || {};
@@ -1042,6 +1055,32 @@ class MatchEngine {
         const frischeVon = (p) => {
             const f = options.frische instanceof Map ? options.frische.get(p.id) : undefined;
             return typeof f === "number" ? f * 100 : (p.fitness || 100);
+        };
+
+        // Wie der Trainer auf den Spielstand reagiert - dieselbe Überlegung
+        // wie im Livespiel (LiveMatch.trainerStelltUm): Bei Rückstand ab der
+        // 55. Minute offensiver, bei zwei Toren Rückstand sofort, in der
+        // Schlussphase noch einmal; eine Führung wird ab der 75. gesichert,
+        // ein Remis kurz vor Schluss noch einmal angegriffen. Vorher drückte
+        // die zurückliegende Mannschaft ab der ersten Minute, auch beim 0:1
+        // nach zehn Minuten. Im Livespiel stellen die Trainer selbst um -
+        // dort ist die Reaktion hier abgeschaltet.
+        // Liefert Stufen: +2 volles Risiko, +1 offensiver, -1 absichern.
+        const trainerReagiert = {
+            home: options.trainerReaktionHome !== false,
+            away: options.trainerReaktionAway !== false
+        };
+        const reaktionsStufe = (side, min) => {
+            if (!trainerReagiert[side]) return 0;
+            const eigene = side === "home" ? currentHomeScore : currentAwayScore;
+            const fremde = side === "home" ? currentAwayScore : currentHomeScore;
+            if (eigene < fremde) {
+                if (min >= 75) return 2;
+                if (min >= 55 || fremde - eigene >= 2) return 1;
+                return 0;
+            }
+            if (eigene > fremde) return min >= 75 ? -1 : 0;
+            return min >= 83 ? 1 : 0;
         };
 
         // Zurufe von der Seitenlinie: [{ side, art, von, bis }]
@@ -1232,9 +1271,12 @@ class MatchEngine {
                 staminaBonus = (attAvgStamina - defAvgStamina) * 0.15;
             }
 
-            // Rückstand erhöht Offensive / Chancenqualität (Momentum)
-            const scoreDiff = isHomeAttacking ? (currentAwayScore - currentHomeScore) : (currentHomeScore - currentAwayScore);
-            const momentumBonus = scoreDiff > 0 ? 4 : (scoreDiff < 0 ? -2 : 0);
+            // Trainerreaktion: Die eigene Offensive wird gefährlicher, und wer
+            // selbst aufmacht, lässt hinten Räume - wer mauert, schließt sie
+            const stufeAngriff = reaktionsStufe(isHomeAttacking ? "home" : "away", min);
+            const stufeAbwehr = reaktionsStufe(isHomeAttacking ? "away" : "home", min);
+            const momentumBonus = (stufeAngriff > 0 ? stufeAngriff * 2.5 : stufeAngriff * 1.5)
+                + (stufeAbwehr > 0 ? stufeAbwehr * 2 : stufeAbwehr * 2);
 
             // Zurufe von der Seitenlinie: eigener Druck macht die Abschlüsse
             // gefährlicher, der des Gegners öffnet Räume für den Konter.
@@ -1394,15 +1436,23 @@ class MatchEngine {
             // Kleine Fouls, die vor dieser Szene liegen, zuerst
             while (foulMinuten.length > 0 && foulMinuten[0] < min) kleinesFoul(foulMinuten.shift());
 
-            // KI-Wechsel ab Minute 60 (C17)
-            if (min >= 60 && min <= 82) {
+            // KI-Wechsel ab Minute 60 (C17) - wer zurückliegt, bringt früher
+            // frische Kräfte, und zwar vorne; wer führt, frischt die Abwehr auf
+            if (min >= 55 && min <= 84) {
                 ['home', 'away'].forEach(teamSide => {
                     const isHomeTeam = teamSide === 'home';
                     const subsUsed = isHomeTeam ? homeSubsUsed : awaySubsUsed;
                     const club = isHomeTeam ? homeClub : awayClub;
                     const activePlayers = isHomeTeam ? activeHomePlayers : activeAwayPlayers;
+                    const eigene = isHomeTeam ? currentHomeScore : currentAwayScore;
+                    const fremde = isHomeTeam ? currentAwayScore : currentHomeScore;
+                    const lage = eigene < fremde ? 1 : (eigene > fremde ? -1 : 0);
+                    const ab = lage > 0 ? 55 : 60;
+                    const bis = lage < 0 ? 84 : 82;
+                    const wechselChance = lage > 0 ? 0.3 : 0.2;
 
-                    if (autoWechsel[teamSide] && subsUsed < maxSubs && fensterFrei(teamSide, min) && _Random.chance(0.20)) {
+                    if (min >= ab && min <= bis && autoWechsel[teamSide] && subsUsed < maxSubs
+                        && fensterFrei(teamSide, min) && _Random.chance(wechselChance)) {
                         const benchAvailable = bankVon(isHomeTeam)
                             .map(id => MatchEngine.findPlayer(allPlayers, id))
                             .filter(p => p && (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0 && !activePlayers.some(ap => ap.id === p.id));
@@ -1410,9 +1460,19 @@ class MatchEngine {
                         if (benchAvailable.length > 0) {
                             // Erschöpften oder schwachen Spieler auswechseln -
                             // aber keinen, der schon vom Platz gestellt ist.
+                            // Frische entscheidet, der Spielstand gibt bei
+                            // ähnlich Müden den Ausschlag: Bei Rückstand
+                            // kommen frische Beine nach vorn, bei Führung nach
+                            // hinten. Wer ausgepumpt ist, geht trotzdem zuerst.
+                            const schwerpunkt = (p) => {
+                                const pos = deployedPosOf(p, isHomeTeam);
+                                const vorn = ["ST", "OM", "LA", "RA", "LM", "RM"].includes(pos);
+                                const hinten = ["IV", "LV", "RV", "DM"].includes(pos);
+                                return lage > 0 ? (vorn ? 4 : 0) : (lage < 0 ? (hinten ? 3 : 0) : 0);
+                            };
                             const kandidaten = [...activePlayers]
                                 .filter(p => p.pos !== "TW" && !sentOffPlayerIds.has(p.id))
-                                .sort((a, b) => frischeVon(a) - frischeVon(b));
+                                .sort((a, b) => (frischeVon(a) - schwerpunkt(a)) - (frischeVon(b) - schwerpunkt(b)));
                             const guete = wechselGuete(isHomeTeam);
                             const candidateOut = (guete !== null && _Random.chance((100 - guete) / 160))
                                 ? _Random.choice(kandidaten.slice(0, 4))
@@ -1521,9 +1581,9 @@ class MatchEngine {
             // sie zu einer echten Gelegenheit.
             let homeProb = 0.5 + (neutralerPlatz ? 0 : MATCH_TUNING.homeSceneEdge)
                 + (szenenAbstand / szenenBezug) * MATCH_TUNING.sceneShare;
-            // Momentum: Zurückliegendes Team drückt mehr
-            if (currentHomeScore < currentAwayScore) homeProb += 0.08;
-            else if (currentAwayScore < currentHomeScore) homeProb -= 0.08;
+            // Der Trainer reagiert auf den Spielstand: Wer zurückliegt, macht
+            // mehr Druck, wer spät führt, zieht sich zurück
+            homeProb += (reaktionsStufe("home", min) - reaktionsStufe("away", min)) * 0.035;
 
             // Unterzahl kostet Szenen
             const heimFehlt = activeHomePlayers.filter(p => sentOffPlayerIds.has(p.id)).length;
@@ -2467,6 +2527,27 @@ class MatchEngine {
      * gedämpft, wenn er auf einer fremden Position spielt. Dazu kommen die
      * Wirkungen seiner Eigenheiten und seiner Signatur.
      */
+    /**
+     * Tagesform eines Spielers für eine Partie: Wer unbeständig ist, hat
+     * gute und schlechte Tage - ein beständiger Profi spielt fast immer
+     * gleich. Faktor um 1 (höchstens ±10 %).
+     */
+    static tagesform(player) {
+        const bestaendigkeit = player?.hiddenAttributes?.consistency ?? 12;
+        const streuung = Math.max(0.005, (20 - bestaendigkeit) * 0.005);
+        return 1 + _Random.clamp(_Random.gaussian(0, streuung), -0.1, 0.1);
+    }
+
+    /**
+     * Der Heimvorteil als Faktor: Publikum und Stadion. Beide Engines rechnen
+     * damit - die Sofort-Simulation auf die Mannschaftsstärke, das Livespiel
+     * auf die Werte der Heimspieler.
+     */
+    static heimvorteil(club) {
+        const stadiumLvl = club?.facilities?.stadium || 2;
+        return 1.03 + (stadiumLvl * 0.008);
+    }
+
     static werte2D(player, deployedPos = null, skala = 1) {
         const ovr = player?.overall || 60;
         const fitness = 0.9 + ((player?.fitness ?? 100) / 100) * 0.1;
@@ -2481,6 +2562,15 @@ class MatchEngine {
             w[k] = Math.round(Math.max(1, Math.min(99, v * skala)) * faktor * 10) / 10;
         });
         w.overall = Math.round(Math.max(1, Math.min(99, ovr * skala)) * 10) / 10;
+        // Mentale Werte (versteckt, 1-20): wie beständig, wie nervenstark in
+        // großen Spielen, wie professionell - dazu die Erfahrung
+        const h = player?.hiddenAttributes || {};
+        w.mental = {
+            bestaendigkeit: h.consistency ?? 12,
+            grosseSpiele: h.importantMatches ?? 12,
+            professionalitaet: h.professionalism ?? 12,
+            alter: player?.age ?? 26
+        };
         w.foot = player?.foot || null;
         w.signatur = player?.signatur || null;
         w.temperament = player?.hiddenAttributes?.temperament ?? 12;
@@ -2769,6 +2859,20 @@ class LiveMatch {
         this.sceneRoles = null;
         this.kits = ermittleTrikots(homeClub, awayClub);
         this.fmSkala = this.modus === "fm" ? MatchEngine.fmSkala([this.homeLineup, this.awayLineup]) : 1;
+        // Heimvorteil im Livespiel: Die Heimelf spielt mit dem Publikum im
+        // Ruecken ein paar Prozent besser - vorher gewann sie gemessen nur
+        // drei von zehn Spielen, in echten Ligen sind es gut vier.
+        const neutral = !!(match && match.neutralerPlatz) || options.neutralerPlatz === true;
+        // Nur halb so stark wie auf die Mannschaftsstärke der Sofort-
+        // Simulation: Im Livespiel wirkt jeder Wert in jedem Duell, der volle
+        // Faktor gab gemessen doppelt so viele zusätzliche Heimschüsse wie in
+        // echten Ligen.
+        this.fmHeim = neutral ? 1 : 1 + (MatchEngine.heimvorteil(homeClub) - 1) * 0.5;
+        // Tagesform je Spieler - einmal je Partie gewürfelt, auch für die Bank
+        this.tagesform = new Map();
+        const formFuer = (p) => { if (p && !this.tagesform.has(p.id)) this.tagesform.set(p.id, MatchEngine.tagesform(p)); };
+        [...this.homeLineup, ...this.awayLineup].forEach(formFuer);
+        [homeClub, awayClub].forEach(c => (c?.bench || []).forEach(id => formFuer(MatchEngine.findPlayer(allPlayers, id))));
         this.players2D = this.initialize2DPositions();
         // Wer das Feld verlaesst (Platzverweis, Auswechslung), geht noch sichtbar
         // zur Seitenlinie - nur fuer das Bild, in der Simulation ist er weg.
@@ -2907,7 +3011,7 @@ class LiveMatch {
                 freshness: 1,
                 color: this.kits.home.farbe,
                 textColor: this.kits.home.text,
-                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmSkala) : {})
+                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmSkala * this.fmHeim * (this.tagesform.get(p.id) || 1)) : {})
             });
         });
 
@@ -2939,7 +3043,7 @@ class LiveMatch {
                 freshness: 1,
                 color: this.kits.away.farbe,
                 textColor: this.kits.away.text,
-                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmSkala) : {})
+                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmSkala * (this.tagesform.get(p.id) || 1)) : {})
             });
         });
 
@@ -3000,10 +3104,24 @@ class LiveMatch {
             // Ausgewechselt wird, wer muede ist - nach der Simulation, nicht
             // nach der Fitness vor dem Anpfiff
             frische: new Map((this.players2D || []).map(p => [p.id, p.freshness ?? 1])),
+            // Die Tagesform der Partie gilt auch für die Neuberechnung
+            tagesformHome: this._teamForm("home"),
+            tagesformAway: this._teamForm("away"),
+            // Auf den Spielstand reagieren die Trainer hier live
+            // (trainerStelltUm), nicht die Simulation
+            trainerReaktionHome: false,
+            trainerReaktionAway: false,
             // Wechselt der Co-Trainer fuer den Spieler, zaehlt seine Guete
             wechselGueteHome: this.userSide === "home" && this.delegation?.wechsel ? this.coTrainer?.home?.guete : undefined,
             wechselGueteAway: this.userSide === "away" && this.delegation?.wechsel ? this.coTrainer?.away?.guete : undefined
         };
+    }
+
+    /** Tagesform der Elf, die gerade auf dem Platz steht */
+    _teamForm(side) {
+        const lineup = this.lineupVon(side) || [];
+        if (!this.tagesform || !lineup.length) return undefined;
+        return lineup.reduce((s, p) => s + (this.tagesform.get(p?.id) || 1), 0) / lineup.length;
     }
 
     // ------------------------------------------------------------ Co-Trainer
@@ -3778,7 +3896,8 @@ class LiveMatch {
             p2d.pace = playerIn.pace || playerIn.overall || 70;
             p2d.stamina = playerIn.stamina || 75;
             p2d.vision = playerIn.vision || playerIn.overall || 65;
-            if (this.modus === "fm") Object.assign(p2d, MatchEngine.werte2D(playerIn, p2d.pos, this.fmSkala));
+            if (this.modus === "fm") Object.assign(p2d, MatchEngine.werte2D(playerIn, p2d.pos,
+                this.fmSkala * (side === "home" ? this.fmHeim : 1) * (this.tagesform?.get(playerIn.id) || 1)));
             // Ein eingewechselter Spieler kommt frisch aufs Feld
             p2d.freshness = 1;
             p2d.verletzt = false;

@@ -5881,10 +5881,19 @@ class LiveMatchDirector {
                 const nx = (dx / d) * push;
                 const ny = (dy / d) * push;
 
-                a.x -= nx; a.y -= ny;
-                b.x += nx; b.y += ny;
+                // Das Gedränge schiebt niemanden über die Torlinie: Bei einer
+                // Ecke stand sonst gut jedes siebte Mal der Torwart im Aus
+                a.x = this._nichtHinterDieLinie(a.x - nx, a.x); a.y -= ny;
+                b.x = this._nichtHinterDieLinie(b.x + nx, b.x); b.y += ny;
             }
         }
+    }
+
+    /** Wer im Feld steht, bleibt beim Ausweichen vor der Torlinie (4 und 96) */
+    _nichtHinterDieLinie(neu, alt) {
+        if (neu > 96 && alt <= 96) return 96;
+        if (neu < 4 && alt >= 4) return 4;
+        return neu;
     }
 }
 

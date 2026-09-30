@@ -3088,7 +3088,7 @@ class LiveMatchDirector {
 
         let art = "foul";
         const pRot = letzterMann ? 0.12 : 0.002;
-        const pGelb = Math.max(0.04, Math.min(0.9, 0.08 + (temperament - 12) * 0.012 + (eigT.haerte || 0) * 0.06
+        const pGelb = Math.max(0.04, Math.min(0.9, 0.14 + (temperament - 12) * 0.012 + (eigT.haerte || 0) * 0.06
             + (konter ? 0.35 : 0)));
         if (_dirRandom.chance(pRot)) art = "rot";
         else if (_dirRandom.chance(pGelb)) {

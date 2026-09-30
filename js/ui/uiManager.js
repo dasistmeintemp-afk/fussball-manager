@@ -7898,7 +7898,10 @@ class UIManager {
         const einstellungen = this.liveEinstellungen();
         const liveMatch = MatchEngine.createLiveMatch(match, homeClub, awayClub, state.players, {
             userSide,
-            delegation: { ...einstellungen.delegation }
+            delegation: { ...einstellungen.delegation },
+            // Wie im Football Manager: Das Spiel entsteht auf dem Platz aus den
+            // Entscheidungen der Spieler - nach ihren Werten und Eigenschaften
+            modus: "fm"
         });
         this.app.currentLiveMatch = liveMatch;
         this.coach = null;

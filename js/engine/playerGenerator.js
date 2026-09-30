@@ -379,7 +379,13 @@ class PlayerGenerator {
         { key: "aufbau", text: "Holt sich den Ball tief und macht das Spiel.", passt: (p) => ["ZM", "DM"].includes(p.pos) && p.passing >= 74 },
         { key: "strafraum", text: "Steht immer da, wo der Ball hinfällt.", passt: (p) => ["ST"].includes(p.pos) && p.positioning >= 74 },
         { key: "mitspielen", text: "Spielt mit dem Fuß wie ein Feldspieler.", passt: (p) => p.pos === "TW" && p.passing >= 62 },
-        { key: "reaktion", text: "Reagiert auf der Linie außergewöhnlich schnell.", passt: (p) => p.pos === "TW" && p.reflexes >= 82 }
+        { key: "reaktion", text: "Reagiert auf der Linie außergewöhnlich schnell.", passt: (p) => p.pos === "TW" && p.reflexes >= 82 },
+        { key: "nachinnen", text: "Zieht vom Flügel nach innen und sucht den Abschluss.", passt: (p) => ["LA", "RA", "LM", "RM"].includes(p.pos) && p.shooting >= 70 && p.dribbling >= 72 },
+        { key: "freistoss", text: "Gefährlich bei direkten Freistößen.", passt: (p) => p.pos !== "TW" && p.technique >= 76 && p.shooting >= 72 },
+        { key: "elfmeter", text: "Verwandelt Elfmeter sicher.", passt: (p) => p.pos !== "TW" && p.shooting >= 74 && p.technique >= 70 },
+        { key: "elfmeterkiller", text: "Ahnt beim Elfmeter oft die richtige Ecke.", passt: (p) => p.pos === "TW" && p.oneOnOne >= 76 },
+        { key: "knipser", text: "Braucht vor dem Tor nur eine Chance.", passt: (p) => ["ST", "LA", "RA"].includes(p.pos) && p.shooting >= 80 },
+        { key: "verlagerung", text: "Verlagert das Spiel mit langen Diagonalbällen.", passt: (p) => ["IV", "DM", "ZM", "LV", "RV"].includes(p.pos) && p.passing >= 76 && p.vision >= 72 }
     ];
 
     /** Wählt bis zu zwei passende Eigenheiten aus */

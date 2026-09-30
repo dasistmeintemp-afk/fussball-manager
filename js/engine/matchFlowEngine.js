@@ -56,6 +56,12 @@ class MatchFlowEngine {
         this.getTactics = options.getTactics || (() => ({}));
         this.attackDir = options.attackDir || (team => (team === "home" ? 1 : -1));
         this.ownGoalX = options.ownGoalX || (team => (team === "home" ? 4 : 96));
+        // FM-Modus: Der Ballfuehrende entscheidet auch ueber Schuss und
+        // Flanke, Zweikaempfe koennen Fouls sein. Ohne ihn liefert die Engine
+        // nur das Spiel zwischen den Ereignissen der Zeitleiste.
+        this.fm = typeof options.fm === "function" ? options.fm : (() => !!options.fm);
+        // Zusatzlage fuer grosse Momente (Rueckstand, Schlussphase, Derby)
+        this.lage = typeof options.lage === "function" ? options.lage : (() => ({}));
 
         this.phase = FLOW_PHASES.BUILDUP;
     }
@@ -128,7 +134,20 @@ class MatchFlowEngine {
 
     attr(player, name, fallback = 70) {
         const v = player?.[name];
-        return (typeof v === "number" && v > 0) ? v : fallback;
+        let wert = (typeof v === "number" && v > 0) ? v : fallback;
+        // Ein Mentalitaetsmonster waechst in grossen Momenten ueber sich hinaus
+        const gross = player?.eig?.grossesSpiel;
+        if (gross && player.team && this.lage(player.team)?.grosserMoment) wert += gross;
+        // Wer muede ist, macht mehr Fehler - nicht nur beim Laufen
+        if (this.fm() && typeof player?.freshness === "number" && player.freshness < 1 && name !== "pace" && name !== "stamina") {
+            wert *= 0.88 + 0.12 * Math.max(0, (player.freshness - 0.6) / 0.4);
+        }
+        return wert;
+    }
+
+    /** Wirkungen der Eigenschaften eines Spielers auf dem Feld (EigenschaftenEngine) */
+    eig(player) {
+        return (player && player.eig) || {};
     }
 
     /**
@@ -204,6 +223,7 @@ class MatchFlowEngine {
         // Szene beginnt. Er wird gesucht wie ein freistehender Stuermer -
         // nicht erzwungen, aber deutlich bevorzugt.
         const ziel = context.zielSpieler || null;
+        const fm = this.fm();
         const zielAbstand = ziel ? Math.hypot(carrier.x - ziel.x, carrier.y - ziel.y) : 0;
 
         return mates.map(mate => {
@@ -335,7 +355,20 @@ class MatchFlowEngine {
                 }
             }
 
+            // FM-Modus: Die Eigenschaften von Passgeber und Empfaenger. Wer den
+            // Pass in die Tiefe sieht, spielt ihn; wer pfeilschnell ist, wird
+            // gesucht; wer gern verlagert, schlaegt den Diagonalball.
+            let eigScore = 0;
+            if (fm) {
+                const eg = this.eig(carrier);
+                const em = this.eig(mate);
+                if (forward > 10) eigScore += (eg.tiefenpass || 0) * 0.45 + (em.tiefenlaeufer || 0) * 0.35;
+                if (Math.abs(mate.y - carrier.y) > 35 && dist > 28) eigScore += (eg.verlagerung || 0) * 0.9;
+                if (istAbschluss) eigScore += (em.strafraum || 0) * 0.3;
+            }
+
             const score = lengthScore * 0.8
+                + eigScore
                 + anlaufScore
                 + mentalScore
                 + progressScore * progressWeight * progressFaktor
@@ -393,6 +426,20 @@ class MatchFlowEngine {
             if (progress > 0.66) taktik += 0.25;
         }
 
+        // FM-Modus: Wer gern dribbelt, tut es; wer nach innen zieht, zieht
+        // vom Fluegel diagonal Richtung Tor - dorthin, wo er schiessen kann
+        let eigen = 0;
+        if (this.fm()) {
+            const e = this.eig(carrier);
+            eigen += e.dribbelWille || 0;
+            const progress = dir > 0 ? carrier.x / 100 : 1 - carrier.x / 100;
+            if (e.nachInnen && progress > 0.58 && Math.abs(carrier.y - 50) > 16) {
+                ahead.y = carrier.y + (carrier.y < 50 ? 9 : -9);
+                ahead.x = carrier.x + dir * 8;
+                eigen += 0.35;
+            }
+        }
+
         const score = skill * 1.15
             + space * 0.9
             + tempoBonus
@@ -400,6 +447,7 @@ class MatchFlowEngine {
             - pressure * 0.75
             + (frei ? (carrier.group === "def" ? 0.8 : 0.55) : 0)
             + taktik
+            + eigen
             + _flowRandom.float(-0.2, 0.2);
 
         return { type: "dribble", target: ahead, space, score, frei };
@@ -436,6 +484,316 @@ class MatchFlowEngine {
         return { type: "clearance", target, score };
     }
 
+    // ------------------------------------------------------------- FM-Modus
+    //
+    // Im Football Manager ist das Spiel die Simulation: Jeder Ballfuehrende
+    // entscheidet in jedem Moment, ob er abspielt, dribbelt, flankt oder
+    // schiesst - nach seinen Werten, seiner Lage und seinen Eigenschaften.
+    // Tore entstehen aus der Qualitaet der Chance und aus dem Duell zwischen
+    // Schuetze und Torwart. Nichts davon steht vorher fest.
+
+    /** Mitte der Torlinie, auf die eine Mannschaft spielt */
+    gegnerTor(team) {
+        return { x: this.ownGoalX(team === "home" ? "away" : "home"), y: 50 };
+    }
+
+    /**
+     * Abstand und Sichtwinkel zum Tor in Metern. Das Feld misst 105 x 68
+     * Meter, eine Einheit laengs ist also gut ein Meter, quer zwei Drittel.
+     */
+    torGeometrie(punkt, team) {
+        const tor = this.gegnerTor(team);
+        const dx = Math.max(0.5, Math.abs(tor.x - punkt.x) * 1.05);
+        const dy = (punkt.y - 50) * 0.68;
+        const dist = Math.hypot(dx, dy);
+        // Sichtwinkel auf das 7,32 Meter breite Tor
+        const winkel = Math.abs(Math.atan2(dy + 3.66, dx) - Math.atan2(dy - 3.66, dx));
+        return { dist, winkel };
+    }
+
+    /**
+     * Wie gut eine Chance ist (xG): aus Abstand, Winkel, Gegnerdruck und
+     * verstelltem Schussweg - noch ohne den Schuetzen. Ein Schuss aus sechs
+     * Metern zentral liegt bei rund 0.45, aus zwanzig Metern bei 0.07.
+     */
+    chancenQualitaet(schuetze, opponents, opts = {}) {
+        const g = this.torGeometrie(schuetze, schuetze.team);
+        let xg = 1 / (1 + Math.exp(-(-0.75 + 1.7 * g.winkel - 0.12 * g.dist)));
+        if (opts.kopfball) xg *= 0.6;
+        const feldspieler = opponents.filter(o => o.pos !== "TW");
+        const druck = Math.min(1.2, this.getPressure(schuetze, feldspieler));
+        xg *= 1 - 0.2 * Math.min(1, druck);
+        const block = this.getLaneRisk(schuetze, this.gegnerTor(schuetze.team), feldspieler);
+        xg *= 1 - Math.min(0.3, block * 0.2);
+        return { xg: Math.max(0.01, Math.min(0.85, xg)), dist: g.dist, winkel: g.winkel, druck, block };
+    }
+
+    /** Abschlussstaerke: Fuss oder Kopf */
+    abschlussWert(p, kopfball = false) {
+        if (kopfball) {
+            return this.attr(p, "physical") * 0.45 + this.attr(p, "positioning") * 0.25
+                + this.attr(p, "shooting") * 0.3 + (this.eig(p).luft || 0) * 0.6;
+        }
+        return this.attr(p, "shooting") * 0.65 + this.attr(p, "technique") * 0.35;
+    }
+
+    /** Torwartstaerke - im Eins-gegen-eins zaehlt das Herauslaufen mehr */
+    torwartWert(gk, nah = false) {
+        if (!gk) return 40;
+        return this.attr(gk, "reflexes", 60) * 0.4 + this.attr(gk, "handling", 60) * 0.2
+            + this.attr(gk, "positioning", 60) * 0.2 + this.attr(gk, "oneOnOne", 60) * (nah ? 0.3 : 0.2);
+    }
+
+    /** Wie gut ein Spieler in der Luft ist */
+    kopfballWert(p, angreifer = true) {
+        const e = this.eig(p);
+        const basis = angreifer
+            ? this.attr(p, "physical") * 0.55 + this.attr(p, "positioning") * 0.25 + this.attr(p, "technique") * 0.1 + this.attr(p, "pace") * 0.1
+            : this.attr(p, "physical") * 0.55 + this.attr(p, "defense") * 0.25 + this.attr(p, "positioning") * 0.2;
+        return basis + (e.luft || 0) + (angreifer ? (e.strafraum || 0) * 5 : 0);
+    }
+
+    /**
+     * Den Abschluss bewerten. Der Spieler schiesst, wenn ihm die Chance gut
+     * genug erscheint - und wie gut sie ihm erscheint, haengt an ihm selbst:
+     * Ein Knipser schiesst eher als ein Innenverteidiger, wer gern aus der
+     * Distanz abzieht, tut es auch aus fuenfundzwanzig Metern.
+     */
+    rateShot(carrier, opponents, tactics, pressure) {
+        if (!carrier || carrier.pos === "TW") return null;
+        const e = this.eig(carrier);
+        const g = this.torGeometrie(carrier, carrier.team);
+        const wk = _flowTaktik()?.wirkung(tactics) || {};
+        const reichweite = 25 + (e.distanz ? 9 : 0) + ((wk.fernschuesse || 0) > 0 ? 4 : 0) + (e.nachInnen ? 3 : 0);
+        if (g.dist > reichweite || g.winkel < 0.1) return null;
+
+        const q = this.chancenQualitaet(carrier, opponents);
+        const koennen = this.abschlussWert(carrier) / 100;
+        // Wie sehr er sich den Abschluss zutraut
+        const zutrauen = 0.7 + koennen * 0.55 + (e.abschluss || 0) * 2 + (e.ruhe ? 0.08 : 0)
+            + (carrier.group === "att" ? 0.12 : carrier.group === "def" ? -0.2 : 0);
+        let score = -0.25 + q.xg * 13 * zutrauen;
+        // Aus der Distanz schiesst, wer es kann oder soll - die anderen suchen
+        // lieber den Weg in den Strafraum
+        if (g.dist > 18) score += (e.distanz ? 0.55 : -0.2) + (e.abschlussDistanz || 0) * 5 + (wk.fernschuesse || 0) * 0.4;
+        if (tactics.mentality === "offensive" || tactics.mentality === "very_offensive") score += 0.12;
+        score += _flowRandom.float(-0.2, 0.2);
+        return { type: "shot", score, xg: q.xg, dist: q.dist, druck: q.druck, block: q.block };
+    }
+
+    /**
+     * Den Ausgang eines Schusses wuerfeln: geblockt, vorbei, gehalten, Tor.
+     *
+     * Die Chance (xG) ist, was ein durchschnittlicher Schuetze gegen einen
+     * durchschnittlichen Torwart daraus macht. Der Unterschied zwischen
+     * beiden verschiebt die Torwahrscheinlichkeit - so wird ein Weltklasse-
+     * stuermer gegen einen Aushilfskeeper zum Problem.
+     *
+     * opts: kopfball, freistoss, elfmeter, xg (vorgegeben)
+     */
+    schussAusgang(schuetze, opponents, opts = {}) {
+        const e = this.eig(schuetze);
+        const gk = opponents.find(o => o.pos === "TW") || null;
+        const eg = gk ? this.eig(gk) : {};
+        const q = opts.xg !== undefined
+            ? { xg: opts.xg, dist: 11, druck: 0, block: 0 }
+            : this.chancenQualitaet(schuetze, opponents, { kopfball: !!opts.kopfball });
+        const nah = q.dist < 12;
+
+        // Verteidiger im Schussweg blocken - nicht beim Elfmeter
+        const feldspieler = opponents.filter(o => o.pos !== "TW");
+        if (!opts.elfmeter && !opts.freistoss) {
+            const pBlock = Math.max(0, Math.min(0.42, q.block * 0.34));
+            if (_flowRandom.chance(pBlock)) {
+                const blocker = this.findInterceptor(schuetze, this.gegnerTor(schuetze.team), feldspieler) || feldspieler[0] || null;
+                return { ausgang: "blocked", xg: q.xg, gk, blocker, ecke: _flowRandom.chance(0.38) };
+            }
+        }
+
+        const abschluss = opts.freistoss
+            ? this.attr(schuetze, "shooting") * 0.45 + this.attr(schuetze, "technique") * 0.55
+            : opts.elfmeter
+                ? this.attr(schuetze, "shooting") * 0.6 + this.attr(schuetze, "technique") * 0.4
+                : this.abschlussWert(schuetze, !!opts.kopfball);
+        const halter = this.torwartWert(gk, nah);
+        // Torhueter haben ihre Werte genau dort, wo es zaehlt; ein Schuetze
+        // nur zum Teil. Gleich gute Spieler sollen sich die Waage halten.
+        const edge = abschluss - halter + 6;
+
+        // Die Chance, verschoben um das Duell Schuetze gegen Torwart
+        let pTor = q.xg * Math.max(0.45, Math.min(1.8, 1 + edge / 55));
+        pTor += (e.abschluss || 0) * (opts.elfmeter ? 0.5 : 1);
+        if (q.dist > 20) pTor += e.abschlussDistanz || 0;
+        // Ruhe vor dem Tor: Der Druck des Gegners wiegt weniger
+        if (e.ruhe) pTor *= 1 + Math.min(1, q.druck) * 0.1 * e.ruhe;
+        if (opts.freistoss) pTor += e.freistoss || 0;
+        if (opts.elfmeter) pTor += (e.elfmeter || 0) - (eg.twElfmeter || 0);
+        pTor -= (eg.twReflex || 0) * (opts.elfmeter ? 0.3 : 1);
+        if (nah && !opts.elfmeter) pTor -= (eg.twStrafraum || 0) * 0.1;
+        pTor = Math.max(0.005, Math.min(opts.elfmeter ? 0.93 : 0.9, pTor));
+
+        // Aufs Tor kommt, wer sauber trifft - unabhaengig davon, ob es reicht
+        let pAufsTor = 0.3 + (abschluss - 60) / 220 + q.xg * 0.45 - Math.min(1, q.druck) * 0.08;
+        if (opts.elfmeter) pAufsTor = 0.95;
+        pAufsTor = Math.max(pTor + 0.07, Math.min(0.9, pAufsTor));
+
+        const wurf = Math.random();
+        if (wurf < pTor) return { ausgang: "goal", xg: q.xg, gk };
+        if (wurf < pAufsTor) {
+            // Gehalten: festgehalten, zur Ecke abgewehrt oder abgeklatscht
+            const sicher = 0.3 + this.attr(gk, "handling", 60) / 280;
+            const w = Math.random();
+            return {
+                ausgang: "saved", xg: q.xg, gk,
+                festgehalten: w < sicher,
+                ecke: w >= sicher && w < sicher + (1 - sicher) * 0.4
+            };
+        }
+        // Vorbei - abgefaelscht ins Toraus gibt es Ecke
+        const abgefaelscht = !opts.elfmeter && !opts.freistoss && q.block > 0.25 && _flowRandom.chance(0.3);
+        return { ausgang: _flowRandom.chance(0.08) ? "woodwork" : "missed", xg: q.xg, gk, ecke: abgefaelscht };
+    }
+
+    /**
+     * Die Flanke bewerten: vom Fluegel im letzten Drittel, wenn im Strafraum
+     * jemand steht. Wer gern flankt, flankt; die Taktik ("frueh flanken",
+     * "wenig flanken", "bis zur Grundlinie") zaehlt mit.
+     */
+    rateCross(carrier, mates, opponents, tactics, pressure) {
+        if (!carrier || carrier.pos === "TW") return null;
+        const dir = this.attackDir(carrier.team);
+        const progress = dir > 0 ? carrier.x / 100 : 1 - carrier.x / 100;
+        if (progress < 0.68 || Math.abs(carrier.y - 50) < 19) return null;
+
+        const tor = this.gegnerTor(carrier.team);
+        const imStrafraum = mates.filter(m => m.pos !== "TW"
+            && Math.abs(m.x - tor.x) < 17 && Math.abs(m.y - 50) < 22);
+        if (!imStrafraum.length) return null;
+
+        const e = this.eig(carrier);
+        const wk = _flowTaktik()?.wirkung(tactics) || {};
+        const koennen = (this.attr(carrier, "passing") * 0.55 + this.attr(carrier, "technique") * 0.45) / 100;
+        const amGrundlinie = Math.abs(carrier.x - tor.x) < 12;
+        let taktik = 0;
+        if (wk.flanken === "frueh") taktik += 0.35;
+        else if (wk.flanken === "wenig") taktik -= 0.6;
+        else if (wk.flanken === "grundlinie") taktik += amGrundlinie ? 0.35 : -0.3;
+
+        const score = 0.45 + koennen * 1.1 + Math.min(3, imStrafraum.length) * 0.3
+            + (e.flankeWille || 0) + taktik - pressure * 0.2
+            + _flowRandom.float(-0.2, 0.2);
+        return { type: "cross", score, ziele: imStrafraum };
+    }
+
+    /**
+     * Die Flanke ausfuehren: Wo landet sie, wer kommt an den Ball?
+     *
+     * Erst die Hereingabe (eine schlechte landet beim Gegner oder im Aus),
+     * dann der Torwart (kommt er raus?), dann das Kopfballduell zwischen dem
+     * Zielspieler und dem naechsten Verteidiger. Gewinnt der Angreifer, ist
+     * es ein Kopfball aufs Tor; sonst wird geklaert - manchmal zur Ecke.
+     *
+     * opts: ecke (Eckstoss), standard (Freistossflanke), pressure, phase
+     */
+    resolveCross(carrier, action, opponents, opts = {}) {
+        const team = carrier.team;
+        const dir = this.attackDir(team);
+        const tor = this.gegnerTor(team);
+        const e = this.eig(carrier);
+        const mates = this.teamOf(team).filter(m => m.id !== carrier.id && m.pos !== "TW");
+        const ziele = (action && action.ziele && action.ziele.length) ? action.ziele
+            : mates.filter(m => Math.abs(m.x - tor.x) < 18 && Math.abs(m.y - 50) < 24);
+        const pressure = opts.pressure || 0;
+        const basis = { type: "cross", from: carrier, pressure, phase: opts.phase, ecke: !!opts.ecke, standard: !!opts.standard };
+
+        let qualitaet = (this.attr(carrier, "passing") * 0.55 + this.attr(carrier, "technique") * 0.45) / 100
+            + (e.flankeKoennen || 0) - pressure * 0.1;
+        if ((opts.ecke || opts.standard) && e.eckenQualitaet) qualitaet += 0.08;
+
+        if (!ziele.length) {
+            // Niemand im Strafraum: Die Hereingabe landet beim Gegner
+            const punkt = { x: tor.x - dir * 9, y: 50 + _flowRandom.float(-10, 10) };
+            return { ...basis, outcome: "cleared", landung: punkt, to: punkt, verteidiger: null, eckeFolgt: false };
+        }
+
+        // Ziel ist der Beste in der Luft
+        const ziel = ziele.slice().sort((a, b) => this.kopfballWert(b) - this.kopfballWert(a))[0];
+        const landung = {
+            x: Math.max(5, Math.min(95, ziel.x + _flowRandom.float(-2, 2))),
+            y: Math.max(30, Math.min(70, ziel.y + _flowRandom.float(-3, 3)))
+        };
+
+        // Missglueckt: zu lang, zu kurz oder direkt in die Arme des Gegners
+        const pSchlecht = Math.max(0.07, Math.min(0.36, 0.36 - qualitaet * 0.3));
+        if (_flowRandom.chance(pSchlecht)) {
+            if (_flowRandom.chance(0.35)) {
+                // Ueber alles hinweg ins Toraus
+                const aus = { x: tor.x + dir * 3, y: landung.y };
+                return { ...basis, outcome: "out", landung: aus, to: aus };
+            }
+            const kurz = { x: tor.x - dir * _flowRandom.float(10, 20), y: landung.y };
+            return { ...basis, outcome: "cleared", landung: kurz, to: kurz, verteidiger: null, eckeFolgt: _flowRandom.chance(0.15) };
+        }
+
+        // Der Torwart kommt heraus, wenn die Flanke nah ans Tor kommt
+        const gk = this.opponentsOf(team).find(o => o.pos === "TW") || null;
+        if (gk && Math.abs(landung.x - tor.x) < 7 && Math.abs(landung.y - 50) < 12) {
+            const pFangen = Math.min(0.6, (this.attr(gk, "handling", 60) + this.attr(gk, "positioning", 60)) / 330
+                + (this.eig(gk).twStrafraum || 0) * 0.2);
+            if (_flowRandom.chance(pFangen)) return { ...basis, outcome: "claimed", landung, to: landung, gk };
+        }
+
+        // Das Kopfballduell
+        const verteidiger = opponents.filter(o => o.pos !== "TW")
+            .sort((a, b) => this.distance(a, landung) - this.distance(b, landung))[0] || null;
+        const angriff = this.kopfballWert(ziel, true) + qualitaet * 8;
+        const abwehr = verteidiger ? this.kopfballWert(verteidiger, false) : 20;
+        // Steht der Verteidiger weit weg, hat der Angreifer freie Bahn
+        const abstand = verteidiger ? this.distance(verteidiger, landung) : 20;
+        const vorsprung = Math.max(0, abstand - 3) * 2.5;
+        const pKopf = Math.max(0.12, Math.min(0.82, 1 / (1 + Math.exp(-(angriff - abwehr + vorsprung - 6) / 9))));
+
+        if (_flowRandom.chance(pKopf)) {
+            return { ...basis, outcome: "header", landung, to: landung, kopfballer: ziel, verteidiger };
+        }
+        return {
+            ...basis, outcome: "cleared", verteidiger, landung,
+            to: { x: tor.x - dir * _flowRandom.float(14, 24), y: Math.max(12, Math.min(88, landung.y + _flowRandom.float(-15, 15))) },
+            eckeFolgt: _flowRandom.chance(0.42)
+        };
+    }
+
+    /**
+     * Foul im Zweikampf: Der Verteidiger kommt zu spaet oder steigt zu hart
+     * ein. Aggressive Spieler (Temperament, "geht in jeden Zweikampf") und
+     * eine harte Taktik foulen oefter; wer gut dribbelt, holt Fouls heraus.
+     */
+    foulImZweikampf(carrier, defender, haerte = 0, edge = 0) {
+        const ed = this.eig(defender);
+        const ea = this.eig(carrier);
+        const temperament = typeof defender.temperament === "number" ? defender.temperament : 12;
+        const p = 0.27 + haerte * 0.06 + (ed.haerte || 0) * 0.1 + (ea.ziehtFouls || 0)
+            + (temperament - 12) * 0.012 + Math.max(0, edge) / 400;
+        if (!_flowRandom.chance(Math.max(0.03, Math.min(0.4, p)))) return null;
+        return { type: "foul", outcome: "foul", from: carrier, to: { x: carrier.x, y: carrier.y }, foulender: defender, opfer: carrier };
+    }
+
+    /**
+     * Foul unter Druck: Wer bedraengt den Ball haelt, wird auch mal
+     * festgehalten oder umgestossen - ohne dass er dribbeln wollte.
+     */
+    pruefeDruckFoul(carrier, opponents, pressure, phase) {
+        if (!carrier || carrier.pos === "TW" || pressure < 0.7) return null;
+        const naechster = opponents.filter(o => o.pos !== "TW")
+            .sort((a, b) => this.distance(carrier, a) - this.distance(carrier, b))[0];
+        if (!naechster || this.distance(carrier, naechster) > 4) return null;
+        const ed = this.eig(naechster);
+        const haerte = _flowTaktik()?.wirkung(this.getTactics(naechster.team) || {}).zweikampf || 0;
+        const p = (pressure - 0.6) * 0.16 * (1 + haerte * 0.4 + (ed.haerte || 0) * 0.5 + (ed.pressing || 0) * 0.3);
+        if (!_flowRandom.chance(p)) return null;
+        return { type: "foul", outcome: "foul", from: carrier, to: { x: carrier.x, y: carrier.y }, foulender: naechster, opfer: carrier, pressure, phase };
+    }
+
     /**
      * Trifft die Entscheidung für die nächste Aktion des Ballführenden
      */
@@ -468,6 +826,20 @@ class MatchFlowEngine {
             zielSpieler: options.zielSpieler || null
         });
         candidates.push(this.rateDribble(carrier, opponents, tactics, pressure));
+
+        // FM-Modus: Abschluss und Flanke stehen gleichberechtigt neben dem
+        // Zuspiel. Ob einer schiesst, haengt an der Lage und an seinen Werten.
+        if (this.fm()) {
+            const schuss = this.rateShot(carrier, opponents, tactics, pressure);
+            if (schuss) candidates.push(schuss);
+            const flanke = this.rateCross(carrier, mates, opponents, tactics, pressure);
+            if (flanke) candidates.push(flanke);
+
+            // Unter hohem Druck wird der Ballfuehrende auch mal umgerissen
+            const foul = this.pruefeDruckFoul(carrier, opponents, pressure, phase);
+            if (foul) return foul;
+        }
+
         candidates.sort((a, b) => b.score - a.score);
 
         let best = candidates[0] || null;
@@ -494,6 +866,12 @@ class MatchFlowEngine {
         if (action.type === "dribble") {
             return this.resolveDribble(carrier, action, opponents, tactics, pressure, phase);
         }
+        if (action.type === "shot") {
+            return { type: "shot", from: carrier, to: this.gegnerTor(carrier.team), pressure, phase, chance: action };
+        }
+        if (action.type === "cross") {
+            return this.resolveCross(carrier, action, opponents, { pressure, phase });
+        }
         return this.resolvePass(carrier, action, opponents, tactics, pressure, phase);
     }
 
@@ -514,7 +892,11 @@ class MatchFlowEngine {
         // Grundgenauigkeit gleicht das aus.
         const skill = (passing * 0.5 + vision * 0.3 + technique * 0.2) / 100;
         let accuracy = 0.77 + skill * 0.24;
-        accuracy -= pressure * 0.11;
+        const eg = this.fm() ? this.eig(carrier) : {};
+        if (this.fm()) accuracy += 0.08;
+        accuracy += eg.passKoennen || 0;
+        // Wer druckfest ist, spielt auch bedraengt sauber
+        accuracy -= pressure * 0.11 * (1 - Math.min(0.7, (eg.druckfest || 0) * 0.5));
         accuracy -= (action.laneRisk || 0) * 0.17;
         if (isLong) accuracy -= 0.13;
         if (tactics.tempo === "fast") accuracy -= 0.04;
@@ -547,8 +929,15 @@ class MatchFlowEngine {
         // Fehlpass: abgefangen, frei liegend oder ins Aus
         const roll = Math.random();
         const interceptor = this.findInterceptor(carrier, action.target, opponents);
+        // Ein Abwehrchef liest den Pass und faengt ihn eher ab
+        const abfangen = this.fm() && interceptor ? (this.eig(interceptor).abfangen || 0) : 0;
 
-        if (interceptor && roll < 0.55) {
+        if (interceptor && roll < 0.55 + abfangen * 0.3) {
+            // Im eigenen Strafraum abgefaelscht geht der Ball oft ins Toraus
+            if (this.fm() && Math.abs(interceptor.x - this.ownGoalX(interceptor.team)) < 16
+                && Math.abs(interceptor.y - 50) < 30 && _flowRandom.chance(0.22)) {
+                return { type: isLong ? "longball" : "pass", outcome: "corner", from: carrier, to: { x: interceptor.x, y: interceptor.y }, interceptor, pressure, phase };
+            }
             return {
                 type: isLong ? "longball" : "pass",
                 outcome: "intercepted",
@@ -604,10 +993,24 @@ class MatchFlowEngine {
         const gegnerTaktik = defender ? this.getTactics(defender.team) || {} : {};
         const haerte = _flowTaktik()?.wirkung(gegnerTaktik).zweikampf || 0;
         let chance = 0.6 + edge / 210 - pressure * 0.13 - haerte * 0.05;
+        const fm = this.fm();
+        const ea = fm ? this.eig(carrier) : {};
+        const ed = fm && defender ? this.eig(defender) : {};
+        chance += (ea.dribbelKoennen || 0) - (ed.zweikampf || 0);
+        // Im freien Raum hilft der Antritt: Wer schneller ist, ist weg
+        if (fm && (action.space || 0) > 0.4) chance += ea.antritt || 0;
         chance = Math.max(0.2, Math.min(0.92, chance));
 
         if (_flowRandom.chance(chance)) {
             return { type: "dribble", outcome: "beaten", from: carrier, to: action.target, defender, pressure, phase };
+        }
+
+        // FM-Modus: Nicht jeder verlorene Zweikampf ist sauber gefuehrt.
+        // Wer hart einsteigt oder zu spaet kommt, foult - und wer die Gegner
+        // reihenweise stehen laesst, holt Fouls heraus.
+        if (fm && defender) {
+            const foul = this.foulImZweikampf(carrier, defender, haerte, edge);
+            if (foul) return { ...foul, pressure, phase };
         }
 
         return { type: "dribble", outcome: "tackled", from: carrier, to: action.target, defender, pressure, phase };

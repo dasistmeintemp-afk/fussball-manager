@@ -432,7 +432,9 @@ class LiveMatchDirector {
             getPlayers: () => this.match.players2D || [],
             getTactics: (team) => (team === "home" ? this.match.homeClub?.tactics : this.match.awayClub?.tactics) || {},
             attackDir: (team) => this.attackDir(team),
-            ownGoalX: (team) => this.ownGoalX(team)
+            ownGoalX: (team) => this.ownGoalX(team),
+            fm: () => this.fm,
+            lage: (team) => this.fmLage(team)
         }) : null;
 
         this.initPlayers();
@@ -800,6 +802,11 @@ class LiveMatchDirector {
         if (this.abseitsSperre > 0) this.abseitsSperre = Math.max(0, this.abseitsSperre - dt);
 
         this.drainStamina(matchSecondsDelta);
+        // FM-Modus: Ballbesitz ist die Zeit, in der eine Mannschaft den Ball hat
+        if (this.fm && this.match.fmStats && !this.kickoff && !this.deadBall && this.mode !== "celebration") {
+            this.match.fmStats.besitz[this.fmIndex(this.possessionTeam)] += matchSecondsDelta;
+            this.fmStatistik();
+        }
         this.updateBanner(dt);
         this.syncMinute();
         this.updatePossessionStats(dt);
@@ -1006,6 +1013,8 @@ class LiveMatchDirector {
     updatePossessionStats(dt) {
         const stats = this.match.stats;
         if (!stats || !Array.isArray(stats.possession)) return;
+        // Im FM-Modus wird gemessen, nicht angenaehert (fmStatistik)
+        if (this.fm) return;
 
         const target = this.targetPossession[0] || 50;
         const live = this.possessionTeam === "home" ? target + 6 : target - 6;
@@ -1070,7 +1079,7 @@ class LiveMatchDirector {
         // Eine vorgemerkte Spielfortsetzung wird nicht von einer Szene
         // ueberrannt - sonst bliebe der Ball an der Seitenlinie liegen und
         // der naechste Anlauf muesste ihn von dort quer ueber das Feld holen.
-        if (!this.kickoff && !this.deadBall && !this._offenerStandard && this.hasDueEvent()
+        if (!this.kickoff && !this.deadBall && !this._offenerStandard && !this._fmBeiLandung && this.hasDueEvent()
             && !this.wartetAufBallgewinn()) {
             this.startHighlight();
             return;
@@ -1593,7 +1602,7 @@ class LiveMatchDirector {
 
             // Direkter Freistoß: Die Mauer stellt sich, der Schütze legt sich
             // den Ball zurecht - dann geht er aufs Tor.
-            const freistoss = !elfmeter && !!ev.isFreekick && ["goal", "save", "shot_miss"].includes(ev.type);
+            const freistoss = !elfmeter && !!ev.isFreekick && !ev._fmDirekt && ["goal", "save", "shot_miss"].includes(ev.type);
             if (freistoss) {
                 const schuetzenTeam = ev.type === "save" ? (ev.team === "home" ? "away" : "home") : ev.team;
                 this.deadBall = { kind: "freekick", team: schuetzenTeam, x: start.x, y: start.y, direkt: true };
@@ -1821,12 +1830,24 @@ class LiveMatchDirector {
         const events = this.scene?.events || [];
         const lastEvent = events[events.length - 1] || null;
 
+        // FM-Modus: Auf den Elfmeterpfiff folgt der Schuss vom Punkt
+        if (this._fmNachSzene) {
+            const weiter = this._fmNachSzene;
+            this._fmNachSzene = null;
+            this.scene = null;
+            this.sceneProtagonist = null;
+            this.mode = "ambient";
+            weiter();
+            return;
+        }
+
         // Ein Foul im Ticker muss auch einen Freistoß zur Folge haben - vorher
         // wurde nur kurz unterbrochen und dann irgendwo weitergespielt.
         // Enthaelt eine Szene ein Foul UND einen Abschluss, zaehlt das spaetere
         // Ereignis fuer die Spielfortsetzung. Vorher gewann immer das Foul, und
         // der Abstoss nach dem Schuss neben das Tor fiel aus.
-        const foulIdx = events.map(e => e.type === "foul" && e.outcome !== "penalty")
+        // Im FM-Modus ist die Karte selbst das Foul - auch sie gibt Freistoss
+        const foulIdx = events.map(e => (e.type === "foul" && e.outcome !== "penalty") || !!e.fmFreistoss)
             .lastIndexOf(true);
         const abschlussIdx = events.map(e => ["goal", "save", "shot_miss"].includes(e.type))
             .lastIndexOf(true);
@@ -1889,6 +1910,7 @@ class LiveMatchDirector {
      */
     resumeAfterShot(ev) {
         if (!ev || (ev.type !== "save" && ev.type !== "shot_miss")) return false;
+        if (ev.fm && ev.fmFolge && this.fmNachSchuss(ev)) return true;
 
         // Bei einer Parade steht in der Timeline die verteidigende Mannschaft
         const schiessendes = ev.type === "save"
@@ -2298,6 +2320,14 @@ class LiveMatchDirector {
         // Ein Ball, der noch unterwegs ist, wird nicht weitergespielt - und wer
         // ihn gerade bekommen hat, nimmt ihn erst an.
         if (this.match.ball.inFlight) return;
+        // FM-Modus: Die Flanke ist gelandet - jetzt entscheidet sich, wer an
+        // den Ball kommt
+        if (this._fmBeiLandung) {
+            const landung = this._fmBeiLandung;
+            this._fmBeiLandung = null;
+            landung();
+            return;
+        }
         if (this._annahmeTimer > 0) {
             this._annahmeTimer -= dt;
             return;
@@ -2387,6 +2417,36 @@ class LiveMatchDirector {
     }
 
     applyFlowAction(action) {
+        // FM-Modus: Abschluss, Flanke und Foul sind eigene Szenen
+        if (this.fm) {
+            if (action.type === "shot") {
+                this.fmSchuss(action.from, {});
+                return;
+            }
+            if (action.type === "cross") {
+                this.fmFlanke(action.from, action);
+                return;
+            }
+            if (action.type === "foul") {
+                this.fmFoul(action);
+                return;
+            }
+            if (action.outcome === "corner") {
+                // Abgefaelscht ins Toraus
+                this.flowStats.turnovers++;
+                this.fmEcke(action.from.team, action.to.y);
+                return;
+            }
+            const f = this.match.fmStats;
+            if (f && action.from && ["pass", "longball", "clearance"].includes(action.type)) {
+                const i = this.fmIndex(action.from.team);
+                f.paesse[i]++;
+                if (action.outcome === "complete") f.angekommen[i]++;
+            }
+            if (action.outcome === "complete" && action.to && action.from) {
+                this._fmVorlage = { id: action.from.id, name: action.from.name, team: action.from.team, zuId: action.to.id, clock: this.clock };
+            }
+        }
         const from = action.from;
         const to = action.to;
         const dist = Math.hypot((to.x ?? from.x) - from.x, (to.y ?? from.y) - from.y);
@@ -2533,6 +2593,15 @@ class LiveMatchDirector {
      */
     handleDribbleAction(action, duration) {
         const carrier = action.from;
+        if (this.fm && this.match.fmStats && action.defender && !action.frei) {
+            const f = this.match.fmStats;
+            f.zweikaempfe[0]++;
+            f.zweikaempfe[1]++;
+            const sieger = action.outcome === "beaten" ? carrier : action.defender;
+            f.gewonnen[this.fmIndex(sieger.team)]++;
+            const z = this.fmSpieler(sieger.id);
+            if (z) z.zweikampf++;
+        }
         if (action.outcome === "beaten") {
             const strecke = Math.hypot(action.to.x - carrier.x, action.to.y - carrier.y);
             this.carryTarget = {
@@ -2607,6 +2676,539 @@ class LiveMatchDirector {
         if (!winner) return;
         this.possessionTeam = winner.team;
         this.setCarrier(winner);
+    }
+
+    // ------------------------------------------------------------- FM-Modus
+    //
+    // Im FM-Modus steht vorab nur der Rahmen der Partie fest. Schuesse, Tore,
+    // Flanken, Kopfbaelle, Fouls, Karten und Ecken entstehen, weil ein Spieler
+    // sich auf dem Platz dafuer entscheidet - nach seinen Werten und seiner
+    // Lage. Die Regie macht daraus dieselben Ereignisse, die sonst in der
+    // Zeitleiste stuenden, und inszeniert sie mit denselben Mitteln. Deshalb
+    // zaehlen Anzeige, Ticker und Spielbericht auch hier dasselbe.
+
+    get fm() {
+        return this.match.modus === "fm";
+    }
+
+    /** Bildschirm- in Zeitleistenkoordinaten (die Zeitleiste denkt in Halbzeit eins) */
+    roh(punkt) {
+        if (!punkt) return null;
+        return this.isSecondHalf ? { x: 100 - punkt.x, y: 100 - punkt.y } : { x: punkt.x, y: punkt.y };
+    }
+
+    fmClub(team) {
+        return team === "home" ? this.match.homeClub : this.match.awayClub;
+    }
+
+    fmIndex(team) {
+        return team === "home" ? 0 : 1;
+    }
+
+    /**
+     * Grosse Momente: Rueckstand in der Schlussphase, ein Unentschieden kurz
+     * vor Schluss, ein Derby. Dann waechst ein Mentalitaetsmonster.
+     */
+    fmLage(team) {
+        const m = this.match;
+        const eigene = team === "home" ? m.homeScore : m.awayScore;
+        const fremde = team === "home" ? m.awayScore : m.homeScore;
+        const minute = m.minute || 0;
+        return {
+            grosserMoment: !!m.match?.isDerby || (minute >= 70 && eigene < fremde) || (minute >= 85 && eigene === fremde)
+        };
+    }
+
+    /** Zaehler je Spieler (Zweikaempfe) fuer die Noten */
+    fmSpieler(id) {
+        const s = this.match.fmStats?.spieler;
+        if (!s || id === null || id === undefined) return null;
+        if (!s[id]) s[id] = { zweikampf: 0 };
+        return s[id];
+    }
+
+    /** Die gemessenen Werte in die Live-Statistik schreiben */
+    fmStatistik() {
+        const f = this.match.fmStats;
+        const st = this.match.stats;
+        if (!f || !st) return;
+        const summe = f.besitz[0] + f.besitz[1];
+        if (summe > 30) {
+            st.possession[0] = Math.round(f.besitz[0] / summe * 100);
+            st.possession[1] = 100 - st.possession[0];
+        }
+        [0, 1].forEach(i => {
+            if (f.paesse[i] >= 10) st.passAccuracy[i] = Math.round(f.angekommen[i] / f.paesse[i] * 100);
+            if (f.zweikaempfe[i] >= 4) st.tacklesWon[i] = Math.round(f.gewonnen[i] / f.zweikaempfe[i] * 100);
+        });
+    }
+
+    /**
+     * Ereignisse an der aktuellen Stelle in die Zeitleiste stellen und als
+     * Szene inszenieren. Die Uhr steht auf jetzt - die Szene beginnt sofort.
+     */
+    fmSzene(events) {
+        const m = this.match;
+        events.forEach(ev => {
+            ev.fm = true;
+            if (typeof ev.minute !== "number") ev.minute = m.minute || 0;
+            if (typeof ev.second !== "number") ev.second = m.seconds || 0;
+        });
+        m.timeline.splice(m.timelineIndex, 0, ...events);
+        this.startHighlight();
+    }
+
+    /** Ein Ereignis sofort verbuchen, ohne eigene Szene (etwa die Ecke) */
+    fmVerbuchen(ev) {
+        const m = this.match;
+        ev.fm = true;
+        ev.minute = m.minute || 0;
+        ev.second = m.seconds || 0;
+        m.timeline.splice(m.timelineIndex, 0, ev);
+        m.timelineIndex++;
+        ev._resolved = true;
+        m.processEvent(ev);
+    }
+
+    /** Wer hat den Abschluss vorbereitet? Der letzte Passgeber, wenn es schnell ging */
+    fmVorlageFuer(schuetze) {
+        const v = this._fmVorlage;
+        if (!v || !schuetze || v.team !== schuetze.team || v.zuId !== schuetze.id) return null;
+        if (this.clock - v.clock > 30 || v.id === schuetze.id) return null;
+        return v;
+    }
+
+    /** Ein Satz fuer den Ticker - mit Signatur, wenn sie den Ausschlag gab */
+    fmText(art, d) {
+        const T = LiveMatchDirector.FM_TEXTE[art] || [""];
+        let t = _dirRandom.choice(T) || T[0];
+        Object.keys(d).forEach(k => { t = t.split(`{${k}}`).join(d[k] ?? ""); });
+        return `${this.match.minute}' - ${t}`;
+    }
+
+    static FM_TEXTE = {
+        tor: [
+            "⚽ TOOOR für {club}! {schuetze} schließt eiskalt ab!",
+            "⚽ TOOOR! {schuetze} lässt dem Keeper keine Chance!",
+            "⚽ TOOOR für {club}! {schuetze} trifft ins lange Eck!"
+        ],
+        tor_vorlage: [
+            "⚽ TOOOR für {club}! {vorlage} legt quer, {schuetze} vollendet!",
+            "⚽ TOOOR! Traumpass von {vorlage}, {schuetze} bleibt vor dem Tor ganz ruhig!",
+            "⚽ TOOOR für {club}! {schuetze} verwertet das Zuspiel von {vorlage}!"
+        ],
+        tor_distanz: [
+            "⚽ TOOOR! {schuetze} zieht aus der Distanz ab - der Ball schlägt im Winkel ein!",
+            "⚽ TOOOR für {club}! Was für ein Hammer von {schuetze} aus {meter} Metern!"
+        ],
+        tor_kopf: [
+            "⚽ TOOOR! {schuetze} steigt nach der Flanke von {vorlage} am höchsten und köpft ein!",
+            "⚽ TOOOR für {club}! Kopfball {schuetze} - unhaltbar!"
+        ],
+        tor_freistoss: [
+            "⚽ TOOOR! {schuetze} zirkelt den Freistoß über die Mauer ins Netz!",
+            "⚽ TOOOR für {club}! Der Freistoß von {schuetze} landet unhaltbar im Winkel!"
+        ],
+        tor_elfmeter: [
+            "⚽ TOOOR! {schuetze} verwandelt den Elfmeter sicher!",
+            "⚽ TOOOR vom Punkt! {schuetze} schickt {torwart} in die falsche Ecke!"
+        ],
+        parade: [
+            "🧤 Glanztat! {torwart} pariert den Schuss von {schuetze}!",
+            "🧤 {torwart} ist unten und hält den Abschluss von {schuetze}!",
+            "🧤 Starke Reaktion von {torwart} gegen {schuetze}!"
+        ],
+        parade_kopf: ["🧤 {torwart} fischt den Kopfball von {schuetze} von der Linie!"],
+        parade_elfmeter: ["🧤 GEHALTEN! {torwart} pariert den Elfmeter von {schuetze}!"],
+        parade_freistoss: ["🧤 {torwart} fliegt und holt den Freistoß von {schuetze} aus dem Winkel!"],
+        vorbei: [
+            "💨 Knapp vorbei! {schuetze} verzieht.",
+            "💨 {schuetze} zieht ab - drüber.",
+            "💨 Der Abschluss von {schuetze} geht am Tor vorbei."
+        ],
+        vorbei_distanz: ["💨 {schuetze} versucht es aus der Distanz - weit drüber."],
+        vorbei_kopf: ["💨 {schuetze} kommt an den Ball, köpft aber vorbei."],
+        vorbei_freistoss: ["💨 Der Freistoß von {schuetze} bleibt in der Mauer hängen.", "💨 {schuetze} setzt den Freistoß knapp über die Latte."],
+        vorbei_elfmeter: ["💨 VERSCHOSSEN! {schuetze} setzt den Elfmeter neben das Tor!"],
+        pfosten: ["💥 PFOSTEN! {schuetze} trifft nur das Aluminium!", "💥 Latte! {schuetze} hat den Treffer auf dem Fuß."],
+        geblockt: ["🛡️ {blocker} wirft sich in den Schuss von {schuetze}!", "🛡️ Geblockt! {blocker} ist gegen {schuetze} dazwischen."],
+        foul: [
+            "🛑 Foul von {taeter} an {opfer} - Freistoß.",
+            "🛑 {taeter} kommt zu spät gegen {opfer}.",
+            "🛑 {taeter} hält {opfer} fest - der Schiedsrichter pfeift."
+        ],
+        gelb: [
+            "🟨 Gelb für {taeter} nach dem Foul an {opfer}.",
+            "🟨 {taeter} steigt hart gegen {opfer} ein - Gelb!"
+        ],
+        gelb_taktisch: ["🟨 Taktisches Foul von {taeter} - er stoppt den Konter, Gelb."],
+        gelbrot: ["🟨🟥 GELB-ROT! {taeter} muss nach dem zweiten Foul vom Platz!"],
+        rot: ["🟥 ROT! {taeter} ist der letzte Mann und reißt {opfer} um - Notbremse!", "🟥 GLATT ROT für {taeter} nach dem brutalen Einsteigen gegen {opfer}!"],
+        elfmeter: ["🛑 ELFMETER! {taeter} bringt {opfer} im Strafraum zu Fall!", "🛑 Strafstoß für {club}! {opfer} wird von {taeter} gelegt!"],
+        ecke: ["🚩 Ecke für {club}.", "🚩 Eckstoß für {club} - der Strafraum füllt sich."],
+        flanke: ["{flanker} flankt in den Strafraum.", "Flanke {flanker}!", "{flanker} bringt den Ball scharf vors Tor."],
+        flanke_gefangen: ["{torwart} kommt heraus und pflückt die Flanke herunter."],
+        flanke_geklaert: ["{verteidiger} klärt per Kopf.", "{verteidiger} ist vor {ziel} am Ball und köpft weg."],
+        flanke_misslungen: ["Die Hereingabe von {flanker} misslingt."]
+    };
+
+    /** Signatur-Zusatz fuer den Ticker, wenn ein Star den Moment praegt */
+    fmSignaturZusatz(spieler, art) {
+        const sig = spieler?.signatur;
+        if (!sig) return "";
+        const passend = {
+            tor: ["eiskalt", "dribbelkuenstler", "pfeilschnell", "mentalitaet"],
+            tor_kopf: ["luftherrscher"],
+            tor_freistoss: ["zauberfuss"],
+            tor_elfmeter: ["zauberfuss", "eiskalt"],
+            parade: ["katze"],
+            parade_elfmeter: ["elfmetertoeter", "katze"]
+        }[art] || [];
+        if (!passend.includes(sig)) return "";
+        const eig = typeof EigenschaftenEngine !== "undefined" ? EigenschaftenEngine
+            : (typeof window !== "undefined" && window.EigenschaftenEngine) ? window.EigenschaftenEngine
+                : (typeof require !== "undefined" ? (() => { try { return require("./eigenschaftenEngine.js").EigenschaftenEngine; } catch (e) { return null; } })() : null);
+        const info = eig ? eig.signaturVon(spieler) : null;
+        return info ? ` ${info.icon} ${info.name}!` : "";
+    }
+
+    /**
+     * Ein Abschluss: Ausgang wuerfeln (MatchFlowEngine.schussAusgang) und
+     * als Ereignis inszenieren. opts: kopfball, freistoss, elfmeter, xg,
+     * start (Bildschirmpunkt), vorlage ({id, name}).
+     */
+    fmSchuss(schuetze, opts = {}) {
+        if (!schuetze || !this.flow) return;
+        const team = schuetze.team;
+        const gegner = team === "home" ? "away" : "home";
+        const r = this.flow.schussAusgang(schuetze, this.teamPlayers(gegner), opts);
+        this.fmSchussSzene(schuetze, r, opts);
+    }
+
+    fmSchussSzene(schuetze, r, opts = {}) {
+        const team = schuetze.team;
+        const gegner = team === "home" ? "away" : "home";
+        const attClub = this.fmClub(team);
+        const defClub = this.fmClub(gegner);
+        const dir = this.attackDir(team);
+        const torX = this.ownGoalX(gegner);
+        const start = opts.start || { x: schuetze.x, y: schuetze.y };
+        const vorlage = opts.vorlage !== undefined ? opts.vorlage : this.fmVorlageFuer(schuetze);
+        const gk = r.gk || this.teamPlayers(gegner).find(p => p.pos === "TW") || null;
+        const meter = Math.round(this.flow.torGeometrie(start, team).dist);
+        const art = opts.elfmeter ? "_elfmeter" : opts.freistoss ? "_freistoss" : opts.kopfball ? "_kopf" : (meter > 20 ? "_distanz" : "");
+        const daten = {
+            club: attClub?.name || "", schuetze: schuetze.name || "Der Schütze", torwart: gk?.name || "der Torwart",
+            vorlage: vorlage?.name || "", meter, blocker: r.blocker?.name || "ein Verteidiger"
+        };
+
+        let ende;
+        if (r.ausgang === "goal") ende = { x: torX, y: 50 + _dirRandom.float(-3.3, 3.3) };
+        else if (r.ausgang === "saved") ende = { x: torX + dir * -0.8, y: 50 + _dirRandom.float(-3, 3) };
+        else if (r.ausgang === "woodwork") ende = { x: torX, y: 50 + (_dirRandom.chance(0.5) ? 5.4 : -5.4) };
+        else if (r.ausgang === "blocked" && r.blocker) ende = { x: r.blocker.x, y: r.blocker.y };
+        else ende = { x: torX + dir * 1.5, y: 50 + (_dirRandom.chance(0.5) ? 1 : -1) * _dirRandom.float(6, 14) };
+
+        const basis = {
+            start: this.roh(start), end: this.roh(ende),
+            xG: Math.round((r.xg || 0.05) * 100) / 100,
+            isHeader: !!opts.kopfball, isPenalty: !!opts.elfmeter,
+            isFreekick: !!opts.freistoss, _fmDirekt: !!opts.freistoss,
+            vorbereiterId: vorlage?.id ?? null,
+            fmFolge: { ecke: !!r.ecke, festgehalten: !!r.festgehalten, blockerId: r.blocker?.id ?? null }
+        };
+
+        let ev;
+        if (r.ausgang === "goal") {
+            const schluessel = opts.elfmeter ? "tor_elfmeter" : opts.freistoss ? "tor_freistoss"
+                : opts.kopfball ? "tor_kopf" : meter > 20 ? "tor_distanz" : vorlage ? "tor_vorlage" : "tor";
+            ev = {
+                ...basis, type: "goal", team, clubId: attClub?.id, clubName: attClub?.name,
+                playerId: schuetze.id, playerName: schuetze.name,
+                assistId: opts.elfmeter || opts.freistoss ? null : (vorlage?.id ?? null),
+                assistName: opts.elfmeter || opts.freistoss ? null : (vorlage?.name ?? null),
+                outcome: "goal",
+                text: this.fmText(schluessel, daten) + this.fmSignaturZusatz(schuetze, schluessel.startsWith("tor_kopf") ? "tor_kopf" : schluessel.startsWith("tor_frei") ? "tor_freistoss" : schluessel.startsWith("tor_elf") ? "tor_elfmeter" : "tor")
+            };
+        } else if (r.ausgang === "saved") {
+            const schluessel = "parade" + (art === "_distanz" ? "" : art);
+            ev = {
+                ...basis, type: "save", team: gegner, clubId: defClub?.id, clubName: defClub?.name,
+                shooterId: schuetze.id, shooterName: schuetze.name, gkId: gk?.id ?? null, gkName: gk?.name ?? null,
+                outcome: opts.elfmeter ? "penalty_saved" : "saved",
+                text: this.fmText(LiveMatchDirector.FM_TEXTE[schluessel] ? schluessel : "parade", daten)
+                    + this.fmSignaturZusatz(gk, opts.elfmeter ? "parade_elfmeter" : "parade")
+            };
+        } else {
+            const schluessel = r.ausgang === "woodwork" ? "pfosten" : r.ausgang === "blocked" ? "geblockt" : "vorbei" + art;
+            ev = {
+                ...basis, type: "shot_miss", team, clubId: attClub?.id, clubName: attClub?.name,
+                playerId: schuetze.id, playerName: schuetze.name,
+                outcome: r.ausgang === "woodwork" ? "woodwork" : r.ausgang === "blocked" ? "blocked" : "missed",
+                text: this.fmText(LiveMatchDirector.FM_TEXTE[schluessel] ? schluessel : "vorbei", daten)
+            };
+        }
+
+        this._fmVorlage = null;
+        // Der Schuetze hat den Ball - die Szene beginnt bei ihm
+        this.possessionTeam = team;
+        this.setCarrier(schuetze);
+        this.fmSzene([ev]);
+    }
+
+    /**
+     * Eine Flanke oder Ecke ausfuehren: Der Ball fliegt in den Strafraum,
+     * und erst wenn er landet, entscheidet sich, wer an ihn kommt. Das
+     * Ergebnis hat die MatchFlowEngine schon gewuerfelt.
+     */
+    fmFlanke(flanker, r) {
+        if (!flanker || !r) return;
+        const scale = this.getSpeedScale();
+        const landung = r.landung || r.to;
+        const club = this.fmClub(flanker.team);
+        this.flowStats.flanken = (this.flowStats.flanken || 0) + 1;
+        if (!r.ecke) {
+            this.match.lastCommentary = this.fmText("flanke", { flanker: flanker.name || "" });
+        }
+
+        if (r.outcome === "out") {
+            // Ueber alles hinweg ins Toraus: Abstoss
+            this.planeStandard({ from: flanker }, r.to);
+            this.setBallTravel(r.to.x, r.to.y, 0.8 * scale + this.bildschirmZeit(0.2), "cross");
+            this.match.ball.holderId = null;
+            this.match.lastCommentary = this.fmText("flanke_misslungen", { flanker: flanker.name || "" });
+            return;
+        }
+
+        const dist = Math.hypot(landung.x - this.match.ball.x, landung.y - this.match.ball.y);
+        this.setBallTravel(landung.x, landung.y, Math.max(0.55, Math.min(1.1, dist / 45)) * scale + this.bildschirmZeit(0.15), "cross");
+        this.match.ball.holderId = null;
+        this.carrierId = null;
+        this.carryTarget = null;
+
+        this._fmBeiLandung = () => {
+            if (r.outcome === "header" && r.kopfballer) {
+                const kopfballer = this.getPlayer2D(r.kopfballer.id);
+                if (!kopfballer) { this.claimLooseBall(landung); return; }
+                const vorlage = { id: flanker.id, name: flanker.name };
+                this.fmSchuss(kopfballer, { kopfball: true, start: landung, vorlage });
+                return;
+            }
+            if (r.outcome === "claimed" && r.gk) {
+                const gk = this.getPlayer2D(r.gk.id);
+                if (gk) {
+                    this.possessionTeam = gk.team;
+                    this.setCarrier(gk);
+                    this.match.lastCommentary = this.fmText("flanke_gefangen", { torwart: gk.name || "" });
+                    return;
+                }
+            }
+            // Geklaert: zur Ecke oder vor den Strafraum
+            const verteidiger = r.verteidiger ? this.getPlayer2D(r.verteidiger.id) : null;
+            if (verteidiger) {
+                this.match.lastCommentary = this.fmText("flanke_geklaert", {
+                    verteidiger: verteidiger.name || "", ziel: r.kopfballer?.name || "dem Stürmer"
+                });
+            }
+            if (r.eckeFolgt) {
+                this.fmEcke(flanker.team, landung.y);
+                return;
+            }
+            this.setBallTravel(r.to.x, r.to.y, 0.45 * scale + this.bildschirmZeit(0.1), "pass");
+            this.claimLooseBall(r.to);
+        };
+    }
+
+    /** Eine Ecke: verbuchen und als ruhenden Ball aufbauen */
+    fmEcke(team, y) {
+        const gegner = team === "home" ? "away" : "home";
+        const torX = this.ownGoalX(gegner);
+        const fahne = { x: torX < 50 ? 4.4 : 95.6, y: y < 50 ? 1.2 : 98.8 };
+        const club = this.fmClub(team);
+        this.fmVerbuchen({
+            type: "corner", team, clubId: club?.id, clubName: club?.name,
+            start: this.roh(fahne), end: this.roh(fahne),
+            text: this.fmText("ecke", { club: club?.name || "" })
+        });
+        this.startAmbient(team, { pickCarrier: false });
+        this.startDeadBall("corner", team, fahne.x, fahne.y);
+    }
+
+    /**
+     * Ein Foul: Freistoss, Karte, Elfmeter - je nach Ort, Lage und dem, der
+     * foult. Aggressive Spieler sehen oefter Gelb; wer einen Konter stoppt,
+     * sieht sie fast immer; wer als letzter Mann vor dem Tor umreisst, fliegt.
+     */
+    fmFoul(action) {
+        const taeter = action.foulender;
+        const opfer = action.opfer || action.from;
+        if (!taeter || !opfer) return;
+        const m = this.match;
+        const foulTeam = taeter.team;
+        const gefoult = opfer.team;
+        const foulClub = this.fmClub(foulTeam);
+        const gefoultClub = this.fmClub(gefoult);
+        const eigenesTorX = this.ownGoalX(foulTeam);
+        const dir = this.attackDir(gefoult);
+        const tiefe = Math.abs(opfer.x - eigenesTorX);
+        const imStrafraum = tiefe < 15.7 && Math.abs(opfer.y - 50) < 29.5;
+        const daten = { taeter: taeter.name || "", opfer: opfer.name || "", club: gefoultClub?.name || "" };
+        this.flowStats.fouls = (this.flowStats.fouls || 0) + 1;
+
+        if (imStrafraum) {
+            // Elfmeter: Pfiff, dann der Schuss vom Punkt
+            const punkt = { x: eigenesTorX + (eigenesTorX < 50 ? 10.5 : -10.5), y: 50 };
+            const foul = {
+                type: "foul", team: foulTeam, clubId: foulClub?.id, clubName: foulClub?.name,
+                playerId: taeter.id, playerName: taeter.name,
+                start: this.roh(punkt), end: this.roh(punkt), outcome: "penalty",
+                text: this.fmText("elfmeter", daten)
+            };
+            const schuetze = this.fmElfmeterSchuetze(gefoult) || opfer;
+            const r = this.flow.schussAusgang(schuetze, this.teamPlayers(foulTeam), { elfmeter: true, xg: 0.76 });
+            this.fmSzene([foul]);
+            // Der Schuss folgt als eigene Szene, sobald der Pfiff inszeniert ist
+            this._fmNachSzene = () => {
+                const s = this.getPlayer2D(schuetze.id) || schuetze;
+                this.fmSchussSzene(s, r, { elfmeter: true, start: punkt, vorlage: null });
+            };
+            return;
+        }
+
+        // Karte? Taktisches Foul gegen einen Konter, Notbremse, Temperament
+        const verteidigerHinter = this.teamPlayers(foulTeam)
+            .filter(p => p.pos !== "TW" && p.id !== taeter.id && (p.x - opfer.x) * dir > 0).length;
+        const progress = dir > 0 ? opfer.x / 100 : 1 - opfer.x / 100;
+        const konter = progress > 0.5 && verteidigerHinter <= 1;
+        const letzterMann = verteidigerHinter === 0 && progress > 0.7 && Math.abs(opfer.y - 50) < 22;
+        const temperament = typeof taeter.temperament === "number" ? taeter.temperament : 12;
+        const eigT = taeter.eig || {};
+        const seite = foulTeam;
+        const verwarnt = (m.verwarnt?.[seite] || []).includes(taeter.id);
+
+        let art = "foul";
+        const pRot = letzterMann ? 0.12 : 0.002;
+        const pGelb = Math.max(0.04, Math.min(0.9, 0.08 + (temperament - 12) * 0.012 + (eigT.haerte || 0) * 0.06
+            + (konter ? 0.35 : 0)));
+        if (_dirRandom.chance(pRot)) art = "rot";
+        else if (_dirRandom.chance(pGelb)) {
+            // Wer schon Gelb hat, wird oft nur ermahnt - aber nicht immer
+            art = verwarnt ? (_dirRandom.chance(0.3) ? "gelbrot" : "foul") : "gelb";
+        }
+
+        const tatort = this.roh({ x: opfer.x, y: opfer.y });
+        const basis = {
+            team: foulTeam, clubId: foulClub?.id, clubName: foulClub?.name,
+            playerId: taeter.id, playerName: taeter.name, start: tatort, end: { ...tatort }
+        };
+        let ev;
+        if (art === "rot") {
+            ev = { ...basis, type: "red_card", outcome: "red_card", fmFreistoss: true, text: this.fmText("rot", daten) };
+        } else if (art === "gelbrot") {
+            ev = { ...basis, type: "yellow_card", isSecondYellow: true, outcome: "second_yellow_card", fmFreistoss: true, text: this.fmText("gelbrot", daten) };
+        } else if (art === "gelb") {
+            ev = { ...basis, type: "yellow_card", outcome: "yellow_card", fmFreistoss: true, text: this.fmText(konter ? "gelb_taktisch" : "gelb", daten) };
+        } else {
+            ev = { ...basis, type: "foul", outcome: "freekick", text: this.fmText("foul", daten) };
+        }
+        this.possessionTeam = gefoult;
+        this.fmSzene([ev]);
+    }
+
+    /**
+     * Wie es nach einem Schuss im FM-Modus weitergeht - das hat der Wurf
+     * schon entschieden: festgehalten, zur Ecke gelenkt, abgeklatscht,
+     * geblockt. Liefert true, wenn die Fortsetzung uebernommen wurde.
+     */
+    fmNachSchuss(ev) {
+        const f = ev.fmFolge || {};
+        const schiessendes = ev.type === "save" ? (ev.team === "home" ? "away" : "home") : ev.team;
+        const verteidigt = schiessendes === "home" ? "away" : "home";
+        const ziel = this.eventPoint(ev.end) || { x: 50, y: 50 };
+        const scale = this.getSpeedScale();
+
+        if (f.ecke && (ev.type === "save" || ev.type === "shot_miss")) {
+            this.fmEcke(schiessendes, ziel.y);
+            return true;
+        }
+        if (ev.type === "save") {
+            const keeper = this.getPlayer2D(ev.gkId) || this.teamPlayers(verteidigt).find(p => p.pos === "TW");
+            this.startAmbient(verteidigt, { pickCarrier: false });
+            if (keeper && f.festgehalten) {
+                this.possessionTeam = verteidigt;
+                this.setCarrier(keeper);
+                this.setBallTravel(keeper.x, keeper.y, 0.3 * scale + this.bildschirmZeit(0.1), "pass");
+                this.match.lastCommentary = `${this.match.minute}' - ${keeper.name || "Der Torwart"} hat den Ball sicher.`;
+                return true;
+            }
+            // Abgeklatscht: Wer ist zuerst am Abpraller?
+            const prall = {
+                x: ziel.x + this.attackDir(verteidigt) * _dirRandom.float(4, 11),
+                y: Math.max(6, Math.min(94, ziel.y + _dirRandom.float(-9, 9)))
+            };
+            this.setBallTravel(prall.x, prall.y, 0.35 * scale + this.bildschirmZeit(0.12), "pass");
+            this.claimLooseBall(prall);
+            this.match.lastCommentary = `${this.match.minute}' - Abgeklatscht! Der Ball bleibt im Strafraum.`;
+            return true;
+        }
+        if (ev.outcome === "blocked") {
+            this.startAmbient(verteidigt, { pickCarrier: false });
+            const prall = {
+                x: Math.max(5, Math.min(95, ziel.x + this.attackDir(verteidigt) * _dirRandom.float(2, 8))),
+                y: Math.max(6, Math.min(94, ziel.y + _dirRandom.float(-8, 8)))
+            };
+            this.setBallTravel(prall.x, prall.y, 0.3 * scale + this.bildschirmZeit(0.1), "pass");
+            this.claimLooseBall(prall);
+            return true;
+        }
+        return false;
+    }
+
+    /** Der Elfmeterschuetze: vorgegeben oder der Beste auf dem Platz */
+    fmElfmeterSchuetze(team) {
+        const kandidaten = this.teamPlayers(team).filter(p => p.pos !== "TW");
+        const vorgabe = this.match.standards?.[team]?.elfmeter;
+        const fest = kandidaten.find(p => p.id === vorgabe);
+        if (fest) return fest;
+        const wert = (p) => (p.shooting || 60) * 0.6 + (p.technique || 60) * 0.4 + ((p.eig?.elfmeter || 0) * 100);
+        return kandidaten.sort((a, b) => wert(b) - wert(a))[0] || null;
+    }
+
+    /**
+     * Ruhender Ball im FM-Modus: Ecke und Freistoss in Schussweite werden
+     * hier entschieden. Liefert true, wenn er ausgefuehrt wurde.
+     */
+    fmRuhenderBall(info, taker) {
+        if (!this.fm || !this.flow || !taker) return false;
+        const gegner = info.team === "home" ? "away" : "home";
+
+        if (info.kind === "corner") {
+            const r = this.flow.resolveCross(taker, null, this.teamPlayers(gegner), { ecke: true });
+            this.fmFlanke(taker, r);
+            return true;
+        }
+
+        if (info.kind === "freekick") {
+            const spot = this.wallSpot(info.team, info.x, info.y);
+            if (spot.entfernung >= 34) return false;
+            const g = this.flow.torGeometrie({ x: info.x, y: info.y }, info.team);
+            const e = taker.eig || {};
+            const wert = (taker.shooting || 60) * 0.45 + (taker.technique || 60) * 0.55 + (e.freistoss || 0) * 100;
+            const direkt = g.dist >= 16 && g.dist <= 32 && g.winkel > 0.22
+                ? Math.max(0.15, Math.min(0.88, (wert - 50) / 45 + (e.freistoss ? 0.25 : 0)))
+                : 0;
+            if (_dirRandom.chance(direkt)) {
+                const xg = Math.max(0.02, Math.min(0.17, 0.04 + (wert - 65) / 600 + (e.freistoss || 0) * 0.5))
+                    * (g.dist < 24 ? 1.15 : 0.8);
+                this.setPieceWall = this.buildWall(info.team, info.x, info.y);
+                this.fmSchuss(taker, { freistoss: true, xg, start: { x: info.x, y: info.y }, vorlage: null });
+                return true;
+            }
+            const r = this.flow.resolveCross(taker, null, this.teamPlayers(gegner), { standard: true });
+            this.fmFlanke(taker, r);
+            return true;
+        }
+        return false;
     }
 
     // --------------------------------------------------- Standardsituationen
@@ -3042,6 +3644,9 @@ class LiveMatchDirector {
             this.pickAmbientCarrier();
             return;
         }
+
+        // FM-Modus: Ecke und Freistoss in Schussweite entscheidet der Schuetze
+        if (this.fmRuhenderBall(info, taker)) return;
 
         // Anstoß: kurzer Anspielpass zum Partner am Mittelkreis
         if (info.kind === "kickoff") {

@@ -975,7 +975,16 @@ class GameState {
             type: "welcome"
         });
 
+        // Die Stars jeder Liga bekommen ihre Signatur-Eigenschaft
+        GameState.sichereSignaturen(state);
+
         return state;
+    }
+
+    /** Signatur-Eigenschaften der Topspieler - auch für ältere Spielstände */
+    static sichereSignaturen(state) {
+        const eig = GameState._resolveEngine("EigenschaftenEngine", "./eigenschaftenEngine.js");
+        if (eig && typeof eig.sicherstellen === "function") eig.sicherstellen(state);
     }
 
     /**
@@ -1674,6 +1683,7 @@ class GameState {
             if (!parsed) return null;
             const state = Object.assign(new GameState(), parsed);
             GameState.registerCustomFormations(state);
+            GameState.sichereSignaturen(state);
             return state;
         } catch (e) {
             console.error("Laden fehlgeschlagen:", e);
@@ -1720,6 +1730,7 @@ class GameState {
             }
 
             const state = Object.assign(new GameState(), parsed);
+            GameState.sichereSignaturen(state);
             return { success: true, state };
         } catch (e) {
             console.error("Import fehlgeschlagen:", e);

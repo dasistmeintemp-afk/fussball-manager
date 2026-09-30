@@ -5814,6 +5814,14 @@ class LiveMatchDirector {
 
     separatePlayers(players, lauf) {
         const MIN_DIST = 4.2;
+        // In der Foulszene steht der Foulende am Mann, nicht vier Meter weg.
+        // Nur dieses eine Paar, und nur solange die Szene laeuft - wuerde der
+        // kleinere Abstand fuer jeden Ballfuehrenden gelten, sprang er mit
+        // jedem Zuspiel hin und her, und die Spieler ruckelten.
+        const ZWEIKAMPF_DIST = 1.8;
+        const ev = this.mode === "highlight" ? this.currentEvent() : null;
+        const foulender = ev && FOUL_ARTEN.includes(ev.type) ? ev.playerId : null;
+        const opfer = foulender !== null && foulender !== undefined ? this.carrierId : null;
         // Gleich stark bei jeder Bildrate und Abspielstufe. Die Staerke ist
         // die, mit der das Laufmodell auf "Langsam" bei sechzig Bildern
         // abgestimmt wurde: je Bild ein Fuenftel des Rueckstands - staerker
@@ -5826,11 +5834,14 @@ class LiveMatchDirector {
                 let dx = b.x - a.x;
                 let dy = b.y - a.y;
                 let d = Math.hypot(dx, dy);
+                const abstand = opfer !== null && opfer !== undefined
+                    && ((a.id === foulender && b.id === opfer) || (b.id === foulender && a.id === opfer))
+                    ? ZWEIKAMPF_DIST : MIN_DIST;
 
-                if (d >= MIN_DIST) continue;
+                if (d >= abstand) continue;
                 if (d < 0.001) { dx = 0.1; dy = 0.1; d = 0.14; }
 
-                const push = ((MIN_DIST - d) / 2) * anteil;
+                const push = ((abstand - d) / 2) * anteil;
                 const nx = (dx / d) * push;
                 const ny = (dy / d) * push;
 

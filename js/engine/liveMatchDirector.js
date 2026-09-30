@@ -1081,6 +1081,10 @@ class LiveMatchDirector {
         // der naechste Anlauf muesste ihn von dort quer ueber das Feld holen.
         if (!this.kickoff && !this.deadBall && !this._offenerStandard && !this._fmBeiLandung && this.hasDueEvent()
             && !this.wartetAufBallgewinn()) {
+            // Die Wartezeit ist um, und noch immer hat der Falsche den Ball:
+            // Dann holt ihn sich der naechste Gegner jetzt im Zweikampf,
+            // statt dass die Szene mit einem geschenkten Ball beginnt.
+            if (this.erzwingeBallgewinn()) return;
             this.startHighlight();
             return;
         }
@@ -1250,6 +1254,36 @@ class LiveMatchDirector {
         }
         const seit = Math.max(this._ballgewinnWarten.seit, this._freiesSpielSeitReal || 0);
         return (this.elapsedReal || 0) - seit < this.bildschirmZeit(LiveMatchDirector.BALLVERLUST_GNADE);
+    }
+
+    /**
+     * Letzte Gelegenheit vor der Szene: Hatte das freie Spiel in der
+     * Wartezeit keine Aktion, die sich als Ballverlust zeigen liess - der
+     * Ball war lange unterwegs, der Torwart hielt ihn -, gewinnt der naechste
+     * Gegner den Ball jetzt im Zweikampf. Gemessen begannen so sonst rund
+     * sieben Szenen in zwei Partien mit einem geschenkten Ball, in einzelnen
+     * Partien doppelt so viele.
+     *
+     * Liefert true, wenn der Zweikampf laeuft - die Szene folgt danach.
+     */
+    erzwingeBallgewinn() {
+        if (!this.flow || typeof this.flow.alsBallverlust !== "function") return false;
+        const index = this.match.timelineIndex;
+        if (this._erzwungenFuer === index) return false;
+        const traeger = this.getPlayer2D(this.carrierId);
+        if (!traeger || !this.kommenderBesitzwechsel(traeger.team, Infinity)) return false;
+        // Ist der Ball noch zum Mitspieler unterwegs, wird er erst dort
+        // erobert - die Szene wartet den kurzen Flug ab. So begann sie
+        // gemessen in sieben von zehn geschenkten Faellen.
+        if (this.match.ball.inFlight) return true;
+        if (traeger.pos === "TW") return false;
+        this._erzwungenFuer = index;
+        const verlust = this.flow.alsBallverlust(traeger,
+            { type: "dribble", outcome: "beaten", from: traeger, to: { x: traeger.x, y: traeger.y } });
+        if (!verlust || !verlust.defender) return false;
+        this.applyFlowAction(verlust);
+        this.flowStats.ballgewinneVorSzene = (this.flowStats.ballgewinneVorSzene || 0) + 1;
+        return true;
     }
 
     startHighlight() {

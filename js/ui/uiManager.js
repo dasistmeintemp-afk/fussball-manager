@@ -2148,9 +2148,12 @@ class UIManager {
     /**
      * Pressekonferenz am Medientag.
      *
-     * Die Antwort verschiebt Fanstimmung, Medienrummel, Vorstandsvertrauen
-     * und die Moral der Mannschaft - wer sich vor seine Spieler stellt,
-     * nimmt Druck vom Team, zahlt aber bei den Fans drauf.
+     * Zwei bis drei Fragen, je nach Lage: Vor dem Derby fragt der Boulevard
+     * nach einer Kampfansage, nach drei Niederlagen nach dem Job, bei einem
+     * Angebot nach dem Spieler. Jede Antwort verschiebt Fanstimmung,
+     * Medienrummel, Vorstandsvertrauen und Moral - und manche haben Folgen:
+     * Eine Kampfansage liest auch der Gegner, ein Versprechen wird nach dem
+     * Spiel abgerechnet, eine Schlagzeile steht am nächsten Tag im Postfach.
      */
     showPressConferenceModal() {
         const state = this.app.state;
@@ -2161,53 +2164,93 @@ class UIManager {
 
         const pk = engine.buildPressConference(state);
         if (!pk) return;
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const fragen = Array.isArray(pk.fragen) && pk.fragen.length
+            ? pk.fragen
+            : [{ topicId: pk.topicId, question: pk.question, answers: pk.answers, medium: null, journalist: null }];
+        const summe = { fanMood: 0, mediaPressure: 0, boardConfidence: 0, squadMorale: 0 };
+        let index = 0;
 
-        body.innerHTML = `
-            <p class="press-question">„${this.escapeHtml(pk.question)}"</p>
-            <div class="press-answers">
-                ${pk.answers.map(a => `
-                    <button class="press-answer" data-answer="${this.escapeHtml(a.key)}">${this.escapeHtml(a.label)}</button>
-                `).join("")}
-            </div>
-            <div id="pressResult"></div>
-        `;
+        const titel = document.getElementById("pcModalTitle");
+        if (titel) titel.textContent = pk.context?.opponentId
+            ? `Pressekonferenz vor dem Spiel gegen ${pk.context.opponentName}`
+            : "Pressekonferenz";
 
-        modal.style.display = "flex";
+        // Mehr Medienrummel ist schlecht, alles andere gut
+        const zeile = (label, wert, umgekehrt = false) => {
+            if (!wert) return "";
+            const gut = umgekehrt ? wert < 0 : wert > 0;
+            return `<span>${label}: <strong style="color:${gut ? "#34d399" : "#f87171"};">${wert > 0 ? "+" : ""}${wert}</strong></span>`;
+        };
+        const effekte = (e) => `
+            <div class="press-effects">
+                ${zeile("Fanstimmung", e.fanMood)}
+                ${zeile("Medienrummel", e.mediaPressure, true)}
+                ${zeile("Vorstand", e.boardConfidence)}
+                ${zeile("Teammoral", e.squadMorale)}
+            </div>`;
 
-        body.querySelectorAll(".press-answer").forEach(btn => {
-            btn.addEventListener("click", () => {
-                const res = engine.answerPressConference(state, pk.topicId, btn.dataset.answer);
-                if (!res.success) return;
+        const zeigeFrage = () => {
+            const f = fragen[index];
+            const letzte = index === fragen.length - 1;
+            body.innerHTML = `
+                <div class="press-kopf">
+                    ${f.medium ? `<div class="press-journalist">
+                        <span class="press-medium-icon">${f.medium.icon}</span>
+                        <span><strong>${esc(f.journalist)}</strong><small>${esc(f.medium.name)} · ${esc(f.medium.art)}</small></span>
+                    </div>` : "<span></span>"}
+                    <span class="press-fortschritt">Frage ${index + 1} von ${fragen.length}</span>
+                </div>
+                <p class="press-question">„${esc(f.question)}“</p>
+                <div class="press-answers">
+                    ${f.answers.map(a => `
+                        <button class="press-answer" data-answer="${esc(a.key)}">${esc(a.label)}</button>
+                    `).join("")}
+                </div>
+                <div id="pressResult"></div>
+            `;
 
-                const zeile = (label, wert, einheit = "") => {
-                    if (!wert) return "";
-                    const farbe = wert > 0 ? "#34d399" : "#f87171";
-                    return `<span>${label}: <strong style="color:${farbe};">${wert > 0 ? "+" : ""}${wert}${einheit}</strong></span>`;
-                };
+            body.querySelectorAll(".press-answer").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    const res = engine.answerPressConference(state, f.topicId, btn.dataset.answer, { frage: f, kontext: pk.context });
+                    if (!res.success) return;
+                    Object.keys(summe).forEach(k => { summe[k] += res.effects[k] || 0; });
 
-                document.getElementById("pressResult").innerHTML = `
-                    <div class="press-result">
-                        <strong>${this.escapeHtml(res.response)}</strong>
-                        <div class="press-effects">
-                            ${zeile("Fanstimmung", res.effects.fanMood)}
-                            ${zeile("Medienrummel", res.effects.mediaPressure)}
-                            ${zeile("Vorstand", res.effects.boardConfidence)}
-                            ${zeile("Teammoral", res.effects.squadMorale)}
+                    const folgen = [];
+                    if (res.affectedPlayer) folgen.push(`${esc(res.affectedPlayer.name)}: ${res.affectedPlayer.delta > 0 ? "+" : ""}${res.affectedPlayer.delta} Moral`);
+                    if (res.gegnerMotiviert) folgen.push(`🔥 ${esc(res.gegnerMotiviert.name)} fühlt sich herausgefordert (Moral +${res.gegnerMotiviert.delta})`);
+                    if (res.versprechen) folgen.push(`🤝 Versprochen: ${res.versprechen.art === "sieg" ? "ein Sieg" : "keine Niederlage"} gegen ${esc(res.versprechen.gegnerName)} - nach dem Spiel wird abgerechnet`);
+                    if (res.schlagzeile) folgen.push(`📰 Morgen in der Zeitung: „${esc(res.schlagzeile)}“`);
+
+                    btn.classList.add("gewaehlt");
+                    document.getElementById("pressResult").innerHTML = `
+                        <div class="press-result">
+                            <strong>${esc(res.response)}</strong>
+                            ${effekte(res.effects)}
+                            ${folgen.map(t => `<div class="press-player">${t}</div>`).join("")}
+                            ${letzte && fragen.length > 1 ? `<div class="press-bilanz"><span class="text-muted">Bilanz des Termins</span>${effekte(summe)}</div>` : ""}
+                            <button class="btn btn-primary mt-2" id="btnPressDone">${letzte ? "Termin beenden" : "Nächste Frage ▶"}</button>
                         </div>
-                        ${res.affectedPlayer ? `<div class="press-player">${this.escapeHtml(res.affectedPlayer.name)}: ${res.affectedPlayer.delta > 0 ? "+" : ""}${res.affectedPlayer.delta} Moral</div>` : ""}
-                        <button class="btn btn-primary mt-2" id="btnPressDone">Termin beenden</button>
-                    </div>
-                `;
-                body.querySelectorAll(".press-answer").forEach(b => { b.disabled = true; });
-                this.playSound("click");
+                    `;
+                    body.querySelectorAll(".press-answer").forEach(b => { b.disabled = true; });
+                    this.playSound("click");
 
-                document.getElementById("btnPressDone").onclick = () => {
-                    modal.style.display = "none";
-                    this.renderCurrentTab();
-                    this.renderHeader();
-                };
+                    document.getElementById("btnPressDone").onclick = () => {
+                        if (!letzte) {
+                            index++;
+                            zeigeFrage();
+                            return;
+                        }
+                        modal.style.display = "none";
+                        this.renderCurrentTab();
+                        this.renderHeader();
+                    };
+                });
             });
-        });
+        };
+
+        zeigeFrage();
+        modal.style.display = "flex";
     }
 
     /**

@@ -6955,6 +6955,109 @@ function runEngineTests() {
         if (neutral.fmHeim !== 1) throw new Error("Auf neutralem Platz gibt es einen Heimvorteil");
     });
 
+    test("Taktikbesprechung: Der Matchplan gilt nur für ein Spiel, deckt den Star und belohnt eine getroffene Schwäche", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Plan" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const match = { id: "plan_1", played: false, homeClubId: "muc", awayClubId: "dor" };
+
+        const v = MatchplanEngine.vorschlag(state, match);
+        if (!v || v.plaene.length !== Object.keys(MatchplanEngine.PLAENE).length) throw new Error("Die Besprechung bietet nicht alle Punkte an");
+        if (v.ziele.some(z => z.pos === "TW")) throw new Error("Den Torwart kann man nicht in Manndeckung nehmen");
+
+        // Mehr als zwei Punkte und Widersprüche fallen weg
+        const plan = MatchplanEngine.festlegen(state, match, ["fruehStoeren", "tiefStehen", "fluegel"]);
+        if (plan.punkte.length > MatchplanEngine.MAX_PUNKTE) throw new Error("Mehr als zwei Punkte im Matchplan");
+        if (plan.punkte.includes("fruehStoeren") && plan.punkte.includes("tiefStehen")) throw new Error("Früh stören und tief stehen zugleich");
+
+        // Mit Manndeckung: Der Gedeckte kommt seltener zum Abschluss
+        const ziel = v.ziele[0];
+        MatchplanEngine.festlegen(state, match, ["engDecken", "fruehStoeren"], ziel.id);
+        const opt = MatchplanEngine.spielOptionen(state, match);
+        if (!opt || opt.side !== "home") throw new Error("Der Plan gehört nicht zur eigenen Seite");
+        if (opt.taktik.pressing !== "high") throw new Error("Früh stören setzt kein hohes Pressing");
+        if (!opt.gedeckt[ziel.id]) throw new Error("Der Schlüsselspieler wird nicht gedeckt");
+        const kandidaten = state.players.filter(p => gast.playerIds.includes(p.id) && p.pos !== "TW").slice(0, 5);
+        const gedeckter = kandidaten[0];
+        const zaehle = (gedeckt) => {
+            let n = 0;
+            for (let i = 0; i < 3000; i++) if (MatchEngine.waehleSchuetze(kandidaten, "open", null, gedeckt) === gedeckter) n++;
+            return n;
+        };
+        const frei = zaehle(null);
+        const eng = zaehle({ [gedeckter.id]: MatchplanEngine.ENG_GEDECKT });
+        if (!(eng < frei * 0.75)) throw new Error(`Manndeckung wirkt nicht (${eng} gegen ${frei} Abschlüsse)`);
+
+        // Die Anweisungen gelten nur während des Spiels
+        const vorher = JSON.stringify(heim.tactics);
+        MatchEngine.simulateFullMatch({ ...match }, heim, gast, state.players, { matchplan: opt });
+        if (JSON.stringify(heim.tactics) !== vorher) throw new Error("Der Matchplan bleibt nach der Sofort-Simulation in der Taktik stehen");
+        const live = MatchEngine.createLiveMatch({ ...match, id: "plan_live" }, heim, gast, state.players, { modus: "fm", matchplan: opt });
+        if (heim.tactics.pressing !== "high") throw new Error("Im Livespiel greift der Matchplan nicht");
+        if (live._vorSpiel.home.tactics.pressing === "high" && JSON.parse(vorher).pressing !== "high") {
+            throw new Error("Die gewohnte Taktik wird nicht vor dem Plan gesichert");
+        }
+        heim.tactics = JSON.parse(vorher);
+
+        // Ein Plan, der eine Schwäche trifft, bringt einen Bonus - einer ins Blaue nicht
+        const report = { keyPlayers: [], weaknesses: [], strengths: [], attackRating: 85, midfieldRating: 80, defenseRating: 80 };
+        if (!MatchplanEngine.passtZu("tiefStehen", report, gast).passt) throw new Error("Gegen einen starken Angriff passt tief stehen nicht");
+        state.matchplan = { ...state.matchplan, treffer: 2 };
+        if (!(MatchplanEngine.spielOptionen(state, match).bonus > 1)) throw new Error("Getroffene Schwächen bringen keinen Bonus");
+
+        // Nach dem Spiel ist der Plan erledigt - und er hängt nur an seinem Spiel
+        if (MatchplanEngine.fuerSpiel(state, { ...match, id: "anderes" })) throw new Error("Der Plan gilt auch für ein anderes Spiel");
+        MatchplanEngine.abschliessen(state, match);
+        if (MatchplanEngine.fuerSpiel(state, match)) throw new Error("Der Plan bleibt nach dem Spiel stehen");
+    });
+
+    test("Pressekonferenz: Fragen nach Lage, Blatt verstärkt, Kampfansage motiviert den Gegner, Versprechen wird abgerechnet", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Presse" });
+        const club = state.clubs.find(c => c.id === "muc");
+        // Das nächste Spiel wird zum Derby, und es läuft gerade gar nicht
+        const runde = state.schedule.find(r => r.matches.some(m => (m.homeClubId === "muc" || m.awayClubId === "muc") && !m.played));
+        const spiel = runde.matches.find(m => m.homeClubId === "muc" || m.awayClubId === "muc");
+        spiel.isDerby = true;
+        spiel.derbyTitle = "Testderby";
+        club.form = ["W", "L", "L", "L"];
+        state.currentMatchday = runde.matchday;
+
+        const pk = ManagerEngine.buildPressConference(state);
+        if (!pk || !pk.topicId || !pk.question || !pk.answers.length) throw new Error("Die erste Frage fehlt oben im Ergebnis");
+        if (pk.fragen.length !== 3) throw new Error(`Vor einem Derby in der Krise sollten drei Fragen kommen, nicht ${pk.fragen.length}`);
+        if (pk.fragen[0].topicId !== "derby") throw new Error(`Das Derby ist nicht das erste Thema (${pk.fragen[0].topicId})`);
+        const themen = pk.fragen.map(f => f.topicId);
+        if (!themen.includes("krise")) throw new Error("Drei Niederlagen in Folge sind kein Thema");
+        if (themen.includes("form")) throw new Error("Nach der Krise wird zusätzlich noch nach der Form gefragt");
+        if (new Set(pk.fragen.map(f => f.journalist)).size !== pk.fragen.length) throw new Error("Ein Journalist stellt mehrere Fragen");
+        pk.fragen.forEach(f => { if (!f.medium || !f.medium.name) throw new Error(`Frage ${f.topicId} hat kein Blatt`); });
+        const nochmal = ManagerEngine.buildPressConference(state);
+        if (nochmal.fragen.map(f => f.topicId).join() !== themen.join()) throw new Error("Dieselbe Konferenz ändert beim erneuten Öffnen ihre Fragen");
+
+        // Die Kampfansage: Der Boulevard verstärkt, der Gegner liest mit
+        const gegnerId = pk.context.opponentId;
+        const gegnerKader = state.players.filter(p => state.clubs.find(c => c.id === gegnerId).playerIds.includes(p.id));
+        gegnerKader.forEach(p => { p.morale = 60; });
+        const derby = pk.fragen[0];
+        const res = ManagerEngine.answerPressConference(state, "derby", "kampfansage", { frage: derby, kontext: pk.context });
+        if (!res.success) throw new Error(res.error);
+        if (res.effects.mediaPressure !== Math.round(8 * ManagerEngine.PRESSE_MEDIEN.boulevard.faktor.mediaPressure)) {
+            throw new Error("Der Boulevard verstärkt den Medienrummel nicht");
+        }
+        if (!res.gegnerMotiviert || gegnerKader.some(p => p.morale !== 66)) throw new Error("Die Kampfansage motiviert den Gegner nicht");
+        if (!state.pressVersprechen || state.pressVersprechen.gegnerId !== gegnerId) throw new Error("Das Versprechen wird nicht vermerkt");
+        if (!state.inbox.some(m => m.type === "press")) throw new Error("Die Schlagzeile landet nicht im Postfach");
+
+        // Nach dem Spiel wird abgerechnet: verloren heißt gebrochen
+        const heim = spiel.homeClubId === "muc";
+        Object.assign(spiel, { played: true, homeGoals: heim ? 0 : 2, awayGoals: heim ? 2 : 0 });
+        const fans = state.fanMood;
+        const bilanz = ManagerEngine.versprechenPruefen(state, spiel);
+        if (!bilanz || bilanz.gehalten) throw new Error("Das gebrochene Versprechen wird nicht abgerechnet");
+        if (!(state.fanMood < fans)) throw new Error("Ein gebrochenes Versprechen kostet keine Fanstimmung");
+        if (state.pressVersprechen) throw new Error("Das Versprechen bleibt nach dem Spiel offen");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

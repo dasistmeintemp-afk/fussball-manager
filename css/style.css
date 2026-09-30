@@ -4608,6 +4608,20 @@ body {
 }
 
 .press-player { font-size: 12px; color: #cbd5e1; margin-top: 6px; }
+.press-kopf { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.press-journalist { display: flex; align-items: center; gap: 10px; }
+.press-journalist > span:last-child { display: flex; flex-direction: column; line-height: 1.25; }
+.press-journalist small { font-size: 11px; color: var(--text-muted); }
+.press-medium-icon {
+    font-size: 20px;
+    width: 36px; height: 36px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.06);
+}
+.press-fortschritt { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.press-answer.gewaehlt { border-color: #38bdf8; opacity: 1; }
+.press-bilanz { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 12px; }
 
 /* Schreibtisch: Was heute ansteht */
 .attention-card { grid-column: span 4; min-width: 0; }

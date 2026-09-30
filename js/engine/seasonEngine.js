@@ -178,6 +178,11 @@ class SeasonEngine {
             const eigenesSpiel = runde?.matches?.find(m => m.homeClubId === state.userClubId || m.awayClubId === state.userClubId);
             if (eigenesSpiel && eigenesSpiel.played) {
                 state.lastDressingRoom = dressingRoom.processMatch(state, eigenesSpiel);
+                // Was auf der Pressekonferenz versprochen wurde, wird jetzt abgerechnet
+                const manager = _resolve('ManagerEngine', './managerEngine.js');
+                if (manager && typeof manager.versprechenPruefen === 'function') {
+                    manager.versprechenPruefen(state, eigenesSpiel);
+                }
             }
             // Die Gegner haben ebenfalls eine Kabine - sonst spielt der Nutzer
             // das ganze Jahr gegen dauerhaft bestens gelaunte Mannschaften

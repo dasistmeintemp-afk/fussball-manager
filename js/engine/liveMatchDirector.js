@@ -5814,8 +5814,11 @@ class LiveMatchDirector {
 
     separatePlayers(players, lauf) {
         const MIN_DIST = 4.2;
-        // Gleich stark bei jeder Bildrate und Abspielstufe
-        const anteil = 1 - Math.exp(-Math.max(0, lauf) * 40);
+        // Gleich stark bei jeder Bildrate und Abspielstufe. Die Staerke ist
+        // die, mit der das Laufmodell auf "Langsam" bei sechzig Bildern
+        // abgestimmt wurde: je Bild ein Fuenftel des Rueckstands - staerker
+        // schiebt die Spieler ruckartig auseinander.
+        const anteil = 1 - Math.exp(-Math.max(0, lauf) * 13.4);
         for (let i = 0; i < players.length; i++) {
             for (let j = i + 1; j < players.length; j++) {
                 const a = players[i];

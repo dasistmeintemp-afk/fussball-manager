@@ -4083,8 +4083,11 @@ class LiveMatchDirector {
                     // Auch beim Aufnehmen rollt der Ball, er springt nicht.
                     // Ohne diese Grenze riss ein Spieler, der weit weg stand,
                     // den Ball in einem einzigen Bild zu sich heran.
-                    const anteil = Math.min(1, dt * 9);
-                    const grenze = LiveMatchDirector.AUFNAHME_TEMPO * dt;
+                    // In Laufzeit: Der Ball folgt dem Fuss so schnell, wie
+                    // der Spieler laeuft - auf jeder Abspielstufe
+                    const ld = dt * this.getMotionTempo();
+                    const anteil = Math.min(1, ld * 9);
+                    const grenze = LiveMatchDirector.AUFNAHME_TEMPO * ld;
                     const faktor = weg * anteil > grenze ? grenze / weg : anteil;
                     ball.x += (anchorX - ball.x) * faktor;
                     ball.y += (anchorY - ball.y) * faktor;
@@ -4221,7 +4224,11 @@ class LiveMatchDirector {
             p.y = Math.max(3, Math.min(97, p.y));
         });
 
-        this.separatePlayers(players, dt);
+        // Abstand halten in Laufzeit, nicht in Bildschirmzeit - sonst klebten
+        // auf "Schnell" die Gegenspieler am Ballfuehrenden: gemessen stand der
+        // naechste Gegner beim Abspiel dort zwei bis vier Meter entfernt statt
+        // vier bis sechs, und es gab doppelt so viele Fouls.
+        this.separatePlayers(players, lauf);
         players.forEach(p => { p._lx = p.x; p._ly = p.y; });
 
         if (match.goalFlash > 0) {
@@ -5431,7 +5438,10 @@ class LiveMatchDirector {
         // genau in dessen Laufweg, der Stuermer rennt in ihn hinein, und
         // weil der Decker nur so weit zurueckweicht, wie der Stuermer
         // vorankommt, kleben beide sekundenlang aneinander fest.
-        const VORLAUF = 0.7;
+        // vx ist je Bildschirmsekunde gemessen; auf "Schnell" also um das
+        // Abspieltempo groesser. Geteilt dadurch ist es der Weg je Laufsekunde,
+        // und der Decker schaetzt auf jeder Stufe gleich weit voraus.
+        const VORLAUF = 0.7 / Math.max(0.1, this.getMotionTempo());
         const lauf = (o) => ({
             x: o.x + (o.vx || 0) * VORLAUF,
             y: o.y + (o.vy || 0) * VORLAUF
@@ -5802,8 +5812,10 @@ class LiveMatchDirector {
         };
     }
 
-    separatePlayers(players, dt) {
+    separatePlayers(players, lauf) {
         const MIN_DIST = 4.2;
+        // Gleich stark bei jeder Bildrate und Abspielstufe
+        const anteil = 1 - Math.exp(-Math.max(0, lauf) * 40);
         for (let i = 0; i < players.length; i++) {
             for (let j = i + 1; j < players.length; j++) {
                 const a = players[i];
@@ -5815,7 +5827,7 @@ class LiveMatchDirector {
                 if (d >= MIN_DIST) continue;
                 if (d < 0.001) { dx = 0.1; dy = 0.1; d = 0.14; }
 
-                const push = ((MIN_DIST - d) / 2) * Math.min(1, dt * 12);
+                const push = ((MIN_DIST - d) / 2) * anteil;
                 const nx = (dx / d) * push;
                 const ny = (dy / d) * push;
 

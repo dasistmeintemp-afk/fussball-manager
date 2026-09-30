@@ -674,6 +674,64 @@ class MatchEngine {
         return parseFloat(_Random.clamp(rating, 3.0, 10.0).toFixed(1));
     }
 
+    /**
+     * Was Eigenheiten und Signaturen an einem Abschluss ändern.
+     *
+     * Beide Engines rechnen damit - das Livespiel im FM-Modus und die
+     * Sofort-Simulation. Abschlussstärke und Torwartreflexe verschieben die
+     * Chance anteilig (eine Großchance bleibt eine Großchance, sie wird nur
+     * öfter oder seltener verwandelt), Elfmeter dagegen absolut.
+     *
+     * @returns {{faktor:number, zuschlag:number}} pTor = pTor·faktor + zuschlag
+     */
+    static eigenschaftsWirkung(schuetze, torwart, art = "open") {
+        const eig = _eigEngine();
+        if (!eig) return { faktor: 1, zuschlag: 0 };
+        const es = schuetze ? eig.wirkung(schuetze) : {};
+        const eg = torwart ? eig.wirkung(torwart) : {};
+        if (art === "penalty") {
+            return {
+                faktor: 1,
+                zuschlag: (es.elfmeter || 0) + (es.abschluss || 0) * 0.3
+                    - (eg.twElfmeter || 0) * 0.5 - (eg.twReflex || 0) * 0.3
+            };
+        }
+        let faktor = (1 + (es.abschluss || 0) * 2.5) * (1 - (eg.twReflex || 0) * 2.5);
+        if (art === "freekick") faktor *= 1 + (es.freistoss || 0) * 5;
+        // Kopfbälle nach Flanke und Ecke: Wer in der Luft stark ist, kommt
+        // sauberer an den Ball
+        if (art === "cross" || art === "corner" || art === "header") faktor *= 1 + (es.luft || 0) / 60;
+        return { faktor, zuschlag: 0 };
+    }
+
+    /**
+     * Wer kommt zum Abschluss? Vorher war es ein Wurf unter allen Angreifern -
+     * der Linksaußen mit Abschluss 55 so oft wie der Mittelstürmer mit 85.
+     * Jetzt entscheiden Werte und Eigenschaften: wer gut abschließt, sich im
+     * Strafraum bewegt oder in der Luft stark ist, kommt öfter an den Ball.
+     */
+    static waehleSchuetze(kandidaten, attackType, posVon = null) {
+        if (!Array.isArray(kandidaten) || kandidaten.length === 0) return null;
+        const eig = _eigEngine();
+        const luftig = attackType === "cross" || attackType === "corner";
+        const gewichte = kandidaten.map(p => {
+            const v = k => typeof p[k] === "number" ? p[k] : (p.overall || 60);
+            const wert = luftig ? v("physical") * 0.6 + v("shooting") * 0.4 : v("shooting") * 0.8 + v("technique") * 0.2;
+            let g = Math.pow(Math.max(20, wert) / 60, 3);
+            const w = eig ? eig.wirkung(p) : {};
+            g *= 1 + (w.strafraum || 0) * 0.5 + (luftig ? (w.luft || 0) / 30 : 0);
+            if ((posVon ? posVon(p) : p.pos) === "ST") g *= 1.4;
+            return g;
+        });
+        const summe = gewichte.reduce((s, g) => s + g, 0);
+        let wurf = Math.random() * summe;
+        for (let i = 0; i < kandidaten.length; i++) {
+            wurf -= gewichte[i];
+            if (wurf <= 0) return kandidaten[i];
+        }
+        return kandidaten[kandidaten.length - 1];
+    }
+
     static resolveShotAttempt(shotType, shooter, gk, attPower, defPower, tactics = {}) {
         const getVal = (pl, attr) => (pl && typeof pl[attr] === 'number') ? pl[attr] : (pl?.overall || 68);
 
@@ -714,6 +772,11 @@ class MatchEngine {
         }
 
         let pGoal = base + skillEdge / MATCH_TUNING.skillInfluence;
+
+        // Eigenschaften und Signaturen wirken auch ohne Livespiel - ein
+        // eiskalter Vollstrecker trifft im Sofort-Ergebnis genauso öfter
+        const w = MatchEngine.eigenschaftsWirkung(shooter, gk, shotType);
+        pGoal = pGoal * w.faktor + w.zuschlag;
         pGoal = _Random.clamp(pGoal, MATCH_TUNING.minGoalChance, MATCH_TUNING.maxGoalChance);
 
         let pSave = 0.42 - skillEdge / 500;
@@ -1065,7 +1128,9 @@ class MatchEngine {
             const defenders = defPlayers.filter(p => ["IV", "LV", "RV", "DM"].includes(defPos(p)));
             const gk = defPlayers.find(p => defPos(p) === "TW") || defPlayers.find(p => p.pos === "TW") || defPlayers[0];
 
-            const shooter = attackers.length > 0 ? _Random.choice(attackers) : (midfielders[0] || attPlayers[0]);
+            const shooter = attackers.length > 0
+                ? MatchEngine.waehleSchuetze(attackers, attackType, attPos)
+                : (midfielders[0] || attPlayers[0]);
             // Die Ecke tritt der Standardschütze, nicht ein zufälliger Mittelfeldspieler
             const passer = (attackType === "corner" ? schuetze("ecken", isHomeAttacking) : null)
                 || (midfielders.length > 0 ? _Random.choice(midfielders) : (attPlayers[1] || attPlayers[0]));

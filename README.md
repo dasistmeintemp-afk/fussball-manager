@@ -131,7 +131,23 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 
 - **Bild und Ticker erzählen dasselbe:** Wer im Ticker genannt wird, hat auf dem Feld auch den Ball, und zwar an der Stelle, von der die Rede ist – die Szene beginnt erst, wenn er dort angekommen ist. Jede Angriffsart hat ihre eigene Geometrie: Die Flanke kommt vom Flügel, der Steilpass aus der Zentrale, die Ecke von der Fahne. Und seit dem Seitenwechsel fliegen die Schüsse auch nach der Pause aufs richtige Tor.
 
-> **Warum Ecken weiterhin nur aus der Timeline kommen:** Alle zählbaren Ereignisse (Tore, Schüsse, Karten, Fouls, Ecken) stammen ausschließlich aus der vorab erzeugten Timeline. Nur so zeigt eine sofort berechnete Partie exakt dieselben Zahlen wie eine im 2D-Modus verfolgte – ein Test vergleicht beide Wege Feld für Feld. Der Spielfluss erzeugt deshalb nur Einwürfe, Abstöße und Abseitsentscheidungen – Ereignisse, die in keiner Statistik auftauchen.
+> **Live und sofort berechnet:** Die Sofort-Simulation erzeugt alle Ereignisse vorab als Timeline. Im Livespiel gibt sie seit dem FM-Modus nur noch den Rahmen vor (Wechsel, Verletzungen, Halbzeit, Abpfiff) – alles andere entsteht auf dem Feld (siehe unten). Jedes Ereignis wird dabei in dieselbe Timeline geschrieben, aus der auch der Spielbericht rechnet: Live-Anzeige und Bericht zeigen Feld für Feld dieselben Zahlen, ein Test prüft das.
+
+### 3a. 🧠 FM-Modus: Jeder Spieler entscheidet nach seinen Werten
+Im Livespiel wird nichts mehr vorab gewürfelt. Wie im Football Manager entscheidet der Ballführende in jeder Situation selbst – und seine Werte bestimmen, was er wählt und ob es gelingt.
+
+- **Entscheiden:** Pass, Verlagerung, Steilpass, Dribbling, Flanke oder Abschluss werden gegeneinander abgewogen: Druck der Gegner, zugestellte Passwege, freie Mitspieler, Abstand und Winkel zum Tor. Ein Stürmer mit starkem Abschluss zieht aus 20 Metern ab, ein Techniker sucht lieber den Mitspieler.
+- **Ausführen:** Ob der Pass ankommt, hängt an Passen, Übersicht und Technik gegen Druck; ob das Dribbling klappt, an Dribbling und Tempo gegen Zweikampf und Stellungsspiel. Jeder Abschluss bekommt eine Chancenqualität (xG) aus Entfernung, Winkel, Druck und Verteidigern im Schussweg. Verwandelt wird nach dem Duell Schütze gegen Torwart. Kopfbälle nach Flanken entscheiden Sprungkraft und Physis.
+- **Alles entsteht aus dem Spiel:** Geblockte Schüsse und abgewehrte Flanken werden zur Ecke, Fouls im Zweikampf zum Freistoß (direkt aufs Tor oder als Flanke), Fouls im Strafraum zum Elfmeter. Karten folgen der Situation: Taktische Fouls beim Konter gibt es gelb, die Notbremse als letzter Mann rot.
+- **Werte zählen wirklich:** Auf dem Feld wirken die Werte so, wie der Spieler gerade drauf ist – Fitness, Moral, Form und die Eignung für seine Position. Ein Innenverteidiger im Sturm ist ein schlechterer Stürmer. Ab der 60. Minute zieht die Müdigkeit die Werte nach unten.
+- **Gemessene Statistik:** Ballbesitz ist die Zeit am Ball, die Passquote zählt die Pässe, gewonnene Zweikämpfe und vorbereitete Chancen gehen in die Spielernoten ein.
+- **Jede Abspielstufe ist dasselbe Spiel:** Laufwege, Deckung und Abstände rechnen in Spielzeit. Auf „Schnell“ läuft die Partie nur im Vorlauf, sie wird nicht enger oder foulreicher.
+
+**Eigenschaften und Signaturen (`EigenschaftenEngine`):**
+- **Eigenheiten** wie „Zieht nach innen“, „Schießt aus der Distanz“, „Sucht den tiefen Pass“ oder „Freistoßspezialist“ verschieben, was ein Spieler tut, und ein wenig, wie gut es gelingt. Ein Zweikämpfer gewinnt mehr Duelle und foult öfter.
+- **Signaturen** sind einzigartige Eigenschaften der Besten: Rund vier Prozent der Spieler jeder Liga – nach Stärke, höchstens fünf je Verein – bekommen eine, die zu ihrem Profil passt. Beispiele: 🎯 Eiskalter Vollstrecker, 🪄 Standardkünstler, 🎼 Spielgestalter, 🌀 Dribbelkünstler, 🦅 Kopfballungeheuer, 🛡️ Abwehrchef, 🐈 Katze im Tor, 🧱 Elfmeterkiller, ⚡ Pfeilschnell, 🔋 Unermüdlicher Motor und 🔥 Mentalitätsmonster (wächst in Derbys und in der Schlussphase).
+- Sie wirken im Livespiel und in der Sofort-Simulation gleich: Der Eiskalte verwandelt rund 30 % mehr seiner Chancen, die Katze im Tor hält entsprechend mehr. Wer gut abschließt oder in der Luft stark ist, kommt öfter zum Abschluss.
+- Zu sehen sind sie in der Spielerakte („Auf dem Platz“), als Symbol hinter dem Namen in Kader, Transfermarkt und Vereinsdetails und im Ticker („… 🎯 Eiskalter Vollstrecker!“). Jede Saison werden sie neu vergeben, ältere Spielstände bekommen sie beim Laden nachgereicht.
 
 ### 3b. 🗣️ Kabinenansprache & Pressekonferenz (`ManagerEngine`)
 Ein Manager verwaltet keine Tabellen, er redet mit Leuten.

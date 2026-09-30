@@ -606,7 +606,7 @@ class MatchFlowEngine {
             const pBlock = Math.max(0, Math.min(0.42, q.block * 0.34));
             if (_flowRandom.chance(pBlock)) {
                 const blocker = this.findInterceptor(schuetze, this.gegnerTor(schuetze.team), feldspieler) || feldspieler[0] || null;
-                return { ausgang: "blocked", xg: q.xg, gk, blocker, ecke: _flowRandom.chance(0.38) };
+                return { ausgang: "blocked", xg: q.xg, gk, blocker, ecke: _flowRandom.chance(0.45) };
             }
         }
 
@@ -622,14 +622,20 @@ class MatchFlowEngine {
 
         // Die Chance, verschoben um das Duell Schuetze gegen Torwart
         let pTor = q.xg * Math.max(0.45, Math.min(1.8, 1 + edge / 55));
-        pTor += (e.abschluss || 0) * (opts.elfmeter ? 0.5 : 1);
-        if (q.dist > 20) pTor += e.abschlussDistanz || 0;
+        // Eigenschaften - dieselben Faktoren wie in der Sofort-Simulation
+        // (MatchEngine.eigenschaftsWirkung): Abschluss und Reflexe anteilig,
+        // damit eine Halbchance eine Halbchance bleibt; Elfmeter absolut
+        if (opts.elfmeter) {
+            pTor += (e.elfmeter || 0) + (e.abschluss || 0) * 0.3
+                - (eg.twElfmeter || 0) * 0.5 - (eg.twReflex || 0) * 0.3;
+        } else {
+            pTor *= (1 + (e.abschluss || 0) * 2.5) * (1 - (eg.twReflex || 0) * 2.5);
+            if (opts.freistoss) pTor *= 1 + (e.freistoss || 0) * 5;
+            if (q.dist > 20) pTor *= 1 + (e.abschlussDistanz || 0) * 5;
+            if (nah) pTor *= 1 - (eg.twStrafraum || 0) * 0.3;
+        }
         // Ruhe vor dem Tor: Der Druck des Gegners wiegt weniger
         if (e.ruhe) pTor *= 1 + Math.min(1, q.druck) * 0.1 * e.ruhe;
-        if (opts.freistoss) pTor += e.freistoss || 0;
-        if (opts.elfmeter) pTor += (e.elfmeter || 0) - (eg.twElfmeter || 0);
-        pTor -= (eg.twReflex || 0) * (opts.elfmeter ? 0.3 : 1);
-        if (nah && !opts.elfmeter) pTor -= (eg.twStrafraum || 0) * 0.1;
         pTor = Math.max(0.005, Math.min(opts.elfmeter ? 0.93 : 0.9, pTor));
 
         // Aufs Tor kommt, wer sauber trifft - unabhaengig davon, ob es reicht
@@ -646,11 +652,11 @@ class MatchFlowEngine {
             return {
                 ausgang: "saved", xg: q.xg, gk,
                 festgehalten: w < sicher,
-                ecke: w >= sicher && w < sicher + (1 - sicher) * 0.4
+                ecke: w >= sicher && w < sicher + (1 - sicher) * 0.5
             };
         }
         // Vorbei - abgefaelscht ins Toraus gibt es Ecke
-        const abgefaelscht = !opts.elfmeter && !opts.freistoss && q.block > 0.25 && _flowRandom.chance(0.3);
+        const abgefaelscht = !opts.elfmeter && !opts.freistoss && q.block > 0.2 && _flowRandom.chance(0.35);
         return { ausgang: _flowRandom.chance(0.08) ? "woodwork" : "missed", xg: q.xg, gk, ecke: abgefaelscht };
     }
 
@@ -759,7 +765,7 @@ class MatchFlowEngine {
         return {
             ...basis, outcome: "cleared", verteidiger, landung,
             to: { x: tor.x - dir * _flowRandom.float(14, 24), y: Math.max(12, Math.min(88, landung.y + _flowRandom.float(-15, 15))) },
-            eckeFolgt: _flowRandom.chance(0.42)
+            eckeFolgt: _flowRandom.chance(0.5)
         };
     }
 
@@ -768,13 +774,23 @@ class MatchFlowEngine {
      * ein. Aggressive Spieler (Temperament, "geht in jeden Zweikampf") und
      * eine harte Taktik foulen oefter; wer gut dribbelt, holt Fouls heraus.
      */
+    /**
+     * Im eigenen Strafraum geht kaum ein Verteidiger mit vollem Risiko in den
+     * Zweikampf - jeder weiss, was ein Foul dort kostet. Ohne diese Vorsicht
+     * gab es gemessen fast zwei Elfmeter je Spiel statt einem alle drei.
+     */
+    strafraumVorsicht(carrier) {
+        const tor = this.gegnerTor(carrier.team);
+        return Math.abs(tor.x - carrier.x) < 16.5 && Math.abs(carrier.y - 50) < 30 ? 0.2 : 1;
+    }
+
     foulImZweikampf(carrier, defender, haerte = 0, edge = 0) {
         const ed = this.eig(defender);
         const ea = this.eig(carrier);
         const temperament = typeof defender.temperament === "number" ? defender.temperament : 12;
         const p = 0.27 + haerte * 0.06 + (ed.haerte || 0) * 0.1 + (ea.ziehtFouls || 0)
             + (temperament - 12) * 0.012 + Math.max(0, edge) / 400;
-        if (!_flowRandom.chance(Math.max(0.03, Math.min(0.4, p)))) return null;
+        if (!_flowRandom.chance(Math.max(0.03, Math.min(0.4, p)) * this.strafraumVorsicht(carrier))) return null;
         return { type: "foul", outcome: "foul", from: carrier, to: { x: carrier.x, y: carrier.y }, foulender: defender, opfer: carrier };
     }
 
@@ -786,11 +802,13 @@ class MatchFlowEngine {
         if (!carrier || carrier.pos === "TW" || pressure < 0.7) return null;
         const naechster = opponents.filter(o => o.pos !== "TW")
             .sort((a, b) => this.distance(carrier, a) - this.distance(carrier, b))[0];
-        if (!naechster || this.distance(carrier, naechster) > 4) return null;
+        // Naeher als gut vier Einheiten laesst das Laufmodell zwei Spieler
+        // nicht kommen - wer so nah steht, ist im Zweikampf
+        if (!naechster || this.distance(carrier, naechster) > 5.5) return null;
         const ed = this.eig(naechster);
         const haerte = _flowTaktik()?.wirkung(this.getTactics(naechster.team) || {}).zweikampf || 0;
-        const p = (pressure - 0.6) * 0.16 * (1 + haerte * 0.4 + (ed.haerte || 0) * 0.5 + (ed.pressing || 0) * 0.3);
-        if (!_flowRandom.chance(p)) return null;
+        const p = (pressure - 0.6) * 0.085 * (1 + haerte * 0.4 + (ed.haerte || 0) * 0.5 + (ed.pressing || 0) * 0.3);
+        if (!_flowRandom.chance(p * this.strafraumVorsicht(carrier))) return null;
         return { type: "foul", outcome: "foul", from: carrier, to: { x: carrier.x, y: carrier.y }, foulender: naechster, opfer: carrier, pressure, phase };
     }
 
@@ -893,7 +911,20 @@ class MatchFlowEngine {
         const skill = (passing * 0.5 + vision * 0.3 + technique * 0.2) / 100;
         let accuracy = 0.77 + skill * 0.24;
         const eg = this.fm() ? this.eig(carrier) : {};
-        if (this.fm()) accuracy += 0.08;
+        if (this.fm()) {
+            accuracy += 0.08;
+            // Im FM-Modus ist der Pass ein Duell: Passgeber gegen den Gegner,
+            // der ihn bedraengt. Vorher zaehlten nur die eigenen Werte, und
+            // die kaum - Bayern spielte gegen Augsburg dieselbe Passquote.
+            const bedraenger = opponents.filter(o => o.pos !== "TW")
+                .sort((a, b) => this.distance(carrier, a) - this.distance(carrier, b))[0];
+            if (bedraenger) {
+                const gegner = (this.attr(bedraenger, "defense") * 0.5 + this.attr(bedraenger, "positioning", 60) * 0.3
+                    + this.attr(bedraenger, "pace") * 0.2) / 100;
+                accuracy += (skill - gegner) * 0.22 * Math.min(1, pressure + 0.3);
+            }
+            accuracy += (skill - 0.72) * 0.12;
+        }
         accuracy += eg.passKoennen || 0;
         // Wer druckfest ist, spielt auch bedraengt sauber
         accuracy -= pressure * 0.11 * (1 - Math.min(0.7, (eg.druckfest || 0) * 0.5));
@@ -992,8 +1023,9 @@ class MatchFlowEngine {
         // das zaehlt die Timeline); wer auf den Fuessen bleibt, weniger
         const gegnerTaktik = defender ? this.getTactics(defender.team) || {} : {};
         const haerte = _flowTaktik()?.wirkung(gegnerTaktik).zweikampf || 0;
-        let chance = 0.6 + edge / 210 - pressure * 0.13 - haerte * 0.05;
         const fm = this.fm();
+        // Im FM-Modus entscheiden die Werte den Zweikampf deutlich
+        let chance = 0.6 + edge / (fm ? 140 : 210) - pressure * 0.13 - haerte * 0.05;
         const ea = fm ? this.eig(carrier) : {};
         const ed = fm && defender ? this.eig(defender) : {};
         chance += (ea.dribbelKoennen || 0) - (ed.zweikampf || 0);

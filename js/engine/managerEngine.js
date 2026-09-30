@@ -324,6 +324,106 @@ class ManagerEngine {
     ];
 
     /**
+     * Fragen nach dem Abpfiff - kürzer, und direkt am Ergebnis. Wer vorher
+     * große Worte gemacht hat, wird jetzt daran erinnert.
+     */
+    static NACH_SPIEL_TOPICS = [
+        {
+            id: "nachSieg",
+            gruppe: "ergebnis",
+            medium: "lokal",
+            gewicht: (ctx) => (ctx.differenz > 0 ? 3 : 0),
+            question: (ctx) => `Das ${ctx.ergebnis} gegen ${ctx.opponentName} - ein verdienter Sieg?`,
+            answers: [
+                { key: "umgesetzt", label: "Die Mannschaft hat alles umgesetzt, was wir besprochen haben.", fanMood: 2, mediaPressure: 1, morale: 3, board: 1,
+                  response: "Lob für alle - die Kabine feiert mit." },
+                { key: "glueck", label: "Wir hatten heute auch das nötige Glück.", fanMood: 0, mediaPressure: -3, morale: 0, board: 0,
+                  response: "Bescheiden. Der Druck sinkt." },
+                { key: "mehr", label: "Drei Punkte, aber da geht noch deutlich mehr.", fanMood: 1, mediaPressure: 2, morale: -1, board: 2,
+                  response: "Der Vorstand mag den Hunger - die Spieler hätten sich mehr Lob gewünscht." }
+            ]
+        },
+        {
+            id: "nachRemis",
+            gruppe: "ergebnis",
+            medium: "fach",
+            gewicht: (ctx) => (ctx.differenz === 0 ? 3 : 0),
+            question: (ctx) => `${ctx.ergebnis} gegen ${ctx.opponentName}. Ein gewonnener oder ein verlorener Punkt?`,
+            answers: [
+                { key: "gewonnen", label: "Ein gewonnener Punkt - damit können wir leben.", fanMood: -1, mediaPressure: -3, morale: 2, board: 0,
+                  response: "Zufrieden mit wenig - nicht jeder Fan sieht das so." },
+                { key: "verloren", label: "Zwei verlorene Punkte. Wir wollten gewinnen.", fanMood: 2, mediaPressure: 2, morale: -1, board: 1,
+                  response: "Der Anspruch ist klar - die Mannschaft hört die Kritik mit." },
+                { key: "leistung", label: "Mich interessiert die Leistung, und die war in Ordnung.", fanMood: 0, mediaPressure: -1, morale: 1, board: 1,
+                  response: "Sachlich. Kein Stoff für Schlagzeilen." }
+            ]
+        },
+        {
+            id: "nachNiederlage",
+            gruppe: "ergebnis",
+            medium: "boulevard",
+            gewicht: (ctx) => (ctx.differenz < 0 ? 3 + Math.min(2, -ctx.differenz - 1) : 0),
+            question: (ctx) => `Das ${ctx.ergebnis} gegen ${ctx.opponentName}. Was hat heute gefehlt?`,
+            answers: [
+                { key: "verdient", label: "Wir haben verdient verloren. Punkt.", fanMood: 1, mediaPressure: -3, morale: -1, board: 1,
+                  response: "Ehrlich - das nimmt der Presse den Wind aus den Segeln." },
+                { key: "schiri", label: "Der Schiedsrichter hat dieses Spiel entschieden.", fanMood: 3, mediaPressure: 5, morale: 1, board: -2,
+                  response: "Die Kurve ist bei Ihnen, der Vorstand nicht - und der Verband liest mit.",
+                  schlagzeile: () => "Trainer wütet gegen den Schiedsrichter" },
+                { key: "schutz", label: "Ich nehme meine Mannschaft ausdrücklich in Schutz.", fanMood: -1, mediaPressure: -2, morale: 4, board: 0,
+                  response: "Die Spieler wissen, was sie an Ihnen haben." }
+            ]
+        },
+        {
+            id: "matchwinner",
+            medium: "lokal",
+            ziel: "besterId",
+            gewicht: (ctx) => (ctx.besterNote >= 8 ? 2.5 : 0),
+            question: (ctx) => `${ctx.besterName} war heute der beste Mann auf dem Platz. Was sagen Sie zu ihm?`,
+            answers: [
+                { key: "lob", label: "Ein überragendes Spiel - genau das kann er.", fanMood: 1, mediaPressure: 0, morale: 1, board: 0, targetMorale: 10,
+                  response: "Er strahlt über das ganze Gesicht." },
+                { key: "team", label: "Einzelne herauszuheben ist nicht meine Art.", fanMood: 0, mediaPressure: -1, morale: 2, board: 0,
+                  response: "Die Mannschaft nimmt es als Kompliment an alle." },
+                { key: "mehrDrin", label: "Gut, aber bei ihm ist noch mehr drin.", fanMood: 0, mediaPressure: 1, morale: 0, board: 1, targetMorale: -4,
+                  response: "Ein Ansporn - oder ein Dämpfer, je nachdem, wen man fragt." }
+            ]
+        },
+        {
+            id: "platzverweis",
+            medium: "boulevard",
+            ziel: "rotId",
+            gewicht: (ctx) => (ctx.rotName ? 3.5 : 0),
+            question: (ctx) => `Die Rote Karte gegen ${ctx.rotName} - war das der Knackpunkt?`,
+            answers: [
+                { key: "dumm", label: "Das war unprofessionell und hat uns das Spiel gekostet.", fanMood: 1, mediaPressure: 3, morale: -1, board: 2, targetMorale: -10,
+                  response: "Öffentliche Kritik - er wird es nicht vergessen.",
+                  schlagzeile: (ctx) => `Trainer lässt ${ctx.rotName} nach Rot im Regen stehen` },
+                { key: "intern", label: "Das klären wir intern.", fanMood: 0, mediaPressure: -3, morale: 0, board: 1,
+                  response: "Kein Futter für die Presse." },
+                { key: "hart", label: "Eine harte Entscheidung - so ist Fußball.", fanMood: 2, mediaPressure: 0, morale: 1, board: -1, targetMorale: 5,
+                  response: "Sie stellen sich vor ihn - die Kabine registriert es." }
+            ]
+        },
+        {
+            id: "wortGehalten",
+            medium: "boulevard",
+            gewicht: (ctx) => (ctx.versprechen === "gehalten" ? 4 : ctx.versprechen === "gebrochen" ? 4.5 : 0),
+            question: (ctx) => ctx.versprechen === "gehalten"
+                ? "Sie hatten es angekündigt, und Sie haben geliefert. Genugtuung?"
+                : "Große Worte vor dem Spiel, jetzt dieses Ergebnis. Bereuen Sie die Ansage?",
+            answers: [
+                { key: "stehen", label: "Ich stehe zu jedem Wort.", fanMood: 2, mediaPressure: 3, morale: 1, board: 0,
+                  response: "Konsequent - ob man das mag oder nicht." },
+                { key: "demut", label: "Das Ergebnis spricht für sich - mehr sage ich nicht.", fanMood: 0, mediaPressure: -3, morale: 0, board: 1,
+                  response: "Zurückhaltung beruhigt die Lage." },
+                { key: "fehler", label: "Vielleicht war die Ansage ein Fehler.", fanMood: -1, mediaPressure: -4, morale: 1, board: 0,
+                  response: "Selbstkritisch - die Presse lässt das Thema fallen." }
+            ]
+        }
+    ];
+
+    /**
      * Wer fragt: Das Boulevardblatt macht aus jedem Satz eine Schlagzeile,
      * die Fachpresse liest der Vorstand, die Lokalzeitung die Kurve.
      */
@@ -653,13 +753,31 @@ class ManagerEngine {
         const ctx = this.pressKontext(state);
         if (!ctx) return null;
         const tag = `${state.seasonYear || 1}|${state.currentDayIndex || 0}`;
-        const text = (wert) => (typeof wert === "function" ? wert(ctx) : wert);
+        // Steht etwas Besonderes an, fragen die Journalisten dreimal nach
+        const fragen = this._stelleFragen(this.PRESS_TOPICS, ctx, tag, (dringend) => (dringend >= 3 ? 3 : 2));
+        const erste = fragen[0];
+        return {
+            topicId: erste.topicId,
+            question: erste.question,
+            answers: erste.answers,
+            context: ctx,
+            fragen
+        };
+    }
 
-        const themen = this.PRESS_TOPICS
-            .map(t => ({ t, g: (t.gewicht ? t.gewicht(ctx) : 1) + this._pressHash(`${tag}|${t.id}`) * 0.6 }))
-            .filter(x => x.g > 0.6 && (!x.t.gewicht || x.t.gewicht(ctx) > 0))
+    /**
+     * Die Fragen einer Konferenz: nach Dringlichkeit, je Gruppe nur ein
+     * Thema, jede Frage von einem anderen Journalisten.
+     */
+    static _stelleFragen(liste, ctx, tag, anzahlFuer) {
+        const text = (wert) => (typeof wert === "function" ? wert(ctx) : wert);
+        const themen = liste
+            .map(t => ({ t, basis: t.gewicht ? t.gewicht(ctx) : 1 }))
+            .filter(x => x.basis > 0)
+            .map(x => ({ ...x, g: x.basis + this._pressHash(`${tag}|${x.t.id}`) * 0.6 }))
+            .filter(x => x.g > 0.6)
             .sort((a, b) => b.g - a.g);
-        const anzahl = themen.length > 0 && themen[0].t.gewicht(ctx) >= 3 ? 3 : 2;
+        const anzahl = themen.length ? anzahlFuer(themen[0].basis) : 0;
         // Aus jeder Gruppe nur ein Thema: Wer nach der Siegesserie fragt,
         // fragt nicht noch einmal nach der Form
         const gruppen = new Set();
@@ -673,11 +791,10 @@ class ManagerEngine {
         const medienReihe = ["lokal", "fach", "boulevard"];
         const start = Math.floor(this._pressHash(`${tag}|journalist`) * this.JOURNALISTEN.length);
 
-        const fragen = gewaehlt.map((x, i) => {
+        return gewaehlt.map((x, i) => {
             const t = x.t;
             const typ = t.medium || medienReihe[Math.floor(this._pressHash(`${tag}|medium${i}`) * 3)];
             const m = this.PRESSE_MEDIEN[typ];
-            const name = this.JOURNALISTEN[(start + i * 3) % this.JOURNALISTEN.length];
             return {
                 topicId: t.id,
                 question: t.question(ctx),
@@ -688,17 +805,62 @@ class ManagerEngine {
                     icon: m.icon,
                     art: m.art
                 },
-                journalist: name
+                journalist: this.JOURNALISTEN[(start + i * 3) % this.JOURNALISTEN.length]
             };
         });
+    }
 
-        const erste = fragen[0];
+    /**
+     * Die Pressekonferenz nach dem Abpfiff: ein bis zwei Fragen zum Spiel -
+     * zum Ergebnis, zum besten Mann, zu einer Roten Karte oder zu dem, was
+     * vorher versprochen wurde. Gibt null zurück, wenn das Spiel nicht das
+     * eigene ist oder die Konferenz schon stattgefunden hat.
+     */
+    static buildNachSpielPresse(state, match) {
+        const club = this.clubOf(state);
+        if (!club || !match || !match.played) return null;
+        // Nach einem Testspiel interessiert sich keine Zeitung für Antworten
+        if (match.freundschaftsspiel || match.competitionId === "friendly") return null;
+        const heim = match.homeClubId === club.id;
+        if (!heim && match.awayClubId !== club.id) return null;
+        const schluessel = `${state.seasonYear || 1}|${match.id || ""}|${match.homeClubId}|${match.awayClubId}`;
+        if (state.nachSpielPresse === schluessel) return null;
+
+        const tore = heim ? match.homeGoals : match.awayGoals;
+        const gegentore = heim ? match.awayGoals : match.homeGoals;
+        const gegner = this.clubOf(state, heim ? match.awayClubId : match.homeClubId);
+        const noten = (match.playerRatings || []).filter(r => r.clubId === club.id)
+            .sort((a, b) => (b.rating || 0) - (a.rating || 0));
+        const rot = (match.events || []).find(e => e.type === "red_card"
+            && (e.clubId ? e.clubId === club.id : e.team === (heim ? "home" : "away")));
+        const rotSpieler = rot ? (state.players || []).find(p => String(p.id) === String(rot.playerId)) : null;
+        const v = state.lastVersprechen && state.lastVersprechen.spielSchluessel === schluessel ? state.lastVersprechen : null;
+
+        const ctx = {
+            clubName: club.name,
+            city: club.city || club.name,
+            opponentId: gegner?.id || null,
+            opponentName: gegner?.name || "den Gegner",
+            ergebnis: `${tore}:${gegentore}`,
+            differenz: (tore || 0) - (gegentore || 0),
+            besterId: noten[0]?.playerId ?? null,
+            besterName: noten[0]?.name || null,
+            besterNote: noten[0]?.rating || 0,
+            rotId: rotSpieler ? rotSpieler.id : null,
+            rotName: rotSpieler ? rotSpieler.name : null,
+            versprechen: v ? (v.gehalten ? "gehalten" : "gebrochen") : null,
+            nachSpiel: true,
+            spielSchluessel: schluessel
+        };
+        const fragen = this._stelleFragen(this.NACH_SPIEL_TOPICS, ctx, `${schluessel}|nach`, () => 2);
+        if (!fragen.length) return null;
         return {
-            topicId: erste.topicId,
-            question: erste.question,
-            answers: erste.answers,
+            topicId: fragen[0].topicId,
+            question: fragen[0].question,
+            answers: fragen[0].answers,
             context: ctx,
-            fragen
+            fragen,
+            nachSpiel: true
         };
     }
 
@@ -710,7 +872,7 @@ class ManagerEngine {
      * Wirkung: Der Boulevard macht Druck, die Lokalzeitung erreicht die Fans.
      */
     static answerPressConference(state, topicId, answerKey, optionen = {}) {
-        const topic = this.PRESS_TOPICS.find(t => t.id === topicId);
+        const topic = [...this.PRESS_TOPICS, ...this.NACH_SPIEL_TOPICS].find(t => t.id === topicId);
         if (!topic) return { success: false, error: "Unbekanntes Thema." };
 
         const answer = topic.answers.find(a => a.key === answerKey);
@@ -719,6 +881,9 @@ class ManagerEngine {
         const club = this.clubOf(state);
         const squad = this.squadOf(state, club);
         const pk = optionen.frage && optionen.kontext ? null : this.buildPressConference(state);
+        // Nach dem Spiel ist die Konferenz mit der ersten Antwort vermerkt -
+        // ein zweites Mal gibt es sie für diese Partie nicht
+        if (optionen.kontext?.nachSpiel) state.nachSpielPresse = optionen.kontext.spielSchluessel;
         const ctx = optionen.kontext || pk?.context || {};
         const frage = optionen.frage || pk?.fragen?.find(f => f.topicId === topicId) || null;
         const faktor = this.PRESSE_MEDIEN[frage?.medium?.typ]?.faktor || { fanMood: 1, mediaPressure: 1, board: 1 };
@@ -840,6 +1005,7 @@ class ManagerEngine {
         const was = v.art === "sieg" ? `einen Sieg gegen ${v.gegnerName}` : `keine Niederlage gegen ${v.gegnerName}`;
         const ergebnis = {
             gehalten,
+            spielSchluessel: `${state.seasonYear || 1}|${match.id || ""}|${match.homeClubId}|${match.awayClubId}`,
             art: v.art,
             gegnerName: v.gegnerName,
             effects: e,

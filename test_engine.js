@@ -7056,6 +7056,20 @@ function runEngineTests() {
         if (!bilanz || bilanz.gehalten) throw new Error("Das gebrochene Versprechen wird nicht abgerechnet");
         if (!(state.fanMood < fans)) throw new Error("Ein gebrochenes Versprechen kostet keine Fanstimmung");
         if (state.pressVersprechen) throw new Error("Das Versprechen bleibt nach dem Spiel offen");
+
+        // Nach dem Abpfiff: Das gebrochene Versprechen ist Thema, dann nie wieder
+        const nach = ManagerEngine.buildNachSpielPresse(state, spiel);
+        if (!nach || !nach.nachSpiel || nach.fragen.length < 1 || nach.fragen.length > 2) throw new Error("Keine Pressekonferenz nach dem Spiel");
+        if (!nach.fragen.some(f => f.topicId === "wortGehalten")) throw new Error("Das gebrochene Versprechen ist nach dem Spiel kein Thema");
+        if (nach.fragen.some(f => f.topicId === "nachSieg")) throw new Error("Nach einer Niederlage wird nach dem Sieg gefragt");
+        const antwort = ManagerEngine.answerPressConference(state, nach.fragen[0].topicId, nach.fragen[0].answers[0].key,
+            { frage: nach.fragen[0], kontext: nach.context });
+        if (!antwort.success) throw new Error(antwort.error);
+        if (ManagerEngine.buildNachSpielPresse(state, spiel)) throw new Error("Die Konferenz nach dem Spiel lässt sich wiederholen");
+        if (ManagerEngine.buildNachSpielPresse(state, { ...spiel, id: "test", freundschaftsspiel: true })) throw new Error("Nach einem Testspiel gibt es eine Pressekonferenz");
+        ManagerEngine.NACH_SPIEL_TOPICS.forEach(topic => {
+            if (topic.answers.length < 3) throw new Error(`Thema ${topic.id} hat zu wenige Antworten`);
+        });
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

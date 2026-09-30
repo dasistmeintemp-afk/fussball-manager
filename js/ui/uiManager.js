@@ -2155,14 +2155,15 @@ class UIManager {
      * Eine Kampfansage liest auch der Gegner, ein Versprechen wird nach dem
      * Spiel abgerechnet, eine Schlagzeile steht am nächsten Tag im Postfach.
      */
-    showPressConferenceModal() {
+    showPressConferenceModal(vorgabe = null, onDone = null) {
         const state = this.app.state;
         const engine = this.getManagerEngine();
         const modal = document.getElementById("modalPressConference");
         const body = document.getElementById("pressConferenceContent");
         if (!engine || !modal || !body) return;
 
-        const pk = engine.buildPressConference(state);
+        // Nach dem Spiel kommt die Konferenz fertig aus dem Spielbericht
+        const pk = vorgabe || engine.buildPressConference(state);
         if (!pk) return;
         const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
         const fragen = Array.isArray(pk.fragen) && pk.fragen.length
@@ -2172,9 +2173,11 @@ class UIManager {
         let index = 0;
 
         const titel = document.getElementById("pcModalTitle");
-        if (titel) titel.textContent = pk.context?.opponentId
-            ? `Pressekonferenz vor dem Spiel gegen ${pk.context.opponentName}`
-            : "Pressekonferenz";
+        if (titel) titel.textContent = pk.nachSpiel
+            ? `Nach dem Spiel: ${pk.context.ergebnis} gegen ${pk.context.opponentName}`
+            : (pk.context?.opponentId
+                ? `Pressekonferenz vor dem Spiel gegen ${pk.context.opponentName}`
+                : "Pressekonferenz");
 
         // Mehr Medienrummel ist schlecht, alles andere gut
         const zeile = (label, wert, umgekehrt = false) => {
@@ -2242,6 +2245,10 @@ class UIManager {
                             return;
                         }
                         modal.style.display = "none";
+                        if (onDone) {
+                            onDone();
+                            return;
+                        }
                         this.renderCurrentTab();
                         this.renderHeader();
                     };
@@ -9987,6 +9994,24 @@ class UIManager {
             this.renderCurrentTab();
             this.renderHeader();
         };
+
+        // Die Pressekonferenz nach dem Abpfiff - freiwillig, einmal je Spiel
+        const presseKnopf = document.getElementById("btnReportPress");
+        const manager = this.getManagerEngine();
+        const nachSpiel = manager && typeof manager.buildNachSpielPresse === "function"
+            ? manager.buildNachSpielPresse(state, match) : null;
+        if (presseKnopf) {
+            presseKnopf.style.display = nachSpiel ? "" : "none";
+            presseKnopf.disabled = false;
+            presseKnopf.onclick = () => {
+                if (!nachSpiel) return;
+                this.showPressConferenceModal(nachSpiel, () => {
+                    presseKnopf.disabled = true;
+                    presseKnopf.textContent = "Pressekonferenz beendet";
+                    this.renderHeader();
+                });
+            };
+        }
     }
 
     /**

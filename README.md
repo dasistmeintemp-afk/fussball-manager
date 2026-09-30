@@ -142,6 +142,18 @@ Im Livespiel wird nichts mehr vorab gewürfelt. Wie im Football Manager entschei
 - **Werte zählen wirklich:** Auf dem Feld wirken die Werte so, wie der Spieler gerade drauf ist – Fitness, Moral, Form und die Eignung für seine Position. Ein Innenverteidiger im Sturm ist ein schlechterer Stürmer. Ab der 60. Minute zieht die Müdigkeit die Werte nach unten.
 - **Gemessene Statistik:** Ballbesitz ist die Zeit am Ball, die Passquote zählt die Pässe, gewonnene Zweikämpfe und vorbereitete Chancen gehen in die Spielernoten ein.
 - **Jede Abspielstufe ist dasselbe Spiel:** Laufwege, Deckung und Abstände rechnen in Spielzeit. Auf „Schnell“ läuft die Partie nur im Vorlauf, sie wird nicht enger oder foulreicher.
+- **Werte relativ zum Niveau:** Die Werte einer Partie werden so skaliert, dass ihr Schnitt bei 70 liegt. Das Verhältnis zwischen den Spielern bleibt dabei erhalten: Ein Landesligist mit 26 gegen einen mit 19 ist genauso überlegen wie ein Bundesligist mit 86 gegen einen mit 63.
+- **Heimvorteil:** Die Heimelf spielt mit dem Publikum im Rücken etwas besser, je nach Stadion. Auf neutralem Platz (Turniere) entfällt er.
+- **Ein voller Strafraum schützt:** Stehen mehr als vier Verteidiger im Strafraum, kommen Pässe hinein seltener an, Dribblings bleiben hängen, und Abschlüsse darin sind schwerer. Gegen einen tiefen Block wird öfter aus der Distanz geschossen.
+
+**Mentale Werte:** Die versteckten Persönlichkeitswerte wirken auf dem Platz.
+- **Tagesform:** Unbeständige Spieler haben gute und schlechte Tage (bis ±10 %), ein beständiger Profi spielt fast immer gleich. Das gilt auch in der Sofort-Simulation.
+- **Entscheidungen:** Wer das Spiel liest (Übersicht, Stellungsspiel, Erfahrung), wählt öfter die beste Option. Ein junger Spieler mit wenig Übersicht entscheidet sich öfter falsch.
+- **Nervenstärke:** Große Spiele, Beständigkeit und Erfahrung entscheiden mit, ob ein Abschluss unter Druck oder ein Elfmeter sitzt.
+- **Konzentration:** Ab der 75. Minute unterlaufen unprofessionellen, unbeständigen Spielern mehr Fehlpässe.
+- **Große Spiele:** In Derbys und engen Schlussphasen wächst, wer dafür gemacht ist. Wer es nicht ist, verkrampft.
+
+**Der Trainer des Gegners reagiert:** Liegt die KI zurück, stellt sie ab der 55. Minute offensiver um, bei zwei Toren Rückstand sofort, in der Schlussphase auf volles Risiko mit hohem Pressing. Eine späte Führung sichert sie ab und bringt sie knapp auch mit Zeitspiel über die Zeit. Jede Umstellung steht im Ticker, nach dem Abpfiff gilt wieder die eigene Taktik. Gewechselt wird nach Kondition: Wer zurückliegt, bringt früher frische Beine nach vorn, wer führt, frischt die Abwehr auf. Dieselbe Logik gilt in der Sofort-Simulation für alle Spiele der Liga.
 
 **Eigenschaften und Signaturen (`EigenschaftenEngine`):**
 - **Eigenheiten** wie „Zieht nach innen“, „Schießt aus der Distanz“, „Sucht den tiefen Pass“ oder „Freistoßspezialist“ verschieben, was ein Spieler tut, und ein wenig, wie gut es gelingt. Ein Zweikämpfer gewinnt mehr Duelle und foult öfter.

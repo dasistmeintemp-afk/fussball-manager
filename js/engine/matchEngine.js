@@ -714,7 +714,7 @@ class MatchEngine {
      * Jetzt entscheiden Werte und Eigenschaften: wer gut abschließt, sich im
      * Strafraum bewegt oder in der Luft stark ist, kommt öfter an den Ball.
      */
-    static waehleSchuetze(kandidaten, attackType, posVon = null) {
+    static waehleSchuetze(kandidaten, attackType, posVon = null, gedeckt = null) {
         if (!Array.isArray(kandidaten) || kandidaten.length === 0) return null;
         const eig = _eigEngine();
         const luftig = attackType === "cross" || attackType === "corner";
@@ -725,6 +725,8 @@ class MatchEngine {
             const w = eig ? eig.wirkung(p) : {};
             g *= 1 + (w.strafraum || 0) * 0.5 + (luftig ? (w.luft || 0) / 30 : 0);
             if ((posVon ? posVon(p) : p.pos) === "ST") g *= 1.4;
+            // Wer eng gedeckt wird, kommt seltener frei zum Abschluss
+            if (gedeckt && gedeckt[p.id]) g *= Math.pow(gedeckt[p.id], 6);
             return g;
         });
         const summe = gewichte.reduce((s, g) => s + g, 0);
@@ -905,8 +907,11 @@ class MatchEngine {
             if (!lineup.length) return 1;
             return lineup.reduce((sum, p) => sum + MatchEngine.tagesform(p), 0) / lineup.length;
         };
-        const formHeim = teamForm(activeHomePlayers, options.tagesformHome);
-        const formGast = teamForm(activeAwayPlayers, options.tagesformAway);
+        // Ein Matchplan, der die Schwächen des Gegners trifft, macht die
+        // Mannschaft etwas besser eingestellt
+        const planBonus = (side) => (options.matchplan && options.matchplan.side === side ? (options.matchplan.bonus || 1) : 1);
+        const formHeim = teamForm(activeHomePlayers, options.tagesformHome) * planBonus("home");
+        const formGast = teamForm(activeAwayPlayers, options.tagesformAway) * planBonus("away");
         [[homePower, formHeim], [homePowerNeutral, formHeim], [awayPower, formGast]].forEach(([pw, f]) => {
             pw.attack *= f; pw.midfield *= f; pw.defense *= f; pw.goalkeeper *= f;
             pw.total *= f;
@@ -1173,7 +1178,7 @@ class MatchEngine {
             const gk = defPlayers.find(p => defPos(p) === "TW") || defPlayers.find(p => p.pos === "TW") || defPlayers[0];
 
             const shooter = attackers.length > 0
-                ? MatchEngine.waehleSchuetze(attackers, attackType, attPos)
+                ? MatchEngine.waehleSchuetze(attackers, attackType, attPos, options.matchplan?.gedeckt)
                 : (midfielders[0] || attPlayers[0]);
             // Die Ecke tritt der Standardschütze, nicht ein zufälliger Mittelfeldspieler
             const passer = (attackType === "corner" ? schuetze("ecken", isHomeAttacking) : null)
@@ -2512,11 +2517,20 @@ class MatchEngine {
      * Schnelle Hintergrund-Simulation für Matches (nutzt dieselbe Timeline)
      */
     static simulateFullMatch(match, homeClub, awayClub, allPlayers, options = {}) {
-        const timeline = match.timeline && match.timeline.length > 0
-            ? match.timeline
-            : this.generateTimeline(match, homeClub, awayClub, allPlayers, options);
-
-        return this.applyTimelineToMatch(match, timeline, homeClub, awayClub, allPlayers);
+        // Der Matchplan gilt nur für dieses Spiel: Anweisungen setzen, danach
+        // wieder die gewohnte Taktik
+        const plan = options.matchplan;
+        const planClub = plan ? (plan.side === "home" ? homeClub : awayClub) : null;
+        const vorher = planClub ? { ...(planClub.tactics || {}) } : null;
+        if (planClub && plan.taktik) planClub.tactics = { ...(planClub.tactics || {}), ...plan.taktik };
+        try {
+            const timeline = match.timeline && match.timeline.length > 0
+                ? match.timeline
+                : this.generateTimeline(match, homeClub, awayClub, allPlayers, options);
+            return this.applyTimelineToMatch(match, timeline, homeClub, awayClub, allPlayers);
+        } finally {
+            if (planClub) planClub.tactics = vorher;
+        }
     }
 
     /**
@@ -2745,6 +2759,14 @@ class LiveMatch {
             away: { tactics: { ...(awayClub.tactics || {}) }, formation: awayClub.formation }
         };
 
+        // Der Matchplan aus der Taktikbesprechung: Anweisungen nur für dieses
+        // Spiel (nach dem Abpfiff gilt wieder, was oben gesichert ist)
+        this.matchplan = options.matchplan || null;
+        if (this.matchplan && this.matchplan.taktik) {
+            const planClub = this.matchplan.side === "home" ? homeClub : awayClub;
+            planClub.tactics = { ...(planClub.tactics || {}), ...this.matchplan.taktik };
+        }
+
         this.homeLineup = MatchEngine.getCleanLineup(homeClub, allPlayers);
         this.awayLineup = MatchEngine.getCleanLineup(awayClub, allPlayers);
         // Wer von Anfang an spielt - für die Einsatzminuten der Live-Noten
@@ -2895,6 +2917,19 @@ class LiveMatch {
         const formFuer = (p) => { if (p && !this.tagesform.has(p.id)) this.tagesform.set(p.id, MatchEngine.tagesform(p)); };
         [...this.homeLineup, ...this.awayLineup].forEach(formFuer);
         [homeClub, awayClub].forEach(c => (c?.bench || []).forEach(id => formFuer(MatchEngine.findPlayer(allPlayers, id))));
+        // Matchplan im Livespiel: Bonus für die gut eingestellte Seite, der
+        // eng gedeckte Gegenspieler verliert etwas - beides über die Tagesform
+        if (this.matchplan) {
+            const seiteIds = new Set((this.matchplan.side === "home" ? this.homeLineup : this.awayLineup).map(p => p.id));
+            const seiteBank = (this.matchplan.side === "home" ? homeClub : awayClub)?.bench || [];
+            [...seiteIds, ...seiteBank].forEach(id => {
+                if (this.tagesform.has(id)) this.tagesform.set(id, this.tagesform.get(id) * (this.matchplan.bonus || 1));
+            });
+            Object.entries(this.matchplan.gedeckt || {}).forEach(([id, f]) => {
+                const key = [...this.tagesform.keys()].find(k => String(k) === String(id));
+                if (key !== undefined) this.tagesform.set(key, this.tagesform.get(key) * f);
+            });
+        }
         this.players2D = this.initialize2DPositions();
         // Wer das Feld verlaesst (Platzverweis, Auswechslung), geht noch sichtbar
         // zur Seitenlinie - nur fuer das Bild, in der Simulation ist er weg.
@@ -3126,6 +3161,9 @@ class LiveMatch {
             // Ausgewechselt wird, wer muede ist - nach der Simulation, nicht
             // nach der Fitness vor dem Anpfiff
             frische: new Map((this.players2D || []).map(p => [p.id, p.freshness ?? 1])),
+            // Der Matchplan wirkt auch in der Neuberechnung (die Taktik steht
+            // schon am Verein, Bonus und Deckung stecken in der Tagesform)
+            matchplan: this.matchplan ? { side: this.matchplan.side, gedeckt: this.matchplan.gedeckt, bonus: 1 } : undefined,
             // Die Tagesform der Partie gilt auch für die Neuberechnung
             tagesformHome: this._teamForm("home"),
             tagesformAway: this._teamForm("away"),

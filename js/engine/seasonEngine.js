@@ -40,7 +40,12 @@ class SeasonEngine {
                 const homeClub = state.clubs.find(c => c.id === match.homeClubId);
                 const awayClub = state.clubs.find(c => c.id === match.awayClubId);
                 if (homeClub && awayClub && matchEngine) {
-                    matchEngine.simulateFullMatch(match, homeClub, awayClub, state.players);
+                    // Der Matchplan aus der Taktikbesprechung gilt auch, wenn
+                    // das eigene Spiel ohne Livespiel berechnet wird
+                    const planEngine = _resolve('MatchplanEngine', './matchplanEngine.js');
+                    const plan = planEngine ? planEngine.spielOptionen(state, match) : null;
+                    matchEngine.simulateFullMatch(match, homeClub, awayClub, state.players, plan ? { matchplan: plan } : {});
+                    if (plan) planEngine.abschliessen(state, match);
                 }
             }
             // Nur die eigenen Partien behalten Einzelkritiken und Ereignisse

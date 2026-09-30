@@ -46,6 +46,7 @@ const ASSETS_TO_CACHE = [
     "./js/engine/careerEngine.js",
     "./js/engine/calendarEngine.js",
     "./js/engine/opponentAnalysisEngine.js",
+    "./js/engine/matchplanEngine.js",
     "./js/engine/gameState.js",
     "./js/engine/eigenschaftenEngine.js",
     "./js/engine/matchFlowEngine.js",

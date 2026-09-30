@@ -26,6 +26,7 @@ const { CompetitionEngine } = require('./js/engine/competitionEngine.js');
 const { PlayerRatingEngine } = require('./js/engine/playerRatingEngine.js');
 const { CalendarEngine } = require('./js/engine/calendarEngine.js');
 const { OpponentAnalysisEngine } = require('./js/engine/opponentAnalysisEngine.js');
+const { MatchplanEngine } = require('./js/engine/matchplanEngine.js');
 const { PositionEngine } = require('./js/engine/positionEngine.js');
 const { TacticsEngine } = require('./js/engine/tacticsEngine.js');
 const { MatchFlowEngine } = require('./js/engine/matchFlowEngine.js');

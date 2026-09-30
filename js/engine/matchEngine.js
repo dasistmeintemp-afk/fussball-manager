@@ -93,6 +93,11 @@ const MATCH_TUNING = {
     },
     skillInfluence: 340,
     cornerShotChance: 0.28,
+    // Ecken ohne eigene Szene: nach Parade und nach abgefälschtem Schuss.
+    // Das Livespiel kommt so auf rund neun Ecken je Partie, die Sofort-
+    // Simulation lag vorher bei fünfeinhalb.
+    eckeNachParade: 0.35,
+    eckeNachFehlschuss: 0.25,
     minGoalChance: 0.03,
     maxGoalChance: 0.40,
 
@@ -1327,8 +1332,8 @@ class MatchEngine {
                     outcome: "saved",
                     text: formatCommentary("save", { minute: min, gk: gk?.name, shooter: shooter?.name })
                 });
-                // 25% Chance auf eine anschließende Ecke nach Parade
-                if (_Random.chance(0.25)) {
+                // Ecke nach der Parade, wenn der Torwart zur Seite lenkt
+                if (_Random.chance(MATCH_TUNING.eckeNachParade)) {
                     timeline.push({
                         minute: min,
                         second: 40,
@@ -1373,6 +1378,21 @@ class MatchEngine {
                     outcome: "missed",
                     text: formatCommentary("missed", { minute: min, shooter: shooter?.name })
                 });
+                // Abgefälscht ins Toraus: Ecke - wie im Livespiel, wo geblockte
+                // und abgefälschte Schüsse die meisten Ecken bringen
+                if (_Random.chance(MATCH_TUNING.eckeNachFehlschuss)) {
+                    timeline.push({
+                        minute: min,
+                        second: 38,
+                        type: "corner",
+                        team: isHomeAttacking ? "home" : "away",
+                        clubId: attClub.id,
+                        clubName: attClub.name,
+                        start: { x: isHomeAttacking ? 95.6 : 4.4, y: _Random.choice([1.2, 98.8]) },
+                        end: { x: isHomeAttacking ? 88 : 12, y: 50 },
+                        text: `${min}' - 🚩 Abgefälscht - Ecke für ${attClub.name}!`
+                    });
+                }
             }
         };
 
@@ -1388,7 +1408,9 @@ class MatchEngine {
         // Partie und griffen auf die Schlussaufstellung zurück. Ein in der 70.
         // Minute Eingewechselter foulte dann schon in der 5., und wer in der
         // 76. Rot sah, fehlte beim Freistoß in der 5. Minute als Schütze.
-        const kleineFouls = _Random.int(7, 13);
+        // Anteilig zur verbleibenden Spielzeit - eine Neuberechnung ab der 80.
+        // Minute verteilte vorher die Fouls eines ganzen Spiels auf zehn Minuten
+        const kleineFouls = Math.round(_Random.int(10, 16) * Math.max(0, 91 - startMinute) / 90);
         const foulMinuten = [];
         for (let i = 0; i < kleineFouls; i++) foulMinuten.push(_Random.int(Math.max(2, startMinute), 89));
         foulMinuten.sort((x, y) => x - y);

@@ -696,7 +696,7 @@ class MatchEngine {
                     - (eg.twElfmeter || 0) * 0.5 - (eg.twReflex || 0) * 0.3
             };
         }
-        let faktor = (1 + (es.abschluss || 0) * 2.5) * (1 - (eg.twReflex || 0) * 2.5);
+        let faktor = (1 + (es.abschluss || 0) * 2.5) * (1 - (eg.twReflex || 0) * 2);
         if (art === "freekick") faktor *= 1 + (es.freistoss || 0) * 5;
         // Kopfbälle nach Flanke und Ecke: Wer in der Luft stark ist, kommt
         // sauberer an den Ball
@@ -2467,7 +2467,7 @@ class MatchEngine {
      * gedämpft, wenn er auf einer fremden Position spielt. Dazu kommen die
      * Wirkungen seiner Eigenheiten und seiner Signatur.
      */
-    static werte2D(player, deployedPos = null) {
+    static werte2D(player, deployedPos = null, versatz = 0) {
         const ovr = player?.overall || 60;
         const fitness = 0.9 + ((player?.fitness ?? 100) / 100) * 0.1;
         const moral = 0.97 + ((player?.morale ?? 75) / 100) * 0.04;
@@ -2475,11 +2475,13 @@ class MatchEngine {
         const position = 0.5 + this.getPositionModifier(player, deployedPos) * 0.5;
         const faktor = fitness * moral * form * position;
         const w = {};
+        // Erst aufs Niveau der Partie heben, dann Tagesform und Position -
+        // so kostet die falsche Position in jeder Liga gleich viel
         this.WERTE_2D.forEach(k => {
             const v = typeof player?.[k] === "number" ? player[k] : ovr;
-            w[k] = Math.round(v * faktor * 10) / 10;
+            w[k] = Math.round(Math.max(1, Math.min(99, v + versatz)) * faktor * 10) / 10;
         });
-        w.overall = ovr;
+        w.overall = Math.max(1, Math.min(99, ovr + versatz));
         w.foot = player?.foot || null;
         w.signatur = player?.signatur || null;
         w.temperament = player?.hiddenAttributes?.temperament ?? 12;
@@ -2491,6 +2493,25 @@ class MatchEngine {
     /**
      * Erstellt eine interaktive LiveMatch-Instanz für die 2D-Live-Simulation
      */
+    /**
+     * FM-Modus: Um wie viel die Werte einer Partie verschoben werden, damit
+     * ihr Schnitt bei 70 liegt.
+     *
+     * Die Werte sind absolut - in der Landesliga liegen sie um 25, in der
+     * Bundesliga um 80. Das Livespiel rechnet aber an einigen Stellen mit
+     * festen Schwellen (traut er sich den Schuss zu, kommt er aufs Tor).
+     * Gemessen kamen zwei Landesligisten so auf zehn Schüsse im Spiel statt
+     * auf zwanzig. Wie im FM zählt, wer besser ist als sein Gegenüber: Die
+     * Verschiebung hebt beide Mannschaften gleich an, jeder Unterschied
+     * zwischen den Spielern bleibt erhalten.
+     */
+    static fmVersatz(lineups) {
+        const alle = (lineups || []).flat().filter(Boolean);
+        if (!alle.length) return 0;
+        const schnitt = alle.reduce((s, p) => s + (p.overall || 60), 0) / alle.length;
+        return Math.round((70 - schnitt) * 10) / 10;
+    }
+
     static createLiveMatch(match, homeClub, awayClub, allPlayers, options = {}) {
         return new LiveMatch(match, homeClub, awayClub, allPlayers, options);
     }
@@ -2738,6 +2759,7 @@ class LiveMatch {
         this.celebratingTeam = null;
         this.sceneRoles = null;
         this.kits = ermittleTrikots(homeClub, awayClub);
+        this.fmVersatz = this.modus === "fm" ? MatchEngine.fmVersatz([this.homeLineup, this.awayLineup]) : 0;
         this.players2D = this.initialize2DPositions();
         // Wer das Feld verlaesst (Platzverweis, Auswechslung), geht noch sichtbar
         // zur Seitenlinie - nur fuer das Bild, in der Simulation ist er weg.
@@ -2876,7 +2898,7 @@ class LiveMatch {
                 freshness: 1,
                 color: this.kits.home.farbe,
                 textColor: this.kits.home.text,
-                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos) : {})
+                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmVersatz) : {})
             });
         });
 
@@ -2908,7 +2930,7 @@ class LiveMatch {
                 freshness: 1,
                 color: this.kits.away.farbe,
                 textColor: this.kits.away.text,
-                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos) : {})
+                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmVersatz) : {})
             });
         });
 
@@ -3747,7 +3769,7 @@ class LiveMatch {
             p2d.pace = playerIn.pace || playerIn.overall || 70;
             p2d.stamina = playerIn.stamina || 75;
             p2d.vision = playerIn.vision || playerIn.overall || 65;
-            if (this.modus === "fm") Object.assign(p2d, MatchEngine.werte2D(playerIn, p2d.pos));
+            if (this.modus === "fm") Object.assign(p2d, MatchEngine.werte2D(playerIn, p2d.pos, this.fmVersatz));
             // Ein eingewechselter Spieler kommt frisch aufs Feld
             p2d.freshness = 1;
             p2d.verletzt = false;

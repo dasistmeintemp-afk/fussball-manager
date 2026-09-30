@@ -572,7 +572,7 @@ class MatchFlowEngine {
         // Wie sehr er sich den Abschluss zutraut
         const zutrauen = 0.7 + koennen * 0.55 + (e.abschluss || 0) * 2 + (e.ruhe ? 0.08 : 0)
             + (carrier.group === "att" ? 0.12 : carrier.group === "def" ? -0.2 : 0);
-        let score = -0.25 + q.xg * 13 * zutrauen;
+        let score = -0.12 + q.xg * 13 * zutrauen;
         // Aus der Distanz schiesst, wer es kann oder soll - die anderen suchen
         // lieber den Weg in den Strafraum
         if (g.dist > 18) score += (e.distanz ? 0.55 : -0.2) + (e.abschlussDistanz || 0) * 5 + (wk.fernschuesse || 0) * 0.4;
@@ -629,7 +629,7 @@ class MatchFlowEngine {
             pTor += (e.elfmeter || 0) + (e.abschluss || 0) * 0.3
                 - (eg.twElfmeter || 0) * 0.5 - (eg.twReflex || 0) * 0.3;
         } else {
-            pTor *= (1 + (e.abschluss || 0) * 2.5) * (1 - (eg.twReflex || 0) * 2.5);
+            pTor *= (1 + (e.abschluss || 0) * 2.5) * (1 - (eg.twReflex || 0) * 2);
             if (opts.freistoss) pTor *= 1 + (e.freistoss || 0) * 5;
             if (q.dist > 20) pTor *= 1 + (e.abschlussDistanz || 0) * 5;
             if (nah) pTor *= 1 - (eg.twStrafraum || 0) * 0.3;
@@ -639,7 +639,7 @@ class MatchFlowEngine {
         pTor = Math.max(0.005, Math.min(opts.elfmeter ? 0.93 : 0.9, pTor));
 
         // Aufs Tor kommt, wer sauber trifft - unabhaengig davon, ob es reicht
-        let pAufsTor = 0.3 + (abschluss - 60) / 220 + q.xg * 0.45 - Math.min(1, q.druck) * 0.08;
+        let pAufsTor = 0.36 + (abschluss - 60) / 220 + q.xg * 0.45 - Math.min(1, q.druck) * 0.08;
         if (opts.elfmeter) pAufsTor = 0.95;
         pAufsTor = Math.max(pTor + 0.07, Math.min(0.9, pAufsTor));
 

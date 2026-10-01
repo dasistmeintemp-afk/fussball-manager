@@ -31,6 +31,15 @@ const _PositionEngine = (typeof PositionEngine !== 'undefined' && PositionEngine
 
 // Rollen, Formen und Anweisungen der Taktik (nach FM26). Erst bei Bedarf
 // aufgeloest - im Browser laden die Skripte in beliebiger Reihenfolge.
+// Wetter und Platz (WetterEngine) - ebenfalls erst bei Bedarf
+const _mWetter = () => (typeof WetterEngine !== 'undefined' && WetterEngine)
+    ? WetterEngine
+    : ((typeof window !== 'undefined' && window.WetterEngine)
+        ? window.WetterEngine
+        : ((typeof require !== 'undefined')
+            ? (() => { try { return require('./wetterEngine.js').WetterEngine; } catch (e) { return null; } })()
+            : null));
+
 const _mTaktik = () => (typeof TacticsEngine !== 'undefined' && TacticsEngine)
     ? TacticsEngine
     : ((typeof window !== 'undefined' && window.TacticsEngine)
@@ -2546,6 +2555,8 @@ class MatchEngine {
         [homeClub, awayClub].forEach(c => (c.playerIds || []).forEach(id => {
             const p = MatchEngine.findPlayer(allPlayers, id);
             if (!p) return;
+            // Wer in der U23 spielt, sammelt seine Praxis dort (ReserveEngine)
+            if (p.reserve) return;
             const anteil = Math.min(1, (minutenJe.get(String(id)) || 0) / 90);
             p.spielpraxis = Math.round(((p.spielpraxis ?? 0.5) * 0.82 + anteil * 0.18) * 1000) / 1000;
         }));
@@ -2605,7 +2616,19 @@ class MatchEngine {
 
         delete match.timeline;
         delete match.timelineIndex;
-        if (keepDetail) return match;
+        // Der Schiedsrichter folgt fest aus der Partie (schiedsrichterFuer)
+        // und lässt sich jederzeit neu bestimmen. Gespeichert lag er mit Name,
+        // Art und Beschreibung in jedem der gut 3000 Saisonspiele.
+        delete match.schiedsrichter;
+        if (!keepDetail) { delete match.wetter; delete match.analyse; }
+        delete match.ticketIncome;
+        delete match.attendancePct;
+        delete match.attendanceReason;
+        if (keepDetail) {
+            // Den Vereinsnamen kennt die Notentabelle über die Vereins-ID
+            (match.playerRatings || []).forEach(r => { delete r.clubName; });
+            return match;
+        }
 
         delete match.playerRatings;
         delete match.lineups;
@@ -3014,6 +3037,9 @@ class LiveMatch {
         this.matchplan = options.matchplan || null;
         // Der Schiedsrichter steht mit der Ansetzung fest
         this.schiedsrichter = MatchEngine.schiedsrichterFuer(match);
+        // Wetter und Platz: fest aus der Partie, wirken auf Pässe, Schüsse, Kraft
+        const W = _mWetter();
+        this.wetter = W ? W.fuer(match, homeClub) : null;
         if (this.matchplan && this.matchplan.taktik) {
             const planClub = this.matchplan.side === "home" ? homeClub : awayClub;
             planClub.tactics = { ...(planClub.tactics || {}), ...this.matchplan.taktik };
@@ -4789,6 +4815,10 @@ class LiveMatch {
             this.timeline.fmSpieler = f.spieler;
         }
         MatchEngine.applyTimelineToMatch(this.match, this.timeline, this.homeClub, this.awayClub, this.allPlayers);
+        // Heatmap und Passnetz aus dem Livespiel für den Spielbericht
+        const analyse = this.director && typeof this.director.analyseZusammenfassung === "function"
+            ? this.director.analyseZusammenfassung() : null;
+        if (analyse) this.match.analyse = analyse;
         this.homeScore = this.match.homeGoals;
         this.awayScore = this.match.awayGoals;
         this.lastCommentary = `Abpfiff! Das Spiel endet ${this.homeScore}:${this.awayScore}.`;

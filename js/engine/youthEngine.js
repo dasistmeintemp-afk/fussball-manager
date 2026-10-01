@@ -165,7 +165,7 @@ const YouthEngine = {
         // Potenzial: innerhalb der Spanne der Liga, eine gute Akademie holt
         // mehr heraus. Die Besten können über die Liga hinauswachsen.
         const spanne = Math.max(20, (bereich.maxPA || bereich.minPA + 50) - bereich.minPA);
-        const pa = Math.min(190, Math.max(ca + 12, Math.round(bereich.minPA + spanne * (0.15 + stufe * 0.07)
+        const pa = Math.min(190, Math.max(ca + 12, Math.round(bereich.minPA + spanne * (0.25 + stufe * 0.07)
             + Math.random() * spanne * 0.5 + (zusatz.pot || 0) * 2)));
         const overall = zuStaerke(ca);
         return {
@@ -558,6 +558,8 @@ const YouthEngine = {
             age: prospect.age,
             nationality: prospect.nationality || "Deutschland",
             clubId: clubId,
+            // Aus der eigenen Jugend: neu bei den Profis, aber kein Fremder
+            vereinSeit: (state.seasonYear || state.season || 1) * 1000 + (state.currentDayIndex || 0) - 250,
             pos: prospect.pos,
             secondPos: nebenpositionen[0] || null,
             positions: nebenpositionen,

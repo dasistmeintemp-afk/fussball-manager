@@ -27,6 +27,14 @@ class PlayerTalkEngine {
     static FRUST_TAGE = 21;
 
     /** Fortlaufender Tag über die Saisons hinweg */
+    /** Menschenführung des Trainers: 1 ist neutral, bis etwa ±20 % */
+    static fuehrungsFaktor(state) {
+        const profil = (typeof TrainerProfilEngine !== "undefined" && TrainerProfilEngine)
+            ? TrainerProfilEngine
+            : (typeof require !== "undefined" ? (() => { try { return require("./trainerProfilEngine.js").TrainerProfilEngine; } catch (e) { return null; } })() : null);
+        return profil ? profil.faktor(state, "menschenfuehrung", 0.2) : 1;
+    }
+
     static stempel(state) {
         return (state?.seasonYear || state?.season || 1) * 1000 + (state?.currentDayIndex || 0);
     }
@@ -162,7 +170,8 @@ class PlayerTalkEngine {
         case "kritisieren": {
             if (form === "schwach") {
                 // Ob Kritik anspornt oder kränkt, entscheidet der Charakter
-                const ansporn = p.profi * 0.5 + p.ehrgeiz * 0.3 - p.temperament * 0.35 + (zufall() - 0.5) * 4;
+                const ansporn = p.profi * 0.5 + p.ehrgeiz * 0.3 - p.temperament * 0.35 + (zufall() - 0.5) * 4
+                    + (this.fuehrungsFaktor(state) - 1) * 10;
                 if (ansporn >= 6.5) {
                     this.aendereMoral(player, -2);
                     player.ansporn = { bis: heute + 14 };
@@ -201,7 +210,8 @@ class PlayerTalkEngine {
             break;
         }
         case "geduld": {
-            const wartet = p.loyal * 0.45 + p.profi * 0.35 - p.ehrgeiz * 0.3 + (zufall() - 0.5) * 3;
+            const wartet = p.loyal * 0.45 + p.profi * 0.35 - p.ehrgeiz * 0.3 + (zufall() - 0.5) * 3
+                + (this.fuehrungsFaktor(state) - 1) * 8;
             if (wartet >= 5.5) {
                 this.aendereMoral(player, 3);
                 this.aendereZufriedenheit(player, "playingTime", 6);
@@ -224,7 +234,7 @@ class PlayerTalkEngine {
             break;
         }
         case "wechsel_umstimmen": {
-            const chance = this.begrenze(0.15 + p.loyal * 0.025 + (player.vertrauen ?? 50) / 400 - p.ehrgeiz * 0.01, 0.05, 0.75);
+            const chance = this.begrenze((0.15 + p.loyal * 0.025 + (player.vertrauen ?? 50) / 400 - p.ehrgeiz * 0.01) * this.fuehrungsFaktor(state), 0.05, 0.8);
             if (zufall() < chance) {
                 delete player.wechselwunsch;
                 player.unmutTage = 0;

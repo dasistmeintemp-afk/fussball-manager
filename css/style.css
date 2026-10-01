@@ -37,8 +37,10 @@
 
     --text-main: #eef2f6;
     --text-soft: #c3ccd7;
-    --text-muted: #8b97a7;
-    --text-dim: #5d6878;
+    /* Kontrast gegen die dunkelste Kartenfläche (surface-3) mindestens 4,5:1:
+       muted 6,2:1, dim 4,6:1 - vorher lag dim bei 2,7:1 */
+    --text-muted: #9aa5b4;
+    --text-dim: #838e9e;
 
     --pitch-bg: #15803d;
     --pitch-line: rgba(255, 255, 255, 0.45);
@@ -1214,7 +1216,7 @@ body {
 
 .pitch-node-fit {
     display: block;
-    font-size: 9px;
+    font-size: 10px;
     font-weight: 700;
     line-height: 1.3;
     margin-top: 1px;
@@ -1367,7 +1369,7 @@ body {
 }
 
 .position-map-label {
-    font-size: 9px;
+    font-size: 10px;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.3px;
@@ -1537,7 +1539,7 @@ body {
 
 .pitch-node-rolle {
     display: block;
-    font-size: 9px;
+    font-size: 10px;
     line-height: 1.1;
     color: rgba(255,255,255,0.78);
     max-width: 86px;
@@ -7382,6 +7384,7 @@ td.nowrap { white-space: nowrap; }
 .einstellungen-live { grid-column: 1 / -1; }
 .einstellung-h { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); margin: 14px 0 2px; }
 .einstellung-h:first-child { margin-top: 0; }
+.speicher-info { margin: 12px 0 0; font-size: 12.5px; color: var(--text-muted); }
 .einstellung-schalter:last-child { border-bottom: 0; }
 .einstellung-schalter .coach-muted { font-size: 12px; color: var(--text-muted); }
 @media (min-width: 900px) {
@@ -8064,3 +8067,76 @@ td.nowrap { white-space: nowrap; }
 @media (max-width: 760px) { .sa-raster { grid-template-columns: 1fr; } }
 .ak-wv { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--text-muted); margin: 8px 0; }
 .ak-wv select { width: auto; min-width: 0; font-size: 12px; padding: 4px 8px; }
+.tf-fenster { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.tf-fenster.offen { color: #34d399; }
+.tf-fenster.zu { color: #f59e0b; }
+
+/* Nationalität und Länderspiele in der Spielerakte */
+.pd-national { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 6px; font-size: 13px; color: var(--text-muted); }
+.pd-national .pd-nation { font-weight: 600; color: var(--text-soft); }
+.pd-national .pd-caps { display: inline-flex; align-items: center; gap: 4px; }
+.pd-national .pd-caps .ico { width: 14px; height: 14px; }
+.pd-national .pd-abgestellt { color: var(--accent-info); font-weight: 600; }
+
+/* Kabine: Kapitän, Führungsspieler, Grüppchen */
+.kabine-card { padding: 16px; }
+.kabine-card .kb-kopf { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.kabine-card .kb-kopf h3 { display: inline-flex; align-items: center; gap: 8px; font-size: 16px; }
+.kabine-card .kb-kopf h3 .ico { width: 18px; height: 18px; }
+.kabine-card .kb-kapitaen { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-soft); }
+.kabine-card .kb-kapitaen select { max-width: 240px; }
+.kabine-card .kb-stufen { display: grid; gap: 6px; font-size: 14px; margin-bottom: 12px; }
+.kabine-card .kb-label { display: inline-block; min-width: 120px; color: var(--text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; margin-right: 8px; }
+.kabine-card .kb-gruppen { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.kabine-card .kb-gruppe { border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 12px; display: grid; gap: 6px; font-size: 14px; }
+.kabine-card .kb-gruppe-kopf { display: flex; justify-content: space-between; gap: 8px; }
+.kabine-card .kb-zeile { display: flex; align-items: center; gap: 6px; }
+.kabine-card .kb-zeile .kb-label { min-width: 84px; }
+.kabine-card .kb-balken { flex: 1; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.kabine-card .kb-balken i { display: block; height: 100%; }
+.kabine-card .kb-gut { background: var(--accent-secondary); }
+.kabine-card .kb-mittel { background: var(--accent-gold); }
+.kabine-card .kb-schlecht { background: var(--accent-danger); }
+.kabine-card .kb-wert { font-variant-numeric: tabular-nums; min-width: 24px; text-align: right; color: var(--text-soft); }
+.kabine-card .kb-hinweis { font-size: 12px; margin-top: 10px; }
+/* Zweite Mannschaft (U23) */
+.u23-letzte { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+.u23-ergebnis { display: inline-block; min-width: 38px; text-align: center; padding: 2px 6px; border-radius: 6px; font-weight: 700; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.u23-s { background: rgba(34, 197, 94, .18); color: var(--success, #22c55e); }
+.u23-u { background: rgba(148, 163, 184, .2); color: var(--text-muted); }
+.u23-n { background: rgba(239, 68, 68, .18); color: var(--danger, #ef4444); }
+.u23-tabelle tr { cursor: pointer; }
+.u23-tabelle td, .u23-tabelle th { padding: 6px 8px; }
+@media (max-width: 600px) {
+    .kabine-card .kb-label { min-width: 0; display: block; margin-bottom: 2px; }
+    .kabine-card .kb-zeile .kb-label { display: inline-block; min-width: 70px; }
+}
+
+.negotiation-inputs .neg-hinweis { grid-column: 1 / -1; font-size: 12px; color: var(--text-muted); margin: 0; }
+
+.leih-option label { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 13px; cursor: pointer; }
+
+/* Wetter im Livespiel und in der Taktikbesprechung */
+.lm-wetter { font-size: 12px; color: var(--text-soft); text-align: center; padding: 2px 8px 0; }
+.wetter-zeile strong { color: var(--text-main); }
+
+/* Heatmap und Passnetz */
+.pa-raster { grid-template-columns: 1fr 1fr; }
+.sa-feld .pa-name { font-size: 2.6px; fill: rgba(255, 255, 255, 0.85); font-weight: 600; }
+.pa-punkt { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+@media (max-width: 700px) { .pa-raster { grid-template-columns: 1fr; } }
+
+/* Trainerprofil */
+.tp-raster { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 18px; align-items: start; }
+.tp-werte { display: grid; gap: 8px; }
+.tp-zeile { display: grid; grid-template-columns: 130px 1fr 28px; align-items: center; gap: 8px; font-size: 14px; }
+.tp-zeile b { text-align: right; font-variant-numeric: tabular-nums; }
+.tp-balken { height: 7px; border-radius: 4px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.tp-balken i { display: block; height: 100%; background: var(--accent-primary); }
+.tp-seite { display: grid; gap: 8px; }
+.tp-kennzahl { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+.tp-kennzahl span { color: var(--text-muted); }
+.tp-hinweis { font-size: 12px; margin-top: 12px; }
+@media (max-width: 700px) { .tp-raster { grid-template-columns: 1fr; } .tp-zeile { grid-template-columns: 110px 1fr 24px; } }
+
+.text-danger { color: var(--accent-danger); }

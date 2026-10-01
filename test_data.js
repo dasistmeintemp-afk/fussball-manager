@@ -1,6 +1,7 @@
 /**
  * Test-Suite 1: Daten-Integrität und Strukturprüfungen (initialData.js)
  */
+const { testAusgewaehlt, laufzeit, zufallFuer } = require('./test_filter.js');
 const { INITIAL_TEAMS_DATA } = require('./js/data/initialData.js');
 
 function runDataTests() {
@@ -12,9 +13,12 @@ function runDataTests() {
     let failed = 0;
 
     function test(name, fn) {
+        if (!testAusgewaehlt(name)) return;
+        zufallFuer(name);
+        const start = Date.now();
         try {
             fn();
-            console.log(`  ✅ ${name}`);
+            console.log(`  ✅ ${name}${laufzeit(start)}`);
             passed++;
         } catch (err) {
             console.error(`  ❌ ${name}`);
@@ -138,7 +142,9 @@ function runDataTests() {
         if (!content.includes('window.INITIAL_TEAMS_DATA = INITIAL_TEAMS_DATA;')) {
             throw new Error("window.INITIAL_TEAMS_DATA Export fehlt in initialData.js");
         }
-        if (!content.includes('module.exports = { INITIAL_TEAMS_DATA };')) {
+        // Geprüft wird, was ankommt - nicht der genaue Wortlaut der Zeile
+        const exportiert = require('./js/data/initialData.js');
+        if (!/module\.exports\s*=\s*\{[^}]*INITIAL_TEAMS_DATA/.test(content) || !Array.isArray(exportiert.INITIAL_TEAMS_DATA) || !exportiert.INITIAL_TEAMS_DATA.length) {
             throw new Error("module.exports fehlt in initialData.js");
         }
     });

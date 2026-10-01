@@ -65,6 +65,8 @@ class MatchFlowEngine {
         // Der Schiedsrichter: Wie kleinlich er pfeift (pfeife), wie schnell
         // er Karten zeigt (strenge), wie gern er Vorteil gibt (vorteil)
         this.schiri = typeof options.schiri === "function" ? options.schiri : (() => null);
+        // Wetter und Platz (WetterEngine.mitWirkung)
+        this.wetter = typeof options.wetter === "function" ? options.wetter : (() => null);
 
         this.phase = FLOW_PHASES.BUILDUP;
     }
@@ -265,6 +267,16 @@ class MatchFlowEngine {
         const istTorwart = carrier.pos === "TW";
         const freiheit = wk.freiheit || 1;
 
+        // Befreiung: Wer tief steht, schiebt den Ball in der eigenen Haelfte
+        // nicht ewig hin und her, sondern sucht nach ein, zwei Paessen den
+        // langen Ball nach vorn. Vorher hielt ein tiefer Block den Ball
+        // siebzig Paesse je Spiel in der eigenen Haelfte und kam gegen Bayern
+        // auf 58 Prozent Ballbesitz.
+        const fortschritt = dir > 0 ? carrier.x / 100 : 1 - carrier.x / 100;
+        const befreien = tactics.defensiveLine === "deep" && !istTorwart && fortschritt < 0.45 && chain >= 2;
+        // Konter: Der Spieler, der vorn gewartet hat, ist das erste Ziel
+        const konterZiel = chain <= 3 && (wk.konter || 0) > 0;
+
         // Wohin das Spiel gerade strebt: der Spieler, bei dem die naechste
         // Szene beginnt. Er wird gesucht wie ein freistehender Stuermer -
         // nicht erzwungen, aber deutlich bevorzugt.
@@ -386,6 +398,11 @@ class MatchFlowEngine {
             if ((wk.breite || 0) > 0 && quer > 30) taktikScore += 0.2;
             if ((wk.breite || 0) < 0 && quer < 18) taktikScore += 0.2;
             if (druck > 0.55 && dist > 26) taktikScore += (wk.durchsPressing || 0) * 1.2;
+            if (befreien) {
+                if (dist > 24 && forward > 12) taktikScore += 0.55;
+                else if (forward < 4) taktikScore -= 0.35;
+            }
+            if (konterZiel && mate.rolleGegen?.konter && forward > 8) taktikScore += 0.6;
             if (istAufbau && forwardDrive < 1 && dist > 26 && forward > 10) taktikScore += (1 - forwardDrive) * 0.6;
             if (istTorwart) {
                 // Kurz: Innenverteidiger suchen; lang: auf die Spitze
@@ -615,6 +632,9 @@ class MatchFlowEngine {
                 && Math.abs(o.y - schuetze.y) < 24).length;
             xg *= 1 - Math.min(0.3, Math.max(0, davor - 2) * 0.08);
         }
+        // Auf nassem Rasen wird der Fernschuss tückisch, im Wind verweht er
+        const wetter = this.wetter();
+        if (wetter && g.dist > 18 && !opts.kopfball) xg *= 1 + (wetter.fern || 0);
         return { xg: Math.max(0.01, Math.min(0.85, xg)), dist: g.dist, winkel: g.winkel, druck, block };
     }
 
@@ -947,7 +967,9 @@ class MatchFlowEngine {
         const p = 0.27 + haerte * 0.06 + (ed.haerte || 0) * 0.1 + (ea.ziehtFouls || 0)
             + (temperament - 12) * 0.012 + Math.max(0, edge) / 400;
         const pfeife = this.schiri()?.pfeife || 1;
-        if (!_flowRandom.chance(Math.max(0.03, Math.min(0.4, p)) * pfeife * this.strafraumVorsicht(carrier))) return null;
+        // Auf rutschigem Boden kommt der Verteidiger öfter zu spät
+        const rutschig = 1 + (this.wetter()?.rutschig || 0) * 0.5;
+        if (!_flowRandom.chance(Math.max(0.03, Math.min(0.45, p * rutschig)) * pfeife * this.strafraumVorsicht(carrier))) return null;
         return { type: "foul", outcome: "foul", from: carrier, to: { x: carrier.x, y: carrier.y }, foulender: defender, opfer: carrier };
     }
 
@@ -1098,6 +1120,9 @@ class MatchFlowEngine {
             accuracy -= Math.min(0.16, this.strafraumDichte(carrier.team) * 0.045);
         }
         if (isLong) accuracy -= 0.13;
+        // Nasser Rasen, tiefer Boden, Wind
+        const wetter = this.wetter();
+        if (wetter) accuracy += (wetter.pass || 0) + (isLong ? (wetter.lang || 0) : 0);
         // Schnelles Tempo kostet Genauigkeit vor allem beim Ball nach vorn;
         // dafuer trifft es eine Abwehr, die sich nach dem Ballverlust noch
         // nicht sortiert hat

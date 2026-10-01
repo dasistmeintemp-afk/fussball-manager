@@ -94,7 +94,18 @@ class PlayerGenerator {
      */
     static KADER_SPREIZUNG = 0.46;
 
-    static getAbilityRangeForClub(level = 1, clubStrength = 0.5) {
+    /**
+     * Ganze Kader, die die Welt erzeugt, spreizen stärker: Die Untergrenze
+     * wandert weiter als die Obergrenze, ein Spitzenklub hat also keine
+     * schwachen Spieler im Kader, und oberhalb der Mitte steigt die Kurve
+     * steiler. Mit der einfachen Spreizung lagen die ersten acht einer
+     * erzeugten Liga innerhalb eines Punktes (Real Madrid schwächer als
+     * Betis), und der Meister war Zufall.
+     */
+    static KADER_SPREIZUNG_UNTEN = 1.0;
+    static KADER_KOPF = 0.35;
+
+    static getAbilityRangeForClub(level = 1, clubStrength = 0.5, options = {}) {
         const range = this.getAbilityRangeForLevel(level);
         const strength = Math.max(0, Math.min(1, clubStrength));
 
@@ -108,6 +119,23 @@ class PlayerGenerator {
         const caDeckel = Math.round(range.maxCA * 1.03);
         const paDeckel = Math.round(range.maxPA * 1.03);
 
+        if (options.ganzerKader) {
+            // Kopf: Oberhalb der Ligamitte steigt die Kurve zusätzlich
+            const kopf = Math.max(0, strength - 0.6) / 0.4;
+            // Unterhalb der Mitte bleibt es bei der gewohnten Spreizung - sonst
+            // fällt das Tabellenende einer erzeugten Liga unter das der Bundesliga
+            const faktorUnten = strength >= 0.5 ? this.KADER_SPREIZUNG_UNTEN : this.KADER_SPREIZUNG;
+            const unten = Math.round((strength - 0.5) * caSpan * faktorUnten + kopf * kopf * caSpan * this.KADER_KOPF);
+            const oben = caShift + Math.round(kopf * kopf * caSpan * this.KADER_KOPF * 0.5);
+            const minCA = Math.max(15, range.minCA + unten);
+            return {
+                minCA,
+                maxCA: Math.max(minCA + 8, Math.min(caDeckel, range.maxCA + oben)),
+                minPA: Math.max(20, range.minPA + paShift),
+                maxPA: Math.min(paDeckel, range.maxPA + paShift)
+            };
+        }
+
         return {
             minCA: Math.max(15, range.minCA + caShift),
             maxCA: Math.min(caDeckel, range.maxCA + caShift),
@@ -117,13 +145,28 @@ class PlayerGenerator {
     }
 
     /**
+     * Potenzial deckeln: nicht weit über die Spanne der Liga hinaus, und
+     * oberhalb von 180 (Gesamtstärke 90) zählt jeder Punkt nur halb. Die
+     * Weltspitze bleibt so dünn besetzt, statt Saison für Saison
+     * aufzurücken.
+     */
+    static potenzialDeckel(pa, maxPA = 190) {
+        let wert = Math.min(pa, maxPA + 6);
+        if (wert > 180) wert = 180 + (wert - 180) * 0.5;
+        return Math.min(194, Math.round(wert));
+    }
+
+    /**
      * Länderspezifische Namenspools. Ein spanischer Zweitligist soll keine
      * Mannschaft voller "Müller" stellen.
      */
     static resolveNamePool(countryId) {
+        // In Node fehlte der Rückgriff auf die Datei: Jede Welt aus den Tests
+        // und Messungen bestand aus sechs Nationen, England gab es nicht.
         const pools = (typeof COUNTRY_NAME_POOLS !== "undefined" && COUNTRY_NAME_POOLS)
             ? COUNTRY_NAME_POOLS
-            : ((typeof window !== "undefined" && window.COUNTRY_NAME_POOLS) ? window.COUNTRY_NAME_POOLS : null);
+            : ((typeof window !== "undefined" && window.COUNTRY_NAME_POOLS) ? window.COUNTRY_NAME_POOLS
+                : (typeof require !== "undefined" ? (() => { try { return require("../data/countryNamePools.js").COUNTRY_NAME_POOLS; } catch (e) { return null; } })() : null));
 
         if (pools && countryId && pools[countryId]) return pools[countryId];
         if (pools && pools.de) return pools.de;
@@ -233,7 +276,7 @@ class PlayerGenerator {
         const secondaryPositions = positionEngine ? positionEngine.generateSecondaryPositions(pos) : [];
 
         // Die Kaderstärke richtet sich nach Ligastufe UND Ruf des Vereins
-        const abilityRange = this.getAbilityRangeForClub(level, options.clubStrength ?? 0.5);
+        const abilityRange = this.getAbilityRangeForClub(level, options.clubStrength ?? 0.5, { ganzerKader: options.ganzerKader === true });
         const caSpread = Math.max(1, abilityRange.maxCA - abilityRange.minCA);
         const baseCA = abilityRange.minCA + Math.floor(Math.random() * caSpread);
 
@@ -243,11 +286,15 @@ class PlayerGenerator {
 
         if (age <= 21) {
             trueCA = Math.max(20, trueCA - Math.floor(Math.random() * 20));
-            truePA = Math.min(200, trueCA + 15 + Math.floor(Math.random() * 35));
+            // Meist 12 bis 30 Punkte Luft, selten mehr. Vorher bekam jedes
+            // zweite Talent eines Spitzenklubs das Höchstpotenzial 200 und
+            // stand nach zwei Saisons bei 97 bis 99.
+            truePA = trueCA + 12 + Math.floor(Math.pow(Math.random(), 1.5) * 36);
         } else if (age >= 31) {
             trueCA = Math.max(30, trueCA - (age - 30) * 3);
             truePA = trueCA;
         }
+        truePA = Math.max(trueCA, this.potenzialDeckel(truePA, abilityRange.maxPA));
 
         const overall = this.toOverall(trueCA);
         const pot = Math.max(overall, this.toOverall(truePA));

@@ -553,6 +553,13 @@ class CupEngine {
 
         // Pokalpartien blähen den Spielstand sonst genauso auf wie Ligaspiele
         const eigenes = match.homeClubId === state.userClubId || match.awayClubId === state.userClubId;
+        // Prämien gelten auch im Pokal und im Europapokal
+        if (eigenes) {
+            const verhandlung = (typeof NegotiationEngine !== "undefined" && NegotiationEngine)
+                ? NegotiationEngine
+                : (typeof require !== "undefined" ? (() => { try { return require("./negotiationEngine.js").NegotiationEngine; } catch (e) { return null; } })() : null);
+            if (verhandlung && typeof verhandlung.zahlePraemien === "function") verhandlung.zahlePraemien(state, match);
+        }
         if (typeof matchEngine.compactPlayedMatch === "function") {
             matchEngine.compactPlayedMatch(match, eigenes);
         }

@@ -574,6 +574,9 @@ class GameState {
         const world = { clubs: [], players: [] };
         let playerIdCounter = 1;
 
+        const nationalitaeten = (typeof INITIAL_NATIONALITIES !== 'undefined' && INITIAL_NATIONALITIES)
+            ? INITIAL_NATIONALITIES
+            : ((typeof window !== 'undefined' && window.INITIAL_NATIONALITIES) ? window.INITIAL_NATIONALITIES : (typeof require !== 'undefined' ? (require('../data/initialData.js').INITIAL_NATIONALITIES || {}) : {}));
         const rawTeams = (typeof INITIAL_TEAMS_DATA !== 'undefined' && INITIAL_TEAMS_DATA)
             ? INITIAL_TEAMS_DATA
             : ((typeof window !== 'undefined' && window.INITIAL_TEAMS_DATA) ? window.INITIAL_TEAMS_DATA : (typeof require !== 'undefined' ? require('../data/initialData.js').INITIAL_TEAMS_DATA : []));
@@ -674,7 +677,7 @@ class GameState {
                     clubId: club.id,
                     name: pData.name,
                     age: pData.age,
-                    nationality: "Deutschland",
+                    nationality: pData.nationality || nationalitaeten[pData.name] || "Deutschland",
                     pos: pData.pos,
                     secondPos: pData.secondPos || extraPositions[0] || null,
                     positions: extraPositions,
@@ -833,6 +836,8 @@ class GameState {
         state.managerName = managerProfile.name || (typeof managerProfile === "string" ? managerProfile : "Trainer");
         state.managerNationality = managerProfile.nationality || "Deutschland";
         state.managerBirthdate = managerProfile.birthdate || "1985-05-15";
+        // Der Trainertyp legt die Startwerte des Trainerprofils fest
+        if (managerProfile.trainerTyp) state.trainerTyp = managerProfile.trainerTyp;
         state.lastSaved = new Date().toISOString();
         state.createdAt = new Date().toISOString();
 
@@ -1066,7 +1071,9 @@ class GameState {
             const p = byId.get(id);
             return !!p && kaderIds.has(id)
                 && (p.injuredWeeks || 0) <= 0
-                && (p.suspendedMatches || 0) <= 0;
+                && (p.suspendedMatches || 0) <= 0
+                // Wer in der zweiten Mannschaft spielt, steht den Profis nicht zur Verfügung
+                && !p.reserve;
         };
 
         // An den allermeisten Tagen ist an den allermeisten Aufstellungen
@@ -1227,7 +1234,7 @@ class GameState {
     /** Die Spieler eines Kaders, die spielen koennen: nicht verletzt, nicht gesperrt */
     static einsatzfaehigeSpieler(club, allPlayers) {
         const kaderIds = new Set(club?.playerIds || []);
-        return (allPlayers || []).filter(p => kaderIds.has(p.id) && p.injuredWeeks === 0 && p.suspendedMatches === 0);
+        return (allPlayers || []).filter(p => kaderIds.has(p.id) && p.injuredWeeks === 0 && p.suspendedMatches === 0 && !p.reserve);
     }
 
     /**
@@ -1558,7 +1565,42 @@ class GameState {
      */
     static SAVE_SAMMELZEIT_MS = 1000;
 
-    saveToLocalStorage(slotKey = "football_manager_savegame", sofort = false) {
+    /** Der Speicherplatz, wenn niemand einen anderen nennt */
+    static SPEICHERPLATZ = "football_manager_savegame";
+
+    /**
+     * Wo der Spielstand liegt.
+     *
+     * Bisher stand er im LocalStorage, und der fasst je nach Browser nur
+     * fünf bis zehn Megabyte. Jetzt liegt er in IndexedDB, sobald
+     * `bereiteSpeicherVor` die Datenbank geöffnet hat - der LocalStorage
+     * bleibt Ausweichquartier, wenn es kein IndexedDB gibt oder ein
+     * Schreibvorgang dort scheitert.
+     *
+     * `_spiegel` hält den zuletzt gesicherten Text je Speicherplatz. Damit
+     * bleiben Laden und Zusammenfassung synchron, obwohl IndexedDB nur
+     * asynchron liest: Gelesen wird einmal beim Start, danach kennt der
+     * Spiegel jeden neuen Stand, weil er ihn selbst geschrieben hat.
+     */
+    static _idbAktiv = false;
+    static _spiegel = {};
+    static _letzteSicherung = null;
+
+    static _platz(slotKey) {
+        return slotKey || GameState.SPEICHERPLATZ;
+    }
+
+    static _getSpeicherDB() {
+        return GameState._resolveEngine("SpeicherDB", "../services/speicherDB.js");
+    }
+
+    /** Wo der Spielstand gerade landet - für die Einstellungen */
+    static speicherort() {
+        return GameState._idbAktiv ? "indexedDB" : "localStorage";
+    }
+
+    saveToLocalStorage(slotKey = GameState.SPEICHERPLATZ, sofort = false) {
+        slotKey = GameState._platz(slotKey);
         if (!sofort && typeof setTimeout === "function") {
             this._saveAusstehend = slotKey;
             if (this._saveTimer) return true;
@@ -1575,7 +1617,14 @@ class GameState {
             this.lastSaved = new Date().toISOString();
             const codec = GameState._getSaveCodec();
             const payload = codec ? codec.encodeState(this) : this;
-            localStorage.setItem(slotKey, JSON.stringify(payload));
+            const text = JSON.stringify(payload);
+            if (GameState._idbAktiv) {
+                GameState._spiegel[slotKey] = text;
+                GameState._sichereInIdb(this, slotKey, text);
+                return true;
+            }
+            localStorage.setItem(slotKey, text);
+            GameState._spiegel[slotKey] = text;
             this._saveFehler = null;
             return true;
         } catch (e) {
@@ -1583,16 +1632,96 @@ class GameState {
             // Konsole geschrieben, und kein Aufrufer prüfte den Rückgabewert.
             // Man spielte also weiter und verlor beim nächsten Laden alles.
             console.error("Speichern fehlgeschlagen:", e);
-            this._saveFehler = (e && e.name === "QuotaExceededError")
-                ? "Der Speicher des Browsers ist voll - der Spielstand konnte nicht gesichert werden. Exportieren Sie ihn als Datei."
-                : `Der Spielstand konnte nicht gesichert werden (${e?.name || "Fehler"}).`;
+            this._saveFehler = GameState._speicherfehlerText(e);
             GameState._meldeSpeicherfehler(this._saveFehler);
             return false;
         }
     }
 
+    static _speicherfehlerText(e) {
+        return (e && e.name === "QuotaExceededError")
+            ? "Der Speicher des Browsers ist voll - der Spielstand konnte nicht gesichert werden. Exportieren Sie ihn als Datei."
+            : `Der Spielstand konnte nicht gesichert werden (${e?.name || "Fehler"}).`;
+    }
+
+    /**
+     * In IndexedDB schreiben. Die Vorgänge laufen in der Reihenfolge, in der
+     * sie angestoßen wurden - der letzte Stand gewinnt also immer.
+     * Scheitert IndexedDB, springt der LocalStorage ein, solange der Stand
+     * hineinpasst. Ein Stand dort ist dann immer der neueste; gelingt der
+     * nächste Schreibvorgang in IndexedDB, wird er wieder freigegeben.
+     */
+    static _sichereInIdb(state, slotKey, text) {
+        const db = GameState._getSpeicherDB();
+        const vorgang = db.schreibe(slotKey, text).then(() => {
+            try { localStorage.removeItem(slotKey); } catch (e) { /* ohne LocalStorage */ }
+            state._saveFehler = null;
+            return true;
+        }).catch(fehler => {
+            console.error("Speichern in IndexedDB fehlgeschlagen:", fehler);
+            try {
+                localStorage.setItem(slotKey, GameState._spiegel[slotKey] || text);
+                state._saveFehler = null;
+                return true;
+            } catch (e) {
+                state._saveFehler = GameState._speicherfehlerText(fehler && fehler.name === "QuotaExceededError" ? fehler : e);
+                GameState._meldeSpeicherfehler(state._saveFehler);
+                return false;
+            }
+        });
+        GameState._letzteSicherung = vorgang;
+        return vorgang;
+    }
+
+    /**
+     * Beim Start: Datenbank öffnen, den Spielstand einlesen und einen Stand
+     * aus dem LocalStorage dorthin umziehen. Liegen in beiden Speichern
+     * Stände, gilt der jüngere.
+     */
+    static bereiteSpeicherVor(slotKey = GameState.SPEICHERPLATZ) {
+        slotKey = GameState._platz(slotKey);
+        const db = GameState._getSpeicherDB();
+        if (!db || !db.verfuegbar()) {
+            GameState._idbAktiv = false;
+            return Promise.resolve({ ort: "localStorage" });
+        }
+        return db.oeffne()
+            .then(() => db.lies(slotKey))
+            .then(idbText => {
+                let lsText = null;
+                try { lsText = localStorage.getItem(slotKey); } catch (e) { lsText = null; }
+                if (typeof idbText !== "string") idbText = null;
+                let text = idbText;
+                if (lsText && (!idbText || GameState._gespeichertAm(lsText) >= GameState._gespeichertAm(idbText))) text = lsText;
+                if (text) GameState._spiegel[slotKey] = text;
+                GameState._idbAktiv = true;
+                db.bitteUmDauerhaftenSpeicher();
+                if (!lsText) return { ort: "indexedDB", umgezogen: false };
+                // Umzug: erst sicher in IndexedDB, dann den LocalStorage freigeben
+                return db.schreibe(slotKey, text).then(() => {
+                    try { localStorage.removeItem(slotKey); } catch (e) { /* ohne LocalStorage */ }
+                    return { ort: "indexedDB", umgezogen: true };
+                });
+            })
+            .catch(e => {
+                console.warn("IndexedDB nicht nutzbar, der Spielstand bleibt im LocalStorage:", e);
+                GameState._idbAktiv = false;
+                return { ort: "localStorage", fehler: e?.message || String(e) };
+            });
+    }
+
+    /** Zeitpunkt eines gespeicherten Stands, ohne ihn ganz aufzufalten */
+    static _gespeichertAm(text) {
+        try {
+            const roh = JSON.parse(text);
+            return Date.parse(roh?.lastSaved || "") || 0;
+        } catch (e) {
+            return 0;
+        }
+    }
+
     /** Sicherstellen, dass nichts mehr in der Warteschlange hängt */
-    flushSave(slotKey = "football_manager_savegame") {
+    flushSave(slotKey = GameState.SPEICHERPLATZ) {
         if (this._saveTimer && typeof clearTimeout === "function") {
             clearTimeout(this._saveTimer);
             this._saveTimer = null;
@@ -1600,6 +1729,13 @@ class GameState {
         const ziel = this._saveAusstehend || slotKey;
         this._saveAusstehend = null;
         return this.saveToLocalStorage(ziel, true);
+    }
+
+    /** Wie flushSave, wartet aber, bis der Stand wirklich geschrieben ist */
+    sichereJetzt(slotKey = GameState.SPEICHERPLATZ) {
+        const ok = this.flushSave(slotKey);
+        if (GameState._idbAktiv && GameState._letzteSicherung) return GameState._letzteSicherung;
+        return Promise.resolve(ok);
     }
 
     /** Ein Speicherfehler darf nicht stumm bleiben */
@@ -1632,8 +1768,15 @@ class GameState {
         return GameState._resolveEngine("SaveCodec", "../services/saveCodec.js");
     }
 
+    /** Der gespeicherte Text: aus dem Spiegel, wenn IndexedDB führt */
+    static _gespeicherterText(slotKey) {
+        slotKey = GameState._platz(slotKey);
+        if (GameState._idbAktiv) return GameState._spiegel[slotKey] || null;
+        return localStorage.getItem(slotKey);
+    }
+
     static _readStoredState(slotKey) {
-        const raw = localStorage.getItem(slotKey);
+        const raw = GameState._gespeicherterText(slotKey);
         if (!raw) return null;
 
         const parsed = JSON.parse(raw);
@@ -1641,7 +1784,7 @@ class GameState {
         return (codec && codec.isEncoded(parsed)) ? codec.decodeState(parsed) : parsed;
     }
 
-    static getSaveSummary(slotKey = "football_manager_savegame") {
+    static getSaveSummary(slotKey = GameState.SPEICHERPLATZ) {
         try {
             const parsed = GameState._readStoredState(slotKey);
             if (!parsed || !parsed.userClubId || !parsed.clubs) return null;
@@ -1677,7 +1820,7 @@ class GameState {
         }
     }
 
-    static loadFromLocalStorage(slotKey = "football_manager_savegame") {
+    static loadFromLocalStorage(slotKey = GameState.SPEICHERPLATZ) {
         try {
             const parsed = GameState._readStoredState(slotKey);
             if (!parsed) return null;
@@ -1691,12 +1834,18 @@ class GameState {
         }
     }
 
-    static deleteSavegame(slotKey = "football_manager_savegame") {
+    static deleteSavegame(slotKey = GameState.SPEICHERPLATZ) {
+        slotKey = GameState._platz(slotKey);
+        delete GameState._spiegel[slotKey];
+        const db = GameState._getSpeicherDB();
+        if (GameState._idbAktiv && db) {
+            db.loesche(slotKey).catch(e => console.error("Löschen in IndexedDB fehlgeschlagen:", e));
+        }
         try {
             localStorage.removeItem(slotKey);
             return true;
         } catch (e) {
-            return false;
+            return GameState._idbAktiv;
         }
     }
 
@@ -1705,9 +1854,15 @@ class GameState {
         return `fm-save-${clubClean}-saison-${this.seasonYear}-spieltag-${this.currentMatchday}.json`;
     }
 
+    /**
+     * Der Spielstand als Datei. Verdichtet wie im Browserspeicher - die
+     * eingerückte Rohfassung war für eine Welt nach ein paar Saisons über
+     * zwanzig Megabyte groß.
+     */
     exportToJson() {
         this.lastSaved = new Date().toISOString();
-        return JSON.stringify(this, null, 2);
+        const codec = GameState._getSaveCodec();
+        return JSON.stringify(codec ? codec.encodeState(this) : this);
     }
 
     static importFromJson(jsonString) {
@@ -1715,7 +1870,9 @@ class GameState {
             if (!jsonString || typeof jsonString !== "string") {
                 throw new Error("Leere oder ungültige Datei");
             }
-            const parsed = JSON.parse(jsonString);
+            let parsed = JSON.parse(jsonString);
+            const codec = GameState._getSaveCodec();
+            if (codec && codec.isEncoded(parsed)) parsed = codec.decodeState(parsed);
             if (!parsed.clubs || !Array.isArray(parsed.clubs) || parsed.clubs.length === 0) {
                 throw new Error("Fehlende Vereinsdaten im Spielstand.");
             }
@@ -1730,6 +1887,7 @@ class GameState {
             }
 
             const state = Object.assign(new GameState(), parsed);
+            GameState.registerCustomFormations(state);
             GameState.sichereSignaturen(state);
             return { success: true, state };
         } catch (e) {

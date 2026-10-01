@@ -151,7 +151,7 @@ class WorldGenerator {
                     club.id,
                     league.level || 1,
                     this.SQUAD_SIZES[league.level] || 18,
-                    { clubStrength: club.clubStrength, countryId: league.countryId || "de", idOffset: 0 }
+                    { clubStrength: club.clubStrength, countryId: league.countryId || "de", idOffset: 0, ganzerKader: true }
                 );
 
                 squad.forEach(player => {

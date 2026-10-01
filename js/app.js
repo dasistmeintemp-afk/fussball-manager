@@ -30,15 +30,27 @@ class App {
             return;
         }
 
-        const savedState = (typeof GameStateClass.loadFromLocalStorage === "function")
-            ? GameStateClass.loadFromLocalStorage()
-            : null;
+        // Der Spielstand liegt in IndexedDB, und die liest nur asynchron.
+        // Erst wenn er eingelesen (und ein alter Stand aus dem LocalStorage
+        // umgezogen) ist, zeigt der Startbildschirm, was es fortzusetzen gibt.
+        const weiter = () => {
+            const savedState = (typeof GameStateClass.loadFromLocalStorage === "function")
+                ? GameStateClass.loadFromLocalStorage()
+                : null;
+            if (savedState && savedState.userClubId) this.state = savedState;
+            if (this.ui) this.ui.showStartScreen();
+        };
 
-        if (savedState && savedState.userClubId) {
-            this.state = savedState;
-            if (this.ui) this.ui.showStartScreen();
+        if (typeof GameStateClass.bereiteSpeicherVor === "function") {
+            this.speicherBereit = GameStateClass.bereiteSpeicherVor().then(info => {
+                if (info && info.umgezogen && this.ui) {
+                    this.ui.showToast("Der Spielstand ist in den größeren Browserspeicher umgezogen.", "info");
+                }
+                return info;
+            });
+            this.speicherBereit.then(weiter, weiter);
         } else {
-            if (this.ui) this.ui.showStartScreen();
+            weiter();
         }
     }
 

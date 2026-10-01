@@ -7499,6 +7499,30 @@ function runEngineTests() {
         if (leihspieler.clubId === club.id || club.playerIds.includes(leihspieler.id)) throw new Error("Der Leihspieler ist nicht zu seinem Verein zurück");
     });
 
+    test("Spielanalyse: Jeder Abschluss mit Ort, xG und Ausgang - nur bei eigenen Spielen gespeichert", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const heim = state.clubs.find(c => c.id === "sge");
+        const gast = state.clubs.find(c => c.id === "wob");
+        const partie = { id: "analyse", played: false, homeClubId: "sge", awayClubId: "wob" };
+        MatchEngine.simulateFullMatch(partie, heim, gast, state.players);
+        const s = partie.schuesse;
+        if (!Array.isArray(s) || !s.length) throw new Error("Keine Schüsse gespeichert");
+        const gesamt = partie.stats.shots[0] + partie.stats.shots[1];
+        if (s.length !== gesamt) throw new Error(`${s.length} Schüsse gespeichert, Statistik zählt ${gesamt}`);
+        s.forEach(z => {
+            if (z.length !== 8 || z[2] < 50 || z[2] > 100 || z[3] < 0 || z[3] > 100 || z[4] <= 0) throw new Error(`Ungültiger Schuss ${JSON.stringify(z)}`);
+        });
+        const tore = [0, 1].map(t => s.filter(z => z[1] === t && z[5] === 2).length);
+        if (tore[0] !== partie.homeGoals || tore[1] !== partie.awayGoals) throw new Error(`Tore in der Schussliste ${tore} passen nicht zum Ergebnis`);
+        const xg = [0, 1].map(t => s.filter(z => z[1] === t).reduce((a, z) => a + z[4] / 100, 0));
+        if (Math.abs(xg[0] - partie.stats.xG[0]) > 0.06 || Math.abs(xg[1] - partie.stats.xG[1]) > 0.06) {
+            throw new Error(`xG der Schussliste ${xg.map(v => v.toFixed(2))} weicht von der Statistik ${partie.stats.xG} ab`);
+        }
+        // Fremde Spiele werden verschlankt - die Schussliste fällt mit weg
+        MatchEngine.compactPlayedMatch(partie, false);
+        if (partie.schuesse) throw new Error("Verschlankte Partie behält die Schussliste");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

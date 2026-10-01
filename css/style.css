@@ -8045,3 +8045,20 @@ td.nowrap { white-space: nowrap; }
     .leih-zeile { grid-template-columns: 1fr auto; }
     .leih-text { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* Spielanalyse im Spielbericht */
+.sa-kopf { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; font-size: 12px; margin-bottom: 10px; }
+.sa-team { display: inline-flex; align-items: center; gap: 6px; }
+.sa-team i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.sa-raster { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+.sa-feld { width: 100%; height: auto; display: block; border-radius: 6px; }
+.sa-verlauf { width: 100%; height: auto; display: block; }
+.sa-achse { font-size: 6px; fill: var(--text-muted); }
+.sa-untertitel { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+.sa-legende { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+.sa-legende span { display: inline-flex; align-items: center; gap: 5px; }
+.sa-l { width: 10px; height: 10px; border-radius: 50%; display: inline-block; border: 1.5px solid var(--text-muted); }
+.sa-l.sa-tor { background: var(--text-muted); border-color: #fff; }
+.sa-l.sa-gehalten { background: rgba(139, 151, 167, 0.5); }
+.sa-l.sa-geblockt { border-style: dashed; }
+@media (max-width: 760px) { .sa-raster { grid-template-columns: 1fr; } }

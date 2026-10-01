@@ -10286,6 +10286,95 @@ class UIManager {
     /**
      * Modal: Spielbericht nach Abpfiff
      */
+    /**
+     * Spielanalyse im Bericht: Schusskarte (wo, wie gut, mit welchem Ausgang)
+     * und der Verlauf der erspielten Chancenqualität über neunzig Minuten.
+     * Heim greift nach rechts an, Gast nach links.
+     */
+    spielanalyseHtml(match, home, away) {
+        const schuesse = Array.isArray(match?.schuesse) ? match.schuesse : [];
+        if (!schuesse.length) return "";
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const trikots = typeof ermittleTrikots === "function" ? ermittleTrikots(home, away) : null;
+        const farbe = [trikots?.home?.akzent || "#bef264", trikots?.away?.akzent || "#38bdf8"];
+        const ausgangText = ["vorbei", "gehalten", "Tor", "geblockt"];
+        const komma = (v) => String(v).replace(".", ",");
+
+        // Spielfeld 105 x 68 Meter
+        const linie = `stroke="rgba(255,255,255,0.28)" stroke-width="0.35" fill="none"`;
+        const feld = `
+            <rect x="0" y="0" width="105" height="68" fill="#123524" rx="1"/>
+            <rect x="0.5" y="0.5" width="104" height="67" ${linie}/>
+            <line x1="52.5" y1="0.5" x2="52.5" y2="67.5" ${linie}/>
+            <circle cx="52.5" cy="34" r="9.15" ${linie}/>
+            <rect x="0.5" y="13.85" width="16.5" height="40.3" ${linie}/>
+            <rect x="88" y="13.85" width="16.5" height="40.3" ${linie}/>
+            <rect x="0.5" y="24.84" width="5.5" height="18.32" ${linie}/>
+            <rect x="99" y="24.84" width="5.5" height="18.32" ${linie}/>
+            <rect x="-1" y="30.34" width="1.5" height="7.32" fill="rgba(255,255,255,0.5)"/>
+            <rect x="104.5" y="30.34" width="1.5" height="7.32" fill="rgba(255,255,255,0.5)"/>`;
+        const punkte = schuesse.map(([min, team, x, y, xg, ausgang, elfmeter, name]) => {
+            const px = team === 0 ? x * 1.05 : (100 - x) * 1.05;
+            const py = team === 0 ? y * 0.68 : (100 - y) * 0.68;
+            const r = (0.9 + Math.sqrt(Math.max(1, xg) / 100) * 3.2).toFixed(2);
+            const f = farbe[team];
+            const stil = ausgang === 2 ? `fill="${f}" stroke="#ffffff" stroke-width="0.5"`
+                : ausgang === 1 ? `fill="${f}" fill-opacity="0.5" stroke="${f}" stroke-width="0.35"`
+                    : ausgang === 3 ? `fill="none" stroke="${f}" stroke-width="0.4" stroke-dasharray="0.8 0.6"`
+                        : `fill="none" stroke="${f}" stroke-width="0.4" stroke-opacity="0.8"`;
+            return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r}" ${stil}><title>${min}' ${esc(name)} · xG ${komma((xg / 100).toFixed(2))} · ${ausgangText[ausgang]}${elfmeter ? " (Elfmeter)" : ""}</title></circle>`;
+        }).join("");
+
+        // xG-Verlauf: Treppenlinien je Mannschaft, Tore als Punkte
+        const summe = [0, 0];
+        const verlauf = [[[0, 0]], [[0, 0]]];
+        const tore = [[], []];
+        [...schuesse].sort((a, b) => a[0] - b[0]).forEach(([min, team, , , xg, ausgang]) => {
+            verlauf[team].push([min, summe[team]]);
+            summe[team] += xg / 100;
+            verlauf[team].push([min, summe[team]]);
+            if (ausgang === 2) tore[team].push([min, summe[team]]);
+        });
+        const ende = Math.max(90, ...schuesse.map(z => z[0]));
+        const hoch = Math.max(1, summe[0], summe[1]) * 1.1;
+        const X = (m) => (8 + (m / ende) * 186).toFixed(1);
+        const Y = (v) => (62 - (v / hoch) * 56).toFixed(1);
+        verlauf.forEach((v, t) => v.push([ende, summe[t]]));
+        const pfad = (v) => v.map(([m, w], i) => `${i ? "L" : "M"}${X(m)},${Y(w)}`).join(" ");
+        const kurve = `
+            <line x1="8" y1="62" x2="194" y2="62" stroke="rgba(255,255,255,0.2)" stroke-width="0.5"/>
+            <line x1="${X(45)}" y1="6" x2="${X(45)}" y2="62" stroke="rgba(255,255,255,0.12)" stroke-width="0.5" stroke-dasharray="2 2"/>
+            <text x="8" y="70" class="sa-achse">0'</text><text x="${X(45)}" y="70" class="sa-achse" text-anchor="middle">45'</text><text x="194" y="70" class="sa-achse" text-anchor="end">${ende}'</text>
+            ${[0, 1].map(t => `
+                <path d="${pfad(verlauf[t])}" fill="none" stroke="${farbe[t]}" stroke-width="1.4" stroke-linejoin="round"/>
+                ${tore[t].map(([m, w]) => `<circle cx="${X(m)}" cy="${Y(w)}" r="2.2" fill="${farbe[t]}" stroke="#0b1220" stroke-width="0.6"><title>Tor ${m}'</title></circle>`).join("")}
+            `).join("")}`;
+
+        const kopfzeile = (t, club) => {
+            const eigene = schuesse.filter(z => z[1] === t);
+            return `<span class="sa-team"><i style="background:${farbe[t]}"></i>${esc(club.name)}: ${eigene.length} Schüsse · ${komma(summe[t].toFixed(2))} xG</span>`;
+        };
+        return `
+            <div class="dash-card sa-karte" style="padding:14px; margin-bottom:16px;">
+                <h4 style="font-size:14px; margin-bottom:8px;">🎯 Spielanalyse</h4>
+                <div class="sa-kopf">${kopfzeile(0, home)}${kopfzeile(1, away)}</div>
+                <div class="sa-raster">
+                    <div>
+                        <svg class="sa-feld" viewBox="-1.5 -1 108 70" role="img" aria-label="Schusskarte">${feld}${punkte}</svg>
+                        <div class="sa-legende">
+                            <span><i class="sa-l sa-tor"></i>Tor</span><span><i class="sa-l sa-gehalten"></i>gehalten</span>
+                            <span><i class="sa-l sa-vorbei"></i>vorbei</span><span><i class="sa-l sa-geblockt"></i>geblockt</span>
+                            <span>Größe = Chancenqualität (xG)</span>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="sa-untertitel">Chancenqualität im Spielverlauf</div>
+                        <svg class="sa-verlauf" viewBox="0 0 200 74" role="img" aria-label="xG-Verlauf">${kurve}</svg>
+                    </div>
+                </div>
+            </div>`;
+    }
+
     showMatchReportModal(match) {
         const state = this.app.state;
         const home = state.clubs.find(c => c.id === match.homeClubId);
@@ -10382,6 +10471,8 @@ class UIManager {
                     <div>${renderRatingsTable(awayRatings, away.name)}</div>
                 </div>
             </div>
+
+            ${this.spielanalyseHtml(match, home, away)}
 
             <div class="dash-card" style="padding:14px;">
                 <h4 style="font-size:14px; margin-bottom:12px;">📊 Spielstatistik</h4>

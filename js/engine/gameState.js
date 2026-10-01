@@ -983,7 +983,19 @@ class GameState {
         // Die Stars jeder Liga bekommen ihre Signatur-Eigenschaft
         GameState.sichereSignaturen(state);
 
+        // Geführter Einstieg (js/ui/uiEinstieg.js) - abwählbar im Assistenten
+        if (managerProfile.erklaerungen !== false) state.einstieg = GameState.neuerEinstieg(state);
+
         return state;
+    }
+
+    /**
+     * Der Stand des geführten Einstiegs: welche ersten Schritte erledigt und
+     * welche Erklärungen weggeklickt sind. Reine Anzeige - das Spiel selbst
+     * fragt ihn nicht ab.
+     */
+    static neuerEinstieg(state) {
+        return { schritte: {}, gesehen: {}, aus: false, karteAus: false, startTag: state?.currentDayIndex || 0 };
     }
 
     /** Signatur-Eigenschaften der Topspieler - auch für ältere Spielstände */

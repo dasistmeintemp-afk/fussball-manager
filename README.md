@@ -37,6 +37,14 @@ Ein leichtgewichtiger, detailreicher und vollständig spielbarer **Fußballmanag
    - Startest du in der Landesliga, spielst du 30 Spieltage gegen 15 Amateurvereine – der Weg nach oben führt über den Aufstieg.
 5. Du landest direkt in deinem Manager-Dashboard.
 
+**Einstieg für neue Spieler** (`js/ui/uiEinstieg.js`): Im ersten Schritt des Assistenten steht **„Mit Erklärungen starten“** – angehakt, solange es noch keine andere Karriere gibt. Dann hilft das Spiel auf drei Wegen, alle in den Einstellungen abschaltbar:
+
+- **Erste Schritte:** Eine Karte auf der Übersicht führt in sieben Schritten bis zum ersten Pflichtspiel: Kader, Taktik, Vorbereitung (solange sie läuft), Training, Transfermarkt, den ersten Tag spielen, das erste Pflichtspiel. Ein Schritt ist erledigt, sobald man ihn getan hat – abhaken gibt es nicht. **Öffnen** springt in den Bereich, der nächste offene Schritt ist hervorgehoben.
+- **Erklärungen:** Beim ersten Besuch eines Bereichs steht oben ein Kasten mit dem Wichtigsten in zwei, drei Sätzen. **Verstanden** blendet ihn für diese Karriere aus; in den Einstellungen lassen sich alle wieder einblenden.
+- **Kurzanleitung und Begriffe:** Worum es geht, wie ein Tag abläuft, und was Sterne, Potenzial, Moral, Form, Kondition, Spielschärfe, Vertrautheit, Rolle, Scoutwissen, Vorstandsvertrauen, Ruf und xG bedeuten. Erreichbar vom Startbildschirm, aus jedem Erklärkasten und aus den Einstellungen. Sie ersetzt die alte Spielbeschreibung, die noch von 18 Bundesligavereinen und 7 Formationen sprach.
+
+Der Stand liegt im Spielstand (`state.einstieg`) und reist mit der Karriere, auch beim Export. Ältere Spielstände bekommen nichts ungefragt; wer möchte, schaltet die Erklärungen in den Einstellungen ein.
+
 ---
 
 ### 3. Spielstand-Speicherung & Weitergabe an Freunde
@@ -544,6 +552,7 @@ untitled/
 │   │   ├── uiLivespiel.js      # Match-Center, Zurufe, Seitenlinie während der Partie
 │   │   ├── uiSpielbericht.js   # Spielbericht mit Schusskarte, Heatmaps und Passnetz
 │   │   ├── uiSpeicher.js       # Speicherplätze, Sicherungen, Laden, Löschen, Import
+│   │   ├── uiEinstieg.js       # Erste Schritte, Erklärkästen, Kurzanleitung und Begriffe
 │   │   └── spielfeld3d.js      # 3D-Ansicht des Livespiels (three.js, nachgeladen): Stadion, Figuren, Bewegungen, Wiederholung, Qualitätsstufen
 │   └── vendor/
 │       └── three.min.js        # three.js r159 (MIT-Lizenz, THREE_LICENSE daneben)

@@ -9,7 +9,7 @@ const { execFileSync } = require('child_process');
 
 /** Statische Prüfung (Syntax, doppelte Methoden, globale Namen) als eigene Suite */
 function runPruefung() {
-    if (process.env.TEST_FILTER) return { passed: 0, failed: 0 };
+    if (process.env.TEST_FILTER || !require('./test_filter.js').ersterTeil()) return { passed: 0, failed: 0 };
     try {
         console.log("\n  " + execFileSync(process.execPath, [require('path').join(__dirname, 'pruefung.js')], { encoding: "utf8" }).trim());
         return { passed: 1, failed: 0 };

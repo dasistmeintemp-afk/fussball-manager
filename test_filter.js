@@ -4,6 +4,8 @@
  *   TEST_FILTER="Leihen|Transfer" node test_runner.js   nur passende Tests ausführen
  *   TEST_ZEIT=1 node test_runner.js                     Laufzeit je Test anzeigen
  *   TEST_SCHNELL=1 node test_runner.js                  ohne die langsamen Tests (unten)
+ *   TEST_TEIL=2/4 node test_runner.js                   nur jeden vierten Test, beginnend beim zweiten -
+ *                                                       so teilt sich die Suite auf parallele Läufe auf
  */
 const muster = process.env.TEST_FILTER ? new RegExp(process.env.TEST_FILTER, "i") : null;
 const zeitAnzeigen = !!process.env.TEST_ZEIT;
@@ -24,6 +26,15 @@ const LANGSAM = [
     "Alle Formationen: Positionsspiel mit jeder Vorlage"
 ];
 let uebersprungen = 0;
+
+const teil = (() => {
+    const m = /^(\d+)\/(\d+)$/.exec(process.env.TEST_TEIL || "");
+    if (!m) return null;
+    const k = Number(m[1]), n = Number(m[2]);
+    if (n < 1 || k < 1 || k > n) throw new Error(`TEST_TEIL=${process.env.TEST_TEIL}: erwartet k/n mit 1 <= k <= n`);
+    return { k, n };
+})();
+let testNummer = 0;
 
 /**
  * Feste Zufallswerte: Jeder Test bekommt einen eigenen Startwert aus seinem
@@ -56,6 +67,8 @@ function zufallFuer(name) {
 /** Gehört der Test zur Auswahl? Ohne TEST_FILTER laufen alle. */
 function testAusgewaehlt(name) {
     if (muster && !muster.test(name)) return false;
+    // Reihum verteilt: Die Reihenfolge der Tests ist fest, also auch die Teile
+    if (teil && (testNummer++ % teil.n) !== teil.k - 1) return false;
     // Ein ausdrücklich gefilterter Test läuft auch im schnellen Lauf
     if (schnell && !muster && LANGSAM.some(anfang => name.startsWith(anfang))) {
         uebersprungen++;
@@ -77,4 +90,9 @@ function laufzeit(start) {
     return ms >= 1000 ? ` (${(ms / 1000).toFixed(1)} s)` : ` (${ms} ms)`;
 }
 
-module.exports = { testAusgewaehlt, laufzeit, zufallFuer, uebersprungeneTests, LANGSAM };
+/** Läuft dieser Prozess die Teile, die es nur einmal braucht (statische Prüfung)? */
+function ersterTeil() {
+    return !teil || teil.k === 1;
+}
+
+module.exports = { testAusgewaehlt, laufzeit, zufallFuer, uebersprungeneTests, ersterTeil, LANGSAM };

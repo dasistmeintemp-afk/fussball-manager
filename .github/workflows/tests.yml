@@ -1,0 +1,64 @@
+# Automatische Tests bei GitHub
+#
+# Bei jedem Pull Request und jedem Push auf master: die statische Prüfung
+# und die volle Suite, aufgeteilt auf vier parallele Läufe (TEST_TEIL).
+# Hintereinander braucht die Suite eine Dreiviertelstunde, so ein Viertel.
+#
+# Von Hand (Actions -> Tests -> Run workflow) lässt sich ein anderer
+# Startwert für den Zufall wählen, etwa 7 oder "zufall".
+
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: "Startwert für den Zufall (Zahl oder zufall)"
+        required: false
+        default: "20251001"
+
+permissions:
+  contents: read
+
+# Ein neuer Push bricht den noch laufenden Durchgang desselben Zweigs ab
+concurrency:
+  group: tests-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pruefung:
+    name: Statische Prüfung
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax, doppelte Methoden, globale Namen, Offline-Vorrat
+        run: node pruefung.js
+
+  suite:
+    name: Suite ${{ matrix.teil }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      # Alle Teile zu Ende laufen lassen - ein Fehler in einem Teil sagt
+      # nichts über die anderen
+      fail-fast: false
+      matrix:
+        teil: ["1/4", "2/4", "3/4", "4/4"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tests, Teil ${{ matrix.teil }}
+        run: node test_runner.js
+        env:
+          TEST_TEIL: ${{ matrix.teil }}
+          TEST_ZEIT: "1"
+          TEST_SEED: ${{ github.event.inputs.seed || '20251001' }}

@@ -18,7 +18,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (this._anzeige2D) return this._anzeige2D;
         let gespeichert = null;
         try { gespeichert = JSON.parse(localStorage.getItem("fm_anzeige2d") || "null"); } catch (e) { gespeichert = null; }
-        this._anzeige2D = { namen: true, formEigene: false, formGegner: false, ...(gespeichert || {}) };
+        this._anzeige2D = { namen: true, formEigene: false, formGegner: false, dreiD: false, kamera3D: "tv", ...(gespeichert || {}) };
         return this._anzeige2D;
     },
 
@@ -31,6 +31,73 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 try { localStorage.setItem("fm_anzeige2d", JSON.stringify(anzeige)); } catch (e) { /* ohne Speicher */ }
             };
         });
+        document.querySelectorAll("#lm3dKamera [data-kamera3d]").forEach(btn => {
+            btn.classList.toggle("aktiv", btn.dataset.kamera3d === anzeige.kamera3D);
+            btn.onclick = () => {
+                anzeige.kamera3D = btn.dataset.kamera3d;
+                if (this.spielfeld3d) this.spielfeld3d.setzeKamera(anzeige.kamera3D);
+                document.querySelectorAll("#lm3dKamera [data-kamera3d]").forEach(b => b.classList.toggle("aktiv", b === btn));
+                try { localStorage.setItem("fm_anzeige2d", JSON.stringify(anzeige)); } catch (e) { /* ohne Speicher */ }
+            };
+        });
+    },
+
+    /**
+     * Die 3D-Ansicht zeichnen, wenn sie gewählt ist. Liefert false, wenn
+     * stattdessen das 2D-Feld zeichnen soll - auch, wenn der Browser kein
+     * WebGL kann: Dann schaltet sie sich mit einem Hinweis ab.
+     */
+    zeichne3D(liveMatch, dt = 0.016) {
+        const anzeige = this.anzeige2D();
+        const c3 = document.getElementById("livePitch3D");
+        const c2 = document.getElementById("livePitchCanvas");
+        if (!c3 || !c2) return false;
+        if (!anzeige.dreiD) {
+            if (c3.style.display !== "none") this._zeige3D(false);
+            return false;
+        }
+        if (!this.spielfeld3d) {
+            const Klasse = typeof Spielfeld3D !== "undefined" ? Spielfeld3D : null;
+            try {
+                if (!Klasse || !Klasse.verfuegbar()) throw new Error("Kein WebGL");
+                this.spielfeld3d = new Klasse(c3);
+                this.spielfeld3d.setzeKamera(anzeige.kamera3D);
+            } catch (e) {
+                console.warn("3D-Ansicht nicht möglich:", e);
+                anzeige.dreiD = false;
+                const box = document.querySelector('#lmAnsicht [data-anzeige2d="dreiD"]');
+                if (box) box.checked = false;
+                this.showToast("Die 3D-Ansicht braucht WebGL - es geht in 2D weiter.", "warning");
+                return false;
+            }
+        }
+        if (c3.style.display === "none") this._zeige3D(true);
+        // Dieselbe Fläche wie das 2D-Feld
+        if (c3.style.width !== c2.style.width) c3.style.width = c2.style.width;
+        if (c3.style.height !== c2.style.height) c3.style.height = c2.style.height;
+        this.spielfeld3d.zeichne(liveMatch, dt, { namen: anzeige.namen });
+
+        // Einblendungen (Anstoß, Tor, Halbzeit), die sonst das 2D-Feld zeichnet
+        const banner = document.getElementById("lm3dBanner");
+        const b = liveMatch.banner;
+        const text = b && b.title ? `${b.title}${b.subtitle ? " · " + b.subtitle : ""}` : "";
+        if (banner && banner.dataset.text !== text) {
+            banner.dataset.text = text;
+            banner.textContent = text;
+            banner.style.display = text ? "" : "none";
+        }
+        return true;
+    },
+
+    _zeige3D(an) {
+        const c3 = document.getElementById("livePitch3D");
+        const c2 = document.getElementById("livePitchCanvas");
+        if (c3) c3.style.display = an ? "block" : "none";
+        if (c2) c2.style.display = an ? "none" : "";
+        const kamera = document.getElementById("lm3dKamera");
+        if (kamera) kamera.style.display = an ? "" : "none";
+        const banner = document.getElementById("lm3dBanner");
+        if (banner && !an) { banner.style.display = "none"; banner.dataset.text = ""; }
     },
 
     /**
@@ -710,7 +777,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 }
                 this.stopCrowdAmbience();
                 updateLiveUI();
-                render2DCanvas();
+                if (!this.zeichne3D(liveMatch)) render2DCanvas();
                 this.playSound("whistle");
                 // Die übrigen Partien laufen parallel - beim Abpfiff steht
                 // auch die Tabelle beziehungsweise das Tableau der Runde
@@ -748,7 +815,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             this.updateCrowdAmbience(liveMatch, deltaMs / 1000);
 
             updateLiveUI();
-            render2DCanvas(deltaMs / 1000);
+            if (!this.zeichne3D(liveMatch, deltaMs / 1000)) render2DCanvas(deltaMs / 1000);
 
             this.liveMatchAnimFrame = requestAnimationFrame(tickLoop);
         };

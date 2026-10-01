@@ -138,6 +138,10 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 
 - **Bild und Ticker erzählen dasselbe:** Wer im Ticker genannt wird, hat auf dem Feld auch den Ball, und zwar an der Stelle, von der die Rede ist – die Szene beginnt erst, wenn er dort angekommen ist. Jede Angriffsart hat ihre eigene Geometrie: Die Flanke kommt vom Flügel, der Steilpass aus der Zentrale, die Ecke von der Fahne. Und seit dem Seitenwechsel fliegen die Schüsse auch nach der Pause aufs richtige Tor.
 
+> **3D-Ansicht:** Im Livespiel lässt sich über das Auge oben rechts im Feld die **3D-Ansicht** einschalten. Sie zeichnet dieselbe Simulation – Laufwege, Ballflug mit Höhe, Wechsel – in einem Stadion: Rasen mit Mähstreifen und allen Linien in echten Maßen (105 × 68 m), Tore mit Netz, Tribünen mit Publikum in den Vereinsfarben, Flutlicht. Die Spieler sind stilisierte Figuren in ihren Trikotfarben, die im Takt ihrer Geschwindigkeit laufen und dorthin schauen, wohin sie laufen oder wo der Ball ist. Drei Kameras: **TV** (Haupttribüne, schwenkt mit dem Ball), **Taktik** (hoch über dem Feld) und **Nah** (dicht am Ball). Gezeichnet wird mit three.js (r159, MIT-Lizenz, in `js/vendor/`), offline und auch in der Einzeldatei. Ohne WebGL schaltet sich die Ansicht mit einem Hinweis ab, es geht in 2D weiter. Ehrlich gesagt: Echte, animierte Spielermodelle wie in großen Produktionen bräuchten fertige 3D-Modelle mit Bewegungsabläufen – die Figuren hier sind bewusst schlicht.
+
+> **Absicherung beim Dribbling:** Wer den ersten Verteidiger stehen lässt, läuft in einem kompakten Block gleich in den zweiten. Bisher zählte für ein Dribbling nur der nächste Gegner; jetzt senkt jeder weitere Verteidiger nahe am Zielpunkt die Erfolgschance (ein Helfer ist im Mittelfeld normal und zählt nicht). Gemessen (je 24 Spiele gegen einen hoch pressenden Favoriten): Die Chancen des Favoriten sinken gegen den tiefen Block von 2,27 auf 2,08 xG und gegen die Grundeinstellung von 1,71 auf 1,49 xG; im ausgeglichenen Duell ändern sich Schüsse und xG insgesamt nicht. Was offen bleibt: Ein tiefer Block hat in der Simulation noch rund 50 % Ballbesitz statt der üblichen 30 bis 40 %, und Spitzenteams dominieren den Ballbesitz allgemein zu wenig (Bayern gegen Augsburg rund 54 %). Ein Versuch, den Block im Mittelfeld zügiger nach vorn spielen zu lassen, brachte messbar nichts und ist wieder draußen.
+
 > **Eine Simulation für das eigene Spiel:** Das Sofort-Ergebnis des eigenen Spiels – aus dem Kalender oder über den Knopf mitten im Livespiel – ist kein anderes Spiel mehr. Dieselbe Livespiel-Simulation läuft einfach ohne Bild weiter, in kleinen Häppchen je Bildschirmbild, auf der schnellsten Abspielstufe (die ein Vorlauf ist, kein anderes Spiel). Der Co-Trainer übernimmt Wechsel und Umstellungen, eine Einblendung zeigt Spielstand und Minute, nach zwei bis drei Sekunden steht der Spielbericht – mit Heatmap und Passnetz. Bisher wechselte das Sofort-Ergebnis ab dem Klick auf das statistische Modell. Die Spiele der übrigen Vereine rechnet weiter das statistische Modell, das auf die Livespiel-Simulation abgestimmt ist; für Hunderte Partien je Spieltag wäre die volle Simulation zu langsam.
 
 > **Live und sofort berechnet:** Das statistische Modell erzeugt alle Ereignisse vorab als Timeline. Im Livespiel gibt sie seit dem Entscheidungsmodus nur noch den Rahmen vor (Wechsel, Verletzungen, Halbzeit, Abpfiff) – alles andere entsteht auf dem Feld (siehe unten). Jedes Ereignis wird dabei in dieselbe Timeline geschrieben, aus der auch der Spielbericht rechnet: Live-Anzeige und Bericht zeigen Feld für Feld dieselben Zahlen, ein Test prüft das.
@@ -497,14 +501,17 @@ untitled/
 │   │   ├── contractEngine.js   # Vertragsforderungen, Verlängerungen & Ausstiegsklauseln
 │   │   ├── calendarEngine.js   # Saisonkalender & dynamischer Tagesablauf
 │   │   └── opponentAnalysisEngine.js # Taktische Gegneranalyse
-│   └── ui/
-│       ├── uiManager.js        # Kern: Start, Assistent, Reiter, Kader, Taktik, Kalender, Ereignisse
-│       ├── uiSpielfeld.js      # Leinwand des 2D-Spiels: Rasen, Radar, Einblendungen, Stadionklang
-│       ├── uiVorbereitung.js   # Vorbereitung: Stab, Sponsoren, Testspiele, Turniere
-│       ├── uiTransfers.js      # Verhandlungen, Leihen, U23, Transfermarkt, Scoutberichte
-│       ├── uiAkten.js          # Spieler- und Vereinsakte
-│       ├── uiLivespiel.js      # Match-Center, Zurufe, Seitenlinie während der Partie
-│       └── uiSpielbericht.js   # Spielbericht mit Schusskarte, Heatmaps und Passnetz
+│   ├── ui/
+│   │   ├── uiManager.js        # Kern: Start, Assistent, Reiter, Kader, Taktik, Kalender, Ereignisse
+│   │   ├── uiSpielfeld.js      # Leinwand des 2D-Spiels: Rasen, Radar, Einblendungen, Stadionklang
+│   │   ├── uiVorbereitung.js   # Vorbereitung: Stab, Sponsoren, Testspiele, Turniere
+│   │   ├── uiTransfers.js      # Verhandlungen, Leihen, U23, Transfermarkt, Scoutberichte
+│   │   ├── uiAkten.js          # Spieler- und Vereinsakte
+│   │   ├── uiLivespiel.js      # Match-Center, Zurufe, Seitenlinie während der Partie
+│   │   ├── uiSpielbericht.js   # Spielbericht mit Schusskarte, Heatmaps und Passnetz
+│   │   └── spielfeld3d.js      # 3D-Ansicht des Livespiels (three.js): Stadion, Figuren, drei Kameras
+│   └── vendor/
+│       └── three.min.js        # three.js r159 (MIT-Lizenz, THREE_LICENSE daneben)
 ├── pruefung.js                 # Statische Prüfung: Syntax, doppelte Methoden, globale Namen, Offline-Vorrat
 ├── test_filter.js              # Gemeinsame Testhilfen: Filter, Laufzeiten, schneller Lauf, feste Zufallswerte
 ├── test_runner.js              # Zentraler Runner für alle Testsuiten

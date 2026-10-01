@@ -7589,6 +7589,12 @@ td.nowrap { white-space: nowrap; }
 .lm-ohnebild-balken { height: 6px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }
 .lm-ohnebild-balken span { display: block; height: 100%; background: var(--accent, #bef264); transition: width .12s linear; }
 .lm-ohnebild-text { margin-top: 10px; font-size: 13px; color: var(--text-muted); }
+/* 3D-Ansicht */
+.live-pitch-3d { display: block; margin: 0 auto; border-radius: 10px; background: #0a1018; }
+.lm-3d-kamera { position: absolute; top: 10px; left: 10px; z-index: 5; display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: rgba(6,10,14,.72); border: 1px solid rgba(255,255,255,.1); }
+.lm-3d-kamera button { border: 0; background: transparent; color: var(--text-muted); font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 7px; cursor: pointer; }
+.lm-3d-kamera button.aktiv { background: var(--accent, #bef264); color: #0a1018; }
+.lm-3d-banner { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); z-index: 5; max-width: 86%; padding: 7px 16px; border-radius: 10px; background: rgba(6,10,14,.82); border: 1px solid rgba(255,255,255,.12); color: #f8fafc; font-weight: 700; font-size: 15px; text-align: center; pointer-events: none; }
 
 .lm-ansicht {
     position: absolute;

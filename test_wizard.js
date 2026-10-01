@@ -810,6 +810,28 @@ function runWizardTests() {
         });
     });
 
+    test("3D-Ansicht: Bibliothek und Modul geladen, Koordinaten in echten Metern, offline vorrätig", () => {
+        const THREE = require('./js/vendor/three.min.js');
+        if (String(THREE.REVISION) !== "159" || typeof THREE.WebGLRenderer !== "function") throw new Error("three.js r159 fehlt");
+        const { Spielfeld3D } = require('./js/ui/spielfeld3d.js');
+        const nah = (a, b) => Math.abs(a - b) < 1e-9;
+        const links = Spielfeld3D.welt(4, 0), rechts = Spielfeld3D.welt(96, 100), mitte = Spielfeld3D.welt(50, 50);
+        if (!nah(links.x, -52.5) || !nah(links.z, -34) || !nah(rechts.x, 52.5) || !nah(rechts.z, 34) || !nah(mitte.x, 0) || !nah(mitte.z, 0)) {
+            throw new Error(`Umrechnung stimmt nicht: ${JSON.stringify({ links, rechts, mitte })}`);
+        }
+        // Ohne Browser kein WebGL - die Oberfläche fällt dann auf 2D zurück
+        if (Spielfeld3D.verfuegbar() !== false) throw new Error("Ohne Browser meldet die 3D-Ansicht WebGL");
+        const html = fs.readFileSync('./index.html', 'utf8');
+        const iThree = html.indexOf('js/vendor/three.min.js'), iModul = html.indexOf('js/ui/spielfeld3d.js');
+        if (iThree < 0 || iModul < 0 || iThree > iModul) throw new Error("three.js muss vor dem 3D-Modul geladen werden");
+        if (!/data-anzeige2d="dreiD"/.test(html) || !/data-kamera3d="tv"/.test(html)) throw new Error("Schalter oder Kamerawahl fehlen");
+        const sw = fs.readFileSync('./service-worker.js', 'utf8');
+        if (!sw.includes('./js/vendor/three.min.js') || !sw.includes('./js/ui/spielfeld3d.js')) throw new Error("3D fehlt im Offline-Vorrat");
+        // Die Oberfläche zeichnet 3D nur, wenn gewählt, und fällt sonst auf 2D zurück
+        const ui = uiQuelltext();
+        if (!/zeichne3D\(liveMatch[^)]*\)\) render2DCanvas/.test(ui)) throw new Error("Die Bildschleife fragt die 3D-Ansicht nicht zuerst");
+    });
+
     console.log(`\n  Ergebnis Wizard-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Wizard-Tests fehlgeschlagen.`);
     return { passed, failed };

@@ -50,6 +50,11 @@ const FLOW_PHASES = {
 };
 
 class MatchFlowEngine {
+    /** Absicherung beim Dribbling: Umkreis um den Zielpunkt und Abzug je weiterem Verteidiger */
+    static ABSICHERUNG_RADIUS = 9;
+    static ABSICHERUNG_JE_HELFER = 0.06;
+    static ABSICHERUNG_MAX = 0.18;
+
     constructor(options = {}) {
         // Zugriff auf die Spieler des Feldes und die Vereinsdaten
         this.getPlayers = options.getPlayers || (() => []);
@@ -1227,6 +1232,16 @@ class MatchFlowEngine {
         let chance = 0.6 + edge / (fm ? 140 : 210) - pressure * 0.13 - haerte * 0.05;
         // In einen vollen Strafraum kommt man nicht einfach hineingedribbelt
         if (fm && this.imGegnerStrafraum(action.target, carrier.team)) chance -= Math.min(0.2, this.strafraumDichte(carrier.team) * 0.05);
+        // Absicherung: Wer den ersten Verteidiger stehen lässt, läuft im
+        // kompakten Block gleich in den zweiten. Bisher zählte nur der
+        // nächste Gegner - gegen einen tiefen Block gelangen dem Favoriten so
+        // fast zwanzig Dribblings je Spiel. Ein Helfer in der Nähe ist im
+        // Mittelfeld normal und zählt nicht; jeder weitere schon.
+        if (fm && defender && action.target) {
+            const helfer = opponents.filter(o => o !== defender && o.pos !== "TW"
+                && this.distance(action.target, o) < MatchFlowEngine.ABSICHERUNG_RADIUS).length;
+            chance -= Math.min(MatchFlowEngine.ABSICHERUNG_MAX, Math.max(0, helfer - 1) * MatchFlowEngine.ABSICHERUNG_JE_HELFER);
+        }
         const ea = fm ? this.eig(carrier) : {};
         const ed = fm && defender ? this.eig(defender) : {};
         chance += (ea.dribbelKoennen || 0) - (ed.zweikampf || 0);

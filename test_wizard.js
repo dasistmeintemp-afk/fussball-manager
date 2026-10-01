@@ -7,6 +7,13 @@ const { INITIAL_TEAMS_DATA } = require('./js/data/initialData.js');
 const { GameState, FORMATION_CONFIGS } = require('./js/engine/gameState.js');
 const { UIManager } = require('./js/ui/uiManager.js');
 
+/** Der ganze UI-Quelltext: uiManager.js und seine ausgelagerten Teile (js/ui/ui*.js) */
+function uiQuelltext() {
+    const fs = require('fs');
+    return fs.readdirSync('./js/ui').filter(f => /^ui.*\.js$/.test(f)).sort()
+        .map(f => fs.readFileSync('./js/ui/' + f, 'utf8')).join('\n');
+}
+
 global.GameState = GameState;
 global.FORMATION_CONFIGS = FORMATION_CONFIGS;
 
@@ -133,7 +140,7 @@ function runWizardTests() {
 
     // 2. Regressionstests im Source-Code
     test("Regression: showNewGameModal() Methodendefinition darf nur exakt einmal in uiManager.js vorkommen", () => {
-        const uiCode = fs.readFileSync('./js/ui/uiManager.js', 'utf8');
+        const uiCode = uiQuelltext();
         const matches = uiCode.match(/showNewGameModal\s*\(\s*\)\s*\{/g) || [];
         if (matches.length !== 1) {
             throw new Error(`showNewGameModal() Definition kommt ${matches.length}-mal in uiManager.js vor (erwartet: 1)`);
@@ -141,7 +148,7 @@ function runWizardTests() {
     });
 
     test("Regression: Legacy-IDs clubSelectionGrid und btnConfirmStartGame dürfen nicht in JS verwendet werden", () => {
-        const uiCode = fs.readFileSync('./js/ui/uiManager.js', 'utf8');
+        const uiCode = uiQuelltext();
         if (uiCode.includes('clubSelectionGrid')) {
             throw new Error("Veraltete ID 'clubSelectionGrid' in uiManager.js gefunden");
         }
@@ -520,7 +527,7 @@ function runWizardTests() {
     // Ligaauswahl im Assistenten
     test("Wizard-Ligaauswahl: alle Ligen zur Wahl, keine Sammelauswahl mehr", () => {
         const html = fs.readFileSync('./index.html', 'utf8');
-        const uiJs = fs.readFileSync('./js/ui/uiManager.js', 'utf8');
+        const uiJs = uiQuelltext();
         const { LEAGUES_DATA, COUNTRIES_DATA } = require('./js/data/leagueData.js');
         const { GameState } = require('./js/engine/gameState.js');
         const { UIManager } = require('./js/ui/uiManager.js');
@@ -631,7 +638,7 @@ function runWizardTests() {
             }
         });
 
-        const uiJs = fs.readFileSync('./js/ui/uiManager.js', 'utf8');
+        const uiJs = uiQuelltext();
         if (!uiJs.includes('btnAdoptClub')) {
             throw new Error("Dynamischer Hook 'btnAdoptClub' fehlt in uiManager.js");
         }
@@ -651,7 +658,7 @@ function runWizardTests() {
     // 7. UI Layout Polish: Postfach, Rollenkarten, Dashboard-Timeline & Role-Chips
     test("UI Layout Polish: CSS-Klassen & semantische Templates für Postfach, Timeline und Spielerrollen", () => {
         const css = fs.readFileSync('./css/style.css', 'utf8');
-        const uiJs = fs.readFileSync('./js/ui/uiManager.js', 'utf8');
+        const uiJs = uiQuelltext();
 
         // CSS-Prüfungen
         const requiredCssClasses = [

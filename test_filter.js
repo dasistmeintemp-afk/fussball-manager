@@ -3,9 +3,27 @@
  *
  *   TEST_FILTER="Leihen|Transfer" node test_runner.js   nur passende Tests ausführen
  *   TEST_ZEIT=1 node test_runner.js                     Laufzeit je Test anzeigen
+ *   TEST_SCHNELL=1 node test_runner.js                  ohne die langsamen Tests (unten)
  */
 const muster = process.env.TEST_FILTER ? new RegExp(process.env.TEST_FILTER, "i") : null;
 const zeitAnzeigen = !!process.env.TEST_ZEIT;
+const schnell = !!process.env.TEST_SCHNELL;
+
+/**
+ * Die Tests, die einzeln länger als eine Viertelminute laufen (gemessen mit
+ * TEST_ZEIT=1). Zusammen brauchen sie gut zwölf Minuten - im schnellen Lauf
+ * fallen sie weg. Vor einem Merge läuft trotzdem die ganze Suite.
+ */
+const LANGSAM = [
+    "SeasonEngine: Verträge laufen aus",
+    "SeasonEngine: Komplette Saison simulieren",
+    "GameState: Tabelle stimmt Tor für Tor",
+    "MatchEngine Kalibrierung: 500 Spiele",
+    "MatchEngine Wirksamkeit: very_defensive vs. very_offensive",
+    "LiveMatchDirector: Die Mannschaft steht als Block",
+    "Alle Formationen: Positionsspiel mit jeder Vorlage"
+];
+let uebersprungen = 0;
 
 /**
  * Feste Zufallswerte: Jeder Test bekommt einen eigenen Startwert aus seinem
@@ -37,7 +55,19 @@ function zufallFuer(name) {
 
 /** Gehört der Test zur Auswahl? Ohne TEST_FILTER laufen alle. */
 function testAusgewaehlt(name) {
-    return !muster || muster.test(name);
+    if (muster && !muster.test(name)) return false;
+    // Ein ausdrücklich gefilterter Test läuft auch im schnellen Lauf
+    if (schnell && !muster && LANGSAM.some(anfang => name.startsWith(anfang))) {
+        uebersprungen++;
+        console.log(`  ⏭  ${name} (langsam, übersprungen)`);
+        return false;
+    }
+    return true;
+}
+
+/** Wie viele langsame Tests der schnelle Lauf ausgelassen hat */
+function uebersprungeneTests() {
+    return uebersprungen;
 }
 
 /** Laufzeit-Zusatz für die Ausgabe, nur mit TEST_ZEIT */
@@ -47,4 +77,4 @@ function laufzeit(start) {
     return ms >= 1000 ? ` (${(ms / 1000).toFixed(1)} s)` : ` (${ms} ms)`;
 }
 
-module.exports = { testAusgewaehlt, laufzeit, zufallFuer };
+module.exports = { testAusgewaehlt, laufzeit, zufallFuer, uebersprungeneTests, LANGSAM };

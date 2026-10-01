@@ -122,23 +122,34 @@ function entkerne(quelle) {
     return aus.join("");
 }
 
-/** Doppelte Methoden je Klasse */
+/**
+ * Doppelte Methoden je Klasse - über alle Dateien hinweg. Ausgelagerte Teile
+ * ("Object.assign(Klasse.prototype, { ... })", siehe js/ui/ui*.js) zählen zur
+ * Klasse: Eine Methode, die dort und im Klassenkörper steht, überschreibt
+ * still die aus der Klasse.
+ */
+const methodenJeKlasse = new Map();   // Klasse -> Map(Schlüssel -> "datei:zeile")
 function doppelteMethoden(datei, kern) {
     const zeilen = kern.split("\n");
-    const stapel = [];   // { name, tiefe, methoden: Map }
+    const stapel = [];   // { name, tiefe }
     let tiefe = 0;
     zeilen.forEach((zeile, nr) => {
-        const klasse = zeile.match(/\bclass\s+([A-Za-z_$][\w$]*)[^{]*\{/);
-        if (klasse) stapel.push({ name: klasse[1], tiefe: tiefe + 1, methoden: new Map() });
+        const klasse = zeile.match(/\bclass\s+([A-Za-z_$][\w$]*)[^{]*\{/)
+            || zeile.match(/\b([A-Z][\w$]*)\)?\.prototype,\s*\{\s*$/);
+        if (klasse) {
+            stapel.push({ name: klasse[1], tiefe: tiefe + 1 });
+            if (!methodenJeKlasse.has(klasse[1])) methodenJeKlasse.set(klasse[1], new Map());
+        }
         const oben = stapel[stapel.length - 1];
         if (oben && tiefe === oben.tiefe && !klasse) {
             const m = zeile.match(/^\s*(static\s+)?(async\s+)?(get\s+|set\s+)?\*?\s*([A-Za-z_$][\w$]*)\s*\([^)]*\)?\s*\{?/);
             if (m && !["if", "for", "while", "switch", "catch", "return", "function"].includes(m[4])) {
                 const schluessel = `${m[1] ? "static " : ""}${m[3] ? m[3].trim() + " " : ""}${m[4]}`;
-                if (oben.methoden.has(schluessel)) {
-                    fehler.push(`${datei}:${nr + 1}: ${oben.name}.${schluessel} ist doppelt (zuerst in Zeile ${oben.methoden.get(schluessel)}) - die spätere überschreibt die frühere`);
+                const methoden = methodenJeKlasse.get(oben.name);
+                if (methoden.has(schluessel)) {
+                    fehler.push(`${datei}:${nr + 1}: ${oben.name}.${schluessel} ist doppelt (zuerst in ${methoden.get(schluessel)}) - die spätere überschreibt die frühere`);
                 } else {
-                    oben.methoden.set(schluessel, nr + 1);
+                    methoden.set(schluessel, `${datei}:${nr + 1}`);
                 }
             }
         }

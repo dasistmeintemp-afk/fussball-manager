@@ -416,6 +416,18 @@ Eine komplette Welt mit über 4300 Spielern belegt als gewöhnliches JSON knapp 
 - **Deterministische Match-Timeline (`MatchEngine.generateTimeline`):** Generiert chronologische Ketten von Spielzügen (Pässe, Flanken, Dribblings, Schüsse, xG, Glanzparaden, Tore, Karten) inklusive 2D-Koordinaten (`start`, `end`).
 - **Exakte 2D-Parität:** Die 2D-Simulation (`LiveMatch`) und die Sofortsimulation (`simulateFullMatch`) werten exakt dieselbe Timeline aus. Alle Torschützen, Vorlagengeber, Ticker-Texte, Statistiken und Spielberichte stimmen 1:1 mit der 2D-Darstellung überein.
 
+### 10. 🌍 Länderspiele, Kabine, Verträge, Wetter, Trainerprofil und U23
+
+- **Nationalmannschaften und Länderspielpausen (`NationalTeamEngine`):** Viermal im Jahr ruht die Liga. Jede Nation mit genug Spielern im Spiel nominiert ihren Kader (3 Torhüter, 8 Abwehr, 7 Mittelfeld, 5 Sturm), die Nationalspieler reisen ab, bestreiten zwei Länderspiele und kehren müde zurück – manchmal verletzt. Länderspiele und Tore stehen in der Spielerakte.
+- **Kabinenhierarchie (`DressingRoomEngine`):** Führungsspieler, Neuzugänge und Grüppchen nach Sprache, jede Gruppe mit Wortführer und Stimmung. Ein unzufriedener Wortführer färbt auf seine Gruppe ab, ein unzufriedener Kapitän auf alle. Den Kapitän bestimmt der Trainer; wer einen Führungsspieler verkauft, hat ein paar Tage Unruhe.
+- **Verträge:** Neben Gehalt und Laufzeit gehören Beraterhonorar, Einsatz- und Torprämien dazu. Prämien schonen das feste Gehalt und werden nach jedem Spiel ausgezahlt. Leihen können eine **Kaufoption** haben; KI-Vereine ziehen sie, wenn der Spieler gespielt hat und das Geld reicht.
+- **Wetter und Platz (`WetterEngine`):** Jede Partie bekommt Wetter nach Jahreszeit und einen Rasen nach Ligastufe. Nasser Rasen macht Fernschüsse tückisch, tiefer Boden kostet Kraft und Genauigkeit, Wind verweht lange Bälle, Hitze zehrt an der Ausdauer. Vorschau, Livespiel und Spielbericht zeigen es an.
+- **Spielanalyse:** Zum Spielbericht gehören Heatmaps der eigenen Spieler und ein Passnetz – wer mit wem wie oft zusammengespielt hat und wo er im Schnitt stand.
+- **Trainerprofil (`TrainerProfilEngine`):** Fünf Werte von 1 bis 20 (Taktik, Motivation, Menschenführung, Jugendarbeit, Spielerbewertung), die wirklich wirken – auf Vertrautheit, Ansprachen, Einzelgespräche, Talententwicklung und Scoutberichte. Dazu B-, A- und Pro-Lizenz: Ab der Regionalliga verlangt der Verband die A-Lizenz, in den Bundesligen die Pro-Lizenz. Lehrgänge kosten Geld und Zeit. Am Saisonende wächst, was gefordert war.
+- **Zweite Mannschaft (U23, `ReserveEngine`):** Talente, die bei den Profis nicht spielen, schickt man in die U23. Sie spielt an jedem Spieltag ein eigenes Spiel und bringt Spielpraxis (etwas weniger als bei den Profis), Spielschärfe und eine eigene Bilanz. Höchstens drei Spieler über 23, im Profikader bleiben mindestens 16. Die KI-Vereine geben ihren Talenten ohne Einsatz ebenfalls etwas Praxis.
+- **Taktik:** Konter und tiefer Block wurden überarbeitet – Umschalten mit Verzögerung für Verteidiger, Befreiungsschläge aus der tiefen Linie, Laufwege in die Tiefe. Gemessen gegen einen hoch pressenden Favoriten (24 Spiele je Variante): Konter holt 0,71 Punkte je Spiel statt 0,38 mit der Grundeinstellung; der tiefe Block, der nach Ballgewinn sofort nach vorn spielt, kassiert 1,79 statt 2,88 Tore. Ehrlich gesagt: Gegen eine viel stärkere Mannschaft bleibt der tiefe Block auch so die schwierigste Wahl.
+- **Lesbarkeit:** Gedimmte Schrift erreicht jetzt auf allen Kartenflächen mindestens 4,5:1 Kontrast (vorher 2,7:1). Überschriften und Knöpfe zeigen Symbole aus dem Iconset statt bunter Emojis.
+
 ---
 
 ## 📁 Modulare Projektarchitektur
@@ -466,7 +478,12 @@ untitled/
 │   │   ├── matchplanEngine.js  # Taktikbesprechung: Matchplan für ein Spiel
 │   │   ├── playerTalkEngine.js # Gespräche unter vier Augen, Versprechen, Wechselwünsche
 │   │   ├── developmentPlanEngine.js # Schwerpunkt, Umschulung, Mentor, Spielpraxis
-│   │   ├── loanEngine.js       # Verleihen, Leihmarkt, Gehaltsanteile, Rückkehr
+│   │   ├── loanEngine.js       # Verleihen, Leihmarkt, Gehaltsanteile, Kaufoption, Rückkehr
+│   │   ├── reserveEngine.js    # Zweite Mannschaft (U23): Spielpraxis, Bilanz, Regeln
+│   │   ├── nationalTeamEngine.js # Nationalmannschaften, Nominierungen, Länderspielpausen
+│   │   ├── dressingRoomEngine.js # Kabine: Moral, Hierarchie, Grüppchen, Kapitän
+│   │   ├── wetterEngine.js     # Wetter und Platzverhältnisse je Partie
+│   │   ├── trainerProfilEngine.js # Trainerwerte, Lizenzen, Lehrgänge, Ruf
 │   │   ├── trainingEngine.js   # Tägliche Belastung, Ermüdung, Risiko & Entwicklung
 │   │   ├── financeEngine.js    # Spieltagseinnahmen, Gehälter & Journal
 │   │   ├── boardEngine.js      # Vorstandszufriedenheit & Saisonziele
@@ -478,7 +495,15 @@ untitled/
 │   │   ├── calendarEngine.js   # Saisonkalender & dynamischer Tagesablauf
 │   │   └── opponentAnalysisEngine.js # Taktische Gegneranalyse
 │   └── ui/
-│       └── uiManager.js        # Render-Logik aller Ansichten & Modale
+│       ├── uiManager.js        # Kern: Start, Assistent, Reiter, Kader, Taktik, Kalender, Ereignisse
+│       ├── uiSpielfeld.js      # Leinwand des 2D-Spiels: Rasen, Radar, Einblendungen, Stadionklang
+│       ├── uiVorbereitung.js   # Vorbereitung: Stab, Sponsoren, Testspiele, Turniere
+│       ├── uiTransfers.js      # Verhandlungen, Leihen, U23, Transfermarkt, Scoutberichte
+│       ├── uiAkten.js          # Spieler- und Vereinsakte
+│       ├── uiLivespiel.js      # Match-Center, Zurufe, Seitenlinie während der Partie
+│       └── uiSpielbericht.js   # Spielbericht mit Schusskarte, Heatmaps und Passnetz
+├── pruefung.js                 # Statische Prüfung: Syntax, doppelte Methoden, globale Namen, Offline-Vorrat
+├── test_filter.js              # Gemeinsame Testhilfen: Filter, Laufzeiten, schneller Lauf, feste Zufallswerte
 ├── test_runner.js              # Zentraler Runner für alle Testsuiten
 ├── test_data.js                # Datenintegrität & Strukturprüfungen
 ├── test_wizard.js              # Wizard-Filter, DOM-Simulation & Regressionstests
@@ -577,6 +602,16 @@ Führe im Projektverzeichnis den zentralen Test-Runner aus:
 ```bash
 node test_runner.js
 ```
+
+Hilfreiche Schalter (auch kombinierbar):
+```bash
+TEST_SCHNELL=1 node test_runner.js            # ohne die sieben langsamsten Tests (gut zwölf Minuten schneller)
+TEST_FILTER="U23|Speicher" node test_runner.js # nur passende Tests
+TEST_ZEIT=1 node test_runner.js               # Laufzeit je Test anzeigen
+TEST_SEED=1234 node test_runner.js            # andere feste Zufallswerte; TEST_SEED=zufall für echten Zufall
+node pruefung.js                              # nur die statische Prüfung
+```
+Jeder Test bekommt feste Zufallswerte aus seinem Namen – er liefert allein dasselbe Ergebnis wie in der ganzen Suite. Vor jeder Suite läuft `pruefung.js`: Syntax aller Dateien, doppelte Methoden (auch über die ausgelagerten UI-Teile hinweg), doppelte globale Namen und ob jede Datei geladen und offline vorrätig ist.
 
 Oder führe die individuellen Test-Suiten aus:
 ```bash

@@ -58,6 +58,8 @@ function runAllSuites() {
 
     console.log("--------------------------------------------------------------------------------");
     console.log(`  Gesamtergebnis: ${totalPassed} Tests erfolgreich, ${totalFailed} Tests fehlgeschlagen.`);
+    const ausgelassen = require('./test_filter.js').uebersprungeneTests();
+    if (ausgelassen) console.log(`  Schneller Lauf: ${ausgelassen} langsame Tests ausgelassen - vor dem Merge die ganze Suite laufen lassen.`);
     console.log("================================================================================");
 
     if (totalFailed === 0) {

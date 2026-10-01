@@ -70,6 +70,8 @@ body {
     display: inline-block;
     vertical-align: middle;
 }
+/* Symbol vor einer Abschnittsüberschrift: so groß wie die Schrift */
+.ico.h-ico { width: 1.15em; height: 1.15em; margin: -0.15em 6px 0 0; }
 
 .logo-mark { width: 30px; height: 30px; flex: none; }
 

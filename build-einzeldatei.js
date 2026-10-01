@@ -47,7 +47,20 @@ html = html.replace(/[ \t]*<script[^>]*src=["']([^"']+)["'][^>]*>\s*<\/script>\s
     return `<script>\n${entschaerfen(fs.readFileSync(p, 'utf8'))}\n</script>\n`;
 });
 
-// 5. Hinweis in den Kopf der Datei
+// 5. Bibliotheken, die das Spiel erst bei Bedarf lädt, liegen als Vorrat
+// bereit: im Dokument, aber nicht ausgeführt. So parst der Browser die
+// 668 KB von three.js nur, wenn jemand die 3D-Ansicht einschaltet.
+const VORRAT = { "vorrat-three": "js/vendor/three.min.js" };
+let vorrat = 0;
+const vorratsBloecke = Object.entries(VORRAT).map(([id, datei]) => {
+    const p = path.join(WURZEL, datei);
+    if (!fs.existsSync(p)) { fehlend.push(datei); return ""; }
+    vorrat++;
+    return `<script type="text/plain" id="${id}">\n${entschaerfen(fs.readFileSync(p, 'utf8'))}\n</script>\n`;
+}).join("");
+html = html.replace(/<\/body>/i, () => vorratsBloecke + "</body>");
+
+// 6. Hinweis in den Kopf der Datei
 html = html.replace(/<head>/i, `<head>
 <!--
   Fußball-Manager - vollständiges Spiel in einer einzigen Datei.
@@ -58,7 +71,7 @@ html = html.replace(/<head>/i, `<head>
 fs.writeFileSync(ZIEL, html);
 
 const groesse = fs.statSync(ZIEL).size;
-console.log(`Gebündelt: ${skripte} Skripte, ${styles} Stylesheet(s)`);
+console.log(`Gebündelt: ${skripte} Skripte, ${styles} Stylesheet(s), ${vorrat} Vorrat zum Nachladen`);
 if (fehlend.length) console.log(`NICHT GEFUNDEN: ${fehlend.join(', ')}`);
 console.log(`Datei: ${ZIEL} (${(groesse / 1024 / 1024).toFixed(2)} MB)`);
 

@@ -1749,6 +1749,15 @@
                             <summary title="Was das Feld zeigt" aria-label="Anzeige des Spielfelds"><svg class="ico" aria-hidden="true"><use href="#i-eye"/></svg></summary>
                             <div class="lm-ansicht-menu">
                                 <label><input type="checkbox" data-anzeige2d="dreiD"> 3D-Ansicht</label>
+                                <label><input type="checkbox" data-anzeige2d="wiederholung3D"> Torwiederholung (3D)</label>
+                                <label class="lm-ansicht-wahl">3D-Qualität
+                                    <select data-anzeige-wahl="qualitaet3D">
+                                        <option value="auto">Automatisch</option>
+                                        <option value="niedrig">Niedrig</option>
+                                        <option value="mittel">Mittel</option>
+                                        <option value="hoch">Hoch</option>
+                                    </select>
+                                </label>
                                 <label><input type="checkbox" data-anzeige2d="namen"> Namen aller Spieler</label>
                                 <label><input type="checkbox" data-anzeige2d="formEigene"> Formation eigene Elf</label>
                                 <label><input type="checkbox" data-anzeige2d="formGegner"> Formation Gegner</label>
@@ -2138,7 +2147,6 @@
     <script src="js/ui/uiLivespiel.js"></script>
     <script src="js/ui/uiSpielbericht.js"></script>
     <script src="js/ui/uiSpeicher.js"></script>
-    <script src="js/vendor/three.min.js"></script>
     <script src="js/ui/spielfeld3d.js"></script>
     <script src="js/app.js"></script>
 </body>

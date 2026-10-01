@@ -14,8 +14,16 @@
  * Die Spieler sind stilisierte Figuren in den Trikotfarben des Spiels: Rumpf,
  * Kopf, Arme, Beine. Sie laufen mit, pendeln die Beine im Takt ihrer
  * Geschwindigkeit und schauen dorthin, wohin sie laufen - oder zum Ball.
- * Echte, animierte Spielermodelle bräuchten fertige 3D-Modelle mit
- * Bewegungsabläufen; die gibt es hier nicht.
+ * Was sie tun, meldet die Regie (LiveMatchDirector.meldeAktion): Pass,
+ * Schuss, Flanke, Kopfball, Zweikampf, Parade, Tor. Dazu gibt es je einen
+ * Bewegungsablauf, aus Gelenkwinkeln gerechnet statt aus fertigen Modellen.
+ *
+ * Nach einem Tor zeigt die Ansicht die letzten Sekunden noch einmal in
+ * Zeitlupe, aus einem zweiten Blickwinkel hinter dem Tor. Dafür nimmt sie
+ * laufend auf, was sie zeichnet; die Simulation steht derweil still.
+ *
+ * Die Bibliothek (668 KB) lädt erst, wenn jemand die 3D-Ansicht einschaltet
+ * (ladeBibliothek) - in der Einzeldatei liegt sie als Vorrat bereit.
  */
 
 const S3D_LAENGE = 105;
@@ -24,15 +32,66 @@ const S3D_TOR_LINKS = 4;
 const S3D_TOR_RECHTS = 96;
 
 class Spielfeld3D {
-    /** Gibt es WebGL und die Bibliothek? */
-    static verfuegbar() {
-        if (typeof THREE === "undefined" || typeof document === "undefined") return false;
+    /**
+     * Qualitätsstufen. Niedrig zeichnet mit weniger Bildpunkten als der
+     * Bildschirm hat und ohne Kantenglättung - für schwache Telefone.
+     */
+    static QUALITAET = {
+        niedrig: { pixelRatio: 0.8, antialias: false, rasenPx: 1024, gras: 2500, teile: 0.6, namen: 12 },
+        mittel: { pixelRatio: 1.25, antialias: true, rasenPx: 2048, gras: 9000, teile: 1, namen: 22 },
+        hoch: { pixelRatio: 2, antialias: true, rasenPx: 4096, gras: 30000, teile: 1.4, namen: 22 }
+    };
+
+    /** Wo die Bibliothek liegt - als Datei und als Vorrat in der Einzeldatei */
+    static BIBLIOTHEK = "js/vendor/three.min.js";
+    static VORRAT_ID = "vorrat-three";
+
+    /** Kann der Browser WebGL? Ohne zuerst die Bibliothek zu laden. */
+    static webglMoeglich() {
+        if (typeof document === "undefined") return false;
         try {
             const c = document.createElement("canvas");
             return !!(c.getContext("webgl2") || c.getContext("webgl"));
         } catch (e) {
             return false;
         }
+    }
+
+    /** Gibt es WebGL und die Bibliothek? */
+    static verfuegbar() {
+        if (typeof THREE === "undefined") return false;
+        return Spielfeld3D.webglMoeglich();
+    }
+
+    /**
+     * Die Bibliothek bei Bedarf laden. Liefert ein Promise auf true, sobald
+     * THREE da ist. In der Einzeldatei liegt sie als nicht ausgeführter
+     * Vorrat im Dokument, sonst kommt sie als Datei (offline aus dem
+     * Service Worker).
+     */
+    static ladeBibliothek() {
+        if (typeof THREE !== "undefined") return Promise.resolve(true);
+        if (Spielfeld3D._laden) return Spielfeld3D._laden;
+        Spielfeld3D._laden = new Promise(resolve => {
+            try {
+                const vorrat = document.getElementById(Spielfeld3D.VORRAT_ID);
+                const skript = document.createElement("script");
+                if (vorrat) {
+                    skript.textContent = vorrat.textContent;
+                    document.head.appendChild(skript);
+                    resolve(typeof THREE !== "undefined");
+                    return;
+                }
+                skript.src = Spielfeld3D.BIBLIOTHEK;
+                skript.onload = () => resolve(typeof THREE !== "undefined");
+                skript.onerror = () => { Spielfeld3D._laden = null; resolve(false); };
+                document.head.appendChild(skript);
+            } catch (e) {
+                Spielfeld3D._laden = null;
+                resolve(false);
+            }
+        });
+        return Spielfeld3D._laden;
     }
 
     /** Simulationskoordinaten in Meter: X entlang des Feldes, Z quer, Y nach oben */
@@ -43,10 +102,12 @@ class Spielfeld3D {
         };
     }
 
-    constructor(canvas) {
+    constructor(canvas, optionen = {}) {
         this.canvas = canvas;
-        this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-        this.renderer.setPixelRatio(Math.min((typeof window !== "undefined" && window.devicePixelRatio) || 1, 1.75));
+        this.qualitaet = Spielfeld3D.QUALITAET[optionen.qualitaet] ? optionen.qualitaet : "mittel";
+        this.q = Spielfeld3D.QUALITAET[this.qualitaet];
+        this.renderer = new THREE.WebGLRenderer({ canvas, antialias: this.q.antialias, powerPreference: "high-performance" });
+        this.renderer.setPixelRatio(Math.min((typeof window !== "undefined" && window.devicePixelRatio) || 1, this.q.pixelRatio));
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
         this.scene = new THREE.Scene();
@@ -67,6 +128,11 @@ class Spielfeld3D {
         this.figuren = new Map();     // Spieler-ID -> Figur
         this.spielKey = null;
         this.zeit = 0;
+
+        this._letzteAktion = 0;       // zuletzt gesehene Meldung der Regie
+        this._aufnahme = [];          // die letzten Sekunden, für die Wiederholung
+        this._wiederholung = null;
+        this._bildzeiten = [];        // für die automatische Qualität
     }
 
     // ---------------------------------------------------------------- Aufbau
@@ -84,7 +150,7 @@ class Spielfeld3D {
     /** Der Rasen als gezeichnete Textur: Mähstreifen und alle Linien in echten Maßen */
     _baueRasen() {
         const rand = 6;
-        const breitePx = 2048;
+        const breitePx = this.q.rasenPx;
         const meterPx = breitePx / (S3D_LAENGE + 2 * rand);
         const hoehePx = Math.round((S3D_BREITE + 2 * rand) * meterPx);
         const c = document.createElement("canvas");
@@ -102,7 +168,7 @@ class Spielfeld3D {
             g.fillRect(x0, 0, S3D_LAENGE / streifen * meterPx + 1, hoehePx);
         }
         // Leichte Unruhe im Gras
-        for (let i = 0; i < 9000; i++) {
+        for (let i = 0; i < this.q.gras; i++) {
             g.fillStyle = `rgba(${Math.random() < 0.5 ? "0,0,0" : "255,255,255"},${Math.random() * 0.035})`;
             g.fillRect(Math.random() * breitePx, Math.random() * hoehePx, 2, 2);
         }
@@ -310,23 +376,25 @@ class Spielfeld3D {
         const koerper = new THREE.Group();
         figur.add(koerper);
 
-        const rumpf = new THREE.Mesh(new THREE.CapsuleGeometry(0.24, 0.5, 4, 10), hemd);
+        const t = this.q.teile;
+        const n = (zahl) => Math.max(4, Math.round(zahl * t));
+        const rumpf = new THREE.Mesh(new THREE.CapsuleGeometry(0.24, 0.5, Math.max(2, Math.round(4 * t)), n(10)), hemd);
         rumpf.position.y = 1.22;
         koerper.add(rumpf);
-        const kopf = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 10), haut);
+        const kopf = new THREE.Mesh(new THREE.SphereGeometry(0.15, n(12), n(10)), haut);
         kopf.position.y = 1.73;
         koerper.add(kopf);
-        const huefte = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.21, 0.24, 10), hose);
+        const huefte = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.21, 0.24, n(10)), hose);
         huefte.position.y = 0.88;
         koerper.add(huefte);
 
         const bein = (seite) => {
             const gelenk = new THREE.Group();
             gelenk.position.set(0, 0.84, seite * 0.11);
-            const oberschenkel = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.075, 0.42, 8), hose);
+            const oberschenkel = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.075, 0.42, n(8)), hose);
             oberschenkel.position.y = -0.2;
             gelenk.add(oberschenkel);
-            const unterschenkel = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.42, 8), hemd);
+            const unterschenkel = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.42, n(8)), hemd);
             unterschenkel.position.y = -0.6;
             gelenk.add(unterschenkel);
             const fuss = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.07, 0.1), schuh);
@@ -338,7 +406,7 @@ class Spielfeld3D {
         const arm = (seite) => {
             const gelenk = new THREE.Group();
             gelenk.position.set(0, 1.45, seite * 0.3);
-            const a = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.05, 0.55, 8), istTorwart ? hemd : haut);
+            const a = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.05, 0.55, n(8)), istTorwart ? hemd : haut);
             a.position.y = -0.27;
             gelenk.add(a);
             koerper.add(gelenk);
@@ -357,7 +425,10 @@ class Spielfeld3D {
             beine: [bein(-1), bein(1)], arme: [arm(-1), arm(1)],
             phase: this._hash(String(p.id) + "p") * Math.PI * 2,
             richtung: p.team === "home" ? 0 : Math.PI,
-            name: p.name || "", label: null, gesehen: 0
+            name: p.name || "", label: null, gesehen: 0,
+            // Der starke Fuß schießt: rechts ist das Bein auf der +z-Seite
+            schussBein: p.foot === "links" ? 0 : 1,
+            anim: null
         };
     }
 
@@ -398,6 +469,11 @@ class Spielfeld3D {
         this.publikum.map = this.publikumTextur;
         this.publikum.needsUpdate = true;
         this.spielKey = liveMatch;
+        // Jedes Spiel zählt seine Meldungen von vorn
+        this._letzteAktion = 0;
+        this._aufnahme = [];
+        this._wiederholung = null;
+        this._torGeplant = null;
     }
 
     // ---------------------------------------------------------------- Zeichnen
@@ -416,41 +492,83 @@ class Spielfeld3D {
         this.camera.updateProjectionMatrix();
     }
 
+    /** Was die Simulation gerade zeigt - als einfache Daten, damit es sich aufnehmen lässt */
+    _zustand(liveMatch) {
+        const ball = liveMatch.ball || { x: 50, y: 50 };
+        const spieler = (p, key) => ({
+            key, id: p.id, team: p.team, pos: p.pos, name: p.name, x: p.x, y: p.y,
+            vx: p.vx || 0, vy: p.vy || 0, speed: p.speed, verletzt: !!p.verletzt,
+            color: p.color, groesse: p.groesse, foot: p.foot
+        });
+        const neu = (liveMatch.aktionen || []).filter(a => a.nr > this._letzteAktion);
+        if (neu.length) this._letzteAktion = neu[neu.length - 1].nr;
+        return {
+            ball: { x: ball.x, y: ball.y, h: Math.max(0, ball.height || 0), flug: !!ball.inFlight },
+            spieler: (liveMatch.players2D || []).map(p => spieler(p, p.id))
+                .concat((liveMatch.abgaenge || []).map(a => spieler(a, "ab_" + a.team + "_" + a.number + "_" + a.name))),
+            aktionen: neu,
+            aktiv: liveMatch.activePlayerId,
+            kits: liveMatch.kits || {}
+        };
+    }
+
     zeichne(liveMatch, dt = 0.016, optionen = {}) {
         if (!liveMatch) return;
         if (this.spielKey !== liveMatch) this._neuesSpiel(liveMatch);
         this.groesse();
-        this.zeit += dt;
+        this._misst();
 
-        const ball = liveMatch.ball || { x: 50, y: 50 };
-        const bw = Spielfeld3D.welt(ball.x, ball.y);
-        const hoehe = Math.max(0, ball.height || 0) * 6;
+        // Während der Wiederholung steht die Simulation - gezeichnet wird die Aufnahme
+        if (this._wiederholung) {
+            this._spieleWiederholung(dt, optionen);
+            return;
+        }
+
+        this.zeit += dt;
+        const zustand = this._zustand(liveMatch);
+        this._nimmAuf(zustand, dt);
+        this._zeichneZustand(zustand, dt, optionen);
+
+        // Nach dem Tor: erst jubeln, dann die Wiederholung
+        if (this._torGeplant && this.zeit >= this._torGeplant.start) {
+            const geplant = this._torGeplant;
+            this._torGeplant = null;
+            if (optionen.wiederholung !== false) this._starteWiederholung(geplant);
+        }
+    }
+
+    _zeichneZustand(z, dt, optionen = {}) {
+        const bw = Spielfeld3D.welt(z.ball.x, z.ball.y);
+        const hoehe = z.ball.h * 6;
         this.ball.position.set(bw.x, 0.24 + hoehe, bw.z);
-        this.ball.rotation.z -= (ball.inFlight ? 0.25 : 0.08);
+        this.ball.rotation.z -= (z.ball.flug ? 0.25 : 0.08);
         this.ballSchatten.position.set(bw.x + hoehe * 0.15, 0.02, bw.z + hoehe * 0.1);
         this.ballSchatten.material.opacity = Math.max(0.12, 0.38 - hoehe * 0.04);
 
-        const kits = liveMatch.kits || {};
-        const aktiv = liveMatch.activePlayerId;
         const namenAlle = optionen.namen !== false;
         const gesehen = ++this._takt || (this._takt = 1);
 
-        const zeichneSpieler = (p, kennung) => {
-            let f = this.figuren.get(kennung);
+        z.spieler.forEach(p => {
+            let f = this.figuren.get(p.key);
             if (!f) {
-                f = this._figur(p, kits[p.team], p.pos === "TW");
-                this.figuren.set(kennung, f);
+                f = this._figur(p, z.kits[p.team], p.pos === "TW");
+                this.figuren.set(p.key, f);
             }
             f.gesehen = gesehen;
+        });
+        // Neue Meldungen der Regie werden zu Bewegungen
+        z.aktionen.forEach(a => this._starteAktion(a, z));
+
+        z.spieler.forEach(p => {
+            const f = this.figuren.get(p.key);
             const w = Spielfeld3D.welt(p.x, p.y);
             f.figur.position.set(w.x, 0, w.z);
             f.schatten.position.set(w.x + 0.15, 0.02, w.z + 0.1);
 
             // Laufrichtung - im Stand schaut er zum Ball
-            const vx = p.vx || 0, vy = p.vy || 0;
-            const tempo = Math.hypot(vx, vy);
-            let ziel = f.richtung;
-            if (tempo > 0.4) ziel = Math.atan2(-vy * (S3D_BREITE / 100), vx * (S3D_LAENGE / 92));
+            const tempo = Math.hypot(p.vx, p.vy);
+            let ziel;
+            if (tempo > 0.4) ziel = Math.atan2(-p.vy * (S3D_BREITE / 100), p.vx * (S3D_LAENGE / 92));
             else ziel = Math.atan2(-(bw.z - w.z), bw.x - w.x);
             let diff = ziel - f.richtung;
             while (diff > Math.PI) diff -= Math.PI * 2;
@@ -466,29 +584,31 @@ class Spielfeld3D {
             f.beine[1].rotation.z = -schwung;
             f.arme[0].rotation.z = -schwung * 0.8;
             f.arme[1].rotation.z = schwung * 0.8;
-            f.koerper.position.y = Math.abs(Math.sin(f.phase)) * 0.06 * lauf;
-            f.koerper.rotation.z = -0.12 * lauf;
+            f.arme[0].rotation.x = 0;
+            f.arme[1].rotation.x = 0;
+            f.koerper.position.set(0, Math.abs(Math.sin(f.phase)) * 0.06 * lauf, 0);
+            f.koerper.rotation.set(0, 0, -0.12 * lauf);
+            f.figur.position.y = 0;
             // Angeschlagene humpeln sichtbar
             if (p.verletzt) f.koerper.rotation.x = Math.sin(this.zeit * 6) * 0.08;
+            // Ein Bewegungsablauf überlagert das Laufen
+            if (f.anim) this._pose(f, dt);
 
             // Namen: alle, oder nur wer am Ball ist
-            const zeigeName = namenAlle || p.id === aktiv;
+            const zeigeName = namenAlle || p.id === z.aktiv;
             if (zeigeName) {
                 if (!f.label) f.label = this._label((p.name || "").split(" ").pop());
-                f.label.visible = true;
-                f.label.position.set(w.x, 2.45, w.z);
-                // Mit dem Abstand wachsen, damit der Name lesbar bleibt
                 const abstand = this.camera.position.distanceTo(f.figur.position);
+                // Auf niedriger Stufe nur nahe Namen - jeder kostet ein Bild
+                f.label.visible = p.id === z.aktiv || abstand < this.q.namen * 4;
+                f.label.position.set(w.x, 2.45 + f.figur.position.y, w.z);
                 const k = Math.max(0.8, Math.min(2.2, abstand / 30));
                 f.label.scale.set(3.6 * k, 0.9 * k, 1);
-                f.label.material.opacity = p.id === aktiv ? 1 : 0.8;
+                f.label.material.opacity = p.id === z.aktiv ? 1 : 0.8;
             } else if (f.label) {
                 f.label.visible = false;
             }
-        };
-
-        (liveMatch.players2D || []).forEach(p => zeichneSpieler(p, p.id));
-        (liveMatch.abgaenge || []).forEach(a => zeichneSpieler(a, "ab_" + a.team + "_" + a.number + "_" + a.name));
+        });
         // Wer nicht mehr auf dem Platz ist, verschwindet
         this.figuren.forEach((f, k) => {
             if (f.gesehen === gesehen) return;
@@ -498,40 +618,284 @@ class Spielfeld3D {
             this.figuren.delete(k);
         });
 
-        this._fuehreKamera(bw, hoehe, dt);
+        this._fuehreKamera(bw, hoehe, dt, z);
         this.renderer.render(this.scene, this.camera);
     }
 
+    // ----------------------------------------------------------- Bewegungen
+
+    /** Dauer der Bewegungsabläufe in Sekunden */
+    static DAUER = { pass: 0.45, schuss: 0.6, flanke: 0.6, kopfball: 0.7, zweikampf: 0.85, parade: 1.1, jubel: 3.2 };
+
+    _figurVon(z, id) {
+        const p = z.spieler.find(s => s.id === id);
+        return p ? { p, f: this.figuren.get(p.key) } : null;
+    }
+
+    _starteAktion(a, z) {
+        const ziel = this._figurVon(z, a.id);
+        if (!ziel || !ziel.f) return;
+        const { p, f } = ziel;
+        if (a.art === "tor") {
+            // Der Schütze jubelt, die Mitspieler in der Nähe mit
+            f.anim = { art: "jubel", t: 0, dauer: Spielfeld3D.DAUER.jubel, knie: this._hash(String(a.id) + a.nr) < 0.35 };
+            z.spieler.forEach(m => {
+                if (m.team !== p.team || m.id === p.id || m.pos === "TW") return;
+                if (Math.hypot(m.x - p.x, m.y - p.y) > 22) return;
+                const fm = this.figuren.get(m.key);
+                if (fm) fm.anim = { art: "jubel", t: -this._hash(String(m.id) + a.nr) * 0.6, dauer: Spielfeld3D.DAUER.jubel - 0.6 };
+            });
+            // Die Wiederholung beginnt, wenn der erste Jubel durch ist;
+            // aufgenommen wird noch, bis der Ball im Netz liegt
+            if (!this._wiederholung) this._torGeplant = { start: this.zeit + 2.4, team: p.team, schuetze: p.id };
+            return;
+        }
+        const anim = { art: a.art, t: 0, dauer: Spielfeld3D.DAUER[a.art] || 0.5 };
+        if (a.art === "parade") {
+            anim.t = -(a.verzoegerung || 0);
+            // Zu welcher Seite er fliegt - in seinem eigenen Blickfeld
+            const w = Spielfeld3D.welt(p.x, p.y);
+            const b = Spielfeld3D.welt(a.x ?? z.ball.x, a.y ?? z.ball.y);
+            const seitlich = (b.x - w.x) * Math.sin(f.richtung) + (b.z - w.z) * Math.cos(f.richtung);
+            anim.seite = seitlich >= 0 ? 1 : -1;
+        }
+        if (a.art === "zweikampf") anim.grätsche = this._hash(String(a.id) + a.nr) < 0.55;
+        f.anim = anim;
+    }
+
+    /** Ein Bewegungsablauf als Gelenkwinkel über der Zeit */
+    _pose(f, dt) {
+        const a = f.anim;
+        a.t += dt;
+        if (a.t < 0) return;
+        const t = Math.min(1, a.t / a.dauer);
+        if (a.t >= a.dauer) { f.anim = null; return; }
+        const bogen = Math.sin(Math.PI * t);
+        const k = f.koerper;
+        const bein = f.beine[f.schussBein], standbein = f.beine[1 - f.schussBein];
+
+        if (a.art === "pass" || a.art === "schuss" || a.art === "flanke") {
+            const kraft = a.art === "pass" ? 0.6 : 1;
+            // Ausholen, durchschwingen, zurück
+            // (Eine positive Drehung schwingt das Bein nach vorn)
+            let w;
+            if (t < 0.35) w = -0.8 * kraft * (t / 0.35);
+            else if (t < 0.6) w = -0.8 * kraft + (0.8 + 1.4) * kraft * ((t - 0.35) / 0.25);
+            else w = 1.4 * kraft * (1 - (t - 0.6) / 0.4);
+            bein.rotation.z = w;
+            standbein.rotation.z = -0.12 * bogen;
+            k.rotation.z = 0.14 * kraft * bogen;
+            // Der Gegenarm geht zur Seite - Arm 0 hebt sich mit positivem, Arm 1 mit negativem Winkel
+            const gegenarm = 1 - f.schussBein;
+            f.arme[gegenarm].rotation.x = (gegenarm === 0 ? 1 : -1) * 0.7 * bogen;
+        } else if (a.art === "kopfball") {
+            f.figur.position.y = 0.55 * bogen;
+            k.rotation.z = -0.4 * Math.sin(Math.PI * Math.min(1, t * 1.3));
+            f.beine[0].rotation.z = -0.35 * bogen;
+            f.beine[1].rotation.z = -0.15 * bogen;
+            f.arme[0].rotation.x = 0.9 * bogen;
+            f.arme[1].rotation.x = -0.9 * bogen;
+        } else if (a.art === "zweikampf") {
+            if (a.grätsche) {
+                // Grätsche: nach hinten kippen, das vordere Bein voraus, rutschen
+                k.rotation.z = 1.15 * bogen;
+                k.position.y = -0.55 * bogen;
+                k.position.x = 1.1 * t;
+                bein.rotation.z = 1.45 * bogen;
+                standbein.rotation.z = 0.5 * bogen;
+                f.arme[0].rotation.x = 0.6 * bogen;
+                f.arme[1].rotation.x = -0.6 * bogen;
+            } else {
+                // Im Stehen: Ausfallschritt mit dem Fuß zum Ball
+                bein.rotation.z = 1.0 * bogen;
+                standbein.rotation.z = -0.35 * bogen;
+                k.rotation.z = -0.25 * bogen;
+            }
+        } else if (a.art === "parade") {
+            // Abheben, zur Seite fliegen, landen und kurz liegen bleiben
+            const flug = Math.min(1, t * 2.4);
+            k.rotation.x = a.seite * 1.3 * flug;
+            k.position.z = a.seite * 1.6 * Math.min(1, t * 1.7);
+            k.position.y = -0.2 * flug;
+            f.figur.position.y = 0.65 * Math.sin(Math.PI * Math.min(1, t * 1.5));
+            // Die Arme über den Kopf - mit dem gekippten Körper zeigen sie zur Flugseite
+            f.arme[0].rotation.x = 2.9 * flug;
+            f.arme[1].rotation.x = -2.9 * flug;
+            f.beine[0].rotation.z = 0.2 * flug;
+            f.beine[1].rotation.z = -0.2 * flug;
+        } else if (a.art === "jubel") {
+            const an = Math.min(1, t * 6) * Math.min(1, (1 - t) * 6);
+            f.arme[0].rotation.x = 2.6 * an;
+            f.arme[1].rotation.x = -2.6 * an;
+            if (a.knie) {
+                // Auf den Knien über den Rasen
+                k.position.y = -0.45 * an;
+                k.rotation.z = 0.35 * an;
+                f.beine[0].rotation.z = f.beine[1].rotation.z = -1.2 * an;
+            } else {
+                f.figur.position.y = Math.abs(Math.sin(a.t * 7)) * 0.28 * an;
+            }
+        }
+    }
+
+    // --------------------------------------------------------- Wiederholung
+
+    /** Die letzten Sekunden mitschreiben - mehr braucht die Wiederholung nicht */
+    _nimmAuf(zustand, dt) {
+        this._aufnahme.push({ dt, z: zustand });
+        let summe = 0;
+        for (let i = this._aufnahme.length - 1; i >= 0; i--) {
+            summe += this._aufnahme[i].dt;
+            if (summe > Spielfeld3D.AUFNAHME_SEKUNDEN) { this._aufnahme.splice(0, i); break; }
+        }
+    }
+
+    static AUFNAHME_SEKUNDEN = 10;
+    static WIEDERHOLUNG = { vorTor: 5.5, nachTor: 0.9, tempo: 0.6 };
+
+    _starteWiederholung(geplant) {
+        // Ab einigen Sekunden vor dem Tor bis kurz danach
+        const bis = this._aufnahme.length;
+        let summe = 0, von = bis;
+        const ende = this.zeit - (2.4 - Spielfeld3D.WIEDERHOLUNG.nachTor);
+        let zeitpunkt = this.zeit;
+        const bilder = [];
+        for (let i = bis - 1; i >= 0; i--) {
+            zeitpunkt -= this._aufnahme[i].dt;
+            if (zeitpunkt > ende) continue;
+            summe += this._aufnahme[i].dt;
+            bilder.unshift(this._aufnahme[i]);
+            von = i;
+            if (summe > Spielfeld3D.WIEDERHOLUNG.vorTor + Spielfeld3D.WIEDERHOLUNG.nachTor) break;
+        }
+        if (bilder.length < 10) return;
+        // Wer jetzt jubelt, steht in der Wiederholung wieder mittendrin
+        this.figuren.forEach(f => { f.anim = null; });
+        // Die Kamera steht hinter dem Tor, in dem der Ball am Ende liegt -
+        // fest für die ganze Wiederholung, auch wenn der Angriff in der
+        // anderen Hälfte beginnt
+        const imNetz = bilder[bilder.length - 1].z.ball;
+        const seite = Spielfeld3D.welt(imNetz.x, imNetz.y).x >= 0 ? 1 : -1;
+        this._wiederholung = { bilder, i: 0, rest: 0, team: geplant.team, start: von, seite };
+    }
+
+    wiederholungLaeuft() {
+        return !!this._wiederholung;
+    }
+
+    beendeWiederholung() {
+        this._wiederholung = null;
+        this.figuren.forEach(f => { f.anim = null; });
+    }
+
+    _spieleWiederholung(dt, optionen) {
+        const w = this._wiederholung;
+        w.rest += dt * Spielfeld3D.WIEDERHOLUNG.tempo;
+        let bild = w.bilder[w.i];
+        let schritte = 0;
+        while (bild && w.rest >= bild.dt) {
+            w.rest -= bild.dt;
+            w.i++;
+            schritte++;
+            const naechstes = w.bilder[w.i];
+            // Auch die Bewegungen der übersprungenen Bilder abspielen
+            if (naechstes && schritte > 1) naechstes.z = Object.assign({}, naechstes.z, { aktionen: bild.z.aktionen.concat(naechstes.z.aktionen) });
+            bild = naechstes;
+        }
+        if (!bild) { this.beendeWiederholung(); return; }
+        // Jedes Bild nur einmal: Bewegungen nicht doppelt auslösen
+        const z = schritte ? bild.z : Object.assign({}, bild.z, { aktionen: [] });
+        this.zeit += dt * Spielfeld3D.WIEDERHOLUNG.tempo;
+        this._zeichneZustand(z, dt * Spielfeld3D.WIEDERHOLUNG.tempo, Object.assign({}, optionen, { namen: false }));
+    }
+
+    // ------------------------------------------------------------- Kamera
+
     /** Die Kamera folgt dem Ball - weich, nie ruckartig */
-    _fuehreKamera(bw, hoehe, dt) {
+    _fuehreKamera(bw, hoehe, dt, z) {
         const k = Math.min(1, dt * 2.2);
         const zielX = Math.max(-40, Math.min(40, bw.x));
-        let pos, blick;
-        if (this.kamera === "taktik") {
+        let pos, blick, fov;
+        if (this._wiederholung) {
+            // Hinter dem Tor, auf das der Schütze spielte, leicht erhöht
+            const seite = this._wiederholung.seite;
+            pos = new THREE.Vector3(seite * (S3D_LAENGE / 2 + 13), 7.5, bw.z * 0.4);
+            blick = new THREE.Vector3(bw.x - seite * 4, 1 + hoehe * 0.3, bw.z);
+            fov = 40;
+        } else if (this.kamera === "taktik") {
             pos = new THREE.Vector3(zielX * 0.35, 78, 52);
             blick = new THREE.Vector3(zielX * 0.35, 0, 2);
+            fov = 34;
         } else if (this.kamera === "nah") {
             pos = new THREE.Vector3(bw.x - 2, 9, bw.z + 22);
             blick = new THREE.Vector3(bw.x, 1 + hoehe * 0.3, bw.z);
+            fov = 34;
         } else {
             // Übertragung: oben auf der Haupttribüne, schwenkt mit dem Ball
             pos = new THREE.Vector3(zielX * 0.62, 25, S3D_BREITE / 2 + 31);
             blick = new THREE.Vector3(zielX, 0, bw.z * 0.45);
+            fov = 27;
         }
+        // Zur Wiederholung springt die Kamera, statt quer durchs Stadion zu fliegen
+        const sprung = !!this._wiederholung !== !!this._warWiederholung;
+        this._warWiederholung = !!this._wiederholung;
+        if (sprung) { this._kamPos.copy(pos); this._ziel.copy(blick); }
         this._kamPos.lerp(pos, k);
         this._ziel.lerp(blick, Math.min(1, dt * 3));
-        // Die Übertragung zoomt etwas heran, Taktik und Nah sehen weiter
-        const fov = this.kamera === "tv" ? 27 : 34;
+        if (sprung) this.camera.fov = fov;
         if (Math.abs(this.camera.fov - fov) > 0.05) {
             this.camera.fov += (fov - this.camera.fov) * Math.min(1, dt * 3);
-            this.camera.updateProjectionMatrix();
         }
+        this.camera.updateProjectionMatrix();
         this.camera.position.copy(this._kamPos);
         this.camera.lookAt(this._ziel);
     }
 
+    // -------------------------------------------------- Automatische Qualität
+
+    /** Sekunden: Anlauf ohne Messung, Messfenster; Grenze = Bildzeit im Median */
+    static MESSUNG = { anlauf: 1, fenster: 3, grenze: 0.05 };
+
+    /** Sekunden seit Seitenstart (in Tests ersetzbar) */
+    static uhr() {
+        return (typeof performance !== "undefined" ? performance.now() : Date.now()) / 1000;
+    }
+
+    /**
+     * Die Zeit zwischen zwei Bildern mitschreiben. Läuft die Ansicht über
+     * drei Sekunden mit weniger als zwanzig Bildern je Sekunde, meldet
+     * zuLangsam() das - die Oberfläche schaltet dann eine Stufe herunter.
+     * Gemessen wird nach Zeit, nicht nach Bildern: Bei fünf Bildern je
+     * Sekunde stünde das Urteil sonst erst nach einer halben Minute fest.
+     * Die erste Sekunde zählt nicht (Shader übersetzen, Texturen laden).
+     * Die Zeit kommt von der eigenen Uhr: Die Bildzeit, die das Livespiel
+     * übergibt, ist gekappt und liefe bei Ruckeln zu langsam.
+     */
+    _misst() {
+        const jetzt = Spielfeld3D.uhr();
+        const vorher = this._letztesBild;
+        this._letztesBild = jetzt;
+        if (vorher === undefined) return;
+        const dt = Math.max(0, Math.min(1, jetzt - vorher));
+        this._anlauf = (this._anlauf || 0) + dt;
+        if (this._anlauf < Spielfeld3D.MESSUNG.anlauf) return;
+        this._bildzeiten.push(dt);
+        this._messSumme = (this._messSumme || 0) + dt;
+        while (this._bildzeiten.length > 10 && this._messSumme - this._bildzeiten[0] >= Spielfeld3D.MESSUNG.fenster) {
+            this._messSumme -= this._bildzeiten.shift();
+        }
+    }
+
+    zuLangsam() {
+        if ((this._messSumme || 0) < Spielfeld3D.MESSUNG.fenster || this._bildzeiten.length < 10) return false;
+        const sortiert = this._bildzeiten.slice().sort((a, b) => a - b);
+        return sortiert[Math.floor(sortiert.length / 2)] > Spielfeld3D.MESSUNG.grenze;
+    }
+
     entsorgen() {
         this.renderer.dispose();
+        // Den Grafikspeicher sofort freigeben, nicht erst beim Aufräumen des Browsers
+        if (typeof this.renderer.forceContextLoss === "function") this.renderer.forceContextLoss();
     }
 }
 

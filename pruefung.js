@@ -256,8 +256,17 @@ const sw = fs.existsSync(path.join(WURZEL, "service-worker.js")) ? fs.readFileSy
 geladen.forEach(src => {
     if (sw && !sw.includes(src)) fehler.push(`service-worker.js: ${src} fehlt im Cache - offline startet die App nicht`);
 });
+// Bei Bedarf nachgeladen statt beim Start: Datei -> wer sie lädt. Der Lader
+// muss den Pfad kennen, und offline vorrätig muss sie trotzdem sein.
+const NACHGELADEN = { "js/vendor/three.min.js": "js/ui/spielfeld3d.js" };
+Object.entries(NACHGELADEN).forEach(([datei, lader]) => {
+    const quelle = fs.existsSync(path.join(WURZEL, lader)) ? fs.readFileSync(path.join(WURZEL, lader), "utf8") : "";
+    if (!quelle.includes(datei)) fehler.push(`${lader}: lädt ${datei} nicht nach`);
+    if (geladen.includes(datei)) fehler.push(`${datei}: steht in index.html, soll aber erst bei Bedarf laden`);
+    if (sw && !sw.includes(datei)) fehler.push(`service-worker.js: ${datei} fehlt im Cache - offline geht die 3D-Ansicht nicht`);
+});
 skripte.map(rel).forEach(src => {
-    if (!geladen.includes(src)) fehler.push(`${src}: wird von index.html nicht geladen`);
+    if (!geladen.includes(src) && !NACHGELADEN[src]) fehler.push(`${src}: wird von index.html nicht geladen`);
 });
 
 if (fehler.length) {

@@ -8449,6 +8449,71 @@ function runEngineTests() {
         if (verkauf.weiterverkauf) throw new Error("Die Beteiligung gilt nach dem Weiterverkauf weiter");
     });
 
+    test("3D-Regie: Pässe, Schüsse, Zweikämpfe, Paraden und Tore werden gemeldet - das Spiel bleibt dasselbe", () => {
+        // Dasselbe Spiel zweimal mit derselben Zufallsfolge: einmal mit
+        // Meldungen, einmal ohne. Die Meldungen sind reine Buchführung für die
+        // 3D-Ansicht und dürfen am Ergebnis nichts ändern.
+        const saat = Math.floor(Math.random() * 1e9);
+        const mitSaat = (fn) => {
+            const zufall = Math.random;
+            let s = saat >>> 0;
+            Math.random = () => {
+                s = (s + 0x6D2B79F5) >>> 0;
+                let t = s;
+                t = Math.imul(t ^ (t >>> 15), t | 1);
+                t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+                return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+            };
+            try { return fn(); } finally { Math.random = zufall; }
+        };
+        const spiele = (melden) => mitSaat(() => {
+            // Jedes Mal eine frische Welt - das Spiel verändert Kondition und Form
+            const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+            const live = new LiveMatch({ id: "dreid", played: false, homeClubId: "muc", awayClubId: "dor" },
+                state.clubs.find(c => c.id === "muc"), state.clubs.find(c => c.id === "dor"), state.players, { modus: "fm" });
+            const alle = [];
+            const echt = live.director.meldeAktion.bind(live.director);
+            live.director.meldeAktion = melden
+                ? (art, id, daten) => { alle.push(Object.assign({ art, id }, daten)); echt(art, id, daten); }
+                : () => {};
+            live.rechneOhneBild();
+            return { state, live, alle };
+        });
+        const mit = spiele(true), ohne = spiele(false);
+
+        const spur = l => JSON.stringify({ tore: [l.homeScore, l.awayScore], stats: l.stats, verlauf: (l.verlauf || []).map(e => [e.type, e.minute, e.playerId]) });
+        if (spur(mit.live) !== spur(ohne.live)) {
+            throw new Error(`Mit Meldungen ein anderes Spiel: ${mit.live.homeScore}:${mit.live.awayScore} gegen ${ohne.live.homeScore}:${ohne.live.awayScore}`);
+        }
+
+        const arten = {};
+        mit.alle.forEach(a => { arten[a.art] = (arten[a.art] || 0) + 1; });
+        if (!(arten.pass > 100) || !((arten.schuss || 0) + (arten.kopfball || 0) > 0) || !(arten.zweikampf > 0)) {
+            throw new Error("Zu wenige Meldungen: " + JSON.stringify(arten));
+        }
+        // Jedes Tor mit seinem Schützen, in der Reihenfolge des Spiels
+        const tore = (mit.live.verlauf || []).filter(e => e.type === "goal" && e.playerId !== undefined && e.playerId !== null).map(e => e.playerId);
+        const torMeldungen = mit.alle.filter(a => a.art === "tor").map(a => a.id);
+        if (JSON.stringify(tore) !== JSON.stringify(torMeldungen)) {
+            throw new Error(`Torschützen ${JSON.stringify(tore)}, gemeldet ${JSON.stringify(torMeldungen)}`);
+        }
+        // Paraden gehören Torhütern, und gehalten wurde auch
+        const spieler = new Map(mit.state.players.map(p => [p.id, p]));
+        const paraden = mit.alle.filter(a => a.art === "parade");
+        if (mit.live.stats.saves[0] + mit.live.stats.saves[1] > 0 && paraden.length === 0) throw new Error("Keine Parade gemeldet");
+        const keinTorwart = paraden.find(a => spieler.get(a.id)?.pos !== "TW");
+        if (keinTorwart) throw new Error(`Parade von ${spieler.get(keinTorwart.id)?.pos} ${keinTorwart.id}`);
+        if (paraden.some(a => !(a.verzoegerung >= 0))) throw new Error("Paraden ohne Zeitpunkt");
+        const fremd = mit.alle.find(a => !spieler.has(a.id));
+        if (fremd) throw new Error(`Meldung für unbekannten Spieler: ${JSON.stringify(fremd)}`);
+        // Die Liste am Spiel bleibt kurz und fortlaufend nummeriert
+        const liste = mit.live.aktionen || [];
+        if (liste.length === 0 || liste.length > 40) throw new Error(`${liste.length} Meldungen am Spiel`);
+        if (liste.some((a, i) => i > 0 && a.nr !== liste[i - 1].nr + 1) || liste[liste.length - 1].nr !== mit.alle.length) {
+            throw new Error("Die Meldungen sind nicht fortlaufend nummeriert");
+        }
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

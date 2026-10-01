@@ -810,7 +810,7 @@ function runWizardTests() {
         });
     });
 
-    test("3D-Ansicht: Bibliothek und Modul geladen, Koordinaten in echten Metern, offline vorrätig", () => {
+    test("3D-Ansicht: Bibliothek erst bei Bedarf, Koordinaten in echten Metern, offline vorrätig", () => {
         const THREE = require('./js/vendor/three.min.js');
         if (String(THREE.REVISION) !== "159" || typeof THREE.WebGLRenderer !== "function") throw new Error("three.js r159 fehlt");
         const { Spielfeld3D } = require('./js/ui/spielfeld3d.js');
@@ -821,15 +821,160 @@ function runWizardTests() {
         }
         // Ohne Browser kein WebGL - die Oberfläche fällt dann auf 2D zurück
         if (Spielfeld3D.verfuegbar() !== false) throw new Error("Ohne Browser meldet die 3D-Ansicht WebGL");
+        // three.js (600 KB) lädt erst, wenn jemand 3D einschaltet - nicht beim Start
         const html = fs.readFileSync('./index.html', 'utf8');
-        const iThree = html.indexOf('js/vendor/three.min.js'), iModul = html.indexOf('js/ui/spielfeld3d.js');
-        if (iThree < 0 || iModul < 0 || iThree > iModul) throw new Error("three.js muss vor dem 3D-Modul geladen werden");
+        if (html.includes('js/vendor/three.min.js')) throw new Error("three.js wird beim Start geladen");
+        if (!html.includes('js/ui/spielfeld3d.js')) throw new Error("Das 3D-Modul fehlt in index.html");
+        if (Spielfeld3D.BIBLIOTHEK !== "js/vendor/three.min.js" || !fs.existsSync('./' + Spielfeld3D.BIBLIOTHEK)) throw new Error("Der Nachlade-Pfad stimmt nicht");
         if (!/data-anzeige2d="dreiD"/.test(html) || !/data-kamera3d="tv"/.test(html)) throw new Error("Schalter oder Kamerawahl fehlen");
+        if (!/data-anzeige-wahl="qualitaet3D"/.test(html) || !/data-anzeige2d="wiederholung3D"/.test(html)) throw new Error("Qualitätswahl oder Wiederholungsschalter fehlen");
         const sw = fs.readFileSync('./service-worker.js', 'utf8');
         if (!sw.includes('./js/vendor/three.min.js') || !sw.includes('./js/ui/spielfeld3d.js')) throw new Error("3D fehlt im Offline-Vorrat");
+        // Die Einzeldatei legt three.js als Vorrat ab, aus dem das Modul es liest
+        const buendler = fs.readFileSync('./build-einzeldatei.js', 'utf8');
+        if (!buendler.includes('"' + Spielfeld3D.VORRAT_ID + '"') || !buendler.includes('"' + Spielfeld3D.BIBLIOTHEK + '"')) throw new Error("Die Einzeldatei bündelt three.js nicht als Vorrat");
+        // Ohne Browser kann das Nachladen nichts tun und meldet das
+        if (typeof Spielfeld3D.ladeBibliothek !== "function") throw new Error("ladeBibliothek fehlt");
         // Die Oberfläche zeichnet 3D nur, wenn gewählt, und fällt sonst auf 2D zurück
         const ui = uiQuelltext();
         if (!/zeichne3D\(liveMatch[^)]*\)\) render2DCanvas/.test(ui)) throw new Error("Die Bildschleife fragt die 3D-Ansicht nicht zuerst");
+    });
+
+    test("3D-Ansicht: Bewegungen nach den Meldungen der Regie, Torjubel, Wiederholung, Qualität nach Bildrate", () => {
+        // Die Ansicht ohne WebGL: echte Szene, Figuren und Kamera aus three.js,
+        // nur das Zeichnen selbst fällt weg
+        const vorher = global.THREE;
+        global.THREE = require('./js/vendor/three.min.js');
+        const { Spielfeld3D } = require('./js/ui/spielfeld3d.js');
+        const uhrVorher = Spielfeld3D.uhr;
+        try {
+            const sf = Object.create(Spielfeld3D.prototype);
+            Object.assign(sf, {
+                canvas: { clientWidth: 800, clientHeight: 480 },
+                qualitaet: "niedrig", q: Spielfeld3D.QUALITAET.niedrig,
+                renderer: { setSize() {}, render() {}, dispose() {} },
+                scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(34, 16 / 9, 0.5, 400), kamera: "tv",
+                _ziel: new THREE.Vector3(), _kamPos: new THREE.Vector3(0, 25, 65),
+                ball: new THREE.Mesh(), ballSchatten: new THREE.Mesh(undefined, new THREE.MeshBasicMaterial()),
+                figuren: new Map(), zeit: 0, _letzteAktion: 0, _aufnahme: [], _wiederholung: null, _bildzeiten: []
+            });
+            // Zwei Elfen; Nummer 9 der Heimelf ist Linksfuß
+            const spieler = [];
+            ["home", "away"].forEach(team => {
+                for (let i = 0; i < 11; i++) {
+                    spieler.push({
+                        id: `${team}_${i}`, team, pos: i === 0 ? "TW" : (i < 5 ? "IV" : i < 9 ? "ZM" : "ST"),
+                        x: team === "home" ? 10 + i * 7 : 90 - i * 7, y: 20 + (i % 5) * 15, vx: 0, vy: 0, speed: 0,
+                        foot: team === "home" && i === 9 ? "links" : "rechts", name: `Spieler ${i}`
+                    });
+                }
+            });
+            const lm = { ball: { x: 50, y: 50, height: 0, inFlight: false }, players2D: spieler, abgaenge: [], aktionen: [], activePlayerId: null, kits: {} };
+            sf.spielKey = lm;
+            let nr = 0;
+            const melde = (art, id, daten = {}) => lm.aktionen.push(Object.assign({ nr: ++nr, art, id }, daten));
+            const bild = (n = 1, dt = 1 / 30, optionen = { namen: false }) => { for (let i = 0; i < n; i++) sf.zeichne(lm, dt, optionen); };
+            const figur = id => sf.figuren.get(id);
+            const maxWinkel = (id, fn, n) => { let m = -Infinity; for (let i = 0; i < n; i++) { bild(); m = Math.max(m, fn(figur(id))); } return m; };
+
+            bild(5);
+            if (sf.figuren.size !== 22) throw new Error(`${sf.figuren.size} Figuren statt 22`);
+
+            // Schuss mit dem starken Fuß: Das linke Bein (0) schwingt nach vorn, das rechte nicht
+            melde("schuss", "home_9", { x: 96, y: 50 });
+            const links = maxWinkel("home_9", f => f.beine[0].rotation.z, 12);
+            if (figur("home_9").schussBein !== 0 || !(links > 1)) throw new Error(`Der Linksfuß schießt nicht mit links (${links.toFixed(2)})`);
+            bild(20);
+            if (figur("home_9").anim !== null) throw new Error("Der Schuss endet nicht");
+            melde("pass", "home_6");
+            bild(1);
+            if (figur("home_6").schussBein !== 1 || figur("home_6").anim?.art !== "pass") throw new Error("Der Pass des Rechtsfußes fehlt");
+
+            // Parade: erst kurz vor dem Ball, dann zur Seite des Balls
+            melde("parade", "away_0", { x: 92, y: 30, verzoegerung: 0.3 });
+            bild(1);
+            const tw = figur("away_0");
+            if (!(tw.anim.t < 0) || tw.koerper.position.z !== 0) throw new Error("Der Torwart fliegt, bevor der Ball kommt");
+            bild(20);
+            if (tw.anim?.art !== "parade" || Math.sign(tw.koerper.position.z) !== tw.anim.seite || Math.abs(tw.koerper.position.z) < 0.5) {
+                throw new Error("Der Torwart fliegt nicht zur Seite");
+            }
+            // Kommt der Ball auf der anderen Seite (der Torwart steht bei y = 20), fliegt er dorthin
+            const seite = tw.anim.seite;
+            bild(40);
+            if (tw.anim !== null) throw new Error("Die Parade endet nicht");
+            melde("parade", "away_0", { x: 92, y: 10 });
+            bild(1);
+            if (tw.anim?.seite !== -seite) throw new Error("Der Torwart fliegt immer zur selben Seite");
+            bild(40);
+
+            // Der Angriff beginnt in der eigenen Hälfte und endet im rechten Tor
+            for (let i = 0; i <= 200; i++) { lm.ball.x = 20 + 76 * i / 200; bild(); }
+
+            // Tor: Schütze und nahe Mitspieler jubeln, der eigene Torwart nicht
+            const aufnahme = sf._aufnahme.length;
+            melde("tor", "home_9", { team: "home" });
+            bild(1);
+            const jubel = spieler.filter(p => figur(p.id).anim?.art === "jubel").map(p => p.id);
+            if (!jubel.includes("home_9") || jubel.includes("home_0") || jubel.some(id => id.startsWith("away"))) throw new Error("Jubel: " + jubel.join(","));
+            if (jubel.length < 2) throw new Error("Kein Mitspieler jubelt mit");
+            if (!sf._torGeplant || sf.wiederholungLaeuft()) throw new Error("Die Wiederholung ist nicht geplant oder läuft zu früh");
+            if (!(aufnahme > 100)) throw new Error("Es wird nicht aufgenommen");
+
+            // Nach dem ersten Jubel die Wiederholung - die Meldungen der Regie bleiben derweil liegen
+            bild(75);
+            if (!sf.wiederholungLaeuft()) throw new Error("Die Wiederholung startet nicht");
+            if (sf._wiederholung.bilder.length < 100) throw new Error(`Nur ${sf._wiederholung.bilder.length} Bilder in der Wiederholung`);
+            const gesehen = sf._letzteAktion, laenge = sf._aufnahme.length;
+            melde("pass", "away_5");
+            // Die Kamera bleibt die ganze Wiederholung hinter dem rechten Tor -
+            // auch solange der Ball noch in der linken Hälfte ist
+            const kameraX = [];
+            for (let i = 0; i < 30; i++) { bild(); kameraX.push(sf.camera.position.x); }
+            if (sf._letzteAktion !== gesehen || sf._aufnahme.length !== laenge) throw new Error("Während der Wiederholung läuft das Spiel weiter");
+            // Das Tor in der Wiederholung plant keine zweite
+            for (let i = 0; i < 400 && sf.wiederholungLaeuft(); i++) { bild(); if (sf.wiederholungLaeuft()) kameraX.push(sf.camera.position.x); }
+            if (kameraX.some(x => x < 52.5)) throw new Error(`Die Wiederholungskamera verlässt das Tor (x bis ${Math.min(...kameraX).toFixed(1)})`);
+            bild(10);
+            if (sf.wiederholungLaeuft()) throw new Error("Die Wiederholung endet nicht von selbst");
+            if (sf._torGeplant) throw new Error("Das Tor in der Wiederholung plant eine weitere");
+            if (Math.abs(sf.camera.fov - 27) > 0.1) throw new Error(`Die Kamera kehrt nicht auf die Tribüne zurück (Brennweite ${sf.camera.fov.toFixed(1)})`);
+            bild(1);
+            if (sf._letzteAktion <= gesehen) throw new Error("Die Meldung aus der Wiederholungszeit geht verloren");
+
+            // Abgeschaltet: kein Sprung in die Wiederholung, Abbrechen per Tipp
+            melde("tor", "home_8", { team: "home" });
+            bild(90, 1 / 30, { namen: false, wiederholung: false });
+            if (sf.wiederholungLaeuft()) throw new Error("Abgeschaltet läuft trotzdem eine Wiederholung");
+            melde("tor", "home_8", { team: "home" });
+            bild(90);
+            if (!sf.wiederholungLaeuft()) throw new Error("Zweites Tor ohne Wiederholung");
+            sf.beendeWiederholung();
+            if (sf.wiederholungLaeuft() || [...sf.figuren.values()].some(f => f.anim)) throw new Error("Überspringen räumt nicht auf");
+
+            // Automatische Qualität: nach der eigenen Uhr, mit Anlauf und Messfenster
+            const probe = (bildzeit, sekunden) => {
+                const m = Object.create(Spielfeld3D.prototype);
+                m._bildzeiten = [];
+                let jetzt = 100;
+                Spielfeld3D.uhr = () => jetzt;
+                let ab = null;
+                for (let t = 0; t < sekunden; t += bildzeit) {
+                    m._misst();
+                    if (ab === null && m.zuLangsam()) ab = t;
+                    jetzt += bildzeit;
+                }
+                return ab;
+            };
+            if (probe(1 / 60, 10) !== null) throw new Error("60 Bilder je Sekunde gelten als zu langsam");
+            if (probe(1 / 25, 10) !== null) throw new Error("25 Bilder je Sekunde gelten als zu langsam");
+            const ab = probe(1 / 5, 20);
+            // Anlauf (1 s) und Messfenster (3 s), auf ein Bild genau
+            if (ab === null || ab < 3.7 || ab > 4.3) throw new Error(`5 Bilder je Sekunde: Urteil nach ${ab} s statt nach Anlauf und Messfenster (4 s)`);
+        } finally {
+            Spielfeld3D.uhr = uhrVorher;
+            if (vorher === undefined) delete global.THREE; else global.THREE = vorher;
+        }
     });
 
     console.log(`\n  Ergebnis Wizard-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

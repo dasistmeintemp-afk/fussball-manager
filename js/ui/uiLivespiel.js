@@ -18,7 +18,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (this._anzeige2D) return this._anzeige2D;
         let gespeichert = null;
         try { gespeichert = JSON.parse(localStorage.getItem("fm_anzeige2d") || "null"); } catch (e) { gespeichert = null; }
-        this._anzeige2D = { namen: true, formEigene: false, formGegner: false, dreiD: false, kamera3D: "tv", ...(gespeichert || {}) };
+        this._anzeige2D = {
+            namen: true, formEigene: false, formGegner: false,
+            dreiD: false, kamera3D: "tv", qualitaet3D: "auto", wiederholung3D: true,
+            ...(gespeichert || {})
+        };
         return this._anzeige2D;
     },
 
@@ -29,6 +33,19 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             box.onchange = () => {
                 anzeige[box.dataset.anzeige2d] = box.checked;
                 try { localStorage.setItem("fm_anzeige2d", JSON.stringify(anzeige)); } catch (e) { /* ohne Speicher */ }
+            };
+        });
+        // Auswahlfelder (3D-Qualität)
+        document.querySelectorAll("#lmAnsicht [data-anzeige-wahl]").forEach(sel => {
+            const schluessel = sel.dataset.anzeigeWahl;
+            if (anzeige[schluessel]) sel.value = anzeige[schluessel];
+            sel.onchange = () => {
+                anzeige[schluessel] = sel.value;
+                try { localStorage.setItem("fm_anzeige2d", JSON.stringify(anzeige)); } catch (e) { /* ohne Speicher */ }
+                if (schluessel === "qualitaet3D") {
+                    this._auto3D = null;
+                    this._baue3DNeu();
+                }
             };
         });
         document.querySelectorAll("#lm3dKamera [data-kamera3d]").forEach(btn => {
@@ -44,8 +61,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
     /**
      * Die 3D-Ansicht zeichnen, wenn sie gewählt ist. Liefert false, wenn
-     * stattdessen das 2D-Feld zeichnen soll - auch, wenn der Browser kein
-     * WebGL kann: Dann schaltet sie sich mit einem Hinweis ab.
+     * stattdessen das 2D-Feld zeichnen soll: solange die Bibliothek noch
+     * lädt, und wenn der Browser kein WebGL kann - dann schaltet sie sich
+     * mit einem Hinweis ab.
      */
     zeichne3D(liveMatch, dt = 0.016) {
         const anzeige = this.anzeige2D();
@@ -53,40 +71,101 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const c2 = document.getElementById("livePitchCanvas");
         if (!c3 || !c2) return false;
         if (!anzeige.dreiD) {
+            if (this.spielfeld3d) this.spielfeld3d.beendeWiederholung();
             if (c3.style.display !== "none") this._zeige3D(false);
             return false;
         }
         if (!this.spielfeld3d) {
             const Klasse = typeof Spielfeld3D !== "undefined" ? Spielfeld3D : null;
-            try {
-                if (!Klasse || !Klasse.verfuegbar()) throw new Error("Kein WebGL");
-                this.spielfeld3d = new Klasse(c3);
-                this.spielfeld3d.setzeKamera(anzeige.kamera3D);
-            } catch (e) {
-                console.warn("3D-Ansicht nicht möglich:", e);
+            const aus = (text) => {
                 anzeige.dreiD = false;
                 const box = document.querySelector('#lmAnsicht [data-anzeige2d="dreiD"]');
                 if (box) box.checked = false;
-                this.showToast("Die 3D-Ansicht braucht WebGL - es geht in 2D weiter.", "warning");
+                this.showToast(text, "warning");
+            };
+            if (!Klasse || !Klasse.webglMoeglich()) {
+                aus("Die 3D-Ansicht braucht WebGL - es geht in 2D weiter.");
                 return false;
             }
+            // Die Bibliothek lädt erst jetzt - bis dahin zeichnet das 2D-Feld
+            if (typeof THREE === "undefined") {
+                if (!this._3dLaedt) {
+                    this._3dLaedt = true;
+                    this.showToast("Die 3D-Ansicht wird geladen …", "info", 1600);
+                    Klasse.ladeBibliothek().then(ok => {
+                        this._3dLaedt = false;
+                        if (!ok) aus("Die 3D-Bibliothek ließ sich nicht laden - es geht in 2D weiter.");
+                    });
+                }
+                return false;
+            }
+            try {
+                this.spielfeld3d = new Klasse(c3, { qualitaet: this._qualitaet3D() });
+                this.spielfeld3d.setzeKamera(anzeige.kamera3D);
+            } catch (e) {
+                console.warn("3D-Ansicht nicht möglich:", e);
+                aus("Die 3D-Ansicht braucht WebGL - es geht in 2D weiter.");
+                return false;
+            }
+            // Ein Tipp aufs Feld überspringt die Wiederholung
+            if (!this._3dTipp && c3.parentElement) {
+                this._3dTipp = true;
+                c3.parentElement.addEventListener("click", (ev) => {
+                    if (ev.target && ev.target.id === "livePitch3D" && this.spielfeld3d && this.spielfeld3d.wiederholungLaeuft()) {
+                        this.spielfeld3d.beendeWiederholung();
+                    }
+                });
+            }
         }
-        if (c3.style.display === "none") this._zeige3D(true);
+        const feld = this.spielfeld3d.canvas;
+        if (feld.style.display === "none") this._zeige3D(true);
         // Dieselbe Fläche wie das 2D-Feld
-        if (c3.style.width !== c2.style.width) c3.style.width = c2.style.width;
-        if (c3.style.height !== c2.style.height) c3.style.height = c2.style.height;
-        this.spielfeld3d.zeichne(liveMatch, dt, { namen: anzeige.namen });
+        if (feld.style.width !== c2.style.width) feld.style.width = c2.style.width;
+        if (feld.style.height !== c2.style.height) feld.style.height = c2.style.height;
+        this.spielfeld3d.zeichne(liveMatch, dt, { namen: anzeige.namen, wiederholung: anzeige.wiederholung3D !== false });
+
+        // Automatisch: Ruckelt es, geht es eine Stufe herunter
+        if (anzeige.qualitaet3D === "auto" && this.spielfeld3d.qualitaet !== "niedrig" && this.spielfeld3d.zuLangsam()) {
+            this._auto3D = "niedrig";
+            this._baue3DNeu();
+            this.showToast("Die 3D-Ansicht läuft jetzt in niedriger Qualität, damit sie flüssig bleibt.", "info");
+            return true;
+        }
 
         // Einblendungen (Anstoß, Tor, Halbzeit), die sonst das 2D-Feld zeichnet
         const banner = document.getElementById("lm3dBanner");
         const b = liveMatch.banner;
-        const text = b && b.title ? `${b.title}${b.subtitle ? " · " + b.subtitle : ""}` : "";
+        const text = this.spielfeld3d.wiederholungLaeuft()
+            ? "Wiederholung · Tippen zum Überspringen"
+            : (b && b.title ? `${b.title}${b.subtitle ? " · " + b.subtitle : ""}` : "");
         if (banner && banner.dataset.text !== text) {
             banner.dataset.text = text;
             banner.textContent = text;
             banner.style.display = text ? "" : "none";
         }
         return true;
+    },
+
+    /** Die gewählte Qualität - bei "Automatisch" mittel, bis es ruckelt */
+    _qualitaet3D() {
+        const wahl = this.anzeige2D().qualitaet3D;
+        if (["niedrig", "mittel", "hoch"].includes(wahl)) return wahl;
+        return this._auto3D || "mittel";
+    },
+
+    /**
+     * Die 3D-Ansicht mit neuer Qualität aufbauen. Kantenglättung lässt sich
+     * nur beim Anlegen festlegen - deshalb ein frisches Canvas.
+     */
+    _baue3DNeu() {
+        if (!this.spielfeld3d) return;
+        const alt = this.spielfeld3d.canvas;
+        this.spielfeld3d.entsorgen();
+        this.spielfeld3d = null;
+        if (alt && alt.parentElement) {
+            const neu = alt.cloneNode(false);
+            alt.replaceWith(neu);
+        }
     },
 
     _zeige3D(an) {
@@ -803,8 +882,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const deltaMs = Math.min(120, now - lastFrameTime);
             lastFrameTime = now;
 
-            liveMatch.advanceRealTime(deltaMs);
-            liveMatch.updateBallAndPlayers(deltaMs);
+            // Während der Torwiederholung in 3D steht die Simulation still
+            const wiederholung = this.spielfeld3d && this.spielfeld3d.wiederholungLaeuft() && this.anzeige2D().dreiD;
+            if (!wiederholung) {
+                liveMatch.advanceRealTime(deltaMs);
+                liveMatch.updateBallAndPlayers(deltaMs);
+            }
 
             // Klanghinweise der Regie abarbeiten (Pfiff, Jubel, Raunen)
             if (Array.isArray(liveMatch.soundCues) && liveMatch.soundCues.length > 0) {
@@ -892,6 +975,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     /** Ab jetzt ohne Bild: Co-Trainer übernimmt, die Einblendung zeigt den Stand */
     schalteOhneBild(liveMatch) {
         if (!liveMatch || liveMatch.isFinished) return;
+        if (this.spielfeld3d) this.spielfeld3d.beendeWiederholung();
         this.stopCrowdAmbience();
         if (this.coach) {
             this.coach = null;

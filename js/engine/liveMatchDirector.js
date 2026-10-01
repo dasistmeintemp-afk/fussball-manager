@@ -1878,7 +1878,12 @@ class LiveMatchDirector {
                 this.resolveEvent(ev);
             }
 
+            this._kopfballSzene = !!ev.isHeader;
             this.setBallTravel(end.x, end.y, duration, actionType);
+            // Der Torwart fliegt, kurz bevor der Ball ankommt
+            if (ev.type === "save" && ev.gkId !== undefined && ev.gkId !== null) {
+                this.meldeAktion("parade", ev.gkId, { x: end.x, y: end.y, verzoegerung: Math.max(0, duration - 0.3) });
+            }
             this.phaseTimer = duration;
             return;
         }
@@ -2125,6 +2130,9 @@ class LiveMatchDirector {
     resolveEvent(ev) {
         if (!ev || ev._resolved) return;
         ev._resolved = true;
+        if (ev.type === "goal" && ev.playerId !== undefined && ev.playerId !== null) {
+            this.meldeAktion("tor", ev.playerId, { team: ev.team });
+        }
         this.match.processEvent(ev);
         this.applyEventBallState(ev, false);
         this.bannerForEvent(ev);
@@ -2745,6 +2753,9 @@ class LiveMatchDirector {
         this.carryTarget = null;
         if (defender) {
             this.possessionTeam = defender.team;
+            // Der Verteidiger gewinnt den Ball - das ist kein Abspiel des Dribblers
+            this.meldeAktion("zweikampf", defender.id, { gegnerId: carrier.id });
+            this._ohneKickAktion = true;
             this.setBallTravel(defender.x, defender.y, duration * 0.7, "pass");
             this.setCarrier(defender);
         }
@@ -4161,6 +4172,42 @@ class LiveMatchDirector {
 
         this._lastTargetX = ball.targetX;
         this._lastTargetY = ball.targetY;
+
+        // Wer den Ball spielt, zeigt die 3D-Ansicht mit einem Bewegungsablauf
+        if (this._ohneKickAktion) {
+            this._ohneKickAktion = false;
+        } else if (actionType !== "dead") {
+            const amBall = this.getPlayer2D(this.carrierId) || this.naechsterAmPunkt(ball.originX, ball.originY, 3.5);
+            if (amBall) {
+                const art = actionType === "shot" ? (this._kopfballSzene ? "kopfball" : "schuss")
+                    : actionType === "cross" ? "flanke" : "pass";
+                this.meldeAktion(art, amBall.id, { x: ball.targetX, y: ball.targetY });
+            }
+        }
+        this._kopfballSzene = false;
+    }
+
+    /** Der Spieler, der einem Punkt am nächsten steht - höchstens so weit weg */
+    naechsterAmPunkt(x, y, hoechstens = Infinity) {
+        let bester = null, abstand = hoechstens;
+        (this.match.players2D || []).forEach(p => {
+            const d = Math.hypot(p.x - x, p.y - y);
+            if (d < abstand) { abstand = d; bester = p; }
+        });
+        return bester;
+    }
+
+    /**
+     * Was ein Spieler gerade tut: schießen, passen, köpfen, grätschen,
+     * parieren, jubeln. Die 3D-Ansicht zeigt dazu einen Bewegungsablauf.
+     * Reine Buchführung - kein Zufall, keine Wirkung auf das Spiel.
+     */
+    meldeAktion(art, spielerId, daten = {}) {
+        if (!art || spielerId === undefined || spielerId === null) return;
+        const liste = this.match.aktionen || (this.match.aktionen = []);
+        this._aktionNr = (this._aktionNr || 0) + 1;
+        liste.push(Object.assign({ nr: this._aktionNr, art, id: spielerId }, daten));
+        if (liste.length > 40) liste.splice(0, liste.length - 40);
     }
 
     syncExternalBallOverride() {

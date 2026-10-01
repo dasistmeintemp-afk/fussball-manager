@@ -7675,6 +7675,8 @@ td.nowrap { white-space: nowrap; }
 
 .lm-ansicht-menu label:hover { background: rgba(255, 255, 255, 0.05); }
 .lm-ansicht-menu input { accent-color: var(--accent-primary); width: 16px; height: 16px; }
+.lm-ansicht-menu .lm-ansicht-wahl { justify-content: space-between; gap: 10px; }
+.lm-ansicht-menu select { background: var(--surface-2, #161c25); color: inherit; border: 1px solid var(--border-light); border-radius: 8px; padding: 4px 6px; font: inherit; font-size: 12.5px; }
 
 /* Kopf der Vereinsseite (nach dem FM26): Wappen, Liga, Kennzahlen */
 .vereins-kopf {

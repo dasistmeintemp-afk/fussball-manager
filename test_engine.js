@@ -1065,42 +1065,49 @@ function runEngineTests() {
     // 14a7. Die Elf steht als Block und verändert ihre Form mit dem Ballbesitz
     test("LiveMatchDirector: Die Mannschaft steht als Block, eng ohne Ball, breit mit Ball", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
-        const homeClub = state.clubs.find(c => c.id === "muc");
-        const awayClub = state.clubs.find(c => c.id === "dor");
-        const match = { id: "form", played: false, homeClubId: "muc", awayClubId: "dor" };
-        const live = new LiveMatch(match, homeClub, awayClub, state.players);
-        // Tempo 1: Dort laeuft der groesste Teil der Uebertragung als normales
-        // Spiel, und genau dort schaut man sich die Mannschaftsform an.
-        live.speed = 1;
-        const dir = live.director;
-
         const mitBall = [];
         const ohneBall = [];
-        let frames = 0;
-        // Eine Mannschaft braucht einen Moment, um ihre Form einzunehmen.
-        // Gemessen wird deshalb erst, wenn der Ballbesitz kurz stabil ist -
-        // so, wie man es auch mit dem Auge beurteilen wuerde.
-        let besitzer = null;
-        let stabilSeit = 0;
+        // Dieselbe Messzeit, verteilt auf vier Spiele mit wechselndem
+        // Heimrecht: Ein einzelnes Spiel streute gemessen zwischen 3,5 und
+        // 8,7 Einheiten Unterschied, vier zusammen zwischen 4,1 und 6,5.
+        const SPIELE = 4;
+        for (let k = 0; k < SPIELE; k++) {
+            const heimId = k % 2 ? "dor" : "muc";
+            const gastId = k % 2 ? "muc" : "dor";
+            const match = { id: "form" + k, played: false, homeClubId: heimId, awayClubId: gastId };
+            const live = new LiveMatch(match, state.clubs.find(c => c.id === heimId),
+                state.clubs.find(c => c.id === gastId), state.players);
+            // Tempo 1: Dort laeuft der groesste Teil der Uebertragung als normales
+            // Spiel, und genau dort schaut man sich die Mannschaftsform an.
+            live.speed = 1;
+            const dir = live.director;
 
-        while (!live.isFinished && frames < 60 * 1800) {
-            live.advanceRealTime(1000 / 60);
-            live.updateBallAndPlayers(1000 / 60);
-            frames++;
-            if (dir.possessionTeam !== besitzer) { besitzer = dir.possessionTeam; stabilSeit = frames; }
-            if (frames % 12 !== 0) continue;
-            if (dir.mode !== "ambient" || dir.deadBall || dir.kickoff) continue;
-            if (frames - stabilSeit < 45) continue;
+            let frames = 0;
+            // Eine Mannschaft braucht einen Moment, um ihre Form einzunehmen.
+            // Gemessen wird deshalb erst, wenn der Ballbesitz kurz stabil ist -
+            // so, wie man es auch mit dem Auge beurteilen wuerde.
+            let besitzer = null;
+            let stabilSeit = 0;
 
-            ["home", "away"].forEach(team => {
-                const feld = live.players2D.filter(p => p.team === team && p.pos !== "TW");
-                if (feld.length < 9) return;
-                // Die zwei äußersten bleiben draußen: Wer presst, verlässt den
-                // Verbund zu Recht und darf die gemessene Form nicht verfälschen.
-                const ys = feld.map(p => p.y).sort((a, b) => a - b);
-                const breite = ys[ys.length - 2] - ys[1];
-                (team === dir.possessionTeam ? mitBall : ohneBall).push(breite);
-            });
+            while (!live.isFinished && frames < 60 * 1800 / SPIELE) {
+                live.advanceRealTime(1000 / 60);
+                live.updateBallAndPlayers(1000 / 60);
+                frames++;
+                if (dir.possessionTeam !== besitzer) { besitzer = dir.possessionTeam; stabilSeit = frames; }
+                if (frames % 12 !== 0) continue;
+                if (dir.mode !== "ambient" || dir.deadBall || dir.kickoff) continue;
+                if (frames - stabilSeit < 45) continue;
+
+                ["home", "away"].forEach(team => {
+                    const feld = live.players2D.filter(p => p.team === team && p.pos !== "TW");
+                    if (feld.length < 9) return;
+                    // Die zwei äußersten bleiben draußen: Wer presst, verlässt den
+                    // Verbund zu Recht und darf die gemessene Form nicht verfälschen.
+                    const ys = feld.map(p => p.y).sort((a, b) => a - b);
+                    const breite = ys[ys.length - 2] - ys[1];
+                    (team === dir.possessionTeam ? mitBall : ohneBall).push(breite);
+                });
+            }
         }
 
         if (mitBall.length < 10 || ohneBall.length < 10) {

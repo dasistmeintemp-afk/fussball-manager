@@ -145,6 +145,7 @@ Im Livespiel wird nichts mehr vorab gewürfelt. Wie im Football Manager entschei
 - **Werte relativ zum Niveau:** Die Werte einer Partie werden so skaliert, dass ihr Schnitt bei 70 liegt. Das Verhältnis zwischen den Spielern bleibt dabei erhalten: Ein Landesligist mit 26 gegen einen mit 19 ist genauso überlegen wie ein Bundesligist mit 86 gegen einen mit 63.
 - **Heimvorteil:** Die Heimelf spielt mit dem Publikum im Rücken etwas besser, je nach Stadion. Auf neutralem Platz (Turniere) entfällt er.
 - **Ein voller Strafraum schützt:** Stehen mehr als vier Verteidiger im Strafraum, kommen Pässe hinein seltener an, Dribblings bleiben hängen, und Abschlüsse darin sind schwerer. Gegen einen tiefen Block wird öfter aus der Distanz geschossen.
+- **Der Block greift am eigenen Strafraum zu:** „Seltener anlaufen“ gilt für die Höhe, nicht für das eigene Drittel. Dort gehen auch bei Konter und Tiefem Block zwei Spieler auf den Ball. Wer zwischen Ball und Tor steht, verstellt dem Schützen Winkel und Schussbahn. Eine defensive Mannschaft geht seltener ins riskante Dribbling, schnelles Tempo spielt vertikaler.
 
 **Mentale Werte:** Die versteckten Persönlichkeitswerte wirken auf dem Platz.
 - **Tagesform:** Unbeständige Spieler haben gute und schlechte Tage (bis ±10 %), ein beständiger Profi spielt fast immer gleich. Das gilt auch in der Sofort-Simulation.

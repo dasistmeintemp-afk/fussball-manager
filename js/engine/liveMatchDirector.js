@@ -4780,14 +4780,20 @@ class LiveMatchDirector {
         const zugriff = this.presstImRaum(defendingTeam, ball);
         // Nach dem Ballverlust geht beim Gegenpressing einer mehr drauf
         const seitWechsel = (this._laufUhr || 0) - (this._wechselUhr ?? -99);
-        const anzahl = zugriff ? Math.min(4, (w.presser || 2) + (seitWechsel < (w.gegenpressing || 0) && w.gegenpressing > 3 ? 1 : 0)) : 1;
+        // Am eigenen Strafraum greift auch ein tiefer Block zu: "Seltener
+        // anlaufen" gilt für die Höhe, nicht für das eigene Drittel. Vorher
+        // ging dort nur einer auf den Ball, und gegen Konter und Tiefen Block
+        // kam der Gegner gemessen doppelt so oft frei zum Abschluss.
+        const angreifer = defendingTeam === "home" ? "away" : "home";
+        const imBlock = (ball.x - this.ownGoalX(angreifer)) * this.attackDir(angreifer) / 92 > 0.66;
+        const anzahl = zugriff ? Math.min(4, Math.max(imBlock ? 2 : 1, (w.presser || 2) + (seitWechsel < (w.gegenpressing || 0) && w.gegenpressing > 3 ? 1 : 0))) : 1;
         const bisher = (this._presser && this._presser.team === defendingTeam) ? this._presser.ids : [];
         const gewaehlt = sorted.slice(0, Math.max(4, anzahl + 1))
             .map(p => ({ id: p.id, wert: abstand(p) - (bisher.includes(p.id) ? 4 : 0) }))
             .sort((a, b) => a.wert - b.wert)
             .slice(0, Math.max(2, anzahl))
             .map(e => e.id);
-        this._presser = { team: defendingTeam, ids: gewaehlt, zugriff };
+        this._presser = { team: defendingTeam, ids: gewaehlt, zugriff, imBlock };
 
         const modus = new Map();
         if (zugriff) {
@@ -4998,7 +5004,7 @@ class LiveMatchDirector {
             if (wT.falle === "aussen") seitlich = innen * 2.8;
             else if (wT.falle === "innen") seitlich = -innen * 2.8;
             ty = ball.y + seitlich;
-            urgency = wT.pressTempo || 1.85;
+            urgency = this._presser?.imBlock ? Math.max(1.85, wT.pressTempo || 1.85) : (wT.pressTempo || 1.85);
             sprinting = true;
         } else if (!attacking && !rG.konter && this.deckt(p, wT, rG)) {
             const ziel = this.deckungsZiel(p, tx, ty, dir, wT, rG, ball);

@@ -227,7 +227,7 @@ class MatchFlowEngine {
         // Vorher bremste die defensive Mentalitaet auch diesen Moment - ein
         // Konterteam spielte den eroberten Ball quer und zurueck und kam
         // gemessen auf neun Schuesse gegen zweiundzwanzig.
-        const kontertGerade = chain <= 2 && (_flowTaktik()?.wirkung(tactics).konter || 0) > 0;
+        const kontertGerade = chain <= 4 && (_flowTaktik()?.wirkung(tactics).konter || 0) > 0;
         if (kontertGerade) forwardDrive = Math.max(forwardDrive, 1.3);
 
         // Die Absicht hängt daran, wo der Ball ist. Im eigenen Drittel wird
@@ -254,6 +254,9 @@ class MatchFlowEngine {
         let progressFaktor = 1 + (eigeneRolle.passWeit || 0);
         let risikoFaktor = 1;
         if (chain <= 2 && wk.konter > 0) progressFaktor *= 1.35;
+        // Tempo: Schnell spielt vertikal, langsam geduldig
+        if (tactics.tempo === "fast") progressFaktor *= 1.15;
+        else if (tactics.tempo === "slow") progressFaktor *= 0.92;
         if (chain <= 3 && wk.konter < 0) { progressFaktor *= 0.8; risikoFaktor = 1.3; }
         // Ballannahme: In den Lauf bringt Tiefe und nimmt mehr Risiko in Kauf,
         // in den Fuss spielt sicher
@@ -330,7 +333,11 @@ class MatchFlowEngine {
             // Partie wirkt, in der die eigene Mannschaft kaum ueber die
             // Mittellinie kommt.
             const richtung = Math.sign(forward) * Math.min(1, Math.abs(forward) / 12);
-            const mentalScore = richtung * (forwardDrive - 1) * 0.75;
+            let mentalScore = richtung * (forwardDrive - 1) * 0.75;
+            // Defensiv heisst wenig Risiko - nicht, den Ball vor dem eigenen
+            // Tor hin und her zu schieben. Im Aufbau lockt der Rueckpass nicht,
+            // der Ball geht lieber lang aus der Gefahrenzone.
+            if (istAufbau && forward < 0 && mentalScore > 0) mentalScore *= 0.25;
 
             // Flügelfokus: "links" ist die linke Seite aus Sicht der
             // Angriffsrichtung, nicht die linke Bildschirmhälfte. Wer nach
@@ -379,6 +386,7 @@ class MatchFlowEngine {
             if ((wk.breite || 0) > 0 && quer > 30) taktikScore += 0.2;
             if ((wk.breite || 0) < 0 && quer < 18) taktikScore += 0.2;
             if (druck > 0.55 && dist > 26) taktikScore += (wk.durchsPressing || 0) * 1.2;
+            if (istAufbau && forwardDrive < 1 && dist > 26 && forward > 10) taktikScore += (1 - forwardDrive) * 0.6;
             if (istTorwart) {
                 // Kurz: Innenverteidiger suchen; lang: auf die Spitze
                 if (dist > 30) taktikScore -= (wk.torwartKurz || 0) * 1.2;
@@ -442,7 +450,13 @@ class MatchFlowEngine {
         const space = this.getSpace(ahead, opponents);
 
         const skill = (dribbling * 0.6 + pace * 0.4) / 100;
-        const tempoBonus = tactics.tempo === "fast" ? 0.15 : (tactics.tempo === "slow" ? -0.1 : 0);
+        const tempoBonus = tactics.tempo === "fast" ? 0.06 : (tactics.tempo === "slow" ? -0.1 : 0);
+        // Die Mentalitaet gilt auch fuer den Lauf mit dem Ball: Eine defensive
+        // Mannschaft geht nicht ins riskante Dribbling - in den freien Raum
+        // traegt sie den Ball trotzdem. Vorher bremste "defensiv" nur den Pass
+        // nach vorn, und das Dribbling wurde zur besten Option: Ein Konterteam
+        // dribbelte sechzigmal je Spiel und verlor den Ball im Mittelfeld.
+        const mentalDribbel = { very_offensive: 0.12, offensive: 0.06, defensive: -0.25, very_defensive: -0.4 }[tactics.mentality] || 0;
 
         // Der Lauf mit dem Ball war als Vorschlag chancenlos: Gemessen ueber
         // drei Partien entfielen von 744 Aktionen nur 21 auf ein Dribbling -
@@ -489,7 +503,7 @@ class MatchFlowEngine {
             + tempoBonus
             + 0.3
             - pressure * 0.75
-            + (frei ? (carrier.group === "def" ? 0.8 : 0.55) : 0)
+            + (frei ? (carrier.group === "def" ? 0.8 : 0.55) : mentalDribbel)
             + taktik
             + eigen
             + _flowRandom.float(-0.2, 0.2) * this.entscheidungsRauschen(carrier);
@@ -592,7 +606,15 @@ class MatchFlowEngine {
         const block = this.getLaneRisk(schuetze, this.gegnerTor(schuetze.team), feldspieler);
         xg *= 1 - Math.min(0.3, block * 0.2);
         // Ein dicht besetzter Strafraum verstellt Winkel und Schussbahn
-        if (this.imGegnerStrafraum(schuetze, schuetze.team)) xg *= 1 - Math.min(0.35, this.strafraumDichte(schuetze.team) * 0.08);
+        if (this.imGegnerStrafraum(schuetze, schuetze.team)) xg *= 1 - Math.min(0.4, this.strafraumDichte(schuetze.team) * 0.12);
+        // Wer zwischen Ball und Tor steht, verstellt Winkel und Schussbahn:
+        // Gegen einen tiefen Block kommt der Schuss selten frei
+        if (this.fm()) {
+            const torX = this.gegnerTor(schuetze.team).x;
+            const davor = feldspieler.filter(o => Math.abs(torX - o.x) < Math.abs(torX - schuetze.x)
+                && Math.abs(o.y - schuetze.y) < 24).length;
+            xg *= 1 - Math.min(0.3, Math.max(0, davor - 2) * 0.08);
+        }
         return { xg: Math.max(0.01, Math.min(0.85, xg)), dist: g.dist, winkel: g.winkel, druck, block };
     }
 
@@ -952,6 +974,7 @@ class MatchFlowEngine {
      */
     decide(carrier, options = {}) {
         if (!carrier) return null;
+        this._kette = options.chainLength || 0;
 
         const team = carrier.team;
         const tactics = this.getTactics(team) || {};
@@ -1075,7 +1098,13 @@ class MatchFlowEngine {
             accuracy -= Math.min(0.16, this.strafraumDichte(carrier.team) * 0.045);
         }
         if (isLong) accuracy -= 0.13;
-        if (tactics.tempo === "fast") accuracy -= 0.04;
+        // Schnelles Tempo kostet Genauigkeit vor allem beim Ball nach vorn;
+        // dafuer trifft es eine Abwehr, die sich nach dem Ballverlust noch
+        // nicht sortiert hat
+        const nachVorn = (action.forward ?? 0) > 4;
+        if (tactics.tempo === "fast") accuracy -= nachVorn ? 0.025 : 0.01;
+        const umschalten = (this._kette ?? 9) <= 3 && (tactics.tempo === "fast" || (_flowTaktik()?.wirkung(tactics).konter || 0) > 0);
+        if (umschalten && nachVorn) accuracy += 0.04;
         if (tactics.passing === "short") accuracy += 0.05;
 
         // Der sichere Ball zur Seite oder zurück kommt fast immer an

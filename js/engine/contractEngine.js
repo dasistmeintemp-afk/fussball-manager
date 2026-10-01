@@ -179,6 +179,35 @@ const ContractEngine = {
     },
 
     /**
+     * Das Niveau eines Kaders: der Schnitt seiner vierzehn Besten, also
+     * Stammelf und erste Wechsel. Daran misst ein Verein, wen er hält und wen
+     * er holt.
+     *
+     * Vorher galten feste Grenzen, die nur zur Bundesliga passten (Kader
+     * dort um 80): "wichtig ab 55" traf in der Landesliga (um 23) niemanden.
+     * Dort ließen die Vereine deshalb jeden zweiten auslaufenden Vertrag
+     * platzen, und die Lücken füllten Vereinslose aus höheren Ligen - die
+     * Landesliga wurde Saison für Saison stärker. Die Grenzen relativ zum
+     * Niveau entsprechen den alten für einen Bundesligakader.
+     */
+    vereinsNiveau(club, spielerNach) {
+        const ovr = (club?.playerIds || []).map(id => spielerNach.get(id)).filter(Boolean)
+            .map(p => p.overall || 0).sort((a, b) => b - a).slice(0, 14);
+        return ovr.length ? ovr.reduce((a, b) => a + b, 0) / ovr.length : null;
+    },
+
+    /** Vereins-ID -> Niveau, für alle Vereine auf einmal */
+    niveauKarte(state) {
+        const spielerNach = new Map((state?.players || []).map(p => [p.id, p]));
+        const karte = new Map();
+        (state?.clubs || []).forEach(c => {
+            const n = this.vereinsNiveau(c, spielerNach);
+            if (n !== null) karte.set(c.id, n);
+        });
+        return karte;
+    },
+
+    /**
      * Die KI verlängert, bevor ein Vertrag ausläuft - nicht erst danach.
      *
      * Vorher wurde ein Vertrag erst verlängert, wenn er schon auf null stand,
@@ -195,12 +224,14 @@ const ContractEngine = {
     verlaengereBeiKiVereinen(state) {
         if (!state || !Array.isArray(state.players)) return 0;
 
+        const niveau = this.niveauKarte(state);
         let verlaengert = 0;
         state.players.forEach(p => {
             if (!p.clubId || p.clubId === state.userClubId) return;
             if ((p.contractYears ?? 0) !== 1) return;
 
-            const staerke = p.overall || 50;
+            // Stärke gemessen am eigenen Kader - siehe vereinsNiveau
+            const staerke = (p.overall || 50) - (niveau.get(p.clubId) ?? 80);
             const alter = p.age || 25;
 
             // Wen ein Verein halten will: wer stark ist, oder jung genug, um
@@ -212,9 +243,9 @@ const ContractEngine = {
             // zweite Durchschnittsspieler nicht verlängert - nach drei
             // Saisons trieben 387 Vereinslose durch die Welt.
             let chance = 0.48;
-            if (staerke >= 70) chance += 0.35;
-            else if (staerke >= 60) chance += 0.22;
-            else if (staerke >= 52) chance += 0.10;
+            if (staerke >= -10) chance += 0.35;
+            else if (staerke >= -20) chance += 0.22;
+            else if (staerke >= -28) chance += 0.10;
 
             if (alter <= 23) chance += 0.20;
             else if (alter >= 33) chance -= 0.35;

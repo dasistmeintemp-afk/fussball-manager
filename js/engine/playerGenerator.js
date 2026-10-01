@@ -145,6 +145,30 @@ class PlayerGenerator {
     }
 
     /**
+     * Das Potenzial eines Talents (bis 21), gemessen an der Stärke, die ein
+     * gestandener Spieler dieses Vereins hätte (baseCA).
+     *
+     * Bisher hing es am jetzigen Können: 12 bis 48 Punkte darüber, im Mittel
+     * 26. Weil ein Talent zuvor 0 bis 20 Punkte unter dem Vereinsniveau
+     * begann, lag sein Potenzial im Mittel 17 Punkte (gut 8 Punkte
+     * Gesamtstärke) über den gestandenen Spielern. Jede Generation wurde so
+     * besser als die vorige: In vier Saisons stieg die Landesliga von 22,9
+     * auf 27,4, und die Zahl der Spieler ab 90 verdreifachte sich von 51 auf
+     * 150.
+     *
+     * Jetzt liegt das Potenzial um das Vereinsniveau: meist etwas darüber,
+     * selten weit darüber - ein Ausnahmetalent bleibt eine Ausnahme. Etwas
+     * Luft nach oben hat jeder.
+     */
+    static TALENT = { abstand: -8, spanne: 36, kurve: 2, mindestLuft: 6 };
+
+    static talentPotenzial(baseCA, trueCA) {
+        const t = this.TALENT;
+        const pa = baseCA + t.abstand + Math.floor(Math.pow(Math.random(), t.kurve) * t.spanne);
+        return Math.max(trueCA + t.mindestLuft, pa);
+    }
+
+    /**
      * Potenzial deckeln: nicht weit über die Spanne der Liga hinaus, und
      * oberhalb von 180 (Gesamtstärke 90) zählt jeder Punkt nur halb. Die
      * Weltspitze bleibt so dünn besetzt, statt Saison für Saison
@@ -286,10 +310,7 @@ class PlayerGenerator {
 
         if (age <= 21) {
             trueCA = Math.max(20, trueCA - Math.floor(Math.random() * 20));
-            // Meist 12 bis 30 Punkte Luft, selten mehr. Vorher bekam jedes
-            // zweite Talent eines Spitzenklubs das Höchstpotenzial 200 und
-            // stand nach zwei Saisons bei 97 bis 99.
-            truePA = trueCA + 12 + Math.floor(Math.pow(Math.random(), 1.5) * 36);
+            truePA = this.talentPotenzial(baseCA, trueCA);
         } else if (age >= 31) {
             trueCA = Math.max(30, trueCA - (age - 30) * 3);
             truePA = trueCA;

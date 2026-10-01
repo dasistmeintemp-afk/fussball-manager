@@ -26,6 +26,49 @@ const _getContractEngine = () => _resolve('ContractEngine', './contractEngine.js
 const _getFinanceEngine = () => _resolve('FinanceEngine', './financeEngine.js');
 
 class SeasonEngine {
+    /** Bis zu diesem Alter bekommt ein Vereinsloser eine zweite Saison, einen Verein zu finden */
+    static VEREINSLOS_TALENT_ALTER = 21;
+
+    /**
+     * So viele Spieler bis 21 hält jeder Verein mindestens; fehlen sie, kommen
+     * Talente aus dem Nachwuchs nach. Es waren fünf - fast ein Viertel des
+     * Kaders, doppelt so viel, wie die Altersverteilung der erzeugten Welt
+     * hergibt (rund 2,5 je Kader). Jede Saison mussten so Hunderte Talente
+     * nachrücken, und die Verdrängten trieben vereinslos durch die Welt.
+     * Mit drei altert die Welt über acht Saisons auf rund 28 Jahre im Schnitt,
+     * die Ligastufen bleiben aber stabil; vier ließ die unteren Ligen stärker
+     * driften.
+     */
+    static MINDEST_JUGEND = 3;
+
+    /**
+     * Gemessen am Niveau des eigenen Kaders (Schnitt der vierzehn Besten):
+     * Ein KI-Verein hält einen auslaufenden Vertrag eher, wenn der Spieler
+     * höchstens so weit darunter liegt, und holt Vereinslose aus diesem Band.
+     */
+    static HALTEN_UNTER_NIVEAU = 12;
+    static FREI_UEBER_NIVEAU = 6;
+    static FREI_UNTER_NIVEAU = 12;
+
+    /**
+     * Wie wahrscheinlich ein KI-Verein einen auslaufenden Vertrag verlängert:
+     * Wer jung ist oder nicht weit unter dem Kader liegt, bleibt meist.
+     * Vorher hieß "wichtig" fest Gesamtstärke 55 - in den Amateurligen traf
+     * das niemanden, und jeder zweite Vertrag lief aus.
+     */
+    static haltequote(player, niveau) {
+        const wichtig = (player.age || 25) <= 23
+            || (player.overall || 50) >= (niveau ?? 80) - SeasonEngine.HALTEN_UNTER_NIVEAU;
+        return wichtig ? 0.88 : 0.45;
+    }
+
+    /** Passt ein Vereinsloser zu einem Kader dieses Niveaus? */
+    static passtZumKader(player, niveau) {
+        if (typeof niveau !== "number") return true;
+        const s = player.overall || 0;
+        return s <= niveau + SeasonEngine.FREI_UEBER_NIVEAU && s >= niveau - SeasonEngine.FREI_UNTER_NIVEAU;
+    }
+
     /**
      * Führt alle verbleibenden Spiele des aktuellen Spieltags im Hintergrund aus
      */
@@ -679,7 +722,21 @@ class SeasonEngine {
         if (!Array.isArray(state.players)) return { retired: 0 };
 
         const abschied = [];
+        let ohneVerein = 0;
         state.players.forEach(player => {
+            // Wer eine ganze Saison ohne Verein war, verlässt den Profifußball.
+            // Bisher blieb jeder Vereinslose für immer in der Welt: Nach fünf
+            // Saisons waren es 584, die meisten jung und zu schwach für jeden
+            // Verein, der sie hätte brauchen können.
+            if (!player.clubId) {
+                if (typeof player.vereinslosAb !== "number") player.vereinslosAb = state.seasonYear;
+                const frist = (player.age || 25) <= SeasonEngine.VEREINSLOS_TALENT_ALTER ? 2 : 1;
+                if (player.vereinslosAb <= (state.seasonYear || 0) - frist) {
+                    abschied.push(player);
+                    ohneVerein++;
+                    return;
+                }
+            }
             const alter = player.age || 25;
             if (alter < 32) return;
 
@@ -692,7 +749,7 @@ class SeasonEngine {
             if (Math.random() < chance) abschied.push(player);
         });
 
-        if (abschied.length === 0) return { retired: 0, names: [] };
+        if (abschied.length === 0) return { retired: 0, names: [], ohneVerein: 0 };
 
         const gehende = new Set(abschied.map(p => p.id));
         const eigene = [];
@@ -743,12 +800,18 @@ class SeasonEngine {
             });
         }
 
-        return { retired: abschied.length, names: abschied.map(p => p.name) };
+        return { retired: abschied.length, names: abschied.map(p => p.name), ohneVerein };
     }
 
     static processContractExpiries(state) {
         const abgaenge = [];
         const eigeneAbgaenge = [];
+
+        // Jeder Verein misst an seinem eigenen Kader, wen er hält und wen er
+        // holt (ContractEngine.vereinsNiveau) - gemessen vor den Abgängen
+        const contractEngine = _getContractEngine();
+        const niveau = contractEngine && typeof contractEngine.niveauKarte === 'function'
+            ? contractEngine.niveauKarte(state) : new Map();
 
         state.players.forEach(player => {
             if ((player.contractYears || 0) > 0) return;
@@ -757,6 +820,7 @@ class SeasonEngine {
             const club = state.clubs.find(c => c.id === player.clubId);
             if (!club) {
                 player.clubId = null;
+                player.vereinslosAb = state.seasonYear;
                 abgaenge.push(player);
                 return;
             }
@@ -764,10 +828,7 @@ class SeasonEngine {
             const istNutzerverein = club.id === state.userClubId;
 
             if (!istNutzerverein) {
-                // Die KI hält, wer stark oder jung ist, und lässt den Rest ziehen
-                const wichtig = (player.overall || 50) >= 55 || (player.age || 25) <= 23;
-                const haltequote = wichtig ? 0.88 : 0.45;
-                if (Math.random() < haltequote) {
+                if (Math.random() < SeasonEngine.haltequote(player, niveau.get(club.id))) {
                     player.contractYears = 1 + Math.floor(Math.random() * 3);
                     return;
                 }
@@ -778,6 +839,7 @@ class SeasonEngine {
             club.bench = (club.bench || []).filter(id => id !== player.id);
             player.clubId = null;
             player.contractYears = 0;
+            player.vereinslosAb = state.seasonYear;
 
             abgaenge.push(player);
             if (istNutzerverein) eigeneAbgaenge.push(player.name);
@@ -834,14 +896,19 @@ class SeasonEngine {
             // Erst die Lücken schließen, die wirklich weh tun: Ohne zweiten
             // Torwart oder ohne Stürmer nützt der beste Innenverteidiger nichts.
             const gesucht = offenePositionen(club, soll);
-            const grenze = 40 + (club.reputation || 50) * 0.55;
             frei.sort((a, b) => (b.overall || 0) - (a.overall || 0));
 
+            // Geholt wird, wer zum Kader passt: nicht viel stärker - der
+            // spielt lieber eine Liga höher - und nicht viel schwächer. Bisher
+            // hing die Obergrenze am Ruf und lag selbst in der Landesliga bei
+            // rund 50, und fand sich darunter niemand, nahm der Verein den
+            // Besten, der übrig war. So stiegen Vereinslose aus höheren Ligen
+            // ab und machten die unteren Ligen Saison für Saison stärker.
+            // Was der Markt nicht hergibt, kommt aus dem Nachwuchs.
+            const n = niveau.get(club.id);
             const greifen = (filter) => {
-                const idx = frei.findIndex(p => filter(p) && (p.overall || 0) <= grenze);
-                if (idx >= 0) return frei.splice(idx, 1)[0];
-                const ersatz = frei.findIndex(filter);
-                return ersatz >= 0 ? frei.splice(ersatz, 1)[0] : null;
+                const idx = frei.findIndex(p => filter(p) && SeasonEngine.passtZumKader(p, n));
+                return idx >= 0 ? frei.splice(idx, 1)[0] : null;
             };
 
             const untergrenze = club.id === state.userClubId ? 0 : reserve;
@@ -853,6 +920,7 @@ class SeasonEngine {
                 if (!gewaehlt) break;
 
                 gewaehlt.clubId = club.id;
+                delete gewaehlt.vereinslosAb;
                 gewaehlt.contractYears = 1 + Math.floor(Math.random() * 3);
                 club.playerIds.push(gewaehlt.id);
                 fehlend--;
@@ -864,7 +932,7 @@ class SeasonEngine {
         if (worldGen && typeof worldGen.fillUpExistingSquads === 'function' && playerGen) {
             worldGen.fillUpExistingSquads(state, worldGen.getLeagues(), playerGen, {
                 sizeFor: (club, voll) => club.id === state.userClubId ? Math.min(20, voll) : voll,
-                mindestJugend: 5
+                mindestJugend: SeasonEngine.MINDEST_JUGEND
             });
         }
 

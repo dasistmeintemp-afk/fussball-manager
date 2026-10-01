@@ -272,6 +272,7 @@ class WorldGenerator {
                     club.bench = (club.bench || []).filter(id => id !== weg.id);
                     weg.clubId = null;
                     weg.contractYears = 0;
+                    weg.vereinslosAb = state.seasonYear;
                     ueberzaehlig--;
                 }
             }

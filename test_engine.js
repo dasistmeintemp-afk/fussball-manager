@@ -7309,6 +7309,75 @@ function runEngineTests() {
         }
     });
 
+    test("Einzelgespräche: Lob, Kritik nach Charakter, Spielzeit-Versprechen und Wechselwunsch", () => {
+        const { PlayerTalkEngine } = require('./js/engine/playerTalkEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const kader = state.players.filter(p => club.playerIds.includes(p.id));
+        const [a, b, c, d] = kader;
+        const halb = () => 0.5;
+
+        // Lob für einen Spieler in Form kommt an - und gleich danach ist
+        // kein zweites Gespräch möglich
+        a.form = 7.6; a.morale = 70;
+        let r = PlayerTalkEngine.fuehren(state, a.id, "loben", halb);
+        if (!r.success || a.morale <= 70) throw new Error("Lob für einen starken Spieler hebt die Moral nicht");
+        r = PlayerTalkEngine.fuehren(state, a.id, "kritisieren", halb);
+        if (r.success) throw new Error("Zwei Gespräche am selben Tag sollten nicht gehen");
+        state.currentDayIndex = (state.currentDayIndex || 0) + PlayerTalkEngine.ABKUEHLUNG;
+        r = PlayerTalkEngine.fuehren(state, a.id, "kritisieren", halb);
+        if (!r.success || a.morale > r.moralVorher - 8) throw new Error(`Kritik an einem starken Spieler kränkt nicht genug (${r.moralVorher} → ${a.morale})`);
+
+        // Kritik bei schwacher Form: Der Profi nimmt sie als Ansporn, der Hitzkopf ist beleidigt
+        b.form = 6.1; b.morale = 70;
+        b.hiddenAttributes = { ...b.hiddenAttributes, professionalism: 19, ambition: 16, temperament: 4 };
+        r = PlayerTalkEngine.fuehren(state, b.id, "kritisieren", halb);
+        if (!b.ansporn || b.morale < 65) throw new Error("Der Profi nimmt Kritik nicht als Ansporn");
+        c.form = 6.1; c.morale = 70;
+        c.hiddenAttributes = { ...c.hiddenAttributes, professionalism: 5, ambition: 8, temperament: 19 };
+        r = PlayerTalkEngine.fuehren(state, c.id, "kritisieren", halb);
+        if (c.ansporn || c.morale > 62) throw new Error("Der Hitzkopf sollte Kritik übelnehmen");
+
+        // Spielzeit versprochen - und nicht gehalten
+        d.happiness = { overall: 55, playingTime: 45, contract: 70, teamPerformance: 70 };
+        d.morale = 70;
+        r = PlayerTalkEngine.fuehren(state, d.id, "spielzeit", halb);
+        if (!r.success || !d.versprechen) throw new Error("Versprechen wurde nicht festgehalten");
+        if (!PlayerTalkEngine.schreibtisch(state).some(i => i.playerId === d.id)) throw new Error("Versprechen fehlt auf dem Schreibtisch");
+        const moralMitVersprechen = d.morale;
+        for (let i = 0; i < PlayerTalkEngine.VERSPRECHEN_SPIELE; i++) {
+            PlayerTalkEngine.nachSpiel(state, { played: true, playerRatings: [{ playerId: d.id, minutes: i === 0 ? 90 : 0 }] });
+        }
+        if (d.versprechen) throw new Error("Das Versprechen wurde nach der Frist nicht abgerechnet");
+        if (d.morale >= moralMitVersprechen - 10) throw new Error("Ein gebrochenes Versprechen trifft den Spieler nicht");
+        if (!d.wechselwunsch) throw new Error("Nach einem gebrochenen Versprechen sollte er weg wollen");
+        const posten = ManagerEngine.getAttentionItems(state).find(i => i.playerId === d.id);
+        if (!posten || !/wechseln/.test(posten.title)) throw new Error("Der Wechselwunsch steht nicht auf dem Schreibtisch");
+        state.currentDayIndex += PlayerTalkEngine.ABKUEHLUNG;
+        r = PlayerTalkEngine.fuehren(state, d.id, "wechsel_annehmen", halb);
+        if (!r.success || !d.transferListed) throw new Error("Akzeptierter Wechselwunsch setzt ihn nicht auf die Transferliste");
+
+        // Ein gehaltenes Versprechen stärkt das Vertrauen
+        const e = kader[4];
+        e.happiness = { overall: 55, playingTime: 45, contract: 70, teamPerformance: 70 };
+        PlayerTalkEngine.fuehren(state, e.id, "spielzeit", halb);
+        for (let i = 0; i < 3; i++) PlayerTalkEngine.nachSpiel(state, { played: true, playerRatings: [{ playerId: e.id, minutes: 75 }] });
+        if (e.versprechen || (e.vertrauen ?? 50) <= 50) throw new Error("Gehaltenes Versprechen stärkt das Vertrauen nicht");
+
+        // Ein Gesprächswunsch, um den sich niemand kümmert, kränkt; anhaltender
+        // Frust wird zum Wechselwunsch
+        const f = kader[5];
+        f.morale = 70;
+        f.gespraechswunsch = { seit: PlayerTalkEngine.stempel(state), grund: "spielzeit" };
+        f.happiness = { overall: 30, playingTime: 20, contract: 50, teamPerformance: 30 };
+        for (let t = 0; t < PlayerTalkEngine.FRUST_TAGE; t++) {
+            state.currentDayIndex++;
+            PlayerTalkEngine.taeglich(state, () => 0.99);
+        }
+        if (f.gespraechswunsch || f.morale >= 70) throw new Error("Ein übergangener Gesprächswunsch bleibt folgenlos");
+        if (!f.wechselwunsch) throw new Error("Anhaltender Frust führt nicht zum Wechselwunsch");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

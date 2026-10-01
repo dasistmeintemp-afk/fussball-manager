@@ -1216,13 +1216,14 @@ const CalendarEngine = {
         const zufall = (liste) => liste[Math.floor(Math.random() * liste.length)];
         const ereignisse = [];
 
-        // a) Ein Spieler sucht das Gespräch
-        const unzufrieden = kader.filter(p => (p.happiness?.overall ?? 75) < 58 && (p.injuredWeeks || 0) <= 0);
-        if (unzufrieden.length > 0 && Math.random() < 0.16) {
-            const p = zufall(unzufrieden);
-            ereignisse.push(`💬 ${p.name} hat um ein Gespräch gebeten - er ist mit seiner Rolle unzufrieden.`);
-            p.happiness = p.happiness || {};
-            p.happiness.overall = Math.min(100, (p.happiness.overall ?? 55) + 4);
+        // a) Ein Spieler sucht das Gespräch - und wartet auf eine Antwort.
+        // Vorher stieg seine Zufriedenheit dabei von selbst um vier Punkte,
+        // ohne dass der Manager ein Wort gesagt hatte.
+        const gespraeche = (typeof PlayerTalkEngine !== 'undefined' && PlayerTalkEngine)
+            ? PlayerTalkEngine
+            : ((typeof window !== 'undefined' && window.PlayerTalkEngine) ? window.PlayerTalkEngine : (typeof require !== 'undefined' ? require('./playerTalkEngine.js').PlayerTalkEngine : null));
+        if (gespraeche && typeof gespraeche.taeglich === 'function') {
+            gespraeche.taeglich(state).forEach(m => ereignisse.push(m));
         }
 
         // b) Ein Talent aus der Akademie drängt nach oben

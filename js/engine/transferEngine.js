@@ -617,16 +617,27 @@ class TransferEngine {
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
 
-        // 20% Chance pro Spieltag auf ein KI-Angebot für einen Spieler des Managers
-        if (Math.random() < 0.25 && userClub.playerIds.length > 15) {
-            const randomPlayerId = userClub.playerIds[Math.floor(Math.random() * userClub.playerIds.length)];
-            const player = state.players.find(p => p.id === randomPlayerId);
+        // Wer auf der Transferliste steht oder wechseln will, spricht sich
+        // herum: Für ihn kommen öfter Angebote - und etwas niedrigere, weil
+        // jeder weiß, dass er weg will.
+        const gelistet = userClub.playerIds
+            .map(id => state.players.find(p => p.id === id))
+            .filter(p => p && (p.transferListed || p.wechselwunsch) && !p.leihe);
+        const chance = gelistet.length ? 0.45 : 0.25;
 
-            if (player && player.overall >= 74) {
+        // 20% Chance pro Spieltag auf ein KI-Angebot für einen Spieler des Managers
+        if (Math.random() < chance && userClub.playerIds.length > 15) {
+            const randomPlayerId = userClub.playerIds[Math.floor(Math.random() * userClub.playerIds.length)];
+            const player = gelistet.length && Math.random() < 0.65
+                ? gelistet[Math.floor(Math.random() * gelistet.length)]
+                : state.players.find(p => p.id === randomPlayerId);
+            const verkaeuflich = player && gelistet.includes(player);
+
+            if (player && !player.leihe && (player.overall >= 74 || verkaeuflich)) {
                 const aiClubs = state.clubs.filter(c => c.id !== userClub.id && c.transferBudget >= player.value * 0.9);
                 if (aiClubs.length > 0) {
                     const interestedClub = aiClubs[Math.floor(Math.random() * aiClubs.length)];
-                    const offerFee = Math.round(player.value * (0.95 + Math.random() * 0.3));
+                    const offerFee = Math.round(player.value * (verkaeuflich ? 0.8 + Math.random() * 0.25 : 0.95 + Math.random() * 0.3));
                     // Wie weit der Verein höchstens gehen würde - verrät er nicht
                     const maxFee = Math.min(interestedClub.transferBudget || offerFee,
                         Math.round(offerFee * (1.06 + Math.random() * 0.24)));

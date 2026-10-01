@@ -183,6 +183,11 @@ class SeasonEngine {
                 if (manager && typeof manager.versprechenPruefen === 'function') {
                     manager.versprechenPruefen(state, eigenesSpiel);
                 }
+                // ... und was einem Spieler unter vier Augen versprochen wurde
+                const gespraeche = _resolve('PlayerTalkEngine', './playerTalkEngine.js');
+                if (gespraeche && typeof gespraeche.nachSpiel === 'function') {
+                    gespraeche.nachSpiel(state, eigenesSpiel);
+                }
                 // Was gespielt wurde, sitzt danach besser
                 const taktik = _resolve('TacticsEngine', './tacticsEngine.js');
                 const eigenerVerein = state.clubs.find(c => c.id === state.userClubId);

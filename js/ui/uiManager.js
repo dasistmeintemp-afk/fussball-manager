@@ -2130,8 +2130,8 @@ class UIManager {
         }
 
         list.innerHTML = items.map(item => `
-            <button class="attention-item" data-tab="${this.escapeHtml(item.tab)}">
-                <span class="attention-icon ton-${({ "🚑": "bad", "⚠️": "bad", "🩺": "bad", "🥵": "warn", "😞": "warn", "💰": "warn", "🤝": "ok" })[item.icon] || "info"}">${this.symbolHtml(item.icon)}</span>
+            <button class="attention-item" data-tab="${this.escapeHtml(item.tab)}"${item.playerId !== undefined ? ` data-player="${this.escapeHtml(String(item.playerId))}"` : ""}>
+                <span class="attention-icon ton-${({ "🚑": "bad", "⚠️": "bad", "🩺": "bad", "📢": "bad", "🥵": "warn", "😞": "warn", "💰": "warn", "💬": "warn", "🤝": "ok" })[item.icon] || "info"}">${this.symbolHtml(item.icon)}</span>
                 <span class="attention-text">
                     <strong>${this.escapeHtml(item.title)}</strong>
                     <span>${this.escapeHtml(item.detail)}</span>
@@ -2141,7 +2141,14 @@ class UIManager {
         `).join("");
 
         list.querySelectorAll(".attention-item").forEach(btn => {
-            btn.addEventListener("click", () => this.switchTab(btn.dataset.tab));
+            btn.addEventListener("click", () => {
+                // Ein Gespräch führt direkt in die Akte des Spielers
+                if (btn.dataset.player !== undefined) {
+                    const ziel = state.players.find(p => String(p.id) === btn.dataset.player);
+                    if (ziel) return this.showPlayerDetailsModal(ziel.id);
+                }
+                this.switchTab(btn.dataset.tab);
+            });
         });
     }
 
@@ -6648,7 +6655,8 @@ class UIManager {
         const id = ({
             "🚑": "i-medical", "🥵": "i-flame", "📄": "i-doc", "😞": "i-frown", "📬": "i-mail",
             "🏗️": "i-build", "⚠️": "i-alert", "🤝": "i-briefcase", "🧊": "i-leaf", "🔥": "i-flame",
-            "📣": "i-mic", "💢": "i-alert", "💰": "i-wallet", "🩺": "i-medical"
+            "📣": "i-mic", "💢": "i-alert", "💰": "i-wallet", "🩺": "i-medical",
+            "💬": "i-chat", "📢": "i-alert", "🔁": "i-transfer", "🎓": "i-user"
         })[emoji];
         return id
             ? `<svg class="ico" aria-hidden="true"><use href="#${id}"/></svg>`
@@ -7455,6 +7463,55 @@ class UIManager {
         });
     }
 
+    getPlayerTalkEngine() {
+        if (typeof PlayerTalkEngine !== "undefined" && PlayerTalkEngine) return PlayerTalkEngine;
+        if (typeof window !== "undefined" && window.PlayerTalkEngine) return window.PlayerTalkEngine;
+        return null;
+    }
+
+    /**
+     * Gespräch unter vier Augen: Was gerade ansteht (Wunsch, Versprechen,
+     * Wechselwunsch), die möglichen Gespräche und die letzte Antwort.
+     */
+    gespraechHtml(player) {
+        const engine = this.getPlayerTalkEngine();
+        if (!engine) return "";
+        const state = this.app.state;
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const optionen = engine.optionen(state, player);
+        const lage = [];
+        if (player.wechselwunsch) {
+            lage.push(player.wechselwunsch.akzeptiert
+                ? `<div class="gs-lage gs-warn">📢 Er will wechseln - Sie haben zugestimmt, er steht auf der Transferliste.</div>`
+                : `<div class="gs-lage gs-bad">📢 Er will den Verein verlassen: „${esc(player.wechselwunsch.grund)}“</div>`);
+        }
+        if (player.gespraechswunsch) {
+            lage.push(`<div class="gs-lage gs-warn">💬 Er hat um ein Gespräch gebeten - es geht um ${player.gespraechswunsch.grund === "spielzeit" ? "seine Spielzeit" : "seine Situation"}.</div>`);
+        }
+        if (player.versprechen) {
+            const v = player.versprechen;
+            lage.push(`<div class="gs-lage gs-info">🤝 Versprochen: ${v.einsaetze} von ${v.noetig} Einsätzen ab 60 Minuten · noch ${v.frist - v.spiele} Ligaspiele</div>`);
+        }
+        const form = engine.formLage(player);
+        const formText = { stark: "in starker Form", normal: "in ordentlicher Form", schwach: "außer Form" }[form];
+        const antwort = this._letzteAntwort && String(this._letzteAntwort.playerId) === String(player.id) ? this._letzteAntwort : null;
+        if (antwort) this._letzteAntwort = null;
+        return `
+            <div class="dash-card mb-3 gs-karte">
+                <h4 class="gs-titel"><svg class="ico" aria-hidden="true"><use href="#i-chat"/></svg> Gespräch unter vier Augen</h4>
+                <div class="gs-sub">Er ist ${formText} (Form ${(player.form ?? 7).toFixed(1).replace(".", ",")}) · Moral ${Math.round(player.morale ?? 75)} %${typeof player.vertrauen === "number" ? ` · Vertrauen ${Math.round(player.vertrauen)} %` : ""}</div>
+                ${lage.join("")}
+                ${antwort ? `<div class="gs-antwort gs-${antwort.stimmung}">„${esc(antwort.antwort)}“ <span>Moral ${antwort.moralVorher} → ${antwort.moralNachher} %</span></div>` : ""}
+                <div class="gs-optionen">
+                    ${optionen.map(o => `
+                        <button class="btn btn-secondary gs-option" data-gespraech="${esc(o.key)}" ${o.verfuegbar ? "" : "disabled"} title="${esc(o.verfuegbar ? o.text : o.grund)}">
+                            <strong>${esc(o.label)}</strong>
+                            <span>${esc(o.verfuegbar ? o.text : o.grund)}</span>
+                        </button>`).join("")}
+                </div>
+            </div>`;
+    }
+
     showPlayerDetailsModal(playerId) {
         const state = this.app.state;
         const treffer = this.findAnyPlayer(playerId);
@@ -7758,6 +7815,8 @@ class UIManager {
                 <div style="font-size:12px; color:var(--text-muted); margin-top:4px; font-style:italic;">"${happy.reason || 'Zufrieden mit der Situation.'}"</div>
             </div>`}
 
+            ${isUserClub && !isProspect ? this.gespraechHtml(player) : ""}
+
             ${positionMapHtml}
 
             ${eigenheitenHtml}
@@ -7821,6 +7880,23 @@ class UIManager {
         document.getElementById("btnClosePlayerDetails").onclick = () => {
             modal.style.display = "none";
         };
+
+        // Gespräch unter vier Augen
+        body.querySelectorAll("[data-gespraech]").forEach(btn => btn.addEventListener("click", () => {
+            const engine = this.getPlayerTalkEngine();
+            if (!engine) return;
+            const res = engine.fuehren(state, player.id, btn.dataset.gespraech);
+            if (!res.success) {
+                this.showToast(res.error || "Das Gespräch kam nicht zustande.", "error");
+                return;
+            }
+            this._letzteAntwort = { playerId: player.id, ...res };
+            this.playSound("click");
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.showPlayerDetailsModal(player.id);
+            if (this.activeTab === "dashboard") this.renderDashboard?.();
+            if (this.activeTab === "squad") this.renderSquad?.();
+        }));
 
         // Aus der Akte heraus die Vertragsgespräche mit dem Talent eröffnen
         document.getElementById("btnPdPromoteProspect")?.addEventListener("click", () => {

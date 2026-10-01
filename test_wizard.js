@@ -977,6 +977,88 @@ function runWizardTests() {
         }
     });
 
+    test("Postfach: Am Handy klappt die Nachricht unter ihrem Eintrag auf, breit steht sie daneben", () => {
+        // Ein kleines DOM: genug für Liste, Einträge und Detailansicht
+        const machEl = (id, klassen = "") => {
+            const el = { id, children: [], parentElement: null, dataset: {}, _k: new Set(klassen.split(" ").filter(Boolean)), _html: "", listeners: {} };
+            el.classList = {
+                add: k => el._k.add(k), remove: k => el._k.delete(k), contains: k => el._k.has(k),
+                toggle: (k, an) => ((an === undefined ? !el._k.has(k) : an) ? el._k.add(k) : el._k.delete(k))
+            };
+            const loese = k => { const p = k.parentElement; if (p) { p.children = p.children.filter(x => x !== k); k.parentElement = null; } };
+            el.appendChild = k => { loese(k); el.children.push(k); k.parentElement = el; return k; };
+            el.after = k => { loese(k); const p = el.parentElement; p.children.splice(p.children.indexOf(el) + 1, 0, k); k.parentElement = p; };
+            el.addEventListener = (t, f) => { (el.listeners[t] = el.listeners[t] || []).push(f); };
+            el.click = () => (el.listeners.click || []).forEach(f => f({}));
+            el.querySelector = () => null;
+            el.querySelectorAll = sel => { const k = sel.split(".").filter(Boolean); return el.children.filter(c => k.every(x => c._k.has(x))); };
+            // innerHTML ersetzt die Kinder - wie im Browser geht dabei verloren, was darin stand
+            Object.defineProperty(el, "innerHTML", {
+                get: () => el._html,
+                set: (h) => {
+                    el._html = h;
+                    el.children.forEach(c => { c.parentElement = null; });
+                    el.children = [];
+                    if (el.id !== "inboxList") return;
+                    [...h.matchAll(/class="inbox-item([^"]*)" data-msg-id="([^"]+)"/g)].forEach(m => {
+                        const eintrag = machEl(null, "inbox-item" + m[1]);
+                        eintrag.dataset.msgId = m[2];
+                        el.appendChild(eintrag);
+                    });
+                }
+            });
+            return el;
+        };
+        const wurzel = machEl("wurzel");
+        const layout = wurzel.appendChild(machEl("layout", "inbox-layout"));
+        const liste = layout.appendChild(machEl("inboxList"));
+        const detail = layout.appendChild(machEl("inboxDetail", "inbox-detail"));
+        const finde = (el, id) => el.id === id ? el : el.children.reduce((f, c) => f || finde(c, id), null);
+
+        const state = GameState.createNewGame("muc", "normal", { name: "Leser" });
+        state.inbox = Array.from({ length: 8 }, (_, i) => ({ id: 7000 + i, date: `Tag ${i}`, sender: `Absender ${i}`, subject: `Betreff ${i}`, body: `Text ${i}`, read: false, type: "info" }));
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        ui.activeTab = "inbox";
+        ui.renderHeader = () => {};
+        let schmal = true;
+        ui.postfachSchmal = () => schmal;
+        const eintrag = i => liste.children.find(c => c.dataset.msgId === String(7000 + i));
+        const direktUnter = i => liste.children[liste.children.indexOf(eintrag(i)) + 1] === detail;
+
+        const altesDokument = global.document;
+        global.document = { getElementById: id => finde(wurzel, id) };
+        try {
+            ui.renderInbox();
+            if (detail.parentElement !== layout || !detail.classList.contains("inbox-detail-zu")) throw new Error("Am Handy ist ohne Antippen schon eine Nachricht offen");
+
+            eintrag(3).click();
+            if (!direktUnter(3) || detail.classList.contains("inbox-detail-zu")) throw new Error("Die Nachricht steht nicht unter ihrem Eintrag");
+            if (!detail.innerHTML.includes("Betreff 3") || !eintrag(3).classList.contains("offen") || !state.inbox[3].read) throw new Error("Falscher Inhalt oder nicht als gelesen markiert");
+
+            // Ein anderer Eintrag: Die Ansicht wandert mit und zeigt dessen Inhalt -
+            // auch wenn sie beim Neuzeichnen gerade mitten in der Liste stand
+            eintrag(5).click();
+            if (!direktUnter(5) || !detail.innerHTML.includes("Betreff 5")) throw new Error("Beim Wechsel bleibt der alte Inhalt oder Platz");
+            if (eintrag(3).classList.contains("offen")) throw new Error("Zwei Einträge gelten als offen");
+
+            // Zweiter Tipp klappt zu
+            eintrag(5).click();
+            if (detail.parentElement !== layout || !detail.classList.contains("inbox-detail-zu")) throw new Error("Zweiter Tipp klappt nicht zu");
+
+            // Breit: daneben, immer sichtbar, ein zweiter Klick klappt nichts zu
+            schmal = false;
+            eintrag(2).click();
+            eintrag(2).click();
+            if (detail.parentElement !== layout || detail.classList.contains("inbox-detail-zu") || detail.classList.contains("inbox-detail-inline")) {
+                throw new Error("Breit steht die Nachricht nicht neben der Liste");
+            }
+            if (!detail.innerHTML.includes("Betreff 2")) throw new Error("Breit zeigt die Ansicht nicht die gewählte Nachricht");
+        } finally {
+            global.document = altesDokument;
+        }
+    });
+
     test("Einstieg: Erste Schritte erledigen sich durch Tun, jeder Bereich erklärt sich, Begriffe und Abwahl", () => {
         const { EINSTIEG_SCHRITTE, EINSTIEG_ERKLAERUNGEN, EINSTIEG_BEGRIFFE } = require('./js/ui/uiEinstieg.js');
         const { SaveCodec } = require('./js/services/saveCodec.js');

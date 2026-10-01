@@ -5798,6 +5798,13 @@ class UIManager {
                     <div><span>Marktwert</span><strong>${wert ? this.geldKurz(wert) : "-"}</strong></div>
                     <div><span>Verhältnis</span><strong class="ak-quote ${quoteKlasse}">${quote !== null ? `${quote} %` : "-"}</strong></div>
                 </div>
+                <label class="ak-wv">Weiterverkaufsbeteiligung
+                    <select class="styled-select" data-wv-offer="${o.id}">
+                        <option value="0">keine</option>
+                        <option value="10">10 % (Ablöse −5 %)</option>
+                        <option value="20">20 % (Ablöse −10 %)</option>
+                    </select>
+                </label>
                 <div class="ak-knoepfe">
                     <button class="btn btn-sm btn-primary btn-accept-offer" data-offer-id="${o.id}">Annehmen</button>
                     <button class="btn btn-sm btn-secondary btn-more-offer" data-offer-id="${o.id}"${o.nachgebessert ? " disabled title=\"Der Verein hat schon nachgebessert\"" : ""}>Mehr fordern</button>
@@ -5809,7 +5816,8 @@ class UIManager {
     /** Angebot annehmen - der Spieler wechselt sofort */
     nimmAngebotAn(offerId) {
         const state = this.app.state;
-        const r = TransferEngine.nimmAngebotAn(state, offerId);
+        const wahl = document.querySelector(`[data-wv-offer="${offerId}"]`);
+        const r = TransferEngine.nimmAngebotAn(state, offerId, { weiterverkauf: parseInt(wahl?.value || "0", 10) });
         if (!r.ok) { this.showToast(r.grund || "Das Angebot liegt nicht mehr vor.", "error"); return false; }
         this.playSound("goal");
         this.showToast(`✅ ${r.offer.playerName} wechselt für ${this.geldKurz(r.offer.fee)} zu ${r.offer.fromClubName}.`, "success", 6000);
@@ -7804,6 +7812,7 @@ class UIManager {
                 : (player.leihe.leihvereinId === state.userClubId ? "geliehen" : null))
             : (isProspect ? null : (isUserClub ? "eigener" : "markt"));
         const eigenerVerliehen = leiheModus === "verliehen";
+        const klausel = isProspect ? null : TransferEngine.ausstiegsklausel(state, player);
         const demand = (typeof ContractEngine !== 'undefined' && isUserClub && !isProspect) ? ContractEngine.getExtensionDemand(player, club) : { demandWage: Math.round((player.wage || 20000) * 1.15) };
 
         const ratingEngine = this.getRatingEngine();
@@ -7933,6 +7942,19 @@ class UIManager {
                         </select>
                     </div>
 
+                    <div style="margin-bottom:12px;">
+                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Ausstiegsklausel (senkt die Gehaltsforderung):</label>
+                        <select id="extKlauselSelect" class="styled-select" style="width:100%;">
+                            <option value="0">Keine Ausstiegsklausel</option>
+                            ${[4, 2.5, 1.5].map(f => {
+                                const betrag = Math.max(100000, Math.round((player.value || 0) * f / 100000) * 100000);
+                                const rabatt = Math.round((1 - ContractEngine.klauselRabatt(player, betrag)) * 100);
+                                return `<option value="${betrag}">${this.geldKurz(betrag)} (${String(f).replace(".", ",")}-facher Marktwert, ${rabatt} % weniger Gehalt)</option>`;
+                            }).join("")}
+                        </select>
+                        <small style="font-size:11px; color:var(--text-muted);">Wer die Klausel zahlt, holt ihn - Sie können dann nicht ablehnen.</small>
+                    </div>
+
                     <div id="extFeedback" style="font-size:13px; margin-bottom:10px;"></div>
                     <button class="btn btn-primary" id="btnSubmitExtension" style="width:100%;">Neuen Vertrag anbieten</button>
                 </div>
@@ -7948,6 +7970,7 @@ class UIManager {
                         : `<button class="btn btn-secondary" id="btnPdScoutPlayer" style="flex:1;" title="Der Bericht kommt nach einigen Tagen ins Postfach">🔍 Scout entsenden</button>`}
                     <button class="btn btn-primary" id="btnPdBidPlayer" style="flex:1;">💼 Transfer verhandeln</button>
                 </div>
+                ${klausel ? `<button class="btn btn-secondary" id="btnPdKlausel" style="width:100%; margin-top:10px;" title="Sein Verein kann nicht ablehnen">⚡ Ausstiegsklausel ziehen (${this.geldKurz(klausel)})</button>` : ""}
             `;
         }
 
@@ -8128,7 +8151,17 @@ class UIManager {
             <div class="finance-stat-row">
                 <span>Vertragslaufzeit:</span>
                 <strong>${player.contractYears} Jahr(e)</strong>
-            </div>`}
+            </div>
+            ${klausel ? `
+            <div class="finance-stat-row">
+                <span>Ausstiegsklausel:</span>
+                <strong>${this.formatMoneySafe(klausel)}</strong>
+            </div>` : ""}
+            ${player.weiterverkauf && player.weiterverkauf.clubId === state.userClubId ? `
+            <div class="finance-stat-row">
+                <span>Weiterverkaufsbeteiligung:</span>
+                <strong>${player.weiterverkauf.prozent} % für Ihren Verein</strong>
+            </div>` : ""}`}
 
             ${scoutExternalHtml}
             ${contractSectionHtml}
@@ -8152,6 +8185,17 @@ class UIManager {
             document.getElementById("btnPdBidPlayer")?.addEventListener("click", () => {
                 modal.style.display = "none";
                 this.showTransferOfferModal(player.id);
+            });
+
+            document.getElementById("btnPdKlausel")?.addEventListener("click", () => {
+                const res = TransferEngine.zieheAusstiegsklausel(state, player.id);
+                if (!res.success) { this.showToast(res.error, "error"); return; }
+                this.playSound("goal");
+                this.showToast(`⚡ Klausel gezogen: ${player.name} kommt für ${this.geldKurz(res.klausel)} (${this.geldKurz(res.lohn)} / Woche, ${res.laufzeit} Jahre).`, "success", 6000);
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.renderHeader();
+                this.renderCurrentTab();
+                this.showPlayerDetailsModal(player.id);
             });
         }
 
@@ -8246,9 +8290,10 @@ class UIManager {
                 const offWage = parseInt(document.getElementById("extWageInput").value, 10);
                 const offYears = parseInt(document.getElementById("extYearsSelect").value, 10);
                 const offRole = document.getElementById("extRoleSelect").value;
+                const offKlausel = parseInt(document.getElementById("extKlauselSelect")?.value || "0", 10);
                 const feedback = document.getElementById("extFeedback");
 
-                const res = ContractEngine.negotiateExtension(player, club, offWage, offYears, offRole);
+                const res = ContractEngine.negotiateExtension(player, club, offWage, offYears, offRole, offKlausel);
                 if (res.success) {
                     feedback.style.color = "#34d399";
                     feedback.textContent = `✅ ${res.reason}`;
@@ -11127,7 +11172,7 @@ class UIManager {
                 btn.onclick = () => {
                     const angebot = angebote[parseInt(btn.dataset.offer, 10)];
                     if (!angebot) return;
-                    this.nimmAngebotAn(angebot);
+                    this.nimmTrainerAngebotAn(angebot);
                 };
             });
         }
@@ -11146,8 +11191,12 @@ class UIManager {
         })[key] || "Mittelfeld";
     }
 
-    /** Ein Angebot annehmen und bei einem neuen Verein anfangen */
-    nimmAngebotAn(angebot) {
+    /**
+     * Ein Trainerangebot annehmen und bei einem neuen Verein anfangen.
+     * Hieß früher wie das Annehmen eines Transferangebots - und überschrieb
+     * es: Ein Angebot für einen eigenen Spieler ließ sich nicht annehmen.
+     */
+    nimmTrainerAngebotAn(angebot) {
         const state = this.app.state;
         const career = this.getCareerEngine();
         if (!career) return;

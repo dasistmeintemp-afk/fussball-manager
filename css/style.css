@@ -8062,3 +8062,5 @@ td.nowrap { white-space: nowrap; }
 .sa-l.sa-gehalten { background: rgba(139, 151, 167, 0.5); }
 .sa-l.sa-geblockt { border-style: dashed; }
 @media (max-width: 760px) { .sa-raster { grid-template-columns: 1fr; } }
+.ak-wv { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--text-muted); margin: 8px 0; }
+.ak-wv select { width: auto; min-width: 0; font-size: 12px; padding: 4px 8px; }

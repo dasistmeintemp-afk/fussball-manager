@@ -7523,6 +7523,73 @@ function runEngineTests() {
         if (partie.schuesse) throw new Error("Verschlankte Partie behält die Schussliste");
     });
 
+    test("Vertragsklauseln: Ausstiegsklausel ziehen und vereinbaren, Weiterverkaufsbeteiligung", () => {
+        const { ContractEngine } = require('./js/engine/contractEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const fremde = state.players.filter(p => p.clubId && p.clubId !== club.id);
+
+        // Gut jeder Fünfte fremde Spieler hat eine Klausel, eigene keine
+        const mitKlausel = fremde.filter(p => TransferEngine.ausstiegsklausel(state, p));
+        const anteil = mitKlausel.length / fremde.length;
+        if (anteil < 0.15 || anteil > 0.3) throw new Error(`Anteil mit Klausel ${(anteil * 100).toFixed(0)} %`);
+        if (TransferEngine.ausstiegsklausel(state, mitKlausel[0]) !== TransferEngine.ausstiegsklausel(state, mitKlausel[0])) throw new Error("Klausel nicht stabil");
+        const eigener = state.players.find(p => p.clubId === club.id);
+        if (TransferEngine.ausstiegsklausel(state, eigener)) throw new Error("Eigene Spieler haben ohne Vertrag keine Klausel");
+
+        // Klausel ziehen: Der Verein kann nicht ablehnen
+        const ziel = mitKlausel.find(p => {
+            const v = state.clubs.find(c => c.id === p.clubId);
+            return v && (v.reputation || 60) <= (club.reputation || 60) + 15 && !p.leihe;
+        });
+        const verkaeufer = state.clubs.find(c => c.id === ziel.clubId);
+        const klausel = TransferEngine.ausstiegsklausel(state, ziel);
+        club.balance = klausel + 5000000;
+        const kontoVerkaeufer = verkaeufer.balance || 0;
+        const res = TransferEngine.zieheAusstiegsklausel(state, ziel.id);
+        if (!res.success) throw new Error(res.error);
+        if (ziel.clubId !== club.id || club.balance !== 5000000 || (verkaeufer.balance || 0) !== kontoVerkaeufer + klausel) {
+            throw new Error("Klausel gezogen, aber Spieler oder Geld nicht richtig gebucht");
+        }
+        if (TransferEngine.ausstiegsklausel(state, ziel)) throw new Error("Nach dem Wechsel gilt die alte Klausel weiter");
+
+        // Eine Klausel im eigenen Vertrag senkt die Gehaltsforderung
+        const spieler = state.players.find(p => p.clubId === club.id && p.id !== ziel.id && (p.value || 0) > 0);
+        club.wageBudget = Math.max(club.wageBudget || 0, 1e9);
+        const forderung = ContractEngine.getExtensionDemand(spieler, club).demandWage;
+        const angebot = Math.round(forderung * 0.85);
+        const ohne = ContractEngine.negotiateExtension(Object.assign({}, spieler), club, angebot, 3, "Stammspieler", 0);
+        if (ohne.success) throw new Error("85 % der Forderung reichen ohne Klausel nicht");
+        const klauselBetrag = Math.round(spieler.value * 1.5);
+        const mit = ContractEngine.negotiateExtension(spieler, club, angebot, 3, "Stammspieler", klauselBetrag);
+        if (!mit.success || spieler.ausstiegsklausel !== klauselBetrag) throw new Error("Mit Klausel kommt der Vertrag nicht zustande");
+
+        // Die KI zieht eine niedrige Klausel - ablehnen geht nicht
+        spieler.ausstiegsklausel = 100000;
+        spieler.overall = 99;
+        const gezogen = TransferEngine.pruefeAusstiegsklauseln(state, () => 0);
+        if (!gezogen.some(g => g.player === spieler) || spieler.clubId === club.id) throw new Error("Die KI zieht die Klausel nicht");
+        if (!state.inbox.some(m => /Ausstiegsklausel gezogen/.test(m.subject))) throw new Error("Keine Nachricht über die gezogene Klausel");
+
+        // Weiterverkaufsbeteiligung: Beim nächsten Wechsel bekommt der alte Verein seinen Anteil
+        const verkauf = state.players.find(p => p.clubId === club.id && !p.leihe);
+        const kaeufer = state.clubs.find(c => c.id !== club.id && c.id !== verkaeufer.id);
+        if (!state.transferMarket) state.transferMarket = { offers: [] };
+        if (!Array.isArray(state.transferMarket.offers)) state.transferMarket.offers = [];
+        state.transferMarket.offers.push({ id: "wv1", playerId: verkauf.id, playerName: verkauf.name, fromClubId: kaeufer.id, fromClubName: kaeufer.name, fee: 10000000, status: "pending" });
+        const r = TransferEngine.nimmAngebotAn(state, "wv1", { weiterverkauf: 20 });
+        if (!r.ok || r.offer.fee !== 9000000 || !verkauf.weiterverkauf || verkauf.weiterverkauf.clubId !== club.id) {
+            throw new Error("Weiterverkaufsbeteiligung wird nicht vereinbart");
+        }
+        const dritter = state.clubs.find(c => c.id !== club.id && c.id !== kaeufer.id && c.id !== verkaeufer.id);
+        const vorher = club.balance;
+        const kontoKaeufer = kaeufer.balance;
+        TransferEngine.executeTransfer(state, verkauf.id, dritter.id, 20000000, verkauf.wage, 3);
+        if (club.balance !== vorher + 4000000) throw new Error(`Beteiligung nicht ausgezahlt (${club.balance - vorher})`);
+        if (kaeufer.balance !== kontoKaeufer + 16000000) throw new Error("Der Verkäufer bekommt nicht die Ablöse abzüglich der Beteiligung");
+        if (verkauf.weiterverkauf) throw new Error("Die Beteiligung gilt nach dem Weiterverkauf weiter");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

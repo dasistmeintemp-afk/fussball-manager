@@ -301,6 +301,32 @@ class TransferEngine {
     // verstaerkte sich nie, man wurde nie ueberboten, und der Kader des
     // Tabellenzweiten war im Mai derselbe wie im August.
 
+    /**
+     * Das Transferfenster aus Sicht des Nutzers: offen oder zu, und bis
+     * wann bzw. ab wann. Es gilt für alle Vereine gleich - vorher kaufte die
+     * KI nur in den Fenstern, der Nutzer aber jederzeit.
+     */
+    static fensterInfo(state) {
+        const offen = this.istTransferfenster(state);
+        const md = state?.currentMatchday || 0;
+        const gesamt = state?.totalMatchdays || 34;
+        const winter = Math.round(gesamt / 2);
+        if (offen) {
+            const bis = state?.preseason?.aktiv ? "bis nach dem 2. Spieltag"
+                : (md <= 2 ? "bis nach dem 2. Spieltag" : `bis nach dem ${winter + 1}. Spieltag`);
+            return { offen: true, text: `Transferfenster offen ${bis}.` };
+        }
+        const naechstes = md < winter ? `zur Halbserie (ab dem ${winter}. Spieltag)` : "in der Sommerpause";
+        return { offen: false, text: `Transferfenster geschlossen - es öffnet ${naechstes}. Vereinslose Spieler lassen sich jederzeit verpflichten.` };
+    }
+
+    /** Warum gerade kein Transfer geht - oder null */
+    static fensterHindernis(state, { vereinslos = false } = {}) {
+        if (vereinslos) return null;
+        const info = this.fensterInfo(state);
+        return info.offen ? null : info.text;
+    }
+
     /** Laeuft gerade ein Transferfenster? */
     static istTransferfenster(state) {
         if (state?.preseason?.aktiv) return true;
@@ -569,6 +595,8 @@ class TransferEngine {
     static nimmAngebotAn(state, offerId, { weiterverkauf = 0 } = {}) {
         const offer = (state?.transferMarket?.offers || []).find(o => String(o.id) === String(offerId));
         if (!offer || offer.status !== "pending") return { ok: false, grund: "Das Angebot liegt nicht mehr vor." };
+        const fenster = this.fensterHindernis(state);
+        if (fenster) return { ok: false, grund: fenster };
         const buyerId = offer.fromClubId || offer.buyerClubId;
         const prozent = [0, 10, 20].includes(Number(weiterverkauf)) ? Number(weiterverkauf) : 0;
         if (prozent) offer.fee = Math.round(offer.fee * (1 - prozent / 200));
@@ -685,6 +713,8 @@ class TransferEngine {
         if (player.leihe) return { success: false, error: "Er ist gerade verliehen." };
         const klausel = this.ausstiegsklausel(state, player);
         if (!klausel) return { success: false, error: "Sein Vertrag hat keine Ausstiegsklausel." };
+        const fenster = this.fensterHindernis(state);
+        if (fenster) return { success: false, error: fenster };
         if ((userClub.balance || 0) < klausel) return { success: false, error: "Für die Klausel reicht das Geld nicht." };
         const verein = state.clubs.find(c => c.id === player.clubId);
         if (verein && (verein.reputation || 60) > (userClub.reputation || 60) + 15) {
@@ -706,7 +736,7 @@ class TransferEngine {
      */
     static pruefeAusstiegsklauseln(state, zufall = Math.random) {
         const userClub = state.clubs.find(c => c.id === state.userClubId);
-        if (!userClub) return [];
+        if (!userClub || !this.istTransferfenster(state)) return [];
         const gezogen = [];
         const kader = state.players.filter(p => p.clubId === userClub.id && !p.leihe && (p.ausstiegsklausel || 0) > 0);
         kader.forEach(player => {
@@ -745,6 +775,9 @@ class TransferEngine {
 
         // Wer eine Ausstiegsklausel hat, kann einfach gekauft werden
         this.pruefeAusstiegsklauseln(state);
+
+        // Angebote gibt es nur, solange das Transferfenster offen ist
+        if (!this.istTransferfenster(state)) return;
 
         // Wer auf der Transferliste steht oder wechseln will, spricht sich
         // herum: Für ihn kommen öfter Angebote - und etwas niedrigere, weil

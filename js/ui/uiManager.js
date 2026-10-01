@@ -5126,6 +5126,12 @@ class UIManager {
 
         const verliehen = engine.verlieheneVon(state, state.userClubId);
         const geliehen = engine.geliehenVon(state, state.userClubId);
+        const fenster = typeof TransferEngine !== "undefined" && TransferEngine.fensterInfo ? TransferEngine.fensterInfo(state) : null;
+        const fensterEl = document.getElementById("loansFenster");
+        if (fensterEl && fenster) {
+            fensterEl.className = `tf-fenster ${fenster.offen ? "offen" : "zu"}`;
+            fensterEl.textContent = `${fenster.offen ? "🟢" : "🔒"} ${fenster.text}`;
+        }
         const meta = document.getElementById("loansMeta");
         if (meta) meta.textContent = `${verliehen.length} verliehen · ${geliehen.length} geliehen`;
         const zeile = (p, text, knopf = "") => `
@@ -5164,7 +5170,7 @@ class UIManager {
                     <td><span class="badge badge-info">${esc(e.rolle)}</span></td>
                     <td>${Math.round(e.lohnAnteil * 100)} % von ${this.geldKurz(e.wage)}</td>
                     <td>${e.gebuehr ? this.geldKurz(e.gebuehr) : "-"}</td>
-                    <td><button class="btn btn-sm btn-primary" data-ausleihen="${esc(e.playerId)}">Ausleihen</button></td>
+                    <td><button class="btn btn-sm btn-primary" data-ausleihen="${esc(e.playerId)}" ${fenster && !fenster.offen ? `disabled title="${esc(fenster.text)}"` : ""}>Ausleihen</button></td>
                 </tr>`;
         }).join("") : `<tr><td colspan="9" class="text-center text-muted">Gerade gibt kein Verein einen passenden Spieler ab.</td></tr>`;
 
@@ -5308,7 +5314,11 @@ class UIManager {
         const reichweiteEl = document.getElementById("transferReachHint");
         if (reichweiteEl && transferEngine && typeof transferEngine.describeReach === "function") {
             const reich = transferEngine.describeReach(userClub, state.leagues || []);
-            reichweiteEl.innerHTML = `🌍 <strong>Marktreichweite:</strong> ${this.escapeHtml(reich.text)}`
+            const fenster = typeof transferEngine.fensterInfo === "function" ? transferEngine.fensterInfo(state) : null;
+            reichweiteEl.innerHTML = (fenster
+                    ? `<div class="tf-fenster ${fenster.offen ? "offen" : "zu"}">${fenster.offen ? "🟢" : "🔒"} ${this.escapeHtml(fenster.text)}</div>`
+                    : "")
+                + `🌍 <strong>Marktreichweite:</strong> ${this.escapeHtml(reich.text)}`
                 + (ausserReichweite > 0
                     ? ` <span class="text-muted">(${ausserReichweite.toLocaleString("de-DE")} Spieler höherer Ligen sind für Sie außer Reichweite.)</span>`
                     : "");

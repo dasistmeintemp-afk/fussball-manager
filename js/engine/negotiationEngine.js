@@ -174,6 +174,11 @@ class NegotiationEngine {
 
         const sellerClub = state.clubs.find(c => c.id === player.clubId);
         const transferEngine = this.getTransferEngine();
+        // Außerhalb des Transferfensters wechselt nur, wer vereinslos ist.
+        // Eine Verhandlung, die im Fenster beginnt, darf danach zu Ende gehen.
+        const fenster = transferEngine && typeof transferEngine.fensterHindernis === "function"
+            ? transferEngine.fensterHindernis(state, { vereinslos: !sellerClub }) : null;
+        if (fenster) return { success: false, error: fenster };
         const askingPrice = transferEngine
             ? transferEngine.calculateAskingPrice(player, sellerClub)
             : Math.round((player.value || 1000000) * 1.15);

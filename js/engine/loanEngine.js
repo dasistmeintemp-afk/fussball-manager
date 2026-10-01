@@ -107,8 +107,16 @@ class LoanEngine {
     // ------------------------------------------------------------ Verleihen
 
     /** Warum ein eigener Spieler nicht verliehen werden kann - oder null */
+    /** Leihen gehen nur im Transferfenster */
+    static _fenster(state) {
+        const te = this._resolve("TransferEngine", "./transferEngine.js");
+        return te && typeof te.fensterHindernis === "function" ? te.fensterHindernis(state) : null;
+    }
+
     static verleihHindernis(state, player) {
         if (!player || player.clubId !== state.userClubId) return "Nur Spieler des eigenen Vereins.";
+        const fenster = this._fenster(state);
+        if (fenster) return fenster;
         if (player.leihe) return "Er ist bereits verliehen.";
         if ((player.injuredWeeks || 0) > 0) return "Er ist verletzt.";
         if ((player.contractYears ?? 1) < 1) return "Sein Vertrag läuft aus.";
@@ -187,6 +195,8 @@ class LoanEngine {
         if (!player?.leihe || player.leihe.stammvereinId !== state.userClubId) {
             return { success: false, error: "Er ist nicht von Ihnen verliehen." };
         }
+        const fenster = this._fenster(state);
+        if (fenster) return { success: false, error: `Zurückholen geht nur im Transferfenster. ${fenster}` };
         const leihverein = this._club(state, player.leihe.leihvereinId);
         this._beende(state, player);
         this._post(state, "Transferabteilung", `${player.name} zurückgeholt`,
@@ -251,6 +261,8 @@ class LoanEngine {
 
     static leihHindernis(state, player) {
         if (!player) return "Unbekannter Spieler.";
+        const fenster = this._fenster(state);
+        if (fenster) return fenster;
         if (player.clubId === state.userClubId) return "Er spielt schon für Sie.";
         if (player.leihe) return "Er ist bereits verliehen.";
         if (this.geliehenVon(state, state.userClubId).length >= this.MAX_GELIEHEN) {

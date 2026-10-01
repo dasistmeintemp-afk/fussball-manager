@@ -8064,3 +8064,6 @@ td.nowrap { white-space: nowrap; }
 @media (max-width: 760px) { .sa-raster { grid-template-columns: 1fr; } }
 .ak-wv { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--text-muted); margin: 8px 0; }
 .ak-wv select { width: auto; min-width: 0; font-size: 12px; padding: 4px 8px; }
+.tf-fenster { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.tf-fenster.offen { color: #34d399; }
+.tf-fenster.zu { color: #f59e0b; }

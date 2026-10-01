@@ -7523,6 +7523,46 @@ function runEngineTests() {
         if (partie.schuesse) throw new Error("Verschlankte Partie behält die Schussliste");
     });
 
+    test("Transferfenster gilt auch für den Nutzer: Käufe, Verkäufe, Klauseln und Leihen", () => {
+        const { LoanEngine } = require('./js/engine/loanEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        if (!TransferEngine.fensterInfo(state).offen) throw new Error("In der Vorbereitung ist das Fenster zu");
+
+        // Mitten in der Hinrunde: zu
+        if (state.preseason) state.preseason.aktiv = false;
+        state.currentMatchday = 6;
+        const info = TransferEngine.fensterInfo(state);
+        if (info.offen || !/Halbserie/.test(info.text)) throw new Error(`Fenster am 6. Spieltag: ${info.text}`);
+        const fremd = state.players.find(p => p.clubId && p.clubId !== club.id);
+        const neg = NegotiationEngine.startTransferNegotiation(state, fremd.id, club.id);
+        if (neg.success) throw new Error("Verhandlung außerhalb des Fensters eröffnet");
+        // Vereinslose gehen immer
+        const frei = state.players.find(p => p.clubId && p.clubId !== club.id && p.id !== fremd.id);
+        const altVerein = state.clubs.find(c => c.id === frei.clubId);
+        altVerein.playerIds = altVerein.playerIds.filter(id => id !== frei.id);
+        frei.clubId = null;
+        const negFrei = NegotiationEngine.startTransferNegotiation(state, frei.id, club.id);
+        if (!negFrei.success) throw new Error(`Vereinsloser lässt sich nicht verpflichten: ${negFrei.error}`);
+        // Angebote annehmen, Klauseln ziehen, verleihen: zu
+        state.transferMarket.offers.push({ id: "fz", playerId: club.playerIds[3], playerName: "x", fromClubId: altVerein.id, fromClubName: altVerein.name, fee: 1000000, status: "pending" });
+        if (TransferEngine.nimmAngebotAn(state, "fz").ok) throw new Error("Angebot außerhalb des Fensters angenommen");
+        const mitKlausel = state.players.find(p => p.clubId && p.clubId !== club.id && TransferEngine.ausstiegsklausel(state, p));
+        club.balance = 1e10;
+        if (TransferEngine.zieheAusstiegsklausel(state, mitKlausel.id).success) throw new Error("Klausel außerhalb des Fensters gezogen");
+        const eigener = state.players.find(p => p.id === club.playerIds[5]);
+        if (!/Transferfenster/.test(LoanEngine.verleihHindernis(state, eigener) || "")) throw new Error("Verleihen außerhalb des Fensters möglich");
+        // Die KI bietet außerhalb des Fensters nicht
+        const vorher = state.transferMarket.offers.length;
+        for (let i = 0; i < 40; i++) TransferEngine.processAITransferMarket(state);
+        if (state.transferMarket.offers.length !== vorher) throw new Error("KI bietet außerhalb des Fensters");
+
+        // Zur Halbserie: offen
+        state.currentMatchday = Math.round((state.totalMatchdays || 34) / 2);
+        if (!TransferEngine.fensterInfo(state).offen) throw new Error("Zur Halbserie ist das Fenster zu");
+        if (!NegotiationEngine.startTransferNegotiation(state, fremd.id, club.id).success) throw new Error("Im Winterfenster keine Verhandlung möglich");
+    });
+
     test("Vertragsklauseln: Ausstiegsklausel ziehen und vereinbaren, Weiterverkaufsbeteiligung", () => {
         const { ContractEngine } = require('./js/engine/contractEngine.js');
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });

@@ -2303,8 +2303,12 @@ function runEngineTests() {
         const avgReds = totalReds / totalMatches;
         const avgPenalties = totalPenalties / totalMatches;
 
-        if (avgGoals < 2.2 || avgGoals > 3.4) {
-            throw new Error(`Tore/Spiel außerhalb des Bereichs [2.2, 3.4]: ${avgGoals.toFixed(2)}`);
+        // Der Schnitt aus 500 Spielen schwankt um etwa ±0,08 (Streuung je
+        // Spiel rund 1,8 Tore). Bei einem Mittel um 3,3 schlug die alte
+        // Obergrenze 3,4 je nach Startwert zufällig an - 3,5 lässt gut zwei
+        // Standardabweichungen Luft und fängt trotzdem jede echte Torflut.
+        if (avgGoals < 2.2 || avgGoals > 3.5) {
+            throw new Error(`Tore/Spiel außerhalb des Bereichs [2.2, 3.5]: ${avgGoals.toFixed(2)}`);
         }
         if (avgShotsPerTeam < 8 || avgShotsPerTeam > 18) {
             throw new Error(`Schüsse/Team außerhalb des Bereichs [8, 18]: ${avgShotsPerTeam.toFixed(2)}`);

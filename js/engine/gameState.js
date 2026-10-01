@@ -1565,8 +1565,34 @@ class GameState {
      */
     static SAVE_SAMMELZEIT_MS = 1000;
 
-    /** Der Speicherplatz, wenn niemand einen anderen nennt */
+    /** Der erste Speicherplatz - unter diesem Namen lag der Spielstand schon immer */
     static SPEICHERPLATZ = "football_manager_savegame";
+
+    /**
+     * Mehrere Karrieren nebeneinander, dazu Sicherungskopien.
+     *
+     * Bisher gab es genau einen Spielstand: Eine neue Karriere überschrieb
+     * die alte, und ein beschädigter Stand war das Ende der Karriere. Jetzt
+     * gibt es fünf Plätze. Platz 1 behält den alten Schlüssel, ein
+     * vorhandener Stand liegt also ohne Umzug dort.
+     *
+     * Je Platz hält das Spiel die letzten drei Sicherungen, höchstens eine je
+     * Spielwoche: Liegt die jüngste Sicherung sieben Spieltage im Kalender
+     * zurück oder in einer früheren Saison, wird der Stand beim Speichern
+     * zusätzlich als Sicherung abgelegt, und die älteste fällt heraus.
+     * Sicherungen gibt es nur mit IndexedDB - der LocalStorage fasst kaum
+     * einen einzigen Stand.
+     *
+     * Das Verzeichnis kennt zu jedem Platz und jeder Sicherung eine kurze
+     * Zusammenfassung (Verein, Saison, Spieltag, Datum). So zeigt der
+     * Startbildschirm alle Karrieren, ohne jeden Stand ganz einzulesen. In
+     * IndexedDB wird es im selben Vorgang geschrieben wie der Stand selbst
+     * und kann deshalb nicht von ihm abweichen.
+     */
+    static PLATZ_ANZAHL = 5;
+    static VERZEICHNIS = "football_manager_verzeichnis";
+    static SICHERUNGEN_JE_PLATZ = 3;
+    static SICHERUNG_ABSTAND_TAGE = 7;
 
     /**
      * Wo der Spielstand liegt.
@@ -1577,17 +1603,45 @@ class GameState {
      * bleibt Ausweichquartier, wenn es kein IndexedDB gibt oder ein
      * Schreibvorgang dort scheitert.
      *
-     * `_spiegel` hält den zuletzt gesicherten Text je Speicherplatz. Damit
+     * `_spiegel` hält den zuletzt gesicherten Text des aktiven Platzes. Damit
      * bleiben Laden und Zusammenfassung synchron, obwohl IndexedDB nur
      * asynchron liest: Gelesen wird einmal beim Start, danach kennt der
-     * Spiegel jeden neuen Stand, weil er ihn selbst geschrieben hat.
+     * Spiegel jeden neuen Stand, weil er ihn selbst geschrieben hat. Andere
+     * Plätze und Sicherungen liest `ladePlatz` bei Bedarf nach.
      */
     static _idbAktiv = false;
     static _spiegel = {};
     static _letzteSicherung = null;
+    static _aktiverPlatz = null;
+    static _verzeichnis = null;
 
     static _platz(slotKey) {
-        return slotKey || GameState.SPEICHERPLATZ;
+        return slotKey || GameState._aktiverPlatz || GameState.SPEICHERPLATZ;
+    }
+
+    static platzSchluessel(nr) {
+        return nr > 1 ? `${GameState.SPEICHERPLATZ}_${nr}` : GameState.SPEICHERPLATZ;
+    }
+
+    static platzNummer(slotKey) {
+        return GameState.alleSpeicherplaetze().indexOf(slotKey) + 1;
+    }
+
+    static alleSpeicherplaetze() {
+        return Array.from({ length: GameState.PLATZ_ANZAHL }, (_, i) => GameState.platzSchluessel(i + 1));
+    }
+
+    /** Auf diesen Platz speichert das laufende Spiel */
+    static aktiverPlatz() {
+        return GameState._platz(null);
+    }
+
+    static setzeAktivenPlatz(slotKey) {
+        if (!GameState.alleSpeicherplaetze().includes(slotKey)) throw new Error(`Unbekannter Speicherplatz: ${slotKey}`);
+        const bisher = GameState.aktiverPlatz();
+        // Den Text des verlassenen Platzes nicht für nichts im Speicher halten
+        if (bisher !== slotKey && GameState._idbAktiv) delete GameState._spiegel[bisher];
+        GameState._aktiverPlatz = slotKey;
     }
 
     static _getSpeicherDB() {
@@ -1599,7 +1653,91 @@ class GameState {
         return GameState._idbAktiv ? "indexedDB" : "localStorage";
     }
 
-    saveToLocalStorage(slotKey = GameState.SPEICHERPLATZ, sofort = false) {
+    /** Gibt es Sicherungskopien? Nur mit IndexedDB. */
+    static sicherungenMoeglich() {
+        return GameState._idbAktiv;
+    }
+
+    static _leeresVerzeichnis() {
+        return { version: 1, plaetze: {}, sicherungen: {} };
+    }
+
+    static _alsVerzeichnis(roh) {
+        let v = roh;
+        if (typeof v === "string") {
+            try { v = JSON.parse(v); } catch (e) { v = null; }
+        }
+        if (!v || typeof v !== "object") return GameState._leeresVerzeichnis();
+        if (!v.plaetze || typeof v.plaetze !== "object") v.plaetze = {};
+        if (!v.sicherungen || typeof v.sicherungen !== "object") v.sicherungen = {};
+        return v;
+    }
+
+    /**
+     * Das Verzeichnis aller Plätze. Ohne IndexedDB liegt es im LocalStorage
+     * und wird beim ersten Zugriff gelesen - fehlt es dort, wird es aus den
+     * vorhandenen Ständen gebildet.
+     */
+    static verzeichnis() {
+        if (GameState._verzeichnis) return GameState._verzeichnis;
+        const v = GameState._alsVerzeichnis(GameState._idbAktiv ? null : GameState._lsLies(GameState.VERZEICHNIS));
+        if (!GameState._idbAktiv) {
+            GameState.alleSpeicherplaetze().forEach(k => {
+                if (v.plaetze[k]) return;
+                const z = GameState._zusammenfassungAusText(GameState._lsLies(k));
+                if (z) v.plaetze[k] = z;
+            });
+        }
+        GameState._verzeichnis = v;
+        return v;
+    }
+
+    /** Alle Plätze mit Nummer und Zusammenfassung (null = frei) */
+    static speicherplaetze() {
+        const v = GameState.verzeichnis();
+        const aktiv = GameState.aktiverPlatz();
+        return GameState.alleSpeicherplaetze().map((schluessel, i) => ({
+            schluessel,
+            nr: i + 1,
+            aktiv: schluessel === aktiv,
+            zusammenfassung: v.plaetze[schluessel] || null
+        }));
+    }
+
+    /** Die Sicherungen eines Platzes, die jüngste zuerst */
+    static sicherungen(slotKey = null) {
+        return (GameState.verzeichnis().sicherungen[GameState._platz(slotKey)] || []).slice();
+    }
+
+    static freierPlatz() {
+        return GameState.speicherplaetze().find(p => !p.zusammenfassung)?.schluessel || null;
+    }
+
+    /** Der am längsten nicht gespielte Platz - ihn ersetzt eine neue Karriere, wenn alles belegt ist */
+    static aeltesterPlatz() {
+        const belegt = GameState.speicherplaetze().filter(p => p.zusammenfassung);
+        if (!belegt.length) return GameState.SPEICHERPLATZ;
+        belegt.sort((a, b) => (Date.parse(a.zusammenfassung.lastSaved) || 0) - (Date.parse(b.zusammenfassung.lastSaved) || 0));
+        return belegt[0].schluessel;
+    }
+
+    /** Der zuletzt gespielte Platz - mit ihm geht es auf dem Startbildschirm weiter */
+    static juengsterPlatz() {
+        const belegt = GameState.speicherplaetze().filter(p => p.zusammenfassung);
+        if (!belegt.length) return null;
+        belegt.sort((a, b) => (Date.parse(b.zusammenfassung.lastSaved) || 0) - (Date.parse(a.zusammenfassung.lastSaved) || 0));
+        return belegt[0].schluessel;
+    }
+
+    static _lsLies(schluessel) {
+        try { return localStorage.getItem(schluessel); } catch (e) { return null; }
+    }
+
+    static _lsEntferne(schluessel) {
+        try { localStorage.removeItem(schluessel); } catch (e) { /* ohne LocalStorage */ }
+    }
+
+    saveToLocalStorage(slotKey = null, sofort = false) {
         slotKey = GameState._platz(slotKey);
         if (!sofort && typeof setTimeout === "function") {
             this._saveAusstehend = slotKey;
@@ -1612,19 +1750,29 @@ class GameState {
             }, GameState.SAVE_SAMMELZEIT_MS);
             return true;
         }
+        return this._schreibeJetzt(slotKey);
+    }
 
+    /**
+     * Den Stand sofort schreiben.
+     * `sicherung`: "faellig" (Standard) legt eine Sicherung an, wenn eine
+     * Spielwoche um ist, "immer" in jedem Fall, "nie" gar nicht.
+     */
+    _schreibeJetzt(slotKey, sicherung = "faellig") {
         try {
             this.lastSaved = new Date().toISOString();
             const codec = GameState._getSaveCodec();
             const payload = codec ? codec.encodeState(this) : this;
             const text = JSON.stringify(payload);
+            const zusammenfassung = GameState._zusammenfassungAus(this);
             if (GameState._idbAktiv) {
-                GameState._spiegel[slotKey] = text;
-                GameState._sichereInIdb(this, slotKey, text);
+                if (slotKey === GameState.aktiverPlatz()) GameState._spiegel[slotKey] = text;
+                GameState._sichereInIdb(this, slotKey, text, zusammenfassung, sicherung);
                 return true;
             }
             localStorage.setItem(slotKey, text);
-            GameState._spiegel[slotKey] = text;
+            if (slotKey === GameState.aktiverPlatz()) GameState._spiegel[slotKey] = text;
+            GameState._trageEinLs(slotKey, zusammenfassung);
             this._saveFehler = null;
             return true;
         } catch (e) {
@@ -1638,29 +1786,83 @@ class GameState {
         }
     }
 
+    /** Ohne IndexedDB: das Verzeichnis im LocalStorage nachführen */
+    static _trageEinLs(slotKey, zusammenfassung) {
+        const v = GameState.verzeichnis();
+        if (zusammenfassung) v.plaetze[slotKey] = zusammenfassung;
+        try {
+            localStorage.setItem(GameState.VERZEICHNIS, JSON.stringify(v));
+        } catch (e) {
+            // Das Verzeichnis lässt sich aus den Ständen neu bilden
+            console.warn("Verzeichnis der Spielstände nicht gesichert:", e);
+        }
+    }
+
     static _speicherfehlerText(e) {
         return (e && e.name === "QuotaExceededError")
             ? "Der Speicher des Browsers ist voll - der Spielstand konnte nicht gesichert werden. Exportieren Sie ihn als Datei."
             : `Der Spielstand konnte nicht gesichert werden (${e?.name || "Fehler"}).`;
     }
 
+    /** Fortschritt im Spiel in Kalendertagen, über Saisons hinweg vergleichbar */
+    static _spieltage(z) {
+        return (Number(z?.seasonYear) || 0) * 1000 + (Number(z?.tag) || 0);
+    }
+
     /**
-     * In IndexedDB schreiben. Die Vorgänge laufen in der Reihenfolge, in der
-     * sie angestoßen wurden - der letzte Stand gewinnt also immer.
+     * Ist eine Sicherung fällig? Ja, wenn keine vorhandene Sicherung aus den
+     * letzten sieben Kalendertagen vor dem jetzigen Stand stammt. Wer eine
+     * ältere Sicherung zurückholt, bekommt so bald wieder eine frische.
+     */
+    static _sicherungFaellig(sicherungen, z) {
+        const jetzt = GameState._spieltage(z);
+        return !sicherungen.some(s => {
+            const abstand = jetzt - GameState._spieltage(s);
+            return abstand >= 0 && abstand < GameState.SICHERUNG_ABSTAND_TAGE;
+        });
+    }
+
+    /**
+     * In IndexedDB schreiben: Stand, Verzeichnis und eine fällige Sicherung
+     * in einem Vorgang. Die Vorgänge laufen in der Reihenfolge, in der sie
+     * angestoßen wurden - der letzte Stand gewinnt also immer.
      * Scheitert IndexedDB, springt der LocalStorage ein, solange der Stand
      * hineinpasst. Ein Stand dort ist dann immer der neueste; gelingt der
      * nächste Schreibvorgang in IndexedDB, wird er wieder freigegeben.
      */
-    static _sichereInIdb(state, slotKey, text) {
+    static _sichereInIdb(state, slotKey, text, zusammenfassung, sicherung = "faellig") {
         const db = GameState._getSpeicherDB();
-        const vorgang = db.schreibe(slotKey, text).then(() => {
-            try { localStorage.removeItem(slotKey); } catch (e) { /* ohne LocalStorage */ }
+        const v = GameState.verzeichnis();
+        const eintraege = { [slotKey]: text };
+        const loeschen = [];
+        let liste = (v.sicherungen[slotKey] || []).slice();
+        // Eine andere Karriere auf diesem Platz: Die alten Sicherungen gehören nicht zu ihr
+        const vorher = v.plaetze[slotKey];
+        if (vorher && zusammenfassung && vorher.saveId !== zusammenfassung.saveId) {
+            liste.forEach(s => loeschen.push(s.schluessel));
+            liste = [];
+        }
+        let neu = null;
+        if (zusammenfassung && (sicherung === "immer" || (sicherung === "faellig" && GameState._sicherungFaellig(liste, zusammenfassung)))) {
+            neu = `${slotKey}__sicherung_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+            eintraege[neu] = text;
+            liste.unshift(Object.assign({}, zusammenfassung, { schluessel: neu }));
+            while (liste.length > GameState.SICHERUNGEN_JE_PLATZ) loeschen.push(liste.pop().schluessel);
+        }
+        if (zusammenfassung) v.plaetze[slotKey] = zusammenfassung;
+        v.sicherungen[slotKey] = liste;
+        eintraege[GameState.VERZEICHNIS] = JSON.stringify(v);
+
+        const vorgang = db.schreibeMehrere(eintraege, loeschen).then(() => {
+            GameState._lsEntferne(slotKey);
             state._saveFehler = null;
             return true;
         }).catch(fehler => {
             console.error("Speichern in IndexedDB fehlgeschlagen:", fehler);
+            // Die Sicherung kam nicht an - nicht anbieten, was es nicht gibt
+            if (neu && v.sicherungen[slotKey]) v.sicherungen[slotKey] = v.sicherungen[slotKey].filter(s => s.schluessel !== neu);
             try {
-                localStorage.setItem(slotKey, GameState._spiegel[slotKey] || text);
+                localStorage.setItem(slotKey, text);
                 state._saveFehler = null;
                 return true;
             } catch (e) {
@@ -1674,40 +1876,108 @@ class GameState {
     }
 
     /**
-     * Beim Start: Datenbank öffnen, den Spielstand einlesen und einen Stand
-     * aus dem LocalStorage dorthin umziehen. Liegen in beiden Speichern
-     * Stände, gilt der jüngere.
+     * Beim Start: Datenbank öffnen, das Verzeichnis und den zuletzt
+     * gespielten Stand einlesen. Stände aus dem LocalStorage ziehen nach
+     * IndexedDB um; liegen in beiden Speichern Stände für denselben Platz,
+     * gilt der jüngere. Fehlt das Verzeichnis (erster Start dieser Fassung),
+     * wird es einmalig aus den Ständen gebildet.
      */
-    static bereiteSpeicherVor(slotKey = GameState.SPEICHERPLATZ) {
-        slotKey = GameState._platz(slotKey);
+    static bereiteSpeicherVor() {
+        GameState._verzeichnis = null;
+        GameState._aktiverPlatz = null;
         const db = GameState._getSpeicherDB();
         if (!db || !db.verfuegbar()) {
             GameState._idbAktiv = false;
+            GameState._aktiverPlatz = GameState.juengsterPlatz();
             return Promise.resolve({ ort: "localStorage" });
         }
+        const plaetze = GameState.alleSpeicherplaetze();
+        let verzeichnisText = null;
+        const lsTexte = {};
+        const idbTexte = {};
         return db.oeffne()
-            .then(() => db.lies(slotKey))
-            .then(idbText => {
-                let lsText = null;
-                try { lsText = localStorage.getItem(slotKey); } catch (e) { lsText = null; }
-                if (typeof idbText !== "string") idbText = null;
-                let text = idbText;
-                if (lsText && (!idbText || GameState._gespeichertAm(lsText) >= GameState._gespeichertAm(idbText))) text = lsText;
-                if (text) GameState._spiegel[slotKey] = text;
-                GameState._idbAktiv = true;
-                db.bitteUmDauerhaftenSpeicher();
-                if (!lsText) return { ort: "indexedDB", umgezogen: false };
-                // Umzug: erst sicher in IndexedDB, dann den LocalStorage freigeben
-                return db.schreibe(slotKey, text).then(() => {
-                    try { localStorage.removeItem(slotKey); } catch (e) { /* ohne LocalStorage */ }
-                    return { ort: "indexedDB", umgezogen: true };
+            .then(() => db.lies(GameState.VERZEICHNIS))
+            .then(text => {
+                verzeichnisText = typeof text === "string" ? text : null;
+                plaetze.forEach(k => { const t = GameState._lsLies(k); if (t) lsTexte[k] = t; });
+                // Die Kette beginnt bei der Datenbank selbst, nicht bei einem
+                // fremden Promise - so bleibt sie in deren Takt
+                let kette = db.oeffne();
+                plaetze.filter(k => !verzeichnisText || lsTexte[k]).forEach(k => {
+                    kette = kette
+                        .then(() => db.lies(k))
+                        .then(t => { idbTexte[k] = typeof t === "string" ? t : null; });
                 });
+                return kette;
+            })
+            .then(() => {
+                const v = GameState._alsVerzeichnis(verzeichnisText);
+                const eintraege = {};
+                let umgezogen = false;
+                plaetze.forEach(k => {
+                    if (!(k in idbTexte)) return;
+                    const idbText = idbTexte[k];
+                    const lsText = lsTexte[k] || null;
+                    let text = idbText;
+                    if (lsText && (!idbText || GameState._gespeichertAm(lsText) >= GameState._gespeichertAm(idbText))) {
+                        text = lsText;
+                        eintraege[k] = lsText;
+                        umgezogen = true;
+                    }
+                    const z = text ? GameState._zusammenfassungAusText(text) : null;
+                    if (z) v.plaetze[k] = z;
+                    else delete v.plaetze[k];
+                    if (text) GameState._spiegel[k] = text;
+                });
+                GameState._verzeichnis = v;
+                GameState._idbAktiv = true;
+                const aktiv = GameState.juengsterPlatz() || GameState.SPEICHERPLATZ;
+                GameState._aktiverPlatz = aktiv;
+                // Nur den aktiven Stand im Speicher halten
+                Object.keys(GameState._spiegel).forEach(k => { if (k !== aktiv) delete GameState._spiegel[k]; });
+                db.bitteUmDauerhaftenSpeicher();
+                const geaendert = Object.keys(eintraege).length > 0 || !verzeichnisText;
+                if (geaendert) eintraege[GameState.VERZEICHNIS] = JSON.stringify(v);
+                return (geaendert ? db.schreibeMehrere(eintraege, []) : db.oeffne())
+                    .then(() => {
+                        // Erst wenn IndexedDB den Stand sicher hat, den LocalStorage freigeben
+                        Object.keys(lsTexte).forEach(k => GameState._lsEntferne(k));
+                        GameState._lsEntferne(GameState.VERZEICHNIS);
+                    }, e => {
+                        // Gelesen werden konnte - also bei IndexedDB bleiben und
+                        // den LocalStorage als Ausweichquartier stehen lassen
+                        console.warn("Umzug nach IndexedDB nicht geschrieben, der LocalStorage bleibt:", e);
+                    })
+                    .then(() => {
+                        if (GameState._spiegel[aktiv] || !v.plaetze[aktiv]) return null;
+                        return db.lies(aktiv).then(t => { if (typeof t === "string") GameState._spiegel[aktiv] = t; });
+                    })
+                    .then(() => GameState._raeumeSicherungenAuf(db, v))
+                    .then(() => ({ ort: "indexedDB", umgezogen }));
             })
             .catch(e => {
                 console.warn("IndexedDB nicht nutzbar, der Spielstand bleibt im LocalStorage:", e);
                 GameState._idbAktiv = false;
+                GameState._verzeichnis = null;
+                GameState._aktiverPlatz = GameState.juengsterPlatz();
                 return { ort: "localStorage", fehler: e?.message || String(e) };
             });
+    }
+
+    /**
+     * Sicherungen, die kein Verzeichnis mehr kennt (etwa nach einem
+     * abgebrochenen Schreibvorgang), belegen nur Platz - weg damit.
+     */
+    static _raeumeSicherungenAuf(db, v) {
+        if (typeof db.schluessel !== "function") return null;
+        const bekannt = new Set();
+        Object.values(v.sicherungen).forEach(liste => (liste || []).forEach(s => bekannt.add(s.schluessel)));
+        return db.schluessel()
+            .then(alle => {
+                const verwaist = (alle || []).filter(k => typeof k === "string" && k.includes("__sicherung_") && !bekannt.has(k));
+                return verwaist.length ? db.schreibeMehrere({}, verwaist) : true;
+            })
+            .catch(e => console.warn("Aufräumen der Sicherungen übersprungen:", e));
     }
 
     /** Zeitpunkt eines gespeicherten Stands, ohne ihn ganz aufzufalten */
@@ -1721,20 +1991,46 @@ class GameState {
     }
 
     /** Sicherstellen, dass nichts mehr in der Warteschlange hängt */
-    flushSave(slotKey = GameState.SPEICHERPLATZ) {
+    flushSave(slotKey = null) {
         if (this._saveTimer && typeof clearTimeout === "function") {
             clearTimeout(this._saveTimer);
             this._saveTimer = null;
         }
-        const ziel = this._saveAusstehend || slotKey;
+        const ziel = this._saveAusstehend || GameState._platz(slotKey);
         this._saveAusstehend = null;
         return this.saveToLocalStorage(ziel, true);
     }
 
     /** Wie flushSave, wartet aber, bis der Stand wirklich geschrieben ist */
-    sichereJetzt(slotKey = GameState.SPEICHERPLATZ) {
+    sichereJetzt(slotKey = null) {
         const ok = this.flushSave(slotKey);
         if (GameState._idbAktiv && GameState._letzteSicherung) return GameState._letzteSicherung;
+        return Promise.resolve(ok);
+    }
+
+    /** Eine gesammelte, noch nicht geschriebene Sicherung verwerfen - etwa wenn der Platz gelöscht wird */
+    verwirfAusstehendes() {
+        if (this._saveTimer && typeof clearTimeout === "function") clearTimeout(this._saveTimer);
+        this._saveTimer = null;
+        this._saveAusstehend = null;
+    }
+
+    /** Von Hand eine Sicherung anlegen, auch wenn noch keine Spielwoche um ist */
+    legeSicherungAn() {
+        this.verwirfAusstehendes();
+        if (!GameState._idbAktiv) return Promise.resolve(false);
+        const ok = this._schreibeJetzt(GameState.aktiverPlatz(), "immer");
+        return ok ? GameState._letzteSicherung : Promise.resolve(false);
+    }
+
+    /** Den laufenden Stand zusätzlich auf einen anderen Platz kopieren */
+    sichereKopie(zielPlatz) {
+        if (!GameState.alleSpeicherplaetze().includes(zielPlatz) || zielPlatz === GameState.aktiverPlatz()) {
+            return Promise.resolve(false);
+        }
+        this.flushSave();
+        const ok = this._schreibeJetzt(zielPlatz, "nie");
+        if (GameState._idbAktiv && ok) return GameState._letzteSicherung;
         return Promise.resolve(ok);
     }
 
@@ -1775,18 +2071,38 @@ class GameState {
         return localStorage.getItem(slotKey);
     }
 
-    static _readStoredState(slotKey) {
-        const raw = GameState._gespeicherterText(slotKey);
-        if (!raw) return null;
+    /** Den Text eines Platzes oder einer Sicherung holen, notfalls aus IndexedDB */
+    static _liesText(schluessel) {
+        if (!GameState._idbAktiv) return Promise.resolve(GameState._lsLies(schluessel));
+        if (GameState._spiegel[schluessel]) return Promise.resolve(GameState._spiegel[schluessel]);
+        return GameState._getSpeicherDB().lies(schluessel).then(t => (typeof t === "string" ? t : null));
+    }
 
+    static _ausText(raw) {
+        if (!raw) return null;
         const parsed = JSON.parse(raw);
         const codec = GameState._getSaveCodec();
         return (codec && codec.isEncoded(parsed)) ? codec.decodeState(parsed) : parsed;
     }
 
-    static getSaveSummary(slotKey = GameState.SPEICHERPLATZ) {
+    static _readStoredState(slotKey) {
+        return GameState._ausText(GameState._gespeicherterText(slotKey));
+    }
+
+    static _zuState(daten) {
+        if (!daten) return null;
+        const state = Object.assign(new GameState(), daten);
+        GameState.registerCustomFormations(state);
+        GameState.sichereSignaturen(state);
+        return state;
+    }
+
+    /**
+     * Was Startbildschirm und Speicherplätze über einen Stand zeigen. Geht
+     * mit einem eingelesenen Stand ebenso wie mit dem laufenden Spiel.
+     */
+    static _zusammenfassungAus(parsed) {
         try {
-            const parsed = GameState._readStoredState(slotKey);
             if (!parsed || !parsed.userClubId || !parsed.clubs) return null;
             const userClub = parsed.clubs.find(c => c.id === parsed.userClubId);
             const leagueClubs = parsed.clubs.filter(c => c.leagueId === userClub?.leagueId);
@@ -1813,36 +2129,89 @@ class GameState {
                 userRank: userRank > 0 ? userRank : 1,
                 lastSaved: parsed.lastSaved || new Date().toISOString(),
                 difficulty: parsed.difficulty || "normal",
-                balance: userClub ? userClub.balance : 0
+                balance: userClub ? userClub.balance : 0,
+                // Kalendertag im Spiel - daran misst sich der Abstand der Sicherungen
+                currentDate: parsed.currentDate || null,
+                tag: parsed.currentDayIndex || 0
             };
         } catch (e) {
             return null;
         }
     }
 
-    static loadFromLocalStorage(slotKey = GameState.SPEICHERPLATZ) {
+    static _zusammenfassungAusText(text) {
         try {
-            const parsed = GameState._readStoredState(slotKey);
-            if (!parsed) return null;
-            const state = Object.assign(new GameState(), parsed);
-            GameState.registerCustomFormations(state);
-            GameState.sichereSignaturen(state);
-            return state;
+            return text ? GameState._zusammenfassungAus(GameState._ausText(text)) : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    static getSaveSummary(slotKey = null) {
+        slotKey = GameState._platz(slotKey);
+        const bekannt = GameState.verzeichnis().plaetze[slotKey];
+        if (bekannt) return bekannt;
+        try {
+            return GameState._zusammenfassungAus(GameState._readStoredState(slotKey));
+        } catch (e) {
+            return null;
+        }
+    }
+
+    static loadFromLocalStorage(slotKey = null) {
+        try {
+            return GameState._zuState(GameState._readStoredState(slotKey));
         } catch (e) {
             console.error("Laden fehlgeschlagen:", e);
             return null;
         }
     }
 
-    static deleteSavegame(slotKey = GameState.SPEICHERPLATZ) {
+    /**
+     * Einen Platz laden und zum aktiven machen. Asynchron, weil ein anderer
+     * als der zuletzt gespielte Platz erst aus IndexedDB gelesen wird.
+     */
+    static ladePlatz(slotKey = null) {
+        slotKey = GameState._platz(slotKey);
+        return GameState._liesText(slotKey).then(text => {
+            const state = GameState._zuState(GameState._ausText(text));
+            if (!state) return null;
+            GameState.setzeAktivenPlatz(slotKey);
+            if (GameState._idbAktiv) GameState._spiegel[slotKey] = text;
+            return state;
+        }).catch(e => {
+            console.error("Laden fehlgeschlagen:", e);
+            return null;
+        });
+    }
+
+    /** Eine Sicherung einlesen. Gespeichert wird sie erst, wenn man mit ihr weiterspielt. */
+    static ladeSicherung(schluessel) {
+        if (!GameState._idbAktiv || !schluessel) return Promise.resolve(null);
+        return GameState._getSpeicherDB().lies(schluessel)
+            .then(text => GameState._zuState(GameState._ausText(typeof text === "string" ? text : null)))
+            .catch(e => {
+                console.error("Sicherung nicht lesbar:", e);
+                return null;
+            });
+    }
+
+    /** Einen Platz mit allen seinen Sicherungen löschen */
+    static deleteSavegame(slotKey = null) {
         slotKey = GameState._platz(slotKey);
         delete GameState._spiegel[slotKey];
+        const v = GameState.verzeichnis();
+        const sicherungen = (v.sicherungen[slotKey] || []).map(s => s.schluessel);
+        delete v.plaetze[slotKey];
+        delete v.sicherungen[slotKey];
         const db = GameState._getSpeicherDB();
         if (GameState._idbAktiv && db) {
-            db.loesche(slotKey).catch(e => console.error("Löschen in IndexedDB fehlgeschlagen:", e));
+            db.schreibeMehrere({ [GameState.VERZEICHNIS]: JSON.stringify(v) }, [slotKey, ...sicherungen])
+                .catch(e => console.error("Löschen in IndexedDB fehlgeschlagen:", e));
         }
         try {
             localStorage.removeItem(slotKey);
+            if (!GameState._idbAktiv) localStorage.setItem(GameState.VERZEICHNIS, JSON.stringify(v));
             return true;
         } catch (e) {
             return GameState._idbAktiv;

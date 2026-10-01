@@ -84,8 +84,11 @@ class App {
                 }
             }
 
+            // Sofort, nicht gesammelt: Erst mit dem ersten Speichern gilt der
+            // Platz als belegt, und eine weitere neue Karriere soll ihn nicht
+            // für frei halten
             if (typeof this.state.saveToLocalStorage === "function") {
-                this.state.saveToLocalStorage();
+                this.state.saveToLocalStorage(null, true);
             }
 
             if (this.ui) {

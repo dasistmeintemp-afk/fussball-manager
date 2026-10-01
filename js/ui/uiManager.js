@@ -249,112 +249,6 @@ class UIManager {
     }
 
     /**
-     * Rendert die Savegame-Informationen auf dem Startbildschirm
-     */
-    renderStartScreenSaveInfo() {
-        const summary = GameState.getSaveSummary();
-        const detailsContainer = document.getElementById("startSaveDetailsContent");
-        const continueBtn = document.getElementById("btnStartContinueGame");
-        const continueSubText = document.getElementById("startContinueSubText");
-        const ico = (name) => `<svg class="ico" aria-hidden="true"><use href="#${name}"/></svg>`;
-
-        // Die Welt in Zahlen - aus den Ligadaten, nicht aus einem Werbetext
-        const fakten = document.getElementById("startWorldFacts");
-        const ligen = (typeof LEAGUES_DATA !== "undefined" && Array.isArray(LEAGUES_DATA)) ? LEAGUES_DATA : [];
-        if (fakten && ligen.length) {
-            const vereine = ligen.reduce((summe, l) => summe + (l.teamCount || 0), 0);
-            const laender = new Set(ligen.map(l => l.countryId)).size;
-            fakten.textContent = `Übernimm einen von ${vereine} Vereinen aus ${ligen.length} Ligen in ${laender} Ländern – von der Champions League bis zur Landesliga. Kader, Taktik, Transfers und jedes Spiel live in 2D.`;
-        }
-        if (!detailsContainer || !continueBtn) return;
-
-        if (summary) {
-            continueBtn.disabled = false;
-            if (continueSubText) {
-                continueSubText.textContent = `${summary.clubName} · Saison ${summary.seasonYear}, Spieltag ${summary.currentMatchday}`;
-            }
-
-            const dateStr = new Date(summary.lastSaved).toLocaleString("de-DE", {
-                day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"
-            });
-            const diffName = summary.difficulty === "easy" ? "Leicht" : summary.difficulty === "hard" ? "Schwer" : "Normal";
-            const fortschritt = Math.max(0, Math.min(100, Math.round(((summary.currentMatchday - 1) / Math.max(1, summary.totalMatchdays)) * 100)));
-            const club = { name: summary.clubName, primaryColor: summary.primaryColor, secondaryColor: summary.secondaryColor };
-
-            detailsContainer.innerHTML = `
-                <div class="save-card-summary">
-                    <div class="save-card-kicker">Letzter Spielstand</div>
-                    <div class="save-club-badge">
-                        ${this.wappenHtml(club, "crest-lg")}
-                        <div class="save-club-text">
-                            <div class="save-club-name">${this.escapeHtml(summary.clubName)}</div>
-                            <div class="save-club-sub">${this.escapeHtml(summary.leagueName)} · ${this.escapeHtml(summary.managerName)}</div>
-                        </div>
-                    </div>
-
-                    <div class="save-meta-grid">
-                        <div class="save-meta-item">
-                            <span class="save-meta-label">Platz</span>
-                            <span class="save-meta-val">${summary.userRank}.</span>
-                        </div>
-                        <div class="save-meta-item">
-                            <span class="save-meta-label">Saison</span>
-                            <span class="save-meta-val">${summary.seasonYear}</span>
-                        </div>
-                        <div class="save-meta-item">
-                            <span class="save-meta-label">Spieltag</span>
-                            <span class="save-meta-val">${summary.currentMatchday}<small>/${summary.totalMatchdays}</small></span>
-                        </div>
-                        <div class="save-meta-item">
-                            <span class="save-meta-label">Stufe</span>
-                            <span class="save-meta-val save-meta-text">${diffName}</span>
-                        </div>
-                    </div>
-
-                    <div class="save-progress" title="Saisonfortschritt">
-                        <span style="width:${fortschritt}%"></span>
-                    </div>
-
-                    <div class="save-timestamp">Gespeichert am ${dateStr}</div>
-
-                    <div class="save-actions">
-                        <button class="btn btn-primary" id="btnQuickLoadGame" type="button">${ico("i-play")}<span>Fortsetzen</span></button>
-                        <button class="btn btn-secondary btn-icon-only" id="btnDeleteLocalSave" type="button" title="Spielstand löschen" aria-label="Spielstand löschen">${ico("i-trash")}</button>
-                    </div>
-                </div>
-            `;
-
-            document.getElementById("btnQuickLoadGame")?.addEventListener("click", () => {
-                const loaded = GameState.loadFromLocalStorage();
-                if (loaded) {
-                    this.app.state = loaded;
-                    this.hideStartScreen();
-                    this.switchTab("dashboard");
-                    this.showToast(`Spielstand geladen: ${loaded.managerName} bei ${loaded.clubs.find(c => c.id === loaded.userClubId)?.name}`, "success");
-                }
-            });
-
-            document.getElementById("btnDeleteLocalSave")?.addEventListener("click", () => {
-                if (confirm("Möchten Sie diesen Spielstand wirklich unwiderruflich löschen?")) {
-                    GameState.deleteSavegame();
-                    this.renderStartScreenSaveInfo();
-                    this.showToast("Spielstand wurde gelöscht.", "info");
-                }
-            });
-        } else {
-            continueBtn.disabled = true;
-            if (continueSubText) continueSubText.textContent = "Kein lokaler Spielstand gefunden";
-            detailsContainer.innerHTML = `
-                <div class="no-save-placeholder">
-                    <span class="placeholder-icon">${ico("i-trophy")}</span>
-                    <p>Noch kein Spielstand auf diesem Gerät.</p>
-                    <span class="placeholder-hint">Starte eine neue Karriere – gespeichert wird automatisch im Browser.</span>
-                </div>
-            `;
-        }
-    }
-
-    /**
      * Startbildschirm-Events binden
      */
     bindStartScreenEvents() {
@@ -362,33 +256,20 @@ class UIManager {
             this.showNewGameModal();
         });
 
+        // Weiter mit der zuletzt gespielten Karriere
         document.getElementById("btnStartContinueGame")?.addEventListener("click", () => {
-            const loaded = GameState.loadFromLocalStorage();
-            if (loaded) {
-                this.app.state = loaded;
-                this.hideStartScreen();
-                this.switchTab("dashboard");
-                this.showToast(`Willkommen zurück, ${loaded.managerName}!`, "success");
-            }
+            const platz = GameState.juengsterPlatz();
+            if (platz) this.ladeSpielstand(platz);
         });
 
         document.getElementById("startFileInput")?.addEventListener("change", (e) => {
             const file = e.target.files[0];
             if (!file) return;
             const reader = new FileReader();
-            reader.onload = (evt) => {
-                const res = GameState.importFromJson(evt.target.result);
-                if (res.success && res.state) {
-                    this.app.state = res.state;
-                    this.app.state.saveToLocalStorage();
-                    this.hideStartScreen();
-                    this.switchTab("dashboard");
-                    this.showToast("Spielstand erfolgreich importiert!", "success");
-                } else {
-                    this.showToast(res.error || "Ungültiges Spielstand-Format!", "error");
-                }
-            };
+            reader.onload = (evt) => this.importiereSpielstand(evt.target.result);
             reader.readAsText(file);
+            // Dieselbe Datei soll sich ein zweites Mal wählen lassen
+            e.target.value = "";
         });
 
         document.getElementById("btnStartAbout")?.addEventListener("click", () => {
@@ -413,6 +294,11 @@ class UIManager {
             this.showToast("Der Karriere-Assistent konnte nicht geöffnet werden.", "error");
             return;
         }
+
+        // Die neue Karriere bekommt einen eigenen Platz und überschreibt
+        // keine laufende - sind alle belegt, wird vorher gefragt
+        this.zielPlatzNeueKarriere = this.waehleZielPlatz("Die neue Karriere");
+        if (!this.zielPlatzNeueKarriere) return;
 
         modal.style.display = "flex";
         this.wizardStep = 1;
@@ -1179,6 +1065,8 @@ class UIManager {
             const difficulty = document.getElementById("selectDifficulty")?.value || "normal";
 
             const trainerTyp = document.getElementById("inputTrainerTyp")?.value || "allrounder";
+            const platz = this.zielPlatzNeueKarriere || GameState.freierPlatz() || GameState.aeltesterPlatz();
+            this.beziehePlatz(platz);
             const result = this.app.startNewGame(this.wizardSelectedClubId, difficulty, {
                 name: managerName,
                 nationality: managerNationality,
@@ -1204,7 +1092,7 @@ class UIManager {
             this.playSound("whistle");
 
             const clubName = this.app.state?.clubs?.find(c => c.id === this.app.state.userClubId)?.name || selectedClub.name;
-            this.showToast(`Karriere erfolgreich gestartet! Viel Erfolg bei ${clubName}!`, "success");
+            this.showToast(`Karriere erfolgreich gestartet! Viel Erfolg bei ${clubName}! (Speicherplatz ${GameState.platzNummer(platz)})`, "success");
         } catch (err) {
             console.error("[Wizard] Fehler in confirmStartGameWithSelectedClub:", err);
             this.showToast(`Fehler beim Karrierestart: ${err.message}`, "error", 7000);
@@ -1577,26 +1465,6 @@ class UIManager {
         const sound = document.getElementById("btnToggleSound");
         if (sound) sound.innerHTML = this.soundKnopfHtml();
         this.renderSpeicherInfo();
-    }
-
-    /** Wo der Spielstand liegt und wie viel Platz er belegt */
-    renderSpeicherInfo() {
-        const el = document.getElementById("settingsSpeicherInfo");
-        if (!el || typeof GameState === "undefined") return;
-        const idb = typeof GameState.speicherort === "function" && GameState.speicherort() === "indexedDB";
-        const text = GameState._spiegel?.[GameState.SPEICHERPLATZ];
-        const mb = (bytes) => (bytes / 1048576).toLocaleString("de-DE", { maximumFractionDigits: 1 });
-        const groesse = text ? ` · Spielstand ${mb(text.length)} MB` : "";
-        el.textContent = idb
-            ? `Gespeichert in der Browser-Datenbank (IndexedDB)${groesse}.`
-            : `Gespeichert im LocalStorage des Browsers (meist 5 MB Grenze)${groesse}.`;
-        const db = typeof SpeicherDB !== "undefined" ? SpeicherDB : null;
-        if (idb && db && typeof db.platz === "function") {
-            db.platz().then(p => {
-                if (!p || !p.frei) return;
-                el.textContent = `Gespeichert in der Browser-Datenbank (IndexedDB)${groesse} · frei für diese Seite: ${mb(Math.max(0, p.frei - p.belegt))} MB.`;
-            });
-        }
     }
 
     /**
@@ -7319,17 +7187,6 @@ class UIManager {
             });
         };
 
-        document.getElementById("btnLoadLocal").onclick = () => {
-            const loaded = GameState.loadFromLocalStorage();
-            if (loaded) {
-                this.app.state = loaded;
-                this.renderCurrentTab();
-                this.showToast("Spielstand erfolgreich geladen!", "success");
-            } else {
-                this.showToast("Kein gespeicherter Spielstand im Browser gefunden.", "warning");
-            }
-        };
-
         document.getElementById("btnExportJson").onclick = () => {
             // Als Blob statt als data:-Adresse - die stößt bei mehreren
             // Megabyte in manchen Browsern an ihre Längengrenze
@@ -7349,18 +7206,9 @@ class UIManager {
             const file = e.target.files[0];
             if (!file) return;
             const reader = new FileReader();
-            reader.onload = (evt) => {
-                const res = GameState.importFromJson(evt.target.result);
-                if (res.success && res.state) {
-                    this.app.state = res.state;
-                    this.app.state.saveToLocalStorage();
-                    this.renderCurrentTab();
-                    this.showToast("Spielstand-Datei erfolgreich importiert!", "success");
-                } else {
-                    this.showToast(res.error || "Ungültige Spielstand-Datei!", "error");
-                }
-            };
+            reader.onload = (evt) => this.importiereSpielstand(evt.target.result);
             reader.readAsText(file);
+            e.target.value = "";
         };
 
         document.getElementById("btnNewGamePrompt").onclick = () => {
@@ -7390,6 +7238,6 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = { UIManager };
     // Die ausgelagerten Teile hängen sich an die Klasse - im Browser lädt sie
     // index.html der Reihe nach, unter Node holen wir sie hier dazu
-    ["./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiLivespiel.js", "./uiSpielbericht.js"]
+    ["./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiLivespiel.js", "./uiSpielbericht.js", "./uiSpeicher.js"]
         .forEach(teil => require(teil));
 }

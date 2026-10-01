@@ -1337,13 +1337,16 @@
                         <h2>Spielstand & Einstellungen</h2>
                     </div>
                     <div class="settings-grid">
-                        <div class="dash-card">
-                            <h3>Speichern & Laden (Lokal)</h3>
-                            <p>Speichern Sie Ihren aktuellen Karrierefortschritt sicher im Browser.</p>
+                        <div class="dash-card speicher-karte">
+                            <h3>Spielstände</h3>
+                            <p>Bis zu fünf Karrieren nebeneinander. Gespeichert wird automatisch, dazu je Karriere eine Sicherung pro Spielwoche – die letzten drei bleiben.</p>
                             <div class="btn-group-column">
-                                <button class="btn btn-primary" id="btnSaveLocal"><svg class="ico" aria-hidden="true"><use href="#i-save"/></svg><span>Spielstand im Browser speichern</span></button>
-                                <button class="btn btn-secondary" id="btnLoadLocal"><svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg><span>Gespeicherten Spielstand laden</span></button>
+                                <button class="btn btn-primary" id="btnSaveLocal"><svg class="ico" aria-hidden="true"><use href="#i-save"/></svg><span>Jetzt speichern</span></button>
                             </div>
+                            <h4 class="einstellung-h">Speicherplätze</h4>
+                            <div class="platz-liste" id="settingsSpeicherplaetze"></div>
+                            <h4 class="einstellung-h">Sicherungen dieser Karriere</h4>
+                            <div class="platz-liste" id="settingsSicherungen"></div>
                             <p class="speicher-info" id="settingsSpeicherInfo"></p>
                         </div>
 
@@ -2134,6 +2137,7 @@
     <script src="js/ui/uiAkten.js"></script>
     <script src="js/ui/uiLivespiel.js"></script>
     <script src="js/ui/uiSpielbericht.js"></script>
+    <script src="js/ui/uiSpeicher.js"></script>
     <script src="js/vendor/three.min.js"></script>
     <script src="js/ui/spielfeld3d.js"></script>
     <script src="js/app.js"></script>

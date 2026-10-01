@@ -7385,6 +7385,32 @@ td.nowrap { white-space: nowrap; }
 .einstellung-h { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); margin: 14px 0 2px; }
 .einstellung-h:first-child { margin-top: 0; }
 .speicher-info { margin: 12px 0 0; font-size: 12.5px; color: var(--text-muted); }
+/* Spielstände: Plätze und Sicherungen als Zeilen */
+.speicher-karte { grid-column: 1 / -1; }
+.speicher-karte .btn-group-column { max-width: 320px; }
+.platz-liste { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.platz-liste > .btn { align-self: flex-start; margin-top: 4px; }
+.platz-zeile { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); min-width: 0; }
+.platz-zeile.platz-laeuft { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.platz-zeile.platz-frei { border-style: dashed; background: transparent; }
+.platz-nr { flex: 0 0 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; color: var(--text-dim); background: var(--surface-3, rgba(255, 255, 255, .06)); }
+.platz-nr .ico { width: 14px; height: 14px; }
+.platz-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.platz-text strong { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.platz-text span { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.platz-knoepfe { display: flex; gap: 6px; flex-shrink: 0; }
+.platz-knoepfe .btn-icon-only { width: 32px; padding: 6px; justify-content: center; }
+.platz-aktiv { font-size: 12px; font-weight: 700; color: var(--accent); }
+.speicher-hinweis { margin: 4px 0; font-size: 12.5px; color: var(--text-muted); }
+.save-weitere { display: flex; flex-direction: column; gap: 6px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+.save-weitere .save-card-kicker { margin-bottom: 2px; }
+@media (max-width: 560px) {
+    .platz-zeile { gap: 10px; padding: 8px; }
+    .platz-text span { white-space: normal; }
+    /* Das Abspielzeichen reicht - so bleibt Platz für den Text */
+    .platz-knoepfe [data-platz-laden] span { display: none; }
+    .platz-knoepfe [data-platz-laden] { width: 32px; padding: 6px; justify-content: center; }
+}
 .einstellung-schalter:last-child { border-bottom: 0; }
 .einstellung-schalter .coach-muted { font-size: 12px; color: var(--text-muted); }
 @media (min-width: 900px) {

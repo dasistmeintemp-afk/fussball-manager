@@ -155,6 +155,33 @@ Im Livespiel wird nichts mehr vorab gewürfelt. Wie im Football Manager entschei
 
 **Der Trainer des Gegners reagiert:** Liegt die KI zurück, stellt sie ab der 55. Minute offensiver um, bei zwei Toren Rückstand sofort, in der Schlussphase auf volles Risiko mit hohem Pressing. Eine späte Führung sichert sie ab und bringt sie knapp auch mit Zeitspiel über die Zeit. Jede Umstellung steht im Ticker, nach dem Abpfiff gilt wieder die eigene Taktik. Gewechselt wird nach Kondition: Wer zurückliegt, bringt früher frische Beine nach vorn, wer führt, frischt die Abwehr auf. Dieselbe Logik gilt in der Sofort-Simulation für alle Spiele der Liga.
 
+**Verletzungen entstehen auf dem Platz:** Nichts wird mehr vorab über den Kader gewürfelt.
+- **Kontakt:** Ein Foul kann den Gefoulten verletzen – je härter, desto eher (ein rotwürdiges Foul rund dreißigmal so oft wie ein normales). Prellung, Knöchelstauchung, Bänderdehnung, im Pech Meniskus oder Kreuzband.
+- **Muskel:** Wer müde ist, zerrt sich. Das Risiko steigt mit der Erschöpfung, mit dem versteckten Wert Verletzungsanfälligkeit und ab 30 mit dem Alter.
+- Im Livespiel bleibt der Spieler am Tatort liegen. Der Gegner und – bei abgegebenen Wechseln – der Co-Trainer bringen sofort den passendsten Ersatz, sonst wird gefragt. Im Schnitt gibt es knapp eine Verletzung in zwei Spielen, in beiden Engines gleich.
+
+**Schiedsrichter und Vorteil:** Jede Partie hat ihren Schiedsrichter – mit Namen, fest mit der Ansetzung. Er steht in der Taktikbesprechung und im Spielbericht.
+- *Streng:* pfeift kleinlicher und zeigt rund 30 % mehr Karten, gibt selten Vorteil.
+- *Sachlich:* der Durchschnitt.
+- *Großzügig:* lässt laufen, zeigt weniger Karten und gibt gern Vorteil.
+- **Vorteil:** Wird vorn gefoult und der Angriff kann weiterlaufen, pfeift der Schiedsrichter nicht („▶️ Vorteil!“). Die Karte gibt es nachträglich. Die Notbremse bleibt Rot.
+
+**Taktische Vertrautheit:** Eine neue Formation oder Spielweise sitzt nicht vom ersten Tag an.
+- Je Formation und je Anweisung (Pressing, Tempo, Passspiel, Abwehrlinie …) merkt sich der Verein, wie eingespielt die Mannschaft ist.
+- Spiele und Taktiktraining schleifen ein, was gespielt wird. Was lange ruht, verblasst langsam.
+- Eine ganz fremde Taktik kostet bis zu acht Prozent Stärke, eine neue Formation allein gut zwei.
+- Der Taktik-Reiter zeigt die Vertrautheit als Balken und nennt, was noch nicht sitzt.
+
+**Schwacher Fuß und Körpergröße:**
+- Gut jeder fünfte Abschluss aus dem Spiel kommt mit dem schwachen Fuß – öfter, wenn ein Spieler auf der Seite seines schwachen Fußes aus spitzem Winkel abschließt. Der Rechtsfuß links neben dem Tor muss dann links schießen.
+- Mit dem schwachen Fuß sitzt der Ball spürbar seltener, mit dem starken etwas öfter. Beidfüßige haben keinen schwachen Fuß.
+- Jeder Spieler hat eine feste Körpergröße (in der Spielerakte). Im Kopfballduell zählen zehn Zentimeter gut fünf Punkte, und bei Flanken und Ecken kommt der Große öfter zum Kopfball.
+
+**Standardvarianten** (Taktik-Reiter, Gruppe „Standards“):
+- **Ecken:** *Erster Pfosten* (scharf, der Torwart kommt schwer heran), *Zweiter Pfosten* (hoch für den Kopfballstärksten), *Kurz* (ausspielen und aus besserem Winkel flanken) oder *Gemischt*.
+- **Standards verteidigen:** *Raumdeckung* (schützt den ersten Pfosten), *Manndeckung* (der beste Kopfballspieler gegen den gefährlichsten Gegner) oder *Gemischt*.
+- An den zweiten Pfosten lohnt es sich mit Riesen, die kurze Ecke ohne.
+
 **Eigenschaften und Signaturen (`EigenschaftenEngine`):**
 - **Eigenheiten** wie „Zieht nach innen“, „Schießt aus der Distanz“, „Sucht den tiefen Pass“ oder „Freistoßspezialist“ verschieben, was ein Spieler tut, und ein wenig, wie gut es gelingt. Ein Zweikämpfer gewinnt mehr Duelle und foult öfter.
 - **Signaturen** sind einzigartige Eigenschaften der Besten: Rund vier Prozent der Spieler jeder Liga – nach Stärke, höchstens fünf je Verein – bekommen eine, die zu ihrem Profil passt. Beispiele: 🎯 Eiskalter Vollstrecker, 🪄 Standardkünstler, 🎼 Spielgestalter, 🌀 Dribbelkünstler, 🦅 Kopfballungeheuer, 🛡️ Abwehrchef, 🐈 Katze im Tor, 🧱 Elfmeterkiller, ⚡ Pfeilschnell, 🔋 Unermüdlicher Motor und 🔥 Mentalitätsmonster (wächst in Derbys und in der Schlussphase).

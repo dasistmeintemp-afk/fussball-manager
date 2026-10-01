@@ -4308,7 +4308,7 @@ class LiveMatch {
     }
 
     /** Wie oft sich ein durchschnittlicher Spieler je Minute zerrt */
-    static MUSKEL_JE_MINUTE = 2.0e-4;
+    static MUSKEL_JE_MINUTE = 1.5e-4;
 
     /** Eine Verletzung, die auf dem Platz entsteht (FM), als Ereignis */
     _liveVerletzung(p2d, art) {

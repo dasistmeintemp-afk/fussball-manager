@@ -138,7 +138,13 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 
 - **Bild und Ticker erzählen dasselbe:** Wer im Ticker genannt wird, hat auf dem Feld auch den Ball, und zwar an der Stelle, von der die Rede ist – die Szene beginnt erst, wenn er dort angekommen ist. Jede Angriffsart hat ihre eigene Geometrie: Die Flanke kommt vom Flügel, der Steilpass aus der Zentrale, die Ecke von der Fahne. Und seit dem Seitenwechsel fliegen die Schüsse auch nach der Pause aufs richtige Tor.
 
-> **Live und sofort berechnet:** Die Sofort-Simulation erzeugt alle Ereignisse vorab als Timeline. Im Livespiel gibt sie seit dem Entscheidungsmodus nur noch den Rahmen vor (Wechsel, Verletzungen, Halbzeit, Abpfiff) – alles andere entsteht auf dem Feld (siehe unten). Jedes Ereignis wird dabei in dieselbe Timeline geschrieben, aus der auch der Spielbericht rechnet: Live-Anzeige und Bericht zeigen Feld für Feld dieselben Zahlen, ein Test prüft das.
+> **3D-Ansicht:** Im Livespiel lässt sich über das Auge oben rechts im Feld die **3D-Ansicht** einschalten. Sie zeichnet dieselbe Simulation – Laufwege, Ballflug mit Höhe, Wechsel – in einem Stadion: Rasen mit Mähstreifen und allen Linien in echten Maßen (105 × 68 m), Tore mit Netz, Tribünen mit Publikum in den Vereinsfarben, Flutlicht. Die Spieler sind stilisierte Figuren in ihren Trikotfarben, die im Takt ihrer Geschwindigkeit laufen und dorthin schauen, wohin sie laufen oder wo der Ball ist. Drei Kameras: **TV** (Haupttribüne, schwenkt mit dem Ball), **Taktik** (hoch über dem Feld) und **Nah** (dicht am Ball). Gezeichnet wird mit three.js (r159, MIT-Lizenz, in `js/vendor/`), offline und auch in der Einzeldatei. Ohne WebGL schaltet sich die Ansicht mit einem Hinweis ab, es geht in 2D weiter. Ehrlich gesagt: Echte, animierte Spielermodelle wie in großen Produktionen bräuchten fertige 3D-Modelle mit Bewegungsabläufen – die Figuren hier sind bewusst schlicht.
+
+> **Absicherung beim Dribbling:** Wer den ersten Verteidiger stehen lässt, läuft in einem kompakten Block gleich in den zweiten. Bisher zählte für ein Dribbling nur der nächste Gegner; jetzt senkt jeder weitere Verteidiger nahe am Zielpunkt die Erfolgschance (ein Helfer ist im Mittelfeld normal und zählt nicht). Gemessen (je 24 Spiele gegen einen hoch pressenden Favoriten): Die Chancen des Favoriten sinken gegen den tiefen Block von 2,27 auf 2,08 xG und gegen die Grundeinstellung von 1,71 auf 1,49 xG; im ausgeglichenen Duell ändern sich Schüsse und xG insgesamt nicht. Was offen bleibt: Ein tiefer Block hat in der Simulation noch rund 50 % Ballbesitz statt der üblichen 30 bis 40 %, und Spitzenteams dominieren den Ballbesitz allgemein zu wenig (Bayern gegen Augsburg rund 54 %). Ein Versuch, den Block im Mittelfeld zügiger nach vorn spielen zu lassen, brachte messbar nichts und ist wieder draußen.
+
+> **Eine Simulation für das eigene Spiel:** Das Sofort-Ergebnis des eigenen Spiels – aus dem Kalender oder über den Knopf mitten im Livespiel – ist kein anderes Spiel mehr. Dieselbe Livespiel-Simulation läuft einfach ohne Bild weiter, in kleinen Häppchen je Bildschirmbild, auf der schnellsten Abspielstufe (die ein Vorlauf ist, kein anderes Spiel). Der Co-Trainer übernimmt Wechsel und Umstellungen, eine Einblendung zeigt Spielstand und Minute, nach zwei bis drei Sekunden steht der Spielbericht – mit Heatmap und Passnetz. Bisher wechselte das Sofort-Ergebnis ab dem Klick auf das statistische Modell. Die Spiele der übrigen Vereine rechnet weiter das statistische Modell, das auf die Livespiel-Simulation abgestimmt ist; für Hunderte Partien je Spieltag wäre die volle Simulation zu langsam.
+
+> **Live und sofort berechnet:** Das statistische Modell erzeugt alle Ereignisse vorab als Timeline. Im Livespiel gibt sie seit dem Entscheidungsmodus nur noch den Rahmen vor (Wechsel, Verletzungen, Halbzeit, Abpfiff) – alles andere entsteht auf dem Feld (siehe unten). Jedes Ereignis wird dabei in dieselbe Timeline geschrieben, aus der auch der Spielbericht rechnet: Live-Anzeige und Bericht zeigen Feld für Feld dieselben Zahlen, ein Test prüft das.
 
 ### 3a. 🧠 Entscheidungsmodus: Jeder Spieler entscheidet nach seinen Werten
 Im Livespiel wird nichts mehr vorab gewürfelt. Wie in den großen Managerspielen entscheidet der Ballführende in jeder Situation selbst – und seine Werte bestimmen, was er wählt und ob es gelingt.
@@ -357,7 +363,7 @@ Ein Talent in den Profikader zu holen dauert jetzt seine Zeit. *Vertragsgespräc
 ### 7. 🗓️ Kalender-Tagesablauf, 🔍 Gegneranalyse & 🌟 Scoutingsystem
 - **Spielerbewertungssystem (`PlayerRatingEngine`):** Trennung von echten internen Fähigkeiten (CA/PA 1–200, Hidden Attributes wie Professionalität & Ehrgeiz) und sichtbaren, scoutabhängigen Einschätzungsbereichen.
 - **Relative Sternebewertungen:** Qualitätssterne (0.5 bis 5.0) werden dynamisch relativ zur Stärke des eigenen Kaders berechnet.
-- **Testspiele werden angesagt:** Ein Spieltermin der Vorbereitung erscheint wie ein Spieltag – mit beiden Mannschaften und der Wahl zwischen Live-Spiel und Sofortergebnis. Das live gespielte Ergebnis wird so eingetragen, wie es auf dem Platz fiel.
+- **Testspiele werden angesagt:** Ein Spieltermin der Vorbereitung erscheint wie ein Spieltag – mit beiden Mannschaften und der Wahl zwischen Live-Spiel und Sofortergebnis. Beide laufen über dieselbe Simulation; das Ergebnis wird so eingetragen, wie es auf dem Platz fiel.
 - **Saisonkalender & Wochenplan (`CalendarEngine`):** Realistischer Tagesablauf zwischen Spieltagen (Regeneration, Schwerpunkt-Training, Medien-/Sponsoren-Events, Taktikschulung und Gegneranalyse).
 - **Zeit Tag für Tag:** Der Weiter-Knopf läuft Tag für Tag bis zum nächsten Termin (Spiel, Testspiel, Pressekonferenz, Saisonende). Er hält aber auch dazwischen an, wenn etwas den Manager angeht:
   - ein Angebot für einen eigenen Spieler,
@@ -422,7 +428,7 @@ Eine komplette Welt mit über 4300 Spielern belegt als gewöhnliches JSON knapp 
 - **Kabinenhierarchie (`DressingRoomEngine`):** Führungsspieler, Neuzugänge und Grüppchen nach Sprache, jede Gruppe mit Wortführer und Stimmung. Ein unzufriedener Wortführer färbt auf seine Gruppe ab, ein unzufriedener Kapitän auf alle. Den Kapitän bestimmt der Trainer; wer einen Führungsspieler verkauft, hat ein paar Tage Unruhe.
 - **Verträge:** Neben Gehalt und Laufzeit gehören Beraterhonorar, Einsatz- und Torprämien dazu. Prämien schonen das feste Gehalt und werden nach jedem Spiel ausgezahlt. Leihen können eine **Kaufoption** haben; KI-Vereine ziehen sie, wenn der Spieler gespielt hat und das Geld reicht.
 - **Wetter und Platz (`WetterEngine`):** Jede Partie bekommt Wetter nach Jahreszeit und einen Rasen nach Ligastufe. Nasser Rasen macht Fernschüsse tückisch, tiefer Boden kostet Kraft und Genauigkeit, Wind verweht lange Bälle, Hitze zehrt an der Ausdauer. Vorschau, Livespiel und Spielbericht zeigen es an.
-- **Spielanalyse:** Nach einem live verfolgten Spiel gehören zum Spielbericht Heatmaps beider Mannschaften und ein Passnetz – wer mit wem wie oft zusammengespielt hat und wo er im Schnitt stand. Beim Sofort-Ergebnis rechnet das Spiel ohne Laufwege; dann sagt der Bericht, warum die Karte fehlt, statt eine zu erfinden.
+- **Spielanalyse:** Zu jedem eigenen Spiel – live oder als Sofort-Ergebnis – gehören Heatmaps beider Mannschaften und ein Passnetz: wer mit wem wie oft zusammengespielt hat und wo er im Schnitt stand. Fehlen die Laufwege (ältere Spielstände), sagt der Bericht das, statt eine Karte zu erfinden.
 - **Trainerprofil (`TrainerProfilEngine`):** Fünf Werte von 1 bis 20 (Taktik, Motivation, Menschenführung, Jugendarbeit, Spielerbewertung), die wirklich wirken – auf Vertrautheit, Ansprachen, Einzelgespräche, Talententwicklung und Scoutberichte. Dazu B-, A- und Pro-Lizenz: Ab der Regionalliga verlangt der Verband die A-Lizenz, in den Bundesligen die Pro-Lizenz. Lehrgänge kosten Geld und Zeit. Am Saisonende wächst, was gefordert war.
 - **Zweite Mannschaft (U23, `ReserveEngine`):** Talente, die bei den Profis nicht spielen, schickt man in die U23. Sie spielt an jedem Spieltag ein eigenes Spiel und bringt Spielpraxis (etwas weniger als bei den Profis), Spielschärfe und eine eigene Bilanz. Höchstens drei Spieler über 23, im Profikader bleiben mindestens 16. Die KI-Vereine geben ihren Talenten ohne Einsatz ebenfalls etwas Praxis.
 - **Taktik:** Konter und tiefer Block wurden überarbeitet – Umschalten mit Verzögerung für Verteidiger, Befreiungsschläge aus der tiefen Linie, Laufwege in die Tiefe. Gemessen gegen einen hoch pressenden Favoriten (24 Spiele je Variante): Konter holt 0,71 Punkte je Spiel statt 0,38 mit der Grundeinstellung; der tiefe Block, der nach Ballgewinn sofort nach vorn spielt, kassiert 1,79 statt 2,88 Tore. Ehrlich gesagt: Gegen eine viel stärkere Mannschaft bleibt der tiefe Block auch so die schwierigste Wahl.
@@ -495,14 +501,17 @@ untitled/
 │   │   ├── contractEngine.js   # Vertragsforderungen, Verlängerungen & Ausstiegsklauseln
 │   │   ├── calendarEngine.js   # Saisonkalender & dynamischer Tagesablauf
 │   │   └── opponentAnalysisEngine.js # Taktische Gegneranalyse
-│   └── ui/
-│       ├── uiManager.js        # Kern: Start, Assistent, Reiter, Kader, Taktik, Kalender, Ereignisse
-│       ├── uiSpielfeld.js      # Leinwand des 2D-Spiels: Rasen, Radar, Einblendungen, Stadionklang
-│       ├── uiVorbereitung.js   # Vorbereitung: Stab, Sponsoren, Testspiele, Turniere
-│       ├── uiTransfers.js      # Verhandlungen, Leihen, U23, Transfermarkt, Scoutberichte
-│       ├── uiAkten.js          # Spieler- und Vereinsakte
-│       ├── uiLivespiel.js      # Match-Center, Zurufe, Seitenlinie während der Partie
-│       └── uiSpielbericht.js   # Spielbericht mit Schusskarte, Heatmaps und Passnetz
+│   ├── ui/
+│   │   ├── uiManager.js        # Kern: Start, Assistent, Reiter, Kader, Taktik, Kalender, Ereignisse
+│   │   ├── uiSpielfeld.js      # Leinwand des 2D-Spiels: Rasen, Radar, Einblendungen, Stadionklang
+│   │   ├── uiVorbereitung.js   # Vorbereitung: Stab, Sponsoren, Testspiele, Turniere
+│   │   ├── uiTransfers.js      # Verhandlungen, Leihen, U23, Transfermarkt, Scoutberichte
+│   │   ├── uiAkten.js          # Spieler- und Vereinsakte
+│   │   ├── uiLivespiel.js      # Match-Center, Zurufe, Seitenlinie während der Partie
+│   │   ├── uiSpielbericht.js   # Spielbericht mit Schusskarte, Heatmaps und Passnetz
+│   │   └── spielfeld3d.js      # 3D-Ansicht des Livespiels (three.js): Stadion, Figuren, drei Kameras
+│   └── vendor/
+│       └── three.min.js        # three.js r159 (MIT-Lizenz, THREE_LICENSE daneben)
 ├── pruefung.js                 # Statische Prüfung: Syntax, doppelte Methoden, globale Namen, Offline-Vorrat
 ├── test_filter.js              # Gemeinsame Testhilfen: Filter, Laufzeiten, schneller Lauf, feste Zufallswerte
 ├── test_runner.js              # Zentraler Runner für alle Testsuiten

@@ -1727,9 +1727,25 @@
                     <!-- Left: 2D Pitch Canvas -->
                     <div class="live-pitch-wrapper">
                         <canvas id="livePitchCanvas" width="800" height="500"></canvas>
+                        <canvas id="livePitch3D" class="live-pitch-3d" style="display:none;" aria-label="Livespiel in 3D"></canvas>
+                        <div class="lm-3d-banner" id="lm3dBanner" style="display:none;"></div>
+                        <div class="lm-3d-kamera" id="lm3dKamera" style="display:none;" role="group" aria-label="Kamera">
+                            <button type="button" data-kamera3d="tv">TV</button>
+                            <button type="button" data-kamera3d="taktik">Taktik</button>
+                            <button type="button" data-kamera3d="nah">Nah</button>
+                        </div>
+                        <div class="lm-ohnebild" id="lmOhneBild" style="display:none;" role="status" aria-live="polite">
+                            <div class="lm-ohnebild-box">
+                                <div class="lm-ohnebild-titel"><svg class="ico" aria-hidden="true"><use href="#i-bolt"/></svg>Sofort-Ergebnis</div>
+                                <div class="lm-ohnebild-stand" id="lmOhneBildStand">0:0</div>
+                                <div class="lm-ohnebild-balken"><span id="lmOhneBildBalken" style="width:0%"></span></div>
+                                <div class="lm-ohnebild-text" id="lmOhneBildText">Der Co-Trainer übernimmt - das Spiel läuft ohne Bild weiter.</div>
+                            </div>
+                        </div>
                         <details class="lm-ansicht" id="lmAnsicht">
                             <summary title="Was das Feld zeigt" aria-label="Anzeige des Spielfelds"><svg class="ico" aria-hidden="true"><use href="#i-eye"/></svg></summary>
                             <div class="lm-ansicht-menu">
+                                <label><input type="checkbox" data-anzeige2d="dreiD"> 3D-Ansicht</label>
                                 <label><input type="checkbox" data-anzeige2d="namen"> Namen aller Spieler</label>
                                 <label><input type="checkbox" data-anzeige2d="formEigene"> Formation eigene Elf</label>
                                 <label><input type="checkbox" data-anzeige2d="formGegner"> Formation Gegner</label>
@@ -2118,6 +2134,8 @@
     <script src="js/ui/uiAkten.js"></script>
     <script src="js/ui/uiLivespiel.js"></script>
     <script src="js/ui/uiSpielbericht.js"></script>
+    <script src="js/vendor/three.min.js"></script>
+    <script src="js/ui/spielfeld3d.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

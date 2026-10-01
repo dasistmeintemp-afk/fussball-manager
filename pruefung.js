@@ -216,8 +216,11 @@ skripte.concat(["service-worker.js", "build-einzeldatei.js"].map(d => path.join(
     kerne.set(p, entkerne(quelle));
 });
 
+// Fremdbibliotheken (js/vendor) sind minifiziert - Syntax ja, Stilprüfungen nein
+const istFremd = p => rel(p).startsWith("js/vendor/");
+
 // 2. Doppelte Methoden
-kerne.forEach((kern, p) => doppelteMethoden(rel(p), kern));
+kerne.forEach((kern, p) => { if (!istFremd(p)) doppelteMethoden(rel(p), kern); });
 
 // 3. Globale Namen der Skripte, die index.html lädt
 const html = fs.readFileSync(path.join(WURZEL, "index.html"), "utf8");
@@ -227,7 +230,7 @@ geladen.forEach(src => {
     const p = path.join(WURZEL, src);
     if (!fs.existsSync(p)) { fehler.push(`index.html lädt ${src}, die Datei fehlt`); return; }
     const kern = kerne.get(p);
-    if (!kern) return;
+    if (!kern || istFremd(p)) return;
     // Entpackte Namen ("const { X } = require(...)") stehen in den Dateien
     // hinter einer Node-Weiche und sind im Browser kein Problem
     const quelle = fs.readFileSync(p, "utf8").split("\n");

@@ -32,8 +32,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         // wird abgezogen, statt pauschal siebzig Pixel zu schätzen.
         let darunter = 0;
         [...wrapper.children].forEach(el => {
-            if (el === canvas || el.offsetParent === null) return;
+            if (el === canvas || el.offsetParent === null || el.id === "livePitch3D") return;
             const cs = getComputedStyle(el);
+            // Einblendungen über dem Feld nehmen keinen Platz weg
+            if (cs.position === "absolute" || cs.position === "fixed") return;
             darunter += el.offsetHeight + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
         });
         const wcs = getComputedStyle(wrapper);

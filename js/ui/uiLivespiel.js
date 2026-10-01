@@ -18,7 +18,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (this._anzeige2D) return this._anzeige2D;
         let gespeichert = null;
         try { gespeichert = JSON.parse(localStorage.getItem("fm_anzeige2d") || "null"); } catch (e) { gespeichert = null; }
-        this._anzeige2D = { namen: true, formEigene: false, formGegner: false, ...(gespeichert || {}) };
+        this._anzeige2D = { namen: true, formEigene: false, formGegner: false, dreiD: false, kamera3D: "tv", ...(gespeichert || {}) };
         return this._anzeige2D;
     },
 
@@ -31,12 +31,86 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 try { localStorage.setItem("fm_anzeige2d", JSON.stringify(anzeige)); } catch (e) { /* ohne Speicher */ }
             };
         });
+        document.querySelectorAll("#lm3dKamera [data-kamera3d]").forEach(btn => {
+            btn.classList.toggle("aktiv", btn.dataset.kamera3d === anzeige.kamera3D);
+            btn.onclick = () => {
+                anzeige.kamera3D = btn.dataset.kamera3d;
+                if (this.spielfeld3d) this.spielfeld3d.setzeKamera(anzeige.kamera3D);
+                document.querySelectorAll("#lm3dKamera [data-kamera3d]").forEach(b => b.classList.toggle("aktiv", b === btn));
+                try { localStorage.setItem("fm_anzeige2d", JSON.stringify(anzeige)); } catch (e) { /* ohne Speicher */ }
+            };
+        });
     },
 
-    startLiveMatchSimulation(match) {
+    /**
+     * Die 3D-Ansicht zeichnen, wenn sie gewählt ist. Liefert false, wenn
+     * stattdessen das 2D-Feld zeichnen soll - auch, wenn der Browser kein
+     * WebGL kann: Dann schaltet sie sich mit einem Hinweis ab.
+     */
+    zeichne3D(liveMatch, dt = 0.016) {
+        const anzeige = this.anzeige2D();
+        const c3 = document.getElementById("livePitch3D");
+        const c2 = document.getElementById("livePitchCanvas");
+        if (!c3 || !c2) return false;
+        if (!anzeige.dreiD) {
+            if (c3.style.display !== "none") this._zeige3D(false);
+            return false;
+        }
+        if (!this.spielfeld3d) {
+            const Klasse = typeof Spielfeld3D !== "undefined" ? Spielfeld3D : null;
+            try {
+                if (!Klasse || !Klasse.verfuegbar()) throw new Error("Kein WebGL");
+                this.spielfeld3d = new Klasse(c3);
+                this.spielfeld3d.setzeKamera(anzeige.kamera3D);
+            } catch (e) {
+                console.warn("3D-Ansicht nicht möglich:", e);
+                anzeige.dreiD = false;
+                const box = document.querySelector('#lmAnsicht [data-anzeige2d="dreiD"]');
+                if (box) box.checked = false;
+                this.showToast("Die 3D-Ansicht braucht WebGL - es geht in 2D weiter.", "warning");
+                return false;
+            }
+        }
+        if (c3.style.display === "none") this._zeige3D(true);
+        // Dieselbe Fläche wie das 2D-Feld
+        if (c3.style.width !== c2.style.width) c3.style.width = c2.style.width;
+        if (c3.style.height !== c2.style.height) c3.style.height = c2.style.height;
+        this.spielfeld3d.zeichne(liveMatch, dt, { namen: anzeige.namen });
+
+        // Einblendungen (Anstoß, Tor, Halbzeit), die sonst das 2D-Feld zeichnet
+        const banner = document.getElementById("lm3dBanner");
+        const b = liveMatch.banner;
+        const text = b && b.title ? `${b.title}${b.subtitle ? " · " + b.subtitle : ""}` : "";
+        if (banner && banner.dataset.text !== text) {
+            banner.dataset.text = text;
+            banner.textContent = text;
+            banner.style.display = text ? "" : "none";
+        }
+        return true;
+    },
+
+    _zeige3D(an) {
+        const c3 = document.getElementById("livePitch3D");
+        const c2 = document.getElementById("livePitchCanvas");
+        if (c3) c3.style.display = an ? "block" : "none";
+        if (c2) c2.style.display = an ? "none" : "";
+        const kamera = document.getElementById("lm3dKamera");
+        if (kamera) kamera.style.display = an ? "" : "none";
+        const banner = document.getElementById("lm3dBanner");
+        if (banner && !an) { banner.style.display = "none"; banner.dataset.text = ""; }
+    },
+
+    /**
+     * Ein Spiel starten. Mit { ohneBild: true } ist es das Sofort-Ergebnis:
+     * dieselbe Simulation, nur ohne Besprechung, Ansprache und Bild - der
+     * Co-Trainer coacht, und nach zwei, drei Sekunden steht der Spielbericht.
+     */
+    startLiveMatchSimulation(match, optionen = {}) {
         const state = this.app.state;
         const homeClub = state.clubs.find(c => c.id === match.homeClubId);
         const awayClub = state.clubs.find(c => c.id === match.awayClubId);
+        const ohneBild = !!optionen.ohneBild;
+        if (ohneBild) { this._matchplanDone = true; this._teamTalkDone = true; }
 
         // Vor dem Anpfiff: erst die Taktikbesprechung (wenn nicht schon vom
         // Dashboard aus festgelegt), dann die Ansprache - erst danach rollt
@@ -665,10 +739,27 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this._lmZurufKey = null;
 
         this.resizeLiveCanvas();
-        this.startCrowdAmbience();
+        const ohneBildBox = document.getElementById("lmOhneBild");
+        if (ohneBildBox) ohneBildBox.style.display = "none";
+        if (ohneBild) this.schalteOhneBild(liveMatch);
+        else this.startCrowdAmbience();
         let lastFrameTime = performance.now();
 
         const tickLoop = (now) => {
+            // Sofort-Ergebnis: Je Bild ein Häppchen Simulation, gezeichnet
+            // wird nur der Stand - so bleibt die Seite bedienbar
+            if (liveMatch.ohneBild && !liveMatch.isFinished) {
+                liveMatch.rechneOhneBild(18);
+                this.zeigeOhneBildStand(liveMatch);
+                setText("lmHomeScore", String(liveMatch.homeScore));
+                setText("lmAwayScore", String(liveMatch.awayScore));
+                setText("lmMinute", String(liveMatch.minute));
+                setText("lmClock", liveMatch.getClockText ? liveMatch.getClockText() : `${liveMatch.minute}:00`);
+                if (!liveMatch.isFinished) {
+                    this.liveMatchAnimFrame = requestAnimationFrame(tickLoop);
+                    return;
+                }
+            }
             if (liveMatch.isFinished) {
                 cancelAnimationFrame(this.liveMatchAnimFrame);
                 this.liveMatchAnimFrame = null;
@@ -686,7 +777,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 }
                 this.stopCrowdAmbience();
                 updateLiveUI();
-                render2DCanvas();
+                if (!this.zeichne3D(liveMatch)) render2DCanvas();
                 this.playSound("whistle");
                 // Die übrigen Partien laufen parallel - beim Abpfiff steht
                 // auch die Tabelle beziehungsweise das Tableau der Runde
@@ -697,10 +788,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 } else {
                     this.finishMatchdayAroundUser();
                 }
+                const ohneBildEnde = !!liveMatch.ohneBild;
+                if (ohneBildEnde) this.zeigeOhneBildStand(liveMatch);
                 setTimeout(() => {
                     modal.style.display = "none";
+                    const box = document.getElementById("lmOhneBild");
+                    if (box) box.style.display = "none";
                     this.showMatchReportModal(match);
-                }, 1500);
+                }, ohneBildEnde ? 450 : 1500);
                 return;
             }
 
@@ -720,7 +815,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             this.updateCrowdAmbience(liveMatch, deltaMs / 1000);
 
             updateLiveUI();
-            render2DCanvas(deltaMs / 1000);
+            if (!this.zeichne3D(liveMatch, deltaMs / 1000)) render2DCanvas(deltaMs / 1000);
 
             this.liveMatchAnimFrame = requestAnimationFrame(tickLoop);
         };
@@ -763,6 +858,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         });
 
         document.getElementById("btnLmSkip").onclick = () => {
+            if (liveMatch.isFinished || liveMatch.ohneBild) return;
+            // Dieselbe Simulation läuft ohne Bild weiter - nur wo es keine
+            // Laufwege gibt, bleibt es beim Sprung ans Ende
+            if (liveMatch.modus === "fm" && liveMatch.director && typeof liveMatch.rechneOhneBild === "function") {
+                this.schalteOhneBild(liveMatch);
+                lastFrameTime = performance.now();
+                return;
+            }
             this.stopCrowdAmbience();
             liveMatch.skipToEnd();
             updateLiveUI();
@@ -785,6 +888,35 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     },
 
     // ------------------------------------------------------------ Seitenlinie
+
+    /** Ab jetzt ohne Bild: Co-Trainer übernimmt, die Einblendung zeigt den Stand */
+    schalteOhneBild(liveMatch) {
+        if (!liveMatch || liveMatch.isFinished) return;
+        this.stopCrowdAmbience();
+        if (this.coach) {
+            this.coach = null;
+            const coachModal = document.getElementById("modalCoaching");
+            if (coachModal) coachModal.style.display = "none";
+        }
+        // Schaltet um und rechnet ein erstes, winziges Häppchen
+        liveMatch.rechneOhneBild(0);
+        const box = document.getElementById("lmOhneBild");
+        if (box) box.style.display = "flex";
+        this.zeigeOhneBildStand(liveMatch);
+    },
+
+    zeigeOhneBildStand(liveMatch) {
+        const stand = document.getElementById("lmOhneBildStand");
+        if (stand) stand.textContent = `${liveMatch.homeScore}:${liveMatch.awayScore}`;
+        const balken = document.getElementById("lmOhneBildBalken");
+        if (balken) balken.style.width = `${liveMatch.isFinished ? 100 : Math.min(99, Math.round((liveMatch.minute || 0) / 90 * 100))}%`;
+        const text = document.getElementById("lmOhneBildText");
+        if (text) {
+            text.textContent = liveMatch.isFinished
+                ? "Abpfiff - der Spielbericht kommt."
+                : `${liveMatch.minute}. Minute · Der Co-Trainer coacht, das Spiel läuft ohne Bild weiter.`;
+        }
+    },
 
     /** Einstellungen fuer das Livespiel - sie gelten fuer jede Partie */
     liveEinstellungen() {

@@ -2994,6 +2994,11 @@ function ermittleTrikots(homeClub, awayClub) {
  * Klasse zur Durchführung der Live 2D Match Simulation (spielt Timeline synchron ab)
  */
 class LiveMatch {
+    /** Schrittweite ohne Bild: genau ein Bild der schnellsten Abspielstufe */
+    static OHNE_BILD_SCHRITT_MS = 16;
+    /** Notbremse für das Rechnen ohne Bild (ein Spiel braucht rund 8000 Schritte) */
+    static OHNE_BILD_HOECHSTENS = 60000;
+
     /**
      * @param {Object} [options]
      * @param {"home"|"away"} [options.userSide] Die Mannschaft des Spielers. Alle
@@ -4795,6 +4800,59 @@ class LiveMatch {
             this.director.kickoff = null;
             this.director.mode = "ambient";
         }
+    }
+
+    /**
+     * Ohne Bild zu Ende spielen - mit derselben Simulation wie im Livespiel.
+     *
+     * Das Sofort-Ergebnis rechnete bisher ab dem Klick mit dem statistischen
+     * Modell weiter: Was auf dem Platz entstand, endete dort, und ein Spiel,
+     * das man nicht anschaute, war ein anderes Spiel. Jetzt läuft die
+     * Livespiel-Simulation einfach weiter, nur ohne zu zeichnen, auf der
+     * schnellsten Abspielstufe (die ein Vorlauf ist, kein anderes Spiel).
+     * Ein ganzes Spiel dauert so zwei bis drei Sekunden.
+     *
+     * budgetMs begrenzt, wie lange ein Aufruf rechnet - im Browser bleibt die
+     * Oberfläche bedienbar, wenn jedes Bild ein Häppchen rechnet. Liefert
+     * true, sobald abgepfiffen ist.
+     */
+    rechneOhneBild(budgetMs = Infinity) {
+        if (this.isFinished) return true;
+        // Ohne Regie oder im Zeitleistenmodus gibt es keine Laufwege - dort
+        // bleibt es beim bisherigen Weg
+        if (!this.director || this.modus !== "fm") {
+            this.skipToEnd();
+            return true;
+        }
+        if (!this.ohneBild) {
+            this.ohneBild = true;
+            if (this.angemeldeteWechsel.length > 0) this.fuehreAngemeldeteWechselAus();
+            // Wer nicht zuschaut, überlässt Wechsel und Umstellungen dem Co-Trainer
+            this.coTrainerUebernimmt();
+            this.speed = 4;
+            this.isPaused = false;
+            this.banner = null;
+            this.slowMotion = 0;
+        }
+        const uhr = (typeof performance !== "undefined" && performance.now) ? () => performance.now() : () => Date.now();
+        const start = uhr();
+        let schritte = 0;
+        while (!this.isFinished) {
+            // Ohne Bild hält niemand an - auch keine Ansprache oder Seitenlinie
+            this.isPaused = false;
+            this.advanceRealTime(LiveMatch.OHNE_BILD_SCHRITT_MS);
+            this.updateBallAndPlayers(LiveMatch.OHNE_BILD_SCHRITT_MS);
+            this._ohneBildSchritte = (this._ohneBildSchritte || 0) + 1;
+            // Notbremse: Ein ganzes Spiel braucht rund 8000 Schritte. Hängt
+            // die Simulation, rechnet der Rest auf dem bisherigen Weg
+            if (this._ohneBildSchritte > LiveMatch.OHNE_BILD_HOECHSTENS) {
+                this.skipToEnd();
+                break;
+            }
+            // Die Uhr nur ab und zu fragen - sie kostet selbst Zeit
+            if ((++schritte & 31) === 0 && uhr() - start >= budgetMs) break;
+        }
+        return this.isFinished;
     }
 
     finishMatch() {

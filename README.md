@@ -631,11 +631,11 @@ TEST_SCHNELL=1 node test_runner.js            # ohne die sieben langsamsten Test
 TEST_FILTER="U23|Speicher" node test_runner.js # nur passende Tests
 TEST_ZEIT=1 node test_runner.js               # Laufzeit je Test anzeigen
 TEST_SEED=1234 node test_runner.js            # andere feste Zufallswerte; TEST_SEED=zufall für echten Zufall
-TEST_TEIL=2/4 node test_runner.js             # nur jeden vierten Test ab dem zweiten - für parallele Läufe
+TEST_TEIL=2/4 node test_runner.js             # nur den zweiten von vier Teilen - für parallele Läufe
 node pruefung.js                              # nur die statische Prüfung
 ```
 
-**Automatisch bei GitHub (`.github/workflows/tests.yml`):** Bei jedem Pull Request und jedem Push auf `master` laufen die statische Prüfung und die volle Suite, aufgeteilt auf vier parallele Läufe (`TEST_TEIL=1/4` bis `4/4`). Ein roter Haken am Pull Request heißt: nicht mergen. Über **Actions → Tests → Run workflow** lässt sich die Suite von Hand mit einem anderen Startwert starten, etwa `7` oder `zufall`.
+**Automatisch bei GitHub (`.github/workflows/tests.yml`):** Bei jedem Pull Request und jedem Push auf `master` laufen die statische Prüfung und die volle Suite, aufgeteilt auf vier parallele Läufe (`TEST_TEIL=1/4` bis `4/4`). Die schweren Tests sind nach ihrer gemessenen Dauer verteilt (`DAUER` in `test_filter.js`), damit kein Teil viel länger braucht als die anderen. Ein roter Haken am Pull Request heißt: nicht mergen. Über **Actions → Tests → Run workflow** lässt sich die Suite von Hand mit einem anderen Startwert starten, etwa `7` oder `zufall`.
 
 Jeder Test bekommt feste Zufallswerte aus seinem Namen – er liefert allein dasselbe Ergebnis wie in der ganzen Suite. Vor jeder Suite läuft `pruefung.js`: Syntax aller Dateien, doppelte Methoden (auch über die ausgelagerten UI-Teile hinweg), doppelte globale Namen und ob jede Datei geladen und offline vorrätig ist.
 

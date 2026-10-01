@@ -2804,6 +2804,22 @@ class UIManager {
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
 
+        // Wer gerade verliehen ist, steht nicht im Kader - aber hier darunter
+        const verliehenBox = document.getElementById("squadLoanedOut");
+        const leihEngine = this.getLoanEngine();
+        if (verliehenBox && leihEngine) {
+            const weg = leihEngine.verlieheneVon(state, userClub.id);
+            verliehenBox.style.display = weg.length ? "" : "none";
+            verliehenBox.innerHTML = weg.length
+                ? `<strong>Verliehen:</strong> ${weg.map(p => `<a href="#" data-verliehen="${this.escapeHtml(String(p.id))}">${this.escapeHtml(p.name)}</a> (${this.escapeHtml(state.clubs.find(c => c.id === p.leihe.leihvereinId)?.name || "?")})`).join(", ")}`
+                : "";
+            verliehenBox.querySelectorAll("[data-verliehen]").forEach(a => a.addEventListener("click", (e) => {
+                e.preventDefault();
+                const ziel = state.players.find(p => String(p.id) === a.dataset.verliehen);
+                if (ziel) this.showPlayerDetailsModal(ziel.id);
+            }));
+        }
+
         // Kennzahlen des ganzen Kaders - unabhaengig vom Filter
         const kader = state.players.filter(p => userClub.playerIds.includes(p.id));
         if (kader.length) {
@@ -2872,7 +2888,7 @@ class UIManager {
             return `
                 <tr class="row-clickable" data-player-id="${p.id}" title="Details zu ${this.escapeHtml(p.name)} öffnen">
                     <td class="sq-status">${statusBadge}</td>
-                    <td class="sq-name"><strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}<span class="squad-role-hint">${this.escapeHtml(p.squadRole || "Kader")} · ${p.age} J.</span></td>
+                    <td class="sq-name"><strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}<span class="squad-role-hint">${p.leihe ? "Leihspieler" : this.escapeHtml(p.squadRole || "Kader")} · ${p.age} J.</span></td>
                     <td class="sq-pos nowrap">
                         <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>${secondaryHtml}
                     </td>
@@ -5090,6 +5106,139 @@ class UIManager {
                 }
             });
         });
+    }
+
+    getLoanEngine() {
+        if (typeof LoanEngine !== "undefined" && LoanEngine) return LoanEngine;
+        if (typeof window !== "undefined" && window.LoanEngine) return window.LoanEngine;
+        return null;
+    }
+
+    /** Unterreiter Leihen: eigene Leihen und der Leihmarkt */
+    renderLeihen() {
+        const engine = this.getLoanEngine();
+        const state = this.app.state;
+        const eigene = document.getElementById("loansOwnList");
+        const markt = document.getElementById("loanMarketBody");
+        if (!engine || !eigene || !markt) return;
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const club = (id) => state.clubs.find(c => c.id === id);
+
+        const verliehen = engine.verlieheneVon(state, state.userClubId);
+        const geliehen = engine.geliehenVon(state, state.userClubId);
+        const meta = document.getElementById("loansMeta");
+        if (meta) meta.textContent = `${verliehen.length} verliehen · ${geliehen.length} geliehen`;
+        const zeile = (p, text, knopf = "") => `
+            <div class="leih-zeile" data-player-id="${esc(p.id)}">
+                <div><strong>${esc(p.name)}</strong> <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${esc(p.pos)}</span> <span class="text-muted">${p.age} J.</span></div>
+                <div class="leih-text">${text}</div>
+                ${knopf}
+            </div>`;
+        eigene.innerHTML = (verliehen.length || geliehen.length) ? [
+            ...verliehen.map(p => {
+                const l = p.leihe;
+                const spiele = (p.stats?.matches || 0) - (l.startSpiele || 0);
+                const noten = (p.stats?.ratingSum || 0) - (l.startNoten || 0);
+                return zeile(p,
+                    `Verliehen an <strong>${esc(club(l.leihvereinId)?.name || "?")}</strong> (${esc(l.rolle)}) · ${spiele} Spiele${spiele ? `, Note ${(noten / spiele).toFixed(2).replace(".", ",")}` : ""} · Spielpraxis ${Math.round((p.spielpraxis ?? 0.5) * 100)} %`,
+                    `<button class="btn btn-sm btn-secondary" data-leihe-zurueck="${esc(p.id)}">Zurückholen</button>`);
+            }),
+            ...geliehen.map(p => {
+                const l = p.leihe;
+                return zeile(p, `Geliehen von <strong>${esc(club(l.stammvereinId)?.name || "?")}</strong> · Sie zahlen ${Math.round(l.lohnAnteil * 100)} % des Gehalts · erwartet: ${esc(l.rolle)}`);
+            })
+        ].join("") : `<div class="text-muted" style="font-size:13px;">Keine laufenden Leihen.</div>`;
+
+        const ratingEngine = this.getRatingEngine();
+        const liste = engine.leihmarkt(state, 30);
+        markt.innerHTML = liste.length ? liste.map(e => {
+            const p = state.players.find(q => String(q.id) === String(e.playerId));
+            const card = ratingEngine && p ? ratingEngine.calculateVisiblePlayerCard(p, Object.assign({ userClubId: state.userClubId, leagueDataCoverage: 85 }, this.starContext())) : null;
+            return `
+                <tr class="clickable-row" data-player-id="${esc(e.playerId)}">
+                    <td><strong>${esc(e.name)}</strong></td>
+                    <td>${esc(e.clubName)}</td>
+                    <td><span class="pos-tag pos-${this.getPosGroup(e.pos)}">${esc(e.pos)}</span></td>
+                    <td>${e.age}</td>
+                    <td class="nowrap">${card ? card.abilityStarsHtml : ""}</td>
+                    <td><span class="badge badge-info">${esc(e.rolle)}</span></td>
+                    <td>${Math.round(e.lohnAnteil * 100)} % von ${this.geldKurz(e.wage)}</td>
+                    <td>${e.gebuehr ? this.geldKurz(e.gebuehr) : "-"}</td>
+                    <td><button class="btn btn-sm btn-primary" data-ausleihen="${esc(e.playerId)}">Ausleihen</button></td>
+                </tr>`;
+        }).join("") : `<tr><td colspan="9" class="text-center text-muted">Gerade gibt kein Verein einen passenden Spieler ab.</td></tr>`;
+
+        const neuZeichnen = () => {
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.renderLeihen();
+            this.renderHeader?.();
+        };
+        eigene.querySelectorAll("[data-leihe-zurueck]").forEach(btn => btn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            const res = engine.zurueckholen(state, btn.dataset.leiheZurueck);
+            this.showToast(res.success ? "Er kehrt zurück." : res.error, res.success ? "success" : "error");
+            if (res.success) neuZeichnen();
+        }));
+        markt.querySelectorAll("[data-ausleihen]").forEach(btn => btn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            const res = engine.ausleihen(state, btn.dataset.ausleihen);
+            this.showToast(res.success ? `${res.eintrag.name} spielt bis zum Saisonende für Sie.` : res.error, res.success ? "success" : "error", 5000);
+            if (res.success) { this.playSound("goal"); neuZeichnen(); }
+        }));
+        [...eigene.querySelectorAll(".leih-zeile"), ...markt.querySelectorAll("tr[data-player-id]")].forEach(el => el.addEventListener("click", () => {
+            const ziel = state.players.find(p => String(p.id) === el.dataset.playerId);
+            if (ziel) this.showPlayerDetailsModal(ziel.id);
+        }));
+    }
+
+    /**
+     * Die Leihe in der Spielerakte: verleihen (eigener Spieler), Stand einer
+     * laufenden Leihe mit Zurückholen, Hinweis bei einem Leihspieler, oder
+     * Ausleihen, wenn sein Verein ihn abgibt.
+     */
+    leiheHtml(player, modus) {
+        const engine = this.getLoanEngine();
+        if (!engine) return "";
+        const state = this.app.state;
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const club = (id) => state.clubs.find(c => c.id === id);
+        const kopf = `<h4 class="gs-titel"><svg class="ico" aria-hidden="true"><use href="#i-transfer"/></svg> Leihe</h4>`;
+        if (modus === "verliehen") {
+            const l = player.leihe;
+            const spiele = (player.stats?.matches || 0) - (l.startSpiele || 0);
+            return `
+                <div class="dash-card mb-3 gs-karte">${kopf}
+                    <div class="gs-lage gs-info">Verliehen an <strong>${esc(club(l.leihvereinId)?.name || "?")}</strong> bis zum Saisonende (${esc(l.rolle)}, dort ${Math.round(l.lohnAnteil * 100)} % des Gehalts) · ${spiele} Spiele seit der Leihe · Spielpraxis ${Math.round((player.spielpraxis ?? 0.5) * 100)} %</div>
+                    <button class="btn btn-secondary" id="btnPdLeiheZurueck">Vorzeitig zurückholen</button>
+                </div>`;
+        }
+        if (modus === "geliehen") {
+            const l = player.leihe;
+            return `
+                <div class="dash-card mb-3 gs-karte">${kopf}
+                    <div class="gs-lage gs-info">Leihspieler von <strong>${esc(club(l.stammvereinId)?.name || "?")}</strong> bis zum Saisonende. Sie zahlen ${Math.round(l.lohnAnteil * 100)} % seines Gehalts; erwartet wird ein Einsatz als ${esc(l.rolle)}.</div>
+                </div>`;
+        }
+        if (modus === "eigener") {
+            const hindernis = engine.verleihHindernis(state, player);
+            return `
+                <div class="dash-card mb-3 gs-karte">${kopf}
+                    <div class="gs-sub">Ein Verein, bei dem er spielt, leiht ihn bis zum Saisonende aus und übernimmt einen Teil des Gehalts.</div>
+                    ${hindernis
+                        ? `<div class="gs-lage">${esc(hindernis)}</div>`
+                        : `<button class="btn btn-secondary" id="btnPdLeiheAnfragen">Interessenten anfragen</button><div id="pdLeiheAngebote" class="leih-angebote"></div>`}
+                </div>`;
+        }
+        if (modus === "markt") {
+            const e = engine.leihmarkt(state, 500).find(x => String(x.playerId) === String(player.id));
+            if (!e) return "";
+            return `
+                <div class="dash-card mb-3 gs-karte">${kopf}
+                    <div class="gs-lage gs-info">${esc(e.clubName)} gibt ihn ab: bis zum Saisonende, Sie übernehmen ${Math.round(e.lohnAnteil * 100)} % des Gehalts${e.gebuehr ? `, Leihgebühr ${this.geldKurz(e.gebuehr)}` : ""}. Erwartet wird ein Einsatz als ${esc(e.rolle)}.</div>
+                    <button class="btn btn-primary" id="btnPdAusleihen">Ausleihen</button>
+                </div>`;
+        }
+        return "";
     }
 
     renderTransfers() {
@@ -7648,12 +7797,19 @@ class UIManager {
         const happy = player.happiness || { overall: 75, playingTime: 75, contract: 75, teamPerformance: 75, reason: "Zufrieden mit der Rolle im Team." };
         // Talente der eigenen Akademie gehören zum Verein, auch ohne Profivertrag
         const isUserClub = isProspect || player.clubId === state.userClubId;
+        // Leihe: eigener verliehener Spieler, Leihspieler im eigenen Kader,
+        // eigener Spieler (verleihbar) oder fremder (vielleicht ausleihbar)
+        const leiheModus = player.leihe
+            ? (player.leihe.stammvereinId === state.userClubId ? "verliehen"
+                : (player.leihe.leihvereinId === state.userClubId ? "geliehen" : null))
+            : (isProspect ? null : (isUserClub ? "eigener" : "markt"));
+        const eigenerVerliehen = leiheModus === "verliehen";
         const demand = (typeof ContractEngine !== 'undefined' && isUserClub && !isProspect) ? ContractEngine.getExtensionDemand(player, club) : { demandWage: Math.round((player.wage || 20000) * 1.15) };
 
         const ratingEngine = this.getRatingEngine();
         // Das eigene Talent wird täglich im Training gesehen - für die Karte
         // zählt es deshalb wie ein Spieler des eigenen Vereins.
-        const karteSpieler = isProspect ? Object.assign({}, player, { clubId: state.userClubId }) : player;
+        const karteSpieler = isProspect || eigenerVerliehen ? Object.assign({}, player, { clubId: state.userClubId }) : player;
         const card = ratingEngine
             ? ratingEngine.calculateVisiblePlayerCard(karteSpieler,
                 Object.assign({ userClubId: state.userClubId, leagueDataCoverage: 85 }, this.starContext()))
@@ -7743,7 +7899,7 @@ class UIManager {
                         : `<button class="btn btn-primary" id="btnPdPromoteProspect" style="width:100%;">Vertragsgespräche aufnehmen</button>`}
                 </div>
             `;
-        } else if (isUserClub) {
+        } else if (isUserClub && leiheModus !== "geliehen") {
             contractSectionHtml = `
                 <div class="dash-card mt-3" style="padding:14px; background: var(--surface-2); border:1px solid var(--line);">
                     <h4 style="font-size:14px; margin-bottom:8px; color:#38bdf8;">💼 Vertragsverlängerung verhandeln</h4>
@@ -7784,7 +7940,7 @@ class UIManager {
         }
 
         let scoutExternalHtml = "";
-        if (!isUserClub) {
+        if (!isUserClub && !eigenerVerliehen) {
             scoutExternalHtml = `
                 <div style="display:flex; gap:10px; margin-top:14px;">
                     ${this.beobachtungsText(player.id)
@@ -7937,6 +8093,8 @@ class UIManager {
 
             ${isUserClub && !isProspect ? this.entwicklungsplanHtml(player) : ""}
 
+            ${leiheModus ? this.leiheHtml(player, leiheModus) : ""}
+
             ${positionMapHtml}
 
             ${eigenheitenHtml}
@@ -8000,6 +8158,37 @@ class UIManager {
         document.getElementById("btnClosePlayerDetails").onclick = () => {
             modal.style.display = "none";
         };
+
+        // Leihe: anfragen, verleihen, zurückholen, ausleihen
+        const leihEngine = this.getLoanEngine();
+        const nachLeihe = (res, text) => {
+            if (!res.success) { this.showToast(res.error || "Das ging nicht.", "error"); return; }
+            this.showToast(text, "success", 5000);
+            this.playSound("click");
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.showPlayerDetailsModal(player.id);
+            if (this.activeTab === "squad") this.renderSquad?.();
+            if (this.activeTab === "transfers") this.renderLeihen?.();
+        };
+        document.getElementById("btnPdLeiheZurueck")?.addEventListener("click", () =>
+            nachLeihe(leihEngine.zurueckholen(state, player.id), `${player.name} kehrt zurück.`));
+        document.getElementById("btnPdAusleihen")?.addEventListener("click", () =>
+            nachLeihe(leihEngine.ausleihen(state, player.id), `${player.name} spielt bis zum Saisonende für Sie.`));
+        document.getElementById("btnPdLeiheAnfragen")?.addEventListener("click", () => {
+            const ziel = document.getElementById("pdLeiheAngebote");
+            const angebote = leihEngine.interessenten(state, player.id);
+            if (!ziel) return;
+            const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+            ziel.innerHTML = angebote.length ? angebote.map(a => `
+                <div class="leih-zeile">
+                    <div><strong>${esc(a.clubName)}</strong> <span class="text-muted">Liga ${a.stufe}</span></div>
+                    <div class="leih-text">${esc(a.rolle)} · übernimmt ${Math.round(a.lohnAnteil * 100)} % des Gehalts</div>
+                    <button class="btn btn-sm btn-primary" data-verleihen-an="${esc(a.clubId)}">Verleihen</button>
+                </div>`).join("")
+                : `<div class="gs-lage">Kein Verein, bei dem er spielen würde, will ihn gerade ausleihen.</div>`;
+            ziel.querySelectorAll("[data-verleihen-an]").forEach(btn => btn.addEventListener("click", () =>
+                nachLeihe(leihEngine.verleihen(state, player.id, btn.dataset.verleihenAn), `${player.name} ist bis zum Saisonende verliehen.`)));
+        });
 
         // Entwicklungsplan: Schwerpunkt, Umschulung, Mentor
         const planEngine = this.getDevelopmentPlanEngine();
@@ -11419,20 +11608,25 @@ class UIManager {
             };
         }
 
-        // Transfer & Scouting Subtabs
+        // Transfer, Scouting und Leihen als Unterreiter
+        const transferAnsicht = (knopf, ansicht) => {
+            ["btnSubTransfersMarket", "btnSubTransfersScouting", "btnSubTransfersLoans"].forEach(id =>
+                document.getElementById(id)?.classList.toggle("active", id === knopf));
+            ["viewTransferMarket", "viewScoutingCenter", "viewLoans"].forEach(id =>
+                id === ansicht ? DOM.show(id) : DOM.hide(id));
+        };
         document.getElementById("btnSubTransfersMarket")?.addEventListener("click", () => {
-            document.getElementById("btnSubTransfersMarket")?.classList.add("active");
-            document.getElementById("btnSubTransfersScouting")?.classList.remove("active");
-            DOM.show("viewTransferMarket");
-            DOM.hide("viewScoutingCenter");
+            transferAnsicht("btnSubTransfersMarket", "viewTransferMarket");
         });
 
         document.getElementById("btnSubTransfersScouting")?.addEventListener("click", () => {
-            document.getElementById("btnSubTransfersScouting")?.classList.add("active");
-            document.getElementById("btnSubTransfersMarket")?.classList.remove("active");
-            DOM.show("viewScoutingCenter");
-            DOM.hide("viewTransferMarket");
+            transferAnsicht("btnSubTransfersScouting", "viewScoutingCenter");
             this.renderTransfers();
+        });
+
+        document.getElementById("btnSubTransfersLoans")?.addEventListener("click", () => {
+            transferAnsicht("btnSubTransfersLoans", "viewLoans");
+            this.renderLeihen();
         });
 
         // Scout Auftrag absenden

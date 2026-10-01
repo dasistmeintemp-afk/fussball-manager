@@ -7440,6 +7440,65 @@ function runEngineTests() {
         if (!Plan.uebersicht(state).some(e => e.player.id === talent.id && e.mentor === mentor.name)) throw new Error("Übersicht zeigt den Mentor nicht");
     });
 
+    test("Leihen: verleihen mit Gehaltsanteil, ausleihen vom Leihmarkt, Rückkehr zum Saisonende", () => {
+        const { LoanEngine } = require('./js/engine/loanEngine.js');
+        const { FinanceEngine } = require('./js/engine/financeEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const kader = () => state.players.filter(p => club.playerIds.includes(p.id));
+
+        // Ein Ersatzspieler ohne Einsätze wird verliehen
+        const kandidat = kader().filter(p => !club.lineup.includes(p.id) && p.pos !== "TW")
+            .sort((a, b) => (a.overall || 0) - (b.overall || 0))[0];
+        kandidat.contractYears = 2;
+        const angebote = LoanEngine.interessenten(state, kandidat.id);
+        if (!angebote.length) throw new Error("Niemand will einen Ersatzspieler ausleihen");
+        const angebot = angebote[0];
+        const leihverein = state.clubs.find(c => c.id === angebot.clubId);
+        if ((leihverein.level || 1) < (club.level || 1)) throw new Error("Verliehen wird nicht in eine höhere Liga");
+        const res = LoanEngine.verleihen(state, kandidat.id, angebot.clubId);
+        if (!res.success) throw new Error(res.error);
+        if (kandidat.clubId !== leihverein.id || club.playerIds.includes(kandidat.id) || !leihverein.playerIds.includes(kandidat.id)) {
+            throw new Error("Der Spieler ist nicht beim Leihverein angekommen");
+        }
+        if (LoanEngine.verlieheneVon(state, club.id)[0] !== kandidat) throw new Error("Verliehene Spieler werden nicht gefunden");
+        // Das Gehalt teilen sich beide Vereine
+        const lohn = kandidat.wage;
+        if (LoanEngine.lohnAnteilFuer(kandidat, leihverein.id) + LoanEngine.lohnAnteilFuer(kandidat, club.id) !== Math.round(lohn * angebot.lohnAnteil) + Math.round(lohn * (1 - angebot.lohnAnteil))) {
+            throw new Error("Gehaltsanteile gehen nicht auf");
+        }
+        const summe = FinanceEngine.getFinanceSummary(state, club.id);
+        const ohneLeihe = kader().reduce((a, p) => a + (p.wage || 0), 0);
+        if (Math.abs(summe.weeklyWages - (ohneLeihe + lohn * (1 - angebot.lohnAnteil))) > 1) {
+            throw new Error(`Der Stammverein zahlt seinen Anteil nicht (${summe.weeklyWages} statt ${ohneLeihe + lohn * (1 - angebot.lohnAnteil)})`);
+        }
+        // Verkaufen lässt sich ein verliehener Spieler nicht
+        const kaeufer = state.clubs.find(c => c.id !== club.id && c.id !== leihverein.id);
+        if (TransferEngine.executeTransfer(state, kandidat.id, kaeufer.id, 1000000, kandidat.wage, 3)) {
+            throw new Error("Ein verliehener Spieler wurde verkauft");
+        }
+
+        // Ausleihen vom Leihmarkt: unter der Forderung geht nichts
+        const markt = LoanEngine.leihmarkt(state);
+        if (!markt.length) throw new Error("Der Leihmarkt ist leer");
+        const ziel = markt.find(e => e.gebuehr === 0) || markt[0];
+        club.balance = Math.max(club.balance || 0, (ziel.gebuehr || 0) + 1000000);
+        const zuWenig = LoanEngine.ausleihen(state, ziel.playerId, Math.max(0, ziel.lohnAnteil - 0.2));
+        if (zuWenig.success) throw new Error("Der Stammverein akzeptiert zu wenig Gehaltsübernahme");
+        const geliehen = LoanEngine.ausleihen(state, ziel.playerId);
+        if (!geliehen.success) throw new Error(geliehen.error);
+        const leihspieler = state.players.find(p => String(p.id) === String(ziel.playerId));
+        if (leihspieler.clubId !== club.id || !club.playerIds.includes(leihspieler.id)) throw new Error("Der Leihspieler ist nicht im Kader");
+
+        // Monatsbericht und Rückkehr zum Saisonende
+        LoanEngine.monatlich(state);
+        if (!state.inbox.some(m => m.subject === "Leihbericht")) throw new Error("Kein Leihbericht im Postfach");
+        const zurueck = LoanEngine.saisonende(state);
+        if (zurueck.length < 2) throw new Error("Nicht alle Leihspieler sind zurückgekehrt");
+        if (kandidat.clubId !== club.id || !club.playerIds.includes(kandidat.id) || kandidat.leihe) throw new Error("Der verliehene Spieler ist nicht zurück");
+        if (leihspieler.clubId === club.id || club.playerIds.includes(leihspieler.id)) throw new Error("Der Leihspieler ist nicht zu seinem Verein zurück");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

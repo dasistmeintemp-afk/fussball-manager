@@ -59,6 +59,7 @@ const ASSETS_TO_CACHE = [
     "./js/engine/dressingRoomEngine.js",
     "./js/engine/playerTalkEngine.js",
     "./js/engine/developmentPlanEngine.js",
+    "./js/engine/loanEngine.js",
     "./js/engine/rivalryEngine.js",
     "./js/engine/seasonEngine.js",
     "./js/ui/uiManager.js",

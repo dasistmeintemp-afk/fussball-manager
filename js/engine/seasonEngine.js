@@ -508,6 +508,12 @@ class SeasonEngine {
         }
         state._seasonFinished = state.seasonYear;
 
+        // Leihspieler kehren zurück, bevor Verträge und Kader abgerechnet werden
+        const leihen = _resolve('LoanEngine', './loanEngine.js');
+        if (leihen && typeof leihen.saisonende === 'function') {
+            leihen.saisonende(state);
+        }
+
         // Die Saison in die Karriereakte schreiben: die Bilanz der Station und,
         // wenn es dazu gereicht hat, den Meistertitel.
         const careerEngine = _resolve('CareerEngine', './careerEngine.js');

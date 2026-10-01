@@ -1058,6 +1058,17 @@ const CalendarEngine = {
             (tag.plan || []).forEach(m => summary.messages.push(m));
         }
 
+        // Einmal im Monat: Leihbericht und Nachfragen der Stammvereine
+        const leihen = (typeof LoanEngine !== 'undefined' && LoanEngine)
+            ? LoanEngine
+            : ((typeof window !== 'undefined' && window.LoanEngine) ? window.LoanEngine : (typeof require !== 'undefined' ? require('./loanEngine.js').LoanEngine : null));
+        const heute = (state.seasonYear || 1) * 1000 + (state.currentDayIndex || 0);
+        if (typeof state.leihberichtTag !== 'number') state.leihberichtTag = heute;
+        if (leihen && typeof leihen.monatlich === 'function' && heute - state.leihberichtTag >= 28) {
+            state.leihberichtTag = heute;
+            leihen.monatlich(state).forEach(m => summary.messages.push(m));
+        }
+
         // 1b. Lücken in den Aufstellungen schließen. Wer sich verletzt, fällt
         // aus Elf und Bank - ohne Nachrücker stand ein Verein nach ein paar
         // Wochen dauerhaft mit zehn Mann da.

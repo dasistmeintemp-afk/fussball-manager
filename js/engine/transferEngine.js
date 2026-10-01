@@ -187,9 +187,11 @@ class TransferEngine {
     static executeTransfer(state, playerId, buyerClubId, fee, wage, contractYears) {
         const player = state.players.find(p => p.id === playerId);
         const buyerClub = state.clubs.find(c => c.id === buyerClubId);
-        const sellerClub = state.clubs.find(c => c.id === player.clubId);
-
         if (!player || !buyerClub) return false;
+        // Ein verliehener Spieler gehört seinem Stammverein - verkauft wird
+        // er erst, wenn er zurück ist
+        if (player.leihe) return false;
+        const sellerClub = state.clubs.find(c => c.id === player.clubId);
 
         // Finanzen verbuchen - inklusive Eintrag im Buchungsjournal, damit
         // Kontostand und Journal auch nach Transfers übereinstimmen
@@ -421,6 +423,7 @@ class TransferEngine {
         for (const p of (markt.nachPosition.get(bedarf.pos) || [])) {
             if (p.clubId === club.id) continue;
             if (p.clubId === state.userClubId) continue;
+            if (p.leihe) continue;
             if ((p.injuredWeeks || 0) > 0) continue;
             if ((p.overall || 0) <= bedarf.messlatte) continue;
 

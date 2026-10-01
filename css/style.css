@@ -8035,3 +8035,13 @@ td.nowrap { white-space: nowrap; }
 #trainingPlaeneBody tr[data-player-id] { cursor: pointer; }
 #trainingPlaeneBody tr[data-player-id]:hover td { background: var(--surface-2, rgba(255,255,255,0.03)); }
 #trainingPlaeneBody .text-warning { color: #f59e0b; font-weight: 600; }
+
+/* Leihen */
+.leih-zeile { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line, rgba(255,255,255,0.06)); font-size: 13px; cursor: pointer; }
+.leih-zeile:last-child { border-bottom: none; }
+.leih-text { color: var(--text-muted); font-size: 12.5px; }
+.leih-angebote { margin-top: 10px; }
+@media (max-width: 640px) {
+    .leih-zeile { grid-template-columns: 1fr auto; }
+    .leih-text { grid-column: 1 / -1; grid-row: 2; }
+}

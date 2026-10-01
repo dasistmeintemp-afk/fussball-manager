@@ -7918,6 +7918,11 @@ function runEngineTests() {
         if (NegotiationEngine.praemienWert(state, neg, angebot) < neg.demand.wage * 0.15) throw new Error("Prämien zählen in der Bewertung kaum");
         const ohnePraemien = Object.assign({}, angebot, { einsatzPraemie: 0, torPraemie: 0 });
         if (NegotiationEngine.praemienWert(state, neg, ohnePraemien) !== 0) throw new Error("Ohne Prämien kein Prämienwert");
+        // Ein Angebot ohne Handgeld-Angabe übernimmt die Forderung statt NaN
+        const ohneHandgeld = Object.assign({}, angebot);
+        delete ohneHandgeld.signingBonus;
+        NegotiationEngine.submitOffer(state, neg.id, ohneHandgeld);
+        if (neg.lastOffer.signingBonus !== neg.demand.signingBonus) throw new Error(`Handgeld ohne Angabe: ${neg.lastOffer.signingBonus}`);
         NegotiationEngine.submitOffer(state, neg.id, angebot);
         neg.replyDay = NegotiationEngine.today(state);
         NegotiationEngine.processDay(state);

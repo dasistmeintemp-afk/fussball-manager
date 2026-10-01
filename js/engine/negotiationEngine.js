@@ -334,7 +334,8 @@ class NegotiationEngine {
         } else if (negotiation.stage === NEGOTIATION_STAGES.TERMS) {
             const wage = Math.max(0, Math.round(Number(offer.wage) || 0));
             const years = Math.max(1, Math.min(5, Math.round(Number(offer.years) || 3)));
-            const bonus = Math.max(0, Math.round(Number(offer.signingBonus) ?? negotiation.demand.signingBonus));
+            // Ohne Angabe gilt die Forderung - Number(undefined) wäre NaN, und "??" griffe nicht
+            const bonus = Math.max(0, Math.round(Number(offer.signingBonus ?? negotiation.demand.signingBonus) || 0));
             const honorar = Math.max(0, Math.round(offer.agentFee !== undefined ? Number(offer.agentFee) || 0 : (negotiation.demand.agentFee || 0)));
             const einsatzPraemie = Math.max(0, Math.round(Number(offer.einsatzPraemie) || 0));
             const torPraemie = Math.max(0, Math.round(Number(offer.torPraemie) || 0));

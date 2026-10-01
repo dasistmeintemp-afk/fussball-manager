@@ -142,7 +142,9 @@ function runDataTests() {
         if (!content.includes('window.INITIAL_TEAMS_DATA = INITIAL_TEAMS_DATA;')) {
             throw new Error("window.INITIAL_TEAMS_DATA Export fehlt in initialData.js");
         }
-        if (!content.includes('module.exports = { INITIAL_TEAMS_DATA };')) {
+        // Geprüft wird, was ankommt - nicht der genaue Wortlaut der Zeile
+        const exportiert = require('./js/data/initialData.js');
+        if (!/module\.exports\s*=\s*\{[^}]*INITIAL_TEAMS_DATA/.test(content) || !Array.isArray(exportiert.INITIAL_TEAMS_DATA) || !exportiert.INITIAL_TEAMS_DATA.length) {
             throw new Error("module.exports fehlt in initialData.js");
         }
     });

@@ -3566,6 +3566,71 @@ function runEngineTests() {
         }
     });
 
+    test("U23: Spieler hinunterschicken, Regeln für Alter und Kadergröße, Spielpraxis in der zweiten Mannschaft", () => {
+        const { ReserveEngine } = require('./js/engine/reserveEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "U23" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const kader = state.players.filter(p => club.playerIds.includes(p.id));
+        const jung = kader.filter(p => p.age <= 23).sort((a, b) => b.overall - a.overall);
+        const stamm = jung.find(p => club.lineup.includes(p.id)) || jung[0];
+        if (!stamm) throw new Error("Kein junger Spieler im Kader");
+        stamm.spielpraxis = 0.2;
+
+        const r = ReserveEngine.hinunter(state, stamm.id);
+        if (!r.success || !stamm.reserve) throw new Error("Hinunterschicken klappt nicht: " + r.error);
+        if (club.lineup.includes(stamm.id) || club.bench.includes(stamm.id)) throw new Error("Er steht noch in Elf oder Bank");
+        if (club.lineup.length !== 11) throw new Error("Die Elf ist nicht nachgerückt");
+        if (GameState.einsatzfaehigeSpieler(club, state.players).some(p => p.id === stamm.id)) throw new Error("Er gilt noch als einsatzfähig für die Profis");
+        if (ReserveEngine.hinunter(state, stamm.id).success) throw new Error("Doppelt hinunter geht");
+
+        // Höchstens drei über 23
+        const alt = kader.filter(p => p.age > 23 && !p.reserve).sort((a, b) => a.overall - b.overall);
+        for (let i = 0; i < ReserveEngine.MAX_UEBERALTERT; i++) {
+            const res = ReserveEngine.hinunter(state, alt[i].id);
+            if (!res.success) throw new Error(`Älterer Spieler ${i + 1} darf nicht hinunter: ${res.error}`);
+        }
+        const vierter = ReserveEngine.hinunter(state, alt[ReserveEngine.MAX_UEBERALTERT].id);
+        if (vierter.success || !/über/.test(vierter.error)) throw new Error("Der vierte Ältere darf hinunter");
+
+        // Der Profikader darf nicht leerlaufen
+        const rest = state.players.filter(p => club.playerIds.includes(p.id) && !p.reserve && p.age <= 23);
+        let abgelehnt = null;
+        const profis = () => ReserveEngine.profis(state, club).length;
+        while (profis() > ReserveEngine.MIN_PROFIKADER && rest.length) ReserveEngine.hinunter(state, rest.shift().id);
+        const naechster = rest.shift() || jung.find(p => !p.reserve);
+        if (naechster) abgelehnt = ReserveEngine.hinunter(state, naechster.id);
+        if (profis() < ReserveEngine.MIN_PROFIKADER) throw new Error("Profikader unter der Mindestgröße");
+        if (abgelehnt && abgelehnt.success) throw new Error("Hinunter trotz zu kleinem Profikader");
+
+        // Das Spiel der U23: Praxis und Bilanz
+        const vorher = stamm.spielpraxis;
+        const ergebnis = ReserveEngine.spieltag(state, club, () => 0.42);
+        if (!ergebnis || !club.reserveBilanz || club.reserveBilanz.spiele !== 1) throw new Error("Kein U23-Spiel gespielt");
+        if (!(stamm.spielpraxis > vorher)) throw new Error(`Spielpraxis wächst nicht (${vorher} -> ${stamm.spielpraxis})`);
+        for (let i = 0; i < 40; i++) ReserveEngine.spieltag(state, club, () => 0.42);
+        if (stamm.spielpraxis < 0.6 || stamm.spielpraxis > ReserveEngine.PRAXIS_WERT + 0.01) throw new Error(`Spielpraxis landet nicht beim U23-Wert (${stamm.spielpraxis})`);
+        if (club.reserveBilanz.letzte.length > 6) throw new Error("Zu viele letzte Spiele gemerkt");
+
+        // KI-Talente ohne Einsatz sammeln etwas Praxis, aber nie über die zweite Mannschaft hinaus
+        const ki = state.clubs.find(c => c.id !== "muc" && c.playerIds.length > 20);
+        const kiTalent = state.players.find(p => p.clubId === ki.id && p.age <= 21 && !ki.lineup.includes(p.id) && !ki.bench.includes(p.id));
+        if (kiTalent) {
+            kiTalent.spielpraxis = 0;
+            kiTalent.injuredWeeks = 0;
+            ReserveEngine.kiPraxis(state);
+            if (!(kiTalent.spielpraxis > 0)) throw new Error("KI-Talent sammelt keine Praxis");
+            for (let i = 0; i < 80; i++) ReserveEngine.kiPraxis(state);
+            if (kiTalent.spielpraxis > ReserveEngine.KI_PRAXIS + 0.001) throw new Error("KI-Praxis steigt über die zweite Mannschaft");
+        }
+
+        // Zurückholen und Wechsel heben die U23 auf
+        if (!ReserveEngine.hinauf(state, stamm.id).success || stamm.reserve) throw new Error("Zurückholen klappt nicht");
+        const zweiter = ReserveEngine.spieler(state, club)[0];
+        const kaeufer = state.clubs.find(c => c.id !== "muc");
+        TransferEngine.executeTransfer(state, zweiter.id, kaeufer.id, 1000000, zweiter.wage, 3);
+        if (zweiter.reserve) throw new Error("Nach dem Wechsel noch in der U23");
+    });
+
     // Taktung der 2D-Simulation: Spielaufbau muss sichtbar bleiben
     test("LiveMatchDirector: Spieltempo bleibt beobachtbar und je Stufe unterscheidbar", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });

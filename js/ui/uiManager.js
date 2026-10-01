@@ -2905,6 +2905,7 @@ class UIManager {
         }
 
         this.renderKabine();
+        this.renderReserve();
 
         // Kennzahlen des ganzen Kaders - unabhaengig vom Filter
         const kader = state.players.filter(p => userClub.playerIds.includes(p.id));
@@ -2974,7 +2975,7 @@ class UIManager {
             return `
                 <tr class="row-clickable" data-player-id="${p.id}" title="Details zu ${this.escapeHtml(p.name)} öffnen">
                     <td class="sq-status">${statusBadge}</td>
-                    <td class="sq-name"><strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}<span class="squad-role-hint">${p.leihe ? "Leihspieler" : this.escapeHtml(p.squadRole || "Kader")} · ${p.age} J.</span></td>
+                    <td class="sq-name"><strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}<span class="squad-role-hint">${p.reserve ? "U23" : (p.leihe ? "Leihspieler" : this.escapeHtml(p.squadRole || "Kader"))} · ${p.age} J.</span></td>
                     <td class="sq-pos nowrap">
                         <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>${secondaryHtml}
                     </td>
@@ -5304,6 +5305,60 @@ class UIManager {
             const ziel = state.players.find(p => String(p.id) === el.dataset.playerId);
             if (ziel) this.showPlayerDetailsModal(ziel.id);
         }));
+    }
+
+    /** Die zweite Mannschaft in der Spielerakte: hinunterschicken oder zurückholen */
+    reserveHtml(player) {
+        const engine = typeof ReserveEngine !== "undefined" ? ReserveEngine : null;
+        if (!engine) return "";
+        const state = this.app.state;
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const praxis = Math.round((player.spielpraxis ?? 0.5) * 100);
+        const kopf = `<h4 class="gs-titel"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg> Zweite Mannschaft (U23)</h4>`;
+        if (player.reserve) {
+            return `
+                <div class="dash-card mb-3 gs-karte">${kopf}
+                    <div class="gs-lage gs-info">Spielt in der U23 und steht den Profis nicht zur Verfügung · Spielpraxis ${praxis} %</div>
+                    <button class="btn btn-secondary" id="btnPdReserve">In den Profikader holen</button>
+                </div>`;
+        }
+        const check = engine.pruefe(state, player);
+        return `
+            <div class="dash-card mb-3 gs-karte">${kopf}
+                <div class="gs-sub">In der U23 spielt er an jedem Spieltag und sammelt Spielpraxis (Spielpraxis jetzt ${praxis} %). Für die Profis fehlt er, bis Sie ihn zurückholen.</div>
+                ${check.ok
+                    ? `<button class="btn btn-secondary" id="btnPdReserve">In die U23 schicken</button>`
+                    : `<div class="gs-lage">${esc(check.grund)}</div>`}
+            </div>`;
+    }
+
+    /** Der Block der zweiten Mannschaft im Kader-Reiter */
+    renderReserve() {
+        const box = document.getElementById("squadReserve");
+        const engine = typeof ReserveEngine !== "undefined" ? ReserveEngine : null;
+        if (!box || !engine) return;
+        const state = this.app.state;
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const spieler = engine.spieler(state, club).sort((a, b) => (b.overall || 0) - (a.overall || 0));
+        const b = club?.reserveBilanz;
+        if (!spieler.length && !b) { box.style.display = "none"; box.innerHTML = ""; return; }
+        box.style.display = "";
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const letzte = (b?.letzte || []).map(e => {
+            const klasse = e.tore > e.gegentore ? "s" : (e.tore === e.gegentore ? "u" : "n");
+            return `<span class="u23-ergebnis u23-${klasse}" title="Spieltag ${e.matchday}${e.schuetzen.length ? " · Tore: " + esc(e.schuetzen.join(", ")) : ""}">${e.tore}:${e.gegentore}</span>`;
+        }).join("");
+        box.innerHTML = `
+            <div class="kb-kopf">
+                <h3><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg>Zweite Mannschaft (U23)</h3>
+                ${b ? `<span class="text-muted">${b.s} S · ${b.u} U · ${b.n} N · ${b.tore}:${b.gegentore} Tore</span>` : ""}
+            </div>
+            ${letzte ? `<div class="u23-letzte"><span class="kb-label">Letzte Spiele</span>${letzte}</div>` : ""}
+            ${spieler.length ? `<table class="data-table u23-tabelle"><thead><tr><th>Spieler</th><th>Pos</th><th>Alter</th><th>Stärke</th><th>Spielpraxis</th></tr></thead><tbody>
+                ${spieler.map(p => `<tr data-u23="${esc(p.id)}"><td>${esc(p.name)}${(p.injuredWeeks || 0) > 0 ? ' <span class="text-danger">verletzt</span>' : ""}</td><td>${esc(p.pos)}</td><td>${p.age || "-"}</td><td>${p.overall || "-"}</td><td>${Math.round((p.spielpraxis ?? 0.5) * 100)} %</td></tr>`).join("")}
+            </tbody></table>` : `<p class="text-muted">Niemand spielt gerade in der U23.</p>`}
+            <p class="text-muted kb-hinweis">Über die Spielerakte schicken Sie Spieler hinunter oder holen sie zurück. Höchstens ${engine.MAX_UEBERALTERT} Spieler über ${engine.ALTERSGRENZE}, im Profikader bleiben mindestens ${engine.MIN_PROFIKADER}.</p>`;
+        box.querySelectorAll("[data-u23]").forEach(tr => tr.addEventListener("click", () => this.showPlayerDetailsModal(tr.dataset.u23)));
     }
 
     /**
@@ -8297,6 +8352,8 @@ class UIManager {
 
             ${isUserClub && !isProspect ? this.entwicklungsplanHtml(player) : ""}
 
+            ${leiheModus === "eigener" ? this.reserveHtml(player) : ""}
+
             ${leiheModus ? this.leiheHtml(player, leiheModus) : ""}
 
             ${positionMapHtml}
@@ -8407,6 +8464,17 @@ class UIManager {
         document.getElementById("btnPdKaufoption")?.addEventListener("click", () => {
             const res = leihEngine.zieheKaufoption(state, player.id);
             nachLeihe(res, res.success ? `${player.name} ist fest verpflichtet (${this.geldKurz(res.preis)}).` : "");
+        });
+        // Zweite Mannschaft
+        const reserveEngine = typeof ReserveEngine !== "undefined" ? ReserveEngine : null;
+        document.getElementById("btnPdReserve")?.addEventListener("click", () => {
+            if (!reserveEngine) return;
+            const hinunter = !player.reserve;
+            const res = hinunter ? reserveEngine.hinunter(state, player.id) : reserveEngine.hinauf(state, player.id);
+            nachLeihe(res, hinunter
+                ? `${player.name} spielt jetzt in der U23${res.ausElf ? " - die Aufstellung ist nachgerückt" : ""}.`
+                : `${player.name} gehört wieder zum Profikader.`);
+            if (res.success && this.activeTab === "tactics") this.renderCurrentTab();
         });
         document.getElementById("btnPdLeiheAnfragen")?.addEventListener("click", () => {
             const ziel = document.getElementById("pdLeiheAngebote");

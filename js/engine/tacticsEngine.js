@@ -651,11 +651,11 @@ const TAKTIK_VORLAGEN = {
     },
     tieferBlock: {
         name: "Tiefer Block",
-        beschreibung: "Den Strafraum verteidigen: Fünferkette gegen den Ball, das Zentrum eng, lange Bälle nach vorn.",
+        beschreibung: "Den Strafraum verteidigen: Fünferkette gegen den Ball, das Zentrum eng, nach Ballgewinn sofort lang nach vorn.",
         anweisungen: {
             pressing: "low", anlaufen: "seltener", defensiveLine: "deep", nachBallverlust: "zurueckziehen",
             mentality: "defensive", kompaktheit: "eng", flankenVerhindern: "zulassen", torwartAbspiel: "lang",
-            durchsPressing: "lang", nachBallgewinn: "normal",
+            durchsPressing: "lang", nachBallgewinn: "kontern",
             linienVerhalten: "fallenlassen", zeitspiel: "oft", torwartZiel: "spitze"
         },
         formMitBall: "grund", formGegenBall: "5-4-1", rollenStil: "defensiv"

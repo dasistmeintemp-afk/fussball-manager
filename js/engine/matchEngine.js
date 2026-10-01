@@ -2555,6 +2555,8 @@ class MatchEngine {
         [homeClub, awayClub].forEach(c => (c.playerIds || []).forEach(id => {
             const p = MatchEngine.findPlayer(allPlayers, id);
             if (!p) return;
+            // Wer in der U23 spielt, sammelt seine Praxis dort (ReserveEngine)
+            if (p.reserve) return;
             const anteil = Math.min(1, (minutenJe.get(String(id)) || 0) / 90);
             p.spielpraxis = Math.round(((p.spielpraxis ?? 0.5) * 0.82 + anteil * 0.18) * 1000) / 1000;
         }));

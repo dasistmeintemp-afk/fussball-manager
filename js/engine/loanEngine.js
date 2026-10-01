@@ -168,6 +168,7 @@ class LoanEngine {
         const angebot = this.interessenten(state, playerId, 50).find(a => a.clubId === clubId);
         if (!angebot) return { success: false, error: "Dieser Verein will ihn nicht ausleihen." };
         this._wechsle(state, player, this._club(state, state.userClubId), this._club(state, clubId));
+        delete player.reserve;
         player.leihe = {
             stammvereinId: state.userClubId,
             leihvereinId: clubId,
@@ -307,6 +308,7 @@ class LoanEngine {
             }
         }
         this._wechsle(state, player, stammverein, eigener);
+        delete player.reserve;
         player.leihe = {
             stammvereinId: stammverein.id,
             leihvereinId: eigener.id,
@@ -411,6 +413,7 @@ class LoanEngine {
             const ziel = ziele[Math.floor(zufall() * ziele.length)];
             const diff = (p.overall || 0) - niveau(ziel);
             this._wechsle(state, p, stamm, ziel);
+            delete p.reserve;
             p.leihe = {
                 stammvereinId: stamm.id,
                 leihvereinId: ziel.id,

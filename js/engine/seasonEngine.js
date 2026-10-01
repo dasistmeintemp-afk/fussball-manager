@@ -193,6 +193,11 @@ class SeasonEngine {
                 if (verhandlung && typeof verhandlung.zahlePraemien === 'function') {
                     verhandlung.zahlePraemien(state, eigenesSpiel);
                 }
+                // Die zweite Mannschaft spielt am selben Spieltag
+                const reserve = _resolve('ReserveEngine', './reserveEngine.js');
+                if (reserve && typeof reserve.nachSpieltag === 'function') {
+                    reserve.nachSpieltag(state);
+                }
                 // Was gespielt wurde, sitzt danach besser
                 const taktik = _resolve('TacticsEngine', './tacticsEngine.js');
                 const eigenerVerein = state.clubs.find(c => c.id === state.userClubId);

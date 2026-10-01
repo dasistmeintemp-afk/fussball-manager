@@ -109,8 +109,17 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
      */
     positionsanalyseHtml(match, home, away) {
         const a = match?.analyse;
-        if (!a || !a.heat || !a.netz) return "";
         const state = this.app.state;
+        if (!a || !a.heat || !a.netz) {
+            // Beim Sofort-Ergebnis rechnet das Spiel ohne Laufwege - dann
+            // lieber sagen, warum die Karte fehlt, als eine zu erfinden
+            const eigenes = state && (match?.homeClubId === state.userClubId || match?.awayClubId === state.userClubId);
+            return eigenes ? `
+            <div class="dash-card sa-karte" style="padding:14px; margin-bottom:16px;">
+                <h4 style="font-size:14px; margin-bottom:6px;"><svg class="ico h-ico" aria-hidden="true"><use href="#i-pass"/></svg>Positionen und Passwege</h4>
+                <p class="text-muted" style="margin:0; font-size:13px;">Heatmap und Passnetz entstehen aus den Laufwegen im Livespiel. Beim Sofort-Ergebnis gibt es sie nicht.</p>
+            </div>` : "";
+        }
         const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
         const trikots = typeof ermittleTrikots === "function" ? ermittleTrikots(home, away) : null;
         const farbe = { home: trikots?.home?.akzent || "#bef264", away: trikots?.away?.akzent || "#38bdf8" };

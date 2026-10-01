@@ -8613,6 +8613,133 @@ function runEngineTests() {
         if (SeasonEngine.passtZumKader({ overall: Math.round(nb - 25) }, nb)) throw new Error("Der Bundesligist holt einen viel schwächeren Spieler");
     });
 
+    test("Nationaltrainer: Posten nach Ruf, der eigene Kader reist, Ausrichtung wirkt, der Verband zieht Bilanz", () => {
+        const { NationalTeamEngine: N } = require('./js/engine/nationalTeamEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer", nationality: "Deutschland" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+
+        // Posten: jede Saison einige frei, der Ruf richtet sich nach dem Weltrang
+        const posten = N.posten(state);
+        const frei = posten.filter(p => p.frei);
+        if (frei.length < 2) throw new Error(`${frei.length} freie Posten`);
+        const fremd = posten.filter(p => p.name !== "Deutschland");
+        if (!(fremd[0].anforderung > fremd[fremd.length - 1].anforderung)) throw new Error("Die Spitze verlangt nicht mehr Ruf als der Rest");
+        const heimat = posten.find(p => p.name === "Deutschland");
+        if (heimat && heimat.anforderung !== N.anforderung(Object.assign({}, state, { managerNationality: "Brasilien" }), heimat.rang, "Deutschland") - N.HEIMAT_BONUS) {
+            throw new Error("Die Heimat verlangt nicht weniger");
+        }
+
+        // Ohne Ruf keine Nationalmannschaft
+        const ziel = frei[0];
+        const rufVorher = club.reputation;
+        club.reputation = 5;
+        const abgelehnt = N.bewerben(state, ziel.name);
+        if (abgelehnt.ok || !/Ruf/.test(abgelehnt.grund)) throw new Error("Ohne Ruf angenommen: " + JSON.stringify(abgelehnt));
+        club.reputation = 99;
+        const besetzt = posten.find(p => !p.frei);
+        if (besetzt && N.bewerben(state, besetzt.name).ok) throw new Error("Ein besetzter Posten wurde vergeben");
+        const angenommen = N.bewerben(state, ziel.name);
+        if (!angenommen.ok || state.nationaltrainer?.nation !== ziel.name) throw new Error("Bewerbung mit Ruf scheitert: " + JSON.stringify(angenommen));
+        if (N.bewerben(state, frei[1].name).ok) throw new Error("Zwei Nationen gleichzeitig");
+        if (N.freiePosten(state).includes(ziel.name)) throw new Error("Der eigene Posten gilt noch als frei");
+
+        // Der eigene Kader reist: der Beste bleibt zu Hause, ein Ergänzungsspieler fährt mit
+        const alle = N.kandidaten(state, ziel.name);
+        const beste = N.nominiere({ spieler: alle });
+        const extra = p => alle.filter(x => !beste.includes(x) && N.gruppe(x.pos) === N.gruppe(p.pos));
+        const star = beste.find(p => extra(p).length >= 2);
+        const [ersatz, naechster] = extra(star);
+        // Fällt ein Berufener aus demselben Mannschaftsteil aus, rückt der
+        // Nächstbeste nach - nicht der gestrichene Star. Vorher holte die
+        // Nachnominierung genau ihn zurück.
+        const verletzt = beste.find(p => p !== star && N.gruppe(p.pos) === N.gruppe(star.pos));
+        verletzt.injuredWeeks = 3;
+        const auswahl = beste.filter(p => p !== star).map(p => p.id).concat([ersatz.id]);
+        N.setzeAuswahl(state, auswahl);
+        N.tag(state, "abreise");
+        const reist = state.laenderspielPause.kader[ziel.name].map(String);
+        if (reist.includes(String(star.id))) throw new Error("Der Gestrichene reist trotzdem");
+        if (!reist.includes(String(ersatz.id))) throw new Error("Der Berufene bleibt zu Hause");
+        if (reist.includes(String(verletzt.id)) || reist.length !== 23) throw new Error(`Verletzt mitgereist oder nicht aufgefüllt (${reist.length})`);
+        if (!reist.includes(String(naechster.id))) throw new Error("Für den Verletzten rückt nicht der Nächstbeste nach");
+        const nachricht = state.inbox.find(m => /Nachnominierung/.test(m.subject));
+        if (!nachricht || !nachricht.body.includes(verletzt.name) || !nachricht.body.includes(naechster.name)) {
+            throw new Error("Die Nachricht zur Nachnominierung nennt nicht, wer fehlt und wer nachrückt");
+        }
+        // Gibt es niemand anderen mehr, kommt der Gestrichene doch
+        const sperre = extra(star).filter(p => p !== ersatz);
+        sperre.forEach(p => { p.injuredWeeks = 3; });
+        const notfall = N.nutzerKader(state, ziel.name);
+        if (!notfall.kader.includes(star) || notfall.kader.length !== 23) throw new Error("Ohne Alternative bleibt eine Lücke statt des Gestrichenen");
+        sperre.forEach(p => { p.injuredWeeks = 0; });
+        // Andere Nationen berufen weiter selbst
+        const andere = N.nationen(state).find(n => n.name !== ziel.name);
+        if (state.laenderspielPause.kader[andere.name].length !== N.nominiere(andere).length) throw new Error("Andere Nationen nominieren anders");
+
+        // Zwei Länderspiele werden verbucht, das Vertrauen bewegt sich
+        N.tag(state, "spiel");
+        N.tag(state, "rueckkehr");
+        if (state.nationaltrainer.spiele.length !== 2) throw new Error(`${state.nationaltrainer.spiele.length} eigene Länderspiele verbucht`);
+        verletzt.injuredWeeks = 0;
+
+        // Ausrichtung: offensiv mehr Tore auf beiden Seiten als defensiv
+        // Gleich starke Gegner, damit nur die Ausrichtung zählt
+        const team = (name) => {
+            const nation = N.nationen(state).find(n => n.name === name) || andere;
+            const kader = N.nominiere(nation);
+            return Object.assign({ name, kader }, N.elf(kader), { staerke: 75 });
+        };
+        // Einmal nominiert - in 600 Spielen verletzt sich sonst irgendwann jeder
+        const heimTeam = team(ziel.name), gastTeam = team("Gegner");
+        const tore = (art) => {
+            N.setzeAusrichtung(state, art);
+            let s = 0, x = 7;
+            const zufall = () => { x = (x * 16807) % 2147483647; return x / 2147483647; };
+            for (let i = 0; i < 600; i++) { const r = N.spiele(state, heimTeam, gastTeam, zufall); s += r.tore[0] + r.tore[1]; }
+            return s / 600;
+        };
+        state.nationaltrainer.spiele = [];
+        const offensiv = tore("offensiv"), defensiv = tore("defensiv");
+        if (!(offensiv > defensiv + 0.5)) throw new Error(`Tore offensiv ${offensiv.toFixed(2)}, defensiv ${defensiv.toFixed(2)}`);
+
+        // Gemessen an der Erwartung: ein Sieg beim Stärkeren zählt, eine Niederlage beim Schwächeren kostet
+        state.nationaltrainer.vertrauen = 60;
+        N._verbucheNutzerSpiel(state, { name: "Stark", staerke: 85 }, { name: ziel.name, staerke: 75 }, [0, 1]);
+        const nachSieg = state.nationaltrainer.vertrauen;
+        N._verbucheNutzerSpiel(state, { name: ziel.name, staerke: 75 }, { name: "Schwach", staerke: 65 }, [0, 2]);
+        if (!(nachSieg > 60 + 8) || !(state.nationaltrainer.vertrauen < nachSieg - 8)) throw new Error(`Vertrauen 60 → ${nachSieg} → ${state.nationaltrainer.vertrauen}`);
+
+        // Ein Nationaltrainer mit Rückhalt hat mehr Ruf
+        state.nationaltrainer.vertrauen = 70;
+        state.nationaltrainer.rangBeiAntritt = 3;
+        club.reputation = rufVorher > 80 ? 70 : rufVorher;
+        const mit = CareerEngine.ruf(state);
+        const gemerkt = state.nationaltrainer;
+        state.nationaltrainer = null;
+        const ohne = CareerEngine.ruf(state);
+        state.nationaltrainer = gemerkt;
+        if (mit !== ohne + 4) throw new Error(`Ruf mit ${mit}, ohne ${ohne}`);
+
+        // Der Stand überlebt das Speichern
+        const zurueck = SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(state))));
+        if (JSON.stringify(zurueck.nationaltrainer) !== JSON.stringify(state.nationaltrainer)) throw new Error("Der Nationaltrainer überlebt das Speichern nicht");
+
+        // Zum Saisonende: zu wenig Vertrauen - der Posten ist weg, er wird wieder frei
+        state.nationaltrainer.vertrauen = N.ENTLASSUNG_UNTER - 1;
+        const bilanz = N.saisonBilanz(state);
+        if (!bilanz.entlassen || state.nationaltrainer) throw new Error("Trotz fehlendem Vertrauen weiter im Amt");
+        if (!state.nationaltrainerAkte?.some(a => a.nation === ziel.name && a.ende === "entlassen")) throw new Error("Die Station fehlt in der Akte");
+        if (!N.freiePosten(state).includes(ziel.name)) throw new Error("Der Posten wird nicht wieder frei");
+
+        // Angebot zum Saisonstart: annehmen
+        club.reputation = 99;
+        const angebot = N.pruefeAngebot(state, () => 0);
+        if (!angebot) throw new Error("Trotz Ruf kein Angebot");
+        if (!N.nimmAngebotAn(state).ok || state.nationaltrainer?.nation !== angebot.nation || state.nationalAngebot) throw new Error("Angebot nicht angenommen");
+        if (!N.ruecktritt(state) || state.nationaltrainer) throw new Error("Rücktritt klappt nicht");
+        club.reputation = rufVorher;
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

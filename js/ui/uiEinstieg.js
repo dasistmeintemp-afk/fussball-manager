@@ -141,6 +141,14 @@ const EINSTIEG_ERKLAERUNGEN = {
             "Die Spielanalyse zu jedem eigenen Spiel liegt im Spielbericht."
         ]
     },
+    national: {
+        titel: "Das Nationalteam",
+        punkte: [
+            "Neben dem Verein kannst du ein Nationalteam übernehmen. Welche Posten frei sind und welchen Ruf sie verlangen, steht hier.",
+            "Als Nationaltrainer nominierst du vor jeder Länderspielpause 23 Spieler und wählst die Ausrichtung.",
+            "Das Vertrauen des Verbands folgt den Ergebnissen, gemessen an der Stärke der Gegner. Sinkt es zu tief, endet das Amt zum Saisonwechsel."
+        ]
+    },
     inbox: {
         titel: "Das Postfach",
         punkte: [

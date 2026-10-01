@@ -1433,6 +1433,9 @@ class UIManager {
             case "inbox":
                 this.renderInbox();
                 break;
+            case "national":
+                this.renderNational();
+                break;
             case "settings":
                 this.renderSettings();
                 break;
@@ -1723,6 +1726,12 @@ class UIManager {
         } else {
             navInboxBadge.style.display = "none";
         }
+        // Ein Verband wartet auf Antwort - am Handy auch im Menü
+        const natAngebot = !!(state.nationalAngebot && state.nationalAngebot.saison === (state.seasonYear || 1) && !state.nationaltrainer);
+        ["navNationalBadge", "mobileNationalBadge"].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = natAngebot ? "inline-block" : "none";
+        });
 
         // Die Handy-Gegenstücke waren nur Markup - niemand setzte sie.
         const mobileInboxBadge = document.getElementById("mobileInboxBadge");
@@ -1735,7 +1744,7 @@ class UIManager {
             const preOffen = (state.preseason && state.preseason.aktiv && this.getPreseasonEngine())
                 ? this.getPreseasonEngine().offenePunkte(state).length : 0;
             const angeboteOffen = (state.transferMarket?.offers || []).filter(o => o.status === "pending").length;
-            mehrPunkt.style.display = (unreadCount > 0 || preOffen > 0 || angeboteOffen > 0) ? "" : "none";
+            mehrPunkt.style.display = (unreadCount > 0 || preOffen > 0 || angeboteOffen > 0 || natAngebot) ? "" : "none";
         }
 
         const pendingOffers = state.transferMarket.offers.filter(o => o.status === "pending").length;
@@ -7250,6 +7259,6 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = { UIManager };
     // Die ausgelagerten Teile hängen sich an die Klasse - im Browser lädt sie
     // index.html der Reihe nach, unter Node holen wir sie hier dazu
-    ["./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiLivespiel.js", "./uiSpielbericht.js", "./uiSpeicher.js", "./uiEinstieg.js"]
+    ["./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiLivespiel.js", "./uiSpielbericht.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js"]
         .forEach(teil => require(teil));
 }

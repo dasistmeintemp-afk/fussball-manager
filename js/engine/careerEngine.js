@@ -135,7 +135,11 @@ class CareerEngine {
         const b = this.bilanz(state);
         const leistung = b.spiele >= 5 ? (b.punkteSchnitt - 1.3) * 8 : 0;
 
-        return Math.max(8, Math.min(95, Math.round(basis + titelBonus - entlassungsMalus + leistung)));
+        // Ein Nationaltrainer mit Rückhalt ist gefragter
+        const national = _carResolve("NationalTeamEngine", "./nationalTeamEngine.js");
+        const nationalBonus = national && typeof national.rufBonus === "function" ? national.rufBonus(state) : 0;
+
+        return Math.max(8, Math.min(95, Math.round(basis + titelBonus - entlassungsMalus + leistung + nationalBonus)));
     }
 
     // ------------------------------------------------------------ Entlassung

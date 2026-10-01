@@ -14,7 +14,9 @@
  */
 
 const SaveCodec = {
-    FORMAT: "fmc1",
+    FORMAT: "fmc2",
+    /** Ältere Formate, die sich weiter lesen lassen */
+    FORMATE: ["fmc1", "fmc2"],
 
     /**
      * Feldschema der Spieler: [Pfad, Typ]
@@ -52,11 +54,42 @@ const SaveCodec = {
         ["happiness.teamPerformance", "n"], ["happiness.training", "n"], ["happiness.reason", "s"]
     ],
 
+    /**
+     * Felder, die seit dem Format fmc2 einen festen Platz haben. Sie lagen
+     * vorher im Restobjekt - mit Schlüsselnamen bei jedem der fast fünftausend
+     * Spieler. Die Eigenheiten trugen dort zusätzlich ihren vollen Text.
+     * Typen: f = Kommazahl (auf drei Stellen gerundet),
+     *        oa = Liste kleiner Objekte, jedes nur einmal im Wörterbuch.
+     * Fehlen sie, bleiben sie unbesetzt statt null.
+     */
+    PLAYER_FIELDS_FMC2: [
+        ["foot", "s"], ["traits", "oa"], ["signatur", "s"],
+        ["spielpraxis", "f"], ["matchSharpness", "n"], ["daysSinceInjury", "n"],
+        ["laenderspiele", "n"], ["laenderspielTore", "n"], ["abgestellt", "s"],
+        ["vereinSeit", "n"]
+    ],
+
     /** Feldschema einer Spielplan-Partie */
     MATCH_FIELDS: [
         ["homeClubId", "s"], ["awayClubId", "s"], ["played", "b"],
         ["homeGoals", "n"], ["awayGoals", "n"], ["leagueId", "s"], ["summaryText", "s"]
     ],
+    MATCH_FIELDS_FMC2: [
+        ["attendance", "n"], ["soldOut", "b"], ["isDerby", "b"]
+    ],
+
+    /** Das Feldschema eines Formats - fmc1 kannte die Zusatzfelder noch nicht */
+    felder(art, format = this.FORMAT) {
+        const basis = art === "player" ? this.PLAYER_FIELDS : this.MATCH_FIELDS;
+        if (format === "fmc1") return basis;
+        const key = art === "player" ? "_spielerFmc2" : "_partieFmc2";
+        if (!this[key]) {
+            const zusatz = (art === "player" ? this.PLAYER_FIELDS_FMC2 : this.MATCH_FIELDS_FMC2)
+                .map(([p, t]) => [p, t, true]);
+            Object.defineProperty(this, key, { value: basis.concat(zusatz), enumerable: false });
+        }
+        return this[key];
+    },
 
     /** Erzeugt einen Zeichenketten-Sammler mit Rückwärtsindex */
     createDictionary() {
@@ -164,6 +197,10 @@ const SaveCodec = {
                 row[i] = Array.isArray(raw) ? raw.map(v => dict.put(v)) : null;
             } else if (e.type === "b") {
                 row[i] = raw ? 1 : 0;
+            } else if (e.type === "oa") {
+                row[i] = Array.isArray(raw) ? raw.map(v => dict.put(JSON.stringify(v))) : null;
+            } else if (e.type === "f") {
+                row[i] = typeof raw === "number" ? Math.round(raw * 1000) / 1000 : null;
             } else {
                 row[i] = typeof raw === "number" ? raw : null;
             }
@@ -205,10 +242,11 @@ const SaveCodec = {
         const obj = {};
         const readString = (idx) => (typeof idx === "number" && idx >= 0 && idx < dictValues.length) ? dictValues[idx] : null;
 
-        fields.forEach(([path, type], i) => {
+        fields.forEach(([path, type, optional], i) => {
             const raw = i < row.length ? row[i] : null;
             if (raw === null || raw === undefined) {
                 // Fehlende Werte werden nicht gesetzt - Defaults der Engines greifen
+                if (optional) return;
                 if (type === "sa") this.setPath(obj, path, []);
                 else this.setPath(obj, path, type === "b" ? false : null);
                 return;
@@ -220,6 +258,11 @@ const SaveCodec = {
             }
             else if (type === "sa") this.setPath(obj, path, Array.isArray(raw) ? raw.map(readString).filter(v => v !== null) : []);
             else if (type === "b") this.setPath(obj, path, raw === 1 || raw === true);
+            else if (type === "oa") {
+                this.setPath(obj, path, Array.isArray(raw) ? raw.map(readString).filter(v => v !== null).map(v => {
+                    try { return JSON.parse(v); } catch (e) { return null; }
+                }).filter(v => v !== null) : []);
+            }
             else this.setPath(obj, path, raw);
         });
 
@@ -253,7 +296,8 @@ const SaveCodec = {
         encoded.__codec = this.FORMAT;
 
         if (Array.isArray(state.players)) {
-            encoded.players = state.players.map(p => this.encodeRecord(p, this.PLAYER_FIELDS, dict));
+            const felder = this.felder("player");
+            encoded.players = state.players.map(p => this.encodeRecord(p, felder, dict));
         }
         if (Array.isArray(state.schedule)) {
             encoded.schedule = this.encodeSchedule(state.schedule, dict);
@@ -272,6 +316,7 @@ const SaveCodec = {
 
     encodeSchedule(schedule, dict) {
         if (!Array.isArray(schedule)) return schedule;
+        const felder = this.felder("match");
         return schedule.map(round => [
             round.matchday,
             (round.matches || []).map(m => {
@@ -281,19 +326,20 @@ const SaveCodec = {
                 if (Array.isArray(m.events) && m.events.length === 0) {
                     const copy = Object.assign({}, m);
                     delete copy.events;
-                    return this.encodeRecord(copy, this.MATCH_FIELDS, dict);
+                    return this.encodeRecord(copy, felder, dict);
                 }
-                return this.encodeRecord(m, this.MATCH_FIELDS, dict);
+                return this.encodeRecord(m, felder, dict);
             })
         ]);
     },
 
-    decodeSchedule(rounds, dictValues) {
+    decodeSchedule(rounds, dictValues, format = this.FORMAT) {
         if (!Array.isArray(rounds)) return rounds;
+        const felder = this.felder("match", format);
         return rounds.map(entry => ({
             matchday: entry[0],
             matches: (entry[1] || []).map(row => {
-                const match = this.decodeRecord(row, this.MATCH_FIELDS, dictValues);
+                const match = this.decodeRecord(row, felder, dictValues);
                 if (!Array.isArray(match.events)) match.events = [];
                 return match;
             })
@@ -302,13 +348,14 @@ const SaveCodec = {
 
     /** Erkennt, ob ein State im kompakten Format vorliegt */
     isEncoded(state) {
-        return !!(state && typeof state === "object" && state.__codec === this.FORMAT);
+        return !!(state && typeof state === "object" && this.FORMATE.includes(state.__codec));
     },
 
     decodeState(state) {
         if (!this.isEncoded(state)) return state;
 
         const dictValues = Array.isArray(state.__dict) ? state.__dict : [];
+        const format = state.__codec;
         const decoded = {};
 
         Object.keys(state).forEach(key => {
@@ -317,15 +364,16 @@ const SaveCodec = {
         });
 
         if (Array.isArray(state.players)) {
-            decoded.players = state.players.map(row => this.decodeRecord(row, this.PLAYER_FIELDS, dictValues));
+            const felder = this.felder("player", format);
+            decoded.players = state.players.map(row => this.decodeRecord(row, felder, dictValues));
         }
         if (Array.isArray(state.schedule)) {
-            decoded.schedule = this.decodeSchedule(state.schedule, dictValues);
+            decoded.schedule = this.decodeSchedule(state.schedule, dictValues, format);
         }
         if (state.otherSchedules && typeof state.otherSchedules === "object") {
             const out = {};
             Object.keys(state.otherSchedules).forEach(leagueId => {
-                out[leagueId] = this.decodeSchedule(state.otherSchedules[leagueId], dictValues);
+                out[leagueId] = this.decodeSchedule(state.otherSchedules[leagueId], dictValues, format);
             });
             decoded.otherSchedules = out;
         }

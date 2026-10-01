@@ -43,12 +43,16 @@ Ein leichtgewichtiger, detailreicher und vollständig spielbarer **Fußballmanag
 
 Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 
-* **Automatisches Speichern (`SaveService` & `localStorage`):**
-  Jede Aktion (Spieltage, Transfers, Taktik, Training, Vertragsverlängerungen) wird automatisch im lokalen Browser-Speicher abgelegt.
+* **Automatisches Speichern in IndexedDB (`SpeicherDB`):**
+  Jede Aktion (Spieltage, Transfers, Taktik, Training, Vertragsverlängerungen) wird automatisch im Browser gesichert – in der Browser-Datenbank IndexedDB statt im LocalStorage. Der LocalStorage fasst je nach Browser nur 5 bis 10 MB; IndexedDB bekommt einen Anteil am freien Plattenplatz, meist mehrere hundert Megabyte. Auch lange Karrieren mit vielen Saisons Geschichte passen hinein.
+  * Ein alter Spielstand aus dem LocalStorage zieht beim ersten Start automatisch um; danach wird der LocalStorage freigegeben.
+  * Gibt es kein IndexedDB (sehr alte Browser, manche private Fenster) oder scheitert ein Schreibvorgang, springt der LocalStorage ein. Liegen in beiden Speichern Stände, gilt beim nächsten Start der jüngere.
+  * Gesammelt wird eine Sekunde lang, dann einmal geschrieben. Beim Schließen oder Wegwechseln der Seite geht ein offener Stand sofort an die Datenbank.
+  * Unter **Spielstand & Einstellungen** steht, wo der Stand liegt, wie groß er ist und wie viel Platz der Browser noch frei hält.
 * **Spielstand fortsetzen:**
   Beim erneuten Öffnen zeigt der Startbildschirm deine Managerdaten, Verein, Saison, Spieltag, Tabellenplatz und den Speicherzeitpunkt. Klicke einfach auf **"▶️ Spielstand fortsetzen"**.
 * **Spielstand exportieren:**
-  Klicke im Menü unter **"Spielstand & Optionen"** auf **"💾 Spielstand exportieren"**. Du erhältst eine `.json`-Datei mit einem sprechenden Dateinamen (z. B. `fm-save-fc-münchen-saison-1-spieltag-5.json`).
+  Klicke im Menü unter **"Spielstand & Optionen"** auf **"💾 Spielstand exportieren"**. Du erhältst eine `.json`-Datei mit einem sprechenden Dateinamen (z. B. `fm-save-fc-münchen-saison-1-spieltag-5.json`). Die Datei ist verdichtet wie der Browserspeicher (rund 2 MB statt über 10 MB) und wird als Blob heruntergeladen, damit auch große Stände nicht an der Längengrenze von `data:`-Adressen scheitern. Ältere, unverdichtete Exportdateien lassen sich weiter importieren.
 * **Spielstand an Freunde verschicken / Importieren:**
   Verschicke deine `.json`-Datei an Freunde. Diese können im Startbildschirm auf **"📁 Spielstand importieren"** klicken und deinen Spielstand auf ihrem Gerät sofort weiterspielen.
 * **Automatische Migration (`MigrationService`):**
@@ -402,7 +406,7 @@ Ein Talent in den Profikader zu holen dauert jetzt seine Zeit. *Vertragsgespräc
 - **Ligawechsel in der Tabellenansicht:** Der Wettbewerbswähler im Reiter *Wettbewerbe & Spielplan* zeigt jede Liga der Welt mit eigener Tabelle und eigenem Spielplan.
 
 ### 8b. 💾 Kompaktes Speicherformat (`SaveCodec`)
-Eine komplette Welt mit über 4300 Spielern belegt als gewöhnliches JSON knapp 6 MB – mehr, als der LocalStorage der Browser üblicherweise zulässt (rund 5 MB). Der `SaveCodec` wandelt Spieler und Spielplan-Partien deshalb in positionale Arrays um und legt alle Zeichenketten in einer gemeinsamen Tabelle ab. Namen, Nationalitäten und Positionen tauchen nur noch einmal auf.
+Eine komplette Welt mit über 4300 Spielern belegt als gewöhnliches JSON knapp 6 MB. Seit der Spielstand in IndexedDB liegt, ist das keine harte Grenze mehr – kleiner bleibt trotzdem schneller beim Speichern, Laden und Exportieren. Der `SaveCodec` wandelt Spieler und Spielplan-Partien deshalb in positionale Arrays um und legt alle Zeichenketten in einer gemeinsamen Tabelle ab. Namen, Nationalitäten und Positionen tauchen nur noch einmal auf.
 
 - **5,9 MB → 1,6 MB** bei verlustfreier Rückwandlung; unbekannte Zusatzfelder überleben die Umwandlung in einem Restobjekt.
 - Gespielte Partien geben ihre Timeline frei (rund 22 KB je Spiel) – die Zähler stecken danach ohnehin in `stats` und `events`.
@@ -441,6 +445,7 @@ untitled/
 │   │   └── namePools.js        # Namenspools für Jugend & Neugenerierungen
 │   ├── services/
 │   │   ├── saveService.js      # Speichern, Laden, Exportieren, Importieren
+│   │   ├── speicherDB.js       # IndexedDB-Hülle: Spielstand ohne 5-MB-Grenze
 │   │   ├── saveCodec.js        # Kompaktes Speicherformat: 5,9 MB Welt werden zu 1,6 MB
 │   │   └── migrationService.js # Schema-Migrationen für Abwärtskompatibilität (v1 -> v6)
 │   ├── engine/

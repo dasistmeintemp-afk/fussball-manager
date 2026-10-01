@@ -558,6 +558,8 @@ const YouthEngine = {
             age: prospect.age,
             nationality: prospect.nationality || "Deutschland",
             clubId: clubId,
+            // Aus der eigenen Jugend: neu bei den Profis, aber kein Fremder
+            vereinSeit: (state.seasonYear || state.season || 1) * 1000 + (state.currentDayIndex || 0) - 250,
             pos: prospect.pos,
             secondPos: nebenpositionen[0] || null,
             positions: nebenpositionen,

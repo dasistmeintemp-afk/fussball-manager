@@ -257,6 +257,220 @@ class DressingRoomEngine {
                 player.morale = Math.max(this.MIN_MORAL, Math.min(this.MAX_MORAL, moral + richtung));
             }
         });
+
+        // Danach wirkt die Kabine: Wortführer ziehen ihre Gruppe mit
+        this.kabinenTag(state, club);
+    }
+
+    // ------------------------------------------------------------ Hierarchie
+    //
+    // Eine Kabine ist kein Durchschnitt. Es gibt einen Kapitän, zwei, drei
+    // Führungsspieler, die Etablierten, die Neuen - und Grüppchen, meist nach
+    // Sprache. Wer oben steht, färbt ab: Ist der Wortführer einer Gruppe
+    // unzufrieden, ist es bald die ganze Gruppe. Wird ein Führungsspieler
+    // verkauft, murrt die Kabine. Und wer als Einziger seine Sprache spricht,
+    // tut sich schwer, wenn er sich nicht leicht anpasst.
+
+    static SPRACHEN = {
+        deutsch: { name: "Die Deutschsprachigen", laender: ["Deutschland", "Österreich", "Schweiz"] },
+        franzoesisch: { name: "Die Frankophonen", laender: ["Frankreich", "Belgien", "Senegal", "Mali", "Elfenbeinküste", "Kamerun", "Algerien", "Marokko", "Tunesien", "Guinea", "Benin", "DR Kongo", "Burkina Faso"] },
+        spanisch: { name: "Die Spanischsprachigen", laender: ["Spanien", "Argentinien", "Uruguay", "Kolumbien", "Chile", "Mexiko", "Paraguay", "Ecuador"] },
+        portugiesisch: { name: "Die Portugiesischsprachigen", laender: ["Portugal", "Brasilien"] },
+        englisch: { name: "Die Englischsprachigen", laender: ["England", "Schottland", "Wales", "Irland", "USA", "Kanada", "Nigeria", "Ghana", "Gambia"] },
+        italienisch: { name: "Die Italiener", laender: ["Italien"] },
+        niederlaendisch: { name: "Die Niederländer", laender: ["Niederlande"] },
+        balkan: { name: "Die Balkan-Fraktion", laender: ["Kroatien", "Serbien", "Bosnien", "Albanien", "Kosovo", "Slowenien"] },
+        skandinavisch: { name: "Die Skandinavier", laender: ["Dänemark", "Norwegen", "Schweden", "Finnland"] },
+        osteuropa: { name: "Die Osteuropäer", laender: ["Polen", "Tschechien", "Slowakei", "Ungarn", "Ukraine"] },
+        tuerkisch: { name: "Die Türkischsprachigen", laender: ["Türkei"] },
+        asiatisch: { name: "Die Asiaten", laender: ["Japan", "Südkorea"] }
+    };
+
+    static STUFEN = ["Kapitän", "Führungsspieler", "Etabliert", "Mitläufer", "Neuzugang"];
+
+    static sprache(nationalitaet) {
+        const eintrag = Object.entries(this.SPRACHEN).find(([, s]) => s.laender.includes(nationalitaet));
+        return eintrag ? eintrag[0] : "international";
+    }
+
+    static _stempel(state) {
+        return (state?.seasonYear || state?.season || 1) * 1000 + (state?.currentDayIndex || 0);
+    }
+
+    /** Wie lange ist ein Spieler schon da? In Saisons; die Startkader gelten als eingesessen */
+    static vereinsjahre(state, player) {
+        if (typeof player.vereinSeit !== "number") return 2;
+        const jetzt = this._stempel(state);
+        const saisons = Math.floor(jetzt / 1000) - Math.floor(player.vereinSeit / 1000);
+        const tage = (jetzt % 1000) - (player.vereinSeit % 1000);
+        return Math.max(0, saisons + tage / 250);
+    }
+
+    /** Einfluss in der Kabine (0 bis etwa 100) */
+    static einfluss(state, player, kaderRang = 20) {
+        const alter = Math.max(0, Math.min(1, ((player.age || 25) - 19) / 13)) * 30;
+        const rang = kaderRang < 11 ? 18 : (kaderRang < 16 ? 8 : 0);
+        const caps = Math.min(12, (player.laenderspiele || 0) / 4);
+        const ha = player.hiddenAttributes || {};
+        const charakter = ((ha.professionalism ?? 12) + (ha.importantMatches ?? 12)) * 0.6
+            - Math.max(0, 9 - (ha.temperament ?? 12)) * 0.8;
+        const jahre = this.vereinsjahre(state, player);
+        const dauer = jahre < 0.3 ? -12 : Math.min(12, jahre * 4);
+        return Math.round(alter + rang + caps + charakter + dauer);
+    }
+
+    /**
+     * Die Hierarchie eines Kaders: Stufe, Einfluss und Gruppe je Spieler,
+     * dazu die Grüppchen mit Wortführer und Stimmung.
+     */
+    static hierarchie(state, club = null) {
+        club = club || (state?.clubs || []).find(c => c.id === state.userClubId);
+        if (!club) return { spieler: [], gruppen: [], kapitaen: null };
+        const ids = new Set((club.playerIds || []).map(String));
+        const kader = (state.players || []).filter(p => ids.has(String(p.id)));
+        const nachStaerke = kader.slice().sort((a, b) => (b.overall || 0) - (a.overall || 0));
+        const rang = new Map(nachStaerke.map((p, i) => [p.id, i]));
+
+        const eintraege = kader.map(p => ({
+            player: p,
+            einfluss: this.einfluss(state, p, rang.get(p.id)),
+            jahre: this.vereinsjahre(state, p),
+            sprache: this.sprache(p.nationality)
+        })).sort((a, b) => b.einfluss - a.einfluss);
+
+        // Kapitän: vom Trainer bestimmt, sonst der Einflussreichste
+        const gewaehlt = eintraege.find(e => String(e.player.id) === String(club.kapitaenId));
+        const kapitaen = gewaehlt || eintraege.find(e => e.jahre >= 0.3) || eintraege[0] || null;
+        let fuehrung = 0;
+        eintraege.forEach(e => {
+            if (e === kapitaen) e.stufe = "Kapitän";
+            else if (e.jahre < 0.3) e.stufe = "Neuzugang";
+            else if (fuehrung < 3 && e.einfluss >= 55) { e.stufe = "Führungsspieler"; fuehrung++; }
+            else if (e.einfluss >= 40 || e.jahre >= 1.5) e.stufe = "Etabliert";
+            else e.stufe = "Mitläufer";
+        });
+
+        // Grüppchen nach Sprache - eine Gruppe braucht drei Leute
+        const nachSprache = new Map();
+        eintraege.forEach(e => {
+            if (!nachSprache.has(e.sprache)) nachSprache.set(e.sprache, []);
+            nachSprache.get(e.sprache).push(e);
+        });
+        const gruppen = [];
+        nachSprache.forEach((mitglieder, key) => {
+            if (mitglieder.length < 3 || key === "international") {
+                mitglieder.forEach(e => { e.gruppe = null; e.allein = mitglieder.length === 1; });
+                return;
+            }
+            const wortfuehrer = mitglieder[0];
+            const stimmung = mitglieder.reduce((a, e) => a + (e.player.morale ?? 75), 0) / mitglieder.length;
+            gruppen.push({
+                key,
+                name: this.SPRACHEN[key]?.name || "Die Internationalen",
+                mitglieder: mitglieder.map(e => e.player),
+                wortfuehrer: wortfuehrer.player,
+                stimmung: Math.round(stimmung)
+            });
+            mitglieder.forEach(e => { e.gruppe = key; e.allein = false; });
+        });
+        gruppen.sort((a, b) => b.mitglieder.length - a.mitglieder.length);
+
+        return { spieler: eintraege, gruppen, kapitaen: kapitaen ? kapitaen.player : null };
+    }
+
+    /** Den Kapitän bestimmen - der alte Kapitän nimmt es nicht immer gelassen */
+    static setzeKapitaen(state, playerId) {
+        const club = (state?.clubs || []).find(c => c.id === state.userClubId);
+        if (!club || !(club.playerIds || []).some(id => String(id) === String(playerId))) {
+            return { success: false, error: "Der Spieler steht nicht im Kader." };
+        }
+        const vorher = this.hierarchie(state, club).kapitaen;
+        club.kapitaenId = playerId;
+        const neu = state.players.find(p => String(p.id) === String(playerId));
+        if (neu) neu.morale = Math.min(this.MAX_MORAL, (neu.morale ?? 75) + 5);
+        if (vorher && String(vorher.id) !== String(playerId)) {
+            const ha = vorher.hiddenAttributes || {};
+            // Ein Profi trägt es mit Fassung, ein Hitzkopf nicht
+            const kraenkung = 3 + Math.max(0, 14 - (ha.professionalism ?? 12)) * 0.6 + Math.max(0, 10 - (ha.temperament ?? 12)) * 0.6;
+            vorher.morale = Math.max(this.MIN_MORAL, (vorher.morale ?? 75) - kraenkung);
+        }
+        return { success: true, kapitaen: neu, vorher };
+    }
+
+    /**
+     * Ein Tag in der Kabine: Wortführer färben auf ihre Gruppe ab, der
+     * Kapitän auf alle, und wer allein ist, tut sich schwer.
+     */
+    static kabinenTag(state, club) {
+        const h = this.hierarchie(state, club);
+        if (!h.spieler.length) return h;
+        const grenze = (v) => Math.max(this.MIN_MORAL, Math.min(this.MAX_MORAL, v));
+        h.gruppen.forEach(g => {
+            const wf = g.wortfuehrer.morale ?? 75;
+            const zug = Math.max(-0.6, Math.min(0.4, (wf - 68) * 0.025));
+            if (Math.abs(zug) < 0.05) return;
+            g.mitglieder.forEach(p => { if (p !== g.wortfuehrer) p.morale = grenze((p.morale ?? 75) + zug); });
+        });
+        if (h.kapitaen) {
+            const k = h.kapitaen.morale ?? 75;
+            const zug = k < 50 ? -0.3 : (k >= 82 ? 0.15 : 0);
+            if (zug) h.spieler.forEach(e => { if (e.player !== h.kapitaen) e.player.morale = grenze((e.player.morale ?? 75) + zug); });
+        }
+        h.spieler.forEach(e => {
+            if (!e.allein || e.sprache === "deutsch" || e.jahre >= 1) return;
+            const anpassung = e.player.hiddenAttributes?.adaptability ?? 12;
+            if (anpassung < 12) e.player.morale = grenze((e.player.morale ?? 75) - (12 - anpassung) * 0.06);
+        });
+        return h;
+    }
+
+    /** Ein Spieler verlässt den Verein: Geht ein Führungsspieler, murrt seine Gruppe */
+    static spielerGeht(state, player) {
+        const club = (state?.clubs || []).find(c => c.id === state.userClubId);
+        if (!club || !player) return null;
+        const h = this.hierarchie(state, club);
+        const eintrag = h.spieler.find(e => e.player === player);
+        if (!eintrag || !["Kapitän", "Führungsspieler"].includes(eintrag.stufe)) return null;
+        const gruppe = eintrag.gruppe ? h.gruppen.find(g => g.key === eintrag.gruppe) : null;
+        const betroffen = gruppe ? gruppe.mitglieder : h.spieler.map(e => e.player);
+        const verlust = eintrag.stufe === "Kapitän" ? 5 : 3.5;
+        betroffen.forEach(p => {
+            if (p !== player) p.morale = Math.max(this.MIN_MORAL, (p.morale ?? 75) - verlust);
+        });
+        if (String(club.kapitaenId) === String(player.id)) delete club.kapitaenId;
+        if (!Array.isArray(state.inbox)) state.inbox = [];
+        state.inbox.unshift({
+            id: Date.now() + Math.floor(Math.random() * 1000),
+            matchday: state.currentMatchday,
+            date: state.currentDate || `Spieltag ${state.currentMatchday || 1}`,
+            sender: "Mannschaftsrat",
+            subject: `Unruhe nach dem Abgang von ${player.name}`,
+            body: `${player.name} war ${eintrag.stufe === "Kapitän" ? "unser Kapitän" : "einer der Wortführer in der Kabine"}. `
+                + `${gruppe ? `${gruppe.name} trifft das besonders` : "Die Mannschaft trifft das"} - die Stimmung leidet für ein paar Tage.`,
+            read: false,
+            type: "board_message"
+        });
+        return { stufe: eintrag.stufe, betroffen: betroffen.length - 1 };
+    }
+
+    /** Für den Schreibtisch: Was in der Kabine Aufmerksamkeit braucht */
+    static schreibtisch(state) {
+        const h = this.hierarchie(state);
+        const items = [];
+        if (h.kapitaen && (h.kapitaen.morale ?? 75) < 50) {
+            items.push({ priority: 2, icon: "👥", playerId: h.kapitaen.id, tab: "squad",
+                title: `Kapitän ${h.kapitaen.name} ist unzufrieden`, detail: "Das spürt die ganze Kabine - ein Gespräch hilft." });
+        }
+        h.gruppen.forEach(g => {
+            if (g.wortfuehrer !== h.kapitaen && (g.wortfuehrer.morale ?? 75) < 50) {
+                items.push({ priority: 3, icon: "👥", playerId: g.wortfuehrer.id, tab: "squad",
+                    title: `${g.wortfuehrer.name} zieht seine Gruppe runter`, detail: `Er ist Wortführer bei ${g.name.replace(/^Die /, "den ")}.` });
+            }
+        });
+        h.spieler.filter(e => e.allein && e.sprache !== "deutsch" && e.jahre < 1 && (e.player.hiddenAttributes?.adaptability ?? 12) < 10)
+            .slice(0, 1).forEach(e => items.push({ priority: 5, icon: "👥", playerId: e.player.id, tab: "squad",
+                title: `${e.player.name} findet keinen Anschluss`, detail: "Niemand im Kader spricht seine Sprache." }));
+        return items;
     }
 }
 

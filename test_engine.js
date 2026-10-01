@@ -1,7 +1,7 @@
 /**
  * Test-Suite 3: Subsystem- und Engine-Tests
  */
-const { testAusgewaehlt, laufzeit } = require('./test_filter.js');
+const { testAusgewaehlt, laufzeit, zufallFuer } = require('./test_filter.js');
 const { INITIAL_TEAMS_DATA } = require('./js/data/initialData.js');
 const { COUNTRIES_DATA, LEAGUES_DATA, COMPETITIONS_DATA } = require('./js/data/leagueData.js');
 const { StateValidator } = require('./js/core/validators.js');
@@ -55,6 +55,7 @@ function runEngineTests() {
 
     function test(name, fn) {
         if (!testAusgewaehlt(name)) return;
+        zufallFuer(name);
         const start = Date.now();
         try {
             fn();
@@ -3412,6 +3413,157 @@ function runEngineTests() {
             if (m.timeline) throw new Error("Gespielte Partie schleppt die Timeline in den Spielstand");
         }));
         if (gespielt === 0) throw new Error("Keine gespielten Partien im Spielplan gefunden");
+    });
+
+    test("SaveCodec fmc2: neue Spielerfelder mit festem Platz, fremde Partien ohne Schiedsrichter, alte Spielstände lesbar", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        for (let i = 0; i < 2; i++) SeasonEngine.advanceToNextMatchday(state);
+        const mitEigenheit = state.players.find(p => Array.isArray(p.traits) && p.traits.length);
+        mitEigenheit.spielpraxis = 0.123456789;
+        mitEigenheit.leihe = { stammvereinId: "x", leihvereinId: "y", lohnAnteil: 0.5 };
+
+        // Fremde Partien: Schiedsrichter und Ticketdetails fallen weg, die
+        // Zuschauer bleiben - der Schiedsrichter lässt sich neu bestimmen
+        const fremd = Object.values(state.otherSchedules)[0].flatMap(r => r.matches).find(m => m.played);
+        if (fremd.schiedsrichter || fremd.ticketIncome !== undefined) throw new Error("Fremde Partie behält Schiedsrichter oder Ticketdetails");
+        if (!(fremd.attendance > 0)) throw new Error("Zuschauerzahl fehlt");
+        const schiri = MatchEngine.schiedsrichterFuer(fremd);
+        delete fremd.schiedsrichter;
+        if (MatchEngine.schiedsrichterFuer(fremd).name !== schiri.name) throw new Error("Schiedsrichter lässt sich nicht gleich neu bestimmen");
+        delete fremd.schiedsrichter;
+
+        const enc = SaveCodec.encodeState(state);
+        if (enc.__codec !== "fmc2") throw new Error(`Format ${enc.__codec}`);
+        const rest = enc.players.map(r => r[SaveCodec.felder("player").length]).filter(r => r && typeof r === "object");
+        if (rest.some(r => "traits" in r || "foot" in r || "spielpraxis" in r)) throw new Error("Neue Felder landen weiter im Restobjekt");
+        const back = SaveCodec.decodeState(JSON.parse(JSON.stringify(enc)));
+        const b = back.players.find(p => p.id === mitEigenheit.id);
+        if (JSON.stringify(b.traits) !== JSON.stringify(mitEigenheit.traits) || b.foot !== mitEigenheit.foot) throw new Error("Eigenheiten oder Fuß verändern sich");
+        if (b.spielpraxis !== 0.123 || b.leihe.lohnAnteil !== 0.5) throw new Error(`Spielpraxis ${b.spielpraxis}, Leihe ${JSON.stringify(b.leihe)}`);
+        const ohne = back.players.find(p => !state.players.find(o => o.id === p.id).signatur);
+        if ("signatur" in ohne) throw new Error("Fehlende neue Felder werden als null angelegt");
+        const fb = Object.values(back.otherSchedules)[0].flatMap(r => r.matches).find(m => m.played);
+        if (fb.attendance !== fremd.attendance || fb.soldOut !== !!fremd.soldOut) throw new Error("Zuschauer gehen verloren");
+
+        // Ein Spielstand im alten Format fmc1 bleibt lesbar
+        const format = SaveCodec.FORMAT;
+        let alt;
+        try { SaveCodec.FORMAT = "fmc1"; alt = JSON.parse(JSON.stringify(SaveCodec.encodeState(state))); }
+        finally { SaveCodec.FORMAT = format; }
+        if (alt.__codec !== "fmc1") throw new Error("Altes Format nicht nachgestellt");
+        const altBack = SaveCodec.decodeState(alt);
+        const a = altBack.players.find(p => p.id === mitEigenheit.id);
+        if (JSON.stringify(a.traits) !== JSON.stringify(mitEigenheit.traits) || a.overall !== mitEigenheit.overall || a.leihe.lohnAnteil !== 0.5) {
+            throw new Error("Altes Format wird falsch gelesen");
+        }
+        if (JSON.stringify(enc).length >= JSON.stringify(alt).length) throw new Error("fmc2 ist nicht kleiner als fmc1");
+    });
+
+    test("Speicher: IndexedDB mit Umzug aus dem LocalStorage, Ausweichen bei Fehlern, der jüngere Stand gewinnt", () => {
+        // Antworten, die sofort da sind - so bleibt der Test synchron
+        const sofort = (wert, fehler) => ({
+            __sofort: true,
+            then(ok, nein) {
+                try {
+                    if (fehler) return nein ? weiter(nein(fehler)) : sofort(undefined, fehler);
+                    return ok ? weiter(ok(wert)) : sofort(wert);
+                } catch (e) { return sofort(undefined, e); }
+            },
+            catch(nein) { return this.then(null, nein); }
+        });
+        const weiter = (x) => (x && x.__sofort) ? x : sofort(x);
+        const db = {
+            daten: {}, kaputt: false, geloescht: [],
+            verfuegbar() { return true; },
+            oeffne() { return sofort(true); },
+            lies(k) { return sofort(this.daten[k] ?? null); },
+            schreibe(k, v) {
+                if (this.kaputt) return sofort(undefined, Object.assign(new Error("voll"), { name: "QuotaExceededError" }));
+                this.daten[k] = v; return sofort(true);
+            },
+            loesche(k) { delete this.daten[k]; this.geloescht.push(k); return sofort(true); },
+            bitteUmDauerhaftenSpeicher() { return sofort(false); }
+        };
+        const ls = {
+            daten: {},
+            getItem(k) { return k in this.daten ? this.daten[k] : null; },
+            setItem(k, v) { this.daten[k] = String(v); },
+            removeItem(k) { delete this.daten[k]; }
+        };
+        const PLATZ = GameState.SPEICHERPLATZ;
+        const vorherLs = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+        globalThis.SpeicherDB = db;
+        Object.defineProperty(globalThis, "localStorage", { value: ls, configurable: true, writable: true });
+        try {
+            // Ein Stand, wie ihn die Vorversion im LocalStorage hinterließ
+            const alt = GameState.createNewGame("muc", "normal", { name: "Umzug" });
+            alt.lastSaved = "2026-01-01T10:00:00.000Z";
+            ls.setItem(PLATZ, JSON.stringify(SaveCodec.encodeState(alt)));
+
+            let info = null;
+            GameState.bereiteSpeicherVor().then(i => { info = i; });
+            if (!info || info.ort !== "indexedDB" || !info.umgezogen) throw new Error("Kein Umzug gemeldet: " + JSON.stringify(info));
+            if (ls.getItem(PLATZ) !== null) throw new Error("Der LocalStorage wurde nach dem Umzug nicht freigegeben");
+            if (!db.daten[PLATZ]) throw new Error("Der Stand liegt nicht in IndexedDB");
+            if (GameState.speicherort() !== "indexedDB") throw new Error("Speicherort nicht IndexedDB");
+
+            const geladen = GameState.loadFromLocalStorage();
+            if (!geladen || geladen.userClubId !== "muc" || geladen.managerName !== alt.managerName) throw new Error("Stand nach dem Umzug nicht ladbar");
+            if (!GameState.getSaveSummary()) throw new Error("Keine Zusammenfassung aus dem Spiegel");
+
+            // Speichern landet in IndexedDB, nicht im LocalStorage
+            geladen.managerName = "Neu";
+            if (!geladen.saveToLocalStorage(null, true)) throw new Error("Speichern meldet Fehler");
+            if (!/"managerName":"Neu"/.test(db.daten[PLATZ]) || ls.getItem(PLATZ) !== null) throw new Error("Gespeichert wurde nicht in IndexedDB");
+
+            // IndexedDB versagt: der LocalStorage springt ein ...
+            db.kaputt = true;
+            geladen.managerName = "Ausweiche";
+            geladen.saveToLocalStorage(null, true);
+            if (!/"managerName":"Ausweiche"/.test(ls.getItem(PLATZ) || "")) throw new Error("Kein Ausweichen in den LocalStorage");
+            if (geladen._saveFehler) throw new Error("Ausweichen gilt fälschlich als Fehler: " + geladen._saveFehler);
+            // ... und nach dem nächsten Start gilt der jüngere Stand
+            db.kaputt = false;
+            GameState._idbAktiv = false;
+            GameState._spiegel = {};
+            GameState.bereiteSpeicherVor();
+            if (GameState.loadFromLocalStorage().managerName !== "Ausweiche") throw new Error("Der jüngere Stand aus dem LocalStorage verliert");
+            if (ls.getItem(PLATZ) !== null || !/"managerName":"Ausweiche"/.test(db.daten[PLATZ])) throw new Error("Ausweichstand nicht zurück in IndexedDB");
+
+            // Ein liegengebliebener älterer Stand im LocalStorage verdrängt nichts
+            const aelter = JSON.parse(db.daten[PLATZ]);
+            aelter.lastSaved = "2020-01-01T00:00:00.000Z";
+            aelter.managerName = "Veraltet";
+            ls.setItem(PLATZ, JSON.stringify(aelter));
+            GameState._spiegel = {};
+            GameState.bereiteSpeicherVor();
+            if (GameState.loadFromLocalStorage().managerName !== "Ausweiche") throw new Error("Ein älterer Stand hat den neueren verdrängt");
+
+            // Löschen räumt beide Speicher
+            GameState.deleteSavegame();
+            if (db.daten[PLATZ] || ls.getItem(PLATZ) !== null || GameState.loadFromLocalStorage() !== null) throw new Error("Löschen unvollständig");
+
+            // Verdichteter Export lässt sich wieder einlesen
+            const exp = geladen.exportToJson();
+            const imp = GameState.importFromJson(exp);
+            if (!imp.success || imp.state.players.length !== geladen.players.length || typeof imp.state.players[0].name !== "string") {
+                throw new Error("Verdichteter Export nicht importierbar");
+            }
+
+            // Ohne IndexedDB bleibt alles beim LocalStorage
+            db.verfuegbar = () => false;
+            GameState._spiegel = {};
+            let ohne = null;
+            GameState.bereiteSpeicherVor().then(i => { ohne = i; });
+            geladen.saveToLocalStorage(null, true);
+            if (GameState.speicherort() !== "localStorage" || !ls.getItem(PLATZ)) throw new Error("Ohne IndexedDB wird nicht im LocalStorage gespeichert");
+        } finally {
+            delete globalThis.SpeicherDB;
+            if (vorherLs) Object.defineProperty(globalThis, "localStorage", vorherLs);
+            else delete globalThis.localStorage;
+            GameState._idbAktiv = false;
+            GameState._spiegel = {};
+        }
     });
 
     // Taktung der 2D-Simulation: Spielaufbau muss sichtbar bleiben
@@ -7500,6 +7652,302 @@ function runEngineTests() {
         if (zurueck.length < 2) throw new Error("Nicht alle Leihspieler sind zurückgekehrt");
         if (kandidat.clubId !== club.id || !club.playerIds.includes(kandidat.id) || kandidat.leihe) throw new Error("Der verliehene Spieler ist nicht zurück");
         if (leihspieler.clubId === club.id || club.playerIds.includes(leihspieler.id)) throw new Error("Der Leihspieler ist nicht zu seinem Verein zurück");
+    });
+
+    test("Länderspielpause: Nationalspieler reisen ab, spielen zweimal und kommen müde zurück", () => {
+        const { NationalTeamEngine } = require('./js/engine/nationalTeamEngine.js');
+        const { TrainingEngine } = require('./js/engine/trainingEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+
+        // Vier Pausen im Kalender, je drei Länderspieltage, kein Ligaspiel dazwischen
+        const tage = state.calendar.filter(d => d.type === "international");
+        if (tage.length !== 12) throw new Error(`${tage.length} Länderspieltage im Kalender`);
+        if (tage.some(d => !d.matchday)) throw new Error("Pausentage kennen ihre Woche nicht");
+        const ersteAbreise = state.calendar.findIndex(d => d.laenderspiel === "abreise");
+        const ersteRueckkehr = state.calendar.findIndex(d => d.laenderspiel === "rueckkehr");
+        if (state.calendar.slice(ersteAbreise, ersteRueckkehr).some(d => d.type === "matchday")) throw new Error("Ligaspiel in der Länderspielpause");
+
+        // Weltrangliste: die großen Fußballnationen oben
+        const rang = NationalTeamEngine.rangliste(state);
+        if (rang.length < 8) throw new Error(`Nur ${rang.length} Nationen treten an`);
+        if (!rang.slice(0, 6).some(n => ["Deutschland", "Frankreich", "Spanien", "England", "Brasilien", "Italien"].includes(n.name))) {
+            throw new Error(`Spitze der Rangliste: ${rang.slice(0, 6).map(n => n.name).join(", ")}`);
+        }
+
+        // Abreise: Die Bayern stellen Nationalspieler ab, die fehlen im Training
+        const abreise = NationalTeamEngine.tag(state, "abreise");
+        const weg = state.players.filter(p => p.abgestellt && club.playerIds.includes(p.id));
+        if (weg.length < 3 || abreise.eigene.length !== weg.length) throw new Error(`${weg.length} Bayern abgestellt`);
+        if (!state.inbox.some(m => /abgestellt/.test(m.subject))) throw new Error("Keine Nachricht zur Abstellung");
+        const vorher = new Map(weg.map(p => [p.id, p.trainingLog?.sessions || 0]));
+        TrainingEngine.processDailyTraining(state, "training");
+        if (weg.some(p => (p.trainingLog?.sessions || 0) !== vorher.get(p.id))) throw new Error("Abgestellte trainieren im Verein mit");
+
+        // Zwei Länderspiele: Länderspiele zählen, Vereinsstatistik bleibt
+        const saisonSpiele = new Map(weg.map(p => [p.id, p.stats.matches]));
+        const fitness = new Map(weg.map(p => [p.id, p.fitness]));
+        const spiele = NationalTeamEngine.tag(state, "spiel", () => 0.5);
+        if (spiele.length < 4) throw new Error(`${spiele.length} Länderspiele`);
+        const zurueck = NationalTeamEngine.tag(state, "rueckkehr", () => 0.5);
+        if (!weg.some(p => p.laenderspiele >= 2)) throw new Error("Länderspiele werden nicht gezählt");
+        if (weg.some(p => p.stats.matches !== saisonSpiele.get(p.id))) throw new Error("Länderspiele landen in der Vereinsstatistik");
+        if (!weg.some(p => p.fitness < fitness.get(p.id))) throw new Error("Niemand kommt müde zurück");
+        if (state.players.some(p => p.abgestellt)) throw new Error("Nach der Rückkehr ist noch jemand abgestellt");
+        if (!state.inbox.some(m => /Zurück von den Nationalmannschaften/.test(m.subject))) throw new Error("Kein Rückkehrbericht");
+        if (zurueck.spiel.length !== spiele.length) throw new Error("Das zweite Länderspiel fehlt");
+        const tore = state.players.reduce((a, p) => a + (p.laenderspielTore || 0), 0);
+        const gefallen = spiele.concat(zurueck.spiel).reduce((a, s) => a + s.tore[0] + s.tore[1], 0);
+        if (tore !== gefallen) throw new Error(`${gefallen} Tore gefallen, ${tore} Torschützen gezählt`);
+        const akte = NationalTeamEngine.akte(weg[0]);
+        if (!akte || !/Länderspiel/.test(akte.text)) throw new Error("Spielerakte kennt die Länderspiele nicht");
+
+        // Der Kalender spielt die Pause durch
+        state.calendar.forEach(d => d.completed = false);
+        state.currentDayIndex = ersteAbreise;
+        for (let i = ersteAbreise; i <= ersteRueckkehr; i++) CalendarEngine.advanceOneDay(state);
+        if (state.players.some(p => p.abgestellt)) throw new Error("Kalender holt die Abgestellten nicht zurück");
+    });
+
+    test("Trainerprofil: Typ, Lizenz mit Lehrgang, Wirkung auf Ansprache, Talente, Berater und Angebote", () => {
+        const { TrainerProfilEngine: T } = require('./js/engine/trainerProfilEngine.js');
+        const { CareerEngine } = require('./js/engine/careerEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer", trainerTyp: "ausbilder" });
+        const p = T.profil(state);
+        if (p.typ !== "ausbilder" || p.werte.jugend !== 16) throw new Error(`Typ ${p.typ}, Jugendarbeit ${p.werte.jugend}`);
+        if (p.lizenz !== "pro") throw new Error("Ein Bundesligatrainer startet ohne Pro-Lizenz");
+        if (!(T.faktor(state, "jugend", 0.2) > 1.05)) throw new Error("Jugendarbeit wirkt nicht");
+
+        // Ein Oberligatrainer hat die B-Lizenz und bekommt keine Angebote aus höheren Ligen
+        const klein = GameState.createNewGame("oln_vfb", "normal", { name: "Trainer" });
+        const pk = T.profil(klein);
+        if (pk.lizenz !== "b") throw new Error(`Oberligatrainer mit ${pk.lizenz}`);
+        if (T.darfTrainieren(pk, 3) || !T.darfTrainieren(pk, 6)) throw new Error("Lizenzgrenzen stimmen nicht");
+        const angebote = CareerEngine.sucheAngebote(klein, 90);
+        if (angebote.some(a => (klein.clubs.find(c => c.id === a.clubId)?.level || 9) <= 4)) throw new Error("Angebot aus einer Liga, für die die Lizenz fehlt");
+
+        // Lehrgang: kostet, dauert, bringt Lizenz und Werte
+        const verein = klein.clubs.find(c => c.id === klein.userClubId);
+        verein.balance = 100000;
+        const taktikVorher = pk.werte.taktik;
+        const kurs = T.kursStarten(klein);
+        if (!kurs.success || verein.balance !== 100000 - kurs.kosten) throw new Error("Lehrgang nicht gebucht oder nicht bezahlt");
+        if (T.kursStarten(klein).success) throw new Error("Zwei Lehrgänge gleichzeitig");
+        for (let i = 0; i < kurs.tage; i++) T.tag(klein);
+        if (pk.lizenz !== "a" || pk.werte.taktik !== taktikVorher + 1) throw new Error("Lehrgang bringt Lizenz oder Taktik nicht");
+        if (!klein.inbox.some(m => /bestanden/.test(m.subject))) throw new Error("Keine Nachricht zum bestandenen Lehrgang");
+
+        // Motivation: Dieselbe gute Ansprache wirkt beim Motivator stärker
+        const ansprache = (wert) => {
+            const s = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+            T.profil(s).werte.motivation = wert;
+            s.players.forEach(x => { x.morale = 60; });
+            const ergebnisse = ManagerEngine.TEAM_TALK_TONES.map(t => ManagerEngine.applyTeamTalk(s, t.key, { phase: "prematch" }))
+                .filter(r => r.success);
+            return ergebnisse;
+        };
+        const stark = ansprache(20), schwach = ansprache(4);
+        const besteStark = Math.max(...stark.map(r => r.moraleDelta)), besteSchwach = Math.max(...schwach.map(r => r.moraleDelta));
+        if (!(besteStark > besteSchwach)) throw new Error(`Motivation wirkt nicht (${besteStark} gegen ${besteSchwach})`);
+
+        // Ruf: Berater sind bei einem bekannten Trainer geduldiger
+        if (!(NegotiationEngine.geduldMitRuf(state, 60) > NegotiationEngine.geduldMitRuf(klein, 60))) throw new Error("Der Ruf ändert die Geduld der Berater nicht");
+
+        // Saisonende: Was gefordert war, wächst
+        const motivationVorher = p.werte.motivation;
+        const gewachsen = T.saisonende(state, { titel: 1 });
+        if (!gewachsen.includes("Motivation") || p.werte.motivation !== motivationVorher + 1) throw new Error("Ein Titel stärkt die Motivation nicht");
+    });
+
+    test("Spielanalyse: Heatmap und Passnetz aus dem Livespiel, nur bei eigenen Spielen gespeichert", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");
+        const partie = { id: "pa", played: false, homeClubId: "muc", awayClubId: "dor" };
+        const live = MatchEngine.createLiveMatch(partie, heim, gast, state.players, { modus: "fm" });
+        live.speed = 4;
+        let q = 0;
+        while (!live.isFinished && q++ < 600000) { live.advanceRealTime(16); live.updateBallAndPlayers(16); }
+        const a = partie.analyse;
+        if (!a) throw new Error("Keine Positionsanalyse gespeichert");
+        ["home", "away"].forEach(t => {
+            if (!/^[0-9]{96}$/.test(a.heat[t])) throw new Error(`Heatmap ${t} ist keine Ziffernfolge aus 96 Feldern`);
+            if (!a.heat[t].includes("9")) throw new Error("Heatmap nicht normiert");
+            const n = a.netz[t];
+            if (n.spieler.length < 10 || n.spieler.length > 14) throw new Error(`${n.spieler.length} Spieler im Passnetz`);
+            if (n.kanten.length < 6) throw new Error(`Nur ${n.kanten.length} Passwege`);
+            if (n.kanten.some(([v, z]) => !n.spieler[v] || !n.spieler[z] || v === z)) throw new Error("Passweg ohne zwei verschiedene Spieler");
+            if (n.spieler.some(([, x, y]) => x < 0 || x > 100 || y < 0 || y > 100)) throw new Error("Position außerhalb des Feldes");
+        });
+        // In Angriffsrichtung: Der Torwart steht hinten, die Stürmer vorn
+        const tw = heim.lineup[0];
+        const twPos = a.netz.home.spieler.find(s => String(s[0]) === String(tw));
+        if (!twPos || twPos[1] > 20) throw new Error(`Torwart steht im Schnitt bei ${twPos && twPos[1]}`);
+        // Fremde Partien bleiben schlank
+        MatchEngine.compactPlayedMatch(partie, false);
+        if (partie.analyse) throw new Error("Verschlankte Partie behält die Analyse");
+    });
+
+    test("Wetter: Jahreszeit, Rasen nach Ligastufe, Wirkung auf Kraft, Pässe und Fernschüsse", () => {
+        const { WetterEngine } = require('./js/engine/wetterEngine.js');
+        if (![8, 9].includes(WetterEngine.monat({ matchday: 1 }))) throw new Error(`1. Spieltag im Monat ${WetterEngine.monat({ matchday: 1 })}`);
+        if (![11, 12, 1].includes(WetterEngine.monat({ matchday: 17 }))) throw new Error("Die Hinrunde endet nicht im Winter");
+        if (![4, 5].includes(WetterEngine.monat({ matchday: 34 }))) throw new Error("Der letzte Spieltag liegt nicht im Frühjahr");
+
+        const zaehle = (md, level) => {
+            const z = {};
+            for (let i = 0; i < 400; i++) {
+                const w = WetterEngine.fuer({ id: "w" + i, homeClubId: "h" + i, awayClubId: "g", matchday: md }, { level });
+                z[w.art] = (z[w.art] || 0) + 1;
+                z["platz_" + w.platz] = (z["platz_" + w.platz] || 0) + 1;
+            }
+            return z;
+        };
+        const sommer = zaehle(2, 1), winter = zaehle(17, 1), winterAmateure = zaehle(17, 7);
+        if (sommer.schnee) throw new Error("Schnee im August");
+        if (!(sommer.hitze > 10)) throw new Error("Keine Hitze im Sommer");
+        if (!(winter.schnee > 20)) throw new Error("Kein Schnee im Winter");
+        const schlecht = z => (z.platz_tief || 0) + (z.platz_hart || 0);
+        if (!(schlecht(winterAmateure) > schlecht(winter) * 1.3)) throw new Error("Amateurplätze leiden nicht mehr unter dem Winter");
+
+        // Fest bestimmt: dieselbe Partie hat dasselbe Wetter
+        const m = { id: "fest", homeClubId: "muc", awayClubId: "dor", matchday: 20 };
+        const a = WetterEngine.fuer(m), b = WetterEngine.fuer({ id: "fest", homeClubId: "muc", awayClubId: "dor", matchday: 20 });
+        if (a.art !== b.art || a.temp !== b.temp || a.platz !== b.platz) throw new Error("Wetter ist nicht fest");
+
+        const tief = WetterEngine.mitWirkung({ art: "starkregen", temp: 6, platz: "tief" });
+        if (!(tief.pass < -0.05 && tief.ausdauer > 1.1 && tief.fern > 0)) throw new Error("Tiefer Boden im Starkregen wirkt nicht");
+        if (!WetterEngine.hinweis(tief)) throw new Error("Kein Hinweis für tiefen Boden");
+
+        // Im Livespiel: Hitze zehrt schneller an der Kraft
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");
+        const live = (art) => new LiveMatch({ id: "wt" + art, played: false, homeClubId: "muc", awayClubId: "dor", wetter: { art, temp: art === "hitze" ? 33 : 15, platz: "gut" } }, heim, gast, state.players);
+        const heiss = live("hitze"), mild = live("bewoelkt");
+        if (!heiss.wetter || heiss.wetter.art !== "hitze") throw new Error("Das Livespiel kennt das Wetter nicht");
+        heiss.director.drainStamina(900); mild.director.drainStamina(900);
+        const frische = l => l.players2D.reduce((s, p) => s + (p.freshness ?? 1), 0) / l.players2D.length;
+        if (!(frische(heiss) < frische(mild))) throw new Error("Hitze kostet keine zusätzliche Kraft");
+        // Passgenauigkeit: Der Flow kennt das Wetter
+        if (!heiss.director.flow || heiss.director.flow.wetter().art !== "hitze") throw new Error("Die Spielzüge kennen das Wetter nicht");
+    });
+
+    test("Verträge: Beraterhonorar und Prämien in der Verhandlung, Kaufoption bei Leihen", () => {
+        const { LoanEngine } = require('./js/engine/loanEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        club.balance = 200000000; club.transferBudget = 200000000;
+
+        // Ein Vereinsloser: Es geht direkt um die Konditionen
+        const frei = state.players.find(p => p.clubId && p.clubId !== club.id && p.pos === "ST" && p.overall >= 70);
+        const alt = state.clubs.find(c => c.id === frei.clubId);
+        alt.playerIds = alt.playerIds.filter(id => id !== frei.id);
+        frei.clubId = null;
+        frei.hiddenAttributes = Object.assign({}, frei.hiddenAttributes, { injuryProneness: 1 });
+        const neg = NegotiationEngine.startTransferNegotiation(state, frei.id, club.id).negotiation;
+        if (!(neg.demand.agentFee > 0)) throw new Error("Der Berater verlangt kein Honorar");
+        if (neg.demand.agentFee < neg.demand.wage * 10) throw new Error("Bei Vereinslosen fällt das Honorar zu klein aus");
+
+        // Weniger Grundgehalt, dafür Prämien: Der Spieler rechnet sie ein
+        const angebot = { wage: Math.round(neg.demand.wage * 0.85), years: 3, signingBonus: neg.demand.signingBonus,
+            agentFee: neg.demand.agentFee, einsatzPraemie: Math.round(neg.demand.wage * 0.25), torPraemie: Math.round(neg.demand.wage * 0.2) };
+        if (NegotiationEngine.praemienWert(state, neg, angebot) < neg.demand.wage * 0.15) throw new Error("Prämien zählen in der Bewertung kaum");
+        const ohnePraemien = Object.assign({}, angebot, { einsatzPraemie: 0, torPraemie: 0 });
+        if (NegotiationEngine.praemienWert(state, neg, ohnePraemien) !== 0) throw new Error("Ohne Prämien kein Prämienwert");
+        NegotiationEngine.submitOffer(state, neg.id, angebot);
+        neg.replyDay = NegotiationEngine.today(state);
+        NegotiationEngine.processDay(state);
+        if (neg.stage !== NegotiationEngine.STAGES.MEDICAL) throw new Error(`Angebot mit Prämien abgelehnt (${neg.status}, ${neg.stage})`);
+        const vorher = club.balance;
+        neg.replyDay = NegotiationEngine.today(state);
+        NegotiationEngine.processDay(state);
+        if (frei.clubId !== club.id) throw new Error("Transfer nicht vollzogen");
+        if (Math.round(vorher - club.balance) !== neg.agreed.signingBonus + neg.agreed.agentFee) throw new Error("Handgeld und Beraterhonorar werden nicht bezahlt");
+        if (!frei.praemien || frei.praemien.einsatz !== angebot.einsatzPraemie) throw new Error("Prämien stehen nicht im Vertrag");
+
+        // Prämien nach dem Spiel: Einsatz plus zwei Tore
+        const partie = { played: true, homeClubId: club.id, awayClubId: "dor", playerRatings: [{ playerId: frei.id, minutes: 70, goals: 2 }] };
+        const kontoVorSpiel = club.balance;
+        const gezahlt = NegotiationEngine.zahlePraemien(state, partie);
+        if (gezahlt !== angebot.einsatzPraemie + 2 * angebot.torPraemie || club.balance !== kontoVorSpiel - gezahlt) throw new Error(`Prämien falsch abgerechnet: ${gezahlt}`);
+        if (NegotiationEngine.zahlePraemien(state, partie) !== 0) throw new Error("Prämien werden doppelt gezahlt");
+
+        // Leihe mit Kaufoption
+        const markt = LoanEngine.leihmarkt(state, 30);
+        const ziel = markt[0];
+        if (!(ziel.kaufoption > 0) || !(ziel.optionsAufschlag > 0)) throw new Error("Der Leihmarkt nennt keine Kaufoption");
+        const stamm = state.clubs.find(c => c.id === ziel.clubId);
+        const stammKonto = stamm.balance || 0;
+        const res = LoanEngine.ausleihen(state, ziel.playerId, null, { kaufoption: true });
+        if (!res.success || res.gebuehr !== ziel.gebuehr + ziel.optionsAufschlag) throw new Error("Die Kaufoption kostet keinen Aufschlag");
+        const leihspieler = state.players.find(p => String(p.id) === String(ziel.playerId));
+        if (leihspieler.leihe.kaufoption !== ziel.kaufoption) throw new Error("Kaufoption steht nicht in der Leihe");
+        const gezogen = LoanEngine.zieheKaufoption(state, leihspieler.id);
+        if (!gezogen.success) throw new Error(gezogen.error);
+        if (leihspieler.leihe || leihspieler.clubId !== club.id || !club.playerIds.includes(leihspieler.id) || stamm.playerIds.includes(leihspieler.id)) {
+            throw new Error("Nach der Kaufoption gehört er nicht fest zum Kader");
+        }
+        if ((stamm.balance || 0) < stammKonto + ziel.kaufoption) throw new Error("Der Stammverein bekommt den Kaufpreis nicht");
+
+        // Die KI zieht ihre Optionen, wenn der Spieler eingeschlagen hat
+        let seed = 3;
+        const zufall = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+        LoanEngine.kiLeihen(state, 40, zufall);
+        const mitOption = state.players.filter(p => p.leihe && p.leihe.kaufoption);
+        if (!mitOption.length) throw new Error("Keine KI-Leihe mit Kaufoption");
+        mitOption.forEach(p => { p.spielpraxis = 0.8; const lv = state.clubs.find(c => c.id === p.leihe.leihvereinId); lv.balance = 1e9; });
+        const kaeufer = new Map(mitOption.map(p => [p.id, p.leihe.leihvereinId]));
+        LoanEngine.saisonende(state);
+        const gekauft = mitOption.filter(p => p.clubId === kaeufer.get(p.id) && !p.leihe);
+        if (!gekauft.length) throw new Error("Die KI zieht keine Kaufoption");
+    });
+
+    test("Kabine: Kapitän, Führungsspieler und Grüppchen - Wortführer färben ab, ein Abgang hinterlässt Unruhe", () => {
+        const { DressingRoomEngine } = require('./js/engine/dressingRoomEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const h = DressingRoomEngine.hierarchie(state);
+        if (h.spieler.length !== club.playerIds.length) throw new Error("Nicht jeder Spieler hat einen Platz in der Hierarchie");
+        if (!h.kapitaen) throw new Error("Kein Kapitän");
+        const fuehrung = h.spieler.filter(e => e.stufe === "Führungsspieler");
+        if (fuehrung.length < 1 || fuehrung.length > 3) throw new Error(`${fuehrung.length} Führungsspieler`);
+        // Der Kapitän ist erfahren, kein Neuling
+        if ((h.kapitaen.age || 0) < 24) throw new Error(`Kapitän ist ${h.kapitaen.age} Jahre alt`);
+        const deutsch = h.gruppen.find(g => g.key === "deutsch");
+        if (!deutsch || deutsch.mitglieder.length < 3) throw new Error("Keine deutschsprachige Gruppe bei den Bayern");
+        if (h.gruppen.some(g => g.mitglieder.length < 3)) throw new Error("Gruppe mit weniger als drei Spielern");
+
+        // Ein Neuzugang steht als Neuzugang in der Kabine
+        const neu = state.players.find(p => p.clubId && p.clubId !== club.id && p.overall > 70);
+        club.balance = 1e9;
+        TransferEngine.executeTransfer(state, neu.id, club.id, 1000000, neu.wage, 3);
+        if (DressingRoomEngine.hierarchie(state).spieler.find(e => e.player === neu).stufe !== "Neuzugang") throw new Error("Neuzugang wird nicht erkannt");
+
+        // Ein unzufriedener Wortführer zieht seine Gruppe runter
+        const g = DressingRoomEngine.hierarchie(state).gruppen[0];
+        g.mitglieder.forEach(p => { p.morale = 75; });
+        g.wortfuehrer.morale = 35;
+        const andere = g.mitglieder.filter(p => p !== g.wortfuehrer && p !== DressingRoomEngine.hierarchie(state).kapitaen);
+        for (let i = 0; i < 5; i++) DressingRoomEngine.kabinenTag(state, club);
+        if (!andere.every(p => p.morale < 75)) throw new Error("Der Wortführer färbt nicht ab");
+        if (!DressingRoomEngine.schreibtisch(state).some(i => /zieht seine Gruppe runter|Kapitän/.test(i.title))) throw new Error("Schreibtisch meldet die Unruhe nicht");
+
+        // Kapitän wechseln: Der alte ist gekränkt, der neue stolz
+        state.players.forEach(p => { if (club.playerIds.includes(p.id)) p.morale = 75; });
+        const alt = DressingRoomEngine.hierarchie(state).kapitaen;
+        const kandidat = DressingRoomEngine.hierarchie(state).spieler.find(e => e.player !== alt && e.stufe !== "Neuzugang").player;
+        const res = DressingRoomEngine.setzeKapitaen(state, kandidat.id);
+        if (!res.success || DressingRoomEngine.hierarchie(state).kapitaen !== kandidat) throw new Error("Kapitän lässt sich nicht bestimmen");
+        if (!(alt.morale < 75 && kandidat.morale > 75)) throw new Error("Kapitänswechsel lässt alle kalt");
+
+        // Verkauf des Kapitäns: Unruhe in der Kabine
+        state.players.forEach(p => { if (club.playerIds.includes(p.id) && p !== kandidat) p.morale = 75; });
+        const kaeufer = state.clubs.find(c => c.id !== club.id && c.level === 1);
+        kaeufer.balance = 1e9;
+        TransferEngine.executeTransfer(state, kandidat.id, kaeufer.id, 5000000, kandidat.wage, 3);
+        const rest = state.players.filter(p => club.playerIds.includes(p.id) && p !== neu);
+        if (!rest.some(p => p.morale < 75)) throw new Error("Verkauf des Kapitäns bleibt ohne Folgen");
+        if (!state.inbox.some(m => /Unruhe nach dem Abgang/.test(m.subject))) throw new Error("Mannschaftsrat meldet sich nicht");
+        if (club.kapitaenId !== undefined) throw new Error("Verkaufter Spieler bleibt Kapitän");
     });
 
     test("Leihen: KI-Vereine verleihen Talente ohne Einsätze an gleich starke oder tiefere Ligen", () => {

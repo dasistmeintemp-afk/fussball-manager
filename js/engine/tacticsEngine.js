@@ -707,7 +707,7 @@ const ROLLEN_STILE = {
     },
     konter: {
         gegen: { ST: "st_konter", FL: "fl_zurueck", DM: "dm_abschirmend", IV: "iv_absichernd" },
-        mit: { ST: "st_kanal", FL: "fl", ZM: "zm_boxtobox", AV: "av" }
+        mit: { ST: "st_kanal", FL: "fl", ZM: "zm_boxtobox", AV: "av_defensiv" }
     },
     defensiv: {
         gegen: { DM: "dm_abkippend", FL: "fl_zurueck", ZM: "zm_abschirmend", ST: "st_zurueck", IV: "iv_absichernd", TW: "tw_linie" },

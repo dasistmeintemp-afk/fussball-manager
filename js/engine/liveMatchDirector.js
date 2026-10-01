@@ -435,7 +435,8 @@ class LiveMatchDirector {
             ownGoalX: (team) => this.ownGoalX(team),
             fm: () => this.fm,
             lage: (team) => this.fmLage(team),
-            schiri: () => this.match.schiedsrichter || null
+            schiri: () => this.match.schiedsrichter || null,
+            wetter: () => this.match.wetter || null
         }) : null;
 
         this.initPlayers();
@@ -803,6 +804,7 @@ class LiveMatchDirector {
         if (this.abseitsSperre > 0) this.abseitsSperre = Math.max(0, this.abseitsSperre - dt);
 
         this.drainStamina(matchSecondsDelta);
+        this.analyseAufnahme(matchSecondsDelta);
         // FM-Modus: Ballbesitz ist die Zeit, in der eine Mannschaft den Ball hat
         if (this.fm && this.match.fmStats && !this.kickoff && !this.deadBall && this.mode !== "celebration") {
             this.match.fmStats.besitz[this.fmIndex(this.possessionTeam)] += matchSecondsDelta;
@@ -899,13 +901,79 @@ class LiveMatchDirector {
         this.match.checkForFinish();
     }
 
+    // ------------------------------------------------------- Spielanalyse
+    //
+    // Heatmap und Passnetz: Alle zwei Spielsekunden wird festgehalten, wo
+    // jeder steht - in Angriffsrichtung, damit beide Halbzeiten
+    // zusammenpassen -, und jeder angekommene Pass zählt als Verbindung.
+
+    analyseAufnahme(matchSeconds) {
+        if (!(matchSeconds > 0) || this.kickoff || this.mode === "celebration") return;
+        const a = this.match.analyse2D || (this.match.analyse2D = {
+            takt: 0, proben: 0,
+            heat: { home: new Array(96).fill(0), away: new Array(96).fill(0) },
+            pos: {}, paesse: { home: {}, away: {} }
+        });
+        a.takt += matchSeconds;
+        if (a.takt < 2) return;
+        a.takt = 0;
+        a.proben++;
+        (this.match.players2D || []).forEach(p => {
+            if (!p || typeof p.x !== "number" || p.vomPlatz || p.ausgewechselt) return;
+            const dir = this.attackDir(p.team);
+            const ax = dir > 0 ? p.x : 100 - p.x;
+            const ay = dir > 0 ? p.y : 100 - p.y;
+            if (p.pos !== "TW") {
+                const gx = Math.max(0, Math.min(11, Math.floor(ax / 100 * 12)));
+                const gy = Math.max(0, Math.min(7, Math.floor(ay / 100 * 8)));
+                a.heat[p.team][gy * 12 + gx]++;
+            }
+            const e = a.pos[p.id] || (a.pos[p.id] = { team: p.team, sx: 0, sy: 0, n: 0 });
+            e.sx += ax; e.sy += ay; e.n++;
+        });
+    }
+
+    analysePass(von, an) {
+        const a = this.match.analyse2D;
+        if (!a || !von || !an || von.team !== an.team || von.id === an.id) return;
+        const schluessel = `${von.id}>${an.id}`;
+        a.paesse[von.team][schluessel] = (a.paesse[von.team][schluessel] || 0) + 1;
+    }
+
+    /**
+     * Kompakte Spielanalyse für den Spielbericht: Heatmap als Ziffernfolge
+     * (12 x 8 Felder, 0 bis 9), Durchschnittspositionen und die häufigsten
+     * Passverbindungen je Mannschaft.
+     */
+    analyseZusammenfassung() {
+        const a = this.match.analyse2D;
+        if (!a || a.proben < 10) return null;
+        const ergebnis = { heat: {}, netz: {} };
+        ["home", "away"].forEach(team => {
+            const zellen = a.heat[team];
+            const max = Math.max(1, ...zellen);
+            ergebnis.heat[team] = zellen.map(v => Math.min(9, Math.round(v / max * 9))).join("");
+            const spieler = Object.entries(a.pos)
+                .filter(([, e]) => e.team === team && e.n >= a.proben * 0.12)
+                .map(([id, e]) => [id, Math.round(e.sx / e.n), Math.round(e.sy / e.n), e.n]);
+            const index = new Map(spieler.map((s, i) => [String(s[0]), i]));
+            const kanten = Object.entries(a.paesse[team])
+                .map(([k, n]) => { const [v, z] = k.split(">"); return [index.get(v), index.get(z), n]; })
+                .filter(([v, z]) => v !== undefined && z !== undefined)
+                .sort((x, y) => y[2] - x[2]).slice(0, 16);
+            ergebnis.netz[team] = { spieler: spieler.map(s => [s[0], s[1], s[2]]), kanten };
+        });
+        return ergebnis;
+    }
+
     drainStamina(matchSeconds) {
         if (!(matchSeconds > 0)) return;
 
         (this.match.players2D || []).forEach(p => {
             const stamina = typeof p.stamina === "number" ? p.stamina : 75;
             const endurance = Math.max(0.35, 1.35 - stamina / 100);
-            const rate = (p.sprinting ? 0.00009 : 0.00003) * endurance;
+            // Hitze und tiefer Boden zehren zusätzlich
+            const rate = (p.sprinting ? 0.00009 : 0.00003) * endurance * (this.match.wetter?.ausdauer || 1);
             p.freshness = Math.max(0.6, (p.freshness ?? 1) - rate * matchSeconds);
             // Wer angeschlagen weiterspielt, humpelt - langsamer als jeder Muede.
             if (p.verletzt) p.freshness = Math.min(p.freshness, 0.62);
@@ -2500,6 +2568,7 @@ class LiveMatchDirector {
             }
             if (action.outcome === "complete" && action.to && action.from) {
                 this._fmVorlage = { id: action.from.id, name: action.from.name, team: action.from.team, zuId: action.to.id, clock: this.clock };
+                this.analysePass(action.from, action.to);
             }
         }
         const from = action.from;
@@ -5118,7 +5187,16 @@ class LiveMatchDirector {
         // Wer kontert, ist schneller in der Form mit Ball; wer den Ball
         // sichert, laesst sich Zeit
         const konter = ziel === 1 ? (this.taktik(p.team).w.konter || 0) : 0;
-        const schritt = vergangen / (konter > 0 ? 1.1 : (konter < 0 ? 2.0 : 1.6));
+        let dauer = konter > 0 ? 1.1 : (konter < 0 ? 2.0 : 1.6);
+        // Beim Kontern geht nach vorn, wer laufen soll - die Abwehr und die
+        // Absicherung davor bleiben stehen, bis der Angriff sitzt. Vorher
+        // schaltete die ganze Elf in gut einer Sekunde um; ging der Ball
+        // verloren, stand niemand mehr hinten, und ein Konterteam liess mehr
+        // Schuesse zu als eines, das gar nicht konterte (21 gegen 15).
+        if (konter > 0 && (p.group === "def" || (p.group === "mid" && !p.rolleMit?.laeuft && !BREITE_ROLLEN.includes(p.rolle)))) {
+            dauer = 2.6;
+        }
+        const schritt = vergangen / dauer;
         p.form += Math.max(-schritt, Math.min(schritt, ziel - p.form));
         return p.form;
     }
@@ -5528,12 +5606,23 @@ class LiveMatchDirector {
             // sobald der Ball weiter weg ist; Fallenlassen gibt dem Gegner
             // Raum vor der Kette, aber keinen dahinter.
             const verhalten = wk.linienVerhalten || 0;
-            hinten = 0.04 + 0.42 * b + linie * 0.07 + mentalitaet * 0.5 + falle
+            // Tief steht die Kette etwas weiter hinten, nicht doppelt so weit -
+            // mit 0.07 liess eine tiefe Linie gemessen 2.96 xG gegen Bayern
+            // zu statt 1.84 (24 Spiele), mit 0.04 und der Strafraumgrenze 2.21
+            hinten = 0.04 + 0.42 * b + linie * (linie < 0 ? 0.04 : 0.07) + mentalitaet * 0.5 + falle
                 + verhalten * (b > 0.45 ? 0.03 : 0.015);
             // Die Kette steht hinter dem Ball, nicht auf seiner Hoehe
             hinten = Math.min(hinten, b - (verhalten < 0 ? 0.1 : 0.06));
+            // Tief heisst frueh zurueckweichen - nicht im eigenen Fuenfer
+            // stehen. Solange der Ball vor dem Strafraum ist, haelt die Kette
+            // die Strafraumgrenze. Vorher verteidigte eine tiefe Kette bei
+            // einem Ball auf 28 Metern auf 10 Metern, das Mittelfeld stand
+            // bei 24: Im Loch dazwischen schloss der Gegner frei ab, und eine
+            // tiefe Linie liess gemessen ein Drittel mehr Schuesse zu.
+            hinten = Math.max(hinten, Math.min(0.155, b - 0.12));
             hinten = Math.max(0.07, Math.min(0.5, hinten));
-            laenge = 0.30;
+            // Ein tiefer Block steht auch vertikal enger
+            laenge = 0.30 + Math.min(0, linie) * 0.05;
         }
         const vorne = Math.min(0.9, hinten + laenge);
 

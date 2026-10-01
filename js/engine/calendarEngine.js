@@ -20,8 +20,19 @@ const CALENDAR_DAY_TYPES = {
     // Die englischen Wochen: Pokal und Europapokal liegen zwischen den
     // Ligaspieltagen. Vorher gab es beide Wettbewerbe nur im Menü.
     CUP: "cup",
-    EURO: "euro"
+    EURO: "euro",
+    // Länderspielpause: Die Nationalspieler reisen ab, die Liga ruht
+    INTERNATIONAL: "international"
 };
+
+function _getNationalTeamEngine() {
+    if (typeof NationalTeamEngine !== "undefined" && NationalTeamEngine) return NationalTeamEngine;
+    if (typeof window !== "undefined" && window.NationalTeamEngine) return window.NationalTeamEngine;
+    if (typeof require !== "undefined") {
+        try { return require("./nationalTeamEngine.js").NationalTeamEngine; } catch (e) { /* ohne Bundler */ }
+    }
+    return null;
+}
 
 function _getPreseasonEngine() {
     if (typeof PreseasonEngine !== "undefined" && PreseasonEngine) return PreseasonEngine;
@@ -179,6 +190,42 @@ const CalendarEngine = {
             dayCounter++;
         };
 
+        // Viermal in der Saison ruht die Liga für die Nationalmannschaften
+        const nationalEngine = _getNationalTeamEngine();
+        const pausen = new Set(nationalEngine ? nationalEngine.pausenNachSpieltag(totalMatchdays) : []);
+        const legePauseAn = (md) => {
+            const tage = [
+                { type: CALENDAR_DAY_TYPES.INTERNATIONAL, schritt: "abreise", title: "🌍 Länderspielpause: Abreise",
+                    description: "Die Nationalspieler reisen zu ihren Auswahlteams. Wer bleibt, trainiert weiter." },
+                { type: CALENDAR_DAY_TYPES.TRAINING, schritt: null, title: "Training mit dem Restkader",
+                    description: "Die Liga ruht. Zeit für die, die sonst wenig spielen." },
+                { type: CALENDAR_DAY_TYPES.INTERNATIONAL, schritt: "spiel", title: "🌍 Länderspieltag",
+                    description: "Die Nationalmannschaften spielen. Daumen drücken, dass alle heil bleiben." },
+                { type: CALENDAR_DAY_TYPES.INTERNATIONAL, schritt: "rueckkehr", title: "🌍 Länderspieltag und Rückkehr",
+                    description: "Das zweite Länderspiel - danach kommen die Abgestellten zurück." }
+            ];
+            tage.forEach(t => {
+                calendar.push({
+                    id: `day_${dayCounter}`,
+                    dayIndex: dayCounter,
+                    date: this.formatDate(currentDate),
+                    dateObj: new Date(currentDate).toISOString(),
+                    dayOfWeek: this.getDayName(currentDate),
+                    type: t.type,
+                    title: t.title,
+                    description: t.description,
+                    // Die Pause gehört zur Woche vor dem nächsten Spieltag
+                    matchday: Math.min(totalMatchdays, md + 1),
+                    laenderspiel: t.schritt,
+                    laenderspielPause: true,
+                    actionsAvailable: ["training", "tactics", "transfers"],
+                    completed: false
+                });
+                currentDate.setDate(currentDate.getDate() + 1);
+                dayCounter++;
+            });
+        };
+
         // Für jeden Spieltag eine typische Vorbereitungswoche generieren
         for (let md = 1; md <= totalMatchdays; md++) {
             // 1. Regeneration / Analyse
@@ -294,6 +341,9 @@ const CalendarEngine = {
                 legeTerminAn(offeneTermine[t]);
                 offeneTermine.splice(t, 1);
             }
+
+            // 8. Länderspielpause
+            if (pausen.has(md)) legePauseAn(md);
         }
 
         // In kleineren Ligen ist die Saison kürzer als der Terminplan. Was
@@ -924,6 +974,14 @@ const CalendarEngine = {
             };
         }
 
+        // Länderspielpause: abstellen, spielen, zurückholen - der Rest des
+        // Kaders trainiert ganz normal weiter (unten, mit den Tageseffekten)
+        let laenderspiel = null;
+        if (currentDay.laenderspiel) {
+            const nationalEngine = _getNationalTeamEngine();
+            if (nationalEngine) laenderspiel = nationalEngine.tag(state, currentDay.laenderspiel);
+        }
+
         // Mit dem ersten Spieltag ist die Vorbereitung vorbei
         if (currentDay.type === CALENDAR_DAY_TYPES.MATCHDAY
             && state.preseason && state.preseason.aktiv) {
@@ -961,6 +1019,17 @@ const CalendarEngine = {
 
         // Tägliche Effekte anwenden (Training, Medien, Finanzen, Scouting)
         const dailySummary = this.applyDailyEffects(state, currentDay);
+        // Der Lizenzlehrgang des Trainers läuft nebenher
+        const trainerProfil = (typeof TrainerProfilEngine !== "undefined" && TrainerProfilEngine)
+            ? TrainerProfilEngine
+            : (typeof require !== "undefined" ? (() => { try { return require("./trainerProfilEngine.js").TrainerProfilEngine; } catch (e) { return null; } })() : null);
+        const lehrgang = trainerProfil ? trainerProfil.tag(state) : null;
+        if (lehrgang && dailySummary) dailySummary.messages.unshift(`🎓 Lizenzlehrgang bestanden: ${trainerProfil.LIZENZEN[lehrgang.bestanden].name}`);
+        if (laenderspiel && dailySummary) {
+            dailySummary.laenderspiel = laenderspiel;
+            const meldung = this.laenderspielMeldung(state, currentDay.laenderspiel, laenderspiel);
+            if (meldung) dailySummary.messages.unshift(meldung);
+        }
         currentDay.completed = true;
 
         // Zum nächsten Tag wechseln
@@ -978,6 +1047,25 @@ const CalendarEngine = {
         };
     },
 
+    /** Eine Zeile für den Tagesbericht der Länderspielpause */
+    laenderspielMeldung(state, schritt, ergebnis) {
+        if (!ergebnis) return null;
+        if (schritt === "abreise") {
+            const n = (ergebnis.eigene || []).length;
+            return n ? `🌍 ${n} Spieler bei ihren Nationalmannschaften` : "🌍 Länderspielpause - niemand aus dem Kader ist berufen";
+        }
+        const spiele = schritt === "rueckkehr" ? ergebnis.spiel : ergebnis;
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        const eigene = new Set((club?.playerIds || []).map(String));
+        const tore = (spiele || []).flatMap(s => s.torschuetzen).filter(t => eigene.has(String(t.id))).map(t => t.name);
+        const teil = tore.length ? `Tore von ${[...new Set(tore)].join(", ")}` : "kein Tor aus dem eigenen Kader";
+        if (schritt === "rueckkehr") {
+            const verletzt = (ergebnis.zurueck?.verletzt || []).length;
+            return `🌍 Länderspiele: ${teil}. Die Abgestellten sind zurück${verletzt ? `, ${verletzt} verletzt` : ""}.`;
+        }
+        return `🌍 Länderspiele: ${teil}.`;
+    },
+
     /**
      * Simuliert schnell bis zum nächsten Spieltag vor
      */
@@ -986,7 +1074,8 @@ const CalendarEngine = {
         const results = [];
         let safetyCounter = 0;
 
-        while (safetyCounter < 10) {
+        // Zwischen zwei Spieltagen können Pokalabend und Länderspielpause liegen
+        while (safetyCounter < 20) {
             safetyCounter++;
             const currentDay = this.getCurrentDay(state);
             if (!currentDay) break;
@@ -1178,7 +1267,10 @@ const CalendarEngine = {
             }
             // Eine Taktikeinheit schleift die aktuelle Formation und Spielweise ein
             if (userClub && taktik && typeof taktik.vertrautheitUeben === 'function') {
-                const wert = taktik.vertrautheitUeben(userClub, 0.08, 0);
+                const profilT = (typeof TrainerProfilEngine !== "undefined" && TrainerProfilEngine)
+                    ? TrainerProfilEngine
+                    : (typeof require !== "undefined" ? (() => { try { return require("./trainerProfilEngine.js").TrainerProfilEngine; } catch (e) { return null; } })() : null);
+                const wert = taktik.vertrautheitUeben(userClub, 0.08 * (profilT ? profilT.faktor(state, "taktik", 0.25) : 1), 0);
                 summary.messages.push(`Taktikschulung abgeschlossen. Die Mannschaft ist zu ${Math.round(wert * 100)} % mit ihrer Taktik vertraut.`);
             } else {
                 summary.messages.push("Taktikschulung abgeschlossen. Taktische Vertrautheit +2%.");

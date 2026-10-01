@@ -147,7 +147,7 @@ const ScoutingEngine = {
             .map(e => e.p);
 
         auswahl.forEach(player => {
-            this.increaseKnowledge(player, Math.max(4, Math.round(30 * this.reachPenalty(state, player))), scout.guete);
+            this.increaseKnowledge(player, Math.max(4, Math.round(30 * this.reachPenalty(state, player))), scout.guete * this.bewertungsFaktor(state));
             const report = this.generatePlayerReport(player, state, { source: "auftrag", skipGain: true });
             state.scouting.reports.unshift(report);
         });
@@ -191,7 +191,7 @@ const ScoutingEngine = {
         const daempfung = this.reachPenalty(state, player);
         const amount = Math.max(4, Math.round(basis * daempfung));
 
-        this.increaseKnowledge(player, amount, scoutQuality);
+        this.increaseKnowledge(player, amount, scoutQuality * this.bewertungsFaktor(state));
         player.scoutingKnowledge.lastScoutedDate = state.currentDate || "Aktuell";
 
         // Das Wissen ist oben schon gewachsen - der Bericht zählt nicht doppelt
@@ -366,6 +366,14 @@ const ScoutingEngine = {
             `Verlässlichkeit: ${report.zuverlaessigkeit.label} (Wissen ${player.scoutingKnowledge?.knowledgeLevel || 0} %)`);
         if (report.summary) zeilen.push("", report.summary);
         return zeilen.join("\n");
+    },
+
+    /** Ein Trainer mit gutem Auge holt aus jedem Bericht mehr heraus */
+    bewertungsFaktor(state) {
+        const profil = (typeof TrainerProfilEngine !== "undefined" && TrainerProfilEngine)
+            ? TrainerProfilEngine
+            : (typeof require !== "undefined" ? (() => { try { return require("./trainerProfilEngine.js").TrainerProfilEngine; } catch (e) { return null; } })() : null);
+        return profil && state ? profil.faktor(state, "bewertung", 0.2) : 1;
     },
 
     /**

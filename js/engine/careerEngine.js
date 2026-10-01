@@ -204,6 +204,10 @@ class CareerEngine {
                 if (!club) return;
 
                 const rep = club.reputation || 40;
+                // Ohne passende Lizenz kein Angebot: Bundesligen verlangen die
+                // Pro-, Regional- und 3. Liga die A-Lizenz
+                const profil = _carResolve("TrainerProfilEngine", "./trainerProfilEngine.js");
+                if (profil && !profil.darfTrainieren(profil.profil(state), club.level || 1)) return;
                 // Ein Verein holt keinen Trainer, dessen Ruf weit über oder
                 // weit unter dem eigenen liegt
                 const abstand = Math.abs(rep - ruf);

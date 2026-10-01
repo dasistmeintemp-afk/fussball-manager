@@ -3,6 +3,15 @@
  */
 
 
+function _trainerProfil() {
+    if (typeof TrainerProfilEngine !== "undefined" && TrainerProfilEngine) return TrainerProfilEngine;
+    if (typeof window !== "undefined" && window.TrainerProfilEngine) return window.TrainerProfilEngine;
+    if (typeof require !== "undefined") {
+        try { return require("./trainerProfilEngine.js").TrainerProfilEngine; } catch (e) { return null; }
+    }
+    return null;
+}
+
 function _facStufe(club, key, state) {
     const fe = (typeof FacilityEngine !== "undefined" && FacilityEngine)
         ? FacilityEngine
@@ -223,6 +232,8 @@ class TrainingEngine {
         let einheiten = 0;
 
         kader.forEach(player => {
+            // Bei der Nationalmannschaft - das Training dort zählt hier nicht
+            if (player.abgestellt) return;
             if (!player.trainingLog) player.trainingLog = { sessions: 0, gain: 0, load: 0 };
             if (typeof player.matchSharpness !== "number") player.matchSharpness = 60;
             player.daysSinceInjury = (player.daysSinceInjury ?? 999) + 1;
@@ -260,7 +271,10 @@ class TrainingEngine {
                 // beschleunigen oder bremsen das Wachstum
                 const plan = _devPlanEngine();
                 const planFaktor = plan ? plan.entwicklungsFaktor(state, player) : 1;
-                this.developPlayer(player, focus, intensity, trainingLevel, profil.gain * 0.22 * stabFaktor * planFaktor);
+                // Ein Ausbilder holt mehr aus den Jungen heraus
+                const trainer = (player.age || 25) <= 21 ? _trainerProfil() : null;
+                const jugendFaktor = trainer ? trainer.faktor(state, "jugend", 0.2) : 1;
+                this.developPlayer(player, focus, intensity, trainingLevel, profil.gain * 0.22 * stabFaktor * planFaktor * jugendFaktor);
                 if (plan) {
                     plan.nachEinheit(state, player, { gewachsen: player.overall > vorher })
                         .forEach(m => planMeldungen.push(m));
@@ -534,6 +548,19 @@ class TrainingEngine {
         return this.ALTERSKURVE.find(k => (age || 25) <= k.bis) || this.ALTERSKURVE[this.ALTERSKURVE.length - 1];
     }
 
+    /**
+     * Die Fähigkeit (trueCurrentAbility) wandert mit der Gesamtstärke mit.
+     * Sie blieb bisher auf dem Stand der Erzeugung stehen: Ein Spieler, der
+     * von 89 auf 99 gewachsen war, zeigte in Sternen, Scouting und Analyse
+     * weiter seine alte Stärke. Der halbe Punkt Feinheit bleibt erhalten.
+     */
+    static faehigkeitAngleichen(player) {
+        const basis = player.overall * 2;
+        const rest = typeof player.trueCurrentAbility === "number"
+            ? Math.max(0, Math.min(1, player.trueCurrentAbility - basis)) : 0;
+        player.trueCurrentAbility = basis + rest;
+    }
+
     static developPlayer(player, focus, intensity, facilityLevel = 2, scale = 1) {
         const kurve = this.alterskurveFuer(player.age);
         const potentialRoom = player.pot - player.overall;
@@ -554,6 +581,7 @@ class TrainingEngine {
 
         if (potentialRoom > 0 && Math.random() < growthChance) {
             player.overall = Math.min(player.pot, player.overall + 1);
+            this.faehigkeitAngleichen(player);
             player.value = Math.round(player.value * 1.08); // Marktwert steigt
 
             // Spezifische Attribute je nach Trainingsfokus steigern
@@ -577,8 +605,12 @@ class TrainingEngine {
         }
 
         // Nachlassen: im besten Alter selten, später der Normalfall
-        if (Math.random() < declineChance && player.overall > 45) {
+        // Die Untergrenze lag bei 45 - in den Ligen ab der Oberliga baute
+        // damit kein Spieler je ab, und die Amateurligen wurden Saison für
+        // Saison stärker (Landesliga in drei Jahren von 21 auf 25)
+        if (Math.random() < declineChance && player.overall > 8) {
             player.overall -= 1;
+            this.faehigkeitAngleichen(player);
             player.pace = Math.max(35, (player.pace ?? 60) - 1);
             player.stamina = Math.max(40, (player.stamina ?? 60) - 1);
             player.value = Math.max(150000, Math.round(player.value * 0.9));

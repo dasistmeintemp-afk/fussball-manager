@@ -2,7 +2,7 @@
  * Service Worker für Offline-Unterstützung und PWA-Installation
  */
 
-const CACHE_NAME = "fm-pro-cache-v46";
+const CACHE_NAME = "fm-pro-cache-v48";
 const ASSETS_TO_CACHE = [
     "./",
     "./index.html",
@@ -25,6 +25,7 @@ const ASSETS_TO_CACHE = [
     "./js/services/migrationService.js",
     "./js/services/saveCodec.js",
     "./js/services/saveService.js",
+    "./js/services/speicherDB.js",
     "./js/engine/newsEngine.js",
     "./js/engine/boardEngine.js",
     "./js/engine/financeEngine.js",
@@ -60,6 +61,9 @@ const ASSETS_TO_CACHE = [
     "./js/engine/playerTalkEngine.js",
     "./js/engine/developmentPlanEngine.js",
     "./js/engine/loanEngine.js",
+    "./js/engine/nationalTeamEngine.js",
+    "./js/engine/wetterEngine.js",
+    "./js/engine/trainerProfilEngine.js",
     "./js/engine/rivalryEngine.js",
     "./js/engine/seasonEngine.js",
     "./js/ui/uiManager.js",

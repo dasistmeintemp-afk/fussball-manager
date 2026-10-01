@@ -241,7 +241,13 @@ class LoanEngine {
         const staerke = (p.overall || 50) - eigenesNiveau;
         const lohnAnteil = Math.max(0.5, Math.min(1, 0.7 + staerke * 0.04));
         const gebuehr = staerke > 2 ? Math.round((p.value || 0) * 0.08 / 10000) * 10000 : 0;
+        // Kaufoption: Der Stammverein nennt einen festen Preis über dem
+        // Marktwert und verlangt für das Recht einen Aufschlag auf die Gebühr
+        const kaufoption = Math.max(50000, Math.round((p.value || 0) * 1.15 / 50000) * 50000);
+        const optionsAufschlag = Math.max(10000, Math.round((p.value || 0) * 0.05 / 10000) * 10000);
         return {
+            kaufoption,
+            optionsAufschlag,
             playerId: p.id,
             name: p.name,
             pos: p.pos,
@@ -275,7 +281,7 @@ class LoanEngine {
      * Einen Spieler ausleihen. angebotenerAnteil: welchen Teil des Gehalts
      * man übernimmt - unter der Forderung des Stammvereins lehnt er ab.
      */
-    static ausleihen(state, playerId, angebotenerAnteil = null) {
+    static ausleihen(state, playerId, angebotenerAnteil = null, optionen = {}) {
         const player = this._player(state, playerId);
         const hindernis = this.leihHindernis(state, player);
         if (hindernis) return { success: false, error: hindernis };
@@ -286,15 +292,18 @@ class LoanEngine {
             return { success: false, error: `${eintrag.clubName} will, dass Sie mindestens ${Math.round(eintrag.lohnAnteil * 100)} % des Gehalts übernehmen.` };
         }
         const eigener = this._club(state, state.userClubId);
-        if ((eigener.balance || 0) < eintrag.gebuehr) return { success: false, error: "Für die Leihgebühr reicht das Geld nicht." };
+        const mitOption = !!optionen.kaufoption;
+        const gebuehr = eintrag.gebuehr + (mitOption ? eintrag.optionsAufschlag : 0);
+        if ((eigener.balance || 0) < gebuehr) return { success: false, error: "Für die Leihgebühr reicht das Geld nicht." };
         const stammverein = this._club(state, eintrag.clubId);
-        if (eintrag.gebuehr > 0) {
-            eigener.balance -= eintrag.gebuehr;
-            stammverein.balance = (stammverein.balance || 0) + eintrag.gebuehr;
+        if (gebuehr > 0) {
+            eigener.balance -= gebuehr;
+            stammverein.balance = (stammverein.balance || 0) + gebuehr;
             const finanzen = this._resolve("FinanceEngine", "./financeEngine.js");
             if (finanzen && typeof finanzen.recordTransaction === "function") {
-                finanzen.recordTransaction(state, eigener.id, "transfer_out", -eintrag.gebuehr, `Leihgebühr für ${player.name}`);
-                finanzen.recordTransaction(state, stammverein.id, "transfer_in", eintrag.gebuehr, `Leihgebühr für ${player.name}`);
+                const text = `Leihgebühr${mitOption ? " mit Kaufoption" : ""} für ${player.name}`;
+                finanzen.recordTransaction(state, eigener.id, "transfer_out", -gebuehr, text);
+                finanzen.recordTransaction(state, stammverein.id, "transfer_in", gebuehr, text);
             }
         }
         this._wechsle(state, player, stammverein, eigener);
@@ -305,7 +314,8 @@ class LoanEngine {
             lohnAnteil: anteil,
             rolle: eintrag.rolle,
             seit: this._stempel(state),
-            gebuehr: eintrag.gebuehr,
+            gebuehr,
+            kaufoption: mitOption ? eintrag.kaufoption : null,
             startSpiele: player.stats?.matches || 0,
             startTore: player.stats?.goals || 0,
             startNoten: player.stats?.ratingSum || 0
@@ -313,9 +323,39 @@ class LoanEngine {
         player.morale = Math.min(99, (player.morale ?? 75) + 5);
         this._post(state, "Transferabteilung", `${player.name} ausgeliehen`,
             `${player.name} spielt bis zum Saisonende für Sie. Sie übernehmen ${Math.round(anteil * 100)} % seines Gehalts`
-            + (eintrag.gebuehr ? `, die Leihgebühr beträgt ${this._geld(eintrag.gebuehr)}` : "")
-            + `. ${stammverein.name} erwartet, dass er als ${eintrag.rolle} spielt.`);
-        return { success: true, eintrag };
+            + (gebuehr ? `, die Leihgebühr beträgt ${this._geld(gebuehr)}` : "")
+            + `. ${stammverein.name} erwartet, dass er als ${eintrag.rolle} spielt.`
+            + (mitOption ? ` Sie können ihn bis zum Saisonende für ${this._geld(eintrag.kaufoption)} fest verpflichten.` : ""));
+        return { success: true, eintrag, gebuehr };
+    }
+
+    /**
+     * Die Kaufoption ziehen: Der Leihspieler wird zum vereinbarten Preis
+     * fest verpflichtet. Der Stammverein kann nicht ablehnen.
+     */
+    static zieheKaufoption(state, playerId, kaeuferId = null) {
+        const player = this._player(state, playerId);
+        if (!player || !player.leihe) return { success: false, error: "Er ist nicht ausgeliehen." };
+        const l = player.leihe;
+        const kaeufer = this._club(state, kaeuferId || l.leihvereinId);
+        if (!l.kaufoption || !kaeufer || kaeufer.id !== l.leihvereinId) return { success: false, error: "Es gibt keine Kaufoption." };
+        if (kaeufer.id === state.userClubId) {
+            const fenster = this._fenster(state);
+            if (fenster) return { success: false, error: fenster };
+        }
+        if ((kaeufer.balance || 0) < l.kaufoption) return { success: false, error: `Die Option kostet ${this._geld(l.kaufoption)} - so viel Geld ist nicht da.` };
+        const transfer = this._resolve("TransferEngine", "./transferEngine.js");
+        if (!transfer || typeof transfer.executeTransfer !== "function") return { success: false, error: "Transfer nicht möglich." };
+        const preis = l.kaufoption;
+        // Zurück zum Stammverein, dann regulär verkaufen
+        this._beende(state, player);
+        const ok = transfer.executeTransfer(state, player.id, kaeufer.id, preis, player.wage || 0, 3);
+        if (!ok) return { success: false, error: "Der Wechsel ist gescheitert." };
+        if (kaeufer.id === state.userClubId) {
+            this._post(state, "Transferabteilung", `Kaufoption gezogen: ${player.name}`,
+                `${player.name} gehört jetzt fest zum Kader. Ablöse: ${this._geld(preis)}, Vertrag über drei Jahre zu den bisherigen Bezügen.`);
+        }
+        return { success: true, preis };
     }
 
     // ------------------------------------------------------- KI-Vereine
@@ -377,6 +417,8 @@ class LoanEngine {
                 bisSaison: state.seasonYear || 1,
                 lohnAnteil: Math.round(Math.max(0.3, Math.min(1, 0.55 + diff * 0.05)) * 20) / 20,
                 rolle: diff >= 1 ? "Stammspieler" : "Rotation",
+                // Jede dritte KI-Leihe kommt mit Kaufoption
+                kaufoption: zufall() < 0.33 ? Math.max(50000, Math.round((p.value || 0) * 1.15 / 50000) * 50000) : null,
                 seit: this._stempel(state),
                 startSpiele: p.stats?.matches || 0,
                 startTore: p.stats?.goals || 0,
@@ -427,6 +469,17 @@ class LoanEngine {
     /** Zum Saisonende kehren alle Leihspieler zurück */
     static saisonende(state) {
         const zurueck = [];
+        // Erst entscheiden die KI-Leihvereine über ihre Kaufoptionen: Wer
+        // regelmäßig gespielt hat und den Kader verstärkt, wird gekauft
+        (state?.players || []).filter(p => p.leihe && p.leihe.kaufoption && p.leihe.leihvereinId !== state.userClubId).forEach(p => {
+            const leihverein = this._club(state, p.leihe.leihvereinId);
+            if (!leihverein) return;
+            const spielte = typeof p.spielpraxis === "number" && p.spielpraxis >= 0.5;
+            const passt = (p.overall || 0) >= this.niveau(state, leihverein) - 1;
+            if (spielte && passt && (leihverein.balance || 0) > p.leihe.kaufoption * 1.5) {
+                this.zieheKaufoption(state, p.id, leihverein.id);
+            }
+        });
         (state?.players || []).forEach(p => {
             if (!p.leihe) return;
             if ((p.leihe.bisSaison || 0) > (state.seasonYear || 1)) return;

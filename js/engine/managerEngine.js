@@ -548,6 +548,10 @@ class ManagerEngine {
 
         const squad = this.squadOf(state, club).filter(p => (p.injuredWeeks || 0) === 0);
         const fit = this.toneFit(toneKey, ctx);
+        // Ein Motivator trifft den Ton besser: Gute Ansprachen wirken stärker,
+        // schlechte schaden weniger
+        const profil = _mgrResolve("TrainerProfilEngine", "./trainerProfilEngine.js");
+        const motivation = club.id === state.userClubId && profil ? profil.faktor(state, "motivation", 0.25) : 1;
 
         const reaktionen = [];
         let moralSumme = 0;
@@ -563,7 +567,7 @@ class ManagerEngine {
                 ? 1.25 - (professionalism / 20) * 0.5   // Profis stecken Kritik weg
                 : 1.0;
 
-            const wirkung = fit * verstaerkung * daempfung;
+            const wirkung = fit * verstaerkung * daempfung * (fit >= 0 ? motivation : 1 / motivation);
             const moralDelta = Math.round(wirkung * 9);
             const formDelta = Math.round(wirkung * 4) / 10;
 
@@ -1139,6 +1143,11 @@ class ManagerEngine {
         const gespraeche = _mgrResolve("PlayerTalkEngine", "./playerTalkEngine.js");
         if (gespraeche && typeof gespraeche.schreibtisch === "function") {
             gespraeche.schreibtisch(state).forEach(item => items.push(item));
+        }
+        // 5c. Kabine: unzufriedener Kapitän, Wortführer, Spieler ohne Anschluss
+        const kabine = _mgrResolve("DressingRoomEngine", "./dressingRoomEngine.js");
+        if (kabine && typeof kabine.schreibtisch === "function") {
+            kabine.schreibtisch(state).forEach(item => items.push(item));
         }
 
         // 6. Ungelesene Post

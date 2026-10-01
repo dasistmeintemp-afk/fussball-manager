@@ -188,11 +188,18 @@ class SeasonEngine {
                 if (gespraeche && typeof gespraeche.nachSpiel === 'function') {
                     gespraeche.nachSpiel(state, eigenesSpiel);
                 }
+                // Einsatz- und Torprämien aus den Verträgen auszahlen
+                const verhandlung = _resolve('NegotiationEngine', './negotiationEngine.js');
+                if (verhandlung && typeof verhandlung.zahlePraemien === 'function') {
+                    verhandlung.zahlePraemien(state, eigenesSpiel);
+                }
                 // Was gespielt wurde, sitzt danach besser
                 const taktik = _resolve('TacticsEngine', './tacticsEngine.js');
                 const eigenerVerein = state.clubs.find(c => c.id === state.userClubId);
                 if (taktik && typeof taktik.vertrautheitUeben === 'function' && eigenerVerein) {
-                    taktik.vertrautheitUeben(eigenerVerein, 0.12);
+                    // Ein Taktiker schleift die Abläufe schneller ein
+                    const profilT = _resolve('TrainerProfilEngine', './trainerProfilEngine.js');
+                    taktik.vertrautheitUeben(eigenerVerein, 0.12 * (profilT ? profilT.faktor(state, "taktik", 0.25) : 1));
                 }
             }
             // Die Gegner haben ebenfalls eine Kabine - sonst spielt der Nutzer
@@ -526,6 +533,22 @@ class SeasonEngine {
                     `Meisterschaft ${state.leagueName || "Liga"}`, state.seasonYear);
             }
             careerEngine.schliesseSaisonAb(state);
+        }
+
+        // Der Trainer wächst mit seinen Aufgaben: Titel, eingebaute Talente,
+        // eingespielte Taktik, viele Transfers, viele Gespräche
+        const trainerProfil = _resolve('TrainerProfilEngine', './trainerProfilEngine.js');
+        if (trainerProfil && typeof trainerProfil.saisonende === 'function') {
+            const eigener = state.clubs.find(c => c.id === state.userClubId);
+            const kader = state.players.filter(p => eigener && eigener.playerIds.includes(p.id));
+            const taktikE = _resolve('TacticsEngine', './tacticsEngine.js');
+            trainerProfil.saisonende(state, {
+                titel: championEntry.clubId === state.userClubId ? 1 : 0,
+                talente: kader.filter(p => (p.age || 30) <= 21 && (p.stats?.matches || 0) >= 10).length,
+                vertrautheit: taktikE && typeof taktikE.vertrautheit === 'function' && eigener ? taktikE.vertrautheit(eigener) : 0,
+                transfers: kader.filter(p => typeof p.vereinSeit === 'number' && Math.floor(p.vereinSeit / 1000) === (state.seasonYear || 1)).length,
+                gespraeche: kader.filter(p => p.gespraech?.letztes && Math.floor(p.gespraech.letztes / 1000) === (state.seasonYear || 1)).length
+            });
         }
 
         // Preisgelder ausschütten - in jeder Liga, und in der Höhe, die zur

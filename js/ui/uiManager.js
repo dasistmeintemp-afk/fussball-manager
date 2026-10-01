@@ -1178,10 +1178,12 @@ class UIManager {
             const managerBirthdate = document.getElementById("inputManagerBirthdate")?.value || "1985-05-15";
             const difficulty = document.getElementById("selectDifficulty")?.value || "normal";
 
+            const trainerTyp = document.getElementById("inputTrainerTyp")?.value || "allrounder";
             const result = this.app.startNewGame(this.wizardSelectedClubId, difficulty, {
                 name: managerName,
                 nationality: managerNationality,
-                birthdate: managerBirthdate
+                birthdate: managerBirthdate,
+                trainerTyp
             });
 
             if (!result || result.success === false || !this.app.state || !this.app.state.userClubId) {
@@ -2108,6 +2110,27 @@ class UIManager {
         });
         const sound = document.getElementById("btnToggleSound");
         if (sound) sound.innerHTML = this.soundKnopfHtml();
+        this.renderSpeicherInfo();
+    }
+
+    /** Wo der Spielstand liegt und wie viel Platz er belegt */
+    renderSpeicherInfo() {
+        const el = document.getElementById("settingsSpeicherInfo");
+        if (!el || typeof GameState === "undefined") return;
+        const idb = typeof GameState.speicherort === "function" && GameState.speicherort() === "indexedDB";
+        const text = GameState._spiegel?.[GameState.SPEICHERPLATZ];
+        const mb = (bytes) => (bytes / 1048576).toLocaleString("de-DE", { maximumFractionDigits: 1 });
+        const groesse = text ? ` · Spielstand ${mb(text.length)} MB` : "";
+        el.textContent = idb
+            ? `Gespeichert in der Browser-Datenbank (IndexedDB)${groesse}.`
+            : `Gespeichert im LocalStorage des Browsers (meist 5 MB Grenze)${groesse}.`;
+        const db = typeof SpeicherDB !== "undefined" ? SpeicherDB : null;
+        if (idb && db && typeof db.platz === "function") {
+            db.platz().then(p => {
+                if (!p || !p.frei) return;
+                el.textContent = `Gespeichert in der Browser-Datenbank (IndexedDB)${groesse} · frei für diese Seite: ${mb(Math.max(0, p.frei - p.belegt))} MB.`;
+            });
+        }
     }
 
     /**
@@ -2575,7 +2598,7 @@ class UIManager {
             opponent_analysis: "Gegneranalyse", media: "Pressekonferenz",
             sponsor: "Sponsorentermin", preseason: "Vorbereitung",
             matchday: "Pflichtspiel", cup: "Pokalabend", euro: "Europapokal",
-            friendly: "Spieltermin"
+            friendly: "Spieltermin", international: "Länderspieltag"
         };
         const teile = Object.keys(zaehler)
             .filter(k => worte[k])
@@ -2799,6 +2822,67 @@ class UIManager {
             `<div class="vk-kachel${k.klasse ? " " + k.klasse : ""}"><span>${esc(k.titel)}</span><strong>${esc(k.wert)}</strong>${k.extra || ""}</div>`).join("");
     }
 
+    /**
+     * Die Kabine: Kapitän, Führungsspieler, Grüppchen mit Wortführer und
+     * Stimmung, dazu wer keinen Anschluss findet.
+     */
+    renderKabine() {
+        const box = document.getElementById("squadKabine");
+        const engine = typeof DressingRoomEngine !== "undefined" ? DressingRoomEngine : null;
+        if (!box || !engine || typeof engine.hierarchie !== "function") return;
+        const state = this.app.state;
+        const h = engine.hierarchie(state);
+        if (!h.spieler.length) { box.innerHTML = ""; return; }
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const link = (p) => `<a href="#" data-kabine-spieler="${esc(p.id)}">${esc(p.name)}</a>`;
+        const balken = (wert) => {
+            const w = Math.max(0, Math.min(100, Math.round(wert)));
+            const klasse = w >= 72 ? "gut" : (w >= 55 ? "mittel" : "schlecht");
+            return `<span class="kb-balken"><i class="kb-${klasse}" style="width:${w}%"></i></span><span class="kb-wert">${w}</span>`;
+        };
+        const fuehrung = h.spieler.filter(e => e.stufe === "Führungsspieler");
+        const neu = h.spieler.filter(e => e.stufe === "Neuzugang");
+        const allein = h.spieler.filter(e => e.allein && e.sprache !== "deutsch");
+        const optionen = h.spieler.slice().sort((a, b) => b.einfluss - a.einfluss)
+            .map(e => `<option value="${esc(e.player.id)}"${e.player === h.kapitaen ? " selected" : ""}>${esc(e.player.name)} · Einfluss ${e.einfluss}</option>`).join("");
+        box.innerHTML = `
+            <div class="kb-kopf">
+                <h3><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg>Kabine</h3>
+                <label class="kb-kapitaen">Kapitän
+                    <select id="kabineKapitaen">${optionen}</select>
+                </label>
+            </div>
+            <div class="kb-stufen">
+                <div><span class="kb-label">Führungsspieler</span>${fuehrung.length ? fuehrung.map(e => link(e.player)).join(", ") : "<span class=\"text-muted\">niemand</span>"}</div>
+                <div><span class="kb-label">Neu in der Kabine</span>${neu.length ? neu.map(e => link(e.player)).join(", ") : "<span class=\"text-muted\">niemand</span>"}</div>
+            </div>
+            <div class="kb-gruppen">
+                ${h.gruppen.map(g => `
+                    <div class="kb-gruppe">
+                        <div class="kb-gruppe-kopf"><strong>${esc(g.name)}</strong><span class="text-muted">${g.mitglieder.length} Spieler</span></div>
+                        <div class="kb-zeile"><span class="kb-label">Stimmung</span>${balken(g.stimmung)}</div>
+                        <div class="kb-zeile"><span class="kb-label">Wortführer</span>${link(g.wortfuehrer)}</div>
+                    </div>`).join("")}
+            </div>
+            ${allein.length ? `<div class="hint-box mt-2">Ohne Landsleute im Kader: ${allein.map(e => link(e.player)).join(", ")}. Wer sich schwer anpasst, verliert dadurch Moral.</div>` : ""}
+            <p class="text-muted kb-hinweis">Ist ein Wortführer unzufrieden, färbt das auf seine Gruppe ab, beim Kapitän auf alle. Wer einen Führungsspieler verkauft, hat ein paar Tage Unruhe.</p>`;
+        box.querySelectorAll("[data-kabine-spieler]").forEach(a => a.addEventListener("click", (e) => {
+            e.preventDefault();
+            const ziel = state.players.find(p => String(p.id) === a.dataset.kabineSpieler);
+            if (ziel) this.showPlayerDetailsModal(ziel.id);
+        }));
+        const wahl = document.getElementById("kabineKapitaen");
+        if (wahl) wahl.addEventListener("change", () => {
+            const res = engine.setzeKapitaen(state, wahl.value);
+            if (!res.success) { this.showToast(res.error, "error"); return; }
+            this.showToast(res.vorher && res.vorher !== res.kapitaen
+                ? `${res.kapitaen.name} ist neuer Kapitän. ${res.vorher.name} muss das erst verdauen.`
+                : `${res.kapitaen.name} ist Kapitän.`, "success");
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.renderKabine();
+        });
+    }
+
     renderSquad(posFilter = "all") {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
@@ -2819,6 +2903,8 @@ class UIManager {
                 if (ziel) this.showPlayerDetailsModal(ziel.id);
             }));
         }
+
+        this.renderKabine();
 
         // Kennzahlen des ganzen Kaders - unabhaengig vom Filter
         const kader = state.players.filter(p => userClub.playerIds.includes(p.id));
@@ -5015,7 +5101,7 @@ class UIManager {
 
             const forderung = istAblöse
                 ? `Forderung: <strong>${this.formatMoneySafe(n.demand.fee)}</strong> Ablöse`
-                : `Forderung: <strong>${this.formatMoneySafe(n.demand.wage)}</strong> / Woche, Handgeld ${this.formatMoneySafe(n.demand.signingBonus)}`;
+                : `Forderung: <strong>${this.formatMoneySafe(n.demand.wage)}</strong> / Woche, Handgeld ${this.formatMoneySafe(n.demand.signingBonus)}${n.demand.agentFee ? `, Berater ${this.formatMoneySafe(n.demand.agentFee)}` : ""}`;
 
             const letzterEintrag = (n.log || [])[n.log.length - 1];
 
@@ -5038,6 +5124,16 @@ class UIManager {
                     <label>Handgeld (€)
                         <input type="number" class="styled-input neg-bonus" data-neg-id="${n.id}" value="${n.demand.signingBonus}" step="10000" min="0">
                     </label>
+                    <label>Beraterhonorar (€)
+                        <input type="number" class="styled-input neg-berater" data-neg-id="${n.id}" value="${n.demand.agentFee || 0}" step="10000" min="0">
+                    </label>
+                    <label>Einsatzprämie (€ / Spiel)
+                        <input type="number" class="styled-input neg-einsatz" data-neg-id="${n.id}" value="0" step="1000" min="0">
+                    </label>
+                    <label>Torprämie (€ / Tor)
+                        <input type="number" class="styled-input neg-tor" data-neg-id="${n.id}" value="0" step="1000" min="0">
+                    </label>
+                    <p class="neg-hinweis">Prämien ersetzen einen Teil des Grundgehalts. Der Spieler rechnet sie mit Abschlag ein und bekommt sie nur, wenn er spielt oder trifft.</p>
                 </div>
             `) : "";
 
@@ -5083,7 +5179,10 @@ class UIManager {
                     : {
                         wage: Number(list.querySelector(`.neg-wage[data-neg-id="${id}"]`)?.value || 0),
                         years: Number(list.querySelector(`.neg-years[data-neg-id="${id}"]`)?.value || 3),
-                        signingBonus: Number(list.querySelector(`.neg-bonus[data-neg-id="${id}"]`)?.value || 0)
+                        signingBonus: Number(list.querySelector(`.neg-bonus[data-neg-id="${id}"]`)?.value || 0),
+                        agentFee: Number(list.querySelector(`.neg-berater[data-neg-id="${id}"]`)?.value || 0),
+                        einsatzPraemie: Number(list.querySelector(`.neg-einsatz[data-neg-id="${id}"]`)?.value || 0),
+                        torPraemie: Number(list.querySelector(`.neg-tor[data-neg-id="${id}"]`)?.value || 0)
                     };
 
                 const res = engine.submitOffer(state, id, angebot);
@@ -5151,7 +5250,8 @@ class UIManager {
             }),
             ...geliehen.map(p => {
                 const l = p.leihe;
-                return zeile(p, `Geliehen von <strong>${esc(club(l.stammvereinId)?.name || "?")}</strong> · Sie zahlen ${Math.round(l.lohnAnteil * 100)} % des Gehalts · erwartet: ${esc(l.rolle)}`);
+                return zeile(p, `Geliehen von <strong>${esc(club(l.stammvereinId)?.name || "?")}</strong> · Sie zahlen ${Math.round(l.lohnAnteil * 100)} % des Gehalts · erwartet: ${esc(l.rolle)}${l.kaufoption ? ` · Kaufoption ${this.geldKurz(l.kaufoption)}` : ""}`,
+                    l.kaufoption ? `<button class="btn btn-sm btn-primary" data-kaufoption-ziehen="${esc(p.id)}">Kaufoption ziehen</button>` : "");
             })
         ].join("") : `<div class="text-muted" style="font-size:13px;">Keine laufenden Leihen.</div>`;
 
@@ -5170,24 +5270,33 @@ class UIManager {
                     <td><span class="badge badge-info">${esc(e.rolle)}</span></td>
                     <td>${Math.round(e.lohnAnteil * 100)} % von ${this.geldKurz(e.wage)}</td>
                     <td>${e.gebuehr ? this.geldKurz(e.gebuehr) : "-"}</td>
+                    <td class="leih-option"><label title="Aufschlag ${esc(this.geldKurz(e.optionsAufschlag))} auf die Leihgebühr"><input type="checkbox" data-kaufoption="${esc(e.playerId)}"> ${this.geldKurz(e.kaufoption)}</label></td>
                     <td><button class="btn btn-sm btn-primary" data-ausleihen="${esc(e.playerId)}" ${fenster && !fenster.offen ? `disabled title="${esc(fenster.text)}"` : ""}>Ausleihen</button></td>
                 </tr>`;
-        }).join("") : `<tr><td colspan="9" class="text-center text-muted">Gerade gibt kein Verein einen passenden Spieler ab.</td></tr>`;
+        }).join("") : `<tr><td colspan="10" class="text-center text-muted">Gerade gibt kein Verein einen passenden Spieler ab.</td></tr>`;
 
         const neuZeichnen = () => {
             if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
             this.renderLeihen();
             this.renderHeader?.();
         };
+        eigene.querySelectorAll("[data-kaufoption-ziehen]").forEach(btn => btn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            const res = engine.zieheKaufoption(state, btn.dataset.kaufoptionZiehen);
+            this.showToast(res.success ? `Fest verpflichtet für ${this.geldKurz(res.preis)}.` : res.error, res.success ? "success" : "error", 5000);
+            if (res.success) { this.playSound("goal"); neuZeichnen(); }
+        }));
         eigene.querySelectorAll("[data-leihe-zurueck]").forEach(btn => btn.addEventListener("click", (ev) => {
             ev.stopPropagation();
             const res = engine.zurueckholen(state, btn.dataset.leiheZurueck);
             this.showToast(res.success ? "Er kehrt zurück." : res.error, res.success ? "success" : "error");
             if (res.success) neuZeichnen();
         }));
+        markt.querySelectorAll("[data-kaufoption]").forEach(box => box.addEventListener("click", (ev) => ev.stopPropagation()));
         markt.querySelectorAll("[data-ausleihen]").forEach(btn => btn.addEventListener("click", (ev) => {
             ev.stopPropagation();
-            const res = engine.ausleihen(state, btn.dataset.ausleihen);
+            const option = markt.querySelector(`[data-kaufoption="${btn.dataset.ausleihen}"]`)?.checked;
+            const res = engine.ausleihen(state, btn.dataset.ausleihen, null, { kaufoption: !!option });
             this.showToast(res.success ? `${res.eintrag.name} spielt bis zum Saisonende für Sie.` : res.error, res.success ? "success" : "error", 5000);
             if (res.success) { this.playSound("goal"); neuZeichnen(); }
         }));
@@ -5222,7 +5331,8 @@ class UIManager {
             const l = player.leihe;
             return `
                 <div class="dash-card mb-3 gs-karte">${kopf}
-                    <div class="gs-lage gs-info">Leihspieler von <strong>${esc(club(l.stammvereinId)?.name || "?")}</strong> bis zum Saisonende. Sie zahlen ${Math.round(l.lohnAnteil * 100)} % seines Gehalts; erwartet wird ein Einsatz als ${esc(l.rolle)}.</div>
+                    <div class="gs-lage gs-info">Leihspieler von <strong>${esc(club(l.stammvereinId)?.name || "?")}</strong> bis zum Saisonende. Sie zahlen ${Math.round(l.lohnAnteil * 100)} % seines Gehalts; erwartet wird ein Einsatz als ${esc(l.rolle)}.${l.kaufoption ? ` Kaufoption: ${this.geldKurz(l.kaufoption)}.` : ""}</div>
+                    ${l.kaufoption ? `<button class="btn btn-primary" id="btnPdKaufoption">Kaufoption ziehen (${this.geldKurz(l.kaufoption)})</button>` : ""}
                 </div>`;
         }
         if (modus === "eigener") {
@@ -6276,10 +6386,50 @@ class UIManager {
         }
     }
 
+    /** Das Trainerprofil: fünf Werte, Lizenz mit Lehrgang, Ruf */
+    renderTrainerProfil() {
+        const box = document.getElementById("clubTrainerProfil");
+        const engine = typeof TrainerProfilEngine !== "undefined" ? TrainerProfilEngine : null;
+        if (!box || !engine) return;
+        const state = this.app.state;
+        const u = engine.uebersicht(state);
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const balken = (w) => `<span class="tp-balken"><i style="width:${Math.round(w / 20 * 100)}%"></i></span><b>${w}</b>`;
+        const kurs = u.kurs
+            ? `<div class="hint-box">Lehrgang zur ${esc(u.kurs.ziel)} läuft - noch ${u.kurs.tageOffen} Tage.</div>`
+            : (u.naechsterKurs
+                ? `<button class="btn btn-secondary" id="btnTrainerKurs">Lehrgang ${esc(u.naechsterKurs.name)} belegen (${this.geldKurz(u.naechsterKurs.kosten)}, ${u.naechsterKurs.tage} Tage)</button>`
+                : `<div class="text-muted" style="font-size:13px;">Höchste Lizenz erreicht.</div>`);
+        box.innerHTML = `
+            <div class="card-header"><h3>Trainerprofil: ${esc(state.managerName || "Trainer")}</h3><span class="header-tag">${esc(u.typ)}</span></div>
+            <div class="tp-raster">
+                <div class="tp-werte">
+                    ${u.werte.map(w => `<div class="tp-zeile" title="${esc(w.text)}"><span class="tp-name">${esc(w.name)}</span>${balken(w.wert)}</div>`).join("")}
+                </div>
+                <div class="tp-seite">
+                    <div class="tp-kennzahl"><span>Lizenz</span><strong>${esc(u.lizenz)}</strong></div>
+                    <div class="tp-kennzahl"><span>Hier verlangt</span><strong class="${u.erfuellt ? "" : "text-danger"}">${esc(u.pflicht)}</strong></div>
+                    <div class="tp-kennzahl"><span>Ruf</span><strong>${u.ruf} / 100</strong></div>
+                    ${kurs}
+                </div>
+            </div>
+            <p class="text-muted tp-hinweis">Am Saisonende wächst, was gefordert war: Titel stärken die Motivation, eingebaute Talente die Jugendarbeit, Transfers die Spielerbewertung. Die Lizenz entscheidet, welche Vereine Ihnen ein Angebot machen dürfen.</p>`;
+        document.getElementById("btnTrainerKurs")?.addEventListener("click", () => {
+            const res = engine.kursStarten(state);
+            this.showToast(res.success ? `Lehrgang gebucht: ${res.tage} Tage.` : res.error, res.success ? "success" : "error");
+            if (res.success) {
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.renderTrainerProfil();
+                this.renderHeader?.();
+            }
+        });
+    }
+
     renderClub() {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
+        this.renderTrainerProfil();
 
         DOM.setText("clubTabName", userClub.name);
         DOM.setText("clubTabCity", userClub.city || "Deutschland");
@@ -6850,13 +7000,33 @@ class UIManager {
             : `<svg class="ico" aria-hidden="true"><use href="#i-volume-off"/></svg><span>Sound: Stummgeschaltet</span>`;
     }
 
+    /** Wetter und Platz einer Partie mit Hinweis, was das bedeutet */
+    wetterHtml(match, klasse = "") {
+        if (!match || typeof WetterEngine === "undefined") return "";
+        const heim = (this.app.state.clubs || []).find(c => c.id === match.homeClubId);
+        const w = WetterEngine.fuer(match, heim);
+        const hinweis = WetterEngine.hinweis(w);
+        return `<div class="${klasse} wetter-zeile">${w.icon} <strong>${this.escapeHtml(w.name)}, ${w.temp} °C</strong> <span class="text-muted">${this.escapeHtml(w.platzName)}${hinweis ? ` - ${this.escapeHtml(hinweis)}` : ""}</span></div>`;
+    }
+
+    /** Nationalität und Länderspiele in der Spielerakte */
+    nationalHtml(player) {
+        if (!player || !player.nationality) return "";
+        const engine = typeof NationalTeamEngine !== "undefined" ? NationalTeamEngine : null;
+        const akte = engine ? engine.akte(player) : null;
+        const teile = [`<span class="pd-nation">${this.escapeHtml(player.nationality)}</span>`];
+        if (akte && akte.text) teile.push(`<span class="pd-caps"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg>${this.escapeHtml(akte.text)}</span>`);
+        if (akte && akte.abgestellt) teile.push(`<span class="pd-abgestellt">bei der Nationalmannschaft</span>`);
+        return `<div class="pd-national">${teile.join("")}</div>`;
+    }
+
     /** Symbol eines Kalendertags - aus dem Iconset statt als Emoji */
     tagIcon(typ) {
         const id = ({
             training: "i-dumbbell", recovery: "i-leaf", media: "i-mic", sponsor: "i-briefcase",
             tactics: "i-tactics", opponent_analysis: "i-search", matchday: "i-ball",
             season_start: "i-star", season_end: "i-trophy", preseason: "i-sun", friendly: "i-ball",
-            cup: "i-trophy", euro: "i-star"
+            cup: "i-trophy", euro: "i-star", international: "i-globe"
         })[typ] || "i-calendar";
         return `<svg class="ico tag-ico tag-${this.escapeHtml(String(typ || "tag"))}" aria-hidden="true"><use href="#${id}"/></svg>`;
     }
@@ -6867,7 +7037,7 @@ class UIManager {
             "🚑": "i-medical", "🥵": "i-flame", "📄": "i-doc", "😞": "i-frown", "📬": "i-mail",
             "🏗️": "i-build", "⚠️": "i-alert", "🤝": "i-briefcase", "🧊": "i-leaf", "🔥": "i-flame",
             "📣": "i-mic", "💢": "i-alert", "💰": "i-wallet", "🩺": "i-medical",
-            "💬": "i-chat", "📢": "i-alert", "🔁": "i-transfer", "🎓": "i-user"
+            "💬": "i-chat", "📢": "i-alert", "🔁": "i-transfer", "🎓": "i-user", "👥": "i-users", "🌍": "i-globe"
         })[emoji];
         return id
             ? `<svg class="ico" aria-hidden="true"><use href="#${id}"/></svg>`
@@ -8073,6 +8243,7 @@ class UIManager {
                 <div class="player-detail-meta">
                     <span class="pos-tag pos-${this.getPosGroup(player.pos)}" style="font-size:13px;">${player.pos}</span>
                     <span style="font-size:14px; margin-left:8px; color:var(--text-muted);">${club ? club.name : ''} • Alter: ${player.age}${player.foot ? ` • ${this.escapeHtml(player.foot === "beidfüßig" ? "beidfüßig" : player.foot + "er Fuß")}` : ''}${typeof MatchEngine !== "undefined" && MatchEngine.koerpergroesse ? ` • ${(MatchEngine.koerpergroesse(player) / 100).toFixed(2).replace(".", ",")} m` : ''}</span>
+                    ${this.nationalHtml(player)}
                 </div>
                 <div class="player-detail-rating">
                     <div class="player-detail-stars team-strength-stars">${abilityStars}</div>
@@ -8162,6 +8333,11 @@ class UIManager {
                 <span>Vertragslaufzeit:</span>
                 <strong>${player.contractYears} Jahr(e)</strong>
             </div>
+            ${player.praemien && player.clubId === state.userClubId ? `
+            <div class="finance-stat-row">
+                <span>Prämien:</span>
+                <strong>${this.formatMoneySafe(player.praemien.einsatz || 0)} je Einsatz, ${this.formatMoneySafe(player.praemien.tor || 0)} je Tor</strong>
+            </div>` : ""}
             ${klausel ? `
             <div class="finance-stat-row">
                 <span>Ausstiegsklausel:</span>
@@ -8228,6 +8404,10 @@ class UIManager {
             nachLeihe(leihEngine.zurueckholen(state, player.id), `${player.name} kehrt zurück.`));
         document.getElementById("btnPdAusleihen")?.addEventListener("click", () =>
             nachLeihe(leihEngine.ausleihen(state, player.id), `${player.name} spielt bis zum Saisonende für Sie.`));
+        document.getElementById("btnPdKaufoption")?.addEventListener("click", () => {
+            const res = leihEngine.zieheKaufoption(state, player.id);
+            nachLeihe(res, res.success ? `${player.name} ist fest verpflichtet (${this.geldKurz(res.preis)}).` : "");
+        });
         document.getElementById("btnPdLeiheAnfragen")?.addEventListener("click", () => {
             const ziel = document.getElementById("pdLeiheAngebote");
             const angebote = leihEngine.interessenten(state, player.id);
@@ -8381,6 +8561,7 @@ class UIManager {
                     ${r.dangerLevel ? `<span class="badge ${esc(r.dangerClass)}">${esc(r.dangerLevel)}</span>` : ""}
                 </div>
                 ${schiri ? `<div class="mp-analyst">🟨 Schiedsrichter <strong>${esc(schiri.name)}</strong> <span class="text-muted">${esc(schiri.art)} - ${esc(schiri.text)}</span></div>` : ""}
+                ${this.wetterHtml(match, "mp-analyst")}
                 ${r.analyst ? `<div class="mp-analyst">
                     📋 <strong>${esc(r.analyst.name)}</strong> ${this.stabSterneHtml(r.analyst.guete)}
                     <span class="text-muted">${esc(r.genauigkeit || "")}${sieht ? "" : " - zu ungenau für klare Empfehlungen"}</span>
@@ -8671,6 +8852,12 @@ class UIManager {
         document.getElementById("lmAwayScore").textContent = "0";
         document.getElementById("lmMinute").textContent = "0";
         document.getElementById("lmEventFeed").innerHTML = "";
+        const wetterBox = document.getElementById("lmWetter");
+        if (wetterBox) {
+            const w = liveMatch.wetter;
+            wetterBox.innerHTML = w ? `${w.icon} ${this.escapeHtml(w.name)}, ${w.temp} °C · ${this.escapeHtml(w.platzName)}` : "";
+            wetterBox.style.display = w ? "" : "none";
+        }
         this.bereiteMatchCenterVor(liveMatch);
 
         this.playSound("whistle");
@@ -10430,6 +10617,66 @@ class UIManager {
             </div>`;
     }
 
+    /**
+     * Heatmap und Passnetz je Mannschaft aus dem Livespiel: Wo stand die
+     * Elf, wer hat mit wem gespielt. Beide Mannschaften greifen hier von
+     * links nach rechts an.
+     */
+    positionsanalyseHtml(match, home, away) {
+        const a = match?.analyse;
+        if (!a || !a.heat || !a.netz) return "";
+        const state = this.app.state;
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const trikots = typeof ermittleTrikots === "function" ? ermittleTrikots(home, away) : null;
+        const farbe = { home: trikots?.home?.akzent || "#bef264", away: trikots?.away?.akzent || "#38bdf8" };
+        const linie = `stroke="rgba(255,255,255,0.28)" stroke-width="0.35" fill="none"`;
+        const feld = `
+            <rect x="0" y="0" width="105" height="68" fill="#123524" rx="1"/>
+            <rect x="0.5" y="0.5" width="104" height="67" ${linie}/>
+            <line x1="52.5" y1="0.5" x2="52.5" y2="67.5" ${linie}/>
+            <circle cx="52.5" cy="34" r="9.15" ${linie}/>
+            <rect x="0.5" y="13.85" width="16.5" height="40.3" ${linie}/>
+            <rect x="88" y="13.85" width="16.5" height="40.3" ${linie}/>`;
+        const kurzname = (name) => {
+            const teile = String(name || "").trim().split(/\s+/);
+            return (teile[teile.length - 1] || "").slice(0, 9);
+        };
+        const team = (seite, club) => {
+            const f = farbe[seite];
+            const heat = String(a.heat[seite] || "");
+            const zellen = heat.split("").map((v, i) => {
+                const w = Number(v);
+                if (!w) return "";
+                const x = (i % 12) * 8.75, y = Math.floor(i / 12) * 8.5;
+                return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="8.75" height="8.5" fill="${f}" fill-opacity="${(w / 9 * 0.55).toFixed(2)}"/>`;
+            }).join("");
+            const netz = a.netz[seite] || { spieler: [], kanten: [] };
+            const pos = netz.spieler.map(([, x, y]) => [x * 1.05, y * 0.68]);
+            const maxKante = Math.max(1, ...netz.kanten.map(k => k[2]));
+            const kanten = netz.kanten.map(([v, z, n]) => {
+                if (!pos[v] || !pos[z]) return "";
+                return `<line x1="${pos[v][0].toFixed(1)}" y1="${pos[v][1].toFixed(1)}" x2="${pos[z][0].toFixed(1)}" y2="${pos[z][1].toFixed(1)}" stroke="#ffffff" stroke-opacity="${(0.25 + n / maxKante * 0.5).toFixed(2)}" stroke-width="${(0.3 + n / maxKante * 1.3).toFixed(2)}" stroke-linecap="round"/>`;
+            }).join("");
+            const knoten = netz.spieler.map(([id, x, y], i) => {
+                const p = state.players.find(q => String(q.id) === String(id));
+                const name = p ? p.name : "";
+                return `<g><circle cx="${pos[i][0].toFixed(1)}" cy="${pos[i][1].toFixed(1)}" r="2.3" fill="${f}" stroke="#0b1220" stroke-width="0.5"><title>${esc(name)}</title></circle>
+                    <text x="${pos[i][0].toFixed(1)}" y="${(pos[i][1] - 3).toFixed(1)}" class="pa-name" text-anchor="middle">${esc(kurzname(name))}</text></g>`;
+            }).join("");
+            return `
+                <div>
+                    <div class="sa-untertitel"><i class="pa-punkt" style="background:${f}"></i>${esc(club.name)}</div>
+                    <svg class="sa-feld" viewBox="-1.5 -1 108 70" role="img" aria-label="Heatmap und Passnetz ${esc(club.name)}">${feld}${zellen}${kanten}${knoten}</svg>
+                </div>`;
+        };
+        return `
+            <div class="dash-card sa-karte" style="padding:14px; margin-bottom:16px;">
+                <h4 style="font-size:14px; margin-bottom:8px;">🗺️ Positionen und Passwege</h4>
+                <div class="sa-raster pa-raster">${team("home", home)}${team("away", away)}</div>
+                <div class="sa-legende"><span>Fläche = wo die Mannschaft sich aufhielt</span><span>Punkte = Durchschnittsposition</span><span>Linien = häufigste Passwege</span><span>Angriff nach rechts</span></div>
+            </div>`;
+    }
+
     showMatchReportModal(match) {
         const state = this.app.state;
         const home = state.clubs.find(c => c.id === match.homeClubId);
@@ -10445,6 +10692,8 @@ class UIManager {
 
         const homeRatings = (match.playerRatings || []).filter(r => r.clubId === home.id);
         const awayRatings = (match.playerRatings || []).filter(r => r.clubId === away.id);
+        const schiri = typeof MatchEngine !== "undefined" && MatchEngine.schiedsrichterFuer
+            ? MatchEngine.schiedsrichterFuer(match) : null;
 
         const renderRatingsTable = (ratings, teamName) => {
             if (!ratings || ratings.length === 0) return '<div class="text-muted" style="font-size:12px;">Keine Noten verfügbar</div>';
@@ -10485,7 +10734,7 @@ class UIManager {
             <div style="text-align:center; padding:16px 0; border-bottom:1px solid var(--border-color); margin-bottom:16px;">
                 <h1 style="font-size:36px; font-weight:800; color:var(--accent-gold);">${match.homeGoals} : ${match.awayGoals}</h1>
                 <h3 style="margin-top:4px;">${home.name} vs ${away.name}</h3>
-                <p class="text-muted" style="font-size:13px;">${home.stadium}${match.schiedsrichter ? ` · Schiedsrichter: ${this.escapeHtml(match.schiedsrichter.name)} (${this.escapeHtml(match.schiedsrichter.art)})` : ""}</p>
+                <p class="text-muted" style="font-size:13px;">${home.stadium}${schiri ? ` · Schiedsrichter: ${this.escapeHtml(schiri.name)} (${this.escapeHtml(schiri.art)})` : ""}${match.wetter && typeof WetterEngine !== "undefined" ? ` · ${this.escapeHtml(WetterEngine.text(match, home))}` : ""}</p>
             </div>
 
             ${match.summaryText ? `
@@ -10528,6 +10777,7 @@ class UIManager {
             </div>
 
             ${this.spielanalyseHtml(match, home, away)}
+            ${this.positionsanalyseHtml(match, home, away)}
 
             <div class="dash-card" style="padding:14px;">
                 <h4 style="font-size:14px; margin-bottom:12px;">📊 Spielstatistik</h4>
@@ -11858,12 +12108,16 @@ class UIManager {
 
         // Settings / Save / Load / Export
         document.getElementById("btnSaveLocal").onclick = () => {
-            const ok = this.app.state.saveToLocalStorage();
-            if (ok) {
-                this.showToast("Spielstand erfolgreich im Browser gespeichert!", "success");
-            } else {
-                this.showToast("Fehler beim Speichern des Spielstands!", "error");
-            }
+            const st = this.app.state;
+            const vorgang = typeof st.sichereJetzt === "function" ? st.sichereJetzt() : Promise.resolve(st.saveToLocalStorage(null, true));
+            vorgang.then(ok => {
+                if (ok) {
+                    this.showToast("Spielstand erfolgreich im Browser gespeichert!", "success");
+                    this.renderSpeicherInfo();
+                } else {
+                    this.showToast(st._saveFehler || "Fehler beim Speichern des Spielstands!", "error");
+                }
+            });
         };
 
         document.getElementById("btnLoadLocal").onclick = () => {
@@ -11878,13 +12132,17 @@ class UIManager {
         };
 
         document.getElementById("btnExportJson").onclick = () => {
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(this.app.state.exportToJson());
+            // Als Blob statt als data:-Adresse - die stößt bei mehreren
+            // Megabyte in manchen Browsern an ihre Längengrenze
+            const blob = new Blob([this.app.state.exportToJson()], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
             const downloadAnchor = document.createElement('a');
-            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("href", url);
             downloadAnchor.setAttribute("download", this.app.state.getExportFileName ? this.app.state.getExportFileName() : `FM_Pro_Save_Saison_${this.app.state.seasonYear}_Spieltag_${this.app.state.currentMatchday}.json`);
             document.body.appendChild(downloadAnchor);
             downloadAnchor.click();
             downloadAnchor.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 10000);
             this.showToast("Spielstand-Datei (.json) heruntergeladen!", "info");
         };
 

@@ -1,7 +1,7 @@
 /**
  * Test-Suite 1: Daten-Integrität und Strukturprüfungen (initialData.js)
  */
-const { testAusgewaehlt, laufzeit } = require('./test_filter.js');
+const { testAusgewaehlt, laufzeit, zufallFuer } = require('./test_filter.js');
 const { INITIAL_TEAMS_DATA } = require('./js/data/initialData.js');
 
 function runDataTests() {
@@ -14,6 +14,7 @@ function runDataTests() {
 
     function test(name, fn) {
         if (!testAusgewaehlt(name)) return;
+        zufallFuer(name);
         const start = Date.now();
         try {
             fn();

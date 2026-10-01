@@ -457,6 +457,9 @@
                             </p>
                             <div id="facilityGrid" class="facility-grid"></div>
                         </div>
+
+                        <!-- Der Trainer selbst: Werte, Lizenz, Ruf -->
+                        <div class="dash-card" style="grid-column: 1 / -1;" id="clubTrainerProfil"></div>
                     </div>
                 </section>
 
@@ -501,6 +504,7 @@
                         </table>
                     </div>
                     <div id="squadLoanedOut" class="hint-box mt-2" style="display:none;"></div>
+                    <div id="squadKabine" class="card kabine-card mt-3"></div>
                 </section>
 
                 <!-- Tab: Tactics & Pitch (Aufstellung) -->
@@ -828,7 +832,7 @@
                                     <thead>
                                         <tr>
                                             <th>Name</th><th>Verein</th><th>Pos</th><th>Alter</th><th>Stärke &amp; Potenzial</th>
-                                            <th>Rolle</th><th>Gehaltsanteil</th><th>Leihgebühr</th><th></th>
+                                            <th>Rolle</th><th>Gehaltsanteil</th><th>Leihgebühr</th><th title="Mit Aufschlag auf die Gebühr: danach zum festen Preis kaufbar">Kaufoption</th><th></th>
                                         </tr>
                                     </thead>
                                     <tbody id="loanMarketBody"></tbody>
@@ -1339,6 +1343,7 @@
                                 <button class="btn btn-primary" id="btnSaveLocal"><svg class="ico" aria-hidden="true"><use href="#i-save"/></svg><span>Spielstand im Browser speichern</span></button>
                                 <button class="btn btn-secondary" id="btnLoadLocal"><svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg><span>Gespeicherten Spielstand laden</span></button>
                             </div>
+                            <p class="speicher-info" id="settingsSpeicherInfo"></p>
                         </div>
 
                         <div class="dash-card">
@@ -1543,6 +1548,16 @@
                                         <label for="inputManagerBirthdate">Geburtsdatum</label>
                                         <input type="date" id="inputManagerBirthdate" class="styled-input" value="1985-05-15">
                                     </div>
+                                    <div class="form-col form-col-wide">
+                                        <label for="inputTrainerTyp">Trainertyp</label>
+                                        <select id="inputTrainerTyp" class="styled-select">
+                                            <option value="allrounder" selected>Allrounder - überall solide</option>
+                                            <option value="taktiker">Taktiker - neue Systeme sitzen schneller</option>
+                                            <option value="motivator">Motivator - Ansprachen und Gespräche wirken stärker</option>
+                                            <option value="ausbilder">Ausbilder - Talente entwickeln sich schneller</option>
+                                            <option value="sportdirektor">Kaderplaner - ein gutes Auge für Spieler</option>
+                                        </select>
+                                    </div>
                                 </div>
 
                                 <div class="wizard-subhead">Schwierigkeitsgrad</div>
@@ -1704,6 +1719,7 @@
                         <div class="lm-tl-marks" id="lmTlMarks"></div>
                     </div>
                     <div class="lm-pending-strip" id="lmPendingStrip" style="display:none;"></div>
+                    <div class="lm-wetter" id="lmWetter"></div>
                 </div>
 
                 <div class="live-match-body">
@@ -2052,6 +2068,7 @@
     <script src="js/services/migrationService.js"></script>
     <script src="js/services/saveCodec.js"></script>
     <script src="js/services/saveService.js"></script>
+    <script src="js/services/speicherDB.js"></script>
     <script src="js/engine/newsEngine.js"></script>
     <script src="js/engine/boardEngine.js"></script>
     <script src="js/engine/financeEngine.js"></script>
@@ -2087,6 +2104,9 @@
     <script src="js/engine/playerTalkEngine.js"></script>
     <script src="js/engine/developmentPlanEngine.js"></script>
     <script src="js/engine/loanEngine.js"></script>
+    <script src="js/engine/nationalTeamEngine.js"></script>
+    <script src="js/engine/wetterEngine.js"></script>
+    <script src="js/engine/trainerProfilEngine.js"></script>
     <script src="js/engine/rivalryEngine.js"></script>
     <script src="js/engine/seasonEngine.js"></script>
     <script src="js/ui/uiManager.js"></script>

@@ -1,7 +1,7 @@
 /**
  * Test-Suite 4: End-to-End Karriere-Flow, LiveMatch und Mehr-Saison-Simulation
  */
-const { testAusgewaehlt, laufzeit } = require('./test_filter.js');
+const { testAusgewaehlt, laufzeit, zufallFuer } = require('./test_filter.js');
 const { INITIAL_TEAMS_DATA } = require('./js/data/initialData.js');
 const { GameState, FORMATION_CONFIGS } = require('./js/engine/gameState.js');
 const { MatchEngine, LiveMatch } = require('./js/engine/matchEngine.js');
@@ -25,6 +25,7 @@ function runE2ETests() {
 
     function test(name, fn) {
         if (!testAusgewaehlt(name)) return;
+        zufallFuer(name);
         const start = Date.now();
         try {
             fn();

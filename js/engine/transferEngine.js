@@ -230,6 +230,14 @@ class TransferEngine {
         }
         if (fee > 0 && sellerClub) delete player.weiterverkauf;
 
+        // Geht ein Wortführer aus der eigenen Kabine, merkt die Mannschaft das
+        if (sellerClub && sellerClub.id === state.userClubId) {
+            const kabine = (typeof DressingRoomEngine !== "undefined" && DressingRoomEngine)
+                ? DressingRoomEngine
+                : (typeof require !== "undefined" ? (() => { try { return require("./dressingRoomEngine.js").DressingRoomEngine; } catch (e) { return null; } })() : null);
+            if (kabine && typeof kabine.spielerGeht === "function") kabine.spielerGeht(state, player);
+        }
+
         if (sellerClub) {
             sellerClub.balance += fee - beteiligung;
             sellerClub.transferBudget += Math.round((fee - beteiligung) * 0.85); // 85% reinvestierbar
@@ -258,6 +266,8 @@ class TransferEngine {
         player.wage = wage;
         player.contractYears = contractYears;
         player.morale = 95; // Frische Motivation beim Wechsel
+        // Ab heute neu in der Kabine
+        player.vereinSeit = (state.seasonYear || state.season || 1) * 1000 + (state.currentDayIndex || 0);
 
         // Zum neuen Verein hinzufügen
         buyerClub.playerIds.push(player.id);

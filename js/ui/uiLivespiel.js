@@ -33,10 +33,17 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         });
     },
 
-    startLiveMatchSimulation(match) {
+    /**
+     * Ein Spiel starten. Mit { ohneBild: true } ist es das Sofort-Ergebnis:
+     * dieselbe Simulation, nur ohne Besprechung, Ansprache und Bild - der
+     * Co-Trainer coacht, und nach zwei, drei Sekunden steht der Spielbericht.
+     */
+    startLiveMatchSimulation(match, optionen = {}) {
         const state = this.app.state;
         const homeClub = state.clubs.find(c => c.id === match.homeClubId);
         const awayClub = state.clubs.find(c => c.id === match.awayClubId);
+        const ohneBild = !!optionen.ohneBild;
+        if (ohneBild) { this._matchplanDone = true; this._teamTalkDone = true; }
 
         // Vor dem Anpfiff: erst die Taktikbesprechung (wenn nicht schon vom
         // Dashboard aus festgelegt), dann die Ansprache - erst danach rollt
@@ -665,10 +672,27 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this._lmZurufKey = null;
 
         this.resizeLiveCanvas();
-        this.startCrowdAmbience();
+        const ohneBildBox = document.getElementById("lmOhneBild");
+        if (ohneBildBox) ohneBildBox.style.display = "none";
+        if (ohneBild) this.schalteOhneBild(liveMatch);
+        else this.startCrowdAmbience();
         let lastFrameTime = performance.now();
 
         const tickLoop = (now) => {
+            // Sofort-Ergebnis: Je Bild ein Häppchen Simulation, gezeichnet
+            // wird nur der Stand - so bleibt die Seite bedienbar
+            if (liveMatch.ohneBild && !liveMatch.isFinished) {
+                liveMatch.rechneOhneBild(18);
+                this.zeigeOhneBildStand(liveMatch);
+                setText("lmHomeScore", String(liveMatch.homeScore));
+                setText("lmAwayScore", String(liveMatch.awayScore));
+                setText("lmMinute", String(liveMatch.minute));
+                setText("lmClock", liveMatch.getClockText ? liveMatch.getClockText() : `${liveMatch.minute}:00`);
+                if (!liveMatch.isFinished) {
+                    this.liveMatchAnimFrame = requestAnimationFrame(tickLoop);
+                    return;
+                }
+            }
             if (liveMatch.isFinished) {
                 cancelAnimationFrame(this.liveMatchAnimFrame);
                 this.liveMatchAnimFrame = null;
@@ -697,10 +721,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 } else {
                     this.finishMatchdayAroundUser();
                 }
+                const ohneBildEnde = !!liveMatch.ohneBild;
+                if (ohneBildEnde) this.zeigeOhneBildStand(liveMatch);
                 setTimeout(() => {
                     modal.style.display = "none";
+                    const box = document.getElementById("lmOhneBild");
+                    if (box) box.style.display = "none";
                     this.showMatchReportModal(match);
-                }, 1500);
+                }, ohneBildEnde ? 450 : 1500);
                 return;
             }
 
@@ -763,6 +791,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         });
 
         document.getElementById("btnLmSkip").onclick = () => {
+            if (liveMatch.isFinished || liveMatch.ohneBild) return;
+            // Dieselbe Simulation läuft ohne Bild weiter - nur wo es keine
+            // Laufwege gibt, bleibt es beim Sprung ans Ende
+            if (liveMatch.modus === "fm" && liveMatch.director && typeof liveMatch.rechneOhneBild === "function") {
+                this.schalteOhneBild(liveMatch);
+                lastFrameTime = performance.now();
+                return;
+            }
             this.stopCrowdAmbience();
             liveMatch.skipToEnd();
             updateLiveUI();
@@ -785,6 +821,35 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     },
 
     // ------------------------------------------------------------ Seitenlinie
+
+    /** Ab jetzt ohne Bild: Co-Trainer übernimmt, die Einblendung zeigt den Stand */
+    schalteOhneBild(liveMatch) {
+        if (!liveMatch || liveMatch.isFinished) return;
+        this.stopCrowdAmbience();
+        if (this.coach) {
+            this.coach = null;
+            const coachModal = document.getElementById("modalCoaching");
+            if (coachModal) coachModal.style.display = "none";
+        }
+        // Schaltet um und rechnet ein erstes, winziges Häppchen
+        liveMatch.rechneOhneBild(0);
+        const box = document.getElementById("lmOhneBild");
+        if (box) box.style.display = "flex";
+        this.zeigeOhneBildStand(liveMatch);
+    },
+
+    zeigeOhneBildStand(liveMatch) {
+        const stand = document.getElementById("lmOhneBildStand");
+        if (stand) stand.textContent = `${liveMatch.homeScore}:${liveMatch.awayScore}`;
+        const balken = document.getElementById("lmOhneBildBalken");
+        if (balken) balken.style.width = `${liveMatch.isFinished ? 100 : Math.min(99, Math.round((liveMatch.minute || 0) / 90 * 100))}%`;
+        const text = document.getElementById("lmOhneBildText");
+        if (text) {
+            text.textContent = liveMatch.isFinished
+                ? "Abpfiff - der Spielbericht kommt."
+                : `${liveMatch.minute}. Minute · Der Co-Trainer coacht, das Spiel läuft ohne Bild weiter.`;
+        }
+    },
 
     /** Einstellungen fuer das Livespiel - sie gelten fuer jede Partie */
     liveEinstellungen() {

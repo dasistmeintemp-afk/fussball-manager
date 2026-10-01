@@ -6290,17 +6290,11 @@ class UIManager {
             this.switchTab("tactics");
             return true;
         }
+        this._laufendesTestspiel = test;
         if (sofort) {
-            const home = state.clubs.find(c => c.id === test.partie.homeClubId);
-            const away = state.clubs.find(c => c.id === test.partie.awayClubId);
-            MatchEngine.simulateFullMatch(test.partie, home, away, state.players, this.sofortOptionen(test.partie));
-            this.matchplanErledigt(test.partie);
-            this.playSound("whistle");
-            this.schliesseTestspielAb(test.partie);
-            this.showMatchReportModal(test.partie);
+            this.startLiveMatchSimulation(test.partie, { ohneBild: true });
             return true;
         }
-        this._laufendesTestspiel = test;
         this._matchplanDone = false;
         this._teamTalkDone = false;
         this.startLiveMatchSimulation(test.partie);
@@ -6314,33 +6308,6 @@ class UIManager {
         this._testspielHeute = null;
         if (state.preseason) state.preseason.livePartie = partie;
         this.handleCalendarAdvanceDay();
-    }
-
-    /**
-     * Beim Sofort-Ergebnis steht der Co-Trainer an der Linie: Die Wechsel der
-     * eigenen Mannschaft trifft er - so gut, wie er ist.
-     */
-    sofortOptionen(partie) {
-        const state = this.app.state;
-        const club = state.clubs.find(c => c.id === state.userClubId);
-        const stab = this.getCoachingStaffEngine();
-        if (!club || !partie) return {};
-        const optionen = {};
-        // Der Matchplan aus der Taktikbesprechung gilt auch beim Sofort-Ergebnis
-        const planEngine = this.getMatchplanEngine();
-        const plan = planEngine ? planEngine.spielOptionen(state, partie) : null;
-        if (plan) optionen.matchplan = plan;
-        if (!stab) return optionen;
-        const guete = stab.staffQuality(club).coTrainer;
-        if (partie.homeClubId === club.id) optionen.wechselGueteHome = guete;
-        if (partie.awayClubId === club.id) optionen.wechselGueteAway = guete;
-        return optionen;
-    }
-
-    /** Nach dem Sofort-Ergebnis ist der Matchplan erledigt */
-    matchplanErledigt(partie) {
-        const planEngine = this.getMatchplanEngine();
-        if (planEngine) planEngine.abschliessen(this.app.state, partie);
     }
 
     starteHeutigesSpiel(sofort = false) {
@@ -6370,18 +6337,9 @@ class UIManager {
         }
 
         if (sofort) {
-            const state = this.app.state;
-            const home = state.clubs.find(c => c.id === heute.partie.homeClubId);
-            const away = state.clubs.find(c => c.id === heute.partie.awayClubId);
-            MatchEngine.simulateFullMatch(heute.partie, home, away, state.players, this.sofortOptionen(heute.partie));
-            this.matchplanErledigt(heute.partie);
-            this.playSound("whistle");
-            if (this._laufenderPokaltermin) {
-                this.finishCupTieAroundUser();
-            } else {
-                this.finishMatchdayAroundUser();
-            }
-            this.showMatchReportModal(heute.partie);
+            // Das Sofort-Ergebnis ist dasselbe Spiel wie live, nur ohne Bild:
+            // Laufwege, Entscheidungen, Heatmap - und der Co-Trainer coacht
+            this.startLiveMatchSimulation(heute.partie, { ohneBild: true });
             return true;
         }
 

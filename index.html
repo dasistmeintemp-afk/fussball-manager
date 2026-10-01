@@ -1727,6 +1727,14 @@
                     <!-- Left: 2D Pitch Canvas -->
                     <div class="live-pitch-wrapper">
                         <canvas id="livePitchCanvas" width="800" height="500"></canvas>
+                        <div class="lm-ohnebild" id="lmOhneBild" style="display:none;" role="status" aria-live="polite">
+                            <div class="lm-ohnebild-box">
+                                <div class="lm-ohnebild-titel"><svg class="ico" aria-hidden="true"><use href="#i-bolt"/></svg>Sofort-Ergebnis</div>
+                                <div class="lm-ohnebild-stand" id="lmOhneBildStand">0:0</div>
+                                <div class="lm-ohnebild-balken"><span id="lmOhneBildBalken" style="width:0%"></span></div>
+                                <div class="lm-ohnebild-text" id="lmOhneBildText">Der Co-Trainer übernimmt - das Spiel läuft ohne Bild weiter.</div>
+                            </div>
+                        </div>
                         <details class="lm-ansicht" id="lmAnsicht">
                             <summary title="Was das Feld zeigt" aria-label="Anzeige des Spielfelds"><svg class="ico" aria-hidden="true"><use href="#i-eye"/></svg></summary>
                             <div class="lm-ansicht-menu">

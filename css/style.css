@@ -7581,6 +7581,14 @@ td.nowrap { white-space: nowrap; }
 
 /* Anzeige des 2D-Felds: Namen und Formationslinien einblenden */
 .live-pitch-wrapper { position: relative; }
+/* Sofort-Ergebnis: das Spiel läuft ohne Bild weiter */
+.lm-ohnebild { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(6, 10, 14, 0.82); backdrop-filter: blur(2px); z-index: 6; border-radius: inherit; }
+.lm-ohnebild-box { width: min(360px, 86%); text-align: center; padding: 22px 20px; border-radius: 14px; background: var(--surface-2, #161c25); border: 1px solid var(--line-strong, rgba(255,255,255,.12)); box-shadow: 0 18px 40px rgba(0,0,0,.45); }
+.lm-ohnebild-titel { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; font-size: 13px; color: var(--accent, #bef264); }
+.lm-ohnebild-stand { font-family: var(--font-display, inherit); font-size: 44px; font-weight: 800; margin: 10px 0 12px; font-variant-numeric: tabular-nums; color: var(--text-main); }
+.lm-ohnebild-balken { height: 6px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }
+.lm-ohnebild-balken span { display: block; height: 100%; background: var(--accent, #bef264); transition: width .12s linear; }
+.lm-ohnebild-text { margin-top: 10px; font-size: 13px; color: var(--text-muted); }
 
 .lm-ansicht {
     position: absolute;

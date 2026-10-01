@@ -3570,6 +3570,43 @@ function runEngineTests() {
         }
     });
 
+    test("Sofort-Ergebnis: dieselbe Livespiel-Simulation läuft ohne Bild in Häppchen bis zum Abpfiff", () => {
+        const state = GameState.createNewGame("dor", "normal", { name: "Ohne Bild" });
+        const runde = state.schedule[0];
+        const partie = runde.matches.find(m => m.homeClubId === "dor" || m.awayClubId === "dor");
+        const home = state.clubs.find(c => c.id === partie.homeClubId);
+        const away = state.clubs.find(c => c.id === partie.awayClubId);
+        const seite = partie.homeClubId === "dor" ? "home" : "away";
+        const live = MatchEngine.createLiveMatch(partie, home, away, state.players, {
+            modus: "fm", userSide: seite, delegation: { wechsel: false, taktik: false }
+        });
+        // Ein Stück live, dann auf Sofort-Ergebnis
+        live.speed = 4;
+        for (let i = 0; i < 800; i++) { live.advanceRealTime(16); live.updateBallAndPlayers(16); }
+        const minuteVorher = live.minute;
+        if (live.rechneOhneBild(0) !== false) throw new Error("Ein Häppchen von null Millisekunden hat schon abgepfiffen");
+        if (!live.ohneBild || live.modus !== "fm") throw new Error("Ohne Bild wechselt die Simulation das Modell");
+        if (!live.delegation.wechsel || !live.delegation.taktik) throw new Error("Der Co-Trainer übernimmt nicht");
+        let haeppchen = 1;
+        while (!live.rechneOhneBild(5)) {
+            if (++haeppchen > 5000) throw new Error("Die Simulation kommt nicht zum Abpfiff");
+        }
+        if (haeppchen < 3) throw new Error("Das Spiel lief nicht in Häppchen, sondern in einem Zug");
+        if (live._ohneBildSchritte > LiveMatch.OHNE_BILD_HOECHSTENS) throw new Error("Erst die Notbremse beendete das Spiel");
+        if (!partie.played || live.minute < 90 || live.modus !== "fm") throw new Error(`Nicht sauber abgepfiffen (Minute ${live.minute}, Modus ${live.modus})`);
+        if (!partie.analyse || !partie.analyse.heat || !partie.analyse.netz) throw new Error("Ohne Bild fehlen Heatmap und Passnetz");
+        if (!Array.isArray(partie.playerRatings) || partie.playerRatings.length < 22) throw new Error("Keine Einzelkritiken");
+        if (partie.homeGoals + partie.awayGoals > 12) throw new Error(`Unplausibles Ergebnis ${partie.homeGoals}:${partie.awayGoals}`);
+        if (minuteVorher >= 90) throw new Error("Der Live-Teil lief schon bis zum Ende");
+
+        // Ein ganzes Spiel ohne Bild von Anfang an, in einem Aufruf
+        const zweite = state.schedule[1].matches.find(m => m.homeClubId === "dor" || m.awayClubId === "dor");
+        const live2 = MatchEngine.createLiveMatch(zweite,
+            state.clubs.find(c => c.id === zweite.homeClubId), state.clubs.find(c => c.id === zweite.awayClubId),
+            state.players, { modus: "fm", userSide: zweite.homeClubId === "dor" ? "home" : "away" });
+        if (!live2.rechneOhneBild() || !zweite.played || !zweite.analyse) throw new Error("Ein ganzes Spiel ohne Bild endet nicht sauber");
+    });
+
     test("U23: Spieler hinunterschicken, Regeln für Alter und Kadergröße, Spielpraxis in der zweiten Mannschaft", () => {
         const { ReserveEngine } = require('./js/engine/reserveEngine.js');
         const state = GameState.createNewGame("muc", "normal", { name: "U23" });

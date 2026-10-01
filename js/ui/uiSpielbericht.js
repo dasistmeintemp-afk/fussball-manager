@@ -111,13 +111,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const a = match?.analyse;
         const state = this.app.state;
         if (!a || !a.heat || !a.netz) {
-            // Beim Sofort-Ergebnis rechnet das Spiel ohne Laufwege - dann
-            // lieber sagen, warum die Karte fehlt, als eine zu erfinden
+            // Ohne Laufwege (ältere Spielstände, Spiele aus dem statistischen
+            // Modell) lieber sagen, warum die Karte fehlt, als eine zu erfinden
             const eigenes = state && (match?.homeClubId === state.userClubId || match?.awayClubId === state.userClubId);
             return eigenes ? `
             <div class="dash-card sa-karte" style="padding:14px; margin-bottom:16px;">
                 <h4 style="font-size:14px; margin-bottom:6px;"><svg class="ico h-ico" aria-hidden="true"><use href="#i-pass"/></svg>Positionen und Passwege</h4>
-                <p class="text-muted" style="margin:0; font-size:13px;">Heatmap und Passnetz entstehen aus den Laufwegen im Livespiel. Beim Sofort-Ergebnis gibt es sie nicht.</p>
+                <p class="text-muted" style="margin:0; font-size:13px;">Heatmap und Passnetz entstehen aus den Laufwegen der Simulation. Für dieses Spiel liegen keine vor.</p>
             </div>` : "";
         }
         const esc = (t) => this.escapeHtml(t == null ? "" : String(t));

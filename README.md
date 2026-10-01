@@ -76,15 +76,15 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Freier Formations-Editor mit Raster:** Rasterüberlagerung (20 × 12 Zellen) plus Zonenbänder für Angriff, Mittelfeld, Abwehr und Torraum. Positionen lassen sich per Maus oder Finger frei verschieben – wahlweise am Raster ausgerichtet oder stufenlos.
 - **Automatische Positions- und Formationserkennung:** Die Positionsbezeichnung folgt der Zone (wer in den Sechserraum gezogen wird, ist ein DM) und lässt sich pro Slot manuell überschreiben. Der Formationsname (`4-2-3-1`, `3-5-2`, …) wird live aus der Staffelung abgeleitet.
 - **Eigene Formationen:** Beliebig viele eigene Aufstellungen benennen, speichern, zurücksetzen und löschen. Sie erscheinen im Formations-Dropdown und stehen allen Systemen zur Verfügung – Sofortsimulation, 2D-Live-Spiel und KI-Aufstellung.
-- **Taktik nach FM26 (`TacticsEngine`):** Eine Taktik hat eine Formation mit Ball und eine gegen den Ball, für jeden Spieler eine Rolle je Phase und Anweisungen nach Phasen.
+- **Taktik mit und gegen den Ball (`TacticsEngine`):** Eine Taktik hat eine Formation mit Ball und eine gegen den Ball, für jeden Spieler eine Rolle je Phase und Anweisungen nach Phasen.
   - *Formen:* Mit Ball entsteht die Form aus den Rollen (Positionsspiel) oder ist fest vorgegeben (3-2-5, 2-3-5, 3-2-2-3, 3-1-6, 4-2-4, 2-3-2-3 oder jede Formation). Gegen den Ball fällt die Elf in jede wählbare Formation (4-4-2, 4-1-4-1, 5-4-1 …). Wer wohin rückt, rechnet eine Zuordnung mit kürzesten Wegen aus, bei der niemand die Seite wechselt und Außen außen bleiben.
   - *Rollen mit Ball:* u. a. mitspielender Torwart, spielmachender, breiter, überlappender und aufrückender Innenverteidiger, Schienenspieler, einrückender und invertierter Außenverteidiger, abkippender Sechser, tiefer Spielmacher, Halbraumläufer, Box-to-Box, freie Rolle, hängende Spitze, inverser und einrückender Flügel, falsche Neun, Zielspieler, Knipser, Kanalstürmer.
   - *Rollen gegen den Ball:* pressend, zurückarbeitend, absichernd, abschirmend, abkippend, seitlich absichernd, Konterspieler (zentral, außen, ausweichend), herausrückender Verteidiger, Libero-Torwart.
-  - *Mannschaftsanweisungen als Kacheln wie im FM26*, getrennt nach *Mit Ball* und *Gegen den Ball*. Mit Ball: Mentalität, Passspiel, Tempo, Zeitspiel, nach Ballgewinn (kontern / Ball sichern), Breite, auf Standards spielen, kreative Freiheit, Aufbaustrategie, Aufbau über, Abstöße, Torwart spielt auf (Innen-/Außenverteidiger, Sechser, Flügel, Sturmspitze), Abwurf-Tempo, Läufe links und rechts (hinter-/unterlaufen), Dribblings, Vorwärtsspiel über, Ballannahme (in den Fuß / in den Lauf), Geduld, Distanzschüsse, Flanken und Flankenart (flach / hoch). Gegen den Ball: Pressinglinie, Abwehrlinie, Pressing auslösen, nach Ballverlust (Gegenpressing / zurückziehen), Zweikampfverhalten, gegnerische Flanken, Pressingfalle, kurze Abstöße verhindern, Verhalten der Abwehrlinie (fallen lassen / herausrücken), Abseitsfalle, Raumdeckung / mannorientiert / Manndeckung, Breite des Blocks. Eine Kachel zeigt Wert und Skala; was von der Grundeinstellung abweicht, ist markiert.
+  - *Mannschaftsanweisungen als Kacheln*, getrennt nach *Mit Ball* und *Gegen den Ball*. Mit Ball: Mentalität, Passspiel, Tempo, Zeitspiel, nach Ballgewinn (kontern / Ball sichern), Breite, auf Standards spielen, kreative Freiheit, Aufbaustrategie, Aufbau über, Abstöße, Torwart spielt auf (Innen-/Außenverteidiger, Sechser, Flügel, Sturmspitze), Abwurf-Tempo, Läufe links und rechts (hinter-/unterlaufen), Dribblings, Vorwärtsspiel über, Ballannahme (in den Fuß / in den Lauf), Geduld, Distanzschüsse, Flanken und Flankenart (flach / hoch). Gegen den Ball: Pressinglinie, Abwehrlinie, Pressing auslösen, nach Ballverlust (Gegenpressing / zurückziehen), Zweikampfverhalten, gegnerische Flanken, Pressingfalle, kurze Abstöße verhindern, Verhalten der Abwehrlinie (fallen lassen / herausrücken), Abseitsfalle, Raumdeckung / mannorientiert / Manndeckung, Breite des Blocks. Eine Kachel zeigt Wert und Skala; was von der Grundeinstellung abweicht, ist markiert.
   - *Vorlagen:* Ausgewogen, Positionsspiel, Gegenpressing, Konter, Tiefer Block, Flügelspiel, Direktes Spiel, Mann gegen Mann. Die KI-Vereine spielen je nach Stärke unterschiedliche Stile.
   - *Wirkung:* Alles wirkt in der 2D-Simulation (Positionen, Deckung, Pressing, Umschalten), im Ballbesitzspiel (Passwahl, Dribblings, Torwartabspiel) und – bewusst maßvoll – in der Ergebnissimulation (Stärke, Angriffsmuster, Fouls, Ermüdung).
-- **Aufstellung wie im FM26:** Eine Tabelle mit Positions-Chip, Sternen, Rollenkürzel samt Rollenwahl und Kondition je Spieler – umschaltbar zwischen *Mit Ball* und *Gegen den Ball*, synchron zur Taktiktafel.
-- **Taktiktafel im Stil des FM26:** Ansichten *Kombiniert*, *Mit Ball*, *Gegen den Ball* und *Beide* (beide Formen übereinander mit dem Weg jedes Spielers), Rollenkürzel auf jeder Karte, Verbindungslinien, die zeigen, wer zusammenspielt und ob die Rollen zueinander passen (stark / passt / hakt), dazu ein Taktik-Check mit Hinweisen. Im Live-Coaching lassen sich Anweisungen und beide Formen während des Spiels ändern.
+- **Aufstellungstabelle:** Eine Tabelle mit Positions-Chip, Sternen, Rollenkürzel samt Rollenwahl und Kondition je Spieler – umschaltbar zwischen *Mit Ball* und *Gegen den Ball*, synchron zur Taktiktafel.
+- **Taktiktafel:** Ansichten *Kombiniert*, *Mit Ball*, *Gegen den Ball* und *Beide* (beide Formen übereinander mit dem Weg jedes Spielers), Rollenkürzel auf jeder Karte, Verbindungslinien, die zeigen, wer zusammenspielt und ob die Rollen zueinander passen (stark / passt / hakt), dazu ein Taktik-Check mit Hinweisen. Im Live-Coaching lassen sich Anweisungen und beide Formen während des Spiels ändern.
 - **Spezialrollen:** Kapitän, Elfmeterschütze, Freistoßschütze, Eckenschütze.
 - **Teamchemie & Spielerzufriedenheit:** Individuelle Zufriedenheit je Spieler (Spielzeit, Vertrag, Teamleistung) und Einfluss auf Spielgeschehen.
 
@@ -105,16 +105,18 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Echtes Ballbesitzspiel (`MatchFlowEngine`):** Zwischen den Highlights wird nicht zufällig gepasst, sondern gespielt. Die Engine bewertet den Druck auf den Ballführenden, projiziert Gegner auf die Passwege, misst den Freiraum der Anspielstationen und wählt daraus die Option: kurzer Pass, Verlagerung, langer Ball, Dribbling oder Befreiungsschlag. Der Ausgang folgt den Attributen – Passgenauigkeit aus Passen, Übersicht und Technik gegen Druck und zugestellte Wege; Dribblings aus Dribbling und Tempo gegen die Defensivwerte des Gegenspielers.
 - **Ballverluste haben Folgen:** Fehlpässe werden abgefangen, liegen frei oder gehen ins Aus. Über ein komplettes Spiel entstehen rund 200 Spielaktionen: etwa vier von fünf Pässen kommen an, der lange Ball bleibt mit rund 15 % der Aktionen die Ausnahme, und aus dem Rest werden gut zehn Einwürfe und Abstöße.
 - **Szenen entstehen aus dem Spiel:** Gehört die nächste Szene der anderen Mannschaft, erobert sie den Ball vorher sichtbar – ein abgefangener Pass oder ein gewonnener Zweikampf – statt ihn geschenkt zu bekommen. Gefoult wird am Ball: Der Foulende geht beim Gegenspieler in den Zweikampf, der ihm am nächsten steht. Eine Ecke entsteht aus einer abgewehrten Hereingabe über die Torlinie; danach schneidet die Übertragung zur Eckfahne, wo der Schütze bereitsteht, und der Torwart steht auf der Linie. Der Anstoß wird erst angepfiffen, wenn der Schütze am Ball steht; nach einem Tor schneidet die Übertragung zur Aufstellung.
-- **2D-Ansicht wie im FM26:** Flache Punkte mit Rückennummer, darunter die Namen aller Spieler. Über das Augen-Menü am Feld lassen sich die Formationslinien der eigenen Elf und des Gegners einblenden – jede Reihe als Linie, dazu die Verbindung zur Reihe dahinter. So sieht man, ob die Kette steht, wie kompakt der Block ist und wer seine Position verlässt.
+- **2D-Ansicht:** Flache Punkte mit Rückennummer, darunter die Namen aller Spieler. Über das Augen-Menü am Feld lassen sich die Formationslinien der eigenen Elf und des Gegners einblenden – jede Reihe als Linie, dazu die Verbindung zur Reihe dahinter. So sieht man, ob die Kette steht, wie kompakt der Block ist und wer seine Position verlässt.
 - **Standardsituationen:** Seitenaus führt zum Einwurf, Toraus zum Abstoß – jeweils mit Ausführendem, Schiedsrichterpfiff, kurzer Ruhephase und passender Aufstellung beider Mannschaften. Der Abstoß wird kurz aufgebaut oder lang geschlagen, je nach eingestelltem Passspiel.
 - **Jede Unterbrechung hat ihre Fortsetzung:** Ein Foul im Ticker wird zum Freistoß vom Tatort – in Schussweite stellt sich eine Mauer aus drei Verteidigern neun Meter vor dem Ball. Eine Ecke wird an der Eckfahne getreten, während sich der Strafraum füllt. Ein Elfmeter kommt vom Punkt: Der Strafraum räumt sich, der Torwart geht auf die Linie, der Schütze legt sich den Ball zurecht. Ein Schuss neben das Tor ist ein Abstoß, eine Parade endet damit, dass der Torwart den Ball festhält oder ihn abklatschen lässt.
 - **Abseits:** Die Abwehr hält ihre Linie, und ein Steilpass hinter den vorletzten Gegenspieler wird abgepfiffen – rund vier Mal pro Spiel, mit Fahne, Einblendung und Freistoß. Abseits entsteht nur im Aufbauspiel; Ereignisse aus der Timeline laufen immer durch, damit Anzeige und Bericht deckungsgleich bleiben.
 - **Der Torwart hechtet:** Bei einem Schuss geht er in die Ecke, in die geschossen wird, und streckt sich dabei sichtbar.
 - **Anstoß mit Zeremonie:** Zum Spielbeginn, nach jedem Tor und zur zweiten Halbzeit stellen sich erst beide Mannschaften auf – jede in ihrer eigenen Hälfte, der Mittelkreis bleibt der anstoßenden Mannschaft vorbehalten. Der Schiedsrichter geht zum Anstoßpunkt und pfeift an, und erst dann rollt der Ball. Die Spieluhr kriecht währenddessen, damit die Zeremonie keine Spielminuten frisst.
+- **Der Torwart steht, wo ein Torwart steht:** Kommt der Gegner, geht er auf die Linie zwischen Ball und Tormitte und bleibt zwischen den Pfosten. Liegt der Ball zentral vor dem Strafraum, macht er ein, zwei Schritte heraus. Ist das Spiel weit weg, rückt er an den Fünfer heraus, um Bälle hinter die Kette abzulaufen. Vorher war es umgekehrt: Je näher der Gegner kam, desto weiter verließ er die Linie (im Mittel gut fünf Einheiten), und seitlich lief er weit über den Pfosten hinaus.
+- **Karten am Spieler:** Der Schiedsrichter wird nicht gezeichnet – sein Punkt lenkte nur ab. Gelbe und rote Karten erscheinen direkt neben dem verwarnten Spieler.
 - **Absicht statt Zufall:** Der Ballbesitz hat eine Phase. Im eigenen Drittel wird gesichert zirkuliert – quer, zurück, notfalls über den Torwart –, im Mittelfeld gesucht, im letzten Drittel der Abschluss vorbereitet. Eine Anzeige am Spielfeldrand nennt Phase, Mannschaft und Zahl der Stationen, sodass ein Angriff als Angriff erkennbar ist.
 - **Spieltempo:** Drei Stufen – 90 Minuten laufen in rund acht (Langsam), vier (Normal) oder anderthalb echten Minuten (Schnell) ab. Höhepunkte, Standards und der Anstoß bremsen die Uhr ohnehin ab, die entscheidenden Szenen laufen also in Ruhe.
 - **Mannschaftsblöcke statt Punktehaufen:** Jede Mannschaft verschiebt als Einheit mit dem Ball – ein Fenster von der Kette bis zur Spitze, in dem jeder so tief steht, wie ihn seine Formation vorsieht. Greift eine Elf im letzten Drittel an, steht ihre Kette an der Mittellinie und das Mittelfeld direkt hinter dem Ball; ohne Ball steht sie kürzer und tiefer, die Kette immer hinter dem Ball. Abwehrhöhe und Mentalität verschieben das Fenster, nach vorn rückt die Elf geordnet nach, nach hinten fällt sie zügig zurück. Außenverteidiger hinterlaufen auf ihrer Seite, Stürmer lauern auf der Abseitslinie und starten in die Tiefe, Mittelfeld und Angriff stellen beim Verteidigen Gegenspieler zu.
-- **Positionsspiel mit Ball:** Mit Ball baut jede Elf aus ihrer Formation eine eigene Form mit Ball, wie im FM26 oder bei Guardiolas City (3-2-5), Napoli oder Juventus. Auf jeder Seite hält genau ein Spieler die Seitenlinie: im Aufbau der Flügelspieler, im letzten Drittel auf der Ballseite der hinterlaufende Außenverteidiger, während der Flügelspieler in den Halbraum einrückt. Achter und Zehner besetzen die Halbräume, die Innenverteidiger gehen im Aufbau weit auseinander, der ballferne Außenverteidiger bildet mit ihnen die Dreierkette. Wer mit Ball frei steht, trägt ihn in den Raum vor sich (Andribbeln) – auch ein Innenverteidiger, wenn kein Gegner in der Nähe ist. Ohne Gegner vor sich rückt ein Verteidiger auf und bietet sich an.
+- **Positionsspiel mit Ball:** Mit Ball baut jede Elf aus ihrer Formation eine eigene Form mit Ball, wie bei Guardiolas City (3-2-5), Napoli oder Juventus. Auf jeder Seite hält genau ein Spieler die Seitenlinie: im Aufbau der Flügelspieler, im letzten Drittel auf der Ballseite der hinterlaufende Außenverteidiger, während der Flügelspieler in den Halbraum einrückt. Achter und Zehner besetzen die Halbräume, die Innenverteidiger gehen im Aufbau weit auseinander, der ballferne Außenverteidiger bildet mit ihnen die Dreierkette. Wer mit Ball frei steht, trägt ihn in den Raum vor sich (Andribbeln) – auch ein Innenverteidiger, wenn kein Gegner in der Nähe ist. Ohne Gegner vor sich rückt ein Verteidiger auf und bietet sich an.
 - **Pressing mit Linie:** Gepresst wird ab der Pressinglinie der eigenen Taktik: hohes Pressing überall, Mittelfeldpressing ab dem ersten Drittel des Gegners, tiefer Block ab der Mittellinie. Davor stellt der nächste Spieler nur den Passweg zur Mitte zu. Direkt nach einem Ballverlust wird überall gegengepresst.
 - **Laufwege im Positionsraum statt Schablone:** Die Formation ist ein Rahmen, kein Gitter. Jede Position hat einen eigenen Raum (ein Innenverteidiger weicht kaum ab, ein Achter pendelt über die halbe Breite), in dem sich jeder Spieler selbst seinen Weg sucht – mit Ball freilaufen, entgegenkommen, in die Tiefe oder in den Strafraum gehen, die Breite halten; ohne Ball Passwege zustellen und zur Ballseite schieben. Bewertet werden freier Raum, offener Passweg, Abstand zu den Mitspielern und die Abseitslinie. Passspiel und Mentalität wirken mit: Direkt gespielt wird mehr in die Tiefe gelaufen, kurz gespielt mehr entgegengekommen.
 - **Laufen wie Menschen:** Spieler treten an, erreichen ihr Tempo und bremsen vor dem Ziel ab, statt in einem Bild von null auf voll zu springen – dadurch laufen sie Bögen. Wer weit vom Ball weg ist, rückt in Schüben nach und geht; wer weit hinter seinem Platz ist, sprintet. Jeder nimmt den Ball mit eigener Verzögerung wahr (Übersicht verkürzt sie), und nach einem Ballverlust schaltet die Elf fließend um, statt in einem Bild die Form zu wechseln. Stehende Spieler drehen sich zum Ball.
@@ -126,15 +128,16 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Flüssige Darstellung mit 60 Bildern pro Sekunde:** Delta-Zeit-basierte Bewegung, Mindestflugzeit für den Ball (keine Sprünge), Ballflughöhe mit wanderndem Schatten und Bewegungsschweif.
 - **Optimiertes Canvas-Rendering:** DPR-korrekte Auflösung, einmalig vorgerenderter Rasen, Spielfeldmaße in echten Metern, zwischengespeicherte Textbreiten und ein inkrementell aktualisierter Ticker.
 - **Live-Ticker auf Deutsch:** Farbcodierter Spielbericht für Tore, Karten, Auswechslungen und Glanzparaden.
+- **Spielanalyse im Spielbericht:** Eine Schusskarte zeigt jeden Abschluss beider Mannschaften auf dem Feld – die Größe nach Chancenqualität (xG), die Form nach dem Ausgang (Tor, gehalten, vorbei, geblockt), dazu Minute und Schütze. Daneben steht der Verlauf der Chancenqualität über neunzig Minuten mit den Toren. Gespeichert wird das nur für die eigenen Spiele.
 - **Echtzeit-Statistiken:** Ballbesitz %, Schüsse, Schüsse aufs Tor, Fouls, Ecken und Expected Goals (xG).
 - **In-Game Coaching:** Live-Taktikanpassungen und bis zu 5 Auswechslungen während des Spiels.
 
 - **Bild und Ticker erzählen dasselbe:** Wer im Ticker genannt wird, hat auf dem Feld auch den Ball, und zwar an der Stelle, von der die Rede ist – die Szene beginnt erst, wenn er dort angekommen ist. Jede Angriffsart hat ihre eigene Geometrie: Die Flanke kommt vom Flügel, der Steilpass aus der Zentrale, die Ecke von der Fahne. Und seit dem Seitenwechsel fliegen die Schüsse auch nach der Pause aufs richtige Tor.
 
-> **Live und sofort berechnet:** Die Sofort-Simulation erzeugt alle Ereignisse vorab als Timeline. Im Livespiel gibt sie seit dem FM-Modus nur noch den Rahmen vor (Wechsel, Verletzungen, Halbzeit, Abpfiff) – alles andere entsteht auf dem Feld (siehe unten). Jedes Ereignis wird dabei in dieselbe Timeline geschrieben, aus der auch der Spielbericht rechnet: Live-Anzeige und Bericht zeigen Feld für Feld dieselben Zahlen, ein Test prüft das.
+> **Live und sofort berechnet:** Die Sofort-Simulation erzeugt alle Ereignisse vorab als Timeline. Im Livespiel gibt sie seit dem Entscheidungsmodus nur noch den Rahmen vor (Wechsel, Verletzungen, Halbzeit, Abpfiff) – alles andere entsteht auf dem Feld (siehe unten). Jedes Ereignis wird dabei in dieselbe Timeline geschrieben, aus der auch der Spielbericht rechnet: Live-Anzeige und Bericht zeigen Feld für Feld dieselben Zahlen, ein Test prüft das.
 
-### 3a. 🧠 FM-Modus: Jeder Spieler entscheidet nach seinen Werten
-Im Livespiel wird nichts mehr vorab gewürfelt. Wie im Football Manager entscheidet der Ballführende in jeder Situation selbst – und seine Werte bestimmen, was er wählt und ob es gelingt.
+### 3a. 🧠 Entscheidungsmodus: Jeder Spieler entscheidet nach seinen Werten
+Im Livespiel wird nichts mehr vorab gewürfelt. Wie in den großen Managerspielen entscheidet der Ballführende in jeder Situation selbst – und seine Werte bestimmen, was er wählt und ob es gelingt.
 
 - **Entscheiden:** Pass, Verlagerung, Steilpass, Dribbling, Flanke oder Abschluss werden gegeneinander abgewogen: Druck der Gegner, zugestellte Passwege, freie Mitspieler, Abstand und Winkel zum Tor. Ein Stürmer mit starkem Abschluss zieht aus 20 Metern ab, ein Techniker sucht lieber den Mitspieler.
 - **Ausführen:** Ob der Pass ankommt, hängt an Passen, Übersicht und Technik gegen Druck; ob das Dribbling klappt, an Dribbling und Tempo gegen Zweikampf und Stellungsspiel. Jeder Abschluss bekommt eine Chancenqualität (xG) aus Entfernung, Winkel, Druck und Verteidigern im Schussweg. Verwandelt wird nach dem Duell Schütze gegen Torwart. Kopfbälle nach Flanken entscheiden Sprungkraft und Physis.
@@ -226,7 +229,22 @@ Die Taktik im Taktik-Reiter ist die Grundordnung. Vor dem Anpfiff stellt der Tra
 - Widersprüche schließt die Besprechung aus: Früh stören und tief stehen – oder Flügel und Mitte – gehen nicht gleichzeitig.
 
 ### 3c. 📌 Der Schreibtisch
-Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit sortiert, ein Klick springt in den zuständigen Reiter: unvollständige Startelf, Verhandlungen mit uns am Zug, Ausfälle, überlastete Spieler, auslaufende Verträge, unzufriedene Spieler, ungelesene Post.
+Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit sortiert, ein Klick springt in den zuständigen Reiter: unvollständige Startelf, Verhandlungen mit uns am Zug, Ausfälle, überlastete Spieler, auslaufende Verträge, unzufriedene Spieler, ungelesene Post. Gesprächswünsche, Wechselwünsche und offene Versprechen stehen ebenfalls dort – ein Klick öffnet die Akte des Spielers.
+
+### 3d. 🗣️ Gespräche unter vier Augen (`PlayerTalkEngine`)
+In der Spielerakte führt der Manager Gespräche mit jedem eigenen Spieler. Wie er reagiert, hängt an Form und Persönlichkeit:
+
+| Gespräch | Wirkung |
+|---|---|
+| **Leistungen loben** | Spielt er stark, hebt es die Moral deutlich. Lob für ein schwaches Spiel durchschaut ein ehrgeiziger Profi. |
+| **Leistungen kritisieren** | Bei schwacher Form nimmt ein Profi Kritik als Ansporn: Form und Entwicklung zwei Wochen lang besser. Ein Hitzkopf ist beleidigt. Kritik an einem starken Spieler kränkt immer. |
+| **Mehr Spielzeit versprechen** | In den nächsten fünf Ligaspielen mindestens drei Einsätze ab 60 Minuten. Gehalten: Vertrauen und Moral steigen. Gebrochen: Er fühlt sich belogen und will womöglich weg. Höchstens vier Versprechen gleichzeitig. |
+| **Um Geduld bitten** | Ein loyaler, professioneller Spieler wartet, ein ehrgeiziger nicht lange. |
+| **Wechselwunsch akzeptieren / umstimmen** | Akzeptiert: Er kommt auf die Transferliste und bekommt öfter Angebote. Umstimmen gelingt eher bei Treuen und bei Vertrauen. |
+
+- Nach jedem Gespräch braucht es sechs Tage Pause, bevor man denselben Spieler wieder spricht.
+- **Gesprächswünsche:** Ein unzufriedener Spieler bittet um ein Gespräch. Wer ihn eine Woche warten lässt, kränkt ihn.
+- **Wechselwunsch:** Drei Wochen tiefer Frust oder ein gebrochenes Wort werden zum Wechselwunsch.
 
 ### 4. 🔄 Transfersystem, Scouting & Verträge
 - **Transfermarkt mit Suchfiltern:** Nach Position, Stärke, Potenzial und Preisklasse filtern.
@@ -258,6 +276,12 @@ Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit 
   - **Ablehnen.**
 
   Ein Angebot gilt vier Tage. Wer nicht antwortet, hat abgelehnt.
+- **Weiterverkaufsbeteiligung:** Beim Annehmen eines Angebots lassen sich 10 oder 20 % an einem späteren Weiterverkauf vereinbaren. Der Käufer zahlt dafür jetzt 5 bzw. 10 % weniger. Wechselt der Spieler später für eine Ablöse weiter, fließt der Anteil zurück.
+- **Ausstiegsklauseln:** Bei einer Vertragsverlängerung lässt sich eine Klausel über das 1,5-, 2,5- oder 4-fache des Marktwerts vereinbaren. Je niedriger sie liegt, desto stärker sinkt die Gehaltsforderung (bis zu 10 %). Dafür kann jeder Verein, der die Summe zahlt, den Spieler holen – ablehnen geht nicht. Gut jeder fünfte Spieler anderer Vereine hat eine Klausel. Sie steht in der Akte und lässt sich dort ziehen, sofern der Spieler den Schritt zu Ihnen machen will.
+- **Leihgeschäfte (`LoanEngine`, Unterreiter *Leihen*):**
+  - *Verleihen:* In der Akte eines eigenen Spielers fragt man Interessenten an: Vereine bis zwei Ligen tiefer, bei denen er Stammspieler oder Rotation wäre. Der Leihverein übernimmt einen Teil des Gehalts. Bis zum Saisonende, vorzeitiges Zurückholen ist möglich.
+  - *Ausleihen:* Der Leihmarkt zeigt junge Spieler ohne Stammplatz und Reservisten anderer Vereine. Der Stammverein verlangt einen Gehaltsanteil (darunter lehnt er ab), bei starken Spielern eine Leihgebühr, und meldet sich, wenn ein zugesagter Stammspieler nicht spielt.
+  - Einmal im Monat kommt ein Leihbericht ins Postfach. Zum Saisonende kehren alle zurück. Verliehene Spieler stehen unter der Kadertabelle, werden nicht verkauft und kosten beide Vereine anteilig Gehalt.
 
 ### 4b. 🤝 Verhandlungen mit Vereinen und Beratern (`NegotiationEngine`)
 Ein Transfer ist kein Knopfdruck mehr, sondern ein Vorgang über mehrere Tage:
@@ -274,7 +298,7 @@ Ein Transfer ist kein Knopfdruck mehr, sondern ein Vorgang über mehrere Tage:
 ### 5. 🏋️ Training & Jugendakademie
 - **Trainingsschwerpunkte:** Allround, Angriff, Defensive, Technik, Taktik, Regeneration, Jugendförderung.
 - **Nachwuchsakademie (`YouthEngine`):** Akademie-Ausbau (Stufe 1 bis 5) für stärkere Talente und direkte Beförderung von Jugendspielern mit Profi-Vertrag in die 1. Mannschaft.
-- **Jugendtag (wie im FM):** Einmal je Saison, im Frühjahr um den Spieltag bei 70 % der Saison (34 Spieltage: der 24.), stellt sich der neue Jahrgang vor. Drei Spieltage vorher kündigt der Nachwuchsleiter ihn im Postfach an und schätzt ein, wie gut er wird. Am Jugendtag selbst kommt eine Nachricht mit allen Namen.
+- **Jugendtag:** Einmal je Saison, im Frühjahr um den Spieltag bei 70 % der Saison (34 Spieltage: der 24.), stellt sich der neue Jahrgang vor. Drei Spieltage vorher kündigt der Nachwuchsleiter ihn im Postfach an und schätzt ein, wie gut er wird. Am Jugendtag selbst kommt eine Nachricht mit allen Namen.
 - **Befördert ist befördert:** Die Talente des eigenen Vereins stehen in genau einer Liste. Vorher waren es nach dem Laden zwei Kopien: Ein beförderter Spieler blieb in der Akademie stehen und ließ sich ein zweites Mal befördern.
 - **Schwerpunkte der Akademie:** Im Reiter *Training* lassen sich vier Dinge einstellen. Alles wirkt auf den nächsten Jahrgang am Jugendtag.
 
@@ -288,6 +312,13 @@ Ein Transfer ist kein Knopfdruck mehr, sondern ein Vorgang über mehrere Tage:
   Der Nachwuchsleiter aus dem Trainerstab entscheidet mit: Ein guter holt Potenzial heraus und lässt die Jungs schneller wachsen, ein schwacher kostet beides. Gemessen wird am üblichen Niveau des Vereins: Ein eigener Mann bringt −4 bis +5 Punkte Potenzial je Talent, die Aushilfe bei offenem Posten kostet 2.
 - **Talente passen zur Liga:** Ein Jahrgang richtet sich nach der Ligastufe des Vereins. In der Landesliga kommen Landesliga-Talente, in der Bundesliga Bundesliga-Talente. Überall haben sie heute 0,5 bis 2,5 Sterne und im Schnitt 3 bis 4 Sterne Potenzial. Fünf Sterne gibt es nur mit guten Schwerpunkten, einem guten Nachwuchsleiter und etwas Glück.
 - **Verletzungen & Sperren:** Realistische Ausfallzeiten (Leicht/Mittel/Schwer) und Gelb-/Rotsperren.
+
+### 5a. 📈 Entwicklungsplan (`DevelopmentPlanEngine`)
+Jeder eigene Spieler hat in seiner Akte einen Entwicklungsplan. Der Trainings-Reiter zeigt alle Pläne und die Spielpraxis der jungen Spieler.
+- **Spielpraxis:** Ein gleitender Wert, wie viel der möglichen Minuten ein Spieler zuletzt gespielt hat – für jeden Spieler aller Vereine. Ein Talent bis 23 entwickelt sich mit regelmäßigen Einsätzen um gut ein Viertel schneller als im Schnitt, ohne Einsätze langsamer. Bis 28 zählt es ein wenig, danach nicht mehr. Genau dafür gibt es Leihen.
+- **Eigener Trainingsschwerpunkt:** Abschluss, Passspiel, Zweikampf, Schnelligkeit, Dribbling, Kopfball (Torhüter: Reflexe, Herauslaufen). Wächst der Spieler, wachsen diese Werte mit. Die Zusatzschichten kosten etwas Kraft.
+- **Umschulung:** Eine neue Position lernen, Einheit für Einheit. Wie schnell, hängt an der Anpassungsfähigkeit und daran, wie verwandt die Position ist. Ist sie gelernt, kommt eine Nachricht.
+- **Mentor:** Ein Spieler ab 25 betreut bis zu drei Spieler bis 23. Seine Einstellung färbt ab: Professionalität, Ehrgeiz, Temperament, Nerven und Beständigkeit wandern langsam in seine Richtung. Mit etwas Glück schaut sich der junge Spieler eine Eigenheit ab – sofern sie zu seinen Werten passt. Ein guter Mentor beschleunigt die Entwicklung leicht.
 
 ### 5b. 📋 Trainingsbericht: Belastung, Ermüdung und Risiko
 Das Training läuft **Tag für Tag** über den Kalender statt im Wochenblock. Zwischen den Spieltagen zeigt der Trainingsbericht für jeden Spieler:
@@ -317,14 +348,14 @@ Ein Talent in den Profikader zu holen dauert jetzt seine Zeit. *Vertragsgespräc
   | Sportstättenförderung | – | – | – | 15 % | 25 % | 30 % | 35 % |
 
 - **Finanzierung über die Hausbank:** Reicht die Kasse nicht, zahlt man ein Viertel an und den Rest mit 6 % Zinsen in Raten über die Bauzeit. Die Bank macht nur mit, wenn eine Rate höchstens ein Viertel der Einnahmen je Spieltag ausmacht. Vor jedem Bau zeigt ein Dialog Baukosten, Förderung, Eigenanteil und die Raten.
-- **Kennzahlen auf einen Blick (nach dem FM26):** Die Vereinsseite beginnt mit einem Kopf aus Wappen, Liga und Kacheln für Tabellenplatz, Ruf, Fans, Stimmung, Teamchemie und Kontostand. Kader und Finanzen haben dieselbe Kennzahlenleiste (Kadergröße und Alter, Marktwert, Gehälter, Fitness, Ausfälle, auslaufende Verträge bzw. Kontostand, Budgets, Gehaltsquote, Sponsor, Heimspiel).
+- **Kennzahlen auf einen Blick:** Die Vereinsseite beginnt mit einem Kopf aus Wappen, Liga und Kacheln für Tabellenplatz, Ruf, Fans, Stimmung, Teamchemie und Kontostand. Kader und Finanzen haben dieselbe Kennzahlenleiste (Kadergröße und Alter, Marktwert, Gehälter, Fitness, Ausfälle, auslaufende Verträge bzw. Kontostand, Budgets, Gehaltsquote, Sponsor, Heimspiel).
 
-### 7. 🗓️ Kalender-Tagesablauf, 🔍 Gegneranalyse & 🌟 FM-Scoutingsystem
-- **FM-Spielerbewertungssystem (`PlayerRatingEngine`):** Trennung von echten internen Fähigkeiten (CA/PA 1–200, Hidden Attributes wie Professionalität & Ehrgeiz) und sichtbaren, scoutabhängigen Einschätzungsbereichen.
+### 7. 🗓️ Kalender-Tagesablauf, 🔍 Gegneranalyse & 🌟 Scoutingsystem
+- **Spielerbewertungssystem (`PlayerRatingEngine`):** Trennung von echten internen Fähigkeiten (CA/PA 1–200, Hidden Attributes wie Professionalität & Ehrgeiz) und sichtbaren, scoutabhängigen Einschätzungsbereichen.
 - **Relative Sternebewertungen:** Qualitätssterne (0.5 bis 5.0) werden dynamisch relativ zur Stärke des eigenen Kaders berechnet.
 - **Testspiele werden angesagt:** Ein Spieltermin der Vorbereitung erscheint wie ein Spieltag – mit beiden Mannschaften und der Wahl zwischen Live-Spiel und Sofortergebnis. Das live gespielte Ergebnis wird so eingetragen, wie es auf dem Platz fiel.
 - **Saisonkalender & Wochenplan (`CalendarEngine`):** Realistischer Tagesablauf zwischen Spieltagen (Regeneration, Schwerpunkt-Training, Medien-/Sponsoren-Events, Taktikschulung und Gegneranalyse).
-- **Zeit wie im FM:** Der Weiter-Knopf läuft Tag für Tag bis zum nächsten Termin (Spiel, Testspiel, Pressekonferenz, Saisonende). Er hält aber auch dazwischen an, wenn etwas den Manager angeht:
+- **Zeit Tag für Tag:** Der Weiter-Knopf läuft Tag für Tag bis zum nächsten Termin (Spiel, Testspiel, Pressekonferenz, Saisonende). Er hält aber auch dazwischen an, wenn etwas den Manager angeht:
   - ein Angebot für einen eigenen Spieler,
   - eine Antwort in einer Verhandlung,
   - eine Verletzung im Training,
@@ -350,7 +381,7 @@ Ein Talent in den Profikader zu holen dauert jetzt seine Zeit. *Vertragsgespräc
 - **Zwölf spielbare Ligen, 218 Vereine, über 4300 Spieler.** Die komplette Welt wird beim Karrierestart erzeugt und läuft Saison für Saison mit.
 - **Top-5-Ligen:** Deutschland, England, Spanien, Italien und Frankreich – jede mit landestypischen Vereins-, Städte- und Spielernamen. In England spielen *Rovers* und *Wanderers*, in Spanien *Real* und *Deportivo*, in Italien *AC* und *Calcio*, in Frankreich *Olympique* und *Stade*.
 - **Deutsche Ligapyramide (Stufe 1 bis 7):** Bundesliga, 2. Bundesliga, 3. Liga, Regionalliga West & Bayern, Oberliga Nord, Verbandsliga und Landesliga.
-- **Spielerstärke nach Ligastufe – wie bei FM:** Der `PlayerGenerator` staffelt Fähigkeit (CA) und Potenzial (PA) nach Ligastufe *und* Ruf des Vereins. Ein Landesligist spielt mit Spielern um 20 Gesamtstärke, ein Bundesliga-Spitzenklub um 80. Zwischen benachbarten Stufen bleibt eine Überschneidung: Der Zweitligameister kann stärker sein als der Bundesliga-Absteiger.
+- **Spielerstärke nach Ligastufe:** Der `PlayerGenerator` staffelt Fähigkeit (CA) und Potenzial (PA) nach Ligastufe *und* Ruf des Vereins. Ein Landesligist spielt mit Spielern um 20 Gesamtstärke, ein Bundesliga-Spitzenklub um 80. Zwischen benachbarten Stufen bleibt eine Überschneidung: Der Zweitligameister kann stärker sein als der Bundesliga-Absteiger.
 
 | Ligastufe | schwacher Klub | Mittelfeld | Spitzenklub |
 |---|---|---|---|
@@ -418,7 +449,7 @@ untitled/
 │   │   ├── liveMatchDirector.js# Echtzeit-Regie der 2D-Simulation: Highlights, Ballführung, Laufwege
 │   │   ├── matchFlowEngine.js  # Ballbesitz-Mikrosimulation: Druck, Passwege, Dribblings, Zweikämpfe
 │   │   ├── positionEngine.js   # Positionsprofile, Eignungsmodell, Zonen- & Formationserkennung
-│   │   ├── tacticsEngine.js    # Taktik nach FM26: Formen mit/gegen Ball, Rollen, Anweisungen, Vorlagen, Verbindungen
+│   │   ├── tacticsEngine.js    # Taktik: Formen mit/gegen Ball, Rollen, Anweisungen, Vorlagen, Verbindungen
 │   │   ├── seasonEngine.js     # Spieltagsfortschritt & Saisonabschluss
 │   │   ├── competitionEngine.js# Ligen, Pokalrunden, Europapokal & Auf-/Abstieg
 │   │   ├── worldGenerator.js   # Baut die Welt: 218 Vereine in zwölf Ligen samt Spielplänen
@@ -428,6 +459,9 @@ untitled/
 │   │   ├── negotiationEngine.js# Mehrtägige Verhandlungen mit Vereinen und Beratern
 │   │   ├── managerEngine.js    # Kabinenansprachen, Pressekonferenzen & Aufgabenliste
 │   │   ├── matchplanEngine.js  # Taktikbesprechung: Matchplan für ein Spiel
+│   │   ├── playerTalkEngine.js # Gespräche unter vier Augen, Versprechen, Wechselwünsche
+│   │   ├── developmentPlanEngine.js # Schwerpunkt, Umschulung, Mentor, Spielpraxis
+│   │   ├── loanEngine.js       # Verleihen, Leihmarkt, Gehaltsanteile, Rückkehr
 │   │   ├── trainingEngine.js   # Tägliche Belastung, Ermüdung, Risiko & Entwicklung
 │   │   ├── financeEngine.js    # Spieltagseinnahmen, Gehälter & Journal
 │   │   ├── boardEngine.js      # Vorstandszufriedenheit & Saisonziele
@@ -435,7 +469,7 @@ untitled/
 │   │   ├── aiManagerEngine.js  # KI-Aufstellungen & KI-Transferangebote
 │   │   ├── scoutingEngine.js   # Scoutaufträge & Spielerberichte
 │   │   ├── youthEngine.js      # Jugendförderung & Akademieausbau
-│   │   ├── contractEngine.js   # Vertragsforderungen & Verlängerungen
+│   │   ├── contractEngine.js   # Vertragsforderungen, Verlängerungen & Ausstiegsklauseln
 │   │   ├── calendarEngine.js   # Saisonkalender & dynamischer Tagesablauf
 │   │   └── opponentAnalysisEngine.js # Taktische Gegneranalyse
 │   └── ui/

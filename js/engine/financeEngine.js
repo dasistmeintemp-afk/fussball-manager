@@ -410,7 +410,13 @@ const FinanceEngine = {
         const kadergroesse = new Map();
         (state.players || []).forEach(p => {
             if (!p || !p.clubId) return;
-            lohnsumme.set(p.clubId, (lohnsumme.get(p.clubId) || 0) + (p.wage || 10000));
+            // Ein Leihspieler kostet beide Vereine - nach vereinbartem Anteil
+            const anteil = p.leihe ? Math.max(0, Math.min(1, p.leihe.lohnAnteil ?? 1)) : 1;
+            lohnsumme.set(p.clubId, (lohnsumme.get(p.clubId) || 0) + (p.wage || 10000) * anteil);
+            if (p.leihe && anteil < 1) {
+                const stamm = p.leihe.stammvereinId;
+                lohnsumme.set(stamm, (lohnsumme.get(stamm) || 0) + (p.wage || 10000) * (1 - anteil));
+            }
             kadergroesse.set(p.clubId, (kadergroesse.get(p.clubId) || 0) + 1);
         });
 
@@ -530,7 +536,11 @@ const FinanceEngine = {
         if (!club) return null;
 
         const clubPlayers = state.players.filter(p => p.clubId === clubId);
-        const weeklyWages = clubPlayers.reduce((sum, p) => sum + (p.wage || 0), 0);
+        // Leihspieler zählen anteilig - beim Leihverein und beim Stammverein
+        const anteil = (p) => p.leihe ? Math.max(0, Math.min(1, p.leihe.lohnAnteil ?? 1)) : 1;
+        const weeklyWages = clubPlayers.reduce((sum, p) => sum + (p.wage || 0) * anteil(p), 0)
+            + state.players.filter(p => p.leihe && p.leihe.stammvereinId === clubId)
+                .reduce((sum, p) => sum + (p.wage || 0) * (1 - anteil(p)), 0);
         const sponsorPerWeek = this.sponsorPerMatchday(club);
         const estTicketPerMatch = Math.round((club.stadiumCapacity || club.capacity || 30000) * 0.85 * (club.ticketPrice || 35));
 

@@ -826,7 +826,8 @@ class LiveMatchDirector {
             timeScale: options.timeScale !== undefined ? options.timeScale : 0.05,
             freeze: options.freeze !== false,
             refereeTarget: options.refereeTarget || null,
-            card: options.card || null
+            card: options.card || null,
+            kartenSpieler: options.kartenSpieler || null
         };
 
         this.match.drama = { kind, card: this.drama.card };
@@ -843,6 +844,7 @@ class LiveMatchDirector {
         this.match.drama = null;
         this.match.motionFreeze = false;
         this.match.refereeCard = null;
+        this.match.kartenSpieler = null;
         return false;
     }
 
@@ -875,6 +877,7 @@ class LiveMatchDirector {
 
         this.match.referee = ref;
         this.match.refereeCard = this.drama ? this.drama.card : null;
+        this.match.kartenSpieler = this.drama ? this.drama.kartenSpieler : null;
     }
 
     advanceMatchSeconds(seconds) {
@@ -2109,11 +2112,12 @@ class LiveMatchDirector {
             this.startDrama("card", {
                 duration: ev.isSecondYellow ? 2.4 : 1.6,
                 card: ev.isSecondYellow ? "second_yellow" : "yellow",
-                refereeTarget: tatort
+                refereeTarget: tatort,
+                kartenSpieler: ev.playerId || null
             });
         } else if (ev.type === "red_card") {
             this.showBanner("🟥 ROTE KARTE", `${ev.playerName || "Spieler"} · ${club}`, "rgba(127, 29, 29, 0.94)");
-            this.startDrama("card", { duration: 2.8, card: "red", refereeTarget: tatort });
+            this.startDrama("card", { duration: 2.8, card: "red", refereeTarget: tatort, kartenSpieler: ev.playerId || null });
         } else if (ev.type === "substitution") {
             this.showBanner("🔄 WECHSEL", `${ev.playerInName || "?"} für ${ev.playerOutName || "?"} · ${club}`, "rgba(6, 78, 59, 0.94)");
             this.startDrama("substitution", { duration: 1.3, timeScale: 0.1 });
@@ -5929,8 +5933,18 @@ class LiveMatchDirector {
         }
 
         const distToGoal = Math.abs(ball.x - goalX);
-        const threat = Math.max(0, 1 - distToGoal / 45);
-        let vor = 2.5 + threat * 6;
+        // Kommt der Gegner, geht der Torwart zurück auf die Linie und stellt
+        // sich zwischen Ball und Tormitte - liegt der Ball zentral vor dem
+        // Strafraum, ein, zwei Schritte heraus, um den Winkel zu verkürzen.
+        // Ist das Spiel weit weg, rückt er an den Fünfer heraus, um Bälle
+        // hinter die Kette abzulaufen. Vorher war es umgekehrt: Je näher der
+        // Gegner kam, desto weiter verließ er die Linie (gemessen im Mittel
+        // sechs Einheiten, bis zu elf), und seitlich lief er dem Ball weit
+        // über den Pfosten hinaus nach.
+        const zentral = Math.max(0, 1 - Math.abs(ball.y - 50) / 35);
+        const linie = 1.2 + 1.8 * zentral * Math.min(1, distToGoal / 18);
+        const weit = Math.max(0, Math.min(1, (distToGoal - 30) / 35));
+        let vor = linie + weit * (6.5 - linie);
 
         // Die Rolle des Torwarts: Der mitspielende rueckt im eigenen Aufbau
         // heraus, der Libero steht hinter einer hohen Kette weit vor dem Tor,
@@ -5941,14 +5955,20 @@ class LiveMatchDirector {
             const aufbau = Math.max(0, 1 - distToGoal / 42);
             vor += mitR.aufbauVor * (mitR.aufbauVor > 0 ? aufbau : 1);
         } else if (!eigenerBall && gegenR.vor) {
-            const weit = Math.max(0, Math.min(1, (distToGoal - 25) / 40));
-            vor += gegenR.vor * (gegenR.vor > 0 ? weit : 1);
+            const fern = Math.max(0, Math.min(1, (distToGoal - 25) / 40));
+            vor += gegenR.vor * (gegenR.vor > 0 ? fern : 1);
         }
+        vor = Math.max(1, vor);
 
+        // Seitlich auf der Linie zwischen Ball und Tormitte - und nie über
+        // den Pfosten hinaus (das Tor reicht 5,4 Einheiten zu jeder Seite),
+        // solange er nahe am Tor steht
+        const seitlich = (ball.y - 50) * (vor / Math.max(vor + 1, distToGoal));
+        const grenze = 4.6 + Math.max(0, vor - 3) * 0.8;
         return {
-            x: goalX + dir * Math.max(1, vor),
-            y: 50 + (ball.y - 50) * (0.3 + threat * 0.3),
-            urgency: threat > 0.6 ? 1.5 : 1
+            x: goalX + dir * vor,
+            y: 50 + Math.max(-grenze, Math.min(grenze, seitlich)),
+            urgency: distToGoal < 30 ? 1.5 : 1
         };
     }
 

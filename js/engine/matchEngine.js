@@ -2537,6 +2537,18 @@ class MatchEngine {
         match.summaryText = summaryText;
         match.playerRatings = playerRatings;
         match.manOfTheMatch = motm;
+
+        // Spielpraxis: wie viel der möglichen Minuten einer zuletzt gespielt
+        // hat - ein gleitender Wert für jeden im Kader beider Vereine. Junge
+        // Spieler entwickeln sich mit Einsätzen schneller (TrainingEngine);
+        // das macht auch eine Leihe sinnvoll.
+        const minutenJe = new Map(playerRatings.map(r => [String(r.playerId), r.minutes || 0]));
+        [homeClub, awayClub].forEach(c => (c.playerIds || []).forEach(id => {
+            const p = MatchEngine.findPlayer(allPlayers, id);
+            if (!p) return;
+            const anteil = Math.min(1, (minutenJe.get(String(id)) || 0) / 90);
+            p.spielpraxis = Math.round(((p.spielpraxis ?? 0.5) * 0.82 + anteil * 0.18) * 1000) / 1000;
+        }));
         match.injuries = matchInjuries;
         match.suspensions = matchSuspensions;
 
@@ -2554,6 +2566,23 @@ class MatchEngine {
             motm: motm ? motm.name : "Ausgeglichen",
             xG: [parseFloat(homeXg.toFixed(2)), parseFloat(awayXg.toFixed(2))]
         };
+
+        // Für die Spielanalyse im Bericht: jeder Abschluss als kompakte Zeile
+        // [Minute, Team (0 Heim/1 Gast), x, y, xG in Prozent, Ausgang
+        // (0 vorbei, 1 gehalten, 2 Tor, 3 geblockt), Elfmeter, Schütze].
+        // Die Koordinaten zeigen immer auf das Tor bei x = 100.
+        match.schuesse = [];
+        timeline.forEach(ev => {
+            if (!["goal", "save", "shot_miss"].includes(ev.type) || !ev.start) return;
+            const schuetzenTeam = ev.type === "save" ? (ev.team === "home" ? "away" : "home") : ev.team;
+            let x = ev.start.x, y = ev.start.y;
+            if (x < 50) { x = 100 - x; y = 100 - y; }
+            const name = String(ev.playerName || ev.shooterName || "").split(" ").slice(-1)[0];
+            const ausgang = ev.type === "goal" ? 2 : (ev.type === "save" ? 1 : (ev.outcome === "blocked" ? 3 : 0));
+            match.schuesse.push([ev.minute || 0, schuetzenTeam === "home" ? 0 : 1,
+                Math.round(x * 10) / 10, Math.round(y * 10) / 10,
+                Math.round((typeof ev.xG === "number" ? ev.xG : 0.1) * 100), ausgang, ev.isPenalty ? 1 : 0, name]);
+        });
 
         // Die Timeline hat ihren Zweck erfüllt: alle Zähler stecken jetzt in
         // stats, events und playerRatings. Behalten würde sie rund 22 KB je
@@ -2585,6 +2614,7 @@ class MatchEngine {
         delete match.manOfTheMatch;
         delete match.stats;
         delete match.summaryText;
+        delete match.schuesse;
         match.events = [];
 
         return match;

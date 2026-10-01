@@ -187,9 +187,11 @@ class TransferEngine {
     static executeTransfer(state, playerId, buyerClubId, fee, wage, contractYears) {
         const player = state.players.find(p => p.id === playerId);
         const buyerClub = state.clubs.find(c => c.id === buyerClubId);
-        const sellerClub = state.clubs.find(c => c.id === player.clubId);
-
         if (!player || !buyerClub) return false;
+        // Ein verliehener Spieler gehört seinem Stammverein - verkauft wird
+        // er erst, wenn er zurück ist
+        if (player.leihe) return false;
+        const sellerClub = state.clubs.find(c => c.id === player.clubId);
 
         // Finanzen verbuchen - inklusive Eintrag im Buchungsjournal, damit
         // Kontostand und Journal auch nach Transfers übereinstimmen
@@ -201,11 +203,38 @@ class TransferEngine {
             financeEngine.recordTransaction(state, buyerClub.id, "transfer_out", -fee, `Ablöse für ${player.name}`);
         }
 
+        // Weiterverkaufsbeteiligung: Ein früherer Verein bekommt seinen Anteil
+        // an dieser Ablöse - der Verkäufer entsprechend weniger
+        let beteiligung = 0;
+        const wv = player.weiterverkauf;
+        if (wv && fee > 0 && sellerClub && wv.clubId !== sellerClub.id) {
+            const frueher = state.clubs.find(c => c.id === wv.clubId);
+            if (frueher) {
+                beteiligung = Math.round(fee * wv.prozent / 100);
+                frueher.balance = (frueher.balance || 0) + beteiligung;
+                frueher.transferBudget = (frueher.transferBudget || 0) + Math.round(beteiligung * 0.85);
+                if (financeEngine) financeEngine.recordTransaction(state, frueher.id, "transfer_in", beteiligung, `Weiterverkaufsbeteiligung ${player.name}`);
+                if (frueher.id === state.userClubId && Array.isArray(state.inbox)) {
+                    state.inbox.unshift({
+                        id: Date.now() + 7,
+                        matchday: state.currentMatchday,
+                        date: `Spieltag ${state.currentMatchday}`,
+                        sender: "Transferabteilung",
+                        subject: `Weiterverkauf: ${player.name}`,
+                        body: `${player.name} wechselt von ${sellerClub.name} zu ${buyerClub.name}. Aus der vereinbarten Beteiligung (${wv.prozent} %) erhalten wir ${_formatTransferMoney(beteiligung)}.`,
+                        read: false,
+                        type: "transfer"
+                    });
+                }
+            }
+        }
+        if (fee > 0 && sellerClub) delete player.weiterverkauf;
+
         if (sellerClub) {
-            sellerClub.balance += fee;
-            sellerClub.transferBudget += Math.round(fee * 0.85); // 85% reinvestierbar
+            sellerClub.balance += fee - beteiligung;
+            sellerClub.transferBudget += Math.round((fee - beteiligung) * 0.85); // 85% reinvestierbar
             if (financeEngine && fee !== 0) {
-                financeEngine.recordTransaction(state, sellerClub.id, "transfer_in", fee, `Verkauf von ${player.name}`);
+                financeEngine.recordTransaction(state, sellerClub.id, "transfer_in", fee - beteiligung, `Verkauf von ${player.name}`);
             }
             // Aus Kader des alten Vereins entfernen
             sellerClub.playerIds = sellerClub.playerIds.filter(id => id !== player.id);
@@ -421,6 +450,7 @@ class TransferEngine {
         for (const p of (markt.nachPosition.get(bedarf.pos) || [])) {
             if (p.clubId === club.id) continue;
             if (p.clubId === state.userClubId) continue;
+            if (p.leihe) continue;
             if ((p.injuredWeeks || 0) > 0) continue;
             if ((p.overall || 0) <= bedarf.messlatte) continue;
 
@@ -531,12 +561,22 @@ class TransferEngine {
     }
 
     /** Ein Angebot annehmen: Der Spieler wechselt zu der vereinbarten Ablöse */
-    static nimmAngebotAn(state, offerId) {
+    /**
+     * Ein Angebot annehmen. Mit weiterverkauf (Prozent) behält der Verein
+     * einen Anteil an einem späteren Weiterverkauf - dafür zahlt der Käufer
+     * jetzt die Hälfte dieses Prozentsatzes weniger.
+     */
+    static nimmAngebotAn(state, offerId, { weiterverkauf = 0 } = {}) {
         const offer = (state?.transferMarket?.offers || []).find(o => String(o.id) === String(offerId));
         if (!offer || offer.status !== "pending") return { ok: false, grund: "Das Angebot liegt nicht mehr vor." };
         const buyerId = offer.fromClubId || offer.buyerClubId;
+        const prozent = [0, 10, 20].includes(Number(weiterverkauf)) ? Number(weiterverkauf) : 0;
+        if (prozent) offer.fee = Math.round(offer.fee * (1 - prozent / 200));
+        const player = state.players.find(p => p.id === offer.playerId);
+        const verkaeuferId = player?.clubId;
         const ok = this.executeTransfer(state, offer.playerId, buyerId, offer.fee, 50000, 3);
         if (ok === false) return { ok: false, grund: "Der Wechsel ist gescheitert." };
+        if (prozent && player) player.weiterverkauf = { clubId: verkaeuferId, prozent };
         offer.status = "accepted";
         return { ok: true, offer };
     }
@@ -610,6 +650,92 @@ class TransferEngine {
         return verfallen;
     }
 
+    // --------------------------------------------------- Vertragsklauseln
+
+    /**
+     * Die Ausstiegsklausel eines Spielers - oder null.
+     *
+     * Was im Vertrag steht (player.ausstiegsklausel; 0 heißt: keine), gilt.
+     * Für Spieler fremder Vereine, deren Verträge nie verhandelt wurden,
+     * ergibt sich die Klausel fest aus ihrer ID: gut jeder Fünfte hat eine,
+     * zwischen dem 1,8- und 3,3-fachen Marktwert.
+     */
+    static ausstiegsklausel(state, player) {
+        if (!player) return null;
+        if (typeof player.ausstiegsklausel === "number") return player.ausstiegsklausel > 0 ? player.ausstiegsklausel : null;
+        if (!player.clubId || player.clubId === state?.userClubId) return null;
+        let h = 2166136261;
+        String(player.id).split("").forEach(ch => { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; });
+        h = (h ^ (h >>> 13)) >>> 0;
+        if (h % 100 >= 22) return null;
+        const faktor = 1.8 + ((h >>> 8) % 7) * 0.25;
+        return Math.max(100000, Math.round((player.value || 0) * faktor / 100000) * 100000);
+    }
+
+    /**
+     * Die Ausstiegsklausel eines fremden Spielers ziehen: Sein Verein kann
+     * nicht ablehnen - der Spieler aber schon, wenn der Schritt für ihn zu
+     * klein ist.
+     */
+    static zieheAusstiegsklausel(state, playerId) {
+        const player = state.players.find(p => String(p.id) === String(playerId));
+        const userClub = state.clubs.find(c => c.id === state.userClubId);
+        if (!player || !userClub) return { success: false, error: "Unbekannter Spieler." };
+        if (player.clubId === userClub.id) return { success: false, error: "Er spielt schon für Sie." };
+        if (player.leihe) return { success: false, error: "Er ist gerade verliehen." };
+        const klausel = this.ausstiegsklausel(state, player);
+        if (!klausel) return { success: false, error: "Sein Vertrag hat keine Ausstiegsklausel." };
+        if ((userClub.balance || 0) < klausel) return { success: false, error: "Für die Klausel reicht das Geld nicht." };
+        const verein = state.clubs.find(c => c.id === player.clubId);
+        if (verein && (verein.reputation || 60) > (userClub.reputation || 60) + 15) {
+            return { success: false, error: `${player.name} will nicht zu Ihnen - der Schritt ist ihm zu klein.` };
+        }
+        const lohn = Math.round((player.wage || 10000) * 1.15);
+        const laufzeit = (player.age || 25) <= 26 ? 4 : 3;
+        const ok = this.executeTransfer(state, player.id, userClub.id, klausel, lohn, laufzeit);
+        if (!ok) return { success: false, error: "Der Wechsel ist gescheitert." };
+        // Der neue Vertrag hat keine Klausel mehr
+        player.ausstiegsklausel = 0;
+        return { success: true, klausel, lohn, laufzeit };
+    }
+
+    /**
+     * KI-Vereine ziehen die Klausel eines Spielers des Nutzers: Der Nutzer
+     * kann nicht ablehnen. Gezogen wird, wenn ein Verein es sich leisten
+     * kann, kein deutlich kleinerer ist und der Spieler ihn verstärkt.
+     */
+    static pruefeAusstiegsklauseln(state, zufall = Math.random) {
+        const userClub = state.clubs.find(c => c.id === state.userClubId);
+        if (!userClub) return [];
+        const gezogen = [];
+        const kader = state.players.filter(p => p.clubId === userClub.id && !p.leihe && (p.ausstiegsklausel || 0) > 0);
+        kader.forEach(player => {
+            if (zufall() >= 0.08) return;
+            const klausel = player.ausstiegsklausel;
+            const kaeufer = state.clubs.filter(c => c.id !== userClub.id
+                && (c.transferBudget || 0) >= klausel
+                && (c.reputation || 60) >= (userClub.reputation || 60) - 5
+                && (player.overall || 0) >= this.kaderNiveau(state, c) + 2);
+            if (!kaeufer.length) return;
+            const kaeuferClub = kaeufer[Math.floor(zufall() * kaeufer.length)];
+            const lohn = Math.round((player.wage || 10000) * 1.25);
+            if (!this.executeTransfer(state, player.id, kaeuferClub.id, klausel, lohn, 4)) return;
+            player.ausstiegsklausel = 0;
+            gezogen.push({ player, club: kaeuferClub, klausel });
+            state.inbox.unshift({
+                id: Date.now() + Math.floor(zufall() * 1000),
+                matchday: state.currentMatchday,
+                date: `Spieltag ${state.currentMatchday}`,
+                sender: kaeuferClub.name,
+                subject: `Ausstiegsklausel gezogen: ${player.name}`,
+                body: `${kaeuferClub.name} hat die Ausstiegsklausel von ${player.name} gezogen und ${_formatTransferMoney(klausel)} überwiesen. Der Wechsel ist vollzogen - ablehnen ließ er sich nicht.`,
+                read: false,
+                type: "transfer"
+            });
+        });
+        return gezogen;
+    }
+
     /**
      * Erzeugt gelegentliche Angebote von KI-Vereinen für Spieler des Spielers
      */
@@ -617,16 +743,30 @@ class TransferEngine {
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
 
-        // 20% Chance pro Spieltag auf ein KI-Angebot für einen Spieler des Managers
-        if (Math.random() < 0.25 && userClub.playerIds.length > 15) {
-            const randomPlayerId = userClub.playerIds[Math.floor(Math.random() * userClub.playerIds.length)];
-            const player = state.players.find(p => p.id === randomPlayerId);
+        // Wer eine Ausstiegsklausel hat, kann einfach gekauft werden
+        this.pruefeAusstiegsklauseln(state);
 
-            if (player && player.overall >= 74) {
+        // Wer auf der Transferliste steht oder wechseln will, spricht sich
+        // herum: Für ihn kommen öfter Angebote - und etwas niedrigere, weil
+        // jeder weiß, dass er weg will.
+        const gelistet = userClub.playerIds
+            .map(id => state.players.find(p => p.id === id))
+            .filter(p => p && (p.transferListed || p.wechselwunsch) && !p.leihe);
+        const chance = gelistet.length ? 0.45 : 0.25;
+
+        // 20% Chance pro Spieltag auf ein KI-Angebot für einen Spieler des Managers
+        if (Math.random() < chance && userClub.playerIds.length > 15) {
+            const randomPlayerId = userClub.playerIds[Math.floor(Math.random() * userClub.playerIds.length)];
+            const player = gelistet.length && Math.random() < 0.65
+                ? gelistet[Math.floor(Math.random() * gelistet.length)]
+                : state.players.find(p => p.id === randomPlayerId);
+            const verkaeuflich = player && gelistet.includes(player);
+
+            if (player && !player.leihe && (player.overall >= 74 || verkaeuflich)) {
                 const aiClubs = state.clubs.filter(c => c.id !== userClub.id && c.transferBudget >= player.value * 0.9);
                 if (aiClubs.length > 0) {
                     const interestedClub = aiClubs[Math.floor(Math.random() * aiClubs.length)];
-                    const offerFee = Math.round(player.value * (0.95 + Math.random() * 0.3));
+                    const offerFee = Math.round(player.value * (verkaeuflich ? 0.8 + Math.random() * 0.25 : 0.95 + Math.random() * 0.3));
                     // Wie weit der Verein höchstens gehen würde - verrät er nicht
                     const maxFee = Math.min(interestedClub.transferBudget || offerFee,
                         Math.round(offerFee * (1.06 + Math.random() * 0.24)));

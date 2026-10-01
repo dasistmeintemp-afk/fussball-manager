@@ -1134,6 +1134,13 @@ class ManagerEngine {
             });
         }
 
+        // 5b. Gespräche: Wer wartet auf eine Antwort, wer will weg, was ist
+        // versprochen? Ein Klick öffnet die Spielerakte.
+        const gespraeche = _mgrResolve("PlayerTalkEngine", "./playerTalkEngine.js");
+        if (gespraeche && typeof gespraeche.schreibtisch === "function") {
+            gespraeche.schreibtisch(state).forEach(item => items.push(item));
+        }
+
         // 6. Ungelesene Post
         const ungelesen = (state.inbox || []).filter(m => !m.read).length;
         if (ungelesen > 0) {

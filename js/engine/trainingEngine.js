@@ -12,6 +12,16 @@ function _facStufe(club, key, state) {
     return fe.stufeGerundet(club, key, state?.seasonYear || 1);
 }
 
+/** Der Entwicklungsplan (Browser und Node) */
+function _devPlanEngine() {
+    if (typeof DevelopmentPlanEngine !== "undefined" && DevelopmentPlanEngine) return DevelopmentPlanEngine;
+    if (typeof window !== "undefined" && window.DevelopmentPlanEngine) return window.DevelopmentPlanEngine;
+    if (typeof require !== "undefined") {
+        try { return require("./developmentPlanEngine.js").DevelopmentPlanEngine; } catch (e) { return null; }
+    }
+    return null;
+}
+
 class TrainingEngine {
     /** Intensitätsstufen: Belastung, Entwicklung und Risiko hängen daran */
     static INTENSITY_PROFILE = {
@@ -209,6 +219,7 @@ class TrainingEngine {
         const kaderIds = new Set(club.playerIds);
         const kader = state.players.filter(p => kaderIds.has(p.id));
         const verletzungen = [];
+        const planMeldungen = [];
         let einheiten = 0;
 
         kader.forEach(player => {
@@ -245,7 +256,15 @@ class TrainingEngine {
                 einheiten++;
                 player.trainingLog.sessions++;
                 const vorher = player.overall;
-                this.developPlayer(player, focus, intensity, trainingLevel, profil.gain * 0.22 * stabFaktor);
+                // Der Entwicklungsplan: Spielpraxis, Ansporn und Mentor
+                // beschleunigen oder bremsen das Wachstum
+                const plan = _devPlanEngine();
+                const planFaktor = plan ? plan.entwicklungsFaktor(state, player) : 1;
+                this.developPlayer(player, focus, intensity, trainingLevel, profil.gain * 0.22 * stabFaktor * planFaktor);
+                if (plan) {
+                    plan.nachEinheit(state, player, { gewachsen: player.overall > vorher })
+                        .forEach(m => planMeldungen.push(m));
+                }
                 player.trainingLog.gain += (player.overall - vorher);
                 player.trainingLog.lastGain = player.overall - vorher;
 
@@ -285,7 +304,7 @@ class TrainingEngine {
         state.trainingReport = this.buildTrainingReport(state, club.id);
 
         return Object.assign(
-            { sessions: einheiten, injuries: verletzungen },
+            { sessions: einheiten, injuries: verletzungen, plan: planMeldungen },
             this.beobachtungenDesTages(kader, dayType, focus)
         );
     }
@@ -458,8 +477,10 @@ class TrainingEngine {
                     player.morale = Math.max(40, player.morale - 1);
                 }
 
-                // 3. Attributs- und Stärkeentwicklung (C2: trainingGround verstärkt Entwicklung)
-                TrainingEngine.developPlayer(player, focus, intensity, trainingLvl);
+                // 3. Attributs- und Stärkeentwicklung (C2: trainingGround verstärkt Entwicklung).
+                // Wer spielt, wächst schneller - auch ein verliehenes Talent
+                const plan = _devPlanEngine();
+                TrainingEngine.developPlayer(player, focus, intensity, trainingLvl, plan ? plan.praxisFaktor(player) : 1);
 
                 // 4. Verletzungsrisiko beim Training - dieselbe Rechnung wie
                 //    beim eigenen Verein. Die alte Pauschale kannte weder

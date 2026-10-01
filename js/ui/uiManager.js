@@ -2130,8 +2130,8 @@ class UIManager {
         }
 
         list.innerHTML = items.map(item => `
-            <button class="attention-item" data-tab="${this.escapeHtml(item.tab)}">
-                <span class="attention-icon ton-${({ "🚑": "bad", "⚠️": "bad", "🩺": "bad", "🥵": "warn", "😞": "warn", "💰": "warn", "🤝": "ok" })[item.icon] || "info"}">${this.symbolHtml(item.icon)}</span>
+            <button class="attention-item" data-tab="${this.escapeHtml(item.tab)}"${item.playerId !== undefined ? ` data-player="${this.escapeHtml(String(item.playerId))}"` : ""}>
+                <span class="attention-icon ton-${({ "🚑": "bad", "⚠️": "bad", "🩺": "bad", "📢": "bad", "🥵": "warn", "😞": "warn", "💰": "warn", "💬": "warn", "🤝": "ok" })[item.icon] || "info"}">${this.symbolHtml(item.icon)}</span>
                 <span class="attention-text">
                     <strong>${this.escapeHtml(item.title)}</strong>
                     <span>${this.escapeHtml(item.detail)}</span>
@@ -2141,7 +2141,14 @@ class UIManager {
         `).join("");
 
         list.querySelectorAll(".attention-item").forEach(btn => {
-            btn.addEventListener("click", () => this.switchTab(btn.dataset.tab));
+            btn.addEventListener("click", () => {
+                // Ein Gespräch führt direkt in die Akte des Spielers
+                if (btn.dataset.player !== undefined) {
+                    const ziel = state.players.find(p => String(p.id) === btn.dataset.player);
+                    if (ziel) return this.showPlayerDetailsModal(ziel.id);
+                }
+                this.switchTab(btn.dataset.tab);
+            });
         });
     }
 
@@ -2797,6 +2804,22 @@ class UIManager {
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
 
+        // Wer gerade verliehen ist, steht nicht im Kader - aber hier darunter
+        const verliehenBox = document.getElementById("squadLoanedOut");
+        const leihEngine = this.getLoanEngine();
+        if (verliehenBox && leihEngine) {
+            const weg = leihEngine.verlieheneVon(state, userClub.id);
+            verliehenBox.style.display = weg.length ? "" : "none";
+            verliehenBox.innerHTML = weg.length
+                ? `<strong>Verliehen:</strong> ${weg.map(p => `<a href="#" data-verliehen="${this.escapeHtml(String(p.id))}">${this.escapeHtml(p.name)}</a> (${this.escapeHtml(state.clubs.find(c => c.id === p.leihe.leihvereinId)?.name || "?")})`).join(", ")}`
+                : "";
+            verliehenBox.querySelectorAll("[data-verliehen]").forEach(a => a.addEventListener("click", (e) => {
+                e.preventDefault();
+                const ziel = state.players.find(p => String(p.id) === a.dataset.verliehen);
+                if (ziel) this.showPlayerDetailsModal(ziel.id);
+            }));
+        }
+
         // Kennzahlen des ganzen Kaders - unabhaengig vom Filter
         const kader = state.players.filter(p => userClub.playerIds.includes(p.id));
         if (kader.length) {
@@ -2865,7 +2888,7 @@ class UIManager {
             return `
                 <tr class="row-clickable" data-player-id="${p.id}" title="Details zu ${this.escapeHtml(p.name)} öffnen">
                     <td class="sq-status">${statusBadge}</td>
-                    <td class="sq-name"><strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}<span class="squad-role-hint">${this.escapeHtml(p.squadRole || "Kader")} · ${p.age} J.</span></td>
+                    <td class="sq-name"><strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}<span class="squad-role-hint">${p.leihe ? "Leihspieler" : this.escapeHtml(p.squadRole || "Kader")} · ${p.age} J.</span></td>
                     <td class="sq-pos nowrap">
                         <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>${secondaryHtml}
                     </td>
@@ -5085,6 +5108,139 @@ class UIManager {
         });
     }
 
+    getLoanEngine() {
+        if (typeof LoanEngine !== "undefined" && LoanEngine) return LoanEngine;
+        if (typeof window !== "undefined" && window.LoanEngine) return window.LoanEngine;
+        return null;
+    }
+
+    /** Unterreiter Leihen: eigene Leihen und der Leihmarkt */
+    renderLeihen() {
+        const engine = this.getLoanEngine();
+        const state = this.app.state;
+        const eigene = document.getElementById("loansOwnList");
+        const markt = document.getElementById("loanMarketBody");
+        if (!engine || !eigene || !markt) return;
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const club = (id) => state.clubs.find(c => c.id === id);
+
+        const verliehen = engine.verlieheneVon(state, state.userClubId);
+        const geliehen = engine.geliehenVon(state, state.userClubId);
+        const meta = document.getElementById("loansMeta");
+        if (meta) meta.textContent = `${verliehen.length} verliehen · ${geliehen.length} geliehen`;
+        const zeile = (p, text, knopf = "") => `
+            <div class="leih-zeile" data-player-id="${esc(p.id)}">
+                <div><strong>${esc(p.name)}</strong> <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${esc(p.pos)}</span> <span class="text-muted">${p.age} J.</span></div>
+                <div class="leih-text">${text}</div>
+                ${knopf}
+            </div>`;
+        eigene.innerHTML = (verliehen.length || geliehen.length) ? [
+            ...verliehen.map(p => {
+                const l = p.leihe;
+                const spiele = (p.stats?.matches || 0) - (l.startSpiele || 0);
+                const noten = (p.stats?.ratingSum || 0) - (l.startNoten || 0);
+                return zeile(p,
+                    `Verliehen an <strong>${esc(club(l.leihvereinId)?.name || "?")}</strong> (${esc(l.rolle)}) · ${spiele} Spiele${spiele ? `, Note ${(noten / spiele).toFixed(2).replace(".", ",")}` : ""} · Spielpraxis ${Math.round((p.spielpraxis ?? 0.5) * 100)} %`,
+                    `<button class="btn btn-sm btn-secondary" data-leihe-zurueck="${esc(p.id)}">Zurückholen</button>`);
+            }),
+            ...geliehen.map(p => {
+                const l = p.leihe;
+                return zeile(p, `Geliehen von <strong>${esc(club(l.stammvereinId)?.name || "?")}</strong> · Sie zahlen ${Math.round(l.lohnAnteil * 100)} % des Gehalts · erwartet: ${esc(l.rolle)}`);
+            })
+        ].join("") : `<div class="text-muted" style="font-size:13px;">Keine laufenden Leihen.</div>`;
+
+        const ratingEngine = this.getRatingEngine();
+        const liste = engine.leihmarkt(state, 30);
+        markt.innerHTML = liste.length ? liste.map(e => {
+            const p = state.players.find(q => String(q.id) === String(e.playerId));
+            const card = ratingEngine && p ? ratingEngine.calculateVisiblePlayerCard(p, Object.assign({ userClubId: state.userClubId, leagueDataCoverage: 85 }, this.starContext())) : null;
+            return `
+                <tr class="clickable-row" data-player-id="${esc(e.playerId)}">
+                    <td><strong>${esc(e.name)}</strong></td>
+                    <td>${esc(e.clubName)}</td>
+                    <td><span class="pos-tag pos-${this.getPosGroup(e.pos)}">${esc(e.pos)}</span></td>
+                    <td>${e.age}</td>
+                    <td class="nowrap">${card ? card.abilityStarsHtml : ""}</td>
+                    <td><span class="badge badge-info">${esc(e.rolle)}</span></td>
+                    <td>${Math.round(e.lohnAnteil * 100)} % von ${this.geldKurz(e.wage)}</td>
+                    <td>${e.gebuehr ? this.geldKurz(e.gebuehr) : "-"}</td>
+                    <td><button class="btn btn-sm btn-primary" data-ausleihen="${esc(e.playerId)}">Ausleihen</button></td>
+                </tr>`;
+        }).join("") : `<tr><td colspan="9" class="text-center text-muted">Gerade gibt kein Verein einen passenden Spieler ab.</td></tr>`;
+
+        const neuZeichnen = () => {
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.renderLeihen();
+            this.renderHeader?.();
+        };
+        eigene.querySelectorAll("[data-leihe-zurueck]").forEach(btn => btn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            const res = engine.zurueckholen(state, btn.dataset.leiheZurueck);
+            this.showToast(res.success ? "Er kehrt zurück." : res.error, res.success ? "success" : "error");
+            if (res.success) neuZeichnen();
+        }));
+        markt.querySelectorAll("[data-ausleihen]").forEach(btn => btn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            const res = engine.ausleihen(state, btn.dataset.ausleihen);
+            this.showToast(res.success ? `${res.eintrag.name} spielt bis zum Saisonende für Sie.` : res.error, res.success ? "success" : "error", 5000);
+            if (res.success) { this.playSound("goal"); neuZeichnen(); }
+        }));
+        [...eigene.querySelectorAll(".leih-zeile"), ...markt.querySelectorAll("tr[data-player-id]")].forEach(el => el.addEventListener("click", () => {
+            const ziel = state.players.find(p => String(p.id) === el.dataset.playerId);
+            if (ziel) this.showPlayerDetailsModal(ziel.id);
+        }));
+    }
+
+    /**
+     * Die Leihe in der Spielerakte: verleihen (eigener Spieler), Stand einer
+     * laufenden Leihe mit Zurückholen, Hinweis bei einem Leihspieler, oder
+     * Ausleihen, wenn sein Verein ihn abgibt.
+     */
+    leiheHtml(player, modus) {
+        const engine = this.getLoanEngine();
+        if (!engine) return "";
+        const state = this.app.state;
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const club = (id) => state.clubs.find(c => c.id === id);
+        const kopf = `<h4 class="gs-titel"><svg class="ico" aria-hidden="true"><use href="#i-transfer"/></svg> Leihe</h4>`;
+        if (modus === "verliehen") {
+            const l = player.leihe;
+            const spiele = (player.stats?.matches || 0) - (l.startSpiele || 0);
+            return `
+                <div class="dash-card mb-3 gs-karte">${kopf}
+                    <div class="gs-lage gs-info">Verliehen an <strong>${esc(club(l.leihvereinId)?.name || "?")}</strong> bis zum Saisonende (${esc(l.rolle)}, dort ${Math.round(l.lohnAnteil * 100)} % des Gehalts) · ${spiele} Spiele seit der Leihe · Spielpraxis ${Math.round((player.spielpraxis ?? 0.5) * 100)} %</div>
+                    <button class="btn btn-secondary" id="btnPdLeiheZurueck">Vorzeitig zurückholen</button>
+                </div>`;
+        }
+        if (modus === "geliehen") {
+            const l = player.leihe;
+            return `
+                <div class="dash-card mb-3 gs-karte">${kopf}
+                    <div class="gs-lage gs-info">Leihspieler von <strong>${esc(club(l.stammvereinId)?.name || "?")}</strong> bis zum Saisonende. Sie zahlen ${Math.round(l.lohnAnteil * 100)} % seines Gehalts; erwartet wird ein Einsatz als ${esc(l.rolle)}.</div>
+                </div>`;
+        }
+        if (modus === "eigener") {
+            const hindernis = engine.verleihHindernis(state, player);
+            return `
+                <div class="dash-card mb-3 gs-karte">${kopf}
+                    <div class="gs-sub">Ein Verein, bei dem er spielt, leiht ihn bis zum Saisonende aus und übernimmt einen Teil des Gehalts.</div>
+                    ${hindernis
+                        ? `<div class="gs-lage">${esc(hindernis)}</div>`
+                        : `<button class="btn btn-secondary" id="btnPdLeiheAnfragen">Interessenten anfragen</button><div id="pdLeiheAngebote" class="leih-angebote"></div>`}
+                </div>`;
+        }
+        if (modus === "markt") {
+            const e = engine.leihmarkt(state, 500).find(x => String(x.playerId) === String(player.id));
+            if (!e) return "";
+            return `
+                <div class="dash-card mb-3 gs-karte">${kopf}
+                    <div class="gs-lage gs-info">${esc(e.clubName)} gibt ihn ab: bis zum Saisonende, Sie übernehmen ${Math.round(e.lohnAnteil * 100)} % des Gehalts${e.gebuehr ? `, Leihgebühr ${this.geldKurz(e.gebuehr)}` : ""}. Erwartet wird ein Einsatz als ${esc(e.rolle)}.</div>
+                    <button class="btn btn-primary" id="btnPdAusleihen">Ausleihen</button>
+                </div>`;
+        }
+        return "";
+    }
+
     renderTransfers() {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
@@ -5433,6 +5589,49 @@ class UIManager {
     /**
      * Training rendern & Jugendakademie anzeigen
      */
+    /**
+     * Die individuellen Pläne im Trainings-Reiter: alle mit Plan, dazu die
+     * jungen Spieler mit ihrer Spielpraxis - wer nicht spielt, ist ein
+     * Kandidat für eine Leihe.
+     */
+    renderTrainingsPlaene() {
+        const body = document.getElementById("trainingPlaeneBody");
+        const engine = this.getDevelopmentPlanEngine();
+        if (!body || !engine) return;
+        const state = this.app.state;
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        if (!club) return;
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const ids = new Set(club.playerIds.map(String));
+        const kader = state.players.filter(p => ids.has(String(p.id)));
+        const zeilen = kader
+            .filter(p => p.trainingsfokus || p.umschulung || p.mentorId || (p.age || 30) <= 23)
+            .sort((a, b) => (a.age || 0) - (b.age || 0));
+        const meta = document.getElementById("trainingPlaeneMeta");
+        if (meta) meta.textContent = `${kader.filter(p => p.trainingsfokus || p.umschulung || p.mentorId).length} mit Plan`;
+        if (!zeilen.length) {
+            body.innerHTML = `<tr><td colspan="6" class="text-center text-muted">Noch keine individuellen Pläne.</td></tr>`;
+            return;
+        }
+        body.innerHTML = zeilen.map(p => {
+            const praxis = Math.round((typeof p.spielpraxis === "number" ? p.spielpraxis : 0.5) * 100);
+            const mentor = p.mentorId ? state.players.find(m => String(m.id) === String(p.mentorId)) : null;
+            return `
+                <tr class="clickable-row" data-player-id="${esc(p.id)}">
+                    <td><strong>${esc(p.name)}</strong> <span class="text-muted">${esc(p.pos)}</span></td>
+                    <td>${p.age}</td>
+                    <td><span class="${praxis < 30 && (p.age || 30) <= 23 ? "text-warning" : ""}">${praxis} %</span></td>
+                    <td>${p.trainingsfokus ? esc(engine.SCHWERPUNKTE[p.trainingsfokus]?.label) : "-"}</td>
+                    <td>${p.umschulung ? `${esc(p.umschulung.pos)} · ${engine.umschulungsStand(p)} %` : "-"}</td>
+                    <td>${mentor ? esc(mentor.name) : "-"}</td>
+                </tr>`;
+        }).join("");
+        body.querySelectorAll("tr[data-player-id]").forEach(tr => tr.addEventListener("click", () => {
+            const ziel = state.players.find(p => String(p.id) === tr.dataset.playerId);
+            if (ziel) this.showPlayerDetailsModal(ziel.id);
+        }));
+    }
+
     renderTraining() {
         const state = this.app.state;
         const currentFocus = state.trainingSettings?.focus || "allround";
@@ -5445,6 +5644,7 @@ class UIManager {
         if (intensityRadio) intensityRadio.checked = true;
 
         this.renderCoachingStaffCard();
+        this.renderTrainingsPlaene();
 
         // Jugendakademie rendern
         const userClub = state.clubs.find(c => c.id === state.userClubId);
@@ -5598,6 +5798,13 @@ class UIManager {
                     <div><span>Marktwert</span><strong>${wert ? this.geldKurz(wert) : "-"}</strong></div>
                     <div><span>Verhältnis</span><strong class="ak-quote ${quoteKlasse}">${quote !== null ? `${quote} %` : "-"}</strong></div>
                 </div>
+                <label class="ak-wv">Weiterverkaufsbeteiligung
+                    <select class="styled-select" data-wv-offer="${o.id}">
+                        <option value="0">keine</option>
+                        <option value="10">10 % (Ablöse −5 %)</option>
+                        <option value="20">20 % (Ablöse −10 %)</option>
+                    </select>
+                </label>
                 <div class="ak-knoepfe">
                     <button class="btn btn-sm btn-primary btn-accept-offer" data-offer-id="${o.id}">Annehmen</button>
                     <button class="btn btn-sm btn-secondary btn-more-offer" data-offer-id="${o.id}"${o.nachgebessert ? " disabled title=\"Der Verein hat schon nachgebessert\"" : ""}>Mehr fordern</button>
@@ -5609,7 +5816,8 @@ class UIManager {
     /** Angebot annehmen - der Spieler wechselt sofort */
     nimmAngebotAn(offerId) {
         const state = this.app.state;
-        const r = TransferEngine.nimmAngebotAn(state, offerId);
+        const wahl = document.querySelector(`[data-wv-offer="${offerId}"]`);
+        const r = TransferEngine.nimmAngebotAn(state, offerId, { weiterverkauf: parseInt(wahl?.value || "0", 10) });
         if (!r.ok) { this.showToast(r.grund || "Das Angebot liegt nicht mehr vor.", "error"); return false; }
         this.playSound("goal");
         this.showToast(`✅ ${r.offer.playerName} wechselt für ${this.geldKurz(r.offer.fee)} zu ${r.offer.fromClubName}.`, "success", 6000);
@@ -6648,7 +6856,8 @@ class UIManager {
         const id = ({
             "🚑": "i-medical", "🥵": "i-flame", "📄": "i-doc", "😞": "i-frown", "📬": "i-mail",
             "🏗️": "i-build", "⚠️": "i-alert", "🤝": "i-briefcase", "🧊": "i-leaf", "🔥": "i-flame",
-            "📣": "i-mic", "💢": "i-alert", "💰": "i-wallet", "🩺": "i-medical"
+            "📣": "i-mic", "💢": "i-alert", "💰": "i-wallet", "🩺": "i-medical",
+            "💬": "i-chat", "📢": "i-alert", "🔁": "i-transfer", "🎓": "i-user"
         })[emoji];
         return id
             ? `<svg class="ico" aria-hidden="true"><use href="#${id}"/></svg>`
@@ -7455,6 +7664,129 @@ class UIManager {
         });
     }
 
+    getPlayerTalkEngine() {
+        if (typeof PlayerTalkEngine !== "undefined" && PlayerTalkEngine) return PlayerTalkEngine;
+        if (typeof window !== "undefined" && window.PlayerTalkEngine) return window.PlayerTalkEngine;
+        return null;
+    }
+
+    /**
+     * Gespräch unter vier Augen: Was gerade ansteht (Wunsch, Versprechen,
+     * Wechselwunsch), die möglichen Gespräche und die letzte Antwort.
+     */
+    gespraechHtml(player) {
+        const engine = this.getPlayerTalkEngine();
+        if (!engine) return "";
+        const state = this.app.state;
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const optionen = engine.optionen(state, player);
+        const lage = [];
+        if (player.wechselwunsch) {
+            lage.push(player.wechselwunsch.akzeptiert
+                ? `<div class="gs-lage gs-warn">📢 Er will wechseln - Sie haben zugestimmt, er steht auf der Transferliste.</div>`
+                : `<div class="gs-lage gs-bad">📢 Er will den Verein verlassen: „${esc(player.wechselwunsch.grund)}“</div>`);
+        }
+        if (player.gespraechswunsch) {
+            lage.push(`<div class="gs-lage gs-warn">💬 Er hat um ein Gespräch gebeten - es geht um ${player.gespraechswunsch.grund === "spielzeit" ? "seine Spielzeit" : "seine Situation"}.</div>`);
+        }
+        if (player.versprechen) {
+            const v = player.versprechen;
+            lage.push(`<div class="gs-lage gs-info">🤝 Versprochen: ${v.einsaetze} von ${v.noetig} Einsätzen ab 60 Minuten · noch ${v.frist - v.spiele} Ligaspiele</div>`);
+        }
+        const form = engine.formLage(player);
+        const formText = { stark: "in starker Form", normal: "in ordentlicher Form", schwach: "außer Form" }[form];
+        const antwort = this._letzteAntwort && String(this._letzteAntwort.playerId) === String(player.id) ? this._letzteAntwort : null;
+        if (antwort) this._letzteAntwort = null;
+        return `
+            <div class="dash-card mb-3 gs-karte">
+                <h4 class="gs-titel"><svg class="ico" aria-hidden="true"><use href="#i-chat"/></svg> Gespräch unter vier Augen</h4>
+                <div class="gs-sub">Er ist ${formText} (Form ${(player.form ?? 7).toFixed(1).replace(".", ",")}) · Moral ${Math.round(player.morale ?? 75)} %${typeof player.vertrauen === "number" ? ` · Vertrauen ${Math.round(player.vertrauen)} %` : ""}</div>
+                ${lage.join("")}
+                ${antwort ? `<div class="gs-antwort gs-${antwort.stimmung}">„${esc(antwort.antwort)}“ <span>Moral ${antwort.moralVorher} → ${antwort.moralNachher} %</span></div>` : ""}
+                <div class="gs-optionen">
+                    ${optionen.map(o => `
+                        <button class="btn btn-secondary gs-option" data-gespraech="${esc(o.key)}" ${o.verfuegbar ? "" : "disabled"} title="${esc(o.verfuegbar ? o.text : o.grund)}">
+                            <strong>${esc(o.label)}</strong>
+                            <span>${esc(o.verfuegbar ? o.text : o.grund)}</span>
+                        </button>`).join("")}
+                </div>
+            </div>`;
+    }
+
+    getDevelopmentPlanEngine() {
+        if (typeof DevelopmentPlanEngine !== "undefined" && DevelopmentPlanEngine) return DevelopmentPlanEngine;
+        if (typeof window !== "undefined" && window.DevelopmentPlanEngine) return window.DevelopmentPlanEngine;
+        return null;
+    }
+
+    /**
+     * Der Entwicklungsplan in der Akte: Spielpraxis, eigener
+     * Trainingsschwerpunkt, Umschulung und Mentor (oder die Schützlinge).
+     */
+    entwicklungsplanHtml(player) {
+        const engine = this.getDevelopmentPlanEngine();
+        if (!engine) return "";
+        const state = this.app.state;
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const praxis = Math.round((typeof player.spielpraxis === "number" ? player.spielpraxis : 0.5) * 100);
+        const faktor = engine.praxisFaktor(player);
+        const praxisText = (player.age || 25) <= 28
+            ? `Entwicklungstempo durch Einsätze: ${faktor >= 1 ? "+" : "−"}${Math.abs(Math.round((faktor - 1) * 100))} %`
+            : "In seinem Alter zählt die Spielpraxis für die Entwicklung kaum noch.";
+        const fokusOptionen = engine.schwerpunkteFuer(player)
+            .map(sp => `<option value="${esc(sp.key)}" ${(player.trainingsfokus || "keiner") === sp.key ? "selected" : ""}>${esc(sp.label)}</option>`).join("");
+        const ziele = engine.umschulungsZiele(player);
+        const stand = engine.umschulungsStand(player);
+        const umschulung = player.pos === "TW" ? "" : `
+            <label class="ep-feld">
+                <span>Umschulung auf eine neue Position</span>
+                <select id="pdPlanUmschulung" class="styled-select">
+                    <option value="">Keine Umschulung</option>
+                    ${ziele.map(pos => `<option value="${esc(pos)}" ${player.umschulung?.pos === pos ? "selected" : ""}>${esc(pos)}</option>`).join("")}
+                </select>
+                ${player.umschulung ? `<div class="ep-balken"><span style="width:${stand}%"></span></div><small>${stand} % - jede Trainingseinheit bringt ihn weiter.</small>` : ""}
+            </label>`;
+        let mentorHtml = "";
+        if ((player.age || 30) <= engine.MENTEE_HOECHSTALTER) {
+            const kandidaten = engine.moeglicheMentoren(state, player);
+            const sterne = (w) => "★".repeat(Math.max(1, Math.round(w * 5)));
+            mentorHtml = `
+                <label class="ep-feld">
+                    <span>Mentor</span>
+                    <select id="pdPlanMentor" class="styled-select">
+                        <option value="">Kein Mentor</option>
+                        ${kandidaten.map(k => `<option value="${esc(k.player.id)}" ${String(player.mentorId) === String(k.player.id) ? "selected" : ""}>${esc(k.player.name)} (${k.player.age}) ${sterne(k.wert)}</option>`).join("")}
+                    </select>
+                    <small>Ein erfahrener Profi färbt auf ihn ab: Einstellung, Ehrgeiz, Nerven - mit etwas Glück auch eine seiner Eigenheiten.</small>
+                </label>`;
+        } else if ((player.age || 0) >= engine.MENTOR_MINDESTALTER) {
+            const schuetzlinge = engine.menteesVon(state, player.id);
+            mentorHtml = `
+                <div class="ep-feld">
+                    <span>Als Mentor (${"★".repeat(Math.max(1, Math.round(engine.mentorWert(player) * 5)))})</span>
+                    <small>${schuetzlinge.length
+                        ? `Er betreut ${schuetzlinge.map(m => esc(m.name)).join(", ")}.`
+                        : "Er betreut noch keinen jungen Spieler. Einen Mentor wählen Sie in der Akte des Talents."}</small>
+                </div>`;
+        }
+        return `
+            <div class="dash-card mb-3 ep-karte">
+                <h4 class="gs-titel"><svg class="ico" aria-hidden="true"><use href="#i-up"/></svg> Entwicklungsplan</h4>
+                <div class="ep-feld">
+                    <span>Spielpraxis ${praxis} %</span>
+                    <div class="ep-balken"><span style="width:${praxis}%"></span></div>
+                    <small>${esc(praxisText)}</small>
+                </div>
+                <label class="ep-feld">
+                    <span>Eigener Trainingsschwerpunkt</span>
+                    <select id="pdPlanFokus" class="styled-select">${fokusOptionen}</select>
+                    <small>Wächst er, wachsen diese Werte mit. Die Zusatzschichten kosten etwas Kraft.</small>
+                </label>
+                ${umschulung}
+                ${mentorHtml}
+            </div>`;
+    }
+
     showPlayerDetailsModal(playerId) {
         const state = this.app.state;
         const treffer = this.findAnyPlayer(playerId);
@@ -7473,12 +7805,20 @@ class UIManager {
         const happy = player.happiness || { overall: 75, playingTime: 75, contract: 75, teamPerformance: 75, reason: "Zufrieden mit der Rolle im Team." };
         // Talente der eigenen Akademie gehören zum Verein, auch ohne Profivertrag
         const isUserClub = isProspect || player.clubId === state.userClubId;
+        // Leihe: eigener verliehener Spieler, Leihspieler im eigenen Kader,
+        // eigener Spieler (verleihbar) oder fremder (vielleicht ausleihbar)
+        const leiheModus = player.leihe
+            ? (player.leihe.stammvereinId === state.userClubId ? "verliehen"
+                : (player.leihe.leihvereinId === state.userClubId ? "geliehen" : null))
+            : (isProspect ? null : (isUserClub ? "eigener" : "markt"));
+        const eigenerVerliehen = leiheModus === "verliehen";
+        const klausel = isProspect ? null : TransferEngine.ausstiegsklausel(state, player);
         const demand = (typeof ContractEngine !== 'undefined' && isUserClub && !isProspect) ? ContractEngine.getExtensionDemand(player, club) : { demandWage: Math.round((player.wage || 20000) * 1.15) };
 
         const ratingEngine = this.getRatingEngine();
         // Das eigene Talent wird täglich im Training gesehen - für die Karte
         // zählt es deshalb wie ein Spieler des eigenen Vereins.
-        const karteSpieler = isProspect ? Object.assign({}, player, { clubId: state.userClubId }) : player;
+        const karteSpieler = isProspect || eigenerVerliehen ? Object.assign({}, player, { clubId: state.userClubId }) : player;
         const card = ratingEngine
             ? ratingEngine.calculateVisiblePlayerCard(karteSpieler,
                 Object.assign({ userClubId: state.userClubId, leagueDataCoverage: 85 }, this.starContext()))
@@ -7568,7 +7908,7 @@ class UIManager {
                         : `<button class="btn btn-primary" id="btnPdPromoteProspect" style="width:100%;">Vertragsgespräche aufnehmen</button>`}
                 </div>
             `;
-        } else if (isUserClub) {
+        } else if (isUserClub && leiheModus !== "geliehen") {
             contractSectionHtml = `
                 <div class="dash-card mt-3" style="padding:14px; background: var(--surface-2); border:1px solid var(--line);">
                     <h4 style="font-size:14px; margin-bottom:8px; color:#38bdf8;">💼 Vertragsverlängerung verhandeln</h4>
@@ -7602,6 +7942,19 @@ class UIManager {
                         </select>
                     </div>
 
+                    <div style="margin-bottom:12px;">
+                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Ausstiegsklausel (senkt die Gehaltsforderung):</label>
+                        <select id="extKlauselSelect" class="styled-select" style="width:100%;">
+                            <option value="0">Keine Ausstiegsklausel</option>
+                            ${[4, 2.5, 1.5].map(f => {
+                                const betrag = Math.max(100000, Math.round((player.value || 0) * f / 100000) * 100000);
+                                const rabatt = Math.round((1 - ContractEngine.klauselRabatt(player, betrag)) * 100);
+                                return `<option value="${betrag}">${this.geldKurz(betrag)} (${String(f).replace(".", ",")}-facher Marktwert, ${rabatt} % weniger Gehalt)</option>`;
+                            }).join("")}
+                        </select>
+                        <small style="font-size:11px; color:var(--text-muted);">Wer die Klausel zahlt, holt ihn - Sie können dann nicht ablehnen.</small>
+                    </div>
+
                     <div id="extFeedback" style="font-size:13px; margin-bottom:10px;"></div>
                     <button class="btn btn-primary" id="btnSubmitExtension" style="width:100%;">Neuen Vertrag anbieten</button>
                 </div>
@@ -7609,7 +7962,7 @@ class UIManager {
         }
 
         let scoutExternalHtml = "";
-        if (!isUserClub) {
+        if (!isUserClub && !eigenerVerliehen) {
             scoutExternalHtml = `
                 <div style="display:flex; gap:10px; margin-top:14px;">
                     ${this.beobachtungsText(player.id)
@@ -7617,6 +7970,7 @@ class UIManager {
                         : `<button class="btn btn-secondary" id="btnPdScoutPlayer" style="flex:1;" title="Der Bericht kommt nach einigen Tagen ins Postfach">🔍 Scout entsenden</button>`}
                     <button class="btn btn-primary" id="btnPdBidPlayer" style="flex:1;">💼 Transfer verhandeln</button>
                 </div>
+                ${klausel ? `<button class="btn btn-secondary" id="btnPdKlausel" style="width:100%; margin-top:10px;" title="Sein Verein kann nicht ablehnen">⚡ Ausstiegsklausel ziehen (${this.geldKurz(klausel)})</button>` : ""}
             `;
         }
 
@@ -7758,6 +8112,12 @@ class UIManager {
                 <div style="font-size:12px; color:var(--text-muted); margin-top:4px; font-style:italic;">"${happy.reason || 'Zufrieden mit der Situation.'}"</div>
             </div>`}
 
+            ${isUserClub && !isProspect ? this.gespraechHtml(player) : ""}
+
+            ${isUserClub && !isProspect ? this.entwicklungsplanHtml(player) : ""}
+
+            ${leiheModus ? this.leiheHtml(player, leiheModus) : ""}
+
             ${positionMapHtml}
 
             ${eigenheitenHtml}
@@ -7791,7 +8151,17 @@ class UIManager {
             <div class="finance-stat-row">
                 <span>Vertragslaufzeit:</span>
                 <strong>${player.contractYears} Jahr(e)</strong>
-            </div>`}
+            </div>
+            ${klausel ? `
+            <div class="finance-stat-row">
+                <span>Ausstiegsklausel:</span>
+                <strong>${this.formatMoneySafe(klausel)}</strong>
+            </div>` : ""}
+            ${player.weiterverkauf && player.weiterverkauf.clubId === state.userClubId ? `
+            <div class="finance-stat-row">
+                <span>Weiterverkaufsbeteiligung:</span>
+                <strong>${player.weiterverkauf.prozent} % für Ihren Verein</strong>
+            </div>` : ""}`}
 
             ${scoutExternalHtml}
             ${contractSectionHtml}
@@ -7816,11 +8186,82 @@ class UIManager {
                 modal.style.display = "none";
                 this.showTransferOfferModal(player.id);
             });
+
+            document.getElementById("btnPdKlausel")?.addEventListener("click", () => {
+                const res = TransferEngine.zieheAusstiegsklausel(state, player.id);
+                if (!res.success) { this.showToast(res.error, "error"); return; }
+                this.playSound("goal");
+                this.showToast(`⚡ Klausel gezogen: ${player.name} kommt für ${this.geldKurz(res.klausel)} (${this.geldKurz(res.lohn)} / Woche, ${res.laufzeit} Jahre).`, "success", 6000);
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.renderHeader();
+                this.renderCurrentTab();
+                this.showPlayerDetailsModal(player.id);
+            });
         }
 
         document.getElementById("btnClosePlayerDetails").onclick = () => {
             modal.style.display = "none";
         };
+
+        // Leihe: anfragen, verleihen, zurückholen, ausleihen
+        const leihEngine = this.getLoanEngine();
+        const nachLeihe = (res, text) => {
+            if (!res.success) { this.showToast(res.error || "Das ging nicht.", "error"); return; }
+            this.showToast(text, "success", 5000);
+            this.playSound("click");
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.showPlayerDetailsModal(player.id);
+            if (this.activeTab === "squad") this.renderSquad?.();
+            if (this.activeTab === "transfers") this.renderLeihen?.();
+        };
+        document.getElementById("btnPdLeiheZurueck")?.addEventListener("click", () =>
+            nachLeihe(leihEngine.zurueckholen(state, player.id), `${player.name} kehrt zurück.`));
+        document.getElementById("btnPdAusleihen")?.addEventListener("click", () =>
+            nachLeihe(leihEngine.ausleihen(state, player.id), `${player.name} spielt bis zum Saisonende für Sie.`));
+        document.getElementById("btnPdLeiheAnfragen")?.addEventListener("click", () => {
+            const ziel = document.getElementById("pdLeiheAngebote");
+            const angebote = leihEngine.interessenten(state, player.id);
+            if (!ziel) return;
+            const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+            ziel.innerHTML = angebote.length ? angebote.map(a => `
+                <div class="leih-zeile">
+                    <div><strong>${esc(a.clubName)}</strong> <span class="text-muted">Liga ${a.stufe}</span></div>
+                    <div class="leih-text">${esc(a.rolle)} · übernimmt ${Math.round(a.lohnAnteil * 100)} % des Gehalts</div>
+                    <button class="btn btn-sm btn-primary" data-verleihen-an="${esc(a.clubId)}">Verleihen</button>
+                </div>`).join("")
+                : `<div class="gs-lage">Kein Verein, bei dem er spielen würde, will ihn gerade ausleihen.</div>`;
+            ziel.querySelectorAll("[data-verleihen-an]").forEach(btn => btn.addEventListener("click", () =>
+                nachLeihe(leihEngine.verleihen(state, player.id, btn.dataset.verleihenAn), `${player.name} ist bis zum Saisonende verliehen.`)));
+        });
+
+        // Entwicklungsplan: Schwerpunkt, Umschulung, Mentor
+        const planEngine = this.getDevelopmentPlanEngine();
+        const planAendern = (res) => {
+            if (!res.success) { this.showToast(res.error || "Das ging nicht.", "error"); return; }
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.showPlayerDetailsModal(player.id);
+            if (this.activeTab === "training") this.renderTraining?.();
+        };
+        document.getElementById("pdPlanFokus")?.addEventListener("change", (e) => planAendern(planEngine.setzeSchwerpunkt(state, player.id, e.target.value)));
+        document.getElementById("pdPlanUmschulung")?.addEventListener("change", (e) => planAendern(planEngine.setzeUmschulung(state, player.id, e.target.value || null)));
+        document.getElementById("pdPlanMentor")?.addEventListener("change", (e) => planAendern(planEngine.setzeMentor(state, player.id, e.target.value || null)));
+
+        // Gespräch unter vier Augen
+        body.querySelectorAll("[data-gespraech]").forEach(btn => btn.addEventListener("click", () => {
+            const engine = this.getPlayerTalkEngine();
+            if (!engine) return;
+            const res = engine.fuehren(state, player.id, btn.dataset.gespraech);
+            if (!res.success) {
+                this.showToast(res.error || "Das Gespräch kam nicht zustande.", "error");
+                return;
+            }
+            this._letzteAntwort = { playerId: player.id, ...res };
+            this.playSound("click");
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.showPlayerDetailsModal(player.id);
+            if (this.activeTab === "dashboard") this.renderDashboard?.();
+            if (this.activeTab === "squad") this.renderSquad?.();
+        }));
 
         // Aus der Akte heraus die Vertragsgespräche mit dem Talent eröffnen
         document.getElementById("btnPdPromoteProspect")?.addEventListener("click", () => {
@@ -7849,9 +8290,10 @@ class UIManager {
                 const offWage = parseInt(document.getElementById("extWageInput").value, 10);
                 const offYears = parseInt(document.getElementById("extYearsSelect").value, 10);
                 const offRole = document.getElementById("extRoleSelect").value;
+                const offKlausel = parseInt(document.getElementById("extKlauselSelect")?.value || "0", 10);
                 const feedback = document.getElementById("extFeedback");
 
-                const res = ContractEngine.negotiateExtension(player, club, offWage, offYears, offRole);
+                const res = ContractEngine.negotiateExtension(player, club, offWage, offYears, offRole, offKlausel);
                 if (res.success) {
                     feedback.style.color = "#34d399";
                     feedback.textContent = `✅ ${res.reason}`;
@@ -8468,47 +8910,6 @@ class UIManager {
             const radius = Math.max(7, (pitchW / 105) * 1.5 * (0.5 * cam.zoom + 0.5));
             const torwartFarbe = team => liveMatch.kits?.[team]?.tw || (team === "home" ? "#facc15" : "#22d3ee");
 
-            // 3. Schiedsrichter: läuft im Diagonalsystem mit und zückt bei einer
-            //    Unterbrechung die Karte am Tatort.
-            const ref = liveMatch.referee;
-            if (ref) {
-                const rx = toX(ref.x);
-                const ry = toY(ref.y);
-                const rRad = radius * 0.78;
-
-                ctx.beginPath();
-                ctx.ellipse(rx, ry + rRad * 0.75, rRad * 0.85, rRad * 0.38, 0, 0, Math.PI * 2);
-                ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
-                ctx.fill();
-
-                ctx.beginPath();
-                ctx.arc(rx, ry, rRad, 0, Math.PI * 2);
-                ctx.fillStyle = "#18181b";
-                ctx.fill();
-                ctx.strokeStyle = "rgba(250, 204, 21, 0.9)";
-                ctx.lineWidth = Math.max(1, rRad * 0.18);
-                ctx.stroke();
-
-                const card = liveMatch.refereeCard;
-                if (card) {
-                    const cw = rRad * 0.8;
-                    const ch = rRad * 1.15;
-                    const cx = rx + rRad * 1.15;
-                    const cy = ry - rRad * 1.5;
-                    ctx.fillStyle = card === "yellow" ? "#facc15" : "#dc2626";
-                    ctx.fillRect(cx, cy, cw, ch);
-                    ctx.strokeStyle = "rgba(0,0,0,0.65)";
-                    ctx.lineWidth = 1;
-                    ctx.strokeRect(cx, cy, cw, ch);
-
-                    // Gelb-Rot: beide Karten nebeneinander
-                    if (card === "second_yellow") {
-                        ctx.fillStyle = "#facc15";
-                        ctx.fillRect(cx - cw * 1.25, cy, cw, ch);
-                        ctx.strokeRect(cx - cw * 1.25, cy, cw, ch);
-                    }
-                }
-            }
             const numberFont = `bold ${Math.round(radius * 0.92)}px 'Inter', system-ui, sans-serif`;
             const nameFont = `600 ${Math.round(radius * 0.78)}px 'Inter', system-ui, sans-serif`;
 
@@ -8760,6 +9161,35 @@ class UIManager {
             ctx.strokeStyle = "rgba(12, 16, 22, 0.75)";
             ctx.lineWidth = Math.max(1, ballR * 0.22);
             ctx.stroke();
+
+            // 6b. Karten: Der Schiedsrichter selbst wird nicht gezeichnet - sein
+            //    Punkt lenkte nur ab. Eine Karte erscheint neben dem verwarnten
+            //    Spieler, sonst am Tatort - über allen Punkten.
+            const card = liveMatch.refereeCard;
+            if (card) {
+                const verwarnt = liveMatch.kartenSpieler
+                    ? (liveMatch.players2D || []).find(p => p.id === liveMatch.kartenSpieler)
+                    : null;
+                const ort = verwarnt || liveMatch.referee;
+                if (ort) {
+                    const cw = radius * 0.78;
+                    const ch = radius * 1.1;
+                    const cx = toX(ort.x) + radius * 1.05;
+                    const cy = toY(ort.y) - radius * 2.1;
+                    ctx.fillStyle = card === "yellow" ? "#facc15" : "#dc2626";
+                    ctx.fillRect(cx, cy, cw, ch);
+                    ctx.strokeStyle = "rgba(0,0,0,0.65)";
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(cx, cy, cw, ch);
+
+                    // Gelb-Rot: beide Karten nebeneinander
+                    if (card === "second_yellow") {
+                        ctx.fillStyle = "#facc15";
+                        ctx.fillRect(cx - cw * 1.25, cy, cw, ch);
+                        ctx.strokeRect(cx - cw * 1.25, cy, cw, ch);
+                    }
+                }
+            }
 
             // 7. Übersichtsradar, sobald herangezoomt wird
             if (cam.zoom > 1.3) {
@@ -9901,6 +10331,95 @@ class UIManager {
     /**
      * Modal: Spielbericht nach Abpfiff
      */
+    /**
+     * Spielanalyse im Bericht: Schusskarte (wo, wie gut, mit welchem Ausgang)
+     * und der Verlauf der erspielten Chancenqualität über neunzig Minuten.
+     * Heim greift nach rechts an, Gast nach links.
+     */
+    spielanalyseHtml(match, home, away) {
+        const schuesse = Array.isArray(match?.schuesse) ? match.schuesse : [];
+        if (!schuesse.length) return "";
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const trikots = typeof ermittleTrikots === "function" ? ermittleTrikots(home, away) : null;
+        const farbe = [trikots?.home?.akzent || "#bef264", trikots?.away?.akzent || "#38bdf8"];
+        const ausgangText = ["vorbei", "gehalten", "Tor", "geblockt"];
+        const komma = (v) => String(v).replace(".", ",");
+
+        // Spielfeld 105 x 68 Meter
+        const linie = `stroke="rgba(255,255,255,0.28)" stroke-width="0.35" fill="none"`;
+        const feld = `
+            <rect x="0" y="0" width="105" height="68" fill="#123524" rx="1"/>
+            <rect x="0.5" y="0.5" width="104" height="67" ${linie}/>
+            <line x1="52.5" y1="0.5" x2="52.5" y2="67.5" ${linie}/>
+            <circle cx="52.5" cy="34" r="9.15" ${linie}/>
+            <rect x="0.5" y="13.85" width="16.5" height="40.3" ${linie}/>
+            <rect x="88" y="13.85" width="16.5" height="40.3" ${linie}/>
+            <rect x="0.5" y="24.84" width="5.5" height="18.32" ${linie}/>
+            <rect x="99" y="24.84" width="5.5" height="18.32" ${linie}/>
+            <rect x="-1" y="30.34" width="1.5" height="7.32" fill="rgba(255,255,255,0.5)"/>
+            <rect x="104.5" y="30.34" width="1.5" height="7.32" fill="rgba(255,255,255,0.5)"/>`;
+        const punkte = schuesse.map(([min, team, x, y, xg, ausgang, elfmeter, name]) => {
+            const px = team === 0 ? x * 1.05 : (100 - x) * 1.05;
+            const py = team === 0 ? y * 0.68 : (100 - y) * 0.68;
+            const r = (0.9 + Math.sqrt(Math.max(1, xg) / 100) * 3.2).toFixed(2);
+            const f = farbe[team];
+            const stil = ausgang === 2 ? `fill="${f}" stroke="#ffffff" stroke-width="0.5"`
+                : ausgang === 1 ? `fill="${f}" fill-opacity="0.5" stroke="${f}" stroke-width="0.35"`
+                    : ausgang === 3 ? `fill="none" stroke="${f}" stroke-width="0.4" stroke-dasharray="0.8 0.6"`
+                        : `fill="none" stroke="${f}" stroke-width="0.4" stroke-opacity="0.8"`;
+            return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${r}" ${stil}><title>${min}' ${esc(name)} · xG ${komma((xg / 100).toFixed(2))} · ${ausgangText[ausgang]}${elfmeter ? " (Elfmeter)" : ""}</title></circle>`;
+        }).join("");
+
+        // xG-Verlauf: Treppenlinien je Mannschaft, Tore als Punkte
+        const summe = [0, 0];
+        const verlauf = [[[0, 0]], [[0, 0]]];
+        const tore = [[], []];
+        [...schuesse].sort((a, b) => a[0] - b[0]).forEach(([min, team, , , xg, ausgang]) => {
+            verlauf[team].push([min, summe[team]]);
+            summe[team] += xg / 100;
+            verlauf[team].push([min, summe[team]]);
+            if (ausgang === 2) tore[team].push([min, summe[team]]);
+        });
+        const ende = Math.max(90, ...schuesse.map(z => z[0]));
+        const hoch = Math.max(1, summe[0], summe[1]) * 1.1;
+        const X = (m) => (8 + (m / ende) * 186).toFixed(1);
+        const Y = (v) => (62 - (v / hoch) * 56).toFixed(1);
+        verlauf.forEach((v, t) => v.push([ende, summe[t]]));
+        const pfad = (v) => v.map(([m, w], i) => `${i ? "L" : "M"}${X(m)},${Y(w)}`).join(" ");
+        const kurve = `
+            <line x1="8" y1="62" x2="194" y2="62" stroke="rgba(255,255,255,0.2)" stroke-width="0.5"/>
+            <line x1="${X(45)}" y1="6" x2="${X(45)}" y2="62" stroke="rgba(255,255,255,0.12)" stroke-width="0.5" stroke-dasharray="2 2"/>
+            <text x="8" y="70" class="sa-achse">0'</text><text x="${X(45)}" y="70" class="sa-achse" text-anchor="middle">45'</text><text x="194" y="70" class="sa-achse" text-anchor="end">${ende}'</text>
+            ${[0, 1].map(t => `
+                <path d="${pfad(verlauf[t])}" fill="none" stroke="${farbe[t]}" stroke-width="1.4" stroke-linejoin="round"/>
+                ${tore[t].map(([m, w]) => `<circle cx="${X(m)}" cy="${Y(w)}" r="2.2" fill="${farbe[t]}" stroke="#0b1220" stroke-width="0.6"><title>Tor ${m}'</title></circle>`).join("")}
+            `).join("")}`;
+
+        const kopfzeile = (t, club) => {
+            const eigene = schuesse.filter(z => z[1] === t);
+            return `<span class="sa-team"><i style="background:${farbe[t]}"></i>${esc(club.name)}: ${eigene.length} Schüsse · ${komma(summe[t].toFixed(2))} xG</span>`;
+        };
+        return `
+            <div class="dash-card sa-karte" style="padding:14px; margin-bottom:16px;">
+                <h4 style="font-size:14px; margin-bottom:8px;">🎯 Spielanalyse</h4>
+                <div class="sa-kopf">${kopfzeile(0, home)}${kopfzeile(1, away)}</div>
+                <div class="sa-raster">
+                    <div>
+                        <svg class="sa-feld" viewBox="-1.5 -1 108 70" role="img" aria-label="Schusskarte">${feld}${punkte}</svg>
+                        <div class="sa-legende">
+                            <span><i class="sa-l sa-tor"></i>Tor</span><span><i class="sa-l sa-gehalten"></i>gehalten</span>
+                            <span><i class="sa-l sa-vorbei"></i>vorbei</span><span><i class="sa-l sa-geblockt"></i>geblockt</span>
+                            <span>Größe = Chancenqualität (xG)</span>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="sa-untertitel">Chancenqualität im Spielverlauf</div>
+                        <svg class="sa-verlauf" viewBox="0 0 200 74" role="img" aria-label="xG-Verlauf">${kurve}</svg>
+                    </div>
+                </div>
+            </div>`;
+    }
+
     showMatchReportModal(match) {
         const state = this.app.state;
         const home = state.clubs.find(c => c.id === match.homeClubId);
@@ -9997,6 +10516,8 @@ class UIManager {
                     <div>${renderRatingsTable(awayRatings, away.name)}</div>
                 </div>
             </div>
+
+            ${this.spielanalyseHtml(match, home, away)}
 
             <div class="dash-card" style="padding:14px;">
                 <h4 style="font-size:14px; margin-bottom:12px;">📊 Spielstatistik</h4>
@@ -10651,7 +11172,7 @@ class UIManager {
                 btn.onclick = () => {
                     const angebot = angebote[parseInt(btn.dataset.offer, 10)];
                     if (!angebot) return;
-                    this.nimmAngebotAn(angebot);
+                    this.nimmTrainerAngebotAn(angebot);
                 };
             });
         }
@@ -10670,8 +11191,12 @@ class UIManager {
         })[key] || "Mittelfeld";
     }
 
-    /** Ein Angebot annehmen und bei einem neuen Verein anfangen */
-    nimmAngebotAn(angebot) {
+    /**
+     * Ein Trainerangebot annehmen und bei einem neuen Verein anfangen.
+     * Hieß früher wie das Annehmen eines Transferangebots - und überschrieb
+     * es: Ein Angebot für einen eigenen Spieler ließ sich nicht annehmen.
+     */
+    nimmTrainerAngebotAn(angebot) {
         const state = this.app.state;
         const career = this.getCareerEngine();
         if (!career) return;
@@ -11223,20 +11748,25 @@ class UIManager {
             };
         }
 
-        // Transfer & Scouting Subtabs
+        // Transfer, Scouting und Leihen als Unterreiter
+        const transferAnsicht = (knopf, ansicht) => {
+            ["btnSubTransfersMarket", "btnSubTransfersScouting", "btnSubTransfersLoans"].forEach(id =>
+                document.getElementById(id)?.classList.toggle("active", id === knopf));
+            ["viewTransferMarket", "viewScoutingCenter", "viewLoans"].forEach(id =>
+                id === ansicht ? DOM.show(id) : DOM.hide(id));
+        };
         document.getElementById("btnSubTransfersMarket")?.addEventListener("click", () => {
-            document.getElementById("btnSubTransfersMarket")?.classList.add("active");
-            document.getElementById("btnSubTransfersScouting")?.classList.remove("active");
-            DOM.show("viewTransferMarket");
-            DOM.hide("viewScoutingCenter");
+            transferAnsicht("btnSubTransfersMarket", "viewTransferMarket");
         });
 
         document.getElementById("btnSubTransfersScouting")?.addEventListener("click", () => {
-            document.getElementById("btnSubTransfersScouting")?.classList.add("active");
-            document.getElementById("btnSubTransfersMarket")?.classList.remove("active");
-            DOM.show("viewScoutingCenter");
-            DOM.hide("viewTransferMarket");
+            transferAnsicht("btnSubTransfersScouting", "viewScoutingCenter");
             this.renderTransfers();
+        });
+
+        document.getElementById("btnSubTransfersLoans")?.addEventListener("click", () => {
+            transferAnsicht("btnSubTransfersLoans", "viewLoans");
+            this.renderLeihen();
         });
 
         // Scout Auftrag absenden

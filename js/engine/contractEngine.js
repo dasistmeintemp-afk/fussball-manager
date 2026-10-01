@@ -50,10 +50,30 @@ const ContractEngine = {
     /**
      * Verhandelt eine Vertragsverlängerung mit einem Spieler
      */
-    negotiateExtension(player, club, offeredWage, offeredYears, offeredRole) {
+    /**
+     * Was eine Ausstiegsklausel dem Spieler wert ist: Je niedriger sie im
+     * Verhältnis zum Marktwert liegt, desto eher verzichtet er auf Gehalt -
+     * ein ehrgeiziger Spieler mehr als ein treuer. Gibt den Faktor auf die
+     * Gehaltsforderung zurück.
+     */
+    klauselRabatt(player, klausel) {
+        if (!klausel || klausel <= 0) return 1;
+        const verhaeltnis = klausel / Math.max(1, player?.value || 1);
+        let rabatt = verhaeltnis <= 1.6 ? 0.1 : (verhaeltnis <= 2.6 ? 0.06 : 0.03);
+        if ((player?.hiddenAttributes?.ambition ?? 12) >= 15) rabatt += 0.02;
+        return 1 - rabatt;
+    },
+
+    negotiateExtension(player, club, offeredWage, offeredYears, offeredRole, klausel = 0) {
         if (!player || !club) return { success: false, reason: "Ungültige Parameter." };
 
         const demand = this.getExtensionDemand(player, club);
+        // Eine Ausstiegsklausel senkt die Forderung
+        const rabatt = this.klauselRabatt(player, klausel);
+        if (rabatt < 1) {
+            demand.demandWage = Math.round(demand.demandWage * rabatt / 1000) * 1000;
+            demand.demandWageFormatted = (typeof Formatters !== 'undefined') ? Formatters.formatMoney(demand.demandWage) : `${demand.demandWage} €`;
+        }
 
         if (club.wageBudget < offeredWage) {
             return {
@@ -83,6 +103,8 @@ const ContractEngine = {
         player.wage = Math.round(offeredWage);
         player.contractYears = offeredYears;
         if (offeredRole) player.squadRole = offeredRole;
+        // Der neue Vertrag ersetzt die alte Klausel - mit oder ohne neue
+        player.ausstiegsklausel = klausel > 0 ? Math.round(klausel) : 0;
 
         if (player.happiness) {
             player.happiness.contract = 95;

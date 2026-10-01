@@ -7272,6 +7272,324 @@ function runEngineTests() {
         }
     });
 
+    // Der Torwart bleibt auf der Linie, wenn der Gegner kommt - und rückt
+    // heraus, wenn das Spiel weit weg ist. Vorher war es umgekehrt.
+    test("Torwart: Kommt der Gegner, steht er auf der Linie zwischen den Pfosten", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const heim = state.clubs.find(c => c.id === "sge");
+        const gast = state.clubs.find(c => c.id === "wob");
+        const live = MatchEngine.createLiveMatch({ id: "tw_linie", played: false, homeClubId: "sge", awayClubId: "wob" },
+            heim, gast, state.players, { modus: "fm" });
+        const d = live.director;
+        live.speed = 4;
+        const nah = [], fern = [];
+        let seitlichMax = 0, q = 0;
+        while (!live.isFinished && q++ < 160000) {
+            live.advanceRealTime(16);
+            live.updateBallAndPlayers(16);
+            if (q % 8 || d.mode !== "ambient" || d.deadBall) continue;
+            (live.players2D || []).filter(p => p.pos === "TW" && d.carrierId !== p.id).forEach(tw => {
+                const torX = d.ownGoalX(tw.team);
+                const vonLinie = Math.abs(tw.x - torX);
+                if (vonLinie > 40) return;
+                const ball = Math.abs(live.ball.x - torX);
+                if (ball < 20) {
+                    nah.push(vonLinie);
+                    seitlichMax = Math.max(seitlichMax, Math.abs(tw.y - 50));
+                } else if (ball > 60) fern.push(vonLinie);
+            });
+        }
+        const mw = a => a.reduce((x, y) => x + y, 0) / Math.max(1, a.length);
+        if (nah.length < 50 || fern.length < 50) throw new Error(`Zu wenige Proben: ${nah.length}/${fern.length}`);
+        // Gemessen vorher: 5,1 Einheiten vor der Linie, seitlich bis 16
+        if (mw(nah) > 3) throw new Error(`Torwart steht ${mw(nah).toFixed(1)} vor der Linie, wenn der Gegner kommt`);
+        if (seitlichMax > 9) throw new Error(`Torwart läuft ${seitlichMax.toFixed(1)} zur Seite - weit neben den Pfosten`);
+        if (mw(fern) <= mw(nah) + 2) {
+            throw new Error(`Bei Ballbesitz weit vorn rückt der Torwart nicht heraus (${mw(fern).toFixed(1)} gegen ${mw(nah).toFixed(1)})`);
+        }
+    });
+
+    test("Einzelgespräche: Lob, Kritik nach Charakter, Spielzeit-Versprechen und Wechselwunsch", () => {
+        const { PlayerTalkEngine } = require('./js/engine/playerTalkEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const kader = state.players.filter(p => club.playerIds.includes(p.id));
+        const [a, b, c, d] = kader;
+        const halb = () => 0.5;
+
+        // Lob für einen Spieler in Form kommt an - und gleich danach ist
+        // kein zweites Gespräch möglich
+        a.form = 7.6; a.morale = 70;
+        let r = PlayerTalkEngine.fuehren(state, a.id, "loben", halb);
+        if (!r.success || a.morale <= 70) throw new Error("Lob für einen starken Spieler hebt die Moral nicht");
+        r = PlayerTalkEngine.fuehren(state, a.id, "kritisieren", halb);
+        if (r.success) throw new Error("Zwei Gespräche am selben Tag sollten nicht gehen");
+        state.currentDayIndex = (state.currentDayIndex || 0) + PlayerTalkEngine.ABKUEHLUNG;
+        r = PlayerTalkEngine.fuehren(state, a.id, "kritisieren", halb);
+        if (!r.success || a.morale > r.moralVorher - 8) throw new Error(`Kritik an einem starken Spieler kränkt nicht genug (${r.moralVorher} → ${a.morale})`);
+
+        // Kritik bei schwacher Form: Der Profi nimmt sie als Ansporn, der Hitzkopf ist beleidigt
+        b.form = 6.1; b.morale = 70;
+        b.hiddenAttributes = { ...b.hiddenAttributes, professionalism: 19, ambition: 16, temperament: 4 };
+        r = PlayerTalkEngine.fuehren(state, b.id, "kritisieren", halb);
+        if (!b.ansporn || b.morale < 65) throw new Error("Der Profi nimmt Kritik nicht als Ansporn");
+        c.form = 6.1; c.morale = 70;
+        c.hiddenAttributes = { ...c.hiddenAttributes, professionalism: 5, ambition: 8, temperament: 19 };
+        r = PlayerTalkEngine.fuehren(state, c.id, "kritisieren", halb);
+        if (c.ansporn || c.morale > 62) throw new Error("Der Hitzkopf sollte Kritik übelnehmen");
+
+        // Spielzeit versprochen - und nicht gehalten
+        d.happiness = { overall: 55, playingTime: 45, contract: 70, teamPerformance: 70 };
+        d.morale = 70;
+        r = PlayerTalkEngine.fuehren(state, d.id, "spielzeit", halb);
+        if (!r.success || !d.versprechen) throw new Error("Versprechen wurde nicht festgehalten");
+        if (!PlayerTalkEngine.schreibtisch(state).some(i => i.playerId === d.id)) throw new Error("Versprechen fehlt auf dem Schreibtisch");
+        const moralMitVersprechen = d.morale;
+        for (let i = 0; i < PlayerTalkEngine.VERSPRECHEN_SPIELE; i++) {
+            PlayerTalkEngine.nachSpiel(state, { played: true, playerRatings: [{ playerId: d.id, minutes: i === 0 ? 90 : 0 }] });
+        }
+        if (d.versprechen) throw new Error("Das Versprechen wurde nach der Frist nicht abgerechnet");
+        if (d.morale >= moralMitVersprechen - 10) throw new Error("Ein gebrochenes Versprechen trifft den Spieler nicht");
+        if (!d.wechselwunsch) throw new Error("Nach einem gebrochenen Versprechen sollte er weg wollen");
+        const posten = ManagerEngine.getAttentionItems(state).find(i => i.playerId === d.id);
+        if (!posten || !/wechseln/.test(posten.title)) throw new Error("Der Wechselwunsch steht nicht auf dem Schreibtisch");
+        state.currentDayIndex += PlayerTalkEngine.ABKUEHLUNG;
+        r = PlayerTalkEngine.fuehren(state, d.id, "wechsel_annehmen", halb);
+        if (!r.success || !d.transferListed) throw new Error("Akzeptierter Wechselwunsch setzt ihn nicht auf die Transferliste");
+
+        // Ein gehaltenes Versprechen stärkt das Vertrauen
+        const e = kader[4];
+        e.happiness = { overall: 55, playingTime: 45, contract: 70, teamPerformance: 70 };
+        PlayerTalkEngine.fuehren(state, e.id, "spielzeit", halb);
+        for (let i = 0; i < 3; i++) PlayerTalkEngine.nachSpiel(state, { played: true, playerRatings: [{ playerId: e.id, minutes: 75 }] });
+        if (e.versprechen || (e.vertrauen ?? 50) <= 50) throw new Error("Gehaltenes Versprechen stärkt das Vertrauen nicht");
+
+        // Ein Gesprächswunsch, um den sich niemand kümmert, kränkt; anhaltender
+        // Frust wird zum Wechselwunsch
+        const f = kader[5];
+        f.morale = 70;
+        f.gespraechswunsch = { seit: PlayerTalkEngine.stempel(state), grund: "spielzeit" };
+        f.happiness = { overall: 30, playingTime: 20, contract: 50, teamPerformance: 30 };
+        for (let t = 0; t < PlayerTalkEngine.FRUST_TAGE; t++) {
+            state.currentDayIndex++;
+            PlayerTalkEngine.taeglich(state, () => 0.99);
+        }
+        if (f.gespraechswunsch || f.morale >= 70) throw new Error("Ein übergangener Gesprächswunsch bleibt folgenlos");
+        if (!f.wechselwunsch) throw new Error("Anhaltender Frust führt nicht zum Wechselwunsch");
+    });
+
+    test("Entwicklungsplan: Spielpraxis, eigener Schwerpunkt, Umschulung und Mentor", () => {
+        const { DevelopmentPlanEngine: Plan } = require('./js/engine/developmentPlanEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const kader = state.players.filter(p => club.playerIds.includes(p.id));
+
+        // Spielpraxis: Ein Spiel hebt sie bei den Startern, senkt sie bei den Zuschauern
+        const gegner = state.clubs.find(c => c.id !== club.id && c.leagueId === club.leagueId);
+        const partie = { id: "praxis", played: false, homeClubId: club.id, awayClubId: gegner.id };
+        MatchEngine.simulateFullMatch(partie, club, gegner, state.players);
+        const starter = state.players.find(p => p.id === club.lineup[0]);
+        const zuschauer = kader.find(p => !club.lineup.includes(p.id) && !club.bench.includes(p.id));
+        if (!(starter.spielpraxis > 0.5)) throw new Error(`Starter ohne Spielpraxis: ${starter.spielpraxis}`);
+        if (zuschauer && !(zuschauer.spielpraxis < 0.5)) throw new Error(`Zuschauer gewinnt Spielpraxis: ${zuschauer.spielpraxis}`);
+        const jung = { age: 19 };
+        if (!(Plan.praxisFaktor({ ...jung, spielpraxis: 0.95 }) > 1.2 && Plan.praxisFaktor({ ...jung, spielpraxis: 0.05 }) < 0.85)) {
+            throw new Error("Spielpraxis wirkt bei Talenten nicht auf die Entwicklung");
+        }
+        if (Plan.praxisFaktor({ age: 32, spielpraxis: 1 }) !== 1) throw new Error("Bei Älteren sollte die Spielpraxis nicht zählen");
+
+        // Eigener Schwerpunkt: Wächst er, wachsen diese Werte mit
+        const st = kader.find(p => p.pos === "ST");
+        const vorher = { shooting: st.shooting, technique: st.technique };
+        if (!Plan.setzeSchwerpunkt(state, st.id, "abschluss").success) throw new Error("Schwerpunkt lässt sich nicht setzen");
+        if (Plan.setzeSchwerpunkt(state, st.id, "reflexe").success) throw new Error("Ein Feldspieler sollte keinen Torwart-Schwerpunkt bekommen");
+        Plan.nachEinheit(state, st, { gewachsen: true }, () => 0.5);
+        if (st.shooting !== Math.min(99, vorher.shooting + 1) || st.technique !== Math.min(99, vorher.technique + 1)) {
+            throw new Error("Der Schwerpunkt lenkt das Wachstum nicht");
+        }
+
+        // Umschulung: Einheit für Einheit auf eine neue Position
+        const ziel = Plan.umschulungsZiele(st).find(pos => pos === "ZM") || Plan.umschulungsZiele(st)[0];
+        if (!Plan.setzeUmschulung(state, st.id, ziel).success) throw new Error("Umschulung lässt sich nicht setzen");
+        let n = 0;
+        while (st.umschulung && n++ < 600) Plan.nachEinheit(state, st, {}, () => 0.5);
+        if (st.umschulung || !(st.positions || []).includes(ziel)) throw new Error(`Umschulung auf ${ziel} kommt nicht an (${n} Einheiten)`);
+        if (n < 15) throw new Error(`Umschulung geht zu schnell (${n} Einheiten)`);
+
+        // Mentor: Einstellung färbt ab, eine Eigenheit kann wandern
+        const talent = kader.find(p => (p.age || 30) <= 23) || kader[kader.length - 1];
+        talent.age = 19;
+        talent.hiddenAttributes = { ...talent.hiddenAttributes, professionalism: 5 };
+        talent.traits = [];
+        talent.shooting = 80; talent.technique = 76;
+        const mentor = kader.find(p => p.id !== talent.id && (p.age || 0) >= 28) || kader[0];
+        mentor.age = Math.max(mentor.age, 28);
+        mentor.hiddenAttributes = { ...mentor.hiddenAttributes, professionalism: 19 };
+        mentor.traits = [{ key: "distanzschuss", text: "Sucht den Abschluss aus der Distanz." }];
+        const zuJung = kader.find(p => p.id !== talent.id && p.id !== mentor.id);
+        const alterVorher = zuJung.age;
+        zuJung.age = 22;
+        if (Plan.setzeMentor(state, talent.id, zuJung.id).success) throw new Error("Ein 22-Jähriger sollte kein Mentor sein");
+        zuJung.age = alterVorher;
+        if (!Plan.setzeMentor(state, talent.id, mentor.id).success) throw new Error("Mentor lässt sich nicht setzen");
+        if (!(Plan.entwicklungsFaktor(state, talent) > Plan.praxisFaktor(talent))) throw new Error("Ein guter Mentor beschleunigt die Entwicklung nicht");
+        for (let i = 0; i < 80; i++) Plan.nachEinheit(state, talent, {}, () => 0.9);
+        if (!(talent.hiddenAttributes.professionalism > 9)) throw new Error(`Die Einstellung des Mentors färbt nicht ab (${talent.hiddenAttributes.professionalism})`);
+        Plan.nachEinheit(state, talent, {}, () => 0);
+        if (!talent.traits.some(t => t.key === "distanzschuss")) throw new Error("Die Eigenheit des Mentors wird nicht übernommen");
+        if (!Plan.uebersicht(state).some(e => e.player.id === talent.id && e.mentor === mentor.name)) throw new Error("Übersicht zeigt den Mentor nicht");
+    });
+
+    test("Leihen: verleihen mit Gehaltsanteil, ausleihen vom Leihmarkt, Rückkehr zum Saisonende", () => {
+        const { LoanEngine } = require('./js/engine/loanEngine.js');
+        const { FinanceEngine } = require('./js/engine/financeEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const kader = () => state.players.filter(p => club.playerIds.includes(p.id));
+
+        // Ein Ersatzspieler ohne Einsätze wird verliehen
+        const kandidat = kader().filter(p => !club.lineup.includes(p.id) && p.pos !== "TW")
+            .sort((a, b) => (a.overall || 0) - (b.overall || 0))[0];
+        kandidat.contractYears = 2;
+        const angebote = LoanEngine.interessenten(state, kandidat.id);
+        if (!angebote.length) throw new Error("Niemand will einen Ersatzspieler ausleihen");
+        const angebot = angebote[0];
+        const leihverein = state.clubs.find(c => c.id === angebot.clubId);
+        if ((leihverein.level || 1) < (club.level || 1)) throw new Error("Verliehen wird nicht in eine höhere Liga");
+        const res = LoanEngine.verleihen(state, kandidat.id, angebot.clubId);
+        if (!res.success) throw new Error(res.error);
+        if (kandidat.clubId !== leihverein.id || club.playerIds.includes(kandidat.id) || !leihverein.playerIds.includes(kandidat.id)) {
+            throw new Error("Der Spieler ist nicht beim Leihverein angekommen");
+        }
+        if (LoanEngine.verlieheneVon(state, club.id)[0] !== kandidat) throw new Error("Verliehene Spieler werden nicht gefunden");
+        // Das Gehalt teilen sich beide Vereine
+        const lohn = kandidat.wage;
+        if (LoanEngine.lohnAnteilFuer(kandidat, leihverein.id) + LoanEngine.lohnAnteilFuer(kandidat, club.id) !== Math.round(lohn * angebot.lohnAnteil) + Math.round(lohn * (1 - angebot.lohnAnteil))) {
+            throw new Error("Gehaltsanteile gehen nicht auf");
+        }
+        const summe = FinanceEngine.getFinanceSummary(state, club.id);
+        const ohneLeihe = kader().reduce((a, p) => a + (p.wage || 0), 0);
+        if (Math.abs(summe.weeklyWages - (ohneLeihe + lohn * (1 - angebot.lohnAnteil))) > 1) {
+            throw new Error(`Der Stammverein zahlt seinen Anteil nicht (${summe.weeklyWages} statt ${ohneLeihe + lohn * (1 - angebot.lohnAnteil)})`);
+        }
+        // Verkaufen lässt sich ein verliehener Spieler nicht
+        const kaeufer = state.clubs.find(c => c.id !== club.id && c.id !== leihverein.id);
+        if (TransferEngine.executeTransfer(state, kandidat.id, kaeufer.id, 1000000, kandidat.wage, 3)) {
+            throw new Error("Ein verliehener Spieler wurde verkauft");
+        }
+
+        // Ausleihen vom Leihmarkt: unter der Forderung geht nichts
+        const markt = LoanEngine.leihmarkt(state);
+        if (!markt.length) throw new Error("Der Leihmarkt ist leer");
+        const ziel = markt.find(e => e.gebuehr === 0) || markt[0];
+        club.balance = Math.max(club.balance || 0, (ziel.gebuehr || 0) + 1000000);
+        const zuWenig = LoanEngine.ausleihen(state, ziel.playerId, Math.max(0, ziel.lohnAnteil - 0.2));
+        if (zuWenig.success) throw new Error("Der Stammverein akzeptiert zu wenig Gehaltsübernahme");
+        const geliehen = LoanEngine.ausleihen(state, ziel.playerId);
+        if (!geliehen.success) throw new Error(geliehen.error);
+        const leihspieler = state.players.find(p => String(p.id) === String(ziel.playerId));
+        if (leihspieler.clubId !== club.id || !club.playerIds.includes(leihspieler.id)) throw new Error("Der Leihspieler ist nicht im Kader");
+
+        // Monatsbericht und Rückkehr zum Saisonende
+        LoanEngine.monatlich(state);
+        if (!state.inbox.some(m => m.subject === "Leihbericht")) throw new Error("Kein Leihbericht im Postfach");
+        const zurueck = LoanEngine.saisonende(state);
+        if (zurueck.length < 2) throw new Error("Nicht alle Leihspieler sind zurückgekehrt");
+        if (kandidat.clubId !== club.id || !club.playerIds.includes(kandidat.id) || kandidat.leihe) throw new Error("Der verliehene Spieler ist nicht zurück");
+        if (leihspieler.clubId === club.id || club.playerIds.includes(leihspieler.id)) throw new Error("Der Leihspieler ist nicht zu seinem Verein zurück");
+    });
+
+    test("Spielanalyse: Jeder Abschluss mit Ort, xG und Ausgang - nur bei eigenen Spielen gespeichert", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const heim = state.clubs.find(c => c.id === "sge");
+        const gast = state.clubs.find(c => c.id === "wob");
+        const partie = { id: "analyse", played: false, homeClubId: "sge", awayClubId: "wob" };
+        MatchEngine.simulateFullMatch(partie, heim, gast, state.players);
+        const s = partie.schuesse;
+        if (!Array.isArray(s) || !s.length) throw new Error("Keine Schüsse gespeichert");
+        const gesamt = partie.stats.shots[0] + partie.stats.shots[1];
+        if (s.length !== gesamt) throw new Error(`${s.length} Schüsse gespeichert, Statistik zählt ${gesamt}`);
+        s.forEach(z => {
+            if (z.length !== 8 || z[2] < 50 || z[2] > 100 || z[3] < 0 || z[3] > 100 || z[4] <= 0) throw new Error(`Ungültiger Schuss ${JSON.stringify(z)}`);
+        });
+        const tore = [0, 1].map(t => s.filter(z => z[1] === t && z[5] === 2).length);
+        if (tore[0] !== partie.homeGoals || tore[1] !== partie.awayGoals) throw new Error(`Tore in der Schussliste ${tore} passen nicht zum Ergebnis`);
+        const xg = [0, 1].map(t => s.filter(z => z[1] === t).reduce((a, z) => a + z[4] / 100, 0));
+        if (Math.abs(xg[0] - partie.stats.xG[0]) > 0.06 || Math.abs(xg[1] - partie.stats.xG[1]) > 0.06) {
+            throw new Error(`xG der Schussliste ${xg.map(v => v.toFixed(2))} weicht von der Statistik ${partie.stats.xG} ab`);
+        }
+        // Fremde Spiele werden verschlankt - die Schussliste fällt mit weg
+        MatchEngine.compactPlayedMatch(partie, false);
+        if (partie.schuesse) throw new Error("Verschlankte Partie behält die Schussliste");
+    });
+
+    test("Vertragsklauseln: Ausstiegsklausel ziehen und vereinbaren, Weiterverkaufsbeteiligung", () => {
+        const { ContractEngine } = require('./js/engine/contractEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const fremde = state.players.filter(p => p.clubId && p.clubId !== club.id);
+
+        // Gut jeder Fünfte fremde Spieler hat eine Klausel, eigene keine
+        const mitKlausel = fremde.filter(p => TransferEngine.ausstiegsklausel(state, p));
+        const anteil = mitKlausel.length / fremde.length;
+        if (anteil < 0.15 || anteil > 0.3) throw new Error(`Anteil mit Klausel ${(anteil * 100).toFixed(0)} %`);
+        if (TransferEngine.ausstiegsklausel(state, mitKlausel[0]) !== TransferEngine.ausstiegsklausel(state, mitKlausel[0])) throw new Error("Klausel nicht stabil");
+        const eigener = state.players.find(p => p.clubId === club.id);
+        if (TransferEngine.ausstiegsklausel(state, eigener)) throw new Error("Eigene Spieler haben ohne Vertrag keine Klausel");
+
+        // Klausel ziehen: Der Verein kann nicht ablehnen
+        const ziel = mitKlausel.find(p => {
+            const v = state.clubs.find(c => c.id === p.clubId);
+            return v && (v.reputation || 60) <= (club.reputation || 60) + 15 && !p.leihe;
+        });
+        const verkaeufer = state.clubs.find(c => c.id === ziel.clubId);
+        const klausel = TransferEngine.ausstiegsklausel(state, ziel);
+        club.balance = klausel + 5000000;
+        const kontoVerkaeufer = verkaeufer.balance || 0;
+        const res = TransferEngine.zieheAusstiegsklausel(state, ziel.id);
+        if (!res.success) throw new Error(res.error);
+        if (ziel.clubId !== club.id || club.balance !== 5000000 || (verkaeufer.balance || 0) !== kontoVerkaeufer + klausel) {
+            throw new Error("Klausel gezogen, aber Spieler oder Geld nicht richtig gebucht");
+        }
+        if (TransferEngine.ausstiegsklausel(state, ziel)) throw new Error("Nach dem Wechsel gilt die alte Klausel weiter");
+
+        // Eine Klausel im eigenen Vertrag senkt die Gehaltsforderung
+        const spieler = state.players.find(p => p.clubId === club.id && p.id !== ziel.id && (p.value || 0) > 0);
+        club.wageBudget = Math.max(club.wageBudget || 0, 1e9);
+        const forderung = ContractEngine.getExtensionDemand(spieler, club).demandWage;
+        const angebot = Math.round(forderung * 0.85);
+        const ohne = ContractEngine.negotiateExtension(Object.assign({}, spieler), club, angebot, 3, "Stammspieler", 0);
+        if (ohne.success) throw new Error("85 % der Forderung reichen ohne Klausel nicht");
+        const klauselBetrag = Math.round(spieler.value * 1.5);
+        const mit = ContractEngine.negotiateExtension(spieler, club, angebot, 3, "Stammspieler", klauselBetrag);
+        if (!mit.success || spieler.ausstiegsklausel !== klauselBetrag) throw new Error("Mit Klausel kommt der Vertrag nicht zustande");
+
+        // Die KI zieht eine niedrige Klausel - ablehnen geht nicht
+        spieler.ausstiegsklausel = 100000;
+        spieler.overall = 99;
+        const gezogen = TransferEngine.pruefeAusstiegsklauseln(state, () => 0);
+        if (!gezogen.some(g => g.player === spieler) || spieler.clubId === club.id) throw new Error("Die KI zieht die Klausel nicht");
+        if (!state.inbox.some(m => /Ausstiegsklausel gezogen/.test(m.subject))) throw new Error("Keine Nachricht über die gezogene Klausel");
+
+        // Weiterverkaufsbeteiligung: Beim nächsten Wechsel bekommt der alte Verein seinen Anteil
+        const verkauf = state.players.find(p => p.clubId === club.id && !p.leihe);
+        const kaeufer = state.clubs.find(c => c.id !== club.id && c.id !== verkaeufer.id);
+        if (!state.transferMarket) state.transferMarket = { offers: [] };
+        if (!Array.isArray(state.transferMarket.offers)) state.transferMarket.offers = [];
+        state.transferMarket.offers.push({ id: "wv1", playerId: verkauf.id, playerName: verkauf.name, fromClubId: kaeufer.id, fromClubName: kaeufer.name, fee: 10000000, status: "pending" });
+        const r = TransferEngine.nimmAngebotAn(state, "wv1", { weiterverkauf: 20 });
+        if (!r.ok || r.offer.fee !== 9000000 || !verkauf.weiterverkauf || verkauf.weiterverkauf.clubId !== club.id) {
+            throw new Error("Weiterverkaufsbeteiligung wird nicht vereinbart");
+        }
+        const dritter = state.clubs.find(c => c.id !== club.id && c.id !== kaeufer.id && c.id !== verkaeufer.id);
+        const vorher = club.balance;
+        const kontoKaeufer = kaeufer.balance;
+        TransferEngine.executeTransfer(state, verkauf.id, dritter.id, 20000000, verkauf.wage, 3);
+        if (club.balance !== vorher + 4000000) throw new Error(`Beteiligung nicht ausgezahlt (${club.balance - vorher})`);
+        if (kaeufer.balance !== kontoKaeufer + 16000000) throw new Error("Der Verkäufer bekommt nicht die Ablöse abzüglich der Beteiligung");
+        if (verkauf.weiterverkauf) throw new Error("Die Beteiligung gilt nach dem Weiterverkauf weiter");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

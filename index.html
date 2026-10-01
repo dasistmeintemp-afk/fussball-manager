@@ -500,6 +500,7 @@
                             </tbody>
                         </table>
                     </div>
+                    <div id="squadLoanedOut" class="hint-box mt-2" style="display:none;"></div>
                 </section>
 
                 <!-- Tab: Tactics & Pitch (Aufstellung) -->
@@ -737,6 +738,7 @@
                         <div class="view-switch-buttons">
                             <button class="btn btn-sm active" id="btnSubTransfersMarket">Transfermarkt</button>
                             <button class="btn btn-sm" id="btnSubTransfersScouting"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg><span>Scouting-Zentrale</span></button>
+                            <button class="btn btn-sm" id="btnSubTransfersLoans"><svg class="ico" aria-hidden="true"><use href="#i-transfer"/></svg><span>Leihen</span></button>
                         </div>
                     </div>
 
@@ -806,6 +808,31 @@
                                     <!-- Dynamisch -->
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+
+                    <!-- Leihen: eigene Leihen und der Leihmarkt -->
+                    <div id="viewLoans" style="display:none;">
+                        <div class="hint-box mb-2">
+                            Ein junger Spieler, der nicht spielt, entwickelt sich langsamer. Verliehen sammelt er Spielpraxis - bis zum Saisonende, der Leihverein übernimmt einen Teil des Gehalts. Eigene Spieler verleihen Sie über ihre Spielerakte.
+                        </div>
+                        <div class="dash-card mb-3">
+                            <div class="card-header"><h3>Ihre Leihen</h3><span id="loansMeta" class="header-tag">-</span></div>
+                            <div id="loansOwnList"></div>
+                        </div>
+                        <div class="dash-card">
+                            <div class="card-header"><h3>Leihmarkt</h3><span class="header-tag">Spieler, die ihr Verein abgibt</span></div>
+                            <div class="table-container">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Name</th><th>Verein</th><th>Pos</th><th>Alter</th><th>Stärke &amp; Potenzial</th>
+                                            <th>Rolle</th><th>Gehaltsanteil</th><th>Leihgebühr</th><th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="loanMarketBody"></tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
 
@@ -1028,6 +1055,25 @@
                                     <tbody id="trainingReportBody">
                                         <tr><td colspan="9" class="text-center text-muted">Noch kein Trainingstag absolviert.</td></tr>
                                     </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Individuelle Entwicklungspläne -->
+                        <div class="dash-card" style="grid-column: 1 / -1;">
+                            <div class="card-header">
+                                <h3>Individuelle Pläne</h3>
+                                <span id="trainingPlaeneMeta" class="header-tag">-</span>
+                            </div>
+                            <p class="text-muted" style="font-size:12px; margin:4px 0 10px;">
+                                Eigener Schwerpunkt, Umschulung und Mentor legen Sie in der Spielerakte fest. Junge Spieler wachsen mit Spielpraxis schneller.
+                            </p>
+                            <div class="table-container">
+                                <table class="compact-table">
+                                    <thead>
+                                        <tr><th>Spieler</th><th>Alter</th><th>Spielpraxis</th><th>Schwerpunkt</th><th>Umschulung</th><th>Mentor</th></tr>
+                                    </thead>
+                                    <tbody id="trainingPlaeneBody"></tbody>
                                 </table>
                             </div>
                         </div>
@@ -2037,6 +2083,9 @@
     <script src="js/engine/preseasonEngine.js"></script>
     <script src="js/engine/coachingStaffEngine.js"></script>
     <script src="js/engine/dressingRoomEngine.js"></script>
+    <script src="js/engine/playerTalkEngine.js"></script>
+    <script src="js/engine/developmentPlanEngine.js"></script>
+    <script src="js/engine/loanEngine.js"></script>
     <script src="js/engine/rivalryEngine.js"></script>
     <script src="js/engine/seasonEngine.js"></script>
     <script src="js/ui/uiManager.js"></script>

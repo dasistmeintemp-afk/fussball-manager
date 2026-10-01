@@ -795,6 +795,81 @@ function runEngineTests() {
         }
     });
 
+    test("MatchEngine: Jeder Formationsplatz zählt zu seinem Mannschaftsteil (ZDM, LZM, RAV ...)", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const vorher = { formation: club.formation, tactics: club.tactics, chemistry: club.chemistry };
+        const teil = (pos) => {
+            const g = PositionEngine.normalizePosition(pos) || pos;
+            if (g === "TW") return "tw";
+            if (["IV", "LV", "RV"].includes(g)) return "def";
+            if (["DM", "ZM", "OM", "LM", "RM"].includes(g)) return "mid";
+            return "att";
+        };
+        const schnitt = (werte) => werte.reduce((a, b) => a + b, 0) / werte.length;
+        let feineNamen = 0;
+        try {
+            // Ohne Taktik und Chemie: Die Mannschaftsteile sind genau der
+            // Schnitt der Spieler auf den Plätzen dieses Teils
+            club.tactics = {};
+            club.chemistry = null;
+            Object.keys(FORMATION_CONFIGS).forEach(key => {
+                club.formation = key;
+                const slots = MatchEngine.getFormationSlots(club);
+                const elf = MatchEngine.getCleanLineup(club, state.players);
+                const pw = MatchEngine.calculateTeamPower(club, state.players, false, elf);
+                const je = { def: [], mid: [], att: [] };
+                elf.forEach((p, i) => {
+                    const pos = slots[i]?.pos || p.pos;
+                    if (PositionEngine.normalizePosition(pos) !== pos) feineNamen++;
+                    const t = teil(pos);
+                    if (je[t]) je[t].push(MatchEngine.calculateEffectivePlayerSkill(p, pos));
+                });
+                [["def", pw.defense], ["mid", pw.midfield], ["att", pw.attack]].forEach(([t, wert]) => {
+                    if (!je[t].length) return;
+                    const soll = schnitt(je[t]);
+                    if (Math.abs(wert - soll) > 0.01) {
+                        throw new Error(`${key}: ${t} ${wert.toFixed(1)} statt ${soll.toFixed(1)} - ein Platz zählt zum falschen Mannschaftsteil`);
+                    }
+                });
+            });
+        } finally {
+            Object.assign(club, vorher);
+        }
+        if (feineNamen < 20) throw new Error("Die Formationen nutzen kaum feine Platznamen - der Test prüft nichts");
+    });
+
+    test("MatchEngine: Taktik verschiebt Stärke zwischen den Mannschaftsteilen, schafft aber keine", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === "dor");
+        const vorher = { tactics: club.tactics, chemistry: club.chemistry };
+        const staerke = (tactics) => {
+            club.tactics = tactics;
+            return MatchEngine.calculateTeamPower(club, state.players, false);
+        };
+        try {
+            club.chemistry = null;
+            const grund = staerke({});
+            // Vorher machte Gegenpressing eine Mannschaft um fünf bis sechs
+            // Prozent stärker - fast halb so viel, wie zwischen dem besten und
+            // dem schwächsten Bundesligakader liegt
+            Object.keys(TacticsEngine.VORLAGEN).forEach(key => {
+                const pw = staerke(TacticsEngine.wendeVorlageAn({}, key));
+                if (Math.abs(pw.total / grund.total - 1) > 0.001) {
+                    throw new Error(`Vorlage ${key}: Gesamtstärke ${pw.total.toFixed(2)} statt ${grund.total.toFixed(2)}`);
+                }
+            });
+            // Die Ausrichtung wirkt trotzdem: mehr Angriff, weniger Abwehr
+            const offensiv = staerke({ mentality: "very_offensive" });
+            const defensiv = staerke({ mentality: "very_defensive" });
+            if (!(offensiv.attack > defensiv.attack * 1.2 && offensiv.defense < defensiv.defense * 0.85)) {
+                throw new Error(`Die Mentalität verschiebt nichts (Angriff ${offensiv.attack.toFixed(1)}/${defensiv.attack.toFixed(1)}, Abwehr ${offensiv.defense.toFixed(1)}/${defensiv.defense.toFixed(1)})`);
+            }
+        } finally {
+            Object.assign(club, vorher);
+        }
+    });
+
     // 14a5. Eine Karriere hat einen Zenit, kein ewiges Aufwärts
     test("TrainingEngine: Spieler erreichen ihren Zenit und bauen danach ab", () => {
         const einheiten = 70; // ungefähr eine Saison Training
@@ -7025,6 +7100,36 @@ function runEngineTests() {
             if (!(q >= 55 && q <= 95)) throw new Error(`Passquote ${st.passAccuracy.join(":")} ist nicht gemessen`);
         });
         if (!(live.timeline.passAccuracy && live.timeline.possession)) throw new Error("Die Messwerte fehlen in der Zeitleiste");
+    });
+
+    test("FM-Modus: Die technisch überlegene Elf lässt den Ball laufen und hat mehr davon", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Geduld" });
+        const club = id => state.clubs.find(c => c.id === id);
+        const partie = (heim, gast, id) => {
+            state.players.forEach(p => { p.suspendedMatches = 0; p.injuredWeeks = 0; p.fitness = 95; });
+            const m = { id, played: false, homeClubId: heim, awayClubId: gast };
+            const live = MatchEngine.createLiveMatch(m, club(heim), club(gast), state.players, { modus: "fm" });
+            return { m, live };
+        };
+
+        // Die Geduld folgt dem technischen Vorsprung: Bayern ist geduldig,
+        // Augsburg spielt direkter, und beides bleibt in seinen Grenzen
+        const { live: probe } = partie("muc", "fca", "geduld_probe");
+        const flow = probe.director.flow;
+        const heim = flow.geduld("home"), gast = flow.geduld("away");
+        if (!(heim > 0.3 && heim <= MatchFlowEngine.GEDULD_MAX)) throw new Error(`Bayern ist nicht geduldig (${heim.toFixed(2)})`);
+        if (!(gast < 0 && gast >= MatchFlowEngine.GEDULD_MIN)) throw new Error(`Augsburg spielt nicht direkter (${gast.toFixed(2)})`);
+
+        // Und auf dem Platz: Bayern hat deutlich mehr vom Ball. Vorher waren
+        // es gemessen 52 Prozent bei fast gleicher Passquote.
+        let besitz = 0;
+        for (let i = 0; i < 4; i++) {
+            const { m, live } = partie("muc", "fca", "geduld_" + i);
+            live.rechneOhneBild();
+            besitz += m.stats.possession[0];
+        }
+        besitz /= 4;
+        if (besitz < 56) throw new Error(`Bayern hat gegen Augsburg nur ${besitz.toFixed(1)} % Ballbesitz`);
     });
 
     test("FM-Modus: Live-Anzeige und Spielbericht zählen dasselbe - auch mit Wechsel", () => {

@@ -55,6 +55,16 @@ class MatchFlowEngine {
     static ABSICHERUNG_JE_HELFER = 0.06;
     static ABSICHERUNG_MAX = 0.18;
 
+    // Geduld am Ball (siehe qualitaetsVorsprung): Bisher spielten Bayern und
+    // Augsburg denselben Fußball - gemessen 52 Prozent Ballbesitz für Bayern
+    // bei fast gleicher Passquote. Jetzt lässt die technisch überlegene Elf
+    // den Ball laufen, und die unterlegene sucht schneller den Weg nach vorn.
+    static GEDULD = 8;             // Vorsprung in der Ruhe am Ball -> Geduld
+    static GEDULD_MAX = 0.9;
+    static GEDULD_MIN = -0.5;      // der Unterlegene spielt direkter, aber nicht kopflos
+    static GEDULD_QUER = 3;        // Gewicht des sicheren Balls quer oder zurück
+    static GEDULD_MITTE = 0.75;    // im Mittelfeld etwas weniger als im Aufbau
+
     constructor(options = {}) {
         // Zugriff auf die Spieler des Feldes und die Vereinsdaten
         this.getPlayers = options.getPlayers || (() => []);
@@ -187,6 +197,46 @@ class MatchFlowEngine {
         return m.grosseSpiele * 0.5 + m.bestaendigkeit * 0.3 + erfahrung * 0.2;
     }
 
+    /**
+     * Ruhe am Ball (0-1): Technik, Passspiel, Dribbling und Nerven - was
+     * einen Spieler unter Druck den Ball behalten lässt.
+     */
+    ruheAmBall(player) {
+        return (this.attr(player, "technique") * 0.45 + this.attr(player, "passing") * 0.3
+            + this.attr(player, "dribbling") * 0.1 + this.nerven(player) * 5 * 0.15) / 100;
+    }
+
+    /**
+     * Technischer Vorsprung einer Mannschaft: Schnitt der Ruhe am Ball ihrer
+     * Feldspieler minus den des Gegners. Einmal je Spielminute gerechnet -
+     * Wechsel und Platzverweise zählen also mit.
+     */
+    qualitaetsVorsprung(team) {
+        const minute = Math.floor(this.lage(team)?.minute || 0);
+        this._vorsprung = this._vorsprung || {};
+        const gemerkt = this._vorsprung[team];
+        if (gemerkt && gemerkt.minute === minute) return gemerkt.wert;
+        const schnitt = (t) => {
+            const feld = this.teamOf(t).filter(p => p.pos !== "TW");
+            return feld.length ? feld.reduce((summe, p) => summe + this.ruheAmBall(p), 0) / feld.length : 0.7;
+        };
+        const wert = schnitt(team) - schnitt(team === "home" ? "away" : "home");
+        this._vorsprung[team] = { minute, wert };
+        return wert;
+    }
+
+    /**
+     * Geduld einer Mannschaft am Ball (-0.5 bis 0.9): positiv, wer technisch
+     * überlegen ist und den Ball laufen lassen kann, negativ, wer unterlegen
+     * ist und ihn unter Druck nicht lange hält. Gleich gute Mannschaften
+     * liegen bei null - für sie bleibt alles, wie es war.
+     */
+    geduld(team) {
+        if (!this.fm()) return 0;
+        return Math.max(MatchFlowEngine.GEDULD_MIN,
+            Math.min(MatchFlowEngine.GEDULD_MAX, this.qualitaetsVorsprung(team) * MatchFlowEngine.GEDULD));
+    }
+
     /** Konzentration (1-20): Professionalität und Beständigkeit */
     konzentration(player) {
         const m = player?.mental;
@@ -228,7 +278,10 @@ class MatchFlowEngine {
         // Je länger eine Mannschaft den Ball hält, desto entschlossener rückt
         // sie auf - so entstehen echte Angriffszüge statt Dauerquerpässe.
         const chain = Math.min(8, context.chainLength || 0);
-        forwardDrive *= 1 + chain * 0.07;
+        // Der Geduldige rückt mit jeder Station langsamer auf, der
+        // Unterlegene schneller
+        const geduld = this.geduld(carrier.team);
+        forwardDrive *= 1 + chain * 0.07 * (1 - geduld * 0.5);
         // Der Konter kennt keine defensive Grundhaltung: Direkt nach dem
         // Ballgewinn geht es nach vorn, solange der Gegner ungeordnet ist.
         // Vorher bremste die defensive Mentalitaet auch diesen Moment - ein
@@ -441,7 +494,15 @@ class MatchFlowEngine {
                 if (istAbschluss) eigScore += (em.strafraum || 0) * 0.3;
             }
 
+            // Geduld: Wer überlegen ist, spielt den sicheren Ball quer oder
+            // zurück, bis sich eine Lücke auftut; wer unterlegen ist, meidet
+            // ihn. Vor dem Tor gilt das nicht - dort zählt der Abschluss.
+            const geduldScore = (geduld !== 0 && !istAbschluss && forward <= 3 && laneRisk < 0.35 && mate.pos !== "TW")
+                ? geduld * MatchFlowEngine.GEDULD_QUER * (istAufbau ? 1 : MatchFlowEngine.GEDULD_MITTE)
+                : 0;
+
             const score = lengthScore * 0.8
+                + geduldScore
                 + eigScore
                 + anlaufScore
                 + mentalScore

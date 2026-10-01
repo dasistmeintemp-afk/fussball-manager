@@ -122,7 +122,13 @@ const MATCH_TUNING = {
     // Jetzt zählt der Abstand selbst, gemessen am Niveau der Liga. Der
     // Heimvorteil steckt bewusst in einer eigenen Zahl: Er ist überall
     // gleich groß und darf nicht mitwachsen, wenn eine Mannschaft besser wird.
-    sceneShare: 1.15,
+    //
+    // 1.15 war auf eine Stärke geeicht, in der die Taktik der KI-Vereine
+    // Stärke schuf - und das ausgerechnet bei den Spitzenklubs mit
+    // Gegenpressing. Seit sie nur noch Stärke verschiebt, liegen die Kader
+    // rechnerisch enger beieinander; 1.35 gibt dem Favoriten die alte
+    // Tordifferenz zurück (gemessen +0.96 statt +0.63 je Spiel).
+    sceneShare: 1.35,
     homeSceneEdge: 0.034,
 
     // Raten für Nebenereignisse
@@ -404,6 +410,21 @@ class MatchEngine {
      * Ordnet jedem Spieler der Startelf die Position zu, auf der er tatsächlich aufgestellt ist.
      * Der Index in der Aufstellung entspricht dem Formations-Slot.
      */
+    /**
+     * Die Grundposition eines Formationsplatzes (ZDM -> DM, LAV -> LV).
+     *
+     * Die Formationen benennen Halbpositionen fein. Die Stärkeberechnung
+     * kannte nur die Grundpositionen und zählte jeden anderen Platz zum
+     * Sturm: In einer Formation mit ZDM, LZM und RZM hatte eine Mannschaft
+     * rechnerisch kein Mittelfeld (Ersatzwert 65), ihre Sechser schossen
+     * Tore und ihre Schienenspieler stürmten. Der Livespiel-Regisseur
+     * übersetzt längst (LiveMatchDirector.normRolle) - hier fehlte es.
+     */
+    static grundPosition(pos) {
+        if (!pos) return pos;
+        return (_PositionEngine && _PositionEngine.normalizePosition(pos)) || pos;
+    }
+
     static getDeployedPositionMap(club, lineupPlayers) {
         const slots = this.getFormationSlots(club);
         const map = new Map();
@@ -440,7 +461,7 @@ class MatchEngine {
 
         let attrs = [];
         // Die Attributgewichtung richtet sich nach der Position, auf der gespielt wird
-        const pos = deployedPos || player.pos || "ZM";
+        const pos = this.grundPosition(deployedPos || player.pos || "ZM");
 
         if (pos === "TW") {
             attrs = [getAttr("reflexes"), getAttr("handling"), getAttr("oneOnOne"), getAttr("positioning")];
@@ -492,13 +513,14 @@ class MatchEngine {
         lineupPlayers.forEach(p => {
             const deployedPos = deployedMap.get(p.id) || p.pos;
             const effectiveSkill = this.calculateEffectivePlayerSkill(p, deployedPos);
+            const grund = this.grundPosition(deployedPos);
 
-            if (deployedPos === "TW") {
+            if (grund === "TW") {
                 gkPower = effectiveSkill * 1.05;
-            } else if (["IV", "LV", "RV"].includes(deployedPos)) {
+            } else if (["IV", "LV", "RV"].includes(grund)) {
                 defSum += effectiveSkill;
                 defCount++;
-            } else if (["DM", "ZM", "LM", "RM", "OM"].includes(deployedPos)) {
+            } else if (["DM", "ZM", "LM", "RM", "OM"].includes(grund)) {
                 midSum += effectiveSkill;
                 midCount++;
             } else { // ST, LA, RA
@@ -510,6 +532,8 @@ class MatchEngine {
         let attack = attackCount > 0 ? attackSum / attackCount : 65;
         let midfield = midCount > 0 ? midSum / midCount : 65;
         let defense = defCount > 0 ? defSum / defCount : 65;
+        // Die Mannschaftsteile ohne Taktik, gewichtet wie in der Gesamtstärke
+        const ohneTaktik = attack * 0.35 + midfield * 0.35 + defense * 0.2;
 
         // Taktische Modifikatoren für alle 7 Taktikregler (A2)
         const tactics = club.tactics || {};
@@ -577,6 +601,23 @@ class MatchEngine {
             if (w.abseitsfalle) defense *= 1.01;
             if (w.freiheit > 1) { attack *= 1.01; defense *= 0.995; }
             else if (w.freiheit < 1) { defense *= 1.005; attack *= 0.995; }
+        }
+
+        // Die Taktik verschiebt Stärke zwischen den Mannschaftsteilen, sie
+        // schafft keine. Vorher war jede Anweisung, die das Mittelfeld
+        // stärkte, ein Gewinn: Es zählt in der Gesamtstärke 35 Prozent, die
+        // Abwehr, die den Preis zahlte, nur 20. Gegenpressing und
+        // Positionsspiel machten eine Mannschaft so um fünf bis sechs Prozent
+        // besser - fast halb so viel, wie zwischen dem besten und dem
+        // schwächsten Bundesligakader liegt. Dortmund mit Gegenpressing war
+        // rechnerisch stärker als Bayern, ein Mittelfeldklub mit der
+        // richtigen Vorlage stärker als ein Spitzenklub ohne.
+        const mitTaktik = attack * 0.35 + midfield * 0.35 + defense * 0.2;
+        if (mitTaktik > 0 && ohneTaktik > 0) {
+            const ausgleich = ohneTaktik / mitTaktik;
+            attack *= ausgleich;
+            midfield *= ausgleich;
+            defense *= ausgleich;
         }
 
         // E2: Teamchemie aktivieren (Multiplikator)

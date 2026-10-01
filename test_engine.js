@@ -3463,7 +3463,8 @@ function runEngineTests() {
         if (JSON.stringify(enc).length >= JSON.stringify(alt).length) throw new Error("fmc2 ist nicht kleiner als fmc1");
     });
 
-    test("Speicher: IndexedDB mit Umzug aus dem LocalStorage, Ausweichen bei Fehlern, der jüngere Stand gewinnt", () => {
+    /** Attrappen für IndexedDB und LocalStorage, deren Antworten sofort da sind */
+    function speicherAttrappen() {
         // Antworten, die sofort da sind - so bleibt der Test synchron
         const sofort = (wert, fehler) => ({
             __sofort: true,
@@ -3486,6 +3487,13 @@ function runEngineTests() {
                 this.daten[k] = v; return sofort(true);
             },
             loesche(k) { delete this.daten[k]; this.geloescht.push(k); return sofort(true); },
+            schreibeMehrere(eintraege, loeschen = []) {
+                if (this.kaputt) return sofort(undefined, Object.assign(new Error("voll"), { name: "QuotaExceededError" }));
+                Object.assign(this.daten, eintraege);
+                loeschen.forEach(k => { delete this.daten[k]; this.geloescht.push(k); });
+                return sofort(true);
+            },
+            schluessel() { return sofort(Object.keys(this.daten)); },
             bitteUmDauerhaftenSpeicher() { return sofort(false); }
         };
         const ls = {
@@ -3494,6 +3502,11 @@ function runEngineTests() {
             setItem(k, v) { this.daten[k] = String(v); },
             removeItem(k) { delete this.daten[k]; }
         };
+        return { db, ls };
+    }
+
+    test("Speicher: IndexedDB mit Umzug aus dem LocalStorage, Ausweichen bei Fehlern, der jüngere Stand gewinnt", () => {
+        const { db, ls } = speicherAttrappen();
         const PLATZ = GameState.SPEICHERPLATZ;
         const vorherLs = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
         globalThis.SpeicherDB = db;
@@ -3567,6 +3580,115 @@ function runEngineTests() {
             else delete globalThis.localStorage;
             GameState._idbAktiv = false;
             GameState._spiegel = {};
+            GameState._verzeichnis = null;
+            GameState._aktiverPlatz = null;
+        }
+    });
+
+    test("Speicherplätze: Karrieren nebeneinander, eine Sicherung je Spielwoche, Wiederherstellen und Aufräumen", () => {
+        const { db, ls } = speicherAttrappen();
+        const vorherLs = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+        globalThis.SpeicherDB = db;
+        Object.defineProperty(globalThis, "localStorage", { value: ls, configurable: true, writable: true });
+        const plaetze = GameState.alleSpeicherplaetze();
+        const sicherungenIn = (platz) => Object.keys(db.daten).filter(k => k.startsWith(platz + "__sicherung_"));
+        try {
+            if (plaetze.length !== 5 || plaetze[0] !== GameState.SPEICHERPLATZ) throw new Error("Platz 1 muss den bisherigen Schlüssel behalten");
+
+            // Ein Stand der Vorfassung: nur Platz 1, kein Verzeichnis
+            const alt = GameState.createNewGame("muc", "normal", { name: "Erste" });
+            alt.lastSaved = "2026-01-01T10:00:00.000Z";
+            db.daten[plaetze[0]] = JSON.stringify(SaveCodec.encodeState(alt));
+            GameState.bereiteSpeicherVor();
+            const verz = JSON.parse(db.daten[GameState.VERZEICHNIS] || "null");
+            if (!verz || verz.plaetze[plaetze[0]]?.clubId !== "muc") throw new Error("Verzeichnis nicht aus dem vorhandenen Stand gebildet");
+            if (GameState.aktiverPlatz() !== plaetze[0] || GameState.loadFromLocalStorage()?.userClubId !== "muc") throw new Error("Vorhandener Stand nicht auf Platz 1");
+
+            // Eine zweite Karriere verdrängt die erste nicht
+            const frei = GameState.freierPlatz();
+            if (frei !== plaetze[1]) throw new Error(`Falscher freier Platz: ${frei}`);
+            GameState.setzeAktivenPlatz(frei);
+            const zweite = GameState.createNewGame("dor", "normal", { name: "Zweite" });
+            zweite.saveToLocalStorage(null, true);
+            if (!db.daten[plaetze[0]] || !db.daten[plaetze[1]]) throw new Error("Eine Karriere hat die andere überschrieben");
+            if (GameState.speicherplaetze().filter(p => p.zusammenfassung).length !== 2) throw new Error("Verzeichnis kennt nicht beide Karrieren");
+
+            // Neustart: weiter geht es mit der zuletzt gespielten, die andere wird erst bei Bedarf gelesen
+            GameState._spiegel = {};
+            GameState.bereiteSpeicherVor();
+            if (GameState.aktiverPlatz() !== plaetze[1] || GameState.loadFromLocalStorage()?.userClubId !== "dor") throw new Error("Nicht mit der jüngsten Karriere gestartet");
+            if (GameState._spiegel[plaetze[0]]) throw new Error("Der Spiegel hält mehr als den aktiven Stand");
+            let s = null;
+            GameState.ladePlatz(plaetze[0]).then(x => { s = x; });
+            if (!s || s.userClubId !== "muc" || GameState.aktiverPlatz() !== plaetze[0]) throw new Error("Anderer Platz nicht ladbar");
+            if (GameState._spiegel[plaetze[1]]) throw new Error("Der verlassene Platz bleibt im Spiegel");
+
+            // Sicherungen: höchstens eine je Spielwoche, die letzten drei bleiben
+            const jahr = s.seasonYear;
+            [0, 3, 7, 14, 21].forEach(tag => { s.currentDayIndex = tag; s.saveToLocalStorage(null, true); });
+            let liste = GameState.sicherungen();
+            if (liste.map(x => x.tag).join() !== "21,14,7") throw new Error(`Falsche Sicherungen: ${liste.map(x => x.tag).join()}`);
+            if (sicherungenIn(plaetze[0]).length !== 3) throw new Error("Die älteste Sicherung liegt noch in der Datenbank");
+            if (sicherungenIn(plaetze[1]).length !== 1) throw new Error("Sicherungen des anderen Platzes berührt");
+            s.seasonYear = jahr + 1;
+            s.currentDayIndex = 2;
+            s.saveToLocalStorage(null, true);
+            if (GameState.sicherungen()[0].seasonYear !== jahr + 1) throw new Error("Neue Saison ohne Sicherung");
+
+            // Wiederherstellen: Sicherung lesen, den jetzigen Stand sichern, mit der Sicherung weiterspielen
+            const ziel = GameState.sicherungen()[2];
+            let zurueck = null;
+            GameState.ladeSicherung(ziel.schluessel).then(x => { zurueck = x; });
+            if (!zurueck || zurueck.currentDayIndex !== ziel.tag) throw new Error("Sicherung nicht lesbar");
+            s.legeSicherungAn();
+            zurueck.saveToLocalStorage(null, true);
+            if (GameState.loadFromLocalStorage().currentDayIndex !== ziel.tag) throw new Error("Wiederhergestellter Stand ist nicht der aktuelle");
+            if (!GameState.sicherungen().some(x => x.seasonYear === jahr + 1)) throw new Error("Der Stand vor dem Wiederherstellen ging verloren");
+            if (sicherungenIn(plaetze[0]).length !== GameState.SICHERUNGEN_JE_PLATZ) throw new Error("Mehr Sicherungen als vorgesehen");
+
+            // Eine neue Karriere auf einem belegten Platz nimmt die alten Sicherungen nicht mit
+            const dritte = GameState.createNewGame("lev", "normal", { name: "Dritte" });
+            dritte.saveToLocalStorage(null, true);
+            if (GameState.sicherungen().some(x => x.saveId !== dritte.saveId)) throw new Error("Fremde Sicherungen am neuen Spielstand");
+            if (sicherungenIn(plaetze[0]).length !== GameState.sicherungen().length) throw new Error("Alte Sicherungen liegen noch in der Datenbank");
+
+            // Kopie auf einen freien Platz: das Spiel bleibt auf seinem Platz, die Kopie ohne Sicherung
+            let kopiert = false;
+            dritte.sichereKopie(plaetze[2]).then(ok => { kopiert = ok; });
+            if (!kopiert || GameState.speicherplaetze()[2].zusammenfassung?.clubId !== "lev" || GameState.aktiverPlatz() !== plaetze[0]) throw new Error("Kopie misslungen");
+            if (GameState.sicherungen(plaetze[2]).length || sicherungenIn(plaetze[2]).length) throw new Error("Die Kopie legt eine überflüssige Sicherung an");
+
+            // Löschen nimmt die Sicherungen mit
+            GameState.deleteSavegame(plaetze[0]);
+            if (db.daten[plaetze[0]] || sicherungenIn(plaetze[0]).length || GameState.speicherplaetze()[0].zusammenfassung) throw new Error("Löschen unvollständig");
+
+            // Verwaiste Sicherungen räumt der nächste Start auf
+            db.daten[plaetze[1] + "__sicherung_verwaist"] = "{}";
+            GameState._spiegel = {};
+            GameState.bereiteSpeicherVor();
+            if (db.daten[plaetze[1] + "__sicherung_verwaist"]) throw new Error("Verwaiste Sicherung nicht aufgeräumt");
+            if (sicherungenIn(plaetze[1]).length !== 1) throw new Error("Beim Aufräumen eine gültige Sicherung gelöscht");
+
+            // Ohne IndexedDB: Plätze ja, Sicherungen nein
+            db.verfuegbar = () => false;
+            ls.daten = {};
+            GameState._spiegel = {};
+            GameState.bereiteSpeicherVor();
+            GameState.setzeAktivenPlatz(plaetze[3]);
+            zweite.saveToLocalStorage(null, true);
+            if (!ls.getItem(plaetze[3]) || GameState.sicherungen().length || Object.keys(ls.daten).some(k => k.includes("__sicherung_"))) throw new Error("LocalStorage-Betrieb falsch");
+            GameState._verzeichnis = null;
+            GameState._aktiverPlatz = null;
+            GameState.bereiteSpeicherVor();
+            if (GameState.aktiverPlatz() !== plaetze[3] || GameState.getSaveSummary()?.clubId !== "dor") throw new Error("Ohne IndexedDB nach Neustart nicht auf dem richtigen Platz");
+        } finally {
+            delete globalThis.SpeicherDB;
+            if (vorherLs) Object.defineProperty(globalThis, "localStorage", vorherLs);
+            else delete globalThis.localStorage;
+            GameState._idbAktiv = false;
+            GameState._spiegel = {};
+            GameState._verzeichnis = null;
+            GameState._aktiverPlatz = null;
         }
     });
 

@@ -49,8 +49,19 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   * Gibt es kein IndexedDB (sehr alte Browser, manche private Fenster) oder scheitert ein Schreibvorgang, springt der LocalStorage ein. Liegen in beiden Speichern Stände, gilt beim nächsten Start der jüngere.
   * Gesammelt wird eine Sekunde lang, dann einmal geschrieben. Beim Schließen oder Wegwechseln der Seite geht ein offener Stand sofort an die Datenbank.
   * Unter **Spielstand & Einstellungen** steht, wo der Stand liegt, wie groß er ist und wie viel Platz der Browser noch frei hält.
+* **Fünf Speicherplätze:**
+  Bis zu fünf Karrieren liegen nebeneinander. Eine neue Karriere bekommt den ersten freien Platz und überschreibt keine laufende; sind alle belegt, fragt das Spiel, ob sie den am längsten nicht gespielten Stand ersetzen soll. Platz 1 behält den bisherigen Schlüssel – ein vorhandener Stand liegt nach dem Update ohne Umzug dort.
+  * Ein kleines Verzeichnis kennt zu jedem Platz Verein, Saison, Spieltag und Speicherzeit. In IndexedDB wird es im selben Vorgang geschrieben wie der Stand selbst und kann deshalb nicht von ihm abweichen. Der Startbildschirm liest nur den zuletzt gespielten Stand ganz ein, die anderen erst, wenn man sie lädt.
+  * Unter **Spielstand & Einstellungen → Spielstände** lassen sich Plätze laden und löschen, und der laufende Stand lässt sich als Kopie auf einen freien Platz legen – eine dauerhafte Momentaufnahme, die keine Sicherung verdrängt.
+  * Wird eine Datei derselben Karriere importiert, ersetzt sie nach Rückfrage deren Platz; eine fremde Karriere kommt auf einen freien Platz.
+* **Sicherungen (rollierend):**
+  Je Karriere hält das Spiel die letzten drei Sicherungen, höchstens eine pro Spielwoche: Liegt die jüngste Sicherung sieben Kalendertage im Spiel zurück oder in einer früheren Saison, wird der Stand beim Speichern zusätzlich als Sicherung abgelegt, die älteste fällt heraus. So ist ein beschädigter oder versehentlich verdorbener Stand nicht mehr das Ende der Karriere.
+  * **Zurückholen** fragt nach und legt den jetzigen Stand vorher selbst als Sicherung ab – auch das Zurückholen lässt sich also umkehren.
+  * **Sicherung jetzt anlegen** sichert von Hand, etwa vor einer großen Transferentscheidung.
+  * Eine neue Karriere auf einem belegten Platz nimmt die Sicherungen der alten nicht mit; verwaiste Sicherungen räumt der nächste Start auf.
+  * Sicherungen gibt es nur mit IndexedDB – der LocalStorage fasst kaum einen einzigen Stand.
 * **Spielstand fortsetzen:**
-  Beim erneuten Öffnen zeigt der Startbildschirm deine Managerdaten, Verein, Saison, Spieltag, Tabellenplatz und den Speicherzeitpunkt. Klicke einfach auf **"▶️ Spielstand fortsetzen"**.
+  Beim erneuten Öffnen zeigt der Startbildschirm die zuletzt gespielte Karriere groß mit Verein, Saison, Spieltag, Tabellenplatz und Speicherzeitpunkt, die übrigen darunter. **Weiterspielen** setzt die zuletzt gespielte fort.
 * **Spielstand exportieren:**
   Klicke im Menü unter **"Spielstand & Optionen"** auf **"💾 Spielstand exportieren"**. Du erhältst eine `.json`-Datei mit einem sprechenden Dateinamen (z. B. `fm-save-fc-münchen-saison-1-spieltag-5.json`). Die Datei ist verdichtet wie der Browserspeicher (rund 2 MB statt über 10 MB) und wird als Blob heruntergeladen, damit auch große Stände nicht an der Längengrenze von `data:`-Adressen scheitern. Ältere, unverdichtete Exportdateien lassen sich weiter importieren.
 * **Spielstand an Freunde verschicken / Importieren:**
@@ -509,6 +520,7 @@ untitled/
 │   │   ├── uiAkten.js          # Spieler- und Vereinsakte
 │   │   ├── uiLivespiel.js      # Match-Center, Zurufe, Seitenlinie während der Partie
 │   │   ├── uiSpielbericht.js   # Spielbericht mit Schusskarte, Heatmaps und Passnetz
+│   │   ├── uiSpeicher.js       # Speicherplätze, Sicherungen, Laden, Löschen, Import
 │   │   └── spielfeld3d.js      # 3D-Ansicht des Livespiels (three.js): Stadion, Figuren, drei Kameras
 │   └── vendor/
 │       └── three.min.js        # three.js r159 (MIT-Lizenz, THREE_LICENSE daneben)
@@ -619,8 +631,12 @@ TEST_SCHNELL=1 node test_runner.js            # ohne die sieben langsamsten Test
 TEST_FILTER="U23|Speicher" node test_runner.js # nur passende Tests
 TEST_ZEIT=1 node test_runner.js               # Laufzeit je Test anzeigen
 TEST_SEED=1234 node test_runner.js            # andere feste Zufallswerte; TEST_SEED=zufall für echten Zufall
+TEST_TEIL=2/4 node test_runner.js             # nur den zweiten von vier Teilen - für parallele Läufe
 node pruefung.js                              # nur die statische Prüfung
 ```
+
+**Automatisch bei GitHub (`.github/workflows/tests.yml`):** Bei jedem Pull Request und jedem Push auf `master` laufen die statische Prüfung und die volle Suite, aufgeteilt auf vier parallele Läufe (`TEST_TEIL=1/4` bis `4/4`). Die schweren Tests sind nach ihrer gemessenen Dauer verteilt (`DAUER` in `test_filter.js`), damit kein Teil viel länger braucht als die anderen. Ein roter Haken am Pull Request heißt: nicht mergen. Über **Actions → Tests → Run workflow** lässt sich die Suite von Hand mit einem anderen Startwert starten, etwa `7` oder `zufall`.
+
 Jeder Test bekommt feste Zufallswerte aus seinem Namen – er liefert allein dasselbe Ergebnis wie in der ganzen Suite. Vor jeder Suite läuft `pruefung.js`: Syntax aller Dateien, doppelte Methoden (auch über die ausgelagerten UI-Teile hinweg), doppelte globale Namen und ob jede Datei geladen und offline vorrätig ist.
 
 Oder führe die individuellen Test-Suiten aus:

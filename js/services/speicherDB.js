@@ -91,16 +91,27 @@ const SpeicherDB = {
      * diesem Aufruf an den Browser - das zählt beim Schließen der Seite.
      */
     schreibe(schluessel, wert) {
-        if (this._db) return this._schreibeMit(this._db, schluessel, wert);
-        return this.oeffne().then(db => this._schreibeMit(db, schluessel, wert));
+        return this.schreibeMehrere({ [schluessel]: wert }, []);
     },
 
-    _schreibeMit(db, schluessel, wert) {
+    /**
+     * Mehrere Werte schreiben und Schlüssel löschen - in einem Vorgang:
+     * Entweder kommt alles an oder nichts. So passen Spielstand, Sicherung
+     * und Verzeichnis immer zueinander.
+     */
+    schreibeMehrere(eintraege, loeschen = []) {
+        if (this._db) return this._schreibeMit(this._db, eintraege, loeschen);
+        return this.oeffne().then(db => this._schreibeMit(db, eintraege, loeschen));
+    },
+
+    _schreibeMit(db, eintraege, loeschen) {
         return new Promise((resolve, reject) => {
             let tx;
             try {
                 tx = db.transaction(this.STORE, "readwrite");
-                tx.objectStore(this.STORE).put(wert, schluessel);
+                const store = tx.objectStore(this.STORE);
+                Object.keys(eintraege || {}).forEach(k => store.put(eintraege[k], k));
+                (loeschen || []).forEach(k => store.delete(k));
             } catch (e) {
                 reject(e);
                 return;
@@ -116,11 +127,15 @@ const SpeicherDB = {
     },
 
     loesche(schluessel) {
+        return this.schreibeMehrere({}, [schluessel]);
+    },
+
+    /** Alle belegten Schlüssel - zum Aufräumen verwaister Sicherungen */
+    schluessel() {
         return this.oeffne().then(db => new Promise((resolve, reject) => {
-            const tx = db.transaction(this.STORE, "readwrite");
-            tx.objectStore(this.STORE).delete(schluessel);
-            tx.oncomplete = () => resolve(true);
-            tx.onerror = () => reject(tx.error);
+            const anfrage = db.transaction(this.STORE, "readonly").objectStore(this.STORE).getAllKeys();
+            anfrage.onsuccess = () => resolve(anfrage.result || []);
+            anfrage.onerror = () => reject(anfrage.error);
         }));
     },
 

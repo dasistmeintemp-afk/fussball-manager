@@ -360,6 +360,22 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         return "";
     },
 
+    /**
+     * Wie lange ein Vereinsloser noch zu haben ist: Wer eine ganze Saison
+     * keinen Verein findet, hört auf (SeasonEngine.processRetirements),
+     * ein Talent bekommt eine Saison mehr.
+     */
+    vereinslosFrist(player) {
+        const jahr = this.app.state?.seasonYear || 0;
+        const seit = typeof player.vereinslosAb === "number" ? player.vereinslosAb : jahr;
+        const se = (typeof SeasonEngine !== "undefined" && SeasonEngine) || (typeof window !== "undefined" && window.SeasonEngine) || null;
+        const talentAlter = se?.VEREINSLOS_TALENT_ALTER ?? 21;
+        const ende = seit + ((player.age || 25) <= talentAlter ? 2 : 1);
+        return ende <= jahr + 1
+            ? "Ohne Verein - findet er bis zum Saisonwechsel keinen, hört er auf."
+            : "Ohne Verein - als Talent hat er noch bis zum übernächsten Saisonwechsel Zeit.";
+    },
+
     renderTransfers() {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
@@ -494,7 +510,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                             <strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}
                             <span class="tm-sub">${this.escapeHtml(p.nationality || "Profi")} · ${p.age} J.</span>
                         </td>
-                        <td class="tm-verein">${club ? vereinsName : '<span class="badge badge-success">Ablösefrei</span>'}</td>
+                        <td class="tm-verein">${club ? vereinsName : `<span class="badge badge-success" title="${this.escapeHtml(this.vereinslosFrist(p))}">Ablösefrei</span>`}</td>
                         <td class="tm-pos"><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span></td>
                         <td class="tm-alter">${p.age}</td>
                         <td class="tm-staerke nowrap">

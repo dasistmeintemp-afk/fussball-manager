@@ -8514,6 +8514,105 @@ function runEngineTests() {
         }
     });
 
+    test("Welt: Wer eine Saison ohne Verein bleibt, verlässt den Profifußball - Talente bekommen eine zweite", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const Y = state.seasonYear;
+        const ki = state.clubs.find(c => c.id !== state.userClubId && c.leagueId === "de_liga_1");
+        const kader = ki.playerIds.map(id => state.players.find(p => p.id === id));
+        // Fünf Spieler werden vereinslos - zu verschiedenen Zeitpunkten
+        const machFrei = (p, alter, seit) => {
+            ki.playerIds = ki.playerIds.filter(id => id !== p.id);
+            ki.lineup = ki.lineup.filter(id => id !== p.id);
+            ki.bench = ki.bench.filter(id => id !== p.id);
+            p.clubId = null; p.contractYears = 0; p.age = alter;
+            if (seit === undefined) delete p.vereinslosAb; else p.vereinslosAb = seit;
+            return p;
+        };
+        const [lange, talent, talentLange, frisch, ohneAngabe] = kader.slice(-5);
+        machFrei(lange, 26, Y - 1);
+        machFrei(talent, 20, Y - 1);
+        machFrei(talentLange, 20, Y - 2);
+        machFrei(frisch, 26, Y);
+        machFrei(ohneAngabe, 26, undefined);
+        // Der Nutzer verhandelt und beobachtet einen davon
+        state.negotiations = (state.negotiations || []).concat([{ id: "v1", playerId: lange.id }]);
+        state.scouting = state.scouting || {};
+        state.scouting.shortlist = (state.scouting.shortlist || []).concat([lange.id]);
+
+        const r = SeasonEngine.processRetirements(state);
+        const da = id => state.players.some(p => p.id === id);
+        if (da(lange.id)) throw new Error("Eine ganze Saison ohne Verein - und er ist noch da");
+        if (!da(talent.id)) throw new Error("Das Talent bekommt keine zweite Saison");
+        if (da(talentLange.id)) throw new Error("Das Talent bleibt nach zwei Saisons ohne Verein");
+        if (!da(frisch.id)) throw new Error("Wer gerade erst vereinslos wurde, ist schon weg");
+        if (!da(ohneAngabe.id) || ohneAngabe.vereinslosAb !== Y) throw new Error("Ein Vereinsloser aus einem alten Spielstand bekommt keine Frist");
+        if (!(r.ohneVerein >= 2)) throw new Error(`Gemeldet: ${r.ohneVerein} ohne Verein`);
+        if (state.negotiations.some(n => n.playerId === lange.id) || state.scouting.shortlist.includes(lange.id)) {
+            throw new Error("Verhandlung oder Beobachtung bleibt als Karteileiche zurück");
+        }
+
+        // Wer unterschreibt, ist kein Vereinsloser mehr
+        TransferEngine.executeTransfer(state, frisch.id, ki.id, 0, 5000, 2);
+        if (frisch.vereinslosAb !== undefined) throw new Error("Nach der Unterschrift läuft die Frist weiter");
+
+        // Wer beim Saisonwechsel vereinslos wird, bekommt das Datum
+        state.seasonYear++;
+        const ablauf = kader.slice(0, 3);
+        ablauf.forEach(p => { p.contractYears = 0; p.overall = 1; p.age = 34; });
+        SeasonEngine.processContractExpiries(state);
+        const ohneDatum = state.players.filter(p => !p.clubId && typeof p.vereinslosAb !== "number");
+        if (ohneDatum.length) throw new Error(`${ohneDatum.length} Vereinslose ohne Datum`);
+    });
+
+    test("Welt: Talente wachsen auf das Niveau ihres Vereins, nicht weit darüber", () => {
+        const mittel = a => a.reduce((x, y) => x + y, 0) / a.length;
+        const erzeuge = (anzahl, alter, level, staerke) => Array.from({ length: anzahl },
+            () => PlayerGenerator.generatePlayer("t", level, "ZM", null, { clubStrength: staerke, ageRange: alter }));
+        [[1, 0.8], [4, 0.5], [7, 0.3]].forEach(([level, staerke]) => {
+            // 1500 je Gruppe: Über 40 Läufe lag der Abstand im Mittel bei 2,3
+            // bis 2,9 und streute um 0,3 - mit 500 um 0,4, und die Grenze riss
+            // einmal bei 4,1
+            const talente = erzeuge(1500, [17, 20], level, staerke);
+            const gestandene = erzeuge(1500, [25, 28], level, staerke);
+            const niveau = mittel(gestandene.map(p => p.overall));
+            const potenzial = mittel(talente.map(p => p.pot));
+            // Vorher lag das Potenzial der Talente gut 8 Punkte über den
+            // gestandenen Spielern - jede Generation wurde besser als die vorige
+            if (potenzial - niveau > 5) throw new Error(`Liga ${level}: Talente ${potenzial.toFixed(1)} gegen Niveau ${niveau.toFixed(1)}`);
+            if (potenzial - niveau < -1) throw new Error(`Liga ${level}: Talente erreichen nicht einmal das Niveau (${potenzial.toFixed(1)} gegen ${niveau.toFixed(1)})`);
+            // Ausnahmetalente gibt es, aber selten: gemessen 3 bis 8 % reichen
+            // 14 Punkte über das Vereinsniveau hinaus
+            const ausnahme = talente.filter(p => p.pot >= niveau + 14).length / talente.length;
+            if (ausnahme < 0.01 || ausnahme > 0.12) throw new Error(`Liga ${level}: ${(ausnahme * 100).toFixed(0)} % Ausnahmetalente`);
+            // Luft nach oben hat jedes Talent - außer an der Obergrenze der Welt
+            // (potenzialDeckel), die schon vorher galt
+            const ohneLuft = talente.find(p => p.pot < p.overall + 3 && p.pot < 89);
+            if (ohneLuft) throw new Error(`Liga ${level}: ein Talent ohne Luft nach oben (${ohneLuft.overall} → ${ohneLuft.pot})`);
+        });
+    });
+
+    test("Welt: KI-Vereine messen Verträge und Vereinslose am eigenen Kader", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const niveau = ContractEngine.niveauKarte(state);
+        const landesliga = state.clubs.find(c => c.level === 7);
+        const bundesliga = state.clubs.find(c => c.leagueId === "de_liga_1" && c.id !== state.userClubId);
+        const nl = niveau.get(landesliga.id), nb = niveau.get(bundesliga.id);
+        if (!(nl < 40) || !(nb > 70)) throw new Error(`Niveaus unplausibel: Landesliga ${nl}, Bundesliga ${nb}`);
+        // Ein Stammspieler der Landesliga ist für seinen Verein so wichtig wie
+        // einer der Bundesliga für seinen - vorher galt fest "ab 55"
+        const stamm = { overall: Math.round(nl - 3), age: 27 };
+        if (SeasonEngine.haltequote(stamm, nl) !== SeasonEngine.haltequote({ overall: Math.round(nb - 3), age: 27 }, nb)) {
+            throw new Error("Der Landesligist hält seinen Stammspieler seltener als der Bundesligist");
+        }
+        if (SeasonEngine.haltequote({ overall: Math.round(nl - 20), age: 29 }, nl) >= SeasonEngine.haltequote(stamm, nl)) {
+            throw new Error("Der Schwächste wird so gern gehalten wie der Stammspieler");
+        }
+        // Vereinslose: ein Bundesligaspieler heuert nicht in der Landesliga an
+        if (SeasonEngine.passtZumKader({ overall: Math.round(nb) }, nl)) throw new Error("Der Landesligist holt einen Bundesligaspieler");
+        if (!SeasonEngine.passtZumKader({ overall: Math.round(nl) }, nl)) throw new Error("Der Landesligist holt keinen Spieler seines Niveaus");
+        if (SeasonEngine.passtZumKader({ overall: Math.round(nb - 25) }, nb)) throw new Error("Der Bundesligist holt einen viel schwächeren Spieler");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

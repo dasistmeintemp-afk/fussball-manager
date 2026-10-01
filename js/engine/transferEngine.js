@@ -270,6 +270,7 @@ class TransferEngine {
         player.vereinSeit = (state.seasonYear || state.season || 1) * 1000 + (state.currentDayIndex || 0);
         // Die U23 des alten Vereins gilt beim neuen nicht
         delete player.reserve;
+        delete player.vereinslosAb;
 
         // Zum neuen Verein hinzufügen
         buyerClub.playerIds.push(player.id);

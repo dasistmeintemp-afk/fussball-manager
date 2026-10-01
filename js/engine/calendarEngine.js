@@ -856,6 +856,11 @@ const CalendarEngine = {
             if (transferEngine && typeof transferEngine.processAiTransferWindow === "function") {
                 transferEngine.processAiTransferWindow(state, 220);
             }
+            // Die KI verleiht in der Vorbereitung ihre Talente ohne Einsätze
+            const leihen = (typeof LoanEngine !== "undefined" && LoanEngine)
+                ? LoanEngine
+                : ((typeof window !== "undefined" && window.LoanEngine) ? window.LoanEngine : (typeof require !== "undefined" ? require("./loanEngine.js").LoanEngine : null));
+            if (leihen && typeof leihen.kiLeihen === "function") leihen.kiLeihen(state, 6);
         }
 
         // Testspiel: zaehlt fuer keine Tabelle, aber fuer Spielpraxis

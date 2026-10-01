@@ -1,6 +1,7 @@
 /**
  * Test-Suite 2: Wizard-Logik, Filter, UI-Simulation und Regressionsprüfungen
  */
+const { testAusgewaehlt, laufzeit } = require('./test_filter.js');
 const fs = require('fs');
 const { INITIAL_TEAMS_DATA } = require('./js/data/initialData.js');
 const { GameState, FORMATION_CONFIGS } = require('./js/engine/gameState.js');
@@ -18,9 +19,11 @@ function runWizardTests() {
     let failed = 0;
 
     function test(name, fn) {
+        if (!testAusgewaehlt(name)) return;
+        const start = Date.now();
         try {
             fn();
-            console.log(`  ✅ ${name}`);
+            console.log(`  ✅ ${name}${laufzeit(start)}`);
             passed++;
         } catch (err) {
             console.error(`  ❌ ${name}`);

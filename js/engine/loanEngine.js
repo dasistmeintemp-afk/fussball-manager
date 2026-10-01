@@ -318,6 +318,77 @@ class LoanEngine {
         return { success: true, eintrag };
     }
 
+    // ------------------------------------------------------- KI-Vereine
+
+    /**
+     * Die KI verleiht ebenfalls: Ein junger Spieler ohne Einsätze geht für
+     * eine Saison zu einem Verein derselben Liga oder bis zwei Ligen tiefer,
+     * bei dem er spielen würde. Ohne das stagnierten die Talente der
+     * KI-Vereine, seit Spielpraxis für die Entwicklung zählt.
+     * Gibt die Zahl der neuen Leihen zurück.
+     */
+    static kiLeihen(state, anzahl = 25, zufall = Math.random) {
+        const idx = this._index(state);
+        const vereine = (state.clubs || []).filter(c => c.id !== state.userClubId);
+        if (!vereine.length) return 0;
+        const niveauCache = new Map();
+        const niveau = (c) => {
+            if (!niveauCache.has(c.id)) niveauCache.set(c.id, this.niveau(state, c));
+            return niveauCache.get(c.id);
+        };
+        const nachStufe = new Map();
+        vereine.forEach(c => {
+            const k = c.level || 1;
+            if (!nachStufe.has(k)) nachStufe.set(k, []);
+            nachStufe.get(k).push(c);
+        });
+        const weg = new Map(), da = new Map();
+        (state.players || []).forEach(p => {
+            if (!p.leihe) return;
+            weg.set(p.leihe.stammvereinId, (weg.get(p.leihe.stammvereinId) || 0) + 1);
+            da.set(p.leihe.leihvereinId, (da.get(p.leihe.leihvereinId) || 0) + 1);
+        });
+
+        let erledigt = 0;
+        for (let i = 0; i < anzahl * 4 && erledigt < anzahl; i++) {
+            const stamm = vereine[Math.floor(zufall() * vereine.length)];
+            if ((weg.get(stamm.id) || 0) >= 3) continue;
+            const kader = (stamm.playerIds || []).map(id => idx.get(String(id))).filter(Boolean)
+                .sort((a, b) => (b.overall || 0) - (a.overall || 0));
+            if (kader.length <= 19) continue;
+            const kandidaten = kader.slice(13).filter(p => (p.age || 30) <= 22 && !p.leihe
+                && (p.injuredWeeks || 0) === 0 && (p.contractYears ?? 1) >= 1
+                && (typeof p.spielpraxis !== "number" || p.spielpraxis < 0.4));
+            if (!kandidaten.length) continue;
+            const p = kandidaten[Math.floor(zufall() * kandidaten.length)];
+            const stufe = stamm.level || 1;
+            const ziele = [stufe, stufe + 1, stufe + 2]
+                .flatMap(k => nachStufe.get(k) || [])
+                .filter(c => c.id !== stamm.id && (da.get(c.id) || 0) < 2
+                    && (c.playerIds || []).length < 28
+                    && (p.overall || 0) - niveau(c) >= -3);
+            if (!ziele.length) continue;
+            const ziel = ziele[Math.floor(zufall() * ziele.length)];
+            const diff = (p.overall || 0) - niveau(ziel);
+            this._wechsle(state, p, stamm, ziel);
+            p.leihe = {
+                stammvereinId: stamm.id,
+                leihvereinId: ziel.id,
+                bisSaison: state.seasonYear || 1,
+                lohnAnteil: Math.round(Math.max(0.3, Math.min(1, 0.55 + diff * 0.05)) * 20) / 20,
+                rolle: diff >= 1 ? "Stammspieler" : "Rotation",
+                seit: this._stempel(state),
+                startSpiele: p.stats?.matches || 0,
+                startTore: p.stats?.goals || 0,
+                startNoten: p.stats?.ratingSum || 0
+            };
+            weg.set(stamm.id, (weg.get(stamm.id) || 0) + 1);
+            da.set(ziel.id, (da.get(ziel.id) || 0) + 1);
+            erledigt++;
+        }
+        return erledigt;
+    }
+
     // ---------------------------------------------------- Laufender Betrieb
 
     /**

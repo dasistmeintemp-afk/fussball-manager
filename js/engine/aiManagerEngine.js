@@ -164,6 +164,11 @@ const AIManagerEngine = {
      */
     generateAiTransferOffers(state) {
         if (!state || !Array.isArray(state.clubs) || state.currentMatchday % 3 !== 0) return;
+        // Auch diese Angebote gibt es nur im Transferfenster
+        const te = (typeof TransferEngine !== 'undefined' && TransferEngine) ? TransferEngine
+            : ((typeof window !== 'undefined' && window.TransferEngine) ? window.TransferEngine
+                : (typeof require !== 'undefined' ? require('./transferEngine.js').TransferEngine : null));
+        if (te && typeof te.istTransferfenster === 'function' && !te.istTransferfenster(state)) return;
 
         // KI-Käufer auswählen mit gutem Transferbudget
         const aiClubs = state.clubs.filter(c => c.id !== state.userClubId && c.transferBudget > 5000000);

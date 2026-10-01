@@ -5,6 +5,19 @@ const { runDataTests } = require('./test_data.js');
 const { runWizardTests } = require('./test_wizard.js');
 const { runEngineTests } = require('./test_engine.js');
 const { runE2ETests } = require('./test_e2e.js');
+const { execFileSync } = require('child_process');
+
+/** Statische Prüfung (Syntax, doppelte Methoden, globale Namen) als eigene Suite */
+function runPruefung() {
+    if (process.env.TEST_FILTER) return { passed: 0, failed: 0 };
+    try {
+        console.log("\n  " + execFileSync(process.execPath, [require('path').join(__dirname, 'pruefung.js')], { encoding: "utf8" }).trim());
+        return { passed: 1, failed: 0 };
+    } catch (err) {
+        console.error(String(err.stderr || err.message));
+        return { passed: 0, failed: 1 };
+    }
+}
 
 function runAllSuites() {
     console.log("================================================================================");
@@ -16,6 +29,7 @@ function runAllSuites() {
     const suiteResults = [];
 
     const suites = [
+        { name: "Statische Prüfung (pruefung.js)", fn: runPruefung },
         { name: "Datenintegrität & Struktur (test_data.js)", fn: runDataTests },
         { name: "Wizard, Filter & UI Regression (test_wizard.js)", fn: runWizardTests },
         { name: "Game Engines & Subsysteme (test_engine.js)", fn: runEngineTests },

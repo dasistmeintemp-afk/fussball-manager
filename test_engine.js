@@ -1,6 +1,7 @@
 /**
  * Test-Suite 3: Subsystem- und Engine-Tests
  */
+const { testAusgewaehlt, laufzeit } = require('./test_filter.js');
 const { INITIAL_TEAMS_DATA } = require('./js/data/initialData.js');
 const { COUNTRIES_DATA, LEAGUES_DATA, COMPETITIONS_DATA } = require('./js/data/leagueData.js');
 const { StateValidator } = require('./js/core/validators.js');
@@ -53,9 +54,11 @@ function runEngineTests() {
     let failed = 0;
 
     function test(name, fn) {
+        if (!testAusgewaehlt(name)) return;
+        const start = Date.now();
         try {
             fn();
-            console.log(`  ✅ ${name}`);
+            console.log(`  ✅ ${name}${laufzeit(start)}`);
             passed++;
         } catch (err) {
             console.error(`  ❌ ${name}`);
@@ -7497,6 +7500,36 @@ function runEngineTests() {
         if (zurueck.length < 2) throw new Error("Nicht alle Leihspieler sind zurückgekehrt");
         if (kandidat.clubId !== club.id || !club.playerIds.includes(kandidat.id) || kandidat.leihe) throw new Error("Der verliehene Spieler ist nicht zurück");
         if (leihspieler.clubId === club.id || club.playerIds.includes(leihspieler.id)) throw new Error("Der Leihspieler ist nicht zu seinem Verein zurück");
+    });
+
+    test("Leihen: KI-Vereine verleihen Talente ohne Einsätze an gleich starke oder tiefere Ligen", () => {
+        const { LoanEngine } = require('./js/engine/loanEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        let seed = 7;
+        const zufall = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+        const anzahl = LoanEngine.kiLeihen(state, 30, zufall);
+        const verliehen = state.players.filter(p => p.leihe);
+        if (anzahl < 10 || verliehen.length !== anzahl) throw new Error(`${anzahl} KI-Leihen, ${verliehen.length} Spieler mit Leihe`);
+        const weg = {}, da = {};
+        verliehen.forEach(p => {
+            const stamm = state.clubs.find(c => c.id === p.leihe.stammvereinId);
+            const leih = state.clubs.find(c => c.id === p.leihe.leihvereinId);
+            if (stamm.id === state.userClubId || leih.id === state.userClubId) throw new Error("Die KI verleiht an oder vom Nutzer");
+            if ((leih.level || 1) < (stamm.level || 1) || (leih.level || 1) > (stamm.level || 1) + 2) throw new Error(`${p.name}: Liga ${stamm.level} → ${leih.level}`);
+            if (p.age > 22) throw new Error(`${p.name} ist ${p.age} Jahre alt`);
+            if (p.clubId !== leih.id || !leih.playerIds.includes(p.id) || stamm.playerIds.includes(p.id)) throw new Error(`${p.name} steht im falschen Kader`);
+            if (p.leihe.lohnAnteil < 0.3 || p.leihe.lohnAnteil > 1) throw new Error(`Gehaltsanteil ${p.leihe.lohnAnteil}`);
+            weg[stamm.id] = (weg[stamm.id] || 0) + 1;
+            da[leih.id] = (da[leih.id] || 0) + 1;
+        });
+        if (Object.values(weg).some(n => n > 3) || Object.values(da).some(n => n > 2)) throw new Error("Grenzen je Verein überschritten");
+        // Wer spielt, bleibt
+        state.players.forEach(p => { if (!p.leihe) p.spielpraxis = 0.8; });
+        if (LoanEngine.kiLeihen(state, 30, zufall) !== 0) throw new Error("Ein Spieler mit Spielpraxis wurde verliehen");
+        // Alle kehren zum Saisonende zurück
+        const zurueck = LoanEngine.saisonende(state);
+        if (zurueck.length !== anzahl || state.players.some(p => p.leihe)) throw new Error("Nicht alle KI-Leihen enden zum Saisonende");
+        if (zurueck.some(z => z.player.clubId !== z.stammvereinId)) throw new Error("Ein Spieler ist nicht zum Stammverein zurück");
     });
 
     test("Spielanalyse: Jeder Abschluss mit Ort, xG und Ausgang - nur bei eigenen Spielen gespeichert", () => {

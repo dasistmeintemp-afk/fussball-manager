@@ -98,6 +98,16 @@ const TAKTIK_ANWEISUNGEN = [
         hilfe: "Ecken und Freistöße gezielt suchen - lohnt sich mit kopfballstarken Spielern."
     },
     {
+        key: "ecken", phase: "mitBall", gruppe: "Standards", label: "Ecken", icon: "i-flag", standard: "gemischt",
+        optionen: [
+            { value: "gemischt", label: "Gemischt" },
+            { value: "ersterPfosten", label: "Erster Pfosten" },
+            { value: "zweiterPfosten", label: "Zweiter Pfosten" },
+            { value: "kurz", label: "Kurz ausführen" }
+        ],
+        hilfe: "Erster Pfosten: scharf an den kurzen Pfosten, der Torwart kommt schwer heran. Zweiter Pfosten: hoch an den langen, für den Kopfballstärksten. Kurz: ausspielen und aus besserem Winkel flanken - gut ohne große Spieler."
+    },
+    {
         key: "freiheit", phase: "mitBall", gruppe: "Stil", label: "Kreative Freiheit", icon: "i-spark", standard: "normal",
         optionen: [
             { value: "diszipliniert", label: "Diszipliniert" },
@@ -328,6 +338,15 @@ const TAKTIK_ANWEISUNGEN = [
             { value: "mann", label: "Manndeckung" }
         ],
         hilfe: "Im Raum verteidigt jeder seine Zone. Mannorientiert übernimmt jeder den Gegner, der in seine Zone kommt. In Manndeckung folgt jeder seinem Gegenspieler über das ganze Feld."
+    },
+    {
+        key: "standardDeckung", phase: "gegenBall", gruppe: "Standards", label: "Standards verteidigen", icon: "i-users", standard: "raum",
+        optionen: [
+            { value: "raum", label: "Raumdeckung" },
+            { value: "mann", label: "Manndeckung" },
+            { value: "gemischt", label: "Gemischt" }
+        ],
+        hilfe: "Raumdeckung schützt den ersten Pfosten und die Zonen vor dem Tor. Manndeckung stellt den besten Kopfballspieler gegen den gefährlichsten Gegner - stark gegen einen einzelnen Riesen. Gemischt verbindet beides."
     },
     {
         key: "kompaktheit", phase: "gegenBall", gruppe: "Block", label: "Breite des Blocks", icon: "i-width", standard: "normal",
@@ -973,6 +992,118 @@ const TacticsEngine = {
     },
 
     /**
+     * Taktische Vertrautheit: Eine neue Formation oder eine neue Spielweise
+     * sitzt nicht vom ersten Tag an. Je Formation und je Anweisung merkt
+     * sich der Verein, wie eingespielt die Mannschaft darauf ist (0-1).
+     * Spiele und Taktiktraining schleifen ein, was gespielt wird; was lange
+     * ruht, verblasst langsam. Grundeinstellungen sitzen immer.
+     *
+     * Die Wirkung: Bis zu acht Prozent Stärke kostet eine ganz fremde
+     * Taktik - eine neue Formation allein gut zwei.
+     */
+    VERTRAUT_KEYS: ["mentality", "passing", "tempo", "pressing", "defensiveLine", "anlaufen",
+        "nachBallgewinn", "nachBallverlust", "breite", "deckung", "kompaktheit", "durchsPressing"],
+    VERTRAUT_NEU: 0.55,
+
+    vertrautheitStarten(club) {
+        if (!club || (club.taktikVertrautheit && club.taktikVertrautheit.formationen)) return club?.taktikVertrautheit || null;
+        const v = { formationen: {}, anweisungen: {} };
+        if (club.formation) v.formationen[club.formation] = 1;
+        const t = club.tactics || {};
+        this.VERTRAUT_KEYS.forEach(k => {
+            const w = this.wert(t, k);
+            const def = TAKTIK_ANWEISUNGEN.find(a => a.key === k);
+            if (def && w !== def.standard) v.anweisungen[`${k}:${w}`] = 1;
+        });
+        club.taktikVertrautheit = v;
+        return v;
+    },
+
+    /** Wie eingespielt die Mannschaft auf das ist, was gerade eingestellt ist (0,4 - 1) */
+    vertrautheit(club, tactics = null) {
+        const v = club?.taktikVertrautheit;
+        if (!v || !v.formationen) return 1;
+        const t = tactics || club.tactics || {};
+        const formation = v.formationen[club.formation] ?? this.VERTRAUT_NEU;
+        const werte = this.VERTRAUT_KEYS.map(k => {
+            const w = this.wert(t, k);
+            const def = TAKTIK_ANWEISUNGEN.find(a => a.key === k);
+            if (!def || w === def.standard) return 1;
+            return v.anweisungen[`${k}:${w}`] ?? this.VERTRAUT_NEU;
+        });
+        const anweisungen = werte.reduce((s, x) => s + x, 0) / (werte.length || 1);
+        // Jede fremde Anweisung zieht - nicht nur im Schnitt
+        const fremde = werte.filter(x => x < 0.8).length;
+        return Math.max(0.4, Math.min(1, formation * 0.6 + anweisungen * 0.4 - fremde * 0.02));
+    },
+
+    /** Der Faktor auf die Spielstärke: fremd 0,92, eingespielt 1 */
+    vertrautheitsFaktor(club, tactics = null) {
+        return 0.92 + 0.08 * ((this.vertrautheit(club, tactics) - 0.4) / 0.6);
+    },
+
+    /**
+     * Einschleifen: Was gerade gespielt wird, wird vertrauter (menge je
+     * Spiel oder Einheit); alles andere verblasst ein wenig.
+     */
+    vertrautheitUeben(club, menge = 0.1, verblassen = 0.01) {
+        if (!club) return 1;
+        const v = this.vertrautheitStarten(club);
+        const aktivF = club.formation;
+        Object.keys(v.formationen).forEach(f => {
+            if (f !== aktivF) v.formationen[f] = Math.max(this.VERTRAUT_NEU, v.formationen[f] - verblassen);
+        });
+        if (aktivF) {
+            const alt = v.formationen[aktivF] ?? this.VERTRAUT_NEU;
+            v.formationen[aktivF] = Math.min(1, alt + (1 - alt) * menge * 1.6);
+        }
+        const t = club.tactics || {};
+        const aktiv = new Set();
+        this.VERTRAUT_KEYS.forEach(k => {
+            const w = this.wert(t, k);
+            const def = TAKTIK_ANWEISUNGEN.find(a => a.key === k);
+            if (!def || w === def.standard) return;
+            const schluessel = `${k}:${w}`;
+            aktiv.add(schluessel);
+            const alt = v.anweisungen[schluessel] ?? this.VERTRAUT_NEU;
+            v.anweisungen[schluessel] = Math.min(1, alt + (1 - alt) * menge * 2);
+        });
+        Object.keys(v.anweisungen).forEach(s => {
+            if (!aktiv.has(s)) v.anweisungen[s] = Math.max(this.VERTRAUT_NEU, v.anweisungen[s] - verblassen);
+        });
+        const wert = this.vertrautheit(club);
+        // Der alte Vereinswert zeigt dasselbe an
+        if (club.chemistry) club.chemistry.tacticalFamiliarity = Math.round(wert * 100);
+        return wert;
+    },
+
+    /** Was noch nicht sitzt - für die Anzeige im Taktik-Reiter */
+    vertrautheitDetails(club) {
+        const v = club?.taktikVertrautheit;
+        const t = club?.tactics || {};
+        const formation = v?.formationen ? (v.formationen[club.formation] ?? this.VERTRAUT_NEU) : 1;
+        const neu = [];
+        this.VERTRAUT_KEYS.forEach(k => {
+            const def = TAKTIK_ANWEISUNGEN.find(a => a.key === k);
+            const w = this.wert(t, k);
+            if (!def || w === def.standard || !v?.anweisungen) return;
+            const x = v.anweisungen[`${k}:${w}`] ?? this.VERTRAUT_NEU;
+            if (x < 0.85) neu.push({ key: k, label: def.label, wert: def.optionen.find(o => o.value === w)?.label || w, vertraut: x });
+        });
+        return { gesamt: this.vertrautheit(club), formation, neu };
+    },
+
+    /**
+     * Welche Ecke jetzt kommt: die eingestellte - oder bei "Gemischt" mal
+     * so, mal so (meist an einen der Pfosten, ab und zu kurz).
+     */
+    eckenVariante(wert) {
+        if (wert && wert !== "gemischt") return wert;
+        const w = Math.random();
+        return w < 0.18 ? "kurz" : (w < 0.55 ? "ersterPfosten" : "zweiterPfosten");
+    },
+
+    /**
      * Wie sich die Anweisungen in Zahlen auswirken. Eine Stelle, an der
      * alle Engines nachschlagen - so meint "hohes Pressing" ueberall dasselbe.
      */
@@ -1006,6 +1137,8 @@ const TacticsEngine = {
             abstossStoeren: w("abstossStoeren") === "verhindern",
             torwartSchnell: { schnell: 1, normal: 0, ruhig: -1 }[w("torwartVerteilung")],
             standards: w("standards") === "herausholen",
+            ecken: w("ecken"),
+            standardDeckung: w("standardDeckung"),
             // Neu nach dem FM26
             zeitspiel: { nie: -1, normal: 0, oft: 1 }[w("zeitspiel")],
             torwartZiel: w("torwartZiel"),

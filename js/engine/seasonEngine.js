@@ -183,6 +183,12 @@ class SeasonEngine {
                 if (manager && typeof manager.versprechenPruefen === 'function') {
                     manager.versprechenPruefen(state, eigenesSpiel);
                 }
+                // Was gespielt wurde, sitzt danach besser
+                const taktik = _resolve('TacticsEngine', './tacticsEngine.js');
+                const eigenerVerein = state.clubs.find(c => c.id === state.userClubId);
+                if (taktik && typeof taktik.vertrautheitUeben === 'function' && eigenerVerein) {
+                    taktik.vertrautheitUeben(eigenerVerein, 0.12);
+                }
             }
             // Die Gegner haben ebenfalls eine Kabine - sonst spielt der Nutzer
             // das ganze Jahr gegen dauerhaft bestens gelaunte Mannschaften

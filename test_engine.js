@@ -2757,8 +2757,10 @@ function runEngineTests() {
             live.advanceRealTime(1000 / 60);
             live.updateBallAndPlayers(1000 / 60);
             possessionTeams.add(live.director.possessionTeam);
-            maxHomeGkX = Math.max(maxHomeGkX, homeGk.x);
-            minAwayGkX = Math.min(minAwayGkX, awayGk.x);
+            // Ein ausgewechselter (etwa verletzter) Torwart geht zur Bank an
+            // der Mittellinie - gemessen wird nur, wer im Tor steht
+            if (live.players2D.includes(homeGk)) maxHomeGkX = Math.max(maxHomeGkX, homeGk.x);
+            if (live.players2D.includes(awayGk)) minAwayGkX = Math.min(minAwayGkX, awayGk.x);
         }
 
         if (maxHomeGkX > 30) throw new Error(`Heim-Torwart verlässt seine Hälfte (x=${maxHomeGkX.toFixed(1)})`);
@@ -7070,6 +7072,197 @@ function runEngineTests() {
         ManagerEngine.NACH_SPIEL_TOPICS.forEach(topic => {
             if (topic.answers.length < 3) throw new Error(`Thema ${topic.id} hat zu wenige Antworten`);
         });
+    });
+
+    test("Verletzungen entstehen im Spiel: harte Fouls und Müdigkeit, Glasknochen öfter", () => {
+        // Die Anfälligkeit zählt, das Alter auch
+        const robust = { hiddenAttributes: { injuryProneness: 4 }, age: 24 };
+        const glas = { hiddenAttributes: { injuryProneness: 17 }, age: 33 };
+        if (!(MatchEngine.verletzungsAnfaelligkeit(glas) > MatchEngine.verletzungsAnfaelligkeit(robust) * 2)) {
+            throw new Error("Ein verletzungsanfälliger Spieler verletzt sich nicht deutlich öfter");
+        }
+        // Wer ausgelaugt ist, zerrt sich eher
+        if (!(MatchEngine.muskelRisiko(robust, 0.5) > MatchEngine.muskelRisiko(robust, 1) * 2.5)) {
+            throw new Error("Müdigkeit erhöht das Muskelrisiko nicht");
+        }
+        // Je härter das Foul, desto eher bleibt der Gefoulte liegen
+        const k = MatchEngine.KONTAKT_RISIKO;
+        if (!(k.rot > k.gelb && k.gelb > k.foul)) throw new Error("Kontaktrisiko steigt nicht mit der Härte");
+
+        // Sofort-Simulation: Verletzungen tragen ihre Art, Kontakt nur nach Fouls
+        const state = GameState.createNewGame("muc", "normal", { name: "Arzt" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        let verletzt = 0;
+        const arten = new Set();
+        for (let i = 0; i < 160; i++) {
+            const tl = MatchEngine.generateTimeline({ id: `verl_${i}`, homeClubId: "muc", awayClubId: "dor" }, heim, gast, state.players, {});
+            tl.filter(e => e.type === "injury").forEach(e => {
+                verletzt++;
+                arten.add(e.verletzungsArt);
+                const liste = MatchEngine.VERLETZUNGEN[e.verletzungsArt] || [];
+                if (!liste.some(v => v.name === e.injuryName)) throw new Error(`${e.injuryName} passt nicht zur Art ${e.verletzungsArt}`);
+            });
+            // Im Livespiel (FM) kommen keine Verletzungen aus der Zeitleiste
+            const rahmen = MatchEngine.generateTimeline({ id: `verl_fm_${i}`, homeClubId: "muc", awayClubId: "dor" }, heim, gast, state.players, { ohneVerletzungen: true });
+            if (rahmen.some(e => e.type === "injury")) throw new Error("Trotz ohneVerletzungen steht eine Verletzung in der Zeitleiste");
+        }
+        const jeSpiel = verletzt / 160;
+        if (jeSpiel < 0.2 || jeSpiel > 0.9) throw new Error(`Unrealistisch viele oder wenige Verletzungen: ${jeSpiel.toFixed(2)} je Spiel`);
+        if (!arten.has("kontakt") || !arten.has("muskel")) throw new Error(`Nicht beide Arten kommen vor: ${[...arten].join(", ")}`);
+
+        // Livespiel: Ein hartes Foul kann den Gefoulten verletzen - und der Gegner wechselt
+        const live = MatchEngine.createLiveMatch({ id: "verl_live", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { modus: "fm", userSide: "home" });
+        const opfer = live.players2D.find(p => p.team === "away" && p.pos !== "TW");
+        let ev = null;
+        for (let i = 0; i < 200 && !ev; i++) ev = live.pruefeKontaktVerletzung(opfer.id, "rot");
+        if (!ev || ev.verletzungsArt !== "kontakt" || !ev.live) throw new Error("Ein Foul im Livespiel verletzt nie");
+        live.processEvent({ ...ev, minute: 10 });
+        if (!live.angemeldeteWechsel.some(w => w.side === "away" && w.outId === opfer.id)) {
+            throw new Error("Der Gegner wechselt seinen verletzten Spieler nicht aus");
+        }
+    });
+
+    test("Schiedsrichter: streng pfeift mehr und zeigt mehr Karten, Vorteil läuft weiter", () => {
+        // Je Partie steht er fest
+        const m = { id: "schiri_1", homeClubId: "muc", awayClubId: "dor" };
+        const a = MatchEngine.schiedsrichterFuer(m);
+        const b = MatchEngine.schiedsrichterFuer({ id: "schiri_1", homeClubId: "muc", awayClubId: "dor" });
+        if (!a.name || a.name !== b.name || a.typ !== b.typ) throw new Error("Derselbe Spielplan bekommt einen anderen Schiedsrichter");
+        const typen = new Set();
+        for (let i = 0; i < 200; i++) typen.add(MatchEngine.schiedsrichterFuer({ id: `s_${i}`, homeClubId: "a", awayClubId: "b" }).typ);
+        if (typen.size !== 3) throw new Error("Nicht alle Schiedsrichter-Typen kommen vor");
+
+        // Im Mittel heben sie sich auf
+        const T = MatchEngine.SCHIRI_TYPEN;
+        const schnitt = (k) => 0.25 * T.streng[k] + 0.5 * T.normal[k] + 0.25 * T.grosszuegig[k];
+        if (Math.abs(schnitt("pfeife") - 1) > 0.02 || Math.abs(schnitt("strenge") - 1) > 0.03) throw new Error("Die Schiedsrichter verschieben den Schnitt");
+
+        // Ein strenger Schiedsrichter zeigt in denselben Partien mehr Karten
+        const state = GameState.createNewGame("muc", "normal", { name: "Schiri" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const karten = (typ) => {
+            let n = 0, vorteil = 0;
+            for (let i = 0; i < 150; i++) {
+                const tl = MatchEngine.generateTimeline({ id: `k_${typ}_${i}`, homeClubId: "muc", awayClubId: "dor", schiedsrichter: { typ, name: "Test", ...T[typ] } },
+                    heim, gast, state.players, {});
+                n += tl.filter(e => e.type === "yellow_card" || e.type === "red_card").length;
+                vorteil += tl.filter(e => e.vorteil).length;
+            }
+            return { n, vorteil };
+        };
+        const streng = karten("streng"), gross = karten("grosszuegig");
+        if (!(streng.n > gross.n * 1.3)) throw new Error(`Streng ${streng.n} Karten, großzügig ${gross.n} - kein Unterschied`);
+        if (!(gross.vorteil > streng.vorteil)) throw new Error(`Der Großzügige gibt nicht öfter Vorteil (${gross.vorteil} gegen ${streng.vorteil})`);
+        // Ein Foul mit Vorteil gibt keinen Freistoß
+        const tl = MatchEngine.generateTimeline({ id: "vorteil_x", homeClubId: "muc", awayClubId: "dor", schiedsrichter: { typ: "grosszuegig", name: "T", ...T.grosszuegig } },
+            heim, gast, state.players, {});
+        tl.filter(e => e.vorteil && e.type === "foul").forEach(e => {
+            if (e.direkterFreistoss || e.outcome !== "vorteil") throw new Error("Ein Foul mit Vorteil wird als Freistoß behandelt");
+        });
+    });
+
+    test("Taktische Vertrautheit: Eine neue Formation kostet Stärke und wird eingeschliffen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Taktiker" });
+        const club = state.clubs.find(c => c.id === "muc");
+        // Ohne Aufzeichnung (KI-Vereine, alte Spielstände) sitzt alles
+        if (TacticsEngine.vertrautheit(club) !== 1) throw new Error("Ohne Aufzeichnung ist die Mannschaft nicht voll eingespielt");
+        TacticsEngine.vertrautheitStarten(club);
+        if (TacticsEngine.vertrautheit(club) !== 1) throw new Error("Die gewohnte Taktik sitzt nicht");
+
+        // Neue Formation und neue Spielweise
+        const alteFormation = club.formation;
+        club.formation = alteFormation === "4-3-3" ? "3-5-2" : "4-3-3";
+        club.tactics = TacticsEngine.normalisiere({ ...club.tactics, pressing: "high", tempo: "fast", passing: "short" });
+        const neu = TacticsEngine.vertrautheit(club);
+        if (!(neu < 0.8)) throw new Error(`Neue Formation und Spielweise sitzen sofort (${neu})`);
+        if (!(TacticsEngine.vertrautheitsFaktor(club) < 0.985)) throw new Error("Eine fremde Taktik kostet keine Stärke");
+
+        // Spiele und Training schleifen ein
+        for (let i = 0; i < 12; i++) TacticsEngine.vertrautheitUeben(club, 0.12);
+        const spaeter = TacticsEngine.vertrautheit(club);
+        if (!(spaeter > 0.95)) throw new Error(`Nach zwölf Spielen sitzt die Taktik nicht (${spaeter})`);
+        if (club.chemistry && club.chemistry.tacticalFamiliarity !== Math.round(spaeter * 100)) throw new Error("Der Vereinswert zeigt etwas anderes an");
+        // Die alte Formation ist nicht vergessen, aber nicht mehr ganz frisch
+        const v = club.taktikVertrautheit.formationen[alteFormation];
+        if (!(v < 1 && v >= TacticsEngine.VERTRAUT_NEU)) throw new Error("Die alte Formation verblasst nicht");
+
+        // Die Sofort-Simulation rechnet mit dem Faktor
+        club.formation = alteFormation === "4-3-3" ? "4-4-2" : "4-3-3";
+        const f = TacticsEngine.vertrautheitsFaktor(club);
+        if (!(f < 1)) throw new Error("Die neue Formation wirkt nicht");
+    });
+
+    test("Schwacher Fuß und Körpergröße: Abschluss und Kopfballduell", () => {
+        // Größe: fest je Spieler, Torhüter und Innenverteidiger größer als Flügel
+        const tw = { id: "g1", pos: "TW", physical: 70 }, aussen = { id: "g2", pos: "RA", physical: 70 };
+        if (MatchEngine.koerpergroesse(tw) !== MatchEngine.koerpergroesse({ ...tw })) throw new Error("Die Größe ist nicht fest");
+        let summeTw = 0, summeRa = 0;
+        for (let i = 0; i < 200; i++) {
+            summeTw += MatchEngine.koerpergroesse({ id: `t${i}`, pos: "TW", physical: 70 });
+            summeRa += MatchEngine.koerpergroesse({ id: `r${i}`, pos: "RA", physical: 70 });
+        }
+        if (!(summeTw / 200 > summeRa / 200 + 8)) throw new Error("Torhüter sind nicht größer als Flügelspieler");
+        if (MatchEngine.koerpergroesse({ groesse: 201, pos: "RA" }) !== 201) throw new Error("Eine gespeicherte Größe wird überschrieben");
+
+        // Im Kopfballduell zählt die Größe
+        const flow = new MatchFlowEngine({ fm: true });
+        const basis = { physical: 70, positioning: 70, technique: 70, pace: 70, defense: 70, eig: {} };
+        if (!(flow.kopfballWert({ ...basis, groesse: 195 }) > flow.kopfballWert({ ...basis, groesse: 172 }) + 10)) {
+            throw new Error("Ein großer Spieler gewinnt kein Kopfballduell öfter");
+        }
+        // Bei Flanken kommt der Große öfter an den Ball
+        const kandidaten = [{ id: "k1", pos: "ST", groesse: 196, shooting: 70 }, { id: "k2", pos: "ST", groesse: 170, shooting: 70 }];
+        let gross = 0;
+        for (let i = 0; i < 2000; i++) if (MatchEngine.waehleSchuetze(kandidaten, "cross").id === "k1") gross++;
+        if (!(gross > 1200)) throw new Error(`Der Große kommt bei Flanken nicht öfter zum Abschluss (${gross} von 2000)`);
+
+        // Schwacher Fuß: Beidfüßige nie, der Rechtsfuß links neben dem Tor öfter
+        const g = new MatchFlowEngine({ fm: true, attackDir: () => 1 });
+        const zaehle = (spieler) => {
+            let n = 0;
+            for (let i = 0; i < 3000; i++) if (g.schwacherFuss(spieler)) n++;
+            return n;
+        };
+        if (zaehle({ team: "home", x: 88, y: 30, foot: "beidfüßig" }) !== 0) throw new Error("Ein Beidfüßiger hat einen schwachen Fuß");
+        const links = zaehle({ team: "home", x: 92, y: 36, foot: "rechts" });
+        const rechts = zaehle({ team: "home", x: 92, y: 64, foot: "rechts" });
+        if (!(links > rechts * 1.4)) throw new Error(`Der Rechtsfuß links neben dem Tor nimmt nicht öfter den schwachen Fuß (${links} gegen ${rechts})`);
+        // Im Mittel gleicht es sich aus: kein Torverlust über alle Abschlüsse
+        const c = MatchEngine.SCHWACHER_FUSS;
+        const mittel = (c.basis + 0.04) * c.faktorSchwach + (1 - c.basis - 0.04) * c.faktorStark;
+        if (Math.abs(mittel - 1) > 0.02) throw new Error(`Der schwache Fuß verschiebt die Torquote (${mittel.toFixed(3)})`);
+    });
+
+    test("Standardvarianten: Ecken an die Pfosten, kurz, Raum- oder Manndeckung", () => {
+        // Die Anweisungen gibt es im Taktik-Reiter
+        ["ecken", "standardDeckung"].forEach(k => {
+            if (!TacticsEngine.ANWEISUNGEN.some(a => a.key === k)) throw new Error(`Anweisung ${k} fehlt`);
+        });
+        const t = TacticsEngine.normalisiere({});
+        if (t.ecken !== "gemischt" || t.standardDeckung !== "raum") throw new Error("Falsche Grundeinstellung der Standards");
+        // Gemischt heißt: alle Varianten kommen vor
+        const varianten = new Set();
+        for (let i = 0; i < 300; i++) varianten.add(TacticsEngine.eckenVariante("gemischt"));
+        if (varianten.size !== 3) throw new Error(`Gemischte Ecken bringen nicht alle Varianten: ${[...varianten].join(", ")}`);
+        if (TacticsEngine.eckenVariante("kurz") !== "kurz") throw new Error("Eine feste Variante wird nicht gespielt");
+
+        // An den zweiten Pfosten lohnt es sich nur mit Riesen; kurz ist von der Größe unabhängiger
+        const riesen = [196, 194, 193].map((g, i) => ({ id: `r${i}`, pos: "ST", groesse: g }));
+        const zwerge = [172, 173, 171].map((g, i) => ({ id: `z${i}`, pos: "ST", groesse: g }));
+        const abwehr = [186, 185, 184].map((g, i) => ({ id: `v${i}`, pos: "IV", groesse: g }));
+        if (!(MatchEngine.eckenVorteil("zweiterPfosten", "raum", riesen, abwehr) > MatchEngine.eckenVorteil("kurz", "raum", riesen, abwehr))) {
+            throw new Error("Mit Riesen lohnt der zweite Pfosten nicht");
+        }
+        if (!(MatchEngine.eckenVorteil("kurz", "raum", zwerge, abwehr) > MatchEngine.eckenVorteil("zweiterPfosten", "raum", zwerge, abwehr))) {
+            throw new Error("Ohne große Spieler ist die kurze Ecke nicht besser");
+        }
+        // Raumdeckung schützt den ersten Pfosten
+        if (!(MatchEngine.eckenVorteil("ersterPfosten", "raum", riesen, abwehr) < MatchEngine.eckenVorteil("ersterPfosten", "mann", riesen, abwehr))) {
+            throw new Error("Raumdeckung schützt den ersten Pfosten nicht");
+        }
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

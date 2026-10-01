@@ -62,6 +62,9 @@ class MatchFlowEngine {
         this.fm = typeof options.fm === "function" ? options.fm : (() => !!options.fm);
         // Zusatzlage fuer grosse Momente (Rueckstand, Schlussphase, Derby)
         this.lage = typeof options.lage === "function" ? options.lage : (() => ({}));
+        // Der Schiedsrichter: Wie kleinlich er pfeift (pfeife), wie schnell
+        // er Karten zeigt (strenge), wie gern er Vorteil gibt (vorteil)
+        this.schiri = typeof options.schiri === "function" ? options.schiri : (() => null);
 
         this.phase = FLOW_PHASES.BUILDUP;
     }
@@ -615,7 +618,28 @@ class MatchFlowEngine {
         const basis = angreifer
             ? this.attr(p, "physical") * 0.55 + this.attr(p, "positioning") * 0.25 + this.attr(p, "technique") * 0.1 + this.attr(p, "pace") * 0.1
             : this.attr(p, "physical") * 0.55 + this.attr(p, "defense") * 0.25 + this.attr(p, "positioning") * 0.2;
-        return basis + (e.luft || 0) + (angreifer ? (e.strafraum || 0) * 5 : 0);
+        // Größe zählt in der Luft: zehn Zentimeter sind gut fünf Punkte
+        const groesse = typeof p.groesse === "number" ? (p.groesse - 181) * 0.55 : 0;
+        return basis + groesse + (e.luft || 0) + (angreifer ? (e.strafraum || 0) * 5 : 0);
+    }
+
+    /**
+     * Muss der Schütze mit dem schwachen Fuß abziehen? Beidfüßige nie; sonst
+     * manchmal - und öfter, wenn er auf der Seite seines schwachen Fußes aus
+     * spitzem Winkel kommt (der Rechtsfuß links neben dem Tor).
+     */
+    schwacherFuss(schuetze) {
+        const fuss = schuetze?.foot;
+        if (!fuss || fuss === "beidfüßig") return false;
+        const cfg = (typeof MatchEngine !== "undefined" && MatchEngine.SCHWACHER_FUSS)
+            || { basis: 0.18, falscheSeite: 0.3 };
+        const dir = this.attackDir(schuetze.team);
+        // Aus Sicht des Angreifers: links ist bei Angriff nach rechts oben (y < 50)
+        const linkeSeite = dir > 0 ? schuetze.y < 50 : schuetze.y > 50;
+        const falscheSeite = (fuss === "rechts" && linkeSeite) || (fuss === "links" && !linkeSeite);
+        const g = this.torGeometrie(schuetze, schuetze.team);
+        const spitz = g.winkel < 0.45 && Math.abs(schuetze.y - 50) > 9;
+        return _flowRandom.chance(cfg.basis + (falscheSeite && spitz ? cfg.falscheSeite : 0));
     }
 
     /**
@@ -645,7 +669,10 @@ class MatchFlowEngine {
         if (g.dist > 18) score += (e.distanz ? 0.55 : -0.2) + (e.abschlussDistanz || 0) * 5 + (wk.fernschuesse || 0) * 0.4;
         if (tactics.mentality === "offensive" || tactics.mentality === "very_offensive") score += 0.12;
         score += _flowRandom.float(-0.2, 0.2) * this.entscheidungsRauschen(carrier);
-        return { type: "shot", score, xg: q.xg, dist: q.dist, druck: q.druck, block: q.block };
+        // Mit dem schwachen Fuß traut er sich weniger zu
+        const schwach = this.fm() ? this.schwacherFuss(carrier) : false;
+        if (schwach) score -= 0.15;
+        return { type: "shot", score, xg: q.xg, dist: q.dist, druck: q.druck, block: q.block, schwach };
     }
 
     /**
@@ -711,15 +738,25 @@ class MatchFlowEngine {
             const nerv = (this.nerven(schuetze) - 12) / 100;
             pTor *= 1 + nerv * (opts.elfmeter ? 1.5 : 0.4 + Math.min(1, q.druck) * 0.9);
         }
+        // Schwacher Fuß: Der Abschluss wird unsauberer - mit dem starken
+        // sitzt er etwas besser (im Mittel gleicht es sich aus)
+        const mitFuss = !opts.kopfball && !opts.elfmeter && !opts.freistoss && schuetze.foot && schuetze.foot !== "beidfüßig";
+        // Ohne Vorentscheidung (Abpraller, Nachschuss) entscheidet die Lage
+        const schwach = mitFuss && (opts.schwach !== undefined ? !!opts.schwach : (this.fm() && this.schwacherFuss(schuetze)));
+        const fussArt = mitFuss && this.fm() ? (schwach ? "schwach" : "stark") : null;
+        const fussCfg = (typeof MatchEngine !== "undefined" && MatchEngine.SCHWACHER_FUSS) || { faktorSchwach: 0.8, faktorStark: 1.05 };
+        if (fussArt === "schwach") pTor *= fussCfg.faktorSchwach;
+        else if (fussArt === "stark") pTor *= fussCfg.faktorStark;
         pTor = Math.max(0.005, Math.min(opts.elfmeter ? 0.93 : 0.9, pTor));
 
         // Aufs Tor kommt, wer sauber trifft - unabhaengig davon, ob es reicht
-        let pAufsTor = 0.36 + (abschluss - 60) / 220 + q.xg * 0.45 - Math.min(1, q.druck) * 0.08;
+        let pAufsTor = 0.36 + (abschluss - 60) / 220 + q.xg * 0.45 - Math.min(1, q.druck) * 0.08
+            - (fussArt === "schwach" ? 0.06 : 0);
         if (opts.elfmeter) pAufsTor = 0.95;
         pAufsTor = Math.max(pTor + 0.07, Math.min(0.9, pAufsTor));
 
         const wurf = Math.random();
-        if (wurf < pTor) return { ausgang: "goal", xg: q.xg, gk };
+        if (wurf < pTor) return { ausgang: "goal", xg: q.xg, gk, schwach: fussArt === "schwach" };
         if (wurf < pAufsTor) {
             // Gehalten: festgehalten, zur Ecke abgewehrt oder abgeklatscht
             const sicher = 0.3 + this.attr(gk, "handling", 60) / 280;
@@ -799,10 +836,22 @@ class MatchFlowEngine {
 
         // Ziel ist der Beste in der Luft
         const ziel = ziele.slice().sort((a, b) => this.kopfballWert(b) - this.kopfballWert(a))[0];
-        const landung = {
+        let landung = {
             x: Math.max(5, Math.min(95, ziel.x + _flowRandom.float(-2, 2))),
             y: Math.max(30, Math.min(70, ziel.y + _flowRandom.float(-3, 3)))
         };
+        // Eckenvariante: an den ersten oder an den zweiten Pfosten
+        const variante = opts.ecke ? (opts.variante || null) : null;
+        const seite = carrier.y < 50 ? -1 : 1;
+        if (variante === "ersterPfosten") {
+            landung = { x: tor.x - dir * _flowRandom.float(3.5, 5.5), y: 50 + seite * _flowRandom.float(2.5, 5.5) };
+        } else if (variante === "zweiterPfosten") {
+            landung = { x: tor.x - dir * _flowRandom.float(5, 8), y: 50 - seite * _flowRandom.float(3.5, 7) };
+        }
+        // Wie der Gegner Standards verteidigt
+        const deckung = (opts.ecke || opts.standard)
+            ? (_flowTaktik()?.wirkung(this.getTactics(team === "home" ? "away" : "home") || {}).standardDeckung || "raum")
+            : null;
 
         // Missglueckt: zu lang, zu kurz oder direkt in die Arme des Gegners
         const pSchlecht = Math.max(0.07, Math.min(0.36, 0.36 - qualitaet * 0.3));
@@ -819,18 +868,28 @@ class MatchFlowEngine {
         // Der Torwart kommt heraus, wenn die Flanke nah ans Tor kommt
         const gk = this.opponentsOf(team).find(o => o.pos === "TW") || null;
         if (gk && Math.abs(landung.x - tor.x) < 7 && Math.abs(landung.y - 50) < 12) {
-            const pFangen = Math.min(0.6, (this.attr(gk, "handling", 60) + this.attr(gk, "positioning", 60)) / 330
-                + (this.eig(gk).twStrafraum || 0) * 0.2);
+            // Scharf an den ersten Pfosten kommt der Torwart schwer heran,
+            // die hohe Flanke an den zweiten eher
+            const varianteFangen = variante === "ersterPfosten" ? 0.5 : (variante === "zweiterPfosten" ? 1.2 : 1);
+            const pFangen = Math.min(0.6, ((this.attr(gk, "handling", 60) + this.attr(gk, "positioning", 60)) / 330
+                + (this.eig(gk).twStrafraum || 0) * 0.2) * varianteFangen);
             if (_flowRandom.chance(pFangen)) return { ...basis, outcome: "claimed", landung, to: landung, gk };
         }
 
-        // Das Kopfballduell
-        const verteidiger = opponents.filter(o => o.pos !== "TW")
-            .sort((a, b) => this.distance(a, landung) - this.distance(b, landung))[0] || null;
+        // Das Kopfballduell. In Manndeckung klebt der beste Kopfballspieler
+        // am gefährlichsten Gegner; im Raum geht der nächste zum Ball - und
+        // die Zone am ersten Pfosten ist immer besetzt.
+        const feld = opponents.filter(o => o.pos !== "TW");
+        const mannDeckung = deckung === "mann" || (deckung === "gemischt" && _flowRandom.chance(0.5));
+        const verteidiger = (mannDeckung
+            ? feld.slice().sort((a, b) => this.kopfballWert(b, false) - this.kopfballWert(a, false))[0]
+            : feld.slice().sort((a, b) => this.distance(a, landung) - this.distance(b, landung))[0]) || null;
         const angriff = this.kopfballWert(ziel, true) + qualitaet * 8;
-        const abwehr = verteidiger ? this.kopfballWert(verteidiger, false) : 20;
-        // Steht der Verteidiger weit weg, hat der Angreifer freie Bahn
-        const abstand = verteidiger ? this.distance(verteidiger, landung) : 20;
+        const zone = !mannDeckung && deckung && variante === "ersterPfosten" ? 5 : 0;
+        const abwehr = verteidiger ? this.kopfballWert(verteidiger, false) + zone : 20;
+        // Steht der Verteidiger weit weg, hat der Angreifer freie Bahn -
+        // in Manndeckung steht er immer am Mann
+        const abstand = verteidiger ? (mannDeckung ? 1.5 : this.distance(verteidiger, landung)) : 20;
         const vorsprung = Math.max(0, abstand - 3) * 2.5;
         const pKopf = Math.max(0.12, Math.min(0.82, 1 / (1 + Math.exp(-(angriff - abwehr + vorsprung - 6) / 9))));
 
@@ -865,7 +924,8 @@ class MatchFlowEngine {
         const temperament = typeof defender.temperament === "number" ? defender.temperament : 12;
         const p = 0.27 + haerte * 0.06 + (ed.haerte || 0) * 0.1 + (ea.ziehtFouls || 0)
             + (temperament - 12) * 0.012 + Math.max(0, edge) / 400;
-        if (!_flowRandom.chance(Math.max(0.03, Math.min(0.4, p)) * this.strafraumVorsicht(carrier))) return null;
+        const pfeife = this.schiri()?.pfeife || 1;
+        if (!_flowRandom.chance(Math.max(0.03, Math.min(0.4, p)) * pfeife * this.strafraumVorsicht(carrier))) return null;
         return { type: "foul", outcome: "foul", from: carrier, to: { x: carrier.x, y: carrier.y }, foulender: defender, opfer: carrier };
     }
 
@@ -883,7 +943,7 @@ class MatchFlowEngine {
         const ed = this.eig(naechster);
         const haerte = _flowTaktik()?.wirkung(this.getTactics(naechster.team) || {}).zweikampf || 0;
         const p = (pressure - 0.6) * 0.085 * (1 + haerte * 0.4 + (ed.haerte || 0) * 0.5 + (ed.pressing || 0) * 0.3);
-        if (!_flowRandom.chance(p * this.strafraumVorsicht(carrier))) return null;
+        if (!_flowRandom.chance(p * (this.schiri()?.pfeife || 1) * this.strafraumVorsicht(carrier))) return null;
         return { type: "foul", outcome: "foul", from: carrier, to: { x: carrier.x, y: carrier.y }, foulender: naechster, opfer: carrier, pressure, phase };
     }
 

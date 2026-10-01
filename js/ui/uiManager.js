@@ -3741,6 +3741,9 @@ class UIManager {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
+        // Bevor etwas umgestellt wird: Was jetzt eingestellt ist, sitzt
+        const taktikModul = this.getTacticsEngine();
+        if (taktikModul && typeof taktikModul.vertrautheitStarten === "function") taktikModul.vertrautheitStarten(userClub);
 
         const posEngine = this.getPositionEngine();
 
@@ -4102,6 +4105,26 @@ class UIManager {
                     this.renderTactics();
                 };
             });
+        }
+
+        // Wie eingespielt die Mannschaft auf diese Taktik ist
+        const vertrautEl = document.getElementById("tacVertrautheit");
+        if (vertrautEl && T && typeof T.vertrautheitDetails === "function") {
+            const d = T.vertrautheitDetails(userClub);
+            const prozent = Math.round(d.gesamt * 100);
+            const farbe = prozent >= 85 ? "#4ade80" : (prozent >= 65 ? "#facc15" : "#f87171");
+            const kosten = Math.round((1 - T.vertrautheitsFaktor(userClub)) * 1000) / 10;
+            vertrautEl.innerHTML = `
+                <div class="vertrautheit-kopf">
+                    <span>Taktische Vertrautheit</span>
+                    <strong style="color:${farbe};">${prozent} %</strong>
+                </div>
+                <div class="vertrautheit-balken"><span style="width:${prozent}%; background:${farbe};"></span></div>
+                <div class="vertrautheit-text">
+                    ${d.formation < 0.85 ? `Die Formation <strong>${esc(userClub.formation || "")}</strong> ist noch neu (${Math.round(d.formation * 100)} %). ` : ""}
+                    ${d.neu.length ? `Noch nicht eingespielt: ${d.neu.map(n => `${esc(n.label)} „${esc(n.wert)}“ (${Math.round(n.vertraut * 100)} %)`).join(", ")}. ` : ""}
+                    ${kosten > 0.2 ? `Das kostet im Spiel etwa ${String(kosten).replace(".", ",")} % Stärke - Spiele und Taktiktraining schleifen es ein.` : "Die Mannschaft kennt ihre Abläufe."}
+                </div>`;
         }
 
         // Mannschaftsanweisungen als Kacheln, getrennt nach Mit Ball und
@@ -7685,7 +7708,7 @@ class UIManager {
             <div class="player-detail-top">
                 <div class="player-detail-meta">
                     <span class="pos-tag pos-${this.getPosGroup(player.pos)}" style="font-size:13px;">${player.pos}</span>
-                    <span style="font-size:14px; margin-left:8px; color:var(--text-muted);">${club ? club.name : ''} • Alter: ${player.age}${player.foot ? ` • ${this.escapeHtml(player.foot === "beidfüßig" ? "beidfüßig" : player.foot + "er Fuß")}` : ''}</span>
+                    <span style="font-size:14px; margin-left:8px; color:var(--text-muted);">${club ? club.name : ''} • Alter: ${player.age}${player.foot ? ` • ${this.escapeHtml(player.foot === "beidfüßig" ? "beidfüßig" : player.foot + "er Fuß")}` : ''}${typeof MatchEngine !== "undefined" && MatchEngine.koerpergroesse ? ` • ${(MatchEngine.koerpergroesse(player) / 100).toFixed(2).replace(".", ",")} m` : ''}</span>
                 </div>
                 <div class="player-detail-rating">
                     <div class="player-detail-stars team-strength-stars">${abilityStars}</div>
@@ -7891,6 +7914,10 @@ class UIManager {
         const sieht = (r.analyst?.sterne || 0) >= 2.5;
         const gegensatz = { fluegel: "zentrum", zentrum: "fluegel", fruehStoeren: "tiefStehen", tiefStehen: "fruehStoeren" };
         const heim = match.homeClubId === state.userClubId;
+        // Der Schiedsrichter steht mit der Ansetzung fest - ein strenger
+        // bestraft harte Zweikämpfe, ein großzügiger lässt laufen
+        const schiri = typeof MatchEngine !== "undefined" && MatchEngine.schiedsrichterFuer
+            ? MatchEngine.schiedsrichterFuer(match) : null;
 
         document.getElementById("mpModalTitle").textContent = `Taktikbesprechung: ${v.gegnerName}`;
 
@@ -7901,6 +7928,7 @@ class UIManager {
                     ${r.likelyFormation ? `<span class="mp-chip">Voraussichtlich ${esc(r.likelyFormation)}</span>` : ""}
                     ${r.dangerLevel ? `<span class="badge ${esc(r.dangerClass)}">${esc(r.dangerLevel)}</span>` : ""}
                 </div>
+                ${schiri ? `<div class="mp-analyst">🟨 Schiedsrichter <strong>${esc(schiri.name)}</strong> <span class="text-muted">${esc(schiri.art)} - ${esc(schiri.text)}</span></div>` : ""}
                 ${r.analyst ? `<div class="mp-analyst">
                     📋 <strong>${esc(r.analyst.name)}</strong> ${this.stabSterneHtml(r.analyst.guete)}
                     <span class="text-muted">${esc(r.genauigkeit || "")}${sieht ? "" : " - zu ungenau für klare Empfehlungen"}</span>
@@ -9928,7 +9956,7 @@ class UIManager {
             <div style="text-align:center; padding:16px 0; border-bottom:1px solid var(--border-color); margin-bottom:16px;">
                 <h1 style="font-size:36px; font-weight:800; color:var(--accent-gold);">${match.homeGoals} : ${match.awayGoals}</h1>
                 <h3 style="margin-top:4px;">${home.name} vs ${away.name}</h3>
-                <p class="text-muted" style="font-size:13px;">${home.stadium}</p>
+                <p class="text-muted" style="font-size:13px;">${home.stadium}${match.schiedsrichter ? ` · Schiedsrichter: ${this.escapeHtml(match.schiedsrichter.name)} (${this.escapeHtml(match.schiedsrichter.art)})` : ""}</p>
             </div>
 
             ${match.summaryText ? `

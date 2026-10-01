@@ -4491,6 +4491,14 @@ body {
 
 .tt-delta { font-size: 12px; color: var(--text-muted); margin: 4px 0 8px; }
 
+/* Taktische Vertrautheit */
+.vertrautheit-leiste { margin: 4px 0 12px; font-size: 12px; }
+.vertrautheit-leiste:empty { display: none; }
+.vertrautheit-kopf { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.vertrautheit-balken { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.vertrautheit-balken span { display: block; height: 100%; border-radius: 3px; }
+.vertrautheit-text { color: var(--text-muted); margin-top: 5px; line-height: 1.45; }
+
 /* Taktikbesprechung */
 .tt-plan { font-size: 12px; color: #cbd5e1; margin: -6px 0 12px; }
 .mp-analyse {

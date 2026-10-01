@@ -7272,6 +7272,43 @@ function runEngineTests() {
         }
     });
 
+    // Der Torwart bleibt auf der Linie, wenn der Gegner kommt - und rückt
+    // heraus, wenn das Spiel weit weg ist. Vorher war es umgekehrt.
+    test("Torwart: Kommt der Gegner, steht er auf der Linie zwischen den Pfosten", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const heim = state.clubs.find(c => c.id === "sge");
+        const gast = state.clubs.find(c => c.id === "wob");
+        const live = MatchEngine.createLiveMatch({ id: "tw_linie", played: false, homeClubId: "sge", awayClubId: "wob" },
+            heim, gast, state.players, { modus: "fm" });
+        const d = live.director;
+        live.speed = 4;
+        const nah = [], fern = [];
+        let seitlichMax = 0, q = 0;
+        while (!live.isFinished && q++ < 160000) {
+            live.advanceRealTime(16);
+            live.updateBallAndPlayers(16);
+            if (q % 8 || d.mode !== "ambient" || d.deadBall) continue;
+            (live.players2D || []).filter(p => p.pos === "TW" && d.carrierId !== p.id).forEach(tw => {
+                const torX = d.ownGoalX(tw.team);
+                const vonLinie = Math.abs(tw.x - torX);
+                if (vonLinie > 40) return;
+                const ball = Math.abs(live.ball.x - torX);
+                if (ball < 20) {
+                    nah.push(vonLinie);
+                    seitlichMax = Math.max(seitlichMax, Math.abs(tw.y - 50));
+                } else if (ball > 60) fern.push(vonLinie);
+            });
+        }
+        const mw = a => a.reduce((x, y) => x + y, 0) / Math.max(1, a.length);
+        if (nah.length < 50 || fern.length < 50) throw new Error(`Zu wenige Proben: ${nah.length}/${fern.length}`);
+        // Gemessen vorher: 5,1 Einheiten vor der Linie, seitlich bis 16
+        if (mw(nah) > 3) throw new Error(`Torwart steht ${mw(nah).toFixed(1)} vor der Linie, wenn der Gegner kommt`);
+        if (seitlichMax > 9) throw new Error(`Torwart läuft ${seitlichMax.toFixed(1)} zur Seite - weit neben den Pfosten`);
+        if (mw(fern) <= mw(nah) + 2) {
+            throw new Error(`Bei Ballbesitz weit vorn rückt der Torwart nicht heraus (${mw(fern).toFixed(1)} gegen ${mw(nah).toFixed(1)})`);
+        }
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

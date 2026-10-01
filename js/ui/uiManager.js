@@ -8468,47 +8468,6 @@ class UIManager {
             const radius = Math.max(7, (pitchW / 105) * 1.5 * (0.5 * cam.zoom + 0.5));
             const torwartFarbe = team => liveMatch.kits?.[team]?.tw || (team === "home" ? "#facc15" : "#22d3ee");
 
-            // 3. Schiedsrichter: läuft im Diagonalsystem mit und zückt bei einer
-            //    Unterbrechung die Karte am Tatort.
-            const ref = liveMatch.referee;
-            if (ref) {
-                const rx = toX(ref.x);
-                const ry = toY(ref.y);
-                const rRad = radius * 0.78;
-
-                ctx.beginPath();
-                ctx.ellipse(rx, ry + rRad * 0.75, rRad * 0.85, rRad * 0.38, 0, 0, Math.PI * 2);
-                ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
-                ctx.fill();
-
-                ctx.beginPath();
-                ctx.arc(rx, ry, rRad, 0, Math.PI * 2);
-                ctx.fillStyle = "#18181b";
-                ctx.fill();
-                ctx.strokeStyle = "rgba(250, 204, 21, 0.9)";
-                ctx.lineWidth = Math.max(1, rRad * 0.18);
-                ctx.stroke();
-
-                const card = liveMatch.refereeCard;
-                if (card) {
-                    const cw = rRad * 0.8;
-                    const ch = rRad * 1.15;
-                    const cx = rx + rRad * 1.15;
-                    const cy = ry - rRad * 1.5;
-                    ctx.fillStyle = card === "yellow" ? "#facc15" : "#dc2626";
-                    ctx.fillRect(cx, cy, cw, ch);
-                    ctx.strokeStyle = "rgba(0,0,0,0.65)";
-                    ctx.lineWidth = 1;
-                    ctx.strokeRect(cx, cy, cw, ch);
-
-                    // Gelb-Rot: beide Karten nebeneinander
-                    if (card === "second_yellow") {
-                        ctx.fillStyle = "#facc15";
-                        ctx.fillRect(cx - cw * 1.25, cy, cw, ch);
-                        ctx.strokeRect(cx - cw * 1.25, cy, cw, ch);
-                    }
-                }
-            }
             const numberFont = `bold ${Math.round(radius * 0.92)}px 'Inter', system-ui, sans-serif`;
             const nameFont = `600 ${Math.round(radius * 0.78)}px 'Inter', system-ui, sans-serif`;
 
@@ -8760,6 +8719,35 @@ class UIManager {
             ctx.strokeStyle = "rgba(12, 16, 22, 0.75)";
             ctx.lineWidth = Math.max(1, ballR * 0.22);
             ctx.stroke();
+
+            // 6b. Karten: Der Schiedsrichter selbst wird nicht gezeichnet - sein
+            //    Punkt lenkte nur ab. Eine Karte erscheint neben dem verwarnten
+            //    Spieler, sonst am Tatort - über allen Punkten.
+            const card = liveMatch.refereeCard;
+            if (card) {
+                const verwarnt = liveMatch.kartenSpieler
+                    ? (liveMatch.players2D || []).find(p => p.id === liveMatch.kartenSpieler)
+                    : null;
+                const ort = verwarnt || liveMatch.referee;
+                if (ort) {
+                    const cw = radius * 0.78;
+                    const ch = radius * 1.1;
+                    const cx = toX(ort.x) + radius * 1.05;
+                    const cy = toY(ort.y) - radius * 2.1;
+                    ctx.fillStyle = card === "yellow" ? "#facc15" : "#dc2626";
+                    ctx.fillRect(cx, cy, cw, ch);
+                    ctx.strokeStyle = "rgba(0,0,0,0.65)";
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(cx, cy, cw, ch);
+
+                    // Gelb-Rot: beide Karten nebeneinander
+                    if (card === "second_yellow") {
+                        ctx.fillStyle = "#facc15";
+                        ctx.fillRect(cx - cw * 1.25, cy, cw, ch);
+                        ctx.strokeRect(cx - cw * 1.25, cy, cw, ch);
+                    }
+                }
+            }
 
             // 7. Übersichtsradar, sobald herangezoomt wird
             if (cam.zoom > 1.3) {

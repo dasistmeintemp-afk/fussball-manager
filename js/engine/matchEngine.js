@@ -2537,6 +2537,18 @@ class MatchEngine {
         match.summaryText = summaryText;
         match.playerRatings = playerRatings;
         match.manOfTheMatch = motm;
+
+        // Spielpraxis: wie viel der möglichen Minuten einer zuletzt gespielt
+        // hat - ein gleitender Wert für jeden im Kader beider Vereine. Junge
+        // Spieler entwickeln sich mit Einsätzen schneller (TrainingEngine);
+        // das macht auch eine Leihe sinnvoll.
+        const minutenJe = new Map(playerRatings.map(r => [String(r.playerId), r.minutes || 0]));
+        [homeClub, awayClub].forEach(c => (c.playerIds || []).forEach(id => {
+            const p = MatchEngine.findPlayer(allPlayers, id);
+            if (!p) return;
+            const anteil = Math.min(1, (minutenJe.get(String(id)) || 0) / 90);
+            p.spielpraxis = Math.round(((p.spielpraxis ?? 0.5) * 0.82 + anteil * 0.18) * 1000) / 1000;
+        }));
         match.injuries = matchInjuries;
         match.suspensions = matchSuspensions;
 

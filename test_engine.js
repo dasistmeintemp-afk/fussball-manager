@@ -7378,6 +7378,68 @@ function runEngineTests() {
         if (!f.wechselwunsch) throw new Error("Anhaltender Frust führt nicht zum Wechselwunsch");
     });
 
+    test("Entwicklungsplan: Spielpraxis, eigener Schwerpunkt, Umschulung und Mentor", () => {
+        const { DevelopmentPlanEngine: Plan } = require('./js/engine/developmentPlanEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const kader = state.players.filter(p => club.playerIds.includes(p.id));
+
+        // Spielpraxis: Ein Spiel hebt sie bei den Startern, senkt sie bei den Zuschauern
+        const gegner = state.clubs.find(c => c.id !== club.id && c.leagueId === club.leagueId);
+        const partie = { id: "praxis", played: false, homeClubId: club.id, awayClubId: gegner.id };
+        MatchEngine.simulateFullMatch(partie, club, gegner, state.players);
+        const starter = state.players.find(p => p.id === club.lineup[0]);
+        const zuschauer = kader.find(p => !club.lineup.includes(p.id) && !club.bench.includes(p.id));
+        if (!(starter.spielpraxis > 0.5)) throw new Error(`Starter ohne Spielpraxis: ${starter.spielpraxis}`);
+        if (zuschauer && !(zuschauer.spielpraxis < 0.5)) throw new Error(`Zuschauer gewinnt Spielpraxis: ${zuschauer.spielpraxis}`);
+        const jung = { age: 19 };
+        if (!(Plan.praxisFaktor({ ...jung, spielpraxis: 0.95 }) > 1.2 && Plan.praxisFaktor({ ...jung, spielpraxis: 0.05 }) < 0.85)) {
+            throw new Error("Spielpraxis wirkt bei Talenten nicht auf die Entwicklung");
+        }
+        if (Plan.praxisFaktor({ age: 32, spielpraxis: 1 }) !== 1) throw new Error("Bei Älteren sollte die Spielpraxis nicht zählen");
+
+        // Eigener Schwerpunkt: Wächst er, wachsen diese Werte mit
+        const st = kader.find(p => p.pos === "ST");
+        const vorher = { shooting: st.shooting, technique: st.technique };
+        if (!Plan.setzeSchwerpunkt(state, st.id, "abschluss").success) throw new Error("Schwerpunkt lässt sich nicht setzen");
+        if (Plan.setzeSchwerpunkt(state, st.id, "reflexe").success) throw new Error("Ein Feldspieler sollte keinen Torwart-Schwerpunkt bekommen");
+        Plan.nachEinheit(state, st, { gewachsen: true }, () => 0.5);
+        if (st.shooting !== Math.min(99, vorher.shooting + 1) || st.technique !== Math.min(99, vorher.technique + 1)) {
+            throw new Error("Der Schwerpunkt lenkt das Wachstum nicht");
+        }
+
+        // Umschulung: Einheit für Einheit auf eine neue Position
+        const ziel = Plan.umschulungsZiele(st).find(pos => pos === "ZM") || Plan.umschulungsZiele(st)[0];
+        if (!Plan.setzeUmschulung(state, st.id, ziel).success) throw new Error("Umschulung lässt sich nicht setzen");
+        let n = 0;
+        while (st.umschulung && n++ < 600) Plan.nachEinheit(state, st, {}, () => 0.5);
+        if (st.umschulung || !(st.positions || []).includes(ziel)) throw new Error(`Umschulung auf ${ziel} kommt nicht an (${n} Einheiten)`);
+        if (n < 15) throw new Error(`Umschulung geht zu schnell (${n} Einheiten)`);
+
+        // Mentor: Einstellung färbt ab, eine Eigenheit kann wandern
+        const talent = kader.find(p => (p.age || 30) <= 23) || kader[kader.length - 1];
+        talent.age = 19;
+        talent.hiddenAttributes = { ...talent.hiddenAttributes, professionalism: 5 };
+        talent.traits = [];
+        talent.shooting = 80; talent.technique = 76;
+        const mentor = kader.find(p => p.id !== talent.id && (p.age || 0) >= 28) || kader[0];
+        mentor.age = Math.max(mentor.age, 28);
+        mentor.hiddenAttributes = { ...mentor.hiddenAttributes, professionalism: 19 };
+        mentor.traits = [{ key: "distanzschuss", text: "Sucht den Abschluss aus der Distanz." }];
+        const zuJung = kader.find(p => p.id !== talent.id && p.id !== mentor.id);
+        const alterVorher = zuJung.age;
+        zuJung.age = 22;
+        if (Plan.setzeMentor(state, talent.id, zuJung.id).success) throw new Error("Ein 22-Jähriger sollte kein Mentor sein");
+        zuJung.age = alterVorher;
+        if (!Plan.setzeMentor(state, talent.id, mentor.id).success) throw new Error("Mentor lässt sich nicht setzen");
+        if (!(Plan.entwicklungsFaktor(state, talent) > Plan.praxisFaktor(talent))) throw new Error("Ein guter Mentor beschleunigt die Entwicklung nicht");
+        for (let i = 0; i < 80; i++) Plan.nachEinheit(state, talent, {}, () => 0.9);
+        if (!(talent.hiddenAttributes.professionalism > 9)) throw new Error(`Die Einstellung des Mentors färbt nicht ab (${talent.hiddenAttributes.professionalism})`);
+        Plan.nachEinheit(state, talent, {}, () => 0);
+        if (!talent.traits.some(t => t.key === "distanzschuss")) throw new Error("Die Eigenheit des Mentors wird nicht übernommen");
+        if (!Plan.uebersicht(state).some(e => e.player.id === talent.id && e.mentor === mentor.name)) throw new Error("Übersicht zeigt den Mentor nicht");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

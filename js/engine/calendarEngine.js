@@ -1054,6 +1054,8 @@ const CalendarEngine = {
             tag.injuries.forEach(name => {
                 summary.messages.push(`⚠️ ${name} hat sich im Training verletzt.`);
             });
+            // Entwicklungsplan: Umschulungen und was sich einer beim Mentor abschaut
+            (tag.plan || []).forEach(m => summary.messages.push(m));
         }
 
         // 1b. Lücken in den Aufstellungen schließen. Wer sich verletzt, fällt

@@ -5440,6 +5440,49 @@ class UIManager {
     /**
      * Training rendern & Jugendakademie anzeigen
      */
+    /**
+     * Die individuellen Pläne im Trainings-Reiter: alle mit Plan, dazu die
+     * jungen Spieler mit ihrer Spielpraxis - wer nicht spielt, ist ein
+     * Kandidat für eine Leihe.
+     */
+    renderTrainingsPlaene() {
+        const body = document.getElementById("trainingPlaeneBody");
+        const engine = this.getDevelopmentPlanEngine();
+        if (!body || !engine) return;
+        const state = this.app.state;
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        if (!club) return;
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const ids = new Set(club.playerIds.map(String));
+        const kader = state.players.filter(p => ids.has(String(p.id)));
+        const zeilen = kader
+            .filter(p => p.trainingsfokus || p.umschulung || p.mentorId || (p.age || 30) <= 23)
+            .sort((a, b) => (a.age || 0) - (b.age || 0));
+        const meta = document.getElementById("trainingPlaeneMeta");
+        if (meta) meta.textContent = `${kader.filter(p => p.trainingsfokus || p.umschulung || p.mentorId).length} mit Plan`;
+        if (!zeilen.length) {
+            body.innerHTML = `<tr><td colspan="6" class="text-center text-muted">Noch keine individuellen Pläne.</td></tr>`;
+            return;
+        }
+        body.innerHTML = zeilen.map(p => {
+            const praxis = Math.round((typeof p.spielpraxis === "number" ? p.spielpraxis : 0.5) * 100);
+            const mentor = p.mentorId ? state.players.find(m => String(m.id) === String(p.mentorId)) : null;
+            return `
+                <tr class="clickable-row" data-player-id="${esc(p.id)}">
+                    <td><strong>${esc(p.name)}</strong> <span class="text-muted">${esc(p.pos)}</span></td>
+                    <td>${p.age}</td>
+                    <td><span class="${praxis < 30 && (p.age || 30) <= 23 ? "text-warning" : ""}">${praxis} %</span></td>
+                    <td>${p.trainingsfokus ? esc(engine.SCHWERPUNKTE[p.trainingsfokus]?.label) : "-"}</td>
+                    <td>${p.umschulung ? `${esc(p.umschulung.pos)} · ${engine.umschulungsStand(p)} %` : "-"}</td>
+                    <td>${mentor ? esc(mentor.name) : "-"}</td>
+                </tr>`;
+        }).join("");
+        body.querySelectorAll("tr[data-player-id]").forEach(tr => tr.addEventListener("click", () => {
+            const ziel = state.players.find(p => String(p.id) === tr.dataset.playerId);
+            if (ziel) this.showPlayerDetailsModal(ziel.id);
+        }));
+    }
+
     renderTraining() {
         const state = this.app.state;
         const currentFocus = state.trainingSettings?.focus || "allround";
@@ -5452,6 +5495,7 @@ class UIManager {
         if (intensityRadio) intensityRadio.checked = true;
 
         this.renderCoachingStaffCard();
+        this.renderTrainingsPlaene();
 
         // Jugendakademie rendern
         const userClub = state.clubs.find(c => c.id === state.userClubId);
@@ -7512,6 +7556,80 @@ class UIManager {
             </div>`;
     }
 
+    getDevelopmentPlanEngine() {
+        if (typeof DevelopmentPlanEngine !== "undefined" && DevelopmentPlanEngine) return DevelopmentPlanEngine;
+        if (typeof window !== "undefined" && window.DevelopmentPlanEngine) return window.DevelopmentPlanEngine;
+        return null;
+    }
+
+    /**
+     * Der Entwicklungsplan in der Akte: Spielpraxis, eigener
+     * Trainingsschwerpunkt, Umschulung und Mentor (oder die Schützlinge).
+     */
+    entwicklungsplanHtml(player) {
+        const engine = this.getDevelopmentPlanEngine();
+        if (!engine) return "";
+        const state = this.app.state;
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const praxis = Math.round((typeof player.spielpraxis === "number" ? player.spielpraxis : 0.5) * 100);
+        const faktor = engine.praxisFaktor(player);
+        const praxisText = (player.age || 25) <= 28
+            ? `Entwicklungstempo durch Einsätze: ${faktor >= 1 ? "+" : "−"}${Math.abs(Math.round((faktor - 1) * 100))} %`
+            : "In seinem Alter zählt die Spielpraxis für die Entwicklung kaum noch.";
+        const fokusOptionen = engine.schwerpunkteFuer(player)
+            .map(sp => `<option value="${esc(sp.key)}" ${(player.trainingsfokus || "keiner") === sp.key ? "selected" : ""}>${esc(sp.label)}</option>`).join("");
+        const ziele = engine.umschulungsZiele(player);
+        const stand = engine.umschulungsStand(player);
+        const umschulung = player.pos === "TW" ? "" : `
+            <label class="ep-feld">
+                <span>Umschulung auf eine neue Position</span>
+                <select id="pdPlanUmschulung" class="styled-select">
+                    <option value="">Keine Umschulung</option>
+                    ${ziele.map(pos => `<option value="${esc(pos)}" ${player.umschulung?.pos === pos ? "selected" : ""}>${esc(pos)}</option>`).join("")}
+                </select>
+                ${player.umschulung ? `<div class="ep-balken"><span style="width:${stand}%"></span></div><small>${stand} % - jede Trainingseinheit bringt ihn weiter.</small>` : ""}
+            </label>`;
+        let mentorHtml = "";
+        if ((player.age || 30) <= engine.MENTEE_HOECHSTALTER) {
+            const kandidaten = engine.moeglicheMentoren(state, player);
+            const sterne = (w) => "★".repeat(Math.max(1, Math.round(w * 5)));
+            mentorHtml = `
+                <label class="ep-feld">
+                    <span>Mentor</span>
+                    <select id="pdPlanMentor" class="styled-select">
+                        <option value="">Kein Mentor</option>
+                        ${kandidaten.map(k => `<option value="${esc(k.player.id)}" ${String(player.mentorId) === String(k.player.id) ? "selected" : ""}>${esc(k.player.name)} (${k.player.age}) ${sterne(k.wert)}</option>`).join("")}
+                    </select>
+                    <small>Ein erfahrener Profi färbt auf ihn ab: Einstellung, Ehrgeiz, Nerven - mit etwas Glück auch eine seiner Eigenheiten.</small>
+                </label>`;
+        } else if ((player.age || 0) >= engine.MENTOR_MINDESTALTER) {
+            const schuetzlinge = engine.menteesVon(state, player.id);
+            mentorHtml = `
+                <div class="ep-feld">
+                    <span>Als Mentor (${"★".repeat(Math.max(1, Math.round(engine.mentorWert(player) * 5)))})</span>
+                    <small>${schuetzlinge.length
+                        ? `Er betreut ${schuetzlinge.map(m => esc(m.name)).join(", ")}.`
+                        : "Er betreut noch keinen jungen Spieler. Einen Mentor wählen Sie in der Akte des Talents."}</small>
+                </div>`;
+        }
+        return `
+            <div class="dash-card mb-3 ep-karte">
+                <h4 class="gs-titel"><svg class="ico" aria-hidden="true"><use href="#i-up"/></svg> Entwicklungsplan</h4>
+                <div class="ep-feld">
+                    <span>Spielpraxis ${praxis} %</span>
+                    <div class="ep-balken"><span style="width:${praxis}%"></span></div>
+                    <small>${esc(praxisText)}</small>
+                </div>
+                <label class="ep-feld">
+                    <span>Eigener Trainingsschwerpunkt</span>
+                    <select id="pdPlanFokus" class="styled-select">${fokusOptionen}</select>
+                    <small>Wächst er, wachsen diese Werte mit. Die Zusatzschichten kosten etwas Kraft.</small>
+                </label>
+                ${umschulung}
+                ${mentorHtml}
+            </div>`;
+    }
+
     showPlayerDetailsModal(playerId) {
         const state = this.app.state;
         const treffer = this.findAnyPlayer(playerId);
@@ -7817,6 +7935,8 @@ class UIManager {
 
             ${isUserClub && !isProspect ? this.gespraechHtml(player) : ""}
 
+            ${isUserClub && !isProspect ? this.entwicklungsplanHtml(player) : ""}
+
             ${positionMapHtml}
 
             ${eigenheitenHtml}
@@ -7880,6 +8000,18 @@ class UIManager {
         document.getElementById("btnClosePlayerDetails").onclick = () => {
             modal.style.display = "none";
         };
+
+        // Entwicklungsplan: Schwerpunkt, Umschulung, Mentor
+        const planEngine = this.getDevelopmentPlanEngine();
+        const planAendern = (res) => {
+            if (!res.success) { this.showToast(res.error || "Das ging nicht.", "error"); return; }
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.showPlayerDetailsModal(player.id);
+            if (this.activeTab === "training") this.renderTraining?.();
+        };
+        document.getElementById("pdPlanFokus")?.addEventListener("change", (e) => planAendern(planEngine.setzeSchwerpunkt(state, player.id, e.target.value)));
+        document.getElementById("pdPlanUmschulung")?.addEventListener("change", (e) => planAendern(planEngine.setzeUmschulung(state, player.id, e.target.value || null)));
+        document.getElementById("pdPlanMentor")?.addEventListener("change", (e) => planAendern(planEngine.setzeMentor(state, player.id, e.target.value || null)));
 
         // Gespräch unter vier Augen
         body.querySelectorAll("[data-gespraech]").forEach(btn => btn.addEventListener("click", () => {

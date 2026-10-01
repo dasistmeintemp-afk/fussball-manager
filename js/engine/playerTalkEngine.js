@@ -28,7 +28,7 @@ class PlayerTalkEngine {
 
     /** Fortlaufender Tag über die Saisons hinweg */
     static stempel(state) {
-        return (state?.season || 1) * 1000 + (state?.currentDayIndex || 0);
+        return (state?.seasonYear || state?.season || 1) * 1000 + (state?.currentDayIndex || 0);
     }
 
     static persoenlichkeit(p) {

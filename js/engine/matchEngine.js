@@ -93,6 +93,11 @@ const MATCH_TUNING = {
     },
     skillInfluence: 340,
     cornerShotChance: 0.28,
+    // Ecken ohne eigene Szene: nach Parade und nach abgefälschtem Schuss.
+    // Das Livespiel kommt so auf rund neun Ecken je Partie, die Sofort-
+    // Simulation lag vorher bei fünfeinhalb.
+    eckeNachParade: 0.35,
+    eckeNachFehlschuss: 0.25,
     minGoalChance: 0.03,
     maxGoalChance: 0.40,
 
@@ -577,8 +582,7 @@ class MatchEngine {
 
         // Heimvorteil (beeinflusst durch Stadion-Infrastruktur C2 & Atmosphäre)
         if (isHome) {
-            const stadiumLvl = club.facilities?.stadium || 2;
-            const homeAtmosphere = 1.03 + (stadiumLvl * 0.008);
+            const homeAtmosphere = MatchEngine.heimvorteil(club);
             attack *= homeAtmosphere;
             midfield *= homeAtmosphere;
             defense *= homeAtmosphere;
@@ -710,7 +714,7 @@ class MatchEngine {
      * Jetzt entscheiden Werte und Eigenschaften: wer gut abschließt, sich im
      * Strafraum bewegt oder in der Luft stark ist, kommt öfter an den Ball.
      */
-    static waehleSchuetze(kandidaten, attackType, posVon = null) {
+    static waehleSchuetze(kandidaten, attackType, posVon = null, gedeckt = null) {
         if (!Array.isArray(kandidaten) || kandidaten.length === 0) return null;
         const eig = _eigEngine();
         const luftig = attackType === "cross" || attackType === "corner";
@@ -721,6 +725,10 @@ class MatchEngine {
             const w = eig ? eig.wirkung(p) : {};
             g *= 1 + (w.strafraum || 0) * 0.5 + (luftig ? (w.luft || 0) / 30 : 0);
             if ((posVon ? posVon(p) : p.pos) === "ST") g *= 1.4;
+            // Bei Flanken und Ecken kommt der Große eher an den Ball
+            if (luftig) g *= Math.max(0.6, 1 + (MatchEngine.koerpergroesse(p) - 181) / 40);
+            // Wer eng gedeckt wird, kommt seltener frei zum Abschluss
+            if (gedeckt && gedeckt[p.id]) g *= Math.pow(gedeckt[p.id], 6);
             return g;
         });
         const summe = gewichte.reduce((s, g) => s + g, 0);
@@ -777,6 +785,13 @@ class MatchEngine {
         // eiskalter Vollstrecker trifft im Sofort-Ergebnis genauso öfter
         const w = MatchEngine.eigenschaftsWirkung(shooter, gk, shotType);
         pGoal = pGoal * w.faktor + w.zuschlag;
+        // Schwacher Fuß - wie im Livespiel: gut jeder fünfte Abschluss aus
+        // dem Spiel heraus kommt mit dem schwachen Fuß; Beidfüßige haben keinen
+        const mitFuss = ["through_ball", "dribble"].includes(shotType) && shooter?.foot && shooter.foot !== "beidfüßig";
+        if (mitFuss) {
+            const cfg = MatchEngine.SCHWACHER_FUSS;
+            pGoal *= _Random.chance(cfg.basis + 0.04) ? cfg.faktorSchwach : cfg.faktorStark;
+        }
         pGoal = _Random.clamp(pGoal, MATCH_TUNING.minGoalChance, MATCH_TUNING.maxGoalChance);
 
         let pSave = 0.42 - skillEdge / 500;
@@ -822,6 +837,8 @@ class MatchEngine {
 
         const startMinute = options.startMinute || 1;
         let currentHomeScore = options.currentHomeScore || 0;
+        // Der Schiedsrichter der Partie: Fouls, Karten, Vorteil
+        const schiri = MatchEngine.schiedsrichterFuer(match);
         let currentAwayScore = options.currentAwayScore || 0;
 
         // Startaufstellungen säubern (A3)
@@ -893,6 +910,26 @@ class MatchEngine {
             ? homePowerNeutral
             : this.calculateTeamPower(homeClub, allPlayers, true, activeHomePlayers);
         const awayPower = this.calculateTeamPower(awayClub, allPlayers, false, activeAwayPlayers);
+
+        // Tagesform: der Schnitt der Elf, wie im Livespiel je Spieler gewürfelt
+        // (oder von dort übernommen, damit eine Neuberechnung sie nicht neu würfelt)
+        const teamForm = (lineup, gegeben) => {
+            if (typeof gegeben === "number") return gegeben;
+            if (!lineup.length) return 1;
+            return lineup.reduce((sum, p) => sum + MatchEngine.tagesform(p), 0) / lineup.length;
+        };
+        // Ein Matchplan, der die Schwächen des Gegners trifft, macht die
+        // Mannschaft etwas besser eingestellt
+        const planBonus = (side) => (options.matchplan && options.matchplan.side === side ? (options.matchplan.bonus || 1) : 1);
+        // Taktische Vertrautheit: Eine neue Formation sitzt noch nicht
+        const vertraut = (club, wert) => (typeof wert === "number" ? wert
+            : (_mTaktik()?.vertrautheitsFaktor ? _mTaktik().vertrautheitsFaktor(club) : 1));
+        const formHeim = teamForm(activeHomePlayers, options.tagesformHome) * planBonus("home") * vertraut(homeClub, options.vertrautheitHome);
+        const formGast = teamForm(activeAwayPlayers, options.tagesformAway) * planBonus("away") * vertraut(awayClub, options.vertrautheitAway);
+        [[homePower, formHeim], [homePowerNeutral, formHeim], [awayPower, formGast]].forEach(([pw, f]) => {
+            pw.attack *= f; pw.midfield *= f; pw.defense *= f; pw.goalkeeper *= f;
+            pw.total *= f;
+        });
 
         // Ballbesitz & Passquote (B11)
         const homeTactics = homeClub.tactics || {};
@@ -1044,6 +1081,32 @@ class MatchEngine {
             return typeof f === "number" ? f * 100 : (p.fitness || 100);
         };
 
+        // Wie der Trainer auf den Spielstand reagiert - dieselbe Überlegung
+        // wie im Livespiel (LiveMatch.trainerStelltUm): Bei Rückstand ab der
+        // 55. Minute offensiver, bei zwei Toren Rückstand sofort, in der
+        // Schlussphase noch einmal; eine Führung wird ab der 75. gesichert,
+        // ein Remis kurz vor Schluss noch einmal angegriffen. Vorher drückte
+        // die zurückliegende Mannschaft ab der ersten Minute, auch beim 0:1
+        // nach zehn Minuten. Im Livespiel stellen die Trainer selbst um -
+        // dort ist die Reaktion hier abgeschaltet.
+        // Liefert Stufen: +2 volles Risiko, +1 offensiver, -1 absichern.
+        const trainerReagiert = {
+            home: options.trainerReaktionHome !== false,
+            away: options.trainerReaktionAway !== false
+        };
+        const reaktionsStufe = (side, min) => {
+            if (!trainerReagiert[side]) return 0;
+            const eigene = side === "home" ? currentHomeScore : currentAwayScore;
+            const fremde = side === "home" ? currentAwayScore : currentHomeScore;
+            if (eigene < fremde) {
+                if (min >= 75) return 2;
+                if (min >= 55 || fremde - eigene >= 2) return 1;
+                return 0;
+            }
+            if (eigene > fremde) return min >= 75 ? -1 : 0;
+            return min >= 83 ? 1 : 0;
+        };
+
         // Zurufe von der Seitenlinie: [{ side, art, von, bis }]
         const zurufe = Array.isArray(options.zurufe) ? options.zurufe : [];
         const zurufVon = (side, min) => {
@@ -1129,7 +1192,7 @@ class MatchEngine {
             const gk = defPlayers.find(p => defPos(p) === "TW") || defPlayers.find(p => p.pos === "TW") || defPlayers[0];
 
             const shooter = attackers.length > 0
-                ? MatchEngine.waehleSchuetze(attackers, attackType, attPos)
+                ? MatchEngine.waehleSchuetze(attackers, attackType, attPos, options.matchplan?.gedeckt)
                 : (midfielders[0] || attPlayers[0]);
             // Die Ecke tritt der Standardschütze, nicht ein zufälliger Mittelfeldspieler
             const passer = (attackType === "corner" ? schuetze("ecken", isHomeAttacking) : null)
@@ -1232,9 +1295,12 @@ class MatchEngine {
                 staminaBonus = (attAvgStamina - defAvgStamina) * 0.15;
             }
 
-            // Rückstand erhöht Offensive / Chancenqualität (Momentum)
-            const scoreDiff = isHomeAttacking ? (currentAwayScore - currentHomeScore) : (currentHomeScore - currentAwayScore);
-            const momentumBonus = scoreDiff > 0 ? 4 : (scoreDiff < 0 ? -2 : 0);
+            // Trainerreaktion: Die eigene Offensive wird gefährlicher, und wer
+            // selbst aufmacht, lässt hinten Räume - wer mauert, schließt sie
+            const stufeAngriff = reaktionsStufe(isHomeAttacking ? "home" : "away", min);
+            const stufeAbwehr = reaktionsStufe(isHomeAttacking ? "away" : "home", min);
+            const momentumBonus = (stufeAngriff > 0 ? stufeAngriff * 2.5 : stufeAngriff * 1.5)
+                + (stufeAbwehr > 0 ? stufeAbwehr * 2 : stufeAbwehr * 2);
 
             // Zurufe von der Seitenlinie: eigener Druck macht die Abschlüsse
             // gefährlicher, der des Gegners öffnet Räume für den Konter.
@@ -1244,8 +1310,16 @@ class MatchEngine {
             // Eine gute Hereingabe macht den Kopfball nach der Ecke gefährlicher
             const eckenBonus = attackType === "corner" && passer
                 ? (MatchEngine.standardWert("ecken", passer) - 70) * 0.12 : 0;
+            // Die Eckenvariante gegen die Standarddeckung des Gegners
+            let variantenBonus = 0;
+            if (attackType === "corner" && _mTaktik()) {
+                const T = _mTaktik();
+                const variante = T.eckenVariante ? T.eckenVariante(T.wirkung(attTactics).ecken) : "gemischt";
+                variantenBonus = MatchEngine.eckenVorteil(variante, T.wirkung(isHomeAttacking ? awayTactics : homeTactics).standardDeckung,
+                    attPlayers, defPlayers);
+            }
 
-            const modifiedAttPower = { ...attPowerLocal, attack: attPowerLocal.attack + staminaBonus + momentumBonus + zurufBonus + eckenBonus };
+            const modifiedAttPower = { ...attPowerLocal, attack: attPowerLocal.attack + staminaBonus + momentumBonus + zurufBonus + eckenBonus + variantenBonus };
             const { outcome, xG } = MatchEngine.resolveShotAttempt(attackType, shooter, gk, modifiedAttPower, defPowerLocal, attTactics);
 
             if (outcome === "goal") {
@@ -1285,8 +1359,8 @@ class MatchEngine {
                     outcome: "saved",
                     text: formatCommentary("save", { minute: min, gk: gk?.name, shooter: shooter?.name })
                 });
-                // 25% Chance auf eine anschließende Ecke nach Parade
-                if (_Random.chance(0.25)) {
+                // Ecke nach der Parade, wenn der Torwart zur Seite lenkt
+                if (_Random.chance(MATCH_TUNING.eckeNachParade)) {
                     timeline.push({
                         minute: min,
                         second: 40,
@@ -1331,6 +1405,21 @@ class MatchEngine {
                     outcome: "missed",
                     text: formatCommentary("missed", { minute: min, shooter: shooter?.name })
                 });
+                // Abgefälscht ins Toraus: Ecke - wie im Livespiel, wo geblockte
+                // und abgefälschte Schüsse die meisten Ecken bringen
+                if (_Random.chance(MATCH_TUNING.eckeNachFehlschuss)) {
+                    timeline.push({
+                        minute: min,
+                        second: 38,
+                        type: "corner",
+                        team: isHomeAttacking ? "home" : "away",
+                        clubId: attClub.id,
+                        clubName: attClub.name,
+                        start: { x: isHomeAttacking ? 95.6 : 4.4, y: _Random.choice([1.2, 98.8]) },
+                        end: { x: isHomeAttacking ? 88 : 12, y: 50 },
+                        text: `${min}' - 🚩 Abgefälscht - Ecke für ${attClub.name}!`
+                    });
+                }
             }
         };
 
@@ -1346,7 +1435,9 @@ class MatchEngine {
         // Partie und griffen auf die Schlussaufstellung zurück. Ein in der 70.
         // Minute Eingewechselter foulte dann schon in der 5., und wer in der
         // 76. Rot sah, fehlte beim Freistoß in der 5. Minute als Schütze.
-        const kleineFouls = _Random.int(7, 13);
+        // Anteilig zur verbleibenden Spielzeit - eine Neuberechnung ab der 80.
+        // Minute verteilte vorher die Fouls eines ganzen Spiels auf zehn Minuten
+        const kleineFouls = Math.round(_Random.int(10, 16) * schiri.pfeife * Math.max(0, 91 - startMinute) / 90);
         const foulMinuten = [];
         for (let i = 0; i < kleineFouls; i++) foulMinuten.push(_Random.int(Math.max(2, startMinute), 89));
         foulMinuten.sort((x, y) => x - y);
@@ -1387,6 +1478,79 @@ class MatchEngine {
                 && direkterFreistoss(min, gefoulteGreiftRechtsAn, tatort, sekunde + 8)) {
                 foulEreignis.direkterFreistoss = true;
             }
+            // Auch ein kleines Foul kann den Gefoulten verletzen
+            const gefoulte = (heimFoult ? activeAwayPlayers : activeHomePlayers)
+                .filter(p => !sentOffPlayerIds.has(p.id) && p.pos !== "TW");
+            if (gefoulte.length) kontaktVerletzung(_Random.choice(gefoulte), !heimFoult, "foul", min, Math.min(59, sekunde + 5));
+        };
+
+        // Eine Verletzung eintragen - und den Verletzten, wenn der Trainer
+        // wechseln darf, gleich ersetzen. Im Livespiel (FM) entstehen die
+        // Verletzungen auf dem Platz; dort bleibt diese Simulation still.
+        const ohneVerletzungen = !!options.ohneVerletzungen;
+        const verletze = (victim, isHomeTeam, art, min, sekunde = 8) => {
+            if (ohneVerletzungen || !victim || sentOffPlayerIds.has(victim.id)) return false;
+            const teamSide = isHomeTeam ? "home" : "away";
+            const club = isHomeTeam ? homeClub : awayClub;
+            const activePlayers = isHomeTeam ? activeHomePlayers : activeAwayPlayers;
+            if (!activePlayers.includes(victim)) return false;
+            const inj = MatchEngine.verletzungsArt(art);
+            timeline.push({
+                minute: min,
+                second: sekunde,
+                type: "injury",
+                team: teamSide,
+                clubId: club.id,
+                clubName: club.name,
+                playerId: victim.id,
+                playerName: victim.name,
+                injuryName: inj.name,
+                injuredWeeks: inj.weeks,
+                verletzungsArt: art,
+                text: formatCommentary("injury", { minute: min, club: club.name, player: victim.name, injury: inj.name })
+            });
+
+            // Auswechslung des Verletzten versuchen. Bei der Mannschaft des
+            // Spielers nur, wenn er die Wechsel dem Co-Trainer ueberlassen
+            // hat - sonst fragt das Spiel ihn, und bis dahin spielt der
+            // Verletzte angeschlagen.
+            const benchAvailable = bankVon(isHomeTeam)
+                .map(id => MatchEngine.findPlayer(allPlayers, id))
+                .filter(p => p && (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0 && !activePlayers.some(ap => ap.id === p.id));
+            const subIn = benchAvailable.length > 0 ? ersatzFuer(victim, isHomeTeam, benchAvailable) : null;
+            if (autoWechsel[teamSide] && subIn && fensterFrei(teamSide, min)
+                && (isHomeTeam ? homeSubsUsed : awaySubsUsed) < maxSubs) {
+                const outIdx = activePlayers.findIndex(p => p.id === victim.id);
+                if (outIdx !== -1) {
+                    activePlayers[outIdx] = subIn;
+                    ausgewechselt.add(victim.id);
+                    if (isHomeTeam) homeSubsUsed++; else awaySubsUsed++;
+                    fensterBelegen(teamSide, min);
+                    timeline.push({
+                        minute: min,
+                        second: Math.min(59, sekunde + 7),
+                        type: "substitution",
+                        team: teamSide,
+                        clubId: club.id,
+                        clubName: club.name,
+                        playerOutId: victim.id,
+                        playerOutName: victim.name,
+                        playerInId: subIn.id,
+                        playerInName: subIn.name,
+                        text: formatCommentary("substitution", { minute: min, club: club.name, playerIn: subIn.name, playerOut: victim.name })
+                    });
+                }
+            }
+            return true;
+        };
+
+        // Ein Foul kann den Gefoulten verletzen - je härter, desto eher
+        const kontaktVerletzung = (opfer, opferHeim, schwere, min, sekunde = 32) => {
+            if (ohneVerletzungen || !opfer) return false;
+            const p = (MatchEngine.KONTAKT_RISIKO[schwere] || MatchEngine.KONTAKT_RISIKO.foul)
+                * MatchEngine.verletzungsAnfaelligkeit(opfer);
+            // Nach dem Pfiff: Der Gefoulte bleibt liegen
+            return _Random.chance(p) ? verletze(opfer, opferHeim, "kontakt", min, sekunde) : false;
         };
 
         // Simuliere jede Szene chronologisch
@@ -1394,15 +1558,23 @@ class MatchEngine {
             // Kleine Fouls, die vor dieser Szene liegen, zuerst
             while (foulMinuten.length > 0 && foulMinuten[0] < min) kleinesFoul(foulMinuten.shift());
 
-            // KI-Wechsel ab Minute 60 (C17)
-            if (min >= 60 && min <= 82) {
+            // KI-Wechsel ab Minute 60 (C17) - wer zurückliegt, bringt früher
+            // frische Kräfte, und zwar vorne; wer führt, frischt die Abwehr auf
+            if (min >= 55 && min <= 84) {
                 ['home', 'away'].forEach(teamSide => {
                     const isHomeTeam = teamSide === 'home';
                     const subsUsed = isHomeTeam ? homeSubsUsed : awaySubsUsed;
                     const club = isHomeTeam ? homeClub : awayClub;
                     const activePlayers = isHomeTeam ? activeHomePlayers : activeAwayPlayers;
+                    const eigene = isHomeTeam ? currentHomeScore : currentAwayScore;
+                    const fremde = isHomeTeam ? currentAwayScore : currentHomeScore;
+                    const lage = eigene < fremde ? 1 : (eigene > fremde ? -1 : 0);
+                    const ab = lage > 0 ? 55 : 60;
+                    const bis = lage < 0 ? 84 : 82;
+                    const wechselChance = lage > 0 ? 0.3 : 0.2;
 
-                    if (autoWechsel[teamSide] && subsUsed < maxSubs && fensterFrei(teamSide, min) && _Random.chance(0.20)) {
+                    if (min >= ab && min <= bis && autoWechsel[teamSide] && subsUsed < maxSubs
+                        && fensterFrei(teamSide, min) && _Random.chance(wechselChance)) {
                         const benchAvailable = bankVon(isHomeTeam)
                             .map(id => MatchEngine.findPlayer(allPlayers, id))
                             .filter(p => p && (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0 && !activePlayers.some(ap => ap.id === p.id));
@@ -1410,9 +1582,19 @@ class MatchEngine {
                         if (benchAvailable.length > 0) {
                             // Erschöpften oder schwachen Spieler auswechseln -
                             // aber keinen, der schon vom Platz gestellt ist.
+                            // Frische entscheidet, der Spielstand gibt bei
+                            // ähnlich Müden den Ausschlag: Bei Rückstand
+                            // kommen frische Beine nach vorn, bei Führung nach
+                            // hinten. Wer ausgepumpt ist, geht trotzdem zuerst.
+                            const schwerpunkt = (p) => {
+                                const pos = deployedPosOf(p, isHomeTeam);
+                                const vorn = ["ST", "OM", "LA", "RA", "LM", "RM"].includes(pos);
+                                const hinten = ["IV", "LV", "RV", "DM"].includes(pos);
+                                return lage > 0 ? (vorn ? 4 : 0) : (lage < 0 ? (hinten ? 3 : 0) : 0);
+                            };
                             const kandidaten = [...activePlayers]
                                 .filter(p => p.pos !== "TW" && !sentOffPlayerIds.has(p.id))
-                                .sort((a, b) => frischeVon(a) - frischeVon(b));
+                                .sort((a, b) => (frischeVon(a) - schwerpunkt(a)) - (frischeVon(b) - schwerpunkt(b)));
                             const guete = wechselGuete(isHomeTeam);
                             const candidateOut = (guete !== null && _Random.chance((100 - guete) / 160))
                                 ? _Random.choice(kandidaten.slice(0, 4))
@@ -1447,69 +1629,27 @@ class MatchEngine {
                 });
             }
 
-            // Verletzungswahrscheinlichkeit im Spiel (A7)
+            // Muskelverletzungen (A7): Sie kommen aus der Müdigkeit. Je
+            // später die Minute und je ausgelaugter ein Spieler, desto eher
+            // zerrt er sich - Glasknochen öfter als robuste Typen. Die
+            // Kontaktverletzungen kommen aus den Fouls (kontaktVerletzung).
             ['home', 'away'].forEach(teamSide => {
                 const isHomeTeam = teamSide === 'home';
-                const club = isHomeTeam ? homeClub : awayClub;
-                const activePlayers = isHomeTeam ? activeHomePlayers : activeAwayPlayers;
+                const activePlayers = (isHomeTeam ? activeHomePlayers : activeAwayPlayers).filter(p => !sentOffPlayerIds.has(p.id));
                 const tactics = isHomeTeam ? homeTactics : awayTactics;
-
                 const pressingMod = tactics.pressing === "high" ? 1.3 : (tactics.pressing === "low" ? 0.8 : 1.0);
-                const injuryRoll = MATCH_TUNING.injuryRatePerTeam * (1 / (totalScenes || 30)) * pressingMod;
-
-                if (_Random.chance(injuryRoll)) {
-                    const victim = _Random.choice(activePlayers.filter(p => !sentOffPlayerIds.has(p.id)));
-                    if (victim) {
-                        const inj = _Random.choice(INJURY_CATALOG);
-                        timeline.push({
-                            minute: min,
-                            second: 8,
-                            type: "injury",
-                            team: teamSide,
-                            clubId: club.id,
-                            clubName: club.name,
-                            playerId: victim.id,
-                            playerName: victim.name,
-                            injuryName: inj.name,
-                            injuredWeeks: inj.weeks,
-                            text: formatCommentary("injury", { minute: min, club: club.name, player: victim.name, injury: inj.name })
-                        });
-
-                        // Auswechslung des Verletzten versuchen. Bei der
-                        // Mannschaft des Spielers nur, wenn er die Wechsel dem
-                        // Co-Trainer ueberlassen hat - sonst fragt das Spiel
-                        // ihn, und bis dahin spielt der Verletzte angeschlagen.
-                        const benchAvailable = bankVon(isHomeTeam)
-                            .map(id => MatchEngine.findPlayer(allPlayers, id))
-                            .filter(p => p && (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0 && !activePlayers.some(ap => ap.id === p.id));
-
-                        const subIn = benchAvailable.length > 0 ? ersatzFuer(victim, isHomeTeam, benchAvailable) : null;
-                        if (autoWechsel[teamSide] && subIn && fensterFrei(teamSide, min)
-                            && (isHomeTeam ? homeSubsUsed : awaySubsUsed) < maxSubs) {
-                            const outIdx = activePlayers.findIndex(p => p.id === victim.id);
-                            if (outIdx !== -1) {
-                                activePlayers[outIdx] = subIn;
-                                ausgewechselt.add(victim.id);
-                                if (isHomeTeam) homeSubsUsed++; else awaySubsUsed++;
-                                fensterBelegen(teamSide, min);
-
-                                timeline.push({
-                                    minute: min,
-                                    second: 15,
-                                    type: "substitution",
-                                    team: teamSide,
-                                    clubId: club.id,
-                                    clubName: club.name,
-                                    playerOutId: victim.id,
-                                    playerOutName: victim.name,
-                                    playerInId: subIn.id,
-                                    playerInName: subIn.name,
-                                    text: formatCommentary("substitution", { minute: min, club: club.name, playerIn: subIn.name, playerOut: victim.name })
-                                });
-                            }
-                        }
-                    }
+                const minutenFaktor = 0.55 + 0.9 * (min / 90);
+                const injuryRoll = MATCH_TUNING.injuryRatePerTeam * 0.36 * (1 / (totalScenes || 30)) * pressingMod * minutenFaktor;
+                if (ohneVerletzungen || !activePlayers.length || !_Random.chance(injuryRoll)) return;
+                // Wer trifft es? Nach Müdigkeit und Anfälligkeit gewichtet
+                const risiko = activePlayers.map(p => MatchEngine.muskelRisiko(p, (frischeVon(p) / 100) * (1 - (min / 90) * 0.3)));
+                let wurf = Math.random() * risiko.reduce((a, b) => a + b, 0);
+                let victim = activePlayers[activePlayers.length - 1];
+                for (let i = 0; i < activePlayers.length; i++) {
+                    wurf -= risiko[i];
+                    if (wurf <= 0) { victim = activePlayers[i]; break; }
                 }
+                verletze(victim, isHomeTeam, "muskel", min);
             });
 
             // Zeit schinden: Ein Teil der Szenen findet schlicht nicht statt
@@ -1521,9 +1661,9 @@ class MatchEngine {
             // sie zu einer echten Gelegenheit.
             let homeProb = 0.5 + (neutralerPlatz ? 0 : MATCH_TUNING.homeSceneEdge)
                 + (szenenAbstand / szenenBezug) * MATCH_TUNING.sceneShare;
-            // Momentum: Zurückliegendes Team drückt mehr
-            if (currentHomeScore < currentAwayScore) homeProb += 0.08;
-            else if (currentAwayScore < currentHomeScore) homeProb -= 0.08;
+            // Der Trainer reagiert auf den Spielstand: Wer zurückliegt, macht
+            // mehr Druck, wer spät führt, zieht sich zurück
+            homeProb += (reaktionsStufe("home", min) - reaktionsStufe("away", min)) * 0.035;
 
             // Unterzahl kostet Szenen
             const heimFehlt = activeHomePlayers.filter(p => sentOffPlayerIds.has(p.id)).length;
@@ -1549,7 +1689,10 @@ class MatchEngine {
 
             // Wer hart einsteigt, foult oefter; wer auf den Fuessen bleibt, seltener
             const haerte = _mTaktik()?.wirkung(defTactics).zweikampf || 0;
-            if (sceneTypeRoll < MATCH_TUNING.foulRate + haerte * 0.03) {
+            // Ein Foul mit Vorteil: gepfiffen wird nicht, der Angriff läuft weiter
+            let nachVorteil = false;
+            const foulSzene = sceneTypeRoll < (MATCH_TUNING.foulRate + haerte * 0.03) * schiri.pfeife;
+            if (foulSzene) {
                 // 1. ZWEIKÄMPFE, FOULS, KARTEN & ELFMETER (A6, A8)
                 const foulDefPos = p => deployedPosOf(p, !isHomeAttacking);
                 const foulAttPos = p => deployedPosOf(p, isHomeAttacking);
@@ -1570,12 +1713,15 @@ class MatchEngine {
                 };
 
                 const isPenalty = _Random.chance(MATCH_TUNING.penaltyRate);
-                const isRed = !isPenalty && _Random.chance(0.003);
+                const isRed = !isPenalty && _Random.chance(0.003 * schiri.strenge);
                 // "Ruhe bewahren" halbiert die Karten, "Zeit schinden" provoziert welche
                 // Wer auf Zeit spielt, sieht in der Schlussphase eher Gelb
                 const zeitspielGelb = (min >= 70 && (_mTaktik()?.wirkung(defTactics).zeitspiel || 0) > 0) ? 1.12 : 1;
                 const kartenFaktor = (zurufVon(isHomeAttacking ? "away" : "home", min)?.gelb || 1) * zeitspielGelb;
-                const isYellow = !isPenalty && !isRed && _Random.chance(Math.min(0.9, MATCH_TUNING.yellowCardRate * kartenFaktor));
+                const isYellow = !isPenalty && !isRed && _Random.chance(Math.min(0.9, MATCH_TUNING.yellowCardRate * kartenFaktor * schiri.strenge));
+                // Vorteil gibt es vorn, wenn der Angriff weiterlaufen kann
+                const imAngriffsdrittel = isHomeAttacking ? fPos.x > 62 : fPos.x < 38;
+                const vorteil = !isPenalty && !isRed && imAngriffsdrittel && _Random.chance(0.3 * schiri.vorteil);
 
                 if (isPenalty) {
                     // Elf Meter vor der Torlinie (96): 9,6 Einheiten
@@ -1597,6 +1743,7 @@ class MatchEngine {
                         outcome: "penalty",
                         text: formatCommentary("penalty", { minute: min, attClub: attClub.name, defender: defender?.name })
                     });
+                    kontaktVerletzung(shooter, isHomeAttacking, "elfmeter", min);
 
                     // Den Elfmeter schießt der Elfmeterschütze - nicht der
                     // Stürmer, der zufällig gefoult wurde.
@@ -1657,6 +1804,7 @@ class MatchEngine {
                         outcome: "red_card",
                         text: formatCommentary("red_card", { minute: min, defender: defender?.name, defClub: defClub.name })
                     });
+                    kontaktVerletzung(shooter, isHomeAttacking, "rot", min);
                 } else if (isYellow) {
                     let cardTarget = defender;
                     const prevYellows = playerYellows.get(cardTarget?.id) || 0;
@@ -1721,9 +1869,14 @@ class MatchEngine {
                             start: fPos,
                             end: fPos,
                             outcome: "yellow_card",
-                            text: formatCommentary("yellow_card", { minute: min, defender: cardTarget?.name, defClub: defClub.name })
+                            vorteil: vorteil || undefined,
+                            text: vorteil
+                                ? `${min}' - ▶️ Vorteil für ${attClub.name}! ${cardTarget?.name || "Der Verteidiger"} sieht nachträglich Gelb.`
+                                : formatCommentary("yellow_card", { minute: min, defender: cardTarget?.name, defClub: defClub.name })
                         });
+                        if (vorteil) nachVorteil = true;
                     }
+                    if (!nachVorteil) kontaktVerletzung(shooter, isHomeAttacking, "gelb", min);
                 } else {
                     // Normales Tackling / Freistoß
                     if (_Random.chance(0.55)) {
@@ -1757,11 +1910,22 @@ class MatchEngine {
                             outcome: "foul",
                             text: formatCommentary("foul", { minute: min, defender: defender?.name, defClub: defClub.name, attClub: attClub.name })
                         };
-                        timeline.push(foulEreignis);
-                        if (direkt && direkterFreistoss(min, isHomeAttacking, fPos, 38)) foulEreignis.direkterFreistoss = true;
+                        if (vorteil) {
+                            // Der Gefoulte bleibt am Ball - weiter geht's
+                            foulEreignis.vorteil = true;
+                            foulEreignis.outcome = "vorteil";
+                            foulEreignis.text = `${min}' - ▶️ Vorteil! ${defender?.name || "Der Verteidiger"} foult, aber ${attClub.name} spielt weiter.`;
+                            timeline.push(foulEreignis);
+                            nachVorteil = true;
+                        } else {
+                            timeline.push(foulEreignis);
+                            if (direkt && direkterFreistoss(min, isHomeAttacking, fPos, 38)) foulEreignis.direkterFreistoss = true;
+                            kontaktVerletzung(shooter, isHomeAttacking, "foul", min);
+                        }
                     }
                 }
-            } else {
+            }
+            if (!foulSzene || nachVorteil) {
                 // 2. TORSZENEN & ANGRIFFE (A2, A4, E20)
                 // Wähle Angriffsmuster anhand von passing & focus
                 let throughWeight = 0.35;
@@ -2430,11 +2594,27 @@ class MatchEngine {
      * Schnelle Hintergrund-Simulation für Matches (nutzt dieselbe Timeline)
      */
     static simulateFullMatch(match, homeClub, awayClub, allPlayers, options = {}) {
-        const timeline = match.timeline && match.timeline.length > 0
-            ? match.timeline
-            : this.generateTimeline(match, homeClub, awayClub, allPlayers, options);
-
-        return this.applyTimelineToMatch(match, timeline, homeClub, awayClub, allPlayers);
+        // Der Matchplan gilt nur für dieses Spiel: Anweisungen setzen, danach
+        // wieder die gewohnte Taktik
+        const plan = options.matchplan;
+        const planClub = plan ? (plan.side === "home" ? homeClub : awayClub) : null;
+        const vorher = planClub ? { ...(planClub.tactics || {}) } : null;
+        // Wie eingespielt die Elf ist, zählt mit der gewohnten Taktik - die
+        // Punkte der Taktikbesprechung sind für dieses Spiel einstudiert
+        const T = _mTaktik();
+        if (T && typeof T.vertrautheitsFaktor === "function") {
+            if (options.vertrautheitHome === undefined) options = { ...options, vertrautheitHome: T.vertrautheitsFaktor(homeClub) };
+            if (options.vertrautheitAway === undefined) options = { ...options, vertrautheitAway: T.vertrautheitsFaktor(awayClub) };
+        }
+        if (planClub && plan.taktik) planClub.tactics = { ...(planClub.tactics || {}), ...plan.taktik };
+        try {
+            const timeline = match.timeline && match.timeline.length > 0
+                ? match.timeline
+                : this.generateTimeline(match, homeClub, awayClub, allPlayers, options);
+            return this.applyTimelineToMatch(match, timeline, homeClub, awayClub, allPlayers);
+        } finally {
+            if (planClub) planClub.tactics = vorher;
+        }
     }
 
     /**
@@ -2467,7 +2647,157 @@ class MatchEngine {
      * gedämpft, wenn er auf einer fremden Position spielt. Dazu kommen die
      * Wirkungen seiner Eigenheiten und seiner Signatur.
      */
-    static werte2D(player, deployedPos = null, versatz = 0) {
+    /**
+     * Tagesform eines Spielers für eine Partie: Wer unbeständig ist, hat
+     * gute und schlechte Tage - ein beständiger Profi spielt fast immer
+     * gleich. Faktor um 1 (höchstens ±10 %).
+     */
+    static tagesform(player) {
+        const bestaendigkeit = player?.hiddenAttributes?.consistency ?? 12;
+        const streuung = Math.max(0.005, (20 - bestaendigkeit) * 0.005);
+        return 1 + _Random.clamp(_Random.gaussian(0, streuung), -0.1, 0.1);
+    }
+
+    /**
+     * Verletzungen entstehen im Spiel - nicht mehr als Zufall über den Kader.
+     *
+     * Kontaktverletzungen kommen aus Fouls: je härter das Foul, desto eher.
+     * Muskelverletzungen kommen aus Müdigkeit: Wer auf dem Zahnfleisch geht,
+     * zerrt sich. Beide wiegt die Verletzungsanfälligkeit (versteckter Wert
+     * 1-20) und das Alter.
+     */
+    static VERLETZUNGEN = {
+        kontakt: [
+            { name: "Prellung", weeks: 1, gewicht: 4 },
+            { name: "Knöchelstauchung", weeks: 2, gewicht: 4 },
+            { name: "Bänderdehnung", weeks: 4, gewicht: 2.5 },
+            { name: "Meniskusschaden", weeks: 6, gewicht: 1 },
+            { name: "Kreuzbandanriss", weeks: 10, gewicht: 0.5 }
+        ],
+        muskel: [
+            { name: "Muskelverhärtung", weeks: 1, gewicht: 5 },
+            { name: "Zerrung", weeks: 2, gewicht: 3.5 },
+            { name: "Muskelfaserriss", weeks: 3, gewicht: 2 }
+        ]
+    };
+
+    /** Wie schnell sich ein Spieler verletzt: 1 im Schnitt, Glasknochen bis 2 */
+    static verletzungsAnfaelligkeit(player) {
+        const h = player?.hiddenAttributes?.injuryProneness ?? player?.anfaelligkeit ?? 10;
+        const alter = player?.age ?? player?.mental?.alter ?? 26;
+        return (0.45 + h / 18) * (1 + Math.max(0, alter - 30) * 0.05);
+    }
+
+    /** Muskelrisiko: frisch (1) halb so hoch wie im Schnitt, ausgelaugt (0,5) doppelt */
+    static muskelRisiko(player, frische = 0.8) {
+        const f = Math.max(0, Math.min(1, frische));
+        return this.verletzungsAnfaelligkeit(player) * (0.5 + (1 - f) * 3);
+    }
+
+    /** Wie oft ein Foul den Gefoulten verletzt - nach Härte */
+    static KONTAKT_RISIKO = { foul: 0.006, gelb: 0.03, rot: 0.2, elfmeter: 0.02 };
+
+    /**
+     * Der Schiedsrichter einer Partie. Er steht mit der Ansetzung fest (je
+     * Partie derselbe, auch nach einer Neuberechnung) und prägt das Spiel:
+     * Der Strenge pfeift mehr und zückt schneller Karten, der Großzügige
+     * lässt laufen und gibt öfter Vorteil. Im Schnitt heben sie sich auf.
+     */
+    static SCHIEDSRICHTER = ["Markus Wendland", "Stefan Obermaier", "Jonas Kellermann", "Daniel Hufnagel",
+        "Sven Brückner", "Patrick Lohmann", "Florian Engert", "Benedikt Aschauer", "Timo Rademacher",
+        "Lars Heinemann", "Nina Weckbach", "Ole Steinbrink"];
+
+    static SCHIRI_TYPEN = {
+        streng: { art: "streng", text: "pfeift kleinlich und zückt schnell Gelb", pfeife: 1.1, strenge: 1.3, vorteil: 0.6 },
+        normal: { art: "sachlich", text: "leitet unauffällig", pfeife: 1, strenge: 1, vorteil: 1 },
+        grosszuegig: { art: "großzügig", text: "lässt viel laufen und gibt gern Vorteil", pfeife: 0.9, strenge: 0.75, vorteil: 1.4 }
+    };
+
+    static schiedsrichterFuer(match) {
+        if (!match) return { typ: "normal", name: "Der Schiedsrichter", ...this.SCHIRI_TYPEN.normal };
+        if (match.schiedsrichter && match.schiedsrichter.typ) return match.schiedsrichter;
+        const text = `${match.id || ""}|${match.homeClubId || ""}|${match.awayClubId || ""}`;
+        let h = 2166136261;
+        for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+        h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
+        const z = (h >>> 0) / 4294967296;
+        const typ = z < 0.25 ? "streng" : (z < 0.75 ? "normal" : "grosszuegig");
+        const name = this.SCHIEDSRICHTER[((h >>> 5) >>> 0) % this.SCHIEDSRICHTER.length];
+        match.schiedsrichter = { typ, name, ...this.SCHIRI_TYPEN[typ] };
+        return match.schiedsrichter;
+    }
+
+    /**
+     * Körpergröße in Zentimetern. Neue Spieler bekommen sie bei der
+     * Erzeugung; für alle anderen folgt sie fest aus Position, Physis und
+     * der Spieler-ID - so ist ein Spieler immer gleich groß.
+     */
+    static GROESSE_BASIS = { TW: 190, IV: 188, ST: 184, DM: 182, ZM: 179, OM: 177, LV: 178, RV: 178, LM: 176, RM: 176, LA: 175, RA: 175 };
+
+    static koerpergroesse(player) {
+        if (typeof player?.groesse === "number") return player.groesse;
+        const basis = this.GROESSE_BASIS[player?.pos] || 180;
+        const text = String(player?.id ?? player?.name ?? "");
+        let h = 2166136261;
+        for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+        h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12;
+        const streuung = ((h >>> 0) / 4294967296) * 2 - 1;
+        const physis = typeof player?.physical === "number" ? (player.physical - 70) * 0.12 : 0;
+        return Math.round(Math.max(163, Math.min(203, basis + streuung * 7 + physis)));
+    }
+
+    /**
+     * Schwacher Fuß: Wie oft ein Abschluss mit dem schwachen Fuß kommt. Wer
+     * beidfüßig ist, hat keinen. Am häufigsten trifft es einen Spieler auf
+     * der Seite seines schwachen Fußes aus spitzem Winkel.
+     */
+    static SCHWACHER_FUSS = { basis: 0.18, falscheSeite: 0.3, faktorSchwach: 0.8, faktorStark: 1.05 };
+
+    /**
+     * Wie gut eine Eckenvariante gegen die Deckung des Gegners passt - in
+     * Angriffspunkten für die Sofort-Simulation. Die Größe der drei
+     * Kopfballstärksten zählt: An den zweiten Pfosten lohnt es sich nur mit
+     * Riesen, kurz ausgeführt auch ohne. Raumdeckung schützt den ersten
+     * Pfosten, Manndeckung stellt den Besten gegen den Gefährlichsten.
+     */
+    static eckenVorteil(variante, deckung, angreifer, verteidiger) {
+        const top3 = (liste) => {
+            const h = (liste || []).filter(p => p && p.pos !== "TW").map(p => MatchEngine.koerpergroesse(p))
+                .sort((a, b) => b - a).slice(0, 3);
+            return h.length ? h.reduce((s, v) => s + v, 0) / h.length : 183;
+        };
+        const diff = top3(angreifer) - top3(verteidiger);
+        switch (variante) {
+            case "ersterPfosten": return (deckung === "raum" ? -2 : deckung === "mann" ? 1.5 : 0) + diff * 0.15;
+            case "zweiterPfosten": return diff * 0.4 + (deckung === "mann" ? -1.5 : 1);
+            case "kurz": return 0.5 - diff * 0.1;
+            default: return diff * 0.25;
+        }
+    }
+
+    /** Eine Verletzung der Art "kontakt" oder "muskel" auswürfeln */
+    static verletzungsArt(art = "kontakt") {
+        const liste = this.VERLETZUNGEN[art] || this.VERLETZUNGEN.kontakt;
+        const summe = liste.reduce((s, v) => s + v.gewicht, 0);
+        let wurf = Math.random() * summe;
+        for (const v of liste) {
+            wurf -= v.gewicht;
+            if (wurf <= 0) return { name: v.name, weeks: v.weeks, art };
+        }
+        return { name: liste[0].name, weeks: liste[0].weeks, art };
+    }
+
+    /**
+     * Der Heimvorteil als Faktor: Publikum und Stadion. Beide Engines rechnen
+     * damit - die Sofort-Simulation auf die Mannschaftsstärke, das Livespiel
+     * auf die Werte der Heimspieler.
+     */
+    static heimvorteil(club) {
+        const stadiumLvl = club?.facilities?.stadium || 2;
+        return 1.03 + (stadiumLvl * 0.008);
+    }
+
+    static werte2D(player, deployedPos = null, skala = 1) {
         const ovr = player?.overall || 60;
         const fitness = 0.9 + ((player?.fitness ?? 100) / 100) * 0.1;
         const moral = 0.97 + ((player?.morale ?? 75) / 100) * 0.04;
@@ -2475,14 +2805,23 @@ class MatchEngine {
         const position = 0.5 + this.getPositionModifier(player, deployedPos) * 0.5;
         const faktor = fitness * moral * form * position;
         const w = {};
-        // Erst aufs Niveau der Partie heben, dann Tagesform und Position -
-        // so kostet die falsche Position in jeder Liga gleich viel
+        // Erst aufs Niveau der Partie skalieren, dann Tagesform und Position
         this.WERTE_2D.forEach(k => {
             const v = typeof player?.[k] === "number" ? player[k] : ovr;
-            w[k] = Math.round(Math.max(1, Math.min(99, v + versatz)) * faktor * 10) / 10;
+            w[k] = Math.round(Math.max(1, Math.min(99, v * skala)) * faktor * 10) / 10;
         });
-        w.overall = Math.max(1, Math.min(99, ovr + versatz));
+        w.overall = Math.round(Math.max(1, Math.min(99, ovr * skala)) * 10) / 10;
+        // Mentale Werte (versteckt, 1-20): wie beständig, wie nervenstark in
+        // großen Spielen, wie professionell - dazu die Erfahrung
+        const h = player?.hiddenAttributes || {};
+        w.mental = {
+            bestaendigkeit: h.consistency ?? 12,
+            grosseSpiele: h.importantMatches ?? 12,
+            professionalitaet: h.professionalism ?? 12,
+            alter: player?.age ?? 26
+        };
         w.foot = player?.foot || null;
+        w.groesse = MatchEngine.koerpergroesse(player);
         w.signatur = player?.signatur || null;
         w.temperament = player?.hiddenAttributes?.temperament ?? 12;
         const eig = _eigEngine();
@@ -2494,22 +2833,26 @@ class MatchEngine {
      * Erstellt eine interaktive LiveMatch-Instanz für die 2D-Live-Simulation
      */
     /**
-     * FM-Modus: Um wie viel die Werte einer Partie verschoben werden, damit
-     * ihr Schnitt bei 70 liegt.
+     * FM-Modus: Mit welchem Faktor die Werte einer Partie skaliert werden,
+     * damit ihr Schnitt bei 70 liegt.
      *
      * Die Werte sind absolut - in der Landesliga liegen sie um 25, in der
      * Bundesliga um 80. Das Livespiel rechnet aber an einigen Stellen mit
      * festen Schwellen (traut er sich den Schuss zu, kommt er aufs Tor).
      * Gemessen kamen zwei Landesligisten so auf zehn Schüsse im Spiel statt
-     * auf zwanzig. Wie im FM zählt, wer besser ist als sein Gegenüber: Die
-     * Verschiebung hebt beide Mannschaften gleich an, jeder Unterschied
-     * zwischen den Spielern bleibt erhalten.
+     * auf zwanzig.
+     *
+     * Skaliert wird, nicht verschoben: Wer in der Landesliga 26 hat und auf
+     * einen Gegner mit 19 trifft, ist ihm um ein gutes Drittel voraus - so
+     * rechnet auch die Sofort-Simulation. Eine Verschiebung um denselben
+     * Betrag machte daraus 73 gegen 66, und der klare Favorit verlor gemessen
+     * fast die Hälfte seiner Spiele.
      */
-    static fmVersatz(lineups) {
+    static fmSkala(lineups) {
         const alle = (lineups || []).flat().filter(Boolean);
-        if (!alle.length) return 0;
+        if (!alle.length) return 1;
         const schnitt = alle.reduce((s, p) => s + (p.overall || 60), 0) / alle.length;
-        return Math.round((70 - schnitt) * 10) / 10;
+        return Math.round(70 / Math.max(5, schnitt) * 1000) / 1000;
     }
 
     static createLiveMatch(match, homeClub, awayClub, allPlayers, options = {}) {
@@ -2630,6 +2973,22 @@ class LiveMatch {
             away: { tactics: { ...(awayClub.tactics || {}) }, formation: awayClub.formation }
         };
 
+        // Der Matchplan aus der Taktikbesprechung: Anweisungen nur für dieses
+        // Spiel (nach dem Abpfiff gilt wieder, was oben gesichert ist)
+        // Wie eingespielt beide Mannschaften auf ihre gewohnte Taktik sind
+        const T = _mTaktik();
+        this.vertrautheit = {
+            home: T && T.vertrautheitsFaktor ? T.vertrautheitsFaktor(homeClub) : 1,
+            away: T && T.vertrautheitsFaktor ? T.vertrautheitsFaktor(awayClub) : 1
+        };
+        this.matchplan = options.matchplan || null;
+        // Der Schiedsrichter steht mit der Ansetzung fest
+        this.schiedsrichter = MatchEngine.schiedsrichterFuer(match);
+        if (this.matchplan && this.matchplan.taktik) {
+            const planClub = this.matchplan.side === "home" ? homeClub : awayClub;
+            planClub.tactics = { ...(planClub.tactics || {}), ...this.matchplan.taktik };
+        }
+
         this.homeLineup = MatchEngine.getCleanLineup(homeClub, allPlayers);
         this.awayLineup = MatchEngine.getCleanLineup(awayClub, allPlayers);
         // Wer von Anfang an spielt - für die Einsatzminuten der Live-Noten
@@ -2685,8 +3044,14 @@ class LiveMatch {
         this.coTrainer = { home: this._ermittleCoTrainer(homeClub), away: this._ermittleCoTrainer(awayClub) };
         // Wann der Co-Trainer die Lage prueft, wenn er die Taktik anpassen darf
         const eigenerCo = this.userSide ? this.coTrainer[this.userSide].guete : 60;
-        this._coTrainerPunkte = eigenerCo >= 75 ? [50, 55, 60, 66, 72, 78, 84]
-            : (eigenerCo >= 50 ? [55, 65, 75, 83] : [62, 78]);
+        this._coTrainerPunkte = LiveMatch.trainerPunkte(eigenerCo);
+        // Auch der Trainer des Gegners liest das Spiel: Er stellt um, wenn
+        // sein Team zurueckliegt, und verteidigt eine Fuehrung. Vorher spielte
+        // die KI neunzig Minuten mit derselben Taktik, egal wie es stand.
+        this._kiTrainerPunkte = {};
+        ["home", "away"].forEach(side => {
+            if (side !== this.userSide) this._kiTrainerPunkte[side] = LiveMatch.trainerPunkte(this.coTrainer[side].guete);
+        });
         // Zurufe von der Seitenlinie: [{ side, art, von, bis }]
         this.zurufe = [];
         // Vorgegebene Standardschützen - null heißt: der Beste auf dem Platz
@@ -2708,6 +3073,11 @@ class LiveMatch {
         } else if (!match.timeline || match.timeline.length === 0 || fremdeWechsel) {
             match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, allPlayers,
                 this._timelineOptionen(1));
+        } else {
+            // Eine fertige Zeitleiste hat die Reaktionen der Trainer schon in
+            // sich - live noch einmal umzustellen hiesse doppelt reagieren
+            // (und das Spiel liefe anders als sein eigener Spielbericht)
+            this._kiTrainerPunkte = {};
         }
         this.timeline = match.timeline;
         // Was im FM-Modus gemessen wird: Ballbesitz in Spielsekunden, Paesse,
@@ -2759,7 +3129,43 @@ class LiveMatch {
         this.celebratingTeam = null;
         this.sceneRoles = null;
         this.kits = ermittleTrikots(homeClub, awayClub);
-        this.fmVersatz = this.modus === "fm" ? MatchEngine.fmVersatz([this.homeLineup, this.awayLineup]) : 0;
+        this.fmSkala = this.modus === "fm" ? MatchEngine.fmSkala([this.homeLineup, this.awayLineup]) : 1;
+        // Heimvorteil im Livespiel: Die Heimelf spielt mit dem Publikum im
+        // Ruecken ein paar Prozent besser - vorher gewann sie gemessen nur
+        // drei von zehn Spielen, in echten Ligen sind es gut vier.
+        const neutral = !!(match && match.neutralerPlatz) || options.neutralerPlatz === true;
+        // Nur halb so stark wie auf die Mannschaftsstärke der Sofort-
+        // Simulation: Im Livespiel wirkt jeder Wert in jedem Duell, der volle
+        // Faktor gab gemessen doppelt so viele zusätzliche Heimschüsse wie in
+        // echten Ligen.
+        this.fmHeim = neutral ? 1 : 1 + (MatchEngine.heimvorteil(homeClub) - 1) * 0.5;
+        // Tagesform je Spieler - einmal je Partie gewürfelt, auch für die Bank
+        this.tagesform = new Map();
+        const formFuer = (p) => { if (p && !this.tagesform.has(p.id)) this.tagesform.set(p.id, MatchEngine.tagesform(p)); };
+        [...this.homeLineup, ...this.awayLineup].forEach(formFuer);
+        [homeClub, awayClub].forEach(c => (c?.bench || []).forEach(id => formFuer(MatchEngine.findPlayer(allPlayers, id))));
+        // Taktische Vertrautheit wirkt über die Tagesform - wie in der
+        // Sofort-Simulation
+        ["home", "away"].forEach(side => {
+            const f = this.vertrautheit?.[side] ?? 1;
+            if (f === 1) return;
+            const ids = [...(side === "home" ? this.homeLineup : this.awayLineup).map(p => p.id),
+                ...((side === "home" ? homeClub : awayClub)?.bench || [])];
+            ids.forEach(id => { if (this.tagesform.has(id)) this.tagesform.set(id, this.tagesform.get(id) * f); });
+        });
+        // Matchplan im Livespiel: Bonus für die gut eingestellte Seite, der
+        // eng gedeckte Gegenspieler verliert etwas - beides über die Tagesform
+        if (this.matchplan) {
+            const seiteIds = new Set((this.matchplan.side === "home" ? this.homeLineup : this.awayLineup).map(p => p.id));
+            const seiteBank = (this.matchplan.side === "home" ? homeClub : awayClub)?.bench || [];
+            [...seiteIds, ...seiteBank].forEach(id => {
+                if (this.tagesform.has(id)) this.tagesform.set(id, this.tagesform.get(id) * (this.matchplan.bonus || 1));
+            });
+            Object.entries(this.matchplan.gedeckt || {}).forEach(([id, f]) => {
+                const key = [...this.tagesform.keys()].find(k => String(k) === String(id));
+                if (key !== undefined) this.tagesform.set(key, this.tagesform.get(key) * f);
+            });
+        }
         this.players2D = this.initialize2DPositions();
         // Wer das Feld verlaesst (Platzverweis, Auswechslung), geht noch sichtbar
         // zur Seitenlinie - nur fuer das Bild, in der Simulation ist er weg.
@@ -2898,7 +3304,7 @@ class LiveMatch {
                 freshness: 1,
                 color: this.kits.home.farbe,
                 textColor: this.kits.home.text,
-                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmVersatz) : {})
+                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmSkala * this.fmHeim * (this.tagesform.get(p.id) || 1)) : {})
             });
         });
 
@@ -2930,7 +3336,7 @@ class LiveMatch {
                 freshness: 1,
                 color: this.kits.away.farbe,
                 textColor: this.kits.away.text,
-                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmVersatz) : {})
+                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmSkala * (this.tagesform.get(p.id) || 1)) : {})
             });
         });
 
@@ -2971,6 +3377,8 @@ class LiveMatch {
     _timelineOptionen(startMinute) {
         return {
             startMinute,
+            // Im Livespiel (FM) entstehen Verletzungen auf dem Platz
+            ohneVerletzungen: this.modus === "fm",
             currentHomeScore: this.homeScore || 0,
             currentAwayScore: this.awayScore || 0,
             homeLineup: this.homeLineup,
@@ -2991,10 +3399,30 @@ class LiveMatch {
             // Ausgewechselt wird, wer muede ist - nach der Simulation, nicht
             // nach der Fitness vor dem Anpfiff
             frische: new Map((this.players2D || []).map(p => [p.id, p.freshness ?? 1])),
+            // Der Matchplan wirkt auch in der Neuberechnung (die Taktik steht
+            // schon am Verein, Bonus und Deckung stecken in der Tagesform)
+            matchplan: this.matchplan ? { side: this.matchplan.side, gedeckt: this.matchplan.gedeckt, bonus: 1 } : undefined,
+            // Die Vertrautheit steckt schon in der Tagesform
+            vertrautheitHome: 1,
+            vertrautheitAway: 1,
+            // Die Tagesform der Partie gilt auch für die Neuberechnung
+            tagesformHome: this._teamForm("home"),
+            tagesformAway: this._teamForm("away"),
+            // Auf den Spielstand reagieren die Trainer hier live
+            // (trainerStelltUm), nicht die Simulation
+            trainerReaktionHome: false,
+            trainerReaktionAway: false,
             // Wechselt der Co-Trainer fuer den Spieler, zaehlt seine Guete
             wechselGueteHome: this.userSide === "home" && this.delegation?.wechsel ? this.coTrainer?.home?.guete : undefined,
             wechselGueteAway: this.userSide === "away" && this.delegation?.wechsel ? this.coTrainer?.away?.guete : undefined
         };
+    }
+
+    /** Tagesform der Elf, die gerade auf dem Platz steht */
+    _teamForm(side) {
+        const lineup = this.lineupVon(side) || [];
+        if (!this.tagesform || !lineup.length) return undefined;
+        return lineup.reduce((s, p) => s + (this.tagesform.get(p?.id) || 1), 0) / lineup.length;
     }
 
     // ------------------------------------------------------------ Co-Trainer
@@ -3769,7 +4197,8 @@ class LiveMatch {
             p2d.pace = playerIn.pace || playerIn.overall || 70;
             p2d.stamina = playerIn.stamina || 75;
             p2d.vision = playerIn.vision || playerIn.overall || 65;
-            if (this.modus === "fm") Object.assign(p2d, MatchEngine.werte2D(playerIn, p2d.pos, this.fmVersatz));
+            if (this.modus === "fm") Object.assign(p2d, MatchEngine.werte2D(playerIn, p2d.pos,
+                this.fmSkala * (side === "home" ? this.fmHeim : 1) * (this.tagesform?.get(playerIn.id) || 1)));
             // Ein eingewechselter Spieler kommt frisch aufs Feld
             p2d.freshness = 1;
             p2d.verletzt = false;
@@ -3852,6 +4281,80 @@ class LiveMatch {
                 art: "verletzung", side, spielerId: ev.playerId,
                 text: `${ev.playerName || "Ein Spieler"} ist verletzt (${ev.injuryName || "Verletzung"}). Wer kommt für ihn?`
             });
+        } else if (ev.live) {
+            // Auf dem Platz entstanden: Gegner-Trainer oder Co-Trainer bringen
+            // gleich einen Ersatz (in der Zeitleiste steht der Wechsel schon)
+            this._verletzungsWechsel(side, ev.playerId);
+        }
+    }
+
+    /** Für einen Verletzten den passendsten Bankspieler anmelden */
+    _verletzungsWechsel(side, playerId) {
+        const raus = this.lineupVon(side).find(p => p && p.id === playerId);
+        if (!raus) return false;
+        const slotPos = (this.players2D || []).find(p => p.id === playerId)?.pos || raus.pos;
+        const torwart = slotPos === "TW";
+        const kandidaten = (this.bank[side] || [])
+            .map(id => MatchEngine.findPlayer(this.allPlayers, id))
+            .filter(p => p && (p.pos === "TW") === torwart
+                && !this.ausgewechselt[side].includes(p.id)
+                && (p.injuredWeeks || 0) <= 0
+                && !this.angemeldeteWechsel.some(w => w.side === side && w.inId === p.id));
+        if (!kandidaten.length) return false;
+        const wert = (p) => (_PositionEngine && typeof _PositionEngine.scorePlayerForSlot === "function")
+            ? _PositionEngine.scorePlayerForSlot(p, slotPos) : (p.overall || 60);
+        const ersatz = kandidaten.sort((a, b) => wert(b) - wert(a))[0];
+        return this.wechselAnmelden(side, playerId, ersatz.id).success;
+    }
+
+    /** Wie oft sich ein durchschnittlicher Spieler je Minute zerrt */
+    static MUSKEL_JE_MINUTE = 1.5e-4;
+
+    /** Eine Verletzung, die auf dem Platz entsteht (FM), als Ereignis */
+    _liveVerletzung(p2d, art) {
+        const side = p2d.team;
+        const club = this.clubVon(side);
+        const player = MatchEngine.findPlayer(this.allPlayers, p2d.id);
+        const name = player?.name || p2d.name || "Ein Spieler";
+        const inj = MatchEngine.verletzungsArt(art);
+        return {
+            type: "injury", team: side, clubId: club?.id, clubName: club?.name,
+            playerId: p2d.id, playerName: name,
+            injuryName: inj.name, injuredWeeks: inj.weeks, verletzungsArt: art, live: true,
+            text: formatCommentary("injury", { minute: this.minute, club: club?.name || "", player: name, injury: inj.name })
+        };
+    }
+
+    /** Nach einem Foul im Livespiel: Bleibt der Gefoulte liegen? */
+    pruefeKontaktVerletzung(opferId, schwere = "foul") {
+        if (this.modus !== "fm") return null;
+        const p2d = (this.players2D || []).find(p => p.id === opferId);
+        if (!p2d || p2d.verletzt) return null;
+        const player = MatchEngine.findPlayer(this.allPlayers, opferId) || p2d;
+        const p = (MatchEngine.KONTAKT_RISIKO[schwere] || MatchEngine.KONTAKT_RISIKO.foul)
+            * MatchEngine.verletzungsAnfaelligkeit(player);
+        return _Random.chance(p) ? this._liveVerletzung(p2d, "kontakt") : null;
+    }
+
+    /**
+     * Einmal je Spielminute (FM): Wer müde ist, kann sich zerren. Die
+     * Verletzung wartet, bis die Regie das Spiel unterbrechen kann.
+     */
+    verletzungsTakt() {
+        if (this.modus !== "fm" || this.isFinished || !this.director || this.offeneVerletzung) return;
+        if (this._verletzungsMinute === undefined) this._verletzungsMinute = this.minute;
+        if (this.minute <= this._verletzungsMinute) return;
+        const minuten = Math.min(3, this.minute - this._verletzungsMinute);
+        this._verletzungsMinute = this.minute;
+        if (typeof this.istHalbzeitpause === "function" && this.istHalbzeitpause()) return;
+        for (const p2d of (this.players2D || [])) {
+            if (p2d.verletzt) continue;
+            const player = MatchEngine.findPlayer(this.allPlayers, p2d.id) || p2d;
+            const risiko = MatchEngine.muskelRisiko(player, p2d.freshness ?? 1) * (p2d.pos === "TW" ? 0.4 : 1);
+            if (_Random.chance(LiveMatch.MUSKEL_JE_MINUTE * risiko * minuten)) {
+                this.offeneVerletzung = this._liveVerletzung(p2d, "muskel");
+                return;
+            }
         }
     }
 
@@ -4074,8 +4577,41 @@ class LiveMatch {
         const punkt = this._coTrainerPunkte.find(m => this.minute >= m);
         if (punkt === undefined) return null;
         this._coTrainerPunkte = this._coTrainerPunkte.filter(m => m > this.minute);
+        return this.trainerStelltUm(this.userSide, "co");
+    }
 
-        const side = this.userSide;
+    /**
+     * Wann ein Trainer die Lage prueft: ein guter frueher und oefter, ein
+     * schwacher erst spaet.
+     */
+    static trainerPunkte(guete) {
+        return guete >= 75 ? [50, 55, 60, 66, 72, 78, 84]
+            : (guete >= 50 ? [55, 65, 75, 83] : [62, 78]);
+    }
+
+    /**
+     * Der Trainer des Gegners (oder beider Mannschaften, wenn niemand
+     * zuschaut) passt die Taktik an den Spielstand an - mit derselben
+     * Ueberlegung wie der eigene Co-Trainer.
+     */
+    kiTrainerTakt() {
+        if (this.isFinished) return [];
+        const ergebnisse = [];
+        Object.keys(this._kiTrainerPunkte || {}).forEach(side => {
+            const punkte = this._kiTrainerPunkte[side];
+            if (!punkte.some(m => this.minute >= m)) return;
+            this._kiTrainerPunkte[side] = punkte.filter(m => m > this.minute);
+            const r = this.trainerStelltUm(side, "ki");
+            if (r) ergebnisse.push(r);
+        });
+        return ergebnisse;
+    }
+
+    /**
+     * Die eigentliche Umstellung nach Spielstand und Zeit.
+     * @param {string} wer "co" (Co-Trainer des Spielers) oder "ki" (Gegner)
+     */
+    trainerStelltUm(side, wer = "co") {
         const club = this.clubVon(side);
         const t = club.tactics || {};
         const eigene = side === "home" ? this.homeScore : this.awayScore;
@@ -4097,6 +4633,9 @@ class LiveMatch {
         } else if (eigene > fremde && this.minute >= 75) {
             if (jetzt > 1) aenderung.mentality = stufen[Math.max(1, jetzt - 1)];
             if (t.tempo !== "slow") aenderung.tempo = "slow";
+            // Eine knappe Fuehrung in der Schlussphase wird ueber die Zeit
+            // gebracht - der Gegner-Trainer tut das von sich aus
+            if (wer === "ki" && this.minute >= 80 && eigene - fremde === 1 && t.zeitspiel !== "oft") aenderung.zeitspiel = "oft";
             grund = "Das Ergebnis halten";
         } else if (eigene === fremde && this.minute >= 83 && jetzt < 3) {
             aenderung.mentality = "offensive";
@@ -4109,9 +4648,11 @@ class LiveMatch {
         if (aenderung.mentality) teile.push(namen[aenderung.mentality]);
         if (aenderung.pressing) teile.push("hohes Pressing");
         if (aenderung.tempo) teile.push("Tempo raus");
-        const text = `${this.minute}' - 📋 Der Co-Trainer stellt um (${grund}): ${teile.join(", ")}.`;
+        if (aenderung.zeitspiel) teile.push("auf Zeit spielen");
+        const wen = wer === "ki" ? (club?.name || "Der Gegner") : "Der Co-Trainer";
+        const text = `${this.minute}' - 📋 ${wen} stellt um (${grund}): ${teile.join(", ")}.`;
         this.updateTactics(side, aenderung, { text });
-        return { aenderung, text };
+        return { side, wer, aenderung, text };
     }
 
     /**
@@ -4120,8 +4661,10 @@ class LiveMatch {
      */
     seitenlinie() {
         if (this.isFinished) return;
+        this.verletzungsTakt();
         if (this.wechselGelegenheit()) this.fuehreAngemeldeteWechselAus();
         this.coTrainerTakt();
+        this.kiTrainerTakt();
     }
 
     /**
@@ -4176,6 +4719,7 @@ class LiveMatch {
             // Zu seinen Zeitpunkten prueft er Spielstand und Taktik - wie im
             // Livespiel, nur ohne Bild
             if (this.delegation.taktik) this.coTrainerTakt();
+            this.kiTrainerTakt();
         }
         this.minute = 90;
         this.finishMatch();

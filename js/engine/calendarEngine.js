@@ -1151,11 +1151,20 @@ const CalendarEngine = {
 
         // 5. Taktikschulung
         else if (currentDay.type === CALENDAR_DAY_TYPES.TACTICS) {
+            const taktik = (typeof TacticsEngine !== 'undefined' && TacticsEngine)
+                ? TacticsEngine
+                : ((typeof window !== 'undefined' && window.TacticsEngine) ? window.TacticsEngine : (typeof require !== 'undefined' ? require('./tacticsEngine.js').TacticsEngine : null));
             if (userClub && userClub.chemistry) {
                 userClub.chemistry.tacticalFamiliarity = Math.min(100, (userClub.chemistry.tacticalFamiliarity || 70) + 2);
                 userClub.chemistry.overall = Math.min(100, (userClub.chemistry.overall || 70) + 1);
             }
-            summary.messages.push("Taktikschulung abgeschlossen. Taktische Vertrautheit +2%.");
+            // Eine Taktikeinheit schleift die aktuelle Formation und Spielweise ein
+            if (userClub && taktik && typeof taktik.vertrautheitUeben === 'function') {
+                const wert = taktik.vertrautheitUeben(userClub, 0.08, 0);
+                summary.messages.push(`Taktikschulung abgeschlossen. Die Mannschaft ist zu ${Math.round(wert * 100)} % mit ihrer Taktik vertraut.`);
+            } else {
+                summary.messages.push("Taktikschulung abgeschlossen. Taktische Vertrautheit +2%.");
+            }
         }
 
         // 6. Gegneranalyse

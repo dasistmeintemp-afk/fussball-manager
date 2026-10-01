@@ -142,6 +142,46 @@ Im Livespiel wird nichts mehr vorab gewürfelt. Wie im Football Manager entschei
 - **Werte zählen wirklich:** Auf dem Feld wirken die Werte so, wie der Spieler gerade drauf ist – Fitness, Moral, Form und die Eignung für seine Position. Ein Innenverteidiger im Sturm ist ein schlechterer Stürmer. Ab der 60. Minute zieht die Müdigkeit die Werte nach unten.
 - **Gemessene Statistik:** Ballbesitz ist die Zeit am Ball, die Passquote zählt die Pässe, gewonnene Zweikämpfe und vorbereitete Chancen gehen in die Spielernoten ein.
 - **Jede Abspielstufe ist dasselbe Spiel:** Laufwege, Deckung und Abstände rechnen in Spielzeit. Auf „Schnell“ läuft die Partie nur im Vorlauf, sie wird nicht enger oder foulreicher.
+- **Werte relativ zum Niveau:** Die Werte einer Partie werden so skaliert, dass ihr Schnitt bei 70 liegt. Das Verhältnis zwischen den Spielern bleibt dabei erhalten: Ein Landesligist mit 26 gegen einen mit 19 ist genauso überlegen wie ein Bundesligist mit 86 gegen einen mit 63.
+- **Heimvorteil:** Die Heimelf spielt mit dem Publikum im Rücken etwas besser, je nach Stadion. Auf neutralem Platz (Turniere) entfällt er.
+- **Ein voller Strafraum schützt:** Stehen mehr als vier Verteidiger im Strafraum, kommen Pässe hinein seltener an, Dribblings bleiben hängen, und Abschlüsse darin sind schwerer. Gegen einen tiefen Block wird öfter aus der Distanz geschossen.
+- **Der Block greift am eigenen Strafraum zu:** „Seltener anlaufen“ gilt für die Höhe, nicht für das eigene Drittel. Dort gehen auch bei Konter und Tiefem Block zwei Spieler auf den Ball. Wer zwischen Ball und Tor steht, verstellt dem Schützen Winkel und Schussbahn. Eine defensive Mannschaft geht seltener ins riskante Dribbling, schnelles Tempo spielt vertikaler.
+
+**Mentale Werte:** Die versteckten Persönlichkeitswerte wirken auf dem Platz.
+- **Tagesform:** Unbeständige Spieler haben gute und schlechte Tage (bis ±10 %), ein beständiger Profi spielt fast immer gleich. Das gilt auch in der Sofort-Simulation.
+- **Entscheidungen:** Wer das Spiel liest (Übersicht, Stellungsspiel, Erfahrung), wählt öfter die beste Option. Ein junger Spieler mit wenig Übersicht entscheidet sich öfter falsch.
+- **Nervenstärke:** Große Spiele, Beständigkeit und Erfahrung entscheiden mit, ob ein Abschluss unter Druck oder ein Elfmeter sitzt.
+- **Konzentration:** Ab der 75. Minute unterlaufen unprofessionellen, unbeständigen Spielern mehr Fehlpässe.
+- **Große Spiele:** In Derbys und engen Schlussphasen wächst, wer dafür gemacht ist. Wer es nicht ist, verkrampft.
+
+**Der Trainer des Gegners reagiert:** Liegt die KI zurück, stellt sie ab der 55. Minute offensiver um, bei zwei Toren Rückstand sofort, in der Schlussphase auf volles Risiko mit hohem Pressing. Eine späte Führung sichert sie ab und bringt sie knapp auch mit Zeitspiel über die Zeit. Jede Umstellung steht im Ticker, nach dem Abpfiff gilt wieder die eigene Taktik. Gewechselt wird nach Kondition: Wer zurückliegt, bringt früher frische Beine nach vorn, wer führt, frischt die Abwehr auf. Dieselbe Logik gilt in der Sofort-Simulation für alle Spiele der Liga.
+
+**Verletzungen entstehen auf dem Platz:** Nichts wird mehr vorab über den Kader gewürfelt.
+- **Kontakt:** Ein Foul kann den Gefoulten verletzen – je härter, desto eher (ein rotwürdiges Foul rund dreißigmal so oft wie ein normales). Prellung, Knöchelstauchung, Bänderdehnung, im Pech Meniskus oder Kreuzband.
+- **Muskel:** Wer müde ist, zerrt sich. Das Risiko steigt mit der Erschöpfung, mit dem versteckten Wert Verletzungsanfälligkeit und ab 30 mit dem Alter.
+- Im Livespiel bleibt der Spieler am Tatort liegen. Der Gegner und – bei abgegebenen Wechseln – der Co-Trainer bringen sofort den passendsten Ersatz, sonst wird gefragt. Im Schnitt gibt es knapp eine Verletzung in zwei Spielen, in beiden Engines gleich.
+
+**Schiedsrichter und Vorteil:** Jede Partie hat ihren Schiedsrichter – mit Namen, fest mit der Ansetzung. Er steht in der Taktikbesprechung und im Spielbericht.
+- *Streng:* pfeift kleinlicher und zeigt rund 30 % mehr Karten, gibt selten Vorteil.
+- *Sachlich:* der Durchschnitt.
+- *Großzügig:* lässt laufen, zeigt weniger Karten und gibt gern Vorteil.
+- **Vorteil:** Wird vorn gefoult und der Angriff kann weiterlaufen, pfeift der Schiedsrichter nicht („▶️ Vorteil!“). Die Karte gibt es nachträglich. Die Notbremse bleibt Rot.
+
+**Taktische Vertrautheit:** Eine neue Formation oder Spielweise sitzt nicht vom ersten Tag an.
+- Je Formation und je Anweisung (Pressing, Tempo, Passspiel, Abwehrlinie …) merkt sich der Verein, wie eingespielt die Mannschaft ist.
+- Spiele und Taktiktraining schleifen ein, was gespielt wird. Was lange ruht, verblasst langsam.
+- Eine ganz fremde Taktik kostet bis zu acht Prozent Stärke, eine neue Formation allein gut zwei.
+- Der Taktik-Reiter zeigt die Vertrautheit als Balken und nennt, was noch nicht sitzt.
+
+**Schwacher Fuß und Körpergröße:**
+- Gut jeder fünfte Abschluss aus dem Spiel kommt mit dem schwachen Fuß – öfter, wenn ein Spieler auf der Seite seines schwachen Fußes aus spitzem Winkel abschließt. Der Rechtsfuß links neben dem Tor muss dann links schießen.
+- Mit dem schwachen Fuß sitzt der Ball spürbar seltener, mit dem starken etwas öfter. Beidfüßige haben keinen schwachen Fuß.
+- Jeder Spieler hat eine feste Körpergröße (in der Spielerakte). Im Kopfballduell zählen zehn Zentimeter gut fünf Punkte, und bei Flanken und Ecken kommt der Große öfter zum Kopfball.
+
+**Standardvarianten** (Taktik-Reiter, Gruppe „Standards“):
+- **Ecken:** *Erster Pfosten* (scharf, der Torwart kommt schwer heran), *Zweiter Pfosten* (hoch für den Kopfballstärksten), *Kurz* (ausspielen und aus besserem Winkel flanken) oder *Gemischt*.
+- **Standards verteidigen:** *Raumdeckung* (schützt den ersten Pfosten), *Manndeckung* (der beste Kopfballspieler gegen den gefährlichsten Gegner) oder *Gemischt*.
+- An den zweiten Pfosten lohnt es sich mit Riesen, die kurze Ecke ohne.
 
 **Eigenschaften und Signaturen (`EigenschaftenEngine`):**
 - **Eigenheiten** wie „Zieht nach innen“, „Schießt aus der Distanz“, „Sucht den tiefen Pass“ oder „Freistoßspezialist“ verschieben, was ein Spieler tut, und ein wenig, wie gut es gelingt. Ein Zweikämpfer gewinnt mehr Duelle und foult öfter.
@@ -162,7 +202,28 @@ Ein Manager verwaltet keine Tabellen, er redet mit Leuten.
 
 Jeder Spieler reagiert eigen: Temperament verstärkt jede Ansprache, Professionalität dämpft Kritik. Zwei, drei Spieler melden sich sichtbar zurück („nickt und klatscht in die Hände" / „schaut zu Boden und sagt nichts"). Die Wirkung landet in Moral und Form – und damit direkt in der Spielstärke. Eine wirksame **Halbzeitansprache** lässt den weiteren Spielverlauf neu berechnen.
 
-**Am Medientag** stellen sich die Journalisten. Vier Themen (Form, ein Spieler in der Kritik, das Saisonziel, die Erwartung der Fans) mit je drei Antworten, die Fanstimmung, Medienrummel, Vorstandsvertrauen und Teammoral verschieben. Wer sich vor einen kritisierten Spieler stellt, gewinnt ihn zurück (+12 Moral) und zahlt beim Boulevard drauf.
+**Am Medientag** stellen sich die Journalisten – zwei bis drei Fragen, und zwar zu dem, was gerade los ist: das Derby vor der Tür, eine Sieges- oder Niederlagenserie, Tabellenspitze oder Abstiegskampf, ein Ultimatum des Vorstands, der verletzte Leistungsträger, ein Angebot für einen eigenen Spieler, der Star des Gegners, ein Kantersieg oder ein Debakel. Ohne besonderen Anlass bleiben die Dauerbrenner (Form, Saisonziel, Fans, ein Spieler in der Kritik). Jede Frage stellt ein Journalist eines bestimmten Blattes, und das Blatt verstärkt die Wirkung:
+
+| Blatt | Wirkung |
+|---|---|
+| 📰 Boulevard (*Sportblitz*) | Macht aus jedem Satz Druck (Medienrummel ×1,5) |
+| 📊 Fachpresse (*Taktikblatt*) | Liest der Vorstand (Vorstand ×1,4) |
+| 🏘️ Lokalzeitung | Erreicht die Kurve (Fanstimmung ×1,5) |
+
+Manche Antworten haben **Folgen**: Eine Kampfansage vor dem Derby liest auch der Gegner (seine Moral steigt). Wer einen Sieg ankündigt, hat ein **Versprechen** gegeben – nach dem Spiel wird abgerechnet: gehalten bringt Fans und Vorstand, gebrochen den Spott der Presse. Scharfe Sätze stehen am nächsten Tag als **Schlagzeile** im Postfach. Wer sich vor einen kritisierten Spieler stellt, gewinnt ihn zurück (+12 Moral); wer einen umworbenen Spieler für unverkäuflich erklärt, macht ihn glücklich und den Vorstand nachdenklich.
+
+**Nach dem Abpfiff** bietet der Spielbericht eine kurze Pressekonferenz an: ein, zwei Fragen zum Ergebnis, zum besten Mann auf dem Platz, zu einer Roten Karte – oder zu dem, was vorher versprochen wurde.
+
+### 3b-2. 📋 Taktikbesprechung vor dem Spiel (`MatchplanEngine`)
+Die Taktik im Taktik-Reiter ist die Grundordnung. Vor dem Anpfiff stellt der Trainer seine Elf aber auf **diesen** Gegner ein: Vor jedem Livespiel (und über den Knopf **Taktikbesprechung** auf dem Dashboard auch fürs Sofort-Ergebnis) zeigt die Besprechung die Analyse auf einen Blick – voraussichtliche Formation, Stärken, Schwächen, Schwachstelle, Schlüsselspieler – und bietet sieben Punkte an, von denen **höchstens zwei** gelten:
+
+*Schlüsselspieler eng decken* · *Früh stören* · *Tief stehen, schnell umschalten* · *Über die Flügel* · *Durch die Mitte* · *Ball laufen lassen* · *Die Schwachstelle anlaufen*
+
+- Die Punkte setzen Anweisungen **nur für dieses Spiel** – danach gilt wieder die gewohnte Taktik (in Livespiel und Sofort-Simulation gleich).
+- Der Spielanalyst sagt zu jedem Punkt, was er davon hält. Ab drei Sternen sieht er genau genug für Empfehlungen, darunter bleibt der Plan eine Vermutung.
+- Trifft ein Punkt eine echte Schwäche des Gegners, ist die Mannschaft spürbar besser eingestellt (+1,5 % je Treffer).
+- Der eng gedeckte Spieler verliert an Wirkung und kommt deutlich seltener zum Abschluss. Gedeckt werden Mittelfeld- und Angriffsspieler, keine Verteidiger.
+- Widersprüche schließt die Besprechung aus: Früh stören und tief stehen – oder Flügel und Mitte – gehen nicht gleichzeitig.
 
 ### 3c. 📌 Der Schreibtisch
 Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit sortiert, ein Klick springt in den zuständigen Reiter: unvollständige Startelf, Verhandlungen mit uns am Zug, Ausfälle, überlastete Spieler, auslaufende Verträge, unzufriedene Spieler, ungelesene Post.
@@ -366,6 +427,7 @@ untitled/
 │   │   ├── transferEngine.js   # Markt- & Transferlogik
 │   │   ├── negotiationEngine.js# Mehrtägige Verhandlungen mit Vereinen und Beratern
 │   │   ├── managerEngine.js    # Kabinenansprachen, Pressekonferenzen & Aufgabenliste
+│   │   ├── matchplanEngine.js  # Taktikbesprechung: Matchplan für ein Spiel
 │   │   ├── trainingEngine.js   # Tägliche Belastung, Ermüdung, Risiko & Entwicklung
 │   │   ├── financeEngine.js    # Spieltagseinnahmen, Gehälter & Journal
 │   │   ├── boardEngine.js      # Vorstandszufriedenheit & Saisonziele
@@ -485,7 +547,7 @@ Alle 4 Testsuiten validieren lückenlos:
 1. **Datenintegrität (`test_data.js`):** Alle 18 handgepflegten Vereine, Attribute, Torhüter, Gehalts- und Transferbudgets.
 2. **Wizard & UI Regression (`test_wizard.js`):** Suchfilter, Schwierigkeitsstufen, Sortierungen, Edge-Cases, DOM-Simulation, Code-Regressionsprüfungen gegen Legacy-IDs sowie die Installierbarkeit auf dem Telefon (Manifest, vorhandene Symbole, vollständiger Offline-Vorrat).
 3. **Engines (`test_engine.js`):** MatchEngine, SeasonEngine, Finance, Board, News, Contracts, Scouting, Youth, AIManager, SaveService & MigrationService sowie PositionEngine (Familiarität, Zonen- und Formationserkennung), eigene Formationen und die Echtzeit-Regie der 2D-Simulation. Dazu die Spielwelt: alle zwölf Ligen gefüllt, Stärkestaffelung über die Ligastufen, Karrierestart in der Landesliga, Europapokal-Besetzung, Auf-/Abstieg und die verlustfreie Kodierung des Spielstands.
-3b. Dazu die Sandbox-Systeme: Kabinenansprachen mit lageabhängiger Wirkung, Pressekonferenzen, mehrtägige Transferverhandlungen über alle drei Phasen, das Scheitern von Lowball-Angeboten, Vertragsgespräche für Nachwuchsspieler, Trainingsbelastung mit Ermüdungs- und Risikokurve sowie Nebenpositionen und erlernte Routine.
+3b. Dazu die Sandbox-Systeme: Kabinenansprachen mit lageabhängiger Wirkung, Pressekonferenzen mit Themen nach Lage, Versprechen und Kampfansagen, die Taktikbesprechung, mehrtägige Transferverhandlungen über alle drei Phasen, das Scheitern von Lowball-Angeboten, Vertragsgespräche für Nachwuchsspieler, Trainingsbelastung mit Ermüdungs- und Risikokurve sowie Nebenpositionen und erlernte Routine.
 4. **E2E & Integration (`test_e2e.js`):** Vollständiger Karrierestart, 2D-LiveMatch, Auswechslungen, Transfers, Training, Multi-Saison-Läufe und der komplette Weg von der selbst gezeichneten Formation über das Live-Spiel bis zu Export und Import.
 
 ---

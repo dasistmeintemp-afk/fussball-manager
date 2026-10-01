@@ -434,7 +434,8 @@ class LiveMatchDirector {
             attackDir: (team) => this.attackDir(team),
             ownGoalX: (team) => this.ownGoalX(team),
             fm: () => this.fm,
-            lage: (team) => this.fmLage(team)
+            lage: (team) => this.fmLage(team),
+            schiri: () => this.match.schiedsrichter || null
         }) : null;
 
         this.initPlayers();
@@ -1301,7 +1302,7 @@ class LiveMatchDirector {
         // in dieselbe Szene - sonst würde der Freistoß erst in den Strafraum
         // geflankt und der Ball danach für den Schuss zurückgeholt.
         const unterbricht = (ev) => ["goal", "save", "shot_miss"].includes(ev.type)
-            || (ev.type === "foul" && ev.outcome !== "penalty" && !ev.direkterFreistoss);
+            || (ev.type === "foul" && ev.outcome !== "penalty" && !ev.direkterFreistoss && !ev.vorteil);
         let schonUnterbrochen = false;
 
         // Eine Szene ist eine Passage, keine Minute.
@@ -1332,8 +1333,9 @@ class LiveMatchDirector {
                 // ... wenn die andere Mannschaft übernimmt ...
                 const team = this.attackingTeamOf(ev);
                 if (team && eigeneMannschaft && team !== eigeneMannschaft) break;
-                // ... und an jeder Zäsur, die keine Fortsetzung kennt
-                if (SZENEN_ENDE.includes(ev.type)) break;
+                // ... und an jeder Zäsur, die keine Fortsetzung kennt - außer
+                // der Verletzung, die das Foul eben verursacht hat
+                if (SZENEN_ENDE.includes(ev.type) && !(ev.type === "injury" && ev.nachFoul)) break;
                 if (SZENEN_ENDE.includes(events[events.length - 1].type)) break;
             }
 
@@ -1881,7 +1883,8 @@ class LiveMatchDirector {
         // Ereignis fuer die Spielfortsetzung. Vorher gewann immer das Foul, und
         // der Abstoss nach dem Schuss neben das Tor fiel aus.
         // Im FM-Modus ist die Karte selbst das Foul - auch sie gibt Freistoss
-        const foulIdx = events.map(e => (e.type === "foul" && e.outcome !== "penalty") || !!e.fmFreistoss)
+        // Mit Vorteil laeuft das Spiel weiter - kein Freistoss
+        const foulIdx = events.map(e => !e.vorteil && ((e.type === "foul" && e.outcome !== "penalty") || !!e.fmFreistoss))
             .lastIndexOf(true);
         const abschlussIdx = events.map(e => ["goal", "save", "shot_miss"].includes(e.type))
             .lastIndexOf(true);
@@ -2084,6 +2087,12 @@ class LiveMatchDirector {
             ? (this.match.homeClub?.name || "Heim")
             : (this.match.awayClub?.name || "Gast");
 
+        if (ev.vorteil) {
+            // Vorteil: Der Schiedsrichter zeigt nach vorn, gepfiffen wird nicht
+            this.showBanner("▶️ VORTEIL", club === (this.match.homeClub?.name || "Heim")
+                ? (this.match.awayClub?.name || "Gast") : (this.match.homeClub?.name || "Heim"), "rgba(22, 101, 52, 0.9)");
+            return;
+        }
         if (ev.type === "foul" || ev.type === "yellow_card" || ev.type === "red_card") {
             this.cueSound("whistle");
         } else if (ev.type === "goal") {
@@ -2415,6 +2424,14 @@ class LiveMatchDirector {
             return;
         }
 
+        // Hat sich jemand verletzt, wird jetzt unterbrochen
+        if (this.fm && this.match.offeneVerletzung) {
+            const ev = this.match.offeneVerletzung;
+            this.match.offeneVerletzung = null;
+            this.fmVerletzung(ev);
+            return;
+        }
+
         const ziel = this.anlaufZiel();
         let action = this.flow.decide(carrier, {
             chainLength: this.possessionChain || 0,
@@ -2454,7 +2471,7 @@ class LiveMatchDirector {
         // FM-Modus: Abschluss, Flanke und Foul sind eigene Szenen
         if (this.fm) {
             if (action.type === "shot") {
-                this.fmSchuss(action.from, {});
+                this.fmSchuss(action.from, { schwach: !!action.schwach });
                 return;
             }
             if (action.type === "cross") {
@@ -2749,6 +2766,8 @@ class LiveMatchDirector {
         const fremde = team === "home" ? m.awayScore : m.homeScore;
         const minute = m.minute || 0;
         return {
+            minute,
+            derby: !!m.match?.isDerby,
             grosserMoment: !!m.match?.isDerby || (minute >= 70 && eigene < fremde) || (minute >= 85 && eigene === fremde)
         };
     }
@@ -2821,10 +2840,26 @@ class LiveMatchDirector {
     }
 
     static FM_TEXTE = {
+        vorteil: [
+            "▶️ Vorteil! {taeter} foult {opfer}, aber {club} spielt weiter.",
+            "▶️ Der Schiedsrichter lässt laufen - Vorteil für {club} nach dem Foul an {opfer}.",
+            "▶️ {opfer} wird gelegt, bleibt aber am Ball - Vorteil!"
+        ],
+        vorteil_gelb: [
+            "▶️ Vorteil für {club} - {taeter} sieht nachträglich Gelb.",
+            "▶️ Weiter geht's! Die Gelbe für {taeter} gibt es nachträglich."
+        ],
+        vorteil_gelbrot: [
+            "🟨🟥 Nach dem Vorteil die Ampelkarte: {taeter} muss vom Platz."
+        ],
         tor: [
             "⚽ TOOOR für {club}! {schuetze} schließt eiskalt ab!",
             "⚽ TOOOR! {schuetze} lässt dem Keeper keine Chance!",
             "⚽ TOOOR für {club}! {schuetze} trifft ins lange Eck!"
+        ],
+        tor_schwach: [
+            "⚽ TOOOR für {club}! {schuetze} trifft mit seinem schwachen Fuß!",
+            "⚽ TOOOR! {schuetze} nimmt ihn mit dem schwachen Fuß - und er sitzt!"
         ],
         tor_vorlage: [
             "⚽ TOOOR für {club}! {vorlage} legt quer, {schuetze} vollendet!",
@@ -2955,7 +2990,7 @@ class LiveMatchDirector {
         let ev;
         if (r.ausgang === "goal") {
             const schluessel = opts.elfmeter ? "tor_elfmeter" : opts.freistoss ? "tor_freistoss"
-                : opts.kopfball ? "tor_kopf" : meter > 20 ? "tor_distanz" : vorlage ? "tor_vorlage" : "tor";
+                : opts.kopfball ? "tor_kopf" : meter > 20 ? "tor_distanz" : r.schwach ? "tor_schwach" : vorlage ? "tor_vorlage" : "tor";
             ev = {
                 ...basis, type: "goal", team, clubId: attClub?.id, clubName: attClub?.name,
                 playerId: schuetze.id, playerName: schuetze.name,
@@ -3073,6 +3108,16 @@ class LiveMatchDirector {
      * foult. Aggressive Spieler sehen oefter Gelb; wer einen Konter stoppt,
      * sieht sie fast immer; wer als letzter Mann vor dem Tor umreisst, fliegt.
      */
+    /** Eine Verletzung ohne Foul (Muskel): Unterbrechung am Ort des Spielers */
+    fmVerletzung(ev) {
+        const p = this.getPlayer2D(ev.playerId);
+        if (!p) return;
+        const ort = this.roh({ x: p.x, y: p.y });
+        ev.start = ort;
+        ev.end = { ...ort };
+        this.fmSzene([ev]);
+    }
+
     fmFoul(action) {
         const taeter = action.foulender;
         const opfer = action.opfer || action.from;
@@ -3100,6 +3145,9 @@ class LiveMatchDirector {
             };
             const schuetze = this.fmElfmeterSchuetze(gefoult) || opfer;
             const r = this.flow.schussAusgang(schuetze, this.teamPlayers(foulTeam), { elfmeter: true, xg: 0.76 });
+            // Bleibt der Gefoulte liegen, wird er nach dem Elfmeter behandelt
+            const verletzt = typeof m.pruefeKontaktVerletzung === "function" ? m.pruefeKontaktVerletzung(opfer.id, "elfmeter") : null;
+            if (verletzt) m.offeneVerletzung = verletzt;
             this.fmSzene([foul]);
             // Der Schuss folgt als eigene Szene, sobald der Pfiff inszeniert ist
             this._fmNachSzene = () => {
@@ -3121,9 +3169,11 @@ class LiveMatchDirector {
         const verwarnt = (m.verwarnt?.[seite] || []).includes(taeter.id);
 
         let art = "foul";
-        const pRot = letzterMann ? 0.12 : 0.002;
-        const pGelb = Math.max(0.04, Math.min(0.9, 0.14 + (temperament - 12) * 0.012 + (eigT.haerte || 0) * 0.06
-            + (konter ? 0.35 : 0)));
+        const schiri = m.schiedsrichter || {};
+        const strenge = schiri.strenge || 1;
+        const pRot = (letzterMann ? 0.12 : 0.002) * strenge;
+        const pGelb = Math.max(0.04, Math.min(0.9, (0.14 + (temperament - 12) * 0.012 + (eigT.haerte || 0) * 0.06
+            + (konter ? 0.35 : 0)) * strenge));
         if (_dirRandom.chance(pRot)) art = "rot";
         else if (_dirRandom.chance(pGelb)) {
             // Wer schon Gelb hat, wird oft nur ermahnt - aber nicht immer
@@ -3135,6 +3185,28 @@ class LiveMatchDirector {
             team: foulTeam, clubId: foulClub?.id, clubName: foulClub?.name,
             playerId: taeter.id, playerName: taeter.name, start: tatort, end: { ...tatort }
         };
+
+        // Vorteil: Vorn, wenn der Gefoulte am Ball bleibt und Mitspieler mit
+        // nach vorn laufen, laesst der Schiedsrichter weiterspielen. Die
+        // Karte gibt es trotzdem - nachtraeglich.
+        const mitVorn = this.teamPlayers(gefoult)
+            .filter(p => p.pos !== "TW" && p.id !== opfer.id && (p.x - opfer.x) * dir > -4).length;
+        if (art !== "rot" && !letzterMann && progress > 0.58 && mitVorn >= 2
+            && _dirRandom.chance(0.3 * (schiri.vorteil || 1))) {
+            const vorteilEv = art === "foul"
+                ? { ...basis, type: "foul", outcome: "vorteil", vorteil: true, text: this.fmText("vorteil", daten) }
+                : { ...basis, type: "yellow_card", outcome: art === "gelbrot" ? "second_yellow_card" : "yellow_card",
+                    isSecondYellow: art === "gelbrot" || undefined, vorteil: true,
+                    text: this.fmText(art === "gelbrot" ? "vorteil_gelbrot" : "vorteil_gelb", daten) };
+            this.flowStats.vorteil = (this.flowStats.vorteil || 0) + 1;
+            this.possessionTeam = gefoult;
+            this.bannerForEvent(vorteilEv);
+            this.fmVerbuchen(vorteilEv);
+            // Der Gefoulte bleibt am Ball und macht weiter
+            this.setCarrier(this.getPlayer2D(opfer.id) || opfer);
+            this.ambientInterval = 0.3;
+            return;
+        }
         let ev;
         if (art === "rot") {
             ev = { ...basis, type: "red_card", outcome: "red_card", fmFreistoss: true, text: this.fmText("rot", daten) };
@@ -3146,7 +3218,15 @@ class LiveMatchDirector {
             ev = { ...basis, type: "foul", outcome: "freekick", text: this.fmText("foul", daten) };
         }
         this.possessionTeam = gefoult;
-        this.fmSzene([ev]);
+        // Je härter das Foul, desto eher bleibt der Gefoulte liegen
+        const schwere = art === "rot" ? "rot" : (art === "gelb" || art === "gelbrot") ? "gelb" : "foul";
+        const verletzt = typeof m.pruefeKontaktVerletzung === "function" ? m.pruefeKontaktVerletzung(opfer.id, schwere) : null;
+        if (verletzt) {
+            verletzt.start = tatort;
+            verletzt.end = { ...tatort };
+            verletzt.nachFoul = true;
+        }
+        this.fmSzene(verletzt ? [ev, verletzt] : [ev]);
     }
 
     /**
@@ -3217,7 +3297,27 @@ class LiveMatchDirector {
         const gegner = info.team === "home" ? "away" : "home";
 
         if (info.kind === "corner") {
-            const r = this.flow.resolveCross(taker, null, this.teamPlayers(gegner), { ecke: true });
+            // Welche Ecke? Die eingestellte - bei "Gemischt" mal so, mal so
+            const T = _dirTaktik();
+            const variante = T && T.eckenVariante
+                ? T.eckenVariante(T.wirkung(this.flow.getTactics(info.team) || {}).ecken) : "gemischt";
+            if (variante === "kurz") {
+                // Kurz ausgeführt: zum nächsten Mitspieler, danach aus
+                // besserem Winkel weiter
+                const mitspieler = this.teamPlayers(info.team)
+                    .filter(p => p.pos !== "TW" && p.id !== taker.id)
+                    .sort((a, b) => Math.hypot(a.x - taker.x, a.y - taker.y) - Math.hypot(b.x - taker.x, b.y - taker.y))[0];
+                if (mitspieler) {
+                    const dist = Math.hypot(mitspieler.x - taker.x, mitspieler.y - taker.y);
+                    this.setBallTravel(mitspieler.x, mitspieler.y,
+                        Math.max(0.3, Math.min(0.8, dist / 70)) * this.getSpeedScale() + this.bildschirmZeit(0.15), "pass");
+                    this.setCarrier(mitspieler);
+                    this.flowStats.kurzeEcken = (this.flowStats.kurzeEcken || 0) + 1;
+                    this.match.lastCommentary = `${this.match.minute}' - Die Ecke wird kurz ausgeführt - ${mitspieler.name || "ein Mitspieler"} übernimmt.`;
+                    return true;
+                }
+            }
+            const r = this.flow.resolveCross(taker, null, this.teamPlayers(gegner), { ecke: true, variante });
             this.fmFlanke(taker, r);
             return true;
         }
@@ -4680,14 +4780,20 @@ class LiveMatchDirector {
         const zugriff = this.presstImRaum(defendingTeam, ball);
         // Nach dem Ballverlust geht beim Gegenpressing einer mehr drauf
         const seitWechsel = (this._laufUhr || 0) - (this._wechselUhr ?? -99);
-        const anzahl = zugriff ? Math.min(4, (w.presser || 2) + (seitWechsel < (w.gegenpressing || 0) && w.gegenpressing > 3 ? 1 : 0)) : 1;
+        // Am eigenen Strafraum greift auch ein tiefer Block zu: "Seltener
+        // anlaufen" gilt für die Höhe, nicht für das eigene Drittel. Vorher
+        // ging dort nur einer auf den Ball, und gegen Konter und Tiefen Block
+        // kam der Gegner gemessen doppelt so oft frei zum Abschluss.
+        const angreifer = defendingTeam === "home" ? "away" : "home";
+        const imBlock = (ball.x - this.ownGoalX(angreifer)) * this.attackDir(angreifer) / 92 > 0.66;
+        const anzahl = zugriff ? Math.min(4, Math.max(imBlock ? 2 : 1, (w.presser || 2) + (seitWechsel < (w.gegenpressing || 0) && w.gegenpressing > 3 ? 1 : 0))) : 1;
         const bisher = (this._presser && this._presser.team === defendingTeam) ? this._presser.ids : [];
         const gewaehlt = sorted.slice(0, Math.max(4, anzahl + 1))
             .map(p => ({ id: p.id, wert: abstand(p) - (bisher.includes(p.id) ? 4 : 0) }))
             .sort((a, b) => a.wert - b.wert)
             .slice(0, Math.max(2, anzahl))
             .map(e => e.id);
-        this._presser = { team: defendingTeam, ids: gewaehlt, zugriff };
+        this._presser = { team: defendingTeam, ids: gewaehlt, zugriff, imBlock };
 
         const modus = new Map();
         if (zugriff) {
@@ -4898,7 +5004,7 @@ class LiveMatchDirector {
             if (wT.falle === "aussen") seitlich = innen * 2.8;
             else if (wT.falle === "innen") seitlich = -innen * 2.8;
             ty = ball.y + seitlich;
-            urgency = wT.pressTempo || 1.85;
+            urgency = this._presser?.imBlock ? Math.max(1.85, wT.pressTempo || 1.85) : (wT.pressTempo || 1.85);
             sprinting = true;
         } else if (!attacking && !rG.konter && this.deckt(p, wT, rG)) {
             const ziel = this.deckungsZiel(p, tx, ty, dir, wT, rG, ball);
@@ -5879,10 +5985,19 @@ class LiveMatchDirector {
                 const nx = (dx / d) * push;
                 const ny = (dy / d) * push;
 
-                a.x -= nx; a.y -= ny;
-                b.x += nx; b.y += ny;
+                // Das Gedränge schiebt niemanden über die Torlinie: Bei einer
+                // Ecke stand sonst gut jedes siebte Mal der Torwart im Aus
+                a.x = this._nichtHinterDieLinie(a.x - nx, a.x); a.y -= ny;
+                b.x = this._nichtHinterDieLinie(b.x + nx, b.x); b.y += ny;
             }
         }
+    }
+
+    /** Wer im Feld steht, bleibt beim Ausweichen vor der Torlinie (4 und 96) */
+    _nichtHinterDieLinie(neu, alt) {
+        if (neu > 96 && alt <= 96) return 96;
+        if (neu < 4 && alt >= 4) return 4;
+        return neu;
     }
 }
 

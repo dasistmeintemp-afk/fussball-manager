@@ -26,6 +26,7 @@ const { CompetitionEngine } = require('./js/engine/competitionEngine.js');
 const { PlayerRatingEngine } = require('./js/engine/playerRatingEngine.js');
 const { CalendarEngine } = require('./js/engine/calendarEngine.js');
 const { OpponentAnalysisEngine } = require('./js/engine/opponentAnalysisEngine.js');
+const { MatchplanEngine } = require('./js/engine/matchplanEngine.js');
 const { PositionEngine } = require('./js/engine/positionEngine.js');
 const { TacticsEngine } = require('./js/engine/tacticsEngine.js');
 const { MatchFlowEngine } = require('./js/engine/matchFlowEngine.js');
@@ -1064,42 +1065,49 @@ function runEngineTests() {
     // 14a7. Die Elf steht als Block und verändert ihre Form mit dem Ballbesitz
     test("LiveMatchDirector: Die Mannschaft steht als Block, eng ohne Ball, breit mit Ball", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
-        const homeClub = state.clubs.find(c => c.id === "muc");
-        const awayClub = state.clubs.find(c => c.id === "dor");
-        const match = { id: "form", played: false, homeClubId: "muc", awayClubId: "dor" };
-        const live = new LiveMatch(match, homeClub, awayClub, state.players);
-        // Tempo 1: Dort laeuft der groesste Teil der Uebertragung als normales
-        // Spiel, und genau dort schaut man sich die Mannschaftsform an.
-        live.speed = 1;
-        const dir = live.director;
-
         const mitBall = [];
         const ohneBall = [];
-        let frames = 0;
-        // Eine Mannschaft braucht einen Moment, um ihre Form einzunehmen.
-        // Gemessen wird deshalb erst, wenn der Ballbesitz kurz stabil ist -
-        // so, wie man es auch mit dem Auge beurteilen wuerde.
-        let besitzer = null;
-        let stabilSeit = 0;
+        // Dieselbe Messzeit, verteilt auf vier Spiele mit wechselndem
+        // Heimrecht: Ein einzelnes Spiel streute gemessen zwischen 3,5 und
+        // 8,7 Einheiten Unterschied, vier zusammen zwischen 4,1 und 6,5.
+        const SPIELE = 4;
+        for (let k = 0; k < SPIELE; k++) {
+            const heimId = k % 2 ? "dor" : "muc";
+            const gastId = k % 2 ? "muc" : "dor";
+            const match = { id: "form" + k, played: false, homeClubId: heimId, awayClubId: gastId };
+            const live = new LiveMatch(match, state.clubs.find(c => c.id === heimId),
+                state.clubs.find(c => c.id === gastId), state.players);
+            // Tempo 1: Dort laeuft der groesste Teil der Uebertragung als normales
+            // Spiel, und genau dort schaut man sich die Mannschaftsform an.
+            live.speed = 1;
+            const dir = live.director;
 
-        while (!live.isFinished && frames < 60 * 1800) {
-            live.advanceRealTime(1000 / 60);
-            live.updateBallAndPlayers(1000 / 60);
-            frames++;
-            if (dir.possessionTeam !== besitzer) { besitzer = dir.possessionTeam; stabilSeit = frames; }
-            if (frames % 12 !== 0) continue;
-            if (dir.mode !== "ambient" || dir.deadBall || dir.kickoff) continue;
-            if (frames - stabilSeit < 45) continue;
+            let frames = 0;
+            // Eine Mannschaft braucht einen Moment, um ihre Form einzunehmen.
+            // Gemessen wird deshalb erst, wenn der Ballbesitz kurz stabil ist -
+            // so, wie man es auch mit dem Auge beurteilen wuerde.
+            let besitzer = null;
+            let stabilSeit = 0;
 
-            ["home", "away"].forEach(team => {
-                const feld = live.players2D.filter(p => p.team === team && p.pos !== "TW");
-                if (feld.length < 9) return;
-                // Die zwei äußersten bleiben draußen: Wer presst, verlässt den
-                // Verbund zu Recht und darf die gemessene Form nicht verfälschen.
-                const ys = feld.map(p => p.y).sort((a, b) => a - b);
-                const breite = ys[ys.length - 2] - ys[1];
-                (team === dir.possessionTeam ? mitBall : ohneBall).push(breite);
-            });
+            while (!live.isFinished && frames < 60 * 1800 / SPIELE) {
+                live.advanceRealTime(1000 / 60);
+                live.updateBallAndPlayers(1000 / 60);
+                frames++;
+                if (dir.possessionTeam !== besitzer) { besitzer = dir.possessionTeam; stabilSeit = frames; }
+                if (frames % 12 !== 0) continue;
+                if (dir.mode !== "ambient" || dir.deadBall || dir.kickoff) continue;
+                if (frames - stabilSeit < 45) continue;
+
+                ["home", "away"].forEach(team => {
+                    const feld = live.players2D.filter(p => p.team === team && p.pos !== "TW");
+                    if (feld.length < 9) return;
+                    // Die zwei äußersten bleiben draußen: Wer presst, verlässt den
+                    // Verbund zu Recht und darf die gemessene Form nicht verfälschen.
+                    const ys = feld.map(p => p.y).sort((a, b) => a - b);
+                    const breite = ys[ys.length - 2] - ys[1];
+                    (team === dir.possessionTeam ? mitBall : ohneBall).push(breite);
+                });
+            }
         }
 
         if (mitBall.length < 10 || ohneBall.length < 10) {
@@ -2756,8 +2764,10 @@ function runEngineTests() {
             live.advanceRealTime(1000 / 60);
             live.updateBallAndPlayers(1000 / 60);
             possessionTeams.add(live.director.possessionTeam);
-            maxHomeGkX = Math.max(maxHomeGkX, homeGk.x);
-            minAwayGkX = Math.min(minAwayGkX, awayGk.x);
+            // Ein ausgewechselter (etwa verletzter) Torwart geht zur Bank an
+            // der Mittellinie - gemessen wird nur, wer im Tor steht
+            if (live.players2D.includes(homeGk)) maxHomeGkX = Math.max(maxHomeGkX, homeGk.x);
+            if (live.players2D.includes(awayGk)) minAwayGkX = Math.min(minAwayGkX, awayGk.x);
         }
 
         if (maxHomeGkX > 30) throw new Error(`Heim-Torwart verlässt seine Hälfte (x=${maxHomeGkX.toFixed(1)})`);
@@ -6125,7 +6135,8 @@ function runEngineTests() {
             for (let i = 0; i < 120; i++) {
                 const tl = MatchEngine.generateTimeline({ id: `cw_${guete}_${i}` }, heim, gast, state.players,
                     { frische, wechselGueteHome: guete });
-                const w = tl.find(e => e.type === "substitution" && e.team === "home" && e.minute >= 60);
+                // Ab der 55. Minute: Wer zurückliegt, wechselt früher
+                const w = tl.find(e => e.type === "substitution" && e.team === "home" && e.minute >= 55);
                 if (!w) continue;
                 erste++;
                 if (w.playerOutId === muede.id) richtig++;
@@ -6721,17 +6732,17 @@ function runEngineTests() {
         if (!(fremd.passing < w.passing)) throw new Error("Die Positionseignung wirkt nicht");
 
         // Die Werte wirken relativ zum Niveau der Partie: Zwei Landesligisten
-        // spielen auf dem Feld mit einem Schnitt von 70, der Abstand bleibt
+        // spielen auf dem Feld mit einem Schnitt von 70, das Verhältnis bleibt
         const heim = state.players.filter(p => p.clubId === "ll_han").slice(0, 11);
         const gast = state.players.filter(p => p.clubId === "ll_vil").slice(0, 11);
-        const versatz = MatchEngine.fmVersatz([heim, gast]);
-        if (!(versatz > 30)) throw new Error(`Landesliga wird nur um ${versatz} angehoben`);
+        const skala = MatchEngine.fmSkala([heim, gast]);
+        if (!(skala > 2)) throw new Error(`Landesliga wird nur mit ${skala} skaliert`);
         const a = { pos: "ZM", overall: 26, passing: 30, fitness: 100, morale: 75, form: 7 };
         const b = Object.assign({}, a, { passing: 20 });
-        const wa = MatchEngine.werte2D(a, "ZM", versatz), wb = MatchEngine.werte2D(b, "ZM", versatz);
-        if (!(wa.overall > 55 && wa.overall < 95)) throw new Error(`Angehobene Stärke ${wa.overall}`);
-        const vorher = MatchEngine.werte2D(a, "ZM").passing - MatchEngine.werte2D(b, "ZM").passing;
-        if (Math.abs((wa.passing - wb.passing) - vorher) > 0.3) throw new Error("Der Abstand zwischen zwei Spielern ändert sich");
+        const wa = MatchEngine.werte2D(a, "ZM", skala), wb = MatchEngine.werte2D(b, "ZM", skala);
+        if (!(wa.overall > 55 && wa.overall < 95)) throw new Error(`Skalierte Stärke ${wa.overall}`);
+        const vorher = MatchEngine.werte2D(a, "ZM").passing / MatchEngine.werte2D(b, "ZM").passing;
+        if (Math.abs(wa.passing / wb.passing - vorher) > 0.02) throw new Error("Das Verhältnis zwischen zwei Spielern ändert sich");
     });
 
     test("FM-Modus: Die Abspielstufe ändert nicht, wie eng gedeckt wird", () => {
@@ -6846,6 +6857,419 @@ function runEngineTests() {
         let k = 0;
         for (let i = 0; i < 3000; i++) if (MatchEngine.waehleSchuetze([kopf, klein], "cross").id === "k") k++;
         if (!(k / 3000 > 0.58)) throw new Error(`Das Kopfballungeheuer kommt nur in ${(k / 30).toFixed(0)} % an den Ball`);
+    });
+
+    // ------------------------------------------------------------------
+    // Realismus: KI-Trainer, mentale Werte, Heimvorteil
+    // ------------------------------------------------------------------
+
+    test("KI-Trainer: Der Gegner stellt bei Rückstand um und bringt eine Führung über die Zeit", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "KI" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const vorher = JSON.parse(JSON.stringify(gast.tactics));
+        const stufen = ["very_defensive", "defensive", "balanced", "offensive", "very_offensive"];
+        const live = MatchEngine.createLiveMatch({ id: "ki_trainer", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { userSide: "home", modus: "fm" });
+
+        // Der eigene Verein wird nie von der KI umgestellt
+        if (live._kiTrainerPunkte.home) throw new Error("Die KI stellt auch die Mannschaft des Spielers um");
+
+        live.minute = 66; live.homeScore = 1; live.awayScore = 0;
+        const r = live.kiTrainerTakt();
+        const neu = stufen.indexOf(gast.tactics.mentality || "balanced");
+        if (!r.length || !(neu > stufen.indexOf(vorher.mentality || "balanced"))) {
+            throw new Error(`Bei Rückstand keine offensivere Einstellung: ${vorher.mentality} -> ${gast.tactics.mentality}`);
+        }
+        if (!r[0].text.includes(gast.name)) throw new Error("Die Umstellung des Gegners steht nicht im Ticker");
+
+        // Spät knapp in Führung: absichern und auf Zeit spielen
+        live.minute = 84; live.homeScore = 1; live.awayScore = 2;
+        live._kiTrainerPunkte.away = [84];
+        live.kiTrainerTakt();
+        if (gast.tactics.zeitspiel !== "oft") throw new Error("Eine knappe Führung wird nicht über die Zeit gebracht");
+
+        // Nach dem Abpfiff spielt der Gegner wieder mit seiner eigenen Taktik
+        live.finishMatch();
+        if (gast.tactics.mentality !== vorher.mentality || gast.tactics.zeitspiel !== vorher.zeitspiel) {
+            throw new Error("Die Umstellungen des Gegners bleiben nach dem Spiel bestehen");
+        }
+    });
+
+    test("KI-Trainer: In der Sofort-Simulation drückt, wer spät zurückliegt", () => {
+        // Szenen in der Schlussphase: Wer zurückliegt, kommt öfter vor das Tor
+        const state = GameState.createNewGame("muc", "normal", { name: "KI" });
+        const heim = state.clubs.find(c => c.id === "sge");
+        const gast = state.clubs.find(c => c.id === "wob");
+        const szenen = (heimTore, gastTore) => {
+            let heimSzenen = 0, alle = 0;
+            for (let i = 0; i < 60; i++) {
+                const tl = MatchEngine.generateTimeline(heim, gast, state.players,
+                    { startMinute: 76, currentHomeScore: heimTore, currentAwayScore: gastTore });
+                tl.filter(e => ["goal", "save", "shot_miss"].includes(e.type)).forEach(e => {
+                    const angreifer = e.type === "save" ? (e.team === "home" ? "away" : "home") : e.team;
+                    alle++; if (angreifer === "home") heimSzenen++;
+                });
+            }
+            return heimSzenen / Math.max(1, alle);
+        };
+        const zurueck = szenen(0, 1), vorn = szenen(1, 0);
+        if (!(zurueck > vorn + 0.05)) throw new Error(`Heimanteil an Abschlüssen: zurück ${(zurueck * 100).toFixed(0)} %, vorn ${(vorn * 100).toFixed(0)} %`);
+    });
+
+    test("Mentale Werte: Tagesform, Entscheidungen und Nerven hängen an der Persönlichkeit", () => {
+        // Unbeständige Spieler haben gute und schlechte Tage
+        const streuung = (bestaendigkeit) => {
+            const p = { hiddenAttributes: { consistency: bestaendigkeit } };
+            const werte = Array.from({ length: 3000 }, () => MatchEngine.tagesform(p));
+            const m = werte.reduce((s, v) => s + v, 0) / werte.length;
+            return Math.sqrt(werte.reduce((s, v) => s + (v - m) ** 2, 0) / werte.length);
+        };
+        const launisch = streuung(8), bestaendig = streuung(18);
+        if (!(launisch > bestaendig * 2.5)) throw new Error(`Tagesform schwankt ${launisch.toFixed(3)} gegen ${bestaendig.toFixed(3)}`);
+
+        const flow = new MatchFlowEngine({ fm: true });
+        const klug = { vision: 88, positioning: 80, mental: { alter: 30, grosseSpiele: 17, bestaendigkeit: 16, professionalitaet: 16 } };
+        const jung = { vision: 45, positioning: 50, mental: { alter: 18, grosseSpiele: 8, bestaendigkeit: 8, professionalitaet: 9 } };
+        if (!(flow.entscheidungsRauschen(klug) < flow.entscheidungsRauschen(jung) - 0.2)) {
+            throw new Error("Ein erfahrener Spielmacher entscheidet nicht sicherer als ein unerfahrener Spieler");
+        }
+        if (!(flow.nerven(klug) > flow.nerven(jung) + 4)) throw new Error("Die Nervenstärke hängt nicht an großen Spielen und Erfahrung");
+        if (!(flow.konzentration(klug) > flow.konzentration(jung))) throw new Error("Die Konzentration hängt nicht an der Professionalität");
+
+        // Vom Punkt trifft der Nervenstarke öfter
+        const tw = { id: "tw", pos: "TW", team: "away", x: 96, y: 50, reflexes: 70, handling: 70, positioning: 70, oneOnOne: 70 };
+        const quote = (schuetze) => {
+            let tore = 0;
+            for (let i = 0; i < 4000; i++) {
+                if (flow.schussAusgang(schuetze, [tw], { elfmeter: true, xg: 0.76 }).ausgang === "goal") tore++;
+            }
+            return tore / 4000;
+        };
+        const basis = { id: "s", team: "home", pos: "ST", x: 85, y: 50, shooting: 75, technique: 72 };
+        const kalt = quote({ ...basis, mental: klug.mental }), nervoes = quote({ ...basis, mental: jung.mental });
+        if (!(kalt > nervoes + 0.03)) throw new Error(`Elfmeter: nervenstark ${(kalt * 100).toFixed(0)} %, nervös ${(nervoes * 100).toFixed(0)} %`);
+    });
+
+    test("Heimvorteil: Im Livespiel spielt die Heimelf mit dem Publikum im Rücken", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Heim" });
+        const heim = state.clubs.find(c => c.id === "sge");
+        const gast = state.clubs.find(c => c.id === "wob");
+        const live = MatchEngine.createLiveMatch({ id: "heim", played: false, homeClubId: "sge", awayClubId: "wob" },
+            heim, gast, state.players, { modus: "fm" });
+        if (!(live.fmHeim > 1)) throw new Error("Kein Heimvorteil im Livespiel");
+        if (Math.abs((live.fmHeim - 1) - (MatchEngine.heimvorteil(heim) - 1) * 0.5) > 1e-9) throw new Error("Der Heimvorteil im Livespiel folgt nicht dem Stadion");
+        const neutral = MatchEngine.createLiveMatch({ id: "neutral", played: false, homeClubId: "sge", awayClubId: "wob", neutralerPlatz: true },
+            heim, gast, state.players, { modus: "fm" });
+        if (neutral.fmHeim !== 1) throw new Error("Auf neutralem Platz gibt es einen Heimvorteil");
+    });
+
+    test("Taktikbesprechung: Der Matchplan gilt nur für ein Spiel, deckt den Star und belohnt eine getroffene Schwäche", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Plan" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const match = { id: "plan_1", played: false, homeClubId: "muc", awayClubId: "dor" };
+
+        const v = MatchplanEngine.vorschlag(state, match);
+        if (!v || v.plaene.length !== Object.keys(MatchplanEngine.PLAENE).length) throw new Error("Die Besprechung bietet nicht alle Punkte an");
+        if (v.ziele.some(z => z.pos === "TW")) throw new Error("Den Torwart kann man nicht in Manndeckung nehmen");
+
+        // Mehr als zwei Punkte und Widersprüche fallen weg
+        const plan = MatchplanEngine.festlegen(state, match, ["fruehStoeren", "tiefStehen", "fluegel"]);
+        if (plan.punkte.length > MatchplanEngine.MAX_PUNKTE) throw new Error("Mehr als zwei Punkte im Matchplan");
+        if (plan.punkte.includes("fruehStoeren") && plan.punkte.includes("tiefStehen")) throw new Error("Früh stören und tief stehen zugleich");
+
+        // Mit Manndeckung: Der Gedeckte kommt seltener zum Abschluss
+        const ziel = v.ziele[0];
+        MatchplanEngine.festlegen(state, match, ["engDecken", "fruehStoeren"], ziel.id);
+        const opt = MatchplanEngine.spielOptionen(state, match);
+        if (!opt || opt.side !== "home") throw new Error("Der Plan gehört nicht zur eigenen Seite");
+        if (opt.taktik.pressing !== "high") throw new Error("Früh stören setzt kein hohes Pressing");
+        if (!opt.gedeckt[ziel.id]) throw new Error("Der Schlüsselspieler wird nicht gedeckt");
+        const kandidaten = state.players.filter(p => gast.playerIds.includes(p.id) && p.pos !== "TW").slice(0, 5);
+        const gedeckter = kandidaten[0];
+        const zaehle = (gedeckt) => {
+            let n = 0;
+            for (let i = 0; i < 3000; i++) if (MatchEngine.waehleSchuetze(kandidaten, "open", null, gedeckt) === gedeckter) n++;
+            return n;
+        };
+        const frei = zaehle(null);
+        const eng = zaehle({ [gedeckter.id]: MatchplanEngine.ENG_GEDECKT });
+        if (!(eng < frei * 0.75)) throw new Error(`Manndeckung wirkt nicht (${eng} gegen ${frei} Abschlüsse)`);
+
+        // Die Anweisungen gelten nur während des Spiels
+        const vorher = JSON.stringify(heim.tactics);
+        MatchEngine.simulateFullMatch({ ...match }, heim, gast, state.players, { matchplan: opt });
+        if (JSON.stringify(heim.tactics) !== vorher) throw new Error("Der Matchplan bleibt nach der Sofort-Simulation in der Taktik stehen");
+        const live = MatchEngine.createLiveMatch({ ...match, id: "plan_live" }, heim, gast, state.players, { modus: "fm", matchplan: opt });
+        if (heim.tactics.pressing !== "high") throw new Error("Im Livespiel greift der Matchplan nicht");
+        if (live._vorSpiel.home.tactics.pressing === "high" && JSON.parse(vorher).pressing !== "high") {
+            throw new Error("Die gewohnte Taktik wird nicht vor dem Plan gesichert");
+        }
+        heim.tactics = JSON.parse(vorher);
+
+        // Ein Plan, der eine Schwäche trifft, bringt einen Bonus - einer ins Blaue nicht
+        const report = { keyPlayers: [], weaknesses: [], strengths: [], attackRating: 85, midfieldRating: 80, defenseRating: 80 };
+        if (!MatchplanEngine.passtZu("tiefStehen", report, gast).passt) throw new Error("Gegen einen starken Angriff passt tief stehen nicht");
+        state.matchplan = { ...state.matchplan, treffer: 2 };
+        if (!(MatchplanEngine.spielOptionen(state, match).bonus > 1)) throw new Error("Getroffene Schwächen bringen keinen Bonus");
+
+        // Nach dem Spiel ist der Plan erledigt - und er hängt nur an seinem Spiel
+        if (MatchplanEngine.fuerSpiel(state, { ...match, id: "anderes" })) throw new Error("Der Plan gilt auch für ein anderes Spiel");
+        MatchplanEngine.abschliessen(state, match);
+        if (MatchplanEngine.fuerSpiel(state, match)) throw new Error("Der Plan bleibt nach dem Spiel stehen");
+    });
+
+    test("Pressekonferenz: Fragen nach Lage, Blatt verstärkt, Kampfansage motiviert den Gegner, Versprechen wird abgerechnet", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Presse" });
+        const club = state.clubs.find(c => c.id === "muc");
+        // Das nächste Spiel wird zum Derby, und es läuft gerade gar nicht
+        const runde = state.schedule.find(r => r.matches.some(m => (m.homeClubId === "muc" || m.awayClubId === "muc") && !m.played));
+        const spiel = runde.matches.find(m => m.homeClubId === "muc" || m.awayClubId === "muc");
+        spiel.isDerby = true;
+        spiel.derbyTitle = "Testderby";
+        club.form = ["W", "L", "L", "L"];
+        state.currentMatchday = runde.matchday;
+
+        const pk = ManagerEngine.buildPressConference(state);
+        if (!pk || !pk.topicId || !pk.question || !pk.answers.length) throw new Error("Die erste Frage fehlt oben im Ergebnis");
+        if (pk.fragen.length !== 3) throw new Error(`Vor einem Derby in der Krise sollten drei Fragen kommen, nicht ${pk.fragen.length}`);
+        if (pk.fragen[0].topicId !== "derby") throw new Error(`Das Derby ist nicht das erste Thema (${pk.fragen[0].topicId})`);
+        const themen = pk.fragen.map(f => f.topicId);
+        if (!themen.includes("krise")) throw new Error("Drei Niederlagen in Folge sind kein Thema");
+        if (themen.includes("form")) throw new Error("Nach der Krise wird zusätzlich noch nach der Form gefragt");
+        if (new Set(pk.fragen.map(f => f.journalist)).size !== pk.fragen.length) throw new Error("Ein Journalist stellt mehrere Fragen");
+        pk.fragen.forEach(f => { if (!f.medium || !f.medium.name) throw new Error(`Frage ${f.topicId} hat kein Blatt`); });
+        const nochmal = ManagerEngine.buildPressConference(state);
+        if (nochmal.fragen.map(f => f.topicId).join() !== themen.join()) throw new Error("Dieselbe Konferenz ändert beim erneuten Öffnen ihre Fragen");
+
+        // Die Kampfansage: Der Boulevard verstärkt, der Gegner liest mit
+        const gegnerId = pk.context.opponentId;
+        const gegnerKader = state.players.filter(p => state.clubs.find(c => c.id === gegnerId).playerIds.includes(p.id));
+        gegnerKader.forEach(p => { p.morale = 60; });
+        const derby = pk.fragen[0];
+        const res = ManagerEngine.answerPressConference(state, "derby", "kampfansage", { frage: derby, kontext: pk.context });
+        if (!res.success) throw new Error(res.error);
+        if (res.effects.mediaPressure !== Math.round(8 * ManagerEngine.PRESSE_MEDIEN.boulevard.faktor.mediaPressure)) {
+            throw new Error("Der Boulevard verstärkt den Medienrummel nicht");
+        }
+        if (!res.gegnerMotiviert || gegnerKader.some(p => p.morale !== 66)) throw new Error("Die Kampfansage motiviert den Gegner nicht");
+        if (!state.pressVersprechen || state.pressVersprechen.gegnerId !== gegnerId) throw new Error("Das Versprechen wird nicht vermerkt");
+        if (!state.inbox.some(m => m.type === "press")) throw new Error("Die Schlagzeile landet nicht im Postfach");
+
+        // Nach dem Spiel wird abgerechnet: verloren heißt gebrochen
+        const heim = spiel.homeClubId === "muc";
+        Object.assign(spiel, { played: true, homeGoals: heim ? 0 : 2, awayGoals: heim ? 2 : 0 });
+        const fans = state.fanMood;
+        const bilanz = ManagerEngine.versprechenPruefen(state, spiel);
+        if (!bilanz || bilanz.gehalten) throw new Error("Das gebrochene Versprechen wird nicht abgerechnet");
+        if (!(state.fanMood < fans)) throw new Error("Ein gebrochenes Versprechen kostet keine Fanstimmung");
+        if (state.pressVersprechen) throw new Error("Das Versprechen bleibt nach dem Spiel offen");
+
+        // Nach dem Abpfiff: Das gebrochene Versprechen ist Thema, dann nie wieder
+        const nach = ManagerEngine.buildNachSpielPresse(state, spiel);
+        if (!nach || !nach.nachSpiel || nach.fragen.length < 1 || nach.fragen.length > 2) throw new Error("Keine Pressekonferenz nach dem Spiel");
+        if (!nach.fragen.some(f => f.topicId === "wortGehalten")) throw new Error("Das gebrochene Versprechen ist nach dem Spiel kein Thema");
+        if (nach.fragen.some(f => f.topicId === "nachSieg")) throw new Error("Nach einer Niederlage wird nach dem Sieg gefragt");
+        const antwort = ManagerEngine.answerPressConference(state, nach.fragen[0].topicId, nach.fragen[0].answers[0].key,
+            { frage: nach.fragen[0], kontext: nach.context });
+        if (!antwort.success) throw new Error(antwort.error);
+        if (ManagerEngine.buildNachSpielPresse(state, spiel)) throw new Error("Die Konferenz nach dem Spiel lässt sich wiederholen");
+        if (ManagerEngine.buildNachSpielPresse(state, { ...spiel, id: "test", freundschaftsspiel: true })) throw new Error("Nach einem Testspiel gibt es eine Pressekonferenz");
+        ManagerEngine.NACH_SPIEL_TOPICS.forEach(topic => {
+            if (topic.answers.length < 3) throw new Error(`Thema ${topic.id} hat zu wenige Antworten`);
+        });
+    });
+
+    test("Verletzungen entstehen im Spiel: harte Fouls und Müdigkeit, Glasknochen öfter", () => {
+        // Die Anfälligkeit zählt, das Alter auch
+        const robust = { hiddenAttributes: { injuryProneness: 4 }, age: 24 };
+        const glas = { hiddenAttributes: { injuryProneness: 17 }, age: 33 };
+        if (!(MatchEngine.verletzungsAnfaelligkeit(glas) > MatchEngine.verletzungsAnfaelligkeit(robust) * 2)) {
+            throw new Error("Ein verletzungsanfälliger Spieler verletzt sich nicht deutlich öfter");
+        }
+        // Wer ausgelaugt ist, zerrt sich eher
+        if (!(MatchEngine.muskelRisiko(robust, 0.5) > MatchEngine.muskelRisiko(robust, 1) * 2.5)) {
+            throw new Error("Müdigkeit erhöht das Muskelrisiko nicht");
+        }
+        // Je härter das Foul, desto eher bleibt der Gefoulte liegen
+        const k = MatchEngine.KONTAKT_RISIKO;
+        if (!(k.rot > k.gelb && k.gelb > k.foul)) throw new Error("Kontaktrisiko steigt nicht mit der Härte");
+
+        // Sofort-Simulation: Verletzungen tragen ihre Art, Kontakt nur nach Fouls
+        const state = GameState.createNewGame("muc", "normal", { name: "Arzt" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        let verletzt = 0;
+        const arten = new Set();
+        for (let i = 0; i < 160; i++) {
+            const tl = MatchEngine.generateTimeline({ id: `verl_${i}`, homeClubId: "muc", awayClubId: "dor" }, heim, gast, state.players, {});
+            tl.filter(e => e.type === "injury").forEach(e => {
+                verletzt++;
+                arten.add(e.verletzungsArt);
+                const liste = MatchEngine.VERLETZUNGEN[e.verletzungsArt] || [];
+                if (!liste.some(v => v.name === e.injuryName)) throw new Error(`${e.injuryName} passt nicht zur Art ${e.verletzungsArt}`);
+            });
+            // Im Livespiel (FM) kommen keine Verletzungen aus der Zeitleiste
+            const rahmen = MatchEngine.generateTimeline({ id: `verl_fm_${i}`, homeClubId: "muc", awayClubId: "dor" }, heim, gast, state.players, { ohneVerletzungen: true });
+            if (rahmen.some(e => e.type === "injury")) throw new Error("Trotz ohneVerletzungen steht eine Verletzung in der Zeitleiste");
+        }
+        const jeSpiel = verletzt / 160;
+        if (jeSpiel < 0.2 || jeSpiel > 0.9) throw new Error(`Unrealistisch viele oder wenige Verletzungen: ${jeSpiel.toFixed(2)} je Spiel`);
+        if (!arten.has("kontakt") || !arten.has("muskel")) throw new Error(`Nicht beide Arten kommen vor: ${[...arten].join(", ")}`);
+
+        // Livespiel: Ein hartes Foul kann den Gefoulten verletzen - und der Gegner wechselt
+        const live = MatchEngine.createLiveMatch({ id: "verl_live", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { modus: "fm", userSide: "home" });
+        const opfer = live.players2D.find(p => p.team === "away" && p.pos !== "TW");
+        let ev = null;
+        for (let i = 0; i < 200 && !ev; i++) ev = live.pruefeKontaktVerletzung(opfer.id, "rot");
+        if (!ev || ev.verletzungsArt !== "kontakt" || !ev.live) throw new Error("Ein Foul im Livespiel verletzt nie");
+        live.processEvent({ ...ev, minute: 10 });
+        if (!live.angemeldeteWechsel.some(w => w.side === "away" && w.outId === opfer.id)) {
+            throw new Error("Der Gegner wechselt seinen verletzten Spieler nicht aus");
+        }
+    });
+
+    test("Schiedsrichter: streng pfeift mehr und zeigt mehr Karten, Vorteil läuft weiter", () => {
+        // Je Partie steht er fest
+        const m = { id: "schiri_1", homeClubId: "muc", awayClubId: "dor" };
+        const a = MatchEngine.schiedsrichterFuer(m);
+        const b = MatchEngine.schiedsrichterFuer({ id: "schiri_1", homeClubId: "muc", awayClubId: "dor" });
+        if (!a.name || a.name !== b.name || a.typ !== b.typ) throw new Error("Derselbe Spielplan bekommt einen anderen Schiedsrichter");
+        const typen = new Set();
+        for (let i = 0; i < 200; i++) typen.add(MatchEngine.schiedsrichterFuer({ id: `s_${i}`, homeClubId: "a", awayClubId: "b" }).typ);
+        if (typen.size !== 3) throw new Error("Nicht alle Schiedsrichter-Typen kommen vor");
+
+        // Im Mittel heben sie sich auf
+        const T = MatchEngine.SCHIRI_TYPEN;
+        const schnitt = (k) => 0.25 * T.streng[k] + 0.5 * T.normal[k] + 0.25 * T.grosszuegig[k];
+        if (Math.abs(schnitt("pfeife") - 1) > 0.02 || Math.abs(schnitt("strenge") - 1) > 0.03) throw new Error("Die Schiedsrichter verschieben den Schnitt");
+
+        // Ein strenger Schiedsrichter zeigt in denselben Partien mehr Karten
+        const state = GameState.createNewGame("muc", "normal", { name: "Schiri" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        const karten = (typ) => {
+            let n = 0, vorteil = 0;
+            for (let i = 0; i < 150; i++) {
+                const tl = MatchEngine.generateTimeline({ id: `k_${typ}_${i}`, homeClubId: "muc", awayClubId: "dor", schiedsrichter: { typ, name: "Test", ...T[typ] } },
+                    heim, gast, state.players, {});
+                n += tl.filter(e => e.type === "yellow_card" || e.type === "red_card").length;
+                vorteil += tl.filter(e => e.vorteil).length;
+            }
+            return { n, vorteil };
+        };
+        const streng = karten("streng"), gross = karten("grosszuegig");
+        if (!(streng.n > gross.n * 1.3)) throw new Error(`Streng ${streng.n} Karten, großzügig ${gross.n} - kein Unterschied`);
+        if (!(gross.vorteil > streng.vorteil)) throw new Error(`Der Großzügige gibt nicht öfter Vorteil (${gross.vorteil} gegen ${streng.vorteil})`);
+        // Ein Foul mit Vorteil gibt keinen Freistoß
+        const tl = MatchEngine.generateTimeline({ id: "vorteil_x", homeClubId: "muc", awayClubId: "dor", schiedsrichter: { typ: "grosszuegig", name: "T", ...T.grosszuegig } },
+            heim, gast, state.players, {});
+        tl.filter(e => e.vorteil && e.type === "foul").forEach(e => {
+            if (e.direkterFreistoss || e.outcome !== "vorteil") throw new Error("Ein Foul mit Vorteil wird als Freistoß behandelt");
+        });
+    });
+
+    test("Taktische Vertrautheit: Eine neue Formation kostet Stärke und wird eingeschliffen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Taktiker" });
+        const club = state.clubs.find(c => c.id === "muc");
+        // Ohne Aufzeichnung (KI-Vereine, alte Spielstände) sitzt alles
+        if (TacticsEngine.vertrautheit(club) !== 1) throw new Error("Ohne Aufzeichnung ist die Mannschaft nicht voll eingespielt");
+        TacticsEngine.vertrautheitStarten(club);
+        if (TacticsEngine.vertrautheit(club) !== 1) throw new Error("Die gewohnte Taktik sitzt nicht");
+
+        // Neue Formation und neue Spielweise
+        const alteFormation = club.formation;
+        club.formation = alteFormation === "4-3-3" ? "3-5-2" : "4-3-3";
+        club.tactics = TacticsEngine.normalisiere({ ...club.tactics, pressing: "high", tempo: "fast", passing: "short" });
+        const neu = TacticsEngine.vertrautheit(club);
+        if (!(neu < 0.8)) throw new Error(`Neue Formation und Spielweise sitzen sofort (${neu})`);
+        if (!(TacticsEngine.vertrautheitsFaktor(club) < 0.985)) throw new Error("Eine fremde Taktik kostet keine Stärke");
+
+        // Spiele und Training schleifen ein
+        for (let i = 0; i < 12; i++) TacticsEngine.vertrautheitUeben(club, 0.12);
+        const spaeter = TacticsEngine.vertrautheit(club);
+        if (!(spaeter > 0.95)) throw new Error(`Nach zwölf Spielen sitzt die Taktik nicht (${spaeter})`);
+        if (club.chemistry && club.chemistry.tacticalFamiliarity !== Math.round(spaeter * 100)) throw new Error("Der Vereinswert zeigt etwas anderes an");
+        // Die alte Formation ist nicht vergessen, aber nicht mehr ganz frisch
+        const v = club.taktikVertrautheit.formationen[alteFormation];
+        if (!(v < 1 && v >= TacticsEngine.VERTRAUT_NEU)) throw new Error("Die alte Formation verblasst nicht");
+
+        // Die Sofort-Simulation rechnet mit dem Faktor
+        club.formation = alteFormation === "4-3-3" ? "4-4-2" : "4-3-3";
+        const f = TacticsEngine.vertrautheitsFaktor(club);
+        if (!(f < 1)) throw new Error("Die neue Formation wirkt nicht");
+    });
+
+    test("Schwacher Fuß und Körpergröße: Abschluss und Kopfballduell", () => {
+        // Größe: fest je Spieler, Torhüter und Innenverteidiger größer als Flügel
+        const tw = { id: "g1", pos: "TW", physical: 70 }, aussen = { id: "g2", pos: "RA", physical: 70 };
+        if (MatchEngine.koerpergroesse(tw) !== MatchEngine.koerpergroesse({ ...tw })) throw new Error("Die Größe ist nicht fest");
+        let summeTw = 0, summeRa = 0;
+        for (let i = 0; i < 200; i++) {
+            summeTw += MatchEngine.koerpergroesse({ id: `t${i}`, pos: "TW", physical: 70 });
+            summeRa += MatchEngine.koerpergroesse({ id: `r${i}`, pos: "RA", physical: 70 });
+        }
+        if (!(summeTw / 200 > summeRa / 200 + 8)) throw new Error("Torhüter sind nicht größer als Flügelspieler");
+        if (MatchEngine.koerpergroesse({ groesse: 201, pos: "RA" }) !== 201) throw new Error("Eine gespeicherte Größe wird überschrieben");
+
+        // Im Kopfballduell zählt die Größe
+        const flow = new MatchFlowEngine({ fm: true });
+        const basis = { physical: 70, positioning: 70, technique: 70, pace: 70, defense: 70, eig: {} };
+        if (!(flow.kopfballWert({ ...basis, groesse: 195 }) > flow.kopfballWert({ ...basis, groesse: 172 }) + 10)) {
+            throw new Error("Ein großer Spieler gewinnt kein Kopfballduell öfter");
+        }
+        // Bei Flanken kommt der Große öfter an den Ball
+        const kandidaten = [{ id: "k1", pos: "ST", groesse: 196, shooting: 70 }, { id: "k2", pos: "ST", groesse: 170, shooting: 70 }];
+        let gross = 0;
+        for (let i = 0; i < 2000; i++) if (MatchEngine.waehleSchuetze(kandidaten, "cross").id === "k1") gross++;
+        if (!(gross > 1200)) throw new Error(`Der Große kommt bei Flanken nicht öfter zum Abschluss (${gross} von 2000)`);
+
+        // Schwacher Fuß: Beidfüßige nie, der Rechtsfuß links neben dem Tor öfter
+        const g = new MatchFlowEngine({ fm: true, attackDir: () => 1 });
+        const zaehle = (spieler) => {
+            let n = 0;
+            for (let i = 0; i < 3000; i++) if (g.schwacherFuss(spieler)) n++;
+            return n;
+        };
+        if (zaehle({ team: "home", x: 88, y: 30, foot: "beidfüßig" }) !== 0) throw new Error("Ein Beidfüßiger hat einen schwachen Fuß");
+        const links = zaehle({ team: "home", x: 92, y: 36, foot: "rechts" });
+        const rechts = zaehle({ team: "home", x: 92, y: 64, foot: "rechts" });
+        if (!(links > rechts * 1.4)) throw new Error(`Der Rechtsfuß links neben dem Tor nimmt nicht öfter den schwachen Fuß (${links} gegen ${rechts})`);
+        // Im Mittel gleicht es sich aus: kein Torverlust über alle Abschlüsse
+        const c = MatchEngine.SCHWACHER_FUSS;
+        const mittel = (c.basis + 0.04) * c.faktorSchwach + (1 - c.basis - 0.04) * c.faktorStark;
+        if (Math.abs(mittel - 1) > 0.02) throw new Error(`Der schwache Fuß verschiebt die Torquote (${mittel.toFixed(3)})`);
+    });
+
+    test("Standardvarianten: Ecken an die Pfosten, kurz, Raum- oder Manndeckung", () => {
+        // Die Anweisungen gibt es im Taktik-Reiter
+        ["ecken", "standardDeckung"].forEach(k => {
+            if (!TacticsEngine.ANWEISUNGEN.some(a => a.key === k)) throw new Error(`Anweisung ${k} fehlt`);
+        });
+        const t = TacticsEngine.normalisiere({});
+        if (t.ecken !== "gemischt" || t.standardDeckung !== "raum") throw new Error("Falsche Grundeinstellung der Standards");
+        // Gemischt heißt: alle Varianten kommen vor
+        const varianten = new Set();
+        for (let i = 0; i < 300; i++) varianten.add(TacticsEngine.eckenVariante("gemischt"));
+        if (varianten.size !== 3) throw new Error(`Gemischte Ecken bringen nicht alle Varianten: ${[...varianten].join(", ")}`);
+        if (TacticsEngine.eckenVariante("kurz") !== "kurz") throw new Error("Eine feste Variante wird nicht gespielt");
+
+        // An den zweiten Pfosten lohnt es sich nur mit Riesen; kurz ist von der Größe unabhängiger
+        const riesen = [196, 194, 193].map((g, i) => ({ id: `r${i}`, pos: "ST", groesse: g }));
+        const zwerge = [172, 173, 171].map((g, i) => ({ id: `z${i}`, pos: "ST", groesse: g }));
+        const abwehr = [186, 185, 184].map((g, i) => ({ id: `v${i}`, pos: "IV", groesse: g }));
+        if (!(MatchEngine.eckenVorteil("zweiterPfosten", "raum", riesen, abwehr) > MatchEngine.eckenVorteil("kurz", "raum", riesen, abwehr))) {
+            throw new Error("Mit Riesen lohnt der zweite Pfosten nicht");
+        }
+        if (!(MatchEngine.eckenVorteil("kurz", "raum", zwerge, abwehr) > MatchEngine.eckenVorteil("zweiterPfosten", "raum", zwerge, abwehr))) {
+            throw new Error("Ohne große Spieler ist die kurze Ecke nicht besser");
+        }
+        // Raumdeckung schützt den ersten Pfosten
+        if (!(MatchEngine.eckenVorteil("ersterPfosten", "raum", riesen, abwehr) < MatchEngine.eckenVorteil("ersterPfosten", "mann", riesen, abwehr))) {
+            throw new Error("Raumdeckung schützt den ersten Pfosten nicht");
+        }
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

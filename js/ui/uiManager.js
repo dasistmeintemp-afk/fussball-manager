@@ -2148,66 +2148,116 @@ class UIManager {
     /**
      * Pressekonferenz am Medientag.
      *
-     * Die Antwort verschiebt Fanstimmung, Medienrummel, Vorstandsvertrauen
-     * und die Moral der Mannschaft - wer sich vor seine Spieler stellt,
-     * nimmt Druck vom Team, zahlt aber bei den Fans drauf.
+     * Zwei bis drei Fragen, je nach Lage: Vor dem Derby fragt der Boulevard
+     * nach einer Kampfansage, nach drei Niederlagen nach dem Job, bei einem
+     * Angebot nach dem Spieler. Jede Antwort verschiebt Fanstimmung,
+     * Medienrummel, Vorstandsvertrauen und Moral - und manche haben Folgen:
+     * Eine Kampfansage liest auch der Gegner, ein Versprechen wird nach dem
+     * Spiel abgerechnet, eine Schlagzeile steht am nächsten Tag im Postfach.
      */
-    showPressConferenceModal() {
+    showPressConferenceModal(vorgabe = null, onDone = null) {
         const state = this.app.state;
         const engine = this.getManagerEngine();
         const modal = document.getElementById("modalPressConference");
         const body = document.getElementById("pressConferenceContent");
         if (!engine || !modal || !body) return;
 
-        const pk = engine.buildPressConference(state);
+        // Nach dem Spiel kommt die Konferenz fertig aus dem Spielbericht
+        const pk = vorgabe || engine.buildPressConference(state);
         if (!pk) return;
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const fragen = Array.isArray(pk.fragen) && pk.fragen.length
+            ? pk.fragen
+            : [{ topicId: pk.topicId, question: pk.question, answers: pk.answers, medium: null, journalist: null }];
+        const summe = { fanMood: 0, mediaPressure: 0, boardConfidence: 0, squadMorale: 0 };
+        let index = 0;
 
-        body.innerHTML = `
-            <p class="press-question">„${this.escapeHtml(pk.question)}"</p>
-            <div class="press-answers">
-                ${pk.answers.map(a => `
-                    <button class="press-answer" data-answer="${this.escapeHtml(a.key)}">${this.escapeHtml(a.label)}</button>
-                `).join("")}
-            </div>
-            <div id="pressResult"></div>
-        `;
+        const titel = document.getElementById("pcModalTitle");
+        if (titel) titel.textContent = pk.nachSpiel
+            ? `Nach dem Spiel: ${pk.context.ergebnis} gegen ${pk.context.opponentName}`
+            : (pk.context?.opponentId
+                ? `Pressekonferenz vor dem Spiel gegen ${pk.context.opponentName}`
+                : "Pressekonferenz");
 
-        modal.style.display = "flex";
+        // Mehr Medienrummel ist schlecht, alles andere gut
+        const zeile = (label, wert, umgekehrt = false) => {
+            if (!wert) return "";
+            const gut = umgekehrt ? wert < 0 : wert > 0;
+            return `<span>${label}: <strong style="color:${gut ? "#34d399" : "#f87171"};">${wert > 0 ? "+" : ""}${wert}</strong></span>`;
+        };
+        const effekte = (e) => `
+            <div class="press-effects">
+                ${zeile("Fanstimmung", e.fanMood)}
+                ${zeile("Medienrummel", e.mediaPressure, true)}
+                ${zeile("Vorstand", e.boardConfidence)}
+                ${zeile("Teammoral", e.squadMorale)}
+            </div>`;
 
-        body.querySelectorAll(".press-answer").forEach(btn => {
-            btn.addEventListener("click", () => {
-                const res = engine.answerPressConference(state, pk.topicId, btn.dataset.answer);
-                if (!res.success) return;
+        const zeigeFrage = () => {
+            const f = fragen[index];
+            const letzte = index === fragen.length - 1;
+            body.innerHTML = `
+                <div class="press-kopf">
+                    ${f.medium ? `<div class="press-journalist">
+                        <span class="press-medium-icon">${f.medium.icon}</span>
+                        <span><strong>${esc(f.journalist)}</strong><small>${esc(f.medium.name)} · ${esc(f.medium.art)}</small></span>
+                    </div>` : "<span></span>"}
+                    <span class="press-fortschritt">Frage ${index + 1} von ${fragen.length}</span>
+                </div>
+                <p class="press-question">„${esc(f.question)}“</p>
+                <div class="press-answers">
+                    ${f.answers.map(a => `
+                        <button class="press-answer" data-answer="${esc(a.key)}">${esc(a.label)}</button>
+                    `).join("")}
+                </div>
+                <div id="pressResult"></div>
+            `;
 
-                const zeile = (label, wert, einheit = "") => {
-                    if (!wert) return "";
-                    const farbe = wert > 0 ? "#34d399" : "#f87171";
-                    return `<span>${label}: <strong style="color:${farbe};">${wert > 0 ? "+" : ""}${wert}${einheit}</strong></span>`;
-                };
+            body.querySelectorAll(".press-answer").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    const res = engine.answerPressConference(state, f.topicId, btn.dataset.answer, { frage: f, kontext: pk.context });
+                    if (!res.success) return;
+                    Object.keys(summe).forEach(k => { summe[k] += res.effects[k] || 0; });
 
-                document.getElementById("pressResult").innerHTML = `
-                    <div class="press-result">
-                        <strong>${this.escapeHtml(res.response)}</strong>
-                        <div class="press-effects">
-                            ${zeile("Fanstimmung", res.effects.fanMood)}
-                            ${zeile("Medienrummel", res.effects.mediaPressure)}
-                            ${zeile("Vorstand", res.effects.boardConfidence)}
-                            ${zeile("Teammoral", res.effects.squadMorale)}
+                    const folgen = [];
+                    if (res.affectedPlayer) folgen.push(`${esc(res.affectedPlayer.name)}: ${res.affectedPlayer.delta > 0 ? "+" : ""}${res.affectedPlayer.delta} Moral`);
+                    if (res.gegnerMotiviert) folgen.push(`🔥 ${esc(res.gegnerMotiviert.name)} fühlt sich herausgefordert (Moral +${res.gegnerMotiviert.delta})`);
+                    if (res.versprechen) folgen.push(`🤝 Versprochen: ${res.versprechen.art === "sieg" ? "ein Sieg" : "keine Niederlage"} gegen ${esc(res.versprechen.gegnerName)} - nach dem Spiel wird abgerechnet`);
+                    if (res.schlagzeile) folgen.push(`📰 Morgen in der Zeitung: „${esc(res.schlagzeile)}“`);
+
+                    btn.classList.add("gewaehlt");
+                    document.getElementById("pressResult").innerHTML = `
+                        <div class="press-result">
+                            <strong>${esc(res.response)}</strong>
+                            ${effekte(res.effects)}
+                            ${folgen.map(t => `<div class="press-player">${t}</div>`).join("")}
+                            ${letzte && fragen.length > 1 ? `<div class="press-bilanz"><span class="text-muted">Bilanz des Termins</span>${effekte(summe)}</div>` : ""}
+                            <button class="btn btn-primary mt-2" id="btnPressDone">${letzte ? "Termin beenden" : "Nächste Frage ▶"}</button>
                         </div>
-                        ${res.affectedPlayer ? `<div class="press-player">${this.escapeHtml(res.affectedPlayer.name)}: ${res.affectedPlayer.delta > 0 ? "+" : ""}${res.affectedPlayer.delta} Moral</div>` : ""}
-                        <button class="btn btn-primary mt-2" id="btnPressDone">Termin beenden</button>
-                    </div>
-                `;
-                body.querySelectorAll(".press-answer").forEach(b => { b.disabled = true; });
-                this.playSound("click");
+                    `;
+                    body.querySelectorAll(".press-answer").forEach(b => { b.disabled = true; });
+                    this.playSound("click");
 
-                document.getElementById("btnPressDone").onclick = () => {
-                    modal.style.display = "none";
-                    this.renderCurrentTab();
-                    this.renderHeader();
-                };
+                    document.getElementById("btnPressDone").onclick = () => {
+                        if (!letzte) {
+                            index++;
+                            zeigeFrage();
+                            return;
+                        }
+                        modal.style.display = "none";
+                        if (onDone) {
+                            onDone();
+                            return;
+                        }
+                        this.renderCurrentTab();
+                        this.renderHeader();
+                    };
+                });
             });
-        });
+        };
+
+        zeigeFrage();
+        modal.style.display = "flex";
     }
 
     /**
@@ -2410,6 +2460,7 @@ class UIManager {
             wappenEl("dashAwayCrest", gastClub);
             actions.style.display = "";
             if (btnAnalyse) btnAnalyse.style.display = "none";
+            this.zeigeMatchplanKnopf(testHeute.partie);
             btnLive.disabled = false;
             btnLive.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#i-play"/></svg><span>Live-Spiel starten</span>`;
             btnInstant.disabled = false;
@@ -2462,6 +2513,7 @@ class UIManager {
         actions.style.display = "";
         if (btnAnalyse) btnAnalyse.style.display = termin.art === "liga" ? "" : "none";
 
+        this.zeigeMatchplanKnopf(spielbar ? heuteSpiel.partie : null);
         if (spielbar) {
             btnLive.disabled = false;
             btnLive.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#i-play"/></svg><span>Live-Spiel starten</span>`;
@@ -2485,6 +2537,21 @@ class UIManager {
                     + `<span>${this.escapeHtml(this.wegBisZumSpiel(state, termin))}</span>`;
             }
         }
+    }
+
+    /** Der Knopf zur Taktikbesprechung - nur am Spieltag, mit Haken, wenn der Plan steht */
+    zeigeMatchplanKnopf(partie) {
+        const knopf = document.getElementById("btnDashMatchplan");
+        if (!knopf) return;
+        const engine = this.getMatchplanEngine();
+        if (!partie || !engine) {
+            knopf.style.display = "none";
+            return;
+        }
+        const plan = engine.fuerSpiel(this.app.state, partie);
+        knopf.style.display = "";
+        knopf.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#i-${plan ? "check" : "tactics"}"/></svg>`
+            + `<span>${plan ? `Matchplan (${plan.punkte.length})` : "Taktikbesprechung"}</span>`;
     }
 
     /**
@@ -3674,6 +3741,9 @@ class UIManager {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
+        // Bevor etwas umgestellt wird: Was jetzt eingestellt ist, sitzt
+        const taktikModul = this.getTacticsEngine();
+        if (taktikModul && typeof taktikModul.vertrautheitStarten === "function") taktikModul.vertrautheitStarten(userClub);
 
         const posEngine = this.getPositionEngine();
 
@@ -4035,6 +4105,26 @@ class UIManager {
                     this.renderTactics();
                 };
             });
+        }
+
+        // Wie eingespielt die Mannschaft auf diese Taktik ist
+        const vertrautEl = document.getElementById("tacVertrautheit");
+        if (vertrautEl && T && typeof T.vertrautheitDetails === "function") {
+            const d = T.vertrautheitDetails(userClub);
+            const prozent = Math.round(d.gesamt * 100);
+            const farbe = prozent >= 85 ? "#4ade80" : (prozent >= 65 ? "#facc15" : "#f87171");
+            const kosten = Math.round((1 - T.vertrautheitsFaktor(userClub)) * 1000) / 10;
+            vertrautEl.innerHTML = `
+                <div class="vertrautheit-kopf">
+                    <span>Taktische Vertrautheit</span>
+                    <strong style="color:${farbe};">${prozent} %</strong>
+                </div>
+                <div class="vertrautheit-balken"><span style="width:${prozent}%; background:${farbe};"></span></div>
+                <div class="vertrautheit-text">
+                    ${d.formation < 0.85 ? `Die Formation <strong>${esc(userClub.formation || "")}</strong> ist noch neu (${Math.round(d.formation * 100)} %). ` : ""}
+                    ${d.neu.length ? `Noch nicht eingespielt: ${d.neu.map(n => `${esc(n.label)} „${esc(n.wert)}“ (${Math.round(n.vertraut * 100)} %)`).join(", ")}. ` : ""}
+                    ${kosten > 0.2 ? `Das kostet im Spiel etwa ${String(kosten).replace(".", ",")} % Stärke - Spiele und Taktiktraining schleifen es ein.` : "Die Mannschaft kennt ihre Abläufe."}
+                </div>`;
         }
 
         // Mannschaftsanweisungen als Kacheln, getrennt nach Mit Ball und
@@ -7618,7 +7708,7 @@ class UIManager {
             <div class="player-detail-top">
                 <div class="player-detail-meta">
                     <span class="pos-tag pos-${this.getPosGroup(player.pos)}" style="font-size:13px;">${player.pos}</span>
-                    <span style="font-size:14px; margin-left:8px; color:var(--text-muted);">${club ? club.name : ''} • Alter: ${player.age}${player.foot ? ` • ${this.escapeHtml(player.foot === "beidfüßig" ? "beidfüßig" : player.foot + "er Fuß")}` : ''}</span>
+                    <span style="font-size:14px; margin-left:8px; color:var(--text-muted);">${club ? club.name : ''} • Alter: ${player.age}${player.foot ? ` • ${this.escapeHtml(player.foot === "beidfüßig" ? "beidfüßig" : player.foot + "er Fuß")}` : ''}${typeof MatchEngine !== "undefined" && MatchEngine.koerpergroesse ? ` • ${(MatchEngine.koerpergroesse(player) / 100).toFixed(2).replace(".", ",")} m` : ''}</span>
                 </div>
                 <div class="player-detail-rating">
                     <div class="player-detail-stars team-strength-stars">${abilityStars}</div>
@@ -7792,6 +7882,166 @@ class UIManager {
         return null;
     }
 
+    getMatchplanEngine() {
+        if (typeof MatchplanEngine !== "undefined" && MatchplanEngine) return MatchplanEngine;
+        if (typeof window !== "undefined" && window.MatchplanEngine) return window.MatchplanEngine;
+        return null;
+    }
+
+    /**
+     * Taktikbesprechung vor dem Anpfiff: Die Analyse des Gegners auf einen
+     * Blick und bis zu zwei Punkte für genau dieses Spiel. Der Analyst sagt
+     * dazu, was er von jedem Punkt hält - so gut, wie er hinschaut.
+     *
+     * onDone läuft nach "Festlegen" wie nach "Ohne Plan"; ohne onDone (Aufruf
+     * vom Dashboard) wird der Plan nur gespeichert.
+     */
+    showMatchplanModal(match, onDone = null) {
+        const state = this.app.state;
+        const engine = this.getMatchplanEngine();
+        const modal = document.getElementById("modalMatchplan");
+        const body = document.getElementById("matchplanContent");
+        const v = engine && match ? engine.vorschlag(state, match) : null;
+        if (!engine || !modal || !body || !v) {
+            if (onDone) onDone();
+            return;
+        }
+
+        const r = v.report || {};
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const auswahl = new Set(v.gespeichert ? v.gespeichert.punkte : []);
+        let zielId = v.gespeichert?.zielId ?? (v.ziele[0]?.id ?? null);
+        const sieht = (r.analyst?.sterne || 0) >= 2.5;
+        const gegensatz = { fluegel: "zentrum", zentrum: "fluegel", fruehStoeren: "tiefStehen", tiefStehen: "fruehStoeren" };
+        const heim = match.homeClubId === state.userClubId;
+        // Der Schiedsrichter steht mit der Ansetzung fest - ein strenger
+        // bestraft harte Zweikämpfe, ein großzügiger lässt laufen
+        const schiri = typeof MatchEngine !== "undefined" && MatchEngine.schiedsrichterFuer
+            ? MatchEngine.schiedsrichterFuer(match) : null;
+
+        document.getElementById("mpModalTitle").textContent = `Taktikbesprechung: ${v.gegnerName}`;
+
+        const analyseHtml = `
+            <div class="mp-analyse">
+                <div class="mp-lage">
+                    <span>${heim ? "Heimspiel" : "Auswärtsspiel"} gegen <strong>${esc(v.gegnerName)}</strong></span>
+                    ${r.likelyFormation ? `<span class="mp-chip">Voraussichtlich ${esc(r.likelyFormation)}</span>` : ""}
+                    ${r.dangerLevel ? `<span class="badge ${esc(r.dangerClass)}">${esc(r.dangerLevel)}</span>` : ""}
+                </div>
+                ${schiri ? `<div class="mp-analyst">🟨 Schiedsrichter <strong>${esc(schiri.name)}</strong> <span class="text-muted">${esc(schiri.art)} - ${esc(schiri.text)}</span></div>` : ""}
+                ${r.analyst ? `<div class="mp-analyst">
+                    📋 <strong>${esc(r.analyst.name)}</strong> ${this.stabSterneHtml(r.analyst.guete)}
+                    <span class="text-muted">${esc(r.genauigkeit || "")}${sieht ? "" : " - zu ungenau für klare Empfehlungen"}</span>
+                </div>` : ""}
+                ${r.tacticalTrend ? `<p class="mp-trend">${esc(r.tacticalTrend)}</p>` : ""}
+                <div class="mp-spalten">
+                    <div><h5 class="mp-plus">Stärken</h5><ul>${(r.strengths || []).map(s => `<li>${esc(s)}</li>`).join("")}</ul></div>
+                    <div><h5 class="mp-minus">Schwächen</h5><ul>${(r.weaknesses || []).map(s => `<li>${esc(s)}</li>`).join("")}</ul></div>
+                </div>
+                ${r.schwachstelle ? `<div class="mp-schwach">🔎 ${esc(r.schwachstelle.text)}</div>` : ""}
+                ${(r.keyPlayers || []).length ? `<div class="mp-schluessel">
+                    <span class="text-muted">Schlüsselspieler:</span>
+                    ${r.keyPlayers.map(k => `<span class="mp-chip"><span class="pos-tag pos-${this.getPosGroup(k.pos)}">${esc(k.pos)}</span> ${esc(k.name)}${k.danger === "Hoch" ? " ⚠️" : ""}</span>`).join("")}
+                </div>` : ""}
+            </div>`;
+
+        const karten = v.plaene.map(p => `
+            <button class="mp-karte" data-key="${p.key}" ${p.verfuegbar ? "" : "disabled"}>
+                <span class="mp-icon">${p.icon}</span>
+                <span class="mp-text">
+                    <strong>${esc(p.name)}</strong>
+                    <span class="mp-beschreibung">${esc(p.text)}</span>
+                    ${!p.verfuegbar ? `<span class="mp-grund">${p.braucht === "schwachstelle" ? "Der Analyst hat keine Schwachstelle gefunden." : "Kein Schlüsselspieler bekannt."}</span>`
+                        : p.empfohlen ? `<span class="mp-empfehlung">📋 ${esc(p.grund)}</span>`
+                        : (sieht && p.grund ? `<span class="mp-grund">${esc(p.grund)}</span>` : "")}
+                </span>
+            </button>`).join("");
+
+        body.innerHTML = `
+            ${analyseHtml}
+            <div class="mp-kopfzeile">
+                <h4>Ihr Plan für dieses Spiel</h4>
+                <span class="mp-zaehler" id="mpZaehler"></span>
+            </div>
+            <p class="mp-hinweis">Bis zu zwei Punkte. Sie gelten nur für diese Partie - danach steht wieder Ihre gewohnte Taktik.
+                Trifft ein Punkt eine echte Schwäche des Gegners, ist die Mannschaft spürbar besser eingestellt.</p>
+            <div class="mp-karten">${karten}</div>
+            <div class="mp-ziel" id="mpZiel" style="display:none;">
+                <label for="mpZielWahl">Eng decken:</label>
+                <select id="mpZielWahl" class="styled-input">
+                    ${v.ziele.map(z => `<option value="${esc(z.id)}" ${String(z.id) === String(zielId) ? "selected" : ""}>${esc(z.name)} (${esc(z.pos)})${z.danger === "Hoch" ? " - gefährlich" : ""}</option>`).join("")}
+                </select>
+            </div>
+            <div class="mp-aktionen">
+                <button class="btn btn-secondary" id="btnMatchplanOhne">${onDone ? "Ohne Besprechung" : "Plan verwerfen"}</button>
+                <button class="btn btn-primary" id="btnMatchplanFest">${onDone ? "Weiter zur Ansprache ▶" : "Plan festlegen"}</button>
+            </div>
+        `;
+
+        const zeichne = () => {
+            body.querySelectorAll(".mp-karte").forEach(btn => btn.classList.toggle("aktiv", auswahl.has(btn.dataset.key)));
+            const zaehler = document.getElementById("mpZaehler");
+            if (zaehler) zaehler.textContent = `${auswahl.size} / ${engine.MAX_PUNKTE}`;
+            const ziel = document.getElementById("mpZiel");
+            if (ziel) ziel.style.display = auswahl.has("engDecken") && v.ziele.length ? "" : "none";
+            const fest = document.getElementById("btnMatchplanFest");
+            if (fest && !onDone) fest.disabled = auswahl.size === 0;
+        };
+
+        body.querySelectorAll(".mp-karte").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const key = btn.dataset.key;
+                if (auswahl.has(key)) {
+                    auswahl.delete(key);
+                } else {
+                    // Was sich widerspricht, fliegt raus - früh stören und tief
+                    // stehen gleichzeitig kann keine Mannschaft
+                    if (gegensatz[key]) auswahl.delete(gegensatz[key]);
+                    if (auswahl.size >= engine.MAX_PUNKTE) {
+                        this.showToast(`Höchstens ${engine.MAX_PUNKTE} Punkte - mehr behält keine Mannschaft im Kopf.`, "warning");
+                        return;
+                    }
+                    auswahl.add(key);
+                }
+                this.playSound("click");
+                zeichne();
+            });
+        });
+        const zielWahl = document.getElementById("mpZielWahl");
+        if (zielWahl) zielWahl.onchange = () => { zielId = zielWahl.value; };
+
+        const schliessen = () => {
+            modal.style.display = "none";
+            if (onDone) onDone();
+        };
+        document.getElementById("btnMatchplanOhne").onclick = () => {
+            engine.abschliessen(state, match);
+            if (!onDone) this.showToast("Kein Matchplan - es gilt die gewohnte Taktik.", "info");
+            schliessen();
+            if (!onDone) this.renderDashboard();
+        };
+        document.getElementById("btnMatchplanFest").onclick = () => {
+            if (auswahl.size === 0) {
+                engine.abschliessen(state, match);
+                schliessen();
+                return;
+            }
+            const plan = engine.festlegen(state, match, [...auswahl], zielId);
+            const namen = plan.punkte.map(k => k === "engDecken" && plan.zielName
+                ? `${plan.zielName} eng decken` : engine.PLAENE[k].name);
+            const urteil = sieht && plan.treffer >= plan.punkte.length ? " Der Analyst ist überzeugt."
+                : sieht && plan.treffer === 0 ? " Der Analyst hat Zweifel." : "";
+            this.showToast(`Matchplan steht: ${namen.join(", ")}.${urteil}`, "success");
+            schliessen();
+            if (!onDone) this.renderDashboard();
+        };
+        const x = document.getElementById("btnCloseMatchplan");
+        if (x) x.onclick = () => { modal.style.display = "none"; };
+
+        zeichne();
+        modal.style.display = "flex";
+    }
+
     /**
      * Kabinenansprache vor dem Anpfiff oder in der Halbzeit.
      *
@@ -7829,8 +8079,17 @@ class UIManager {
             ? "Halbzeitansprache"
             : "Ansprache vor dem Anpfiff";
 
+        // Vor dem Anpfiff steht der Matchplan noch einmal auf der Tafel
+        const planEngine = this.getMatchplanEngine();
+        const plan = !istHalbzeit && planEngine && state.matchplan && state.matchplan.clubId === state.userClubId ? state.matchplan : null;
+        const planZeile = plan && plan.punkte.length
+            ? `<p class="tt-plan">📋 Matchplan: ${plan.punkte.map(k => this.escapeHtml(k === "engDecken" && plan.zielName
+                ? `${plan.zielName} eng decken` : (planEngine.PLAENE[k]?.name || k))).join(" · ")}</p>`
+            : "";
+
         body.innerHTML = `
             <p class="team-talk-situation">${lage} ${stimmung}</p>
+            ${planZeile}
             <div class="team-talk-options">
                 ${engine.TEAM_TALK_TONES.map(t => `
                     <button class="team-talk-option" data-tone="${t.key}">
@@ -7903,7 +8162,17 @@ class UIManager {
         const homeClub = state.clubs.find(c => c.id === match.homeClubId);
         const awayClub = state.clubs.find(c => c.id === match.awayClubId);
 
-        // Vor dem Anpfiff steht die Ansprache - erst danach rollt der Ball
+        // Vor dem Anpfiff: erst die Taktikbesprechung (wenn nicht schon vom
+        // Dashboard aus festgelegt), dann die Ansprache - erst danach rollt
+        // der Ball
+        const planEngine = this.getMatchplanEngine();
+        if (!this._matchplanDone && !this._teamTalkDone) {
+            this._matchplanDone = true;
+            if (planEngine && !planEngine.fuerSpiel(state, match)) {
+                this.showMatchplanModal(match, () => this.startLiveMatchSimulation(match));
+                return;
+            }
+        }
         if (!this._teamTalkDone) {
             const gegnerId = match.homeClubId === state.userClubId ? match.awayClubId : match.homeClubId;
             this._teamTalkDone = true;
@@ -7914,6 +8183,7 @@ class UIManager {
             return;
         }
         this._teamTalkDone = false;
+        this._matchplanDone = false;
 
         // Die eigene Seite - alle Eingriffe von der Seitenlinie gelten ihr.
         // Vorher waren Wechsel und Taktik fest auf "home" verdrahtet: Wer
@@ -7926,8 +8196,12 @@ class UIManager {
             delegation: { ...einstellungen.delegation },
             // Wie im Football Manager: Das Spiel entsteht auf dem Platz aus den
             // Entscheidungen der Spieler - nach ihren Werten und Eigenschaften
-            modus: "fm"
+            modus: "fm",
+            // Der Matchplan aus der Taktikbesprechung
+            matchplan: planEngine ? planEngine.spielOptionen(state, match) : null
         });
+        // Der Plan gilt für genau dieses Spiel - der Livespiel-Motor hat ihn
+        if (planEngine) planEngine.abschliessen(state, match);
         this.app.currentLiveMatch = liveMatch;
         this.coach = null;
 
@@ -9682,7 +9956,7 @@ class UIManager {
             <div style="text-align:center; padding:16px 0; border-bottom:1px solid var(--border-color); margin-bottom:16px;">
                 <h1 style="font-size:36px; font-weight:800; color:var(--accent-gold);">${match.homeGoals} : ${match.awayGoals}</h1>
                 <h3 style="margin-top:4px;">${home.name} vs ${away.name}</h3>
-                <p class="text-muted" style="font-size:13px;">${home.stadium}</p>
+                <p class="text-muted" style="font-size:13px;">${home.stadium}${match.schiedsrichter ? ` · Schiedsrichter: ${this.escapeHtml(match.schiedsrichter.name)} (${this.escapeHtml(match.schiedsrichter.art)})` : ""}</p>
             </div>
 
             ${match.summaryText ? `
@@ -9748,6 +10022,24 @@ class UIManager {
             this.renderCurrentTab();
             this.renderHeader();
         };
+
+        // Die Pressekonferenz nach dem Abpfiff - freiwillig, einmal je Spiel
+        const presseKnopf = document.getElementById("btnReportPress");
+        const manager = this.getManagerEngine();
+        const nachSpiel = manager && typeof manager.buildNachSpielPresse === "function"
+            ? manager.buildNachSpielPresse(state, match) : null;
+        if (presseKnopf) {
+            presseKnopf.style.display = nachSpiel ? "" : "none";
+            presseKnopf.disabled = false;
+            presseKnopf.onclick = () => {
+                if (!nachSpiel) return;
+                this.showPressConferenceModal(nachSpiel, () => {
+                    presseKnopf.disabled = true;
+                    presseKnopf.textContent = "Pressekonferenz beendet";
+                    this.renderHeader();
+                });
+            };
+        }
     }
 
     /**
@@ -9980,12 +10272,15 @@ class UIManager {
             const home = state.clubs.find(c => c.id === test.partie.homeClubId);
             const away = state.clubs.find(c => c.id === test.partie.awayClubId);
             MatchEngine.simulateFullMatch(test.partie, home, away, state.players, this.sofortOptionen(test.partie));
+            this.matchplanErledigt(test.partie);
             this.playSound("whistle");
             this.schliesseTestspielAb(test.partie);
             this.showMatchReportModal(test.partie);
             return true;
         }
         this._laufendesTestspiel = test;
+        this._matchplanDone = false;
+        this._teamTalkDone = false;
         this.startLiveMatchSimulation(test.partie);
         return true;
     }
@@ -10007,11 +10302,23 @@ class UIManager {
         const state = this.app.state;
         const club = state.clubs.find(c => c.id === state.userClubId);
         const stab = this.getCoachingStaffEngine();
-        if (!club || !partie || !stab) return {};
+        if (!club || !partie) return {};
+        const optionen = {};
+        // Der Matchplan aus der Taktikbesprechung gilt auch beim Sofort-Ergebnis
+        const planEngine = this.getMatchplanEngine();
+        const plan = planEngine ? planEngine.spielOptionen(state, partie) : null;
+        if (plan) optionen.matchplan = plan;
+        if (!stab) return optionen;
         const guete = stab.staffQuality(club).coTrainer;
-        if (partie.homeClubId === club.id) return { wechselGueteHome: guete };
-        if (partie.awayClubId === club.id) return { wechselGueteAway: guete };
-        return {};
+        if (partie.homeClubId === club.id) optionen.wechselGueteHome = guete;
+        if (partie.awayClubId === club.id) optionen.wechselGueteAway = guete;
+        return optionen;
+    }
+
+    /** Nach dem Sofort-Ergebnis ist der Matchplan erledigt */
+    matchplanErledigt(partie) {
+        const planEngine = this.getMatchplanEngine();
+        if (planEngine) planEngine.abschliessen(this.app.state, partie);
     }
 
     starteHeutigesSpiel(sofort = false) {
@@ -10045,6 +10352,7 @@ class UIManager {
             const home = state.clubs.find(c => c.id === heute.partie.homeClubId);
             const away = state.clubs.find(c => c.id === heute.partie.awayClubId);
             MatchEngine.simulateFullMatch(heute.partie, home, away, state.players, this.sofortOptionen(heute.partie));
+            this.matchplanErledigt(heute.partie);
             this.playSound("whistle");
             if (this._laufenderPokaltermin) {
                 this.finishCupTieAroundUser();
@@ -10055,6 +10363,10 @@ class UIManager {
             return true;
         }
 
+        // Jeder Anpfiff beginnt mit Besprechung und Ansprache - auch wenn ein
+        // früherer Versuch vorher abgebrochen wurde
+        this._matchplanDone = false;
+        this._teamTalkDone = false;
         this.startLiveMatchSimulation(heute.partie);
         return true;
     }
@@ -10668,6 +10980,15 @@ class UIManager {
         if (btnOpponent) {
             btnOpponent.onclick = () => {
                 this.showOpponentAnalysisModal();
+            };
+        }
+
+        // Taktikbesprechung schon vor dem Anpfiff - gilt auch fürs Sofort-Ergebnis
+        const btnPlan = document.getElementById("btnDashMatchplan");
+        if (btnPlan) {
+            btnPlan.onclick = () => {
+                const partie = this.heutigesTestspiel()?.partie || this.heutigesSpiel()?.partie;
+                if (partie) this.showMatchplanModal(partie, null);
             };
         }
 

@@ -798,6 +798,7 @@ body {
 
 .match-action-row {
     display: flex;
+    flex-wrap: wrap;
     justify-content: flex-end;
     gap: 12px;
 }
@@ -4490,6 +4491,85 @@ body {
 
 .tt-delta { font-size: 12px; color: var(--text-muted); margin: 4px 0 8px; }
 
+/* Taktische Vertrautheit */
+.vertrautheit-leiste { margin: 4px 0 12px; font-size: 12px; }
+.vertrautheit-leiste:empty { display: none; }
+.vertrautheit-kopf { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.vertrautheit-balken { height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.vertrautheit-balken span { display: block; height: 100%; border-radius: 3px; }
+.vertrautheit-text { color: var(--text-muted); margin-top: 5px; line-height: 1.45; }
+
+/* Taktikbesprechung */
+.tt-plan { font-size: 12px; color: #cbd5e1; margin: -6px 0 12px; }
+.mp-analyse {
+    background: rgba(16, 21, 28, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    font-size: 13px;
+}
+.mp-lage { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 6px; }
+.mp-analyst { font-size: 12px; margin-bottom: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mp-trend { margin: 0 0 8px; color: #cbd5e1; font-style: italic; }
+.mp-spalten { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.mp-spalten h5 { font-size: 12px; margin: 0 0 4px; }
+.mp-spalten ul { margin: 0; padding-left: 16px; font-size: 12px; color: #cbd5e1; }
+.mp-plus { color: #22c55e; }
+.mp-minus { color: #ef4444; }
+.mp-schwach {
+    margin-top: 8px;
+    padding: 6px 10px;
+    border-left: 3px solid var(--accent-gold, #f59e0b);
+    background: rgba(245, 158, 11, 0.08);
+    border-radius: 0 6px 6px 0;
+    font-size: 12px;
+}
+.mp-schluessel { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; }
+.mp-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 12px;
+}
+.mp-kopfzeile { display: flex; justify-content: space-between; align-items: baseline; }
+.mp-kopfzeile h4 { margin: 0; }
+.mp-zaehler { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.mp-hinweis { font-size: 12px; color: var(--text-muted); margin: 4px 0 10px; }
+.mp-karten { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mp-karte {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    text-align: left;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(29, 37, 48, 0.7);
+    color: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+.mp-karte:hover:not(:disabled) { border-color: rgba(56, 189, 248, 0.6); }
+.mp-karte.aktiv {
+    border-color: #38bdf8;
+    background: rgba(56, 189, 248, 0.12);
+    box-shadow: inset 0 0 0 1px #38bdf8;
+}
+.mp-karte:disabled { opacity: 0.45; cursor: default; }
+.mp-icon { font-size: 20px; line-height: 1.2; }
+.mp-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.mp-beschreibung { font-size: 12px; color: #cbd5e1; }
+.mp-empfehlung { font-size: 11px; color: #4ade80; }
+.mp-grund { font-size: 11px; color: var(--text-muted); }
+.mp-ziel { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 13px; }
+.mp-ziel select { flex: 1; }
+.mp-aktionen { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+
 .tt-reaction {
     font-size: 12px;
     padding: 3px 0 3px 10px;
@@ -4536,6 +4616,20 @@ body {
 }
 
 .press-player { font-size: 12px; color: #cbd5e1; margin-top: 6px; }
+.press-kopf { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.press-journalist { display: flex; align-items: center; gap: 10px; }
+.press-journalist > span:last-child { display: flex; flex-direction: column; line-height: 1.25; }
+.press-journalist small { font-size: 11px; color: var(--text-muted); }
+.press-medium-icon {
+    font-size: 20px;
+    width: 36px; height: 36px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.06);
+}
+.press-fortschritt { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.press-answer.gewaehlt { border-color: #38bdf8; opacity: 1; }
+.press-bilanz { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 12px; }
 
 /* Schreibtisch: Was heute ansteht */
 .attention-card { grid-column: span 4; min-width: 0; }
@@ -4691,6 +4785,9 @@ body {
     /* Verhandlungen und Ansprachen bleiben bedienbar */
     .negotiation-inputs { grid-template-columns: 1fr; }
     .team-talk-option { padding: 10px 12px; }
+    .mp-karten, .mp-spalten { grid-template-columns: 1fr; }
+    .mp-aktionen { flex-direction: column-reverse; }
+    .mp-aktionen .btn { width: 100%; }
     .tt-icon { font-size: 19px; }
     .attention-card { grid-column: 1 / -1; }
 }

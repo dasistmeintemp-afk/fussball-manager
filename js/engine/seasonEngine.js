@@ -40,7 +40,12 @@ class SeasonEngine {
                 const homeClub = state.clubs.find(c => c.id === match.homeClubId);
                 const awayClub = state.clubs.find(c => c.id === match.awayClubId);
                 if (homeClub && awayClub && matchEngine) {
-                    matchEngine.simulateFullMatch(match, homeClub, awayClub, state.players);
+                    // Der Matchplan aus der Taktikbesprechung gilt auch, wenn
+                    // das eigene Spiel ohne Livespiel berechnet wird
+                    const planEngine = _resolve('MatchplanEngine', './matchplanEngine.js');
+                    const plan = planEngine ? planEngine.spielOptionen(state, match) : null;
+                    matchEngine.simulateFullMatch(match, homeClub, awayClub, state.players, plan ? { matchplan: plan } : {});
+                    if (plan) planEngine.abschliessen(state, match);
                 }
             }
             // Nur die eigenen Partien behalten Einzelkritiken und Ereignisse
@@ -173,6 +178,17 @@ class SeasonEngine {
             const eigenesSpiel = runde?.matches?.find(m => m.homeClubId === state.userClubId || m.awayClubId === state.userClubId);
             if (eigenesSpiel && eigenesSpiel.played) {
                 state.lastDressingRoom = dressingRoom.processMatch(state, eigenesSpiel);
+                // Was auf der Pressekonferenz versprochen wurde, wird jetzt abgerechnet
+                const manager = _resolve('ManagerEngine', './managerEngine.js');
+                if (manager && typeof manager.versprechenPruefen === 'function') {
+                    manager.versprechenPruefen(state, eigenesSpiel);
+                }
+                // Was gespielt wurde, sitzt danach besser
+                const taktik = _resolve('TacticsEngine', './tacticsEngine.js');
+                const eigenerVerein = state.clubs.find(c => c.id === state.userClubId);
+                if (taktik && typeof taktik.vertrautheitUeben === 'function' && eigenerVerein) {
+                    taktik.vertrautheitUeben(eigenerVerein, 0.12);
+                }
             }
             // Die Gegner haben ebenfalls eine Kabine - sonst spielt der Nutzer
             // das ganze Jahr gegen dauerhaft bestens gelaunte Mannschaften

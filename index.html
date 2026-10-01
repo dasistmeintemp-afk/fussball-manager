@@ -266,6 +266,7 @@
 
                             <div class="match-action-row" id="dashMatchActions">
                                 <button class="btn btn-secondary" id="btnDashOpponentAnalysis"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg><span>Gegneranalyse</span></button>
+                                <button class="btn btn-secondary" id="btnDashMatchplan" style="display:none;"><svg class="ico" aria-hidden="true"><use href="#i-tactics"/></svg><span>Taktikbesprechung</span></button>
                                 <button class="btn btn-secondary" id="btnDashInstantSim"><svg class="ico" aria-hidden="true"><use href="#i-bolt"/></svg><span>Sofort berechnen</span></button>
                                 <button class="btn btn-primary btn-lg" id="btnDashLiveMatch"><svg class="ico" aria-hidden="true"><use href="#i-play"/></svg><span>Live-Spiel starten</span></button>
                             </div>
@@ -671,6 +672,7 @@
                                 <button class="taktik-ansicht-btn" data-phase="gegenBall" role="tab">Gegen den Ball</button>
                             </div>
                         </div>
+                        <div class="vertrautheit-leiste" id="tacVertrautheit"></div>
                         <div class="anweisungs-kacheln" id="tacAnweisungen"></div>
                         <p class="taktik-hilfe" id="tacAnwHilfe">Kachel antippen, um die Anweisung zu ändern. Grün umrandet: abweichend von der Grundeinstellung.</p>
                     </div>
@@ -1762,6 +1764,7 @@
                     <!-- Dynamischer Spielbericht -->
                 </div>
                 <div class="modal-footer">
+                    <button class="btn btn-secondary" id="btnReportPress" style="display:none;"><svg class="ico" aria-hidden="true"><use href="#i-mic"/></svg><span>Pressekonferenz</span></button>
                     <button class="btn btn-primary" id="btnCloseReport">Weiter zum Dashboard ▶</button>
                 </div>
             </div>
@@ -1817,6 +1820,17 @@
                     <button class="modal-close" id="btnCloseTeamTalk">×</button>
                 </div>
                 <div class="modal-body" id="teamTalkContent"></div>
+            </div>
+        </div>
+
+        <!-- Taktikbesprechung vor dem Anpfiff -->
+        <div class="modal-overlay" id="modalMatchplan" style="display: none;">
+            <div class="modal-box" style="max-width: 760px;">
+                <div class="modal-header">
+                    <h3 id="mpModalTitle">Taktikbesprechung</h3>
+                    <button class="modal-close" id="btnCloseMatchplan">×</button>
+                </div>
+                <div class="modal-body" id="matchplanContent"></div>
             </div>
         </div>
 
@@ -2010,6 +2024,7 @@
     <script src="js/engine/careerEngine.js"></script>
     <script src="js/engine/calendarEngine.js"></script>
     <script src="js/engine/opponentAnalysisEngine.js"></script>
+    <script src="js/engine/matchplanEngine.js"></script>
     <script src="js/engine/gameState.js"></script>
     <script src="js/engine/eigenschaftenEngine.js"></script>
     <script src="js/engine/matchFlowEngine.js"></script>

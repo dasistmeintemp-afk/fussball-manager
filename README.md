@@ -421,7 +421,7 @@ Ein Talent in den Profikader zu holen dauert jetzt seine Zeit. *Vertragsgespräc
   - **Pflichtposten:** Arzt, Athletiktrainer und Co-Trainer sind Pflicht. Eine Woche, drei Tage und einen Tag vor dem Start erinnert der Sportdirektor daran. Am ersten Spieltag fragt er nach, ob die Saison wirklich ohne sie beginnen soll, oder besetzt die Posten auf Wunsch kurzfristig.
   - **Offene Posten:** Ein offener Posten wird mit Aushilfen besetzt und ist spürbar schwächer als ein eigener Mann.
 - **Detaillierte Spielberichte:** Textzusammenfassungen, xG-Vergleiche, Zweikampfquoten, Paraden und Auszeichnungen für den Mann des Spiels.
-- **Verbessertes Postfach (`NewsEngine`):** Vollständige Suche, Filterleiste (Vorstand, Spiel, Transfers, Training, Finanzen) und dauerhafte Mail-Historie.
+- **Verbessertes Postfach (`NewsEngine`):** Vollständige Suche, Filterleiste (Vorstand, Spiel, Transfers, Training, Finanzen) und dauerhafte Mail-Historie. Am Handy und auf schmalen Bildschirmen klappt eine Nachricht direkt unter ihrem Eintrag auf; ein zweiter Tipp klappt sie zu. Vorher stand sie unter der ganzen Liste, und man musste erst ans Ende scrollen. Breit steht sie wie gewohnt rechts daneben.
 
 ### 8. 🌐 Die Spielwelt: 218 Vereine aus fünf Ländern (`WorldGenerator`)
 - **Zwölf spielbare Ligen, 218 Vereine, über 4300 Spieler.** Die komplette Welt wird beim Karrierestart erzeugt und läuft Saison für Saison mit.

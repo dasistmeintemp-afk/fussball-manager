@@ -8271,3 +8271,20 @@ td.nowrap { white-space: nowrap; }
     .nat-ruf, .nat-zaehler { align-items: flex-start; justify-content: flex-start; }
     .nat-kader .nat-verein { max-width: 110px; }
 }
+
+/* ---------------------------------------------------------- Postfach schmal
+   Einspaltig klappt die Nachricht unter ihrem Eintrag auf (platziereInboxDetail) */
+.inbox-detail.inbox-detail-zu { display: none; }
+.inbox-item { scroll-margin-top: 82px; }
+@media (max-width: 1200px) {
+    .inbox-list { max-height: none; overflow: visible; padding-right: 0; }
+    .inbox-layout { min-height: 0; }
+    .inbox-item.offen { border-color: var(--accent-primary); border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; }
+    .inbox-detail.inbox-detail-inline {
+        min-height: 0;
+        margin-top: -6px;
+        border-color: rgba(var(--accent-rgb), 0.45);
+        border-top-left-radius: 4px;
+        border-top-right-radius: 4px;
+    }
+}

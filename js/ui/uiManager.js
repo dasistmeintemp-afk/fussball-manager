@@ -5252,8 +5252,17 @@ class UIManager {
             ? newsEngine.getFilteredMessages(state, this.inboxFilter, this.inboxSearch)
             : state.inbox;
 
+        // Die Detailansicht steht am Handy mitten in der Liste - vor dem
+        // Neuzeichnen zurück an ihren Platz, sonst ginge sie mit verloren
+        const detail = document.getElementById("inboxDetail");
+        if (detail && detail.parentElement === listContainer) listContainer.parentElement.appendChild(detail);
+
         if (filtered.length === 0) {
             listContainer.innerHTML = `<div class="empty-state-sm" style="padding:24px; text-align:center;">Keine passenden Nachrichten im Postfach gefunden.</div>`;
+            if (detail) {
+                detail.classList.remove("inbox-detail-inline");
+                detail.classList.toggle("inbox-detail-zu", this.postfachSchmal());
+            }
             return;
         }
 
@@ -5305,13 +5314,20 @@ class UIManager {
                 const message = state.inbox.find(m => String(m.id) === msgId);
                 if (message) {
                     message.read = true;
+                    // Am Handy klappt ein zweiter Tipp die Nachricht wieder zu
+                    const zuklappen = this.postfachSchmal() && this.inboxOffen === msgId;
+                    this.inboxOffen = zuklappen ? null : msgId;
                     this.selectedInboxMessageId = msgId;
                     this.renderInbox();
-                    this.renderInboxDetail(message);
                     this.renderHeader();
                     if (typeof this.app.state.saveToLocalStorage === "function") {
                         this.app.state.saveToLocalStorage();
                     }
+                    // Die geöffnete Nachricht samt Eintrag in den Blick holen -
+                    // eine darüber zugeklappte hat ihn womöglich nach oben gezogen
+                    const offen = !zuklappen && this.postfachSchmal()
+                        ? [...listContainer.querySelectorAll(".inbox-item")].find(el => el.dataset.msgId === msgId) : null;
+                    if (offen && typeof offen.scrollIntoView === "function") offen.scrollIntoView({ behavior: "smooth", block: "start" });
                 }
             });
         });
@@ -5320,6 +5336,44 @@ class UIManager {
         const currentMsg = state.inbox.find(m => String(m.id) === String(this.selectedInboxMessageId)) || filtered[0];
         if (currentMsg) {
             this.renderInboxDetail(currentMsg);
+        }
+        this.platziereInboxDetail(listContainer, detail);
+    }
+
+    /** Einspaltiges Postfach (Handy, Tablet): dieselbe Grenze wie im Stylesheet */
+    postfachSchmal() {
+        return typeof window !== "undefined" && typeof window.matchMedia === "function"
+            && window.matchMedia("(max-width: 1200px)").matches;
+    }
+
+    /**
+     * Wo die Nachricht steht. Breit: rechts neben der Liste. Schmal stand sie
+     * unter der ganzen Liste - wer eine Nachricht antippte, musste erst ans
+     * Ende scrollen. Jetzt klappt sie direkt unter ihrem Eintrag auf, und
+     * ohne Antippen bleibt sie zu.
+     */
+    platziereInboxDetail(listContainer, detail) {
+        if (!detail || !listContainer) return;
+        const layout = listContainer.parentElement;
+        const schmal = this.postfachSchmal();
+        const eintrag = schmal && this.inboxOffen
+            ? [...listContainer.querySelectorAll(".inbox-item")].find(el => el.dataset.msgId === String(this.inboxOffen)) : null;
+        listContainer.querySelectorAll(".inbox-item.offen").forEach(el => el.classList.remove("offen"));
+        if (eintrag) {
+            eintrag.classList.add("offen");
+            eintrag.after(detail);
+        } else if (detail.parentElement !== layout) {
+            layout.appendChild(detail);
+        }
+        detail.classList.toggle("inbox-detail-inline", !!eintrag);
+        detail.classList.toggle("inbox-detail-zu", schmal && !eintrag);
+
+        // Dreht jemand das Handy oder zieht das Fenster breiter, wechselt die Ansicht mit
+        if (!this._postfachBreite && typeof window !== "undefined" && typeof window.matchMedia === "function") {
+            this._postfachBreite = window.matchMedia("(max-width: 1200px)");
+            const neu = () => { if (this.activeTab === "inbox") this.renderInbox(); };
+            if (typeof this._postfachBreite.addEventListener === "function") this._postfachBreite.addEventListener("change", neu);
+            else if (typeof this._postfachBreite.addListener === "function") this._postfachBreite.addListener(neu);
         }
     }
 

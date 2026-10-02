@@ -183,6 +183,37 @@ class SeasonEngine {
         return ergebnis;
     }
 
+    /**
+     * Karriereende. Bisher begann es erst mit 32 und hing an festen
+     * Stärkegrenzen ("ab 78 später, unter 55 früher") - in den Bundesligen
+     * spielte so fast jeder länger, in den Amateurligen fast jeder kürzer.
+     * Vor 31 verließ kaum jemand die Welt, wer ging, war im Schnitt fast 33:
+     * Die Mitte alterte durch (22 bis 26 Jahre: 43 % → 29 % in drei
+     * Saisons), der Altersschnitt stieg in acht Saisons von 26 auf 28.
+     *
+     * Jetzt beginnt es mit 31, in den Amateurligen (ab Stufe 5: Beruf,
+     * Familie) mit 30, und steigt je Jahr um jeJahr. Die Stärke zählt
+     * gemessen am eigenen Kader: Ein Leistungsträger (traeger Punkte über
+     * dem Niveau) hängt eher ein Jahr dran, ein Ergänzungsspieler
+     * (ergaenzung Punkte darunter) hört eher auf.
+     */
+    static KARRIEREENDE = { ab: 31, amateurAb: 30, amateurStufe: 5, jeJahr: 0.15, traeger: 3, ergaenzung: 8, bonus: 0.15, malus: 0.12, spaetestens: 38 };
+
+    static karriereendeChance(player, niveau, stufe) {
+        const K = SeasonEngine.KARRIEREENDE;
+        const alter = player.age || 25;
+        if (alter >= K.spaetestens) return 1;
+        const beginn = (stufe || 1) >= K.amateurStufe ? K.amateurAb : K.ab;
+        if (alter < beginn) return 0;
+        let chance = (alter - beginn + 1) * K.jeJahr;
+        if (typeof niveau === "number") {
+            const klasse = player.overall || 0;
+            if (klasse >= niveau + K.traeger) chance -= K.bonus;
+            else if (klasse < niveau - K.ergaenzung) chance += K.malus;
+        }
+        return Math.max(0, Math.min(1, chance));
+    }
+
     /** Passt ein Vereinsloser zu einem Kader dieses Niveaus? */
     static passtZumKader(player, niveau) {
         if (typeof niveau !== "number") return true;
@@ -848,6 +879,11 @@ class SeasonEngine {
 
         const abschied = [];
         let ohneVerein = 0;
+        // Stärke gemessen am eigenen Kader, Stufe der eigenen Liga
+        const contractEngine = _getContractEngine();
+        const niveau = contractEngine && typeof contractEngine.niveauKarte === 'function'
+            ? contractEngine.niveauKarte(state) : new Map();
+        const stufe = new Map((state.clubs || []).map(c => [c.id, c.level || 1]));
         state.players.forEach(player => {
             // Wer eine ganze Saison ohne Verein war, verlässt den Profifußball.
             // Bisher blieb jeder Vereinslose für immer in der Welt: Nach fünf
@@ -862,16 +898,8 @@ class SeasonEngine {
                     return;
                 }
             }
-            const alter = player.age || 25;
-            if (alter < 32) return;
-
-            let chance = (alter - 31) * 0.16;
-            const klasse = player.overall || 50;
-            if (klasse >= 78) chance -= 0.18;
-            else if (klasse < 55) chance += 0.12;
-            if (alter >= 39) chance = 1;
-
-            if (Math.random() < chance) abschied.push(player);
+            const chance = SeasonEngine.karriereendeChance(player, niveau.get(player.clubId), stufe.get(player.clubId));
+            if (chance > 0 && Math.random() < chance) abschied.push(player);
         });
 
         if (abschied.length === 0) return { retired: 0, names: [], ohneVerein: 0 };

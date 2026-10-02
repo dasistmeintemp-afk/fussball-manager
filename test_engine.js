@@ -8655,6 +8655,32 @@ function runEngineTests() {
         });
     });
 
+    test("Welt: Karriereende ab 31 (Amateure ab 30), gemessen am eigenen Kader", () => {
+        const c = (alter, staerke, niveau, stufe) => SeasonEngine.karriereendeChance({ age: alter, overall: staerke }, niveau, stufe);
+        // Vorher begann es erst mit 32 - vor 31 verließ kaum jemand die Welt
+        if (c(30, 78, 79, 1) !== 0) throw new Error("Ein Dreißigjähriger in der Bundesliga hört schon auf");
+        if (!(c(31, 78, 79, 1) > 0)) throw new Error("Mit 31 hört in der Bundesliga niemand auf");
+        if (!(c(30, 40, 41, 5) > 0)) throw new Error("In der Oberliga hört mit 30 niemand auf");
+        if (c(38, 99, 79, 1) !== 1) throw new Error("Mit 38 spielt noch jemand");
+        // Die Stärke zählt am eigenen Kader: in der Bundesliga wie in der Landesliga
+        [[1, 79], [7, 22]].forEach(([stufe, niveau]) => {
+            const traeger = c(33, niveau + 5, niveau, stufe), normal = c(33, niveau, niveau, stufe), ergaenzung = c(33, niveau - 12, niveau, stufe);
+            if (!(traeger < normal && normal < ergaenzung)) throw new Error(`Stufe ${stufe}: Träger ${traeger}, normal ${normal}, Ergänzung ${ergaenzung}`);
+        });
+        // Mit jedem Jahr wahrscheinlicher
+        for (let a = 31; a < 37; a++) if (!(c(a + 1, 78, 79, 1) > c(a, 78, 79, 1))) throw new Error(`Mit ${a + 1} nicht wahrscheinlicher als mit ${a}`);
+
+        // In einer echten Welt: Wer mit Verein aufhört, ist mindestens 30
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const mitVerein = new Set(state.players.filter(p => p.clubId).map(p => p.id));
+        const vorher = new Map(state.players.map(p => [p.id, p]));
+        SeasonEngine.processRetirements(state);
+        const weg = [...vorher.values()].filter(p => mitVerein.has(p.id) && !state.players.includes(p));
+        if (!weg.length) throw new Error("Niemand hört auf");
+        const zuJung = weg.filter(p => p.age < 30);
+        if (zuJung.length) throw new Error(`${zuJung.length} Spieler unter 30 hören auf`);
+    });
+
     test("Welt: KI-Vereine messen Verträge und Vereinslose am eigenen Kader", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const niveau = ContractEngine.niveauKarte(state);

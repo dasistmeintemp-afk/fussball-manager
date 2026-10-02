@@ -14,6 +14,9 @@
  *  4. Skripte, die index.html lädt, die aber im Service Worker fehlen (die
  *     App startet offline dann nicht), und Dateien unter js/, die gar nicht
  *     geladen werden
+ *  5. Stylesheets mit offenen oder überzähligen geschweiften Klammern - ein
+ *     vergessenes "}" hinter einem @media-Block zieht alles Folgende mit
+ *     hinein, ohne dass der Browser einen Fehler meldet
  *
  * Beendet sich mit Code 1, sobald etwas gefunden wird.
  */
@@ -198,6 +201,42 @@ function funktionsText(quelle, kernZeilen, start) {
     return quelle[start].trim();
 }
 
+/**
+ * Geschweifte Klammern eines Stylesheets: jede geöffnete wird geschlossen,
+ * keine schließt ins Leere. Kommentare und Zeichenketten zählen nicht mit.
+ * Liefert Befunde als "zeile: text".
+ */
+function cssKlammern(text) {
+    const befunde = [];
+    const offen = [];               // Zeilen der noch offenen Klammern
+    let zeile = 1;
+    for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        if (c === "\n") { zeile++; continue; }
+        if (c === "/" && text[i + 1] === "*") {
+            const ende = text.indexOf("*/", i + 2);
+            const bis = ende < 0 ? text.length : ende + 2;
+            zeile += (text.slice(i, bis).match(/\n/g) || []).length;
+            i = bis - 1;
+            continue;
+        }
+        if (c === '"' || c === "'") {
+            let j = i + 1;
+            while (j < text.length && text[j] !== c && text[j] !== "\n") j += text[j] === "\\" ? 2 : 1;
+            i = j;
+            continue;
+        }
+        if (c === "{") offen.push(zeile);
+        else if (c === "}") {
+            if (!offen.length) befunde.push(`${zeile}: schließende Klammer ohne öffnende`);
+            else offen.pop();
+        }
+    }
+    // Die äußerste offene Klammer ist die, deren Block nie endet
+    if (offen.length) befunde.push(`${offen[0]}: Block wird nie geschlossen - alles danach steckt mit darin`);
+    return befunde;
+}
+
 // ---------------------------------------------------------------- Ablauf
 
 const skripte = alleSkripte(path.join(WURZEL, "js"));
@@ -269,9 +308,19 @@ skripte.map(rel).forEach(src => {
     if (!geladen.includes(src) && !NACHGELADEN[src]) fehler.push(`${src}: wird von index.html nicht geladen`);
 });
 
+// 5. Stylesheets: Klammern. Beim Zusammenführen zweier Zweige fehlte einmal
+// die schließende Klammer eines @media-Blocks - alles danach galt nur noch
+// auf schmalen Bildschirmen, und weder Syntaxprüfung noch Tests merkten es.
+const stile = [...html.matchAll(/<link[^>]+href="([^":]+\.css)"/g)].map(m => m[1]);
+stile.forEach(href => {
+    const p = path.join(WURZEL, href);
+    if (!fs.existsSync(p)) { fehler.push(`index.html bindet ${href} ein, die Datei fehlt`); return; }
+    cssKlammern(fs.readFileSync(p, "utf8")).forEach(b => fehler.push(`${href}:${b}`));
+});
+
 if (fehler.length) {
     console.error(`❌ Prüfung: ${fehler.length} Befund(e)`);
     fehler.forEach(f => console.error("  " + f));
     process.exit(1);
 }
-console.log(`✅ Prüfung: ${kerne.size} Dateien ohne Befund (Syntax, doppelte Methoden, globale Namen, Service Worker)`);
+console.log(`✅ Prüfung: ${kerne.size} Skripte und ${stile.length} Stylesheets ohne Befund (Syntax, doppelte Methoden, globale Namen, Service Worker, CSS-Klammern)`);

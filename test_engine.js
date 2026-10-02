@@ -8591,6 +8591,96 @@ function runEngineTests() {
         });
     });
 
+    test("Welt: Ein Absteiger verliert, wer für die neue Liga zu gut ist - bis er nicht stärker ist als die Aufsteiger", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const mittel = a => a.reduce((x, y) => x + y, 0) / a.length;
+        const niveau = c => ContractEngine.vereinsNiveau(c, new Map(state.players.map(p => [p.id, p])));
+        const liga = id => state.leagues.find(l => l.id === id);
+        const erste = state.clubs.filter(c => c.leagueId === "de_liga_1" && c.id !== state.userClubId).sort((a, b) => niveau(b) - niveau(a));
+        const zweite = state.clubs.filter(c => c.leagueId === "de_liga_2").sort((a, b) => niveau(b) - niveau(a));
+        const starkAb = erste[3], schwachAb = erste[erste.length - 1];
+        const normalAuf = zweite[0], starkAuf = zweite[1];
+        // Ein Aufsteiger, zu dem die Stars passen und der stärker ist als jeder
+        // andere passende Käufer: Bekommt er sie, dann wegen seines Vorrangs
+        state.players.filter(p => starkAuf.playerIds.includes(p.id)).forEach(p => { p.overall = Math.min(99, (p.overall || 0) + 14); });
+        starkAuf.balance = Math.max(starkAuf.balance || 0, 5e8);
+
+        [starkAb, schwachAb].forEach(c => CompetitionEngine.moveClubToLeague(c, liga("de_liga_2")));
+        [normalAuf, starkAuf].forEach(c => CompetitionEngine.moveClubToLeague(c, liga("de_liga_1")));
+        const vorher = { n: niveau(starkAb), kader: starkAb.playerIds.length, kasse: starkAb.balance };
+        const grenze = mittel(state.clubs.filter(c => c.leagueId === "de_liga_2" && c !== starkAb && c !== schwachAb).map(niveau)) + SeasonEngine.ABSTIEG.ueberNiveau;
+        if (!(vorher.n > niveau(normalAuf))) throw new Error("Aufbau: Der starke Absteiger ist nicht stärker als der Aufsteiger");
+
+        // Zufall 0: Jeder, der zu gut ist, zieht seine Klausel, und der erste
+        // passende Käufer greift zu. Maßstab ist der Aufsteiger aus der Zweiten Liga.
+        const r = SeasonEngine.abstiegsfolgen(state, {
+            relegated: [{ clubId: starkAb.id, fromLeague: "de_liga_1", toLeague: "de_liga_2" }],
+            promoted: [{ clubId: normalAuf.id, fromLeague: "de_liga_2", toLeague: "de_liga_1" }, { clubId: starkAuf.id, fromLeague: "de_liga_3", toLeague: "de_liga_1" }]
+        }, () => 0);
+
+        if (r.wechsel.length < 1 || r.wechsel.length > SeasonEngine.ABSTIEG.hoechstens) throw new Error(`${r.wechsel.length} Abgänge beim starken Absteiger`);
+        r.wechsel.forEach(w => {
+            const p = state.players.find(x => x.id === w.playerId);
+            const neu = state.clubs.find(c => c.id === p.clubId);
+            if (!(p.overall > grenze)) throw new Error(`${p.name} (${p.overall}) war nicht zu gut für die Zweite Liga (Grenze ${grenze.toFixed(1)})`);
+            if (!neu || neu.level !== 1 || neu.id === state.userClubId) throw new Error(`${p.name} landet nicht bei einem KI-Verein einer ersten Liga`);
+            if (!(w.abloese > 0)) throw new Error("Ohne Ablöse gewechselt");
+        });
+        if (r.wechsel[0].nach !== starkAuf.id) throw new Error("Der passende Aufsteiger hat keinen Vorrang");
+        if (!(starkAb.balance > vorher.kasse)) throw new Error("Die Ablösen kommen beim Absteiger nicht an");
+        if (starkAb.playerIds.length < Math.min(vorher.kader, WorldGenerator.SQUAD_SIZES[2])) throw new Error(`Kader nicht aufgefüllt: ${starkAb.playerIds.length}`);
+        if (!(niveau(starkAb) < vorher.n)) throw new Error("Der Absteiger ist danach nicht schwächer");
+
+        // Wer schon nicht stärker ist als die Aufsteiger, gibt niemanden ab
+        const schwachVorher = schwachAb.playerIds.slice();
+        if (!(niveau(schwachAb) <= niveau(starkAuf))) throw new Error("Aufbau: Der schwache Absteiger ist stärker als der Aufsteiger");
+        const r3 = SeasonEngine.abstiegsfolgen(state, {
+            relegated: [{ clubId: schwachAb.id, fromLeague: "de_liga_1", toLeague: "de_liga_2" }],
+            promoted: [{ clubId: starkAuf.id, fromLeague: "de_liga_2", toLeague: "de_liga_1" }]
+        }, () => 0);
+        if (r3.wechsel.length || schwachAb.playerIds.join() !== schwachVorher.join()) {
+            throw new Error("Ein Absteiger, der nicht stärker ist als die Aufsteiger, verliert trotzdem Spieler");
+        }
+
+        // Der eigene Verein: Niemand geht ungefragt, die zu Guten wollen weg
+        const eigener = state.clubs.find(c => c.id === state.userClubId);
+        const kaderVorher = eigener.playerIds.slice();
+        CompetitionEngine.moveClubToLeague(eigener, liga("de_liga_2"));
+        const r2 = SeasonEngine.abstiegsfolgen(state, { relegated: [{ clubId: eigener.id, fromLeague: "de_liga_1", toLeague: "de_liga_2" }], promoted: [] }, () => 0);
+        if (r2.wechsel.length || eigener.playerIds.join() !== kaderVorher.join()) throw new Error("Beim eigenen Verein gehen Spieler ungefragt");
+        if (r2.wuensche.length < 1 || r2.wuensche.length > SeasonEngine.ABSTIEG.hoechstens) throw new Error(`${r2.wuensche.length} Wechselwünsche`);
+        r2.wuensche.forEach(id => {
+            const p = state.players.find(x => x.id === id);
+            if (!p.wechselwunsch || !state.inbox.some(m => m.subject === `${p.name} möchte wechseln`)) throw new Error(`${p.name}: kein Wechselwunsch im Postfach`);
+        });
+    });
+
+    test("Welt: Karriereende ab 31 (Amateure ab 30), gemessen am eigenen Kader", () => {
+        const c = (alter, staerke, niveau, stufe) => SeasonEngine.karriereendeChance({ age: alter, overall: staerke }, niveau, stufe);
+        // Vorher begann es erst mit 32 - vor 31 verließ kaum jemand die Welt
+        if (c(30, 78, 79, 1) !== 0) throw new Error("Ein Dreißigjähriger in der Bundesliga hört schon auf");
+        if (!(c(31, 78, 79, 1) > 0)) throw new Error("Mit 31 hört in der Bundesliga niemand auf");
+        if (!(c(30, 40, 41, 5) > 0)) throw new Error("In der Oberliga hört mit 30 niemand auf");
+        if (c(38, 99, 79, 1) !== 1) throw new Error("Mit 38 spielt noch jemand");
+        // Die Stärke zählt am eigenen Kader: in der Bundesliga wie in der Landesliga
+        [[1, 79], [7, 22]].forEach(([stufe, niveau]) => {
+            const traeger = c(33, niveau + 5, niveau, stufe), normal = c(33, niveau, niveau, stufe), ergaenzung = c(33, niveau - 12, niveau, stufe);
+            if (!(traeger < normal && normal < ergaenzung)) throw new Error(`Stufe ${stufe}: Träger ${traeger}, normal ${normal}, Ergänzung ${ergaenzung}`);
+        });
+        // Mit jedem Jahr wahrscheinlicher
+        for (let a = 31; a < 37; a++) if (!(c(a + 1, 78, 79, 1) > c(a, 78, 79, 1))) throw new Error(`Mit ${a + 1} nicht wahrscheinlicher als mit ${a}`);
+
+        // In einer echten Welt: Wer mit Verein aufhört, ist mindestens 30
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const mitVerein = new Set(state.players.filter(p => p.clubId).map(p => p.id));
+        const vorher = new Map(state.players.map(p => [p.id, p]));
+        SeasonEngine.processRetirements(state);
+        const weg = [...vorher.values()].filter(p => mitVerein.has(p.id) && !state.players.includes(p));
+        if (!weg.length) throw new Error("Niemand hört auf");
+        const zuJung = weg.filter(p => p.age < 30);
+        if (zuJung.length) throw new Error(`${zuJung.length} Spieler unter 30 hören auf`);
+    });
+
     test("Welt: KI-Vereine messen Verträge und Vereinslose am eigenen Kader", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const niveau = ContractEngine.niveauKarte(state);

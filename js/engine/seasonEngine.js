@@ -649,6 +649,10 @@ class SeasonEngine {
             }
         });
 
+        // Der Verband zieht Bilanz, falls der Manager eine Nation betreut
+        const national = _resolve('NationalTeamEngine', './nationalTeamEngine.js');
+        if (national && typeof national.saisonBilanz === 'function') national.saisonBilanz(state);
+
         // Spieler altern um 1 Jahr
         state.players.forEach(player => {
             player.age += 1;
@@ -961,6 +965,11 @@ class SeasonEngine {
         // Tabellen neu entstehen
         SeasonEngine.processRetirements(state);
         SeasonEngine.processContractExpiries(state);
+
+        // Neue Saison, neue freie Posten bei den Nationalmannschaften - wer
+        // genug Ruf hat, bekommt vielleicht ein Angebot
+        const nationalEngine = _resolve('NationalTeamEngine', './nationalTeamEngine.js');
+        if (nationalEngine && typeof nationalEngine.pruefeAngebot === 'function') nationalEngine.pruefeAngebot(state);
 
         // Wer sich zum Star entwickelt hat, bekommt seine Signatur - die
         // Anteile je Liga werden neu aufgefüllt, bestehende bleiben

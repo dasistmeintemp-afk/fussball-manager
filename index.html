@@ -193,6 +193,11 @@
                         <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-dumbbell"/></svg></span>
                         <span class="nav-text">Training</span>
                     </button>
+                    <button class="nav-item" data-tab="national">
+                        <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg></span>
+                        <span class="nav-text">Nationalteam</span>
+                        <span class="badge" id="navNationalBadge" style="display:none;">1</span>
+                    </button>
                     <button class="nav-item" data-tab="finances">
                         <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-wallet"/></svg></span>
                         <span class="nav-text">Finanzen</span>
@@ -1332,6 +1337,14 @@
                     </div>
                 </section>
 
+                <!-- Tab: Nationalteam (js/ui/uiNational.js) -->
+                <section class="tab-pane" id="pane-national">
+                    <div class="pane-header">
+                        <h2>Nationalteam</h2>
+                    </div>
+                    <div id="nationalInhalt"></div>
+                </section>
+
                 <!-- Tab: Settings (Spielstand & Optionen) -->
                 <section class="tab-pane" id="pane-settings">
                     <div class="pane-header">
@@ -2040,6 +2053,11 @@
                         <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-dumbbell"/></svg></span>
                         <span class="drawer-text">Training</span>
                     </button>
+                    <button class="mobile-drawer-item" data-tab="national">
+                        <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg></span>
+                        <span class="drawer-text">Nationalteam</span>
+                        <span class="badge" id="mobileNationalBadge" style="display:none;">1</span>
+                    </button>
                     <button class="mobile-drawer-item" data-tab="finances">
                         <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-wallet"/></svg></span>
                         <span class="drawer-text">Finanzen</span>
@@ -2153,6 +2171,7 @@
     <script src="js/ui/uiSpielbericht.js"></script>
     <script src="js/ui/uiSpeicher.js"></script>
     <script src="js/ui/uiEinstieg.js"></script>
+    <script src="js/ui/uiNational.js"></script>
     <script src="js/ui/spielfeld3d.js"></script>
     <script src="js/app.js"></script>
 </body>

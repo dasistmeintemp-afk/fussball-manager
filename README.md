@@ -467,6 +467,11 @@ Eine komplette Welt mit über 4300 Spielern belegt als gewöhnliches JSON knapp 
 ### 10. 🌍 Länderspiele, Kabine, Verträge, Wetter, Trainerprofil und U23
 
 - **Nationalmannschaften und Länderspielpausen (`NationalTeamEngine`):** Viermal im Jahr ruht die Liga. Jede Nation mit genug Spielern im Spiel nominiert ihren Kader (3 Torhüter, 8 Abwehr, 7 Mittelfeld, 5 Sturm), die Nationalspieler reisen ab, bestreiten zwei Länderspiele und kehren müde zurück – manchmal verletzt. Länderspiele und Tore stehen in der Spielerakte.
+- **Nationaltrainer werden (Reiter *Nationalteam*):** Neben dem Verein lässt sich eine Nationalmannschaft übernehmen.
+  - Jede Saison wird rund ein Viertel der Posten frei. Der Verband verlangt einen Ruf nach Weltrang: 82 für die besten drei, 72 bis Rang 8, 62 bis Rang 14, sonst 52; für die eigene Nationalität 6 weniger. Wer genug Ruf hat, bewirbt sich oder bekommt zum Saisonstart ein Angebot.
+  - Vor jeder Länderspielpause bestimmt der Nationaltrainer 23 Spieler (vorgeschlagen sind die Besten je Mannschaftsteil) und die Ausrichtung: defensiv weniger Tore auf beiden Seiten, offensiv mehr. Fällt ein Gewählter aus, rückt der Beste seines Mannschaftsteils nach – aber keiner, den der Trainer aus dem Vorschlag gestrichen hat, solange es einen anderen gibt. Der Verband sagt mit Namen Bescheid.
+  - Der Verband misst jedes Spiel an den Punkten, die nach Stärke zu erwarten waren. Liegt sein Vertrauen zum Saisonende unter 25 %, ist der Posten weg – der Verein bleibt davon unberührt. Mit Rückhalt steigt der Ruf als Trainer (+4 bei einer Nation unter den besten acht, sonst +2).
+  - Beim Prüfen gefunden: Bei ungerader Zahl von Nationen bekam die letzte in der zweiten Runde einer Pause zwei Spiele am selben Tag. Jetzt setzt dann eine aus. Und im Browser-Rundgang holte die Nachnominierung genau den Star zurück, den der Trainer gestrichen hatte – sie nahm schlicht den Besten.
 - **Kabinenhierarchie (`DressingRoomEngine`):** Führungsspieler, Neuzugänge und Grüppchen nach Sprache, jede Gruppe mit Wortführer und Stimmung. Ein unzufriedener Wortführer färbt auf seine Gruppe ab, ein unzufriedener Kapitän auf alle. Den Kapitän bestimmt der Trainer; wer einen Führungsspieler verkauft, hat ein paar Tage Unruhe.
 - **Verträge:** Neben Gehalt und Laufzeit gehören Beraterhonorar, Einsatz- und Torprämien dazu. Prämien schonen das feste Gehalt und werden nach jedem Spiel ausgezahlt. Leihen können eine **Kaufoption** haben; KI-Vereine ziehen sie, wenn der Spieler gespielt hat und das Geld reicht.
 - **Wetter und Platz (`WetterEngine`):** Jede Partie bekommt Wetter nach Jahreszeit und einen Rasen nach Ligastufe. Nasser Rasen macht Fernschüsse tückisch, tiefer Boden kostet Kraft und Genauigkeit, Wind verweht lange Bälle, Hitze zehrt an der Ausdauer. Vorschau, Livespiel und Spielbericht zeigen es an.
@@ -529,7 +534,7 @@ untitled/
 │   │   ├── developmentPlanEngine.js # Schwerpunkt, Umschulung, Mentor, Spielpraxis
 │   │   ├── loanEngine.js       # Verleihen, Leihmarkt, Gehaltsanteile, Kaufoption, Rückkehr
 │   │   ├── reserveEngine.js    # Zweite Mannschaft (U23): Spielpraxis, Bilanz, Regeln
-│   │   ├── nationalTeamEngine.js # Nationalmannschaften, Nominierungen, Länderspielpausen
+│   │   ├── nationalTeamEngine.js # Nationalmannschaften, Nominierungen, Länderspielpausen, Nationaltrainer
 │   │   ├── dressingRoomEngine.js # Kabine: Moral, Hierarchie, Grüppchen, Kapitän
 │   │   ├── wetterEngine.js     # Wetter und Platzverhältnisse je Partie
 │   │   ├── trainerProfilEngine.js # Trainerwerte, Lizenzen, Lehrgänge, Ruf
@@ -553,6 +558,7 @@ untitled/
 │   │   ├── uiSpielbericht.js   # Spielbericht mit Schusskarte, Heatmaps und Passnetz
 │   │   ├── uiSpeicher.js       # Speicherplätze, Sicherungen, Laden, Löschen, Import
 │   │   ├── uiEinstieg.js       # Erste Schritte, Erklärkästen, Kurzanleitung und Begriffe
+│   │   ├── uiNational.js       # Reiter Nationalteam: freie Posten, Kader, Ausrichtung, Ergebnisse
 │   │   └── spielfeld3d.js      # 3D-Ansicht des Livespiels (three.js, nachgeladen): Stadion, Figuren, Bewegungen, Wiederholung, Qualitätsstufen
 │   └── vendor/
 │       └── three.min.js        # three.js r159 (MIT-Lizenz, THREE_LICENSE daneben)

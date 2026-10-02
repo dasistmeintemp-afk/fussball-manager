@@ -562,7 +562,7 @@ untitled/
 │   │   └── spielfeld3d.js      # 3D-Ansicht des Livespiels (three.js, nachgeladen): Stadion, Figuren, Bewegungen, Wiederholung, Qualitätsstufen
 │   └── vendor/
 │       └── three.min.js        # three.js r159 (MIT-Lizenz, THREE_LICENSE daneben)
-├── pruefung.js                 # Statische Prüfung: Syntax, doppelte Methoden, globale Namen, Offline-Vorrat
+├── pruefung.js                 # Statische Prüfung: Syntax, doppelte Methoden, globale Namen, Offline-Vorrat, CSS-Klammern
 ├── test_filter.js              # Gemeinsame Testhilfen: Filter, Laufzeiten, schneller Lauf, feste Zufallswerte
 ├── test_runner.js              # Zentraler Runner für alle Testsuiten
 ├── test_data.js                # Datenintegrität & Strukturprüfungen
@@ -675,7 +675,7 @@ node pruefung.js                              # nur die statische Prüfung
 
 **Automatisch bei GitHub (`.github/workflows/tests.yml`):** Bei jedem Pull Request und jedem Push auf `master` laufen die statische Prüfung und die volle Suite, aufgeteilt auf vier parallele Läufe (`TEST_TEIL=1/4` bis `4/4`). Die schweren Tests sind nach ihrer gemessenen Dauer verteilt (`DAUER` in `test_filter.js`), damit kein Teil viel länger braucht als die anderen. Ein roter Haken am Pull Request heißt: nicht mergen. Über **Actions → Tests → Run workflow** lässt sich die Suite von Hand mit einem anderen Startwert starten, etwa `7` oder `zufall`.
 
-Jeder Test bekommt feste Zufallswerte aus seinem Namen – er liefert allein dasselbe Ergebnis wie in der ganzen Suite. Vor jeder Suite läuft `pruefung.js`: Syntax aller Dateien, doppelte Methoden (auch über die ausgelagerten UI-Teile hinweg), doppelte globale Namen und ob jede Datei geladen und offline vorrätig ist.
+Jeder Test bekommt feste Zufallswerte aus seinem Namen – er liefert allein dasselbe Ergebnis wie in der ganzen Suite. Vor jeder Suite läuft `pruefung.js`: Syntax aller Dateien, doppelte Methoden (auch über die ausgelagerten UI-Teile hinweg), doppelte globale Namen, ob jede Datei geladen und offline vorrätig ist, und ob in den Stylesheets jede geschweifte Klammer geschlossen wird. Ein vergessenes `}` hinter einem `@media`-Block meldet kein Browser – alles danach gilt dann still nur noch auf schmalen Bildschirmen. So geschehen beim Zusammenführen zweier Zweige; aufgefallen war es nur zufällig.
 
 Oder führe die individuellen Test-Suiten aus:
 ```bash

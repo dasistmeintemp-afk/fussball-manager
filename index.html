@@ -232,6 +232,7 @@
             <main class="content-area" id="contentArea">
                 <!-- Tab: Dashboard -->
                 <section class="tab-pane active" id="pane-dashboard">
+                    <div id="dashEinstieg" style="display:none;"></div>
                     <div class="dashboard-grid">
                         <!-- Next Match Card -->
                         <div class="dash-card next-match-card" id="dashNextCard">
@@ -1374,6 +1375,12 @@
                             <button class="btn btn-secondary" id="btnToggleSound"><svg class="ico" aria-hidden="true"><use href="#i-volume"/></svg><span>Sound: Aktiviert</span></button>
                         </div>
 
+                        <div class="dash-card">
+                            <h3>Erklärungen</h3>
+                            <p>Für den Einstieg: erste Schritte auf der Übersicht, ein Erklärkasten in jedem Bereich, Kurzanleitung und Begriffe.</p>
+                            <div id="settingsEinstieg"></div>
+                        </div>
+
                         <div class="dash-card einstellungen-live">
                             <h3>Livespiel</h3>
                             <p>Gilt für jede Partie und lässt sich auch während des Spiels an der Seitenlinie ändern.</p>
@@ -1399,7 +1406,7 @@
                         <svg class="logo-mark" aria-hidden="true"><use href="#logo-mark"/></svg>
                         <span class="start-brand-name">Fußballmanager <span class="start-pro-tag">Pro</span></span>
                     </div>
-                    <button class="start-link" id="btnStartAbout" type="button"><svg class="ico" aria-hidden="true"><use href="#i-info"/></svg><span>Über das Spiel</span></button>
+                    <button class="start-link" id="btnStartAbout" type="button"><svg class="ico" aria-hidden="true"><use href="#i-info"/></svg><span>Kurzanleitung</span></button>
                 </header>
 
                 <div class="start-screen-grid">
@@ -1452,23 +1459,15 @@
             </div>
         </div>
 
-        <!-- Modal: About / Über das Spiel -->
+        <!-- Modal: Kurzanleitung und Begriffe -->
         <div class="modal-overlay" id="modalAboutGame" style="display: none;">
             <div class="modal-box modal-md">
                 <div class="modal-header">
-                    <h2>Über Fußballmanager Pro</h2>
+                    <h2>Kurzanleitung</h2>
                     <button class="modal-close" id="btnCloseAboutModal">×</button>
                 </div>
-                <div class="modal-body">
-                    <p><strong>Fußballmanager Pro</strong> ist ein leichtgewichtiger, vollständiger Fußballmanager für den Browser – komplett ohne Serverzwang spielbar.</p>
-                    <ul class="about-feature-list">
-                        <li>⚽ <strong>18 detaillierte Bundesliga-Vereine</strong> mit echten Kadern, Stadien und Finanzen</li>
-                        <li>🕹️ <strong>2D-Echtzeit-Spielfeld</strong> mit Live-Ticker, In-Game-Taktiken und dynamischen Auswechslungen</li>
-                        <li>📈 <strong>Taktik & Aufstellung:</strong> 7 Formationen, Standard-Schützen, individuelle Rollen</li>
-                        <li>🔄 <strong>Transfersystem & Verhandlungen:</strong> Ablösen, Gehälter, Spielerverträge & Postfach-Angebote</li>
-                        <li>🏋️ <strong>Wöchentliches Training & Lazarett:</strong> Verletzungen, Sperren, Talentförderung</li>
-                        <li>💾 <strong>100% Offline-Savegame & JSON-Export/Import:</strong> Spielstände mit Freunden teilen</li>
-                    </ul>
+                <div class="modal-body anleitung" id="aboutBody">
+                    <!-- Kurzanleitung und Begriffe: js/ui/uiEinstieg.js -->
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-secondary" id="btnDismissAbout">Schließen</button>
@@ -1561,6 +1560,12 @@
                                             <option value="ausbilder">Ausbilder - Talente entwickeln sich schneller</option>
                                             <option value="sportdirektor">Kaderplaner - ein gutes Auge für Spieler</option>
                                         </select>
+                                    </div>
+                                    <div class="form-col form-col-wide">
+                                        <label class="wizard-check">
+                                            <input type="checkbox" id="inputErklaerungen" checked>
+                                            <span><strong>Mit Erklärungen starten</strong> – erste Schritte auf der Übersicht und ein kurzer Kasten in jedem Bereich. Später in den Einstellungen abschaltbar.</span>
+                                        </label>
                                     </div>
                                 </div>
 
@@ -2147,6 +2152,7 @@
     <script src="js/ui/uiLivespiel.js"></script>
     <script src="js/ui/uiSpielbericht.js"></script>
     <script src="js/ui/uiSpeicher.js"></script>
+    <script src="js/ui/uiEinstieg.js"></script>
     <script src="js/ui/spielfeld3d.js"></script>
     <script src="js/app.js"></script>
 </body>

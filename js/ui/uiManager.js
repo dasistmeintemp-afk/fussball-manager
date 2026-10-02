@@ -272,9 +272,7 @@ class UIManager {
             e.target.value = "";
         });
 
-        document.getElementById("btnStartAbout")?.addEventListener("click", () => {
-            document.getElementById("modalAboutGame").style.display = "flex";
-        });
+        document.getElementById("btnStartAbout")?.addEventListener("click", () => this.zeigeKurzanleitung());
 
         document.getElementById("btnCloseAboutModal")?.addEventListener("click", () => {
             document.getElementById("modalAboutGame").style.display = "none";
@@ -306,6 +304,10 @@ class UIManager {
         this.wizardSelectedLeagueId = this.wizardSelectedLeagueId || "de_liga_1";
         this.resetWizardClubFilters();
         this.waehleSchwierigkeit(document.getElementById("selectDifficulty")?.value || "normal");
+        // Erklärungen für den ersten Einstieg: an, solange es keine andere
+        // Karriere gibt - wer schon eine hat, kennt das Spiel meist
+        const erkl = document.getElementById("inputErklaerungen");
+        if (erkl) erkl.checked = GameState.speicherplaetze().every(p => !p.zusammenfassung);
         this.renderWizardStep();
     }
 
@@ -1065,13 +1067,15 @@ class UIManager {
             const difficulty = document.getElementById("selectDifficulty")?.value || "normal";
 
             const trainerTyp = document.getElementById("inputTrainerTyp")?.value || "allrounder";
+            const erklaerungen = document.getElementById("inputErklaerungen")?.checked !== false;
             const platz = this.zielPlatzNeueKarriere || GameState.freierPlatz() || GameState.aeltesterPlatz();
             this.beziehePlatz(platz);
             const result = this.app.startNewGame(this.wizardSelectedClubId, difficulty, {
                 name: managerName,
                 nationality: managerNationality,
                 birthdate: managerBirthdate,
-                trainerTyp
+                trainerTyp,
+                erklaerungen
             });
 
             if (!result || result.success === false || !this.app.state || !this.app.state.userClubId) {
@@ -1369,6 +1373,8 @@ class UIManager {
         }
 
         this.activeTab = tabId;
+        // Erste Schritte: Wer einen Bereich besucht hat, hat den Schritt getan
+        this.einstiegMerkeTab(tabId);
         document.querySelectorAll(".nav-item").forEach(b => {
             b.classList.toggle("active", b.dataset.tab === tabId);
         });
@@ -1431,6 +1437,8 @@ class UIManager {
                 this.renderSettings();
                 break;
         }
+        // Beim ersten Besuch erklärt sich der Bereich selbst
+        this.zeigeEinstiegErklaerung(this.activeTab);
     }
 
     /**
@@ -1438,6 +1446,7 @@ class UIManager {
      * Partie im Co-Trainer-Reiter zu finden waren.
      */
     renderSettings() {
+        this.renderEinstiegEinstellungen();
         const el = document.getElementById("settingsLiveBody");
         if (!el || !this.app.state) return;
         const e = this.liveEinstellungen();
@@ -1976,6 +1985,9 @@ class UIManager {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
+
+        // 0. Erste Schritte einer neuen Karriere
+        this.renderEinstiegKarte();
 
         // 1. Was als Nächstes ansteht - und ob heute gespielt wird
         this.renderNextUpCard(state, userClub);
@@ -7238,6 +7250,6 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = { UIManager };
     // Die ausgelagerten Teile hängen sich an die Klasse - im Browser lädt sie
     // index.html der Reihe nach, unter Node holen wir sie hier dazu
-    ["./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiLivespiel.js", "./uiSpielbericht.js", "./uiSpeicher.js"]
+    ["./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiLivespiel.js", "./uiSpielbericht.js", "./uiSpeicher.js", "./uiEinstieg.js"]
         .forEach(teil => require(teil));
 }

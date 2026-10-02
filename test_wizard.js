@@ -977,6 +977,62 @@ function runWizardTests() {
         }
     });
 
+    test("Einstieg: Erste Schritte erledigen sich durch Tun, jeder Bereich erklärt sich, Begriffe und Abwahl", () => {
+        const { EINSTIEG_SCHRITTE, EINSTIEG_ERKLAERUNGEN, EINSTIEG_BEGRIFFE } = require('./js/ui/uiEinstieg.js');
+        const { SaveCodec } = require('./js/services/saveCodec.js');
+
+        // Abwählbar im Assistenten
+        const ohne = GameState.createNewGame("muc", "normal", { name: "Profi", erklaerungen: false });
+        if (ohne.einstieg) throw new Error("Abgewählt und trotzdem Erklärungen");
+        const state = GameState.createNewGame("muc", "normal", { name: "Neuling" });
+        if (!state.einstieg || state.einstieg.startTag !== (state.currentDayIndex || 0)) throw new Error("Neue Karriere ohne Einstieg");
+
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        const offen = () => ui.einstiegSchritte().filter(s => !s.erledigt).map(s => s.id);
+        const alle = ui.einstiegSchritte().map(s => s.id);
+        // Die Vorbereitung zählt nur, solange sie läuft
+        if (state.preseason?.aktiv !== alle.includes("vorbereitung")) throw new Error("Vorbereitungsschritt passt nicht zur Vorbereitung");
+        if (offen().length !== alle.length) throw new Error("Zu Beginn ist schon etwas erledigt");
+
+        // Besuchte Bereiche sind erledigt, Abhaken gibt es nicht
+        ["squad", "tactics", "training", "transfers", "preseason"].forEach(tab => ui.einstiegMerkeTab(tab));
+        if (offen().join(",") !== "tag,spiel") throw new Error("Offen nach dem Rundgang: " + offen().join(","));
+        state.currentDayIndex = (state.currentDayIndex || 0) + 1;
+        if (offen().join(",") !== "spiel") throw new Error("Der erste Tag zählt nicht");
+        const eigenes = state.schedule.flatMap(r => r.matches).find(m => m.homeClubId === state.userClubId || m.awayClubId === state.userClubId);
+        eigenes.played = true;
+        if (offen().length !== 0) throw new Error("Das erste Pflichtspiel zählt nicht");
+
+        // Jeder Bereich der Navigation hat seine Erklärung, jeder Schritt einen echten Bereich
+        const html = fs.readFileSync('./index.html', 'utf8');
+        const reiter = [...new Set([...html.matchAll(/class="nav-item[^"]*" data-tab="([a-z]+)"/g)].map(m => m[1]))];
+        const ohneErklaerung = reiter.filter(t => t !== "settings" && !EINSTIEG_ERKLAERUNGEN[t]);
+        if (ohneErklaerung.length) throw new Error("Ohne Erklärung: " + ohneErklaerung.join(", "));
+        EINSTIEG_SCHRITTE.filter(s => s.tab).forEach(s => {
+            if (!html.includes(`id="pane-${s.tab}"`)) throw new Error(`Schritt ${s.id} führt ins Leere`);
+        });
+        Object.values(EINSTIEG_ERKLAERUNGEN).forEach(e => {
+            if (!e.titel || !e.punkte.length || e.punkte.some(p => p.length > 220)) throw new Error(`Erklärung „${e.titel}“ leer oder zu lang`);
+        });
+        if (EINSTIEG_BEGRIFFE.length < 10 || EINSTIEG_BEGRIFFE.some(([w, t]) => !w || !t)) throw new Error("Begriffe fehlen");
+        ["dashEinstieg", "settingsEinstieg", "inputErklaerungen", "aboutBody"].forEach(id => {
+            if (!html.includes(`id="${id}"`)) throw new Error(`#${id} fehlt in index.html`);
+        });
+        if (/18 detaillierte Bundesliga-Vereine|7 Formationen/.test(html)) throw new Error("Die alte, falsche Spielbeschreibung steht noch drin");
+
+        // Der Stand reist mit dem Spielstand
+        state.einstieg.gesehen = { squad: true };
+        state.einstieg.karteAus = true;
+        const zurueck = SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(state))));
+        if (JSON.stringify(zurueck.einstieg) !== JSON.stringify(state.einstieg)) throw new Error("Der Einstieg überlebt das Speichern nicht");
+
+        // Ältere Spielstände: kein Einstieg, nichts wird gezeigt
+        ui.app = { state: Object.assign({}, state, { einstieg: undefined }) };
+        if (ui.einstiegSchritte().length !== 0) throw new Error("Ein alter Spielstand bekommt ungefragt erste Schritte");
+        ui.einstiegMerkeTab("squad");
+    });
+
     console.log(`\n  Ergebnis Wizard-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Wizard-Tests fehlgeschlagen.`);
     return { passed, failed };

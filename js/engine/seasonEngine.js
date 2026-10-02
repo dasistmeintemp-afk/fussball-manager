@@ -62,6 +62,127 @@ class SeasonEngine {
         return wichtig ? 0.88 : 0.45;
     }
 
+    /**
+     * Was ein Abstieg kostet. Bisher nahm ein Absteiger seinen ganzen Kader
+     * mit: Bundesliga-Absteiger lagen danach im Schnitt 2,1 Punkte über den
+     * Aufsteigern, die ihren Platz einnahmen (Schnitt der vierzehn Besten,
+     * vier Startwerte, fünf Saisons) - jeder Tausch hob die Zweite Liga und
+     * nahm der Bundesliga etwas Breite.
+     *
+     * Jetzt kann gehen, wer mehr als ueberNiveau über dem Schnitt der neuen
+     * Liga liegt: mit dieser Wahrscheinlichkeit, höchstens so viele je
+     * Verein, zum Bruchteil der üblichen Ablöse - aber nur, bis der Absteiger
+     * nicht mehr stärker ist als die Aufsteiger. Ohne diese Bremse lagen
+     * Absteiger danach 1,7 (Zweite Liga) und 3,9 Punkte (Dritte Liga) unter
+     * den Aufsteigern, und die Dritte Liga verlor Stärke. Mit ihr: -0,1 und
+     * -1,4.
+     */
+    static ABSTIEG = { ueberNiveau: 3, chance: 0.85, hoechstens: 6, abloese: 0.6 };
+
+    /**
+     * Nach dem Abstieg: Die zu guten Spieler eines KI-Absteigers wechseln in
+     * die Liga, die er verlassen hat, bevorzugt zu den Aufsteigern - zu einem
+     * Verein, zu dessen Kader sie passen (passtZumKader) und der die Ablöse
+     * bezahlen kann. Die Lücke füllen Spieler, die zur neuen Liga passen.
+     * Beim eigenen Verein entscheidet der Nutzer: Die Spieler äußern einen
+     * Wechselwunsch.
+     */
+    static abstiegsfolgen(state, movements, zufall = Math.random) {
+        const ergebnis = { wechsel: [], wuensche: [] };
+        const absteiger = (movements && movements.relegated) || [];
+        const contractEngine = _getContractEngine();
+        const transferEngine = _getTransferEngine();
+        if (!absteiger.length || !contractEngine || !transferEngine) return ergebnis;
+
+        const A = SeasonEngine.ABSTIEG;
+        const spielerNach = new Map(state.players.map(p => [p.id, p]));
+        const niveauVon = c => contractEngine.vereinsNiveau(c, spielerNach);
+        const absteigerIds = new Set(absteiger.map(m => m.clubId));
+        const aufsteigerIds = new Set(((movements && movements.promoted) || []).map(m => m.clubId));
+        const ligaName = id => { const l = (state.leagues || []).find(x => x.id === id); return l ? (l.shortName || l.name) : "höheren Liga"; };
+        const verkaeufer = new Set();
+        const niveauOhne = (club, ohne) => contractEngine.vereinsNiveau(
+            { playerIds: (club.playerIds || []).filter(id => !ohne.has(id)) }, spielerNach);
+        // Wie stark sind die, die aus der neuen Liga aufsteigen? So weit - und
+        // nicht weiter - gibt ein Absteiger ab. Gemessen vor allen Wechseln.
+        const aufsteigerNiveau = new Map();
+        ((movements && movements.promoted) || []).forEach(m => {
+            const n = niveauVon(state.clubs.find(c => c.id === m.clubId) || {});
+            if (typeof n !== "number") return;
+            const l = aufsteigerNiveau.get(m.fromLeague) || [];
+            l.push(n);
+            aufsteigerNiveau.set(m.fromLeague, l);
+        });
+
+        absteiger.forEach(m => {
+            const club = state.clubs.find(c => c.id === m.clubId);
+            if (!club) return;
+            // Der Maßstab ist die neue Liga ohne die, die gerade von oben kommen
+            const ziel = state.clubs.filter(c => c.leagueId === m.toLeague && !absteigerIds.has(c.id))
+                .map(niveauVon).filter(n => typeof n === "number");
+            if (!ziel.length) return;
+            const grenze = ziel.reduce((a, b) => a + b, 0) / ziel.length + A.ueberNiveau;
+            const vonLiga = (state.leagues || []).find(l => l.id === m.fromLeague);
+            const vonStufe = vonLiga ? (vonLiga.level || 1) : 1;
+            const zuGut = (club.playerIds || []).map(id => spielerNach.get(id))
+                .filter(p => p && !p.leihe && (p.overall || 0) > grenze)
+                .sort((a, b) => (b.overall || 0) - (a.overall || 0))
+                .slice(0, A.hoechstens);
+            // Ist der Absteiger nicht mehr stärker als die Aufsteiger, die seinen
+            // Platz einnehmen, bleibt der Rest
+            const aufsteiger = aufsteigerNiveau.get(m.toLeague);
+            const halt = aufsteiger ? aufsteiger.reduce((a, b) => a + b, 0) / aufsteiger.length : null;
+            const gehen = new Set();
+            const genug = () => halt !== null && niveauOhne(club, gehen) <= halt;
+
+            if (club.id === state.userClubId) {
+                const gespraeche = _resolve('PlayerTalkEngine', './playerTalkEngine.js');
+                zuGut.forEach(p => {
+                    if (genug() || p.wechselwunsch || zufall() >= A.chance || !gespraeche) return;
+                    gespraeche.wechselwunschAeussern(state, p, `Ich will weiter in der ${ligaName(m.fromLeague)} spielen.`);
+                    ergebnis.wuensche.push(p.id);
+                    gehen.add(p.id);
+                });
+                return;
+            }
+
+            zuGut.forEach(p => {
+                if (genug() || zufall() >= A.chance) return;
+                const preis = Math.round(transferEngine.calculateAskingPrice(p, club) * A.abloese);
+                // Infrage kommt jeder KI-Verein der Liga, die der Absteiger
+                // verlässt, oder einer Liga darüber - auch im Ausland
+                const kaeufer = state.clubs
+                    .filter(c => (c.level || 1) <= vonStufe && c.id !== state.userClubId && !absteigerIds.has(c.id))
+                    .map(c => ({ c, n: niveauVon(c) }))
+                    .filter(x => typeof x.n === "number" && SeasonEngine.passtZumKader(p, x.n) && (x.c.balance || 0) >= preis)
+                    // Aufsteiger zuerst, dann die alte Liga, dann wer ihn am dringendsten braucht
+                    .sort((a, b) => (aufsteigerIds.has(b.c.id) - aufsteigerIds.has(a.c.id))
+                        || ((b.c.leagueId === m.fromLeague) - (a.c.leagueId === m.fromLeague))
+                        || (a.n - b.n));
+                const wahl = kaeufer[Math.floor(zufall() * Math.min(3, kaeufer.length))];
+                if (!wahl) return;
+                const lohn = Math.round((p.wage || 10000) * 1.1);
+                const laufzeit = (p.age || 25) <= 24 ? 4 : (p.age || 25) <= 30 ? 3 : 2;
+                if (transferEngine.executeTransfer(state, p.id, wahl.c.id, preis, lohn, laufzeit)) {
+                    ergebnis.wechsel.push({ playerId: p.id, von: club.id, nach: wahl.c.id, abloese: preis });
+                    verkaeufer.add(club.id);
+                    gehen.add(p.id);
+                }
+            });
+        });
+
+        // Die Lücken füllen Spieler, die zur neuen Liga passen - nur bei den
+        // Verkäufern, alle anderen Kader bleiben, wie sie sind
+        const worldGen = _resolve('WorldGenerator', './worldGenerator.js');
+        const playerGen = _resolve('PlayerGenerator', './playerGenerator.js');
+        if (verkaeufer.size && worldGen && typeof worldGen.fillUpExistingSquads === 'function' && playerGen) {
+            worldGen.fillUpExistingSquads(state, worldGen.getLeagues(), playerGen, {
+                sizeFor: (club, voll) => verkaeufer.has(club.id) ? voll : (club.playerIds || []).length
+            });
+        }
+        return ergebnis;
+    }
+
     /** Passt ein Vereinsloser zu einem Kader dieses Niveaus? */
     static passtZumKader(player, niveau) {
         if (typeof niveau !== "number") return true;
@@ -985,6 +1106,8 @@ class SeasonEngine {
         if (competitionEngine && typeof competitionEngine.processSeasonEndPromotionsRelegations === 'function') {
             movements = competitionEngine.processSeasonEndPromotionsRelegations(state);
         }
+        // Wer für die neue Liga zu gut ist, bleibt nicht unbedingt
+        SeasonEngine.abstiegsfolgen(state, movements);
 
         // Europapokal aus den Abschlusstabellen der fünf Topligen neu besetzen
         if (competitionEngine && typeof competitionEngine.generateEuropeanCompetitions === 'function') {

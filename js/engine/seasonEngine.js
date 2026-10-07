@@ -1055,6 +1055,9 @@ class SeasonEngine {
     static processContractExpiries(state) {
         const abgaenge = [];
         const eigeneAbgaenge = [];
+        // Wer gerade wo ausgelaufen ist - dorthin kehrt er nicht als
+        // Vereinsloser zurück
+        const verlassen = new Map();
 
         // Jeder Verein misst an seinem eigenen Kader, wen er hält und wen er
         // holt (ContractEngine.vereinsNiveau) - gemessen vor den Abgängen
@@ -1107,6 +1110,7 @@ class SeasonEngine {
             player.clubId = null;
             player.contractYears = 0;
             player.vereinslosAb = state.seasonYear;
+            verlassen.set(player.id, club.id);
 
             abgaenge.push(player);
             if (istNutzerverein) eigeneAbgaenge.push(player.name);
@@ -1174,7 +1178,7 @@ class SeasonEngine {
             // Was der Markt nicht hergibt, kommt aus dem Nachwuchs.
             const n = niveau.get(club.id);
             const greifen = (filter) => {
-                const idx = frei.findIndex(p => filter(p) && SeasonEngine.passtZumKader(p, n));
+                const idx = frei.findIndex(p => filter(p) && verlassen.get(p.id) !== club.id && SeasonEngine.passtZumKader(p, n));
                 return idx >= 0 ? frei.splice(idx, 1)[0] : null;
             };
 

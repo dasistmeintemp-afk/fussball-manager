@@ -903,6 +903,14 @@ class GameState {
             state.calendar = [];
         }
 
+        // Das Saisonziel misst der Vorstand an Kader, Etat und Ansehen -
+        // vor der Vorbereitung, weil der ehrgeizige Sponsor darauf setzt
+        const boardEngine = GameState._resolveEngine('BoardEngine', './boardEngine.js');
+        const zielUser = state.clubs.find(c => c.id === userClubId);
+        if (boardEngine && typeof boardEngine.bestimmeZiel === 'function' && zielUser) {
+            boardEngine.bestimmeZiel(state, zielUser);
+        }
+
         // Die Vorbereitung beginnt: Trainerstab, Sponsoren, Testspiele. Sie
         // steht vor jeder Saison, nicht nur vor der ersten.
         const preseasonEngine = (typeof PreseasonEngine !== "undefined" && PreseasonEngine)
@@ -966,6 +974,11 @@ class GameState {
             youthEngine.generateProspects(state, userClubId);
         }
 
+        const zielSatz = boardEngine && typeof boardEngine.zielText === 'function'
+            ? boardEngine.zielText(state, userClub)
+            : GameState.getExpectationText(userClub.boardExpectation);
+        const zielGrund = boardEngine && typeof boardEngine.zielBegruendung === 'function'
+            ? boardEngine.zielBegruendung(userClub) : "";
         state.inbox.push({
             id: "msg_welcome",
             matchday: 1,
@@ -973,8 +986,8 @@ class GameState {
             sender: "Vorstand " + userClub.name,
             title: "Herzlich willkommen als neuer Manager!",
             subject: "Herzlich willkommen als neuer Manager!",
-            text: `Herzlich willkommen beim ${userClub.name}, Trainer ${state.managerName}!\n\nDer Vorstand und die Fans setzen großes Vertrauen in Ihre Arbeit. Unser Saisonziel für diese Spielzeit lautet: ${GameState.getExpectationText(userClub.boardExpectation)}.\n\nIhr aktuelles Transferbudget beträgt ${GameState.formatMoney(userClub.transferBudget)}. Wir wünschen Ihnen viel Erfolg für die kommende Saison!`,
-            body: `Herzlich willkommen beim ${userClub.name}, Trainer ${state.managerName}!\n\nDer Vorstand und die Fans setzen großes Vertrauen in Ihre Arbeit. Unser Saisonziel für diese Spielzeit lautet: ${GameState.getExpectationText(userClub.boardExpectation)}.\n\nIhr aktuelles Transferbudget beträgt ${GameState.formatMoney(userClub.transferBudget)}. Wir wünschen Ihnen viel Erfolg für die kommende Saison!`,
+            text: `Herzlich willkommen beim ${userClub.name}, Trainer ${state.managerName}!\n\nDer Vorstand und die Fans setzen großes Vertrauen in Ihre Arbeit. Unser Saisonziel für diese Spielzeit lautet: ${zielSatz}.${zielGrund ? ` ${zielGrund}` : ""}\n\nIhr aktuelles Transferbudget beträgt ${GameState.formatMoney(userClub.transferBudget)}. Wir wünschen Ihnen viel Erfolg für die kommende Saison!`,
+            body: `Herzlich willkommen beim ${userClub.name}, Trainer ${state.managerName}!\n\nDer Vorstand und die Fans setzen großes Vertrauen in Ihre Arbeit. Unser Saisonziel für diese Spielzeit lautet: ${zielSatz}.${zielGrund ? ` ${zielGrund}` : ""}\n\nIhr aktuelles Transferbudget beträgt ${GameState.formatMoney(userClub.transferBudget)}. Wir wünschen Ihnen viel Erfolg für die kommende Saison!`,
             read: false,
             priority: "high",
             type: "welcome"
@@ -1542,8 +1555,11 @@ class GameState {
     static getExpectationText(exp) {
         switch(exp) {
             case "championship": return "Gewinn der Meisterschaft";
+            case "promotion": return "Aufstieg";
             case "top3": return "Qualifikation für die Top 3";
+            case "top6": return "Ein Platz unter den ersten sechs";
             case "midfield": return "Gesichertes oberes Tabellenmittelfeld";
+            case "lower_mid": return "Ein sicherer Platz im Mittelfeld";
             case "avoid_relegation": return "Klassenerhalt";
             default: return "Erfolgreiche Saison";
         }

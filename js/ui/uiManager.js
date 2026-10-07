@@ -869,7 +869,9 @@ class UIManager {
             championship: ["Titel", "ziel-titel"],
             top3: ["Top 3", "ziel-top"],
             promotion: ["Aufstieg", "ziel-top"],
+            top6: ["Top 6", "ziel-top"],
             midfield: ["Mittelfeld", "ziel-mitte"],
+            lower_mid: ["Mittelfeld", "ziel-mitte"],
             avoid_relegation: ["Klassenerhalt", "ziel-unten"]
         };
 
@@ -2107,7 +2109,9 @@ class UIManager {
         this.bindVereinsZeilen(standingsBody);
 
         // 3. Board Confidence, Fan Mood & Media Pressure (D4)
-        document.getElementById("dashBoardGoal").textContent = GameState.getExpectationText(userClub.boardExpectation);
+        document.getElementById("dashBoardGoal").textContent = (typeof BoardEngine !== "undefined" && typeof BoardEngine.zielText === "function")
+            ? BoardEngine.zielText(state, userClub)
+            : GameState.getExpectationText(userClub.boardExpectation);
         document.getElementById("dashBoardFill").style.width = `${state.boardConfidence}%`;
         document.getElementById("dashBoardPct").textContent = `${state.boardConfidence}%`;
 

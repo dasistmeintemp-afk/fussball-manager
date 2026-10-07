@@ -216,12 +216,16 @@ class PreseasonEngine {
             machen("standard", 1.0, 2, null, 0,
                 "Marktüblich, zwei Jahre Laufzeit, keine Bedingungen."),
             machen("ehrgeizig", 1.34, 1,
-                this.zielPlatzFuer(club), 8,
+                this.zielPlatzFuer(club, state), 8,
                 "Zahlt deutlich mehr - knüpft aber eine Prämie an das Saisonziel.")
         ];
     }
 
-    static zielPlatzFuer(club) {
+    static zielPlatzFuer(club, state = null) {
+        // Das Saisonziel des Vorstands, wenn es eines gibt
+        const board = (typeof BoardEngine !== "undefined" && BoardEngine) ? BoardEngine
+            : (typeof require !== "undefined" ? (() => { try { return require("./boardEngine.js").BoardEngine; } catch (e) { return null; } })() : null);
+        if (board && club?.vorstandsziel && typeof board.zielPlatz === "function") return board.zielPlatz(state, club);
         const erwartung = club?.boardExpectation;
         if (erwartung === "championship") return 1;
         if (erwartung === "top3") return 4;

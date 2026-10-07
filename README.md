@@ -408,6 +408,19 @@ Ein Talent in den Profikader zu holen dauert jetzt seine Zeit. *Vertragsgespräc
 - **Finanzierung über die Hausbank:** Reicht die Kasse nicht, zahlt man ein Viertel an und den Rest mit 6 % Zinsen in Raten über die Bauzeit. Die Bank macht nur mit, wenn eine Rate höchstens ein Viertel der Einnahmen je Spieltag ausmacht. Vor jedem Bau zeigt ein Dialog Baukosten, Förderung, Eigenanteil und die Raten.
 - **Kennzahlen auf einen Blick:** Die Vereinsseite beginnt mit einem Kopf aus Wappen, Liga und Kacheln für Tabellenplatz, Ruf, Fans, Stimmung, Teamchemie und Kontostand. Kader und Finanzen haben dieselbe Kennzahlenleiste (Kadergröße und Alter, Marktwert, Gehälter, Fitness, Ausfälle, auslaufende Verträge bzw. Kontostand, Budgets, Gehaltsquote, Sponsor, Heimspiel).
 
+### 6b. 👔 Das Saisonziel des Vorstands (`BoardEngine.bestimmeZiel`)
+Vor jeder Saison – und bei einem Vereinswechsel – misst der Vorstand den Verein an seiner Liga, jeweils als Rang: Stärke des Kaders (60 %), Etat aus Gehalts- und Transferbudget (20 %) und Ansehen (20 %). Daraus ergibt sich, wo der Verein hingehört, plus ein Platz Spielraum. Schlechter als den ersten Nichtabstiegsplatz verlangt er nie; wer klar vorn liegt, soll Meister werden oder – unterhalb der höchsten Liga – aufsteigen. Wer mitten in der Saison übernimmt, bekommt ein Ziel zwischen Kader und Tabelle.
+
+| Beispiel (gemessen) | Kader/Etat/Ansehen | Ziel |
+|---|---|---|
+| Bayern München | 1/1/1 | Meisterschaft |
+| VfL Wolfsburg | 10/7/8 | sicherer Mittelfeldplatz (Platz 10) |
+| VfL Bochum | 14/16/17 | Klassenerhalt (Platz 16) |
+| Hannover 96 (2. Liga) | 1/1/1 | Aufstieg |
+| Karlsruher SC (2. Liga) | 7/6/7 | oberes Mittelfeld (Platz 8) |
+
+Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashboard den Zielplatz. Vertrauen, Ultimatum, Saisonbilanz und der ehrgeizige Sponsor rechnen mit genau diesem Platz. Vorher stand das Ziel einmal fest und änderte sich nur pauschal bei Auf- oder Abstieg; die Platzgrenzen waren fest verdrahtet (Klassenerhalt hieß Platz 10, an anderer Stelle wurde mit allen 218 Vereinen der Welt gerechnet, und „Aufstieg“ kannte die Rechnung gar nicht).
+
 ### 7. 🗓️ Kalender-Tagesablauf, 🔍 Gegneranalyse & 🌟 Scoutingsystem
 - **Spielerbewertungssystem (`PlayerRatingEngine`):** Trennung von echten internen Fähigkeiten (CA/PA 1–200, Hidden Attributes wie Professionalität & Ehrgeiz) und sichtbaren, scoutabhängigen Einschätzungsbereichen.
 - **Relative Sternebewertungen:** Qualitätssterne (0.5 bis 5.0) werden dynamisch relativ zur Stärke des eigenen Kaders berechnet.

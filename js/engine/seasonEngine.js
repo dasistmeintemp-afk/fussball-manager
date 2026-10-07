@@ -668,7 +668,7 @@ class SeasonEngine {
                     state.inbox.unshift({
                         id: Date.now() + 3,
                         matchday: state.currentMatchday,
-                        date: `Spieltag ${state.currentMatchday}`,
+                        date: state.currentDate || `Spieltag ${state.currentMatchday}`,
                         sender: "Medizinische Abteilung",
                         subject: `Fit: ${p.name} kehrt zurück!`,
                         body: `${p.name} hat sich vollständig von seiner Verletzung erholt und steht Ihnen ab sofort wieder für die Startelf zur Verfügung!`,
@@ -684,7 +684,7 @@ class SeasonEngine {
                     state.inbox.unshift({
                         id: Date.now() + 4,
                         matchday: state.currentMatchday,
-                        date: `Spieltag ${state.currentMatchday}`,
+                        date: state.currentDate || `Spieltag ${state.currentMatchday}`,
                         sender: "Sportgericht / Ligaverband",
                         subject: `Sperre abgelaufen: ${p.name}`,
                         body: `Die Sperre für ${p.name} ist abgelaufen. Der Spieler ist für das nächste Spiel wieder spielberechtigt.`,
@@ -715,10 +715,9 @@ class SeasonEngine {
         }
 
         const aiManagerEngine = _getAIManagerEngine();
+        // Angebote für eigene Spieler kommen allein aus
+        // TransferEngine.processAITransferMarket - mit Frist, Grenze und Zahlweise
         if (aiManagerEngine) {
-            if (typeof aiManagerEngine.generateAiTransferOffers === 'function') {
-                aiManagerEngine.generateAiTransferOffers(state);
-            }
             if (typeof aiManagerEngine.updateAllAiClubsBeforeMatchday === 'function') {
                 aiManagerEngine.updateAllAiClubsBeforeMatchday(state);
             }
@@ -766,7 +765,7 @@ class SeasonEngine {
                 state.inbox.unshift({
                     id: Date.now() + 5,
                     matchday: state.currentMatchday,
-                    date: `Spieltag ${state.currentMatchday}`,
+                    date: state.currentDate || `Spieltag ${state.currentMatchday}`,
                     sender: "Co-Trainer",
                     subject: `${derbyKopf}Spieltag ${state.currentMatchday}: Vorbericht gegen ${opponent?.name}`,
                     body: `Am ${state.currentMatchday}. Spieltag treffen wir ${isHome ? "vor heimischer Kulisse" : "auswärts"} auf ${opponent?.name} (Tabellenplatz: ${SeasonEngine.getClubRank(state, opponentId)}).${derbyText}\n\nBereiten Sie die Mannschaft im Taktik- und Aufstellungsmenü optimal auf die Begegnung vor!`,
@@ -815,7 +814,21 @@ class SeasonEngine {
         if (userClub.balance < 0) newConfidence -= 15;
         if (userClub.balance > 25000000) newConfidence += 5;
 
+        // Die Form der letzten drei Spiele
+        const form = (Array.isArray(userClub.form) ? userClub.form : String(userClub.form || "").split("")).slice(-3);
+        if (form.filter(g => g === "W" || g === "S").length >= 2) newConfidence += 3;
+        if (form.filter(g => g === "L" || g === "N").length >= 2) newConfidence -= 4;
+
+        // Was Pressekonferenz, Zielverhandlung und Anfragen bewirkt haben,
+        // wirkt nach und klingt Spieltag für Spieltag ab
+        const stimmung = state.vorstandStimmung || 0;
+        newConfidence += stimmung;
+        state.vorstandStimmung = Math.abs(stimmung) < 0.5 ? 0
+            : Math.round(stimmung * (boardEngine?.STIMMUNG_ABKLINGEN ?? 0.8) * 10) / 10;
+
         state.boardConfidence = Math.min(100, Math.max(10, Math.round(newConfidence)));
+        // Ein Wert für alles: Balken, Text, Ultimatum und Anfragen
+        userClub.confidence = state.boardConfidence;
 
         SeasonEngine.checkJobSecurity(state, userClub, currentRank, targetRank);
     }
@@ -919,7 +932,7 @@ class SeasonEngine {
         state.inbox.unshift({
             id: Date.now() + Math.floor(Math.random() * 1000),
             matchday: state.currentMatchday,
-            date: `Spieltag ${state.currentMatchday}`,
+            date: state.currentDate || `Spieltag ${state.currentMatchday}`,
             sender: "Vorstand",
             subject,
             body,

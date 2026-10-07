@@ -43,6 +43,7 @@ const { NegotiationEngine } = require('./js/engine/negotiationEngine.js');
 const { ManagerEngine } = require('./js/engine/managerEngine.js');
 const { CupEngine } = require('./js/engine/cupEngine.js');
 const { CareerEngine } = require('./js/engine/careerEngine.js');
+const { DevelopmentPlanEngine } = require('./js/engine/developmentPlanEngine.js');
 const { REAL_CLUBS_BY_LEAGUE } = require('./js/data/realClubs.js');
 
 function runEngineTests() {
@@ -10089,6 +10090,53 @@ function runEngineTests() {
         if (fertig.kind !== "completed") throw new Error(`Transfer nicht abgeschlossen: ${fertig.kind}`);
         const r = state.ratenzahlungen.find(x => x.playerId === ziel.id);
         if (!r || r.gesamt !== n.agreed.fee || r.monate !== 12) throw new Error("Kein Ratenplan nach der Verhandlung");
+    });
+
+    test("Ungereimtheiten: ein Vorstandsvertrauen, Angebote mit Frist, Gehalt nach Verkauf, Datum in der Post", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+
+        // Ein Wert: Ereignisse wirken nach und klingen ab, der Verein sieht dasselbe
+        const tabelle = (platz) => {
+            state.standings = state.standings.filter(s => s.clubId !== club.id);
+            state.standings.splice(platz - 1, 0, { clubId: club.id });
+        };
+        club.vorstandsziel.platz = 5; club.balance = 1000000; club.form = [];
+        tabelle(5);
+        SeasonEngine.updateBoardConfidence(state);
+        const basis = state.boardConfidence;
+        BoardEngine.stimmung(state, -10);
+        if (state.boardConfidence !== basis - 10 || club.confidence !== state.boardConfidence) throw new Error("Ereignis wirkt nicht sofort auf beide");
+        // Am nächsten Spieltag gilt sie noch voll, danach klingt sie ab
+        SeasonEngine.updateBoardConfidence(state);
+        if (state.boardConfidence !== basis - 10) throw new Error(`Nachwirkung am nächsten Spieltag: ${state.boardConfidence} (Basis ${basis})`);
+        SeasonEngine.updateBoardConfidence(state);
+        const nachZwei = state.boardConfidence;
+        if (!(nachZwei < basis && nachZwei > basis - 10)) throw new Error(`Nachwirkung klingt nicht ab: ${nachZwei} (Basis ${basis})`);
+        for (let i = 0; i < 25; i++) SeasonEngine.updateBoardConfidence(state);
+        if (state.boardConfidence !== basis) throw new Error(`Nachwirkung klingt nicht ab: ${state.boardConfidence}`);
+        if (BoardEngine.updateConfidence(state).confidence !== state.boardConfidence || club.confidence !== state.boardConfidence) throw new Error("Zwei Werte für das Vertrauen");
+        if (!/zufrieden/.test(BoardEngine.getBoardMessage(state))) throw new Error(`Text passt nicht zum Balken: ${BoardEngine.getBoardMessage(state)}`);
+
+        // Angebote aus alten Spielständen bekommen eine Frist
+        const spieler = state.players.find(p => p.clubId === club.id && p.pos === "ST");
+        const kaeufer = state.clubs.find(c => c.id !== club.id && c.leagueId === club.leagueId);
+        state.transferMarket.offers.push({ id: "alt", buyerClubId: kaeufer.id, buyerClubName: kaeufer.name, playerId: spieler.id, playerName: spieler.name, fee: 30000000, status: "pending" });
+        TransferEngine.pruefeAngebotsfristen(state);
+        const alt = state.transferMarket.offers.find(o => o.id === "alt");
+        if (typeof alt.frist !== "number" || alt.fromClubId !== kaeufer.id || alt.status !== "pending") throw new Error("Altes Angebot ohne Frist");
+
+        // Wer an die KI verkauft wird, verdient dort mehr als bisher - nicht pauschal 50.000 €
+        spieler.wage = 20000;
+        delete spieler.weiterverkauf;
+        if (!TransferEngine.nimmAngebotAn(state, "alt").ok) throw new Error("Verkauf gescheitert");
+        if (spieler.clubId !== kaeufer.id || spieler.wage !== 24000) throw new Error(`Gehalt nach dem Verkauf: ${spieler.wage}`);
+
+        // Die Post trägt das Datum des Kalenders
+        state.currentDate = "12.09.2026";
+        state.inbox = [];
+        DevelopmentPlanEngine._post(state, state.players.find(p => p.clubId === club.id), "Test", "Text");
+        if (state.inbox[0]?.date !== "12.09.2026") throw new Error(`Datum in der Post: ${state.inbox[0]?.date}`);
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

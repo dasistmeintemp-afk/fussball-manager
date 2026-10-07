@@ -160,10 +160,10 @@ const BoardEngine = {
         const betrag = Math.round(budget * V.budget);
         if (richtung === "senken") {
             club.transferBudget = budget - betrag;
-            club.confidence = Math.max(10, (club.confidence ?? 75) - V.vertrauen);
+            this.stimmung(state, -V.vertrauen);
         } else {
             club.transferBudget = budget + betrag;
-            club.confidence = Math.min(100, (club.confidence ?? 75) + V.vertrauen);
+            this.stimmung(state, V.vertrauen);
         }
         const vorher = z.platz;
         z.platz = neu;
@@ -316,6 +316,28 @@ const BoardEngine = {
         return Math.max(0.05, Math.min(0.9, chance));
     },
 
+    /**
+     * Ereignisse verschieben das Vertrauen: eine Pressekonferenz, ein
+     * verhandeltes Saisonziel, eine abgelehnte Anfrage. Die Wirkung kommt
+     * sofort und klingt über die nächsten Spieltage ab
+     * (SeasonEngine.updateBoardConfidence) - vorher war sie beim nächsten
+     * Spieltag spurlos verschwunden, oder sie landete in einem zweiten Wert,
+     * den nur der Text auf der Vorstandskarte las.
+     */
+    STIMMUNG_GRENZE: 30,
+    STIMMUNG_ABKLINGEN: 0.8,
+
+    stimmung(state, delta) {
+        const d = Number(delta) || 0;
+        if (!state || !d) return;
+        const g = this.STIMMUNG_GRENZE;
+        state.vorstandStimmung = Math.max(-g, Math.min(g, (state.vorstandStimmung || 0) + d));
+        const club = this.eigenerVerein(state);
+        const neu = Math.max(10, Math.min(100, Math.round((state.boardConfidence ?? club?.confidence ?? 75) + d)));
+        state.boardConfidence = neu;
+        if (club) club.confidence = neu;
+    },
+
     /** Das angezeigte Vorstandsvertrauen (state.boardConfidence), sonst das des Vereins */
     vertrauen(state, club) {
         return typeof state?.boardConfidence === "number" ? state.boardConfidence : (club?.confidence ?? 75);
@@ -376,8 +398,7 @@ const BoardEngine = {
             club.vorstandsanfragen.abgelehnt = { saison: state.seasonYear, anzahl: (ab && ab.saison === state.seasonYear ? ab.anzahl : 0) + 1 };
             const vertrauen = this.vertrauen(state, club);
             const malus = vertrauen < 50 ? 4 : 2;
-            club.confidence = Math.max(10, (club.confidence ?? 75) - malus);
-            if (typeof state.boardConfidence === "number") state.boardConfidence = Math.max(10, state.boardConfidence - malus);
+            this.stimmung(state, -malus);
             const grund = betrag <= 0 ? "Es ist schlicht kein Geld dafür da."
                 : (vertrauen < 50 ? "Erst müssen die Ergebnisse stimmen."
                     : "Im Moment sehen wir keinen Anlass dafür.");
@@ -391,74 +412,26 @@ const BoardEngine = {
     },
 
     /**
-     * Aktualisiert die Vorstandszufriedenheit basierend auf Tabelle, Zielen, Finanzen und Form
+     * Die Vorstandszufriedenheit für die Anzeige. Es gibt nur noch einen
+     * Wert: SeasonEngine.updateBoardConfidence rechnet ihn jeden Spieltag aus
+     * Tabelle, Ziel, Kasse, Form und der Nachwirkung von Ereignissen. Vorher
+     * lief hier ein zweiter, aufsummierter Wert mit, den der Balken nie
+     * zeigte - der Text auf der Vorstandskarte konnte "besorgt" melden,
+     * während der Balken bei 75 % stand, und er schickte eine eigene
+     * "Krise"-Mail neben dem echten Ultimatum.
      */
     updateConfidence(state) {
         if (!state || !state.userClubId) return;
-
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
-
         const standings = state.standings || [];
         const rankIndex = standings.findIndex(s => s.clubId === state.userClubId);
-        const rank = rankIndex !== -1 ? rankIndex + 1 : 10;
-        // Der Zielplatz gilt in der eigenen Liga - vorher wurde hier mit der
-        // Zahl aller Vereine der Welt gerechnet ("Mittelfeld" = Platz 100)
-        const targetRank = this.zielPlatz(state, userClub);
-
-        // Basis-Berechnung nach Tabellenposition
-        const rankDiff = targetRank - rank; // Positiv = besser als Ziel, Negativ = schlechter
-        let newConf = userClub.confidence || 75;
-
-        // Schrittweise Anpassung
-        if (rankDiff > 2) {
-            newConf += 2;
-        } else if (rankDiff > 0) {
-            newConf += 1;
-        } else if (rankDiff < -3) {
-            newConf -= 3;
-        } else if (rankDiff < 0) {
-            newConf -= 1;
-        }
-
-        // Einfluss der Finanzen
-        if (userClub.balance < 0) {
-            newConf -= 2;
-        }
-        if (userClub.wageBudget < 0) {
-            newConf -= 1;
-        }
-
-        // Form der letzten Spiele
-        const formArr = Array.isArray(userClub.form) ? userClub.form : (userClub.form ? String(userClub.form).split("") : []);
-        const lastGames = formArr.slice(-3);
-        const winsInLast = lastGames.filter(g => g === "W" || g === "S").length;
-        const lossesInLast = lastGames.filter(g => g === "L" || g === "N").length;
-
-        if (winsInLast >= 2) newConf += 1;
-        if (lossesInLast >= 2) newConf -= 2;
-
-        // Grenzen einhalten (10% bis 100%)
-        newConf = Math.max(10, Math.min(100, Math.round(newConf)));
-        userClub.confidence = newConf;
-
-        // Vorstandsnachricht bei kritischer Zufriedenheit
-        if (newConf < 35 && (!userClub.lastWarningMatchday || state.currentMatchday - userClub.lastWarningMatchday > 4)) {
-            userClub.lastWarningMatchday = state.currentMatchday;
-            const newsEngine = _boardResolve('NewsEngine', './newsEngine.js');
-            if (newsEngine) {
-                newsEngine.createBoardMessage(state, {
-                    title: "Krise: Ultimatum des Vorstands",
-                    text: `Sehr geehrter Manager, der Vorstand ist mit den jüngsten Leistungen und Tabellenplatz ${rank} äußerst unzufrieden. Wir erwarten in den kommenden Spielen eine spürbare Leistungssteigerung!`,
-                    priority: "high"
-                });
-            }
-        }
-
+        const confidence = this.vertrauen(state, userClub);
+        userClub.confidence = confidence;
         return {
-            confidence: newConf,
-            targetRank: targetRank,
-            currentRank: rank,
+            confidence,
+            targetRank: this.zielPlatz(state, userClub),
+            currentRank: rankIndex !== -1 ? rankIndex + 1 : 10,
             message: this.getBoardMessage(state)
         };
     },
@@ -471,7 +444,7 @@ const BoardEngine = {
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return "";
 
-        const conf = userClub.confidence || 75;
+        const conf = this.vertrauen(state, userClub);
         if (conf >= 85) return "Der Vorstand ist begeistert von Ihrer Arbeit und vollauf zufrieden!";
         if (conf >= 70) return "Der Vorstand ist mit dem aktuellen Saisonverlauf und den Fortschritten zufrieden.";
         if (conf >= 50) return "Der Vorstand beobachtet die Situation aufmerksam. Es gibt noch Raum für Verbesserungen.";
@@ -494,7 +467,7 @@ const BoardEngine = {
         return {
             achieved: achieved,
             finalRank: rank,
-            confidence: userClub.confidence || 75,
+            confidence: this.vertrauen(state, userClub),
             message: achieved 
                 ? `Herzlichen Glückwunsch! Das Saisonziel wurde mit Platz ${rank} erfolgreich erreicht.`
                 : `Das Saisonziel wurde mit Platz ${rank} leider verfehlt.`

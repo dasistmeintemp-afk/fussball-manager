@@ -551,7 +551,7 @@ const FinanceEngine = {
                         state.inbox.unshift({
                             id: Date.now() + 31,
                             matchday: state.currentMatchday,
-                            date: `Spieltag ${state.currentMatchday}`,
+                            date: state.currentDate || `Spieltag ${state.currentMatchday}`,
                             sender: "Vorstand",
                             subject: "⚠️ Der Verein ist an der Schuldengrenze",
                             body: `Wir mussten Geld nachschießen, um den Spielbetrieb zu sichern. Der Transferetat ist gestrichen, bis die Bilanz wieder stimmt.\n\nSenken Sie die Gehaltslast, verkaufen Sie Spieler oder erhöhen Sie die Einnahmen.`,

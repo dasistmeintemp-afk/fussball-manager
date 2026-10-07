@@ -232,7 +232,7 @@ class TransferEngine {
                     state.inbox.unshift({
                         id: Date.now() + 7,
                         matchday: state.currentMatchday,
-                        date: `Spieltag ${state.currentMatchday}`,
+                        date: state.currentDate || `Spieltag ${state.currentMatchday}`,
                         sender: "Transferabteilung",
                         subject: `Weiterverkauf: ${player.name}`,
                         body: `${player.name} wechselt von ${sellerClub.name} zu ${buyerClub.name}. Aus der vereinbarten Beteiligung (${wv.prozent} %) erhalten wir ${_formatTransferMoney(beteiligung)}.`,
@@ -311,7 +311,7 @@ class TransferEngine {
         state.inbox.unshift({
             id: Date.now(),
             matchday: state.currentMatchday,
-            date: `Spieltag ${state.currentMatchday}`,
+            date: state.currentDate || `Spieltag ${state.currentMatchday}`,
             sender: "Transferabteilung",
             subject: `Transfer vollzogen: ${player.name}`,
             body: `Der Transfer von ${player.name} zu ${buyerClub.name} wurde für eine Ablösesumme von ${_formatTransferMoney(fee)} erfolgreich abgeschlossen`
@@ -776,7 +776,12 @@ class TransferEngine {
         if (prozent) offer.fee = Math.round(offer.fee * (1 - prozent / 200));
         const player = state.players.find(p => p.id === offer.playerId);
         const verkaeuferId = player?.clubId;
-        const ok = this.executeTransfer(state, offer.playerId, buyerId, offer.fee, 50000, 3, { zahlweise: offer.zahlweise });
+        // Beim neuen Verein verdient er etwas mehr als bisher - wie bei jedem
+        // anderen Wechsel unter KI-Vereinen. Vorher bekam jeder pauschal
+        // 50.000 € pro Woche, der Drittligaspieler wie der Nationalspieler.
+        const lohn = offer.wage || Math.round((player?.wage || 10000) * 1.2);
+        const laufzeit = (player?.age || 25) <= 24 ? 4 : (player?.age || 25) <= 30 ? 3 : 2;
+        const ok = this.executeTransfer(state, offer.playerId, buyerId, offer.fee, lohn, laufzeit, { zahlweise: offer.zahlweise });
         if (ok === false) return { ok: false, grund: "Der Wechsel ist gescheitert." };
         if (prozent && player) player.weiterverkauf = { clubId: verkaeuferId, prozent };
         offer.status = "accepted";
@@ -829,7 +834,15 @@ class TransferEngine {
         const tag = state?.currentDayIndex || 0;
         const verfallen = [];
         (state?.transferMarket?.offers || []).forEach(o => {
-            if (o.status !== "pending" || typeof o.frist !== "number") return;
+            if (o.status !== "pending") return;
+            // Angebote aus älteren Spielständen kamen ohne Frist - sie
+            // bekommen ab heute die übliche
+            if (typeof o.frist !== "number") {
+                o.frist = tag + this.ANGEBOTS_FRIST;
+                o.saison = state.seasonYear || 1;
+                if (!o.fromClubId && o.buyerClubId) { o.fromClubId = o.buyerClubId; o.fromClubName = o.buyerClubName; }
+                return;
+            }
             // Der Kalender zählt jede Saison von vorn - ein Angebot aus der
             // alten Saison ist mit dem Saisonwechsel verfallen
             const alteSaison = typeof o.saison === "number" && o.saison !== (state.seasonYear || 1);
@@ -929,7 +942,7 @@ class TransferEngine {
             state.inbox.unshift({
                 id: Date.now() + Math.floor(zufall() * 1000),
                 matchday: state.currentMatchday,
-                date: `Spieltag ${state.currentMatchday}`,
+                date: state.currentDate || `Spieltag ${state.currentMatchday}`,
                 sender: kaeuferClub.name,
                 subject: `Ausstiegsklausel gezogen: ${player.name}`,
                 body: `${kaeuferClub.name} hat die Ausstiegsklausel von ${player.name} gezogen und ${_formatTransferMoney(klausel)} überwiesen. Der Wechsel ist vollzogen - ablehnen ließ er sich nicht.`,
@@ -1013,7 +1026,7 @@ class TransferEngine {
                     state.inbox.unshift({
                         id: Date.now() + 1,
                         matchday: state.currentMatchday,
-                        date: `Spieltag ${state.currentMatchday}`,
+                        date: state.currentDate || `Spieltag ${state.currentMatchday}`,
                         sender: interestedClub.name,
                         subject: `💰 Angebot: ${_formatTransferMoney(angebot)} für ${player.name}${zahlweise !== "sofort" ? " in Raten" : ""}`,
                         body: `${interestedClub.name} bietet ${_formatTransferMoney(angebot)} Ablösesumme${zahlText} für Ihren Spieler ${player.name} (${player.pos}, ${player.age} Jahre, Marktwert ${_formatTransferMoney(player.value)}).\n\nDas Angebot gilt ${this.ANGEBOTS_FRIST} Tage. Sie können annehmen, ablehnen oder mehr fordern - im Transfermarkt ganz oben.`,

@@ -306,6 +306,8 @@ class CareerEngine {
         state.arbeitslos = false;
         state.managerDismissed = null;
         state.boardConfidence = 62;
+        state.vorstandStimmung = 0;
+        if (club) club.confidence = 62;
         state.jobSecurity = { stage: "ruhig", ultimatumUntil: null, ultimatumRank: null, warnedAt: null };
         state.fanMood = 58;
         state.mediaPressure = 55;
@@ -409,7 +411,7 @@ class CareerEngine {
         state.inbox.unshift({
             id: Date.now() + Math.floor(Math.random() * 1000),
             matchday: state.currentMatchday || 1,
-            date: `Spieltag ${state.currentMatchday || 1}`,
+            date: state.currentDate || `Spieltag ${state.currentMatchday || 1}`,
             sender,
             subject: betreff,
             title: betreff,

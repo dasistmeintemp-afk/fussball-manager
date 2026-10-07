@@ -695,7 +695,7 @@ class CupEngine {
         state.inbox.unshift({
             id: Date.now() + Math.floor(Math.random() * 1000),
             matchday: state.currentMatchday || 0,
-            date: `Spieltag ${state.currentMatchday || 0}`,
+            date: state.currentDate || `Spieltag ${state.currentMatchday || 0}`,
             sender: "Wettbewerbsleitung",
             subject: betreff,
             body: text,

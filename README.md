@@ -338,6 +338,7 @@ In der Spielerakte führt der Manager Gespräche mit jedem eigenen Spieler. Wie 
   - **Ablehnen.**
 
   Ein Angebot gilt vier Tage. Wer nicht antwortet, hat abgelehnt.
+- **Angebote für eigene Spieler** kommen nur noch auf einem Weg: mit Frist, verdeckter Obergrenze und Zahlweise. Ein zweiter, älterer Weg legte Angebote ohne Frist ab, bei denen man nicht mehr fordern konnte. Solche Angebote aus alten Spielständen bekommen beim Laden die übliche Frist. Wer an einen KI-Verein verkauft wird, verdient dort ein Fünftel mehr als bisher, mit einer Laufzeit nach Alter. Vorher bekam jeder pauschal 50.000 € pro Woche.
 - **Weiterverkaufsbeteiligung:** Beim Annehmen eines Angebots lassen sich 10 oder 20 % an einem späteren Weiterverkauf vereinbaren. Der Käufer zahlt dafür jetzt 5 bzw. 10 % weniger. Wechselt der Spieler später für eine Ablöse weiter, fließt der Anteil zurück.
 - **Ablöse in Raten:** Im Ablöse-Angebot wählt man die Zahlweise.
   - **Sofort**, **12 Monate** (50 % Anzahlung) oder **24 Monate** (35 % Anzahlung). Den Rest zahlt der Käufer am Monatsersten in gleichen Raten.
@@ -450,6 +451,11 @@ Vor jeder Saison – und bei einem Vereinswechsel – misst der Vorstand den Ver
 Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashboard den Zielplatz. Vertrauen, Ultimatum, Saisonbilanz und der ehrgeizige Sponsor rechnen mit genau diesem Platz. Vorher stand das Ziel einmal fest und änderte sich nur pauschal bei Auf- oder Abstieg; die Platzgrenzen waren fest verdrahtet (Klassenerhalt hieß Platz 10, an anderer Stelle wurde mit allen 218 Vereinen der Welt gerechnet, und „Aufstieg“ kannte die Rechnung gar nicht).
 
 **Verhandeln und Medienprognose:** In der Vorbereitung steht das Ziel oben im Reiter, mit den Gründen und der Prognose der Medien – die Liga nach Kaderstärke (drei Viertel) und Ansehen (ein Viertel), ohne Etat und Spielraum, also oft einen Platz neben dem Ziel des Vorstands. Einmal je Vorbereitung lässt der Vorstand mit sich reden: das Ziel annehmen, zwei Plätze tiefer anpeilen (20 % weniger Transferbudget, etwas weniger Vertrauen) oder zwei Plätze höher (20 % mehr Transferbudget, etwas mehr Vertrauen). Danach gilt das Ziel für die ganze Saison.
+
+**Ein Wert für das Vertrauen:** Balken, Text auf der Vorstandskarte, Ultimatum und Anfragen lesen dasselbe Vorstandsvertrauen.
+- **Grundstimmung:** Es entsteht jeden Spieltag aus dem Tabellenplatz gemessen am Ziel, der Kasse und der Form der letzten drei Spiele.
+- **Nachwirkung:** Pressekonferenzen, Versprechen, ein verhandeltes Saisonziel oder eine abgelehnte Anfrage verschieben es. Die Wirkung gilt am nächsten Spieltag noch voll und klingt dann ab (jeden Spieltag um ein Fünftel).
+- **Vorher:** Es liefen zwei Werte nebeneinander. Der Balken vergaß jede Pressekonferenz am nächsten Spieltag, und der Text konnte „besorgt“ melden, während der Balken bei 75 % stand.
 
 **Anfragen an den Vorstand (`BoardEngine.stelleAnfrage`):** Unter der Vorstandskarte im Dashboard bittet der Trainer um mehr Transferbudget, einen höheren Gehaltsetat oder einen Zuschuss zum Ausbau von Trainingsgelände oder Jugendzentrum. Die Auswahl zeigt vorher, wie die Aussichten stehen; der Vorstand antwortet nach drei Tagen per Post.
 - **Was zählt:** das Vorstandsvertrauen vor allem, dazu der Tabellenplatz gemessen am Saisonziel (ab drei Spielen), der Kontostand und wie oft er in dieser Saison schon Nein gesagt hat.

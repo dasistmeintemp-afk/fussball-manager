@@ -440,6 +440,14 @@ class ManagerEngine {
         return _mgrResolve("GameState", "./gameState.js");
     }
 
+    /** Pressekonferenz und Versprechen wirken auf den Vorstand - mit Nachwirkung */
+    static _vorstandStimmung(state, delta) {
+        if (!delta) return;
+        const board = _mgrResolve("BoardEngine", "./boardEngine.js");
+        if (board && typeof board.stimmung === "function") { board.stimmung(state, delta); return; }
+        state.boardConfidence = Math.max(10, Math.min(100, (state.boardConfidence ?? 75) + delta));
+    }
+
     static getNewsEngine() {
         return _mgrResolve("NewsEngine", "./newsEngine.js");
     }
@@ -724,7 +732,7 @@ class ManagerEngine {
             platz,
             gespielt,
             abstiegszone: !!platz && tabelle.length >= 10 && platz > tabelle.length - 3,
-            vorstandKritisch: (state.boardConfidence ?? 75) < 40 || (club.confidence ?? 75) < 35,
+            vorstandKritisch: (state.boardConfidence ?? club.confidence ?? 75) < 40,
             verletzterName: verletzt ? verletzt.name : null,
             geruechtId: geruecht ? geruecht.id : null,
             geruechtName: geruecht ? geruecht.name : null,
@@ -902,7 +910,7 @@ class ManagerEngine {
 
         state.fanMood = Math.max(10, Math.min(100, (state.fanMood ?? 70) + effekte.fanMood));
         state.mediaPressure = Math.max(0, Math.min(100, (state.mediaPressure ?? 45) + effekte.mediaPressure));
-        state.boardConfidence = Math.max(0, Math.min(100, (state.boardConfidence ?? 75) + effekte.boardConfidence));
+        this._vorstandStimmung(state, effekte.boardConfidence);
 
         squad.forEach(p => {
             p.morale = Math.max(25, Math.min(100, (p.morale || 70) + effekte.squadMorale));
@@ -1004,7 +1012,7 @@ class ManagerEngine {
             : { fanMood: -6, mediaPressure: 8, boardConfidence: -3 };
         state.fanMood = Math.max(10, Math.min(100, (state.fanMood ?? 70) + e.fanMood));
         state.mediaPressure = Math.max(0, Math.min(100, (state.mediaPressure ?? 45) + e.mediaPressure));
-        state.boardConfidence = Math.max(0, Math.min(100, (state.boardConfidence ?? 75) + e.boardConfidence));
+        this._vorstandStimmung(state, e.boardConfidence);
 
         const was = v.art === "sieg" ? `einen Sieg gegen ${v.gegnerName}` : `keine Niederlage gegen ${v.gegnerName}`;
         const ergebnis = {

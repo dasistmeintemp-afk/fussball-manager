@@ -415,6 +415,167 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             : "Ohne Verein - als Talent hat er noch bis zum übernächsten Saisonwechsel Zeit.";
     },
 
+    getSportdirektorEngine() {
+        return (typeof SportdirektorEngine !== "undefined" && SportdirektorEngine)
+            ? SportdirektorEngine
+            : ((typeof window !== "undefined" && window.SportdirektorEngine) ? window.SportdirektorEngine : null);
+    },
+
+    /**
+     * Ein Vorschlag des Sportdirektors als Karte: wer, wo er spielt, die
+     * Sterne aus Sicht des eigenen Wissens, warum - und die Wege zur Akte und
+     * zum Angebot. Gleich im Transfermarkt und im Postfach.
+     */
+    sdVorschlagHtml(v) {
+        const state = this.app.state;
+        const esc = t => this.escapeHtml(String(t ?? ""));
+        const spieler = state.players.find(p => String(p.id) === String(v.id));
+        if (!spieler) return "";
+        const vergeben = spieler.clubId === state.userClubId;
+        return `
+            <div class="sd-karte">
+                <div class="sd-kopf">
+                    <div>
+                        <strong>${esc(spieler.name)}</strong>
+                        <span class="pos-tag pos-${this.getPosGroup(spieler.pos)}">${esc(spieler.pos)}</span>
+                        <div class="sd-meta">${esc(spieler.age)} Jahre · ${esc(v.vereinName)}</div>
+                    </div>
+                    <div class="sd-sterne">${this.abilityStarsFor(spieler)}</div>
+                </div>
+                <p class="sd-grund">${esc(v.grund)}</p>
+                <div class="sd-aktionen">
+                    <button class="btn btn-sm btn-secondary" data-sd-akte="${esc(spieler.id)}">Akte</button>
+                    ${vergeben ? `<span class="text-muted">Schon bei uns</span>`
+                        : `<button class="btn btn-sm btn-primary" data-sd-angebot="${esc(spieler.id)}">Verhandeln</button>`}
+                </div>
+            </div>`;
+    },
+
+    /** Akte und Angebot aus den Karten des Sportdirektors */
+    bindeSdKarten(container) {
+        container.querySelectorAll("[data-sd-akte]").forEach(btn => btn.addEventListener("click", () => {
+            const pId = this.resolvePlayerId(btn.dataset.sdAkte);
+            if (pId !== null) this.showPlayerDetailsModal(pId);
+        }));
+        container.querySelectorAll("[data-sd-angebot]").forEach(btn => btn.addEventListener("click", () => {
+            const pId = this.resolvePlayerId(btn.dataset.sdAngebot);
+            if (pId !== null) this.showTransferOfferModal(pId);
+        }));
+    },
+
+    /**
+     * Der Sportdirektor im Transfermarkt: wo er die Baustellen sieht, und
+     * die Beratung - Position, Rolle, Alter und Ablöse vorgeben, er sucht.
+     */
+    renderSportdirektor() {
+        const state = this.app.state;
+        const sd = this.getSportdirektorEngine();
+        if (!sd || !state) return;
+        const esc = t => this.escapeHtml(String(t ?? ""));
+        const person = sd.person(state);
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const titel = document.getElementById("sdTitel");
+        if (titel) titel.textContent = `${person.name}, Sportdirektor`;
+        const genau = document.getElementById("sdGenauigkeit");
+        if (genau) {
+            const u = sd.ungenauigkeit(state);
+            genau.textContent = u <= 1 ? "Sehr genaue Einschätzungen" : u <= 2.5 ? "Ordentliche Einschätzungen" : "Grobe Einschätzungen";
+            genau.title = "Hängt am Chefscout: Je besser er ist, desto genauer schätzt der Sportdirektor die Stärke fremder Spieler.";
+        }
+
+        // Die Baustellen: die drei Mannschaftsteile mit dem größten Bedarf
+        const lage = sd.lage(state);
+        const lageEl = document.getElementById("sdLage");
+        if (lageEl) {
+            const baustellen = lage.gruppen.filter(g => g.bedarf > 0.5).slice(0, 3);
+            lageEl.innerHTML = baustellen.length
+                ? `<p class="sd-text">"Am meisten Luft nach oben sehe ich hier:"</p><ul class="sd-baustellen">${baustellen.map(g => `<li><strong>${esc(sd.GRUPPEN[g.key].name)}</strong> - ${g.bester
+                        ? `${g.fehlend > 0 ? `nur ${g.anzahl} Spieler, ` : ""}bester ist ${esc(g.bester.name)}${(g.bester.age || 0) >= 32 ? ` (${g.bester.age})` : ""}`
+                        : "niemand für diese Position"}</li>`).join("")}</ul>`
+                : `<p class="sd-text">"Der Kader ist rund. Wenn Sie etwas Bestimmtes suchen, sagen Sie es mir."</p>`;
+        }
+
+        // Das Formular - die Auswahl bleibt bei einem Neuzeichnen erhalten
+        const gruppeSel = document.getElementById("sdGruppe");
+        const rolleSel = document.getElementById("sdRolle");
+        const alterSel = document.getElementById("sdAlter");
+        const abloeseSel = document.getElementById("sdAbloese");
+        if (!gruppeSel || !rolleSel || !abloeseSel) return;
+        const auftrag = person.auftrag;
+        const vorher = this._sdKriterien || auftrag || { gruppe: "auto", rolle: "stamm" };
+        gruppeSel.innerHTML = `<option value="auto">Nach Bedarf</option>`
+            + Object.keys(sd.GRUPPEN).map(k => `<option value="${k}">${esc(sd.GRUPPEN[k].name)}</option>`).join("");
+        rolleSel.innerHTML = Object.keys(sd.ROLLEN).map(k => `<option value="${k}">${esc(sd.ROLLEN[k].label)}</option>`).join("");
+        const budget = Math.max(0, club?.transferBudget || 0);
+        abloeseSel.innerHTML = [
+            ["voll", `Bis ${this.formatMoneySafe(budget)} (Budget)`],
+            ["haelfte", `Bis ${this.formatMoneySafe(Math.round(budget / 2))}`],
+            ["viertel", `Bis ${this.formatMoneySafe(Math.round(budget / 4))}`],
+            ["frei", "Nur ablösefrei"]
+        ].map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join("");
+        gruppeSel.value = vorher.gruppe || "auto";
+        rolleSel.value = vorher.rolle || "stamm";
+        if (alterSel) alterSel.value = vorher.maxAlter ? String(vorher.maxAlter) : "";
+        abloeseSel.value = vorher.abloese || (vorher.nurAblosefrei ? "frei" : "voll");
+
+        const kriterien = () => {
+            const abloese = abloeseSel.value;
+            const k = {
+                gruppe: gruppeSel.value,
+                rolle: rolleSel.value,
+                abloese,
+                nurAblosefrei: abloese === "frei"
+            };
+            if (alterSel && alterSel.value) k.maxAlter = Number(alterSel.value);
+            if (abloese === "haelfte") k.maxAbloese = Math.round(budget / 2);
+            if (abloese === "viertel") k.maxAbloese = Math.round(budget / 4);
+            return k;
+        };
+
+        const auftragEl = document.getElementById("sdAuftrag");
+        const beschreibe = k => [k.gruppe && sd.GRUPPEN[k.gruppe] ? sd.GRUPPEN[k.gruppe].name : "nach Bedarf",
+            sd.ROLLEN[k.rolle]?.label, k.maxAlter ? `bis ${k.maxAlter} Jahre` : null,
+            k.nurAblosefrei ? "ablösefrei" : (k.maxAbloese ? `bis ${this.formatMoneySafe(k.maxAbloese)}` : null)].filter(Boolean).join(", ");
+        if (auftragEl) {
+            auftragEl.innerHTML = auftrag
+                ? `Suchauftrag: <strong>${esc(beschreibe(auftrag))}</strong> - danach richten sich seine Vorschläge alle zwei Wochen. <button class="btn btn-sm btn-secondary" id="btnSdAuftragWeg">Aufheben</button>`
+                : `Ohne Suchauftrag schlägt er alle zwei Wochen vor, was dem Kader am meisten fehlt.`;
+            document.getElementById("btnSdAuftragWeg")?.addEventListener("click", () => {
+                sd.setzeAuftrag(state, null);
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.renderSportdirektor();
+            });
+        }
+
+        const ergebnis = document.getElementById("sdErgebnis");
+        const zeigeErgebnis = (antwort) => {
+            if (!ergebnis) return;
+            ergebnis.innerHTML = `
+                <div class="dash-card">
+                    <p class="sd-text">${esc(antwort.kopf)}</p>
+                    <div class="sd-liste">${antwort.vorschlaege.map(v => this.sdVorschlagHtml(v)).join("")}</div>
+                </div>`;
+            this.bindeSdKarten(ergebnis);
+        };
+        if (this._sdAntwort) zeigeErgebnis(this._sdAntwort);
+        else if (ergebnis) ergebnis.innerHTML = "";
+
+        document.getElementById("btnSdBeraten").onclick = () => {
+            this._sdKriterien = kriterien();
+            this._sdAntwort = sd.berate(state, this._sdKriterien);
+            this.playSound("click");
+            zeigeErgebnis(this._sdAntwort);
+            ergebnis?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+        };
+        document.getElementById("btnSdAuftrag").onclick = () => {
+            this._sdKriterien = kriterien();
+            sd.setzeAuftrag(state, this._sdKriterien);
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.showToast(`${person.name} sucht künftig: ${beschreibe(this._sdKriterien)}.`, "success");
+            this.renderSportdirektor();
+        };
+    },
+
     renderTransfers() {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);

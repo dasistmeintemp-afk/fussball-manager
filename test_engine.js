@@ -298,6 +298,85 @@ function runEngineTests() {
         if (!extRes.success) throw new Error("Contract extension failed: " + extRes.reason);
     });
 
+    test("Sportdirektor: Schlägt alle zwei Wochen passende, bezahlbare Spieler vor und berät auf Wunsch", () => {
+        const { SportdirektorEngine: SD } = require('./js/engine/sportdirektorEngine.js');
+        const vorlage = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const bochum = vorlage.clubs.find(c => c.name === "VfL Bochum");
+        const state = GameState.createNewGame(bochum.id, "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const nach = new Map(state.players.map(p => [String(p.id), p]));
+        const spieler = v => nach.get(String(v.id));
+
+        // Ein fester Sportdirektor mit Namen
+        const person = SD.person(state);
+        if (!person.name || SD.person(state).name !== person.name) throw new Error("Kein fester Sportdirektor");
+
+        // Die Baustellen: sortiert nach Bedarf
+        const lage = SD.lage(state);
+        for (let i = 1; i < lage.gruppen.length; i++) {
+            if (lage.gruppen[i - 1].bedarf < lage.gruppen[i].bedarf) throw new Error("Die Baustellen sind nicht nach Bedarf sortiert");
+        }
+
+        // Sofort-Verstärkungen: erreichbar, bezahlbar, besser als der Beste dort, einer je Verein
+        const u = SD.ungenauigkeit(state);
+        const stamm = SD.suche(state, { gruppe: "auto", rolle: "stamm", anzahl: 5 });
+        if (!stamm.length) throw new Error("Für Bochum findet der Sportdirektor keine Verstärkung");
+        const vereine = new Set();
+        stamm.forEach(v => {
+            const p = spieler(v);
+            const gruppe = lage.gruppen.find(g => g.key === v.gruppe);
+            if (p.clubId === club.id || !TransferEngine.isWithinReach(p, club, state.clubs)) throw new Error(`${p.name} ist nicht erreichbar`);
+            if (v.preis > club.transferBudget) throw new Error(`${p.name} ist zu teuer`);
+            if (gruppe.bester && p.overall < gruppe.bester.overall + 2 - 2 * u) throw new Error(`${p.name} ist keine Verstärkung`);
+            if (p.clubId && vereine.has(p.clubId)) throw new Error("Zwei Vorschläge aus demselben Verein");
+            vereine.add(p.clubId);
+            if (!v.grund || !/sofort spielen/.test(v.grund)) throw new Error("Vorschlag ohne Begründung");
+        });
+
+        // Beratung nach Vorgabe: Position, Alter, Rolle
+        const sturm = SD.berate(state, { gruppe: "ST", rolle: "stamm", maxAlter: 26 });
+        if (sturm.vorschlaege.some(v => spieler(v).pos !== "ST" || spieler(v).age > 26)) throw new Error("Die Vorgabe Sturm bis 26 wird nicht eingehalten");
+        if (!/Für den Sturm/.test(sturm.kopf) && !/niemanden/.test(sturm.kopf)) throw new Error("Die Antwort passt nicht zur Frage: " + sturm.kopf);
+        if (SD.suche(state, { gruppe: "auto", rolle: "talent" }).some(v => spieler(v).age > 21)) throw new Error("Ein Talent über 21");
+
+        // Ablösefrei: nur Vereinslose - und ein starker Vereinsloser wird gefunden
+        const frei = state.players.filter(p => p.clubId && p.clubId !== club.id && p.pos === "ST")
+            .sort((a, b) => b.overall - a.overall).find(p => TransferEngine.isWithinReach(p, club, state.clubs));
+        const alterVerein = state.clubs.find(c => c.id === frei.clubId);
+        alterVerein.playerIds = alterVerein.playerIds.filter(id => id !== frei.id);
+        frei.clubId = null;
+        const ablosefrei = SD.suche(state, { gruppe: "ST", rolle: "stamm", nurAblosefrei: true });
+        if (!ablosefrei.some(v => v.id === frei.id) || ablosefrei.some(v => spieler(v).clubId)) throw new Error("Ablösefrei findet nicht den Vereinslosen");
+
+        // Alle zwei Wochen ins Postfach - ohne denselben Namen gleich wieder
+        const start = state.currentDayIndex || 0;
+        if (SD.pruefeTag(state) !== null) throw new Error("Vorschläge schon am ersten Tag");
+        state.currentDayIndex = start + 13;
+        if (SD.pruefeTag(state) !== null) throw new Error("Vorschläge nach 13 Tagen");
+        state.currentDayIndex = start + 14;
+        if (!SD.pruefeTag(state)) throw new Error("Nach zwei Wochen keine Vorschläge");
+        const erste = state.inbox[0];
+        if (erste.type !== "sportdirektor" || !erste.vorschlaege.length || erste.vorschlaege.length > SD.ANZAHL) throw new Error("Falsche Vorschlagsnachricht");
+        state.currentDayIndex = start + 28;
+        SD.pruefeTag(state);
+        const zweite = state.inbox[0];
+        if (zweite === erste || zweite.vorschlaege.some(v => erste.vorschlaege.some(e => e.id === v.id))) throw new Error("Dieselben Namen zwei Wochen später");
+
+        // Ein Suchauftrag lenkt die regelmäßigen Vorschläge
+        SD.setzeAuftrag(state, { gruppe: "IV", rolle: "talent" });
+        state.currentDayIndex = start + 42;
+        SD.pruefeTag(state);
+        const dritte = state.inbox[0];
+        const imAuftrag = dritte.vorschlaege.every(v => spieler(v).pos === "IV" && spieler(v).age <= 21);
+        if (!imAuftrag && !/Suchauftrag habe ich gerade niemanden/.test(dritte.body)) throw new Error("Der Suchauftrag wird übergangen");
+
+        // Seine Einschätzung ist so gut wie der Chefscout
+        club.staff = Object.assign({}, club.staff, { scout: { name: "Schwach", guete: 30 } });
+        const grob = SD.ungenauigkeit(state);
+        club.staff.scout = { name: "Stark", guete: 95 };
+        if (!(grob > SD.ungenauigkeit(state))) throw new Error("Ein besserer Chefscout macht ihn nicht genauer");
+    });
+
     test("Vorstand: Das Saisonziel richtet sich nach Kader, Etat und Ansehen in der eigenen Liga", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const bayern = state.clubs.find(c => c.id === "muc");

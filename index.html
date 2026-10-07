@@ -750,6 +750,7 @@
                             <button class="btn btn-sm active" id="btnSubTransfersMarket">Transfermarkt</button>
                             <button class="btn btn-sm" id="btnSubTransfersScouting"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg><span>Scouting-Zentrale</span></button>
                             <button class="btn btn-sm" id="btnSubTransfersLoans"><svg class="ico" aria-hidden="true"><use href="#i-transfer"/></svg><span>Leihen</span></button>
+                            <button class="btn btn-sm" id="btnSubTransfersSD"><svg class="ico" aria-hidden="true"><use href="#i-target"/></svg><span>Sportdirektor</span></button>
                         </div>
                     </div>
 
@@ -823,6 +824,43 @@
                     </div>
 
                     <!-- Leihen: eigene Leihen und der Leihmarkt -->
+                    <!-- Sportdirektor: Vorschläge und Beratung -->
+                    <div id="viewSportdirektor" style="display:none;">
+                        <div class="dash-card mb-3">
+                            <div class="card-header"><h3 id="sdTitel">Sportdirektor</h3><span id="sdGenauigkeit" class="header-tag">-</span></div>
+                            <div id="sdLage" class="sd-lage"></div>
+                        </div>
+                        <div class="dash-card mb-3">
+                            <h3>Wonach suchen wir?</h3>
+                            <div class="sd-form">
+                                <label>Position
+                                    <select id="sdGruppe" class="styled-select"></select>
+                                </label>
+                                <label>Rolle
+                                    <select id="sdRolle" class="styled-select"></select>
+                                </label>
+                                <label>Höchstalter
+                                    <select id="sdAlter" class="styled-select">
+                                        <option value="">Egal</option>
+                                        <option value="21">bis 21</option>
+                                        <option value="24">bis 24</option>
+                                        <option value="27">bis 27</option>
+                                        <option value="30">bis 30</option>
+                                    </select>
+                                </label>
+                                <label>Ablöse
+                                    <select id="sdAbloese" class="styled-select"></select>
+                                </label>
+                            </div>
+                            <div class="sd-knoepfe">
+                                <button class="btn btn-primary" id="btnSdBeraten">Beraten</button>
+                                <button class="btn btn-secondary" id="btnSdAuftrag" title="Seine Vorschläge alle zwei Wochen richten sich dann danach">Als Suchauftrag merken</button>
+                            </div>
+                            <div id="sdAuftrag" class="sd-auftrag"></div>
+                        </div>
+                        <div id="sdErgebnis"></div>
+                    </div>
+
                     <div id="viewLoans" style="display:none;">
                         <div id="loansFenster" class="tf-fenster mb-2"></div>
                         <div class="hint-box mb-2">
@@ -2150,6 +2188,7 @@
     <script src="js/engine/matchEngine.js"></script>
     <script src="js/engine/transferEngine.js"></script>
     <script src="js/engine/negotiationEngine.js"></script>
+    <script src="js/engine/sportdirektorEngine.js"></script>
     <script src="js/engine/managerEngine.js"></script>
     <script src="js/engine/trainingEngine.js"></script>
     <script src="js/engine/preseasonEngine.js"></script>

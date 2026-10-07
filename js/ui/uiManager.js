@@ -5244,7 +5244,7 @@ class UIManager {
     postfachSymbol(emoji) {
         const id = ({
             "✉️": "i-mail", "👔": "i-briefcase", "⚽": "i-ball", "🔄": "i-transfer", "🏥": "i-medical",
-            "🔍": "i-search", "💰": "i-wallet", "📝": "i-doc", "🎖️": "i-trophy", "📈": "i-chart"
+            "🔍": "i-search", "💰": "i-wallet", "📝": "i-doc", "🎖️": "i-trophy", "📈": "i-chart", "🎯": "i-target"
         })[emoji] || "i-mail";
         return `<svg class="ico" aria-hidden="true"><use href="#${id}"/></svg>`;
     }
@@ -5403,6 +5403,7 @@ class UIManager {
             else if (msg.type === "contract" || msg.type === "contract_expiring") { icon = "📝"; typeLabel = "Verträge"; }
             else if (msg.type === "retirement") { icon = "🎖️"; typeLabel = "Karriereende"; }
             else if (msg.type === "development") { icon = "📈"; typeLabel = "Entwicklung"; }
+            else if (msg.type === "sportdirektor") { icon = "🎯"; typeLabel = "Sportdirektor"; }
 
             const displayDate = msg.date || "Saisonstart";
 
@@ -5509,6 +5510,7 @@ class UIManager {
         else if (msg.type === "contract" || msg.type === "contract_expiring") { icon = "📝"; typeLabel = "Verträge"; }
         else if (msg.type === "retirement") { icon = "🎖️"; typeLabel = "Karriereende"; }
         else if (msg.type === "development") { icon = "📈"; typeLabel = "Entwicklung"; }
+        else if (msg.type === "sportdirektor") { icon = "🎯"; typeLabel = "Sportdirektor"; }
 
         let formattedBody = (msg.body || msg.text || "").replace(/\n/g, "<br>");
         const displayDate = msg.date || "Saisonstart";
@@ -5538,6 +5540,12 @@ class UIManager {
         if (msg.type === "development" && msg.entwicklung) {
             formattedBody = this.entwicklungsBerichtHtml(msg.entwicklung);
         }
+        // Die Vorschläge des Sportdirektors als Karten mit Akte und Angebot
+        if (msg.type === "sportdirektor" && Array.isArray(msg.vorschlaege) && typeof this.sdVorschlagHtml === "function") {
+            const einleitung = String(msg.body || "").split("\n\n")[0];
+            formattedBody = `<p>${this.escapeHtml(einleitung)}</p><div class="sd-liste">${msg.vorschlaege.map(v => this.sdVorschlagHtml(v)).join("")}</div>`
+                + `<p class="text-muted" style="font-size:12px;">Wonach er sucht, können Sie ihm im Transfermarkt unter Sportdirektor sagen.</p>`;
+        }
 
         detailContainer.innerHTML = `
             <div class="inbox-detail-header">
@@ -5561,6 +5569,7 @@ class UIManager {
             </div>
             ${aktionen}
         `;
+        if (msg.type === "sportdirektor" && typeof this.bindeSdKarten === "function") this.bindeSdKarten(detailContainer);
         detailContainer.querySelectorAll("[data-entwicklung-akte]").forEach(el => el.addEventListener("click", () => {
             const pId = this.resolvePlayerId(el.dataset.entwicklungAkte);
             if (pId !== null) this.showPlayerDetailsModal(pId);
@@ -7349,9 +7358,9 @@ class UIManager {
 
         // Transfer, Scouting und Leihen als Unterreiter
         const transferAnsicht = (knopf, ansicht) => {
-            ["btnSubTransfersMarket", "btnSubTransfersScouting", "btnSubTransfersLoans"].forEach(id =>
+            ["btnSubTransfersMarket", "btnSubTransfersScouting", "btnSubTransfersLoans", "btnSubTransfersSD"].forEach(id =>
                 document.getElementById(id)?.classList.toggle("active", id === knopf));
-            ["viewTransferMarket", "viewScoutingCenter", "viewLoans"].forEach(id =>
+            ["viewTransferMarket", "viewScoutingCenter", "viewLoans", "viewSportdirektor"].forEach(id =>
                 id === ansicht ? DOM.show(id) : DOM.hide(id));
         };
         document.getElementById("btnSubTransfersMarket")?.addEventListener("click", () => {
@@ -7366,6 +7375,11 @@ class UIManager {
         document.getElementById("btnSubTransfersLoans")?.addEventListener("click", () => {
             transferAnsicht("btnSubTransfersLoans", "viewLoans");
             this.renderLeihen();
+        });
+
+        document.getElementById("btnSubTransfersSD")?.addEventListener("click", () => {
+            transferAnsicht("btnSubTransfersSD", "viewSportdirektor");
+            this.renderSportdirektor();
         });
 
         // Scout Auftrag absenden

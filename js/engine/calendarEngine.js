@@ -1297,6 +1297,15 @@ const CalendarEngine = {
             const probe = typeof youthEngineTag.pruefeProbetraining === "function" ? youthEngineTag.pruefeProbetraining(state) : null;
             if (probe) summary.messages.push(probe);
         }
+        // Alle zwei Wochen: die Spielervorschläge des Sportdirektors
+        const sportdirektor = (typeof SportdirektorEngine !== "undefined" && SportdirektorEngine)
+            ? SportdirektorEngine
+            : ((typeof window !== "undefined" && window.SportdirektorEngine) ? window.SportdirektorEngine
+                : (typeof require !== "undefined" ? (() => { try { return require("./sportdirektorEngine.js").SportdirektorEngine; } catch (e) { return null; } })() : null));
+        if (sportdirektor && typeof sportdirektor.pruefeTag === "function") {
+            const vorschlag = sportdirektor.pruefeTag(state);
+            if (vorschlag) summary.messages.push(vorschlag);
+        }
         // Beobachtungen der Scouts: Nach einigen Tagen kommt der Bericht
         const scoutingEngineTag = (typeof ScoutingEngine !== "undefined" && ScoutingEngine)
             ? ScoutingEngine

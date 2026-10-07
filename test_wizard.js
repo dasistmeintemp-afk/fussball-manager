@@ -1154,6 +1154,21 @@ function runWizardTests() {
         if (!leer.includes("Verbessert hat sich diesen Monat niemand")) throw new Error("Leerer Bericht ohne Hinweis");
     });
 
+    test("Sportdirektor: Vorschläge als Karten mit Begründung, Akte und Angebot", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Leser" });
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        const fremd = state.players.find(p => p.clubId && p.clubId !== "muc");
+        const eigen = state.players.find(p => p.clubId === "muc");
+        const karte = ui.sdVorschlagHtml({ id: fremd.id, vereinName: "Testverein", grund: "Würde sofort spielen." });
+        [fremd.name, "Testverein", "Würde sofort spielen.", `data-sd-akte="${fremd.id}"`, `data-sd-angebot="${fremd.id}"`].forEach(t => {
+            if (!karte.includes(t)) throw new Error(`In der Karte fehlt: ${t}`);
+        });
+        const schonDa = ui.sdVorschlagHtml({ id: eigen.id, vereinName: "wir", grund: "x" });
+        if (schonDa.includes("data-sd-angebot") || !schonDa.includes("Schon bei uns")) throw new Error("Ein eigener Spieler lässt sich noch verhandeln");
+        if (ui.sdVorschlagHtml({ id: "gibt-es-nicht", grund: "x" }) !== "") throw new Error("Ein verschwundener Spieler erscheint als Karte");
+    });
+
     test("Einstieg: Erste Schritte erledigen sich durch Tun, jeder Bereich erklärt sich, Begriffe und Abwahl", () => {
         const { EINSTIEG_SCHRITTE, EINSTIEG_ERKLAERUNGEN, EINSTIEG_BEGRIFFE } = require('./js/ui/uiEinstieg.js');
         const { SaveCodec } = require('./js/services/saveCodec.js');

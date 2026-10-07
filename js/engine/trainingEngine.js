@@ -304,7 +304,8 @@ class TrainingEngine {
 
             // Der Tagesanteil einer Woche - so summieren sich sieben Tage auf
             // genau das Wochenrisiko, mit dem auch die KI-Vereine rechnen.
-            const tagesanteil = (dayType === "training" ? 1 : dayType === "tactics" ? 0.5 : 0.15)
+            // Ein freier Tag - etwa in der Sommerpause - birgt kein Trainingsrisiko
+            const tagesanteil = (dayType === "training" ? 1 : dayType === "tactics" ? 0.5 : dayType === "rest" ? 0 : 0.15)
                 / TrainingEngine.WOCHENGEWICHT;
             const risiko = this.weeklyInjuryRisk(player, intensity, medicalLevel) * tagesanteil;
 

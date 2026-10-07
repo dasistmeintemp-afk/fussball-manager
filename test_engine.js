@@ -298,6 +298,90 @@ function runEngineTests() {
         if (!extRes.success) throw new Error("Contract extension failed: " + extRes.reason);
     });
 
+    test("Sommerpause: Drei Wochen zum Verlängern, wer wartet, verliert Spieler an andere - dann der Saisonwechsel", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const kader = state.players.filter(p => p.clubId === "muc" && !p.leihe)
+            .sort((a, b) => b.overall - a.overall);
+        const [bleibt, umworben, schwach] = [kader[0], kader[1], kader[kader.length - 1]];
+        kader.forEach(p => { p.contractYears = 3; });
+        [bleibt, umworben, schwach].forEach(p => { p.contractYears = 1; });
+        // Beide im Alter, in dem man oft aufhört - wer unterschreibt, bleibt aber
+        bleibt.age = 35;
+        umworben.age = 35;
+        const niveau = ContractEngine.vereinsNiveau(club, new Map(state.players.map(p => [p.id, p])));
+        schwach.overall = Math.round(niveau) - 12;
+
+        const saison = state.seasonYear;
+        SeasonEngine.finishSeason(state);
+
+        // Die Pause hängt am Kalender, ihr letzter Tag ist der Saisonwechsel
+        const pause = state.calendar.filter(d => d.sommerpause);
+        if (pause.length !== SeasonEngine.SOMMERPAUSE.tage || !pause[pause.length - 1].saisonwechsel) {
+            throw new Error(`${pause.length} Tage Sommerpause, letzter Tag ohne Saisonwechsel`);
+        }
+        if (SeasonEngine.finishSeason(state) && state.calendar.filter(d => d.sommerpause).length !== pause.length) {
+            throw new Error("Ein zweiter Abschluss hängt die Pause doppelt an");
+        }
+        const brief = state.inbox.find(m => /Sommerpause: 3 Verträge enden/.test(m.subject));
+        if (!brief || !brief.body.includes(umworben.name)) throw new Error("Keine Nachricht über die Verträge, die zum Wechsel enden");
+        const zumWechsel = SeasonEngine.auslaufendZumWechsel(state).map(p => p.id).sort();
+        if (zumWechsel.join() !== [bleibt, umworben, schwach].map(p => p.id).sort().join()) {
+            throw new Error("Falsche Spieler gelten als auslaufend zum Wechsel");
+        }
+
+        // Der Abschluss ist schon gelaufen: Weiter führt nicht mehr zu ihm,
+        // sondern durch die Pause zum Saisonwechsel
+        state.currentDayIndex = state.calendar.findIndex(d => d.type === "season_end");
+        if (CalendarEngine.naechsterHalt(state)?.grund !== "season_change") throw new Error("Weiter führt noch einmal zum Saisonabschluss");
+
+        // Ab in die Pause - der Weiter-Knopf kennt sein Ziel
+        state.currentDayIndex = state.calendar.indexOf(pause[0]);
+        const halt = CalendarEngine.naechsterHalt(state);
+        if (!halt || halt.grund !== "season_change") throw new Error("In der Pause führt Weiter nicht zum Saisonwechsel");
+        if (CalendarEngine.sommerpauseRest(state) !== pause.length - 1) throw new Error("Falsche Resttage der Pause");
+        const schreibtisch = ManagerEngine.getAttentionItems(state).find(i => /zum Saisonwechsel/.test(i.title));
+        if (!schreibtisch || schreibtisch.priority !== 0 || schreibtisch.spieler.length !== 3) {
+            throw new Error("Der Schreibtisch zeigt die zum Wechsel endenden Verträge nicht oben");
+        }
+
+        // Verlängern geht in der Pause
+        club.wageBudget = Math.max(club.wageBudget || 0, 1e9);
+        const forderung = ContractEngine.getExtensionDemand(bleibt, club, state).demandWage;
+        const ja = ContractEngine.negotiateExtension(bleibt, club, forderung, 3, "Stammspieler", 0, state);
+        if (!ja.success || bleibt.contractYears !== 3) throw new Error("In der Sommerpause lässt sich nicht verlängern: " + ja.reason);
+
+        // Wer wartet, den holt sich ein anderer - aber nur, wer für den Kader zählt
+        SeasonEngine.sommerpauseTag(state, () => 0);
+        if (!umworben.vorvertrag) throw new Error("Niemand wirbt um den zweitbesten Spieler");
+        if (schwach.vorvertrag) throw new Error("Um einen Ergänzungsspieler wird geworben");
+        if (bleibt.vorvertrag) throw new Error("Um einen verlängerten Spieler wird geworben");
+        const ziel = umworben.vorvertrag.clubId;
+        const zuSpaet = ContractEngine.negotiateExtension(umworben, club, 1e7, 3, "Stammspieler", 0, state);
+        if (zuSpaet.success || !/unterschrieben/.test(zuSpaet.reason)) throw new Error("Nach dem Vorvertrag lässt er noch verlängern");
+        if (ManagerEngine.getAttentionItems(state).find(i => /zum Saisonwechsel/.test(i.title)).spieler.some(sp => sp.id === umworben.id)) {
+            throw new Error("Wer schon unterschrieben hat, steht noch zum Verlängern auf dem Schreibtisch");
+        }
+
+        // Ohne Spiel und ohne Training: Die Pause schont, sie belastet nicht
+        bleibt.fitness = 80;
+        let res = null;
+        for (let i = 0; i < pause.length + 2 && (!res || res.type !== "season_change"); i++) {
+            res = CalendarEngine.advanceOneDay(state);
+            if (i === 0 && bleibt.fitness <= 80) throw new Error("In der Pause erholt sich niemand");
+        }
+        if (!res || res.type !== "season_change" || state.seasonYear !== saison + 1) throw new Error("Nach der Pause beginnt keine neue Saison");
+        if (state.calendar.some(d => d.sommerpause) || !state.preseason?.aktiv) throw new Error("Neue Saison ohne frischen Kalender und Vorbereitung");
+
+        if (bleibt.clubId !== "muc" || bleibt.contractYears !== 3 || !state.players.includes(bleibt)) {
+            throw new Error(`Der verlängerte Spieler ist weg, hört auf oder verliert ein Jahr (${bleibt.clubId}, ${bleibt.contractYears} J., im Spiel: ${state.players.includes(bleibt)}, ${bleibt.verlaengertSaison}/${state.seasonYear})`);
+        }
+        if (umworben.clubId !== ziel || umworben.vorvertrag || !state.players.includes(umworben)) {
+            throw new Error(`Der umworbene Spieler (${umworben.age} J.) ist nicht bei seinem neuen Verein`);
+        }
+        if (schwach.clubId === "muc") throw new Error("Der nicht verlängerte Spieler bleibt");
+    });
+
     test("Vertrag: Die Forderung passt zur Liga - in der Landesliga kein Bundesligagehalt", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const unten = Math.max(...state.clubs.map(c => c.level || 1));

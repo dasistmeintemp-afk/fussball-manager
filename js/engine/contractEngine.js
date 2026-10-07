@@ -114,6 +114,10 @@ const ContractEngine = {
 
     negotiateExtension(player, club, offeredWage, offeredYears, offeredRole, klausel = 0, state = null) {
         if (!player || !club) return { success: false, reason: "Ungültige Parameter." };
+        // In der Sommerpause hat er woanders unterschrieben - zu spät
+        if (player.vorvertrag) {
+            return { success: false, reason: `${player.name} hat bereits bei ${player.vorvertrag.clubName} unterschrieben und geht zum Saisonwechsel.` };
+        }
 
         const demand = this.getExtensionDemand(player, club, state);
         // Eine Ausstiegsklausel senkt die Forderung
@@ -150,6 +154,8 @@ const ContractEngine = {
         // Vertrag erfolgreich verlängert
         player.wage = Math.round(offeredWage);
         player.contractYears = offeredYears;
+        // Wer gerade verlängert hat, hört zum Saisonwechsel nicht auf
+        if (state && typeof state.seasonYear === "number") player.verlaengertSaison = state.seasonYear;
         if (offeredRole) player.squadRole = offeredRole;
         // Der neue Vertrag ersetzt die alte Klausel - mit oder ohne neue
         player.ausstiegsklausel = klausel > 0 ? Math.round(klausel) : 0;

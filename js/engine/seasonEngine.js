@@ -199,6 +199,73 @@ class SeasonEngine {
      */
     static KARRIEREENDE = { ab: 31, amateurAb: 30, amateurStufe: 5, jeJahr: 0.15, traeger: 3, ergaenzung: 8, bonus: 0.15, malus: 0.12, spaetestens: 38 };
 
+    /**
+     * Die Sommerpause zwischen letztem Spieltag und Saisonwechsel.
+     *
+     * Vorher kam der Wechsel sofort nach dem letzten Spieltag - wer bis dahin
+     * nicht verlängert hatte, verlor seine Spieler ohne Chance zu reagieren.
+     * Jetzt bleiben drei Wochen (tage). Ganz ohne Risiko ist das Warten
+     * nicht: Jeden Tag holt sich mit der Chance abwerben ein anderer Verein
+     * einen Spieler mit auslaufendem Vertrag - aber nur, wer für den eigenen
+     * Kader zählt (höchstens abNiveau unter dessen Niveau). Über die ganze
+     * Pause ist ein solcher Spieler damit zu gut einem Drittel weg.
+     */
+    static SOMMERPAUSE = { tage: 21, abwerben: 0.02, abNiveau: -4 };
+
+    /** Eigene Spieler, deren Vertrag zum Saisonwechsel endet */
+    static auslaufendZumWechsel(state) {
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        if (!club) return [];
+        const ids = new Set(club.playerIds || []);
+        return (state.players || []).filter(p => ids.has(p.id) && (p.contractYears || 0) <= 0 && !p.leihe);
+    }
+
+    /**
+     * Ein Tag der Sommerpause: Wer nicht verlängert hat, um den werben andere.
+     * Gibt die Meldungen für den Tagesbericht zurück.
+     */
+    static sommerpauseTag(state, zufall = Math.random) {
+        const P = SeasonEngine.SOMMERPAUSE;
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        if (!club) return [];
+        const contractEngine = _getContractEngine();
+        const niveau = contractEngine && typeof contractEngine.niveauKarte === 'function'
+            ? contractEngine.niveauKarte(state) : new Map();
+        const eigenesNiveau = niveau.get(club.id);
+
+        const meldungen = [];
+        SeasonEngine.auslaufendZumWechsel(state).forEach(p => {
+            if (p.vorvertrag) return;
+            if (typeof eigenesNiveau === "number" && (p.overall || 0) - eigenesNiveau < P.abNiveau) return;
+            if (zufall() >= P.abwerben) return;
+
+            // Wer zugreift: ein Verein, in dessen Kader er passt - lieber eine
+            // Liga höher oder gleich, sonst irgendeiner
+            const passend = state.clubs.filter(c => c.id !== club.id
+                && SeasonEngine.passtZumKader(p, niveau.get(c.id)));
+            const oben = passend.filter(c => (c.level || 1) <= (club.level || 1));
+            const auswahl = oben.length ? oben : passend;
+            if (!auswahl.length) return;
+            const ziel = auswahl[Math.floor(zufall() * auswahl.length) % auswahl.length];
+
+            p.vorvertrag = { clubId: ziel.id, clubName: ziel.name, saison: state.seasonYear };
+            if (!Array.isArray(state.inbox)) state.inbox = [];
+            state.inbox.unshift({
+                id: Date.now() + Math.floor(zufall() * 100000),
+                matchday: state.currentMatchday,
+                date: state.currentDate || "Sommerpause",
+                sender: "Sportdirektor",
+                subject: `${p.name} unterschreibt bei ${ziel.name}`,
+                body: `${p.name} hat sich mit ${ziel.name} geeinigt. Sein Vertrag bei uns läuft aus, zum Saisonwechsel geht er ablösefrei.\n\nWer noch verlängern soll, mit dem sollten wir jetzt sprechen - andere Vereine werben weiter.`,
+                read: false,
+                type: "contract_expiring",
+                relatedEntity: { type: "player", id: p.id }
+            });
+            meldungen.push(`✍️ ${p.name} geht zum Saisonwechsel ablösefrei zu ${ziel.name}.`);
+        });
+        return meldungen;
+    }
+
     static karriereendeChance(player, niveau, stufe) {
         const K = SeasonEngine.KARRIEREENDE;
         const alter = player.age || 25;
@@ -833,6 +900,28 @@ class SeasonEngine {
             });
         }
 
+        // Die Sommerpause: einige Wochen bis zum Saisonwechsel, um noch zu
+        // verlängern
+        const kalender = _resolve('CalendarEngine', './calendarEngine.js');
+        if (kalender && typeof kalender.legeSommerpauseAn === 'function') {
+            kalender.legeSommerpauseAn(state, SeasonEngine.SOMMERPAUSE.tage);
+        }
+        const auslaufend = SeasonEngine.auslaufendZumWechsel(state);
+        if (auslaufend.length) {
+            state.inbox.unshift({
+                id: Date.now() + 11,
+                matchday: state.totalMatchdays,
+                date: `Saison ${state.seasonYear} Abschluss`,
+                sender: "Sportdirektor",
+                subject: `Sommerpause: ${auslaufend.length} ${auslaufend.length === 1 ? "Vertrag endet" : "Verträge enden"} zum Saisonwechsel`,
+                body: `Bis zum Saisonwechsel bleiben ${Math.round(SeasonEngine.SOMMERPAUSE.tage / 7)} Wochen. Ohne Verlängerung gehen ablösefrei:\n\n`
+                    + auslaufend.slice().sort((a, b) => (b.overall || 0) - (a.overall || 0)).map(p => `• ${p.name} (${p.pos}, ${p.age} Jahre)`).join("\n")
+                    + `\n\nAndere Vereine wissen das auch - wer zu lange wartet, verliert den einen oder anderen schon vorher an die Konkurrenz.`,
+                read: false,
+                type: "contract_expiring"
+            });
+        }
+
         // Abschlussbericht im Postfach
         state.inbox.unshift({
             id: Date.now() + 10,
@@ -898,6 +987,10 @@ class SeasonEngine {
                     return;
                 }
             }
+            // Wer gerade unterschrieben hat - in der Sommerpause woanders oder
+            // in dieser Saison bei uns -, hört nicht auf
+            if (player.vorvertrag) return;
+            if (typeof player.verlaengertSaison === "number" && player.verlaengertSaison >= (state.seasonYear || 0) - 1) return;
             const chance = SeasonEngine.karriereendeChance(player, niveau.get(player.clubId), stufe.get(player.clubId));
             if (chance > 0 && Math.random() < chance) abschied.push(player);
         });
@@ -979,6 +1072,24 @@ class SeasonEngine {
             }
 
             const istNutzerverein = club.id === state.userClubId;
+
+            // Wer in der Sommerpause woanders unterschrieben hat, geht dorthin
+            const vorvertrag = istNutzerverein && player.vorvertrag
+                ? state.clubs.find(c => c.id === player.vorvertrag.clubId && c.id !== club.id) : null;
+            delete player.vorvertrag;
+            const transferEngine = _getTransferEngine();
+            if (vorvertrag && transferEngine && typeof transferEngine.executeTransfer === 'function') {
+                const playerGen = _resolve('PlayerGenerator', './playerGenerator.js');
+                const lohn = playerGen && typeof playerGen.getValueAndWage === 'function'
+                    ? playerGen.getValueAndWage(player.overall || 50, vorvertrag.level || 1, player.age || 25).wage
+                    : (player.wage || 1000);
+                const jahre = contractEngine && typeof contractEngine.laufzeitFuer === 'function'
+                    ? contractEngine.laufzeitFuer(player) : 2;
+                if (transferEngine.executeTransfer(state, player.id, vorvertrag.id, 0, lohn, jahre)) {
+                    eigeneAbgaenge.push(`${player.name} (zu ${vorvertrag.name})`);
+                    return;
+                }
+            }
 
             if (!istNutzerverein) {
                 if (Math.random() < SeasonEngine.haltequote(player, niveau.get(club.id))) {

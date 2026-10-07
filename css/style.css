@@ -8324,3 +8324,15 @@ td.nowrap { white-space: nowrap; }
 /* Die Kopfleiste steht fest - ein Sprungziel hält Abstand zu ihr */
 .negotiation-card, #pdVertrag { scroll-margin-top: 120px; }
 @media (min-width: 1201px) { .negotiation-card, #pdVertrag { scroll-margin-top: 24px; } }
+
+/* Sommerpause: Wer verlängert werden muss, steht im Saisonabschluss mit Namen */
+.se-pause { margin-top: 12px; text-align: left; }
+.se-pause h4 { margin-bottom: 6px; }
+.se-pause p { font-size: 13px; color: var(--text-muted); margin: 0 0 8px; }
+.se-namen { border: none; padding: 0; background: none; }
+#modalSeasonEnd .modal-footer { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.vertrag-endet {
+    font-size: 12px;
+    color: #fbbf24;
+    margin: -6px 0 12px;
+}

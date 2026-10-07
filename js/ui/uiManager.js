@@ -1695,7 +1695,16 @@ class UIManager {
         punkt.style.boxShadow = `inset 0 0 0 2px ${userClub.secondaryColor || "#ffffff"}`;
         document.getElementById("headerDifficulty").textContent = state.difficulty === "easy" ? "Leicht" : state.difficulty === "hard" ? "Schwer" : "Normal";
         document.getElementById("headerSeason").textContent = state.seasonYear;
-        document.getElementById("headerMatchday").textContent = `${state.currentMatchday} / ${state.totalMatchdays}`;
+        // In der Sommerpause zählt der Kopf die Tage bis zum Saisonwechsel
+        const pauseRest = this.sommerpauseRest();
+        const spieltagFeld = document.getElementById("headerMatchday");
+        const spieltagLabel = spieltagFeld.previousElementSibling;
+        if (spieltagLabel && spieltagLabel.classList?.contains("info-label")) {
+            spieltagLabel.textContent = pauseRest !== null ? "Sommerpause" : "Spieltag";
+        }
+        spieltagFeld.textContent = pauseRest !== null
+            ? `noch ${pauseRest} ${pauseRest === 1 ? "Tag" : "Tage"}`
+            : `${state.currentMatchday} / ${state.totalMatchdays}`;
         document.getElementById("headerBalance").textContent = GameState.formatMoney(userClub.balance);
         document.getElementById("headerTransferBudget").textContent = `TB: ${GameState.formatMoney(userClub.transferBudget)}`;
 
@@ -6102,6 +6111,7 @@ class UIManager {
                 return { art: "tag", text: geplant ? "Spieltermin austragen" : "Termin austragen", kurz: "Termin" };
             }
             if (halt.grund === "season_end") return { art: "tag", text: "Saison abschließen", kurz: "Saisonende" };
+            if (halt.grund === "season_change") return { art: "tag", text: "Neue Saison beginnen", kurz: "Saisonstart" };
             if (halt.grund === "matchday") return { art: "tag", text: "Spieltag abschließen", kurz: "Spieltag" };
             if (halt.grund === "cup" || halt.grund === "euro") {
                 return { art: "tag", text: "Pokalabend abschließen", kurz: "Pokal" };
@@ -6117,12 +6127,13 @@ class UIManager {
             friendly: () => "Weiter zum Spieltermin",
             media: () => "Weiter zur Pressekonferenz",
             season_end: () => "Weiter zum Saisonabschluss",
+            season_change: () => "Weiter zum Saisonwechsel",
             cup: () => `Weiter zum ${halt.partie?.runde?.roundName || "Pokalspiel"}`,
             euro: () => `Weiter zum ${halt.partie?.wettbewerb?.name || "Europapokal"}`
         };
         const kurzformen = {
             matchday: "Spiel", friendly: "Termin", media: "Presse",
-            season_end: "Saisonende", cup: "Pokal", euro: "Europa"
+            season_end: "Saisonende", season_change: "Saisonwechsel", cup: "Pokal", euro: "Europa"
         };
         const text = (beschriftung[halt.grund] || (() => "Weiter"))();
         return { art: "sprung", text, kurz: kurzformen[halt.grund] || "Weiter", tage, zielIndex: halt.index };
@@ -6747,7 +6758,9 @@ class UIManager {
             const heute = cal.getCurrentDay(state);
             if (!heute) break;
             // Vor einem Termin, der den Manager braucht, wird angehalten
-            if (gelaufen > 0 && ["matchday", "friendly", "media", "season_end"].includes(heute.type)) break;
+            if (gelaufen > 0 && ["matchday", "friendly", "media"].includes(heute.type)) break;
+            if (gelaufen > 0 && heute.type === "season_end" && state._seasonFinished !== state.seasonYear) break;
+            if (gelaufen > 0 && heute.saisonwechsel) break;
             // Ein Pokalabend hält nur auf, wenn der eigene Verein spielt
             if (gelaufen > 0 && (heute.type === "cup" || heute.type === "euro")
                 && this.eigenePokalpartie(heute)) break;
@@ -6762,6 +6775,7 @@ class UIManager {
                 this.showSeasonEndCelebration(res.matchResult);
                 return;
             }
+            if (res.type === "season_change") return this.zeigeSaisonwechsel(res);
             (res.summary?.messages || []).forEach(m => berichte.push(m));
 
             // Eine Entlassung beendet den Vorlauf sofort
@@ -6821,6 +6835,7 @@ class UIManager {
                 this.showSeasonEndCelebration(res.matchResult);
                 return;
             }
+            if (res.type === "season_change") return this.zeigeSaisonwechsel(res);
 
             if (res.type === "matchday" && res.matchResult) {
                 this.playSound("whistle");
@@ -6894,24 +6909,82 @@ class UIManager {
         document.getElementById("seTitle").textContent = `🏆 Meister der Saison ${endResult.seasonYear}!`;
         document.getElementById("seSubtitle").textContent = `Herzlichen Glückwunsch an ${endResult.championClub.name}!`;
 
+        // Bis zum Saisonwechsel bleibt die Sommerpause - wer jetzt noch
+        // verlängern muss, steht hier mit Namen
+        const state = this.app.state;
+        const auslaufend = (typeof SeasonEngine !== "undefined" && typeof SeasonEngine.auslaufendZumWechsel === "function")
+            ? SeasonEngine.auslaufendZumWechsel(state).sort((a, b) => (b.overall || 0) - (a.overall || 0)) : [];
+        const wochen = Math.round((SeasonEngine.SOMMERPAUSE?.tage || 21) / 7);
         details.innerHTML = `
             <div class="dash-card" style="margin-top:16px;">
                 <h4>Ihr Saisonabschluss:</h4>
                 <p>Ihr Verein belegt den <strong>${endResult.userRank}. Tabellenplatz</strong>.</p>
                 <p>Die Saisonprämien wurden auf Ihr Vereinskonto überwiesen.</p>
             </div>
+            <div class="dash-card se-pause">
+                <h4>☀️ Sommerpause: ${wochen} Wochen bis zum Saisonwechsel</h4>
+                ${auslaufend.length ? `
+                    <p>${auslaufend.length === 1 ? "Ein Vertrag endet" : `${auslaufend.length} Verträge enden`} zum Saisonwechsel. Wer bleiben soll, mit dem jetzt verlängern - andere Vereine werben schon:</p>
+                    <div class="attention-namen se-namen">
+                        ${auslaufend.map(p => `<button class="attention-name" data-player="${this.escapeHtml(String(p.id))}">${this.escapeHtml(p.name)} <small>${this.escapeHtml(p.pos || "")}</small></button>`).join("")}
+                    </div>`
+                    : `<p>Kein Vertrag läuft aus. Die Mannschaft hat frei, Sie planen die neue Saison.</p>`}
+            </div>
         `;
 
         modal.style.display = "flex";
         this.playSound("goal");
 
-        document.getElementById("btnStartNextSeason").onclick = () => {
-            SeasonEngine.startNextSeason(this.app.state);
+        details.querySelectorAll(".attention-name").forEach(btn => btn.addEventListener("click", () => {
             modal.style.display = "none";
-            this.renderCurrentTab();
+            this.switchTab("dashboard");
+            this.showPlayerDetailsModal(this.resolvePlayerId(btn.dataset.player), { abschnitt: "vertrag" });
+        }));
+
+        const knopf = document.getElementById("btnStartNextSeason");
+        knopf.innerHTML = `<span>In die Sommerpause</span><svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg>`;
+        knopf.onclick = () => {
+            modal.style.display = "none";
+            this.switchTab("dashboard");
             this.renderHeader();
-            this.playSound("whistle");
         };
+        const sofort = document.getElementById("btnSkipSummerBreak");
+        if (sofort) sofort.onclick = () => {
+            const offen = SeasonEngine.auslaufendZumWechsel(state).filter(p => !p.vorvertrag).length;
+            if (offen && typeof confirm === "function"
+                && !confirm(`${offen} ${offen === 1 ? "Spieler geht" : "Spieler gehen"} dann ablösefrei. Trotzdem gleich in die neue Saison?`)) return;
+            modal.style.display = "none";
+            this.starteNeueSaison();
+        };
+    }
+
+    /** Tage bis zum Saisonwechsel - null außerhalb der Sommerpause */
+    sommerpauseRest() {
+        const cal = this.getCalendarEngine();
+        return cal && typeof cal.sommerpauseRest === "function" && this.app?.state ? cal.sommerpauseRest(this.app.state) : null;
+    }
+
+    /** " in 12 Tagen" während der Sommerpause, sonst nichts */
+    sommerpauseText() {
+        const rest = this.sommerpauseRest();
+        return rest === null ? "" : ` ${this.wannText(rest)}`;
+    }
+
+    /** Die Sommerpause überspringen: gleich zum Saisonwechsel */
+    starteNeueSaison() {
+        const state = this.app.state;
+        SeasonEngine.startNextSeason(state);
+        this.zeigeSaisonwechsel({ neueSaison: state.seasonYear });
+    }
+
+    /** Nach dem Saisonwechsel: neue Saison, neue Vorbereitung */
+    zeigeSaisonwechsel(res) {
+        const state = this.app.state;
+        if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+        this.playSound("whistle");
+        this.showToast(`🔄 Saison ${res?.neueSaison || state.seasonYear} beginnt - die Vorbereitung läuft.`, "success", 6000);
+        this.switchTab("dashboard");
+        this.renderHeader();
     }
 
     /**

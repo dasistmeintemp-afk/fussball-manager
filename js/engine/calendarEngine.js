@@ -22,7 +22,10 @@ const CALENDAR_DAY_TYPES = {
     CUP: "cup",
     EURO: "euro",
     // Länderspielpause: Die Nationalspieler reisen ab, die Liga ruht
-    INTERNATIONAL: "international"
+    INTERNATIONAL: "international",
+    // Die Wochen zwischen letztem Spieltag und Saisonwechsel: frei für die
+    // Mannschaft, Zeit für Vertragsgespräche
+    SUMMER_BREAK: "summer_break"
 };
 
 function _getNationalTeamEngine() {
@@ -370,6 +373,57 @@ const CalendarEngine = {
         state.currentDayIndex = 0;
         state.currentDate = calendar[0].date;
         return calendar;
+    },
+
+    /**
+     * Die Sommerpause an den Kalender hängen.
+     *
+     * Vorher folgte auf den letzten Spieltag sofort der Saisonwechsel: Wer
+     * bis dahin nicht verlängert hatte, verlor seine Spieler, ohne noch
+     * reagieren zu können. Jetzt liegen einige Wochen dazwischen. Die
+     * Mannschaft hat frei, der Manager verhandelt - und der letzte Tag ist
+     * der Saisonwechsel selbst. Gibt die Zahl der angehängten Tage zurück
+     * (0, wenn die Pause schon im Kalender steht).
+     */
+    legeSommerpauseAn(state, tage = 21) {
+        if (!state || !Array.isArray(state.calendar) || state.calendar.length === 0) return 0;
+        if (state.calendar.some(d => d.sommerpause)) return 0;
+
+        const letzter = state.calendar[state.calendar.length - 1];
+        const datum = letzter.dateObj ? new Date(letzter.dateObj) : new Date(2026 + Math.max(1, state.seasonYear || 1), 4, 31);
+        let nr = (letzter.dayIndex || state.calendar.length) + 1;
+        for (let t = 1; t <= tage; t++) {
+            datum.setDate(datum.getDate() + 1);
+            const wechsel = t === tage;
+            state.calendar.push({
+                id: `day_${nr}`,
+                dayIndex: nr,
+                date: this.formatDate(datum),
+                dateObj: new Date(datum).toISOString(),
+                dayOfWeek: this.getDayName(datum),
+                type: CALENDAR_DAY_TYPES.SUMMER_BREAK,
+                title: wechsel ? "🔄 Saisonwechsel" : "☀️ Sommerpause",
+                description: wechsel
+                    ? "Auslaufende Verträge enden, Auf- und Absteiger wechseln die Liga, die Vorbereitung beginnt."
+                    : "Die Mannschaft hat frei. Zeit, Verträge zu verlängern und die neue Saison zu planen.",
+                matchday: null,
+                sommerpause: true,
+                pauseTag: t,
+                pauseTage: tage,
+                saisonwechsel: wechsel,
+                actionsAvailable: ["contracts", "squad"],
+                completed: false
+            });
+            nr++;
+        }
+        return tage;
+    },
+
+    /** Wie viele Tage der Sommerpause noch bleiben - null außerhalb von ihr */
+    sommerpauseRest(state) {
+        const heute = this.getCurrentDay(state);
+        if (!heute || !heute.sommerpause) return null;
+        return Math.max(0, (heute.pauseTage || 0) - (heute.pauseTag || 0));
     },
 
     /**
@@ -831,8 +885,13 @@ const CalendarEngine = {
             if (tag.type === CALENDAR_DAY_TYPES.MEDIA) {
                 return { index: i, tag, grund: "media", heute };
             }
-            if (tag.type === CALENDAR_DAY_TYPES.SEASON_END) {
+            // Ist die Saison schon abgeschlossen, führt der Weg gleich durch
+            // die Sommerpause zum Saisonwechsel
+            if (tag.type === CALENDAR_DAY_TYPES.SEASON_END && state._seasonFinished !== state.seasonYear) {
                 return { index: i, tag, grund: "season_end", heute };
+            }
+            if (tag.saisonwechsel) {
+                return { index: i, tag, grund: "season_change", heute };
             }
         }
         return null;
@@ -887,9 +946,31 @@ const CalendarEngine = {
             this.generateSeasonCalendar(state);
         }
 
+        // Ein Spielstand, der schon nach dem letzten Spieltag stand, bekommt
+        // seine Sommerpause nachträglich
+        if (state._seasonFinished === state.seasonYear) this.legeSommerpauseAn(state);
+
         const currentDay = this.getCurrentDay(state);
         if (!currentDay) {
             return { success: false, error: "Ungültiger Kalendertag" };
+        }
+
+        // Am letzten Tag der Sommerpause beginnt die neue Saison
+        if (currentDay.saisonwechsel) {
+            const seasonEngine = (typeof SeasonEngine !== 'undefined' && SeasonEngine)
+                ? SeasonEngine
+                : ((typeof window !== 'undefined' && window.SeasonEngine) ? window.SeasonEngine : (typeof require !== 'undefined' ? require('./seasonEngine.js').SeasonEngine : null));
+            const alteSaison = state.seasonYear;
+            currentDay.completed = true;
+            if (seasonEngine) seasonEngine.startNextSeason(state);
+            return {
+                success: true,
+                type: "season_change",
+                alteSaison,
+                neueSaison: state.seasonYear,
+                day: currentDay,
+                nextDay: this.getCurrentDay(state)
+            };
         }
 
         // Vorbereitung: Der Fortschritt zaehlt mit, damit die Oberflaeche
@@ -1116,7 +1197,9 @@ const CalendarEngine = {
             ? CoachingStaffEngine
             : ((typeof window !== 'undefined' && window.CoachingStaffEngine) ? window.CoachingStaffEngine : (typeof require !== 'undefined' ? require('./coachingStaffEngine.js').CoachingStaffEngine : null));
 
-        if (staffEngine && typeof staffEngine.applyDailyPlan === 'function') {
+        // In der Sommerpause hat die Mannschaft frei: kein Plan, nur Erholung
+        const trainingsArt = currentDay.sommerpause ? CALENDAR_DAY_TYPES.REST : currentDay.type;
+        if (staffEngine && typeof staffEngine.applyDailyPlan === 'function' && !currentDay.sommerpause) {
             summary.plan = staffEngine.applyDailyPlan(state, currentDay.type);
         }
 
@@ -1127,7 +1210,7 @@ const CalendarEngine = {
             : ((typeof window !== 'undefined' && window.TrainingEngine) ? window.TrainingEngine : (typeof require !== 'undefined' ? require('./trainingEngine.js').TrainingEngine : null));
 
         if (trainingEngine && typeof trainingEngine.processDailyTraining === 'function') {
-            const tag = trainingEngine.processDailyTraining(state, currentDay.type);
+            const tag = trainingEngine.processDailyTraining(state, trainingsArt);
             summary.training = tag;
 
             if (summary.plan) {
@@ -1231,6 +1314,16 @@ const CalendarEngine = {
                 if (!schritt || !schritt.negotiation) return;
                 summary.messages.push(`💬 ${schritt.negotiation.playerName}: ${negotiationEngine.describe(schritt.negotiation)}`);
             });
+        }
+
+        // 2b. Sommerpause: Andere Vereine werben um Spieler mit auslaufendem Vertrag
+        if (currentDay.sommerpause) {
+            const seasonEngineTag = (typeof SeasonEngine !== 'undefined' && SeasonEngine)
+                ? SeasonEngine
+                : ((typeof window !== 'undefined' && window.SeasonEngine) ? window.SeasonEngine : (typeof require !== 'undefined' ? require('./seasonEngine.js').SeasonEngine : null));
+            if (seasonEngineTag && typeof seasonEngineTag.sommerpauseTag === 'function') {
+                seasonEngineTag.sommerpauseTag(state).forEach(m => summary.messages.push(m));
+            }
         }
 
         // 3. Medientag / Pressekonferenz

@@ -295,6 +295,12 @@ In der Spielerakte führt der Manager Gespräche mit jedem eigenen Spieler. Wie 
 - Nach jedem Gespräch braucht es sechs Tage Pause, bevor man denselben Spieler wieder spricht.
 - **Gesprächswünsche:** Ein unzufriedener Spieler bittet um ein Gespräch. Wer ihn eine Woche warten lässt, kränkt ihn.
 - **Wechselwunsch:** Drei Wochen tiefer Frust oder ein gebrochenes Wort werden zum Wechselwunsch.
+- **Mannschaftsbesprechung:** In der Kabinen-Karte des Kaders holt der Trainer alle zwei Wochen die ganze Mannschaft zusammen.
+  - **Loben** trägt nach einer guten Serie und wirkt nach Niederlagen unverdient.
+  - **Mehr fordern** ist nach schlechten Ergebnissen ein Weckruf – Profis nehmen ihn an, Hitzköpfe sind gekränkt –, nach Siegen ist es unfair.
+  - **Druck herausnehmen** hilft, wenn die Köpfe hängen.
+  - **Das Saisonziel bekräftigen** stärkt, wer auf Kurs liegt.
+  - Die Menschenführung des Trainers verstärkt die Wirkung, der Kapitän trägt seine Stimmung zu allen, und dieselbe Ansprache zweimal hintereinander wirkt nur noch halb.
 
 ### 4. 🔄 Transfersystem, Scouting & Verträge
 - **Transfermarkt mit Suchfiltern:** Nach Position, Stärke, Potenzial und Preisklasse filtern.

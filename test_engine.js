@@ -9930,6 +9930,75 @@ function runEngineTests() {
         if (/Zuschuss/.test(BoardEngine.anfrageHindernis(state, "jugend") || "") || club.bauzuschuss) throw new Error("Zuschuss überdauert die Saison");
     });
 
+    test("Entwicklungsplan: Eigenheit antrainieren und ablegen - Dauer nach Alter, Einstellung, Trainerstab und Mentor", () => {
+        const { DevelopmentPlanEngine: Plan } = require('./js/engine/developmentPlanEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const kader = state.players.filter(p => club.playerIds.includes(p.id));
+        const p = kader.find(s => s.pos !== "TW" && (s.age || 30) <= 23) || kader.find(s => s.pos !== "TW");
+        const tw = kader.find(s => s.pos === "TW");
+        p.traits = []; delete p.mentorId; p.age = 22;
+        p.hiddenAttributes = Object.assign({}, p.hiddenAttributes, { professionalism: 14, adaptability: 12 });
+
+        // Was er lernen kann, hängt an den Werten - knapp darunter wird es mühsam
+        p.pace = 86;
+        if (Plan.lernbareEigenheiten(p).find(e => e.key === "antritt")?.schwer !== false) throw new Error("Antritt trotz Tempo 86 nicht lernbar");
+        p.pace = 81;
+        if (Plan.lernbareEigenheiten(p).find(e => e.key === "antritt")?.schwer !== true) throw new Error("Knapp darunter nicht als mühsam markiert");
+        p.pace = 70;
+        if (Plan.lernbareEigenheiten(p).some(e => e.key === "antritt")) throw new Error("Antritt mit Tempo 70");
+        // Ein Torwart lernt nur Torwartsachen
+        if (tw && Plan.lernbareEigenheiten(Object.assign({}, tw, { traits: [] })).some(e => !Plan.TORWART_EIGENHEITEN.includes(e.key))) throw new Error("Feldspielermarotte für den Torwart");
+
+        // Tempo: jung und professionell schneller als alt und nachlässig, Mentor hilft
+        p.pace = 86;
+        const plan = { key: "antritt", art: "lernen", fortschritt: 0 };
+        const jung = Plan.eigenheitTempo(state, p, plan, 1);
+        const alt = Plan.eigenheitTempo(state, Object.assign({}, p, { age: 32, hiddenAttributes: { professionalism: 6, adaptability: 6 } }), plan, 1);
+        if (!(jung > alt * 1.8)) throw new Error(`Alter und Einstellung zählen kaum: ${jung} gegen ${alt}`);
+        if (!(Plan.eigenheitTempo(state, p, plan, 1.4) > jung)) throw new Error("Trainerstab ohne Wirkung");
+        const mentor = kader.find(s => s.id !== p.id && (s.age || 0) >= Plan.MENTOR_MINDESTALTER);
+        mentor.traits = [{ key: "antritt", text: "x" }];
+        p.mentorId = mentor.id;
+        if (Math.abs(Plan.eigenheitTempo(state, p, plan, 1) / jung - 1.3) > 0.001) throw new Error("Mentor, der es kann, beschleunigt nicht");
+        delete p.mentorId;
+
+        // Antrainieren: Die Einheiten bringen ihn hin, dann steht es in der Akte
+        const start = Plan.setzeEigenheitTraining(state, p.id, "antritt", "lernen");
+        if (!start.success || !(start.wochen > 0)) throw new Error(`Training startet nicht: ${start.error}`);
+        if (Plan.setzeEigenheitTraining(state, p.id, "elfmeterkiller", "lernen").success) throw new Error("Torwartsache für den Feldspieler");
+        let einheiten = 0;
+        while (p.eigenheitTraining && einheiten < 200) { Plan.nachEinheit(state, p, { stab: 1 }, () => 0.5); einheiten++; }
+        const erwartet = Plan.EIGENHEIT_EINHEITEN / jung;
+        if (Math.abs(einheiten - erwartet) > 2) throw new Error(`Dauer ${einheiten} statt etwa ${Math.round(erwartet)} Einheiten`);
+        if (!p.traits.some(t => t.key === "antritt" && t.text)) throw new Error("Eigenheit nicht gelernt");
+        if (!state.inbox.some(m => /neue Eigenheit/.test(m.subject || ""))) throw new Error("Keine Nachricht vom Trainerstab");
+
+        // Mehr als drei nimmt keiner an
+        p.traits.push({ key: "ausdauer", text: "a" }, { key: "kopfball", text: "k" });
+        if (Plan.lernbareEigenheiten(p).length) throw new Error("Vierte Eigenheit lernbar");
+        if (!/ablegen/.test(Plan.setzeEigenheitTraining(state, p.id, "dribbler", "lernen").error || "")) throw new Error("Kein Hinweis aufs Ablegen");
+
+        // Ablegen
+        if (!Plan.setzeEigenheitTraining(state, p.id, "kopfball", "ablegen").success) throw new Error("Ablegen startet nicht");
+        if (Plan.setzeEigenheitTraining(state, p.id, "knipser", "ablegen").success) throw new Error("Ablegen, was er nicht hat");
+        // Der Plan überlebt das Speichern
+        p.eigenheitTraining.fortschritt = 0.5;
+        const zurueck = SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(state))));
+        const gespeichert = zurueck.players.find(s => String(s.id) === String(p.id));
+        if (gespeichert?.eigenheitTraining?.key !== "kopfball" || gespeichert.eigenheitTraining.fortschritt !== 0.5) throw new Error("Plan nach dem Laden verloren");
+        let n = 0;
+        while (p.eigenheitTraining && n < 200) { Plan.nachEinheit(state, p, { stab: 1 }, () => 0.5); n++; }
+        if (p.traits.some(t => t.key === "kopfball") || p.traits.length !== 2) throw new Error("Eigenheit nicht abgelegt");
+        // Was er sich unterwegs anders angewöhnt hat, beendet den Plan
+        Plan.setzeEigenheitTraining(state, p.id, "ruhe", "lernen");
+        if (p.eigenheitTraining) {
+            p.traits.push({ key: "ruhe", text: "r" });
+            Plan.nachEinheit(state, p, { stab: 1 }, () => 0.5);
+            if (p.eigenheitTraining) throw new Error("Plan läuft weiter, obwohl er es schon kann");
+        }
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

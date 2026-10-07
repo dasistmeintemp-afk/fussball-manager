@@ -365,7 +365,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
     /**
      * Der Entwicklungsplan in der Akte: Spielpraxis, eigener
-     * Trainingsschwerpunkt, Umschulung und Mentor (oder die Schützlinge).
+     * Trainingsschwerpunkt, Umschulung, Eigenheit und Mentor (oder die Schützlinge).
      */
     entwicklungsplanHtml(player) {
         const engine = this.getDevelopmentPlanEngine();
@@ -413,6 +413,33 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         : "Er betreut noch keinen jungen Spieler. Einen Mentor wählen Sie in der Akte des Talents."}</small>
                 </div>`;
         }
+        // Eine Eigenheit antrainieren oder ablegen
+        const eigene = Array.isArray(player.traits) ? player.traits : [];
+        const lernbar = engine.lernbareEigenheiten(player);
+        const laeuft = player.eigenheitTraining;
+        const gewaehlt = laeuft ? `${laeuft.art}:${laeuft.key}` : "";
+        const ohnePunkt = (t) => String(t || "").replace(/\.$/, "");
+        const option = (art, key, text, schwer) => {
+            const wert = `${art}:${key}`;
+            const wochen = engine.eigenheitWochen(state, player, { key, art, schwer, fortschritt: 0 });
+            return `<option value="${esc(wert)}" ${gewaehlt === wert ? "selected" : ""}>${esc(ohnePunkt(text))}${schwer ? " (mühsam)" : ""} · ca. ${wochen} Wo.</option>`;
+        };
+        const lernOptionen = lernbar.map(e => option("lernen", e.key, e.text, e.schwer));
+        if (laeuft && laeuft.art === "lernen" && !lernbar.some(e => e.key === laeuft.key)) {
+            lernOptionen.unshift(option("lernen", laeuft.key, engine.eigenheitText(laeuft.key), !!laeuft.schwer));
+        }
+        const eigenStand = engine.eigenheitStand(player);
+        const eigenheit = (lernOptionen.length || eigene.length) ? `
+            <label class="ep-feld">
+                <span>Eigenheit antrainieren oder ablegen</span>
+                <select id="pdPlanEigenheit" class="styled-select">
+                    <option value="">Keine</option>
+                    ${lernOptionen.length ? `<optgroup label="Antrainieren">${lernOptionen.join("")}</optgroup>` : ""}
+                    ${eigene.length ? `<optgroup label="Ablegen">${eigene.map(e => option("ablegen", e.key, e.text, false)).join("")}</optgroup>` : ""}
+                </select>
+                ${laeuft ? `<div class="ep-balken"><span style="width:${eigenStand}%"></span></div><small>${eigenStand} % - noch etwa ${engine.eigenheitWochen(state, player)} Wochen.</small>` : ""}
+                <small>Wie schnell es geht, hängt an Alter, Einstellung, Anpassungsfähigkeit und Trainerstab; ein Mentor, der es selbst kann, macht es vor. Ablegen lohnt, wenn eine Gewohnheit nicht zur Taktik passt. Ein Wechsel fängt von vorn an.</small>
+            </label>` : "";
         return `
             <div class="dash-card mb-3 ep-karte">
                 <h4 class="gs-titel"><svg class="ico" aria-hidden="true"><use href="#i-up"/></svg> Entwicklungsplan</h4>
@@ -427,6 +454,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     <small>Wächst er, wachsen diese Werte mit. Die Zusatzschichten kosten etwas Kraft.</small>
                 </label>
                 ${umschulung}
+                ${eigenheit}
                 ${mentorHtml}
             </div>`;
     },
@@ -975,6 +1003,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         document.getElementById("pdPlanFokus")?.addEventListener("change", (e) => planAendern(planEngine.setzeSchwerpunkt(state, player.id, e.target.value)));
         document.getElementById("pdPlanUmschulung")?.addEventListener("change", (e) => planAendern(planEngine.setzeUmschulung(state, player.id, e.target.value || null)));
         document.getElementById("pdPlanMentor")?.addEventListener("change", (e) => planAendern(planEngine.setzeMentor(state, player.id, e.target.value || null)));
+        document.getElementById("pdPlanEigenheit")?.addEventListener("change", (e) => {
+            const [art, key] = String(e.target.value || "").split(":");
+            planAendern(planEngine.setzeEigenheitTraining(state, player.id, key || null, art || "lernen"));
+        });
 
         // Gespräch unter vier Augen
         body.querySelectorAll("[data-gespraech]").forEach(btn => btn.addEventListener("click", () => {

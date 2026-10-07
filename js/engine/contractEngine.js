@@ -50,7 +50,7 @@ const ContractEngine = {
      * Mit state wird die Stellung im Kader gemessen (vereinsNiveau); ohne
      * fällt dieser Aufschlag weg.
      */
-    getExtensionDemand(player, club, state = null) {
+    getExtensionDemand(player, club, state = null, angeboteneRolle = null) {
         if (!player) return { demandWage: 20000, preferredYears: 3, preferredRole: "Stammspieler" };
 
         const alter = player.age || 25;
@@ -82,20 +82,94 @@ const ContractEngine = {
         // Liegt ein Angebot für einen Vorvertrag auf dem Tisch, weiß er das
         if (player.vorvertragInteresse) mult += 0.1;
 
-        const demandWage = Math.max(100, this.rundeBetrag(basis * mult));
         let preferredRole = "Stammspieler";
         if (staerke !== null) {
             if (staerke >= 3) preferredRole = "Schlüsselspieler";
             else if (staerke < -5) preferredRole = "Rotationsspieler";
         }
 
+        // Weniger Spielzeit als erhofft will bezahlt sein, mehr macht ihn
+        // genügsamer; wer lange und gern hier ist, gibt etwas nach
+        const abstand = angeboteneRolle ? this.rollenAbstand(player, preferredRole, angeboteneRolle) : 0;
+        const R = this.ROLLE;
+        let faktor = abstand >= 2 ? R.zweiStufen : (abstand === 1 ? R.eineStufe : (abstand < 0 ? R.hoeher : 1));
+        const treu = this.istTreu(player, state);
+        if (treu) faktor *= R.treue;
+
+        const demandWage = Math.max(100, this.rundeBetrag(basis * mult * faktor));
         return {
             demandWage: demandWage,
             demandWageFormatted: (typeof Formatters !== 'undefined') ? Formatters.formatMoney(demandWage) : `${demandWage} €`,
             preferredYears: alter >= 32 ? 2 : 3,
-            preferredRole: preferredRole
+            preferredRole: preferredRole,
+            rollenAbstand: abstand,
+            treu
         };
     },
+
+    /** Die Kaderrollen von oben nach unten */
+    ROLLEN: ["Schlüsselspieler", "Stammspieler", "Rotationsspieler", "Ergänzungsspieler"],
+
+    /**
+     * Faktoren auf die Forderung: eine Stufe unter der gewünschten Rolle,
+     * zwei Stufen (dann unterschreibt er nicht), eine höhere Rolle, Treue.
+     * Ab loyal (verborgene Treue) und seitSaisons im Verein gilt er als treu.
+     */
+    ROLLE: { eineStufe: 1.12, zweiStufen: 1.25, hoeher: 0.95, treue: 0.93, loyal: 16, seitSaisons: 2 },
+
+    /**
+     * Wie weit liegt die angebotene Rolle unter der gewünschten? 0 heißt
+     * passt, 1 eine Stufe darunter, negativ darüber. Ein "Zukunftstalent"
+     * ist für einen Jungen mit Luft nach oben das Erhoffte, für alle anderen
+     * ein Ergänzungsspieler.
+     */
+    rollenAbstand(player, gewuenscht, angeboten) {
+        const rang = (rolle) => {
+            if (rolle === "Zukunftstalent") {
+                const jung = (player?.age || 25) <= 21 && (player?.pot || 0) >= (player?.overall || 0) + 5;
+                return jung ? null : this.ROLLEN.length - 1;
+            }
+            const i = this.ROLLEN.indexOf(rolle);
+            return i < 0 ? 1 : i;
+        };
+        const soll = rang(gewuenscht);
+        const ist = rang(angeboten);
+        if (soll === null || ist === null) return 0;
+        return ist - soll;
+    },
+
+    /**
+     * Treu: hohe verborgene Treue und seit einigen Spielzeiten im Verein.
+     * Wer schon zu Spielbeginn da war, zählt als lange im Verein.
+     */
+    istTreu(player, state) {
+        if ((player?.hiddenAttributes?.loyalty ?? 12) < this.ROLLE.loyal) return false;
+        if (typeof player.vereinSeit !== "number") return true;
+        const saison = state?.seasonYear || 1;
+        return saison - Math.floor(player.vereinSeit / 1000) >= this.ROLLE.seitSaisons;
+    },
+
+    /**
+     * Spricht er überhaupt über eine Verlängerung? null, wenn ja - sonst
+     * der Grund. Wer weg will oder tief unzufrieden ist, unterschreibt
+     * nicht, egal zu welchem Gehalt.
+     */
+    verlaengerungsHindernis(player) {
+        if (!player) return "Spieler nicht gefunden.";
+        if (player.vorvertrag) {
+            return `${player.name} hat bereits bei ${player.vorvertrag.clubName} unterschrieben und geht zum Saisonwechsel.`;
+        }
+        if (player.wechselwunsch) {
+            return `${player.name} will den Verein verlassen und spricht nicht über eine Verlängerung. Erst muss ihn ein Gespräch umstimmen.`;
+        }
+        if ((player.happiness?.overall ?? 70) < this.UNZUFRIEDEN) {
+            return `${player.name} ist zu unzufrieden, um zu verlängern. Mehr Spielzeit oder ein Gespräch könnten helfen.`;
+        }
+        return null;
+    },
+
+    /** Unter dieser Zufriedenheit verlängert niemand */
+    UNZUFRIEDEN: 30,
 
     /**
      * Verhandelt eine Vertragsverlängerung mit einem Spieler
@@ -116,12 +190,14 @@ const ContractEngine = {
 
     negotiateExtension(player, club, offeredWage, offeredYears, offeredRole, klausel = 0, state = null) {
         if (!player || !club) return { success: false, reason: "Ungültige Parameter." };
-        // In der Sommerpause hat er woanders unterschrieben - zu spät
-        if (player.vorvertrag) {
-            return { success: false, reason: `${player.name} hat bereits bei ${player.vorvertrag.clubName} unterschrieben und geht zum Saisonwechsel.` };
-        }
+        // Woanders unterschrieben, Wechselwunsch oder tief unzufrieden
+        const hindernis = this.verlaengerungsHindernis(player);
+        if (hindernis) return { success: false, reason: hindernis };
 
-        const demand = this.getExtensionDemand(player, club, state);
+        const demand = this.getExtensionDemand(player, club, state, offeredRole || null);
+        if (demand.rollenAbstand >= 2) {
+            return { success: false, reason: `${player.name} lehnt ab: Er sieht sich als ${demand.preferredRole}, nicht als ${offeredRole}.` };
+        }
         // Eine Ausstiegsklausel senkt die Forderung
         const rabatt = this.klauselRabatt(player, klausel);
         if (rabatt < 1) {

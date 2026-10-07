@@ -565,11 +565,24 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     <p style="font-size:12px; color:var(--text-muted); margin:0;">${this.escapeHtml(player.name)} hat bei <strong>${this.escapeHtml(player.vorvertrag.clubName)}</strong> unterschrieben und geht zum Saisonwechsel ablösefrei.</p>
                 </div>
             `;
+        } else if (isUserClub && leiheModus !== "geliehen" && ContractEngine.verlaengerungsHindernis(player)) {
+            // Wer weg will oder tief unzufrieden ist, spricht gar nicht erst
+            contractSectionHtml = `
+                <div class="dash-card mt-3" id="pdVertrag" style="padding:14px; background: var(--surface-2); border:1px solid var(--line);">
+                    <h4 style="font-size:14px; margin-bottom:8px; color:#f87171;"><svg class="ico h-ico" aria-hidden="true"><use href="#i-briefcase"/></svg>Keine Vertragsgespräche</h4>
+                    <p style="font-size:12px; color:var(--text-muted); margin:0;">${this.escapeHtml(ContractEngine.verlaengerungsHindernis(player))}</p>
+                </div>
+            `;
         } else if (isUserClub && leiheModus !== "geliehen") {
+            const rollen = [
+                ["Schlüsselspieler", "Höchste Wichtigkeit"], ["Stammspieler", "Regelmäßige Startelf"],
+                ["Rotationsspieler", "Teilzeit-Einsätze"], ["Ergänzungsspieler", "Backup"], ["Zukunftstalent", "Entwicklung"]
+            ];
             contractSectionHtml = `
                 <div class="dash-card mt-3" id="pdVertrag" style="padding:14px; background: var(--surface-2); border:1px solid var(--line);">
                     <h4 style="font-size:14px; margin-bottom:8px; color:#38bdf8;"><svg class="ico h-ico" aria-hidden="true"><use href="#i-briefcase"/></svg>Vertragsverlängerung verhandeln</h4>
-                    <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">Forderung des Spielers: ca. <strong>${GameState.formatMoney(demand.demandWage)} / Woche</strong></p>
+                    <p style="font-size:12px; color:var(--text-muted); margin-bottom:6px;">Forderung des Spielers: ca. <strong id="extForderung">${GameState.formatMoney(demand.demandWage)} / Woche</strong></p>
+                    <p class="ext-rolle" id="extRolleHinweis">Er sieht sich als <strong>${this.escapeHtml(demand.preferredRole)}</strong>.${demand.treu ? " Er ist gern hier und kommt beim Gehalt entgegen." : ""}</p>
                     ${(player.contractYears || 0) <= 0 ? `<p class="vertrag-endet">Sein Vertrag endet zum Saisonwechsel${this.sommerpauseText()}. Andere Vereine werben schon.</p>` : ""}
                     ${player.vorvertragInteresse ? `<p class="vertrag-endet">✍️ ${this.escapeHtml(player.vorvertragInteresse.clubName)} bietet ihm einen Vorvertrag an. Er entscheidet sich ${this.bedenkzeitText(player.vorvertragInteresse)} - verlängern wir vorher, bleibt er.</p>` : ""}
                     
@@ -593,11 +606,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     <div style="margin-bottom:12px;">
                         <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Zugesagte Kaderrolle:</label>
                         <select id="extRoleSelect" class="styled-select" style="width:100%;">
-                            <option value="Schlüsselspieler" ${player.squadRole === 'Schlüsselspieler' ? 'selected' : ''}>Schlüsselspieler (Höchste Wichtigkeit)</option>
-                            <option value="Stammspieler" ${player.squadRole === 'Stammspieler' || !player.squadRole ? 'selected' : ''}>Stammspieler (Regelmäßige Startelf)</option>
-                            <option value="Rotationsspieler" ${player.squadRole === 'Rotationsspieler' ? 'selected' : ''}>Rotationsspieler (Teilzeit-Einsätze)</option>
-                            <option value="Ergänzungsspieler" ${player.squadRole === 'Ergänzungsspieler' ? 'selected' : ''}>Ergänzungsspieler (Backup)</option>
-                            <option value="Zukunftstalent" ${player.squadRole === 'Zukunftstalent' ? 'selected' : ''}>Zukunftstalent</option>
+                            ${rollen.map(([rolle, text]) => `<option value="${rolle}" ${rolle === demand.preferredRole ? "selected" : ""}>${rolle} (${text})</option>`).join("")}
                         </select>
                     </div>
 
@@ -1010,6 +1019,27 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         // Event-Binding für Vertragsverlängerung
         const submitExtBtn = document.getElementById("btnSubmitExtension");
+        // Rolle und Klausel ändern die Forderung - gleich sichtbar machen
+        const forderungNeu = () => {
+            const rolle = document.getElementById("extRoleSelect")?.value;
+            const klauselWert = parseInt(document.getElementById("extKlauselSelect")?.value || "0", 10);
+            const d = ContractEngine.getExtensionDemand(player, club, state, rolle);
+            const betrag = ContractEngine.rundeBetrag(d.demandWage * ContractEngine.klauselRabatt(player, klauselWert));
+            const text = document.getElementById("extForderung");
+            if (text) text.textContent = `${GameState.formatMoney(betrag)} / Woche`;
+            const eingabe = document.getElementById("extWageInput");
+            if (eingabe) eingabe.value = betrag;
+            const hinweis = document.getElementById("extRolleHinweis");
+            if (hinweis) {
+                const zusatz = d.rollenAbstand >= 2 ? ` Als ${rolle} unterschreibt er nicht.`
+                    : d.rollenAbstand === 1 ? " Für weniger Spielzeit will er mehr Geld."
+                        : d.rollenAbstand < 0 ? " Die größere Rolle gefällt ihm." : "";
+                hinweis.innerHTML = `Er sieht sich als <strong>${this.escapeHtml(d.preferredRole)}</strong>.${d.treu ? " Er ist gern hier und kommt beim Gehalt entgegen." : ""}${zusatz}`;
+                hinweis.classList.toggle("warnung", d.rollenAbstand >= 1);
+            }
+        };
+        document.getElementById("extRoleSelect")?.addEventListener("change", forderungNeu);
+        document.getElementById("extKlauselSelect")?.addEventListener("change", forderungNeu);
         if (submitExtBtn && isUserClub && !isProspect) {
             submitExtBtn.onclick = () => {
                 const offWage = parseInt(document.getElementById("extWageInput").value, 10);

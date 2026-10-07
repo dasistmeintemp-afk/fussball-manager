@@ -8336,6 +8336,9 @@ td.nowrap { white-space: nowrap; }
     color: #fbbf24;
     margin: -6px 0 12px;
 }
+/* Vertragsverlängerung: gewünschte Rolle */
+.ext-rolle { font-size: 12px; color: var(--text-muted); margin: 0 0 12px; }
+.ext-rolle.warnung { color: #fbbf24; }
 /* Vorvertrag in der Akte eines fremden Spielers */
 .vv-hinweis { margin: 10px 0 0; }
 .vv-zeile { margin-top: 10px; font-size: 12px; color: var(--text-muted); }

@@ -8288,3 +8288,39 @@ td.nowrap { white-space: nowrap; }
         border-top-right-radius: 4px;
     }
 }
+
+/* Schreibtisch: mehrere Spieler unter einem Punkt, jeder ein Sprung in seine Akte */
+.attention-gruppe { margin-bottom: 6px; }
+.attention-gruppe .attention-item { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.attention-namen {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    background: rgba(29, 37, 48, 0.35);
+}
+.attention-name {
+    font: inherit;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(29, 37, 48, 0.85);
+    color: #e2e8f0;
+    cursor: pointer;
+}
+.attention-name small { color: var(--text-muted); margin-left: 2px; }
+.attention-name:hover { border-color: var(--accent-gold, #f59e0b); }
+
+/* Sprungziel: kurz aufleuchten, damit das Auge weiß, wohin es geführt wurde */
+.sprung-ziel { animation: sprung-ziel 2.4s ease-out; }
+@keyframes sprung-ziel {
+    0%, 30% { box-shadow: 0 0 0 2px var(--accent-gold, #f59e0b); }
+    100% { box-shadow: 0 0 0 2px transparent; }
+}
+/* Die Kopfleiste steht fest - ein Sprungziel hält Abstand zu ihr */
+.negotiation-card, #pdVertrag { scroll-margin-top: 120px; }
+@media (min-width: 1201px) { .negotiation-card, #pdVertrag { scroll-margin-top: 24px; } }

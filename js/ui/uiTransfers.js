@@ -17,6 +17,41 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
      * die verbleibende Geduld und die Frist. Sind wir am Zug, lässt sich hier
      * direkt nachbessern.
      */
+    /**
+     * Springt zu einer laufenden Verhandlung: Transfermarkt öffnen, die Karte
+     * in die Mitte holen und kurz hervorheben. Sind wir am Zug, steht der
+     * Cursor gleich im ersten Feld.
+     *
+     * Vorher führte jeder Weg dorthin nur in den Reiter - die Verhandlung
+     * musste man unter Angeboten und Markt selbst suchen.
+     */
+    zeigeVerhandlung(negId) {
+        this.switchTab("transfers");
+        document.getElementById("btnSubTransfersMarket")?.click();
+        const karte = Array.from(document.querySelectorAll("[data-neg-card]"))
+            .find(el => el.dataset.negCard === String(negId));
+        if (!karte) return false;
+        this.hebeHervor(karte);
+        karte.querySelector("input")?.focus({ preventScroll: true });
+        return true;
+    },
+
+    /** Ein Element in den Blick holen und kurz aufleuchten lassen */
+    hebeHervor(el) {
+        if (!el) return;
+        // Was höher ist als der halbe Bildschirm, beginnt oben - sonst läge
+        // sein Kopf mit dem Namen außer Sicht
+        const hoehe = typeof el.getBoundingClientRect === "function" ? el.getBoundingClientRect().height : 0;
+        const fenster = (typeof window !== "undefined" && window.innerHeight) || 800;
+        if (typeof el.scrollIntoView === "function") {
+            el.scrollIntoView({ behavior: "smooth", block: hoehe > fenster * 0.5 ? "start" : "center" });
+        }
+        el.classList.remove("sprung-ziel");
+        void el.offsetWidth;
+        el.classList.add("sprung-ziel");
+        setTimeout(() => el.classList.remove("sprung-ziel"), 2400);
+    },
+
     renderNegotiations() {
         const state = this.app.state;
         const engine = this.getNegotiationEngine();
@@ -38,6 +73,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         container.style.display = "block";
         const heute = state.currentDayIndex || 0;
 
+        // Schrittweite der Eingaben passend zum Betrag: in der Landesliga
+        // geht ein Gehalt in Zehnern, in der Bundesliga in Tausendern
+        const schritt = betrag => (typeof ContractEngine !== "undefined")
+            ? ContractEngine.eingabeSchritt(betrag) : 100;
         list.innerHTML = offen.map(n => {
             const amZug = n.status === engine.STATUS.AWAITING_US;
             const istAblöse = n.stage === engine.STAGES.FEE;
@@ -57,13 +96,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const eingabe = amZug ? (istAblöse ? `
                 <div class="negotiation-inputs">
                     <label>Ablöse (€)
-                        <input type="number" class="styled-input neg-fee" data-neg-id="${n.id}" value="${n.demand.fee}" step="100000" min="0">
+                        <input type="number" class="styled-input neg-fee" data-neg-id="${n.id}" value="${n.demand.fee}" step="${schritt(n.demand.fee)}" min="0">
                     </label>
                 </div>
             ` : `
                 <div class="negotiation-inputs">
                     <label>Gehalt (€ / Woche)
-                        <input type="number" class="styled-input neg-wage" data-neg-id="${n.id}" value="${n.demand.wage}" step="500" min="0">
+                        <input type="number" class="styled-input neg-wage" data-neg-id="${n.id}" value="${n.demand.wage}" step="${schritt(n.demand.wage)}" min="0">
                     </label>
                     <label>Laufzeit
                         <select class="styled-select neg-years" data-neg-id="${n.id}">
@@ -71,23 +110,23 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         </select>
                     </label>
                     <label>Handgeld (€)
-                        <input type="number" class="styled-input neg-bonus" data-neg-id="${n.id}" value="${n.demand.signingBonus}" step="10000" min="0">
+                        <input type="number" class="styled-input neg-bonus" data-neg-id="${n.id}" value="${n.demand.signingBonus}" step="${schritt(n.demand.signingBonus)}" min="0">
                     </label>
                     <label>Beraterhonorar (€)
-                        <input type="number" class="styled-input neg-berater" data-neg-id="${n.id}" value="${n.demand.agentFee || 0}" step="10000" min="0">
+                        <input type="number" class="styled-input neg-berater" data-neg-id="${n.id}" value="${n.demand.agentFee || 0}" step="${schritt(n.demand.agentFee)}" min="0">
                     </label>
                     <label>Einsatzprämie (€ / Spiel)
-                        <input type="number" class="styled-input neg-einsatz" data-neg-id="${n.id}" value="0" step="1000" min="0">
+                        <input type="number" class="styled-input neg-einsatz" data-neg-id="${n.id}" value="0" step="${schritt(n.demand.wage)}" min="0">
                     </label>
                     <label>Torprämie (€ / Tor)
-                        <input type="number" class="styled-input neg-tor" data-neg-id="${n.id}" value="0" step="1000" min="0">
+                        <input type="number" class="styled-input neg-tor" data-neg-id="${n.id}" value="0" step="${schritt(n.demand.wage)}" min="0">
                     </label>
                     <p class="neg-hinweis">Prämien ersetzen einen Teil des Grundgehalts. Der Spieler rechnet sie mit Abschlag ein und bekommt sie nur, wenn er spielt oder trifft.</p>
                 </div>
             `) : "";
 
             return `
-                <div class="negotiation-card ${amZug ? "our-turn" : ""}">
+                <div class="negotiation-card ${amZug ? "our-turn" : ""}" data-neg-card="${this.escapeHtml(n.id)}">
                     <div class="negotiation-head">
                         <div>
                             <strong>${this.escapeHtml(n.playerName)}</strong>

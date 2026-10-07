@@ -1498,25 +1498,41 @@ class UIManager {
             return;
         }
 
-        list.innerHTML = items.map(item => `
-            <button class="attention-item" data-tab="${this.escapeHtml(item.tab)}"${item.playerId !== undefined ? ` data-player="${this.escapeHtml(String(item.playerId))}"` : ""}>
+        const knopf = item => `
+            <button class="attention-item" data-tab="${this.escapeHtml(item.tab)}"${item.playerId !== undefined ? ` data-player="${this.escapeHtml(String(item.playerId))}"` : ""}${item.negId ? ` data-neg="${this.escapeHtml(String(item.negId))}"` : ""}>
                 <span class="attention-icon ton-${({ "🚑": "bad", "⚠️": "bad", "🩺": "bad", "📢": "bad", "🥵": "warn", "😞": "warn", "💰": "warn", "💬": "warn", "🤝": "ok" })[item.icon] || "info"}">${this.symbolHtml(item.icon)}</span>
                 <span class="attention-text">
                     <strong>${this.escapeHtml(item.title)}</strong>
                     <span>${this.escapeHtml(item.detail)}</span>
                 </span>
                 <span class="attention-arrow"><svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg></span>
-            </button>
-        `).join("");
+            </button>`;
+        // Betrifft ein Punkt mehrere Spieler, steht jeder einzeln darunter -
+        // ein Tipp auf den Namen öffnet seine Akte an der richtigen Stelle
+        const namen = item => (item.spieler || []).length ? `
+            <div class="attention-namen">
+                ${item.spieler.map(sp => `<button class="attention-name" data-player="${this.escapeHtml(String(sp.id))}"${item.abschnitt ? ` data-abschnitt="${this.escapeHtml(item.abschnitt)}"` : ""}>${this.escapeHtml(sp.name)}${sp.pos ? ` <small>${this.escapeHtml(sp.pos)}</small>` : ""}</button>`).join("")}
+            </div>` : "";
+        list.innerHTML = items.map(item => (item.spieler || []).length
+            ? `<div class="attention-gruppe">${knopf(item)}${namen(item)}</div>`
+            : knopf(item)).join("");
 
         list.querySelectorAll(".attention-item").forEach(btn => {
             btn.addEventListener("click", () => {
+                // Eine Verhandlung führt direkt zu ihrer Karte
+                if (btn.dataset.neg) return this.zeigeVerhandlung(btn.dataset.neg);
                 // Ein Gespräch führt direkt in die Akte des Spielers
                 if (btn.dataset.player !== undefined) {
                     const ziel = state.players.find(p => String(p.id) === btn.dataset.player);
                     if (ziel) return this.showPlayerDetailsModal(ziel.id);
                 }
                 this.switchTab(btn.dataset.tab);
+            });
+        });
+        list.querySelectorAll(".attention-name").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const ziel = state.players.find(p => String(p.id) === btn.dataset.player);
+                if (ziel) this.showPlayerDetailsModal(ziel.id, { abschnitt: btn.dataset.abschnitt });
             });
         });
     }
@@ -3982,7 +3998,7 @@ class UIManager {
                         : `<span class="text-muted" style="font-size:12px;">Noch keine Gespräche</span>`;
 
                     const aktion = gespraech
-                        ? `<button class="btn btn-sm btn-secondary btn-goto-negotiation">Zu den Verhandlungen</button>`
+                        ? `<button class="btn btn-sm btn-secondary btn-goto-negotiation" data-neg-id="${this.escapeHtml(gespraech.id)}">Zur Verhandlung</button>`
                         : `<button class="btn btn-sm btn-primary btn-promote-prospect" data-prospect-id="${p.id}">Vertragsgespräche aufnehmen</button>`;
 
                     return `
@@ -4018,7 +4034,8 @@ class UIManager {
                             this.showToast(
                                 `Berater ${res.negotiation.agentName} verhandelt über den Erstvertrag. Erste Forderung: ${this.formatMoneySafe(res.negotiation.demand.wage)} pro Woche.`,
                                 "success", 6000);
-                            this.renderTraining();
+                            // Gleich zur Verhandlung: Der Berater wartet auf unser Angebot
+                            this.zeigeVerhandlung(res.negotiation.id);
                         } else {
                             this.showToast(res.error || "Gespräche konnten nicht aufgenommen werden.", "error");
                         }
@@ -4026,7 +4043,7 @@ class UIManager {
                 });
 
                 document.querySelectorAll(".btn-goto-negotiation").forEach(btn => {
-                    btn.addEventListener("click", () => this.switchTab("transfers"));
+                    btn.addEventListener("click", () => this.zeigeVerhandlung(btn.dataset.negId));
                 });
             }
         }
@@ -5398,7 +5415,8 @@ class UIManager {
         // Ein Scoutbericht erscheint als Berichtskarte, mit dem Weg zur Akte
         // und zum Angebot
         const state = this.app?.state;
-        const spielerId = msg.relatedEntity?.type === "player" ? msg.relatedEntity.id : null;
+        const spielerId = msg.relatedEntity?.type === "player" ? msg.relatedEntity.id
+            : (msg.relatedEntity?.playerId ?? null);
         const spieler = spielerId !== null && state ? state.players.find(p => String(p.id) === String(spielerId)) : null;
         let aktionen = "";
         if (spieler) {
@@ -5411,6 +5429,7 @@ class UIManager {
                 <div class="inbox-detail-aktionen">
                     <button class="btn btn-secondary btn-sm" data-inbox-akte="${this.escapeHtml(spieler.id)}"><svg class="ico" aria-hidden="true"><use href="#i-clipboard"/></svg><span>Spielerakte</span></button>
                     ${eigener ? "" : `<button class="btn btn-primary btn-sm" data-inbox-angebot="${this.escapeHtml(spieler.id)}">Verhandeln</button>`}
+                    ${eigener && /^contract/.test(msg.type || "") ? `<button class="btn btn-primary btn-sm" data-inbox-vertrag="${this.escapeHtml(spieler.id)}">Vertrag verlängern</button>` : ""}
                 </div>`;
         }
 
@@ -5439,6 +5458,10 @@ class UIManager {
         detailContainer.querySelector("[data-inbox-akte]")?.addEventListener("click", (e) => {
             const pId = this.resolvePlayerId(e.currentTarget.dataset.inboxAkte);
             if (pId !== null) this.showPlayerDetailsModal(pId);
+        });
+        detailContainer.querySelector("[data-inbox-vertrag]")?.addEventListener("click", (e) => {
+            const pId = this.resolvePlayerId(e.currentTarget.dataset.inboxVertrag);
+            if (pId !== null) this.showPlayerDetailsModal(pId, { abschnitt: "vertrag" });
         });
         detailContainer.querySelector("[data-inbox-angebot]")?.addEventListener("click", (e) => {
             const pId = this.resolvePlayerId(e.currentTarget.dataset.inboxAngebot);

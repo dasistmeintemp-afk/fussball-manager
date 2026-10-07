@@ -298,6 +298,59 @@ function runEngineTests() {
         if (!extRes.success) throw new Error("Contract extension failed: " + extRes.reason);
     });
 
+    test("Vertrag: Die Forderung passt zur Liga - in der Landesliga kein Bundesligagehalt", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const unten = Math.max(...state.clubs.map(c => c.level || 1));
+        const club = state.clubs.find(c => (c.level || 1) === unten);
+        const kader = state.players.filter(p => p.clubId === club.id);
+        const spieler = kader[0];
+        const markt = PlayerGenerator.getValueAndWage(spieler.overall, unten, spieler.age).wage;
+
+        // Ein Spieler mit 120 € in der Woche fordert keine 10.000 €
+        spieler.wage = 120;
+        const forderung = ContractEngine.getExtensionDemand(spieler, club, state).demandWage;
+        if (forderung <= 120 || forderung > Math.max(1000, markt * 2)) {
+            throw new Error(`Forderung ${forderung} € bei 120 € Gehalt (Marktgehalt der Liga ${markt} €)`);
+        }
+
+        // Wer normal verdient, will eine Erhöhung, keine Verzehnfachung - ein
+        // unterbezahlter Spieler höchstens bis in die Nähe seines Marktgehalts
+        const pruefe = (p, c) => {
+            const f = ContractEngine.getExtensionDemand(p, c, state).demandWage;
+            const wert = PlayerGenerator.getValueAndWage(p.overall, c.level || 1, p.age).wage;
+            if (f < p.wage * 0.85 || f > Math.max(p.wage, wert) * 1.6) {
+                throw new Error(`${p.name}: ${p.wage} € -> ${f} € (Marktgehalt ${wert} €)`);
+            }
+        };
+        kader.slice(1).forEach(p => pruefe(p, club));
+
+        // In der Bundesliga bleibt es beim Profigehalt
+        const bayern = state.clubs.find(c => c.id === "muc");
+        state.players.filter(p => p.clubId === "muc").forEach(p => pruefe(p, bayern));
+
+        // Die Stellung zählt im eigenen Kader: Der Beste ist Schlüsselspieler,
+        // auch wenn er in der Landesliga nur 40 hat
+        const bester = kader.slice().sort((a, b) => b.overall - a.overall)[0];
+        bester.overall += 6;
+        if (ContractEngine.getExtensionDemand(bester, club, state).preferredRole !== "Schlüsselspieler") {
+            throw new Error("Der Beste im Landesligakader gilt nicht als Schlüsselspieler");
+        }
+
+        // Wer die Forderung bietet, bekommt den Vertrag
+        club.wageBudget = Math.max(club.wageBudget || 0, 100000);
+        const res = ContractEngine.negotiateExtension(spieler, club, forderung, 3, "Stammspieler", 0, state);
+        if (!res.success || spieler.wage !== forderung) throw new Error("Verlängerung zur Forderung scheitert: " + res.reason);
+
+        // Die Schrittweite folgt dem Betrag
+        const schritte = [[150, 10], [2500, 100], [25000, 1000], [2500000, 100000]];
+        schritte.forEach(([b, s]) => {
+            if (ContractEngine.schrittFuer(b) !== s) throw new Error(`Schritt für ${b}: ${ContractEngine.schrittFuer(b)} statt ${s}`);
+        });
+        if (ContractEngine.eingabeSchritt(450) !== 10 || ContractEngine.eingabeSchritt(120000) !== 1000) {
+            throw new Error("Die Eingabefelder gehen nicht in passenden Schritten");
+        }
+    });
+
     // 9. ScoutingEngine & PlayerRatingEngine
     test("ScoutingEngine & PlayerRatingEngine: FM-Rating-Modell, Schätzspannen, relative Sterne, Rollen und Scoutberichte", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
@@ -4763,9 +4816,15 @@ function runEngineTests() {
         });
 
         const themen = items.map(i => i.title).join(" | ");
-        ["nicht einsatzbereit", "überlastet", "Verträge laufen aus", "unzufrieden"].forEach(erwartet => {
-            if (!themen.includes(erwartet)) throw new Error(`Der Schreibtisch übersieht: ${erwartet}`);
+        [/nicht einsatzbereit/, /überlastet/, /Vertr(ag läuft|äge laufen) aus/, /unzufrieden/].forEach(erwartet => {
+            if (!erwartet.test(themen)) throw new Error(`Der Schreibtisch übersieht: ${erwartet}`);
         });
+
+        // Auslaufende Verträge stehen mit Namen da, jeder führt in die Akte
+        const vertraege = items.find(i => /aus$/.test(i.title) && i.abschnitt === "vertrag");
+        if (!vertraege || !vertraege.spieler.some(sp => sp.id === kader[2].id)) {
+            throw new Error("Der Spieler mit auslaufendem Vertrag steht nicht einzeln im Schreibtisch");
+        }
 
         // Eine unvollständige Startelf steht ganz oben
         club.lineup = club.lineup.slice(0, 8);

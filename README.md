@@ -277,6 +277,8 @@ Die Taktik im Taktik-Reiter ist die Grundordnung. Vor dem Anpfiff stellt der Tra
 ### 3c. 📌 Der Schreibtisch
 Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit sortiert, ein Klick springt in den zuständigen Reiter: unvollständige Startelf, Verhandlungen mit uns am Zug, Ausfälle, überlastete Spieler, auslaufende Verträge, unzufriedene Spieler, ungelesene Post. Gesprächswünsche, Wechselwünsche und offene Versprechen stehen ebenfalls dort – ein Klick öffnet die Akte des Spielers.
 
+- **Direkt ans Ziel:** Bei auslaufenden Verträgen steht jeder Spieler einzeln da, die stärksten zuerst. Ein Tipp auf den Namen öffnet seine Akte gleich bei der Vertragsverlängerung, der Cursor steht im Gehaltsfeld. Eine Verhandlung, bei der wir am Zug sind, führt direkt zu ihrer Karte im Transfermarkt. Dasselbe gilt für Talente: *Vertragsgespräche aufnehmen* springt sofort in die Verhandlung mit dem Berater, *Zur Verhandlung* ebenso. Die Post über einen auslaufenden Vertrag hat einen Knopf *Vertrag verlängern*.
+
 ### 3d. 🗣️ Gespräche unter vier Augen (`PlayerTalkEngine`)
 In der Spielerakte führt der Manager Gespräche mit jedem eigenen Spieler. Wie er reagiert, hängt an Form und Persönlichkeit:
 
@@ -295,6 +297,7 @@ In der Spielerakte führt der Manager Gespräche mit jedem eigenen Spieler. Wie 
 ### 4. 🔄 Transfersystem, Scouting & Verträge
 - **Transfermarkt mit Suchfiltern:** Nach Position, Stärke, Potenzial und Preisklasse filtern.
 - **Vertragsverlängerungen (`ContractEngine`):** Individuelle Gehaltsforderungen, Rollenabsprachen und Vertragslaufzeiten direkt im Spielermenü verhandeln.
+- **Forderungen passen zur Liga:** Vorher forderte jeder Spieler mindestens 10.000 € pro Woche, gerundet auf Tausender – ein Landesligaspieler mit 120 € wollte plötzlich das Achtzigfache. Jetzt zählen sein Gehalt und das Marktgehalt seiner Stärke in dieser Liga: Wer unter Wert bezahlt ist, will aufholen (bis 70 % der Lücke), wer über Wert bezahlt ist und älter als 30, gibt etwas nach. Darauf kommen 10 % Erhöhung, bis 30 % für junge Talente mit Luft nach oben und 15 % für Schlüsselspieler – gemessen am eigenen Kader, sodass auch der Beste einer Landesligamannschaft als Schlüsselspieler gilt. Beispiele: Landesliga 450 € → 520 €, mit 120 € → 160 €; Bundesliga 87.000 € → 120.000 €. Gerundet wird auf zwei Stellen, die Eingabefelder gehen in passenden Schritten (10 € in der Landesliga, 1.000 € in der Bundesliga).
 - **Scouting-Zentrale (`ScoutingEngine`):** Scouts für gezielte Positionen, Altersklassen und Mindeststärken entsenden und detaillierte Spielerberichte erhalten.
 - **Spieler beobachten statt Sofortbericht:** *Scouten* (Transfermarkt, Spielerakte, Gegneranalyse) schickt den Scout los. Der ausführliche Bericht kommt nach einigen Tagen ins Postfach, erst dann wächst das Wissen. Er enthält Stärke, Potenzial, Rolle, Stärken, Schwächen, Charakter, Kaderrolle, Empfehlung und Verlässlichkeit, dazu Knöpfe zur Akte und zum Angebot. Wie lange es dauert:
 

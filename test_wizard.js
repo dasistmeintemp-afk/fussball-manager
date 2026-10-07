@@ -1059,6 +1059,83 @@ function runWizardTests() {
         }
     });
 
+    test("Direkt ans Ziel: Auslaufender Vertrag öffnet die Verhandlung in der Akte, eine Verhandlung ihre Karte", () => {
+        // Ein Element, das Knöpfe aus seinem HTML liest - genug für Klicks
+        const machEl = (id, klassen = "") => {
+            const el = { id, children: [], dataset: {}, _k: new Set(klassen.split(" ").filter(Boolean)), _html: "", listeners: {}, gescrollt: 0, fokus: 0 };
+            el.classList = { add: k => el._k.add(k), remove: k => el._k.delete(k), contains: k => el._k.has(k) };
+            el.addEventListener = (t, f) => { (el.listeners[t] = el.listeners[t] || []).push(f); };
+            el.click = () => (el.listeners.click || []).forEach(f => f({ currentTarget: el }));
+            el.scrollIntoView = () => { el.gescrollt++; };
+            el.focus = () => { el.fokus++; };
+            el.querySelector = sel => sel === "input" ? (el.eingabe || null) : null;
+            el.querySelectorAll = sel => el.children.filter(c => c._k.has(sel.replace(".", "")));
+            Object.defineProperty(el, "innerHTML", {
+                get: () => el._html,
+                set: (h) => {
+                    el._html = h;
+                    el.children = [...h.matchAll(/<button class="(attention-item|attention-name)"([^>]*)>/g)].map(m => {
+                        const k = machEl(null, m[1]);
+                        [...m[2].matchAll(/data-([a-z]+)="([^"]*)"/g)].forEach(d => { k.dataset[d[1]] = d[2]; });
+                        return k;
+                    });
+                }
+            });
+            return el;
+        };
+
+        const state = GameState.createNewGame("muc", "normal", { name: "Ziel" });
+        const kader = state.players.filter(p => p.clubId === "muc");
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        ui.symbolHtml = s => s;
+        ui.getManagerEngine = () => ({
+            getAttentionItems: () => [
+                { priority: 1, icon: "🤝", tab: "transfers", negId: "neg_7", title: "Talent: Wir sind am Zug", detail: "…" },
+                { priority: 4, icon: "📄", tab: "squad", title: "2 Verträge laufen aus", detail: "…", abschnitt: "vertrag",
+                  spieler: [{ id: kader[0].id, name: kader[0].name }, { id: kader[1].id, name: kader[1].name }] }
+            ]
+        });
+        const aufrufe = [];
+        ui.showPlayerDetailsModal = (id, opt) => aufrufe.push(["akte", id, opt?.abschnitt]);
+        ui.switchTab = tab => aufrufe.push(["reiter", tab]);
+
+        const liste = machEl("dashAttentionList");
+        const markt = machEl("btnSubTransfersMarket");
+        markt.addEventListener("click", () => aufrufe.push(["markt"]));
+        const karten = ["neg_3", "neg_7"].map(id => { const k = machEl(null); k.dataset.negCard = id; k.eingabe = machEl(null); return k; });
+
+        const altesDokument = global.document;
+        global.document = {
+            getElementById: id => ({ dashAttentionList: liste, btnSubTransfersMarket: markt })[id] || null,
+            querySelectorAll: sel => sel === "[data-neg-card]" ? karten : []
+        };
+        try {
+            ui.renderAttentionList();
+
+            // Jeder Name mit auslaufendem Vertrag ist ein eigener Sprung in die Akte
+            const namen = liste.children.filter(c => c._k.has("attention-name"));
+            if (namen.length !== 2) throw new Error(`${namen.length} Namen statt 2 unter den auslaufenden Verträgen`);
+            namen[1].click();
+            const akte = aufrufe.pop();
+            if (akte[0] !== "akte" || String(akte[1]) !== String(kader[1].id) || akte[2] !== "vertrag") {
+                throw new Error("Der Name öffnet nicht die Vertragsverhandlung in der Akte: " + JSON.stringify(akte));
+            }
+
+            // Die Verhandlung führt zu ihrer Karte, nicht nur in den Reiter
+            liste.children.find(c => c.dataset.neg === "neg_7").click();
+            if (!aufrufe.some(a => a[0] === "reiter" && a[1] === "transfers") || !aufrufe.some(a => a[0] === "markt")) {
+                throw new Error("Kein Wechsel auf den Transfermarkt");
+            }
+            if (karten[1].gescrollt !== 1 || !karten[1].classList.contains("sprung-ziel") || karten[1].eingabe.fokus !== 1) {
+                throw new Error("Die Karte der Verhandlung wird nicht angesteuert");
+            }
+            if (karten[0].gescrollt) throw new Error("Eine andere Verhandlung wird angesteuert");
+        } finally {
+            global.document = altesDokument;
+        }
+    });
+
     test("Einstieg: Erste Schritte erledigen sich durch Tun, jeder Bereich erklärt sich, Begriffe und Abwahl", () => {
         const { EINSTIEG_SCHRITTE, EINSTIEG_ERKLAERUNGEN, EINSTIEG_BEGRIFFE } = require('./js/ui/uiEinstieg.js');
         const { SaveCodec } = require('./js/services/saveCodec.js');

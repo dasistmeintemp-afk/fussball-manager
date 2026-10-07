@@ -14,35 +14,83 @@ const _ceResolve = (globalName, path) => {
 
 const ContractEngine = {
     /**
-     * Ermittelt die Gehaltsforderung eines Spielers für eine Vertragsverlängerung
+     * Eine runde Schrittweite für einen Geldbetrag: zwei Stellen unter seiner
+     * Größenordnung. 150 € gehen in Zehnern, 2.500 € in Hundertern, 25.000 €
+     * in Tausendern, 2,5 Mio. in Hunderttausendern.
      */
-    getExtensionDemand(player, club) {
+    schrittFuer(betrag) {
+        const b = Math.abs(betrag || 0);
+        if (b < 100) return 1;
+        return Math.pow(10, Math.floor(Math.log10(b)) - 1);
+    },
+
+    /** Die Pfeiltasten eines Eingabefelds gehen feiner als die Rundung */
+    eingabeSchritt(betrag) {
+        return Math.max(10, this.schrittFuer(betrag) / 10);
+    },
+
+    /** Ein Betrag, gerundet auf seine Schrittweite */
+    rundeBetrag(betrag) {
+        const schritt = this.schrittFuer(betrag);
+        return Math.round((betrag || 0) / schritt) * schritt;
+    },
+
+    /**
+     * Ermittelt die Gehaltsforderung eines Spielers für eine Vertragsverlängerung.
+     *
+     * Vorher galt ein Mindestgehalt von 10.000 € pro Woche, gerundet auf
+     * Tausender - gedacht für die Bundesliga. Ein Landesligaspieler mit 120 €
+     * forderte damit plötzlich 10.000 €. Jetzt richtet sich die Forderung
+     * nach dem, was er verdient, und nach dem, was ein Spieler seiner Stärke
+     * in dieser Liga bekommt: Wer unter Wert bezahlt ist, will aufholen; wer
+     * über Wert bezahlt ist und älter wird, gibt etwas nach. Stammspieler
+     * und Talente schlagen darauf auf - gemessen am eigenen Kader, nicht an
+     * festen Grenzen, die nur in der Bundesliga jemand erreicht.
+     *
+     * Mit state wird die Stellung im Kader gemessen (vereinsNiveau); ohne
+     * fällt dieser Aufschlag weg.
+     */
+    getExtensionDemand(player, club, state = null) {
         if (!player) return { demandWage: 20000, preferredYears: 3, preferredRole: "Stammspieler" };
 
-        const baseWage = player.wage || 25000;
-        let mult = 1.15;
+        const alter = player.age || 25;
+        const gen = _ceResolve("PlayerGenerator", "./playerGenerator.js");
+        const markt = gen && typeof gen.getValueAndWage === "function"
+            ? gen.getValueAndWage(player.overall || 50, club?.level || 1, alter).wage
+            : null;
+        const aktuell = player.wage || markt || 25000;
 
-        // Wenn Spieler jung mit hohem Potenzial ist
-        if (player.age <= 23 && player.pot > player.overall) {
-            mult += (player.pot - player.overall) * 0.02;
+        let basis = aktuell;
+        if (markt && aktuell < markt) basis = aktuell + (markt - aktuell) * 0.7;
+        else if (markt && alter >= 31) basis = Math.max(markt, aktuell * 0.9);
+
+        const niveau = state && club
+            ? this.vereinsNiveau(club, new Map((state.players || []).map(p => [p.id, p])))
+            : null;
+        const staerke = niveau !== null ? (player.overall || 50) - niveau : null;
+
+        let mult = 1.1;
+        // Junge Spieler mit Luft nach oben wissen, was sie wert werden
+        if (alter <= 23 && player.pot > player.overall) {
+            mult += Math.min(0.3, (player.pot - player.overall) * 0.015);
         }
+        if (staerke !== null) {
+            if (staerke >= 3) mult += 0.15;
+            else if (staerke >= 0) mult += 0.05;
+        }
+        if (alter >= 33) mult -= 0.10;
 
-        // Wenn Spieler hohe Gesamtstärke hat
-        if (player.overall >= 85) mult += 0.20;
-        else if (player.overall >= 80) mult += 0.10;
-
-        // Alterfaktor
-        if (player.age >= 33) mult -= 0.10;
-
-        const demandWage = Math.max(10000, Math.round(baseWage * mult / 1000) * 1000);
+        const demandWage = Math.max(100, this.rundeBetrag(basis * mult));
         let preferredRole = "Stammspieler";
-        if (player.overall >= 83) preferredRole = "Schlüsselspieler";
-        else if (player.overall < 75) preferredRole = "Rotationsspieler";
+        if (staerke !== null) {
+            if (staerke >= 3) preferredRole = "Schlüsselspieler";
+            else if (staerke < -5) preferredRole = "Rotationsspieler";
+        }
 
         return {
             demandWage: demandWage,
             demandWageFormatted: (typeof Formatters !== 'undefined') ? Formatters.formatMoney(demandWage) : `${demandWage} €`,
-            preferredYears: player.age >= 32 ? 2 : 3,
+            preferredYears: alter >= 32 ? 2 : 3,
             preferredRole: preferredRole
         };
     },
@@ -64,14 +112,14 @@ const ContractEngine = {
         return 1 - rabatt;
     },
 
-    negotiateExtension(player, club, offeredWage, offeredYears, offeredRole, klausel = 0) {
+    negotiateExtension(player, club, offeredWage, offeredYears, offeredRole, klausel = 0, state = null) {
         if (!player || !club) return { success: false, reason: "Ungültige Parameter." };
 
-        const demand = this.getExtensionDemand(player, club);
+        const demand = this.getExtensionDemand(player, club, state);
         // Eine Ausstiegsklausel senkt die Forderung
         const rabatt = this.klauselRabatt(player, klausel);
         if (rabatt < 1) {
-            demand.demandWage = Math.round(demand.demandWage * rabatt / 1000) * 1000;
+            demand.demandWage = this.rundeBetrag(demand.demandWage * rabatt);
             demand.demandWageFormatted = (typeof Formatters !== 'undefined') ? Formatters.formatMoney(demand.demandWage) : `${demand.demandWage} €`;
         }
 

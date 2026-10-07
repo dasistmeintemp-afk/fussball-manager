@@ -425,7 +425,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             </div>`;
     },
 
-    showPlayerDetailsModal(playerId) {
+    /**
+     * Die Spielerakte. Mit { abschnitt: "vertrag" } springt sie gleich zur
+     * Vertragsverhandlung - so führt ein auslaufender Vertrag im Schreibtisch
+     * oder im Postfach direkt dorthin, wo man verlängert.
+     */
+    showPlayerDetailsModal(playerId, optionen = {}) {
         const state = this.app.state;
         const treffer = this.findAnyPlayer(playerId);
         if (!treffer) return;
@@ -451,7 +456,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             : (isProspect ? null : (isUserClub ? "eigener" : "markt"));
         const eigenerVerliehen = leiheModus === "verliehen";
         const klausel = isProspect ? null : TransferEngine.ausstiegsklausel(state, player);
-        const demand = (typeof ContractEngine !== 'undefined' && isUserClub && !isProspect) ? ContractEngine.getExtensionDemand(player, club) : { demandWage: Math.round((player.wage || 20000) * 1.15) };
+        const demand = (typeof ContractEngine !== 'undefined' && isUserClub && !isProspect) ? ContractEngine.getExtensionDemand(player, club, state) : { demandWage: Math.round((player.wage || 20000) * 1.15) };
 
         const ratingEngine = this.getRatingEngine();
         // Das eigene Talent wird täglich im Training gesehen - für die Karte
@@ -535,27 +540,28 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 : null;
 
             contractSectionHtml = `
-                <div class="dash-card mt-3" style="padding:14px; background: var(--surface-2); border:1px solid var(--line);">
+                <div class="dash-card mt-3" id="pdVertrag" style="padding:14px; background: var(--surface-2); border:1px solid var(--line);">
                     <h4 style="font-size:14px; margin-bottom:8px; color:#38bdf8;"><svg class="ico h-ico" aria-hidden="true"><use href="#i-user"/></svg>Aus der Jugendakademie</h4>
                     <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">
                         ${player.name} spielt in der eigenen Nachwuchsabteilung und hat noch keinen Profivertrag.
                         Entwicklungstempo: <strong>${((player.developmentRate || 1) * 100).toFixed(0)} %</strong>.
                     </p>
                     ${laufend
-                        ? `<div class="hint-box" style="margin:0;">Berater <strong>${this.escapeHtml(laufend.agentName)}</strong> verhandelt bereits: ${this.escapeHtml(engine.describe(laufend))}</div>`
+                        ? `<div class="hint-box" style="margin:0;">Berater <strong>${this.escapeHtml(laufend.agentName)}</strong> verhandelt bereits: ${this.escapeHtml(engine.describe(laufend))}</div>
+                           <button class="btn btn-secondary" id="btnPdZurVerhandlung" data-neg-id="${this.escapeHtml(laufend.id)}" style="width:100%; margin-top:10px;">Zur Verhandlung</button>`
                         : `<button class="btn btn-primary" id="btnPdPromoteProspect" style="width:100%;">Vertragsgespräche aufnehmen</button>`}
                 </div>
             `;
         } else if (isUserClub && leiheModus !== "geliehen") {
             contractSectionHtml = `
-                <div class="dash-card mt-3" style="padding:14px; background: var(--surface-2); border:1px solid var(--line);">
+                <div class="dash-card mt-3" id="pdVertrag" style="padding:14px; background: var(--surface-2); border:1px solid var(--line);">
                     <h4 style="font-size:14px; margin-bottom:8px; color:#38bdf8;"><svg class="ico h-ico" aria-hidden="true"><use href="#i-briefcase"/></svg>Vertragsverlängerung verhandeln</h4>
                     <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">Forderung des Spielers: ca. <strong>${GameState.formatMoney(demand.demandWage)} / Woche</strong></p>
                     
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:12px;">
                         <div>
                             <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Neues Gehalt (€ / Wo.):</label>
-                            <input type="number" id="extWageInput" class="styled-input" style="width:100%;" value="${demand.demandWage}" step="1000">
+                            <input type="number" id="extWageInput" class="styled-input" style="width:100%;" value="${demand.demandWage}" step="${ContractEngine.eingabeSchritt(demand.demandWage)}" min="0">
                         </div>
                         <div>
                             <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Laufzeit:</label>
@@ -816,6 +822,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         modal.style.display = "flex";
         this.playSound("click");
 
+        // Direkt zur Vertragsverhandlung, wenn der Weg von dort kam
+        const vertragsTeil = optionen.abschnitt === "vertrag" ? document.getElementById("pdVertrag") : null;
+        if (vertragsTeil) {
+            this.hebeHervor(vertragsTeil);
+            document.getElementById("extWageInput")?.focus({ preventScroll: true });
+        }
+
         // External buttons binden
         if (!isUserClub) {
             document.getElementById("btnPdScoutPlayer")?.addEventListener("click", () => {
@@ -938,10 +951,15 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     `Berater ${res.negotiation.agentName} verhandelt über den Erstvertrag. Erste Forderung: ${this.formatMoneySafe(res.negotiation.demand.wage)} pro Woche.`,
                     "success", 6000);
                 modal.style.display = "none";
-                if (this.activeTab === "training") this.renderTraining();
+                // Gleich zur Verhandlung: Der Berater wartet auf unser Angebot
+                this.zeigeVerhandlung(res.negotiation.id);
             } else {
                 this.showToast(res.error || "Gespräche konnten nicht aufgenommen werden.", "error");
             }
+        });
+        document.getElementById("btnPdZurVerhandlung")?.addEventListener("click", (e) => {
+            modal.style.display = "none";
+            this.zeigeVerhandlung(e.currentTarget.dataset.negId);
         });
 
         // Event-Binding für Vertragsverlängerung
@@ -954,7 +972,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 const offKlausel = parseInt(document.getElementById("extKlauselSelect")?.value || "0", 10);
                 const feedback = document.getElementById("extFeedback");
 
-                const res = ContractEngine.negotiateExtension(player, club, offWage, offYears, offRole, offKlausel);
+                const res = ContractEngine.negotiateExtension(player, club, offWage, offYears, offRole, offKlausel, state);
                 if (res.success) {
                     feedback.style.color = "#34d399";
                     feedback.textContent = `✅ ${res.reason}`;

@@ -1054,6 +1054,7 @@ class ManagerEngine {
                 priority: 1,
                 icon: "🤝",
                 tab: "transfers",
+                negId: n.id,
                 title: `${n.playerName}: Wir sind am Zug`,
                 detail: `${negotiation.describe(n)} · noch ${Math.max(0, n.deadlineDay - (state.currentDayIndex || 0))} Tage Frist`
             }));
@@ -1114,15 +1115,19 @@ class ManagerEngine {
             });
         }
 
-        // 4. Auslaufende Verträge
-        const auslaufend = squad.filter(p => (p.contractYears ?? 3) <= 1);
+        // 4. Auslaufende Verträge - jeder Name führt direkt in die
+        // Verhandlung in seiner Akte, die Wichtigsten zuerst
+        const auslaufend = squad.filter(p => (p.contractYears ?? 3) <= 1)
+            .sort((a, b) => (b.overall || 0) - (a.overall || 0));
         if (auslaufend.length > 0) {
             items.push({
                 priority: 4,
                 icon: "📄",
                 tab: "squad",
-                title: `${auslaufend.length} Verträge laufen aus`,
-                detail: auslaufend.slice(0, 3).map(p => p.name).join(", ") + (auslaufend.length > 3 ? " …" : "")
+                title: `${auslaufend.length} ${auslaufend.length === 1 ? "Vertrag läuft" : "Verträge laufen"} aus`,
+                detail: "Auf einen Namen tippen, um zu verlängern.",
+                spieler: auslaufend.map(p => ({ id: p.id, name: p.name, pos: p.pos })),
+                abschnitt: "vertrag"
             });
         }
 

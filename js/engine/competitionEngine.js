@@ -2,6 +2,16 @@
  * CompetitionEngine - Verwaltet Ligen, Pokalwettbewerbe, Europapokale und Auf-/Abstieg
  */
 
+/** Auflösung der Module in Browser- und Node-Umgebung */
+const _compResolve = (globalName, path) => {
+    if (typeof globalThis !== "undefined" && globalThis[globalName]) return globalThis[globalName];
+    if (typeof window !== "undefined" && window[globalName]) return window[globalName];
+    if (typeof require !== "undefined") {
+        try { return require(path)[globalName]; } catch (e) { return null; }
+    }
+    return null;
+};
+
 class CompetitionEngine {
     /**
      * Erzeugt einen Spielplan (Hin- und Rückrunde) für eine beliebige Anzahl an Vereinen
@@ -270,13 +280,18 @@ class CompetitionEngine {
 
         // Aufsteiger nach Zielliga gruppieren
         const risingByParent = new Map();
+        const playoffs = _compResolve("PlayoffEngine", "./playoffEngine.js");
 
         state.leagues.forEach(child => {
             if (!child.promotionTo) return;
             const table = standingsByLeague[child.id];
             if (!Array.isArray(table) || table.length === 0) return;
 
-            const spots = (child.promotionSpots && child.promotionSpots.length) ? child.promotionSpots : [1];
+            // Direkt steigen nur die Plätze vor den Aufstiegsspielen auf -
+            // wer über Relegation oder Playoffs hochkommt, steht unten
+            const spots = playoffs && typeof playoffs.direktePlaetze === "function"
+                ? playoffs.direktePlaetze(child)
+                : ((child.promotionSpots && child.promotionSpots.length) ? child.promotionSpots : [1]);
             spots.forEach(pos => {
                 const entry = table[pos - 1];
                 if (!entry) return;
@@ -284,6 +299,16 @@ class CompetitionEngine {
                 risingByParent.get(child.promotionTo).push({ clubId: entry.clubId, fromLeague: child.id });
             });
         });
+        // Die Sieger von Relegation und Aufstiegs-Playoffs
+        if (playoffs && typeof playoffs.aufsteiger === "function") {
+            playoffs.aufsteiger(state).forEach(r => {
+                const child = state.leagues.find(l => l.id === r.fromLeague);
+                if (!child || !child.promotionTo) return;
+                if (!risingByParent.has(child.promotionTo)) risingByParent.set(child.promotionTo, []);
+                const liste = risingByParent.get(child.promotionTo);
+                if (!liste.some(x => x.clubId === r.clubId)) liste.push(r);
+            });
+        }
 
         risingByParent.forEach((risers, parentId) => {
             const parent = state.leagues.find(l => l.id === parentId);

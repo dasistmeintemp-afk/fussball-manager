@@ -1079,6 +1079,9 @@ class SeasonEngine {
         if (kalender && typeof kalender.legeSommerpauseAn === 'function') {
             kalender.legeSommerpauseAn(state, SeasonEngine.SOMMERPAUSE.tage);
         }
+        // Relegation und Aufstiegs-Playoffs: in den ersten Wochen der Pause
+        const playoffs = _resolve('PlayoffEngine', './playoffEngine.js');
+        if (playoffs && typeof playoffs.setzeAn === 'function') playoffs.setzeAn(state);
         const auslaufend = SeasonEngine.auslaufendZumWechsel(state);
         if (auslaufend.length) {
             state.inbox.unshift({
@@ -1412,6 +1415,14 @@ class SeasonEngine {
     }
 
     static startNextSeason(state) {
+        // Was von Relegation und Playoffs noch offen ist, wird jetzt gespielt -
+        // ihre Ergebnisse entscheiden gleich über Auf- und Abstieg mit
+        const playoffs = _resolve('PlayoffEngine', './playoffEngine.js');
+        if (playoffs && typeof playoffs.abschliessen === 'function') {
+            playoffs.abschliessen(state);
+            playoffs.statistikZuruecksetzen(state);
+        }
+
         state.seasonYear++;
         state.currentMatchday = 1;
         state._seasonFinished = null;
@@ -1442,6 +1453,9 @@ class SeasonEngine {
         }
         // Wer für die neue Liga zu gut ist, bleibt nicht unbedingt
         SeasonEngine.abstiegsfolgen(state, movements);
+        // Die Playoffs dieser Saison sind abgerechnet
+        state.playoffsVorjahr = state.playoffs || null;
+        state.playoffs = null;
 
         // Europapokal aus den Abschlusstabellen der fünf Topligen neu besetzen
         if (competitionEngine && typeof competitionEngine.generateEuropeanCompetitions === 'function') {

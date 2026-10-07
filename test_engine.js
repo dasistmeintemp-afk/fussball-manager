@@ -3689,12 +3689,17 @@ function runEngineTests() {
             throw new Error("Die englischen Ligen sind nicht nach Stärke gestaffelt");
         }
 
-        // Auf- und Abstieg: Die drei Letzten der Premier League tauschen mit den drei Ersten der Championship
+        // Auf- und Abstieg: Die drei Letzten der Premier League tauschen mit den
+        // ersten beiden der Championship und dem Sieger ihrer Playoffs
+        const { PlayoffEngine } = require('./js/engine/playoffEngine.js');
         const tabelle = id => state.clubs.filter(c => c.leagueId === id).map(c => ({ clubId: c.id }));
         ["en_liga_1", "en_liga_2", "en_liga_3"].forEach(id => { state.standingsByLeague[id] = tabelle(id); });
+        PlayoffEngine.abschliessen(state);
+        const sieger = id => state.playoffs.wettbewerbe.find(w => w.ligaId === id).ergebnis.aufsteiger;
         const ab = state.standingsByLeague.en_liga_1.slice(-3).map(e => e.clubId);
-        const auf = state.standingsByLeague.en_liga_2.slice(0, 3).map(e => e.clubId);
-        const aufAus3 = state.standingsByLeague.en_liga_3.slice(0, 3).map(e => e.clubId);
+        const auf = state.standingsByLeague.en_liga_2.slice(0, 2).map(e => e.clubId).concat(sieger("en_liga_2"));
+        const aufAus3 = state.standingsByLeague.en_liga_3.slice(0, 2).map(e => e.clubId).concat(sieger("en_liga_3"));
+        if (state.standingsByLeague.en_liga_2.slice(2, 6).every(e => e.clubId !== sieger("en_liga_2"))) throw new Error("Der Playoff-Sieger kommt nicht von Platz 3 bis 6");
         CompetitionEngine.processSeasonEndPromotionsRelegations(state);
         const ligaVon = id => state.clubs.find(c => c.id === id).leagueId;
         if (!ab.every(id => ["en_liga_2", "en_liga_3"].includes(ligaVon(id))) || !auf.every(id => ligaVon(id) === "en_liga_1")) {
@@ -9617,6 +9622,100 @@ function runEngineTests() {
         if (!(hoch.morale < 99 - (99 - ziel) * 0.25)) throw new Error(`Hohe Moral bleibt oben: ${hoch.morale.toFixed(1)} (Ziel ${ziel.toFixed(1)})`);
         if (!(tief.morale > 30 + (ziel - 30) * 0.25)) throw new Error(`Tiefe Moral erholt sich nicht: ${tief.morale.toFixed(1)}`);
         if (hoch.morale < ziel || tief.morale > ziel) throw new Error("Die Moral schießt über das Ziel hinaus");
+    });
+
+    test("Relegation und Aufstiegs-Playoffs: Formate der fünf Länder, Termine in der Sommerpause, Auf- und Abstieg", () => {
+        const { PlayoffEngine } = require('./js/engine/playoffEngine.js');
+        const tabellen = (st, punkte = null) => st.leagues.forEach(l => {
+            const clubs = st.clubs.filter(c => c.leagueId === l.id).sort((a, b) => (b.reputation || 0) - (a.reputation || 0) || String(a.id).localeCompare(String(b.id)));
+            st.standingsByLeague[l.id] = clubs.map((c, i) => ({ clubId: c.id, clubName: c.name, points: punkte ? punkte(l.id, i) : (clubs.length - i) * 3,
+                played: 34, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, goalDiff: 0, form: [] }));
+        });
+        const vorlage = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        tabellen(vorlage);
+        const sechzehnter = vorlage.standingsByLeague.de_liga_1[15].clubId;
+        const st = GameState.createNewGame(sechzehnter, "normal", { name: "Trainer" });
+        tabellen(st);
+        st.standings = st.standingsByLeague.de_liga_1;
+        const platz = (liga, p) => st.standingsByLeague[liga][p - 1].clubId;
+        const groessen = () => Object.fromEntries(st.leagues.map(l => [l.id, st.clubs.filter(c => c.leagueId === l.id).length]));
+        const vorher = groessen();
+        st.currentDayIndex = st.calendar.map(d => d.type).lastIndexOf("matchday") + 1;
+        st.currentMatchday = st.totalMatchdays;
+        SeasonEngine.finishSeason(st);
+
+        // Die Formate nach den echten Regeln
+        const w = id => st.playoffs.wettbewerbe.find(x => x.id === id);
+        const erstes = (id, r = 0) => w(id).runden[r].paarungen.map(p => p.spiele[0]);
+        const rel = erstes("po_de_liga_2")[0];
+        if (rel.homeClubId !== platz("de_liga_1", 16) || rel.awayClubId !== platz("de_liga_2", 3)) throw new Error("Relegation: Hinspiel nicht beim 16. der Bundesliga gegen den Dritten der 2. Liga");
+        if (erstes("po_de_liga_3")[0].homeClubId !== platz("de_liga_3", 3)) throw new Error("Relegation zur 2. Liga: Hinspiel nicht beim Drittligisten");
+        const en = erstes("po_en_liga_2").map(m => m.homeClubId).sort();
+        if (JSON.stringify(en) !== JSON.stringify([platz("en_liga_2", 5), platz("en_liga_2", 6)].sort())) throw new Error("Championship: Der Fünfte und Sechste haben nicht zuerst Heimrecht");
+        if (w("po_es_liga_2").runden[0].paarungen[0].spiele.length !== 2) throw new Error("Segunda: kein Hin- und Rückspiel");
+        const it = erstes("po_it_liga_2");
+        if (w("po_it_liga_2").runden[0].paarungen.some(p => p.spiele.length !== 1) || !it.some(m => m.homeClubId === platz("it_liga_2", 5) && m.awayClubId === platz("it_liga_2", 8))) throw new Error("Serie B: Vorrunde nicht in einem Spiel beim Fünften gegen den Achten");
+        if (erstes("po_fr_liga_2")[0].homeClubId !== platz("fr_liga_2", 4)) throw new Error("Ligue 2: Play-off 1 nicht beim Vierten");
+        // Direkt steigen nur die ersten beiden auf - auch in alten Spielständen mit drei Plätzen
+        if (JSON.stringify(PlayoffEngine.direktePlaetze({ id: "en_liga_2", promotionSpots: [1, 2, 3] })) !== "[1,2]") throw new Error("Der Dritte der Championship steigt direkt auf");
+
+        // Termine in der Sommerpause, der Weiter-Knopf hält beim eigenen Spiel
+        const tage = st.calendar.filter(d => d.cupArt === "playoff");
+        if (tage.map(d => d.pauseTag).join(",") !== PlayoffEngine.TERMIN_TAGE.join(",") || !tage.every(d => d.sommerpause)) throw new Error("Die Spieltermine liegen nicht in der Sommerpause");
+        const eigene = PlayoffEngine.eigenePartieAm(st, 0);
+        if (!eigene || eigene.partie !== rel) throw new Error("Die eigene Relegation wird nicht gefunden");
+        const halt = CalendarEngine.naechsterHalt(st);
+        if (!halt || halt.grund !== "playoff" || st.calendar[halt.index] !== tage[0]) throw new Error("Der Weiter-Knopf hält nicht vor dem Relegationsspiel");
+        if (!st.inbox.some(m => /Relegation zur Bundesliga: Wir sind dabei/.test(m.subject || m.title || ""))) throw new Error("Keine Nachricht zur Relegation");
+
+        // Bis zum Saisonwechsel: alles gespielt, Auf- und Abstieg nach den Ergebnissen
+        let res = null;
+        for (let i = 0; i < 40 && (!res || res.type !== "season_change"); i++) res = CalendarEngine.advanceOneDay(st);
+        if (!res || res.type !== "season_change") throw new Error("Kein Saisonwechsel nach der Sommerpause");
+        const vj = st.playoffsVorjahr;
+        if (!vj || !vj.wettbewerbe.every(x => x.fertig && x.ergebnis)) throw new Error("Nicht alle Playoffs sind entschieden");
+        if (!rel.played || !w2(vj, "po_de_liga_2").runden[0].paarungen[0].spiele.every(m => m.played)) throw new Error("Die eigenen Relegationsspiele wurden nicht gespielt");
+        function w2(po, id) { return po.wettbewerbe.find(x => x.id === id); }
+        const relE = w2(vj, "po_de_liga_2").ergebnis;
+        const nutzer = st.clubs.find(c => c.id === sechzehnter);
+        if (relE.absteiger ? nutzer.leagueId !== "de_liga_2" : nutzer.leagueId !== "de_liga_1") throw new Error(`Relegation falsch umgesetzt: ${JSON.stringify(relE)}, Verein jetzt ${nutzer.leagueId}`);
+        const enSieger = w2(vj, "po_en_liga_2").ergebnis.aufsteiger;
+        if (st.clubs.find(c => c.id === enSieger).leagueId !== "en_liga_1") throw new Error("Der Sieger der Championship-Playoffs ist nicht aufgestiegen");
+        if (JSON.stringify(groessen()) !== JSON.stringify(vorher)) throw new Error("Ligagrößen nach dem Saisonwechsel verändert");
+        // Die Spiele zählen nicht zur neuen Saison
+        if (st.players.filter(p => p.clubId === sechzehnter).some(p => (p.stats?.matches || 0) > 0)) throw new Error("Relegationsspiele stehen in der Statistik der neuen Saison");
+
+        // Gleichstand: Serie B ohne Verlängerung der besser Platzierte, Segunda nach
+        // Verlängerung der besser Platzierte, sonst Elfmeterschießen
+        const zufall = Math.random;
+        Math.random = () => 0.99;
+        try {
+            const a = { clubId: "x1", platz: 3, liga: "it_liga_2" }, b = { clubId: "x2", platz: 6, liga: "it_liga_2" };
+            const spiel = (h, g, th, tg) => ({ homeClubId: h, awayClubId: g, homeGoals: th, awayGoals: tg, played: true });
+            const pIt = { a, b, spiele: [spiel("x2", "x1", 1, 1), spiel("x1", "x2", 0, 0)] };
+            PlayoffEngine.entscheide(st, { ligaId: "it_liga_2" }, pIt);
+            if (pIt.sieger !== "x1" || pIt.spiele[1].verlaengerung) throw new Error("Serie B: Gleichstand nicht für den besser Platzierten ohne Verlängerung");
+            const pEs = { a, b, spiele: [spiel("x2", "x1", 2, 1), spiel("x1", "x2", 1, 0)] };
+            PlayoffEngine.entscheide(st, { ligaId: "es_liga_2" }, pEs);
+            if (pEs.sieger !== "x1" || !pEs.spiele[1].verlaengerung || pEs.spiele[1].penaltyScore) throw new Error("Segunda: nicht Verlängerung und dann der besser Platzierte");
+            const pDe = { a, b, spiele: [spiel("x1", "x2", 0, 0), spiel("x2", "x1", 1, 1)] };
+            PlayoffEngine.entscheide(st, { ligaId: "de_liga_2" }, pDe);
+            if (!pDe.spiele[1].penaltyScore || !pDe.sieger) throw new Error("Relegation: kein Elfmeterschießen nach Gleichstand");
+        } finally {
+            Math.random = zufall;
+        }
+
+        // Serie B: 15 Punkte Vorsprung des Dritten - er steigt ohne Playoffs auf
+        const ohne = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        tabellen(ohne, (liga, i) => liga === "it_liga_2" && i === 2 ? 1000 : (i <= 2 ? 2000 - i : 900 - i));
+        PlayoffEngine.setzeAn(ohne);
+        const b = ohne.playoffs.wettbewerbe.find(x => x.id === "po_it_liga_2");
+        if (!b.direkt || b.ergebnis.aufsteiger !== ohne.standingsByLeague.it_liga_2[2].clubId) throw new Error("Serie B: Der Dritte mit großem Vorsprung steigt nicht direkt auf");
+
+        // Ein Spielstand ohne angesetzte Playoffs holt sie beim Saisonwechsel nach
+        delete ohne.playoffs;
+        PlayoffEngine.abschliessen(ohne);
+        if (!ohne.playoffs.wettbewerbe.every(x => x.fertig)) throw new Error("Ohne angesetzte Playoffs wird beim Saisonwechsel nichts entschieden");
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

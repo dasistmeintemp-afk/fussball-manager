@@ -7182,6 +7182,8 @@ td.nowrap { white-space: nowrap; }
 .rang-uecl { background: #16a34a; color: #fff; }
 .rang-auf  { background: #0d9488; color: #fff; }
 .rang-ab   { background: #dc2626; color: #fff; }
+.rang-po   { background: #ca8a04; color: #fff; }
+.rang-rel  { background: #be185d; color: #fff; }
 
 .tabelle-liga tr.zonen-grenze td { border-bottom: 2px dashed rgba(148, 163, 184, 0.35); }
 .tabelle-liga .tb-platz { width: 44px; }

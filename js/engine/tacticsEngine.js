@@ -790,10 +790,13 @@ const TacticsEngine = {
     },
 
     _norm(pos) {
-        const pe = (typeof PositionEngine !== "undefined" && PositionEngine)
+        // Einmal aufgelöst, dann gemerkt: Unter Node lief hier sonst bei
+        // jedem Aufruf require - gemessen ein Drittel der Rechenzeit eines
+        // Spieltags
+        const pe = this._posEngine || (this._posEngine = (typeof PositionEngine !== "undefined" && PositionEngine)
             ? PositionEngine
             : ((typeof window !== "undefined" && window.PositionEngine) ? window.PositionEngine
-                : (typeof require !== "undefined" ? require("./positionEngine.js").PositionEngine : null));
+                : (typeof require !== "undefined" ? require("./positionEngine.js").PositionEngine : null)));
         return (pe && pe.normalizePosition(pos)) || String(pos || "").toUpperCase();
     },
 

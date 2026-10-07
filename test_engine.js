@@ -9384,6 +9384,110 @@ function runEngineTests() {
         club.reputation = rufVorher;
     });
 
+    test("Vorverträge ab Januar: Anfragen bei eigenen Spielern, eigene Angebote ablösefrei zum Saisonwechsel", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const aufTag = (praefix) => {
+            state.currentDayIndex = state.calendar.findIndex(d => d.date.startsWith(praefix) && d.type !== "matchday");
+            state.currentDate = state.calendar[state.currentDayIndex].date;
+            if (state.preseason) state.preseason.aktiv = false;
+        };
+        const kader = state.players.filter(p => p.clubId === club.id).sort((a, b) => b.overall - a.overall);
+        kader.forEach(p => { p.contractYears = 3; });
+        const [p, q, r] = kader;
+        [p, q, r].forEach(x => { x.contractYears = 1; });
+
+        // Vor Januar fragt niemand an
+        aufTag("15.12");
+        if (SeasonEngine.vorvertragsZeit(state)) throw new Error("Vorverträge schon im Dezember");
+        if (SeasonEngine.vorvertragTag(state, () => 0).length) throw new Error("Anfragen im Dezember");
+
+        // Ab Januar: erst die Übersicht, dann Anfragen
+        aufTag("05.01");
+        const meldungen = SeasonEngine.vorvertragTag(state, () => 0);
+        if (!state.inbox.some(m => /Ab heute dürfen andere Vereine anfragen: 3 Spieler/.test(m.subject))) throw new Error("Keine Übersicht zum 1. Januar");
+        if (![p, q, r].every(x => x.vorvertragInteresse && x.vorvertragInteresse.clubId !== club.id)) throw new Error("Keine Anfrage trotz Zufall 0");
+        if (meldungen.filter(m => /bietet .* einen Vorvertrag an/.test(m)).length !== 3) throw new Error(`Meldungen: ${meldungen.join(" | ")}`);
+        const hinweise = state.inbox.filter(m => /Ab heute dürfen/.test(m.subject)).length;
+        SeasonEngine.vorvertragTag(state, () => 0.99);
+        if (state.inbox.filter(m => /Ab heute dürfen/.test(m.subject)).length !== hinweise) throw new Error("Die Übersicht kommt zweimal");
+
+        // Mit einem Angebot auf dem Tisch fordert er mehr - über den Kader
+        // gemessen, einzeln verschluckt die Rundung manchmal den Aufschlag
+        const forderung = x => ContractEngine.getExtensionDemand(x, club, state).demandWage;
+        const ohne = kader.reduce((a, x) => a + (x.vorvertragInteresse ? 0 : forderung(x)), 0);
+        const mit = kader.reduce((a, x) => {
+            if (x.vorvertragInteresse) return a;
+            x.vorvertragInteresse = { clubId: "x", clubName: "X", tag: 0, entscheidetTag: 99 };
+            const f = forderung(x);
+            delete x.vorvertragInteresse;
+            return a + f;
+        }, 0);
+        if (!(mit > ohne * 1.05)) throw new Error(`Forderungen mit Anfrage ${mit}, ohne ${ohne}`);
+        const mitAnfrage = forderung(q);
+        // Verlängern erledigt die Anfrage
+        q.wage = 1000; club.wageBudget = Math.max(club.wageBudget || 0, mitAnfrage * 2);
+        if (!ContractEngine.negotiateExtension(q, club, mitAnfrage, 3, "Stammspieler", 0, state).success) throw new Error("Verlängerung trotz Anfrage gescheitert");
+        if (q.vorvertragInteresse) throw new Error("Die Anfrage bleibt nach der Verlängerung");
+
+        // Bedenkzeit: vorher keine Entscheidung, danach Zusage oder Absage
+        state.currentDayIndex = p.vorvertragInteresse.entscheidetTag - 1;
+        SeasonEngine.vorvertragTag(state, () => 0);
+        if (!p.vorvertragInteresse || p.vorvertrag) throw new Error("Entscheidung vor Ablauf der Bedenkzeit");
+        state.currentDayIndex = p.vorvertragInteresse.entscheidetTag;
+        const zielP = p.vorvertragInteresse.clubId;
+        r.vorvertragInteresse.entscheidetTag = state.currentDayIndex + 5;
+        SeasonEngine.vorvertragTag(state, () => 0);
+        if (!p.vorvertrag || p.vorvertrag.clubId !== zielP || p.vorvertragInteresse) throw new Error("Keine Zusage trotz Zufall 0");
+        if (!state.inbox.some(m => m.subject === `${p.name} unterschreibt bei ${p.vorvertrag.clubName}`)) throw new Error("Keine Meldung zur Unterschrift");
+        state.currentDayIndex = r.vorvertragInteresse.entscheidetTag;
+        SeasonEngine.vorvertragTag(state, () => 0.9999);
+        if (r.vorvertrag || r.vorvertragInteresse) throw new Error("Absage nicht verarbeitet");
+        if (!state.inbox.some(m => /sagt .* ab/.test(m.subject))) throw new Error("Keine Meldung zur Absage");
+
+        // Wer unterschrieben hat, verlängert nicht und wird nicht verkauft
+        if (ContractEngine.negotiateExtension(p, club, 999999, 3, "Stammspieler", 0, state).success) throw new Error("Verlängerung trotz Vorvertrag");
+        const dritter = state.clubs.find(c => c.id !== club.id && c.id !== zielP);
+        if (TransferEngine.executeTransfer(state, p.id, dritter.id, 1000000, 5000, 3)) throw new Error("Verkauf an Dritte trotz Vorvertrag");
+
+        // Eigenes Angebot: ein Spieler eines anderen Vereins mit auslaufendem Vertrag
+        const fremd = state.players.filter(x => x.clubId && x.clubId !== club.id && x.clubId !== zielP && !x.leihe)
+            .sort((a, b) => b.overall - a.overall)[0];
+        fremd.contractYears = 2;
+        if (!/läuft nicht/.test(NegotiationEngine.vorvertragHindernis(state, fremd))) throw new Error("Vorvertrag trotz zwei Jahren Restlaufzeit");
+        fremd.contractYears = 1;
+        aufTag("15.12");
+        if (!/1\. Januar/.test(NegotiationEngine.vorvertragHindernis(state, fremd))) throw new Error("Vorvertrag schon im Dezember");
+        // Im März ist das Fenster zu - ein Vorvertrag geht trotzdem
+        aufTag("10.03");
+        if (TransferEngine.istTransferfenster(state)) throw new Error("Im März ist das Fenster offen");
+        if (NegotiationEngine.startTransferNegotiation(state, fremd.id, club.id).success) throw new Error("Normaler Transfer bei geschlossenem Fenster");
+        const res = NegotiationEngine.startTransferNegotiation(state, fremd.id, club.id, null, { vorvertrag: true });
+        if (!res.success) throw new Error(`Vorvertrag nicht möglich: ${res.error}`);
+        const n = res.negotiation;
+        if (n.stage !== "terms" || n.demand.fee !== 0 || !n.vorvertrag) throw new Error("Die Verhandlung beginnt nicht bei den Konditionen");
+        const kontoVorher = club.balance;
+        NegotiationEngine.submitOffer(state, n.id, { wage: n.demand.wage, years: 4, signingBonus: n.demand.signingBonus, agentFee: n.demand.agentFee });
+        state.currentDayIndex = n.replyDay;
+        const schritte = NegotiationEngine.processDay(state);
+        if (!schritte.some(e => e.kind === "precontract")) throw new Error(`Kein Vorvertrag: ${schritte.map(e => e.kind).join(",")}`);
+        if (fremd.clubId === club.id || fremd.vorvertrag?.clubId !== club.id || fremd.vorvertrag.years !== 4) throw new Error("Der Vorvertrag steht nicht beim Spieler");
+        if (!(club.balance < kontoVorher)) throw new Error("Handgeld und Honorar nicht bezahlt");
+        if (NegotiationEngine.startTransferNegotiation(state, fremd.id, dritter.id).success) throw new Error("Andere verhandeln trotz Vorvertrag");
+
+        // Der Spielstand behält alles
+        const zurueck = SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(state))));
+        if (zurueck.players.find(x => x.id === fremd.id).vorvertrag?.clubId !== club.id) throw new Error("Der Vorvertrag überlebt das Speichern nicht");
+
+        // Saisonwechsel: Beide Vorverträge werden vollzogen
+        p.contractYears = 0; fremd.contractYears = 0;
+        const lohn = fremd.vorvertrag.wage;
+        SeasonEngine.processContractExpiries(state);
+        if (p.clubId !== zielP) throw new Error("Der eigene Spieler ist nicht gewechselt");
+        if (fremd.clubId !== club.id || fremd.wage !== lohn || fremd.contractYears !== 4 || fremd.vorvertrag) throw new Error("Der Neuzugang ist nicht zu den vereinbarten Konditionen da");
+        if (!state.inbox.some(m => /Per Vorvertrag da/.test(m.subject) && m.subject.includes(fremd.name))) throw new Error("Keine Meldung zum Neuzugang");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

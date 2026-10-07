@@ -160,7 +160,7 @@ class NegotiationEngine {
      * es sei denn, der Spieler ist vereinslos oder wir verhandeln nur über
      * die persönlichen Konditionen.
      */
-    static startTransferNegotiation(state, playerId, buyerClubId, openingFee = null) {
+    static startTransferNegotiation(state, playerId, buyerClubId, openingFee = null, optionen = {}) {
         const player = state.players.find(p => String(p.id) === String(playerId));
         if (!player) return { success: false, error: "Spieler nicht gefunden." };
 
@@ -172,19 +172,33 @@ class NegotiationEngine {
             .find(n => String(n.playerId) === String(playerId) && n.clubId === buyerClubId);
         if (existing) return { success: false, error: "Für diesen Spieler läuft bereits eine Verhandlung.", negotiation: existing };
 
+        if (player.vorvertrag) {
+            return { success: false, error: `${player.name} hat bereits bei ${player.vorvertrag.clubName} unterschrieben und wechselt zum Saisonwechsel.` };
+        }
         const sellerClub = state.clubs.find(c => c.id === player.clubId);
         const transferEngine = this.getTransferEngine();
-        // Außerhalb des Transferfensters wechselt nur, wer vereinslos ist.
-        // Eine Verhandlung, die im Fenster beginnt, darf danach zu Ende gehen.
-        const fenster = transferEngine && typeof transferEngine.fensterHindernis === "function"
-            ? transferEngine.fensterHindernis(state, { vereinslos: !sellerClub }) : null;
-        if (fenster) return { success: false, error: fenster };
-        const askingPrice = transferEngine
+        const vorvertrag = !!optionen.vorvertrag;
+        if (vorvertrag) {
+            // Ein Vorvertrag braucht kein Fenster - er gilt erst zum Saisonwechsel
+            const grund = this.vorvertragHindernis(state, player, buyerClubId);
+            if (grund) return { success: false, error: grund };
+        } else {
+            // Außerhalb des Transferfensters wechselt nur, wer vereinslos ist.
+            // Eine Verhandlung, die im Fenster beginnt, darf danach zu Ende gehen.
+            const fenster = transferEngine && typeof transferEngine.fensterHindernis === "function"
+                ? transferEngine.fensterHindernis(state, { vereinslos: !sellerClub }) : null;
+            if (fenster) return { success: false, error: fenster };
+        }
+        const askingPrice = vorvertrag ? 0 : (transferEngine
             ? transferEngine.calculateAskingPrice(player, sellerClub)
-            : Math.round((player.value || 1000000) * 1.15);
+            : Math.round((player.value || 1000000) * 1.15));
 
         const agent = this.getAgentFor(player);
         const wageDemand = Math.round((player.wage || 10000) * 1.18 * agent.greed);
+        // Ablösefrei heißt nicht umsonst: Spieler und Berater wollen am
+        // gesparten Geld beteiligt werden - ein höheres Handgeld, ein Honorar
+        // wie bei Vereinslosen
+        const ohneAbloese = vorvertrag || !sellerClub;
 
         const negotiation = {
             id: `neg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -195,10 +209,11 @@ class NegotiationEngine {
             clubId: buyerClubId,
             sellerClubId: sellerClub ? sellerClub.id : null,
             sellerClubName: sellerClub ? sellerClub.name : "Vereinslos",
+            vorvertrag,
             agentName: agent.name,
             agentProfile: agent.profile,
             agentLabel: agent.label,
-            stage: sellerClub ? NEGOTIATION_STAGES.FEE : NEGOTIATION_STAGES.TERMS,
+            stage: sellerClub && !vorvertrag ? NEGOTIATION_STAGES.FEE : NEGOTIATION_STAGES.TERMS,
             status: NEGOTIATION_STATUS.AWAITING_US,
             openedDay: this.today(state),
             deadlineDay: this.today(state) + 14,
@@ -209,10 +224,10 @@ class NegotiationEngine {
                 fee: askingPrice,
                 wage: wageDemand,
                 years: 3,
-                signingBonus: Math.round(wageDemand * 6),
+                signingBonus: Math.round(wageDemand * (vorvertrag ? 10 : 6)),
                 // Der Berater will mitverdienen: ein Teil der Ablöse plus
                 // einige Wochengehälter, bei Vereinslosen mehr
-                agentFee: this.beraterHonorar(askingPrice, wageDemand, !sellerClub)
+                agentFee: this.beraterHonorar(askingPrice, wageDemand, ohneAbloese)
             },
             agreed: { fee: null, wage: null, years: null, signingBonus: null, agentFee: null, einsatzPraemie: 0, torPraemie: 0 },
             lastOffer: null,
@@ -220,17 +235,39 @@ class NegotiationEngine {
         };
 
         this.log(negotiation, state, "system",
-            sellerClub
-                ? `Verhandlung mit ${sellerClub.name} über ${player.name} eröffnet. Geforderte Ablöse: ${this.formatMoney(askingPrice)}.`
-                : `${player.name} ist vereinslos. Es geht direkt um die persönlichen Konditionen.`);
+            vorvertrag
+                ? `Sein Vertrag bei ${sellerClub.name} läuft aus. Es geht um einen Vorvertrag: ablösefrei, Wechsel zum Saisonwechsel.`
+                : (sellerClub
+                    ? `Verhandlung mit ${sellerClub.name} über ${player.name} eröffnet. Geforderte Ablöse: ${this.formatMoney(askingPrice)}.`
+                    : `${player.name} ist vereinslos. Es geht direkt um die persönlichen Konditionen.`));
 
-        if (openingFee !== null) {
+        if (openingFee !== null && !vorvertrag) {
             this.ensureList(state).push(negotiation);
             return this.submitOffer(state, negotiation.id, { fee: openingFee });
         }
 
         this.ensureList(state).push(negotiation);
         return { success: true, negotiation };
+    }
+
+    /**
+     * Darf ein Verein diesem Spieler einen Vorvertrag anbieten? null, wenn
+     * ja - sonst der Grund. Ab dem 1. Januar geht das bei jedem, dessen
+     * Vertrag zum Saisonende ausläuft, in der Sommerpause bei jedem, der
+     * nicht verlängert hat. Eine Ablöse fällt nicht an, gewechselt wird zum
+     * Saisonwechsel - auch bei geschlossenem Transferfenster.
+     */
+    static vorvertragHindernis(state, player, clubId = state?.userClubId) {
+        if (!player) return "Spieler nicht gefunden.";
+        if (!player.clubId) return "Er ist vereinslos - er kann sofort kommen.";
+        if (player.clubId === clubId) return "Er spielt schon bei uns.";
+        if (player.leihe) return "Er ist nur ausgeliehen.";
+        if (player.vorvertrag) return `Er hat bereits bei ${player.vorvertrag.clubName} unterschrieben.`;
+        const season = _negResolve("SeasonEngine", "./seasonEngine.js");
+        if (!season || typeof season.vorvertragsZeit !== "function") return "Vorverträge sind nicht verfügbar.";
+        if (!season.vertragEndetZumWechsel(state, player)) return "Sein Vertrag läuft nicht zum Saisonende aus.";
+        if (!season.vorvertragsZeit(state)) return "Einen Vorvertrag darf er erst ab dem 1. Januar unterschreiben.";
+        return null;
     }
 
     /**
@@ -479,6 +516,9 @@ class NegotiationEngine {
         if (negotiation.type === "youth_promotion") {
             return this.completeYouthPromotion(state, negotiation);
         }
+        if (negotiation.vorvertrag) {
+            return this.completeVorvertrag(state, negotiation);
+        }
 
         negotiation.stage = NEGOTIATION_STAGES.MEDICAL;
         negotiation.status = NEGOTIATION_STATUS.WAITING_REPLY;
@@ -588,6 +628,44 @@ class NegotiationEngine {
             `${negotiation.playerName} hat einen Vertrag über ${negotiation.agreed.years} Jahre unterschrieben. Ablöse: ${this.formatMoney(negotiation.agreed.fee || 0)}, Gehalt: ${this.formatMoney(negotiation.agreed.wage || 0)} pro Woche.`);
 
         return { negotiation, kind: "completed" };
+    }
+
+    /**
+     * Vorvertrag unterschreiben: Der Spieler bleibt bis zum Saisonwechsel bei
+     * seinem Verein und kommt dann ablösefrei zu den vereinbarten
+     * Konditionen. Handgeld und Honorar werden mit der Unterschrift fällig.
+     */
+    static completeVorvertrag(state, negotiation) {
+        const heute = this.today(state);
+        const player = state.players.find(p => String(p.id) === String(negotiation.playerId));
+        const grund = this.vorvertragHindernis(state, player, negotiation.clubId);
+        if (grund) {
+            negotiation.status = NEGOTIATION_STATUS.REJECTED;
+            negotiation.closedDay = heute;
+            this.log(negotiation, state, "system", `Der Vorvertrag kommt nicht zustande: ${grund}`);
+            this.notify(state, negotiation, `Vorvertrag geplatzt: ${negotiation.playerName}`, `Der Vorvertrag kommt nicht zustande: ${grund}`);
+            return { negotiation, kind: "failed" };
+        }
+        const club = state.clubs.find(c => c.id === negotiation.clubId);
+        const a = negotiation.agreed;
+        player.vorvertrag = {
+            clubId: negotiation.clubId,
+            clubName: club ? club.name : "",
+            saison: state.seasonYear,
+            wage: a.wage || 0,
+            years: a.years || 3,
+            praemien: (a.einsatzPraemie || a.torPraemie) ? { einsatz: a.einsatzPraemie || 0, tor: a.torPraemie || 0 } : null
+        };
+        this.zahleNebenkosten(state, negotiation);
+
+        negotiation.status = NEGOTIATION_STATUS.ACCEPTED;
+        negotiation.stage = NEGOTIATION_STAGES.DONE;
+        negotiation.closedDay = heute;
+        this.log(negotiation, state, "system",
+            `${negotiation.playerName} unterschreibt einen Vorvertrag über ${a.years} Jahre und kommt zum Saisonwechsel ablösefrei.`);
+        this.notify(state, negotiation, `Vorvertrag unterschrieben: ${negotiation.playerName}`,
+            `${negotiation.playerName} hat einen Vorvertrag über ${a.years} Jahre unterschrieben. Bis zum Saisonende spielt er noch für ${negotiation.sellerClubName}, dann kommt er ablösefrei. Gehalt: ${this.formatMoney(a.wage || 0)} pro Woche.`);
+        return { negotiation, kind: "precontract" };
     }
 
     /** Nachwuchstalent in den Profikader übernehmen */
@@ -729,8 +807,8 @@ class NegotiationEngine {
             case NEGOTIATION_STATUS.AWAITING_US:
                 return negotiation.stage === NEGOTIATION_STAGES.FEE
                     ? "Wir sind am Zug: Ablöse"
-                    : "Wir sind am Zug: persönliche Konditionen";
-            case NEGOTIATION_STATUS.ACCEPTED: return "Abgeschlossen";
+                    : (negotiation.vorvertrag ? "Wir sind am Zug: Vorvertrag" : "Wir sind am Zug: persönliche Konditionen");
+            case NEGOTIATION_STATUS.ACCEPTED: return negotiation.vorvertrag ? "Vorvertrag unterschrieben" : "Abgeschlossen";
             case NEGOTIATION_STATUS.REJECTED: return "Gescheitert";
             case NEGOTIATION_STATUS.EXPIRED: return "Frist abgelaufen";
             case NEGOTIATION_STATUS.WITHDRAWN: return "Von uns abgebrochen";

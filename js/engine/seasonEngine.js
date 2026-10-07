@@ -236,6 +236,12 @@ class SeasonEngine {
         const meldungen = [];
         SeasonEngine.auslaufendZumWechsel(state).forEach(p => {
             if (p.vorvertrag) return;
+            // Eine Anfrage aus der Rückrunde läuft weiter
+            if (p.vorvertragInteresse) {
+                const m = SeasonEngine.entscheideAnfrage(state, p, club, zufall);
+                if (m) meldungen.push(m);
+                return;
+            }
             if (typeof eigenesNiveau === "number" && (p.overall || 0) - eigenesNiveau < P.abNiveau) return;
             if (zufall() >= P.abwerben) return;
 
@@ -264,6 +270,169 @@ class SeasonEngine {
             meldungen.push(`✍️ ${p.name} geht zum Saisonwechsel ablösefrei zu ${ziel.name}.`);
         });
         return meldungen;
+    }
+
+    /**
+     * Vorverträge ab Januar. Wer im letzten Vertragsjahr steht, darf ab dem
+     * 1. Januar mit anderen Vereinen verhandeln und dort für den Sommer
+     * unterschreiben - wie in Wirklichkeit in den letzten sechs Monaten
+     * eines Vertrags. Vorher klopfte bis zur Sommerpause niemand an; man
+     * konnte jede Verlängerung bis Mai liegen lassen.
+     *
+     * Ein Verein fragt zuerst an (anfrage: Chance je Tag und Spieler, rund
+     * ein Viertel über die Rückrunde, bei Leistungsträgern - traeger über
+     * dem Kaderniveau - doppelt so oft). Danach hat der Spieler bedenkzeit
+     * Tage; verlängern wir bis dahin, ist die Sache erledigt. Sonst sagt er
+     * mit zusage zu - eher bei einem größeren Verein (groesser), eher nicht
+     * bei einem kleineren (kleiner), eher, wenn er unzufrieden ist.
+     */
+    static VORVERTRAG = { abMonat: 1, bisMonat: 6, anfrage: 0.003, traeger: 3, bedenkzeit: 10, zusage: 0.55, groesser: 0.25, kleiner: 0.25, unzufrieden: 0.15, ruf: 5 };
+
+    /** Monat des aktuellen Kalendertags (1-12) - oder null */
+    static kalenderMonat(state) {
+        const tag = Array.isArray(state?.calendar) ? state.calendar[state.currentDayIndex || 0] : null;
+        const m = /^\d{1,2}\.(\d{1,2})\.\d{4}$/.exec(String(tag?.date || state?.currentDate || ""));
+        return m ? Number(m[1]) : null;
+    }
+
+    /** Läuft gerade die Zeit, in der Vorverträge erlaubt sind? (Rückrunde und Sommerpause) */
+    static vorvertragsZeit(state) {
+        if (state?.preseason?.aktiv) return false;
+        const tag = Array.isArray(state?.calendar) ? state.calendar[state.currentDayIndex || 0] : null;
+        if (tag?.sommerpause) return true;
+        const monat = SeasonEngine.kalenderMonat(state);
+        const V = SeasonEngine.VORVERTRAG;
+        return monat !== null && monat >= V.abMonat && monat <= V.bisMonat;
+    }
+
+    /** Endet der Vertrag dieses Spielers zum kommenden Saisonwechsel? */
+    static vertragEndetZumWechsel(state, player) {
+        const tag = Array.isArray(state?.calendar) ? state.calendar[state.currentDayIndex || 0] : null;
+        // In der Sommerpause ist das Jahr schon abgezogen
+        return tag?.sommerpause ? (player.contractYears ?? 1) <= 0 : (player.contractYears ?? 2) <= 1;
+    }
+
+    /**
+     * Ein Tag der Rückrunde: Andere Vereine fragen bei eigenen Spielern im
+     * letzten Vertragsjahr an, und wer angefragt wurde, entscheidet sich.
+     * Am ersten Tag kommt eine Übersicht, wen das betrifft.
+     */
+    static vorvertragTag(state, zufall = Math.random) {
+        const V = SeasonEngine.VORVERTRAG;
+        const tag = Array.isArray(state?.calendar) ? state.calendar[state.currentDayIndex || 0] : null;
+        if (!tag || tag.sommerpause || !SeasonEngine.vorvertragsZeit(state)) return [];
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        if (!club) return [];
+        const ids = new Set(club.playerIds || []);
+        const betroffen = (state.players || []).filter(p => ids.has(p.id) && !p.leihe
+            && (p.contractYears ?? 2) <= 1 && !p.vorvertrag);
+        const meldungen = [];
+        if (!Array.isArray(state.inbox)) state.inbox = [];
+
+        if (state.vorvertragHinweis !== state.seasonYear) {
+            state.vorvertragHinweis = state.seasonYear;
+            if (betroffen.length) {
+                state.inbox.unshift({
+                    id: Date.now() + Math.floor(zufall() * 100000),
+                    matchday: state.currentMatchday,
+                    date: state.currentDate || "",
+                    sender: "Sportdirektor",
+                    subject: `Ab heute dürfen andere Vereine anfragen: ${betroffen.length} Spieler`,
+                    body: `Bei diesen Spielern läuft der Vertrag im Sommer aus. Ab heute dürfen sie mit anderen Vereinen verhandeln und dort einen Vorvertrag unterschreiben:\n\n${betroffen.map(p => `• ${p.name} (${p.pos}, ${p.age})`).join("\n")}\n\nWen wir halten wollen, mit dem sollten wir jetzt verlängern.`,
+                    read: false,
+                    type: "contract_expiring"
+                });
+                meldungen.push(`✍️ Ab heute dürfen andere Vereine bei ${betroffen.length} Spieler${betroffen.length === 1 ? "" : "n"} mit auslaufendem Vertrag anfragen.`);
+            }
+        }
+
+        const contractEngine = _getContractEngine();
+        const niveau = contractEngine && typeof contractEngine.niveauKarte === 'function'
+            ? contractEngine.niveauKarte(state) : new Map();
+        const eigenesNiveau = niveau.get(club.id);
+        betroffen.forEach(p => {
+            if (p.vorvertragInteresse) {
+                const m = SeasonEngine.entscheideAnfrage(state, p, club, zufall);
+                if (m) meldungen.push(m);
+                return;
+            }
+            const staerke = typeof eigenesNiveau === "number" ? (p.overall || 0) - eigenesNiveau : 0;
+            if (staerke < SeasonEngine.SOMMERPAUSE.abNiveau) return;
+            // Um die Leistungsträger reißen sich mehr Vereine
+            if (zufall() >= V.anfrage * (staerke >= V.traeger ? 2 : 1)) return;
+
+            const passend = state.clubs.filter(c => c.id !== club.id && SeasonEngine.passtZumKader(p, niveau.get(c.id)));
+            const oben = passend.filter(c => (c.level || 1) <= (club.level || 1));
+            const auswahl = oben.length ? oben : passend;
+            if (!auswahl.length) return;
+            const ziel = auswahl[Math.floor(zufall() * auswahl.length) % auswahl.length];
+            const heute = state.currentDayIndex || 0;
+            p.vorvertragInteresse = { clubId: ziel.id, clubName: ziel.name, tag: heute, entscheidetTag: heute + V.bedenkzeit };
+            state.inbox.unshift({
+                id: Date.now() + Math.floor(zufall() * 100000),
+                matchday: state.currentMatchday,
+                date: state.currentDate || "",
+                sender: "Sportdirektor",
+                subject: `${ziel.name} fragt bei ${p.name} an`,
+                body: `${ziel.name} bietet ${p.name} einen Vorvertrag für den Sommer an. Sein Vertrag bei uns läuft aus, er darf verhandeln.\n\nEr will sich in etwa ${V.bedenkzeit} Tagen entscheiden. Verlängern wir vorher, bleibt er.`,
+                read: false,
+                type: "contract_expiring",
+                relatedEntity: { type: "player", id: p.id }
+            });
+            meldungen.push(`✍️ ${ziel.name} bietet ${p.name} einen Vorvertrag an.`);
+        });
+        return meldungen;
+    }
+
+    /**
+     * Die Bedenkzeit nach einer Anfrage ist um: Der Spieler unterschreibt
+     * beim anfragenden Verein oder bleibt vorerst. Gibt die Meldung zurück -
+     * oder null, solange er noch überlegt.
+     */
+    static entscheideAnfrage(state, p, club, zufall = Math.random) {
+        const V = SeasonEngine.VORVERTRAG;
+        const anfrage = p.vorvertragInteresse;
+        if (!anfrage) return null;
+        if ((state.currentDayIndex || 0) < anfrage.entscheidetTag && !state.calendar?.[state.currentDayIndex || 0]?.saisonwechsel) return null;
+        delete p.vorvertragInteresse;
+        const ziel = (state.clubs || []).find(c => c.id === anfrage.clubId);
+        if (!ziel || ziel.id === club.id) return null;
+
+        let chance = V.zusage;
+        const rufZiel = ziel.reputation || 60;
+        const rufWir = club.reputation || 60;
+        if (rufZiel >= rufWir + V.ruf) chance += V.groesser;
+        else if (rufZiel <= rufWir - V.ruf) chance -= V.kleiner;
+        if ((p.happiness?.overall ?? 70) < 45) chance += V.unzufrieden;
+        if (!Array.isArray(state.inbox)) state.inbox = [];
+
+        if (zufall() < chance) {
+            p.vorvertrag = { clubId: ziel.id, clubName: ziel.name, saison: state.seasonYear };
+            state.inbox.unshift({
+                id: Date.now() + Math.floor(zufall() * 100000),
+                matchday: state.currentMatchday,
+                date: state.currentDate || "",
+                sender: "Sportdirektor",
+                subject: `${p.name} unterschreibt bei ${ziel.name}`,
+                body: `${p.name} hat bei ${ziel.name} einen Vorvertrag unterschrieben. Bis zum Saisonende spielt er für uns, zum Saisonwechsel geht er ablösefrei.`,
+                read: false,
+                type: "contract_expiring",
+                relatedEntity: { type: "player", id: p.id }
+            });
+            return `✍️ ${p.name} geht zum Saisonwechsel ablösefrei zu ${ziel.name}.`;
+        }
+        state.inbox.unshift({
+            id: Date.now() + Math.floor(zufall() * 100000),
+            matchday: state.currentMatchday,
+            date: state.currentDate || "",
+            sender: "Sportdirektor",
+            subject: `${p.name} sagt ${ziel.name} ab`,
+            body: `${p.name} hat das Angebot von ${ziel.name} abgelehnt - vorerst. Sein Vertrag läuft weiter aus, andere Vereine dürfen anfragen.`,
+            read: false,
+            type: "contract_expiring",
+            relatedEntity: { type: "player", id: p.id }
+        });
+        return `✍️ ${p.name} lehnt den Vorvertrag von ${ziel.name} ab.`;
     }
 
     static karriereendeChance(player, niveau, stufe) {
@@ -1056,6 +1225,7 @@ class SeasonEngine {
     static processContractExpiries(state) {
         const abgaenge = [];
         const eigeneAbgaenge = [];
+        const neuzugaenge = [];
         // Wer gerade wo ausgelaufen ist - dorthin kehrt er nicht als
         // Vereinsloser zurück
         const verlassen = new Map();
@@ -1080,20 +1250,25 @@ class SeasonEngine {
 
             const istNutzerverein = club.id === state.userClubId;
 
-            // Wer in der Sommerpause woanders unterschrieben hat, geht dorthin
-            const vorvertrag = istNutzerverein && player.vorvertrag
-                ? state.clubs.find(c => c.id === player.vorvertrag.clubId && c.id !== club.id) : null;
+            // Wer einen Vorvertrag hat - bei uns oder woanders -, geht dorthin.
+            // Vorher galt das nur für eigene Spieler in der Sommerpause.
+            const vv = player.vorvertrag;
+            const vorvertrag = vv ? state.clubs.find(c => c.id === vv.clubId && c.id !== club.id) : null;
             delete player.vorvertrag;
+            delete player.vorvertragInteresse;
             const transferEngine = _getTransferEngine();
             if (vorvertrag && transferEngine && typeof transferEngine.executeTransfer === 'function') {
                 const playerGen = _resolve('PlayerGenerator', './playerGenerator.js');
-                const lohn = playerGen && typeof playerGen.getValueAndWage === 'function'
+                const lohn = vv.wage > 0 ? vv.wage : (playerGen && typeof playerGen.getValueAndWage === 'function'
                     ? playerGen.getValueAndWage(player.overall || 50, vorvertrag.level || 1, player.age || 25).wage
-                    : (player.wage || 1000);
-                const jahre = contractEngine && typeof contractEngine.laufzeitFuer === 'function'
-                    ? contractEngine.laufzeitFuer(player) : 2;
+                    : (player.wage || 1000));
+                const jahre = vv.years > 0 ? vv.years : (contractEngine && typeof contractEngine.laufzeitFuer === 'function'
+                    ? contractEngine.laufzeitFuer(player) : 2);
                 if (transferEngine.executeTransfer(state, player.id, vorvertrag.id, 0, lohn, jahre)) {
-                    eigeneAbgaenge.push(`${player.name} (zu ${vorvertrag.name})`);
+                    if (vv.praemien) player.praemien = { ...vv.praemien };
+                    else delete player.praemien;
+                    if (istNutzerverein) eigeneAbgaenge.push(`${player.name} (zu ${vorvertrag.name})`);
+                    if (vorvertrag.id === state.userClubId) neuzugaenge.push(player.name);
                     return;
                 }
             }
@@ -1220,8 +1395,20 @@ class SeasonEngine {
                 type: "contract"
             });
         }
+        if (neuzugaenge.length > 0 && Array.isArray(state.inbox)) {
+            state.inbox.unshift({
+                id: Date.now() + 23,
+                matchday: 1,
+                date: `Saisonstart ${state.seasonYear + 1}`,
+                sender: "Sportdirektor",
+                subject: `Per Vorvertrag da: ${neuzugaenge.join(", ")}`,
+                body: `Mit dem Saisonwechsel sind ablösefrei zu uns gekommen:\n\n${neuzugaenge.map(n => `• ${n}`).join("\n")}\n\nSie stehen ab sofort im Kader.`,
+                read: false,
+                type: "transfer"
+            });
+        }
 
-        return { abgaenge: abgaenge.length, ohneVerein: state.players.filter(p => !p.clubId).length };
+        return { abgaenge: abgaenge.length, ohneVerein: state.players.filter(p => !p.clubId).length, vorvertraege: neuzugaenge.length };
     }
 
     static startNextSeason(state) {

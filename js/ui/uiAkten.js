@@ -13,6 +13,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     /**
      * Zeigt an, wie belastbar die Werte eines Spielers sind (Scoutwissen)
      */
+    /** Wann sich ein umworbener Spieler entscheidet: "in 4 Tagen", "morgen" */
+    bedenkzeitText(anfrage) {
+        const rest = Math.max(0, (anfrage?.entscheidetTag ?? 0) - (this.app.state.currentDayIndex || 0));
+        return this.wannText(rest);
+    },
+
     buildScoutConfidenceHtml(confidence, confInfo, isUserPlayer) {
         const pct = Math.max(0, Math.min(100, Math.round(confidence)));
         const note = isUserPlayer
@@ -565,6 +571,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     <h4 style="font-size:14px; margin-bottom:8px; color:#38bdf8;"><svg class="ico h-ico" aria-hidden="true"><use href="#i-briefcase"/></svg>Vertragsverlängerung verhandeln</h4>
                     <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">Forderung des Spielers: ca. <strong>${GameState.formatMoney(demand.demandWage)} / Woche</strong></p>
                     ${(player.contractYears || 0) <= 0 ? `<p class="vertrag-endet">Sein Vertrag endet zum Saisonwechsel${this.sommerpauseText()}. Andere Vereine werben schon.</p>` : ""}
+                    ${player.vorvertragInteresse ? `<p class="vertrag-endet">✍️ ${this.escapeHtml(player.vorvertragInteresse.clubName)} bietet ihm einen Vorvertrag an. Er entscheidet sich ${this.bedenkzeitText(player.vorvertragInteresse)} - verlängern wir vorher, bleibt er.</p>` : ""}
                     
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:12px;">
                         <div>
@@ -615,6 +622,26 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         let scoutExternalHtml = "";
         if (!isUserClub && !eigenerVerliehen) {
+            // Vorvertrag: ablösefrei zum Saisonwechsel, ab Januar
+            const negEngine = this.getNegotiationEngine();
+            const vvGrund = negEngine && typeof negEngine.vorvertragHindernis === "function" && player.clubId
+                ? negEngine.vorvertragHindernis(state, player) : "-";
+            const vvLaufend = negEngine ? negEngine.getOpenNegotiations(state)
+                .find(n => n.vorvertrag && String(n.playerId) === String(player.id)) : null;
+            const seasonEng = typeof SeasonEngine !== "undefined" ? SeasonEngine : null;
+            const endetBald = player.clubId && !player.leihe && seasonEng && seasonEng.vertragEndetZumWechsel(state, player);
+            let vorvertragHtml = "";
+            if (player.vorvertrag && player.vorvertrag.clubId === state.userClubId) {
+                vorvertragHtml = `<div class="hint-box vv-hinweis">✍️ <strong>Vorvertrag unterschrieben</strong> - er kommt zum Saisonwechsel ablösefrei zu uns (${this.geldKurz(player.vorvertrag.wage || 0)} / Woche, ${player.vorvertrag.years} Jahre).</div>`;
+            } else if (player.vorvertrag) {
+                vorvertragHtml = `<div class="hint-box vv-hinweis">✍️ Er hat bei <strong>${this.escapeHtml(player.vorvertrag.clubName)}</strong> unterschrieben und wechselt zum Saisonwechsel.</div>`;
+            } else if (vvLaufend) {
+                vorvertragHtml = `<button class="btn btn-secondary" id="btnPdZurVerhandlung" data-neg-id="${this.escapeHtml(vvLaufend.id)}" style="width:100%; margin-top:10px;">Zur Verhandlung über den Vorvertrag</button>`;
+            } else if (vvGrund === null) {
+                vorvertragHtml = `<button class="btn btn-secondary" id="btnPdVorvertrag" style="width:100%; margin-top:10px;" title="Kein Geld an seinen Verein - er kommt zum Saisonwechsel"><svg class="ico" aria-hidden="true"><use href="#i-edit"/></svg> Vorvertrag anbieten (ablösefrei)</button>`;
+            } else if (endetBald) {
+                vorvertragHtml = `<div class="vv-zeile">Sein Vertrag läuft zum Saisonende aus. ${this.escapeHtml(vvGrund)}</div>`;
+            }
             scoutExternalHtml = `
                 <div style="display:flex; gap:10px; margin-top:14px;">
                     ${this.beobachtungsText(player.id)
@@ -623,6 +650,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     <button class="btn btn-primary" id="btnPdBidPlayer" style="flex:1;"><svg class="ico" aria-hidden="true"><use href="#i-briefcase"/></svg> Transfer verhandeln</button>
                 </div>
                 ${klausel ? `<button class="btn btn-secondary" id="btnPdKlausel" style="width:100%; margin-top:10px;" title="Sein Verein kann nicht ablehnen"><svg class="ico" aria-hidden="true"><use href="#i-bolt"/></svg> Ausstiegsklausel ziehen (${this.geldKurz(klausel)})</button>` : ""}
+                ${vorvertragHtml}
             `;
         }
 
@@ -852,6 +880,16 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             document.getElementById("btnPdBidPlayer")?.addEventListener("click", () => {
                 modal.style.display = "none";
                 this.showTransferOfferModal(player.id);
+            });
+
+            document.getElementById("btnPdVorvertrag")?.addEventListener("click", () => {
+                const engine = this.getNegotiationEngine();
+                const res = engine ? engine.startTransferNegotiation(state, player.id, state.userClubId, null, { vorvertrag: true }) : null;
+                if (!res || !res.success) { this.showToast(res?.error || "Verhandlungen sind derzeit nicht verfügbar.", "error"); return; }
+                this.playSound("click");
+                this.showToast(`Berater ${res.negotiation.agentName} spricht über einen Vorvertrag. Forderung: ${this.formatMoneySafe(res.negotiation.demand.wage)} pro Woche.`, "success", 6000);
+                modal.style.display = "none";
+                this.zeigeVerhandlung(res.negotiation.id);
             });
 
             document.getElementById("btnPdKlausel")?.addEventListener("click", () => {

@@ -85,7 +85,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
             const phaseText = n.type === "youth_promotion"
                 ? "Erstvertrag mit dem Berater"
-                : (istAblöse ? `Ablöse mit ${this.escapeHtml(n.sellerClubName || "dem Verein")}` : "Persönliche Konditionen");
+                : (n.vorvertrag ? `Vorvertrag - ablösefrei von ${this.escapeHtml(n.sellerClubName || "seinem Verein")} zum Saisonwechsel`
+                    : (istAblöse ? `Ablöse mit ${this.escapeHtml(n.sellerClubName || "dem Verein")}` : "Persönliche Konditionen"));
 
             const forderung = istAblöse
                 ? `Forderung: <strong>${this.formatMoneySafe(n.demand.fee)}</strong> Ablöse`

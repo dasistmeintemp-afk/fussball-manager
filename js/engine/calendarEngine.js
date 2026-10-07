@@ -1422,14 +1422,17 @@ const CalendarEngine = {
             });
         }
 
-        // 2b. Sommerpause: Andere Vereine werben um Spieler mit auslaufendem Vertrag
+        // 2b. Andere Vereine werben um Spieler mit auslaufendem Vertrag: ab
+        // Januar mit Anfrage und Bedenkzeit, in der Sommerpause direkt
+        const seasonEngineTag = (typeof SeasonEngine !== 'undefined' && SeasonEngine)
+            ? SeasonEngine
+            : ((typeof window !== 'undefined' && window.SeasonEngine) ? window.SeasonEngine : (typeof require !== 'undefined' ? require('./seasonEngine.js').SeasonEngine : null));
         if (currentDay.sommerpause) {
-            const seasonEngineTag = (typeof SeasonEngine !== 'undefined' && SeasonEngine)
-                ? SeasonEngine
-                : ((typeof window !== 'undefined' && window.SeasonEngine) ? window.SeasonEngine : (typeof require !== 'undefined' ? require('./seasonEngine.js').SeasonEngine : null));
             if (seasonEngineTag && typeof seasonEngineTag.sommerpauseTag === 'function') {
                 seasonEngineTag.sommerpauseTag(state).forEach(m => summary.messages.push(m));
             }
+        } else if (seasonEngineTag && typeof seasonEngineTag.vorvertragTag === 'function') {
+            seasonEngineTag.vorvertragTag(state).forEach(m => summary.messages.push(m));
         }
 
         // 3. Medientag / Pressekonferenz

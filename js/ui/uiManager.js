@@ -5151,10 +5151,39 @@ class UIManager {
     }
 
     /** Absender-Symbol im Postfach aus dem Iconset */
+    /**
+     * Der monatliche Entwicklungsbericht: verbessert, nachgelassen, Akademie.
+     * Je Spieler die Stärke vorher und nachher und die Werte, die sich am
+     * meisten bewegt haben.
+     */
+    entwicklungsBerichtHtml(b) {
+        const esc = t => this.escapeHtml(String(t ?? ""));
+        const vorzeichen = d => `${d > 0 ? "+" : ""}${d}`;
+        const zeile = (e, akte = true) => `
+            <div class="eb-zeile${akte ? " row-clickable" : ""}"${akte ? ` data-entwicklung-akte="${esc(e.id)}" role="button" tabindex="0"` : ""}>
+                <div class="eb-kopf">
+                    <span class="eb-name"><strong>${esc(e.name)}</strong> <span class="text-muted">${esc(e.pos)}, ${esc(e.age)}</span></span>
+                    <span class="eb-zahl">${esc(e.von)} → ${esc(e.nach)} <strong class="${e.diff > 0 ? "eb-plus" : "eb-minus"}">${vorzeichen(e.diff)}</strong></span>
+                </div>
+                ${(e.werte || []).length || e.grund === "verletzt" || e.grund === "Alter" ? `
+                <div class="eb-werte">${(e.werte || []).map(w => `<span class="${w.diff > 0 ? "eb-plus" : "eb-minus"}">${esc(w.label)} ${vorzeichen(w.diff)}</span>`).join("")}${e.grund === "verletzt" ? `<span class="text-muted">verletzt</span>` : e.grund === "Alter" ? `<span class="text-muted">altersbedingt</span>` : ""}</div>` : ""}
+            </div>`;
+        const tabelle = (titel, liste, akte = true) => liste.length ? `
+            <h4 class="eb-titel">${titel}</h4>
+            <div class="eb-liste">${liste.map(e => zeile(e, akte)).join("")}</div>` : "";
+        return `
+            <div class="entwicklungsbericht">
+                ${tabelle(`📈 Verbessert (${b.besser.length})`, b.besser) || `<p class="text-muted">Verbessert hat sich diesen Monat niemand.</p>`}
+                ${tabelle(`📉 Nachgelassen (${b.schlechter.length})`, b.schlechter)}
+                ${b.gleich ? `<p class="text-muted eb-gleich">${b.gleich} Spieler ${b.gleich === 1 ? "hält sein" : "halten ihr"} Niveau.</p>` : ""}
+                ${tabelle(`🎓 Aus der Akademie (${(b.jugend || []).length})`, b.jugend || [], false)}
+            </div>`;
+    }
+
     postfachSymbol(emoji) {
         const id = ({
             "✉️": "i-mail", "👔": "i-briefcase", "⚽": "i-ball", "🔄": "i-transfer", "🏥": "i-medical",
-            "🔍": "i-search", "💰": "i-wallet", "📝": "i-doc", "🎖️": "i-trophy"
+            "🔍": "i-search", "💰": "i-wallet", "📝": "i-doc", "🎖️": "i-trophy", "📈": "i-chart"
         })[emoji] || "i-mail";
         return `<svg class="ico" aria-hidden="true"><use href="#${id}"/></svg>`;
     }
@@ -5312,6 +5341,7 @@ class UIManager {
             else if (msg.type === "finance_warning" || msg.type === "sponsor") { icon = "💰"; typeLabel = "Finanzen"; }
             else if (msg.type === "contract" || msg.type === "contract_expiring") { icon = "📝"; typeLabel = "Verträge"; }
             else if (msg.type === "retirement") { icon = "🎖️"; typeLabel = "Karriereende"; }
+            else if (msg.type === "development") { icon = "📈"; typeLabel = "Entwicklung"; }
 
             const displayDate = msg.date || "Saisonstart";
 
@@ -5417,6 +5447,7 @@ class UIManager {
         else if (msg.type === "finance_warning" || msg.type === "sponsor") { icon = "💰"; typeLabel = "Finanzen"; }
         else if (msg.type === "contract" || msg.type === "contract_expiring") { icon = "📝"; typeLabel = "Verträge"; }
         else if (msg.type === "retirement") { icon = "🎖️"; typeLabel = "Karriereende"; }
+        else if (msg.type === "development") { icon = "📈"; typeLabel = "Entwicklung"; }
 
         let formattedBody = (msg.body || msg.text || "").replace(/\n/g, "<br>");
         const displayDate = msg.date || "Saisonstart";
@@ -5442,6 +5473,11 @@ class UIManager {
                 </div>`;
         }
 
+        // Der Entwicklungsbericht als Tabelle, jeder Name führt in die Akte
+        if (msg.type === "development" && msg.entwicklung) {
+            formattedBody = this.entwicklungsBerichtHtml(msg.entwicklung);
+        }
+
         detailContainer.innerHTML = `
             <div class="inbox-detail-header">
                 <div class="inbox-detail-title-row">
@@ -5464,6 +5500,10 @@ class UIManager {
             </div>
             ${aktionen}
         `;
+        detailContainer.querySelectorAll("[data-entwicklung-akte]").forEach(el => el.addEventListener("click", () => {
+            const pId = this.resolvePlayerId(el.dataset.entwicklungAkte);
+            if (pId !== null) this.showPlayerDetailsModal(pId);
+        }));
         detailContainer.querySelector("[data-inbox-akte]")?.addEventListener("click", (e) => {
             const pId = this.resolvePlayerId(e.currentTarget.dataset.inboxAkte);
             if (pId !== null) this.showPlayerDetailsModal(pId);

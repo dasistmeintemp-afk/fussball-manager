@@ -384,6 +384,9 @@ Das Training läuft **Tag für Tag** über den Kalender statt im Wochenblock. Zw
 
 Die Intensität ist eine echte Abwägung: Über Wochen pendelt sich die Kaderfitness bei *Schonend* auf rund 99 %, bei *Standard* auf 95 % und bei *Vollgas* auf etwa 72 % ein – dafür entwickeln sich die Spieler schneller. Ein Spieltag kostet deutlich mehr Substanz als jede Trainingseinheit.
 
+#### 📈 Monatlicher Entwicklungsbericht
+Zu jedem Monatswechsel schickt der Co-Trainer einen Bericht ins Postfach (Kategorie Training): wer seit dem letzten Monatsersten besser geworden ist und wer nachgelassen hat – je Spieler Stärke vorher und nachher und die bis zu drei Werte, die sich am meisten bewegt haben, bei Verletzten und Spielern ab 30 mit dem Grund. Dazu die Talente der Akademie. Ein Tipp auf einen Namen öffnet die Akte. Vorher sah man Fortschritte nur, wenn man jede Akte einzeln aufschlug.
+
 ### 5c. 🎓 Nachwuchs: Beförderung über den Berater
 Ein Talent in den Profikader zu holen dauert jetzt seine Zeit. *Vertragsgespräche aufnehmen* startet die Verhandlung mit dem Berater über Gehalt, Laufzeit und Handgeld; erst nach der Einigung – meist drei bis sechs Tage – unterschreibt der Spieler seinen ersten Profivertrag und taucht im Kader auf. Die Forderung richtet sich nach Potenzial und Ligastufe.
 

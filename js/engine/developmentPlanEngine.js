@@ -274,6 +274,147 @@ class DevelopmentPlanEngine {
         });
     }
 
+    // ------------------------------------------------------ Monatsbericht
+
+    /** Die Werte, deren Veränderung der Bericht nennt */
+    static BERICHT_WERTE = {
+        pace: "Tempo", shooting: "Abschluss", passing: "Passspiel", dribbling: "Dribbling",
+        defense: "Zweikampf", physical: "Physis", stamina: "Ausdauer", vision: "Übersicht",
+        technique: "Technik", positioning: "Stellungsspiel", reflexes: "Reflexe",
+        handling: "Fangsicherheit", oneOnOne: "Eins gegen eins", kicking: "Abschlag"
+    };
+
+    static MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli",
+        "August", "September", "Oktober", "November", "Dezember"];
+
+    /** "08.2026" aus "15.08.2026" */
+    static _monat(datum) {
+        const m = /^\d{1,2}\.(\d{1,2})\.(\d{4})$/.exec(String(datum || ""));
+        return m ? `${m[1].padStart(2, "0")}.${m[2]}` : null;
+    }
+
+    static _monatsName(monat) {
+        const [m, j] = String(monat || "").split(".");
+        const name = this.MONATE[Number(m) - 1];
+        return name ? `${name} ${j}` : "des letzten Monats";
+    }
+
+    /** Der Stand, an dem der nächste Bericht misst */
+    static _stichtag(state, monat) {
+        const werte = {};
+        this._eigenerKader(state).forEach(p => {
+            const attr = {};
+            Object.keys(this.BERICHT_WERTE).forEach(k => { if (typeof p[k] === "number") attr[k] = p[k]; });
+            werte[p.id] = { o: p.overall || 0, a: attr };
+        });
+        const jugend = {};
+        const youth = this._youthEngine();
+        (youth && typeof youth.eigeneTalente === "function" ? youth.eigeneTalente(state) : [])
+            .filter(t => t && !t.promoted)
+            .forEach(t => { jugend[t.id] = t.overall || 0; });
+        return { monat, werte, jugend };
+    }
+
+    static _youthEngine() {
+        if (typeof YouthEngine !== "undefined" && YouthEngine) return YouthEngine;
+        if (typeof window !== "undefined" && window.YouthEngine) return window.YouthEngine;
+        if (typeof require !== "undefined") {
+            try { return require("./youthEngine.js").YouthEngine; } catch (e) { return null; }
+        }
+        return null;
+    }
+
+    /**
+     * Der Entwicklungsbericht: einmal im Monat, wer besser geworden ist und
+     * wer nachgelassen hat.
+     *
+     * Bisher sah man Fortschritte nur, wenn man jede Akte einzeln aufschlug -
+     * oder gar nicht, weil der Wert eines Spielers über Wochen um einen Punkt
+     * wandert. Jetzt hält der Co-Trainer am Monatsersten fest, was sich seit
+     * dem letzten Mal getan hat: Stärke vorher und nachher, dazu die Werte,
+     * die sich am meisten bewegt haben, und die Talente der Akademie.
+     *
+     * Wird an jedem Tag gerufen und meldet sich nur beim Monatswechsel. Gibt
+     * die Zeile für den Tagesbericht zurück, oder null.
+     */
+    static pruefeMonatsbericht(state, datum = state?.currentDate) {
+        const monat = this._monat(datum);
+        if (!state || !monat) return null;
+        const alt = state.entwicklungsStand;
+        if (!alt || !alt.werte) {
+            state.entwicklungsStand = this._stichtag(state, monat);
+            return null;
+        }
+        if (alt.monat === monat) return null;
+
+        const bericht = this.monatsbericht(state, alt);
+        state.entwicklungsStand = this._stichtag(state, monat);
+
+        const besser = bericht.besser.length, schlechter = bericht.schlechter.length;
+        if (!Array.isArray(state.inbox)) state.inbox = [];
+        state.inbox.unshift({
+            id: Date.now() + Math.floor(Math.random() * 1000),
+            matchday: state.currentMatchday,
+            date: datum,
+            sender: "Co-Trainer",
+            subject: `Entwicklungsbericht ${this._monatsName(alt.monat)}: ${besser} besser, ${schlechter} schlechter`,
+            body: this.berichtText(bericht),
+            read: false,
+            type: "development",
+            entwicklung: bericht
+        });
+        return `📈 Entwicklungsbericht ${this._monatsName(alt.monat)}: ${besser} besser, ${schlechter} schlechter (Postfach).`;
+    }
+
+    /** Vergleich zwischen einem Stichtag und heute */
+    static monatsbericht(state, stand) {
+        const besser = [], schlechter = [];
+        let gleich = 0;
+        this._eigenerKader(state).forEach(p => {
+            const vorher = stand.werte[p.id];
+            if (!vorher) return;
+            const diff = (p.overall || 0) - vorher.o;
+            const werte = Object.keys(vorher.a || {})
+                .map(k => ({ key: k, label: this.BERICHT_WERTE[k], diff: Math.round((p[k] || 0) - vorher.a[k]) }))
+                .filter(w => w.diff !== 0)
+                .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff) || b.diff - a.diff)
+                .slice(0, 3);
+            if (diff === 0) { gleich++; return; }
+            const eintrag = {
+                id: p.id, name: p.name, pos: p.pos, age: p.age,
+                von: vorher.o, nach: p.overall || 0, diff, werte,
+                grund: diff < 0
+                    ? ((p.injuredWeeks || 0) > 0 ? "verletzt" : ((p.age || 25) >= 30 ? "Alter" : null))
+                    : ((p.age || 25) <= 21 ? "Talent" : null)
+            };
+            (diff > 0 ? besser : schlechter).push(eintrag);
+        });
+        besser.sort((a, b) => b.diff - a.diff || b.nach - a.nach);
+        schlechter.sort((a, b) => a.diff - b.diff || b.nach - a.nach);
+
+        const youth = this._youthEngine();
+        const jugend = (youth && typeof youth.eigeneTalente === "function" ? youth.eigeneTalente(state) : [])
+            .filter(t => t && !t.promoted && typeof (stand.jugend || {})[t.id] === "number")
+            .map(t => ({ id: t.id, name: t.name, pos: t.pos, age: t.age, von: stand.jugend[t.id], nach: t.overall || 0, diff: (t.overall || 0) - stand.jugend[t.id] }))
+            .filter(t => t.diff !== 0)
+            .sort((a, b) => b.diff - a.diff);
+
+        return { monat: stand.monat, besser, schlechter, gleich, jugend };
+    }
+
+    /** Der Bericht als Text - fürs Postfach und für alte Ansichten */
+    static berichtText(b) {
+        const zeile = e => `• ${e.name} (${e.pos}, ${e.age}): ${e.von} → ${e.nach} (${e.diff > 0 ? "+" : ""}${e.diff})`
+            + (e.werte && e.werte.length ? ` - ${e.werte.map(w => `${w.label} ${w.diff > 0 ? "+" : ""}${w.diff}`).join(", ")}` : "")
+            + (e.grund === "verletzt" ? " - verletzt" : e.grund === "Alter" ? " - altersbedingt" : "");
+        const teile = [];
+        teile.push(b.besser.length ? `Verbessert:\n${b.besser.map(zeile).join("\n")}` : "Verbessert hat sich diesen Monat niemand.");
+        if (b.schlechter.length) teile.push(`Nachgelassen:\n${b.schlechter.map(zeile).join("\n")}`);
+        if (b.gleich) teile.push(`${b.gleich} Spieler ${b.gleich === 1 ? "hält" : "halten"} ${b.gleich === 1 ? "sein" : "ihr"} Niveau.`);
+        if (b.jugend && b.jugend.length) teile.push(`Aus der Akademie:\n${b.jugend.map(zeile).join("\n")}`);
+        return teile.join("\n\n");
+    }
+
     /** Überblick für den Trainings-Reiter: Wer hat welchen Plan? */
     static uebersicht(state) {
         return this._eigenerKader(state)

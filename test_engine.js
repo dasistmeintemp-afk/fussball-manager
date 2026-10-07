@@ -298,6 +298,53 @@ function runEngineTests() {
         if (!extRes.success) throw new Error("Contract extension failed: " + extRes.reason);
     });
 
+    test("Nachwuchs: Probetrainings unter dem Jahr, Sichtungstag auf Wunsch, begrenzte Plätze und mit 19 ist Schluss", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const talente = () => YouthEngine.eigeneTalente(state).filter(t => !t.promoted);
+        const vorher = talente().length;
+
+        // Probetraining: selten, aber übers Jahr mehrmals
+        if (YouthEngine.pruefeProbetraining(state, () => 0.999) !== null) throw new Error("Probetraining ohne Glück");
+        const zeile = YouthEngine.pruefeProbetraining(state, () => 0);
+        const probe = talente().find(t => t.quelle === "probetraining");
+        if (!zeile || !probe || talente().length !== vorher + 1) throw new Error("Kein Talent aus dem Probetraining");
+        if (!/Probetraining/.test(state.inbox[0].subject) || state.inbox[0].type !== "youth") throw new Error("Keine Nachricht vom Probetraining");
+        const chance = YouthEngine.probetrainingChance(state, club);
+        const jeSaison = chance * 250;
+        if (jeSaison < 2 || jeSaison > 6) throw new Error(`Probetrainings je Saison: ${jeSaison.toFixed(1)}`);
+        club.akademieSchwerpunkte = Object.assign({}, club.akademieSchwerpunkte, { einzug: "international" });
+        if (YouthEngine.probetrainingChance(state, club) <= chance) throw new Error("Ein weltweites Sichtungsnetz bringt nicht mehr Probetrainings");
+
+        // Sichtungstag: kostet, bringt ein bis zwei, dann sechs Wochen Pause
+        club.balance = 10000000;
+        const lage = YouthEngine.sichtungsLage(state);
+        const sichtung = YouthEngine.sichtungstag(state, () => 0);
+        if (!sichtung.success || sichtung.neu.length !== 2 || club.balance !== 10000000 - lage.kosten) throw new Error("Sichtungstag ohne Talente oder Kosten");
+        if (!sichtung.neu.every(t => t.quelle === "sichtung" && talente().includes(t))) throw new Error("Die gesichteten Talente fehlen in der Akademie");
+        const gleichNochmal = YouthEngine.sichtungstag(state, () => 0);
+        if (gleichNochmal.success || !/in 42 Tagen/.test(gleichNochmal.error)) throw new Error("Zwei Sichtungstage hintereinander");
+        state.currentDayIndex = (state.currentDayIndex || 0) + 42;
+        if (YouthEngine.sichtungsLage(state).warten !== 0) throw new Error("Nach sechs Wochen geht kein neuer Sichtungstag");
+
+        // Die Akademie ist begrenzt
+        const { plaetze } = YouthEngine.akademiePlaetze(state, club);
+        while (talente().length < plaetze) YouthEngine.generateProspects(state, club.id, { anzahl: 1, ohneKosten: true });
+        if (YouthEngine.pruefeProbetraining(state, () => 0) !== null) throw new Error("Probetraining trotz voller Akademie");
+        if (YouthEngine.sichtungstag(state, () => 0).success) throw new Error("Sichtungstag trotz voller Akademie");
+        const frei = YouthEngine.talentFreigeben(state, probe.id);
+        if (!frei.success || talente().includes(probe) || YouthEngine.akademiePlaetze(state, club).frei !== 1) throw new Error(`Freigeben macht keinen Platz (${JSON.stringify(frei.error)}, ${talente().includes(probe)}, ${JSON.stringify(YouthEngine.akademiePlaetze(state, club))})`);
+
+        // Zum Saisonwechsel älter - mit 19 ist ohne Vertrag Schluss
+        const [alt, jung] = talente();
+        alt.age = 18;
+        jung.age = 16;
+        const gehen = YouthEngine.alterTalente(state);
+        if (gehen.length !== 1 || gehen[0] !== alt || talente().includes(alt)) throw new Error("Der 19-Jährige bleibt in der Akademie");
+        if (jung.age !== 17 || !talente().includes(jung)) throw new Error("Das junge Talent altert nicht oder geht");
+        if (!/verlässt die Akademie/.test(state.inbox[0].subject)) throw new Error("Keine Nachricht über den Abgang");
+    });
+
     test("Entwicklungsbericht: Zum Monatswechsel meldet der Co-Trainer, wer besser und wer schlechter wurde", () => {
         const { DevelopmentPlanEngine } = require('./js/engine/developmentPlanEngine.js');
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });

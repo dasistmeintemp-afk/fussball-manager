@@ -1293,6 +1293,9 @@ const CalendarEngine = {
         if (youthEngineTag && typeof youthEngineTag.pruefeJugendtag === "function") {
             const jugend = youthEngineTag.pruefeJugendtag(state);
             if (jugend) summary.messages.push(jugend);
+            // Unter dem Jahr: ein Talent aus dem Probetraining
+            const probe = typeof youthEngineTag.pruefeProbetraining === "function" ? youthEngineTag.pruefeProbetraining(state) : null;
+            if (probe) summary.messages.push(probe);
         }
         // Beobachtungen der Scouts: Nach einigen Tagen kommt der Bericht
         const scoutingEngineTag = (typeof ScoutingEngine !== "undefined" && ScoutingEngine)

@@ -1378,6 +1378,10 @@ class SeasonEngine {
         if (youthEngine && typeof youthEngine.eigeneTalente === 'function') {
             youthEngine.eigeneTalente(state);
         }
+        // Die Talente werden älter - mit 19 ist ohne Vertrag Schluss
+        if (youthEngine && typeof youthEngine.alterTalente === 'function') {
+            youthEngine.alterTalente(state);
+        }
 
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         const formatMoney = (gameState && typeof gameState.formatMoney === 'function')

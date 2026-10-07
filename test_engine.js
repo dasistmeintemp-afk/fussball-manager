@@ -298,6 +298,74 @@ function runEngineTests() {
         if (!extRes.success) throw new Error("Contract extension failed: " + extRes.reason);
     });
 
+    test("Vorstand: Das Saisonziel richtet sich nach Kader, Etat und Ansehen in der eigenen Liga", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const bayern = state.clubs.find(c => c.id === "muc");
+        if (bayern.vorstandsziel?.platz !== 1 || bayern.boardExpectation !== "championship") throw new Error("Der Krösus soll nicht Meister werden");
+        const willkommen = state.inbox.find(m => m.type === "welcome");
+        if (!/stärkste der Liga/.test(willkommen.body)) throw new Error("Die Begrüßung begründet das Ziel nicht");
+
+        // Ein Bundesligist aus der Mitte: Kader stärken hebt das Ziel, schwächen senkt es
+        const liga1 = state.clubs.filter(c => c.leagueId === bayern.leagueId);
+        const nach = new Map(state.players.map(p => [p.id, p]));
+        liga1.sort((a, b) => ContractEngine.vereinsNiveau(b, nach) - ContractEngine.vereinsNiveau(a, nach));
+        const mitte = liga1[Math.floor(liga1.length / 2)];
+        const kader = state.players.filter(p => p.clubId === mitte.id);
+        const normal = BoardEngine.bestimmeZiel(state, mitte).platz;
+        kader.forEach(p => { p.overall += 30; });
+        const stark = BoardEngine.bestimmeZiel(state, mitte);
+        kader.forEach(p => { p.overall -= 60; });
+        const schwach = BoardEngine.bestimmeZiel(state, mitte);
+        if (!(stark.platz < normal && normal < schwach.platz)) throw new Error(`Ziel stark/normal/schwach: ${stark.platz}/${normal}/${schwach.platz}`);
+        if (stark.raenge.kader !== 1 || schwach.raenge.kader !== liga1.length) throw new Error("Der Kaderrang stimmt nicht");
+
+        // Wer in allem Letzter ist, soll die Klasse halten - mehr nicht, aber auch nicht weniger
+        const [lohn, budget, ruf] = [mitte.wageBudget, mitte.transferBudget, mitte.reputation];
+        Object.assign(mitte, { wageBudget: 0, transferBudget: 0, reputation: 1 });
+        const letzter = BoardEngine.bestimmeZiel(state, mitte);
+        if (letzter.platz !== 16 || letzter.art !== "avoid_relegation") throw new Error(`Der Letzte soll den Klassenerhalt schaffen, nicht Platz ${letzter.platz}`);
+        Object.assign(mitte, { wageBudget: lohn, transferBudget: budget, reputation: ruf });
+        kader.forEach(p => { p.overall += 30; });
+
+        // Geld und Ansehen zählen mit
+        mitte.wageBudget = 1e9;
+        mitte.reputation = 99;
+        if (BoardEngine.bestimmeZiel(state, mitte).platz >= normal) throw new Error("Etat und Ansehen ändern das Ziel nicht");
+
+        // Unterhalb der Bundesliga heißt das Ziel des Favoriten Aufstieg
+        const zweite = state.clubs.filter(c => c.level === 2 && c.leagueId === "de_liga_2");
+        zweite.sort((a, b) => ContractEngine.vereinsNiveau(b, nach) - ContractEngine.vereinsNiveau(a, nach));
+        state.players.filter(p => p.clubId === zweite[0].id).forEach(p => { p.overall += 20; });
+        zweite[0].wageBudget = 1e9;
+        zweite[0].reputation = 99;
+        const favorit = BoardEngine.bestimmeZiel(state, zweite[0]);
+        if (favorit.art !== "promotion" || favorit.platz !== 1) throw new Error(`Zweitligafavorit: ${favorit.art} / Platz ${favorit.platz}`);
+
+        // Das Vertrauen misst am Zielplatz (ohne Bonus für ein dickes Konto)
+        bayern.vorstandsziel.platz = 5;
+        bayern.balance = 1000000;
+        const tabelle = (platz) => {
+            state.standings = state.standings.filter(s => s.clubId !== "muc");
+            state.standings.splice(platz - 1, 0, { clubId: "muc" });
+        };
+        tabelle(5);
+        SeasonEngine.updateBoardConfidence(state);
+        if (state.boardConfidence !== 75) throw new Error(`Auf dem Zielplatz ${state.boardConfidence} % statt 75 %`);
+        tabelle(7);
+        SeasonEngine.updateBoardConfidence(state);
+        if (state.boardConfidence !== 65) throw new Error(`Zwei Plätze hinter dem Ziel ${state.boardConfidence} % statt 65 %`);
+        if (BoardEngine.evaluateSeasonEnd(state).achieved) throw new Error("Platz 7 gilt bei Ziel 5 als erreicht");
+        tabelle(4);
+        if (!BoardEngine.evaluateSeasonEnd(state).achieved) throw new Error("Platz 4 gilt bei Ziel 5 nicht als erreicht");
+
+        // Ältere Spielstände ohne berechnetes Ziel rechnen in der eigenen Liga
+        delete bayern.vorstandsziel;
+        bayern.boardExpectation = "avoid_relegation";
+        if (BoardEngine.zielPlatz(state, bayern) !== 16) throw new Error(`Klassenerhalt heißt Platz ${BoardEngine.zielPlatz(state, bayern)}`);
+        bayern.boardExpectation = "midfield";
+        if (BoardEngine.zielPlatz(state, bayern) !== 9) throw new Error("Mittelfeld richtet sich nicht nach der Ligagröße");
+    });
+
     test("Nachwuchs: Probetrainings unter dem Jahr, Sichtungstag auf Wunsch, begrenzte Plätze und mit 19 ist Schluss", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const club = state.clubs.find(c => c.id === "muc");
@@ -458,6 +526,8 @@ function runEngineTests() {
         }
         if (!res || res.type !== "season_change" || state.seasonYear !== saison + 1) throw new Error("Nach der Pause beginnt keine neue Saison");
         if (state.calendar.some(d => d.sommerpause) || !state.preseason?.aktiv) throw new Error("Neue Saison ohne frischen Kalender und Vorbereitung");
+        if (club.vorstandsziel?.saison !== saison + 1) throw new Error("Zur neuen Saison setzt der Vorstand kein neues Ziel");
+        if (!state.inbox.some(m => m.type === "welcome" && /Unser Saisonziel/.test(m.body))) throw new Error("Die Post zum Saisonstart nennt das Ziel nicht");
 
         if (bleibt.clubId !== "muc" || bleibt.contractYears !== 3 || !state.players.includes(bleibt)) {
             throw new Error(`Der verlängerte Spieler ist weg, hört auf oder verliert ein Jahr (${bleibt.clubId}, ${bleibt.contractYears} J., im Spiel: ${state.players.includes(bleibt)}, ${bleibt.verlaengertSaison}/${state.seasonYear})`);

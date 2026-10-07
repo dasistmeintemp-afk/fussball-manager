@@ -629,11 +629,14 @@ class SeasonEngine {
         const rankIndex = state.standings.findIndex(s => s.clubId === userClub.id);
         const currentRank = rankIndex !== -1 ? rankIndex + 1 : 6;
 
-        let targetRank = 6;
-        if (userClub.boardExpectation === "championship") targetRank = 1;
-        else if (userClub.boardExpectation === "top3") targetRank = 3;
-        else if (userClub.boardExpectation === "midfield") targetRank = 7;
-        else if (userClub.boardExpectation === "avoid_relegation") targetRank = 10;
+        // Der Zielplatz kommt aus dem Saisonziel (BoardEngine.bestimmeZiel).
+        // Vorher galten feste Plätze, die nur zu einer Achtzehnerliga passten:
+        // "Mittelfeld" hieß Platz 7, "Klassenerhalt" Platz 10, und "Aufstieg"
+        // kannte die Rechnung gar nicht.
+        const boardEngine = _getBoardEngine();
+        const targetRank = boardEngine && typeof boardEngine.zielPlatz === 'function'
+            ? boardEngine.zielPlatz(state, userClub)
+            : 6;
 
         const diff = targetRank - currentRank; // Positiv = besser als Ziel, Negativ = schlechter
         let newConfidence = 75 + (diff * 5);
@@ -1341,6 +1344,14 @@ class SeasonEngine {
             calendarEngine.generateSeasonCalendar(state);
         }
 
+        // Das neue Saisonziel: gemessen an Kader, Etat und Ansehen nach allen
+        // Wechseln - vor der Vorbereitung, weil der ehrgeizige Sponsor darauf setzt
+        const boardEngine = _getBoardEngine();
+        const zielVerein = state.clubs.find(c => c.id === state.userClubId);
+        if (boardEngine && typeof boardEngine.bestimmeZiel === 'function' && zielVerein) {
+            boardEngine.bestimmeZiel(state, zielVerein);
+        }
+
         // Die Vorbereitung beginnt: Trainerstab, Sponsoren, Testspiele. Sie
         // steht vor jeder Saison, nicht nur vor der ersten.
         const preseasonEngine = (typeof PreseasonEngine !== "undefined" && PreseasonEngine)
@@ -1394,7 +1405,10 @@ class SeasonEngine {
             date: `Saisonstart ${state.seasonYear}`,
             sender: "Vorstand " + (userClub ? userClub.name : "Verein"),
             subject: `Willkommen in Saison ${state.seasonYear}!`,
-            body: `Eine neue Spielzeit beginnt! Nutzen Sie die Vorbereitungsphase, um den Transfermarkt zu sondieren und die Taktik abzustimmen.\n\nAktuelles Transferbudget: ${formatMoney(userClub ? userClub.transferBudget : 0)}. Auf eine erfolgreiche Saison!`,
+            body: `Eine neue Spielzeit beginnt! Nutzen Sie die Vorbereitungsphase, um den Transfermarkt zu sondieren und die Taktik abzustimmen.\n\n`
+                + (boardEngine && userClub && typeof boardEngine.zielText === 'function'
+                    ? `Unser Saisonziel: ${boardEngine.zielText(state, userClub)}. ${boardEngine.zielBegruendung(userClub)}\n\n` : "")
+                + `Aktuelles Transferbudget: ${formatMoney(userClub ? userClub.transferBudget : 0)}. Auf eine erfolgreiche Saison!`,
             read: false,
             type: "welcome"
         });

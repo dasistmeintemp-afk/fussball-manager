@@ -327,11 +327,15 @@ class CareerEngine {
         this.beginneStation(state, clubId);
 
         const platz = (state.standings || []).findIndex(s => s.clubId === clubId) + 1;
+        const board = _carResolve("BoardEngine", "./boardEngine.js");
+        const mitten = (state.currentMatchday || 1) > 1 && platz > 0 ? platz : null;
+        const ziel = board && typeof board.bestimmeZiel === "function" ? board.bestimmeZiel(state, club, mitten) : null;
         this.postfach(state, `Vorstand ${club.name}`,
             `Willkommen bei ${club.name}`,
             `Wir freuen uns, dass Sie zugesagt haben.\n\n`
             + `Die Lage ist, wie sie ist: ${platz > 0 ? `Platz ${platz} in der ${state.leagueName}` : `Wir spielen in der ${state.leagueName}`}, `
             + `und der Vorstand hat Sie geholt, weil er glaubt, dass Sie das drehen können.\n\n`
+            + (ziel ? `Unser Ziel: ${board.zielText(state, club)}.\n\n` : "")
             + `Sehen Sie sich den Kader an, legen Sie die Taktik fest - und dann arbeiten wir.`,
             "welcome");
 

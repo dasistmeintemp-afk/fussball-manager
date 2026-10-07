@@ -614,7 +614,8 @@ function runEngineTests() {
         if (umworben.clubId !== ziel || umworben.vorvertrag || !state.players.includes(umworben)) {
             throw new Error(`Der umworbene Spieler (${umworben.age} J.) ist nicht bei seinem neuen Verein`);
         }
-        if (schwach.clubId === "muc") throw new Error("Der nicht verlängerte Spieler bleibt");
+        // Wer aufgehört hat, ist aus dem Spiel - sein clubId steht dann noch auf dem alten Verein
+        if (state.players.includes(schwach) && schwach.clubId === "muc") throw new Error("Der nicht verlängerte Spieler bleibt");
     });
 
     test("Vertrag: Die Forderung passt zur Liga - in der Landesliga kein Bundesligagehalt", () => {
@@ -756,7 +757,7 @@ function runEngineTests() {
     });
 
     // 12. SaveService & MigrationService
-    test("SaveService & MigrationService: Export, Import und Schema-Migration von v1 nach v8", () => {
+    test("SaveService & MigrationService: Export, Import und Schema-Migration von v1 auf die aktuelle Version", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const exportedJson = SaveService.exportJson(state);
         const importRes = SaveService.importJson(exportedJson);
@@ -773,8 +774,9 @@ function runEngineTests() {
             }
         };
         const migRes = MigrationService.migrateSave(legacySave);
-        if (!migRes.success || migRes.saveVersion !== 8 || !migRes.state.scouting || !migRes.state.calendar || !migRes.state.competitions || !migRes.state.customFormations) {
-            throw new Error("MigrationService failed to migrate to version 8");
+        const aktuell = MigrationService.CURRENT_SAVE_VERSION;
+        if (!migRes.success || migRes.saveVersion !== aktuell || migRes.state.schemaVersion !== aktuell || !migRes.state.scouting || !migRes.state.calendar || !migRes.state.competitions || !migRes.state.customFormations) {
+            throw new Error(`MigrationService failed to migrate to version ${aktuell}`);
         }
         if (!Array.isArray(migRes.state.negotiations)) {
             throw new Error("Migration legt keine Verhandlungsliste an");
@@ -3660,7 +3662,68 @@ function runEngineTests() {
     });
 
     // 31. Die Spielwelt umfasst alle Ligen mit passend abgestuften Kadern
-    test("WorldGenerator: alle zwölf Ligen gefüllt, Stärke nach Ligastufe gestaffelt", () => {
+    test("Ligen: England, Spanien, Italien und Frankreich mit zweiter und dritter Liga, Auf- und Abstieg und Nachrüstung alter Spielstände", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+
+        // Drei Stufen je Land, echte Vereine, stimmige Verweise
+        ["en", "es", "it", "fr"].forEach(land => {
+            [1, 2, 3].forEach(stufe => {
+                const liga = LEAGUES_DATA.find(l => l.countryId === land && l.level === stufe);
+                if (!liga) throw new Error(`${land}: Stufe ${stufe} fehlt`);
+                const vereine = state.clubs.filter(c => c.leagueId === liga.id);
+                const echt = new Set((REAL_CLUBS_BY_LEAGUE[liga.id] || []).map(c => c.name));
+                if (vereine.length !== liga.teamCount || !vereine.every(c => echt.has(c.name))) {
+                    throw new Error(`${liga.shortName}: ${vereine.length} Vereine, nicht alle echt`);
+                }
+                if (stufe > 1 && LEAGUES_DATA.find(l => l.id === liga.promotionTo)?.level !== stufe - 1) throw new Error(`${liga.shortName} steigt nicht eine Stufe auf`);
+                if (stufe < 3 && !(liga.relegationTo || []).every(id => LEAGUES_DATA.some(l => l.id === id))) throw new Error(`${liga.shortName} steigt in eine Liga ab, die es nicht gibt`);
+            });
+        });
+        const niveau = new Map(state.players.map(p => [p.id, p]));
+        const schnitt = id => {
+            const v = state.clubs.filter(c => c.leagueId === id);
+            return v.reduce((s, c) => s + ContractEngine.vereinsNiveau(c, niveau), 0) / v.length;
+        };
+        if (!(schnitt("en_liga_1") > schnitt("en_liga_2") + 5 && schnitt("en_liga_2") > schnitt("en_liga_3") + 5)) {
+            throw new Error("Die englischen Ligen sind nicht nach Stärke gestaffelt");
+        }
+
+        // Auf- und Abstieg: Die drei Letzten der Premier League tauschen mit den drei Ersten der Championship
+        const tabelle = id => state.clubs.filter(c => c.leagueId === id).map(c => ({ clubId: c.id }));
+        ["en_liga_1", "en_liga_2", "en_liga_3"].forEach(id => { state.standingsByLeague[id] = tabelle(id); });
+        const ab = state.standingsByLeague.en_liga_1.slice(-3).map(e => e.clubId);
+        const auf = state.standingsByLeague.en_liga_2.slice(0, 3).map(e => e.clubId);
+        const aufAus3 = state.standingsByLeague.en_liga_3.slice(0, 3).map(e => e.clubId);
+        CompetitionEngine.processSeasonEndPromotionsRelegations(state);
+        const ligaVon = id => state.clubs.find(c => c.id === id).leagueId;
+        if (!ab.every(id => ["en_liga_2", "en_liga_3"].includes(ligaVon(id))) || !auf.every(id => ligaVon(id) === "en_liga_1")) {
+            throw new Error("Zwischen Premier League und Championship wird nicht getauscht");
+        }
+        if (!aufAus3.every(id => ligaVon(id) === "en_liga_2")) throw new Error("Aus der League One steigt niemand auf");
+        if (["en_liga_1", "en_liga_2", "en_liga_3"].some(id => state.clubs.filter(c => c.leagueId === id).length !== LEAGUES_DATA.find(l => l.id === id).teamCount)) {
+            throw new Error("Nach Auf- und Abstieg stimmen die Ligagrößen nicht");
+        }
+
+        // Ein Spielstand ohne die neuen Ligen bekommt sie beim Laden
+        const alt = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const neu = new Set(WorldGenerator.NACHTRAEGLICHE_LIGEN);
+        const raus = new Set(alt.clubs.filter(c => neu.has(c.leagueId)).flatMap(c => c.playerIds));
+        alt.clubs = alt.clubs.filter(c => !neu.has(c.leagueId));
+        alt.players = alt.players.filter(p => !raus.has(p.id));
+        alt.leagues = alt.leagues.filter(l => !neu.has(l.id));
+        neu.forEach(id => { delete alt.otherSchedules[id]; delete alt.standingsByLeague[id]; });
+        const ergebnis = MigrationService.migrateSave({ saveVersion: 8, state: alt });
+        const migriert = ergebnis.state;
+        WorldGenerator.NACHTRAEGLICHE_LIGEN.forEach(id => {
+            const liga = LEAGUES_DATA.find(l => l.id === id);
+            if (migriert.clubs.filter(c => c.leagueId === id).length !== liga.teamCount) throw new Error(`${id} fehlt nach dem Laden`);
+            if (!migriert.leagues.some(l => l.id === id) || !(migriert.otherSchedules[id] || []).length) throw new Error(`${id} ohne Ligadaten oder Spielplan`);
+        });
+        if (!/Die Spielwelt wächst/.test(migriert.inbox[0].subject)) throw new Error("Keine Nachricht über die neuen Ligen");
+        if (WorldGenerator.ergaenzeNeueLigen(migriert).length) throw new Error("Ein zweites Laden legt die Ligen doppelt an");
+    });
+
+    test("WorldGenerator: alle zwanzig Ligen gefüllt, Stärke nach Ligastufe gestaffelt", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const leagues = LEAGUES_DATA;
 
@@ -3815,7 +3878,11 @@ function runEngineTests() {
         const encoded = SaveCodec.encodeState(state);
         const encodedSize = JSON.stringify(encoded).length;
 
-        if (encodedSize > 3 * 1024 * 1024) {
+        // Gespeichert wird in IndexedDB; der LocalStorage ist der Notfallweg
+        // und fasst in den gängigen Browsern rund fünf Millionen Zeichen. Mit
+        // 384 Vereinen und gut 8300 Spielern liegt ein frischer Stand bei
+        // rund 3,5 MB - 4 MB lassen Luft für das, was eine Saison anhäuft.
+        if (encodedSize > 4 * 1024 * 1024) {
             throw new Error(`Kodierter Spielstand ist mit ${(encodedSize / 1048576).toFixed(2)} MB zu groß für den LocalStorage`);
         }
         if (!(encodedSize < rawSize * 0.45)) {
@@ -3823,6 +3890,22 @@ function runEngineTests() {
         }
 
         const decoded = SaveCodec.decodeState(JSON.parse(JSON.stringify(encoded)));
+
+        // Die Taktiken stehen gepackt im Stand (je Spielstil eine Vorlage) und
+        // kommen exakt zurück - Werte, fehlende Anweisungen und Reihenfolge
+        if (!encoded.__taktikVorlagen || !encoded.clubs.every(c => !c.tactics || c.tactics["~t"] === 1)) throw new Error("Taktiken werden nicht gepackt");
+        state.clubs.forEach((c, i) => {
+            if (JSON.stringify(c.tactics) !== JSON.stringify(decoded.clubs[i].tactics)) throw new Error(`Taktik von ${c.name} kommt verändert zurück`);
+        });
+        const sonder = JSON.parse(JSON.stringify(state));
+        const [a, b] = sonder.clubs;
+        delete a.tactics.pressing;
+        a.tactics.eigeneAnweisung = { x: 1 };
+        b.tactics = Object.fromEntries(Object.entries(b.tactics).reverse());
+        const zurueck = SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(sonder))));
+        [a, b].forEach((c, i) => {
+            if (JSON.stringify(c.tactics) !== JSON.stringify(zurueck.clubs[i].tactics)) throw new Error("Sonderfälle der Taktik gehen verloren");
+        });
 
         if (decoded.players.length !== state.players.length) throw new Error("Spieleranzahl geht beim Dekodieren verloren");
         if (decoded.clubs.length !== state.clubs.length) throw new Error("Vereinsanzahl geht beim Dekodieren verloren");
@@ -8575,7 +8658,11 @@ function runEngineTests() {
         if (neg.stage !== NegotiationEngine.STAGES.MEDICAL) throw new Error(`Angebot mit Prämien abgelehnt (${neg.status}, ${neg.stage})`);
         const vorher = club.balance;
         neg.replyDay = NegotiationEngine.today(state);
-        NegotiationEngine.processDay(state);
+        // Der Medizincheck fällt auch beim robustesten Spieler in 4 % der Fälle
+        // durch - hier geht es um Honorar und Prämien, nicht um ihn
+        const echterZufall = Math.random;
+        Math.random = () => 0.99;
+        try { NegotiationEngine.processDay(state); } finally { Math.random = echterZufall; }
         if (frei.clubId !== club.id) throw new Error("Transfer nicht vollzogen");
         if (Math.round(vorher - club.balance) !== neg.agreed.signingBonus + neg.agreed.agentFee) throw new Error("Handgeld und Beraterhonorar werden nicht bezahlt");
         if (!frei.praemien || frei.praemien.einsatz !== angebot.einsatzPraemie) throw new Error("Prämien stehen nicht im Vertrag");

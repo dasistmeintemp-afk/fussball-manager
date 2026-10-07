@@ -28,7 +28,7 @@ Ein leichtgewichtiger, detailreicher und vollständig spielbarer **Fußballmanag
 ### 2. Neues Spiel erstellen & Verein auswählen
 1. Klicke im Startbildschirm auf **"⭐ Neues Spiel starten"**.
 2. **Schritt 1 (Managerprofil):** Gib deinen Namen ein, wähle Nationalität, Geburtsdatum und deinen gewünschten Schwierigkeitsgrad (*Leicht*, *Normal*, *Schwer*).
-3. **Schritt 2 (Liga):** Wähle die Liga, in der deine Karriere beginnt – **alle zwölf Ligen der Spielwelt** stehen zur Wahl, nach Ländern gruppiert: die komplette deutsche Pyramide von der Bundesliga bis zur Landesliga sowie Premier League, La Liga, Serie A und Ligue 1. Zu jeder Liga siehst du Vereinszahl, Spieltage, Wertung und Europapokalplätze.
+3. **Schritt 2 (Liga):** Wähle die Liga, in der deine Karriere beginnt – **alle zwanzig Ligen der Spielwelt** stehen zur Wahl, nach Ländern gruppiert: die komplette deutsche Pyramide von der Bundesliga bis zur Landesliga sowie je drei Ligen in England (Premier League, Championship, League One), Spanien (La Liga, Segunda División, Primera Federación), Italien (Serie A, Serie B, Serie C) und Frankreich (Ligue 1, Ligue 2, National). Zu jeder Liga siehst du Vereinszahl, Spieltage, Wertung und Europapokalplätze.
 4. **Schritt 3 (Vereinsauswahl & Kaderanalyse):**
    - Zur Auswahl stehen die Vereine **der in Schritt 2 gewählten Liga** – wer in der Landesliga anfangen will, bekommt hier auch nur Landesligisten angeboten. Die Liga lässt sich hier oben jederzeit wechseln.
    - Suche nach Name, Stadt oder Ligennamen und sortiere nach Kaderstärke oder Budget.
@@ -455,8 +455,11 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
 - **Detaillierte Spielberichte:** Textzusammenfassungen, xG-Vergleiche, Zweikampfquoten, Paraden und Auszeichnungen für den Mann des Spiels.
 - **Verbessertes Postfach (`NewsEngine`):** Vollständige Suche, Filterleiste (Vorstand, Spiel, Transfers, Training, Finanzen) und dauerhafte Mail-Historie. Am Handy und auf schmalen Bildschirmen klappt eine Nachricht direkt unter ihrem Eintrag auf; ein zweiter Tipp klappt sie zu. Vorher stand sie unter der ganzen Liste, und man musste erst ans Ende scrollen. Breit steht sie wie gewohnt rechts daneben.
 
-### 8. 🌐 Die Spielwelt: 218 Vereine aus fünf Ländern (`WorldGenerator`)
-- **Zwölf spielbare Ligen, 218 Vereine, über 4300 Spieler.** Die komplette Welt wird beim Karrierestart erzeugt und läuft Saison für Saison mit.
+### 8. 🌐 Die Spielwelt: 384 Vereine aus fünf Ländern (`WorldGenerator`)
+- **Zwanzig spielbare Ligen, 384 Vereine, über 8300 Spieler.** Die komplette Welt wird beim Karrierestart erzeugt und läuft Saison für Saison mit.
+- **Zweite und dritte Ligen in England, Spanien, Italien und Frankreich:** Championship (24 Vereine, 46 Spieltage) und League One (24), Segunda División (22) und Primera Federación (20), Serie B (20) und Serie C (20), Ligue 2 (18) und National (18) – mit echten Vereinen samt Stadt, Stadion und Fassungsvermögen (die zweiten Ligen in der Zusammensetzung 2024/25, in den dritten Ligen Vereine, die auf oder nahe dieser Ebene spielen). Vorher hatten diese Länder nur eine Liga; die Erstligen verwiesen beim Abstieg auf Ligen, die es nicht gab, und niemand stieg ab. Jetzt tauschen die Erstligen mit den Zweitligen (Premier League, La Liga, Serie A je drei, Ligue 1 zwei) und die Zweit- mit den Drittligen. Die Stärke liegt wie in Deutschland: zweite Ligen um 68, dritte um 60.
+- **Laufende Karrieren bekommen die neuen Ligen beim Laden** (Spielstand-Version 9): Vereine, Kader und Spielplan werden nachträglich angelegt, die verpassten Spieltage holt die Simulation am nächsten Spieltag anteilig nach, und eine Nachricht des Ligavorstands kündigt sie an.
+- **Was die größere Welt kostet:** Im Browser dauert der Aufbau 1,7 statt 0,7 Sekunden und ein Kalendertag 119 statt 77 ms; der Spielstand wächst kodiert von 2,4 auf 4,0 MB (er liegt in IndexedDB).
 - **Top-5-Ligen:** Deutschland, England, Spanien, Italien und Frankreich – jede mit landestypischen Vereins-, Städte- und Spielernamen. In England spielen *Rovers* und *Wanderers*, in Spanien *Real* und *Deportivo*, in Italien *AC* und *Calcio*, in Frankreich *Olympique* und *Stade*.
 - **Deutsche Ligapyramide (Stufe 1 bis 7):** Bundesliga, 2. Bundesliga, 3. Liga, Regionalliga West & Bayern, Oberliga Nord, Verbandsliga und Landesliga.
 - **Spielerstärke nach Ligastufe:** Der `PlayerGenerator` staffelt Fähigkeit (CA) und Potenzial (PA) nach Ligastufe *und* Ruf des Vereins. Ein Landesligist spielt mit Spielern um 20 Gesamtstärke, ein Bundesliga-Spitzenklub um 80. Zwischen benachbarten Stufen bleibt eine Überschneidung: Der Zweitligameister kann stärker sein als der Bundesliga-Absteiger.
@@ -493,6 +496,8 @@ Eine komplette Welt mit über 4300 Spielern belegt als gewöhnliches JSON knapp 
 - **5,9 MB → 1,6 MB** bei verlustfreier Rückwandlung; unbekannte Zusatzfelder überleben die Umwandlung in einem Restobjekt.
 - Gespielte Partien geben ihre Timeline frei (rund 22 KB je Spiel) – die Zähler stecken danach ohnehin in `stats` und `events`.
 - Partien fremder Ligen behalten nur das Ergebnis; nur die eigenen Spiele behalten Einzelkritiken, Ereignisse und Aufstellungen.
+- **Taktiken je Spielstil gepackt:** Jede Vereinstaktik hat über vierzig Anweisungen, fast alle so, wie ihr Spielstil sie vorgibt. Je Stil steht die häufigste Taktik einmal als Vorlage im Stand; jeder Verein trägt nur seine Abweichungen (verlustfrei, samt fehlender Anweisungen und Reihenfolge). Fitness, Moral, Form und Notensumme werden auf drei Nachkommastellen gerundet – die Moral stand vorher mit vierzehn im Stand.
+- Mit den neuen Ligen (384 Vereine, gut 8300 Spieler) liegt ein frischer Stand bei **3,5 MB** statt 3,9 MB. Das passt auch in den LocalStorage, der nur einspringt, wenn IndexedDB scheitert, und rund fünf Millionen Zeichen fasst.
 
 ### 9. 🎯 100% Synchrone Timeline-MatchEngine & 2D-Visualisierung
 - **Deterministische Match-Timeline (`MatchEngine.generateTimeline`):** Generiert chronologische Ketten von Spielzügen (Pässe, Flanken, Dribblings, Schüsse, xG, Glanzparaden, Tore, Karten) inklusive 2D-Koordinaten (`start`, `end`).
@@ -557,7 +562,7 @@ untitled/
 │   │   ├── tacticsEngine.js    # Taktik: Formen mit/gegen Ball, Rollen, Anweisungen, Vorlagen, Verbindungen
 │   │   ├── seasonEngine.js     # Spieltagsfortschritt & Saisonabschluss
 │   │   ├── competitionEngine.js# Ligen, Pokalrunden, Europapokal & Auf-/Abstieg
-│   │   ├── worldGenerator.js   # Baut die Welt: 218 Vereine in zwölf Ligen samt Spielplänen
+│   │   ├── worldGenerator.js   # Baut die Welt: 384 Vereine in zwanzig Ligen samt Spielplänen
 │   │   ├── clubGenerator.js    # Landestypische Vereine mit Ruf, Stadion und Etat je Ligastufe
 │   │   ├── playerGenerator.js  # Kader nach Ligastufe & Vereinsruf, Attributprofile je Position
 │   │   ├── transferEngine.js   # Markt- & Transferlogik
@@ -719,7 +724,7 @@ node test_data.js && node test_wizard.js && node test_engine.js && node test_e2e
 Alle 4 Testsuiten validieren lückenlos:
 1. **Datenintegrität (`test_data.js`):** Alle 18 handgepflegten Vereine, Attribute, Torhüter, Gehalts- und Transferbudgets.
 2. **Wizard & UI Regression (`test_wizard.js`):** Suchfilter, Schwierigkeitsstufen, Sortierungen, Edge-Cases, DOM-Simulation, Code-Regressionsprüfungen gegen Legacy-IDs sowie die Installierbarkeit auf dem Telefon (Manifest, vorhandene Symbole, vollständiger Offline-Vorrat).
-3. **Engines (`test_engine.js`):** MatchEngine, SeasonEngine, Finance, Board, News, Contracts, Scouting, Youth, AIManager, SaveService & MigrationService sowie PositionEngine (Familiarität, Zonen- und Formationserkennung), eigene Formationen und die Echtzeit-Regie der 2D-Simulation. Dazu die Spielwelt: alle zwölf Ligen gefüllt, Stärkestaffelung über die Ligastufen, Karrierestart in der Landesliga, Europapokal-Besetzung, Auf-/Abstieg und die verlustfreie Kodierung des Spielstands.
+3. **Engines (`test_engine.js`):** MatchEngine, SeasonEngine, Finance, Board, News, Contracts, Scouting, Youth, AIManager, SaveService & MigrationService sowie PositionEngine (Familiarität, Zonen- und Formationserkennung), eigene Formationen und die Echtzeit-Regie der 2D-Simulation. Dazu die Spielwelt: alle zwanzig Ligen gefüllt, Stärkestaffelung über die Ligastufen, Karrierestart in der Landesliga, Europapokal-Besetzung, Auf-/Abstieg und die verlustfreie Kodierung des Spielstands.
    - **Schneller unter Node:** Die Module lösen sich gegenseitig zur Laufzeit auf – im Browser über `window`, unter Node über `require`. Einige Helfer in den heißen Schleifen der Simulation (Positionsnormierung der Taktik, Formationsvorlagen und Taktik in der MatchEngine) riefen dabei bei jedem Aufruf `require` auf; das kostete gemessen ein Drittel bis die Hälfte der Rechenzeit eines Spieltags. Jetzt wird das gefundene Modul gemerkt, auch im gemeinsamen `createResolver`. Ein Saisontag läuft unter Node in 97 statt 189 ms; im Browser ändert sich nichts.
 3b. Dazu die Sandbox-Systeme: Kabinenansprachen mit lageabhängiger Wirkung, Pressekonferenzen mit Themen nach Lage, Versprechen und Kampfansagen, die Taktikbesprechung, mehrtägige Transferverhandlungen über alle drei Phasen, das Scheitern von Lowball-Angeboten, Vertragsgespräche für Nachwuchsspieler, Trainingsbelastung mit Ermüdungs- und Risikokurve sowie Nebenpositionen und erlernte Routine.
 4. **E2E & Integration (`test_e2e.js`):** Vollständiger Karrierestart, 2D-LiveMatch, Auswechslungen, Transfers, Training, Multi-Saison-Läufe und der komplette Weg von der selbst gezeichneten Formation über das Live-Spiel bis zu Export und Import.

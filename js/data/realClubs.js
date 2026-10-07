@@ -14,9 +14,10 @@
  * leitet daraus Ruf, Etat und Erwartungshaltung ab - genau wie vorher, nur
  * eben für echte Vereine.
  *
- * Zum Stand: Die Ligen der Stufen 1 bis 3 (die fünf großen Erstligen sowie
- * 2. Bundesliga und 3. Liga) entsprechen der Zusammensetzung der Saison
- * 2024/25. Ab der Regionalliga abwärts wechselt die Zugehörigkeit zu einer
+ * Zum Stand: Die fünf großen Erstligen, die zweiten Ligen aller Länder und
+ * die 3. Liga entsprechen der Zusammensetzung der Saison 2024/25. In den
+ * dritten Ligen Englands (League One, ebenfalls 2024/25), Spaniens,
+ * Italiens und Frankreichs sowie ab der Regionalliga abwärts wechselt die Zugehörigkeit zu einer
  * bestimmten Staffel jede Saison; dort stehen echte Vereine, die auf oder
  * nahe dieser Ebene spielen - nicht die Staffeleinteilung eines bestimmten
  * Jahres.
@@ -119,6 +120,206 @@ const REAL_CLUBS_BY_LEAGUE = {
         { id: "fr_lehav", name: "Le Havre AC", city: "Le Havre", stadium: "Stade Océane", capacity: 25178 },
         { id: "fr_ste", name: "AS Saint-Étienne", city: "Saint-Étienne", stadium: "Stade Geoffroy-Guichard", capacity: 41965 },
         { id: "fr_mtp", name: "Montpellier HSC", city: "Montpellier", stadium: "Stade de la Mosson", capacity: 32900 }
+    ],
+
+    // ------------------------------------------- England, Stufen 2 und 3
+    // Championship und League One in der Zusammensetzung 2024/25
+    en_liga_2: [
+        { id: "en2_lee", name: "Leeds United", city: "Leeds", stadium: "Elland Road", capacity: 37645 },
+        { id: "en2_bur", name: "FC Burnley", city: "Burnley", stadium: "Turf Moor", capacity: 21944 },
+        { id: "en2_shu", name: "Sheffield United", city: "Sheffield", stadium: "Bramall Lane", capacity: 32050 },
+        { id: "en2_sun", name: "AFC Sunderland", city: "Sunderland", stadium: "Stadium of Light", capacity: 49000 },
+        { id: "en2_mid", name: "FC Middlesbrough", city: "Middlesbrough", stadium: "Riverside Stadium", capacity: 34742 },
+        { id: "en2_cov", name: "Coventry City", city: "Coventry", stadium: "Coventry Building Society Arena", capacity: 32609 },
+        { id: "en2_wba", name: "West Bromwich Albion", city: "West Bromwich", stadium: "The Hawthorns", capacity: 26850 },
+        { id: "en2_bri", name: "Bristol City", city: "Bristol", stadium: "Ashton Gate", capacity: 27000 },
+        { id: "en2_nor", name: "Norwich City", city: "Norwich", stadium: "Carrow Road", capacity: 27359 },
+        { id: "en2_wat", name: "FC Watford", city: "Watford", stadium: "Vicarage Road", capacity: 22200 },
+        { id: "en2_swa", name: "Swansea City", city: "Swansea", stadium: "Swansea.com Stadium", capacity: 21088 },
+        { id: "en2_mil", name: "FC Millwall", city: "London", stadium: "The Den", capacity: 20146 },
+        { id: "en2_bla", name: "Blackburn Rovers", city: "Blackburn", stadium: "Ewood Park", capacity: 31367 },
+        { id: "en2_shw", name: "Sheffield Wednesday", city: "Sheffield", stadium: "Hillsborough", capacity: 39732 },
+        { id: "en2_sto", name: "Stoke City", city: "Stoke-on-Trent", stadium: "bet365 Stadium", capacity: 30089 },
+        { id: "en2_qpr", name: "Queens Park Rangers", city: "London", stadium: "Loftus Road", capacity: 18439 },
+        { id: "en2_hul", name: "Hull City", city: "Hull", stadium: "MKM Stadium", capacity: 25586 },
+        { id: "en2_pre", name: "Preston North End", city: "Preston", stadium: "Deepdale", capacity: 23404 },
+        { id: "en2_der", name: "Derby County", city: "Derby", stadium: "Pride Park", capacity: 32956 },
+        { id: "en2_por", name: "FC Portsmouth", city: "Portsmouth", stadium: "Fratton Park", capacity: 20688 },
+        { id: "en2_oxf", name: "Oxford United", city: "Oxford", stadium: "Kassam Stadium", capacity: 12500 },
+        { id: "en2_lut", name: "Luton Town", city: "Luton", stadium: "Kenilworth Road", capacity: 12000 },
+        { id: "en2_ply", name: "Plymouth Argyle", city: "Plymouth", stadium: "Home Park", capacity: 17900 },
+        { id: "en2_car", name: "Cardiff City", city: "Cardiff", stadium: "Cardiff City Stadium", capacity: 33280 }
+    ],
+
+    en_liga_3: [
+        { id: "en3_bir", name: "Birmingham City", city: "Birmingham", stadium: "St Andrew's", capacity: 29409 },
+        { id: "en3_wre", name: "AFC Wrexham", city: "Wrexham", stadium: "Racecourse Ground", capacity: 12600 },
+        { id: "en3_sto", name: "Stockport County", city: "Stockport", stadium: "Edgeley Park", capacity: 10852 },
+        { id: "en3_cha", name: "Charlton Athletic", city: "London", stadium: "The Valley", capacity: 27111 },
+        { id: "en3_wyc", name: "Wycombe Wanderers", city: "High Wycombe", stadium: "Adams Park", capacity: 9448 },
+        { id: "en3_ley", name: "Leyton Orient", city: "London", stadium: "Brisbane Road", capacity: 9271 },
+        { id: "en3_rea", name: "FC Reading", city: "Reading", stadium: "Select Car Leasing Stadium", capacity: 24161 },
+        { id: "en3_bol", name: "Bolton Wanderers", city: "Bolton", stadium: "Toughsheet Community Stadium", capacity: 28723 },
+        { id: "en3_bpl", name: "FC Blackpool", city: "Blackpool", stadium: "Bloomfield Road", capacity: 16616 },
+        { id: "en3_hud", name: "Huddersfield Town", city: "Huddersfield", stadium: "John Smith's Stadium", capacity: 24121 },
+        { id: "en3_lin", name: "Lincoln City", city: "Lincoln", stadium: "Sincil Bank", capacity: 10780 },
+        { id: "en3_bar", name: "FC Barnsley", city: "Barnsley", stadium: "Oakwell", capacity: 23287 },
+        { id: "en3_rot", name: "Rotherham United", city: "Rotherham", stadium: "New York Stadium", capacity: 12021 },
+        { id: "en3_ste", name: "FC Stevenage", city: "Stevenage", stadium: "Lamex Stadium", capacity: 7800 },
+        { id: "en3_wig", name: "Wigan Athletic", city: "Wigan", stadium: "Brick Community Stadium", capacity: 25138 },
+        { id: "en3_exe", name: "Exeter City", city: "Exeter", stadium: "St James Park", capacity: 8696 },
+        { id: "en3_man", name: "Mansfield Town", city: "Mansfield", stadium: "Field Mill", capacity: 9186 },
+        { id: "en3_pet", name: "Peterborough United", city: "Peterborough", stadium: "Weston Homes Stadium", capacity: 15314 },
+        { id: "en3_nor", name: "Northampton Town", city: "Northampton", stadium: "Sixfields Stadium", capacity: 7724 },
+        { id: "en3_bur", name: "Burton Albion", city: "Burton upon Trent", stadium: "Pirelli Stadium", capacity: 6912 },
+        { id: "en3_cra", name: "Crawley Town", city: "Crawley", stadium: "Broadfield Stadium", capacity: 6134 },
+        { id: "en3_brr", name: "Bristol Rovers", city: "Bristol", stadium: "Memorial Stadium", capacity: 9832 },
+        { id: "en3_cam", name: "Cambridge United", city: "Cambridge", stadium: "Abbey Stadium", capacity: 8127 },
+        { id: "en3_shr", name: "Shrewsbury Town", city: "Shrewsbury", stadium: "New Meadow", capacity: 9875 }
+    ],
+
+    // ------------------------------------------- Spanien, Stufen 2 und 3
+    // Segunda División 2024/25; in der dritten Liga, der Primera Federación,
+    // stehen Vereine, die auf oder nahe dieser Ebene spielen
+    es_liga_2: [
+        { id: "es2_lev", name: "UD Levante", city: "Valencia", stadium: "Ciutat de València", capacity: 26354 },
+        { id: "es2_elc", name: "FC Elche", city: "Elche", stadium: "Martínez Valero", capacity: 31388 },
+        { id: "es2_ovi", name: "Real Oviedo", city: "Oviedo", stadium: "Carlos Tartiere", capacity: 30500 },
+        { id: "es2_mir", name: "CD Mirandés", city: "Miranda de Ebro", stadium: "Anduva", capacity: 5759 },
+        { id: "es2_rac", name: "Racing Santander", city: "Santander", stadium: "El Sardinero", capacity: 22222 },
+        { id: "es2_alm", name: "UD Almería", city: "Almería", stadium: "Power Horse Stadium", capacity: 15274 },
+        { id: "es2_gra", name: "FC Granada", city: "Granada", stadium: "Nuevo Los Cármenes", capacity: 19336 },
+        { id: "es2_hue", name: "SD Huesca", city: "Huesca", stadium: "El Alcoraz", capacity: 9128 },
+        { id: "es2_cad", name: "FC Cádiz", city: "Cádiz", stadium: "Nuevo Mirandilla", capacity: 20724 },
+        { id: "es2_spo", name: "Sporting Gijón", city: "Gijón", stadium: "El Molinón", capacity: 29029 },
+        { id: "es2_cor", name: "Córdoba CF", city: "Córdoba", stadium: "Nuevo Arcángel", capacity: 20989 },
+        { id: "es2_dep", name: "Deportivo La Coruña", city: "A Coruña", stadium: "Riazor", capacity: 32490 },
+        { id: "es2_mal", name: "FC Málaga", city: "Málaga", stadium: "La Rosaleda", capacity: 30044 },
+        { id: "es2_bur", name: "Burgos CF", city: "Burgos", stadium: "El Plantío", capacity: 12194 },
+        { id: "es2_cas", name: "CD Castellón", city: "Castellón", stadium: "Nou Castàlia", capacity: 15500 },
+        { id: "es2_alb", name: "Albacete Balompié", city: "Albacete", stadium: "Carlos Belmonte", capacity: 17524 },
+        { id: "es2_eib", name: "SD Eibar", city: "Eibar", stadium: "Ipurua", capacity: 8164 },
+        { id: "es2_zar", name: "Real Saragossa", city: "Zaragoza", stadium: "La Romareda", capacity: 33608 },
+        { id: "es2_cat", name: "FC Cartagena", city: "Cartagena", stadium: "Cartagonova", capacity: 15105 },
+        { id: "es2_ten", name: "CD Teneriffa", city: "Santa Cruz de Tenerife", stadium: "Heliodoro Rodríguez López", capacity: 22824 },
+        { id: "es2_fer", name: "Racing Ferrol", city: "Ferrol", stadium: "A Malata", capacity: 12042 },
+        { id: "es2_eld", name: "CD Eldense", city: "Elda", stadium: "Nuevo Pepico Amat", capacity: 4036 }
+    ],
+
+    es_liga_3: [
+        { id: "es3_mur", name: "Real Murcia", city: "Murcia", stadium: "Enrique Roca", capacity: 31179 },
+        { id: "es3_her", name: "Hércules Alicante", city: "Alicante", stadium: "José Rico Pérez", capacity: 29500 },
+        { id: "es3_cul", name: "Cultural Leonesa", city: "León", stadium: "Reino de León", capacity: 13346 },
+        { id: "es3_gim", name: "Gimnàstic Tarragona", city: "Tarragona", stadium: "Nou Estadi", capacity: 14591 },
+        { id: "es3_lug", name: "CD Lugo", city: "Lugo", stadium: "Anxo Carro", capacity: 7840 },
+        { id: "es3_pon", name: "SD Ponferradina", city: "Ponferrada", stadium: "El Toralín", capacity: 8400 },
+        { id: "es3_ceu", name: "AD Ceuta", city: "Ceuta", stadium: "Alfonso Murube", capacity: 6500 },
+        { id: "es3_rec", name: "Recreativo Huelva", city: "Huelva", stadium: "Nuevo Colombino", capacity: 21670 },
+        { id: "es3_ibi", name: "UD Ibiza", city: "Ibiza", stadium: "Palladium Can Misses", capacity: 4500 },
+        { id: "es3_alg", name: "Algeciras CF", city: "Algeciras", stadium: "Nuevo Mirador", capacity: 7200 },
+        { id: "es3_sab", name: "CE Sabadell", city: "Sabadell", stadium: "Nova Creu Alta", capacity: 11908 },
+        { id: "es3_alc", name: "CD Alcoyano", city: "Alcoy", stadium: "El Collao", capacity: 4850 },
+        { id: "es3_uni", name: "Real Unión Irún", city: "Irun", stadium: "Stadium Gal", capacity: 5000 },
+        { id: "es3_zam", name: "Zamora CF", city: "Zamora", stadium: "Ruta de la Plata", capacity: 7813 },
+        { id: "es3_sal", name: "Unionistas de Salamanca", city: "Salamanca", stadium: "Reina Sofía", capacity: 4000 },
+        { id: "es3_ant", name: "Antequera CF", city: "Antequera", stadium: "El Maulí", capacity: 6000 },
+        { id: "es3_mer", name: "Mérida AD", city: "Mérida", stadium: "Romano José Fouto", capacity: 14600 },
+        { id: "es3_fue", name: "CF Fuenlabrada", city: "Fuenlabrada", stadium: "Fernando Torres", capacity: 5400 },
+        { id: "es3_bar", name: "Barakaldo CF", city: "Barakaldo", stadium: "Lasesarre", capacity: 7960 },
+        { id: "es3_are", name: "CD Arenteiro", city: "O Carballiño", stadium: "Espiñedo", capacity: 2000 }
+    ],
+
+    // ------------------------------------------- Italien, Stufen 2 und 3
+    // Serie B 2024/25; in der Serie C stehen Vereine aus allen drei
+    // Staffeln, die auf oder nahe dieser Ebene spielen
+    it_liga_2: [
+        { id: "it2_sas", name: "US Sassuolo", city: "Sassuolo", stadium: "Mapei Stadium", capacity: 21525 },
+        { id: "it2_pis", name: "Pisa SC", city: "Pisa", stadium: "Arena Garibaldi", capacity: 9000 },
+        { id: "it2_spe", name: "Spezia Calcio", city: "La Spezia", stadium: "Alberto Picco", capacity: 10336 },
+        { id: "it2_cre", name: "US Cremonese", city: "Cremona", stadium: "Giovanni Zini", capacity: 16003 },
+        { id: "it2_jst", name: "Juve Stabia", city: "Castellammare di Stabia", stadium: "Romeo Menti", capacity: 7642 },
+        { id: "it2_ctz", name: "US Catanzaro", city: "Catanzaro", stadium: "Nicola Ceravolo", capacity: 14650 },
+        { id: "it2_pal", name: "FC Palermo", city: "Palermo", stadium: "Renzo Barbera", capacity: 36365 },
+        { id: "it2_bar", name: "SSC Bari", city: "Bari", stadium: "San Nicola", capacity: 58270 },
+        { id: "it2_mod", name: "Modena FC", city: "Modena", stadium: "Alberto Braglia", capacity: 21151 },
+        { id: "it2_ces", name: "Cesena FC", city: "Cesena", stadium: "Dino Manuzzi", capacity: 23860 },
+        { id: "it2_car", name: "Carrarese Calcio", city: "Carrara", stadium: "Stadio dei Marmi", capacity: 4500 },
+        { id: "it2_sud", name: "FC Südtirol", city: "Bolzano", stadium: "Stadio Druso", capacity: 5539 },
+        { id: "it2_reg", name: "AC Reggiana", city: "Reggio Emilia", stadium: "Città del Tricolore", capacity: 21525 },
+        { id: "it2_man", name: "Mantova 1911", city: "Mantova", stadium: "Danilo Martelli", capacity: 14884 },
+        { id: "it2_sam", name: "Sampdoria Genua", city: "Genova", stadium: "Luigi Ferraris", capacity: 33205 },
+        { id: "it2_fro", name: "Frosinone Calcio", city: "Frosinone", stadium: "Benito Stirpe", capacity: 16227 },
+        { id: "it2_bre", name: "Brescia Calcio", city: "Brescia", stadium: "Mario Rigamonti", capacity: 19550 },
+        { id: "it2_sal", name: "US Salernitana", city: "Salerno", stadium: "Arechi", capacity: 37180 },
+        { id: "it2_cit", name: "AS Cittadella", city: "Cittadella", stadium: "Pier Cesare Tombolato", capacity: 7623 },
+        { id: "it2_cos", name: "Cosenza Calcio", city: "Cosenza", stadium: "San Vito-Gigi Marulla", capacity: 20987 }
+    ],
+
+    it_liga_3: [
+        { id: "it3_ter", name: "Ternana Calcio", city: "Terni", stadium: "Libero Liberati", capacity: 22000 },
+        { id: "it3_vic", name: "LR Vicenza", city: "Vicenza", stadium: "Romeo Menti", capacity: 12000 },
+        { id: "it3_pad", name: "Calcio Padova", city: "Padova", stadium: "Euganeo", capacity: 18060 },
+        { id: "it3_ben", name: "Benevento Calcio", city: "Benevento", stadium: "Ciro Vigorito", capacity: 16867 },
+        { id: "it3_ave", name: "US Avellino", city: "Avellino", stadium: "Partenio-Lombardi", capacity: 26308 },
+        { id: "it3_per", name: "AC Perugia", city: "Perugia", stadium: "Renato Curi", capacity: 23625 },
+        { id: "it3_cat", name: "Catania FC", city: "Catania", stadium: "Angelo Massimino", capacity: 20016 },
+        { id: "it3_pes", name: "Delfino Pescara", city: "Pescara", stadium: "Adriatico", capacity: 20476 },
+        { id: "it3_tri", name: "US Triestina", city: "Trieste", stadium: "Nereo Rocco", capacity: 21214 },
+        { id: "it3_cro", name: "FC Crotone", city: "Crotone", stadium: "Ezio Scida", capacity: 16640 },
+        { id: "it3_are", name: "SS Arezzo", city: "Arezzo", stadium: "Città di Arezzo", capacity: 13128 },
+        { id: "it3_fog", name: "Calcio Foggia", city: "Foggia", stadium: "Pino Zaccheria", capacity: 15000 },
+        { id: "it3_nov", name: "Novara FC", city: "Novara", stadium: "Silvio Piola", capacity: 17875 },
+        { id: "it3_fsa", name: "FeralpiSalò", city: "Salò", stadium: "Lino Turina", capacity: 2364 },
+        { id: "it3_rim", name: "Rimini FC", city: "Rimini", stadium: "Romeo Neri", capacity: 9768 },
+        { id: "it3_tre", name: "AC Trento", city: "Trento", stadium: "Briamasco", capacity: 4227 },
+        { id: "it3_lec", name: "Calcio Lecco", city: "Lecco", stadium: "Rigamonti-Ceppi", capacity: 4977 },
+        { id: "it3_mop", name: "SS Monopoli", city: "Monopoli", stadium: "Vito Simone Veneziani", capacity: 6880 },
+        { id: "it3_pot", name: "Potenza Calcio", city: "Potenza", stadium: "Alfredo Viviani", capacity: 5500 },
+        { id: "it3_tor", name: "SEF Torres", city: "Sassari", stadium: "Vanni Sanna", capacity: 7000 }
+    ],
+
+    // ---------------------------------------- Frankreich, Stufen 2 und 3
+    // Ligue 2 2024/25; im National Vereine, die auf oder nahe dieser Ebene spielen
+    fr_liga_2: [
+        { id: "fr2_lor", name: "FC Lorient", city: "Lorient", stadium: "Stade du Moustoir", capacity: 18890 },
+        { id: "fr2_pfc", name: "Paris FC", city: "Paris", stadium: "Stade Charléty", capacity: 20000 },
+        { id: "fr2_met", name: "FC Metz", city: "Metz", stadium: "Stade Saint-Symphorien", capacity: 28786 },
+        { id: "fr2_gui", name: "EA Guingamp", city: "Guingamp", stadium: "Stade du Roudourou", capacity: 18378 },
+        { id: "fr2_dun", name: "USL Dunkerque", city: "Dunkerque", stadium: "Stade Marcel-Tribut", capacity: 4933 },
+        { id: "fr2_ann", name: "FC Annecy", city: "Annecy", stadium: "Parc des Sports", capacity: 15660 },
+        { id: "fr2_lav", name: "Stade Laval", city: "Laval", stadium: "Stade Francis-Le Basser", capacity: 18739 },
+        { id: "fr2_bas", name: "SC Bastia", city: "Bastia", stadium: "Stade Armand-Cesari", capacity: 16078 },
+        { id: "fr2_gre", name: "Grenoble Foot 38", city: "Grenoble", stadium: "Stade des Alpes", capacity: 20068 },
+        { id: "fr2_pau", name: "Pau FC", city: "Pau", stadium: "Nouste Camp", capacity: 4031 },
+        { id: "fr2_red", name: "Red Star Paris", city: "Saint-Ouen", stadium: "Stade Bauer", capacity: 10000 },
+        { id: "fr2_ami", name: "Amiens SC", city: "Amiens", stadium: "Stade de la Licorne", capacity: 12097 },
+        { id: "fr2_tro", name: "ESTAC Troyes", city: "Troyes", stadium: "Stade de l'Aube", capacity: 21684 },
+        { id: "fr2_rod", name: "Rodez AF", city: "Rodez", stadium: "Stade Paul-Lignon", capacity: 5955 },
+        { id: "fr2_cle", name: "Clermont Foot", city: "Clermont-Ferrand", stadium: "Stade Gabriel-Montpied", capacity: 11980 },
+        { id: "fr2_aja", name: "AC Ajaccio", city: "Ajaccio", stadium: "Stade François-Coty", capacity: 10446 },
+        { id: "fr2_mar", name: "FC Martigues", city: "Martigues", stadium: "Stade Francis-Turcan", capacity: 3000 },
+        { id: "fr2_cae", name: "SM Caen", city: "Caen", stadium: "Stade Michel-d'Ornano", capacity: 20300 }
+    ],
+
+    fr_liga_3: [
+        { id: "fr3_nan", name: "AS Nancy-Lorraine", city: "Nancy", stadium: "Stade Marcel-Picot", capacity: 20087 },
+        { id: "fr3_lem", name: "Le Mans FC", city: "Le Mans", stadium: "MMArena", capacity: 25064 },
+        { id: "fr3_bou", name: "US Boulogne", city: "Boulogne-sur-Mer", stadium: "Stade de la Libération", capacity: 8000 },
+        { id: "fr3_soc", name: "FC Sochaux", city: "Montbéliard", stadium: "Stade Auguste-Bonal", capacity: 20005 },
+        { id: "fr3_val", name: "Valenciennes FC", city: "Valenciennes", stadium: "Stade du Hainaut", capacity: 25172 },
+        { id: "fr3_rou", name: "FC Rouen", city: "Rouen", stadium: "Stade Robert-Diochon", capacity: 12018 },
+        { id: "fr3_dij", name: "Dijon FCO", city: "Dijon", stadium: "Stade Gaston-Gérard", capacity: 15995 },
+        { id: "fr3_orl", name: "US Orléans", city: "Orléans", stadium: "Stade de la Source", capacity: 7533 },
+        { id: "fr3_bpe", name: "FC Bourg-Péronnas", city: "Bourg-en-Bresse", stadium: "Stade Marcel-Verchère", capacity: 11400 },
+        { id: "fr3_con", name: "US Concarneau", city: "Concarneau", stadium: "Stade Guy-Piriou", capacity: 6500 },
+        { id: "fr3_qro", name: "US Quevilly-Rouen", city: "Le Petit-Quevilly", stadium: "Stade Robert-Diochon", capacity: 12018 },
+        { id: "fr3_vil", name: "FC Villefranche", city: "Villefranche-sur-Saône", stadium: "Stade Armand-Chouffet", capacity: 3200 },
+        { id: "fr3_ver", name: "FC Versailles", city: "Versailles", stadium: "Stade de Montbauron", capacity: 7500 },
+        { id: "fr3_aub", name: "Aubagne FC", city: "Aubagne", stadium: "Stade de Lattre", capacity: 1500 },
+        { id: "fr3_cha", name: "LB Châteauroux", city: "Châteauroux", stadium: "Stade Gaston-Petit", capacity: 17173 },
+        { id: "fr3_nim", name: "Nîmes Olympique", city: "Nîmes", stadium: "Stade des Antonins", capacity: 8000 },
+        { id: "fr3_p13", name: "Paris 13 Atletico", city: "Paris", stadium: "Stade Pelé", capacity: 2000 },
+        { id: "fr3_cre", name: "US Créteil-Lusitanos", city: "Créteil", stadium: "Stade Dominique-Duvauchelle", capacity: 12150 }
     ],
 
     // --------------------------------------------------- 2. Bundesliga

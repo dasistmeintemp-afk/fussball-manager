@@ -31,7 +31,9 @@ const SaveCodec = {
         ["overall", "n"], ["pot", "n"],
         ["trueCurrentAbility", "n"], ["truePotentialAbility", "n"], ["trueMarketValue", "n"],
         ["value", "n"], ["wage", "n"], ["contractYears", "n"],
-        ["fitness", "n"], ["morale", "n"], ["form", "n"],
+        // Kommazahlen: die Moral pendelt seit der Kabinenrechnung auf
+        // vierzehn Nachkommastellen - drei reichen
+        ["fitness", "f"], ["morale", "f"], ["form", "f"],
         ["injured", "b"], ["injuredWeeks", "n"], ["injuryWeeks", "n"], ["injuryName", "s"],
         ["suspended", "b"], ["suspendedMatches", "n"], ["suspensionMatches", "n"],
         ["yellowCards", "n"], ["yellowCardsTotal", "n"], ["yellowCardsSeason", "n"],
@@ -42,7 +44,7 @@ const SaveCodec = {
         ["reflexes", "n"], ["handling", "n"], ["oneOnOne", "n"], ["kicking", "n"],
         ["stats.matches", "n"], ["stats.goals", "n"], ["stats.assists", "n"],
         ["stats.yellowCards", "n"], ["stats.redCards", "n"], ["stats.minutes", "n"],
-        ["stats.cleanSheets", "n"], ["stats.ratingSum", "n"],
+        ["stats.cleanSheets", "n"], ["stats.ratingSum", "f"],
         ["hiddenAttributes.professionalism", "n"], ["hiddenAttributes.ambition", "n"],
         ["hiddenAttributes.consistency", "n"], ["hiddenAttributes.importantMatches", "n"],
         ["hiddenAttributes.injuryProneness", "n"], ["hiddenAttributes.adaptability", "n"],
@@ -295,6 +297,14 @@ const SaveCodec = {
 
         encoded.__codec = this.FORMAT;
 
+        if (Array.isArray(state.clubs)) {
+            const gepackt = this.packeTaktiken(state.clubs);
+            if (gepackt) {
+                encoded.clubs = gepackt.clubs;
+                encoded.__taktikVorlagen = gepackt.vorlagen;
+            }
+        }
+
         if (Array.isArray(state.players)) {
             const felder = this.felder("player");
             encoded.players = state.players.map(p => this.encodeRecord(p, felder, dict));
@@ -312,6 +322,90 @@ const SaveCodec = {
 
         encoded.__dict = dict.values;
         return encoded;
+    },
+
+    /**
+     * Die Taktik jedes Vereins hat über vierzig Anweisungen, fast alle so,
+     * wie sie sein Spielstil (tactics.vorlage) vorgibt - im Spielstand
+     * standen sie bei jedem der 384 Vereine vollständig, gut ein Drittel der
+     * Vereinsdaten. Jetzt steht je Spielstil die häufigste Taktik einmal als
+     * Vorlage im Stand, und jeder Verein trägt nur, worin er abweicht.
+     * Verlustfrei: fehlende Anweisungen (o) und eine abweichende Reihenfolge
+     * (r) werden mitgeschrieben.
+     */
+    packeTaktiken(clubs) {
+        const istTaktik = t => t && typeof t === "object" && !Array.isArray(t);
+        const gruppeVon = t => (typeof t.vorlage === "string" ? t.vorlage : "");
+        const mitTaktik = clubs.filter(c => c && istTaktik(c.tactics));
+        if (mitTaktik.length < 2) return null;
+
+        // Je Spielstil die häufigsten Werte, in der Reihenfolge des ersten Auftretens
+        const gruppen = {};
+        mitTaktik.forEach(c => {
+            const g = gruppeVon(c.tactics);
+            if (!gruppen[g]) gruppen[g] = { zaehler: {}, reihenfolge: [] };
+            const gr = gruppen[g];
+            Object.keys(c.tactics).forEach(k => {
+                if (!gr.zaehler[k]) { gr.zaehler[k] = {}; gr.reihenfolge.push(k); }
+                const w = JSON.stringify(c.tactics[k]);
+                gr.zaehler[k][w] = (gr.zaehler[k][w] || 0) + 1;
+            });
+        });
+        const vorlagen = {};
+        Object.keys(gruppen).forEach(g => {
+            const v = {};
+            gruppen[g].reihenfolge.forEach(k => {
+                const [wert] = Object.entries(gruppen[g].zaehler[k]).sort((a, b) => b[1] - a[1])[0];
+                v[k] = JSON.parse(wert);
+            });
+            vorlagen[g] = v;
+        });
+
+        const gepackt = clubs.map(c => {
+            if (!c || !istTaktik(c.tactics)) return c;
+            const t = c.tactics;
+            const g = gruppeVon(t);
+            const vorlage = vorlagen[g];
+            const vorlageKeys = Object.keys(vorlage);
+            const keys = Object.keys(t);
+            const d = {};
+            keys.forEach(k => {
+                if (!(k in vorlage) || JSON.stringify(t[k]) !== JSON.stringify(vorlage[k])) d[k] = t[k];
+            });
+            const packung = { "~t": 1, d };
+            if (g) packung.v = g;
+            const ohne = vorlageKeys.filter(k => !(k in t));
+            if (ohne.length) packung.o = ohne;
+            const erwartet = vorlageKeys.filter(k => k in t).concat(keys.filter(k => !(k in vorlage)));
+            if (erwartet.join("\u0001") !== keys.join("\u0001")) packung.r = keys;
+            return Object.assign({}, c, { tactics: packung });
+        });
+        return { clubs: gepackt, vorlagen };
+    },
+
+    /** Die gepackten Taktiken wieder ausfalten (siehe packeTaktiken) */
+    entpackeTaktiken(clubs, vorlagen) {
+        if (!Array.isArray(clubs) || !vorlagen || typeof vorlagen !== "object") return clubs;
+        const kopie = (w) => (w && typeof w === "object") ? JSON.parse(JSON.stringify(w)) : w;
+        return clubs.map(c => {
+            const p = c && c.tactics;
+            if (!p || p["~t"] !== 1) return c;
+            const vorlage = vorlagen[p.v || ""] || {};
+            const ohne = new Set(p.o || []);
+            const d = p.d || {};
+            const t = {};
+            Object.keys(vorlage).forEach(k => {
+                if (ohne.has(k)) return;
+                t[k] = k in d ? d[k] : kopie(vorlage[k]);
+            });
+            Object.keys(d).forEach(k => { if (!(k in t)) t[k] = d[k]; });
+            let tactics = t;
+            if (Array.isArray(p.r)) {
+                tactics = {};
+                p.r.forEach(k => { tactics[k] = t[k]; });
+            }
+            return Object.assign({}, c, { tactics });
+        });
     },
 
     encodeSchedule(schedule, dict) {
@@ -359,9 +453,12 @@ const SaveCodec = {
         const decoded = {};
 
         Object.keys(state).forEach(key => {
-            if (key === "players" || key === "schedule" || key === "otherSchedules" || key === "__dict" || key === "__codec") return;
+            if (key === "players" || key === "schedule" || key === "otherSchedules" || key === "__dict" || key === "__codec" || key === "__taktikVorlagen") return;
             decoded[key] = state[key];
         });
+        if (state.__taktikVorlagen && Array.isArray(state.clubs)) {
+            decoded.clubs = this.entpackeTaktiken(state.clubs, state.__taktikVorlagen);
+        }
 
         if (Array.isArray(state.players)) {
             const felder = this.felder("player", format);

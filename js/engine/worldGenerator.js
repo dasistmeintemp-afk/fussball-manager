@@ -128,51 +128,98 @@ class WorldGenerator {
         let playersCreated = 0;
 
         leagues.forEach(league => {
-            const existing = state.clubs.filter(c => c.leagueId === league.id);
-            const missing = (league.teamCount || 18) - existing.length;
-            const country = countries.find(c => c.id === league.countryId);
-
-            if (missing <= 0) return;
-
-            const newClubs = clubGen.generateClubsForLeague(league, missing, {
-                usedNames,
-                usedCities,
-                startIndex: existing.length,
-                countryReputation: country ? country.reputation : 88
-            });
-
-            newClubs.forEach((club, idx) => {
-                // Stärkeposition innerhalb der Liga für den Kaderaufbau merken
-                const total = league.teamCount || 18;
-                const rank = existing.length + idx;
-                club.clubStrength = total > 1 ? Math.max(0, Math.min(1, 1 - rank / (total - 1))) : 0.5;
-
-                const squad = playerGen.generateSquad(
-                    club.id,
-                    league.level || 1,
-                    this.SQUAD_SIZES[league.level] || 18,
-                    { clubStrength: club.clubStrength, countryId: league.countryId || "de", idOffset: 0, ganzerKader: true }
-                );
-
-                squad.forEach(player => {
-                    state.players.push(player);
-                    club.playerIds.push(player.id);
-                });
-                playersCreated += squad.length;
-
-                const gameState = this.getGameState();
-                if (gameState && typeof gameState.autoSetLineupForClub === "function") {
-                    gameState.autoSetLineupForClub(club, state.players);
-                }
-
-                state.clubs.push(club);
-                clubsCreated++;
-            });
+            const neu = this.fuelleLiga(state, league, { usedNames, usedCities, countries, clubGen, playerGen });
+            clubsCreated += neu.clubs;
+            playersCreated += neu.players;
         });
 
         playersCreated += this.fillUpExistingSquads(state, leagues, playerGen);
 
         return { clubsCreated, playersCreated };
+    }
+
+    /** Eine Liga auf ihre Vereinszahl bringen - Vereine samt Kadern */
+    static fuelleLiga(state, league, { usedNames, usedCities, countries, clubGen, playerGen }) {
+        const existing = state.clubs.filter(c => c.leagueId === league.id);
+        const missing = (league.teamCount || 18) - existing.length;
+        const country = (countries || []).find(c => c.id === league.countryId);
+        if (missing <= 0) return { clubs: 0, players: 0 };
+
+        const newClubs = clubGen.generateClubsForLeague(league, missing, {
+            usedNames,
+            usedCities,
+            startIndex: existing.length,
+            countryReputation: country ? country.reputation : 88
+        });
+
+        let players = 0;
+        const gameState = this.getGameState();
+        newClubs.forEach((club, idx) => {
+            // Stärkeposition innerhalb der Liga für den Kaderaufbau merken
+            const total = league.teamCount || 18;
+            const rank = existing.length + idx;
+            club.clubStrength = total > 1 ? Math.max(0, Math.min(1, 1 - rank / (total - 1))) : 0.5;
+
+            const squad = playerGen.generateSquad(
+                club.id,
+                league.level || 1,
+                this.SQUAD_SIZES[league.level] || 18,
+                { clubStrength: club.clubStrength, countryId: league.countryId || "de", idOffset: 0, ganzerKader: true }
+            );
+
+            squad.forEach(player => {
+                state.players.push(player);
+                club.playerIds.push(player.id);
+            });
+            players += squad.length;
+
+            if (gameState && typeof gameState.autoSetLineupForClub === "function") {
+                gameState.autoSetLineupForClub(club, state.players);
+            }
+
+            state.clubs.push(club);
+        });
+        return { clubs: newClubs.length, players };
+    }
+
+    /** Die Ligen, die nach dem ersten Aufbau der Welt dazugekommen sind */
+    static NACHTRAEGLICHE_LIGEN = ["en_liga_2", "en_liga_3", "es_liga_2", "es_liga_3", "it_liga_2", "it_liga_3", "fr_liga_2", "fr_liga_3"];
+
+    /**
+     * Ein Spielstand aus der Zeit vor den zweiten und dritten Ligen in
+     * England, Spanien, Italien und Frankreich bekommt sie nachträglich: mit
+     * echten Vereinen, Kadern und einem Spielplan, der ab dem nächsten
+     * Spieltag mitläuft (die verpassten Runden holt die Simulation anteilig
+     * nach). Nur für eine Welt, die diese Länder schon kennt. Gibt die neu
+     * erzeugten Ligen zurück.
+     */
+    static ergaenzeNeueLigen(state) {
+        if (!state || !Array.isArray(state.clubs) || !Array.isArray(state.players)) return [];
+        if (!state.clubs.some(c => c.leagueId === "en_liga_1")) return [];
+        const fehlend = this.getLeagues().filter(l => this.NACHTRAEGLICHE_LIGEN.includes(l.id)
+            && !state.clubs.some(c => c.leagueId === l.id));
+        const clubGen = this.getClubGenerator();
+        const playerGen = this.getPlayerGenerator();
+        const gameState = this.getGameState();
+        if (!fehlend.length || !clubGen || !playerGen || !gameState) return [];
+
+        if (!Array.isArray(state.leagues)) state.leagues = [];
+        fehlend.forEach(l => { if (!state.leagues.some(x => x.id === l.id)) state.leagues.push(l); });
+
+        const usedNames = new Set(state.clubs.map(c => c.name));
+        const usedCities = new Set(state.clubs.map(c => c.city).filter(Boolean));
+        const countries = this.getCountries();
+        state.otherSchedules = state.otherSchedules || {};
+        state.standingsByLeague = state.standingsByLeague || {};
+        fehlend.forEach(league => {
+            this.fuelleLiga(state, league, { usedNames, usedCities, countries, clubGen, playerGen });
+            const clubs = state.clubs.filter(c => c.leagueId === league.id);
+            const schedule = gameState.generateSchedule(clubs);
+            schedule.forEach(round => round.matches.forEach(m => { m.leagueId = league.id; }));
+            state.otherSchedules[league.id] = schedule;
+            state.standingsByLeague[league.id] = gameState.calculateStandings(clubs, schedule, 0);
+        });
+        return fehlend;
     }
 
     /**

@@ -165,7 +165,11 @@ class LoanEngine {
         const player = this._player(state, playerId);
         const hindernis = this.verleihHindernis(state, player);
         if (hindernis) return { success: false, error: hindernis };
-        const angebot = this.interessenten(state, playerId, 50).find(a => a.clubId === clubId);
+        // Alle Interessenten, nicht nur die ersten 50: Mit den zweiten und
+        // dritten Ligen in fünf Ländern sind es oft über 200, und die
+        // Reihenfolge hat einen Zufallsanteil - das gewählte Angebot fiel
+        // sonst manchmal heraus
+        const angebot = this.interessenten(state, playerId, Infinity).find(a => a.clubId === clubId);
         if (!angebot) return { success: false, error: "Dieser Verein will ihn nicht ausleihen." };
         this._wechsle(state, player, this._club(state, state.userClubId), this._club(state, clubId));
         delete player.reserve;
@@ -286,7 +290,7 @@ class LoanEngine {
         const player = this._player(state, playerId);
         const hindernis = this.leihHindernis(state, player);
         if (hindernis) return { success: false, error: hindernis };
-        const eintrag = this.leihmarkt(state, 500).find(e => String(e.playerId) === String(playerId));
+        const eintrag = this.leihmarkt(state, Infinity).find(e => String(e.playerId) === String(playerId));
         if (!eintrag) return { success: false, error: "Sein Verein gibt ihn nicht ab." };
         const anteil = angebotenerAnteil === null ? eintrag.lohnAnteil : Math.max(0, Math.min(1, angebotenerAnteil));
         if (anteil + 1e-9 < eintrag.lohnAnteil) {

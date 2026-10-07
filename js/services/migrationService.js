@@ -3,7 +3,7 @@
  */
 
 const MigrationService = {
-    CURRENT_SAVE_VERSION: 8,
+    CURRENT_SAVE_VERSION: 9,
 
     /**
      * Migriert einen Spielstand auf die aktuelle Version
@@ -296,6 +296,33 @@ const MigrationService = {
             }
 
             state.schemaVersion = 8;
+        }
+
+        // Migration Version 8 -> 9: Zweite und dritte Ligen in England,
+        // Spanien, Italien und Frankreich. Ein laufender Spielstand bekommt
+        // sie nachträglich, samt Vereinen, Kadern und Spielplan.
+        if (currentVersion < 9) {
+            const welt = (typeof WorldGenerator !== 'undefined' && WorldGenerator)
+                ? WorldGenerator
+                : ((typeof window !== 'undefined' && window.WorldGenerator) ? window.WorldGenerator
+                    : (typeof require !== 'undefined' ? (() => { try { return require('../engine/worldGenerator.js').WorldGenerator; } catch (e) { return null; } })() : null));
+            const neu = welt && typeof welt.ergaenzeNeueLigen === 'function' ? welt.ergaenzeNeueLigen(state) : [];
+            if (neu.length) {
+                console.log(`[MigrationService] Migriere Spielstand auf Version 9: ${neu.length} neue Ligen.`);
+                if (Array.isArray(state.inbox)) {
+                    state.inbox.unshift({
+                        id: "msg_neue_ligen_" + Date.now(),
+                        matchday: state.currentMatchday || 1,
+                        date: state.currentDate || "Heute",
+                        sender: "Ligavorstand",
+                        subject: "Die Spielwelt wächst: neue Ligen",
+                        body: `Ab sofort spielen auch diese Ligen mit:\n\n${neu.map(l => `• ${l.shortName || l.name}`).join("\n")}\n\nAb- und Aufsteiger der Erstligen in England, Spanien, Italien und Frankreich wechseln zum Saisonende zwischen den Ligen. Die bisher verpassten Spieltage dieser Saison holen die neuen Ligen am nächsten Spieltag nach.`,
+                        read: false,
+                        type: "info"
+                    });
+                }
+            }
+            state.schemaVersion = 9;
         }
 
         return {

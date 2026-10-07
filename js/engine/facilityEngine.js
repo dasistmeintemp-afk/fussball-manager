@@ -423,9 +423,14 @@ const FacilityEngine = {
 
         const detail = this.kostenDetail(club, key, art, saison);
         const preis = detail.netto;
+        // Ein vom Vorstand bewilligter Zuschuss fließt mit dem Baubeginn
+        // (nur in der Saison, in der er bewilligt wurde)
+        const zuschuss = art === "ausbau" && club.bauzuschuss && club.bauzuschuss.key === key
+            && club.bauzuschuss.saison === (state.seasonYear || 1)
+            ? Math.min(preis, club.bauzuschuss.betrag || 0) : 0;
         const raten = optionen.finanzierung === "raten" ? this.finanzierung(state, club, key, art) : null;
         if (raten && !raten.moeglich) return { erfolg: false, grund: raten.grund };
-        if (!raten && (club.balance || 0) < preis) {
+        if (!raten && (club.balance || 0) + zuschuss < preis) {
             const fehlt = preis - (club.balance || 0);
             const bank = this.finanzierung(state, club, key, art);
             return {
@@ -458,6 +463,13 @@ const FacilityEngine = {
         if (finance && typeof finance.recordTransaction === "function") {
             finance.recordTransaction(state, club.id, "facility_cost", -sofort,
                 `${art === "ausbau" ? "Ausbau" : "Sanierung"}: ${name}${raten ? " (Anzahlung)" : ""}`);
+        }
+        if (zuschuss > 0) {
+            club.balance += zuschuss;
+            delete club.bauzuschuss;
+            if (finance && typeof finance.recordTransaction === "function") {
+                finance.recordTransaction(state, club.id, "other", zuschuss, `Zuschuss des Vorstands: ${name}`);
+            }
         }
 
         if (club.id === state.userClubId) {

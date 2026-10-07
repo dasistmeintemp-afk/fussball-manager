@@ -442,6 +442,11 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
 
 **Verhandeln und Medienprognose:** In der Vorbereitung steht das Ziel oben im Reiter, mit den Gründen und der Prognose der Medien – die Liga nach Kaderstärke (drei Viertel) und Ansehen (ein Viertel), ohne Etat und Spielraum, also oft einen Platz neben dem Ziel des Vorstands. Einmal je Vorbereitung lässt der Vorstand mit sich reden: das Ziel annehmen, zwei Plätze tiefer anpeilen (20 % weniger Transferbudget, etwas weniger Vertrauen) oder zwei Plätze höher (20 % mehr Transferbudget, etwas mehr Vertrauen). Danach gilt das Ziel für die ganze Saison.
 
+**Anfragen an den Vorstand (`BoardEngine.stelleAnfrage`):** Unter der Vorstandskarte im Dashboard bittet der Trainer um mehr Transferbudget, einen höheren Gehaltsetat oder einen Zuschuss zum Ausbau von Trainingsgelände oder Jugendzentrum. Die Auswahl zeigt vorher, wie die Aussichten stehen; der Vorstand antwortet nach drei Tagen per Post.
+- **Was zählt:** das Vorstandsvertrauen vor allem, dazu der Tabellenplatz gemessen am Saisonziel (ab drei Spielen), der Kontostand und wie oft er in dieser Saison schon Nein gesagt hat.
+- **Was es bringt:** beim Transferbudget bis zur Hälfte des freien Geldes, beim Gehaltsetat zehn Prozent mehr, beim Ausbau die Hälfte der Baukosten. Der Zuschuss wird gutgeschrieben, sobald der Bau beginnt, und verfällt mit der Saison.
+- **Was es kostet:** Ein Nein kostet etwas Vertrauen. Danach ist dieselbe Bitte acht Wochen gesperrt, ein Zuschuss sechzehn Wochen. Mit leerer Kasse, voll ausgebauter Anlage oder laufendem Bau nimmt der Vorstand die Bitte gar nicht erst an.
+
 ### 7. 🗓️ Kalender-Tagesablauf, 🔍 Gegneranalyse & 🌟 Scoutingsystem
 - **Spielerbewertungssystem (`PlayerRatingEngine`):** Trennung von echten internen Fähigkeiten (CA/PA 1–200, Hidden Attributes wie Professionalität & Ehrgeiz) und sichtbaren, scoutabhängigen Einschätzungsbereichen.
 - **Sternebewertungen mit wählbarem Maßstab:** Qualitätssterne (0,5 bis 5,0); zehn Punkte Stärke sind ein Stern. Woran sie gemessen werden, steht in den Einstellungen unter „Sterne“ und in der Kennzahlenleiste des Kaders:

@@ -8457,3 +8457,9 @@ td.nowrap { white-space: nowrap; }
 .kb-antwort .text-muted { display: block; font-size: 12px; margin-top: 2px; }
 .cd-sterne-hinweis { font-size: 11.5px; color: var(--text-muted); margin: -2px 0 6px; }
 .player-detail-ziel { font-size: 11.5px; color: var(--accent, #38bdf8); margin-top: 2px; }
+
+/* Anfrage an den Vorstand (Dashboard) */
+.board-anfrage { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.board-anfrage .ba-kopf { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin-bottom: 6px; }
+.board-anfrage .ba-zeile { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+.board-anfrage select { flex: 1 1 200px; min-width: 0; }

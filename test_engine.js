@@ -9878,6 +9878,58 @@ function runEngineTests() {
         if (!(quote >= 0.56)) throw new Error(`Gehaltsquote der Spitze ${quote.toFixed(2)}`);
     });
 
+    test("Vorstandsanfragen: Bedenkzeit, Zustimmung nach Vertrauen, Sperre, Zuschuss zum Anlagenausbau", () => {
+        const { FacilityEngine } = require('./js/engine/facilityEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        club.balance = 200000000; club.transferBudget = 50000000;
+        const anlagen = FacilityEngine.hole(club, state.seasonYear);
+        anlagen.trainingGround.stufe = 3; anlagen.youthCenter.stufe = 3;
+
+        // Die Antwort kommt nach der Bedenkzeit, nicht sofort
+        state.boardConfidence = 95;
+        const budget = club.transferBudget;
+        if (!BoardEngine.stelleAnfrage(state, "transfer").ok) throw new Error("Anfrage nicht angenommen");
+        if (BoardEngine.stelleAnfrage(state, "gehalt").ok) throw new Error("Zwei Anfragen gleichzeitig");
+        if (BoardEngine.anfrageTag(state, () => 0)) throw new Error("Der Vorstand entscheidet sofort");
+        state.currentDayIndex += BoardEngine.ANFRAGE_BEDENKZEIT;
+        const r = BoardEngine.anfrageTag(state, () => 0);
+        if (!r || !r.zugestimmt || !(club.transferBudget > budget)) throw new Error(`Zustimmung bei hohem Vertrauen: ${JSON.stringify(r)}`);
+        if (!state.inbox.some(m => /Vorstand stimmt zu: Mehr Transferbudget/.test(m.subject || ""))) throw new Error("Keine Antwort im Postfach");
+        // Dieselbe Sache erst nach acht Wochen wieder
+        if (!/erst entschieden/.test(BoardEngine.anfrageHindernis(state, "transfer"))) throw new Error("Keine Sperre nach der Entscheidung");
+
+        // Geringes Vertrauen: kaum Aussichten, Ablehnung kostet Vertrauen und weitere Aussichten
+        state.boardConfidence = 42;
+        const chance = BoardEngine.anfrageChance(state, "gehalt");
+        if (!(chance < 0.25)) throw new Error(`Aussichten bei wenig Vertrauen: ${chance}`);
+        BoardEngine.stelleAnfrage(state, "gehalt");
+        state.currentDayIndex += BoardEngine.ANFRAGE_BEDENKZEIT;
+        const etat = club.wageBudget;
+        const nein = BoardEngine.anfrageTag(state, () => 0.99);
+        if (nein.zugestimmt || club.wageBudget !== etat || state.boardConfidence >= 42) throw new Error("Ablehnung ohne Folgen");
+        if (!(BoardEngine.anfrageChance(state, "jugend") < BoardEngine.anfrageChance(state, "jugend") + 0.0001)) throw new Error("Aussichten nicht berechenbar");
+
+        // Zuschuss: Die Hälfte des nächsten Ausbaus kommt mit dem Baubeginn
+        state.boardConfidence = 95;
+        const gestellt = BoardEngine.stelleAnfrage(state, "training");
+        if (!gestellt.ok) throw new Error(`Zuschuss-Anfrage abgewiesen: ${gestellt.grund}`);
+        state.currentDayIndex += BoardEngine.ANFRAGE_BEDENKZEIT;
+        const z = BoardEngine.anfrageTag(state, () => 0);
+        if (!z.zugestimmt || club.bauzuschuss?.key !== "trainingGround") throw new Error("Kein Zuschuss bewilligt");
+        const preis = FacilityEngine.kostenDetail(club, "trainingGround", "ausbau", state.seasonYear).netto;
+        const vorher = club.balance;
+        const bau = FacilityEngine.starteProjekt(state, club.id, "trainingGround", "ausbau");
+        if (!bau.erfolg && bau.erfolg !== undefined) throw new Error(`Ausbau startet nicht: ${bau.grund}`);
+        if (Math.round(vorher - club.balance) !== Math.round(preis - z.betrag) || club.bauzuschuss) throw new Error(`Zuschuss nicht verrechnet: ${vorher - club.balance} statt ${preis - z.betrag}`);
+
+        // Nur ein Zuschuss zur Zeit, und er verfällt mit dem Saisonwechsel
+        club.bauzuschuss = { key: "trainingGround", betrag: 1000000, saison: state.seasonYear };
+        if (!/wartet noch auf den Baubeginn/.test(BoardEngine.anfrageHindernis(state, "jugend") || "")) throw new Error(`Zweiter Zuschuss neben einem offenen: ${BoardEngine.anfrageHindernis(state, "jugend")}`);
+        state.seasonYear += 1;
+        if (/Zuschuss/.test(BoardEngine.anfrageHindernis(state, "jugend") || "") || club.bauzuschuss) throw new Error("Zuschuss überdauert die Saison");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

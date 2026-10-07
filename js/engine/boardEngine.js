@@ -226,6 +226,170 @@ const BoardEngine = {
             + (typeof z.prognose === "number" ? ` Die Medien sehen uns auf Platz ${z.prognose}.` : "");
     },
 
+    // ------------------------------------------------ Anfragen an den Vorstand
+
+    /**
+     * Der Trainer kann den Vorstand um etwas bitten: mehr Transferbudget,
+     * einen höheren Gehaltsetat oder einen Zuschuss für den Ausbau von
+     * Trainingsgelände oder Jugendzentrum. Der Vorstand berät ein paar Tage
+     * und entscheidet nach Vertrauen, Tabellenlage und Kasse. Wer abblitzt
+     * und weiter drängt, verliert Vertrauen und Aussichten; über dieselbe
+     * Sache redet der Vorstand erst nach einer Weile wieder (sperre, Tage).
+     */
+    ANFRAGEN: {
+        transfer: { label: "Mehr Transferbudget", sperre: 56 },
+        gehalt: { label: "Höherer Gehaltsetat", sperre: 56 },
+        training: { label: "Zuschuss zum Ausbau des Trainingsgeländes", anlage: "trainingGround", sperre: 112 },
+        jugend: { label: "Zuschuss zum Ausbau des Jugendzentrums", anlage: "youthCenter", sperre: 112 }
+    },
+    ANFRAGE_BEDENKZEIT: 3,
+
+    stempel(state) {
+        return (state?.seasonYear || 1) * 1000 + (state?.currentDayIndex || 0);
+    },
+
+    eigenerVerein(state) {
+        return (state?.clubs || []).find(c => c.id === state?.userClubId) || null;
+    },
+
+    /** Darf der Trainer jetzt darum bitten? null, wenn ja - sonst der Grund */
+    anfrageHindernis(state, key) {
+        const club = this.eigenerVerein(state);
+        const a = this.ANFRAGEN[key];
+        if (!club || !a) return "Diese Anfrage gibt es nicht.";
+        if (state.vorstandsAnfrage) return "Der Vorstand berät noch über Ihre letzte Anfrage.";
+        const letztes = club.vorstandsanfragen?.[key]?.letztes;
+        if (typeof letztes === "number") {
+            const rest = a.sperre - (this.stempel(state) - letztes);
+            if (rest > 0) return `Darüber hat der Vorstand erst entschieden - wieder in ${rest} Tagen.`;
+        }
+        if ((club.balance || 0) <= 0) return "Die Kasse ist leer - Geld gibt der Vorstand gerade nicht.";
+        if (a.anlage) {
+            const fac = _boardResolve('FacilityEngine', './facilityEngine.js');
+            const anlage = fac && typeof fac.hole === "function" ? fac.hole(club, state.seasonYear || 1)[a.anlage] : null;
+            if (anlage && anlage.stufe >= 5) return "Die Anlage hat schon die höchste Stufe.";
+            if (anlage && anlage.projekt) return "An der Anlage wird schon gebaut.";
+            const zuschuss = this.offenerZuschuss(state, club);
+            if (zuschuss) return zuschuss.key === a.anlage
+                ? "Der Zuschuss ist schon bewilligt - er wartet auf den Baubeginn."
+                : "Ein bewilligter Zuschuss wartet noch auf den Baubeginn.";
+        }
+        return null;
+    },
+
+    /** Der bewilligte Bauzuschuss dieser Saison - er verfällt mit dem Saisonwechsel */
+    offenerZuschuss(state, club) {
+        const z = club && club.bauzuschuss;
+        if (!z) return null;
+        if (z.saison !== (state.seasonYear || 1)) { delete club.bauzuschuss; return null; }
+        return z;
+    },
+
+    /** Eine Anfrage einreichen - die Antwort kommt nach ein paar Tagen */
+    stelleAnfrage(state, key) {
+        const grund = this.anfrageHindernis(state, key);
+        if (grund) return { ok: false, grund };
+        const jetzt = this.stempel(state);
+        state.vorstandsAnfrage = { key, tag: jetzt, entscheidetTag: jetzt + this.ANFRAGE_BEDENKZEIT };
+        return { ok: true, tage: this.ANFRAGE_BEDENKZEIT };
+    },
+
+    /** Wie wahrscheinlich der Vorstand zustimmt - für Anzeige und Entscheidung */
+    anfrageChance(state, key) {
+        const club = this.eigenerVerein(state);
+        if (!club) return 0;
+        // Das Vertrauen, das der Manager im Kopf der Seite sieht
+        let chance = (this.vertrauen(state, club) - 40) / 60;
+        const platz = (state.standings || []).findIndex(e => e.clubId === club.id) + 1;
+        const gespielt = (state.standings || [])[0]?.played || 0;
+        if (platz && gespielt >= 3) {
+            const ziel = this.zielPlatz(state, club);
+            if (platz <= ziel) chance += 0.15;
+            else if (platz > ziel + 3) chance -= 0.25;
+        }
+        const kasse = club.balance || 0;
+        const budget = club.transferBudget || 0;
+        if (kasse > budget * 1.5) chance += 0.1;
+        else if (kasse < budget) chance -= 0.15;
+        const abgelehnt = club.vorstandsanfragen?.abgelehnt?.saison === state.seasonYear ? club.vorstandsanfragen.abgelehnt.anzahl : 0;
+        chance -= abgelehnt * 0.1;
+        return Math.max(0.05, Math.min(0.9, chance));
+    },
+
+    /** Das angezeigte Vorstandsvertrauen (state.boardConfidence), sonst das des Vereins */
+    vertrauen(state, club) {
+        return typeof state?.boardConfidence === "number" ? state.boardConfidence : (club?.confidence ?? 75);
+    },
+
+    /** Was der Vorstand bei Zustimmung gibt */
+    anfrageBetrag(state, key) {
+        const club = this.eigenerVerein(state);
+        const ce = _boardResolve('ContractEngine', './contractEngine.js');
+        const runde = b => ce && typeof ce.rundeBetrag === "function" ? ce.rundeBetrag(b) : Math.round(b);
+        const kasse = Math.max(0, club?.balance || 0);
+        if (key === "transfer") {
+            const frei = kasse - (club.transferBudget || 0);
+            return frei > 0 ? runde(Math.min(frei * 0.5, Math.max(kasse * 0.05, (club.transferBudget || 0) * 0.15))) : 0;
+        }
+        if (key === "gehalt") return runde((club.wageBudget || 0) * 0.1);
+        const a = this.ANFRAGEN[key];
+        const fac = _boardResolve('FacilityEngine', './facilityEngine.js');
+        if (!a?.anlage || !fac || typeof fac.kostenDetail !== "function") return 0;
+        return runde(fac.kostenDetail(club, a.anlage, "ausbau", state.seasonYear || 1).netto * 0.5);
+    },
+
+    /** Täglich: Ist die Bedenkzeit um, entscheidet der Vorstand */
+    anfrageTag(state, zufall = Math.random) {
+        const offen = state?.vorstandsAnfrage;
+        if (!offen || this.stempel(state) < offen.entscheidetTag) return null;
+        delete state.vorstandsAnfrage;
+        return this.entscheideAnfrage(state, offen.key, zufall);
+    },
+
+    entscheideAnfrage(state, key, zufall = Math.random) {
+        const club = this.eigenerVerein(state);
+        const a = this.ANFRAGEN[key];
+        if (!club || !a) return null;
+        const betrag = this.anfrageBetrag(state, key);
+        const ja = betrag > 0 && zufall() < this.anfrageChance(state, key);
+        const news = _boardResolve('NewsEngine', './newsEngine.js');
+        const gs = _boardResolve('GameState', './gameState.js');
+        const geld = b => gs && typeof gs.formatMoney === "function" ? gs.formatMoney(b) : `${b} €`;
+        if (!club.vorstandsanfragen) club.vorstandsanfragen = {};
+        club.vorstandsanfragen[key] = { letztes: this.stempel(state), ergebnis: ja ? "ja" : "nein" };
+
+        let betreff, text;
+        if (ja) {
+            if (key === "transfer") {
+                club.transferBudget = Math.round((club.transferBudget || 0) + betrag);
+                text = `Der Vorstand stockt das Transferbudget um ${geld(betrag)} auf. Wir erwarten, dass das Geld gut angelegt wird.`;
+            } else if (key === "gehalt") {
+                club.wageBudget = Math.round((club.wageBudget || 0) + betrag);
+                text = `Der Gehaltsetat steigt um ${geld(betrag)} pro Woche. Halten Sie ihn ein.`;
+            } else {
+                club.bauzuschuss = { key: a.anlage, betrag, saison: state.seasonYear };
+                text = `Der Vorstand übernimmt die Hälfte des nächsten Ausbaus: ${geld(betrag)} kommen dazu, sobald die Arbeiten beginnen.`;
+            }
+            betreff = `Vorstand stimmt zu: ${a.label}`;
+        } else {
+            const ab = club.vorstandsanfragen.abgelehnt;
+            club.vorstandsanfragen.abgelehnt = { saison: state.seasonYear, anzahl: (ab && ab.saison === state.seasonYear ? ab.anzahl : 0) + 1 };
+            const vertrauen = this.vertrauen(state, club);
+            const malus = vertrauen < 50 ? 4 : 2;
+            club.confidence = Math.max(10, (club.confidence ?? 75) - malus);
+            if (typeof state.boardConfidence === "number") state.boardConfidence = Math.max(10, state.boardConfidence - malus);
+            const grund = betrag <= 0 ? "Es ist schlicht kein Geld dafür da."
+                : (vertrauen < 50 ? "Erst müssen die Ergebnisse stimmen."
+                    : "Im Moment sehen wir keinen Anlass dafür.");
+            betreff = `Vorstand lehnt ab: ${a.label}`;
+            text = `${grund} Wir kommen in ein paar Wochen darauf zurück, wenn sich etwas ändert.`;
+        }
+        if (news && typeof news.createBoardMessage === "function") {
+            news.createBoardMessage(state, { title: betreff, text, priority: "normal" });
+        }
+        return { zugestimmt: ja, key, betrag, betreff };
+    },
+
     /**
      * Aktualisiert die Vorstandszufriedenheit basierend auf Tabelle, Zielen, Finanzen und Form
      */

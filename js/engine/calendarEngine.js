@@ -95,6 +95,16 @@ function _getTransferEngineCal() {
     return null;
 }
 
+/** Der Vorstand - für Anfragen, die nach ein paar Tagen beantwortet werden */
+function _getBoardEngineCal() {
+    if (typeof BoardEngine !== "undefined" && BoardEngine) return BoardEngine;
+    if (typeof window !== "undefined" && window.BoardEngine) return window.BoardEngine;
+    if (typeof require !== "undefined") {
+        try { return require("./boardEngine.js").BoardEngine; } catch (e) { return null; }
+    }
+    return null;
+}
+
 const CalendarEngine = {
     DAY_TYPES: CALENDAR_DAY_TYPES,
 
@@ -1008,6 +1018,12 @@ const CalendarEngine = {
      */
     advanceOneDay(state) {
         const res = this._tagWeiter(state);
+        // Eine Anfrage an den Vorstand: Nach der Bedenkzeit kommt die Antwort
+        const vorstand = _getBoardEngineCal();
+        if (res && res.success && vorstand && typeof vorstand.anfrageTag === "function") {
+            const antwort = vorstand.anfrageTag(state);
+            if (antwort && res.summary && Array.isArray(res.summary.messages)) res.summary.messages.unshift(`👔 ${antwort.betreff}`);
+        }
         const te = _getTransferEngineCal();
         if (res && res.success && te && typeof te.pruefeFensterwechsel === "function") {
             const meldungen = te.pruefeFensterwechsel(state, this.getCurrentDay(state));

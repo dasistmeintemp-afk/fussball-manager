@@ -478,12 +478,23 @@ class TrainingEngine {
 
             clubPlayers.forEach(player => {
                 // 1. Fitness-Regeneration (C2: beeinflusst durch trainingGround)
-                let fitnessGain = 7 + trainingLvl * 1.5;
-                if (focus === "regeneration") fitnessGain = 14 + trainingLvl * 2;
-                if (intensity === "low") fitnessGain += 4;
-                if (intensity === "high") fitnessGain -= 3;
-
-                player.fitness = Math.min(100, player.fitness + Math.round(fitnessGain));
+                //
+                // Ein fester Zuschlag von 7 bis 12 Punkten je Spieltag reichte
+                // nicht: Ein Spiel kostet 13 bis 17, und die Stammkräfte der KI
+                // rutschten über die Saison auf eine Fitness um 64 vor dem
+                // Anpfiff. Die eigene Elf, die Tag für Tag regeneriert (wer
+                // müder ist, erholt sich stärker), stand bei 90. Das waren rund
+                // 7 % Spielstärke - mehr als der Abstand zwischen dem besten und
+                // dem schwächsten Bundesligakader. Jetzt schließt die Woche wie
+                // beim eigenen Verein einen Anteil der Lücke zu 100, je nach
+                // Trainingsgelände 74 bis 90 %; vor dem Anpfiff steht die KI
+                // damit wie der Nutzer bei rund 90 (Pokal- und Europapokal-
+                // spiele kosten zwischen zwei Spieltagen zusätzlich).
+                const anteil = Math.min(0.9, 0.7 + trainingLvl * 0.04
+                    + (intensity === "low" ? 0.05 : 0) - (intensity === "high" ? 0.05 : 0)
+                    + (focus === "regeneration" ? 0.1 : 0));
+                const fit = player.fitness ?? 100;
+                player.fitness = Math.min(100, Math.round(fit + (100 - fit) * anteil));
 
                 // 2. Moral-Entwicklung
                 if (player.stats.matches > 0 && player.form >= 7.0) {

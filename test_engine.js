@@ -9587,6 +9587,38 @@ function runEngineTests() {
         if (zurueck.clubs.find(x => x.id === club.id).vorstandsziel.verhandelt !== "senken") throw new Error("Die Absprache überlebt das Speichern nicht");
     });
 
+    test("Gleiche Bedingungen: KI-Elfen erholen sich wie die eigene, die Moral folgt bei allen der Form", () => {
+        const { DressingRoomEngine } = require('./js/engine/dressingRoomEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const ki = state.clubs.find(c => c.leagueId === club.leagueId && c.id !== club.id);
+        const kiSpieler = state.players.find(p => p.clubId === ki.id);
+
+        // Ein Spiel kostet 15, die Woche danach holt den Großteil zurück -
+        // über eine Saison pendelt sich die KI-Fitness bei rund 90 ein,
+        // statt Woche für Woche weiter abzusacken
+        kiSpieler.fitness = 100;
+        for (let i = 0; i < 20; i++) {
+            kiSpieler.fitness = Math.max(35, kiSpieler.fitness - 15);
+            TrainingEngine.processWeeklyTraining(state);
+        }
+        if (kiSpieler.fitness < 85) throw new Error(`KI-Fitness vor dem Anpfiff nach 20 Spielen: ${kiSpieler.fitness}`);
+
+        // Moral: dasselbe Ziel aus der Form für beide Seiten
+        ki.form = ["W", "W", "D", "L", "W"];
+        club.form = ["W", "W", "D", "L", "W"];
+        if (DressingRoomEngine.formZiel(ki) !== DressingRoomEngine.formZiel(club)) throw new Error("Unterschiedliche Ziele bei gleicher Form");
+        const ziel = DressingRoomEngine.formZiel(club);
+        const kader = state.players.filter(p => club.playerIds.includes(p.id));
+        const [hoch, tief] = kader;
+        hoch.morale = 99; tief.morale = 30;
+        for (let tag = 0; tag < 5; tag++) DressingRoomEngine.settleDaily(state);
+        // Zwischen zwei Spielen bildet sich gut ein Viertel des Ausschlags zurück
+        if (!(hoch.morale < 99 - (99 - ziel) * 0.25)) throw new Error(`Hohe Moral bleibt oben: ${hoch.morale.toFixed(1)} (Ziel ${ziel.toFixed(1)})`);
+        if (!(tief.morale > 30 + (ziel - 30) * 0.25)) throw new Error(`Tiefe Moral erholt sich nicht: ${tief.morale.toFixed(1)}`);
+        if (hoch.morale < ziel || tief.morale > ziel) throw new Error("Die Moral schießt über das Ziel hinaus");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

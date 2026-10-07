@@ -22,6 +22,21 @@ class DressingRoomEngine {
     static MIN_MORAL = 28;
     static MAX_MORAL = 99;
 
+    /** Anteil der Lücke zum Ziel, den die eigene Kabine je Tag schließt */
+    static TAGES_ZUG = 0.07;
+
+    /**
+     * Wohin sich die Stimmung eines Vereins bewegt: die Punkte aus den
+     * letzten fünf Spielen, von 48 (nur Niederlagen) bis 92 (nur Siege),
+     * ohne Spiele 72. Gilt für den eigenen Verein wie für die KI.
+     */
+    static formZiel(club) {
+        const form = (club?.form || []).filter(r => r && r !== "-").slice(-5);
+        if (form.length === 0) return 72;
+        const punkte = form.reduce((s, r) => s + (r === "W" ? 3 : r === "D" ? 1 : 0), 0);
+        return 48 + punkte / (form.length * 3) * 44;
+    }
+
     /**
      * Verarbeitet ein Spiel des eigenen Vereins in der Kabine.
      * Gibt die Stimmungslage zurück, damit der Tagesbericht sie erzählen kann.
@@ -222,14 +237,7 @@ class DressingRoomEngine {
             const kader = spielerNachVerein.get(club.id);
             if (!kader || kader.length === 0) return;
 
-            const form = (club.form || []).filter(r => r && r !== "-").slice(-5);
-            let ziel = 72;
-            if (form.length > 0) {
-                const punkte = form.reduce((s, r) => s + (r === "W" ? 3 : r === "D" ? 1 : 0), 0);
-                const quote = punkte / (form.length * 3);
-                ziel = 48 + quote * 44;
-            }
-
+            const ziel = this.formZiel(club);
             kader.forEach(p => {
                 const jetzt = p.morale ?? 75;
                 p.morale = Math.max(this.MIN_MORAL, Math.min(this.MAX_MORAL, jetzt + (ziel - jetzt) * 0.3));
@@ -245,17 +253,21 @@ class DressingRoomEngine {
         const club = state.clubs.find(c => c.id === state.userClubId);
         if (!club) return;
 
+        // Dasselbe Ziel wie bei den KI-Vereinen: die Form der letzten fünf
+        // Spiele. Vorher zog es nur unter 70 nach oben und über 84 kaum nach
+        // unten (0,5 am Tag), während jeder Sieg 4 bis 8 Punkte brachte - bei
+        // ganz gewöhnlichen Ergebnissen stand die eigene Elf bei Moral 90 bis
+        // 99, die Gegner um 70. Das waren rund 2,5 % Spielstärke, ein gutes
+        // Drittel des Abstands zwischen dem besten und dem schwächsten
+        // Bundesligakader: Ein Kader auf Rang 13 wurde auf Autopilot Vierter.
+        // Siege, Noten, Bankfrust und Gespräche wirken weiter - als Ausschlag
+        // um das Ziel, der sich zwischen zwei Spielen zu gut einem Viertel
+        // zurückbildet, so wie bei der KI (settleAiClubs).
+        const ziel = this.formZiel(club);
         state.players.forEach(player => {
             if (!club.playerIds.includes(player.id)) return;
             const moral = player.morale ?? 75;
-            // Zwei Drittel Prozentpunkt Richtung Normalzustand pro Tag
-            // Zwischen zwei Spieltagen liegen rund fünf Tage - in denen
-            // fängt sich eine Mannschaft spürbar wieder
-            // Ganz unten ziehen Stab, Routiniers und Berufsstolz am stärksten
-            const richtung = moral < 45 ? 2.4 : moral < 70 ? 1.6 : moral > 84 ? -0.5 : 0;
-            if (richtung !== 0) {
-                player.morale = Math.max(this.MIN_MORAL, Math.min(this.MAX_MORAL, moral + richtung));
-            }
+            player.morale = Math.max(this.MIN_MORAL, Math.min(this.MAX_MORAL, moral + (ziel - moral) * this.TAGES_ZUG));
         });
 
         // Danach wirkt die Kabine: Wortführer ziehen ihre Gruppe mit

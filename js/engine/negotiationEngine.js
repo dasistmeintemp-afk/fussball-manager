@@ -194,7 +194,7 @@ class NegotiationEngine {
             : Math.round((player.value || 1000000) * 1.15));
 
         const agent = this.getAgentFor(player);
-        const wageDemand = Math.round((player.wage || 10000) * 1.18 * agent.greed);
+        const wageDemand = this.runde((player.wage || 10000) * 1.18 * agent.greed);
         // Ablösefrei heißt nicht umsonst: Spieler und Berater wollen am
         // gesparten Geld beteiligt werden - ein höheres Handgeld, ein Honorar
         // wie bei Vereinslosen
@@ -224,7 +224,7 @@ class NegotiationEngine {
                 fee: askingPrice,
                 wage: wageDemand,
                 years: 3,
-                signingBonus: Math.round(wageDemand * (vorvertrag ? 10 : 6)),
+                signingBonus: this.runde(wageDemand * (vorvertrag ? 10 : 6)),
                 // Der Berater will mitverdienen: ein Teil der Ablöse plus
                 // einige Wochengehälter, bei Vereinslosen mehr
                 agentFee: this.beraterHonorar(askingPrice, wageDemand, ohneAbloese)
@@ -319,8 +319,8 @@ class NegotiationEngine {
                 fee: 0,
                 wage: wageDemand,
                 years: 3,
-                signingBonus: Math.round(wageDemand * 4),
-                agentFee: Math.round(wageDemand * 2 / 1000) * 1000
+                signingBonus: this.runde(wageDemand * 4),
+                agentFee: this.runde(wageDemand * 2)
             },
             agreed: { fee: 0, wage: null, years: null, signingBonus: null, agentFee: null, einsatzPraemie: 0, torPraemie: 0 },
             lastOffer: null,
@@ -538,9 +538,9 @@ class NegotiationEngine {
         // Einigung erreicht - sonst würde man sich endlos gegenseitig
         // dieselbe Zahl zuschieben.
         const nachgeben = 0.04 + (negotiation.round * 0.02);
-        const neueForderung = istAblöse
-            ? Math.round(negotiation.demand.fee * (1 - nachgeben))
-            : Math.round(negotiation.demand.wage * (1 - nachgeben) / 50) * 50;
+        const neueForderung = this.runde(istAblöse
+            ? negotiation.demand.fee * (1 - nachgeben)
+            : negotiation.demand.wage * (1 - nachgeben));
 
         if (neueForderung <= geboten) {
             if (istAblöse) negotiation.demand.fee = geboten;
@@ -717,10 +717,25 @@ class NegotiationEngine {
         return Math.max(20, Math.min(100, Math.round(geduld + (ruf - 50) / 4)));
     }
 
-    /** Beraterhonorar: ein Teil der Ablöse plus einige Wochengehälter */
+    /**
+     * Beraterhonorar: ein Teil der Ablöse plus einige Wochengehälter.
+     * Vorher galten mindestens 1.000 € auf Tausender gerundet - in der
+     * Landesliga (Gehälter um 150 €) das Vielfache dessen, was die Formel
+     * ergibt. Jetzt wird nach der Größe gerundet, mindestens auf 100 €.
+     */
     static beraterHonorar(ablose, wochenlohn, vereinslos = false) {
         const roh = vereinslos ? wochenlohn * 12 : (ablose || 0) * 0.04 + wochenlohn * 4;
-        return Math.max(1000, Math.round(roh / 1000) * 1000);
+        return Math.max(100, this.runde(roh));
+    }
+
+    /**
+     * Ein Betrag, wie ihn Menschen nennen: auf seine Größenordnung gerundet
+     * (ContractEngine.rundeBetrag). Vorher standen Forderungen wie 94.702 €
+     * Gehalt und 947.020 € Handgeld in der Verhandlung.
+     */
+    static runde(betrag) {
+        const ce = _negResolve("ContractEngine", "./contractEngine.js");
+        return ce && typeof ce.rundeBetrag === "function" ? ce.rundeBetrag(betrag) : Math.round(betrag || 0);
     }
 
     /**

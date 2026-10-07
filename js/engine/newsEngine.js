@@ -115,7 +115,7 @@ const NewsEngine = {
         } else if (filter === "match") {
             list = list.filter(m => m.type === "match_preview" || m.type === "match_report" || m.type === "opponent_analysis");
         } else if (filter === "transfer") {
-            list = list.filter(m => m.type === "transfer_done" || m.type === "transfer_offer" || m.type === "contract_news" || m.type === "sportdirektor");
+            list = list.filter(m => m.type === "transfer_done" || m.type === "transfer_offer" || m.type === "contract_news" || m.type === "sportdirektor" || m.type === "transfer_window");
         } else if (filter === "training") {
             list = list.filter(m => m.type === "training_report" || m.type === "injury" || m.type === "development");
         } else if (filter === "scouting") {

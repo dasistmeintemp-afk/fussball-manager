@@ -8815,9 +8815,14 @@ function runEngineTests() {
 
         // Mitten in der Hinrunde: zu
         if (state.preseason) state.preseason.aktiv = false;
-        state.currentMatchday = 6;
+        const aufTag = (filter) => {
+            state.currentDayIndex = state.calendar.findIndex(filter);
+            state.currentDate = state.calendar[state.currentDayIndex].date;
+            state.currentMatchday = state.calendar[state.currentDayIndex].matchday || state.currentMatchday;
+        };
+        aufTag(d => d.type === "matchday" && d.matchday === 6);
         const info = TransferEngine.fensterInfo(state);
-        if (info.offen || !/Halbserie/.test(info.text)) throw new Error(`Fenster am 6. Spieltag: ${info.text}`);
+        if (info.offen || !/01\.01\./.test(info.text)) throw new Error(`Fenster am 6. Spieltag: ${info.text}`);
         const fremd = state.players.find(p => p.clubId && p.clubId !== club.id);
         const neg = NegotiationEngine.startTransferNegotiation(state, fremd.id, club.id);
         if (neg.success) throw new Error("Verhandlung außerhalb des Fensters eröffnet");
@@ -8841,10 +8846,94 @@ function runEngineTests() {
         for (let i = 0; i < 40; i++) TransferEngine.processAITransferMarket(state);
         if (state.transferMarket.offers.length !== vorher) throw new Error("KI bietet außerhalb des Fensters");
 
-        // Zur Halbserie: offen
-        state.currentMatchday = Math.round((state.totalMatchdays || 34) / 2);
+        // Im Januar: offen
+        aufTag(d => d.date.startsWith("05.01"));
         if (!TransferEngine.fensterInfo(state).offen) throw new Error("Zur Halbserie ist das Fenster zu");
         if (!NegotiationEngine.startTransferNegotiation(state, fremd.id, club.id).success) throw new Error("Im Winterfenster keine Verhandlung möglich");
+    });
+
+    test("Winterpause je Land, Boxing Day in England, Transferfenster nach Datum mit Meldungen", () => {
+        const vorlage = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const vereinIn = liga => vorlage.clubs.find(c => c.leagueId === liga).id;
+        const spieltage = st => st.calendar.filter(d => d.type === "matchday");
+        const tm = d => { const [t, m] = d.date.split(".").map(Number); return { t, m }; };
+        const zwischen = (d, von, bis) => { const { t, m } = tm(d); const w = (m < 7 ? m + 12 : m) * 100 + t; return w >= von && w <= bis; };
+
+        // Deutschland: Pause über die Feiertage, kein Spiel vom 22.12. bis 9.1.
+        const de = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const pause = de.calendar.filter(d => d.winterpause);
+        if (pause.length < 10) throw new Error(`Bundesliga: nur ${pause.length} Tage Winterpause`);
+        if (spieltage(de).some(d => zwischen(d, 1222, 1309))) throw new Error("Bundesliga spielt in der Winterpause");
+        if (!pause.some(d => d.trainingsArt === "rest") || !pause.some(d => d.trainingsArt === "training")) throw new Error("Die Pause hat nicht freie Tage und Training");
+
+        // England: keine Winterpause - Boxing Day, 29.12. und Neujahr sind Spieltage
+        const en = GameState.createNewGame(vereinIn("en_liga_1"), "normal", { name: "Trainer" });
+        if (en.calendar.some(d => d.winterpause)) throw new Error("Die Premier League macht Winterpause");
+        ["26.12", "29.12", "01.01"].forEach(tag => {
+            if (!spieltage(en).some(d => d.date.startsWith(tag))) throw new Error(`Premier League ohne Spieltag am ${tag}.`);
+        });
+        if (!spieltage(en).some(d => d.festtag === "Boxing Day")) throw new Error("Der Boxing Day heißt nicht so");
+
+        // Nirgends wird an Heiligabend oder am ersten Weihnachtstag gespielt
+        ["de_liga_1", "en_liga_1", "es_liga_1", "it_liga_1", "fr_liga_1", "en_liga_2"].forEach(liga => {
+            const st = liga === "de_liga_1" ? de : (liga === "en_liga_1" ? en : GameState.createNewGame(vereinIn(liga), "normal", { name: "Trainer" }));
+            if (st.calendar.some(d => ["matchday", "cup", "euro"].includes(d.type) && /^(24|25)\.12/.test(d.date))) throw new Error(`${liga} spielt an Weihnachten`);
+            if (spieltage(st).length !== st.totalMatchdays) throw new Error(`${liga}: Spieltage gehen verloren`);
+            // Auch die lange Championship ist vor dem Sommer fertig
+            if (tm(spieltage(st)[spieltage(st).length - 1]).m >= 7) throw new Error(`${liga} spielt bis in den Sommer`);
+        });
+
+        // Das Fenster nach Datum: im Januar offen - auch in England, wo gespielt wird
+        const aufTag = (st, praefix) => {
+            st.currentDayIndex = st.calendar.findIndex(d => d.date.startsWith(praefix));
+            st.currentDate = st.calendar[st.currentDayIndex].date;
+            if (st.preseason) st.preseason.aktiv = false;
+        };
+        aufTag(en, "26.12");
+        if (TransferEngine.istTransferfenster(en)) throw new Error("Am Boxing Day ist das Fenster schon offen");
+        const zuText = TransferEngine.fensterInfo(en).text;
+        if (!/öffnet am 01\.01\. Vereinslose/.test(zuText)) throw new Error(`Hinweis bei geschlossenem Fenster: ${zuText}`);
+        // Der Kalendertag zählt, auch wenn currentDate (noch) nicht nachgezogen ist
+        en.currentDate = "01.08.2026";
+        if (TransferEngine.istTransferfenster(en)) throw new Error("Das Fenster richtet sich nach currentDate statt nach dem Kalendertag");
+        aufTag(en, "01.01");
+        if (!TransferEngine.istTransferfenster(en) || TransferEngine.fensterInfo(en).art !== "winter") throw new Error("Am Neujahrsspieltag ist das Winterfenster zu");
+        aufTag(de, "02.02");
+        if (!TransferEngine.istTransferfenster(de)) throw new Error("Am 2. Februar ist das Fenster schon zu");
+        aufTag(de, "03.02");
+        if (TransferEngine.istTransferfenster(de)) throw new Error("Am 3. Februar ist das Fenster noch offen");
+        aufTag(de, "31.08");
+        if (!TransferEngine.istTransferfenster(de)) throw new Error("Am 31. August ist das Sommerfenster zu");
+        aufTag(de, "01.09");
+        if (TransferEngine.istTransferfenster(de)) throw new Error("In Deutschland ist das Fenster am 1. September noch offen");
+        aufTag(en, "01.09");
+        if (!TransferEngine.istTransferfenster(en)) throw new Error("In England ist der 1. September kein Fenstertag");
+
+        // Meldungen: Öffnen, letzter Tag, Schließen - je einmal
+        aufTag(de, "31.12");
+        delete de.transferFenster;
+        if (TransferEngine.pruefeFensterwechsel(de).length) throw new Error("Meldung ohne Wechsel");
+        aufTag(de, "01.01");
+        if (!/Wintertransferfenster geöffnet/.test(TransferEngine.pruefeFensterwechsel(de)[0] || "") || de.inbox[0].type !== "transfer_window") throw new Error("Keine Nachricht zum Öffnen");
+        if (TransferEngine.pruefeFensterwechsel(de).length) throw new Error("Dieselbe Meldung zweimal");
+        aufTag(de, "02.02");
+        if (!/Deadline Day/.test(TransferEngine.pruefeFensterwechsel(de)[0] || "")) throw new Error("Keine Erinnerung am letzten Tag");
+        if (TransferEngine.pruefeFensterwechsel(de).length) throw new Error("Zwei Erinnerungen am letzten Tag");
+        aufTag(de, "03.02");
+        if (!/geschlossen/.test(TransferEngine.pruefeFensterwechsel(de)[0] || "") || !/Vorbereitung/.test(de.inbox[0].body)) throw new Error("Keine Nachricht zum Schließen");
+
+        // In der Winterpause handeln auch die KI-Vereine, sobald das Fenster offen ist
+        aufTag(de, "02.01");
+        if (!de.calendar[de.currentDayIndex].winterpause) throw new Error("Der 2. Januar liegt nicht in der Bundesliga-Pause");
+        let ki = 0;
+        const original = TransferEngine.processAiTransferWindow;
+        TransferEngine.processAiTransferWindow = (st, n) => { ki += n; return 0; };
+        try {
+            CalendarEngine.advanceOneDay(de);
+        } finally {
+            TransferEngine.processAiTransferWindow = original;
+        }
+        if (ki <= 0) throw new Error("In der Winterpause handelt die KI nicht");
     });
 
     test("Vertragsklauseln: Ausstiegsklausel ziehen und vereinbaren, Weiterverkaufsbeteiligung", () => {

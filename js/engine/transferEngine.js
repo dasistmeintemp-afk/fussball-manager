@@ -314,23 +314,102 @@ class TransferEngine {
     // verstaerkte sich nie, man wurde nie ueberboten, und der Kader des
     // Tabellenzweiten war im Mai derselbe wie im August.
 
+    /** Wie viele Transferversuche die KI je Tag der Winterpause macht */
+    static WINTER_KI_JE_TAG = 30;
+
+    /**
+     * Die Transferfenster nach Kalenderdatum, wie 2025/26: Der Sommer endet
+     * in Deutschland und Frankreich am 31. August, in England, Spanien und
+     * Italien am 1. September. Im Winter ist überall der Januar offen, bis
+     * zum 2. Februar - in Spanien und Italien ab dem 2. Januar. Das Fenster
+     * hängt nicht an der Winterpause: Die Premier League spielt über die
+     * Feiertage durch, und trotzdem wird im Januar gehandelt.
+     */
+    static FENSTER = {
+        sommerBis: { de: [8, 31], fr: [8, 31], en: [9, 1], es: [9, 1], it: [9, 1] },
+        winterVon: { de: [1, 1], fr: [1, 1], en: [1, 1], es: [1, 2], it: [1, 2] },
+        winterBis: [2, 2]
+    };
+
+    /** Das Kalenderdatum des Spielstands - aus "TT.MM.JJJJ" */
+    static heute(state) {
+        // Der Kalendertag zählt; currentDate ist nur seine Kopie
+        const tag = Array.isArray(state?.calendar) ? state.calendar[state.currentDayIndex || 0] : null;
+        const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(String(tag?.date || state?.currentDate || ""));
+        return m ? { tag: Number(m[1]), monat: Number(m[2]), jahr: Number(m[3]) } : null;
+    }
+
+    static landVon(state) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        return club?.countryId || "de";
+    }
+
+    /**
+     * Die Grenzen der Fenster in Spieltagen - nur noch für Spielstände ohne
+     * Kalenderdatum
+     */
+    static fensterGrenzen(state) {
+        const gesamt = state?.totalMatchdays || 34;
+        const halbserie = Math.round(gesamt / 2);
+        return { sommerBis: 2, halbserie, winterVon: halbserie + 1, winterBis: halbserie + 2 };
+    }
+
+    /**
+     * Welches Fenster gerade offen ist: { art: "sommer" | "winter", bis: [Monat, Tag] }
+     * oder null
+     */
+    static offenesFenster(state) {
+        if (state?.preseason?.aktiv) {
+            return { art: "sommer", bis: this.FENSTER.sommerBis[this.landVon(state)] || [9, 1] };
+        }
+        const heute = this.heute(state);
+        const tag = Array.isArray(state?.calendar) ? state.calendar[state.currentDayIndex || 0] : null;
+        if (!heute || !tag) {
+            // Ohne Kalender: wie früher nach Spieltagen
+            const md = state?.currentMatchday || 0;
+            const g = this.fensterGrenzen(state);
+            if (md <= g.sommerBis) return { art: "sommer", bisSpieltag: g.sommerBis };
+            return md >= g.winterVon && md <= g.winterBis ? { art: "winter", bisSpieltag: g.winterBis } : null;
+        }
+        if (tag.sommerpause) return null;
+        const land = this.landVon(state);
+        const wert = ([m, t]) => m * 100 + t;
+        const jetzt = heute.monat * 100 + heute.tag;
+        const sommerBis = this.FENSTER.sommerBis[land] || [9, 1];
+        if (jetzt >= 701 && jetzt <= wert(sommerBis)) return { art: "sommer", bis: sommerBis };
+        const winterVon = this.FENSTER.winterVon[land] || [1, 1];
+        if (jetzt >= wert(winterVon) && jetzt <= wert(this.FENSTER.winterBis)) return { art: "winter", bis: this.FENSTER.winterBis };
+        return null;
+    }
+
+    static _datumText([monat, tag]) {
+        return `${String(tag).padStart(2, "0")}.${String(monat).padStart(2, "0")}.`;
+    }
+
     /**
      * Das Transferfenster aus Sicht des Nutzers: offen oder zu, und bis
      * wann bzw. ab wann. Es gilt für alle Vereine gleich - vorher kaufte die
      * KI nur in den Fenstern, der Nutzer aber jederzeit.
      */
     static fensterInfo(state) {
-        const offen = this.istTransferfenster(state);
-        const md = state?.currentMatchday || 0;
-        const gesamt = state?.totalMatchdays || 34;
-        const winter = Math.round(gesamt / 2);
-        if (offen) {
-            const bis = state?.preseason?.aktiv ? "bis nach dem 2. Spieltag"
-                : (md <= 2 ? "bis nach dem 2. Spieltag" : `bis nach dem ${winter + 1}. Spieltag`);
-            return { offen: true, text: `Transferfenster offen ${bis}.` };
+        const f = this.offenesFenster(state);
+        const name = art => art === "winter" ? "Wintertransferfenster" : "Sommertransferfenster";
+        if (f) {
+            const bis = f.bis ? `bis ${this._datumText(f.bis)}` : `bis nach dem ${f.bisSpieltag}. Spieltag`;
+            return { offen: true, art: f.art, bis: f.bis || null, bisSpieltag: f.bisSpieltag || null, text: `${name(f.art)} offen ${bis}` };
         }
-        const naechstes = md < winter ? `zur Halbserie (ab dem ${winter}. Spieltag)` : "in der Sommerpause";
-        return { offen: false, text: `Transferfenster geschlossen - es öffnet ${naechstes}. Vereinslose Spieler lassen sich jederzeit verpflichten.` };
+        const heute = this.heute(state);
+        const tag = Array.isArray(state?.calendar) ? state.calendar[state.currentDayIndex || 0] : null;
+        let oeffnet;
+        if (heute && tag && !tag.sommerpause && heute.monat >= 7) {
+            oeffnet = `am ${this._datumText(this.FENSTER.winterVon[this.landVon(state)] || [1, 1])}`;
+        } else if (!heute || !tag) {
+            const g = this.fensterGrenzen(state);
+            oeffnet = (state?.currentMatchday || 0) < g.winterVon ? `in der Winterpause (nach dem ${g.halbserie}. Spieltag)` : "mit der Vorbereitung auf die neue Saison";
+        } else {
+            oeffnet = "mit der Vorbereitung auf die neue Saison";
+        }
+        return { offen: false, oeffnet, text: `Transferfenster geschlossen - es öffnet ${oeffnet}${oeffnet.endsWith(".") ? "" : "."} Vereinslose Spieler lassen sich jederzeit verpflichten.` };
     }
 
     /** Warum gerade kein Transfer geht - oder null */
@@ -342,13 +421,75 @@ class TransferEngine {
 
     /** Laeuft gerade ein Transferfenster? */
     static istTransferfenster(state) {
-        if (state?.preseason?.aktiv) return true;
-        const md = state?.currentMatchday || 0;
-        const gesamt = state?.totalMatchdays || 34;
-        // Ein spaetes Sommerfenster und ein Winterfenster zur Halbserie
-        if (md <= 2) return true;
-        const winter = Math.round(gesamt / 2);
-        return md >= winter && md <= winter + 1;
+        return !!this.offenesFenster(state);
+    }
+
+    /**
+     * Wie viele Transferversuche die KI an einem Spieltag im Fenster macht.
+     * Das Winterfenster dauert jetzt einen Monat statt zwei Spieltagen - je
+     * Spieltag wird dort deshalb weniger versucht.
+     */
+    static kiVersucheJeSpieltag(state) {
+        const f = this.offenesFenster(state);
+        return f && f.art === "winter" ? 200 : 400;
+    }
+
+    /**
+     * Öffnet oder schließt sich ein Fenster, steht es im Postfach - und am
+     * letzten Tag kommt eine Erinnerung. Vorher öffnete und schloss das
+     * Fenster still; wer nicht in den Transfermarkt sah, verpasste es.
+     * heute ist der Kalendertag, auf dem der Manager jetzt steht. Gibt die
+     * Zeilen für den Tagesbericht zurück.
+     */
+    static pruefeFensterwechsel(state, heute = null) {
+        if (!state) return [];
+        const info = this.fensterInfo(state);
+        const merk = state.transferFenster || (state.transferFenster = {});
+        const meldungen = [];
+        const post = (betreff, text) => {
+            if (!Array.isArray(state.inbox)) state.inbox = [];
+            state.inbox.unshift({
+                id: Date.now() + Math.floor(Math.random() * 100000),
+                matchday: state.currentMatchday,
+                date: state.currentDate || `Spieltag ${state.currentMatchday || 1}`,
+                sender: "Transferabteilung",
+                subject: betreff,
+                body: text,
+                read: false,
+                type: "transfer_window"
+            });
+            meldungen.push(`${betreff}.`);
+        };
+
+        if (typeof merk.offen !== "boolean") {
+            merk.offen = info.offen;
+        } else if (merk.offen !== info.offen) {
+            merk.offen = info.offen;
+            if (info.offen) {
+                post(`🟢 ${info.art === "winter" ? "Wintertransferfenster" : "Sommertransferfenster"} geöffnet`,
+                    `${info.bis ? `Bis zum ${this._datumText(info.bis)}` : `Bis nach dem ${info.bisSpieltag}. Spieltag`} lassen sich Spieler kaufen, verkaufen und verleihen. `
+                    + `Auch die anderen Vereine sind jetzt auf dem Markt - mit Angeboten für unsere Spieler ist zu rechnen.`);
+            } else {
+                post("🔒 Transferfenster geschlossen",
+                    `Ab jetzt wechseln nur noch vereinslose Spieler. Das nächste Fenster öffnet ${info.oeffnet}.`);
+            }
+        }
+
+        // Der letzte Tag des Fensters - nach Datum, ohne Kalender am letzten Spieltag
+        const datum = this.heute(state);
+        const letzterTag = info.offen && (info.bis
+            ? (datum && datum.monat === info.bis[0] && datum.tag === info.bis[1])
+            : (heute && heute.type === "matchday" && heute.matchday === info.bisSpieltag));
+        if (letzterTag) {
+            const schluessel = `${state.seasonYear || 1}-${info.art}`;
+            if (merk.deadline !== schluessel) {
+                merk.deadline = schluessel;
+                post("⏰ Deadline Day: das Transferfenster schließt",
+                    `Heute ist der letzte Tag des ${info.art === "winter" ? "Winter" : "Sommer"}transferfensters - ${info.bis ? "heute Abend" : `nach dem ${info.bisSpieltag}. Spieltag`} ist Schluss. `
+                    + `Was noch verhandelt wird, muss heute abgeschlossen sein; vereinslose Spieler bleiben danach zu haben.`);
+            }
+        }
+        return meldungen;
     }
 
     /**

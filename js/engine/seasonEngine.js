@@ -538,7 +538,8 @@ class SeasonEngine {
         if (transferEngine && typeof transferEngine.processAiTransferWindow === 'function'
             && typeof transferEngine.istTransferfenster === 'function'
             && transferEngine.istTransferfenster(state)) {
-            transferEngine.processAiTransferWindow(state, 400);
+            transferEngine.processAiTransferWindow(state,
+                typeof transferEngine.kiVersucheJeSpieltag === 'function' ? transferEngine.kiVersucheJeSpieltag(state) : 400);
             // ... und verleihen junge Spieler, die bei ihnen nicht spielen
             const leihen = _resolve('LoanEngine', './loanEngine.js');
             if (leihen && typeof leihen.kiLeihen === 'function') leihen.kiLeihen(state, 25);

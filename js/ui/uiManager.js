@@ -5396,7 +5396,7 @@ class UIManager {
             let typeLabel = "Info";
             if (msg.type === "board_message" || msg.type === "welcome") { icon = "👔"; typeLabel = "Vorstand"; }
             else if (msg.type === "match_report" || msg.type === "match_preview") { icon = "⚽"; typeLabel = "Spiel"; }
-            else if (msg.type === "transfer_done" || msg.type === "transfer_offer") { icon = "🔄"; typeLabel = "Transfer"; }
+            else if (msg.type === "transfer_done" || msg.type === "transfer_offer" || msg.type === "transfer_window") { icon = "🔄"; typeLabel = "Transfer"; }
             else if (msg.type === "training_report" || msg.type === "injury") { icon = "🏥"; typeLabel = "Training / Lazarett"; }
             else if (msg.type === "scout_report" || msg.type === "scouting") { icon = "🔍"; typeLabel = "Scouting"; }
             else if (msg.type === "finance_warning" || msg.type === "sponsor") { icon = "💰"; typeLabel = "Finanzen"; }
@@ -5503,7 +5503,7 @@ class UIManager {
         let typeLabel = "Info";
         if (msg.type === "board_message" || msg.type === "welcome") { icon = "👔"; typeLabel = "Vorstand"; }
         else if (msg.type === "match_report" || msg.type === "match_preview") { icon = "⚽"; typeLabel = "Spiel"; }
-        else if (msg.type === "transfer_done" || msg.type === "transfer_offer") { icon = "🔄"; typeLabel = "Transfer"; }
+        else if (msg.type === "transfer_done" || msg.type === "transfer_offer" || msg.type === "transfer_window") { icon = "🔄"; typeLabel = "Transfer"; }
         else if (msg.type === "training_report" || msg.type === "injury") { icon = "🏥"; typeLabel = "Training / Lazarett"; }
         else if (msg.type === "scout_report" || msg.type === "scouting") { icon = "🔍"; typeLabel = "Scouting"; }
         else if (msg.type === "finance_warning" || msg.type === "sponsor") { icon = "💰"; typeLabel = "Finanzen"; }

@@ -117,7 +117,7 @@ const NewsEngine = {
         } else if (filter === "transfer") {
             list = list.filter(m => m.type === "transfer_done" || m.type === "transfer_offer" || m.type === "contract_news");
         } else if (filter === "training") {
-            list = list.filter(m => m.type === "training_report" || m.type === "injury");
+            list = list.filter(m => m.type === "training_report" || m.type === "injury" || m.type === "development");
         } else if (filter === "scouting") {
             list = list.filter(m => m.type === "scout_report" || m.type === "youth_prospect");
         } else if (filter === "finance") {

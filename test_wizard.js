@@ -1136,6 +1136,24 @@ function runWizardTests() {
         }
     });
 
+    test("Entwicklungsbericht im Postfach: Wer besser und schlechter wurde, jeder Name führt in die Akte", () => {
+        const ui = Object.create(UIManager.prototype);
+        const html = ui.entwicklungsBerichtHtml({
+            monat: "08.2026",
+            besser: [{ id: "a1", name: "Anton Auf", pos: "ZM", age: 20, von: 60, nach: 63, diff: 3, werte: [{ key: "passing", label: "Passspiel", diff: 4 }], grund: "Talent" }],
+            schlechter: [{ id: "b2", name: "Bernd Ab", pos: "IV", age: 33, von: 70, nach: 68, diff: -2, werte: [{ key: "pace", label: "Tempo", diff: -3 }], grund: "Alter" }],
+            gleich: 18,
+            jugend: [{ id: "j3", name: "Jonas Jung", pos: "ST", age: 16, von: 40, nach: 42, diff: 2 }]
+        });
+        ["Anton Auf", "60 → 63", "+3", "Passspiel +4", "Bernd Ab", "-2", "Tempo -3", "altersbedingt", "18 Spieler halten ihr Niveau", "Jonas Jung"].forEach(t => {
+            if (!html.includes(t)) throw new Error(`Im Bericht fehlt: ${t}`);
+        });
+        const akten = [...html.matchAll(/data-entwicklung-akte="([^"]+)"/g)].map(m => m[1]);
+        if (akten.join() !== "a1,b2") throw new Error("Falsche Verweise in die Akte: " + akten.join());
+        const leer = ui.entwicklungsBerichtHtml({ besser: [], schlechter: [], gleich: 20, jugend: [] });
+        if (!leer.includes("Verbessert hat sich diesen Monat niemand")) throw new Error("Leerer Bericht ohne Hinweis");
+    });
+
     test("Einstieg: Erste Schritte erledigen sich durch Tun, jeder Bereich erklärt sich, Begriffe und Abwahl", () => {
         const { EINSTIEG_SCHRITTE, EINSTIEG_ERKLAERUNGEN, EINSTIEG_BEGRIFFE } = require('./js/ui/uiEinstieg.js');
         const { SaveCodec } = require('./js/services/saveCodec.js');

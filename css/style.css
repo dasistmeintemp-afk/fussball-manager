@@ -8336,3 +8336,24 @@ td.nowrap { white-space: nowrap; }
     color: #fbbf24;
     margin: -6px 0 12px;
 }
+
+/* Entwicklungsbericht im Postfach */
+.entwicklungsbericht .eb-titel { font-size: 13px; margin: 14px 0 6px; }
+.entwicklungsbericht .eb-titel:first-child { margin-top: 0; }
+.eb-liste { display: flex; flex-direction: column; gap: 4px; }
+.eb-zeile {
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(29, 37, 48, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.eb-zeile.row-clickable { cursor: pointer; }
+.eb-zeile.row-clickable:hover { border-color: rgba(var(--accent-rgb), 0.5); }
+.eb-kopf { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-size: 13px; }
+.eb-name { min-width: 0; }
+.eb-zahl { white-space: nowrap; font-size: 12px; }
+.eb-werte { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; font-size: 11px; }
+.eb-werte span { white-space: nowrap; }
+.eb-plus { color: #34d399; }
+.eb-minus { color: #f87171; }
+.eb-gleich { font-size: 12px; margin-top: 8px; }

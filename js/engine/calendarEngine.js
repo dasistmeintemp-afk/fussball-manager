@@ -1246,6 +1246,16 @@ const CalendarEngine = {
             leihen.monatlich(state).forEach(m => summary.messages.push(m));
         }
 
+        // Am Monatswechsel: der Entwicklungsbericht des Co-Trainers
+        const planEngine = (typeof DevelopmentPlanEngine !== 'undefined' && DevelopmentPlanEngine)
+            ? DevelopmentPlanEngine
+            : ((typeof window !== 'undefined' && window.DevelopmentPlanEngine) ? window.DevelopmentPlanEngine
+                : (typeof require !== 'undefined' ? (() => { try { return require('./developmentPlanEngine.js').DevelopmentPlanEngine; } catch (e) { return null; } })() : null));
+        if (planEngine && typeof planEngine.pruefeMonatsbericht === 'function') {
+            const zeile = planEngine.pruefeMonatsbericht(state, currentDay.date);
+            if (zeile) summary.messages.push(zeile);
+        }
+
         // 1b. Lücken in den Aufstellungen schließen. Wer sich verletzt, fällt
         // aus Elf und Bank - ohne Nachrücker stand ein Verein nach ein paar
         // Wochen dauerhaft mit zehn Mann da.

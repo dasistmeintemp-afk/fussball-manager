@@ -298,6 +298,45 @@ function runEngineTests() {
         if (!extRes.success) throw new Error("Contract extension failed: " + extRes.reason);
     });
 
+    test("Entwicklungsbericht: Zum Monatswechsel meldet der Co-Trainer, wer besser und wer schlechter wurde", () => {
+        const { DevelopmentPlanEngine } = require('./js/engine/developmentPlanEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const kader = state.players.filter(p => p.clubId === "muc");
+        const [aufsteiger, verletzter, ruhig] = kader;
+
+        // Der erste Tag setzt nur den Stichtag
+        if (DevelopmentPlanEngine.pruefeMonatsbericht(state, "01.08.2026") !== null) throw new Error("Bericht ohne Vormonat");
+        if (DevelopmentPlanEngine.pruefeMonatsbericht(state, "20.08.2026") !== null) throw new Error("Bericht mitten im Monat");
+
+        aufsteiger.overall += 2;
+        aufsteiger.passing += 3;
+        verletzter.overall -= 1;
+        verletzter.injuredWeeks = 2;
+        const talent = YouthEngine.eigeneTalente(state).find(t => !t.promoted);
+        if (talent) talent.overall += 1;
+
+        const zeile = DevelopmentPlanEngine.pruefeMonatsbericht(state, "01.09.2026");
+        if (!zeile || !/1 besser, 1 schlechter/.test(zeile)) throw new Error("Falsche Tageszeile: " + zeile);
+        const brief = state.inbox[0];
+        if (brief.type !== "development" || !/August 2026/.test(brief.subject)) throw new Error("Kein Bericht über den August im Postfach");
+        const b = brief.entwicklung;
+        if (b.besser.length !== 1 || b.besser[0].id !== aufsteiger.id || b.besser[0].diff !== 2) throw new Error("Der Aufsteiger fehlt oder stimmt nicht");
+        if (!b.besser[0].werte.some(w => w.key === "passing" && w.diff === 3)) throw new Error("Die gewachsenen Werte fehlen");
+        if (b.schlechter.length !== 1 || b.schlechter[0].id !== verletzter.id || b.schlechter[0].grund !== "verletzt") throw new Error("Der Verletzte fehlt oder ohne Grund");
+        if (b.gleich !== kader.length - 2 || b.besser.concat(b.schlechter).some(e => e.id === ruhig.id)) throw new Error("Wer gleich bleibt, wird nicht gezählt");
+        if (talent && !b.jugend.some(t => t.id === talent.id && t.diff === 1)) throw new Error("Das Akademietalent fehlt");
+        if (!brief.body.includes(aufsteiger.name) || !brief.body.includes("Nachgelassen")) throw new Error("Der Text des Berichts ist unvollständig");
+        if (state.entwicklungsStand.monat !== "09.2026" || state.entwicklungsStand.werte[aufsteiger.id].o !== aufsteiger.overall) {
+            throw new Error("Der neue Stichtag steht nicht");
+        }
+
+        // Im Kalender: genau ein Bericht je Monatswechsel
+        const lauf = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        for (let i = 0; i < 40; i++) CalendarEngine.advanceOneDay(lauf);
+        const berichte = lauf.inbox.filter(m => m.type === "development");
+        if (berichte.length !== 1 || !/August/.test(berichte[0].subject)) throw new Error(`${berichte.length} Berichte nach 40 Tagen statt einem über den August`);
+    });
+
     test("Sommerpause: Drei Wochen zum Verlängern, wer wartet, verliert Spieler an andere - dann der Saisonwechsel", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const club = state.clubs.find(c => c.id === "muc");

@@ -79,6 +79,8 @@ const ContractEngine = {
             else if (staerke >= 0) mult += 0.05;
         }
         if (alter >= 33) mult -= 0.10;
+        // Liegt ein Angebot für einen Vorvertrag auf dem Tisch, weiß er das
+        if (player.vorvertragInteresse) mult += 0.1;
 
         const demandWage = Math.max(100, this.rundeBetrag(basis * mult));
         let preferredRole = "Stammspieler";
@@ -151,7 +153,8 @@ const ContractEngine = {
             };
         }
 
-        // Vertrag erfolgreich verlängert
+        // Vertrag erfolgreich verlängert - eine offene Anfrage ist damit erledigt
+        delete player.vorvertragInteresse;
         player.wage = Math.round(offeredWage);
         player.contractYears = offeredYears;
         // Wer gerade verlängert hat, hört zum Saisonwechsel nicht auf
@@ -282,7 +285,7 @@ const ContractEngine = {
         let verlaengert = 0;
         state.players.forEach(p => {
             if (!p.clubId || p.clubId === state.userClubId) return;
-            if ((p.contractYears ?? 0) !== 1) return;
+            if ((p.contractYears ?? 0) !== 1 || p.vorvertrag) return;
 
             // Stärke gemessen am eigenen Kader - siehe vereinsNiveau
             const staerke = (p.overall || 50) - (niveau.get(p.clubId) ?? 80);

@@ -191,6 +191,8 @@ class TransferEngine {
         // Ein verliehener Spieler gehört seinem Stammverein - verkauft wird
         // er erst, wenn er zurück ist
         if (player.leihe) return false;
+        // Wer per Vorvertrag woanders unterschrieben hat, wechselt nur dorthin
+        if (player.vorvertrag && player.vorvertrag.clubId !== buyerClubId) return false;
         const sellerClub = state.clubs.find(c => c.id === player.clubId);
 
         // Finanzen verbuchen - inklusive Eintrag im Buchungsjournal, damit

@@ -2376,8 +2376,8 @@ class UIManager {
                     <td class="sq-form">${form}</td>
                     <td class="sq-wert nowrap">${valText}</td>
                     <td class="sq-gehalt nowrap">${this.geldKurz(p.wage)}</td>
-                    <td class="sq-vertrag nowrap">${p.contractYears} J.</td>
-                    <td class="sq-meta">Form ${form} · ${valText} · ${this.geldKurz(p.wage)}/Wo · ${p.contractYears} J. Vertrag</td>
+                    <td class="sq-vertrag nowrap">${p.vorvertrag ? `<span title="Geht zum Saisonwechsel zu ${this.escapeHtml(p.vorvertrag.clubName)}">✍️</span> ` : ""}${p.contractYears} J.</td>
+                    <td class="sq-meta">Form ${form} · ${valText} · ${this.geldKurz(p.wage)}/Wo · ${p.vorvertrag ? `geht zu ${this.escapeHtml(p.vorvertrag.clubName)}` : `${p.contractYears} J. Vertrag`}</td>
                     <td class="sq-aktion">
                         <button class="btn btn-sm btn-secondary btn-player-details" data-player-id="${p.id}" aria-label="Details zu ${this.escapeHtml(p.name)}">›</button>
                     </td>

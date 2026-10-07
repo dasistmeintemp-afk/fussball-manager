@@ -120,6 +120,7 @@ class LoanEngine {
         if (player.leihe) return "Er ist bereits verliehen.";
         if ((player.injuredWeeks || 0) > 0) return "Er ist verletzt.";
         if ((player.contractYears ?? 1) < 1) return "Sein Vertrag läuft aus.";
+        if (player.vorvertrag) return `Er hat bei ${player.vorvertrag.clubName} unterschrieben.`;
         if (this.verlieheneVon(state, state.userClubId).length >= this.MAX_VERLIEHEN) {
             return `Sie haben schon ${this.MAX_VERLIEHEN} Spieler verliehen.`;
         }
@@ -231,7 +232,7 @@ class LoanEngine {
             const kader = (c.playerIds || []).map(id => this._player(state, id)).filter(Boolean)
                 .sort((a, b) => (b.overall || 0) - (a.overall || 0));
             kader.slice(14).forEach(p => {
-                if (p.leihe || (p.injuredWeeks || 0) > 0 || (p.contractYears ?? 1) < 1) return;
+                if (p.leihe || p.vorvertrag || (p.injuredWeeks || 0) > 0 || (p.contractYears ?? 1) < 1) return;
                 const talent = (p.age || 30) <= 21 && (p.pot || 0) >= eigenesNiveau + 4;
                 if ((p.overall || 0) < eigenesNiveau - 2 && !talent) return;
                 liste.push(this._leihKonditionen(state, p, c, eigenesNiveau));
@@ -402,7 +403,7 @@ class LoanEngine {
             const kader = (stamm.playerIds || []).map(id => idx.get(String(id))).filter(Boolean)
                 .sort((a, b) => (b.overall || 0) - (a.overall || 0));
             if (kader.length <= 19) continue;
-            const kandidaten = kader.slice(13).filter(p => (p.age || 30) <= 22 && !p.leihe
+            const kandidaten = kader.slice(13).filter(p => (p.age || 30) <= 22 && !p.leihe && !p.vorvertrag
                 && (p.injuredWeeks || 0) === 0 && (p.contractYears ?? 1) >= 1
                 && (typeof p.spielpraxis !== "number" || p.spielpraxis < 0.4));
             if (!kandidaten.length) continue;

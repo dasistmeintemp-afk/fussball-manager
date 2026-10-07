@@ -184,7 +184,12 @@ class TransferEngine {
     /**
      * Schließt einen Transfer erfolgreich ab
      */
-    static executeTransfer(state, playerId, buyerClubId, fee, wage, contractYears) {
+    /**
+     * Den Wechsel vollziehen. optionen.zahlweise ("raten12", "raten24")
+     * teilt die Ablöse: Die Anzahlung fließt sofort, der Rest in
+     * Monatsraten (FinanceEngine.zahleRaten).
+     */
+    static executeTransfer(state, playerId, buyerClubId, fee, wage, contractYears, optionen = {}) {
         const player = state.players.find(p => p.id === playerId);
         const buyerClub = state.clubs.find(c => c.id === buyerClubId);
         if (!player || !buyerClub) return false;
@@ -198,11 +203,18 @@ class TransferEngine {
         // Finanzen verbuchen - inklusive Eintrag im Buchungsjournal, damit
         // Kontostand und Journal auch nach Transfers übereinstimmen
         const financeEngine = _getTransferFinanceEngine();
+        // Raten gibt es nur, wenn ein Verein die Ablöse bekommt - und nur bei
+        // Wechseln, an denen der eigene Verein beteiligt ist
+        const eigener = buyerClub.id === state.userClubId || (sellerClub && sellerClub.id === state.userClubId);
+        const plan = sellerClub && eigener && optionen.zahlweise && financeEngine && typeof financeEngine.ratenPlan === "function"
+            ? financeEngine.ratenPlan(fee, optionen.zahlweise) : null;
+        const inRaten = !!(plan && plan.monate);
+        const sofort = inRaten ? plan.anzahlung : fee;
 
-        buyerClub.balance -= fee;
-        buyerClub.transferBudget -= fee;
-        if (financeEngine && fee !== 0) {
-            financeEngine.recordTransaction(state, buyerClub.id, "transfer_out", -fee, `Ablöse für ${player.name}`);
+        buyerClub.balance -= sofort;
+        buyerClub.transferBudget -= sofort;
+        if (financeEngine && sofort !== 0) {
+            financeEngine.recordTransaction(state, buyerClub.id, "transfer_out", -sofort, `Ablöse für ${player.name}${inRaten ? " (Anzahlung)" : ""}`);
         }
 
         // Weiterverkaufsbeteiligung: Ein früherer Verein bekommt seinen Anteil
@@ -241,10 +253,14 @@ class TransferEngine {
         }
 
         if (sellerClub) {
-            sellerClub.balance += fee - beteiligung;
-            sellerClub.transferBudget += Math.round((fee - beteiligung) * 0.85); // 85% reinvestierbar
-            if (financeEngine && fee !== 0) {
-                financeEngine.recordTransaction(state, sellerClub.id, "transfer_in", fee - beteiligung, `Verkauf von ${player.name}`);
+            // Die Beteiligung des früheren Vereins geht von der ersten Zahlung ab
+            sellerClub.balance += sofort - beteiligung;
+            sellerClub.transferBudget += Math.round((sofort - beteiligung) * 0.85); // 85% reinvestierbar
+            if (financeEngine && sofort !== 0) {
+                financeEngine.recordTransaction(state, sellerClub.id, "transfer_in", sofort - beteiligung, `Verkauf von ${player.name}${inRaten ? " (Anzahlung)" : ""}`);
+            }
+            if (inRaten) {
+                financeEngine.legeRatenAn(state, { zahlerId: buyerClub.id, empfaengerId: sellerClub.id, player, fee, zahlweise: plan.zahlweise });
             }
             // Aus Kader des alten Vereins entfernen
             sellerClub.playerIds = sellerClub.playerIds.filter(id => id !== player.id);
@@ -298,7 +314,9 @@ class TransferEngine {
             date: `Spieltag ${state.currentMatchday}`,
             sender: "Transferabteilung",
             subject: `Transfer vollzogen: ${player.name}`,
-            body: `Der Transfer von ${player.name} zu ${buyerClub.name} wurde für eine Ablösesumme von ${_formatTransferMoney(fee)} erfolgreich abgeschlossen. Der Spieler erhält einen ${contractYears}-Jahresvertrag mit einem Wochengehalt von ${_formatTransferMoney(wage)}.`,
+            body: `Der Transfer von ${player.name} zu ${buyerClub.name} wurde für eine Ablösesumme von ${_formatTransferMoney(fee)} erfolgreich abgeschlossen`
+                + (inRaten ? ` (${_formatTransferMoney(plan.anzahlung)} sofort, Rest in ${plan.monate} Monatsraten zu je ${_formatTransferMoney(plan.rate)})` : "")
+                + `. Der Spieler erhält einen ${contractYears}-Jahresvertrag mit einem Wochengehalt von ${_formatTransferMoney(wage)}.`,
             read: false,
             type: "transfer"
         });
@@ -758,7 +776,7 @@ class TransferEngine {
         if (prozent) offer.fee = Math.round(offer.fee * (1 - prozent / 200));
         const player = state.players.find(p => p.id === offer.playerId);
         const verkaeuferId = player?.clubId;
-        const ok = this.executeTransfer(state, offer.playerId, buyerId, offer.fee, 50000, 3);
+        const ok = this.executeTransfer(state, offer.playerId, buyerId, offer.fee, 50000, 3, { zahlweise: offer.zahlweise });
         if (ok === false) return { ok: false, grund: "Der Wechsel ist gescheitert." };
         if (prozent && player) player.weiterverkauf = { clubId: verkaeuferId, prozent };
         offer.status = "accepted";
@@ -959,6 +977,16 @@ class TransferEngine {
                     // Wie weit der Verein höchstens gehen würde - verrät er nicht
                     const maxFee = Math.min(interestedClub.transferBudget || offerFee,
                         Math.round(offerFee * (1.06 + Math.random() * 0.24)));
+                    // Wer das Geld nicht auf dem Konto hat, bietet Raten an -
+                    // und manchmal auch, wer es einfach strecken will
+                    const fin = _getTransferFinanceEngine();
+                    const knapp = (interestedClub.balance || 0) < offerFee * 1.5;
+                    const zahlweise = fin && fin.ZAHLWEISEN && Math.random() < (knapp ? 0.6 : 0.2)
+                        ? (Math.random() < 0.65 ? "raten12" : "raten24") : "sofort";
+                    // Für das Warten legt er etwas drauf
+                    const aufschlag = zahlweise === "raten24" ? 1.08 : (zahlweise === "raten12" ? 1.04 : 1);
+                    const angebot = Math.round(offerFee * aufschlag);
+                    const zahlText = zahlweise !== "sofort" ? ` (${fin.ratenText(angebot, zahlweise)})` : "";
 
                     const tag = state.currentDayIndex || 0;
                     state.transferMarket.offers.unshift({
@@ -972,8 +1000,9 @@ class TransferEngine {
                         fromClubId: interestedClub.id,
                         fromClubName: interestedClub.name,
                         toClubId: userClub.id,
-                        fee: offerFee,
-                        maxFee: Math.max(offerFee, maxFee),
+                        fee: angebot,
+                        maxFee: Math.max(angebot, Math.round(maxFee * aufschlag)),
+                        ...(zahlweise !== "sofort" ? { zahlweise } : {}),
                         eingang: tag,
                         frist: tag + this.ANGEBOTS_FRIST,
                         saison: state.seasonYear || 1,
@@ -986,8 +1015,8 @@ class TransferEngine {
                         matchday: state.currentMatchday,
                         date: `Spieltag ${state.currentMatchday}`,
                         sender: interestedClub.name,
-                        subject: `💰 Angebot: ${_formatTransferMoney(offerFee)} für ${player.name}`,
-                        body: `${interestedClub.name} bietet ${_formatTransferMoney(offerFee)} Ablösesumme für Ihren Spieler ${player.name} (${player.pos}, ${player.age} Jahre, Marktwert ${_formatTransferMoney(player.value)}).\n\nDas Angebot gilt ${this.ANGEBOTS_FRIST} Tage. Sie können annehmen, ablehnen oder mehr fordern - im Transfermarkt ganz oben.`,
+                        subject: `💰 Angebot: ${_formatTransferMoney(angebot)} für ${player.name}${zahlweise !== "sofort" ? " in Raten" : ""}`,
+                        body: `${interestedClub.name} bietet ${_formatTransferMoney(angebot)} Ablösesumme${zahlText} für Ihren Spieler ${player.name} (${player.pos}, ${player.age} Jahre, Marktwert ${_formatTransferMoney(player.value)}).\n\nDas Angebot gilt ${this.ANGEBOTS_FRIST} Tage. Sie können annehmen, ablehnen oder mehr fordern - im Transfermarkt ganz oben.`,
                         read: false,
                         type: "transfer_offer"
                     });

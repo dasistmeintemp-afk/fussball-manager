@@ -639,6 +639,151 @@ const FinanceEngine = {
         });
     },
 
+    // ------------------------------------------------ Ablöse in Raten
+    //
+    // Eine Ablöse muss nicht auf einmal fließen: Ein Teil wird sofort fällig,
+    // der Rest in Monatsraten. Der Käufer schont damit sein Budget, der
+    // Verkäufer wartet auf sein Geld - und rechnet deshalb mit einem
+    // Abschlag. Wer knapp bei Kasse ist, braucht das Geld jetzt und rechnet
+    // mit einem größeren.
+
+    ZAHLWEISEN: {
+        sofort: { label: "Sofort", anzahlung: 1, monate: 0, abschlag: 0 },
+        raten12: { label: "Raten über 12 Monate", anzahlung: 0.5, monate: 12, abschlag: 0.08 },
+        raten24: { label: "Raten über 24 Monate", anzahlung: 0.35, monate: 24, abschlag: 0.15 }
+    },
+
+    /** Zusätzlicher Abschlag auf die Raten, wenn der Verkäufer das Geld dringend braucht */
+    RATEN_ABSCHLAG_KNAPP: 0.1,
+
+    zahlweise(key) {
+        return this.ZAHLWEISEN[key] ? key : "sofort";
+    },
+
+    /** Anzahlung, Monatsrate und Zahl der Raten einer Ablöse */
+    ratenPlan(fee, zahlweise) {
+        const z = this.ZAHLWEISEN[this.zahlweise(zahlweise)];
+        const betrag = Math.max(0, Math.round(Number(fee) || 0));
+        if (!z.monate || !betrag) return { zahlweise: "sofort", anzahlung: betrag, rate: 0, monate: 0, rest: 0 };
+        const anzahlung = Math.round(betrag * z.anzahlung);
+        const rest = betrag - anzahlung;
+        return { zahlweise: this.zahlweise(zahlweise), anzahlung, rate: Math.round(rest / z.monate), monate: z.monate, rest };
+    },
+
+    /** Braucht der Verkäufer das Geld sofort? */
+    istKnapp(verkaeufer, fee) {
+        return !!verkaeufer && (verkaeufer.balance || 0) < fee * 0.5;
+    },
+
+    /** Was eine Ablöse in dieser Zahlweise dem Verkäufer heute wert ist */
+    ratenWert(fee, zahlweise, verkaeufer = null) {
+        const plan = this.ratenPlan(fee, zahlweise);
+        if (!plan.monate) return plan.anzahlung;
+        const z = this.ZAHLWEISEN[plan.zahlweise];
+        const abschlag = z.abschlag + (this.istKnapp(verkaeufer, fee) ? this.RATEN_ABSCHLAG_KNAPP : 0);
+        return Math.round(plan.anzahlung + plan.rest * (1 - abschlag));
+    },
+
+    /** "50 % sofort, Rest in 12 Monatsraten zu je 1,2 Mio. €" */
+    ratenText(fee, zahlweise) {
+        const plan = this.ratenPlan(fee, zahlweise);
+        if (!plan.monate) return "sofort fällig";
+        return `${this.geld(plan.anzahlung)} sofort, Rest in ${plan.monate} Monatsraten zu je ${this.geld(plan.rate)}`;
+    },
+
+    /** "08.2026" aus "15.08.2026" */
+    _monat(datum) {
+        const m = /^\d{1,2}\.(\d{1,2})\.(\d{4})$/.exec(String(datum || ""));
+        return m ? `${m[1].padStart(2, "0")}.${m[2]}` : null;
+    },
+
+    /** Eine Ratenvereinbarung anlegen - nur, wo der eigene Verein beteiligt ist */
+    legeRatenAn(state, { zahlerId, empfaengerId, player, fee, zahlweise }) {
+        const plan = this.ratenPlan(fee, zahlweise);
+        if (!state || !plan.monate || !zahlerId || !empfaengerId) return null;
+        if (zahlerId !== state.userClubId && empfaengerId !== state.userClubId) return null;
+        if (!Array.isArray(state.ratenzahlungen)) state.ratenzahlungen = [];
+        if (!state.ratenMonat) state.ratenMonat = this._monat(state.currentDate);
+        const eintrag = {
+            id: `rate_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            zahlerId, empfaengerId,
+            playerId: player?.id ?? null, playerName: player?.name || "Spieler",
+            gesamt: Math.round(fee), rate: plan.rate, offen: plan.rest,
+            monate: plan.monate, gezahlt: 0
+        };
+        state.ratenzahlungen.push(eintrag);
+        return eintrag;
+    },
+
+    /** Offene Raten des eigenen Vereins: was wir schulden, was uns zusteht */
+    ratenUebersicht(state, clubId = state?.userClubId) {
+        const liste = (Array.isArray(state?.ratenzahlungen) ? state.ratenzahlungen : [])
+            .filter(r => r.offen > 0 && (r.zahlerId === clubId || r.empfaengerId === clubId))
+            .map(r => {
+                const wir = r.zahlerId === clubId;
+                const andererId = wir ? r.empfaengerId : r.zahlerId;
+                const anderer = (state.clubs || []).find(c => c.id === andererId);
+                return {
+                    ...r, richtung: wir ? "zahlen" : "erhalten",
+                    verein: anderer ? anderer.name : "unbekannt",
+                    restRaten: r.monate - r.gezahlt
+                };
+            });
+        const summe = (richtung) => liste.filter(r => r.richtung === richtung).reduce((s, r) => s + r.offen, 0);
+        const monat = (richtung) => liste.filter(r => r.richtung === richtung)
+            .reduce((s, r) => s + (r.restRaten <= 1 ? r.offen : Math.min(r.rate, r.offen)), 0);
+        return {
+            liste,
+            schulden: summe("zahlen"), forderungen: summe("erhalten"),
+            naechsterMonat: { zahlen: monat("zahlen"), erhalten: monat("erhalten") }
+        };
+    },
+
+    /**
+     * Am Monatsersten sind die Raten fällig. Wird jeden Tag gerufen und
+     * bucht nur beim Monatswechsel. Liefert die Zeile für den Tagesbericht,
+     * wenn der eigene Verein gezahlt oder bekommen hat - sonst null.
+     */
+    zahleRaten(state, datum = state?.currentDate) {
+        const monat = this._monat(datum);
+        if (!state || !monat) return null;
+        if (!state.ratenMonat) { state.ratenMonat = monat; return null; }
+        if (state.ratenMonat === monat) return null;
+        state.ratenMonat = monat;
+        const liste = Array.isArray(state.ratenzahlungen) ? state.ratenzahlungen : [];
+        if (!liste.length) return null;
+
+        let gezahlt = 0, erhalten = 0;
+        liste.forEach(r => {
+            if (!(r.offen > 0)) return;
+            const zahler = (state.clubs || []).find(c => c.id === r.zahlerId);
+            const empfaenger = (state.clubs || []).find(c => c.id === r.empfaengerId);
+            const letzte = r.monate - r.gezahlt <= 1;
+            const betrag = letzte ? r.offen : Math.min(r.rate, r.offen);
+            r.offen -= betrag;
+            r.gezahlt += 1;
+            const text = `Rate ${r.gezahlt}/${r.monate}: ${r.playerName}`;
+            if (zahler) {
+                zahler.balance = (zahler.balance || 0) - betrag;
+                zahler.transferBudget = Math.max(0, (zahler.transferBudget || 0) - betrag);
+                this.recordTransaction(state, zahler.id, "transfer_out", -betrag, `Ablöse ${text}`);
+            }
+            if (empfaenger) {
+                empfaenger.balance = (empfaenger.balance || 0) + betrag;
+                empfaenger.transferBudget = (empfaenger.transferBudget || 0) + Math.round(betrag * 0.85);
+                this.recordTransaction(state, empfaenger.id, "transfer_in", betrag, `Ablöse ${text}`);
+            }
+            if (r.zahlerId === state.userClubId) gezahlt += betrag;
+            if (r.empfaengerId === state.userClubId) erhalten += betrag;
+        });
+        state.ratenzahlungen = liste.filter(r => r.offen > 0);
+        if (!gezahlt && !erhalten) return null;
+        const teile = [];
+        if (gezahlt) teile.push(`${this.geld(gezahlt)} gezahlt`);
+        if (erhalten) teile.push(`${this.geld(erhalten)} erhalten`);
+        return `💶 Ablöseraten: ${teile.join(", ")}.`;
+    },
+
     geld(betrag) {
         const gs = _feResolve("GameState", "./gameState.js");
         if (gs && typeof gs.formatMoney === "function") return gs.formatMoney(betrag);

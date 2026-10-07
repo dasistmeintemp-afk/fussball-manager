@@ -94,11 +94,21 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
             const letzterEintrag = (n.log || [])[n.log.length - 1];
 
+            const fin = typeof FinanceEngine !== "undefined" && FinanceEngine.ZAHLWEISEN ? FinanceEngine : null;
+            const letzteZahlweise = n.lastOffer?.zahlweise || "sofort";
+            const zahlweise = fin ? `
+                    <label>Zahlweise
+                        <select class="styled-select neg-zahlweise" data-neg-id="${n.id}">
+                            ${Object.entries(fin.ZAHLWEISEN).map(([key, z]) => `<option value="${key}" ${key === letzteZahlweise ? "selected" : ""}>${this.escapeHtml(z.label)}${z.monate ? ` (${Math.round(z.anzahlung * 100)} % sofort)` : ""}</option>`).join("")}
+                        </select>
+                    </label>
+                    <p class="neg-hinweis neg-raten-info" data-neg-id="${n.id}"></p>` : "";
             const eingabe = amZug ? (istAblöse ? `
                 <div class="negotiation-inputs">
                     <label>Ablöse (€)
                         <input type="number" class="styled-input neg-fee" data-neg-id="${n.id}" value="${n.demand.fee}" step="${schritt(n.demand.fee)}" min="0">
                     </label>
+                    ${n.vorvertrag ? "" : zahlweise}
                 </div>
             ` : `
                 <div class="negotiation-inputs">
@@ -157,6 +167,30 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             `;
         }).join("");
 
+        // Raten: Anzahlung und Monatsrate gleich beim Tippen, dazu der Abschlag des Verkäufers
+        const ratenVorschau = (id) => {
+            const fin = typeof FinanceEngine !== "undefined" ? FinanceEngine : null;
+            const info = list.querySelector(`.neg-raten-info[data-neg-id="${id}"]`);
+            if (!fin || !info) return;
+            const fee = Number(list.querySelector(`.neg-fee[data-neg-id="${id}"]`)?.value || 0);
+            const zw = list.querySelector(`.neg-zahlweise[data-neg-id="${id}"]`)?.value || "sofort";
+            const n = engine.findNegotiation(state, id);
+            const verkaeufer = n ? state.clubs.find(c => c.id === n.sellerClubId) : null;
+            if (zw === "sofort" || !fee) {
+                info.textContent = "In Raten muss nur die Anzahlung ins Transferbudget passen. Der Verkäufer rechnet Raten mit Abschlag.";
+                return;
+            }
+            const wert = fin.ratenWert(fee, zw, verkaeufer);
+            info.textContent = `${fin.ratenText(fee, zw)}. Für ${n?.sellerClubName || "den Verkäufer"} ist das so viel wert wie ${this.formatMoneySafe(wert)} sofort`
+                + (fin.istKnapp(verkaeufer, fee) ? " - er braucht das Geld dringend." : ".");
+        };
+        list.querySelectorAll(".neg-zahlweise, .neg-fee").forEach(el => {
+            const id = el.dataset.negId;
+            el.addEventListener("input", () => ratenVorschau(id));
+            el.addEventListener("change", () => ratenVorschau(id));
+            ratenVorschau(id);
+        });
+
         list.querySelectorAll(".btn-neg-submit").forEach(btn => {
             btn.addEventListener("click", () => {
                 const id = btn.dataset.negId;
@@ -164,7 +198,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 if (!n) return;
 
                 const angebot = n.stage === engine.STAGES.FEE
-                    ? { fee: Number(list.querySelector(`.neg-fee[data-neg-id="${id}"]`)?.value || 0) }
+                    ? {
+                        fee: Number(list.querySelector(`.neg-fee[data-neg-id="${id}"]`)?.value || 0),
+                        zahlweise: list.querySelector(`.neg-zahlweise[data-neg-id="${id}"]`)?.value || "sofort"
+                    }
                     : {
                         wage: Number(list.querySelector(`.neg-wage[data-neg-id="${id}"]`)?.value || 0),
                         years: Number(list.querySelector(`.neg-years[data-neg-id="${id}"]`)?.value || 3),

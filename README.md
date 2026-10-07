@@ -339,6 +339,12 @@ In der Spielerakte führt der Manager Gespräche mit jedem eigenen Spieler. Wie 
 
   Ein Angebot gilt vier Tage. Wer nicht antwortet, hat abgelehnt.
 - **Weiterverkaufsbeteiligung:** Beim Annehmen eines Angebots lassen sich 10 oder 20 % an einem späteren Weiterverkauf vereinbaren. Der Käufer zahlt dafür jetzt 5 bzw. 10 % weniger. Wechselt der Spieler später für eine Ablöse weiter, fließt der Anteil zurück.
+- **Ablöse in Raten:** Im Ablöse-Angebot wählt man die Zahlweise.
+  - **Sofort**, **12 Monate** (50 % Anzahlung) oder **24 Monate** (35 % Anzahlung). Den Rest zahlt der Käufer am Monatsersten in gleichen Raten.
+  - Ins Transferbudget muss nur die Anzahlung passen. Alle offenen Raten zusammen müssen aber auf dem Konto gedeckt sein. Gezahlte Raten gehen auch vom Transferbudget ab.
+  - Der Verkäufer rechnet mit Abschlag: Für ihn sind 12 Monatsraten rund 4 % weniger wert, 24 rund 10 %. Braucht er das Geld dringend, ist der Abschlag größer. Die Eingabe zeigt gleich Anzahlung, Rate und was das Angebot dem Verkäufer wert ist. Eine Gegenforderung nennt auch die Summe in Raten.
+  - Auch KI-Vereine bieten für eigene Spieler in Raten, vor allem mit knapper Kasse, und legen dafür 4 bzw. 8 % drauf.
+  - Die Finanzen zeigen, was der Verein noch schuldet und was ihm zusteht, und was am nächsten Monatsersten fällig wird.
 - **Ausstiegsklauseln:** Bei einer Vertragsverlängerung lässt sich eine Klausel über das 1,5-, 2,5- oder 4-fache des Marktwerts vereinbaren. Je niedriger sie liegt, desto stärker sinkt die Gehaltsforderung (bis zu 10 %). Dafür kann jeder Verein, der die Summe zahlt, den Spieler holen – ablehnen geht nicht. Gut jeder fünfte Spieler anderer Vereine hat eine Klausel. Sie steht in der Akte und lässt sich dort ziehen, sofern der Spieler den Schritt zu Ihnen machen will.
 - **Leihgeschäfte (`LoanEngine`, Unterreiter *Leihen*):**
   - *Verleihen:* In der Akte eines eigenen Spielers fragt man Interessenten an: Vereine bis zwei Ligen tiefer, bei denen er Stammspieler oder Rotation wäre. Der Leihverein übernimmt einen Teil des Gehalts. Bis zum Saisonende, vorzeitiges Zurückholen ist möglich.

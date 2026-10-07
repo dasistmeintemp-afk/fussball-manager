@@ -363,11 +363,25 @@ class NegotiationEngine {
 
         if (negotiation.stage === NEGOTIATION_STAGES.FEE) {
             const fee = Math.max(0, Math.round(Number(offer.fee) || 0));
-            if (fee > (club.transferBudget || 0)) {
-                return { success: false, error: `Das Transferbudget reicht nicht: verfügbar ${this.formatMoney(club.transferBudget || 0)}.` };
+            // In Raten muss nur die Anzahlung ins Transferbudget passen - die
+            // Raten aber müssen auf dem Konto gedeckt sein
+            const fin = this.getFinanceEngine();
+            const zahlweise = fin && typeof fin.zahlweise === "function" ? fin.zahlweise(offer.zahlweise) : "sofort";
+            const plan = zahlweise !== "sofort" ? fin.ratenPlan(fee, zahlweise) : null;
+            const sofort = plan ? plan.anzahlung : fee;
+            if (sofort > (club.transferBudget || 0)) {
+                return { success: false, error: plan
+                    ? `Schon die Anzahlung von ${this.formatMoney(sofort)} übersteigt das Transferbudget (verfügbar ${this.formatMoney(club.transferBudget || 0)}).`
+                    : `Das Transferbudget reicht nicht: verfügbar ${this.formatMoney(club.transferBudget || 0)}.` };
             }
-            negotiation.lastOffer = { fee };
-            this.log(negotiation, state, "us", `Angebot über eine Ablöse von ${this.formatMoney(fee)} abgegeben.`);
+            if (plan) {
+                const schulden = fin.ratenUebersicht(state, club.id).schulden;
+                if (schulden + fee > Math.max(0, club.balance || 0)) {
+                    return { success: false, error: `Die Raten wären nicht gedeckt: Mit dieser Ablöse schuldete der Verein ${this.formatMoney(schulden + fee)}, auf dem Konto liegen ${this.formatMoney(Math.max(0, club.balance || 0))}.` };
+                }
+            }
+            negotiation.lastOffer = plan ? { fee, zahlweise } : { fee };
+            this.log(negotiation, state, "us", `Angebot über eine Ablöse von ${this.formatMoney(fee)} abgegeben${plan ? ` (${fin.ratenText(fee, zahlweise)})` : ""}.`);
         } else if (negotiation.stage === NEGOTIATION_STAGES.TERMS) {
             const wage = Math.max(0, Math.round(Number(offer.wage) || 0));
             const years = Math.max(1, Math.min(5, Math.round(Number(offer.years) || 3)));
@@ -450,7 +464,12 @@ class NegotiationEngine {
         const gefordert = istAblöse ? negotiation.demand.fee : negotiation.demand.wage;
         // Prämien ersetzen einen Teil des Grundgehalts - der Spieler rechnet
         // sie mit Abschlag ein, sie sind ja nicht sicher
-        const geboten = istAblöse ? (offer.fee || 0) : (offer.wage || 0) + this.praemienWert(state, negotiation, offer);
+        // Raten sind dem Verkäufer weniger wert als Geld auf dem Konto
+        const fin = this.getFinanceEngine();
+        const verkaeufer = state.clubs.find(c => c.id === negotiation.sellerClubId);
+        const ablöseWert = offer.zahlweise && fin && typeof fin.ratenWert === "function"
+            ? fin.ratenWert(offer.fee || 0, offer.zahlweise, verkaeufer) : (offer.fee || 0);
+        const geboten = istAblöse ? ablöseWert : (offer.wage || 0) + this.praemienWert(state, negotiation, offer);
         const quote = gefordert > 0 ? geboten / gefordert : 1;
 
         // Kurze Laufzeiten kosten den Berater Provision - das schmeckt ihm nicht
@@ -496,11 +515,14 @@ class NegotiationEngine {
 
         if (istAblöse) {
             negotiation.agreed.fee = offer.fee;
+            if (offer.zahlweise && offer.zahlweise !== "sofort") negotiation.agreed.zahlweise = offer.zahlweise;
             negotiation.stage = NEGOTIATION_STAGES.TERMS;
             negotiation.status = NEGOTIATION_STATUS.AWAITING_US;
             negotiation.replyDay = null;
+            const fin = this.getFinanceEngine();
+            const raten = negotiation.agreed.zahlweise && fin ? ` (${fin.ratenText(offer.fee, negotiation.agreed.zahlweise)})` : "";
             this.log(negotiation, state, "club",
-                `${negotiation.sellerClubName} stimmt einer Ablöse von ${this.formatMoney(offer.fee)} zu. Jetzt geht es um die persönlichen Konditionen.`);
+                `${negotiation.sellerClubName} stimmt einer Ablöse von ${this.formatMoney(offer.fee)}${raten} zu. Jetzt geht es um die persönlichen Konditionen.`);
             this.notify(state, negotiation, `Einigung über die Ablöse: ${negotiation.playerName}`,
                 `${negotiation.sellerClubName} akzeptiert ${this.formatMoney(offer.fee)}. Berater ${negotiation.agentName} erwartet nun Ihr Angebot über die persönlichen Konditionen (Forderung: ${this.formatMoney(negotiation.demand.wage)} pro Woche).`);
             return { negotiation, kind: "fee_agreed" };
@@ -550,10 +572,14 @@ class NegotiationEngine {
 
         if (istAblöse) {
             negotiation.demand.fee = neueForderung;
+            // In Raten rechnet der Verkäufer mit Abschlag - so viel müsste es dann sein
+            const inRaten = offer.zahlweise && offer.zahlweise !== "sofort" && geboten > 0;
+            const nominal = inRaten ? this.runde(neueForderung * (offer.fee || 0) / geboten) : 0;
+            const ratenHinweis = inRaten ? ` In Raten wie angeboten entspräche das etwa ${this.formatMoney(nominal)}.` : "";
             this.log(negotiation, state, "club",
-                `${negotiation.sellerClubName} lehnt ab und fordert ${this.formatMoney(neueForderung)}.`);
+                `${negotiation.sellerClubName} lehnt ab und fordert ${this.formatMoney(neueForderung)}.${ratenHinweis}`);
             this.notify(state, negotiation, `Gegenforderung: ${negotiation.playerName}`,
-                `${negotiation.sellerClubName} lehnt ${this.formatMoney(geboten)} ab und fordert ${this.formatMoney(neueForderung)}. Verbleibende Geduld: ${negotiation.patience}%.`);
+                `${negotiation.sellerClubName} lehnt ${this.formatMoney(offer.fee || geboten)}${inRaten ? " in Raten" : ""} ab und fordert ${this.formatMoney(neueForderung)}.${ratenHinweis} Verbleibende Geduld: ${negotiation.patience}%.`);
         } else {
             negotiation.demand.wage = neueForderung;
             this.log(negotiation, state, "agent",
@@ -605,7 +631,8 @@ class NegotiationEngine {
             negotiation.clubId,
             negotiation.agreed.fee || 0,
             negotiation.agreed.wage || 0,
-            negotiation.agreed.years || 3
+            negotiation.agreed.years || 3,
+            { zahlweise: negotiation.agreed.zahlweise }
         );
 
         if (!ok) {

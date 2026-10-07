@@ -1368,6 +1368,16 @@ const CalendarEngine = {
             if (zeile) summary.messages.push(zeile);
         }
 
+        // Am Monatsersten: fällige Ablöseraten
+        const ratenEngine = (typeof FinanceEngine !== 'undefined' && FinanceEngine)
+            ? FinanceEngine
+            : ((typeof window !== 'undefined' && window.FinanceEngine) ? window.FinanceEngine
+                : (typeof require !== 'undefined' ? (() => { try { return require('./financeEngine.js').FinanceEngine; } catch (e) { return null; } })() : null));
+        if (ratenEngine && typeof ratenEngine.zahleRaten === 'function') {
+            const zeile = ratenEngine.zahleRaten(state, currentDay.date);
+            if (zeile) summary.messages.push(zeile);
+        }
+
         // 1b. Lücken in den Aufstellungen schließen. Wer sich verletzt, fällt
         // aus Elf und Bank - ohne Nachrücker stand ein Verein nach ein paar
         // Wochen dauerhaft mit zehn Mann da.

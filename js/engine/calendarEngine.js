@@ -25,7 +25,29 @@ const CALENDAR_DAY_TYPES = {
     INTERNATIONAL: "international",
     // Die Wochen zwischen letztem Spieltag und Saisonwechsel: frei für die
     // Mannschaft, Zeit für Vertragsgespräche
-    SUMMER_BREAK: "summer_break"
+    SUMMER_BREAK: "summer_break",
+    // Zwei Wochen nach der Hinrunde: frei über die Feiertage, dann Training -
+    // und das Wintertransferfenster ist offen
+    WINTER_BREAK: "winter_break"
+};
+
+/**
+ * Weihnachten und Jahreswechsel je Land, nach den Spielplänen 2024/25.
+ *
+ * pause.ab: Ab diesem Tag ruht die Liga; pause.weiter: der erste Spieltag
+ * danach. Die Bundesliga pausiert gut zweieinhalb Wochen (zurück am 10.1.),
+ * die Ligue 1 ab Mitte Dezember (zurück am 3.1.), LaLiga zehn Tage. Die
+ * Premier League kennt keine Winterpause: Sie spielt am Boxing Day, am 29.
+ * Dezember und an Neujahr. Die Serie A spielt ebenfalls durch, um den 29.12.
+ * und am 5.1. Das Wintertransferfenster hängt nicht daran - es ist überall im
+ * Januar offen (TransferEngine.FENSTER).
+ */
+const FESTTAGE = {
+    de: { pause: { ab: [12, 22], weiter: [1, 10] } },
+    fr: { pause: { ab: [12, 16], weiter: [1, 3] } },
+    es: { pause: { ab: [12, 23], weiter: [1, 3] } },
+    it: { festtage: [[12, 29, "Spieltag zwischen den Jahren"], [1, 5, "Dreikönigsspieltag"]] },
+    en: { festtage: [[12, 26, "Boxing Day"], [12, 29, "Spieltag zwischen den Jahren"], [1, 1, "Neujahrsspieltag"]] }
 };
 
 function _getNationalTeamEngine() {
@@ -229,125 +251,153 @@ const CalendarEngine = {
             });
         };
 
-        // Für jeden Spieltag eine typische Vorbereitungswoche generieren
-        for (let md = 1; md <= totalMatchdays; md++) {
-            // 1. Regeneration / Analyse
-            calendar.push({
+        // Weihnachten und Jahreswechsel richten sich nach dem Land der eigenen
+        // Liga (FESTTAGE). Vorher folgte überall der 18. Spieltag eine Woche
+        // auf den 17. - gespielt wurde auch an Heiligabend.
+        const regel = FESTTAGE[this.landDerLiga(state)] || FESTTAGE.de;
+        const ersteJahr = startDate.getFullYear();
+        const datum = ([monat, tag]) => new Date(monat >= 7 ? ersteJahr : ersteJahr + 1, monat - 1, tag);
+        const plus = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+        const tageBis = (d) => Math.round((d - currentDate) / 86400000);
+        const festtage = (regel.festtage || []).map(([m, t, name]) => ({ datum: datum([m, t]), name }));
+        const genutzt = new Set();
+        let winterpauseGelegt = false;
+
+        const tag = (felder) => {
+            calendar.push(Object.assign({
                 id: `day_${dayCounter}`,
                 dayIndex: dayCounter,
                 date: this.formatDate(currentDate),
                 dateObj: new Date(currentDate).toISOString(),
                 dayOfWeek: this.getDayName(currentDate),
-                type: CALENDAR_DAY_TYPES.RECOVERY,
-                title: "Regeneration & Erholung",
+                completed: false
+            }, felder));
+            currentDate.setDate(currentDate.getDate() + 1);
+            dayCounter++;
+        };
+
+        // Die Winterpause: die ersten Tage frei, dann Training für die Rückrunde
+        const legeWinterpauseAn = (md, tage) => {
+            const frei = Math.max(1, Math.round(tage * 0.4));
+            for (let t = 1; t <= tage; t++) {
+                const istFrei = t <= frei;
+                tag({
+                    type: CALENDAR_DAY_TYPES.WINTER_BREAK,
+                    title: istFrei ? "❄️ Winterpause: frei" : "❄️ Winterpause: Training",
+                    description: istFrei
+                        ? "Die Mannschaft hat über die Feiertage frei."
+                        : "Die Vorbereitung auf die Rückrunde läuft.",
+                    matchday: md,
+                    winterpause: true,
+                    trainingsArt: istFrei ? CALENDAR_DAY_TYPES.REST : CALENDAR_DAY_TYPES.TRAINING,
+                    actionsAvailable: ["training", "tactics", "transfers"]
+                });
+            }
+        };
+
+        // Die Tage einer Spieltagswoche. Normal sind es fünf vor dem Spiel;
+        // in englischen Wochen und an den Festtagen weniger.
+        const vorbereitungstag = {
+            recovery: () => ({ type: CALENDAR_DAY_TYPES.RECOVERY, title: "Regeneration & Erholung",
                 description: "Leichte Erholungseinheit. Spieler frischen ihre Fitness auf.",
-                // Auch die Tage vor einem Spieltag gehoeren zu ihm - sonst
-                // zeigt die Wochenansicht auf ihnen den falschen Gegner.
-                matchday: md,
-                actionsAvailable: ["recovery", "training", "physio"],
-                completed: false
-            });
-            currentDate.setDate(currentDate.getDate() + 1);
-            dayCounter++;
-
-            // 2. Team-Trainingstag
-            calendar.push({
-                id: `day_${dayCounter}`,
-                dayIndex: dayCounter,
-                date: this.formatDate(currentDate),
-                dateObj: new Date(currentDate).toISOString(),
-                dayOfWeek: this.getDayName(currentDate),
-                type: CALENDAR_DAY_TYPES.TRAINING,
-                title: "Schwerpunkt-Training",
+                actionsAvailable: ["recovery", "training", "physio"] }),
+            training: () => ({ type: CALENDAR_DAY_TYPES.TRAINING, title: "Schwerpunkt-Training",
                 description: "Intensives Mannschaftstraining gemäß gewähltem Trainingsfokus.",
-                matchday: md,
-                actionsAvailable: ["training", "individual_training"],
-                completed: false
-            });
-            currentDate.setDate(currentDate.getDate() + 1);
-            dayCounter++;
-
-            // 3. Medien- / Sponsorentag (abwechselnd)
-            const isMedia = md % 2 === 1;
-            calendar.push({
-                id: `day_${dayCounter}`,
-                dayIndex: dayCounter,
-                date: this.formatDate(currentDate),
-                dateObj: new Date(currentDate).toISOString(),
-                dayOfWeek: this.getDayName(currentDate),
-                type: isMedia ? CALENDAR_DAY_TYPES.MEDIA : CALENDAR_DAY_TYPES.SPONSOR,
-                title: isMedia ? "Pressekonferenz & Medientermin" : "Sponsorenempfang & Partnertreffen",
-                description: isMedia 
-                    ? "Stellen Sie sich den Fragen der Journalisten vor dem kommenden Spieltag." 
-                    : "Pflege der Klub-Sponsoren. Generiert wichtige Zusatzeinnahmen.",
-                matchday: md,
-                actionsAvailable: isMedia ? ["press", "interview"] : ["sponsor", "finance"],
-                completed: false
-            });
-            currentDate.setDate(currentDate.getDate() + 1);
-            dayCounter++;
-
-            // 4. Taktikanalyse
-            calendar.push({
-                id: `day_${dayCounter}`,
-                dayIndex: dayCounter,
-                date: this.formatDate(currentDate),
-                dateObj: new Date(currentDate).toISOString(),
-                dayOfWeek: this.getDayName(currentDate),
-                type: CALENDAR_DAY_TYPES.TACTICS,
-                title: "Taktik- & Standardschulung",
+                actionsAvailable: ["training", "individual_training"] }),
+            media: () => ({ type: CALENDAR_DAY_TYPES.MEDIA, title: "Pressekonferenz & Medientermin",
+                description: "Stellen Sie sich den Fragen der Journalisten vor dem kommenden Spieltag.",
+                actionsAvailable: ["press", "interview"] }),
+            sponsor: () => ({ type: CALENDAR_DAY_TYPES.SPONSOR, title: "Sponsorenempfang & Partnertreffen",
+                description: "Pflege der Klub-Sponsoren. Generiert wichtige Zusatzeinnahmen.",
+                actionsAvailable: ["sponsor", "finance"] }),
+            tactics: () => ({ type: CALENDAR_DAY_TYPES.TACTICS, title: "Taktik- & Standardschulung",
                 description: "Einstudieren von Spielzügen und Standardsituationen (Ecken, Freistöße).",
-                matchday: md,
-                actionsAvailable: ["tactics", "setpieces"],
-                completed: false
-            });
-            currentDate.setDate(currentDate.getDate() + 1);
-            dayCounter++;
-
-            // 5. Gegneranalyse & Abschlusstraining
-            calendar.push({
-                id: `day_${dayCounter}`,
-                dayIndex: dayCounter,
-                date: this.formatDate(currentDate),
-                dateObj: new Date(currentDate).toISOString(),
-                dayOfWeek: this.getDayName(currentDate),
-                type: CALENDAR_DAY_TYPES.OPPONENT_ANALYSIS,
-                title: `Gegnervorbereitung: Spieltag ${md}`,
+                actionsAvailable: ["tactics", "setpieces"] }),
+            opponent_analysis: (md) => ({ type: CALENDAR_DAY_TYPES.OPPONENT_ANALYSIS, title: `Gegnervorbereitung: Spieltag ${md}`,
                 description: "Detaillierte Analyse des nächsten Gegners und finales Anschwitzen.",
-                matchday: md,
-                actionsAvailable: ["analysis", "lineup", "tactics"],
-                completed: false
-            });
-            currentDate.setDate(currentDate.getDate() + 1);
-            dayCounter++;
+                actionsAvailable: ["analysis", "lineup", "tactics"] })
+        };
+        const wochenplan = (vorTage, md) => {
+            const presse = md % 2 === 1 ? "media" : "sponsor";
+            const plaene = [
+                [],
+                ["opponent_analysis"],
+                ["recovery", "opponent_analysis"],
+                ["recovery", "training", "opponent_analysis"],
+                ["recovery", "training", presse, "opponent_analysis"],
+                ["recovery", "training", presse, "tactics", "opponent_analysis"],
+                ["recovery", "training", "training", presse, "tactics", "opponent_analysis"],
+                ["recovery", "training", "training", presse, "tactics", "training", "opponent_analysis"]
+            ];
+            return plaene[Math.max(0, Math.min(plaene.length - 1, vorTage))];
+        };
 
-            // 6. SPIELTAG
-            calendar.push({
-                id: `day_${dayCounter}`,
-                dayIndex: dayCounter,
-                date: this.formatDate(currentDate),
-                dateObj: new Date(currentDate).toISOString(),
-                dayOfWeek: this.getDayName(currentDate),
-                type: CALENDAR_DAY_TYPES.MATCHDAY,
-                title: `⚽ ${md}. Spieltag: Liga 1`,
-                description: `Offizieller Ligaspieltag ${md}. Alle Begegnungen der Liga werden ausgetragen.`,
-                matchday: md,
-                actionsAvailable: ["match", "lineup", "live_match"],
-                completed: false
-            });
-            currentDate.setDate(currentDate.getDate() + 1);
-            dayCounter++;
+        // Mehr Spieltage, als die Wochen einer Saison hergeben (Championship:
+        // 46, Segunda División: 42): Einige Runden liegen unter der Woche
+        let englischeRunden = Math.max(0, totalMatchdays - 38);
+        const verschobeneTermine = [];
 
-            // 7. Unter der Woche: Pokal oder Europapokal
-            for (let t = offeneTermine.length - 1; t >= 0; t--) {
-                if (offeneTermine[t].nachSpieltag !== md) continue;
-                legeTerminAn(offeneTermine[t]);
-                offeneTermine.splice(t, 1);
+        for (let md = 1; md <= totalMatchdays; md++) {
+            let laenge = 6;
+            if (englischeRunden > 0 && md >= 4 && md % 4 === 2) {
+                laenge = 3;
+                englischeRunden--;
             }
 
-            // 8. Länderspielpause
+            // Winterpause: Fiele der Spieltag in sie, geht die Liga vorher in die Pause
+            if (regel.pause && !winterpauseGelegt && plus(currentDate, laenge - 1) >= datum(regel.pause.ab)) {
+                winterpauseGelegt = true;
+                laenge = 6;
+                const pausentage = tageBis(plus(datum(regel.pause.weiter), -(laenge - 1)));
+                if (pausentage > 0) legeWinterpauseAn(md, pausentage);
+            }
+
+            // Festtage: Boxing Day, der 29.12. und Neujahr in England - der
+            // Spieltag rückt auf den Festtag, die Woche wird kürzer
+            let besonders = null;
+            const fest = festtage.find(f => !genutzt.has(+f.datum) && tageBis(f.datum) >= 1 && tageBis(f.datum) <= laenge + 1);
+            if (fest) {
+                genutzt.add(+fest.datum);
+                laenge = tageBis(fest.datum) + 1;
+                besonders = fest.name;
+            }
+            // Heiligabend und der erste Weihnachtstag sind spielfrei - gespielt
+            // wird vorher, am 23.
+            const spieldatum = plus(currentDate, laenge - 1);
+            if (spieldatum.getMonth() === 11 && (spieldatum.getDate() === 24 || spieldatum.getDate() === 25)) {
+                laenge = Math.max(2, laenge - (spieldatum.getDate() - 23));
+            }
+
+            // Die Tage vor dem Spiel - sie gehören zum Spieltag, sonst zeigt die
+            // Wochenansicht auf ihnen den falschen Gegner
+            wochenplan(laenge - 1, md).forEach(art => tag(Object.assign(vorbereitungstag[art](md), { matchday: md })));
+
+            // Der Spieltag
+            tag({
+                type: CALENDAR_DAY_TYPES.MATCHDAY,
+                title: besonders ? `⚽ ${md}. Spieltag: ${besonders}` : `⚽ ${md}. Spieltag: Liga 1`,
+                description: `Offizieller Ligaspieltag ${md}. Alle Begegnungen der Liga werden ausgetragen.`,
+                matchday: md,
+                festtag: besonders || undefined,
+                actionsAvailable: ["match", "lineup", "live_match"]
+            });
+
+            // Unter der Woche: Pokal oder Europapokal - aber nicht mitten in den
+            // Festtagen, dann eben danach
+            const festNah = festtage.some(f => !genutzt.has(+f.datum) && tageBis(f.datum) >= 0 && tageBis(f.datum) <= 4);
+            for (let t = offeneTermine.length - 1; t >= 0; t--) {
+                if (offeneTermine[t].nachSpieltag !== md) continue;
+                verschobeneTermine.push(offeneTermine[t]);
+                offeneTermine.splice(t, 1);
+            }
+            if (!festNah) {
+                verschobeneTermine.splice(0).forEach(legeTerminAn);
+            }
+
+            // Länderspielpause
             if (pausen.has(md)) legePauseAn(md);
         }
+        verschobeneTermine.splice(0).forEach(legeTerminAn);
 
         // In kleineren Ligen ist die Saison kürzer als der Terminplan. Was
         // dann noch offen ist, wird vor dem Saisonende nachgeholt - sonst
@@ -417,6 +467,12 @@ const CalendarEngine = {
             nr++;
         }
         return tage;
+    },
+
+    /** Das Land der eigenen Liga - danach richten sich Feiertage und Pausen */
+    landDerLiga(state) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        return club?.countryId || "de";
     },
 
     /** Wie viele Tage der Sommerpause noch bleiben - null außerhalb von ihr */
@@ -940,7 +996,24 @@ const CalendarEngine = {
     /**
      * Simuliert genau einen Tag vorwärts
      */
+    /**
+     * Ein Tag weiter - und danach der Blick aufs Transferfenster: Hat es
+     * sich geöffnet oder geschlossen, ist heute sein letzter Tag?
+     */
     advanceOneDay(state) {
+        const res = this._tagWeiter(state);
+        const te = _getTransferEngineCal();
+        if (res && res.success && te && typeof te.pruefeFensterwechsel === "function") {
+            const meldungen = te.pruefeFensterwechsel(state, this.getCurrentDay(state));
+            if (meldungen.length) {
+                if (res.summary && Array.isArray(res.summary.messages)) meldungen.forEach(m => res.summary.messages.unshift(m));
+                res.fenster = meldungen;
+            }
+        }
+        return res;
+    },
+
+    _tagWeiter(state) {
         if (!state) return { success: false, error: "Kein State" };
         if (!Array.isArray(state.calendar) || state.calendar.length === 0) {
             this.generateSeasonCalendar(state);
@@ -992,6 +1065,16 @@ const CalendarEngine = {
                 ? LoanEngine
                 : ((typeof window !== "undefined" && window.LoanEngine) ? window.LoanEngine : (typeof require !== "undefined" ? require("./loanEngine.js").LoanEngine : null));
             if (leihen && typeof leihen.kiLeihen === "function") leihen.kiLeihen(state, 6);
+        }
+
+        // In der Winterpause handeln auch die KI-Vereine - verteilt auf die
+        // zwei Wochen, nicht nur an den Spieltagen danach
+        if (currentDay.winterpause) {
+            const transferEngine = _getTransferEngineCal();
+            if (transferEngine && typeof transferEngine.processAiTransferWindow === "function"
+                && typeof transferEngine.istTransferfenster === "function" && transferEngine.istTransferfenster(state)) {
+                transferEngine.processAiTransferWindow(state, transferEngine.WINTER_KI_JE_TAG || 40);
+            }
         }
 
         // Testspiel: zaehlt fuer keine Tabelle, aber fuer Spielpraxis
@@ -1197,10 +1280,11 @@ const CalendarEngine = {
             ? CoachingStaffEngine
             : ((typeof window !== 'undefined' && window.CoachingStaffEngine) ? window.CoachingStaffEngine : (typeof require !== 'undefined' ? require('./coachingStaffEngine.js').CoachingStaffEngine : null));
 
-        // In der Sommerpause hat die Mannschaft frei: kein Plan, nur Erholung
-        const trainingsArt = currentDay.sommerpause ? CALENDAR_DAY_TYPES.REST : currentDay.type;
-        if (staffEngine && typeof staffEngine.applyDailyPlan === 'function' && !currentDay.sommerpause) {
-            summary.plan = staffEngine.applyDailyPlan(state, currentDay.type);
+        // In der Sommerpause und an freien Tagen der Winterpause hat die
+        // Mannschaft frei: kein Plan, nur Erholung
+        const trainingsArt = currentDay.sommerpause ? CALENDAR_DAY_TYPES.REST : (currentDay.trainingsArt || currentDay.type);
+        if (staffEngine && typeof staffEngine.applyDailyPlan === 'function' && trainingsArt !== CALENDAR_DAY_TYPES.REST) {
+            summary.plan = staffEngine.applyDailyPlan(state, trainingsArt);
         }
 
         // 2. Trainingsbetrieb: Belastung, Erholung, Entwicklung und Risiko

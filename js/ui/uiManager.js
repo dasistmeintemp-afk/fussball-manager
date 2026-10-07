@@ -4608,6 +4608,58 @@ class UIManager {
     /**
      * Finanzen & Buchungsjournal rendern
      */
+    /**
+     * Budgets umschichten: freier Gehaltsetat ins Transferbudget und zurück.
+     * Der Kurs (Wochen bis zum Saisonwechsel) steht dabei, damit klar ist,
+     * was ein Euro Wochengehalt wert ist.
+     */
+    renderUmschichten(state, club) {
+        const el = document.getElementById("finUmschichten");
+        const fin = typeof FinanceEngine !== "undefined" ? FinanceEngine : null;
+        if (!el || !fin || typeof fin.umschichtSpielraum !== "function") return;
+        const raum = fin.umschichtSpielraum(state, club);
+        if (!raum) { el.innerHTML = ""; return; }
+        const schritt = ContractEngine.eingabeSchritt(Math.max(raum.gehaltFrei, raum.transferMoeglich, 1000));
+        const vorschlag = ContractEngine.rundeBetrag(Math.max(raum.gehaltFrei, raum.transferMoeglich) / 2) || 0;
+        const stand = raum.umgeschichtet
+            ? `<div class="muted-note">Diese Saison umgeschichtet: ${this.geldKurz(Math.abs(raum.umgeschichtet))} pro Woche ${raum.umgeschichtet > 0 ? "aus dem Gehaltsetat ins Transferbudget" : "aus dem Transferbudget in den Gehaltsetat"}. Zum Saisonwechsel gilt wieder der Etat des Vorstands.</div>` : "";
+        el.innerHTML = `
+            <h4>Budget umschichten</h4>
+            <p class="muted-note">1 € pro Woche entspricht ${raum.wochen} € Transferbudget - so viele Wochen sind es noch bis zum Saisonwechsel.
+                Frei im Gehaltsetat: <strong>${this.geldKurz(raum.gehaltFrei)}</strong> pro Woche.</p>
+            <div class="umschichten-zeile">
+                <label>Betrag je Woche (€)
+                    <input type="number" id="umschichtBetrag" class="styled-input" min="0" step="${schritt}" value="${vorschlag}">
+                </label>
+                <span class="umschichten-vorschau" id="umschichtVorschau"></span>
+            </div>
+            <div class="umschichten-knoepfe">
+                <button class="btn btn-sm btn-secondary" id="btnUmschichtTransfer" ${raum.gehaltFrei <= 0 ? "disabled" : ""}>Ins Transferbudget</button>
+                <button class="btn btn-sm btn-secondary" id="btnUmschichtGehalt" ${raum.transferMoeglich <= 0 ? "disabled" : ""}>In den Gehaltsetat</button>
+            </div>
+            ${stand}`;
+        const eingabe = document.getElementById("umschichtBetrag");
+        const vorschau = () => {
+            const b = Math.max(0, Number(eingabe.value) || 0);
+            DOM.setText("umschichtVorschau", b ? `= ${this.geldKurz(b * raum.wochen)} Transferbudget` : "");
+        };
+        eingabe?.addEventListener("input", vorschau);
+        vorschau();
+        const ausfuehren = (richtung) => {
+            const b = Math.max(0, Number(eingabe.value) || 0) * richtung;
+            const r = fin.schichteUm(state, b);
+            if (!r.ok) { this.showToast(r.grund, "error"); return; }
+            this.showToast(richtung > 0
+                ? `${this.geldKurz(r.jeWoche)} pro Woche ins Transferbudget: +${this.geldKurz(r.transfer)}.`
+                : `${this.geldKurz(-r.jeWoche)} pro Woche mehr Gehaltsetat für ${this.geldKurz(-r.transfer)} Transferbudget.`, "success");
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.renderFinances();
+            this.renderHeader();
+        };
+        document.getElementById("btnUmschichtTransfer")?.addEventListener("click", () => ausfuehren(1));
+        document.getElementById("btnUmschichtGehalt")?.addEventListener("click", () => ausfuehren(-1));
+    }
+
     renderFinances() {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
@@ -4641,6 +4693,7 @@ class UIManager {
         DOM.setText("finFanbase", `${(userClub.fanBase || 0).toLocaleString("de-DE")} Fans`);
 
         this.renderFacilityCosts(userClub);
+        this.renderUmschichten(state, userClub);
 
         // Transaktionshistorie (D5)
         const txnsBody = document.getElementById("finTransactionsBody");

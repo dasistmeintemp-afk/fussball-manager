@@ -1427,6 +1427,10 @@ class SeasonEngine {
         state.currentMatchday = 1;
         state._seasonFinished = null;
 
+        // Umgeschichtete Budgets gelten nur für die abgelaufene Saison
+        const finanzenWechsel = _getFinanceEngine();
+        if (finanzenWechsel && typeof finanzenWechsel.budgetZuruecksetzen === 'function') finanzenWechsel.budgetZuruecksetzen(state);
+
         // Karriereenden und Verträge abwickeln, bevor Aufstellungen und
         // Tabellen neu entstehen
         SeasonEngine.processRetirements(state);

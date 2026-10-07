@@ -8402,3 +8402,25 @@ td.nowrap { white-space: nowrap; }
     .akademie-tabelle td:nth-child(6) { display: flex; gap: 8px; flex-wrap: wrap; }
     .akademie-tabelle td:nth-child(4)[colspan] { grid-column: 2; }
 }
+
+/* Sportdirektor: Baustellen, Beratung und Vorschläge */
+.sd-text { font-size: 13px; margin: 0 0 8px; }
+.sd-baustellen { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; }
+.sd-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 10px 0; }
+.sd-form label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--text-muted); }
+.sd-knoepfe { display: flex; gap: 8px; flex-wrap: wrap; }
+.sd-auftrag { font-size: 12px; color: var(--text-muted); margin-top: 10px; }
+.sd-auftrag .btn { margin-left: 6px; }
+.sd-liste { display: flex; flex-direction: column; gap: 8px; }
+.sd-karte {
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgba(29, 37, 48, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.sd-kopf { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.sd-kopf strong { font-size: 14px; margin-right: 6px; }
+.sd-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.sd-sterne { white-space: nowrap; }
+.sd-grund { font-size: 12px; margin: 6px 0 8px; line-height: 1.5; }
+.sd-aktionen { display: flex; gap: 8px; align-items: center; }

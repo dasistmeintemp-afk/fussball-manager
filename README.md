@@ -334,6 +334,13 @@ In der Spielerakte führt der Manager Gespräche mit jedem eigenen Spieler. Wie 
   - *Ausleihen:* Der Leihmarkt zeigt junge Spieler ohne Stammplatz und Reservisten anderer Vereine. Der Stammverein verlangt einen Gehaltsanteil (darunter lehnt er ab), bei starken Spielern eine Leihgebühr, und meldet sich, wenn ein zugesagter Stammspieler nicht spielt.
   - Einmal im Monat kommt ein Leihbericht ins Postfach. Zum Saisonende kehren alle zurück. Verliehene Spieler stehen unter der Kadertabelle, werden nicht verkauft und kosten beide Vereine anteilig Gehalt.
 
+### 4a. 🎯 Der Sportdirektor (`SportdirektorEngine`)
+Der Verein hat einen Sportdirektor mit festem Namen. Er kennt den Kader nach Mannschaftsteilen (Tor, Innen- und Außenverteidigung, defensives und zentrales Mittelfeld, Flügel, Sturm) und sieht dort Bedarf, wo der Beste unter dem Kaderniveau liegt, wo Spieler fehlen oder der Stammspieler 32 oder älter ist.
+
+- **Alle zwei Wochen drei Vorschläge im Postfach:** Spieler, die der Verein erreichen (Marktreichweite) und bezahlen kann (Ablöse im Transferbudget), höchstens einer je Verein und höchstens zwei je Mannschaftsteil. Jeder mit einer Begründung („Würde in der Innenverteidigung sofort spielen – nach meiner Einschätzung stärker als …“, Ablöse, erwartetes Gehalt) und den Knöpfen *Akte* und *Verhandeln*. Wer schon vorgeschlagen war, kommt acht Wochen lang nicht wieder.
+- **Beratung im Transfermarkt (Reiter *Sportdirektor*):** Position oder „nach Bedarf“, Rolle (*Sofort Stammspieler*, *Kaderbreite*, *Talent mit Zukunft*), Höchstalter und Ablöserahmen bis hin zu „nur ablösefrei“ – er antwortet mit bis zu fünf Namen, oder sagt ehrlich, dass er niemanden findet. *Als Suchauftrag merken* richtet seine regelmäßigen Vorschläge danach aus; gibt der Auftrag gerade nichts her, sagt er das und schlägt vor, was dem Kader fehlt.
+- **So gut wie der Chefscout:** Bei der Stärke fremder Spieler liegt er mit einem schwachen Chefscout bis zu vier Punkte daneben, mit einem sehr guten praktisch gar nicht.
+
 ### 4b. 🤝 Verhandlungen mit Vereinen und Beratern (`NegotiationEngine`)
 Ein Transfer ist kein Knopfdruck mehr, sondern ein Vorgang über mehrere Tage:
 
@@ -573,6 +580,7 @@ untitled/
 │   │   ├── scoutingEngine.js   # Scoutaufträge & Spielerberichte
 │   │   ├── youthEngine.js      # Jugendförderung & Akademieausbau
 │   │   ├── contractEngine.js   # Vertragsforderungen, Verlängerungen & Ausstiegsklauseln
+│   │   ├── sportdirektorEngine.js # Spielervorschläge und Beratung des Sportdirektors
 │   │   ├── calendarEngine.js   # Saisonkalender & dynamischer Tagesablauf
 │   │   └── opponentAnalysisEngine.js # Taktische Gegneranalyse
 │   ├── ui/

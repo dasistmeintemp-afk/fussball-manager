@@ -8430,3 +8430,8 @@ td.nowrap { white-space: nowrap; }
 .sd-sterne { white-space: nowrap; }
 .sd-grund { font-size: 12px; margin: 6px 0 8px; line-height: 1.5; }
 .sd-aktionen { display: flex; gap: 8px; align-items: center; }
+
+/* Saisonziel in der Vorbereitung */
+.ziel-kopf { font-size: 14px; margin-bottom: 4px; }
+.ziel-prognose { font-size: 13px; margin: 8px 0; }
+.ziel-wahl { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 6px; }

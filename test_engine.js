@@ -9542,6 +9542,51 @@ function runEngineTests() {
         if (!ContractEngine.istTreu(kader[2], state)) throw new Error("Ein loyaler Spieler seit Spielbeginn gilt nicht als treu");
     });
 
+    test("Vorstand: Saisonziel in der Vorbereitung verhandeln, Medienprognose", () => {
+        const vorlage = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const mittel = vorlage.clubs.filter(c => c.leagueId === "de_liga_1")
+            .map(c => ({ c, z: BoardEngine.bestimmeZiel(vorlage, c) }))
+            .find(x => x.z.platz >= 6 && x.z.platz <= 12).c;
+        const neu = () => {
+            const st = GameState.createNewGame(mittel.id, "normal", { name: "Trainer" });
+            return { st, club: st.clubs.find(c => c.id === st.userClubId) };
+        };
+
+        // Die Prognose der Medien steht beim Ziel und in der Begründung
+        const { st, club } = neu();
+        const z = club.vorstandsziel;
+        if (!(z.prognose >= 1 && z.prognose <= z.n)) throw new Error(`Keine Medienprognose: ${z.prognose}`);
+        if (!/Die Medien sehen uns auf Platz \d+/.test(BoardEngine.zielBegruendung(club))) throw new Error("Die Begründung nennt die Prognose nicht");
+        const bayern = vorlage.clubs.find(c => c.id === "muc");
+        if (BoardEngine.medienprognose(vorlage, bayern) > 2) throw new Error("Die Medien sehen den Meister nicht vorn");
+
+        // Senken: zwei Plätze tiefer, weniger Budget, etwas weniger Vertrauen
+        if (!st.preseason?.aktiv) throw new Error("Neues Spiel ohne Vorbereitung");
+        const platz = z.platz, budget = club.transferBudget, vertrauen = club.confidence ?? 75;
+        const r = BoardEngine.verhandleZiel(st, "senken");
+        if (!r.ok || z.platz !== platz + 2 || club.transferBudget !== budget - Math.round(budget * 0.2)) throw new Error(`Senken: ${JSON.stringify(r)} Platz ${z.platz}, Budget ${club.transferBudget}`);
+        if (!((club.confidence ?? 75) < vertrauen)) throw new Error("Ein niedrigeres Ziel kostet kein Vertrauen");
+        if (club.boardExpectation !== z.art || BoardEngine.zielPlatz(st, club) !== platz + 2) throw new Error("Zielplatz und Art passen nicht zum neuen Ziel");
+        if (!st.inbox.some(m => /Saisonziel gesenkt/.test(m.subject || m.title || ""))) throw new Error("Keine Bestätigung des Vorstands");
+        if (BoardEngine.verhandleZiel(st, "erhoehen").ok) throw new Error("Zweimal verhandelt");
+
+        // Erhöhen: zwei Plätze höher, mehr Budget
+        const b = neu();
+        const p2 = b.club.vorstandsziel.platz, b2 = b.club.transferBudget;
+        const r2 = BoardEngine.verhandleZiel(b.st, "erhoehen");
+        if (!r2.ok || b.club.vorstandsziel.platz !== p2 - 2 || b.club.transferBudget !== b2 + Math.round(b2 * 0.2)) throw new Error("Erhöhen klappt nicht");
+
+        // Nach der Vorbereitung redet der Vorstand nicht mehr
+        const c = neu();
+        c.st.preseason.aktiv = false;
+        const r3 = BoardEngine.verhandleZiel(c.st, "senken");
+        if (r3.ok || !/Vorbereitung/.test(r3.grund)) throw new Error("Verhandelt nach der Vorbereitung");
+
+        // Der Spielstand behält die Absprache
+        const zurueck = SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(st))));
+        if (zurueck.clubs.find(x => x.id === club.id).vorstandsziel.verhandelt !== "senken") throw new Error("Die Absprache überlebt das Speichern nicht");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

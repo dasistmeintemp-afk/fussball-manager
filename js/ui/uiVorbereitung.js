@@ -63,12 +63,57 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 : `<span style="color:var(--success, #22c55e);">Alles erledigt - die Mannschaft ist bereit für den ersten Spieltag.</span>`;
         }
 
+        this.renderPreseasonZiel(state, club, pre);
         this.renderPreseasonStaff(state, engine, club, pre);
         this.renderPreseasonSponsors(state, engine, club, pre);
         this.renderPreseasonPlan(state, engine, pre);
         this.renderPreseasonTournaments(state, engine, pre);
         this.renderPreseasonContacts(state, engine, club, pre);
         this.renderPreseasonReports(pre);
+    },
+
+    /**
+     * Das Saisonziel: was der Vorstand erwartet, warum, wo die Medien den
+     * Verein sehen - und einmal je Vorbereitung die Wahl, es anzunehmen, zu
+     * senken (weniger Transferbudget) oder zu erhöhen (mehr).
+     */
+    renderPreseasonZiel(state, club, pre) {
+        const el = document.getElementById("preZiel");
+        const board = typeof BoardEngine !== "undefined" ? BoardEngine : null;
+        if (!el || !board || !club.vorstandsziel) {
+            document.getElementById("preZielKarte")?.style.setProperty("display", "none");
+            return;
+        }
+        document.getElementById("preZielKarte")?.style.removeProperty("display");
+        const z = club.vorstandsziel;
+        const V = board.ZIEL_VERHANDLUNG;
+        const betrag = Math.round(Math.max(0, club.transferBudget || 0) * V.budget);
+        const { rettung } = board.grenzen(state, club);
+        const prognose = typeof z.prognose === "number"
+            ? `<div class="ziel-prognose">📰 Die Medien sehen uns auf <strong>Platz ${z.prognose}</strong>.</div>` : "";
+        const status = z.verhandelt === "senken" ? `Gesenkt von Platz ${z.vorher} – ${this.geldKurz(-z.budgetAenderung)} weniger Transferbudget.`
+            : z.verhandelt === "erhoehen" ? `Erhöht von Platz ${z.vorher} – ${this.geldKurz(z.budgetAenderung)} mehr Transferbudget.`
+                : z.verhandelt === "angenommen" ? "Angenommen." : "";
+        const offen = pre.aktiv && !z.verhandelt;
+        el.innerHTML = `
+            <div class="ziel-kopf"><strong>${this.escapeHtml(board.zielText(state, club))}</strong>${status ? ` <span class="muted-note">${status}</span>` : ""}</div>
+            <div class="muted-note">${this.escapeHtml(board.zielBegruendung(club).replace(/ Die Medien sehen uns auf Platz \d+\./, ""))}</div>
+            ${prognose}
+            ${offen ? `
+                <div class="ziel-wahl">
+                    <button class="btn btn-sm btn-primary" data-ziel="annehmen">Ziel annehmen</button>
+                    <button class="btn btn-sm btn-secondary" data-ziel="senken" ${z.platz >= rettung ? "disabled" : ""}>Platz ${Math.min(rettung, z.platz + V.plaetze)} anpeilen (−${this.geldKurz(betrag)})</button>
+                    <button class="btn btn-sm btn-secondary" data-ziel="erhoehen" ${z.platz <= 1 ? "disabled" : ""}>Platz ${Math.max(1, z.platz - V.plaetze)} anpeilen (+${this.geldKurz(betrag)})</button>
+                </div>
+                <div class="muted-note">Einmal je Vorbereitung. Ein niedrigeres Ziel kostet Transferbudget und etwas Vertrauen, ein höheres bringt beides.</div>` : ""}`;
+        el.querySelectorAll("[data-ziel]").forEach(btn => btn.addEventListener("click", () => {
+            const r = board.verhandleZiel(state, btn.dataset.ziel);
+            if (!r.ok) { this.showToast(r.grund, "error"); return; }
+            this.showToast(btn.dataset.ziel === "annehmen" ? "Saisonziel angenommen." : `Neues Saisonziel: Platz ${r.platz} oder besser.`, "success");
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.renderPreseason();
+            this.renderHeader();
+        }));
     },
 
     renderPreseasonStaff(state, engine, club, pre) {

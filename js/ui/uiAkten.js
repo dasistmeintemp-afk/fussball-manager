@@ -552,11 +552,19 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         : `<button class="btn btn-primary" id="btnPdPromoteProspect" style="width:100%;">Vertragsgespräche aufnehmen</button>`}
                 </div>
             `;
+        } else if (isUserClub && player.vorvertrag) {
+            contractSectionHtml = `
+                <div class="dash-card mt-3" id="pdVertrag" style="padding:14px; background: var(--surface-2); border:1px solid var(--line);">
+                    <h4 style="font-size:14px; margin-bottom:8px; color:#f87171;"><svg class="ico h-ico" aria-hidden="true"><use href="#i-briefcase"/></svg>Vertrag läuft aus</h4>
+                    <p style="font-size:12px; color:var(--text-muted); margin:0;">${this.escapeHtml(player.name)} hat bei <strong>${this.escapeHtml(player.vorvertrag.clubName)}</strong> unterschrieben und geht zum Saisonwechsel ablösefrei.</p>
+                </div>
+            `;
         } else if (isUserClub && leiheModus !== "geliehen") {
             contractSectionHtml = `
                 <div class="dash-card mt-3" id="pdVertrag" style="padding:14px; background: var(--surface-2); border:1px solid var(--line);">
                     <h4 style="font-size:14px; margin-bottom:8px; color:#38bdf8;"><svg class="ico h-ico" aria-hidden="true"><use href="#i-briefcase"/></svg>Vertragsverlängerung verhandeln</h4>
                     <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">Forderung des Spielers: ca. <strong>${GameState.formatMoney(demand.demandWage)} / Woche</strong></p>
+                    ${(player.contractYears || 0) <= 0 ? `<p class="vertrag-endet">Sein Vertrag endet zum Saisonwechsel${this.sommerpauseText()}. Andere Vereine werben schon.</p>` : ""}
                     
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:12px;">
                         <div>

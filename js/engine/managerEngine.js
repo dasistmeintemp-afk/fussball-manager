@@ -1117,7 +1117,25 @@ class ManagerEngine {
 
         // 4. Auslaufende Verträge - jeder Name führt direkt in die
         // Verhandlung in seiner Akte, die Wichtigsten zuerst
-        const auslaufend = squad.filter(p => (p.contractYears ?? 3) <= 1)
+        //
+        // In der Sommerpause stehen zuerst die, deren Vertrag zum
+        // Saisonwechsel endet - mit den Tagen, die noch bleiben
+        const zumWechsel = squad.filter(p => (p.contractYears ?? 3) <= 0 && !p.vorvertrag && !p.leihe)
+            .sort((a, b) => (b.overall || 0) - (a.overall || 0));
+        if (zumWechsel.length > 0) {
+            const kalender = _mgrResolve("CalendarEngine", "./calendarEngine.js");
+            const rest = kalender && typeof kalender.sommerpauseRest === "function" ? kalender.sommerpauseRest(state) : null;
+            items.push({
+                priority: 0,
+                icon: "📄",
+                tab: "squad",
+                title: `${zumWechsel.length} ${zumWechsel.length === 1 ? "Vertrag endet" : "Verträge enden"} zum Saisonwechsel`,
+                detail: (rest !== null ? `Noch ${rest} ${rest === 1 ? "Tag" : "Tage"}. ` : "") + "Auf einen Namen tippen, um zu verlängern.",
+                spieler: zumWechsel.map(p => ({ id: p.id, name: p.name, pos: p.pos })),
+                abschnitt: "vertrag"
+            });
+        }
+        const auslaufend = squad.filter(p => (p.contractYears ?? 3) === 1)
             .sort((a, b) => (b.overall || 0) - (a.overall || 0));
         if (auslaufend.length > 0) {
             items.push({

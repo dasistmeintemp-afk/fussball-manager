@@ -221,7 +221,13 @@ class WorldGenerator {
             // Jeder Verein zieht Jahr für Jahr Talente nach. Ohne diesen
             // Nachwuchs altert die Spielwelt Saison für Saison weiter, bis es
             // in der ganzen Liga keinen einzigen Zwanzigjährigen mehr gibt.
-            const mindestJugend = options.mindestJugend || 0;
+            //
+            // Der eigene Verein ist ausgenommen: Seine Talente kommen aus der
+            // eigenen Akademie, und dafür wurde sonst ein eigener Spieler
+            // still vor die Tür gesetzt - auch einer, den der Manager gerade
+            // erst verlängert hatte.
+            const eigener = club.id === state.userClubId;
+            const mindestJugend = eigener ? 0 : (options.mindestJugend || 0);
             const jung = kader.filter(p => (p.age || 25) <= 21).length;
             const jugendLuecke = Math.max(0, mindestJugend - jung);
 
@@ -242,7 +248,7 @@ class WorldGenerator {
             // Ist der Kader schon voll, macht der schwächste Überzählige Platz -
             // er wird vereinslos und steht dem Transfermarkt zur Verfügung.
             // Wer für die Mindestbesetzung gebraucht wird, bleibt tabu.
-            let ueberzaehlig = kader.length + anzahl - ziel;
+            let ueberzaehlig = eigener ? 0 : kader.length + anzahl - ziel;
             if (ueberzaehlig > 0) {
                 const gruppe = {};
                 Object.keys(ist).forEach(pos => {
@@ -255,8 +261,12 @@ class WorldGenerator {
                 // Wer gehen muss: der schwächste Überzählige, wobei ein
                 // Routinier jenseits der Dreißig eher weicht als ein Talent
                 const wert = (p) => (p.overall || 0) - Math.max(0, (p.age || 25) - 29) * 4;
+                // Wer gerade erst gekommen ist - gekauft oder per Vorvertrag -,
+                // wird nicht gleich wieder vor die Tür gesetzt
+                const saison = state.seasonYear || 1;
                 const ueberhang = kader
                     .filter(p => (rest[p.pos] || 0) > 0)
+                    .filter(p => !(typeof p.vereinSeit === "number" && Math.floor(p.vereinSeit / 1000) >= saison))
                     .sort((a, b) => wert(a) - wert(b));
 
                 while (ueberzaehlig > 0 && ueberhang.length > 0) {

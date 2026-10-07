@@ -29,24 +29,37 @@ const _PositionEngine = (typeof PositionEngine !== 'undefined' && PositionEngine
         ? window.PositionEngine
         : ((typeof require !== 'undefined') ? require('./positionEngine.js').PositionEngine : null));
 
+// Einmal gefunden, bleibt ein Modul gemerkt - require löst unter Node sonst
+// bei jedem Aufruf den Pfad neu auf, und diese Helfer laufen je Spielzug
+const _einmal = (finde) => {
+    let wert = null;
+    return () => wert || (wert = finde());
+};
+
 // Rollen, Formen und Anweisungen der Taktik (nach FM26). Erst bei Bedarf
 // aufgeloest - im Browser laden die Skripte in beliebiger Reihenfolge.
 // Wetter und Platz (WetterEngine) - ebenfalls erst bei Bedarf
-const _mWetter = () => (typeof WetterEngine !== 'undefined' && WetterEngine)
+const _mWetter = _einmal(() => (typeof WetterEngine !== 'undefined' && WetterEngine)
     ? WetterEngine
     : ((typeof window !== 'undefined' && window.WetterEngine)
         ? window.WetterEngine
         : ((typeof require !== 'undefined')
             ? (() => { try { return require('./wetterEngine.js').WetterEngine; } catch (e) { return null; } })()
-            : null));
+            : null)));
 
-const _mTaktik = () => (typeof TacticsEngine !== 'undefined' && TacticsEngine)
+const _mTaktik = _einmal(() => (typeof TacticsEngine !== 'undefined' && TacticsEngine)
     ? TacticsEngine
     : ((typeof window !== 'undefined' && window.TacticsEngine)
         ? window.TacticsEngine
         : ((typeof require !== 'undefined')
             ? (() => { try { return require('./tacticsEngine.js').TacticsEngine; } catch (e) { return null; } })()
-            : null));
+            : null)));
+
+/** Die Formationsvorlagen aus gameState.js */
+const _formationen = _einmal(() => (typeof FORMATION_CONFIGS !== 'undefined' && FORMATION_CONFIGS)
+    ? FORMATION_CONFIGS
+    : ((typeof window !== 'undefined' && window.FORMATION_CONFIGS) ? window.FORMATION_CONFIGS
+        : (typeof require !== 'undefined' ? (() => { try { return require('./gameState.js').FORMATION_CONFIGS || null; } catch (e) { return null; } })() : null)));
 
 /**
  * Welche Rollen eine Elf mit Ball spielt - gezaehlt, damit die Simulation
@@ -54,10 +67,7 @@ const _mTaktik = () => (typeof TacticsEngine !== 'undefined' && TacticsEngine)
  */
 const _rollenZaehlung = (club) => {
     const T = _mTaktik();
-    const cfgs = (typeof FORMATION_CONFIGS !== 'undefined' && FORMATION_CONFIGS)
-        ? FORMATION_CONFIGS
-        : ((typeof window !== 'undefined' && window.FORMATION_CONFIGS) ? window.FORMATION_CONFIGS
-            : (typeof require !== 'undefined' ? (() => { try { return require('./gameState.js').FORMATION_CONFIGS; } catch (e) { return {}; } })() : {}));
+    const cfgs = _formationen() || {};
     const zaehlung = {};
     if (!T || !club) return zaehlung;
     const positions = (cfgs[club.formation] || cfgs["4-4-2"] || {}).positions || [];
@@ -69,18 +79,18 @@ const _rollenZaehlung = (club) => {
 // Der Trainerstab entscheidet, wie gut der Co-Trainer ist. Aufgeloest wird
 // erst bei Bedarf - die Skripte laden im Browser in beliebiger Reihenfolge.
 /** Eigenheiten und Signaturen der Spieler */
-const _eigEngine = () => (typeof EigenschaftenEngine !== 'undefined' && EigenschaftenEngine)
+const _eigEngine = _einmal(() => (typeof EigenschaftenEngine !== 'undefined' && EigenschaftenEngine)
     ? EigenschaftenEngine
     : ((typeof window !== 'undefined' && window.EigenschaftenEngine) ? window.EigenschaftenEngine
-        : (typeof require !== 'undefined' ? (() => { try { return require('./eigenschaftenEngine.js').EigenschaftenEngine; } catch (e) { return null; } })() : null));
+        : (typeof require !== 'undefined' ? (() => { try { return require('./eigenschaftenEngine.js').EigenschaftenEngine; } catch (e) { return null; } })() : null)));
 
-const _stabEngine = () => (typeof CoachingStaffEngine !== 'undefined' && CoachingStaffEngine)
+const _stabEngine = _einmal(() => (typeof CoachingStaffEngine !== 'undefined' && CoachingStaffEngine)
     ? CoachingStaffEngine
     : ((typeof window !== 'undefined' && window.CoachingStaffEngine)
         ? window.CoachingStaffEngine
         : ((typeof require !== 'undefined')
             ? (() => { try { return require('./coachingStaffEngine.js').CoachingStaffEngine; } catch (e) { return null; } })()
-            : null));
+            : null)));
 
 // Zentrale Kalibrierungs- und Tuning-Parameter
 const MATCH_TUNING = {
@@ -395,11 +405,7 @@ class MatchEngine {
      * Liefert die Positionscodes der Formation eines Vereins (Slot-Reihenfolge)
      */
     static getFormationSlots(club) {
-        const formConfigs = (typeof FORMATION_CONFIGS !== 'undefined' && FORMATION_CONFIGS)
-            ? FORMATION_CONFIGS
-            : ((typeof window !== 'undefined' && window.FORMATION_CONFIGS)
-                ? window.FORMATION_CONFIGS
-                : (typeof require !== 'undefined' ? require('./gameState.js').FORMATION_CONFIGS : {}));
+        const formConfigs = _formationen() || {};
 
         const key = club?.formation || "4-4-2";
         const config = (formConfigs && formConfigs[key]) || (formConfigs && formConfigs["4-4-2"]) || null;

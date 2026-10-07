@@ -8357,3 +8357,48 @@ td.nowrap { white-space: nowrap; }
 .eb-plus { color: #34d399; }
 .eb-minus { color: #f87171; }
 .eb-gleich { font-size: 12px; margin-top: 8px; }
+
+/* Akademie: Plätze, Probetrainings und Sichtungstag */
+.akademie-zugang {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgba(29, 37, 48, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.akademie-zugang-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13px; }
+.akademie-zugang-text span { font-size: 11px; color: var(--text-muted); }
+.talent-quelle {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(56, 189, 248, 0.12);
+    color: #7dd3fc;
+    margin-left: 4px;
+    white-space: nowrap;
+}
+
+/* Akademie am Handy: jedes Talent als Karte statt als zerquetschte Zeile */
+@media (max-width: 760px) {
+    .akademie-tabelle thead { display: none; }
+    .akademie-tabelle, .akademie-tabelle tbody { display: block; width: 100%; }
+    .akademie-tabelle tr {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        column-gap: 10px;
+        row-gap: 6px;
+        padding: 10px 4px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .akademie-tabelle td { display: block; padding: 0 !important; border: none !important; }
+    .akademie-tabelle td:nth-child(1), .akademie-tabelle td:nth-child(3) { grid-column: 1; }
+    .akademie-tabelle td:nth-child(2), .akademie-tabelle td:nth-child(4) { grid-column: 2; justify-self: end; }
+    .akademie-tabelle td:nth-child(5), .akademie-tabelle td:nth-child(6), .akademie-tabelle td[colspan] { grid-column: 1 / -1; }
+    .akademie-tabelle td:nth-child(6) { display: flex; gap: 8px; flex-wrap: wrap; }
+    .akademie-tabelle td:nth-child(4)[colspan] { grid-column: 2; }
+}

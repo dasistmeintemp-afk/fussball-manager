@@ -3964,6 +3964,7 @@ class UIManager {
 
         this.renderTrainingReport();
         this.renderAkademieSchwerpunkte(state, userClub);
+        this.renderAkademieZugang(state);
 
         const engine = this.getNegotiationEngine();
         const prospectsBody = document.getElementById("youthProspectsBody");
@@ -4008,11 +4009,13 @@ class UIManager {
 
                     const aktion = gespraech
                         ? `<button class="btn btn-sm btn-secondary btn-goto-negotiation" data-neg-id="${this.escapeHtml(gespraech.id)}">Zur Verhandlung</button>`
-                        : `<button class="btn btn-sm btn-primary btn-promote-prospect" data-prospect-id="${p.id}">Vertragsgespräche aufnehmen</button>`;
+                        : `<button class="btn btn-sm btn-primary btn-promote-prospect" data-prospect-id="${p.id}">Vertragsgespräche aufnehmen</button>
+                           <button class="btn btn-sm btn-secondary btn-release-prospect" data-prospect-id="${p.id}" title="Platz in der Akademie freimachen">Freigeben</button>`;
+                    const quelle = ({ probetraining: "Probetraining", sichtung: "Sichtungstag" })[p.quelle];
 
                     return `
                     <tr class="row-clickable" data-prospect-id="${p.id}" title="Spielerakte von ${this.escapeHtml(p.name)} öffnen">
-                        <td><strong>${this.escapeHtml(p.name)}</strong></td>
+                        <td><strong>${this.escapeHtml(p.name)}</strong>${quelle ? ` <span class="talent-quelle">${quelle}</span>` : ""}</td>
                         <td><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span></td>
                         <td>${p.age} Jahre</td>
                         <td colspan="2">${this.abilityStarsFor(p)}</td>
@@ -4048,6 +4051,20 @@ class UIManager {
                         } else {
                             this.showToast(res.error || "Gespräche konnten nicht aufgenommen werden.", "error");
                         }
+                    });
+                });
+
+                document.querySelectorAll(".btn-release-prospect").forEach(btn => {
+                    btn.addEventListener("click", () => {
+                        const youth = (typeof YouthEngine !== "undefined" && YouthEngine) ? YouthEngine : window.YouthEngine;
+                        const talent = prospects.find(t => String(t.id) === btn.dataset.prospectId);
+                        if (!youth || !talent) return;
+                        if (typeof confirm === "function" && !confirm(`${talent.name} aus der Akademie freigeben?`)) return;
+                        const res = youth.talentFreigeben(state, talent.id);
+                        if (!res.success) return this.showToast(res.error, "error");
+                        this.showToast(`${talent.name} verlässt die Akademie.`, "info");
+                        if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                        this.renderTraining();
                     });
                 });
 
@@ -4209,6 +4226,46 @@ class UIManager {
      * Einzugsgebiet. Alles wirkt auf den nächsten Jahrgang; darunter steht,
      * was der Manager damit bekommt und was es kostet.
      */
+    /**
+     * Woher die Talente kommen: Jugendtag, Probetrainings unter dem Jahr und
+     * der Sichtungstag, den der Manager selbst ansetzt.
+     */
+    renderAkademieZugang(state) {
+        const box = document.getElementById("youthZugang");
+        const youth = (typeof YouthEngine !== "undefined" && YouthEngine) ? YouthEngine : (typeof window !== "undefined" ? window.YouthEngine : null);
+        if (!box || !youth || typeof youth.sichtungsLage !== "function") return;
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const lage = youth.sichtungsLage(state);
+        const chance = youth.probetrainingChance(state, club);
+        const wochen = Math.max(1, Math.round(1 / chance / 7));
+        const jugendtag = youth.jugendtagSpieltag(state);
+        const jugendtagText = (state.youthAcademy?.jugendtagSaison === state.seasonYear)
+            ? "Der Jugendtag dieser Saison war schon"
+            : `Jugendtag um den ${jugendtag}. Spieltag`;
+        const knopf = lage.warten > 0
+            ? `<button class="btn btn-sm btn-secondary" disabled>Nächster Sichtungstag in ${lage.warten} Tagen</button>`
+            : lage.plaetze.frei <= 0
+                ? `<button class="btn btn-sm btn-secondary" disabled>Akademie voll</button>`
+                : `<button class="btn btn-sm btn-primary" id="btnSichtungstag">Sichtungstag ansetzen (${this.formatMoneySafe(lage.kosten)})</button>`;
+        box.innerHTML = `
+            <div class="akademie-zugang">
+                <div class="akademie-zugang-text">
+                    <strong>${lage.plaetze.belegt} von ${lage.plaetze.plaetze} Plätzen belegt</strong>
+                    <span>${this.escapeHtml(jugendtagText)} · Probetrainings etwa alle ${wochen} Wochen · Mit ${youth.AKADEMIE_HOECHSTALTER} ist ohne Vertrag Schluss</span>
+                </div>
+                ${knopf}
+            </div>`;
+        document.getElementById("btnSichtungstag")?.addEventListener("click", () => {
+            const res = youth.sichtungstag(state);
+            if (!res.success) return this.showToast(res.error, "error");
+            this.playSound("click");
+            this.showToast(`🎓 Sichtungstag: ${res.neu.map(t => t.name).join(", ")} ${res.neu.length === 1 ? "kommt" : "kommen"} in die Akademie.`, "success", 6000);
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.renderHeader();
+            this.renderTraining();
+        });
+    }
+
     renderAkademieSchwerpunkte(state, club) {
         const box = document.getElementById("youthSchwerpunkte");
         const youth = (typeof YouthEngine !== "undefined" && YouthEngine) ? YouthEngine

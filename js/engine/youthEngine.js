@@ -339,6 +339,147 @@ const YouthEngine = {
         return null;
     },
 
+    /**
+     * Talente kommen nicht nur am Jugendtag.
+     *
+     * Vorher stellte sich genau einmal je Saison ein Jahrgang vor, sonst kam
+     * niemand - zu selten, um eine Akademie wirklich zu führen. Jetzt meldet
+     * der Nachwuchsleiter unter dem Jahr immer wieder ein einzelnes Talent,
+     * das im Probetraining überzeugt hat: je besser Akademie, Nachwuchsleiter
+     * und Sichtungsnetz, desto öfter (Chance je Tag, in der Grundausstattung
+     * etwa dreimal je Saison, mit allem Drum und Dran rund neunmal). Und wer
+     * gezielt suchen will, setzt selbst einen Sichtungstag an: ein bis zwei
+     * Talente, gegen eine Gebühr nach Ligastufe, danach sechs Wochen Pause.
+     * Die Akademie hat Platz für 8 Talente und 2 je Ausbaustufe - ist sie
+     * voll, kommt niemand mehr dazu.
+     */
+    PROBETRAINING: { basis: 0.010, jeStufe: 0.002, jeLeiter: 0.0015, einzug: { region: 0, national: 0.004, international: 0.008 }, ovr: -1, pot: -1 },
+    SICHTUNG: { abstand: 42, kosten: { 1: 50000, 2: 30000, 3: 15000, 4: 8000, 5: 4000, 6: 2500, 7: 1500 } },
+    AKADEMIE_PLAETZE: { basis: 8, jeStufe: 2 },
+
+    /** Wie viele Talente die eigene Akademie fasst - und wie viele da sind */
+    akademiePlaetze(state, club = null) {
+        const verein = club || (state?.clubs || []).find(c => c.id === state?.userClubId);
+        const plaetze = this.AKADEMIE_PLAETZE.basis + this.AKADEMIE_PLAETZE.jeStufe * Math.round(this.akademieStufe(state, verein));
+        const belegt = this.eigeneTalente(state).filter(t => t && !t.promoted).length;
+        return { plaetze, belegt, frei: Math.max(0, plaetze - belegt) };
+    },
+
+    /** Chance je Tag, dass ein Talent im Probetraining überzeugt */
+    probetrainingChance(state, club) {
+        const P = this.PROBETRAINING;
+        const sp = this.schwerpunkteVon(club);
+        return Math.max(0.004, P.basis + P.jeStufe * this.akademieStufe(state, club)
+            + P.jeLeiter * this.leiterBonus(state, club) + (P.einzug[sp.einzug] || 0));
+    },
+
+    /** Ein Tag: Überzeugt jemand im Probetraining? Meldung oder null */
+    pruefeProbetraining(state, zufall = Math.random) {
+        if (!state || !state.userClubId) return null;
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        if (!club || this.akademiePlaetze(state, club).frei <= 0) return null;
+        if (zufall() >= this.probetrainingChance(state, club)) return null;
+
+        const P = this.PROBETRAINING;
+        const [talent] = this.generateProspects(state, club.id, { anzahl: 1, ovr: P.ovr, pot: P.pot, jahrgang: false, ohneKosten: true, quelle: "probetraining" });
+        if (!talent) return null;
+        this.nachwuchsPost(state, club, `🎓 Probetraining: ${talent.name} überzeugt`,
+            `${talent.name} (${talent.pos}, ${talent.age} Jahre) war zum Probetraining bei uns und hat überzeugt. Er steht ab sofort in der Akademie (Reiter Training).`);
+        return `🎓 ${talent.name} hat im Probetraining überzeugt und kommt in die Akademie.`;
+    },
+
+    /** Was ein Sichtungstag kostet und wann der nächste möglich ist */
+    sichtungsLage(state) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        const kosten = this.SICHTUNG.kosten[club?.level || 1] ?? 1500;
+        const heute = (state?.seasonYear || 1) * 1000 + (state?.currentDayIndex || 0);
+        const letzter = state?.youthAcademy?.sichtungTag;
+        const warten = typeof letzter === "number" ? Math.max(0, letzter + this.SICHTUNG.abstand - heute) : 0;
+        return { kosten, warten, plaetze: club ? this.akademiePlaetze(state, club) : { plaetze: 0, belegt: 0, frei: 0 } };
+    },
+
+    /** Ein selbst angesetzter Sichtungstag: ein bis zwei Talente gegen Gebühr */
+    sichtungstag(state, zufall = Math.random) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        if (!club) return { success: false, error: "Kein Verein." };
+        const lage = this.sichtungsLage(state);
+        if (lage.warten > 0) return { success: false, error: `Der nächste Sichtungstag ist in ${lage.warten} Tagen möglich.` };
+        if (lage.plaetze.frei <= 0) return { success: false, error: "Die Akademie ist voll - erst muss ein Talent gehen oder befördert werden." };
+        if ((club.balance || 0) < lage.kosten) return { success: false, error: "Dafür reicht das Geld nicht." };
+
+        club.balance -= lage.kosten;
+        const fin = _youthResolve("FinanceEngine", "./financeEngine.js");
+        if (fin && typeof fin.recordTransaction === "function") {
+            fin.recordTransaction(state, club.id, "youth_scouting", -lage.kosten, "Sichtungstag der Akademie");
+        }
+        if (!state.youthAcademy) state.youthAcademy = { prospects: [], level: 1 };
+        state.youthAcademy.sichtungTag = (state.seasonYear || 1) * 1000 + (state.currentDayIndex || 0);
+
+        const anzahl = Math.min(lage.plaetze.frei, zufall() < 0.5 ? 2 : 1);
+        const neu = this.generateProspects(state, club.id, { anzahl, jahrgang: false, ohneKosten: true, quelle: "sichtung" });
+        this.nachwuchsPost(state, club, `🎓 Sichtungstag: ${neu.length} ${neu.length === 1 ? "Talent" : "Talente"} gefunden`,
+            `Beim Sichtungstag sind uns aufgefallen:\n${neu.map(t => `• ${t.name} (${t.pos}, ${t.age} Jahre)`).join("\n")}\n\nSie stehen ab sofort in der Akademie.`);
+        return { success: true, neu, kosten: lage.kosten };
+    },
+
+    /** Mit diesem Alter verlässt ein Talent ohne Profivertrag die Akademie */
+    AKADEMIE_HOECHSTALTER: 19,
+
+    /**
+     * Ein Talent freigeben - Platz für neue. Läuft schon ein Gespräch über
+     * seinen ersten Vertrag, geht das nicht.
+     */
+    talentFreigeben(state, prospectId) {
+        const liste = this.eigeneTalente(state);
+        const i = liste.findIndex(t => t && String(t.id) === String(prospectId) && !t.promoted);
+        if (i < 0) return { success: false, error: "Talent nicht gefunden." };
+        const neg = _youthResolve("NegotiationEngine", "./negotiationEngine.js");
+        const laeuft = neg && typeof neg.getOpenNegotiations === "function"
+            && neg.getOpenNegotiations(state).some(n => n.type === "youth_promotion" && String(n.prospectId) === String(prospectId));
+        if (laeuft) return { success: false, error: "Mit ihm wird gerade über einen Vertrag verhandelt." };
+        const [talent] = liste.splice(i, 1);
+        return { success: true, talent };
+    },
+
+    /**
+     * Zum Saisonwechsel werden die Talente ein Jahr älter. Wer dabei 19 wird
+     * und noch keinen Profivertrag hat, verlässt die Akademie. Vorher blieben
+     * Talente für immer 15 bis 17 und für immer in der Akademie.
+     */
+    alterTalente(state) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        if (!club) return [];
+        const liste = this.eigeneTalente(state);
+        const gehen = [];
+        for (let i = liste.length - 1; i >= 0; i--) {
+            const t = liste[i];
+            if (!t || t.promoted) continue;
+            t.age = (t.age || 16) + 1;
+            if (t.age >= this.AKADEMIE_HOECHSTALTER) gehen.unshift(...liste.splice(i, 1));
+        }
+        if (gehen.length) {
+            this.nachwuchsPost(state, club, `🎓 ${gehen.length} ${gehen.length === 1 ? "Talent verlässt" : "Talente verlassen"} die Akademie`,
+                `Ohne Profivertrag ist mit ${this.AKADEMIE_HOECHSTALTER} Schluss in der Akademie:\n`
+                + gehen.map(t => `• ${t.name} (${t.pos})`).join("\n"));
+        }
+        return gehen;
+    },
+
+    /** Post der Nachwuchsabteilung */
+    nachwuchsPost(state, club, betreff, text) {
+        if (!Array.isArray(state.inbox)) return;
+        state.inbox.unshift({
+            id: Date.now() + Math.floor(Math.random() * 1000),
+            matchday: state.currentMatchday || 1,
+            date: state.currentDate || `Spieltag ${state.currentMatchday || 1}`,
+            sender: club.staff?.nachwuchs ? `${club.staff.nachwuchs.name} (Nachwuchsleiter)` : "Nachwuchsabteilung",
+            subject: betreff,
+            body: text,
+            read: false,
+            type: "youth"
+        });
+    },
+
     /** Das Land des Vereins, in Worten wie bei den Nationalitäten */
     heimatland(state, club) {
         const daten = (typeof COUNTRIES_DATA !== "undefined" && COUNTRIES_DATA)
@@ -377,7 +518,7 @@ const YouthEngine = {
     /**
      * Erzeugt neue Jugendspieler für die Akademie eines Vereins (C7: auch KI-Vereine)
      */
-    generateProspects(state, clubId) {
+    generateProspects(state, clubId, optionen = {}) {
         if (!state) return [];
         if (!state.youthAcademy) state.youthAcademy = { prospects: [], level: 1 };
         if (!Array.isArray(state.youthAcademy.prospects)) state.youthAcademy.prospects = [];
@@ -399,7 +540,7 @@ const YouthEngine = {
         const leiterBonus = this.leiterBonus(state, club);
 
         // Die Sichtung kostet - abgebucht, wenn der Jahrgang kommt
-        if (eigen && einzug.kosten > 0) {
+        if (eigen && einzug.kosten > 0 && !optionen.ohneKosten) {
             const kosten = this.einzugKosten(club, sp.einzug);
             if (kosten > 0) {
                 club.balance = (club.balance || 0) - kosten;
@@ -436,7 +577,9 @@ const YouthEngine = {
         };
 
         const newProspects = [];
-        const count = eigen ? jahrgang.anzahl : 3;
+        const count = optionen.anzahl ?? (eigen ? jahrgang.anzahl : 3);
+        // Probetraining und Sichtungstag folgen nicht dem Jahrgangsschwerpunkt
+        const mitJahrgang = optionen.jahrgang !== false;
 
         for (let i = 0; i < count; i++) {
             const firstName = poolFirst[Math.floor(Math.random() * poolFirst.length)];
@@ -447,8 +590,8 @@ const YouthEngine = {
 
             // Stärke und Potenzial nach Ligastufe und Akademie-Level, beim
             // eigenen Verein dazu Jahrgang, Einzugsgebiet und Nachwuchsleiter
-            const potPlus = eigen ? jahrgang.pot + einzug.pot + leiterBonus : 0;
-            const werte = this.talentWerte(club, academyLevel, { ovr: eigen ? jahrgang.ovr : 0, pot: potPlus });
+            const potPlus = eigen ? (mitJahrgang ? jahrgang.pot : 0) + einzug.pot + leiterBonus + (optionen.pot || 0) : 0;
+            const werte = this.talentWerte(club, academyLevel, { ovr: eigen ? (mitJahrgang ? jahrgang.ovr : 0) + (optionen.ovr || 0) : 0, pot: potPlus });
 
             const prospect = {
                 id: "youth_" + Date.now() + "_" + i + "_" + Math.floor(Math.random() * 1000),
@@ -464,6 +607,8 @@ const YouthEngine = {
                 developmentRate: 1.0 + (academyLevel * 0.1),
                 schule: schule ? schule.key : null,
                 schulName: schule ? schule.name : null,
+                // Wie er kam: Jugendtag, Probetraining oder Sichtungstag
+                quelle: optionen.quelle || "jugendtag",
                 promoted: false
             };
 

@@ -390,6 +390,10 @@ Zu jedem Monatswechsel schickt der Co-Trainer einen Bericht ins Postfach (Katego
 ### 5c. 🎓 Nachwuchs: Beförderung über den Berater
 Ein Talent in den Profikader zu holen dauert jetzt seine Zeit. *Vertragsgespräche aufnehmen* startet die Verhandlung mit dem Berater über Gehalt, Laufzeit und Handgeld; erst nach der Einigung – meist drei bis sechs Tage – unterschreibt der Spieler seinen ersten Profivertrag und taucht im Kader auf. Die Forderung richtet sich nach Potenzial und Ligastufe.
 
+- **Talente kommen öfter und auf mehr Wegen:** Neben dem Jugendtag im Frühjahr meldet der Nachwuchsleiter unter dem Jahr immer wieder ein einzelnes Talent, das im Probetraining überzeugt hat – in der Grundausstattung etwa dreimal je Saison, mit ausgebauter Akademie, gutem Nachwuchsleiter und weltweitem Sichtungsnetz bis rund neunmal. Wer gezielt suchen will, setzt im Reiter Training selbst einen *Sichtungstag* an: ein bis zwei Talente gegen eine Gebühr nach Ligastufe (50.000 € in der Bundesliga, 1.500 € in der untersten Liga), danach sechs Wochen Pause. Die Herkunft steht als Marke am Namen.
+- **Akademie mit Plätzen:** Platz für 8 Talente und 2 je Ausbaustufe; ist sie voll, kommt niemand mehr dazu. Ein Talent lässt sich *freigeben*. Zum Saisonwechsel werden die Talente ein Jahr älter, mit 19 ist ohne Profivertrag Schluss – vorher blieben sie für immer 15 bis 17 Jahre alt und für immer in der Akademie.
+- Am Handy steht jedes Talent als Karte da statt als Tabellenzeile mit zerquetschten Spalten.
+
 ### 6. 💼 Finanzen, Sponsoren & Buchungsjournal
 - **Finanzübersicht (`FinanceEngine`):** Kontostand, Transferbudget, Gehaltsetat, Ticketeinnahmen und wöchentliche Sponsorenzahlungen.
 - **Transaktionsjournal:** Detailliertes Buchungsjournal mit lückenloser Historie aller Einnahmen und Ausgaben.

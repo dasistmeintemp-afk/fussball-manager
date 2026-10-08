@@ -9749,6 +9749,49 @@ function runEngineTests() {
         if (club.wageBudget !== etat || club.budgetUmschichtung) throw new Error(`Etat nach dem Saisonwechsel: ${club.wageBudget} statt ${etat}`);
     });
 
+    test("Mannschaftsbesprechung: Lob nach guter Serie, Forderung nach schlechter, Sperre und Abnutzung", () => {
+        const { PlayerTalkEngine: T } = require('./js/engine/playerTalkEngine.js');
+        const neu = (form, moral) => {
+            const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+            const club = state.clubs.find(c => c.id === state.userClubId);
+            club.form = form;
+            const kader = state.players.filter(p => club.playerIds.includes(p.id));
+            kader.forEach(p => { p.morale = moral; p.hiddenAttributes = { ...(p.hiddenAttributes || {}), professionalism: 12, ambition: 12, temperament: 12 }; });
+            return { state, club, kader, schnitt: () => kader.reduce((a, p) => a + p.morale, 0) / kader.length };
+        };
+        const ruhig = () => 0.5;
+
+        // Nach vier Siegen kommt Lob an, Forderungen wirken unfair
+        const gut = neu(["W", "W", "W", "D", "W"], 70);
+        const lob = T.mannschaftsbesprechung(gut.state, "loben", ruhig);
+        if (!lob.success || lob.stimmung !== "gut" || !(gut.schnitt() > 72)) throw new Error(`Lob nach Siegen: ${JSON.stringify(lob)}, Moral ${gut.schnitt()}`);
+        const gut2 = neu(["W", "W", "W", "D", "W"], 70);
+        if (T.mannschaftsbesprechung(gut2.state, "fordern", ruhig).stimmung !== "schlecht") throw new Error("Forderungen nach Siegen kommen gut an");
+
+        // Nach Niederlagen: Lob wirkt unverdient, ein Weckruf trägt - bei Profis mehr
+        const schlecht = neu(["L", "L", "D", "L", "L"], 65);
+        if (T.mannschaftsbesprechung(schlecht.state, "loben", ruhig).stimmung !== "schlecht") throw new Error("Lob nach Niederlagen kommt an");
+        const weck = neu(["L", "L", "D", "L", "L"], 65);
+        const [profi, hitzkopf] = weck.kader;
+        profi.hiddenAttributes.professionalism = 18;
+        hitzkopf.hiddenAttributes.temperament = 18;
+        const r = T.mannschaftsbesprechung(weck.state, "fordern", ruhig);
+        if (r.stimmung === "schlecht" || !(profi.morale > hitzkopf.morale)) throw new Error(`Weckruf: ${r.stimmung}, Profi ${profi.morale}, Hitzkopf ${hitzkopf.morale}`);
+
+        // Hängende Köpfe: Druck herausnehmen hilft
+        const tief = neu(["L", "D", "L", "W", "L"], 45);
+        const d = T.mannschaftsbesprechung(tief.state, "druck", ruhig);
+        if (d.stimmung !== "gut" || !(tief.schnitt() > 48)) throw new Error("Druck herausnehmen hilft nicht, wenn die Moral unten ist");
+
+        // Alle zwei Wochen - danach wirkt dieselbe Ansprache nur noch halb
+        if (T.mannschaftsbesprechung(gut.state, "loben", ruhig).success) throw new Error("Zwei Besprechungen hintereinander");
+        if (T.besprechungGesperrt(gut.state) !== 14) throw new Error("Falsche Sperre");
+        gut.state.currentDayIndex += 14;
+        gut.kader.forEach(p => { p.morale = 70; });
+        const wieder = T.mannschaftsbesprechung(gut.state, "loben", ruhig);
+        if (!wieder.success || !wieder.abgenutzt || !(wieder.schnitt < lob.schnitt)) throw new Error("Dieselbe Ansprache nutzt sich nicht ab");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

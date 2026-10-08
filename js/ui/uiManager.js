@@ -2219,6 +2219,35 @@ class UIManager {
      * Die Kabine: Kapitän, Führungsspieler, Grüppchen mit Wortführer und
      * Stimmung, dazu wer keinen Anschluss findet.
      */
+    /** Die Mannschaftsbesprechung in der Kabinen-Karte: vier Ansprachen, Sperre, letzte Antwort */
+    besprechungHtml(state) {
+        const talk = this.getPlayerTalkEngine();
+        if (!talk || typeof talk.mannschaftsbesprechung !== "function") return "";
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const gesperrt = talk.besprechungGesperrt(state);
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const zuletzt = club?.besprechung?.thema;
+        const r = this._letzteBesprechung;
+        const antwort = r ? `<div class="kb-antwort kba-${r.stimmung}">
+                ${r.kapitaen ? `<strong>${esc(r.kapitaen)}:</strong> ` : ""}„${esc(r.antwort)}“
+                <span class="text-muted">Moral im Schnitt ${r.schnitt > 0 ? "+" : ""}${String(r.schnitt).replace(".", ",")}${r.abgenutzt ? " - dieselbe Ansprache wie zuletzt, sie nutzt sich ab" : ""}.</span>
+            </div>` : "";
+        return `
+            <div class="kb-besprechung">
+                <span class="kb-label">Mannschaftsbesprechung</span>
+                <div class="kb-besprechung-knoepfe">
+                    ${Object.entries(talk.BESPRECHUNG_THEMEN).map(([key, t]) => `
+                        <button class="btn btn-sm btn-secondary" data-besprechung="${key}" title="${esc(t.text)}" ${gesperrt ? "disabled" : ""}>
+                            ${esc(t.label)}${key === zuletzt ? " (zuletzt)" : ""}
+                        </button>`).join("")}
+                </div>
+                <p class="text-muted kb-hinweis">${gesperrt
+                    ? `Die nächste Besprechung ist in ${gesperrt} Tag${gesperrt === 1 ? "" : "en"} möglich.`
+                    : "Alle zwei Wochen. Was ankommt, hängt an Ergebnissen, Stimmung und Tabelle - und am Charakter der Spieler."}</p>
+                ${antwort}
+            </div>`;
+    }
+
     renderKabine() {
         const box = document.getElementById("squadKabine");
         const engine = typeof DressingRoomEngine !== "undefined" ? DressingRoomEngine : null;
@@ -2245,6 +2274,7 @@ class UIManager {
                     <select id="kabineKapitaen">${optionen}</select>
                 </label>
             </div>
+            ${this.besprechungHtml(state)}
             <div class="kb-stufen">
                 <div><span class="kb-label">Führungsspieler</span>${fuehrung.length ? fuehrung.map(e => link(e.player)).join(", ") : "<span class=\"text-muted\">niemand</span>"}</div>
                 <div><span class="kb-label">Neu in der Kabine</span>${neu.length ? neu.map(e => link(e.player)).join(", ") : "<span class=\"text-muted\">niemand</span>"}</div>
@@ -2263,6 +2293,17 @@ class UIManager {
             e.preventDefault();
             const ziel = state.players.find(p => String(p.id) === a.dataset.kabineSpieler);
             if (ziel) this.showPlayerDetailsModal(ziel.id);
+        }));
+        box.querySelectorAll("[data-besprechung]").forEach(btn => btn.addEventListener("click", () => {
+            const talk = this.getPlayerTalkEngine();
+            const res = talk ? talk.mannschaftsbesprechung(state, btn.dataset.besprechung) : null;
+            if (!res || !res.success) { this.showToast(res?.error || "Die Besprechung kam nicht zustande.", "error"); return; }
+            this._letzteBesprechung = res;
+            this.playSound("click");
+            this.showToast(`Mannschaftsbesprechung: ${res.stimmung === "gut" ? "kam an" : res.stimmung === "schlecht" ? "ging daneben" : "gemischtes Echo"}.`,
+                res.stimmung === "gut" ? "success" : (res.stimmung === "schlecht" ? "error" : "info"));
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.renderSquad?.();
         }));
         const wahl = document.getElementById("kabineKapitaen");
         if (wahl) wahl.addEventListener("change", () => {

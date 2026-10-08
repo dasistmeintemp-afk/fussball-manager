@@ -271,6 +271,116 @@ class PlayerTalkEngine {
      * Nach jedem eigenen Ligaspiel: Versprechen abrechnen. Ein Einsatz zählt
      * ab 60 Minuten.
      */
+    // --------------------------------------------- Mannschaftsbesprechung
+
+    /**
+     * Die ganze Mannschaft unter der Woche zusammenholen - neben Einzel-
+     * gesprächen und der Kabinenansprache vor dem Spiel. Was ankommt, hängt
+     * an der Lage: Lob nach einer guten Serie, Forderungen nach einer
+     * schlechten, Druck herausnehmen, wenn die Köpfe hängen. Wer daneben
+     * liegt, verliert die Kabine ein Stück. Alle zwei Wochen ist eine
+     * Besprechung möglich; dieselbe Ansprache zweimal hintereinander nutzt
+     * sich ab. Der Kapitän trägt die Stimmung zu allen.
+     */
+    static BESPRECHUNG = { abkuehlung: 14, abnutzung: 0.5, kapitaen: 0.3 };
+
+    static BESPRECHUNG_THEMEN = {
+        loben: { label: "Die Mannschaft loben", text: "Nach guten Ergebnissen trägt das. Nach schlechten wirkt es unverdient." },
+        fordern: { label: "Mehr Einsatz fordern", text: "Nach einer schlechten Serie ein Weckruf. Profis nehmen ihn an, Hitzköpfe sind gekränkt." },
+        druck: { label: "Druck herausnehmen", text: "Hilft, wenn die Köpfe hängen. Läuft es, fehlt danach die Spannung." },
+        ziel: { label: "Das Saisonziel bekräftigen", text: "Stärkt, wer auf Kurs ist. Liegt man weit zurück, wird es zur Last." }
+    };
+
+    /** Die Lage der Mannschaft: Punkte aus den letzten fünf Spielen, Moral, Tabelle */
+    static teamLage(state, club) {
+        const form = (club?.form || []).filter(r => r && r !== "-").slice(-5);
+        const quote = form.length ? form.reduce((s, r) => s + (r === "W" ? 3 : r === "D" ? 1 : 0), 0) / (form.length * 3) : 0.5;
+        const kader = (state.players || []).filter(p => (club?.playerIds || []).includes(p.id));
+        const moral = kader.length ? kader.reduce((s, p) => s + (p.morale ?? 75), 0) / kader.length : 75;
+        const platz = (state.standings || []).findIndex(e => e.clubId === club?.id) + 1 || null;
+        const board = (typeof BoardEngine !== "undefined" && BoardEngine) ? BoardEngine
+            : (typeof require !== "undefined" ? (() => { try { return require("./boardEngine.js").BoardEngine; } catch (e) { return null; } })() : null);
+        const zielPlatz = board && typeof board.zielPlatz === "function" ? board.zielPlatz(state, club) : null;
+        return { quote, moral, platz, zielPlatz, spiele: form.length, kader };
+    }
+
+    /** Wann die nächste Besprechung möglich ist - null, wenn jetzt */
+    static besprechungGesperrt(state) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        const letztes = club?.besprechung?.letztes;
+        if (typeof letztes !== "number") return null;
+        const rest = this.BESPRECHUNG.abkuehlung - (this.stempel(state) - letztes);
+        return rest > 0 ? rest : null;
+    }
+
+    /** Die Grundwirkung eines Themas in der aktuellen Lage */
+    static besprechungsWirkung(key, lage) {
+        const { quote, moral, platz, zielPlatz } = lage;
+        switch (key) {
+        case "loben": return quote >= 0.6 ? 4 : (quote >= 0.4 ? 1 : -2);
+        case "fordern": return quote >= 0.6 ? -3 : (quote < 0.4 ? (moral >= 50 ? 3 : -2) : 1);
+        case "druck": return moral < 58 ? 5 : (moral < 72 ? 2 : -1);
+        case "ziel":
+            if (!platz || !zielPlatz) return 1;
+            return platz <= zielPlatz ? 3 : (platz <= zielPlatz + 3 ? 1 : -2);
+        default: return 0;
+        }
+    }
+
+    static mannschaftsbesprechung(state, key, zufall = Math.random) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        if (!club) return { success: false, error: "Kein Verein." };
+        if (!this.BESPRECHUNG_THEMEN[key]) return { success: false, error: "Diese Ansprache gibt es nicht." };
+        const gesperrt = this.besprechungGesperrt(state);
+        if (gesperrt) return { success: false, error: `Die letzte Besprechung ist erst ein paar Tage her (wieder in ${gesperrt} Tag${gesperrt === 1 ? "" : "en"}).` };
+
+        const lage = this.teamLage(state, club);
+        const B = this.BESPRECHUNG;
+        const abgenutzt = club.besprechung?.thema === key;
+        let basis = this.besprechungsWirkung(key, lage) * this.fuehrungsFaktor(state);
+        if (abgenutzt) basis *= B.abnutzung;
+
+        const kabine = (typeof DressingRoomEngine !== "undefined" && DressingRoomEngine) ? DressingRoomEngine
+            : (typeof require !== "undefined" ? (() => { try { return require("./dressingRoomEngine.js").DressingRoomEngine; } catch (e) { return null; } })() : null);
+        const kapitaen = kabine && typeof kabine.hierarchie === "function" ? kabine.hierarchie(state, club).kapitaen : null;
+
+        const reaktionen = lage.kader.map(pl => {
+            const c = this.persoenlichkeit(pl);
+            let d = basis;
+            if (key === "fordern" && basis > 0) d += c.profi >= 15 ? 2 : (c.temperament >= 15 ? -3 : 0);
+            if (key === "loben" && basis < 0 && c.ehrgeiz >= 15) d -= 1;
+            if (key === "ziel" && c.ehrgeiz >= 15) d += 1;
+            if (key === "druck" && basis < 0 && c.profi >= 15) d += 1;
+            d += (zufall() - 0.5) * 2;
+            return { player: pl, delta: d };
+        });
+        // Der Kapitän trägt seine Stimmung zu allen
+        const kap = reaktionen.find(r => r.player === kapitaen);
+        if (kap) reaktionen.forEach(r => { if (r !== kap) r.delta += kap.delta * B.kapitaen; });
+        reaktionen.forEach(r => this.aendereMoral(r.player, r.delta));
+
+        club.besprechung = { letztes: this.stempel(state), thema: key };
+        const schnitt = reaktionen.length ? reaktionen.reduce((s, r) => s + r.delta, 0) / reaktionen.length : 0;
+        const stimmung = schnitt >= 1.5 ? "gut" : (schnitt <= -0.5 ? "schlecht" : "gemischt");
+        const sortiert = reaktionen.slice().sort((a, b) => b.delta - a.delta);
+        const ANTWORT = {
+            gut: { loben: "Das hat gesessen - genau so machen wir weiter.", fordern: "Verstanden, Trainer. Ab morgen zieht jeder mit.", druck: "Danke. Wir spielen wieder freier.", ziel: "Wir wissen, wofür wir arbeiten." },
+            gemischt: { loben: "Schön zu hören, aber wir wissen, dass mehr geht.", fordern: "Ein paar haben es verstanden, ein paar schmollen.", druck: "Ganz gelöst sind wir noch nicht.", ziel: "Der Weg ist noch weit." },
+            schlecht: { loben: "Ehrlich gesagt: Das Lob passt gerade nicht.", fordern: "Die Mannschaft fühlt sich ungerecht behandelt.", druck: "Ein bisschen Druck hätte uns gutgetan.", ziel: "So weit weg vom Ziel - das drückt eher." }
+        };
+        const antwort = (ANTWORT[stimmung] || {})[key] || "";
+        return {
+            success: true,
+            stimmung,
+            schnitt: Math.round(schnitt * 10) / 10,
+            abgenutzt,
+            kapitaen: kapitaen ? kapitaen.name : null,
+            antwort,
+            bester: sortiert[0] ? { name: sortiert[0].player.name, delta: Math.round(sortiert[0].delta) } : null,
+            schlechtester: sortiert[sortiert.length - 1] ? { name: sortiert[sortiert.length - 1].player.name, delta: Math.round(sortiert[sortiert.length - 1].delta) } : null
+        };
+    }
+
     static nachSpiel(state, match) {
         if (!state || !match || !match.played) return [];
         const minuten = new Map((match.playerRatings || []).map(r => [String(r.playerId), r.minutes || 0]));

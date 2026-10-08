@@ -68,6 +68,13 @@ function _getPreseasonEngine() {
     return null;
 }
 
+function _getSupercupEngine() {
+    if (typeof SupercupEngine !== 'undefined' && SupercupEngine) return SupercupEngine;
+    if (typeof window !== 'undefined' && window.SupercupEngine) return window.SupercupEngine;
+    if (typeof require !== 'undefined') { try { return require('./supercupEngine.js').SupercupEngine; } catch (e) { return null; } }
+    return null;
+}
+
 function _getCupEngineCal() {
     if (typeof CupEngine !== "undefined" && CupEngine) return CupEngine;
     if (typeof window !== "undefined" && window.CupEngine) return window.CupEngine;
@@ -159,6 +166,29 @@ const CalendarEngine = {
         let testspielNr = 0;
 
         for (let v = 1; v <= vorbereitungsTage; v++) {
+            // Der letzte Tag der Vorbereitung: Meister gegen Pokalsieger (SupercupEngine)
+            const supercup = _getSupercupEngine();
+            if (v === vorbereitungsTage && supercup && !(v % 5 === 0 && testspielNr < 4)) {
+                calendar.push({
+                    id: `day_${dayCounter}`,
+                    dayIndex: dayCounter,
+                    date: this.formatDate(currentDate),
+                    dateObj: new Date(currentDate).toISOString(),
+                    dayOfWeek: this.getDayName(currentDate),
+                    type: CALENDAR_DAY_TYPES.CUP,
+                    title: `🏆 ${supercup.name(state)}`,
+                    description: "Meister gegen Pokalsieger zum Auftakt - ein Spiel, bei Gleichstand Elfmeterschießen.",
+                    matchday: null,
+                    cupArt: "supercup",
+                    cupRunde: 0,
+                    actionsAvailable: ["match", "lineup", "live_match"],
+                    preseason: true,
+                    completed: false
+                });
+                currentDate.setDate(currentDate.getDate() + 1);
+                dayCounter++;
+                continue;
+            }
             // Alle fuenf Tage ein Testspiel - dazwischen Training und Arbeit
             const istTestspiel = v % 5 === 0 && testspielNr < 4;
             if (istTestspiel) testspielNr++;
@@ -947,7 +977,7 @@ const CalendarEngine = {
                     ? cupEngine.eigenePartieAm(state, art, tag.cupRunde || 0)
                     : null;
                 if (eigene) {
-                    return { index: i, tag, grund: art === "cup" || art === "euro" ? art : "playoff", heute, partie: eigene };
+                    return { index: i, tag, grund: art === "euro" ? "euro" : (art === "cup" || art === "supercup" ? "cup" : "playoff"), heute, partie: eigene };
                 }
                 continue;
             }

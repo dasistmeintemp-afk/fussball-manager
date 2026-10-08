@@ -1569,6 +1569,9 @@ class SeasonEngine {
         // Pokal neu auslosen und den europäischen Wettbewerben ihren Spielplan
         // geben - sonst stünden auch in der neuen Saison nur Teilnehmerlisten
         // ohne eine einzige Partie im Speicher.
+        // Meister und Pokalsieger für den Supercup festhalten, bevor der Pokal neu beginnt
+        const supercup = _resolve('SupercupEngine', './supercupEngine.js');
+        if (supercup && typeof supercup.merkeVorlage === 'function') supercup.merkeVorlage(state);
         const cupEngine = _resolve('CupEngine', './cupEngine.js');
         if (cupEngine && typeof cupEngine.starteSaison === 'function') {
             cupEngine.starteSaison(state);

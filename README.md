@@ -695,6 +695,10 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
   - **Danach:** Spitzenklubs legen 10–25 % ihres Umsatzes zurück (Bayern +37, City +18, Real +30). Das Mittelfeld steht vor Transfers bei null, und die Transfers entscheiden über Plus oder Minus.
 - **Nationale Pokale & Europapokal:** Der Pokal deines Landes sowie Champions League (`ucl`), Europa League (`uel`) und Conference League (`uecl`) mit Gruppen- und K.O.-Runden via `CompetitionEngine`.
 - **Ein Pokalabend, eine Runde:** Jeder Pokal- und Europapokalabend im Kalender spielt genau seine Runde. Nach dem eigenen Spiel geht es mit der Ligawoche weiter; die nächste Runde steht erst am nächsten Pokalabend an.
+- **Supercup (`SupercupEngine`):** Am letzten Tag der Vorbereitung spielt im eigenen Land der Meister gegen den Pokalsieger der Vorsaison: Supercup, Community Shield, Supercopa, Supercoppa oder Trophée des Champions.
+  - Hat der Meister auch den Pokal geholt, kommt der Vizemeister. In der ersten Saison treffen sich die beiden Vereine mit dem größten Ruf der ersten Liga.
+  - Ein Spiel auf neutralem Platz, bei Gleichstand Elfmeterschießen. Ist der eigene Verein dabei, hält der Weiter-Knopf am Termin, und es wird live oder als Sofortergebnis gespielt.
+  - Der Sieger bekommt eine Prämie von zwei Sponsorbeiträgen je Spieltag. Gewinnt der eigene Verein, steht der Titel in der Trainerlaufbahn. Das Ergebnis kommt als Nachricht.
 - **Echte Europapokal-Qualifikanten:** Die Startplätze folgen den `europeanSpots` der Ligadefinition – England, Spanien und Italien stellen vier Champions-League-Teilnehmer, Frankreich drei. Kein Verein startet in zwei Wettbewerben.
 - **Auf- und Abstieg über die gesamte Pyramide:** Aus jeder Liga steigen genauso viele Vereine ab, wie von unten aufsteigen; alle Ligen behalten ihre Mannschaftszahl. Aufsteiger nehmen ihren Kader mit und starten bewusst als Außenseiter.
 - **Relegation und Aufstiegs-Playoffs nach echtem Format (`PlayoffEngine`):**
@@ -829,6 +833,7 @@ untitled/
 │   │   ├── jobmarktEngine.js   # Anfragen, offene Stellen, Bewerbung, Wechsel und Rücktritt des Trainers
 │   │   ├── laufbahnEngine.js   # Laufbahn je Spieler: Saison, Verein, Spiele, Tore, Vorlagen, Note
 │   │   ├── urlaubEngine.js     # Urlaub: Ziele bis Monats-, Fenster- und Saisonende, Bilanz
+│   │   ├── supercupEngine.js   # Supercup: Meister gegen Pokalsieger am Ende der Vorbereitung
 │   │   └── opponentAnalysisEngine.js # Taktische Gegneranalyse
 │   ├── ui/
 │   │   ├── uiManager.js        # Kern: Start, Assistent, Reiter, Kader, Taktik, Kalender, Ereignisse

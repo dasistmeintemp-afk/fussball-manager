@@ -5332,9 +5332,12 @@ function runEngineTests() {
 
     test("CalendarEngine: Pokal- und Europapokalabende stehen im Kalender", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Terminpruefer" });
-        const pokaltage = state.calendar.filter(d => d.type === "cup");
+        // Der Supercup am Ende der Vorbereitung ist ein eigener Termin
+        const pokaltage = state.calendar.filter(d => d.type === "cup" && d.cupArt !== "supercup");
         const europatage = state.calendar.filter(d => d.type === "euro");
+        const supercup = state.calendar.filter(d => d.cupArt === "supercup");
 
+        if (supercup.length !== 1) throw new Error(`${supercup.length} statt 1 Supercup im Kalender`);
         if (pokaltage.length !== 6) throw new Error(`${pokaltage.length} statt 6 Pokalabende im Kalender`);
         if (europatage.length !== 9) throw new Error(`${europatage.length} statt 9 Europapokalabende im Kalender`);
 
@@ -5348,7 +5351,7 @@ function runEngineTests() {
         });
 
         // Und sie liegen unter der Woche zwischen den Spieltagen
-        const ersterPokal = state.calendar.findIndex(d => d.type === "cup");
+        const ersterPokal = state.calendar.findIndex(d => d.type === "cup" && d.cupArt !== "supercup");
         const ersterSpieltag = state.calendar.findIndex(d => d.type === "matchday");
         if (ersterPokal <= ersterSpieltag) {
             throw new Error("Der erste Pokalabend liegt vor dem ersten Ligaspieltag");
@@ -5357,7 +5360,7 @@ function runEngineTests() {
 
     test("CalendarEngine: Ein Pokalabend trägt die Runde aus und schaltet weiter", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Ablaufpruefer" });
-        const index = state.calendar.findIndex(d => d.type === "cup");
+        const index = state.calendar.findIndex(d => d.type === "cup" && d.cupArt === "cup");
         state.currentDayIndex = index;
 
         const cup = state.cups.de_cup;
@@ -5387,7 +5390,7 @@ function runEngineTests() {
         const cup = state.cups.de_cup;
         const pokaltage = state.calendar
             .map((d, i) => ({ d, i }))
-            .filter(e => e.d.type === "cup");
+            .filter(e => e.d.type === "cup" && e.d.cupArt === "cup");
         const ersterAbend = pokaltage[0];
         state.currentDayIndex = ersterAbend.i;
 
@@ -5806,11 +5809,12 @@ function runEngineTests() {
         }
 
         // Über die gesamte Vorbereitung darf an keinem Tag ein Pflichtspiel
-        // zum Anpfiff bereitstehen
+        // zum Anpfiff bereitstehen - außer dem Supercup an seinem Termin
         for (let i = 0; i < ersterSpieltag; i++) {
             state.currentDayIndex = i;
             const spielbar = CalendarEngine.spielbarHeute(state);
             const tag = state.calendar[i];
+            if (spielbar && tag.cupArt === "supercup") continue;
             if (spielbar) {
                 throw new Error(`An Tag ${i} (${tag.type}) ist "${spielbar.rundenName}" spielbar`);
             }
@@ -11174,6 +11178,46 @@ function runEngineTests() {
         const b = TransferEngine.kaderBedarf(state, kaeufer, markt);
         if (b && b.art === "luecke" && !(b.messlatte >= b.niveau - 10 - 1e-9 && b.messlatte > 0)) throw new Error(`Messlatte ${b.messlatte} bei Niveau ${b.niveau}`);
         if (b && typeof b.niveau !== "number") throw new Error("Bedarf ohne Niveau");
+    });
+
+    test("Supercup: Meister gegen Pokalsieger am letzten Tag der Vorbereitung, mit Elfmeterschießen und Titel", () => {
+        const { SupercupEngine: Sc } = require('./js/engine/supercupEngine.js');
+        const { CupEngine } = require('./js/engine/cupEngine.js');
+        const { CalendarEngine } = require('./js/engine/calendarEngine.js');
+        const { CareerEngine } = require('./js/engine/careerEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const tag = state.calendar.findIndex(d => d.cupArt === "supercup");
+        const ersterSpieltag = state.calendar.findIndex(d => d.type === "matchday");
+        if (tag < 0 || tag >= ersterSpieltag || !state.calendar[tag].preseason) throw new Error("Kein Supercup-Tag in der Vorbereitung");
+        // Erste Saison: die beiden größten Namen der ersten Liga
+        const liga = state.clubs.filter(c => c.leagueId === "de_liga_1").sort((a, b) => b.reputation - a.reputation);
+        const p = Sc.paarung(state);
+        if (p.partie.homeClubId !== liga[0].id || p.partie.awayClubId !== liga[1].id) throw new Error(`Paarung falsch: ${p.partie.homeClubId} - ${p.partie.awayClubId}`);
+        const eigene = CupEngine.eigenePartieAm(state, "supercup", 0);
+        if ((p.partie.homeClubId === "muc" || p.partie.awayClubId === "muc") !== !!eigene) throw new Error("Eigene Partie nicht erkannt");
+
+        // Der Abend: gespielt, ein Sieger (bei Gleichstand nach Elfmeterschießen), Titel und Meldung
+        while (state.currentDayIndex <= tag) CalendarEngine.advanceOneDay(state);
+        if (!p.partie.played || !p.abgeschlossen || ![p.partie.homeClubId, p.partie.awayClubId].includes(p.siegerId)) throw new Error("Supercup nicht ausgetragen");
+        if (p.partie.homeGoals === p.partie.awayGoals && !p.partie.penaltyWinner) throw new Error("Remis ohne Elfmeterschießen");
+        const titel = (CareerEngine.akte(state).titel || []).some(t => t.wettbewerb === Sc.name(state));
+        if ((p.siegerId === "muc") !== titel) throw new Error("Titel nicht in der Karriereakte");
+        if (!state.inbox.some(m => m.subject.includes(Sc.name(state)))) throw new Error("Keine Meldung");
+        CupEngine.schliesseTerminAb(state, "supercup", 0);
+        if (state.inbox.filter(m => m.subject.includes(Sc.name(state))).length !== 1) throw new Error("Zweimal abgeschlossen");
+
+        // Nach einer Saison: Meister gegen Pokalsieger - oder der Vizemeister, wenn einer beides holte
+        state.standings = [{ clubId: "dor" }, { clubId: "lev" }].concat(state.standings.filter(s => !["dor", "lev"].includes(s.clubId)));
+        state.cups.de_cup = Object.assign({}, state.cups.de_cup, { completed: true, winnerId: "dor" });
+        state.seasonYear += 1;
+        Sc.merkeVorlage(state);
+        const doppel = Sc.paarung(state);
+        if (doppel.partie.homeClubId !== "dor" || doppel.partie.awayClubId !== "lev" || !/Vizemeister/.test(doppel.grund)) throw new Error(`Double falsch: ${JSON.stringify(doppel)}`);
+        state.cups.de_cup.winnerId = "s04";
+        state.seasonYear += 1;
+        Sc.merkeVorlage(state);
+        const normal = Sc.paarung(state);
+        if (normal.partie.awayClubId !== "s04" || normal.grund !== "Meister gegen Pokalsieger") throw new Error(`Paarung nach der Saison falsch: ${JSON.stringify(normal)}`);
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

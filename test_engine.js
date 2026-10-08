@@ -10652,6 +10652,53 @@ function runEngineTests() {
         if (Ehemalige.verfuegbar(state).some(e => e.id === fremd.id)) throw new Error("Nach vier Jahren noch verfügbar");
     });
 
+    test("Vision: Plan über fünf Spielzeiten mit Fernziel und Jahreszielen, Bilanz am Saisonende", () => {
+        const { VisionEngine: Vision } = require('./js/engine/visionEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const v = Vision.vision(state);
+        if (!v || v.bisSaison !== (state.seasonYear || 1) + Vision.LAUFZEIT - 1 || v.jahresziele.length !== 3) throw new Error("Vision unvollständig");
+        if (v.fern.art !== "titel") throw new Error(`Bayern ohne Titelziel: ${v.fern.art}`);
+        if (!state.inbox.some(m => /Vision des Vorstands/.test(m.subject || ""))) throw new Error("Keine Post zur Vision");
+        // Dieselbe Lage ergibt dieselbe Vision - ohne die Zufallsfolge der Welt anzufassen
+        const ziele = JSON.stringify(v.jahresziele);
+        delete club.vision;
+        if (JSON.stringify(Vision.vision(state).jahresziele) !== ziele) throw new Error("Vision nicht reproduzierbar");
+
+        // Die Jahresziele messen die laufende Saison
+        state.schedule.slice(0, 6).forEach(r => r.matches.forEach(m => {
+            if (m.homeClubId !== "muc" && m.awayClubId !== "muc") return;
+            const heim = m.homeClubId === "muc";
+            Object.assign(m, { played: true, homeGoals: heim ? 3 : 0, awayGoals: heim ? 0 : 3, stats: { possession: heim ? [60, 40] : [40, 60] } });
+        }));
+        const w = Vision.werte(state);
+        if (w.spiele !== 6 || w.toreJeSpiel !== 3 || w.gegentoreJeSpiel !== 0 || w.ballbesitz !== 60) throw new Error(`Werte falsch: ${JSON.stringify(w)}`);
+        ["offensiv", "ballbesitz", "kompakt"].forEach(k => { if (Vision.erfuellt(k, w) !== true) throw new Error(`${k} nicht erfüllt`); });
+        if (Vision.erfuellt("jung", w) !== null) throw new Error("Ohne Zugänge gibt es nichts zu messen");
+
+        // Saisonende: Meister erfüllt das Fernziel, das Vertrauen steigt, Bilanz nur einmal
+        const zeile = state.standings.findIndex(e => e.clubId === "muc");
+        state.standings.unshift(state.standings.splice(zeile, 1)[0]);
+        state.vorstandStimmung = 0;
+        const vorher = state.boardConfidence ?? 75;
+        const r = Vision.saisonEnde(state);
+        if (!r || r.fern !== "erfuellt" || !(state.boardConfidence > vorher)) throw new Error(`Bilanz falsch: ${JSON.stringify(r)} ${vorher} -> ${state.boardConfidence}`);
+        if (Vision.saisonEnde(state) !== null) throw new Error("Zweite Bilanz in derselben Saison");
+
+        // Ein Zweitligist will aufsteigen - geschafft, sobald er eine Liga höher spielt
+        const zweit = state.clubs.find(c => (c.level || 1) === 2 && c.countryId === "de");
+        state.userClubId = zweit.id;
+        const vz = Vision.vision(state);
+        if (vz.fern.art !== "aufstieg") throw new Error(`Zweitligist ohne Aufstiegsziel: ${vz.fern.art}`);
+        zweit.level = 1;
+        state.seasonYear = (state.seasonYear || 1) + 1;
+        Vision.saisonstart(state);
+        if (zweit.vision.fern.status !== "erfuellt") throw new Error("Aufstieg nicht erkannt");
+        // Nach fünf Spielzeiten gibt es eine neue Vision
+        state.seasonYear = vz.bisSaison + 1;
+        if (Vision.vision(state).seit !== state.seasonYear) throw new Error("Keine neue Vision nach Ablauf");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

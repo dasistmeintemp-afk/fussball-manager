@@ -1062,6 +1062,10 @@ class SeasonEngine {
         const investorEnde = _resolve('InvestorEngine', './investorEngine.js');
         if (investorEnde && typeof investorEnde.saisonEnde === 'function') investorEnde.saisonEnde(state);
 
+        // Die Vision des Vorstands: Bilanz der Jahresziele und des Fernziels
+        const visionEnde = _resolve('VisionEngine', './visionEngine.js');
+        if (visionEnde && typeof visionEnde.saisonEnde === 'function') visionEnde.saisonEnde(state);
+
         // Die Saison in die Vereinschronik - vor dem Zurücksetzen der Statistik
         const chronikEngine = _resolve('ChronikEngine', './chronikEngine.js');
         if (chronikEngine && typeof chronikEngine.saisonAbschluss === 'function') {
@@ -1595,6 +1599,10 @@ class SeasonEngine {
         // Punktabzüge verfallen, bevor die Tabelle neu anfängt
         const investoren = _resolve('InvestorEngine', './investorEngine.js');
         if (investoren && typeof investoren.saisonstart === 'function') investoren.saisonstart(state);
+
+        // Ist der Aufstieg aus der Vision geschafft - oder braucht es eine neue Vision?
+        const visionStart = _resolve('VisionEngine', './visionEngine.js');
+        if (visionStart && typeof visionStart.saisonstart === 'function') visionStart.saisonstart(state);
 
         // Form zurücksetzen
         state.clubs.forEach(club => {

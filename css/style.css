@@ -8111,6 +8111,7 @@ td.nowrap { white-space: nowrap; }
 @media (max-width: 760px) { .sa-raster { grid-template-columns: 1fr; } }
 .ak-wv { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--text-muted); margin: 8px 0; }
 .ak-wv select { width: auto; min-width: 0; font-size: 12px; padding: 4px 8px; }
+.ak-raten { font-size: 12px; color: var(--text-muted); margin: 6px 0 0; padding: 6px 8px; border-left: 2px solid var(--accent-warning, #f59e0b); background: rgba(245, 158, 11, 0.06); border-radius: 4px; }
 .tf-fenster { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
 .tf-fenster.offen { color: #34d399; }
 .tf-fenster.zu { color: #f59e0b; }
@@ -8441,6 +8442,14 @@ td.nowrap { white-space: nowrap; }
 /* Budget umschichten in den Finanzen */
 .budget-umschichten { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .budget-umschichten h4 { font-size: 13px; margin: 0 0 6px; }
+.fin-raten:empty { display: none; }
+.fin-raten { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.fin-raten h4 { font-size: 13px; margin: 0 0 6px; }
+.raten-liste { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.raten-liste li { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 13px; padding: 6px 8px; border-radius: 6px; background: var(--bg-elevated, rgba(255, 255, 255, 0.03)); border-left: 2px solid var(--line); }
+.raten-liste li.raten-zahlen { border-left-color: var(--accent-danger, #f87171); }
+.raten-liste li.raten-erhalten { border-left-color: var(--accent-success, #34d399); }
+.raten-liste small { color: var(--text-muted); margin-left: 4px; }
 .umschichten-zeile { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin: 8px 0; }
 .umschichten-zeile label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
 .umschichten-zeile input { width: 150px; }

@@ -9999,6 +9999,98 @@ function runEngineTests() {
         }
     });
 
+    test("Ablöse in Raten: Anzahlung, Abschlag für den Verkäufer, Monatsraten und Übersicht", () => {
+        const { FinanceEngine: Fin } = require('./js/engine/financeEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const andere = state.clubs.filter(c => c.id !== club.id && c.leagueId === club.leagueId);
+        const verkaeufer = andere[0];
+        verkaeufer.balance = 500000000;
+
+        // Plan und Wert für den Verkäufer
+        const plan = Fin.ratenPlan(10000000, "raten12");
+        if (plan.anzahlung !== 5000000 || plan.monate !== 12 || Math.abs(plan.rate * 12 - 5000000) > 12) throw new Error(`Ratenplan: ${JSON.stringify(plan)}`);
+        const reich = { balance: 1e9 }, klamm = { balance: 1000000 };
+        const w12 = Fin.ratenWert(10000000, "raten12", reich), w24 = Fin.ratenWert(10000000, "raten24", reich);
+        if (!(w12 < 10000000 && w24 < w12 && Fin.ratenWert(10000000, "raten12", klamm) < w12)) throw new Error(`Abschläge: ${w12}, ${w24}`);
+        if (Fin.ratenWert(10000000, "sofort", reich) !== 10000000) throw new Error("Sofortzahlung mit Abschlag");
+
+        // Ein Kauf in Raten: Anzahlung sofort, Rest am Monatsersten
+        state.ratenzahlungen = [];
+        const zweiter = state.players.find(p => p.clubId === verkaeufer.id && !p.leihe && !p.vorvertrag);
+        delete zweiter.weiterverkauf;
+        const vorK = club.balance, vorV = verkaeufer.balance, vorTB = club.transferBudget;
+        if (!TransferEngine.executeTransfer(state, zweiter.id, club.id, 12000000, 40000, 3, { zahlweise: "raten24" })) throw new Error("Wechsel gescheitert");
+        const p24 = Fin.ratenPlan(12000000, "raten24");
+        if (vorK - club.balance !== p24.anzahlung || verkaeufer.balance - vorV !== p24.anzahlung || vorTB - club.transferBudget !== p24.anzahlung) {
+            throw new Error(`Anzahlung falsch verbucht: ${vorK - club.balance} / ${verkaeufer.balance - vorV} statt ${p24.anzahlung}`);
+        }
+        const eintrag = state.ratenzahlungen.find(r => r.playerId === zweiter.id);
+        if (!eintrag || eintrag.offen !== p24.rest || eintrag.zahlerId !== club.id || eintrag.empfaengerId !== verkaeufer.id) throw new Error("Kein Ratenplan angelegt");
+        if (Fin.ratenUebersicht(state).schulden !== p24.rest) throw new Error("Übersicht ohne die Schulden");
+        // Der Ratenplan überlebt das Speichern
+        const zurueck = SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(state))));
+        if (zurueck.ratenzahlungen?.[0]?.offen !== p24.rest) throw new Error("Raten nach dem Laden verloren");
+
+        state.ratenMonat = "08.2026";
+        if (Fin.zahleRaten(state, "20.08.2026") !== null) throw new Error("Rate mitten im Monat");
+        let gezahlt = 0, erhalten = 0, monat = 9, jahr = 2026;
+        for (let i = 0; i < 24; i++) {
+            const k = club.balance, v = verkaeufer.balance;
+            const zeile = Fin.zahleRaten(state, `01.${String(monat).padStart(2, "0")}.${jahr}`);
+            if (!/Ablöseraten: .* gezahlt/.test(zeile || "")) throw new Error(`Monat ${i + 1} ohne Zeile: ${zeile}`);
+            gezahlt += k - club.balance; erhalten += verkaeufer.balance - v;
+            if (Fin.zahleRaten(state, `15.${String(monat).padStart(2, "0")}.${jahr}`) !== null) throw new Error("Zweimal im Monat gezahlt");
+            monat++; if (monat > 12) { monat = 1; jahr++; }
+        }
+        if (gezahlt !== p24.rest || erhalten !== p24.rest || state.ratenzahlungen.length) throw new Error(`Raten: ${gezahlt} gezahlt, ${erhalten} erhalten, Rest ${p24.rest}`);
+
+        // Zwischen zwei fremden Vereinen fließt alles sofort
+        const [a, b] = andere.slice(1, 3);
+        const fremd = state.players.find(p => p.clubId === a.id && !p.leihe && !p.vorvertrag);
+        delete fremd.weiterverkauf;
+        const vorB = b.balance;
+        TransferEngine.executeTransfer(state, fremd.id, b.id, 8000000, 30000, 3, { zahlweise: "raten12" });
+        if (vorB - b.balance !== 8000000 || state.ratenzahlungen.length) throw new Error("Raten zwischen fremden Vereinen");
+
+        // Ein Angebot der KI in Raten für einen eigenen Spieler
+        const eigener = state.players.find(p => p.clubId === club.id && !p.leihe && p.pos !== "TW");
+        delete eigener.weiterverkauf;
+        const kaeufer = andere[3];
+        const vorEigen = club.balance;
+        state.transferMarket.offers.push({ id: "raten_test", playerId: eigener.id, playerName: eigener.name, fromClubId: kaeufer.id, fromClubName: kaeufer.name,
+            toClubId: club.id, fee: 20000000, zahlweise: "raten12", status: "pending" });
+        const angenommen = TransferEngine.nimmAngebotAn(state, "raten_test");
+        if (!angenommen.ok) throw new Error(`Angebot nicht angenommen: ${angenommen.grund}`);
+        if (club.balance - vorEigen !== 10000000 || Fin.ratenUebersicht(state).forderungen !== 10000000) throw new Error("Verkauf in Raten falsch verbucht");
+        state.ratenzahlungen = [];
+
+        // Verhandlung: In Raten muss nur die Anzahlung ins Budget passen,
+        // und der Verkäufer rechnet sie mit Abschlag
+        const ziel = state.players.filter(p => p.clubId === verkaeufer.id && !p.leihe && !p.vorvertrag).sort((x, y) => (y.value || 0) - (x.value || 0))[0];
+        const start = NegotiationEngine.startTransferNegotiation(state, ziel.id, club.id);
+        if (!start.success) throw new Error(`Verhandlung startet nicht: ${start.error}`);
+        const n = start.negotiation;
+        const forderung = n.demand.fee;
+        club.balance = forderung * 3; club.transferBudget = Math.round(forderung * 0.6);
+        if (NegotiationEngine.submitOffer(state, n.id, { fee: forderung }).success) throw new Error("Sofortzahlung über dem Budget angenommen");
+        club.balance = Math.round(forderung * 0.8);
+        if (!/nicht gedeckt/.test(NegotiationEngine.submitOffer(state, n.id, { fee: forderung, zahlweise: "raten24" }).error || "")) throw new Error("Raten ohne Deckung auf dem Konto");
+        club.balance = forderung * 3;
+        if (!NegotiationEngine.submitOffer(state, n.id, { fee: forderung, zahlweise: "raten24" }).success) throw new Error("Raten-Angebot abgewiesen");
+        const e1 = NegotiationEngine.evaluateOffer(state, n);
+        if (e1.kind !== "counter") throw new Error(`Raten zum Nennwert der Forderung: ${e1.kind}`);
+        if (!/In Raten wie angeboten entspräche das etwa/.test(n.log[n.log.length - 1].text)) throw new Error("Gegenforderung ohne Hinweis auf die Raten");
+        NegotiationEngine.submitOffer(state, n.id, { fee: Math.round(n.demand.fee * 1.06), zahlweise: "raten12" });
+        const e2 = NegotiationEngine.evaluateOffer(state, n);
+        if (e2.kind !== "fee_agreed" || n.agreed.zahlweise !== "raten12") throw new Error(`Keine Einigung in Raten: ${e2.kind}`);
+        n.agreed.wage = 50000; n.agreed.years = 3;
+        const fertig = NegotiationEngine.completeTransfer(state, n);
+        if (fertig.kind !== "completed") throw new Error(`Transfer nicht abgeschlossen: ${fertig.kind}`);
+        const r = state.ratenzahlungen.find(x => x.playerId === ziel.id);
+        if (!r || r.gesamt !== n.agreed.fee || r.monate !== 12) throw new Error("Kein Ratenplan nach der Verhandlung");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

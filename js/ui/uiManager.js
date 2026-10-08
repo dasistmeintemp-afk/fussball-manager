@@ -4337,6 +4337,8 @@ class UIManager {
                     <div><span>Marktwert</span><strong>${wert ? this.geldKurz(wert) : "-"}</strong></div>
                     <div><span>Verhältnis</span><strong class="ak-quote ${quoteKlasse}">${quote !== null ? `${quote} %` : "-"}</strong></div>
                 </div>
+                ${o.zahlweise && typeof FinanceEngine !== "undefined" && FinanceEngine.ratenText
+                    ? `<div class="ak-raten">In Raten: ${esc(FinanceEngine.ratenText(o.fee, o.zahlweise))}</div>` : ""}
                 <label class="ak-wv">Weiterverkaufsbeteiligung
                     <select class="styled-select" data-wv-offer="${o.id}">
                         <option value="0">keine</option>
@@ -4802,6 +4804,30 @@ class UIManager {
     }
 
     /**
+     * Offene Ablöseraten: was der Verein noch zahlen muss und was ihm
+     * zusteht, mit der Belastung im nächsten Monat.
+     */
+    renderRaten(state, club) {
+        const el = document.getElementById("finRaten");
+        const fin = typeof FinanceEngine !== "undefined" ? FinanceEngine : null;
+        if (!el || !fin || typeof fin.ratenUebersicht !== "function") return;
+        const u = fin.ratenUebersicht(state, club.id);
+        if (!u.liste.length) { el.innerHTML = ""; return; }
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        el.innerHTML = `
+            <h4>Ablöse in Raten</h4>
+            <div class="finance-stat-row"><span>Wir schulden noch:</span><strong class="${u.schulden ? "text-danger" : ""}">${this.geldKurz(u.schulden)}</strong></div>
+            <div class="finance-stat-row"><span>Uns stehen noch zu:</span><strong>${this.geldKurz(u.forderungen)}</strong></div>
+            <p class="muted-note">Am nächsten Monatsersten: ${this.geldKurz(u.naechsterMonat.zahlen)} zahlen, ${this.geldKurz(u.naechsterMonat.erhalten)} erhalten. Gezahlte Raten gehen auch vom Transferbudget ab.</p>
+            <ul class="raten-liste">
+                ${u.liste.map(r => `<li class="raten-${r.richtung}">
+                    <span>${esc(r.playerName)} <small>${r.richtung === "zahlen" ? "an" : "von"} ${esc(r.verein)}</small></span>
+                    <span>${this.geldKurz(r.rate)} × ${r.restRaten} <small>offen ${this.geldKurz(r.offen)}</small></span>
+                </li>`).join("")}
+            </ul>`;
+    }
+
+    /**
      * Anfragen an den Vorstand auf der Vorstandskarte: was man erbitten
      * kann, wie die Aussichten stehen, und ob gerade beraten wird.
      */
@@ -4872,6 +4898,7 @@ class UIManager {
 
         this.renderFacilityCosts(userClub);
         this.renderUmschichten(state, userClub);
+        this.renderRaten(state, userClub);
 
         // Transaktionshistorie (D5)
         const txnsBody = document.getElementById("finTransactionsBody");

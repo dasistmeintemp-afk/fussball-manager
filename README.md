@@ -129,6 +129,17 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
     - Zum Saisonstart bietet er sein bestes Talent bis 20 Jahre mit Vorkaufsrecht an, für 60 % des Marktwerts.
   - **Großer Partner:** ein deutlich angesehenerer Verein. Er bietet zum Saisonstart zwei junge Spieler bis 23 zur Leihe an, ohne Gebühr und mit halbem Gehalt. Er sagt nur zu, wenn Verein und Trainer etwas gelten.
   - Zweite Mannschaften kommen als Partner nicht infrage. Eine ausgelaufene Kooperation meldet sich per Post und lässt sich neu schließen.
+- **Investoren und Übernahmen (`InvestorEngine`):** Ein Mäzen, ein Investmentfonds oder ein Konzern kann einsteigen. Die Karte „Eigentümer & Investor“ im Reiter Verein zeigt Angebot, Investor und Auflagen.
+  - **Geld:** zum Einstieg 25 % (Mäzen), 50 % (Fonds) oder 100 % (Konzern) des Jahresumsatzes, danach jede Saison 8–30 %. Der Gehaltsetat steigt um 6–25 %.
+  - **Ansprüche:** Ein Fonds will das Saisonziel einen Platz höher, ein Konzern zwei. Der Vorstand verliert schneller die Geduld: Plätze unter dem Ziel kosten mehr Vertrauen, Warnung und Ultimatum kommen früher. Nach zu vielen verfehlten Saisonzielen zieht sich der Investor zurück, und der Gehaltsaufschlag endet.
+  - **50+1:** In Deutschland bleibt die Mehrheit beim Verein. Ein Investor übernimmt höchstens 49 % und bringt 40 % weniger Geld. Seine Ansprüche wiegen nur halb so schwer, und Konzerne steigen nicht ein.
+  - **Der Trainer redet mit:** Ein Angebot liegt dem Vorstand drei Wochen vor. Der Trainer kann zu- oder abraten, und ein Vorstand, der ihm vertraut, folgt meist. Einmal je Saison kann er den Vorstand bitten, einen Geldgeber zu suchen.
+  - **Finanznot:** Reißt der Verein die Schuldengrenze zum zweiten Mal in einer Saison, übernimmt ein Geldgeber die Schulden, aber mit Auflagen:
+    - keine Ablösen bis Saisonende; Verkaufserlöse tilgen Schulden statt ins Transferbudget zu fließen
+    - ein Gehaltsdeckel bis zum Ende der nächsten Saison, der neue Verträge darüber blockiert
+    - ein Verkaufsziel bis zum Ende des nächsten Transferfensters; wird es verfehlt, zieht der Verband drei Punkte ab (in der Tabelle mit * markiert)
+  - **Die Welt:** In den beiden obersten Ligen jedes Landes werden auch KI-Vereine übernommen, in England am häufigsten und in Deutschland am seltensten. Ihre Trainer stehen danach unter mehr Druck.
+  - Vorher gehörte jeder Verein sich selbst, und an der Schuldengrenze schoss der Vorstand wortlos nach, so oft es nötig war.
 - **Nachrichten aus der Liga (`LigaNachrichtenEngine`):** Die Sportpresse berichtet über die eigene Liga.
   - **Saisonvorschau:** Zum Saisonstart nennt sie Favoriten, Geheimtipp (der Kader ist besser als sein Ruf), Abstiegskandidaten und den Platz, auf dem sie den eigenen Verein sieht. Sie rechnet mit drei Vierteln Kaderstärke und einem Viertel Ansehen, wie die Medienprognose.
   - **Rundschau nach jedem Spieltag:** Sie bringt die Spitze und den Abstand, das Ergebnis des Spieltags und Serien (fünf Siege oder fünf Spiele ohne Sieg). Dazu kommen die Torjäger sowie Transfers und Trainerwechsel seit der letzten Ausgabe.
@@ -726,6 +737,7 @@ untitled/
 │   │   ├── ligaNachrichtenEngine.js # Saisonvorschau, Rundschau, Gerüchteküche
 │   │   ├── spielvorschauEngine.js # Quoten, direkter Vergleich, Ausfälle vor dem nächsten Spiel
 │   │   ├── partnerEngine.js    # Ausbildungspartner mit Einsatzgarantie, großer Partner mit Leihangeboten
+│   │   ├── investorEngine.js   # Investoren, Übernahmen, 50+1, Rettung mit Auflagen und Punktabzug
 │   │   ├── newsEngine.js       # Zentrales Nachrichtensystem & Postfach
 │   │   ├── aiManagerEngine.js  # KI-Aufstellungen & KI-Transferangebote
 │   │   ├── scoutingEngine.js   # Scoutaufträge & Spielerberichte

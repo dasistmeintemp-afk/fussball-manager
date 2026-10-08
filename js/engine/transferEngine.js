@@ -261,7 +261,12 @@ class TransferEngine {
         if (sellerClub) {
             // Die Beteiligung des früheren Vereins geht von der ersten Zahlung ab
             sellerClub.balance += sofort - beteiligung;
-            sellerClub.transferBudget += Math.round((sofort - beteiligung) * 0.85); // 85% reinvestierbar
+            // Unter Auflagen (InvestorEngine) zählt der Erlös aufs Verkaufsziel und tilgt Schulden
+            const investoren = (typeof InvestorEngine !== "undefined" && InvestorEngine)
+                ? InvestorEngine
+                : (typeof require !== "undefined" ? (() => { try { return require("./investorEngine.js").InvestorEngine; } catch (e) { return null; } })() : null);
+            const gesperrt = !!(investoren && typeof investoren.nachVerkauf === "function" && investoren.nachVerkauf(state, sellerClub, fee - beteiligung));
+            if (!gesperrt) sellerClub.transferBudget += Math.round((sofort - beteiligung) * 0.85); // 85% reinvestierbar
             if (financeEngine && sofort !== 0) {
                 financeEngine.recordTransaction(state, sellerClub.id, "transfer_in", sofort - beteiligung, `Verkauf von ${player.name}${inRaten ? " (Anzahlung)" : ""}`);
             }

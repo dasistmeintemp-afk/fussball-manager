@@ -2145,7 +2145,7 @@ class UIManager {
                     <td class="tb-verein"><span class="tb-verein-inhalt"><span class="mini-wappen" data-club="${this.escapeHtml(s.clubId)}"></span><span class="tb-verein-name">${this.escapeHtml(s.clubName)}</span></span></td>
                     <td>${s.played}</td>
                     <td>${this.vorzeichen(s.goalDiff)}</td>
-                    <td><strong>${s.points}</strong></td>
+                    <td><strong>${s.points}</strong>${s.abzug ? `<sup class="tb-abzug" title="${s.abzug} Punkte Abzug">*</sup>` : ""}</td>
                 </tr>
             `;
         }).join("");
@@ -3701,7 +3701,7 @@ class UIManager {
                     <td class="tb-n">${s.lost}</td>
                     <td class="tb-tore nowrap">${s.goalsFor}:${s.goalsAgainst}</td>
                     <td class="tb-diff">${this.vorzeichen(s.goalDiff)}</td>
-                    <td class="tb-pkt"><strong>${s.points}</strong></td>
+                    <td class="tb-pkt"><strong>${s.points}</strong>${s.abzug ? `<sup class="tb-abzug" title="${s.abzug} Punkte Abzug">*</sup>` : ""}</td>
                     <td class="tb-form">
                         <div class="form-indicators">
                             ${(s.form || []).map(f => this.formPunkt(f)).join("")}
@@ -5002,6 +5002,88 @@ class UIManager {
     }
 
     /**
+     * Eigentümer und Investor: ein Angebot zum Zu- oder Abraten, der
+     * Investor mit Geld und Ansprüchen, Auflagen nach einer Rettung.
+     */
+    renderInvestor(state, club) {
+        const el = document.getElementById("clubInvestor");
+        const engine = typeof InvestorEngine !== "undefined" ? InvestorEngine : null;
+        if (!el || !engine) return;
+        const u = engine.uebersicht(state);
+        if (!u) return;
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const plaetze = (n) => n === 1 ? "einen Platz" : `${n} Plätze`;
+        const bedingungen = (x) => `
+            <div class="inv-werte">
+                <div><span>Einstieg</span><strong>${this.geldKurz(x.einstieg ?? x.gezahlt ?? 0)}</strong></div>
+                <div><span>Je Saison</span><strong>${this.geldKurz(x.jaehrlich || 0)}</strong></div>
+                <div><span>Gehaltsetat</span><strong>+${this.geldKurz(x.gehaltPlus || 0)}/W.</strong></div>
+                <div><span>Anspruch</span><strong>${x.anspruch ? `Ziel ${plaetze(x.anspruch)} höher` : "keiner"}</strong></div>
+            </div>`;
+
+        let haupt;
+        if (u.angebot) {
+            const a = u.angebot;
+            haupt = `
+                <div class="inv-angebot">
+                    <div class="partner-kopf"><strong>${esc(a.name)}</strong> <small>${esc(a.artName)} · ${a.anteil} % der Anteile</small></div>
+                    ${bedingungen(a)}
+                    <p class="muted-note">${a.anspruch ? "Der Vorstand verlöre schneller die Geduld. " : ""}Der Vorstand entscheidet in ${a.tage} ${a.tage === 1 ? "Tag" : "Tagen"} - meist so, wie Sie raten, wenn er Ihnen vertraut.</p>
+                    <div class="inv-knoepfe">
+                        <button class="btn btn-sm ${a.empfehlung === "dafuer" ? "btn-primary" : "btn-secondary"}" data-inv-rat="dafuer">👍 Zuraten</button>
+                        <button class="btn btn-sm ${a.empfehlung === "dagegen" ? "btn-primary" : "btn-secondary"}" data-inv-rat="dagegen">👎 Abraten</button>
+                    </div>
+                </div>`;
+        } else if (u.investor) {
+            const i = u.investor;
+            haupt = `
+                <div class="partner-kopf"><strong>${esc(i.name)}</strong> <small>${esc(i.artName)} · ${i.anteil} % seit Saison ${i.seit}</small></div>
+                <div class="inv-werte">
+                    <div><span>Bisher gezahlt</span><strong>${this.geldKurz(i.gezahlt || 0)}</strong></div>
+                    <div><span>Je Saison</span><strong>${this.geldKurz(i.jaehrlich || 0)}</strong></div>
+                    <div><span>Gehaltsetat</span><strong>+${this.geldKurz(i.gehaltPlus || 0)}/W.</strong></div>
+                    <div><span>Anspruch</span><strong>${i.anspruch ? `Ziel ${plaetze(i.anspruch)} höher` : "keiner"}</strong></div>
+                </div>
+                <p class="muted-note">${i.geduld <= 1 ? "Verfehlt der Verein das nächste Saisonziel, zieht sich der Investor zurück." : `Der Investor hält noch ${i.geduld} verfehlte Saisonziele aus.`}${i.faktor > 1 ? " Der Vorstand misst Sie strenger." : ""}</p>`;
+        } else {
+            haupt = `
+                <p class="muted-note">Der Verein gehört sich selbst.${u.fuenfzigPlusEins ? " Wegen der 50+1-Regel kann ein Investor höchstens 49 % übernehmen - er bringt weniger Geld und hat weniger Einfluss." : ""}</p>
+                ${u.suche ? `<p class="muted-note">Der Vorstand hört sich nach einem Geldgeber um.</p>`
+                    : `<div class="partner-zeile"><span>Den Vorstand bitten, einen Geldgeber zu suchen <small>${u.sucheHindernis ? esc(u.sucheHindernis) : `Zustimmung etwa ${Math.round(u.sucheChance * 100)} %`}</small></span>
+                        <button class="btn btn-sm btn-secondary" id="btnInvestorSuche"${u.sucheHindernis ? " disabled" : ""}>Bitten</button></div>`}`;
+        }
+
+        const auf = u.auflagen;
+        const auflagen = auf ? `
+            <h4>Auflagen von ${esc(auf.geber)}</h4>
+            <ul class="inv-auflagen">
+                ${auf.sperre ? `<li>🚫 Keine Ablösen bis Saisonende - Verkaufserlöse tilgen Schulden.</li>` : ""}
+                ${auf.deckel ? `<li>📉 Gehaltsdeckel bis Ende Saison ${auf.deckelBisSaison}: höchstens ${this.geldKurz(auf.deckel)} pro Woche.</li>` : ""}
+                ${auf.verkauf ? `<li>💶 Verkäufe bis Ende des ${auf.verkauf.fenster === "winter" ? "Winter" : "Sommer"}fensters: ${this.geldKurz(auf.verkauf.erloes)} von ${this.geldKurz(auf.verkauf.ziel)}
+                    <div class="inv-balken"><span style="width:${Math.min(100, Math.round(auf.verkauf.erloes / Math.max(1, auf.verkauf.ziel) * 100))}%"></span></div>
+                    <small>Sonst ${engine.AUFLAGE.abzug} Punkte Abzug.</small></li>` : ""}
+            </ul>` : "";
+        const abzug = u.punktabzug ? `<p class="inv-abzug">⚖️ ${u.punktabzug.punkte} Punkte Abzug in dieser Saison (${esc(u.punktabzug.grund)}).</p>` : "";
+        const historie = u.historie.length ? `<h4>Verlauf</h4><ul class="inv-historie">${u.historie.map(h => `<li>Saison ${h.saison}: ${esc(h.name)} ${esc(h.ergebnis)}</li>`).join("")}</ul>` : "";
+
+        el.innerHTML = `
+            <div class="card-header"><h3>💼 Eigentümer & Investor</h3>${u.fuenfzigPlusEins ? `<span class="header-tag">50+1</span>` : ""}</div>
+            ${haupt}${auflagen}${abzug}${historie}`;
+        const nachher = (res, ok) => {
+            if (!res.success) { this.showToast(res.error || "Das ging nicht.", "error"); return; }
+            if (ok) this.showToast(ok, "success");
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.renderClub();
+        };
+        el.querySelectorAll("[data-inv-rat]").forEach(b => b.addEventListener("click", () =>
+            nachher(engine.empfehle(state, b.dataset.invRat === "dafuer"), b.dataset.invRat === "dafuer" ? "Sie raten zu." : "Sie raten ab.")));
+        document.getElementById("btnInvestorSuche")?.addEventListener("click", () => {
+            const res = engine.suche(state);
+            nachher(res, res.text);
+        });
+    }
+
+    /**
      * Partnervereine: der Ausbildungspartner (Leihen mit Einsatzgarantie,
      * Vorkaufsrecht) und der große Partner (Leihangebote).
      */
@@ -5129,6 +5211,7 @@ class UIManager {
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
         this.renderTrainerProfil();
+        this.renderInvestor(state, userClub);
         this.renderPartner(state, userClub);
         this.renderChronik(state, userClub);
 

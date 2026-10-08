@@ -1401,6 +1401,16 @@ const CalendarEngine = {
             if (zeile) summary.messages.push(zeile);
         }
 
+        // Investoren: Angebot, Suche und Verkaufsauflage
+        const investoren = (typeof InvestorEngine !== 'undefined' && InvestorEngine)
+            ? InvestorEngine
+            : ((typeof window !== 'undefined' && window.InvestorEngine) ? window.InvestorEngine
+                : (typeof require !== 'undefined' ? (() => { try { return require('./investorEngine.js').InvestorEngine; } catch (e) { return null; } })() : null));
+        if (investoren && typeof investoren.tag === 'function') {
+            const zeile = investoren.tag(state);
+            if (zeile) summary.messages.push(zeile);
+        }
+
         // 1b. Lücken in den Aufstellungen schließen. Wer sich verletzt, fällt
         // aus Elf und Bank - ohne Nachrücker stand ein Verein nach ein paar
         // Wochen dauerhaft mit zehn Mann da.

@@ -66,13 +66,17 @@ const BoardEngine = {
 
         let platz = erwartet < 1.5 ? 1 : Math.round(erwartet) + G.spielraum;
         if (typeof lage === 'number' && lage > platz) platz = Math.round((platz + lage) / 2);
+        // Ein Investor will mehr sehen
+        const investoren = _boardResolve('InvestorEngine', './investorEngine.js');
+        const anspruch = investoren && typeof investoren.anspruch === 'function' ? investoren.anspruch(club) : 0;
+        if (anspruch) platz = Math.max(1, platz - anspruch);
         const { rettung } = this.grenzen(state, club);
         platz = Math.max(1, Math.min(platz, rettung, n));
         const art = this.artFuer(state, club, platz);
 
         club.boardExpectation = art;
         club.vorstandsziel = {
-            platz, art, n, leagueId: club.leagueId, saison: state.seasonYear || 1, raenge, erwartet: Math.round(erwartet * 10) / 10,
+            platz, art, n, leagueId: club.leagueId, saison: state.seasonYear || 1, raenge, erwartet: Math.round(erwartet * 10) / 10, anspruch,
             prognose: this.medienprognose(state, club)
         };
         return club.vorstandsziel;
@@ -223,7 +227,8 @@ const BoardEngine = {
         const stelle = r => r === 1 ? "der stärkste" : `der ${r}.-stärkste`;
         return `Unser Kader ist ${stelle(z.raenge.kader).replace("stärkste", "stärkste der Liga")}, `
             + `beim Etat liegen wir auf Rang ${z.raenge.etat}, beim Ansehen auf Rang ${z.raenge.ruf} von ${z.n}.`
-            + (typeof z.prognose === "number" ? ` Die Medien sehen uns auf Platz ${z.prognose}.` : "");
+            + (typeof z.prognose === "number" ? ` Die Medien sehen uns auf Platz ${z.prognose}.` : "")
+            + (z.anspruch ? ` Unser Investor erwartet ${z.anspruch === 1 ? "einen Platz" : `${z.anspruch} Plätze`} mehr.` : "");
     },
 
     // ------------------------------------------------ Anfragen an den Vorstand

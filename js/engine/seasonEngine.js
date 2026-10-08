@@ -821,7 +821,10 @@ class SeasonEngine {
             : 6;
 
         const diff = targetRank - currentRank; // Positiv = besser als Ziel, Negativ = schlechter
-        let newConfidence = 75 + (diff * 5);
+        // Mit einem Investor im Rücken wiegt jeder Platz unter dem Ziel schwerer
+        const investoren = _resolve('InvestorEngine', './investorEngine.js');
+        const ungeduld = investoren && typeof investoren.ungeduld === 'function' ? investoren.ungeduld(userClub) : { faktor: 1, schwelle: 0 };
+        let newConfidence = 75 + (diff < 0 ? diff * 5 * ungeduld.faktor : diff * 5);
 
         // Finanzieller Bonus / Malus
         if (userClub.balance < 0) newConfidence -= 15;
@@ -870,6 +873,9 @@ class SeasonEngine {
         const lage = state.jobSecurity;
         const vertrauen = state.boardConfidence;
         const spieltag = state.currentMatchday || 1;
+        // Ein ungeduldiger Investor: Warnung und Ultimatum kommen früher
+        const investoren = _resolve('InvestorEngine', './investorEngine.js');
+        const schwelle = investoren && typeof investoren.ungeduld === 'function' ? investoren.ungeduld(userClub).schwelle : 0;
 
         // Ein laufendes Ultimatum läuft irgendwann ab
         if (lage.stage === "ultimatum" && lage.ultimatumUntil !== null) {
@@ -903,7 +909,7 @@ class SeasonEngine {
         if (spieltag < 6) return;
 
         // Ultimatum: Es steht wirklich schlecht
-        if (vertrauen <= 28 && lage.stage !== "ultimatum") {
+        if (vertrauen <= 28 + schwelle && lage.stage !== "ultimatum") {
             const frist = Math.min(state.totalMatchdays || 34, spieltag + 5);
             const zielPlatz = Math.max(1, Math.min(currentRank - 2, targetRank + 3));
 
@@ -920,7 +926,7 @@ class SeasonEngine {
         }
 
         // Warnung: Es läuft nicht rund
-        if (vertrauen <= 45 && lage.stage === "ruhig") {
+        if (vertrauen <= 45 + schwelle && lage.stage === "ruhig") {
             lage.stage = "warnung";
             lage.warnedAt = spieltag;
             SeasonEngine.boardMessage(state, "⚠️ Der Vorstand ist besorgt",
@@ -931,7 +937,7 @@ class SeasonEngine {
         }
 
         // Entspannung, wenn es wieder läuft
-        if (vertrauen >= 62 && lage.stage === "warnung") {
+        if (vertrauen >= 62 + schwelle && lage.stage === "warnung") {
             lage.stage = "ruhig";
             SeasonEngine.boardMessage(state, "👍 Der Vorstand ist wieder zufrieden",
                 `Die Entwicklung stimmt wieder. Platz ${currentRank} liest sich deutlich besser.\n\n`
@@ -1051,6 +1057,10 @@ class SeasonEngine {
         // Wer weit hinter dem Anspruch blieb oder abstieg, trennt sich oft vom Trainer
         const karussellEnde = _resolve('TrainerwechselEngine', './trainerwechselEngine.js');
         if (karussellEnde && typeof karussellEnde.saisonEnde === 'function') karussellEnde.saisonEnde(state);
+
+        // Hat der Verein geliefert, was der Investor erwartet?
+        const investorEnde = _resolve('InvestorEngine', './investorEngine.js');
+        if (investorEnde && typeof investorEnde.saisonEnde === 'function') investorEnde.saisonEnde(state);
 
         // Die Saison in die Vereinschronik - vor dem Zurücksetzen der Statistik
         const chronikEngine = _resolve('ChronikEngine', './chronikEngine.js');
@@ -1575,6 +1585,11 @@ class SeasonEngine {
                 club.transferBudget = Math.max(0, Math.round(etat));
             });
         }
+
+        // Investoren: das jährliche Geld, Übernahmen, Auflagen - und alte
+        // Punktabzüge verfallen, bevor die Tabelle neu anfängt
+        const investoren = _resolve('InvestorEngine', './investorEngine.js');
+        if (investoren && typeof investoren.saisonstart === 'function') investoren.saisonstart(state);
 
         // Form zurücksetzen
         state.clubs.forEach(club => {

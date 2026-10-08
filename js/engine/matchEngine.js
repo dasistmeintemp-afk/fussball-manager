@@ -2716,7 +2716,8 @@ class MatchEngine {
 
         // Für die Spielanalyse im Bericht: jeder Abschluss als kompakte Zeile
         // [Minute, Team (0 Heim/1 Gast), x, y, xG in Prozent, Ausgang
-        // (0 vorbei, 1 gehalten, 2 Tor, 3 geblockt), Elfmeter, Schütze].
+        // (0 vorbei, 1 gehalten, 2 Tor, 3 geblockt), Elfmeter, Schütze,
+        // Spieler-ID des Schützen (für die Datenzentrale)].
         // Die Koordinaten zeigen immer auf das Tor bei x = 100.
         match.schuesse = [];
         timeline.forEach(ev => {
@@ -2728,7 +2729,8 @@ class MatchEngine {
             const ausgang = ev.type === "goal" ? 2 : (ev.type === "save" ? 1 : (ev.outcome === "blocked" ? 3 : 0));
             match.schuesse.push([ev.minute || 0, schuetzenTeam === "home" ? 0 : 1,
                 Math.round(x * 10) / 10, Math.round(y * 10) / 10,
-                Math.round((typeof ev.xG === "number" ? ev.xG : 0.1) * 100), ausgang, ev.isPenalty ? 1 : 0, name]);
+                Math.round((typeof ev.xG === "number" ? ev.xG : 0.1) * 100), ausgang, ev.isPenalty ? 1 : 0, name,
+                ev.type === "save" ? (ev.shooterId ?? null) : (ev.playerId ?? null)]);
         });
 
         // Die Timeline hat ihren Zweck erfüllt: alle Zähler stecken jetzt in
@@ -2747,7 +2749,7 @@ class MatchEngine {
      * Fremde Ligen brauchen nur das Ergebnis. Nur Spiele des eigenen Vereins
      * behalten Einzelkritiken, Ereignisse und Aufstellungen.
      */
-    static compactPlayedMatch(match, keepDetail = false) {
+    static compactPlayedMatch(match, keepDetail = false, kennzahlen = false) {
         if (!match || !match.played) return match;
 
         delete match.timeline;
@@ -2766,6 +2768,14 @@ class MatchEngine {
             return match;
         }
 
+        // Für die Datenzentrale behalten die Partien der eigenen Liga sieben
+        // Kennzahlen: xG (in Hundertsteln), Schüsse, Ballbesitz und Passquote
+        // [xG Heim, xG Gast, Schüsse Heim, Schüsse Gast, Besitz Heim, Pass Heim, Pass Gast]
+        if (kennzahlen && match.stats) {
+            const s = match.stats;
+            match.kz = [Math.round((s.xG?.[0] || 0) * 100), Math.round((s.xG?.[1] || 0) * 100), s.shots?.[0] || 0, s.shots?.[1] || 0,
+                s.possession?.[0] ?? 50, s.passAccuracy?.[0] || 0, s.passAccuracy?.[1] || 0];
+        }
         delete match.playerRatings;
         delete match.lineups;
         delete match.injuries;

@@ -952,6 +952,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <div class="stats-grid" style="grid-template-columns: 1fr 1fr; gap:14px; margin-bottom:16px;">
                 ${attributeBlocks}
             </div>
+            ${isProspect || typeof DatenzentraleEngine === "undefined" ? "" : `<button type="button" class="btn btn-secondary btn-sm pd-vergleich" id="btnPdVergleich">⚖️ Mit anderem Spieler vergleichen</button>`}
 
             ${positionMapHtml}
 
@@ -1201,6 +1202,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 this.showToast(res.error || "Gespräche konnten nicht aufgenommen werden.", "error");
             }
         });
+        document.getElementById("btnPdVergleich")?.addEventListener("click", () => this.zeigeVergleich(player.id));
         document.getElementById("btnPdZurVerhandlung")?.addEventListener("click", (e) => {
             modal.style.display = "none";
             this.zeigeVerhandlung(e.currentTarget.dataset.negId);

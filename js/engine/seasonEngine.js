@@ -482,7 +482,7 @@ class SeasonEngine {
             // Nur die eigenen Partien behalten Einzelkritiken und Ereignisse
             if (matchEngine && typeof matchEngine.compactPlayedMatch === 'function') {
                 const isUserMatch = match.homeClubId === state.userClubId || match.awayClubId === state.userClubId;
-                matchEngine.compactPlayedMatch(match, isUserMatch);
+                matchEngine.compactPlayedMatch(match, isUserMatch, true);
             }
         });
 

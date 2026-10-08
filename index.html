@@ -1266,6 +1266,7 @@
                         <h2>Liga-Statistiken & Ranglisten</h2>
                         <select id="statsLeagueSelect" class="styled-select stats-liga-wahl" aria-label="Liga für die Ranglisten"></select>
                     </div>
+                    <div class="dash-card dz-karte" id="statsDatenzentrale"></div>
                     <div class="dash-card preise-karte" id="statsPreise" hidden></div>
                     <div class="dash-card karussell-karte" id="statsKarussell" hidden></div>
                     <div class="dash-card karussell-karte" id="statsGeruechte" hidden></div>
@@ -1989,6 +1990,16 @@
             </div>
         </div>
 
+        <div class="modal-overlay" id="modalVergleich" style="display: none;">
+            <div class="modal-box modal-md">
+                <div class="modal-header">
+                    <h2>Spielervergleich</h2>
+                    <button class="modal-close" id="btnCloseVergleich">×</button>
+                </div>
+                <div class="modal-body" id="vergleichContent"></div>
+            </div>
+        </div>
+
         <!-- Modal: Transfer Offer Negotiation -->
         <!-- Kabinenansprache -->
         <div class="modal-overlay" id="modalTeamTalk" style="display: none;">
@@ -2223,6 +2234,7 @@
     <script src="js/engine/opponentAnalysisEngine.js"></script>
     <script src="js/engine/matchplanEngine.js"></script>
     <script src="js/engine/gegneranweisungEngine.js"></script>
+    <script src="js/engine/datenzentraleEngine.js"></script>
     <script src="js/engine/gameState.js"></script>
     <script src="js/engine/eigenschaftenEngine.js"></script>
     <script src="js/engine/matchFlowEngine.js"></script>
@@ -2255,6 +2267,7 @@
     <script src="js/ui/uiSpeicher.js"></script>
     <script src="js/ui/uiEinstieg.js"></script>
     <script src="js/ui/uiNational.js"></script>
+    <script src="js/ui/uiDaten.js"></script>
     <script src="js/ui/spielfeld3d.js"></script>
     <script src="js/app.js"></script>
 </body>

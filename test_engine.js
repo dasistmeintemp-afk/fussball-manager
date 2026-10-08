@@ -8816,7 +8816,8 @@ function runEngineTests() {
         const gesamt = partie.stats.shots[0] + partie.stats.shots[1];
         if (s.length !== gesamt) throw new Error(`${s.length} Schüsse gespeichert, Statistik zählt ${gesamt}`);
         s.forEach(z => {
-            if (z.length !== 8 || z[2] < 50 || z[2] > 100 || z[3] < 0 || z[3] > 100 || z[4] <= 0) throw new Error(`Ungültiger Schuss ${JSON.stringify(z)}`);
+            // [Minute, Seite, x, y, xG, Ergebnis, Art, Schütze, Schützen-ID]
+            if (z.length !== 9 || z[2] < 50 || z[2] > 100 || z[3] < 0 || z[3] > 100 || z[4] <= 0 || z[8] === null || z[8] === undefined) throw new Error(`Ungültiger Schuss ${JSON.stringify(z)}`);
         });
         const tore = [0, 1].map(t => s.filter(z => z[1] === t && z[5] === 2).length);
         if (tore[0] !== partie.homeGoals || tore[1] !== partie.awayGoals) throw new Error(`Tore in der Schussliste ${tore} passen nicht zum Ergebnis`);
@@ -10930,6 +10931,52 @@ function runEngineTests() {
         if (!YouthEngine.vorschauBericht(state, club, talente).unsicher) throw new Error("Die Aushilfe ist sich sicher");
         const schwach = YouthEngine.vorschauBericht(state, club, talente.map(t => ({ ...t, pot: 30 })));
         if (schwach.urteil !== "schwach") throw new Error(`Schwacher Jahrgang nicht erkannt: ${schwach.urteil}`);
+    });
+
+    test("Datenzentrale: Liga nach xG und xPunkten, Form, Spielerwerte je 90 Minuten, Vergleich nach Scoutwissen", () => {
+        const { DatenzentraleEngine: D } = require('./js/engine/datenzentraleEngine.js');
+        const { SaveCodec } = require('./js/services/saveCodec.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        for (let i = 0; i < 6; i++) SeasonEngine.advanceToNextMatchday(state);
+
+        // xPunkte: drei Punkte verteilt, ein klares xG gewinnt meist
+        const [h, g] = D.xPunkte(2.5, 0.3);
+        if (!(h > 2.2 && g < 0.4) || Math.abs(D.xPunkte(1, 1)[0] - D.xPunkte(1, 1)[1]) > 1e-9) throw new Error(`xPunkte falsch: ${h}, ${g}`);
+
+        // Liga: alle Vereine der eigenen Liga, auch ihre Spiele untereinander (Kennzahlen kz)
+        const liga = D.liga(state);
+        const vereine = state.clubs.filter(c => c.leagueId === state.clubs.find(x => x.id === "muc").leagueId).length;
+        if (liga.length !== vereine || liga.some(z => z.spiele !== 6)) throw new Error(`Liga unvollständig: ${liga.length} von ${vereine}`);
+        const gespielt = state.schedule.flatMap(t => t.matches).filter(m => m.played);
+        const tore = gespielt.reduce((s2, m) => s2 + m.homeGoals + m.awayGoals, 0);
+        if (liga.reduce((s2, z) => s2 + z.tore, 0) !== tore) throw new Error("Tore der Liga stimmen nicht");
+        if (liga.some(z => !(z.xg > 0) || z.xPunkte > z.spiele * 3)) throw new Error("xG oder xPunkte fehlen");
+        // Die Kennzahlen überstehen Speichern und Laden
+        const geladen = SaveCodec.decodeState(SaveCodec.encodeState(state));
+        if (D.liga(geladen).length !== vereine) throw new Error("Nach dem Laden fehlen die Kennzahlen");
+
+        // Form: die eigenen Spiele mit Ergebnis und xG
+        const form = D.form(state, "muc", 10);
+        if (form.length !== 6 || form.some(f => f.ergebnis !== (f.tore[0] > f.tore[1] ? "S" : f.tore[0] === f.tore[1] ? "U" : "N"))) throw new Error("Form falsch");
+
+        // Spieler: Minuten, Tore und xG aus den eigenen Partien
+        const sp = D.spieler(state, "muc");
+        const eigeneTore = form.reduce((s2, f) => s2 + f.tore[0], 0);
+        const spielerTore = sp.reduce((s2, x) => s2 + x.tore, 0);
+        if (!sp.length || spielerTore > eigeneTore || spielerTore < eigeneTore - 2) throw new Error(`Tore der Spieler ${spielerTore} statt ${eigeneTore}`);
+        const xgTeam = liga.find(z => z.clubId === "muc").xg;
+        if (Math.abs(sp.reduce((s2, x) => s2 + x.xg, 0) - xgTeam) > xgTeam * 0.25 + 0.5) throw new Error("xG der Spieler passt nicht zum Team");
+        const stamm = sp.find(x => x.minuten >= D.MIN_MINUTEN_JE90);
+        if (!stamm || stamm.toreJe90 === null || sp.some(x => x.minuten < D.MIN_MINUTEN_JE90 && x.toreJe90 !== null)) throw new Error("Werte je 90 falsch");
+
+        // Vergleich: eigene Werte genau, fremde mit wenig Scoutwissen als Spanne
+        const eigen = state.players.find(p => p.clubId === "muc" && p.pos === "ST");
+        const fremd = state.players.find(p => p.clubId === "dor" && p.pos === "ST");
+        fremd.scoutingKnowledge = { knowledgeLevel: 10 };
+        const v = D.vergleich(state, eigen.id, fremd.id);
+        if (!v.a.genau || v.a.werte.pace.exact !== eigen.pace) throw new Error("Eigener Spieler nicht genau");
+        if (v.b.genau || v.b.werte.pace.exact !== null || !(v.b.werte.pace.max > v.b.werte.pace.min)) throw new Error("Fremder Spieler verrät seine Werte");
+        if (!D.vergleichsKandidaten(state, eigen.id).some(k => k.eigen)) throw new Error("Keine eigenen Kandidaten zum Vergleich");
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

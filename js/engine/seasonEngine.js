@@ -1383,11 +1383,12 @@ class SeasonEngine {
         const frei = abgaenge.filter(p => !p.clubId);
 
         /** Welche Positionen fehlen dem Kader gegenüber dem Sollplan? */
+        const nachId = new Map(state.players.map(p => [p.id, p]));
         const offenePositionen = (club, ziel) => {
             if (!playerGen || typeof playerGen.buildSquadPlan !== 'function') return [];
             const ist = {};
             (club.playerIds || []).forEach(id => {
-                const p = state.players.find(sp => sp.id === id);
+                const p = nachId.get(id) || state.players.find(sp => sp.id === id);
                 if (p) ist[p.pos] = (ist[p.pos] || 0) + 1;
             });
             const rest = Object.assign({}, ist);

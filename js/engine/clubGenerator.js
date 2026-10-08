@@ -120,7 +120,7 @@ class ClubGenerator {
      * Etat nach Ligastufe und Ruf. Der Faktor sorgt dafür, dass der
      * Meisterschaftsanwärter einer Liga ein Vielfaches des Aufsteigers hat.
      */
-    static generateFinances(level = 1, clubStrength = 0.5) {
+    static generateFinances(level = 1, clubStrength = 0.5, countryId = "de") {
         const BASE = {
             1: { transfer: 8000000, wage: 900000, balance: 14000000 },
             2: { transfer: 1500000, wage: 220000, balance: 3500000 },
@@ -133,7 +133,12 @@ class ClubGenerator {
         const base = BASE[level] || BASE[5];
         const s = Math.max(0, Math.min(1, clubStrength));
         // 0,45x für den Schlusslicht-Etat, 3,2x für den Spitzenklub
-        const factor = 0.45 + Math.pow(s, 1.4) * 2.75;
+        // Das Land zählt mit: In England fließt das meiste Fernsehgeld (FinanceEngine.LAND_ECONOMY)
+        const finanzen = (typeof FinanceEngine !== "undefined" && FinanceEngine)
+            ? FinanceEngine
+            : (typeof require !== "undefined" ? (() => { try { return require("./financeEngine.js").FinanceEngine; } catch (e) { return null; } })() : null);
+        const land = finanzen && typeof finanzen.landFaktor === "function" ? finanzen.landFaktor(countryId, s) : 1;
+        const factor = (0.45 + Math.pow(s, 1.4) * 2.75) * land;
         const jitter = 0.88 + Math.random() * 0.24;
 
         return {
@@ -169,7 +174,7 @@ class ClubGenerator {
         const stadiumData = (options.stadium && options.stadiumCapacity)
             ? { stadium: options.stadium, stadiumCapacity: options.stadiumCapacity }
             : this.generateStadium(city, level, clubStrength, countryId);
-        const finances = this.generateFinances(level, clubStrength);
+        const finances = this.generateFinances(level, clubStrength, countryId);
         const reputation = this.calculateReputation(level, clubStrength, options.countryReputation ?? 88);
 
         const primaryColor = this.pick(this.PRIMARY_COLORS, "#2563eb");

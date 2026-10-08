@@ -92,6 +92,39 @@ const FinanceEngine = {
     LEVEL_ECONOMY: { 1: 1.0, 2: 0.40, 3: 0.17, 4: 0.075, 5: 0.038, 6: 0.026, 7: 0.019 },
 
     /**
+     * Wirtschaftskraft nach Land - vor allem das Fernsehgeld. Vorher verdiente
+     * der Zehnte der Premier League so viel wie der Zehnte der Bundesliga.
+     * Umsatz je Erstligist 2023/24 (Deloitte Annual Review of Football
+     * Finance 2025): Premier League rund 370 Mio. EUR, Bundesliga 211, LaLiga
+     * 190, Serie A und Ligue 1 je rund 145.
+     *
+     * Der Vorsprung liegt vor allem in der Breite: Die Spitzenklubs der großen
+     * Ligen setzen ähnlich viel um, der Vierzehnte der Premier League aber ein
+     * Vielfaches seines Gegenstücks in Italien oder Frankreich. Deshalb zwei
+     * Faktoren gegenüber der Bundesliga: auf den Sockel (Fernsehgeld, das alle
+     * bekommen) und auf die Spanne (was der Rang dazubringt).
+     */
+    LAND_ECONOMY: {
+        en: { sockel: 2.3, spanne: 1.0 },
+        de: { sockel: 1.0, spanne: 1.0 },
+        es: { sockel: 0.75, spanne: 1.0 },
+        it: { sockel: 0.6, spanne: 0.75 },
+        fr: { sockel: 0.5, spanne: 0.75 }
+    },
+
+    /** Die Länderfaktoren eines Landes (unbekanntes Land: wie die Bundesliga) */
+    landWirtschaft(countryId) {
+        return this.LAND_ECONOMY[countryId || "de"] || { sockel: 1, spanne: 1 };
+    },
+
+    /** Wie viel mehr oder weniger ein Verein dieses Rangs im Land umsetzt als in der Bundesliga */
+    landFaktor(countryId, rang = 0.5) {
+        const l = this.landWirtschaft(countryId);
+        const r = Math.pow(Math.max(0, Math.min(1, rang)), this.SPONSOR_KURVE);
+        return (this.SPONSOR_SOCKEL * l.sockel + r * this.SPONSOR_SPANNE * l.spanne) / (this.SPONSOR_SOCKEL + r * this.SPONSOR_SPANNE);
+    },
+
+    /**
      * Sockel und Spanne der Sponsorenzahlung innerhalb einer Liga.
      *
      * Vorher hingen die Einnahmen fast linear am Ruf: Der FC München nahm
@@ -134,7 +167,8 @@ const FinanceEngine = {
         const rang = typeof club.clubStrength === "number"
             ? Math.max(0, Math.min(1, club.clubStrength))
             : 0.5;
-        return Math.round((this.SPONSOR_SOCKEL + Math.pow(rang, this.SPONSOR_KURVE) * this.SPONSOR_SPANNE) * faktor);
+        const land = this.landWirtschaft(club.countryId);
+        return Math.round((this.SPONSOR_SOCKEL * land.sockel + Math.pow(rang, this.SPONSOR_KURVE) * this.SPONSOR_SPANNE * land.spanne) * faktor);
     },
 
     /**
@@ -174,7 +208,7 @@ const FinanceEngine = {
      * keine Gehälter. Und der Spitzenverein zahlt einen kleineren Anteil als der
      * Abstiegskandidat, weil sein Umsatz schneller wächst als seine Gehaltsliste.
      */
-    GEHALTSQUOTE: { 1: 0.50, 2: 0.45, 3: 0.38, 4: 0.30, 5: 0.24, 6: 0.20, 7: 0.17 },
+    GEHALTSQUOTE: { 1: 0.60, 2: 0.48, 3: 0.38, 4: 0.30, 5: 0.24, 6: 0.20, 7: 0.17 },
 
     gehaltsbudgetJeSpieltag(club, state = null) {
         if (!club) return 0;
@@ -182,8 +216,11 @@ const FinanceEngine = {
         const rang = typeof club.clubStrength === "number"
             ? Math.max(0, Math.min(1, club.clubStrength))
             : 0.5;
-        // Wer oben steht, gibt anteilig weniger aus
-        return Math.round(this.einnahmenSchaetzung(club, state) * grund * (1 - rang * 0.18));
+        // Wer oben steht, gab vorher anteilig weniger aus (bis 18 % Abschlag):
+        // Gemessen lag die Gehaltsquote der Spitzenklubs dann bei 30 % ihrer
+        // Einnahmen, und sie legten Saison für Saison 70 bis 140 Mio. zurück.
+        // Jetzt ist der Abschlag klein.
+        return Math.round(this.einnahmenSchaetzung(club, state) * grund * (1 - rang * 0.05));
     },
 
     /**

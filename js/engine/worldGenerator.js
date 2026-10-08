@@ -103,7 +103,7 @@ class WorldGenerator {
             // Der Gehaltsetat bleibt, er ist auf die Kader abgestimmt.
             const clubGen = this.getClubGenerator();
             if (clubGen && typeof clubGen.generateFinances === "function") {
-                const geld = clubGen.generateFinances(club.level, club.clubStrength);
+                const geld = clubGen.generateFinances(club.level, club.clubStrength, club.countryId);
                 club.transferBudget = geld.transferBudget;
                 club.balance = geld.balance;
             }

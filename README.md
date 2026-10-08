@@ -502,6 +502,20 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
 - **Alle Ligen laufen mit:** Pro Spieltag simuliert die `SeasonEngine` auch die elf übrigen Ligen. Da die Ligen 30, 34 oder 38 Spieltage haben, wird der Fortschritt anteilig umgerechnet – alle Ligen enden gemeinsam.
 - **Ruf, Stadion und Etat nach Rangfolge:** Ein Spitzenklub hat rund das Siebenfache des Etats des Schlusslichts derselben Liga; die Stadionkapazität reicht von 82.000 (Topliga) bis 400 Plätzen (Landesliga).
 - **Startbudgets nach einer Formel:** Auch die Bundesligisten bekommen Transferbudget und Kontostand nach Ligastufe und Rang. Vorher galten dort von Hand eingetragene Werte. Bayern startete mit 50,5 Mio. Transferbudget und Leverkusen mit 35,8 Mio., während Manchester City, Real Madrid oder Paris nach der Formel höchstens 28 Mio. hatten. Jetzt starten alle Spitzenklubs mit 18–28 Mio. Die Gehaltsetats bleiben, sie sind auf die Kader abgestimmt.
+- **Fernsehgeld je Land (`FinanceEngine.LAND_ECONOMY`):** Vorher hingen die Einnahmen nur an Ligastufe und Rang. Der Zehnte der Premier League verdiente so viel wie der Zehnte der Bundesliga.
+  - **Vorlage:** Umsatz je Erstligist 2023/24 laut Deloitte: Premier League rund 370 Mio. €, Bundesliga 211, LaLiga 190, Serie A und Ligue 1 je rund 145.
+  - **Zwei Faktoren je Land:** Der Vorsprung liegt in der Breite, die Spitzenklubs der großen Ligen setzen ähnlich viel um. Deshalb gibt es einen Faktor auf den Sockel (Fernsehgeld für alle) und einen auf die Spanne (was der Rang dazubringt).
+    - England: Sockel ×2,3
+    - Spanien: Sockel ×0,75
+    - Italien: Sockel ×0,6, Spanne ×0,75
+    - Frankreich: Sockel ×0,5, Spanne ×0,75
+  - **Ergebnis:** City nimmt am meisten ein, Bayern und Real knapp dahinter, Inter und Paris etwa drei Viertel davon. Das Mittelfeld der Premier League liegt beim Doppelten von Freiburg. Startbudgets und Gehälter folgen dem.
+  - **Ticketpreise der Bundesliga:** Sie richten sich nach dem Ruf wie überall, mit deutschem Abschlag. Vorher zahlte man in München und Heidenheim dieselben 35 €.
+- **Überschüsse der Spitzenklubs geeicht:** Gemessen über eine Saison legten Spitzenklubs 50–120 Mio. zurück (Bayern +76, City +123). Ihre Gehaltsquote lag bei 30 % der Einnahmen, real sind es eher 50–70 %. Drei Ursachen:
+  - **Gehaltsetat:** Erstligisten tragen jetzt 60 statt 50 % ihrer Einnahmen als Gehalt, Zweitligisten 48 statt 45 %. Der Spitzenklub bekommt kaum noch Abschlag (5 statt 18 %).
+  - **Tabellenprämie:** Sie ist halbiert. Sie kam zum Fernsehgeld dazu, das den Rang schon belohnt.
+  - **Europapokal:** Die Prämien sind halbiert. Der Sieger der Königsklasse bekam 73 Mio., 43 % eines Spitzenumsatzes, real sind es rund 17 %.
+  - **Danach:** Spitzenklubs legen 10–25 % ihres Umsatzes zurück (Bayern +37, City +18, Real +30). Das Mittelfeld steht vor Transfers bei null, und die Transfers entscheiden über Plus oder Minus.
 - **Nationale Pokale & Europapokal:** Der Pokal deines Landes sowie Champions League (`ucl`), Europa League (`uel`) und Conference League (`uecl`) mit Gruppen- und K.O.-Runden via `CompetitionEngine`.
 - **Ein Pokalabend, eine Runde:** Jeder Pokal- und Europapokalabend im Kalender spielt genau seine Runde. Nach dem eigenen Spiel geht es mit der Ligawoche weiter; die nächste Runde steht erst am nächsten Pokalabend an.
 - **Echte Europapokal-Qualifikanten:** Die Startplätze folgen den `europeanSpots` der Ligadefinition – England, Spanien und Italien stellen vier Champions-League-Teilnehmer, Frankreich drei. Kein Verein startet in zwei Wettbewerben.

@@ -614,7 +614,10 @@ class GameState {
                 city: clubData.city,
                 stadium: clubData.stadium,
                 capacity: clubData.capacity,
-                ticketPrice: 35,
+                // Nach Ruf wie in allen Ligen (ClubGenerator), mit dem deutschen
+                // Abschlag: Stehplätze und 50+1 halten die Preise niedrig.
+                // Vorher zahlte man in München und in Heidenheim dieselben 35 EUR.
+                ticketPrice: Math.max(6, Math.round(((rep / 2.2) + Math.random() * 8) * 0.8)),
                 balance: clubData.balance,
                 transferBudget: clubData.transferBudget,
                 wageBudget: clubData.wageBudget,

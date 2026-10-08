@@ -79,10 +79,15 @@ class CupEngine {
 
     /** Prämien je erreichter Runde, gemessen an der Wirtschaftskraft der Liga */
     static POKAL_PRAEMIE = [180000, 300000, 600000, 1200000, 2500000, 5000000];
+    /**
+     * Europapokal: Der Sieger der Königsklasse bekam vorher 73 Mio. - 43 %
+     * des Jahresumsatzes eines Spitzenklubs. Real waren es 2023/24 rund
+     * 17 % (etwa 140 Mio. EUR bei 800 Mio. Umsatz); jetzt rund 20 %.
+     */
     static EURO_PRAEMIE = {
-        ucl: { gruppe: 2200000, vf: 9000000, hf: 14000000, finale: 20000000, sieg: 28000000 },
-        uel: { gruppe: 700000, vf: 2800000, hf: 4500000, finale: 7000000, sieg: 11000000 },
-        uecl: { gruppe: 350000, vf: 1300000, hf: 2200000, finale: 3400000, sieg: 5500000 }
+        ucl: { gruppe: 1100000, vf: 4500000, hf: 7000000, finale: 10000000, sieg: 14000000 },
+        uel: { gruppe: 350000, vf: 1400000, hf: 2250000, finale: 3500000, sieg: 5500000 },
+        uecl: { gruppe: 175000, vf: 650000, hf: 1100000, finale: 1700000, sieg: 2750000 }
     };
 
     // ----------------------------------------------------------- Aufsetzen

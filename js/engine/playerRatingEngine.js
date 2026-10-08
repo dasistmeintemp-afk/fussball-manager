@@ -356,6 +356,33 @@ class PlayerRatingEngine {
      * Sterne messen. Fünf Sterne heißen nicht "Weltklasse", sondern
      * "deutlich besser als alles, was ich sonst im Kader habe".
      */
+    /**
+     * Woran Sterne gemessen werden: "kader" (Schnitt des eigenen Kaders,
+     * Standard), "liga" (Schnitt der eigenen Liga) oder "welt" (fest: drei
+     * Sterne bei Stärke 70). Die Oberfläche setzt den Wert aus den
+     * Einstellungen; Kader, Akte, Scoutberichte und Gegneranalyse lesen ihn.
+     */
+    static massstab = "kader";
+
+    /** Der Bezug (drei Sterne) als Fähigkeit - nach dem eingestellten Maßstab */
+    static sternBezug(state, clubId = state?.userClubId) {
+        if (PlayerRatingEngine.massstab === "welt") return 140;
+        const players = Array.isArray(state?.players) ? state.players : [];
+        const club = (state?.clubs || []).find(c => c.id === clubId);
+        if (PlayerRatingEngine.massstab === "liga" && club) {
+            const liga = new Set(state.clubs.filter(c => c.leagueId === club.leagueId).map(c => c.id));
+            const nachVerein = new Map();
+            players.forEach(p => {
+                if (!liga.has(p.clubId)) return;
+                if (!nachVerein.has(p.clubId)) nachVerein.set(p.clubId, []);
+                nachVerein.get(p.clubId).push(p);
+            });
+            const schnitte = [...nachVerein.values()].map(k => PlayerRatingEngine.squadAverageAbility(k));
+            if (schnitte.length) return schnitte.reduce((a, b) => a + b, 0) / schnitte.length;
+        }
+        return PlayerRatingEngine.squadAverageAbility(players.filter(p => p.clubId === clubId));
+    }
+
     static squadAverageAbility(players = []) {
         const echte = (players || []).filter(p => p && (p.trueCurrentAbility || p.overall));
         if (echte.length === 0) return 140;

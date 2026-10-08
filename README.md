@@ -444,7 +444,13 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
 
 ### 7. 🗓️ Kalender-Tagesablauf, 🔍 Gegneranalyse & 🌟 Scoutingsystem
 - **Spielerbewertungssystem (`PlayerRatingEngine`):** Trennung von echten internen Fähigkeiten (CA/PA 1–200, Hidden Attributes wie Professionalität & Ehrgeiz) und sichtbaren, scoutabhängigen Einschätzungsbereichen.
-- **Relative Sternebewertungen:** Qualitätssterne (0.5 bis 5.0) werden dynamisch relativ zur Stärke des eigenen Kaders berechnet.
+- **Sternebewertungen mit wählbarem Maßstab:** Qualitätssterne (0,5 bis 5,0); zehn Punkte Stärke sind ein Stern. Woran sie gemessen werden, steht in den Einstellungen unter „Sterne“ und in der Kennzahlenleiste des Kaders:
+  - **Am eigenen Kader (Standard):** Drei Sterne sind der Kaderschnitt. Der Stammspieler eines Landesligisten hat so viele Sterne wie der eines Spitzenklubs.
+  - **An der eigenen Liga:** Drei Sterne sind der Ligaschnitt.
+  - **Weltweit:** Drei Sterne sind ein solider Erstligaprofi (Stärke 70). Ein Bundesliga-Star hat fünf, ein Landesligaspieler einen halben.
+  - Der Maßstab gilt überall: Kader, Taktik, Spielerakte, Scoutberichte, Gegneranalyse und schon die Spieler eines Vereins im Karrierestart. Dort wurden sie vorher an allen Vereinen der Auswahl gemessen. Bayerns Spieler hatten im Assistenten fünf Sterne und nach dem Start im Kader nur drei oder vier.
+  - Die Kaderstärke im Vereinsvergleich des Assistenten misst weiter an der Auswahl, beim Weltmaßstab fest.
+  - Der Sternefilter des Transfermarkts sucht nach demselben Maßstab und nennt ihn („Ab ★ 3,0 (Ligaschnitt)“).
 - **Testspiele werden angesagt:** Ein Spieltermin der Vorbereitung erscheint wie ein Spieltag – mit beiden Mannschaften und der Wahl zwischen Live-Spiel und Sofortergebnis. Beide laufen über dieselbe Simulation; das Ergebnis wird so eingetragen, wie es auf dem Platz fiel.
 - **Saisonkalender & Wochenplan (`CalendarEngine`):** Realistischer Tagesablauf zwischen Spieltagen (Regeneration, Schwerpunkt-Training, Medien-/Sponsoren-Events, Taktikschulung und Gegneranalyse).
 - **Zeit Tag für Tag:** Der Weiter-Knopf läuft Tag für Tag bis zum nächsten Termin (Spiel, Testspiel, Pressekonferenz, Saisonende). Er hält aber auch dazwischen an, wenn etwas den Manager angeht:
@@ -490,6 +496,7 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
 
 - **Alle Ligen laufen mit:** Pro Spieltag simuliert die `SeasonEngine` auch die elf übrigen Ligen. Da die Ligen 30, 34 oder 38 Spieltage haben, wird der Fortschritt anteilig umgerechnet – alle Ligen enden gemeinsam.
 - **Ruf, Stadion und Etat nach Rangfolge:** Ein Spitzenklub hat rund das Siebenfache des Etats des Schlusslichts derselben Liga; die Stadionkapazität reicht von 82.000 (Topliga) bis 400 Plätzen (Landesliga).
+- **Startbudgets nach einer Formel:** Auch die Bundesligisten bekommen Transferbudget und Kontostand nach Ligastufe und Rang. Vorher galten dort von Hand eingetragene Werte. Bayern startete mit 50,5 Mio. Transferbudget und Leverkusen mit 35,8 Mio., während Manchester City, Real Madrid oder Paris nach der Formel höchstens 28 Mio. hatten. Jetzt starten alle Spitzenklubs mit 18–28 Mio. Die Gehaltsetats bleiben, sie sind auf die Kader abgestimmt.
 - **Nationale Pokale & Europapokal:** Der Pokal deines Landes sowie Champions League (`ucl`), Europa League (`uel`) und Conference League (`uecl`) mit Gruppen- und K.O.-Runden via `CompetitionEngine`.
 - **Ein Pokalabend, eine Runde:** Jeder Pokal- und Europapokalabend im Kalender spielt genau seine Runde. Nach dem eigenen Spiel geht es mit der Ligawoche weiter; die nächste Runde steht erst am nächsten Pokalabend an.
 - **Echte Europapokal-Qualifikanten:** Die Startplätze folgen den `europeanSpots` der Ligadefinition – England, Spanien und Italien stellen vier Champions-League-Teilnehmer, Frankreich drei. Kein Verein startet in zwei Wettbewerben.

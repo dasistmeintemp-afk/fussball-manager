@@ -71,9 +71,12 @@ const OpponentAnalysisEngine = {
             : ((typeof window !== 'undefined' && window.PlayerRatingEngine) ? window.PlayerRatingEngine : (typeof require !== 'undefined' ? require('./playerRatingEngine.js').PlayerRatingEngine : null));
 
         const userSquad = userClub ? state.players.filter(p => userClub.playerIds.includes(p.id)) : [];
-        const userSquadAvgCa = userSquad.length 
-            ? Math.round(userSquad.reduce((s, p) => s + (p.trueCurrentAbility || (p.overall * 2)), 0) / userSquad.length)
-            : 140;
+        // Gemessen am eingestellten Maßstab der Sterne (Standard: eigener Kader)
+        const userSquadAvgCa = ratingEngine && typeof ratingEngine.sternBezug === 'function'
+            ? ratingEngine.sternBezug(state)
+            : (userSquad.length
+                ? Math.round(userSquad.reduce((s, p) => s + (p.trueCurrentAbility || (p.overall * 2)), 0) / userSquad.length)
+                : 140);
 
         const sortedPlayers = [...allPlayers].sort((a, b) => (b.trueCurrentAbility || b.overall * 2) - (a.trueCurrentAbility || a.overall * 2));
         const topScorer = [...allPlayers].sort((a, b) => (b.stats?.goals || 0) - (a.stats?.goals || 0))[0];

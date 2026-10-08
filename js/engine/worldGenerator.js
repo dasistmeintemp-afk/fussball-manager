@@ -96,6 +96,17 @@ class WorldGenerator {
             club.tier = club.tier || (club.level <= 3 ? "professional" : club.level <= 4 ? "semi-pro" : "amateur");
             club.clubStrength = ((club.reputation || 60) - minRep) / span;
             if (club.stadiumCapacity === undefined) club.stadiumCapacity = club.capacity || 30000;
+            // Transferbudget und Kontostand nach derselben Formel wie in allen
+            // anderen Ligen. Die handgepflegten Startwerte gaben Bayern 50,5
+            // Mio. Transferbudget, Leverkusen 35,8 - Manchester City, Real
+            // Madrid oder Paris kamen mit derselben Formel auf höchstens 28.
+            // Der Gehaltsetat bleibt, er ist auf die Kader abgestimmt.
+            const clubGen = this.getClubGenerator();
+            if (clubGen && typeof clubGen.generateFinances === "function") {
+                const geld = clubGen.generateFinances(club.level, club.clubStrength);
+                club.transferBudget = geld.transferBudget;
+                club.balance = geld.balance;
+            }
         });
 
         if (country && league) league.countryReputation = country.reputation;

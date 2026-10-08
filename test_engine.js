@@ -635,10 +635,13 @@ function runEngineTests() {
 
         // Wer normal verdient, will eine Erhöhung, keine Verzehnfachung - ein
         // unterbezahlter Spieler höchstens bis in die Nähe seines Marktgehalts
+        // Wer lange und gern im Verein ist, gibt zusätzlich etwas nach (ROLLE.treue):
+        // ein treuer, überbezahlter 33-Jähriger landet so bei 0,9 x 0,93 seines Gehalts
         const pruefe = (p, c) => {
             const f = ContractEngine.getExtensionDemand(p, c, state).demandWage;
             const wert = PlayerGenerator.getValueAndWage(p.overall, c.level || 1, p.age).wage;
-            if (f < p.wage * 0.85 || f > Math.max(p.wage, wert) * 1.6) {
+            const nachlass = ContractEngine.istTreu(p, state) ? ContractEngine.ROLLE.treue : 1;
+            if (f < p.wage * 0.85 * nachlass || f > Math.max(p.wage, wert) * 1.6) {
                 throw new Error(`${p.name}: ${p.wage} € -> ${f} € (Marktgehalt ${wert} €)`);
             }
         };
@@ -1521,10 +1524,13 @@ function runEngineTests() {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const mitBall = [];
         const ohneBall = [];
-        // Dieselbe Messzeit, verteilt auf vier Spiele mit wechselndem
+        // Dieselbe Messzeit, verteilt auf acht Spiele mit wechselndem
         // Heimrecht: Ein einzelnes Spiel streute gemessen zwischen 3,5 und
-        // 8,7 Einheiten Unterschied, vier zusammen zwischen 4,1 und 6,5.
-        const SPIELE = 4;
+        // 8,7 Einheiten Unterschied. Vier zusammen lagen über zwanzig Seeds
+        // zwischen 2,9 und 7,7 - der Ausreißer nach unten riss die Schwelle,
+        // ohne dass sich an der Form etwas geändert hatte. Acht zusammen
+        // lagen über zehn Seeds zwischen 3,7 und 6,8.
+        const SPIELE = 8;
         for (let k = 0; k < SPIELE; k++) {
             const heimId = k % 2 ? "dor" : "muc";
             const gastId = k % 2 ? "muc" : "dor";
@@ -9790,6 +9796,19 @@ function runEngineTests() {
         gut.kader.forEach(p => { p.morale = 70; });
         const wieder = T.mannschaftsbesprechung(gut.state, "loben", ruhig);
         if (!wieder.success || !wieder.abgenutzt || !(wieder.schnitt < lob.schnitt)) throw new Error("Dieselbe Ansprache nutzt sich nicht ab");
+    });
+
+    test("Startbudgets: Die Bundesliga startet nach derselben Formel wie die anderen Ligen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const erste = state.clubs.filter(c => (c.level || 1) === 1);
+        const deutsch = erste.filter(c => c.countryId === "de"), andere = erste.filter(c => c.countryId !== "de");
+        const hoechstens = (liste, feld) => Math.max(...liste.map(c => c[feld] || 0));
+        // Obergrenze der Formel: 8 Mio. x 3,2 x 1,12 (Spitzenklub, oberer Zufall)
+        if (hoechstens(deutsch, "transferBudget") > 8000000 * 3.2 * 1.12 + 1) throw new Error(`Bundesliga über der Formel: ${hoechstens(deutsch, "transferBudget")}`);
+        if (hoechstens(deutsch, "transferBudget") > hoechstens(andere, "transferBudget") * 1.3) throw new Error("Bundesliga weit über den anderen Topligen");
+        if (hoechstens(deutsch, "balance") > hoechstens(andere, "balance") * 1.3) throw new Error("Kontostand der Bundesliga weit über den anderen");
+        const bayern = state.clubs.find(c => c.id === "muc");
+        if (!(bayern.transferBudget > 15000000)) throw new Error(`Bayern zu arm: ${bayern.transferBudget}`);
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

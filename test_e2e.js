@@ -106,6 +106,9 @@ function runE2ETests() {
         const dorClub = state.clubs.find(c => c.id === 'dor');
         const sellerPlayer = state.players.find(p => p.clubId === 'muc' && p.overall > 80);
         const askPrice = TransferEngine.calculateAskingPrice(sellerPlayer, state.clubs.find(c => c.id === 'muc'));
+        // Geprüft wird die Annahme zum Marktwert, nicht der Kontostand: Dortmunds
+        // Startbudget folgt der Formel aller Ligen und reicht nicht für jeden Bayernstar
+        dorClub.transferBudget = Math.max(dorClub.transferBudget || 0, askPrice * 2);
         const evalOffer = TransferEngine.evaluateTransferOffer(state, sellerPlayer.id, 'dor', askPrice);
         if (!evalOffer.accepted) throw new Error("Transferangebot zum Marktwert wurde unerwartet abgelehnt");
 

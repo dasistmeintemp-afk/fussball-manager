@@ -580,13 +580,15 @@ const ScoutingEngine = {
 
         const ratingEngine = _seResolve("PlayerRatingEngine", "./playerRatingEngine.js");
 
-        // Die Sterne messen sich am eigenen Kader
+        // Die Sterne messen sich am eingestellten Maßstab (Standard: eigener Kader)
         const eigene = state && Array.isArray(state.players)
             ? state.players.filter(p => p.clubId === state.userClubId)
             : [];
-        const kaderSchnitt = eigene.length
-            ? Math.round(eigene.reduce((s, p) => s + (p.trueCurrentAbility || (p.overall || 60) * 2), 0) / eigene.length)
-            : 140;
+        const kaderSchnitt = ratingEngine && typeof ratingEngine.sternBezug === "function" && state
+            ? ratingEngine.sternBezug(state)
+            : (eigene.length
+                ? Math.round(eigene.reduce((s, p) => s + (p.trueCurrentAbility || (p.overall || 60) * 2), 0) / eigene.length)
+                : 140);
 
         let card = null;
         if (ratingEngine && typeof ratingEngine.calculateVisiblePlayerCard === "function") {

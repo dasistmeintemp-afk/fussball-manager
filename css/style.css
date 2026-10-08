@@ -8455,3 +8455,4 @@ td.nowrap { white-space: nowrap; }
 .kb-antwort.kba-gemischt { border-left: 3px solid #f59e0b; }
 .kb-antwort.kba-schlecht { border-left: 3px solid #ef4444; }
 .kb-antwort .text-muted { display: block; font-size: 12px; margin-top: 2px; }
+.cd-sterne-hinweis { font-size: 11.5px; color: var(--text-muted); margin: -2px 0 6px; }

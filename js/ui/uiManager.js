@@ -18,6 +18,9 @@ class UIManager {
         this.currentFixtureMatchday = 1;
         this.liveMatchAnimFrame = null;
         this.soundEnabled = true;
+        // Der Maßstab der Sterne gilt vom ersten Tag an, auch für Scoutberichte
+        const bewertung = this.getRatingEngine();
+        if (bewertung) bewertung.massstab = this.sternMassstab();
         this.audioCtx = null;
         this.wizardStep = 1;
         this.wizardSelectedClubId = null;
@@ -115,6 +118,30 @@ class UIManager {
         const f = Number(wert) || 0;
         return f >= 85 ? "#22c55e" : (f >= 70 ? "#f59e0b" : "#ef4444");
     }
+
+    /** Woran die Sterne gemessen werden (Einstellungen) */
+    static get STERN_MASSSTAEBE() {
+        return {
+            kader: {
+                titel: "Am eigenen Kader", kurz: "Kaderschnitt",
+                text: "Drei Sterne sind der Schnitt Ihres Kaders. So sieht man sofort, wer bei Ihnen Stammspieler ist - in der Landesliga wie bei einem Spitzenklub.",
+                hinweisVerein: "Sterne gemessen am Kader dieses Vereins - so wie nach der Übernahme."
+            },
+            liga: {
+                titel: "An der eigenen Liga", kurz: "Ligaschnitt",
+                text: "Drei Sterne sind der Schnitt Ihrer Liga. Ein Spitzenklub hat mehr Vier- und Fünf-Sterne-Spieler, ein Abstiegskandidat weniger.",
+                hinweisVerein: "Sterne gemessen am Schnitt der Liga dieses Vereins."
+            },
+            welt: {
+                titel: "Weltweit", kurz: "Erstligaprofi",
+                text: "Drei Sterne sind ein solider Erstligaprofi. Ein Bundesliga-Star hat fünf, ein Landesligaspieler einen halben.",
+                hinweisVerein: "Sterne nach Weltmaßstab: drei Sterne sind ein solider Erstligaprofi."
+            }
+        };
+    }
+
+    /** Weltmaßstab: drei Sterne bei einer Stärke von 70 */
+    static get STERN_WELT_BEZUG() { return 140; }
 
     /** Beschriftung der Tabellenzonen (Europapokal, Auf- und Abstieg). */
     static get ZONEN() {
@@ -977,7 +1004,7 @@ class UIManager {
             <div class="cd-player-row">
                 <span class="pos-tag cd-pos">${esc(p.pos)}</span>
                 <span class="cd-player-name"><strong>${esc(p.name)}</strong>${zusatz ? `<span class="text-muted">${zusatz}</span>` : ""}</span>
-                <span class="cd-player-stars">${this.abilityStarsFor(p, { wizard: true, compact: true })}</span>
+                <span class="cd-player-stars">${this.abilityStarsFor(p, { wizardVerein: club, compact: true })}</span>
             </div>`;
 
         panel.innerHTML = `
@@ -1028,6 +1055,7 @@ class UIManager {
 
                 <div>
                     <div class="cd-section-title">Schlüsselspieler</div>
+                    <div class="cd-sterne-hinweis">${esc(UIManager.STERN_MASSSTAEBE[this.sternMassstab()].hinweisVerein)}</div>
                     <div class="cd-player-list">
                         ${topPlayers.map(p => spielerZeile(p, "")).join("")}
                     </div>
@@ -1480,6 +1508,19 @@ class UIManager {
             ${schalter("auto", "verletzung", "Bei einer Verletzung", "Wenn einer Ihrer Spieler nicht weiterkann.")}
             ${schalter("auto", "platzverweis", "Bei einem Platzverweis", "Um die Mannschaft neu zu ordnen.")}
         `;
+        const sterne = document.getElementById("settingsSterne");
+        if (sterne) {
+            const aktuell = this.sternMassstab();
+            sterne.innerHTML = Object.entries(UIManager.STERN_MASSSTAEBE).map(([key, m]) => `
+                <label class="coach-switch einstellung-schalter">
+                    <input type="radio" name="sternMassstab" value="${key}" ${key === aktuell ? "checked" : ""}>
+                    <span class="coach-switch-text"><strong>${m.titel}</strong><br><span class="coach-muted">${m.text}</span></span>
+                </label>`).join("");
+            sterne.querySelectorAll("input[name=sternMassstab]").forEach(inp => inp.onchange = () => {
+                this.setzeSternMassstab(inp.value);
+                this.showToast(`Sterne: ${UIManager.STERN_MASSSTAEBE[inp.value].titel}`, "success");
+            });
+        }
         el.querySelectorAll("input[data-gruppe]").forEach(inp => inp.onchange = () => {
             const ziel = inp.dataset.gruppe === "delegation" ? e.delegation : e.autoOeffnen;
             ziel[inp.dataset.key] = inp.checked;
@@ -2356,7 +2397,8 @@ class UIManager {
                 { titel: "Gehälter", wert: this.geldKurz(gehalt), extra: `<small>pro Woche</small>` },
                 { titel: "Fitness", wert: `${fit} %`, extra: `<span class="vk-balken"><i style="width:${fit}%"></i></span>`, klasse: fit < 80 ? "warnung" : "" },
                 { titel: "Ausfälle", wert: String(ausfall), extra: `<small>verletzt oder gesperrt</small>`, klasse: ausfall >= 3 ? "gefahr" : "" },
-                { titel: "Verträge", wert: String(auslaufend), extra: `<small>laufen bald aus</small>`, klasse: auslaufend >= 4 ? "warnung" : "" }
+                { titel: "Verträge", wert: String(auslaufend), extra: `<small>laufen bald aus</small>`, klasse: auslaufend >= 4 ? "warnung" : "" },
+                { titel: "★★★ heißt", wert: UIManager.STERN_MASSSTAEBE[this.sternMassstab()].kurz, extra: `<small>Maßstab in den Einstellungen</small>` }
             ]);
         }
 
@@ -2534,6 +2576,32 @@ class UIManager {
      * Landesligist lauter Halbsterne und ein Bundesligist lauter Fünfer - die
      * Sterne würden gar nichts aussagen.
      */
+    /**
+     * Woran die Sterne gemessen werden - eine Vorliebe des Geräts, sie gilt
+     * schon im Karrierestart:
+     *   kader - drei Sterne sind der Schnitt des eigenen Kaders (Standard)
+     *   liga  - drei Sterne sind der Schnitt der eigenen Liga
+     *   welt  - drei Sterne sind ein solider Erstligaprofi (Stärke 70)
+     */
+    sternMassstab() {
+        try {
+            const wert = localStorage.getItem("sternMassstab");
+            if (UIManager.STERN_MASSSTAEBE[wert]) return wert;
+        } catch (e) { /* ohne Speicher gilt, was in dieser Sitzung gewählt wurde */ }
+        return this._sternMassstabFallback || "kader";
+    }
+
+    setzeSternMassstab(wert) {
+        if (!UIManager.STERN_MASSSTAEBE[wert]) return;
+        try { localStorage.setItem("sternMassstab", wert); } catch (e) { /* gilt dann nur bis zum Neuladen */ }
+        this._sternMassstabFallback = wert;
+        this._starContextKey = null;
+        this._wizardStarKey = null;
+        // Scoutberichte und Gegneranalyse lesen den Maßstab aus der Engine
+        const engine = this.getRatingEngine();
+        if (engine) engine.massstab = wert;
+    }
+
     starContext() {
         const state = this.app?.state;
         const engine = this.getRatingEngine();
@@ -2541,18 +2609,16 @@ class UIManager {
 
         // Der Schnitt ändert sich nur bei Kaderbewegungen, deshalb gemerkt
         const club = state.clubs?.find(c => c.id === state.userClubId);
-        const schluessel = `${state.userClubId}|${(club?.playerIds || []).length}|${state.currentMatchday}|${state.seasonYear}`;
+        const massstab = this.sternMassstab();
+        const schluessel = `${massstab}|${state.userClubId}|${(club?.playerIds || []).length}|${state.currentMatchday}|${state.seasonYear}`;
         if (this._starContextKey === schluessel && this._starContext) return this._starContext;
-
-        const kader = (club?.playerIds || [])
-            .map(id => state.players.find(p => p.id === id))
-            .filter(Boolean);
 
         // Beide Schlüssel: calculateStarRating liest squadAverageAbility,
         // calculateVisiblePlayerCard userSquadAvgAbility. Ohne beide messen
         // Spielerakte und Kadertabelle an verschiedenen Maßstäben - derselbe
         // Spieler stand dann mit zwei und mit drei Sternen da.
-        const schnitt = engine.squadAverageAbility(kader);
+        engine.massstab = massstab;
+        const schnitt = engine.sternBezug(state);
         this._starContextKey = schluessel;
         this._starContext = { squadAverageAbility: schnitt, userSquadAvgAbility: schnitt };
         return this._starContext;
@@ -2578,7 +2644,8 @@ class UIManager {
         const engine = this.getRatingEngine();
         if (!engine || !player) return "";
 
-        const kontext = options.wizard ? this.wizardStarContext() : this.starContext();
+        const kontext = options.wizardVerein ? this.wizardSpielerKontext(options.wizardVerein)
+            : (options.wizard ? this.wizardStarContext() : this.starContext());
         const ca = engine.starsForOverall(player.overall ?? 50, kontext);
         const pa = Math.max(ca, engine.starsForOverall(player.pot ?? player.overall ?? 50, kontext));
 
@@ -2619,8 +2686,14 @@ class UIManager {
      */
     wizardStarContext() {
         const teams = this.getWizardTeams() || [];
-        const schluessel = `${teams.length}|${this.wizardSelectedLeagueId || "alle"}`;
+        const massstab = this.sternMassstab();
+        const schluessel = `${massstab}|${teams.length}|${this.wizardSelectedLeagueId || "alle"}`;
         if (this._wizardStarKey === schluessel && this._wizardStarContext) return this._wizardStarContext;
+        if (massstab === "welt") {
+            this._wizardStarKey = schluessel;
+            this._wizardStarContext = { squadAverageAbility: UIManager.STERN_WELT_BEZUG, userSquadAvgAbility: UIManager.STERN_WELT_BEZUG };
+            return this._wizardStarContext;
+        }
 
         const engine = this.getRatingEngine();
         const schnitte = teams
@@ -2639,6 +2712,28 @@ class UIManager {
         this._wizardStarKey = schluessel;
         this._wizardStarContext = { squadAverageAbility: bezug, userSquadAvgAbility: bezug };
         return this._wizardStarContext;
+    }
+
+    /**
+     * Die Spieler eines Vereins im Karrierestart - gemessen wie nach der
+     * Übernahme. Vorher maß der Assistent an allen Vereinen der Auswahl:
+     * Bayerns Spieler hatten dort fünf Sterne und nach dem Start im Kader
+     * drei oder vier.
+     */
+    wizardSpielerKontext(club) {
+        const engine = this.getRatingEngine();
+        const massstab = this.sternMassstab();
+        const schnittVon = (c) => {
+            if (typeof c.avgOverall === "number" && c.avgOverall > 0) return engine.overallToAbility(c.avgOverall);
+            return engine.squadAverageAbility(Array.isArray(c.players) ? c.players : []);
+        };
+        let bezug;
+        if (!engine || massstab === "welt") bezug = UIManager.STERN_WELT_BEZUG;
+        else if (massstab === "liga") {
+            const liga = (this.getWizardTeams() || []).filter(t => t.leagueId === club.leagueId);
+            bezug = liga.length ? liga.reduce((s, t) => s + schnittVon(t), 0) / liga.length : schnittVon(club);
+        } else bezug = schnittVon(club);
+        return { squadAverageAbility: bezug, userSquadAvgAbility: bezug };
     }
 
     /** Sterne im Karrierestart - gemessen an den anderen Vereinen der Auswahl */

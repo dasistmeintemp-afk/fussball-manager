@@ -1225,6 +1225,43 @@ function runWizardTests() {
         ui.einstiegMerkeTab("squad");
     });
 
+    test("Sterne: Der Karrierestart misst Spieler wie nach der Übernahme, der Maßstab ist wählbar", () => {
+        const { PlayerRatingEngine } = require('./js/engine/playerRatingEngine.js');
+        const vorher = { rating: global.PlayerRatingEngine, ls: global.localStorage };
+        const speicher = {};
+        global.PlayerRatingEngine = PlayerRatingEngine;
+        global.localStorage = { getItem: k => (k in speicher ? speicher[k] : null), setItem: (k, v) => { speicher[k] = String(v); } };
+        try {
+            // Erst die Auswahl, dann der Start - so wie im Assistenten
+            const teams = GameState.getSelectableClubs();
+            const state = GameState.createNewGame("muc", "normal", { name: "T" });
+            const ui = Object.create(UIManager.prototype);
+            ui.app = { state };
+            ui.getWizardTeams = () => teams;
+            const bayern = teams.find(t => t.id === "muc");
+            const star = state.players.filter(p => p.clubId === "muc").sort((a, b) => b.overall - a.overall)[0];
+            const sterne = (kontext) => PlayerRatingEngine.starsForOverall(star.overall, kontext);
+            for (const m of ["kader", "liga", "welt"]) {
+                ui.setzeSternMassstab(m);
+                if (ui.sternMassstab() !== m || PlayerRatingEngine.massstab !== m) throw new Error(`Maßstab ${m} nicht gesetzt`);
+                const imSpiel = sterne(ui.starContext()), imAssistent = sterne(ui.wizardSpielerKontext(bayern));
+                if (Math.abs(imSpiel - imAssistent) > 0.5) throw new Error(`${m}: Assistent ${imAssistent}, im Spiel ${imSpiel}`);
+            }
+            // Der Weltmaßstab ist fest, der Kadermaßstab der eigene Schnitt
+            ui.setzeSternMassstab("welt");
+            if (PlayerRatingEngine.sternBezug(state) !== 140) throw new Error("Weltmaßstab nicht fest");
+            ui.setzeSternMassstab("kader");
+            const eigene = state.players.filter(p => p.clubId === "muc");
+            if (Math.abs(PlayerRatingEngine.sternBezug(state) - PlayerRatingEngine.squadAverageAbility(eigene)) > 1e-9) throw new Error("Kadermaßstab falsch");
+            ui.setzeSternMassstab("unsinn");
+            if (ui.sternMassstab() !== "kader") throw new Error("Unbekannter Maßstab angenommen");
+        } finally {
+            PlayerRatingEngine.massstab = "kader";
+            if (vorher.rating === undefined) delete global.PlayerRatingEngine; else global.PlayerRatingEngine = vorher.rating;
+            if (vorher.ls === undefined) delete global.localStorage; else global.localStorage = vorher.ls;
+        }
+    });
+
     console.log(`\n  Ergebnis Wizard-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Wizard-Tests fehlgeschlagen.`);
     return { passed, failed };

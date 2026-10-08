@@ -623,8 +623,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const searchVal = document.getElementById("tfSearch")?.value.toLowerCase() || "";
         const posVal = document.getElementById("tfPosFilter")?.value || "all";
         // Der Filter ist in Sternen formuliert; verglichen wird darunter weiter
-        // mit der Stärke, die zu dieser Sternezahl im eigenen Kader gehört.
-        const minStars = parseFloat(document.getElementById("tfRatingFilter")?.value || "0");
+        // mit der Stärke, die zu dieser Sternezahl gehört - nach dem
+        // eingestellten Maßstab. Die Beschriftung nennt, was drei Sterne heißen.
+        const filterWahl = document.getElementById("tfRatingFilter");
+        const dreiSterne = filterWahl?.querySelector('option[value="3"]');
+        const massstab = typeof this.sternMassstab === "function" ? this.constructor.STERN_MASSSTAEBE?.[this.sternMassstab()] : null;
+        if (dreiSterne && massstab) dreiSterne.textContent = `Ab ★ 3,0 (${massstab.kurz})`;
+        const minStars = parseFloat(filterWahl?.value || "0");
 
         let marketPlayers = state.players.filter(p => p.clubId !== userClub.id);
 

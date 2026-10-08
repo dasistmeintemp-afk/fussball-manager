@@ -66,23 +66,126 @@ const BoardEngine = {
 
         let platz = erwartet < 1.5 ? 1 : Math.round(erwartet) + G.spielraum;
         if (typeof lage === 'number' && lage > platz) platz = Math.round((platz + lage) / 2);
-        const abstieg = Array.isArray(liga?.relegationSpots) ? liga.relegationSpots : [];
-        const rettung = abstieg.length ? Math.min(...abstieg) - 1 : n;
+        const { rettung } = this.grenzen(state, club);
         platz = Math.max(1, Math.min(platz, rettung, n));
-
-        const aufstieg = (liga?.level || 1) > 1 && Array.isArray(liga?.promotionSpots) ? liga.promotionSpots.length : 0;
-        let art;
-        if (platz === 1 && !aufstieg) art = "championship";
-        else if (aufstieg && platz <= aufstieg) art = "promotion";
-        else if (platz <= 3) art = "top3";
-        else if (platz <= 6) art = "top6";
-        else if (platz <= Math.ceil(n / 2)) art = "midfield";
-        else if (platz < rettung) art = "lower_mid";
-        else art = "avoid_relegation";
+        const art = this.artFuer(state, club, platz);
 
         club.boardExpectation = art;
-        club.vorstandsziel = { platz, art, n, leagueId: club.leagueId, saison: state.seasonYear || 1, raenge, erwartet: Math.round(erwartet * 10) / 10 };
+        club.vorstandsziel = {
+            platz, art, n, leagueId: club.leagueId, saison: state.seasonYear || 1, raenge, erwartet: Math.round(erwartet * 10) / 10,
+            prognose: this.medienprognose(state, club)
+        };
         return club.vorstandsziel;
+    },
+
+    /** Ligagröße, letzter Nichtabstiegsplatz und Aufstiegsplätze */
+    grenzen(state, club) {
+        const liga = this.ligaVon(state, club);
+        const n = (state.clubs || []).filter(c => c.leagueId === club.leagueId).length || liga?.teamCount || 18;
+        const abstieg = Array.isArray(liga?.relegationSpots) ? liga.relegationSpots : [];
+        const rettung = abstieg.length ? Math.min(...abstieg) - 1 : n;
+        const aufstieg = (liga?.level || 1) > 1 && Array.isArray(liga?.promotionSpots) ? liga.promotionSpots.length : 0;
+        return { n, rettung, aufstieg };
+    },
+
+    /** Welche Art Ziel ein Platz ist: Meisterschaft, Aufstieg, Top 3 ... */
+    artFuer(state, club, platz) {
+        const { n, rettung, aufstieg } = this.grenzen(state, club);
+        if (platz === 1 && !aufstieg) return "championship";
+        if (aufstieg && platz <= aufstieg) return "promotion";
+        if (platz <= 3) return "top3";
+        if (platz <= 6) return "top6";
+        if (platz <= Math.ceil(n / 2)) return "midfield";
+        if (platz < rettung) return "lower_mid";
+        return "avoid_relegation";
+    },
+
+    /**
+     * Wo die Medien den Verein sehen: die Liga nach Kaderstärke (drei
+     * Viertel) und Ansehen (ein Viertel), ohne Etat und ohne Spielraum.
+     * Sie liegt oft neben dem Ziel des Vorstands - mal darüber, mal darunter.
+     */
+    medienprognose(state, club) {
+        const vereine = (state?.clubs || []).filter(c => c.leagueId === club?.leagueId);
+        if (!vereine.length) return null;
+        const ce = _boardResolve('ContractEngine', './contractEngine.js');
+        const spielerNach = new Map((state.players || []).map(p => [p.id, p]));
+        const rangVon = (wert) => {
+            const reihe = vereine.map(c => ({ id: c.id, v: wert(c) })).sort((a, b) => b.v - a.v);
+            return new Map(reihe.map((x, i) => [x.id, i + 1]));
+        };
+        const kader = rangVon(c => (ce && typeof ce.vereinsNiveau === 'function' ? ce.vereinsNiveau(c, spielerNach) : null) ?? 0);
+        const ruf = rangVon(c => c.reputation || 0);
+        const tabelle = vereine
+            .map(c => ({ id: c.id, w: kader.get(c.id) * 0.75 + ruf.get(c.id) * 0.25 + (kader.get(c.id) / 1000) }))
+            .sort((a, b) => a.w - b.w);
+        return tabelle.findIndex(x => x.id === club.id) + 1;
+    },
+
+    /**
+     * Über das Saisonziel lässt der Vorstand einmal je Vorbereitung mit sich
+     * reden: annehmen, zwei Plätze tiefer gegen weniger Transferbudget oder
+     * zwei Plätze höher gegen mehr. Vorher stand das Ziel einfach fest.
+     */
+    ZIEL_VERHANDLUNG: { plaetze: 2, budget: 0.2, vertrauen: 3 },
+
+    /** Lässt sich gerade über das Ziel reden? null, wenn ja - sonst der Grund */
+    zielHindernis(state, club) {
+        if (!club?.vorstandsziel) return "Es gibt noch kein Saisonziel.";
+        if (!state?.preseason?.aktiv) return "Über das Saisonziel spricht der Vorstand nur in der Vorbereitung.";
+        if (club.vorstandsziel.verhandelt) return "Das Saisonziel ist für diese Saison besprochen.";
+        return null;
+    },
+
+    /**
+     * richtung: "annehmen", "senken" oder "erhoehen". Gibt { ok, platz,
+     * budget } zurück oder { ok: false, grund }.
+     */
+    verhandleZiel(state, richtung) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        const grund = this.zielHindernis(state, club);
+        if (grund) return { ok: false, grund };
+        const z = club.vorstandsziel;
+        const V = this.ZIEL_VERHANDLUNG;
+        if (richtung === "annehmen") {
+            z.verhandelt = "angenommen";
+            return { ok: true, platz: z.platz, budget: 0 };
+        }
+        const { rettung } = this.grenzen(state, club);
+        const neu = richtung === "senken" ? Math.min(rettung, z.platz + V.plaetze) : Math.max(1, z.platz - V.plaetze);
+        if (neu === z.platz) {
+            return { ok: false, grund: richtung === "senken" ? "Weniger als den Klassenerhalt verlangt der Vorstand ohnehin nicht." : "Mehr als Platz 1 geht nicht." };
+        }
+        const budget = Math.max(0, club.transferBudget || 0);
+        const betrag = Math.round(budget * V.budget);
+        if (richtung === "senken") {
+            club.transferBudget = budget - betrag;
+            club.confidence = Math.max(10, (club.confidence ?? 75) - V.vertrauen);
+        } else {
+            club.transferBudget = budget + betrag;
+            club.confidence = Math.min(100, (club.confidence ?? 75) + V.vertrauen);
+        }
+        const vorher = z.platz;
+        z.platz = neu;
+        z.art = this.artFuer(state, club, neu);
+        z.verhandelt = richtung;
+        z.vorher = vorher;
+        z.budgetAenderung = richtung === "senken" ? -betrag : betrag;
+        club.boardExpectation = z.art;
+
+        const news = _boardResolve('NewsEngine', './newsEngine.js');
+        const gs = _boardResolve('GameState', './gameState.js');
+        const geld = (b) => gs && typeof gs.formatMoney === 'function' ? gs.formatMoney(b) : `${b} €`;
+        if (news && typeof news.createBoardMessage === 'function') {
+            news.createBoardMessage(state, {
+                title: richtung === "senken" ? `Saisonziel gesenkt: Platz ${neu}` : `Saisonziel erhöht: Platz ${neu}`,
+                text: richtung === "senken"
+                    ? `Der Vorstand geht mit: Platz ${neu} oder besser statt Platz ${vorher}. Dafür kürzen wir das Transferbudget um ${geld(betrag)}. Begeistert sind wir nicht.`
+                    : `Der Vorstand nimmt Sie beim Wort: Platz ${neu} oder besser statt Platz ${vorher}. Dafür gibt es ${geld(betrag)} mehr Transferbudget.`,
+                priority: "normal"
+            });
+        }
+        return { ok: true, platz: neu, budget: z.budgetAenderung };
     },
 
     /** Der Platz, den der Vorstand erwartet - auch für ältere Spielstände */
@@ -119,7 +222,8 @@ const BoardEngine = {
         if (!z || !z.raenge) return "";
         const stelle = r => r === 1 ? "der stärkste" : `der ${r}.-stärkste`;
         return `Unser Kader ist ${stelle(z.raenge.kader).replace("stärkste", "stärkste der Liga")}, `
-            + `beim Etat liegen wir auf Rang ${z.raenge.etat}, beim Ansehen auf Rang ${z.raenge.ruf} von ${z.n}.`;
+            + `beim Etat liegen wir auf Rang ${z.raenge.etat}, beim Ansehen auf Rang ${z.raenge.ruf} von ${z.n}.`
+            + (typeof z.prognose === "number" ? ` Die Medien sehen uns auf Platz ${z.prognose}.` : "");
     },
 
     /**

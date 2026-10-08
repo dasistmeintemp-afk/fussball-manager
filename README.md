@@ -431,6 +431,8 @@ Vor jeder Saison – und bei einem Vereinswechsel – misst der Vorstand den Ver
 
 Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashboard den Zielplatz. Vertrauen, Ultimatum, Saisonbilanz und der ehrgeizige Sponsor rechnen mit genau diesem Platz. Vorher stand das Ziel einmal fest und änderte sich nur pauschal bei Auf- oder Abstieg; die Platzgrenzen waren fest verdrahtet (Klassenerhalt hieß Platz 10, an anderer Stelle wurde mit allen 218 Vereinen der Welt gerechnet, und „Aufstieg“ kannte die Rechnung gar nicht).
 
+**Verhandeln und Medienprognose:** In der Vorbereitung steht das Ziel oben im Reiter, mit den Gründen und der Prognose der Medien – die Liga nach Kaderstärke (drei Viertel) und Ansehen (ein Viertel), ohne Etat und Spielraum, also oft einen Platz neben dem Ziel des Vorstands. Einmal je Vorbereitung lässt der Vorstand mit sich reden: das Ziel annehmen, zwei Plätze tiefer anpeilen (20 % weniger Transferbudget, etwas weniger Vertrauen) oder zwei Plätze höher (20 % mehr Transferbudget, etwas mehr Vertrauen). Danach gilt das Ziel für die ganze Saison.
+
 ### 7. 🗓️ Kalender-Tagesablauf, 🔍 Gegneranalyse & 🌟 Scoutingsystem
 - **Spielerbewertungssystem (`PlayerRatingEngine`):** Trennung von echten internen Fähigkeiten (CA/PA 1–200, Hidden Attributes wie Professionalität & Ehrgeiz) und sichtbaren, scoutabhängigen Einschätzungsbereichen.
 - **Relative Sternebewertungen:** Qualitätssterne (0.5 bis 5.0) werden dynamisch relativ zur Stärke des eigenen Kaders berechnet.

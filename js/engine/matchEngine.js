@@ -972,6 +972,12 @@ class MatchEngine {
         // Liste - ohne diese Buchführung wurde ein verletzt Ausgewechselter
         // drei Minuten später wieder eingewechselt.
         const ausgewechselt = new Set();
+        // Anweisungen für einzelne Gegenspieler (GegneranweisungEngine über den Matchplan)
+        const anweisungen = options.matchplan && Object.keys(options.matchplan.anweisungen || {}).length ? options.matchplan.anweisungen : null;
+        const anweisungsSeite = options.matchplan?.side || null;
+        const zweikampfGegen = (p) => (anweisungen && p ? anweisungen[String(p.id)]?.zweikampf || null : null);
+        const anwFoul = { hart: 0.006, vorsichtig: -0.004 };
+        const anwKarte = { hart: 1.3, vorsichtig: 0.75 };
         // Wann ein Eingewechselter kam (Minute und Sekunde). Ereignisse einer
         // Minute entstehen nicht in der Reihenfolge ihrer Sekunden - ohne das
         // verletzte sich einer in der 10. Sekunde, obwohl er erst in der 57.
@@ -1813,9 +1819,12 @@ class MatchEngine {
 
             // Wer hart einsteigt, foult oefter; wer auf den Fuessen bleibt, seltener
             const haerte = _mTaktik()?.wirkung(defTactics).zweikampf || 0;
+            // Gegneranweisungen: gegen einzelne Gegenspieler hart oder vorsichtig
+            const anwAktiv = !!(anweisungen && anweisungsSeite === (isHomeAttacking ? "away" : "home"));
+            const anwFouls = anwAktiv ? attPlayers.reduce((s, p) => s + (anwFoul[zweikampfGegen(p)] || 0), 0) : 0;
             // Ein Foul mit Vorteil: gepfiffen wird nicht, der Angriff läuft weiter
             let nachVorteil = false;
-            const foulSzene = sceneTypeRoll < (MATCH_TUNING.foulRate + haerte * 0.03) * schiri.pfeife;
+            const foulSzene = sceneTypeRoll < (MATCH_TUNING.foulRate + haerte * 0.03 + anwFouls) * schiri.pfeife;
             if (foulSzene) {
                 // 1. ZWEIKÄMPFE, FOULS, KARTEN & ELFMETER (A6, A8)
                 const foulDefPos = p => deployedPosOf(p, !isHomeAttacking);
@@ -1824,7 +1833,10 @@ class MatchEngine {
                 // Der Torwart begeht keine Feldzweikämpfe im Mittelfeld
                 const foulEligible = defPlayers.filter(p => !sentOffPlayerIds.has(p.id) && foulDefPos(p) !== "TW" && p.pos !== "TW");
                 const defender = _Random.choice(foulEligible) || defPlayers.find(p => p.pos !== "TW") || defPlayers[0];
-                const shooter = _Random.choice(attPlayers.filter(p => ["ST", "LA", "RA", "OM"].includes(foulAttPos(p)))) || attPlayers[0];
+                let shooter = _Random.choice(attPlayers.filter(p => ["ST", "LA", "RA", "OM"].includes(foulAttPos(p)))) || attPlayers[0];
+                // Wer hart angegangen werden soll, wird öfter gefoult
+                const harte = anwAktiv ? attPlayers.filter(p => zweikampfGegen(p) === "hart") : [];
+                if (harte.length && _Random.chance(0.5)) shooter = _Random.choice(harte);
                 const gk = defPlayers.find(p => foulDefPos(p) === "TW") || defPlayers.find(p => p.pos === "TW") || defPlayers[0];
                 // Gefoult wird dort, wo die angreifende Mannschaft gerade
                 // hinwill: im Mittelfeld und im letzten Drittel. Vorher lag
@@ -1841,7 +1853,8 @@ class MatchEngine {
                 // "Ruhe bewahren" halbiert die Karten, "Zeit schinden" provoziert welche
                 // Wer auf Zeit spielt, sieht in der Schlussphase eher Gelb
                 const zeitspielGelb = (min >= 70 && (_mTaktik()?.wirkung(defTactics).zeitspiel || 0) > 0) ? 1.12 : 1;
-                const kartenFaktor = (zurufVon(isHomeAttacking ? "away" : "home", min)?.gelb || 1) * zeitspielGelb;
+                const kartenFaktor = (zurufVon(isHomeAttacking ? "away" : "home", min)?.gelb || 1) * zeitspielGelb
+                    * (anwAktiv ? (anwKarte[zweikampfGegen(shooter)] || 1) : 1);
                 const isYellow = !isPenalty && !isRed && _Random.chance(Math.min(0.9, MATCH_TUNING.yellowCardRate * kartenFaktor * schiri.strenge));
                 // Vorteil gibt es vorn, wenn der Angriff weiterlaufen kann
                 const imAngriffsdrittel = isHomeAttacking ? fPos.x > 62 : fPos.x < 38;
@@ -3585,7 +3598,7 @@ class LiveMatch {
             frische: new Map((this.players2D || []).map(p => [p.id, p.freshness ?? 1])),
             // Der Matchplan wirkt auch in der Neuberechnung (die Taktik steht
             // schon am Verein, Bonus und Deckung stecken in der Tagesform)
-            matchplan: this.matchplan ? { side: this.matchplan.side, gedeckt: this.matchplan.gedeckt, bonus: 1 } : undefined,
+            matchplan: this.matchplan ? { side: this.matchplan.side, gedeckt: this.matchplan.gedeckt, bonus: 1, anweisungen: this.matchplan.anweisungen || {} } : undefined,
             // Die Vertrautheit steckt schon in der Tagesform
             vertrautheitHome: 1,
             vertrautheitAway: 1,

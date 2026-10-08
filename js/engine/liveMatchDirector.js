@@ -436,7 +436,8 @@ class LiveMatchDirector {
             fm: () => this.fm,
             lage: (team) => this.fmLage(team),
             schiri: () => this.match.schiedsrichter || null,
-            wetter: () => this.match.wetter || null
+            wetter: () => this.match.wetter || null,
+            anweisung: (id) => this.match.matchplan?.anweisungen?.[String(id)] || null
         }) : null;
 
         this.initPlayers();

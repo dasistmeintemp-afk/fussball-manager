@@ -8586,3 +8586,19 @@ td.nowrap { white-space: nowrap; }
 .klausel-felder .kl-option input[type="checkbox"] { width: auto; flex: none; margin: 0; }
 .finance-stat-row.kl-zeile { gap: 12px; align-items: flex-start; }
 .finance-stat-row.kl-zeile strong { white-space: normal; text-align: right; min-width: 0; font-size: 13px; line-height: 1.45; }
+
+/* Gegneranweisungen in der Taktikbesprechung */
+.mp-anweisungen { margin-top: 14px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.mp-anweisungen summary { cursor: pointer; font-weight: 600; font-size: 14px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.mp-anweisungen #btnAnwEmpfehlung { margin-bottom: 8px; }
+.ga-liste { display: grid; gap: 8px; }
+.ga-zeile { border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: grid; gap: 6px; min-width: 0; }
+.ga-zeile.aktiv { border-color: #38bdf8; background: rgba(56, 189, 248, 0.08); }
+.ga-kopf { display: flex; align-items: center; gap: 6px; font-size: 13px; min-width: 0; flex-wrap: wrap; }
+.ga-kopf .text-muted { font-size: 11px; }
+.ga-empfehlung { font-size: 11px; color: #4ade80; }
+.ga-wahl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; align-items: end; }
+.ga-feld { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 11px; color: var(--text-muted); }
+.ga-wahl select { width: 100%; min-width: 0; font-size: 12px; }
+.ga-fuss { grid-column: 1 / -1; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+.ga-fuss input { width: auto; margin: 0; }

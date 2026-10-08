@@ -8481,3 +8481,20 @@ td.nowrap { white-space: nowrap; }
 .board-anfrage .ba-kopf { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin-bottom: 6px; }
 .board-anfrage .ba-zeile { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
 .board-anfrage select { flex: 1 1 200px; min-width: 0; }
+
+/* Auszeichnungen */
+.preise-karte { margin-bottom: 16px; }
+.preise-karte h4 { font-size: 13px; color: var(--text-muted); margin: 10px 0 6px; text-transform: uppercase; letter-spacing: .04em; }
+.preis-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.preis-liste li { display: grid; grid-template-columns: 86px 1fr; gap: 3px 10px; align-items: baseline; padding: 8px 10px; border-radius: 8px; background: var(--surface-2, rgba(255, 255, 255, 0.03)); font-size: 13px; }
+.preis-liste li > span:not(.preis-monat) { grid-column: 2; min-width: 0; }
+.preis-monat { grid-column: 1; grid-row: 1 / span 3; font-weight: 700; color: var(--text-muted); }
+.preis-name { background: none; border: 0; padding: 0; color: var(--text-main, inherit); font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
+.preis-name.eigen { color: var(--accent-primary); }
+.preis-liste small, .elf-spieler small { color: var(--text-muted); }
+.elf-saison { margin-top: 12px; padding: 12px 8px; border-radius: 12px; background: linear-gradient(180deg, rgba(34, 197, 94, 0.14), rgba(34, 197, 94, 0.05)); border: 1px solid rgba(34, 197, 94, 0.25); display: grid; gap: 10px; }
+.elf-reihe { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; }
+.elf-spieler { display: flex; flex-direction: column; align-items: center; text-align: center; font-size: 12px; min-width: 0; overflow-wrap: break-word; hyphens: auto; }
+.elf-spieler small { font-size: 10.5px; }
+.akte-preise ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.akte-preise small { color: var(--text-muted); }

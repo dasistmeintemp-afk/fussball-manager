@@ -139,7 +139,11 @@ class CareerEngine {
         const national = _carResolve("NationalTeamEngine", "./nationalTeamEngine.js");
         const nationalBonus = national && typeof national.rufBonus === "function" ? national.rufBonus(state) : 0;
 
-        return Math.max(8, Math.min(95, Math.round(basis + titelBonus - entlassungsMalus + leistung + nationalBonus)));
+        // Trainer des Monats und der Saison sprechen sich herum
+        const preise = _carResolve("AuszeichnungEngine", "./auszeichnungEngine.js");
+        const preisBonus = preise && typeof preise.trainerPreise === "function" ? Math.min(8, preise.trainerPreise(state)) : 0;
+
+        return Math.max(8, Math.min(95, Math.round(basis + titelBonus - entlassungsMalus + leistung + nationalBonus + preisBonus)));
     }
 
     // ------------------------------------------------------------ Entlassung

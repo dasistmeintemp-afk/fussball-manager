@@ -1368,6 +1368,16 @@ const CalendarEngine = {
             if (zeile) summary.messages.push(zeile);
         }
 
+        // Am Monatsersten: Spieler, Talent und Trainer des Monats
+        const preise = (typeof AuszeichnungEngine !== 'undefined' && AuszeichnungEngine)
+            ? AuszeichnungEngine
+            : ((typeof window !== 'undefined' && window.AuszeichnungEngine) ? window.AuszeichnungEngine
+                : (typeof require !== 'undefined' ? (() => { try { return require('./auszeichnungEngine.js').AuszeichnungEngine; } catch (e) { return null; } })() : null));
+        if (preise && typeof preise.pruefeMonat === 'function') {
+            const zeile = preise.pruefeMonat(state, currentDay.date);
+            if (zeile) summary.messages.push(zeile);
+        }
+
         // Am Monatsersten: fällige Ablöseraten
         const ratenEngine = (typeof FinanceEngine !== 'undefined' && FinanceEngine)
             ? FinanceEngine

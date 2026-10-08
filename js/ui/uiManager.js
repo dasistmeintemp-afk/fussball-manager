@@ -5340,6 +5340,60 @@ class UIManager {
     /**
      * Statistiken & Saisonhistorie rendern
      */
+    /**
+     * Die Auszeichnungen der gewählten Liga: Monatspreise dieser Saison und
+     * die Preise der letzten Saison mit der Elf der Saison.
+     */
+    renderPreise(state, ligaId, vereine) {
+        const el = document.getElementById("statsPreise");
+        const engine = typeof AuszeichnungEngine !== "undefined" ? AuszeichnungEngine : null;
+        if (!el || !engine) return;
+        const u = engine.uebersicht(state, ligaId);
+        if (!u.monate.length && !u.letzteSaison) { el.hidden = true; el.innerHTML = ""; return; }
+        el.hidden = false;
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const verein = (id) => vereine.get(id)?.name || "";
+        const person = (e, extra = "") => e
+            ? `<button type="button" class="preis-name${e.clubId === state.userClubId ? " eigen" : ""}" data-player-id="${esc(e.id)}">${esc(e.name)}</button> <small>${esc(verein(e.clubId))}${extra}</small>`
+            : "–";
+        const trainer = (t, extra = "") => t ? `<span class="preis-name${t.istNutzer ? " eigen" : ""}">${t.istNutzer ? "Sie" : esc(t.verein)}</span>${extra}` : "–";
+        const monate = u.monate.slice().reverse().map(m => `
+            <li>
+                <span class="preis-monat">${esc(engine.monatsName(m.monat))}</span>
+                <span>🏅 ${person(m.spieler)}</span>
+                ${m.talent ? `<span>🌱 ${person(m.talent)}</span>` : ""}
+                ${m.trainer ? `<span>🎖️ ${trainer(m.trainer, ` <small>${m.trainer.punkte} Pkt. aus ${m.trainer.spiele}</small>`)}</span>` : ""}
+            </li>`).join("");
+        const s = u.letzteSaison;
+        // Von links nach rechts, wie auf dem Platz
+        const reihe = (plaetze) => (s?.elf || []).filter(e => plaetze.includes(e.platz))
+            .sort((a, b) => plaetze.indexOf(a.platz) - plaetze.indexOf(b.platz))
+            .map(e => `<span class="elf-spieler">${person(e)}</span>`).join("");
+        const saison = s ? `
+            <h4>Saison ${s.saison}</h4>
+            <ul class="preis-liste">
+                <li><span class="preis-monat">Spieler</span><span>${person(s.spieler, s.spieler ? `, Note ${String(s.spieler.note).replace(".", ",")}` : "")}</span></li>
+                <li><span class="preis-monat">Talent</span><span>${person(s.talent)}</span></li>
+                <li><span class="preis-monat">Torjäger</span><span>${person(s.torjaeger, s.torjaeger ? `, ${s.torjaeger.tore} Tore` : "")}</span></li>
+                <li><span class="preis-monat">Trainer</span><span>${trainer(s.trainer, s.trainer ? ` <small>Platz ${s.trainer.platz}, erwartet ${s.trainer.erwartet}</small>` : "")}</span></li>
+            </ul>
+            ${(s.elf || []).length ? `
+            <div class="elf-saison" aria-label="Elf der Saison">
+                <div class="elf-reihe">${reihe(["LA", "ST", "RA"])}</div>
+                <div class="elf-reihe">${reihe(["ZM"])}</div>
+                <div class="elf-reihe">${reihe(["LV", "IV", "RV"])}</div>
+                <div class="elf-reihe">${reihe(["TW"])}</div>
+            </div>` : ""}` : "";
+        el.innerHTML = `
+            <div class="card-header"><h3>🏆 Auszeichnungen</h3></div>
+            ${monate ? `<h4>Monatspreise ${state.seasonYear ? `Saison ${state.seasonYear}` : ""}</h4><ul class="preis-liste">${monate}</ul>` : ""}
+            ${saison}`;
+        el.querySelectorAll("[data-player-id]").forEach(b => b.addEventListener("click", () => {
+            const id = this.resolvePlayerId ? this.resolvePlayerId(b.dataset.playerId) : b.dataset.playerId;
+            if (id !== null && id !== undefined) this.showPlayerDetailsModal(id);
+        }));
+    }
+
     renderStats() {
         const state = this.app.state;
         const eigeneLiga = this.getUserLeagueId(state);
@@ -5431,6 +5485,8 @@ class UIManager {
             p => `${schnitt(p).toFixed(2).replace(".", ",")} <small>Ø</small>`,
             `Mindestens ${mindestens} Einsätze erforderlich.`);
         DOM.setText("statsRatingHint", `ab ${mindestens} Einsätzen`);
+
+        this.renderPreise(state, ligaId === "alle" ? eigeneLiga : ligaId, vereine);
 
         // Historie der vergangenen Saisons
         const histBody = document.getElementById("statsHistoryBody");

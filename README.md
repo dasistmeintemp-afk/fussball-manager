@@ -439,6 +439,12 @@ In der Spielerakte führt der Manager Gespräche mit jedem eigenen Spieler. Wie 
   - *Ausleihen:* Der Leihmarkt zeigt junge Spieler ohne Stammplatz und Reservisten anderer Vereine. Der Stammverein verlangt einen Gehaltsanteil (darunter lehnt er ab), bei starken Spielern eine Leihgebühr, und meldet sich, wenn ein zugesagter Stammspieler nicht spielt.
   - Einmal im Monat kommt ein Leihbericht ins Postfach. Zum Saisonende kehren alle zurück. Verliehene Spieler stehen unter der Kadertabelle, werden nicht verkauft und kosten beide Vereine anteilig Gehalt.
 
+- **Kaderplanung über drei Spielzeiten (`KaderplanungEngine`):** Die aufklappbare Karte unter der Kadertabelle zeigt je Mannschaftsteil (Tor, Innenverteidigung, Außenverteidigung, zentrales Mittelfeld, Offensive und Flügel, Sturm), wer in dieser, der nächsten und der übernächsten Saison noch da ist.
+  - **Wer wegfällt:** Spieler mit auslaufendem Vertrag, wer mit 35 wahrscheinlich aufhört, wer per Vorvertrag woanders unterschrieben hat und wer nur geliehen ist.
+  - **Wer dazukommt:** Leihrückkehrer und Zugänge mit Vorvertrag.
+  - **Gemessen am Kaderplan der Liga:** Eine „Lücke“ hat weniger Spieler als nötig. „Dünn“ heißt: genug Spieler, aber zu wenige auf Stammspieler-Niveau (drei Sterne nach dem eingestellten Maßstab).
+  - **Baustellen:** Der Sportdirektor nennt die dringendsten, die früheste Saison zuerst („Nächste Saison fehlen Spieler im Tor: 2 von 3 – Manuel Neuerer geht“). Jede lässt sich als Suchauftrag losschicken, für die Position, ab Stammspieler-Niveau und bis 27 Jahre.
+
 ### 4a. 🎯 Der Sportdirektor (`SportdirektorEngine`)
 Der Verein hat einen Sportdirektor mit festem Namen. Er kennt den Kader nach Mannschaftsteilen (Tor, Innen- und Außenverteidigung, defensives und zentrales Mittelfeld, Flügel, Sturm) und sieht dort Bedarf, wo der Beste unter dem Kaderniveau liegt, wo Spieler fehlen oder der Stammspieler 32 oder älter ist.
 
@@ -758,6 +764,7 @@ untitled/
 │   │   ├── investorEngine.js   # Investoren, Übernahmen, 50+1, Rettung mit Auflagen und Punktabzug
 │   │   ├── ehemaligeEngine.js  # Ehemalige Spieler im Trainerstab, Abschiedsspiel für Legenden
 │   │   ├── visionEngine.js     # Vereinsvision: Fernziel mit Frist, Jahresziele, Bilanz
+│   │   ├── kaderplanungEngine.js # Kader über drei Spielzeiten, Baustellen als Suchauftrag
 │   │   ├── newsEngine.js       # Zentrales Nachrichtensystem & Postfach
 │   │   ├── aiManagerEngine.js  # KI-Aufstellungen & KI-Transferangebote
 │   │   ├── scoutingEngine.js   # Scoutaufträge & Spielerberichte

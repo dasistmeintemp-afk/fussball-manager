@@ -2359,6 +2359,47 @@ class UIManager {
         });
     }
 
+    /**
+     * Die Kaderplanung über drei Spielzeiten: je Mannschaftsteil, wer dann
+     * noch da ist, und was fehlt. Aufgeklappt bleibt sie aufgeklappt.
+     */
+    renderKaderplanung(state) {
+        const box = document.getElementById("squadPlanung");
+        const engine = typeof KaderplanungEngine !== "undefined" ? KaderplanungEngine : null;
+        if (!box || !engine) return;
+        const p = engine.plan(state);
+        if (!p) return;
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const MARKE = { vertrag: "⏳", alter: "👴", rueckkehr: "↩", leihe: "🔁", zugang: "✍" };
+        const STATUS = { luecke: "Lücke", duenn: "dünn", gut: "gut" };
+        const hinweise = engine.hinweise(state);
+        const offen = box.open;
+        box.innerHTML = `
+            <summary><h3>🗂️ Kaderplanung</h3><span class="header-tag">${hinweise.length ? `${hinweise.length} Baustelle${hinweise.length === 1 ? "" : "n"}` : "alles besetzt"}</span></summary>
+            ${hinweise.length ? `<div class="kp-hinweise">${hinweise.map(h => `
+                <div class="partner-zeile"><span>${esc(h.text)}</span>
+                <button class="btn btn-sm btn-secondary" data-kp-suche="${h.key}">Suchauftrag</button></div>`).join("")}</div>` : ""}
+            <p class="muted-note">Stammspieler-Niveau ab Stärke ${p.stammStaerke} (drei Sterne). ⏳ Vertrag endet · 👴 33 oder älter · ↩ kehrt von Leihe zurück · 🔁 nur geliehen · ✍ Vorvertrag</p>
+            <div class="kp-raster">
+                <div class="kp-kopf"></div>${p.spalten.map(s => `<div class="kp-kopf">Saison ${s.saison}</div>`).join("")}
+                ${engine.TEILE.map((t, i) => `
+                    <div class="kp-teil">${esc(t.titel)}</div>
+                    ${p.spalten.map(s => { const z = s.teile[i]; return `
+                        <div class="kp-zelle kp-${z.status}">
+                            <div class="kp-zahl">${z.anzahl}/${z.bedarf} <small>${STATUS[z.status]}</small></div>
+                            ${z.spieler.slice(0, 6).map(sp => `<div class="kp-spieler${sp.stamm ? " stamm" : ""}">${esc(sp.name.split(" ").slice(-1)[0])} <small>${sp.alter}</small>${sp.marken.map(m => MARKE[m] || "").join("")}</div>`).join("")}
+                        </div>`; }).join("")}`).join("")}
+            </div>`;
+        box.open = offen;
+        box.querySelectorAll("[data-kp-suche]").forEach(b => b.addEventListener("click", (e) => {
+            e.preventDefault();
+            const r = engine.suchauftrag(state, b.dataset.kpSuche);
+            if (!r.success) { this.showToast(r.error, "error"); return; }
+            this.showToast("Suchauftrag läuft - die Berichte kommen in den Transfermarkt.", "success");
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+        }));
+    }
+
     renderSquad(posFilter = "all") {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
@@ -2382,6 +2423,7 @@ class UIManager {
 
         this.renderKabine();
         this.renderReserve();
+        this.renderKaderplanung(state);
 
         // Kennzahlen des ganzen Kaders - unabhaengig vom Filter
         const kader = state.players.filter(p => userClub.playerIds.includes(p.id));

@@ -8557,3 +8557,19 @@ td.nowrap { white-space: nowrap; }
 .vis-marke.gut { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
 .vis-marke.schlecht { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
 .vis-marke.offen { background: rgba(148, 163, 184, 0.15); color: var(--text-muted); }
+.kp-karte > summary { display: flex; justify-content: space-between; align-items: center; cursor: pointer; list-style: none; }
+.kp-karte > summary::-webkit-details-marker { display: none; }
+.kp-karte > summary h3 { margin: 0; }
+.kp-hinweise { margin: 10px 0 6px; }
+.kp-raster { display: grid; grid-template-columns: minmax(70px, 0.8fr) repeat(3, minmax(0, 1fr)); gap: 4px; font-size: 12px; }
+.kp-kopf { font-weight: 600; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding: 2px 4px; }
+.kp-teil { font-weight: 600; padding: 6px 4px; font-size: 11.5px; hyphens: auto; overflow-wrap: anywhere; }
+.kp-zelle { border-radius: 6px; padding: 5px 6px; background: var(--surface-2, rgba(255, 255, 255, 0.03)); min-width: 0; }
+.kp-zelle.kp-luecke { border-left: 3px solid #ef4444; }
+.kp-zelle.kp-duenn { border-left: 3px solid #f59e0b; }
+.kp-zelle.kp-gut { border-left: 3px solid #22c55e; }
+.kp-zahl { font-weight: 700; margin-bottom: 2px; }
+.kp-zahl small { font-weight: 400; color: var(--text-muted); }
+.kp-spieler { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); }
+.kp-spieler.stamm { color: var(--text-primary, inherit); font-weight: 600; }
+.kp-spieler small { color: var(--text-muted); font-weight: 400; }

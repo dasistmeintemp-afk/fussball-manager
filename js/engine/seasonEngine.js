@@ -1505,6 +1505,10 @@ class SeasonEngine {
                 .filter(Boolean);
             if (gewechselt.length) finanzenGehalt.normalisiereGehaelter(state, gewechselt);
         }
+        // ... und wer über seine Verhältnisse zahlt, kommt halb zurück
+        if (finanzenGehalt && typeof finanzenGehalt.gehaltsDisziplin === 'function') {
+            finanzenGehalt.gehaltsDisziplin(state);
+        }
 
         // Pokal neu auslosen und den europäischen Wettbewerben ihren Spielplan
         // geben - sonst stünden auch in der neuen Saison nur Teilnehmerlisten

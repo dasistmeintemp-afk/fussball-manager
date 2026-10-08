@@ -123,6 +123,13 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Formation nach Kader:** „Beste 11 automatisch aufstellen“ wählt vorher die Formation, die am besten zu den einsatzfähigen Spielern passt – jede Formation (auch eigene) wird mit dem Kader besetzt und nach der Stärke der Elf auf ihren Positionen bewertet. Verletzte und Gesperrte zählen nicht. Die bisherige Formation bleibt, wenn keine andere spürbar besser ist, und ungewöhnliche Systeme müssen ihren Vorteil deutlicher zeigen als gebräuchliche.
 
 ### 3. 🎮 2D-Live-Match-Engine & Sofort-Simulation
+- **Spielkultur der Ligen (`MATCH_TUNING.torKultur`):** Jede Liga spielt so torreich wie ihr Vorbild. Ein Faktor je Land und Spielklasse wirkt auf die Torwahrscheinlichkeit aus dem Spiel heraus, Elfmeter sind überall gleich schwer. Pokalspiele zählen nach der Liga der Heimmannschaft, der Europapokal nach keiner.
+  - Gemessen über drei simulierte Saisons, Tore je Spiel, in Klammern die echten Werte 2024/25: Bundesliga 3,2 (3,13), Premier League 2,9 (2,93), Ligue 1 3,0 (2,98), LaLiga 2,6–2,8 (2,62), Serie A 2,5–2,7 (2,54).
+  - Die zweiten Ligen liegen darunter, Segunda und Championship mit 2,3 am deutlichsten.
+  - Vorher fielen überall gleich viele Tore, auch in LaLiga mit 3,3.
+- **Remis in der Schlussphase:** Steht es ab der 75. Minute unentschieden, will nur noch eine klar stärkere Mannschaft den Sieg. Der Außenseiter sichert den Punkt, und bei zwei ähnlich starken geht keiner mehr ins Risiko.
+  - Vorher stürmten ab der 83. Minute immer beide.
+  - Unentschieden waren seltener als im echten Fußball: 20–24 % statt 25–30 %. Jetzt sind es 23–25 % in den ersten Ligen und 25–30 % darunter.
 - **Echtzeit-Regie (`LiveMatchDirector`):** Die Spieluhr läuft kontinuierlich statt in Minutensprüngen. Während eines Highlights läuft sie langsam, dazwischen holt sie auf – so passen Minute, Kommentar und Bild jederzeit zusammen.
 - **Feld und Spielbericht Hand in Hand:** Jede Szene wird inszeniert (Anlauf zum Ausgangspunkt, Aktion, Auflösung). Aufbau-Kommentare erscheinen, während der Ball läuft; Torschuss, Parade und Fehlschuss werden exakt beim Eintreffen des Balls gemeldet.
 - **Echtes Ballbesitzspiel (`MatchFlowEngine`):** Zwischen den Highlights wird nicht zufällig gepasst, sondern gespielt. Die Engine bewertet den Druck auf den Ballführenden, projiziert Gegner auf die Passwege, misst den Freiraum der Anspielstationen und wählt daraus die Option: kurzer Pass, Verlagerung, langer Ball, Dribbling oder Befreiungsschlag. Der Ausgang folgt den Attributen – Passgenauigkeit aus Passen, Übersicht und Technik gegen Druck und zugestellte Wege; Dribblings aus Dribbling und Tempo gegen die Defensivwerte des Gegenspielers.
@@ -423,6 +430,10 @@ Ein Talent in den Profikader zu holen dauert jetzt seine Zeit. *Vertragsgespräc
 - Am Handy steht jedes Talent als Karte da statt als Tabellenzeile mit zerquetschten Spalten.
 
 ### 6. 💼 Finanzen, Sponsoren & Buchungsjournal
+- **Gehaltsdisziplin der KI-Vereine (`FinanceEngine.gehaltsDisziplin`):** Jeder Wechsel und jede Verlängerung legt beim Gehalt etwas drauf. Angeglichen wurde bisher nur bei Auf- und Abstieg.
+  - Gemessen lagen die Erstligisten nach drei Saisons bei 115 % dessen, was sie tragen können.
+  - Wer zum Saisonwechsel mehr als 8 % darüber liegt, kommt jetzt auf halbem Weg zurück. Der eigene Verein bleibt außen vor.
+  - Über fünf Saisons bleiben die Gehälter so bei 96–104 % des Tragbaren. Der Kassen-Median der KI-Vereine wächst von 3 auf 17 Mio. €, und kaum ein Verein steht im Minus.
 - **Finanzübersicht (`FinanceEngine`):** Kontostand, Transferbudget, Gehaltsetat, Ticketeinnahmen und wöchentliche Sponsorenzahlungen.
 - **Transaktionsjournal:** Detailliertes Buchungsjournal mit lückenloser Historie aller Einnahmen und Ausgaben.
 - **Infrastruktur:** Stadion, Trainingsgelände, Jugendzentrum und medizinische Abteilung. Jede Anlage hat Stufe, Zustand und Alter. Ausbau und Sanierung dauern Spieltage, und so lange ist der Betrieb eingeschränkt.

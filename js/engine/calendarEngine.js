@@ -1172,8 +1172,10 @@ const CalendarEngine = {
                 const eigene = ergebnis && ergebnis.eigenePartie;
                 if (eigene && !eigene.played) {
                     // Relegation und Playoffs entscheidet die PlayoffEngine über
-                    // beide Spiele - ein einzelnes Remis ist dort kein Elfmeterfall
-                    cupEngine.austragen(state, eigene, art === "cup" || (art === "euro" && runde >= 6));
+                    // beide Spiele - ein einzelnes Remis ist dort kein Elfmeterfall.
+                    // Die Supercups sind ein Spiel: bei Gleichstand Elfmeter.
+                    const elfmeter = art === "cup" || art === "supercup" || (art === "euro" && runde >= 6);
+                    cupEngine.austragen(state, eigene, elfmeter);
                 }
                 cupEngine.schliesseTerminAb(state, art, runde);
             }

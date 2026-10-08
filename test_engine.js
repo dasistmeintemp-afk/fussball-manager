@@ -11327,6 +11327,28 @@ function runEngineTests() {
         if (St.von(pokalHeld, "pokal").matches !== 0 || St.von(pokalHeld, "europa").goals !== 0) throw new Error("Teile nicht zurückgesetzt");
     });
 
+    test("Vorlagen: rund 70 % der Tore vorbereitet, verteilt auf Mittelfeld, Flügel und Außenverteidiger", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Vorlagen" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gegner = state.clubs.filter(c => c.leagueId === "de_liga_1" && c.id !== "muc");
+        for (let i = 0; i < 60; i++) {
+            const gast = gegner[i % gegner.length];
+            MatchEngine.simulateFullMatch({ id: `v${i}`, homeClubId: heim.id, awayClubId: gast.id, competitionId: "de_liga_1" }, heim, gast, state.players);
+            state.players.forEach(p => { p.injured = false; p.injuredWeeks = 0; p.suspendedMatches = 0; p.fitness = 100; });
+        }
+        const kader = state.players.filter(p => p.clubId === "muc");
+        const tore = kader.reduce((s, p) => s + (p.stats.goals || 0), 0);
+        const vorlagen = kader.reduce((s, p) => s + (p.stats.assists || 0), 0);
+        if (tore < 60) throw new Error(`Nur ${tore} Tore in 60 Spielen`);
+        const anteil = vorlagen / tore;
+        if (anteil < 0.55 || anteil > 0.85) throw new Error(`${(anteil * 100).toFixed(0)} % der Tore vorbereitet`);
+        const bester = Math.max(...kader.map(p => p.stats.assists || 0));
+        if (bester / vorlagen > 0.4) throw new Error(`Ein Spieler gibt ${(bester / vorlagen * 100).toFixed(0)} % der Vorlagen`);
+        const geber = kader.filter(p => (p.stats.assists || 0) > 0);
+        if (geber.length < 6) throw new Error(`Nur ${geber.length} Vorlagengeber`);
+        if (!geber.some(p => ["LV", "RV"].includes(p.pos)) || !geber.some(p => ["ZM", "OM", "DM"].includes(p.pos))) throw new Error("Vorlagen nur aus einem Mannschaftsteil");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

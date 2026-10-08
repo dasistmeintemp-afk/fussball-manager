@@ -182,6 +182,9 @@ const MATCH_TUNING = {
     // den Ball über die Mauer zirkelt, gab es nicht.
     direkterFreistoss: 0.3,
 
+    // Wie oft ein Tor aus dieser Angriffsart einen Vorlagengeber hat
+    vorlagenAnteil: { cross: 0.86, through_ball: 0.86, corner: 0.6, dribble: 0.3 },
+
     // Spielkultur der Ligen: Faktor auf die Torwahrscheinlichkeit aus dem
     // Spiel heraus (Elfmeter ausgenommen), je Land und Spielklasse. Vorher
     // fielen überall gleich viele Tore - LaLiga und Serie A lagen mit über
@@ -817,9 +820,20 @@ class MatchEngine {
      * vor allem die Innenverteidiger.
      */
     static SCHUETZEN_ROLLE = {
-        spiel: { ST: 1, LA: 0.62, RA: 0.62, OM: 0.62, LM: 0.3, RM: 0.3, ZM: 0.3, DM: 0.12, LV: 0.07, RV: 0.07, IV: 0.05 },
-        flanke: { ST: 1, LA: 0.32, RA: 0.32, OM: 0.4, LM: 0.2, RM: 0.2, ZM: 0.25, DM: 0.15, LV: 0.06, RV: 0.06, IV: 0.2 },
+        spiel: { ST: 0.85, LA: 0.62, RA: 0.62, OM: 0.62, LM: 0.3, RM: 0.3, ZM: 0.3, DM: 0.12, LV: 0.07, RV: 0.07, IV: 0.05 },
+        flanke: { ST: 0.85, LA: 0.32, RA: 0.32, OM: 0.4, LM: 0.2, RM: 0.2, ZM: 0.25, DM: 0.15, LV: 0.06, RV: 0.06, IV: 0.2 },
         ecke: { ST: 1, IV: 1, DM: 0.35, ZM: 0.25, OM: 0.2, LA: 0.2, RA: 0.2, LM: 0.15, RM: 0.15, LV: 0.2, RV: 0.2 }
+    };
+
+    /**
+     * Wer den letzten Pass spielt - je Position, dazu (linear) Passspiel und
+     * Übersicht. Mit einer steilen Gewichtung nach Passspiel und nur dem
+     * Mittelfeld als Kandidaten bekam der Spielmacher eines Spitzenvereins fast
+     * die Hälfte aller Vorlagen und kam auf über 25 in einer Saison.
+     */
+    static VORLAGEN_ROLLE = {
+        pass: { ZM: 1, OM: 1, DM: 0.6, LM: 0.85, RM: 0.85, LA: 0.85, RA: 0.85, ST: 0.55, LV: 0.4, RV: 0.4, IV: 0.15 },
+        flanke: { LA: 1, RA: 1, LM: 1, RM: 1, LV: 0.65, RV: 0.65, OM: 0.35, ZM: 0.3 }
     };
 
     static waehleSchuetze(kandidaten, attackType, posVon = null, gedeckt = null) {
@@ -1356,21 +1370,22 @@ class MatchEngine {
             // Wurf unter allen Mittelfeldspielern, und ein Außenverteidiger auf
             // der Flügelposition kam auf über 40 Vorlagen in einer Saison.
             const anderer = (liste) => liste.filter(p => p !== shooter);
-            const gestalter = (liste, wert) => {
+            const gestalter = (liste, wert, rolle) => {
                 if (!liste.length) return null;
-                const g = liste.map(p => Math.pow(Math.max(20, wert(p)) / 60, 3));
+                const g = liste.map(p => Math.max(20, wert(p)) / 60 * (rolle[attPos(p)] ?? 0.1));
                 let wurf = Math.random() * g.reduce((a, b) => a + b, 0);
                 for (let i = 0; i < liste.length; i++) { wurf -= g[i]; if (wurf <= 0) return liste[i]; }
                 return liste[liste.length - 1];
             };
             const zahl = (p, k) => typeof p[k] === "number" ? p[k] : (p.overall || 60);
+            const rollen = MatchEngine.VORLAGEN_ROLLE;
             const passer = (ecke && ecke !== shooter ? ecke : null)
-                || gestalter(anderer(attPlayers.filter(p => ["ZM", "OM", "DM", "LM", "RM", "LA", "RA"].includes(attPos(p)))),
-                    p => zahl(p, "passing") * 0.55 + zahl(p, "vision") * 0.45)
+                || gestalter(anderer(attPlayers.filter(p => attPos(p) !== "TW")),
+                    p => zahl(p, "passing") * 0.55 + zahl(p, "vision") * 0.45, rollen.pass)
                 || anderer(attPlayers)[0] || attPlayers[0];
             // Flanken kommen von den Außen - und von den Außenverteidigern
-            const winger = gestalter(anderer(attPlayers.filter(p => ["LA", "RA", "LM", "RM", "LV", "RV"].includes(attPos(p)))),
-                p => zahl(p, "passing") * 0.7 + zahl(p, "technique") * 0.3 - (["LV", "RV"].includes(attPos(p)) ? 6 : 0)) || passer;
+            const winger = gestalter(anderer(attPlayers.filter(p => rollen.flanke[attPos(p)])),
+                p => zahl(p, "passing") * 0.7 + zahl(p, "technique") * 0.3, rollen.flanke) || passer;
             const defender = defenders.length > 0 ? _Random.choice(defenders) : defPlayers[0];
 
             // Koordinaten für das 2D-Feld.
@@ -1497,11 +1512,16 @@ class MatchEngine {
 
             if (outcome === "goal") {
                 if (isHomeAttacking) currentHomeScore++; else currentAwayScore++;
-                // Die Vorlage: Flanke, Steilpass, Ecke - und beim Solo nur
-                // manchmal der Pass davor
-                const vorlage = attackType === "cross" ? winger
-                    : (attackType === "through_ball" || attackType === "corner" ? passer
-                        : (_Random.chance(0.35) ? passer : null));
+                // Die Vorlage: Flanke, Steilpass, Ecke - aber nicht jede: Ein
+                // abgefälschter Ball, ein zweiter Ball nach der Ecke oder ein
+                // Solo hat keinen Vorlagengeber. Gemessen waren vorher 84 %
+                // der Ligatore vorbereitet und die besten Vorlagengeber kamen
+                // auf 18 bis 24 Vorlagen; in den großen Ligen sind es rund
+                // 70 % und 11 bis 15 (MATCH_TUNING.vorlagenAnteil).
+                const anteil = MATCH_TUNING.vorlagenAnteil[attackType] ?? 0.25;
+                const vorlage = _Random.chance(anteil)
+                    ? (attackType === "cross" ? winger : passer)
+                    : null;
                 timeline.push({
                     minute: min,
                     second: 24,

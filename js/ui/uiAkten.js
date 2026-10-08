@@ -775,6 +775,28 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const altRoleName = card?.alternativeRole?.role || null;
         const altRoleStars = roleStarsHtml(card?.alternativeRole);
 
+        // Die Akte in Reitern: Überblick, Entwicklung, Vertrag. Vorher stand
+        // alles untereinander - am Handy eine Liste über viele Bildschirme,
+        // Entwicklungsplan und Vertrag ganz unten.
+        const leiheInEntwicklung = leiheModus === "eigener" || leiheModus === "verliehen";
+        const leiheImVertrag = !!leiheModus && !leiheInEntwicklung;
+        const entwicklungInhalt = [
+            isUserClub && !isProspect ? this.entwicklungsplanHtml(player) : "",
+            leiheModus === "eigener" ? this.reserveHtml(player) : "",
+            leiheInEntwicklung ? this.leiheHtml(player, leiheModus) : ""
+        ].filter(Boolean).join("\n");
+        const reiterListe = [
+            { key: "ueberblick", label: "Überblick" },
+            entwicklungInhalt ? { key: "entwicklung", label: "Entwicklung" } : null,
+            { key: "vertrag", label: isUserClub ? (isProspect ? "Vertrag" : "Vertrag & Kabine") : "Vertrag & Transfer" }
+        ].filter(Boolean);
+        const gemerkt = this._akteReiter && String(this._akteReiter.id) === String(player.id) ? this._akteReiter.reiter : null;
+        let reiter = optionen.abschnitt === "vertrag" ? "vertrag" : (optionen.reiter || gemerkt || "ueberblick");
+        if (!reiterListe.some(r => r.key === reiter)) reiter = "ueberblick";
+        this._akteReiter = { id: player.id, reiter };
+        const reiterLeiste = `<nav class="pd-tabs" role="tablist">${reiterListe.map(r =>
+            `<button type="button" role="tab" class="pd-tab-knopf${r.key === reiter ? " aktiv" : ""}" data-pd-reiter="${r.key}" aria-selected="${r.key === reiter}">${r.label}</button>`).join("")}</nav>`;
+
         body.innerHTML = `
             <div class="player-detail-top">
                 <div class="player-detail-meta">
@@ -815,29 +837,20 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 </div>
             </div>
 
+            ${reiterLeiste}
+
+            <section class="pd-tab" data-pd-tab="ueberblick"${reiter === "ueberblick" ? "" : " hidden"}>
             ${confidenceBarHtml}
+
+            ${isProspect ? "" : `
+            <div class="pd-saison">
+                <span>Saison</span>
+                <strong>${player.stats.matches} Spiele · ${player.stats.goals} Tore · ${player.stats.assists} Vorlagen · Note ${(player.stats.matches > 0 ? (player.stats.ratingSum / player.stats.matches).toFixed(2) : '-')}</strong>
+            </div>`}
 
             <div class="stats-grid" style="grid-template-columns: 1fr 1fr; gap:14px; margin-bottom:16px;">
                 ${attributeBlocks}
             </div>
-
-            ${isProspect ? "" : `
-            <!-- Zufriedenheit & Rolle -->
-            <div class="dash-card mb-3" style="padding:14px;">
-                <h4 style="font-size:13px; margin-bottom:8px; color:var(--text-muted);"><svg class="ico h-ico" aria-hidden="true"><use href="#i-user"/></svg>Spielerzufriedenheit & Status</h4>
-                <div class="club-stat-line"><span>Kaderrolle:</span><strong>${player.squadRole || 'Kader'}</strong></div>
-                <div class="club-stat-line"><span>Gesamtzufriedenheit:</span><strong>${happy.overall}%</strong></div>
-                <div class="club-stat-line"><span>Spielzeit / Vertrag:</span><span>${happy.playingTime}% / ${happy.contract}%</span></div>
-                <div style="font-size:12px; color:var(--text-muted); margin-top:4px; font-style:italic;">"${happy.reason || 'Zufrieden mit der Situation.'}"</div>
-            </div>`}
-
-            ${isUserClub && !isProspect ? this.gespraechHtml(player) : ""}
-
-            ${isUserClub && !isProspect ? this.entwicklungsplanHtml(player) : ""}
-
-            ${leiheModus === "eigener" ? this.reserveHtml(player) : ""}
-
-            ${leiheModus ? this.leiheHtml(player, leiheModus) : ""}
 
             ${positionMapHtml}
 
@@ -855,12 +868,30 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <div class="finance-stat-row">
                 <span>Kondition / Moral:</span>
                 <strong>${player.fitness ?? 95} % / ${player.morale ?? 85} %</strong>
-            </div>
-            ` : `
-            <div class="finance-stat-row">
-                <span>Saison-Statistiken:</span>
-                <strong>${player.stats.matches} Spiele | ${player.stats.goals} Tore | ${player.stats.assists} Assists | Notenschnitt: ${(player.stats.matches > 0 ? (player.stats.ratingSum / player.stats.matches).toFixed(2) : '-')}</strong>
-            </div>
+            </div>` : ""}
+            </section>
+
+            ${entwicklungInhalt ? `
+            <section class="pd-tab" data-pd-tab="entwicklung"${reiter === "entwicklung" ? "" : " hidden"}>
+                ${entwicklungInhalt}
+            </section>` : ""}
+
+            <section class="pd-tab" data-pd-tab="vertrag"${reiter === "vertrag" ? "" : " hidden"}>
+            ${isProspect ? "" : `
+            <!-- Zufriedenheit & Rolle -->
+            <div class="dash-card mb-3" style="padding:14px;">
+                <h4 style="font-size:13px; margin-bottom:8px; color:var(--text-muted);"><svg class="ico h-ico" aria-hidden="true"><use href="#i-user"/></svg>Spielerzufriedenheit & Status</h4>
+                <div class="club-stat-line"><span>Kaderrolle:</span><strong>${player.squadRole || 'Kader'}</strong></div>
+                <div class="club-stat-line"><span>Gesamtzufriedenheit:</span><strong>${happy.overall}%</strong></div>
+                <div class="club-stat-line"><span>Spielzeit / Vertrag:</span><span>${happy.playingTime}% / ${happy.contract}%</span></div>
+                <div style="font-size:12px; color:var(--text-muted); margin-top:4px; font-style:italic;">"${happy.reason || 'Zufrieden mit der Situation.'}"</div>
+            </div>`}
+
+            ${isUserClub && !isProspect ? this.gespraechHtml(player) : ""}
+
+            ${leiheImVertrag ? this.leiheHtml(player, leiheModus) : ""}
+
+            ${isProspect ? "" : `
             <div class="finance-stat-row">
                 <span>Marktwert:</span>
                 <strong>${card ? card.visibleValueText : this.formatMoneySafe(player.value)}</strong>
@@ -891,10 +922,24 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
             ${scoutExternalHtml}
             ${contractSectionHtml}
+            </section>
         `;
 
         modal.style.display = "flex";
         this.playSound("click");
+
+        // Reiter umschalten - die Wahl bleibt, solange dieselbe Akte offen ist
+        body.querySelectorAll("[data-pd-reiter]").forEach(knopf => knopf.addEventListener("click", () => {
+            const ziel = knopf.dataset.pdReiter;
+            this._akteReiter = { id: player.id, reiter: ziel };
+            body.querySelectorAll("[data-pd-reiter]").forEach(k => {
+                const an = k.dataset.pdReiter === ziel;
+                k.classList.toggle("aktiv", an);
+                k.setAttribute("aria-selected", String(an));
+            });
+            body.querySelectorAll(".pd-tab").forEach(t => { t.hidden = t.dataset.pdTab !== ziel; });
+            body.querySelector(".pd-tabs")?.scrollIntoView({ block: "nearest" });
+        }));
 
         // Direkt zur Vertragsverhandlung, wenn der Weg von dort kam
         const vertragsTeil = optionen.abschnitt === "vertrag" ? document.getElementById("pdVertrag") : null;

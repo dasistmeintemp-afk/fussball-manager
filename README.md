@@ -140,6 +140,12 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
     - ein Verkaufsziel bis zum Ende des nächsten Transferfensters; wird es verfehlt, zieht der Verband drei Punkte ab (in der Tabelle mit * markiert)
   - **Die Welt:** In den beiden obersten Ligen jedes Landes werden auch KI-Vereine übernommen, in England am häufigsten und in Deutschland am seltensten. Ihre Trainer stehen danach unter mehr Druck.
   - Vorher gehörte jeder Verein sich selbst, und an der Schuldengrenze schoss der Vorstand wortlos nach, so oft es nötig war.
+- **Ehemalige und Abschiedsspiel (`EhemaligeEngine`):** Wer mindestens 40 Spiele für den eigenen Verein gemacht hat, steht nach dem Karriereende auf der Liste der Ehemaligen. Das gilt auch, wenn er zuletzt woanders spielte. Die Karte „Ehemalige“ im Reiter Verein zeigt sie.
+  - **Rückkehr in den Stab:** Vier Jahre lang bewirbt sich ein Ehemaliger in der Vorbereitung mit etwas Glück für den Trainerstab, je nach Position als Co-Trainer, Analyst, Athletiktrainer, Chefscout oder Nachwuchsleiter. In der Bewerberliste ist er markiert.
+    - Er verlangt 15 % weniger als der Markt (Herzensverein).
+    - Eine Legende bringt etwas mehr Güte mit und hebt bei der Rückkehr die Stimmung in der Kabine.
+  - **Abschiedsspiel:** Hört eine Vereinslegende auf, kann der Verein ihr in dieser Saison ein Abschiedsspiel ansetzen. „Legende & Freunde“ spielen vor fast vollem Haus. Die Legende trifft, die Hälfte der Einnahmen geht an den Verein und der Rest an einen guten Zweck. Ergebnis und Zuschauer stehen in der Chronik.
+  - Vorher verschwand ein Spieler mit dem Karriereende spurlos, auch der Kapitän mit 300 Spielen.
 - **Nachrichten aus der Liga (`LigaNachrichtenEngine`):** Die Sportpresse berichtet über die eigene Liga.
   - **Saisonvorschau:** Zum Saisonstart nennt sie Favoriten, Geheimtipp (der Kader ist besser als sein Ruf), Abstiegskandidaten und den Platz, auf dem sie den eigenen Verein sieht. Sie rechnet mit drei Vierteln Kaderstärke und einem Viertel Ansehen, wie die Medienprognose.
   - **Rundschau nach jedem Spieltag:** Sie bringt die Spitze und den Abstand, das Ergebnis des Spieltags und Serien (fünf Siege oder fünf Spiele ohne Sieg). Dazu kommen die Torjäger sowie Transfers und Trainerwechsel seit der letzten Ausgabe.
@@ -738,6 +744,7 @@ untitled/
 │   │   ├── spielvorschauEngine.js # Quoten, direkter Vergleich, Ausfälle vor dem nächsten Spiel
 │   │   ├── partnerEngine.js    # Ausbildungspartner mit Einsatzgarantie, großer Partner mit Leihangeboten
 │   │   ├── investorEngine.js   # Investoren, Übernahmen, 50+1, Rettung mit Auflagen und Punktabzug
+│   │   ├── ehemaligeEngine.js  # Ehemalige Spieler im Trainerstab, Abschiedsspiel für Legenden
 │   │   ├── newsEngine.js       # Zentrales Nachrichtensystem & Postfach
 │   │   ├── aiManagerEngine.js  # KI-Aufstellungen & KI-Transferangebote
 │   │   ├── scoutingEngine.js   # Scoutaufträge & Spielerberichte

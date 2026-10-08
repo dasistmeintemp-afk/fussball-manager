@@ -5206,6 +5206,40 @@ class UIManager {
         }));
     }
 
+    /**
+     * Ehemalige Spieler: wer sich für den Stab bewerben kann, wer schon
+     * zurück ist - und das Abschiedsspiel für eine Legende.
+     */
+    renderEhemalige(state, club) {
+        const el = document.getElementById("clubEhemalige");
+        const engine = typeof EhemaligeEngine !== "undefined" ? EhemaligeEngine : null;
+        if (!el || !engine) return;
+        const u = engine.uebersicht(state);
+        if (!u) return;
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const titel = { cotrainer: "Co-Trainer", fitness: "Athletiktrainer", analyse: "Spielanalyst", nachwuchs: "Nachwuchsleiter", scout: "Chefscout", medizin: "Mannschaftsarzt" };
+        const abschiede = u.abschiede.map(a => `
+            <div class="partner-zeile ehem-abschied"><span>🏟️ <strong>${esc(a.name)}</strong> <small>${a.spiele} Spiele, ${a.tore} Tore · Abschiedsspiel in dieser Saison möglich</small></span>
+            <button class="btn btn-sm btn-primary" data-abschied="${esc(a.id)}">Abschiedsspiel ansetzen</button></div>`).join("");
+        const gespielt = u.gespielt.length ? `<h4>Abschiedsspiele</h4><ul class="inv-historie">${u.gespielt.map(g => `<li>Saison ${g.saison}: ${esc(g.name)} - ${g.ergebnis} vor ${g.zuschauer.toLocaleString("de-DE")} Zuschauern, ${g.toreLegende} ${g.toreLegende === 1 ? "Tor" : "Tore"}</li>`).join("")}</ul>` : "";
+        const liste = u.ehemalige.length
+            ? `<ul class="partner-liste">${u.ehemalige.map(e => `<li><span><strong>${esc(e.name)}</strong>${e.legende ? " ⭐" : ""} <small>${esc(e.pos)} · ${e.spiele} Spiele, ${e.tore} Tore · Karriereende Saison ${e.saison}</small></span>
+                <small>${e.status === "kann sich bewerben" ? `bewirbt sich vielleicht als ${titel[e.bereich] || e.bereich}` : esc(e.status)}</small></li>`).join("")}</ul>`
+            : `<p class="muted-note">Wer ${engine.MIN_SPIELE} Spiele für den Verein gemacht hat und die Karriere beendet, steht hier. In der Vorbereitung bewirbt er sich vielleicht für den Trainerstab - für weniger Geld als ein Fremder. Legenden bekommen ein Abschiedsspiel.</p>`;
+        const stab = u.imStab.length ? `<p class="muted-note">Im Stab: ${u.imStab.map(s => `${esc(s.name)} (${esc(s.titel)})`).join(", ")}.</p>` : "";
+        el.innerHTML = `
+            <div class="card-header"><h3>👋 Ehemalige</h3></div>
+            ${abschiede}${stab}${liste}${gespielt}`;
+        el.querySelectorAll("[data-abschied]").forEach(b => b.addEventListener("click", () => {
+            const r = engine.abschiedsspiel(state, b.dataset.abschied);
+            if (!r.success) { this.showToast(r.error, "error"); return; }
+            this.showToast(`Abschiedsspiel ${r.ergebnis} vor ${r.zuschauer.toLocaleString("de-DE")} Zuschauern.`, "success");
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.renderClub();
+            this.renderHeader?.();
+        }));
+    }
+
     renderClub() {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
@@ -5214,6 +5248,7 @@ class UIManager {
         this.renderInvestor(state, userClub);
         this.renderPartner(state, userClub);
         this.renderChronik(state, userClub);
+        this.renderEhemalige(state, userClub);
 
         DOM.setText("clubTabName", userClub.name);
         DOM.setText("clubTabCity", userClub.city || "Deutschland");

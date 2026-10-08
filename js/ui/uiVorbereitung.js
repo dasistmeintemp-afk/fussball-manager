@@ -181,6 +181,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <div class="pre-candidate${passt ? "" : " zu-teuer"}">
                     <div class="pre-cand-info">
                         <div><strong>${esc(k.name)}</strong> <span class="muted-note">(${k.alter})</span> ${this.stabSterneHtml(k.guete)}</div>
+                        ${k.ehemaliger ? `<span class="pre-cand-ehem">${k.ehemaliger.legende ? "⭐ Vereinslegende" : "Ehemaliger Spieler"} · ${k.ehemaliger.spiele} Spiele, ${k.ehemaliger.tore} Tore für den Verein</span>` : ""}
                         <span class="muted-note">${esc(k.ruf)} · fordert ${GameState.formatMoney(k.gehalt)}/Wo${k.letzteForderung ? ` · zuletzt ${GameState.formatMoney(k.letzteForderung)}` : ""}</span>
                         ${schlechter ? `<span class="pre-cand-warn">schwächer als die Aushilfe</span>` : ""}
                         ${passt ? "" : `<span class="pre-cand-warn">sprengt zur Forderung den Etat</span>`}

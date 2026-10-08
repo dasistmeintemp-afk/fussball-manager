@@ -10596,6 +10596,62 @@ function runEngineTests() {
         if (neu.some(c => c.countryId === "de" && c.investor.anteil > 49)) throw new Error("50+1 bei KI-Übernahme verletzt");
     });
 
+    test("Ehemalige: Rückkehr in den Trainerstab mit Herzensrabatt, Abschiedsspiel für Legenden", () => {
+        const { EhemaligeEngine: Ehemalige } = require('./js/engine/ehemaligeEngine.js');
+        const { ChronikEngine } = require('./js/engine/chronikEngine.js');
+        const { SeasonEngine } = require('./js/engine/seasonEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const chronik = ChronikEngine.chronik(state);
+        const eigene = state.players.filter(p => p.clubId === club.id);
+        const legende = eigene.find(p => ["ZM", "DM", "OM"].includes(p.pos)) || eigene[0];
+        const kurz = eigene.find(p => p !== legende);
+        const fremd = state.players.find(p => p.clubId && p.clubId !== club.id);
+        // Bilanzen aus früheren Saisons: 180 Spiele (Legende), 12 Spiele, 55 Spiele für uns und jetzt woanders
+        chronik.spieler[legende.id] = [legende.name, 180, 41, 30, 1, 1, legende.pos];
+        chronik.spieler[kurz.id] = [kurz.name, 12, 1, 0, 1, 1, kurz.pos];
+        chronik.spieler[fremd.id] = [fremd.name, 55, 9, 4, 1, 1, fremd.pos];
+
+        // Das Karriereende über den echten Ablauf
+        const chanceVorher = SeasonEngine.karriereendeChance;
+        const gehen = new Set([legende.id, kurz.id, fremd.id]);
+        SeasonEngine.karriereendeChance = (p) => gehen.has(p.id) ? 1 : 0;
+        try { SeasonEngine.processRetirements(state); } finally { SeasonEngine.karriereendeChance = chanceVorher; }
+        if (state.players.some(p => gehen.has(p.id))) throw new Error("Karriereende nicht vollzogen");
+        const liste = club.ehemalige || [];
+        const l = liste.find(e => e.id === legende.id), f = liste.find(e => e.id === fremd.id);
+        if (!l || !l.legende || !f || f.legende || liste.some(e => e.id === kurz.id)) throw new Error(`Liste der Ehemaligen falsch: ${JSON.stringify(liste.map(e => [e.name, e.spiele, e.legende]))}`);
+        if (!f.zuletzt) throw new Error("Der letzte Verein fehlt");
+        if (Ehemalige.offeneAbschiede(state).length !== 1) throw new Error("Kein Abschiedsspiel angeboten");
+
+        // In der Vorbereitung bewirbt sich der Ehemalige - mit Herzensrabatt
+        const chance = Ehemalige.CHANCE;
+        Ehemalige.CHANCE = 1;
+        try { PreseasonEngine.start(state); } finally { Ehemalige.CHANCE = chance; }
+        const k = (state.preseason.bewerber[l.bereich] || []).find(b => b.ehemaliger && b.ehemaliger.id === legende.id);
+        if (!k || !k.ehemaliger.legende) throw new Error("Die Legende bewirbt sich nicht");
+        const markt = PreseasonEngine.rundeGehalt(PreseasonEngine.marktGehalt(club, l.bereich, k.guete));
+        if (!(k.gehalt < markt)) throw new Error(`Kein Herzensrabatt: ${k.gehalt} / ${markt}`);
+        const moral = state.players.find(p => p.clubId === club.id).morale ?? 70;
+        if (club.staff) delete club.staff[l.bereich];
+        const r = PreseasonEngine.verpflichte(state, l.bereich, k.id);
+        if (!r.ok) throw new Error(`Verpflichtung gescheitert: ${r.grund}`);
+        if (!club.staff[l.bereich].ehemaliger?.legende || !l.eingestellt) throw new Error("Rückkehr nicht vermerkt");
+        if (!((state.players.find(p => p.clubId === club.id).morale ?? 70) > moral || moral >= 99)) throw new Error("Die Legende hebt die Stimmung nicht");
+        if (Ehemalige.verfuegbar(state).some(e => e.id === legende.id)) throw new Error("Eingestellt und trotzdem verfügbar");
+
+        // Das Abschiedsspiel: volles Haus, Geld für den Verein, Eintrag in der Chronik
+        const kasse = club.balance;
+        const a = Ehemalige.abschiedsspiel(state, legende.id, () => 0.5);
+        if (!a.success || !(a.zuschauer > 0) || club.balance - kasse !== a.fuerVerein || !(a.fuerVerein < a.einnahmen)) throw new Error("Abschiedsspiel ohne Einnahmen");
+        if (!chronik.abschiede?.[0] || chronik.abschiede[0].name !== legende.name) throw new Error("Abschiedsspiel fehlt in der Chronik");
+        if (Ehemalige.abschiedsspiel(state, legende.id).success) throw new Error("Zweites Abschiedsspiel");
+
+        // Nach vier Jahren ist der Ehemalige nicht mehr im Fußball
+        state.seasonYear = (state.seasonYear || 1) + Ehemalige.JAHRE;
+        if (Ehemalige.verfuegbar(state).some(e => e.id === fremd.id)) throw new Error("Nach vier Jahren noch verfügbar");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

@@ -564,6 +564,21 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 : "Steigerungen und eine Mindestablöse gefallen ihm, eine Option nicht. Er rechnet das ins Gehalt ein.");
     },
 
+    /**
+     * Unter der Saisonbilanz: wie sie sich auf Liga, Pokal und Europapokal
+     * verteilt - nur, wenn der Spieler nicht ausschließlich in der Liga spielte.
+     */
+    wettbewerbsTeile(player) {
+        const statistik = typeof StatistikEngine !== "undefined" ? StatistikEngine : null;
+        if (!statistik || !player?.stats) return "";
+        const teile = [["liga", "Liga"], ["pokal", "Pokal"], ["europa", "Europapokal"]]
+            .map(([art, name]) => ({ name, s: statistik.von(player, art) }))
+            .filter(t => t.s.matches > 0);
+        if (teile.length < 2) return "";
+        return `<small class="pd-saison-teile">${teile.map(t =>
+            `${t.name} ${t.s.matches} Sp. · ${t.s.goals} T · ${t.s.assists} V`).join(" | ")}</small>`;
+    },
+
     /** Die Laufbahn Saison für Saison (LaufbahnEngine) - eingeklappt, mit Summe */
     laufbahnHtml(state, player) {
         const engine = typeof LaufbahnEngine !== "undefined" ? LaufbahnEngine : null;
@@ -969,6 +984,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <div class="pd-saison">
                 <span>Saison</span>
                 <strong>${player.stats.matches} Spiele · ${player.stats.goals} Tore · ${player.stats.assists} Vorlagen · Note ${(player.stats.matches > 0 ? (player.stats.ratingSum / player.stats.matches).toFixed(2) : '-')}</strong>
+                ${this.wettbewerbsTeile(player)}
             </div>`}
 
             <div class="stats-grid" style="grid-template-columns: 1fr 1fr; gap:14px; margin-bottom:16px;">

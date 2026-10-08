@@ -12,8 +12,8 @@
  *                     den Torschützen eines Mittelfeldklubs. Und wie bei jeder
  *                     Wahl zählt der Name ein wenig mit.
  *   Talent          - der beste Spieler bis 21 aus den ersten beiden Ligen.
- *   Torjäger Europas - Pflichtspieltore mit Faktor: zwei in den ersten
- *                     Ligen, anderthalb in den zweiten, sonst einer.
+ *   Torjäger Europas - Ligatore mit Faktor: zwei in den ersten Ligen,
+ *                     anderthalb in den zweiten, sonst einer.
  *   Trainer         - wer am meisten gewonnen und am weitesten über seinem
  *                     Kader gelandet ist.
  *   Elf des Jahres  - im 4-3-3, je Platz der Beste der Wahl.
@@ -159,17 +159,20 @@ const JahrespreisEngine = {
         return { staerke, ligaStaerke, staerksteLiga: Math.max(0, ...ligaStaerke.values()), titel: this.titel(state) };
     },
 
-    /** Torjäger Europas: Pflichtspieltore mal Faktor der Stufe, über alle Ligen */
+    /** Torjäger Europas: Ligatore mal Faktor der Stufe, über alle Ligen */
     torjaeger(state) {
         const vereine = new Map((state.clubs || []).map(c => [c.id, c]));
+        const statistik = _jpResolve("StatistikEngine", "./statistikEngine.js");
         let bester = null;
         (state.players || []).forEach(p => {
             const club = p && vereine.get(p.clubId);
-            const tore = p?.stats?.goals || 0;
-            if (!club || tore <= 0) return;
+            if (!club || !((p?.stats?.goals || 0) > 0)) return;
+            const liga = statistik ? statistik.von(p, "liga") : p.stats;
+            const tore = liga.goals || 0;
+            if (tore <= 0) return;
             const punkte = tore * (this.TORFAKTOR[club.level || 1] || 1);
-            if (!bester || punkte > bester.punkte || (punkte === bester.punkte && (p.stats.matches || 0) < bester.spiele)) {
-                bester = { p, club, tore, punkte, spiele: p.stats.matches || 0 };
+            if (!bester || punkte > bester.punkte || (punkte === bester.punkte && (liga.matches || 0) < bester.spiele)) {
+                bester = { p, club, tore, punkte, spiele: liga.matches || 0 };
             }
         });
         return bester;
@@ -301,7 +304,7 @@ const JahrespreisEngine = {
             `Weltfußballer des Jahres: ${zeile(erster)} - Note ${String(erster.note).replace(".", ",")}, ${erster.tore} Tore, ${erster.vorlagen} Vorlagen${erster.titel.length ? `, ${erster.titel.join(", ")}` : ""}.`,
             rest.length ? `Dahinter: ${rest.map(e => `${e.platz}. ${zeile(e)}`).join(", ")}.` : null,
             jahr.talent ? `Talent des Jahres: ${zeile(jahr.talent)}, ${jahr.talent.alter} Jahre.` : null,
-            jahr.torjaeger ? `Torjäger Europas: ${zeile(jahr.torjaeger)} mit ${jahr.torjaeger.tore} Pflichtspieltoren.` : null,
+            jahr.torjaeger ? `Torjäger Europas: ${zeile(jahr.torjaeger)} mit ${jahr.torjaeger.tore} Ligatoren.` : null,
             jahr.trainer ? `Trainer des Jahres: ${jahr.trainer.istNutzer ? "Sie" : (jahr.trainer.name ? `${jahr.trainer.name} (${jahr.trainer.verein})` : `der Trainer von ${jahr.trainer.verein}`)} - ${jahr.trainer.grund}.` : null,
             "",
             `Elf des Jahres: ${jahr.elf.map(e => `${e.platz} ${e.name}`).join(", ")}`,

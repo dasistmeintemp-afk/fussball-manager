@@ -55,6 +55,15 @@ const _mTaktik = _einmal(() => (typeof TacticsEngine !== 'undefined' && TacticsE
             ? (() => { try { return require('./tacticsEngine.js').TacticsEngine; } catch (e) { return null; } })()
             : null)));
 
+/** Die Statistik je Wettbewerb (Liga, Pokal, Europapokal) */
+const _mStatistik = _einmal(() => (typeof StatistikEngine !== 'undefined' && StatistikEngine)
+    ? StatistikEngine
+    : ((typeof window !== 'undefined' && window.StatistikEngine)
+        ? window.StatistikEngine
+        : ((typeof require !== 'undefined')
+            ? (() => { try { return require('./statistikEngine.js').StatistikEngine; } catch (e) { return null; } })()
+            : null)));
+
 /** Die Formationsvorlagen aus gameState.js */
 const _formationen = _einmal(() => (typeof FORMATION_CONFIGS !== 'undefined' && FORMATION_CONFIGS)
     ? FORMATION_CONFIGS
@@ -2526,6 +2535,9 @@ class MatchEngine {
         // Saisonbilanz: Der beste Torjäger hatte nach sieben Spieltagen 24
         // Tore, neun davon aus vier Freundschaftsspielen.
         const pflichtspiel = !(match && match.freundschaftsspiel);
+        // Pokal und Europapokal werden daneben eigens gezählt - die Liga ist der Rest
+        const statistik = _mStatistik();
+        const wettbewerb = statistik ? statistik.art(match) : null;
 
         // Noten- und Einsatzminutenberechnung (B9, B12)
         allPlayedPlayerIds.forEach(playerId => {
@@ -2566,6 +2578,10 @@ class MatchEngine {
                 player.stats.ratingSum = (player.stats.ratingSum || 0) + rating;
                 if (oppGoals === 0 && isTW && minutes >= 60) {
                     player.stats.cleanSheets = (player.stats.cleanSheets || 0) + 1;
+                }
+                if (statistik && wettbewerb && wettbewerb !== "liga") {
+                    statistik.buche(player, wettbewerb, { minutes, goals: st.goals, assists: st.assists, rating,
+                        cleanSheet: oppGoals === 0 && isTW && minutes >= 60 });
                 }
             }
             player.form = parseFloat((((player.form || 7.0) * 0.7) + (rating * 0.3)).toFixed(1));

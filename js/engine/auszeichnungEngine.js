@@ -109,6 +109,12 @@ const AuszeichnungEngine = {
         return notenSumme / spiele + 0.25 * (tore + 0.6 * vorlagen) / spiele;
     },
 
+    /** Die Preise einer Liga zählen nur Ligaspiele - nicht Pokal und Europapokal */
+    _liga(p) {
+        const st = _auszResolve("StatistikEngine", "./statistikEngine.js");
+        return st && typeof st.von === "function" ? st.von(p, "liga") : (p.stats || {});
+    },
+
     _eintrag(p, extra = {}) {
         return p ? { id: p.id, name: p.name, pos: p.pos, alter: p.age, clubId: p.clubId, ...extra } : null;
     },
@@ -120,7 +126,7 @@ const AuszeichnungEngine = {
         const liga = this._ligaVon(state);
         const spieler = {};
         this._spielerDerLiga(state, liga).forEach(p => {
-            const s = p.stats || {};
+            const s = this._liga(p);
             spieler[p.id] = [s.matches || 0, s.goals || 0, s.assists || 0, Math.round((s.ratingSum || 0) * 10) / 10];
         });
         const vereine = {};
@@ -151,7 +157,7 @@ const AuszeichnungEngine = {
         const kandidaten = [];
         this._spielerDerLiga(state, stand.liga).forEach(p => {
             const vorher = stand.spieler[p.id] || [0, 0, 0, 0];
-            const s = p.stats || {};
+            const s = this._liga(p);
             const spiele = (s.matches || 0) - vorher[0];
             if (spiele <= 0) return;
             const tore = (s.goals || 0) - vorher[1];
@@ -315,7 +321,7 @@ const AuszeichnungEngine = {
         const minSpiele = Math.max(3, Math.round(runden * this.SAISON_MIN_ANTEIL));
         const kandidaten = this._spielerDerLiga(state, ligaId)
             .map(p => {
-                const s = p.stats || {};
+                const s = this._liga(p);
                 const spiele = s.matches || 0;
                 return { p, spiele, tore: s.goals || 0, vorlagen: s.assists || 0, schnitt: spiele ? (s.ratingSum || 0) / spiele : 0,
                     wert: this.wertung(spiele, s.goals || 0, s.assists || 0, s.ratingSum || 0) };

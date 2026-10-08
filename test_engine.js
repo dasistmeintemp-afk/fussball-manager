@@ -11278,6 +11278,55 @@ function runEngineTests() {
         if (state.jahrespreise.length !== Jp.GEMERKT) throw new Error(`${state.jahrespreise.length} Jahrgänge gespeichert`);
     });
 
+    test("Statistik je Wettbewerb: Liga, Pokal und Europapokal getrennt, Ranglisten und Preise zählen die Liga", () => {
+        const { StatistikEngine: St } = require('./js/engine/statistikEngine.js');
+        const { AuszeichnungEngine: Preise } = require('./js/engine/auszeichnungEngine.js');
+        const { JahrespreisEngine: Jp } = require('./js/engine/jahrespreisEngine.js');
+        // Welche Partie zählt wozu
+        const arten = [[{ competitionId: "de_liga_1" }, "liga"], [{}, "liga"], [{ competitionId: "de_cup", isCup: true }, "pokal"],
+            [{ competitionId: "supercup", isCup: true }, "pokal"], [{ competitionId: "playoff" }, "pokal"],
+            [{ competitionId: "ucl", isCup: true }, "europa"], [{ competitionId: "uecl" }, "europa"],
+            [{ competitionId: "friendly", freundschaftsspiel: true }, null]];
+        arten.forEach(([m, soll]) => { if (St.art(m) !== soll) throw new Error(`${JSON.stringify(m)} zählt zu ${St.art(m)} statt ${soll}`); });
+
+        // Ein Pokalspiel landet in der Gesamtzahl und im Pokal - nicht in der Liga
+        const state = GameState.createNewGame("muc", "normal", { name: "Statistiker" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.leagueId === "de_liga_2");
+        const kader = state.players.filter(p => p.clubId === "muc");
+        const vorher = new Map(kader.map(p => [p.id, St.von(p, "liga").matches]));
+        const partie = { id: "pokal_test", homeClubId: heim.id, awayClubId: gast.id, competitionId: "de_cup", isCup: true, played: false };
+        MatchEngine.simulateFullMatch(partie, heim, gast, state.players);
+        const gespielt = kader.filter(p => (p.stats.matches || 0) > 0);
+        if (gespielt.length < 11) throw new Error("Keine Einsätze gezählt");
+        gespielt.forEach(p => {
+            if (St.von(p, "pokal").matches !== 1) throw new Error(`${p.name}: Pokalspiel nicht gezählt`);
+            if (St.von(p, "liga").matches !== vorher.get(p.id)) throw new Error(`${p.name}: Pokalspiel in der Liga gezählt`);
+            if (St.von(p, "alle").goals !== St.von(p, "liga").goals + St.von(p, "pokal").goals + St.von(p, "europa").goals) throw new Error("Summe stimmt nicht");
+        });
+        const torschuetzen = kader.filter(p => St.von(p, "pokal").goals > 0).length;
+        if ((partie.homeGoals || 0) > 0 && torschuetzen === 0) throw new Error("Pokaltore fehlen");
+
+        // Preise und Torjäger Europas zählen nur die Liga
+        const vereinVon = new Map(state.clubs.map(c => [c.id, c]));
+        state.players.forEach(p => { p.stats = { matches: 30, goals: 0, assists: 0, ratingSum: 30 * 6.8, minutes: 2500 }; p.statsPokal = undefined; p.statsEuropa = undefined; });
+        const de1 = state.players.filter(p => vereinVon.get(p.clubId)?.leagueId === "de_liga_1" && p.pos === "ST");
+        const [ligaKoenig, pokalHeld] = de1;
+        Object.assign(ligaKoenig.stats, { goals: 25 });
+        Object.assign(pokalHeld.stats, { goals: 32, matches: 36, ratingSum: 36 * 6.8 });
+        pokalHeld.statsEuropa = [6, 540, 12, 0, 6 * 68, 0];
+        pokalHeld.statsPokal = [6, 540, 8, 0, 6 * 68, 0];
+        if (St.von(pokalHeld, "liga").goals !== 12 || St.von(pokalHeld, "liga").matches !== 24) throw new Error(`Liga falsch: ${JSON.stringify(St.von(pokalHeld, "liga"))}`);
+        const saison = Preise.saisonPreise(state, "de_liga_1");
+        if (saison.torjaeger.id !== ligaKoenig.id || saison.torjaeger.tore !== 25) throw new Error(`Torjäger der Liga: ${saison.torjaeger.name} (${saison.torjaeger.tore})`);
+        const europa = Jp.torjaeger(state);
+        if (europa.p.id !== ligaKoenig.id || europa.tore !== 25) throw new Error(`Torjäger Europas: ${europa.p.name} (${europa.tore})`);
+
+        // Zum Saisonwechsel gehen auch die Teile auf null
+        St.zuruecksetzen(pokalHeld);
+        if (St.von(pokalHeld, "pokal").matches !== 0 || St.von(pokalHeld, "europa").goals !== 0) throw new Error("Teile nicht zurückgesetzt");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

@@ -107,10 +107,14 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
     - Ein Preis für den eigenen Trainer stärkt seinen Ruf und das Vertrauen des Vorstands.
   - **Anzeige:** Die Ranglisten zeigen die Monatspreise der Saison und die Preise der letzten Saison mit der Elf auf dem Platz. Ein Tipp auf einen Namen öffnet die Akte.
   - **Korrektur im Archiv:** Torschützenkönig und Spieler der Saison wurden vorher über alle 384 Vereine der Welt ermittelt. Jetzt zählt nur die eigene Liga.
+- **Statistik je Wettbewerb (`StatistikEngine`):** Neben der Saisonbilanz aller Pflichtspiele führt jeder Spieler, was davon im Pokal (mit Supercup und Relegation) und im Europapokal geschah. Die Liga ist der Rest.
+  - Vorher zählten Torjägerliste, Vorlagen, Notenliste, die Preise der Liga und der Torjäger Europas Pokal- und Europapokaltore mit. Ein Stürmer mit Champions League stand allein dadurch vorn.
+  - Jetzt zählen dort nur Ligaspiele. Die Akte zeigt unter der Saisonbilanz die Aufteilung (Liga, Pokal, Europapokal), sobald ein Spieler nicht nur in der Liga gespielt hat.
+  - Gespeichert wird das als kurze Zahlenreihe und nur für Spieler mit Pokal- oder Europapokaleinsätzen.
 - **Jahrespreise (`JahrespreisEngine`):** Nach den Saisonpreisen der Ligen folgt die Gala des Jahres über die fünf ersten Ligen und den Europapokal.
   - **Weltfußballer mit Podest:** Gewertet werden Noten, Tore und Vorlagen der Saison, die Stärke der Liga und die Titel (Meisterschaft, Pokal, Europapokal, auch das Finale der Königsklasse). Ein großer Name zieht ein paar Stimmen. Wählbar ist, wer mindestens 60 % der Ligaspiele bestritten hat.
   - **Talent des Jahres:** bis 21 Jahre, aus den ersten und zweiten Ligen.
-  - **Torjäger Europas:** Pflichtspieltore mal Faktor - zwei in den ersten Ligen, anderthalb in den zweiten, sonst einer.
+  - **Torjäger Europas:** Ligatore mal Faktor - zwei in den ersten Ligen, anderthalb in den zweiten, sonst einer.
   - **Trainer des Jahres:** Titel zählen am meisten, dazu wie weit ein Verein über dem Platz landet, den sein Kader erwarten ließ.
   - **Elf des Jahres** im 4-3-3.
   - **Folgen:** Die Preise stehen in der Akte und steigern Marktwert und Laune. Gewinnt der eigene Trainer, stärkt das seinen Ruf und das Vertrauen des Vorstands. Die Ranglisten zeigen die letzte Gala, die Post fasst sie zusammen.
@@ -846,6 +850,7 @@ untitled/
 │   │   ├── urlaubEngine.js     # Urlaub: Ziele bis Monats-, Fenster- und Saisonende, Bilanz
 │   │   ├── supercupEngine.js   # Supercup: Meister gegen Pokalsieger am Ende der Vorbereitung
 │   │   ├── jahrespreisEngine.js # Gala des Jahres: Weltfußballer, Talent, Torjäger Europas, Trainer, Elf
+│   │   ├── statistikEngine.js  # Statistik je Wettbewerb: Liga, Pokal, Europapokal
 │   │   └── opponentAnalysisEngine.js # Taktische Gegneranalyse
 │   ├── ui/
 │   │   ├── uiManager.js        # Kern: Start, Assistent, Reiter, Kader, Taktik, Kalender, Ereignisse

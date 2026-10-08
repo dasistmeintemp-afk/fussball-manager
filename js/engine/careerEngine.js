@@ -312,6 +312,9 @@ class CareerEngine {
         state.boardConfidence = 62;
         state.vorstandStimmung = 0;
         if (club) club.confidence = 62;
+        // Ab heute führt der neue Verein seine Chronik
+        const chronik = _carResolve("ChronikEngine", "./chronikEngine.js");
+        if (chronik && typeof chronik.chronik === "function") chronik.chronik(state, clubId);
         state.jobSecurity = { stage: "ruhig", ultimatumUntil: null, ultimatumRank: null, warnedAt: null };
         state.fanMood = 58;
         state.mediaPressure = 55;
@@ -408,6 +411,8 @@ class CareerEngine {
             saison: saison || state.seasonYear || 1,
             clubName: club ? club.name : ""
         });
+        const chronik = _carResolve("ChronikEngine", "./chronikEngine.js");
+        if (chronik && typeof chronik.titel === "function") chronik.titel(state, wettbewerb, saison);
     }
 
     static postfach(state, sender, betreff, text, typ) {

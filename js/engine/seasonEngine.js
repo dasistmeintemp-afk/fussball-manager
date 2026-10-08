@@ -624,6 +624,12 @@ class SeasonEngine {
                 if (verhandlung && typeof verhandlung.zahlePraemien === 'function') {
                     verhandlung.zahlePraemien(state, eigenesSpiel);
                 }
+                // Rekorde und Serien in die Vereinschronik
+                const chronik = _resolve('ChronikEngine', './chronikEngine.js');
+                if (chronik && typeof chronik.nachSpiel === 'function') {
+                    const rekord = chronik.nachSpiel(state, eigenesSpiel, "Liga");
+                    if (rekord) SeasonEngine.boardMessage(state, "📜 Vereinschronik", rekord.replace(/^📜 /, "Neuer Eintrag in der Vereinschronik: ") + ".", "chronik");
+                }
                 // Die zweite Mannschaft spielt am selben Spieltag
                 const reserve = _resolve('ReserveEngine', './reserveEngine.js');
                 if (reserve && typeof reserve.nachSpieltag === 'function') {
@@ -1035,6 +1041,11 @@ class SeasonEngine {
         // Saisonauszeichnungen - in der eigenen Liga. Vorher zählten alle
         // Spieler der Welt: Der Torschützenkönig der Bundesliga-Chronik
         // konnte aus der Landesliga kommen.
+        // Die Saison in die Vereinschronik - vor dem Zurücksetzen der Statistik
+        const chronikEngine = _resolve('ChronikEngine', './chronikEngine.js');
+        if (chronikEngine && typeof chronikEngine.saisonAbschluss === 'function') {
+            chronikEngine.saisonAbschluss(state, { platz: userRank || null, liga: state.leagueName || null });
+        }
         const preisEngine = _resolve('AuszeichnungEngine', './auszeichnungEngine.js');
         const preise = preisEngine && typeof preisEngine.saisonAbschluss === 'function' ? preisEngine.saisonAbschluss(state) : null;
         const ligaSpieler = new Set((state.clubs || []).filter(c => c.leagueId === userClub.leagueId).map(c => c.id));

@@ -357,6 +357,22 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             </div>`;
     },
 
+    /** Spiele, Tore und Vorlagen für den eigenen Verein - und ob er eine Legende ist */
+    vereinsbilanzHtml(player, eigener) {
+        const engine = typeof ChronikEngine !== "undefined" ? ChronikEngine : null;
+        if (!engine || !eigener) return "";
+        const state = this.app.state;
+        const b = engine.bilanz(state, player);
+        if (!b.spiele) return "";
+        const titel = (state.chronik?.[state.userClubId]?.titel || []).length;
+        const legende = engine.istLegende(b, titel);
+        return `
+            <div class="pd-saison pd-verein">
+                <span>${legende ? "⭐ Vereinslegende" : "Für den Verein"} <small>seit Saison ${b.seit}</small></span>
+                <strong>${b.spiele} Spiele · ${b.tore} Tore · ${b.vorlagen} Vorlagen</strong>
+            </div>`;
+    },
+
     /** Auszeichnungen in der Akte: Spieler des Monats, Elf der Saison ... */
     preiseHtml(player) {
         const engine = typeof AuszeichnungEngine !== "undefined" ? AuszeichnungEngine : null;
@@ -869,6 +885,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ${positionMapHtml}
 
             ${eigenheitenHtml}
+
+            ${this.vereinsbilanzHtml(player, isUserClub && !isProspect)}
 
             ${this.preiseHtml(player)}
 

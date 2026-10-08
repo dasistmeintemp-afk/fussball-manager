@@ -244,6 +244,12 @@ class TransferEngine {
         }
         if (fee > 0 && sellerClub) delete player.weiterverkauf;
 
+        // Teuerster Kauf und Verkauf in die Vereinschronik
+        const chronik = (typeof ChronikEngine !== "undefined" && ChronikEngine)
+            ? ChronikEngine
+            : (typeof require !== "undefined" ? (() => { try { return require("./chronikEngine.js").ChronikEngine; } catch (e) { return null; } })() : null);
+        if (chronik && typeof chronik.transfer === "function") chronik.transfer(state, player, fee, buyerClub.id, sellerClub ? sellerClub.id : null);
+
         // Geht ein Wortführer aus der eigenen Kabine, merkt die Mannschaft das
         if (sellerClub && sellerClub.id === state.userClubId) {
             const kabine = (typeof DressingRoomEngine !== "undefined" && DressingRoomEngine)

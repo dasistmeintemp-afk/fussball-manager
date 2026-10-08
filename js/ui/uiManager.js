@@ -5001,11 +5001,65 @@ class UIManager {
         });
     }
 
+    /**
+     * Die Vereinschronik: Rekorde, Titel, Saisonbilanzen, Rekordspieler und
+     * Legenden - geführt ab der Übernahme.
+     */
+    renderChronik(state, club) {
+        const el = document.getElementById("clubChronik");
+        const engine = typeof ChronikEngine !== "undefined" ? ChronikEngine : null;
+        if (!el || !engine) return;
+        const u = engine.uebersicht(state, club.id) || { seit: state.seasonYear || 1, rekorde: {}, saisons: [], titel: [], meisteSpiele: [], meisteTore: [], legenden: [] };
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const r = u.rekorde || {};
+        const spiel = (e) => e ? `${esc(e.ergebnis)} ${e.heim ? "gegen" : "bei"} ${esc(e.gegner)} <small>${esc(e.wettbewerb)}, ${esc(e.datum)}</small>` : "–";
+        const rekorde = [
+            ["Höchster Sieg", spiel(r.hoechsterSieg)],
+            ["Höchste Niederlage", spiel(r.hoechsteNiederlage)],
+            ["Torreichstes Spiel", r.torreichstes ? `${spiel(r.torreichstes)}` : "–"],
+            ["Zuschauerrekord", r.zuschauer ? `${r.zuschauer.wert.toLocaleString("de-DE")} <small>gegen ${esc(r.zuschauer.gegner)}, ${esc(r.zuschauer.datum)}</small>` : "–"],
+            ["Längste Siegesserie", r.siegserie ? `${r.siegserie.wert} Spiele <small>bis ${esc(r.siegserie.bis)}</small>` : "–"],
+            ["Längste Serie ohne Niederlage", r.ungeschlagen ? `${r.ungeschlagen.wert} Spiele <small>bis ${esc(r.ungeschlagen.bis)}</small>` : "–"],
+            ["Teuerster Kauf", r.kauf ? `${esc(r.kauf.name)} <small>${this.geldKurz(r.kauf.wert)} von ${esc(r.kauf.verein)}, Saison ${r.kauf.saison}</small>` : "–"],
+            ["Teuerster Verkauf", r.verkauf ? `${esc(r.verkauf.name)} <small>${this.geldKurz(r.verkauf.wert)} an ${esc(r.verkauf.verein)}, Saison ${r.verkauf.saison}</small>` : "–"]
+        ].map(([titel, wert]) => `<div class="chronik-zeile"><span>${titel}</span><strong>${wert}</strong></div>`).join("");
+        const liste = (eintraege, wert) => eintraege.length
+            ? `<ol class="chronik-liste">${eintraege.map(s => `<li><button type="button" class="preis-name" data-player-id="${esc(s.id)}"${s.aktiv ? "" : " disabled"}>${esc(s.name)}</button> <small>${esc(s.pos || "")} · ${s.von === s.bis ? `Saison ${s.von}` : `${s.von}–${s.bis}`}</small><b>${wert(s)}</b></li>`).join("")}</ol>`
+            : `<p class="text-muted chronik-leer">Noch keine Einträge.</p>`;
+        el.innerHTML = `
+            <div class="card-header"><h3>📜 Chronik & Rekorde</h3><span class="header-tag">seit Saison ${u.seit}</span></div>
+            ${u.titel.length ? `<div class="chronik-titel">${u.titel.map(t => `<span>🏆 ${esc(t.wettbewerb)} <small>Saison ${t.saison}</small></span>`).join("")}</div>` : ""}
+            <div class="chronik-raster">
+                <div>
+                    <h4>Rekorde</h4>
+                    ${rekorde}
+                </div>
+                <div>
+                    <h4>Rekordspieler</h4>
+                    ${liste(u.meisteSpiele, s => `${s.spiele} Spiele`)}
+                    <h4>Rekordtorschützen</h4>
+                    ${liste(u.meisteTore, s => `${s.tore} Tore`)}
+                    ${u.legenden.length ? `<h4>Vereinslegenden</h4>${liste(u.legenden, s => `${s.spiele} Sp. · ${s.tore} T.`)}` : ""}
+                </div>
+            </div>
+            ${u.saisons.length ? `
+            <h4>Saisonbilanzen</h4>
+            <div class="table-container"><table class="compact-table chronik-saisons">
+                <thead><tr><th>Saison</th><th>Liga</th><th>Platz</th><th>Punkte</th><th>Tore</th></tr></thead>
+                <tbody>${u.saisons.map(z => `<tr><td>${z.saison}</td><td>${esc(z.liga || "")}</td><td>${z.platz ?? "–"}</td><td>${z.punkte ?? "–"}</td><td>${z.tore ?? "–"}:${z.gegentore ?? "–"}</td></tr>`).join("")}</tbody>
+            </table></div>` : `<p class="text-muted chronik-leer">Die erste Saisonbilanz steht hier nach dem letzten Spieltag.</p>`}`;
+        el.querySelectorAll("[data-player-id]:not([disabled])").forEach(b => b.addEventListener("click", () => {
+            const id = this.resolvePlayerId ? this.resolvePlayerId(b.dataset.playerId) : b.dataset.playerId;
+            if (id !== null && id !== undefined) this.showPlayerDetailsModal(id);
+        }));
+    }
+
     renderClub() {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
         this.renderTrainerProfil();
+        this.renderChronik(state, userClub);
 
         DOM.setText("clubTabName", userClub.name);
         DOM.setText("clubTabCity", userClub.city || "Deutschland");

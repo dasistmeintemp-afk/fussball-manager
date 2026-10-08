@@ -10139,6 +10139,42 @@ function runEngineTests() {
         if (state.inbox[0]?.date !== "12.09.2026") throw new Error(`Datum in der Post: ${state.inbox[0]?.date}`);
     });
 
+    test("Realismus: Spielkultur je Liga, Elfmeter überall gleich, Gehaltsdisziplin der KI-Vereine", () => {
+        // Torfreude nach Land und Klasse: LaLiga und Serie A torärmer als Bundesliga
+        const faktor = (id) => MatchEngine.torKultur({ leagueId: id }, null);
+        if (!(faktor("es_liga_1") < faktor("de_liga_1") && faktor("it_liga_1") < faktor("de_liga_1") && faktor("es_liga_1") < faktor("fr_liga_1"))) throw new Error("Spielkultur der Ligen falsch geordnet");
+        if (!(faktor("es_liga_2") < faktor("es_liga_1"))) throw new Error("Zweite Liga nicht torärmer");
+        if (MatchEngine.torKultur({ leagueId: "cl", international: true }, { leagueId: "es_liga_1" }) !== 1) throw new Error("Europapokal mit Ligakultur");
+        if (MatchEngine.torKultur({ competitionId: "de_cup" }, { leagueId: "es_liga_1" }) !== faktor("es_liga_1")) throw new Error("Pokal ohne Kultur der Heimliga");
+
+        // Wirkung auf die Abschlüsse - Elfmeter bleiben gleich
+        const schuetze = { overall: 80, shooting: 80, technique: 78, pace: 75, physical: 75, dribbling: 76 };
+        const torwart = { overall: 78, reflexes: 78, oneOnOne: 76, handling: 76, positioning: 76 };
+        const quote = (art, f) => {
+            let tore = 0;
+            for (let i = 0; i < 4000; i++) {
+                if (MatchEngine.resolveShotAttempt(art, schuetze, torwart, { attack: 75 }, { defense: 75 }, {}, { torFaktor: f }).outcome === "goal") tore++;
+            }
+            return tore / 4000;
+        };
+        const voll = quote("through_ball", 1), kultur = quote("through_ball", 0.75);
+        if (!(kultur < voll * 0.85)) throw new Error(`Spielkultur ohne Wirkung: ${voll} gegen ${kultur}`);
+        if (Math.abs(quote("penalty", 1) - quote("penalty", 0.7)) > 0.04) throw new Error("Elfmeter von der Spielkultur betroffen");
+
+        // Gehaltsdisziplin: Wer über seine Verhältnisse zahlt, kommt halb zurück, der Nutzer nicht
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const ki = state.clubs.find(c => c.id !== state.userClubId && c.leagueId === "de_liga_1");
+        const eigener = state.clubs.find(c => c.id === state.userClubId);
+        const summe = (club) => state.players.filter(p => p.clubId === club.id && !p.leihe).reduce((s, p) => s + p.wage, 0);
+        state.players.filter(p => p.clubId === ki.id || p.clubId === eigener.id).forEach(p => { p.wage = Math.round(p.wage * 1.5); });
+        const kiVorher = summe(ki), eigenVorher = summe(eigener);
+        const ziel = FinanceEngine.gehaltsbudgetJeSpieltag(ki, state);
+        FinanceEngine.gehaltsDisziplin(state);
+        const kiNachher = summe(ki);
+        if (!(kiNachher < kiVorher && kiNachher > ziel * 0.98)) throw new Error(`Gehaltsdisziplin: ${kiVorher} -> ${kiNachher} (tragbar ${ziel})`);
+        if (summe(eigener) !== eigenVorher) throw new Error("Gehälter des Nutzers angefasst");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

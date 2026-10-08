@@ -267,6 +267,44 @@ const FinanceEngine = {
     },
 
     /**
+     * Gehaltsdisziplin der KI-Vereine zum Saisonwechsel.
+     *
+     * Jeder Wechsel legt beim Gehalt fünf bis dreißig Prozent drauf, jede
+     * Verlängerung ebenso - angeglichen wurde aber nur bei Auf- und Abstieg.
+     * Gemessen lagen die Erstligisten nach drei Saisons bei 115 % dessen, was
+     * sie tragen können, und Saison für Saison verloren mehr Vereine Geld.
+     * Wer über der Grenze liegt, kommt jetzt auf halbem Weg zurück: Spieler
+     * gehen, Verträge werden neu verhandelt. Der eigene Verein bleibt außen
+     * vor - dort entscheidet der Trainer.
+     */
+    GEHALT_GRENZE: 1.08,
+
+    gehaltsDisziplin(state) {
+        if (!state || !Array.isArray(state.players)) return 0;
+        const nachVerein = new Map();
+        state.players.forEach(p => {
+            if (!p.clubId || p.leihe) return;
+            if (!nachVerein.has(p.clubId)) nachVerein.set(p.clubId, []);
+            nachVerein.get(p.clubId).push(p);
+        });
+        let angepasst = 0;
+        (state.clubs || []).forEach(club => {
+            if (club.id === state.userClubId) return;
+            const kader = nachVerein.get(club.id);
+            if (!kader || !kader.length) return;
+            const ist = kader.reduce((s, p) => s + (p.wage || 0), 0);
+            const ziel = this.gehaltsbudgetJeSpieltag(club, state);
+            if (!(ist > 0) || !(ziel > 0)) return;
+            const quote = ist / ziel;
+            if (quote <= this.GEHALT_GRENZE) return;
+            const faktor = Math.sqrt(1 / quote);
+            kader.forEach(p => { p.wage = Math.max(120, Math.round((p.wage || 0) * faktor / 10) * 10); });
+            angepasst++;
+        });
+        return angepasst;
+    },
+
+    /**
      * Unterhalt für Stadion und Infrastruktur je Spieltag
      *
      * Zwei Dinge machen den Unterhalt zu einer echten Last:

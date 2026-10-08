@@ -165,6 +165,24 @@ const MATCH_TUNING = {
     // den Ball über die Mauer zirkelt, gab es nicht.
     direkterFreistoss: 0.3,
 
+    // Spielkultur der Ligen: Faktor auf die Torwahrscheinlichkeit aus dem
+    // Spiel heraus (Elfmeter ausgenommen), je Land und Spielklasse. Vorher
+    // fielen überall gleich viele Tore - LaLiga und Serie A lagen mit über
+    // drei Toren je Spiel weit über den echten 2,6 und 2,5. Geeicht auf die
+    // Saison 2024/25: Bundesliga 3,13, Ligue 1 2,98, Premier League 2,93,
+    // LaLiga 2,62, Serie A 2,54; die zweiten Ligen liegen darunter
+    // (Segunda und Championship deutlich), der deutsche Amateurfußball darüber.
+    torKultur: {
+        de: [0.96, 0.96, 0.93, 0.96],
+        en: [0.97, 0.86, 0.89],
+        fr: [0.91, 0.79, 0.79],
+        es: [0.8, 0.74, 0.77],
+        it: [0.82, 0.76, 0.78]
+    },
+    // Ab wann eine Mannschaft beim Remis in der Schlussphase als klar
+    // stärker gilt (Teamstärke, die Bundesliga spannt rund 13 Punkte)
+    remisStaerkeKlar: 4,
+
     // Zurufe von der Seitenlinie wirken zehn Minuten lang
     zurufDauer: 10,
     // ... danach braucht die Mannschaft fünf Minuten, bevor der nächste greift
@@ -796,7 +814,25 @@ class MatchEngine {
         return kandidaten[kandidaten.length - 1];
     }
 
-    static resolveShotAttempt(shotType, shooter, gk, attPower, defPower, tactics = {}) {
+    /**
+     * Die Spielkultur der Liga, in der die Partie läuft: ein Faktor auf die
+     * Torwahrscheinlichkeit. Pokal- und Ligaspiele zählen nach der Liga der
+     * Heimmannschaft, internationale Spiele nach keiner.
+     */
+    static torKultur(match, homeClub) {
+        const ligen = (typeof LEAGUES_DATA !== "undefined" && LEAGUES_DATA)
+            || (typeof window !== "undefined" && window.LEAGUES_DATA)
+            || (typeof require !== "undefined" ? (() => { try { return require("../data/leagueData.js").LEAGUES_DATA; } catch (e) { return null; } })() : null)
+            || [];
+        const international = match && (match.international || match.competitionType === "international" || /^(cl|el|ecl|uefa)/i.test(String(match.competitionId || "")));
+        const liga = ligen.find(l => l.id === match?.leagueId) || (international ? null : ligen.find(l => l.id === homeClub?.leagueId));
+        if (!liga) return 1;
+        const reihe = MATCH_TUNING.torKultur[liga.countryId];
+        if (!reihe) return 1;
+        return reihe[Math.min(reihe.length, Math.max(1, liga.level || 1)) - 1];
+    }
+
+    static resolveShotAttempt(shotType, shooter, gk, attPower, defPower, tactics = {}, umfeld = {}) {
         const getVal = (pl, attr) => (pl && typeof pl[attr] === 'number') ? pl[attr] : (pl?.overall || 68);
 
         let shooterSkill = getVal(shooter, "overall");
@@ -848,14 +884,16 @@ class MatchEngine {
             const cfg = MatchEngine.SCHWACHER_FUSS;
             pGoal *= _Random.chance(cfg.basis + 0.04) ? cfg.faktorSchwach : cfg.faktorStark;
         }
-        pGoal = _Random.clamp(pGoal, MATCH_TUNING.minGoalChance, MATCH_TUNING.maxGoalChance);
+        // Die Spielkultur der Liga - Elfmeter sind überall gleich schwer
+        const kultur = shotType === "penalty" ? 1 : (umfeld.torFaktor || 1);
+        pGoal = _Random.clamp(pGoal * kultur, MATCH_TUNING.minGoalChance, MATCH_TUNING.maxGoalChance);
 
         let pSave = 0.42 - skillEdge / 500;
         pSave = _Random.clamp(pSave, 0.22, 0.62);
 
         const pWoodwork = 0.05;
 
-        const xG = parseFloat(_Random.clamp(base + skillEdge / 300, 0.03, 0.76).toFixed(2));
+        const xG = parseFloat(_Random.clamp((base + skillEdge / 300) * kultur, 0.03, 0.76).toFixed(2));
 
         const roll = Math.random();
         if (roll < pGoal) return { outcome: "goal", xG };
@@ -892,6 +930,8 @@ class MatchEngine {
         }
 
         const startMinute = options.startMinute || 1;
+        // Wie torreich in dieser Liga gespielt wird
+        const umfeld = { torFaktor: typeof options.torFaktor === "number" ? options.torFaktor : MatchEngine.torKultur(match, homeClub) };
         let currentHomeScore = options.currentHomeScore || 0;
         // Der Schiedsrichter der Partie: Fouls, Karten, Vorteil
         const schiri = MatchEngine.schiedsrichterFuer(match);
@@ -1165,7 +1205,15 @@ class MatchEngine {
                 return 0;
             }
             if (eigene > fremde) return min >= 75 ? -1 : 0;
-            return min >= 83 ? 1 : 0;
+            // Remis in der Schlussphase: Wer klar besser ist, will den Sieg,
+            // wer klar schwächer ist, sichert den Punkt - und bei zwei
+            // ähnlich starken geht keiner mehr ins Risiko. Vorher stürmten
+            // ab der 83. Minute immer beide, und Unentschieden waren seltener
+            // als im echten Fußball (gemessen 20-24 % statt 25-30 %).
+            if (min < 75) return 0;
+            const vorsprung = (side === "home" ? 1 : -1) * (homePower.total - awayPower.total);
+            if (vorsprung >= MATCH_TUNING.remisStaerkeKlar) return 1;
+            return -1;
         };
 
         // Zurufe von der Seitenlinie: [{ side, art, von, bis }]
@@ -1200,7 +1248,7 @@ class MatchEngine {
 
             const { outcome, xG } = MatchEngine.resolveShotAttempt("freekick", taker, gk,
                 isHomeTeam ? homePower : awayPower, isHomeTeam ? awayPower : homePower,
-                isHomeTeam ? homeTactics : awayTactics);
+                isHomeTeam ? homeTactics : awayTactics, umfeld);
             const seite = isHomeTeam ? "home" : "away";
             const basis = {
                 minute: min,
@@ -1381,7 +1429,7 @@ class MatchEngine {
             }
 
             const modifiedAttPower = { ...attPowerLocal, attack: attPowerLocal.attack + staminaBonus + momentumBonus + zurufBonus + eckenBonus + variantenBonus };
-            const { outcome, xG } = MatchEngine.resolveShotAttempt(attackType, shooter, gk, modifiedAttPower, defPowerLocal, attTactics);
+            const { outcome, xG } = MatchEngine.resolveShotAttempt(attackType, shooter, gk, modifiedAttPower, defPowerLocal, attTactics, umfeld);
 
             if (outcome === "goal") {
                 if (isHomeAttacking) currentHomeScore++; else currentAwayScore++;

@@ -388,6 +388,9 @@ Jeder eigene Spieler hat in seiner Akte einen Entwicklungsplan. Der Trainings-Re
 - **Eigener Trainingsschwerpunkt:** Abschluss, Passspiel, Zweikampf, Schnelligkeit, Dribbling, Kopfball (Torhüter: Reflexe, Herauslaufen). Wächst der Spieler, wachsen diese Werte mit. Die Zusatzschichten kosten etwas Kraft.
 - **Umschulung:** Eine neue Position lernen, Einheit für Einheit. Wie schnell, hängt an der Anpassungsfähigkeit und daran, wie verwandt die Position ist. Ist sie gelernt, kommt eine Nachricht.
 - **Mentor:** Ein Spieler ab 25 betreut bis zu drei Spieler bis 23. Seine Einstellung färbt ab: Professionalität, Ehrgeiz, Temperament, Nerven und Beständigkeit wandern langsam in seine Richtung. Mit etwas Glück schaut sich der junge Spieler eine Eigenheit ab – sofern sie zu seinen Werten passt. Ein guter Mentor beschleunigt die Entwicklung leicht.
+- **Eigenheit antrainieren oder ablegen:** Im Plan wählt man eine Eigenheit, die zu Position und Werten passt (bis sechs Punkte unter der Voraussetzung geht es auch, nur mühsamer), oder eine, die er ablegen soll – etwa die Distanzschüsse, wenn sie nicht zur Taktik passen. Torhüter lernen nur Torwartsachen; mehr als drei Eigenheiten nimmt keiner an.
+  - Ein durchschnittlicher Spieler braucht rund drei Monate. Junge, professionelle und anpassungsfähige Spieler schaffen es schneller, mit Anfang dreißig dauert es fast doppelt so lange. Ein guter Trainerstab hilft, ein Mentor, der die Eigenheit selbst hat, macht sie vor (30 % schneller).
+  - Die Auswahl schätzt die Wochen, die Akte und der Trainings-Reiter zeigen den Stand. Ist es geschafft, meldet sich der Trainerstab. Die Extraschichten kosten etwas Kraft, ein Wechsel fängt von vorn an.
 
 ### 5b. 📋 Trainingsbericht: Belastung, Ermüdung und Risiko
 Das Training läuft **Tag für Tag** über den Kalender statt im Wochenblock. Zwischen den Spieltagen zeigt der Trainingsbericht für jeden Spieler:
@@ -624,7 +627,7 @@ untitled/
 │   │   ├── managerEngine.js    # Kabinenansprachen, Pressekonferenzen & Aufgabenliste
 │   │   ├── matchplanEngine.js  # Taktikbesprechung: Matchplan für ein Spiel
 │   │   ├── playerTalkEngine.js # Gespräche unter vier Augen, Versprechen, Wechselwünsche
-│   │   ├── developmentPlanEngine.js # Schwerpunkt, Umschulung, Mentor, Spielpraxis
+│   │   ├── developmentPlanEngine.js # Schwerpunkt, Umschulung, Eigenheit, Mentor, Spielpraxis
 │   │   ├── loanEngine.js       # Verleihen, Leihmarkt, Gehaltsanteile, Kaufoption, Rückkehr
 │   │   ├── reserveEngine.js    # Zweite Mannschaft (U23): Spielpraxis, Bilanz, Regeln
 │   │   ├── nationalTeamEngine.js # Nationalmannschaften, Nominierungen, Länderspielpausen, Nationaltrainer

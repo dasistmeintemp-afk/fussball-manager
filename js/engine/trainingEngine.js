@@ -276,7 +276,7 @@ class TrainingEngine {
                 const jugendFaktor = trainer ? trainer.faktor(state, "jugend", 0.2) : 1;
                 this.developPlayer(player, focus, intensity, trainingLevel, profil.gain * 0.22 * stabFaktor * planFaktor * jugendFaktor);
                 if (plan) {
-                    plan.nachEinheit(state, player, { gewachsen: player.overall > vorher })
+                    plan.nachEinheit(state, player, { gewachsen: player.overall > vorher, stab: stabFaktor })
                         .forEach(m => planMeldungen.push(m));
                 }
                 player.trainingLog.gain += (player.overall - vorher);

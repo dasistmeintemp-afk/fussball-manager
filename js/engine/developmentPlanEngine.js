@@ -10,6 +10,8 @@
  * - Eine Umschulung bringt ihm im Training eine neue Position bei.
  * - Ein erfahrener Mentor färbt auf einen jungen Spieler ab: Einstellung,
  *   Ehrgeiz, Nerven - und mit etwas Glück eine seiner Eigenheiten.
+ * - Eine Eigenheit lässt sich gezielt antrainieren oder ablegen. Wie lange
+ *   das dauert, hängt an Alter, Einstellung und Trainerstab.
  * - Spielpraxis zählt: Wer jung ist und regelmäßig spielt, entwickelt sich
  *   schneller als einer, der nur trainiert. Genau dafür gibt es Leihen.
  */
@@ -36,6 +38,16 @@ class DevelopmentPlanEngine {
     /** Chance je Einheit, eine Eigenheit des Mentors zu übernehmen */
     static EIGENHEIT_JE_EINHEIT = 0.006;
     static MENTOR_WERTE = ["professionalism", "ambition", "temperament", "importantMatches", "consistency"];
+    /** Mehr Eigenheiten trägt keiner - sonst wären sie nichts Besonderes */
+    static MAX_EIGENHEITEN = 3;
+    /** Einheiten, die ein durchschnittlicher Spieler für eine Eigenheit braucht (rund drei Monate) */
+    static EIGENHEIT_EINHEITEN = 26;
+    /** Trainingseinheiten in einer Woche mit Spiel - für die Schätzung */
+    static EINHEITEN_JE_WOCHE = 2;
+    /** Was ein Torwart lernen kann - Feldspielermarotten bringt ihm keiner bei */
+    static TORWART_EIGENHEITEN = ["mitspielen", "reaktion", "elfmeterkiller"];
+    /** Um so viele Punkte darf er unter der Voraussetzung liegen - dann wird es mühsam */
+    static EIGENHEIT_SPIELRAUM = 6;
 
     static _posEngine() {
         if (typeof PositionEngine !== "undefined" && PositionEngine) return PositionEngine;
@@ -154,6 +166,160 @@ class DevelopmentPlanEngine {
         return { success: true };
     }
 
+    // ------------------------------------------- Eigenheit antrainieren
+
+    static _katalog() {
+        return this._playerGenerator()?.EIGENHEITEN || [];
+    }
+
+    static _staffEngine() {
+        if (typeof CoachingStaffEngine !== "undefined" && CoachingStaffEngine) return CoachingStaffEngine;
+        if (typeof window !== "undefined" && window.CoachingStaffEngine) return window.CoachingStaffEngine;
+        if (typeof require !== "undefined") {
+            try { return require("./coachingStaffEngine.js").CoachingStaffEngine; } catch (e) { return null; }
+        }
+        return null;
+    }
+
+    /** Wie viel der Trainerstab des eigenen Vereins aus einer Einheit holt */
+    static _stabFaktor(state) {
+        const club = state?.clubs?.find(c => c.id === state.userClubId);
+        const staff = this._staffEngine();
+        const q = club && staff && typeof staff.staffQuality === "function" ? staff.staffQuality(club) : null;
+        return q?.entwicklungsFaktor ?? 1;
+    }
+
+    /** Erfüllt er die Voraussetzung - notfalls mit etwas Spielraum bei den Werten? */
+    static _erfuellt(eintrag, player, spielraum = 0) {
+        const probe = Object.assign({}, player);
+        if (spielraum) {
+            Object.keys(this.BERICHT_WERTE).forEach(k => { if (typeof probe[k] === "number") probe[k] += spielraum; });
+        }
+        try { return !!eintrag.passt(probe); } catch (e) { return false; }
+    }
+
+    /**
+     * Was er lernen könnte: Eigenheiten, die zu Position und Werten passen.
+     * schwer: Er liegt knapp unter der Voraussetzung - es geht, dauert aber.
+     */
+    static lernbareEigenheiten(player) {
+        const eigene = Array.isArray(player?.traits) ? player.traits : [];
+        if (!player || eigene.length >= this.MAX_EIGENHEITEN) return [];
+        const torwart = player.pos === "TW";
+        return this._katalog()
+            .filter(e => !eigene.some(t => t && t.key === e.key))
+            .filter(e => torwart === this.TORWART_EIGENHEITEN.includes(e.key))
+            .map(e => {
+                if (this._erfuellt(e, player)) return { key: e.key, text: e.text, schwer: false };
+                if (this._erfuellt(e, player, this.EIGENHEIT_SPIELRAUM)) return { key: e.key, text: e.text, schwer: true };
+                return null;
+            })
+            .filter(Boolean);
+    }
+
+    /**
+     * Wie schnell er eine Eigenheit annimmt oder ablegt. 1 heißt: rund
+     * EIGENHEIT_EINHEITEN Einheiten. Junge, professionelle und anpassungs-
+     * fähige Spieler lernen schneller, ein guter Trainerstab hilft, ein
+     * Mentor, der es selbst kann, macht es vor.
+     */
+    static eigenheitTempo(state, player, training = player?.eigenheitTraining, stab = this._stabFaktor(state)) {
+        if (!player || !training) return 0;
+        const h = player.hiddenAttributes || {};
+        const alter = player.age || 25;
+        const alterFaktor = alter <= 20 ? 1.35 : alter <= 23 ? 1.15 : alter <= 27 ? 1 : alter <= 30 ? 0.8 : alter <= 33 ? 0.6 : 0.45;
+        let tempo = alterFaktor
+            * (0.7 + 0.6 * ((h.professionalism ?? 12) / 20))
+            * (0.85 + 0.3 * ((h.adaptability ?? 12) / 20))
+            * (0.6 + 0.4 * stab);
+        if (training.schwer) tempo *= 0.7;
+        if (training.art === "lernen" && this._mentorKann(state, player, training.key)) tempo *= 1.3;
+        return tempo;
+    }
+
+    static _mentorKann(state, player, key) {
+        if (!player?.mentorId) return false;
+        const mentor = (state?.players || []).find(p => String(p.id) === String(player.mentorId));
+        return !!(mentor && mentor.clubId === player.clubId && (mentor.traits || []).some(t => t && t.key === key));
+    }
+
+    /** Geschätzte Wochen bis zum Ziel (für die Auswahl und den Fortschritt) */
+    static eigenheitWochen(state, player, training = player?.eigenheitTraining) {
+        const tempo = this.eigenheitTempo(state, player, training);
+        if (!tempo) return null;
+        const offen = 1 - (training.fortschritt || 0);
+        return Math.max(1, Math.round(offen * this.EIGENHEIT_EINHEITEN / tempo / this.EINHEITEN_JE_WOCHE));
+    }
+
+    /**
+     * Eine Eigenheit antrainieren (art "lernen") oder ablegen ("ablegen").
+     * Ohne key endet das Training; der Fortschritt verfällt.
+     */
+    static setzeEigenheitTraining(state, playerId, key, art = "lernen") {
+        const p = this._eigenerSpieler(state, playerId);
+        if (!p) return { success: false, error: "Nur für Spieler des eigenen Vereins." };
+        if (!key) { delete p.eigenheitTraining; return { success: true }; }
+        const eintrag = this._katalog().find(e => e.key === key);
+        if (!eintrag) return { success: false, error: "Diese Eigenheit gibt es nicht." };
+        if (p.eigenheitTraining && p.eigenheitTraining.key === key && p.eigenheitTraining.art === art) return { success: true };
+        if (art === "ablegen") {
+            if (!this._hat(p, key)) return { success: false, error: `${p.name} hat diese Eigenheit gar nicht.` };
+            p.eigenheitTraining = { key, art, fortschritt: 0, seit: this._stempel(state) };
+            return { success: true, wochen: this.eigenheitWochen(state, p) };
+        }
+        if (art !== "lernen") return { success: false, error: "Unbekannte Art." };
+        if (this._hat(p, key)) return { success: false, error: `${p.name} hat diese Eigenheit schon.` };
+        const lernbar = this.lernbareEigenheiten(p).find(e => e.key === key);
+        if (!lernbar) {
+            return { success: false, error: (p.traits || []).length >= this.MAX_EIGENHEITEN
+                ? `Mehr als ${this.MAX_EIGENHEITEN} Eigenheiten nimmt keiner an - erst eine ablegen.`
+                : "Dafür fehlen ihm die Voraussetzungen." };
+        }
+        p.eigenheitTraining = { key, art, fortschritt: 0, seit: this._stempel(state), ...(lernbar.schwer ? { schwer: true } : {}) };
+        return { success: true, wochen: this.eigenheitWochen(state, p) };
+    }
+
+    static _hat(player, key) {
+        return Array.isArray(player?.traits) && player.traits.some(t => t && t.key === key);
+    }
+
+    /** Stand in Prozent */
+    static eigenheitStand(player) {
+        const t = player?.eigenheitTraining;
+        return t ? Math.round(Math.min(1, t.fortschritt || 0) * 100) : null;
+    }
+
+    /** Text der Eigenheit aus dem Katalog */
+    static eigenheitText(key) {
+        return this._katalog().find(e => e.key === key)?.text || key;
+    }
+
+    /** Eine Einheit am Ziel weiterarbeiten. Liefert die Meldung, wenn es geschafft ist. */
+    static _eigenheitEinheit(state, player, stab, zufall) {
+        const t = player.eigenheitTraining;
+        const hat = this._hat(player, t.key);
+        // Schon erledigt - etwa weil er es sich beim Mentor abgeschaut hat
+        if ((t.art === "lernen" && hat) || (t.art === "ablegen" && !hat)) { delete player.eigenheitTraining; return null; }
+        const schritt = this.eigenheitTempo(state, player, t, stab) * (0.75 + 0.5 * zufall()) / this.EIGENHEIT_EINHEITEN;
+        t.fortschritt = Math.round(Math.min(1, (t.fortschritt || 0) + schritt) * 10000) / 10000;
+        // Die Extraarbeit kostet etwas Kraft
+        player.fitness = Math.max(20, (player.fitness ?? 100) - 0.2);
+        if (t.fortschritt < 1) return null;
+
+        const text = this.eigenheitText(t.key);
+        delete player.eigenheitTraining;
+        if (t.art === "lernen") {
+            player.traits = [...(player.traits || []), { key: t.key, text }];
+            this._post(state, player, `${player.name} hat eine neue Eigenheit`,
+                `Die Extraschichten haben sich gelohnt. ${player.name} hat sich angewöhnt: ${text}`);
+            return `💡 ${player.name} hat eine neue Eigenheit: ${text}`;
+        }
+        player.traits = (player.traits || []).filter(e => e && e.key !== t.key);
+        this._post(state, player, `${player.name} hat eine Eigenheit abgelegt`,
+            `Es hat gedauert, aber ${player.name} hat es sich abgewöhnt. Bisher hieß es: „${text}“ - das gilt nicht mehr.`);
+        return `🧹 ${player.name} hat eine Eigenheit abgelegt: ${text}`;
+    }
+
     // ---------------------------------------------------------- Spielpraxis
 
     /**
@@ -186,7 +352,7 @@ class DevelopmentPlanEngine {
      * Was eine Trainingseinheit über das gemeinsame Training hinaus bringt.
      * gewachsen: ob der Spieler in dieser Einheit stärker geworden ist.
      */
-    static nachEinheit(state, player, { gewachsen = false } = {}, zufall = Math.random) {
+    static nachEinheit(state, player, { gewachsen = false, stab = 1 } = {}, zufall = Math.random) {
         const meldungen = [];
         if (!player) return meldungen;
 
@@ -235,6 +401,12 @@ class DevelopmentPlanEngine {
                         `Die Arbeit mit seinem Mentor zahlt sich aus. Neue Eigenheit: ${neu.text}`);
                 }
             }
+        }
+
+        // 4. Eine Eigenheit antrainieren oder ablegen
+        if (player.eigenheitTraining) {
+            const fertig = this._eigenheitEinheit(state, player, stab, zufall);
+            if (fertig) meldungen.push(fertig);
         }
         return meldungen;
     }
@@ -418,14 +590,17 @@ class DevelopmentPlanEngine {
     /** Überblick für den Trainings-Reiter: Wer hat welchen Plan? */
     static uebersicht(state) {
         return this._eigenerKader(state)
-            .filter(p => p.trainingsfokus || p.umschulung || p.mentorId)
+            .filter(p => p.trainingsfokus || p.umschulung || p.mentorId || p.eigenheitTraining)
             .map(p => {
                 const mentor = p.mentorId ? (state.players || []).find(m => String(m.id) === String(p.mentorId)) : null;
                 return {
                     player: p,
                     schwerpunkt: p.trainingsfokus ? this.SCHWERPUNKTE[p.trainingsfokus]?.label : null,
                     umschulung: p.umschulung ? { pos: p.umschulung.pos, stand: this.umschulungsStand(p) } : null,
-                    mentor: mentor ? mentor.name : null
+                    mentor: mentor ? mentor.name : null,
+                    eigenheit: p.eigenheitTraining
+                        ? { art: p.eigenheitTraining.art, text: this.eigenheitText(p.eigenheitTraining.key), stand: this.eigenheitStand(p) }
+                        : null
                 };
             });
     }

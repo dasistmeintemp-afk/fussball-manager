@@ -4123,12 +4123,12 @@ class UIManager {
         const ids = new Set(club.playerIds.map(String));
         const kader = state.players.filter(p => ids.has(String(p.id)));
         const zeilen = kader
-            .filter(p => p.trainingsfokus || p.umschulung || p.mentorId || (p.age || 30) <= 23)
+            .filter(p => p.trainingsfokus || p.umschulung || p.mentorId || p.eigenheitTraining || (p.age || 30) <= 23)
             .sort((a, b) => (a.age || 0) - (b.age || 0));
         const meta = document.getElementById("trainingPlaeneMeta");
-        if (meta) meta.textContent = `${kader.filter(p => p.trainingsfokus || p.umschulung || p.mentorId).length} mit Plan`;
+        if (meta) meta.textContent = `${kader.filter(p => p.trainingsfokus || p.umschulung || p.mentorId || p.eigenheitTraining).length} mit Plan`;
         if (!zeilen.length) {
-            body.innerHTML = `<tr><td colspan="6" class="text-center text-muted">Noch keine individuellen Pläne.</td></tr>`;
+            body.innerHTML = `<tr><td colspan="7" class="text-center text-muted">Noch keine individuellen Pläne.</td></tr>`;
             return;
         }
         body.innerHTML = zeilen.map(p => {
@@ -4141,6 +4141,9 @@ class UIManager {
                     <td><span class="${praxis < 30 && (p.age || 30) <= 23 ? "text-warning" : ""}">${praxis} %</span></td>
                     <td>${p.trainingsfokus ? esc(engine.SCHWERPUNKTE[p.trainingsfokus]?.label) : "-"}</td>
                     <td>${p.umschulung ? `${esc(p.umschulung.pos)} · ${engine.umschulungsStand(p)} %` : "-"}</td>
+                    <td>${p.eigenheitTraining
+                        ? `<span title="${esc(engine.eigenheitText(p.eigenheitTraining.key))}">${p.eigenheitTraining.art === "ablegen" ? "ablegen" : "lernen"} · ${engine.eigenheitStand(p)} %</span>`
+                        : "-"}</td>
                     <td>${mentor ? esc(mentor.name) : "-"}</td>
                 </tr>`;
         }).join("");

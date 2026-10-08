@@ -1368,6 +1368,19 @@ const CalendarEngine = {
             if (zeile) summary.messages.push(zeile);
         }
 
+        // Die Sportpresse: Saisonvorschau zum Start, Gerüchte im offenen Fenster
+        const presse = (typeof LigaNachrichtenEngine !== 'undefined' && LigaNachrichtenEngine)
+            ? LigaNachrichtenEngine
+            : ((typeof window !== 'undefined' && window.LigaNachrichtenEngine) ? window.LigaNachrichtenEngine
+                : (typeof require !== 'undefined' ? (() => { try { return require('./ligaNachrichtenEngine.js').LigaNachrichtenEngine; } catch (e) { return null; } })() : null));
+        if (presse && typeof presse.saisonvorschau === 'function') {
+            if (!currentDay.sommerpause && presse.saisonvorschau(state)) summary.messages.push("📰 Die Saisonvorschau der Presse liegt im Postfach.");
+            const markt = _getTransferEngineCal ? _getTransferEngineCal() : null;
+            const offen = markt && typeof markt.istTransferfenster === 'function' ? markt.istTransferfenster(state) : false;
+            const geruecht = presse.geruechtTag(state, offen);
+            if (geruecht) summary.messages.push(`🗞️ Gerüchteküche: ${geruecht.spieler} zu ${geruecht.verein}?`);
+        }
+
         // Am Monatsersten: Spieler, Talent und Trainer des Monats
         const preise = (typeof AuszeichnungEngine !== 'undefined' && AuszeichnungEngine)
             ? AuszeichnungEngine

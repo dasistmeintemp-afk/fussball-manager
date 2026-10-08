@@ -10337,6 +10337,50 @@ function runEngineTests() {
         if (verein.trainer.name === "Alt Trainer") throw new Error("Absteiger behält seinen Trainer trotz Würfel 0");
     });
 
+    test("Liga-Nachrichten: Saisonvorschau, Gerüchte, die wahr werden können, und die Rundschau nach dem Spieltag", () => {
+        const { LigaNachrichtenEngine: Presse } = require('./js/engine/ligaNachrichtenEngine.js');
+        const { TrainerwechselEngine: Karussell } = require('./js/engine/trainerwechselEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        state.inbox = [];
+
+        // Saisonvorschau: einmal je Saison, mit Favoriten und eigenem Platz
+        const vorschau = Presse.saisonvorschau(state);
+        if (!/Favoriten: .+\n?/.test(vorschau || "") || !/Platz \d+/.test(vorschau)) throw new Error(`Saisonvorschau: ${vorschau}`);
+        if (Presse.saisonvorschau(state) !== null) throw new Error("Saisonvorschau doppelt");
+        const tabelle = Presse.expertenTabelle(state);
+        if (tabelle[0].kader > 3) throw new Error("Favorit mit schwachem Kader");
+
+        // Gerüchte nur im offenen Fenster, und sie machen den Spieler reizvoller
+        if (Presse.geruechtTag(state, false, () => 0) !== null) throw new Error("Gerücht bei geschlossenem Fenster");
+        const g = Presse.geruechtTag(state, true, () => 0);
+        if (!g) throw new Error("Kein Gerücht trotz offenem Fenster");
+        const interessent = state.clubs.find(c => c.id === g.clubId);
+        const spieler = state.players.find(p => p.id === g.playerId);
+        if (interessent.leagueId !== club.leagueId || interessent.id === club.id || spieler.clubId === club.id) throw new Error("Gerücht über die falschen Vereine");
+        if (Presse.reiz(interessent, spieler) !== Presse.GERUECHT_REIZ || Presse.reiz(interessent, state.players.find(p => p.id !== spieler.id)) !== 0) throw new Error("Wunschspieler ohne Reiz");
+        if (!state.inbox.some(m => /Gerüchteküche/.test(m.subject || ""))) throw new Error("Gerücht nicht gemeldet");
+
+        // Kommt der Wechsel zustande, war das Gerücht wahr
+        Presse.transfer(state, { player: spieler, vonId: spieler.clubId, zuId: interessent.id, fee: 9000000 });
+        if (!Presse.geruechteDieseSaison(state).some(x => x.playerId === spieler.id && x.wahr) || interessent.geruecht) throw new Error("Gerücht nicht bestätigt");
+
+        // Rundschau nach dem Spieltag
+        const runde = state.schedule.find(r => r.matchday === 1);
+        runde.matches.forEach((m, i) => { m.played = true; m.homeGoals = i === 0 ? 5 : 1; m.awayGoals = i === 0 ? 0 : 1; });
+        state.currentMatchday = 1;
+        state.standings = GameState.calculateStandings(GameState.getLeagueClubs(state), state.schedule, 1);
+        state.currentDayIndex = 10;
+        Karussell.wechsle(state, state.clubs.find(c => c.leagueId === club.leagueId && c.id !== club.id && c.id !== interessent.id), { grund: "entlassung", gespielt: 1, platz: 18 });
+        const zeilen = Presse.rundschau(state);
+        if (!zeilen || !zeilen.some(z => /Ergebnis des Spieltags: .* 5:0/.test(z))) throw new Error(`Rundschau ohne Ergebnis des Spieltags: ${JSON.stringify(zeilen)}`);
+        if (!zeilen.some(z => /das Gerücht stimmte/.test(z))) throw new Error("Rundschau ohne den Transfer");
+        if (!zeilen.some(z => /Trainerwechsel/.test(z))) throw new Error("Rundschau ohne Trainerwechsel");
+        if (Presse.rundschau(state) !== null) throw new Error("Zwei Rundschauen zu einem Spieltag");
+        const zurueck = SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(state))));
+        if (!zurueck.ligaNachrichten?.geruechte?.length) throw new Error("Gerüchte nach dem Laden verloren");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

@@ -49,6 +49,7 @@ const ASSETS_TO_CACHE = [
     "./js/engine/auszeichnungEngine.js",
     "./js/engine/chronikEngine.js",
     "./js/engine/trainerwechselEngine.js",
+    "./js/engine/ligaNachrichtenEngine.js",
     "./js/engine/careerEngine.js",
     "./js/engine/calendarEngine.js",
     "./js/engine/opponentAnalysisEngine.js",

@@ -743,6 +743,9 @@ class SeasonEngine {
         // Das Trainerkarussell der KI-Vereine
         const karussell = _resolve('TrainerwechselEngine', './trainerwechselEngine.js');
         if (karussell && typeof karussell.nachSpieltag === 'function') karussell.nachSpieltag(state);
+        // ... und die Rundschau der Sportpresse
+        const presse = _resolve('LigaNachrichtenEngine', './ligaNachrichtenEngine.js');
+        if (presse && typeof presse.rundschau === 'function') presse.rundschau(state);
 
         // 7. Vorstandszufriedenheit berechnen
         SeasonEngine.updateBoardConfidence(state);

@@ -149,7 +149,9 @@ class CompetitionEngine {
                 ranked = [...leagueClubs].sort((a, b) => (b.reputation || 0) - (a.reputation || 0));
             }
 
-            const spots = league.europeanSpots;
+            // Die Fünfjahreswertung (KoeffizientEngine) vergibt die Plätze je
+            // Land neu; ohne sie gelten die Ligadaten
+            const spots = (options.spotsByCountry && options.spotsByCountry[league.countryId]) || league.europeanSpots;
             const assign = (positions, bucket) => {
                 (positions || []).forEach(pos => {
                     const club = ranked[pos - 1];

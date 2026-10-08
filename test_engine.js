@@ -11517,6 +11517,41 @@ function runEngineTests() {
         if (K.pruefe(en, united, "liga", { a: uk.map(p => p.id) }).ok && uk.length - 4 - 1 > 17) throw new Error("Zu viele fremde Spieler erlaubt");
     });
 
+    test("Fünfjahreswertung: Punkte der Länder aus dem Europapokal verteilen die Startplätze neu", () => {
+        const { KoeffizientEngine: K } = require('./js/engine/koeffizientEngine.js');
+        const { CompetitionEngine } = require('./js/engine/competitionEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Koeffizient" });
+        const start = K.rangliste(state).map(z => z.land);
+        if (start.join(",") !== "en,it,es,de,fr") throw new Error(`Startreihenfolge ${start}`);
+        if (K.plaetze(state) !== null) throw new Error("Plätze vor dem ersten Saisonwechsel");
+
+        // Die deutschen Vereine gewinnen alles, die englischen nichts
+        const land = new Map(state.clubs.map(c => [c.id, c.countryId]));
+        Object.values(state.europeanCompetitions).forEach(w => (w.groups || []).forEach(g => g.standings.forEach(r => {
+            const l = land.get(r.clubId);
+            Object.assign(r, { played: 6, won: l === "de" ? 6 : 0, drawn: 0, lost: l === "de" ? 0 : 6 });
+        })));
+        const werte = K.saisonWerte(state).werte;
+        if (!(werte.de > 12 && werte.en < 3)) throw new Error(`Saisonwerte ${JSON.stringify(werte)}`);
+        const plaetze = K.saisonAbschluss(state);
+        if (!plaetze.de.leistungsplatz || plaetze.de.championsLeague.length !== 5) throw new Error(`Deutschland: ${JSON.stringify(plaetze.de)}`);
+        const summeUcl = Object.values(plaetze).reduce((a, p) => a + p.championsLeague.length, 0);
+        if (summeUcl !== 20) throw new Error(`${summeUcl} Plätze in der Königsklasse`);
+        if (Object.values(plaetze).filter(p => p.championsLeague.length === 3).length !== 1) throw new Error("Nicht genau ein Land mit drei Plätzen");
+
+        // Der Europapokal wird danach besetzt: fünf deutsche Vereine in der Königsklasse
+        const ec = CompetitionEngine.generateEuropeanCompetitions(state.clubs, { leagues: state.leagues, standingsByLeague: state.standingsByLeague, spotsByCountry: plaetze });
+        const deutsche = ec.ucl.participants.filter(id => land.get(id) === "de").length;
+        if (deutsche !== 5 || ec.ucl.participants.length !== 20) throw new Error(`Königsklasse: ${deutsche} deutsche von ${ec.ucl.participants.length}`);
+
+        // Gespeichert und nach fünf Saisons rollierend
+        for (let i = 0; i < 6; i++) { state.seasonYear += 1; K.saisonAbschluss(state); }
+        if (state.koeffizient.saisons.length !== K.GEMERKT) throw new Error(`${state.koeffizient.saisons.length} Saisons gespeichert`);
+        const { SaveCodec } = require('./js/services/saveCodec.js');
+        const zur = SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(state))));
+        if (JSON.stringify(zur.koeffizient) !== JSON.stringify(state.koeffizient)) throw new Error("Fünfjahreswertung nicht gespeichert");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

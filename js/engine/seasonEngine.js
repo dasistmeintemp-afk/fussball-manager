@@ -1542,11 +1542,18 @@ class SeasonEngine {
         state.playoffsVorjahr = state.playoffs || null;
         state.playoffs = null;
 
+        // Die Fünfjahreswertung schreibt die abgelaufene Saison fort und
+        // verteilt die Startplätze je Land neu - bevor der Europapokal neu
+        // besetzt wird
+        const koeffizient = _resolve('KoeffizientEngine', './koeffizientEngine.js');
+        const spotsByCountry = koeffizient && typeof koeffizient.saisonAbschluss === 'function' ? koeffizient.saisonAbschluss(state) : null;
+
         // Europapokal aus den Abschlusstabellen der fünf Topligen neu besetzen
         if (competitionEngine && typeof competitionEngine.generateEuropeanCompetitions === 'function') {
             state.europeanCompetitions = competitionEngine.generateEuropeanCompetitions(state.clubs, {
                 leagues: state.leagues,
-                standingsByLeague: state.standingsByLeague
+                standingsByLeague: state.standingsByLeague,
+                spotsByCountry
             });
         }
 

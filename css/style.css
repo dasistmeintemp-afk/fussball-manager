@@ -8719,3 +8719,11 @@ td.nowrap { white-space: nowrap; }
 .ml-marke { font-size: 11px; color: var(--text-muted); }
 .ml-b { display: flex; align-items: center; gap: 3px; font-size: 12px; }
 .ml-knoepfe { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+
+/* Fünfjahreswertung */
+#statsKoeffizient .kf-tabelle { width: 100%; min-width: 0; }
+#statsKoeffizient .kf-tabelle th, #statsKoeffizient .kf-tabelle td { padding: 6px 4px; text-align: right; font-size: 12px; text-transform: none; letter-spacing: 0; }
+#statsKoeffizient .kf-tabelle th:nth-child(2), #statsKoeffizient .kf-tabelle td:nth-child(2) { text-align: left; }
+#statsKoeffizient .kf-tabelle th small { font-weight: 400; color: var(--text-muted); }
+.kf-reihe { display: block; color: var(--text-muted); font-size: 11px; }
+#statsKoeffizient .kf-tabelle .eigene-zeile td { color: var(--accent-primary, #a3e635); }

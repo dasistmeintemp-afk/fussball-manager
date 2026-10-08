@@ -656,10 +656,11 @@ function runEngineTests() {
             throw new Error("Der Beste im Landesligakader gilt nicht als Schlüsselspieler");
         }
 
-        // Wer die Forderung bietet, bekommt den Vertrag
+        // Wer die Forderung für die angebotene Rolle bietet, bekommt den Vertrag
         club.wageBudget = Math.max(club.wageBudget || 0, 100000);
-        const res = ContractEngine.negotiateExtension(spieler, club, forderung, 3, "Stammspieler", 0, state);
-        if (!res.success || spieler.wage !== forderung) throw new Error("Verlängerung zur Forderung scheitert: " + res.reason);
+        const forderungStamm = ContractEngine.getExtensionDemand(spieler, club, state, "Stammspieler").demandWage;
+        const res = ContractEngine.negotiateExtension(spieler, club, forderungStamm, 3, "Stammspieler", 0, state);
+        if (!res.success || spieler.wage !== forderungStamm) throw new Error("Verlängerung zur Forderung scheitert: " + res.reason);
 
         // Die Schrittweite folgt dem Betrag
         const schritte = [[150, 10], [2500, 100], [25000, 1000], [2500000, 100000]];
@@ -9486,6 +9487,59 @@ function runEngineTests() {
         if (p.clubId !== zielP) throw new Error("Der eigene Spieler ist nicht gewechselt");
         if (fremd.clubId !== club.id || fremd.wage !== lohn || fremd.contractYears !== 4 || fremd.vorvertrag) throw new Error("Der Neuzugang ist nicht zu den vereinbarten Konditionen da");
         if (!state.inbox.some(m => /Per Vorvertrag da/.test(m.subject) && m.subject.includes(fremd.name))) throw new Error("Keine Meldung zum Neuzugang");
+    });
+
+    test("Vertragsgespräche: gewünschte Rolle, Wechselwunsch, Unzufriedenheit und Treue", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        club.wageBudget = 1e9;
+        const kader = state.players.filter(p => p.clubId === club.id);
+        kader.forEach(p => { p.hiddenAttributes = { ...(p.hiddenAttributes || {}), loyalty: 10 }; delete p.wechselwunsch; p.happiness = { ...(p.happiness || {}), overall: 75 }; });
+        const summe = (rolle) => kader.reduce((a, p) => a + ContractEngine.getExtensionDemand(p, club, state, rolle ? rolle(p) : null).demandWage, 0);
+        const wunsch = p => ContractEngine.getExtensionDemand(p, club, state).preferredRole;
+        const eineDarunter = p => ContractEngine.ROLLEN[Math.min(3, ContractEngine.ROLLEN.indexOf(wunsch(p)) + 1)];
+
+        // Eine Stufe unter dem Wunsch kostet mehr, die gewünschte Rolle nichts extra
+        const basis = summe(null);
+        if (summe(wunsch) !== basis) throw new Error("Die gewünschte Rolle verändert die Forderung");
+        if (!(summe(eineDarunter) > basis * 1.06)) throw new Error(`Weniger Rolle, kaum mehr Geld: ${summe(eineDarunter)} gegen ${basis}`);
+
+        // Zwei Stufen darunter unterschreibt er nicht - zu keinem Gehalt
+        const stamm = kader.find(p => wunsch(p) === "Stammspieler") || kader[0];
+        const soll = wunsch(stamm);
+        const zweiDarunter = ContractEngine.ROLLEN[ContractEngine.ROLLEN.indexOf(soll) + 2] || "Ergänzungsspieler";
+        const nein = ContractEngine.negotiateExtension(stamm, club, 1e7, 3, zweiDarunter, 0, state);
+        if (nein.success || !/sieht sich als/.test(nein.reason)) throw new Error(`Zwei Stufen unter dem Wunsch: ${nein.reason}`);
+
+        // Zukunftstalent: für einen Jungen mit Luft nach oben passend, sonst Ergänzungsspieler
+        const jung = { age: 19, overall: 60, pot: 80 };
+        const alt = { age: 28, overall: 70, pot: 70 };
+        if (ContractEngine.rollenAbstand(jung, "Stammspieler", "Zukunftstalent") !== 0) throw new Error("Zukunftstalent passt nicht zum Talent");
+        if (ContractEngine.rollenAbstand(alt, "Stammspieler", "Zukunftstalent") !== 2) throw new Error("Zukunftstalent für einen Achtundzwanzigjährigen");
+        if (ContractEngine.rollenAbstand(alt, "Stammspieler", "Schlüsselspieler") !== -1) throw new Error("Die höhere Rolle zählt nicht");
+
+        // Wechselwunsch und tiefe Unzufriedenheit: kein Gespräch
+        const weg = kader.find(p => p !== stamm);
+        weg.wechselwunsch = { seit: 1, grund: "Ich will weg." };
+        const r1 = ContractEngine.negotiateExtension(weg, club, 1e7, 3, wunsch(weg), 0, state);
+        if (r1.success || !/verlassen/.test(r1.reason)) throw new Error(`Verlängert trotz Wechselwunsch: ${r1.reason}`);
+        delete weg.wechselwunsch;
+        weg.happiness.overall = 20;
+        const r2 = ContractEngine.negotiateExtension(weg, club, 1e7, 3, wunsch(weg), 0, state);
+        if (r2.success || !/unzufrieden/.test(r2.reason)) throw new Error(`Verlängert trotz Unzufriedenheit: ${r2.reason}`);
+        weg.happiness.overall = 75;
+        const r3 = ContractEngine.negotiateExtension(weg, club, ContractEngine.getExtensionDemand(weg, club, state, wunsch(weg)).demandWage, 3, wunsch(weg), 0, state);
+        if (!r3.success) throw new Error(`Ohne Hindernis klappt es nicht: ${r3.reason}`);
+
+        // Treue: lange da und loyal - das spart Gehalt; ein Neuzugang ist nicht treu
+        const ohneTreue = summe(null);
+        kader.forEach(p => { p.hiddenAttributes.loyalty = 18; });
+        const mitTreue = summe(null);
+        if (!(mitTreue < ohneTreue * 0.97)) throw new Error(`Treue spart nichts: ${mitTreue} gegen ${ohneTreue}`);
+        const neu = kader[1];
+        neu.vereinSeit = (state.seasonYear || 1) * 1000 + 5;
+        if (ContractEngine.istTreu(neu, state)) throw new Error("Ein Neuzugang gilt als treu");
+        if (!ContractEngine.istTreu(kader[2], state)) throw new Error("Ein loyaler Spieler seit Spielbeginn gilt nicht als treu");
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

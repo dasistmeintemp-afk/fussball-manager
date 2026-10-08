@@ -568,6 +568,14 @@ class CupEngine {
                 ? NegotiationEngine
                 : (typeof require !== "undefined" ? (() => { try { return require("./negotiationEngine.js").NegotiationEngine; } catch (e) { return null; } })() : null);
             if (verhandlung && typeof verhandlung.zahlePraemien === "function") verhandlung.zahlePraemien(state, match);
+            const chronik = (typeof ChronikEngine !== "undefined" && ChronikEngine)
+                ? ChronikEngine
+                : (typeof require !== "undefined" ? (() => { try { return require("./chronikEngine.js").ChronikEngine; } catch (e) { return null; } })() : null);
+            if (chronik && typeof chronik.nachSpiel === "function") {
+                const id = String(match.competitionId || "");
+                const name = id.endsWith("_cup") ? "Pokal" : (state.europeanCompetitions?.[id]?.name || "Europapokal");
+                chronik.nachSpiel(state, match, name);
+            }
         }
         if (typeof matchEngine.compactPlayedMatch === "function") {
             matchEngine.compactPlayedMatch(match, eigenes);

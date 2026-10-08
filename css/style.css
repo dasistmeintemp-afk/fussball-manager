@@ -8498,3 +8498,19 @@ td.nowrap { white-space: nowrap; }
 .elf-spieler small { font-size: 10.5px; }
 .akte-preise ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
 .akte-preise small { color: var(--text-muted); }
+
+/* Vereinschronik */
+.chronik-karte h4 { font-size: 13px; color: var(--text-muted); margin: 14px 0 6px; text-transform: uppercase; letter-spacing: .04em; }
+.chronik-raster { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 4px 20px; }
+.chronik-zeile { display: grid; grid-template-columns: 128px 1fr; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.chronik-zeile span { color: var(--text-muted); }
+.chronik-zeile strong { font-weight: 600; min-width: 0; }
+.chronik-zeile small, .chronik-liste small, .chronik-titel small { color: var(--text-muted); font-weight: 400; }
+.chronik-liste { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 13px; }
+.chronik-liste li { display: grid; grid-template-columns: auto 1fr auto; gap: 6px; align-items: baseline; }
+.chronik-liste b { font-weight: 700; white-space: nowrap; }
+.chronik-liste .preis-name[disabled] { cursor: default; color: var(--text-muted); }
+.chronik-titel { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 6px; }
+.chronik-titel span { padding: 6px 10px; border-radius: 999px; background: rgba(250, 204, 21, 0.12); border: 1px solid rgba(250, 204, 21, 0.3); font-size: 13px; font-weight: 600; }
+.chronik-leer { font-size: 13px; margin: 6px 0; }
+.pd-verein strong { white-space: nowrap; }

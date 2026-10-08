@@ -107,6 +107,14 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
     - Ein Preis für den eigenen Trainer stärkt seinen Ruf und das Vertrauen des Vorstands.
   - **Anzeige:** Die Ranglisten zeigen die Monatspreise der Saison und die Preise der letzten Saison mit der Elf auf dem Platz. Ein Tipp auf einen Namen öffnet die Akte.
   - **Korrektur im Archiv:** Torschützenkönig und Spieler der Saison wurden vorher über alle 384 Vereine der Welt ermittelt. Jetzt zählt nur die eigene Liga.
+- **Vereinschronik (`ChronikEngine`):** Die Vereinsseite führt ab der Übernahme eine Chronik.
+  - **Rekorde:** höchster Sieg, höchste Niederlage, torreichstes Spiel, Zuschauerrekord, längste Sieges- und ungeschlagene Serie, teuerster Kauf und Verkauf. Liga, Pokal und Europapokal zählen.
+  - **Titel und Saisonbilanzen:** Titel sowie Liga, Platz, Punkte und Tore jeder Saison.
+  - **Spieler:** Rekordspieler und Rekordtorschützen, mit den Spielen aller Saisons für den Verein.
+  - **Vereinslegenden:** ab 150 Spielen, 60 Toren oder 80 Spielen mit zwei Titeln.
+  - **Meldungen:** Ein neuer Rekord kommt als kurze Nachricht.
+  - **Spielerakte:** Sie zeigt die Bilanz für den Verein („Für den Verein seit Saison 1: 164 Spiele …“) und markiert Legenden.
+  - Vorher vergaß der Verein nach dem Saisonwechsel alles, was nicht in der Tabelle stand.
 - **Spielplan mit wechselndem Heimrecht:** Heim- und Auswärtsspiele wechseln sich nach dem Berger-Verfahren ab, höchstens drei gleiche in Folge. Vorher hatte ein Verein bis zu 17 Heim- oder Auswärtsspiele am Stück.
 
 ### 2. 📋 Aufstellung, Taktik & Teamchemie
@@ -684,6 +692,7 @@ untitled/
 │   │   ├── financeEngine.js    # Spieltagseinnahmen, Gehälter & Journal
 │   │   ├── boardEngine.js      # Vorstandszufriedenheit & Saisonziele
 │   │   ├── auszeichnungEngine.js # Spieler/Talent/Trainer des Monats, Saisonpreise, Elf der Saison
+│   │   ├── chronikEngine.js    # Vereinschronik: Rekorde, Titel, Saisonbilanzen, Legenden
 │   │   ├── newsEngine.js       # Zentrales Nachrichtensystem & Postfach
 │   │   ├── aiManagerEngine.js  # KI-Aufstellungen & KI-Transferangebote
 │   │   ├── scoutingEngine.js   # Scoutaufträge & Spielerberichte

@@ -10234,6 +10234,61 @@ function runEngineTests() {
         if (!zurueck.players.find(p => p.id === star.id)?.auszeichnungen?.length || !zurueck.auszeichnungen?.saisons?.length) throw new Error("Preise nach dem Laden verloren");
     });
 
+    test("Vereinschronik: Rekorde, Serien, Transfers, Titel, Saisonbilanz und Legenden", () => {
+        const { ChronikEngine: Chronik } = require('./js/engine/chronikEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const gegner = state.clubs.filter(c => c.id !== club.id && c.leagueId === club.leagueId);
+        let nr = 0;
+        const spiel = (heim, tore, gegentore, zuschauer = 50000) => {
+            nr++;
+            const g = gegner[nr % gegner.length];
+            return heim
+                ? { id: `t${nr}`, played: true, homeClubId: club.id, awayClubId: g.id, homeGoals: tore, awayGoals: gegentore, attendance: zuschauer }
+                : { id: `t${nr}`, played: true, homeClubId: g.id, awayClubId: club.id, homeGoals: gegentore, awayGoals: tore, attendance: zuschauer };
+        };
+        state.currentDate = "20.09.2026";
+        Chronik.nachSpiel(state, spiel(true, 3, 0, 60000));
+        const zweiterSieg = Chronik.nachSpiel(state, spiel(false, 5, 1));
+        if (!/höchster Sieg/.test(zweiterSieg || "")) throw new Error(`Kein neuer Rekord gemeldet: ${zweiterSieg}`);
+        const doppelt = spiel(true, 2, 1, 75000);
+        Chronik.nachSpiel(state, doppelt);
+        Chronik.nachSpiel(state, doppelt);
+        Chronik.nachSpiel(state, spiel(true, 0, 4, 40000));
+        Chronik.nachSpiel(state, spiel(true, 1, 1, 40000));
+        const r = state.chronik[club.id].rekorde;
+        if (r.hoechsterSieg.ergebnis !== "5:1" || r.hoechsterSieg.heim !== false) throw new Error(`Höchster Sieg: ${JSON.stringify(r.hoechsterSieg)}`);
+        if (r.hoechsteNiederlage.ergebnis !== "0:4") throw new Error("Höchste Niederlage falsch");
+        if (r.zuschauer.wert !== 75000) throw new Error(`Zuschauerrekord: ${r.zuschauer.wert}`);
+        if (r.siegserie.wert !== 3) throw new Error(`Siegesserie: ${r.siegserie.wert} (ein Spiel doppelt gezählt?)`);
+        if (r.torreichstes.wert !== 6) throw new Error("Torreichstes Spiel falsch");
+        if (state.chronik[club.id].serie.ungeschlagen !== 1) throw new Error("Serie nach der Niederlage nicht neu begonnen");
+
+        // Transfers: teuerster Kauf und Verkauf
+        const verkauft = state.players.find(p => p.clubId === club.id && p.pos === "ZM");
+        const gekauft = state.players.find(p => p.clubId === gegner[0].id && !p.leihe);
+        delete verkauft.weiterverkauf; delete gekauft.weiterverkauf;
+        TransferEngine.executeTransfer(state, gekauft.id, club.id, 42000000, 90000, 4);
+        TransferEngine.executeTransfer(state, verkauft.id, gegner[1].id, 18000000, 60000, 3);
+        if (r.kauf.name !== gekauft.name || r.kauf.wert !== 42000000 || r.verkauf.name !== verkauft.name) throw new Error("Transferrekorde fehlen");
+
+        // Titel und Saisonbilanz
+        CareerEngine.vermerkeTitel(state, "Meisterschaft", state.seasonYear);
+        const treuer = state.players.find(p => p.clubId === club.id && p.pos === "IV");
+        treuer.stats = { ...treuer.stats, matches: 34, goals: 3, assists: 2 };
+        state.chronik[club.id].spieler[treuer.id] = [treuer.name, 130, 9, 6, 1, 1, "IV"];
+        SeasonEngine.finishSeason(state);
+        const c = state.chronik[club.id];
+        if (c.saisons.length !== 1 || !c.saisons[0].platz) throw new Error(`Saisonbilanz: ${JSON.stringify(c.saisons)}`);
+        if (!c.titel.some(t => t.wettbewerb === "Meisterschaft")) throw new Error("Titel nicht in der Chronik");
+        if (c.spieler[treuer.id][1] !== 164) throw new Error(`Vereinsbilanz nicht fortgeschrieben: ${c.spieler[treuer.id][1]}`);
+        const u = Chronik.uebersicht(state);
+        if (u.meisteSpiele[0].name !== treuer.name || !u.legenden.some(l => l.name === treuer.name)) throw new Error("Rekordspieler oder Legende fehlt");
+        if (Chronik.bilanz(state, treuer).spiele !== 164) throw new Error("Bilanz in der Akte falsch");
+        const zurueck = SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(state))));
+        if (zurueck.chronik?.[club.id]?.rekorde?.hoechsterSieg?.ergebnis !== "5:1") throw new Error("Chronik nach dem Laden verloren");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

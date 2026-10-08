@@ -151,7 +151,7 @@ const NationalTeamEngine = {
     },
 
     /** Paarungen nach Weltrangliste: Nachbarn spielen gegeneinander, jede Runde versetzt */
-    paarungen(namen, runde) {
+    paarungen(namen, runde, schonen = null) {
         const liste = namen.slice();
         const paare = [];
         const start = runde % 2;
@@ -161,6 +161,16 @@ const NationalTeamEngine = {
         // Letzte schon gespielt - er bekam sonst ein zweites Spiel am selben
         // Tag; dann setzt eben der Erste aus.
         if (start === 1 && liste.length > 2 && liste.length % 2 === 0) paare.push([liste[liste.length - 1], liste[0]]);
+        // Bei ungerader Zahl setzt je Runde einer aus - nie die Nation des
+        // Nutzers: Sie übernimmt das benachbarte Spiel, dessen anderer Gegner
+        // pausiert (ohne Wiederholung des ersten Spiels). Vorher bestritt sie
+        // je nach Zahl der Nationen mal nur ein Länderspiel.
+        const frei = liste.length % 2 && liste.length > 2 ? (start === 0 ? liste.length - 1 : 0) : -1;
+        if (schonen && frei >= 0 && liste[frei] === schonen) {
+            const k = frei === 0 ? 0 : paare.length - 1;
+            const partner = frei === 0 ? paare[k][1] : paare[k][0];
+            paare[k] = frei === 0 ? [schonen, partner] : [partner, schonen];
+        }
         return paare.map((p, i) => (i + runde) % 2 ? [p[1], p[0]] : p);
     },
 
@@ -174,7 +184,7 @@ const NationalTeamEngine = {
         }).filter(t => t.elf.length >= 11).sort((a, b) => b.staerke - a.staerke);
 
         const nachName = new Map(teams.map(t => [t.name, t]));
-        const ergebnisse = this.paarungen(teams.map(t => t.name), pause.runde || 0).map(([h, a]) => {
+        const ergebnisse = this.paarungen(teams.map(t => t.name), pause.runde || 0, state.nationaltrainer?.nation || null).map(([h, a]) => {
             const heim = nachName.get(h), gast = nachName.get(a);
             return this.spiele(state, heim, gast, zufall);
         });

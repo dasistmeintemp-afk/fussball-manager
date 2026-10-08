@@ -924,6 +924,11 @@ class MatchEngine {
         // Liste - ohne diese Buchführung wurde ein verletzt Ausgewechselter
         // drei Minuten später wieder eingewechselt.
         const ausgewechselt = new Set();
+        // Wann ein Eingewechselter kam (Minute und Sekunde). Ereignisse einer
+        // Minute entstehen nicht in der Reihenfolge ihrer Sekunden - ohne das
+        // verletzte sich einer in der 10. Sekunde, obwohl er erst in der 57.
+        // kam, und ging vom Platz, bevor er ihn betreten hatte.
+        const dabeiSeit = new Map();
         const bankVon = (isHomeTeam) => ((isHomeTeam
             ? (options.homeBench || homeClub.bench)
             : (options.awayBench || awayClub.bench)) || []).filter(id => !ausgewechselt.has(id));
@@ -1550,6 +1555,11 @@ class MatchEngine {
             const club = isHomeTeam ? homeClub : awayClub;
             const activePlayers = isHomeTeam ? activeHomePlayers : activeAwayPlayers;
             if (!activePlayers.includes(victim)) return false;
+            const seit = dabeiSeit.get(victim.id);
+            if (seit && seit.minute === min && sekunde <= seit.second) {
+                if (seit.second >= 58) return false;
+                sekunde = seit.second + 1;
+            }
             const inj = MatchEngine.verletzungsArt(art);
             timeline.push({
                 minute: min,
@@ -1580,6 +1590,7 @@ class MatchEngine {
                 if (outIdx !== -1) {
                     activePlayers[outIdx] = subIn;
                     ausgewechselt.add(victim.id);
+                    dabeiSeit.set(subIn.id, { minute: min, second: Math.min(59, sekunde + 7) });
                     if (isHomeTeam) homeSubsUsed++; else awaySubsUsed++;
                     fensterBelegen(teamSide, min);
                     timeline.push({
@@ -1662,6 +1673,7 @@ class MatchEngine {
                                 if (outIdx !== -1) {
                                     activePlayers[outIdx] = subIn;
                                     ausgewechselt.add(candidateOut.id);
+                                    dabeiSeit.set(subIn.id, { minute: min, second: 5 });
                                     if (isHomeTeam) homeSubsUsed++; else awaySubsUsed++;
                                     fensterBelegen(teamSide, min);
 

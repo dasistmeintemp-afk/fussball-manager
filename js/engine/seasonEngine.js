@@ -1010,7 +1010,10 @@ class SeasonEngine {
                     ? financeEngine.sponsorPerMatchday(club)
                     : Math.round((club.reputation || 70) * 15000);
 
-                const prizeMoney = Math.max(Math.round(sponsor * 0.9), Math.round(sponsor * Math.max(1, 14 - index) * 0.9));
+                // Die Tabellenprämie kommt zum Fernsehgeld dazu, das den Rang
+                // schon belohnt - mit 0,9 bekam der Meister zusätzlich fast
+                // ein Fünftel seines Umsatzes und legte jedes Jahr zu.
+                const prizeMoney = Math.max(Math.round(sponsor * 0.45), Math.round(sponsor * Math.max(1, 14 - index) * 0.45));
                 club.balance += prizeMoney;
                 club.transferBudget += Math.round(prizeMoney * 0.7);
             });

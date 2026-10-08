@@ -528,6 +528,87 @@ const FinanceEngine = {
     },
 
     /**
+     * Budgets umschichten: Was im Gehaltsetat frei ist, lässt sich ins
+     * Transferbudget schieben - und umgekehrt. Der Kurs sind die Wochen bis
+     * zum Saisonwechsel: Ein Euro Wochengehalt ist für den Rest der Saison
+     * so viel wert. Die Umschichtung gilt für diese Saison; zum Wechsel steht
+     * der Gehaltsetat wieder dort, wo der Vorstand ihn haben will. Vorher
+     * lagen beide Budgets fest - wer Platz in der Gehaltsliste hatte, konnte
+     * ihn für keinen Transfer nutzen.
+     */
+    UMSCHICHTEN: { minWochen: 4, maxWochen: 52 },
+
+    /** Laufende Wochengehälter eines Vereins (Leihen anteilig) */
+    wochengehaelter(state, club) {
+        const s = this.getFinanceSummary(state, club?.id);
+        return s ? s.currentWeeklyWages : 0;
+    },
+
+    /** Wochen bis zum Saisonwechsel - danach richtet sich der Kurs */
+    restWochen(state) {
+        const U = this.UMSCHICHTEN;
+        const kalender = Array.isArray(state?.calendar) ? state.calendar : null;
+        if (!kalender || !kalender.length) return 26;
+        const tage = Math.max(0, kalender.length - 1 - (state.currentDayIndex || 0));
+        return Math.max(U.minWochen, Math.min(U.maxWochen, Math.round(tage / 7)));
+    },
+
+    /** Wie viel sich gerade in welche Richtung schieben lässt */
+    umschichtSpielraum(state, club = null) {
+        club = club || (state?.clubs || []).find(c => c.id === state?.userClubId);
+        if (!club) return null;
+        const wochen = this.restWochen(state);
+        const gehaelter = this.wochengehaelter(state, club);
+        return {
+            wochen,
+            gehaelter,
+            gehaltFrei: Math.max(0, Math.floor((club.wageBudget || 0) - gehaelter)),
+            transferMoeglich: Math.max(0, Math.floor((club.transferBudget || 0) / wochen)),
+            umgeschichtet: club.budgetUmschichtung && club.budgetUmschichtung.saison === state.seasonYear ? club.budgetUmschichtung.jeWoche : 0
+        };
+    },
+
+    /**
+     * jeWoche > 0: vom Gehaltsetat ins Transferbudget, < 0: umgekehrt.
+     * Gibt { ok, transfer, jeWoche, wochen } oder { ok: false, grund } zurück.
+     */
+    schichteUm(state, jeWoche) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        const raum = this.umschichtSpielraum(state, club);
+        const betrag = Math.round(Number(jeWoche) || 0);
+        if (!club || !raum) return { ok: false, grund: "Kein Verein." };
+        if (!betrag) return { ok: false, grund: "Kein Betrag angegeben." };
+        if (betrag > raum.gehaltFrei) {
+            return { ok: false, grund: `Im Gehaltsetat sind nur ${this.geld(raum.gehaltFrei)} pro Woche frei - die laufenden Verträge müssen bezahlt bleiben.` };
+        }
+        if (-betrag > raum.transferMoeglich) {
+            return { ok: false, grund: `Dafür reicht das Transferbudget nicht: ${this.geld(-betrag)} pro Woche kosten bis zum Saisonwechsel ${this.geld(-betrag * raum.wochen)}.` };
+        }
+        const transfer = betrag * raum.wochen;
+        club.wageBudget = Math.round((club.wageBudget || 0) - betrag);
+        club.transferBudget = Math.round((club.transferBudget || 0) + transfer);
+        const bisher = club.budgetUmschichtung && club.budgetUmschichtung.saison === state.seasonYear ? club.budgetUmschichtung.jeWoche : 0;
+        club.budgetUmschichtung = { saison: state.seasonYear, jeWoche: bisher + betrag };
+        return { ok: true, transfer, jeWoche: betrag, wochen: raum.wochen };
+    },
+
+    /** Zum Saisonwechsel: Der Gehaltsetat kommt zurück, wo er vor der Umschichtung war */
+    budgetZuruecksetzen(state) {
+        (state?.clubs || []).forEach(club => {
+            const u = club.budgetUmschichtung;
+            if (!u || u.saison >= (state.seasonYear || 0)) return;
+            club.wageBudget = Math.round((club.wageBudget || 0) + (u.jeWoche || 0));
+            delete club.budgetUmschichtung;
+        });
+    },
+
+    geld(betrag) {
+        const gs = _feResolve("GameState", "./gameState.js");
+        if (gs && typeof gs.formatMoney === "function") return gs.formatMoney(betrag);
+        return `${Math.round(betrag)} €`;
+    },
+
+    /**
      * Erstellt eine detaillierte Finanzübersicht für einen Verein
      */
     getFinanceSummary(state, clubId) {

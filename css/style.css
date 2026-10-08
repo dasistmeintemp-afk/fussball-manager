@@ -8437,3 +8437,12 @@ td.nowrap { white-space: nowrap; }
 .ziel-kopf { font-size: 14px; margin-bottom: 4px; }
 .ziel-prognose { font-size: 13px; margin: 8px 0; }
 .ziel-wahl { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 6px; }
+
+/* Budget umschichten in den Finanzen */
+.budget-umschichten { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.budget-umschichten h4 { font-size: 13px; margin: 0 0 6px; }
+.umschichten-zeile { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin: 8px 0; }
+.umschichten-zeile label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
+.umschichten-zeile input { width: 150px; }
+.umschichten-vorschau { font-size: 12px; color: var(--text-muted); padding-bottom: 8px; }
+.umschichten-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }

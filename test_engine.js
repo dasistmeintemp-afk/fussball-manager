@@ -9718,6 +9718,37 @@ function runEngineTests() {
         if (!ohne.playoffs.wettbewerbe.every(x => x.fertig)) throw new Error("Ohne angesetzte Playoffs wird beim Saisonwechsel nichts entschieden");
     });
 
+    test("Budget umschichten: freier Gehaltsetat ins Transferbudget und zurück, nur für die laufende Saison", () => {
+        const { FinanceEngine: F } = require('./js/engine/financeEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const gehaelter = F.wochengehaelter(state, club);
+        club.wageBudget = Math.round(gehaelter + 50000);
+        club.transferBudget = 10000000;
+        const etat = club.wageBudget;
+        const raum = F.umschichtSpielraum(state, club);
+        if (raum.gehaltFrei !== Math.floor(etat - gehaelter)) throw new Error(`Freier Etat falsch: ${raum.gehaltFrei}`);
+        // Kurs: die Wochen bis zum Saisonwechsel
+        const wochen = Math.round((state.calendar.length - 1 - state.currentDayIndex) / 7);
+        if (raum.wochen !== Math.max(4, Math.min(52, wochen))) throw new Error(`Wochen bis zum Saisonwechsel: ${raum.wochen} statt ${wochen}`);
+
+        // Mehr als frei ist, geht nicht - die Verträge müssen bezahlt bleiben
+        if (F.schichteUm(state, 60000).ok) throw new Error("Mehr umgeschichtet, als im Etat frei ist");
+        const r = F.schichteUm(state, 20000);
+        if (!r.ok || club.wageBudget !== etat - 20000 || club.transferBudget !== 10000000 + 20000 * raum.wochen) throw new Error(`Umschichtung ins Transferbudget falsch: ${JSON.stringify(r)}`);
+        // Zurück: Das Transferbudget bezahlt den Etat bis Saisonende
+        const zuViel = Math.floor(club.transferBudget / raum.wochen) + 1;
+        if (F.schichteUm(state, -zuViel).ok) throw new Error("Mehr Gehaltsetat gekauft, als das Transferbudget hergibt");
+        const r2 = F.schichteUm(state, -5000);
+        if (!r2.ok || club.wageBudget !== etat - 15000) throw new Error("Umschichtung in den Gehaltsetat falsch");
+        if (F.umschichtSpielraum(state, club).umgeschichtet !== 15000) throw new Error("Der Stand der Umschichtung wird nicht geführt");
+
+        // Zum Saisonwechsel gilt wieder der Etat des Vorstands
+        state.seasonYear++;
+        F.budgetZuruecksetzen(state);
+        if (club.wageBudget !== etat || club.budgetUmschichtung) throw new Error(`Etat nach dem Saisonwechsel: ${club.wageBudget} statt ${etat}`);
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

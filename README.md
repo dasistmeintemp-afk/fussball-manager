@@ -418,6 +418,7 @@ Ein Talent in den Profikader zu holen dauert jetzt seine Zeit. *Vertragsgespräc
   | Sportstättenförderung | – | – | – | 15 % | 25 % | 30 % | 35 % |
 
 - **Finanzierung über die Hausbank:** Reicht die Kasse nicht, zahlt man ein Viertel an und den Rest mit 6 % Zinsen in Raten über die Bauzeit. Die Bank macht nur mit, wenn eine Rate höchstens ein Viertel der Einnahmen je Spieltag ausmacht. Vor jedem Bau zeigt ein Dialog Baukosten, Förderung, Eigenanteil und die Raten.
+- **Budget umschichten:** In den Finanzen lässt sich freier Gehaltsetat ins Transferbudget schieben und umgekehrt. Der Kurs sind die Wochen bis zum Saisonwechsel: 10.000 € pro Woche bringen bei noch 30 Wochen 300.000 € Transferbudget. Mehr als frei ist, geht nicht – die laufenden Verträge müssen bezahlt bleiben –, und mehr Gehaltsetat kostet entsprechend Transferbudget. Die Umschichtung gilt für die laufende Saison; zum Wechsel steht der Gehaltsetat wieder dort, wo der Vorstand ihn haben will. Vorher lagen beide Budgets fest.
 - **Kennzahlen auf einen Blick:** Die Vereinsseite beginnt mit einem Kopf aus Wappen, Liga und Kacheln für Tabellenplatz, Ruf, Fans, Stimmung, Teamchemie und Kontostand. Kader und Finanzen haben dieselbe Kennzahlenleiste (Kadergröße und Alter, Marktwert, Gehälter, Fitness, Ausfälle, auslaufende Verträge bzw. Kontostand, Budgets, Gehaltsquote, Sponsor, Heimspiel).
 
 ### 6b. 👔 Das Saisonziel des Vorstands (`BoardEngine.bestimmeZiel`)

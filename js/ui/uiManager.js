@@ -5448,6 +5448,25 @@ class UIManager {
         }));
     }
 
+    /** Das Trainerkarussell der gewählten Liga in dieser Saison */
+    renderKarussell(state, ligaId) {
+        const el = document.getElementById("statsKarussell");
+        const engine = typeof TrainerwechselEngine !== "undefined" ? TrainerwechselEngine : null;
+        if (!el || !engine) return;
+        const liste = engine.dieseSaison(state, ligaId).slice().reverse();
+        if (!liste.length) { el.hidden = true; el.innerHTML = ""; return; }
+        el.hidden = false;
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        el.innerHTML = `
+            <div class="card-header"><h3>🔄 Trainerkarussell</h3><span class="header-tag">${liste.length} Wechsel</span></div>
+            <ul class="preis-liste">${liste.map(w => `
+                <li>
+                    <span class="preis-monat">${esc(w.datum || `Saison ${w.saison}`)}</span>
+                    <span><strong>${esc(w.verein)}</strong> <small>${w.grund === "saisonende" ? "Trennung zum Saisonende" : `Entlassung${w.platz ? `, Platz ${w.platz}` : ""}`}</small></span>
+                    <span>${esc(w.alt)} → <strong>${esc(w.neu)}</strong> <small>${esc(engine.stilName(w.stil))}</small></span>
+                </li>`).join("")}</ul>`;
+    }
+
     renderStats() {
         const state = this.app.state;
         const eigeneLiga = this.getUserLeagueId(state);
@@ -5541,6 +5560,7 @@ class UIManager {
         DOM.setText("statsRatingHint", `ab ${mindestens} Einsätzen`);
 
         this.renderPreise(state, ligaId === "alle" ? eigeneLiga : ligaId, vereine);
+        this.renderKarussell(state, ligaId === "alle" ? eigeneLiga : ligaId);
 
         // Historie der vergangenen Saisons
         const histBody = document.getElementById("statsHistoryBody");

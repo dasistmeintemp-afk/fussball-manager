@@ -481,6 +481,12 @@ Ein Transfer ist kein Knopfdruck mehr, sondern ein Vorgang über mehrere Tage:
 - **Trainingsschwerpunkte:** Allround, Angriff, Defensive, Technik, Taktik, Regeneration, Jugendförderung.
 - **Nachwuchsakademie (`YouthEngine`):** Akademie-Ausbau (Stufe 1 bis 5) für stärkere Talente und direkte Beförderung von Jugendspielern mit Profi-Vertrag in die 1. Mannschaft.
 - **Jugendtag:** Einmal je Saison, im Frühjahr um den Spieltag bei 70 % der Saison (34 Spieltage: der 24.), stellt sich der neue Jahrgang vor. Drei Spieltage vorher kündigt der Nachwuchsleiter ihn im Postfach an und schätzt ein, wie gut er wird. Am Jugendtag selbst kommt eine Nachricht mit allen Namen.
+- **Jugendvorschau:** Zur Ankündigung ist der Jahrgang schon gesichtet, und am Jugendtag kommen genau diese Talente.
+  - Der Nachwuchsleiter beschreibt ihn: goldener, guter, ordentlicher oder schwacher Jahrgang, die Positionen und der Vielversprechendste („ein echtes Ausnahmetalent“).
+  - Gemessen wird an dem, was die eigene Akademie üblicherweise hervorbringt. Mit einem ligaüblichen Nachwuchsleiter sind etwa 5–10 % der Jahrgänge golden und 35–45 % gut.
+  - Ein guter Nachwuchsleiter schätzt genau. Ein schwacher oder die Aushilfe ohne Nachwuchsleiter irrt sich spürbar und sagt das auch.
+  - Die Vorschau steht als Karte im Reiter *Training*. Wer bis zum Jugendtag die Schwerpunkte ändert, lässt neu sichten.
+  - Die Sichtungskosten fallen erst am Jugendtag an.
 - **Befördert ist befördert:** Die Talente des eigenen Vereins stehen in genau einer Liste. Vorher waren es nach dem Laden zwei Kopien: Ein beförderter Spieler blieb in der Akademie stehen und ließ sich ein zweites Mal befördern.
 - **Schwerpunkte der Akademie:** Im Reiter *Training* lassen sich vier Dinge einstellen. Alles wirkt auf den nächsten Jahrgang am Jugendtag.
 

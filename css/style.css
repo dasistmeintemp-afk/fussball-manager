@@ -8602,3 +8602,13 @@ td.nowrap { white-space: nowrap; }
 .ga-wahl select { width: 100%; min-width: 0; font-size: 12px; }
 .ga-fuss { grid-column: 1 / -1; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
 .ga-fuss input { width: auto; margin: 0; }
+
+/* Jugendvorschau des Nachwuchsleiters */
+.jugend-vorschau { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; }
+.jugend-vorschau.jv-golden { border-color: #facc15; background: rgba(250, 204, 21, 0.08); }
+.jugend-vorschau.jv-gut { border-color: #4ade80; background: rgba(74, 222, 128, 0.06); }
+.jv-kopf { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 13px; }
+.jv-kopf .text-muted { font-size: 11px; }
+.jv-text { margin: 0; font-size: 13px; line-height: 1.45; }
+.jv-pos { display: flex; flex-wrap: wrap; gap: 4px; }
+.jv-hinweis { margin: 0; font-size: 11px; color: var(--text-muted); }

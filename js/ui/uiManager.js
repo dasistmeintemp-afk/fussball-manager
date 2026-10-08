@@ -2611,7 +2611,7 @@ class UIManager {
         const club = state.clubs?.find(c => c.id === state.userClubId);
         const massstab = this.sternMassstab();
         const schluessel = `${massstab}|${state.userClubId}|${(club?.playerIds || []).length}|${state.currentMatchday}|${state.seasonYear}`;
-        if (this._starContextKey === schluessel && this._starContext) return this._starContext;
+        if (this._starContextKey === schluessel && this._starContext && this._starContext.state === state) return this._starContext;
 
         // Beide Schlüssel: calculateStarRating liest squadAverageAbility,
         // calculateVisiblePlayerCard userSquadAvgAbility. Ohne beide messen
@@ -2620,7 +2620,8 @@ class UIManager {
         engine.massstab = massstab;
         const schnitt = engine.sternBezug(state);
         this._starContextKey = schluessel;
-        this._starContext = { squadAverageAbility: schnitt, userSquadAvgAbility: schnitt };
+        // Der Spielstand reist mit: Die Spielerkarte misst daran die Klasse in Worten
+        this._starContext = { squadAverageAbility: schnitt, userSquadAvgAbility: schnitt, state };
         return this._starContext;
     }
 

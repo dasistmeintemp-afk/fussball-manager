@@ -451,6 +451,11 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
   - Der Maßstab gilt überall: Kader, Taktik, Spielerakte, Scoutberichte, Gegneranalyse und schon die Spieler eines Vereins im Karrierestart. Dort wurden sie vorher an allen Vereinen der Auswahl gemessen. Bayerns Spieler hatten im Assistenten fünf Sterne und nach dem Start im Kader nur drei oder vier.
   - Die Kaderstärke im Vereinsvergleich des Assistenten misst weiter an der Auswahl, beim Weltmaßstab fest.
   - Der Sternefilter des Transfermarkts sucht nach demselben Maßstab und nennt ihn („Ab ★ 3,0 (Ligaschnitt)“).
+- **Klasse in Worten (`PlayerRatingEngine.klasse`):** Die Sterne sagen, wie gut ein Spieler für den eigenen Verein ist, die Klasse, wie gut er überhaupt ist. Sie steht in Spielerakte, Kader, Transfermarkt, Scoutbericht und Gegneranalyse, etwa „Stammspieler der 2. Bundesliga“ oder „Spitzenspieler der Landesliga“.
+  - **Gemessen an der Welt:** Je Ligastufe des eigenen Landes zählen die besten elf jedes Vereins. Ab dem 85. Perzentil ist einer Spitze der Liga, ab dem 40. Stammspieler. Weltklasse ist das oberste Prozent aller Erstligastammspieler.
+  - **Talente:** Junge Spieler mit Luft nach oben bekommen ein Ziel in derselben Sprache („Kann Stammspieler der Bundesliga werden“).
+  - **Bei fremden Spielern** folgt die Klasse der Schätzung des Scouts und trägt ein „ca.“.
+  - Vorher hingen die Worte an festen Schwellen: „Starker Erstligaspieler“ ab Stärke 75, obwohl ein typischer Bundesliga-Stammspieler 78 hat.
 - **Testspiele werden angesagt:** Ein Spieltermin der Vorbereitung erscheint wie ein Spieltag – mit beiden Mannschaften und der Wahl zwischen Live-Spiel und Sofortergebnis. Beide laufen über dieselbe Simulation; das Ergebnis wird so eingetragen, wie es auf dem Platz fiel.
 - **Saisonkalender & Wochenplan (`CalendarEngine`):** Realistischer Tagesablauf zwischen Spieltagen (Regeneration, Schwerpunkt-Training, Medien-/Sponsoren-Events, Taktikschulung und Gegneranalyse).
 - **Zeit Tag für Tag:** Der Weiter-Knopf läuft Tag für Tag bis zum nächsten Termin (Spiel, Testspiel, Pressekonferenz, Saisonende). Er hält aber auch dazwischen an, wenn etwas den Manager angeht:

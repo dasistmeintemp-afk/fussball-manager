@@ -90,6 +90,7 @@ const OpponentAnalysisEngine = {
             let card = null;
             if (ratingEngine && typeof ratingEngine.calculateVisiblePlayerCard === 'function') {
                 card = ratingEngine.calculateVisiblePlayerCard(p, {
+                    state,
                     userClubId: userClubId,
                     userSquadAvgAbility: userSquadAvgCa,
                     leagueDataCoverage: 85,

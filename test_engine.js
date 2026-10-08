@@ -10175,6 +10175,65 @@ function runEngineTests() {
         if (summe(eigener) !== eigenVorher) throw new Error("Gehälter des Nutzers angefasst");
     });
 
+    test("Auszeichnungen: Spieler, Talent und Trainer des Monats, Saisonpreise und Elf der Saison in der eigenen Liga", () => {
+        const { AuszeichnungEngine: Preise } = require('./js/engine/auszeichnungEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const liga = state.clubs.filter(c => c.leagueId === club.leagueId);
+        const inLiga = new Set(liga.map(c => c.id));
+        const ligaSpieler = state.players.filter(p => inLiga.has(p.clubId));
+        ligaSpieler.forEach(p => { p.stats = { matches: 0, goals: 0, assists: 0, ratingSum: 0, cleanSheets: 0, minutes: 0 }; });
+
+        // Monatsbeginn festhalten, dann einen Monat "spielen"
+        if (Preise.pruefeMonat(state, "02.09.2026") !== null) throw new Error("Preis ohne abgelaufenen Monat");
+        const star = ligaSpieler.find(p => p.clubId !== club.id && p.pos === "ST");
+        const talent = ligaSpieler.find(p => p.age <= 21 && p.clubId === club.id) || ligaSpieler.find(p => p.age <= 21);
+        talent.age = 20; star.age = 27;
+        ligaSpieler.forEach(p => { p.stats.matches = 4; p.stats.ratingSum = 4 * 6.6; });
+        Object.assign(star.stats, { matches: 4, goals: 6, assists: 1, ratingSum: 4 * 8.4 });
+        Object.assign(talent.stats, { matches: 4, goals: 1, assists: 2, ratingSum: 4 * 7.6 });
+        state.standings = state.standings.map(r => ({ ...r, played: 4, points: r.clubId === club.id ? 12 : 4, goalDiff: r.clubId === club.id ? 9 : 0 }));
+        const wertVorher = star.value;
+        const vertrauenVorher = state.boardConfidence;
+        if (Preise.pruefeMonat(state, "17.09.2026") !== null) throw new Error("Preis mitten im Monat");
+        const zeile = Preise.pruefeMonat(state, "01.10.2026");
+        if (!/September 2026/.test(zeile || "")) throw new Error(`Keine Zeile zum Monatspreis: ${zeile}`);
+        const monat = state.auszeichnungen.monate[0];
+        if (monat.spieler.id !== star.id || monat.talent.id !== talent.id) throw new Error(`Falsche Preisträger: ${monat.spieler.name} / ${monat.talent?.name}`);
+        if (!monat.trainer.istNutzer || !(state.boardConfidence > vertrauenVorher)) throw new Error("Trainer des Monats ohne Wirkung");
+        if (!(star.value > wertVorher) || !star.auszeichnungen.some(a => a.art === "spielerMonat" && a.monat === "09.2026")) throw new Error("Preis nicht in der Akte");
+        if (!Preise.preiseVon(star).some(p => p.name === "Spieler des Monats" && /September/.test(p.wann))) throw new Error("Akte nennt den Preis nicht");
+        if (!(CareerEngine.ruf(state) >= 0)) throw new Error("Ruf nicht berechenbar");
+        // Ein zweiter Aufruf im selben Monat vergibt nichts doppelt
+        Preise.pruefeMonat(state, "05.10.2026");
+        if (state.auszeichnungen.monate.length !== 1) throw new Error("Monatspreis doppelt vergeben");
+
+        // Saisonpreise: nur wer genug gespielt hat, die Elf passt zu den Positionen
+        ligaSpieler.forEach(p => { p.stats.matches = 30; p.stats.ratingSum = 30 * 6.7; p.stats.goals = 0; p.stats.assists = 0; });
+        Object.assign(star.stats, { matches: 30, goals: 31, assists: 5, ratingSum: 30 * 7.9 });
+        const kurz = ligaSpieler.find(p => p !== star && p.pos === "ST");
+        Object.assign(kurz.stats, { matches: 5, goals: 9, ratingSum: 5 * 9.5 });
+        // Ein Torjäger aus einer anderen Liga zählt nicht
+        const fremd = state.players.find(p => p.clubId && !inLiga.has(p.clubId) && p.pos === "ST");
+        fremd.stats = { matches: 30, goals: 60, assists: 0, ratingSum: 30 * 8, cleanSheets: 0, minutes: 2700 };
+        const preise = Preise.saisonPreise(state, club.leagueId);
+        if (preise.spieler.id !== star.id || preise.torjaeger.id !== star.id) throw new Error(`Saisonpreise: ${preise.spieler.name} / ${preise.torjaeger.name}`);
+        if (preise.elf.length !== 11 || preise.elf.some(e => !Preise.ELF.some(pl => pl.platz === e.platz && pl.pos.includes(e.pos)))) throw new Error(`Elf der Saison: ${preise.elf.map(e => e.platz + ":" + e.pos).join(" ")}`);
+        if (new Set(preise.elf.map(e => e.id)).size !== 11 || preise.elf.some(e => e.id === kurz.id)) throw new Error("Elf mit Doppelten oder Kurzeinsätzen");
+        if (!preise.trainer || typeof preise.trainer.erwartet !== "number") throw new Error("Kein Trainer der Saison");
+
+        // Zum Saisonende: Archiv und Preise in der eigenen Liga
+        state.inbox = [];
+        SeasonEngine.finishSeason(state);
+        const archiv = state.history.pastSeasons[state.history.pastSeasons.length - 1];
+        if (archiv.awards.topScorer.name !== star.name) throw new Error(`Torschützenkönig im Archiv: ${archiv.awards.topScorer?.name}`);
+        if (!state.auszeichnungen.saisons.some(x => x.liga === club.leagueId && x.spieler.id === star.id)) throw new Error("Saisonpreise nicht gespeichert");
+        if (!state.inbox.some(m => /Preise der Saison/.test(m.subject || ""))) throw new Error("Keine Post zu den Saisonpreisen");
+        if (Preise.uebersicht(state, club.leagueId).letzteSaison?.spieler?.id !== star.id) throw new Error("Übersicht ohne Saisonpreise");
+        const zurueck = SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(state))));
+        if (!zurueck.players.find(p => p.id === star.id)?.auszeichnungen?.length || !zurueck.auszeichnungen?.saisons?.length) throw new Error("Preise nach dem Laden verloren");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

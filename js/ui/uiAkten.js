@@ -357,6 +357,20 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             </div>`;
     },
 
+    /** Auszeichnungen in der Akte: Spieler des Monats, Elf der Saison ... */
+    preiseHtml(player) {
+        const engine = typeof AuszeichnungEngine !== "undefined" ? AuszeichnungEngine : null;
+        const preise = engine ? engine.preiseVon(player) : [];
+        if (!preise.length) return "";
+        const gruppen = new Map();
+        preise.forEach(p => { if (!gruppen.has(p.name)) gruppen.set(p.name, []); gruppen.get(p.name).push(p.wann); });
+        return `
+            <div class="dash-card mb-3 akte-preise">
+                <h4 class="gs-titel">🏆 Auszeichnungen</h4>
+                <ul>${[...gruppen].map(([name, wann]) => `<li><strong>${this.escapeHtml(name)}${wann.length > 1 ? ` ×${wann.length}` : ""}</strong> <small>${this.escapeHtml(wann.join(", "))}</small></li>`).join("")}</ul>
+            </div>`;
+    },
+
     getDevelopmentPlanEngine() {
         if (typeof DevelopmentPlanEngine !== "undefined" && DevelopmentPlanEngine) return DevelopmentPlanEngine;
         if (typeof window !== "undefined" && window.DevelopmentPlanEngine) return window.DevelopmentPlanEngine;
@@ -855,6 +869,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ${positionMapHtml}
 
             ${eigenheitenHtml}
+
+            ${this.preiseHtml(player)}
 
             ${schuleHtml}
 

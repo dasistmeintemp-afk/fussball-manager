@@ -91,6 +91,22 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   - Die letzten fünf Ergebnisse und die nächsten drei Spiele.
   - Spielweise (Formation, Grundhaltung, Pressing, Passspiel, Abwehrlinie, Torjäger) und Anlagen.
   - Den Kader nach Mannschaftsteilen, mit Sternen und Werten so, wie das eigene Scouting sie kennt. Ein Klick öffnet die Spielerakte darüber.
+- **Auszeichnungen (`AuszeichnungEngine`):**
+  - **Monatspreise:** Am Monatsersten kürt die eigene Liga Spieler, Talent (bis 21) und Trainer des Monats.
+    - Für den Spieler zählen Notenschnitt, Tore und Vorlagen im Monat, ab drei Spielen.
+    - Für den Trainer zählen die Punkte je Spiel.
+    - Ein Spieler räumt nicht beide Spielerpreise ab.
+  - **Saisonpreise:** Zum Saisonende gibt es sie in der eigenen Liga und den fünf ersten Ligen.
+    - Spieler und Talent der Saison, ab der Hälfte der Spiele.
+    - Torjäger.
+    - Trainer der Saison: wer am weitesten über dem Platz landet, den sein Kader erwarten ließ.
+    - Die Elf der Saison im 4-3-3, je Platz der Beste, der dort zu Hause ist.
+  - **Folgen:**
+    - Preisträger sind etwas mehr wert und besser gelaunt.
+    - Die Preise stehen in der Spielerakte („Spieler des Monats ×2 …“).
+    - Ein Preis für den eigenen Trainer stärkt seinen Ruf und das Vertrauen des Vorstands.
+  - **Anzeige:** Die Ranglisten zeigen die Monatspreise der Saison und die Preise der letzten Saison mit der Elf auf dem Platz. Ein Tipp auf einen Namen öffnet die Akte.
+  - **Korrektur im Archiv:** Torschützenkönig und Spieler der Saison wurden vorher über alle 384 Vereine der Welt ermittelt. Jetzt zählt nur die eigene Liga.
 - **Spielplan mit wechselndem Heimrecht:** Heim- und Auswärtsspiele wechseln sich nach dem Berger-Verfahren ab, höchstens drei gleiche in Folge. Vorher hatte ein Verein bis zu 17 Heim- oder Auswärtsspiele am Stück.
 
 ### 2. 📋 Aufstellung, Taktik & Teamchemie
@@ -667,6 +683,7 @@ untitled/
 │   │   ├── trainingEngine.js   # Tägliche Belastung, Ermüdung, Risiko & Entwicklung
 │   │   ├── financeEngine.js    # Spieltagseinnahmen, Gehälter & Journal
 │   │   ├── boardEngine.js      # Vorstandszufriedenheit & Saisonziele
+│   │   ├── auszeichnungEngine.js # Spieler/Talent/Trainer des Monats, Saisonpreise, Elf der Saison
 │   │   ├── newsEngine.js       # Zentrales Nachrichtensystem & Postfach
 │   │   ├── aiManagerEngine.js  # KI-Aufstellungen & KI-Transferangebote
 │   │   ├── scoutingEngine.js   # Scoutaufträge & Spielerberichte

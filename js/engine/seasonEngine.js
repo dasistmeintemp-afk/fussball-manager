@@ -1032,15 +1032,21 @@ class SeasonEngine {
             });
         });
 
-        // Saisonauszeichnungen ermitteln (E5)
-        const sortedScorers = [...state.players].filter(p => (p.stats.goals || 0) > 0).sort((a, b) => (b.stats.goals || 0) - (a.stats.goals || 0));
+        // Saisonauszeichnungen - in der eigenen Liga. Vorher zählten alle
+        // Spieler der Welt: Der Torschützenkönig der Bundesliga-Chronik
+        // konnte aus der Landesliga kommen.
+        const preisEngine = _resolve('AuszeichnungEngine', './auszeichnungEngine.js');
+        const preise = preisEngine && typeof preisEngine.saisonAbschluss === 'function' ? preisEngine.saisonAbschluss(state) : null;
+        const ligaSpieler = new Set((state.clubs || []).filter(c => c.leagueId === userClub.leagueId).map(c => c.id));
+        const inLiga = state.players.filter(p => ligaSpieler.has(p.clubId));
+        const sortedScorers = inLiga.filter(p => (p.stats.goals || 0) > 0).sort((a, b) => (b.stats.goals || 0) - (a.stats.goals || 0));
         const topScorer = sortedScorers[0] || null;
 
-        const sortedAssists = [...state.players].filter(p => (p.stats.assists || 0) > 0).sort((a, b) => (b.stats.assists || 0) - (a.stats.assists || 0));
+        const sortedAssists = inLiga.filter(p => (p.stats.assists || 0) > 0).sort((a, b) => (b.stats.assists || 0) - (a.stats.assists || 0));
         const topAssister = sortedAssists[0] || null;
 
-        const ratedPlayers = [...state.players].filter(p => (p.stats.matches || 0) >= 10).sort((a, b) => ((b.stats.ratingSum || 0) / (b.stats.matches || 1)) - ((a.stats.ratingSum || 0) / (a.stats.matches || 1)));
-        const playerOfTheSeason = ratedPlayers[0] || null;
+        const ratedPlayers = inLiga.filter(p => (p.stats.matches || 0) >= 10).sort((a, b) => ((b.stats.ratingSum || 0) / (b.stats.matches || 1)) - ((a.stats.ratingSum || 0) / (a.stats.matches || 1)));
+        const playerOfTheSeason = (preise && preise.spieler && state.players.find(p => p.id === preise.spieler.id)) || ratedPlayers[0] || null;
 
         // Historie archivieren
         state.history.pastSeasons.push({

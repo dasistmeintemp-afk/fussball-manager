@@ -289,6 +289,13 @@ Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit 
 - **Direkt ans Ziel:** Bei auslaufenden Verträgen steht jeder Spieler einzeln da, die stärksten zuerst. Ein Tipp auf den Namen öffnet seine Akte gleich bei der Vertragsverlängerung, der Cursor steht im Gehaltsfeld. Eine Verhandlung, bei der wir am Zug sind, führt direkt zu ihrer Karte im Transfermarkt. Dasselbe gilt für Talente: *Vertragsgespräche aufnehmen* springt sofort in die Verhandlung mit dem Berater, *Zur Verhandlung* ebenso. Die Post über einen auslaufenden Vertrag hat einen Knopf *Vertrag verlängern*.
 
 ### 3d. 🗣️ Gespräche unter vier Augen (`PlayerTalkEngine`)
+**Die Spielerakte in Reitern:** Kopf, Stärke und Hauptrolle stehen immer oben, darunter wechseln drei Reiter.
+- **Überblick:** Saisonbilanz, Werte, Positionen, Eigenheiten und Signatur.
+- **Entwicklung:** Entwicklungsplan, U23 und Leihe. Nur bei eigenen Spielern.
+- **Vertrag & Kabine:** Zufriedenheit, Gespräche, Vertrag, Gehalt und Klauseln. Bei fremden Spielern heißt er **Vertrag & Transfer**, mit Scouting, Angebot und Vorvertrag.
+
+Die Leiste bleibt beim Scrollen oben. Der gewählte Reiter bleibt erhalten, solange dieselbe Akte offen ist, auch wenn eine Änderung sie neu aufbaut. Ein Klick auf einen auslaufenden Vertrag öffnet gleich „Vertrag“. Vorher stand alles untereinander, am Handy über viele Bildschirme.
+
 In der Spielerakte führt der Manager Gespräche mit jedem eigenen Spieler. Wie er reagiert, hängt an Form und Persönlichkeit:
 
 | Gespräch | Wirkung |

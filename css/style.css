@@ -2515,6 +2515,15 @@ body {
 /* ==========================================================================
    Player Role & Detail Cards
    ========================================================================== */
+/* Spielerakte in Reitern */
+.pd-tabs { position: sticky; top: -24px; z-index: 3; display: flex; gap: 4px; margin: 0 -4px 14px; padding: 8px 4px; background: var(--bg-card, var(--surface-1, #111827)); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.pd-tabs::-webkit-scrollbar { display: none; }
+.pd-tab-knopf { flex: 1 0 auto; min-height: 40px; padding: 8px 9px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--text-muted); font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.pd-tab-knopf.aktiv { background: var(--accent-primary, #a3e635); border-color: transparent; color: var(--bg-main, #0b1220); }
+.pd-tab[hidden] { display: none; }
+.pd-saison { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2, rgba(255, 255, 255, 0.03)); border: 1px solid var(--line); font-size: 13px; }
+.pd-saison span { color: var(--text-muted); }
+
 .player-detail-top {
     display: flex;
     align-items: flex-start;

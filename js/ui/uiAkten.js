@@ -500,6 +500,70 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
      * Vertragsverhandlung - so führt ein auslaufender Vertrag im Schreibtisch
      * oder im Postfach direkt dorthin, wo man verlängert.
      */
+    /**
+     * Die weiteren Klauseln (KlauselEngine) als Formularteil - für die
+     * Vertragsverlängerung und die Verhandlung mit einem Neuzugang.
+     */
+    klauselFelder(club, player = null) {
+        if (typeof KlauselEngine === "undefined") return "";
+        const hoeher = (club?.level || 1) > 1;
+        const schritt = typeof ContractEngine !== "undefined" && ContractEngine.eingabeSchritt ? ContractEngine.eingabeSchritt(player?.value || 100000) : 10000;
+        return `
+            <details class="klausel-felder">
+                <summary>Weitere Klauseln</summary>
+                <div class="klausel-raster">
+                    <label>Gehaltssteigerung
+                        <select class="styled-select kl-steigerung">
+                            <option value="0">Keine</option>
+                            ${KlauselEngine.STEIGERUNG.filter(Boolean).map(p => `<option value="${p}">+${p} % je Saison</option>`).join("")}
+                        </select>
+                    </label>
+                    <label>Bei Abstieg
+                        <select class="styled-select kl-abstieg">
+                            <option value="">Nichts</option>
+                            <option value="kuerzung">Gehalt −${Math.round(KlauselEngine.ABSTIEG_KUERZUNG * 100)} %</option>
+                            <option value="ausstieg">Er darf ablösefrei gehen</option>
+                        </select>
+                    </label>
+                    ${hoeher ? `
+                    <label>Bei Aufstieg
+                        <select class="styled-select kl-aufstieg">
+                            <option value="0">Nichts</option>
+                            ${KlauselEngine.AUFSTIEG.filter(Boolean).map(p => `<option value="${p}">Gehalt +${p} %</option>`).join("")}
+                        </select>
+                    </label>
+                    <label>Mindestablöse für höhere Ligen (€)
+                        <input type="number" class="styled-input kl-mindest" value="0" min="0" step="${schritt}">
+                    </label>` : ""}
+                    <label class="kl-option"><input type="checkbox" class="kl-option-feld"> Vereinsoption auf ein weiteres Jahr</label>
+                </div>
+                <p class="kl-wert">Steigerungen und eine Mindestablöse gefallen ihm, eine Option nicht. Er rechnet das ins Gehalt ein.</p>
+            </details>`;
+    },
+
+    /** Die Klauseln aus dem Formularteil lesen */
+    leseKlauseln(felder) {
+        if (!felder) return {};
+        const feld = (sel) => felder.querySelector(sel);
+        return {
+            steigerung: Number(feld(".kl-steigerung")?.value || 0),
+            abstieg: feld(".kl-abstieg")?.value || "",
+            aufstieg: Number(feld(".kl-aufstieg")?.value || 0),
+            mindestAbloese: Number(feld(".kl-mindest")?.value || 0),
+            option: !!feld(".kl-option-feld")?.checked
+        };
+    },
+
+    /** Unter den Klauseln: was sie dem Spieler wert sind */
+    klauselWertText(felder, faktor) {
+        const text = felder?.querySelector(".kl-wert");
+        if (!text) return;
+        const prozent = Math.round(Math.abs(faktor - 1) * 100);
+        text.textContent = faktor > 1.005 ? `Die Klauseln sind ihm etwa ${prozent} % Gehalt wert - so viel weniger Grundgehalt nimmt er.`
+            : (faktor < 0.995 ? `Für diese Klauseln will er etwa ${Math.round((1 / faktor - 1) * 100)} % mehr Grundgehalt.`
+                : "Steigerungen und eine Mindestablöse gefallen ihm, eine Option nicht. Er rechnet das ins Gehalt ein.");
+    },
+
     showPlayerDetailsModal(playerId, optionen = {}) {
         const state = this.app.state;
         const treffer = this.findAnyPlayer(playerId);
@@ -686,6 +750,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         </select>
                         <small style="font-size:11px; color:var(--text-muted);">Wer die Klausel zahlt, holt ihn - Sie können dann nicht ablehnen.</small>
                     </div>
+                    ${this.klauselFelder(club, player)}
 
                     <div id="extFeedback" style="font-size:13px; margin-bottom:10px;"></div>
                     <button class="btn btn-primary" id="btnSubmitExtension" style="width:100%;">Neuen Vertrag anbieten</button>
@@ -954,6 +1019,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <span>Ausstiegsklausel:</span>
                 <strong>${this.formatMoneySafe(klausel)}</strong>
             </div>` : ""}
+            ${player.klauseln && player.clubId === state.userClubId && typeof KlauselEngine !== "undefined" ? `
+            <div class="finance-stat-row kl-zeile">
+                <span>Klauseln:</span>
+                <strong>${KlauselEngine.texte(player.klauseln).map(t => this.escapeHtml(t)).join("<br>")}</strong>
+            </div>
+            ${player.klauseln.option && (player.contractYears ?? 0) <= 1 ? `<button class="btn btn-secondary" id="btnPdOption" style="width:100%; margin-top:8px;" title="Ein Jahr länger zu den bisherigen Bedingungen - der Spieler wird nicht gefragt"><svg class="ico" aria-hidden="true"><use href="#i-edit"/></svg> Vereinsoption ziehen (+1 Jahr)</button>` : ""}` : ""}
             ${player.weiterverkauf && player.weiterverkauf.clubId === state.userClubId ? `
             <div class="finance-stat-row">
                 <span>Weiterverkaufsbeteiligung:</span>
@@ -1142,7 +1213,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const rolle = document.getElementById("extRoleSelect")?.value;
             const klauselWert = parseInt(document.getElementById("extKlauselSelect")?.value || "0", 10);
             const d = ContractEngine.getExtensionDemand(player, club, state, rolle);
-            const betrag = ContractEngine.rundeBetrag(d.demandWage * ContractEngine.klauselRabatt(player, klauselWert));
+            const jahre = parseInt(document.getElementById("extYearsSelect")?.value || "3", 10);
+            const felder = document.querySelector("#pdVertrag .klausel-felder");
+            const klauselFaktor = typeof KlauselEngine !== "undefined" && felder ? KlauselEngine.faktor(this.leseKlauseln(felder), jahre, club) : 1;
+            this.klauselWertText(felder, klauselFaktor);
+            const betrag = ContractEngine.rundeBetrag(d.demandWage * ContractEngine.klauselRabatt(player, klauselWert) / klauselFaktor);
             const text = document.getElementById("extForderung");
             if (text) text.textContent = `${GameState.formatMoney(betrag)} / Woche`;
             const eingabe = document.getElementById("extWageInput");
@@ -1158,6 +1233,16 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         };
         document.getElementById("extRoleSelect")?.addEventListener("change", forderungNeu);
         document.getElementById("extKlauselSelect")?.addEventListener("change", forderungNeu);
+        document.getElementById("extYearsSelect")?.addEventListener("change", forderungNeu);
+        document.querySelectorAll("#pdVertrag .klausel-felder select, #pdVertrag .klausel-felder input").forEach(el => el.addEventListener("change", forderungNeu));
+        document.getElementById("btnPdOption")?.addEventListener("click", () => {
+            const res = KlauselEngine.zieheOption(state, player.id);
+            if (!res.success) { this.showToast(res.error, "error"); return; }
+            this.showToast(`Option gezogen: ${player.name} bleibt ein weiteres Jahr.`, "success");
+            this.app.state.saveToLocalStorage();
+            this.showPlayerDetailsModal(player.id);
+            this.renderSquad();
+        });
         if (submitExtBtn && isUserClub && !isProspect) {
             submitExtBtn.onclick = () => {
                 const offWage = parseInt(document.getElementById("extWageInput").value, 10);
@@ -1166,7 +1251,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 const offKlausel = parseInt(document.getElementById("extKlauselSelect")?.value || "0", 10);
                 const feedback = document.getElementById("extFeedback");
 
-                const res = ContractEngine.negotiateExtension(player, club, offWage, offYears, offRole, offKlausel, state);
+                const offKlauseln = this.leseKlauseln(document.querySelector("#pdVertrag .klausel-felder"));
+                const res = ContractEngine.negotiateExtension(player, club, offWage, offYears, offRole, offKlausel, state, offKlauseln);
                 if (res.success) {
                     feedback.style.color = "#34d399";
                     feedback.textContent = `✅ ${res.reason}`;

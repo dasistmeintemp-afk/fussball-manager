@@ -10736,6 +10736,82 @@ function runEngineTests() {
         if (!r.success || r.assignment.position !== "TW" || r.assignment.minOverall !== p.stammStaerke) throw new Error("Suchauftrag falsch");
     });
 
+    test("Vertragsklauseln: Steigerung, Auf- und Abstieg, Mindestablöse und Option in Verhandlung, Verlängerung und Saisonwechsel", () => {
+        const { KlauselEngine: K } = require('./js/engine/klauselEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => (c.level || 1) === 2 && c.countryId === "de");
+        state.userClubId = club.id;
+        club.balance = 50000000; club.transferBudget = 50000000; club.wageBudget = 50000000;
+
+        // Was die Klauseln dem Spieler wert sind
+        if (!(K.faktor({ steigerung: 10 }, 3, club) > 1.09)) throw new Error("Steigerung ist ihm nichts wert");
+        if (!(K.faktor({ option: true }, 3, club) < 1)) throw new Error("Eine Vereinsoption gefällt ihm");
+        if (K.normalisiere({ aufstieg: 25, mindestAbloese: 1e6 }, state.clubs.find(c => c.id === "muc")).aufstieg) throw new Error("Aufstiegsklausel beim Erstligisten");
+
+        // Verhandlung: Mit Steigerung und Mindestablöse reicht ein niedrigeres Grundgehalt
+        const frei = state.players.find(p => p.clubId && p.clubId !== club.id && p.pos === "ZM" && p.overall >= 65);
+        const alt = state.clubs.find(c => c.id === frei.clubId);
+        alt.playerIds = alt.playerIds.filter(id => id !== frei.id);
+        frei.clubId = null;
+        frei.hiddenAttributes = Object.assign({}, frei.hiddenAttributes, { injuryProneness: 1 });
+        const neg = NegotiationEngine.startTransferNegotiation(state, frei.id, club.id).negotiation;
+        const angebot = { wage: Math.round(neg.demand.wage * 0.9), years: 3, signingBonus: neg.demand.signingBonus,
+            agentFee: neg.demand.agentFee, klauseln: { steigerung: 10, mindestAbloese: 2000000, aufstieg: 7 } };
+        NegotiationEngine.submitOffer(state, neg.id, angebot);
+        if (neg.lastOffer.klauseln?.steigerung !== 10 || neg.lastOffer.klauseln.aufstieg) throw new Error(`Klauseln falsch übernommen: ${JSON.stringify(neg.lastOffer.klauseln)}`);
+        neg.replyDay = NegotiationEngine.today(state);
+        NegotiationEngine.processDay(state);
+        if (neg.stage !== NegotiationEngine.STAGES.MEDICAL) throw new Error(`Angebot mit Klauseln abgelehnt (${neg.status}, ${neg.stage})`);
+        neg.replyDay = NegotiationEngine.today(state);
+        const echterZufall = Math.random;
+        Math.random = () => 0.99;
+        try { NegotiationEngine.processDay(state); } finally { Math.random = echterZufall; }
+        if (frei.clubId !== club.id || frei.klauseln?.steigerung !== 10 || frei.klauseln.mindestAbloese !== 2000000) throw new Error(`Klauseln stehen nicht im Vertrag: ${JSON.stringify(frei.klauseln)}`);
+
+        // Saisonwechsel mit Aufstieg: Steigerung und Aufstiegsklausel
+        frei.klauseln.aufstieg = 25;
+        const lohn = frei.wage;
+        K.saisonwechsel(state, { promoted: [{ clubId: club.id }], relegated: [] });
+        if (Math.abs(frei.wage - lohn * 1.1 * 1.25) > 10) throw new Error(`Gehalt nach Aufstieg: ${lohn} -> ${frei.wage}`);
+
+        // Abstieg: Kürzung - oder er geht ablösefrei
+        const kader = state.players.filter(p => p.clubId === club.id && p !== frei);
+        const geht = kader[0];
+        K.setze(geht, { abstieg: "ausstieg" }, club);
+        frei.klauseln = { abstieg: "kuerzung" };
+        const vorAbstieg = frei.wage;
+        K.saisonwechsel(state, { promoted: [], relegated: [{ clubId: club.id }] });
+        if (Math.abs(frei.wage - vorAbstieg * 0.7) > 10) throw new Error(`Gehalt nach Abstieg: ${vorAbstieg} -> ${frei.wage}`);
+        if (geht.clubId !== null || club.playerIds.includes(geht.id)) throw new Error("Abstiegsklausel: Er ist nicht gegangen");
+
+        // Vereinsoption: erst im letzten Vertragsjahr
+        const opt = kader[1];
+        opt.contractYears = 2;
+        K.setze(opt, { option: true }, club);
+        if (K.zieheOption(state, opt.id).success) throw new Error("Option vor dem letzten Vertragsjahr gezogen");
+        opt.contractYears = 1;
+        if (!K.zieheOption(state, opt.id).success || opt.contractYears !== 2 || opt.klauseln) throw new Error("Option nicht gezogen");
+
+        // Mindestablöse: Ein Erstligist mit Geld greift im Fenster zu
+        const ziel = kader[2];
+        ziel.overall = 92; ziel.value = 3000000;
+        K.setze(ziel, { mindestAbloese: 2500000 }, club);
+        const fenster = TransferEngine.istTransferfenster;
+        TransferEngine.istTransferfenster = () => true;
+        let wechsel;
+        try { wechsel = K.mindestAbloeseTag(state, () => 0); } finally { TransferEngine.istTransferfenster = fenster; }
+        const kaeufer = state.clubs.find(c => c.id === ziel.clubId);
+        if (!wechsel.length || kaeufer.level !== 1 || kaeufer.countryId !== "de" || ziel.klauseln) throw new Error(`Mindestablöse nicht gezogen: ${JSON.stringify(wechsel)}`);
+
+        // Verlängerung: Mit einer Steigerung unterschreibt er für weniger Grundgehalt
+        const v = kader.slice(3).find(p => !ContractEngine.verlaengerungsHindernis(p) && p.clubId === club.id);
+        const d = ContractEngine.getExtensionDemand(v, club, state);
+        const wenig = Math.round(d.demandWage * 0.84);
+        if (ContractEngine.negotiateExtension(Object.assign({}, v), club, wenig, 3, d.preferredRole, 0, state).success) throw new Error("Zu wenig Gehalt ohne Klausel angenommen");
+        const res = ContractEngine.negotiateExtension(v, club, wenig, 3, d.preferredRole, 0, state, { steigerung: 10 });
+        if (!res.success || v.klauseln?.steigerung !== 10) throw new Error(`Verlängerung mit Steigerung: ${res.reason}`);
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

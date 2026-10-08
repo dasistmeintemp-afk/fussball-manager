@@ -302,6 +302,8 @@ class TransferEngine {
         // Die U23 des alten Vereins gilt beim neuen nicht
         delete player.reserve;
         delete player.vereinslosAb;
+        // Die Klauseln (KlauselEngine) gehören zum alten Vertrag
+        delete player.klauseln;
 
         // Zum neuen Verein hinzufügen
         buyerClub.playerIds.push(player.id);
@@ -991,6 +993,11 @@ class TransferEngine {
 
         // Wer eine Ausstiegsklausel hat, kann einfach gekauft werden
         this.pruefeAusstiegsklauseln(state);
+        // Ebenso eine Mindestablöse - für höherklassige Vereine
+        const klauselEngine = (typeof KlauselEngine !== "undefined" && KlauselEngine)
+            ? KlauselEngine
+            : (typeof require !== "undefined" ? (() => { try { return require("./klauselEngine.js").KlauselEngine; } catch (e) { return null; } })() : null);
+        if (klauselEngine && typeof klauselEngine.mindestAbloeseTag === "function") klauselEngine.mindestAbloeseTag(state);
 
         // Angebote gibt es nur, solange das Transferfenster offen ist
         if (!this.istTransferfenster(state)) return;

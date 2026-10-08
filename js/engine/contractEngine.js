@@ -188,7 +188,7 @@ const ContractEngine = {
         return 1 - rabatt;
     },
 
-    negotiateExtension(player, club, offeredWage, offeredYears, offeredRole, klausel = 0, state = null) {
+    negotiateExtension(player, club, offeredWage, offeredYears, offeredRole, klausel = 0, state = null, klauseln = null) {
         if (!player || !club) return { success: false, reason: "Ungültige Parameter." };
         // Woanders unterschrieben, Wechselwunsch oder tief unzufrieden
         const hindernis = this.verlaengerungsHindernis(player);
@@ -202,6 +202,15 @@ const ContractEngine = {
         const rabatt = this.klauselRabatt(player, klausel);
         if (rabatt < 1) {
             demand.demandWage = this.rundeBetrag(demand.demandWage * rabatt);
+            demand.demandWageFormatted = (typeof Formatters !== 'undefined') ? Formatters.formatMoney(demand.demandWage) : `${demand.demandWage} €`;
+        }
+        // Weitere Klauseln (KlauselEngine) rechnet er ebenso ins Gehalt ein
+        const klauselEngine = (typeof KlauselEngine !== "undefined" && KlauselEngine)
+            ? KlauselEngine
+            : (typeof require !== "undefined" ? (() => { try { return require("./klauselEngine.js").KlauselEngine; } catch (e) { return null; } })() : null);
+        const klauselFaktor = klauselEngine && klauseln ? klauselEngine.faktor(klauseln, offeredYears, club) : 1;
+        if (klauselFaktor !== 1) {
+            demand.demandWage = this.rundeBetrag(demand.demandWage / klauselFaktor);
             demand.demandWageFormatted = (typeof Formatters !== 'undefined') ? Formatters.formatMoney(demand.demandWage) : `${demand.demandWage} €`;
         }
 
@@ -238,6 +247,7 @@ const ContractEngine = {
         if (offeredRole) player.squadRole = offeredRole;
         // Der neue Vertrag ersetzt die alte Klausel - mit oder ohne neue
         player.ausstiegsklausel = klausel > 0 ? Math.round(klausel) : 0;
+        if (klauselEngine) klauselEngine.setze(player, klauseln || {}, club);
 
         if (player.happiness) {
             player.happiness.contract = 95;

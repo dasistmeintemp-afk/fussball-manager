@@ -1333,6 +1333,8 @@ class SeasonEngine {
                 if (transferEngine.executeTransfer(state, player.id, vorvertrag.id, 0, lohn, jahre)) {
                     if (vv.praemien) player.praemien = { ...vv.praemien };
                     else delete player.praemien;
+                    const klauselnVv = _resolve('KlauselEngine', './klauselEngine.js');
+                    if (vv.klauseln && klauselnVv) klauselnVv.setze(player, vv.klauseln, vorvertrag);
                     if (istNutzerverein) eigeneAbgaenge.push(`${player.name} (zu ${vorvertrag.name})`);
                     if (vorvertrag.id === state.userClubId) neuzugaenge.push(player.name);
                     return;
@@ -1520,6 +1522,9 @@ class SeasonEngine {
         }
         // Wer für die neue Liga zu gut ist, bleibt nicht unbedingt
         SeasonEngine.abstiegsfolgen(state, movements);
+        // Gehaltssteigerungen, Auf- und Abstiegsklauseln der eigenen Spieler
+        const klauselEngine = _resolve('KlauselEngine', './klauselEngine.js');
+        if (klauselEngine && typeof klauselEngine.saisonwechsel === 'function') klauselEngine.saisonwechsel(state, movements);
         // Die Playoffs dieser Saison sind abgerechnet
         state.playoffsVorjahr = state.playoffs || null;
         state.playoffs = null;

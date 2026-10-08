@@ -434,6 +434,13 @@ In der Spielerakte führt der Manager Gespräche mit jedem eigenen Spieler. Wie 
   - Auch KI-Vereine bieten für eigene Spieler in Raten, vor allem mit knapper Kasse, und legen dafür 4 bzw. 8 % drauf.
   - Die Finanzen zeigen, was der Verein noch schuldet und was ihm zusteht, und was am nächsten Monatsersten fällig wird.
 - **Ausstiegsklauseln:** Bei einer Vertragsverlängerung lässt sich eine Klausel über das 1,5-, 2,5- oder 4-fache des Marktwerts vereinbaren. Je niedriger sie liegt, desto stärker sinkt die Gehaltsforderung (bis zu 10 %). Dafür kann jeder Verein, der die Summe zahlt, den Spieler holen – ablehnen geht nicht. Gut jeder fünfte Spieler anderer Vereine hat eine Klausel. Sie steht in der Akte und lässt sich dort ziehen, sofern der Spieler den Schritt zu Ihnen machen will.
+- **Weitere Vertragsklauseln (`KlauselEngine`):** In der Verhandlung mit einem Neuzugang und bei der Verlängerung lassen sich unter „Weitere Klauseln“ vereinbaren:
+  - **Gehaltssteigerung** um 5 oder 10 % in jeder weiteren Saison. Dafür nimmt der Spieler ein niedrigeres Startgehalt, über die Laufzeit gerechnet etwa gleich viel.
+  - **Bei Abstieg** 30 % weniger Gehalt (dafür will er etwas mehr) oder ein ablösefreier Abgang (das gefällt ihm).
+  - **Bei Aufstieg** 10 oder 25 % mehr Gehalt (ab der zweiten Liga). Er rechnet mit einem Aufstieg in jeder vierten Saison.
+  - **Mindestablöse:** Für diesen Betrag darf ihn ein höherklassiger Verein aus dem eigenen Land holen. Liegt sie nicht deutlich über seinem Marktwert, greift im offenen Fenster bald einer zu.
+  - **Vereinsoption:** Im letzten Vertragsjahr verlängert der Verein in der Akte um ein Jahr, ohne den Spieler zu fragen. Das mag er nicht und will dafür mehr Gehalt.
+  - Was die Klauseln dem Spieler wert sind, steht gleich darunter und geht in die Gehaltsforderung ein. Zum Saisonwechsel greifen Steigerung, Auf- und Abstiegsklausel, das Postfach meldet die Änderungen. In der Akte stehen die Klauseln unter dem Vertrag. Mit einem Wechsel verfallen sie.
 - **Leihgeschäfte (`LoanEngine`, Unterreiter *Leihen*):**
   - *Verleihen:* In der Akte eines eigenen Spielers fragt man Interessenten an: Vereine bis zwei Ligen tiefer, bei denen er Stammspieler oder Rotation wäre. Der Leihverein übernimmt einen Teil des Gehalts. Bis zum Saisonende, vorzeitiges Zurückholen ist möglich.
   - *Ausleihen:* Der Leihmarkt zeigt junge Spieler ohne Stammplatz und Reservisten anderer Vereine. Der Stammverein verlangt einen Gehaltsanteil (darunter lehnt er ab), bei starken Spielern eine Leihgebühr, und meldet sich, wenn ein zugesagter Stammspieler nicht spielt.
@@ -765,6 +772,7 @@ untitled/
 │   │   ├── ehemaligeEngine.js  # Ehemalige Spieler im Trainerstab, Abschiedsspiel für Legenden
 │   │   ├── visionEngine.js     # Vereinsvision: Fernziel mit Frist, Jahresziele, Bilanz
 │   │   ├── kaderplanungEngine.js # Kader über drei Spielzeiten, Baustellen als Suchauftrag
+│   │   ├── klauselEngine.js    # Steigerung, Auf-/Abstieg, Mindestablöse, Vereinsoption
 │   │   ├── newsEngine.js       # Zentrales Nachrichtensystem & Postfach
 │   │   ├── aiManagerEngine.js  # KI-Aufstellungen & KI-Transferangebote
 │   │   ├── scoutingEngine.js   # Scoutaufträge & Spielerberichte

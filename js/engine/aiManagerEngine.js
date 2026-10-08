@@ -157,62 +157,6 @@ const AIManagerEngine = {
             club.pressing = "medium";
             club.tempo = "normal";
         }
-    },
-
-    /**
-     * Erzeugt gelegentlich KI-Transferangebote für Spieler
-     */
-    generateAiTransferOffers(state) {
-        if (!state || !Array.isArray(state.clubs) || state.currentMatchday % 3 !== 0) return;
-        // Auch diese Angebote gibt es nur im Transferfenster
-        const te = (typeof TransferEngine !== 'undefined' && TransferEngine) ? TransferEngine
-            : ((typeof window !== 'undefined' && window.TransferEngine) ? window.TransferEngine
-                : (typeof require !== 'undefined' ? require('./transferEngine.js').TransferEngine : null));
-        if (te && typeof te.istTransferfenster === 'function' && !te.istTransferfenster(state)) return;
-
-        // KI-Käufer auswählen mit gutem Transferbudget
-        const aiClubs = state.clubs.filter(c => c.id !== state.userClubId && c.transferBudget > 5000000);
-        if (aiClubs.length === 0) return;
-
-        const buyer = aiClubs[Math.floor(Math.random() * aiClubs.length)];
-
-        // Spieler suchen (z. B. vom User-Kader oder anderen Vereinen)
-        const userPlayers = state.players.filter(p => p.clubId === state.userClubId && !p.injured && p.overall >= 74);
-        if (userPlayers.length > 0 && Math.random() < 0.35) {
-            const targetPlayer = userPlayers[Math.floor(Math.random() * userPlayers.length)];
-            const offerFee = Math.round(targetPlayer.value * (1.0 + (Math.random() * 0.25)));
-
-            if (buyer.transferBudget >= offerFee) {
-                // Angebot ins Postfach legen
-                const offerObj = {
-                    id: "offer_" + Date.now(),
-                    buyerClubId: buyer.id,
-                    buyerClubName: buyer.name,
-                    playerId: targetPlayer.id,
-                    playerName: targetPlayer.name,
-                    fee: offerFee,
-                    feeFormatted: (typeof Formatters !== 'undefined') ? Formatters.formatMoney(offerFee, true) : `${offerFee} €`,
-                    playerValue: targetPlayer.value,
-                    wage: Math.round(targetPlayer.wage * 1.2),
-                    status: "pending"
-                };
-
-                if (!state.transferMarket) state.transferMarket = { offers: [], history: [], shortlist: [] };
-                if (!Array.isArray(state.transferMarket.offers)) state.transferMarket.offers = [];
-                state.transferMarket.offers.push(offerObj);
-
-                const newsEngine = (typeof NewsEngine !== 'undefined') ? NewsEngine : (typeof window !== 'undefined' ? window.NewsEngine : null);
-                if (newsEngine) {
-                    newsEngine.addMessage(state, "transfer_offer", {
-                        title: `Transferangebot für ${targetPlayer.name}`,
-                        sender: `${buyer.name}`,
-                        text: `${buyer.name} bietet eine Ablösesumme von ${offerObj.feeFormatted} für Ihren Spieler ${targetPlayer.name} (Marktwert: ${(targetPlayer.value / 1000000).toFixed(1).replace(".", ",")} Mio. €).`,
-                        priority: "high",
-                        relatedEntity: offerObj
-                    });
-                }
-            }
-        }
     }
 };
 

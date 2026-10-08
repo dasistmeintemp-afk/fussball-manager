@@ -676,7 +676,7 @@ class TrainingEngine {
             state.inbox.unshift({
                 id: Date.now(),
                 matchday: state.currentMatchday,
-                date: `Spieltag ${state.currentMatchday}`,
+                date: state.currentDate || `Spieltag ${state.currentMatchday}`,
                 sender: "Medizinische Abteilung",
                 subject: `Verletzung: ${player.name}`,
                 body: `Schlechte Nachrichten: Unser Spieler ${player.name} hat sich im Training eine Verletzung zugezogen (${selectedInjury.name}). Die voraussichtliche Ausfallzeit beträgt ${selectedInjury.weeks} Woche(n). Bitte passen Sie Ihre Aufstellung an!`,

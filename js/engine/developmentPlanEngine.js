@@ -437,7 +437,7 @@ class DevelopmentPlanEngine {
         state.inbox.unshift({
             id: Date.now() + Math.floor(Math.random() * 1000),
             matchday: state.currentMatchday,
-            date: `Spieltag ${state.currentMatchday || 1}`,
+            date: state.currentDate || `Spieltag ${state.currentMatchday || 1}`,
             sender: "Trainerstab",
             subject: betreff,
             body: text,

@@ -2182,6 +2182,7 @@ class UIManager {
         if (state.boardConfidence >= 85) msg = "Der Vorstand und die Fans sind von Ihren Leistungen begeistert!";
         else if (state.boardConfidence <= 50) msg = "Achtung: Der Vorstand fordert dringend bessere Ergebnisse!";
         document.getElementById("dashBoardMsg").textContent = msg;
+        this.renderVorstandsAnfrage(state);
 
         // 4. Medical / Suspended List
         const medContainer = document.getElementById("dashMedicalList");
@@ -4795,6 +4796,43 @@ class UIManager {
         };
         document.getElementById("btnUmschichtTransfer")?.addEventListener("click", () => ausfuehren(1));
         document.getElementById("btnUmschichtGehalt")?.addEventListener("click", () => ausfuehren(-1));
+    }
+
+    /**
+     * Anfragen an den Vorstand auf der Vorstandskarte: was man erbitten
+     * kann, wie die Aussichten stehen, und ob gerade beraten wird.
+     */
+    renderVorstandsAnfrage(state) {
+        const el = document.getElementById("dashBoardAnfrage");
+        const board = typeof BoardEngine !== "undefined" ? BoardEngine : null;
+        if (!el || !board || !board.ANFRAGEN) return;
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const offen = state.vorstandsAnfrage;
+        if (offen) {
+            const rest = Math.max(0, offen.entscheidetTag - board.stempel(state));
+            el.innerHTML = `<div class="ba-kopf">Anfrage an den Vorstand</div>
+                <div class="muted-note">„${esc(board.ANFRAGEN[offen.key]?.label)}“ liegt vor - Antwort ${this.wannText(rest)}.</div>`;
+            return;
+        }
+        const aussicht = c => c >= 0.6 ? "gut" : (c >= 0.35 ? "offen" : "schlecht");
+        const optionen = Object.entries(board.ANFRAGEN).map(([key, a]) => {
+            const grund = board.anfrageHindernis(state, key);
+            return `<option value="${key}" ${grund ? "disabled" : ""}>${esc(a.label)}${grund ? "" : ` · Aussichten ${aussicht(board.anfrageChance(state, key))}`}</option>`;
+        }).join("");
+        el.innerHTML = `<div class="ba-kopf">Anfrage an den Vorstand</div>
+            <div class="ba-zeile">
+                <select class="styled-select" id="vorstandsAnfrageWahl">${optionen}</select>
+                <button class="btn btn-sm btn-secondary" id="btnVorstandsAnfrage">Anfragen</button>
+            </div>
+            <div class="muted-note">Der Vorstand berät ein paar Tage. Wer abblitzt und weiter drängt, verliert Vertrauen.</div>`;
+        document.getElementById("btnVorstandsAnfrage")?.addEventListener("click", () => {
+            const key = document.getElementById("vorstandsAnfrageWahl")?.value;
+            const r = board.stelleAnfrage(state, key);
+            if (!r.ok) { this.showToast(r.grund, "error"); return; }
+            this.showToast(`Die Anfrage liegt dem Vorstand vor. Antwort in ${r.tage} Tagen.`, "info");
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.renderVorstandsAnfrage(state);
+        });
     }
 
     renderFinances() {

@@ -213,7 +213,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             defensiveLine: { deep: "tief", normal: "normal", high: "hoch" }
         };
         const wort = (k) => W[k]?.[t[k]] || (t[k] ? String(t[k]) : "—");
-        const torjaeger = [...kader].sort((a, b) => (b.seasonStats?.goals || 0) - (a.seasonStats?.goals || 0))[0];
+        const torjaeger = [...kader].sort((a, b) => (b.stats?.goals || 0) - (a.stats?.goals || 0))[0];
 
         // Anlagen: Stufe und Zustand
         const fac = (typeof FacilityEngine !== "undefined") ? FacilityEngine : null;
@@ -268,8 +268,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         <div><span>Pressing</span><strong>${esc(wort("pressing"))}</strong></div>
                         <div><span>Passspiel</span><strong>${esc(wort("passStyle"))}</strong></div>
                         <div><span>Abwehrlinie</span><strong>${esc(wort("defensiveLine"))}</strong></div>
-                        ${torjaeger && (torjaeger.seasonStats?.goals || 0) > 0
-                            ? `<div><span>Torjäger</span><strong>${esc(torjaeger.name)} (${torjaeger.seasonStats.goals})</strong></div>` : ""}
+                        ${torjaeger && (torjaeger.stats?.goals || 0) > 0
+                            ? `<div><span>Torjäger</span><strong>${esc(torjaeger.name)} (${torjaeger.stats.goals})</strong></div>` : ""}
                     </div>
                     <h4>Anlagen</h4>
                     <div class="kv-liste">${anlagenHtml || `<div><span>—</span></div>`}</div>
@@ -562,6 +562,28 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         text.textContent = faktor > 1.005 ? `Die Klauseln sind ihm etwa ${prozent} % Gehalt wert - so viel weniger Grundgehalt nimmt er.`
             : (faktor < 0.995 ? `Für diese Klauseln will er etwa ${Math.round((1 / faktor - 1) * 100)} % mehr Grundgehalt.`
                 : "Steigerungen und eine Mindestablöse gefallen ihm, eine Option nicht. Er rechnet das ins Gehalt ein.");
+    },
+
+    /** Die Laufbahn Saison für Saison (LaufbahnEngine) - eingeklappt, mit Summe */
+    laufbahnHtml(state, player) {
+        const engine = typeof LaufbahnEngine !== "undefined" ? LaufbahnEngine : null;
+        if (!engine) return "";
+        const t = engine.tabelle(state, player);
+        if (!t.zeilen.length) return "";
+        const esc = (x) => this.escapeHtml(String(x ?? ""));
+        const note = (n) => n ? n.toFixed(2).replace(".", ",") : "–";
+        return `
+            <details class="pd-laufbahn"${t.zeilen.length <= 3 ? " open" : ""}>
+                <summary>Laufbahn <span class="text-muted">${t.summe.spiele} Spiele · ${t.summe.tore} Tore · ${t.summe.vorlagen} Vorlagen</span></summary>
+                <div class="table-container"><table class="compact-table lb-tabelle">
+                    <thead><tr><th>Saison</th><th>Verein</th><th>Sp</th><th>T</th><th>V</th><th>Note</th></tr></thead>
+                    <tbody>
+                        ${t.zeilen.map(z => `<tr class="${z.laufend ? "lb-laufend" : ""}${z.clubId === state.userClubId ? " lb-eigen" : ""}"><td>${z.saison}${z.laufend ? "*" : ""}</td><td class="lb-verein">${esc(z.verein)}</td><td>${z.spiele}</td><td>${z.tore}</td><td>${z.vorlagen}</td><td>${note(z.note)}</td></tr>`).join("")}
+                        <tr class="lb-summe"><td colspan="2">Gesamt</td><td>${t.summe.spiele}</td><td>${t.summe.tore}</td><td>${t.summe.vorlagen}</td><td>${note(t.summe.note)}</td></tr>
+                    </tbody>
+                </table></div>
+                <p class="text-muted lb-hinweis">* laufende Saison. Gezählt wird seit Spielbeginn; bei einem Wechsel unter dem Jahr stehen beide Vereine da.</p>
+            </details>`;
     },
 
     showPlayerDetailsModal(playerId, optionen = {}) {
@@ -952,6 +974,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <div class="stats-grid" style="grid-template-columns: 1fr 1fr; gap:14px; margin-bottom:16px;">
                 ${attributeBlocks}
             </div>
+            ${isProspect ? "" : this.laufbahnHtml(state, player)}
             ${isProspect || typeof DatenzentraleEngine === "undefined" ? "" : `<button type="button" class="btn btn-secondary btn-sm pd-vergleich" id="btnPdVergleich">⚖️ Mit anderem Spieler vergleichen</button>`}
 
             ${positionMapHtml}

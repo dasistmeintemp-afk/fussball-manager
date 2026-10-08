@@ -8674,3 +8674,14 @@ td.nowrap { white-space: nowrap; }
 .jm-klein { font-size: 11px; }
 .jm-titel { margin: 12px 0 6px; font-size: 13px; color: var(--text-muted); }
 .jm-fuss { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+
+/* Laufbahn in der Spielerakte */
+.pd-laufbahn { margin: 0 0 14px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.pd-laufbahn summary { cursor: pointer; font-weight: 600; font-size: 13px; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.pd-laufbahn summary .text-muted { font-weight: 400; font-size: 11px; }
+.pd-laufbahn .lb-tabelle th, .pd-laufbahn .lb-tabelle td { padding: 5px 6px; font-size: 12px; white-space: nowrap; text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.lb-tabelle td.lb-verein { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.lb-tabelle tr.lb-laufend td { font-style: italic; }
+.lb-tabelle tr.lb-eigen td { background: rgba(var(--accent-rgb), 0.06); }
+.lb-tabelle tr.lb-summe td { font-weight: 700; border-top: 1px solid var(--line); }
+.lb-hinweis { font-size: 11px; margin: 6px 0 0; }

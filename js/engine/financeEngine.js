@@ -59,8 +59,16 @@ const FinanceEngine = {
      * Amateurverein hat kaum Gehaelter, aber trotzdem Platzmiete, Schiedsrichter,
      * Fahrten, Ausruestung und eine Jugendabteilung. Mit einem halben Anteil
      * legte die siebte Liga jeden Spieltag 30 Prozent ihrer Einnahmen zurueck.
+     *
+     * Über eine ganze Saison gemessen reichte das noch nicht: Von der zweiten
+     * bis zur siebten Liga blieben jedem Verein 12 bis 17 % seines Umsatzes
+     * (Sponsor, Eintritt, Prämien gegen Gehälter, Unterhalt und Betrieb). Nach
+     * fünf Saisons hatte ein Sechstligist das Vierzehnfache seines
+     * Startguthabens auf dem Konto, ein Drittligist das Neunfache - und mit dem
+     * Konto wuchs der Transferetat, mit dem Etat die Stärke der unteren Ligen.
+     * Jetzt bleiben dort rund 3 bis 5 % übrig.
      */
-    OPERATING_COST_BY_LEVEL: { 1: 0.24, 2: 0.36, 3: 0.44, 4: 0.53, 5: 0.59, 6: 0.63, 7: 0.66 },
+    OPERATING_COST_BY_LEVEL: { 1: 0.24, 2: 0.45, 3: 0.55, 4: 0.65, 5: 0.67, 6: 0.74, 7: 0.78 },
 
     /** Betriebsaufwandsquote eines Vereins */
     operatingShare(club) {
@@ -305,6 +313,40 @@ const FinanceEngine = {
     },
 
     /**
+     * Rücklagen der KI-Vereine zum Saisonwechsel.
+     *
+     * Auch mit geeichtem Betriebsaufwand bleibt unten Geld übrig: Die großen
+     * Vereine kaufen bei den kleinen ein, und die Tabellenprämie kommt obendrauf.
+     * Gemessen hatte der Median-Drittligist nach sechs Saisons das Siebenfache
+     * seines Startguthabens, der Sechstligist das Achtfache - und weil sich der
+     * Transferetat nach dem Kontostand richtet, kauften die unteren Ligen
+     * Jahr für Jahr stärkere Spieler.
+     *
+     * Ein echter Verein legt Überschüsse nicht endlos auf die hohe Kante: Er
+     * baut, tilgt Kredite, investiert in den Nachwuchs. Was über dem Doppelten
+     * der üblichen Rücklage seiner Stufe und Größe liegt, fließt zur Hälfte
+     * dorthin ab. Der eigene Verein bleibt außen vor - dort entscheidet der
+     * Manager, was mit dem Geld geschieht.
+     */
+    RUECKLAGE_FAKTOR: 2,
+    RUECKLAGE_ABFLUSS: 0.5,
+
+    ruecklagenAnpassen(state) {
+        const gen = _feResolve("ClubGenerator", "./clubGenerator.js");
+        if (!state || !Array.isArray(state.clubs) || !gen || typeof gen.kontostandRichtwert !== "function") return 0;
+        let angepasst = 0;
+        state.clubs.forEach(club => {
+            if (club.id === state.userClubId) return;
+            const ziel = gen.kontostandRichtwert(club.level || 1, club.clubStrength ?? 0.5, club.countryId) * this.RUECKLAGE_FAKTOR;
+            const ueber = (club.balance || 0) - ziel;
+            if (!(ueber > 0)) return;
+            club.balance = Math.round(club.balance - ueber * this.RUECKLAGE_ABFLUSS);
+            angepasst++;
+        });
+        return angepasst;
+    },
+
+    /**
      * Unterhalt für Stadion und Infrastruktur je Spieltag
      *
      * Zwei Dinge machen den Unterhalt zu einer echten Last:
@@ -392,7 +434,11 @@ const FinanceEngine = {
             ? FacilityEngine.stufeGerundet(homeClub, "stadium", state.seasonYear || 1)
             : (homeClub.facilities?.stadium || 2);
         const stadiumBonus = (stadiumLevel - 1) * 0.03;
-        const moodFactor = ((state.fanMood || 75) - 50) / 250; // -0.1 bis +0.2
+        // Die Fanstimmung im Spielstand ist die des eigenen Vereins. Vorher
+        // füllte sie jedes Stadion der Welt mit: Waren die eigenen Fans
+        // begeistert, kamen auch in Lens und Wigan mehr Zuschauer.
+        const stimmung = homeClub.id === state.userClubId ? (state.fanMood || 75) : 75;
+        const moodFactor = (stimmung - 50) / 250; // -0.1 bis +0.2
 
         const ticketPrice = homeClub.ticketPrice || 35;
         // Preis-Elastizität: Höherer Preis senkt Auslastung, tieferer Preis füllt das Stadion
@@ -451,7 +497,7 @@ const FinanceEngine = {
             ? facEngine.verfuegbareKapazitaet(homeClub, state.seasonYear || 1)
             : (homeClub.capacity || 30000);
         const attendance = Math.min(capacity, Math.round(capacity * finalPct));
-        const ticketIncome = Math.round(attendance * ticketPrice);
+        const ticketIncome = Math.round(attendance * ticketPrice * this.heimspielAnteil(state, homeClub));
 
         homeClub.balance = (homeClub.balance || 0) + ticketIncome;
         match.attendance = attendance;
@@ -470,6 +516,30 @@ const FinanceEngine = {
         );
 
         return ticketIncome;
+    },
+
+    /**
+     * Wie viel eines Heimspiels in die Kasse geht, damit Eintritt und Kosten
+     * über die Saison zusammenpassen.
+     *
+     * Gehälter, Sponsor, Unterhalt und Betrieb werden für alle Vereine der
+     * Welt einmal je Spieltag der eigenen Liga gebucht - 34-mal, wenn der
+     * eigene Verein in der Bundesliga spielt. Eintritt gab es dagegen für
+     * jedes echte Heimspiel: In der Championship mit 24 Vereinen sind das 23
+     * statt 17. Gemessen legte ein Zweitligist in England so 21 % seines
+     * Umsatzes zurück, ein Drittligist 24 %. Und spielte der eigene Verein in
+     * der Championship, zahlten die Bundesligisten 46-mal Gehalt bei 17
+     * Heimspielen. Jetzt bringt jede Saison so viel Eintritt, wie die
+     * Rechnung je Spieltag unterstellt: ein Heimspiel je zwei Spieltage.
+     */
+    heimspielAnteil(state, club) {
+        if (!state || !club) return 1;
+        const takt = (state.schedule || []).length || state.totalMatchdays || 0;
+        const eigen = club.leagueId === state.userLeagueId
+            ? takt
+            : ((state.otherSchedules || {})[club.leagueId] || []).length;
+        if (!(takt > 0) || !(eigen > 0)) return 1;
+        return Math.max(0.5, Math.min(2, takt / eigen));
     },
 
     /**

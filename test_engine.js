@@ -11103,6 +11103,79 @@ function runEngineTests() {
         if (!/50 Tage/.test(b.text) || (b.spiele > 0 && !/Ligaspiel/.test(b.text))) throw new Error(`Text falsch: ${b.text}`);
     });
 
+    test("Langzeit: Eintritt passt zur Zahl der Spieltage, Rücklagen der KI-Vereine, Fanstimmung im eigenen Stadion", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Langzeit" });
+        // Kosten werden je Spieltag der eigenen Liga gebucht (34), Eintritt je Heimspiel
+        const de1 = state.clubs.find(c => c.leagueId === "de_liga_1" && c.id !== "muc");
+        const en2 = state.clubs.find(c => c.leagueId === "en_liga_2");
+        if (FinanceEngine.heimspielAnteil(state, de1) !== 1) throw new Error("Eigene Liga nicht voll");
+        const soll = state.schedule.length / state.otherSchedules.en_liga_2.length;
+        if (Math.abs(FinanceEngine.heimspielAnteil(state, en2) - soll) > 1e-9 || !(soll < 0.8)) throw new Error(`Championship: Anteil ${FinanceEngine.heimspielAnteil(state, en2)} statt ${soll}`);
+
+        // Die Fanstimmung im Spielstand füllt nur das eigene Stadion
+        const zuschauer = (heim, gast, stimmung) => {
+            const zufall = Math.random; Math.random = () => 0.5;
+            try {
+                state.fanMood = stimmung;
+                const m = { homeClubId: heim.id, awayClubId: gast.id };
+                FinanceEngine.applyMatchdayIncome(state, m);
+                return m.attendance;
+            } finally { Math.random = zufall; }
+        };
+        const fremd = state.clubs.filter(c => c.leagueId === "de_liga_1" && c.id !== "muc");
+        if (zuschauer(fremd[0], fremd[1], 5) !== zuschauer(fremd[0], fremd[1], 100)) throw new Error("Fremde Stadien hängen an der eigenen Fanstimmung");
+        const eigen = state.clubs.find(c => c.id === "muc");
+        eigen.ticketPrice = 90;
+        if (!(zuschauer(eigen, fremd[1], 5) < zuschauer(eigen, fremd[1], 100))) throw new Error("Die eigene Fanstimmung wirkt nicht");
+
+        // Rücklagen: Was über dem Doppelten der üblichen liegt, fließt zur Hälfte ab
+        const ki = state.clubs.find(c => c.level === 3);
+        const reich = state.clubs.find(c => c.level === 6);
+        const ziel = (c) => ClubGenerator.kontostandRichtwert(c.level, c.clubStrength, c.countryId) * FinanceEngine.RUECKLAGE_FAKTOR;
+        ki.balance = ziel(ki) - 1000;
+        reich.balance = ziel(reich) + 2000000;
+        eigen.balance = 900000000;
+        state.clubs.forEach(c => { if (c !== ki && c !== reich && c !== eigen) c.balance = 0; });
+        if (FinanceEngine.ruecklagenAnpassen(state) !== 1) throw new Error("Falsche Zahl angepasster Vereine");
+        if (ki.balance !== ziel(ki) - 1000) throw new Error("Ein Verein unter der Rücklage wurde angetastet");
+        if (Math.abs(reich.balance - (ziel(reich) + 1000000)) > 1) throw new Error(`Überschuss nicht halbiert: ${reich.balance}`);
+        if (eigen.balance !== 900000000) throw new Error("Der eigene Verein wurde angetastet");
+
+        // Der Betriebsaufwand steigt von Liga zu Liga an, ganz unten frisst er drei Viertel
+        const quoten = [1, 2, 3, 4, 5, 6, 7].map(l => FinanceEngine.OPERATING_COST_BY_LEVEL[l]);
+        if (quoten.some((q, i) => i > 0 && q < quoten[i - 1]) || quoten[6] < 0.75) throw new Error(`Betriebsaufwand: ${quoten.join(", ")}`);
+    });
+
+    test("Langzeit: Ein junger Spieler geht nicht zwei Ligen hinunter, wenn er dort klar zu gut ist", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Langzeit" });
+        const kaeufer = state.clubs.find(c => c.level === 4 && c.id !== state.userClubId);
+        const verkaeufer = state.clubs.find(c => c.level === 2);
+        verkaeufer.reputation = kaeufer.reputation;
+        kaeufer.transferBudget = 1e9; kaeufer.wageBudget = 1e9;
+        const kader = state.players.filter(p => p.clubId === verkaeufer.id);
+        const pos = ["ZM", "IV", "ST", "DM"].find(x => kader.filter(p => p.pos === x).length >= 2);
+        const star = kader.filter(p => p.pos === pos).sort((a, b) => b.overall - a.overall)[0];
+        const bedarf = TransferEngine.kaderBedarf;
+        const versuch = (alter) => {
+            star.age = alter;
+            star.clubId = verkaeufer.id;
+            const markt = TransferEngine.baueMarktIndex(state);
+            markt.nachPosition.set(pos, [star]);
+            TransferEngine.kaderBedarf = () => ({ pos, art: "verstaerkung", messlatte: star.overall - 20, niveau: star.overall - TransferEngine.ABSTIEG_ZU_GUT - 5 });
+            try { return TransferEngine.versucheEinenTransfer(state, kaeufer, markt); } finally { TransferEngine.kaderBedarf = bedarf; }
+        };
+        if (versuch(22)) throw new Error("Der junge Spieler ging zwei Ligen hinunter");
+        if (star.clubId !== verkaeufer.id) throw new Error("Wechsel trotz Ablehnung");
+        if (!versuch(31)) throw new Error("Ein Routinier darf zum Ausklang unten spielen");
+        if (star.clubId !== kaeufer.id) throw new Error("Der Routinier ist nicht gewechselt");
+
+        // Die Suche nach einer Lücke beginnt zehn Punkte unter dem eigenen Niveau, nicht bei null
+        const markt = TransferEngine.baueMarktIndex(state);
+        const b = TransferEngine.kaderBedarf(state, kaeufer, markt);
+        if (b && b.art === "luecke" && !(b.messlatte >= b.niveau - 10 - 1e-9 && b.messlatte > 0)) throw new Error(`Messlatte ${b.messlatte} bei Niveau ${b.niveau}`);
+        if (b && typeof b.niveau !== "number") throw new Error("Bedarf ohne Niveau");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

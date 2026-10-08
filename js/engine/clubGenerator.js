@@ -120,17 +120,18 @@ class ClubGenerator {
      * Etat nach Ligastufe und Ruf. Der Faktor sorgt dafür, dass der
      * Meisterschaftsanwärter einer Liga ein Vielfaches des Aufsteigers hat.
      */
-    static generateFinances(level = 1, clubStrength = 0.5, countryId = "de") {
-        const BASE = {
-            1: { transfer: 8000000, wage: 900000, balance: 14000000 },
-            2: { transfer: 1500000, wage: 220000, balance: 3500000 },
-            3: { transfer: 400000, wage: 70000, balance: 1000000 },
-            4: { transfer: 90000, wage: 22000, balance: 260000 },
-            5: { transfer: 25000, wage: 8000, balance: 90000 },
-            6: { transfer: 9000, wage: 3500, balance: 40000 },
-            7: { transfer: 3000, wage: 1600, balance: 18000 }
-        };
-        const base = BASE[level] || BASE[5];
+    static FINANZ_BASIS = {
+        1: { transfer: 8000000, wage: 900000, balance: 14000000 },
+        2: { transfer: 1500000, wage: 220000, balance: 3500000 },
+        3: { transfer: 400000, wage: 70000, balance: 1000000 },
+        4: { transfer: 90000, wage: 22000, balance: 260000 },
+        5: { transfer: 25000, wage: 8000, balance: 90000 },
+        6: { transfer: 9000, wage: 3500, balance: 40000 },
+        7: { transfer: 3000, wage: 1600, balance: 18000 }
+    };
+
+    /** Größenfaktor der Finanzen: Stufe, Rang in der Liga und Land */
+    static finanzFaktor(level = 1, clubStrength = 0.5, countryId = "de") {
         const s = Math.max(0, Math.min(1, clubStrength));
         // 0,45x für den Schlusslicht-Etat, 3,2x für den Spitzenklub
         // Das Land zählt mit: In England fließt das meiste Fernsehgeld (FinanceEngine.LAND_ECONOMY)
@@ -138,7 +139,21 @@ class ClubGenerator {
             ? FinanceEngine
             : (typeof require !== "undefined" ? (() => { try { return require("./financeEngine.js").FinanceEngine; } catch (e) { return null; } })() : null);
         const land = finanzen && typeof finanzen.landFaktor === "function" ? finanzen.landFaktor(countryId, s) : 1;
-        const factor = (0.45 + Math.pow(s, 1.4) * 2.75) * land;
+        return (0.45 + Math.pow(s, 1.4) * 2.75) * land;
+    }
+
+    /**
+     * Der Kontostand, mit dem ein Verein dieser Stufe und Größe in die Welt
+     * startet - ohne Streuung. Daran misst sich, was eine übliche Rücklage ist.
+     */
+    static kontostandRichtwert(level = 1, clubStrength = 0.5, countryId = "de") {
+        const base = this.FINANZ_BASIS[level] || this.FINANZ_BASIS[5];
+        return Math.round(base.balance * this.finanzFaktor(level, clubStrength, countryId));
+    }
+
+    static generateFinances(level = 1, clubStrength = 0.5, countryId = "de") {
+        const base = this.FINANZ_BASIS[level] || this.FINANZ_BASIS[5];
+        const factor = this.finanzFaktor(level, clubStrength, countryId);
         const jitter = 0.88 + Math.random() * 0.24;
 
         return {

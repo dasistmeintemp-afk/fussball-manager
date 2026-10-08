@@ -1595,6 +1595,9 @@ class SeasonEngine {
         // dreistelliger Millionenbetrag zur Verfügung, ohne dass ihn je jemand
         // ausgab. Jetzt richtet er sich nach Kontostand und Jahresumsatz.
         const finanzen = _getFinanceEngine();
+        // Was die KI-Vereine über ihre übliche Rücklage hinaus angespart haben,
+        // fließt zur Hälfte in Anlagen und Tilgung - nicht in den Etat
+        if (finanzen && typeof finanzen.ruecklagenAnpassen === 'function') finanzen.ruecklagenAnpassen(state);
         if (finanzen && typeof finanzen.sponsorPerMatchday === 'function') {
             state.clubs.forEach(club => {
                 const jahresumsatz = (finanzen.sponsorPerMatchday(club)

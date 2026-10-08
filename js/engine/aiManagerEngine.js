@@ -18,12 +18,14 @@ const AIManagerEngine = {
     /**
      * Wählt die beste Aufstellung für einen KI-Verein unter Berücksichtigung von Verletzungen & Sperren
      */
-    prepareClubForMatch(state, clubId) {
+    prepareClubForMatch(state, clubId, kader = null) {
         if (!state) return;
         const club = state.clubs.find(c => c.id === clubId);
         if (!club) return;
 
-        const allPlayers = state.players.filter(p => p.clubId === clubId);
+        // Der Kader kommt aus dem Index des Spieltags - ohne ihn läuft die
+        // Suche über alle Spieler der Welt (einmal je Verein: 384 Mal)
+        const allPlayers = Array.isArray(kader) ? kader : state.players.filter(p => p.clubId === clubId);
         const available = allPlayers.filter(p => !p.injured && !p.suspended);
 
         // Fallback-Formation
@@ -124,12 +126,21 @@ const AIManagerEngine = {
         if (!state || !Array.isArray(state.clubs)) return;
 
         const round = state.schedule?.find(r => r.matchday === state.currentMatchday);
+        // Einmal je Spieltag: wer gehört zu welchem Verein. Vorher durchsuchte
+        // jeder der 384 Vereine die ganze Spielerliste - nach einigen Saisons
+        // das Teuerste des Spieltags.
+        const nachVerein = new Map();
+        state.players.forEach(p => {
+            if (!p.clubId) return;
+            const liste = nachVerein.get(p.clubId);
+            if (liste) liste.push(p); else nachVerein.set(p.clubId, [p]);
+        });
 
         state.clubs.forEach(club => {
             if (club.id === state.userClubId) return; // Spieler-Team nicht überschreiben
 
             // Aufstellung setzen
-            this.prepareClubForMatch(state, club.id);
+            this.prepareClubForMatch(state, club.id, nachVerein.get(club.id) || []);
 
             // Taktik anpassen basierend auf Gegner
             if (round) {

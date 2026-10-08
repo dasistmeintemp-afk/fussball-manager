@@ -10289,6 +10289,54 @@ function runEngineTests() {
         if (zurueck.chronik?.[club.id]?.rekorde?.hoechsterSieg?.ergebnis !== "5:1") throw new Error("Chronik nach dem Laden verloren");
     });
 
+    test("Trainerkarussell: Druck, Entlassung mit Schonfrist, neuer Stil und Trainereffekt, Trennung zum Saisonende", () => {
+        const { TrainerwechselEngine: Karussell } = require('./js/engine/trainerwechselEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const liga = state.clubs.filter(c => c.leagueId === club.leagueId);
+        const staerke = (c) => state.players.filter(p => p.clubId === c.id).map(p => p.overall).sort((a, b) => b - a).slice(0, 14).reduce((s, x) => s + x, 0);
+        // Der zweitstärkste KI-Kader steht ganz unten und hat fünfmal verloren
+        const kandidat = liga.filter(c => c.id !== club.id).sort((a, b) => staerke(b) - staerke(a))[1];
+        const t = Karussell.trainer(state, kandidat);
+        if (!t || !t.name || t.stil !== (kandidat.tactics.vorlage || t.stil)) throw new Error("Kein Trainer angelegt");
+        if (Karussell.trainer(state, club) !== null) throw new Error("Der Nutzer hat einen KI-Trainer");
+        if (!(Karussell.druck({ platz: 18, erwartet: 2, niederlagen: 5, abstieg: true, keller: true, ruf: 70 })
+            > Karussell.druck({ platz: 3, erwartet: 2, niederlagen: 1, abstieg: false, keller: false, ruf: 70 }))) throw new Error("Druck falsch");
+
+        state.standings = [...state.standings.filter(r => r.clubId !== kandidat.id), state.standings.find(r => r.clubId === kandidat.id)]
+            .map(r => ({ ...r, played: 12 }));
+        kandidat.form = ["L", "L", "L", "L", "L"];
+        club.form = ["L", "L", "L", "L", "L"];
+        const laune = state.players.find(p => p.clubId === kandidat.id);
+        laune.morale = 60;
+        const alterStil = t.stil, alterName = t.name;
+        state.inbox = [];
+        const wechsel = Karussell.nachSpieltag(state, () => 0);
+        const w = wechsel.find(x => x.clubId === kandidat.id);
+        if (!w) throw new Error("Der Verein entlässt seinen Trainer nicht");
+        if (kandidat.trainer.name === alterName || kandidat.trainer.stil === alterStil || kandidat.tactics.vorlage !== kandidat.trainer.stil) throw new Error("Nachfolger ohne eigenen Stil");
+        if (laune.morale !== 60 + Karussell.TRAINEREFFEKT) throw new Error("Kein Trainereffekt");
+        if (!state.inbox.some(m => /Trainerwechsel bei/.test(m.subject || ""))) throw new Error("Keine Meldung in der eigenen Liga");
+        if (!Karussell.dieseSaison(state, club.leagueId).some(x => x.clubId === kandidat.id)) throw new Error("Nicht im Protokoll");
+        // Der Nutzer wird hier nie entlassen - dafür ist der Vorstand da
+        if (wechsel.some(x => x.clubId === club.id)) throw new Error("Nutzer entlassen");
+        // Schonfrist: Der Neue bekommt Zeit
+        if (Karussell.nachSpieltag(state, () => 0).some(x => x.clubId === kandidat.id)) throw new Error("Keine Schonfrist");
+        // Höchstens zwei Wechsel je Saison
+        state.standings = state.standings.map(r => ({ ...r, played: 30 }));
+        Karussell.nachSpieltag(state, () => 0);
+        state.standings = state.standings.map(r => ({ ...r, played: 34 }));
+        Karussell.nachSpieltag(state, () => 0);
+        if (kandidat.trainerwechsel.anzahl > Karussell.JE_SAISON) throw new Error(`${kandidat.trainerwechsel.anzahl} Wechsel in einer Saison`);
+
+        // Zum Saisonende: Wer auf einem Abstiegsplatz landet, trennt sich oft
+        const absteiger = state.standings[state.standings.length - 1];
+        const verein = state.clubs.find(c => c.id === absteiger.clubId);
+        verein.trainer = { name: "Alt Trainer", seit: 0, stil: "ausgewogen", ruf: 60, ab: 0 };
+        Karussell.saisonEnde(state, () => 0);
+        if (verein.trainer.name === "Alt Trainer") throw new Error("Absteiger behält seinen Trainer trotz Würfel 0");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

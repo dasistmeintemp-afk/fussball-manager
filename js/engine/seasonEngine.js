@@ -740,6 +740,10 @@ class SeasonEngine {
             youthEngine.trainProspects(state, state.userClubId);
         }
 
+        // Das Trainerkarussell der KI-Vereine
+        const karussell = _resolve('TrainerwechselEngine', './trainerwechselEngine.js');
+        if (karussell && typeof karussell.nachSpieltag === 'function') karussell.nachSpieltag(state);
+
         // 7. Vorstandszufriedenheit berechnen
         SeasonEngine.updateBoardConfidence(state);
         const boardEngine = _getBoardEngine();
@@ -1041,6 +1045,10 @@ class SeasonEngine {
         // Saisonauszeichnungen - in der eigenen Liga. Vorher zählten alle
         // Spieler der Welt: Der Torschützenkönig der Bundesliga-Chronik
         // konnte aus der Landesliga kommen.
+        // Wer weit hinter dem Anspruch blieb oder abstieg, trennt sich oft vom Trainer
+        const karussellEnde = _resolve('TrainerwechselEngine', './trainerwechselEngine.js');
+        if (karussellEnde && typeof karussellEnde.saisonEnde === 'function') karussellEnde.saisonEnde(state);
+
         // Die Saison in die Vereinschronik - vor dem Zurücksetzen der Statistik
         const chronikEngine = _resolve('ChronikEngine', './chronikEngine.js');
         if (chronikEngine && typeof chronikEngine.saisonAbschluss === 'function') {

@@ -8514,3 +8514,4 @@ td.nowrap { white-space: nowrap; }
 .chronik-titel span { padding: 6px 10px; border-radius: 999px; background: rgba(250, 204, 21, 0.12); border: 1px solid rgba(250, 204, 21, 0.3); font-size: 13px; font-weight: 600; }
 .chronik-leer { font-size: 13px; margin: 6px 0; }
 .pd-verein strong { white-space: nowrap; }
+.karussell-karte { margin-bottom: 16px; }

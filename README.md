@@ -115,6 +115,14 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   - **Meldungen:** Ein neuer Rekord kommt als kurze Nachricht.
   - **Spielerakte:** Sie zeigt die Bilanz für den Verein („Für den Verein seit Saison 1: 164 Spiele …“) und markiert Legenden.
   - Vorher vergaß der Verein nach dem Saisonwechsel alles, was nicht in der Tabelle stand.
+- **Trainerkarussell (`TrainerwechselEngine`):** Jeder KI-Verein hat einen Trainer mit Namen, Ruf und Spielweise. Die Vereinsseite nennt ihn.
+  - **Druck:** Er wächst mit den Plätzen hinter dem Kaderrang, den Niederlagen der letzten fünf Spiele und einem Platz im Keller oder auf einem Abstiegsrang. Ein großer Name hält etwas mehr aus.
+  - **Entlassung:** Ab dem sechsten Spiel trennt sich ein Verein unter Druck mit wachsender Wahrscheinlichkeit, höchstens zweimal je Saison. Ein Neuer bekommt sechs Spiele Schonfrist.
+  - **Nachfolger:** Er bringt eine andere Spielweise mit, und die Mannschaft zieht für ein paar Wochen mit (Trainereffekt: +6 Laune).
+  - **Sommer:** Absteiger und weit hinter ihrem Anspruch gebliebene Vereine trennen sich oft, einige andere auch ohne Not.
+  - **Geeicht über eine simulierte Saison:** Bundesliga 4 Wechsel in der Saison und 2 im Sommer, Premier League 8+1, LaLiga 5+4, Ligue 1 und Serie A 3–4.
+  - **Anzeige:** Wechsel in der eigenen Liga kommen per Post. Die Ranglisten zeigen das Trainerkarussell jeder Liga.
+  - Vorher hatte kein KI-Verein einen Trainer, und die Spielweise stand bei Spielbeginn für immer fest.
 - **Spielplan mit wechselndem Heimrecht:** Heim- und Auswärtsspiele wechseln sich nach dem Berger-Verfahren ab, höchstens drei gleiche in Folge. Vorher hatte ein Verein bis zu 17 Heim- oder Auswärtsspiele am Stück.
 
 ### 2. 📋 Aufstellung, Taktik & Teamchemie
@@ -693,6 +701,7 @@ untitled/
 │   │   ├── boardEngine.js      # Vorstandszufriedenheit & Saisonziele
 │   │   ├── auszeichnungEngine.js # Spieler/Talent/Trainer des Monats, Saisonpreise, Elf der Saison
 │   │   ├── chronikEngine.js    # Vereinschronik: Rekorde, Titel, Saisonbilanzen, Legenden
+│   │   ├── trainerwechselEngine.js # Trainer der KI-Vereine, Entlassungen, Nachfolger mit eigenem Stil
 │   │   ├── newsEngine.js       # Zentrales Nachrichtensystem & Postfach
 │   │   ├── aiManagerEngine.js  # KI-Aufstellungen & KI-Transferangebote
 │   │   ├── scoutingEngine.js   # Scoutaufträge & Spielerberichte

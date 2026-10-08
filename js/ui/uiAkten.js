@@ -198,8 +198,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             return `<li class="${gegenUns ? "vd-gegen-uns" : ""}"><span class="vd-st">${m.matchday}.</span><span class="vd-gegner">${heim ? "" : "@ "}${name(heim ? m.awayClubId : m.homeClubId)}</span><small>${heim ? "Heim" : "Auswärts"}</small></li>`;
         };
 
-        // Spielweise: Formation und Grundhaltung
+        // Spielweise: Trainer, Formation und Grundhaltung
         const t = club.tactics || {};
+        const karussell = typeof TrainerwechselEngine !== "undefined" ? TrainerwechselEngine : null;
+        const trainer = karussell && club.id !== state.userClubId ? karussell.trainer(state, club) : null;
+        const trainerZeile = club.id === state.userClubId
+            ? `<div><span>Trainer</span><strong>${esc(state.managerName || "Sie")}</strong></div>`
+            : (trainer ? `<div><span>Trainer</span><strong>${esc(trainer.name)} <small class="text-muted">seit Saison ${trainer.seit} · ${esc(karussell.stilName(trainer.stil))}</small></strong></div>` : "");
         const W = {
             mentality: { defensive: "defensiv", balanced: "ausgewogen", attacking: "offensiv", "very-defensive": "sehr defensiv", "very-attacking": "sehr offensiv" },
             pressing: { low: "tief", medium: "mittel", high: "hoch" },
@@ -257,6 +262,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <div class="dash-card vd-karte">
                     <h4>Spielweise</h4>
                     <div class="kv-liste">
+                        ${trainerZeile}
                         <div><span>Formation</span><strong>${esc(club.formation || t.formation || "—")}</strong></div>
                         <div><span>Grundhaltung</span><strong>${esc(wort("mentality"))}</strong></div>
                         <div><span>Pressing</span><strong>${esc(wort("pressing"))}</strong></div>

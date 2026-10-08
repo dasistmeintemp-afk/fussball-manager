@@ -11456,6 +11456,67 @@ function runEngineTests() {
         if (vonOben.clubId === kaeufer.id) throw new Error("Talent aus einer höheren Liga geholt");
     });
 
+    test("Kaderregeln: Meldeliste Europapokal (25, acht im Land ausgebildet, Liste B) und Premier League (17 fremde)", () => {
+        const { KaderregelEngine: K } = require('./js/engine/kaderregelEngine.js');
+        const { CalendarEngine } = require('./js/engine/calendarEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Melder" });
+        const club = state.clubs.find(c => c.id === "muc");
+        if (JSON.stringify(K.arten(state, club)) !== JSON.stringify(["europa"])) throw new Error(`Listen: ${K.arten(state, club)}`);
+        const kader = K._kader(state, club);
+
+        // Zu wenig im Land Ausgebildete: Die Liste schrumpft
+        kader.forEach((p, i) => { p.nationality = i < 5 ? "Deutschland" : "Brasilien"; p.eigengewaechsVon = undefined; p.age = 26; });
+        while (kader.length < 28) {
+            const neu = Object.assign({}, kader[kader.length - 1], { id: `ml_${kader.length}`, nationality: "Brasilien" });
+            state.players.push(neu); club.playerIds.push(neu.id); kader.push(neu);
+        }
+        const v = K.vorschlag(state, club, "europa");
+        const pv = K.pruefe(state, club, "europa", v);
+        if (!pv.ok || pv.zahlen.platz !== 22 || v.a.length !== 22) throw new Error(`Vorschlag: ${JSON.stringify(pv.zahlen)} ${pv.fehler}`);
+        const zuViel = { a: kader.slice(0, 24).map(p => p.id), b: [] };
+        if (K.pruefe(state, club, "europa", zuViel).ok) throw new Error("24 Spieler bei fünf Ausgebildeten erlaubt");
+        // Liste B: jung und lange genug im Verein
+        const talent = kader[27];
+        talent.age = 19; talent.vereinSeit = ((state.seasonYear || 1) - 2) * 1000 + 5;
+        if (!K.fuerListeB(state, talent, club)) throw new Error("Talent nicht für Liste B");
+        const mitB = K.vorschlag(state, club, "europa");
+        if (!mitB.b.includes(talent.id) || mitB.a.includes(talent.id)) throw new Error("Talent nicht auf Liste B");
+
+        // Melden bis zum Meldeschluss, danach gesperrt
+        const nichtGemeldet = kader.find(p => !mitB.a.includes(p.id) && !mitB.b.includes(p.id));
+        if (!K.festlegen(state, "europa", mitB).ok) throw new Error("Melden vor dem Meldeschluss scheitert");
+        if (K.gemeldet(state, club, "europa", nichtGemeldet.id)) throw new Error("Nicht gemeldeter Spieler gilt als gemeldet");
+        if (!K.gemeldet(state, club, "liga", nichtGemeldet.id)) throw new Error("In der Bundesliga gibt es keine Meldeliste");
+        const schluss = K.meldeschluss(state, "europa");
+        state.currentDayIndex = schluss + 1;
+        if (K.festlegen(state, "europa", v).ok) throw new Error("Melden nach dem Meldeschluss möglich");
+
+        // Ohne Livespiel stellt der Co-Trainer nur Gemeldete auf
+        club.lineup[3] = nichtGemeldet.id;
+        K.passeAufstellungAn(state, club, "europa");
+        if (club.lineup.includes(nichtGemeldet.id) || club.lineup.length !== 11) throw new Error("Nicht gemeldeter Spieler bleibt in der Elf");
+        if (K.artVon(state, club, { competitionId: "ucl" }) !== "europa" || K.artVon(state, club, { competitionId: "de_liga_1" }) !== null) throw new Error("Wettbewerb falsch zugeordnet");
+
+        // Ohne abgegebene Liste meldet der Co-Trainer zum Meldeschluss den Vorschlag
+        const zwei = GameState.createNewGame("muc", "normal", { name: "Vergesslich" });
+        zwei.currentDayIndex = K.meldeschluss(zwei, "europa") - 1;
+        zwei.inbox = [];
+        const zeile = K.tag(zwei);
+        if (!zeile || !zwei.meldelisten.europa || !zwei.inbox.some(m => /Meldeliste/.test(m.subject))) throw new Error("Kein Vorschlag zum Meldeschluss");
+
+        // Premier League: höchstens 17 nicht im Land Ausgebildete über 21
+        const en = GameState.createNewGame("en_mun", "normal", { name: "Manager" });
+        const united = en.clubs.find(c => c.id === en.userClubId);
+        if (!K.arten(en, united).includes("liga")) throw new Error("Premier League ohne Meldeliste");
+        const uk = K._kader(en, united);
+        uk.forEach((p, i) => { p.nationality = i < 4 ? "England" : "Spanien"; p.age = i === uk.length - 1 ? 20 : 27; });
+        const pl = K.vorschlag(en, united, "liga");
+        const ppl = K.pruefe(en, united, "liga", pl);
+        if (!ppl.ok || ppl.zahlen.fremd > 17) throw new Error(`Premier League: ${JSON.stringify(ppl.zahlen)} ${ppl.fehler}`);
+        if (!pl.a.includes(uk[uk.length - 1].id)) throw new Error("U21 nicht frei gemeldet");
+        if (K.pruefe(en, united, "liga", { a: uk.map(p => p.id) }).ok && uk.length - 4 - 1 > 17) throw new Error("Zu viele fremde Spieler erlaubt");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

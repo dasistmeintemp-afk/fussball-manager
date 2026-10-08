@@ -1171,6 +1171,10 @@ const CalendarEngine = {
                 ergebnis = cupEngine.spieleTermin(state, art, runde);
                 const eigene = ergebnis && ergebnis.eigenePartie;
                 if (eigene && !eigene.played) {
+                    // Ohne Livespiel stellt der Co-Trainer auf - nur Gemeldete
+                    const regeln = (typeof KaderregelEngine !== 'undefined' && KaderregelEngine) ? KaderregelEngine : ((typeof window !== 'undefined' && window.KaderregelEngine) ? window.KaderregelEngine : (typeof require !== 'undefined' ? (() => { try { return require('./kaderregelEngine.js').KaderregelEngine; } catch (e) { return null; } })() : null));
+                    const eigenerVerein = state.clubs.find(c => c.id === state.userClubId);
+                    if (regeln && eigenerVerein) regeln.passeAufstellungAn(state, eigenerVerein, regeln.artVon(state, eigenerVerein, eigene));
                     // Relegation und Playoffs entscheidet die PlayoffEngine über
                     // beide Spiele - ein einzelnes Remis ist dort kein Elfmeterfall.
                     // Die Supercups sind ein Spiel: bei Gleichstand Elfmeter.
@@ -1222,6 +1226,11 @@ const CalendarEngine = {
                 : ((typeof window !== 'undefined' && window.SeasonEngine) ? window.SeasonEngine : (typeof require !== 'undefined' ? require('./seasonEngine.js').SeasonEngine : null));
 
             if (seasonEngine && typeof seasonEngine.advanceToNextMatchday === 'function') {
+                // Ligen mit Meldeliste: Spielt der Computer das eigene Spiel,
+                // stehen nur Gemeldete auf dem Platz
+                const regeln = (typeof KaderregelEngine !== 'undefined' && KaderregelEngine) ? KaderregelEngine : ((typeof window !== 'undefined' && window.KaderregelEngine) ? window.KaderregelEngine : (typeof require !== 'undefined' ? (() => { try { return require('./kaderregelEngine.js').KaderregelEngine; } catch (e) { return null; } })() : null));
+                const eigenerVerein = state.clubs.find(c => c.id === state.userClubId);
+                if (regeln && eigenerVerein && regeln.arten(state, eigenerVerein).includes("liga")) regeln.passeAufstellungAn(state, eigenerVerein, "liga");
                 const matchResult = seasonEngine.advanceToNextMatchday(state);
                 currentDay.completed = true;
                 
@@ -1457,6 +1466,13 @@ const CalendarEngine = {
                 : (typeof require !== 'undefined' ? (() => { try { return require('./jobmarktEngine.js').JobmarktEngine; } catch (e) { return null; } })() : null));
         if (jobmarkt && typeof jobmarkt.tag === 'function') {
             const zeile = jobmarkt.tag(state);
+            if (zeile) summary.messages.push(zeile);
+        }
+
+        // Meldelisten: Zum Meldeschluss gilt der Vorschlag, wenn keine Liste da ist
+        const kaderregeln = (typeof KaderregelEngine !== 'undefined' && KaderregelEngine) ? KaderregelEngine : ((typeof window !== 'undefined' && window.KaderregelEngine) ? window.KaderregelEngine : (typeof require !== 'undefined' ? (() => { try { return require('./kaderregelEngine.js').KaderregelEngine; } catch (e) { return null; } })() : null));
+        if (kaderregeln && typeof kaderregeln.tag === 'function') {
+            const zeile = kaderregeln.tag(state);
             if (zeile) summary.messages.push(zeile);
         }
 

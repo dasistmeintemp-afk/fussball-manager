@@ -8525,3 +8525,12 @@ td.nowrap { white-space: nowrap; }
 .sv-zeile span { color: var(--text-muted); }
 .sv-zeile strong { font-weight: 600; min-width: 0; }
 .sv-zeile small { color: var(--text-muted); font-weight: 400; }
+
+/* Partnervereine */
+.partner-karte h4 { font-size: 13px; color: var(--text-muted); margin: 10px 0 6px; text-transform: uppercase; letter-spacing: .04em; }
+.partner-raster { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 4px 20px; }
+.partner-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.partner-liste li, .partner-zeile { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border-radius: 8px; background: var(--surface-2, rgba(255, 255, 255, 0.03)); font-size: 13px; margin-bottom: 6px; }
+.partner-liste small, .partner-zeile small, .partner-kopf small { color: var(--text-muted); }
+.partner-kopf { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.partner-zeile .styled-select { flex: 1 1 160px; min-width: 0; }

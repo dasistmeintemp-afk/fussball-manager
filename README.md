@@ -123,6 +123,12 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   - **Geeicht über eine simulierte Saison:** Bundesliga 4 Wechsel in der Saison und 2 im Sommer, Premier League 8+1, LaLiga 5+4, Ligue 1 und Serie A 3–4.
   - **Anzeige:** Wechsel in der eigenen Liga kommen per Post. Die Ranglisten zeigen das Trainerkarussell jeder Liga.
   - Vorher hatte kein KI-Verein einen Trainer, und die Spielweise stand bei Spielbeginn für immer fest.
+- **Partnervereine (`PartnerEngine`):** Im Reiter Verein lassen sich zwei Kooperationen schließen, je für drei Spielzeiten.
+  - **Ausbildungspartner:** ein kleinerer Verein aus dem eigenen Land, tiefer in der Pyramide oder deutlich weniger angesehen. Er kostet im Jahr 0,4 % des Umsatzes.
+    - Wer dorthin verliehen wird, spielt mit Einsatzgarantie jedes Spiel, wenn er fit ist. Der Partner trägt die Hälfte des Gehalts.
+    - Zum Saisonstart bietet er sein bestes Talent bis 20 Jahre mit Vorkaufsrecht an, für 60 % des Marktwerts.
+  - **Großer Partner:** ein deutlich angesehenerer Verein. Er bietet zum Saisonstart zwei junge Spieler bis 23 zur Leihe an, ohne Gebühr und mit halbem Gehalt. Er sagt nur zu, wenn Verein und Trainer etwas gelten.
+  - Zweite Mannschaften kommen als Partner nicht infrage. Eine ausgelaufene Kooperation meldet sich per Post und lässt sich neu schließen.
 - **Nachrichten aus der Liga (`LigaNachrichtenEngine`):** Die Sportpresse berichtet über die eigene Liga.
   - **Saisonvorschau:** Zum Saisonstart nennt sie Favoriten, Geheimtipp (der Kader ist besser als sein Ruf), Abstiegskandidaten und den Platz, auf dem sie den eigenen Verein sieht. Sie rechnet mit drei Vierteln Kaderstärke und einem Viertel Ansehen, wie die Medienprognose.
   - **Rundschau nach jedem Spieltag:** Sie bringt die Spitze und den Abstand, das Ergebnis des Spieltags und Serien (fünf Siege oder fünf Spiele ohne Sieg). Dazu kommen die Torjäger sowie Transfers und Trainerwechsel seit der letzten Ausgabe.
@@ -719,6 +725,7 @@ untitled/
 │   │   ├── trainerwechselEngine.js # Trainer der KI-Vereine, Entlassungen, Nachfolger mit eigenem Stil
 │   │   ├── ligaNachrichtenEngine.js # Saisonvorschau, Rundschau, Gerüchteküche
 │   │   ├── spielvorschauEngine.js # Quoten, direkter Vergleich, Ausfälle vor dem nächsten Spiel
+│   │   ├── partnerEngine.js    # Ausbildungspartner mit Einsatzgarantie, großer Partner mit Leihangeboten
 │   │   ├── newsEngine.js       # Zentrales Nachrichtensystem & Postfach
 │   │   ├── aiManagerEngine.js  # KI-Aufstellungen & KI-Transferangebote
 │   │   ├── scoutingEngine.js   # Scoutaufträge & Spielerberichte

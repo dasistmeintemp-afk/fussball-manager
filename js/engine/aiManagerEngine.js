@@ -91,6 +91,16 @@ const AIManagerEngine = {
             }
         }
 
+        // Wer vom Partner mit Einsatzgarantie geliehen ist, spielt
+        const partner = (typeof PartnerEngine !== 'undefined' && PartnerEngine) ? PartnerEngine
+            : ((typeof window !== 'undefined' && window.PartnerEngine) ? window.PartnerEngine
+                : (typeof require !== 'undefined' ? (() => { try { return require('./partnerEngine.js').PartnerEngine; } catch (e) { return null; } })() : null));
+        if (partner && typeof partner.garantiereEinsaetze === 'function') {
+            partner.garantiereEinsaetze(club, starters, slots, allPlayers);
+            usedIds.clear();
+            starters.forEach(id => usedIds.add(id));
+        }
+
         // 4. Ersatzbank bestimmen (bis zu 7 Spieler, Ersatztorwart zuerst)
         const benchPool = available
             .filter(p => !usedIds.has(p.id))

@@ -5002,6 +5002,76 @@ class UIManager {
     }
 
     /**
+     * Partnervereine: der Ausbildungspartner (Leihen mit Einsatzgarantie,
+     * Vorkaufsrecht) und der große Partner (Leihangebote).
+     */
+    renderPartner(state, club) {
+        const el = document.getElementById("clubPartner");
+        const engine = typeof PartnerEngine !== "undefined" ? PartnerEngine : null;
+        if (!el || !engine) return;
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const p = engine.partner(state);
+        const angebote = club.partnerAngebote || {};
+        const spieler = (id) => state.players.find(x => String(x.id) === String(id));
+        const liga = (c) => (state.leagues || []).find(l => l.id === c?.leagueId)?.shortName || "";
+        const vorschlaege = (art) => engine.vorschlaege(state, art).map(c => `
+            <li><span><strong>${esc(c.name)}</strong> <small>${esc(liga(c))} · Ansehen ${c.reputation || 50}</small></span>
+            <button class="btn btn-sm btn-secondary" data-partner-anbieten="${art}" data-club="${esc(c.id)}">Kooperation anbieten</button></li>`).join("");
+        const kopf = (e, titel) => `<div class="partner-kopf"><strong>${esc(e.club?.name || "")}</strong> <small>${esc(liga(e.club))} · bis Saison ${e.bisSaison}</small>
+            <button class="btn btn-sm btn-secondary" data-partner-kuendigen="${titel}">Kündigen</button></div>`;
+
+        let klein;
+        if (p.klein) {
+            const t = angebote.klein && angebote.klein.saison === (state.seasonYear || 1) ? spieler(angebote.klein.playerId) : null;
+            const verleihbar = state.players.filter(x => x.clubId === club.id && !x.leihe && (x.age || 30) <= 23)
+                .sort((a, b) => (a.age || 0) - (b.age || 0));
+            klein = `${kopf(p.klein, "klein")}
+                <p class="muted-note">Leihen dorthin mit Einsatzgarantie. Das beste Talent des Partners bekommen wir zuerst angeboten.</p>
+                ${t ? `<div class="partner-zeile"><span>Vorkaufsrecht: <strong>${esc(t.name)}</strong> <small>${esc(t.pos)}, ${t.age} J.</small></span>
+                    <button class="btn btn-sm btn-primary" id="btnPartnerVorkauf">Für ${this.geldKurz(angebote.klein.preis)} verpflichten</button></div>` : ""}
+                ${verleihbar.length ? `<div class="partner-zeile"><select class="styled-select" id="partnerVerleihWahl">${verleihbar.map(x => `<option value="${esc(x.id)}">${esc(x.name)} (${esc(x.pos)}, ${x.age})</option>`).join("")}</select>
+                    <button class="btn btn-sm btn-secondary" id="btnPartnerVerleihen">Zum Partner verleihen</button></div>` : ""}`;
+        } else {
+            klein = `<p class="muted-note">Ein kleinerer Verein, bei dem verliehene Spieler sicher spielen. Kostet einen Jahresbeitrag.</p><ul class="partner-liste">${vorschlaege("klein") || "<li>Kein passender Verein.</li>"}</ul>`;
+        }
+
+        let gross;
+        if (p.gross) {
+            const ids = angebote.gross && angebote.gross.saison === (state.seasonYear || 1) ? angebote.gross.playerIds || [] : [];
+            gross = `${kopf(p.gross, "gross")}
+                <p class="muted-note">Zum Saisonstart bietet der Partner junge Spieler zur Leihe an - ohne Gebühr, mit halbem Gehalt.</p>
+                ${ids.map(spieler).filter(Boolean).map(x => `<div class="partner-zeile"><span><strong>${esc(x.name)}</strong> <small>${esc(x.pos)}, ${x.age} J. · ${this.abilityStarsFor ? this.abilityStarsFor(x, { compact: true }) : ""}</small></span>
+                    <button class="btn btn-sm btn-secondary" data-partner-leihe="${esc(x.id)}">Ausleihen</button></div>`).join("") || `<p class="muted-note">In dieser Saison liegen keine Leihangebote vor.</p>`}`;
+        } else {
+            gross = `<p class="muted-note">Ein deutlich größerer Verein, der junge Spieler zur Leihe anbietet. Er sagt nur zu, wenn Verein und Trainer etwas gelten.</p><ul class="partner-liste">${vorschlaege("gross") || "<li>Kein größerer Verein in Reichweite.</li>"}</ul>`;
+        }
+
+        el.innerHTML = `
+            <div class="card-header"><h3>🤝 Partnervereine</h3></div>
+            <div class="partner-raster">
+                <div><h4>Ausbildungspartner</h4>${klein}</div>
+                <div><h4>Großer Partner</h4>${gross}</div>
+            </div>`;
+        const nachher = (res, ok) => {
+            if (!res.success) { this.showToast(res.error || "Das ging nicht.", "error"); return; }
+            if (ok) this.showToast(ok, "success");
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.renderClub();
+            this.renderHeader?.();
+        };
+        el.querySelectorAll("[data-partner-anbieten]").forEach(b => b.addEventListener("click", () =>
+            nachher(engine.anbieten(state, b.dataset.partnerAnbieten, b.dataset.club), "Die Kooperation steht.")));
+        el.querySelectorAll("[data-partner-kuendigen]").forEach(b => b.addEventListener("click", () =>
+            nachher(engine.kuendigen(state, b.dataset.partnerKuendigen), "Kooperation beendet.")));
+        document.getElementById("btnPartnerVorkauf")?.addEventListener("click", () =>
+            nachher(engine.vorkaufsrecht(state), "Das Talent ist verpflichtet."));
+        document.getElementById("btnPartnerVerleihen")?.addEventListener("click", () =>
+            nachher(engine.verleihen(state, document.getElementById("partnerVerleihWahl")?.value), "Verliehen - mit Einsatzgarantie."));
+        el.querySelectorAll("[data-partner-leihe]").forEach(b => b.addEventListener("click", () =>
+            nachher(engine.ausleihen(state, b.dataset.partnerLeihe), "Ausgeliehen.")));
+    }
+
+    /**
      * Die Vereinschronik: Rekorde, Titel, Saisonbilanzen, Rekordspieler und
      * Legenden - geführt ab der Übernahme.
      */
@@ -5059,6 +5129,7 @@ class UIManager {
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
         this.renderTrainerProfil();
+        this.renderPartner(state, userClub);
         this.renderChronik(state, userClub);
 
         DOM.setText("clubTabName", userClub.name);

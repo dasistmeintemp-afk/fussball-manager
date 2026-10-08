@@ -1073,6 +1073,9 @@ class SeasonEngine {
         }
         const preisEngine = _resolve('AuszeichnungEngine', './auszeichnungEngine.js');
         const preise = preisEngine && typeof preisEngine.saisonAbschluss === 'function' ? preisEngine.saisonAbschluss(state) : null;
+        // Danach die Gala über alle Ligen: Weltfußballer, Talent, Torjäger, Trainer, Elf des Jahres
+        const jahrespreise = _resolve('JahrespreisEngine', './jahrespreisEngine.js');
+        if (jahrespreise && typeof jahrespreise.verleihen === 'function') jahrespreise.verleihen(state);
         const ligaSpieler = new Set((state.clubs || []).filter(c => c.leagueId === userClub.leagueId).map(c => c.id));
         const inLiga = state.players.filter(p => ligaSpieler.has(p.clubId));
         const sortedScorers = inLiga.filter(p => (p.stats.goals || 0) > 0).sort((a, b) => (b.stats.goals || 0) - (a.stats.goals || 0));

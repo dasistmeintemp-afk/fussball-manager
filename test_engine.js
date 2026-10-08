@@ -11220,6 +11220,64 @@ function runEngineTests() {
         if (normal.partie.awayClubId !== "s04" || normal.grund !== "Meister gegen Pokalsieger") throw new Error(`Paarung nach der Saison falsch: ${JSON.stringify(normal)}`);
     });
 
+    test("Jahrespreise: Weltfußballer über alle ersten Ligen, Talent, Torjäger Europas, Trainer und Elf des Jahres", () => {
+        const { JahrespreisEngine: Jp } = require('./js/engine/jahrespreisEngine.js');
+        const { AuszeichnungEngine: Preise } = require('./js/engine/auszeichnungEngine.js');
+        const { SaveCodec } = require('./js/services/saveCodec.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const ersteLigen = new Set(state.leagues.filter(l => l.level === 1).map(l => l.id));
+        const vereinVon = new Map(state.clubs.map(c => [c.id, c]));
+        // Eine durchschnittliche Saison für alle, dazu ein paar Ausreißer
+        state.players.forEach(p => { p.stats = { matches: 30, goals: 0, assists: 0, ratingSum: 30 * 6.8, minutes: 2500 }; });
+        const inLiga = (liga, pos, alt = 99) => state.players.filter(p => vereinVon.get(p.clubId)?.leagueId === liga && p.pos === pos && (p.age || 30) <= alt);
+        const star = inLiga("es_liga_1", "ST")[0];
+        const zweiter = inLiga("en_liga_1", "ST")[0];
+        const dritter = inLiga("de_liga_1", "OM")[0] || inLiga("de_liga_1", "ZM")[0];
+        Object.assign(star.stats, { goals: 31, assists: 8, ratingSum: 30 * 7.9 });
+        Object.assign(zweiter.stats, { goals: 26, assists: 6, ratingSum: 30 * 7.75 });
+        Object.assign(dritter.stats, { goals: 12, assists: 15, ratingSum: 30 * 7.7 });
+        // Zu wenig gespielt: zählt nicht, so gut die Noten auch sind
+        const kurz = inLiga("it_liga_1", "ST")[0];
+        Object.assign(kurz.stats, { matches: 8, goals: 9, ratingSum: 8 * 8.9 });
+        // Ein Talent aus der zweiten Liga
+        const talent = inLiga("de_liga_2", "ST", 21)[0] || inLiga("de_liga_2", "ZM", 21)[0];
+        Object.assign(talent.stats, { goals: 14, assists: 9, ratingSum: 30 * 7.6 });
+        // Torjäger Europas: 22 Tore in der zweiten Liga zählen 33, 31 in der ersten 62
+        const unten = inLiga("de_liga_3", "ST")[0];
+        Object.assign(unten.stats, { goals: 40 });
+        // Meister der Premier League ist der Verein des Zweiten
+        const en = state.clubs.filter(c => c.leagueId === "en_liga_1");
+        state.standingsByLeague.en_liga_1 = [zweiter.clubId, ...en.map(c => c.id).filter(id => id !== zweiter.clubId)]
+            .map((clubId, i) => ({ clubId, played: 38, points: 90 - i * 3, goalDiff: 40 - i * 4 }));
+
+        const j = Jp.verleihen(state);
+        if (!j || j.weltfussballer.length !== 3) throw new Error("Kein Podest");
+        if (j.weltfussballer[0].id !== star.id) throw new Error(`Weltfußballer ist ${j.weltfussballer[0].name} statt ${star.name}`);
+        if (j.weltfussballer[1].id !== zweiter.id || !j.weltfussballer[1].titel.some(t => /Meister/.test(t))) throw new Error("Der Meister ist nicht Zweiter oder ohne Titel");
+        if (j.weltfussballer.some(e => e.id === kurz.id)) throw new Error("Wer kaum spielte, steht auf dem Podest");
+        if (!j.weltfussballer.every(e => ersteLigen.has(vereinVon.get(e.clubId).leagueId))) throw new Error("Podest nicht aus den ersten Ligen");
+        if (!j.talent || j.talent.alter > Jp.TALENT_ALTER) throw new Error("Talent fehlt oder ist zu alt");
+        if (j.torjaeger.id !== star.id || j.torjaeger.punkte !== 62) throw new Error(`Torjäger Europas falsch: ${JSON.stringify(j.torjaeger)}`);
+        if (j.elf.length !== 11 || new Set(j.elf.map(e => e.id)).size !== 11) throw new Error("Elf des Jahres unvollständig");
+        if (!j.elf.some(e => e.id === star.id)) throw new Error("Der Weltfußballer fehlt in der Elf");
+        if (!j.trainer || j.trainer.clubId !== zweiter.clubId || !/Meister/.test(j.trainer.grund)) throw new Error(`Trainer des Jahres: ${JSON.stringify(j.trainer)}`);
+
+        // Geehrt: Akte, Wert, Post - und gespeichert
+        const akte = Preise.preiseVon(star).map(a => a.name);
+        if (!akte.includes("Weltfußballer des Jahres") || !akte.includes("Torjäger Europas") || !akte.includes("Elf des Jahres")) throw new Error(`Akte: ${akte.join(", ")}`);
+        if (!Preise.preiseVon(zweiter).some(a => a.name === "Weltfußballer-Wahl, Platz 2")) throw new Error("Platz 2 fehlt in der Akte");
+        if (!state.inbox[0] || !/Gala/.test(state.inbox[0].subject) || !state.inbox[0].body.includes(star.name)) throw new Error("Keine Post von der Gala");
+        if (Jp.letzte(SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(state))))).weltfussballer[0].id !== star.id) throw new Error("Nicht gespeichert");
+
+        // Der eigene Trainer: zählt für den Ruf
+        const vorher = Preise.trainerPreise(state);
+        state.jahrespreise.push({ ...j, saison: j.saison + 1, trainer: { ...j.trainer, istNutzer: true } });
+        if (Preise.trainerPreise(state) !== vorher + Jp.TRAINER_RUF) throw new Error("Trainer des Jahres zählt nicht für den Ruf");
+        // Nicht mehr als zehn Jahrgänge
+        for (let i = 0; i < 12; i++) { state.seasonYear += 1; Jp.verleihen(state); }
+        if (state.jahrespreise.length !== Jp.GEMERKT) throw new Error(`${state.jahrespreise.length} Jahrgänge gespeichert`);
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

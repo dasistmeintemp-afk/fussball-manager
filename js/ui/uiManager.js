@@ -5793,6 +5793,54 @@ class UIManager {
         }));
     }
 
+    /**
+     * Die Gala des letzten Jahres: Weltfußballer mit Podest, Talent, Torjäger
+     * Europas, Trainer und Elf des Jahres - über alle Ligen.
+     */
+    renderJahrespreise(state, vereine) {
+        const el = document.getElementById("statsJahrespreise");
+        const engine = typeof JahrespreisEngine !== "undefined" ? JahrespreisEngine : null;
+        if (!el || !engine) return;
+        const j = engine.letzte(state);
+        if (!j) { el.hidden = true; el.innerHTML = ""; return; }
+        el.hidden = false;
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const verein = (id) => vereine.get(id)?.name || (state.clubs || []).find(c => c.id === id)?.name || "";
+        const person = (e, extra = "") => e
+            ? `<button type="button" class="preis-name${e.clubId === state.userClubId ? " eigen" : ""}" data-player-id="${esc(e.id)}">${esc(e.name)}</button> <small>${esc(verein(e.clubId))}${extra}</small>`
+            : "–";
+        const note = (e) => e && e.note !== undefined ? `, Note ${String(e.note).replace(".", ",")}` : "";
+        const medaille = ["🥇", "🥈", "🥉"];
+        const podest = (j.weltfussballer || []).map((e, i) => `
+            <li><span class="preis-monat">${medaille[i] || `${e.platz}.`} Platz ${e.platz}</span>
+                <span>${person(e, `${note(e)}, ${e.tore} Tore`)}${(e.titel || []).length ? `<small class="jp-titel">${esc(e.titel.join(" · "))}</small>` : ""}</span></li>`).join("");
+        const t = j.trainer;
+        const reihe = (plaetze) => (j.elf || []).filter(e => plaetze.includes(e.platz))
+            .sort((a, b) => plaetze.indexOf(a.platz) - plaetze.indexOf(b.platz))
+            .map(e => `<span class="elf-spieler">${person(e)}</span>`).join("");
+        el.innerHTML = `
+            <div class="card-header"><h3>🌍 Gala des Jahres</h3><span class="header-tag">Saison ${esc(j.saison)}</span></div>
+            <h4>Weltfußballer</h4>
+            <ul class="preis-liste">${podest}</ul>
+            <ul class="preis-liste">
+                <li><span class="preis-monat">Talent</span><span>${person(j.talent, j.talent ? `, ${esc(j.talent.alter)} Jahre` : "")}</span></li>
+                <li><span class="preis-monat">Torjäger Europas</span><span>${person(j.torjaeger, j.torjaeger ? `, ${j.torjaeger.tore} Tore` : "")}</span></li>
+                <li><span class="preis-monat">Trainer</span><span>${t ? `<span class="preis-name${t.istNutzer ? " eigen" : ""}">${t.istNutzer ? "Sie" : esc(t.name || t.verein)}</span> <small>${t.istNutzer || !t.name ? "" : `${esc(t.verein)}, `}${esc(t.grund)}</small>` : "–"}</span></li>
+            </ul>
+            ${(j.elf || []).length ? `
+            <h4>Elf des Jahres</h4>
+            <div class="elf-saison" aria-label="Elf des Jahres">
+                <div class="elf-reihe">${reihe(["LA", "ST", "RA"])}</div>
+                <div class="elf-reihe">${reihe(["ZM"])}</div>
+                <div class="elf-reihe">${reihe(["LV", "IV", "RV"])}</div>
+                <div class="elf-reihe">${reihe(["TW"])}</div>
+            </div>` : ""}`;
+        el.querySelectorAll("[data-player-id]").forEach(b => b.addEventListener("click", () => {
+            const id = this.resolvePlayerId ? this.resolvePlayerId(b.dataset.playerId) : b.dataset.playerId;
+            if (id !== null && id !== undefined) this.showPlayerDetailsModal(id);
+        }));
+    }
+
     /** Die Gerüchteküche der eigenen Liga - mit Haken, wenn es stimmte */
     renderGeruechte(state, eigeneLiga) {
         const el = document.getElementById("statsGeruechte");
@@ -5926,6 +5974,7 @@ class UIManager {
 
         if (typeof this.renderDatenzentrale === "function") this.renderDatenzentrale(state, ligaId);
         this.renderPreise(state, ligaId === "alle" ? eigeneLiga : ligaId, vereine);
+        this.renderJahrespreise(state, vereine);
         this.renderKarussell(state, ligaId === "alle" ? eigeneLiga : ligaId);
         this.renderGeruechte(state, ligaId === "alle" || ligaId === eigeneLiga);
 

@@ -8694,3 +8694,8 @@ td.nowrap { white-space: nowrap; }
 .ul-ziel span { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 .ul-anhalten { display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; font-size: 12px; color: var(--text-muted); cursor: pointer; }
 .ul-anhalten input { margin-top: 2px; }
+
+/* Gala des Jahres */
+#statsJahrespreise .preis-liste + .preis-liste { margin-top: 8px; }
+#statsJahrespreise .preis-liste li { grid-template-columns: 96px 1fr; }
+.jp-titel { display: block; margin-top: 2px; font-size: 11px; }

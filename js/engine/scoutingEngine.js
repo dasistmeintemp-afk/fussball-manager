@@ -593,6 +593,7 @@ const ScoutingEngine = {
         let card = null;
         if (ratingEngine && typeof ratingEngine.calculateVisiblePlayerCard === "function") {
             card = ratingEngine.calculateVisiblePlayerCard(player, {
+                state,
                 userClubId: state ? state.userClubId : null,
                 userSquadAvgAbility: kaderSchnitt,
                 leagueDataCoverage: 85,
@@ -634,10 +635,11 @@ const ScoutingEngine = {
         const fazitTeile = [];
         if (scout.sterne >= 3) {
             fazitTeile.push(`${abilityLabel.replace(/^ca\. /, "")}. ${potentialLabel}.`);
+            if (card?.potentialKlasse) fazitTeile.push(`${card.potentialKlasse}.`);
             if (kaderRolle) fazitTeile.push(`${kaderRolle.text}.`);
             if (card?.bestRole?.role) fazitTeile.push(`Am besten als ${card.bestRole.role}.`);
         } else if (scout.sterne >= 2) {
-            fazitTeile.push(`Macht den Eindruck eines ${abilityLabel.replace(/^ca\. /, "")}.`);
+            fazitTeile.push(`Erster Eindruck: ${abilityLabel.replace(/^ca\. /, "")}.`);
             if (kaderRolle) fazitTeile.push(`${kaderRolle.text}.`);
         } else {
             fazitTeile.push("Ein erster Eindruck, mehr lässt sich nicht sagen.");

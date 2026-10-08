@@ -9811,6 +9811,37 @@ function runEngineTests() {
         if (!(bayern.transferBudget > 15000000)) throw new Error(`Bayern zu arm: ${bayern.transferBudget}`);
     });
 
+    test("Klasse: Spieler werden absolut an den Ligen des eigenen Landes eingeordnet", () => {
+        const { PlayerRatingEngine } = require('./js/engine/playerRatingEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const leiter = PlayerRatingEngine.klassenLeiter(state);
+        const namen = leiter.stufen.map(s => s.name);
+        if (namen[0] !== "Bundesliga" || !namen.includes("Regionalliga") || namen[namen.length - 1] !== "Landesliga") throw new Error(`Leiter falsch: ${namen.join(", ")}`);
+        leiter.stufen.forEach((s, i) => {
+            if (s.spitze < s.stamm) throw new Error(`${s.name}: Spitze unter Stammspieler`);
+            if (i > 0 && !(leiter.stufen[i - 1].stamm > s.stamm)) throw new Error(`${s.name} nicht schwächer als die Stufe darüber`);
+        });
+        const bl = leiter.stufen[0], ll = leiter.stufen[leiter.stufen.length - 1];
+        const text = (o) => PlayerRatingEngine.klasse(state, o).text;
+        if (text(bl.stamm) !== "Stammspieler der Bundesliga" || text(bl.spitze) !== "Spitzenspieler der Bundesliga") throw new Error(`Bundesliga: ${text(bl.stamm)} / ${text(bl.spitze)}`);
+        if (text(ll.stamm) !== "Stammspieler der Landesliga") throw new Error(`Landesliga: ${text(ll.stamm)}`);
+        if (PlayerRatingEngine.klasse(state, 5).key !== "ergaenzung" || PlayerRatingEngine.klasse(state, 99).key !== "welt") throw new Error("Ränder falsch");
+
+        // Die Spielerkarte nennt die Klasse - beim eigenen Spieler ohne "ca."
+        const eigener = state.players.filter(p => p.clubId === "muc").sort((a, b) => a.overall - b.overall)[5];
+        const karte = PlayerRatingEngine.calculateVisiblePlayerCard(eigener, { state, userClubId: "muc", userSquadAvgAbility: 150 });
+        if (!karte.klasse || karte.abilityLabel !== karte.klasse.text) throw new Error(`Karte ohne Klasse: ${karte.abilityLabel}`);
+        // Ohne Spielstand bleibt es bei den festen Schwellen
+        const ohne = PlayerRatingEngine.calculateVisiblePlayerCard(eigener, { userClubId: "muc", userSquadAvgAbility: 150 });
+        if (ohne.klasse !== null) throw new Error("Klasse ohne Spielstand");
+
+        // Ein Talent bekommt ein Ziel in derselben Sprache
+        const talent = Object.assign({}, eigener, { id: "talent_test", age: 18, overall: bl.stamm - 12, pot: bl.spitze + 2,
+            trueCurrentAbility: (bl.stamm - 12) * 2, truePotentialAbility: (bl.spitze + 2) * 2 });
+        const tk = PlayerRatingEngine.calculateVisiblePlayerCard(talent, { state, userClubId: "muc", userSquadAvgAbility: 150 });
+        if (!tk.potentialKlasse || !/^Kann .* werden$/.test(tk.potentialKlasse) || !tk.potentialKlasse.includes("Bundesliga")) throw new Error(`Talent ohne Ziel: ${tk.potentialKlasse}`);
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

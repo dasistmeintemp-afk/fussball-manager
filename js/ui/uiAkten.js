@@ -757,6 +757,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <div class="player-detail-rating">
                     <div class="player-detail-stars team-strength-stars">${abilityStars}</div>
                     <div class="player-detail-label">${abilityLabel}</div>
+                    ${card?.potentialKlasse ? `<div class="player-detail-ziel">${this.escapeHtml(card.potentialKlasse)}</div>` : ""}
                 </div>
             </div>
 

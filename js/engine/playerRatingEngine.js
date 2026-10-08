@@ -495,6 +495,79 @@ class PlayerRatingEngine {
     /**
      * Erzeugt verbale Qualitätslabels für die aktuelle Stärke
      */
+    /**
+     * Die Klassenleiter des eigenen Landes, gemessen an der Welt: je
+     * Ligastufe, wie stark ihre Stammspieler sind (jeweils die besten elf
+     * jedes Vereins). Ab dem 85. Perzentil zählt einer zur Spitze der Liga,
+     * ab dem 40. ist er dort Stammspieler. Weltklasse ist das oberste
+     * Prozent aller Erstligastammspieler der Welt. Gemerkt je Spieltag.
+     */
+    static klassenLeiter(state) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        const land = club?.countryId || "de";
+        const players = Array.isArray(state?.players) ? state.players : [];
+        const schluessel = `${land}|${state?.seasonYear || 1}|${state?.currentMatchday || 0}|${players.length}`;
+        const gemerkt = PlayerRatingEngine._klassenCache;
+        if (gemerkt && gemerkt.state === state && gemerkt.schluessel === schluessel) return gemerkt.leiter;
+
+        const nachVerein = new Map();
+        players.forEach(p => {
+            if (!p.clubId) return;
+            if (!nachVerein.has(p.clubId)) nachVerein.set(p.clubId, []);
+            nachVerein.get(p.clubId).push(p.overall || 0);
+        });
+        const stufen = new Map();
+        const erstligisten = [];
+        (state?.clubs || []).forEach(c => {
+            const elf = (nachVerein.get(c.id) || []).sort((a, b) => b - a).slice(0, 11);
+            if ((c.level || 1) === 1) erstligisten.push(...elf);
+            if ((c.countryId || "de") !== land) return;
+            const lvl = c.level || 1;
+            if (!stufen.has(lvl)) stufen.set(lvl, []);
+            stufen.get(lvl).push(...elf);
+        });
+        const perzentil = (werte, p) => werte.length ? werte[Math.min(werte.length - 1, Math.floor(p * (werte.length - 1)))] : 0;
+        erstligisten.sort((a, b) => a - b);
+        const leiter = {
+            welt: Math.max(85, perzentil(erstligisten, 0.99)),
+            stufen: [...stufen.entries()].sort((a, b) => a[0] - b[0]).map(([lvl, werte]) => {
+                werte.sort((a, b) => a - b);
+                return { level: lvl, name: PlayerRatingEngine.ligaName(land, lvl), spitze: perzentil(werte, 0.85), stamm: perzentil(werte, 0.4) };
+            })
+        };
+        PlayerRatingEngine._klassenCache = { state, schluessel, leiter };
+        return leiter;
+    }
+
+    /** Der Name einer Ligastufe - bei mehreren Staffeln ohne Region ("Regionalliga") */
+    static ligaName(land, level) {
+        const daten = (typeof LEAGUES_DATA !== "undefined" && LEAGUES_DATA)
+            ? LEAGUES_DATA
+            : ((typeof window !== "undefined" && window.LEAGUES_DATA) ? window.LEAGUES_DATA
+                : (typeof require !== "undefined" ? (() => { try { return require("../data/leagueData.js").LEAGUES_DATA; } catch (e) { return []; } })() : []));
+        const ligen = (daten || []).filter(l => l.countryId === land && l.level === level);
+        if (!ligen.length) return `${level}. Liga`;
+        const name = ligen[0].shortName || ligen[0].name;
+        return ligen.length > 1 ? name.split(" ")[0] : name;
+    }
+
+    /**
+     * Wo ein Spieler absolut steht - in Worten, an den Ligen des eigenen
+     * Landes gemessen: "Stammspieler der 2. Bundesliga". Die Sterne sagen,
+     * wie gut er für den eigenen Verein ist; das hier, wie gut er überhaupt ist.
+     */
+    static klasse(state, overall) {
+        const o = Number(overall) || 0;
+        const leiter = PlayerRatingEngine.klassenLeiter(state);
+        if (o >= leiter.welt) return { key: "welt", level: 0, text: "Weltklassespieler" };
+        for (const s of leiter.stufen) {
+            if (o >= s.spitze) return { key: "spitze", level: s.level, text: `Spitzenspieler der ${s.name}` };
+            if (o >= s.stamm) return { key: "stamm", level: s.level, text: `Stammspieler der ${s.name}` };
+        }
+        const letzte = leiter.stufen[leiter.stufen.length - 1];
+        return { key: "ergaenzung", level: letzte ? letzte.level : 99, text: letzte ? `Ergänzungsspieler der ${letzte.name}` : "Amateurspieler" };
+    }
+
     static getAbilityLabel(ability, leagueContext = {}) {
         const ca = ability || 100;
         if (ca >= 180) return "Weltklasse";
@@ -644,9 +717,17 @@ class PlayerRatingEngine {
 
         // Label aus der geschätzten Mitte, bei Unsicherheit als Näherung markiert
         const estCaMid = Math.round((estCaMin + estCaMax) / 2);
-        const rawAbilityLabel = PlayerRatingEngine.getAbilityLabel(estCaMid, context);
+        // Mit dem Spielstand an der echten Welt gemessen, sonst nach festen Schwellen
+        const klasse = context.state && Array.isArray(context.state.players)
+            ? PlayerRatingEngine.klasse(context.state, PlayerRatingEngine.abilityToOverall(estCaMid)) : null;
+        const rawAbilityLabel = klasse ? klasse.text : PlayerRatingEngine.getAbilityLabel(estCaMid, context);
         const abilityLabel = isPrecise || confidence >= 70 ? rawAbilityLabel : `ca. ${rawAbilityLabel}`;
         const potentialLabel = PlayerRatingEngine.getPotentialLabel(player);
+        // Was aus einem jungen Spieler werden kann - in derselben Sprache
+        const estPaMid = Math.round((estPaMin + estPaMax) / 2);
+        const zielKlasse = context.state && Array.isArray(context.state.players) && (player.age || 30) <= 23 && estPaMid >= estCaMid + 6
+            ? PlayerRatingEngine.klasse(context.state, PlayerRatingEngine.abilityToOverall(estPaMid)) : null;
+        const potentialKlasse = zielKlasse && zielKlasse.text !== (klasse && klasse.text) ? `Kann ${zielKlasse.text} werden` : null;
         const confidenceInfo = PlayerRatingEngine.getConfidenceDescriptor(confidence);
 
         // Hidden attributes Text-Highlights
@@ -664,6 +745,8 @@ class PlayerRatingEngine {
                 ? (typeof Formatters !== 'undefined' ? Formatters.formatMoney(trueVal, true) : `${(trueVal / 1e6).toFixed(1).replace(".", ",")} Mio. €`)
                 // Deutsche Schreibweise: "46,2–89,0 Mio. €" statt "46.2 - 89.0 Mio. €"
                 : `${(valMin / 1e6).toFixed(1).replace(".", ",")}–${(valMax / 1e6).toFixed(1).replace(".", ",")} Mio. €`,
+            klasse,
+            potentialKlasse,
             starsCa,
             starsPa,
             starsCaMin,

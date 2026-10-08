@@ -1317,6 +1317,7 @@
                     <div class="pane-header">
                         <h2>Saisonkalender & Tagesablauf</h2>
                         <div class="pane-actions" style="display:flex; gap:10px;">
+                            <button class="btn btn-secondary" id="btnUrlaub" title="Bis zu einem Datum durchspielen - der Co-Trainer übernimmt">🏖️ Urlaub</button>
                             <button class="btn btn-secondary" id="btnCalendarAdvanceDay">⏭️ Einen Tag weiter</button>
                         </div>
                     </div>
@@ -2048,6 +2049,16 @@
         </div>
 
         <!-- Entscheidungsdialog: Verhandlung, Saisonstart, Angebote -->
+        <div class="modal-overlay" id="modalUrlaub" style="display: none;">
+            <div class="modal-box modal-md">
+                <div class="modal-header">
+                    <h2>🏖️ Urlaub</h2>
+                    <button class="modal-close" id="btnCloseUrlaub">×</button>
+                </div>
+                <div class="modal-body" id="urlaubInhalt"></div>
+            </div>
+        </div>
+
         <div class="modal-overlay" id="modalEntscheidung" style="display: none;">
             <div class="modal-box modal-md">
                 <div class="modal-header">
@@ -2238,6 +2249,7 @@
     <script src="js/engine/datenzentraleEngine.js"></script>
     <script src="js/engine/jobmarktEngine.js"></script>
     <script src="js/engine/laufbahnEngine.js"></script>
+    <script src="js/engine/urlaubEngine.js"></script>
     <script src="js/engine/gameState.js"></script>
     <script src="js/engine/eigenschaftenEngine.js"></script>
     <script src="js/engine/matchFlowEngine.js"></script>

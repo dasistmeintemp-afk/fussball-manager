@@ -626,6 +626,10 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
   - ein Scoutbericht, Jugendtag, Vorstandspost, ein fertiger Bau oder ein auslaufender Vertrag.
 
   Der Grund steht im Tagesbericht, der nächste Klick läuft weiter. Wer jeden Tag einzeln sehen will, etwa zwischen Pressekonferenz und Anpfiff, nimmt den Knopf **+1 Tag** daneben. Er erscheint, sobald der Weiter-Knopf mehrere Tage überspringen würde.
+- **Urlaub (`UrlaubEngine`, Kalender):** Bis zu einem Ziel durchspielen: eine Woche, zwei Wochen, Monatsende, bis das Transferfenster schließt oder öffnet, bis zum Saisonende.
+  - Der Co-Trainer übernimmt: Er stellt auf, Spiele und Pokalabende werden ohne Livespiel gerechnet, Pressetermine nimmt er wahr.
+  - Zum Saisonende, beim Saisonwechsel und bei einer Entlassung ist der Urlaub vorbei. Auf Wunsch hält er auch bei Wichtigem an, mit denselben Gründen wie der Weiter-Knopf (dazu jetzt auch Post zum Jobmarkt).
+  - Danach steht die Bilanz im Tagesbericht: Tage, Ligaspiele mit Siegen, Remis und Niederlagen, Tabellenplatz vorher und nachher.
 - **Ein Tag rechnet ein Drittel schneller:** gemessen über 60 Tage ab Saisonstart von 136 auf 78 ms an spielfreien Tagen und von 156 auf 114 ms an Spieltagen.
   - Die KI sucht Verstärkungen in einer nach Stärke sortierten Liste und hört auf, sobald niemand mehr besser ist. Zu teure Spieler fallen mit einer billigen Vorprüfung heraus.
   - Ein KI-Transfer baut kein eigenes Verzeichnis aller Spieler mehr auf.
@@ -816,6 +820,7 @@ untitled/
 │   │   ├── datenzentraleEngine.js # Liga nach xG und xPunkten, Form, Spielerwerte, Spielervergleich
 │   │   ├── jobmarktEngine.js   # Anfragen, offene Stellen, Bewerbung, Wechsel und Rücktritt des Trainers
 │   │   ├── laufbahnEngine.js   # Laufbahn je Spieler: Saison, Verein, Spiele, Tore, Vorlagen, Note
+│   │   ├── urlaubEngine.js     # Urlaub: Ziele bis Monats-, Fenster- und Saisonende, Bilanz
 │   │   └── opponentAnalysisEngine.js # Taktische Gegneranalyse
 │   ├── ui/
 │   │   ├── uiManager.js        # Kern: Start, Assistent, Reiter, Kader, Taktik, Kalender, Ereignisse

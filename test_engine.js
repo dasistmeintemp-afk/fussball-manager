@@ -11078,6 +11078,31 @@ function runEngineTests() {
         if ((stamm.stats.matches || 0) !== 0 || !stamm.laufbahn || stamm.laufbahn[0][2] !== spiele || stamm.laufbahn[0][1] !== "muc") throw new Error(`Saisonende archiviert nicht: ${JSON.stringify(stamm.laufbahn)}`);
     });
 
+    test("Urlaub: Ziele bis Fensterende, Monatsende und Saisonende, Bilanz der Spiele", () => {
+        const { UrlaubEngine: U } = require('./js/engine/urlaubEngine.js');
+        const { CalendarEngine } = require('./js/engine/calendarEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const ziele = U.ziele(state);
+        const nach = (k) => ziele.find(z => z.key === k);
+        if (!nach("fenster") || !nach("saison") || ziele.some(z => z.tage < 2)) throw new Error(`Ziele fehlen: ${JSON.stringify(ziele)}`);
+        if (ziele.some((z, i) => i && ziele[i - 1].tage > z.tage)) throw new Error("Ziele nicht sortiert");
+        if (new Set(ziele.map(z => z.tage)).size !== ziele.length) throw new Error("Zwei Ziele am selben Tag");
+        // Das Fenster schließt wirklich an dem Tag
+        const te = TransferEngine;
+        const f = nach("fenster");
+        const am = (i) => te.istTransferfenster(Object.assign({}, state, { currentDayIndex: i, preseason: null }));
+        if (am(f.tage) === am(f.tage - 1)) throw new Error("Das Fensterziel liegt nicht auf dem Wechsel");
+        if (state.calendar[nach("saison").tage].type !== "season_end") throw new Error("Saisonende falsch");
+
+        // Durchspielen wie im Urlaub: Tag für Tag, die Spiele rechnet der Kalender
+        const vorher = U.stand(state);
+        for (let i = 0; i < 50; i++) CalendarEngine.advanceOneDay(state);
+        const b = U.bilanz(vorher, U.stand(state), 50);
+        const zeile = state.standings.find(z => z.clubId === "muc");
+        if (b.spiele !== zeile.played || b.siege + b.remis + b.niederlagen !== b.spiele || b.punkte !== zeile.points) throw new Error(`Bilanz falsch: ${JSON.stringify(b)}`);
+        if (!/50 Tage/.test(b.text) || (b.spiele > 0 && !/Ligaspiel/.test(b.text))) throw new Error(`Text falsch: ${b.text}`);
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

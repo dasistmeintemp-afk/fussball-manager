@@ -7825,11 +7825,46 @@ class UIManager {
             : "⭐ Der europäische Spieltag wurde ausgetragen.";
     }
 
+    /**
+     * Urlaub (UrlaubEngine): Ziel wählen, dann läuft die Zeit bis dorthin -
+     * Spiele, Pokalabende und Pressetermine übernimmt der Co-Trainer.
+     */
+    zeigeUrlaub() {
+        const state = this.app.state;
+        const engine = typeof UrlaubEngine !== "undefined" ? UrlaubEngine : null;
+        const modal = document.getElementById("modalUrlaub");
+        const body = document.getElementById("urlaubInhalt");
+        if (!engine || !modal || !body) return;
+        if (this.pruefeEntlassung()) return;
+        // Ohne Arzt, Athletik- und Co-Trainer beginnt die Saison auch im Urlaub nicht
+        if (this.pruefePflichtpostenVorStart(() => this.zeigeUrlaub())) return;
+        const ziele = engine.ziele(state);
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        body.innerHTML = ziele.length ? `
+            <p class="text-muted ul-text">Der Co-Trainer übernimmt: Er stellt auf, die Spiele werden ohne Livespiel gerechnet, die Presse spricht mit ihm. Zum Saisonende und bei einer Entlassung ist der Urlaub vorbei.</p>
+            <div class="ul-ziele">${ziele.map(z => `
+                <button type="button" class="ul-ziel" data-ul-tage="${z.tage}">
+                    <strong>${esc(z.label)}</strong><span>${esc(z.datum)} · ${z.tage} Tage</span>
+                </button>`).join("")}</div>
+            <label class="ul-anhalten"><input type="checkbox" id="ulAnhalten" checked> Bei Wichtigem anhalten (Angebote, Verhandlungen, Verletzungen, wichtige Post)</label>`
+            : `<p class="text-muted">In dieser Saison bleibt nichts mehr zu überspringen.</p>`;
+        body.querySelectorAll("[data-ul-tage]").forEach(b => b.addEventListener("click", () => {
+            modal.style.display = "none";
+            this.laufeBisTermin(Number(b.dataset.ulTage), { urlaub: true, anhalten: !!document.getElementById("ulAnhalten")?.checked });
+        }));
+        document.getElementById("btnCloseUrlaub").onclick = () => { modal.style.display = "none"; };
+        modal.style.display = "flex";
+    }
+
     /** Mehrere Tage am Stück, aber über denselben Weg wie ein einzelner */
-    laufeBisTermin(maxTage) {
+    laufeBisTermin(maxTage, optionen = {}) {
         const state = this.app.state;
         const cal = this.getCalendarEngine();
         if (!cal) return;
+        // Im Urlaub übernimmt der Co-Trainer die Termine - angehalten wird nur am Ziel
+        const urlaub = !!optionen.urlaub;
+        const urlaubEngine = urlaub && typeof UrlaubEngine !== "undefined" ? UrlaubEngine : null;
+        const vorher = urlaubEngine ? urlaubEngine.stand(state) : null;
 
         let gelaufen = 0;
         let angehalten = null;
@@ -7838,11 +7873,11 @@ class UIManager {
             const heute = cal.getCurrentDay(state);
             if (!heute) break;
             // Vor einem Termin, der den Manager braucht, wird angehalten
-            if (gelaufen > 0 && ["matchday", "friendly", "media"].includes(heute.type)) break;
+            if (!urlaub && gelaufen > 0 && ["matchday", "friendly", "media"].includes(heute.type)) break;
             if (gelaufen > 0 && heute.type === "season_end" && state._seasonFinished !== state.seasonYear) break;
             if (gelaufen > 0 && heute.saisonwechsel) break;
             // Ein Pokalabend hält nur auf, wenn der eigene Verein spielt
-            if (gelaufen > 0 && (heute.type === "cup" || heute.type === "euro")
+            if (!urlaub && gelaufen > 0 && (heute.type === "cup" || heute.type === "euro")
                 && this.eigenePokalpartie(heute)) break;
 
             const bekannt = new Set((state.inbox || []).map(m => String(m.id)));
@@ -7862,21 +7897,25 @@ class UIManager {
             if (state.managerDismissed) break;
 
             // Wie im FM: Passiert etwas, das den Manager angeht, hält die
-            // Zeit an - auch zwischen zwei Terminen
-            angehalten = typeof cal.unterbrechungsGrund === "function"
+            // Zeit an - auch zwischen zwei Terminen (im Urlaub nur, wenn gewünscht)
+            angehalten = (!urlaub || optionen.anhalten) && typeof cal.unterbrechungsGrund === "function"
                 ? cal.unterbrechungsGrund(state, res, bekannt) : null;
             if (angehalten) break;
         }
+        const urlaubsBilanz = urlaubEngine ? urlaubEngine.bilanz(vorher, urlaubEngine.stand(state), gelaufen) : null;
 
         const heuteNeu = cal.getCurrentDay(state);
         state.lastDayReport = {
             date: heuteNeu?.date,
             dayOfWeek: heuteNeu?.dayOfWeek,
-            title: angehalten ? `Angehalten: ${angehalten}` : `${gelaufen} Tage übersprungen`,
-            messages: berichte.slice(-12)
+            title: urlaubsBilanz ? `🏖️ Urlaub: ${urlaubsBilanz.text}${angehalten ? ` - angehalten: ${angehalten}` : ""}`
+                : (angehalten ? `Angehalten: ${angehalten}` : `${gelaufen} Tage übersprungen`),
+            messages: berichte.slice(urlaubsBilanz ? -20 : -12)
         };
 
-        if (angehalten) {
+        if (urlaubsBilanz) {
+            this.showToast(`🏖️ Zurück aus dem Urlaub: ${urlaubsBilanz.text}.${angehalten ? ` Angehalten: ${angehalten}.` : ""}`, angehalten ? "warning" : "success", 8000);
+        } else if (angehalten) {
             this.showToast(`⏸ ${heuteNeu?.date || ""}: ${angehalten}. Weiter geht es mit dem nächsten Klick.`, "warning", 6000);
         } else {
             this.showToast(`📅 ${gelaufen} Tage weiter - ${heuteNeu?.title || ""}`, "info");
@@ -8118,6 +8157,7 @@ class UIManager {
             btnDashOpenCal.onclick = () => this.switchTab("calendar");
         }
 
+        document.getElementById("btnUrlaub")?.addEventListener("click", () => this.zeigeUrlaub());
         const btnCalAdvanceDay = document.getElementById("btnCalendarAdvanceDay");
         if (btnCalAdvanceDay) {
             btnCalAdvanceDay.onclick = () => {

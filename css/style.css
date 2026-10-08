@@ -8515,3 +8515,13 @@ td.nowrap { white-space: nowrap; }
 .chronik-leer { font-size: 13px; margin: 6px 0; }
 .pd-verein strong { white-space: nowrap; }
 .karussell-karte { margin-bottom: 16px; }
+
+/* Spielvorschau auf der Karte "Nächstes Spiel" */
+.nm-vorschau { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.nm-vorschau summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-muted); list-style-position: inside; padding: 4px 0; }
+.nm-vorschau[open] summary { color: var(--text-main, inherit); }
+.sv-raster { display: grid; gap: 2px; margin-top: 6px; }
+.sv-zeile { display: grid; grid-template-columns: 128px 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.sv-zeile span { color: var(--text-muted); }
+.sv-zeile strong { font-weight: 600; min-width: 0; }
+.sv-zeile small { color: var(--text-muted); font-weight: 400; }

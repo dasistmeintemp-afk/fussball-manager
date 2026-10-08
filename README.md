@@ -523,6 +523,11 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
 - **Was es kostet:** Ein Nein kostet etwas Vertrauen. Danach ist dieselbe Bitte acht Wochen gesperrt, ein Zuschuss sechzehn Wochen. Mit leerer Kasse, voll ausgebauter Anlage oder laufendem Bau nimmt der Vorstand die Bitte gar nicht erst an.
 
 ### 7. 🗓️ Kalender-Tagesablauf, 🔍 Gegneranalyse & 🌟 Scoutingsystem
+- **Spielvorschau (`SpielvorschauEngine`):** Die Karte „Nächstes Spiel“ im Kalender klappt eine Vorschau auf. Schon zugeklappt nennt sie Sieg, Remis und Niederlage in Prozent.
+  - **Quoten:** Sie kommen aus einem Tormodell. Beide Seiten erwarten Tore nach ihrer Stärke, dazu der Heimvorteil und die Spielkultur der Liga; die Buchmachermarge liegt bei 6 %. Geeicht ist es an je 250 simulierten Partien der Spiel-Engine.
+  - **Direkter Vergleich:** die Bilanz seit Amtsantritt mit dem letzten Ergebnis, aus der Vereinschronik.
+  - **Form und Torjäger:** von beiden Mannschaften.
+  - **Ausfälle:** Wer bei beiden verletzt oder gesperrt fehlt, die wichtigsten zuerst.
 - **Spielerbewertungssystem (`PlayerRatingEngine`):** Trennung von echten internen Fähigkeiten (CA/PA 1–200, Hidden Attributes wie Professionalität & Ehrgeiz) und sichtbaren, scoutabhängigen Einschätzungsbereichen.
 - **Sternebewertungen mit wählbarem Maßstab:** Qualitätssterne (0,5 bis 5,0); zehn Punkte Stärke sind ein Stern. Woran sie gemessen werden, steht in den Einstellungen unter „Sterne“ und in der Kennzahlenleiste des Kaders:
   - **Am eigenen Kader (Standard):** Drei Sterne sind der Kaderschnitt. Der Stammspieler eines Landesligisten hat so viele Sterne wie der eines Spitzenklubs.
@@ -713,6 +718,7 @@ untitled/
 │   │   ├── chronikEngine.js    # Vereinschronik: Rekorde, Titel, Saisonbilanzen, Legenden
 │   │   ├── trainerwechselEngine.js # Trainer der KI-Vereine, Entlassungen, Nachfolger mit eigenem Stil
 │   │   ├── ligaNachrichtenEngine.js # Saisonvorschau, Rundschau, Gerüchteküche
+│   │   ├── spielvorschauEngine.js # Quoten, direkter Vergleich, Ausfälle vor dem nächsten Spiel
 │   │   ├── newsEngine.js       # Zentrales Nachrichtensystem & Postfach
 │   │   ├── aiManagerEngine.js  # KI-Aufstellungen & KI-Transferangebote
 │   │   ├── scoutingEngine.js   # Scoutaufträge & Spielerberichte

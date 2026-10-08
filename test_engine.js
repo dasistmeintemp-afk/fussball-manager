@@ -10400,6 +10400,34 @@ function runEngineTests() {
         if (!(stand() > vorher)) throw new Error("Pflichtspiel ohne Statistik");
     });
 
+    test("Spielvorschau: Quoten aus dem Tormodell, direkter Vergleich, Torjäger und Ausfälle", () => {
+        const { SpielvorschauEngine: Vorschau } = require('./js/engine/spielvorschauEngine.js');
+        const { ChronikEngine: Chronik } = require('./js/engine/chronikEngine.js');
+        // Gleich stark auf neutralem Platz: gleiche Chancen; zu Hause ein Vorteil
+        const neutral = Vorschau.quoten(80, 80, 1, true);
+        if (Math.abs(neutral.heim - neutral.gast) > 0.001 || Math.abs(neutral.heim + neutral.remis + neutral.gast - 1) > 1e-9) throw new Error("Neutrale Quoten unsymmetrisch");
+        const heim = Vorschau.quoten(80, 80, 1);
+        if (!(heim.heim > 0.4 && heim.heim < 0.52 && heim.remis > 0.2 && heim.remis < 0.32)) throw new Error(`Heimspiel unter Gleichen unplausibel: ${JSON.stringify(heim)}`);
+        const favorit = Vorschau.quoten(88, 74, 1);
+        if (!(favorit.quoteHeim < 1.5 && favorit.quoteGast > 5)) throw new Error(`Favoritenquoten: ${favorit.quoteHeim} / ${favorit.quoteGast}`);
+        if (!(1 / favorit.quoteHeim + 1 / favorit.quoteRemis + 1 / favorit.quoteGast > 1.03)) throw new Error("Keine Buchmachermarge");
+        if (!(Vorschau.quoten(80, 80, 0.75).remis > heim.remis)) throw new Error("Torarme Liga ohne mehr Remis");
+
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const v = Vorschau.vorschau(state);
+        if (!v || !v.gegner || Math.abs(v.sieg + v.remis + v.niederlage - 1) > 1e-9) throw new Error("Keine Vorschau");
+        if (v.bilanz !== null) throw new Error("Bilanz ohne Duell");
+        const gegner = state.clubs.find(c => c.id === v.gegner.id);
+        const verletzt = state.players.filter(p => p.clubId === gegner.id).sort((a, b) => b.overall - a.overall)[0];
+        verletzt.injuredWeeks = 3;
+        const heimId = v.heim ? state.userClubId : gegner.id;
+        Chronik.nachSpiel(state, { id: "d1", played: true, homeClubId: heimId, awayClubId: heimId === gegner.id ? state.userClubId : gegner.id,
+            homeGoals: v.heim ? 2 : 0, awayGoals: v.heim ? 0 : 2 }, "Liga");
+        const v2 = Vorschau.vorschau(state);
+        if (!v2.bilanz || v2.bilanz.siege !== 1 || v2.bilanz.tore !== 2 || v2.bilanz.letzte[0].ergebnis !== "2:0") throw new Error(`Bilanz: ${JSON.stringify(v2.bilanz)}`);
+        if (v2.ausfaelle.gegner[0]?.name !== verletzt.name) throw new Error("Wichtigster Ausfall nicht genannt");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

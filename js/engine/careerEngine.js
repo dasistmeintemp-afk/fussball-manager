@@ -89,6 +89,25 @@ class CareerEngine {
         return station;
     }
 
+    /**
+     * Die laufende Station schließen - mit der Bilanz der laufenden Saison.
+     * ende: "entlassen", "zurückgetreten" oder "gewechselt".
+     */
+    static schliesseStation(state, ende) {
+        const station = this.aktuelleStation(state) || this.beginneStation(state, state.userClubId);
+        if (!station) return null;
+        const b = this.bilanz(state);
+        station.bisSaison = state.seasonYear || 1;
+        station.bisSpieltag = state.currentMatchday || 1;
+        // Die laufende, noch nicht abgeschlossene Saison kommt dazu
+        station.spiele = (station.spiele || 0) + b.spiele;
+        station.siege = (station.siege || 0) + b.siege;
+        station.unentschieden = (station.unentschieden || 0) + b.unentschieden;
+        station.niederlagen = (station.niederlagen || 0) + b.niederlagen;
+        station.ende = ende;
+        return station;
+    }
+
     /** Die laufende Station */
     static aktuelleStation(state) {
         const akte = this.akte(state);
@@ -159,21 +178,11 @@ class CareerEngine {
         if (state.managerDismissed.verarbeitet) return state.managerDismissed;
 
         const akte = this.akte(state);
-        const station = this.aktuelleStation(state) || this.beginneStation(state, state.userClubId);
         const b = this.bilanz(state);
-
-        if (station) {
-            station.bisSaison = state.seasonYear || 1;
-            station.bisSpieltag = state.currentMatchday || 1;
-            // Die laufende, noch nicht abgeschlossene Saison kommt dazu
-            station.spiele = (station.spiele || 0) + b.spiele;
-            station.siege = (station.siege || 0) + b.siege;
-            station.unentschieden = (station.unentschieden || 0) + b.unentschieden;
-            station.niederlagen = (station.niederlagen || 0) + b.niederlagen;
-            station.ende = "entlassen";
-        }
-
-        akte.entlassungen = (akte.entlassungen || 0) + 1;
+        // Ein Rücktritt (JobmarktEngine) läuft wie eine Entlassung - ohne Rufschaden
+        const ruecktritt = state.managerDismissed.grund === "ruecktritt";
+        this.schliesseStation(state, ruecktritt ? "zurückgetreten" : "entlassen");
+        if (!ruecktritt) akte.entlassungen = (akte.entlassungen || 0) + 1;
 
         state.managerDismissed.verarbeitet = true;
         state.managerDismissed.bilanz = b;
@@ -309,6 +318,8 @@ class CareerEngine {
         state.userClubId = clubId;
         state.arbeitslos = false;
         state.managerDismissed = null;
+        // Der KI-Trainer des neuen Vereins geht (TrainerwechselEngine)
+        delete club.trainer;
         state.boardConfidence = 62;
         state.vorstandStimmung = 0;
         if (club) club.confidence = 62;

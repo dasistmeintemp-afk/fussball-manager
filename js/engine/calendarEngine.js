@@ -1418,6 +1418,16 @@ const CalendarEngine = {
             if (zeile) summary.messages.push(zeile);
         }
 
+        // Der Trainer auf dem Markt: Antworten auf Bewerbungen, verfallene Angebote
+        const jobmarkt = (typeof JobmarktEngine !== 'undefined' && JobmarktEngine)
+            ? JobmarktEngine
+            : ((typeof window !== 'undefined' && window.JobmarktEngine) ? window.JobmarktEngine
+                : (typeof require !== 'undefined' ? (() => { try { return require('./jobmarktEngine.js').JobmarktEngine; } catch (e) { return null; } })() : null));
+        if (jobmarkt && typeof jobmarkt.tag === 'function') {
+            const zeile = jobmarkt.tag(state);
+            if (zeile) summary.messages.push(zeile);
+        }
+
         // 1b. Lücken in den Aufstellungen schließen. Wer sich verletzt, fällt
         // aus Elf und Bank - ohne Nachrücker stand ein Verein nach ein paar
         // Wochen dauerhaft mit zehn Mann da.

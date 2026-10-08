@@ -110,10 +110,20 @@ const LigaNachrichtenEngine = {
             : (typeof require !== "undefined" ? (() => { try { return require("./transferEngine.js").TransferEngine; } catch (e) { return null; } })() : null);
         const vereine = this._vereine(state).filter(c => c.id !== state.userClubId && !c.geruecht);
         if (!vereine.length || !te) return null;
-        const club = vereine[Math.floor(zufall() * vereine.length)];
+        const vereinNach = new Map((state.clubs || []).map(c => [c.id, c]));
+        // Hat der ausgeloste Verein keinen passenden Kandidaten (zu wenig Geld),
+        // ist der nächste dran - vorher fiel das Gerücht des Tages dann einfach aus
+        const start = Math.floor(zufall() * vereine.length);
+        for (let i = 0; i < vereine.length; i++) {
+            const treffer = this._geruechtFuer(state, te, vereine[(start + i) % vereine.length], vereinNach, zufall);
+            if (treffer) return treffer;
+        }
+        return null;
+    },
+
+    _geruechtFuer(state, te, club, vereinNach, zufall) {
         // Gesucht wird, wer über dem Schnitt des Kaders liegt - ein Stammspieler, kein Weltstar
         const niveau = typeof te.kaderNiveau === "function" ? te.kaderNiveau(state, club) : this._staerke(state, club) - 4;
-        const vereinNach = new Map((state.clubs || []).map(c => [c.id, c]));
         // Der Rahmen: was der Verein in diesem Fenster hätte ausgeben können -
         // wie das Saisonbudget aus dem Kontostand (SeasonEngine)
         const rahmen = Math.max((club.transferBudget || 0) * 1.3, Math.max(0, club.balance || 0) * 0.35);

@@ -2454,6 +2454,11 @@ class MatchEngine {
         });
 
         const playerRatings = [];
+        // Ein Testspiel zählt für keine Statistik und keine Kartensperre.
+        // Vorher liefen seine Tore, Einsätze und Gelben Karten in die
+        // Saisonbilanz: Der beste Torjäger hatte nach sieben Spieltagen 24
+        // Tore, neun davon aus vier Freundschaftsspielen.
+        const pflichtspiel = !(match && match.freundschaftsspiel);
 
         // Noten- und Einsatzminutenberechnung (B9, B12)
         allPlayedPlayerIds.forEach(playerId => {
@@ -2485,17 +2490,18 @@ class MatchEngine {
                 pos: player.pos, minutes, teamGoals, oppGoals, jitter: _Random.float(-0.15, 0.15)
             });
 
-            // Spielerstatistiken einmalig aktualisieren (Invariante)
-            player.stats.matches = (player.stats.matches || 0) + 1;
-            player.stats.minutes = (player.stats.minutes || 0) + minutes;
-            player.stats.goals = (player.stats.goals || 0) + st.goals;
-            player.stats.assists = (player.stats.assists || 0) + st.assists;
-            player.stats.ratingSum = (player.stats.ratingSum || 0) + rating;
-            player.form = parseFloat((((player.form || 7.0) * 0.7) + (rating * 0.3)).toFixed(1));
-
-            if (oppGoals === 0 && isTW && minutes >= 60) {
-                player.stats.cleanSheets = (player.stats.cleanSheets || 0) + 1;
+            // Spielerstatistiken einmalig aktualisieren (Invariante) - nur in Pflichtspielen
+            if (pflichtspiel) {
+                player.stats.matches = (player.stats.matches || 0) + 1;
+                player.stats.minutes = (player.stats.minutes || 0) + minutes;
+                player.stats.goals = (player.stats.goals || 0) + st.goals;
+                player.stats.assists = (player.stats.assists || 0) + st.assists;
+                player.stats.ratingSum = (player.stats.ratingSum || 0) + rating;
+                if (oppGoals === 0 && isTW && minutes >= 60) {
+                    player.stats.cleanSheets = (player.stats.cleanSheets || 0) + 1;
+                }
             }
+            player.form = parseFloat((((player.form || 7.0) * 0.7) + (rating * 0.3)).toFixed(1));
 
             // Fitness-Verlust dynamisch (B12)
             let pressingFactor = teamClub.tactics?.pressing === "high" ? 1.25 : (teamClub.tactics?.pressing === "low" ? 0.85 : 1.0);
@@ -2512,8 +2518,8 @@ class MatchEngine {
             const fitLoss = Math.round(13 * (minutes / 90) * (1.3 - staminaVal / 250) * ageMod * pressingFactor);
             player.fitness = Math.max(35, (player.fitness || 100) - fitLoss);
 
-            // Gelbe Karten & Sperren (A8)
-            if (st.yellowCards > 0) {
+            // Gelbe Karten & Sperren (A8) - Testspiele bleiben folgenlos
+            if (pflichtspiel && st.yellowCards > 0) {
                 player.stats.yellowCards = (player.stats.yellowCards || 0) + st.yellowCards;
                 player.yellowCardsTotal = (player.yellowCardsTotal || 0) + st.yellowCards;
 
@@ -2529,7 +2535,9 @@ class MatchEngine {
                 }
             }
 
-            if (st.hasSecondYellow) {
+            if (!pflichtspiel) {
+                // keine Sperre aus einem Testspiel
+            } else if (st.hasSecondYellow) {
                 player.stats.redCards = (player.stats.redCards || 0) + 1;
                 player.suspendedMatches = Math.max(player.suspendedMatches || 0, 1);
                 matchSuspensions.push({

@@ -10381,6 +10381,25 @@ function runEngineTests() {
         if (!zurueck.ligaNachrichten?.geruechte?.length) throw new Error("Gerüchte nach dem Laden verloren");
     });
 
+    test("Testspiele zählen für keine Statistik und keine Kartensperre, Pflichtspiele schon", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const heim = state.clubs.find(c => c.id === state.userClubId);
+        const gast = state.clubs.find(c => c.id !== heim.id && c.leagueId === heim.leagueId);
+        const kader = state.players.filter(p => p.clubId === heim.id || p.clubId === gast.id);
+        const stand = () => kader.reduce((s, p) => s + (p.stats.matches || 0) + (p.stats.goals || 0) * 100 + (p.yellowCardsTotal || 0) * 10000, 0);
+        // Wer vier Gelbe hat, würde mit der fünften gesperrt
+        kader.forEach(p => { p.yellowCardsTotal = 4; p.suspendedMatches = 0; });
+        const vorher = stand();
+        const testspiel = { id: "friendly_t", played: false, freundschaftsspiel: true, homeClubId: heim.id, awayClubId: gast.id, homeGoals: null, awayGoals: null };
+        MatchEngine.simulateFullMatch(testspiel, heim, gast, state.players);
+        if (!testspiel.played) throw new Error("Testspiel nicht ausgetragen");
+        if (stand() !== vorher) throw new Error("Testspiel lief in die Statistik");
+        if (kader.some(p => p.suspendedMatches > 0)) throw new Error("Sperre aus einem Testspiel");
+        const pflicht = { id: "liga_t", played: false, homeClubId: heim.id, awayClubId: gast.id, homeGoals: null, awayGoals: null, leagueId: heim.leagueId };
+        MatchEngine.simulateFullMatch(pflicht, heim, gast, state.players);
+        if (!(stand() > vorher)) throw new Error("Pflichtspiel ohne Statistik");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

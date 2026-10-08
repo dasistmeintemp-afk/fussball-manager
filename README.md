@@ -162,6 +162,9 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Formation nach Kader:** „Beste 11 automatisch aufstellen“ wählt vorher die Formation, die am besten zu den einsatzfähigen Spielern passt – jede Formation (auch eigene) wird mit dem Kader besetzt und nach der Stärke der Elf auf ihren Positionen bewertet. Verletzte und Gesperrte zählen nicht. Die bisherige Formation bleibt, wenn keine andere spürbar besser ist, und ungewöhnliche Systeme müssen ihren Vorteil deutlicher zeigen als gebräuchliche.
 
 ### 3. 🎮 2D-Live-Match-Engine & Sofort-Simulation
+- **Testspiele zählen nicht:** Tore, Einsätze, Noten und Karten aus Freundschaftsspielen laufen weder in die Saisonstatistik noch in die Kartensperren. Fitness, Form und Spielschärfe wirken weiter.
+  - Vorher hatte der beste Torjäger der Bundesliga nach sieben Spieltagen 24 Tore, neun davon aus vier Testspielen.
+  - Mit der fünften Gelben aus einem Testspiel war ein Spieler im nächsten Pflichtspiel gesperrt.
 - **Spielkultur der Ligen (`MATCH_TUNING.torKultur`):** Jede Liga spielt so torreich wie ihr Vorbild. Ein Faktor je Land und Spielklasse wirkt auf die Torwahrscheinlichkeit aus dem Spiel heraus, Elfmeter sind überall gleich schwer. Pokalspiele zählen nach der Liga der Heimmannschaft, der Europapokal nach keiner.
   - Gemessen über drei simulierte Saisons, Tore je Spiel, in Klammern die echten Werte 2024/25: Bundesliga 3,2 (3,13), Premier League 2,9 (2,93), Ligue 1 3,0 (2,98), LaLiga 2,6–2,8 (2,62), Serie A 2,5–2,7 (2,54).
   - Die zweiten Ligen liegen darunter, Segunda und Championship mit 2,3 am deutlichsten.

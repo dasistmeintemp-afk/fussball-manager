@@ -745,6 +745,12 @@ const CalendarEngine = {
             };
         }
 
+        if (art === "playoff") {
+            const po = typeof PlayoffEngine !== "undefined" ? PlayoffEngine
+                : (typeof require !== "undefined" ? (() => { try { return require("./playoffEngine.js").PlayoffEngine; } catch (e) { return null; } })() : null);
+            return { titel: "Relegation und Aufstiegsspiele", text: po ? po.tagesText(state, runde) : "", marken };
+        }
+
         if (art === "cup") {
             const cup = state.cups?.de_cup;
             const raus = cup && (cup.ausgeschieden || []).includes(state.userClubId);
@@ -931,7 +937,7 @@ const CalendarEngine = {
                     ? cupEngine.eigenePartieAm(state, art, tag.cupRunde || 0)
                     : null;
                 if (eigene) {
-                    return { index: i, tag, grund: art === "cup" ? "cup" : "euro", heute, partie: eigene };
+                    return { index: i, tag, grund: art === "cup" || art === "euro" ? art : "playoff", heute, partie: eigene };
                 }
                 continue;
             }
@@ -1119,10 +1125,15 @@ const CalendarEngine = {
                 ergebnis = cupEngine.spieleTermin(state, art, runde);
                 const eigene = ergebnis && ergebnis.eigenePartie;
                 if (eigene && !eigene.played) {
-                    cupEngine.austragen(state, eigene, art === "cup" || runde >= 6);
+                    // Relegation und Playoffs entscheidet die PlayoffEngine über
+                    // beide Spiele - ein einzelnes Remis ist dort kein Elfmeterfall
+                    cupEngine.austragen(state, eigene, art === "cup" || (art === "euro" && runde >= 6));
                 }
                 cupEngine.schliesseTerminAb(state, art, runde);
             }
+            // In der Sommerpause läuft der Tag sonst weiter wie jeder andere:
+            // Verhandlungen, Erholung, Vereine werben um auslaufende Verträge
+            const tagesBericht = currentDay.sommerpause ? this.applyDailyEffects(state, currentDay) : null;
 
             currentDay.completed = true;
             if (state.currentDayIndex < state.calendar.length - 1) {
@@ -1133,6 +1144,7 @@ const CalendarEngine = {
                 success: true,
                 type: currentDay.type,
                 cup: ergebnis,
+                summary: tagesBericht || undefined,
                 day: currentDay,
                 nextDay: this.getCurrentDay(state)
             };

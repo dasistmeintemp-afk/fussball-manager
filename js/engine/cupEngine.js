@@ -260,12 +260,14 @@ class CupEngine {
      * übernimmt die Live-Simulation wie einen Ligaspieltag.
      */
     static spieleTermin(state, art, rundenIndex) {
+        if (art === "playoff") return _cupResolve("PlayoffEngine", "./playoffEngine.js")?.spieleTermin(state, rundenIndex) || null;
         if (art === "cup") return this.spielePokalrunde(state, rundenIndex);
         return this.spieleEuropaTermin(state, rundenIndex);
     }
 
     /** Den Termin abschließen - Sieger, Prämien, nächste Auslosung */
     static schliesseTerminAb(state, art, rundenIndex) {
+        if (art === "playoff") return _cupResolve("PlayoffEngine", "./playoffEngine.js")?.schliesseTerminAb(state, rundenIndex) || [];
         if (art === "cup") return this.schliessePokalrundeAb(state, rundenIndex);
         return this.schliesseEuropaTerminAb(state, rundenIndex);
     }
@@ -278,6 +280,8 @@ class CupEngine {
      */
     static eigenePartieAm(state, art, rundenIndex) {
         if (!state || !state.userClubId) return null;
+        // Relegation und Aufstiegsspiele in der Sommerpause
+        if (art === "playoff") return _cupResolve("PlayoffEngine", "./playoffEngine.js")?.eigenePartieAm(state, rundenIndex) || null;
         const meine = m => m.homeClubId === state.userClubId || m.awayClubId === state.userClubId;
 
         if (art === "cup") {

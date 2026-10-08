@@ -123,6 +123,8 @@ class UIManager {
             uel: "Europa League",
             uecl: "Conference League",
             auf: "Aufstieg",
+            po: "Aufstiegsspiele",
+            rel: "Relegation",
             ab: "Abstieg"
         };
     }
@@ -571,10 +573,17 @@ class UIManager {
             if (e.europaLeague?.length) zeilen.push(["Europa League", plaetze(e.europaLeague), "uel"]);
             if (e.conferenceLeague?.length) zeilen.push(["Conference League", plaetze(e.conferenceLeague), "uecl"]);
         }
+        const po = typeof PlayoffEngine !== "undefined" ? PlayoffEngine : null;
         if (liga.promotionTo) {
             const ziel = ligen.find(l => l.id === liga.promotionTo);
-            zeilen.push([`Aufstieg${ziel ? ` in die ${ziel.shortName}` : ""}`, plaetze(liga.promotionSpots || [1]), "auf"]);
+            zeilen.push([`Aufstieg${ziel ? ` in die ${ziel.shortName}` : ""}`, plaetze(po ? po.direktePlaetze(liga) : (liga.promotionSpots || [1])), "auf"]);
+            const f = po?.FORMATE?.[liga.id];
+            if (f) zeilen.push([f.name, plaetze(f.art === "relegation" ? [f.unten] : f.plaetze), "po"]);
         }
+        Object.keys(po?.FORMATE || {}).forEach(id => {
+            const f = po.FORMATE[id];
+            if (f.oben && f.oben.liga === liga.id) zeilen.push([f.name, `Platz ${f.oben.platz}`, "rel"]);
+        });
         if (liga.relegationTo && liga.relegationTo.length) zeilen.push(["Abstieg", "in die nächsttiefere Klasse", "ab"]);
         if (!liga.promotionTo && !liga.europeanSpots) zeilen.push(["Ligaspitze", "Kein Aufstieg möglich", ""]);
 
@@ -3464,15 +3473,23 @@ class UIManager {
             (eu.conferenceLeague || []).forEach(p => zonen.set(p, "uecl"));
         }
         if (ligen.length > 1) {
+            const po = typeof PlayoffEngine !== "undefined" ? PlayoffEngine : null;
+            const direkt = l => po ? po.direktePlaetze(l) : ((l.promotionSpots && l.promotionSpots.length) ? l.promotionSpots : [1]);
             if (liga.promotionTo) {
-                const plaetze = (liga.promotionSpots && liga.promotionSpots.length) ? liga.promotionSpots : [1];
-                plaetze.forEach(p => zonen.set(p, "auf"));
+                direkt(liga).forEach(p => zonen.set(p, "auf"));
+                // Relegation oder Aufstiegs-Playoffs
+                const f = po?.FORMATE?.[liga.id];
+                if (f) (f.art === "relegation" ? [f.unten] : (f.plaetze || [])).forEach(p => zonen.set(p, "po"));
             }
-            const aufsteiger = ligen
-                .filter(l => l.promotionTo === liga.id)
-                .reduce((summe, l) => summe + ((l.promotionSpots && l.promotionSpots.length) || 1), 0);
+            const kinder = ligen.filter(l => l.promotionTo === liga.id);
+            // Aus Playoffs steigt sicher einer auf - aus der Relegation nur vielleicht
+            const aufsteiger = kinder.reduce((summe, l) => summe + direkt(l).length + (po && po.sichererAufsteiger(l.id) ? 1 : 0), 0);
             const absteiger = Math.min(aufsteiger, anzahl - 1);
             for (let p = anzahl - absteiger + 1; p <= anzahl; p++) zonen.set(p, "ab");
+            kinder.forEach(l => {
+                const f = po?.FORMATE?.[l.id];
+                if (f && f.oben && f.oben.liga === liga.id) zonen.set(f.oben.platz, "rel");
+            });
         }
         return zonen;
     }
@@ -3504,6 +3521,11 @@ class UIManager {
 
         if (cupIds.includes(activeComp)) {
             this.renderPokalTableau(state, state.cups[activeComp], tbody, fixturesList, userClub);
+            return;
+        }
+        if (activeComp === "playoffs") {
+            if (tabelle) tabelle.classList.add("tabelle-runden");
+            this.renderPlayoffs(state, state.playoffs || state.playoffsVorjahr, tbody, fixturesList, userClub);
             return;
         }
 
@@ -3614,6 +3636,73 @@ class UIManager {
      * Vorher stand hier eine einzige, nie ausgetragene erste Runde - der
      * Wettbewerb bestand aus 32 Paarungen, die nie ein Ergebnis bekamen.
      */
+    /**
+     * Relegation und Aufstiegs-Playoffs: alle Länder, Runde für Runde, mit
+     * Hin- und Rückspiel, Verlängerung und Elfmeterschießen. Der Wettbewerb
+     * des eigenen Landes steht oben.
+     */
+    renderPlayoffs(state, po, tbody, fixturesList, userClub) {
+        const titel = document.getElementById("fixtureMatchdayTitle");
+        const esc = t => this.escapeHtml(t == null ? "" : String(t));
+        const name = id => state.clubs.find(c => c.id === id)?.name || "?";
+        if (!po || !Array.isArray(po.wettbewerbe) || !po.wettbewerbe.length) {
+            tbody.innerHTML = `<tr><td colspan="10" class="text-muted" style="text-align:center;padding:20px;">In dieser Saison gibt es keine Relegation.</td></tr>`;
+            if (fixturesList) fixturesList.innerHTML = "";
+            return;
+        }
+        const land = state.clubs.find(c => c.id === state.userClubId)?.countryId;
+        const reihe = [...po.wettbewerbe].sort((a, b) =>
+            ((a.ligaId || "").startsWith(land + "_") ? 0 : 1) - ((b.ligaId || "").startsWith(land + "_") ? 0 : 1));
+        if (titel) titel.textContent = po.saison === state.seasonYear ? "Relegation und Aufstiegsspiele" : "Relegation und Aufstiegsspiele der Vorsaison";
+
+        const stand = w => {
+            const e = w.ergebnis;
+            if (!w.fertig || !e) return "läuft";
+            if (w.direkt) return `${name(e.aufsteiger)} steigt direkt auf`;
+            if (e.absteiger) return `${name(e.aufsteiger)} steigt auf, ${name(e.absteiger)} ab`;
+            if (e.gehalten) return `${name(e.gehalten)} bleibt drin`;
+            return `${name(e.aufsteiger)} steigt auf`;
+        };
+        const ergebnis = m => {
+            if (!m.played) return "offen";
+            let t = `${m.homeGoals} : ${m.awayGoals}`;
+            if (Array.isArray(m.verlaengerung)) t += ` <small>(n. V. ${m.homeGoals + m.verlaengerung[0]}:${m.awayGoals + m.verlaengerung[1]})</small>`;
+            if (m.penaltyScore) t += ` <small>(${m.penaltyScore[0]}:${m.penaltyScore[1]} i. E.)</small>`;
+            return t;
+        };
+        tbody.innerHTML = reihe.map(w => {
+            const kopf = `<tr style="background: rgba(245, 158, 11, 0.15);"><td colspan="10" style="font-weight:700; color:#f59e0b;">⚔️ ${esc(w.name)} · ${esc(stand(w))}</td></tr>`;
+            const runden = (w.runden || []).map(r => {
+                const zeilen = r.paarungen.map(p => p.spiele.map((m, i) => {
+                    const isUser = m.homeClubId === userClub?.id || m.awayClubId === userClub?.id;
+                    const weiter = i === p.spiele.length - 1 && p.sieger ? name(p.sieger) : "";
+                    return `<tr class="${isUser ? "row-user-club" : ""}">
+                        <td colspan="5">${esc(name(m.homeClubId))} – ${esc(name(m.awayClubId))}${p.spiele.length > 1 ? ` <small class="text-muted">${i === 0 ? "Hinspiel" : "Rückspiel"}</small>` : ""}</td>
+                        <td colspan="3"><span class="badge ${m.played ? "badge-status-fit" : ""}">${ergebnis(m)}</span></td>
+                        <td colspan="2">${esc(weiter)}</td>
+                    </tr>`;
+                }).join("")).join("");
+                return `<tr><td colspan="10" class="text-muted" style="font-size:12px;">${esc(r.name)}</td></tr>${zeilen}`;
+            }).join("");
+            return kopf + runden;
+        }).join("");
+
+        // Spielplan: die eigenen Partien, sonst die des eigenen Landes
+        if (fixturesList) {
+            const eigene = reihe.filter(w => (w.teilnehmer || []).some(t => t.clubId === userClub?.id));
+            const quelle = eigene.length ? eigene : reihe.slice(0, 1);
+            const karten = quelle.flatMap(w => (w.runden[w.rundeIndex]?.paarungen || []).flatMap(p => p.spiele)).map(m => {
+                const isUserMatch = m.homeClubId === userClub?.id || m.awayClubId === userClub?.id;
+                return `<div class="fixture-card ${isUserMatch ? "user-match" : ""}">
+                    <div class="fixture-team home">${esc(name(m.homeClubId))}</div>
+                    <div class="fixture-score-badge">${m.played ? ergebnis(m) : "vs"}</div>
+                    <div class="fixture-team away">${esc(name(m.awayClubId))}</div>
+                </div>`;
+            });
+            fixturesList.innerHTML = karten.join("");
+        }
+    }
+
     renderPokalTableau(state, cup, tbody, fixturesList, userClub) {
         const titel = document.getElementById("fixtureMatchdayTitle");
         if (!cup || !Array.isArray(cup.runden)) {
@@ -3827,6 +3916,9 @@ class UIManager {
                 options.push(`<option value="${id}">${label}</option>`);
             }
         });
+        if (state.playoffs || state.playoffsVorjahr) {
+            options.push(`<option value="playoffs">⚔️ Relegation & Playoffs${state.playoffs ? "" : " (Vorjahr)"}</option>`);
+        }
 
         const signature = options.length + "|" + (state.seasonYear || 1);
         if (select._competitionSignature !== signature) {
@@ -6226,6 +6318,7 @@ class UIManager {
             if (halt.grund === "cup" || halt.grund === "euro") {
                 return { art: "tag", text: "Pokalabend abschließen", kurz: "Pokal" };
             }
+            if (halt.grund === "playoff") return { art: "tag", text: "Spiel abschließen", kurz: "Relegation" };
             return { art: "tag", text: "Weiter" };
         }
 
@@ -6239,11 +6332,12 @@ class UIManager {
             season_end: () => "Weiter zum Saisonabschluss",
             season_change: () => "Weiter zum Saisonwechsel",
             cup: () => `Weiter zum ${halt.partie?.runde?.roundName || "Pokalspiel"}`,
-            euro: () => `Weiter zum ${halt.partie?.wettbewerb?.name || "Europapokal"}`
+            euro: () => `Weiter zum ${halt.partie?.wettbewerb?.name || "Europapokal"}`,
+            playoff: () => `Weiter: ${halt.partie?.wettbewerb?.name || "Relegation"}`
         };
         const kurzformen = {
             matchday: "Spiel", friendly: "Termin", media: "Presse",
-            season_end: "Saisonende", season_change: "Saisonwechsel", cup: "Pokal", euro: "Europa"
+            season_end: "Saisonende", season_change: "Saisonwechsel", cup: "Pokal", euro: "Europa", playoff: "Relegation"
         };
         const text = (beschriftung[halt.grund] || (() => "Weiter"))();
         return { art: "sprung", text, kurz: kurzformen[halt.grund] || "Weiter", tage, zielIndex: halt.index };
@@ -6523,7 +6617,11 @@ class UIManager {
 
         // Die übrigen Partien des Abends laufen parallel
         cup.spieleTermin(state, termin.art, termin.runde);
-        cup.schliesseTerminAb(state, termin.art, termin.runde);
+        const abschluss = cup.schliesseTerminAb(state, termin.art, termin.runde);
+        // Relegation und Playoffs: Ist die eigene Paarung entschieden, steht es gleich da
+        if (termin.art === "playoff" && Array.isArray(abschluss) && abschluss.length) {
+            this.showToast(abschluss[0], "info", 6000);
+        }
 
         if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
         this.renderHeader();
@@ -6563,6 +6661,10 @@ class UIManager {
         friendly: {
             icon: "🥅", name: "Testspiel", kurz: "Test",
             accent: "#a78bfa", accent2: "#ddd6fe", flaeche: "rgba(35, 25, 60, 0.9)"
+        },
+        playoff: {
+            icon: "⚔️", name: "Relegation", kurz: "Relegation",
+            accent: "#f59e0b", accent2: "#fcd34d", flaeche: "rgba(60, 30, 6, 0.92)"
         }
     };
 
@@ -6577,7 +6679,9 @@ class UIManager {
 
         const compId = match?.competitionId
             || (this._laufenderPokaltermin ? null : state?.userLeagueId);
-        const thema = this.wettbewerbsThema(compId);
+        const thema = { ...this.wettbewerbsThema(compId) };
+        // Relegation und Playoffs tragen ihren eigenen Namen
+        if (match?.wettbewerbName) thema.name = match.wettbewerbName;
         this.setzeThema(modal, thema);
 
         const runde = match?.roundName

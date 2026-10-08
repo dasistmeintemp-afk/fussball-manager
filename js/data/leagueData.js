@@ -245,7 +245,8 @@ const LEAGUES_DATA = [
         teamCount: 24,
         matchdays: 46,
         promotionTo: "en_liga_1",
-        promotionSpots: [1, 2, 3],
+        promotionSpots: [1, 2],
+        promotionPlayoff: [3, 4, 5, 6],
         relegationTo: ["en_liga_3"],
         relegationSpots: [22, 23, 24]
     },
@@ -260,7 +261,8 @@ const LEAGUES_DATA = [
         teamCount: 24,
         matchdays: 46,
         promotionTo: "en_liga_2",
-        promotionSpots: [1, 2, 3],
+        promotionSpots: [1, 2],
+        promotionPlayoff: [3, 4, 5, 6],
         relegationSpots: [21, 22, 23, 24]
     },
     {
@@ -274,7 +276,8 @@ const LEAGUES_DATA = [
         teamCount: 22,
         matchdays: 42,
         promotionTo: "es_liga_1",
-        promotionSpots: [1, 2, 3],
+        promotionSpots: [1, 2],
+        promotionPlayoff: [3, 4, 5, 6],
         relegationTo: ["es_liga_3"],
         relegationSpots: [19, 20, 21, 22]
     },
@@ -303,7 +306,8 @@ const LEAGUES_DATA = [
         teamCount: 20,
         matchdays: 38,
         promotionTo: "it_liga_1",
-        promotionSpots: [1, 2, 3],
+        promotionSpots: [1, 2],
+        promotionPlayoff: [3, 4, 5, 6, 7, 8],
         relegationTo: ["it_liga_3"],
         relegationSpots: [18, 19, 20],
         relegationPlayoff: [17]
@@ -334,7 +338,7 @@ const LEAGUES_DATA = [
         matchdays: 34,
         promotionTo: "fr_liga_1",
         promotionSpots: [1, 2],
-        promotionPlayoff: [3],
+        promotionPlayoff: [3, 4, 5],
         relegationTo: ["fr_liga_3"],
         relegationSpots: [17, 18],
         relegationPlayoff: [16]

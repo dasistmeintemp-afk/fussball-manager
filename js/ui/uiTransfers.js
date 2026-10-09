@@ -133,6 +133,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         <input type="number" class="styled-input neg-tor" data-neg-id="${n.id}" value="0" step="${schritt(n.demand.wage)}" min="0">
                     </label>
                     <p class="neg-hinweis">Prämien ersetzen einen Teil des Grundgehalts. Der Spieler rechnet sie mit Abschlag ein und bekommt sie nur, wenn er spielt oder trifft.</p>
+                    ${this.klauselFelder(state.clubs.find(c => c.id === n.clubId), state.players.find(p => String(p.id) === String(n.playerId)))}
                 </div>
             `) : "";
 
@@ -191,6 +192,18 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ratenVorschau(id);
         });
 
+        // Was die Klauseln dem Spieler wert sind - beim Ändern gleich sichtbar
+        list.querySelectorAll(".negotiation-card .klausel-felder").forEach(felder => {
+            const karte = felder.closest(".negotiation-card");
+            const n = engine.findNegotiation(state, karte?.dataset.negCard);
+            if (!n || typeof KlauselEngine === "undefined") return;
+            const club = state.clubs.find(c => c.id === n.clubId);
+            const neu = () => this.klauselWertText(felder, KlauselEngine.faktor(this.leseKlauseln(felder),
+                Number(karte.querySelector(".neg-years")?.value || 3), club));
+            felder.querySelectorAll("select, input").forEach(el => el.addEventListener("change", neu));
+            karte.querySelector(".neg-years")?.addEventListener("change", neu);
+        });
+
         list.querySelectorAll(".btn-neg-submit").forEach(btn => {
             btn.addEventListener("click", () => {
                 const id = btn.dataset.negId;
@@ -208,7 +221,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         signingBonus: Number(list.querySelector(`.neg-bonus[data-neg-id="${id}"]`)?.value || 0),
                         agentFee: Number(list.querySelector(`.neg-berater[data-neg-id="${id}"]`)?.value || 0),
                         einsatzPraemie: Number(list.querySelector(`.neg-einsatz[data-neg-id="${id}"]`)?.value || 0),
-                        torPraemie: Number(list.querySelector(`.neg-tor[data-neg-id="${id}"]`)?.value || 0)
+                        torPraemie: Number(list.querySelector(`.neg-tor[data-neg-id="${id}"]`)?.value || 0),
+                        klauseln: this.leseKlauseln(btn.closest(".negotiation-card")?.querySelector(".klausel-felder"))
                     };
 
                 const res = engine.submitOffer(state, id, angebot);

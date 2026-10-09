@@ -67,6 +67,10 @@ class NegotiationEngine {
         return _negResolve("TransferEngine", "./transferEngine.js");
     }
 
+    static getKlauselEngine() {
+        return _negResolve("KlauselEngine", "./klauselEngine.js");
+    }
+
     static getPositionEngine() {
         return _negResolve("PositionEngine", "./positionEngine.js");
     }
@@ -397,11 +401,16 @@ class NegotiationEngine {
                 : null;
             const deckel = investoren && typeof investoren.gehaltsHindernis === "function" ? investoren.gehaltsHindernis(state, club, wage) : null;
             if (deckel) return { success: false, error: deckel };
+            // Weitere Klauseln (KlauselEngine): Steigerung, Auf- und Abstieg, Mindestablöse, Option
+            const ke = this.getKlauselEngine();
+            const klauseln = ke ? ke.normalisiere(offer.klauseln || {}, club) : {};
             negotiation.lastOffer = { wage, years, signingBonus: bonus, agentFee: honorar, einsatzPraemie, torPraemie };
+            if (Object.keys(klauseln).length) negotiation.lastOffer.klauseln = klauseln;
             const praemien = (einsatzPraemie || torPraemie)
                 ? `, Prämien ${this.formatMoney(einsatzPraemie)} je Einsatz und ${this.formatMoney(torPraemie)} je Tor` : "";
+            const klauselText = ke && Object.keys(klauseln).length ? `; Klauseln: ${ke.texte(klauseln).join(", ")}` : "";
             this.log(negotiation, state, "us",
-                `Konditionen angeboten: ${this.formatMoney(wage)} pro Woche, ${years} Jahre Laufzeit, Handgeld ${this.formatMoney(bonus)}, Beraterhonorar ${this.formatMoney(honorar)}${praemien}.`);
+                `Konditionen angeboten: ${this.formatMoney(wage)} pro Woche, ${years} Jahre Laufzeit, Handgeld ${this.formatMoney(bonus)}, Beraterhonorar ${this.formatMoney(honorar)}${praemien}${klauselText}.`);
         } else {
             return { success: false, error: "In dieser Phase ist kein Angebot vorgesehen." };
         }
@@ -476,7 +485,8 @@ class NegotiationEngine {
         const verkaeufer = state.clubs.find(c => c.id === negotiation.sellerClubId);
         const ablöseWert = offer.zahlweise && fin && typeof fin.ratenWert === "function"
             ? fin.ratenWert(offer.fee || 0, offer.zahlweise, verkaeufer) : (offer.fee || 0);
-        const geboten = istAblöse ? ablöseWert : (offer.wage || 0) + this.praemienWert(state, negotiation, offer);
+        // Klauseln rechnet der Spieler ins Gehalt ein - mal nimmt er dafür weniger, mal will er mehr
+        const geboten = istAblöse ? ablöseWert : Math.round((offer.wage || 0) * this.klauselFaktor(state, negotiation, offer)) + this.praemienWert(state, negotiation, offer);
         const quote = gefordert > 0 ? geboten / gefordert : 1;
 
         // Kurze Laufzeiten kosten den Berater Provision - das schmeckt ihm nicht
@@ -541,6 +551,7 @@ class NegotiationEngine {
         negotiation.agreed.agentFee = offer.agentFee ?? negotiation.demand.agentFee ?? 0;
         negotiation.agreed.einsatzPraemie = offer.einsatzPraemie || 0;
         negotiation.agreed.torPraemie = offer.torPraemie || 0;
+        negotiation.agreed.klauseln = offer.klauseln || null;
 
         if (negotiation.type === "youth_promotion") {
             return this.completeYouthPromotion(state, negotiation);
@@ -652,6 +663,7 @@ class NegotiationEngine {
         // Handgeld und Beraterhonorar getrennt verbuchen, Prämien in den Vertrag
         this.zahleNebenkosten(state, negotiation);
         this.setzePraemien(state, negotiation.playerId, negotiation.agreed);
+        this.setzeKlauseln(state, negotiation.playerId, negotiation.agreed);
 
         negotiation.status = NEGOTIATION_STATUS.ACCEPTED;
         negotiation.stage = NEGOTIATION_STAGES.DONE;
@@ -688,7 +700,8 @@ class NegotiationEngine {
             saison: state.seasonYear,
             wage: a.wage || 0,
             years: a.years || 3,
-            praemien: (a.einsatzPraemie || a.torPraemie) ? { einsatz: a.einsatzPraemie || 0, tor: a.torPraemie || 0 } : null
+            praemien: (a.einsatzPraemie || a.torPraemie) ? { einsatz: a.einsatzPraemie || 0, tor: a.torPraemie || 0 } : null,
+            klauseln: a.klauseln || null
         };
         this.zahleNebenkosten(state, negotiation);
 
@@ -728,6 +741,7 @@ class NegotiationEngine {
 
         this.zahleNebenkosten(state, negotiation);
         this.setzePraemien(state, result.player.id, negotiation.agreed);
+        this.setzeKlauseln(state, result.player.id, negotiation.agreed);
 
         negotiation.status = NEGOTIATION_STATUS.ACCEPTED;
         negotiation.stage = NEGOTIATION_STAGES.DONE;
@@ -785,6 +799,21 @@ class NegotiationEngine {
             : (["ZM", "LM", "RM"].includes(pos) ? 0.12 : (pos === "TW" ? 0 : 0.05)));
         const spieleJeWoche = 0.8;
         return Math.round((einsatz * spieleJeWoche + tor * toreJeSpiel * spieleJeWoche) * 0.7);
+    }
+
+    /** Was die Klauseln des Angebots dem Spieler wert sind - als Faktor aufs Gehalt */
+    static klauselFaktor(state, negotiation, offer) {
+        const ke = this.getKlauselEngine();
+        if (!ke || !offer?.klauseln) return 1;
+        const club = (state.clubs || []).find(c => c.id === negotiation.clubId);
+        return ke.faktor(offer.klauseln, offer.years || 3, club);
+    }
+
+    static setzeKlauseln(state, playerId, agreed) {
+        const ke = this.getKlauselEngine();
+        const player = (state.players || []).find(p => String(p.id) === String(playerId));
+        if (!ke || !player) return;
+        ke.setze(player, agreed.klauseln || {}, (state.clubs || []).find(c => c.id === player.clubId));
     }
 
     static zahleNebenkosten(state, negotiation) {

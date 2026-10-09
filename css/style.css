@@ -8573,3 +8573,16 @@ td.nowrap { white-space: nowrap; }
 .kp-spieler { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted); }
 .kp-spieler.stamm { color: var(--text-primary, inherit); font-weight: 600; }
 .kp-spieler small { color: var(--text-muted); font-weight: 400; }
+
+/* Weitere Vertragsklauseln (Verlängerung und Verhandlung) */
+.klausel-felder { grid-column: 1 / -1; margin: 0 0 12px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.klausel-felder summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-soft); }
+.klausel-raster { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+.klausel-raster > * { min-width: 0; }
+.klausel-raster label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--text-muted); }
+.klausel-raster select, .klausel-raster input[type="number"] { width: 100%; }
+.klausel-raster .kl-option { flex-direction: row; align-items: center; gap: 6px; grid-column: 1 / -1; font-size: 12px; cursor: pointer; }
+.klausel-felder .kl-wert { font-size: 12px; color: var(--text-muted); margin: 8px 0 0; }
+.klausel-felder .kl-option input[type="checkbox"] { width: auto; flex: none; margin: 0; }
+.finance-stat-row.kl-zeile { gap: 12px; align-items: flex-start; }
+.finance-stat-row.kl-zeile strong { white-space: normal; text-align: right; min-width: 0; font-size: 13px; line-height: 1.45; }

@@ -573,6 +573,10 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
   - ein Scoutbericht, Jugendtag, Vorstandspost, ein fertiger Bau oder ein auslaufender Vertrag.
 
   Der Grund steht im Tagesbericht, der nächste Klick läuft weiter. Wer jeden Tag einzeln sehen will, etwa zwischen Pressekonferenz und Anpfiff, nimmt den Knopf **+1 Tag** daneben. Er erscheint, sobald der Weiter-Knopf mehrere Tage überspringen würde.
+- **Ein Tag rechnet ein Drittel schneller:** gemessen über 60 Tage ab Saisonstart von 136 auf 78 ms an spielfreien Tagen und von 156 auf 114 ms an Spieltagen.
+  - Die KI sucht Verstärkungen in einer nach Stärke sortierten Liste und hört auf, sobald niemand mehr besser ist. Zu teure Spieler fallen mit einer billigen Vorprüfung heraus.
+  - Ein KI-Transfer baut kein eigenes Verzeichnis aller Spieler mehr auf.
+  - Die Simulation zählt die Rollen einer Elf einmal je Aufstellung statt in jeder Spielszene.
 - **Taktische Gegneranalyse (`OpponentAnalysisEngine`):** Vor jedem Ligaspiel detaillierte Stärken-/Schwächenprofile, gegnerische Taktiktendenzen, Gefahreinstufung und konkrete Trainer-Empfehlungen abrufen. Der Spielanalyst aus dem Trainerstab entscheidet, wie genau sie ist:
   - Ein schwacher Analyst liest die Mannschaftsteile ungenauer und stellt nur zwei Schlüsselspieler vor.
   - Ein guter Analyst stellt bis zu vier Schlüsselspieler vor und benennt die Schwachstelle der gegnerischen Elf samt Rat, wie man sie angeht.

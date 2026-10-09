@@ -65,14 +65,22 @@ const _formationen = _einmal(() => (typeof FORMATION_CONFIGS !== 'undefined' && 
  * Welche Rollen eine Elf mit Ball spielt - gezaehlt, damit die Simulation
  * weiss, ob vorn ein Zielspieler steht oder eine falsche Neun.
  */
+const _rollenCache = new WeakMap();
 const _rollenZaehlung = (club) => {
     const T = _mTaktik();
     const cfgs = _formationen() || {};
     const zaehlung = {};
     if (!T || !club) return zaehlung;
+    // Die Rollen ändern sich nur mit Formation, Vorlage oder gespeicherten
+    // Rollen - gezählt wurde bisher in jeder einzelnen Szene neu
+    const t = club.tactics || {};
+    const schluessel = `${club.formation}|${t.vorlage || ""}|${JSON.stringify(t.rollen || null)}`;
+    const gemerkt = _rollenCache.get(club);
+    if (gemerkt && gemerkt.schluessel === schluessel) return gemerkt.zaehlung;
     const positions = (cfgs[club.formation] || cfgs["4-4-2"] || {}).positions || [];
     if (!positions.length) return zaehlung;
     T.rollenDerElf(club, positions).forEach(r => { zaehlung[r.mit] = (zaehlung[r.mit] || 0) + 1; });
+    _rollenCache.set(club, { schluessel, zaehlung });
     return zaehlung;
 };
 

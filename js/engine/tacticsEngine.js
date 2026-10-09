@@ -722,6 +722,9 @@ const ROLLEN_STILE = {
     }
 };
 
+/** Die Anweisungen nach Schlüssel - erst beim ersten Bedarf gebaut */
+let _anweisungNach = null;
+
 const TacticsEngine = {
     ANWEISUNGEN: TAKTIK_ANWEISUNGEN,
     FAMILIEN: TAKTIK_FAMILIEN,
@@ -761,7 +764,9 @@ const TacticsEngine = {
 
     /** Der Wert einer Anweisung, mit Standard */
     wert(tactics, key) {
-        const def = TAKTIK_ANWEISUNGEN.find(a => a.key === key);
+        // Jede Spielszene fragt rund zwanzig Anweisungen ab - nachschlagen statt suchen
+        if (!_anweisungNach) _anweisungNach = new Map(TAKTIK_ANWEISUNGEN.map(a => [a.key, a]));
+        const def = _anweisungNach.get(key);
         const v = tactics ? tactics[key] : undefined;
         if (def && def.optionen.some(o => o.value === v)) return v;
         if (key === "focus" && tactics && tactics.attackFocus) return tactics.attackFocus;
@@ -838,13 +843,13 @@ const TacticsEngine = {
     rollenDerElf(club, positions) {
         const t = this.normalisiere(club?.tactics);
         const stil = TAKTIK_VORLAGEN[t.vorlage]?.rollenStil || "standard";
+        const dreier = positions.filter(p => this._norm(p.pos) === "IV").length >= 3;
         return positions.map((slot, i) => {
             const fam = this.familie(slot.pos, positions);
             const seite = Math.sign((slot.x ?? 50) - 50);
             const std = this.standardRollen(fam, stil, seite, positions);
             const gespeichert = t.rollen[i] || {};
             const mitOk = this.rollenMitBall(fam).find(r => r.id === gespeichert.mit);
-            const dreier = positions.filter(p => this._norm(p.pos) === "IV").length >= 3;
             return {
                 familie: fam,
                 mit: (mitOk && !(mitOk.nurDreier && !dreier)) ? mitOk.id : std.mit,

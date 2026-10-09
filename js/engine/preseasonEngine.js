@@ -662,6 +662,10 @@ class PreseasonEngine {
         if (!club.staff) club.staff = {};
         this.rechneStabGehaelterUm(state);
 
+        // Ehemalige Spieler des Vereins bewerben sich mit
+        const ehemalige = _preResolve("EhemaligeEngine", "./ehemaligeEngine.js");
+        if (ehemalige && typeof ehemalige.bewerber === "function") ehemalige.bewerber(state, club, { bewerber });
+
         state.preseason = {
             aktiv: true,
             tagIndex: 0,
@@ -735,6 +739,10 @@ class PreseasonEngine {
         };
 
         pre.bewerber[bereichKey] = liste.filter(b => b.id !== bewerberId);
+
+        // Ein Ehemaliger kehrt zurück
+        const ehemalige = _preResolve("EhemaligeEngine", "./ehemaligeEngine.js");
+        if (kandidat.ehemaliger && ehemalige && typeof ehemalige.nachVerpflichtung === "function") ehemalige.nachVerpflichtung(state, club, kandidat);
 
         // Der Sportdirektor meldet die Verpflichtung - mit dem, was sie für den
         // Etat bedeutet und was noch fehlt

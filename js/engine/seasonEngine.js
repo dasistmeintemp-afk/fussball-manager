@@ -1227,6 +1227,11 @@ class SeasonEngine {
 
         if (abschied.length === 0) return { retired: 0, names: [], ohneVerein: 0 };
 
+        // Wer lange für den eigenen Verein spielte, bleibt ihm verbunden:
+        // als möglicher Mann für den Trainerstab, eine Legende mit Abschiedsspiel
+        const ehemalige = _resolve('EhemaligeEngine', './ehemaligeEngine.js');
+        if (ehemalige && typeof ehemalige.karriereende === 'function') ehemalige.karriereende(state, abschied);
+
         const gehende = new Set(abschied.map(p => p.id));
         const eigene = [];
 

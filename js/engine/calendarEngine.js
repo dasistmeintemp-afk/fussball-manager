@@ -970,7 +970,7 @@ const CalendarEngine = {
     },
 
     /** Post, bei der das Weiterlaufen anhält - Spielberichte und Trainingsberichte nicht */
-    WICHTIGE_POST: ["scouting", "transfer_offer", "transfer_done", "injury", "board_message", "youth", "contract_expiring", "facility"],
+    WICHTIGE_POST: ["scouting", "transfer_offer", "transfer_done", "injury", "board_message", "youth", "contract_expiring", "facility", "career"],
 
     /**
      * Wie im Football Manager: Das Weiterlaufen hält nicht nur an festen

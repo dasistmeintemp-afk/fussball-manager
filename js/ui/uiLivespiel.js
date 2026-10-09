@@ -197,7 +197,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const planEngine = this.getMatchplanEngine();
         if (!this._matchplanDone && !this._teamTalkDone) {
             this._matchplanDone = true;
-            if (planEngine && !planEngine.fuerSpiel(state, match)) {
+            const anweisungen = typeof GegneranweisungEngine !== "undefined" ? Object.keys(GegneranweisungEngine.fuerSpiel(state, match)).length : 0;
+            if (planEngine && !planEngine.fuerSpiel(state, match) && !anweisungen) {
                 this.showMatchplanModal(match, () => this.startLiveMatchSimulation(match));
                 return;
             }
@@ -206,7 +207,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const gegnerId = match.homeClubId === state.userClubId ? match.awayClubId : match.homeClubId;
             this._teamTalkDone = true;
             this.showTeamTalkModal(
-                { phase: "prematch", clubId: state.userClubId, opponentClubId: gegnerId },
+                { phase: "prematch", clubId: state.userClubId, opponentClubId: gegnerId, match },
                 () => this.startLiveMatchSimulation(match)
             );
             return;

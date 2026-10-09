@@ -82,6 +82,8 @@ class MatchFlowEngine {
         this.schiri = typeof options.schiri === "function" ? options.schiri : (() => null);
         // Wetter und Platz (WetterEngine.mitWirkung)
         this.wetter = typeof options.wetter === "function" ? options.wetter : (() => null);
+        // Gegneranweisungen des Trainers für einzelne Spieler (GegneranweisungEngine)
+        this.anweisung = typeof options.anweisung === "function" ? options.anweisung : (() => null);
 
         this.phase = FLOW_PHASES.BUILDUP;
     }
@@ -747,7 +749,15 @@ class MatchFlowEngine {
         const falscheSeite = (fuss === "rechts" && linkeSeite) || (fuss === "links" && !linkeSeite);
         const g = this.torGeometrie(schuetze, schuetze.team);
         const spitz = g.winkel < 0.45 && Math.abs(schuetze.y - 50) > 9;
-        return _flowRandom.chance(cfg.basis + (falscheSeite && spitz ? cfg.falscheSeite : 0));
+        // Auf den schwachen Fuß gedrängt: Er muss öfter mit dem anderen ran
+        const gedraengt = this.anweisung(schuetze.id)?.fuss === "schwach" ? 0.15 : 0;
+        return _flowRandom.chance(cfg.basis + gedraengt + (falscheSeite && spitz ? cfg.falscheSeite : 0));
+    }
+
+    /** Gegneranweisung "hart angehen" (+1) oder "nicht einsteigen" (-1) gegen diesen Spieler */
+    anweisungsHaerte(spieler) {
+        const z = spieler ? this.anweisung(spieler.id)?.zweikampf : null;
+        return z === "hart" ? 1 : (z === "vorsichtig" ? -1 : 0);
     }
 
     /**
@@ -1051,7 +1061,7 @@ class MatchFlowEngine {
         // nicht kommen - wer so nah steht, ist im Zweikampf
         if (!naechster || this.distance(carrier, naechster) > 5.5) return null;
         const ed = this.eig(naechster);
-        const haerte = _flowTaktik()?.wirkung(this.getTactics(naechster.team) || {}).zweikampf || 0;
+        const haerte = (_flowTaktik()?.wirkung(this.getTactics(naechster.team) || {}).zweikampf || 0) + this.anweisungsHaerte(carrier);
         const p = (pressure - 0.6) * 0.085 * (1 + haerte * 0.4 + (ed.haerte || 0) * 0.5 + (ed.pressing || 0) * 0.3);
         if (!_flowRandom.chance(p * (this.schiri()?.pfeife || 1) * this.strafraumVorsicht(carrier))) return null;
         return { type: "foul", outcome: "foul", from: carrier, to: { x: carrier.x, y: carrier.y }, foulender: naechster, opfer: carrier, pressure, phase };
@@ -1287,7 +1297,7 @@ class MatchFlowEngine {
         // Wer hart einsteigt, gewinnt mehr Zweikaempfe (und foult oefter -
         // das zaehlt die Timeline); wer auf den Fuessen bleibt, weniger
         const gegnerTaktik = defender ? this.getTactics(defender.team) || {} : {};
-        const haerte = _flowTaktik()?.wirkung(gegnerTaktik).zweikampf || 0;
+        const haerte = (_flowTaktik()?.wirkung(gegnerTaktik).zweikampf || 0) + (defender ? this.anweisungsHaerte(carrier) : 0);
         const fm = this.fm();
         // Im FM-Modus entscheiden die Werte den Zweikampf deutlich
         let chance = 0.6 + edge / (fm ? 140 : 210) - pressure * 0.13 - haerte * 0.05;

@@ -237,32 +237,46 @@ const MatchplanEngine = {
      */
     spielOptionen(state, match) {
         const plan = this.fuerSpiel(state, match);
-        if (!plan) return null;
-        const side = match.homeClubId === plan.clubId ? "home" : (match.awayClubId === plan.clubId ? "away" : null);
+        // Dazu die Anweisungen für einzelne Gegenspieler (GegneranweisungEngine)
+        const ga = _mpResolve("GegneranweisungEngine", "./gegneranweisungEngine.js");
+        const anw = ga && match ? ga.spielOptionen(state, match) : null;
+        if (!plan && !anw) return null;
+        const clubId = plan ? plan.clubId : anw.clubId;
+        const side = match.homeClubId === clubId ? "home" : (match.awayClubId === clubId ? "away" : null);
         if (!side) return null;
         const taktik = {};
-        plan.punkte.forEach(k => Object.assign(taktik, this.PLAENE[k]?.taktik || {}));
+        const punkte = plan ? plan.punkte : [];
+        punkte.forEach(k => Object.assign(taktik, this.PLAENE[k]?.taktik || {}));
         // Über die Schwachstelle: dorthin, wo sie steht
-        if (plan.punkte.includes("schwachstelle") && plan.schwachstelleId !== null) {
+        if (plan && plan.punkte.includes("schwachstelle") && plan.schwachstelleId !== null) {
             const p = (state.players || []).find(x => x.id === plan.schwachstelleId);
             if (p && ["LV", "LM", "LA"].includes(p.pos)) Object.assign(taktik, { focus: "right", attackFocus: "right" });
             else if (p && ["RV", "RM", "RA"].includes(p.pos)) Object.assign(taktik, { focus: "left", attackFocus: "left" });
             else Object.assign(taktik, { focus: "center", attackFocus: "center" });
         }
         const gedeckt = {};
-        if (plan.zielId !== null && plan.zielId !== undefined) gedeckt[plan.zielId] = this.ENG_GEDECKT;
+        if (plan && plan.zielId !== null && plan.zielId !== undefined) gedeckt[plan.zielId] = this.ENG_GEDECKT;
+        // Die Anweisungen wirken wie die enge Deckung auf die Tagesform
+        Object.entries(anw?.faktoren || {}).forEach(([id, f]) => {
+            const schluessel = Object.keys(gedeckt).find(k => String(k) === String(id)) ?? id;
+            gedeckt[schluessel] = Math.round((gedeckt[schluessel] ?? 1) * f * 1000) / 1000;
+        });
+        const bonus = plan ? 1 + Math.min(this.MAX_PUNKTE, plan.treffer || 0) * this.BONUS_JE_TREFFER : 1;
         return {
             side,
             taktik,
-            bonus: 1 + Math.min(this.MAX_PUNKTE, plan.treffer || 0) * this.BONUS_JE_TREFFER,
+            bonus: Math.round(bonus * (anw?.kraft ?? 1) * 10000) / 10000,
             gedeckt,
-            punkte: plan.punkte.slice()
+            punkte: punkte.slice(),
+            anweisungen: anw ? anw.anweisungen : {}
         };
     },
 
-    /** Nach dem Spiel ist der Plan erledigt */
+    /** Nach dem Spiel ist der Plan erledigt - mit den Anweisungen */
     abschliessen(state, match) {
         if (this.fuerSpiel(state, match)) delete state.matchplan;
+        const ga = _mpResolve("GegneranweisungEngine", "./gegneranweisungEngine.js");
+        if (ga && typeof ga.abschliessen === "function") ga.abschliessen(state, match);
     }
 };
 

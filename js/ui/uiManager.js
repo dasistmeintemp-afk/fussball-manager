@@ -2008,9 +2008,10 @@ class UIManager {
             return;
         }
         const plan = engine.fuerSpiel(this.app.state, partie);
+        const anw = typeof GegneranweisungEngine !== "undefined" ? Object.keys(GegneranweisungEngine.fuerSpiel(this.app.state, partie)).length : 0;
         knopf.style.display = "";
-        knopf.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#i-${plan ? "check" : "tactics"}"/></svg>`
-            + `<span>${plan ? `Matchplan (${plan.punkte.length})` : "Taktikbesprechung"}</span>`;
+        knopf.innerHTML = `<svg class="ico" aria-hidden="true"><use href="#i-${plan || anw ? "check" : "tactics"}"/></svg>`
+            + `<span>${plan ? `Matchplan (${plan.punkte.length}${anw ? ` + ${anw}` : ""})` : (anw ? `Anweisungen (${anw})` : "Taktikbesprechung")}</span>`;
     }
 
     /**
@@ -6715,6 +6716,9 @@ class UIManager {
         const r = v.report || {};
         const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
         const auswahl = new Set(v.gespeichert ? v.gespeichert.punkte : []);
+        // Anweisungen für einzelne Gegenspieler (GegneranweisungEngine)
+        const ga = typeof GegneranweisungEngine !== "undefined" ? GegneranweisungEngine : null;
+        const tafel = ga ? ga.tafel(state, match) : [];
         let zielId = v.gespeichert?.zielId ?? (v.ziele[0]?.id ?? null);
         const sieht = (r.analyst?.sterne || 0) >= 2.5;
         const gegensatz = { fluegel: "zentrum", zentrum: "fluegel", fruehStoeren: "tiefStehen", tiefStehen: "fruehStoeren" };
@@ -6778,21 +6782,86 @@ class UIManager {
                     ${v.ziele.map(z => `<option value="${esc(z.id)}" ${String(z.id) === String(zielId) ? "selected" : ""}>${esc(z.name)} (${esc(z.pos)})${z.danger === "Hoch" ? " - gefährlich" : ""}</option>`).join("")}
                 </select>
             </div>
+            ${tafel.length ? `
+            <details class="mp-anweisungen" id="mpAnweisungen" ${tafel.some(t => Object.keys(t.gesetzt).length) ? "open" : ""}>
+                <summary>Gegneranweisungen <span class="mp-zaehler" id="mpAnwZaehler"></span></summary>
+                <p class="mp-hinweis">Für einzelne Gegenspieler, zusätzlich zum Plan. Was zu wem passt, hängt an seinen Stärken - ${sieht ? "der Analyst hat seine Vorschläge markiert." : "für Vorschläge ist der Analyst zu ungenau."}</p>
+                ${tafel.some(t => t.empfehlung) ? `<button class="btn btn-sm btn-secondary" id="btnAnwEmpfehlung" type="button">📋 Vorschläge des Analysten übernehmen</button>` : ""}
+                <div class="ga-liste">
+                    ${tafel.map(t => `
+                    <div class="ga-zeile" data-ga-id="${esc(t.id)}">
+                        <div class="ga-kopf">
+                            <span class="pos-tag pos-${this.getPosGroup(t.pos)}">${esc(t.pos)}</span>
+                            <strong>${esc(t.name)}</strong>
+                            ${t.foot ? `<span class="text-muted">${esc(t.foot === "beidfüßig" ? "beidfüßig" : t.foot === "links" ? "Linksfuß" : "Rechtsfuß")}</span>` : ""}
+                        </div>
+                        ${t.empfehlung ? `<div class="ga-empfehlung" data-ga-empf='${esc(JSON.stringify(t.empfehlung.anweisung))}'>📋 ${esc(t.empfehlung.grund)}</div>` : ""}
+                        <div class="ga-wahl">
+                            <label class="ga-feld"><span>${esc(ga.ARTEN.anlaufen.label)}</span>
+                                <select class="styled-select ga-anlaufen">
+                                    <option value="">Normal</option>
+                                    ${t.moeglich.anlaufen.map(w => `<option value="${w}" ${t.gesetzt.anlaufen === w ? "selected" : ""}>${esc(ga.ARTEN.anlaufen.werte[w])}</option>`).join("")}
+                                </select>
+                            </label>
+                            <label class="ga-feld"><span>${esc(ga.ARTEN.zweikampf.label)}</span>
+                                <select class="styled-select ga-zweikampf">
+                                    <option value="">Normal</option>
+                                    ${t.moeglich.zweikampf.map(w => `<option value="${w}" ${t.gesetzt.zweikampf === w ? "selected" : ""}>${esc(ga.ARTEN.zweikampf.werte[w])}</option>`).join("")}
+                                </select>
+                            </label>
+                            ${t.moeglich.fuss.length ? `<label class="ga-fuss"><input type="checkbox" class="ga-fuss-feld" ${t.gesetzt.fuss === "schwach" ? "checked" : ""}> Auf den schwachen Fuß</label>` : ""}
+                        </div>
+                    </div>`).join("")}
+                </div>
+            </details>` : ""}
             <div class="mp-aktionen">
                 <button class="btn btn-secondary" id="btnMatchplanOhne">${onDone ? "Ohne Besprechung" : "Plan verwerfen"}</button>
                 <button class="btn btn-primary" id="btnMatchplanFest">${onDone ? "Weiter zur Ansprache ▶" : "Plan festlegen"}</button>
             </div>
         `;
 
+        // Die Anweisungen aus der Liste lesen: { id: { anlaufen, zweikampf, fuss } }
+        const leseAnweisungen = () => {
+            const je = {};
+            body.querySelectorAll(".ga-zeile").forEach(z => {
+                const a = {};
+                const anl = z.querySelector(".ga-anlaufen")?.value;
+                const zwk = z.querySelector(".ga-zweikampf")?.value;
+                if (anl) a.anlaufen = anl;
+                if (zwk) a.zweikampf = zwk;
+                if (z.querySelector(".ga-fuss-feld")?.checked) a.fuss = "schwach";
+                if (Object.keys(a).length) je[z.dataset.gaId] = a;
+            });
+            return je;
+        };
+
         const zeichne = () => {
             body.querySelectorAll(".mp-karte").forEach(btn => btn.classList.toggle("aktiv", auswahl.has(btn.dataset.key)));
             const zaehler = document.getElementById("mpZaehler");
             if (zaehler) zaehler.textContent = `${auswahl.size} / ${engine.MAX_PUNKTE}`;
+            const anwZahl = Object.keys(leseAnweisungen()).length;
+            const anwZaehler = document.getElementById("mpAnwZaehler");
+            if (anwZaehler) anwZaehler.textContent = anwZahl ? `${anwZahl} Spieler` : "";
+            body.querySelectorAll(".ga-zeile").forEach(z => z.classList.toggle("aktiv", !!leseAnweisungen()[z.dataset.gaId]));
             const ziel = document.getElementById("mpZiel");
             if (ziel) ziel.style.display = auswahl.has("engDecken") && v.ziele.length ? "" : "none";
             const fest = document.getElementById("btnMatchplanFest");
-            if (fest && !onDone) fest.disabled = auswahl.size === 0;
+            if (fest && !onDone) fest.disabled = auswahl.size === 0 && anwZahl === 0;
         };
+        body.querySelectorAll(".ga-zeile select, .ga-zeile input").forEach(el => el.addEventListener("change", zeichne));
+        document.getElementById("btnAnwEmpfehlung")?.addEventListener("click", () => {
+            body.querySelectorAll(".ga-zeile").forEach(z => {
+                const e = z.querySelector(".ga-empfehlung");
+                if (!e) return;
+                const a = JSON.parse(e.dataset.gaEmpf || "{}");
+                if (a.anlaufen) z.querySelector(".ga-anlaufen").value = a.anlaufen;
+                if (a.zweikampf) z.querySelector(".ga-zweikampf").value = a.zweikampf;
+                const fuss = z.querySelector(".ga-fuss-feld");
+                if (fuss && a.fuss) fuss.checked = true;
+            });
+            this.playSound("click");
+            zeichne();
+        });
 
         body.querySelectorAll(".mp-karte").forEach(btn => {
             btn.addEventListener("click", () => {
@@ -6827,9 +6896,14 @@ class UIManager {
             if (!onDone) this.renderDashboard();
         };
         document.getElementById("btnMatchplanFest").onclick = () => {
+            const anw = ga ? (ga.festlegen(state, match, leseAnweisungen()) || {}) : {};
+            const anwZahl = Object.keys(anw).length;
+            const anwText = anwZahl ? ` Dazu Anweisungen für ${anwZahl} Gegenspieler.` : "";
             if (auswahl.size === 0) {
-                engine.abschliessen(state, match);
+                if (engine.fuerSpiel(state, match)) delete state.matchplan;
+                if (anwZahl) this.showToast(`Gegneranweisungen für ${anwZahl} Spieler stehen - ohne weiteren Plan.`, "success");
                 schliessen();
+                if (!onDone && anwZahl) this.renderDashboard();
                 return;
             }
             const plan = engine.festlegen(state, match, [...auswahl], zielId);
@@ -6837,7 +6911,7 @@ class UIManager {
                 ? `${plan.zielName} eng decken` : engine.PLAENE[k].name);
             const urteil = sieht && plan.treffer >= plan.punkte.length ? " Der Analyst ist überzeugt."
                 : sieht && plan.treffer === 0 ? " Der Analyst hat Zweifel." : "";
-            this.showToast(`Matchplan steht: ${namen.join(", ")}.${urteil}`, "success");
+            this.showToast(`Matchplan steht: ${namen.join(", ")}.${urteil}${anwText}`, "success");
             schliessen();
             if (!onDone) this.renderDashboard();
         };
@@ -6892,10 +6966,14 @@ class UIManager {
             ? `<p class="tt-plan">📋 Matchplan: ${plan.punkte.map(k => this.escapeHtml(k === "engDecken" && plan.zielName
                 ? `${plan.zielName} eng decken` : (planEngine.PLAENE[k]?.name || k))).join(" · ")}</p>`
             : "";
+        const anwZeilen = !istHalbzeit && options.match && typeof GegneranweisungEngine !== "undefined"
+            ? GegneranweisungEngine.kurz(state, options.match) : [];
+        const anwZeile = anwZeilen.length ? `<p class="tt-plan">🎯 ${anwZeilen.map(z => this.escapeHtml(z)).join(" · ")}</p>` : "";
 
         body.innerHTML = `
             <p class="team-talk-situation">${lage} ${stimmung}</p>
             ${planZeile}
+            ${anwZeile}
             <div class="team-talk-options">
                 ${engine.TEAM_TALK_TONES.map(t => `
                     <button class="team-talk-option" data-tone="${t.key}">

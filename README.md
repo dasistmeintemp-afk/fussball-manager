@@ -355,6 +355,12 @@ Die Taktik im Taktik-Reiter ist die Grundordnung. Vor dem Anpfiff stellt der Tra
 - Trifft ein Punkt eine echte Schwäche des Gegners, ist die Mannschaft spürbar besser eingestellt (+1,5 % je Treffer).
 - Der eng gedeckte Spieler verliert an Wirkung und kommt deutlich seltener zum Abschluss. Gedeckt werden Mittelfeld- und Angriffsspieler, keine Verteidiger.
 - Widersprüche schließt die Besprechung aus: Früh stören und tief stehen – oder Flügel und Mitte – gehen nicht gleichzeitig.
+- **Gegneranweisungen (`GegneranweisungEngine`):** Unter dem Plan steht die voraussichtliche Elf des Gegners, Mann für Mann. Je Gegenspieler lässt sich festlegen:
+  - **Anlaufen:** *Immer* – wer unsicher am Ball ist, verliert ihn; einem Ballsicheren ist das egal, und jeder Dauerdruck kostet die eigene Elf etwas Kraft. *Kommen lassen* – ein Dribbler läuft sich fest, ein Passgeber hat alle Zeit.
+  - **Zweikampf:** *Hart angehen* – wer körperlich nicht dagegenhält, verliert die Lust. Er wird öfter gefoult, und es gibt mehr Karten (gegen die ganze Elf etwa ein Foul und eine halbe Gelbe mehr je Spiel). *Nicht einsteigen* – weniger Fouls und Karten, dafür hat er mehr Platz.
+  - **Auf den schwachen Fuß** (nur bei Spielern mit einem starken Fuß): Er muss öfter mit dem anderen abschließen.
+  - Was eine Anweisung bringt, hängt an den Stärken des Spielers, gemessen an seinem eigenen Niveau. Der Analyst markiert die vier deutlichsten Fälle („unsicher am Ball – sofort Druck“) und lässt sich mit einem Knopf übernehmen. Unter zweieinhalb Sternen schweigt er, ein schwacher irrt sich öfter.
+  - Die Anweisungen gelten wie der Plan nur für dieses Spiel, in Livespiel und Sofort-Simulation. Sie stehen auch auf der Tafel der Ansprache. Ohne Anweisungen rechnet das Spiel genau wie vorher.
 
 ### 3c. 📌 Der Schreibtisch
 Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit sortiert, ein Klick springt in den zuständigen Reiter: unvollständige Startelf, Verhandlungen mit uns am Zug, Ausfälle, überlastete Spieler, auslaufende Verträge, unzufriedene Spieler, ungelesene Post. Gesprächswünsche, Wechselwünsche und offene Versprechen stehen ebenfalls dort – ein Klick öffnet die Akte des Spielers.
@@ -751,6 +757,7 @@ untitled/
 │   │   ├── negotiationEngine.js# Mehrtägige Verhandlungen mit Vereinen und Beratern
 │   │   ├── managerEngine.js    # Kabinenansprachen, Pressekonferenzen & Aufgabenliste
 │   │   ├── matchplanEngine.js  # Taktikbesprechung: Matchplan für ein Spiel
+│   │   ├── gegneranweisungEngine.js # Anweisungen je Gegenspieler (Anlaufen, Zweikampf, Fuß)
 │   │   ├── playerTalkEngine.js # Gespräche unter vier Augen, Versprechen, Wechselwünsche
 │   │   ├── developmentPlanEngine.js # Schwerpunkt, Umschulung, Eigenheit, Mentor, Spielpraxis
 │   │   ├── loanEngine.js       # Verleihen, Leihmarkt, Gehaltsanteile, Kaufoption, Rückkehr

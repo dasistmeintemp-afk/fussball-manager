@@ -10812,6 +10812,82 @@ function runEngineTests() {
         if (!res.success || v.klauseln?.steigerung !== 10) throw new Error(`Verlängerung mit Steigerung: ${res.reason}`);
     });
 
+    test("Gegneranweisungen: je Gegenspieler anlaufen, Zweikampf und schwacher Fuß - Wirkung nach seinen Stärken, Empfehlung des Analysten", () => {
+        const { GegneranweisungEngine: G } = require('./js/engine/gegneranweisungEngine.js');
+        const { MatchplanEngine: MP } = require('./js/engine/matchplanEngine.js');
+        const { OpponentAnalysisEngine: OA } = require('./js/engine/opponentAnalysisEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const gast = state.clubs.find(c => c.id === "dor");
+        const match = { id: "ga", homeClubId: "muc", awayClubId: "dor" };
+
+        // Die Tafel: die Elf ohne Torwart, der Fuß nur für Einfüßige
+        const tafel = G.tafel(state, match);
+        if (tafel.length < 9 || tafel.some(t => t.pos === "TW")) throw new Error(`Tafel falsch: ${tafel.length}`);
+        tafel.forEach(t => { if (t.moeglich.fuss.length !== (t.foot && t.foot !== "beidfüßig" ? 1 : 0)) throw new Error(`Fuß bei ${t.name} (${t.foot})`); });
+
+        // Die Wirkung hängt am Spieler
+        const basis = { id: "x", overall: 75, technique: 75, passing: 75, dribbling: 75, physical: 75, foot: "rechts" };
+        const mit = (werte, a) => G.wirkung(Object.assign({}, basis, werte), a).faktor;
+        if (!(mit({ technique: 66, passing: 68 }, { anlaufen: "immer" }) < mit({}, { anlaufen: "immer" }))) throw new Error("Anlaufen trifft den Unsicheren nicht stärker");
+        if (!(mit({ dribbling: 84 }, { anlaufen: "nie" }) < 1 && mit({}, { anlaufen: "nie" }) > 1)) throw new Error("Kommen lassen: Dribbler und Passgeber nicht unterschieden");
+        if (!(mit({ physical: 64 }, { zweikampf: "hart" }) < mit({}, { zweikampf: "hart" }))) throw new Error("Hart angehen trifft den Schwachen nicht stärker");
+        if (G.normalisiere(Object.assign({}, basis, { foot: "beidfüßig" }), { fuss: "schwach", anlaufen: "quatsch" }).fuss !== undefined) throw new Error("Schwacher Fuß bei einem Beidfüßigen");
+
+        // Festlegen: Ungültiges fällt weg, der Matchplan nimmt die Anweisungen mit
+        const ziel = tafel[0], zweiter = tafel[1];
+        const je = { [ziel.id]: { anlaufen: "immer", zweikampf: "hart" }, [zweiter.id]: { zweikampf: "vorsichtig", unsinn: 1 }, fremd: { anlaufen: "immer" } };
+        const gesetzt = G.festlegen(state, match, je);
+        if (Object.keys(gesetzt).length !== 2 || gesetzt[zweiter.id].unsinn) throw new Error(`Festlegen: ${JSON.stringify(gesetzt)}`);
+        const opt = MP.spielOptionen(state, match);
+        if (!opt || opt.side !== "home" || !opt.gedeckt[ziel.id] || opt.anweisungen[ziel.id]?.zweikampf !== "hart") throw new Error(`Anweisungen ohne Plan nicht im Spiel: ${JSON.stringify(opt)}`);
+        if (!(opt.bonus < 1)) throw new Error("Anlaufen kostet keine Kraft");
+        // Mit enger Deckung desselben Spielers wirken beide
+        const zielSpieler = state.players.find(p => String(p.id) === String(ziel.id));
+        MP.festlegen(state, match, ["engDecken"], ziel.id);
+        const beide = MP.spielOptionen(state, match);
+        if (state.matchplan.zielId === ziel.id && !(beide.gedeckt[ziel.id] < opt.gedeckt[ziel.id])) throw new Error("Enge Deckung und Anweisung wirken nicht zusammen");
+
+        // In der Simulation: Hart gegen alle - mehr Fouls und Karten
+        const heim = state.clubs.find(c => c.id === "muc");
+        delete state.matchplan;
+        const zaehle = (hart) => {
+            let gelb = 0, fouls = 0;
+            for (let i = 0; i < 80; i++) {
+                if (hart) { const alle = {}; G.elf(state, gast).forEach(p => { alle[p.id] = { zweikampf: "hart" }; }); G.festlegen(state, match, alle); }
+                else G.abschliessen(state, match);
+                const m = { id: "ga" + i, played: false, homeClubId: "muc", awayClubId: "dor" };
+                const plan = MP.spielOptionen(state, match);
+                MatchEngine.simulateFullMatch(m, heim, gast, state.players, plan ? { matchplan: plan } : {});
+                gelb += m.stats.yellowCards[0]; fouls += m.stats.fouls[0];
+                state.players.forEach(p => { p.fitness = 95; p.suspendedMatches = 0; p.injuredWeeks = 0; });
+            }
+            return { gelb, fouls };
+        };
+        const ohne = zaehle(false), hart = zaehle(true);
+        if (!(hart.fouls > ohne.fouls && hart.gelb > ohne.gelb)) throw new Error(`Hart angehen ohne Folgen: ${JSON.stringify({ ohne, hart })}`);
+
+        // Im Livespiel: Zweikampfhärte und schwacher Fuß je Spieler
+        const { MatchFlowEngine } = require('./js/engine/matchFlowEngine.js');
+        const fl = new MatchFlowEngine({ anweisung: (id) => (String(id) === String(ziel.id) ? { zweikampf: "hart", fuss: "schwach" } : null) });
+        if (fl.anweisungsHaerte({ id: ziel.id }) !== 1 || fl.anweisungsHaerte({ id: zweiter.id }) !== 0) throw new Error("Zweikampfhärte je Spieler im Livespiel fehlt");
+
+        // Der Analyst: unter zweieinhalb Sternen still, ein sehr guter sieht den Dribbler
+        const echt = OA.analyst;
+        try {
+            OA.analyst = () => ({ name: "Blind", guete: 20, sterne: 1 });
+            if (Object.keys(G.empfehlungen(state, match)).length) throw new Error("Ein schwacher Analyst empfiehlt");
+            OA.analyst = () => ({ name: "Scharf", guete: 100, sterne: 5 });
+            zielSpieler.dribbling = (zielSpieler.overall || 70) + 8;
+            const e = G.empfehlungen(state, match)[String(ziel.id)];
+            if (!e || e.anweisung.anlaufen !== "nie" || e.anweisung.zweikampf !== "vorsichtig") throw new Error(`Dribbler falsch empfohlen: ${JSON.stringify(e)}`);
+        } finally { OA.analyst = echt; }
+
+        // Nach dem Spiel sind die Anweisungen erledigt
+        G.festlegen(state, match, { [ziel.id]: { anlaufen: "immer" } });
+        MP.abschliessen(state, match);
+        if (state.gegneranweisungen || MP.spielOptionen(state, match)) throw new Error("Anweisungen gelten über das Spiel hinaus");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

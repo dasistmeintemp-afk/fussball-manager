@@ -1087,6 +1087,9 @@ const CalendarEngine = {
                 : ((typeof window !== 'undefined' && window.SeasonEngine) ? window.SeasonEngine : (typeof require !== 'undefined' ? require('./seasonEngine.js').SeasonEngine : null));
             const alteSaison = state.seasonYear;
             currentDay.completed = true;
+            // Die Turnierspieler kehren zurück, bevor die neue Saison beginnt
+            const turnier = (typeof TurnierEngine !== 'undefined' && TurnierEngine) ? TurnierEngine : ((typeof window !== 'undefined' && window.TurnierEngine) ? window.TurnierEngine : (typeof require !== 'undefined' ? (() => { try { return require('./turnierEngine.js').TurnierEngine; } catch (e) { return null; } })() : null));
+            if (turnier && typeof turnier.rueckkehr === 'function') turnier.rueckkehr(state);
             if (seasonEngine) seasonEngine.startNextSeason(state);
             return {
                 success: true,
@@ -1564,6 +1567,11 @@ const CalendarEngine = {
             ? SeasonEngine
             : ((typeof window !== 'undefined' && window.SeasonEngine) ? window.SeasonEngine : (typeof require !== 'undefined' ? require('./seasonEngine.js').SeasonEngine : null));
         if (currentDay.sommerpause) {
+            // Im Turniersommer spielen die Nationen um EM oder WM
+            const turnier = (typeof TurnierEngine !== 'undefined' && TurnierEngine) ? TurnierEngine : ((typeof window !== 'undefined' && window.TurnierEngine) ? window.TurnierEngine : (typeof require !== 'undefined' ? (() => { try { return require('./turnierEngine.js').TurnierEngine; } catch (e) { return null; } })() : null));
+            if (turnier && typeof turnier.tag === 'function') {
+                turnier.tag(state, currentDay.pauseTag).forEach(m => summary.messages.push(m));
+            }
             if (seasonEngineTag && typeof seasonEngineTag.sommerpauseTag === 'function') {
                 seasonEngineTag.sommerpauseTag(state).forEach(m => summary.messages.push(m));
             }

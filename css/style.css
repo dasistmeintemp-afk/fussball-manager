@@ -8727,3 +8727,13 @@ td.nowrap { white-space: nowrap; }
 #statsKoeffizient .kf-tabelle th small { font-weight: 400; color: var(--text-muted); }
 .kf-reihe { display: block; color: var(--text-muted); font-size: 11px; }
 #statsKoeffizient .kf-tabelle .eigene-zeile td { color: var(--accent-primary, #a3e635); }
+
+/* EM und WM */
+.tu-ko, .tu-raster { display: grid; gap: 10px; margin-top: 8px; }
+.tu-raster { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.tu-gruppe h5, .tu-runde h5 { margin: 0 0 4px; font-size: 12px; color: var(--text-muted); text-transform: none; }
+.tu-zeile { display: flex; justify-content: space-between; gap: 6px; padding: 4px 8px; border-radius: 6px; background: var(--surface-2, rgba(255, 255, 255, 0.03)); font-size: 12.5px; margin-bottom: 2px; }
+.tu-zeile small { color: var(--text-muted); }
+.tu-zeile.weiter span:first-child { font-weight: 700; }
+.tu-zeile.eigen { outline: 1px solid var(--accent-primary, #a3e635); }
+.tu-gruppen summary { cursor: pointer; margin-top: 10px; font-weight: 600; }

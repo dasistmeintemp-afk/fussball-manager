@@ -11552,6 +11552,49 @@ function runEngineTests() {
         if (JSON.stringify(zur.koeffizient) !== JSON.stringify(state.koeffizient)) throw new Error("Fünfjahreswertung nicht gespeichert");
     });
 
+    test("Turniere: EM und WM im Sommer - Gruppen, K.-o.-Runden, Titel in der Akte, müde Rückkehrer", () => {
+        const { TurnierEngine: T } = require('./js/engine/turnierEngine.js');
+        const { CalendarEngine } = require('./js/engine/calendarEngine.js');
+        const { AuszeichnungEngine } = require('./js/engine/auszeichnungEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Turnier" });
+        if (T.art(state) !== null) throw new Error("Turnier im Sommer 2027");
+        state.seasonYear = 2;
+        if (T.art(state) !== "em") throw new Error("Keine EM 2028");
+        state.seasonYear = 4;
+        if (T.art(state) !== "wm") throw new Error("Keine WM 2030");
+
+        // EM über die Sommerpause im Kalender
+        state.seasonYear = 2;
+        state.calendar = state.calendar.slice(0, state.calendar.findIndex(d => d.type === "season_end") + 1);
+        CalendarEngine.legeSommerpauseAn(state);
+        state.currentDayIndex = state.calendar.findIndex(d => d.sommerpause);
+        state._seasonFinished = state.seasonYear;
+        for (let i = 0; i < 20; i++) CalendarEngine.advanceOneDay(state);
+        const t = state.turnier;
+        if (!t || t.art !== "em" || Object.keys(t.teams).length !== 16) throw new Error(`EM: ${t && Object.keys(t.teams).length} Teams`);
+        if (!Object.keys(t.teams).every(n => T.EUROPA.includes(n))) throw new Error("Nicht-europäische Nation bei der EM");
+        if (t.gruppen.some(g => g.spiele.length !== 6)) throw new Error("Gruppenphase unvollständig");
+        if (t.ko.map(r => r.name).join(",") !== "Viertelfinale,Halbfinale,Finale" || !t.abgeschlossen) throw new Error(`K.-o.-Runden: ${t.ko.map(r => r.name)}`);
+        if (!t.teams[t.siegerName]) throw new Error("Sieger nimmt nicht teil");
+        t.ko.forEach(r => r.spiele.forEach(sp => { if (!T.sieger(sp)) throw new Error("K.-o.-Spiel ohne Sieger"); }));
+        const meister = state.players.find(p => String(p.id) === String(t.teams[t.siegerName].kader[0]));
+        if (!AuszeichnungEngine.preiseVon(meister).some(a => /Europameister 2028/.test(a.name))) throw new Error("Titel nicht in der Akte");
+        if (!state.inbox.some(m => /gewinnt die Europameisterschaft 2028/.test(m.subject))) throw new Error("Keine Nachricht zum Titel");
+        // Rückkehr: nicht mehr abgestellt, müde
+        if (meister.abgestellt !== t.siegerName) throw new Error("Spieler nicht abgestellt");
+        meister.fitness = 90;
+        T.rueckkehr(state);
+        if (meister.abgestellt || meister.fitness !== 90 - T.MUEDE) throw new Error(`Rückkehr ohne Folgen: ${meister.abgestellt}, Fitness ${meister.fitness}`);
+
+        // WM: 32 Nationen, acht Gruppen, Achtelfinale
+        state.seasonYear = 4;
+        state.turnier = null;
+        for (let tag = 1; tag <= 21; tag++) T.tag(state, tag);
+        const wm = state.turnier;
+        if (Object.keys(wm.teams).length !== 32 || wm.gruppen.length !== 8 || wm.ko[0].name !== "Achtelfinale" || !wm.abgeschlossen) throw new Error(`WM: ${Object.keys(wm.teams).length} Teams, ${wm.ko.map(r => r.name)}`);
+        if (!wm.torjaeger || wm.torjaeger.tore < 2) throw new Error("Kein Torschützenkönig");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

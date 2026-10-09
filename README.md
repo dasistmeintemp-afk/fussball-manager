@@ -118,6 +118,12 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   - **Trainer des Jahres:** Titel zählen am meisten, dazu wie weit ein Verein über dem Platz landet, den sein Kader erwarten ließ.
   - **Elf des Jahres** im 4-3-3.
   - **Folgen:** Die Preise stehen in der Akte und steigern Marktwert und Laune. Gewinnt der eigene Trainer, stärkt das seinen Ruf und das Vertrauen des Vorstands. Die Ranglisten zeigen die letzte Gala, die Post fasst sie zusammen.
+- **EM und WM (`TurnierEngine`):** Alle zwei Jahre ist der Sommer ein Turniersommer: EM 2028, WM 2030, EM 2032 und so weiter. Gespielt wird in den drei Wochen der Sommerpause.
+  - **EM:** die 16 stärksten europäischen Nationen, vier Gruppen, dann Viertelfinale, Halbfinale, Finale. **WM:** die 32 stärksten Nationen, acht Gruppen, dann ab dem Achtelfinale.
+  - Je Gruppe kommen zwei weiter. Endet ein K.-o.-Spiel unentschieden, entscheidet das Elfmeterschießen.
+  - Die Spiele rechnet die Länderspiel-Engine: Tore, Müdigkeit, Verletzungen, Länderspiele in der Akte. Betreut der Manager eine Nation, zählen sie für seine Bilanz, und er hört nach jeder Runde, ob es weitergeht.
+  - **Folgen:** Die Turnierspieler kommen müde in die Vorbereitung (15 Punkte Fitness weniger). Der Titel steht in der Akte („Weltmeister 2030“), steigert den Marktwert um ein Zehntel und hebt die Laune. Dazu ein Torschützenkönig des Turniers.
+  - **Anzeige:** Die Ranglisten zeigen das letzte Turnier mit K.-o.-Runden und Gruppen, die Post den Start und das Finale.
 - **Fünfjahreswertung (`KoeffizientEngine`):** Die Startplätze im Europapokal standen fest in den Ligadaten. Jetzt sammelt jedes Land Punkte mit seinen Vereinen.
   - **Punkte:** Sieg 2, Remis 1, je erreichter Endrundenrunde 1, Teilnahme an der Königsklasse 2. Der Wert einer Saison ist die Summe geteilt durch die Zahl der Vereine des Landes im Europapokal.
   - **Startplätze:** Rang 1 bis 4 der Fünfjahreswertung stellt vier Vereine in der Königsklasse, Rang 5 drei. Das Land mit dem besten Wert der Vorsaison bekommt einen fünften Platz (Leistungsplatz). Dahinter je ein Platz in Europa League und Conference League.
@@ -861,6 +867,7 @@ untitled/
 │   │   ├── kaderplanungEngine.js # Kader über drei Spielzeiten, Baustellen als Suchauftrag
 │   │   ├── kaderregelEngine.js # Meldelisten: Europapokal (25, acht ausgebildet, Liste B), Premier League
 │   │   ├── koeffizientEngine.js # Fünfjahreswertung der Länder und Startplätze im Europapokal
+│   │   ├── turnierEngine.js    # EM und WM im Sommer: Gruppen, K.-o.-Runden, Titel
 │   │   ├── klauselEngine.js    # Steigerung, Auf-/Abstieg, Mindestablöse, Vereinsoption
 │   │   ├── newsEngine.js       # Zentrales Nachrichtensystem & Postfach
 │   │   ├── aiManagerEngine.js  # KI-Aufstellungen & KI-Transferangebote

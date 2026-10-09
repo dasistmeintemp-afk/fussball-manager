@@ -5950,6 +5950,36 @@ class UIManager {
         }));
     }
 
+    /** EM oder WM: Gruppen, K.-o.-Runden, Sieger und Torschützenkönig des letzten Turniers */
+    renderTurnier(state) {
+        const el = document.getElementById("statsTurnier");
+        const engine = typeof TurnierEngine !== "undefined" ? TurnierEngine : null;
+        const t = state.turnier;
+        if (!el || !engine || !t) { if (el) { el.hidden = true; el.innerHTML = ""; } return; }
+        el.hidden = false;
+        const esc = (x) => this.escapeHtml(String(x ?? ""));
+        const nation = state.nationaltrainer?.nation;
+        const ergebnis = (sp) => `${sp.t[0]}:${sp.t[1]}${sp.elfmeter ? " i. E." : ""}`;
+        const eigen = (n) => n === nation ? " eigen" : "";
+        const gruppen = t.gruppen.map(g => {
+            const tab = engine.tabelle(g);
+            return `<div class="tu-gruppe"><h5>${esc(g.name)}</h5>${tab.map((z, i) => `
+                <div class="tu-zeile${i < 2 && g.spiele.length >= 6 ? " weiter" : ""}${eigen(z.name)}"><span>${esc(z.name)}</span><span>${z.punkte} Pkt. <small>${z.tore}:${z.gegen}</small></span></div>`).join("")}</div>`;
+        }).join("");
+        const ko = t.ko.map(r => `<div class="tu-runde"><h5>${esc(r.name)}</h5>${(r.fertig ? r.spiele : r.paare.map(([h, a]) => ({ h, a })))
+            .map(sp => {
+                // Wer weiterkommt, steht fett - auch nach dem Elfmeterschießen
+                const w = sp.t ? engine.sieger(sp) : null;
+                const team = (n) => n === w ? `<strong>${esc(n)}</strong>` : esc(n);
+                return `<div class="tu-zeile${eigen(sp.h) || eigen(sp.a)}"><span>${team(sp.h)} - ${team(sp.a)}</span><span>${sp.t ? ergebnis(sp) : "offen"}</span></div>`;
+            }).join("")}</div>`).join("");
+        el.innerHTML = `
+            <div class="card-header"><h3>🏆 ${esc(t.name)}</h3><span class="header-tag">${t.siegerName ? `Sieger: ${esc(t.siegerName)}` : "läuft"}</span></div>
+            ${t.torjaeger ? `<p class="muted-note">Torschützenkönig: <strong>${esc(t.torjaeger.name)}</strong> (${esc(t.torjaeger.nation)}), ${t.torjaeger.tore} Tore</p>` : ""}
+            ${ko ? `<div class="tu-ko">${ko}</div>` : ""}
+            <details class="tu-gruppen"${t.ko.length ? "" : " open"}><summary>Gruppenphase</summary><div class="tu-raster">${gruppen}</div></details>`;
+    }
+
     /**
      * Die Fünfjahreswertung: Punkte der Länder aus dem Europapokal, die
      * laufende Saison zuletzt, und wie viele Plätze in der Königsklasse das
@@ -6119,6 +6149,7 @@ class UIManager {
         if (typeof this.renderDatenzentrale === "function") this.renderDatenzentrale(state, ligaId);
         this.renderPreise(state, ligaId === "alle" ? eigeneLiga : ligaId, vereine);
         this.renderJahrespreise(state, vereine);
+        this.renderTurnier(state);
         this.renderKoeffizient(state);
         this.renderKarussell(state, ligaId === "alle" ? eigeneLiga : ligaId);
         this.renderGeruechte(state, ligaId === "alle" || ligaId === eigeneLiga);

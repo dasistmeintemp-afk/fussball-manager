@@ -412,7 +412,11 @@ const AuszeichnungEngine = {
         };
         const jp = _auszResolve("JahrespreisEngine", "./jahrespreisEngine.js");
         return (Array.isArray(player?.auszeichnungen) ? player.auszeichnungen : [])
-            .map(a => ({ ...a, name: namen[a.art] || (jp && jp.name(a)) || a.art, wann: a.monat ? this.monatsName(a.monat) : `Saison ${a.saison}` }));
+            .map(a => {
+                const tu = _auszResolve("TurnierEngine", "./turnierEngine.js");
+                const name = namen[a.art] || (jp && jp.name(a)) || (tu && tu.titelName(a)) || a.art;
+                return { ...a, name, wann: a.monat ? this.monatsName(a.monat) : (a.jahr ? `Sommer ${a.jahr}` : `Saison ${a.saison}`) };
+            });
     },
 
     /** Für die Ranglisten: die Monatspreise dieser Saison und die letzten Saisonpreise der Liga */

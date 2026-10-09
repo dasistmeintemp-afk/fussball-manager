@@ -8612,3 +8612,55 @@ td.nowrap { white-space: nowrap; }
 .jv-text { margin: 0; font-size: 13px; line-height: 1.45; }
 .jv-pos { display: flex; flex-wrap: wrap; gap: 4px; }
 .jv-hinweis { margin: 0; font-size: 11px; color: var(--text-muted); }
+
+/* Datenzentrale und Spielervergleich. Reihenfarben auf der dunklen Fläche
+   geprüft: Blau = eigene Seite / Spieler A, Orange = Gegner / Spieler B */
+:root { --reihe-a: #3987e5; --reihe-b: #d95926; }
+.dz-karte { display: grid; gap: 10px; min-width: 0; }
+.dz-kopf { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dz-kopf h3 { margin: 0; }
+.dz-wahl { display: flex; gap: 6px; }
+.dz-leer, .dz-fazit { margin: 0; font-size: 12px; color: var(--text-muted); line-height: 1.45; }
+.dz-fazit strong { color: var(--text-main); }
+.dz-tabelle { max-width: 100%; overflow-x: auto; }
+.dz-tabelle th { cursor: pointer; white-space: nowrap; user-select: none; text-transform: none; letter-spacing: 0; }
+.dz-tabelle th, .dz-tabelle td { padding: 6px 8px; font-size: 12px; }
+.dz-tabelle th.dz-sortiert { color: var(--text-main); }
+.dz-tabelle td { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dz-tabelle td.dz-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.dz-tabelle tr.dz-eigen td { background: rgba(var(--accent-rgb), 0.08); font-weight: 600; }
+.dz-link { background: none; border: 0; padding: 0; color: var(--text-main); font: inherit; cursor: pointer; text-align: left; text-decoration: underline dotted; }
+.dz-legende { display: flex; gap: 14px; font-size: 12px; color: var(--text-muted); }
+.dz-legende span { display: inline-flex; align-items: center; gap: 6px; }
+.dz-punkt { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+.dz-punkt.dz-fuer, rect.dz-fuer, .vg-balken.dz-fuer { background: var(--reihe-a); fill: var(--reihe-a); }
+.dz-punkt.dz-gegen, rect.dz-gegen, .vg-balken.dz-gegen { background: var(--reihe-b); fill: var(--reihe-b); }
+.dz-form { width: 100%; height: auto; display: block; }
+.dz-form rect:hover { opacity: 0.8; }
+.dz-grundlinie { stroke: var(--border-light); stroke-width: 1; }
+.dz-achse { fill: var(--text-muted); font-size: 8px; }
+.dz-erg { fill: var(--text-main); font-size: 9px; font-weight: 600; }
+.dz-erg-N { fill: var(--text-muted); }
+.pd-vergleich { width: 100%; margin: -6px 0 14px; }
+.vg-auswahl { display: grid; gap: 6px; margin-bottom: 12px; font-size: 12px; color: var(--text-muted); }
+.vg-auswahl select, .vg-auswahl input { width: 100%; }
+.vg-treffer { display: grid; gap: 4px; }
+.vg-koepfe { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.vg-person { display: grid; gap: 2px; font-size: 12px; color: var(--text-muted); min-width: 0; }
+.vg-person strong { color: var(--text-main); font-size: 14px; overflow-wrap: anywhere; }
+.vg-person.vg-b { text-align: right; justify-items: end; }
+.vg-titel { margin: 12px 0 6px; font-size: 13px; color: var(--text-muted); }
+.vg-werte { display: grid; gap: 4px; }
+.vg-zeile { display: grid; grid-template-columns: 52px 1fr 92px 1fr 52px; align-items: center; gap: 6px; font-size: 12px; }
+.vg-zeile.vg-zahlen { grid-template-columns: 1fr 120px 1fr; }
+.vg-wert { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.vg-wa { text-align: right; }
+.vg-wb { text-align: left; }
+.vg-zahlen .vg-wa, .vg-zahlen .vg-wb { text-align: center; }
+.vg-besser { color: var(--text-main); font-weight: 700; }
+.vg-label { text-align: center; color: var(--text-main); }
+.vg-spur { position: relative; height: 10px; background: rgba(148, 163, 184, 0.12); border-radius: 3px; overflow: hidden; }
+.vg-spur .vg-balken { position: absolute; top: 0; bottom: 0; }
+.vg-links .vg-balken { right: 0; border-radius: 3px 0 0 3px; }
+.vg-rechts .vg-balken { left: 0; border-radius: 0 3px 3px 0; }
+.vg-spanne { position: absolute; top: 3px; bottom: 3px; background: rgba(255, 255, 255, 0.45); border-radius: 2px; }

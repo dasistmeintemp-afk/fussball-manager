@@ -5856,6 +5856,7 @@ class UIManager {
             `Mindestens ${mindestens} Einsätze erforderlich.`);
         DOM.setText("statsRatingHint", `ab ${mindestens} Einsätzen`);
 
+        if (typeof this.renderDatenzentrale === "function") this.renderDatenzentrale(state, ligaId);
         this.renderPreise(state, ligaId === "alle" ? eigeneLiga : ligaId, vereine);
         this.renderKarussell(state, ligaId === "alle" ? eigeneLiga : ligaId);
         this.renderGeruechte(state, ligaId === "alle" || ligaId === eigeneLiga);

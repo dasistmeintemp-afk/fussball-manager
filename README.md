@@ -161,6 +161,14 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
     - Das Gerücht ist nicht erfunden: Der Verein greift bei diesem Spieler eher zu, wenn er auf der Position sucht und es sich leisten kann.
     - Kommt der Wechsel zustande, meldet die Rundschau „das Gerücht stimmte“.
     - Die Ranglisten zeigen die Gerüchte der Saison mit Haken für die bestätigten.
+- **Datenzentrale (`DatenzentraleEngine`, Reiter Ranglisten):** Was die Spiele der eigenen Liga verraten, in drei Ansichten:
+  - **Liga:** Jeder Verein mit Toren und xG (für und gegen), Punkten und xPunkten, Schüssen je Spiel, Ballbesitz und Passquote. xPunkte sind die Punkte, die die Chancen im Schnitt eingebracht hätten (Poisson über das xG beider Seiten). Darüber steht, auf welchem Platz der eigene Verein nach den Chancen stünde und ob die Tabelle schmeichelt. Jede Spalte lässt sich sortieren.
+  - **Form:** Die letzten zehn eigenen Spiele als xG-Balken für und gegen, mit dem Ergebnis darüber und einer Tabelle darunter.
+  - **Spieler:** Einsätze, Minuten, Tore, Vorlagen, xG, Tore minus xG, Schüsse, Note und die Werte je 90 Minuten (ab 270 Minuten). Ein Tipp auf den Namen öffnet die Akte.
+  - Die übrigen Partien der eigenen Liga behalten dafür sieben Kennzahlen (xG, Schüsse, Ballbesitz, Passquote), etwa 9 KB je Saison. Andere Ligen speichern weiter nur Ergebnisse. Schüsse tragen jetzt die ID des Schützen; vorher gingen bei doppelten Nachnamen im Kader Schüsse verloren.
+- **Spielervergleich:** In der Akte vergleicht *Mit anderem Spieler vergleichen* zwei Spieler nebeneinander: Werte als Balken, Saison, Werte je 90 Minuten, Marktwert, Gehalt und Vertrag. Der bessere Wert steht fett.
+  - Angeboten werden eigene und gut gescoutete Spieler derselben Position, jeder andere lässt sich per Name suchen.
+  - Fremde Spieler zeigen ihre Werte nur so genau, wie der Scout sie kennt: bei wenig Wissen als Spanne.
 - **Spielplan mit wechselndem Heimrecht:** Heim- und Auswärtsspiele wechseln sich nach dem Berger-Verfahren ab, höchstens drei gleiche in Folge. Vorher hatte ein Verein bis zu 17 Heim- oder Auswärtsspiele am Stück.
 
 ### 2. 📋 Aufstellung, Taktik & Teamchemie
@@ -793,6 +801,7 @@ untitled/
 │   │   ├── contractEngine.js   # Vertragsforderungen, Verlängerungen & Ausstiegsklauseln
 │   │   ├── sportdirektorEngine.js # Spielervorschläge und Beratung des Sportdirektors
 │   │   ├── calendarEngine.js   # Saisonkalender & dynamischer Tagesablauf
+│   │   ├── datenzentraleEngine.js # Liga nach xG und xPunkten, Form, Spielerwerte, Spielervergleich
 │   │   └── opponentAnalysisEngine.js # Taktische Gegneranalyse
 │   ├── ui/
 │   │   ├── uiManager.js        # Kern: Start, Assistent, Reiter, Kader, Taktik, Kalender, Ereignisse
@@ -805,6 +814,7 @@ untitled/
 │   │   ├── uiSpeicher.js       # Speicherplätze, Sicherungen, Laden, Löschen, Import
 │   │   ├── uiEinstieg.js       # Erste Schritte, Erklärkästen, Kurzanleitung und Begriffe
 │   │   ├── uiNational.js       # Reiter Nationalteam: freie Posten, Kader, Ausrichtung, Ergebnisse
+│   │   ├── uiDaten.js          # Datenzentrale und Spielervergleich
 │   │   └── spielfeld3d.js      # 3D-Ansicht des Livespiels (three.js, nachgeladen): Stadion, Figuren, Bewegungen, Wiederholung, Qualitätsstufen
 │   └── vendor/
 │       └── three.min.js        # three.js r159 (MIT-Lizenz, THREE_LICENSE daneben)

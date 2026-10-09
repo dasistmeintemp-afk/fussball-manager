@@ -4529,6 +4529,18 @@ class UIManager {
             : lage.plaetze.frei <= 0
                 ? `<button class="btn btn-sm btn-secondary" disabled>Akademie voll</button>`
                 : `<button class="btn btn-sm btn-primary" id="btnSichtungstag">Sichtungstag ansetzen (${this.formatMoneySafe(lage.kosten)})</button>`;
+        // Die Jugendvorschau: Der Jahrgang ist gesichtet, der Nachwuchsleiter beschreibt ihn
+        const vs = typeof youth.vorschau === "function" ? youth.vorschau(state) : null;
+        const bericht = vs ? youth.vorschauBericht(state, club, vs.talente) : null;
+        const urteilIcon = { golden: "🌟", gut: "✨", ordentlich: "🎓", schwach: "🌧️" };
+        const vorschauHtml = bericht ? `
+            <div class="jugend-vorschau jv-${bericht.urteil}">
+                <div class="jv-kopf">${urteilIcon[bericht.urteil] || "🎓"} <strong>Jugendvorschau</strong>
+                    <span class="text-muted">Jahrgang um den ${vs.tag}. Spieltag · ${vs.talente.length} Talente</span></div>
+                <p class="jv-text">${this.escapeHtml(bericht.text)}</p>
+                <div class="jv-pos">${Object.entries(bericht.positionen).map(([w, n]) => `<span class="mp-chip">${n > 1 ? `${n}× ` : ""}${this.escapeHtml(w)}</span>`).join("")}</div>
+                <p class="jv-hinweis">Andere Schwerpunkte (unten) lassen die Scouts bis zum Jugendtag neu sichten.</p>
+            </div>` : "";
         box.innerHTML = `
             <div class="akademie-zugang">
                 <div class="akademie-zugang-text">
@@ -4536,7 +4548,8 @@ class UIManager {
                     <span>${this.escapeHtml(jugendtagText)} · Probetrainings etwa alle ${wochen} Wochen · Mit ${youth.AKADEMIE_HOECHSTALTER} ist ohne Vertrag Schluss</span>
                 </div>
                 ${knopf}
-            </div>`;
+            </div>
+            ${vorschauHtml}`;
         document.getElementById("btnSichtungstag")?.addEventListener("click", () => {
             const res = youth.sichtungstag(state);
             if (!res.success) return this.showToast(res.error, "error");
@@ -4657,6 +4670,10 @@ class UIManager {
                 }
                 if (gruppe === "profil") {
                     this.showToast(`Die Akademie bildet ab dem nächsten Jahrgang als ${profile[wert]?.name || wert} aus.`, "success");
+                }
+                if (res.vorschauNeu) {
+                    const b = youth.vorschauBericht(state, club, youth.vorschau(state)?.talente || []);
+                    this.showToast(`🎓 Neu gesichtet: ${b.text}`, "info", 7000);
                 }
                 if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
                 this.renderTraining();

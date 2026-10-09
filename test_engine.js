@@ -10888,6 +10888,50 @@ function runEngineTests() {
         if (state.gegneranweisungen || MP.spielOptionen(state, match)) throw new Error("Anweisungen gelten über das Spiel hinaus");
     });
 
+    test("Jugendvorschau: Der Jahrgang ist drei Spieltage vorher gesichtet, der Nachwuchsleiter beschreibt ihn, am Jugendtag kommt genau er", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const tag = YouthEngine.jugendtagSpieltag(state);
+        YouthEngine.setzeSchwerpunkte(state, club.id, { einzug: "national" });
+        const kosten = YouthEngine.einzugKosten(club, "national");
+        const talenteVorher = YouthEngine.eigeneTalente(state).length;
+
+        // Die Vorschau: gesichtet, aber noch nicht in der Akademie und nicht bezahlt
+        state.currentMatchday = tag - 3;
+        const kasse = club.balance;
+        if (!YouthEngine.pruefeJugendtag(state)) throw new Error("Keine Vorschau");
+        const vs = YouthEngine.vorschau(state);
+        if (!vs || vs.talente.length !== YouthEngine.JAHRGAENGE.normal.anzahl) throw new Error("Kein gesichteter Jahrgang");
+        if (YouthEngine.eigeneTalente(state).length !== talenteVorher || club.balance !== kasse) throw new Error("Die Vorschau nimmt schon auf oder kostet schon");
+        const mail = state.inbox.find(m => /Jugendtag in drei Wochen/.test(m.subject));
+        const b = YouthEngine.vorschauBericht(state, club, vs.talente);
+        if (!mail || !mail.body.includes(b.bester.name) || !["golden", "gut", "ordentlich", "schwach"].includes(b.urteil)) throw new Error(`Bericht fehlt: ${mail?.body}`);
+
+        // Andere Schwerpunkte: Die Scouts sichten neu
+        const res = YouthEngine.setzeSchwerpunkte(state, club.id, { jahrgang: "breite" });
+        if (!res.vorschauNeu || YouthEngine.vorschau(state).talente.length !== 5) throw new Error("Neue Schwerpunkte ändern die Vorschau nicht");
+        const ids = YouthEngine.vorschau(state).talente.map(t => t.id);
+        if (YouthEngine.setzeSchwerpunkte(state, club.id, { jahrgang: "breite" }).vorschauNeu) throw new Error("Ohne Änderung wird neu gesichtet");
+
+        // Der Jugendtag: genau dieser Jahrgang, jetzt mit Sichtungskosten
+        state.currentMatchday = tag;
+        if (!/Jugendtag: 5 neue Talente/.test(YouthEngine.pruefeJugendtag(state) || "")) throw new Error("Am Jugendtag kommt ein anderer Jahrgang");
+        const jetzt = YouthEngine.eigeneTalente(state).map(t => t.id);
+        if (ids.some(id => !jetzt.includes(id))) throw new Error("Die gesichteten Talente fehlen in der Akademie");
+        if (club.balance !== kasse - kosten) throw new Error(`Sichtung falsch bezahlt: ${kasse - club.balance} statt ${kosten}`);
+        if (YouthEngine.vorschau(state)) throw new Error("Die Vorschau bleibt nach dem Jugendtag stehen");
+
+        // Der Blick des Nachwuchsleiters: ein guter sieht genau, die Aushilfe nur grob
+        const talente = [99, 98, 30].map((pot, i) => ({ id: `t${i}`, name: `Talent ${i}`, pos: ["ST", "ZM", "IV"][i], pot, overall: 40 }));
+        club.staff = Object.assign({}, club.staff, { nachwuchs: { name: "Genau", guete: 100 } });
+        const genau = YouthEngine.vorschauBericht(state, club, talente);
+        if (genau.unsicher || genau.bester.name !== "Talent 0" || genau.urteil !== "golden") throw new Error(`Guter Leiter irrt: ${JSON.stringify(genau)}`);
+        delete club.staff.nachwuchs;
+        if (!YouthEngine.vorschauBericht(state, club, talente).unsicher) throw new Error("Die Aushilfe ist sich sicher");
+        const schwach = YouthEngine.vorschauBericht(state, club, talente.map(t => ({ ...t, pot: 30 })));
+        if (schwach.urteil !== "schwach") throw new Error(`Schwacher Jahrgang nicht erkannt: ${schwach.urteil}`);
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

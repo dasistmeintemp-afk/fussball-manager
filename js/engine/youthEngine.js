@@ -123,7 +123,15 @@ const YouthEngine = {
             einzug: neu.einzug,
             profilSaison: neu.profilSaison
         };
-        return { ok: true, schwerpunkte: this.schwerpunkteVon(club), kosten: this.einzugKosten(club, neu.einzug) };
+        // Steht die Vorschau schon, sichten die Scouts mit den neuen
+        // Schwerpunkten noch einmal - bis zum Jugendtag lässt sich nachsteuern
+        let vorschauNeu = false;
+        const vs = clubId === state.userClubId ? this.vorschau(state) : null;
+        if (vs && vs.schluessel !== this._vorschauSchluessel(club)) {
+            this._sichteVorschau(state, club, vs.tag);
+            vorschauNeu = true;
+        }
+        return { ok: true, schwerpunkte: this.schwerpunkteVon(club), kosten: this.einzugKosten(club, neu.einzug), vorschauNeu };
     },
 
     /**
@@ -272,6 +280,99 @@ const YouthEngine = {
         return liste;
     },
 
+    /** Die Vorschau dieser Saison, solange der Jahrgang noch nicht da ist - sonst null */
+    vorschau(state) {
+        const vs = state?.youthAcademy?.vorschau;
+        if (!vs || vs.saison !== (state.seasonYear || 1) || !Array.isArray(vs.talente)) return null;
+        if (state.youthAcademy.jugendtagSaison === vs.saison) return null;
+        return vs;
+    },
+
+    _vorschauSchluessel(club) {
+        const sp = this.schwerpunkteVon(club);
+        return [sp.profil, sp.positionen.join("+"), sp.jahrgang, sp.einzug].join("|");
+    },
+
+    /** Den Jahrgang sichten (ohne ihn aufzunehmen) und als Vorschau ablegen */
+    _sichteVorschau(state, club, tag) {
+        if (!state.youthAcademy) state.youthAcademy = { prospects: [], level: 1 };
+        const talente = this.generateProspects(state, club.id, { vorschau: true });
+        state.youthAcademy.vorschau = { saison: state.seasonYear || 1, tag, talente, schluessel: this._vorschauSchluessel(club) };
+        return state.youthAcademy.vorschau;
+    },
+
+    /** Am Jugendtag: der gesichtete Jahrgang kommt in die Akademie, die Sichtung wird bezahlt */
+    _nimmVorschauAuf(state, club, vs) {
+        const sp = this.schwerpunkteVon(club);
+        const kosten = this.einzugKosten(club, sp.einzug);
+        if (kosten > 0) {
+            club.balance = (club.balance || 0) - kosten;
+            const fin = _youthResolve("FinanceEngine", "./financeEngine.js");
+            if (fin && typeof fin.recordTransaction === "function") {
+                fin.recordTransaction(state, club.id, "youth_scouting", -kosten, `Nachwuchssichtung (${this.EINZUG[sp.einzug].name})`);
+            }
+        }
+        const liste = this.eigeneTalente(state);
+        vs.talente.forEach(t => liste.push(t));
+        return vs.talente;
+    },
+
+    /** Ab hier ist ein Talent für diese Akademie eine Ausnahme (Skala von _potSkala) */
+    AUSNAHME: 0.75,
+
+    POS_WORT: { TW: "Torhüter", IV: "Innenverteidiger", LV: "Außenverteidiger", RV: "Außenverteidiger", DM: "Sechser",
+        ZM: "Mittelfeldspieler", OM: "Zehner", LM: "Flügelspieler", RM: "Flügelspieler", LA: "Flügelspieler", RA: "Flügelspieler", ST: "Stürmer" },
+
+    /**
+     * Wo ein Potenzial für diese Akademie liegt: 0 = das Übliche, 1 = das
+     * Beste, was sie normalerweise hervorbringt (talentWerte ohne Zuschläge).
+     */
+    _potSkala(state, club) {
+        const gen = _youthResolve("PlayerGenerator", "./playerGenerator.js");
+        const bereich = gen && typeof gen.getAbilityRangeForLevel === "function"
+            ? gen.getAbilityRangeForLevel(club?.level || 1) : { minPA: 134, maxPA: 184 };
+        const zuStaerke = (pa) => gen && typeof gen.toOverall === "function" ? gen.toOverall(pa) : Math.round(pa / 2);
+        const stufe = Math.max(1, Math.min(5, this.akademieStufe(state, club)));
+        const spanne = Math.max(20, (bereich.maxPA || bereich.minPA + 50) - bereich.minPA);
+        const basis = bereich.minPA + spanne * (0.25 + stufe * 0.07);
+        const norm = zuStaerke(basis + spanne * 0.25), top = zuStaerke(basis + spanne * 0.5);
+        return (pot) => (pot - norm) / Math.max(1, top - norm);
+    },
+
+    /**
+     * Was der Nachwuchsleiter über den gesichteten Jahrgang sagt. Er schätzt
+     * das Potenzial - ein guter genau, ein schwacher (oder die Aushilfe ohne
+     * Nachwuchsleiter) mit spürbarem Irrtum. Gemessen an dem, was diese
+     * Akademie üblicherweise hervorbringt: Zwei Ausnahmetalente sind ein
+     * goldener Jahrgang.
+     */
+    vorschauBericht(state, club, talente = []) {
+        const guete = this.nachwuchsleiterGuete(state, club) ?? 50;
+        const blick = club?.staff?.nachwuchs ? guete : Math.min(guete, 40);
+        const irrtum = (t) => {
+            const text = `${t.id}|${club?.staff?.nachwuchs?.name || "Aushilfe"}`;
+            let h = 2166136261;
+            for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+            return ((((h >>> 0) % 2001) - 1000) / 1000) * Math.max(0, 100 - blick) * 0.12;
+        };
+        const skala = this._potSkala(state, club);
+        const geschaetzt = talente.map(t => ({ t, r: skala((t.pot || 0) + irrtum(t)) })).sort((a, b) => b.r - a.r);
+        const ausnahmen = geschaetzt.filter(g => g.r >= this.AUSNAHME).length;
+        const bester = geschaetzt[0] || null;
+        const urteil = ausnahmen >= 2 ? "golden" : ausnahmen === 1 ? "gut" : (bester && bester.r >= 0 ? "ordentlich" : "schwach");
+        const positionen = {};
+        talente.forEach(t => { const w = this.POS_WORT[t.pos] || t.pos; positionen[w] = (positionen[w] || 0) + 1; });
+        const posText = Object.entries(positionen).map(([w, n]) => n > 1 ? `${n} ${w}` : `ein ${w}`).join(", ");
+        const kopf = { golden: "Das könnte ein goldener Jahrgang werden.", gut: "Ein guter Jahrgang - einer sticht heraus.",
+            ordentlich: "Ein ordentlicher Jahrgang, ohne Ausreißer nach oben.", schwach: "Ein schwacher Jahrgang, ehrlich gesagt." }[urteil];
+        const ueberBesten = !bester ? "" : bester.r >= this.AUSNAHME ? "ein echtes Ausnahmetalent"
+            : bester.r >= 0 ? "einer für die erste Mannschaft, wenn er sich entwickelt" : "eher einer für die Breite";
+        const unsicher = blick < 55;
+        const text = `${unsicher ? "Ich kann den Jahrgang nur grob einschätzen. " : ""}${kopf} Dabei sind ${posText}.`
+            + (bester ? ` Der Vielversprechendste ist ${bester.t.name} (${bester.t.pos}) - ${unsicher ? "vielleicht " : ""}${ueberBesten}.` : "");
+        return { urteil, ausnahmen, unsicher, positionen, bester: bester ? { id: bester.t.id, name: bester.t.name, pos: bester.t.pos } : null, text };
+    },
+
     /** Um welchen Spieltag der Jugendtag liegt - im Frühjahr, wie im FM */
     jugendtagSpieltag(state) {
         const gesamt = state?.totalMatchdays || (Array.isArray(state?.schedule) ? state.schedule.length : 34) || 34;
@@ -308,28 +409,25 @@ const YouthEngine = {
             });
         };
 
-        // Die Vorschau: Wie der Jahrgang aussieht, schätzt der Nachwuchsleiter
+        // Die Vorschau: Der Jahrgang ist gesichtet, der Nachwuchsleiter
+        // beschreibt ihn - so gut, wie er hinsieht
         if (spieltag >= tag - 3 && spieltag < tag && ya.vorschauSaison !== saison) {
             ya.vorschauSaison = saison;
-            const bonus = this.leiterBonus(state, club);
-            const sp = this.schwerpunkteVon(club);
-            const jahrgang = this.JAHRGAENGE[sp.jahrgang];
-            const einschaetzung = bonus + (this.EINZUG[sp.einzug]?.pot || 0) + (jahrgang?.pot || 0) >= 4
-                ? "Nach allem, was wir gesehen haben, ist da ein richtig guter Jahrgang dabei."
-                : bonus < 0
-                    ? "Ehrlich gesagt kann ich den Jahrgang schwer einschätzen - ohne eigenen Nachwuchsleiter fehlt uns der Blick."
-                    : "Ein ordentlicher Jahrgang, vielleicht ist einer dabei, der es nach oben schafft.";
+            const vs = this._sichteVorschau(state, club, tag);
+            const b = this.vorschauBericht(state, club, vs.talente);
             postfach("🎓 Jugendtag in drei Wochen",
-                `Um den ${tag}. Spieltag stellt sich unser neuer Jahrgang vor: ${jahrgang?.anzahl || 3} Talente. ${einschaetzung}\n\n`
-                + "Die Schwerpunkte der Akademie lassen sich bis dahin noch im Reiter Training anpassen.");
+                `Um den ${tag}. Spieltag stellt sich unser neuer Jahrgang vor: ${vs.talente.length} Talente.\n\n${b.text}\n\n`
+                + "Ändern Sie die Schwerpunkte der Akademie (Reiter Training) bis dahin, sichten wir noch einmal neu.");
             return `🎓 Der Nachwuchsleiter kündigt den Jugendtag an (um den ${tag}. Spieltag).`;
         }
 
-        // Der Jugendtag selbst
+        // Der Jugendtag selbst: Es kommt der Jahrgang aus der Vorschau
         if (spieltag >= tag && ya.jugendtagSaison !== saison) {
+            const vs = this.vorschau(state);
             ya.jugendtagSaison = saison;
             ya.vorschauSaison = saison;
-            const neu = this.generateProspects(state, club.id);
+            const neu = vs ? this._nimmVorschauAuf(state, club, vs) : this.generateProspects(state, club.id);
+            delete ya.vorschau;
             const namen = neu.map(t => `• ${t.name} (${t.pos}, ${t.age} Jahre)`).join("\n");
             postfach(`🎓 Jugendtag: ${neu.length} neue Talente`,
                 `Der neue Jahrgang ist da:\n${namen}\n\nSie stehen ab sofort in der Akademie (Reiter Training). `
@@ -539,8 +637,8 @@ const YouthEngine = {
         // Ein guter Nachwuchsleiter holt mehr heraus, ein schwacher weniger
         const leiterBonus = this.leiterBonus(state, club);
 
-        // Die Sichtung kostet - abgebucht, wenn der Jahrgang kommt
-        if (eigen && einzug.kosten > 0 && !optionen.ohneKosten) {
+        // Die Sichtung kostet - abgebucht, wenn der Jahrgang kommt (nicht schon bei der Vorschau)
+        if (eigen && einzug.kosten > 0 && !optionen.ohneKosten && !optionen.vorschau) {
             const kosten = this.einzugKosten(club, sp.einzug);
             if (kosten > 0) {
                 club.balance = (club.balance || 0) - kosten;
@@ -612,7 +710,9 @@ const YouthEngine = {
                 promoted: false
             };
 
-            if (clubId === state.userClubId) {
+            if (optionen.vorschau) {
+                // Die Vorschau sieht den Jahrgang - aufgenommen wird er am Jugendtag
+            } else if (clubId === state.userClubId) {
                 // Beim eigenen Verein gibt es nur eine Liste
                 this.eigeneTalente(state).push(prospect);
             } else if (club && club.youthAcademy) {

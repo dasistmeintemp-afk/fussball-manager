@@ -614,15 +614,19 @@ class TransferEngine {
         const bedarfZahl = {};
         plan.forEach(pos => { bedarfZahl[pos] = (bedarfZahl[pos] || 0) + 1; });
 
-        // 1. Echte Luecken zuerst
+        const niveau = kader.reduce((a, p) => a + (p.overall || 50), 0) / kader.length;
+
+        // 1. Echte Luecken zuerst. Gesucht wird ab zehn Punkten unter dem
+        // eigenen Niveau - vorher lag die Messlatte bei null: Die Suche lief
+        // über alle Spieler der Position, und der Verein nahm den stärksten,
+        // den er bezahlen konnte, auch weit über seiner Liga.
         const luecken = Object.keys(bedarfZahl)
             .filter(pos => (bestand[pos] || []).length < bedarfZahl[pos]);
         if (luecken.length > 0 && kader.length < soll + 3) {
-            return { pos: _preZufall(luecken), art: "luecke", messlatte: 0 };
+            return { pos: _preZufall(luecken), art: "luecke", messlatte: Math.max(0, niveau - 10), niveau };
         }
 
         // 2. Sonst die schwaechste Position gemessen am eigenen Niveau
-        const niveau = kader.reduce((a, p) => a + (p.overall || 50), 0) / kader.length;
         let schwaechste = null;
         Object.keys(bedarfZahl).forEach(pos => {
             const beste = (bestand[pos] || []).map(p => p.overall || 0).sort((a, b) => b - a)[0] || 0;
@@ -631,7 +635,7 @@ class TransferEngine {
         if (!schwaechste) return null;
         // Nur wenn die Position wirklich hinterherhinkt
         if (schwaechste.beste >= niveau + 4) return null;
-        return { pos: schwaechste.pos, art: "verstaerkung", messlatte: schwaechste.beste };
+        return { pos: schwaechste.pos, art: "verstaerkung", messlatte: schwaechste.beste, niveau };
     }
 
     /**
@@ -657,6 +661,9 @@ class TransferEngine {
         }
         return vollzogen;
     }
+
+    /** Ab so viel über dem Kaderniveau des Käufers geht ein junger Spieler nicht zwei Ligen hinunter */
+    static ABSTIEG_ZU_GUT = 6;
 
     /** Ein einzelner Transferversuch eines Vereins */
     static versucheEinenTransfer(state, club, markt = null) {
@@ -689,6 +696,12 @@ class TransferEngine {
             const verkaeufer = p.clubId ? markt.vereine.get(p.clubId) : null;
             // Ein Spieler wechselt nicht in eine deutlich kleinere Nummer
             if (verkaeufer && (verkaeufer.reputation || 60) > eigenerRuf + 12) continue;
+            // Und kein junger Spieler geht zwei Ligen hinunter, wenn er für die
+            // Elf des Käufers klar zu gut ist. Gemessen trugen genau diese
+            // Wechsel dazu bei, dass die unteren Ligen Saison für Saison
+            // stärker wurden.
+            if (verkaeufer && (club.level || 1) - (verkaeufer.level || 1) >= 2 && (p.age || 25) < 30
+                && (p.overall || 0) > (bedarf.niveau ?? bedarf.messlatte) + this.ABSTIEG_ZU_GUT) continue;
 
             // Niemand gibt seinen letzten Mann auf einer Position her. Ein
             // Kader hat auf den meisten Positionen aber nur zwei Leute -

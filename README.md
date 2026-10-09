@@ -634,6 +634,14 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
   - Die KI sucht Verstärkungen in einer nach Stärke sortierten Liste und hört auf, sobald niemand mehr besser ist. Zu teure Spieler fallen mit einer billigen Vorprüfung heraus.
   - Ein KI-Transfer baut kein eigenes Verzeichnis aller Spieler mehr auf.
   - Die Simulation zählt die Rollen einer Elf einmal je Aufstellung statt in jeder Spielszene.
+- **Langzeit: sechs Saisons ohne Eingriff** (gemessen mit einem Bundesliga-Verein, die KI spielt alles):
+  - **Tempo:** Eine Saison dauerte anfangs 45 s, nach fünf Saisons 61 s. Jetzt sind es 43 und 57 s. Die Aufstellung der KI-Vereine sucht ihren Kader in einem Verzeichnis, das einmal je Spieltag entsteht, statt 384-mal in allen Spielern der Welt.
+  - **Eintritt je Heimspiel:** Gehälter, Sponsor und Betrieb werden für alle Vereine einmal je Spieltag der eigenen Liga gebucht. Eintritt gab es dagegen für jedes echte Heimspiel, in der Championship also 23 statt 17. Jetzt bringt jede Saison so viel Eintritt, wie die Rechnung je Spieltag unterstellt.
+  - **Fanstimmung:** Die Stimmung der eigenen Fans füllte jedes Stadion der Welt mit. Jetzt gilt sie nur zu Hause.
+  - **Betriebsaufwand:** Von der zweiten bis zur siebten Liga blieben jedem Verein 12 bis 17 % seines Umsatzes. Der Anteil des Betriebs steigt jetzt von 45 % in der zweiten bis 78 % in der siebten Liga, übrig bleiben rund 3 bis 7 %.
+  - **Rücklagen der KI-Vereine:** Was über dem Doppelten der üblichen Rücklage einer Stufe und Größe liegt, fließt zum Saisonwechsel zur Hälfte in Anlagen und Tilgung. Der eigene Verein bleibt außen vor.
+  - **Transfers nach unten:** Ein junger Spieler geht nicht zwei Ligen hinunter, wenn er dort klar zu gut für die Elf ist. Eine Lücke im Kader füllt die KI ab zehn Punkten unter dem eigenen Niveau, nicht mit dem Stärksten, den sie sich leisten kann.
+  - **Ergebnis:** Nach fünf Saisons hatte der Median-Drittligist vorher das Neunfache seines Startguthabens auf dem Konto, der Sechstligist das Vierzehnfache. Jetzt sind es nach sechs Saisons das 2,4- und das 5-Fache, und die Kontostände pendeln sich ein. Die Stärke der Elf je Liga bleibt bis auf rund einen Punkt stabil. Nur die sechste Liga legt weiter etwa 0,3 Punkte je Saison zu.
 - **Taktische Gegneranalyse (`OpponentAnalysisEngine`):** Vor jedem Ligaspiel detaillierte Stärken-/Schwächenprofile, gegnerische Taktiktendenzen, Gefahreinstufung und konkrete Trainer-Empfehlungen abrufen. Der Spielanalyst aus dem Trainerstab entscheidet, wie genau sie ist:
   - Ein schwacher Analyst liest die Mannschaftsteile ungenauer und stellt nur zwei Schlüsselspieler vor.
   - Ein guter Analyst stellt bis zu vier Schlüsselspieler vor und benennt die Schwachstelle der gegnerischen Elf samt Rat, wie man sie angeht.

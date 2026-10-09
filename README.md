@@ -749,6 +749,12 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
   - Hat der Meister auch den Pokal geholt, kommt der Vizemeister. In der ersten Saison treffen sich die beiden Vereine mit dem größten Ruf der ersten Liga.
   - Ein Spiel auf neutralem Platz, bei Gleichstand Elfmeterschießen. Ist der eigene Verein dabei, hält der Weiter-Knopf am Termin, und es wird live oder als Sofortergebnis gespielt.
   - Der Sieger bekommt eine Prämie von zwei Sponsorbeiträgen je Spieltag. Gewinnt der eigene Verein, steht der Titel in der Trainerlaufbahn. Das Ergebnis kommt als Nachricht.
+  - Spielt der Co-Trainer die Partie (ohne Livespiel), gibt es bei Gleichstand ebenfalls ein Elfmeterschießen. Vorher gewann in diesem Fall einfach die erstgenannte Mannschaft.
+- **Europäischer Supercup (`EuroSupercupEngine`):** Zwei Tage vor dem nationalen Supercup spielt der Sieger der Königsklasse gegen den Sieger der Europa League der Vorsaison.
+  - Ein Spiel auf neutralem Platz, bei Gleichstand Elfmeterschießen. In der ersten Saison treffen sich die Vereine mit dem größten Ruf aus beiden Wettbewerben.
+  - Beide bekommen 4 Mio. € Antrittsgeld, der Sieger 1 Mio. € dazu. Die Partie zählt in der Statistik zum Europapokal, der Titel steht in der Trainerlaufbahn.
+  - Der Kalender zeigt den Termin als Europapokalabend, ohne eigene Beteiligung mit Paarung und Ergebnis.
+  - Für beide Supercups zeigt die Spielkarte „Neutraler Platz“ statt des Heimstadions, und das Livespiel trägt eigene Farben und den Namen des Wettbewerbs statt dem der Liga. Nach einem Elfmeterschießen im Endspiel heißt es „holt den Titel“ statt „steht in der nächsten Runde“.
 - **Echte Europapokal-Qualifikanten:** Die Startplätze folgen den `europeanSpots` der Ligadefinition – England, Spanien und Italien stellen vier Champions-League-Teilnehmer, Frankreich drei. Kein Verein startet in zwei Wettbewerben.
 - **Auf- und Abstieg über die gesamte Pyramide:** Aus jeder Liga steigen genauso viele Vereine ab, wie von unten aufsteigen; alle Ligen behalten ihre Mannschaftszahl. Aufsteiger nehmen ihren Kader mit und starten bewusst als Außenseiter.
 - **Relegation und Aufstiegs-Playoffs nach echtem Format (`PlayoffEngine`):**
@@ -888,6 +894,7 @@ untitled/
 │   │   ├── laufbahnEngine.js   # Laufbahn je Spieler: Saison, Verein, Spiele, Tore, Vorlagen, Note
 │   │   ├── urlaubEngine.js     # Urlaub: Ziele bis Monats-, Fenster- und Saisonende, Bilanz
 │   │   ├── supercupEngine.js   # Supercup: Meister gegen Pokalsieger am Ende der Vorbereitung
+│   │   ├── euroSupercupEngine.js # Europäischer Supercup: Sieger der Königsklasse gegen den der Europa League
 │   │   ├── jahrespreisEngine.js # Gala des Jahres: Weltfußballer, Talent, Torjäger Europas, Trainer, Elf
 │   │   ├── statistikEngine.js  # Statistik je Wettbewerb: Liga, Pokal, Europapokal
 │   │   └── opponentAnalysisEngine.js # Taktische Gegneranalyse

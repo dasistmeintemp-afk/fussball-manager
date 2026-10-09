@@ -10699,6 +10699,43 @@ function runEngineTests() {
         if (Vision.vision(state).seit !== state.seasonYear) throw new Error("Keine neue Vision nach Ablauf");
     });
 
+    test("Kaderplanung: Verträge, Alter, Leihen und Vorverträge über drei Spielzeiten, Baustellen als Suchauftrag", () => {
+        const { KaderplanungEngine: K } = require('./js/engine/kaderplanungEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const bedarf = K.bedarf(club);
+        if (Object.values(bedarf).reduce((a, b) => a + b, 0) !== 24) throw new Error(`Bedarf ergibt nicht den Kader: ${JSON.stringify(bedarf)}`);
+        const kader = state.players.filter(p => p.clubId === "muc");
+        const im = (plan, k, id) => plan.spalten[k].teile.flatMap(t => t.spieler).find(s => s.id === id);
+
+        const auslaufend = kader.find(p => p.pos === "IV");
+        auslaufend.contractYears = 1;
+        const alt = kader.find(p => p.pos === "ZM" && p !== auslaufend);
+        alt.age = 34; alt.contractYears = 3;
+        const fremd = state.players.find(p => p.clubId && p.clubId !== "muc" && p.pos === "ST");
+        fremd.vorvertrag = { clubId: "muc", clubName: club.name, saison: state.seasonYear };
+        const leihling = kader.find(p => p.pos === "OM" || p.pos === "LA");
+        const leihverein = state.clubs.find(c => c.id !== "muc" && (c.level || 1) === 2);
+        leihling.leihe = { stammvereinId: "muc", leihvereinId: leihverein.id, bisSaison: state.seasonYear };
+        leihling.clubId = leihverein.id; leihling.contractYears = 3;
+
+        const p = K.plan(state);
+        if (p.spalten.length !== 3 || p.spalten[0].teile.length !== 6) throw new Error("Planung hat nicht drei Spielzeiten und sechs Mannschaftsteile");
+        if (!im(p, 0, auslaufend.id)?.marken.includes("vertrag") || im(p, 1, auslaufend.id)) throw new Error("Auslaufender Vertrag falsch geplant");
+        if (!im(p, 0, alt.id)?.marken.includes("alter") || im(p, 1, alt.id)) throw new Error("Karriereende mit 35 nicht eingeplant");
+        if (im(p, 0, fremd.id) || !im(p, 1, fremd.id)?.marken.includes("zugang")) throw new Error("Vorvertrag nicht als Zugang geplant");
+        if (im(p, 0, leihling.id) || !im(p, 1, leihling.id)?.marken.includes("rueckkehr")) throw new Error("Leihrückkehrer nicht geplant");
+
+        // Fallen die Torhüter weg, ist das eine Baustelle - mit Suchauftrag
+        kader.filter(p => p.pos === "TW").slice(1).forEach(p => { p.contractYears = 1; });
+        const tor = K.plan(state).spalten[1].teile.find(t => t.key === "tw");
+        if (tor.status !== "luecke") throw new Error(`Torwartlücke nicht erkannt: ${tor.anzahl}/${tor.bedarf}`);
+        const h = K.hinweise(state, 10).find(x => x.key === "tw");
+        if (!h || !/im Tor/.test(h.text)) throw new Error(`Kein Hinweis zum Tor: ${JSON.stringify(K.hinweise(state, 10).map(x => x.text))}`);
+        const r = K.suchauftrag(state, "tw");
+        if (!r.success || r.assignment.position !== "TW" || r.assignment.minOverall !== p.stammStaerke) throw new Error("Suchauftrag falsch");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

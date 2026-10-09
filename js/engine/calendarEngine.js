@@ -1479,6 +1479,13 @@ const CalendarEngine = {
             if (zeile) summary.messages.push(zeile);
         }
 
+        // Kaderkosten: zur Saisonhälfte eine Warnung, wenn die Quote zu hoch ist
+        const finanzregeln = (typeof FinanzregelEngine !== 'undefined' && FinanzregelEngine) ? FinanzregelEngine : ((typeof window !== 'undefined' && window.FinanzregelEngine) ? window.FinanzregelEngine : (typeof require !== 'undefined' ? (() => { try { return require('./finanzregelEngine.js').FinanzregelEngine; } catch (e) { return null; } })() : null));
+        if (finanzregeln && typeof finanzregeln.tag === 'function') {
+            const zeile = finanzregeln.tag(state);
+            if (zeile) summary.messages.push(zeile);
+        }
+
         // 1b. Lücken in den Aufstellungen schließen. Wer sich verletzt, fällt
         // aus Elf und Bank - ohne Nachrücker stand ein Verein nach ein paar
         // Wochen dauerhaft mit zehn Mann da.

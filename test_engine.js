@@ -11552,6 +11552,70 @@ function runEngineTests() {
         if (JSON.stringify(zur.koeffizient) !== JSON.stringify(state.koeffizient)) throw new Error("Fünfjahreswertung nicht gespeichert");
     });
 
+    test("Finanzregeln: Kaderkostenquote - Verwarnung, Geldstrafe, halbes Transferbudget und Punktabzug", () => {
+        const { FinanzregelEngine: F } = require('./js/engine/finanzregelEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Finanzregel" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const andere = state.clubs.find(c => c.id !== club.id);
+        state.finanzregel = null;
+        const saison = (jahr, umsatz, gehalt, abloese = 0) => {
+            state.seasonYear = jahr;
+            FinanceEngine.recordTransaction(state, club.id, "ticket_income", umsatz, "Eintritt");
+            FinanceEngine.recordTransaction(state, club.id, "wages", -gehalt, "Gehälter");
+            if (abloese) FinanceEngine.recordTransaction(state, club.id, "transfer_out", -abloese, "Ablöse");
+            FinanceEngine.recordTransaction(state, andere.id, "wages", -1e9, "fremder Verein");
+        };
+        // Saison 1: 60 % - in Ordnung, fremde Buchungen zählen nicht
+        saison(1, 100e6, 60e6);
+        if (F.stand(state).status !== "gruen" || Math.abs(F.stand(state).quote - 0.6) > 1e-9) throw new Error(`Quote ${F.stand(state).quote}`);
+        if (F.saisonAbschluss(state).folge !== "ok") throw new Error("Folge bei 60 %");
+
+        // Saison 2: 75 % - zur Saisonhälfte eine Warnung, am Ende eine Verwarnung
+        saison(2, 100e6, 75e6);
+        state.totalMatchdays = 34;
+        state.currentMatchday = 10;
+        if (F.tag(state)) throw new Error("Warnung vor der Saisonhälfte");
+        state.currentMatchday = 17;
+        if (!F.tag(state) || F.tag(state)) throw new Error("Nicht genau eine Warnung zur Saisonhälfte");
+        const kasse = club.balance;
+        const s2 = F.saisonAbschluss(state);
+        if (s2.folge !== "verwarnung" || s2.strafe || club.balance !== kasse || state.finanzregel.auflage) throw new Error(`Saison 2: ${JSON.stringify(s2)}`);
+        if (F.saisonAbschluss(state) !== s2) throw new Error("Saison zweimal abgerechnet");
+
+        // Saison 3: wieder über 70 % - Geldstrafe, Auflage für Saison 4
+        saison(3, 100e6, 78e6);
+        const s3 = F.saisonAbschluss(state);
+        if (s3.folge !== "strafe" || s3.strafe !== 2e6 || club.balance !== kasse - 2e6) throw new Error(`Saison 3: ${JSON.stringify(s3)}`);
+        if (state.finanzregel.auflage.saison !== 4 || state.finanzregel.auflage.abzug) throw new Error("Keine Auflage für Saison 4");
+
+        // Saison 4: halbes Transferbudget; 90 % Gehalt plus ein Drittel von 30 Mio. Ablöse = 100 %
+        state.seasonYear = 4;
+        club.transferBudget = 40e6;
+        if (!F.saisonstart(state) || club.transferBudget !== 20e6 || club.punktabzug) throw new Error(`Saisonstart 4: ${club.transferBudget}`);
+        if (F.saisonstart(state) || club.transferBudget !== 20e6) throw new Error("Auflage doppelt angewandt");
+        saison(4, 100e6, 90e6, 30e6);
+        if (F.stand(state).status !== "rot" || Math.abs(F.stand(state).quote - 1) > 1e-9) throw new Error(`Quote Saison 4: ${F.stand(state).quote}`);
+        const s4 = F.saisonAbschluss(state);
+        if (s4.folge !== "abzug" || s4.abzug !== 3 || s4.strafe !== 5e6) throw new Error(`Saison 4: ${JSON.stringify(s4)}`);
+        if (club.punktabzug) throw new Error("Punktabzug trifft die abgeschlossene Saison");
+        if (!state.inbox.some(m => /3 Punkte Abzug/.test(m.subject))) throw new Error("Keine Nachricht des Verbands");
+
+        // Saison 5: der Abzug steht von Anfang an in der Tabelle
+        state.seasonYear = 5;
+        F.saisonstart(state);
+        if (!club.punktabzug || club.punktabzug.punkte !== 3 || club.punktabzug.saison !== 5) throw new Error(`Punktabzug: ${JSON.stringify(club.punktabzug)}`);
+        const tabelle = GameState.calculateStandings(GameState.getLeagueClubs(state), state.schedule, 0);
+        if (tabelle.find(z => z.clubId === club.id).points !== -3) throw new Error("Abzug nicht in der Tabelle");
+        // Wiederholung binnen zwei Jahren: 6 Punkte
+        saison(5, 100e6, 85e6);
+        if (F.saisonAbschluss(state).abzug !== 6) throw new Error("Wiederholung ohne höheren Abzug");
+        if (state.finanzregel.verlauf.length !== F.GEMERKT) throw new Error(`${state.finanzregel.verlauf.length} Saisons im Verlauf`);
+
+        const { SaveCodec } = require('./js/services/saveCodec.js');
+        const zur = SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(state))));
+        if (JSON.stringify(zur.finanzregel) !== JSON.stringify(state.finanzregel)) throw new Error("Finanzregeln nicht gespeichert");
+    });
+
     test("Turniere: EM und WM im Sommer - Gruppen, K.-o.-Runden, Titel in der Akte, müde Rückkehrer", () => {
         const { TurnierEngine: T } = require('./js/engine/turnierEngine.js');
         const { CalendarEngine } = require('./js/engine/calendarEngine.js');

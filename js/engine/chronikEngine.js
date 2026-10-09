@@ -72,6 +72,15 @@ const ChronikEngine = {
         const r = c.rekorde;
         const neu = [];
         const diff = tore - gegentore;
+
+        // Der direkte Vergleich - für die Spielvorschau
+        if (gegner) {
+            if (!c.duelle || typeof c.duelle !== "object") c.duelle = {};
+            const d = c.duelle[gegner.id] || (c.duelle[gegner.id] = { s: 0, u: 0, n: 0, t: 0, g: 0, letzte: [] });
+            if (diff > 0) d.s++; else if (diff === 0) d.u++; else d.n++;
+            d.t += tore; d.g += gegentore;
+            d.letzte = [{ ergebnis: eintrag.ergebnis, heim, saison: eintrag.saison, wettbewerb }, ...(d.letzte || [])].slice(0, 3);
+        }
         const besser = (alt, wert, gleichstand) => !alt || wert > alt.wert || (wert === alt.wert && gleichstand);
 
         if (diff > 0 && besser(r.hoechsterSieg, diff, tore > (r.hoechsterSieg?.tore || 0))) {

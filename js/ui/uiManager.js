@@ -5842,6 +5842,37 @@ class UIManager {
         if (lage.verletzt > 0) hinweise.push(`${lage.verletzt} eigene Spieler verletzt`);
         if (lage.gesperrt > 0) hinweise.push(`${lage.gesperrt} gesperrt`);
         DOM.setText("nextMatchMeta", hinweise.join("  ·  "));
+        this.renderSpielvorschau(state);
+    }
+
+    /** Die aufklappbare Spielvorschau: Quoten, Bilanz, Form, Torjäger, Ausfälle */
+    renderSpielvorschau(state) {
+        const el = document.getElementById("nextMatchVorschau");
+        const engine = typeof SpielvorschauEngine !== "undefined" ? SpielvorschauEngine : null;
+        if (!el || !engine) return;
+        const v = engine.vorschau(state);
+        if (!v) { el.hidden = true; el.innerHTML = ""; return; }
+        el.hidden = false;
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const prozent = (x) => `${Math.round(x * 100)} %`;
+        const quote = (x) => x.toFixed(2).replace(".", ",");
+        const form = (f) => f.length ? f.map(UIManager.formKuerzel).join(" ") : "–";
+        const eigenName = this.app.state.clubs.find(c => c.id === state.userClubId)?.name || "Wir";
+        const b = v.bilanz;
+        const ausfall = (liste) => liste.length ? liste.slice(0, 4).map(a => `${esc(a.name)} <small>${esc(a.pos)}, ${a.grund}</small>`).join(", ") + (liste.length > 4 ? ` <small>+${liste.length - 4}</small>` : "") : "keine";
+        const offen = el.open;
+        el.innerHTML = `
+            <summary>Spielvorschau · Sieg ${prozent(v.sieg)} · Remis ${prozent(v.remis)} · Niederlage ${prozent(v.niederlage)}</summary>
+            <div class="sv-raster">
+                <div class="sv-zeile"><span>Quoten</span><strong>1: ${quote(v.quoten.heim)} · X: ${quote(v.quoten.remis)} · 2: ${quote(v.quoten.gast)}</strong></div>
+                <div class="sv-zeile"><span>Erwartete Tore</span><strong>${String(v.erwarteteTore.heim).replace(".", ",")} : ${String(v.erwarteteTore.gast).replace(".", ",")}</strong></div>
+                <div class="sv-zeile"><span>Direkter Vergleich</span><strong>${b ? `${b.siege} S · ${b.remis} U · ${b.niederlagen} N <small>${b.tore}:${b.gegentore} Tore${b.letzte[0] ? `, zuletzt ${esc(b.letzte[0].ergebnis)} (${esc(b.letzte[0].wettbewerb)})` : ""}</small>` : "<small>noch kein Duell seit Ihrem Amtsantritt</small>"}</strong></div>
+                <div class="sv-zeile"><span>Form</span><strong>${esc(eigenName)} ${form(v.form.eigen)} <small>·</small> ${esc(v.gegner.name)} ${form(v.form.gegner)}</strong></div>
+                <div class="sv-zeile"><span>Torjäger</span><strong>${v.torjaeger.eigen ? `${esc(v.torjaeger.eigen.name)} ${v.torjaeger.eigen.tore}` : "–"} <small>·</small> ${v.torjaeger.gegner ? `${esc(v.torjaeger.gegner.name)} ${v.torjaeger.gegner.tore}` : "–"}</strong></div>
+                <div class="sv-zeile"><span>Es fehlen bei uns</span><strong>${ausfall(v.ausfaelle.eigen)}</strong></div>
+                <div class="sv-zeile"><span>Es fehlen beim Gegner</span><strong>${ausfall(v.ausfaelle.gegner)}</strong></div>
+            </div>`;
+        el.open = offen;
     }
 
     tabellenPlatzText(state, clubId) {

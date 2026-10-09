@@ -1401,6 +1401,13 @@ const CalendarEngine = {
             if (zeile) summary.messages.push(zeile);
         }
 
+        // Die Vision des Vorstands - neu bei Amtsantritt und nach einem Vereinswechsel
+        const vision = (typeof VisionEngine !== 'undefined' && VisionEngine)
+            ? VisionEngine
+            : ((typeof window !== 'undefined' && window.VisionEngine) ? window.VisionEngine
+                : (typeof require !== 'undefined' ? (() => { try { return require('./visionEngine.js').VisionEngine; } catch (e) { return null; } })() : null));
+        if (vision && typeof vision.vision === 'function') vision.vision(state);
+
         // Investoren: Angebot, Suche und Verkaufsauflage
         const investoren = (typeof InvestorEngine !== 'undefined' && InvestorEngine)
             ? InvestorEngine

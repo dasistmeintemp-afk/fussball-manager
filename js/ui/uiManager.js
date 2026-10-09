@@ -5002,6 +5002,33 @@ class UIManager {
     }
 
     /**
+     * Die Vision des Vorstands: Fernziel mit Frist und die Jahresziele mit
+     * dem Stand der laufenden Saison.
+     */
+    renderVision(state, club) {
+        const el = document.getElementById("clubVision");
+        const engine = typeof VisionEngine !== "undefined" ? VisionEngine : null;
+        if (!el || !engine) return;
+        const u = engine.uebersicht(state);
+        if (!u) { el.innerHTML = ""; return; }
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const zahl = (z, wert) => wert === null || wert === undefined ? "–" : (z.geld ? this.geldKurz(wert) : String(wert).replace(".", ","));
+        const marke = (steht) => steht === null ? `<span class="vis-marke offen">noch offen</span>`
+            : (steht ? `<span class="vis-marke gut">auf Kurs</span>` : `<span class="vis-marke schlecht">hinter dem Ziel</span>`);
+        const f = u.fern;
+        const fernMarke = f.status === "erfuellt" ? `<span class="vis-marke gut">erreicht</span>`
+            : (f.status === "verfehlt" ? `<span class="vis-marke schlecht">verfehlt</span>` : `<span class="vis-marke offen">Frist Saison ${f.bisSaison}</span>`);
+        el.innerHTML = `
+            <div class="card-header"><h3>🧭 Vereinsvision</h3><span class="header-tag">Saison ${u.seit}–${u.bisSaison}</span></div>
+            <div class="vis-zeile vis-fern"><span><small>Fernziel</small><strong>${esc(f.text)}</strong></span>${fernMarke}</div>
+            ${u.jahresziele.map(z => `
+                <div class="vis-zeile"><span><small>${esc(z.bereich)} · jede Saison</small><strong>${esc(z.text)}</strong>
+                    <em>${zahl(z, z.ist)} ${z.geld ? "" : esc(z.einheit)} · Ziel ${z.richtung > 0 ? "mindestens" : "höchstens"} ${zahl(z, z.soll)}${z.geld ? "" : ""}</em></span>${marke(z.steht)}</div>`).join("")}
+            ${u.bilanz.length ? `<h4>Bilanz</h4><ul class="inv-historie">${u.bilanz.map(b => `<li>Saison ${b.saison}: ${b.ergebnisse.filter(e => e.status === "erfuellt").length} von ${b.ergebnisse.length} Jahreszielen erfüllt${b.fern === "erfuellt" ? " · Fernziel erreicht" : (b.fern === "verfehlt" ? " · Fernziel verfehlt" : "")}</li>`).join("")}</ul>`
+                : `<p class="muted-note">Am Saisonende zieht der Vorstand Bilanz. Erfüllte Ziele stärken sein Vertrauen, verfehlte kosten es.</p>`}`;
+    }
+
+    /**
      * Eigentümer und Investor: ein Angebot zum Zu- oder Abraten, der
      * Investor mit Geld und Ansprüchen, Auflagen nach einer Rettung.
      */
@@ -5245,6 +5272,7 @@ class UIManager {
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
         this.renderTrainerProfil();
+        this.renderVision(state, userClub);
         this.renderInvestor(state, userClub);
         this.renderPartner(state, userClub);
         this.renderChronik(state, userClub);

@@ -996,6 +996,10 @@ class GameState {
             type: "welcome"
         });
 
+        // Die Vision des Vorstands über mehrere Spielzeiten (VisionEngine)
+        const visionEngine = GameState._resolveEngine("VisionEngine", "./visionEngine.js");
+        if (visionEngine && typeof visionEngine.vision === "function") visionEngine.vision(state);
+
         // Die Stars jeder Liga bekommen ihre Signatur-Eigenschaft
         GameState.sichereSignaturen(state);
 

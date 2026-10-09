@@ -115,6 +115,14 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   - **Meldungen:** Ein neuer Rekord kommt als kurze Nachricht.
   - **Spielerakte:** Sie zeigt die Bilanz für den Verein („Für den Verein seit Saison 1: 164 Spiele …“) und markiert Legenden.
   - Vorher vergaß der Verein nach dem Saisonwechsel alles, was nicht in der Tabelle stand.
+- **Vereinsvision (`VisionEngine`):** Bei Amtsantritt legt der Vorstand einen Plan über fünf Spielzeiten fest. Die Karte „Vereinsvision“ im Reiter Verein zeigt den Stand der laufenden Saison.
+  - **Fernziel mit Frist:** Es richtet sich danach, wo der Kader steht. Spitzenklubs sollen die Meisterschaft in drei Spielzeiten holen, Kandidaten den Europapokal, das Mittelfeld die obere Hälfte. Unterklassige sollen in zwei oder vier Spielzeiten aufsteigen, Kellerkinder sich in der Liga etablieren.
+  - **Drei Jahresziele:**
+    - Spielweise: offensiv (Tore je Spiel), das Spiel bestimmen (Ballbesitz) oder kompakt (Gegentore)
+    - Kader: Eigengewächse mit zehn Einsätzen, oder junge Zugänge bei schwacher Jugendabteilung
+    - Finanzen: ohne Schulden oder im Gehaltsrahmen
+  - **Bilanz am Saisonende:** Jedes erfüllte Jahresziel hebt das Vertrauen um 3, jedes verfehlte kostet 3. Das Fernziel zählt zur Frist mit ±8, ein Aufstieg zählt zum nächsten Saisonstart.
+  - **Neue Vision:** Es gibt eine neue Vision nach fünf Spielzeiten und bei jedem Vereinswechsel. Die Wahl hängt fest am Verein und an der Saison, ohne Zufall.
 - **Trainerkarussell (`TrainerwechselEngine`):** Jeder KI-Verein hat einen Trainer mit Namen, Ruf und Spielweise. Die Vereinsseite nennt ihn.
   - **Druck:** Er wächst mit den Plätzen hinter dem Kaderrang, den Niederlagen der letzten fünf Spiele und einem Platz im Keller oder auf einem Abstiegsrang. Ein großer Name hält etwas mehr aus.
   - **Entlassung:** Ab dem sechsten Spiel trennt sich ein Verein unter Druck mit wachsender Wahrscheinlichkeit, höchstens zweimal je Saison. Ein Neuer bekommt sechs Spiele Schonfrist.
@@ -749,6 +757,7 @@ untitled/
 │   │   ├── partnerEngine.js    # Ausbildungspartner mit Einsatzgarantie, großer Partner mit Leihangeboten
 │   │   ├── investorEngine.js   # Investoren, Übernahmen, 50+1, Rettung mit Auflagen und Punktabzug
 │   │   ├── ehemaligeEngine.js  # Ehemalige Spieler im Trainerstab, Abschiedsspiel für Legenden
+│   │   ├── visionEngine.js     # Vereinsvision: Fernziel mit Frist, Jahresziele, Bilanz
 │   │   ├── newsEngine.js       # Zentrales Nachrichtensystem & Postfach
 │   │   ├── aiManagerEngine.js  # KI-Aufstellungen & KI-Transferangebote
 │   │   ├── scoutingEngine.js   # Scoutaufträge & Spielerberichte

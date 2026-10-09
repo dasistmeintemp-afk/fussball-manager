@@ -648,6 +648,8 @@ class TransferEngine {
         if (!bedarf) return false;
 
         const eigenerRuf = club.reputation || 60;
+        const nachrichten = (typeof LigaNachrichtenEngine !== "undefined" && LigaNachrichtenEngine) ? LigaNachrichtenEngine
+            : (typeof require !== "undefined" ? (() => { try { return require("./ligaNachrichtenEngine.js").LigaNachrichtenEngine; } catch (e) { return null; } })() : null);
 
         // Wen ein Verein überhaupt in Betracht zieht: die gesuchte Position,
         // besser als das, was er hat, und kein Spieler des Nutzers - dessen
@@ -683,11 +685,13 @@ class TransferEngine {
             const preis = this.calculateAskingPrice(p, verkaeufer);
             if (preis > (club.transferBudget || 0)) continue;
 
-            // Wie sehr will dieser Verein genau diesen Spieler?
+            // Wie sehr will dieser Verein genau diesen Spieler? Ein
+            // Wunschspieler aus der Gerüchteküche reizt mehr
             const gewinn = (p.overall || 0) - bedarf.messlatte;
             const jung = (p.age || 25) <= 24 ? 4 : 0;
             const ablauf = (p.contractYears ?? 3) <= 1 ? 5 : 0;
-            kandidaten.push({ p, verkaeufer, preis, istBester, reiz: gewinn + jung + ablauf });
+            const wunsch = nachrichten && typeof nachrichten.reiz === "function" ? nachrichten.reiz(club, p) : 0;
+            kandidaten.push({ p, verkaeufer, preis, istBester, reiz: gewinn + jung + ablauf + wunsch });
         }
 
         if (kandidaten.length === 0) return false;
@@ -725,6 +729,10 @@ class TransferEngine {
         if (!ok) return false;
 
         this.aktualisiereIndex(markt, p, vonId, club.id);
+        // Für die Rundschau der eigenen Liga - und ob ein Gerücht stimmte
+        if (nachrichten && typeof nachrichten.transfer === "function") {
+            nachrichten.transfer(state, { player: p, vonId, zuId: club.id, fee: verkaeufer ? gebot : 0 });
+        }
 
         // Für die Anzeige: die letzten Wechsel der Spielwelt
         if (!state.transferMarket) state.transferMarket = { offers: [], history: [], shortlist: [] };

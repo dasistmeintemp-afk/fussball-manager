@@ -123,6 +123,13 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   - **Geeicht über eine simulierte Saison:** Bundesliga 4 Wechsel in der Saison und 2 im Sommer, Premier League 8+1, LaLiga 5+4, Ligue 1 und Serie A 3–4.
   - **Anzeige:** Wechsel in der eigenen Liga kommen per Post. Die Ranglisten zeigen das Trainerkarussell jeder Liga.
   - Vorher hatte kein KI-Verein einen Trainer, und die Spielweise stand bei Spielbeginn für immer fest.
+- **Nachrichten aus der Liga (`LigaNachrichtenEngine`):** Die Sportpresse berichtet über die eigene Liga.
+  - **Saisonvorschau:** Zum Saisonstart nennt sie Favoriten, Geheimtipp (der Kader ist besser als sein Ruf), Abstiegskandidaten und den Platz, auf dem sie den eigenen Verein sieht. Sie rechnet mit drei Vierteln Kaderstärke und einem Viertel Ansehen, wie die Medienprognose.
+  - **Rundschau nach jedem Spieltag:** Sie bringt die Spitze und den Abstand, das Ergebnis des Spieltags und Serien (fünf Siege oder fünf Spiele ohne Sieg). Dazu kommen die Torjäger sowie Transfers und Trainerwechsel seit der letzten Ausgabe.
+  - **Gerüchteküche:** Im offenen Fenster soll ein Konkurrent an einem Spieler interessiert sein, der seinen Kader verstärken würde.
+    - Das Gerücht ist nicht erfunden: Der Verein greift bei diesem Spieler eher zu, wenn er auf der Position sucht und es sich leisten kann.
+    - Kommt der Wechsel zustande, meldet die Rundschau „das Gerücht stimmte“.
+    - Die Ranglisten zeigen die Gerüchte der Saison mit Haken für die bestätigten.
 - **Spielplan mit wechselndem Heimrecht:** Heim- und Auswärtsspiele wechseln sich nach dem Berger-Verfahren ab, höchstens drei gleiche in Folge. Vorher hatte ein Verein bis zu 17 Heim- oder Auswärtsspiele am Stück.
 
 ### 2. 📋 Aufstellung, Taktik & Teamchemie
@@ -155,6 +162,9 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Formation nach Kader:** „Beste 11 automatisch aufstellen“ wählt vorher die Formation, die am besten zu den einsatzfähigen Spielern passt – jede Formation (auch eigene) wird mit dem Kader besetzt und nach der Stärke der Elf auf ihren Positionen bewertet. Verletzte und Gesperrte zählen nicht. Die bisherige Formation bleibt, wenn keine andere spürbar besser ist, und ungewöhnliche Systeme müssen ihren Vorteil deutlicher zeigen als gebräuchliche.
 
 ### 3. 🎮 2D-Live-Match-Engine & Sofort-Simulation
+- **Testspiele zählen nicht:** Tore, Einsätze, Noten und Karten aus Freundschaftsspielen laufen weder in die Saisonstatistik noch in die Kartensperren. Fitness, Form und Spielschärfe wirken weiter.
+  - Vorher hatte der beste Torjäger der Bundesliga nach sieben Spieltagen 24 Tore, neun davon aus vier Testspielen.
+  - Mit der fünften Gelben aus einem Testspiel war ein Spieler im nächsten Pflichtspiel gesperrt.
 - **Spielkultur der Ligen (`MATCH_TUNING.torKultur`):** Jede Liga spielt so torreich wie ihr Vorbild. Ein Faktor je Land und Spielklasse wirkt auf die Torwahrscheinlichkeit aus dem Spiel heraus, Elfmeter sind überall gleich schwer. Pokalspiele zählen nach der Liga der Heimmannschaft, der Europapokal nach keiner.
   - Gemessen über drei simulierte Saisons, Tore je Spiel, in Klammern die echten Werte 2024/25: Bundesliga 3,2 (3,13), Premier League 2,9 (2,93), Ligue 1 3,0 (2,98), LaLiga 2,6–2,8 (2,62), Serie A 2,5–2,7 (2,54).
   - Die zweiten Ligen liegen darunter, Segunda und Championship mit 2,3 am deutlichsten.
@@ -702,6 +712,7 @@ untitled/
 │   │   ├── auszeichnungEngine.js # Spieler/Talent/Trainer des Monats, Saisonpreise, Elf der Saison
 │   │   ├── chronikEngine.js    # Vereinschronik: Rekorde, Titel, Saisonbilanzen, Legenden
 │   │   ├── trainerwechselEngine.js # Trainer der KI-Vereine, Entlassungen, Nachfolger mit eigenem Stil
+│   │   ├── ligaNachrichtenEngine.js # Saisonvorschau, Rundschau, Gerüchteküche
 │   │   ├── newsEngine.js       # Zentrales Nachrichtensystem & Postfach
 │   │   ├── aiManagerEngine.js  # KI-Aufstellungen & KI-Transferangebote
 │   │   ├── scoutingEngine.js   # Scoutaufträge & Spielerberichte

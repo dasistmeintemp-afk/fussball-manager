@@ -221,7 +221,7 @@ const TrainerwechselEngine = {
         const saison = state.seasonYear || 1;
         club.trainerwechsel = { saison, anzahl: (club.trainerwechsel?.saison === saison ? club.trainerwechsel.anzahl : 0) + 1 };
         const eintrag = {
-            saison, datum: state.currentDate || "", clubId: club.id, verein: club.name, liga: club.leagueId,
+            saison, datum: state.currentDate || "", tag: state.currentDayIndex || 0, clubId: club.id, verein: club.name, liga: club.leagueId,
             alt: alt.name, neu: neu.name, stil, grund, platz
         };
         if (!Array.isArray(state.trainerwechsel)) state.trainerwechsel = [];

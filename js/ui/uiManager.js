@@ -5448,6 +5448,26 @@ class UIManager {
         }));
     }
 
+    /** Die Gerüchteküche der eigenen Liga - mit Haken, wenn es stimmte */
+    renderGeruechte(state, eigeneLiga) {
+        const el = document.getElementById("statsGeruechte");
+        const engine = typeof LigaNachrichtenEngine !== "undefined" ? LigaNachrichtenEngine : null;
+        if (!el || !engine) return;
+        const liste = eigeneLiga ? engine.geruechteDieseSaison(state).slice().reverse() : [];
+        if (!liste.length) { el.hidden = true; el.innerHTML = ""; return; }
+        el.hidden = false;
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const wahr = liste.filter(g => g.wahr).length;
+        el.innerHTML = `
+            <div class="card-header"><h3>🗞️ Gerüchteküche</h3><span class="header-tag">${wahr} von ${liste.length} bestätigt</span></div>
+            <ul class="preis-liste">${liste.map(g => `
+                <li>
+                    <span class="preis-monat">${esc(g.datum || "")}</span>
+                    <span>${g.wahr ? "✅" : "❔"} <strong>${esc(g.spieler)}</strong> <small>${esc(g.pos)}, ${esc(g.von)}</small></span>
+                    <span>→ ${esc(g.verein)} ${g.wahr ? "<small>Wechsel perfekt</small>" : ""}</span>
+                </li>`).join("")}</ul>`;
+    }
+
     /** Das Trainerkarussell der gewählten Liga in dieser Saison */
     renderKarussell(state, ligaId) {
         const el = document.getElementById("statsKarussell");
@@ -5561,6 +5581,7 @@ class UIManager {
 
         this.renderPreise(state, ligaId === "alle" ? eigeneLiga : ligaId, vereine);
         this.renderKarussell(state, ligaId === "alle" ? eigeneLiga : ligaId);
+        this.renderGeruechte(state, ligaId === "alle" || ligaId === eigeneLiga);
 
         // Historie der vergangenen Saisons
         const histBody = document.getElementById("statsHistoryBody");

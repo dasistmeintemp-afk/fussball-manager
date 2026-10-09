@@ -1238,13 +1238,16 @@ class UIManager {
             return { valid: false, message: "Sie haben keinen Torwart in der Startelf aufgestellt." };
         }
 
-        // Verletzte oder gesperrte Spieler
-        const injured = lineupPlayers.filter(p => p.injured);
+        // Verletzte oder gesperrte Spieler - nach denselben Zählern, mit denen
+        // "Beste 11" und die Spiel-Engine rechnen. Vorher galten hier die
+        // Felder injured und suspended: Das eine blieb nach der Heilung
+        // stehen, das andere setzte niemand.
+        const injured = lineupPlayers.filter(p => (p.injuredWeeks || 0) > 0);
         if (injured.length > 0) {
             return { valid: false, message: `Folgende Spieler in der Startelf sind verletzt: ${injured.map(p => p.name).join(", ")}. Bitte wechseln Sie diese aus.` };
         }
 
-        const suspended = lineupPlayers.filter(p => p.suspended > 0);
+        const suspended = lineupPlayers.filter(p => (p.suspendedMatches || 0) > 0);
         if (suspended.length > 0) {
             return { valid: false, message: `Folgende Spieler in der Startelf sind gesperrt: ${suspended.map(p => p.name).join(", ")}. Bitte wechseln Sie diese aus.` };
         }
@@ -1702,17 +1705,28 @@ class UIManager {
                             zeigeFrage();
                             return;
                         }
-                        modal.style.display = "none";
-                        if (onDone) {
-                            onDone();
-                            return;
-                        }
-                        this.renderCurrentTab();
-                        this.renderHeader();
+                        beenden();
                     };
                 });
             });
         };
+
+        // Termin beenden - auch über das Kreuz, das vorher keine Wirkung
+        // hatte: Die übrigen Fragen bleiben dann unbeantwortet.
+        let beendet = false;
+        const beenden = () => {
+            if (beendet) return;
+            beendet = true;
+            modal.style.display = "none";
+            if (onDone) {
+                onDone();
+                return;
+            }
+            this.renderCurrentTab();
+            this.renderHeader();
+        };
+        const kreuz = document.getElementById("btnClosePressConference");
+        if (kreuz) kreuz.onclick = beenden;
 
         zeigeFrage();
         modal.style.display = "flex";
@@ -7343,15 +7357,32 @@ class UIManager {
                     </button>
                 `).join("")}
             </div>
+            <button class="btn btn-ghost btn-sm tt-ohne" id="btnTeamTalkOhne">Ohne Ansprache ${istHalbzeit ? "weiterspielen" : "auf den Platz"} ▶</button>
             <div id="teamTalkResult"></div>
         `;
 
         modal.style.display = "flex";
 
+        // Schließen heißt: ohne (weitere) Ansprache weiter. Vorher hatte das
+        // Kreuz keine Wirkung - wer keine Ansprache halten wollte, saß fest,
+        // in der Halbzeit sogar mitten im angehaltenen Spiel.
+        let ergebnis = null, fertig = false;
+        const weiter = () => {
+            if (fertig) return;
+            fertig = true;
+            modal.style.display = "none";
+            if (onDone) onDone(ergebnis);
+        };
+        const kreuz = document.getElementById("btnCloseTeamTalk");
+        if (kreuz) kreuz.onclick = weiter;
+        document.getElementById("btnTeamTalkOhne").onclick = weiter;
+
         body.querySelectorAll(".team-talk-option").forEach(btn => {
             btn.addEventListener("click", () => {
                 const res = engine.applyTeamTalk(state, btn.dataset.tone, options);
                 if (!res.success) return;
+                ergebnis = res;
+                document.getElementById("btnTeamTalkOhne").style.display = "none";
 
                 const farbe = res.moraleDelta >= 1.5 ? "#34d399" : res.moraleDelta <= -1.5 ? "#f87171" : "#94a3b8";
                 document.getElementById("teamTalkResult").innerHTML = `
@@ -7367,10 +7398,7 @@ class UIManager {
                 body.querySelectorAll(".team-talk-option").forEach(b => { b.disabled = true; });
                 this.playSound("click");
 
-                document.getElementById("btnTeamTalkContinue").onclick = () => {
-                    modal.style.display = "none";
-                    if (onDone) onDone(res);
-                };
+                document.getElementById("btnTeamTalkContinue").onclick = weiter;
             });
         });
     }

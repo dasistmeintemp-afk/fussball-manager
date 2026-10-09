@@ -364,8 +364,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <ul class="pflicht-liste">${luecken.map(b => `<li><strong>${b.titel}</strong> · ${folgen[b.key] || b.wirkung}</li>`).join("")}</ul>
             <p class="muted-note">Im Stab-Etat sind noch ${GameState.formatMoney(frei)} je Woche frei. Der Sportdirektor kann kurzfristig den besten bezahlbaren Bewerber holen - zu dessen Forderung, für ein Jahr.</p>`;
 
+        // Der Titel nennt, was wirklich fehlt - vorher hieß es immer "Ohne Arzt"
+        const namen = luecken.map(b => b.titel);
+        const liste = namen.length > 1 ? `${namen.slice(0, -1).join(", ")} und ${namen[namen.length - 1]}` : namen[0];
         this.zeigeEntscheidung({
-            titel: "⚠️ Ohne Arzt in die Saison?",
+            titel: `⚠️ Ohne ${liste} in die Saison?`,
             html,
             knoepfe: [
                 { text: "Zur Vorbereitung", klasse: "btn-secondary", aktion: () => this.switchTab("preseason") },

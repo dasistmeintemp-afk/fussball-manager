@@ -747,6 +747,10 @@ class GameState {
                     technique: pData.technique || 70
                 };
 
+                // Einzelwerte auf das Niveau der erzeugten Ligen (PlayerGenerator)
+                const generator = GameState._resolveEngine('PlayerGenerator', './playerGenerator.js');
+                if (generator && typeof generator.gleicheWerteAn === 'function') generator.gleicheWerteAn(player);
+
                 world.players.push(player);
                 club.playerIds.push(player.id);
             });

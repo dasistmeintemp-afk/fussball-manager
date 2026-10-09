@@ -8459,6 +8459,7 @@ td.nowrap { white-space: nowrap; }
 .raten-liste li.raten-zahlen { border-left-color: var(--accent-danger, #f87171); }
 .raten-liste li.raten-erhalten { border-left-color: var(--accent-success, #34d399); }
 .raten-liste small { color: var(--text-muted); margin-left: 4px; }
+.tt-ohne { display: block; margin: 10px auto 0; }
 .fin-regeln { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .fin-regeln h4 { font-size: 13px; margin: 0 0 6px; }
 .fr-kopf { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }

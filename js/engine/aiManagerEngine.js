@@ -26,7 +26,7 @@ const AIManagerEngine = {
         // Der Kader kommt aus dem Index des Spieltags - ohne ihn läuft die
         // Suche über alle Spieler der Welt (einmal je Verein: 384 Mal)
         const allPlayers = Array.isArray(kader) ? kader : state.players.filter(p => p.clubId === clubId);
-        const available = allPlayers.filter(p => !p.injured && !p.suspended);
+        const available = allPlayers.filter(p => (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0);
 
         // Fallback-Formation
         const formationKey = club.formation || "4-4-2";

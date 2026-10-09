@@ -1134,7 +1134,11 @@ class SeasonEngine {
             player.stats.minutes = 0;
             if (statistikReset) statistikReset.zuruecksetzen(player);
             player.fitness = 100;
+            // Geheilt heißt auch: nicht mehr als verletzt markiert. Vorher
+            // blieb das Flag stehen, die Aufstellungsprüfung sperrte den
+            // gesunden Spieler, und "Beste 11" stellte ihn trotzdem auf.
             player.injuredWeeks = 0;
+            player.injured = false;
             player.suspendedMatches = 0;
         });
 

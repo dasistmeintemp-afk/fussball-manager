@@ -1592,6 +1592,10 @@ class SeasonEngine {
             state.standingsByLeague[userLeagueId] = state.standings;
         }
 
+        // Kooperationen: Beitrag, Vorkaufsrecht und Leihangebote der Partner
+        const partner = _resolve('PartnerEngine', './partnerEngine.js');
+        if (partner && typeof partner.saisonstart === 'function') partner.saisonstart(state);
+
         // Neuen Spielkalender auslegen. Ohne das blieb der alte, abgelaufene
         // Kalender stehen: Die zweite Saison ließ sich über den Kalender gar
         // nicht spielen, weil der Zeiger schon auf dem letzten Tag stand.

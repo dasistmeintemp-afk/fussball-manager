@@ -10428,6 +10428,61 @@ function runEngineTests() {
         if (v2.ausfaelle.gegner[0]?.name !== verletzt.name) throw new Error("Wichtigster Ausfall nicht genannt");
     });
 
+    test("Partnervereine: Ausbildungspartner mit Einsatzgarantie und Vorkaufsrecht, großer Partner mit Leihangeboten", () => {
+        const { PartnerEngine: Partner } = require('./js/engine/partnerEngine.js');
+        const { AIManagerEngine } = require('./js/engine/aiManagerEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        club.transferBudget = 200000000; club.balance = 300000000;
+
+        // Ausbildungspartner: kleiner, im selben Land
+        const kleine = Partner.vorschlaege(state, "klein");
+        if (!kleine.length || kleine.some(c => (c.reputation || 50) > club.reputation && (c.level || 1) <= (club.level || 1))) throw new Error("Vorschläge für den kleinen Partner falsch");
+        const klein = kleine[0];
+        const kasseVorher = club.balance, partnerKasse = klein.balance || 0;
+        if (!Partner.anbieten(state, "klein", klein.id).success) throw new Error("Kooperation abgelehnt");
+        if (!(club.balance < kasseVorher) || !((klein.balance || 0) > partnerKasse)) throw new Error("Kein Jahresbeitrag");
+        if (Partner.anbieten(state, "klein", kleine[1].id).success) throw new Error("Zwei Ausbildungspartner");
+
+        // Leihe mit Einsatzgarantie: Auch ein schwacher Spieler steht in der Elf
+        const leihling = state.players.filter(p => p.clubId === club.id && p.pos !== "TW" && (p.age || 30) <= 23)[0]
+            || state.players.find(p => p.clubId === club.id && p.pos === "ZM");
+        if (!Partner.verleihen(state, leihling.id).success) throw new Error("Verleihen zum Partner gescheitert");
+        if (leihling.clubId !== klein.id || !leihling.leihe.garantie || leihling.leihe.stammvereinId !== club.id) throw new Error("Leihe ohne Garantie");
+        leihling.overall = 35; leihling.injuredWeeks = 0; leihling.suspendedMatches = 0;
+        AIManagerEngine.prepareClubForMatch(state, klein.id);
+        if (!klein.lineup.includes(leihling.id)) throw new Error("Einsatzgarantie greift nicht");
+        if (klein.lineup.length !== 11 || new Set(klein.lineup).size !== 11) throw new Error("Aufstellung kaputt");
+
+        // Vorkaufsrecht auf das beste Talent des Partners
+        const angebot = club.partnerAngebote?.klein;
+        if (angebot) {
+            const talent = state.players.find(p => p.id === angebot.playerId);
+            const budget = club.transferBudget;
+            const r = Partner.vorkaufsrecht(state);
+            if (!r.success || talent.clubId !== club.id || budget - club.transferBudget !== angebot.preis) throw new Error(`Vorkaufsrecht: ${r.error}`);
+            if (!(angebot.preis < (talent.value || 0))) throw new Error("Kein Vorzugspreis");
+        }
+
+        // Großer Partner: nur wer etwas gilt; Leihe ohne Gebühr, halbes Gehalt
+        club.reputation = 58;
+        const grosse = Partner.vorschlaege(state, "gross");
+        if (!grosse.length || grosse.some(c => (c.reputation || 50) < 58 + Partner.ABSTAND)) throw new Error("Vorschläge für den großen Partner falsch");
+        const gross = grosse[0];
+        const r2 = Partner.anbieten(state, "gross", gross.id);
+        if (!r2.success) throw new Error(`Großer Partner lehnt ab: ${r2.error}`);
+        const leihe = club.partnerAngebote?.gross?.playerIds?.[0];
+        if (leihe) {
+            const sp = state.players.find(p => p.id === leihe);
+            if (!Partner.ausleihen(state, leihe).success || sp.clubId !== club.id || sp.leihe.lohnAnteil !== Partner.LEIH_ANTEIL) throw new Error("Leihe vom großen Partner gescheitert");
+        }
+
+        // Nach drei Spielzeiten läuft die Kooperation aus
+        state.seasonYear += Partner.LAUFZEIT;
+        Partner.saisonstart(state);
+        if (Partner.partner(state).klein || Partner.partner(state).gross) throw new Error("Kooperation läuft nicht aus");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

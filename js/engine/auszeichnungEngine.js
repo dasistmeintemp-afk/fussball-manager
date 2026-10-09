@@ -264,9 +264,12 @@ const AuszeichnungEngine = {
     /** Wie oft der eigene Trainer ausgezeichnet wurde - zählt für seinen Ruf */
     trainerPreise(state) {
         const a = state?.auszeichnungen;
-        if (!a) return 0;
+        const jahr = Array.isArray(state?.jahrespreise) ? state.jahrespreise : [];
+        const jp = _auszResolve("JahrespreisEngine", "./jahrespreisEngine.js");
+        const gala = jahr.filter(j => j.trainer && j.trainer.istNutzer).length * (jp?.TRAINER_RUF || 5);
+        if (!a) return gala;
         return (a.monate || []).filter(m => m.trainer && m.trainer.istNutzer).length * 1
-            + (a.saisons || []).filter(s => s.trainer && s.trainer.istNutzer).length * 3;
+            + (a.saisons || []).filter(s => s.trainer && s.trainer.istNutzer).length * 3 + gala;
     },
 
     // ---------------------------------------------------------- Saisonpreise
@@ -401,8 +404,9 @@ const AuszeichnungEngine = {
             spielerMonat: "Spieler des Monats", talentMonat: "Talent des Monats", spielerSaison: "Spieler der Saison",
             talentSaison: "Talent der Saison", torjaeger: "Torjäger", elfSaison: "Elf der Saison"
         };
+        const jp = _auszResolve("JahrespreisEngine", "./jahrespreisEngine.js");
         return (Array.isArray(player?.auszeichnungen) ? player.auszeichnungen : [])
-            .map(a => ({ ...a, name: namen[a.art] || a.art, wann: a.monat ? this.monatsName(a.monat) : `Saison ${a.saison}` }));
+            .map(a => ({ ...a, name: namen[a.art] || (jp && jp.name(a)) || a.art, wann: a.monat ? this.monatsName(a.monat) : `Saison ${a.saison}` }));
     },
 
     /** Für die Ranglisten: die Monatspreise dieser Saison und die letzten Saisonpreise der Liga */

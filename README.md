@@ -107,6 +107,13 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
     - Ein Preis für den eigenen Trainer stärkt seinen Ruf und das Vertrauen des Vorstands.
   - **Anzeige:** Die Ranglisten zeigen die Monatspreise der Saison und die Preise der letzten Saison mit der Elf auf dem Platz. Ein Tipp auf einen Namen öffnet die Akte.
   - **Korrektur im Archiv:** Torschützenkönig und Spieler der Saison wurden vorher über alle 384 Vereine der Welt ermittelt. Jetzt zählt nur die eigene Liga.
+- **Jahrespreise (`JahrespreisEngine`):** Nach den Saisonpreisen der Ligen folgt die Gala des Jahres über die fünf ersten Ligen und den Europapokal.
+  - **Weltfußballer mit Podest:** Gewertet werden Noten, Tore und Vorlagen der Saison, die Stärke der Liga und die Titel (Meisterschaft, Pokal, Europapokal, auch das Finale der Königsklasse). Ein großer Name zieht ein paar Stimmen. Wählbar ist, wer mindestens 60 % der Ligaspiele bestritten hat.
+  - **Talent des Jahres:** bis 21 Jahre, aus den ersten und zweiten Ligen.
+  - **Torjäger Europas:** Pflichtspieltore mal Faktor - zwei in den ersten Ligen, anderthalb in den zweiten, sonst einer.
+  - **Trainer des Jahres:** Titel zählen am meisten, dazu wie weit ein Verein über dem Platz landet, den sein Kader erwarten ließ.
+  - **Elf des Jahres** im 4-3-3.
+  - **Folgen:** Die Preise stehen in der Akte und steigern Marktwert und Laune. Gewinnt der eigene Trainer, stärkt das seinen Ruf und das Vertrauen des Vorstands. Die Ranglisten zeigen die letzte Gala, die Post fasst sie zusammen.
 - **Vereinschronik (`ChronikEngine`):** Die Vereinsseite führt ab der Übernahme eine Chronik.
   - **Rekorde:** höchster Sieg, höchste Niederlage, torreichstes Spiel, Zuschauerrekord, längste Sieges- und ungeschlagene Serie, teuerster Kauf und Verkauf. Liga, Pokal und Europapokal zählen.
   - **Titel und Saisonbilanzen:** Titel sowie Liga, Platz, Punkte und Tore jeder Saison.
@@ -207,6 +214,10 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Spielkultur der Ligen (`MATCH_TUNING.torKultur`):** Jede Liga spielt so torreich wie ihr Vorbild. Ein Faktor je Land und Spielklasse wirkt auf die Torwahrscheinlichkeit aus dem Spiel heraus, Elfmeter sind überall gleich schwer. Pokalspiele zählen nach der Liga der Heimmannschaft, der Europapokal nach keiner.
   - Gemessen über drei simulierte Saisons, Tore je Spiel, in Klammern die echten Werte 2024/25: Bundesliga 3,2 (3,13), Premier League 2,9 (2,93), Ligue 1 3,0 (2,98), LaLiga 2,6–2,8 (2,62), Serie A 2,5–2,7 (2,54).
   - Die zweiten Ligen liegen darunter, Segunda und Championship mit 2,3 am deutlichsten.
+- **Wer die Tore schießt (`MatchEngine.SCHUETZEN_ROLLE`):** Zum Abschluss kommen kann jeder Feldspieler. Wie oft, entscheiden Position, Angriffsart und Abschlussstärke. Nach Ecken köpfen die Innenverteidiger; der eingeteilte Eckenschütze steht an der Fahne und ist nie selbst der Abnehmer.
+  - Vorher schossen nur Stürmer, Außen und Zehner: 70 % aller Tore fielen durch Mittelstürmer, kein einziges durch einen Verteidiger, und die besten Torjäger kamen auf 55 bis 71 Tore in einer Saison.
+  - Gemessen über eine Saison der fünf ersten und zwei zweiten Ligen: Sturm 51 %, Flügel und Zehner 21 %, Mittelfeld 17 %, Abwehr 11 %. Die besten Torjäger treffen 33- bis 49-mal in allen Pflichtspielen. Die Tore je Spiel bleiben, wo sie waren.
+  - Die Vorlage gibt, wer den Ball spielt: bei Flanken der Flügelspieler oder Außenverteidiger, bei Steilpässen der Spielmacher (nach Passspiel und Übersicht), bei Ecken der Schütze. Nach einem Solo gibt es nur manchmal eine.
   - Vorher fielen überall gleich viele Tore, auch in LaLiga mit 3,3.
 - **Remis in der Schlussphase:** Steht es ab der 75. Minute unentschieden, will nur noch eine klar stärkere Mannschaft den Sieg. Der Außenseiter sichert den Punkt, und bei zwei ähnlich starken geht keiner mehr ins Risiko.
   - Vorher stürmten ab der 83. Minute immer beide.
@@ -834,6 +845,7 @@ untitled/
 │   │   ├── laufbahnEngine.js   # Laufbahn je Spieler: Saison, Verein, Spiele, Tore, Vorlagen, Note
 │   │   ├── urlaubEngine.js     # Urlaub: Ziele bis Monats-, Fenster- und Saisonende, Bilanz
 │   │   ├── supercupEngine.js   # Supercup: Meister gegen Pokalsieger am Ende der Vorbereitung
+│   │   ├── jahrespreisEngine.js # Gala des Jahres: Weltfußballer, Talent, Torjäger Europas, Trainer, Elf
 │   │   └── opponentAnalysisEngine.js # Taktische Gegneranalyse
 │   ├── ui/
 │   │   ├── uiManager.js        # Kern: Start, Assistent, Reiter, Kader, Taktik, Kalender, Ereignisse

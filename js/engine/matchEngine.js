@@ -796,17 +796,35 @@ class MatchEngine {
      * Jetzt entscheiden Werte und Eigenschaften: wer gut abschließt, sich im
      * Strafraum bewegt oder in der Luft stark ist, kommt öfter an den Ball.
      */
+    /**
+     * Wer bei welcher Angriffsart überhaupt in Abschlussposition kommt.
+     *
+     * Vorher schossen nur Stürmer, Außen und Zehner - gemessen fielen 70 %
+     * aller Tore durch Mittelstürmer, 3 % durch Mittelfeldspieler und kein
+     * einziges durch einen Verteidiger, auch nicht nach Ecken. Die besten
+     * Torjäger kamen so auf 55 bis 71 Ligatore in einer Saison. In den
+     * großen Ligen schießen Stürmer rund die Hälfte der Tore, Mittelfeld und
+     * Flügel ein gutes Drittel, die Abwehr etwa ein Zehntel - nach Ecken
+     * vor allem die Innenverteidiger.
+     */
+    static SCHUETZEN_ROLLE = {
+        spiel: { ST: 1, LA: 0.62, RA: 0.62, OM: 0.62, LM: 0.3, RM: 0.3, ZM: 0.3, DM: 0.12, LV: 0.07, RV: 0.07, IV: 0.05 },
+        flanke: { ST: 1, LA: 0.32, RA: 0.32, OM: 0.4, LM: 0.2, RM: 0.2, ZM: 0.25, DM: 0.15, LV: 0.06, RV: 0.06, IV: 0.2 },
+        ecke: { ST: 1, IV: 1, DM: 0.35, ZM: 0.25, OM: 0.2, LA: 0.2, RA: 0.2, LM: 0.15, RM: 0.15, LV: 0.2, RV: 0.2 }
+    };
+
     static waehleSchuetze(kandidaten, attackType, posVon = null, gedeckt = null) {
         if (!Array.isArray(kandidaten) || kandidaten.length === 0) return null;
         const eig = _eigEngine();
         const luftig = attackType === "cross" || attackType === "corner";
+        const rolle = MatchEngine.SCHUETZEN_ROLLE[attackType === "corner" ? "ecke" : (attackType === "cross" ? "flanke" : "spiel")];
         const gewichte = kandidaten.map(p => {
             const v = k => typeof p[k] === "number" ? p[k] : (p.overall || 60);
             const wert = luftig ? v("physical") * 0.6 + v("shooting") * 0.4 : v("shooting") * 0.8 + v("technique") * 0.2;
-            let g = Math.pow(Math.max(20, wert) / 60, 3);
+            let g = Math.pow(Math.max(20, wert) / 60, 2);
             const w = eig ? eig.wirkung(p) : {};
             g *= 1 + (w.strafraum || 0) * 0.5 + (luftig ? (w.luft || 0) / 30 : 0);
-            if ((posVon ? posVon(p) : p.pos) === "ST") g *= 1.4;
+            g *= rolle[posVon ? posVon(p) : p.pos] ?? 0.05;
             // Bei Flanken und Ecken kommt der Große eher an den Ball
             if (luftig) g *= Math.max(0.6, 1 + (MatchEngine.koerpergroesse(p) - 181) / 40);
             // Wer eng gedeckt wird, kommt seltener frei zum Abschluss
@@ -1310,17 +1328,40 @@ class MatchEngine {
 
             const attackers = attPlayers.filter(p => ["ST", "LA", "RA", "OM"].includes(attPos(p)));
             const midfielders = attPlayers.filter(p => ["ZM", "DM", "LM", "RM"].includes(attPos(p)));
-            const wingers = attPlayers.filter(p => ["LA", "RA", "LM", "RM"].includes(attPos(p)));
             const defenders = defPlayers.filter(p => ["IV", "LV", "RV", "DM"].includes(defPos(p)));
             const gk = defPlayers.find(p => defPos(p) === "TW") || defPlayers.find(p => p.pos === "TW") || defPlayers[0];
 
-            const shooter = attackers.length > 0
-                ? MatchEngine.waehleSchuetze(attackers, attackType, attPos, options.matchplan?.gedeckt)
-                : (midfielders[0] || attPlayers[0]);
-            // Die Ecke tritt der Standardschütze, nicht ein zufälliger Mittelfeldspieler
-            const passer = (attackType === "corner" ? schuetze("ecken", isHomeAttacking) : null)
-                || (midfielders.length > 0 ? _Random.choice(midfielders) : (attPlayers[1] || attPlayers[0]));
-            const winger = wingers.length > 0 ? _Random.choice(wingers) : passer;
+            // Zum Abschluss kommen kann jeder Feldspieler - wie oft, sagt seine
+            // Position (SCHUETZEN_ROLLE) und wie gut er abschließt
+            const feld = attPlayers.filter(p => attPos(p) !== "TW");
+            // Den Eckstoß tritt der eingeteilte Schütze - er steht also nicht
+            // im Strafraum. Vorher wurde erst der Abnehmer gewählt, und fiel
+            // die Wahl auf den Schützen, trat ein anderer die Ecke.
+            const ecke = attackType === "corner" ? schuetze("ecken", isHomeAttacking) : null;
+            const kandidaten = feld.length ? feld : attPlayers;
+            const abnehmer = ecke && kandidaten.length > 1 ? kandidaten.filter(p => p !== ecke) : kandidaten;
+            const shooter = MatchEngine.waehleSchuetze(abnehmer, attackType, attPos, options.matchplan?.gedeckt)
+                || attackers[0] || midfielders[0] || attPlayers[0];
+            // Wer den Ball spielt, ist nicht der, der ihn verwertet - und es
+            // ist eher der Spielmacher als irgendwer: Vorher war die Wahl ein
+            // Wurf unter allen Mittelfeldspielern, und ein Außenverteidiger auf
+            // der Flügelposition kam auf über 40 Vorlagen in einer Saison.
+            const anderer = (liste) => liste.filter(p => p !== shooter);
+            const gestalter = (liste, wert) => {
+                if (!liste.length) return null;
+                const g = liste.map(p => Math.pow(Math.max(20, wert(p)) / 60, 3));
+                let wurf = Math.random() * g.reduce((a, b) => a + b, 0);
+                for (let i = 0; i < liste.length; i++) { wurf -= g[i]; if (wurf <= 0) return liste[i]; }
+                return liste[liste.length - 1];
+            };
+            const zahl = (p, k) => typeof p[k] === "number" ? p[k] : (p.overall || 60);
+            const passer = (ecke && ecke !== shooter ? ecke : null)
+                || gestalter(anderer(attPlayers.filter(p => ["ZM", "OM", "DM", "LM", "RM", "LA", "RA"].includes(attPos(p)))),
+                    p => zahl(p, "passing") * 0.55 + zahl(p, "vision") * 0.45)
+                || anderer(attPlayers)[0] || attPlayers[0];
+            // Flanken kommen von den Außen - und von den Außenverteidigern
+            const winger = gestalter(anderer(attPlayers.filter(p => ["LA", "RA", "LM", "RM", "LV", "RV"].includes(attPos(p)))),
+                p => zahl(p, "passing") * 0.7 + zahl(p, "technique") * 0.3 - (["LV", "RV"].includes(attPos(p)) ? 6 : 0)) || passer;
             const defender = defenders.length > 0 ? _Random.choice(defenders) : defPlayers[0];
 
             // Koordinaten für das 2D-Feld.
@@ -1447,6 +1488,11 @@ class MatchEngine {
 
             if (outcome === "goal") {
                 if (isHomeAttacking) currentHomeScore++; else currentAwayScore++;
+                // Die Vorlage: Flanke, Steilpass, Ecke - und beim Solo nur
+                // manchmal der Pass davor
+                const vorlage = attackType === "cross" ? winger
+                    : (attackType === "through_ball" || attackType === "corner" ? passer
+                        : (_Random.chance(0.35) ? passer : null));
                 timeline.push({
                     minute: min,
                     second: 24,
@@ -1456,8 +1502,8 @@ class MatchEngine {
                     clubName: attClub.name,
                     playerId: shooter?.id,
                     playerName: shooter?.name,
-                    assistId: attackType === "cross" ? winger?.id : (attackType === "through_ball" ? passer?.id : null),
-                    assistName: attackType === "cross" ? winger?.name : (attackType === "through_ball" ? passer?.name : null),
+                    assistId: vorlage?.id ?? null,
+                    assistName: vorlage?.name ?? null,
                     start: { x: midX, y: midY },
                     end: { x: goalX, y: goalY },
                     xG,

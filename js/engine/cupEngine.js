@@ -267,6 +267,7 @@ class CupEngine {
     static spieleTermin(state, art, rundenIndex) {
         if (art === "playoff") return _cupResolve("PlayoffEngine", "./playoffEngine.js")?.spieleTermin(state, rundenIndex) || null;
         if (art === "supercup") return _cupResolve("SupercupEngine", "./supercupEngine.js")?.spieleTermin(state) || null;
+        if (art === "eurosupercup") return _cupResolve("EuroSupercupEngine", "./euroSupercupEngine.js")?.spieleTermin(state) || null;
         if (art === "cup") return this.spielePokalrunde(state, rundenIndex);
         return this.spieleEuropaTermin(state, rundenIndex);
     }
@@ -275,6 +276,7 @@ class CupEngine {
     static schliesseTerminAb(state, art, rundenIndex) {
         if (art === "playoff") return _cupResolve("PlayoffEngine", "./playoffEngine.js")?.schliesseTerminAb(state, rundenIndex) || [];
         if (art === "supercup") return _cupResolve("SupercupEngine", "./supercupEngine.js")?.schliesseTerminAb(state) || [];
+        if (art === "eurosupercup") return _cupResolve("EuroSupercupEngine", "./euroSupercupEngine.js")?.schliesseTerminAb(state) || [];
         if (art === "cup") return this.schliessePokalrundeAb(state, rundenIndex);
         return this.schliesseEuropaTerminAb(state, rundenIndex);
     }
@@ -291,6 +293,8 @@ class CupEngine {
         if (art === "playoff") return _cupResolve("PlayoffEngine", "./playoffEngine.js")?.eigenePartieAm(state, rundenIndex) || null;
         // Meister gegen Pokalsieger zum Saisonauftakt
         if (art === "supercup") return _cupResolve("SupercupEngine", "./supercupEngine.js")?.eigenePartieAm(state) || null;
+        // Sieger der Königsklasse gegen den Sieger der Europa League
+        if (art === "eurosupercup") return _cupResolve("EuroSupercupEngine", "./euroSupercupEngine.js")?.eigenePartieAm(state) || null;
         const meine = m => m.homeClubId === state.userClubId || m.awayClubId === state.userClubId;
 
         if (art === "cup") {
@@ -577,7 +581,7 @@ class CupEngine {
                 : (typeof require !== "undefined" ? (() => { try { return require("./chronikEngine.js").ChronikEngine; } catch (e) { return null; } })() : null);
             if (chronik && typeof chronik.nachSpiel === "function") {
                 const id = String(match.competitionId || "");
-                const name = id === "supercup" ? "Supercup" : (id.endsWith("_cup") ? "Pokal" : (state.europeanCompetitions?.[id]?.name || "Europapokal"));
+                const name = id === "supercup" ? "Supercup" : id === "eurosupercup" ? "Europäischer Supercup" : (id.endsWith("_cup") ? "Pokal" : (state.europeanCompetitions?.[id]?.name || "Europapokal"));
                 chronik.nachSpiel(state, match, name);
             }
         }

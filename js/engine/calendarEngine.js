@@ -75,6 +75,13 @@ function _getSupercupEngine() {
     return null;
 }
 
+function _getEuroSupercupEngine() {
+    if (typeof EuroSupercupEngine !== 'undefined' && EuroSupercupEngine) return EuroSupercupEngine;
+    if (typeof window !== 'undefined' && window.EuroSupercupEngine) return window.EuroSupercupEngine;
+    if (typeof require !== 'undefined') { try { return require('./euroSupercupEngine.js').EuroSupercupEngine; } catch (e) { return null; } }
+    return null;
+}
+
 function _getCupEngineCal() {
     if (typeof CupEngine !== "undefined" && CupEngine) return CupEngine;
     if (typeof window !== "undefined" && window.CupEngine) return window.CupEngine;
@@ -180,6 +187,29 @@ const CalendarEngine = {
                     description: "Meister gegen Pokalsieger zum Auftakt - ein Spiel, bei Gleichstand Elfmeterschießen.",
                     matchday: null,
                     cupArt: "supercup",
+                    cupRunde: 0,
+                    actionsAvailable: ["match", "lineup", "live_match"],
+                    preseason: true,
+                    completed: false
+                });
+                currentDate.setDate(currentDate.getDate() + 1);
+                dayCounter++;
+                continue;
+            }
+            // Zwei Tage davor: der Europäische Supercup (EuroSupercupEngine)
+            const euroSupercup = _getEuroSupercupEngine();
+            if (v === vorbereitungsTage - 2 && euroSupercup && !(v % 5 === 0 && testspielNr < 4)) {
+                calendar.push({
+                    id: `day_${dayCounter}`,
+                    dayIndex: dayCounter,
+                    date: this.formatDate(currentDate),
+                    dateObj: new Date(currentDate).toISOString(),
+                    dayOfWeek: this.getDayName(currentDate),
+                    type: CALENDAR_DAY_TYPES.EURO,
+                    title: `🏆 ${euroSupercup.NAME}`,
+                    description: "Der Sieger der Königsklasse gegen den Sieger der Europa League - auf neutralem Platz, bei Gleichstand Elfmeterschießen.",
+                    matchday: null,
+                    cupArt: "eurosupercup",
                     cupRunde: 0,
                     actionsAvailable: ["match", "lineup", "live_match"],
                     preseason: true,
@@ -774,15 +804,31 @@ const CalendarEngine = {
             const gegner = (state.clubs || []).find(c => c.id === gegnerId);
             const lage = this.kaderLage(state);
             if (lage.verletzt > 0) marken.push(`${lage.verletzt} verletzt`);
-            marken.unshift(heim ? "Heimspiel" : "Auswärtsspiel");
-            if (eigene.ko) marken.push("K.-o.-Spiel");
+            // Die Supercups sind ein einziges Spiel auf neutralem Platz
+            const endspiel = eigene.wettbewerb.name === eigene.runde.roundName;
+            marken.unshift(eigene.partie.neutralerPlatz ? "Neutraler Platz" : (heim ? "Heimspiel" : "Auswärtsspiel"));
+            if (eigene.ko && !endspiel) marken.push("K.-o.-Spiel");
 
             return {
-                titel: `${eigene.wettbewerb.name} · ${eigene.runde.roundName}`,
-                text: `${heim ? "Gegen" : "Bei"} ${gegner?.name || "unbekannt"}.`
-                    + (eigene.ko ? " Wer verliert, ist raus." : ""),
+                titel: endspiel ? eigene.wettbewerb.name : `${eigene.wettbewerb.name} · ${eigene.runde.roundName}`,
+                text: endspiel
+                    ? `Gegen ${gegner?.name || "unbekannt"} - bei Gleichstand Elfmeterschießen.`
+                    : `${heim ? "Gegen" : "Bei"} ${gegner?.name || "unbekannt"}.` + (eigene.ko ? " Wer verliert, ist raus." : ""),
                 marken
             };
+        }
+
+        if (art === "supercup" || art === "eurosupercup") {
+            const sc = art === "supercup" ? _getSupercupEngine() : _getEuroSupercupEngine();
+            const name = art === "supercup" ? (sc ? sc.name(state) : "Supercup") : (sc ? sc.NAME : "Europäischer Supercup");
+            const p = sc && typeof sc.paarung === "function" ? sc.paarung(state) : null;
+            if (!p) return { titel: name, text: "Ohne uns.", marken };
+            const verein = (id) => (state.clubs || []).find(c => c.id === id)?.name || "?";
+            const m = p.partie;
+            const text = m.played
+                ? `${verein(m.homeClubId)} - ${verein(m.awayClubId)} ${m.homeGoals}:${m.awayGoals}${m.penaltyScore ? ` (${m.penaltyScore[0]}:${m.penaltyScore[1]} i. E.)` : ""}. Ohne uns.`
+                : `${verein(m.homeClubId)} gegen ${verein(m.awayClubId)} - ${p.grund}. Ohne uns.`;
+            return { titel: name, text, marken };
         }
 
         if (art === "playoff") {
@@ -977,7 +1023,7 @@ const CalendarEngine = {
                     ? cupEngine.eigenePartieAm(state, art, tag.cupRunde || 0)
                     : null;
                 if (eigene) {
-                    return { index: i, tag, grund: art === "euro" ? "euro" : (art === "cup" || art === "supercup" ? "cup" : "playoff"), heute, partie: eigene };
+                    return { index: i, tag, grund: art === "euro" || art === "eurosupercup" ? "euro" : (art === "cup" || art === "supercup" ? "cup" : "playoff"), heute, partie: eigene };
                 }
                 continue;
             }
@@ -1181,7 +1227,7 @@ const CalendarEngine = {
                     // Relegation und Playoffs entscheidet die PlayoffEngine über
                     // beide Spiele - ein einzelnes Remis ist dort kein Elfmeterfall.
                     // Die Supercups sind ein Spiel: bei Gleichstand Elfmeter.
-                    const elfmeter = art === "cup" || art === "supercup" || (art === "euro" && runde >= 6);
+                    const elfmeter = art === "cup" || art === "supercup" || art === "eurosupercup" || (art === "euro" && runde >= 6);
                     cupEngine.austragen(state, eigene, elfmeter);
                 }
                 cupEngine.schliesseTerminAb(state, art, runde);

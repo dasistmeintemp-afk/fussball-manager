@@ -1555,6 +1555,11 @@ class SeasonEngine {
         const koeffizient = _resolve('KoeffizientEngine', './koeffizientEngine.js');
         const spotsByCountry = koeffizient && typeof koeffizient.saisonAbschluss === 'function' ? koeffizient.saisonAbschluss(state) : null;
 
+        // Die Sieger von Königsklasse und Europa League für den Europäischen
+        // Supercup festhalten - bevor der Europapokal neu besetzt wird
+        const euroSupercup = _resolve('EuroSupercupEngine', './euroSupercupEngine.js');
+        if (euroSupercup && typeof euroSupercup.merkeVorlage === 'function') euroSupercup.merkeVorlage(state);
+
         // Europapokal aus den Abschlusstabellen der fünf Topligen neu besetzen
         if (competitionEngine && typeof competitionEngine.generateEuropeanCompetitions === 'function') {
             state.europeanCompetitions = competitionEngine.generateEuropeanCompetitions(state.clubs, {

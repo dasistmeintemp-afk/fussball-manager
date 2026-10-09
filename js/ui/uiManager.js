@@ -1970,7 +1970,8 @@ class UIManager {
         DOM.setText("dashAwayName", gastClub?.name || "Auswärts");
         DOM.setText("dashHomeRank", termin.art === "liga" ? platz(heimClub?.id) : "");
         DOM.setText("dashAwayRank", termin.art === "liga" ? platz(gastClub?.id) : "");
-        DOM.setText("dashVenue", heimClub?.stadium || "");
+        // Supercups und Endspiele finden auf neutralem Platz statt
+        DOM.setText("dashVenue", termin.partie?.neutralerPlatz ? "Neutraler Platz" : (heimClub?.stadium || ""));
         DOM.setText("dashNextWhen", this.wannText(termin.tage));
 
         const wappen = (id, club) => {
@@ -7743,8 +7744,10 @@ class UIManager {
             cup.elfmeterschiessen(state, partie);
             const sieger = state.clubs.find(c => c.id === partie.penaltyWinner);
             const stand = partie.penaltyScore || [];
+            // Nach einem Endspiel gibt es keine nächste Runde
+            const endspiel = termin.art === "supercup" || termin.art === "eurosupercup" || partie.roundName === "Finale";
             this.showToast(
-                `🥅 Elfmeterschießen ${stand[0]}:${stand[1]} - ${sieger?.name || "Sieger"} steht in der nächsten Runde.`,
+                `🥅 Elfmeterschießen ${stand[0]}:${stand[1]} - ${sieger?.name || "Sieger"} ${endspiel ? "holt den Titel" : "steht in der nächsten Runde"}.`,
                 partie.penaltyWinner === state.userClubId ? "success" : "error");
         }
 
@@ -7787,6 +7790,14 @@ class UIManager {
             icon: "🏆", name: "Pokal", kurz: "Pokal",
             accent: "#f5c542", accent2: "#fde68a", flaeche: "rgba(74, 20, 20, 0.92)"
         },
+        supercup: {
+            icon: "🏆", name: "Supercup", kurz: "Supercup",
+            accent: "#f5c542", accent2: "#fde68a", flaeche: "rgba(74, 20, 20, 0.92)"
+        },
+        eurosupercup: {
+            icon: "⭐", name: "Europäischer Supercup", kurz: "Supercup",
+            accent: "#f5c542", accent2: "#c7dcff", flaeche: "rgba(15, 30, 78, 0.92)"
+        },
         liga: {
             icon: "⚽", name: "Liga", kurz: "Liga",
             accent: "#38bdf8", accent2: "#7dd3fc", flaeche: "rgba(12, 16, 22, 0.92)"
@@ -7817,9 +7828,11 @@ class UIManager {
         if (match?.wettbewerbName) thema.name = match.wettbewerbName;
         this.setzeThema(modal, thema);
 
-        const runde = match?.roundName
+        let runde = match?.roundName
             || (match?.matchday ? `${match.matchday}. Spieltag` : "")
             || (state?.currentMatchday ? `${state.currentMatchday}. Spieltag` : "");
+        // Ein Endspiel ohne Runden (Supercup) trägt seinen Namen nur einmal
+        if (runde === thema.name) runde = "";
 
         DOM.setText("lmCompIcon", thema.icon);
         DOM.setText("lmCompName", thema.name);
@@ -7835,6 +7848,8 @@ class UIManager {
             const thema = { ...themen[compId], id: compId };
             const w = state?.europeanCompetitions?.[compId];
             if (w?.name) thema.name = w.name;
+            // Der Supercup heißt in jedem Land anders
+            if (compId === "supercup" && typeof SupercupEngine !== "undefined" && SupercupEngine) thema.name = SupercupEngine.name(state);
             return thema;
         }
         if (compId && state?.cups?.[compId]) {

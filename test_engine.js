@@ -5332,12 +5332,13 @@ function runEngineTests() {
 
     test("CalendarEngine: Pokal- und Europapokalabende stehen im Kalender", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Terminpruefer" });
-        // Der Supercup am Ende der Vorbereitung ist ein eigener Termin
+        // Die beiden Supercups am Ende der Vorbereitung sind eigene Termine
         const pokaltage = state.calendar.filter(d => d.type === "cup" && d.cupArt !== "supercup");
-        const europatage = state.calendar.filter(d => d.type === "euro");
+        const europatage = state.calendar.filter(d => d.type === "euro" && d.cupArt !== "eurosupercup");
         const supercup = state.calendar.filter(d => d.cupArt === "supercup");
 
         if (supercup.length !== 1) throw new Error(`${supercup.length} statt 1 Supercup im Kalender`);
+        if (state.calendar.filter(d => d.cupArt === "eurosupercup").length !== 1) throw new Error("Nicht genau ein Europäischer Supercup im Kalender");
         if (pokaltage.length !== 6) throw new Error(`${pokaltage.length} statt 6 Pokalabende im Kalender`);
         if (europatage.length !== 9) throw new Error(`${europatage.length} statt 9 Europapokalabende im Kalender`);
 
@@ -11202,9 +11203,11 @@ function runEngineTests() {
         if (p.partie.homeGoals === p.partie.awayGoals && !p.partie.penaltyWinner) throw new Error("Remis ohne Elfmeterschießen");
         const titel = (CareerEngine.akte(state).titel || []).some(t => t.wettbewerb === Sc.name(state));
         if ((p.siegerId === "muc") !== titel) throw new Error("Titel nicht in der Karriereakte");
-        if (!state.inbox.some(m => m.subject.includes(Sc.name(state)))) throw new Error("Keine Meldung");
+        // Der Europäische Supercup zwei Tage vorher meldet sich eigens
+        const meldung = (m) => m.subject.startsWith(`🏆 ${Sc.name(state)}:`);
+        if (!state.inbox.some(meldung)) throw new Error("Keine Meldung");
         CupEngine.schliesseTerminAb(state, "supercup", 0);
-        if (state.inbox.filter(m => m.subject.includes(Sc.name(state))).length !== 1) throw new Error("Zweimal abgeschlossen");
+        if (state.inbox.filter(meldung).length !== 1) throw new Error("Zweimal abgeschlossen");
 
         // Nach einer Saison: Meister gegen Pokalsieger - oder der Vizemeister, wenn einer beides holte
         state.standings = [{ clubId: "dor" }, { clubId: "lev" }].concat(state.standings.filter(s => !["dor", "lev"].includes(s.clubId)));
@@ -11550,6 +11553,57 @@ function runEngineTests() {
         const { SaveCodec } = require('./js/services/saveCodec.js');
         const zur = SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(state))));
         if (JSON.stringify(zur.koeffizient) !== JSON.stringify(state.koeffizient)) throw new Error("Fünfjahreswertung nicht gespeichert");
+    });
+
+    test("Europäischer Supercup: Sieger der Königsklasse gegen den der Europa League - Kalender, Prämien, Elfmeter ohne Livespiel", () => {
+        const { EuroSupercupEngine: E } = require('./js/engine/euroSupercupEngine.js');
+        const { SupercupEngine } = require('./js/engine/supercupEngine.js');
+        const { CalendarEngine } = require('./js/engine/calendarEngine.js');
+        const { MatchEngine } = require('./js/engine/matchEngine.js');
+        const { StatistikEngine } = require('./js/engine/statistikEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Euro-Supercup" });
+        // Im Kalender zwei Tage vor dem nationalen Supercup, als Europapokalabend
+        const iEuro = state.calendar.findIndex(d => d.cupArt === "eurosupercup");
+        const iNat = state.calendar.findIndex(d => d.cupArt === "supercup");
+        if (iEuro < 0 || iNat - iEuro !== 2 || state.calendar[iEuro].type !== "euro" || !state.calendar[iEuro].preseason) throw new Error(`Kalender: Tag ${iEuro}, nationaler Supercup ${iNat}`);
+
+        // Erste Saison ohne Vorsaison: die größten Namen beider Wettbewerbe
+        const ec = state.europeanCompetitions;
+        const p0 = E.paarung(state);
+        if (!ec.ucl.participants.includes(p0.partie.homeClubId) || !ec.uel.participants.includes(p0.partie.awayClubId)) throw new Error("Erste Paarung nicht aus den Wettbewerben");
+
+        // Mit Vorsaison: der eigene Verein hat die Königsklasse gewonnen
+        const uelSieger = ec.uel.participants.find(id => id !== "muc");
+        ec.ucl.completed = true; ec.ucl.winnerId = "muc";
+        ec.uel.completed = true; ec.uel.winnerId = uelSieger;
+        E.merkeVorlage(state);
+        state.euroSupercup = null;
+        const p = E.paarung(state);
+        if (p.partie.homeClubId !== "muc" || p.partie.awayClubId !== uelSieger || !/Sieger der Königsklasse/.test(p.grund)) throw new Error(`Paarung: ${JSON.stringify(p.partie)}`);
+        if (!E.eigenePartieAm(state) || StatistikEngine.art(p.partie) !== "europa") throw new Error("Eigene Partie oder Statistik falsch");
+
+        // Ohne Livespiel spielt der Co-Trainer - bei Gleichstand Elfmeter,
+        // auch im nationalen Supercup (vorher gewann dort einfach der Gastgeber)
+        const original = MatchEngine.simulateFullMatch;
+        MatchEngine.simulateFullMatch = (m) => { m.homeGoals = 1; m.awayGoals = 1; m.played = true; return m; };
+        try {
+            const muc = state.clubs.find(c => c.id === "muc");
+            const gegner = state.clubs.find(c => c.id === uelSieger);
+            const kasse = [muc.balance, gegner.balance];
+            state.currentDayIndex = iEuro;
+            CalendarEngine.advanceOneDay(state);
+            if (!p.partie.played || !p.partie.penaltyWinner || !p.abgeschlossen || p.siegerId !== p.partie.penaltyWinner) throw new Error(`Europäischer Supercup: ${JSON.stringify(p)}`);
+            const plus = [muc.balance - kasse[0], gegner.balance - kasse[1]];
+            const sieg = p.siegerId === "muc" ? 0 : 1;
+            if (plus[sieg] !== E.PRAEMIE.antritt + E.PRAEMIE.sieg || plus[1 - sieg] !== E.PRAEMIE.antritt) throw new Error(`Prämien: ${plus}`);
+            if (!state.inbox.some(m => /Europäischer Supercup/.test(m.subject))) throw new Error("Keine Nachricht");
+            const nat = SupercupEngine.paarung(state);
+            state.currentDayIndex = iNat;
+            CalendarEngine.advanceOneDay(state);
+            if (!nat.partie.played || !nat.partie.penaltyWinner) throw new Error("Nationaler Supercup ohne Elfmeterschießen");
+        } finally {
+            MatchEngine.simulateFullMatch = original;
+        }
     });
 
     test("Finanzregeln: Kaderkostenquote - Verwarnung, Geldstrafe, halbes Transferbudget und Punktabzug", () => {

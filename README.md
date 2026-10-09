@@ -370,6 +370,13 @@ Die Taktik im Taktik-Reiter ist die Grundordnung. Vor dem Anpfiff stellt der Tra
   - Was eine Anweisung bringt, hängt an den Stärken des Spielers, gemessen an seinem eigenen Niveau. Der Analyst markiert die vier deutlichsten Fälle („unsicher am Ball – sofort Druck“) und lässt sich mit einem Knopf übernehmen. Unter zweieinhalb Sternen schweigt er, ein schwacher irrt sich öfter.
   - Die Anweisungen gelten wie der Plan nur für dieses Spiel, in Livespiel und Sofort-Simulation. Sie stehen auch auf der Tafel der Ansprache. Ohne Anweisungen rechnet das Spiel genau wie vorher.
 
+### 3b-3. 💼 Der Jobmarkt des Trainers (`JobmarktEngine`)
+Bisher kamen Angebote nur nach einer Entlassung, wer Erfolg hatte, blieb für immer beim ersten Verein. Jetzt bewegt sich der Markt – im Reiter *Verein* unter dem Trainerprofil:
+- **Anfragen:** Trennt sich ein größerer Verein von seinem Trainer (unter dem Jahr oder im Sommer) und passt der eigene Ruf, fragt er mit einer gewissen Chance an – frühestens nach zehn Pflichtspielen im Amt. Das Angebot steht auf dem Schreibtisch und gilt fünf Tage. Ablehnen freut den eigenen Vorstand ein wenig.
+- **Offene Stellen:** Wer in den letzten zwei Wochen den Trainer gewechselt hat, nimmt noch Bewerbungen an. Nach drei Tagen kommt die Antwort – je näher der eigene Ruf am Verein, desto eher ein Angebot.
+- **Wechsel:** Die Station endet als „gewechselt“, beim alten Verein übernimmt ein Trainer aus dem Karussell. Wechseln lässt sich wie nach einer Entlassung nur in Ligen mit gleich vielen Spieltagen und nur mit der verlangten Lizenz.
+- **Rücktritt:** Kostet keinen Ruf, aber die Station endet. Danach melden sich die Vereine, die einen nehmen würden – wie nach einer Entlassung.
+
 ### 3c. 📌 Der Schreibtisch
 Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit sortiert, ein Klick springt in den zuständigen Reiter: unvollständige Startelf, Verhandlungen mit uns am Zug, Ausfälle, überlastete Spieler, auslaufende Verträge, unzufriedene Spieler, ungelesene Post. Gesprächswünsche, Wechselwünsche und offene Versprechen stehen ebenfalls dort – ein Klick öffnet die Akte des Spielers.
 
@@ -802,6 +809,7 @@ untitled/
 │   │   ├── sportdirektorEngine.js # Spielervorschläge und Beratung des Sportdirektors
 │   │   ├── calendarEngine.js   # Saisonkalender & dynamischer Tagesablauf
 │   │   ├── datenzentraleEngine.js # Liga nach xG und xPunkten, Form, Spielerwerte, Spielervergleich
+│   │   ├── jobmarktEngine.js   # Anfragen, offene Stellen, Bewerbung, Wechsel und Rücktritt des Trainers
 │   │   └── opponentAnalysisEngine.js # Taktische Gegneranalyse
 │   ├── ui/
 │   │   ├── uiManager.js        # Kern: Start, Assistent, Reiter, Kader, Taktik, Kalender, Ereignisse

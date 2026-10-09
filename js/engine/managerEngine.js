@@ -1053,6 +1053,18 @@ class ManagerEngine {
         const squad = this.squadOf(state, club);
         const items = [];
 
+        // 0. Ein anderer Verein will den Trainer (JobmarktEngine)
+        const jobmarkt = _mgrResolve("JobmarktEngine", "./jobmarktEngine.js");
+        if (jobmarkt && typeof jobmarkt.angebote === "function") {
+            jobmarkt.angebote(state).forEach(a => items.push({
+                priority: 0,
+                icon: "🤝",
+                title: `${a.clubName} will Sie als Trainer`,
+                detail: `${a.leagueName} · Angebot gilt noch ${Math.max(0, a.bis - jobmarkt._jetzt(state))} Tage`,
+                tab: "club"
+            }));
+        }
+
         // 1. Verhandlungen, bei denen wir am Zug sind
         const negotiation = _mgrResolve("NegotiationEngine", "./negotiationEngine.js");
         if (negotiation) {

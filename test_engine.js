@@ -10979,6 +10979,61 @@ function runEngineTests() {
         if (!D.vergleichsKandidaten(state, eigen.id).some(k => k.eigen)) throw new Error("Keine eigenen Kandidaten zum Vergleich");
     });
 
+    test("Jobmarkt: Anfragen größerer Vereine, Bewerbung auf freie Stellen, Wechsel und Rücktritt", () => {
+        const { JobmarktEngine: J } = require('./js/engine/jobmarktEngine.js');
+        const { CareerEngine: K } = require('./js/engine/careerEngine.js');
+        const { TrainerwechselEngine: T } = require('./js/engine/trainerwechselEngine.js');
+        const { TrainerProfilEngine: P } = require('./js/engine/trainerProfilEngine.js');
+        const erst = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const zweite = erst.clubs.filter(c => c.leagueId === "de_liga_2").sort((a, b) => (a.reputation || 0) - (b.reputation || 0));
+        const state = GameState.createNewGame(zweite[Math.floor(zweite.length / 2)].id, "normal", { name: "Trainer" });
+        const eigen = state.clubs.find(c => c.id === state.userClubId);
+        K.beginneStation(state, eigen.id);
+        // Lizenz für alle Ligen, damit es hier nur um Ruf und Kalender geht
+        P.profil(state).lizenz = "pro";
+        const zeile = state.standings.find(s => s.clubId === eigen.id);
+        zeile.played = 12; zeile.won = 8; zeile.drawn = 2; zeile.lost = 2; zeile.points = 26;
+        const ruf = K.ruf(state);
+        const liga = state.clubs.filter(c => c.leagueId === eigen.leagueId && c.id !== eigen.id);
+        const groesser = liga.find(c => (c.reputation || 0) > (eigen.reputation || 0) + 3 && (c.reputation || 0) <= ruf + 6);
+        if (!groesser) throw new Error(`Kein passender größerer Verein (Ruf ${ruf}, eigener ${eigen.reputation})`);
+
+        // Anfrage nach einem Trainerwechsel - nicht von einem zu großen Verein
+        const riese = state.clubs.find(c => (c.reputation || 0) > ruf + 10 && c.leagueId === "de_liga_1");
+        if (riese && !J.hindernis(state, riese)) throw new Error("Ein zu großer Verein würde anfragen");
+        T.wechsle(state, groesser, { grund: "entlassung", gespielt: 12, platz: 10 }, () => 0);
+        const a = J.angebote(state).find(x => x.clubId === groesser.id);
+        if (!a || a.art !== "anfrage" || !state.inbox.some(m => m.subject.includes(groesser.name))) throw new Error("Keine Anfrage nach dem Trainerwechsel");
+        const vertrauen = state.boardConfidence ?? 60;
+        J.ablehnen(state, groesser.id);
+        if (J.angebote(state).length || (state.boardConfidence ?? 60) <= vertrauen) throw new Error("Ablehnen wirkt nicht");
+
+        // Eine freie Stelle: bewerben, nach drei Tagen kommt die Antwort
+        const stelle = J.stellen(state).find(s => s.clubId === groesser.id);
+        if (!stelle || stelle.hindernis) throw new Error(`Stelle nicht offen: ${JSON.stringify(stelle)}`);
+        if (!J.bewerben(state, groesser.id).success || J.bewerben(state, groesser.id).success) throw new Error("Bewerbung doppelt oder gar nicht");
+        J.tag(state, () => 0);
+        if (J.angebote(state).length) throw new Error("Die Antwort kommt vor drei Tagen");
+        state.currentDayIndex = (state.currentDayIndex || 0) + J.ANTWORT;
+        J.tag(state, () => 0);
+        if (!J.angebote(state).some(x => x.clubId === groesser.id && x.art === "bewerbung")) throw new Error("Kein Angebot auf die Bewerbung");
+
+        // Annehmen: neuer Verein, alte Station endet, der alte Verein bekommt einen Trainer
+        const res = J.annehmen(state, groesser.id);
+        if (!res.erfolg || state.userClubId !== groesser.id) throw new Error(`Wechsel gescheitert: ${res.grund}`);
+        const stationen = K.akte(state).stationen;
+        if (stationen[stationen.length - 2]?.ende !== "gewechselt" || stationen[stationen.length - 1].clubId !== groesser.id) throw new Error("Stationen falsch");
+        if (!eigen.trainer || groesser.trainer) throw new Error("Trainer der Vereine nicht getauscht");
+        if (J.stellen(state).some(s => s.clubId === eigen.id)) throw new Error("Der verlassene Verein steht als offene Stelle da");
+
+        // Rücktritt: wie eine Entlassung, aber ohne Rufschaden
+        const entlassungen = K.akte(state).entlassungen || 0;
+        if (!J.ruecktritt(state).success) throw new Error("Rücktritt nicht möglich");
+        const d = K.verarbeiteEntlassung(state);
+        if (d.grund !== "ruecktritt" || (K.akte(state).entlassungen || 0) !== entlassungen || !state.arbeitslos || !Array.isArray(d.angebote)) throw new Error("Rücktritt falsch abgewickelt");
+        if (stationen[stationen.length - 1].ende !== "zurückgetreten") throw new Error("Station nicht als Rücktritt geschlossen");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

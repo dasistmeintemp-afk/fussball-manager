@@ -5022,6 +5022,73 @@ class UIManager {
         }
     }
 
+    /**
+     * Der Jobmarkt: Angebote anderer Vereine, offene Stellen mit Bewerbung
+     * und der Rücktritt (JobmarktEngine).
+     */
+    renderJobmarkt(state) {
+        const box = document.getElementById("clubJobmarkt");
+        const markt = typeof JobmarktEngine !== "undefined" ? JobmarktEngine : null;
+        if (!box || !markt) return;
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const angebote = markt.angebote(state);
+        const stellen = markt.stellen(state);
+        const jetzt = markt._jetzt(state);
+        box.innerHTML = `
+            <div class="card-header"><h3>Jobmarkt</h3><span class="header-tag">${angebote.length ? `${angebote.length} Angebot${angebote.length > 1 ? "e" : ""}` : "ruhig"}</span></div>
+            ${angebote.length ? `<div class="jm-liste">${angebote.map(a => `
+                <div class="jm-angebot">
+                    <div><strong>${esc(a.clubName)}</strong> <span class="text-muted">${esc(a.leagueName)} · Ruf ${a.reputation}</span>
+                        <div class="text-muted jm-klein">${a.art === "anfrage" ? "Fragt an" : "Antwort auf Ihre Bewerbung"} · Etat ${this.geldKurz(a.budget)} · Ziel: ${esc(this.erwartungText(a.erwartung))} · noch ${Math.max(0, a.bis - jetzt)} Tage</div></div>
+                    <div class="jm-knoepfe">
+                        <button class="btn btn-sm btn-primary" data-jm-an="${esc(a.clubId)}">Annehmen</button>
+                        <button class="btn btn-sm btn-secondary" data-jm-ab="${esc(a.clubId)}">Ablehnen</button>
+                    </div>
+                </div>`).join("")}</div>` : ""}
+            <h4 class="jm-titel">Offene Stellen</h4>
+            ${stellen.length ? `<div class="jm-liste">${stellen.map(s => `
+                <div class="jm-stelle">
+                    <div><strong>${esc(s.clubName)}</strong> <span class="text-muted">${esc(s.leagueName)} · Ruf ${s.reputation}</span>
+                        ${s.hindernis ? `<div class="text-muted jm-klein">${esc(s.hindernis)}</div>` : ""}</div>
+                    ${s.angebot ? `<span class="badge badge-success">Angebot liegt vor</span>`
+                        : s.beworben ? `<span class="badge badge-info">Beworben</span>`
+                        : s.abgelehnt ? `<span class="badge badge-warning">Absage</span>`
+                        : s.hindernis ? "" : `<button class="btn btn-sm btn-secondary" data-jm-bewerben="${esc(s.clubId)}">Bewerben</button>`}
+                </div>`).join("")}</div>`
+                : `<p class="text-muted jm-klein">Gerade sucht kein Verein Ihrer Ligen einen Trainer. Wechselt einer, steht die Stelle zwei Wochen hier.</p>`}
+            <div class="jm-fuss">
+                <button class="btn btn-ghost btn-sm" id="btnRuecktritt">Zurücktreten</button>
+                <span class="text-muted jm-klein">Ein Rücktritt kostet keinen Ruf - aber die Station endet, und es zählt, wer Sie dann nimmt.</span>
+            </div>`;
+        const neu = () => { if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage(); this.renderJobmarkt(state); };
+        box.querySelectorAll("[data-jm-bewerben]").forEach(b => b.addEventListener("click", () => {
+            const res = markt.bewerben(state, b.dataset.jmBewerben);
+            this.showToast(res.success ? "Bewerbung abgeschickt - die Antwort kommt in drei Tagen." : res.error, res.success ? "success" : "warning");
+            neu();
+        }));
+        box.querySelectorAll("[data-jm-ab]").forEach(b => b.addEventListener("click", () => {
+            markt.ablehnen(state, b.dataset.jmAb);
+            this.showToast("Abgelehnt. Der Vorstand hat davon gehört und weiß es zu schätzen.", "info");
+            neu();
+        }));
+        box.querySelectorAll("[data-jm-an]").forEach(b => b.addEventListener("click", () => {
+            const a = angebote.find(x => String(x.clubId) === b.dataset.jmAn);
+            if (!a || !confirm(`${a.clubName} übernehmen? Die Station bei Ihrem jetzigen Verein endet.`)) return;
+            const res = markt.annehmen(state, a.clubId);
+            if (!res.erfolg) { this.showToast(res.grund || "Der Wechsel hat nicht geklappt.", "error"); return; }
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage(null, true);
+            this.showToast(`🤝 Sie übernehmen ${res.club.name}.`, "success");
+            this.renderHeader();
+            this.switchTab("dashboard");
+        }));
+        document.getElementById("btnRuecktritt")?.addEventListener("click", () => {
+            if (!confirm("Wirklich zurücktreten? Sie verlassen den Verein sofort.")) return;
+            const res = markt.ruecktritt(state);
+            if (!res.success) { this.showToast(res.error, "error"); return; }
+            this.pruefeEntlassung();
+        });
+    }
+
     /** Das Trainerprofil: fünf Werte, Lizenz mit Lehrgang, Ruf */
     renderTrainerProfil() {
         const box = document.getElementById("clubTrainerProfil");
@@ -5332,6 +5399,7 @@ class UIManager {
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
         this.renderTrainerProfil();
+        this.renderJobmarkt(state);
         this.renderVision(state, userClub);
         this.renderInvestor(state, userClub);
         this.renderPartner(state, userClub);
@@ -7567,8 +7635,11 @@ class UIManager {
 
         const b = daten.bilanz || { spiele: 0, siege: 0, unentschieden: 0, niederlagen: 0, punkteSchnitt: 0 };
 
-        DOM.setText("dismissSubtitle",
-            `${daten.clubName} trennt sich zum ${daten.matchday}. Spieltag von Ihnen.`);
+        const ruecktritt = daten.grund === "ruecktritt";
+        DOM.setText("dismissTitle", ruecktritt ? "Sie treten zurück" : "Der Vorstand beendet die Zusammenarbeit");
+        DOM.setText("dismissSubtitle", ruecktritt
+            ? `Sie verlassen ${daten.clubName} zum ${daten.matchday}. Spieltag.`
+            : `${daten.clubName} trennt sich zum ${daten.matchday}. Spieltag von Ihnen.`);
 
         const body = document.getElementById("dismissBody");
         if (body) {

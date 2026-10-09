@@ -230,6 +230,11 @@ const TrainerwechselEngine = {
         const eigeneLiga = (state.clubs || []).find(c => c.id === state.userClubId)?.leagueId;
         if (club.leagueId === eigeneLiga || (club.level || 1) === 1) state.trainerwechsel.push(eintrag);
         if (state.trainerwechsel.length > this.PROTOKOLL) state.trainerwechsel.splice(0, state.trainerwechsel.length - this.PROTOKOLL);
+        // Ein größerer Verein sucht - vielleicht fragt er beim Nutzer an (JobmarktEngine)
+        if (grund !== "abgang") {
+            const markt = _twResolve("JobmarktEngine", "./jobmarktEngine.js");
+            if (markt && typeof markt.nachTrainerwechsel === "function") markt.nachTrainerwechsel(state, club, zufall);
+        }
         return eintrag;
     },
 

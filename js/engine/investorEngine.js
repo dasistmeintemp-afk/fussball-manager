@@ -439,7 +439,8 @@ const InvestorEngine = {
             else if (v.phase === "vor" && offen) v.phase = "laeuft";
             else if (v.phase === "laeuft" && !offen) {
                 delete club.auflagen.verkauf;
-                club.punktabzug = { punkte: this.AUFLAGE.abzug, saison: state.seasonYear || 1, grund: "Verkaufsauflage verfehlt" };
+                const schon = club.punktabzug && club.punktabzug.saison === (state.seasonYear || 1) ? club.punktabzug.punkte : 0;
+                club.punktabzug = { punkte: schon + this.AUFLAGE.abzug, saison: state.seasonYear || 1, grund: schon ? "Verkaufsauflage verfehlt, Kaderkosten" : "Verkaufsauflage verfehlt" };
                 this._tabelleNeu(state);
                 this._post(state, "Verband", `⚖️ ${this.AUFLAGE.abzug} Punkte Abzug`,
                     `${club.name} hat die Verkaufsauflage verfehlt: ${this._geld(v.erloes)} von ${this._geld(v.ziel)}. Der Verband zieht ${this.AUFLAGE.abzug} Punkte ab.`);

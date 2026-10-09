@@ -124,6 +124,12 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   - Die Spiele rechnet die Länderspiel-Engine: Tore, Müdigkeit, Verletzungen, Länderspiele in der Akte. Betreut der Manager eine Nation, zählen sie für seine Bilanz, und er hört nach jeder Runde, ob es weitergeht.
   - **Folgen:** Die Turnierspieler kommen müde in die Vorbereitung (15 Punkte Fitness weniger). Der Titel steht in der Akte („Weltmeister 2030“), steigert den Marktwert um ein Zehntel und hebt die Laune. Dazu ein Torschützenkönig des Turniers.
   - **Anzeige:** Die Ranglisten zeigen das letzte Turnier mit K.-o.-Runden und Gruppen, die Post den Start und das Finale.
+- **Finanzregeln (`FinanzregelEngine`):** Bisher konnte der eigene Verein beliebig über seine Verhältnisse zahlen. Jetzt gilt nach dem Vorbild der UEFA eine Grenze für die Kaderkosten.
+  - **Quote:** Spielergehälter, Trainerstab, Spielerprämien und ein Drittel der Ablösen der Saison, geteilt durch den Umsatz (Sponsor und Fernsehgeld, Eintritt, Preisgelder, Transfererlöse). Geld vom Investor oder vom Vorstand zählt nicht als Umsatz.
+  - **Folgen:** Bis 70 % ist alles in Ordnung. Darüber gibt es erst eine Verwarnung, in der zweiten Saison in Folge eine Geldstrafe (2 % des Umsatzes) und ein halbes Transferbudget. Über 80 % kommen 5 % Geldstrafe und 3 Punkte Abzug in der nächsten Saison dazu, im Wiederholungsfall 6.
+  - **Ablauf:** Gezählt wird über die Buchungen des eigenen Vereins, abgerechnet am Saisonende. Zur Saisonhälfte warnt die Finanzabteilung, wenn die Quote über der Grenze liegt.
+  - **Eichung:** Ohne Eingriff liegen die Vereine bei 30 bis 55 % (gemessen über zwei Saisons mit acht Vereinen von der ersten bis zur dritten Liga in vier Ländern). Die Grenze trifft also nur, wer Gehälter und Ablösen über die Einnahmen treibt.
+  - **Anzeige:** Die Finanzen zeigen die Quote der laufenden Saison mit Grenze und Strafgrenze, eine laufende Auflage und die letzten fünf Saisons.
 - **Fünfjahreswertung (`KoeffizientEngine`):** Die Startplätze im Europapokal standen fest in den Ligadaten. Jetzt sammelt jedes Land Punkte mit seinen Vereinen.
   - **Punkte:** Sieg 2, Remis 1, je erreichter Endrundenrunde 1, Teilnahme an der Königsklasse 2. Der Wert einer Saison ist die Summe geteilt durch die Zahl der Vereine des Landes im Europapokal.
   - **Startplätze:** Rang 1 bis 4 der Fünfjahreswertung stellt vier Vereine in der Königsklasse, Rang 5 drei. Das Land mit dem besten Wert der Vorsaison bekommt einen fünften Platz (Leistungsplatz). Dahinter je ein Platz in Europa League und Conference League.
@@ -868,6 +874,7 @@ untitled/
 │   │   ├── kaderregelEngine.js # Meldelisten: Europapokal (25, acht ausgebildet, Liste B), Premier League
 │   │   ├── koeffizientEngine.js # Fünfjahreswertung der Länder und Startplätze im Europapokal
 │   │   ├── turnierEngine.js    # EM und WM im Sommer: Gruppen, K.-o.-Runden, Titel
+│   │   ├── finanzregelEngine.js # Kaderkostenquote: Verwarnung, Geldstrafe, Punktabzug
 │   │   ├── klauselEngine.js    # Steigerung, Auf-/Abstieg, Mindestablöse, Vereinsoption
 │   │   ├── newsEngine.js       # Zentrales Nachrichtensystem & Postfach
 │   │   ├── aiManagerEngine.js  # KI-Aufstellungen & KI-Transferangebote

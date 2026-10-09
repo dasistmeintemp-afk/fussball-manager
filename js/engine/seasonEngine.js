@@ -1048,6 +1048,9 @@ class SeasonEngine {
                 const prizeMoney = Math.max(Math.round(sponsor * 0.45), Math.round(sponsor * Math.max(1, 14 - index) * 0.45));
                 club.balance += prizeMoney;
                 club.transferBudget += Math.round(prizeMoney * 0.7);
+                if (club.id === state.userClubId && financeEngine && typeof financeEngine.recordTransaction === 'function') {
+                    financeEngine.recordTransaction(state, club.id, "prize_money", prizeMoney, `Tabellenprämie (Platz ${index + 1})`);
+                }
             });
         });
 
@@ -1061,6 +1064,10 @@ class SeasonEngine {
         // Hat der Verein geliefert, was der Investor erwartet?
         const investorEnde = _resolve('InvestorEngine', './investorEngine.js');
         if (investorEnde && typeof investorEnde.saisonEnde === 'function') investorEnde.saisonEnde(state);
+
+        // Der Verband zieht Bilanz über die Kaderkosten
+        const finanzregeln = _resolve('FinanzregelEngine', './finanzregelEngine.js');
+        if (finanzregeln && typeof finanzregeln.saisonAbschluss === 'function') finanzregeln.saisonAbschluss(state);
 
         // Die Vision des Vorstands: Bilanz der Jahresziele und des Fernziels
         const visionEnde = _resolve('VisionEngine', './visionEngine.js');
@@ -1625,6 +1632,10 @@ class SeasonEngine {
                 club.transferBudget = Math.max(0, Math.round(etat));
             });
         }
+
+        // Eine Auflage des Verbands halbiert das neue Transferbudget
+        const finanzAuflage = _resolve('FinanzregelEngine', './finanzregelEngine.js');
+        if (finanzAuflage && typeof finanzAuflage.saisonstart === 'function') finanzAuflage.saisonstart(state);
 
         // Investoren: das jährliche Geld, Übernahmen, Auflagen - und alte
         // Punktabzüge verfallen, bevor die Tabelle neu anfängt

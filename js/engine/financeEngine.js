@@ -398,6 +398,10 @@ const FinanceEngine = {
         // anfallen und die eigenen Einträge aus dem Journal verdrängen.
         if (state.userClubId && clubId !== state.userClubId) return null;
 
+        // Die Kaderkostenquote zählt jede Buchung des eigenen Vereins mit
+        const regeln = _feResolve("FinanzregelEngine", "./finanzregelEngine.js");
+        if (regeln && typeof regeln.buche === "function") regeln.buche(state, type, amount);
+
         const txn = {
             id: "txn_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
             clubId: clubId,

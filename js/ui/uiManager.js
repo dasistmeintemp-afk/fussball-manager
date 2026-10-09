@@ -4997,6 +4997,50 @@ class UIManager {
     }
 
     /**
+     * Die Kaderkostenquote der laufenden Saison gegen die Grenze des
+     * Verbands, dazu eine laufende Auflage und die letzten Saisons.
+     */
+    renderFinanzregeln(state, club) {
+        const el = document.getElementById("finRegeln");
+        const fr = typeof FinanzregelEngine !== "undefined" ? FinanzregelEngine : null;
+        if (!el || !fr) return;
+        const s = fr.stand(state);
+        const pz = (q) => `${Math.round(q * 100)} %`;
+        const status = {
+            gruen: ["✅", "Im Rahmen"],
+            gelb: ["⚠️", "Über der Grenze"],
+            rot: ["⛔", "Punktabzug droht"]
+        }[s.status];
+        const breite = Math.min(100, Math.round(s.quote / 1.2 * 100));
+        const f = state.finanzregel || {};
+        const saison = state.seasonYear || 1;
+        const auflage = f.auflage && f.auflage.saison === saison
+            ? `<p class="fr-auflage">⚖️ Auflage des Verbands: Das Transferbudget dieser Saison ist halbiert${f.auflage.abzug ? `, dazu ${f.auflage.abzug} Punkte Abzug` : ""}.</p>` : "";
+        const folgeText = { ok: "✓ im Rahmen", verwarnung: "Verwarnung", strafe: "Geldstrafe", abzug: "Punktabzug" };
+        const verlauf = (f.verlauf || []).slice().reverse();
+        el.innerHTML = `
+            <h4>Kaderkosten nach Verbandsregel</h4>
+            <div class="fr-kopf fr-${s.status}">
+                <strong>${pz(s.quote)}</strong>
+                <span>${status[0]} ${status[1]}</span>
+            </div>
+            <div class="fr-balken" role="img" aria-label="Kaderkostenquote ${pz(s.quote)}, Grenze ${pz(fr.GRENZE)}">
+                <i class="fr-${s.status}" style="width:${breite}%"></i>
+                <b style="left:${Math.round(fr.GRENZE / 1.2 * 100)}%" title="Grenze ${pz(fr.GRENZE)}"></b>
+                <b class="fr-straf" style="left:${Math.round(fr.STRAFGRENZE / 1.2 * 100)}%" title="Strafgrenze ${pz(fr.STRAFGRENZE)}"></b>
+            </div>
+            <div class="finance-stat-row"><span>Umsatz der Saison:</span><strong>${this.geldKurz(s.umsatz)}</strong></div>
+            <div class="finance-stat-row"><span>Gehälter und Trainerstab:</span><strong>${this.geldKurz(s.kader)}</strong></div>
+            <div class="finance-stat-row"><span>Ablösen (ein Drittel zählt):</span><strong>${this.geldKurz(Math.round(s.abloesen / fr.ABLOESE_JAHRE))}</strong></div>
+            ${auflage}
+            <p class="muted-note">Erlaubt sind ${pz(fr.GRENZE)} des Umsatzes. Darüber gibt es erst eine Verwarnung, im Jahr darauf Geldstrafe und ein halbes Transferbudget. Über ${pz(fr.STRAFGRENZE)} kommen ${fr.ABZUG.erst} Punkte Abzug dazu. Abgerechnet wird am Saisonende.</p>
+            ${verlauf.length ? `<ul class="raten-liste fr-verlauf">${verlauf.map(v => `<li class="fr-folge-${v.folge}">
+                <span>Saison ${v.saison} <small>${pz(v.quote)}</small></span>
+                <span>${folgeText[v.folge] || v.folge}${v.strafe ? ` <small>${this.geldKurz(v.strafe)}</small>` : ""}${v.abzug ? ` <small>−${v.abzug} Pkt.</small>` : ""}</span>
+            </li>`).join("")}</ul>` : ""}`;
+    }
+
+    /**
      * Anfragen an den Vorstand auf der Vorstandskarte: was man erbitten
      * kann, wie die Aussichten stehen, und ob gerade beraten wird.
      */
@@ -5068,6 +5112,7 @@ class UIManager {
         this.renderFacilityCosts(userClub);
         this.renderUmschichten(state, userClub);
         this.renderRaten(state, userClub);
+        this.renderFinanzregeln(state, userClub);
 
         // Transaktionshistorie (D5)
         const txnsBody = document.getElementById("finTransactionsBody");

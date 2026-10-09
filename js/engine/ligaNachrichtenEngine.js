@@ -220,9 +220,13 @@ const LigaNachrichtenEngine = {
         if (serien.length) zeilen.push(`Serien: ${serien.slice(0, 3).join("; ")}.`);
 
         const ligaIds = new Set(tabelle.map(r => r.clubId));
+        // Die Torjäger der Liga - nur Ligatore
+        const statistik = (typeof StatistikEngine !== "undefined" && StatistikEngine) || (typeof require !== "undefined" ? (() => { try { return require("./statistikEngine.js").StatistikEngine; } catch (e) { return null; } })() : null);
         const torjaeger = (state.players || []).filter(p => ligaIds.has(p.clubId) && (p.stats?.goals || 0) > 0)
-            .sort((a, b) => (b.stats.goals || 0) - (a.stats.goals || 0)).slice(0, 3);
-        if (torjaeger.length) zeilen.push(`Torjäger: ${torjaeger.map(p => `${p.name} (${vereinNach.get(p.clubId)?.name || ""}) ${p.stats.goals}`).join(", ")}.`);
+            .map(p => ({ p, tore: statistik ? statistik.von(p, "liga").goals : (p.stats.goals || 0) }))
+            .filter(e => e.tore > 0)
+            .sort((a, b) => b.tore - a.tore).slice(0, 3);
+        if (torjaeger.length) zeilen.push(`Torjäger: ${torjaeger.map(({ p, tore }) => `${p.name} (${vereinNach.get(p.clubId)?.name || ""}) ${tore}`).join(", ")}.`);
 
         const seit = s.letzteRundschau && s.letzteRundschau.saison === saison ? s.letzteRundschau.tag : -1;
         const transfers = s.transfers.filter(t => t.saison === saison && t.tag > seit);

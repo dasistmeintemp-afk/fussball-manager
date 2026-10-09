@@ -8699,3 +8699,6 @@ td.nowrap { white-space: nowrap; }
 #statsJahrespreise .preis-liste + .preis-liste { margin-top: 8px; }
 #statsJahrespreise .preis-liste li { grid-template-columns: 96px 1fr; }
 .jp-titel { display: block; margin-top: 2px; font-size: 11px; }
+
+/* Saisonbilanz je Wettbewerb in der Akte */
+.pd-saison-teile { display: block; flex-basis: 100%; margin-top: 2px; color: var(--text-muted); font-size: 12px; line-height: 1.4; }

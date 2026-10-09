@@ -5824,7 +5824,7 @@ class UIManager {
             <ul class="preis-liste">${podest}</ul>
             <ul class="preis-liste">
                 <li><span class="preis-monat">Talent</span><span>${person(j.talent, j.talent ? `, ${esc(j.talent.alter)} Jahre` : "")}</span></li>
-                <li><span class="preis-monat">Torjäger Europas</span><span>${person(j.torjaeger, j.torjaeger ? `, ${j.torjaeger.tore} Tore` : "")}</span></li>
+                <li><span class="preis-monat">Torjäger Europas</span><span>${person(j.torjaeger, j.torjaeger ? `, ${j.torjaeger.tore} Ligatore` : "")}</span></li>
                 <li><span class="preis-monat">Trainer</span><span>${t ? `<span class="preis-name${t.istNutzer ? " eigen" : ""}">${t.istNutzer ? "Sie" : esc(t.name || t.verein)}</span> <small>${t.istNutzer || !t.name ? "" : `${esc(t.verein)}, `}${esc(t.grund)}</small>` : "–"}</span></li>
             </ul>
             ${(j.elf || []).length ? `
@@ -5913,18 +5913,21 @@ class UIManager {
         }
 
         const vereine = new Map((state.clubs || []).map(c => [c.id, c]));
+        // Die Ranglisten einer Liga zählen nur Ligaspiele - Pokal und
+        // Europapokal stehen in der Akte des Spielers
+        const statistik = typeof StatistikEngine !== "undefined" ? StatistikEngine : null;
         const spieler = (state.players || []).filter(p => {
             if (!p.stats) return false;
             if (ligaId === "alle") return true;
             return vereine.get(p.clubId)?.leagueId === ligaId;
-        });
+        }).map(p => ({ p, s: statistik ? statistik.von(p, "liga") : p.stats }));
         const userClubId = state.userClubId;
         const ANZAHL = 8;
 
         const rangliste = (elId, liste, wertText, leer) => {
             const el = document.getElementById(elId);
             if (!el) return;
-            el.innerHTML = liste.slice(0, ANZAHL).map((p, i) => {
+            el.innerHTML = liste.slice(0, ANZAHL).map(({ p, s }, i) => {
                 const club = vereine.get(p.clubId);
                 return `
                     <div class="leaderboard-item${p.clubId === userClubId ? " lb-eigen" : ""}">
@@ -5934,7 +5937,7 @@ class UIManager {
                             <span class="lb-name">${this.escapeHtml(p.name)}</span>
                             <span class="lb-club">${this.escapeHtml(club?.name || "")}</span>
                         </span>
-                        <span class="lb-val">${wertText(p)}</span>
+                        <span class="lb-val">${wertText(s)}</span>
                     </div>`;
             }).join("") || `<div class="empty-state-sm">${leer}</div>`;
             el.querySelectorAll(".mini-wappen").forEach(w => {
@@ -5947,28 +5950,28 @@ class UIManager {
         };
 
         rangliste("statsTopScorers",
-            spieler.filter(p => p.stats.goals > 0).sort((a, b) => b.stats.goals - a.stats.goals),
-            p => `${p.stats.goals} <small>Tore</small>`,
+            spieler.filter(e => e.s.goals > 0).sort((a, b) => b.s.goals - a.s.goals),
+            s => `${s.goals} <small>${s.goals === 1 ? "Tor" : "Tore"}</small>`,
             "Noch keine Tore erzielt.");
 
         rangliste("statsTopAssists",
-            spieler.filter(p => p.stats.assists > 0).sort((a, b) => b.stats.assists - a.stats.assists),
-            p => `${p.stats.assists} <small>Vorl.</small>`,
+            spieler.filter(e => e.s.assists > 0).sort((a, b) => b.s.assists - a.s.assists),
+            s => `${s.assists} <small>Vorl.</small>`,
             "Noch keine Vorlagen erfasst.");
 
         rangliste("statsCleanSheets",
-            spieler.filter(p => p.pos === "TW" && p.stats.cleanSheets > 0).sort((a, b) => b.stats.cleanSheets - a.stats.cleanSheets),
-            p => `${p.stats.cleanSheets} <small>zu null</small>`,
+            spieler.filter(e => e.p.pos === "TW" && e.s.cleanSheets > 0).sort((a, b) => b.s.cleanSheets - a.s.cleanSheets),
+            s => `${s.cleanSheets} <small>zu null</small>`,
             "Noch keine Zu-null-Spiele.");
 
         // Ein Spieler mit zwei guten Einsätzen gehört nicht vor den, der jede
         // Woche spielt: Mindesteinsätze wachsen mit der Saison.
-        const meisteEinsaetze = spieler.reduce((m, p) => Math.max(m, p.stats.matches || 0), 0);
+        const meisteEinsaetze = spieler.reduce((m, e) => Math.max(m, e.s.matches || 0), 0);
         const mindestens = Math.max(2, Math.ceil(meisteEinsaetze * 0.4));
-        const schnitt = p => p.stats.ratingSum / p.stats.matches;
+        const schnitt = s => s.ratingSum / s.matches;
         rangliste("statsTopRatings",
-            spieler.filter(p => (p.stats.matches || 0) >= mindestens).sort((a, b) => schnitt(b) - schnitt(a)),
-            p => `${schnitt(p).toFixed(2).replace(".", ",")} <small>Ø</small>`,
+            spieler.filter(e => (e.s.matches || 0) >= mindestens).sort((a, b) => schnitt(b.s) - schnitt(a.s)),
+            s => `${schnitt(s).toFixed(2).replace(".", ",")} <small>Ø</small>`,
             `Mindestens ${mindestens} Einsätze erforderlich.`);
         DOM.setText("statsRatingHint", `ab ${mindestens} Einsätzen`);
 

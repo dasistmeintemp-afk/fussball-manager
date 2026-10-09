@@ -1077,14 +1077,17 @@ class SeasonEngine {
         const jahrespreise = _resolve('JahrespreisEngine', './jahrespreisEngine.js');
         if (jahrespreise && typeof jahrespreise.verleihen === 'function') jahrespreise.verleihen(state);
         const ligaSpieler = new Set((state.clubs || []).filter(c => c.leagueId === userClub.leagueId).map(c => c.id));
-        const inLiga = state.players.filter(p => ligaSpieler.has(p.clubId));
-        const sortedScorers = inLiga.filter(p => (p.stats.goals || 0) > 0).sort((a, b) => (b.stats.goals || 0) - (a.stats.goals || 0));
+        // Torschützenkönig und Co. zählen Ligaspiele, nicht Pokal und Europapokal
+        const statistik = _resolve('StatistikEngine', './statistikEngine.js');
+        const inLiga = state.players.filter(p => ligaSpieler.has(p.clubId))
+            .map(p => ({ p, s: statistik ? statistik.von(p, "liga") : p.stats }));
+        const sortedScorers = inLiga.filter(e => (e.s.goals || 0) > 0).sort((a, b) => (b.s.goals || 0) - (a.s.goals || 0));
         const topScorer = sortedScorers[0] || null;
 
-        const sortedAssists = inLiga.filter(p => (p.stats.assists || 0) > 0).sort((a, b) => (b.stats.assists || 0) - (a.stats.assists || 0));
+        const sortedAssists = inLiga.filter(e => (e.s.assists || 0) > 0).sort((a, b) => (b.s.assists || 0) - (a.s.assists || 0));
         const topAssister = sortedAssists[0] || null;
 
-        const ratedPlayers = inLiga.filter(p => (p.stats.matches || 0) >= 10).sort((a, b) => ((b.stats.ratingSum || 0) / (b.stats.matches || 1)) - ((a.stats.ratingSum || 0) / (a.stats.matches || 1)));
+        const ratedPlayers = inLiga.filter(e => (e.s.matches || 0) >= 10).sort((a, b) => ((b.s.ratingSum || 0) / (b.s.matches || 1)) - ((a.s.ratingSum || 0) / (a.s.matches || 1))).map(e => e.p);
         const playerOfTheSeason = (preise && preise.spieler && state.players.find(p => p.id === preise.spieler.id)) || ratedPlayers[0] || null;
 
         // Historie archivieren
@@ -1096,8 +1099,8 @@ class SeasonEngine {
             userClubId: userClub.id,
             userRank,
             awards: {
-                topScorer: topScorer ? { name: topScorer.name, goals: topScorer.stats.goals, clubId: topScorer.clubId } : null,
-                topAssists: topAssister ? { name: topAssister.name, assists: topAssister.stats.assists, clubId: topAssister.clubId } : null,
+                topScorer: topScorer ? { name: topScorer.p.name, goals: topScorer.s.goals, clubId: topScorer.p.clubId } : null,
+                topAssists: topAssister ? { name: topAssister.p.name, assists: topAssister.s.assists, clubId: topAssister.p.clubId } : null,
                 playerOfTheSeason: playerOfTheSeason ? { name: playerOfTheSeason.name, rating: ((playerOfTheSeason.stats.ratingSum || 0) / (playerOfTheSeason.stats.matches || 1)).toFixed(2), clubId: playerOfTheSeason.clubId } : null
             }
         });
@@ -1111,6 +1114,7 @@ class SeasonEngine {
         if (laufbahn && typeof laufbahn.saisonAbschluss === 'function') laufbahn.saisonAbschluss(state);
 
         // Spieler altern um 1 Jahr
+        const statistikReset = _resolve('StatistikEngine', './statistikEngine.js');
         state.players.forEach(player => {
             player.age += 1;
             player.stats.matches = 0;
@@ -1121,6 +1125,7 @@ class SeasonEngine {
             player.stats.ratingSum = 0;
             player.stats.cleanSheets = 0;
             player.stats.minutes = 0;
+            if (statistikReset) statistikReset.zuruecksetzen(player);
             player.fitness = 100;
             player.injuredWeeks = 0;
             player.suspendedMatches = 0;

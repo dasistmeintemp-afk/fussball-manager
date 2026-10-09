@@ -390,6 +390,13 @@ class NegotiationEngine {
             const honorar = Math.max(0, Math.round(offer.agentFee !== undefined ? Number(offer.agentFee) || 0 : (negotiation.demand.agentFee || 0)));
             const einsatzPraemie = Math.max(0, Math.round(Number(offer.einsatzPraemie) || 0));
             const torPraemie = Math.max(0, Math.round(Number(offer.torPraemie) || 0));
+            // Unter einem Gehaltsdeckel (Auflage eines Geldgebers) geht kein Vertrag darüber
+            const investoren = negotiation.type === "transfer"
+                ? ((typeof InvestorEngine !== "undefined" && InvestorEngine) ? InvestorEngine
+                    : (typeof require !== "undefined" ? (() => { try { return require("./investorEngine.js").InvestorEngine; } catch (e) { return null; } })() : null))
+                : null;
+            const deckel = investoren && typeof investoren.gehaltsHindernis === "function" ? investoren.gehaltsHindernis(state, club, wage) : null;
+            if (deckel) return { success: false, error: deckel };
             negotiation.lastOffer = { wage, years, signingBonus: bonus, agentFee: honorar, einsatzPraemie, torPraemie };
             const praemien = (einsatzPraemie || torPraemie)
                 ? `, Prämien ${this.formatMoney(einsatzPraemie)} je Einsatz und ${this.formatMoney(torPraemie)} je Tor` : "";

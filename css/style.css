@@ -8534,3 +8534,15 @@ td.nowrap { white-space: nowrap; }
 .partner-liste small, .partner-zeile small, .partner-kopf small { color: var(--text-muted); }
 .partner-kopf { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
 .partner-zeile .styled-select { flex: 1 1 160px; min-width: 0; }
+.inv-werte { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; margin: 8px 0; }
+.inv-werte div { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; background: var(--surface-2, rgba(255, 255, 255, 0.03)); }
+.inv-werte span { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.inv-werte strong { font-size: 14px; }
+.inv-knoepfe { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.inv-auflagen, .inv-historie { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.inv-auflagen li { padding: 8px 10px; border-radius: 8px; background: var(--surface-2, rgba(255, 255, 255, 0.03)); }
+.inv-auflagen small, .inv-historie li { color: var(--text-muted); }
+.inv-balken { height: 6px; border-radius: 3px; background: rgba(127, 127, 127, 0.2); margin: 6px 0 4px; overflow: hidden; }
+.inv-balken span { display: block; height: 100%; background: var(--primary, #3b82f6); }
+.inv-abzug { color: var(--danger, #ef4444); font-weight: 600; font-size: 13px; }
+.tb-abzug { color: var(--danger, #ef4444); font-size: 10px; margin-left: 2px; }

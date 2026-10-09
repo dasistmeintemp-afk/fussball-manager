@@ -151,7 +151,9 @@ const TrainerwechselEngine = {
                 const gespielt = zeile.played || 0;
                 if (gespielt < this.AB_SPIELEN || gespielt - (t.ab || 0) < this.SCHONFRIST) return;
                 if ((club.trainerwechsel?.saison === (state.seasonYear || 1) ? club.trainerwechsel.anzahl : 0) >= this.JE_SAISON) return;
-                const d = this.druck({ platz: i + 1, erwartet: erwartet.get(club.id) || i + 1, niederlagen: this._niederlagen(club),
+                const investoren = _twResolve("InvestorEngine", "./investorEngine.js");
+                const ungeduld = investoren && typeof investoren.ungeduld === "function" ? investoren.ungeduld(club).faktor : 1;
+                const d = ungeduld * this.druck({ platz: i + 1, erwartet: erwartet.get(club.id) || i + 1, niederlagen: this._niederlagen(club),
                     abstieg: i + 1 > abstiegAb, keller: i + 1 > vereine.length - 4, ruf: t.ruf });
                 if (d < this.DRUCK_AB) return;
                 const chance = Math.min(this.CHANCE_MAX, (d - this.DRUCK_AB + 1) * this.CHANCE_JE_DRUCK);

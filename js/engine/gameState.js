@@ -1483,7 +1483,9 @@ class GameState {
             goalsFor: 0,
             goalsAgainst: 0,
             goalDiff: 0,
-            points: 0,
+            // Ein Punktabzug des Verbands (InvestorEngine) zählt von Anfang an
+            points: -((club.punktabzug && club.punktabzug.punkte) || 0),
+            abzug: (club.punktabzug && club.punktabzug.punkte) || 0,
             form: [...club.form]
         }));
 

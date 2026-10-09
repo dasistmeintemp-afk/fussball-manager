@@ -583,7 +583,11 @@ const FinanceEngine = {
                     `Kapitalspritze des Vorstands - der Transferetat ist gestrichen`
                 );
 
-                if (club.id === state.userClubId && Array.isArray(state.inbox)) {
+                // Beim zweiten Mal in einer Saison rettet ein Geldgeber - mit Auflagen
+                const investoren = club.id === state.userClubId ? _feResolve("InvestorEngine", "./investorEngine.js") : null;
+                const gerettet = !!(investoren && typeof investoren.schuldengrenze === "function" && investoren.schuldengrenze(state, club));
+
+                if (!gerettet && club.id === state.userClubId && Array.isArray(state.inbox)) {
                     const schonGemeldet = state.inbox.some(m => m.type === "finance_warning" && m.matchday === state.currentMatchday);
                     if (!schonGemeldet) {
                         state.inbox.unshift({

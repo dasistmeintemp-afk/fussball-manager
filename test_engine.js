@@ -10483,6 +10483,119 @@ function runEngineTests() {
         if (Partner.partner(state).klein || Partner.partner(state).gross) throw new Error("Kooperation läuft nicht aus");
     });
 
+    test("Investor: 50+1, Rat des Trainers, Anspruch und Ungeduld, Rettung mit Auflagen und Punktabzug", () => {
+        const { InvestorEngine: Investor } = require('./js/engine/investorEngine.js');
+        const { SeasonEngine } = require('./js/engine/seasonEngine.js');
+        const { TransferEngine } = require('./js/engine/transferEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+
+        // 50+1: höchstens 49 %, weniger Geld, kein Konzern
+        if (!Investor.fuenfzigPlusEins(club)) throw new Error("50+1 gilt nicht in Deutschland");
+        const fonds = Investor.bedingungen(club, "fonds");
+        if (fonds.anteil !== 49 || Math.abs(fonds.einstieg - 0.3) > 1e-9 || fonds.anspruch !== 0) throw new Error(`50+1 falsch: ${JSON.stringify(fonds)}`);
+
+        // Der Trainer bittet um die Suche, nach ein paar Wochen kommt ein Angebot
+        const r = Investor.suche(state, () => 0);
+        if (!r.success || !r.sucht || !state.investorSuche) throw new Error("Suche nicht begonnen");
+        if (!Investor.suche(state, () => 0).error) throw new Error("Zweite Suche in derselben Saison");
+        for (let i = 0; i < Investor.SUCHE_TAGE[1] && !state.investorAngebot; i++) Investor.tag(state, () => 0);
+        const a = state.investorAngebot;
+        if (!a || a.anteil > 49 || a.art === "konzern") throw new Error("Kein passendes Angebot nach der Suche");
+
+        // Der Vorstand folgt dem Rat, wenn er dem Trainer vertraut
+        if (!Investor.empfehle(state, true).success) throw new Error("Rat nicht angenommen");
+        state.boardConfidence = 90;
+        const kasse = club.balance, etat = club.wageBudget;
+        for (let i = 1; i < Investor.BEDENKZEIT; i++) Investor.tag(state, () => 0.1);
+        if (!state.investorAngebot) throw new Error("Der Vorstand entscheidet vor Ablauf der Bedenkzeit");
+        // Der Saisonwechsel setzt den Kalender zurück - die Frist läuft trotzdem ab
+        state.currentDayIndex = 0;
+        Investor.tag(state, () => 0.1);
+        if (state.investorAngebot || !Investor.investor(club)) throw new Error("Der Vorstand ist dem Rat nicht gefolgt");
+        if (club.balance - kasse !== a.einstieg || club.wageBudget - etat !== a.gehaltPlus) throw new Error("Einstieg ohne Geld");
+
+        // Anspruch: Ein Konzern in England schraubt das Saisonziel hoch
+        const englisch = state.clubs.filter(c => c.countryId === "en" && (c.level || 1) === 1)
+            .sort((x, y) => (x.reputation || 0) - (y.reputation || 0))[10];
+        const zielVorher = BoardEngine.bestimmeZiel(state, englisch).platz;
+        const konzern = Investor.angebotFuer(state, englisch, "konzern");
+        if (konzern.anteil !== 90 || konzern.anspruch !== 2) throw new Error("Konzern ohne 50+1 falsch");
+        Investor.vollziehe(state, englisch, konzern);
+        const zielNachher = BoardEngine.bestimmeZiel(state, englisch).platz;
+        // Zwei Plätze Anspruch - und das Geld hebt den Etat-Rang obendrein
+        if (zielNachher > Math.max(1, zielVorher - 2)) throw new Error(`Anspruch greift nicht: ${zielVorher} -> ${zielNachher}`);
+        if (englisch.vorstandsziel.anspruch !== 2) throw new Error("Anspruch nicht im Saisonziel vermerkt");
+
+        // Ungeduld: Derselbe Rückstand kostet mit Investor mehr Vertrauen
+        const vertrauenBei = (mitInvestor) => {
+            const gesichert = club.investor;
+            if (!mitInvestor) delete club.investor;
+            club.vorstandsziel = { ...(club.vorstandsziel || {}), platz: 3, leagueId: club.leagueId };
+            const zeile = state.standings.findIndex(e => e.clubId === club.id);
+            const [eigene] = state.standings.splice(zeile, 1);
+            state.standings.splice(7, 0, eigene);
+            state.vorstandStimmung = 0;
+            state.jobSecurity = null;
+            SeasonEngine.updateBoardConfidence(state);
+            club.investor = gesichert;
+            return state.boardConfidence;
+        };
+        club.investor = null;
+        Investor.vollziehe(state, club, Investor.angebotFuer(state, club, "fonds"));
+        const ohne = vertrauenBei(false), mit = vertrauenBei(true);
+        if (!(mit < ohne)) throw new Error(`Investor macht nicht ungeduldiger: ${ohne} / ${mit}`);
+
+        // Finanznot: Beim zweiten Mal an der Schuldengrenze kommt die Rettung mit Auflagen
+        club.investor = null;
+        club.balance = -5000000000;
+        FinanceEngine.applyWeeklyCosts(state);
+        if (club.auflagen) throw new Error("Auflagen schon beim ersten Mal");
+        club.balance = -5000000000;
+        FinanceEngine.applyWeeklyCosts(state);
+        const auf = club.auflagen;
+        if (!auf || club.balance !== 0 || club.transferBudget !== 0 || !Investor.investor(club) || club.investor.art !== "retter") throw new Error("Keine Rettung");
+        if (!(club.wageBudget <= auf.deckel) || !Investor.gehaltsHindernis(state, club, 50000)) throw new Error("Gehaltsdeckel greift nicht");
+
+        // Ein Verkauf zählt aufs Verkaufsziel und füllt das Transferbudget nicht
+        const kaeufer = state.clubs.find(c => c.id !== club.id && (c.level || 1) === 1);
+        const verkauft = state.players.filter(p => p.clubId === club.id && !p.leihe).sort((x, y) => (x.value || 0) - (y.value || 0))[5];
+        kaeufer.transferBudget = 1e10; kaeufer.balance = 1e10;
+        if (!TransferEngine.executeTransfer(state, verkauft.id, kaeufer.id, 1000000, 20000, 3)) throw new Error("Verkauf gescheitert");
+        if (club.transferBudget !== 0) throw new Error("Verkauf füllt das Transferbudget trotz Auflage");
+        if (!club.auflagen.verkauf || club.auflagen.verkauf.erloes !== 1000000) throw new Error("Verkauf zählt nicht aufs Ziel");
+
+        // Schließt das Fenster ohne genug Verkäufe, zieht der Verband drei Punkte ab
+        club.auflagen.verkauf.phase = "laeuft";
+        const offen = TransferEngine.istTransferfenster;
+        TransferEngine.istTransferfenster = () => false;
+        try { Investor.tag(state); } finally { TransferEngine.istTransferfenster = offen; }
+        if (club.punktabzug?.punkte !== Investor.AUFLAGE.abzug || club.auflagen.verkauf) throw new Error("Kein Punktabzug");
+        const tabelle = GameState.calculateStandings(GameState.getLeagueClubs(state), state.schedule, 0);
+        const zeile = tabelle.find(e => e.clubId === club.id);
+        if (zeile.points !== -Investor.AUFLAGE.abzug || zeile.abzug !== Investor.AUFLAGE.abzug) throw new Error("Punktabzug fehlt in der Tabelle");
+
+        // Verfehlte Saisonziele: Der Investor zieht sich zurück, der Gehaltsaufschlag endet
+        club.investor = null;
+        delete club.auflagen;
+        Investor.vollziehe(state, club, Investor.angebotFuer(state, club, "fonds"));
+        club.investor.seit = (state.seasonYear || 1) - 1;
+        club.investor.geduld = 1;
+        const etatMit = club.wageBudget;
+        const bewertung = BoardEngine.evaluateSeasonEnd;
+        BoardEngine.evaluateSeasonEnd = () => ({ achieved: false });
+        try { Investor.saisonEnde(state); } finally { BoardEngine.evaluateSeasonEnd = bewertung; }
+        if (Investor.investor(club) || club.wageBudget !== etatMit - club.investor.gehaltPlus) throw new Error("Kein Rückzug nach verfehltem Ziel");
+
+        // Neue Saison: Der Punktabzug verfällt, KI-Vereine werden übernommen
+        state.seasonYear = (state.seasonYear || 1) + 1;
+        Investor.saisonstart(state, () => 0);
+        if (club.punktabzug) throw new Error("Punktabzug verfällt nicht");
+        const neu = state.clubs.filter(c => c.id !== club.id && Investor.investor(c) && c.investor.seit === state.seasonYear);
+        if (neu.length < 3) throw new Error(`Zu wenige Übernahmen in der Welt: ${neu.length}`);
+        if (neu.some(c => c.countryId === "de" && c.investor.anteil > 49)) throw new Error("50+1 bei KI-Übernahme verletzt");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

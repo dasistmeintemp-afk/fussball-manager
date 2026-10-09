@@ -1103,6 +1103,10 @@ class SeasonEngine {
         const national = _resolve('NationalTeamEngine', './nationalTeamEngine.js');
         if (national && typeof national.saisonBilanz === 'function') national.saisonBilanz(state);
 
+        // Die Saison jedes Spielers in seine Laufbahn, bevor die Zähler auf null gehen
+        const laufbahn = _resolve('LaufbahnEngine', './laufbahnEngine.js');
+        if (laufbahn && typeof laufbahn.saisonAbschluss === 'function') laufbahn.saisonAbschluss(state);
+
         // Spieler altern um 1 Jahr
         state.players.forEach(player => {
             player.age += 1;

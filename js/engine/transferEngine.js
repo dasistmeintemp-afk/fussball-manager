@@ -292,6 +292,12 @@ class TransferEngine {
             }
         }
 
+        // Was er in dieser Saison beim alten Verein geleistet hat, bleibt dort (LaufbahnEngine)
+        const laufbahn = (typeof LaufbahnEngine !== "undefined" && LaufbahnEngine)
+            ? LaufbahnEngine
+            : (typeof require !== "undefined" ? (() => { try { return require("./laufbahnEngine.js").LaufbahnEngine; } catch (e) { return null; } })() : null);
+        if (laufbahn && player.clubId) laufbahn.wechsel(state, player, player.clubId);
+
         // Spieler aktualisieren
         player.clubId = buyerClub.id;
         player.wage = wage;

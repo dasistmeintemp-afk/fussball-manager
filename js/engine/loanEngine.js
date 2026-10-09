@@ -529,6 +529,9 @@ class LoanEngine {
             if (!(zu.playerIds || []).includes(player.id)) zu.playerIds = [...(zu.playerIds || []), player.id];
             if (!Array.isArray(zu.bench)) zu.bench = [];
             if (zu.bench.length < 7 && !zu.bench.includes(player.id) && !(zu.lineup || []).includes(player.id)) zu.bench.push(player.id);
+            // Die Spiele bis hierher gehören dem bisherigen Verein (LaufbahnEngine)
+            const laufbahn = this._resolve("LaufbahnEngine", "./laufbahnEngine.js");
+            if (laufbahn && player.clubId && player.clubId !== zu.id) laufbahn.wechsel(state, player, player.clubId);
             player.clubId = zu.id;
         }
         player.transferListed = false;

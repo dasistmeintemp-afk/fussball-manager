@@ -462,6 +462,11 @@ In der Spielerakte führt der Manager Gespräche mit jedem eigenen Spieler. Wie 
   - **Mindestablöse:** Für diesen Betrag darf ihn ein höherklassiger Verein aus dem eigenen Land holen. Liegt sie nicht deutlich über seinem Marktwert, greift im offenen Fenster bald einer zu.
   - **Vereinsoption:** Im letzten Vertragsjahr verlängert der Verein in der Akte um ein Jahr, ohne den Spieler zu fragen. Das mag er nicht und will dafür mehr Gehalt.
   - Was die Klauseln dem Spieler wert sind, steht gleich darunter und geht in die Gehaltsforderung ein. Zum Saisonwechsel greifen Steigerung, Auf- und Abstiegsklausel, das Postfach meldet die Änderungen. In der Akte stehen die Klauseln unter dem Vertrag. Mit einem Wechsel verfallen sie.
+- **Laufbahn (`LaufbahnEngine`):** In der Akte steht unter den Werten die Laufbahn Saison für Saison: Verein, Spiele, Tore, Vorlagen, Note, dazu die laufende Saison und die Summe.
+  - Zum Saisonende bekommt jeder Spieler mit Einsätzen eine Zeile. Vorher gingen die Saisonwerte mit dem Saisonwechsel verloren.
+  - Wechselt einer unter dem Jahr den Verein (Transfer oder Leihe), gehört der Stand bis dahin dem alten Verein. Beide stehen in der Laufbahn.
+  - Gespeichert werden die letzten zwölf Zeilen je Spieler, rund 165 KB je Saison im Spielstand.
+  - Nebenbei behoben: Die Vereinsakte zeigt den Torjäger jetzt. Sie las ein Feld, das es nicht gab, und zeigte ihn deshalb nie.
 - **Leihgeschäfte (`LoanEngine`, Unterreiter *Leihen*):**
   - *Verleihen:* In der Akte eines eigenen Spielers fragt man Interessenten an: Vereine bis zwei Ligen tiefer, bei denen er Stammspieler oder Rotation wäre. Der Leihverein übernimmt einen Teil des Gehalts. Bis zum Saisonende, vorzeitiges Zurückholen ist möglich.
   - *Ausleihen:* Der Leihmarkt zeigt junge Spieler ohne Stammplatz und Reservisten anderer Vereine. Der Stammverein verlangt einen Gehaltsanteil (darunter lehnt er ab), bei starken Spielern eine Leihgebühr, und meldet sich, wenn ein zugesagter Stammspieler nicht spielt.
@@ -810,6 +815,7 @@ untitled/
 │   │   ├── calendarEngine.js   # Saisonkalender & dynamischer Tagesablauf
 │   │   ├── datenzentraleEngine.js # Liga nach xG und xPunkten, Form, Spielerwerte, Spielervergleich
 │   │   ├── jobmarktEngine.js   # Anfragen, offene Stellen, Bewerbung, Wechsel und Rücktritt des Trainers
+│   │   ├── laufbahnEngine.js   # Laufbahn je Spieler: Saison, Verein, Spiele, Tore, Vorlagen, Note
 │   │   └── opponentAnalysisEngine.js # Taktische Gegneranalyse
 │   ├── ui/
 │   │   ├── uiManager.js        # Kern: Start, Assistent, Reiter, Kader, Taktik, Kalender, Ereignisse

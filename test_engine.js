@@ -11034,6 +11034,50 @@ function runEngineTests() {
         if (stationen[stationen.length - 1].ende !== "zurückgetreten") throw new Error("Station nicht als Rücktritt geschlossen");
     });
 
+    test("Laufbahn: Saison für Saison archiviert, Wechsel unter dem Jahr beim richtigen Verein", () => {
+        const { LaufbahnEngine: L } = require('./js/engine/laufbahnEngine.js');
+        const { LoanEngine } = require('./js/engine/loanEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        for (let i = 0; i < 3; i++) SeasonEngine.advanceToNextMatchday(state);
+        const st = state.players.filter(p => p.clubId === "muc" && (p.stats.matches || 0) >= 2).sort((a, b) => b.stats.matches - a.stats.matches)[0];
+        const spieleBeiMuc = st.stats.matches, toreBeiMuc = st.stats.goals;
+        if (!TransferEngine.executeTransfer(state, st.id, "dor", 1000000, st.wage, 3)) throw new Error("Transfer gescheitert");
+        // Er spielt bei Dortmund weiter
+        st.stats.matches += 2; st.stats.goals += 1; st.stats.ratingSum += 14;
+        const jetzt = L.tabelle(state, st);
+        const muc = jetzt.zeilen.find(z => z.clubId === "muc"), dor = jetzt.zeilen.find(z => z.clubId === "dor");
+        if (!muc || !dor || muc.spiele !== spieleBeiMuc || muc.tore !== toreBeiMuc || dor.spiele !== 2 || dor.tore !== 1) throw new Error(`Wechsel falsch verbucht: ${JSON.stringify(jetzt.zeilen)}`);
+        if (!jetzt.zeilen.every(z => z.laufend)) throw new Error("Die laufende Saison ist nicht markiert");
+
+        // Eine Leihe trennt ebenso
+        const leih = state.players.find(p => p.clubId === "muc" && p !== st && (p.stats.matches || 0) >= 1);
+        LoanEngine._wechsle(state, leih, state.clubs.find(c => c.id === "muc"), state.clubs.find(c => c.id === "lev"));
+        leih.stats.matches += 1; leih.stats.ratingSum += 7;
+        if (L.tabelle(state, leih).zeilen.filter(z => z.laufend).length !== 2) throw new Error("Die Leihe teilt die Saison nicht");
+
+        // Saisonende: ins Archiv, die Teile verschwinden
+        L.saisonAbschluss(state);
+        if (!Array.isArray(st.laufbahn) || st.laufbahn.length !== 2 || st.laufbahnTeile) throw new Error("Nicht archiviert");
+        st.stats.matches = 0; st.stats.goals = 0; st.stats.assists = 0; st.stats.ratingSum = 0;
+        const danach = L.tabelle(state, st);
+        if (danach.zeilen.some(z => z.laufend) || danach.summe.spiele !== spieleBeiMuc + 2 || !(danach.summe.note > 0)) throw new Error(`Archiv falsch: ${JSON.stringify(danach)}`);
+        // Wer nicht gespielt hat, bekommt keine Zeile; mehr als zwölf Zeilen werden gekürzt
+        const ohne = state.players.find(p => p !== st && (p.stats.matches || 0) === 0 && !p.laufbahnTeile);
+        if (ohne && ohne.laufbahn) throw new Error("Zeile ohne Einsatz");
+        st.laufbahn = Array.from({ length: 15 }, (_, i) => [i + 1, "dor", 1, 0, 0, 700]);
+        st.stats.matches = 1; st.stats.ratingSum = 7;
+        L.saisonAbschluss(state);
+        if (st.laufbahn.length !== L.MAX_ZEILEN) throw new Error("Laufbahn wächst ohne Grenze");
+
+        // Das echte Saisonende schreibt ins Archiv, bevor die Zähler auf null gehen
+        const s2 = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        for (let i = 0; i < 2; i++) SeasonEngine.advanceToNextMatchday(s2);
+        const stamm = s2.players.find(p => p.clubId === "muc" && (p.stats.matches || 0) >= 2);
+        const spiele = stamm.stats.matches;
+        SeasonEngine.finishSeason(s2);
+        if ((stamm.stats.matches || 0) !== 0 || !stamm.laufbahn || stamm.laufbahn[0][2] !== spiele || stamm.laufbahn[0][1] !== "muc") throw new Error(`Saisonende archiviert nicht: ${JSON.stringify(stamm.laufbahn)}`);
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

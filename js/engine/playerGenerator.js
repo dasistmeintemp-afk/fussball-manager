@@ -103,6 +103,19 @@ class PlayerGenerator {
      * Betis), und der Meister war Zufall.
      */
     static KADER_SPREIZUNG_UNTEN = 1.0;
+
+    /**
+     * Ligastärke je Land in der ersten Liga, als Verschiebung der Fähigkeit
+     * (zwei Punkte entsprechen etwa einem Punkt Stärke). Die erzeugten
+     * ersten Ligen waren alle gleich stark - die Ligue 1 so stark wie die
+     * Premier League - und lagen rund zwei Punkte über der handgepflegten
+     * Bundesliga. Deren Vereine verloren damit im Europapokal fast alles,
+     * und Deutschland fiel in der Fünfjahreswertung dauerhaft auf den
+     * letzten Platz. Jetzt gilt grob die echte Rangfolge: England vorn,
+     * Spanien und Italien auf Augenhöhe mit der Bundesliga, Frankreich
+     * dahinter.
+     */
+    static LAND_STAERKE = { en: -1, es: -4, it: -4, fr: -7 };
     static KADER_KOPF = 0.35;
 
     static getAbilityRangeForClub(level = 1, clubStrength = 0.5, options = {}) {
@@ -301,6 +314,12 @@ class PlayerGenerator {
 
         // Die Kaderstärke richtet sich nach Ligastufe UND Ruf des Vereins
         const abilityRange = this.getAbilityRangeForClub(level, options.clubStrength ?? 0.5, { ganzerKader: options.ganzerKader === true });
+        const landVerschiebung = level === 1 ? (this.LAND_STAERKE[options.countryId] || 0) : 0;
+        if (landVerschiebung) {
+            abilityRange.minCA += landVerschiebung;
+            abilityRange.maxCA += landVerschiebung;
+            abilityRange.maxPA += landVerschiebung;
+        }
         const caSpread = Math.max(1, abilityRange.maxCA - abilityRange.minCA);
         const baseCA = abilityRange.minCA + Math.floor(Math.random() * caSpread);
 
@@ -501,8 +520,26 @@ class PlayerGenerator {
             };
         }
 
-        // Gewichtungen je Positionsgruppe: relativer Auf-/Abschlag zur Gesamtstärke
-        const PROFILES = {
+        const profile = this.PROFILE[pos] || this.PROFILE.ZM;
+        const attrs = {};
+        this.FELDWERTE.forEach(key => {
+            attrs[key] = jitter(o + (profile[key] || 0), 5);
+        });
+
+        // Feldspieler brauchen die Torwartwerte nur als Notnagel
+        attrs.reflexes = jitter(20, 6);
+        attrs.handling = jitter(20, 6);
+        attrs.oneOnOne = jitter(20, 6);
+        attrs.kicking = jitter(o - 20, 8);
+
+        return attrs;
+    }
+
+    static FELDWERTE = ["pace", "shooting", "passing", "dribbling", "defense", "physical", "stamina", "vision", "technique", "positioning"];
+    static TORWARTWERTE = { reflexes: 2, handling: 0, oneOnOne: 0, positioning: 0 };
+
+    /** Gewichtungen je Positionsgruppe: relativer Auf-/Abschlag zur Gesamtstärke */
+    static PROFILE = {
             IV: { defense: 6, physical: 5, positioning: 4, pace: -4, passing: -3, dribbling: -8, shooting: -18, vision: -6, technique: -5, stamina: 2 },
             LV: { defense: 3, pace: 5, stamina: 6, physical: 0, positioning: 1, passing: 0, dribbling: 1, shooting: -12, vision: -3, technique: 0 },
             RV: { defense: 3, pace: 5, stamina: 6, physical: 0, positioning: 1, passing: 0, dribbling: 1, shooting: -12, vision: -3, technique: 0 },
@@ -514,21 +551,32 @@ class PlayerGenerator {
             LA: { pace: 8, dribbling: 7, technique: 5, shooting: 2, vision: 0, passing: -1, defense: -20, physical: -8, positioning: -8, stamina: 0 },
             RA: { pace: 8, dribbling: 7, technique: 5, shooting: 2, vision: 0, passing: -1, defense: -20, physical: -8, positioning: -8, stamina: 0 },
             ST: { shooting: 8, pace: 4, physical: 4, dribbling: 2, technique: 2, vision: -1, passing: -4, defense: -22, positioning: -4, stamina: -1 }
-        };
+    };
 
-        const profile = PROFILES[pos] || PROFILES.ZM;
-        const attrs = {};
-        ["pace", "shooting", "passing", "dribbling", "defense", "physical", "stamina", "vision", "technique", "positioning"].forEach(key => {
-            attrs[key] = jitter(o + (profile[key] || 0), 5);
-        });
-
-        // Feldspieler brauchen die Torwartwerte nur als Notnagel
-        attrs.reflexes = jitter(20, 6);
-        attrs.handling = jitter(20, 6);
-        attrs.oneOnOne = jitter(20, 6);
-        attrs.kicking = jitter(o - 20, 8);
-
-        return attrs;
+    /**
+     * Handgepflegte Spieler auf das Niveau ihrer Gesamtstärke heben.
+     *
+     * Die Bundesliga steht mit echten Kadern in den Daten, alle anderen
+     * Ligen erzeugt der Generator. Bei gleicher Gesamtstärke lagen die
+     * Einzelwerte der handgepflegten Spieler aber im Schnitt gut vier Punkte
+     * unter dem Profil ihrer Position - und die Spiel-Engine rechnet mit den
+     * Einzelwerten. Deutsche Vereine spielten damit schwächer, als ihre
+     * Stärke anzeigte, verloren im Europapokal und rutschten in der
+     * Fünfjahreswertung ans Ende. Jetzt bekommt jeder Spieler so viel dazu,
+     * wie ihm im Schnitt fehlt; seine Stärken und Schwächen bleiben.
+     */
+    static gleicheWerteAn(player) {
+        if (!player || typeof player.overall !== "number") return 0;
+        const o = player.overall;
+        const tw = player.pos === "TW";
+        const soll = tw ? this.TORWARTWERTE : (this.PROFILE[player.pos] || this.PROFILE.ZM);
+        const schluessel = Object.keys(tw ? this.TORWARTWERTE : this.FELDWERTE.reduce((m, k) => (m[k] = 0, m), {}));
+        const werte = schluessel.filter(k => typeof player[k] === "number");
+        if (!werte.length) return 0;
+        const fehlt = Math.round(werte.reduce((s, k) => s + (o + (soll[k] || 0)) - player[k], 0) / werte.length);
+        if (fehlt <= 0) return 0;
+        werte.forEach(k => { player[k] = Math.max(1, Math.min(99, player[k] + fehlt)); });
+        return fehlt;
     }
 
     /**

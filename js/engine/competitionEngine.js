@@ -131,7 +131,8 @@ class CompetitionEngine {
         const standingsByLeague = options.standingsByLeague || {};
 
         const qualified = { ucl: [], uel: [], uecl: [] };
-        const reserves = [];
+        // Nachrücker je Land in Tabellenfolge
+        const reserves = {};
         const taken = new Set();
 
         const topLeagues = leagues.filter(l => (l.level || 1) === 1 && l.europeanSpots);
@@ -167,9 +168,7 @@ class CompetitionEngine {
             assign(spots.conferenceLeague, "uecl");
 
             // Die nächstbesten Vereine rücken bei Bedarf nach
-            ranked.forEach(club => {
-                if (!taken.has(club.id)) reserves.push(club);
-            });
+            reserves[league.countryId] = ranked.filter(club => !taken.has(club.id));
         });
 
         // Fallback für Spielstände ohne Ligazuordnung
@@ -180,10 +179,32 @@ class CompetitionEngine {
             qualified.uecl = byReputation.slice(32, 48).map(c => c.id);
         }
 
-        reserves.sort((a, b) => (b.reputation || 0) - (a.reputation || 0));
+        // Freie Plätze gehen reihum an die Länder, in der Reihenfolge der
+        // Fünfjahreswertung, jeweils an den nächstplatzierten Verein. Vorher
+        // rückten die Vereine mit dem größten Ruf aus allen Ligen nach - und
+        // weil deutsche Mittelfeldvereine im Datensatz viel Ruf haben, stellte
+        // Deutschland bis zu acht schwache Vereine in der Conference League.
+        // Die drückten den Länderschnitt, und Deutschland fiel in der
+        // Fünfjahreswertung dauerhaft auf den letzten Platz.
+        // Ohne Wertung (erste Saison) gilt die Reihenfolge der echten
+        // Fünfjahreswertung, wie sie auch die KoeffizientEngine vorbelegt
+        const spots = options.spotsByCountry || {};
+        const vorgabe = ["en", "it", "es", "de", "fr"];
+        const rang = (l) => spots[l]?.rang || (vorgabe.indexOf(l) + 1) || 99;
+        const laender = Object.keys(reserves).sort((a, b) => rang(a) - rang(b));
+        let reihum = 0;
+        const naechster = () => {
+            for (let k = 0; k < laender.length; k++) {
+                const land = laender[(reihum + k) % laender.length];
+                const club = reserves[land].find(c => !taken.has(c.id));
+                if (club) { reihum = (reihum + k + 1) % laender.length; return club; }
+            }
+            return null;
+        };
         const fillTo = (bucket, target) => {
-            while (qualified[bucket].length < target && reserves.length > 0) {
-                const club = reserves.shift();
+            while (qualified[bucket].length < target) {
+                const club = naechster();
+                if (!club) break;
                 qualified[bucket].push(club.id);
                 taken.add(club.id);
             }

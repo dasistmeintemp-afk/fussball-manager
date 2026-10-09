@@ -119,10 +119,10 @@ const StateValidator = {
 
         // Verletzungen & Sperren
         for (const p of starters) {
-            if (p.injured) {
-                return { valid: false, error: `Der aufgestellte Spieler ${p.name} ist verletzt (${p.injuryWeeks} Wochen verbleibend).` };
+            if ((p.injuredWeeks || 0) > 0) {
+                return { valid: false, error: `Der aufgestellte Spieler ${p.name} ist verletzt (${p.injuredWeeks} Wochen verbleibend).` };
             }
-            if (p.suspended) {
+            if ((p.suspendedMatches || 0) > 0) {
                 return { valid: false, error: `Der aufgestellte Spieler ${p.name} ist für dieses Spiel gesperrt.` };
             }
         }

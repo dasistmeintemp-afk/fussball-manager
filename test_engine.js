@@ -11555,6 +11555,65 @@ function runEngineTests() {
         if (JSON.stringify(zur.koeffizient) !== JSON.stringify(state.koeffizient)) throw new Error("Fünfjahreswertung nicht gespeichert");
     });
 
+    test("Abnahme: Geheilte Spieler sind nach dem Saisonende nicht mehr als verletzt markiert, gesperrte fehlen der KI-Elf", () => {
+        const state = GameState.createNewGame("svw", "normal", { name: "Abnahme" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const verletzt = state.players.find(p => p.id === club.lineup[3]);
+        verletzt.injured = true; verletzt.injuredWeeks = 3; verletzt.injuryName = "Muskelfaserriss";
+        SeasonEngine.finishSeason(state);
+        if (verletzt.injuredWeeks !== 0 || verletzt.injured) throw new Error(`Nach dem Saisonende: ${verletzt.injuredWeeks} Wochen, injured=${verletzt.injured}`);
+        // Die Prüfung vor dem Anpfiff und "Beste 11" zählen dasselbe
+        if (!GameState.einsatzfaehigeSpieler(club, state.players).includes(verletzt)) throw new Error("Geheilter Spieler nicht einsatzfähig");
+        // Die KI stellt nach den Zählern auf: ein gesperrter Stammspieler fehlt,
+        // ein alter injured-Rest ohne Verletzungsdauer spielt
+        const gegner = state.clubs.find(c => c.id !== club.id && c.leagueId === club.leagueId);
+        const kader = state.players.filter(p => p.clubId === gegner.id).sort((a, b) => b.overall - a.overall);
+        const gesperrt = kader[0], alterRest = kader[1];
+        gesperrt.suspendedMatches = 1;
+        alterRest.injured = true; alterRest.injuredWeeks = 0;
+        AIManagerEngine.prepareClubForMatch(state, gegner.id);
+        if (gegner.lineup.includes(gesperrt.id)) throw new Error("Gesperrter Spieler in der KI-Elf");
+        if (!gegner.lineup.includes(alterRest.id)) throw new Error("Gesunder Spieler wegen alter Markierung draußen");
+    });
+
+    test("Abnahme: Bundesliga-Spieler haben Einzelwerte auf dem Niveau ihrer Stärke, die ersten Ligen eine Länderstärke", () => {
+        const { PlayerGenerator } = require('./js/engine/playerGenerator.js');
+        // Einzeln: ein Spieler mit zu niedrigen Werten wird angehoben, sein Profil bleibt
+        const st = { pos: "ST", overall: 83, pace: 83, shooting: 85, passing: 76, dribbling: 81, defense: 47, physical: 82, stamina: 82, vision: 78, technique: 82, positioning: 79 };
+        const plus = PlayerGenerator.gleicheWerteAn(st);
+        if (plus < 3 || st.shooting !== 85 + plus || st.defense !== 47 + plus) throw new Error(`Angleichung: +${plus}, Schuss ${st.shooting}`);
+        if (PlayerGenerator.gleicheWerteAn(st) !== 0) throw new Error("Zweite Angleichung verschiebt erneut");
+        // In der Welt: Bundesliga und Premier League liegen bei gleicher Stärke gleichauf
+        const state = GameState.createNewGame("muc", "normal", { name: "Abnahme" });
+        const liga = new Map(state.clubs.map(c => [c.id, c.leagueId]));
+        const abstand = (l) => {
+            const v = state.players.filter(p => liga.get(p.clubId) === l && p.pos !== "TW");
+            const prof = (p) => PlayerGenerator.PROFILE[p.pos] || PlayerGenerator.PROFILE.ZM;
+            return v.reduce((s, p) => s + PlayerGenerator.FELDWERTE.reduce((t, k) => t + p[k] - p.overall - (prof(p)[k] || 0), 0) / 10, 0) / v.length;
+        };
+        const de = abstand("de_liga_1"), en = abstand("en_liga_1");
+        if (Math.abs(de - en) > 1.5) throw new Error(`Einzelwerte über der Stärke: Bundesliga ${de.toFixed(1)}, Premier League ${en.toFixed(1)}`);
+        // Länderstärke: Premier League vor der Ligue 1
+        const schnitt = (l) => { const v = state.players.filter(p => liga.get(p.clubId) === l); return v.reduce((s, p) => s + p.overall, 0) / v.length; };
+        if (schnitt("en_liga_1") - schnitt("fr_liga_1") < 1.5) throw new Error(`Premier League ${schnitt("en_liga_1").toFixed(1)}, Ligue 1 ${schnitt("fr_liga_1").toFixed(1)}`);
+    });
+
+    test("Abnahme: Freie Europapokal-Plätze gehen reihum an die Länder, nicht nach Ruf an eine Liga", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Abnahme" });
+        const land = new Map(state.clubs.map(c => [c.id, c.countryId]));
+        ["uel", "uecl"].forEach(w => {
+            const je = {};
+            state.europeanCompetitions[w].participants.forEach(id => { je[land.get(id)] = (je[land.get(id)] || 0) + 1; });
+            const werte = Object.values(je);
+            if (Object.keys(je).length !== 5 || Math.max(...werte) - Math.min(...werte) > 1) throw new Error(`${w}: ${JSON.stringify(je)}`);
+        });
+        // Nachgerückt wird in Tabellenfolge: der beste noch freie Verein jedes Landes
+        const { CompetitionEngine } = require('./js/engine/competitionEngine.js');
+        const ec = CompetitionEngine.generateEuropeanCompetitions(state.clubs, { leagues: state.leagues, standingsByLeague: state.standingsByLeague });
+        const alle = new Set([...ec.ucl.participants, ...ec.uel.participants, ...ec.uecl.participants]);
+        if (alle.size !== 52) throw new Error(`${alle.size} Teilnehmer, ein Verein doppelt?`);
+    });
+
     test("Europäischer Supercup: Sieger der Königsklasse gegen den der Europa League - Kalender, Prämien, Elfmeter ohne Livespiel", () => {
         const { EuroSupercupEngine: E } = require('./js/engine/euroSupercupEngine.js');
         const { SupercupEngine } = require('./js/engine/supercupEngine.js');

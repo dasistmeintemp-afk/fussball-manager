@@ -7259,6 +7259,22 @@ function runEngineTests() {
         if (PreseasonEngine.pflichtLuecken(state).length) throw new Error("Nach dem Besetzen bleiben Pflichtposten offen");
     });
 
+    test("Angebote auch in unteren Ligen: Die Besten eines Drittligisten wecken Interesse mindestens ähnlich großer Vereine", () => {
+        const state = GameState.createNewGame("en3_sto", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        if (!TransferEngine.istTransferfenster(state)) throw new Error("Zum Start ist kein Fenster offen");
+        if (!state.transferMarket) state.transferMarket = { offers: [] };
+        const kader = club.playerIds.map(id => state.players.find(p => p.id === id)).filter(Boolean).sort((a, b) => b.overall - a.overall);
+        if (kader[0].overall >= 74) throw new Error("Der Drittligist ist zu stark für diesen Test");
+        const beste = new Set(kader.slice(0, TransferEngine.BEGEHRT_AB_RANG).map(p => p.id));
+        for (let i = 0; i < 200; i++) TransferEngine.processAITransferMarket(state);
+        const angebote = state.transferMarket.offers.filter(o => o.toClubId === club.id);
+        if (angebote.length < 5) throw new Error(`Nur ${angebote.length} Angebote in 200 Fenstertagen`);
+        if (angebote.some(o => !beste.has(o.playerId))) throw new Error("Angebot für einen Spieler, der nicht zu den Besten gehört");
+        const kleiner = angebote.filter(o => (state.clubs.find(c => c.id === o.fromClubId)?.reputation || 0) < (club.reputation || 50) - 5);
+        if (kleiner.length) throw new Error(`Angebote von kleineren Vereinen: ${kleiner.map(o => o.fromClubName)}`);
+    });
+
     test("Angebote für eigene Spieler: Frist, Mehr fordern, Annehmen und Verfall", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
         const club = state.clubs.find(c => c.id === "muc");

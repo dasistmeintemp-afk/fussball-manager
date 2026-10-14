@@ -836,6 +836,14 @@ class MatchEngine {
         flanke: { LA: 1, RA: 1, LM: 1, RM: 1, LV: 0.65, RV: 0.65, OM: 0.35, ZM: 0.3 }
     };
 
+    /**
+     * Wer heraussticht, wird enger gedeckt. Mit voller Mannschaft bekommt der
+     * gefährlichste Spieler über einem Anteil von "ab" nur noch "rest" vom
+     * Überschuss. Vorher kam ein Mittelstürmer neben schwachen Flügeln auf
+     * über die Hälfte der Tore seiner Mannschaft und auf bis zu 55 Ligatore.
+     */
+    static DOMINANZ = { ab: 0.3, rest: 0.4 };
+
     static waehleSchuetze(kandidaten, attackType, posVon = null, gedeckt = null) {
         if (!Array.isArray(kandidaten) || kandidaten.length === 0) return null;
         const eig = _eigEngine();
@@ -854,6 +862,17 @@ class MatchEngine {
             if (gedeckt && gedeckt[p.id]) g *= Math.pow(gedeckt[p.id], 6);
             return g;
         });
+        if (kandidaten.length >= 8) {
+            const gesamt = gewichte.reduce((s, g) => s + g, 0);
+            let iMax = 0;
+            gewichte.forEach((g, i) => { if (g > gewichte[iMax]) iMax = i; });
+            const anteil = gesamt > 0 ? gewichte[iMax] / gesamt : 0;
+            const D = MatchEngine.DOMINANZ;
+            if (anteil > D.ab) {
+                const ziel = D.ab + (anteil - D.ab) * D.rest;
+                gewichte[iMax] = ziel * (gesamt - gewichte[iMax]) / (1 - ziel);
+            }
+        }
         const summe = gewichte.reduce((s, g) => s + g, 0);
         let wurf = Math.random() * summe;
         for (let i = 0; i < kandidaten.length; i++) {

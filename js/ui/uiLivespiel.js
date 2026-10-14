@@ -233,6 +233,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         // Der Plan gilt für genau dieses Spiel - der Livespiel-Motor hat ihn
         if (planEngine) planEngine.abschliessen(state, match);
         this.app.currentLiveMatch = liveMatch;
+        // Die anderen Plätze des Spieltags (nur im Ligaspiel)
+        this.bereiteKonferenzVor(state, match);
         this.coach = null;
 
         const modal = document.getElementById("modalLiveMatch");
@@ -363,6 +365,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             this.renderLiveStats(liveMatch);
             this.renderLiveVerlauf(liveMatch);
             this.updateLiveZurufe(liveMatch);
+            this.updateKonferenz(liveMatch);
             setWidth("lmTlFill", `${Math.min(100, Math.max(0, liveMatch.minute / 90 * 100)).toFixed(1)}%`);
             if (document.getElementById("lmSubtab-lineups")?.classList.contains("active")) {
                 this.renderLiveLineups(liveMatch);
@@ -962,6 +965,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 document.querySelectorAll(".live-subtab").forEach(t => t.classList.remove("active"));
                 document.querySelectorAll(".live-subtab-pane").forEach(p => p.classList.remove("active"));
                 tab.classList.add("active");
+                tab.classList.remove("lm-konf-neu");
                 document.getElementById(`lmSubtab-${tab.dataset.subtab}`).classList.add("active");
                 if (tab.dataset.subtab === "lineups") {
                     this._lmLineupKey = null;
@@ -969,6 +973,125 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 }
             };
         });
+    },
+
+    // ------------------------------------------------------------ Konferenz
+
+    getKonferenzEngine() {
+        return (typeof KonferenzEngine !== "undefined" && KonferenzEngine)
+            || (typeof window !== "undefined" && window.KonferenzEngine) || null;
+    },
+
+    /** Beim Anpfiff: die übrigen Partien des Spieltags rechnen, Reiter zeigen */
+    bereiteKonferenzVor(state, match) {
+        const engine = this.getKonferenzEngine();
+        let konf = null;
+        try { konf = engine ? engine.bereite(state, match) : null; } catch (e) { console.warn("Konferenz nicht verfügbar:", e); }
+        this._konferenz = konf && konf.partien.length ? konf : null;
+        this._konfMinute = 0;
+        this._konfKey = null;
+        this._konfFrisch = new Map();
+        const tab = document.getElementById("lmKonfTab");
+        if (tab) {
+            tab.hidden = !this._konferenz;
+            tab.classList.remove("lm-konf-neu");
+            if (tab.parentElement) tab.parentElement.classList.toggle("mit-konferenz", !!this._konferenz);
+            // Ohne Konferenz darf ihr Reiter nicht offen bleiben
+            if (!this._konferenz && tab.classList.contains("active")) document.querySelector('.live-subtab[data-subtab="stats"]')?.click();
+        }
+        const blitz = document.getElementById("lmKonfBlitz");
+        if (blitz) blitz.hidden = true;
+        // Rivalen: wer vor dem Spieltag bis zu drei Plätze vom eigenen Verein entfernt stand
+        this._konfRivalen = new Set();
+        if (this._konferenz) {
+            const eigen = this._konferenz.basis.find(r => r.clubId === state.userClubId);
+            if (eigen) this._konferenz.basis.forEach(r => { if (r.clubId !== state.userClubId && Math.abs(r.rang - eigen.rang) <= 3) this._konfRivalen.add(r.clubId); });
+        }
+        const el = document.getElementById("lmKonferenz");
+        if (el) el.innerHTML = "";
+    },
+
+    /** Je Spielminute: neue Tore melden, Ergebnisse und Tabelle auffrischen */
+    updateKonferenz(liveMatch) {
+        const konf = this._konferenz;
+        const engine = this.getKonferenzEngine();
+        if (!konf || !engine) return;
+        const fertig = !!liveMatch.isFinished;
+        const minute = liveMatch.minute || 0;
+        const key = `${fertig ? "ende" : minute}|${liveMatch.homeScore}:${liveMatch.awayScore}`;
+        if (this._konfKey === key) return;
+        this._konfKey = key;
+
+        const bis = fertig ? 999 : minute;
+        engine.neueTore(konf, this._konfMinute, bis).forEach(t => this.meldeKonferenzTor(t));
+        this._konfMinute = Math.max(this._konfMinute, bis);
+        this.renderKonferenz(liveMatch, fertig);
+    },
+
+    meldeKonferenzTor(t) {
+        const p = t.partie;
+        const verein = t.clubId === p.homeClubId ? p.heim : p.gast;
+        const text = `📻 Tor für ${verein}: ${p.heim} ${t.heim}:${t.gast} ${p.gast}${t.spieler ? ` – ${t.spieler}` : ""}`;
+        this._konfFrisch.set(p, this._konfMinute);
+        const feed = document.getElementById("lmEventFeed");
+        if (feed) {
+            const node = document.createElement("div");
+            node.className = "ticker-event ticker-konferenz";
+            node.innerHTML = this.liveZeileHtml(text, t.minute);
+            feed.insertBefore(node, feed.firstChild);
+            while (feed.childElementCount > 60) feed.removeChild(feed.lastChild);
+        }
+        const tab = document.getElementById("lmKonfTab");
+        if (tab && !tab.classList.contains("active")) tab.classList.add("lm-konf-neu");
+        // Trifft ein Tabellennachbar oder fällt gegen ihn ein Tor, meldet sich die Konferenz auf dem Feld
+        if (this._konfRivalen && (this._konfRivalen.has(p.homeClubId) || this._konfRivalen.has(p.awayClubId))) {
+            const blitz = document.getElementById("lmKonfBlitz");
+            if (blitz) {
+                blitz.innerHTML = `<span class="lm-konf-blitz-kopf">Konferenz · ${t.minute}'</span>`
+                    + `<span class="lm-konf-blitz-text">${this.escapeHtml(p.heim)} <strong>${t.heim}:${t.gast}</strong> ${this.escapeHtml(p.gast)}</span>`;
+                blitz.hidden = false;
+                clearTimeout(this._konfBlitzTimer);
+                this._konfBlitzTimer = setTimeout(() => { blitz.hidden = true; }, 4500);
+            }
+        }
+    },
+
+    renderKonferenz(liveMatch, fertig) {
+        const el = document.getElementById("lmKonferenz");
+        const konf = this._konferenz;
+        const engine = this.getKonferenzEngine();
+        if (!el || !konf || !engine) return;
+        const esc = t => this.escapeHtml(String(t ?? ""));
+        const userId = this.app.state && this.app.state.userClubId;
+        const minute = fertig ? 999 : (liveMatch.minute || 0);
+        const spiele = engine.stand(konf, minute, fertig).map(s => {
+            const frisch = !fertig && this._konfFrisch.has(s.partie) && this._konfMinute - this._konfFrisch.get(s.partie) <= 3;
+            return `<div class="lm-konf-spiel${frisch ? " frisch" : ""}">
+                <span class="lm-konf-heim">${esc(s.partie.heim)}</span>
+                <span class="lm-konf-erg">${s.heim}:${s.gast}</span>
+                <span class="lm-konf-gast">${esc(s.partie.gast)}</span>
+            </div>`;
+        }).join("");
+        const tabelle = engine.liveTabelle(konf, minute, [liveMatch.homeScore || 0, liveMatch.awayScore || 0], fertig);
+        const mitTrend = konf.spieltag > 1;
+        const zeilen = tabelle.map(r => {
+            const trend = !mitTrend ? `<span class="lm-konf-trend"></span>` : r.rang < r.vorher ? `<span class="lm-konf-trend auf" title="vorher ${r.vorher}.">▲</span>`
+                : (r.rang > r.vorher ? `<span class="lm-konf-trend ab" title="vorher ${r.vorher}.">▼</span>` : `<span class="lm-konf-trend"></span>`);
+            const diff = r.goalsFor - r.goalsAgainst;
+            return `<tr class="${r.clubId === userId ? "eigen" : ""}${this._konfRivalen && this._konfRivalen.has(r.clubId) ? " rivale" : ""}">
+                <td class="lm-konf-rang">${r.rang}.</td><td>${trend}</td>
+                <td class="lm-konf-name">${esc(r.clubName)}</td>
+                <td>${r.played}</td><td>${diff > 0 ? "+" : ""}${diff}</td><td class="lm-konf-pkt">${r.points}</td>
+            </tr>`;
+        }).join("");
+        el.innerHTML = `
+            <div class="lm-block-title">Die anderen Plätze <span class="lm-block-sub">${konf.spieltag}. Spieltag${fertig ? " · Endstände" : ""}</span></div>
+            <div class="lm-konf-spiele">${spiele}</div>
+            <div class="lm-block-title">Tabelle ${fertig ? "nach dem Spieltag" : "im Moment"}</div>
+            <table class="lm-konf-tabelle">
+                <thead><tr><th>Pl.</th><th></th><th>Verein</th><th>Sp</th><th>Diff</th><th>Pkt</th></tr></thead>
+                <tbody>${zeilen}</tbody>
+            </table>`;
     },
 
     // ------------------------------------------------------------ Seitenlinie

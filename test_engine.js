@@ -5980,6 +5980,45 @@ function runEngineTests() {
     });
 
 
+    test("Konferenz: Die anderen Plätze laufen minutengenau mit, die Tabelle im Moment stimmt mit der echten überein", () => {
+        const { KonferenzEngine } = require('./js/engine/konferenzEngine.js');
+        const { SeasonEngine } = require('./js/engine/seasonEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const runde = state.schedule.find(r => r.matchday === state.currentMatchday);
+        const partie = runde.matches.find(m => m.homeClubId === "muc" || m.awayClubId === "muc");
+        const konf = KonferenzEngine.bereite(state, partie);
+        if (!konf || konf.partien.length !== runde.matches.length - 1) throw new Error(`Konferenz mit ${konf && konf.partien.length} Partien`);
+        if (partie.played) throw new Error("Das eigene Spiel wurde mitgerechnet");
+        if (runde.matches.some(m => m !== partie && !m.played)) throw new Error("Nicht alle anderen Partien gerechnet");
+
+        // Anpfiff: überall 0:0; Abpfiff: die Endstände; die Tore summieren sich
+        if (KonferenzEngine.stand(konf, 0).some(s => s.heim || s.gast)) throw new Error("Schon vor dem Anpfiff Tore");
+        const ende = KonferenzEngine.stand(konf, 999, true);
+        if (ende.some(s => s.heim !== s.partie.endstand[0] || s.gast !== s.partie.endstand[1])) throw new Error("Endstand weicht ab");
+        const alle = KonferenzEngine.neueTore(konf, 0, 999);
+        const summe = konf.partien.reduce((n, p) => n + p.endstand[0] + p.endstand[1], 0);
+        if (alle.length !== summe) throw new Error(`Tore ${alle.length} statt ${summe}`);
+        const zur45 = KonferenzEngine.stand(konf, 45);
+        const bis45 = KonferenzEngine.neueTore(konf, 0, 45).length + KonferenzEngine.neueTore(konf, 45, 999).length;
+        if (bis45 !== summe || zur45.some((s, i) => s.heim > ende[i].heim || s.gast > ende[i].gast)) throw new Error("Zwischenstände unstimmig");
+
+        // Die Tabelle im Moment nach dem Abpfiff = die echte Tabelle nach dem Spieltag
+        const live = KonferenzEngine.liveTabelle(konf, 999, [2, 1], true);
+        partie.played = true; partie.homeGoals = 2; partie.awayGoals = 1;
+        const vereine = state.clubs.filter(c => c.leagueId === konf.ligaId);
+        const echt = GameState.calculateStandings(vereine, state.schedule, runde.matchday);
+        if (live.map(r => `${r.clubId}:${r.points}`).join() !== echt.map(r => `${r.clubId}:${r.points}`).join()) throw new Error("Live-Tabelle weicht von der echten ab");
+        if (live.some(r => typeof r.vorher !== "number")) throw new Error("Rang vor dem Spieltag fehlt");
+
+        // Der Saisonablauf rechnet die Partien nicht noch einmal
+        const vorher = runde.matches.map(m => `${m.homeGoals}:${m.awayGoals}`).join();
+        SeasonEngine.simulateRemainingMatchesOfDay(state);
+        if (runde.matches.map(m => `${m.homeGoals}:${m.awayGoals}`).join() !== vorher) throw new Error("Partien wurden neu gerechnet");
+
+        // Pokal und Testspiel: keine Konferenz
+        if (KonferenzEngine.bereite(state, { homeClubId: "muc", awayClubId: "en_mci" }) !== null) throw new Error("Konferenz ohne Ligaspiel");
+    });
+
     // ---------------------------------------------------------------
     // Gespielt wird nur an dem Tag, an dem das Spiel angesetzt ist
     // ---------------------------------------------------------------

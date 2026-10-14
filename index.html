@@ -1843,6 +1843,7 @@
                         <canvas id="livePitchCanvas" width="800" height="500"></canvas>
                         <canvas id="livePitch3D" class="live-pitch-3d" style="display:none;" aria-label="Livespiel in 3D"></canvas>
                         <div class="lm-3d-banner" id="lm3dBanner" style="display:none;"></div>
+                        <div class="lm-konf-blitz" id="lmKonfBlitz" role="status" aria-live="polite" hidden></div>
                         <div class="lm-3d-kamera" id="lm3dKamera" style="display:none;" role="group" aria-label="Kamera">
                             <button type="button" data-kamera3d="tv">TV</button>
                             <button type="button" data-kamera3d="taktik">Taktik</button>
@@ -1891,7 +1892,8 @@
                         <div class="live-tab-buttons lm-seg" role="tablist">
                             <button class="live-subtab active" data-subtab="stats" role="tab">Statistik</button>
                             <button class="live-subtab" data-subtab="events" role="tab">Ticker</button>
-                            <button class="live-subtab" data-subtab="lineups" role="tab">Aufstellungen</button>
+                            <button class="live-subtab" data-subtab="lineups" role="tab">Aufstellung</button>
+                            <button class="live-subtab" data-subtab="konferenz" role="tab" id="lmKonfTab" hidden>Konferenz</button>
                         </div>
 
                         <!-- Subtab: Stats -->
@@ -1918,6 +1920,11 @@
                         <!-- Subtab: Aufstellungen -->
                         <div class="live-subtab-pane" id="lmSubtab-lineups">
                             <div class="lm-lineups" id="lmLineups"></div>
+                        </div>
+
+                        <!-- Subtab: Konferenz - die anderen Plätze und die Tabelle live -->
+                        <div class="live-subtab-pane" id="lmSubtab-konferenz">
+                            <div class="lm-konf" id="lmKonferenz"></div>
                         </div>
                     </div>
                 </div>
@@ -2296,6 +2303,7 @@
     <script src="js/engine/urlaubEngine.js"></script>
     <script src="js/engine/supercupEngine.js"></script>
     <script src="js/engine/euroSupercupEngine.js"></script>
+    <script src="js/engine/konferenzEngine.js"></script>
     <script src="js/engine/gameState.js"></script>
     <script src="js/engine/eigenschaftenEngine.js"></script>
     <script src="js/engine/matchFlowEngine.js"></script>

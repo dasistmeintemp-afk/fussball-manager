@@ -3043,6 +3043,7 @@ class UIManager {
             ? SeasonEngine.auslaufendZumWechsel(state).sort((a, b) => (b.overall || 0) - (a.overall || 0)) : [];
         const wochen = Math.round((SeasonEngine.SOMMERPAUSE?.tage || 21) / 7);
         details.innerHTML = `
+            ${this.saisonRueckblickHtml(state, endResult)}
             <div class="dash-card" style="margin-top:16px;">
                 <h4>Ihr Saisonabschluss:</h4>
                 <p>Ihr Verein belegt den <strong>${endResult.userRank}. Tabellenplatz</strong>.</p>
@@ -3083,6 +3084,34 @@ class UIManager {
             modal.style.display = "none";
             this.starteNeueSaison();
         };
+    }
+
+    /** Der Saisonrückblick (MeilensteinEngine.rueckblick) als Karte */
+    saisonRueckblickHtml(state, endResult) {
+        const ms = typeof MeilensteinEngine !== "undefined" ? MeilensteinEngine : null;
+        const r = ms ? ms.rueckblick(state) : null;
+        if (!r) return "";
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const kachel = (titel, wert, unter = "") => `<div class="rb-kachel"><span>${esc(titel)}</span><strong>${wert}</strong>${unter ? `<small>${unter}</small>` : ""}</div>`;
+        const spiel = (s) => s ? `${esc(s.ergebnis)}` : "–";
+        const kacheln = [
+            kachel("Platz", r.platz ? `${r.platz}.` : `${endResult.userRank}.`, r.von ? `von ${r.von}${r.liga ? ` · ${esc(r.liga)}` : ""}` : ""),
+            kachel("Bilanz", `${r.siege}-${r.remis}-${r.niederlagen}`, `${r.punkte ?? "–"} Punkte`),
+            kachel("Tore", `${r.tore}:${r.gegentore}`, `${r.tore - r.gegentore >= 0 ? "+" : ""}${r.tore - r.gegentore}`),
+            kachel("Torjäger", r.torjaeger[0] ? esc(r.torjaeger[0].name) : "–", r.torjaeger[0] ? `${r.torjaeger[0].tore} Tore` : ""),
+            kachel("Bester Spieler", r.bester ? esc(r.bester.name) : "–", r.bester ? `Note ${r.bester.schnitt.toFixed(2).replace(".", ",")} in ${r.bester.spiele} Spielen` : ""),
+            kachel("Höchster Ligasieg", spiel(r.hoechsterSieg), r.hoechsterSieg ? `${r.hoechsterSieg.heim ? "gegen" : "bei"} ${esc(r.hoechsterSieg.gegner)}` : ""),
+            kachel("Bitterste Ligapleite", spiel(r.bittersteNiederlage), r.bittersteNiederlage ? `${r.bittersteNiederlage.heim ? "gegen" : "bei"} ${esc(r.bittersteNiederlage.gegner)}` : ""),
+            kachel("Zuschauer", r.zuschauerSchnitt ? r.zuschauerSchnitt.toLocaleString("de-DE") : "–", r.zuschauerSchnitt ? "im Schnitt" : ""),
+            kachel("Fanstimmung", `${r.fanStimmung} %`, r.fanStimmung >= 80 ? "Die Kurve ist begeistert" : (r.fanStimmung < 45 ? "Die Kurve murrt" : ""))
+        ].join("");
+        return `
+            <div class="dash-card rb-karte">
+                <h4>Saison ${r.saison} im Rückblick</h4>
+                ${r.titel.length ? `<div class="rb-titel">${r.titel.map(t => `<span>🏆 ${esc(t)}</span>`).join("")}</div>` : ""}
+                <div class="rb-raster">${kacheln}</div>
+                ${r.meilensteine.length ? `<ul class="meilenstein-liste rb-meilensteine">${r.meilensteine.slice(0, 6).map(m => `<li><span aria-hidden="true">${esc(m.icon)}</span><span>${esc(m.text)}</span></li>`).join("")}</ul>` : ""}
+            </div>`;
     }
 
     /** Tage bis zum Saisonwechsel - null außerhalb der Sommerpause */

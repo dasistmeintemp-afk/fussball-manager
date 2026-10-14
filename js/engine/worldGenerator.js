@@ -248,6 +248,8 @@ class WorldGenerator {
         // Der Nutzerverein darf eine kleinere Zielgröße bekommen: Er soll seine
         // Lücken selbst auf dem Transfermarkt schließen dürfen.
         const zielGroesse = typeof options.sizeFor === "function" ? options.sizeFor : null;
+        // Einmal ein Verzeichnis statt für jeden Spieler jedes Vereins die ganze Liste
+        const nachId = new Map((state.players || []).map(p => [p.id, p]));
 
         state.clubs.forEach(club => {
             const league = leagues.find(l => l.id === club.leagueId);
@@ -256,7 +258,7 @@ class WorldGenerator {
             const voll = this.SQUAD_SIZES[league.level] || 18;
             const ziel = zielGroesse ? zielGroesse(club, voll) : voll;
             const kader = (club.playerIds || [])
-                .map(id => state.players.find(sp => sp.id === id))
+                .map(id => nachId.get(id))
                 .filter(Boolean);
 
             // Was fehlt dem Kader? Sollplan gegen Istbestand halten.

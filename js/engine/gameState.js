@@ -1093,6 +1093,41 @@ class GameState {
         return byId;
     }
 
+    /**
+     * Ein zwischengespeichertes Verzeichnis aller Spieler nach ID, dazu ihre
+     * Stelle in der Liste. Gilt, solange die Liste dieselbe ist und gleich
+     * lang bleibt; was dennoch fehlt oder verrutscht ist, baut es neu.
+     *
+     * Gebraucht wird es dort, wo für jeden Verein jeder Spieler gesucht wird.
+     * Mit einer linearen Suche wurde das von Saison zu Saison langsamer: Neue
+     * Spieler (Jugend, Ersatz für Abgänge) stehen hinten in der Liste, und
+     * nach fünf Saisons stammt ein guter Teil jedes Kaders von dort.
+     */
+    static spielerIndex(allPlayers) {
+        if (!Array.isArray(allPlayers)) return { size: 0, byId: new Map(), pos: new Map() };
+        if (!GameState._spielerIndexCache) GameState._spielerIndexCache = new WeakMap();
+        const e = GameState._spielerIndexCache.get(allPlayers);
+        return e && e.size === allPlayers.length ? e : GameState._baueSpielerIndex(allPlayers);
+    }
+
+    static _baueSpielerIndex(allPlayers) {
+        const byId = new Map(), pos = new Map();
+        allPlayers.forEach((p, i) => { if (p) { byId.set(p.id, p); pos.set(p.id, i); } });
+        const e = { size: allPlayers.length, byId, pos };
+        GameState._spielerIndexCache.set(allPlayers, e);
+        return e;
+    }
+
+    /** Der Spieler zu einer ID - aus dem Verzeichnis, mit Probe, ob er noch an seiner Stelle steht */
+    static spielerMitId(allPlayers, id) {
+        if (!Array.isArray(allPlayers)) return null;
+        let e = GameState.spielerIndex(allPlayers);
+        let p = e.byId.get(id);
+        if (p && allPlayers[e.pos.get(id)] === p) return p;
+        e = GameState._baueSpielerIndex(allPlayers);
+        return e.byId.get(id) || null;
+    }
+
     static repairLineup(club, allPlayers, playerIndex = null) {
         if (!club || !Array.isArray(club.playerIds) || !Array.isArray(allPlayers)) return false;
 
@@ -1265,8 +1300,18 @@ class GameState {
 
     /** Die Spieler eines Kaders, die spielen koennen: nicht verletzt, nicht gesperrt */
     static einsatzfaehigeSpieler(club, allPlayers) {
-        const kaderIds = new Set(club?.playerIds || []);
-        return (allPlayers || []).filter(p => kaderIds.has(p.id) && p.injuredWeeks === 0 && p.suspendedMatches === 0 && !p.reserve);
+        // Über das Verzeichnis statt durch alle Spieler der Welt - in der
+        // Reihenfolge der Spielerliste, wie zuvor
+        const gesehen = new Set();
+        const liste = [];
+        (club?.playerIds || []).forEach(id => {
+            if (gesehen.has(id)) return;
+            gesehen.add(id);
+            const p = GameState.spielerMitId(allPlayers, id);
+            if (p && p.injuredWeeks === 0 && p.suspendedMatches === 0 && !p.reserve) liste.push(p);
+        });
+        const pos = GameState.spielerIndex(allPlayers).pos;
+        return liste.sort((a, b) => pos.get(a.id) - pos.get(b.id));
     }
 
     /**
@@ -1385,7 +1430,7 @@ class GameState {
 
         if (lineup.length > 0) {
             club.roles.captain = club.roles.captain || lineup[0];
-            const shooters = lineup.map(id => allPlayers.find(p => p.id === id)).filter(Boolean);
+            const shooters = lineup.map(id => GameState.spielerMitId(allPlayers, id)).filter(Boolean);
             shooters.sort((a, b) => b.shooting - a.shooting);
             club.roles.penaltyTaker = shooters[0]?.id || lineup[0];
 

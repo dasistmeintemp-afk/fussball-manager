@@ -190,7 +190,9 @@ class TransferEngine {
      * Monatsraten (FinanceEngine.zahleRaten).
      */
     static executeTransfer(state, playerId, buyerClubId, fee, wage, contractYears, optionen = {}) {
-        const player = state.players.find(p => p.id === playerId);
+        // Mit dem Verzeichnis des Markttags, sonst über die Liste
+        const ausIndex = optionen.index instanceof Map ? optionen.index.get(playerId) : null;
+        const player = ausIndex && ausIndex.id === playerId ? ausIndex : state.players.find(p => p.id === playerId);
         const buyerClub = state.clubs.find(c => c.id === buyerClubId);
         if (!player || !buyerClub) return false;
         // Ein verliehener Spieler gehört seinem Stammverein - verkauft wird
@@ -680,28 +682,37 @@ class TransferEngine {
         // besser als das, was er hat, und kein Spieler des Nutzers - dessen
         // Kader rührt die KI nur über ein Angebot an, das er annehmen kann.
         const kandidaten = [];
-        for (const p of (markt.nachPosition.get(bedarf.pos) || [])) {
-            // Die Liste ist nach Stärke sortiert - ab hier ist keiner mehr besser
-            if ((p.overall || 0) <= bedarf.messlatte) break;
-            if (p.clubId === club.id) continue;
-            if (p.clubId === state.userClubId) continue;
-            if (p.leihe) continue;
-            if ((p.injuredWeeks || 0) > 0) continue;
+        // Gewählt wird unter den fünf reizvollsten. Der Reiz ist der Gewinn an
+        // Stärke plus höchstens neun Punkte Zuschlag (jung, Vertragsende) -
+        // wer selbst damit nicht mehr unter die besten fünf käme, beendet die
+        // Suche. Nur der Wunschspieler aus der Gerüchteküche hat mehr Zuschlag;
+        // ihn prüft der Verein in dem Fall noch eigens. Vorher lief die Suche
+        // für einen Unterhausverein durch fast alle Spieler der Position, und
+        // mit den Etats nach einigen Saisons wurden die Fenstertage um die
+        // Hälfte langsamer.
+        const ZUSCHLAG_MAX = 9;
+        const wunschId = nachrichten && club.geruecht ? String(club.geruecht.playerId) : null;
+        const besteReize = [];
+        const pruefe = (p) => {
+            if (p.clubId === club.id) return null;
+            if (p.clubId === state.userClubId) return null;
+            if (p.leihe) return null;
+            if ((p.injuredWeeks || 0) > 0) return null;
             // Billige Vorprüfung: Unter 63,75 % des Marktwerts (Vertragsende,
             // Transferliste) geht kein Verein herunter - wer selbst dann zu
             // teuer ist, braucht keine weitere Prüfung
             const budget = club.transferBudget || 0;
-            if (p.clubId && (p.value || 0) * 0.6375 > budget) continue;
+            if (p.clubId && (p.value || 0) * 0.6375 > budget) return null;
 
             const verkaeufer = p.clubId ? markt.vereine.get(p.clubId) : null;
             // Ein Spieler wechselt nicht in eine deutlich kleinere Nummer
-            if (verkaeufer && (verkaeufer.reputation || 60) > eigenerRuf + 12) continue;
+            if (verkaeufer && (verkaeufer.reputation || 60) > eigenerRuf + 12) return null;
             // Und kein junger Spieler geht zwei Ligen hinunter, wenn er für die
             // Elf des Käufers klar zu gut ist. Gemessen trugen genau diese
             // Wechsel dazu bei, dass die unteren Ligen Saison für Saison
             // stärker wurden.
             if (verkaeufer && (club.level || 1) - (verkaeufer.level || 1) >= 2 && (p.age || 25) < 30
-                && (p.overall || 0) > (bedarf.niveau ?? bedarf.messlatte) + this.ABSTIEG_ZU_GUT) continue;
+                && (p.overall || 0) > (bedarf.niveau ?? bedarf.messlatte) + this.ABSTIEG_ZU_GUT) return null;
 
             // Niemand gibt seinen letzten Mann auf einer Position her. Ein
             // Kader hat auf den meisten Positionen aber nur zwei Leute -
@@ -713,13 +724,13 @@ class TransferEngine {
             if (verkaeufer) {
                 const gleichePos = (markt.kaderNachPos.get(verkaeufer.id) || {})[p.pos] || [];
                 const mindestNachher = p.pos === "TW" ? 2 : 1;
-                if (gleichePos.length - 1 < mindestNachher) continue;
+                if (gleichePos.length - 1 < mindestNachher) return null;
 
                 istBester = !gleichePos.some(x => x.id !== p.id && (x.overall || 0) >= (p.overall || 0));
             }
 
             const preis = this.calculateAskingPrice(p, verkaeufer);
-            if (preis > budget) continue;
+            if (preis > budget) return null;
 
             // Wie sehr will dieser Verein genau diesen Spieler? Ein
             // Wunschspieler aus der Gerüchteküche reizt mehr
@@ -727,7 +738,30 @@ class TransferEngine {
             const jung = (p.age || 25) <= 24 ? 4 : 0;
             const ablauf = (p.contractYears ?? 3) <= 1 ? 5 : 0;
             const wunsch = nachrichten && typeof nachrichten.reiz === "function" ? nachrichten.reiz(club, p) : 0;
-            kandidaten.push({ p, verkaeufer, preis, istBester, reiz: gewinn + jung + ablauf + wunsch });
+            return { p, verkaeufer, preis, istBester, reiz: gewinn + jung + ablauf + wunsch };
+        };
+        const aufnehmen = (k) => {
+            if (!k) return;
+            kandidaten.push(k);
+            besteReize.push(k.reiz);
+            besteReize.sort((a, b) => b - a);
+            if (besteReize.length > 5) besteReize.length = 5;
+        };
+        const liste = markt.nachPosition.get(bedarf.pos) || [];
+        let wunschGeprueft = false;
+        for (let i = 0; i < liste.length; i++) {
+            const p = liste[i];
+            // Die Liste ist nach Stärke sortiert - ab hier ist keiner mehr besser
+            if ((p.overall || 0) <= bedarf.messlatte) break;
+            if (besteReize.length >= 5 && (p.overall || 0) - bedarf.messlatte + ZUSCHLAG_MAX < besteReize[4]) {
+                if (wunschId && !wunschGeprueft) {
+                    const w = liste.slice(i).find(x => String(x.id) === wunschId && (x.overall || 0) > bedarf.messlatte);
+                    if (w) aufnehmen(pruefe(w));
+                }
+                break;
+            }
+            if (wunschId && String(p.id) === wunschId) wunschGeprueft = true;
+            aufnehmen(pruefe(p));
         }
 
         if (kandidaten.length === 0) return false;
@@ -793,9 +827,11 @@ class TransferEngine {
 
     /** Durchschnittliche Stärke eines Kaders */
     static kaderNiveau(state, club) {
-        const kader = (club.playerIds || [])
-            .map(id => state.players.find(p => p.id === id))
-            .filter(Boolean);
+        const gs = _getTransferGameState();
+        const finde = gs && typeof gs.spielerMitId === "function"
+            ? (id) => gs.spielerMitId(state.players, id)
+            : (id) => state.players.find(p => p.id === id);
+        const kader = (club.playerIds || []).map(finde).filter(Boolean);
         if (kader.length === 0) return 50;
         return kader.reduce((a, p) => a + (p.overall || 50), 0) / kader.length;
     }

@@ -14,9 +14,9 @@
  */
 
 const SaveCodec = {
-    FORMAT: "fmc2",
+    FORMAT: "fmc3",
     /** Ältere Formate, die sich weiter lesen lassen */
-    FORMATE: ["fmc1", "fmc2"],
+    FORMATE: ["fmc1", "fmc2", "fmc3"],
 
     /**
      * Feldschema der Spieler: [Pfad, Typ]
@@ -72,6 +72,17 @@ const SaveCodec = {
     ],
 
     /** Feldschema einer Spielplan-Partie */
+    /**
+     * fmc3: Die Laufbahn je Spieler wuchs um rund 160 KB je Saison - als
+     * Restobjekt mit Feldnamen und dem Vereinskürzel als Text in jeder
+     * Zeile. Jetzt steht sie als flache Zahlenreihe da, das Kürzel kommt aus
+     * dem Wörterbuch ("lb": je sechs Werte eine Zeile). Dazu die Statistik
+     * je Wettbewerb ("na": Zahlenreihe).
+     */
+    PLAYER_FIELDS_FMC3: [
+        ["laufbahn", "lb"], ["laufbahnTeile", "lb"], ["statsPokal", "na"], ["statsEuropa", "na"]
+    ],
+
     MATCH_FIELDS: [
         ["homeClubId", "s"], ["awayClubId", "s"], ["played", "b"],
         ["homeGoals", "n"], ["awayGoals", "n"], ["leagueId", "s"], ["summaryText", "s"]
@@ -84,10 +95,13 @@ const SaveCodec = {
     felder(art, format = this.FORMAT) {
         const basis = art === "player" ? this.PLAYER_FIELDS : this.MATCH_FIELDS;
         if (format === "fmc1") return basis;
-        const key = art === "player" ? "_spielerFmc2" : "_partieFmc2";
+        const stufe = format === "fmc2" ? 2 : 3;
+        const key = `_${art === "player" ? "spieler" : "partie"}Fmc${stufe}`;
         if (!this[key]) {
-            const zusatz = (art === "player" ? this.PLAYER_FIELDS_FMC2 : this.MATCH_FIELDS_FMC2)
-                .map(([p, t]) => [p, t, true]);
+            const zusaetze = art === "player"
+                ? [this.PLAYER_FIELDS_FMC2].concat(stufe >= 3 ? [this.PLAYER_FIELDS_FMC3] : [])
+                : [this.MATCH_FIELDS_FMC2];
+            const zusatz = [].concat(...zusaetze).map(([p, t]) => [p, t, true]);
             Object.defineProperty(this, key, { value: basis.concat(zusatz), enumerable: false });
         }
         return this[key];
@@ -201,6 +215,13 @@ const SaveCodec = {
                 row[i] = raw ? 1 : 0;
             } else if (e.type === "oa") {
                 row[i] = Array.isArray(raw) ? raw.map(v => dict.put(JSON.stringify(v))) : null;
+            } else if (e.type === "lb") {
+                // Laufbahnzeilen [Saison, Verein, Spiele, Tore, Vorlagen, Note] flach, der Verein aus dem Wörterbuch
+                row[i] = Array.isArray(raw) && raw.length
+                    ? [].concat(...raw.map(z => [z[0], z[1] === null || z[1] === undefined ? -1 : dict.put(z[1]), z[2], z[3], z[4], z[5]]))
+                    : null;
+            } else if (e.type === "na") {
+                row[i] = Array.isArray(raw) ? raw : null;
             } else if (e.type === "f") {
                 row[i] = typeof raw === "number" ? Math.round(raw * 1000) / 1000 : null;
             } else {
@@ -260,6 +281,15 @@ const SaveCodec = {
             }
             else if (type === "sa") this.setPath(obj, path, Array.isArray(raw) ? raw.map(readString).filter(v => v !== null) : []);
             else if (type === "b") this.setPath(obj, path, raw === 1 || raw === true);
+            else if (type === "lb") {
+                const zeilen = [];
+                if (Array.isArray(raw)) {
+                    for (let z = 0; z + 5 < raw.length; z += 6) {
+                        zeilen.push([raw[z], raw[z + 1] === -1 ? null : readString(raw[z + 1]), raw[z + 2], raw[z + 3], raw[z + 4], raw[z + 5]]);
+                    }
+                }
+                this.setPath(obj, path, zeilen);
+            }
             else if (type === "oa") {
                 this.setPath(obj, path, Array.isArray(raw) ? raw.map(readString).filter(v => v !== null).map(v => {
                     try { return JSON.parse(v); } catch (e) { return null; }

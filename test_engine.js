@@ -3983,7 +3983,7 @@ function runEngineTests() {
         delete fremd.schiedsrichter;
 
         const enc = SaveCodec.encodeState(state);
-        if (enc.__codec !== "fmc2") throw new Error(`Format ${enc.__codec}`);
+        if (enc.__codec !== SaveCodec.FORMAT) throw new Error(`Format ${enc.__codec}`);
         const rest = enc.players.map(r => r[SaveCodec.felder("player").length]).filter(r => r && typeof r === "object");
         if (rest.some(r => "traits" in r || "foot" in r || "spielpraxis" in r)) throw new Error("Neue Felder landen weiter im Restobjekt");
         const back = SaveCodec.decodeState(JSON.parse(JSON.stringify(enc)));
@@ -11347,6 +11347,90 @@ function runEngineTests() {
         const geber = kader.filter(p => (p.stats.assists || 0) > 0);
         if (geber.length < 6) throw new Error(`Nur ${geber.length} Vorlagengeber`);
         if (!geber.some(p => ["LV", "RV"].includes(p.pos)) || !geber.some(p => ["ZM", "OM", "DM"].includes(p.pos))) throw new Error("Vorlagen nur aus einem Mannschaftsteil");
+    });
+
+    test("Tempo: Spielerverzeichnis bleibt richtig, wenn die Liste sich ändert, und die KI-Suche wählt wie zuvor", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Tempo" });
+        const liste = state.players;
+        const erster = liste[0], letzter = liste[liste.length - 1];
+        if (GameState.spielerMitId(liste, letzter.id) !== letzter) throw new Error("Letzter Spieler nicht gefunden");
+        // Gleiche Länge, anderer Inhalt: einer geht, ein neuer kommt
+        const neu = Object.assign({}, erster, { id: "neu_tempo", clubId: erster.clubId });
+        liste.splice(0, 1);
+        liste.push(neu);
+        if (GameState.spielerMitId(liste, "neu_tempo") !== neu) throw new Error("Neuer Spieler fehlt im Verzeichnis");
+        if (GameState.spielerMitId(liste, erster.id) !== null) throw new Error("Ein entfernter Spieler steht noch im Verzeichnis");
+        // Einsatzfähige Spieler: in der Reihenfolge der Liste, ohne Verletzte und ohne Doppelte
+        const club = state.clubs.find(c => c.id === "muc");
+        club.playerIds = club.playerIds.concat(club.playerIds.slice(0, 2));
+        const verletzt = state.players.find(p => p.clubId === "muc" && p.id !== club.playerIds[0]);
+        verletzt.injuredWeeks = 3;
+        const soll = state.players.filter(p => new Set(club.playerIds).has(p.id) && p.injuredWeeks === 0 && p.suspendedMatches === 0 && !p.reserve);
+        const ist = GameState.einsatzfaehigeSpieler(club, state.players);
+        if (ist.length !== soll.length || ist.some((p, i) => p !== soll[i])) throw new Error("Einsatzfähige Spieler weichen ab");
+
+        // Die KI-Suche bricht früh ab, wählt aber dieselben fünf: ein Wunschspieler
+        // aus der Gerüchteküche wird auch weit hinten in der Liste noch gefunden
+        const kaeufer = state.clubs.find(c => c.level === 2 && c.id !== state.userClubId);
+        kaeufer.transferBudget = 1e9; kaeufer.wageBudget = 1e9;
+        const markt = TransferEngine.baueMarktIndex(state);
+        const pos = "ZM";
+        const liga = markt.nachPosition.get(pos);
+        const wunsch = liga.slice(40).find(p => p.clubId && p.clubId !== kaeufer.id && p.clubId !== state.userClubId && !p.leihe
+            && (markt.vereine.get(p.clubId)?.reputation || 60) <= (kaeufer.reputation || 60) + 12
+            && ((markt.kaderNachPos.get(p.clubId) || {})[p.pos] || []).length >= 2);
+        if (!wunsch) throw new Error("Kein Wunschspieler gefunden");
+        kaeufer.geruecht = { playerId: wunsch.id, bis: 9999, saison: state.seasonYear };
+        const bedarf = TransferEngine.kaderBedarf;
+        TransferEngine.kaderBedarf = () => ({ pos, art: "verstaerkung", messlatte: wunsch.overall - 14, niveau: wunsch.overall - 14 });
+        const zufall = Math.random;
+        Math.random = () => 0;
+        try {
+            const vorher = wunsch.clubId;
+            TransferEngine.versucheEinenTransfer(state, kaeufer, markt);
+            if (wunsch.clubId === vorher && !liga.slice(0, 40).some(p => p.clubId === kaeufer.id)) throw new Error("Weder der Wunschspieler noch ein anderer wurde verpflichtet");
+        } finally { TransferEngine.kaderBedarf = bedarf; Math.random = zufall; }
+    });
+
+    test("SaveCodec fmc3: Laufbahn und Statistik je Wettbewerb kompakt, ältere Spielstände bleiben lesbar", () => {
+        const { SaveCodec } = require('./js/services/saveCodec.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Speicher" });
+        const [a, b, c] = state.players;
+        a.laufbahn = [[1, "muc", 30, 12, 4, 712], [2, "dor", 28, 9, 6, 698]];
+        a.statsPokal = [3, 270, 2, 1, 210, 0];
+        b.laufbahn = [[1, null, 2, 0, 0, 600]];
+        b.laufbahnTeile = [[2, "lev", 10, 1, 1, 650]];
+        c.statsEuropa = [6, 540, 4, 2, 430, 1];
+        const roh = SaveCodec.encodeState(state);
+        if (roh.__codec !== "fmc3") throw new Error(`Format ${roh.__codec}`);
+        const zur = SaveCodec.decodeState(JSON.parse(JSON.stringify(roh)));
+        const [za, zb, zc] = zur.players;
+        if (JSON.stringify(za.laufbahn) !== JSON.stringify(a.laufbahn)) throw new Error(`Laufbahn: ${JSON.stringify(za.laufbahn)}`);
+        if (JSON.stringify(zb.laufbahn) !== JSON.stringify(b.laufbahn) || JSON.stringify(zb.laufbahnTeile) !== JSON.stringify(b.laufbahnTeile)) throw new Error("Laufbahn ohne Verein oder Teile falsch");
+        if (JSON.stringify(za.statsPokal) !== JSON.stringify(a.statsPokal) || JSON.stringify(zc.statsEuropa) !== JSON.stringify(c.statsEuropa)) throw new Error("Statistik je Wettbewerb falsch");
+        // Die Laufbahn steht nicht mehr als Text im Restobjekt
+        const zeile = roh.players[0];
+        const rest = zeile[zeile.length - 1];
+        if (rest && typeof rest === "object" && !Array.isArray(rest) && rest.laufbahn) throw new Error("Laufbahn noch im Restobjekt");
+        // Ein Spielstand im alten Format fmc2 wird weiter gelesen
+        const alt = JSON.parse(JSON.stringify(roh));
+        const felder3 = SaveCodec.felder("player", "fmc3"), felder2 = SaveCodec.felder("player", "fmc2");
+        alt.__codec = "fmc2";
+        alt.players = alt.players.map(z => {
+            const dict = alt.__dict;
+            const zeilen = z.slice(0, felder2.length);
+            const rest = {};
+            felder3.slice(felder2.length).forEach(([pfad], i) => {
+                const roh2 = z[felder2.length + i];
+                if (roh2 === null || roh2 === undefined) return;
+                rest[pfad] = pfad.startsWith("laufbahn")
+                    ? Array.from({ length: roh2.length / 6 }, (_, k) => [roh2[6 * k], roh2[6 * k + 1] === -1 ? null : dict[roh2[6 * k + 1]], roh2[6 * k + 2], roh2[6 * k + 3], roh2[6 * k + 4], roh2[6 * k + 5]])
+                    : roh2;
+            });
+            return Object.keys(rest).length ? zeilen.concat([rest]) : zeilen;
+        });
+        const altZur = SaveCodec.decodeState(alt);
+        if (JSON.stringify(altZur.players[0].laufbahn) !== JSON.stringify(a.laufbahn)) throw new Error("fmc2-Spielstand verliert die Laufbahn");
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

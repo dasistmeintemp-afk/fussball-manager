@@ -48,8 +48,8 @@ const Formatters = {
      */
     formatExpectation(expKey) {
         const map = {
-            "championship": "Deutsche Meisterschaft",
-            "top3": "Qualifikation Champions League (Top 3)",
+            "championship": "Meisterschaft",
+            "top3": "Qualifikation für die Königsklasse (Top 3)",
             "top6": "Internationales Geschäft (Top 6)",
             "midfield": "Gesichertes Mittelfeld",
             "avoid_relegation": "Klassenerhalt sichern"

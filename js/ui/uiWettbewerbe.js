@@ -476,9 +476,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             options.push(`<option value="${this.escapeHtml(cupId)}">🏆 ${this.escapeHtml(name)}</option>`);
         });
 
-        [["ucl", "⭐ Champions League"], ["uel", "🌍 Europa League"], ["uecl", "🏆 Conference League"]].forEach(([id, label]) => {
-            if (state.europeanCompetitions?.[id]) {
-                options.push(`<option value="${id}">${label}</option>`);
+        [["ucl", "⭐"], ["uel", "🌍"], ["uecl", "🏆"]].forEach(([id, icon]) => {
+            const ec = state.europeanCompetitions?.[id];
+            if (ec) {
+                options.push(`<option value="${id}">${icon} ${this.escapeHtml(ec.name || this.constructor.wettbewerbName(id))}</option>`);
             }
         });
         if (state.playoffs || state.playoffsVorjahr) {

@@ -42,8 +42,13 @@ const _krResolve = (() => {
 const KaderregelEngine = {
     REGELN: {
         europa: { name: "Europapokal", max: 25, minLokal: 8, listeB: true },
-        liga_en_liga_1: { name: "Premier League", max: 25, maxFremd: 17, u21frei: true },
-        liga_es_liga_1: { name: "La Liga", max: 25, maxNichtEU: 3, u21frei: true }
+        // Der Name folgt der Liga - erfunden oder aus der Namensdatei
+        liga_en_liga_1: { get name() { return KaderregelEngine.ligaName("en_liga_1"); }, max: 25, maxFremd: 17, u21frei: true },
+        liga_es_liga_1: { get name() { return KaderregelEngine.ligaName("es_liga_1"); }, max: 25, maxNichtEU: 3, u21frei: true }
+    },
+    ligaName(ligaId) {
+        const namen = _krResolve("NamenEngine", "./namenEngine.js");
+        return namen ? namen.wettbewerb(ligaId) : ligaId;
     },
     /** EU, EWR und die Schweiz */
     EU: ["Belgien", "Bulgarien", "Dänemark", "Deutschland", "Estland", "Finnland", "Frankreich", "Griechenland", "Irland",

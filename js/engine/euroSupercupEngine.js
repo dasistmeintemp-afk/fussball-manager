@@ -54,12 +54,12 @@ const EuroSupercupEngine = {
         const v = state.euroSupercupVorlage && state.euroSupercupVorlage.saison === saison ? state.euroSupercupVorlage : null;
         let heimId = v?.uclId || null;
         let gastId = v?.uelId && v.uelId !== heimId ? v.uelId : null;
-        let grund = "Sieger der Königsklasse gegen den Sieger der Europa League";
+        let grund = "Sieger der Königsklasse gegen den Sieger des zweiten Europapokals";
         if (!heimId || !gastId) {
             // Erste Saison: die größten Namen der beiden Wettbewerbe
             heimId = heimId || this._groessterName(state, "ucl", gastId);
             gastId = gastId || this._groessterName(state, "uel", heimId);
-            grund = "die größten Namen der Königsklasse und der Europa League";
+            grund = "die größten Namen der beiden großen Europapokale";
         }
         if (!heimId || !gastId) return null;
         state.euroSupercup = {

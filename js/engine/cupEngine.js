@@ -108,7 +108,6 @@ class CupEngine {
 
     /** Die Länder mit eigenem Pokal */
     static POKAL_LAENDER = ["de", "en", "es", "it", "fr"];
-    static POKAL_NAMEN = { de: "DFB-Pokal", en: "FA Cup", es: "Copa del Rey", it: "Coppa Italia", fr: "Coupe de France" };
 
     /** Das Land des eigenen Vereins */
     static eigenesLand(state) {
@@ -200,8 +199,11 @@ class CupEngine {
         return runde;
     }
 
+    /** Name des Landespokals - erfunden oder aus der Namensdatei (NamenEngine) */
     static pokalName(state, land) {
-        return this.POKAL_NAMEN[land || this.eigenesLand(state)] || "Landespokal";
+        const namen = _cupResolve("NamenEngine", "./namenEngine.js");
+        const id = `${land || this.eigenesLand(state)}_cup`;
+        return (namen && namen.WETTBEWERBE[id]) ? namen.wettbewerb(id) : "Landespokal";
     }
 
     /** Eine Runde auslosen */

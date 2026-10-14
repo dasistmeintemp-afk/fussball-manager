@@ -49,14 +49,24 @@ class PlayoffEngine {
      * in die Relegation muss; unten: der Platz des Herausforderers.
      */
     static FORMATE = {
-        de_liga_2: { art: "relegation", name: "Relegation zur Bundesliga", oben: { liga: "de_liga_1", platz: 16 }, unten: 3, hinspielBeim: "oben", regel: "elfmeter", verlaengerung: true },
-        de_liga_3: { art: "relegation", name: "Relegation zur 2. Bundesliga", oben: { liga: "de_liga_2", platz: 16 }, unten: 3, hinspielBeim: "unten", regel: "elfmeter", verlaengerung: true },
-        en_liga_2: { art: "playoffs", name: "Championship-Playoffs", plaetze: [3, 4, 5, 6], finale: "neutral", regel: "elfmeter", verlaengerung: true },
-        en_liga_3: { art: "playoffs", name: "League-One-Playoffs", plaetze: [3, 4, 5, 6], finale: "neutral", regel: "elfmeter", verlaengerung: true },
-        es_liga_2: { art: "playoffs", name: "Aufstiegs-Playoffs der Segunda", plaetze: [3, 4, 5, 6], finale: "hinrueck", regel: "besser", verlaengerung: true },
-        it_liga_2: { art: "serie_b", name: "Playoffs der Serie B", plaetze: [3, 4, 5, 6, 7, 8], regel: "besser", verlaengerung: true, direktAbstand: 15 },
-        fr_liga_2: { art: "barrage", name: "Play-offs und Barrage", plaetze: [3, 4, 5], oben: { liga: "fr_liga_1", platz: 16 }, regel: "elfmeter", verlaengerung: true }
+        de_liga_2: { art: "relegation", oben: { liga: "de_liga_1", platz: 16 }, unten: 3, hinspielBeim: "oben", regel: "elfmeter", verlaengerung: true },
+        de_liga_3: { art: "relegation", oben: { liga: "de_liga_2", platz: 16 }, unten: 3, hinspielBeim: "unten", regel: "elfmeter", verlaengerung: true },
+        en_liga_2: { art: "playoffs", plaetze: [3, 4, 5, 6], finale: "neutral", regel: "elfmeter", verlaengerung: true },
+        en_liga_3: { art: "playoffs", plaetze: [3, 4, 5, 6], finale: "neutral", regel: "elfmeter", verlaengerung: true },
+        es_liga_2: { art: "playoffs", plaetze: [3, 4, 5, 6], finale: "hinrueck", regel: "besser", verlaengerung: true },
+        it_liga_2: { art: "serie_b", plaetze: [3, 4, 5, 6, 7, 8], regel: "besser", verlaengerung: true, direktAbstand: 15 },
+        fr_liga_2: { art: "barrage", plaetze: [3, 4, 5], oben: { liga: "fr_liga_1", platz: 16 }, regel: "elfmeter", verlaengerung: true }
     };
+
+    /** Name der Playoffs einer Liga - mit den Ligennamen der NamenEngine */
+    static formatName(ligaId) {
+        const namen = _poResolve("NamenEngine", "./namenEngine.js");
+        const W = id => (namen ? namen.wettbewerb(id) : id);
+        const f = this.FORMATE[ligaId] || {};
+        if (f.art === "relegation") return `Relegation um die ${W(f.oben.liga)}`;
+        if (f.art === "barrage") return "Play-offs und Barrage";
+        return `${ligaId === "es_liga_2" ? "Aufstiegs-Playoffs" : "Playoffs"} der ${W(ligaId)}`;
+    }
 
     /** Wie oft eine Mannschaft in der Verlängerung trifft, bei gleicher Stärke */
     static VERLAENGERUNG_TOR = 0.22;
@@ -109,7 +119,7 @@ class PlayoffEngine {
     static baue(state, ligaId, f) {
         const unten = this.tabelle(state, ligaId);
         if (!unten) return null;
-        const w = { id: `po_${ligaId}`, ligaId, art: f.art, name: f.name, runden: [], rundeIndex: 0, fertig: false, ergebnis: null, teilnehmer: [] };
+        const w = { id: `po_${ligaId}`, ligaId, art: f.art, name: this.formatName(ligaId), runden: [], rundeIndex: 0, fertig: false, ergebnis: null, teilnehmer: [] };
 
         if (f.art === "relegation") {
             const obenTab = this.tabelle(state, f.oben.liga);

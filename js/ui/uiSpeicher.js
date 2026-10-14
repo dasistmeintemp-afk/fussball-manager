@@ -46,7 +46,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (fakten && ligen.length) {
             const vereine = ligen.reduce((summe, l) => summe + (l.teamCount || 0), 0);
             const laender = new Set(ligen.map(l => l.countryId)).size;
-            fakten.textContent = `Übernimm einen von ${vereine} Vereinen aus ${ligen.length} Ligen in ${laender} Ländern – von der Champions League bis zur Landesliga. Kader, Taktik, Transfers und jedes Spiel live in 2D.`;
+            fakten.textContent = `Übernimm einen von ${vereine} Vereinen aus ${ligen.length} Ligen in ${laender} Ländern – von der Königsklasse bis zur Landesliga. Kader, Taktik, Transfers und jedes Spiel live in 2D.`;
         }
         if (!detailsContainer || !continueBtn) return;
 
@@ -354,5 +354,105 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             });
         }
         this.renderSpeicherplaetze();
+    },
+
+    // ---------------------------------------------------------------
+    // Namensdatei (NamenEngine)
+    // ---------------------------------------------------------------
+
+    _namen() {
+        return (typeof window !== "undefined" && window.NamenEngine)
+            || (typeof require !== "undefined" ? require("../engine/namenEngine.js").NamenEngine : null);
+    },
+
+    /** Einstellungen: welche Namen gelten, laden, Vorlage, zurück */
+    renderNamenEinstellungen() {
+        const el = document.getElementById("settingsNamen");
+        const namen = this._namen();
+        if (!el || !namen) return;
+        const p = namen.paket();
+        const zahl = o => Object.keys(o || {}).length;
+        el.innerHTML = `
+            <p class="speicher-info">${p
+                ? `Geladen: <strong>${this.escapeHtml(p.titel)}</strong> – ${zahl(p.vereine)} Vereine, ${zahl(p.spieler)} Spieler, ${zahl(p.wettbewerbe)} Wettbewerbe.`
+                : "Es gelten die erfundenen Namen."}</p>
+            <div class="btn-group-column">
+                <label class="btn btn-secondary file-upload-btn">
+                    ${this._speicherIco("i-upload")}<span>${p ? "Andere Namensdatei laden" : "Namensdatei laden"}</span>
+                    <input type="file" id="settingsNamenInput" accept=".json,application/json" style="display:none;">
+                </label>
+                <button class="btn btn-secondary" id="btnNamenVorlage" type="button">${this._speicherIco("i-download")}<span>Vorlage herunterladen</span></button>
+                ${p ? `<button class="btn btn-secondary" id="btnNamenErfunden" type="button"><span>Erfundene Namen verwenden</span></button>` : ""}
+            </div>`;
+        el.querySelector("#settingsNamenInput").onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) this.ladeNamensdatei(file);
+            e.target.value = "";
+        };
+        el.querySelector("#btnNamenVorlage").onclick = () => this.ladeNamensvorlageHerunter();
+        const zurueck = el.querySelector("#btnNamenErfunden");
+        if (zurueck) zurueck.onclick = () => {
+            const vorher = namen.paket();
+            namen.entferne();
+            this.nachNamenswechsel(vorher, "Es gelten wieder die erfundenen Namen.");
+        };
+    },
+
+    /** Eine gewählte Datei als Namensdatei übernehmen */
+    ladeNamensdatei(datei) {
+        const namen = this._namen();
+        if (!namen) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            const vorher = namen.paket();
+            const r = namen.installiere(String(reader.result || ""));
+            if (!r.ok) {
+                this.showToast(`Namensdatei nicht übernommen: ${r.fehler.join(" ")}`, "error", 7000);
+                return;
+            }
+            const z = r.zahlen;
+            this.nachNamenswechsel(vorher, `Namen geladen: ${z.vereine} Vereine, ${z.spieler} Spieler, ${z.wettbewerbe} Wettbewerbe.`);
+        };
+        reader.onerror = () => this.showToast("Die Datei ließ sich nicht lesen.", "error");
+        reader.readAsText(datei);
+    },
+
+    /** Nach dem Wechsel: laufende Karriere umbenennen, speichern, neu zeichnen */
+    nachNamenswechsel(vorher, meldung) {
+        const namen = this._namen();
+        const state = this.app && this.app.state;
+        if (state && namen) {
+            namen.wendeAn(state, namen.paket(), vorher);
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.renderCurrentTab();
+        }
+        this.renderNamenEinstellungen();
+        this.zeigeNamensstand();
+        this.showToast(meldung, "success", 5000);
+    },
+
+    /** Startbildschirm: Name der geladenen Datei am Knopf */
+    zeigeNamensstand() {
+        const text = document.getElementById("startNamenText");
+        const namen = this._namen();
+        if (!text || !namen) return;
+        const p = namen.paket();
+        text.textContent = p ? `Namen: ${p.titel}` : "Namensdatei laden";
+    },
+
+    /** Die Vorlage mit allen Kennungen als Datei */
+    ladeNamensvorlageHerunter() {
+        const namen = this._namen();
+        if (!namen) return;
+        const blob = new Blob([namen.vorlage()], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.setAttribute("href", url);
+        a.setAttribute("download", "namen-vorlage.json");
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        this.showToast("Vorlage heruntergeladen. Namen eintragen und die Datei hier laden.", "info");
     }
 });

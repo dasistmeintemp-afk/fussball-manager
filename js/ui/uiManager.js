@@ -4050,7 +4050,14 @@ class UIManager {
                     </tr>`;
             }).join("");
 
-            return kopf + zeilen;
+            // Wer ein Freilos hatte, steigt erst in der nächsten Runde ein
+            const freilose = (runde.freilose || []).map(id => state.clubs.find(c => c.id === id)?.name).filter(Boolean);
+            const freilosZeile = freilose.length ? `
+                <tr class="${(runde.freilose || []).includes(userClub?.id) ? 'row-user-club' : ''}">
+                    <td colspan="10" class="text-muted">Freilos: ${this.escapeHtml(freilose.join(", "))}</td>
+                </tr>` : "";
+
+            return kopf + zeilen + freilosZeile;
         }).join("");
 
         // Spielplan: die aktuelle Runde als Karten

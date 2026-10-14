@@ -9,8 +9,8 @@
  *
  * Den Termin trägt der Kalender als Pokalabend (cupArt "supercup") aus,
  * über die CupEngine - Livespiel, Elfmeterschießen und Abschluss laufen
- * wie bei jeder Pokalpartie. Einen Landespokal gibt es nur im Land des
- * eigenen Vereins, deshalb auch nur dort einen Supercup.
+ * wie bei jeder Pokalpartie. Gespielt wird er nur im Land des eigenen
+ * Vereins.
  */
 
 const _scResolve = (() => {
@@ -52,7 +52,8 @@ const SupercupEngine = {
         const tabelle = state.userLeagueId === liga.id ? (state.standings || []) : ((state.standingsByLeague || {})[liga.id] || []);
         const meisterId = tabelle[0]?.clubId || null;
         const vizeId = tabelle[1]?.clubId || null;
-        const pokal = state.cups?.de_cup;
+        const cupEngine = _scResolve("CupEngine", "./cupEngine.js");
+        const pokal = cupEngine && typeof cupEngine.eigenerPokal === "function" ? cupEngine.eigenerPokal(state) : state.cups?.de_cup;
         const pokalsiegerId = pokal && pokal.completed ? pokal.winnerId : null;
         state.supercupVorlage = { saison: state.seasonYear || 1, meisterId, vizeId, pokalsiegerId };
         return state.supercupVorlage;

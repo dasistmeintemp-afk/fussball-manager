@@ -318,7 +318,10 @@ function runEngineTests() {
             if (lage.gruppen[i - 1].bedarf < lage.gruppen[i].bedarf) throw new Error("Die Baustellen sind nicht nach Bedarf sortiert");
         }
 
-        // Sofort-Verstärkungen: erreichbar, bezahlbar, besser als der Beste dort, einer je Verein
+        // Sofort-Verstärkungen: erreichbar, bezahlbar, besser als der Beste dort, einer je Verein.
+        // Geprüft wird die Auswahl, nicht Bochums Kasse: Mit dem Etat der
+        // erzeugten Welt fand sich je nach Zufall ein Kandidat oder keiner
+        club.transferBudget = Math.max(club.transferBudget || 0, 12000000);
         const u = SD.ungenauigkeit(state);
         const stamm = SD.suche(state, { gruppe: "auto", rolle: "stamm", anzahl: 5 });
         if (!stamm.length) throw new Error("Für Bochum findet der Sportdirektor keine Verstärkung");
@@ -11223,6 +11226,58 @@ function runEngineTests() {
         if (normal.partie.awayClubId !== "s04" || normal.grund !== "Meister gegen Pokalsieger") throw new Error(`Paarung nach der Saison falsch: ${JSON.stringify(normal)}`);
     });
 
+    test("Pokale: alle fünf Länder spielen ihren Pokal aus, mit Freilosen, und der Pokalsieger spielt Europa League", () => {
+        const { CupEngine } = require('./js/engine/cupEngine.js');
+        const { CompetitionEngine } = require('./js/engine/competitionEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const ids = Object.keys(state.cups).sort();
+        if (ids.join() !== "de_cup,en_cup,es_cup,fr_cup,it_cup") throw new Error(`Pokale: ${ids}`);
+        if (CupEngine.eigenerPokalId(state) !== "de_cup" || state.cups.en_cup.name !== "FA Cup") throw new Error("Eigener Pokal oder Name falsch");
+
+        // Spanien, Italien und Frankreich haben weniger als 64 Vereine: Die
+        // stärksten haben ein Freilos, die zweite Runde geht mit 32 auf
+        for (const id of ids) {
+            const cup = state.cups[id];
+            const r1 = cup.runden[0];
+            const imLand = state.clubs.filter(c => c.countryId === cup.land).length;
+            if (cup.teilnehmer.length !== Math.min(64, imLand)) throw new Error(`${id}: ${cup.teilnehmer.length} Teilnehmer bei ${imLand} Vereinen`);
+            if (r1.matches.length * 2 + (r1.freilose || []).length !== cup.teilnehmer.length || r1.matches.length + (r1.freilose || []).length !== 32) {
+                throw new Error(`${id}: ${r1.matches.length} Spiele und ${(r1.freilose || []).length} Freilose`);
+            }
+        }
+
+        // Alle Pokalabende - die eigene Partie mit Sofort-Ergebnis
+        for (let r = 0; r < CupEngine.POKAL_RUNDEN.length; r++) {
+            const termin = CupEngine.spieleTermin(state, "cup", r);
+            if (termin && termin.eigenePartie) CupEngine.austragen(state, termin.eigenePartie, true);
+            CupEngine.schliesseTerminAb(state, "cup", r);
+        }
+        for (const id of ids) {
+            const cup = state.cups[id];
+            if (!cup.completed || !cup.winnerId || cup.runden.length !== 6) throw new Error(`${id}: ohne Sieger nach ${cup.runden.length} Runden`);
+            // Niemand fällt ohne Spiel heraus: Jeder außer dem Sieger ist genau einmal ausgeschieden
+            if (new Set(cup.ausgeschieden).size !== cup.teilnehmer.length - 1 || cup.ausgeschieden.includes(cup.winnerId)) throw new Error(`${id}: ${cup.ausgeschieden.length} ausgeschieden`);
+        }
+        if (!state.inbox.some(m => /^FA Cup: .* ist Sieger/.test(m.subject))) throw new Error("Keine Meldung zum FA Cup");
+        if (Object.keys(CupEngine.pokalsiegerJeLand(state)).sort().join() !== "de,en,es,fr,it") throw new Error("Pokalsieger fehlen");
+
+        // Der Pokalsieger spielt Europa League - auch aus der 2. Liga
+        const zweitligist = state.clubs.find(c => c.leagueId === "de_liga_2");
+        const ec = CompetitionEngine.generateEuropeanCompetitions(state.clubs, { leagues: state.leagues, pokalsieger: { de: zweitligist.id } });
+        if (!ec.uel.participants.includes(zweitligist.id)) throw new Error("Zweitligist als Pokalsieger nicht in der Europa League");
+        // Steht er schon in der Königsklasse, rückt der Nächste der Liga nach: Sechster in die Europa League, Siebter in die Conference League
+        const liga = state.clubs.filter(c => c.leagueId === "de_liga_1").sort((a, b) => (b.reputation || 0) - (a.reputation || 0));
+        const mit = CompetitionEngine.generateEuropeanCompetitions(state.clubs, { leagues: state.leagues, pokalsieger: { de: liga[0].id } });
+        if (!mit.uel.participants.includes(liga[5].id) || !mit.uecl.participants.includes(liga[6].id)) throw new Error("Pokalplatz nicht an den Nächstplatzierten");
+
+        // Im Ausland: der eigene Pokal ist der des Landes, der eigene Verein ist dabei
+        const england = GameState.createNewGame("en3_sto", "normal", { name: "Trainer" });
+        if (CupEngine.eigenerPokalId(england) !== "en_cup" || !england.cups.en_cup.teilnehmer.includes("en3_sto")) throw new Error("Eigener Pokal in England falsch");
+        // Ältere Spielstände führten den eigenen Pokal unter de_cup
+        england.cups = { de_cup: england.cups.en_cup };
+        if (CupEngine.eigenerPokalId(england) !== "de_cup" || CupEngine.pokalsiegerJeLand(Object.assign(england, {})).de) throw new Error("Alter Spielstand nicht erkannt");
+    });
+
     test("Jahrespreise: Weltfußballer über alle ersten Ligen, Talent, Torjäger Europas, Trainer und Elf des Jahres", () => {
         const { JahrespreisEngine: Jp } = require('./js/engine/jahrespreisEngine.js');
         const { AuszeichnungEngine: Preise } = require('./js/engine/auszeichnungEngine.js');
@@ -11645,14 +11700,20 @@ function runEngineTests() {
         // auch im nationalen Supercup (vorher gewann dort einfach der Gastgeber)
         const original = MatchEngine.simulateFullMatch;
         MatchEngine.simulateFullMatch = (m) => { m.homeGoals = 1; m.awayGoals = 1; m.played = true; return m; };
+        // Gezählt werden die Prämienbuchungen - am selben Tag kann ein
+        // KI-Verein auch einen Transfer bezahlen
+        const { FinanceEngine } = require('./js/engine/financeEngine.js');
+        const buche = FinanceEngine.recordTransaction;
+        const praemien = {};
+        FinanceEngine.recordTransaction = function (s, clubId, typ, betrag, text) {
+            if (/Europäischer Supercup/.test(text || "")) praemien[clubId] = (praemien[clubId] || 0) + betrag;
+            return buche.apply(this, arguments);
+        };
         try {
-            const muc = state.clubs.find(c => c.id === "muc");
-            const gegner = state.clubs.find(c => c.id === uelSieger);
-            const kasse = [muc.balance, gegner.balance];
             state.currentDayIndex = iEuro;
             CalendarEngine.advanceOneDay(state);
             if (!p.partie.played || !p.partie.penaltyWinner || !p.abgeschlossen || p.siegerId !== p.partie.penaltyWinner) throw new Error(`Europäischer Supercup: ${JSON.stringify(p)}`);
-            const plus = [muc.balance - kasse[0], gegner.balance - kasse[1]];
+            const plus = [praemien.muc || 0, praemien[uelSieger] || 0];
             const sieg = p.siegerId === "muc" ? 0 : 1;
             if (plus[sieg] !== E.PRAEMIE.antritt + E.PRAEMIE.sieg || plus[1 - sieg] !== E.PRAEMIE.antritt) throw new Error(`Prämien: ${plus}`);
             if (!state.inbox.some(m => /Europäischer Supercup/.test(m.subject))) throw new Error("Keine Nachricht");
@@ -11662,6 +11723,7 @@ function runEngineTests() {
             if (!nat.partie.played || !nat.partie.penaltyWinner) throw new Error("Nationaler Supercup ohne Elfmeterschießen");
         } finally {
             MatchEngine.simulateFullMatch = original;
+            FinanceEngine.recordTransaction = buche;
         }
     });
 

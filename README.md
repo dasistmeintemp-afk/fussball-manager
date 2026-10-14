@@ -743,7 +743,10 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
   - **Tabellenprämie:** Sie ist halbiert. Sie kam zum Fernsehgeld dazu, das den Rang schon belohnt.
   - **Europapokal:** Die Prämien sind halbiert. Der Sieger der Königsklasse bekam 73 Mio., 43 % eines Spitzenumsatzes, real sind es rund 17 %.
   - **Danach:** Spitzenklubs legen 10–25 % ihres Umsatzes zurück (Bayern +37, City +18, Real +30). Das Mittelfeld steht vor Transfers bei null, und die Transfers entscheiden über Plus oder Minus.
-- **Nationale Pokale & Europapokal:** Der Pokal deines Landes sowie Champions League (`ucl`), Europa League (`uel`) und Conference League (`uecl`) mit Gruppen- und K.O.-Runden via `CompetitionEngine`.
+- **Nationale Pokale & Europapokal:** DFB-Pokal, FA Cup, Copa del Rey, Coppa Italia und Coupe de France sowie Champions League (`ucl`), Europa League (`uel`) und Conference League (`uecl`) mit Gruppen- und K.O.-Runden via `CompetitionEngine`.
+- **Pokale in allen fünf Ländern (`CupEngine`):** Bisher gab es nur den Pokal im Land des eigenen Vereins. Jetzt spielt jedes Land seinen Pokal an denselben Abenden im Hintergrund aus, mit Prämien je Runde. Der Reiter „Spielplan & Tabelle“ zeigt alle fünf Tableaus.
+  - **Freilose:** Spanien, Italien und Frankreich haben weniger als 64 Vereine. Dort fiel vorher in einer Runde ein Verein ohne Spiel heraus, und der Pokal endete eine Runde zu früh. Jetzt bekommen die stärksten Vereine ein Freilos, die zweite Runde geht mit 32 auf.
+  - **Europa League für den Pokalsieger:** Der Pokalsieger jedes Landes spielt Europa League, auch aus der zweiten Liga. Steht er schon im Europapokal, rückt der Nächstplatzierte der Liga nach.
 - **Ein Pokalabend, eine Runde:** Jeder Pokal- und Europapokalabend im Kalender spielt genau seine Runde. Nach dem eigenen Spiel geht es mit der Ligawoche weiter; die nächste Runde steht erst am nächsten Pokalabend an.
 - **Supercup (`SupercupEngine`):** Am letzten Tag der Vorbereitung spielt im eigenen Land der Meister gegen den Pokalsieger der Vorsaison: Supercup, Community Shield, Supercopa, Supercoppa oder Trophée des Champions.
   - Hat der Meister auch den Pokal geholt, kommt der Vizemeister. In der ersten Saison treffen sich die beiden Vereine mit dem größten Ruf der ersten Liga.

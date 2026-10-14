@@ -165,7 +165,26 @@ class CompetitionEngine {
 
             assign(spots.championsLeague, "ucl");
             assign(spots.europaLeague, "uel");
-            assign(spots.conferenceLeague, "uecl");
+
+            // Der Pokalsieger spielt Europa League. Steht er schon in einem
+            // Europapokal, bekommt der nächstplatzierte Verein der Liga den
+            // Platz - so wie in allen fünf Ländern.
+            const pokalsieger = options.pokalsieger && options.pokalsieger[league.countryId];
+            if (pokalsieger) {
+                const sieger = allClubs.find(c => c.id === pokalsieger);
+                const club = sieger && !taken.has(sieger.id) ? sieger : ranked.find(c => !taken.has(c.id));
+                if (club) {
+                    qualified.uel.push(club.id);
+                    taken.add(club.id);
+                }
+            }
+
+            // Conference League: die nächstbesten der Tabelle, so viele wie
+            // das Land Plätze hat
+            ranked.filter(c => !taken.has(c.id)).slice(0, (spots.conferenceLeague || []).length).forEach(club => {
+                qualified.uecl.push(club.id);
+                taken.add(club.id);
+            });
 
             // Die nächstbesten Vereine rücken bei Bedarf nach
             reserves[league.countryId] = ranked.filter(club => !taken.has(club.id));

@@ -1471,7 +1471,9 @@ class SeasonEngine {
         if (worldGen && typeof worldGen.fillUpExistingSquads === 'function' && playerGen) {
             worldGen.fillUpExistingSquads(state, worldGen.getLeagues(), playerGen, {
                 sizeFor: (club, voll) => club.id === state.userClubId ? Math.min(20, voll) : voll,
-                mindestJugend: SeasonEngine.MINDEST_JUGEND
+                mindestJugend: SeasonEngine.MINDEST_JUGEND,
+                // Nachgezogene passen zur Liga, wie sie zu Beginn war
+                halteNiveau: true
             });
         }
 

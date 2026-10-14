@@ -242,8 +242,56 @@ class WorldGenerator {
      * ist: Wer keinen zweiten Torwart hat, bekommt einen, und nicht noch einen
      * vierten Innenverteidiger.
      */
+    /**
+     * Die Stärke jeder Liga: Schnitt der besten Elf je Verein. Beim Anlegen
+     * der Welt als Sollwert gemerkt (state.ligaNiveau).
+     */
+    static ligaNiveau(state) {
+        const nachVerein = new Map();
+        (state.players || []).forEach(p => {
+            if (!p.clubId) return;
+            if (!nachVerein.has(p.clubId)) nachVerein.set(p.clubId, []);
+            nachVerein.get(p.clubId).push(p.overall || 0);
+        });
+        const summe = {};
+        (state.clubs || []).forEach(c => {
+            const elf = (nachVerein.get(c.id) || []).sort((a, b) => b - a).slice(0, 11);
+            if (!elf.length || !c.leagueId) return;
+            const s = summe[c.leagueId] || (summe[c.leagueId] = { wert: 0, n: 0 });
+            s.wert += elf.reduce((a, b) => a + b, 0) / elf.length;
+            s.n++;
+        });
+        return Object.fromEntries(Object.entries(summe).map(([id, s]) => [id, Math.round(s.wert / s.n * 10) / 10]));
+    }
+
+    /**
+     * Wie viel stärker (in Fähigkeitspunkten) Nachgezogene einer Liga sein
+     * sollen, damit sie ihr Niveau hält. Vorher verloren die zweiten und
+     * dritten Ligen in zehn Saisons gut einen Punkt, die untersten Ligen der
+     * Nachbarländer bis zu zwei: Wer aufsteigt oder ins Ausland wechselt,
+     * wurde durch Spieler ersetzt, die nach festen Spannen je Spielklasse
+     * entstanden. Echte Ligen bleiben über Jahre gleich stark.
+     */
+    static AUSGLEICH = { jePunkt: 5, max: 15 };
+
+    static niveauAusgleich(state) {
+        if (!state.ligaNiveau || typeof state.ligaNiveau !== "object") {
+            state.ligaNiveau = this.ligaNiveau(state);
+            return {};
+        }
+        const ist = this.ligaNiveau(state);
+        const ausgleich = {};
+        Object.entries(state.ligaNiveau).forEach(([id, soll]) => {
+            if (typeof ist[id] !== "number") return;
+            const v = Math.round((soll - ist[id]) * this.AUSGLEICH.jePunkt);
+            ausgleich[id] = Math.max(-this.AUSGLEICH.max, Math.min(this.AUSGLEICH.max, v));
+        });
+        return ausgleich;
+    }
+
     static fillUpExistingSquads(state, leagues, playerGen, options = {}) {
         let erzeugt = 0;
+        const ausgleich = options.halteNiveau ? this.niveauAusgleich(state) : {};
         const gameState = this.getGameState();
         // Der Nutzerverein darf eine kleinere Zielgröße bekommen: Er soll seine
         // Lücken selbst auf dem Transfermarkt schließen dürfen.
@@ -351,7 +399,8 @@ class WorldGenerator {
             const gewuenscht = wunsch.slice(0, fehlend);
             const grundlage = {
                 clubStrength: typeof club.clubStrength === "number" ? club.clubStrength : 0.5,
-                countryId: league.countryId || "de"
+                countryId: league.countryId || "de",
+                staerkeVersatz: ausgleich[league.id] || 0
             };
 
             // Die Nachwuchsplätze werden mit Talenten besetzt, der Rest mit

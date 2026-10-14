@@ -314,7 +314,9 @@ class PlayerGenerator {
 
         // Die Kaderstärke richtet sich nach Ligastufe UND Ruf des Vereins
         const abilityRange = this.getAbilityRangeForClub(level, options.clubStrength ?? 0.5, { ganzerKader: options.ganzerKader === true });
-        const landVerschiebung = level === 1 ? (this.LAND_STAERKE[options.countryId] || 0) : 0;
+        // Dazu der Ausgleich je Liga (WorldGenerator.niveauAusgleich): Wer
+        // beim Saisonwechsel nachgezogen wird, passt zur Liga, wie sie war
+        const landVerschiebung = (level === 1 ? (this.LAND_STAERKE[options.countryId] || 0) : 0) + (Number(options.staerkeVersatz) || 0);
         if (landVerschiebung) {
             abilityRange.minCA += landVerschiebung;
             abilityRange.maxCA += landVerschiebung;

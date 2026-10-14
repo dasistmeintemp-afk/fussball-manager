@@ -752,6 +752,52 @@ function runWizardTests() {
         if (suche.length !== 16) throw new Error(`Suche nach der Liga liefert ${suche.length} Treffer`);
     });
 
+    test("Tempo: Nach drei Saisonwechseln lädt das Spiel frisch und setzt die Karriere ohne Startbildschirm fort", () => {
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const speicher = {};
+        let neugeladen = 0;
+        const alt = { sessionStorage: global.sessionStorage, location: global.location, ladePlatz: GameState.ladePlatz };
+        global.sessionStorage = { getItem: k => (k in speicher ? speicher[k] : null), setItem: (k, v) => { speicher[k] = String(v); }, removeItem: k => { delete speicher[k]; } };
+        global.location = { reload: () => { neugeladen++; } };
+        try {
+            const anzeigen = [];
+            const sofort = (wert) => ({ then: (f) => f(wert) });
+            const state = { seasonYear: 4, saveToLocalStorage() {}, sichereJetzt: () => sofort(true) };
+            const ui = Object.assign(Object.create(UIManager.prototype), {
+                app: { state }, playSound() {}, showToast() {}, beginneSaisonAnzeige: (s) => anzeigen.push(s)
+            });
+            ui.zeigeSaisonwechsel({ neueSaison: 2 });
+            ui.zeigeSaisonwechsel({ neueSaison: 3 });
+            if (neugeladen !== 0 || anzeigen.join() !== "2,3") throw new Error(`Zu früh neu geladen (${neugeladen}, ${anzeigen})`);
+            ui.zeigeSaisonwechsel({ neueSaison: 4 });
+            const merk = JSON.parse(speicher[UIManager.FRISCH_SCHLUESSEL] || "null");
+            if (neugeladen !== 1 || !merk || merk.saison !== 4 || anzeigen.length !== 2) throw new Error("Nach drei Saisonwechseln nicht frisch geladen");
+
+            // Ohne sichere Speicherung wird nicht neu geladen
+            const ui2 = Object.assign(Object.create(UIManager.prototype), {
+                app: { state: Object.assign({}, state, { sichereJetzt: () => sofort(false) }) }, playSound() {}, showToast() {},
+                beginneSaisonAnzeige: (s) => anzeigen.push(s), _saisonwechselOhneNeuladen: 5
+            });
+            ui2.zeigeSaisonwechsel({ neueSaison: 9 });
+            if (neugeladen !== 1 || anzeigen[anzeigen.length - 1] !== 9) throw new Error("Ohne Sicherung neu geladen");
+
+            // Nach dem Laden: weiter ohne Startbildschirm, die Marke ist verbraucht
+            const geladen = { seasonYear: 4, userClubId: "svw" };
+            GameState.ladePlatz = () => sofort(geladen);
+            const ablauf = [];
+            const ui3 = Object.assign(Object.create(UIManager.prototype), {
+                app: {}, showStartScreen: () => ablauf.push("start"), hideStartScreen: () => ablauf.push("weg"),
+                beginneSaisonAnzeige: (s) => ablauf.push(`saison ${s}`), renderCurrentTab: () => ablauf.push("render")
+            });
+            if (!ui3.nachFrischemLaden() || ui3.app.state !== geladen || ablauf.join() !== "weg,saison 4,render") throw new Error(`Fortsetzen: ${ablauf}`);
+            if (UIManager.FRISCH_SCHLUESSEL in speicher || ui3.nachFrischemLaden()) throw new Error("Die Marke gilt nur einmal");
+        } finally {
+            global.sessionStorage = alt.sessionStorage;
+            global.location = alt.location;
+            GameState.ladePlatz = alt.ladePlatz;
+        }
+    });
+
     // Installation auf dem Telefon: Manifest, Symbole und Offline-Vorrat
     test("PWA: Manifest, Symbole und Offline-Vorrat sind vollständig", () => {
         const manifest = JSON.parse(fs.readFileSync('./manifest.json', 'utf8'));

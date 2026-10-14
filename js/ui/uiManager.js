@@ -3021,9 +3021,81 @@ class UIManager {
         const state = this.app.state;
         if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
         this.playSound("whistle");
-        this.showToast(`🔄 Saison ${res?.neueSaison || state.seasonYear} beginnt - die Vorbereitung läuft.`, "success", 6000);
+        const saison = res?.neueSaison || state.seasonYear;
+        if (this.frischLadenFaellig()) {
+            this.ladeFrisch(saison);
+            return;
+        }
+        this.beginneSaisonAnzeige(saison);
+    }
+
+    beginneSaisonAnzeige(saison) {
+        this.showToast(`🔄 Saison ${saison} beginnt - die Vorbereitung läuft.`, "success", 6000);
         this.switchTab("dashboard");
         this.renderHeader();
+    }
+
+    /**
+     * Frisch laden. Läuft das Spiel viele Saisons am Stück, ohne dass die
+     * Seite neu lädt, wird es langsamer: Gemessen brauchte die zehnte Saison
+     * rund das 1,45-Fache der ersten, ein frisch geladener Stand derselben
+     * Saison dagegen nicht mehr als die erste. Die JavaScript-Engine sammelt
+     * über die Zeit Rückmeldungen über die Datenformen an, und erst neu
+     * geladene Skripte fangen damit von vorn an. Deshalb sichert das Spiel
+     * nach jeweils FRISCH_NACH_SAISONS Saisonwechseln den Stand, lädt die
+     * Seite neu und setzt die Karriere ohne Startbildschirm fort.
+     */
+    static FRISCH_NACH_SAISONS = 3;
+    static FRISCH_SCHLUESSEL = "fmpro_frisch_fortsetzen";
+
+    frischLadenFaellig() {
+        if (typeof location === "undefined" || typeof location.reload !== "function" || typeof sessionStorage === "undefined") return false;
+        this._saisonwechselOhneNeuladen = (this._saisonwechselOhneNeuladen || 0) + 1;
+        return this._saisonwechselOhneNeuladen >= UIManager.FRISCH_NACH_SAISONS;
+    }
+
+    ladeFrisch(saison) {
+        const state = this.app.state;
+        this.showToast(`🔄 Saison ${saison} wird vorbereitet …`, "info", 6000);
+        const weiterOhne = () => this.beginneSaisonAnzeige(saison);
+        const gesichert = typeof state.sichereJetzt === "function" ? state.sichereJetzt() : false;
+        (gesichert && typeof gesichert.then === "function" ? gesichert : Promise.resolve(gesichert)).then(ok => {
+            // Ohne sichere Speicherung wird nicht neu geladen
+            if (!ok) return weiterOhne();
+            try {
+                sessionStorage.setItem(UIManager.FRISCH_SCHLUESSEL, JSON.stringify({ platz: GameState.aktiverPlatz(), saison }));
+            } catch (e) {
+                return weiterOhne();
+            }
+            location.reload();
+        }, weiterOhne);
+    }
+
+    /**
+     * Beim Start: Kommt die Seite aus einem frischen Laden, geht es ohne
+     * Startbildschirm in der Karriere weiter. Gibt zurück, ob das so ist.
+     */
+    nachFrischemLaden() {
+        let merk = null;
+        try {
+            if (typeof sessionStorage === "undefined") return false;
+            merk = JSON.parse(sessionStorage.getItem(UIManager.FRISCH_SCHLUESSEL) || "null");
+            sessionStorage.removeItem(UIManager.FRISCH_SCHLUESSEL);
+        } catch (e) {
+            return false;
+        }
+        if (!merk || !merk.platz) return false;
+        GameState.ladePlatz(merk.platz).then(state => {
+            if (!state) {
+                this.showStartScreen();
+                return;
+            }
+            this.app.state = state;
+            this.hideStartScreen();
+            this.beginneSaisonAnzeige(merk.saison || state.seasonYear);
+            this.renderCurrentTab();
+        }, () => this.showStartScreen());
+        return true;
     }
 
     /**

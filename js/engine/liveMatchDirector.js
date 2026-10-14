@@ -1187,7 +1187,7 @@ class LiveMatchDirector {
     /**
      * Der Schnitt zur Eckfahne.
      *
-     * Im Fernsehen wie im FM sieht man nicht, wie der Schuetze quer ueber
+     * Im Fernsehen wie im Vorbild sieht man nicht, wie der Schuetze quer ueber
      * den Platz zur Fahne trabt und sich der Strafraum fuellt - es wird
      * geschnitten, und die Ecke ist fast aufgebaut. Vorher lag der Ball in
      * der Wiedergabe sekundenlang allein an der Fahne. Die letzten Schritte
@@ -4003,7 +4003,7 @@ class LiveMatchDirector {
      * war der Grund, warum der Ball "durch die Gegend flog" - es war gar kein
      * Zuspiel, sondern ein Szenenwechsel, den man dem Ball ansah.
      *
-     * Im Football Manager gibt es diesen Sprung nicht: Der Ball wandert immer
+     * Im Vorbild gibt es diesen Sprung nicht: Der Ball wandert immer
      * von Spieler zu Spieler. Genau das passiert hier jetzt auch - eine weite
      * Strecke wird in Etappen über die Mitspieler zurückgelegt, die ohnehin
      * auf dem Weg stehen.
@@ -5256,7 +5256,7 @@ class LiveMatchDirector {
      * Seite haelt genau ein Spieler die Linie, die anderen besetzen die
      * Halbraeume und das Zentrum; im letzten Drittel sind alle fuenf Bahnen
      * besetzt. So spielen Guardiolas City (3-2-5), Napoli oder Juventus, und
-     * so baut der FM26 aus der Formation ohne Ball eine eigene mit Ball.
+     * so baut das Vorbild aus der Formation ohne Ball eine eigene mit Ball.
      * Wer welche Rolle bekommt, legt spielMitBall fest.
      */
     formMitBall(p, gesehen, ball, dir, ballProgress) {

@@ -629,7 +629,7 @@ class MatchFlowEngine {
 
     // ------------------------------------------------------------- FM-Modus
     //
-    // Im Football Manager ist das Spiel die Simulation: Jeder Ballfuehrende
+    // Im Vorbild ist das Spiel die Simulation: Jeder Ballfuehrende
     // entscheidet in jedem Moment, ob er abspielt, dribbelt, flankt oder
     // schiesst - nach seinen Werten, seiner Lage und seinen Eigenschaften.
     // Tore entstehen aus der Qualitaet der Chance und aus dem Duell zwischen

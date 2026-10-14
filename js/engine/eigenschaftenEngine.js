@@ -2,7 +2,7 @@
  * EigenschaftenEngine - Was einen Spieler auf dem Platz ausmacht
  *
  * Bisher waren Eigenheiten ein Satz in der Spielerakte ("Sucht den Abschluss
- * aus der Distanz"). Auf dem Platz änderten sie nichts. Im Football Manager
+ * aus der Distanz"). Auf dem Platz änderten sie nichts. Im Vorbild
  * sind es Verhaltensweisen: Wer gern aus der Distanz schießt, tut es auch, und
  * wer in jeden Zweikampf geht, gewinnt mehr davon - und foult öfter.
  *

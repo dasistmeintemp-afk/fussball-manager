@@ -1,12 +1,12 @@
 /**
- * TacticsEngine - Taktik nach dem Vorbild des FM26: eine Formation mit Ball,
+ * TacticsEngine - Taktik nach dem Vorbild: eine Formation mit Ball,
  * eine gegen den Ball, fuer jeden Spieler eine Rolle je Phase und
  * Mannschaftsanweisungen, geordnet nach Spielphasen.
  *
  * Bisher bestand eine Taktik aus fuenf Reglern (Mentalitaet, Pressing,
  * Tempo, Passspiel, Angriffsfokus). Die Mannschaft stand mit und ohne Ball in
  * derselben Formation, jeder Spieler spielte seine Position gleich, und
- * verteidigt wurde immer im Raum. Im FM26 wie im echten Fussball ist das
+ * verteidigt wurde immer im Raum. Im Vorbild wie im echten Fussball ist das
  * getrennt:
  *
  *  - Mit Ball baut die Elf eine eigene Form (3-2-5, 2-3-5, 4-2-4 ...), die
@@ -31,7 +31,7 @@
  */
 const TAKTIK_ANWEISUNGEN = [
     // ---------------------------------------------------------------- Mit Ball
-    // Reihenfolge wie im FM26: erst der Stil, dann Aufbau und Torwart, dann
+    // Reihenfolge wie im Vorbild: erst der Stil, dann Aufbau und Torwart, dann
     // das Vorwaertsspiel und das letzte Drittel.
     {
         key: "mentality", phase: "mitBall", gruppe: "Grundausrichtung", label: "Mentalität", icon: "i-gauge", standard: "balanced",
@@ -446,7 +446,7 @@ const ROLLEN_MIT_BALL = {
 };
 
 /**
- * Rollen gegen den Ball. Die fuenf Grundtypen des FM26: normal,
+ * Rollen gegen den Ball. Die fuenf Grundtypen des Vorbilds: normal,
  * pressend (geht aus seiner Zone heraus), zurueckarbeitend (folgt seinem
  * Gegenspieler nach hinten), absichernd (bleibt hinter dem Ball) und
  * Konterspieler (bleibt vorn, als Anspielstation fuer den Ballgewinn).
@@ -507,7 +507,7 @@ const ROLLEN_GEGEN_BALL = {
 };
 
 /**
- * Kuerzel und Farbgruppe jeder Rolle - fuer die Taktiktafel. Wie im FM26
+ * Kuerzel und Farbgruppe jeder Rolle - fuer die Taktiktafel. Wie im Vorbild
  * steht auf jeder Spielerkarte die Rolle als Kuerzel, eingefaerbt nach dem,
  * was sie tut.
  */
@@ -604,7 +604,7 @@ const FORMEN_MIT_BALL = {
 };
 
 /**
- * Taktikvorlagen - wie die Stile im FM: Sie setzen alle Anweisungen, die
+ * Taktikvorlagen - wie die Stile im Vorbild: Sie setzen alle Anweisungen, die
  * Formen mit und gegen den Ball und bevorzugte Rollen auf einmal.
  */
 const TAKTIK_VORLAGEN = {
@@ -886,7 +886,7 @@ const TacticsEngine = {
     /**
      * Ordnet die Spieler der Grundformation den Plaetzen einer anderen Form
      * zu - so, dass die Wege insgesamt am kuerzesten sind und niemand die
-     * Seite wechselt. Das ist die Zuordnung, die der FM26 zwischen Formation
+     * Seite wechselt. Das ist die Zuordnung, die das Vorbild zwischen Formation
      * mit und gegen den Ball trifft.
      *
      * Rueckgabe: fuer jeden Slot der Grundformation der Index in der Zielform.
@@ -1147,7 +1147,7 @@ const TacticsEngine = {
             standards: w("standards") === "herausholen",
             ecken: w("ecken"),
             standardDeckung: w("standardDeckung"),
-            // Neu nach dem FM26
+            // Neu nach dem Vorbild
             zeitspiel: { nie: -1, normal: 0, oft: 1 }[w("zeitspiel")],
             torwartZiel: w("torwartZiel"),
             ballannahme: { fuss: -1, gemischt: 0, raum: 1 }[w("ballannahme")],
@@ -1324,7 +1324,7 @@ const TacticsEngine = {
 
     /**
      * Die Verbindungen der Taktiktafel: wer mit wem zusammenspielt und wie
-     * gut die beiden Rollen zueinander passen. Wie die Linien im FM26 -
+     * gut die beiden Rollen zueinander passen. Wie die Linien im Vorbild -
      * nur mit Erklaerung, warum eine Verbindung traegt oder hakt.
      *
      * Rueckgabe: [{ a, b, guete: "stark" | "gut" | "schwach", text }] mit

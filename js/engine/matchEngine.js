@@ -1,5 +1,5 @@
 /**
- * MatchEngine - Realistisches FM-Simulationsmodell & synchrone 2D-Timeline-Match-Engine
+ * MatchEngine - Realistisches Simulationsmodell & synchrone 2D-Timeline-Match-Engine
  */
 
 const _Random = (typeof Random !== 'undefined' && Random)
@@ -36,7 +36,7 @@ const _einmal = (finde) => {
     return () => wert || (wert = finde());
 };
 
-// Rollen, Formen und Anweisungen der Taktik (nach FM26). Erst bei Bedarf
+// Rollen, Formen und Anweisungen der Taktik (nach dem Vorbild). Erst bei Bedarf
 // aufgeloest - im Browser laden die Skripte in beliebiger Reihenfolge.
 // Wetter und Platz (WetterEngine) - ebenfalls erst bei Bedarf
 const _mWetter = _einmal(() => (typeof WetterEngine !== 'undefined' && WetterEngine)
@@ -626,7 +626,7 @@ class MatchEngine {
             attack *= 0.97;
         }
 
-        // 6. Anweisungen gegen den Ball und im Umschalten (nach FM26). Jede
+        // 6. Anweisungen gegen den Ball und im Umschalten (nach dem Vorbild). Jede
         // hat ihren Preis: Wer oefter presst und gegenpresst, gewinnt das
         // Mittelfeld, laesst aber hinten Raum; wer sich zurueckzieht und eng
         // steht, verteidigt besser und kommt weniger nach vorn.
@@ -2583,7 +2583,7 @@ class MatchEngine {
 
             if (minutes <= 0) return;
 
-            // FM-Noten-Berechnung (B9) - dieselbe Rechnung wie die Live-Note
+            // Noten-Berechnung (B9) - dieselbe Rechnung wie die Live-Note
             const isTW = player.pos === "TW";
             const rating = MatchEngine.noteBerechnen(st, {
                 pos: player.pos, minutes, teamGoals, oppGoals, jitter: _Random.float(-0.15, 0.15)

@@ -238,7 +238,7 @@ const ScoutingEngine = {
      * Wie lange eine Beobachtung dauert - in Tagen.
      *
      * Vorher kam der Bericht auf Knopfdruck, und das Wissen sprang im selben
-     * Augenblick. Im Football Manager fährt der Scout hin: Ein Spieler aus der
+     * Augenblick. Im Vorbild fährt der Scout hin: Ein Spieler aus der
      * eigenen Liga ist nach ein paar Tagen gesehen, einer aus dem Ausland
      * braucht Wochen. Außerhalb der eigenen Reichweite (eine deutlich höhere
      * Liga) kommt der Scout schwer heran, ein guter Scout ist schneller, und

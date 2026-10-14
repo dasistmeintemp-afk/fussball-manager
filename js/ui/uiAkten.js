@@ -133,7 +133,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
     /**
      * Vereinsdetails für jeden Verein der Welt - aus der Tabelle, dem
-     * Dashboard und dem Spielplan. Wie im FM: Kopf mit Kennzahlen, Form und
+     * Dashboard und dem Spielplan. Wie im Vorbild: Kopf mit Kennzahlen, Form und
      * Spiele, Spielweise, Anlagen und der Kader, gesehen durch die Augen des
      * eigenen Scoutings (unbekannte Spieler bleiben geschätzt).
      */

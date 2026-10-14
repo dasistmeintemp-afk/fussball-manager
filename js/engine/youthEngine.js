@@ -373,7 +373,7 @@ const YouthEngine = {
         return { urteil, ausnahmen, unsicher, positionen, bester: bester ? { id: bester.t.id, name: bester.t.name, pos: bester.t.pos } : null, text };
     },
 
-    /** Um welchen Spieltag der Jugendtag liegt - im Frühjahr, wie im FM */
+    /** Um welchen Spieltag der Jugendtag liegt - im Frühjahr, wie im Vorbild */
     jugendtagSpieltag(state) {
         const gesamt = state?.totalMatchdays || (Array.isArray(state?.schedule) ? state.schedule.length : 34) || 34;
         return Math.max(2, Math.round(gesamt * 0.7));
@@ -381,7 +381,7 @@ const YouthEngine = {
 
     /**
      * Jugendtag: Einmal je Saison stellt sich der neue Jahrgang vor - im
-     * Frühjahr, wie im Football Manager. Drei Spieltage vorher kündigt der
+     * Frühjahr, wie im Vorbild. Drei Spieltage vorher kündigt der
      * Nachwuchsleiter ihn an. Vorher kamen Talente nur zum Saisonstart, und
      * in der ersten Saison tat sich nach dem Anpfiff nichts mehr.
      * Liefert eine Meldung für den Tagesbericht oder null.

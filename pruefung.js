@@ -17,6 +17,12 @@
  *  5. Stylesheets mit offenen oder überzähligen geschweiften Klammern - ein
  *     vergessenes "}" hinter einem @media-Block zieht alles Folgende mit
  *     hinein, ohne dass der Browser einen Fehler meldet
+ *  6. Browser-Kompatibilität: Sprachmittel und Schnittstellen, die Safari
+ *     unter 15.4 oder Firefox unter 90 nicht kennen (Lookbehind in regulären
+ *     Ausdrücken, .at(), structuredClone, statische Blöcke, ??= ...), dazu
+ *     dvh ohne vh davor und backdrop-filter ohne -webkit-Präfix. Chrome, in
+ *     dem die Tests laufen, kennt das alles - auffallen würde es erst beim
+ *     Spieler mit älterem iPhone.
  *
  * Beendet sich mit Code 1, sobald etwas gefunden wird.
  */
@@ -318,9 +324,51 @@ stile.forEach(href => {
     cssKlammern(fs.readFileSync(p, "utf8")).forEach(b => fehler.push(`${href}:${b}`));
 });
 
+// 6. Browser-Kompatibilität (Ziel: Safari/iOS ab 14.5, Firefox ab 78,
+// Chrome und Edge ab 80). Gesucht wird im entkernten Text (ohne Strings und
+// Kommentare), Lookbehind im Rohtext, weil reguläre Ausdrücke beim Entkernen
+// leer werden.
+const ZU_NEU = [
+    [/\.at\(/, ".at() (Safari 15.4)"],
+    [/\bstructuredClone\(/, "structuredClone (Safari 15.4)"],
+    [/\bObject\.hasOwn\(/, "Object.hasOwn (Safari 15.4)"],
+    [/\.findLast(Index)?\(/, "findLast (Safari 15.4)"],
+    [/\.(toSorted|toReversed|toSpliced)\(/, "toSorted & Co. (Safari 16)"],
+    [/\b(Object|Map)\.groupBy\(/, "groupBy (Safari 17.4)"],
+    [/\bstatic\s*\{/, "statischer Block (Safari 16.4)"],
+    [/(\?\?|\|\||&&)=/, "logische Zuweisung (Safari 14, Firefox 79)"],
+    [/\bcrypto\.randomUUID\(/, "crypto.randomUUID (Safari 15.4)"],
+    [/\b(Compression|Decompression)Stream\b/, "CompressionStream (Safari 16.4)"],
+    [/\.replaceAll\(/, "replaceAll (Firefox 77)"]
+];
+kerne.forEach((kern, p) => {
+    if (istFremd(p) || !rel(p).startsWith("js/")) return;
+    const zeilen = kern.split("\n");
+    zeilen.forEach((z, i) => ZU_NEU.forEach(([re, was]) => {
+        if (re.test(z)) fehler.push(`${rel(p)}:${i + 1}: ${was} - für ältere Browser umschreiben`);
+    }));
+    fs.readFileSync(p, "utf8").split("\n").forEach((z, i) => {
+        if (/\(\?<[=!]/.test(z)) fehler.push(`${rel(p)}:${i + 1}: Lookbehind in einem regulären Ausdruck (Safari 16.4)`);
+    });
+});
+stile.forEach(href => {
+    const p = path.join(WURZEL, href);
+    if (!fs.existsSync(p)) return;
+    const zeilen = fs.readFileSync(p, "utf8").split("\n");
+    zeilen.forEach((z, i) => {
+        const dvh = z.match(/^\s*((?:max-|min-)?height):\s*100dvh/);
+        if (dvh && !zeilen.slice(Math.max(0, i - 3), i).some(v => new RegExp(`^\\s*${dvh[1]}:\\s*100vh`).test(v))) {
+            fehler.push(`${href}:${i + 1}: ${dvh[1]}: 100dvh ohne 100vh davor (Safari unter 15.4 verliert die Höhe)`);
+        }
+        if (/(^|[\s;{])backdrop-filter\s*:/.test(z) && !zeilen.slice(Math.max(0, i - 3), i + 4).some(v => v.includes("-webkit-backdrop-filter"))) {
+            fehler.push(`${href}:${i + 1}: backdrop-filter ohne -webkit-backdrop-filter (Safari)`);
+        }
+    });
+});
+
 if (fehler.length) {
     console.error(`❌ Prüfung: ${fehler.length} Befund(e)`);
     fehler.forEach(f => console.error("  " + f));
     process.exit(1);
 }
-console.log(`✅ Prüfung: ${kerne.size} Skripte und ${stile.length} Stylesheets ohne Befund (Syntax, doppelte Methoden, globale Namen, Service Worker, CSS-Klammern)`);
+console.log(`✅ Prüfung: ${kerne.size} Skripte und ${stile.length} Stylesheets ohne Befund (Syntax, doppelte Methoden, globale Namen, Service Worker, CSS-Klammern, Browser-Kompatibilität)`);

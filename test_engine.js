@@ -6101,6 +6101,44 @@ function runEngineTests() {
         if (!M.saisonende(state) || M.saisonende(state)) throw new Error("Vereinsjubiläum fehlt oder doppelt");
     });
 
+    test("Medien: Spieler geben Interviews nach ihrer Lage - Frust kostet Ruhe, ein Bekenntnis hebt die Kurve", () => {
+        const { MedienEngine: M } = require('./js/engine/medienEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const kader = state.players.filter(p => p.clubId === "muc").sort((a, b) => b.overall - a.overall);
+        const gegner = state.clubs.find(c => c.leagueId === club.leagueId && c.id !== "muc");
+        const spiel = (h, g, extra = {}) => Object.assign({ homeClubId: "muc", awayClubId: gegner.id, played: true, homeGoals: h, awayGoals: g, events: [], playerRatings: [] }, extra);
+
+        // Kein Wurf unter der Chance: kein Interview
+        if (M.nachSpiel(state, spiel(1, 0), 0.99) !== null) throw new Error("Interview trotz Wurf über der Chance");
+
+        // Ein frustrierter Leistungsträger packt aus: Mediendruck rauf, Kabine runter
+        const frust = kader[3];
+        Object.assign(frust, { morale: 40, happiness: Object.assign({}, frust.happiness, { playingTime: 30, overall: 40 }) });
+        const druck = state.mediaPressure ?? 45;
+        const andere = kader[5].morale;
+        const i1 = M.nachSpiel(state, spiel(0, 1), 0);
+        if (!i1 || i1.art !== "frust" || i1.playerId !== frust.id) throw new Error(`Erwartet Frust-Interview, erhalten ${i1 && i1.art}`);
+        if (!(state.mediaPressure > druck) || !(kader[5].morale < andere)) throw new Error("Frust ohne Wirkung");
+        if (!state.inbox[0].subject.includes(frust.name)) throw new Error("Interview nicht im Postfach");
+        // ... und schweigt danach einen Monat
+        if (M.kandidaten(state, spiel(0, 1)).some(k => k.p === frust)) throw new Error("Derselbe Spieler spricht sofort wieder");
+
+        // Der Doppeltorschütze nach dem Sieg
+        const held = kader[8];
+        const tore = [{ type: "goal", clubId: "muc", playerId: held.id }, { type: "goal", clubId: "muc", playerId: held.id }];
+        const i2 = M.nachSpiel(state, spiel(2, 0, { events: tore }), 0);
+        if (!i2 || i2.art !== "held" || i2.playerId !== held.id) throw new Error(`Erwartet Matchwinner, erhalten ${i2 && i2.art}`);
+
+        // Wechselgerücht: der Zufriedene bekennt sich (Fanstimmung rauf)
+        const umworben = kader[0];
+        umworben.happiness = Object.assign({}, umworben.happiness, { overall: 90 });
+        gegner.geruecht = { playerId: umworben.id, bis: (state.currentDayIndex || 0) + 10, saison: state.seasonYear };
+        state.fanMood = 60;
+        const i3 = M.nachSpiel(state, spiel(1, 1), 0);
+        if (!i3 || i3.art !== "geruecht" || !(state.fanMood > 60)) throw new Error(`Erwartet Bekenntnis, erhalten ${i3 && i3.art}`);
+    });
+
     // ---------------------------------------------------------------
     // Gespielt wird nur an dem Tag, an dem das Spiel angesetzt ist
     // ---------------------------------------------------------------

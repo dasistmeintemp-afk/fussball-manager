@@ -11,7 +11,7 @@ Ein leichtgewichtiger, detailreicher und vollständig spielbarer **Fußballmanag
 > 📱 **Auf dem Handy spielen?** Siehe [Auf dem Smartphone spielen](#-auf-dem-smartphone-spielen) weiter unten – auf dem Telefon reicht ein Doppelklick auf `index.html` nicht, dafür lässt sich das Spiel dort als App installieren und läuft dann offline.
 
 ### 1. Spiel starten (Keine Installation nötig!)
-* **Einfacher Doppelklick:** Öffne die Datei **`index.html`** in einem modernen Webbrowser (Chrome, Firefox, Safari, Edge).
+* **Einfacher Doppelklick:** Öffne die Datei **`index.html`** in einem modernen Webbrowser: Safari ab 14.5 (auch iPhone und iPad), Firefox ab 78, Chrome und Edge ab 80. Ein älterer Browser zeigt einen Hinweis statt einer leeren Seite; `node pruefung.js` meldet Sprachmittel und CSS, die diese Browser nicht kennen.
 * **Oder via lokalem Webserver:**
   ```bash
   python3 -m http.server 8000

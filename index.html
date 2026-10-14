@@ -2220,6 +2220,21 @@
     </div>
 
     <!-- Scripts in richtiger Reihenfolge einbinden -->
+    <!-- Zu alter Browser: ein Hinweis statt einer stillen, leeren Seite.
+         Absichtlich ES5 - dieser Teil muss überall laufen. -->
+    <script>
+        (function () {
+            var ok;
+            try { ok = new Function("class A { static b = 1 } return (A?.b ?? 0) === 1")(); } catch (e) { ok = false; }
+            if (ok) return;
+            window.VIERERKETTE_ZU_ALT = true;
+            var d = document.createElement("div");
+            d.setAttribute("role", "alert");
+            d.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:99999;padding:18px 16px;background:#7f1d1d;color:#fff;font:16px/1.45 sans-serif;text-align:center";
+            d.innerHTML = "<strong>Dieser Browser ist zu alt für Viererkette.</strong><br>Das Spiel braucht Safari ab 14.5 (auch auf iPhone und iPad), Firefox ab 78 oder Chrome und Edge ab 80. Bitte aktualisiere den Browser.";
+            document.body.appendChild(d);
+        })();
+    </script>
     <script src="js/core/constants.js"></script>
     <script src="js/core/dom.js"></script>
     <script src="js/core/formatters.js"></script>

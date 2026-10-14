@@ -636,6 +636,9 @@ class SeasonEngine {
                 // Meilensteine: Spiele und Siege als Trainer, Spiele und Tore der Spieler
                 const meilensteine = _resolve('MeilensteinEngine', './meilensteinEngine.js');
                 if (meilensteine && typeof meilensteine.nachSpiel === 'function') meilensteine.nachSpiel(state);
+                // Ab und zu spricht ein Spieler mit der Presse
+                const medien = _resolve('MedienEngine', './medienEngine.js');
+                if (medien && typeof medien.nachSpiel === 'function') medien.nachSpiel(state, eigenesSpiel);
                 // Die zweite Mannschaft spielt am selben Spieltag
                 const reserve = _resolve('ReserveEngine', './reserveEngine.js');
                 if (reserve && typeof reserve.nachSpieltag === 'function') {

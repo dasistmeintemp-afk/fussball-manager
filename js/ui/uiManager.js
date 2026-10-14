@@ -478,6 +478,57 @@ class UIManager {
                     osc.start(now + i * 0.08);
                     osc.stop(now + i * 0.08 + 0.6);
                 });
+            } else if (type === "pfiffe") {
+                // Pfeifkonzert: viele hohe, leicht schwankende Pfiffe durcheinander
+                for (let i = 0; i < 9; i++) {
+                    const start = now + Math.random() * 0.9;
+                    const dauer = 0.35 + Math.random() * 0.6;
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = "sine";
+                    const f = 2300 + Math.random() * 1400;
+                    osc.frequency.setValueAtTime(f, start);
+                    osc.frequency.linearRampToValueAtTime(f * (0.93 + Math.random() * 0.12), start + dauer);
+                    gain.gain.setValueAtTime(0.0001, start);
+                    gain.gain.exponentialRampToValueAtTime(0.025, start + 0.05);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, start + dauer);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(start);
+                    osc.stop(start + dauer + 0.05);
+                }
+            } else if (type === "gesang") {
+                // Gesang der Kurve: ein tiefer Chor im Takt, darunter Trommelschläge
+                const melodie = [196, 196, 220, 247, 220, 196, 175, 196];
+                melodie.forEach((f, i) => {
+                    const start = now + i * 0.26;
+                    [1, 1.5].forEach(teil => {
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.type = "sawtooth";
+                        osc.frequency.setValueAtTime(f * teil, start);
+                        gain.gain.setValueAtTime(0.0001, start);
+                        gain.gain.exponentialRampToValueAtTime(teil === 1 ? 0.03 : 0.012, start + 0.06);
+                        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.24);
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.start(start);
+                        osc.stop(start + 0.26);
+                    });
+                    if (i % 2 === 0) {
+                        const trommel = ctx.createOscillator();
+                        const tg = ctx.createGain();
+                        trommel.type = "sine";
+                        trommel.frequency.setValueAtTime(110, start);
+                        trommel.frequency.exponentialRampToValueAtTime(50, start + 0.12);
+                        tg.gain.setValueAtTime(0.09, start);
+                        tg.gain.exponentialRampToValueAtTime(0.0001, start + 0.15);
+                        trommel.connect(tg);
+                        tg.connect(ctx.destination);
+                        trommel.start(start);
+                        trommel.stop(start + 0.16);
+                    }
+                });
             } else if (type === "gasp") {
                 // Raunen im Stadion bei einer vergebenen Chance
                 const osc = ctx.createOscillator();

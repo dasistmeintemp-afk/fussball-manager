@@ -963,6 +963,10 @@ class GameState {
         const kaderregeln = GameState._resolveEngine('KaderregelEngine', './kaderregelEngine.js');
         if (kaderregeln && typeof kaderregeln.gleicheStartkaderAn === 'function') kaderregeln.gleicheStartkaderAn(state);
 
+        // Die Stärke jeder Liga zum Start - die Welt hält sie über die Jahre
+        const weltGen = GameState._resolveEngine('WorldGenerator', './worldGenerator.js');
+        if (weltGen && typeof weltGen.ligaNiveau === 'function') state.ligaNiveau = weltGen.ligaNiveau(state);
+
         // Pokal und Europapokal bekommen einen Spielplan, der auch abgearbeitet
         // wird. Vorher stand nur eine erste Pokalrunde im Speicher, die nie
         // jemand austrug, und die europäischen Gruppen hatten gar keine

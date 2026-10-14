@@ -11514,6 +11514,31 @@ function runEngineTests() {
         if (JSON.stringify(altZur.players[0].laufbahn) !== JSON.stringify(a.laufbahn)) throw new Error("fmc2-Spielstand verliert die Laufbahn");
     });
 
+    test("Ligen halten ihr Niveau: Nachgezogene passen zur Liga, wie sie zu Beginn war", () => {
+        const { WorldGenerator } = require('./js/engine/worldGenerator.js');
+        const { PlayerGenerator } = require('./js/engine/playerGenerator.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const soll = state.ligaNiveau && state.ligaNiveau.fr_liga_3;
+        if (!(soll > 50 && state.ligaNiveau.de_liga_1 > soll)) throw new Error(`Sollwerte fehlen: ${JSON.stringify(state.ligaNiveau)}`);
+        if (WorldGenerator.niveauAusgleich(state).fr_liga_3 !== 0) throw new Error("Ohne Abweichung kein Ausgleich");
+        // Zwei Punkte unter dem Sollwert: Nachgezogene kommen zehn Fähigkeitspunkte stärker
+        state.ligaNiveau.fr_liga_3 = soll + 2;
+        if (WorldGenerator.niveauAusgleich(state).fr_liga_3 !== 10) throw new Error("Ausgleich nach oben falsch");
+        state.ligaNiveau.fr_liga_3 = soll + 9;
+        if (WorldGenerator.niveauAusgleich(state).fr_liga_3 !== 15) throw new Error("Ausgleich nicht gedeckelt");
+        state.ligaNiveau.fr_liga_3 = soll - 2;
+        if (WorldGenerator.niveauAusgleich(state).fr_liga_3 !== -10) throw new Error("Ausgleich nach unten falsch");
+        const mittel = (versatz) => {
+            let s = 0;
+            for (let i = 0; i < 300; i++) s += PlayerGenerator.generatePlayer("x", 3, "ZM", null, { countryId: "fr", clubStrength: 0.5, ageRange: [24, 28], staerkeVersatz: versatz }).overall;
+            return s / 300;
+        };
+        if (!(mittel(10) > mittel(0) + 3)) throw new Error("Der Versatz wirkt nicht auf die Stärke");
+        // Ein alter Spielstand ohne Sollwert merkt ihn sich beim ersten Mal, ohne Ausgleich
+        delete state.ligaNiveau;
+        if (Object.keys(WorldGenerator.niveauAusgleich(state)).length || !state.ligaNiveau || !state.ligaNiveau.fr_liga_3) throw new Error("Alter Spielstand ohne Sollwert");
+    });
+
     test("Talentsuche: Vereine holen junge Spieler mit Potenzial aus tieferen Ligen", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Talente" });
         const kaeufer = state.clubs.find(c => c.countryId === "de" && c.level === 5);

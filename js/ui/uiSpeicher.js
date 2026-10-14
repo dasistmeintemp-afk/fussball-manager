@@ -174,6 +174,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     ladeSpielstand(platz) {
         const alt = this.app.state;
         if (alt && typeof alt.flushSave === "function") alt.flushSave();
+        return this.mitLadeanzeige("Spielstand wird geladen …", () => this._ladeSpielstand(platz));
+    },
+
+    _ladeSpielstand(platz) {
         return GameState.ladePlatz(platz).then(state => {
             if (!state) {
                 this.showToast("Dieser Spielstand ließ sich nicht laden.", "error");

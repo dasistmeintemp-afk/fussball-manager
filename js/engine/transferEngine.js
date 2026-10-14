@@ -331,6 +331,13 @@ class TransferEngine {
             || (sellerClub && sellerClub.id === state.userClubId);
         if (!betrifftUns) return true;
 
+        // Die Kurve meldet sich zu großen Zu- und Abgängen
+        const fans = (typeof FanEngine !== "undefined" && FanEngine)
+            || (typeof require !== "undefined" ? (() => { try { return require("./fanEngine.js").FanEngine; } catch (e) { return null; } })() : null);
+        if (fans && typeof fans.nachTransfer === "function") {
+            fans.nachTransfer(state, player, buyerClub.id === state.userClubId ? "zugang" : "abgang", fee);
+        }
+
         state.inbox.unshift({
             id: Date.now(),
             matchday: state.currentMatchday,

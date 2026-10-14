@@ -6019,6 +6019,43 @@ function runEngineTests() {
         if (KonferenzEngine.bereite(state, { homeClubId: "muc", awayClubId: "en_mci" }) !== null) throw new Error("Konferenz ohne Ligaspiel");
     });
 
+    test("Fans: Ergebnisse bewegen die Stimmung nach Erwartung und Derby, die Kurve meldet sich zu Spielen und Transfers", () => {
+        const { FanEngine } = require('./js/engine/fanEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer Test" });
+        const eigen = state.clubs.find(c => c.id === "muc");
+        const schwach = state.clubs.filter(c => c.leagueId === eigen.leagueId).sort((a, b) => a.reputation - b.reputation)[0];
+        const spiel = (n, heimTore, gastTore, extra = {}) => Object.assign({ id: `t${n}`, homeClubId: "muc", awayClubId: schwach.id, played: true, homeGoals: heimTore, awayGoals: gastTore, events: [] }, extra);
+        const wirkung = (m) => { state.fanMood = 70; return FanEngine.nachSpiel(state, m); };
+
+        const sieg = wirkung(spiel(1, 2, 0));
+        const pleite = wirkung(spiel(2, 0, 1));
+        if (!(sieg > 0) || !(pleite < 0)) throw new Error(`Sieg ${sieg}, Niederlage ${pleite}`);
+        if (FanEngine.nachSpiel(state, spiel(2, 0, 1)) !== null) throw new Error("Dasselbe Spiel zählt doppelt");
+        // Als Favorit gegen den Schwächsten verlieren wiegt schwerer als ein Sieg dort
+        if (!(Math.abs(pleite) > Math.abs(sieg))) throw new Error("Niederlage als Favorit nicht schwerer");
+        // Ein Derby wiegt mehr
+        const derby = wirkung(spiel(3, 0, 1, { derbyTitle: "Stadtderby" }));
+        if (!(derby < pleite)) throw new Error(`Derby ${derby} nicht schwerer als ${pleite}`);
+        // Ein Unentschieden als klarer Favorit kostet etwas
+        if (!(wirkung(spiel(4, 1, 1)) < 0)) throw new Error("Remis als Favorit ohne Wirkung");
+
+        // Stimmen: zu jedem Spiel eine bis drei, gekappt auf die Höchstzahl
+        if (!state.fanStimmen.length || state.fanStimmen.some(x => !x.autor || !x.text)) throw new Error("Keine Stimmen nach Spielen");
+        for (let i = 10; i < 40; i++) FanEngine.nachSpiel(state, spiel(i, 1, 0));
+        if (state.fanStimmen.length !== FanEngine.MAX_STIMMEN) throw new Error(`${state.fanStimmen.length} Stimmen gespeichert`);
+        if (!state.fanStimmen.slice(0, 6).some(x => /Siege/.test(x.text))) throw new Error("Eine Siegesserie bleibt unkommentiert");
+        if (FanEngine.stimmen(state, 3).length !== 3) throw new Error("Übersicht bekommt nicht drei Stimmen");
+
+        // Transfers: ein Star bewegt die Kurve, ein Ergänzungsspieler nicht
+        const star = { id: "star_x", name: "Test Star", overall: 95, clubId: "muc" };
+        const ergaenzung = { id: "erg_x", name: "Test Reserve", overall: 50, clubId: "muc" };
+        state.fanMood = 70;
+        const vorher = state.fanStimmen[0];
+        if (FanEngine.nachTransfer(state, ergaenzung, "zugang") !== null || state.fanStimmen[0] !== vorher) throw new Error("Ergänzungsspieler bewegt die Kurve");
+        if (!(FanEngine.nachTransfer(state, star, "zugang") > 0) || !state.fanStimmen[0].text.includes("Test Star")) throw new Error("Star-Zugang ohne Jubel");
+        if (!(FanEngine.nachTransfer(state, star, "abgang") < 0)) throw new Error("Abgang des Besten ohne Frust");
+    });
+
     // ---------------------------------------------------------------
     // Gespielt wird nur an dem Tag, an dem das Spiel angesetzt ist
     // ---------------------------------------------------------------

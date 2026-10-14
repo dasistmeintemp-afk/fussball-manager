@@ -140,6 +140,23 @@ class UIManager {
         };
     }
 
+    /** Stimmen aus der Kurve (FanEngine) unter der Fanstimmung */
+    renderFanStimmen(state) {
+        const el = document.getElementById("dashFanStimmen");
+        const fans = typeof FanEngine !== "undefined" ? FanEngine : null;
+        if (!el || !fans) return;
+        const stimmen = fans.stimmen(state, 3);
+        el.hidden = !stimmen.length;
+        if (!stimmen.length) return;
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        el.innerHTML = `<div class="fan-stimmen-kopf">Aus der Kurve</div>` + stimmen.map(s => `
+            <div class="fan-stimme fan-${esc(s.ton)}">
+                <span class="fan-autor">@${esc(s.autor)}</span>
+                <span class="fan-text">${esc(s.text)}</span>
+                <span class="fan-likes" aria-label="${s.likes} Zustimmungen">♥ ${s.likes}</span>
+            </div>`).join("");
+    }
+
     /** Weltmaßstab: drei Sterne bei einer Stärke von 70 */
     static get STERN_WELT_BEZUG() { return 140; }
 
@@ -1348,6 +1365,7 @@ class UIManager {
         const fanMoodPct = document.getElementById("dashFanMoodPct");
         if (fanMoodFill) fanMoodFill.style.width = `${fanMood}%`;
         if (fanMoodPct) fanMoodPct.textContent = `${fanMood}%`;
+        this.renderFanStimmen(state);
 
         const mediaFill = document.getElementById("dashMediaFill");
         const mediaPct = document.getElementById("dashMediaPct");

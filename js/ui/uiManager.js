@@ -5950,6 +5950,38 @@ class UIManager {
         }));
     }
 
+    /**
+     * Die Fünfjahreswertung: Punkte der Länder aus dem Europapokal, die
+     * laufende Saison zuletzt, und wie viele Plätze in der Königsklasse das
+     * bringt, wenn die Saison jetzt endete.
+     */
+    renderKoeffizient(state) {
+        const el = document.getElementById("statsKoeffizient");
+        const engine = typeof KoeffizientEngine !== "undefined" ? KoeffizientEngine : null;
+        if (!el || !engine) return;
+        const liste = engine.rangliste(state);
+        const plaetze = engine.vorschau(state);
+        const eigenesLand = state.clubs.find(c => c.id === state.userClubId)?.countryId;
+        const saison = state.seasonYear || 1;
+        const zahl = (x) => x.toFixed(1).replace(".", ",");
+        el.hidden = false;
+        // Am Handy passen fünf Saisonspalten nicht: die vier vergangenen
+        // stehen klein unter dem Land, daneben die laufende und die Summe
+        el.innerHTML = `
+            <div class="card-header"><h3>🇪🇺 Fünfjahreswertung</h3><span class="header-tag">5 Saisons</span></div>
+            <table class="data-table kf-tabelle">
+                <thead><tr><th>#</th><th>Land <small>(vier Saisons davor)</small></th><th>Saison ${saison}</th><th>Summe</th><th title="Plätze in der Königsklasse, wenn die Saison jetzt endete">CL</th></tr></thead>
+                <tbody>${liste.map(z => `<tr class="${z.land === eigenesLand ? "eigene-zeile" : ""}">
+                    <td>${z.rang}</td>
+                    <td>${this.escapeHtml(z.name)}<small class="kf-reihe">${z.werte.slice(0, -1).map(zahl).join(" · ")}</small></td>
+                    <td>${zahl(z.werte[z.werte.length - 1])}</td>
+                    <td><strong>${zahl(z.summe)}</strong></td>
+                    <td>${plaetze[z.land]?.championsLeague.length || "-"}${plaetze[z.land]?.leistungsplatz ? "*" : ""}</td>
+                </tr>`).join("")}</tbody>
+            </table>
+            <p class="muted-note">Je Saison: Punkte der Vereine eines Landes im Europapokal (Sieg 2, Remis 1, je Endrundenrunde 1, Königsklasse 2) geteilt durch ihre Zahl. Rang 1 bis 4 stellt vier Vereine in der Königsklasse, Rang 5 drei. * Leistungsplatz für das Land mit dem besten Wert der Saison.</p>`;
+    }
+
     /** Die Gerüchteküche der eigenen Liga - mit Haken, wenn es stimmte */
     renderGeruechte(state, eigeneLiga) {
         const el = document.getElementById("statsGeruechte");
@@ -6087,6 +6119,7 @@ class UIManager {
         if (typeof this.renderDatenzentrale === "function") this.renderDatenzentrale(state, ligaId);
         this.renderPreise(state, ligaId === "alle" ? eigeneLiga : ligaId, vereine);
         this.renderJahrespreise(state, vereine);
+        this.renderKoeffizient(state);
         this.renderKarussell(state, ligaId === "alle" ? eigeneLiga : ligaId);
         this.renderGeruechte(state, ligaId === "alle" || ligaId === eigeneLiga);
 

@@ -118,6 +118,11 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   - **Trainer des Jahres:** Titel zählen am meisten, dazu wie weit ein Verein über dem Platz landet, den sein Kader erwarten ließ.
   - **Elf des Jahres** im 4-3-3.
   - **Folgen:** Die Preise stehen in der Akte und steigern Marktwert und Laune. Gewinnt der eigene Trainer, stärkt das seinen Ruf und das Vertrauen des Vorstands. Die Ranglisten zeigen die letzte Gala, die Post fasst sie zusammen.
+- **Fünfjahreswertung (`KoeffizientEngine`):** Die Startplätze im Europapokal standen fest in den Ligadaten. Jetzt sammelt jedes Land Punkte mit seinen Vereinen.
+  - **Punkte:** Sieg 2, Remis 1, je erreichter Endrundenrunde 1, Teilnahme an der Königsklasse 2. Der Wert einer Saison ist die Summe geteilt durch die Zahl der Vereine des Landes im Europapokal.
+  - **Startplätze:** Rang 1 bis 4 der Fünfjahreswertung stellt vier Vereine in der Königsklasse, Rang 5 drei. Das Land mit dem besten Wert der Vorsaison bekommt einen fünften Platz (Leistungsplatz). Dahinter je ein Platz in Europa League und Conference League.
+  - **Start:** Die vier Saisons vor der Karriere sind grob den echten Werten nachgebildet, England vor Italien, Spanien, Deutschland und Frankreich.
+  - **Anzeige:** Die Ranglisten zeigen die Wertung mit der laufenden Saison und den Plätzen, die sie bringen würde.
 - **Meldelisten (`KaderregelEngine`):** Im Europapokal und in der Premier League spielt nur, wer gemeldet ist.
   - **Europapokal:** Liste A mit höchstens 25 Spielern, davon mindestens acht im Land ausgebildet. Fehlen welche, schrumpft die Liste um genau so viele Plätze. Liste B ohne Obergrenze für Spieler bis 21, die seit zwei Saisons im Verein sind oder aus der eigenen Jugend kommen.
   - **Premier League:** höchstens 25 Spieler über 21, davon höchstens 17 nicht im Land ausgebildet. Wer 21 oder jünger ist, zählt nicht mit.
@@ -855,6 +860,7 @@ untitled/
 │   │   ├── visionEngine.js     # Vereinsvision: Fernziel mit Frist, Jahresziele, Bilanz
 │   │   ├── kaderplanungEngine.js # Kader über drei Spielzeiten, Baustellen als Suchauftrag
 │   │   ├── kaderregelEngine.js # Meldelisten: Europapokal (25, acht ausgebildet, Liste B), Premier League
+│   │   ├── koeffizientEngine.js # Fünfjahreswertung der Länder und Startplätze im Europapokal
 │   │   ├── klauselEngine.js    # Steigerung, Auf-/Abstieg, Mindestablöse, Vereinsoption
 │   │   ├── newsEngine.js       # Zentrales Nachrichtensystem & Postfach
 │   │   ├── aiManagerEngine.js  # KI-Aufstellungen & KI-Transferangebote

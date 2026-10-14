@@ -568,7 +568,7 @@ const CalendarEngine = {
     //
     // Der Kalender war eine Liste aus Titeln und einem Satz, der auf fuenf von
     // sieben Tagen derselbe war: "Grundlagenarbeit fuer die Saison." Kein
-    // Gegner, kein Spiel, kein Grund hinzuschauen. In FM und EA FC traegt der
+    // Gegner, kein Spiel, kein Grund hinzuschauen. Im Vorbild traegt der
     // Kalender dagegen die Woche: Man sieht, gegen wen es geht, wer angeschlagen
     // ist, worauf trainiert wird und was demnaechst entschieden werden muss.
 
@@ -1049,7 +1049,7 @@ const CalendarEngine = {
     WICHTIGE_POST: ["scouting", "transfer_offer", "transfer_done", "injury", "board_message", "youth", "contract_expiring", "facility", "career"],
 
     /**
-     * Wie im Football Manager: Das Weiterlaufen hält nicht nur an festen
+     * Wie im Vorbild: Das Weiterlaufen hält nicht nur an festen
      * Terminen, sondern auch dann, wenn an einem Tag etwas passiert, das den
      * Manager angeht - ein Angebot, eine Antwort in einer Verhandlung, eine
      * Verletzung, ein Scoutbericht, wichtige Post. Vorher lief der Knopf vom

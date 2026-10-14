@@ -145,9 +145,9 @@ const MigrationService = {
             state.schemaVersion = 3;
         }
 
-        // Migration Version 3 -> Version 4: FM-Rating-Modell (trueCurrentAbility, truePotentialAbility, hiddenAttributes, scoutingKnowledge)
+        // Migration Version 3 -> Version 4: Rating-Modell (trueCurrentAbility, truePotentialAbility, hiddenAttributes, scoutingKnowledge)
         if (currentVersion < 4 || (Array.isArray(state.players) && state.players.length > 0 && state.players[0].trueCurrentAbility === undefined)) {
-            console.log(`[MigrationService] Migriere Spielstand auf Version 4 (FM-Rating & Scouting-Knowledge)...`);
+            console.log(`[MigrationService] Migriere Spielstand auf Version 4 (Rating & Scouting-Knowledge)...`);
             
             const ratingEngine = (typeof PlayerRatingEngine !== 'undefined' && PlayerRatingEngine) 
                 ? PlayerRatingEngine 

@@ -1,7 +1,7 @@
 /**
  * PositionEngine - Positionsprofile, Eignungs-/Familiaritätsmodell und Zonenlogik
  *
- * Kernidee (wie in FM): Ein Spieler hat eine Naturposition und beherrscht andere
+ * Kernidee (wie im Vorbild): Ein Spieler hat eine Naturposition und beherrscht andere
  * Positionen unterschiedlich gut. Je weiter die Einsatzposition von seinem Profil
  * entfernt liegt, desto stärker sinkt seine effektive Leistung.
  *

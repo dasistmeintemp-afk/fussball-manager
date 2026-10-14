@@ -677,7 +677,7 @@ function runEngineTests() {
     });
 
     // 9. ScoutingEngine & PlayerRatingEngine
-    test("ScoutingEngine & PlayerRatingEngine: FM-Rating-Modell, Schätzspannen, relative Sterne, Rollen und Scoutberichte", () => {
+    test("ScoutingEngine & PlayerRatingEngine: Rating-Modell, Schätzspannen, relative Sterne, Rollen und Scoutberichte", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         
         // 1. PlayerRatingEngine Tests
@@ -1866,7 +1866,7 @@ function runEngineTests() {
         }
     });
 
-    // 14a7a3. Taktik nach FM26: Formen, Rollen, Vorlagen, Verbindungen
+    // 14a7a3. Taktik nach dem Vorbild: Formen, Rollen, Vorlagen, Verbindungen
     test("TacticsEngine: Formen mit und gegen den Ball, Rollen, Vorlagen und Verbindungen", () => {
         // Alte Spielstaende kennen nur fuenf Regler - sie bleiben erhalten,
         // alles andere bekommt seinen Standard
@@ -7493,7 +7493,7 @@ function runEngineTests() {
         if (ergebnisse.filter(Boolean).length !== ScoutingEngine.MAX_BEOBACHTUNGEN) throw new Error(`${ergebnisse.filter(Boolean).length} Beobachtungen gleichzeitig`);
     });
 
-    test("Kalender: Das Weiterlaufen hält an, wenn etwas den Manager angeht (wie im FM)", () => {
+    test("Kalender: Das Weiterlaufen hält an, wenn etwas den Manager angeht (wie im Vorbild)", () => {
         const state = GameState.createNewGame("ll_han", "normal", { name: "Prüfer" });
         const leer = { summary: { negotiations: [], training: { injuries: [] } } };
         const bekannt = () => new Set((state.inbox || []).map(m => String(m.id)));
@@ -7565,7 +7565,7 @@ function runEngineTests() {
     };
 
     test("FM-Modus: Die Zeitleiste gibt nur den Rahmen vor, Tore und Schüsse entstehen im Spiel", () => {
-        const state = GameState.createNewGame("muc", "normal", { name: "FM" });
+        const state = GameState.createNewGame("muc", "normal", { name: "Test" });
         const { live, partie } = fmSpiel(state, "lev", "fca", "fm_rahmen");
         if (!live.isFinished) throw new Error("Das Spiel wurde nicht beendet");
 
@@ -7621,7 +7621,7 @@ function runEngineTests() {
     });
 
     test("FM-Modus: Live-Anzeige und Spielbericht zählen dasselbe - auch mit Wechsel", () => {
-        const state = GameState.createNewGame("muc", "normal", { name: "FM" });
+        const state = GameState.createNewGame("muc", "normal", { name: "Test" });
         const heim = state.clubs.find(c => c.id === "lev");
         let gewechselt = false;
         const { live, partie } = fmSpiel(state, "lev", "fca", "fm_paritaet", {
@@ -7646,7 +7646,7 @@ function runEngineTests() {
     });
 
     test("FM-Modus: Sofort beenden übernimmt den Spielstand und rechnet den Rest weiter", () => {
-        const state = GameState.createNewGame("muc", "normal", { name: "FM" });
+        const state = GameState.createNewGame("muc", "normal", { name: "Test" });
         const heim = state.clubs.find(c => c.id === "lev");
         const gast = state.clubs.find(c => c.id === "fca");
         const partie = { id: "fm_sofort", played: false, homeClubId: heim.id, awayClubId: gast.id };
@@ -7668,7 +7668,7 @@ function runEngineTests() {
     });
 
     test("FM-Modus: Werte entscheiden - die deutlich bessere Elf erspielt sich mehr", () => {
-        const state = GameState.createNewGame("muc", "normal", { name: "FM" });
+        const state = GameState.createNewGame("muc", "normal", { name: "Test" });
         const WERTE = ["passing", "vision", "technique", "dribbling", "shooting", "pace", "physical",
             "defense", "positioning", "reflexes", "handling", "oneOnOne", "kicking", "stamina", "overall"];
         const heimIds = new Set(state.players.filter(p => p.clubId === "fca").map(p => p.id));
@@ -7696,7 +7696,7 @@ function runEngineTests() {
     });
 
     test("FM-Modus: Spieler auf dem Feld tragen ihre echten Werte und Eigenschaften", () => {
-        const state = GameState.createNewGame("muc", "normal", { name: "FM" });
+        const state = GameState.createNewGame("muc", "normal", { name: "Test" });
         const star = state.players.find(p => p.clubId === "muc" && p.signatur);
         if (!star) throw new Error("Der FC Bayern hat keinen Spieler mit Signatur");
         const w = MatchEngine.werte2D(star, star.pos);

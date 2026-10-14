@@ -11,7 +11,7 @@
 Object.assign(((typeof window !== "undefined" && window.UIManager)
     || require("./uiManager.js").UIManager).prototype, {
     /**
-     * Was das 2D-Feld zeigt - pro Geraet gemerkt. Namen sind wie im FM26
+     * Was das 2D-Feld zeigt - pro Geraet gemerkt. Namen sind wie im Vorbild
      * voreingestellt, die Formationslinien schaltet man bei Bedarf dazu.
      */
     anzeige2D() {
@@ -224,7 +224,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const liveMatch = MatchEngine.createLiveMatch(match, homeClub, awayClub, state.players, {
             userSide,
             delegation: { ...einstellungen.delegation },
-            // Wie im Football Manager: Das Spiel entsteht auf dem Platz aus den
+            // Wie im Vorbild: Das Spiel entsteht auf dem Platz aus den
             // Entscheidungen der Spieler - nach ihren Werten und Eigenschaften
             modus: "fm",
             // Der Matchplan aus der Taktikbesprechung
@@ -615,7 +615,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 ctx.fillStyle = isKeeper ? torwartFarbe(p.team) : (p.color || "#3b82f6");
                 ctx.fill();
 
-                // Flach wie im FM26: Vereinsfarbe, heller Rand, keine Glanzkante
+                // Flach wie im Vorbild: Vereinsfarbe, heller Rand, keine Glanzkante
                 koerper();
                 ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
                 ctx.lineWidth = Math.max(1, radius * 0.11);
@@ -679,7 +679,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 ctx.restore();
             });
 
-            // 5. Namen aller Spieler unter den Punkten - wie im FM26. Der
+            // 5. Namen aller Spieler unter den Punkten - wie im Vorbild. Der
             //    Ballführende bekommt zusätzlich sein Schild.
             if (anzeige.namen) {
                 const kleinFont = `600 ${Math.round(radius * 0.7)}px 'Inter', system-ui, sans-serif`;

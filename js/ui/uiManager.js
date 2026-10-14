@@ -1801,7 +1801,7 @@ class UIManager {
         // Auf schmalen Geräten zeigt der Knopf nur die Kurzfassung
         // (Ohne dataset - etwa im Test-DOM - brach hier der ganze Kopf ab.)
         if (knopf.dataset) knopf.dataset.kurz = ziel.kurz || "Weiter";
-        // Einzelne Tage wie im FM: nur sinnvoll, wenn der Hauptknopf mehrere
+        // Einzelne Tage wie im Vorbild: nur sinnvoll, wenn der Hauptknopf mehrere
         // Tage überspringen würde
         const tagKnopf = document.getElementById("btnHeaderTag");
         if (tagKnopf) tagKnopf.style.display = ziel.art === "sprung" && ziel.tage > 1 ? "" : "none";
@@ -1871,7 +1871,7 @@ class UIManager {
      * Dashboard rendern
      */
     /**
-     * Die Karte "Als Nächstes" - nach dem Vorbild von FM und EA FC.
+     * Die Karte "Als Nächstes" - nach dem Vorbild.
      *
      * Vorher hiess sie "Nächste Begegnung" und zeigte immer die Partie des
      * laufenden Spieltags, ganz gleich wie weit sie noch weg war. Am ersten
@@ -2069,7 +2069,7 @@ class UIManager {
     }
 
     /**
-     * Die Tagesleiste - wie der Kalenderstreifen in EA FC.
+     * Die Tagesleiste - ein Kalenderstreifen wie im Vorbild.
      *
      * Zehn Tage nebeneinander, heute hervorgehoben, der naechste Termin
      * markiert. Sie bewegt die Zeit nicht; sie zeigt nur, wo man steht. Zeit
@@ -3080,7 +3080,7 @@ class UIManager {
             node.style.left = `${ort.x}%`;
             node.style.top = `${ort.y}%`;
             node.dataset.slotIndex = index;
-            // Die Rolle als Kuerzel wie im FM26 - kombiniert beide Rollen
+            // Die Rolle als Kuerzel wie im Vorbild - kombiniert beide Rollen
             let rolleHtml = "";
             if (rollenElf[index] && T) {
                 const rm = T.rolleMitBall(rollenElf[index].familie, rollenElf[index].mit);
@@ -3262,7 +3262,7 @@ class UIManager {
             gegenSel.onchange = (e) => { t.formGegenBall = e.target.value; this.taktikAnsicht = "gegen"; this.taktikGeaendert(userClub); };
         }
 
-        // Aufstellung wie im FM26: eine Zeile je Spieler, die Rolle der
+        // Aufstellung wie im Vorbild: eine Zeile je Spieler, die Rolle der
         // gewaehlten Phase mit Kuerzel, dazu Staerke und Kondition
         const rollenEl = document.getElementById("tacRollen");
         if (rollenEl) {
@@ -3362,7 +3362,7 @@ class UIManager {
         }
 
         // Mannschaftsanweisungen als Kacheln, getrennt nach Mit Ball und
-        // Gegen den Ball - wie im FM26
+        // Gegen den Ball - wie im Vorbild
         const anwEl = document.getElementById("tacAnweisungen");
         if (anwEl) {
             if (this.anwPhase !== "gegenBall") this.anwPhase = "mitBall";
@@ -5157,7 +5157,7 @@ class UIManager {
      */
     /**
      * Der Kopf der Vereinsseite: Wappen, Liga und die Kennzahlen als Kacheln -
-     * so beginnt im FM26 die Vereinsseite.
+     * so beginnt im Vorbild die Vereinsseite.
      */
     renderVereinsKopf(state, club, plaetze) {
         const esc = (v) => this.escapeHtml(String(v ?? ""));
@@ -6432,7 +6432,7 @@ class UIManager {
     }
 
     /**
-     * Das nächste Pflichtspiel als Karte - in FM und EA FC das Erste, was man
+     * Das nächste Pflichtspiel als Karte - im Vorbild das Erste, was man
      * sieht: gegen wen, wo, welcher Tabellenplatz, welche Form.
      */
     renderNextMatchCard(state, calendarEngine) {
@@ -7412,7 +7412,7 @@ class UIManager {
     /**
      * Was der Weiter-Knopf als Nächstes tut - und wie er heißt.
      *
-     * In FM heißt der Knopf nie "einen Tag simulieren", sondern nennt das
+     * Im Vorbild heißt der Knopf nie "einen Tag simulieren", sondern nennt das
      * Ziel: das Spiel, die Pressekonferenz, den nächsten Termin. Das ist
      * hier nachgebaut - ein Knopf, der immer verrät, was passiert.
      */
@@ -8209,7 +8209,7 @@ class UIManager {
             // Eine Entlassung beendet den Vorlauf sofort
             if (state.managerDismissed) break;
 
-            // Wie im FM: Passiert etwas, das den Manager angeht, hält die
+            // Wie im Vorbild: Passiert etwas, das den Manager angeht, hält die
             // Zeit an - auch zwischen zwei Terminen (im Urlaub nur, wenn gewünscht)
             angehalten = (!urlaub || optionen.anhalten) && typeof cal.unterbrechungsGrund === "function"
                 ? cal.unterbrechungsGrund(state, res, bekannt) : null;

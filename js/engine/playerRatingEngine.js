@@ -1,5 +1,5 @@
 /**
- * PlayerRatingEngine - FM-ähnliches Spielerbewertungs- und Einschätzungssystem
+ * PlayerRatingEngine - Dem Vorbild nachempfundenes Spielerbewertungs- und Einschätzungssystem
  * Trennt echte interne Fähigkeiten (CA 1-200, PA 1-200, Hidden Attributes) von
  * sichtbaren Schätzungen (Spannen, Sterne relativ zum Verein, Labels, Confidence)
  */
@@ -262,7 +262,7 @@ class PlayerRatingEngine {
     }
 
     /**
-     * Die Sternereihe, wie man sie aus dem Football Manager kennt.
+     * Die Sternereihe, wie man sie aus dem Vorbild kennt.
      *
      * Alles steht in EINER Zeile aus fünf Sternen, und jeder Stern erzählt
      * etwas anderes:
@@ -756,7 +756,7 @@ class PlayerRatingEngine {
             starsCaHtml: PlayerRatingEngine.renderStarRange(starsCaMin, starsCaMax, { color: "#f59e0b" }),
             starsPaHtml: PlayerRatingEngine.renderStarRange(starsPaMin, starsPaMax, { color: "#38bdf8" }),
             // Stärke und Potenzial in einer Reihe, so wie man es aus dem
-            // Football Manager kennt
+            // Vorbild kennt
             abilityStarsHtml: PlayerRatingEngine.renderAbilityStars({
                 caMin: starsCaMin, caMax: starsCaMax, paMax: starsPaMax
             }, {

@@ -2461,10 +2461,14 @@ class UIManager {
             const schluss = state.calendar?.[engine.meldeschluss(state, art)]?.date;
             const geaendert = JSON.stringify([...e.a].sort()) !== JSON.stringify([...gespeichert.a].sort())
                 || JSON.stringify([...e.b].sort()) !== JSON.stringify([...(gespeichert.b || [])].sort());
-            kopf.push(art === "europa" ? `${regel.name} ${z.a}/${z.platz}` : `${regel.name} ${z.fremd}/${z.maxFremd} fremd`);
+            const nichtEU = art === "liga" && regel.maxNichtEU != null;
+            kopf.push(art === "europa" ? `${regel.name} ${z.a}/${z.platz}`
+                : nichtEU ? `${regel.name} ${z.nichtEU}/${z.maxNichtEU} ohne EU-Pass` : `${regel.name} ${z.fremd}/${z.maxFremd} fremd`);
             const zahlText = art === "europa"
                 ? `Liste A: ${z.a} von ${z.platz} Plätzen · im Land ausgebildet ${z.lokal} (mindestens ${z.minLokal}) · Liste B: ${z.b}`
-                : `Über ${engine.U21}: ${z.zaehlt} von ${z.max} · nicht im Land ausgebildet ${z.fremd} von ${z.maxFremd} · U21 frei`;
+                : nichtEU
+                    ? `Über ${engine.U21}: ${z.zaehlt} von ${z.max} · ohne EU-Pass ${z.nichtEU} von ${z.maxNichtEU} · U21 frei`
+                    : `Über ${engine.U21}: ${z.zaehlt} von ${z.max} · nicht im Land ausgebildet ${z.fremd} von ${z.maxFremd} · U21 frei`;
             const status = gespeichert.vorschlag ? "noch nicht gemeldet - es gilt der Vorschlag" : "gemeldet";
             return `
                 <section class="ml-teil" data-ml-art="${art}">
@@ -2475,9 +2479,10 @@ class UIManager {
                         const lokal = engine.lokal(p, club);
                         const b = art === "europa" && engine.fuerListeB(state, p, club);
                         const jung = art === "liga" && (p.age || 99) <= engine.U21;
+                        const ohnePass = nichtEU && !engine.eu(state, p, club);
                         return `<li>
                             <label class="ml-wahl"><input type="checkbox" data-ml-a="${esc(p.id)}"${e.a.has(p.id) ? " checked" : ""}${darf ? "" : " disabled"}> <span class="ml-pos">${esc(p.pos)}</span> ${esc(p.name)} <small>${p.age} J. · ${p.overall}</small></label>
-                            <span class="ml-marken">${lokal ? `<span class="ml-marke" title="im Land ausgebildet">🏠</span>` : ""}${jung ? `<span class="ml-marke">U21 frei</span>` : ""}${b ? `<label class="ml-b"><input type="checkbox" data-ml-b="${esc(p.id)}"${e.b.has(p.id) ? " checked" : ""}${darf ? "" : " disabled"}> B</label>` : ""}</span>
+                            <span class="ml-marken">${lokal ? `<span class="ml-marke" title="im Land ausgebildet">🏠</span>` : ""}${jung ? `<span class="ml-marke">U21 frei</span>` : ""}${ohnePass ? `<span class="ml-marke" title="ohne EU-Pass">Nicht-EU</span>` : ""}${b ? `<label class="ml-b"><input type="checkbox" data-ml-b="${esc(p.id)}"${e.b.has(p.id) ? " checked" : ""}${darf ? "" : " disabled"}> B</label>` : ""}</span>
                         </li>`;
                     }).join("")}</ul>
                     ${darf ? `<div class="ml-knoepfe">
@@ -2488,7 +2493,7 @@ class UIManager {
         });
         box.innerHTML = `
             <summary><h3>📋 Meldeliste</h3><span class="header-tag">${esc(kopf.join(" · "))}</span></summary>
-            <p class="muted-note">Nur wer gemeldet ist, darf im Wettbewerb spielen. 🏠 = im Land ausgebildet (eigene Jugend oder Nationalität des Landes). Liste B: bis 21 und seit zwei Saisons im Verein oder aus der eigenen Jugend.</p>
+            <p class="muted-note">Nur wer gemeldet ist, darf im Wettbewerb spielen. 🏠 = im Land ausgebildet (eigene Jugend oder Nationalität des Landes). Liste B: bis 21 und seit zwei Saisons im Verein oder aus der eigenen Jugend.${arten.includes("liga") && engine.regel(club, "liga")?.maxNichtEU != null ? " Nicht-EU: ohne Pass eines EU-Landes. Spieler aus den AKP-Staaten zählen wie EU-Bürger, Südamerikaner nach zwei Saisons im Verein auch." : ""}</p>
             ${teile.join("")}`;
         box.open = offen;
         const neu = () => this.renderMeldeliste(state);
@@ -6971,6 +6976,22 @@ class UIManager {
 
         const askingPriceEst = TransferEngine.calculateAskingPrice(player, sellerClub);
 
+        // La Liga: höchstens drei Spieler ohne EU-Pass auf der Meldeliste
+        const regeln = typeof KaderregelEngine !== "undefined" ? KaderregelEngine : null;
+        const ligaRegel = regeln ? regeln.regel(userClub, "liga") : null;
+        let passHinweis = "";
+        if (ligaRegel && ligaRegel.maxNichtEU != null) {
+            // Als Neuzugang wäre er frisch im Verein
+            const neu = Object.assign({}, player, { vereinSeit: (state.seasonYear || 1) * 1000 });
+            if (!regeln.eu(state, neu, userClub)) {
+                const schon = regeln._kader(state, userClub).filter(p => !regeln.eu(state, p, userClub)).length;
+                passHinweis = `<div class="hint-box" style="margin-top:8px; border-color:#f59e0b;">
+                    Ohne EU-Pass: ${this.escapeHtml(ligaRegel.name)} erlaubt ${ligaRegel.maxNichtEU} Nicht-EU-Spieler auf der Meldeliste, im Kader stehen schon ${schon}.
+                    ${schon >= ligaRegel.maxNichtEU ? "Er dürfte nur spielen, wenn ein anderer dafür von der Liste geht." : ""}
+                </div>`;
+            }
+        }
+
         body.innerHTML = `
             <div style="display:flex; justify-content:space-between; margin-bottom:16px;">
                 <div>
@@ -7006,6 +7027,7 @@ class UIManager {
                 danach verhandelt der Berater über Gehalt, Laufzeit und Handgeld, zum Schluss folgt der Medizincheck.
                 Jede Antwort dauert ein bis drei Tage – den Stand sehen Sie im Reiter <strong>Transfers</strong>.
             </div>
+            ${passHinweis}
 
             <div id="transferFeedback" style="margin-top:14px; font-size:13px; font-weight:600;"></div>
 

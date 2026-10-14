@@ -958,6 +958,11 @@ class GameState {
             state.europeanCompetitions = compEngine.generateEuropeanCompetitions(state.clubs);
         }
 
+        // La Liga: Die erzeugten Kader halten die Grenze für Spieler ohne
+        // EU-Pass ein, wie die echten Vereine
+        const kaderregeln = GameState._resolveEngine('KaderregelEngine', './kaderregelEngine.js');
+        if (kaderregeln && typeof kaderregeln.gleicheStartkaderAn === 'function') kaderregeln.gleicheStartkaderAn(state);
+
         // Pokal und Europapokal bekommen einen Spielplan, der auch abgearbeitet
         // wird. Vorher stand nur eine erste Pokalrunde im Speicher, die nie
         // jemand austrug, und die europäischen Gruppen hatten gar keine

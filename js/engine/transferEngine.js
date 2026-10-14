@@ -661,6 +661,61 @@ class TransferEngine {
             if (!club) continue;
             if (this.versucheEinenTransfer(state, club, markt)) vollzogen++;
         }
+        vollzogen += this.talentsuche(state, markt, Math.max(1, Math.round(versuche * this.TALENT_ANTEIL)));
+        return vollzogen;
+    }
+
+    /** Anteil der Versuche eines Fenstertags, in denen ein Verein ein Talent sucht */
+    static TALENT_ANTEIL = 0.05;
+    static TALENT_ALTER = 21;
+
+    /**
+     * Talentsuche: Vereine holen junge Spieler aus tieferen Ligen, die das
+     * Zeug für ihre Mannschaft haben.
+     *
+     * Ohne diesen Weg waren die unteren Ligen fast geschlossen: Wer sich dort
+     * entwickelte, blieb. Gemessen sank der Schnitt der Kader im Unterbau
+     * jede Saison, die beste Elf aber stieg - die Talente verdrängten die
+     * Älteren, und kein Verein eine Liga höher holte sie. Die sechste Liga
+     * legte so 0,2 bis 0,3 Punkte je Saison zu.
+     *
+     * Gesucht wird, wer höchstens 21 ist, in einer tieferen Liga spielt, bald
+     * mithalten kann (höchstens zwölf Punkte unter dem Kaderniveau) und das
+     * Potenzial dafür hat. Ab der dritten Liga nur im eigenen Land.
+     */
+    static talentsuche(state, markt, versuche) {
+        const kaeufer = state.clubs.filter(c => c.id !== state.userClubId && (c.level || 1) <= 5 && (c.transferBudget || 0) > 0);
+        if (!kaeufer.length || versuche <= 0) return 0;
+        const talente = state.players.filter(p => p.clubId && p.clubId !== state.userClubId && !p.leihe && !p.vorvertrag
+            && (p.age || 30) <= this.TALENT_ALTER && (p.injuredWeeks || 0) <= 0)
+            .sort((a, b) => (b.pot || 0) - (a.pot || 0));
+        let vollzogen = 0;
+        for (let i = 0; i < versuche; i++) {
+            const club = _preZufall(kaeufer);
+            if (!club) continue;
+            const niveau = this.kaderNiveau(state, club);
+            const budget = club.transferBudget || 0;
+            const lohnsumme = (club.playerIds || []).reduce((s, id) => s + (markt.spieler.get(id)?.wage || 0), 0);
+            const p = talente.find(t => {
+                if (t.clubId === club.id || (t.pot || 0) < niveau - 2) return false;
+                if ((t.overall || 0) < niveau - 12) return false;
+                const verkaeufer = markt.vereine.get(t.clubId);
+                if (!verkaeufer || (verkaeufer.level || 1) <= (club.level || 1)) return false;
+                if ((club.level || 1) >= 3 && verkaeufer.countryId !== club.countryId) return false;
+                const gleichePos = (markt.kaderNachPos.get(verkaeufer.id) || {})[t.pos] || [];
+                if (gleichePos.length - 1 < (t.pos === "TW" ? 2 : 1)) return false;
+                if (this.calculateAskingPrice(t, verkaeufer) > budget) return false;
+                return lohnsumme + (t.wage || 0) * 1.2 <= (club.wageBudget || Infinity) * 1.15;
+            });
+            if (!p) continue;
+            const verkaeufer = markt.vereine.get(p.clubId);
+            const preis = this.calculateAskingPrice(p, verkaeufer);
+            const vonId = p.clubId;
+            if (!this.executeTransfer(state, p.id, club.id, preis, Math.round((p.wage || 1000) * 1.2), 4, { index: markt.spieler })) continue;
+            this.aktualisiereIndex(markt, p, vonId, club.id);
+            talente.splice(talente.indexOf(p), 1);
+            vollzogen++;
+        }
         return vollzogen;
     }
 

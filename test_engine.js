@@ -11433,6 +11433,29 @@ function runEngineTests() {
         if (JSON.stringify(altZur.players[0].laufbahn) !== JSON.stringify(a.laufbahn)) throw new Error("fmc2-Spielstand verliert die Laufbahn");
     });
 
+    test("Talentsuche: Vereine holen junge Spieler mit Potenzial aus tieferen Ligen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Talente" });
+        const kaeufer = state.clubs.find(c => c.countryId === "de" && c.level === 5);
+        const verkaeufer = state.clubs.find(c => c.countryId === "de" && c.level === 6);
+        const oben = state.clubs.find(c => c.countryId === "de" && c.level === 3);
+        state.clubs.forEach(c => { c.transferBudget = 0; });
+        kaeufer.transferBudget = 5e6; kaeufer.wageBudget = 1e9;
+        const niveau = TransferEngine.kaderNiveau(state, kaeufer);
+        const kader = (c) => state.players.filter(p => p.clubId === c.id);
+        const pos = ["ZM", "IV", "ST"].find(x => kader(verkaeufer).filter(p => p.pos === x).length >= 2);
+        // Nur ein Kandidat soll passen: jung, mit Potenzial, bald gut genug
+        state.players.forEach(p => { if ((p.age || 30) <= 21) p.age = 22; });
+        const talent = kader(verkaeufer).find(p => p.pos === pos);
+        Object.assign(talent, { age: 19, pot: Math.round(niveau + 6), overall: Math.round(niveau - 6), value: 20000, wage: 300, injuredWeeks: 0 });
+        // Gleich alt und gut, aber aus einer höheren Liga: kein Talentkauf nach unten
+        const vonOben = kader(oben).find(p => p.pos === pos && kader(oben).filter(x => x.pos === pos).length >= 2);
+        Object.assign(vonOben, { age: 19, pot: Math.round(niveau + 10), overall: Math.round(niveau - 4), value: 20000, wage: 300, injuredWeeks: 0 });
+        const markt = TransferEngine.baueMarktIndex(state);
+        const n = TransferEngine.talentsuche(state, markt, 3);
+        if (n < 1 || talent.clubId !== kaeufer.id) throw new Error(`Talent nicht geholt (${n} Wechsel)`);
+        if (vonOben.clubId === kaeufer.id) throw new Error("Talent aus einer höheren Liga geholt");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

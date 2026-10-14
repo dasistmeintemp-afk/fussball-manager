@@ -234,6 +234,46 @@ class UIManager {
     }
 
     /**
+     * Ladeanzeige für alles, was spürbar dauert: Karrierestart (die ganze
+     * Spielwelt entsteht), Spielstand laden, Saisonwechsel. Vorher stand die
+     * Oberfläche dabei ein bis drei Sekunden still, ohne Rückmeldung.
+     *
+     * Im Browser zeichnet sie erst die Anzeige (ein Bildaufbau), dann läuft
+     * die Arbeit. Ohne Browser (Tests) läuft die Arbeit sofort und das
+     * Ergebnis kommt direkt zurück.
+     */
+    mitLadeanzeige(text, arbeit, unter = "") {
+        const overlay = typeof document !== "undefined" && typeof document.getElementById === "function"
+            ? document.getElementById("ladeOverlay") : null;
+        const raf = typeof window !== "undefined" && typeof window.requestAnimationFrame === "function"
+            ? window.requestAnimationFrame.bind(window) : null;
+        if (!overlay || !raf || this._ladeAnzeigeLaeuft) return arbeit();
+        this._ladeAnzeigeLaeuft = true;
+        this.zeigeLadeanzeige(text, unter);
+        const fertig = () => { this._ladeAnzeigeLaeuft = false; this.versteckeLadeanzeige(); };
+        return new Promise((resolve, reject) => {
+            raf(() => setTimeout(() => {
+                try { resolve(arbeit()); } catch (e) { reject(e); }
+            }, 0));
+        }).then(r => { fertig(); return r; }, e => { fertig(); throw e; });
+    }
+
+    zeigeLadeanzeige(text, unter = "") {
+        const overlay = typeof document !== "undefined" ? document.getElementById("ladeOverlay") : null;
+        if (!overlay) return;
+        const t = document.getElementById("ladeText");
+        const u = document.getElementById("ladeUnter");
+        if (t) t.textContent = text || "Einen Moment …";
+        if (u) u.textContent = unter || "";
+        overlay.hidden = false;
+    }
+
+    versteckeLadeanzeige() {
+        const overlay = typeof document !== "undefined" ? document.getElementById("ladeOverlay") : null;
+        if (overlay) overlay.hidden = true;
+    }
+
+    /**
      * Zeigt eine Toast-Meldung an
      */
     showToast(message, type = "info", duration = 3500) {
@@ -2789,6 +2829,20 @@ class UIManager {
         const state = this.app.state;
         const cal = this.getCalendarEngine();
         if (!cal) return;
+        if (this.saisonwechselHeute(cal, state)) {
+            return this.mitLadeanzeige("Die neue Saison wird vorbereitet …", () => this._laufeBisTermin(cal, state, maxTage, optionen),
+                "Verträge, Aufsteiger, Spielplan und Vorbereitung");
+        }
+        return this._laufeBisTermin(cal, state, maxTage, optionen);
+    }
+
+    /** Steht heute der Saisonwechsel an? Dann dauert der nächste Tag länger. */
+    saisonwechselHeute(cal, state) {
+        const heute = cal && state && typeof cal.getCurrentDay === "function" ? cal.getCurrentDay(state) : null;
+        return !!(heute && heute.saisonwechsel);
+    }
+
+    _laufeBisTermin(cal, state, maxTage, optionen) {
         // Im Urlaub übernimmt der Co-Trainer die Termine - angehalten wird nur am Ziel
         const urlaub = !!optionen.urlaub;
         const urlaubEngine = urlaub && typeof UrlaubEngine !== "undefined" ? UrlaubEngine : null;
@@ -2861,6 +2915,14 @@ class UIManager {
             : ((typeof window !== 'undefined' && window.CalendarEngine) ? window.CalendarEngine : null);
 
         if (!calendarEngine) return;
+        if (this.saisonwechselHeute(calendarEngine, state)) {
+            return this.mitLadeanzeige("Die neue Saison wird vorbereitet …", () => this._handleCalendarAdvanceDay(calendarEngine, state),
+                "Verträge, Aufsteiger, Spielplan und Vorbereitung");
+        }
+        return this._handleCalendarAdvanceDay(calendarEngine, state);
+    }
+
+    _handleCalendarAdvanceDay(calendarEngine, state) {
 
         // Am Medientag steht der Manager zuerst den Journalisten Rede und Antwort
         const heute = calendarEngine.getCurrentDay(state);
@@ -3020,8 +3082,10 @@ class UIManager {
     /** Die Sommerpause überspringen: gleich zum Saisonwechsel */
     starteNeueSaison() {
         const state = this.app.state;
-        SeasonEngine.startNextSeason(state);
-        this.zeigeSaisonwechsel({ neueSaison: state.seasonYear });
+        return this.mitLadeanzeige("Die neue Saison wird vorbereitet …", () => {
+            SeasonEngine.startNextSeason(state);
+            this.zeigeSaisonwechsel({ neueSaison: state.seasonYear });
+        }, "Verträge, Aufsteiger, Spielplan und Vorbereitung");
     }
 
     /** Nach dem Saisonwechsel: neue Saison, neue Vorbereitung */
@@ -3064,8 +3128,8 @@ class UIManager {
 
     ladeFrisch(saison) {
         const state = this.app.state;
-        this.showToast(`🔄 Saison ${saison} wird vorbereitet …`, "info", 6000);
-        const weiterOhne = () => this.beginneSaisonAnzeige(saison);
+        this.zeigeLadeanzeige(`Saison ${saison} wird vorbereitet …`, "Das Spiel lädt sich einmal neu und bleibt dadurch flott.");
+        const weiterOhne = () => { this.versteckeLadeanzeige(); this.beginneSaisonAnzeige(saison); };
         const gesichert = typeof state.sichereJetzt === "function" ? state.sichereJetzt() : false;
         (gesichert && typeof gesichert.then === "function" ? gesichert : Promise.resolve(gesichert)).then(ok => {
             // Ohne sichere Speicherung wird nicht neu geladen
@@ -3093,7 +3157,9 @@ class UIManager {
             return false;
         }
         if (!merk || !merk.platz) return false;
+        this.zeigeLadeanzeige(`Saison ${merk.saison || ""} wird vorbereitet …`.replace("  ", " "), "Der Spielstand wird geladen.");
         GameState.ladePlatz(merk.platz).then(state => {
+            this.versteckeLadeanzeige();
             if (!state) {
                 this.showStartScreen();
                 return;
@@ -3102,7 +3168,7 @@ class UIManager {
             this.hideStartScreen();
             this.beginneSaisonAnzeige(merk.saison || state.seasonYear);
             this.renderCurrentTab();
-        }, () => this.showStartScreen());
+        }, () => { this.versteckeLadeanzeige(); this.showStartScreen(); });
         return true;
     }
 

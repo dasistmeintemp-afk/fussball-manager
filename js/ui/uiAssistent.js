@@ -818,14 +818,23 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const trainerTyp = document.getElementById("inputTrainerTyp")?.value || "allrounder";
             const erklaerungen = document.getElementById("inputErklaerungen")?.checked !== false;
             const platz = this.zielPlatzNeueKarriere || GameState.freierPlatz() || GameState.aeltesterPlatz();
+            const profil = { name: managerName, nationality: managerNationality, birthdate: managerBirthdate, trainerTyp, erklaerungen };
+            const ligen = typeof LEAGUES_DATA !== "undefined" && Array.isArray(LEAGUES_DATA) ? LEAGUES_DATA : [];
+            const vereine = ligen.reduce((s, l) => s + (l.teamCount || 0), 0);
+            return this.mitLadeanzeige(`${selectedClub.name}: Die Spielwelt entsteht …`,
+                () => this._starteKarriere(platz, difficulty, profil, selectedClub),
+                vereine ? `${vereine} Vereine in ${ligen.length} Ligen, Kader, Spielpläne und Wettbewerbe` : "");
+        } catch (err) {
+            console.error("[Wizard] Fehler in confirmStartGameWithSelectedClub:", err);
+            this.showToast(`Fehler beim Karrierestart: ${err.message}`, "error", 7000);
+        }
+    },
+
+    /** Die eigentliche Arbeit des Karrierestarts - hinter der Ladeanzeige */
+    _starteKarriere(platz, difficulty, profil, selectedClub) {
+        try {
             this.beziehePlatz(platz);
-            const result = this.app.startNewGame(this.wizardSelectedClubId, difficulty, {
-                name: managerName,
-                nationality: managerNationality,
-                birthdate: managerBirthdate,
-                trainerTyp,
-                erklaerungen
-            });
+            const result = this.app.startNewGame(this.wizardSelectedClubId, difficulty, profil);
 
             if (!result || result.success === false || !this.app.state || !this.app.state.userClubId) {
                 console.error("[Wizard] Karriere-Start fehlgeschlagen:", {

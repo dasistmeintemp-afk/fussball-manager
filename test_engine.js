@@ -6177,6 +6177,42 @@ function runEngineTests() {
         if (J.starte(state).runde !== 0) throw new Error("Neue Saison beginnt nicht bei null");
     });
 
+    test("Atmosphäre: Derby und Finale sind lauter und bekommen eine Choreo, die Ränge reagieren auf die Lage", () => {
+        const { AtmosphaereEngine: A } = require('./js/engine/atmosphaereEngine.js');
+        const heim = { name: "Heim", city: "Teststadt", primaryColor: "#123456", secondaryColor: "#ffffff" };
+        const normal = A.vorDemSpiel({ match: {}, heim, wettbewerb: "liga", fanMood: 70 });
+        const derby = A.vorDemSpiel({ match: { derbyTitle: "Stadtderby", derbyIntensity: 3 }, heim, wettbewerb: "liga", fanMood: 70 });
+        const finale = A.vorDemSpiel({ match: {}, heim, wettbewerb: "pokal", finale: true, fanMood: 70 });
+        const test = A.vorDemSpiel({ match: {}, heim, wettbewerb: "test", fanMood: 70 });
+        if (!(derby.intensitaet > normal.intensitaet && finale.intensitaet > normal.intensitaet && test.intensitaet < normal.intensitaet)) throw new Error("Intensität falsch geordnet");
+        if (normal.choreo || !derby.choreo || !finale.choreo || derby.choreo.farben[0] !== "#123456") throw new Error("Choreo nur zu besonderen Spielen, in Vereinsfarben");
+        // Titelkampf am Saisonende
+        const spitze = A.vorDemSpiel({ match: {}, heim, wettbewerb: "liga", fanMood: 70, tabelle: { heimPlatz: 1, gastPlatz: 2, teams: 18, spieltag: 30, spieltage: 34 } });
+        if (spitze.anlass !== "spitze" || !spitze.choreo) throw new Error("Spitzenspiel ohne Choreo");
+
+        // Reaktionen
+        const merk = {};
+        const tor = A.reaktion({ minute: 12, heimTore: 1, gastTore: 0, letztesTor: "heim" }, merk);
+        if (!tor || tor.art !== "gesang") throw new Error("Kein Gesang nach dem Heimtor");
+        const stille = A.reaktion({ minute: 20, heimTore: 1, gastTore: 2, letztesTor: "gast" }, {});
+        if (!stille || stille.art !== "stille") throw new Error("Rückstand ohne Stille");
+        // Pfiffe kommen nicht jedes Mal, aber in der Regel (sonst singt die Kurve)
+        let pfiffe = null;
+        for (let i = 0; i < 20 && !pfiffe; i++) {
+            const r = A.reaktion({ minute: 70, heimTore: 0, gastTore: 3 }, {});
+            if (r && r.art === "pfiffe") pfiffe = r;
+        }
+        if (!pfiffe || pfiffe.art !== "pfiffe") throw new Error("Keine Pfiffe beim 0:3");
+        // Mindestabstand ohne Tor
+        const m2 = { letzte: 60 };
+        if (A.reaktion({ minute: 63, heimTore: 0, gastTore: 3 }, m2) !== null) throw new Error("Stimmungsmeldung zu dicht");
+        // Abpfiff: Sieg Applaus, Remis als klarer Favorit Pfiffe - und nur einmal
+        const ende = {};
+        if (A.reaktion({ minute: 94, heimTore: 2, gastTore: 0, fertig: true }, ende).art !== "applaus") throw new Error("Kein Applaus nach dem Sieg");
+        if (A.reaktion({ minute: 95, heimTore: 2, gastTore: 0, fertig: true }, ende) !== null) throw new Error("Abpfiff doppelt");
+        if (A.reaktion({ minute: 94, heimTore: 1, gastTore: 1, fertig: true, erwartung: 0.8 }, {}).art !== "pfiffe") throw new Error("Remis als Favorit ohne Pfiffe");
+    });
+
     // ---------------------------------------------------------------
     // Gespielt wird nur an dem Tag, an dem das Spiel angesetzt ist
     // ---------------------------------------------------------------

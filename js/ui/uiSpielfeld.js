@@ -261,6 +261,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (dir?.deadBall) target += 0.02;
         if (liveMatch.goalFlash > 0) target = 0.34;
         if (mode === "celebration") target = 0.3;
+        // Ein Derby ist lauter als ein Testspiel (AtmosphaereEngine)
+        const stimmung = this._atmo ? this._atmo.intensitaet : 0.5;
+        target *= 0.75 + stimmung * 0.5;
 
         crowd.level += (target - crowd.level) * Math.min(1, dt * 2.2);
         try {

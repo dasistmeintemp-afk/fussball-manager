@@ -235,6 +235,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this.app.currentLiveMatch = liveMatch;
         // Die anderen Plätze des Spieltags (nur im Ligaspiel)
         this.bereiteKonferenzVor(state, match);
+        // Die Stimmung im Stadion: Choreo, Gesänge, Pfiffe
+        this.bereiteAtmosphaereVor(state, match, liveMatch, ohneBild);
         this.coach = null;
 
         const modal = document.getElementById("modalLiveMatch");
@@ -366,6 +368,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             this.renderLiveVerlauf(liveMatch);
             this.updateLiveZurufe(liveMatch);
             this.updateKonferenz(liveMatch);
+            this.updateAtmosphaere(liveMatch);
             setWidth("lmTlFill", `${Math.min(100, Math.max(0, liveMatch.minute / 90 * 100)).toFixed(1)}%`);
             if (document.getElementById("lmSubtab-lineups")?.classList.contains("active")) {
                 this.renderLiveLineups(liveMatch);
@@ -1092,6 +1095,87 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <thead><tr><th>Pl.</th><th></th><th>Verein</th><th>Sp</th><th>Diff</th><th>Pkt</th></tr></thead>
                 <tbody>${zeilen}</tbody>
             </table>`;
+    },
+
+    // ------------------------------------------------------------ Atmosphäre
+
+    getAtmosphaereEngine() {
+        return (typeof AtmosphaereEngine !== "undefined" && AtmosphaereEngine)
+            || (typeof window !== "undefined" && window.AtmosphaereEngine) || null;
+    },
+
+    /** Vor dem Anpfiff: Stimmung bestimmen, Choreo zeigen */
+    bereiteAtmosphaereVor(state, match, liveMatch, ohneBild = false) {
+        const engine = this.getAtmosphaereEngine();
+        this._atmo = null;
+        this._atmoMerk = {};
+        this._atmoStand = { heim: 0, gast: 0 };
+        if (!engine) return;
+        const heim = (state.clubs || []).find(c => c.id === match.homeClubId) || {};
+        const gast = (state.clubs || []).find(c => c.id === match.awayClubId) || {};
+        const termin = this._laufenderPokaltermin;
+        const inLiga = (state.schedule || []).some(r => r.matchday === state.currentMatchday && (r.matches || []).includes(match));
+        const wettbewerb = termin ? (/euro/.test(termin.art) ? "euro" : "pokal") : (inLiga ? "liga" : "test");
+        const runde = String(match.roundName || termin?.partie?.roundName || "");
+        const tabelle = state.standings || [];
+        const platz = id => tabelle.findIndex(r => r.clubId === id) + 1 || null;
+        const fans = typeof FanEngine !== "undefined" ? FanEngine : null;
+        const userHeim = match.homeClubId === state.userClubId;
+        const e = fans ? fans.erwartung(userHeim ? heim : gast, userHeim ? gast : heim, userHeim) : 0;
+        try {
+            this._atmo = engine.vorDemSpiel({
+                match, heim, gast, wettbewerb, finale: /^finale$/i.test(runde.trim()) || runde === "Finale", ko: !!termin?.ko,
+                fanMood: state.fanMood,
+                tabelle: inLiga ? { heimPlatz: platz(heim.id), gastPlatz: platz(gast.id), teams: tabelle.length, spieltag: state.currentMatchday, spieltage: state.totalMatchdays || 34 } : {}
+            });
+        } catch (err) { console.warn("Stimmung nicht verfügbar:", err); }
+        if (!this._atmo) return;
+        // Erwartung aus Sicht der Heimmannschaft - für den Schlusspfiff
+        this._atmo.erwartungHeim = userHeim ? e : -e;
+        const ch = this._atmo.choreo;
+        const el = document.getElementById("lmChoreo");
+        if (ch && el && !ohneBild) {
+            el.style.setProperty("--choreo-a", ch.farben[0]);
+            el.style.setProperty("--choreo-b", ch.farben[1]);
+            el.innerHTML = `<span class="lm-choreo-kopf">Choreo · ${this.escapeHtml(heim.name || "")}</span><span class="lm-choreo-text">${this.escapeHtml(ch.text)}</span>`;
+            el.hidden = false;
+            clearTimeout(this._choreoTimer);
+            this._choreoTimer = setTimeout(() => { el.hidden = true; }, 6500);
+            this.playSound("gesang");
+        } else if (el) {
+            el.hidden = true;
+        }
+        if (ch) this.atmoTicker(`🎆 ${ch.text}`, 0);
+    },
+
+    atmoTicker(text, minute) {
+        const feed = document.getElementById("lmEventFeed");
+        if (!feed) return;
+        const node = document.createElement("div");
+        node.className = "ticker-event ticker-stimmung";
+        node.innerHTML = this.liveZeileHtml(text, minute);
+        feed.insertBefore(node, feed.firstChild);
+        while (feed.childElementCount > 60) feed.removeChild(feed.lastChild);
+    },
+
+    /** Je Spielminute: Reaktion der Ränge */
+    updateAtmosphaere(liveMatch) {
+        const engine = this.getAtmosphaereEngine();
+        if (!engine || !this._atmo) return;
+        const minute = liveMatch.minute || 0;
+        const fertig = !!liveMatch.isFinished;
+        const heimTore = liveMatch.homeScore || 0, gastTore = liveMatch.awayScore || 0;
+        const key = `${fertig ? "ende" : minute}|${heimTore}:${gastTore}`;
+        if (this._atmoKey === key) return;
+        this._atmoKey = key;
+        const s = this._atmoStand;
+        const letztesTor = heimTore > s.heim ? "heim" : (gastTore > s.gast ? "gast" : null);
+        s.heim = heimTore; s.gast = gastTore;
+        const r = engine.reaktion({ minute, heimTore, gastTore, letztesTor, fertig, intensitaet: this._atmo.intensitaet, erwartung: this._atmo.erwartungHeim }, this._atmoMerk);
+        if (!r) return;
+        // Tore haben ihren eigenen Ticker-Eintrag - die Ränge kommen eine Zeile später
+        this.atmoTicker(`${r.art === "pfiffe" ? "📣" : r.art === "stille" ? "🤫" : r.art === "applaus" ? "👏" : "🎶"} ${r.text}`, minute);
+        if (r.klang && !liveMatch.ohneBild) this.playSound(r.klang);
     },
 
     // ------------------------------------------------------------ Seitenlinie

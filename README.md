@@ -220,8 +220,10 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   - Die zweiten Ligen liegen darunter, Segunda und Championship mit 2,3 am deutlichsten.
 - **Wer die Tore schießt (`MatchEngine.SCHUETZEN_ROLLE`):** Zum Abschluss kommen kann jeder Feldspieler. Wie oft, entscheiden Position, Angriffsart und Abschlussstärke. Nach Ecken köpfen die Innenverteidiger; der eingeteilte Eckenschütze steht an der Fahne und ist nie selbst der Abnehmer.
   - Vorher schossen nur Stürmer, Außen und Zehner: 70 % aller Tore fielen durch Mittelstürmer, kein einziges durch einen Verteidiger, und die besten Torjäger kamen auf 55 bis 71 Tore in einer Saison.
-  - Gemessen über eine Saison der fünf ersten und zwei zweiten Ligen: Sturm 51 %, Flügel und Zehner 21 %, Mittelfeld 17 %, Abwehr 11 %. Die besten Torjäger treffen 33- bis 49-mal in allen Pflichtspielen. Die Tore je Spiel bleiben, wo sie waren.
-  - Die Vorlage gibt, wer den Ball spielt: bei Flanken der Flügelspieler oder Außenverteidiger, bei Steilpässen der Spielmacher (nach Passspiel und Übersicht), bei Ecken der Schütze. Nach einem Solo gibt es nur manchmal eine.
+  - Gemessen über eine Saison der fünf ersten und zwei zweiten Ligen: Sturm 51 %, Flügel und Zehner 21 %, Mittelfeld 17 %, Abwehr 11 %. Die Tore je Spiel bleiben, wo sie waren.
+  - Die Vorlage gibt, wer den Ball spielt: bei Flanken der Flügelspieler oder Außenverteidiger, bei Steilpässen meist ein Mittelfeldspieler (nach Position, Passspiel und Übersicht), bei Ecken der Schütze. Nicht jedes Tor hat eine: nach Flanke und Steilpass 86 %, nach Ecken 60 %, nach einem Solo 30 % (`MATCH_TUNING.vorlagenAnteil`).
+  - Vorher waren 84 % der Ligatore vorbereitet, und die besten Vorlagengeber kamen auf 18 bis 26 Vorlagen. Jetzt sind es rund 70 % wie in den großen Ligen, die besten kommen auf 11 bis 18.
+  - Stürmer kommen etwas seltener zum Abschluss als zuvor. Die besten Torjäger treffen 33- bis 39-mal in der Liga, in Ausreißerjahren über 40. Das ist noch etwas mehr als in Wirklichkeit, dort sind es meist 25 bis 36.
   - Vorher fielen überall gleich viele Tore, auch in LaLiga mit 3,3.
 - **Remis in der Schlussphase:** Steht es ab der 75. Minute unentschieden, will nur noch eine klar stärkere Mannschaft den Sieg. Der Außenseiter sichert den Punkt, und bei zwei ähnlich starken geht keiner mehr ins Risiko.
   - Vorher stürmten ab der 83. Minute immer beide.

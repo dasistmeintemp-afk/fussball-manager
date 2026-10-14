@@ -107,6 +107,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this.renderTrainingReport();
         this.renderAkademieSchwerpunkte(state, userClub);
         this.renderAkademieZugang(state);
+        this.renderJugendliga(state);
 
         const engine = this.getNegotiationEngine();
         const prospectsBody = document.getElementById("youthProspectsBody");
@@ -226,6 +227,40 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
      * Woher die Talente kommen: Jugendtag, Probetrainings unter dem Jahr und
      * der Sichtungstag, den der Manager selbst ansetzt.
      */
+    /** Die U19-Liga: Tabelle, eigene Ergebnisse, Torschützen */
+    renderJugendliga(state) {
+        const el = document.getElementById("jugendligaKarte");
+        const engine = typeof JugendligaEngine !== "undefined" ? JugendligaEngine : null;
+        if (!el || !engine) return;
+        const j = engine.starte(state);
+        if (!j) { el.hidden = true; return; }
+        el.hidden = false;
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const tabelle = engine.tabelle(state);
+        const eigene = j.eigene.slice(-5).reverse();
+        const schuetzen = Object.values(j.torschuetzen).sort((a, b) => b.tore - a.tore).slice(0, 5);
+        const staerke = engine.eigeneStaerke(state);
+        el.innerHTML = `
+            <div class="card-header"><h3>🏅 ${esc(j.name)}</h3><span class="header-tag">${j.runde} / ${j.runden.length} Spieltage${j.meister ? ` · Meister: ${esc(j.meister)}` : ""}</span></div>
+            <p class="text-muted jl-hinweis">Die U19 spielt mit den Talenten der Akademie und den Spielern bis 19 ohne Stammplatz bei den Profis - Stärke im Moment ${staerke.toFixed(1).replace(".", ",")}. Gespielt wird parallel zu den Spieltagen der Profis.</p>
+            <div class="jl-raster">
+                <div class="table-container">
+                    <table class="compact-table jl-tabelle">
+                        <thead><tr><th>Pl.</th><th>Team</th><th>Sp</th><th>Tore</th><th>Pkt</th></tr></thead>
+                        <tbody>${tabelle.map(z => `<tr class="${z.eigen ? "jl-eigen" : ""}"><td>${z.rang}.</td><td>${esc(z.name)}</td><td>${z.spiele}</td><td>${z.tore}:${z.gegentore}</td><td><strong>${z.punkte}</strong></td></tr>`).join("")}</tbody>
+                    </table>
+                </div>
+                <div>
+                    <h4>Letzte Spiele</h4>
+                    ${eigene.length ? `<ul class="jl-spiele">${eigene.map(e => {
+                        const art = e.tore > e.gegentore ? "s" : (e.tore === e.gegentore ? "u" : "n");
+                        return `<li><span class="jl-erg jl-${art}">${e.tore}:${e.gegentore}</span><span>${e.heim ? "gegen" : "bei"} ${esc(e.gegner)}<small>${e.schuetzen.length ? `Tore: ${esc(e.schuetzen.join(", "))}` : `${e.runde}. Spieltag`}</small></span></li>`;
+                    }).join("")}</ul>` : `<p class="text-muted">Der erste Spieltag der U19 kommt mit dem zweiten der Profis.</p>`}
+                    ${schuetzen.length ? `<h4>Torjäger der U19</h4><ol class="jl-schuetzen">${schuetzen.map(s => `<li>${esc(s.name)}<b>${s.tore}</b></li>`).join("")}</ol>` : ""}
+                </div>
+            </div>`;
+    },
+
     renderAkademieZugang(state) {
         const box = document.getElementById("youthZugang");
         const youth = (typeof YouthEngine !== "undefined" && YouthEngine) ? YouthEngine : (typeof window !== "undefined" ? window.YouthEngine : null);

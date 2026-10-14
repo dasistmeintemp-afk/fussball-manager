@@ -6139,6 +6139,44 @@ function runEngineTests() {
         if (!i3 || i3.art !== "geruecht" || !(state.fanMood > 60)) throw new Error(`Erwartet Bekenntnis, erhalten ${i3 && i3.art}`);
     });
 
+    test("U19-Liga: zwölf Teams, Hin- und Rückrunde im Takt der Profis, Tabelle, Torjäger und Meistertitel", () => {
+        const { JugendligaEngine: J } = require('./js/engine/jugendligaEngine.js');
+        const { YouthEngine } = require('./js/engine/youthEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const j = J.starte(state);
+        if (j.teams.length !== 12 || j.runden.length !== 22) throw new Error(`${j.teams.length} Teams, ${j.runden.length} Runden`);
+        // Jedes Paar genau zweimal, einmal mit jedem Heimrecht
+        const paare = new Map();
+        j.runden.forEach(r => r.forEach(([h, a]) => paare.set(`${h}-${a}`, (paare.get(`${h}-${a}`) || 0) + 1)));
+        if (paare.size !== 132 || [...paare.values()].some(n => n !== 1)) throw new Error("Spielplan ist keine Doppelrunde");
+        if (j.teams.slice(1).some(t => !state.clubs.find(c => c.id === t.clubId && c.countryId === "de"))) throw new Error("Fremde Teams in der deutschen U19-Liga");
+
+        // Takt: nach Spieltag 17 von 34 ist die Hinrunde gespielt
+        state.totalMatchdays = 34; state.currentMatchday = 17;
+        J.nachSpieltag(state);
+        if (j.runde !== 11) throw new Error(`Nach der halben Saison ${j.runde} Runden`);
+        const tab = J.tabelle(state);
+        const s = tab.reduce((a, z) => a + z.s, 0), n = tab.reduce((a, z) => a + z.n, 0);
+        const tore = tab.reduce((a, z) => a + z.tore, 0), gegentore = tab.reduce((a, z) => a + z.gegentore, 0);
+        if (s !== n || tore !== gegentore || tab.some(z => z.spiele !== 11)) throw new Error("Tabelle unstimmig");
+        // Die Tore der eigenen U19 haben Namen
+        const eigeneTore = j.eigene.reduce((a, e) => a + e.tore, 0);
+        const namentlich = Object.values(j.torschuetzen).reduce((a, t) => a + t.tore, 0);
+        if (eigeneTore !== namentlich) throw new Error(`${eigeneTore} Tore, ${namentlich} mit Namen`);
+
+        // Eine überragende Akademie wird Meister - der Titel kommt in die Chronik
+        YouthEngine.eigeneTalente(state).forEach(t => { t.overall = 99; });
+        for (let i = 0; i < 11; i++) YouthEngine.eigeneTalente(state).push({ id: `jl_${i}`, name: `Talent ${i}`, pos: "ST", age: 17, overall: 99, promoted: false });
+        state.currentMatchday = 34;
+        J.nachSpieltag(state);
+        if (j.runde !== 22 || !j.meister || !j.meister.startsWith(state.clubs.find(c => c.id === "muc").name)) throw new Error(`Meister: ${j.meister}`);
+        if (!(state.chronik && state.chronik.muc && state.chronik.muc.titel.some(t => t.wettbewerb === J.TITEL))) throw new Error("U19-Titel fehlt in der Chronik");
+        if (!state.inbox.some(m => /U19 ist Meister/.test(m.subject))) throw new Error("Keine Meisternachricht");
+        // Neue Saison, neue Liga
+        state.seasonYear++;
+        if (J.starte(state).runde !== 0) throw new Error("Neue Saison beginnt nicht bei null");
+    });
+
     // ---------------------------------------------------------------
     // Gespielt wird nur an dem Tag, an dem das Spiel angesetzt ist
     // ---------------------------------------------------------------

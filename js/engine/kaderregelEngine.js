@@ -1,5 +1,5 @@
 /**
- * KaderregelEngine - Meldelisten für den Europapokal und die Premier League
+ * KaderregelEngine - Meldelisten für den Europapokal, die Premier League und La Liga
  *
  * Bisher durfte jeder Spieler des Kaders in jedem Wettbewerb spielen. Im
  * Vorbild und in Wirklichkeit gibt es Meldelisten:
@@ -11,6 +11,11 @@
  *                  eigenen Jugend kommen - ohne Obergrenze.
  *   Premier League - 25 Spieler, höchstens 17 davon über 21 und nicht im
  *                  Land ausgebildet. Wer 21 oder jünger ist, zählt nicht mit.
+ *   La Liga      - 25 Spieler über 21, höchstens drei ohne EU-Pass. Wie in
+ *                  Spanien zählen Spieler aus den AKP-Staaten (Cotonou-
+ *                  Abkommen) wie EU-Bürger, und Südamerikaner bekommen nach
+ *                  zwei Saisons im Land den spanischen Pass. Das Spiel kennt
+ *                  nur die Zeit im Verein; die zählt.
  *
  * "Im Land ausgebildet" kennt das Spiel nicht aus den Jugendjahren der
  * Spieler. Es gilt, wer aus der eigenen Jugend kommt oder die Nationalität
@@ -37,8 +42,20 @@ const _krResolve = (() => {
 const KaderregelEngine = {
     REGELN: {
         europa: { name: "Europapokal", max: 25, minLokal: 8, listeB: true },
-        liga_en_liga_1: { name: "Premier League", max: 25, maxFremd: 17, u21frei: true }
+        liga_en_liga_1: { name: "Premier League", max: 25, maxFremd: 17, u21frei: true },
+        liga_es_liga_1: { name: "La Liga", max: 25, maxNichtEU: 3, u21frei: true }
     },
+    /** EU, EWR und die Schweiz */
+    EU: ["Belgien", "Bulgarien", "Dänemark", "Deutschland", "Estland", "Finnland", "Frankreich", "Griechenland", "Irland",
+        "Italien", "Kroatien", "Lettland", "Litauen", "Luxemburg", "Malta", "Niederlande", "Österreich", "Polen", "Portugal",
+        "Rumänien", "Schweden", "Slowakei", "Slowenien", "Spanien", "Tschechien", "Ungarn", "Zypern",
+        "Norwegen", "Island", "Liechtenstein", "Schweiz"],
+    /** AKP-Staaten: in Spanien keine Nicht-EU-Spieler */
+    AKP: ["Senegal", "Nigeria", "Ghana", "Mali", "Elfenbeinküste", "Kamerun", "Guinea", "Burkina Faso", "DR Kongo", "Benin",
+        "Gambia", "Gabun", "Togo", "Angola", "Kap Verde", "Äquatorialguinea", "Jamaika", "Haiti", "Südafrika", "Sambia", "Simbabwe"],
+    /** Iberoamerika: nach zwei Jahren im Land spanischer Pass */
+    IBERO: ["Argentinien", "Brasilien", "Uruguay", "Kolumbien", "Chile", "Mexiko", "Paraguay", "Ecuador", "Peru", "Venezuela",
+        "Bolivien", "Costa Rica", "Honduras", "Panama", "Guatemala", "El Salvador", "Dominikanische Republik", "Kuba"],
     LAND_NATION: {
         de: ["Deutschland"], en: ["England", "Wales"], es: ["Spanien"], it: ["Italien"], fr: ["Frankreich"]
     },
@@ -61,6 +78,39 @@ const KaderregelEngine = {
         if (!p || !club) return false;
         if (p.eigengewaechsVon && p.eigengewaechsVon === club.id) return true;
         return (this.LAND_NATION[club.countryId] || []).includes(p.nationality);
+    },
+
+    /**
+     * Hat der Spieler (für die Regeln des Vereinslandes) einen EU-Pass?
+     * Gilt nur für Spanien; anderswo zählt die Regel nicht.
+     */
+    eu(state, p, club) {
+        if (!p) return false;
+        if (this.EU.includes(p.nationality)) return true;
+        if (club?.countryId !== "es") return true;
+        if (this.AKP.includes(p.nationality)) return true;
+        if (this.IBERO.includes(p.nationality)) {
+            // Wer schon zum Start der Karriere im Kader stand, ist lange im Land
+            if (typeof p.vereinSeit !== "number") return true;
+            return (state?.seasonYear || 1) - Math.floor(p.vereinSeit / 1000) >= 2;
+        }
+        return false;
+    },
+
+    /**
+     * Zum Start einer Karriere: Wer in einem Verein mit Grenze über der Zahl
+     * der Spieler ohne EU-Pass liegt, bei dem haben die schwächsten davon
+     * den Pass des Landes (in Spanien aufgewachsen). Sonst stünde mancher
+     * erzeugte Kader gleich mit fünf Nicht-EU-Spielern da.
+     */
+    gleicheStartkaderAn(state) {
+        const pass = { es: "Spanien" };
+        (state?.clubs || []).forEach(club => {
+            const r = this.regel(club, "liga");
+            if (!r || r.maxNichtEU == null || !pass[club.countryId]) return;
+            const ohne = this._kader(state, club).filter(p => !this.eu(state, p, club)).sort((a, b) => (b.overall || 0) - (a.overall || 0));
+            ohne.slice(r.maxNichtEU).forEach(p => { p.nationality = pass[club.countryId]; });
+        });
     },
 
     /** Liste B: bis 21, aus der eigenen Jugend oder seit zwei Saisons im Verein */
@@ -111,10 +161,19 @@ const KaderregelEngine = {
             if (falschB.length) fehler.push(`Nicht für Liste B zugelassen: ${falschB.map(p => p.name).join(", ")}.`);
         } else {
             const zaehlt = a.filter(p => !(r.u21frei && (p.age || 99) <= this.U21));
-            const fremd = zaehlt.filter(p => !this.lokal(p, club)).length;
-            Object.assign(zahlen, { zaehlt: zaehlt.length, fremd, maxFremd: r.maxFremd });
+            Object.assign(zahlen, { zaehlt: zaehlt.length });
             if (zaehlt.length > r.max) fehler.push(`${zaehlt.length} Spieler über ${this.U21} gemeldet, erlaubt sind ${r.max}.`);
-            if (fremd > r.maxFremd) fehler.push(`${fremd} Spieler über ${this.U21} sind nicht im Land ausgebildet, erlaubt sind ${r.maxFremd}.`);
+            if (r.maxFremd != null) {
+                const fremd = zaehlt.filter(p => !this.lokal(p, club)).length;
+                Object.assign(zahlen, { fremd, maxFremd: r.maxFremd });
+                if (fremd > r.maxFremd) fehler.push(`${fremd} Spieler über ${this.U21} sind nicht im Land ausgebildet, erlaubt sind ${r.maxFremd}.`);
+            }
+            if (r.maxNichtEU != null) {
+                // Die Grenze gilt für alle Gemeldeten, auch die jungen
+                const nichtEU = a.filter(p => !this.eu(state, p, club)).length;
+                Object.assign(zahlen, { nichtEU, maxNichtEU: r.maxNichtEU });
+                if (nichtEU > r.maxNichtEU) fehler.push(`${nichtEU} Spieler ohne EU-Pass gemeldet, erlaubt sind ${r.maxNichtEU}.`);
+            }
         }
         return { ok: fehler.length === 0, fehler, zahlen };
     },
@@ -143,13 +202,19 @@ const KaderregelEngine = {
         const jung = kader.filter(p => r.u21frei && (p.age || 99) <= this.U21);
         const alt = kader.filter(p => !jung.includes(p));
         const a = [];
+        const ohneEUPlatz = (p) => r.maxNichtEU != null && !this.eu(state, p, club)
+            && a.filter(x => !this.eu(state, x, club)).length >= r.maxNichtEU;
         alt.forEach(p => {
             if (a.length >= r.max) return;
-            const fremd = a.filter(x => !this.lokal(x, club)).length;
-            if (!this.lokal(p, club) && fremd >= r.maxFremd) return;
+            if (r.maxFremd != null) {
+                const fremd = a.filter(x => !this.lokal(x, club)).length;
+                if (!this.lokal(p, club) && fremd >= r.maxFremd) return;
+            }
+            if (ohneEUPlatz(p)) return;
             a.push(p);
         });
-        return { a: a.concat(jung).map(p => p.id), b: [] };
+        jung.forEach(p => { if (!ohneEUPlatz(p)) a.push(p); });
+        return { a: a.map(p => p.id), b: [] };
     },
 
     _speicher(state) {

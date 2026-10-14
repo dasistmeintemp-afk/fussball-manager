@@ -747,12 +747,21 @@ class TransferEngine {
         // Hälfte langsamer.
         const ZUSCHLAG_MAX = 9;
         const wunschId = nachrichten && club.geruecht ? String(club.geruecht.playerId) : null;
+        // La Liga: Wer schon drei Spieler ohne EU-Pass hat, holt keinen
+        // weiteren - er dürfte ihn nicht melden
+        const regeln = (typeof KaderregelEngine !== "undefined" && KaderregelEngine) ? KaderregelEngine
+            : (typeof require !== "undefined" ? (() => { try { return require("./kaderregelEngine.js").KaderregelEngine; } catch (e) { return null; } })() : null);
+        const ligaRegel = regeln ? regeln.regel(club, "liga") : null;
+        const passVoll = !!(ligaRegel && ligaRegel.maxNichtEU != null
+            && regeln._kader(state, club).filter(x => !regeln.eu(state, x, club)).length >= ligaRegel.maxNichtEU);
+        const alsNeuzugang = { vereinSeit: (state.seasonYear || 1) * 1000 };
         const besteReize = [];
         const pruefe = (p) => {
             if (p.clubId === club.id) return null;
             if (p.clubId === state.userClubId) return null;
             if (p.leihe) return null;
             if ((p.injuredWeeks || 0) > 0) return null;
+            if (passVoll && !regeln.eu(state, Object.assign({ nationality: p.nationality }, alsNeuzugang), club)) return null;
             // Billige Vorprüfung: Unter 63,75 % des Marktwerts (Vertragsende,
             // Transferliste) geht kein Verein herunter - wer selbst dann zu
             // teuer ist, braucht keine weitere Prüfung

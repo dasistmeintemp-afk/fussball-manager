@@ -135,9 +135,10 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   - **Startplätze:** Rang 1 bis 4 der Fünfjahreswertung stellt vier Vereine in der Königsklasse, Rang 5 drei. Das Land mit dem besten Wert der Vorsaison bekommt einen fünften Platz (Leistungsplatz). Dahinter je ein Platz in Europa League und Conference League.
   - **Start:** Die vier Saisons vor der Karriere sind grob den echten Werten nachgebildet, England vor Italien, Spanien, Deutschland und Frankreich.
   - **Anzeige:** Die Ranglisten zeigen die Wertung mit der laufenden Saison und den Plätzen, die sie bringen würde.
-- **Meldelisten (`KaderregelEngine`):** Im Europapokal und in der Premier League spielt nur, wer gemeldet ist.
+- **Meldelisten (`KaderregelEngine`):** Im Europapokal, in der Premier League und in La Liga spielt nur, wer gemeldet ist.
   - **Europapokal:** Liste A mit höchstens 25 Spielern, davon mindestens acht im Land ausgebildet. Fehlen welche, schrumpft die Liste um genau so viele Plätze. Liste B ohne Obergrenze für Spieler bis 21, die seit zwei Saisons im Verein sind oder aus der eigenen Jugend kommen.
   - **Premier League:** höchstens 25 Spieler über 21, davon höchstens 17 nicht im Land ausgebildet. Wer 21 oder jünger ist, zählt nicht mit.
+  - **La Liga:** höchstens 25 Spieler über 21 und höchstens drei ohne EU-Pass (EU, EWR und Schweiz). Spieler aus den AKP-Staaten zählen wie EU-Bürger. Südamerikaner bekommen nach zwei Saisons im Verein den spanischen Pass. Die erzeugten Kader halten die Grenze zum Start ein. KI-Vereine mit drei Spielern ohne EU-Pass kaufen keinen weiteren, und das Angebotsfenster warnt vor einem Kauf über die Grenze.
   - **Im Land ausgebildet** ist, wer aus der eigenen Jugend kommt oder die Nationalität des Landes hat (für England auch Wales). Die Jugendjahre der Spieler kennt das Spiel nicht, die Nationalität ist eine Annäherung.
   - **Fristen:** Gemeldet wird bis zum ersten Spiel des Wettbewerbs, nachgemeldet im Winterfenster. Ohne abgegebene Liste meldet der Co-Trainer zum Meldeschluss seinen Vorschlag und schreibt eine Nachricht.
   - **Folgen:** Mit einem nicht gemeldeten Spieler in der Startelf gibt es keinen Anpfiff, nicht Gemeldete verschwinden von der Bank. Spielt der Co-Trainer (Urlaub, Sofortergebnis ohne Livespiel), stellt er nur Gemeldete auf.
@@ -894,7 +895,7 @@ untitled/
 │   │   ├── ehemaligeEngine.js  # Ehemalige Spieler im Trainerstab, Abschiedsspiel für Legenden
 │   │   ├── visionEngine.js     # Vereinsvision: Fernziel mit Frist, Jahresziele, Bilanz
 │   │   ├── kaderplanungEngine.js # Kader über drei Spielzeiten, Baustellen als Suchauftrag
-│   │   ├── kaderregelEngine.js # Meldelisten: Europapokal (25, acht ausgebildet, Liste B), Premier League
+│   │   ├── kaderregelEngine.js # Meldelisten: Europapokal (25, acht ausgebildet, Liste B), Premier League, La Liga (Nicht-EU)
 │   │   ├── koeffizientEngine.js # Fünfjahreswertung der Länder und Startplätze im Europapokal
 │   │   ├── turnierEngine.js    # EM und WM im Sommer: Gruppen, K.-o.-Runden, Titel
 │   │   ├── finanzregelEngine.js # Kaderkostenquote: Verwarnung, Geldstrafe, Punktabzug

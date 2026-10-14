@@ -11575,6 +11575,47 @@ function runEngineTests() {
         if (K.pruefe(en, united, "liga", { a: uk.map(p => p.id) }).ok && uk.length - 4 - 1 > 17) throw new Error("Zu viele fremde Spieler erlaubt");
     });
 
+    test("Kaderregeln: La Liga erlaubt drei Spieler ohne EU-Pass - AKP-Staaten zählen wie EU, Südamerikaner nach zwei Saisons", () => {
+        const { KaderregelEngine: K } = require('./js/engine/kaderregelEngine.js');
+        const { TransferEngine } = require('./js/engine/transferEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.leagueId === "es_liga_1");
+        if (K.regel(club, "liga")?.maxNichtEU !== 3 || !K.arten(state, club).includes("liga")) throw new Error("Keine Regel für La Liga");
+        // Zum Start halten alle spanischen Vereine die Grenze ein
+        const zuViele = state.clubs.filter(c => c.leagueId === "es_liga_1" && K._kader(state, c).filter(p => !K.eu(state, p, c)).length > 3);
+        if (zuViele.length) throw new Error(`Zu viele ohne EU-Pass: ${zuViele.map(c => c.name)}`);
+
+        const s = state.seasonYear || 1;
+        const pass = (nat, seit) => K.eu(state, { nationality: nat, vereinSeit: seit * 1000 }, club);
+        if (!pass("Portugal", s) || !pass("Schweiz", s) || !pass("Senegal", s)) throw new Error("EU, Schweiz oder AKP-Staat ohne Pass");
+        if (pass("Marokko", s) || pass("England", s) || pass("Argentinien", s)) throw new Error("Nicht-EU mit Pass");
+        if (!pass("Argentinien", s - 2)) throw new Error("Südamerikaner nach zwei Saisons ohne Pass");
+        // Anderswo gilt die Regel nicht
+        const en = state.clubs.find(c => c.leagueId === "en_liga_1");
+        if (!K.eu(state, { nationality: "Marokko", vereinSeit: s * 1000 }, en)) throw new Error("Regel außerhalb Spaniens");
+
+        // Fünf ohne Pass im Kader: Der Vorschlag meldet die besten drei, mehr lehnt die Prüfung ab
+        const kader = K._kader(state, club).slice().sort((a, b) => b.overall - a.overall);
+        kader.slice(0, 5).forEach(p => { p.nationality = "Marokko"; p.vereinSeit = s * 1000; });
+        const v = K.vorschlag(state, club, "liga");
+        const ohne = v.a.filter(id => !K.eu(state, kader.find(p => p.id === id), club));
+        if (ohne.length !== 3 || !ohne.includes(kader[0].id)) throw new Error(`Vorschlag: ${ohne.length} ohne EU-Pass`);
+        if (!K.pruefe(state, club, "liga", v).ok) throw new Error("Vorschlag verstößt gegen die Regel");
+        const alle = K.pruefe(state, club, "liga", { a: kader.map(p => p.id) });
+        if (alle.ok || alle.zahlen.nichtEU < 5 || !/ohne EU-Pass/.test(alle.fehler.join(" "))) throw new Error(`Prüfung: ${JSON.stringify(alle)}`);
+
+        // Die KI holt dann keinen weiteren Spieler ohne Pass
+        club.transferBudget = 5e8;
+        const marokkaner = state.players.filter(p => p.nationality === "Marokko" && p.clubId && p.clubId !== club.id);
+        const gekauft = [];
+        for (let i = 0; i < 30; i++) {
+            const vorher = new Set(K._kader(state, club).map(p => p.id));
+            TransferEngine.versucheEinenTransfer(state, club);
+            K._kader(state, club).filter(p => !vorher.has(p.id)).forEach(p => gekauft.push(p));
+        }
+        if (!marokkaner.length || gekauft.some(p => !K.eu(state, p, club))) throw new Error(`Gekauft ohne EU-Pass: ${gekauft.filter(p => !K.eu(state, p, club)).map(p => p.nationality)}`);
+    });
+
     test("Fünfjahreswertung: Punkte der Länder aus dem Europapokal verteilen die Startplätze neu", () => {
         const { KoeffizientEngine: K } = require('./js/engine/koeffizientEngine.js');
         const { CompetitionEngine } = require('./js/engine/competitionEngine.js');

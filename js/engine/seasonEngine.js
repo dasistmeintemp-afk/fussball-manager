@@ -1566,10 +1566,14 @@ class SeasonEngine {
 
         // Europapokal aus den Abschlusstabellen der fünf Topligen neu besetzen
         if (competitionEngine && typeof competitionEngine.generateEuropeanCompetitions === 'function') {
+            // Die Pokalsieger der fünf Länder spielen Europa League
+            const pokale = _resolve('CupEngine', './cupEngine.js');
+            const pokalsieger = pokale && typeof pokale.pokalsiegerJeLand === 'function' ? pokale.pokalsiegerJeLand(state) : {};
             state.europeanCompetitions = competitionEngine.generateEuropeanCompetitions(state.clubs, {
                 leagues: state.leagues,
                 standingsByLeague: state.standingsByLeague,
-                spotsByCountry
+                spotsByCountry,
+                pokalsieger
             });
         }
 

@@ -838,11 +838,13 @@ const CalendarEngine = {
         }
 
         if (art === "cup") {
-            const cup = state.cups?.de_cup;
+            const cup = cupEngine && typeof cupEngine.eigenerPokal === "function" ? cupEngine.eigenerPokal(state) : state.cups?.de_cup;
             const raus = cup && (cup.ausgeschieden || []).includes(state.userClubId);
             const rundenName = cupEngine?.POKAL_RUNDEN?.[runde]?.name || "Pokalrunde";
             let text = "Die Pokalrunde wird ausgetragen.";
-            if (raus) {
+            if (cup && runde === cup.rundenIndex && (cup.runden[runde]?.freilose || []).includes(state.userClubId)) {
+                text = `Freilos - wir steigen erst in der ${cupEngine?.POKAL_RUNDEN?.[runde + 1]?.name || "nächsten Runde"} ein.`;
+            } else if (raus) {
                 text = "Ohne uns - der Pokal wird ohne unsere Beteiligung weitergespielt.";
             } else if (cup && cup.completed) {
                 text = "Der Pokal ist entschieden.";

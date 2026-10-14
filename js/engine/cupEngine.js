@@ -106,49 +106,102 @@ class CupEngine {
         this.setzeEuropaAn(state);
     }
 
-    /**
-     * Der Landespokal: die stärksten Vereine des eigenen Landes, dazu der
-     * eigene Verein - auch wenn er aus der Kreisliga kommt.
-     */
-    static setzePokalAn(state) {
-        const eigener = state.clubs.find(c => c.id === state.userClubId);
-        const land = eigener?.countryId || eigener?.country || null;
+    /** Die Länder mit eigenem Pokal */
+    static POKAL_LAENDER = ["de", "en", "es", "it", "fr"];
+    static POKAL_NAMEN = { de: "DFB-Pokal", en: "FA Cup", es: "Copa del Rey", it: "Coppa Italia", fr: "Coupe de France" };
 
-        const imLand = state.clubs.filter(c =>
-            !land || c.countryId === land || c.country === land);
-        const pool = (imLand.length >= 16 ? imLand : state.clubs).slice();
-
-        pool.sort((a, b) => (b.reputation || 0) - (a.reputation || 0));
-        let teilnehmer = pool.slice(0, this.POKAL_TEILNEHMER).map(c => c.id);
-
-        // Der eigene Verein ist immer dabei - sonst ist der Pokal für den
-        // Spieler eines kleinen Vereins wieder nur Kulisse.
-        if (state.userClubId && !teilnehmer.includes(state.userClubId)) {
-            teilnehmer[teilnehmer.length - 1] = state.userClubId;
-        }
-
-        state.cups = state.cups || {};
-        state.cups.de_cup = {
-            id: "de_cup",
-            name: this.pokalName(state),
-            type: "cup",
-            teilnehmer,
-            rundenIndex: 0,
-            runden: [this.loseAus(teilnehmer, this.POKAL_RUNDEN[0].name, "de_cup", 1)],
-            ausgeschieden: [],
-            completed: false,
-            winnerId: null
-        };
+    /** Das Land des eigenen Vereins */
+    static eigenesLand(state) {
+        const eigener = (state.clubs || []).find(c => c.id === state.userClubId);
+        return eigener?.countryId || eigener?.country || "de";
     }
 
-    static pokalName(state) {
-        const eigener = state.clubs.find(c => c.id === state.userClubId);
-        const land = eigener?.countryId || eigener?.country;
-        const namen = {
-            de: "DFB-Pokal", en: "FA Cup", es: "Copa del Rey",
-            it: "Coppa Italia", fr: "Coupe de France"
-        };
-        return namen[land] || "Landespokal";
+    /**
+     * Der Schlüssel des eigenen Landespokals. Jedes Land hat seinen Pokal
+     * unter "<land>_cup". Ältere Spielstände führen den eigenen Pokal unter
+     * "de_cup", auch wenn der Verein in England spielt - bis zur nächsten
+     * Saison, die alle Pokale neu anlegt.
+     */
+    static eigenerPokalId(state) {
+        const id = `${this.eigenesLand(state)}_cup`;
+        if (state?.cups?.[id]) return id;
+        return state?.cups?.de_cup ? "de_cup" : id;
+    }
+
+    static eigenerPokal(state) {
+        return state?.cups?.[this.eigenerPokalId(state)] || null;
+    }
+
+    /** Die Pokale der anderen Länder - sie laufen im Hintergrund mit */
+    static weiterePokalIds(state) {
+        const eigen = this.eigenerPokalId(state);
+        return Object.keys(state?.cups || {}).filter(id => id !== eigen);
+    }
+
+    /** Wer in welchem Land den Pokal geholt hat (abgeschlossene Pokale) */
+    static pokalsiegerJeLand(state) {
+        const sieger = {};
+        Object.entries(state?.cups || {}).forEach(([id, cup]) => {
+            if (!cup || !cup.completed || !cup.winnerId) return;
+            const land = cup.land || (id === "de_cup" ? this.eigenesLand(state) : id.split("_")[0]);
+            sieger[land] = cup.winnerId;
+        });
+        return sieger;
+    }
+
+    /**
+     * Die Landespokale: in jedem Land die stärksten Vereine, im eigenen
+     * Land dazu der eigene Verein - auch wenn er aus der Kreisliga kommt.
+     * Vorher gab es nur den Pokal des eigenen Landes; in den anderen Ländern
+     * fehlten Pokalsieger, Prämien und Pokalspiele ganz.
+     */
+    static setzePokalAn(state) {
+        const eigenesLand = this.eigenesLand(state);
+        state.cups = {};
+        this.POKAL_LAENDER.forEach(land => {
+            const imLand = state.clubs.filter(c => (c.countryId || c.country || "de") === land);
+            if (imLand.length < 16) return;
+            const pool = imLand.slice().sort((a, b) => (b.reputation || 0) - (a.reputation || 0));
+            const teilnehmer = pool.slice(0, this.POKAL_TEILNEHMER).map(c => c.id);
+
+            // Der eigene Verein ist immer dabei - sonst ist der Pokal für den
+            // Spieler eines kleinen Vereins wieder nur Kulisse.
+            if (land === eigenesLand && state.userClubId && !teilnehmer.includes(state.userClubId)) {
+                teilnehmer[teilnehmer.length - 1] = state.userClubId;
+            }
+
+            const id = `${land}_cup`;
+            state.cups[id] = {
+                id,
+                land,
+                name: this.pokalName(state, land),
+                type: "cup",
+                teilnehmer,
+                rundenIndex: 0,
+                runden: [this.ersteRunde(teilnehmer, id)],
+                ausgeschieden: [],
+                completed: false,
+                winnerId: null
+            };
+        });
+    }
+
+    /**
+     * Die erste Runde. Spanien, Italien und Frankreich haben weniger als 64
+     * Vereine; vorher fiel dann in einer Runde ein Verein ohne Spiel heraus,
+     * und der Pokal endete eine Runde zu früh. Jetzt bekommen die stärksten
+     * Vereine ein Freilos, bis die zweite Runde mit 32 aufgeht.
+     */
+    static ersteRunde(teilnehmer, id) {
+        const runde2 = this.POKAL_RUNDEN[1].teams;
+        const freilose = teilnehmer.length > runde2 ? Math.max(0, this.POKAL_TEILNEHMER - teilnehmer.length) : 0;
+        const runde = this.loseAus(teilnehmer.slice(freilose), this.POKAL_RUNDEN[0].name, id, 1);
+        if (freilose > 0) runde.freilose = teilnehmer.slice(0, freilose);
+        return runde;
+    }
+
+    static pokalName(state, land) {
+        return this.POKAL_NAMEN[land || this.eigenesLand(state)] || "Landespokal";
     }
 
     /** Eine Runde auslosen */
@@ -268,7 +321,12 @@ class CupEngine {
         if (art === "playoff") return _cupResolve("PlayoffEngine", "./playoffEngine.js")?.spieleTermin(state, rundenIndex) || null;
         if (art === "supercup") return _cupResolve("SupercupEngine", "./supercupEngine.js")?.spieleTermin(state) || null;
         if (art === "eurosupercup") return _cupResolve("EuroSupercupEngine", "./euroSupercupEngine.js")?.spieleTermin(state) || null;
-        if (art === "cup") return this.spielePokalrunde(state, rundenIndex);
+        if (art === "cup") {
+            // Die Pokale der anderen Länder spielen am selben Abend
+            const eigene = this.spielePokalrunde(state, rundenIndex);
+            this.weiterePokalIds(state).forEach(id => this.spielePokalrunde(state, rundenIndex, id));
+            return eigene;
+        }
         return this.spieleEuropaTermin(state, rundenIndex);
     }
 
@@ -277,7 +335,11 @@ class CupEngine {
         if (art === "playoff") return _cupResolve("PlayoffEngine", "./playoffEngine.js")?.schliesseTerminAb(state, rundenIndex) || [];
         if (art === "supercup") return _cupResolve("SupercupEngine", "./supercupEngine.js")?.schliesseTerminAb(state) || [];
         if (art === "eurosupercup") return _cupResolve("EuroSupercupEngine", "./euroSupercupEngine.js")?.schliesseTerminAb(state) || [];
-        if (art === "cup") return this.schliessePokalrundeAb(state, rundenIndex);
+        if (art === "cup") {
+            const eigene = this.schliessePokalrundeAb(state, rundenIndex);
+            this.weiterePokalIds(state).forEach(id => this.schliessePokalrundeAb(state, rundenIndex, id));
+            return eigene;
+        }
         return this.schliesseEuropaTerminAb(state, rundenIndex);
     }
 
@@ -298,7 +360,7 @@ class CupEngine {
         const meine = m => m.homeClubId === state.userClubId || m.awayClubId === state.userClubId;
 
         if (art === "cup") {
-            const cup = state.cups?.de_cup;
+            const cup = this.eigenerPokal(state);
             if (!cup || cup.completed) return null;
             // Nur die Runde, die an diesem Abend dran ist. Vorher zählte hier
             // die laufende Runde des Pokals: War die eigene Partie gespielt und
@@ -328,7 +390,7 @@ class CupEngine {
 
     /** Die aktuelle Pokalrunde */
     static aktuellePokalrunde(state) {
-        const cup = state.cups?.de_cup;
+        const cup = this.eigenerPokal(state);
         if (!cup || cup.completed) return null;
         return cup.runden[cup.rundenIndex] || null;
     }
@@ -341,8 +403,8 @@ class CupEngine {
      * werden die offenen Runden erst nachgeholt, damit er nicht ohne Sieger
      * endet.
      */
-    static spielePokalrunde(state, rundenIndex) {
-        const cup = state.cups?.de_cup;
+    static spielePokalrunde(state, rundenIndex, cupId) {
+        const cup = state.cups?.[cupId || this.eigenerPokalId(state)];
         if (!cup || cup.completed) return null;
 
         const ziel = typeof rundenIndex === "number" ? rundenIndex : cup.rundenIndex;
@@ -351,7 +413,7 @@ class CupEngine {
             const offen = cup.runden[cup.rundenIndex];
             if (!offen) break;
             offen.matches.filter(m => !m.played).forEach(m => this.austragen(state, m, true));
-            this.schliessePokalrundeAb(state);
+            this.schliessePokalrundeAb(state, undefined, cupId);
         }
         if (cup.completed || cup.rundenIndex !== ziel) return null;
 
@@ -374,8 +436,9 @@ class CupEngine {
      * Wenn alle Partien einer Pokalrunde gespielt sind: Sieger ermitteln,
      * Prämien zahlen, nächste Runde auslosen.
      */
-    static schliessePokalrundeAb(state, rundenIndex) {
-        const cup = state.cups?.de_cup;
+    static schliessePokalrundeAb(state, rundenIndex, cupId) {
+        const id = cupId || this.eigenerPokalId(state);
+        const cup = state.cups?.[id];
         if (!cup || cup.completed) return null;
         // Ein Abend schließt nur seine eigene Runde ab
         if (typeof rundenIndex === "number" && cup.rundenIndex !== rundenIndex) return null;
@@ -384,7 +447,8 @@ class CupEngine {
         if (!runde || runde.matches.some(m => !m.played)) return null;
 
         runde.completed = true;
-        const sieger = runde.matches.map(m => this.siegerVon(m));
+        // Wer ein Freilos hatte, ist ohne Spiel weiter
+        const sieger = runde.matches.map(m => this.siegerVon(m)).concat(runde.freilose || []);
         const verlierer = runde.matches.map(m =>
             this.siegerVon(m) === m.homeClubId ? m.awayClubId : m.homeClubId);
         cup.ausgeschieden.push(...verlierer);
@@ -404,11 +468,12 @@ class CupEngine {
         cup.rundenIndex++;
         const naechste = this.POKAL_RUNDEN[cup.rundenIndex];
         cup.runden.push(this.loseAus(sieger, naechste ? naechste.name : `Runde ${cup.rundenIndex + 1}`,
-            "de_cup", cup.rundenIndex + 1));
+            id, cup.rundenIndex + 1));
 
         if (sieger.includes(state.userClubId)) {
+            const freilos = (runde.freilose || []).includes(state.userClubId);
             this.postfach(state, `🏆 ${cup.name}: Weiter in die nächste Runde`,
-                `${runde.roundName} überstanden. Die Auslosung für `
+                `${freilos ? `Freilos ${this.rundeIm(runde.roundName)}` : `${runde.roundName} überstanden`}. Die Auslosung für `
                 + `${naechste ? naechste.name : "die nächste Runde"} ist erfolgt.`);
         } else if (cup.ausgeschieden.includes(state.userClubId)) {
             const wo = this.rundeIm(runde.roundName);
@@ -724,9 +789,8 @@ class CupEngine {
      * Ist der eigene Verein in diesem Wettbewerb noch dabei?
      */
     static nochDabei(state, wettbewerbId) {
-        if (wettbewerbId === "de_cup") {
-            const cup = state.cups?.de_cup;
-            if (!cup) return false;
+        if (state.cups?.[wettbewerbId]) {
+            const cup = state.cups[wettbewerbId];
             return cup.teilnehmer.includes(state.userClubId)
                 && !cup.ausgeschieden.includes(state.userClubId);
         }

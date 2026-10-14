@@ -83,6 +83,14 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 
 ## 🌟 Highlights & Spielfunktionen
 
+### 🎙️ Rund um den Spieltag
+- **Konferenz (`KonferenzEngine`):** Im Ligaspiel zeigt der Reiter *Konferenz* die Zwischenstände der anderen Partien zur laufenden Minute und die Tabelle, wie sie gerade stünde. Tore auf anderen Plätzen stehen im Ticker; trifft ein Tabellennachbar, blendet sich die Konferenz kurz über dem Spielfeld ein.
+- **Stadion-Atmosphäre (`AtmosphaereEngine`):** Derbys, Europapokalnächte, Finals und Spiele um Titel oder Klassenerhalt sind lauter und bekommen zum Anpfiff eine Choreo in den Vereinsfarben. Die Ränge reagieren auf die Lage: Gesang, Stille, „Olé“, Pfiffe, Applaus oder Pfeifkonzert zum Abpfiff.
+- **Stimmen der Fans (`FanEngine`):** Die Fanstimmung folgt den Ergebnissen, gemessen an der Erwartung, im Derby stärker. Nach jedem Pflichtspiel und nach großen Transfers melden sich Fans mit kurzen Beiträgen; die Übersicht zeigt die jüngsten.
+- **Spieler in den Medien (`MedienEngine`):** Nach Ligaspielen gibt ab und zu ein Spieler ein Interview: der Frustrierte auf der Bank, der Matchwinner, das Talent, der Kapitän nach einer Pleitenserie, der Umworbene, der Spieler mit auslaufendem Vertrag. Was er sagt, wirkt auf Mediendruck, Kabine und Fans.
+- **Meilensteine, Trophäenschrank und Saisonrückblick (`MeilensteinEngine`):** Jubiläen von Trainer und Spielern (Spiele, Siege, Tore, Titel, Jahre im Verein) kommen als Nachricht und in die Chronik. Die Vereinsseite zeigt den Trophäenschrank, der Saisonabschluss die Saison in Zahlen.
+- **U19-Liga (`JugendligaEngine`):** Die Talente der Akademie spielen in einer Liga mit zwölf Nachwuchsteams aus dem eigenen Land - mit Tabelle, Ergebnissen und Torjägern im Training-Reiter. Die U19-Meisterschaft kommt in den Trophäenschrank.
+
 ### 1. 🏆 Liga & Wettbewerb
 - **18 Vereine der Liga 1**: Vollständige Kader, Budgets, Stadien, Fanbasen, Sponsoren und Vereinsinfrastruktur.
 - **Vollständiger Spielplan**: 34 Spieltage (Hin- & Rückrunde) nach Round-Robin-Verfahren.

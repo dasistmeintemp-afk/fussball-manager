@@ -651,6 +651,11 @@ class CupEngine {
                 const name = id === "supercup" ? "Supercup" : id === "eurosupercup" ? "Europäischer Supercup" : (id.endsWith("_cup") ? "Pokal" : (state.europeanCompetitions?.[id]?.name || "Europapokal"));
                 chronik.nachSpiel(state, match, name);
             }
+            const fans = _cupResolve("FanEngine", "./fanEngine.js");
+            if (fans && typeof fans.nachSpiel === "function") {
+                const id = String(match.competitionId || "");
+                fans.nachSpiel(state, match, id === "supercup" ? "Supercup" : id === "eurosupercup" ? "Europäischer Supercup" : (id.endsWith("_cup") ? "Pokal" : "Europapokal"));
+            }
         }
         if (typeof matchEngine.compactPlayedMatch === "function") {
             matchEngine.compactPlayedMatch(match, eigenes);

@@ -630,6 +630,9 @@ class SeasonEngine {
                     const rekord = chronik.nachSpiel(state, eigenesSpiel, "Liga");
                     if (rekord) SeasonEngine.boardMessage(state, "📜 Vereinschronik", rekord.replace(/^📜 /, "Neuer Eintrag in der Vereinschronik: ") + ".", "chronik");
                 }
+                // Die Kurve reagiert: Stimmung und Stimmen der Fans
+                const fans = _resolve('FanEngine', './fanEngine.js');
+                if (fans && typeof fans.nachSpiel === 'function') fans.nachSpiel(state, eigenesSpiel, "Liga");
                 // Die zweite Mannschaft spielt am selben Spieltag
                 const reserve = _resolve('ReserveEngine', './reserveEngine.js');
                 if (reserve && typeof reserve.nachSpieltag === 'function') {

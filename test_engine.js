@@ -6056,6 +6056,51 @@ function runEngineTests() {
         if (!(FanEngine.nachTransfer(state, star, "abgang") < 0)) throw new Error("Abgang des Besten ohne Frust");
     });
 
+    test("Meilensteine: Trainer- und Spielerjubiläen einmal gemeldet, Trophäenschrank geordnet, Saisonrückblick vollständig", () => {
+        const { MeilensteinEngine: M } = require('./js/engine/meilensteinEngine.js');
+        const { CareerEngine } = require('./js/engine/careerEngine.js');
+        const { ChronikEngine } = require('./js/engine/chronikEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Erika Beispiel" });
+        CareerEngine.beginneStation(state, "muc");
+        ChronikEngine.chronik(state);
+
+        // Trainer: 100 Ligaspiele und 50 Siege aus früheren Stationen
+        state.career.stationen.unshift({ clubId: "dor", clubName: "Alt", spiele: 99, siege: 49, ende: "gewechselt" });
+        const zeile = state.standings.find(r => r.clubId === "muc");
+        zeile.played = 1; zeile.won = 1;
+        const neu = M.nachSpiel(state);
+        if (!neu.some(m => /100\. Ligaspiel/.test(m.text)) || !neu.some(m => /50\. Ligasieg/.test(m.text))) throw new Error(`Trainer: ${neu.map(m => m.text).join(" | ")}`);
+        if (M.nachSpiel(state).some(m => m.art === "trainer")) throw new Error("Trainer-Meilenstein doppelt");
+
+        // Spieler: 100 Pflichtspiele und 50 Tore für den Verein (Chronik + laufende Saison)
+        const p = state.players.find(x => x.clubId === "muc");
+        state.chronik.muc.spieler[p.id] = [p.name, 95, 48, 10, 1, 1, p.pos];
+        p.stats = Object.assign({}, p.stats, { matches: 5, goals: 2 });
+        const post = state.inbox.length;
+        const spielerNeu = M.nachSpiel(state);
+        if (!spielerNeu.some(m => m.text.includes(`${p.name}: 100. Pflichtspiel`)) || !spielerNeu.some(m => m.text.includes(`${p.name}: 50. Pflichtspieltor`))) throw new Error(`Spieler: ${spielerNeu.map(m => m.text).join(" | ")}`);
+        if (state.inbox.length !== post + spielerNeu.length) throw new Error("Meilensteine nicht im Postfach");
+
+        // Titel: der erste wird gefeiert, der zweite nicht, der dritte wieder
+        CareerEngine.vermerkeTitel(state, "Meisterschaft 1. Liga", 1);
+        CareerEngine.vermerkeTitel(state, "Deutschlandpokal", 1);
+        CareerEngine.vermerkeTitel(state, "Supercup", 2);
+        CareerEngine.vermerkeTitel(state, "Meisterschaft 1. Liga", 2);
+        const titel = state.meilensteine.filter(m => m.art === "titel").map(m => m.text);
+        if (titel.length !== 2 || !/erste Titel/.test(titel[1]) || !/3\. Titel/.test(titel[0])) throw new Error(`Titel-Meilensteine: ${titel.join(" | ")}`);
+        const schrank = M.trophaeen(state);
+        if (schrank.map(t => `${t.art}:${t.anzahl}`).join() !== "meister:2,pokal:1,supercup:1") throw new Error(`Schrank: ${JSON.stringify(schrank)}`);
+
+        // Saisonrückblick
+        const r = M.rueckblick(state);
+        ["platz", "siege", "tore", "gegentore", "fanStimmung", "titel", "meilensteine", "torjaeger"].forEach(k => { if (!(k in r)) throw new Error(`Rückblick ohne ${k}`); });
+        if (r.titel.length !== 2 || !r.meilensteine.length) throw new Error("Rückblick ohne Titel oder Meilensteine der Saison");
+
+        // Fünf Saisons im Verein
+        state.chronik.muc.seit = 1; state.seasonYear = 5;
+        if (!M.saisonende(state) || M.saisonende(state)) throw new Error("Vereinsjubiläum fehlt oder doppelt");
+    });
+
     // ---------------------------------------------------------------
     // Gespielt wird nur an dem Tag, an dem das Spiel angesetzt ist
     // ---------------------------------------------------------------

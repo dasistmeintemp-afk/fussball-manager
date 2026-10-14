@@ -358,9 +358,28 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const liste = (eintraege, wert) => eintraege.length
             ? `<ol class="chronik-liste">${eintraege.map(s => `<li><button type="button" class="preis-name" data-player-id="${esc(s.id)}"${s.aktiv ? "" : " disabled"}>${esc(s.name)}</button> <small>${esc(s.pos || "")} · ${s.von === s.bis ? `Saison ${s.von}` : `${s.von}–${s.bis}`}</small><b>${wert(s)}</b></li>`).join("")}</ol>`
             : `<p class="text-muted chronik-leer">Noch keine Einträge.</p>`;
+        // Trophäenschrank: je Wettbewerb ein Pokal mit Anzahl und Saisons
+        const ms = typeof MeilensteinEngine !== "undefined" ? MeilensteinEngine : null;
+        const ICON = { meister: "🏆", europa: "⭐", pokal: "🥇", supercup: "🛡️", sonst: "🏅" };
+        const schrank = ms ? ms.trophaeen(state, club.id) : [];
+        const schrankHtml = schrank.length
+            ? `<div class="trophaeen-schrank">${schrank.map(t => `
+                <div class="trophaee trophaee-${t.art}">
+                    <span class="trophaee-icon" aria-hidden="true">${ICON[t.art] || "🏆"}</span>
+                    ${t.anzahl > 1 ? `<span class="trophaee-anzahl">${t.anzahl}×</span>` : ""}
+                    <strong>${esc(t.wettbewerb)}</strong>
+                    <small>Saison ${t.saisons.join(", ")}</small>
+                </div>`).join("")}</div>`
+            : `<div class="trophaeen-leer"><span aria-hidden="true">🏆</span> Der Trophäenschrank wartet noch auf den ersten Titel.</div>`;
+        const meilensteine = (state.meilensteine || []).slice(0, 8);
+        const meilensteinHtml = meilensteine.length ? `
+            <h4>Meilensteine</h4>
+            <ul class="meilenstein-liste">${meilensteine.map(m => `<li><span aria-hidden="true">${esc(m.icon)}</span><span>${esc(m.text)}</span><small>Saison ${m.saison}${m.datum ? ` · ${esc(m.datum)}` : ""}</small></li>`).join("")}</ul>` : "";
         el.innerHTML = `
             <div class="card-header"><h3>📜 Chronik & Rekorde</h3><span class="header-tag">seit Saison ${u.seit}</span></div>
-            ${u.titel.length ? `<div class="chronik-titel">${u.titel.map(t => `<span>🏆 ${esc(t.wettbewerb)} <small>Saison ${t.saison}</small></span>`).join("")}</div>` : ""}
+            <h4>Trophäenschrank</h4>
+            ${schrankHtml}
+            ${meilensteinHtml}
             <div class="chronik-raster">
                 <div>
                     <h4>Rekorde</h4>

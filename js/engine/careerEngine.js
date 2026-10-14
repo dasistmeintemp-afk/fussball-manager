@@ -424,6 +424,8 @@ class CareerEngine {
         });
         const chronik = _carResolve("ChronikEngine", "./chronikEngine.js");
         if (chronik && typeof chronik.titel === "function") chronik.titel(state, wettbewerb, saison);
+        const meilensteine = _carResolve("MeilensteinEngine", "./meilensteinEngine.js");
+        if (meilensteine && typeof meilensteine.nachTitel === "function") meilensteine.nachTitel(state, wettbewerb);
     }
 
     static postfach(state, sender, betreff, text, typ) {

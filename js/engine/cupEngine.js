@@ -656,6 +656,8 @@ class CupEngine {
                 const id = String(match.competitionId || "");
                 fans.nachSpiel(state, match, id === "supercup" ? "Supercup" : id === "eurosupercup" ? "Europäischer Supercup" : (id.endsWith("_cup") ? "Pokal" : "Europapokal"));
             }
+            const meilensteine = _cupResolve("MeilensteinEngine", "./meilensteinEngine.js");
+            if (meilensteine && typeof meilensteine.nachSpiel === "function") meilensteine.nachSpiel(state);
         }
         if (typeof matchEngine.compactPlayedMatch === "function") {
             matchEngine.compactPlayedMatch(match, eigenes);

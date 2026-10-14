@@ -633,6 +633,9 @@ class SeasonEngine {
                 // Die Kurve reagiert: Stimmung und Stimmen der Fans
                 const fans = _resolve('FanEngine', './fanEngine.js');
                 if (fans && typeof fans.nachSpiel === 'function') fans.nachSpiel(state, eigenesSpiel, "Liga");
+                // Meilensteine: Spiele und Siege als Trainer, Spiele und Tore der Spieler
+                const meilensteine = _resolve('MeilensteinEngine', './meilensteinEngine.js');
+                if (meilensteine && typeof meilensteine.nachSpiel === 'function') meilensteine.nachSpiel(state);
                 // Die zweite Mannschaft spielt am selben Spieltag
                 const reserve = _resolve('ReserveEngine', './reserveEngine.js');
                 if (reserve && typeof reserve.nachSpieltag === 'function') {
@@ -1009,6 +1012,8 @@ class SeasonEngine {
             }
             careerEngine.schliesseSaisonAb(state);
         }
+        const meilensteine = _resolve('MeilensteinEngine', './meilensteinEngine.js');
+        if (meilensteine && typeof meilensteine.saisonende === 'function') meilensteine.saisonende(state);
 
         // Der Trainer wächst mit seinen Aufgaben: Titel, eingebaute Talente,
         // eingespielte Taktik, viele Transfers, viele Gespräche

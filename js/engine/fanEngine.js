@@ -52,6 +52,11 @@ const FanEngine = {
         if (liste.length > this.MAX_STIMMEN) liste.length = this.MAX_STIMMEN;
     },
 
+    /** Ein Beitrag von außen (etwa zu einem Meilenstein) */
+    poste(state, text, ton = "neutral", anlass = "sonst") {
+        if (state && text) this._poste(state, text, ton, anlass);
+    },
+
     /** Die jüngsten Stimmen */
     stimmen(state, anzahl = 3) {
         return (state && Array.isArray(state.fanStimmen) ? state.fanStimmen : []).slice(0, anzahl);

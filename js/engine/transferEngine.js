@@ -1103,6 +1103,9 @@ class TransferEngine {
         return gezogen;
     }
 
+    /** Die so vielen Besten eines Kaders wecken Interesse anderer Vereine */
+    static BEGEHRT_AB_RANG = 6;
+
     /**
      * Erzeugt gelegentliche Angebote von KI-Vereinen für Spieler des Spielers
      */
@@ -1129,7 +1132,7 @@ class TransferEngine {
             .filter(p => p && (p.transferListed || p.wechselwunsch) && !p.leihe);
         const chance = gelistet.length ? 0.45 : 0.25;
 
-        // 20% Chance pro Spieltag auf ein KI-Angebot für einen Spieler des Managers
+        // 25 % Chance je Spieltag im Fenster auf ein KI-Angebot für einen Spieler des Managers
         if (Math.random() < chance && userClub.playerIds.length > 15) {
             const randomPlayerId = userClub.playerIds[Math.floor(Math.random() * userClub.playerIds.length)];
             const player = gelistet.length && Math.random() < 0.65
@@ -1137,8 +1140,19 @@ class TransferEngine {
                 : state.players.find(p => p.id === randomPlayerId);
             const verkaeuflich = player && gelistet.includes(player);
 
-            if (player && !player.leihe && (player.overall >= 74 || verkaeuflich)) {
-                const aiClubs = state.clubs.filter(c => c.id !== userClub.id && c.transferBudget >= player.value * 0.9);
+            // Begehrt ist, wer zu den Besten seines Kaders gehört. Vorher galt
+            // eine feste Stärke von 74 - ein Verein aus der dritten Liga bekam
+            // so nie ein Angebot, auch nicht für seinen besten Mann.
+            const kader = userClub.playerIds.map(id => state.players.find(p => p.id === id)).filter(p => p && !p.leihe)
+                .sort((x, y) => (y.overall || 0) - (x.overall || 0));
+            const begehrt = player && (kader.indexOf(player) > -1 && kader.indexOf(player) < this.BEGEHRT_AB_RANG);
+
+            if (player && !player.leihe && (player.overall >= 74 || begehrt || verkaeuflich)) {
+                // Wer bietet, ist mindestens ein ähnlich großer Verein - für einen
+                // Spieler auf der Transferliste auch ein etwas kleinerer
+                const rufGrenze = (userClub.reputation || 50) - (verkaeuflich ? 15 : 5);
+                const aiClubs = state.clubs.filter(c => c.id !== userClub.id && c.transferBudget >= player.value * 0.9
+                    && (c.reputation || 50) >= rufGrenze);
                 if (aiClubs.length > 0) {
                     const interestedClub = aiClubs[Math.floor(Math.random() * aiClubs.length)];
                     const offerFee = Math.round(player.value * (verkaeuflich ? 0.8 + Math.random() * 0.25 : 0.95 + Math.random() * 0.3));

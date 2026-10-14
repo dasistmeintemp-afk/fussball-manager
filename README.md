@@ -491,6 +491,7 @@ In der Spielerakte führt der Manager Gespräche mit jedem eigenen Spieler. Wie 
 
   Ein Angebot gilt vier Tage. Wer nicht antwortet, hat abgelehnt.
 - **Angebote für eigene Spieler** kommen nur noch auf einem Weg: mit Frist, verdeckter Obergrenze und Zahlweise. Ein zweiter, älterer Weg legte Angebote ohne Frist ab, bei denen man nicht mehr fordern konnte. Solche Angebote aus alten Spielständen bekommen beim Laden die übliche Frist. Wer an einen KI-Verein verkauft wird, verdient dort ein Fünftel mehr als bisher, mit einer Laufzeit nach Alter. Vorher bekam jeder pauschal 50.000 € pro Woche.
+  - **Auch in unteren Ligen:** Begehrt sind die sechs Besten jedes Kaders (`TransferEngine.BEGEHRT_AB_RANG`), dazu wie bisher jeder ab Stärke 74 und wer auf der Transferliste steht. Vorher galt nur die feste Stärke von 74: Im Durchklick-Test bekam ein Drittligist in über einer Saison kein einziges Angebot. Bieten dürfen nur Vereine, die mindestens ähnlich groß sind (Ruf höchstens 5 darunter, für Spieler auf der Transferliste 15). Vorher konnte jeder Verein der Welt mit genug Geld bieten.
 - **Weiterverkaufsbeteiligung:** Beim Annehmen eines Angebots lassen sich 10 oder 20 % an einem späteren Weiterverkauf vereinbaren. Der Käufer zahlt dafür jetzt 5 bzw. 10 % weniger. Wechselt der Spieler später für eine Ablöse weiter, fließt der Anteil zurück.
 - **Ablöse in Raten:** Im Ablöse-Angebot wählt man die Zahlweise.
   - **Sofort**, **12 Monate** (50 % Anzahlung) oder **24 Monate** (35 % Anzahlung). Den Rest zahlt der Käufer am Monatsersten in gleichen Raten.

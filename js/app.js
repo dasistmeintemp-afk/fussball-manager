@@ -38,6 +38,8 @@ class App {
                 ? GameStateClass.loadFromLocalStorage()
                 : null;
             if (savedState && savedState.userClubId) this.state = savedState;
+            // Nach einem frischen Laden zum Saisonwechsel geht es gleich weiter
+            if (this.ui && typeof this.ui.nachFrischemLaden === "function" && this.ui.nachFrischemLaden()) return;
             if (this.ui) this.ui.showStartScreen();
         };
 

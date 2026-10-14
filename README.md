@@ -918,7 +918,17 @@ untitled/
 │   │   ├── statistikEngine.js  # Statistik je Wettbewerb: Liga, Pokal, Europapokal
 │   │   └── opponentAnalysisEngine.js # Taktische Gegneranalyse
 │   ├── ui/
-│   │   ├── uiManager.js        # Kern: Start, Assistent, Reiter, Kader, Taktik, Kalender, Ereignisse
+│   │   ├── uiManager.js        # Kern: Reiter, Kopfzeile, Übersicht, Kalender, Weiter-Knopf, Saisonwechsel, Ereignisse
+│   │   ├── uiAssistent.js      # Startbildschirm und Assistent: Liga- und Vereinswahl
+│   │   ├── uiKader.js          # Kader: Kennzahlen, Kabine, Kaderplanung, Meldeliste
+│   │   ├── uiTaktik.js         # Taktiktafel, Formationen, Rollen, Aufstellung
+│   │   ├── uiWettbewerbe.js    # Tabellen, Spielplan, Pokal, Relegation, Europapokal
+│   │   ├── uiTraining.js       # Trainingspläne, Akademie, Trainerstab, Trainingsbericht
+│   │   ├── uiFinanzen.js       # Budget umschichten, Raten, Finanzregeln, Vorstandsanfragen
+│   │   ├── uiVerein.js         # Vereinsseite: Jobmarkt, Vision, Investor, Partner, Chronik, Anlagen, Preise
+│   │   ├── uiPostfach.js       # Postfach: Liste und Nachricht
+│   │   ├── uiDialoge.js        # Gegneranalyse, Transferangebot, Matchplan, Ansprache
+│   │   ├── uiKarriere.js       # Entlassung, Angebote an den Trainer, Laufbahnende, Zeugnis
 │   │   ├── uiSpielfeld.js      # Leinwand des 2D-Spiels: Rasen, Radar, Einblendungen, Stadionklang
 │   │   ├── uiVorbereitung.js   # Vorbereitung: Stab, Sponsoren, Testspiele, Turniere
 │   │   ├── uiTransfers.js      # Verhandlungen, Leihen, U23, Transfermarkt, Scoutberichte

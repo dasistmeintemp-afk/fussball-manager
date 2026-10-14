@@ -118,6 +118,14 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   - **Trainer des Jahres:** Titel zählen am meisten, dazu wie weit ein Verein über dem Platz landet, den sein Kader erwarten ließ.
   - **Elf des Jahres** im 4-3-3.
   - **Folgen:** Die Preise stehen in der Akte und steigern Marktwert und Laune. Gewinnt der eigene Trainer, stärkt das seinen Ruf und das Vertrauen des Vorstands. Die Ranglisten zeigen die letzte Gala, die Post fasst sie zusammen.
+- **Meldelisten (`KaderregelEngine`):** Im Europapokal und in der Premier League spielt nur, wer gemeldet ist.
+  - **Europapokal:** Liste A mit höchstens 25 Spielern, davon mindestens acht im Land ausgebildet. Fehlen welche, schrumpft die Liste um genau so viele Plätze. Liste B ohne Obergrenze für Spieler bis 21, die seit zwei Saisons im Verein sind oder aus der eigenen Jugend kommen.
+  - **Premier League:** höchstens 25 Spieler über 21, davon höchstens 17 nicht im Land ausgebildet. Wer 21 oder jünger ist, zählt nicht mit.
+  - **Im Land ausgebildet** ist, wer aus der eigenen Jugend kommt oder die Nationalität des Landes hat (für England auch Wales). Die Jugendjahre der Spieler kennt das Spiel nicht, die Nationalität ist eine Annäherung.
+  - **Fristen:** Gemeldet wird bis zum ersten Spiel des Wettbewerbs, nachgemeldet im Winterfenster. Ohne abgegebene Liste meldet der Co-Trainer zum Meldeschluss seinen Vorschlag und schreibt eine Nachricht.
+  - **Folgen:** Mit einem nicht gemeldeten Spieler in der Startelf gibt es keinen Anpfiff, nicht Gemeldete verschwinden von der Bank. Spielt der Co-Trainer (Urlaub, Sofortergebnis ohne Livespiel), stellt er nur Gemeldete auf.
+  - **Anzeige:** Die Karte „Meldeliste“ im Kader zeigt die Plätze, die Ausgebildeten und Liste B, mit Vorschlag und Melden.
+  - Die Nicht-EU-Grenze in Spanien ist nicht umgesetzt: Ohne doppelte Staatsbürgerschaften in den Spielerdaten würde sie die spanischen Kader verzerren.
 - **Vereinschronik (`ChronikEngine`):** Die Vereinsseite führt ab der Übernahme eine Chronik.
   - **Rekorde:** höchster Sieg, höchste Niederlage, torreichstes Spiel, Zuschauerrekord, längste Sieges- und ungeschlagene Serie, teuerster Kauf und Verkauf. Liga, Pokal und Europapokal zählen.
   - **Titel und Saisonbilanzen:** Titel sowie Liga, Platz, Punkte und Tore jeder Saison.
@@ -846,6 +854,7 @@ untitled/
 │   │   ├── ehemaligeEngine.js  # Ehemalige Spieler im Trainerstab, Abschiedsspiel für Legenden
 │   │   ├── visionEngine.js     # Vereinsvision: Fernziel mit Frist, Jahresziele, Bilanz
 │   │   ├── kaderplanungEngine.js # Kader über drei Spielzeiten, Baustellen als Suchauftrag
+│   │   ├── kaderregelEngine.js # Meldelisten: Europapokal (25, acht ausgebildet, Liste B), Premier League
 │   │   ├── klauselEngine.js    # Steigerung, Auf-/Abstieg, Mindestablöse, Vereinsoption
 │   │   ├── newsEngine.js       # Zentrales Nachrichtensystem & Postfach
 │   │   ├── aiManagerEngine.js  # KI-Aufstellungen & KI-Transferangebote

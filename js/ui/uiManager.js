@@ -1249,6 +1249,20 @@ class UIManager {
             return { valid: false, message: `Folgende Spieler in der Startelf sind gesperrt: ${suspended.map(p => p.name).join(", ")}. Bitte wechseln Sie diese aus.` };
         }
 
+        // Meldeliste: Im Europapokal und in Ligen mit Kaderregeln spielt nur,
+        // wer gemeldet ist. Nicht Gemeldete auf der Bank fliegen still raus.
+        const regeln = typeof KaderregelEngine !== "undefined" ? KaderregelEngine : null;
+        const heute = this.heutigesSpiel?.();
+        if (regeln && heute && heute.partie) {
+            const art = regeln.artVon(this.app.state, userClub, heute.partie);
+            const fehlt = regeln.nichtGemeldet(this.app.state, userClub, art, userClub.lineup);
+            if (fehlt.length) {
+                const namen = fehlt.map(id => lineupPlayers.find(p => p.id === id)?.name).filter(Boolean);
+                return { valid: false, message: `Nicht für ${regeln.regel(userClub, art)?.name || "diesen Wettbewerb"} gemeldet: ${namen.join(", ")}. Bitte wechseln Sie sie aus oder melden Sie nach (Kader → Meldeliste).` };
+            }
+            userClub.bench = (userClub.bench || []).filter(id => regeln.gemeldet(this.app.state, userClub, art, id));
+        }
+
         return { valid: true };
     }
 
@@ -2401,6 +2415,100 @@ class UIManager {
         }));
     }
 
+    /**
+     * Die Meldelisten (KaderregelEngine): Europapokal mit Liste A und B,
+     * Premier League mit der Grenze für nicht im Land ausgebildete Spieler.
+     * Angekreuzt wird hier, gespeichert erst mit "Melden".
+     */
+    renderMeldeliste(state) {
+        const box = document.getElementById("squadMeldeliste");
+        const engine = typeof KaderregelEngine !== "undefined" ? KaderregelEngine : null;
+        if (!box || !engine) return;
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const arten = club ? engine.arten(state, club) : [];
+        if (!arten.length) { box.hidden = true; box.innerHTML = ""; return; }
+        box.hidden = false;
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const saison = state.seasonYear || 1;
+        if (!this._meldeEntwurf || this._meldeEntwurf.saison !== saison) this._meldeEntwurf = { saison };
+        const kader = engine._kader(state, club).slice().sort((a, b) => (b.overall || 0) - (a.overall || 0));
+        const reihenfolge = ["TW", "IV", "LV", "RV", "DM", "ZM", "LM", "RM", "OM", "LA", "RA", "ST"];
+        kader.sort((a, b) => reihenfolge.indexOf(a.pos) - reihenfolge.indexOf(b.pos) || (b.overall || 0) - (a.overall || 0));
+        const offen = box.open;
+        const kopf = [];
+        const teile = arten.map(art => {
+            const regel = engine.regel(club, art);
+            const gespeichert = engine.liste(state, art, club);
+            const e = this._meldeEntwurf[art] || (this._meldeEntwurf[art] = { a: new Set(gespeichert.a), b: new Set(gespeichert.b || []) });
+            const pruef = engine.pruefe(state, club, art, { a: [...e.a], b: [...e.b] });
+            const z = pruef.zahlen;
+            const darf = engine.offen(state, art);
+            const schluss = state.calendar?.[engine.meldeschluss(state, art)]?.date;
+            const geaendert = JSON.stringify([...e.a].sort()) !== JSON.stringify([...gespeichert.a].sort())
+                || JSON.stringify([...e.b].sort()) !== JSON.stringify([...(gespeichert.b || [])].sort());
+            kopf.push(art === "europa" ? `${regel.name} ${z.a}/${z.platz}` : `${regel.name} ${z.fremd}/${z.maxFremd} fremd`);
+            const zahlText = art === "europa"
+                ? `Liste A: ${z.a} von ${z.platz} Plätzen · im Land ausgebildet ${z.lokal} (mindestens ${z.minLokal}) · Liste B: ${z.b}`
+                : `Über ${engine.U21}: ${z.zaehlt} von ${z.max} · nicht im Land ausgebildet ${z.fremd} von ${z.maxFremd} · U21 frei`;
+            const status = gespeichert.vorschlag ? "noch nicht gemeldet - es gilt der Vorschlag" : "gemeldet";
+            return `
+                <section class="ml-teil" data-ml-art="${art}">
+                    <h4>${esc(regel.name)} <small>${esc(status)}${schluss ? ` · Meldeschluss ${esc(schluss)}` : ""}${darf ? "" : " · gesperrt bis zum Winterfenster"}</small></h4>
+                    <p class="ml-zahlen${pruef.ok ? "" : " ml-fehler"}">${esc(zahlText)}</p>
+                    ${pruef.fehler.map(f => `<p class="ml-fehler">⚠️ ${esc(f)}</p>`).join("")}
+                    <ul class="ml-liste">${kader.map(p => {
+                        const lokal = engine.lokal(p, club);
+                        const b = art === "europa" && engine.fuerListeB(state, p, club);
+                        const jung = art === "liga" && (p.age || 99) <= engine.U21;
+                        return `<li>
+                            <label class="ml-wahl"><input type="checkbox" data-ml-a="${esc(p.id)}"${e.a.has(p.id) ? " checked" : ""}${darf ? "" : " disabled"}> <span class="ml-pos">${esc(p.pos)}</span> ${esc(p.name)} <small>${p.age} J. · ${p.overall}</small></label>
+                            <span class="ml-marken">${lokal ? `<span class="ml-marke" title="im Land ausgebildet">🏠</span>` : ""}${jung ? `<span class="ml-marke">U21 frei</span>` : ""}${b ? `<label class="ml-b"><input type="checkbox" data-ml-b="${esc(p.id)}"${e.b.has(p.id) ? " checked" : ""}${darf ? "" : " disabled"}> B</label>` : ""}</span>
+                        </li>`;
+                    }).join("")}</ul>
+                    ${darf ? `<div class="ml-knoepfe">
+                        <button class="btn btn-sm btn-secondary" data-ml-vorschlag="${art}">Vorschlag übernehmen</button>
+                        <button class="btn btn-sm btn-primary" data-ml-melden="${art}"${pruef.ok && geaendert ? "" : " disabled"}>Melden</button>
+                    </div>` : ""}
+                </section>`;
+        });
+        box.innerHTML = `
+            <summary><h3>📋 Meldeliste</h3><span class="header-tag">${esc(kopf.join(" · "))}</span></summary>
+            <p class="muted-note">Nur wer gemeldet ist, darf im Wettbewerb spielen. 🏠 = im Land ausgebildet (eigene Jugend oder Nationalität des Landes). Liste B: bis 21 und seit zwei Saisons im Verein oder aus der eigenen Jugend.</p>
+            ${teile.join("")}`;
+        box.open = offen;
+        const neu = () => this.renderMeldeliste(state);
+        box.querySelectorAll("[data-ml-a]").forEach(cb => cb.addEventListener("change", () => {
+            const art = cb.closest("[data-ml-art]").dataset.mlArt;
+            const id = this.resolvePlayerId ? this.resolvePlayerId(cb.dataset.mlA) : cb.dataset.mlA;
+            const e = this._meldeEntwurf[art];
+            if (cb.checked) { e.a.add(id); e.b.delete(id); } else e.a.delete(id);
+            neu();
+        }));
+        box.querySelectorAll("[data-ml-b]").forEach(cb => cb.addEventListener("change", () => {
+            const id = this.resolvePlayerId ? this.resolvePlayerId(cb.dataset.mlB) : cb.dataset.mlB;
+            const e = this._meldeEntwurf.europa;
+            if (cb.checked) { e.b.add(id); e.a.delete(id); } else e.b.delete(id);
+            neu();
+        }));
+        box.querySelectorAll("[data-ml-vorschlag]").forEach(b => b.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            const art = b.dataset.mlVorschlag;
+            const v = engine.vorschlag(state, club, art);
+            this._meldeEntwurf[art] = { a: new Set(v.a), b: new Set(v.b || []) };
+            neu();
+        }));
+        box.querySelectorAll("[data-ml-melden]").forEach(b => b.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            const art = b.dataset.mlMelden;
+            const e = this._meldeEntwurf[art];
+            const r = engine.festlegen(state, art, { a: [...e.a], b: [...e.b] });
+            if (!r.ok) { this.showToast(r.fehler.join(" "), "error"); return; }
+            this.showToast(`Meldeliste ${engine.regel(club, art)?.name} abgegeben.`, "success");
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            neu();
+        }));
+    }
+
     renderSquad(posFilter = "all") {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
@@ -2425,6 +2533,7 @@ class UIManager {
         this.renderKabine();
         this.renderReserve();
         this.renderKaderplanung(state);
+        this.renderMeldeliste(state);
 
         // Kennzahlen des ganzen Kaders - unabhaengig vom Filter
         const kader = state.players.filter(p => userClub.playerIds.includes(p.id));

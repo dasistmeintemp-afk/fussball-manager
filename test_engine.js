@@ -2214,6 +2214,8 @@ function runEngineTests() {
         // eine feste Zufallsfolge, die fuer beide gleich ist. So misst der
         // Vergleich die Zweikampfhaerte und nicht den Zufall - frei gewuerfelt
         // lag der Unterschied von rund einem halben Foul je Spiel im Rauschen.
+        // 240 Partien: Mit 120 schwankte der Unterschied je nach Welt
+        // zwischen 0,4 und 0,7 Fouls.
         const folge = (a) => () => {
             a = (a + 0x6D2B79F5) | 0;
             let t = Math.imul(a ^ (a >>> 15), 1 | a);
@@ -2226,7 +2228,7 @@ function runEngineTests() {
             let summe = 0;
             const zufall = Math.random;
             try {
-                for (let i = 0; i < 120; i++) {
+                for (let i = 0; i < 240; i++) {
                     Math.random = folge(7919 * (i + 1));
                     state.players.forEach(p => { p.suspendedMatches = 0; p.injuredWeeks = 0; p.fitness = 92; });
                     const m = { id: `zk_${i}`, played: false, homeClubId: "muc", awayClubId: "dor" };
@@ -2236,7 +2238,7 @@ function runEngineTests() {
             } finally {
                 Math.random = zufall;
             }
-            return summe / 120;
+            return summe / 240;
         };
         const hart = fouls("hart");
         const sanft = fouls("zurueckhaltend");
@@ -7822,6 +7824,27 @@ function runEngineTests() {
         };
         const ohne = quote(basis), mit = quote(Object.assign({}, basis, { signatur: "eiskalt" }));
         if (!(mit > ohne * 1.12)) throw new Error(`Torquote ohne ${(ohne * 100).toFixed(1)} %, mit Signatur ${(mit * 100).toFixed(1)} %`);
+    });
+
+    test("Torjäger: Wer heraussticht, wird enger gedeckt - mit voller Mannschaft kein Alleinunterhalter", () => {
+        const feld = ["IV", "IV", "LV", "RV", "DM", "ZM", "ZM", "LA", "RA"].map((pos, i) => ({ id: `f${i}`, pos, shooting: 55, technique: 60, overall: 65 }));
+        const star = { id: "st", pos: "ST", shooting: 96, technique: 90, overall: 90 };
+        const kandidaten = feld.concat([star]);
+        const anteil = () => {
+            let n = 0;
+            for (let i = 0; i < 6000; i++) if (MatchEngine.waehleSchuetze(kandidaten, "through_ball") === star) n++;
+            return n / 6000;
+        };
+        const gedaempft = anteil();
+        const alt = MatchEngine.DOMINANZ;
+        MatchEngine.DOMINANZ = { ab: 1, rest: 1 };
+        let frei;
+        try { frei = anteil(); } finally { MatchEngine.DOMINANZ = alt; }
+        if (!(gedaempft > 0.34 && gedaempft < 0.44)) throw new Error(`Der Star bekommt ${(gedaempft * 100).toFixed(0)} % der Abschlüsse`);
+        if (!(frei > gedaempft + 0.08)) throw new Error(`Ohne Dämpfung ${(frei * 100).toFixed(0)} %, mit ${(gedaempft * 100).toFixed(0)} %`);
+        // Er bleibt der Gefährlichste
+        const zweiter = Math.max(...feld.map(p => { let n = 0; for (let i = 0; i < 3000; i++) if (MatchEngine.waehleSchuetze(kandidaten, "through_ball") === p) n++; return n / 3000; }));
+        if (!(gedaempft > zweiter * 2)) throw new Error("Der Star ist nicht mehr der Gefährlichste");
     });
 
     test("Eigenschaften: Wer gut abschließt, kommt öfter zum Abschluss", () => {

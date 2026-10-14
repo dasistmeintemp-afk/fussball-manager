@@ -249,7 +249,8 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   - Gemessen über eine Saison der fünf ersten und zwei zweiten Ligen: Sturm 51 %, Flügel und Zehner 21 %, Mittelfeld 17 %, Abwehr 11 %. Die Tore je Spiel bleiben, wo sie waren.
   - Die Vorlage gibt, wer den Ball spielt: bei Flanken der Flügelspieler oder Außenverteidiger, bei Steilpässen meist ein Mittelfeldspieler (nach Position, Passspiel und Übersicht), bei Ecken der Schütze. Nicht jedes Tor hat eine: nach Flanke und Steilpass 86 %, nach Ecken 60 %, nach einem Solo 30 % (`MATCH_TUNING.vorlagenAnteil`).
   - Vorher waren 84 % der Ligatore vorbereitet, und die besten Vorlagengeber kamen auf 18 bis 26 Vorlagen. Jetzt sind es rund 70 % wie in den großen Ligen, die besten kommen auf 11 bis 18.
-  - Stürmer kommen etwas seltener zum Abschluss als zuvor. Die besten Torjäger treffen 33- bis 39-mal in der Liga, in Ausreißerjahren über 40. Das ist noch etwas mehr als in Wirklichkeit, dort sind es meist 25 bis 36.
+  - Stürmer kommen etwas seltener zum Abschluss als zuvor.
+  - **Wer heraussticht, wird enger gedeckt (`MatchEngine.DOMINANZ`):** Ein Mittelstürmer neben schwachen Flügeln bekam über die Hälfte der Abschlüsse seiner Mannschaft und kam auf bis zu 55 Ligatore. Mit voller Mannschaft bekommt der gefährlichste Spieler über einem Anteil von 30 % nur noch 40 % des Überschusses. Gemessen mit gleichen Welten (drei Seeds, fünf erste Ligen): der beste Torjäger im Schnitt 30,5 statt 34,5 Tore, höchstens 40 statt 47. In Wirklichkeit sind es meist 25 bis 36. Die Tore je Spiel bleiben fast gleich (2,96 statt 3,01).
   - Vorher fielen überall gleich viele Tore, auch in LaLiga mit 3,3.
 - **Remis in der Schlussphase:** Steht es ab der 75. Minute unentschieden, will nur noch eine klar stärkere Mannschaft den Sieg. Der Außenseiter sichert den Punkt, und bei zwei ähnlich starken geht keiner mehr ins Risiko.
   - Vorher stürmten ab der 83. Minute immer beide.

@@ -60,6 +60,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             e.target.value = "";
         });
 
+        // Eine Namensdatei schon vor der ersten Karriere
+        document.getElementById("startNamenInput")?.addEventListener("change", (e) => {
+            const file = e.target.files[0];
+            if (file) this.ladeNamensdatei(file);
+            e.target.value = "";
+        });
+        this.zeigeNamensstand();
+
         document.getElementById("btnStartAbout")?.addEventListener("click", () => this.zeigeKurzanleitung());
 
         document.getElementById("btnCloseAboutModal")?.addEventListener("click", () => {
@@ -355,9 +363,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const zeilen = [];
         if (liga.europeanSpots) {
             const e = liga.europeanSpots;
-            if (e.championsLeague?.length) zeilen.push(["Champions League", plaetze(e.championsLeague), "ucl"]);
-            if (e.europaLeague?.length) zeilen.push(["Europa League", plaetze(e.europaLeague), "uel"]);
-            if (e.conferenceLeague?.length) zeilen.push(["Conference League", plaetze(e.conferenceLeague), "uecl"]);
+            const W = id => this.constructor.wettbewerbName(id);
+            if (e.championsLeague?.length) zeilen.push([W("ucl"), plaetze(e.championsLeague), "ucl"]);
+            if (e.europaLeague?.length) zeilen.push([W("uel"), plaetze(e.europaLeague), "uel"]);
+            if (e.conferenceLeague?.length) zeilen.push([W("uecl"), plaetze(e.conferenceLeague), "uecl"]);
         }
         const po = typeof PlayoffEngine !== "undefined" ? PlayoffEngine : null;
         if (liga.promotionTo) {

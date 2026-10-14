@@ -134,7 +134,7 @@ class UIManager {
             },
             welt: {
                 titel: "Weltweit", kurz: "Erstligaprofi",
-                text: "Drei Sterne sind ein solider Erstligaprofi. Ein Bundesliga-Star hat fünf, ein Landesligaspieler einen halben.",
+                text: "Drei Sterne sind ein solider Erstligaprofi. Ein Star einer großen ersten Liga hat fünf, ein Landesligaspieler einen halben.",
                 hinweisVerein: "Sterne nach Weltmaßstab: drei Sterne sind ein solider Erstligaprofi."
             }
         };
@@ -143,12 +143,19 @@ class UIManager {
     /** Weltmaßstab: drei Sterne bei einer Stärke von 70 */
     static get STERN_WELT_BEZUG() { return 140; }
 
+    /** Name eines Wettbewerbs - erfunden oder aus der Namensdatei */
+    static wettbewerbName(id) {
+        const namen = (typeof window !== "undefined" && window.NamenEngine)
+            || (typeof require !== "undefined" ? require("../engine/namenEngine.js").NamenEngine : null);
+        return namen ? namen.wettbewerb(id) : id;
+    }
+
     /** Beschriftung der Tabellenzonen (Europapokal, Auf- und Abstieg). */
     static get ZONEN() {
         return {
-            ucl: "Champions League",
-            uel: "Europa League",
-            uecl: "Conference League",
+            ucl: UIManager.wettbewerbName("ucl"),
+            uel: UIManager.wettbewerbName("uel"),
+            uecl: UIManager.wettbewerbName("uecl"),
             auf: "Aufstieg",
             po: "Aufstiegsspiele",
             rel: "Relegation",
@@ -604,6 +611,7 @@ class UIManager {
      */
     renderSettings() {
         this.renderEinstiegEinstellungen();
+        this.renderNamenEinstellungen();
         const el = document.getElementById("settingsLiveBody");
         if (!el || !this.app.state) return;
         const e = this.liveEinstellungen();
@@ -2611,22 +2619,22 @@ class UIManager {
      * Jeder Wettbewerb hat sein eigenes Gesicht.
      *
      * Ein Pokalabend soll sich nicht anfühlen wie der 14. Spieltag: Die
-     * Champions League ist nachtblau mit Sternenlicht, der Landespokal
-     * rot-golden, die Conference League grün. Die Farben gehen als
+     * Königsklasse ist nachtblau mit Sternenlicht, der Landespokal
+     * rot-golden, der dritte Europapokal grün. Die Farben gehen als
      * CSS-Variablen an die Oberfläche, so dass Anzeigetafel, Tabelle und
      * Spielplan mitziehen, ohne dass jede Stelle den Wettbewerb kennen muss.
      */
     static WETTBEWERB_THEMEN = {
         ucl: {
-            icon: "⭐", name: "Champions League", kurz: "UCL",
+            icon: "⭐", get name() { return UIManager.wettbewerbName("ucl"); }, get kurz() { return this.name; },
             accent: "#4f8bff", accent2: "#c7dcff", flaeche: "rgba(15, 30, 78, 0.92)"
         },
         uel: {
-            icon: "🌍", name: "Europa League", kurz: "UEL",
+            icon: "🌍", get name() { return UIManager.wettbewerbName("uel"); }, get kurz() { return this.name; },
             accent: "#f97316", accent2: "#fdba74", flaeche: "rgba(66, 27, 4, 0.9)"
         },
         uecl: {
-            icon: "🏆", name: "Conference League", kurz: "UECL",
+            icon: "🏆", get name() { return UIManager.wettbewerbName("uecl"); }, get kurz() { return this.name; },
             accent: "#22c55e", accent2: "#86efac", flaeche: "rgba(8, 48, 26, 0.9)"
         },
         cup: {
@@ -2657,7 +2665,7 @@ class UIManager {
 
     /**
      * Die Live-Ansicht in die Farben des Wettbewerbs tauchen und oben
-     * hinschreiben, worum es geht: "Champions League · Viertelfinale".
+     * hinschreiben, worum es geht: "Meisterpokal · Viertelfinale".
      */
     setzeLiveThema(match) {
         const state = this.app?.state;
@@ -3482,7 +3490,7 @@ class UIManager {
             const url = URL.createObjectURL(blob);
             const downloadAnchor = document.createElement('a');
             downloadAnchor.setAttribute("href", url);
-            downloadAnchor.setAttribute("download", this.app.state.getExportFileName ? this.app.state.getExportFileName() : `FM_Pro_Save_Saison_${this.app.state.seasonYear}_Spieltag_${this.app.state.currentMatchday}.json`);
+            downloadAnchor.setAttribute("download", this.app.state.getExportFileName ? this.app.state.getExportFileName() : `Viererkette_Saison_${this.app.state.seasonYear}_Spieltag_${this.app.state.currentMatchday}.json`);
             document.body.appendChild(downloadAnchor);
             downloadAnchor.click();
             downloadAnchor.remove();

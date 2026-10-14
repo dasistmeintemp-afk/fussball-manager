@@ -1,7 +1,7 @@
 {
-  "name": "Fußballmanager Pro",
-  "short_name": "FM Pro",
-  "description": "Leichtgewichtiger Fußballmanager im Browser: 218 Vereine aus fünf Ländern, 2D-Live-Spiel, Verhandlungen über Tage, Kabinenansprachen und Trainingssteuerung.",
+  "name": "Viererkette – Fußballmanager",
+  "short_name": "Viererkette",
+  "description": "Leichtgewichtiger Fußballmanager im Browser: 384 Vereine in 20 Ligen aus fünf Ländern, 2D-Live-Spiel, Verhandlungen über Tage, Kabinenansprachen und Trainingssteuerung.",
   "id": "./",
   "start_url": "./index.html",
   "scope": "./",

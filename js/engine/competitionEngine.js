@@ -237,10 +237,17 @@ class CompetitionEngine {
         fillTo("uecl", 16);
 
         return {
-            ucl: CompetitionEngine.createEuropeanCup("ucl", "Champions League", qualified.ucl),
-            uel: CompetitionEngine.createEuropeanCup("uel", "Europa League", qualified.uel),
-            uecl: CompetitionEngine.createEuropeanCup("uecl", "Conference League", qualified.uecl)
+            ucl: CompetitionEngine.createEuropeanCup("ucl", CompetitionEngine.wettbewerbName("ucl"), qualified.ucl),
+            uel: CompetitionEngine.createEuropeanCup("uel", CompetitionEngine.wettbewerbName("uel"), qualified.uel),
+            uecl: CompetitionEngine.createEuropeanCup("uecl", CompetitionEngine.wettbewerbName("uecl"), qualified.uecl)
         };
+    }
+
+    /** Name eines Wettbewerbs - erfunden oder aus der Namensdatei */
+    static wettbewerbName(id) {
+        const namen = (typeof window !== "undefined" && window.NamenEngine)
+            || (typeof require !== "undefined" ? require("./namenEngine.js").NamenEngine : null);
+        return namen ? namen.wettbewerb(id) : id;
     }
 
     /** Baut Gruppenphase und Grundgerüst eines europäischen Wettbewerbs */

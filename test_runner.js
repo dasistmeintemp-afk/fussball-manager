@@ -21,7 +21,7 @@ function runPruefung() {
 
 function runAllSuites() {
     console.log("================================================================================");
-    console.log("             🏆 FM PRO - AUTOMATISIERTE TESTSUITE & VALIDIERUNG                ");
+    console.log("             🏆 VIERERKETTE - AUTOMATISIERTE TESTSUITE & VALIDIERUNG                ");
     console.log("================================================================================");
 
     let totalPassed = 0;

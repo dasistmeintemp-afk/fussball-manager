@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fußballmanager Pro - Saison Edition</title>
+    <title>Viererkette – Fußballmanager</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/design.css">
     <link rel="manifest" href="manifest.json">
@@ -13,7 +13,7 @@
          vollständig und braucht diese eigenen Angaben. -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="FM Pro">
+    <meta name="apple-mobile-web-app-title" content="Viererkette">
     <meta name="mobile-web-app-capable" content="yes">
     <link rel="apple-touch-icon" href="icon-192.png">
     <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
@@ -105,7 +105,7 @@
             <div class="header-left">
                 <div class="brand">
                     <svg class="brand-icon logo-mark" aria-hidden="true"><use href="#logo-mark"/></svg>
-                    <span class="brand-title">FM<span class="brand-accent">PRO</span></span>
+                    <span class="brand-title">Vierer<span class="brand-accent">kette</span></span>
                 </div>
                 <div class="club-badge-container" id="headerClubInfo">
                     <span class="club-color-dot" id="headerClubDot"></span>
@@ -252,17 +252,17 @@
                             <div class="match-preview-content" id="dashMatchPreview">
                                 <div class="preview-team home-team">
                                     <div class="preview-crest" id="dashHomeCrest"></div>
-                                    <h4 id="dashHomeName">FC Bayern München</h4>
+                                    <h4 id="dashHomeName">Rot-Weiß München</h4>
                                     <span class="preview-rank" id="dashHomeRank">Platz 1</span>
                                 </div>
                                 <div class="preview-vs">
                                     <span class="vs-countdown" id="dashNextWhen">heute</span>
                                     <span class="vs-text">VS</span>
-                                    <span class="preview-venue" id="dashVenue">Allianz Arena</span>
+                                    <span class="preview-venue" id="dashVenue">Arena München</span>
                                 </div>
                                 <div class="preview-team away-team">
                                     <div class="preview-crest" id="dashAwayCrest"></div>
-                                    <h4 id="dashAwayName">Borussia Dortmund</h4>
+                                    <h4 id="dashAwayName">Concordia Dortmund</h4>
                                     <span class="preview-rank" id="dashAwayRank">Platz 2</span>
                                 </div>
                             </div>
@@ -1447,6 +1447,12 @@
                         </div>
 
                         <div class="dash-card">
+                            <h3>Namen</h3>
+                            <p>Vereine, Stadien, Spieler und Wettbewerbe tragen erfundene Namen. Mit einer Namensdatei (JSON) spielen Sie mit eigenen – auch in der laufenden Karriere. Die Vorlage enthält alle Kennungen.</p>
+                            <div id="settingsNamen"></div>
+                        </div>
+
+                        <div class="dash-card">
                             <h3>Neues Spiel / Karriere</h3>
                             <p>Starten Sie eine neue Managersaison mit einem Verein Ihrer Wahl.</p>
                             <button class="btn btn-danger" id="btnNewGamePrompt"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg><span>Neues Spiel starten</span></button>
@@ -1493,7 +1499,7 @@
                 <header class="start-top">
                     <div class="start-brand">
                         <svg class="logo-mark" aria-hidden="true"><use href="#logo-mark"/></svg>
-                        <span class="start-brand-name">Fußballmanager <span class="start-pro-tag">Pro</span></span>
+                        <span class="start-brand-name">Viererkette <span class="start-pro-tag">Manager</span></span>
                     </div>
                     <button class="start-link" id="btnStartAbout" type="button"><svg class="ico" aria-hidden="true"><use href="#i-info"/></svg><span>Kurzanleitung</span></button>
                 </header>
@@ -1502,7 +1508,7 @@
                     <section class="start-hero">
                         <span class="start-kicker">Karrieremodus</span>
                         <h1 class="start-logo-title">Dein Verein.<br><span class="brand-accent">Deine Handschrift.</span></h1>
-                        <p class="start-subtitle" id="startWorldFacts">Übernimm einen Verein – von der Champions League bis zur Landesliga. Kader, Taktik, Transfers und jedes Spiel live in 2D.</p>
+                        <p class="start-subtitle" id="startWorldFacts">Übernimm einen Verein – von der Königsklasse bis zur Landesliga. Kader, Taktik, Transfers und jedes Spiel live in 2D.</p>
 
                         <div class="start-menu-buttons">
                             <button class="btn btn-primary btn-lg start-btn" id="btnStartNewGame" type="button">
@@ -1525,6 +1531,8 @@
                         <div class="start-btn-row">
                             <label class="start-link" for="startFileInput"><svg class="ico" aria-hidden="true"><use href="#i-upload"/></svg><span>Spielstand importieren</span></label>
                             <input type="file" id="startFileInput" accept=".json" style="display:none;">
+                            <label class="start-link" for="startNamenInput"><svg class="ico" aria-hidden="true"><use href="#i-upload"/></svg><span id="startNamenText">Namensdatei laden</span></label>
+                            <input type="file" id="startNamenInput" accept=".json,application/json" style="display:none;">
                         </div>
                     </section>
 
@@ -1776,7 +1784,7 @@
                         <div class="team-score home">
                             <span class="lm-kit" id="lmHomeKit" aria-hidden="true"></span>
                             <div class="lm-team-block">
-                                <span class="team-name" id="lmHomeName">FC Bayern München</span>
+                                <span class="team-name" id="lmHomeName">Rot-Weiß München</span>
                                 <span class="lm-scorers" id="lmHomeScorers"></span>
                             </div>
                             <span class="score-digit" id="lmHomeScore">0</span>
@@ -1789,7 +1797,7 @@
                         <div class="team-score away">
                             <span class="score-digit" id="lmAwayScore">0</span>
                             <div class="lm-team-block">
-                                <span class="team-name" id="lmAwayName">Borussia Dortmund</span>
+                                <span class="team-name" id="lmAwayName">Concordia Dortmund</span>
                                 <span class="lm-scorers" id="lmAwayScorers"></span>
                             </div>
                             <span class="lm-kit" id="lmAwayKit" aria-hidden="true"></span>
@@ -2214,6 +2222,7 @@
     <script src="js/data/countryNamePools.js"></script>
     <script src="js/data/realClubs.js"></script>
     <script src="js/data/initialData.js"></script>
+    <script src="js/engine/namenEngine.js"></script>
     <script src="js/services/migrationService.js"></script>
     <script src="js/services/saveCodec.js"></script>
     <script src="js/services/saveService.js"></script>

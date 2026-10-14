@@ -24,7 +24,6 @@ const _scResolve = (() => {
 })();
 
 const SupercupEngine = {
-    NAMEN: { de: "Supercup", en: "Community Shield", es: "Supercopa", it: "Supercoppa", fr: "Trophée des Champions" },
     /** Prämie für den Sieger, als Anteil am Sponsorbeitrag je Spieltag */
     PRAEMIE_FAKTOR: 2,
 
@@ -33,7 +32,12 @@ const SupercupEngine = {
         return eigen?.countryId || "de";
     },
 
-    name(state) { return this.NAMEN[this._land(state)] || "Supercup"; },
+    /** Name des Supercups im Land - erfunden oder aus der Namensdatei */
+    name(state) {
+        const namen = _scResolve("NamenEngine", "./namenEngine.js");
+        const id = `supercup_${this._land(state)}`;
+        return (namen && namen.WETTBEWERBE[id]) ? namen.wettbewerb(id) : "Supercup";
+    },
 
     /** Die erste Liga des eigenen Landes */
     _ersteLiga(state) {

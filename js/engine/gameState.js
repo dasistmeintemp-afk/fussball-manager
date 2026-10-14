@@ -582,11 +582,9 @@ class GameState {
             : ((typeof window !== 'undefined' && window.INITIAL_TEAMS_DATA) ? window.INITIAL_TEAMS_DATA : (typeof require !== 'undefined' ? require('../data/initialData.js').INITIAL_TEAMS_DATA : []));
         const teamsData = JSON.parse(JSON.stringify(rawTeams || []));
 
-        const SPONSOR_NAMES = [
-            "Deutsche Telekom", "Telekom", "Evonik Industries", "Barmenia Versicherungen", "SAP SE",
-            "Volkswagen", "Mercedes-Benz", "Red Bull", "Wiesenhof", "Talanx", "Mainova",
-            "Schwarzwaldmilch", "Covestro", "Allianz", "BMW Group", "Puma SE", "Adidas", "Global Tech"
-        ];
+        const namenEngine = (typeof window !== 'undefined' && window.NamenEngine)
+            || (typeof require !== 'undefined' ? require('./namenEngine.js').NamenEngine : null);
+        const SPONSOR_NAMES = namenEngine ? namenEngine.SPONSOREN : ["Global Tech"];
 
         teamsData.forEach((clubData, cIdx) => {
             const rep = clubData.reputation || 70;
@@ -605,7 +603,8 @@ class GameState {
                 stadiumLvl = 1; trainingLvl = 1; youthLvl = 1; medicalLvl = 1;
             }
 
-            const sponsorName = SPONSOR_NAMES[cIdx % SPONSOR_NAMES.length];
+            // Ein Sponsor aus der Namensdatei (NamenEngine.patcheDaten) geht vor
+            const sponsorName = clubData.sponsor || SPONSOR_NAMES[cIdx % SPONSOR_NAMES.length];
             const sponsorAmount = Math.round(rep * 18000 + (stadiumLvl * 50000));
 
             const club = {
@@ -2189,6 +2188,12 @@ class GameState {
         const state = Object.assign(new GameState(), daten);
         GameState.registerCustomFormations(state);
         GameState.sichereSignaturen(state);
+        // Namen nach der aktuellen Wahl im Browser: erfunden oder aus der
+        // Namensdatei. Wer sie gewechselt hat, sieht das auch in alten Ständen.
+        const namen = typeof window !== "undefined" ? window.NamenEngine : null;
+        if (namen && typeof namen.wendeAn === "function") {
+            try { namen.wendeAn(state); } catch (e) { console.warn("Namen nicht angewandt:", e); }
+        }
         return state;
     }
 

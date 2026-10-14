@@ -302,7 +302,7 @@ function runEngineTests() {
     test("Sportdirektor: Schlägt alle zwei Wochen passende, bezahlbare Spieler vor und berät auf Wunsch", () => {
         const { SportdirektorEngine: SD } = require('./js/engine/sportdirektorEngine.js');
         const vorlage = GameState.createNewGame("muc", "normal", { name: "Trainer" });
-        const bochum = vorlage.clubs.find(c => c.name === "VfL Bochum");
+        const bochum = vorlage.clubs.find(c => c.id === "boc");
         const state = GameState.createNewGame(bochum.id, "normal", { name: "Trainer" });
         const club = state.clubs.find(c => c.id === state.userClubId);
         const nach = new Map(state.players.map(p => [String(p.id), p]));
@@ -5591,7 +5591,7 @@ function runEngineTests() {
 
         state.managerDismissed = {
             matchday: state.currentMatchday, rank: 16,
-            seasonYear: state.seasonYear, clubName: "FC Bayern München"
+            seasonYear: state.seasonYear, clubName: "Rot-Weiß München"
         };
         const daten = CareerEngine.verarbeiteEntlassung(state);
         if (!daten.angebote.length) throw new Error("Keine Angebote zum Wechseln");
@@ -5627,8 +5627,8 @@ function runEngineTests() {
         const state = GameState.createNewGame("muc", "normal", { name: "Ruheständler" });
         for (let i = 0; i < 6; i++) SeasonEngine.advanceToNextMatchday(state);
 
-        CareerEngine.vermerkeTitel(state, "DFB-Pokal", 1);
-        state.managerDismissed = { matchday: 6, rank: 15, seasonYear: 1, clubName: "FC Bayern München" };
+        CareerEngine.vermerkeTitel(state, "Deutschlandpokal", 1);
+        state.managerDismissed = { matchday: 6, rank: 15, seasonYear: 1, clubName: "Rot-Weiß München" };
         CareerEngine.verarbeiteEntlassung(state);
 
         const zeugnis = CareerEngine.beendeKarriere(state);
@@ -5649,7 +5649,7 @@ function runEngineTests() {
         state.boardConfidence = 15;
         state.currentMatchday = 12;
         state.jobSecurity = { stage: "entlassen", ultimatumUntil: null, ultimatumRank: null, warnedAt: null };
-        state.managerDismissed = { matchday: 11, rank: 18, seasonYear: 1, clubName: "FC Bayern München" };
+        state.managerDismissed = { matchday: 11, rank: 18, seasonYear: 1, clubName: "Rot-Weiß München" };
 
         const club = state.clubs.find(c => c.id === state.userClubId);
         SeasonEngine.checkJobSecurity(state, club, 18, 3);
@@ -5717,10 +5717,10 @@ function runEngineTests() {
 
 
     // ---------------------------------------------------------------
-    // Echte Vereine in allen Ligen
+    // Vereine aus der Vereinsdatei in allen Ligen
     // ---------------------------------------------------------------
 
-    test("Spielwelt: Jede Liga ist mit echten Vereinen besetzt", () => {
+    test("Spielwelt: Jede Liga ist mit den Vereinen der Vereinsdatei besetzt", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Namenspruefer" });
 
         LEAGUES_DATA.forEach(liga => {
@@ -5752,7 +5752,7 @@ function runEngineTests() {
         if (doppelteIds.length) throw new Error(`Vereins-IDs doppelt vergeben: ${[...new Set(doppelteIds)].join(", ")}`);
     });
 
-    test("Echte Vereine: Stadion und Kapazität kommen aus der Vereinsdatei", () => {
+    test("Vereinsdatei: Stadion und Kapazität kommen aus der Vereinsdatei", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Stadionpruefer" });
 
         Object.keys(REAL_CLUBS_BY_LEAGUE).forEach(ligaId => {
@@ -5772,7 +5772,7 @@ function runEngineTests() {
         });
     });
 
-    test("Echte Vereine: Die Rangfolge der Datei bestimmt den Ruf", () => {
+    test("Vereinsdatei: Die Rangfolge der Datei bestimmt den Ruf", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Rangpruefer" });
 
         // In jeder Liga muss die erste Hälfte der Liste im Schnitt deutlich
@@ -5792,12 +5792,191 @@ function runEngineTests() {
         });
 
         // Und die Spitzenklubs Europas müssen über allen anderen stehen
-        const spitze = ["Real Madrid", "FC Barcelona", "Manchester City", "Paris Saint-Germain"];
-        spitze.forEach(name => {
-            const club = state.clubs.find(c => c.name === name);
-            if (!club) throw new Error(`${name} fehlt in der Spielwelt`);
-            if (club.reputation < 85) throw new Error(`${name} hat nur Ruf ${club.reputation}`);
+        const spitze = ["es_rma", "es_fcb", "en_mci", "fr_psg"];
+        spitze.forEach(id => {
+            const club = state.clubs.find(c => c.id === id);
+            if (!club) throw new Error(`${id} fehlt in der Spielwelt`);
+            if (club.reputation < 85) throw new Error(`${club.name} hat nur Ruf ${club.reputation}`);
         });
+    });
+
+
+    // ---------------------------------------------------------------
+    // Namen: erfunden als Standard, eigene aus einer Namensdatei
+    // ---------------------------------------------------------------
+
+    test("Namen: Das Spiel bringt keine echten Namen von Vereinen, Stadien, Spielern und Wettbewerben mit", () => {
+        const { NamenEngine } = require('./js/engine/namenEngine.js');
+        // Prüfwerte (FNV-1a, Kleinschreibung) der echten Namen - die Namen
+        // selbst stehen absichtlich nirgends im Projekt
+        const ECHT = "10a1t2j 10c3klx 10cceqe 10je0fb 10kxhdx 10nyj4s 10nyqr8 10yz98z 110ys7v 114rskr 116wqg0 118tio0 "
+            + "11c7y5f 11ea6e7 11h16s9 11hagu 11k15an 11kpkl6 11or02o 11qdpa8 11rsou1 11xmi 121hvaj 125g3pt 12980q1 "
+            + "12g1glm 12jnktt 12jwg1k 12lkb5q 12lru6r 12m9tn6 12n4qoo 12nxumy 12qpuck 12schoy 12v7lxh 12y3s0p "
+            + "1376vv4 1383j2 1384dbt 13dmal2 13eh28e 13fczcl 13fzu0n 13huprk 13j4eqe 13oj2xk 13ow297 13p3hc2 "
+            + "13q45sm 13tsdti 13ytt00 13yyahc 13z8px9 140v6bm 141vbuf 144unta 149uof5 14d27fp 14gmbby 14il3jk "
+            + "14medbc 14tqzjz 14xhw0y 14zl9ux 154w3vz 158b9d8 159vhre 15dljh1 15epij4 15ex8w6 15g9r3e 15k1xk5 "
+            + "15lu6gz 15t7g1n 15vyig1 15w3g6f 15wppx4 15xx4oz 160a3lc 16249px 166pf9k 166y7fv 16c6yxc 16emlq1 "
+            + "16fdv67 16h348w 16m44au 16svkki 16w4aos 16yif1f 176exci 17bjlk5 17d7gi8 17ehby7 17hkksh 17jnqci "
+            + "17l1lrb 17qumbt 17s4pei 17sallg 17xad1c 180c0hj 1817utj 184d9ad 185smlk 187hwgm 18ffviy 18h2vbz "
+            + "18hzgta 18ihxet 18kdrz8 18kgimh 18mn8ax 18nhz8x 18nwsns 18otvnx 18q08hx 18qltm2 18qxv1p 18so4x9 "
+            + "18wczbw 18xa9fx 18xvcw0 191upa7 1948u5q 194xp1d 195iuo4 19713du 198qhgn 19a4r24 19iorpp 19j8qyk "
+            + "19loa4c 19mtyr2 19o3ipg 19ov7h3 19ptiu2 19qj42x 19uo91v 19wr6uf 1a0qnlr 1a1yrb3 1a2ylpm 1a5s71n "
+            + "1a7ia50 1afvnea 1anmikk 1ap3unw 1apdk65 1ard1m1 1asww5k 1av0und 1av7zbr 1av9jyr 1awa83r 1axl680 "
+            + "1b3q09o 1b6uhdg 1becehj 1bin5xw 1blr7ki 1bpeumm 1bt4guj 1bw9bpy 1c1d654 1c3itsk 1c4dst3 1c5xodr "
+            + "1c7u61z 1c9r8e3 1cbtoes 1ch9nb8 1cpuux8 1cq98y8 1cqg4gn 1cqifw7 1cr4r2h 1crft72 1csuc35 1ctyrb2 "
+            + "1cwgrec 1d1an0v 1d1t082 1d2sa29 1d93ckh 1dcypyi 1ddderu 1dgp7pl 1dgvcgk 1di25a9 1dpfuc0 1dqvdr8 "
+            + "1droid8 1drvr03 1dufhto 1duv6vl 1dw2iy0 1dwtnlh 1e1i598 1e86t57 1e9p2mm 1eajg90 1ec222q 1edeyn7 "
+            + "1ej3f0v 1ely2eo 1eog951 1eqmkw9 1etbb1v 1eukv62 1evrs5a 1ewpsl8 1eyuusd 1f0sy7z 1f3e36y 1f97jcf "
+            + "1fa7joj 1fcgoh 1fe6jvy 1ffqq0m 1fgabgm 1fgb5ho 1fkaarb 1fkuv9b 1flkt1n 1fpaxqc 1fpuyj3 1fqds74 "
+            + "1fqs5os 1fqychv 1fsjxyv 1ftvcqi 1fyduhl 1fzx10v 1g2nz62 1g4g6f5 1g78lx1 1gbmzjd 1ghc7rf 1gl6dwe "
+            + "1gmhd1t 1gpmled 1gpylah 1gqon7w 1gsg9tv 1gtpmyb 1gxhh9q 1gzsegr 1h5uxm4 1h8fj5v 1h98hu5 1hdcywg "
+            + "1hem29d 1hiveja 1hjj29q 1hlj84x 1hpqq3s 1hwnp2x 1hxyang 1i9s0ue 1igb62o 1ihzsi0 1iintpj 1ijc9ko "
+            + "1imejyi 1isgtcz 1iuvqka 1ivzhv3 1iwj7ly 1j3ucsp 1j4bguh 1j6vvk3 1ja0f85 1jand9b 1jbh8un 1jbnq3k "
+            + "1jbq9dt 1jfd6k2 1jjdqhx 1jje14s 1jjtq6j 1jmxa7z 1joh1rx 1joplxl 1jqd9yt 1jqwx5h 1ju3xa0 1juzpf0 "
+            + "1jx1arq 1jzhh4z 1k4xfdo 1kalvfr 1kfik19 1kj461w 1kkrv51 1kmhrp7 1kmy7i5 1kvhj0v 1kwj98y 1kwnltv "
+            + "1l0qt2o 1l0qygb 1l33tvp 1l4p1es 1l6qjt5 1l95vo8 1lagcaa 1ldqtb0 1lfumcc 1lg54ml 1lgz9he 1li0nv7 "
+            + "1lmv24l 1lrpgk7 1lu1lxl 1luxx7 1lvhibm 1lwz373 1lx5tkn 1ly5bkk 1lzop3x 1m46nam 1m57chi 1m7qvm2 "
+            + "1m82hcm 1m8jrpe 1me97pe 1mgjdoq 1micjlh 1mm8l3f 1mo30bx 1mrniks 1ms9mqb 1mudpb3 1mwc74a 1myu4z2 "
+            + "1n4rkwj 1ncqur0 1nfweci 1njyoq6 1npk0u3 1o0xhei 1o3mma7 1o6hwk9 1o6unwv 1o8geuk 1oadpja 1oaob23 "
+            + "1obfj4t 1ofa0ub 1omfic6 1oqjgrs 1os7457 1osxag4 1ovr3pg 1oy4iyy 1p12t0s 1p1ei1i 1p333b3 1p52wmv "
+            + "1p6l3gh 1pefxnp 1pf2zrp 1pgwezg 1phvtmu 1plhmc8 1pltmms 1pnawly 1pw5izd 1pxh71s 1pxvhbq 1pzmy6g "
+            + "1q0tniu 1q2jauv 1q2v8vp 1q4nkbr 1q73kjs 1q8eh17 1q91ft0 1qapz9 1qbbpaj 1qd0xa8 1qe3jca 1qeq2wa "
+            + "1qijk8c 1qjyxwl 1qkyg7t 1qmdyfo 1qmkrea 1qostrx 1qp1yk5 1qublfq 1qwui5t 1qxtmzx 1r1fevg 1r4b5sz "
+            + "1r6l49r 1r9uyo8 1rbz9wq 1re9ql4 1rei33d 1rgtvie 1rj2aej 1rkapbe 1roq6db 1rx258k 1rxmoz9 1s0b2a2 "
+            + "1s5g6sf 1s5xs8y 1s8rk1t 1s94rkg 1sgo3lk 1sgt39v 1sovneu 1sp5me5 1ssqycp 1st4302 1stywpl 1svjxf2 "
+            + "1svzm35 1t0rwva 1tatuui 1tayjie 1tb3oc9 1tfl944 1tglgqh 1th7nu2 1thuugo 1ticg1z 1tjttnl 1tmbpyy "
+            + "1tpu4p2 1tqpx2y 1tw5obk 1twoe0y 1tynf1h 1tzkthp 1u2lf2l 1u46ss2 1ueymyq 1ufezsc 1uftpex 1ufvw4c "
+            + "1ul550w 1up29xz 1uqeax9 1uspx93 1utdmyl 1uv4d1i 1uwo788 1uz0m87 1uzvqri 1v0gypd 1v10tae 1v21adn "
+            + "1v22kn 1v29o8j 1v7zb48 1vcsb26 1veadk9 1vjiel 1vlkx4j 1vr9ypw 1vs8swt 1vuvl84 1vw4t2n 1vxgmh7 "
+            + "1vxyfkj 1w0l4v3 1w0zmfp 1w1b5q0 1w1wghu 1w2pw9s 1w36wbb 1w4ycoz 1w71vbv 1w8muam 1wd41a7 1weausc "
+            + "1wh5kmk 1whjcyw 1whs6wr 1wkghlp 1wlx8og 1wn5ubu 1wn8l7 1wp7iy9 1wr9l3r 1wrhbq1 1wu9grp 1wy1y7d "
+            + "1wz4j6x 1x1dnai 1x5t2cu 1x8m5bd 1xc2404 1xlhgif 1xlx93 1xnegrw 1xntl6h 1xpjgc6 1xqm6g7 1xvop3s "
+            + "1xyoaxf 1y08k9w 1y0bvm7 1y615e 1y617kk 1ya3hje 1ydpmlz 1yeoryd 1yfs1zw 1yg78s7 1yjihqm 1ym0299 "
+            + "1ypg4ln 1ysunf 1yt5bi9 1ywezxq 1yzzkbn 1z0stuj 1z0xg0d 202i9x 20z3l6 23e4nh 241rzm 250dtq 251o9m "
+            + "25s2tt 26hzhd 26rskn 29x3ic 2a7ra7 2c48wx 2i3ur9 2if5u2 2klt6e 2l1dd8 2r402x 2vm0ks 2wzo1f 2zo1nx "
+            + "316ysd 32qdjb 35mkyl 375mu8 3c5bhl 3ejac2 3g3okc 3gq9yl 3j0s2a 3k42io 3lt2vx 3lzr4k 3oh2y1 3ozt6o "
+            + "3q0ikv 3r9x9h 3tnug6 40wngh 41o40h 47gvmx 47zdcx 48l6yb 49szir 4b5qa3 4e41h6 4e5nk 4e76a3 4kx0dx "
+            + "4pd5hf 4q0wr9 4qskeu 4v9ty9 4yuyki 51h6il 51wras 52umez 566jem 5b1lto 5eq9f1 5lk4lk 5lkfeg 5lvk45 "
+            + "5prl1j 5vuofa 5w39ss 5zk22d 60dehq 60i2av 617jpa 61l8j4 63gog4 63r0kt 63svps 63ue01 64ls49 659a2c "
+            + "67nbpa 696uf2 69bp0q 6ecm0z 6gzvfm 6he7a1 6r01vv 6sohfl 6xnun8 6xq2lr 6yitk 72w23y 77n026 7bj8we "
+            + "7qgrfe 7skgti 7t1ugn 7v58kf 81nizy 837ocz 8btnuf 8ctscg 8dmvfo 8j3mq7 8pe0jo 8qrc2s 8s9cui 8wlfs6 "
+            + "930l39 94x82l 98oka8 9cixo5 9cqe67 9fw9w2 9hvhf7 9hzm75 9k69kl 9p4ox6 9s4jk3 9s9wh6 9thrsu 9u10qi "
+            + "9uwlbs 9w3fva a0r7yy a0z93o a1ql43 a2t42g a2u0k3 a2xd9l a435x4 a4sjyd a57zvy a90yty a9ml1w ac9mye "
+            + "ahzqqz aic3wg aqmity aqrdts at400i avoi8x ax53lw b2qoia b37xgx b9izjw bin1tm bp5h15 bvhjib bwjzv2 "
+            + "bxx99p bzc5ny c1ljcu c320zo c3pzda c4au4e c63sjo c8y2ba c9089z c99v23 cbq9wj cigiqf cl6ck5 cndn7v "
+            + "co7da7 cs3h43 ctzvw cz7r1r czckil czp49h d0bd91 d1z3by d2k7q8 d2o10c d880vn d8law4 d9a29w ddrc3d "
+            + "deihtd dfqr7e dgt3b3 dgteyj dh6o9w dipm7x dlmcrq dmiow5 dnkikq du6sdm dub2gg dv0dxv dv7e4c dwe240 "
+            + "e0c5j4 e4z2d7 e6c1wt e9iybb ec22yi ed6wgu ekgsj6 enggbg eo9jj5 erxmcw ew39x4 f03njv f09cii f0auvm "
+            + "f1h8ng f5lrui f5rqk9 f5xm1k f77g3y f8m8ky f9bjc6 fccibp fh8eg5 fln06z fnftq1 fnr00p fp8awv futg6g "
+            + "fvrgdh fwwpne fx1va0 fyz2tl g05e5v g65xxb ghqswr gk5poz gl3cgf glybbo gm7xmo gp9n2a gqahel gwhdvh "
+            + "h0iyq h0zch6 h7h1y1 h8hmqk h908ar hdh2n9 hefun5 hfl039 hhnxhm hkmojy hnj8s hnonx8 hqajem hqxufu "
+            + "hs6cvy hud1ap hupz35 hwbpa8 hxzk7s i20pjk i2v39z i4yj9h iaipps ibg5la ic3wec igil06 ikcx6y il8h5m "
+            + "ilpbrp ilymxd imliq5 io9roz iq7bl4 iqx67c iv5zdv iwd8xz j2jt7b j31y5u j3eg96 j3fj8t j4zhdt j5axj9 "
+            + "ja3x2r je3j1k jg44wr jk0v1v jk6mkc jkjrro jkon4v jlv3zf jm8pfd jxf9mi jyd2o9 k2eww8 k7egk9 kafkya "
+            + "kcjr2n kegzv2 kirie kjvnok kt62fy kty957 kwn9z5 kxtkoc kz52t6 l5yodm lc2xlb ldx95r lj7f54 lqlkbh "
+            + "lsuqfe lu5psl lwtmj9 m0bsx9 m11dh5 m6qwsa mb4we8 mep7b4 mocz84 mqdu7r mtigg1 myuyhd mzm00g n4wlv2 "
+            + "n663n5 n9mcr1 nbr669 nfnhsy niaein niepy0 nj8610 nlabge nmr1d3 nrahww nrw9sn nsqpns nt142y ntzkug "
+            + "o10u88 o1a9kb o2bzhx o80cs0 o86nvn og039u ohd7ev ohe8uh okbg9c okpy81 oneu2q osibka owiu1h ox5e4p "
+            + "oxopb5 oyqxlc ozoej4 p192gg p4o3wo p4u9h2 p58oej p5vrby p6ef5t p941ei pam4cf pc158 pdndrs pim03n "
+            + "pm6bjh pojajt ps5aqv puhia5 pzjeoa q0kuho q3ag2 q4f76q q4pysn q5le1j q6reex q7zlhr q8vted qfxddq "
+            + "qfydse qgsg9p qi8dwi qjjfp qk33mf qk93fs qkdu1w qkzm3p qo2fof qo2uzw qpc4xa qpck1t qpnaaq qqjo5r "
+            + "qs79vs qsu4p qvki4j qylbvf qyombc r1rypw r3w2jr r9qtjo rckrbn rd23ow rdqvbb rfv2wp rguhmo ri9gbr "
+            + "rjifms rjjtga rlpjr3 rnpbbq ro4wyp rowvdw rpq3kx rubykt rvc5vx rwir1k s3zqu9 s4z201 s8j25b s9d2np "
+            + "sbz1vy sel1rh sf3ie8 sfijsx siqq5g skjq5n sl02o6 slme1m slnxo6 smbegr sn3516 so0qof sonc0i ssfhve "
+            + "ssvbgd sujha4 swnfj syd1tl syg8g1 t3hvt4 t5nhev t6mstg t6v854 t9hgke teuwm0 thze7f tird7p tk1q6d "
+            + "tlg18u tm3nba tmi3ep tnh372 tse8pl tsso4 tu22ab tvfeqy tvtpz9 twn2d3 txgow1 u3iido u5buqa u5mklb "
+            + "u6c7nb u7gzxc u7qg72 ucyf1w uquqf3 uriaxj us0teg uvp2we uxn0a9 uy8i1l uyqar1 v03o29 v0yc7i v35rrk "
+            + "v4e02u v4n1qh v4ugwx v9raoe vbgs8z vgkaok vminox vpo2ff vxqs1q vytfrr vztcwl w1v515 w457p0 w49ejf "
+            + "w4ohwm w594k8 w5e2pu w5wb6a wdimjm we0iy weknsi wesc33 wieefe wku673 wl9d4l wlrt95 wrdxx wuimr "
+            + "wuswd3 wwxebo wzo99y x018gz x43df9 x73o0d x9l3p2 xhkkc0 xjqla9 xm1glg xnhhbr xomtae xsh3n3 xsmrcw "
+            + "xvvsni xwl4az xz1oem y3epxe y3i621 yb09ab yj1car yjj8r yjnrst ynmorc ynvvz3 yrutii ytr9b4 yv80my "
+            + "yzvqtp z215yg z85n2u z8gis1 z8u27o z9whi2 zcavs1 ze4upt zf0dzl zfi7ls zg3hnb zh5p9w zjk1zv zk73a5 "
+            + "zkqiz3 zms9w6 zopzy3 zp6uzv zrqqtl zuxpwl zxjqm3 ";
+        const echt = new Set(ECHT.trim().split(/\s+/));
+        const h = s => { let x = 2166136261; for (const c of String(s).toLowerCase()) { x ^= c.codePointAt(0); x = Math.imul(x, 16777619); } return (x >>> 0).toString(36); };
+        const s = NamenEngine.standard();
+        const namen = [];
+        Object.values(s.wettbewerbe).forEach(n => namen.push(n));
+        Object.values(s.vereine).forEach(v => { namen.push(v.name, v.stadion); if (v.sponsor) namen.push(v.sponsor); });
+        Object.values(s.spieler).forEach(n => namen.push(n));
+        LEAGUES_DATA.forEach(l => namen.push(l.shortName));
+        const state = GameState.createNewGame("muc", "normal", { name: "Namenspruefer" });
+        state.clubs.forEach(c => namen.push(c.name, c.stadium, c.sponsor && c.sponsor.name));
+        // Erzeugte Spieler tragen Allerweltsnamen aus den Namenspools; geprüft
+        // werden die von Hand gepflegten Kader
+        state.players.filter(p => typeof p.id === "number").forEach(p => namen.push(p.name));
+        Object.values(state.cups || {}).forEach(c => namen.push(c.name));
+        Object.values(state.europeanCompetitions || {}).forEach(w => namen.push(w && w.name));
+        const treffer = namen.filter(n => n && echt.has(h(n)));
+        if (treffer.length) throw new Error(`Echte Namen in den Spieldaten: ${treffer.length} (z. B. "${treffer[0]}")`);
+        if (Object.keys(s.vereine).length !== 384 || Object.keys(s.spieler).length !== 290) throw new Error("Vorlage unvollständig");
+    });
+
+    test("Namen: Eine Namensdatei wird geprüft, gilt für neue und laufende Karrieren und lässt sich zurücknehmen", () => {
+        const { NamenEngine } = require('./js/engine/namenEngine.js');
+        const { CupEngine } = require('./js/engine/cupEngine.js');
+        const { SupercupEngine } = require('./js/engine/supercupEngine.js');
+        const { PlayoffEngine } = require('./js/engine/playoffEngine.js');
+        const { KaderregelEngine } = require('./js/engine/kaderregelEngine.js');
+        const std = NamenEngine.standard();
+
+        // Prüfung: kein Objekt, falsches Format, leer - und Bereinigung
+        if (NamenEngine.pruefe(null).ok || NamenEngine.pruefe([]).ok) throw new Error("Kein Objekt angenommen");
+        if (NamenEngine.pruefe({ format: "x", vereine: { muc: { name: "A" } } }).ok) throw new Error("Falsches Format angenommen");
+        if (NamenEngine.pruefe({ format: NamenEngine.FORMAT }).ok) throw new Error("Leere Datei angenommen");
+        if (NamenEngine.installiere("{kein json").ok) throw new Error("Kaputtes JSON angenommen");
+        const roh = NamenEngine.pruefe({ format: NamenEngine.FORMAT, wettbewerbe: { unbekannt: "X", ucl: "<b>Test</b>" }, vereine: { muc: { name: "x".repeat(99) } }, spieler: { abc: "Y", "2": "  Zwei  Namen " } });
+        if (!roh.ok || roh.paket.wettbewerbe.unbekannt || /[<>]/.test(roh.paket.wettbewerbe.ucl)) throw new Error("Wettbewerbe nicht bereinigt");
+        if (roh.paket.vereine.muc.name.length !== NamenEngine.MAX_LAENGE || roh.paket.spieler.abc || roh.paket.spieler["2"] !== "Zwei Namen") throw new Error("Namen nicht bereinigt");
+
+        // Die Vorlage ist selbst eine gültige Namensdatei
+        const vorlage = NamenEngine.pruefe(JSON.parse(NamenEngine.vorlage()));
+        if (!vorlage.ok || vorlage.zahlen.vereine !== 384 || vorlage.zahlen.spieler !== 290 || vorlage.zahlen.wettbewerbe !== 28) throw new Error(`Vorlage: ${JSON.stringify(vorlage.zahlen)}`);
+
+        const laufend = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const dor = laufend.clubs.find(c => c.id === "dor");
+        dor.sponsor.name = "Neu verhandelt";   // ein Vertrag aus der Karriere
+        const paket = {
+            format: NamenEngine.FORMAT, titel: "Test",
+            wettbewerbe: { de_liga_1: "Testliga", de_liga_2: "Unterliga", de_cup: "Testpokal", supercup_de: "Testcup", ucl: "Königscup" },
+            vereine: { muc: { name: "Testverein", stadion: "Teststadion", sponsor: "Testsponsor" }, dor: { sponsor: "Anderer Sponsor" }, en_mci: { name: "Testclub" } },
+            spieler: { "1": "Test Torwart" }
+        };
+        try {
+            const r = NamenEngine.installiere(JSON.stringify(paket));
+            if (!r.ok || r.zahlen.vereine !== 3 || r.zahlen.spieler !== 1) throw new Error(`Nicht installiert: ${r.fehler}`);
+
+            // Neue Karriere: aus den gepatchten Spieldaten
+            const neu = GameState.createNewGame("dor", "normal", { name: "Trainer" });
+            const muc = neu.clubs.find(c => c.id === "muc");
+            if (muc.name !== "Testverein" || muc.stadium !== "Teststadion" || muc.sponsor.name !== "Testsponsor") throw new Error(`Neue Karriere: ${muc.name} / ${muc.stadium} / ${muc.sponsor.name}`);
+            if (neu.players.find(p => p.id === 1).name !== "Test Torwart") throw new Error("Spieler 1 nicht umbenannt");
+            if (neu.clubs.find(c => c.id === "en_mci").name !== "Testclub") throw new Error("Verein aus der Vereinsdatei nicht umbenannt");
+            if (neu.leagues.find(l => l.id === "de_liga_1").shortName !== "Testliga" || neu.leagueName !== "Testliga") throw new Error("Liga nicht umbenannt");
+            if (neu.europeanCompetitions && neu.europeanCompetitions.ucl && neu.europeanCompetitions.ucl.name !== "Königscup") throw new Error("Europapokal nicht umbenannt");
+            if (CupEngine.pokalName(neu, "de") !== "Testpokal" || SupercupEngine.name(neu) !== "Testcup") throw new Error("Pokal oder Supercup nicht umbenannt");
+            if (PlayoffEngine.formatName("de_liga_3") !== "Relegation um die Unterliga") throw new Error(`Relegation: ${PlayoffEngine.formatName("de_liga_3")}`);
+            if (KaderregelEngine.REGELN.liga_en_liga_1.name !== NamenEngine.WETTBEWERBE.en_liga_1) throw new Error("Meldeliste ohne Ligennamen");
+
+            // Laufende Karriere: umbenennen, aber den neuen Sponsor lassen
+            const zahl = NamenEngine.wendeAn(laufend);
+            const lmuc = laufend.clubs.find(c => c.id === "muc");
+            if (!zahl.vereine || !zahl.spieler || !zahl.wettbewerbe) throw new Error(`Nichts umbenannt: ${JSON.stringify(zahl)}`);
+            if (lmuc.name !== "Testverein" || lmuc.sponsor.name !== "Testsponsor" || laufend.leagueName !== "Testliga") throw new Error("Laufende Karriere nicht umbenannt");
+            if (dor.sponsor.name !== "Neu verhandelt") throw new Error("Neuer Sponsorvertrag überschrieben");
+            if (Object.values(laufend.cups || {}).filter(c => c.land === "de" || c.id === "de_cup").some(c => c.name !== "Testpokal")) throw new Error("Pokal der laufenden Karriere nicht umbenannt");
+        } finally {
+            NamenEngine.entferne();
+        }
+
+        // Zurück: Spieldaten und laufende Karriere tragen wieder die erfundenen Namen
+        if (INITIAL_TEAMS_DATA[0].name !== std.vereine.muc.name) throw new Error("Spieldaten nicht zurückgesetzt");
+        NamenEngine.wendeAn(laufend, null, paket);
+        const lmuc = laufend.clubs.find(c => c.id === "muc");
+        if (lmuc.name !== std.vereine.muc.name || lmuc.sponsor.name !== std.vereine.muc.sponsor) throw new Error(`Nicht zurück: ${lmuc.name} / ${lmuc.sponsor.name}`);
+        if (laufend.players.find(p => p.id === 1).name !== std.spieler["1"]) throw new Error("Spieler 1 nicht zurück");
+        if (laufend.clubs.find(c => c.id === "dor").sponsor.name !== "Neu verhandelt") throw new Error("Neuer Sponsor beim Zurücksetzen überschrieben");
+        if (CupEngine.pokalName(laufend, "de") !== NamenEngine.WETTBEWERBE.de_cup) throw new Error("Pokalname nicht zurück");
     });
 
 
@@ -9730,7 +9909,8 @@ function runEngineTests() {
         if (!eigene || eigene.partie !== rel) throw new Error("Die eigene Relegation wird nicht gefunden");
         const halt = CalendarEngine.naechsterHalt(st);
         if (!halt || halt.grund !== "playoff" || st.calendar[halt.index] !== tage[0]) throw new Error("Der Weiter-Knopf hält nicht vor dem Relegationsspiel");
-        if (!st.inbox.some(m => /Relegation zur Bundesliga: Wir sind dabei/.test(m.subject || m.title || ""))) throw new Error("Keine Nachricht zur Relegation");
+        const relegation = `${PlayoffEngine.formatName("de_liga_2")}: Wir sind dabei`;
+        if (!st.inbox.some(m => (m.subject || m.title || "").includes(relegation))) throw new Error("Keine Nachricht zur Relegation");
 
         // Bis zum Saisonwechsel: alles gespielt, Auf- und Abstieg nach den Ergebnissen
         let res = null;
@@ -9874,14 +10054,14 @@ function runEngineTests() {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const leiter = PlayerRatingEngine.klassenLeiter(state);
         const namen = leiter.stufen.map(s => s.name);
-        if (namen[0] !== "Bundesliga" || !namen.includes("Regionalliga") || namen[namen.length - 1] !== "Landesliga") throw new Error(`Leiter falsch: ${namen.join(", ")}`);
+        if (namen[0] !== "1. Liga" || !namen.includes("Regionalliga") || namen[namen.length - 1] !== "Landesliga") throw new Error(`Leiter falsch: ${namen.join(", ")}`);
         leiter.stufen.forEach((s, i) => {
             if (s.spitze < s.stamm) throw new Error(`${s.name}: Spitze unter Stammspieler`);
             if (i > 0 && !(leiter.stufen[i - 1].stamm > s.stamm)) throw new Error(`${s.name} nicht schwächer als die Stufe darüber`);
         });
         const bl = leiter.stufen[0], ll = leiter.stufen[leiter.stufen.length - 1];
         const text = (o) => PlayerRatingEngine.klasse(state, o).text;
-        if (text(bl.stamm) !== "Stammspieler der Bundesliga" || text(bl.spitze) !== "Spitzenspieler der Bundesliga") throw new Error(`Bundesliga: ${text(bl.stamm)} / ${text(bl.spitze)}`);
+        if (text(bl.stamm) !== "Stammspieler der 1. Liga" || text(bl.spitze) !== "Spitzenspieler der 1. Liga") throw new Error(`1. Liga: ${text(bl.stamm)} / ${text(bl.spitze)}`);
         if (text(ll.stamm) !== "Stammspieler der Landesliga") throw new Error(`Landesliga: ${text(ll.stamm)}`);
         if (PlayerRatingEngine.klasse(state, 5).key !== "ergaenzung" || PlayerRatingEngine.klasse(state, 99).key !== "welt") throw new Error("Ränder falsch");
 
@@ -9897,7 +10077,7 @@ function runEngineTests() {
         const talent = Object.assign({}, eigener, { id: "talent_test", age: 18, overall: bl.stamm - 12, pot: bl.spitze + 2,
             trueCurrentAbility: (bl.stamm - 12) * 2, truePotentialAbility: (bl.spitze + 2) * 2 });
         const tk = PlayerRatingEngine.calculateVisiblePlayerCard(talent, { state, userClubId: "muc", userSquadAvgAbility: 150 });
-        if (!tk.potentialKlasse || !/^Kann .* werden$/.test(tk.potentialKlasse) || !tk.potentialKlasse.includes("Bundesliga")) throw new Error(`Talent ohne Ziel: ${tk.potentialKlasse}`);
+        if (!tk.potentialKlasse || !/^Kann .* werden$/.test(tk.potentialKlasse) || !tk.potentialKlasse.includes("1. Liga")) throw new Error(`Talent ohne Ziel: ${tk.potentialKlasse}`);
     });
 
     test("Wirtschaft: Fernsehgeld je Land, Ticketpreise nach Ruf, Prämien und Gehaltsquote der Spitze", () => {
@@ -11271,7 +11451,9 @@ function runEngineTests() {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const ids = Object.keys(state.cups).sort();
         if (ids.join() !== "de_cup,en_cup,es_cup,fr_cup,it_cup") throw new Error(`Pokale: ${ids}`);
-        if (CupEngine.eigenerPokalId(state) !== "de_cup" || state.cups.en_cup.name !== "FA Cup") throw new Error("Eigener Pokal oder Name falsch");
+        const { NamenEngine } = require('./js/engine/namenEngine.js');
+        const englischerPokal = NamenEngine.wettbewerb("en_cup");
+        if (CupEngine.eigenerPokalId(state) !== "de_cup" || state.cups.en_cup.name !== englischerPokal) throw new Error("Eigener Pokal oder Name falsch");
 
         // Spanien, Italien und Frankreich haben weniger als 64 Vereine: Die
         // stärksten haben ein Freilos, die zweite Runde geht mit 32 auf
@@ -11297,7 +11479,7 @@ function runEngineTests() {
             // Niemand fällt ohne Spiel heraus: Jeder außer dem Sieger ist genau einmal ausgeschieden
             if (new Set(cup.ausgeschieden).size !== cup.teilnehmer.length - 1 || cup.ausgeschieden.includes(cup.winnerId)) throw new Error(`${id}: ${cup.ausgeschieden.length} ausgeschieden`);
         }
-        if (!state.inbox.some(m => /^FA Cup: .* ist Sieger/.test(m.subject))) throw new Error("Keine Meldung zum FA Cup");
+        if (!state.inbox.some(m => (m.subject || "").startsWith(`${englischerPokal}: `) && /ist Sieger/.test(m.subject))) throw new Error("Keine Meldung zum englischen Pokal");
         if (Object.keys(CupEngine.pokalsiegerJeLand(state)).sort().join() !== "de,en,es,fr,it") throw new Error("Pokalsieger fehlen");
 
         // Der Pokalsieger spielt Europa League - auch aus der 2. Liga

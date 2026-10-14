@@ -207,7 +207,7 @@ const CalendarEngine = {
                     dayOfWeek: this.getDayName(currentDate),
                     type: CALENDAR_DAY_TYPES.EURO,
                     title: `🏆 ${euroSupercup.NAME}`,
-                    description: "Der Sieger der Königsklasse gegen den Sieger der Europa League - auf neutralem Platz, bei Gleichstand Elfmeterschießen.",
+                    description: "Der Sieger der Königsklasse gegen den Sieger des zweiten Europapokals - auf neutralem Platz, bei Gleichstand Elfmeterschießen.",
                     matchday: null,
                     cupArt: "eurosupercup",
                     cupRunde: 0,

@@ -60,12 +60,12 @@ function runWizardTests() {
         const dor = UIManager.getFilteredWizardClubs(INITIAL_TEAMS_DATA, { search: "dortmund" });
         if (dor.length !== 1 || dor[0].id !== "dor") throw new Error("Suche nach 'dortmund' fehlgeschlagen");
 
-        // "bayer" trifft seit den echten Vereinsnamen zwei Klubs: Bayer
-        // Leverkusen und den FC Bayern München. Beide müssen kommen.
-        const bayer = UIManager.getFilteredWizardClubs(INITIAL_TEAMS_DATA, { search: "bayer" });
-        const bayerIds = bayer.map(c => c.id).sort();
-        if (bayerIds.join(",") !== "lev,muc") {
-            throw new Error(`Suche nach 'bayer' fehlgeschlagen (Erhalten: ${bayerIds.join(", ") || "nichts"})`);
+        // "concordia" trifft mehrere Klubs - alle müssen kommen
+        const concordia = UIManager.getFilteredWizardClubs(INITIAL_TEAMS_DATA, { search: "concordia" });
+        const concordiaIds = concordia.map(c => c.id).sort();
+        const erwartet = INITIAL_TEAMS_DATA.filter(c => /concordia/i.test(c.name)).map(c => c.id).sort();
+        if (erwartet.length < 2 || concordiaIds.join(",") !== erwartet.join(",")) {
+            throw new Error(`Suche nach 'concordia' fehlgeschlagen (Erhalten: ${concordiaIds.join(", ") || "nichts"})`);
         }
 
         const lev = UIManager.getFilteredWizardClubs(INITIAL_TEAMS_DATA, { search: "leverkusen" });
@@ -76,8 +76,8 @@ function runWizardTests() {
         const frankfurt = UIManager.getFilteredWizardClubs(INITIAL_TEAMS_DATA, { search: "Frankfurt" });
         if (frankfurt.length !== 1 || frankfurt[0].id !== "sge") throw new Error("Suche nach Stadt 'Frankfurt' fehlgeschlagen");
 
-        const arena = UIManager.getFilteredWizardClubs(INITIAL_TEAMS_DATA, { search: "Iduna" });
-        if (arena.length !== 1 || arena[0].id !== "dor") throw new Error("Suche nach Stadion 'Iduna' fehlgeschlagen");
+        const arena = UIManager.getFilteredWizardClubs(INITIAL_TEAMS_DATA, { search: "Emscher" });
+        if (arena.length !== 1 || arena[0].id !== "dor") throw new Error("Suche nach Stadion 'Emscher' fehlgeschlagen");
     });
 
     test("Wizard Filter: Schwierigkeit 'easy' (Meisterschaftsfavoriten)", () => {
@@ -112,7 +112,7 @@ function runWizardTests() {
         const bDesc = UIManager.getFilteredWizardClubs(INITIAL_TEAMS_DATA, { sort: "budget_desc" });
         const nAsc = UIManager.getFilteredWizardClubs(INITIAL_TEAMS_DATA, { sort: "name_asc" });
 
-        if (sDesc[0].name !== "FC Bayern München" && sDesc[0].name !== "Bayer Leverkusen") {
+        if (sDesc[0].id !== "muc" && sDesc[0].id !== "lev") {
             throw new Error("Sortierung nach Stärke absteigend unerwartet");
         }
         if (bDesc[0].transferBudget < bDesc[bDesc.length - 1].transferBudget) {
@@ -480,18 +480,20 @@ function runWizardTests() {
         if (ui.wizardStep !== 3) throw new Error("Schritt 3 konnte nicht gesetzt werden");
 
         const listHtml = domElements["clubSelectionList"].innerHTML;
-        if (!listHtml.includes("FC Bayern München") || !listHtml.includes("Borussia Dortmund")) {
+        const nameVon = id => INITIAL_TEAMS_DATA.find(c => c.id === id).name;
+        if (!listHtml.includes(nameVon("muc")) || !listHtml.includes(nameVon("dor"))) {
             throw new Error("Vereinsliste hat in Schritt 3 keine Vereinskarten gerendert");
         }
 
-        // 3. Verein auswählen (z.B. FC Bayern München)
+        // 3. Verein auswählen (z.B. München)
         ui.wizardSelectedClubId = "muc";
         ui.renderWizardClubs();
         ui.renderWizardClubDetails("muc");
 
         const detailHtml = domElements["clubDetailPanel"].innerHTML;
-        if (!detailHtml.includes("FC Bayern München") || !detailHtml.includes("Allianz Arena")) {
-            throw new Error("Detailpanel zeigt Vereinsdaten von FC Bayern München nicht an");
+        const muc = INITIAL_TEAMS_DATA.find(c => c.id === "muc");
+        if (!detailHtml.includes(muc.name) || !detailHtml.includes(muc.stadium)) {
+            throw new Error(`Detailpanel zeigt Vereinsdaten von ${muc.name} nicht an`);
         }
 
         // 4. Die Liga aus Schritt zwei bestimmt, welche Vereine zur Wahl
@@ -500,7 +502,7 @@ function runWizardTests() {
         ui.renderWizardClubs();
 
         const ligaHtml = domElements["clubSelectionList"].innerHTML;
-        if (ligaHtml.includes("FC Bayern München")) {
+        if (ligaHtml.includes(nameVon("muc"))) {
             throw new Error("Die Vereinsliste zeigt nach dem Ligawechsel weiterhin Vereine anderer Ligen");
         }
         if (!ligaHtml.includes("Landesliga")) {
@@ -510,11 +512,11 @@ function runWizardTests() {
             throw new Error("Ein Verein aus einer anderen Liga bleibt nach dem Ligawechsel ausgewählt");
         }
 
-        // 5. Zurück in die Bundesliga und Karriere bestätigen
+        // 5. Zurück in die erste Liga und Karriere bestätigen
         ui.selectWizardLeague("de_liga_1");
         ui.renderWizardClubs();
-        if (!domElements["clubSelectionList"].innerHTML.includes("FC Bayern München")) {
-            throw new Error("Nach dem Wechsel zurück fehlen die Vereine der Bundesliga");
+        if (!domElements["clubSelectionList"].innerHTML.includes(nameVon("muc"))) {
+            throw new Error("Nach dem Wechsel zurück fehlen die Vereine der ersten Liga");
         }
 
         ui.wizardSelectedClubId = "muc";

@@ -240,11 +240,60 @@ class CompetitionEngine {
         fillTo("uel", breit ? 24 : 16);
         fillTo("uecl", breit ? 24 : 16);
 
+        const lose = (ids) => CompetitionEngine.loseGruppen(ids, allClubs);
         return {
-            ucl: CompetitionEngine.createEuropeanCup("ucl", CompetitionEngine.wettbewerbName("ucl"), qualified.ucl),
-            uel: CompetitionEngine.createEuropeanCup("uel", CompetitionEngine.wettbewerbName("uel"), qualified.uel),
-            uecl: CompetitionEngine.createEuropeanCup("uecl", CompetitionEngine.wettbewerbName("uecl"), qualified.uecl)
+            ucl: CompetitionEngine.createEuropeanCup("ucl", CompetitionEngine.wettbewerbName("ucl"), lose(qualified.ucl)),
+            uel: CompetitionEngine.createEuropeanCup("uel", CompetitionEngine.wettbewerbName("uel"), lose(qualified.uel)),
+            uecl: CompetitionEngine.createEuropeanCup("uecl", CompetitionEngine.wettbewerbName("uecl"), lose(qualified.uecl))
         };
+    }
+
+    /**
+     * Gruppenauslosung mit Töpfen und Länderschutz.
+     *
+     * Vorher wurden die Gruppen der Reihe nach aus der Teilnehmerliste
+     * geschnitten - und die war nach Ländern sortiert. In der Königsklasse
+     * spielten vier deutsche Vereine in Gruppe A, vier englische in Gruppe B.
+     * Die Punkte blieben im Land, und die Fünfjahreswertung maß kaum, wie
+     * stark ein Land ist.
+     *
+     * Jetzt wie im echten Wettbewerb: vier Töpfe nach Ruf, aus jedem Topf ein
+     * Verein je Gruppe, nie zwei Vereine eines Landes in derselben Gruppe.
+     * Zurück kommt die Teilnehmerliste in Gruppenfolge (je vier am Stück).
+     */
+    static loseGruppen(ids, allClubs = []) {
+        const anzahl = Math.floor((ids || []).length / 4);
+        if (anzahl < 2) return (ids || []).slice();
+        const verein = new Map((allClubs || []).map(c => [c.id, c]));
+        const land = (id) => verein.get(id)?.countryId || id;
+        const sortiert = ids.slice(0, anzahl * 4)
+            .sort((a, b) => (verein.get(b)?.reputation || 0) - (verein.get(a)?.reputation || 0));
+
+        for (let versuch = 0; versuch < 40; versuch++) {
+            const gruppen = Array.from({ length: anzahl }, () => []);
+            let geklappt = true;
+            for (let topf = 0; topf < 4 && geklappt; topf++) {
+                const imTopf = sortiert.slice(topf * anzahl, (topf + 1) * anzahl).sort(() => Math.random() - 0.5);
+                // Wer die wenigsten freien Gruppen hat, wird zuerst gezogen
+                const frei = (id) => gruppen.filter(g => g.length === topf && !g.some(x => land(x) === land(id)));
+                while (imTopf.length) {
+                    imTopf.sort((a, b) => frei(a).length - frei(b).length);
+                    const id = imTopf.shift();
+                    const moeglich = frei(id);
+                    if (!moeglich.length) { geklappt = false; break; }
+                    moeglich[Math.floor(Math.random() * moeglich.length)].push(id);
+                }
+            }
+            if (geklappt) return gruppen.flat();
+        }
+        // Geht es nicht auf (zu viele Vereine eines Landes), dann eben ohne
+        // Länderschutz - aber weiter mit Töpfen
+        const gruppen = Array.from({ length: anzahl }, () => []);
+        for (let topf = 0; topf < 4; topf++) {
+            sortiert.slice(topf * anzahl, (topf + 1) * anzahl).sort(() => Math.random() - 0.5)
+                .forEach((id, i) => gruppen[i].push(id));
+        }
+        return gruppen.flat();
     }
 
     /** Name eines Wettbewerbs - erfunden oder aus der Namensdatei */

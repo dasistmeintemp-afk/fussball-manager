@@ -18,11 +18,14 @@
  * weiteren Platz (Leistungsplatz).
  *
  * Die vier Saisons vor dem Karrierestart folgen der echten Rangfolge:
- * England vor Italien, Spanien, Deutschland und Frankreich. Die Werte
- * stehen im Maßstab dieses Spiels - ein Land holt hier je Verein und Saison
- * rund 7 bis 10 Punkte. Vorher waren es die echten Werte (14,5 bis 21,5),
- * gut das Doppelte: Die Wertung bestand in den ersten Jahren fast nur aus
- * der Vorgabe und sackte dann Saison für Saison ab.
+ * England vor Italien, Spanien, Deutschland und Frankreich, dahinter die
+ * Niederlande, Portugal, Belgien, die Türkei, Österreich, die Schweiz und
+ * Schottland. Die Werte stehen im Maßstab dieses Spiels - die großen
+ * Länder holen hier je Verein und Saison rund 8 bis 11 Punkte, die kleinen
+ * 3 bis 7 (gemessen über 16 Saisons mit ausgelosten Gruppen). Vorher waren
+ * es die echten Werte (14,5 bis 21,5), gut das Doppelte: Die Wertung
+ * bestand in den ersten Jahren fast nur aus der Vorgabe und sackte dann
+ * Saison für Saison ab.
  */
 
 const KoeffizientEngine = {
@@ -32,7 +35,7 @@ const KoeffizientEngine = {
         nl: "Niederlande", pt: "Portugal", be: "Belgien", tr: "Türkei", at: "Österreich", ch: "Schweiz", sc: "Schottland"
     },
     /** Werte je Saison vor dem Karrierestart (vier Saisons) */
-    START: { en: 9.8, it: 9.0, es: 8.8, de: 8.4, fr: 7.2, nl: 6.4, pt: 6.2, be: 5.4, tr: 5.0, at: 4.4, ch: 4.2, sc: 4.0 },
+    START: { en: 11.4, it: 10.2, es: 9.8, de: 9.4, fr: 8.0, nl: 7.4, pt: 7.0, be: 6.0, tr: 5.8, at: 4.2, ch: 4.0, sc: 3.6 },
     /**
      * Startplätze in der Königsklasse nach Rang. Die großen Länder stellen
      * vier, die kleineren ihren Meister und manchmal den Zweiten. Dazu je

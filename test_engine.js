@@ -4088,7 +4088,9 @@ function runEngineTests() {
             db.kaputt = true;
             geladen.managerName = "Ausweiche";
             geladen.saveToLocalStorage(null, true);
-            if (!/"managerName":"Ausweiche"/.test(ls.getItem(PLATZ) || "")) throw new Error("Kein Ausweichen in den LocalStorage");
+            // Große Stände liegen dort verdichtet (Kompressor)
+            const { Kompressor } = require('./js/services/kompressor.js');
+            if (!/"managerName":"Ausweiche"/.test(Kompressor.entpacke(ls.getItem(PLATZ) || ""))) throw new Error("Kein Ausweichen in den LocalStorage");
             if (geladen._saveFehler) throw new Error("Ausweichen gilt fälschlich als Fehler: " + geladen._saveFehler);
             // ... und nach dem nächsten Start gilt der jüngere Stand
             db.kaputt = false;
@@ -12569,6 +12571,30 @@ function runEngineTests() {
         const vor = MatchEngine.calculateEffectivePlayerSkill(zm, "ZM");
         zm.decisions += 20; zm.teamwork += 20; zm.workRate += 20;
         if (!(MatchEngine.calculateEffectivePlayerSkill(zm, "ZM") > vor + 2)) throw new Error("Kopfwerte ohne Wirkung auf die Stärke");
+    });
+
+    test("Kompressor: Große Stände gehen verdichtet in den LocalStorage und kommen unverändert zurück", () => {
+        const { Kompressor: K } = require('./js/services/kompressor.js');
+        const { SaveCodec } = require('./js/services/saveCodec.js');
+        const proben = ["", "a", "ab", "aaaaaaaaaaaaaaaaaaaa", "Grüße 😀 und \u0000\u0001 Steuerzeichen", JSON.stringify({ x: [1, 2, 3], y: "äöü".repeat(200) })];
+        for (let i = 0; i < 100; i++) {
+            let t = "";
+            const n = Math.floor(Math.random() * 400);
+            for (let k = 0; k < n; k++) t += String.fromCharCode(Math.random() < 0.9 ? 32 + Math.floor(Math.random() * 90) : Math.floor(Math.random() * 65535));
+            proben.push(t);
+        }
+        proben.forEach((t, i) => {
+            if (K.entpacke(K.packe(t)) !== t) throw new Error(`Probe ${i} kommt verändert zurück`);
+        });
+        if (K.entpacke("kein verdichteter Text") !== "kein verdichteter Text") throw new Error("Unverdichteter Text wird verändert");
+        // Ein ganzer Spielstand: deutlich kleiner, unverändert lesbar
+        const state = GameState.createNewGame("muc", "normal", { name: "Kompressor" });
+        const text = JSON.stringify(SaveCodec.encodeState(state));
+        const ls = GameState._lsText("x".repeat(GameState.LS_VERDICHTEN_AB) + text);
+        if (!K.istGepackt(ls) || !(ls.length < text.length * 0.4)) throw new Error(`Verdichtet ${ls.length} Zeichen statt ${text.length}`);
+        if (GameState._entpackt(ls) !== "x".repeat(GameState.LS_VERDICHTEN_AB) + text) throw new Error("Spielstand kommt verändert zurück");
+        // Kleine Stände bleiben, wie sie sind
+        if (GameState._lsText("{}") !== "{}") throw new Error("Kleiner Stand wurde verdichtet");
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

@@ -2003,7 +2003,7 @@ class GameState {
                 GameState._sichereInIdb(this, slotKey, text, zusammenfassung, sicherung);
                 return true;
             }
-            localStorage.setItem(slotKey, text);
+            localStorage.setItem(slotKey, GameState._lsText(text));
             if (slotKey === GameState.aktiverPlatz()) GameState._spiegel[slotKey] = text;
             GameState._trageEinLs(slotKey, zusammenfassung);
             this._saveFehler = null;
@@ -2095,7 +2095,7 @@ class GameState {
             // Die Sicherung kam nicht an - nicht anbieten, was es nicht gibt
             if (neu && v.sicherungen[slotKey]) v.sicherungen[slotKey] = v.sicherungen[slotKey].filter(s => s.schluessel !== neu);
             try {
-                localStorage.setItem(slotKey, text);
+                localStorage.setItem(slotKey, GameState._lsText(text));
                 state._saveFehler = null;
                 return true;
             } catch (e) {
@@ -2150,7 +2150,9 @@ class GameState {
                 plaetze.forEach(k => {
                     if (!(k in idbTexte)) return;
                     const idbText = idbTexte[k];
-                    const lsText = lsTexte[k] || null;
+                    // Im LocalStorage liegt ein großer Stand verdichtet -
+                    // IndexedDB bekommt ihn wieder als Klartext
+                    const lsText = lsTexte[k] ? GameState._entpackt(lsTexte[k]) : null;
                     let text = idbText;
                     if (lsText && (!idbText || GameState._gespeichertAm(lsText) >= GameState._gespeichertAm(idbText))) {
                         text = lsText;
@@ -2216,7 +2218,7 @@ class GameState {
     /** Zeitpunkt eines gespeicherten Stands, ohne ihn ganz aufzufalten */
     static _gespeichertAm(text) {
         try {
-            const roh = JSON.parse(text);
+            const roh = JSON.parse(GameState._entpackt(text));
             return Date.parse(roh?.lastSaved || "") || 0;
         } catch (e) {
             return 0;
@@ -2311,9 +2313,26 @@ class GameState {
         return GameState._getSpeicherDB().lies(schluessel).then(t => (typeof t === "string" ? t : null));
     }
 
+    /**
+     * Für den LocalStorage wird ein großer Stand verdichtet (Kompressor) -
+     * er fasst rund fünf Millionen Zeichen, ein Stand der ganzen Welt ist
+     * größer. IndexedDB bekommt den Text, wie er ist.
+     */
+    static LS_VERDICHTEN_AB = 2500000;
+
+    static _lsText(text) {
+        const k = GameState._resolveEngine("Kompressor", "../services/kompressor.js");
+        return k && typeof text === "string" && text.length >= GameState.LS_VERDICHTEN_AB ? k.packe(text) : text;
+    }
+
+    static _entpackt(text) {
+        const k = GameState._resolveEngine("Kompressor", "../services/kompressor.js");
+        return k && k.istGepackt(text) ? k.entpacke(text) : text;
+    }
+
     static _ausText(raw) {
         if (!raw) return null;
-        const parsed = JSON.parse(raw);
+        const parsed = JSON.parse(GameState._entpackt(raw));
         const codec = GameState._getSaveCodec();
         return (codec && codec.isEncoded(parsed)) ? codec.decodeState(parsed) : parsed;
     }

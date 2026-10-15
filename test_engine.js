@@ -11649,18 +11649,28 @@ function runEngineTests() {
         eigen.ticketPrice = 90;
         if (!(zuschauer(eigen, fremd[1], 5) < zuschauer(eigen, fremd[1], 100))) throw new Error("Die eigene Fanstimmung wirkt nicht");
 
-        // Rücklagen: Was über dem Doppelten der üblichen liegt, fließt zur Hälfte ab
+        // Überschüsse: Was über dem 1,25-Fachen der üblichen Rücklage liegt,
+        // geht zu 40 % in Anlagen, zu 35 % in den Etat, und es gibt mehr Gehalt
         const ki = state.clubs.find(c => c.level === 3);
         const reich = state.clubs.find(c => c.level === 6);
-        const ziel = (c) => ClubGenerator.kontostandRichtwert(c.level, c.clubStrength, c.countryId) * FinanceEngine.RUECKLAGE_FAKTOR;
+        const I = FinanceEngine.INVESTITION;
+        const ziel = (c) => ClubGenerator.kontostandRichtwert(c.level, c.clubStrength, c.countryId) * I.ruecklage;
         ki.balance = ziel(ki) - 1000;
         reich.balance = ziel(reich) + 2000000;
         eigen.balance = 900000000;
         state.clubs.forEach(c => { if (c !== ki && c !== reich && c !== eigen) c.balance = 0; });
-        if (FinanceEngine.ruecklagenAnpassen(state) !== 1) throw new Error("Falsche Zahl angepasster Vereine");
-        if (ki.balance !== ziel(ki) - 1000) throw new Error("Ein Verein unter der Rücklage wurde angetastet");
-        if (Math.abs(reich.balance - (ziel(reich) + 1000000)) > 1) throw new Error(`Überschuss nicht halbiert: ${reich.balance}`);
-        if (eigen.balance !== 900000000) throw new Error("Der eigene Verein wurde angetastet");
+        const lohnVon = (c) => state.players.filter(p => p.clubId === c.id && !p.leihe).reduce((x, p) => x + (p.wage || 0), 0);
+        const lohnVorher = lohnVon(reich), eigenLohn = lohnVon(eigen);
+        if (FinanceEngine.investiereUeberschuesse(state) !== 1) throw new Error("Falsche Zahl investierender Vereine");
+        if (ki.balance !== ziel(ki) - 1000 || ki.kaderInvestition) throw new Error("Ein Verein unter der Rücklage wurde angetastet");
+        if (Math.abs(reich.balance - (ziel(reich) + 2000000 * (1 - I.anlagen))) > 2) throw new Error(`Anlagen nicht abgezogen: ${reich.balance}`);
+        if (Math.abs(reich.kaderInvestition - 2000000 * I.kader) > 1 || Math.abs(reich.investiert - 2000000 * I.anlagen) > 1) throw new Error("Kader- und Anlagenanteil falsch");
+        const lohnNachher = lohnVon(reich);
+        const tragbar = FinanceEngine.gehaltsbudgetJeSpieltag(reich, state) * FinanceEngine.GEHALT_GRENZE;
+        if (lohnNachher < lohnVorher || lohnNachher > lohnVorher * (1 + I.gehaltPlus) * 1.01 || (lohnNachher > lohnVorher && lohnNachher > tragbar * 1.01)) {
+            throw new Error(`Gehälter: ${lohnVorher} -> ${lohnNachher}, tragbar ${tragbar}`);
+        }
+        if (eigen.balance !== 900000000 || lohnVon(eigen) !== eigenLohn) throw new Error("Der eigene Verein wurde angetastet");
 
         // Der Betriebsaufwand steigt von Liga zu Liga an, ganz unten frisst er drei Viertel
         const quoten = [1, 2, 3, 4, 5, 6, 7].map(l => FinanceEngine.OPERATING_COST_BY_LEVEL[l]);

@@ -464,34 +464,61 @@ const FinanceEngine = {
     },
 
     /**
-     * Rücklagen der KI-Vereine zum Saisonwechsel.
+     * Was die KI-Vereine mit Überschüssen tun - zum Saisonwechsel.
      *
-     * Auch mit geeichtem Betriebsaufwand bleibt unten Geld übrig: Die großen
-     * Vereine kaufen bei den kleinen ein, und die Tabellenprämie kommt obendrauf.
-     * Gemessen hatte der Median-Drittligist nach sechs Saisons das Siebenfache
-     * seines Startguthabens, der Sechstligist das Achtfache - und weil sich der
-     * Transferetat nach dem Kontostand richtet, kauften die unteren Ligen
-     * Jahr für Jahr stärkere Spieler.
+     * Der laufende Betrieb wirft Geld ab: Ein Bundesligist nahm je Saison
+     * rund 53 Mio. ein (Zuschauer, Sponsor, Fanartikel) und gab 48 Mio. aus,
+     * dazu kamen Prämien. Bisher floss erst ab dem Doppelten der üblichen
+     * Rücklage etwas ab - die Kassen wuchsen in fünf Saisons auf das Zwei-
+     * bis Dreifache, in der Bundesliga im Schnitt von 15 auf 44 Mio.
      *
-     * Ein echter Verein legt Überschüsse nicht endlos auf die hohe Kante: Er
-     * baut, tilgt Kredite, investiert in den Nachwuchs. Was über dem Doppelten
-     * der üblichen Rücklage seiner Stufe und Größe liegt, fließt zur Hälfte
-     * dorthin ab. Der eigene Verein bleibt außen vor - dort entscheidet der
-     * Manager, was mit dem Geld geschieht.
+     * Ein echter Verein legt Überschüsse nicht auf die hohe Kante. Was über
+     * dem 1,1-Fachen der üblichen Rücklage liegt, verteilt die KI:
+     * - 50 % in Anlagen und Tilgung (Stadion, Trainingsgelände, Nachwuchs,
+     *   Kredite) - das Geld verlässt die Kasse
+     * - 35 % zusätzlich in den Transferetat der neuen Saison
+     * - und wer Geld hat, zahlt mehr Gehalt: bis zu 5 % je Saison, nie über
+     *   die Grenze des Tragbaren (GEHALT_GRENZE) hinaus
+     * Der eigene Verein bleibt außen vor - dort entscheidet der Manager.
+     *
+     * Gemessen über fünf Saisons: Der mittlere Bundesligist steht nach dem
+     * Saisonwechsel bei 14 bis 23 Mio. statt bei 25 Mio. schon nach zwei
+     * Saisons und weiter steigend; in England, Spanien und den kleinen
+     * Ländern pendeln die Kassen ebenso um die übliche Rücklage.
      */
-    RUECKLAGE_FAKTOR: 2,
-    RUECKLAGE_ABFLUSS: 0.5,
+    INVESTITION: { ruecklage: 1.1, anlagen: 0.5, kader: 0.35, gehaltPlus: 0.05 },
 
-    ruecklagenAnpassen(state) {
+    investiereUeberschuesse(state) {
         const gen = _feResolve("ClubGenerator", "./clubGenerator.js");
         if (!state || !Array.isArray(state.clubs) || !gen || typeof gen.kontostandRichtwert !== "function") return 0;
+        const I = this.INVESTITION;
+        const lohn = new Map(), kader = new Map();
+        (state.players || []).forEach(p => {
+            if (!p.clubId || p.leihe) return;
+            lohn.set(p.clubId, (lohn.get(p.clubId) || 0) + (p.wage || 0));
+            if (!kader.has(p.clubId)) kader.set(p.clubId, []);
+            kader.get(p.clubId).push(p);
+        });
         let angepasst = 0;
         state.clubs.forEach(club => {
             if (club.id === state.userClubId) return;
-            const ziel = gen.kontostandRichtwert(club.level || 1, club.clubStrength ?? 0.5, club.countryId) * this.RUECKLAGE_FAKTOR;
+            club.kaderInvestition = 0;
+            const ziel = gen.kontostandRichtwert(club.level || 1, club.clubStrength ?? 0.5, club.countryId) * I.ruecklage;
             const ueber = (club.balance || 0) - ziel;
             if (!(ueber > 0)) return;
-            club.balance = Math.round(club.balance - ueber * this.RUECKLAGE_ABFLUSS);
+            const anlagen = Math.round(ueber * I.anlagen);
+            club.balance = Math.round(club.balance - anlagen);
+            club.investiert = Math.round((club.investiert || 0) + anlagen);
+            club.kaderInvestition = Math.round(ueber * I.kader);
+            // Gehälter: höchstens 5 %, höchstens bis an die Grenze des
+            // Tragbaren, und nur so viel, wie ein Viertel des Überschusses
+            // über eine Saison deckt
+            const jetzt = lohn.get(club.id) || 0;
+            const tragbar = this.gehaltsbudgetJeSpieltag(club, state) * this.GEHALT_GRENZE;
+            if (jetzt > 0 && tragbar > jetzt) {
+                const faktor = Math.min(1 + I.gehaltPlus, tragbar / jetzt, 1 + (ueber * 0.25) / (jetzt * 34));
+                if (faktor > 1.001) (kader.get(club.id) || []).forEach(p => { p.wage = Math.round((p.wage || 0) * faktor / 10) * 10; });
+            }
             angepasst++;
         });
         return angepasst;

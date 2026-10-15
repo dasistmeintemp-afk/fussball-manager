@@ -518,7 +518,15 @@ class MatchEngine {
         }
 
         const attrAvg = attrs.reduce((sum, val) => sum + val, 0) / attrs.length;
-        const baseSkill = (attrAvg * 0.6) + (ovr * 0.4);
+        // Die Kopfwerte der Position: Ein Verteidiger muss das Spiel lesen,
+        // ein Mittelfeldspieler entscheiden und arbeiten, ein Stürmer sich
+        // freilaufen und ruhig bleiben. Ohne Kopfwerte zählt die Gesamtstärke.
+        const kopfKeys = pos === "TW" ? ["concentration", "decisions", "composure"]
+            : (["IV", "LV", "RV"].includes(pos) ? ["anticipation", "concentration", "decisions"]
+                : (["DM", "ZM", "OM", "LM", "RM"].includes(pos) ? ["decisions", "teamwork", "workRate"]
+                    : ["offTheBall", "composure", "decisions"]));
+        const kopfAvg = kopfKeys.reduce((sum, k) => sum + getAttr(k), 0) / kopfKeys.length;
+        const baseSkill = (attrAvg * 0.5) + (kopfAvg * 0.15) + (ovr * 0.35);
 
         // Kondition, Stimmung und Form färben die Leistung ein - sie ersetzen
         // sie aber nicht. Vorher verschob allein die Moral die Spielstärke um
@@ -2934,7 +2942,9 @@ class MatchEngine {
 
     /** Die Werte, mit denen ein Spieler im Livespiel entscheidet und ausführt */
     static WERTE_2D = ["shooting", "passing", "dribbling", "defense", "physical", "technique", "positioning",
-        "vision", "pace", "stamina", "reflexes", "handling", "oneOnOne", "kicking"];
+        "vision", "pace", "stamina", "reflexes", "handling", "oneOnOne", "kicking",
+        // Die Kopfwerte (PlayerGenerator.KOPFWERTE)
+        "decisions", "anticipation", "composure", "concentration", "workRate", "teamwork", "leadership", "offTheBall"];
 
     /**
      * Werte eines Spielers für das Feld - so, wie er heute drauf ist.

@@ -8373,6 +8373,10 @@ td.nowrap { white-space: nowrap; }
 /* Vorvertrag in der Akte eines fremden Spielers */
 .vv-hinweis { margin: 10px 0 0; }
 .vv-zeile { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+/* Kopfwerte in der Akte: über beide Spalten, innen zweispaltig */
+.kopf-karte { grid-column: 1 / -1; }
+.kopf-raster { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; }
+@media (max-width: 420px) { .kopf-raster { grid-template-columns: 1fr; } }
 /* Arbeitserlaubnis (England) in Akte und Transferdialog */
 .ae-hinweis { margin: 10px 0 0; font-size: 13px; }
 .ae-hinweis summary { cursor: pointer; font-weight: 600; }

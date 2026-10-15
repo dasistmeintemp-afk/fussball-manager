@@ -41,6 +41,12 @@ const DatenzentraleEngine = {
         ["reflexes", "Reflexe"], ["handling", "Fangsicherheit"], ["oneOnOne", "Eins gegen eins"], ["positioning", "Stellungsspiel"],
         ["kicking", "Abschlag"], ["passing", "Passen"], ["physical", "Physis"]
     ],
+    /** Die Kopfwerte (PlayerGenerator.KOPFWERTE) - beim Torwart ohne Laufwege und Einsatz */
+    KOPF_WERTE: [
+        ["decisions", "Entscheidungen"], ["anticipation", "Antizipation"], ["composure", "Nervenstärke"],
+        ["concentration", "Konzentration"], ["workRate", "Einsatz"], ["teamwork", "Teamwork"],
+        ["leadership", "Führung"], ["offTheBall", "Ohne Ball"]
+    ],
 
     /**
      * Die gespielten Partien der eigenen Liga mit Kennzahlen. Die eigenen
@@ -198,7 +204,9 @@ const DatenzentraleEngine = {
         if (!a || !b) return null;
         const rating = _dzResolve("PlayerRatingEngine", "./playerRatingEngine.js");
         const torhueter = a.pos === "TW" && b.pos === "TW";
-        const liste = torhueter ? this.TORWART_WERTE : this.FELD_WERTE;
+        const mitKopf = typeof a.decisions === "number" && typeof b.decisions === "number";
+        const kopf = !mitKopf ? [] : this.KOPF_WERTE.filter(([k]) => !(torhueter && (k === "offTheBall" || k === "workRate")));
+        const liste = (torhueter ? this.TORWART_WERTE : this.FELD_WERTE).concat(kopf);
         const seite = (p) => {
             const wissen = this._wissen(state, p);
             const club = (state.clubs || []).find(c => c.id === p.clubId);

@@ -14,9 +14,9 @@
  */
 
 const SaveCodec = {
-    FORMAT: "fmc3",
+    FORMAT: "fmc4",
     /** Ältere Formate, die sich weiter lesen lassen */
-    FORMATE: ["fmc1", "fmc2", "fmc3"],
+    FORMATE: ["fmc1", "fmc2", "fmc3", "fmc4"],
 
     /**
      * Feldschema der Spieler: [Pfad, Typ]
@@ -83,6 +83,17 @@ const SaveCodec = {
         ["laufbahn", "lb"], ["laufbahnTeile", "lb"], ["statsPokal", "na"], ["statsEuropa", "na"]
     ],
 
+    /**
+     * fmc4: die Kopfwerte (PlayerGenerator.KOPFWERTE) und die Stärke, bei der
+     * sie zuletzt nachgezogen wurden - gepackt in eine Zeichenkette aus je
+     * zwei Zeichen (Basis 36), "1x2a…". Die Spalte steht vor den Zusatzfeldern
+     * von fmc2 und fmc3: Die fehlen bei den meisten Spielern und werden am
+     * Zeilenende abgeschnitten - stünde der Kopf dahinter, müsste jede Zeile
+     * vierzehn Leerwerte mitschleppen.
+     */
+    PLAYER_FIELDS_FMC4: [["decisions", "kopf"]],
+    KOPF_SCHLUESSEL: ["decisions", "anticipation", "composure", "concentration", "workRate", "teamwork", "leadership", "offTheBall", "kopfStand"],
+
     MATCH_FIELDS: [
         ["homeClubId", "s"], ["awayClubId", "s"], ["played", "b"],
         ["homeGoals", "n"], ["awayGoals", "n"], ["leagueId", "s"], ["summaryText", "s"]
@@ -95,11 +106,11 @@ const SaveCodec = {
     felder(art, format = this.FORMAT) {
         const basis = art === "player" ? this.PLAYER_FIELDS : this.MATCH_FIELDS;
         if (format === "fmc1") return basis;
-        const stufe = format === "fmc2" ? 2 : 3;
+        const stufe = format === "fmc2" ? 2 : (format === "fmc3" ? 3 : 4);
         const key = `_${art === "player" ? "spieler" : "partie"}Fmc${stufe}`;
         if (!this[key]) {
             const zusaetze = art === "player"
-                ? [this.PLAYER_FIELDS_FMC2].concat(stufe >= 3 ? [this.PLAYER_FIELDS_FMC3] : [])
+                ? (stufe >= 4 ? [this.PLAYER_FIELDS_FMC4] : []).concat([this.PLAYER_FIELDS_FMC2], stufe >= 3 ? [this.PLAYER_FIELDS_FMC3] : [])
                 : [this.MATCH_FIELDS_FMC2];
             const zusatz = [].concat(...zusaetze).map(([p, t]) => [p, t, true]);
             Object.defineProperty(this, key, { value: basis.concat(zusatz), enumerable: false });
@@ -173,6 +184,8 @@ const SaveCodec = {
         });
 
         const bekannteWurzeln = new Set(eintraege.map(e => e.wurzel));
+        // Die gepackten Kopfwerte decken alle ihre Schlüssel ab
+        if (eintraege.some(e => e.type === "kopf")) this.KOPF_SCHLUESSEL.forEach(k => bekannteWurzeln.add(k));
         // Je Wurzel: welche Unterschlüssel deckt das Schema ab?
         const abgedeckt = new Map();
         eintraege.forEach(e => {
@@ -207,6 +220,10 @@ const SaveCodec = {
 
             if (raw === undefined || raw === null) {
                 row[i] = null;
+            } else if (e.type === "kopf") {
+                row[i] = typeof raw === "number"
+                    ? this.KOPF_SCHLUESSEL.map(k => Math.max(0, Math.min(1295, Math.round(Number(obj[k]) || 0))).toString(36).padStart(2, "0")).join("")
+                    : null;
             } else if (e.type === "s" || e.type === "sn") {
                 row[i] = dict.put(raw);
             } else if (e.type === "sa") {
@@ -274,7 +291,15 @@ const SaveCodec = {
                 else this.setPath(obj, path, type === "b" ? false : null);
                 return;
             }
-            if (type === "s") this.setPath(obj, path, readString(raw));
+            if (type === "kopf") {
+                if (typeof raw === "string") {
+                    this.KOPF_SCHLUESSEL.forEach((k, j) => {
+                        const teil = raw.slice(j * 2, j * 2 + 2);
+                        if (teil.length === 2) obj[k] = parseInt(teil, 36);
+                    });
+                }
+            }
+            else if (type === "s") this.setPath(obj, path, readString(raw));
             else if (type === "sn") {
                 const str = readString(raw);
                 this.setPath(obj, path, /^-?\d+$/.test(str || "") ? Number(str) : str);

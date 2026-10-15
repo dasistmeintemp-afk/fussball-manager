@@ -324,8 +324,10 @@ class DressingRoomEngine {
         const rang = kaderRang < 11 ? 18 : (kaderRang < 16 ? 8 : 0);
         const caps = Math.min(12, (player.laenderspiele || 0) / 4);
         const ha = player.hiddenAttributes || {};
+        // Führung: wie sehr einer über sein Spielniveau hinaus vorangeht
+        const fuehrung = typeof player.leadership === "number" ? (player.leadership - (player.overall || 50)) * 0.6 : 0;
         const charakter = ((ha.professionalism ?? 12) + (ha.importantMatches ?? 12)) * 0.6
-            - Math.max(0, 9 - (ha.temperament ?? 12)) * 0.8;
+            - Math.max(0, 9 - (ha.temperament ?? 12)) * 0.8 + fuehrung;
         const jahre = this.vereinsjahre(state, player);
         const dauer = jahre < 0.3 ? -12 : Math.min(12, jahre * 4);
         return Math.round(alter + rang + caps + charakter + dauer);

@@ -469,8 +469,10 @@ class LiveMatchDirector {
             // Die eigene Rolle ohne Seitenzusatz (ZDM -> DM, LAV -> LV)
             p.rolle = this.normRolle(p.pos);
             // Spielverstaendnis: Wer das Spiel liest, reagiert frueher auf
-            // Ballverlust und Verlagerung.
-            const lesen = Math.max(0, Math.min(1, ((p.vision || 65) - 40) / 55));
+            // Ballverlust und Verlagerung - die Antizipation zur Hälfte
+            const lesen = typeof p.anticipation === "number"
+                ? Math.max(0, Math.min(1, ((p.anticipation * 0.5 + (p.vision || 65) * 0.5) - 42) / 55))
+                : Math.max(0, Math.min(1, ((p.vision || 65) - 40) / 55));
             p.reaktion = 0.42 - lesen * 0.28 + ((idx * 0.37) % 1) * 0.08;
             p.traegheit = 0.5 - lesen * 0.22 + ((idx * 0.53) % 1) * 0.1;
             // Laufgeschwindigkeit und Absicht ueberleben einen Wechsel oder
@@ -974,7 +976,9 @@ class LiveMatchDirector {
             const stamina = typeof p.stamina === "number" ? p.stamina : 75;
             const endurance = Math.max(0.35, 1.35 - stamina / 100);
             // Hitze und tiefer Boden zehren zusätzlich
-            const rate = (p.sprinting ? 0.00009 : 0.00003) * endurance * (this.match.wetter?.ausdauer || 1);
+            // Wer viel läuft, zahlt dafür - der Einsatz kostet etwas Kraft
+            const rate = (p.sprinting ? 0.00009 : 0.00003) * endurance * (this.match.wetter?.ausdauer || 1)
+                * (typeof p.workRate === "number" ? 1 + (p.workRate - 72) / 400 : 1);
             p.freshness = Math.max(0.6, (p.freshness ?? 1) - rate * matchSeconds);
             // Wer angeschlagen weiterspielt, humpelt - langsamer als jeder Muede.
             if (p.verletzt) p.freshness = Math.min(p.freshness, 0.62);
@@ -4695,6 +4699,11 @@ class LiveMatchDirector {
 
         const linie = this._abseitsLinie?.[p.team];
         const ballHinterLinie = typeof linie === "number" && (linie - ball.x) * dir > 0;
+        // Kopfwerte: Ohne Ball und Teamwork (um 72, ohne Werte neutral)
+        const ohneBall = typeof p.offTheBall === "number"
+            ? { frei: 1 + (p.offTheBall - 72) / 150, zufall: Math.max(0.5, Math.min(1.5, 1 - (p.offTheBall - 72) / 100)) }
+            : { frei: 1, zufall: 1 };
+        const mannschaft = typeof p.teamwork === "number" ? Math.max(0.6, Math.min(1.4, 1 + (p.teamwork - 72) / 80)) : 1;
 
         let beste = kandidaten[0], besterWert = -Infinity;
         kandidaten.forEach(k => {
@@ -4732,8 +4741,10 @@ class LiveMatchDirector {
             const weit = Math.hypot(k.ox / r.x, k.oy / r.y) * 0.7;
             const zuNah = zumPunkt < 6 ? (6 - zumPunkt) * 0.8 : 0;
 
-            const wert = frei * 0.55 + passweg * 0.5 - enge - weit - zuNah
-                + (k.bonus || 0) + (k.bleibt ? 1.8 : 0) + Math.random() * 3;
+            // Wer sich ohne Ball gut bewegt, findet den freien Raum sicherer;
+            // wer mannschaftsdienlich denkt, läuft dem Nebenmann nicht in die Füße
+            const wert = frei * 0.55 * ohneBall.frei + passweg * 0.5 - enge * mannschaft - weit - zuNah
+                + (k.bonus || 0) + (k.bleibt ? 1.8 : 0) + Math.random() * 3 * ohneBall.zufall;
             if (wert > besterWert) { besterWert = wert; beste = k; }
         });
         return { ox: beste.ox, oy: beste.oy, art: beste.art, urgency: beste.urgency || 0, sprint: !!beste.sprint };
@@ -4879,6 +4890,11 @@ class LiveMatchDirector {
             p.x += p.lvx * h;
             p.y += p.lvy * h;
         }
+    }
+
+    /** Einsatz: Wer viel arbeitet, presst und läuft entschlossener zurück (um 72, ohne Wert 1) */
+    einsatzFaktor(p) {
+        return typeof p?.workRate === "number" ? Math.max(0.88, Math.min(1.12, 1 + (p.workRate - 72) / 250)) : 1;
     }
 
     selectPressingPlayers() {
@@ -5125,7 +5141,7 @@ class LiveMatchDirector {
             if (wT.falle === "aussen") seitlich = innen * 2.8;
             else if (wT.falle === "innen") seitlich = -innen * 2.8;
             ty = ball.y + seitlich;
-            urgency = this._presser?.imBlock ? Math.max(1.85, wT.pressTempo || 1.85) : (wT.pressTempo || 1.85);
+            urgency = (this._presser?.imBlock ? Math.max(1.85, wT.pressTempo || 1.85) : (wT.pressTempo || 1.85)) * this.einsatzFaktor(p);
             sprinting = true;
         } else if (!attacking && !rG.konter && this.deckt(p, wT, rG)) {
             const ziel = this.deckungsZiel(p, tx, ty, dir, wT, rG, ball);
@@ -5179,7 +5195,7 @@ class LiveMatchDirector {
             const zurueck = wT.gegenpressing === 0;
             const rueckDauer = zurueck ? UMSCHALT_DAUER * 1.5 : UMSCHALT_DAUER;
             const konterDauer = wT.konter > 0 ? UMSCHALT_DAUER * 1.6 : UMSCHALT_DAUER;
-            const eile = wT.rueckzugEile || 1.6;
+            const eile = (wT.rueckzugEile || 1.6) * this.einsatzFaktor(p);
             if (!attacking && seitWechsel < rueckDauer && !rG.konter && (zurueck || p.group !== "att")
                 && (p.x - ball.x) * dir > 4 && (p.x - tx) * dir > 6 && urgency < eile) {
                 urgency = eile;

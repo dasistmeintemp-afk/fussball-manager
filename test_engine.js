@@ -11944,7 +11944,11 @@ function runEngineTests() {
         b.laufbahn = [[1, null, 2, 0, 0, 600]];
         b.laufbahnTeile = [[2, "lev", 10, 1, 1, 650]];
         c.statsEuropa = [6, 540, 4, 2, 430, 1];
-        const roh = SaveCodec.encodeState(state);
+        // Kodiert wird im Format fmc3 - das jüngere stellt die Kopfwerte vor die Zusatzfelder
+        const formatJetzt = SaveCodec.FORMAT;
+        SaveCodec.FORMAT = "fmc3";
+        let roh;
+        try { roh = SaveCodec.encodeState(state); } finally { SaveCodec.FORMAT = formatJetzt; }
         if (roh.__codec !== "fmc3") throw new Error(`Format ${roh.__codec}`);
         const zur = SaveCodec.decodeState(JSON.parse(JSON.stringify(roh)));
         const [za, zb, zc] = zur.players;
@@ -12498,6 +12502,73 @@ function runEngineTests() {
         GameState.ergaenzeAltstand(state);
         GameState.ergaenzeAltstand(state);
         if (club.sponsor.amountPerMatchday !== 880000 || !club.sponsor.fanartikelGetrennt) throw new Error(`Altvertrag: ${JSON.stringify(club.sponsor)}`);
+    });
+
+    test("Kopfwerte: sichtbar nach Position, Alter und Persönlichkeit, fest je Spieler, wirksam im Spiel", () => {
+        const G = PlayerGenerator;
+        const { SaveCodec } = require('./js/services/saveCodec.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Kopf" });
+        // Jeder Spieler hat alle acht Werte, auch die handgepflegten
+        const ohne = state.players.filter(p => G.KOPFWERTE.some(k => !(p[k] >= 1 && p[k] <= 99)));
+        if (ohne.length) throw new Error(`${ohne.length} Spieler ohne Kopfwerte, etwa ${ohne[0].name}`);
+        if (!state.players.filter(p => p.clubId === "muc").every(p => typeof p.leadership === "number")) throw new Error("Handgepflegter Kader ohne Kopfwerte");
+        // Fest je Spieler: dieselbe Rechnung ergibt dieselben Werte
+        const probe = state.players.find(p => p.clubId && p.clubId !== "muc");
+        const kopie = Object.assign({}, probe);
+        G.KOPFWERTE.forEach(k => delete kopie[k]);
+        G.ergaenzeKopfwerte(kopie);
+        if (G.KOPFWERTE.some(k => kopie[k] !== probe[k])) throw new Error("Kopfwerte nicht fest je Spieler");
+
+        // Position: Innenverteidiger antizipieren, Stürmer laufen sich frei
+        const schnitt = (liste, k) => liste.reduce((s, p) => s + (p[k] - p.overall), 0) / liste.length;
+        const iv = state.players.filter(p => p.pos === "IV"), st = state.players.filter(p => p.pos === "ST");
+        if (!(schnitt(iv, "anticipation") > schnitt(st, "anticipation") - 1) || !(schnitt(st, "offTheBall") > schnitt(iv, "offTheBall") + 15)) {
+            throw new Error(`Positionsprofil: IV ${schnitt(iv, "offTheBall").toFixed(1)} / ST ${schnitt(st, "offTheBall").toFixed(1)}`);
+        }
+        // Alter: Erfahrene entscheiden klüger und führen eher
+        const jung = state.players.filter(p => p.age <= 20), alt = state.players.filter(p => p.age >= 30);
+        if (!(schnitt(alt, "decisions") > schnitt(jung, "decisions") + 5) || !(schnitt(alt, "leadership") > schnitt(jung, "leadership") + 8)) {
+            throw new Error("Alterskurve fehlt");
+        }
+
+        // Ein Jahr älter: Ein Talent, das zehn Punkte zulegt, nimmt die Kopfwerte mit
+        const talent = Object.assign({}, jung[0]);
+        const vorher = Object.fromEntries(G.KOPFWERTE.map(k => [k, talent[k]]));
+        talent.overall += 10; talent.age += 1;
+        G.kopfReife(talent, talent.age - 1, 1);
+        if (!G.KOPFWERTE.every(k => talent[k] >= vorher[k] + 7)) throw new Error(`Reife: ${JSON.stringify(vorher)} -> ${G.KOPFWERTE.map(k => talent[k])}`);
+        if (talent.kopfStand !== talent.overall) throw new Error("Stand nicht nachgezogen");
+        // ... ein Routinier verliert an Einsatz
+        const routinier = Object.assign({}, alt.find(p => p.age >= 33) || alt[0], { age: 34 });
+        const einsatz = routinier.workRate;
+        G.kopfReife(routinier, 33, 1);
+        if (!(routinier.workRate < einsatz)) throw new Error("Einsatz lässt im Alter nicht nach");
+
+        // Speichern: Kopfwerte bleiben, ein älterer Stand bekommt dieselben Werte
+        const zur = SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(state))));
+        const z = zur.players.find(p => p.id === probe.id);
+        if (G.KOPFWERTE.some(k => z[k] !== probe[k])) throw new Error("Kopfwerte gehen beim Speichern verloren");
+        const altStand = Object.assign(new GameState(), JSON.parse(JSON.stringify(state)));
+        altStand.players.forEach(p => { G.KOPFWERTE.forEach(k => delete p[k]); delete p.kopfStand; });
+        GameState.ergaenzeAltstand(altStand);
+        const a = altStand.players.find(p => p.id === probe.id);
+        if (G.KOPFWERTE.some(k => a[k] !== probe[k])) throw new Error("Älterer Stand bekommt andere Kopfwerte");
+
+        // Im Spiel: Nervenstärke trägt die Nerven, ein Anführer stärkt die Elf
+        const flow = new MatchFlowEngine({ fm: true, getPlayers: () => elf });
+        const basis = { team: "home", pos: "ST", mental: { grosseSpiele: 12, bestaendigkeit: 12, professionalitaet: 12, alter: 26 }, leadership: 82 };
+        const elf = [Object.assign({}, basis, { id: 1, composure: 90 }), Object.assign({}, basis, { id: 2, composure: 50 })];
+        if (!(flow.nerven(elf[0]) > flow.nerven(elf[1]) + 4)) throw new Error(`Nerven ${flow.nerven(elf[0])} / ${flow.nerven(elf[1])}`);
+        const ohneFuehrung = flow.nerven(elf[1]);
+        elf[0].leadership = 97;
+        flow._fuehrung = {};
+        if (!(flow.nerven(elf[1]) > ohneFuehrung + 0.5)) throw new Error("Anführer ohne Wirkung");
+        if (!(flow.konzentration({ concentration: 90 }) > flow.konzentration({ concentration: 50 }))) throw new Error("Konzentration ohne Wirkung");
+        // In der Sofort-Simulation zählen sie für die Stärke auf der Position
+        const zm = Object.assign({}, state.players.find(p => p.pos === "ZM"));
+        const vor = MatchEngine.calculateEffectivePlayerSkill(zm, "ZM");
+        zm.decisions += 20; zm.teamwork += 20; zm.workRate += 20;
+        if (!(MatchEngine.calculateEffectivePlayerSkill(zm, "ZM") > vor + 2)) throw new Error("Kopfwerte ohne Wirkung auf die Stärke");
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

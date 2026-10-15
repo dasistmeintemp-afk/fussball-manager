@@ -913,6 +913,16 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 </div>
             `;
 
+        // Die Kopfwerte - beim Torwart ohne Laufwege und Einsatz
+        const kopfGen = typeof PlayerGenerator !== "undefined" ? PlayerGenerator : null;
+        const kopfKeys = kopfGen && typeof player.decisions === "number"
+            ? kopfGen.KOPFWERTE.filter(k => !(isKeeper && (k === "offTheBall" || k === "workRate"))) : [];
+        const kopfBlock = kopfKeys.length ? `
+                <div class="dash-card kopf-karte" style="padding:14px;">
+                    <h4 style="font-size:13px; margin-bottom:8px; color:var(--text-muted);">Kopf</h4>
+                    <div class="kopf-raster">${kopfKeys.map(k => attrLine(kopfGen.KOPF_NAMEN[k], k)).join("")}</div>
+                </div>` : "";
+
         const abilityStars = card ? card.abilityStarsHtml : "";
         const abilityStarsText = card ? card.abilityStarsText : "";
         const abilityLabel = card ? card.abilityLabel : "Ligaspieler";
@@ -1010,6 +1020,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
             <div class="stats-grid" style="grid-template-columns: 1fr 1fr; gap:14px; margin-bottom:16px;">
                 ${attributeBlocks}
+                ${kopfBlock}
             </div>
             ${isProspect ? "" : this.laufbahnHtml(state, player)}
             ${isProspect || typeof DatenzentraleEngine === "undefined" ? "" : `<button type="button" class="btn btn-secondary btn-sm pd-vergleich" id="btnPdVergleich">⚖️ Mit anderem Spieler vergleichen</button>`}

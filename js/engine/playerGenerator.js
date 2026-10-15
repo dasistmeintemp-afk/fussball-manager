@@ -356,7 +356,7 @@ class PlayerGenerator {
         // Einmal würfeln, dann überall dieselben Werte verwenden
         const attribute = this.generateAttributes(pos, overall);
 
-        return Object.assign({
+        const spieler = Object.assign({
             id: id,
             name: `${firstName} ${lastName}`,
             age: age,
@@ -413,6 +413,9 @@ class PlayerGenerator {
                 reason: "Zufrieden mit der aktuellen Situation."
             }
         }, attribute, this.buildCharacter(pos, attribute));
+        // Die Kopfwerte folgen aus Kennung, Stärke, Alter und Persönlichkeit
+        this.ergaenzeKopfwerte(spieler);
+        return spieler;
     }
 
     /**
@@ -557,6 +560,147 @@ class PlayerGenerator {
             ST: { shooting: 8, pace: 4, physical: 4, dribbling: 2, technique: 2, vision: -1, passing: -4, defense: -22, positioning: -4, stamina: -1 }
     };
 
+    // ------------------------------------------------------------ Kopfwerte
+
+    /**
+     * Die Kopfwerte: was ein Spieler im Kopf mitbringt.
+     *
+     * Bisher stand in der Akte nur, was man sieht - Tempo, Schuss, Passen.
+     * Was einen Spieler im Spiel ausmacht, lag versteckt in seiner
+     * Persönlichkeit oder fehlte ganz: ob er die richtige Entscheidung
+     * trifft, den Pass vorausahnt, vor dem Tor ruhig bleibt, neunzig Minuten
+     * bei der Sache ist, nach hinten mitarbeitet, für die Mannschaft spielt,
+     * vorangeht und sich ohne Ball anbietet.
+     *
+     * Jetzt sind das acht sichtbare Werte auf derselben Skala wie die
+     * übrigen. Sie hängen an der Gesamtstärke, an der Position (ein
+     * Innenverteidiger liest das Spiel, ein Stürmer läuft sich frei), am
+     * Alter (Erfahrung macht ruhiger und klüger, Laufbereitschaft lässt
+     * nach) und an der Persönlichkeit (wer in großen Spielen da ist, hat
+     * Nerven). Der persönliche Anteil folgt fest aus der Kennung des
+     * Spielers: Dieselbe Welt bekommt dieselben Werte, und für die Erzeugung
+     * wird kein Zufall verbraucht - Welten und Messungen bleiben, wie sie
+     * waren.
+     */
+    static KOPFWERTE = ["decisions", "anticipation", "composure", "concentration", "workRate", "teamwork", "leadership", "offTheBall"];
+
+    static KOPF_NAMEN = {
+        decisions: "Entscheidungen", anticipation: "Antizipation", composure: "Nervenstärke",
+        concentration: "Konzentration", workRate: "Einsatz", teamwork: "Teamwork",
+        leadership: "Führung", offTheBall: "Ohne Ball"
+    };
+
+    /** Auf- und Abschläge zur Gesamtstärke je Position */
+    static KOPF_PROFILE = {
+        TW: { decisions: 0, anticipation: 2, composure: 0, concentration: 4, workRate: -8, teamwork: 0, leadership: 0, offTheBall: -40 },
+        IV: { decisions: 1, anticipation: 5, composure: 1, concentration: 4, workRate: 0, teamwork: 2, leadership: 2, offTheBall: -14 },
+        LV: { decisions: -1, anticipation: 2, composure: -1, concentration: 1, workRate: 5, teamwork: 3, leadership: -2, offTheBall: -2 },
+        RV: { decisions: -1, anticipation: 2, composure: -1, concentration: 1, workRate: 5, teamwork: 3, leadership: -2, offTheBall: -2 },
+        DM: { decisions: 3, anticipation: 5, composure: 1, concentration: 3, workRate: 5, teamwork: 5, leadership: 1, offTheBall: -6 },
+        ZM: { decisions: 4, anticipation: 2, composure: 2, concentration: 1, workRate: 4, teamwork: 4, leadership: 0, offTheBall: 1 },
+        LM: { decisions: 0, anticipation: 0, composure: -1, concentration: -1, workRate: 6, teamwork: 3, leadership: -3, offTheBall: 4 },
+        RM: { decisions: 0, anticipation: 0, composure: -1, concentration: -1, workRate: 6, teamwork: 3, leadership: -3, offTheBall: 4 },
+        OM: { decisions: 4, anticipation: 2, composure: 4, concentration: -1, workRate: -2, teamwork: 1, leadership: -2, offTheBall: 5 },
+        LA: { decisions: -1, anticipation: 0, composure: 1, concentration: -3, workRate: 1, teamwork: -1, leadership: -4, offTheBall: 7 },
+        RA: { decisions: -1, anticipation: 0, composure: 1, concentration: -3, workRate: 1, teamwork: -1, leadership: -4, offTheBall: 7 },
+        ST: { decisions: 0, anticipation: 4, composure: 5, concentration: -2, workRate: 0, teamwork: -1, leadership: -2, offTheBall: 8 }
+    };
+
+    /** Wie weit der persönliche Anteil streut (Punkte nach oben und unten) */
+    static KOPF_STREUUNG = { leadership: 11, default: 7 };
+
+    /** Was das Alter ausmacht: Erfahrung beruhigt und macht klüger, Laufbereitschaft lässt ab dreißig nach */
+    static kopfAlter(key, age = 25) {
+        const a = age || 25;
+        const kappe = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+        switch (key) {
+            case "decisions": return kappe((a - 25) * 0.9, -7, 5);
+            case "anticipation": return kappe((a - 25) * 0.8, -6, 5);
+            case "composure": return kappe((a - 25) * 0.8, -6, 5);
+            case "concentration": return kappe((a - 25) * 0.6, -5, 4);
+            case "workRate": return a < 30 ? 0 : -Math.min(8, (a - 29) * 1.2);
+            case "teamwork": return kappe((a - 25) * 0.3, -2, 2);
+            case "leadership": return kappe((a - 24) * 1.4, -9, 9);
+            case "offTheBall": return kappe((a - 25) * 0.4, -3, 2);
+            default: return 0;
+        }
+    }
+
+    /** Was die Persönlichkeit (versteckte Werte, 1 bis 20) beisteuert */
+    static kopfCharakter(key, h = {}) {
+        const w = (k) => (typeof h[k] === "number" ? h[k] : 12) - 12;
+        switch (key) {
+            case "decisions": return w("consistency") * 0.3;
+            case "composure": return w("importantMatches") * 0.8;
+            case "concentration": return (w("professionalism") + w("consistency")) * 0.4;
+            case "workRate": return w("professionalism") * 0.7 + w("ambition") * 0.3;
+            case "teamwork": return w("loyalty") * 0.4 + w("temperament") * 0.3;
+            case "leadership": return w("temperament") * 0.4 + w("importantMatches") * 0.4 + w("ambition") * 0.3;
+            default: return 0;
+        }
+    }
+
+    /** Feste Zahl zwischen -1 und +1 je Schlüssel (FNV-1a), ohne Zufall zu verbrauchen */
+    static _hashZahl(text) {
+        let h = 2166136261;
+        const t = String(text);
+        for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); }
+        h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12;
+        return ((h >>> 0) / 4294967295) * 2 - 1;
+    }
+
+    /** Der persönliche Anteil eines Kopfwerts: fest je Spieler, mittig gehäuft */
+    static kopfPersoenlich(id, key) {
+        const streuung = this.KOPF_STREUUNG[key] ?? this.KOPF_STREUUNG.default;
+        return (this._hashZahl(`${id}|${key}|a`) + this._hashZahl(`${id}|${key}|b`)) / 2 * streuung;
+    }
+
+    /** Der Kopfwert, den ein Spieler nach Stärke, Position, Alter und Persönlichkeit hätte */
+    static kopfSoll(player, key) {
+        const profil = this.KOPF_PROFILE[player.pos] || this.KOPF_PROFILE.ZM;
+        return (player.overall || 50) + (profil[key] || 0) + this.kopfAlter(key, player.age)
+            + this.kopfCharakter(key, player.hiddenAttributes || {});
+    }
+
+    /**
+     * Setzt die Kopfwerte eines Spielers, der noch keine hat (neu erzeugt,
+     * handgepflegt oder aus einem älteren Spielstand). Gibt zurück, ob etwas
+     * gesetzt wurde.
+     */
+    static ergaenzeKopfwerte(player) {
+        if (!player || typeof player.decisions === "number") return false;
+        const id = player.id ?? player.name ?? "";
+        this.KOPFWERTE.forEach(key => {
+            const wert = this.kopfSoll(player, key) + this.kopfPersoenlich(id, key);
+            player[key] = Math.max(1, Math.min(99, Math.round(wert)));
+        });
+        player.kopfStand = player.overall || 50;
+        return true;
+    }
+
+    /**
+     * Ein Jahr älter: Die Kopfwerte folgen der Gesamtstärke seit dem letzten
+     * Mal und dem Alter - was im Training dazukam und was ihn persönlich
+     * ausmacht, bleibt. Aufgerundet wird nach einer festen Zahl je Spieler,
+     * Saison und Wert, nicht nach dem Würfel. altVorher: das Alter vor dem
+     * Geburtstag.
+     */
+    static kopfReife(player, altVorher, saison = 0) {
+        if (!player) return;
+        if (this.ergaenzeKopfwerte(player)) return;
+        const alt = typeof altVorher === "number" ? altVorher : (player.age || 25) - 1;
+        const stand = typeof player.kopfStand === "number" ? player.kopfStand : (player.overall || 50);
+        const staerke = ((player.overall || 50) - stand) * 0.8;
+        this.KOPFWERTE.forEach(key => {
+            const schritt = staerke + this.kopfAlter(key, player.age) - this.kopfAlter(key, alt);
+            const ganz = Math.floor(schritt);
+            const rest = schritt - ganz;
+            const auf = (this._hashZahl(`${player.id}|${key}|${saison}`) + 1) / 2 < rest ? 1 : 0;
+            player[key] = Math.max(1, Math.min(99, Math.round((player[key] || 50) + ganz + auf)));
+        });
+        player.kopfStand = player.overall || 50;
+    }
+
     /**
      * Handgepflegte Spieler auf das Niveau ihrer Gesamtstärke heben.
      *
@@ -672,7 +816,7 @@ class PlayerGenerator {
         const pot = Math.max(overall, this.toOverall(truePA));
         const nebenpositionen = this.getPositionEngine()?.generateSecondaryPositions(pos) || [];
 
-        return Object.assign({
+        const talent = Object.assign({
             id: `youth_${clubId}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
             name: `${firstName} ${lastName}`,
             age: age,
@@ -687,6 +831,8 @@ class PlayerGenerator {
             developmentRate: 1.0 + (academyLevel * 0.1),
             promoted: false
         }, this.buildYouthProfile(pos, overall, age));
+        this.ergaenzeKopfwerte(talent);
+        return talent;
     }
 
     /**
@@ -725,8 +871,10 @@ class PlayerGenerator {
      * Gibt zurück, ob etwas ergänzt wurde.
      */
     static completeYouthProspect(prospect) {
-        if (!prospect || typeof prospect.pace === "number") return false;
+        if (!prospect) return false;
+        if (typeof prospect.pace === "number") return this.ergaenzeKopfwerte(prospect);
         Object.assign(prospect, this.buildYouthProfile(prospect.pos || "ZM", prospect.overall || 45, prospect.age || 16));
+        this.ergaenzeKopfwerte(prospect);
         return true;
     }
 }

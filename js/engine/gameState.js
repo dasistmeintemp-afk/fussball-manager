@@ -586,6 +586,9 @@ class GameState {
             || (typeof require !== 'undefined' ? require('./namenEngine.js').NamenEngine : null);
         const SPONSOR_NAMES = namenEngine ? namenEngine.SPONSOREN : ["Global Tech"];
 
+        // Die handgepflegte erste Liga an die erzeugten Ligen angleichen
+        GameState.gleicheErsteLigaAn(teamsData);
+
         teamsData.forEach((clubData, cIdx) => {
             const rep = clubData.reputation || 70;
             const cap = clubData.capacity || 25000;
@@ -962,6 +965,9 @@ class GameState {
         const kaderregeln = GameState._resolveEngine('KaderregelEngine', './kaderregelEngine.js');
         if (kaderregeln && typeof kaderregeln.gleicheStartkaderAn === 'function') kaderregeln.gleicheStartkaderAn(state);
 
+        // Jeder Verein spielt die Formation, die zu seinem Kader passt
+        GameState.waehleFormationen(state);
+
         // Die Stärke jeder Liga zum Start - die Welt hält sie über die Jahre
         const weltGen = GameState._resolveEngine('WorldGenerator', './worldGenerator.js');
         if (weltGen && typeof weltGen.ligaNiveau === 'function') state.ligaNiveau = weltGen.ligaNiveau(state);
@@ -1060,6 +1066,104 @@ class GameState {
         IV: 4, LV: 1, RV: 1, DM: 3, ZM: 0,
         LM: -2, RM: -2, OM: -6, LA: -8, RA: -8, ST: -4
     };
+
+    /**
+     * Angleich der handgepflegten ersten deutschen Liga an die erzeugten Ligen.
+     *
+     * Im Mittel waren die Ligen gleich stark, verteilt aber nicht: Die
+     * erzeugten Ligen haben ein dichtes oberes Mittelfeld, die handgepflegte
+     * Liga fällt hinter den ersten beiden steil ab. Gemessen lag die beste
+     * Elf der Ränge 3 bis 7 - genau die Vereine, die im Europapokal spielen -
+     * in Deutschland bei 81,9, in Frankreich bei 82,4, in Italien bei 83,4,
+     * in Spanien bei 84,2. Dazu haben die echten Kader kaum Luft nach oben
+     * (Potenzial gleich Stärke ab Mitte zwanzig), die erzeugten im Schnitt
+     * anderthalb Punkte mehr: Die Spitzen Spaniens und Italiens wuchsen über
+     * die Jahre, die deutschen nicht. In jedem Langlauf rutschte Deutschland
+     * in der Fünfjahreswertung bis auf den letzten Platz.
+     *
+     * Jetzt bekommen die Vereine ab Rang 3 (nach der besten Elf) etwas
+     * Stärke dazu, und jüngere Spieler etwas Potenzial - so viel, wie ein
+     * erzeugter Spieler desselben Alters im Mittel hat.
+     */
+    static ERSTE_LIGA_ANGLEICH = {
+        rang: [[2, 1], [4, 1], [12, 2], [99, 0]],   // bis Rang -> Stärke dazu
+        kopf: [[21, 5], [24, 3], [27, 2], [30, 1]]   // bis Alter -> Mindestabstand Potenzial
+    };
+
+    static gleicheErsteLigaAn(teamsData) {
+        const A = GameState.ERSTE_LIGA_ANGLEICH;
+        const elf = c => {
+            const s = (c.players || []).map(p => p.overall || 0).sort((a, b) => b - a).slice(0, 11);
+            return s.length ? s.reduce((a, b) => a + b, 0) / s.length : 0;
+        };
+        const reihe = teamsData.slice().sort((a, b) => elf(b) - elf(a));
+        reihe.forEach((c, i) => {
+            const dazu = (A.rang.find(([bis]) => i + 1 <= bis) || [0, 0])[1];
+            (c.players || []).forEach(p => {
+                if (dazu) { p.overall += dazu; p.pot = (p.pot || p.overall) + dazu; }
+                const kopf = (A.kopf.find(([bis]) => (p.age || 30) <= bis) || [0, 0])[1];
+                p.pot = Math.max(p.pot || p.overall, p.overall + kopf);
+            });
+        });
+    }
+
+    /**
+     * Die Formation, die zum Kader passt.
+     *
+     * Die handgepflegten Vereine spielten alle 4-4-2, die erzeugten eine
+     * zufällig gezogene Formation. Für die deutschen Spitzenkader mit ihren
+     * Flügelspielern und Zehnern war 4-4-2 eine der schlechtesten: München
+     * verlor damit fast drei Punkte Teamstärke, Leverkusen zweieinhalb -
+     * und gegen gleich starke Vereine aus dem Ausland holten sie nur ein
+     * Punkt je Spiel. Jetzt probiert jeder Profiverein die gängigen
+     * Formationen durch und nimmt die mit der höchsten Teamstärke
+     * (MatchEngine) - in den ersten Ligen, zum Start und, wenn es sich
+     * lohnt, zu jeder neuen Saison. Die verbreiteten bekommen einen kleinen Vorzug, damit
+     * nicht jeder Verein bei einem Zehntelpunkt Unterschied in einer
+     * Exotenformation landet.
+     * nurAbGewinn: erst wechseln, wenn die neue Formation so viel mehr bringt.
+     */
+    static FORMATIONEN_KI = { "4-2-3-1": 0.6, "4-3-3": 0.6, "4-4-2": 0.4, "3-4-2-1": 0.1, "3-5-2": 0.1,
+        "4-1-4-1": 0, "4-4-2 Raute": 0, "5-3-2": -0.3 };
+
+    static waehleFormation(club, allPlayers, nurAbGewinn = 0) {
+        const engine = GameState._resolveEngine('MatchEngine', './matchEngine.js');
+        if (!club || !engine || typeof engine.calculateTeamPower !== 'function') return null;
+        const staerke = (f) => {
+            club.formation = f;
+            GameState.autoSetLineupForClub(club, allPlayers);
+            return engine.calculateTeamPower(club, allPlayers, false).total || 0;
+        };
+        const alt = club.formation;
+        const vorzug = f => GameState.FORMATIONEN_KI[f] || 0;
+        const altWert = alt ? staerke(alt) + vorzug(alt) : -Infinity;
+        let beste = alt, besterWert = altWert;
+        Object.keys(GameState.FORMATIONEN_KI).forEach(f => {
+            if (f === alt || !FORMATION_CONFIGS[f]) return;
+            const w = staerke(f) + vorzug(f);
+            if (w > besterWert) { beste = f; besterWert = w; }
+        });
+        if (beste !== alt && besterWert - altWert < nurAbGewinn) beste = alt;
+        club.formation = beste;
+        GameState.autoSetLineupForClub(club, allPlayers);
+        return beste !== alt ? { von: alt, nach: beste, gewinn: besterWert - altWert } : null;
+    }
+
+    static waehleFormationen(state, { nurKi = false, nurAbGewinn = 0 } = {}) {
+        const index = new Map();
+        (state.players || []).forEach(p => { if (p.clubId) (index.get(p.clubId) || index.set(p.clubId, []).get(p.clubId)).push(p); });
+        let gewechselt = 0;
+        (state.clubs || []).forEach(club => {
+            if (nurKi && club.id === state.userClubId) return;
+            // Nur die ersten Ligen: Jeder Versuch kostet eine Aufstellung, und
+            // dort entscheidet es über die Europapokalplätze
+            if ((club.level || 1) > 1) return;
+            const kader = index.get(club.id) || [];
+            if (kader.length < 11) return;
+            if (GameState.waehleFormation(club, kader, nurAbGewinn)) gewechselt++;
+        });
+        return gewechselt;
+    }
 
     static stellungsspielAus(pData) {
         const staerke = pData?.overall || 68;

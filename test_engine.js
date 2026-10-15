@@ -6213,6 +6213,34 @@ function runEngineTests() {
         if (A.reaktion({ minute: 94, heimTore: 1, gastTore: 1, fertig: true, erwartung: 0.8 }, {}).art !== "pfiffe") throw new Error("Remis als Favorit ohne Pfiffe");
     });
 
+    test("Erste Ligen: Formation passt zum Kader, die deutsche Spitze ist nicht die schwächste, Vorgabe im Maßstab des Spiels", () => {
+        const { MatchEngine } = require('./js/engine/matchEngine.js');
+        const { KoeffizientEngine: K } = require('./js/engine/koeffizientEngine.js');
+        const state = GameState.createNewGame("en3_cha", "normal", { name: "Trainer" });
+        const erste = state.clubs.filter(c => /_liga_1$/.test(c.leagueId));
+        // Keine Liga spielt nur 4-4-2, und jede gewählte Formation ist die stärkste (bis auf den Vorzug der gängigen)
+        const de = erste.filter(c => c.leagueId === "de_liga_1");
+        if (de.every(c => c.formation === "4-4-2")) throw new Error("Die erste deutsche Liga spielt geschlossen 4-4-2");
+        const kader = new Map();
+        state.players.forEach(p => { if (p.clubId) (kader.get(p.clubId) || kader.set(p.clubId, []).get(p.clubId)).push(p); });
+        erste.slice(0, 40).forEach(c => {
+            const k = kader.get(c.id);
+            const gewaehlt = c.formation;
+            const wert = f => { c.formation = f; GameState.autoSetLineupForClub(c, k); return MatchEngine.calculateTeamPower(c, k, false).total; };
+            const bester = Math.max(...Object.keys(GameState.FORMATIONEN_KI).map(wert));
+            const eigen = wert(gewaehlt);
+            c.formation = gewaehlt; GameState.autoSetLineupForClub(c, k);
+            if (eigen < bester - 1.0) throw new Error(`${c.id}: ${gewaehlt} ${eigen.toFixed(1)} statt bis zu ${bester.toFixed(1)}`);
+        });
+        // Die Europapokal-Ränge 3 bis 7: Deutschland nicht hinter Frankreich
+        const elf = c => { const s = (kader.get(c.id) || []).map(p => p.overall).sort((a, b) => b - a).slice(0, 11); return s.reduce((a, b) => a + b, 0) / s.length; };
+        const band = l => { const v = erste.filter(c => c.leagueId === `${l}_liga_1`).map(elf).sort((a, b) => b - a).slice(2, 7); return v.reduce((a, b) => a + b, 0) / v.length; };
+        if (!(band("de") > band("fr"))) throw new Error(`Ränge 3-7: Deutschland ${band("de").toFixed(1)}, Frankreich ${band("fr").toFixed(1)}`);
+        // Vorgabe der Fünfjahreswertung im Maßstab des Spiels, echte Reihenfolge
+        const v = Object.values(K.START);
+        if (Math.min(...v) < 5 || Math.max(...v) > 12) throw new Error(`Vorgabe ${JSON.stringify(K.START)}`);
+    });
+
     // ---------------------------------------------------------------
     // Gespielt wird nur an dem Tag, an dem das Spiel angesetzt ist
     // ---------------------------------------------------------------
@@ -9048,7 +9076,8 @@ function runEngineTests() {
             if (!/^[0-9]{96}$/.test(a.heat[t])) throw new Error(`Heatmap ${t} ist keine Ziffernfolge aus 96 Feldern`);
             if (!a.heat[t].includes("9")) throw new Error("Heatmap nicht normiert");
             const n = a.netz[t];
-            if (n.spieler.length < 10 || n.spieler.length > 14) throw new Error(`${n.spieler.length} Spieler im Passnetz`);
+            // Elf plus höchstens die erlaubten Wechsel
+            if (n.spieler.length < 10 || n.spieler.length > 11 + live.maxSubstitutions) throw new Error(`${n.spieler.length} Spieler im Passnetz`);
             if (n.kanten.length < 6) throw new Error(`Nur ${n.kanten.length} Passwege`);
             if (n.kanten.some(([v, z]) => !n.spieler[v] || !n.spieler[z] || v === z)) throw new Error("Passweg ohne zwei verschiedene Spieler");
             if (n.spieler.some(([, x, y]) => x < 0 || x > 100 || y < 0 || y > 100)) throw new Error("Position außerhalb des Feldes");
@@ -9108,7 +9137,9 @@ function runEngineTests() {
 
     test("Verträge: Beraterhonorar und Prämien in der Verhandlung, Kaufoption bei Leihen", () => {
         const { LoanEngine } = require('./js/engine/loanEngine.js');
-        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        // Ein Verein aus dem Mittelfeld: Dem stärksten Kader der Liga leiht
+        // kaum jemand einen Spieler, der ihn verstärkt
+        const state = GameState.createNewGame("sge", "normal", { name: "Trainer" });
         const club = state.clubs.find(c => c.id === state.userClubId);
         club.balance = 200000000; club.transferBudget = 200000000;
 

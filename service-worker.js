@@ -2,7 +2,7 @@
  * Service Worker für Offline-Unterstützung und PWA-Installation
  */
 
-const CACHE_NAME = "fm-pro-cache-v131";
+const CACHE_NAME = "fm-pro-cache-v132";
 const ASSETS_TO_CACHE = [
     "./",
     "./index.html",

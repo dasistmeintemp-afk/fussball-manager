@@ -834,6 +834,16 @@ const FinanceEngine = {
             }
             club.balance -= operatingCosts;
 
+            // 4b. Regionalscouts des eigenen Vereins
+            if (club.id === state.userClubId) {
+                const scouting = _feResolve("ScoutingEngine", "./scoutingEngine.js");
+                const regional = scouting && typeof scouting.regionKosten === "function" ? scouting.regionKosten(state) : 0;
+                if (regional > 0) {
+                    club.balance -= regional;
+                    this.recordTransaction(state, club.id, "scouting", -regional, "Regionalscouts (Gehälter)");
+                }
+            }
+
             this.recordTransaction(
                 state,
                 club.id,

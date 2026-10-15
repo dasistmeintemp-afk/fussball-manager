@@ -75,6 +75,32 @@ const ScoutingEngine = {
         es: ["pt"], pt: ["es", "br"], br: ["pt"], it: ["ch"], tr: []
     },
     LAND_ZUWACHS_AUFTRAG: 14,
+    /**
+     * Scouts je Region.
+     *
+     * Der Chefscout reist mit einem Auftrag ins Ausland und kommt wieder;
+     * was er dort lernt, verblasst. Ein Regionalscout lebt in seiner Region:
+     * Solange er angestellt ist, kennt der Verein deren Länder deutlich
+     * besser (+25 Grundwissen, bis 95 %), Aufträge mit Länderfokus dort
+     * bringen anderthalbmal so viel, und er meldet sich von selbst, wenn er
+     * ein Talent gesehen hat - im Schnitt alle vier Spieltage, mit Bericht.
+     * Er kostet je Spieltag Gehalt; wie viele ein Verein halten kann, hängt
+     * an der Liga.
+     */
+    REGIONEN: {
+        britannien: { name: "Britische Inseln", laender: ["en", "sc"] },
+        benelux: { name: "Benelux", laender: ["nl", "be"] },
+        iberien: { name: "Iberische Halbinsel", laender: ["es", "pt"] },
+        frankreich: { name: "Frankreich", laender: ["fr"] },
+        alpen: { name: "Alpenraum", laender: ["de", "at", "ch"] },
+        italien: { name: "Italien", laender: ["it"] },
+        tuerkei: { name: "Türkei", laender: ["tr"] },
+        suedamerika: { name: "Südamerika", laender: ["br"] }
+    },
+    REGION_WISSEN: 25,
+    REGION_MAX: { 1: 3, 2: 2, 3: 1 },
+    REGION_KOSTEN: { 1: 15000, 2: 7000, 3: 3500 },
+    REGION_FUND: 0.25,
     LAND_ZUWACHS_BEOBACHTUNG: 1,
     /** Je Europapokalspiel gegen einen Verein aus dem Land */
     LAND_ZUWACHS_EUROPA: 6,
@@ -116,7 +142,7 @@ const ScoutingEngine = {
         const club = this._vereine(state).get(state?.userClubId);
         const heim = club?.countryId || "de";
         if (!land || land === heim) return 100;
-        const schluessel = `${state?.userClubId}|${club?.reputation}|${club?.level}|${club?.staff?.scout?.name || ""}|${club?.staff?.scout?.guete ?? ""}`;
+        const schluessel = `${state?.userClubId}|${club?.reputation}|${club?.level}|${club?.staff?.scout?.name || ""}|${club?.staff?.scout?.guete ?? ""}|${Object.keys(this.regionalScouts(state)).sort().join(",")}`;
         let gemerkt = state && typeof state === "object" ? this._grundSpeicher.get(state) : null;
         if (!gemerkt || gemerkt.schluessel !== schluessel) {
             gemerkt = { schluessel, werte: {} };
@@ -128,7 +154,8 @@ const ScoutingEngine = {
             const netz = Math.max(0, Math.min(25, ((club?.reputation || 50) - 50) * 0.5));
             const scout = (this.scoutInfo(state).guete - 60) * 0.2;
             const nachbar = (this.NACHBARN[heim] || []).includes(land) ? 15 : 0;
-            gemerkt.werte[land] = Math.max(5, Math.min(90, Math.round(basis + netz + scout + nachbar)));
+            const region = this.hatRegionalScout(state, land) ? this.REGION_WISSEN : 0;
+            gemerkt.werte[land] = Math.max(5, Math.min(region ? 95 : 90, Math.round(basis + netz + scout + nachbar + region)));
         }
         return gemerkt.werte[land];
     },
@@ -270,6 +297,7 @@ const ScoutingEngine = {
     processWeeklyScouting(state) {
         if (!state || !state.scouting) return;
         this.verblasseLandWissen(state);
+        this.regionalFunde(state);
         if (!Array.isArray(state.scouting.assignments)) return;
 
         state.scouting.assignments.forEach(assignment => {
@@ -282,6 +310,113 @@ const ScoutingEngine = {
                 this.completeAssignment(state, assignment);
             }
         });
+    },
+
+    // ------------------------------------------------------ Regionalscouts
+
+    regionalScouts(state) {
+        const r = state?.scouting?.regionen;
+        return r && typeof r === "object" ? r : {};
+    },
+
+    regionVon(land) {
+        return Object.keys(this.REGIONEN).find(k => this.REGIONEN[k].laender.includes(land)) || null;
+    },
+
+    hatRegionalScout(state, land) {
+        const region = this.regionVon(land);
+        return !!(region && this.regionalScouts(state)[region]);
+    },
+
+    /** Wie viele Regionalscouts der eigene Verein halten kann, und was einer je Spieltag kostet */
+    regionRahmen(state) {
+        const club = this._vereine(state).get(state?.userClubId);
+        const stufe = club?.level || 1;
+        return { max: this.REGION_MAX[stufe] || 0, kosten: this.REGION_KOSTEN[stufe] || 0, stufe };
+    },
+
+    /** Die Regionen zur Auswahl: nur, wo es Länder mit Ligen gibt und nicht nur die Heimat */
+    regionen(state) {
+        const mitLiga = new Set(this.laender(state).map(l => l.id));
+        const heim = this._vereine(state).get(state?.userClubId)?.countryId || "de";
+        const aktiv = this.regionalScouts(state);
+        return Object.keys(this.REGIONEN)
+            .map(key => ({ key, ...this.REGIONEN[key], laender: this.REGIONEN[key].laender.filter(l => mitLiga.has(l) && l !== heim) }))
+            .filter(r => r.laender.length)
+            .map(r => Object.assign(r, { aktiv: !!aktiv[r.key], seit: aktiv[r.key]?.seit || null }));
+    },
+
+    stelleRegionalScoutEin(state, key) {
+        if (!this.REGIONEN[key]) return { success: false, error: "Unbekannte Region." };
+        if (!state.scouting) state.scouting = { assignments: [], reports: [], shortlist: [] };
+        const aktiv = this.regionalScouts(state);
+        if (aktiv[key]) return { success: false, error: "Dort ist schon ein Scout." };
+        if (!this.regionen(state).some(r => r.key === key)) return { success: false, error: "In dieser Region gibt es nichts zu beobachten." };
+        const { max } = this.regionRahmen(state);
+        if (Object.keys(aktiv).length >= max) {
+            return { success: false, error: max ? `Mehr als ${max} Regionalscouts trägt der Etat in dieser Liga nicht.` : "In dieser Liga hält sich kein Verein Regionalscouts." };
+        }
+        state.scouting.regionen = Object.assign({}, aktiv, { [key]: { seit: state.seasonYear || 1 } });
+        return { success: true };
+    },
+
+    entlasseRegionalScout(state, key) {
+        const aktiv = this.regionalScouts(state);
+        if (!aktiv[key]) return { success: false, error: "Dort ist kein Scout." };
+        const neu = Object.assign({}, aktiv);
+        delete neu[key];
+        state.scouting.regionen = neu;
+        return { success: true };
+    },
+
+    /** Was die Regionalscouts je Spieltag kosten */
+    regionKosten(state) {
+        const n = Object.keys(this.regionalScouts(state)).length;
+        return n * this.regionRahmen(state).kosten;
+    },
+
+    /**
+     * Ein Regionalscout meldet sich, wenn er ein Talent gesehen hat: jung,
+     * mit Perspektive über dem eigenen Kader, in Reichweite des Vereins und
+     * noch ohne Bericht. Er sieht nicht alles - aus den fünf
+     * vielversprechendsten greift er einen.
+     */
+    regionalFunde(state, zufall = Math.random) {
+        const aktiv = Object.keys(this.regionalScouts(state));
+        if (!aktiv.length || !Array.isArray(state.players)) return [];
+        const club = this._vereine(state).get(state.userClubId);
+        if (!club) return [];
+        const kader = state.players.filter(p => p.clubId === club.id).map(p => p.overall || 0).sort((a, b) => b - a).slice(0, 11);
+        const niveau = kader.length ? kader.reduce((a, b) => a + b, 0) / kader.length : 60;
+        const te = _seResolve("TransferEngine", "./transferEngine.js");
+        const vereine = this._vereine(state);
+        const funde = [];
+        aktiv.forEach(key => {
+            if (zufall() >= this.REGION_FUND) return;
+            const laender = new Set(this.REGIONEN[key].laender);
+            const kandidaten = state.players.filter(p => p.clubId && p.clubId !== club.id && (p.age || 30) <= 21
+                && (p.pot || 0) >= niveau + 3 && !((p.scoutingKnowledge?.reportsCount || 0) > 0)
+                && laender.has(this.landVon(state, p, vereine))
+                && (!te || typeof te.isWithinReach !== "function" || te.isWithinReach(p, club, state.clubs)))
+                .sort((a, b) => (b.pot || 0) - (a.pot || 0))
+                .slice(0, 5);
+            if (!kandidaten.length) return;
+            const p = kandidaten[Math.floor(zufall() * kandidaten.length)];
+            const res = this.scoutPlayer(state, p.id, { source: "regionalscout" });
+            if (!res || res.success === false) return;
+            funde.push(p);
+            const verein = vereine.get(p.clubId);
+            const news = _seResolve("NewsEngine", "./newsEngine.js");
+            if (news && typeof news.addMessage === "function") {
+                news.addMessage(state, "scouting", {
+                    title: `🔭 Regionalscout ${this.REGIONEN[key].name}: ein Talent`,
+                    sender: `Scout ${this.REGIONEN[key].name}`,
+                    text: `${p.name} (${p.age}, ${p.pos}) bei ${verein ? verein.name : "seinem Verein"} ist mir aufgefallen. Der Bericht liegt in der Scouting-Zentrale.`,
+                    priority: "normal"
+                });
+            }
+        });
+        return funde;
     },
 
     /**
@@ -344,7 +479,8 @@ const ScoutingEngine = {
         // Das Land kennt der Scout danach besser - ein guter mehr als ein schwacher
         let landText = "";
         if (assignment.land) {
-            const nachher = this.erweitereLandWissen(state, assignment.land, Math.round(this.LAND_ZUWACHS_AUFTRAG * scout.guete / 70));
+            const regional = this.hatRegionalScout(state, assignment.land) ? 1.5 : 1;
+            const nachher = this.erweitereLandWissen(state, assignment.land, Math.round(this.LAND_ZUWACHS_AUFTRAG * scout.guete / 70 * regional));
             if (nachher > landVorher) {
                 landText = ` Das Wissen über ${this.landName(assignment.land)} steigt von ${landVorher} auf ${nachher} %.`;
             }

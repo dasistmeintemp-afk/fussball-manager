@@ -1361,7 +1361,7 @@ const TacticsEngine = {
             const b = fluegel.filter(i => seite(i) === s).sort((x, y) => positions[x].y - positions[y].y)[0];
             if (a === undefined || b === undefined) return;
             const ra = r(a), rb = r(b);
-            const seitenname = s < 0 ? "linke" : "rechte";
+            const seitenname = s < 0 ? "Linke" : "Rechte";
             if (phase === "gegen") {
                 if (rb.verfolgt) neu(a, b, "stark", `${seitenname} Seite: ${name(b)} arbeitet zurück - die Seite wird gedoppelt.`);
                 else if (rb.konter && ra.heraus) neu(a, b, "schwach", `${seitenname} Seite: Der Flügel bleibt vorn, der Außenverteidiger rückt heraus - dahinter ist die Seite offen.`);
@@ -1418,10 +1418,70 @@ const TacticsEngine = {
             for (let k = 0; k + 1 < mitte.length; k++) neu(mitte[k], mitte[k + 1], "gut", "Zentrum: Die Achter verbinden sich.");
         }
 
-        // Der Sturm: mit dem naechsten Zulieferer und untereinander
+        // Aussen- und Innenverteidiger derselben Seite: Wer sichert, wenn einer geht?
+        [-1, 1].forEach(s => {
+            const av = hinten.filter(i => seite(i) === s)[0];
+            if (av === undefined || !ivs.length) return;
+            const iv = s < 0 ? ivs[0] : ivs[ivs.length - 1];
+            const ra = r(av), ri = r(iv);
+            const seitenname = s < 0 ? "Linke" : "Rechte";
+            if (phase === "gegen") {
+                if (ra.heraus && ri.heraus) neu(iv, av, "schwach", `${seitenname} Abwehrseite: Außen- und Innenverteidiger rücken beide heraus - dahinter ist niemand.`);
+                else if (ra.heraus && ri.tiefer) neu(iv, av, "stark", `${seitenname} Abwehrseite: ${name(av)} presst, ${name(iv)} sichert dahinter ab.`);
+                else neu(iv, av, "gut", `${seitenname} Abwehrseite: Außen- und Innenverteidiger verschieben gemeinsam.`);
+                return;
+            }
+            const geht = (typeof ra.hoehe === "number" ? ra.hoehe >= 0.5 : !!ra.dynamisch) || ra.bahn === "linie";
+            const ivVor = ["iv_aufrueckend", "iv_ueberlappend"].includes(ri.id);
+            const ivBaut = ["iv_spielmacher", "iv_aufrueckend", "iv_breit"].includes(ri.id);
+            if (geht && ivVor) neu(iv, av, "schwach", `${seitenname} Abwehrseite: ${name(av)} geht nach vorn, ${name(iv)} rückt auf - hinter der Seite ist niemand.`);
+            else if (!geht && ivBaut) neu(iv, av, "stark", `${seitenname} Abwehrseite: ${name(av)} bleibt in der Kette, ${name(iv)} kann das Spiel aufbauen.`);
+            else neu(iv, av, "gut", `${seitenname} Abwehrseite: Außen- und Innenverteidiger bauen gemeinsam auf.`);
+        });
+
+        // Der Sechser und die Innenverteidiger: Wer steht vor der Abwehr?
+        if (dms.length && ivs.length) {
+            const d = dms.slice().sort((a, b) => Math.abs(positions[a].x - 50) - Math.abs(positions[b].x - 50))[0];
+            const iv = naechster(d, ivs);
+            const rd = r(d), ri = r(iv);
+            if (phase === "gegen") {
+                if ((rd.nieHeraus || rd.kippt) && ri.heraus) neu(iv, d, "stark", `Vor der Abwehr: ${name(iv)} rückt heraus, ${name(d)} schließt die Lücke.`);
+                else if (rd.heraus && ri.heraus) neu(iv, d, "schwach", "Vor der Abwehr: Sechser und Innenverteidiger rücken beide heraus - das Zentrum ist offen.");
+                else neu(iv, d, "gut", "Vor der Abwehr: Sechser und Innenverteidiger halten die Abstände.");
+            } else {
+                const dHoch = typeof rd.hoehe === "number" && rd.hoehe >= 0.5;
+                if (rd.kippt) neu(iv, d, "stark", `Aufbau: ${name(d)} kippt ab, die Innenverteidiger spreizen - hinten bauen drei auf.`);
+                else if (dHoch && ri.id === "iv_aufrueckend") neu(iv, d, "schwach", "Aufbau: Sechser und Innenverteidiger schieben beide nach vorn - vor der Abwehr fehlt die Absicherung.");
+                else neu(iv, d, "gut", "Aufbau: Der Sechser bietet sich den Innenverteidigern an.");
+            }
+        }
+
+        // Flügel und Stürmer: Passt, was von außen kommt, zu dem, der vorn wartet?
+        if (sturm.length) {
+            fluegel.forEach(f => {
+                const st = naechster(f, sturm);
+                if (st === undefined) return;
+                const rf = r(f), rs = r(st);
+                if (phase === "gegen") {
+                    if (rf.heraus && rs.heraus) neu(f, st, "stark", "Vorn: Flügel und Stürmer laufen den Aufbau gemeinsam an.");
+                    else neu(f, st, "gut", "Vorn: Flügel und Stürmer stellen gemeinsam zu.");
+                    return;
+                }
+                const aussen = rf.bahn === "linie" || (rf.flanken || 0) > 0;
+                const innen = rf.bahn === "halbraum";
+                if (aussen && rs.id === "st_ziel") neu(f, st, "stark", `Angriff: ${name(f)} flankt, ${name(st)} macht die Bälle im Strafraum fest.`);
+                else if (innen && rs.id === "st_neun") neu(f, st, "stark", `Angriff: Die falsche Neun lässt sich fallen, ${name(f)} zieht in den freien Raum.`);
+                else if (aussen && rs.id === "st_neun") neu(f, st, "schwach", "Angriff: Flanken von außen, aber die falsche Neun steht nicht im Strafraum.");
+                else if (innen && rs.id === "st_ziel") neu(f, st, "schwach", `Angriff: ${name(st)} wartet auf Flanken, ${name(f)} zieht nach innen.`);
+                else neu(f, st, "gut", "Angriff: Flügel und Stürmer suchen sich.");
+            });
+        }
+
+        // Der Sturm: mit dem naechsten Zulieferer und untereinander. Die
+        // Flügel haben ihre Linie zum Stürmer schon oben bekommen.
         sturm.forEach(st => {
             const rs = r(st);
-            const partner = naechster(st, [...mitte, ...fluegel, ...sturm]);
+            const partner = naechster(st, [...mitte, ...sturm]) ?? naechster(st, fluegel);
             if (partner === undefined) return;
             const rp = r(partner);
             if (phase === "gegen") {

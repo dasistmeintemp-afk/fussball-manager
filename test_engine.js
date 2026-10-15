@@ -1943,6 +1943,25 @@ function runEngineTests() {
         if (seite("av_schiene", "fl")?.guete !== "schwach") throw new Error("Zwei Spieler an derselben Seitenlinie gelten nicht als Problem");
         if (seite("av_invers", "fl")?.guete !== "stark") throw new Error("Einrückender Außenverteidiger mit Flügel an der Linie passt nicht");
 
+        // Abwehrseite, Sechser vor der Abwehr, Flügel und Stürmer
+        const paar = (rollen, a, b, phase = "mit") => {
+            const c = { formation: "4-3-3", tactics: TacticsEngine.normalisiere({}) };
+            c.tactics.rollen = rollen;
+            return TacticsEngine.verbindungen(c, b433, phase).find(v => (v.a === a && v.b === b) || (v.a === b && v.b === a))?.guete;
+        };
+        if (paar({ 4: { mit: "av_schiene", gegen: "av" }, 3: { mit: "iv_aufrueckend", gegen: "iv" } }, 3, 4) !== "schwach") throw new Error("Außenverteidiger vorn und aufrückender Innenverteidiger lassen die Seite offen");
+        if (paar({ 4: { mit: "av_defensiv", gegen: "av" }, 3: { mit: "iv_spielmacher", gegen: "iv" } }, 3, 4) !== "stark") throw new Error("Ein Außenverteidiger in der Kette gibt dem Spielmacher-Innenverteidiger Rückhalt");
+        if (paar({ 4: { mit: "av", gegen: "av_pressend" }, 3: { mit: "iv", gegen: "iv_absichernd" } }, 3, 4, "gegen") !== "stark") throw new Error("Pressender Außenverteidiger mit absicherndem Innenverteidiger passt");
+        if (paar({ 5: { mit: "dm_abkippend", gegen: "dm" } }, 3, 5) !== "stark") throw new Error("Der abkippende Sechser fehlt beim Aufbau mit den Innenverteidigern");
+        if (paar({ 5: { mit: "dm", gegen: "dm_pressend" }, 3: { mit: "iv", gegen: "iv_stopper" } }, 3, 5, "gegen") !== "schwach") throw new Error("Sechser und Innenverteidiger rücken beide heraus - das muss auffallen");
+        if (paar({ 10: { mit: "fl", gegen: "fl" }, 9: { mit: "st_ziel", gegen: "st" } }, 9, 10) !== "stark") throw new Error("Flanken auf den Zielspieler passen");
+        if (paar({ 10: { mit: "fl_invers", gegen: "fl" }, 9: { mit: "st_ziel", gegen: "st" } }, 9, 10) !== "schwach") throw new Error("Ein einrückender Flügel lässt den Zielspieler allein");
+        if (paar({ 10: { mit: "fl_invers", gegen: "fl" }, 9: { mit: "st_neun", gegen: "st" } }, 9, 10) !== "stark") throw new Error("Falsche Neun und einrückender Flügel passen");
+        // Der Stürmer behält dazu seinen Zulieferer aus der Mitte
+        const c433 = { formation: "4-3-3", tactics: TacticsEngine.normalisiere({}) };
+        const stLinien = TacticsEngine.verbindungen(c433, b433, "mit").filter(v => v.a === 9 || v.b === 9);
+        if (stLinien.length < 3) throw new Error(`Der Mittelstürmer hat nur ${stLinien.length} Verbindungen`);
+
         // Der Taktik-Check merkt, wenn niemand die Linie haelt
         const eng = { formation: "4-3-3", tactics: TacticsEngine.normalisiere({}) };
         eng.tactics.rollen = { 4: { mit: "av_invers", gegen: "av" }, 10: { mit: "fl_invers", gegen: "fl" } };

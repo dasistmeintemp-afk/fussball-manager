@@ -187,16 +187,60 @@ class MatchFlowEngine {
         if (!this.fm() || !player) return 1;
         const alter = player.mental?.alter ?? 26;
         const erfahrung = Math.max(35, Math.min(95, 35 + (alter - 17) * 6));
-        const lesen = this.attr(player, "vision") * 0.55 + this.attr(player, "positioning", 60) * 0.25 + erfahrung * 0.2;
+        // Mit Kopfwerten zählen vor allem die Entscheidungen selbst
+        const lesen = typeof player.decisions === "number"
+            ? this.attr(player, "decisions") * 0.45 + this.attr(player, "vision") * 0.3
+                + this.attr(player, "positioning", 60) * 0.1 + erfahrung * 0.15
+            : this.attr(player, "vision") * 0.55 + this.attr(player, "positioning", 60) * 0.25 + erfahrung * 0.2;
         return Math.max(0.75, Math.min(1.3, 1.45 - lesen / 100 * 0.65));
     }
 
-    /** Nervenstärke (1-20): große Spiele, Beständigkeit und Erfahrung */
+    /**
+     * Ein Kopfwert auf der Skala der versteckten Werte (1-20, Mitte 12).
+     * Im Spiel liegen die Werte um 70 (MatchEngine.fmSkala) - vier Punkte
+     * dort sind einer hier. null, wenn der Spieler den Wert nicht kennt.
+     */
+    kopf20(player, key) {
+        const v = player?.[key];
+        return typeof v === "number" ? 12 + (v - 70) / 4 : null;
+    }
+
+    /**
+     * Nervenstärke (1-20): vor allem der Kopfwert, dazu große Spiele und
+     * Erfahrung - und wer einen Anführer auf dem Platz hat, bleibt ruhiger.
+     */
     nerven(player) {
         const m = player?.mental;
-        if (!m) return 12;
-        const erfahrung = Math.max(8, Math.min(18, 8 + (m.alter - 18) * 0.7));
-        return m.grosseSpiele * 0.5 + m.bestaendigkeit * 0.3 + erfahrung * 0.2;
+        const komp = this.kopf20(player, "composure");
+        if (!m && komp === null) return 12;
+        const alter = m?.alter ?? 26;
+        const grosseSpiele = m?.grosseSpiele ?? 12;
+        const erfahrung = Math.max(8, Math.min(18, 8 + (alter - 18) * 0.7));
+        const basis = komp === null
+            ? grosseSpiele * 0.5 + (m?.bestaendigkeit ?? 12) * 0.3 + erfahrung * 0.2
+            : komp * 0.6 + grosseSpiele * 0.25 + erfahrung * 0.15;
+        return basis + this.fuehrung(player.team);
+    }
+
+    /**
+     * Führung: Der stärkste Anführer auf dem Platz gibt den anderen Halt.
+     * Auf der Skala der Nerven, um null - eine Elf ohne Anführer verliert
+     * gut einen halben Punkt, eine mit einem großen gewinnt fast einen.
+     * Einmal je Spielminute gerechnet: Wechsel und Platzverweise zählen.
+     */
+    fuehrung(team) {
+        if (!team) return 0;
+        const minute = Math.floor(this.lage(team)?.minute || 0);
+        this._fuehrung = this._fuehrung || {};
+        const gemerkt = this._fuehrung[team];
+        if (gemerkt && gemerkt.minute === minute) return gemerkt.wert;
+        let beste = null;
+        this.teamOf(team).forEach(p => {
+            if (typeof p.leadership === "number" && (beste === null || p.leadership > beste)) beste = p.leadership;
+        });
+        const wert = beste === null ? 0 : Math.max(-0.6, Math.min(0.9, (beste - 82) * 0.06));
+        this._fuehrung[team] = { minute, wert };
+        return wert;
     }
 
     /**
@@ -239,8 +283,10 @@ class MatchFlowEngine {
             Math.min(MatchFlowEngine.GEDULD_MAX, this.qualitaetsVorsprung(team) * MatchFlowEngine.GEDULD));
     }
 
-    /** Konzentration (1-20): Professionalität und Beständigkeit */
+    /** Konzentration (1-20): der Kopfwert - ohne ihn Professionalität und Beständigkeit */
     konzentration(player) {
+        const k = this.kopf20(player, "concentration");
+        if (k !== null) return k;
         const m = player?.mental;
         return m ? (m.professionalitaet + m.bestaendigkeit) / 2 : 12;
     }
@@ -1175,13 +1221,21 @@ class MatchFlowEngine {
             const bedraenger = opponents.filter(o => o.pos !== "TW")
                 .sort((a, b) => this.distance(carrier, a) - this.distance(carrier, b))[0];
             if (bedraenger) {
-                const gegner = (this.attr(bedraenger, "defense") * 0.5 + this.attr(bedraenger, "positioning", 60) * 0.3
-                    + this.attr(bedraenger, "pace") * 0.2) / 100;
+                // Wer den Pass vorausahnt, steht schon im Weg
+                const gegner = (typeof bedraenger.anticipation === "number"
+                    ? this.attr(bedraenger, "defense") * 0.45 + this.attr(bedraenger, "positioning", 60) * 0.2
+                        + this.attr(bedraenger, "anticipation") * 0.2 + this.attr(bedraenger, "pace") * 0.15
+                    : this.attr(bedraenger, "defense") * 0.5 + this.attr(bedraenger, "positioning", 60) * 0.3
+                        + this.attr(bedraenger, "pace") * 0.2) / 100;
                 accuracy += (skill - gegner) * 0.22 * Math.min(1, pressure + 0.3);
             }
             accuracy += (skill - 0.72) * 0.12;
         }
         accuracy += eg.passKoennen || 0;
+        // Teamwork: Wer füreinander spielt, findet sich blind
+        if (this.fm() && typeof carrier.teamwork === "number" && typeof action.target?.teamwork === "number") {
+            accuracy += ((this.attr(carrier, "teamwork") + this.attr(action.target, "teamwork")) / 2 - 72) * 0.0008;
+        }
         // Konzentration: In der Schlussphase unterlaufen dem Unkonzentrierten
         // mehr Fehler, der Profi bleibt bei der Sache
         if (this.fm() && carrier.mental && (this.lage(carrier.team)?.minute || 0) >= 75) {
@@ -1235,10 +1289,13 @@ class MatchFlowEngine {
         // Fehlpass: abgefangen, frei liegend oder ins Aus
         const roll = Math.random();
         const interceptor = this.findInterceptor(carrier, action.target, opponents);
-        // Ein Abwehrchef liest den Pass und faengt ihn eher ab
+        // Ein Abwehrchef liest den Pass und faengt ihn eher ab - und wer
+        // vorausahnt, ist früher am Ball
         const abfangen = this.fm() && interceptor ? (this.eig(interceptor).abfangen || 0) : 0;
+        const ahnung = this.fm() && interceptor && typeof interceptor.anticipation === "number"
+            ? (this.attr(interceptor, "anticipation") - 74) / 100 * 0.25 : 0;
 
-        if (interceptor && roll < 0.55 + abfangen * 0.3) {
+        if (interceptor && roll < 0.55 + abfangen * 0.3 + ahnung) {
             // Im eigenen Strafraum abgefaelscht geht der Ball oft ins Toraus
             if (this.fm() && Math.abs(interceptor.x - this.ownGoalX(interceptor.team)) < 16
                 && Math.abs(interceptor.y - 50) < 30 && _flowRandom.chance(0.22)) {
@@ -1291,7 +1348,9 @@ class MatchFlowEngine {
 
         const dribbling = this.attr(carrier, "dribbling");
         const pace = this.attr(carrier, "pace");
-        const defSkill = defender ? (this.attr(defender, "defense") * 0.6 + this.attr(defender, "pace") * 0.4) : 60;
+        const defSkill = !defender ? 60 : (typeof defender.anticipation === "number"
+            ? this.attr(defender, "defense") * 0.5 + this.attr(defender, "pace") * 0.35 + this.attr(defender, "anticipation") * 0.15
+            : this.attr(defender, "defense") * 0.6 + this.attr(defender, "pace") * 0.4);
 
         const edge = (dribbling * 0.6 + pace * 0.4) - defSkill;
         // Wer hart einsteigt, gewinnt mehr Zweikaempfe (und foult oefter -

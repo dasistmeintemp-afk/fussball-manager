@@ -960,6 +960,9 @@ class GameState {
             state.europeanCompetitions = compEngine.generateEuropeanCompetitions(state.clubs);
         }
 
+        // Kopfwerte auch für die handgepflegten Kader
+        GameState.ergaenzeKopfwerte(state);
+
         // La Liga: Die erzeugten Kader halten die Grenze für Spieler ohne
         // EU-Pass ein, wie die echten Vereine
         const kaderregeln = GameState._resolveEngine('KaderregelEngine', './kaderregelEngine.js');
@@ -1042,6 +1045,19 @@ class GameState {
         if (eig && typeof eig.sicherstellen === "function") eig.sicherstellen(state);
     }
 
+    /** Kopfwerte (PlayerGenerator.KOPFWERTE) für alle Spieler und Talente, die noch keine haben */
+    static ergaenzeKopfwerte(state) {
+        const gen = GameState._resolveEngine("PlayerGenerator", "./playerGenerator.js");
+        if (!gen || typeof gen.ergaenzeKopfwerte !== "function") return 0;
+        let neu = 0;
+        (state.players || []).forEach(p => { if (gen.ergaenzeKopfwerte(p)) neu++; });
+        // Bei den Talenten nur die eigenen - die der KI bekommen sie mit dem Profivertrag
+        const eigener = (state.clubs || []).find(c => c.id === state.userClubId);
+        const talente = (state.youthAcademy?.prospects || []).concat(eigener?.youthAcademy?.prospects || []);
+        talente.forEach(t => { if (t && gen.ergaenzeKopfwerte(t)) neu++; });
+        return neu;
+    }
+
     /**
      * Ein älterer Spielstand bekommt beim Laden, was neue Stände von Anfang
      * an haben. Jeder Schritt prüft selbst, ob er nötig ist - ein zweites
@@ -1049,6 +1065,8 @@ class GameState {
      */
     static ergaenzeAltstand(state) {
         if (!state || !Array.isArray(state.clubs)) return;
+        // Die Kopfwerte: dieselben, die eine neue Welt für diese Spieler hätte
+        GameState.ergaenzeKopfwerte(state);
         // Fanartikel sind ein eigener Posten. Ein Sponsorenvertrag aus der
         // Zeit davor enthielt sie noch und zahlt deshalb ein Achtel weniger.
         const finanzen = GameState._resolveEngine("FinanceEngine", "./financeEngine.js");

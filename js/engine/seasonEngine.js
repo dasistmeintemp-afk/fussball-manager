@@ -1141,10 +1141,12 @@ class SeasonEngine {
         const laufbahn = _resolve('LaufbahnEngine', './laufbahnEngine.js');
         if (laufbahn && typeof laufbahn.saisonAbschluss === 'function') laufbahn.saisonAbschluss(state);
 
-        // Spieler altern um 1 Jahr
+        // Spieler altern um 1 Jahr - und mit ihnen die Kopfwerte
         const statistikReset = _resolve('StatistikEngine', './statistikEngine.js');
+        const kopfGen = _resolve('PlayerGenerator', './playerGenerator.js');
         state.players.forEach(player => {
             player.age += 1;
+            if (kopfGen && typeof kopfGen.kopfReife === 'function') kopfGen.kopfReife(player, player.age - 1, state.seasonYear || 1);
             player.stats.matches = 0;
             player.stats.goals = 0;
             player.stats.assists = 0;

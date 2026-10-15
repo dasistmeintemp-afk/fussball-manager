@@ -456,15 +456,23 @@ const ScoutingEngine = {
         handling: ["Sichere Hände, kaum Abpraller", "Lässt Bälle abprallen"],
         oneOnOne: ["Stark im direkten Duell mit dem Stürmer", "Unsicher im direkten Duell"],
         positioning: ["Gutes Stellungsspiel im Tor", "Steht im Tor oft falsch"],
-        kicking: ["Starker Abstoß, leitet Angriffe ein", "Schwaches Spiel mit dem Fuß"]
+        kicking: ["Starker Abstoß, leitet Angriffe ein", "Schwaches Spiel mit dem Fuß"],
+        decisions: ["Trifft fast immer die richtige Entscheidung", "Wählt oft die falsche Option"],
+        anticipation: ["Ahnt Pässe und Laufwege voraus", "Reagiert oft einen Schritt zu spät"],
+        composure: ["Eiskalt, wenn es darauf ankommt", "Wird in engen Momenten nervös"],
+        concentration: ["Neunzig Minuten hellwach", "Leistet sich Konzentrationsfehler"],
+        workRate: ["Arbeitet unermüdlich gegen den Ball", "Arbeitet zu wenig nach hinten"],
+        teamwork: ["Spielt immer für die Mannschaft", "Sucht oft die eigene Lösung statt den Mitspieler"],
+        leadership: ["Geht voran und reißt andere mit", "Taucht ab, wenn die Mannschaft Halt braucht"],
+        offTheBall: ["Bietet sich ständig an und findet die Lücke", "Ohne Ball kaum anspielbar"]
     },
 
     /** Welche Schwächen für eine Position überhaupt ins Gewicht fallen */
     RELEVANT: {
-        TW: ["reflexes", "handling", "oneOnOne", "positioning", "kicking"],
-        ABW: ["defense", "physical", "pace", "passing", "stamina"],
-        MF: ["passing", "vision", "technique", "stamina", "dribbling", "defense"],
-        ST: ["shooting", "pace", "dribbling", "technique", "physical"]
+        TW: ["reflexes", "handling", "oneOnOne", "positioning", "kicking", "concentration"],
+        ABW: ["defense", "physical", "pace", "passing", "stamina", "anticipation", "concentration"],
+        MF: ["passing", "vision", "technique", "stamina", "dribbling", "defense", "decisions", "workRate", "teamwork"],
+        ST: ["shooting", "pace", "dribbling", "technique", "physical", "composure", "offTheBall"]
     },
 
     positionsGruppe(pos) {
@@ -482,8 +490,9 @@ const ScoutingEngine = {
     staerkenUndSchwaechen(player, scout) {
         const gruppe = this.positionsGruppe(player.pos);
         const kandidaten = gruppe === "TW"
-            ? this.RELEVANT.TW
-            : ["pace", "shooting", "passing", "dribbling", "defense", "physical", "stamina", "vision", "technique"];
+            ? this.RELEVANT.TW.concat(["decisions", "composure", "leadership"])
+            : ["pace", "shooting", "passing", "dribbling", "defense", "physical", "stamina", "vision", "technique",
+                "decisions", "anticipation", "composure", "concentration", "workRate", "teamwork", "leadership", "offTheBall"];
         const schwaeche = Math.max(0, 100 - scout.guete);
         const schluessel = `${player.id}|${scout.name}`;
         const gesehen = kandidaten

@@ -25,6 +25,9 @@ class DevelopmentPlanEngine {
         tempo: { label: "Schnelligkeit & Ausdauer", werte: ["pace", "stamina"] },
         dribbling: { label: "Dribbling & Technik", werte: ["dribbling", "technique"], feld: true },
         kopfball: { label: "Kopfball & Stellungsspiel", werte: ["physical", "positioning"], feld: true },
+        spielintelligenz: { label: "Entscheidungen & Antizipation", werte: ["decisions", "anticipation"] },
+        nerven: { label: "Nervenstärke & Konzentration", werte: ["composure", "concentration"] },
+        laufwege: { label: "Laufwege & Einsatz", werte: ["offTheBall", "workRate"], feld: true },
         reflexe: { label: "Reflexe & Fangsicherheit", werte: ["reflexes", "handling"], torwart: true },
         torwartspiel: { label: "Herauslaufen & Abschlag", werte: ["oneOnOne", "kicking"], torwart: true }
     };
@@ -38,6 +41,8 @@ class DevelopmentPlanEngine {
     /** Chance je Einheit, eine Eigenheit des Mentors zu übernehmen */
     static EIGENHEIT_JE_EINHEIT = 0.006;
     static MENTOR_WERTE = ["professionalism", "ambition", "temperament", "importantMatches", "consistency"];
+    /** Chance je Einheit, dass Nervenstärke oder Führung vom Mentor einen Punkt zulegt */
+    static KOPF_VOM_MENTOR = 0.012;
     /** Mehr Eigenheiten trägt keiner - sonst wären sie nichts Besonderes */
     static MAX_EIGENHEITEN = 3;
     /** Einheiten, die ein durchschnittlicher Spieler für eine Eigenheit braucht (rund drei Monate) */
@@ -394,6 +399,11 @@ class DevelopmentPlanEngine {
                     const eigen = typeof h[k] === "number" ? h[k] : 12;
                     h[k] = Math.round((eigen + (mh[k] - eigen) * this.PRAEGUNG_JE_EINHEIT) * 100) / 100;
                 });
+                // Wer neben einem Anführer trainiert, lernt Ruhe und Haltung
+                ["composure", "leadership"].forEach(k => {
+                    if (typeof player[k] === "number" && typeof mentor[k] === "number"
+                        && mentor[k] > player[k] + 5 && zufall() < this.KOPF_VOM_MENTOR) player[k] = Math.min(99, player[k] + 1);
+                });
                 const neu = this._eigenheitVomMentor(player, mentor, zufall);
                 if (neu) {
                     meldungen.push(`🧑‍🏫 ${player.name} hat sich bei ${mentor.name} etwas abgeschaut: ${neu.text}`);
@@ -453,7 +463,10 @@ class DevelopmentPlanEngine {
         pace: "Tempo", shooting: "Abschluss", passing: "Passspiel", dribbling: "Dribbling",
         defense: "Zweikampf", physical: "Physis", stamina: "Ausdauer", vision: "Übersicht",
         technique: "Technik", positioning: "Stellungsspiel", reflexes: "Reflexe",
-        handling: "Fangsicherheit", oneOnOne: "Eins gegen eins", kicking: "Abschlag"
+        handling: "Fangsicherheit", oneOnOne: "Eins gegen eins", kicking: "Abschlag",
+        decisions: "Entscheidungen", anticipation: "Antizipation", composure: "Nervenstärke",
+        concentration: "Konzentration", workRate: "Einsatz", teamwork: "Teamwork",
+        leadership: "Führung", offTheBall: "Ohne Ball"
     };
 
     static MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli",

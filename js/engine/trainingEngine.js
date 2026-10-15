@@ -609,6 +609,11 @@ class TrainingEngine {
             } else if (focus === "tactics") {
                 player.vision = Math.min(99, player.vision + 1);
                 player.positioning = Math.min(99, player.positioning + 1);
+                // Taktiktraining schult auch den Kopf - zuerst, was schwächer ist
+                if (typeof player.decisions === "number" && typeof player.anticipation === "number") {
+                    const kopf = player.decisions <= player.anticipation ? "decisions" : "anticipation";
+                    player[kopf] = Math.min(99, player[kopf] + 1);
+                }
             } else if (focus === "fitness") {
                 player.stamina = Math.min(99, player.stamina + 1);
                 player.pace = Math.min(99, player.pace + 1);

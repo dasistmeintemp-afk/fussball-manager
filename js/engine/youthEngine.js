@@ -709,6 +709,13 @@ const YouthEngine = {
                 quelle: optionen.quelle || "jugendtag",
                 promoted: false
             };
+            // Die Kopfwerte folgen fest aus Kennung, Stärke und Alter. Die
+            // Talente der KI-Vereine bekommen sie erst mit dem Profivertrag -
+            // sonst trüge jeder Spielstand Tausende Werte, die niemand sieht.
+            const kopfGen = _youthResolve("PlayerGenerator", "./playerGenerator.js");
+            if (kopfGen && typeof kopfGen.ergaenzeKopfwerte === "function" && (clubId === state.userClubId || optionen.vorschau)) {
+                kopfGen.ergaenzeKopfwerte(prospect);
+            }
 
             if (optionen.vorschau) {
                 // Die Vorschau sieht den Jahrgang - aufgenommen wird er am Jugendtag
@@ -854,6 +861,12 @@ const YouthEngine = {
                 redCards: 0, minutes: 0, cleanSheets: 0, ratingSum: 0
             }
         }, attribute);
+        // Die Kopfwerte nimmt er aus der Akademie mit
+        if (playerGen && Array.isArray(playerGen.KOPFWERTE)) {
+            playerGen.KOPFWERTE.forEach(k => { if (typeof prospect[k] === "number") newPlayer[k] = prospect[k]; });
+            if (typeof newPlayer.decisions === "number") newPlayer.kopfStand = newPlayer.overall;
+            else playerGen.ergaenzeKopfwerte(newPlayer);
+        }
 
         state.players.push(newPlayer);
         club.playerIds.push(newPlayer.id);

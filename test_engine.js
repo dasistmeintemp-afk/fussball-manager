@@ -12805,6 +12805,61 @@ function runEngineTests() {
         if (PlayerRatingEngine.geschaetzteStaerke(ziel, Object.assign({}, ctx, { leagueDataCoverage: 100 })) !== ziel.overall) throw new Error("Durchleuchteter Spieler nicht exakt");
     });
 
+    test("Zusammenspiel: Die Linien der Taktiktafel wirken - Rollen-Passung und Eingespieltheit", () => {
+        const T = TacticsEngine;
+        const state = GameState.createNewGame("muc", "normal", { name: "Linien" });
+        T.stelleUhr(state);
+        const club = state.clubs.find(c => c.id === "muc");
+        const slots = MatchEngine.getFormationSlots(club);
+        const elf = MatchEngine.getCleanLineup(club, state.players);
+
+        // Eingespielt: Wer vor der Karriere kam, ist es; ein Neuzugang nicht, nach drei Monaten zu zwei Dritteln
+        const jetzt = T.uhr;
+        const alt = elf[0], neu = Object.assign({}, elf[1], { vereinSeit: jetzt });
+        if (!(T.eingespielt(alt, elf[2]) > 0.99)) throw new Error("Langjährige Mitspieler nicht eingespielt");
+        if (T.eingespielt(alt, neu) !== 0) throw new Error("Neuzugang sofort eingespielt");
+        // Uhr: Saison * 1000 + Kalendertag - "vor 90 Tagen" liegt zum Saisonstart in der Vorsaison
+        const drei = Object.assign({}, neu, { vereinSeit: (state.seasonYear - 1) * 1000 + T.ZUSAMMENSPIEL.tageJeSaison + (state.currentDayIndex || 0) - 90 });
+        if (Math.abs(T.eingespielt(alt, drei) - (1 - Math.exp(-1))) > 0.01) throw new Error(`Nach 90 Tagen ${T.eingespielt(alt, drei)}`);
+        // Über den Saisonwechsel hinweg zählt die Zeit weiter
+        const vorjahr = Object.assign({}, neu, { vereinSeit: (state.seasonYear - 1) * 1000 + 250 });
+        if (!(T.tageImVerein(vorjahr) >= T.ZUSAMMENSPIEL.tageJeSaison - 250)) throw new Error("Saisonwechsel nicht mitgezählt");
+
+        // Wert: Passung zählt, Eingespieltheit auch
+        if (!(T.zusammenspielWert("stark", 1) > T.zusammenspielWert("gut", 1) && T.zusammenspielWert("gut", 1) > T.zusammenspielWert("schwach", 1))) throw new Error("Passung falsch geordnet");
+        if (!(T.zusammenspielWert("gut", 1) > T.zusammenspielWert("gut", 0))) throw new Error("Eingespieltheit zählt nicht");
+
+        // Die Elf: Verbindungen beider Phasen mit Eingespieltheit, der Faktor um den Schnitt der Welt
+        const z = T.zusammenspiel(club, slots, elf);
+        if (!z.verbindungen.some(v => v.phase === "mit") || !z.verbindungen.some(v => v.phase === "gegen")) throw new Error("Phasen fehlen");
+        if (z.verbindungen.some(v => typeof v.eingespielt !== "number" || typeof v.wert !== "number")) throw new Error("Verbindung ohne Werte");
+        const faktor = T.zusammenspielFaktor(club, slots, elf);
+        if (Math.abs(faktor - (1 + Math.max(-0.02, Math.min(0.02, 0.04 * (z.schnitt - T.ZUSAMMENSPIEL.mittel))))) > 1e-9) throw new Error("Faktor falsch berechnet");
+        // Eine Elf voller Neuzugänge spielt schwächer, höchstens zwei Prozent
+        const neue = elf.map(p => Object.assign({}, p, { vereinSeit: jetzt }));
+        const fremd = T.zusammenspielFaktor(club, slots, neue);
+        if (!(fremd < faktor && fremd >= 0.98)) throw new Error(`Neue Elf: ${fremd} gegen ${faktor}`);
+        // Der Schnitt der Welt liegt nahe am Nullpunkt
+        const schnitt = state.clubs.filter(c => (c.level || 1) === 1).map(c => T.zusammenspiel(c, MatchEngine.getFormationSlots(c), MatchEngine.getCleanLineup(c, state.players)).schnitt);
+        const mittel = schnitt.reduce((a, b) => a + b, 0) / schnitt.length;
+        if (Math.abs(mittel - T.ZUSAMMENSPIEL.mittel) > 0.08) throw new Error(`Schnitt der Erstligisten ${mittel.toFixed(3)} statt um ${T.ZUSAMMENSPIEL.mittel}`);
+
+        // Im Livespiel: verbundene Spieler haben einen Wert, alle anderen null
+        const match = { id: "linien", played: false, homeClubId: "muc", awayClubId: "dor" };
+        const live = new LiveMatch(match, club, state.clubs.find(c => c.id === "dor"), state.players);
+        const dir = live.director;
+        const heim = (live.players2D || []).filter(p => p.team === "home");
+        const v = T.verbindungenGemerkt(club, slots, "mit")[0];
+        const a = heim.find(p => p.slot === v.a), b = heim.find(p => p.slot === v.b);
+        const erwartet = T.zusammenspielWert(v.guete, 1) - T.ZUSAMMENSPIEL.mittel;
+        if (Math.abs(dir.zusammenspielPaar(a, b) - erwartet) > 0.02 || Math.abs(dir.zusammenspielPaar(b, a) - erwartet) > 0.02) throw new Error("Paarwert im Livespiel falsch");
+        const verbunden = new Set(T.verbindungenGemerkt(club, slots, "mit").map(x => `${Math.min(x.a, x.b)}|${Math.max(x.a, x.b)}`));
+        const lose = heim.flatMap(p => heim.map(q => [p, q])).find(([p, q]) => p.slot < q.slot && !verbunden.has(`${p.slot}|${q.slot}`));
+        if (dir.zusammenspielPaar(lose[0], lose[1]) !== 0) throw new Error("Unverbundene Spieler mit Zusammenspiel");
+        // Die Livespiel-Vertrautheit trägt den Faktor
+        if (Math.abs(live.vertrautheit.home - T.vertrautheitsFaktor(club) * T.zusammenspielFaktor(club, slots, live.homeLineup)) > 1e-9) throw new Error("Faktor fehlt im Livespiel");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

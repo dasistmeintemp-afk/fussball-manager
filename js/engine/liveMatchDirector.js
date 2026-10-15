@@ -437,7 +437,8 @@ class LiveMatchDirector {
             lage: (team) => this.fmLage(team),
             schiri: () => this.match.schiedsrichter || null,
             wetter: () => this.match.wetter || null,
-            anweisung: (id) => this.match.matchplan?.anweisungen?.[String(id)] || null
+            anweisung: (id) => this.match.matchplan?.anweisungen?.[String(id)] || null,
+            zusammenspiel: (a, b) => this.zusammenspielPaar(a, b)
         }) : null;
 
         this.initPlayers();
@@ -518,7 +519,30 @@ class LiveMatchDirector {
                 p.formMit = mit ? mit[p.slot] || null : null;
                 p.formGegen = gegen ? gegen[p.slot] || null : null;
             });
+            // Die Linien der Taktiktafel: wie gut zwei verbundene Spieler
+            // zusammenspielen, um den Schnitt der Welt bereinigt
+            if (typeof T.verbindungenGemerkt === "function" && positions.length) {
+                const alle = this.match.allPlayers || [];
+                const nachSlot = new Map(this.teamPlayers(team).map(p => [p.slot, alle.find(x => x.id === p.id) || p]));
+                const paare = new Map();
+                T.verbindungenGemerkt(club, positions, "mit").forEach(v => {
+                    const a = nachSlot.get(v.a), b = nachSlot.get(v.b);
+                    if (!a || !b) return;
+                    const wert = T.zusammenspielWert(v.guete, T.eingespielt(a, b)) - T.ZUSAMMENSPIEL.mittel;
+                    paare.set(v.a < v.b ? `${v.a}|${v.b}` : `${v.b}|${v.a}`, wert);
+                });
+                if (!this._paare) this._paare = {};
+                this._paare[team] = paare;
+            }
         });
+    }
+
+    /** Zusammenspiel zweier Spieler derselben Elf (0, wenn keine Linie sie verbindet) */
+    zusammenspielPaar(a, b) {
+        if (!a || !b || a.team !== b.team || !this._paare) return 0;
+        const paare = this._paare[a.team];
+        if (!paare) return 0;
+        return paare.get(a.slot < b.slot ? `${a.slot}|${b.slot}` : `${b.slot}|${a.slot}`) || 0;
     }
 
     /**

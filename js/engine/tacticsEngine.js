@@ -1441,6 +1441,105 @@ const TacticsEngine = {
         return liste;
     },
 
+    /**
+     * Zusammenspiel: Was die Linien der Taktiktafel bewirken.
+     *
+     * Bisher waren sie nur Anzeige. Jetzt trägt jede Verbindung zweierlei:
+     * wie gut die beiden Rollen zueinander passen (stark, gut, schwach - siehe
+     * verbindungen) und wie eingespielt die beiden Spieler sind, also wie
+     * lange sie schon zusammen im Verein sind. Ein Neuzugang ist mit niemandem
+     * eingespielt, nach drei Monaten zu zwei Dritteln, nach einem halben Jahr
+     * fast ganz.
+     *
+     * Wirkung: Der Schnitt aller Verbindungen der Elf ist ein kleiner Faktor
+     * auf die Stärke - in der Sofort-Simulation wie im Livespiel (dort über
+     * die Tagesform, wie die taktische Vertrautheit). Im Livespiel suchen sich
+     * gut verbundene Spieler außerdem häufiger. Geeicht auf den Schnitt der
+     * Welt: Eine durchschnittliche Elf spielt damit genau wie vorher.
+     */
+    ZUSAMMENSPIEL: {
+        passung: { stark: 1, gut: 0, schwach: -1 },
+        // Anteil der Rollen-Passung am Wert, der Rest ist Eingespieltheit
+        gewichtPassung: 0.6,
+        // Nach so vielen gemeinsamen Tagen zu zwei Dritteln eingespielt
+        tageZumEinspielen: 90,
+        tageJeSaison: 300,
+        // Schnitt einer Elf der Welt (gemessen) - um ihn ist die Wirkung null
+        mittel: 0.45,
+        // Stärke je Punkt über oder unter dem Schnitt, begrenzt
+        staerke: 0.04,
+        grenze: 0.02
+    },
+
+    /** Die Uhr fürs Einspielen: Saison * 1000 + Kalendertag (gestellt vom Kalender) */
+    uhr: null,
+    stelleUhr(state) {
+        if (state) this.uhr = (state.seasonYear || 1) * 1000 + (state.currentDayIndex || 0);
+        return this.uhr;
+    },
+
+    /** Wie lange ein Spieler schon im Verein ist, in Tagen. Ohne Angabe: seit vor der Karriere. */
+    tageImVerein(p, jetzt = this.uhr) {
+        const z = this.ZUSAMMENSPIEL;
+        if (!p || typeof p.vereinSeit !== "number" || typeof jetzt !== "number") return 2 * z.tageJeSaison;
+        const saisons = Math.floor(jetzt / 1000) - Math.floor(p.vereinSeit / 1000);
+        return Math.max(0, saisons * z.tageJeSaison + (jetzt % 1000) - (p.vereinSeit % 1000));
+    },
+
+    /** Wie eingespielt zwei Spieler sind (0 bis 1): die gemeinsame Zeit im Verein */
+    eingespielt(a, b, jetzt = this.uhr) {
+        const tage = Math.min(this.tageImVerein(a, jetzt), this.tageImVerein(b, jetzt));
+        return 1 - Math.exp(-tage / this.ZUSAMMENSPIEL.tageZumEinspielen);
+    },
+
+    /** Der Wert einer Verbindung von -1 bis 1 aus Passung und Eingespieltheit */
+    zusammenspielWert(guete, eingespielt) {
+        const z = this.ZUSAMMENSPIEL;
+        return z.gewichtPassung * (z.passung[guete] ?? 0) + (1 - z.gewichtPassung) * (2 * eingespielt - 1);
+    },
+
+    /**
+     * Die Verbindungen hängen nur an Formation und Rollen, nicht an den
+     * Spielern - gemerkt je Taktik, damit fünfhundert Vereine sie nicht an
+     * jedem Spieltag neu ausrechnen.
+     */
+    _verbindungsSpeicher: new Map(),
+    verbindungenGemerkt(club, positions, phase = "mit") {
+        if (!Array.isArray(positions) || positions.length < 2) return [];
+        const t = club?.tactics || {};
+        const schluessel = `${phase}|${t.vorlage || ""}|${JSON.stringify(t.rollen || null)}|`
+            + positions.map(p => `${p.pos}:${p.x}:${p.y}`).join(";");
+        let liste = this._verbindungsSpeicher.get(schluessel);
+        if (!liste) {
+            if (this._verbindungsSpeicher.size > 400) this._verbindungsSpeicher.clear();
+            liste = this.verbindungen(club, positions, phase);
+            this._verbindungsSpeicher.set(schluessel, liste);
+        }
+        return liste;
+    },
+
+    /**
+     * Das Zusammenspiel einer Elf. spieler: die Elf in Slot-Reihenfolge.
+     * Rückgabe: { verbindungen: [{ a, b, guete, text, phase, eingespielt, wert }], schnitt }
+     */
+    zusammenspiel(club, positions, spieler, jetzt = this.uhr) {
+        const liste = [];
+        ["mit", "gegen"].forEach(phase => this.verbindungenGemerkt(club, positions, phase).forEach(v => {
+            const a = spieler?.[v.a], b = spieler?.[v.b];
+            const e = (a && b) ? this.eingespielt(a, b, jetzt) : 0;
+            liste.push(Object.assign({}, v, { phase, eingespielt: e, wert: this.zusammenspielWert(v.guete, e) }));
+        }));
+        const schnitt = liste.length ? liste.reduce((s, v) => s + v.wert, 0) / liste.length : this.ZUSAMMENSPIEL.mittel;
+        return { verbindungen: liste, schnitt };
+    },
+
+    /** Der Faktor auf die Stärke: um den Schnitt der Welt herum, höchstens vier Prozent */
+    zusammenspielFaktor(club, positions, spieler, jetzt = this.uhr) {
+        const z = this.ZUSAMMENSPIEL;
+        const { schnitt } = this.zusammenspiel(club, positions, spieler, jetzt);
+        return 1 + Math.max(-z.grenze, Math.min(z.grenze, z.staerke * (schnitt - z.mittel)));
+    },
+
     /** Setzt eine Vorlage: Anweisungen, Formen, Rollenstil */
     /** Eine feste Zahl zwischen 0 und 1 aus der Kennung des Vereins */
     _vereinsZahl(club) {

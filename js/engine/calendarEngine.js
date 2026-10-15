@@ -1095,6 +1095,11 @@ const CalendarEngine = {
      * sich geöffnet oder geschlossen, ist heute sein letzter Tag?
      */
     advanceOneDay(state) {
+        // Die Uhr fürs Einspielen der Spieler (TacticsEngine.zusammenspiel)
+        const taktikUhr = (typeof TacticsEngine !== 'undefined' && TacticsEngine)
+            ? TacticsEngine
+            : ((typeof window !== 'undefined' && window.TacticsEngine) ? window.TacticsEngine : (typeof require !== 'undefined' ? require('./tacticsEngine.js').TacticsEngine : null));
+        if (taktikUhr && typeof taktikUhr.stelleUhr === "function") taktikUhr.stelleUhr(state);
         const res = this._tagWeiter(state);
         // Eine Anfrage an den Vorstand: Nach der Bedenkzeit kommt die Antwort
         const vorstand = _getBoardEngineCal();

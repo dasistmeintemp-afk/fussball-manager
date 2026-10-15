@@ -878,7 +878,7 @@ class NegotiationEngine {
         if ((agreed.einsatzPraemie || 0) > 0 || (agreed.torPraemie || 0) > 0) {
             player.praemien = { einsatz: agreed.einsatzPraemie || 0, tor: agreed.torPraemie || 0 };
         } else {
-            delete player.praemien;
+            player.praemien = undefined;
         }
     }
 

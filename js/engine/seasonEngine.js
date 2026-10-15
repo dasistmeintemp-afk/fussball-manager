@@ -401,7 +401,7 @@ class SeasonEngine {
         const anfrage = p.vorvertragInteresse;
         if (!anfrage) return null;
         if ((state.currentDayIndex || 0) < anfrage.entscheidetTag && !state.calendar?.[state.currentDayIndex || 0]?.saisonwechsel) return null;
-        delete p.vorvertragInteresse;
+        p.vorvertragInteresse = undefined;
         const ziel = (state.clubs || []).find(c => c.id === anfrage.clubId);
         if (!ziel || ziel.id === club.id) return null;
 
@@ -1369,8 +1369,8 @@ class SeasonEngine {
             // Vorher galt das nur für eigene Spieler in der Sommerpause.
             const vv = player.vorvertrag;
             const vorvertrag = vv ? state.clubs.find(c => c.id === vv.clubId && c.id !== club.id) : null;
-            delete player.vorvertrag;
-            delete player.vorvertragInteresse;
+            player.vorvertrag = undefined;
+            player.vorvertragInteresse = undefined;
             const transferEngine = _getTransferEngine();
             if (vorvertrag && transferEngine && typeof transferEngine.executeTransfer === 'function') {
                 const playerGen = _resolve('PlayerGenerator', './playerGenerator.js');
@@ -1382,7 +1382,7 @@ class SeasonEngine {
                 // Die Arbeitserlaubnis gab es schon bei der Unterschrift
                 if (transferEngine.executeTransfer(state, player.id, vorvertrag.id, 0, lohn, jahre, { erlaubnis: vv.erlaubnis === true })) {
                     if (vv.praemien) player.praemien = { ...vv.praemien };
-                    else delete player.praemien;
+                    else player.praemien = undefined;
                     const klauselnVv = _resolve('KlauselEngine', './klauselEngine.js');
                     if (vv.klauseln && klauselnVv) klauselnVv.setze(player, vv.klauseln, vorvertrag);
                     if (istNutzerverein) eigeneAbgaenge.push(`${player.name} (zu ${vorvertrag.name})`);
@@ -1486,7 +1486,7 @@ class SeasonEngine {
                 if (!gewaehlt) break;
 
                 gewaehlt.clubId = club.id;
-                delete gewaehlt.vereinslosAb;
+                gewaehlt.vereinslosAb = undefined;
                 gewaehlt.contractYears = 1 + Math.floor(Math.random() * 3);
                 club.playerIds.push(gewaehlt.id);
                 fehlend--;

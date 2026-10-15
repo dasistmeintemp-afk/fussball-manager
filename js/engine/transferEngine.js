@@ -260,7 +260,7 @@ class TransferEngine {
                 }
             }
         }
-        if (fee > 0 && sellerClub) delete player.weiterverkauf;
+        if (fee > 0 && sellerClub) player.weiterverkauf = undefined;
 
         // Teuerster Kauf und Verkauf in die Vereinschronik
         const chronik = (typeof ChronikEngine !== "undefined" && ChronikEngine)
@@ -324,10 +324,10 @@ class TransferEngine {
         // Ab heute neu in der Kabine
         player.vereinSeit = (state.seasonYear || state.season || 1) * 1000 + (state.currentDayIndex || 0);
         // Die U23 des alten Vereins gilt beim neuen nicht
-        delete player.reserve;
-        delete player.vereinslosAb;
+        player.reserve = undefined;
+        player.vereinslosAb = undefined;
         // Die Klauseln (KlauselEngine) gehören zum alten Vertrag
-        delete player.klauseln;
+        player.klauseln = undefined;
 
         // Zum neuen Verein hinzufügen
         buyerClub.playerIds.push(player.id);

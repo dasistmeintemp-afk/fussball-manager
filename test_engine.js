@@ -13179,6 +13179,37 @@ function runEngineTests() {
         if (ziehe(100).some(p => p.ausnahmetalent)) throw new Error("Ausnahmetalent ohne internationale Sichtung");
     });
 
+    test("Tempo über Jahre: alle Spieler in einer Form, kein delete auf Spielerfeldern", () => {
+        const fs = require("fs");
+        const PG = PlayerGenerator;
+        // forme legt genau die Felder der Liste an, in ihrer Reihenfolge, Unbekanntes hinten an
+        const o = PG.forme({ id: "x", name: "Test", extra: 1 });
+        const keys = Object.keys(o);
+        if (keys.slice(0, PG.FORM_FELDER.length).join() !== PG.FORM_FELDER.join() || keys[keys.length - 1] !== "extra") throw new Error("forme passt nicht zu FORM_FELDER");
+        if (JSON.stringify(o) !== JSON.stringify({ id: "x", name: "Test", extra: 1 })) throw new Error("Leere Felder landen im Spielstand");
+        // Neue Welt und geladener Stand: eine Form für alle
+        const state = GameState.createNewGame("muc", "normal", { name: "Form" });
+        const formen = new Set(state.players.map(p => Object.keys(p).join(",")));
+        if (formen.size !== 1) throw new Error(`${formen.size} Formen in einer neuen Welt`);
+        const geladen = GameState._zuState(SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(state)))));
+        if (new Set(geladen.players.map(p => Object.keys(p).join(","))).size !== 1) throw new Error("Geladener Stand mit mehreren Formen");
+        // Ein beförderter Jugendspieler kommt in derselben Form
+        const nachJugend = Object.keys(PG.generatePlayer("x", 1, "ZM", null, { countryId: "de" })).slice(0, PG.FORM_FELDER.length).join();
+        if (nachJugend !== PG.FORM_FELDER.join()) throw new Error("Neuer Spieler in anderer Form");
+        // Kein delete auf Spielerfeldern in den Engines - es schaltet Objekte in den langsamen Wörterbuch-Modus
+        const felder = new Set(PG.FORM_FELDER);
+        const funde = [];
+        fs.readdirSync("./js/engine").filter(f => f.endsWith(".js")).forEach(f => {
+            const text = fs.readFileSync("./js/engine/" + f, "utf8");
+            const re = /delete\s+(\w+)\.(\w+)\s*;/g;
+            let m;
+            while ((m = re.exec(text))) {
+                if (["p", "player", "spieler", "gewaehlt", "mentee"].includes(m[1]) && felder.has(m[2])) funde.push(`${f}: delete ${m[1]}.${m[2]}`);
+            }
+        });
+        if (funde.length) throw new Error(`delete auf Spielerfeldern: ${funde.join(", ")}`);
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

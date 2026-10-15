@@ -101,7 +101,7 @@ class DevelopmentPlanEngine {
         const p = this._eigenerSpieler(state, playerId);
         if (!p) return { success: false, error: "Nur für Spieler des eigenen Vereins." };
         if (!this.schwerpunkteFuer(p).some(s => s.key === key)) return { success: false, error: "Dieser Schwerpunkt passt nicht zu ihm." };
-        if (key === "keiner") delete p.trainingsfokus;
+        if (key === "keiner") p.trainingsfokus = undefined;
         else p.trainingsfokus = key;
         return { success: true };
     }
@@ -118,7 +118,7 @@ class DevelopmentPlanEngine {
     static setzeUmschulung(state, playerId, pos) {
         const p = this._eigenerSpieler(state, playerId);
         if (!p) return { success: false, error: "Nur für Spieler des eigenen Vereins." };
-        if (!pos) { delete p.umschulung; return { success: true }; }
+        if (!pos) { p.umschulung = undefined; return { success: true }; }
         if (!this.umschulungsZiele(p).includes(pos)) return { success: false, error: "Diese Position kann er schon - oder sie passt nicht." };
         p.umschulung = { pos, seit: this._stempel(state) };
         return { success: true };
@@ -159,7 +159,7 @@ class DevelopmentPlanEngine {
     static setzeMentor(state, menteeId, mentorId) {
         const mentee = this._eigenerSpieler(state, menteeId);
         if (!mentee) return { success: false, error: "Nur für Spieler des eigenen Vereins." };
-        if (!mentorId) { delete mentee.mentorId; return { success: true }; }
+        if (!mentorId) { mentee.mentorId = undefined; return { success: true }; }
         if ((mentee.age || 30) > this.MENTEE_HOECHSTALTER) return { success: false, error: `Einen Mentor bekommen Spieler bis ${this.MENTEE_HOECHSTALTER}.` };
         const mentor = this._eigenerSpieler(state, mentorId);
         if (!mentor || mentor.id === mentee.id) return { success: false, error: "Der Mentor muss im eigenen Kader stehen." };
@@ -263,7 +263,7 @@ class DevelopmentPlanEngine {
     static setzeEigenheitTraining(state, playerId, key, art = "lernen") {
         const p = this._eigenerSpieler(state, playerId);
         if (!p) return { success: false, error: "Nur für Spieler des eigenen Vereins." };
-        if (!key) { delete p.eigenheitTraining; return { success: true }; }
+        if (!key) { p.eigenheitTraining = undefined; return { success: true }; }
         const eintrag = this._katalog().find(e => e.key === key);
         if (!eintrag) return { success: false, error: "Diese Eigenheit gibt es nicht." };
         if (p.eigenheitTraining && p.eigenheitTraining.key === key && p.eigenheitTraining.art === art) return { success: true };
@@ -304,7 +304,7 @@ class DevelopmentPlanEngine {
         const t = player.eigenheitTraining;
         const hat = this._hat(player, t.key);
         // Schon erledigt - etwa weil er es sich beim Mentor abgeschaut hat
-        if ((t.art === "lernen" && hat) || (t.art === "ablegen" && !hat)) { delete player.eigenheitTraining; return null; }
+        if ((t.art === "lernen" && hat) || (t.art === "ablegen" && !hat)) { player.eigenheitTraining = undefined; return null; }
         const schritt = this.eigenheitTempo(state, player, t, stab) * (0.75 + 0.5 * zufall()) / this.EIGENHEIT_EINHEITEN;
         t.fortschritt = Math.round(Math.min(1, (t.fortschritt || 0) + schritt) * 10000) / 10000;
         // Die Extraarbeit kostet etwas Kraft
@@ -312,7 +312,7 @@ class DevelopmentPlanEngine {
         if (t.fortschritt < 1) return null;
 
         const text = this.eigenheitText(t.key);
-        delete player.eigenheitTraining;
+        player.eigenheitTraining = undefined;
         if (t.art === "lernen") {
             player.traits = [...(player.traits || []), { key: t.key, text }];
             this._post(state, player, `${player.name} hat eine neue Eigenheit`,
@@ -381,7 +381,7 @@ class DevelopmentPlanEngine {
                     meldungen.push(`🎓 ${player.name} ist auf ${player.umschulung.pos} umgeschult.`);
                     this._post(state, player, `${player.name} ist umgeschult`,
                         `Das Training hat sich gelohnt: ${player.name} kann jetzt auch ${player.umschulung.pos} spielen.`);
-                    delete player.umschulung;
+                    player.umschulung = undefined;
                 }
             }
         }
@@ -390,7 +390,7 @@ class DevelopmentPlanEngine {
         if (player.mentorId) {
             const mentor = (state?.players || []).find(p => String(p.id) === String(player.mentorId));
             if (!mentor || mentor.clubId !== player.clubId || (player.age || 30) > this.MENTEE_HOECHSTALTER + 1) {
-                delete player.mentorId;
+                player.mentorId = undefined;
             } else {
                 const h = player.hiddenAttributes || (player.hiddenAttributes = {});
                 const mh = mentor.hiddenAttributes || {};

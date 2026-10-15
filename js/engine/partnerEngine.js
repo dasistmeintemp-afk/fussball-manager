@@ -202,14 +202,14 @@ const PartnerEngine = {
         if (hindernis) return { success: false, error: hindernis };
         const eigener = this._eigener(state);
         loans._wechsle(state, p, eigener, partner.club);
-        delete p.reserve;
+        p.reserve = undefined;
         p.leihe = {
             stammvereinId: eigener.id, leihvereinId: partner.club.id, bisSaison: state.seasonYear || 1,
             lohnAnteil: this.LEIH_ANTEIL, rolle: "Stammspieler", garantie: true, seit: loans._stempel(state),
             startSpiele: p.stats?.matches || 0, startTore: p.stats?.goals || 0, startNoten: p.stats?.ratingSum || 0
         };
         p.morale = Math.min(99, (p.morale ?? 75) + 6);
-        delete p.versprechen; delete p.mentorId;
+        p.versprechen = undefined; p.mentorId = undefined;
         this._post(state, "Transferabteilung", `${p.name} zum Ausbildungspartner`,
             `${p.name} spielt bis zum Saisonende bei ${partner.club.name} - mit Einsatzgarantie. Der Partner übernimmt die Hälfte seines Gehalts.`);
         return { success: true };
@@ -228,7 +228,7 @@ const PartnerEngine = {
         const hindernis = loans ? loans.leihHindernis(state, p) : "Leihen sind nicht verfügbar.";
         if (hindernis) return { success: false, error: hindernis };
         loans._wechsle(state, p, partner.club, eigener);
-        delete p.reserve;
+        p.reserve = undefined;
         p.leihe = {
             stammvereinId: partner.club.id, leihvereinId: eigener.id, bisSaison: state.seasonYear || 1,
             lohnAnteil: this.LEIH_ANTEIL, rolle: "Talent", seit: loans._stempel(state), gebuehr: 0, kaufoption: null,

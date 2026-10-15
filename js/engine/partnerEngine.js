@@ -183,6 +183,8 @@ const PartnerEngine = {
         const fenster = te && typeof te.fensterHindernis === "function" ? te.fensterHindernis(state) : null;
         if (fenster) return { success: false, error: fenster };
         if (a.preis > (eigener.transferBudget || 0)) return { success: false, error: `Das Transferbudget reicht nicht: ${this._geld(a.preis)} nötig.` };
+        const erlaubnis = typeof te.erlaubnisHindernis === "function" ? te.erlaubnisHindernis(state, p, eigener) : null;
+        if (erlaubnis) return { success: false, error: erlaubnis };
         const lohn = Math.round((p.wage || 2000) * 1.3);
         if (!te.executeTransfer(state, p.id, eigener.id, a.preis, lohn, 4)) return { success: false, error: "Der Wechsel ist gescheitert." };
         delete eigener.partnerAngebote.klein;

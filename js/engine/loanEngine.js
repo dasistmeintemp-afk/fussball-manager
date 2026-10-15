@@ -113,6 +113,19 @@ class LoanEngine {
         return te && typeof te.fensterHindernis === "function" ? te.fensterHindernis(state) : null;
     }
 
+    /** Die Arbeitserlaubnis für einen Leihverein in England - oder null */
+    static _erlaubnis(state, player, club) {
+        const engine = this._resolve("ArbeitserlaubnisEngine", "./arbeitserlaubnisEngine.js");
+        return engine && player && club ? engine.pruefe(state, player, club) : null;
+    }
+
+    /** Einen Ausnahmeplatz belegen, wenn die Leihe nur so geht */
+    static _belegeAusnahme(state, pruefung, club) {
+        if (!pruefung || pruefung.weg !== "ausnahme") return;
+        const engine = this._resolve("ArbeitserlaubnisEngine", "./arbeitserlaubnisEngine.js");
+        if (engine) engine.verbrauche(state, club);
+    }
+
     static verleihHindernis(state, player) {
         if (!player || player.clubId !== state.userClubId) return "Nur Spieler des eigenen Vereins.";
         const fenster = this._fenster(state);
@@ -144,6 +157,8 @@ class LoanEngine {
             if (c.id === eigener.id) return;
             const stufe = c.level || 1;
             if (stufe < eigeneStufe || stufe > eigeneStufe + 2) return;
+            const erlaubnis = this._erlaubnis(state, player, c);
+            if (erlaubnis && !erlaubnis.erteilt) return;
             const rolle = this.rolleBei(state, player, c);
             if (!rolle) return;
             // Wer stärker ist als der Verein, ist ihm mehr wert
@@ -172,6 +187,7 @@ class LoanEngine {
         // sonst manchmal heraus
         const angebot = this.interessenten(state, playerId, Infinity).find(a => a.clubId === clubId);
         if (!angebot) return { success: false, error: "Dieser Verein will ihn nicht ausleihen." };
+        this._belegeAusnahme(state, this._erlaubnis(state, player, this._club(state, clubId)), this._club(state, clubId));
         this._wechsle(state, player, this._club(state, state.userClubId), this._club(state, clubId));
         delete player.reserve;
         player.leihe = {
@@ -280,6 +296,8 @@ class LoanEngine {
         if (this.geliehenVon(state, state.userClubId).length >= this.MAX_GELIEHEN) {
             return `Sie haben schon ${this.MAX_GELIEHEN} Leihspieler im Kader.`;
         }
+        const erlaubnis = this._erlaubnis(state, player, this._club(state, state.userClubId));
+        if (erlaubnis && !erlaubnis.erteilt) return erlaubnis.text;
         return null;
     }
 
@@ -302,6 +320,7 @@ class LoanEngine {
         const gebuehr = eintrag.gebuehr + (mitOption ? eintrag.optionsAufschlag : 0);
         if ((eigener.balance || 0) < gebuehr) return { success: false, error: "Für die Leihgebühr reicht das Geld nicht." };
         const stammverein = this._club(state, eintrag.clubId);
+        this._belegeAusnahme(state, this._erlaubnis(state, player, eigener), eigener);
         if (gebuehr > 0) {
             eigener.balance -= gebuehr;
             stammverein.balance = (stammverein.balance || 0) + gebuehr;
@@ -356,7 +375,8 @@ class LoanEngine {
         const preis = l.kaufoption;
         // Zurück zum Stammverein, dann regulär verkaufen
         this._beende(state, player);
-        const ok = transfer.executeTransfer(state, player.id, kaeufer.id, preis, player.wage || 0, 3);
+        // Die Arbeitserlaubnis hat er seit der Leihe
+        const ok = transfer.executeTransfer(state, player.id, kaeufer.id, preis, player.wage || 0, 3, { erlaubnis: true });
         if (!ok) return { success: false, error: "Der Wechsel ist gescheitert." };
         if (kaeufer.id === state.userClubId) {
             this._post(state, "Transferabteilung", `Kaufoption gezogen: ${player.name}`,
@@ -416,6 +436,10 @@ class LoanEngine {
                     && (p.overall || 0) - niveau(c) >= -3);
             if (!ziele.length) continue;
             const ziel = ziele[Math.floor(zufall() * ziele.length)];
+            // Nach England nur mit Arbeitserlaubnis
+            const erlaubnis = this._erlaubnis(state, p, ziel);
+            if (erlaubnis && !erlaubnis.erteilt) continue;
+            this._belegeAusnahme(state, erlaubnis, ziel);
             const diff = (p.overall || 0) - niveau(ziel);
             this._wechsle(state, p, stamm, ziel);
             delete p.reserve;

@@ -12385,6 +12385,76 @@ function runEngineTests() {
         if (!wm.torjaeger || wm.torjaeger.tore < 2) throw new Error("Kein Torschützenkönig");
     });
 
+    test("Arbeitserlaubnis: Nach England nur mit Punkten, Ausnahmegremium oder Ausnahmeplatz - nicht unter 18", () => {
+        const { ArbeitserlaubnisEngine: AE } = require('./js/engine/arbeitserlaubnisEngine.js');
+        const { TransferEngine } = require('./js/engine/transferEngine.js');
+        const { NegotiationEngine } = require('./js/engine/negotiationEngine.js');
+        const { LoanEngine } = require('./js/engine/loanEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const vereinVon = (p) => state.clubs.find(c => c.id === p.clubId);
+        const en = state.clubs.find(c => c.leagueId === "en_liga_1");
+        en.transferBudget = 5e8; en.balance = 5e8;
+
+        // Ein Stammspieler der ersten Liga mit Platz in der Nationalelf: Punkte reichen
+        const lage = AE._nationen(state);
+        const star = state.players.find(p => lage.rolle.get(p.id) === "elf" && !AE.FREI.includes(p.nationality)
+            && vereinVon(p)?.countryId === "de" && vereinVon(p)?.level === 1 && (p.age || 0) >= 18);
+        const e1 = AE.pruefe(state, star, en);
+        if (!e1.noetig || !e1.erteilt || e1.weg !== "punkte" || e1.punkte < AE.SCHWELLE) throw new Error(`Nationalspieler: ${JSON.stringify(e1)}`);
+        if (!e1.teile.some(t => /Nationalmannschaft/.test(t.text)) || !e1.teile.some(t => /Ligaminuten/.test(t.text))) throw new Error("Punkte ohne Begründung");
+
+        // Britischer Pass, oder schon in England: keine Prüfung
+        const brite = Object.assign({}, star, { nationality: "Schottland" });
+        if (AE.pruefe(state, brite, en).noetig) throw new Error("Schotte braucht eine Erlaubnis");
+        const inEngland = state.players.find(p => vereinVon(p)?.countryId === "en" && vereinVon(p) !== en && !AE.FREI.includes(p.nationality));
+        if (AE.pruefe(state, inEngland, en).noetig) throw new Error("Wechsel innerhalb Englands geprüft");
+        const de = state.clubs.find(c => c.leagueId === "de_liga_1" && c.id !== star.clubId);
+        if (AE.pruefe(state, star, de).noetig) throw new Error("Regel gilt außerhalb Englands");
+
+        // Unter 18: geht nicht, auch nicht über die Verhandlung
+        const jung = state.players.find(p => (p.age || 30) < 18 && p.clubId && vereinVon(p)?.countryId !== "en" && !AE.FREI.includes(p.nationality));
+        if (AE.pruefe(state, jung, en).weg !== "zu_jung") throw new Error("Unter 18 erlaubt");
+        if (TransferEngine.executeTransfer(state, jung.id, en.id, 0, 1000, 3)) throw new Error("Unter 18 gewechselt");
+
+        // Ohne Punkte: nur über die Ausnahmeplätze - vier in der ersten Liga
+        const niemand = state.players.filter(p => vereinVon(p)?.countryId === "de" && (vereinVon(p)?.level || 1) >= 5
+            && (p.age || 0) >= 18 && !AE.FREI.includes(p.nationality) && !p.leihe).slice(0, 6);
+        const e2 = AE.pruefe(state, niemand[0], en);
+        if (e2.punkte !== 0 || e2.weg !== "ausnahme" || e2.frei !== 4) throw new Error(`Ohne Punkte: ${JSON.stringify(e2)}`);
+        state.userClubId = en.id;
+        niemand.slice(0, 4).forEach(p => {
+            if (!TransferEngine.executeTransfer(state, p.id, en.id, 0, 1000, 2)) throw new Error("Ausnahmeplatz nicht genutzt");
+        });
+        const e3 = AE.pruefe(state, niemand[4], en);
+        if (e3.erteilt || e3.weg !== "abgelehnt" || e3.frei !== 0 || !/Ausnahmeplätze/.test(e3.text)) throw new Error(`Plätze voll: ${JSON.stringify(e3)}`);
+        if (TransferEngine.executeTransfer(state, niemand[4].id, en.id, 0, 1000, 2)) throw new Error("Ohne Erlaubnis gewechselt");
+        const v = NegotiationEngine.startTransferNegotiation(state, niemand[4].id, en.id);
+        if (v.success || !/Arbeitserlaubnis/.test(v.error)) throw new Error(`Verhandlung trotz fehlender Erlaubnis: ${JSON.stringify(v.error)}`);
+        if (!/Arbeitserlaubnis/.test(LoanEngine.leihHindernis(state, niemand[4]) || "")) throw new Error("Leihe trotz fehlender Erlaubnis");
+        // Die nächste Saison bringt neue Plätze
+        state.seasonYear = (state.seasonYear || 1) + 1;
+        if (!AE.pruefe(state, niemand[4], en).erteilt) throw new Error("Neue Saison ohne neue Plätze");
+        state.seasonYear--;
+
+        // Die KI holt ohne freie Plätze nur, wer die Punkte oder das Gremium schafft
+        const ki = state.clubs.find(c => c.leagueId === "en_liga_1" && c.id !== en.id);
+        ki.transferBudget = 5e8; ki.wageBudget = 1e9;
+        AE._speicher(state).genutzt[ki.id] = AE.AUSNAHMEPLAETZE[1];
+        const gekauft = [];
+        for (let i = 0; i < 40; i++) {
+            const vorher = new Map((ki.playerIds || []).map(id => [id, true]));
+            const herkunft = new Map(state.players.map(p => [p.id, p.clubId]));
+            TransferEngine.versucheEinenTransfer(state, ki);
+            (ki.playerIds || []).filter(id => !vorher.has(id)).forEach(id => gekauft.push({ p: state.players.find(x => x.id === id), von: herkunft.get(id) }));
+        }
+        const ohne = gekauft.filter(({ p, von }) => {
+            const alt = state.clubs.find(c => c.id === von);
+            if (!alt || alt.countryId === "en" || AE.FREI.includes(p.nationality)) return false;
+            return AE.punkte(state, Object.assign({}, p, { clubId: von })).gesamt < AE.GREMIUM_STAMM;
+        });
+        if (ohne.length) throw new Error(`KI holt ohne Erlaubnis: ${ohne.map(x => x.p.name)}`);
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

@@ -104,6 +104,14 @@ class TransferEngine {
         };
     }
 
+    /** Arbeitserlaubnis (England): null, wenn sie erteilt würde - sonst der Grund */
+    static erlaubnisHindernis(state, player, club) {
+        const erlaubnis = _transferResolve("ArbeitserlaubnisEngine", "./arbeitserlaubnisEngine.js");
+        if (!erlaubnis || !player || !club) return null;
+        const pruefung = erlaubnis.pruefe(state, player, club);
+        return pruefung.erteilt ? null : pruefung.text;
+    }
+
     /**
      * Berechnet den geforderten Ablösepreis für einen Spieler
      */
@@ -200,6 +208,14 @@ class TransferEngine {
         if (player.leihe) return false;
         // Wer per Vorvertrag woanders unterschrieben hat, wechselt nur dorthin
         if (player.vorvertrag && player.vorvertrag.clubId !== buyerClubId) return false;
+        // Nach England nur mit Arbeitserlaubnis - bei einem Vorvertrag wurde
+        // sie schon bei der Unterschrift erteilt (optionen.erlaubnis)
+        const erlaubnis = _transferResolve("ArbeitserlaubnisEngine", "./arbeitserlaubnisEngine.js");
+        if (erlaubnis && optionen.erlaubnis !== true) {
+            const pruefung = erlaubnis.pruefe(state, player, buyerClub);
+            if (!pruefung.erteilt) return false;
+            if (pruefung.weg === "ausnahme") erlaubnis.verbrauche(state, buyerClub);
+        }
         const sellerClub = state.clubs.find(c => c.id === player.clubId);
 
         // Finanzen verbuchen - inklusive Eintrag im Buchungsjournal, damit
@@ -697,9 +713,11 @@ class TransferEngine {
             && (p.age || 30) <= this.TALENT_ALTER && (p.injuredWeeks || 0) <= 0)
             .sort((a, b) => (b.pot || 0) - (a.pot || 0));
         let vollzogen = 0;
+        const erlaubnis = _transferResolve("ArbeitserlaubnisEngine", "./arbeitserlaubnisEngine.js");
         for (let i = 0; i < versuche; i++) {
             const club = _preZufall(kaeufer);
             if (!club) continue;
+            const mitErlaubnis = erlaubnis && erlaubnis.gilt(club) ? erlaubnis : null;
             const niveau = this.kaderNiveau(state, club);
             const budget = club.transferBudget || 0;
             const lohnsumme = (club.playerIds || []).reduce((s, id) => s + (markt.spieler.get(id)?.wage || 0), 0);
@@ -712,7 +730,8 @@ class TransferEngine {
                 const gleichePos = (markt.kaderNachPos.get(verkaeufer.id) || {})[t.pos] || [];
                 if (gleichePos.length - 1 < (t.pos === "TW" ? 2 : 1)) return false;
                 if (this.calculateAskingPrice(t, verkaeufer) > budget) return false;
-                return lohnsumme + (t.wage || 0) * 1.2 <= (club.wageBudget || Infinity) * 1.15;
+                if (lohnsumme + (t.wage || 0) * 1.2 > (club.wageBudget || Infinity) * 1.15) return false;
+                return !mitErlaubnis || mitErlaubnis.erlaubt(state, t, club);
             });
             if (!p) continue;
             const verkaeufer = markt.vereine.get(p.clubId);
@@ -761,6 +780,9 @@ class TransferEngine {
         const ligaRegel = regeln ? regeln.regel(club, "liga") : null;
         const passVoll = !!(ligaRegel && ligaRegel.maxNichtEU != null
             && regeln._kader(state, club).filter(x => !regeln.eu(state, x, club)).length >= ligaRegel.maxNichtEU);
+        // England: nur, wer eine Arbeitserlaubnis bekäme
+        const erlaubnis = _transferResolve("ArbeitserlaubnisEngine", "./arbeitserlaubnisEngine.js");
+        const mitErlaubnis = erlaubnis && erlaubnis.gilt(club) ? erlaubnis : null;
         const alsNeuzugang = { vereinSeit: (state.seasonYear || 1) * 1000 };
         const besteReize = [];
         const pruefe = (p) => {
@@ -802,6 +824,7 @@ class TransferEngine {
 
             const preis = this.calculateAskingPrice(p, verkaeufer);
             if (preis > budget) return null;
+            if (mitErlaubnis && !mitErlaubnis.erlaubt(state, p, club)) return null;
 
             // Wie sehr will dieser Verein genau diesen Spieler? Ein
             // Wunschspieler aus der Gerüchteküche reizt mehr
@@ -1059,6 +1082,8 @@ class TransferEngine {
         if (!klausel) return { success: false, error: "Sein Vertrag hat keine Ausstiegsklausel." };
         const fenster = this.fensterHindernis(state);
         if (fenster) return { success: false, error: fenster };
+        const erlaubnis = this.erlaubnisHindernis(state, player, userClub);
+        if (erlaubnis) return { success: false, error: erlaubnis };
         if ((userClub.balance || 0) < klausel) return { success: false, error: "Für die Klausel reicht das Geld nicht." };
         const verein = state.clubs.find(c => c.id === player.clubId);
         if (verein && (verein.reputation || 60) > (userClub.reputation || 60) + 15) {

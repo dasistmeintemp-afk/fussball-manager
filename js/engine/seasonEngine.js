@@ -212,6 +212,12 @@ class SeasonEngine {
      */
     static SOMMERPAUSE = { tage: 21, abwerben: 0.02, abNiveau: -4 };
 
+    /** Bekäme der Spieler bei diesem Verein eine Arbeitserlaubnis (England)? */
+    static erlaubtBei(state, p, club) {
+        const erlaubnis = _resolve('ArbeitserlaubnisEngine', './arbeitserlaubnisEngine.js');
+        return !erlaubnis || erlaubnis.erlaubt(state, p, club);
+    }
+
     /** Eigene Spieler, deren Vertrag zum Saisonwechsel endet */
     static auslaufendZumWechsel(state) {
         const club = (state.clubs || []).find(c => c.id === state.userClubId);
@@ -248,7 +254,7 @@ class SeasonEngine {
             // Wer zugreift: ein Verein, in dessen Kader er passt - lieber eine
             // Liga höher oder gleich, sonst irgendeiner
             const passend = state.clubs.filter(c => c.id !== club.id
-                && SeasonEngine.passtZumKader(p, niveau.get(c.id)));
+                && SeasonEngine.passtZumKader(p, niveau.get(c.id)) && SeasonEngine.erlaubtBei(state, p, c));
             const oben = passend.filter(c => (c.level || 1) <= (club.level || 1));
             const auswahl = oben.length ? oben : passend;
             if (!auswahl.length) return;
@@ -361,7 +367,8 @@ class SeasonEngine {
             // Um die Leistungsträger reißen sich mehr Vereine
             if (zufall() >= V.anfrage * (staerke >= V.traeger ? 2 : 1)) return;
 
-            const passend = state.clubs.filter(c => c.id !== club.id && SeasonEngine.passtZumKader(p, niveau.get(c.id)));
+            const passend = state.clubs.filter(c => c.id !== club.id && SeasonEngine.passtZumKader(p, niveau.get(c.id))
+                && SeasonEngine.erlaubtBei(state, p, c));
             const oben = passend.filter(c => (c.level || 1) <= (club.level || 1));
             const auswahl = oben.length ? oben : passend;
             if (!auswahl.length) return;
@@ -1367,7 +1374,8 @@ class SeasonEngine {
                     : (player.wage || 1000));
                 const jahre = vv.years > 0 ? vv.years : (contractEngine && typeof contractEngine.laufzeitFuer === 'function'
                     ? contractEngine.laufzeitFuer(player) : 2);
-                if (transferEngine.executeTransfer(state, player.id, vorvertrag.id, 0, lohn, jahre)) {
+                // Die Arbeitserlaubnis gab es schon bei der Unterschrift
+                if (transferEngine.executeTransfer(state, player.id, vorvertrag.id, 0, lohn, jahre, { erlaubnis: vv.erlaubnis === true })) {
                     if (vv.praemien) player.praemien = { ...vv.praemien };
                     else delete player.praemien;
                     const klauselnVv = _resolve('KlauselEngine', './klauselEngine.js');

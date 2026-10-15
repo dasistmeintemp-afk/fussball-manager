@@ -637,9 +637,12 @@ class PlayerRatingEngine {
     }
 
     /**
-     * Ermittelt die Genauigkeit und Schätzspannen für sichtbare Werte abhängig von Scouting und Club-Zugehörigkeit
+     * Die reine Schätzung: wie sicher der Verein einen Spieler kennt und in
+     * welcher Spanne er Stärke und Potenzial sieht. Die Spielerkarte baut
+     * darauf auf; der Transfermarkt sortiert und filtert damit, ohne für
+     * tausende Spieler eine ganze Karte zu rechnen.
      */
-    static calculateVisiblePlayerCard(player, context = {}) {
+    static schaetzung(player, context = {}) {
         const isUserPlayer = player.clubId && context.userClubId && player.clubId === context.userClubId;
         const scoutingKnowledge = player.scoutingKnowledge || {
             known: isUserPlayer,
@@ -693,6 +696,25 @@ class PlayerRatingEngine {
 
         const estPaMin = Math.max(estCaMin, Math.round(truePa - paSpread + paBias));
         const estPaMax = Math.min(200, Math.max(estPaMin, Math.round(truePa + paSpread + paBias)));
+
+        return { isUserPlayer, confidence, isPrecise, trueCa, truePa, trueVal, estCaMin, estCaMax, estPaMin, estPaMax };
+    }
+
+    /**
+     * Die Stärke, wie der Verein sie sieht (Mitte der geschätzten Spanne,
+     * als Gesamtwert). Bei eigenen und durchleuchteten Spielern die wahre.
+     */
+    static geschaetzteStaerke(player, context = {}) {
+        const s = PlayerRatingEngine.schaetzung(player, context);
+        if (s.isPrecise) return player.overall;
+        return PlayerRatingEngine.abilityToOverall(Math.round((s.estCaMin + s.estCaMax) / 2));
+    }
+
+    /**
+     * Ermittelt die Genauigkeit und Schätzspannen für sichtbare Werte abhängig von Scouting und Club-Zugehörigkeit
+     */
+    static calculateVisiblePlayerCard(player, context = {}) {
+        const { isUserPlayer, confidence, isPrecise, trueVal, estCaMin, estCaMax, estPaMin, estPaMax } = PlayerRatingEngine.schaetzung(player, context);
 
         // OVR Spannen zur Darstellung
         const ovrMin = PlayerRatingEngine.abilityToOverall(estCaMin);

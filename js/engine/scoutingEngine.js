@@ -82,6 +82,18 @@ const ScoutingEngine = {
         return _seResolve("COUNTRIES_DATA", "../data/leagueData.js") || [];
     },
 
+    /** Vereine nach id - gemerkt je Vereinsliste, die Karten fragen tausendfach */
+    _vereinsKarten: new WeakMap(),
+    _vereine(state) {
+        const clubs = state?.clubs || [];
+        let karte = this._vereinsKarten.get(clubs);
+        if (!karte || karte.size !== clubs.length) {
+            karte = new Map(clubs.map(c => [c.id, c]));
+            this._vereinsKarten.set(clubs, karte);
+        }
+        return karte;
+    },
+
     /** Die Länder mit eigenen Ligen in diesem Spielstand */
     laender(state) {
         const mitVereinen = new Set((state?.clubs || []).map(c => c.countryId).filter(Boolean));
@@ -99,7 +111,7 @@ const ScoutingEngine = {
      */
     _grundSpeicher: new WeakMap(),
     grundWissen(state, land) {
-        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        const club = this._vereine(state).get(state?.userClubId);
         const heim = club?.countryId || "de";
         if (!land || land === heim) return 100;
         const schluessel = `${state?.userClubId}|${club?.reputation}|${club?.level}|${club?.staff?.scout?.name || ""}|${club?.staff?.scout?.guete ?? ""}`;
@@ -161,7 +173,7 @@ const ScoutingEngine = {
     landVon(state, player, vereine = null) {
         if (!player) return null;
         if (player.clubId) {
-            const verein = vereine ? vereine.get(player.clubId) : (state?.clubs || []).find(c => c.id === player.clubId);
+            const verein = (vereine || this._vereine(state)).get(player.clubId);
             if (verein) return verein.countryId || "de";
         }
         return this._laenderDaten().find(l => l.name === player.nationality)?.id || null;

@@ -158,7 +158,21 @@ const FinanceEngine = {
     /** Wie stark die Zahlung mit dem Rang steigt (>1 bevorzugt die Spitze) */
     SPONSOR_KURVE: 1.5,
 
-    /** Sponsorenzahlung eines Vereins je Spieltag */
+    /**
+     * Die kommerziellen Einnahmen eines Vereins je Spieltag: Sponsoren,
+     * Vermarktung und Fanartikel zusammen, nach Liga, Land und Rang.
+     */
+    kommerzBasis(club) {
+        if (!club) return 0;
+        const faktor = this.LEVEL_ECONOMY[club.level || 1] ?? 0.05;
+        const rang = typeof club.clubStrength === "number"
+            ? Math.max(0, Math.min(1, club.clubStrength))
+            : 0.5;
+        const land = this.landWirtschaft(club.countryId);
+        return Math.round((this.SPONSOR_SOCKEL * land.sockel + Math.pow(rang, this.SPONSOR_KURVE) * this.SPONSOR_SPANNE * land.spanne) * faktor);
+    },
+
+    /** Sponsorenzahlung eines Vereins je Spieltag - ohne die Fanartikel */
     sponsorPerMatchday(club) {
         if (!club) return 0;
 
@@ -170,13 +184,140 @@ const FinanceEngine = {
         if (club.sponsor && club.sponsor.amountPerMatchday > 0 && club.sponsor.ausgehandelt) {
             return club.sponsor.amountPerMatchday;
         }
+        return Math.round(this.kommerzBasis(club) * (1 - this.FANARTIKEL.anteil));
+    },
 
-        const faktor = this.LEVEL_ECONOMY[club.level || 1] ?? 0.05;
-        const rang = typeof club.clubStrength === "number"
-            ? Math.max(0, Math.min(1, club.clubStrength))
-            : 0.5;
-        const land = this.landWirtschaft(club.countryId);
-        return Math.round((this.SPONSOR_SOCKEL * land.sockel + Math.pow(rang, this.SPONSOR_KURVE) * this.SPONSOR_SPANNE * land.spanne) * faktor);
+    /**
+     * Fanartikel: Trikots, Schals, der Fanshop.
+     *
+     * Bisher steckten sie unsichtbar in der Sponsorenzahlung - ein Star im
+     * Kader oder eine Meistersaison änderten daran nichts. Jetzt sind sie
+     * ein eigener Posten: rund ein Achtel der kommerziellen Einnahmen, und wie
+     * viel davon ankommt, hängt am Verein. Der Tabellenplatz zählt, die
+     * Stimmung der eigenen Fans, und vor allem die Stars: Wer weit über dem
+     * Niveau seiner Liga spielt, verkauft Trikots. Ein großer Neuzugang
+     * bringt einige Wochen lang einen Schub.
+     *
+     * Im Schnitt einer Liga kommt so viel herein wie vorher; zusammen mit
+     * der um denselben Anteil kleineren Sponsorenzahlung bleibt die Bilanz
+     * der Welt, wie sie war. Der Spitzenverein mit Stars verkauft bis zum
+     * Doppelten, der Abstiegskandidat ohne Namen gut die Hälfte.
+     */
+    FANARTIKEL: {
+        anteil: 0.12,
+        sockel: 0.74,
+        tabelle: 0.3,
+        /** Ab so vielen Punkten über dem Ligaschnitt zieht ein Spieler, je Punkt so viel, je Spieler höchstens */
+        starAb: 4, jePunkt: 0.025, jeSpielerMax: 0.16, starsMax: 0.5,
+        stimmung: 0.004,
+        neuzugang: { plus: 0.35, tage: 56, abSterne: 0.1 },
+        min: 0.45, max: 2.2
+    },
+
+    /** Was die Fanartikel bei einem durchschnittlichen Verein dieser Größe bringen */
+    fanartikelBasis(club) {
+        return Math.round(this.kommerzBasis(club) * this.FANARTIKEL.anteil);
+    },
+
+    /** Kommerzielle Einnahmen je Spieltag: Sponsor plus die übliche Summe aus Fanartikeln */
+    kommerzJeSpieltag(club) {
+        return this.sponsorPerMatchday(club) + this.fanartikelBasis(club);
+    },
+
+    /** Das Niveau einer Liga (beste Elf je Verein), wie es beim Anlegen der Welt war */
+    _ligaNiveau(state, leagueId) {
+        if (!state.ligaNiveau || typeof state.ligaNiveau !== "object") {
+            const welt = _feResolve("WorldGenerator", "./worldGenerator.js");
+            state.ligaNiveau = welt && typeof welt.ligaNiveau === "function" ? welt.ligaNiveau(state) : {};
+        }
+        return state.ligaNiveau[leagueId];
+    },
+
+    /** Wie sehr ein Spieler im Fanshop zieht (0 = gar nicht) */
+    zugkraft(player, niveau) {
+        const F = this.FANARTIKEL;
+        if (!player || typeof niveau !== "number") return 0;
+        const ueber = (player.overall || 0) - niveau - F.starAb;
+        return ueber > 0 ? Math.min(F.jeSpielerMax, ueber * F.jePunkt) : 0;
+    },
+
+    /**
+     * Der Faktor auf die Fanartikel-Basis. sterne: die Summe der Zugkraft
+     * im Kader (sonst wird sie hier gezählt).
+     */
+    fanartikelFaktor(state, club, sterne = null) {
+        const F = this.FANARTIKEL;
+        if (!club) return 1;
+        if (sterne === null) {
+            const niveau = this._ligaNiveau(state, club.leagueId);
+            const ids = new Set(club.playerIds || []);
+            sterne = (state.players || []).filter(p => ids.has(p.id))
+                .reduce((s, p) => s + this.zugkraft(p, niveau), 0);
+        }
+        let f = F.sockel + Math.min(F.starsMax, sterne);
+        const tabelle = (state.standingsByLeague || {})[club.leagueId] || [];
+        const i = tabelle.findIndex(z => z.clubId === club.id);
+        const platz = i >= 0 && tabelle.length > 1 && (tabelle[i].played || 0) >= 3
+            ? 1 - i / (tabelle.length - 1)
+            : (typeof club.clubStrength === "number" ? club.clubStrength : 0.5);
+        f += F.tabelle * platz;
+        if (club.id === state.userClubId) f += ((state.fanMood ?? 70) - 70) * F.stimmung;
+        const e = club.trikotEffekt;
+        const heute = state.currentDayIndex || 0;
+        if (e && heute < e.bisTag) f += e.plus * (e.bisTag - heute) / F.neuzugang.tage;
+        return Math.max(F.min, Math.min(F.max, f));
+    },
+
+    /** Fanartikel-Einnahmen eines Vereins für einen Spieltag */
+    fanartikelJeSpieltag(state, club, sterne = null) {
+        return Math.round(this.fanartikelBasis(club) * this.fanartikelFaktor(state, club, sterne));
+    },
+
+    /** Das meistverkaufte Trikot im Kader: der Spieler mit der größten Zugkraft */
+    bestseller(state, club) {
+        if (!club) return null;
+        const niveau = this._ligaNiveau(state, club.leagueId);
+        const ids = new Set(club.playerIds || []);
+        const heute = state.currentDayIndex || 0;
+        const e = club.trikotEffekt && heute < club.trikotEffekt.bisTag ? club.trikotEffekt : null;
+        let bester = null;
+        (state.players || []).forEach(p => {
+            if (!ids.has(p.id)) return;
+            const wert = this.zugkraft(p, niveau) + (e && String(e.playerId) === String(p.id) ? 1 : 0)
+                + (p.overall || 0) / 1000;
+            if (!bester || wert > bester.wert) bester = { p, wert };
+        });
+        return bester ? bester.p : null;
+    },
+
+    /**
+     * Ein Neuzugang mit Zugkraft: Einige Wochen lang verkauft der Fanshop
+     * mehr. Für den eigenen Verein gibt es eine Nachricht.
+     */
+    nachTransfer(state, player, club) {
+        const F = this.FANARTIKEL;
+        if (!state || !player || !club) return null;
+        const zug = this.zugkraft(player, this._ligaNiveau(state, club.leagueId));
+        if (zug < F.neuzugang.abSterne) return null;
+        const heute = state.currentDayIndex || 0;
+        const plus = Math.round(F.neuzugang.plus * Math.min(1, zug / F.jeSpielerMax) * 100) / 100;
+        const alt = club.trikotEffekt && heute < club.trikotEffekt.bisTag ? club.trikotEffekt : null;
+        if (alt && alt.plus >= plus) return null;
+        club.trikotEffekt = { playerId: player.id, name: player.name, plus, bisTag: heute + F.neuzugang.tage };
+        if (club.id === state.userClubId && Array.isArray(state.inbox)) {
+            const extra = Math.round(this.fanartikelBasis(club) * plus);
+            state.inbox.unshift({
+                id: Date.now() + 41,
+                matchday: state.currentMatchday,
+                date: state.currentDate || `Spieltag ${state.currentMatchday}`,
+                sender: "Fanshop",
+                subject: `👕 Das Trikot von ${player.name} ist der Renner`,
+                body: `Seit der Verpflichtung von ${player.name} stehen die Fans vor dem Fanshop Schlange. In den nächsten Wochen rechnen wir mit bis zu ${this.geld(extra)} mehr Fanartikel-Umsatz je Spieltag - danach flacht es langsam ab.`,
+                read: false,
+                type: "finance"
+            });
+        }
+        return club.trikotEffekt;
     },
 
     /**
@@ -194,7 +335,7 @@ const FinanceEngine = {
             : (club.stadiumCapacity || club.capacity || 20000);
 
         const ticket = kapazitaet * 0.78 * (club.ticketPrice || 35) / 2;
-        return Math.round(this.sponsorPerMatchday(club) + ticket);
+        return Math.round(this.kommerzJeSpieltag(club) + ticket);
     },
 
     /**
@@ -557,8 +698,18 @@ const FinanceEngine = {
         // zu laufen.
         const lohnsumme = new Map();
         const kadergroesse = new Map();
+        // Die Zugkraft der Kader für den Fanshop, im selben Durchlauf
+        const sterne = new Map();
+        const ligaVon = new Map(state.clubs.map(c => [c.id, c.leagueId]));
+        const niveauJe = new Map();
+        const niveauVon = (leagueId) => {
+            if (!niveauJe.has(leagueId)) niveauJe.set(leagueId, this._ligaNiveau(state, leagueId));
+            return niveauJe.get(leagueId);
+        };
         (state.players || []).forEach(p => {
             if (!p || !p.clubId) return;
+            const zug = this.zugkraft(p, niveauVon(ligaVon.get(p.clubId)));
+            if (zug > 0) sterne.set(p.clubId, (sterne.get(p.clubId) || 0) + zug);
             // Ein Leihspieler kostet beide Vereine - nach vereinbartem Anteil
             const anteil = p.leihe ? Math.max(0, Math.min(1, p.leihe.lohnAnteil ?? 1)) : 1;
             lohnsumme.set(p.clubId, (lohnsumme.get(p.clubId) || 0) + (p.wage || 10000) * anteil);
@@ -580,6 +731,12 @@ const FinanceEngine = {
                 sponsorIncome, 
                 `Sponsorenzahlung Spieltag ${state.currentMatchday}`
             );
+
+            // 1b. Fanartikel: Trikots, Schals, Fanshop
+            const fanartikel = this.fanartikelJeSpieltag(state, club, sterne.get(club.id) || 0);
+            club.balance += fanartikel;
+            this.recordTransaction(state, club.id, "merch_income", fanartikel, `Fanartikel und Trikots Spieltag ${state.currentMatchday}`);
+            const kommerzSchnitt = sponsorIncome + this.fanartikelBasis(club);
 
             // 2. Spielergehälter
             const totalWeeklyWages = lohnsumme.get(club.id) || 0;
@@ -612,7 +769,7 @@ const FinanceEngine = {
             //    saß selbst der Landesligist auf einem Millionenpolster.
             const ticketSchnitt = Math.round((club.stadiumCapacity || club.capacity || 20000) * 0.8 * (club.ticketPrice || 35) / 2);
             let operatingCosts = Math.round(
-                (sponsorIncome + ticketSchnitt) * this.operatingShare(club)
+                (kommerzSchnitt + ticketSchnitt) * this.operatingShare(club)
                 + totalWeeklyWages * this.OPERATING_WAGE_SHARE);
 
             // 4a. Der eigene Trainerstab wird mit seinen echten Gehältern
@@ -643,7 +800,7 @@ const FinanceEngine = {
             // 5. Notbremse: Kein Verein rutscht unbegrenzt ins Minus. Wird die
             //    Schuldengrenze gerissen, springt der Vorstand ein - dafür ist
             //    der Transferetat für den Rest der Saison aufgebraucht.
-            const schuldengrenze = -Math.round(sponsorIncome * 12);
+            const schuldengrenze = -Math.round(kommerzSchnitt * 12);
             if ((club.balance || 0) < schuldengrenze) {
                 const hilfe = schuldengrenze - club.balance;
                 club.balance = schuldengrenze;
@@ -921,6 +1078,7 @@ const FinanceEngine = {
             + state.players.filter(p => p.leihe && p.leihe.stammvereinId === clubId)
                 .reduce((sum, p) => sum + (p.wage || 0) * (1 - anteil(p)), 0);
         const sponsorPerWeek = this.sponsorPerMatchday(club);
+        const fanartikelPerWeek = this.fanartikelJeSpieltag(state, club);
         const estTicketPerMatch = Math.round((club.stadiumCapacity || club.capacity || 30000) * 0.85 * (club.ticketPrice || 35));
 
         const txns = (state.finances?.transactions || []).filter(t => t.clubId === clubId);
@@ -931,7 +1089,8 @@ const FinanceEngine = {
             wageBudget: club.wageBudget || 0,
             currentWeeklyWages: weeklyWages,
             wageBudgetRemaining: (club.wageBudget || 0) - weeklyWages,
-            estimatedWeeklyIncome: sponsorPerWeek + Math.round(estTicketPerMatch / 2),
+            estimatedWeeklyIncome: sponsorPerWeek + fanartikelPerWeek + Math.round(estTicketPerMatch / 2),
+            fanartikelPerWeek,
             estimatedWeeklyExpenses: weeklyWages + 100000,
             transactions: txns.slice(0, 20)
         };

@@ -335,6 +335,9 @@ class TransferEngine {
             buyerClub.bench.push(player.id);
         }
 
+        // Ein Neuzugang mit Zugkraft verkauft Trikots
+        if (financeEngine && typeof financeEngine.nachTransfer === "function") financeEngine.nachTransfer(state, player, buyerClub);
+
         // Transfermarkt bereinigen
         if (state.transferMarket && Array.isArray(state.transferMarket.listedPlayerIds)) {
             state.transferMarket.listedPlayerIds = state.transferMarket.listedPlayerIds.filter(id => id !== player.id);

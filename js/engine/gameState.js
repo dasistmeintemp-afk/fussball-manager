@@ -1043,6 +1043,23 @@ class GameState {
     }
 
     /**
+     * Ein älterer Spielstand bekommt beim Laden, was neue Stände von Anfang
+     * an haben. Jeder Schritt prüft selbst, ob er nötig ist - ein zweites
+     * Laden ändert nichts mehr.
+     */
+    static ergaenzeAltstand(state) {
+        if (!state || !Array.isArray(state.clubs)) return;
+        // Fanartikel sind ein eigener Posten. Ein Sponsorenvertrag aus der
+        // Zeit davor enthielt sie noch und zahlt deshalb ein Achtel weniger.
+        const finanzen = GameState._resolveEngine("FinanceEngine", "./financeEngine.js");
+        const eigener = state.clubs.find(c => c.id === state.userClubId);
+        if (finanzen && finanzen.FANARTIKEL && eigener?.sponsor?.ausgehandelt && !eigener.sponsor.fanartikelGetrennt) {
+            eigener.sponsor.amountPerMatchday = Math.round(eigener.sponsor.amountPerMatchday * (1 - finanzen.FANARTIKEL.anteil) / 1000) * 1000;
+            eigener.sponsor.fanartikelGetrennt = true;
+        }
+    }
+
+    /**
      * Stellungsspiel für handgepflegte Spieler ableiten.
      *
      * "positioning" ist ein Feldspielerwert - er beschreibt, ob einer zur
@@ -2291,6 +2308,7 @@ class GameState {
         if (!daten) return null;
         const state = Object.assign(new GameState(), daten);
         GameState.registerCustomFormations(state);
+        GameState.ergaenzeAltstand(state);
         GameState.sichereSignaturen(state);
         // Namen nach der aktuellen Wahl im Browser: erfunden oder aus der
         // Namensdatei. Wer sie gewechselt hat, sieht das auch in alten Ständen.
@@ -2461,6 +2479,7 @@ class GameState {
 
             const state = Object.assign(new GameState(), parsed);
             GameState.registerCustomFormations(state);
+            GameState.ergaenzeAltstand(state);
             GameState.sichereSignaturen(state);
             return { success: true, state };
         } catch (e) {

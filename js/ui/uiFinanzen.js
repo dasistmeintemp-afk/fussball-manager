@@ -179,6 +179,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         // Die Sponsorenzahlung kommt aus der Finanz-Engine, damit im Verein
         // dieselbe Zahl steht, die auch gebucht wird.
         const sponsorWeekly = this.sponsorProSpieltag(userClub);
+        // Fanartikel: was der Fanshop gerade je Spieltag bringt, und wessen Trikot am besten geht
+        const finanzen = typeof FinanceEngine !== "undefined" ? FinanceEngine : null;
+        const fanartikel = finanzen && typeof finanzen.fanartikelJeSpieltag === "function" ? finanzen.fanartikelJeSpieltag(state, userClub) : 0;
+        const fanartikelFaktor = finanzen && typeof finanzen.fanartikelFaktor === "function" ? finanzen.fanartikelFaktor(state, userClub) : 1;
+        const bestseller = finanzen && typeof finanzen.bestseller === "function" ? finanzen.bestseller(state, userClub) : null;
         const matchIncomeEst = Math.round((userClub.capacity || 30000) * 0.85 * (userClub.ticketPrice || 35));
 
         const gehaltsQuote = userClub.wageBudget ? Math.round(weeklyWages / userClub.wageBudget * 100) : 0;
@@ -189,6 +194,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 extra: `<span class="vk-balken"><i style="width:${Math.min(100, gehaltsQuote)}%"></i></span><small>${gehaltsQuote} % des Budgets</small>`,
                 klasse: gehaltsQuote > 100 ? "gefahr" : (gehaltsQuote > 90 ? "warnung" : "") },
             { titel: "Sponsor / Spieltag", wert: this.geldKurz(sponsorWeekly) },
+            { titel: "Fanartikel / Spieltag", wert: this.geldKurz(fanartikel),
+                extra: bestseller ? `<small>👕 ${this.escapeHtml(bestseller.name)}</small>` : "",
+                klasse: fanartikelFaktor >= 1.25 ? "gut" : "" },
             { titel: "Heimspiel", wert: this.geldKurz(matchIncomeEst), extra: `<small>geschätzte Einnahmen</small>` }
         ]);
 
@@ -199,6 +207,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         DOM.setText("finCapacity", `${(userClub.capacity || 0).toLocaleString("de-DE")} Plätze`);
         DOM.setText("finMatchdayIncome", `ca. ${GameState.formatMoney(matchIncomeEst)}`);
         DOM.setText("finSponsorWeekly", GameState.formatMoney(sponsorWeekly));
+        DOM.setText("finMerchWeekly", `${GameState.formatMoney(fanartikel)} (${Math.round(fanartikelFaktor * 100)} % des Üblichen)`);
+        DOM.setText("finMerchBestseller", bestseller ? bestseller.name : "-");
         DOM.setText("finFanbase", `${(userClub.fanBase || 0).toLocaleString("de-DE")} Fans`);
 
         this.renderFacilityCosts(userClub);

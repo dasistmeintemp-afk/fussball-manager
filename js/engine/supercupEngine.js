@@ -121,8 +121,8 @@ const SupercupEngine = {
         const club = finde(sieger);
         const verlierer = finde(sieger === p.partie.homeClubId ? p.partie.awayClubId : p.partie.homeClubId);
         const fin = _scResolve("FinanceEngine", "./financeEngine.js");
-        const praemie = club && fin && typeof fin.sponsorPerMatchday === "function"
-            ? Math.round(fin.sponsorPerMatchday(club) * this.PRAEMIE_FAKTOR / 1000) * 1000 : 0;
+        const praemie = club && fin && typeof fin.kommerzJeSpieltag === "function"
+            ? Math.round(fin.kommerzJeSpieltag(club) * this.PRAEMIE_FAKTOR / 1000) * 1000 : 0;
         if (club && praemie > 0) {
             club.balance = (club.balance || 0) + praemie;
             if (fin && typeof fin.recordTransaction === "function") fin.recordTransaction(state, club.id, "prize", praemie, `Prämie ${this.name(state)}`);

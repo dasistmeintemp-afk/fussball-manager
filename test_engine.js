@@ -12455,6 +12455,51 @@ function runEngineTests() {
         if (ohne.length) throw new Error(`KI holt ohne Erlaubnis: ${ohne.map(x => x.p.name)}`);
     });
 
+    test("Fanartikel: eigener Posten nach Stars, Tabelle und Neuzugängen - im Schnitt so viel wie vorher", () => {
+        const { FinanceEngine: F } = require('./js/engine/financeEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        // Sponsor und übliche Fanartikel ergeben die alten kommerziellen Einnahmen
+        state.clubs.slice(0, 40).forEach(c => {
+            if (c.sponsor?.ausgehandelt) return;
+            if (Math.abs(F.kommerzJeSpieltag(c) - F.kommerzBasis(c)) > 2) throw new Error(`${c.name}: ${F.kommerzJeSpieltag(c)} statt ${F.kommerzBasis(c)}`);
+        });
+        // Im Schnitt einer Liga etwa der übliche Betrag, die Spitze mit Stars deutlich darüber
+        ["en_liga_1", "es_liga_1", "de_liga_2"].forEach(l => {
+            const cs = state.clubs.filter(c => c.leagueId === l);
+            const f = cs.map(c => F.fanartikelFaktor(state, c));
+            const schnitt = f.reduce((a, b) => a + b, 0) / f.length;
+            if (schnitt < 0.85 || schnitt > 1.15) throw new Error(`${l}: Schnitt ${schnitt.toFixed(2)}`);
+            if (Math.max(...f) < 1.3 || Math.min(...f) > 0.85) throw new Error(`${l}: Spanne ${Math.min(...f).toFixed(2)}-${Math.max(...f).toFixed(2)}`);
+        });
+
+        // Die Woche bucht Fanartikel für den eigenen Verein
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        F.applyWeeklyCosts(state);
+        const buchung = state.finances.transactions.find(t => t.type === "merch_income" && t.clubId === club.id);
+        if (!buchung || !(buchung.amount > 0)) throw new Error("Keine Fanartikel gebucht");
+        if (!F.bestseller(state, club)) throw new Error("Kein Bestseller");
+
+        // Ein großer Neuzugang verkauft Trikots - mit Nachricht
+        const vorher = F.fanartikelFaktor(state, club);
+        const star = state.players.filter(p => p.clubId && p.clubId !== club.id).sort((a, b) => b.overall - a.overall)[0];
+        club.trikotEffekt = null;
+        const effekt = F.nachTransfer(state, star, club);
+        if (!effekt || !(F.fanartikelFaktor(state, club) > vorher)) throw new Error(`Kein Trikot-Effekt: ${JSON.stringify(effekt)}`);
+        if (!state.inbox.some(m => /Trikot von/.test(m.subject))) throw new Error("Keine Nachricht vom Fanshop");
+        // ... der nach acht Wochen vorbei ist
+        state.currentDayIndex = (state.currentDayIndex || 0) + F.FANARTIKEL.neuzugang.tage;
+        if (Math.abs(F.fanartikelFaktor(state, club) - vorher) > 1e-9) throw new Error("Effekt hält zu lange");
+        // Ein Ergänzungsspieler bringt keinen
+        const klein = state.players.find(p => p.clubId && p.clubId !== club.id && p.overall < 50);
+        if (F.nachTransfer(state, klein, club)) throw new Error("Trikot-Effekt für einen Ergänzungsspieler");
+
+        // Ein alter Sponsorenvertrag enthielt die Fanartikel noch: einmal ein Achtel weniger
+        club.sponsor = { name: "Alt", amountPerMatchday: 1000000, ausgehandelt: true };
+        GameState.ergaenzeAltstand(state);
+        GameState.ergaenzeAltstand(state);
+        if (club.sponsor.amountPerMatchday !== 880000 || !club.sponsor.fanartikelGetrennt) throw new Error(`Altvertrag: ${JSON.stringify(club.sponsor)}`);
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

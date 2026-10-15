@@ -11914,6 +11914,18 @@ function runEngineTests() {
         liste.push(neu);
         if (GameState.spielerMitId(liste, "neu_tempo") !== neu) throw new Error("Neuer Spieler fehlt im Verzeichnis");
         if (GameState.spielerMitId(liste, erster.id) !== null) throw new Error("Ein entfernter Spieler steht noch im Verzeichnis");
+        // Nur angehängt: fortgeschrieben, nicht neu gebaut - und trotzdem vollständig
+        const vorher = GameState.spielerIndex(liste);
+        const dazu = [1, 2, 3].map(i => Object.assign({}, erster, { id: `dazu_${i}` }));
+        dazu.forEach(p => liste.push(p));
+        const danach = GameState.spielerIndex(liste);
+        if (danach !== vorher || danach.size !== liste.length) throw new Error("Verzeichnis nicht fortgeschrieben");
+        if (dazu.some(p => GameState.spielerMitId(liste, p.id) !== p) || GameState.spielerMitId(liste, letzter.id) !== letzter) throw new Error("Angehängte Spieler fehlen");
+        // Eine Lücke in der Mitte und neue hinten: neu gebaut, ohne den Entfernten
+        const weg = liste[5];
+        liste.splice(5, 1);
+        liste.push(Object.assign({}, erster, { id: "dazu_4" }), Object.assign({}, erster, { id: "dazu_5" }));
+        if (GameState.spielerMitId(liste, weg.id) !== null || !GameState.spielerMitId(liste, "dazu_5")) throw new Error("Nach Lücke und Anhang falsch");
         // Einsatzfähige Spieler: in der Reihenfolge der Liste, ohne Verletzte und ohne Doppelte
         const club = state.clubs.find(c => c.id === "muc");
         club.playerIds = club.playerIds.concat(club.playerIds.slice(0, 2));

@@ -1288,13 +1288,27 @@ class GameState {
         if (!Array.isArray(allPlayers)) return { size: 0, byId: new Map(), pos: new Map() };
         if (!GameState._spielerIndexCache) GameState._spielerIndexCache = new WeakMap();
         const e = GameState._spielerIndexCache.get(allPlayers);
-        return e && e.size === allPlayers.length ? e : GameState._baueSpielerIndex(allPlayers);
+        if (e && e.size === allPlayers.length) return e;
+        // Kamen nur Spieler hinten dazu (Jugend, Neuzugänge aus dem Nichts),
+        // wird das Verzeichnis fortgeschrieben statt neu gebaut. Mit elftausend
+        // Spielern kostete jeder Neubau gut eine Millisekunde, und in einer
+        // Saison kamen über tausend zusammen.
+        if (e && allPlayers.length > e.size && e.size > 0 && allPlayers[e.size - 1] === e.letzter) {
+            for (let i = e.size; i < allPlayers.length; i++) {
+                const p = allPlayers[i];
+                if (p) { e.byId.set(p.id, p); e.pos.set(p.id, i); }
+            }
+            e.size = allPlayers.length;
+            e.letzter = allPlayers[e.size - 1];
+            return e;
+        }
+        return GameState._baueSpielerIndex(allPlayers);
     }
 
     static _baueSpielerIndex(allPlayers) {
         const byId = new Map(), pos = new Map();
         allPlayers.forEach((p, i) => { if (p) { byId.set(p.id, p); pos.set(p.id, i); } });
-        const e = { size: allPlayers.length, byId, pos };
+        const e = { size: allPlayers.length, byId, pos, letzter: allPlayers[allPlayers.length - 1] };
         GameState._spielerIndexCache.set(allPlayers, e);
         return e;
     }

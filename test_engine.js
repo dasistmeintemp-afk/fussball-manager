@@ -13065,6 +13065,46 @@ function runEngineTests() {
         if (zahl(nachher) !== zahl(vorher)) throw new Error("Pokalsieger im Hintergrund bekommt einen Europapokalplatz");
     });
 
+    test("Regionalscouts: mehr Wissen in der Region, Talentmeldungen, Kosten und Rahmen je Liga", () => {
+        const SE = ScoutingEngine;
+        const { FinanceEngine } = require('./js/engine/financeEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Region" });
+        const regionen = SE.regionen(state);
+        if (regionen.some(r => r.laender.includes("de"))) throw new Error("Die Heimat steht in einer Region");
+        if (!regionen.some(r => r.key === "alpen" && r.laender.join() === "at,ch")) throw new Error("Alpenraum ohne Österreich und Schweiz");
+        // Einstellen: Das Wissen über die Länder der Region steigt
+        const vorher = SE.landWissen(state, "nl");
+        if (!SE.stelleRegionalScoutEin(state, "benelux").success) throw new Error("Einstellen klappt nicht");
+        const nachher = SE.landWissen(state, "nl");
+        if (nachher !== Math.min(95, vorher + SE.REGION_WISSEN)) throw new Error(`Wissen Niederlande ${vorher} -> ${nachher}`);
+        if (SE.stelleRegionalScoutEin(state, "benelux").success) throw new Error("Zweimal dieselbe Region");
+        // Rahmen: drei in der ersten Liga, jeder kostet je Spieltag
+        SE.stelleRegionalScoutEin(state, "iberien"); SE.stelleRegionalScoutEin(state, "suedamerika");
+        if (SE.stelleRegionalScoutEin(state, "tuerkei").success) throw new Error("Mehr Regionalscouts als erlaubt");
+        if (SE.regionKosten(state) !== 3 * SE.REGION_KOSTEN[1]) throw new Error("Kosten falsch");
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        FinanceEngine.applyWeeklyCosts(state);
+        if (!state.finances.transactions.some(t => t.clubId === club.id && /Regionalscouts/.test(t.description) && t.amount === -3 * SE.REGION_KOSTEN[1])) throw new Error("Regionalscouts nicht bezahlt");
+        // Er meldet ein Talent aus seiner Region, mit Bericht und Nachricht
+        const berichte = (state.scouting.reports || []).length;
+        const funde = SE.regionalFunde(state, () => 0);
+        if (!funde.length) throw new Error("Kein Talent gemeldet");
+        funde.forEach(p => {
+            const land = SE.landVon(state, p);
+            if (!["nl", "be", "es", "pt", "br"].includes(land) || p.age > 21) throw new Error(`Fund außerhalb der Regionen oder zu alt: ${p.name} ${land} ${p.age}`);
+        });
+        if ((state.scouting.reports || []).length !== berichte + funde.length) throw new Error("Kein Bericht zum Fund");
+        if (!state.inbox.some(m => /Regionalscout/.test(m.subject || m.title || ""))) throw new Error("Keine Nachricht vom Regionalscout");
+        // Entlassen: Das Wissen fällt zurück
+        SE.entlasseRegionalScout(state, "benelux");
+        if (SE.landWissen(state, "nl") >= nachher) throw new Error("Wissen bleibt nach der Entlassung");
+        // Ein Viertligist hält sich keine Regionalscouts
+        const klein = GameState.createNewGame("muc", "normal", { name: "Klein" });
+        const unten = klein.clubs.find(c => (c.level || 1) >= 4 && c.countryId === "de");
+        klein.userClubId = unten.id;
+        if (SE.stelleRegionalScoutEin(klein, "benelux").success) throw new Error("Viertligist mit Regionalscout");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

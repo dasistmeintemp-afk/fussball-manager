@@ -998,8 +998,38 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         <span class="land-wissen-wert">${l.wissen} %</span>
                         <span class="land-wissen-zahl text-muted">${l.id === heim ? "Heimat · " : ""}${(bekannt[l.id] || 0).toLocaleString("de-DE")} von ${(gesamt[l.id] || 0).toLocaleString("de-DE")} Spielern bekannt${l.zugewinn >= 1 ? ` · +${Math.round(l.zugewinn)} durch Aufträge` : ""}</span>
                     </div>`;
-                }).join("") + `</div>`;
+                }).join("") + `</div>` + this.regionalScoutsHtml(state, se);
+            liste.querySelectorAll("[data-region-ein]").forEach(btn => btn.addEventListener("click", () => {
+                const res = se.stelleRegionalScoutEin(state, btn.dataset.regionEin);
+                this.showToast(res.success ? "Der Regionalscout ist eingestellt." : res.error, res.success ? "success" : "error");
+                if (res.success) { if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage(); this.renderLaenderwissen(state); }
+            }));
+            liste.querySelectorAll("[data-region-aus]").forEach(btn => btn.addEventListener("click", () => {
+                const res = se.entlasseRegionalScout(state, btn.dataset.regionAus);
+                this.showToast(res.success ? "Der Regionalscout ist entlassen." : res.error, res.success ? "info" : "error");
+                if (res.success) { if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage(); this.renderLaenderwissen(state); }
+            }));
         }
+    },
+
+    /** Regionalscouts: je Region einstellen oder entlassen, mit Kosten und Rahmen */
+    regionalScoutsHtml(state, se) {
+        if (typeof se.regionen !== "function") return "";
+        const { max, kosten } = se.regionRahmen(state);
+        const regionen = se.regionen(state);
+        const aktiv = regionen.filter(r => r.aktiv).length;
+        const flagge = (id) => se.laender(state).find(l => l.id === id)?.flag || "";
+        const kopf = `<h4 class="region-kopf">Regionalscouts <span class="text-muted">${aktiv} von ${max}</span></h4>
+            <div class="text-muted land-wissen-hinweis">Ein Regionalscout lebt in seiner Region: Der Verein kennt deren Länder deutlich besser, Aufträge mit Länderfokus dort bringen mehr, und er meldet von selbst junge Talente mit Bericht. ${max ? `Einer kostet ${this.geldKurz(kosten)} je Spieltag.` : "In dieser Liga hält sich kein Verein Regionalscouts."}</div>`;
+        if (!max) return kopf;
+        return kopf + `<div class="region-liste">` + regionen.map(r => `
+            <div class="region-zeile${r.aktiv ? " aktiv" : ""}">
+                <span class="region-name">${r.laender.map(flagge).join(" ")} ${this.escapeHtml(r.name)}</span>
+                <span class="region-status text-muted">${r.aktiv ? `seit Saison ${r.seit}` : "frei"}</span>
+                ${r.aktiv
+                    ? `<button class="btn btn-sm btn-secondary" data-region-aus="${r.key}">Entlassen</button>`
+                    : `<button class="btn btn-sm btn-primary" data-region-ein="${r.key}" ${aktiv >= max ? "disabled" : ""}>Einstellen</button>`}
+            </div>`).join("") + `</div>`;
     },
 
     /** Güte eines Stabsmitglieds als Sternereihe, wie bei den Spielern */

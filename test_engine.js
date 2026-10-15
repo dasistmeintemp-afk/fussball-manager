@@ -5372,7 +5372,7 @@ function runEngineTests() {
         if (supercup.length !== 1) throw new Error(`${supercup.length} statt 1 Supercup im Kalender`);
         if (state.calendar.filter(d => d.cupArt === "eurosupercup").length !== 1) throw new Error("Nicht genau ein Europäischer Supercup im Kalender");
         if (pokaltage.length !== 6) throw new Error(`${pokaltage.length} statt 6 Pokalabende im Kalender`);
-        if (europatage.length !== 9) throw new Error(`${europatage.length} statt 9 Europapokalabende im Kalender`);
+        if (europatage.length !== 10) throw new Error(`${europatage.length} statt 10 Europapokalabende im Kalender (sechs Gruppenspieltage, vier K.-o.-Runden)`);
 
         // Jeder Termin des Plans kommt genau einmal vor
         CupEngine.TERMINPLAN.forEach(t => {
@@ -5519,13 +5519,27 @@ function runEngineTests() {
             throw new Error("Die Gruppenphase hat keine sechs Spieltage");
         }
 
-        for (let i = 0; i < 9; i++) {
+        let achtel = null;
+        for (let i = 0; i < 10; i++) {
             const erg = CupEngine.spieleTermin(state, "euro", i);
             if (erg && erg.eigenePartie && !erg.eigenePartie.played) {
                 CupEngine.austragen(state, erg.eigenePartie, i >= 6);
             }
             CupEngine.schliesseTerminAb(state, "euro", i);
+            if (i === 5) achtel = ucl.endrunde[0];
         }
+
+        // Achtelfinale: Gruppensieger gegen Zweite, nie aus derselben Gruppe oder demselben Land, der Sieger zu Hause
+        if (!achtel || achtel.roundName !== "Achtelfinale" || achtel.matches.length !== 8) throw new Error("Kein Achtelfinale mit acht Partien");
+        const platzVon = new Map(), gruppeVon = new Map();
+        ucl.groups.forEach(g => g.standings.forEach((st, i) => { platzVon.set(st.clubId, i); gruppeVon.set(st.clubId, g.groupName); }));
+        const landVon = (id) => state.clubs.find(c => c.id === id)?.countryId;
+        achtel.matches.forEach(m => {
+            if (platzVon.get(m.homeClubId) !== 0 || platzVon.get(m.awayClubId) !== 1) throw new Error("Achtelfinale nicht Erster gegen Zweiten mit Heimrecht für den Ersten");
+            if (gruppeVon.get(m.homeClubId) === gruppeVon.get(m.awayClubId)) throw new Error("Achtelfinale aus derselben Gruppe");
+        });
+        const gleichesLand = achtel.matches.filter(m => landVon(m.homeClubId) === landVon(m.awayClubId)).length;
+        if (gleichesLand > 1) throw new Error(`${gleichesLand} Achtelfinals im selben Land`);
 
         if (!ucl.completed) throw new Error("Die Champions League hat keinen Sieger");
         const gruppenspiele = ucl.spieltage.reduce((s, t) => s + t.matches.filter(m => m.played).length, 0);
@@ -5541,8 +5555,25 @@ function runEngineTests() {
             });
         });
 
-        if (ucl.endrunde.length !== 3) throw new Error("Die Endrunde hat nicht drei Runden");
-        if (ucl.endrunde[0].matches.length !== 4) throw new Error("Das Viertelfinale hat nicht vier Partien");
+        if (ucl.endrunde.map(r => r.roundName).join(",") !== "Achtelfinale,Viertelfinale,Halbfinale,Finale") throw new Error(`Endrunde: ${ucl.endrunde.map(r => r.roundName)}`);
+        if (ucl.endrunde[1].matches.length !== 4) throw new Error("Das Viertelfinale hat nicht vier Partien");
+
+        // Sechs Gruppen: die beiden besten Zweiten gesetzt, die vier besten Dritten dabei
+        const uel = state.europeanCompetitions.uel;
+        if (uel.groups.length === 6) {
+            const af = uel.endrunde[0];
+            const platz = new Map();
+            uel.groups.forEach(g => g.standings.forEach((st, i) => platz.set(st.clubId, i)));
+            const plaetze = af.matches.flatMap(m => [m.homeClubId, m.awayClubId]).map(id => platz.get(id));
+            if (af.matches.length !== 8 || plaetze.filter(x => x === 0).length !== 6 || plaetze.filter(x => x === 1).length !== 6 || plaetze.filter(x => x === 2).length !== 4) throw new Error(`Europa-Wettbewerb mit sechs Gruppen: ${plaetze}`);
+        }
+
+        // Ein älterer Spielstand ohne Abend fürs Achtelfinale geht direkt ins Viertelfinale
+        const alt = GameState.createNewGame("muc", "normal", { name: "Altstand" });
+        alt.calendar = alt.calendar.filter(d => !(d.cupArt === "euro" && d.cupRunde === 9));
+        for (let i = 0; i < 9; i++) { const e = CupEngine.spieleTermin(alt, "euro", i); if (e && e.eigenePartie && !e.eigenePartie.played) CupEngine.austragen(alt, e.eigenePartie, i >= 6); CupEngine.schliesseTerminAb(alt, "euro", i); }
+        const altUcl = alt.europeanCompetitions.ucl;
+        if (altUcl.endrunde[0].roundName !== "Viertelfinale" || !altUcl.completed) throw new Error("Älterer Spielstand ohne Achtelfinale-Abend kommt nicht zu Ende");
     });
 
     test("CupEngine: Ein zweiter Abschluss verdoppelt die Gruppentabelle nicht", () => {

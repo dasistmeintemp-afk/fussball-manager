@@ -46,8 +46,19 @@ class CupEngine {
         { name: "Finale", teams: 2 }
     ];
 
-    /** Die Endrunde in Europa - acht Mannschaften, drei Runden */
+    /**
+     * Die Endrunde in Europa - sechzehn Mannschaften, vier Runden.
+     *
+     * Bisher kamen nur acht weiter: In der Königsklasse mit acht Gruppen
+     * also nur die Gruppensieger, der Zweite war draußen wie der Letzte.
+     * Jetzt spielen Gruppensieger und Zweite das Achtelfinale aus - der
+     * Sieger einer Gruppe gegen einen Zweiten, nie aus derselben Gruppe
+     * und nie aus demselben Land, und der Gruppensieger hat Heimrecht. In
+     * den Wettbewerben mit sechs Gruppen füllen die beiden besten Zweiten
+     * die gesetzten Plätze auf und die vier besten Dritten die übrigen.
+     */
     static EURO_ENDRUNDE = [
+        { name: "Achtelfinale", teams: 16 },
         { name: "Viertelfinale", teams: 8 },
         { name: "Halbfinale", teams: 4 },
         { name: "Finale", teams: 2 }
@@ -70,11 +81,12 @@ class CupEngine {
         { nachSpieltag: 16, art: "euro", runde: 4 },
         { nachSpieltag: 18, art: "cup", runde: 3 },
         { nachSpieltag: 20, art: "euro", runde: 5 },
+        { nachSpieltag: 23, art: "euro", runde: 6 },
         { nachSpieltag: 24, art: "cup", runde: 4 },
-        { nachSpieltag: 26, art: "euro", runde: 6 },
-        { nachSpieltag: 28, art: "euro", runde: 7 },
+        { nachSpieltag: 26, art: "euro", runde: 7 },
+        { nachSpieltag: 28, art: "euro", runde: 8 },
         { nachSpieltag: 30, art: "cup", runde: 5 },
-        { nachSpieltag: 32, art: "euro", runde: 8 }
+        { nachSpieltag: 32, art: "euro", runde: 9 }
     ];
 
     /** Prämien je erreichter Runde, gemessen an der Wirtschaftskraft der Liga */
@@ -83,12 +95,16 @@ class CupEngine {
      * Europapokal: Der Sieger der Königsklasse bekam vorher 73 Mio. - 43 %
      * des Jahresumsatzes eines Spitzenklubs. Real waren es 2023/24 rund
      * 17 % (etwa 140 Mio. EUR bei 800 Mio. Umsatz); jetzt rund 20 %.
+     * Mit dem Achtelfinale ist die Summe für den Sieger gleich geblieben -
+     * sie verteilt sich nur auf eine Runde mehr.
      */
     static EURO_PRAEMIE = {
-        ucl: { gruppe: 1100000, vf: 4500000, hf: 7000000, finale: 10000000, sieg: 14000000 },
-        uel: { gruppe: 350000, vf: 1400000, hf: 2250000, finale: 3500000, sieg: 5500000 },
-        uecl: { gruppe: 175000, vf: 650000, hf: 1100000, finale: 1700000, sieg: 2750000 }
+        ucl: { gruppe: 600000, af: 2000000, vf: 4000000, hf: 7000000, finale: 10000000, sieg: 13000000 },
+        uel: { gruppe: 200000, af: 650000, vf: 1250000, hf: 2250000, finale: 3500000, sieg: 5000000 },
+        uecl: { gruppe: 100000, af: 325000, vf: 575000, hf: 1100000, finale: 1700000, sieg: 2600000 }
     };
+    /** Welche Prämie zu welcher gewonnenen Runde gehört */
+    static EURO_STUFE = { Achtelfinale: "af", Viertelfinale: "vf", Halbfinale: "hf", Finale: "finale" };
 
     // ----------------------------------------------------------- Aufsetzen
 
@@ -546,7 +562,7 @@ class CupEngine {
 
             // Endrunde: Sieger kommen weiter
             const sieger = runde.matches.map(m => this.siegerVon(m));
-            const stufe = ["vf", "hf", "finale"][index - 6] || "finale";
+            const stufe = this.EURO_STUFE[runde.roundName] || "finale";
             const praemien = this.EURO_PRAEMIE[id] || this.EURO_PRAEMIE.uecl;
             sieger.forEach(cid => this.zahlePraemie(state, cid, praemien[stufe] || 0,
                 `${w.name}: ${runde.roundName} gewonnen`));
@@ -560,7 +576,9 @@ class CupEngine {
             }
 
             w.endrundeIndex++;
-            const naechste = this.EURO_ENDRUNDE[w.endrundeIndex];
+            // Nach der Zahl der Sieger, nicht nach dem Index - ältere
+            // Spielstände haben ihre Endrunde noch mit dem Viertelfinale begonnen
+            const naechste = this.EURO_ENDRUNDE.find(r => r.teams === sieger.length);
             w.endrunde.push(this.loseAus(sieger,
                 naechste ? naechste.name : "Finale", id, 100 + w.endrundeIndex));
         });
@@ -591,29 +609,50 @@ class CupEngine {
         });
     }
 
-    /** Die acht Besten der Gruppenphase spielen die Endrunde aus */
+    /**
+     * Hat der Kalender dieser Saison einen Abend fürs Achtelfinale? Ältere
+     * Spielstände haben ihren Kalender mit drei K.-o.-Abenden angelegt - dort
+     * geht es bis zum Saisonende noch direkt ins Viertelfinale.
+     */
+    static hatAchtelfinale(state) {
+        const kalender = state?.calendar;
+        if (!Array.isArray(kalender) || !kalender.length) return true;
+        return kalender.some(d => d && d.cupArt === "euro" && d.cupRunde === 9);
+    }
+
+    /** Die Besten der Gruppenphase spielen die Endrunde aus */
     static besetzeEndrunde(state, wettbewerb, id) {
+        const mitAchtel = this.hatAchtelfinale(state);
+        const anzahl = mitAchtel ? 16 : 8;
         const kandidaten = [];
         (wettbewerb.groups || []).forEach(g => {
-            g.standings.slice(0, 2).forEach((s, platz) => {
-                kandidaten.push({ clubId: s.clubId, punkte: s.points, platz, diff: s.goalsFor - s.goalsAgainst });
+            g.standings.slice(0, 3).forEach((s, platz) => {
+                kandidaten.push({ clubId: s.clubId, gruppe: g.groupName, punkte: s.points, platz, diff: s.goalsFor - s.goalsAgainst, tore: s.goalsFor });
             });
         });
 
-        kandidaten.sort((a, b) => a.platz - b.platz || b.punkte - a.punkte || b.diff - a.diff);
-        const acht = kandidaten.slice(0, 8).map(k => k.clubId);
+        kandidaten.sort((a, b) => a.platz - b.platz || b.punkte - a.punkte || b.diff - a.diff || b.tore - a.tore);
+        const weiter = kandidaten.filter(k => k.platz < 2 || mitAchtel).slice(0, anzahl);
+        const ids = weiter.map(k => k.clubId);
 
         const praemien = this.EURO_PRAEMIE[id] || this.EURO_PRAEMIE.uecl;
-        acht.forEach(cid => this.zahlePraemie(state, cid, praemien.gruppe || 0,
+        ids.forEach(cid => this.zahlePraemie(state, cid, praemien.gruppe || 0,
             `${wettbewerb.name}: Gruppenphase überstanden`));
 
         wettbewerb.phase = "endrunde";
-        wettbewerb.endrunde = [this.loseAus(acht, "Viertelfinale", id, 100)];
+        wettbewerb.endrunde = [mitAchtel
+            ? this.loseAchtelfinale(state, weiter.slice(0, anzahl / 2), weiter.slice(anzahl / 2), id)
+            : this.loseAus(ids, "Viertelfinale", id, 100)];
         wettbewerb.endrundeIndex = 0;
 
-        if (acht.includes(state.userClubId)) {
-            this.postfach(state, `⭐ ${wettbewerb.name}: Viertelfinale erreicht`,
-                `Die Gruppenphase ist überstanden. Es geht in die Endrunde der letzten acht.`);
+        if (ids.includes(state.userClubId)) {
+            const partie = wettbewerb.endrunde[0].matches.find(m => m.homeClubId === state.userClubId || m.awayClubId === state.userClubId);
+            const gegnerId = partie ? (partie.homeClubId === state.userClubId ? partie.awayClubId : partie.homeClubId) : null;
+            const gegner = (state.clubs || []).find(c => c.id === gegnerId);
+            const runde = mitAchtel ? "Achtelfinale" : "Viertelfinale";
+            this.postfach(state, `⭐ ${wettbewerb.name}: ${runde} erreicht`,
+                `Die Gruppenphase ist überstanden. Es geht in die Endrunde der letzten ${anzahl}.`
+                + (gegner ? `\n\nDie Auslosung ergibt: ${gegner.name}${partie.homeClubId === state.userClubId ? " - wir haben Heimrecht." : " - auswärts."}` : ""));
         } else if ((wettbewerb.participants || []).includes(state.userClubId)) {
             this.postfach(state, `${wettbewerb.name}: Aus in der Gruppenphase`,
                 `Die Gruppenphase ist beendet - für uns geht es nicht weiter.`);
@@ -621,6 +660,47 @@ class CupEngine {
     }
 
     // ------------------------------------------------------------- Bausteine
+
+    /**
+     * Das Achtelfinale: jeder Gesetzte gegen einen Ungesetzten, nie aus
+     * derselben Gruppe und nie aus demselben Land. Gelost wird wie bei der
+     * echten Auslosung Zug um Zug; geht es am Ende nicht auf, wird neu
+     * gezogen. Der Gesetzte hat Heimrecht.
+     */
+    static loseAchtelfinale(state, gesetzt, ungesetzt, wettbewerbId) {
+        const land = new Map((state.clubs || []).map(c => [c.id, c.countryId]));
+        const passt = (a, b, mitLand) => a.gruppe !== b.gruppe && (!mitLand || land.get(a.clubId) !== land.get(b.clubId));
+        const ziehe = (mitLand) => {
+            for (let versuch = 0; versuch < 60; versuch++) {
+                const offen = [...ungesetzt].sort(() => 0.5 - Math.random());
+                const paare = [];
+                let ok = true;
+                for (const g of [...gesetzt].sort(() => 0.5 - Math.random())) {
+                    const i = offen.findIndex(u => passt(g, u, mitLand));
+                    if (i < 0) { ok = false; break; }
+                    paare.push([g, offen.splice(i, 1)[0]]);
+                }
+                if (ok) return paare;
+            }
+            return null;
+        };
+        const paare = ziehe(true) || ziehe(false)
+            || gesetzt.map((g, i) => [g, ungesetzt[i]]).filter(([g, u]) => g && u);
+        const matches = paare.map(([g, u], i) => ({
+            id: `m_${wettbewerbId}_r100_${i + 1}`,
+            competitionId: wettbewerbId,
+            roundName: "Achtelfinale",
+            roundNumber: 100,
+            homeClubId: g.clubId,
+            awayClubId: u.clubId,
+            played: false,
+            homeGoals: null,
+            awayGoals: null,
+            isCup: true,
+            penaltyWinner: null
+        }));
+        return { roundName: "Achtelfinale", roundNumber: 100, completed: false, matches };
+    }
 
     /** Eine Partie austragen. K.-o.-Spiele brauchen einen Sieger. */
     static austragen(state, match, koSpiel) {

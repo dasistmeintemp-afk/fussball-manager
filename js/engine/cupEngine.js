@@ -123,7 +123,7 @@ class CupEngine {
     }
 
     /** Die Länder mit eigenem Pokal */
-    static POKAL_LAENDER = ["de", "en", "es", "it", "fr"];
+    static POKAL_LAENDER = ["de", "en", "es", "it", "fr", "nl", "pt", "be", "tr", "at", "ch", "sc", "br"];
 
     /** Das Land des eigenen Vereins */
     static eigenesLand(state) {
@@ -175,9 +175,16 @@ class CupEngine {
         state.cups = {};
         this.POKAL_LAENDER.forEach(land => {
             const imLand = state.clubs.filter(c => (c.countryId || c.country || "de") === land);
-            if (imLand.length < 16) return;
+            if (imLand.length < 8) return;
             const pool = imLand.slice().sort((a, b) => (b.reputation || 0) - (a.reputation || 0));
-            const teilnehmer = pool.slice(0, this.POKAL_TEILNEHMER).map(c => c.id);
+            // Die Länder im Hintergrund haben nur ihre erste Liga: Dort
+            // spielen 16 Vereine ab dem Achtelfinale, in Ländern mit zwölf
+            // Erstligisten 8 ab dem Viertelfinale. Wer weniger als 33 hat,
+            // fängt mit so vielen an, wie die nächste Runde fasst.
+            const anzahl = imLand.length > this.POKAL_RUNDEN[1].teams
+                ? this.POKAL_TEILNEHMER
+                : this.POKAL_RUNDEN.map(r => r.teams).find(t => t <= imLand.length);
+            const teilnehmer = pool.slice(0, anzahl).map(c => c.id);
 
             // Der eigene Verein ist immer dabei - sonst ist der Pokal für den
             // Spieler eines kleinen Vereins wieder nur Kulisse.
@@ -186,14 +193,19 @@ class CupEngine {
             }
 
             const id = `${land}_cup`;
+            // Die Runden, die ein kleiner Pokal überspringt, stehen als
+            // erledigt davor - so passt der Index weiter zu den Pokalabenden
+            const start = Math.max(0, this.POKAL_RUNDEN.findIndex(r => r.teams === teilnehmer.length));
+            const runden = this.POKAL_RUNDEN.slice(0, start).map((r, i) => ({ roundName: r.name, roundNumber: i + 1, completed: true, uebersprungen: true, matches: [] }));
+            runden.push(start > 0 ? this.loseAus(teilnehmer, this.POKAL_RUNDEN[start].name, id, start + 1) : this.ersteRunde(teilnehmer, id));
             state.cups[id] = {
                 id,
                 land,
                 name: this.pokalName(state, land),
                 type: "cup",
                 teilnehmer,
-                rundenIndex: 0,
-                runden: [this.ersteRunde(teilnehmer, id)],
+                rundenIndex: start,
+                runden,
                 ausgeschieden: [],
                 completed: false,
                 winnerId: null

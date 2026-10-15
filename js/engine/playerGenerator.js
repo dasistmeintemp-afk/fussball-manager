@@ -123,6 +123,20 @@ class PlayerGenerator {
         // Breite deutlich unter den großen fünf
         nl: -16, pt: -15, br: -16, tr: -20, be: -21, at: -27, ch: -27, sc: -29
     };
+    /**
+     * Talentschmieden: Die Länder im Hintergrund sind in der Breite
+     * schwächer als die großen fünf - ihre Jugend ist es nicht unbedingt.
+     * Brasilien, die Niederlande, Portugal und Belgien bilden seit
+     * Jahrzehnten Spieler für die großen Ligen aus. Bisher galt der
+     * Abschlag des Landes auch für das Potenzial der Jungen; in den
+     * Niederlanden gab es zum Start kein einziges Talent mit Potenzial ab
+     * 88, in Belgien, Österreich, der Schweiz und Schottland keines ab 85.
+     *
+     * Jetzt wird bei Spielern bis 21 dieser Anteil des Abschlags beim
+     * Potenzial zurückgenommen: Sie spielen heute auf dem Niveau ihrer
+     * Liga, können aber darüber hinauswachsen.
+     */
+    static TALENTSCHMIEDE = { br: 1.0, nl: 0.9, pt: 0.9, be: 0.7, ch: 0.5, tr: 0.4, at: 0.4, sc: 0.2 };
     static KADER_KOPF = 0.35;
 
     static getAbilityRangeForClub(level = 1, clubStrength = 0.5, options = {}) {
@@ -336,14 +350,18 @@ class PlayerGenerator {
         let trueCA = baseCA;
         let truePA = Math.max(trueCA, trueCA + Math.floor(Math.random() * (abilityRange.maxPA - trueCA + 1)));
 
+        // Talentschmiede: der zurückgenommene Teil des Landesabschlags (CA-Punkte)
+        const schmiede = (age <= 21 && level === 1 && landVerschiebung < 0)
+            ? Math.round(-(this.LAND_STAERKE[options.countryId] || 0) * (this.TALENTSCHMIEDE[options.countryId] || 0))
+            : 0;
         if (age <= 21) {
             trueCA = Math.max(20, trueCA - Math.floor(Math.random() * 20));
-            truePA = this.talentPotenzial(baseCA, trueCA);
+            truePA = this.talentPotenzial(baseCA + schmiede, trueCA);
         } else if (age >= 31) {
             trueCA = Math.max(30, trueCA - (age - 30) * 3);
             truePA = trueCA;
         }
-        truePA = Math.max(trueCA, this.potenzialDeckel(truePA, abilityRange.maxPA));
+        truePA = Math.max(trueCA, this.potenzialDeckel(truePA, abilityRange.maxPA + schmiede));
 
         const overall = this.toOverall(trueCA);
         const pot = Math.max(overall, this.toOverall(truePA));

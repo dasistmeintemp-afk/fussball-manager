@@ -1507,9 +1507,11 @@ const TacticsEngine = {
      * Bisher waren sie nur Anzeige. Jetzt trägt jede Verbindung zweierlei:
      * wie gut die beiden Rollen zueinander passen (stark, gut, schwach - siehe
      * verbindungen) und wie eingespielt die beiden Spieler sind, also wie
-     * lange sie schon zusammen im Verein sind. Ein Neuzugang ist mit niemandem
-     * eingespielt, nach drei Monaten zu zwei Dritteln, nach einem halben Jahr
-     * fast ganz.
+     * lange sie schon zusammen im Verein sind und wie oft sie zusammen
+     * gespielt haben. Ein Neuzugang ist mit niemandem eingespielt; nach drei
+     * Monaten und zehn gemeinsamen Spielen zu zwei Dritteln, nach einem
+     * halben Jahr als Stammspieler fast ganz. Wer nur auf der Bank sitzt,
+     * kommt nicht über die Hälfte.
      *
      * Wirkung: Der Schnitt aller Verbindungen der Elf ist ein kleiner Faktor
      * auf die Stärke - in der Sofort-Simulation wie im Livespiel (dort über
@@ -1524,6 +1526,13 @@ const TacticsEngine = {
         // Nach so vielen gemeinsamen Tagen zu zwei Dritteln eingespielt
         tageZumEinspielen: 90,
         tageJeSaison: 300,
+        // ... und nach so vielen gemeinsamen Einsätzen. Die Zeit zählt zur
+        // Hälfte, die Einsätze zur anderen Hälfte.
+        spieleZumEinspielen: 10,
+        gewichtZeit: 0.5,
+        // Wer schon vor der Karriere im Verein war: so viele Spiele mit den
+        // anderen, die auch schon da waren (Junge weniger)
+        spieleVorher: 40,
         // Schnitt einer Elf der Welt (gemessen) - um ihn ist die Wirkung null
         mittel: 0.45,
         // Stärke je Punkt über oder unter dem Schnitt, begrenzt
@@ -1546,10 +1555,53 @@ const TacticsEngine = {
         return Math.max(0, saisons * z.tageJeSaison + (jetzt % 1000) - (p.vereinSeit % 1000));
     },
 
-    /** Wie eingespielt zwei Spieler sind (0 bis 1): die gemeinsame Zeit im Verein */
+    /**
+     * Die Ligaspiele eines Spielers für seinen jetzigen Verein, je Saison.
+     *
+     * Kein neues Feld im Spielstand: Die Laufbahn kennt die Spiele je Saison
+     * und Verein, die laufende Saison steht in den Zählern (abzüglich dessen,
+     * was unter dem Jahr schon einem alten Verein gutgeschrieben ist). Wer
+     * schon vor der Karriere da war, bekommt eine Saison „davor“.
+     */
+    einsaetzeImVerein(p, jetzt = this.uhr) {
+        const z = this.ZUSAMMENSPIEL;
+        const je = new Map();
+        if (!p) return je;
+        const plus = (saison, n) => { if (n > 0) je.set(saison, (je.get(saison) || 0) + n); };
+        const seit = typeof p.vereinSeit === "number" ? Math.floor(p.vereinSeit / 1000) : 0;
+        if (typeof p.vereinSeit !== "number") plus(0, Math.max(0, Math.min(z.spieleVorher, ((p.age || 24) - 17) * 8)));
+        (Array.isArray(p.laufbahn) ? p.laufbahn : []).forEach(r => { if (r[1] === p.clubId && r[0] >= seit) plus(r[0], r[2] || 0); });
+        const saison = typeof jetzt === "number" ? Math.floor(jetzt / 1000) : 1;
+        let anderswo = 0;
+        (p.laufbahnTeile || []).forEach(t => {
+            if (t[0] !== saison) return;
+            if (t[1] === p.clubId && t[0] >= seit) plus(saison, t[2] || 0);
+            anderswo += t[2] || 0;
+        });
+        plus(saison, (p.stats?.matches || 0) - anderswo);
+        return je;
+    },
+
+    /** Gemeinsame Einsätze: je Saison das Kleinere der beiden - mehr können es nicht gewesen sein */
+    gemeinsameSpiele(a, b, jetzt = this.uhr) {
+        if (!a || !b || (a.clubId && b.clubId && a.clubId !== b.clubId)) return 0;
+        const ea = this.einsaetzeImVerein(a, jetzt), eb = this.einsaetzeImVerein(b, jetzt);
+        let n = 0;
+        ea.forEach((x, s) => { if (eb.has(s)) n += Math.min(x, eb.get(s)); });
+        return n;
+    },
+
+    /**
+     * Wie eingespielt zwei Spieler sind (0 bis 1): zur Hälfte die gemeinsame
+     * Zeit im Verein, zur Hälfte die gemeinsamen Einsätze. Wer nur zusammen
+     * trainiert, kommt auf die Hälfte - eingespielt ist, wer zusammen spielt.
+     */
     eingespielt(a, b, jetzt = this.uhr) {
+        const z = this.ZUSAMMENSPIEL;
         const tage = Math.min(this.tageImVerein(a, jetzt), this.tageImVerein(b, jetzt));
-        return 1 - Math.exp(-tage / this.ZUSAMMENSPIEL.tageZumEinspielen);
+        const zeit = 1 - Math.exp(-tage / z.tageZumEinspielen);
+        const spiele = 1 - Math.exp(-this.gemeinsameSpiele(a, b, jetzt) / z.spieleZumEinspielen);
+        return z.gewichtZeit * zeit + (1 - z.gewichtZeit) * spiele;
     },
 
     /** Der Wert einer Verbindung von -1 bis 1 aus Passung und Eingespieltheit */

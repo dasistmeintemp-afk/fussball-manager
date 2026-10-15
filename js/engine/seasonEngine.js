@@ -571,6 +571,9 @@ class SeasonEngine {
      * Schließt den aktuellen Spieltag ab und bereitet den nächsten vor
      */
     static advanceToNextMatchday(state) {
+        // Die Uhr fürs Einspielen der Spieler (TacticsEngine.zusammenspiel)
+        const taktikUhr = _resolve('TacticsEngine', './tacticsEngine.js');
+        if (taktikUhr && typeof taktikUhr.stelleUhr === 'function') taktikUhr.stelleUhr(state);
         // 1. Zuerst alle Spiele des Tages sicherstellen
         SeasonEngine.simulateRemainingMatchesOfDay(state);
 

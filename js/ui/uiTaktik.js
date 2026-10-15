@@ -142,10 +142,15 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     svg += `<ellipse class="geist" cx="${a.x}" cy="${a.y}" rx="2.1" ry="1.4"/>`;
                 });
             } else if (T && anzeige.verbindungen && !this.formationEditMode) {
+                // Farbe: wie gut die Rollen passen; Dicke: wie eingespielt die
+                // beiden sind. Ist ein Spieler gewählt, treten seine hervor.
                 const phase = ansicht === "gegen" ? "gegen" : "mit";
-                T.verbindungen(userClub, slots, phase).forEach(v => {
+                const gewaehlt = this.selectedPitchSlot;
+                this.zusammenspielDerElf(userClub, slots).verbindungen.filter(v => v.phase === phase).forEach(v => {
                     const a = orte[v.a], b = orte[v.b];
-                    svg += `<line class="link-${v.guete}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"><title>${this.escapeHtml(v.text)}</title></line>`;
+                    const aus = gewaehlt !== null && gewaehlt !== undefined && v.a !== gewaehlt && v.b !== gewaehlt;
+                    const breite = (1.4 + 3.2 * v.eingespielt).toFixed(1);
+                    svg += `<line class="link-${v.guete}${aus ? " gedimmt" : ""}" style="stroke-width:${breite}px" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"><title>${this.escapeHtml(v.text)}</title></line>`;
                 });
             }
             linksSvg.innerHTML = svg;
@@ -174,9 +179,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 const rg = T.rolleGegenBall(rollenElf[index].familie, rollenElf[index].gegen);
                 const km = T.kuerzel(rm, "mit"), kg = T.kuerzel(rg, "gegen");
                 const badge = (k, r, gegen) => `<span class="rolle-badge kat-${k.kategorie}${gegen ? " gegen" : ""}" title="${this.escapeHtml((gegen ? "Gegen den Ball: " : "Mit Ball: ") + r.name)}">${this.escapeHtml(k.text)}</span>`;
+                // In "Kombiniert" nur dann zwei Marken, wenn die Rollen sich
+                // unterscheiden - "MS MS" war doppelt und füllte die Tafel
                 const teile = ansicht === "mit" ? [badge(km, rm, false)]
                     : ansicht === "gegen" ? [badge(kg, rg, true)]
-                        : [badge(km, rm, false), badge(kg, rg, true)];
+                        : (km.text === kg.text ? [badge(km, rm, false)] : [badge(km, rm, false), badge(kg, rg, true)]);
                 rolleHtml = `<div class="rolle-badges">${teile.join("")}</div>`;
             }
 
@@ -208,7 +215,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 ${rolleHtml}
                 <div class="pitch-node-name">
                     <span class="spielername">${player ? this.escapeHtml(player.name.split(" ").pop()) : "Leer"}</span>
-                    ${fit ? `<span class="pitch-node-fit" style="color:${fit.color};">${fit.shortLabel}${fit.penalty > 0 ? ` −${fit.penalty}` : ""}</span>` : ""}
+                    ${fit && !fit.isNatural ? `<span class="pitch-node-fit" style="color:${fit.color};">${fit.shortLabel}${fit.penalty > 0 ? ` −${fit.penalty}` : ""}</span>` : ""}
                 </div>
             `;
 
@@ -223,6 +230,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         document.getElementById("tacticsPitch")?.classList.toggle("editing", this.formationEditMode);
         this.renderFormationEditorBar(userClub, slots);
+        this.renderZusammenspiel(userClub, slots);
 
         // Ersatzbank rendern
         const benchContainer = document.getElementById("benchSlots");
@@ -499,10 +507,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 const sp = state.players.find(p => p.id === userClub.lineup[i]);
                 return sp ? sp.name.split(" ").pop() : slots[i].pos;
             };
-            const reihenfolge = { schwach: 0, stark: 1, gut: 2 };
-            const liste = T.verbindungen(userClub, slots, phase).sort((a, b) => reihenfolge[a.guete] - reihenfolge[b.guete]);
+            // Was hakt, zuerst: schwache Rollen, dann wenig Eingespielte
+            const liste = this.zusammenspielDerElf(userClub, slots).verbindungen.filter(v => v.phase === phase).sort((a, b) => a.wert - b.wert);
             verbEl.innerHTML = `<li class="gut"><strong>${phase === "gegen" ? "Gegen den Ball" : "Mit Ball"}</strong></li>` + liste
-                .map(v => `<li class="${v.guete}"><strong>${esc(nameVon(v.a))} – ${esc(nameVon(v.b))}:</strong> ${esc(v.text)}</li>`).join("");
+                .map(v => `<li class="${v.guete}"><strong>${esc(nameVon(v.a))} – ${esc(nameVon(v.b))}:</strong> ${esc(v.text)}${v.eingespielt < 0.85 ? ` <span class="zs-eingespielt">Eingespielt erst ${Math.round(v.eingespielt * 100)} %.</span>` : ""}</li>`).join("");
         }
 
         // Taktik-Check
@@ -570,6 +578,111 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     /**
      * Zustand der Editorleiste aktualisieren
      */
+    /** Das Zusammenspiel der aufgestellten Elf (TacticsEngine.zusammenspiel) */
+    zusammenspielDerElf(userClub, slots) {
+        const T = this.getTacticsEngine();
+        const state = this.app.state;
+        if (!T || typeof T.zusammenspiel !== "function" || !userClub) return { verbindungen: [], schnitt: 0 };
+        T.stelleUhr(state);
+        const spieler = slots.map((_, i) => {
+            const id = (userClub.lineup || [])[i];
+            return id === undefined ? null : (typeof GameState !== "undefined" && GameState.spielerMitId
+                ? GameState.spielerMitId(state.players, id) : state.players.find(p => p.id === id));
+        });
+        const z = T.zusammenspiel(userClub, slots, spieler);
+        z.spieler = spieler;
+        z.faktor = T.zusammenspielFaktor(userClub, slots, spieler);
+        return z;
+    },
+
+    /** Wie lange zwei Spieler schon zusammen sind - in Worten */
+    gemeinsamSeit(a, b) {
+        const T = this.getTacticsEngine();
+        if (!T || !a || !b) return "";
+        const tage = Math.min(T.tageImVerein(a), T.tageImVerein(b));
+        if (tage >= 2 * T.ZUSAMMENSPIEL.tageJeSaison) return "lange zusammen";
+        if (tage < 14) return "erst seit Tagen zusammen";
+        const monate = Math.round(tage / 30);
+        return monate < 12 ? `seit ${monate} ${monate === 1 ? "Monat" : "Monaten"} zusammen` : "seit über einem Jahr zusammen";
+    },
+
+    /**
+     * Unter der Tafel: was die Linien bedeuten, wie gut die Elf zusammenspielt
+     * und - ist ein Spieler angetippt - seine Verbindungen und Rollen.
+     */
+    renderZusammenspiel(userClub, slots) {
+        const el = document.getElementById("tacZusammenspiel");
+        const T = this.getTacticsEngine();
+        if (!el) return;
+        if (!T || typeof T.zusammenspiel !== "function" || this.formationEditMode) { el.innerHTML = ""; return; }
+        const esc = (x) => this.escapeHtml(String(x ?? ""));
+        const z = this.zusammenspielDerElf(userClub, slots);
+        const punkte = (wert) => Math.round((wert + 1) * 50);
+        const wert = punkte(z.schnitt), schnitt = punkte(T.ZUSAMMENSPIEL.mittel);
+        const wirkung = Math.round((z.faktor - 1) * 1000) / 10;
+        const farbe = wert >= schnitt + 5 ? "#4ade80" : (wert >= schnitt - 5 ? "#facc15" : "#f87171");
+        const wirkText = Math.abs(wirkung) < 0.1 ? "neutral" : `${wirkung > 0 ? "+" : "−"}${String(Math.abs(wirkung)).replace(".", ",")} % Stärke`;
+        let html = `
+            <div class="zs-kopf">
+                <span>Zusammenspiel der Elf</span>
+                <strong style="color:${farbe};">${wert}</strong>
+                <span class="zs-schnitt">Schnitt ${schnitt} · ${wirkText}</span>
+            </div>
+            <div class="link-legende zs-legende">
+                <span><i class="link-muster stark"></i>Rollen ergänzen sich</span>
+                <span><i class="link-muster gut"></i>passt</span>
+                <span><i class="link-muster schwach"></i>Rollen beißen sich</span>
+                <span><i class="link-muster dick"></i>dick: eingespielt · dünn: noch fremd</span>
+            </div>
+            <p class="taktik-hilfe">Die Linien verbinden, wer zusammenspielt. Wie gut die Rollen passen und wie lange die beiden schon im Verein zusammen sind, gibt der Elf bis zu zwei Prozent Stärke mehr oder weniger - und verbundene Spieler suchen sich im Spiel häufiger. Einen Spieler antippen zeigt seine Verbindungen.</p>`;
+
+        // Der angetippte Spieler: Rollen und Verbindungen
+        const i = this.selectedPitchSlot;
+        if (i !== null && i !== undefined && slots[i]) {
+            const spieler = z.spieler[i];
+            const rollen = T.rollenDerElf(userClub, slots)[i];
+            const name = (sp, k) => sp ? sp.name.split(" ").pop() : slots[k].pos;
+            const auswahl = (phase) => {
+                const liste = phase === "mit" ? T.rollenMitBall(rollen.familie) : T.rollenGegenBall(rollen.familie);
+                const dreier = slots.filter(sl => (typeof T._norm === "function" ? T._norm(sl.pos) : sl.pos) === "IV").length >= 3;
+                return liste.filter(r => !r.nurDreier || dreier)
+                    .map(r => `<option value="${esc(r.id)}" ${r.id === rollen[phase] ? "selected" : ""}>${esc(r.name)}</option>`).join("");
+            };
+            const meine = z.verbindungen.filter(v => v.a === i || v.b === i)
+                .sort((x, y) => (x.phase === y.phase ? 0 : (x.phase === "mit" ? -1 : 1)) || x.wert - y.wert);
+            html += `
+            <div class="zs-spieler">
+                <div class="zs-spieler-kopf">
+                    <strong>${esc(spieler ? spieler.name : "Leer")}</strong>
+                    <span class="pos-tag">${esc(slots[i].pos)}</span>
+                    <button class="btn btn-sm btn-secondary zs-schliessen" data-zs-schliessen aria-label="Auswahl aufheben">✕</button>
+                </div>
+                <div class="zs-rollen">
+                    <label>Mit Ball <select class="styled-select" data-zs-rolle="mit">${auswahl("mit")}</select></label>
+                    <label>Gegen den Ball <select class="styled-select" data-zs-rolle="gegen">${auswahl("gegen")}</select></label>
+                </div>
+                <ul class="taktik-check zs-liste">
+                    ${meine.length ? meine.map(v => {
+                        const k = v.a === i ? v.b : v.a;
+                        return `<li class="${v.guete}"><strong>${v.phase === "gegen" ? "Gegen den Ball" : "Mit Ball"} mit ${esc(name(z.spieler[k], k))}:</strong> ${esc(v.text)} <span class="zs-eingespielt">Eingespielt ${Math.round(v.eingespielt * 100)} % - ${esc(this.gemeinsamSeit(spieler, z.spieler[k]))}.</span></li>`;
+                    }).join("") : `<li>Keine Verbindung - dieser Platz steht für sich.</li>`}
+                </ul>
+                <p class="taktik-hilfe">Einen zweiten Spieler antippen tauscht die beiden.</p>
+            </div>`;
+        }
+        el.innerHTML = html;
+        el.querySelector("[data-zs-schliessen]")?.addEventListener("click", () => { this.selectedPitchSlot = null; this.renderTactics(); });
+        el.querySelectorAll("[data-zs-rolle]").forEach(sel => {
+            sel.onchange = (e) => {
+                const t = T.normalisiere(userClub.tactics || (userClub.tactics = {}));
+                userClub.tactics = t;
+                const aktuell = T.rollenDerElf(userClub, slots)[i];
+                t.rollen[i] = { mit: aktuell.mit, gegen: aktuell.gegen, [sel.dataset.zsRolle]: e.target.value };
+                this.taktikGeaendert(userClub);
+            };
+        });
+    },
+
     renderFormationEditorBar(userClub, slots) {
         const bar = document.getElementById("formationEditorBar");
         const btnEdit = document.getElementById("btnFormationEdit");

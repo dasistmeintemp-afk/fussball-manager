@@ -1615,9 +1615,11 @@ body {
 }
 
 .taktik-links line { vector-effect: non-scaling-stroke; stroke-linecap: round; }
+/* Farbe: wie gut die Rollen passen - Dicke (inline): wie eingespielt die beiden sind */
 .taktik-links .link-stark { stroke: #facc15; stroke-width: 4; opacity: 0.95; }
-.taktik-links .link-gut { stroke: #facc15; stroke-width: 2.5; opacity: 0.5; }
-.taktik-links .link-schwach { stroke: #f87171; stroke-width: 2.5; stroke-dasharray: 6 5; opacity: 0.9; }
+.taktik-links .link-gut { stroke: #f8fafc; stroke-width: 2.5; opacity: 0.6; }
+.taktik-links .link-schwach { stroke: #f87171; stroke-width: 2.5; stroke-dasharray: 6 5; opacity: 0.95; }
+.taktik-links .gedimmt { opacity: 0.12; }
 .taktik-links .weg { stroke: rgba(255,255,255,0.55); stroke-width: 1.5; stroke-dasharray: 3 4; }
 .taktik-links .geist { fill: rgba(255,255,255,0.14); stroke: rgba(255,255,255,0.55); stroke-width: 1; vector-effect: non-scaling-stroke; }
 
@@ -1673,8 +1675,34 @@ body {
 .link-legende span { display: inline-flex; align-items: center; gap: 6px; }
 
 .link-muster { display: inline-block; width: 22px; height: 0; border-top: 3px solid #facc15; }
-.link-muster.gut { opacity: 0.55; border-top-width: 2px; }
+.link-muster.gut { border-top: 2px solid rgba(248, 250, 252, 0.7); }
 .link-muster.schwach { border-top: 2px dashed #f87171; }
+.link-muster.dick { border-top: 5px solid rgba(248, 250, 252, 0.7); position: relative; }
+.link-muster.dick::after { content: ""; position: absolute; left: 28px; top: -3px; width: 22px; border-top: 1px solid rgba(248, 250, 252, 0.7); }
+.zs-legende .link-muster.dick { margin-right: 30px; }
+
+/* Zusammenspiel unter der Taktiktafel */
+.tac-zusammenspiel { margin-top: 12px; }
+.tac-zusammenspiel:empty { display: none; }
+.zs-kopf { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 8px; }
+.zs-kopf > span:first-child { font-weight: 600; }
+.zs-kopf strong { font-size: 22px; font-variant-numeric: tabular-nums; }
+.zs-schnitt { color: var(--text-muted); font-size: 13px; }
+.zs-legende { margin-bottom: 6px; }
+.zs-spieler {
+    margin-top: 10px; padding: 12px; border-radius: 12px;
+    background: var(--bg-card); border: 1px solid var(--border-color, rgba(148, 163, 184, 0.2));
+}
+.zs-spieler-kopf { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.zs-spieler-kopf strong { font-size: 16px; }
+.zs-schliessen { margin-left: auto; min-width: 36px; }
+.zs-rollen { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.zs-rollen label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
+.zs-liste { margin: 0; }
+.zs-eingespielt { color: var(--text-muted); }
+@media (max-width: 600px) {
+    .zs-rollen { grid-template-columns: 1fr; }
+}
 
 .taktik-check li.stark { border-left-color: #facc15; }
 .taktik-check li.schwach { border-left-color: var(--bad, #f87171); }

@@ -63,6 +63,7 @@ class MatchFlowEngine {
     static GEDULD_MAX = 0.9;
     static GEDULD_MIN = -0.5;      // der Unterlegene spielt direkter, aber nicht kopflos
     static GEDULD_QUER = 3;        // Gewicht des sicheren Balls quer oder zurück
+    static ZUSAMMEN_WAHL = 0.18;   // Vorliebe für den gut verbundenen Mitspieler (TacticsEngine.zusammenspiel)
     static GEDULD_MITTE = 0.75;    // im Mittelfeld etwas weniger als im Aufbau
 
     constructor(options = {}) {
@@ -84,6 +85,8 @@ class MatchFlowEngine {
         this.wetter = typeof options.wetter === "function" ? options.wetter : (() => null);
         // Gegneranweisungen des Trainers für einzelne Spieler (GegneranweisungEngine)
         this.anweisung = typeof options.anweisung === "function" ? options.anweisung : (() => null);
+        // Zusammenspiel zweier Spieler (die Linien der Taktiktafel), 0 = neutral
+        this.zusammenspiel = typeof options.zusammenspiel === "function" ? options.zusammenspiel : (() => 0);
 
         this.phase = FLOW_PHASES.BUILDUP;
     }
@@ -549,9 +552,14 @@ class MatchFlowEngine {
                 ? geduld * MatchFlowEngine.GEDULD_QUER * (istAufbau ? 1 : MatchFlowEngine.GEDULD_MITTE)
                 : 0;
 
+            // Die Linien der Taktiktafel: Gut verbundene Spieler suchen sich,
+            // wo Rollen sich beißen oder ein Neuer noch fremd ist, seltener
+            const zusammenScore = this.zusammenspiel(carrier, mate) * MatchFlowEngine.ZUSAMMEN_WAHL;
+
             const score = lengthScore * 0.8
                 + geduldScore
                 + eigScore
+                + zusammenScore
                 + anlaufScore
                 + mentalScore
                 + progressScore * progressWeight * progressFaktor

@@ -1107,8 +1107,14 @@ class MatchEngine {
         // Taktische Vertrautheit: Eine neue Formation sitzt noch nicht
         const vertraut = (club, wert) => (typeof wert === "number" ? wert
             : (_mTaktik()?.vertrautheitsFaktor ? _mTaktik().vertrautheitsFaktor(club) : 1));
-        const formHeim = teamForm(activeHomePlayers, options.tagesformHome) * planBonus("home") * vertraut(homeClub, options.vertrautheitHome);
-        const formGast = teamForm(activeAwayPlayers, options.tagesformAway) * planBonus("away") * vertraut(awayClub, options.vertrautheitAway);
+        // Zusammenspiel: die Linien der Taktiktafel - Rollen, die sich
+        // ergänzen, und Spieler, die eingespielt sind
+        const zusammen = (club, elf, wert) => (typeof wert === "number" ? wert
+            : (_mTaktik()?.zusammenspielFaktor ? _mTaktik().zusammenspielFaktor(club, MatchEngine.getFormationSlots(club), elf) : 1));
+        const formHeim = teamForm(activeHomePlayers, options.tagesformHome) * planBonus("home") * vertraut(homeClub, options.vertrautheitHome)
+            * zusammen(homeClub, activeHomePlayers, options.zusammenspielHome);
+        const formGast = teamForm(activeAwayPlayers, options.tagesformAway) * planBonus("away") * vertraut(awayClub, options.vertrautheitAway)
+            * zusammen(awayClub, activeAwayPlayers, options.zusammenspielAway);
         [[homePower, formHeim], [homePowerNeutral, formHeim], [awayPower, formGast]].forEach(([pw, f]) => {
             pw.attack *= f; pw.midfield *= f; pw.defense *= f; pw.goalkeeper *= f;
             pw.total *= f;
@@ -3309,6 +3315,12 @@ class LiveMatch {
 
         this.homeLineup = MatchEngine.getCleanLineup(homeClub, allPlayers);
         this.awayLineup = MatchEngine.getCleanLineup(awayClub, allPlayers);
+        // Dazu das Zusammenspiel der Elf (die Linien der Taktiktafel) - es
+        // wirkt wie die Vertrautheit und wie in der Sofort-Simulation über die Tagesform
+        if (T && typeof T.zusammenspielFaktor === "function") {
+            this.vertrautheit.home *= T.zusammenspielFaktor(homeClub, MatchEngine.getFormationSlots(homeClub), this.homeLineup);
+            this.vertrautheit.away *= T.zusammenspielFaktor(awayClub, MatchEngine.getFormationSlots(awayClub), this.awayLineup);
+        }
         // Wer von Anfang an spielt - für die Einsatzminuten der Live-Noten
         this._startelf = {
             home: new Set(this.homeLineup.map(p => p.id)),
@@ -3720,9 +3732,11 @@ class LiveMatch {
             // Der Matchplan wirkt auch in der Neuberechnung (die Taktik steht
             // schon am Verein, Bonus und Deckung stecken in der Tagesform)
             matchplan: this.matchplan ? { side: this.matchplan.side, gedeckt: this.matchplan.gedeckt, bonus: 1, anweisungen: this.matchplan.anweisungen || {} } : undefined,
-            // Die Vertrautheit steckt schon in der Tagesform
+            // Vertrautheit und Zusammenspiel stecken schon in der Tagesform
             vertrautheitHome: 1,
             vertrautheitAway: 1,
+            zusammenspielHome: 1,
+            zusammenspielAway: 1,
             // Die Tagesform der Partie gilt auch für die Neuberechnung
             tagesformHome: this._teamForm("home"),
             tagesformAway: this._teamForm("away"),

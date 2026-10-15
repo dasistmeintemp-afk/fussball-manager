@@ -89,7 +89,7 @@ const KlauselEngine = {
     setze(player, klauseln, club) {
         if (!player) return;
         const k = this.normalisiere(klauseln, club);
-        if (Object.keys(k).length) player.klauseln = k; else delete player.klauseln;
+        if (Object.keys(k).length) player.klauseln = k; else player.klauseln = undefined;
     },
 
     _post(state, betreff, text) {
@@ -114,7 +114,7 @@ const KlauselEngine = {
                 club.playerIds = (club.playerIds || []).filter(id => id !== p.id);
                 club.lineup = (club.lineup || []).filter(id => id !== p.id);
                 club.bench = (club.bench || []).filter(id => id !== p.id);
-                p.clubId = null; p.contractYears = 0; delete p.klauseln;
+                p.clubId = null; p.contractYears = 0; p.klauseln = undefined;
                 zeilen.push(`${p.name} nutzt die Abstiegsklausel und geht ablösefrei.`);
                 return;
             }
@@ -141,9 +141,9 @@ const KlauselEngine = {
         if ((p.contractYears ?? 0) > 1) return { success: false, error: "Die Option lässt sich erst im letzten Vertragsjahr ziehen." };
         if (p.vorvertrag && p.vorvertrag.clubId !== p.clubId) return { success: false, error: `${p.name} hat schon bei ${p.vorvertrag.clubName || "einem anderen Verein"} unterschrieben.` };
         p.contractYears = (p.contractYears || 0) + 1;
-        delete p.vorvertragInteresse;
+        p.vorvertragInteresse = undefined;
         delete p.klauseln.option;
-        if (!Object.keys(p.klauseln).length) delete p.klauseln;
+        if (!Object.keys(p.klauseln).length) p.klauseln = undefined;
         p.morale = Math.max(0, (p.morale ?? 70) - 5);
         if (typeof state.seasonYear === "number") p.verlaengertSaison = state.seasonYear;
         return { success: true, jahre: p.contractYears };
@@ -171,7 +171,7 @@ const KlauselEngine = {
             if (!kaeufer) return;
             const lohn = Math.round((p.wage || 1000) * 1.3);
             if (te.executeTransfer(state, p.id, kaeufer.id, preis, lohn, 3)) {
-                delete p.klauseln;
+                p.klauseln = undefined;
                 wechsel.push({ spieler: p.name, verein: kaeufer.name, preis });
                 this._post(state, `${p.name} wechselt per Mindestablöse`,
                     `${kaeufer.name} hat die Mindestablöse gezogen: ${p.name} wechselt für ${te.formatMoney ? te.formatMoney(preis) : preis}. Gegen eine solche Klausel kann der Verein nichts tun.`);

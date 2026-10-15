@@ -247,8 +247,8 @@ const NationalTeamEngine = {
         const verletzt = eigene.filter(e => e.p.verletztVomLaenderspiel).map(e => e.p);
         (state.players || []).forEach(p => {
             if (!p.abgestellt) return;
-            delete p.abgestellt;
-            delete p.verletztVomLaenderspiel;
+            p.abgestellt = undefined;
+            p.verletztVomLaenderspiel = undefined;
         });
         if (eigene.length && pause) {
             const ids = new Set(eigene.map(e => String(e.p.id)));
@@ -268,7 +268,7 @@ const NationalTeamEngine = {
 
     /** Falls ein Spielstand mitten in einer Pause gespeichert wurde: Altlasten beenden */
     raeumeAuf(state) {
-        (state.players || []).forEach(p => { if (p.abgestellt) delete p.abgestellt; });
+        (state.players || []).forEach(p => { if (p.abgestellt) p.abgestellt = undefined; });
     },
 
     eigeneAbgestellte(state) {

@@ -1029,6 +1029,10 @@ class GameState {
         // Geführter Einstieg (js/ui/uiEinstieg.js) - abwählbar im Assistenten
         if (managerProfile.erklaerungen !== false) state.einstieg = GameState.neuerEinstieg(state);
 
+        // Alle Spieler in eine gemeinsame Form (PlayerGenerator.forme) - hier
+        // hält noch niemand eine Referenz auf ein Spielerobjekt
+        GameState.formeSpieler(state);
+
         return state;
     }
 
@@ -2385,9 +2389,17 @@ class GameState {
         return GameState._ausText(GameState._gespeicherterText(slotKey));
     }
 
+    /** Alle Spieler eines Standes in die gemeinsame Form - nur, solange niemand Spielerobjekte festhält */
+    static formeSpieler(state) {
+        const gen = GameState._resolveEngine("PlayerGenerator", "./playerGenerator.js");
+        if (!state || !Array.isArray(state.players) || !gen || typeof gen.forme !== "function") return;
+        state.players = state.players.map(p => gen.forme(p));
+    }
+
     static _zuState(daten) {
         if (!daten) return null;
         const state = Object.assign(new GameState(), daten);
+        GameState.formeSpieler(state);
         GameState.registerCustomFormations(state);
         GameState.ergaenzeAltstand(state);
         GameState.sichereSignaturen(state);

@@ -39,7 +39,7 @@ const LaufbahnEngine = {
         const saison = this._saison(state);
         const teile = (p.laufbahnTeile || []).filter(t => t[0] === saison);
         const r = this._rest(p, teile);
-        if (r[0] <= 0) { if (teile.length) p.laufbahnTeile = teile; else delete p.laufbahnTeile; return; }
+        if (r[0] <= 0) { if (teile.length) p.laufbahnTeile = teile; else p.laufbahnTeile = undefined; return; }
         p.laufbahnTeile = teile.concat([[saison, vonClubId, r[0], r[1], r[2], r[3]]]);
     },
 
@@ -57,7 +57,7 @@ const LaufbahnEngine = {
     saisonAbschluss(state) {
         (state?.players || []).forEach(p => {
             const zeilen = this.laufendeSaison(state, p);
-            delete p.laufbahnTeile;
+            p.laufbahnTeile = undefined;
             if (!zeilen.length) return;
             const alt = Array.isArray(p.laufbahn) ? p.laufbahn : [];
             p.laufbahn = alt.concat(zeilen).slice(-this.MAX_ZEILEN);

@@ -236,7 +236,7 @@ class PlayerTalkEngine {
         case "wechsel_umstimmen": {
             const chance = this.begrenze((0.15 + p.loyal * 0.025 + (player.vertrauen ?? 50) / 400 - p.ehrgeiz * 0.01) * this.fuehrungsFaktor(state), 0.05, 0.8);
             if (zufall() < chance) {
-                delete player.wechselwunsch;
+                player.wechselwunsch = undefined;
                 player.unmutTage = 0;
                 this.aendereMoral(player, 6);
                 this.aendereZufriedenheit(player, "playingTime", 10);
@@ -254,7 +254,7 @@ class PlayerTalkEngine {
         }
 
         // Wer um ein Gespräch gebeten hat, ist damit bedient
-        if (player.gespraechswunsch) delete player.gespraechswunsch;
+        if (player.gespraechswunsch) player.gespraechswunsch = undefined;
         player.gespraech = { letztes: heute, thema: key, stimmung };
 
         return {
@@ -390,7 +390,7 @@ class PlayerTalkEngine {
             v.spiele++;
             if ((minuten.get(String(p.id)) || 0) >= 60) v.einsaetze++;
             if (v.einsaetze >= v.noetig) {
-                delete p.versprechen;
+                p.versprechen = undefined;
                 p.vertrauen = this.begrenze((p.vertrauen ?? 50) + 20, 0, 100);
                 this.aendereMoral(p, 6);
                 this.aendereZufriedenheit(p, "playingTime", 8);
@@ -398,7 +398,7 @@ class PlayerTalkEngine {
                 this.post(state, p, `${p.name}: Versprechen gehalten`,
                     `${p.name} hat die versprochenen Einsätze bekommen. Er vertraut Ihnen - das merkt man im Training.`);
             } else if (v.spiele >= v.frist) {
-                delete p.versprechen;
+                p.versprechen = undefined;
                 p.vertrauen = this.begrenze((p.vertrauen ?? 50) - 30, 0, 100);
                 this.aendereMoral(p, -15);
                 this.aendereZufriedenheit(p, "playingTime", -20);
@@ -426,7 +426,7 @@ class PlayerTalkEngine {
 
             // Ein Gesprächswunsch, auf den niemand eingeht, kränkt
             if (p.gespraechswunsch && heute - p.gespraechswunsch.seit > this.WUNSCH_FRIST) {
-                delete p.gespraechswunsch;
+                p.gespraechswunsch = undefined;
                 this.aendereMoral(p, -5);
                 this.aendereZufriedenheit(p, "playingTime", -4);
                 meldungen.push(`😤 ${p.name} fühlt sich übergangen - um sein Gespräch hat sich niemand gekümmert.`);

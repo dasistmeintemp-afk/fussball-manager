@@ -189,7 +189,7 @@ class LoanEngine {
         if (!angebot) return { success: false, error: "Dieser Verein will ihn nicht ausleihen." };
         this._belegeAusnahme(state, this._erlaubnis(state, player, this._club(state, clubId)), this._club(state, clubId));
         this._wechsle(state, player, this._club(state, state.userClubId), this._club(state, clubId));
-        delete player.reserve;
+        player.reserve = undefined;
         player.leihe = {
             stammvereinId: state.userClubId,
             leihvereinId: clubId,
@@ -203,8 +203,8 @@ class LoanEngine {
         };
         // Wer gehen darf, um zu spielen, freut sich
         player.morale = Math.min(99, (player.morale ?? 75) + 6);
-        delete player.versprechen;
-        delete player.mentorId;
+        player.versprechen = undefined;
+        player.mentorId = undefined;
         this._post(state, "Transferabteilung", `${player.name} verliehen`,
             `${player.name} spielt bis zum Saisonende bei ${angebot.clubName} (${angebot.rolle}). `
             + `${angebot.clubName} übernimmt ${Math.round(angebot.lohnAnteil * 100)} % seines Gehalts.`);
@@ -342,7 +342,7 @@ class LoanEngine {
             }
         }
         this._wechsle(state, player, stammverein, eigener);
-        delete player.reserve;
+        player.reserve = undefined;
         player.leihe = {
             stammvereinId: stammverein.id,
             leihvereinId: eigener.id,
@@ -452,7 +452,7 @@ class LoanEngine {
             this._belegeAusnahme(state, erlaubnis, ziel);
             const diff = (p.overall || 0) - niveau(ziel);
             this._wechsle(state, p, stamm, ziel);
-            delete p.reserve;
+            p.reserve = undefined;
             p.leihe = {
                 stammvereinId: stamm.id,
                 leihvereinId: ziel.id,
@@ -544,7 +544,7 @@ class LoanEngine {
         const l = player.leihe;
         const leihverein = this._club(state, l.leihvereinId);
         const stammverein = this._club(state, l.stammvereinId);
-        delete player.leihe;
+        player.leihe = undefined;
         if (stammverein) this._wechsle(state, player, leihverein, stammverein);
     }
 

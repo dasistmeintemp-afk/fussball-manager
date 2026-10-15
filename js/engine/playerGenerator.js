@@ -139,6 +139,74 @@ class PlayerGenerator {
     static TALENTSCHMIEDE = { br: 1.0, nl: 0.9, pt: 0.9, be: 0.7, ch: 0.5, tr: 0.4, at: 0.4, sc: 0.2 };
     static KADER_KOPF = 0.35;
 
+    /**
+     * Eine Form für alle Spieler.
+     *
+     * Das Spiel wurde mit den Jahren langsamer, bei gleich vielen Spielern:
+     * Dieselben 60 Tage dauerten in der sechsten Saison ein Fünftel länger
+     * als in der ersten. Der Grund lag in den Spielerobjekten. Felder wie
+     * „abgestellt“ (Länderspiel), „laufbahnTeile“, „leihe“ oder „reserve“
+     * kamen unter dem Jahr dazu und wurden mit delete wieder entfernt -
+     * jedes delete schaltet ein Objekt in den langsamen Wörterbuch-Modus,
+     * nach zwei Saisons traf das 2.284 Spieler. Und weil jeder Spieler seine
+     * Felder in anderer Reihenfolge bekam, gab es statt 6 schließlich 1.317
+     * verschiedene Formen; jeder Zugriff auf p.id oder p.injuredWeeks wurde
+     * zur Suche.
+     *
+     * Jetzt hat jeder Spieler von Anfang an alle Felder in derselben
+     * Reihenfolge (fehlende als undefined - im Spielstand stehen sie nicht),
+     * und Felder werden auf undefined gesetzt statt gelöscht.
+     */
+    static FORM_FELDER = ["id", "clubId", "name", "age", "nationality", "pos", "secondPos", "positions", "overall", "pot",
+        "trueCurrentAbility", "truePotentialAbility", "trueMarketValue", "value", "wage", "contractYears", "fitness", "morale", "form",
+        "injured", "injuredWeeks", "injuryWeeks", "injuryName", "suspended", "suspendedMatches", "yellowCards", "yellowCardsTotal",
+        "squadRole", "happiness", "stats", "statsPokal", "statsEuropa", "hiddenAttributes", "scoutingKnowledge",
+        "pace", "shooting", "passing", "dribbling", "defense", "physical", "stamina", "vision", "technique", "positioning",
+        "reflexes", "handling", "oneOnOne", "kicking", "decisions", "anticipation", "composure", "concentration", "workRate",
+        "teamwork", "leadership", "offTheBall", "kopfStand", "foot", "traits", "signatur",
+        "spielpraxis", "matchSharpness", "daysSinceInjury", "laufbahn", "laufbahnTeile", "vereinSeit", "laenderspiele", "laenderspielTore",
+        "abgestellt", "verletztVomLaenderspiel", "auszeichnungen", "transferListed", "vereinslosAb", "leihe", "reserve",
+        "vorvertrag", "vorvertragInteresse", "klauseln", "praemien", "versprechen", "mentorId", "wechselwunsch", "gespraechswunsch",
+        "unmutTage", "trainingsfokus", "umschulung", "eigenheitTraining", "weiterverkauf", "trainingLog", "medien", "eigengewaechsVon"];
+
+    /**
+     * Ein Spieler in der gemeinsamen Form: alle Felder in fester Reihenfolge,
+     * Unbekanntes hinten an. Als Objektliteral geschrieben, nicht in einer
+     * Schleife - über berechnete Schlüssel angelegt landete jedes Objekt
+     * sofort im Wörterbuch-Modus. Die Reihenfolge ist FORM_FELDER (ein Test
+     * prüft, dass beide übereinstimmen).
+     */
+    static forme(p) {
+        if (!p || typeof p !== "object") return p;
+        const o = {
+            id: p.id, clubId: p.clubId, name: p.name, age: p.age, nationality: p.nationality, pos: p.pos, secondPos: p.secondPos,
+            positions: p.positions, overall: p.overall, pot: p.pot, trueCurrentAbility: p.trueCurrentAbility,
+            truePotentialAbility: p.truePotentialAbility, trueMarketValue: p.trueMarketValue, value: p.value, wage: p.wage,
+            contractYears: p.contractYears, fitness: p.fitness, morale: p.morale, form: p.form, injured: p.injured,
+            injuredWeeks: p.injuredWeeks, injuryWeeks: p.injuryWeeks, injuryName: p.injuryName, suspended: p.suspended,
+            suspendedMatches: p.suspendedMatches, yellowCards: p.yellowCards, yellowCardsTotal: p.yellowCardsTotal,
+            squadRole: p.squadRole, happiness: p.happiness, stats: p.stats, statsPokal: p.statsPokal, statsEuropa: p.statsEuropa,
+            hiddenAttributes: p.hiddenAttributes, scoutingKnowledge: p.scoutingKnowledge, pace: p.pace, shooting: p.shooting,
+            passing: p.passing, dribbling: p.dribbling, defense: p.defense, physical: p.physical, stamina: p.stamina,
+            vision: p.vision, technique: p.technique, positioning: p.positioning, reflexes: p.reflexes, handling: p.handling,
+            oneOnOne: p.oneOnOne, kicking: p.kicking, decisions: p.decisions, anticipation: p.anticipation,
+            composure: p.composure, concentration: p.concentration, workRate: p.workRate, teamwork: p.teamwork,
+            leadership: p.leadership, offTheBall: p.offTheBall, kopfStand: p.kopfStand, foot: p.foot, traits: p.traits,
+            signatur: p.signatur, spielpraxis: p.spielpraxis, matchSharpness: p.matchSharpness,
+            daysSinceInjury: p.daysSinceInjury, laufbahn: p.laufbahn, laufbahnTeile: p.laufbahnTeile, vereinSeit: p.vereinSeit,
+            laenderspiele: p.laenderspiele, laenderspielTore: p.laenderspielTore, abgestellt: p.abgestellt,
+            verletztVomLaenderspiel: p.verletztVomLaenderspiel, auszeichnungen: p.auszeichnungen,
+            transferListed: p.transferListed, vereinslosAb: p.vereinslosAb, leihe: p.leihe, reserve: p.reserve,
+            vorvertrag: p.vorvertrag, vorvertragInteresse: p.vorvertragInteresse, klauseln: p.klauseln, praemien: p.praemien,
+            versprechen: p.versprechen, mentorId: p.mentorId, wechselwunsch: p.wechselwunsch,
+            gespraechswunsch: p.gespraechswunsch, unmutTage: p.unmutTage, trainingsfokus: p.trainingsfokus,
+            umschulung: p.umschulung, eigenheitTraining: p.eigenheitTraining, weiterverkauf: p.weiterverkauf,
+            trainingLog: p.trainingLog, medien: p.medien, eigengewaechsVon: p.eigengewaechsVon
+        };
+        for (const k in p) if (!(k in o)) o[k] = p[k];
+        return o;
+    }
+
     static getAbilityRangeForClub(level = 1, clubStrength = 0.5, options = {}) {
         const range = this.getAbilityRangeForLevel(level);
         const strength = Math.max(0, Math.min(1, clubStrength));
@@ -438,7 +506,7 @@ class PlayerGenerator {
         }, attribute, this.buildCharacter(pos, attribute));
         // Die Kopfwerte folgen aus Kennung, Stärke, Alter und Persönlichkeit
         this.ergaenzeKopfwerte(spieler);
-        return spieler;
+        return this.forme(spieler);
     }
 
     /**

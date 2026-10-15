@@ -239,7 +239,7 @@ const ContractEngine = {
         }
 
         // Vertrag erfolgreich verlängert - eine offene Anfrage ist damit erledigt
-        delete player.vorvertragInteresse;
+        player.vorvertragInteresse = undefined;
         player.wage = Math.round(offeredWage);
         player.contractYears = offeredYears;
         // Wer gerade verlängert hat, hört zum Saisonwechsel nicht auf

@@ -98,13 +98,13 @@ const ReserveEngine = {
     hinauf(state, playerId) {
         const player = (state?.players || []).find(p => String(p.id) === String(playerId));
         if (!player || !player.reserve) return { success: false, error: "Er spielt nicht in der U23." };
-        delete player.reserve;
+        player.reserve = undefined;
         return { success: true, player };
     },
 
     /** Beim Vereinswechsel, bei Leihe oder Karriereende gilt die U23 nicht mehr */
     entlasse(player) {
-        if (player && player.reserve) delete player.reserve;
+        if (player && player.reserve) player.reserve = undefined;
     },
 
     _kaderSchnitt(state, club) {

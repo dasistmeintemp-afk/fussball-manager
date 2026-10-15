@@ -839,7 +839,7 @@ const YouthEngine = {
             ? prospect.positions
             : (posEngine ? posEngine.generateSecondaryPositions(prospect.pos) : []);
 
-        const newPlayer = Object.assign({
+        const newPlayer = (playerGen && typeof playerGen.forme === "function" ? (x) => playerGen.forme(x) : (x) => x)(Object.assign({
             id: newPlayerId,
             name: prospect.name,
             age: prospect.age,
@@ -895,7 +895,7 @@ const YouthEngine = {
                 matches: 0, goals: 0, assists: 0, yellowCards: 0,
                 redCards: 0, minutes: 0, cleanSheets: 0, ratingSum: 0
             }
-        }, attribute);
+        }, attribute));
         // Die Kopfwerte nimmt er aus der Akademie mit
         if (playerGen && Array.isArray(playerGen.KOPFWERTE)) {
             playerGen.KOPFWERTE.forEach(k => { if (typeof prospect[k] === "number") newPlayer[k] = prospect[k]; });

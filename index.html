@@ -530,7 +530,7 @@
                 </section>
 
                 <!-- Tab: Tactics & Pitch (Aufstellung) -->
-                <section class="tab-pane" id="pane-tactics">
+                <section class="tab-pane" id="pane-tactics" data-bereich="aufstellung">
                     <div class="pane-header">
                         <h2>Aufstellung & Taktik</h2>
                         <div class="pane-actions">
@@ -620,8 +620,17 @@
                             <!-- Zusammenspiel: was die Linien bedeuten, der angetippte Spieler -->
                             <div class="tac-zusammenspiel" id="tacZusammenspiel"></div>
 
+                            <!-- Am Handy: ein Bereich auf einmal statt sieben Bildschirme Taktik -->
+                            <div class="taktik-bereiche" id="tacBereiche" role="tablist" aria-label="Bereiche der Taktik">
+                                <button class="taktik-bereich-btn active" data-bereich="aufstellung" role="tab">Aufstellung</button>
+                                <button class="taktik-bereich-btn" data-bereich="anweisungen" role="tab">Anweisungen</button>
+                                <button class="taktik-bereich-btn" data-bereich="stil" role="tab">Stil & Formen</button>
+                                <button class="taktik-bereich-btn" data-bereich="linien" role="tab">Linien & Check</button>
+                                <button class="taktik-bereich-btn" data-bereich="standards" role="tab">Standards</button>
+                            </div>
+
                             <!-- Ersatzbank -->
-                            <div class="bench-section">
+                            <div class="bench-section" data-taktik-bereich="aufstellung">
                                 <h4>Ersatzbank (Auswechselspieler)</h4>
                                 <div class="bench-slots" id="benchSlots">
                                     <!-- Bank Slots -->
@@ -631,7 +640,7 @@
 
                         <!-- Right: Tactic Controls & Roles -->
                         <div class="tactics-sidebar-controls">
-                            <div class="tactics-card">
+                            <div class="tactics-card" data-taktik-bereich="stil">
                                 <h3>Spielstil</h3>
                                 <div class="tactic-field">
                                     <label for="tacVorlage">Vorlage (setzt Formen, Rollen und Anweisungen):</label>
@@ -640,7 +649,7 @@
                                 <p class="taktik-hilfe" id="tacVorlageText"></p>
                             </div>
 
-                            <div class="tactics-card">
+                            <div class="tactics-card" data-taktik-bereich="stil">
                                 <h3>Formation mit und gegen den Ball</h3>
                                 <div class="tactic-field">
                                     <label for="tacFormMit">Mit Ball:</label>
@@ -653,7 +662,7 @@
                                 <p class="taktik-hilfe">Die Grundformation links bestimmt, wer wo aufgestellt ist. Mit und gegen den Ball rückt jeder auf den nächstgelegenen Platz der gewählten Form - die Ansicht über dem Feld zeigt es.</p>
                             </div>
 
-                            <div class="tactics-card aufstellung-karte">
+                            <div class="tactics-card aufstellung-karte" data-taktik-bereich="aufstellung">
                                 <div class="aufstellung-kopf">
                                     <h3>Aufstellung</h3>
                                     <div class="taktik-ansicht" id="tacRollenPhase" role="tablist" aria-label="Rollen je Phase">
@@ -665,7 +674,7 @@
                                 <p class="taktik-hilfe">Jeder Spieler hat eine Rolle mit Ball und eine gegen den Ball. Zeile antippen für die Beschreibung.</p>
                             </div>
 
-                            <div class="tactics-card">
+                            <div class="tactics-card" data-taktik-bereich="linien">
                                 <h3>Verbindungen</h3>
                                 <p class="taktik-hilfe">Wer zusammenspielt, wie gut die Rollen passen und wie eingespielt die beiden sind - was hakt, steht oben.</p>
                                 <div class="link-legende">
@@ -676,12 +685,12 @@
                                 <ul class="taktik-check" id="tacVerbindungen"></ul>
                             </div>
 
-                            <div class="tactics-card" id="tacCheckKarte">
+                            <div class="tactics-card" id="tacCheckKarte" data-taktik-bereich="linien">
                                 <h3>Taktik-Check</h3>
                                 <ul class="taktik-check" id="tacCheck"></ul>
                             </div>
 
-                            <div class="tactics-card">
+                            <div class="tactics-card" data-taktik-bereich="standards">
                                 <h3>Standard- & Führungsrollen</h3>
                                 <div class="tactic-field">
                                     <label>Kapitän:</label>
@@ -704,7 +713,7 @@
                     </div>
 
                     <!-- Mannschaftsanweisungen als Kacheln, wie im Vorbild -->
-                    <div class="anweisungen-flaeche">
+                    <div class="anweisungen-flaeche" data-taktik-bereich="anweisungen">
                         <div class="anweisungen-kopf">
                             <h3>Mannschaftsanweisungen</h3>
                             <div class="taktik-ansicht" id="tacAnwPhase" role="tablist" aria-label="Phase der Anweisungen">

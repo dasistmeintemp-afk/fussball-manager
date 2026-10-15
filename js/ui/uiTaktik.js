@@ -103,6 +103,24 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             btn.disabled = !!this.formationEditMode;
             btn.onclick = () => { this.taktikAnsicht = btn.dataset.ansicht; this.renderTactics(); };
         });
+        // Am Handy ein Bereich auf einmal (die Reiter sind am großen Bildschirm aus)
+        const pane = document.getElementById("pane-tactics");
+        if (pane) {
+            if (!this.taktikBereich) this.taktikBereich = "aufstellung";
+            pane.dataset.bereich = this.taktikBereich;
+            document.querySelectorAll("#tacBereiche [data-bereich]").forEach(btn => {
+                btn.classList.toggle("active", btn.dataset.bereich === this.taktikBereich);
+                btn.setAttribute("aria-selected", btn.dataset.bereich === this.taktikBereich ? "true" : "false");
+                btn.onclick = () => {
+                    this.taktikBereich = btn.dataset.bereich;
+                    pane.dataset.bereich = this.taktikBereich;
+                    document.querySelectorAll("#tacBereiche [data-bereich]").forEach(b => {
+                        b.classList.toggle("active", b === btn);
+                        b.setAttribute("aria-selected", b === btn ? "true" : "false");
+                    });
+                };
+            });
+        }
         const configs = (typeof FORMATION_CONFIGS !== "undefined") ? FORMATION_CONFIGS : {};
         // "Beide": die Spieler stehen in der Form mit Ball, ihr Platz gegen
         // den Ball ist als Schatten daneben - mit dem Weg dazwischen
@@ -128,33 +146,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         // Wo ein Knoten auf dem Feld steht (die Vorschau leicht gestaucht,
         // damit die Namensschilder nicht am Feldrand abgeschnitten werden)
         const anzeigeOrt = (liste, i) => liste ? { x: 50 + (liste[i].x - 50) * 0.84, y: liste[i].y } : { x: slots[i].x, y: slots[i].y };
-        const orte = slots.map((_, i) => anzeigeOrt(vorschau, i));
-
-        // Die Linien: wer zusammenspielt, wie gut die Rollen passen - oder in
-        // "Beide" der Weg jedes Spielers zwischen den Formen
-        const linksSvg = document.getElementById("tacLinks");
-        if (linksSvg) {
-            let svg = "";
-            if (T && ansicht === "beide" && schatten) {
-                slots.forEach((_, i) => {
-                    const a = anzeigeOrt(schatten, i), b = orte[i];
-                    svg += `<line class="weg" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`;
-                    svg += `<ellipse class="geist" cx="${a.x}" cy="${a.y}" rx="2.1" ry="1.4"/>`;
-                });
-            } else if (T && anzeige.verbindungen && !this.formationEditMode) {
-                // Farbe: wie gut die Rollen passen; Dicke: wie eingespielt die
-                // beiden sind. Ist ein Spieler gewählt, treten seine hervor.
-                const phase = ansicht === "gegen" ? "gegen" : "mit";
-                const gewaehlt = this.selectedPitchSlot;
-                this.zusammenspielDerElf(userClub, slots).verbindungen.filter(v => v.phase === phase).forEach(v => {
-                    const a = orte[v.a], b = orte[v.b];
-                    const aus = gewaehlt !== null && gewaehlt !== undefined && v.a !== gewaehlt && v.b !== gewaehlt;
-                    const breite = (1.4 + 3.2 * v.eingespielt).toFixed(1);
-                    svg += `<line class="link-${v.guete}${aus ? " gedimmt" : ""}" style="stroke-width:${breite}px" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"><title>${this.escapeHtml(v.text)}</title></line>`;
-                });
-            }
-            linksSvg.innerHTML = svg;
-        }
+        let orte = slots.map((_, i) => anzeigeOrt(vorschau, i));
 
         // 2D Pitch Slots rendern
         const pitchLayer = document.getElementById("pitchPlayersLayer");
@@ -227,6 +219,38 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
             pitchLayer.appendChild(node);
         });
+
+        // Liegen Knoten übereinander - in der Vorschau mit und gegen den
+        // Ball rücken die Spieler eng zusammen -, werden sie auseinander-
+        // geschoben. Nur fürs Auge: Die Formation selbst bleibt, wie sie ist.
+        // Im Editor nicht, dort muss der Knoten genau unter dem Finger stehen.
+        if (!this.formationEditMode && pitchEl) orte = this.entzerreKnoten(pitchEl, pitchLayer, orte);
+
+        // Die Linien: wer zusammenspielt, wie gut die Rollen passen - oder in
+        // "Beide" der Weg jedes Spielers zwischen den Formen
+        const linksSvg = document.getElementById("tacLinks");
+        if (linksSvg) {
+            let svg = "";
+            if (T && ansicht === "beide" && schatten) {
+                slots.forEach((_, i) => {
+                    const a = anzeigeOrt(schatten, i), b = orte[i];
+                    svg += `<line class="weg" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`;
+                    svg += `<ellipse class="geist" cx="${a.x}" cy="${a.y}" rx="2.1" ry="1.4"/>`;
+                });
+            } else if (T && anzeige.verbindungen && !this.formationEditMode) {
+                // Farbe: wie gut die Rollen passen; Dicke: wie eingespielt die
+                // beiden sind. Ist ein Spieler gewählt, treten seine hervor.
+                const phase = ansicht === "gegen" ? "gegen" : "mit";
+                const gewaehlt = this.selectedPitchSlot;
+                this.zusammenspielDerElf(userClub, slots).verbindungen.filter(v => v.phase === phase).forEach(v => {
+                    const a = orte[v.a], b = orte[v.b];
+                    const aus = gewaehlt !== null && gewaehlt !== undefined && v.a !== gewaehlt && v.b !== gewaehlt;
+                    const breite = (1.4 + 3.2 * v.eingespielt).toFixed(1);
+                    svg += `<line class="link-${v.guete}${aus ? " gedimmt" : ""}" style="stroke-width:${breite}px" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"><title>${this.escapeHtml(v.text)}</title></line>`;
+                });
+            }
+            linksSvg.innerHTML = svg;
+        }
 
         document.getElementById("tacticsPitch")?.classList.toggle("editing", this.formationEditMode);
         this.renderFormationEditorBar(userClub, slots);
@@ -593,6 +617,67 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         z.spieler = spieler;
         z.faktor = T.zusammenspielFaktor(userClub, slots, spieler);
         return z;
+    },
+
+    /**
+     * Schiebt Knoten auseinander, deren Trikot, Rollen oder Namen sich
+     * überdecken. Gemessen wird, was wirklich gezeichnet ist (mit allen
+     * Schildern); verschoben wird entlang der Achse, auf der die
+     * Überdeckung kleiner ist, beide je zur Hälfte, bis nichts mehr
+     * überlappt oder vierzig Runden vorbei sind. Rückgabe: die neuen Orte
+     * in Prozent, damit die Linien zu den Knoten passen.
+     */
+    entzerreKnoten(pitchEl, layer, orte) {
+        const breite = pitchEl.clientWidth, hoehe = pitchEl.clientHeight;
+        const knoten = [...layer.querySelectorAll(".pitch-node")];
+        if (!breite || !hoehe || knoten.length !== orte.length) return orte;
+        // Ausdehnung je Knoten um seinen Mittelpunkt, in Pixeln
+        const boxen = knoten.map((n, i) => {
+            const mx = orte[i].x / 100 * breite, my = orte[i].y / 100 * hoehe;
+            const basis = pitchEl.getBoundingClientRect();
+            let l = Infinity, r = -Infinity, o = Infinity, u = -Infinity;
+            [n, ...n.querySelectorAll("*")].forEach(el => {
+                const b = el.getBoundingClientRect();
+                if (!b.width || !b.height) return;
+                l = Math.min(l, b.left - basis.left); r = Math.max(r, b.right - basis.left);
+                o = Math.min(o, b.top - basis.top); u = Math.max(u, b.bottom - basis.top);
+            });
+            if (!isFinite(l)) return null;
+            return { x: mx, y: my, l: l - mx, r: r - mx, o: o - my, u: u - my };
+        });
+        if (boxen.some(b => !b)) return orte;
+        const abstand = 2;
+        for (let runde = 0; runde < 40; runde++) {
+            let bewegt = false;
+            for (let i = 0; i < boxen.length; i++) {
+                for (let j = i + 1; j < boxen.length; j++) {
+                    const a = boxen[i], b = boxen[j];
+                    const px = Math.min(a.x + a.r, b.x + b.r) - Math.max(a.x + a.l, b.x + b.l) + abstand;
+                    const py = Math.min(a.y + a.u, b.y + b.u) - Math.max(a.y + a.o, b.y + b.o) + abstand;
+                    if (px <= 0 || py <= 0) continue;
+                    bewegt = true;
+                    if (px < py) {
+                        const s = (a.x < b.x || (a.x === b.x && i < j)) ? -1 : 1;
+                        a.x += s * px / 2; b.x -= s * px / 2;
+                    } else {
+                        const s = (a.y < b.y || (a.y === b.y && i < j)) ? -1 : 1;
+                        a.y += s * py / 2; b.y -= s * py / 2;
+                    }
+                }
+            }
+            // Auf dem Feld bleiben
+            boxen.forEach(b => {
+                b.x = Math.max(-b.l, Math.min(breite - b.r, b.x));
+                b.y = Math.max(-b.o, Math.min(hoehe - b.u, b.y));
+            });
+            if (!bewegt) break;
+        }
+        return boxen.map((b, i) => {
+            const ort = { x: Math.round(b.x / breite * 1000) / 10, y: Math.round(b.y / hoehe * 1000) / 10 };
+            knoten[i].style.left = `${ort.x}%`;
+            knoten[i].style.top = `${ort.y}%`;
+            return ort;
+        });
     },
 
     /** Wie lange zwei Spieler schon zusammen sind - in Worten */

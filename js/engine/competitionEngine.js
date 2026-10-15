@@ -169,7 +169,10 @@ class CompetitionEngine {
             // Der Pokalsieger spielt Europa League. Steht er schon in einem
             // Europapokal, bekommt der nächstplatzierte Verein der Liga den
             // Platz - so wie in allen fünf Ländern.
-            const pokalsieger = options.pokalsieger && options.pokalsieger[league.countryId];
+            // Die Länder im Hintergrund haben ihre Startplätze ohne den
+            // Pokalsieger geeicht (Fünfjahreswertung) - ihr Pokal bleibt
+            // ohne Europapokalplatz.
+            const pokalsieger = !league.hintergrund && options.pokalsieger && options.pokalsieger[league.countryId];
             if (pokalsieger) {
                 const sieger = allClubs.find(c => c.id === pokalsieger);
                 const club = sieger && !taken.has(sieger.id) ? sieger : ranked.find(c => !taken.has(c.id));

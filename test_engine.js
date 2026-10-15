@@ -5991,7 +5991,7 @@ function runEngineTests() {
 
         // Die Vorlage ist selbst eine gültige Namensdatei
         const vorlage = NamenEngine.pruefe(JSON.parse(NamenEngine.vorlage()));
-        if (!vorlage.ok || vorlage.zahlen.vereine !== 510 || vorlage.zahlen.spieler !== 290 || vorlage.zahlen.wettbewerbe !== 36) throw new Error(`Vorlage: ${JSON.stringify(vorlage.zahlen)}`);
+        if (!vorlage.ok || vorlage.zahlen.vereine !== 510 || vorlage.zahlen.spieler !== 290 || vorlage.zahlen.wettbewerbe !== 44) throw new Error(`Vorlage: ${JSON.stringify(vorlage.zahlen)}`);
 
         const laufend = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const dor = laufend.clubs.find(c => c.id === "dor");
@@ -11785,8 +11785,10 @@ function runEngineTests() {
         const { CupEngine } = require('./js/engine/cupEngine.js');
         const { CompetitionEngine } = require('./js/engine/competitionEngine.js');
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
-        const ids = Object.keys(state.cups).sort();
-        if (ids.join() !== "de_cup,en_cup,es_cup,fr_cup,it_cup") throw new Error(`Pokale: ${ids}`);
+        const alle = Object.keys(state.cups).sort();
+        if (alle.join() !== "at_cup,be_cup,br_cup,ch_cup,de_cup,en_cup,es_cup,fr_cup,it_cup,nl_cup,pt_cup,sc_cup,tr_cup") throw new Error(`Pokale: ${alle}`);
+        // Die fünf großen Länder mit 64er-Pokal; die im Hintergrund prüft ihr eigener Test
+        const ids = ["de_cup", "en_cup", "es_cup", "fr_cup", "it_cup"];
         const { NamenEngine } = require('./js/engine/namenEngine.js');
         const englischerPokal = NamenEngine.wettbewerb("en_cup");
         if (CupEngine.eigenerPokalId(state) !== "de_cup" || state.cups.en_cup.name !== englischerPokal) throw new Error("Eigener Pokal oder Name falsch");
@@ -11816,7 +11818,7 @@ function runEngineTests() {
             if (new Set(cup.ausgeschieden).size !== cup.teilnehmer.length - 1 || cup.ausgeschieden.includes(cup.winnerId)) throw new Error(`${id}: ${cup.ausgeschieden.length} ausgeschieden`);
         }
         if (!state.inbox.some(m => (m.subject || "").startsWith(`${englischerPokal}: `) && /ist Sieger/.test(m.subject))) throw new Error("Keine Meldung zum englischen Pokal");
-        if (Object.keys(CupEngine.pokalsiegerJeLand(state)).sort().join() !== "de,en,es,fr,it") throw new Error("Pokalsieger fehlen");
+        if (Object.keys(CupEngine.pokalsiegerJeLand(state)).sort().join() !== "at,be,br,ch,de,en,es,fr,it,nl,pt,sc,tr") throw new Error("Pokalsieger fehlen");
 
         // Der Pokalsieger spielt Europa League - auch aus der 2. Liga
         const zweitligist = state.clubs.find(c => c.leagueId === "de_liga_2");
@@ -13024,6 +13026,43 @@ function runEngineTests() {
         const nachher = SE.landWissen(state, gegnerLand);
         if (nachher !== Math.min(100, vorher + SE.LAND_ZUWACHS_EUROPA)) throw new Error(`Wissen über ${gegnerLand}: ${vorher} -> ${nachher}`);
         if (!ucl.spieltage[0].completed) throw new Error("Spieltag nicht abgeschlossen");
+    });
+
+    test("Länder im Hintergrund: Talentschmieden und Landespokale", () => {
+        const { PlayerGenerator: PG } = require('./js/engine/playerGenerator.js');
+        // Talentschmiede: Junge in den Niederlanden haben mehr Potenzial, als der Abschlag des Landes hergäbe
+        const schnittPA = (land, n = 300) => {
+            let summe = 0, gezaehlt = 0;
+            for (let i = 0; gezaehlt < n && i < n * 20; i++) {
+                const p = PG.generatePlayer("tal_test", 1, "ZM", null, { countryId: land, clubStrength: 0.5 });
+                if (p.age > 21) continue;
+                summe += p.truePotentialAbility; gezaehlt++;
+            }
+            return summe / gezaehlt;
+        };
+        const mit = schnittPA("nl");
+        const alt = PG.TALENTSCHMIEDE.nl;
+        PG.TALENTSCHMIEDE.nl = 0;
+        const ohne = schnittPA("nl");
+        PG.TALENTSCHMIEDE.nl = alt;
+        if (!(mit - ohne > 6)) throw new Error(`Talentschmiede wirkt nicht: ${ohne.toFixed(1)} -> ${mit.toFixed(1)}`);
+
+        // Landespokale: 16 Vereine ab dem Achtelfinale, 8 ab dem Viertelfinale
+        const state = GameState.createNewGame("muc", "normal", { name: "Pokale" });
+        const nl = state.cups.nl_cup, at = state.cups.at_cup;
+        if (!nl || nl.teilnehmer.length !== 16 || nl.runden[nl.rundenIndex].roundName !== "Achtelfinale") throw new Error(`Pokal Niederlande: ${nl && nl.teilnehmer.length}`);
+        if (!at || at.teilnehmer.length !== 8 || at.runden[at.rundenIndex].roundName !== "Viertelfinale") throw new Error(`Pokal Österreich: ${at && at.teilnehmer.length}`);
+        if (state.cups.de_cup.teilnehmer.length !== 64 || state.cups.de_cup.rundenIndex !== 0) throw new Error("Der deutsche Pokal hat sich verändert");
+        // An den ersten Pokalabenden passiert in den kleinen Pokalen nichts, danach werden sie fertig
+        if (CupEngine.spielePokalrunde(state, 0, "nl_cup") !== null) throw new Error("Kleiner Pokal spielt am ersten Abend");
+        for (let i = 0; i < 6; i++) ["nl_cup", "at_cup"].forEach(id => { CupEngine.spielePokalrunde(state, i, id); CupEngine.schliessePokalrundeAb(state, i, id); });
+        if (!nl.completed || !nl.winnerId || !at.completed || !at.winnerId) throw new Error("Kleine Pokale ohne Sieger");
+        if (!CupEngine.pokalsiegerJeLand(state).nl) throw new Error("Pokalsieger der Niederlande fehlt");
+        // Ihr Pokalsieger bekommt keinen zusätzlichen Europapokalplatz
+        const vorher = CompetitionEngine.generateEuropeanCompetitions(state.clubs, { leagues: state.leagues, standingsByLeague: state.standingsByLeague });
+        const nachher = CompetitionEngine.generateEuropeanCompetitions(state.clubs, { leagues: state.leagues, standingsByLeague: state.standingsByLeague, pokalsieger: { nl: nl.winnerId } });
+        const zahl = (ec) => ["ucl", "uel", "uecl"].reduce((x, id) => x + (ec[id]?.participants || []).filter(c => c.startsWith("nl_")).length, 0);
+        if (zahl(nachher) !== zahl(vorher)) throw new Error("Pokalsieger im Hintergrund bekommt einen Europapokalplatz");
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

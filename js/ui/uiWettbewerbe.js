@@ -279,7 +279,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         }
 
         // Tabelle: der Weg durch das Turnier, Runde für Runde
-        tbody.innerHTML = [...cup.runden].reverse().map(runde => {
+        tbody.innerHTML = [...cup.runden].filter(r => !r.uebersprungen).reverse().map(runde => {
             const kopf = `
                 <tr style="background: rgba(245, 158, 11, 0.15);">
                     <td colspan="10" style="font-weight:700; color:#f59e0b;">
@@ -472,11 +472,18 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const hintergrund = leagues.filter(l => this.istHintergrundLiga(l));
         if (hintergrund.length) options.push(`<optgroup label="Weitere Länder">${hintergrund.map(option).join("")}</optgroup>`);
 
-        Object.keys(state.cups || {}).forEach(cupId => {
+        // Pokale mit Flagge; die der Länder im Hintergrund ebenfalls gesammelt
+        const hintergrundLand = new Set(hintergrund.map(l => l.countryId));
+        const landVon = (cupId) => state.cups[cupId]?.land || cupId.split("_")[0];
+        const pokal = (cupId) => {
             const comp = (state.competitions || []).find(c => c.id === cupId);
             const name = state.cups[cupId]?.name || comp?.name || cupId;
-            options.push(`<option value="${this.escapeHtml(cupId)}">🏆 ${this.escapeHtml(name)}</option>`);
-        });
+            return `<option value="${this.escapeHtml(cupId)}">🏆 ${this.flaggeVon(landVon(cupId))} ${this.escapeHtml(name)}</option>`;
+        };
+        const pokale = Object.keys(state.cups || {});
+        pokale.filter(id => !hintergrundLand.has(landVon(id))).forEach(id => options.push(pokal(id)));
+        const weiterePokale = pokale.filter(id => hintergrundLand.has(landVon(id)));
+        if (weiterePokale.length) options.push(`<optgroup label="Pokale weiterer Länder">${weiterePokale.map(pokal).join("")}</optgroup>`);
 
         [["ucl", "⭐"], ["uel", "🌍"], ["uecl", "🏆"]].forEach(([id, icon]) => {
             const ec = state.europeanCompetitions?.[id];

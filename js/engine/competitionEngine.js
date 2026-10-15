@@ -119,7 +119,7 @@ class CompetitionEngine {
      */
     /**
      * Setzt die drei europäischen Wettbewerbe aus den echten Qualifikanten
-     * der fünf Topligen zusammen.
+     * der europäischen Erstligen zusammen.
      *
      * Grundlage sind die europeanSpots der Ligadefinition: Deutschland und
      * Frankreich stellen weniger Startplätze als England, Spanien und Italien.
@@ -208,7 +208,7 @@ class CompetitionEngine {
         // Ohne Wertung (erste Saison) gilt die Reihenfolge der echten
         // Fünfjahreswertung, wie sie auch die KoeffizientEngine vorbelegt
         const spots = options.spotsByCountry || {};
-        const vorgabe = ["en", "it", "es", "de", "fr"];
+        const vorgabe = ["en", "it", "es", "de", "fr", "nl", "pt", "be", "tr", "at", "ch", "sc"];
         const rang = (l) => spots[l]?.rang || (vorgabe.indexOf(l) + 1) || 99;
         const laender = Object.keys(reserves).sort((a, b) => rang(a) - rang(b));
         let reihum = 0;
@@ -232,9 +232,13 @@ class CompetitionEngine {
             qualified[bucket] = qualified[bucket].slice(0, groups * 4);
         };
 
-        fillTo("ucl", 20);
-        fillTo("uel", 16);
-        fillTo("uecl", 16);
+        // Mit den kleineren Ländern acht Gruppen in der Königsklasse, sechs in
+        // den beiden anderen Wettbewerben - eine Welt nur aus den großen fünf
+        // füllt wie bisher fünf und vier
+        const breit = Object.keys(reserves).length > 5;
+        fillTo("ucl", breit ? 32 : 20);
+        fillTo("uel", breit ? 24 : 16);
+        fillTo("uecl", breit ? 24 : 16);
 
         return {
             ucl: CompetitionEngine.createEuropeanCup("ucl", CompetitionEngine.wettbewerbName("ucl"), qualified.ucl),

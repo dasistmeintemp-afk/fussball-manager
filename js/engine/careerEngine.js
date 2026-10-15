@@ -270,8 +270,10 @@ class CareerEngine {
         if (state.userLeagueId && (state.schedule || []).length === spieltage) {
             ligen.push(state.userLeagueId);
         }
+        // Die Länder im Hintergrund vergeben keine Trainerposten
+        const hintergrund = new Set((state.leagues || []).filter(l => l.hintergrund).map(l => l.id));
         Object.keys(state.otherSchedules || {}).forEach(id => {
-            if ((state.otherSchedules[id] || []).length === spieltage) ligen.push(id);
+            if (!hintergrund.has(id) && (state.otherSchedules[id] || []).length === spieltage) ligen.push(id);
         });
         return ligen;
     }

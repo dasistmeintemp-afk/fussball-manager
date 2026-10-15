@@ -800,7 +800,9 @@ class GameState {
             : ((typeof window !== "undefined" && window.LEAGUES_DATA) ? window.LEAGUES_DATA
                 : (typeof require !== "undefined" ? require("../data/leagueData.js").LEAGUES_DATA : []));
 
-        return world.clubs.map(club => {
+        // Die Vereine der Länder im Hintergrund sind nicht wählbar
+        const hintergrund = new Set(leagues.filter(l => l.hintergrund).map(l => l.id));
+        return world.clubs.filter(club => !hintergrund.has(club.leagueId)).map(club => {
             const squad = world.players.filter(p => p.clubId === club.id);
             const league = leagues.find(l => l.id === club.leagueId);
             const avg = squad.length
@@ -1067,6 +1069,25 @@ class GameState {
         if (!state || !Array.isArray(state.clubs)) return;
         // Die Kopfwerte: dieselben, die eine neue Welt für diese Spieler hätte
         GameState.ergaenzeKopfwerte(state);
+        // Ligen, die nach dem Start der Karriere dazugekommen sind - mit einer
+        // Nachricht, was neu ist
+        const welt = GameState._resolveEngine("WorldGenerator", "./worldGenerator.js");
+        const neu = welt && typeof welt.ergaenzeNeueLigen === "function" ? welt.ergaenzeNeueLigen(state) : [];
+        if (neu.length && Array.isArray(state.inbox)) {
+            const hintergrund = neu.filter(l => l.hintergrund);
+            state.inbox.unshift({
+                id: "msg_neue_ligen_" + Date.now(),
+                matchday: state.currentMatchday || 1,
+                date: state.currentDate || "Heute",
+                sender: "Ligavorstand",
+                subject: "Die Spielwelt wächst: neue Ligen",
+                body: `Ab sofort spielen auch diese Ligen mit:\n\n${neu.map(l => `• ${l.shortName || l.name}`).join("\n")}`
+                    + (hintergrund.length ? `\n\nDie Länder im Hintergrund haben Tabellen, Kader und Transfers, ihre Vereine spielen ab der nächsten Saison im Europapokal mit.` : "")
+                    + `\n\nDie bisher verpassten Spieltage dieser Saison holen die neuen Ligen am nächsten Spieltag nach.`,
+                read: false,
+                type: "info"
+            });
+        }
         // Fanartikel sind ein eigener Posten. Ein Sponsorenvertrag aus der
         // Zeit davor enthielt sie noch und zahlt deshalb ein Achtel weniger.
         const finanzen = GameState._resolveEngine("FinanceEngine", "./financeEngine.js");
@@ -1161,7 +1182,14 @@ class GameState {
     static FORMATIONEN_KI = { "4-2-3-1": 0.6, "4-3-3": 0.6, "4-4-2": 0.4, "3-4-2-1": 0.1, "3-5-2": 0.1,
         "4-1-4-1": 0, "4-4-2 Raute": 0, "5-3-2": -0.3 };
 
-    static waehleFormation(club, allPlayers, nurAbGewinn = 0) {
+    /**
+     * Die Vereine der Länder im Hintergrund probieren nur die drei
+     * gängigsten Formationen - jede Probe kostet eine Aufstellung, und mit
+     * ihnen hatte die Welt 224 statt 98 Erstligisten.
+     */
+    static FORMATIONEN_HINTERGRUND = ["4-2-3-1", "4-3-3", "4-4-2"];
+
+    static waehleFormation(club, allPlayers, nurAbGewinn = 0, kandidaten = null) {
         const engine = GameState._resolveEngine('MatchEngine', './matchEngine.js');
         if (!club || !engine || typeof engine.calculateTeamPower !== 'function') return null;
         const staerke = (f) => {
@@ -1173,7 +1201,7 @@ class GameState {
         const vorzug = f => GameState.FORMATIONEN_KI[f] || 0;
         const altWert = alt ? staerke(alt) + vorzug(alt) : -Infinity;
         let beste = alt, besterWert = altWert;
-        Object.keys(GameState.FORMATIONEN_KI).forEach(f => {
+        (kandidaten || Object.keys(GameState.FORMATIONEN_KI)).forEach(f => {
             if (f === alt || !FORMATION_CONFIGS[f]) return;
             const w = staerke(f) + vorzug(f);
             if (w > besterWert) { beste = f; besterWert = w; }
@@ -1188,6 +1216,7 @@ class GameState {
         const index = new Map();
         (state.players || []).forEach(p => { if (p.clubId) (index.get(p.clubId) || index.set(p.clubId, []).get(p.clubId)).push(p); });
         let gewechselt = 0;
+        const hintergrund = new Set((state.leagues || []).filter(l => l.hintergrund).map(l => l.id));
         (state.clubs || []).forEach(club => {
             if (nurKi && club.id === state.userClubId) return;
             // Nur die ersten Ligen: Jeder Versuch kostet eine Aufstellung, und
@@ -1195,7 +1224,8 @@ class GameState {
             if ((club.level || 1) > 1) return;
             const kader = index.get(club.id) || [];
             if (kader.length < 11) return;
-            if (GameState.waehleFormation(club, kader, nurAbGewinn)) gewechselt++;
+            const kandidaten = hintergrund.has(club.leagueId) ? GameState.FORMATIONEN_HINTERGRUND : null;
+            if (GameState.waehleFormation(club, kader, nurAbGewinn, kandidaten)) gewechselt++;
         });
         return gewechselt;
     }

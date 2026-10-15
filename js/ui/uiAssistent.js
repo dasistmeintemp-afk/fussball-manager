@@ -248,7 +248,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         const landInfo = (id) => laender.find(c => c.id === id) || null;
 
-        return ligen.map(liga => {
+        // Die Länder im Hintergrund spielen mit, sind aber nicht wählbar
+        return ligen.filter(liga => !liga.hintergrund).map(liga => {
             const land = landInfo(liga.countryId);
             return {
                 id: liga.id,
@@ -705,6 +706,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const esc = (v) => this.escapeHtml(String(v ?? ""));
         const farben = this.wappenFarben(club);
         const FLAGS = { de: "🇩🇪", en: "🏴", es: "🇪🇸", it: "🇮🇹", fr: "🇫🇷" };
+        (typeof COUNTRIES_DATA !== "undefined" && Array.isArray(COUNTRIES_DATA) ? COUNTRIES_DATA : []).forEach(l => { if (!FLAGS[l.id]) FLAGS[l.id] = l.flag; });
 
         // Top Spieler & Talente
         const sortedPlayers = [...players].sort((a, b) => (b.overall || 0) - (a.overall || 0));
@@ -821,6 +823,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const profil = { name: managerName, nationality: managerNationality, birthdate: managerBirthdate, trainerTyp, erklaerungen };
             const ligen = typeof LEAGUES_DATA !== "undefined" && Array.isArray(LEAGUES_DATA) ? LEAGUES_DATA : [];
             const vereine = ligen.reduce((s, l) => s + (l.teamCount || 0), 0);
+            // (alle Ligen, auch die im Hintergrund - sie entstehen mit)
             return this.mitLadeanzeige(`${selectedClub.name}: Die Spielwelt entsteht …`,
                 () => this._starteKarriere(platz, difficulty, profil, selectedClub),
                 vereine ? `${vereine} Vereine in ${ligen.length} Ligen, Kader, Spielpläne und Wettbewerbe` : "");

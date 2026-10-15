@@ -463,12 +463,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const select = document.getElementById("selectCompetitionView");
         if (!select) return;
 
-        const FLAGS = { de: "🇩🇪", en: "🏴", es: "🇪🇸", it: "🇮🇹", fr: "🇫🇷" };
         const leagues = [...(state.leagues || [])].sort((a, b) =>
             (a.countryId || "").localeCompare(b.countryId || "") || (a.level || 1) - (b.level || 1));
+        const option = (l) => `<option value="${this.escapeHtml(l.id)}">${this.flaggeVon(l.countryId)} ${this.escapeHtml(l.shortName || l.name)}</option>`;
 
-        const options = leagues.map(l =>
-            `<option value="${this.escapeHtml(l.id)}">${FLAGS[l.countryId] || "🏆"} ${this.escapeHtml(l.shortName || l.name)}</option>`);
+        // Die Länder im Hintergrund stehen gesammelt unter den eigenen Ligen
+        const options = leagues.filter(l => !this.istHintergrundLiga(l)).map(option);
+        const hintergrund = leagues.filter(l => this.istHintergrundLiga(l));
+        if (hintergrund.length) options.push(`<optgroup label="Weitere Länder">${hintergrund.map(option).join("")}</optgroup>`);
 
         Object.keys(state.cups || {}).forEach(cupId => {
             const comp = (state.competitions || []).find(c => c.id === cupId);

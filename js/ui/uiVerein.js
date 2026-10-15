@@ -939,13 +939,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <thead><tr><th>#</th><th>Land <small>(vier Saisons davor)</small></th><th>Saison ${saison}</th><th>Summe</th><th title="Plätze in der Königsklasse, wenn die Saison jetzt endete">CL</th></tr></thead>
                 <tbody>${liste.map(z => `<tr class="${z.land === eigenesLand ? "eigene-zeile" : ""}">
                     <td>${z.rang}</td>
-                    <td>${this.escapeHtml(z.name)}<small class="kf-reihe">${z.werte.slice(0, -1).map(zahl).join(" · ")}</small></td>
+                    <td>${this.flaggeVon(z.land)} ${this.escapeHtml(z.name)}<small class="kf-reihe">${z.werte.slice(0, -1).map(zahl).join(" · ")}</small></td>
                     <td>${zahl(z.werte[z.werte.length - 1])}</td>
                     <td><strong>${zahl(z.summe)}</strong></td>
                     <td>${plaetze[z.land]?.championsLeague.length || "-"}${plaetze[z.land]?.leistungsplatz ? "*" : ""}</td>
                 </tr>`).join("")}</tbody>
             </table>
-            <p class="muted-note">Je Saison: Punkte der Vereine eines Landes im Europapokal (Sieg 2, Remis 1, je Endrundenrunde 1, Königsklasse 2) geteilt durch ihre Zahl. Rang 1 bis 4 stellt vier Vereine in der Königsklasse, Rang 5 drei. * Leistungsplatz für das Land mit dem besten Wert der Saison.</p>`;
+            <p class="muted-note">Je Saison: Punkte der Vereine eines Landes im Europapokal (Sieg 2, Remis 1, je Endrundenrunde 1, Königsklasse 2) geteilt durch ihre Zahl. Rang 1 bis 4 stellt vier Vereine in der Königsklasse, Rang 5 drei, die Ränge 6 und 7 je zwei, alle dahinter ihren Meister. * Leistungsplatz für das Land mit dem besten Wert der Saison.</p>`;
     },
 
     /** Die Gerüchteküche der eigenen Liga - mit Haken, wenn es stimmte */

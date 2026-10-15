@@ -1675,6 +1675,12 @@ class SeasonEngine {
         const visionStart = _resolve('VisionEngine', './visionEngine.js');
         if (visionStart && typeof visionStart.saisonstart === 'function') visionStart.saisonstart(state);
 
+        // Neuer Kader, vielleicht neue Formation: Die KI-Vereine der ersten
+        // Ligen wechseln, wenn eine andere spürbar mehr Stärke bringt
+        if (gameState && typeof gameState.waehleFormationen === 'function') {
+            gameState.waehleFormationen(state, { nurKi: true, nurAbGewinn: 0.8 });
+        }
+
         // Form zurücksetzen
         state.clubs.forEach(club => {
             club.form = ["-", "-", "-", "-", "-"];

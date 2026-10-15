@@ -16,15 +16,19 @@
  * Königsklasse, Rang 5 drei. Das Land mit dem besten Wert der Vorsaison
  * bekommt einen fünften Platz (Leistungsplatz).
  *
- * Die vier Saisons vor dem Karrierestart sind grob den echten Werten
- * nachgebildet: England vor Italien, Spanien, Deutschland und Frankreich.
+ * Die vier Saisons vor dem Karrierestart folgen der echten Rangfolge:
+ * England vor Italien, Spanien, Deutschland und Frankreich. Die Werte
+ * stehen im Maßstab dieses Spiels - ein Land holt hier je Verein und Saison
+ * rund 7 bis 10 Punkte. Vorher waren es die echten Werte (14,5 bis 21,5),
+ * gut das Doppelte: Die Wertung bestand in den ersten Jahren fast nur aus
+ * der Vorgabe und sackte dann Saison für Saison ab.
  */
 
 const KoeffizientEngine = {
     LAENDER: ["en", "it", "es", "de", "fr"],
     NAMEN: { en: "England", it: "Italien", es: "Spanien", de: "Deutschland", fr: "Frankreich" },
     /** Werte je Saison vor dem Karrierestart (vier Saisons) */
-    START: { en: 21.5, it: 19.5, es: 18.5, de: 17.5, fr: 14.5 },
+    START: { en: 9.8, it: 9.0, es: 8.8, de: 8.4, fr: 7.2 },
     PUNKTE: { sieg: 2, remis: 1, runde: 1, koenigsklasse: 2 },
     GEMERKT: 5,
 

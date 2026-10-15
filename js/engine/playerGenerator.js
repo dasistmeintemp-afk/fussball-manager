@@ -113,9 +113,11 @@ class PlayerGenerator {
      * und Deutschland fiel in der Fünfjahreswertung dauerhaft auf den
      * letzten Platz. Jetzt gilt grob die echte Rangfolge: England vorn,
      * Spanien und Italien auf Augenhöhe mit der Bundesliga, Frankreich
-     * dahinter.
+     * dahinter. Mit -7 holte Frankreich im Europapokal im Langlauf so viel
+     * wie Deutschland (je 7,8 Punkte je Saison); in Wirklichkeit liegt es
+     * klar dahinter - jetzt -9.
      */
-    static LAND_STAERKE = { en: -1, es: -4, it: -4, fr: -7 };
+    static LAND_STAERKE = { en: -1, es: -4, it: -4, fr: -9 };
     static KADER_KOPF = 0.35;
 
     static getAbilityRangeForClub(level = 1, clubStrength = 0.5, options = {}) {

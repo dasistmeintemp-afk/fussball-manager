@@ -3451,6 +3451,13 @@ class UIManager {
             btnFormationDelete.onclick = () => this.deleteCustomFormation();
         }
 
+        // Spiegeln und Feinjustage - am Handy trifft der Finger das Raster schwer
+        const btnFormationSpiegeln = document.getElementById("btnFormationSpiegeln");
+        if (btnFormationSpiegeln) btnFormationSpiegeln.onclick = () => this.spiegleFormation();
+        document.querySelectorAll("[data-schieben]").forEach(btn => {
+            btn.onclick = () => this.schiebeSlot(btn.dataset.schieben);
+        });
+
         const inputFormationName = document.getElementById("inputFormationName");
         if (inputFormationName) {
             inputFormationName.oninput = () => { inputFormationName.dataset.touched = "1"; };

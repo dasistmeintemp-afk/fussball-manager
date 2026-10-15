@@ -451,6 +451,16 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 sel.onchange = (e) => setze(Number(sel.dataset.rolleGegen), "gegen", e.target.value);
                 sel.onclick = (e) => e.stopPropagation();
             });
+            // Eigene Rollen verwerfen: Ohne eigene Wahl gilt der abgestimmte Standard
+            const abstimmen = document.getElementById("btnRollenAbstimmen");
+            if (abstimmen) {
+                abstimmen.disabled = !Object.keys(t.rollen || {}).length;
+                abstimmen.onclick = () => {
+                    t.rollen = {};
+                    this.taktikGeaendert(userClub);
+                    this.showToast("Der Co-Trainer hat die Rollen aufeinander abgestimmt.", "success");
+                };
+            }
             rollenEl.querySelectorAll("[data-rollen-slot]").forEach(z => {
                 z.onclick = () => {
                     const i = Number(z.dataset.rollenSlot);

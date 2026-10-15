@@ -8829,3 +8829,43 @@ td.nowrap { white-space: nowrap; }
 .tu-zeile.weiter span:first-child { font-weight: 700; }
 .tu-zeile.eigen { outline: 1px solid var(--accent-primary, #a3e635); }
 .tu-gruppen summary { cursor: pointer; margin-top: 10px; font-weight: 600; }
+
+/* Taktik am Handy: Bereiche statt einer endlosen Seite. Am großen
+   Bildschirm steht alles nebeneinander, die Reiter bleiben aus. */
+.taktik-bereiche { display: none; }
+@media (max-width: 768px) {
+    .taktik-bereiche {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        margin: 14px 0 4px;
+        padding-bottom: 4px;
+        scrollbar-width: none;
+    }
+    .taktik-bereiche::-webkit-scrollbar { display: none; }
+    .taktik-bereich-btn {
+        flex: 0 0 auto;
+        min-height: 40px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        background: transparent;
+        color: var(--text-secondary, #cbd5e1);
+        font-weight: 600;
+        font-size: 13px;
+    }
+    .taktik-bereich-btn.active {
+        background: var(--accent-color, #a3e635);
+        border-color: transparent;
+        color: #0b1210;
+    }
+    #pane-tactics:not([data-bereich="aufstellung"]) [data-taktik-bereich="aufstellung"],
+    #pane-tactics:not([data-bereich="anweisungen"]) [data-taktik-bereich="anweisungen"],
+    #pane-tactics:not([data-bereich="stil"]) [data-taktik-bereich="stil"],
+    #pane-tactics:not([data-bereich="linien"]) [data-taktik-bereich="linien"],
+    #pane-tactics:not([data-bereich="standards"]) [data-taktik-bereich="standards"] { display: none !important; }
+    /* Die Anweisungen stehen außerhalb der Seitenleiste - die leere Leiste nicht zeigen */
+    #pane-tactics[data-bereich="anweisungen"] .tactics-sidebar-controls { display: none; }
+    /* Fünf Spieler nebeneinander passen nur mit kürzeren Namensschildern */
+    .pitch-node-name { max-width: 66px; font-size: 10px; padding: 2px 4px; }
+}

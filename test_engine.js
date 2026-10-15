@@ -1916,7 +1916,8 @@ function runEngineTests() {
         club.tactics.rollen = { 9: { mit: "st_neun", gegen: "st_pressend" }, 2: { mit: "st_neun", gegen: "fl_konter" } };
         const rollen = TacticsEngine.rollenDerElf(club, b433);
         if (rollen[9].mit !== "st_neun" || rollen[9].gegen !== "st_pressend") throw new Error("Gespeicherte Rolle geht verloren");
-        if (rollen[2].mit !== "iv" || rollen[2].gegen !== "iv") throw new Error("Ein Innenverteidiger spielt eine Stürmerrolle");
+        const standard = TacticsEngine.rollenDerElf({ formation: "4-3-3", tactics: TacticsEngine.normalisiere({}) }, b433);
+        if (rollen[2].mit !== standard[2].mit || rollen[2].gegen !== standard[2].gegen || !rollen[2].mit.startsWith("iv")) throw new Error("Ein Innenverteidiger spielt eine Stürmerrolle");
 
         // Jede Rolle hat ein Kuerzel fuer die Taktiktafel
         Object.values(TacticsEngine.ROLLEN_MIT_BALL).flat().forEach(r => {
@@ -12942,6 +12943,42 @@ function runEngineTests() {
         if (dir.zusammenspielPaar(lose[0], lose[1]) !== 0) throw new Error("Unverbundene Spieler mit Zusammenspiel");
         // Die Livespiel-Vertrautheit trägt den Faktor
         if (Math.abs(live.vertrautheit.home - T.vertrautheitsFaktor(club) * T.zusammenspielFaktor(club, slots, live.homeLineup)) > 1e-9) throw new Error("Faktor fehlt im Livespiel");
+    });
+
+    // 14a7a5. Die KI stimmt ihre Rollen auf die Linien ab
+    test("Zusammenspiel: Die KI stimmt Innenverteidiger, Sechser und Achter auf die Linien ab - der Stil bleibt", () => {
+        const T = TacticsEngine;
+        const P = T.ZUSAMMENSPIEL.passung;
+        const summe = (club, slots) => T.verbindungen(club, slots, "mit").reduce((x, v) => x + (P[v.guete] || 0), 0);
+        const roh = (club, slots) => { T._stimmtAb = true; try { return { s: summe(club, slots), r: T.rollenDerElf(club, slots) }; } finally { T._stimmtAb = false; } };
+        let besser = 0;
+        ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2", "5-3-2"].forEach(f => {
+            const slots = FORMATION_CONFIGS[f].positions;
+            Object.keys(T.VORLAGEN).forEach(v => {
+                const club = { id: `abst_${f}_${v}`, formation: f, tactics: T.normalisiere(T.wendeVorlageAn({}, v)) };
+                const vorher = roh(club, slots), nachher = summe(club, slots);
+                if (nachher < vorher.s) throw new Error(`${f}/${v}: abgestimmt schlechter als vorher`);
+                if (nachher > vorher.s) besser++;
+                // Nur das Zentrum, nur mit Ball
+                T.rollenDerElf(club, slots).forEach((r, i) => {
+                    if (r.gegen !== vorher.r[i].gegen) throw new Error(`${f}/${v}: Rolle gegen den Ball geändert`);
+                    if (r.mit !== vorher.r[i].mit && !T.ABSTIMMEN_FAMILIEN.includes(r.familie)) throw new Error(`${f}/${v}: ${r.familie} geändert`);
+                });
+            });
+        });
+        if (besser < 10) throw new Error(`Die Abstimmung hilft nur in ${besser} Fällen`);
+        // Was der Stil vorgibt, bleibt: Positionsspiel baut mit Spielmacher-Innenverteidigern auf
+        const slots = FORMATION_CONFIGS["4-3-3"].positions;
+        const pos = { id: "abst_pos", formation: "4-3-3", tactics: T.normalisiere(T.wendeVorlageAn({}, "positionsspiel")) };
+        T.rollenDerElf(pos, slots).filter(r => r.familie === "IV").forEach(r => {
+            if (r.mit !== "iv_spielmacher") throw new Error(`Positionsspiel: Innenverteidiger ${r.mit}`);
+        });
+        // Eigene Rollen gelten weiter
+        const eigen = { id: "abst_eigen", formation: "4-3-3", tactics: T.normalisiere({}) };
+        eigen.tactics.rollen = { 5: { mit: "dm", gegen: "dm" } };
+        if (T.rollenDerElf(eigen, slots)[5].mit !== "dm") throw new Error("Eigene Rolle überschrieben");
+        // Fest: zweimal gefragt, dieselbe Antwort
+        if (JSON.stringify(T.rollenDerElf(pos, slots)) !== JSON.stringify(T.rollenDerElf(pos, slots))) throw new Error("Abstimmung nicht fest");
     });
 
     test("Länderwissen überall: Sportdirektor und Leihmarkt kennen nur Bekannte, Europapokalspiele bringen Wissen", () => {

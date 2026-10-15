@@ -1738,6 +1738,7 @@ body {
 
 .aufstellung-kopf h3 { margin: 0; }
 .aufstellung-kopf .taktik-ansicht { margin: 0; flex: 1 1 200px; max-width: 280px; }
+#btnRollenAbstimmen { margin-top: 8px; }
 
 .aufst-kopfzeile,
 .rollen-zeile {

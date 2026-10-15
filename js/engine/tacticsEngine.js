@@ -836,18 +836,83 @@ const TacticsEngine = {
     },
 
     /**
+     * Die Standardrollen einer Formation, auf die Linien abgestimmt.
+     *
+     * Die Rollen eines Stils legen nur fest, was den Stil ausmacht - im
+     * Positionsspiel einrückende Außenverteidiger, beim Pressing die
+     * pressenden Rollen gegen den Ball. Für alle übrigen Positionen nahm die
+     * KI bisher die erste Rolle der Liste, ohne auf die Linien zu achten.
+     * Jetzt sucht sie für Innenverteidiger, Sechser und Achter die Rolle mit
+     * Ball, mit der die Linien am besten tragen: ein abkippender Sechser
+     * neben zwei aufbauenden Innenverteidigern, ein Spielmacher hinten,
+     * wenn der Außenverteidiger in der Kette bleibt. Position für Position,
+     * zweimal herum, und nur, wenn es wirklich besser wird. Was der Stil
+     * vorgibt, bleibt.
+     *
+     * Warum nur diese drei: Gemessen über je 160 Livespiele drückte die
+     * Abstimmung bei Außenverteidigern (xG 2,64 statt 2,84 je Spiel) und
+     * in der Offensive (2,50) die Torchancen - auf möglichst viele starke
+     * Linien getrimmt, spielte die halbe Welt mit Zielspieler und
+     * einrückenden Außenverteidigern. Im Zentrum blieb es gleich (2,84),
+     * ebenso gegen den Ball nur mit Verlust. Die Abstimmung soll die KI
+     * nicht schwächer machen, sondern klüger.
+     *
+     * Hängt nur an Stil und Formation, also einmal gerechnet und gemerkt.
+     */
+    _abstimmSpeicher: new Map(),
+    ABSTIMMEN_FAMILIEN: ["IV", "DM", "ZM"],
+    abgestimmteRollen(stil, positions) {
+        const schluessel = `${stil}|` + positions.map(p => `${p.pos}:${p.x}:${p.y}`).join(";");
+        const fertig = this._abstimmSpeicher.get(schluessel);
+        if (fertig) return fertig;
+        const s = ROLLEN_STILE[stil] || {};
+        const dreier = positions.filter(p => this._norm(p.pos) === "IV").length >= 3;
+        const fams = positions.map(p => this.familie(p.pos, positions));
+        const rollen = {};
+        positions.forEach((slot, i) => { rollen[i] = this.standardRollen(fams[i], stil, Math.sign((slot.x ?? 50) - 50), positions); });
+        const vorlage = Object.keys(TAKTIK_VORLAGEN).find(k => TAKTIK_VORLAGEN[k].rollenStil === stil);
+        const probe = { tactics: { vorlage, rollen } };
+        const P = this.ZUSAMMENSPIEL.passung;
+        const wert = () => this.verbindungen(probe, positions, "mit").reduce((x, v) => x + (P[v.guete] || 0), 0);
+        let bisher = wert();
+        for (let runde = 0; runde < 2; runde++) {
+            let besser = false;
+            positions.forEach((_, i) => {
+                const fam = fams[i];
+                if (!this.ABSTIMMEN_FAMILIEN.includes(fam) || s.mit?.[fam] || s.mitSeite?.[fam]) return;
+                this.rollenMitBall(fam).forEach(r => {
+                    if (r.id === rollen[i].mit || (r.nurDreier && !dreier)) return;
+                    const vorher = rollen[i].mit;
+                    rollen[i] = Object.assign({}, rollen[i], { mit: r.id });
+                    const w = wert();
+                    if (w > bisher) { bisher = w; besser = true; }
+                    else rollen[i] = Object.assign({}, rollen[i], { mit: vorher });
+                });
+            });
+            if (!besser) break;
+        }
+        const ergebnis = positions.map((_, i) => ({ mit: rollen[i].mit, gegen: rollen[i].gegen }));
+        if (this._abstimmSpeicher.size > 200) this._abstimmSpeicher.clear();
+        this._abstimmSpeicher.set(schluessel, ergebnis);
+        return ergebnis;
+    },
+
+    /**
      * Die Rollen der ganzen Elf, Slot fuer Slot. Gespeicherte Rollen gelten,
      * solange sie zur Familie des Slots passen - nach einem Formationswechsel
-     * faellt eine unpassende Rolle auf den Standard zurueck.
+     * faellt eine unpassende Rolle auf den Standard zurueck. Der Standard
+     * ist im Zentrum auf die Linien abgestimmt (abgestimmteRollen).
      */
     rollenDerElf(club, positions) {
         const t = this.normalisiere(club?.tactics);
         const stil = TAKTIK_VORLAGEN[t.vorlage]?.rollenStil || "standard";
         const dreier = positions.filter(p => this._norm(p.pos) === "IV").length >= 3;
+        // Während des Abstimmens selbst: die vorgegebenen Rollen, sonst dreht es sich im Kreis
+        const abgestimmt = this._stimmtAb ? null : this._abgestimmtSicher(stil, positions);
         return positions.map((slot, i) => {
             const fam = this.familie(slot.pos, positions);
             const seite = Math.sign((slot.x ?? 50) - 50);
-            const std = this.standardRollen(fam, stil, seite, positions);
+            const std = abgestimmt ? abgestimmt[i] : this.standardRollen(fam, stil, seite, positions);
             const gespeichert = t.rollen[i] || {};
             const mitOk = this.rollenMitBall(fam).find(r => r.id === gespeichert.mit);
             return {
@@ -856,6 +921,11 @@ const TacticsEngine = {
                 gegen: this.rollenGegenBall(fam).some(r => r.id === gespeichert.gegen) ? gespeichert.gegen : std.gegen
             };
         });
+    },
+
+    _abgestimmtSicher(stil, positions) {
+        this._stimmtAb = true;
+        try { return this.abgestimmteRollen(stil, positions); } finally { this._stimmtAb = false; }
     },
 
     /** Alle waehlbaren Formen mit Ball (Schluessel -> Name) */
@@ -1534,7 +1604,8 @@ const TacticsEngine = {
         // anderen, die auch schon da waren (Junge weniger)
         spieleVorher: 40,
         // Schnitt einer Elf der Welt (gemessen) - um ihn ist die Wirkung null
-        mittel: 0.45,
+        // (0,45 bis die KI ihr Zentrum auf die Linien abstimmte, jetzt 0,50)
+        mittel: 0.5,
         // Stärke je Punkt über oder unter dem Schnitt, begrenzt
         staerke: 0.04,
         grenze: 0.02
@@ -1563,10 +1634,15 @@ const TacticsEngine = {
      * was unter dem Jahr schon einem alten Verein gutgeschrieben ist). Wer
      * schon vor der Karriere da war, bekommt eine Saison „davor“.
      */
+    _einsatzSpeicher: (typeof WeakMap !== "undefined") ? new WeakMap() : null,
     einsaetzeImVerein(p, jetzt = this.uhr) {
         const z = this.ZUSAMMENSPIEL;
+        if (!p) return new Map();
+        // Jede Verbindung fragt beide Spieler - je Spieler und Stand einmal rechnen
+        const stand = `${jetzt}|${p.clubId}|${p.vereinSeit}|${p.stats?.matches || 0}|${(p.laufbahn || []).length}|${(p.laufbahnTeile || []).length}`;
+        const gemerkt = this._einsatzSpeicher ? this._einsatzSpeicher.get(p) : null;
+        if (gemerkt && gemerkt.stand === stand) return gemerkt.je;
         const je = new Map();
-        if (!p) return je;
         const plus = (saison, n) => { if (n > 0) je.set(saison, (je.get(saison) || 0) + n); };
         const seit = typeof p.vereinSeit === "number" ? Math.floor(p.vereinSeit / 1000) : 0;
         if (typeof p.vereinSeit !== "number") plus(0, Math.max(0, Math.min(z.spieleVorher, ((p.age || 24) - 17) * 8)));
@@ -1579,6 +1655,7 @@ const TacticsEngine = {
             anderswo += t[2] || 0;
         });
         plus(saison, (p.stats?.matches || 0) - anderswo);
+        if (this._einsatzSpeicher) this._einsatzSpeicher.set(p, { stand, je });
         return je;
     },
 

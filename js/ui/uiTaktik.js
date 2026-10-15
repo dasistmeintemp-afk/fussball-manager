@@ -600,10 +600,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const T = this.getTacticsEngine();
         if (!T || !a || !b) return "";
         const tage = Math.min(T.tageImVerein(a), T.tageImVerein(b));
-        if (tage >= 2 * T.ZUSAMMENSPIEL.tageJeSaison) return "lange zusammen";
-        if (tage < 14) return "erst seit Tagen zusammen";
+        const spiele = typeof T.gemeinsameSpiele === "function" ? T.gemeinsameSpiele(a, b) : null;
+        const sp = spiele === null ? "" : (spiele === 0 ? ", noch kein Spiel zusammen" : `, ${spiele} ${spiele === 1 ? "Spiel" : "Spiele"} zusammen`);
+        if (tage >= 2 * T.ZUSAMMENSPIEL.tageJeSaison) return spiele !== null && spiele < 10 ? `lange im Verein${sp}` : "lange zusammen";
+        if (tage < 14) return `erst seit Tagen zusammen${sp}`;
         const monate = Math.round(tage / 30);
-        return monate < 12 ? `seit ${monate} ${monate === 1 ? "Monat" : "Monaten"} zusammen` : "seit über einem Jahr zusammen";
+        return (monate < 12 ? `seit ${monate} ${monate === 1 ? "Monat" : "Monaten"} zusammen` : "seit über einem Jahr zusammen") + sp;
     },
 
     /**
@@ -634,7 +636,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <span><i class="link-muster schwach"></i>Rollen beißen sich</span>
                 <span><i class="link-muster dick"></i>dick: eingespielt · dünn: noch fremd</span>
             </div>
-            <p class="taktik-hilfe">Die Linien verbinden, wer zusammenspielt. Wie gut die Rollen passen und wie lange die beiden schon im Verein zusammen sind, gibt der Elf bis zu zwei Prozent Stärke mehr oder weniger - und verbundene Spieler suchen sich im Spiel häufiger. Einen Spieler antippen zeigt seine Verbindungen.</p>`;
+            <p class="taktik-hilfe">Die Linien verbinden, wer zusammenspielt. Wie gut die Rollen passen, wie lange die beiden schon im Verein sind und wie oft sie zusammen gespielt haben, gibt der Elf bis zu zwei Prozent Stärke mehr oder weniger - und verbundene Spieler suchen sich im Spiel häufiger. Einen Spieler antippen zeigt seine Verbindungen.</p>`;
 
         // Der angetippte Spieler: Rollen und Verbindungen
         const i = this.selectedPitchSlot;

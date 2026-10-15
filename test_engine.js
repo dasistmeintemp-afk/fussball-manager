@@ -12842,14 +12842,25 @@ function runEngineTests() {
         const slots = MatchEngine.getFormationSlots(club);
         const elf = MatchEngine.getCleanLineup(club, state.players);
 
-        // Eingespielt: Wer vor der Karriere kam, ist es; ein Neuzugang nicht, nach drei Monaten zu zwei Dritteln
+        // Eingespielt: Wer vor der Karriere kam, ist es; ein Neuzugang nicht.
+        // Nach drei Monaten nur auf der Bank zu einem Drittel, mit zehn
+        // gemeinsamen Spielen zu zwei Dritteln.
         const jetzt = T.uhr;
-        const alt = elf[0], neu = Object.assign({}, elf[1], { vereinSeit: jetzt });
-        if (!(T.eingespielt(alt, elf[2]) > 0.99)) throw new Error("Langjährige Mitspieler nicht eingespielt");
+        const erwachsen = elf.filter(p => p.age >= 22);
+        const alt = erwachsen[0], neu = Object.assign({}, erwachsen[1], { vereinSeit: jetzt });
+        if (!(T.eingespielt(alt, erwachsen[2]) > 0.98)) throw new Error("Langjährige Mitspieler nicht eingespielt");
         if (T.eingespielt(alt, neu) !== 0) throw new Error("Neuzugang sofort eingespielt");
         // Uhr: Saison * 1000 + Kalendertag - "vor 90 Tagen" liegt zum Saisonstart in der Vorsaison
         const drei = Object.assign({}, neu, { vereinSeit: (state.seasonYear - 1) * 1000 + T.ZUSAMMENSPIEL.tageJeSaison + (state.currentDayIndex || 0) - 90 });
-        if (Math.abs(T.eingespielt(alt, drei) - (1 - Math.exp(-1))) > 0.01) throw new Error(`Nach 90 Tagen ${T.eingespielt(alt, drei)}`);
+        const einDrittel = 0.5 * (1 - Math.exp(-1));
+        if (Math.abs(T.eingespielt(alt, drei) - einDrittel) > 0.01) throw new Error(`Nach 90 Tagen ohne Spiel ${T.eingespielt(alt, drei)}`);
+        const zehn = (p, n) => Object.assign({}, p, { stats: Object.assign({}, p.stats, { matches: n }) });
+        if (T.gemeinsameSpiele(zehn(alt, 12), zehn(drei, 10)) !== 10) throw new Error("Gemeinsame Spiele: je Saison das Kleinere");
+        if (Math.abs(T.eingespielt(zehn(alt, 12), zehn(drei, 10)) - (1 - Math.exp(-1))) > 0.01) throw new Error("Zehn gemeinsame Spiele zählen nicht");
+        // Spiele aus der Laufbahn zählen nur für den jetzigen Verein und seit dem Wechsel
+        const laufbahn = Object.assign({}, drei, { laufbahn: [[state.seasonYear - 1, club.id, 8, 0, 0, 0], [state.seasonYear - 2, club.id, 30, 0, 0, 0], [state.seasonYear - 1, "dor", 20, 0, 0, 0]] });
+        if (T.einsaetzeImVerein(laufbahn).get(state.seasonYear - 1) !== 8 || T.einsaetzeImVerein(laufbahn).has(state.seasonYear - 2)) throw new Error("Laufbahn falsch gezählt");
+        if (T.gemeinsameSpiele(alt, Object.assign({}, alt, { clubId: "dor" })) !== 0) throw new Error("Spieler verschiedener Vereine sind nicht eingespielt");
         // Über den Saisonwechsel hinweg zählt die Zeit weiter
         const vorjahr = Object.assign({}, neu, { vereinSeit: (state.seasonYear - 1) * 1000 + 250 });
         if (!(T.tageImVerein(vorjahr) >= T.ZUSAMMENSPIEL.tageJeSaison - 250)) throw new Error("Saisonwechsel nicht mitgezählt");

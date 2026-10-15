@@ -12664,6 +12664,17 @@ function runEngineTests() {
             if (!ec.ucl.participants.some(id => land(id) === l)) throw new Error(`${l} nicht in der Königsklasse`);
         });
         if (Object.values(ec).some(w => (w.participants || []).some(id => land(id) === "br"))) throw new Error("Brasilien im Europapokal");
+        // Ausgelost: nie zwei Vereine eines Landes in einer Gruppe, aus Topf 1 einer je Gruppe
+        Object.values(ec).forEach(w => {
+            const ruf = (id) => state.clubs.find(c => c.id === id)?.reputation || 0;
+            const topf1 = w.participants.map(ruf).sort((a, b) => b - a).slice(0, w.groups.length).join();
+            const gruppenKoepfe = w.groups.map(g => Math.max(...g.teams.map(ruf))).sort((a, b) => b - a).join();
+            if (topf1 !== gruppenKoepfe) throw new Error(`${w.id}: Topf 1 nicht auf die Gruppen verteilt`);
+            w.groups.forEach(g => {
+                const laender = g.teams.map(land);
+                if (new Set(laender).size !== laender.length) throw new Error(`${w.id} ${g.groupName}: ${laender.join(",")}`);
+            });
+        });
 
         // Fünfjahreswertung über zwölf Länder
         if (K.LAENDER.length !== 12) throw new Error(`${K.LAENDER.length} Länder in der Wertung`);

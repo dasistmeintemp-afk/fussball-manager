@@ -371,7 +371,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     const elfer = m.penaltyScore ? ` <small>(${m.penaltyScore[0]}:${m.penaltyScore[1]} i. E.)</small>` : "";
                     return `
                         <tr class="${isUser ? 'row-user-club' : ''}">
-                            <td colspan="6">${this.escapeHtml(home?.name || "Heim")} – ${this.escapeHtml(away?.name || "Auswärts")}</td>
+                            <td colspan="6">${this.flaggeVon(home?.countryId)} ${this.escapeHtml(home?.name || "Heim")} – ${this.flaggeVon(away?.countryId)} ${this.escapeHtml(away?.name || "Auswärts")}</td>
                             <td colspan="4"><span class="badge ${m.played ? 'badge-status-fit' : ''}">${m.played ? `${m.homeGoals} : ${m.awayGoals}${elfer}` : "offen"}</span></td>
                         </tr>`;
                 }).join("");
@@ -386,16 +386,16 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     const isUserMatch = m.homeClubId === userClub?.id || m.awayClubId === userClub?.id;
                     return `
                         <div class="fixture-card ${isUserMatch ? 'user-match' : ''}">
-                            <div class="fixture-team home">${this.escapeHtml(home?.name || "Heim")}</div>
+                            <div class="fixture-team home">${this.flaggeVon(home?.countryId)} ${this.escapeHtml(home?.name || "Heim")}</div>
                             <div class="fixture-score-badge">${m.played ? `${m.homeGoals} : ${m.awayGoals}` : "vs"}</div>
-                            <div class="fixture-team away">${this.escapeHtml(away?.name || "Auswärts")}</div>
+                            <div class="fixture-team away">${this.flaggeVon(away?.countryId)} ${this.escapeHtml(away?.name || "Auswärts")}</div>
                         </div>`;
                 }).join("");
             }
             return;
         }
 
-        // Gruppenphase
+        // Gruppenphase - mit Flaggen, die Gruppen sind seit der Auslosung gemischt
         tbody.innerHTML = (comp.groups || []).map(g => {
             const kopf = `
                 <tr style="background: rgba(56, 189, 248, 0.15);">
@@ -407,7 +407,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 return `
                     <tr class="${isUser ? 'row-user-club' : ''}${idx === 1 ? ' zonen-grenze' : ''}">
                         <td class="tb-platz"><span class="rang${idx < 2 ? ' rang-ucl' : ''}">${idx + 1}</span></td>
-                        <td class="tb-verein"><strong>${this.escapeHtml(club?.name || s.clubId)}</strong></td>
+                        <td class="tb-verein">${this.flaggeVon(club?.countryId)} <strong>${this.escapeHtml(club?.name || s.clubId)}</strong></td>
                         <td class="tb-sp">${s.played}</td>
                         <td class="tb-s">${s.won}</td>
                         <td class="tb-u">${s.drawn}</td>
@@ -434,9 +434,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 const isUserMatch = m.homeClubId === userClub?.id || m.awayClubId === userClub?.id;
                 return `
                     <div class="fixture-card ${isUserMatch ? 'user-match' : ''}">
-                        <div class="fixture-team home">${this.escapeHtml(home?.name || "Heim")}</div>
+                        <div class="fixture-team home">${this.flaggeVon(home?.countryId)} ${this.escapeHtml(home?.name || "Heim")}</div>
                         <div class="fixture-score-badge">${m.played ? `${m.homeGoals} : ${m.awayGoals}` : "vs"}</div>
-                        <div class="fixture-team away">${this.escapeHtml(away?.name || "Auswärts")}</div>
+                        <div class="fixture-team away">${this.flaggeVon(away?.countryId)} ${this.escapeHtml(away?.name || "Auswärts")}</div>
                     </div>`;
             }).join("")
                 || `<div class="text-muted text-center" style="padding:20px;">Für diesen Spieltag liegen keine Partien vor.</div>`;

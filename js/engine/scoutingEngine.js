@@ -76,6 +76,8 @@ const ScoutingEngine = {
     },
     LAND_ZUWACHS_AUFTRAG: 14,
     LAND_ZUWACHS_BEOBACHTUNG: 1,
+    /** Je Europapokalspiel gegen einen Verein aus dem Land */
+    LAND_ZUWACHS_EUROPA: 6,
     LAND_VERBLASSEN: 0.5,
 
     _laenderDaten() {

@@ -12944,6 +12944,51 @@ function runEngineTests() {
         if (Math.abs(live.vertrautheit.home - T.vertrautheitsFaktor(club) * T.zusammenspielFaktor(club, slots, live.homeLineup)) > 1e-9) throw new Error("Faktor fehlt im Livespiel");
     });
 
+    test("Länderwissen überall: Sportdirektor und Leihmarkt kennen nur Bekannte, Europapokalspiele bringen Wissen", () => {
+        const { SportdirektorEngine: SD } = require('./js/engine/sportdirektorEngine.js');
+        const { LoanEngine } = require('./js/engine/loanEngine.js');
+        const SE = ScoutingEngine;
+        const state = GameState.createNewGame("muc", "normal", { name: "Wissen" });
+        const sicht = SE.sichtbarkeit(state);
+        const nach = new Map(state.players.map(p => [p.id, p]));
+
+        // Der Sportdirektor schlägt nur vor, wen der Verein kennt
+        let vorschlaege = 0;
+        ["stamm", "breite", "talent"].forEach(rolle => SD.suche(state, { rolle, anzahl: 10 }).forEach(v => {
+            vorschlaege++;
+            if (!sicht.istSichtbar(nach.get(v.id))) throw new Error(`Sportdirektor schlägt Unbekannten vor: ${v.name}`);
+        }));
+        if (!vorschlaege) throw new Error("Keine Vorschläge");
+        // ... und schätzt in der Ferne ungenauer als daheim
+        const fehler = (land) => {
+            const ps = state.players.filter(p => p.clubId && p.clubId !== state.userClubId && SE.landVon(state, p) === land).slice(0, 300);
+            return ps.reduce((x, p) => x + Math.abs(SD.schaetzung(state, p) - p.overall), 0) / ps.length;
+        };
+        if (!(fehler("tr") > fehler("de"))) throw new Error(`Sportdirektor schätzt in der Türkei (${fehler("tr").toFixed(2)}) nicht ungenauer als daheim (${fehler("de").toFixed(2)})`);
+
+        // Leihmarkt: nur Bekannte, sortiert nach Einschätzung
+        const markt = LoanEngine.leihmarkt(state, 500);
+        if (!markt.length) throw new Error("Leihmarkt leer");
+        markt.forEach((e, i) => {
+            if (!sicht.istSichtbar(nach.get(e.playerId))) throw new Error(`Leihmarkt zeigt Unbekannten: ${e.name}`);
+            if (i && e.geschaetzt > markt[i - 1].geschaetzt) throw new Error("Leihmarkt nicht nach Einschätzung sortiert");
+        });
+
+        // Ein Europapokalspiel gegen einen Verein aus dem Land bringt Wissen
+        const ucl = state.europeanCompetitions.ucl;
+        const erg = CupEngine.spieleTermin(state, "euro", 0);
+        const meine = erg.eigenePartie;
+        if (!meine) throw new Error("Keine eigene Europapokalpartie am ersten Spieltag");
+        const gegnerId = meine.homeClubId === state.userClubId ? meine.awayClubId : meine.homeClubId;
+        const gegnerLand = state.clubs.find(c => c.id === gegnerId).countryId;
+        const vorher = SE.landWissen(state, gegnerLand);
+        CupEngine.austragen(state, meine, false);
+        CupEngine.schliesseTerminAb(state, "euro", 0);
+        const nachher = SE.landWissen(state, gegnerLand);
+        if (nachher !== Math.min(100, vorher + SE.LAND_ZUWACHS_EUROPA)) throw new Error(`Wissen über ${gegnerLand}: ${vorher} -> ${nachher}`);
+        if (!ucl.spieltage[0].completed) throw new Error("Spieltag nicht abgeschlossen");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

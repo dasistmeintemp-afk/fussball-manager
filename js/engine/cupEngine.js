@@ -553,6 +553,7 @@ class CupEngine {
             // fortschreiben.
             if (!runde || runde.completed || runde.matches.some(m => !m.played)) return;
             runde.completed = true;
+            this.lerneGegnerKennen(state, runde);
 
             if (index < 6) {
                 this.schreibeGruppenTabellen(w, runde);
@@ -618,6 +619,21 @@ class CupEngine {
         const kalender = state?.calendar;
         if (!Array.isArray(kalender) || !kalender.length) return true;
         return kalender.some(d => d && d.cupArt === "euro" && d.cupRunde === 9);
+    }
+
+    /**
+     * Wer in Europa gegen einen Verein spielt, lernt dessen Land kennen:
+     * Der Scout sieht sich den Gegner an, die Spiele laufen im Fernsehen,
+     * man reist hin. Das Wissen über das Land wächst je Spiel ein Stück -
+     * und verblasst wie jedes andere ohne Pflege wieder.
+     */
+    static lerneGegnerKennen(state, runde) {
+        const se = _cupResolve("ScoutingEngine", "./scoutingEngine.js");
+        if (!se || typeof se.erweitereLandWissen !== "function") return;
+        const meine = (runde?.matches || []).find(m => m.homeClubId === state.userClubId || m.awayClubId === state.userClubId);
+        if (!meine) return;
+        const gegner = (state.clubs || []).find(c => c.id === (meine.homeClubId === state.userClubId ? meine.awayClubId : meine.homeClubId));
+        if (gegner && gegner.countryId) se.erweitereLandWissen(state, gegner.countryId, se.LAND_ZUWACHS_EUROPA || 6);
     }
 
     /** Die Besten der Gruppenphase spielen die Endrunde aus */

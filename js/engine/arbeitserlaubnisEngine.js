@@ -12,12 +12,19 @@
  *                        nach der Stärke der Liga (höchstens 12)
  *   Europapokal        - Stammspieler eines Vereins im Europapokal (bis 4)
  *
- * Ab 15 Punkten gibt es die Erlaubnis. Mit 12 bis 14 Punkten, oder mit 10
- * und einem Stammplatz, gibt sie ein Ausnahmegremium. Dazu hat jeder Verein
- * je Saison einige Ausnahmeplätze für Spieler, die die Punkte nicht
- * erreichen - in der ersten Liga vier, in der zweiten zwei, in der dritten
- * einen. Spieler unter 18 dürfen nicht aus dem Ausland nach England
- * wechseln.
+ * Ab 15 Punkten gibt es die Erlaubnis. Darunter entscheidet ein
+ * Ausnahmegremium, und es ist streng: Es will einen Stammspieler sehen -
+ * mit 12 bis 14 Punkten einen, der mindestens 40 % der Ligaminuten spielt,
+ * mit 10 oder 11 einen, der in einer der stärkeren Ligen fast immer spielt.
+ * Dazu hat jeder Verein je Saison einige Ausnahmeplätze, aber nur für
+ * Talente bis 21 - in der ersten Liga vier, in der zweiten zwei, in der
+ * dritten einen. Spieler unter 18 dürfen nicht aus dem Ausland nach
+ * England wechseln.
+ *
+ * Bisher gab das Gremium jedem mit 12 Punkten die Erlaubnis, auch einem
+ * Ersatzspieler, und die Ausnahmeplätze galten für jedes Alter. So kamen
+ * je Saison über 200 Spieler aus dem Ausland nach England, viele davon
+ * Mitläufer, die es nie hätten geben dürfen.
  *
  * Wer schon bei einem englischen Verein spielt, hat seine Erlaubnis und
  * wechselt innerhalb des Landes ohne neue Prüfung. Die Regel gilt für den
@@ -42,6 +49,12 @@ const ArbeitserlaubnisEngine = {
     SCHWELLE: 15,
     GREMIUM: 12,
     GREMIUM_STAMM: 10,
+    /** Was das Gremium an Einsatzzeit sehen will: mit 12-14 Punkten, mit 10-11 (und Ligaband höchstens 2) */
+    GREMIUM_ANTEIL: 0.4,
+    GREMIUM_STAMM_ANTEIL: 0.7,
+    GREMIUM_STAMM_BAND: 2,
+    /** Ausnahmeplätze gibt es nur für Talente bis zu diesem Alter */
+    AUSNAHME_BIS_ALTER: 21,
     MINDESTALTER: 18,
     /** Ausnahmeplätze je Saison nach Ligastufe des Käufers */
     AUSNAHMEPLAETZE: { 1: 4, 2: 2, 3: 1 },
@@ -236,18 +249,34 @@ const ArbeitserlaubnisEngine = {
         if (gesamt >= this.SCHWELLE) {
             return Object.assign(basis, { erteilt: true, weg: "punkte", text: `Arbeitserlaubnis: ${gesamt} Punkte, ab ${this.SCHWELLE} gibt es sie.` });
         }
-        if (gesamt >= this.GREMIUM || (gesamt >= this.GREMIUM_STAMM && anteil >= 0.4)) {
+        if (this.gremiumStimmtZu(state, p, gesamt, anteil)) {
             return Object.assign(basis, { erteilt: true, weg: "gremium",
-                text: `${gesamt} Punkte - das Ausnahmegremium erteilt die Erlaubnis.` });
+                text: `${gesamt} Punkte als Stammspieler - das Ausnahmegremium erteilt die Erlaubnis.` });
         }
-        if (frei > 0) {
+        const talent = (p.age || 25) <= this.AUSNAHME_BIS_ALTER;
+        if (talent && frei > 0) {
             return Object.assign(basis, { erteilt: true, weg: "ausnahme",
-                text: `Nur ${gesamt} Punkte - geht über einen Ausnahmeplatz (noch ${frei} von ${max} frei in dieser Saison).` });
+                text: `Nur ${gesamt} Punkte - geht als Talent über einen Ausnahmeplatz (noch ${frei} von ${max} frei in dieser Saison).` });
         }
-        return Object.assign(basis, { erteilt: false, weg: "abgelehnt",
-            text: max > 0
-                ? `Keine Arbeitserlaubnis: ${gesamt} von ${this.SCHWELLE} Punkten, und alle ${max} Ausnahmeplätze dieser Saison sind vergeben.`
-                : `Keine Arbeitserlaubnis: ${gesamt} von ${this.SCHWELLE} Punkten.` });
+        const grund = !talent
+            ? `${gesamt} von ${this.SCHWELLE} Punkten, das Gremium will einen Stammspieler sehen, und Ausnahmeplätze gibt es nur für Talente bis ${this.AUSNAHME_BIS_ALTER}.`
+            : (max > 0
+                ? `${gesamt} von ${this.SCHWELLE} Punkten, und alle ${max} Ausnahmeplätze dieser Saison sind vergeben.`
+                : `${gesamt} von ${this.SCHWELLE} Punkten.`);
+        return Object.assign(basis, { erteilt: false, weg: "abgelehnt", text: `Keine Arbeitserlaubnis: ${grund}` });
+    },
+
+    /**
+     * Das Ausnahmegremium: Mit 12 bis 14 Punkten braucht es einen Spieler,
+     * der mindestens 40 % der Ligaminuten spielt; mit 10 oder 11 einen, der
+     * in einer der stärkeren Ligen (Band 1 oder 2) fast immer spielt.
+     */
+    gremiumStimmtZu(state, p, gesamt, anteil) {
+        if (gesamt >= this.GREMIUM) return anteil >= this.GREMIUM_ANTEIL;
+        if (gesamt >= this.GREMIUM_STAMM) {
+            return anteil >= this.GREMIUM_STAMM_ANTEIL && this.band(this._letzterVerein(state, p)) <= this.GREMIUM_STAMM_BAND;
+        }
+        return false;
     },
 
     /** Darf der Wechsel stattfinden? Kurzform für die KI */

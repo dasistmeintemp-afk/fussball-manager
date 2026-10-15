@@ -12443,7 +12443,7 @@ function runEngineTests() {
         if (!wm.torjaeger || wm.torjaeger.tore < 2) throw new Error("Kein Torschützenkönig");
     });
 
-    test("Arbeitserlaubnis: Nach England nur mit Punkten, Ausnahmegremium oder Ausnahmeplatz - nicht unter 18", () => {
+    test("Arbeitserlaubnis: Nach England nur mit Punkten, Gremium für Stammspieler oder Ausnahmeplatz für Talente - nicht unter 18", () => {
         const { ArbeitserlaubnisEngine: AE } = require('./js/engine/arbeitserlaubnisEngine.js');
         const { TransferEngine } = require('./js/engine/transferEngine.js');
         const { NegotiationEngine } = require('./js/engine/negotiationEngine.js');
@@ -12474,9 +12474,20 @@ function runEngineTests() {
         if (AE.pruefe(state, jung, en).weg !== "zu_jung") throw new Error("Unter 18 erlaubt");
         if (TransferEngine.executeTransfer(state, jung.id, en.id, 0, 1000, 3)) throw new Error("Unter 18 gewechselt");
 
+        // Das Gremium will einen Stammspieler sehen
+        if (AE.gremiumStimmtZu(state, star, 13, 0.2) || !AE.gremiumStimmtZu(state, star, 13, 0.5)) throw new Error("Gremium mit 12-14 Punkten falsch");
+        const atSpieler = state.players.find(p => vereinVon(p)?.countryId === "at");
+        if (!AE.gremiumStimmtZu(state, star, 10, 0.8) || AE.gremiumStimmtZu(state, star, 10, 0.5) || AE.gremiumStimmtZu(state, atSpieler, 10, 0.8)) throw new Error("Gremium mit 10-11 Punkten falsch");
+        // Ausnahmeplätze nur für Talente bis 21
+        const alterSpieler = state.players.find(p => vereinVon(p)?.countryId === "de" && (vereinVon(p)?.level || 1) >= 5
+            && (p.age || 0) >= 24 && !AE.FREI.includes(p.nationality) && !p.leihe);
+        const eAlt = AE.pruefe(state, alterSpieler, en);
+        if (eAlt.erteilt || eAlt.weg !== "abgelehnt" || !/Talente bis 21/.test(eAlt.text)) throw new Error(`Älterer ohne Punkte: ${JSON.stringify(eAlt)}`);
+
         // Ohne Punkte: nur über die Ausnahmeplätze - vier in der ersten Liga
         const niemand = state.players.filter(p => vereinVon(p)?.countryId === "de" && (vereinVon(p)?.level || 1) >= 5
-            && (p.age || 0) >= 18 && !AE.FREI.includes(p.nationality) && !p.leihe).slice(0, 6);
+            && (p.age || 0) >= 18 && (p.age || 0) <= 21 && !AE.FREI.includes(p.nationality) && !p.leihe).slice(0, 6);
+        if (niemand.length < 6) throw new Error("Zu wenige junge Spieler für den Test");
         const e2 = AE.pruefe(state, niemand[0], en);
         if (e2.punkte !== 0 || e2.weg !== "ausnahme" || e2.frei !== 4) throw new Error(`Ohne Punkte: ${JSON.stringify(e2)}`);
         state.userClubId = en.id;
@@ -12508,7 +12519,9 @@ function runEngineTests() {
         const ohne = gekauft.filter(({ p, von }) => {
             const alt = state.clubs.find(c => c.id === von);
             if (!alt || alt.countryId === "en" || AE.FREI.includes(p.nationality)) return false;
-            return AE.punkte(state, Object.assign({}, p, { clubId: von })).gesamt < AE.GREMIUM_STAMM;
+            const vorher = Object.assign({}, p, { clubId: von });
+            const e = AE.punkte(state, vorher);
+            return e.gesamt < AE.SCHWELLE && !AE.gremiumStimmtZu(state, vorher, e.gesamt, e.anteil);
         });
         if (ohne.length) throw new Error(`KI holt ohne Erlaubnis: ${ohne.map(x => x.p.name)}`);
     });

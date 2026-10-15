@@ -511,7 +511,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         return `<details class="hint-box ae-hinweis${e.erteilt ? "" : " ae-nein"}">
             <summary>${this.escapeHtml(engine.kurztext(e))}</summary>
             ${teile ? `<ul class="ae-teile">${teile}</ul>` : ""}
-            <p class="muted-note">Ohne britischen oder irischen Pass braucht jeder Spieler in England eine Arbeitserlaubnis. Ab ${engine.SCHWELLE} Punkten gibt es sie, mit ${engine.GREMIUM} bis ${engine.SCHWELLE - 1} (oder ${engine.GREMIUM_STAMM} und einem Stammplatz) entscheidet das Ausnahmegremium dafür. Darunter bleibt ein Ausnahmeplatz - davon hat der Verein ${e.max ?? 0} je Saison.</p>
+            <p class="muted-note">Ohne britischen oder irischen Pass braucht jeder Spieler in England eine Arbeitserlaubnis. Ab ${engine.SCHWELLE} Punkten gibt es sie. Mit ${engine.GREMIUM} bis ${engine.SCHWELLE - 1} Punkten stimmt das Ausnahmegremium nur für einen Stammspieler zu, mit ${engine.GREMIUM_STAMM} oder ${engine.GREMIUM - 1} nur für einen, der in einer starken Liga fast immer spielt. Darunter bleibt für Talente bis ${engine.AUSNAHME_BIS_ALTER} ein Ausnahmeplatz - davon hat der Verein ${e.max ?? 0} je Saison.</p>
         </details>`;
     },
 

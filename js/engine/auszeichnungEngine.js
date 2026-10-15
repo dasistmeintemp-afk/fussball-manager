@@ -362,11 +362,20 @@ const AuszeichnungEngine = {
     trainerDerSaison(state, ligaId, vereine) {
         const tabelle = this._tabelle(state, ligaId);
         if (!tabelle.length) return null;
-        const staerke = (club) => {
-            const werte = (state.players || []).filter(p => p.clubId === club.id).map(p => p.overall || 0).sort((a, b) => b - a).slice(0, 14);
-            return werte.length ? werte.reduce((s, x) => s + x, 0) / werte.length : 0;
-        };
-        const erwartet = new Map(vereine.slice().sort((a, b) => staerke(b) - staerke(a)).map((c, i) => [c.id, i + 1]));
+        // Die Kaderstärke einmal je Verein - vorher filterte jeder Vergleich
+        // beim Sortieren die ganze Spielerliste, je Liga Millionen Schritte
+        const ids = new Set(vereine.map(c => c.id));
+        const kader = new Map();
+        (state.players || []).forEach(p => {
+            if (!ids.has(p.clubId)) return;
+            if (!kader.has(p.clubId)) kader.set(p.clubId, []);
+            kader.get(p.clubId).push(p.overall || 0);
+        });
+        const staerkeVon = new Map(vereine.map(c => {
+            const werte = (kader.get(c.id) || []).sort((a, b) => b - a).slice(0, 14);
+            return [c.id, werte.length ? werte.reduce((s, x) => s + x, 0) / werte.length : 0];
+        }));
+        const erwartet = new Map(vereine.slice().sort((a, b) => staerkeVon.get(b.id) - staerkeVon.get(a.id)).map((c, i) => [c.id, i + 1]));
         let bester = null;
         tabelle.forEach((r, i) => {
             const platz = i + 1;

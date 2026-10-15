@@ -676,13 +676,15 @@ class CupEngine {
      * `match.penaltyScore` und wird im Spielbericht angezeigt.
      */
     static elfmeterschiessen(state, match) {
+        const gs = _cupResolve("GameState", "./gameState.js");
+        const finde = gs && typeof gs.spielerMitId === "function"
+            ? (id) => gs.spielerMitId(state.players || [], id)
+            : (id) => (state.players || []).find(p => p.id === id);
         const quote = clubId => {
             const club = (state.clubs || []).find(c => c.id === clubId);
             if (!club) return 0.76;
 
-            const kader = (club.playerIds || [])
-                .map(id => (state.players || []).find(p => p.id === id))
-                .filter(Boolean);
+            const kader = (club.playerIds || []).map(finde).filter(Boolean);
 
             const schuetzen = kader.filter(p => p.pos !== "TW")
                 .map(p => ((p.shooting || p.finishing || 55) + (p.composure || p.mental || 55)) / 2)

@@ -58,6 +58,41 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         }));
     },
 
+    /** Trainingslager buchen - in der Vorbereitung und in der Winterpause */
+    renderTrainingslager() {
+        const box = document.getElementById("trainingslagerKarte");
+        const P = (typeof PreseasonEngine !== "undefined" && PreseasonEngine) ? PreseasonEngine : null;
+        const state = this.app.state;
+        const club = state?.clubs?.find(c => c.id === state.userClubId);
+        if (!box || !P || !club || typeof P.lagerFenster !== "function") return;
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const fenster = P.lagerFenster(state);
+        const gebucht = fenster ? P.lagerGebucht(state, club, fenster) : null;
+        const zeit = fenster === "sommer" ? "diesen Sommer" : "diesen Winter";
+        const status = !fenster
+            ? `<p class="text-muted">Buchbar in der Vorbereitung und in der Winterpause.</p>`
+            : (gebucht ? `<p class="lager-gebucht">✅ Für ${zeit} gebucht: ${esc(P.TRAININGSLAGER[gebucht.art]?.name)}.</p>` : "");
+        const optionen = Object.entries(P.TRAININGSLAGER).map(([art, l]) => `
+            <div class="lager-option">
+                <div><strong>${esc(l.name)}</strong><br><span class="text-muted">${l.tage} Tage gemeinsam, ${l.spiele} Testspiele · ${this.geldKurz(P.lagerKosten(club, art))}</span></div>
+                <button class="btn btn-sm btn-primary" data-lager="${art}" ${!fenster || gebucht ? "disabled" : ""}>Buchen</button>
+            </div>`).join("");
+        box.innerHTML = `
+            <div class="card-header"><h3>🏕️ Trainingslager</h3></div>
+            <p class="taktik-hilfe">Zwei, drei Wochen, in denen die Mannschaft nichts anderes tut: Neuzugänge gewöhnen sich schneller ein (für die Eingespieltheit zählt das Lager wie zusätzliche Tage im Verein und gemeinsame Spiele), und die Taktik sitzt besser.</p>
+            ${status}
+            <div class="lager-optionen">${optionen}</div>`;
+        box.querySelectorAll("[data-lager]").forEach(btn => btn.addEventListener("click", () => {
+            const res = P.bucheTrainingslager(state, btn.dataset.lager);
+            this.showToast(res.success ? `Gebucht - ${this.geldKurz(res.kosten)}.` : res.error, res.success ? "success" : "error");
+            if (res.success) {
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.renderTrainingslager();
+                this.renderHeader?.();
+            }
+        }));
+    },
+
     renderTraining() {
         const state = this.app.state;
         const currentFocus = state.trainingSettings?.focus || "allround";
@@ -70,6 +105,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (intensityRadio) intensityRadio.checked = true;
 
         this.renderCoachingStaffCard();
+        this.renderTrainingslager();
         this.renderTrainingsPlaene();
 
         // Jugendakademie rendern

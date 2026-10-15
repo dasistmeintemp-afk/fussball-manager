@@ -646,6 +646,65 @@ class PreseasonEngine {
      * Legt die Vorbereitung für eine Saison an. Wird bei jedem Saisonstart
      * aufgerufen - auch beim Karrierestart.
      */
+    // ------------------------------------------------------ Trainingslager
+
+    /**
+     * Ein Trainingslager in der Vorbereitung oder der Winterpause.
+     *
+     * Neuzugänge brauchen Zeit, bis sie angekommen sind, und eine neue
+     * Taktik muss eingeschliffen werden. Im Trainingslager tut die
+     * Mannschaft zwei, drei Wochen nichts anderes: Wer dabei ist, gilt für
+     * die Eingespieltheit so, als wäre er so viele Tage länger im Verein und
+     * hätte die Testspiele mit allen bestritten; die taktische Vertrautheit
+     * steigt wie nach mehreren Spielen. Im Ausland länger und teurer.
+     */
+    static TRAININGSLAGER = {
+        heim: { name: "Trainingslager im eigenen Land", tage: 10, spiele: 2, vertraut: 0.2, kosten: 150000 },
+        ausland: { name: "Trainingslager im Ausland", tage: 21, spiele: 4, vertraut: 0.35, kosten: 600000 }
+    };
+    static LAGER_STUFE = { 1: 1, 2: 0.4, 3: 0.2 };
+
+    /** Gerade ein Fenster fürs Trainingslager? "sommer", "winter" oder null */
+    static lagerFenster(state) {
+        if (state?.preseason?.aktiv) return "sommer";
+        const tag = state?.calendar?.[state.currentDayIndex];
+        return tag && tag.winterpause ? "winter" : null;
+    }
+
+    static lagerKosten(club, art) {
+        const lager = this.TRAININGSLAGER[art];
+        if (!lager) return 0;
+        return Math.round(lager.kosten * (this.LAGER_STUFE[club?.level || 1] ?? 0.08) / 10000) * 10000;
+    }
+
+    static lagerGebucht(state, club, fenster) {
+        return (Array.isArray(club?.trainingslager) ? club.trainingslager : [])
+            .find(e => e.saison === (state.seasonYear || 1) && e.fenster === fenster) || null;
+    }
+
+    static bucheTrainingslager(state, art) {
+        const lager = this.TRAININGSLAGER[art];
+        const club = (state?.clubs || []).find(c => c.id === state.userClubId);
+        if (!lager || !club) return { success: false, error: "Unbekanntes Trainingslager." };
+        const fenster = this.lagerFenster(state);
+        if (!fenster) return { success: false, error: "Ein Trainingslager gibt es in der Vorbereitung und in der Winterpause." };
+        if (this.lagerGebucht(state, club, fenster)) return { success: false, error: `Für ${fenster === "sommer" ? "diesen Sommer" : "diesen Winter"} ist schon ein Trainingslager gebucht.` };
+        const kosten = this.lagerKosten(club, art);
+        if ((club.balance || 0) < kosten) return { success: false, error: "Dafür reicht das Geld nicht." };
+        club.balance -= kosten;
+        const finanzen = _preResolve("FinanceEngine", "./financeEngine.js");
+        if (finanzen && typeof finanzen.recordTransaction === "function") finanzen.recordTransaction(state, club.id, "trainingslager", -kosten, lager.name);
+        const saison = state.seasonYear || 1;
+        const eintrag = { saison, fenster, art, stempel: saison * 1000 + (state.currentDayIndex || 0), tage: lager.tage, spiele: lager.spiele };
+        club.trainingslager = (Array.isArray(club.trainingslager) ? club.trainingslager : []).filter(e => e.saison === saison).concat([eintrag]);
+        const taktik = _preResolve("TacticsEngine", "./tacticsEngine.js");
+        if (taktik) {
+            if (typeof taktik.vertrautheitUeben === "function") taktik.vertrautheitUeben(club, lager.vertraut, 0);
+            if (typeof taktik.stelleUhr === "function") taktik.stelleUhr(state);
+        }
+        return { success: true, kosten, eintrag };
+    }
+
     static start(state) {
         const club = (state.clubs || []).find(c => c.id === state.userClubId);
         if (!club) return null;

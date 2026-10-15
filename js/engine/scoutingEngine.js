@@ -56,6 +56,162 @@ const ScoutingEngine = {
     },
 
     /**
+     * Wissen je Land
+     *
+     * Im Vorbild kennt ein Verein nicht die ganze Welt. Im eigenen Land ist
+     * jeder Spieler bekannt, aus der Ferne nur die Stars und ein Teil der
+     * übrigen. Wie viel, hängt am Ruf des Landes, am Netzwerk des Vereins,
+     * am Chefscout und an der Nähe: Ein Verein aus Deutschland kennt sich in
+     * Österreich besser aus als in der Türkei.
+     *
+     * Scout-Aufträge mit Länderfokus bauen das Wissen aus, beobachtete
+     * Spieler tragen ein wenig bei. Ohne Pflege verblasst es wieder bis auf
+     * das Grundwissen. Gespeichert wird nur der Zugewinn je Land - so
+     * stimmt das Grundwissen auch nach einem Vereinswechsel.
+     */
+    NACHBARN: {
+        de: ["at", "ch", "nl"], at: ["de", "ch"], ch: ["de", "at", "fr", "it"],
+        en: ["sc"], sc: ["en"], fr: ["be", "ch"], be: ["fr", "nl"], nl: ["be", "de"],
+        es: ["pt"], pt: ["es", "br"], br: ["pt"], it: ["ch"], tr: []
+    },
+    LAND_ZUWACHS_AUFTRAG: 14,
+    LAND_ZUWACHS_BEOBACHTUNG: 1,
+    LAND_VERBLASSEN: 0.5,
+
+    _laenderDaten() {
+        return _seResolve("COUNTRIES_DATA", "../data/leagueData.js") || [];
+    },
+
+    /** Die Länder mit eigenen Ligen in diesem Spielstand */
+    laender(state) {
+        const mitVereinen = new Set((state?.clubs || []).map(c => c.countryId).filter(Boolean));
+        return this._laenderDaten().filter(l => mitVereinen.has(l.id));
+    },
+
+    landName(land) {
+        return this._laenderDaten().find(l => l.id === land)?.name || String(land || "").toUpperCase();
+    },
+
+    /**
+     * Was der Verein ohne eigene Arbeit über ein Land weiß (0 bis 100).
+     * Gemerkt je Spielstand, solange Verein, Ruf und Chefscout gleich
+     * bleiben - die Spielerkarten fragen tausendfach danach.
+     */
+    _grundSpeicher: new WeakMap(),
+    grundWissen(state, land) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        const heim = club?.countryId || "de";
+        if (!land || land === heim) return 100;
+        const schluessel = `${state?.userClubId}|${club?.reputation}|${club?.level}|${club?.staff?.scout?.name || ""}|${club?.staff?.scout?.guete ?? ""}`;
+        let gemerkt = state && typeof state === "object" ? this._grundSpeicher.get(state) : null;
+        if (!gemerkt || gemerkt.schluessel !== schluessel) {
+            gemerkt = { schluessel, werte: {} };
+            if (state && typeof state === "object") this._grundSpeicher.set(state, gemerkt);
+        }
+        if (gemerkt.werte[land] === undefined) {
+            const ruf = this._laenderDaten().find(l => l.id === land)?.reputation ?? 70;
+            const basis = ruf * 0.6 - 20;
+            const netz = Math.max(0, Math.min(25, ((club?.reputation || 50) - 50) * 0.5));
+            const scout = (this.scoutInfo(state).guete - 60) * 0.2;
+            const nachbar = (this.NACHBARN[heim] || []).includes(land) ? 15 : 0;
+            gemerkt.werte[land] = Math.max(5, Math.min(90, Math.round(basis + netz + scout + nachbar)));
+        }
+        return gemerkt.werte[land];
+    },
+
+    _landSpeicher(state) {
+        if (!state.scouting) state.scouting = { assignments: [], reports: [], shortlist: [] };
+        if (!state.scouting.laender || typeof state.scouting.laender !== "object") state.scouting.laender = {};
+        return state.scouting.laender;
+    },
+
+    /** Das Wissen über ein Land heute: Grundwissen plus Zugewinn */
+    landWissen(state, land) {
+        const grund = this.grundWissen(state, land);
+        if (grund >= 100) return 100;
+        const zugewinn = Number(state?.scouting?.laender?.[land]) || 0;
+        return Math.min(100, Math.round(grund + zugewinn));
+    },
+
+    /** Mehr Wissen über ein Land - bis 100 */
+    erweitereLandWissen(state, land, menge) {
+        if (!state || !land) return 0;
+        const grund = this.grundWissen(state, land);
+        if (grund >= 100) return 100;
+        const speicher = this._landSpeicher(state);
+        speicher[land] = Math.min(100 - grund, (Number(speicher[land]) || 0) + menge);
+        return this.landWissen(state, land);
+    },
+
+    /** Jeden Spieltag verblasst der Zugewinn ein wenig */
+    verblasseLandWissen(state) {
+        const speicher = state?.scouting?.laender;
+        if (!speicher) return;
+        Object.keys(speicher).forEach(land => {
+            const rest = (Number(speicher[land]) || 0) - this.LAND_VERBLASSEN;
+            if (rest > 0) speicher[land] = Math.round(rest * 10) / 10;
+            else delete speicher[land];
+        });
+    },
+
+    /**
+     * In welchem Land ein Spieler spielt. Vereinslose zählen zu ihrer
+     * Nation, sofern es dort eine Liga gibt - sonst gelten sie als bekannt.
+     */
+    landVon(state, player, vereine = null) {
+        if (!player) return null;
+        if (player.clubId) {
+            const verein = vereine ? vereine.get(player.clubId) : (state?.clubs || []).find(c => c.id === player.clubId);
+            if (verein) return verein.countryId || "de";
+        }
+        return this._laenderDaten().find(l => l.name === player.nationality)?.id || null;
+    },
+
+    /**
+     * Wer auf dem Markt sichtbar ist. Liefert eine Prüffunktion, die für
+     * tausende Spieler schnell genug ist (Wissen je Land vorab berechnet).
+     *
+     * Bekannt sind: alle Spieler aus Ländern mit vollem Wissen, Stars von
+     * überall (ab etwa 86 Stärke kennt sie jeder), Spieler mit eigenem
+     * Scoutbericht oder auf der Beobachtungsliste - und vom Rest ein Anteil,
+     * der dem Wissen über das Land entspricht. Wer bekannt ist, steht fest
+     * je Spieler und bleibt es, solange das Wissen nicht sinkt.
+     */
+    sichtbarkeit(state) {
+        const vereine = new Map((state?.clubs || []).map(c => [c.id, c]));
+        const wissen = {};
+        const wissenVon = (land) => {
+            if (!land) return 100;
+            if (wissen[land] === undefined) wissen[land] = this.landWissen(state, land);
+            return wissen[land];
+        };
+        const gemerkt = new Set((state?.scouting?.shortlist || []).map(x => String(typeof x === "object" ? x.playerId ?? x.id : x)));
+        (state?.scouting?.beobachtungen || []).forEach(b => gemerkt.add(String(b.playerId)));
+        const istSichtbar = (p) => {
+            if (!p) return false;
+            if (p.clubId && p.clubId === state.userClubId) return true;
+            const w = wissenVon(this.landVon(state, p, vereine));
+            if (w >= 100) return true;
+            if ((p.scoutingKnowledge?.reportsCount || 0) > 0 || gemerkt.has(String(p.id))) return true;
+            const ruhm = Math.max(0, Math.min(1, ((p.overall || 0) - 72) / 14));
+            const anteil = w / 100;
+            return (_seZahl(p.id, "landsicht") + 1) / 2 < anteil + (1 - anteil) * ruhm;
+        };
+        return { istSichtbar, wissenVon, vereine };
+    },
+
+    /**
+     * Wie viel die Einschätzung eines Spielers taugt, über den noch kein
+     * eigener Bericht vorliegt: aus einem gut bekannten Land fast so viel
+     * wie aus dem eigenen, aus der Ferne deutlich weniger
+     */
+    landFaktor(state, player) {
+        if (!state || !player || (player.scoutingKnowledge?.reportsCount || 0) > 0) return 1;
+        const w = this.landWissen(state, this.landVon(state, player));
+        return 0.7 + 0.3 * w / 100;
+    },
+
+    /**
      * Startet einen neuen Scouting-Auftrag
      */
     startAssignment(state, criteria = {}) {
@@ -67,12 +223,24 @@ const ScoutingEngine = {
             return { success: false, error: "Maximale Anzahl gleichzeitiger Scout-Aufträge (3) erreicht." };
         }
 
+        // Mit Länderfokus reist der Scout ins Ausland und bleibt länger weg
+        const land = criteria.land && criteria.land !== "ALL" ? criteria.land : null;
+        if (land) {
+            const userClub = (state.clubs || []).find(c => c.id === state.userClubId);
+            const te = _seResolve("TransferEngine", "./transferEngine.js");
+            const reich = te && typeof te.marketReach === "function" && userClub ? te.marketReach(userClub) : 1;
+            if (!(state.clubs || []).some(c => c.countryId === land && (c.level || 1) >= reich)) {
+                return { success: false, error: `Die Ligen in ${this.landName(land)} liegen außerhalb der Reichweite Ihres Vereins.` };
+            }
+        }
+        const ausland = land && this.grundWissen(state, land) < 100;
         const assignment = {
             id: "scout_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
             position: criteria.position || "ALL",
             maxAge: criteria.maxAge || 26,
             minOverall: criteria.minOverall || 70,
-            matchdaysRemaining: 2,
+            land,
+            matchdaysRemaining: ausland ? 3 : 2,
             status: "active",
             createdMatchday: state.currentMatchday || 1
         };
@@ -86,7 +254,9 @@ const ScoutingEngine = {
      * Verarbeitet laufende Scouting-Aufträge am Ende jedes Spieltags
      */
     processWeeklyScouting(state) {
-        if (!state || !state.scouting || !Array.isArray(state.scouting.assignments)) return;
+        if (!state || !state.scouting) return;
+        this.verblasseLandWissen(state);
+        if (!Array.isArray(state.scouting.assignments)) return;
 
         state.scouting.assignments.forEach(assignment => {
             if (assignment.status !== "active") return;
@@ -119,6 +289,11 @@ const ScoutingEngine = {
             pool = pool.filter(p => transferEngine.isWithinReach(p, userClub, state.clubs));
         }
 
+        // Mit Länderfokus sucht der Scout nur dort - und lernt das Land kennen
+        if (assignment.land) {
+            const vereine = new Map((state.clubs || []).map(c => [c.id, c]));
+            pool = pool.filter(p => this.landVon(state, p, vereine) === assignment.land);
+        }
         if (assignment.position && assignment.position !== "ALL") {
             pool = pool.filter(p => p.pos === assignment.position || p.secondPos === assignment.position);
         }
@@ -146,11 +321,20 @@ const ScoutingEngine = {
             .slice(0, anzahl)
             .map(e => e.p);
 
+        const landVorher = assignment.land ? this.landWissen(state, assignment.land) : null;
         auswahl.forEach(player => {
-            this.increaseKnowledge(player, Math.max(4, Math.round(30 * this.reachPenalty(state, player))), scout.guete * this.bewertungsFaktor(state));
+            this.increaseKnowledge(player, Math.max(4, Math.round(30 * this.reachPenalty(state, player) * this.landFaktor(state, player))), scout.guete * this.bewertungsFaktor(state));
             const report = this.generatePlayerReport(player, state, { source: "auftrag", skipGain: true });
             state.scouting.reports.unshift(report);
         });
+        // Das Land kennt der Scout danach besser - ein guter mehr als ein schwacher
+        let landText = "";
+        if (assignment.land) {
+            const nachher = this.erweitereLandWissen(state, assignment.land, Math.round(this.LAND_ZUWACHS_AUFTRAG * scout.guete / 70));
+            if (nachher > landVorher) {
+                landText = ` Das Wissen über ${this.landName(assignment.land)} steigt von ${landVorher} auf ${nachher} %.`;
+            }
+        }
 
         // Nachricht senden
         const newsEng = (typeof NewsEngine !== 'undefined' && NewsEngine) 
@@ -161,7 +345,9 @@ const ScoutingEngine = {
             newsEng.addMessage(state, "scouting", {
                 title: "Scouting-Auftrag abgeschlossen",
                 sender: scout.eigen ? `${scout.name} (Chefscout)` : "Scouting-Abteilung",
-                text: `Die Beobachtung für die Position ${assignment.position} ist abgeschlossen: ${auswahl.length} Spielerberichte liegen vor.`
+                text: `Die Beobachtung für die Position ${assignment.position}${assignment.land ? ` in ${this.landName(assignment.land)}` : ""} ist abgeschlossen: ${auswahl.length} Spielerberichte liegen vor.`
+                    + landText
+                    + (auswahl.length === 0 ? " Passende Spieler in Reichweite des Vereins gab es nicht - vielleicht mit anderen Kriterien." : "")
                     + (scout.sterne < 3 ? " Mit diesem Scouting bleiben die Berichte grob - ein besserer Chefscout sähe mehr." : ""),
                 priority: "normal"
             });
@@ -188,10 +374,14 @@ const ScoutingEngine = {
 
         // An einen Profi aus einer deutlich höheren Liga kommt der Scout nur
         // schwer heran - ein Bericht bringt dann weit weniger Klarheit.
-        const daempfung = this.reachPenalty(state, player);
+        // In einem Land, das der Scout kaum kennt, bringt der erste Bericht
+        // weniger - ihm fehlen Kontakte und Vergleichsmaßstab
+        const daempfung = this.reachPenalty(state, player) * this.landFaktor(state, player);
         const amount = Math.max(4, Math.round(basis * daempfung));
 
         this.increaseKnowledge(player, amount, scoutQuality * this.bewertungsFaktor(state));
+        const land = this.landVon(state, player);
+        if (land) this.erweitereLandWissen(state, land, this.LAND_ZUWACHS_BEOBACHTUNG);
         player.scoutingKnowledge.lastScoutedDate = state.currentDate || "Aktuell";
 
         // Das Wissen ist oben schon gewachsen - der Bericht zählt nicht doppelt
@@ -252,7 +442,10 @@ const ScoutingEngine = {
         else if (seinVerein.leagueId === userClub.leagueId) tage = 4;           // eigene Liga
         else if ((seinVerein.countryId || "de") === (userClub.countryId || "de")) {
             tage = 6 + Math.abs((seinVerein.level || 1) - (userClub.level || 1));
-        } else tage = 13;                                                        // Ausland
+        } else {
+            // Ausland: In einem bekannten Land geht es schneller
+            tage = 9 + (100 - this.landWissen(state, seinVerein.countryId)) / 12;
+        }
 
         tage *= 1 + (1 - this.reachPenalty(state, player)) * 1.2;
         const scout = this.scoutInfo(state);

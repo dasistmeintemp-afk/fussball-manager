@@ -12712,6 +12712,65 @@ function runEngineTests() {
         if (!(alt.standingsByLeague.nl_liga_1 || []).some(z => z.played > 0)) throw new Error("Nachgetragene Liga holt nicht auf");
     });
 
+    test("Scout-Wissen je Land: Heimat bekannt, Ausland zum Teil, Aufträge mit Länderfokus erweitern das Wissen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Scout" });
+        const SE = ScoutingEngine;
+        if (SE.landWissen(state, "de") !== 100) throw new Error("Die Heimat ist nicht voll bekannt");
+        const nl = SE.landWissen(state, "nl"), tr = SE.landWissen(state, "tr");
+        if (!(nl > 0 && nl < 100 && tr < 100)) throw new Error(`Ausland: nl ${nl}, tr ${tr}`);
+        // Nachbarn kennt man besser als die Ferne
+        if (!(SE.landWissen(state, "at") > SE.landWissen(state, "sc"))) throw new Error("Österreich nicht besser bekannt als Schottland");
+
+        // Sichtbar: alle aus der Heimat, Stars von überall, vom Rest ein Teil
+        const sicht = SE.sichtbarkeit(state);
+        const land = (p) => SE.landVon(state, p, sicht.vereine);
+        const heim = state.players.filter(p => p.clubId && p.clubId !== state.userClubId && land(p) === "de");
+        if (!heim.every(sicht.istSichtbar)) throw new Error("Spieler aus der Heimat unsichtbar");
+        const tuerken = state.players.filter(p => p.clubId && land(p) === "tr");
+        const anteil = tuerken.filter(sicht.istSichtbar).length / tuerken.length;
+        if (!(anteil > 0.2 && anteil < 0.9)) throw new Error(`Anteil sichtbarer Spieler aus der Türkei: ${anteil.toFixed(2)}`);
+        const star = state.players.filter(p => p.clubId && land(p) === "tr").sort((a, b) => b.overall - a.overall)[0];
+        if (star.overall >= 86 && !sicht.istSichtbar(star)) throw new Error("Star aus dem Ausland unsichtbar");
+        const versteckt = tuerken.find(p => !sicht.istSichtbar(p));
+        // Ein eigener Bericht macht ihn sichtbar
+        ScoutingEngine.scoutPlayer(state, versteckt.id, { source: "transfer_market" });
+        if (!SE.sichtbarkeit(state).istSichtbar(versteckt)) throw new Error("Gescouteter Spieler bleibt unsichtbar");
+
+        // Ohne eigenen Bericht schätzt der Scout im Ausland ungenauer
+        const ctx = { state, userClubId: state.userClubId, leagueDataCoverage: 85 };
+        const fremd = tuerken.find(p => !(p.scoutingKnowledge?.reportsCount > 0));
+        const daheim = heim.find(p => !(p.scoutingKnowledge?.reportsCount > 0));
+        if (!(PlayerRatingEngine.calculateVisiblePlayerCard(fremd, ctx).confidence < PlayerRatingEngine.calculateVisiblePlayerCard(daheim, ctx).confidence)) {
+            throw new Error("Spieler aus der Ferne so genau geschätzt wie daheim");
+        }
+
+        // Auftrag mit Länderfokus: drei Spieltage, Berichte nur aus dem Land, danach mehr Wissen
+        const vorher = SE.landWissen(state, "tr");
+        const res = SE.startAssignment(state, { position: "ALL", maxAge: 35, minOverall: 50, land: "tr" });
+        if (!res.success || res.assignment.matchdaysRemaining !== 3) throw new Error("Auslandsauftrag nicht angelegt");
+        const berichteVorher = state.scouting.reports.length;
+        for (let i = 0; i < 3; i++) SE.processWeeklyScouting(state);
+        const neueBerichte = state.scouting.reports.slice(0, state.scouting.reports.length - berichteVorher);
+        if (!neueBerichte.length) throw new Error("Keine Berichte aus der Türkei");
+        if (neueBerichte.some(r => land(state.players.find(p => p.id === r.playerId)) !== "tr")) throw new Error("Bericht aus einem anderen Land");
+        const nachher = SE.landWissen(state, "tr");
+        if (!(nachher > vorher)) throw new Error(`Wissen über die Türkei nicht gewachsen: ${vorher} -> ${nachher}`);
+        // Ohne Pflege verblasst es bis aufs Grundwissen
+        for (let i = 0; i < 80; i++) SE.processWeeklyScouting(state);
+        if (SE.landWissen(state, "tr") !== SE.grundWissen(state, "tr")) throw new Error("Länderwissen verblasst nicht");
+        if (state.scouting.laender.tr !== undefined) throw new Error("Leerer Zugewinn bleibt im Speicher");
+
+        // Ein Auslandsspieler ist in einem bekannten Land schneller beobachtet
+        const kurz = SE.beobachtungsDauer(state, fremd);
+        SE.erweitereLandWissen(state, "tr", 100);
+        if (!(SE.beobachtungsDauer(state, fremd) < kurz)) throw new Error("Bekanntes Land beschleunigt die Beobachtung nicht");
+
+        // Ein Drittligist kann keinen Scout in Länder schicken, deren Ligen außer Reichweite liegen
+        const klein = GameState.createNewGame("en3_cha", "normal", { name: "Scout" });
+        if (SE.startAssignment(klein, { land: "tr" }).success) throw new Error("Auftrag außerhalb der Reichweite angenommen");
+        if (!SE.startAssignment(klein, { land: "es" }).success) throw new Error("Auftrag nach Spanien abgelehnt");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

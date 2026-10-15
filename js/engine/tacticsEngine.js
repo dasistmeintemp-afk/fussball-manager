@@ -1613,17 +1613,58 @@ const TacticsEngine = {
 
     /** Die Uhr fürs Einspielen: Saison * 1000 + Kalendertag (gestellt vom Kalender) */
     uhr: null,
+    /** Trainingslager dieser Saison je Verein (PreseasonEngine.bucheTrainingslager), gestellt mit der Uhr */
+    lager: new Map(),
+    _lagerStand: "",
     stelleUhr(state) {
-        if (state) this.uhr = (state.seasonYear || 1) * 1000 + (state.currentDayIndex || 0);
+        if (state) {
+            this.uhr = (state.seasonYear || 1) * 1000 + (state.currentDayIndex || 0);
+            const saison = state.seasonYear || 1;
+            const lager = new Map();
+            (state.clubs || []).forEach(c => {
+                const liste = Array.isArray(c.trainingslager) ? c.trainingslager.filter(e => e && e.saison === saison) : [];
+                if (liste.length) lager.set(c.id, liste);
+            });
+            this.lager = lager;
+            this._lagerStand = [...lager.values()].map(l => l.map(e => e.stempel).join("+")).join(",");
+        }
         return this.uhr;
     },
 
-    /** Wie lange ein Spieler schon im Verein ist, in Tagen. Ohne Angabe: seit vor der Karriere. */
+    /** Was ein Trainingslager einem Spieler bringt, der dabei war: { tage, spiele } */
+    lagerBonus(p, jetzt = this.uhr) {
+        const liste = p && this.lager ? this.lager.get(p.clubId) : null;
+        if (!liste || typeof jetzt !== "number") return { tage: 0, spiele: 0 };
+        return liste.reduce((b, e) => {
+            if (e.stempel > jetzt || (typeof p.vereinSeit === "number" && p.vereinSeit > e.stempel)) return b;
+            return { tage: b.tage + (e.tage || 0), spiele: b.spiele + (e.spiele || 0) };
+        }, { tage: 0, spiele: 0 });
+    },
+
+    /**
+     * Wie lange ein Spieler schon im Verein ist, in Tagen. Ohne Angabe: seit
+     * vor der Karriere. Ein Trainingslager zählt mehr als seine Kalendertage:
+     * drei Wochen, in denen die Mannschaft nichts anderes tut.
+     */
     tageImVerein(p, jetzt = this.uhr) {
         const z = this.ZUSAMMENSPIEL;
         if (!p || typeof p.vereinSeit !== "number" || typeof jetzt !== "number") return 2 * z.tageJeSaison;
         const saisons = Math.floor(jetzt / 1000) - Math.floor(p.vereinSeit / 1000);
-        return Math.max(0, saisons * z.tageJeSaison + (jetzt % 1000) - (p.vereinSeit % 1000));
+        return Math.max(0, saisons * z.tageJeSaison + (jetzt % 1000) - (p.vereinSeit % 1000)) + this.lagerBonus(p, jetzt).tage;
+    },
+
+    /**
+     * Wie weit ein Spieler im Verein angekommen ist (0 bis 1): genauso
+     * gerechnet wie die Eingespieltheit mit einem Mitspieler, der schon
+     * immer da ist - zur Hälfte Zeit, zur Hälfte eigene Einsätze. Für die
+     * Anzeige bei Neuzugängen.
+     */
+    eingewoehnung(p, jetzt = this.uhr) {
+        const z = this.ZUSAMMENSPIEL;
+        const zeit = 1 - Math.exp(-this.tageImVerein(p, jetzt) / z.tageZumEinspielen);
+        let spiele = 0;
+        this.einsaetzeImVerein(p, jetzt).forEach(n => { spiele += n; });
+        return z.gewichtZeit * zeit + (1 - z.gewichtZeit) * (1 - Math.exp(-spiele / z.spieleZumEinspielen));
     },
 
     /**
@@ -1639,7 +1680,7 @@ const TacticsEngine = {
         const z = this.ZUSAMMENSPIEL;
         if (!p) return new Map();
         // Jede Verbindung fragt beide Spieler - je Spieler und Stand einmal rechnen
-        const stand = `${jetzt}|${p.clubId}|${p.vereinSeit}|${p.stats?.matches || 0}|${(p.laufbahn || []).length}|${(p.laufbahnTeile || []).length}`;
+        const stand = `${jetzt}|${p.clubId}|${p.vereinSeit}|${p.stats?.matches || 0}|${(p.laufbahn || []).length}|${(p.laufbahnTeile || []).length}|${this._lagerStand}`;
         const gemerkt = this._einsatzSpeicher ? this._einsatzSpeicher.get(p) : null;
         if (gemerkt && gemerkt.stand === stand) return gemerkt.je;
         const je = new Map();
@@ -1655,6 +1696,8 @@ const TacticsEngine = {
             anderswo += t[2] || 0;
         });
         plus(saison, (p.stats?.matches || 0) - anderswo);
+        // Die Testspiele im Trainingslager zählen mit
+        plus(saison, this.lagerBonus(p, jetzt).spiele);
         if (this._einsatzSpeicher) this._einsatzSpeicher.set(p, { stand, je });
         return je;
     },

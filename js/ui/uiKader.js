@@ -57,6 +57,17 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             </div>`;
     },
 
+    /** Wer noch nicht angekommen ist - mit Prozent, die schwächsten zuerst */
+    eingewoehnungHtml(state, h, link) {
+        const T = typeof this.getTacticsEngine === "function" ? this.getTacticsEngine() : null;
+        if (!T || typeof T.eingewoehnung !== "function") return "";
+        T.stelleUhr(state);
+        const liste = h.spieler.map(e => ({ p: e.player, w: T.eingewoehnung(e.player) }))
+            .filter(x => x.w < 0.85).sort((a, b) => a.w - b.w);
+        if (!liste.length) return "";
+        return `<div><span class="kb-label">Eingewöhnung</span>${liste.map(x => `${link(x.p)} <span class="text-muted">${Math.round(x.w * 100)} %</span>`).join(", ")}</div>`;
+    },
+
     renderKabine() {
         const box = document.getElementById("squadKabine");
         const engine = typeof DressingRoomEngine !== "undefined" ? DressingRoomEngine : null;
@@ -87,6 +98,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <div class="kb-stufen">
                 <div><span class="kb-label">Führungsspieler</span>${fuehrung.length ? fuehrung.map(e => link(e.player)).join(", ") : "<span class=\"text-muted\">niemand</span>"}</div>
                 <div><span class="kb-label">Neu in der Kabine</span>${neu.length ? neu.map(e => link(e.player)).join(", ") : "<span class=\"text-muted\">niemand</span>"}</div>
+                ${this.eingewoehnungHtml(state, h, link)}
             </div>
             <div class="kb-gruppen">
                 ${h.gruppen.map(g => `
@@ -97,7 +109,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     </div>`).join("")}
             </div>
             ${allein.length ? `<div class="hint-box mt-2">Ohne Landsleute im Kader: ${allein.map(e => link(e.player)).join(", ")}. Wer sich schwer anpasst, verliert dadurch Moral.</div>` : ""}
-            <p class="text-muted kb-hinweis">Ist ein Wortführer unzufrieden, färbt das auf seine Gruppe ab, beim Kapitän auf alle. Wer einen Führungsspieler verkauft, hat ein paar Tage Unruhe.</p>`;
+            <p class="text-muted kb-hinweis">Ist ein Wortführer unzufrieden, färbt das auf seine Gruppe ab, beim Kapitän auf alle. Wer einen Führungsspieler verkauft, hat ein paar Tage Unruhe. Neuzugänge gewöhnen sich mit Zeit und Einsätzen ein, ein Trainingslager (Training) beschleunigt es.</p>`;
         box.querySelectorAll("[data-kabine-spieler]").forEach(a => a.addEventListener("click", (e) => {
             e.preventDefault();
             const ziel = state.players.find(p => String(p.id) === a.dataset.kabineSpieler);

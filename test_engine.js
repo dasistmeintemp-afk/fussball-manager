@@ -13105,6 +13105,50 @@ function runEngineTests() {
         if (SE.stelleRegionalScoutEin(klein, "benelux").success) throw new Error("Viertligist mit Regionalscout");
     });
 
+    test("Trainingslager und Eingewöhnung: schneller angekommen, Taktik sitzt besser, einmal je Sommer und Winter", () => {
+        const T = TacticsEngine, P = PreseasonEngine;
+        const state = GameState.createNewGame("muc", "normal", { name: "Lager" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        T.stelleUhr(state);
+        // Ein Neuzugang ist noch nicht angekommen, ein Alteingesessener schon
+        const alt = state.players.find(p => p.clubId === club.id && p.age >= 24);
+        const neu = Object.assign({}, state.players.find(p => p.clubId === club.id && p !== alt), { id: "lager_neu", vereinSeit: T.uhr });
+        state.players.push(neu);
+        if (!(T.eingewoehnung(alt) > 0.95) || T.eingewoehnung(neu) !== 0) throw new Error("Eingewöhnung falsch");
+        // Mit neuer Formation ist die Taktik fremd
+        T.vertrautheitStarten(club);
+        club.formation = "3-5-2";
+        const vertrautVorher = T.vertrautheit(club);
+        // Buchen in der Vorbereitung: kostet, wirkt
+        if (P.lagerFenster(state) !== "sommer") throw new Error("Zum Start kein Sommerfenster");
+        const kasse = club.balance;
+        const res = P.bucheTrainingslager(state, "ausland");
+        if (!res.success || club.balance !== kasse - P.lagerKosten(club, "ausland")) throw new Error("Buchung oder Kosten falsch");
+        const e = T.eingewoehnung(neu);
+        const erwartet = 0.5 * (1 - Math.exp(-21 / 90)) + 0.5 * (1 - Math.exp(-4 / 10));
+        if (Math.abs(e - erwartet) > 0.01) throw new Error(`Eingewöhnung nach dem Lager ${e.toFixed(3)} statt ${erwartet.toFixed(3)}`);
+        if (!(T.vertrautheit(club) > vertrautVorher)) throw new Error("Taktische Vertrautheit unverändert");
+        // Die Eingespieltheit zweier Neuzugänge, die beide dabei waren, steigt ebenso
+        const neu2 = Object.assign({}, neu, { id: "lager_neu2" });
+        if (!(T.eingespielt(neu, neu2) > 0.2)) throw new Error("Lager zählt nicht für die Eingespieltheit");
+        // Wer erst nach dem Lager kommt, hat nichts davon
+        const spaet = Object.assign({}, neu, { id: "lager_spaet", vereinSeit: T.uhr + 5 });
+        if (T.lagerBonus(spaet, T.uhr + 6).tage !== 0) throw new Error("Später Neuzugang profitiert vom Lager");
+        // Einmal je Sommer
+        if (P.bucheTrainingslager(state, "heim").success) throw new Error("Zweites Lager im selben Sommer");
+        // Außerhalb von Vorbereitung und Winterpause nicht
+        state.preseason = Object.assign({}, state.preseason, { aktiv: false });
+        const spieltag = state.calendar.findIndex(d => d.type === "matchday" && !d.winterpause);
+        state.currentDayIndex = spieltag;
+        if (P.lagerFenster(state) !== null || P.bucheTrainingslager(state, "heim").success) throw new Error("Lager mitten in der Saison");
+        // In der Winterpause wieder
+        const winter = state.calendar.findIndex(d => d.winterpause);
+        if (winter >= 0) {
+            state.currentDayIndex = winter;
+            if (P.lagerFenster(state) !== "winter" || !P.bucheTrainingslager(state, "heim").success) throw new Error("Kein Winterlager");
+        }
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

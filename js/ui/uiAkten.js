@@ -721,6 +721,27 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             `;
         }
 
+        // Eingewöhnung: Wie weit ein Neuzugang angekommen ist - dieselbe
+        // Rechnung wie die Eingespieltheit auf der Taktiktafel
+        const taktik = typeof this.getTacticsEngine === "function" ? this.getTacticsEngine() : null;
+        if (taktik && typeof taktik.eingewoehnung === "function" && player.clubId === state.userClubId && !isProspect) {
+            taktik.stelleUhr(state);
+            const wert = taktik.eingewoehnung(player);
+            if (wert < 0.95) {
+                const prozent = Math.round(wert * 100);
+                const tage = Math.round(taktik.tageImVerein(player));
+                let spiele = 0;
+                taktik.einsaetzeImVerein(player).forEach(n => { spiele += n; });
+                const lager = taktik.lagerBonus(player);
+                traitsHtml = `
+                <div class="dash-card mb-3 eingewoehnung-karte">
+                    <h4><svg class="ico h-ico" aria-hidden="true"><use href="#i-users"/></svg>Eingewöhnung <span class="eingewoehnung-wert">${prozent} %</span></h4>
+                    <span class="kb-balken"><i class="kb-${prozent >= 70 ? "gut" : (prozent >= 40 ? "mittel" : "schlecht")}" style="width:${prozent}%"></i></span>
+                    <p>${tage} ${tage === 1 ? "Tag" : "Tage"} im Verein${lager.tage ? ` (davon ${lager.tage} aus dem Trainingslager)` : ""}, ${spiele} ${spiele === 1 ? "Spiel" : "Spiele"}. So weit ist er mit den Mitspielern eingespielt - das zählt für die Linien der Taktiktafel. Einsätze und ein Trainingslager beschleunigen es.</p>
+                </div>` + traitsHtml;
+            }
+        }
+
         let contractSectionHtml = "";
         if (isProspect) {
             // Ein Talent hat noch keinen Profivertrag zu verlängern - hier geht

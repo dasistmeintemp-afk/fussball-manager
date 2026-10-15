@@ -12771,6 +12771,28 @@ function runEngineTests() {
         if (!SE.startAssignment(klein, { land: "es" }).success) throw new Error("Auftrag nach Spanien abgelehnt");
     });
 
+    test("Transfermarkt: Sortiert wird nach der geschätzten Stärke, nicht nach der wahren", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Schätzung" });
+        const ctx = { state, userClubId: state.userClubId, leagueDataCoverage: 85 };
+        // Eigene Spieler: die wahre Stärke
+        const eigener = state.players.find(p => p.clubId === state.userClubId);
+        if (PlayerRatingEngine.geschaetzteStaerke(eigener, ctx) !== eigener.overall) throw new Error("Eigener Spieler geschätzt statt bekannt");
+        // Die Schätzung ist dieselbe wie in der Spielerkarte
+        const fremde = state.players.filter(p => p.clubId && p.clubId !== state.userClubId).slice(0, 400);
+        fremde.forEach(p => {
+            const karte = PlayerRatingEngine.calculateVisiblePlayerCard(p, ctx);
+            const mitte = PlayerRatingEngine.abilityToOverall(Math.round((karte.estimatedCa.min + karte.estimatedCa.max) / 2));
+            if (!karte.isPrecise && PlayerRatingEngine.geschaetzteStaerke(p, ctx) !== mitte) throw new Error(`${p.name}: Schätzung weicht von der Karte ab`);
+        });
+        // Ohne Scoutwissen liegt sie oft neben der wahren - sonst wäre Scouten sinnlos
+        const daneben = fremde.filter(p => PlayerRatingEngine.geschaetzteStaerke(p, ctx) !== p.overall).length;
+        if (daneben < fremde.length * 0.3) throw new Error(`Nur ${daneben} von ${fremde.length} Schätzungen weichen ab`);
+        // Ein gründlich gescouteter Spieler wird exakt gesehen
+        const ziel = fremde[0];
+        ziel.scoutingKnowledge = { known: true, knowledgeLevel: 100, accuracy: 100, reportsCount: 3 };
+        if (PlayerRatingEngine.geschaetzteStaerke(ziel, Object.assign({}, ctx, { leagueDataCoverage: 100 })) !== ziel.overall) throw new Error("Durchleuchteter Spieler nicht exakt");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

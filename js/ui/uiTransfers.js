@@ -725,13 +725,28 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         if (searchVal) marketPlayers = marketPlayers.filter(p => p.name.toLowerCase().includes(searchVal));
         if (posVal !== "all") marketPlayers = marketPlayers.filter(p => p.pos === posVal);
+
+        // Gefiltert und sortiert wird nach der Stärke, wie der Scout sie
+        // sieht - nicht nach der wahren. Sonst verriet schon die Reihenfolge,
+        // wer wirklich gut ist: Von den 30 besten Spielern standen nur neun
+        // auch unter den 30 besten nach Einschätzung.
+        const schaetzer = this.getRatingEngine();
+        const schaetzKontext = Object.assign({ userClubId: state.userClubId, leagueDataCoverage: 85 }, this.starContext());
+        const gesehen = new Map();
+        const staerke = (p) => {
+            let wert = gesehen.get(p.id);
+            if (wert === undefined) {
+                wert = schaetzer && typeof schaetzer.geschaetzteStaerke === "function" ? schaetzer.geschaetzteStaerke(p, schaetzKontext) : p.overall;
+                gesehen.set(p.id, wert);
+            }
+            return wert;
+        };
         if (minStars > 0) {
-            const engine = this.getRatingEngine();
-            const grenze = engine ? engine.overallForStars(minStars, this.starContext()) : 0;
-            marketPlayers = marketPlayers.filter(p => p.overall >= grenze);
+            const grenze = schaetzer ? schaetzer.overallForStars(minStars, this.starContext()) : 0;
+            marketPlayers = marketPlayers.filter(p => staerke(p) >= grenze);
         }
 
-        marketPlayers.sort((a, b) => b.overall - a.overall);
+        marketPlayers.sort((a, b) => staerke(b) - staerke(a) || (a.age || 0) - (b.age || 0));
 
         // Niemand liest viertausend Zeilen. Der Markt zeigt die besten
         // Treffer seitenweise - erst 30, auf Wunsch mehr. Vorher standen

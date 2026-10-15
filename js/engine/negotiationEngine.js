@@ -193,6 +193,9 @@ class NegotiationEngine {
                 ? transferEngine.fensterHindernis(state, { vereinslos: !sellerClub }) : null;
             if (fenster) return { success: false, error: fenster };
         }
+        // Nach England nur mit Arbeitserlaubnis
+        const erlaubnis = this.erlaubnisPruefung(state, player, buyerClub);
+        if (erlaubnis && !erlaubnis.erteilt) return { success: false, error: erlaubnis.text };
         const askingPrice = vorvertrag ? 0 : (transferEngine
             ? transferEngine.calculateAskingPrice(player, sellerClub)
             : Math.round((player.value || 1000000) * 1.15));
@@ -244,6 +247,7 @@ class NegotiationEngine {
                 : (sellerClub
                     ? `Verhandlung mit ${sellerClub.name} über ${player.name} eröffnet. Geforderte Ablöse: ${this.formatMoney(askingPrice)}.`
                     : `${player.name} ist vereinslos. Es geht direkt um die persönlichen Konditionen.`));
+        if (erlaubnis && erlaubnis.noetig) this.log(negotiation, state, "system", erlaubnis.text);
 
         if (openingFee !== null && !vorvertrag) {
             this.ensureList(state).push(negotiation);
@@ -252,6 +256,13 @@ class NegotiationEngine {
 
         this.ensureList(state).push(negotiation);
         return { success: true, negotiation };
+    }
+
+    /** Die Arbeitserlaubnis (England) - oder null, wenn es keine Prüfung gibt */
+    static erlaubnisPruefung(state, player, club) {
+        const erlaubnis = _negResolve("ArbeitserlaubnisEngine", "./arbeitserlaubnisEngine.js");
+        if (!erlaubnis || !player || !club) return null;
+        return erlaubnis.pruefe(state, player, club);
     }
 
     /**
@@ -643,6 +654,19 @@ class NegotiationEngine {
             return { negotiation, kind: "failed" };
         }
 
+        // Die Ausnahmeplätze können inzwischen vergeben sein
+        const player = state.players.find(p => String(p.id) === String(negotiation.playerId));
+        const club = state.clubs.find(c => c.id === negotiation.clubId);
+        const erlaubnis = this.erlaubnisPruefung(state, player, club);
+        if (erlaubnis && !erlaubnis.erteilt) {
+            negotiation.status = NEGOTIATION_STATUS.REJECTED;
+            negotiation.closedDay = heute;
+            this.log(negotiation, state, "system", `Der Wechsel scheitert an der Arbeitserlaubnis. ${erlaubnis.text}`);
+            this.notify(state, negotiation, `Keine Arbeitserlaubnis: ${negotiation.playerName}`,
+                `${negotiation.playerName} bekommt keine Arbeitserlaubnis. ${erlaubnis.text}`);
+            return { negotiation, kind: "failed" };
+        }
+
         const ok = transferEngine.executeTransfer(
             state,
             negotiation.playerId,
@@ -693,6 +717,21 @@ class NegotiationEngine {
             return { negotiation, kind: "failed" };
         }
         const club = state.clubs.find(c => c.id === negotiation.clubId);
+        // Die Arbeitserlaubnis wird mit der Unterschrift beantragt - ein
+        // Ausnahmeplatz ist damit belegt
+        const erlaubnis = this.erlaubnisPruefung(state, player, club);
+        if (erlaubnis && !erlaubnis.erteilt) {
+            negotiation.status = NEGOTIATION_STATUS.REJECTED;
+            negotiation.closedDay = heute;
+            this.log(negotiation, state, "system", `Der Vorvertrag scheitert an der Arbeitserlaubnis. ${erlaubnis.text}`);
+            this.notify(state, negotiation, `Keine Arbeitserlaubnis: ${negotiation.playerName}`,
+                `${negotiation.playerName} bekommt keine Arbeitserlaubnis. ${erlaubnis.text}`);
+            return { negotiation, kind: "failed" };
+        }
+        if (erlaubnis && erlaubnis.weg === "ausnahme") {
+            const engine = _negResolve("ArbeitserlaubnisEngine", "./arbeitserlaubnisEngine.js");
+            engine.verbrauche(state, club);
+        }
         const a = negotiation.agreed;
         player.vorvertrag = {
             clubId: negotiation.clubId,
@@ -701,7 +740,8 @@ class NegotiationEngine {
             wage: a.wage || 0,
             years: a.years || 3,
             praemien: (a.einsatzPraemie || a.torPraemie) ? { einsatz: a.einsatzPraemie || 0, tor: a.torPraemie || 0 } : null,
-            klauseln: a.klauseln || null
+            klauseln: a.klauseln || null,
+            erlaubnis: !!(erlaubnis && erlaubnis.noetig)
         };
         this.zahleNebenkosten(state, negotiation);
 

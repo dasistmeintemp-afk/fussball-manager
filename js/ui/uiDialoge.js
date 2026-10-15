@@ -274,6 +274,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 Jede Antwort dauert ein bis drei Tage – den Stand sehen Sie im Reiter <strong>Transfers</strong>.
             </div>
             ${passHinweis}
+            ${typeof this.erlaubnisHinweis === "function" ? this.erlaubnisHinweis(player) : ""}
 
             <div id="transferFeedback" style="margin-top:14px; font-size:13px; font-weight:600;"></div>
 

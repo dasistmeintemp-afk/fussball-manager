@@ -496,6 +496,26 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     },
 
     /**
+     * Arbeitserlaubnis (England): ob er sie bekäme und wofür es Punkte gibt.
+     * Leer, wenn der eigene Verein nicht in England spielt oder der Spieler
+     * keine braucht.
+     */
+    erlaubnisHinweis(player) {
+        const engine = typeof ArbeitserlaubnisEngine !== "undefined" ? ArbeitserlaubnisEngine : null;
+        const state = this.app.state;
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        if (!engine || !club || !player) return "";
+        const e = engine.pruefe(state, player, club);
+        if (!e.noetig) return "";
+        const teile = (e.teile || []).map(t => `<li>${this.escapeHtml(t.text)}: <strong>${t.punkte}</strong></li>`).join("");
+        return `<details class="hint-box ae-hinweis${e.erteilt ? "" : " ae-nein"}">
+            <summary>${this.escapeHtml(engine.kurztext(e))}</summary>
+            ${teile ? `<ul class="ae-teile">${teile}</ul>` : ""}
+            <p class="muted-note">Ohne britischen oder irischen Pass braucht jeder Spieler in England eine Arbeitserlaubnis. Ab ${engine.SCHWELLE} Punkten gibt es sie, mit ${engine.GREMIUM} bis ${engine.SCHWELLE - 1} (oder ${engine.GREMIUM_STAMM} und einem Stammplatz) entscheidet das Ausnahmegremium dafür. Darunter bleibt ein Ausnahmeplatz - davon hat der Verein ${e.max ?? 0} je Saison.</p>
+        </details>`;
+    },
+
+    /**
      * Die Spielerakte. Mit { abschnitt: "vertrag" } springt sie gleich zur
      * Vertragsverhandlung - so führt ein auslaufender Vertrag im Schreibtisch
      * oder im Postfach direkt dorthin, wo man verlängert.
@@ -826,6 +846,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 </div>
                 ${klausel ? `<button class="btn btn-secondary" id="btnPdKlausel" style="width:100%; margin-top:10px;" title="Sein Verein kann nicht ablehnen"><svg class="ico" aria-hidden="true"><use href="#i-bolt"/></svg> Ausstiegsklausel ziehen (${this.geldKurz(klausel)})</button>` : ""}
                 ${vorvertragHtml}
+                ${this.erlaubnisHinweis(player)}
             `;
         }
 

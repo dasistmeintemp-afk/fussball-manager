@@ -1664,14 +1664,16 @@ class SeasonEngine {
         // ausgab. Jetzt richtet er sich nach Kontostand und Jahresumsatz.
         const finanzen = _getFinanceEngine();
         // Was die KI-Vereine über ihre übliche Rücklage hinaus angespart haben,
-        // fließt zur Hälfte in Anlagen und Tilgung - nicht in den Etat
-        if (finanzen && typeof finanzen.ruecklagenAnpassen === 'function') finanzen.ruecklagenAnpassen(state);
+        // fließt in Anlagen, Kader und Gehälter (FinanceEngine.investiereUeberschuesse)
+        if (finanzen && typeof finanzen.investiereUeberschuesse === 'function') finanzen.investiereUeberschuesse(state);
         if (finanzen && typeof finanzen.kommerzJeSpieltag === 'function') {
             state.clubs.forEach(club => {
                 const jahresumsatz = (finanzen.kommerzJeSpieltag(club)
                     + Math.round((club.stadiumCapacity || club.capacity || 20000) * 0.8 * (club.ticketPrice || 35) / 2)) * 34;
-                const etat = Math.min(Math.max(0, (club.balance || 0)) * 0.35, jahresumsatz * 0.6);
-                club.transferBudget = Math.max(0, Math.round(etat));
+                // Dazu, was die KI aus dem Überschuss in den Kader steckt
+                const extra = club.id === state.userClubId ? 0 : (club.kaderInvestition || 0);
+                const etat = Math.min(Math.max(0, (club.balance || 0)) * 0.35, jahresumsatz * 0.6) + extra;
+                club.transferBudget = Math.max(0, Math.round(Math.min(etat, Math.max(0, club.balance || 0))));
             });
         }
 

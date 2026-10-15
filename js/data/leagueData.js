@@ -7,7 +7,17 @@ let COUNTRIES_DATA = [
     { id: "en", name: "England", code: "ENG", flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿", reputation: 95 },
     { id: "es", name: "Spanien", code: "ESP", flag: "🇪🇸", reputation: 90 },
     { id: "it", name: "Italien", code: "ITA", flag: "🇮🇹", reputation: 86 },
-    { id: "fr", name: "Frankreich", code: "FRA", flag: "🇫🇷", reputation: 84 }
+    { id: "fr", name: "Frankreich", code: "FRA", flag: "🇫🇷", reputation: 84 },
+    // Länder im Hintergrund: Ligen mit Tabellen, Kadern und Transfers, die
+    // die Spielwelt füllen - im Assistenten nicht wählbar
+    { id: "nl", name: "Niederlande", code: "NED", flag: "🇳🇱", reputation: 76, hintergrund: true },
+    { id: "pt", name: "Portugal", code: "POR", flag: "🇵🇹", reputation: 76, hintergrund: true },
+    { id: "be", name: "Belgien", code: "BEL", flag: "🇧🇪", reputation: 72, hintergrund: true },
+    { id: "tr", name: "Türkei", code: "TUR", flag: "🇹🇷", reputation: 72, hintergrund: true },
+    { id: "at", name: "Österreich", code: "AUT", flag: "🇦🇹", reputation: 66, hintergrund: true },
+    { id: "ch", name: "Schweiz", code: "SUI", flag: "🇨🇭", reputation: 66, hintergrund: true },
+    { id: "sc", name: "Schottland", code: "SCO", flag: "🏴", reputation: 64, hintergrund: true },
+    { id: "br", name: "Brasilien", code: "BRA", flag: "🇧🇷", reputation: 78, hintergrund: true }
 ];
 
 const LEAGUES_DATA = [
@@ -357,6 +367,171 @@ const LEAGUES_DATA = [
         promotionSpots: [1, 2],
         promotionPlayoff: [3],
         relegationSpots: [15, 16, 17, 18]
+    },
+
+    // --- LÄNDER IM HINTERGRUND (je eine Liga, ohne Auf- und Abstieg) ---
+    {
+        id: "nl_liga_1",
+        code: "nl1",
+        name: "Niederlande Liga 1",
+        countryId: "nl",
+        shortName: "Hoofdklasse",
+        level: 1,
+        tier: "professional",
+        teamCount: 18,
+        matchdays: 34,
+        pointsPerWin: 3,
+        pointsPerDraw: 1,
+        pointsPerLoss: 0,
+        hintergrund: true,
+        europeanSpots: {
+            championsLeague: [1, 2],
+            europaLeague: [3],
+            conferenceLeague: [4]
+        },
+        relegationSpots: []
+    },
+    {
+        id: "pt_liga_1",
+        code: "pt1",
+        name: "Portugal Liga 1",
+        countryId: "pt",
+        shortName: "Primeira Divisão",
+        level: 1,
+        tier: "professional",
+        teamCount: 18,
+        matchdays: 34,
+        pointsPerWin: 3,
+        pointsPerDraw: 1,
+        pointsPerLoss: 0,
+        hintergrund: true,
+        europeanSpots: {
+            championsLeague: [1, 2],
+            europaLeague: [3],
+            conferenceLeague: [4]
+        },
+        relegationSpots: []
+    },
+    {
+        id: "be_liga_1",
+        code: "be1",
+        name: "Belgien Liga 1",
+        countryId: "be",
+        shortName: "Eerste Klasse",
+        level: 1,
+        tier: "professional",
+        teamCount: 16,
+        matchdays: 30,
+        pointsPerWin: 3,
+        pointsPerDraw: 1,
+        pointsPerLoss: 0,
+        hintergrund: true,
+        europeanSpots: {
+            championsLeague: [1],
+            europaLeague: [2],
+            conferenceLeague: [3]
+        },
+        relegationSpots: []
+    },
+    {
+        id: "tr_liga_1",
+        code: "tr1",
+        name: "Türkei Liga 1",
+        countryId: "tr",
+        shortName: "Birinci Lig",
+        level: 1,
+        tier: "professional",
+        teamCount: 18,
+        matchdays: 34,
+        pointsPerWin: 3,
+        pointsPerDraw: 1,
+        pointsPerLoss: 0,
+        hintergrund: true,
+        europeanSpots: {
+            championsLeague: [1],
+            europaLeague: [2],
+            conferenceLeague: [3]
+        },
+        relegationSpots: []
+    },
+    {
+        id: "at_liga_1",
+        code: "at1",
+        name: "Österreich Liga 1",
+        countryId: "at",
+        shortName: "Liga Österreich",
+        level: 1,
+        tier: "professional",
+        teamCount: 12,
+        matchdays: 22,
+        pointsPerWin: 3,
+        pointsPerDraw: 1,
+        pointsPerLoss: 0,
+        hintergrund: true,
+        europeanSpots: {
+            championsLeague: [1],
+            europaLeague: [2],
+            conferenceLeague: [3]
+        },
+        relegationSpots: []
+    },
+    {
+        id: "ch_liga_1",
+        code: "ch1",
+        name: "Schweiz Liga 1",
+        countryId: "ch",
+        shortName: "Nationalliga",
+        level: 1,
+        tier: "professional",
+        teamCount: 12,
+        matchdays: 22,
+        pointsPerWin: 3,
+        pointsPerDraw: 1,
+        pointsPerLoss: 0,
+        hintergrund: true,
+        europeanSpots: {
+            championsLeague: [1],
+            europaLeague: [2],
+            conferenceLeague: [3]
+        },
+        relegationSpots: []
+    },
+    {
+        id: "sc_liga_1",
+        code: "sc1",
+        name: "Schottland Liga 1",
+        countryId: "sc",
+        shortName: "Scottish Division",
+        level: 1,
+        tier: "professional",
+        teamCount: 12,
+        matchdays: 22,
+        pointsPerWin: 3,
+        pointsPerDraw: 1,
+        pointsPerLoss: 0,
+        hintergrund: true,
+        europeanSpots: {
+            championsLeague: [1],
+            europaLeague: [2],
+            conferenceLeague: [3]
+        },
+        relegationSpots: []
+    },
+    {
+        id: "br_liga_1",
+        code: "br1",
+        name: "Brasilien Liga 1",
+        countryId: "br",
+        shortName: "Série Nacional",
+        level: 1,
+        tier: "professional",
+        teamCount: 20,
+        matchdays: 38,
+        pointsPerWin: 3,
+        pointsPerDraw: 1,
+        pointsPerLoss: 0,
+        hintergrund: true,
+        relegationSpots: []
     }
 ];
 

@@ -117,7 +117,12 @@ class PlayerGenerator {
      * wie Deutschland (je 7,8 Punkte je Saison); in Wirklichkeit liegt es
      * klar dahinter - jetzt -9.
      */
-    static LAND_STAERKE = { en: -1, es: -4, it: -4, fr: -9 };
+    static LAND_STAERKE = {
+        en: -1, es: -4, it: -4, fr: -9,
+        // Die Länder im Hintergrund: oben einige starke Vereine, in der
+        // Breite deutlich unter den großen fünf
+        nl: -16, pt: -15, br: -16, tr: -20, be: -21, at: -27, ch: -27, sc: -29
+    };
     static KADER_KOPF = 0.35;
 
     static getAbilityRangeForClub(level = 1, clubStrength = 0.5, options = {}) {

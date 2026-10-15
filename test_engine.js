@@ -3901,11 +3901,17 @@ function runEngineTests() {
 
         // Gespeichert wird in IndexedDB; der LocalStorage ist der Notfallweg
         // und fasst in den gängigen Browsern rund fünf Millionen Zeichen. Mit
-        // 384 Vereinen und gut 8300 Spielern liegt ein frischer Stand bei
-        // rund 3,5 MB - 4 MB lassen Luft für das, was eine Saison anhäuft.
-        if (encodedSize > 4 * 1024 * 1024) {
-            throw new Error(`Kodierter Spielstand ist mit ${(encodedSize / 1048576).toFixed(2)} MB zu groß für den LocalStorage`);
+        // 510 Vereinen und gut 11.000 Spielern liegt ein frischer Stand bei
+        // rund 5 MB - für den LocalStorage wird er verdichtet. 4 MB lassen
+        // dort reichlich Luft für das, was die Saisons anhäufen.
+        const lsText = GameState._lsText(JSON.stringify(encoded));
+        if (lsText.length > 4 * 1024 * 1024) {
+            throw new Error(`Spielstand ist mit ${(lsText.length / 1048576).toFixed(2)} MB zu groß für den LocalStorage`);
         }
+        if (encodedSize > 6 * 1024 * 1024) {
+            throw new Error(`Kodierter Spielstand ist mit ${(encodedSize / 1048576).toFixed(2)} MB unerwartet groß`);
+        }
+        if (GameState._ausText(lsText).players.length !== state.players.length) throw new Error("Verdichteter Stand lässt sich nicht lesen");
         if (!(encodedSize < rawSize * 0.45)) {
             throw new Error(`Kodierung spart zu wenig: ${(encodedSize / rawSize * 100).toFixed(0)} % der Rohgröße`);
         }
@@ -5911,7 +5917,8 @@ function runEngineTests() {
         Object.values(state.europeanCompetitions || {}).forEach(w => namen.push(w && w.name));
         const treffer = namen.filter(n => n && echt.has(h(n)));
         if (treffer.length) throw new Error(`Echte Namen in den Spieldaten: ${treffer.length} (z. B. "${treffer[0]}")`);
-        if (Object.keys(s.vereine).length !== 384 || Object.keys(s.spieler).length !== 290) throw new Error("Vorlage unvollständig");
+        // 384 Vereine der wählbaren Ligen, 126 aus den Ländern im Hintergrund
+        if (Object.keys(s.vereine).length !== 510 || Object.keys(s.spieler).length !== 290) throw new Error("Vorlage unvollständig");
     });
 
     test("Namen: Eine Namensdatei wird geprüft, gilt für neue und laufende Karrieren und lässt sich zurücknehmen", () => {
@@ -5933,7 +5940,7 @@ function runEngineTests() {
 
         // Die Vorlage ist selbst eine gültige Namensdatei
         const vorlage = NamenEngine.pruefe(JSON.parse(NamenEngine.vorlage()));
-        if (!vorlage.ok || vorlage.zahlen.vereine !== 384 || vorlage.zahlen.spieler !== 290 || vorlage.zahlen.wettbewerbe !== 28) throw new Error(`Vorlage: ${JSON.stringify(vorlage.zahlen)}`);
+        if (!vorlage.ok || vorlage.zahlen.vereine !== 510 || vorlage.zahlen.spieler !== 290 || vorlage.zahlen.wettbewerbe !== 36) throw new Error(`Vorlage: ${JSON.stringify(vorlage.zahlen)}`);
 
         const laufend = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const dor = laufend.clubs.find(c => c.id === "dor");
@@ -6239,8 +6246,10 @@ function runEngineTests() {
         const band = l => { const v = erste.filter(c => c.leagueId === `${l}_liga_1`).map(elf).sort((a, b) => b - a).slice(2, 7); return v.reduce((a, b) => a + b, 0) / v.length; };
         if (!(band("de") > band("fr"))) throw new Error(`Ränge 3-7: Deutschland ${band("de").toFixed(1)}, Frankreich ${band("fr").toFixed(1)}`);
         // Vorgabe der Fünfjahreswertung im Maßstab des Spiels, echte Reihenfolge
-        const v = Object.values(K.START);
+        const v = ["en", "it", "es", "de", "fr"].map(l => K.START[l]);
         if (Math.min(...v) < 5 || Math.max(...v) > 12) throw new Error(`Vorgabe ${JSON.stringify(K.START)}`);
+        const folge = ["en", "it", "es", "de", "fr", "nl", "pt", "be", "tr", "at", "ch", "sc"].map(l => K.START[l]);
+        if (folge.some((w, i) => i > 0 && w > folge[i - 1])) throw new Error(`Vorgabe nicht in echter Reihenfolge: ${folge}`);
     });
 
     // ---------------------------------------------------------------
@@ -12137,7 +12146,7 @@ function runEngineTests() {
         const { CompetitionEngine } = require('./js/engine/competitionEngine.js');
         const state = GameState.createNewGame("muc", "normal", { name: "Koeffizient" });
         const start = K.rangliste(state).map(z => z.land);
-        if (start.join(",") !== "en,it,es,de,fr") throw new Error(`Startreihenfolge ${start}`);
+        if (start.join(",") !== "en,it,es,de,fr,nl,pt,be,tr,at,ch,sc") throw new Error(`Startreihenfolge ${start}`);
         if (K.plaetze(state) !== null) throw new Error("Plätze vor dem ersten Saisonwechsel");
 
         // Die deutschen Vereine gewinnen alles, die englischen nichts
@@ -12151,13 +12160,15 @@ function runEngineTests() {
         const plaetze = K.saisonAbschluss(state);
         if (!plaetze.de.leistungsplatz || plaetze.de.championsLeague.length !== 5) throw new Error(`Deutschland: ${JSON.stringify(plaetze.de)}`);
         const summeUcl = Object.values(plaetze).reduce((a, p) => a + p.championsLeague.length, 0);
-        if (summeUcl !== 20) throw new Error(`${summeUcl} Plätze in der Königsklasse`);
+        // 4/4/4/4/3/2/2 und fünfmal der Meister, dazu der Leistungsplatz
+        if (summeUcl !== 29) throw new Error(`${summeUcl} Plätze in der Königsklasse`);
         if (Object.values(plaetze).filter(p => p.championsLeague.length === 3).length !== 1) throw new Error("Nicht genau ein Land mit drei Plätzen");
 
-        // Der Europapokal wird danach besetzt: fünf deutsche Vereine in der Königsklasse
+        // Der Europapokal wird danach besetzt: fünf deutsche Vereine in der
+        // Königsklasse - und als Erster der Wertung rückt Deutschland zuerst nach
         const ec = CompetitionEngine.generateEuropeanCompetitions(state.clubs, { leagues: state.leagues, standingsByLeague: state.standingsByLeague, spotsByCountry: plaetze });
         const deutsche = ec.ucl.participants.filter(id => land.get(id) === "de").length;
-        if (deutsche !== 5 || ec.ucl.participants.length !== 20) throw new Error(`Königsklasse: ${deutsche} deutsche von ${ec.ucl.participants.length}`);
+        if (deutsche < 5 || deutsche > 6 || ec.ucl.participants.length !== 32) throw new Error(`Königsklasse: ${deutsche} deutsche von ${ec.ucl.participants.length}`);
 
         // Gespeichert und nach fünf Saisons rollierend
         for (let i = 0; i < 6; i++) { state.seasonYear += 1; K.saisonAbschluss(state); }
@@ -12217,13 +12228,13 @@ function runEngineTests() {
             const je = {};
             state.europeanCompetitions[w].participants.forEach(id => { je[land.get(id)] = (je[land.get(id)] || 0) + 1; });
             const werte = Object.values(je);
-            if (Object.keys(je).length !== 5 || Math.max(...werte) - Math.min(...werte) > 1) throw new Error(`${w}: ${JSON.stringify(je)}`);
+            if (Object.keys(je).length !== 12 || Math.max(...werte) - Math.min(...werte) > 1) throw new Error(`${w}: ${JSON.stringify(je)}`);
         });
         // Nachgerückt wird in Tabellenfolge: der beste noch freie Verein jedes Landes
         const { CompetitionEngine } = require('./js/engine/competitionEngine.js');
         const ec = CompetitionEngine.generateEuropeanCompetitions(state.clubs, { leagues: state.leagues, standingsByLeague: state.standingsByLeague });
         const alle = new Set([...ec.ucl.participants, ...ec.uel.participants, ...ec.uecl.participants]);
-        if (alle.size !== 52) throw new Error(`${alle.size} Teilnehmer, ein Verein doppelt?`);
+        if (alle.size !== 80) throw new Error(`${alle.size} Teilnehmer, ein Verein doppelt?`);
     });
 
     test("Europäischer Supercup: Sieger der Königsklasse gegen den der Europa League - Kalender, Prämien, Elfmeter ohne Livespiel", () => {
@@ -12595,6 +12606,99 @@ function runEngineTests() {
         if (GameState._entpackt(ls) !== "x".repeat(GameState.LS_VERDICHTEN_AB) + text) throw new Error("Spielstand kommt verändert zurück");
         // Kleine Stände bleiben, wie sie sind
         if (GameState._lsText("{}") !== "{}") throw new Error("Kleiner Stand wurde verdichtet");
+    });
+
+    test("Weltausbau: Acht Länder im Hintergrund mit Ligen, Kadern, Europapokal und Fünfjahreswertung", () => {
+        const { KoeffizientEngine: K } = require('./js/engine/koeffizientEngine.js');
+        const { CareerEngine } = require('./js/engine/careerEngine.js');
+        const { SeasonEngine } = require('./js/engine/seasonEngine.js');
+        const neu = ["nl", "pt", "be", "tr", "at", "ch", "sc", "br"];
+        const state = GameState.createNewGame("muc", "normal", { name: "Welt" });
+        const hintergrund = LEAGUES_DATA.filter(l => l.hintergrund);
+        if (hintergrund.map(l => l.countryId).sort().join() !== neu.slice().sort().join()) throw new Error(`Länder: ${hintergrund.map(l => l.countryId)}`);
+        hintergrund.forEach(l => {
+            const vereine = state.clubs.filter(c => c.leagueId === l.id);
+            if (vereine.length !== l.teamCount) throw new Error(`${l.id}: ${vereine.length} von ${l.teamCount} Vereinen`);
+            if (!(state.otherSchedules[l.id] || []).length) throw new Error(`${l.id} ohne Spielplan`);
+            if (!vereine.every(c => state.players.filter(p => p.clubId === c.id).length >= 20)) throw new Error(`${l.id}: Kader zu klein`);
+        });
+        const namen = state.clubs.map(c => c.name);
+        if (new Set(namen).size !== namen.length) throw new Error("Doppelte Vereinsnamen");
+        // Die Spieler tragen die Nationalitäten ihres Landes
+        const niederlaender = state.players.filter(p => p.nationality === "Niederlande").length;
+        if (niederlaender < 60) throw new Error(`Nur ${niederlaender} Niederländer in der Welt`);
+
+        // Stärke: zwischen den großen fünf und der zweiten deutschen Liga, die kleinen Länder darunter
+        const elf = (c) => { const k = state.players.filter(p => p.clubId === c.id).sort((a, b) => b.overall - a.overall).slice(0, 11); return k.reduce((s, p) => s + p.overall, 0) / k.length; };
+        const schnitt = (id) => { const v = state.clubs.filter(c => c.leagueId === id).map(elf); return v.reduce((a, b) => a + b, 0) / v.length; };
+        if (!(schnitt("nl_liga_1") < schnitt("de_liga_1") - 3 && schnitt("nl_liga_1") > schnitt("de_liga_2"))) throw new Error("Niederlande falsch eingeordnet");
+        if (!(schnitt("sc_liga_1") < schnitt("nl_liga_1") - 3)) throw new Error("Schottland nicht schwächer als die Niederlande");
+        // Wirtschaft: Der Spitzenverein der Niederlande setzt weniger um als der der Bundesliga
+        const spitze = (id) => state.clubs.filter(c => c.leagueId === id).sort((a, b) => (b.clubStrength || 0) - (a.clubStrength || 0))[0];
+        if (!(FinanceEngine.kommerzBasis(spitze("nl_liga_1")) < FinanceEngine.kommerzBasis(spitze("de_liga_1")) * 0.6)) throw new Error("Niederlande zu reich");
+        neu.forEach(l => { if (!FinanceEngine.LAND_ECONOMY[l]) throw new Error(`Keine Wirtschaftsdaten für ${l}`); });
+        // Jedes Land trägt sich selbst: Der Unterhalt folgt der Wirtschaftskraft
+        hintergrund.forEach(l => {
+            const marge = state.clubs.filter(c => c.leagueId === l.id).map(c => {
+                const ein = FinanceEngine.einnahmenSchaetzung(c, state);
+                const gehalt = state.players.filter(p => p.clubId === c.id).reduce((s, p) => s + (p.wage || 0), 0);
+                const betrieb = ein * FinanceEngine.operatingShare(c) + gehalt * FinanceEngine.OPERATING_WAGE_SHARE;
+                return (ein - gehalt - FinanceEngine.maintenancePerMatchday(c, state) - betrieb) / ein;
+            }).sort((a, b) => a - b);
+            const median = marge[Math.floor(marge.length / 2)];
+            if (median < -0.08 || median > 0.3) throw new Error(`${l.id}: Der Median-Verein ${median < 0 ? "verliert" : "legt zurück"} ${Math.abs(median * 100).toFixed(0)} % je Spieltag`);
+        });
+        // Weltklasse misst sich an den großen Ligen, nicht am Durchschnitt aller Erstligen
+        const groesste = state.clubs.filter(c => (c.level || 1) === 1 && !hintergrund.some(l => l.id === c.leagueId))
+            .flatMap(c => state.players.filter(p => p.clubId === c.id).map(p => p.overall).sort((a, b) => b - a).slice(0, 11)).sort((a, b) => a - b);
+        const erwartet = Math.max(85, groesste[Math.floor(0.99 * (groesste.length - 1))]);
+        if (PlayerRatingEngine.klassenLeiter(state).welt !== erwartet) throw new Error(`Weltklasse ab ${PlayerRatingEngine.klassenLeiter(state).welt} statt ${erwartet}`);
+
+        // Europapokal: acht Gruppen in der Königsklasse, mit den Meistern der kleinen Länder - ohne Brasilien
+        const ec = state.europeanCompetitions;
+        const land = (id) => state.clubs.find(c => c.id === id)?.countryId;
+        if (ec.ucl.participants.length !== 32 || ec.uel.participants.length !== 24 || ec.uecl.participants.length !== 24) {
+            throw new Error(`Teilnehmer ${ec.ucl.participants.length}/${ec.uel.participants.length}/${ec.uecl.participants.length}`);
+        }
+        ["nl", "pt", "be", "tr", "at", "ch", "sc"].forEach(l => {
+            if (!ec.ucl.participants.some(id => land(id) === l)) throw new Error(`${l} nicht in der Königsklasse`);
+        });
+        if (Object.values(ec).some(w => (w.participants || []).some(id => land(id) === "br"))) throw new Error("Brasilien im Europapokal");
+
+        // Fünfjahreswertung über zwölf Länder
+        if (K.LAENDER.length !== 12) throw new Error(`${K.LAENDER.length} Länder in der Wertung`);
+        const plaetze = K._verteile({ saisons: [1, 2, 3, 4].map(i => ({ saison: i, werte: Object.assign({}, K.START), vorgabe: true })) });
+        const nachRang = Object.values(plaetze).sort((a, b) => a.rang - b.rang).map(p => p.championsLeague.length);
+        if (nachRang.join() !== "4,4,4,4,3,2,2,1,1,1,1,1") throw new Error(`Plätze nach Rang: ${nachRang}`);
+        // Ein Land, das es in einer alten Saison noch nicht gab, zählt mit seiner Vorgabe
+        if (K._wert({ werte: { en: 9 } }, "nl") !== K.START.nl) throw new Error("Fehlender Wert ohne Vorgabe");
+
+        // Nicht wählbar und keine Trainerposten
+        const passend = CareerEngine.passendeLigen(state, 34);
+        if (passend.some(id => hintergrund.some(l => l.id === id))) throw new Error("Trainerposten im Hintergrund");
+
+        // Sie spielen mit
+        for (let i = 0; i < 6; i++) SeasonEngine.advanceToNextMatchday(state);
+        const tabelle = state.standingsByLeague.nl_liga_1 || [];
+        if (!tabelle.length || !tabelle.some(z => z.played >= 4)) throw new Error("Die niederländische Liga spielt nicht");
+
+        // Ein älterer Spielstand bekommt die Länder beim Laden dazu - genau einmal
+        const alt = Object.assign(new GameState(), JSON.parse(JSON.stringify(state)));
+        const ids = new Set(alt.clubs.filter(c => neu.includes(c.countryId)).map(c => c.id));
+        alt.clubs = alt.clubs.filter(c => !ids.has(c.id));
+        alt.players = alt.players.filter(p => !ids.has(p.clubId));
+        alt.leagues = alt.leagues.filter(l => !l.hintergrund);
+        hintergrund.forEach(l => { delete alt.otherSchedules[l.id]; delete alt.standingsByLeague[l.id]; });
+        GameState.ergaenzeAltstand(alt);
+        hintergrund.forEach(l => {
+            if (alt.clubs.filter(c => c.leagueId === l.id).length !== l.teamCount || !(alt.otherSchedules[l.id] || []).length) throw new Error(`${l.id} nicht nachgetragen`);
+        });
+        if (!alt.inbox.some(m => /Die Spielwelt wächst/.test(m.subject))) throw new Error("Keine Nachricht zu den neuen Ländern");
+        const vereine = alt.clubs.length;
+        GameState.ergaenzeAltstand(alt);
+        if (alt.clubs.length !== vereine) throw new Error("Länder doppelt nachgetragen");
+        SeasonEngine.advanceToNextMatchday(alt);
+        if (!(alt.standingsByLeague.nl_liga_1 || []).some(z => z.played > 0)) throw new Error("Nachgetragene Liga holt nicht auf");
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

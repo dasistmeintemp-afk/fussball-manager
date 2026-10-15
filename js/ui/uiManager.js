@@ -113,6 +113,17 @@ class UIManager {
         return `${vz}${Math.round(abs)} €`;
     }
 
+    /** Die Flagge eines Landes aus den Länderdaten - auch für die Länder im Hintergrund */
+    flaggeVon(countryId) {
+        const laender = (typeof COUNTRIES_DATA !== "undefined" && Array.isArray(COUNTRIES_DATA)) ? COUNTRIES_DATA : [];
+        return laender.find(l => l.id === countryId)?.flag || "🌍";
+    }
+
+    /** Liegt eine Liga in einem Land im Hintergrund? */
+    istHintergrundLiga(liga) {
+        return !!(liga && liga.hintergrund);
+    }
+
     /** Farbe für einen Fitnesswert: grün, gelb, rot */
     fitnessFarbe(wert) {
         const f = Number(wert) || 0;
@@ -1947,16 +1958,16 @@ class UIManager {
         }
         const ligaId = this.statsLigaId;
         if (select) {
-            const flagge = { de: "🇩🇪", en: "🏴", es: "🇪🇸", it: "🇮🇹", fr: "🇫🇷" };
-            const name = l => `${flagge[l.countryId] || "🌍"} ${l.shortName || l.name}`;
+            const name = l => `${this.flaggeVon(l.countryId)} ${l.shortName || l.name}`;
             const eigene = ligen.find(l => l.id === eigeneLiga);
-            const andere = ligen
-                .filter(l => l.id !== eigeneLiga)
-                .sort((x, y) => String(x.countryId).localeCompare(String(y.countryId)) || (x.level || 1) - (y.level || 1));
+            const sortiert = (liste) => liste.sort((x, y) => String(x.countryId).localeCompare(String(y.countryId)) || (x.level || 1) - (y.level || 1));
+            const andere = sortiert(ligen.filter(l => l.id !== eigeneLiga && !this.istHintergrundLiga(l)));
+            const hintergrund = sortiert(ligen.filter(l => l.id !== eigeneLiga && this.istHintergrundLiga(l)));
             select.innerHTML = [
                 eigene ? `<option value="${eigene.id}">${name(eigene)} (eigene Liga)</option>` : "",
                 `<option value="alle">🌍 Alle Ligen</option>`,
-                ...andere.map(l => `<option value="${l.id}">${name(l)}</option>`)
+                ...andere.map(l => `<option value="${l.id}">${name(l)}</option>`),
+                hintergrund.length ? `<optgroup label="Weitere Länder">${hintergrund.map(l => `<option value="${l.id}">${name(l)}</option>`).join("")}</optgroup>` : ""
             ].join("");
             select.value = ligaId;
             select.onchange = () => {

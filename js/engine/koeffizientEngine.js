@@ -13,8 +13,9 @@
  * Der Wert einer Saison ist die Summe geteilt durch die Zahl der Vereine des
  * Landes im Europapokal, die Fünfjahreswertung die Summe der letzten fünf
  * Saisons. Die Länder auf Rang 1 bis 4 stellen vier Vereine in der
- * Königsklasse, Rang 5 drei. Das Land mit dem besten Wert der Vorsaison
- * bekommt einen fünften Platz (Leistungsplatz).
+ * Königsklasse, Rang 5 drei, die Ränge 6 und 7 zwei, alle dahinter ihren
+ * Meister. Das Land mit dem besten Wert der Vorsaison bekommt einen
+ * weiteren Platz (Leistungsplatz).
  *
  * Die vier Saisons vor dem Karrierestart folgen der echten Rangfolge:
  * England vor Italien, Spanien, Deutschland und Frankreich. Die Werte
@@ -25,10 +26,19 @@
  */
 
 const KoeffizientEngine = {
-    LAENDER: ["en", "it", "es", "de", "fr"],
-    NAMEN: { en: "England", it: "Italien", es: "Spanien", de: "Deutschland", fr: "Frankreich" },
+    LAENDER: ["en", "it", "es", "de", "fr", "nl", "pt", "be", "tr", "at", "ch", "sc"],
+    NAMEN: {
+        en: "England", it: "Italien", es: "Spanien", de: "Deutschland", fr: "Frankreich",
+        nl: "Niederlande", pt: "Portugal", be: "Belgien", tr: "Türkei", at: "Österreich", ch: "Schweiz", sc: "Schottland"
+    },
     /** Werte je Saison vor dem Karrierestart (vier Saisons) */
-    START: { en: 9.8, it: 9.0, es: 8.8, de: 8.4, fr: 7.2 },
+    START: { en: 9.8, it: 9.0, es: 8.8, de: 8.4, fr: 7.2, nl: 6.4, pt: 6.2, be: 5.4, tr: 5.0, at: 4.4, ch: 4.2, sc: 4.0 },
+    /**
+     * Startplätze in der Königsklasse nach Rang. Die großen Länder stellen
+     * vier, die kleineren ihren Meister und manchmal den Zweiten. Dazu je
+     * einen Platz im Kontinentalpokal und im Euro-Cup.
+     */
+    KOENIGSKLASSE_JE_RANG: [4, 4, 4, 4, 3, 2, 2, 1, 1, 1, 1, 1],
     PUNKTE: { sieg: 2, remis: 1, runde: 1, koenigsklasse: 2 },
     GEMERKT: 5,
 
@@ -87,12 +97,22 @@ const KoeffizientEngine = {
      * Die Fünfjahreswertung: archivierte Saisons plus die laufende.
      * [{ land, name, werte: [..fünf..], summe, rang }]
      */
+    /**
+     * Der Wert eines Landes in einer archivierten Saison. Ein Land, das es
+     * in der Welt damals noch nicht gab (älterer Spielstand), zählt mit
+     * seiner Vorgabe.
+     */
+    _wert(saison, land) {
+        const w = saison && saison.werte ? saison.werte[land] : undefined;
+        return typeof w === "number" ? w : (this.START[land] || 0);
+    },
+
     rangliste(state) {
         const s = this._speicher(state);
         const laufend = this.saisonWerte(state).werte;
         const saisons = s.saisons.slice(-(this.GEMERKT - 1));
         return this.LAENDER.map(l => {
-            const werte = saisons.map(x => x.werte[l] || 0).concat([laufend[l] || 0]);
+            const werte = saisons.map(x => this._wert(x, l)).concat([laufend[l] || 0]);
             return { land: l, name: this.NAMEN[l], werte, summe: Math.round(werte.reduce((a, b) => a + b, 0) * 1000) / 1000 };
         }).sort((a, b) => b.summe - a.summe).map((z, i) => Object.assign(z, { rang: i + 1 }));
     },
@@ -112,14 +132,14 @@ const KoeffizientEngine = {
     },
 
     _verteile(s) {
-        const summe = (l) => s.saisons.reduce((a, x) => a + (x.werte[l] || 0), 0);
+        const summe = (l) => s.saisons.reduce((a, x) => a + this._wert(x, l), 0);
         const rang = this.LAENDER.slice().sort((a, b) => summe(b) - summe(a));
         const letzte = s.saisons[s.saisons.length - 1];
         const leistung = letzte && !letzte.vorgabe
-            ? this.LAENDER.slice().sort((a, b) => (letzte.werte[b] || 0) - (letzte.werte[a] || 0))[0] : null;
+            ? this.LAENDER.slice().sort((a, b) => this._wert(letzte, b) - this._wert(letzte, a))[0] : null;
         const plaetze = {};
         rang.forEach((l, i) => {
-            const ucl = (i < 4 ? 4 : 3) + (l === leistung ? 1 : 0);
+            const ucl = (this.KOENIGSKLASSE_JE_RANG[i] ?? 1) + (l === leistung ? 1 : 0);
             plaetze[l] = {
                 rang: i + 1, leistungsplatz: l === leistung,
                 championsLeague: Array.from({ length: ucl }, (_, k) => k + 1),

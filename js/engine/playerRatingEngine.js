@@ -518,9 +518,13 @@ class PlayerRatingEngine {
         });
         const stufen = new Map();
         const erstligisten = [];
+        // Weltklasse misst sich an den großen Ligen. Die Ligen im Hintergrund
+        // sind schwächer und drückten das Perzentil: Dann hieß schon ein
+        // Spitzenspieler der Bundesliga "Weltklassespieler".
+        const hintergrund = new Set((state?.leagues || []).filter(l => l && l.hintergrund).map(l => l.id));
         (state?.clubs || []).forEach(c => {
             const elf = (nachVerein.get(c.id) || []).sort((a, b) => b - a).slice(0, 11);
-            if ((c.level || 1) === 1) erstligisten.push(...elf);
+            if ((c.level || 1) === 1 && !hintergrund.has(c.leagueId)) erstligisten.push(...elf);
             if ((c.countryId || "de") !== land) return;
             const lvl = c.level || 1;
             if (!stufen.has(lvl)) stufen.set(lvl, []);

@@ -44,9 +44,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const fakten = document.getElementById("startWorldFacts");
         const ligen = (typeof LEAGUES_DATA !== "undefined" && Array.isArray(LEAGUES_DATA)) ? LEAGUES_DATA : [];
         if (fakten && ligen.length) {
-            const vereine = ligen.reduce((summe, l) => summe + (l.teamCount || 0), 0);
-            const laender = new Set(ligen.map(l => l.countryId)).size;
-            fakten.textContent = `Übernimm einen von ${vereine} Vereinen aus ${ligen.length} Ligen in ${laender} Ländern – von der Königsklasse bis zur Landesliga. Kader, Taktik, Transfers und jedes Spiel live in 2D.`;
+            // Wählbar sind die Ligen der großen fünf, die übrigen Länder spielen im Hintergrund mit
+            const waehlbar = ligen.filter(l => !l.hintergrund);
+            const vereine = waehlbar.reduce((summe, l) => summe + (l.teamCount || 0), 0);
+            const laender = new Set(waehlbar.map(l => l.countryId)).size;
+            const weitere = new Set(ligen.filter(l => l.hintergrund).map(l => l.countryId)).size;
+            fakten.textContent = `Übernimm einen von ${vereine} Vereinen aus ${waehlbar.length} Ligen in ${laender} Ländern – von der Königsklasse bis zur Landesliga.`
+                + (weitere ? ` ${weitere} weitere Länder spielen im Hintergrund mit.` : "")
+                + ` Kader, Taktik, Transfers und jedes Spiel live in 2D.`;
         }
         if (!detailsContainer || !continueBtn) return;
 

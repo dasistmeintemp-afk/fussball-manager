@@ -558,8 +558,15 @@ function runWizardTests() {
             const clubs = GameState.getSelectableClubs();
             const ligen = ui.getWizardLeagues(clubs);
 
-            if (ligen.length !== LEAGUES_DATA.length) {
-                throw new Error(`Der Assistent kennt ${ligen.length} von ${LEAGUES_DATA.length} Ligen`);
+            // Die Länder im Hintergrund spielen mit, sind aber nicht wählbar
+            const waehlbar = LEAGUES_DATA.filter(l => !l.hintergrund);
+            if (ligen.length !== waehlbar.length) {
+                throw new Error(`Der Assistent kennt ${ligen.length} von ${waehlbar.length} Ligen`);
+            }
+            const hintergrund = new Set(LEAGUES_DATA.filter(l => l.hintergrund).map(l => l.id));
+            if (!hintergrund.size) throw new Error("Keine Länder im Hintergrund");
+            if (ligen.some(l => hintergrund.has(l.id)) || clubs.some(c => hintergrund.has(c.leagueId))) {
+                throw new Error("Ein Verein im Hintergrund ist im Assistenten wählbar");
             }
             ligen.forEach(liga => {
                 if (liga.clubCount <= 0) throw new Error(`Liga ${liga.id} hat keine Vereine`);
@@ -713,16 +720,19 @@ function runWizardTests() {
         const { UIManager } = require('./js/ui/uiManager.js');
 
         const clubs = GameState.getSelectableClubs();
-        const erwartet = LEAGUES_DATA.reduce((sum, l) => sum + l.teamCount, 0);
+        // Die Ligen im Hintergrund (Weltausbau) sind nicht wählbar
+        const waehlbar = LEAGUES_DATA.filter(l => !l.hintergrund);
+        const erwartet = waehlbar.reduce((sum, l) => sum + l.teamCount, 0);
 
         if (clubs.length !== erwartet) {
             throw new Error(`Auswahl umfasst ${clubs.length} statt ${erwartet} Vereine`);
         }
 
         const ligen = new Set(clubs.map(c => c.leagueId));
-        LEAGUES_DATA.forEach(l => {
+        waehlbar.forEach(l => {
             if (!ligen.has(l.id)) throw new Error(`Liga ${l.id} fehlt in der Vereinsauswahl`);
         });
+        if (LEAGUES_DATA.some(l => l.hintergrund && ligen.has(l.id))) throw new Error("Liga im Hintergrund in der Vereinsauswahl");
 
         clubs.forEach(c => {
             if (!c.name || !c.leagueName || !c.stadium) throw new Error(`Unvollständiger Auswahleintrag: ${c.id}`);

@@ -66,7 +66,7 @@ class ClubGenerator {
         for (let attempt = 0; attempt < 25; attempt++) {
             let name;
 
-            if (countryId === "en") {
+            if (countryId === "en" || countryId === "sc") {
                 const suffix = this.pick(pool.clubSuffixes, "United");
                 const prefix = this.pick(pool.clubPrefixes, "");
                 name = prefix ? `${prefix} ${city} ${suffix}`.trim() : `${city} ${suffix}`;

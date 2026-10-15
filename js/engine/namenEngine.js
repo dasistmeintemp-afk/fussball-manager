@@ -37,7 +37,9 @@ const NamenEngine = {
         fr_liga_1: "Première Division", fr_liga_2: "Deuxième Division", fr_liga_3: "National",
         de_cup: "Deutschlandpokal", en_cup: "National Cup", es_cup: "Copa Nacional", it_cup: "Coppa Nazionale", fr_cup: "Coupe Nationale",
         supercup_de: "Supercup", supercup_en: "Super Cup", supercup_es: "Supercopa Nacional", supercup_it: "Supercoppa Nazionale", supercup_fr: "Supercoupe",
-        ucl: "Meisterpokal", uel: "Kontinentalpokal", uecl: "Euro-Cup"
+        ucl: "Meisterpokal", uel: "Kontinentalpokal", uecl: "Euro-Cup",
+        nl_liga_1: "Hoofdklasse", pt_liga_1: "Primeira Divisão", be_liga_1: "Eerste Klasse", tr_liga_1: "Birinci Lig",
+        at_liga_1: "Liga Österreich", ch_liga_1: "Nationalliga", sc_liga_1: "Scottish Division", br_liga_1: "Série Nacional"
     },
 
     /** Erfundene Hauptsponsoren der ersten deutschen Liga, in der Reihenfolge der Vereine */

@@ -117,7 +117,17 @@ const FinanceEngine = {
         de: { sockel: 1.0, spanne: 1.0 },
         es: { sockel: 0.75, spanne: 1.0 },
         it: { sockel: 0.6, spanne: 0.75 },
-        fr: { sockel: 0.5, spanne: 0.75 }
+        fr: { sockel: 0.5, spanne: 0.75 },
+        // Die Länder im Hintergrund: Wenige große Vereine, dahinter wenig
+        // Fernsehgeld (Umsatz je Erstligist zwischen gut 10 und 45 Mio. EUR)
+        nl: { sockel: 0.12, spanne: 0.42 },
+        pt: { sockel: 0.1, spanne: 0.42 },
+        tr: { sockel: 0.14, spanne: 0.4 },
+        br: { sockel: 0.14, spanne: 0.38 },
+        be: { sockel: 0.1, spanne: 0.3 },
+        at: { sockel: 0.07, spanne: 0.24 },
+        ch: { sockel: 0.07, spanne: 0.24 },
+        sc: { sockel: 0.06, spanne: 0.28 }
     },
 
     /** Die Länderfaktoren eines Landes (unbekanntes Land: wie die Bundesliga) */
@@ -503,7 +513,15 @@ const FinanceEngine = {
      */
     maintenancePerMatchday(club, state = null) {
         if (!club) return 0;
-        const faktor = this.LEVEL_ECONOMY[club.level || 1] ?? 0.05;
+        // Was Personal, Dienstleister und Auflagen kosten, folgt der
+        // Wirtschaftskraft des Landes: Ein Stadion in Graz kostet nicht, was
+        // eines in Dortmund kostet. Ohne diesen Faktor verlor der mittlere
+        // Erstligist in Österreich je Spieltag ein Drittel seiner Einnahmen.
+        // Nach oben bleibt es beim Maßstab der Bundesliga - mehr Fernsehgeld
+        // macht den Rasen in England nicht teurer.
+        const rang = typeof club.clubStrength === "number" ? club.clubStrength : 0.5;
+        const land = Math.min(1, this.landFaktor(club.countryId, rang));
+        const faktor = (this.LEVEL_ECONOMY[club.level || 1] ?? 0.05) * land;
 
         const fac = (typeof FacilityEngine !== "undefined" && FacilityEngine)
             ? FacilityEngine

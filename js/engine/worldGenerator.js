@@ -194,7 +194,9 @@ class WorldGenerator {
     }
 
     /** Die Ligen, die nach dem ersten Aufbau der Welt dazugekommen sind */
-    static NACHTRAEGLICHE_LIGEN = ["en_liga_2", "en_liga_3", "es_liga_2", "es_liga_3", "it_liga_2", "it_liga_3", "fr_liga_2", "fr_liga_3"];
+    static NACHTRAEGLICHE_LIGEN = ["en_liga_2", "en_liga_3", "es_liga_2", "es_liga_3", "it_liga_2", "it_liga_3", "fr_liga_2", "fr_liga_3",
+        // die Länder im Hintergrund
+        "nl_liga_1", "pt_liga_1", "be_liga_1", "tr_liga_1", "at_liga_1", "ch_liga_1", "sc_liga_1", "br_liga_1"];
 
     /**
      * Ein Spielstand aus der Zeit vor den zweiten und dritten Ligen in
@@ -207,6 +209,8 @@ class WorldGenerator {
     static ergaenzeNeueLigen(state) {
         if (!state || !Array.isArray(state.clubs) || !Array.isArray(state.players)) return [];
         if (!state.clubs.some(c => c.leagueId === "en_liga_1")) return [];
+        // Ein Spielstand ohne Spielplan (etwa aus einem Test) bekommt nichts dazu
+        if (!Array.isArray(state.schedule) || !state.schedule.length) return [];
         const fehlend = this.getLeagues().filter(l => this.NACHTRAEGLICHE_LIGEN.includes(l.id)
             && !state.clubs.some(c => c.leagueId === l.id));
         const clubGen = this.getClubGenerator();
@@ -230,6 +234,20 @@ class WorldGenerator {
             state.otherSchedules[league.id] = schedule;
             state.standingsByLeague[league.id] = gameState.calculateStandings(clubs, schedule, 0);
         });
+        // Das Niveau der neuen Ligen als Sollwert dazu (niveauAusgleich, Fanartikel)
+        if (state.ligaNiveau && typeof state.ligaNiveau === "object") {
+            const jetzt = this.ligaNiveau(state);
+            fehlend.forEach(l => { if (typeof jetzt[l.id] === "number") state.ligaNiveau[l.id] = jetzt[l.id]; });
+        }
+        // Die neuen Erstligisten spielen die Formation, die zu ihrem Kader passt
+        if (typeof gameState.waehleFormation === "function") {
+            const neu = new Set(fehlend.filter(l => (l.level || 1) === 1).map(l => l.id));
+            state.clubs.filter(c => neu.has(c.leagueId)).forEach(c => {
+                const kader = state.players.filter(p => p.clubId === c.id);
+                const liga = fehlend.find(l => l.id === c.leagueId);
+                if (kader.length >= 11) gameState.waehleFormation(c, kader, 0, liga && liga.hintergrund ? gameState.FORMATIONEN_HINTERGRUND : null);
+            });
+        }
         return fehlend;
     }
 

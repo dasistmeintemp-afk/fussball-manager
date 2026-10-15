@@ -809,11 +809,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             slot.y = Math.round(y * 10) / 10;
 
             // Position folgt automatisch der Zone, solange sie nicht manuell gesetzt wurde
-            if (posEngine && !slot.manualPos) {
-                const detected = posEngine.detectPositionFromCoords(slot.x, slot.y);
-                slot.pos = detected;
-                slot.role = posEngine.POSITION_META[detected]?.name || detected;
-            }
+            this._slotPositionNachOrt(slot);
 
             node.style.left = `${slot.x}%`;
             node.style.top = `${slot.y}%`;
@@ -836,6 +832,43 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         window.addEventListener("pointermove", onMove);
         window.addEventListener("pointerup", onUp);
         window.addEventListener("pointercancel", onUp);
+    },
+
+    /** Die Position eines Slots folgt seinem Ort, solange sie nicht von Hand gesetzt ist */
+    _slotPositionNachOrt(slot) {
+        const posEngine = this.getPositionEngine();
+        if (!posEngine || slot.manualPos) return;
+        const erkannt = posEngine.detectPositionFromCoords(slot.x, slot.y);
+        slot.pos = erkannt;
+        slot.role = posEngine.POSITION_META[erkannt]?.name || erkannt;
+    },
+
+    /** Den gewählten Spieler um einen Rasterschritt verschieben */
+    schiebeSlot(richtung) {
+        if (!this.formationEditMode || !Array.isArray(this.formationDraft)) return;
+        const slot = this.formationDraft[this.selectedPitchSlot];
+        if (!slot) { this.showToast("Erst einen Spieler auf dem Feld antippen.", "info"); return; }
+        const dx = { links: -5, rechts: 5 }[richtung] || 0;
+        const dy = { vor: -100 / 12, zurueck: 100 / 12 }[richtung] || 0;
+        slot.x = Math.round(Math.max(4, Math.min(96, slot.x + dx)) * 10) / 10;
+        slot.y = Math.round(Math.max(4, Math.min(96, slot.y + dy)) * 10) / 10;
+        this._slotPositionNachOrt(slot);
+        this.formationDirty = true;
+        this.renderTactics();
+    },
+
+    /** Links und rechts tauschen - eine asymmetrische Formation für die andere Seite */
+    spiegleFormation() {
+        if (!this.formationEditMode || !Array.isArray(this.formationDraft)) return;
+        const seite = { LV: "RV", RV: "LV", LM: "RM", RM: "LM", LA: "RA", RA: "LA" };
+        this.formationDraft.forEach(slot => {
+            slot.x = Math.round((100 - slot.x) * 10) / 10;
+            if (slot.manualPos) { if (seite[slot.pos]) slot.pos = seite[slot.pos]; }
+            else this._slotPositionNachOrt(slot);
+        });
+        this.formationDirty = true;
+        this.playSound("click");
+        this.renderTactics();
     },
 
     /**

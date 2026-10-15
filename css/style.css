@@ -1700,6 +1700,9 @@ body {
 .zs-rollen label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
 .zs-liste { margin: 0; }
 .zs-eingespielt { color: var(--text-muted); }
+.formation-feinjustage { align-items: center; }
+.feinjustage-tasten { display: inline-flex; gap: 4px; }
+.feinjustage-tasten .btn { min-width: 40px; min-height: 40px; font-size: 16px; }
 @media (max-width: 600px) {
     .zs-rollen { grid-template-columns: 1fr; }
 }

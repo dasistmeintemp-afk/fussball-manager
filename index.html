@@ -587,6 +587,16 @@
                                         Am Raster ausrichten
                                     </label>
                                 </div>
+                                <div class="formation-editor-row formation-feinjustage">
+                                    <span class="formation-editor-hint">Gewählten Spieler verschieben:</span>
+                                    <span class="feinjustage-tasten" role="group" aria-label="Gewählten Spieler verschieben">
+                                        <button class="btn btn-sm btn-secondary" data-schieben="links" aria-label="Nach links">←</button>
+                                        <button class="btn btn-sm btn-secondary" data-schieben="vor" aria-label="Nach vorn">↑</button>
+                                        <button class="btn btn-sm btn-secondary" data-schieben="zurueck" aria-label="Nach hinten">↓</button>
+                                        <button class="btn btn-sm btn-secondary" data-schieben="rechts" aria-label="Nach rechts">→</button>
+                                    </span>
+                                    <button class="btn btn-sm btn-secondary" id="btnFormationSpiegeln" title="Links und rechts tauschen">⇋ Spiegeln</button>
+                                </div>
                                 <div class="formation-editor-row">
                                     <input type="text" id="inputFormationName" class="styled-input" maxlength="28" placeholder="Name der eigenen Formation">
                                     <button class="btn btn-sm btn-primary" id="btnFormationSave"><svg class="ico" aria-hidden="true"><use href="#i-save"/></svg><span>Speichern</span></button>

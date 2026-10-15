@@ -3576,8 +3576,9 @@ class UIManager {
             const engine = this.getRatingEngine();
             const minOvr = engine ? engine.overallForStars(minStars, this.starContext()) : 75;
 
+            const land = document.getElementById("scoutLandSelect")?.value || "ALL";
             const res = ScoutingEngine.startAssignment(this.app.state, {
-                position: pos, maxAge: maxAge, minOverall: minOvr, minStars: minStars
+                position: pos, maxAge: maxAge, minOverall: minOvr, minStars: minStars, land
             });
             if (res.success) {
                 this.playSound("click");

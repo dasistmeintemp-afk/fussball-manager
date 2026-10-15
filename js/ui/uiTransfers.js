@@ -697,6 +697,16 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ausserReichweite = vorher - marketPlayers.length;
         }
 
+        // Länderwissen: Aus dem Ausland kennt der Verein nur einen Teil der
+        // Spieler - die übrigen tauchen erst nach Scout-Aufträgen dort auf
+        let unbekannt = 0;
+        const scoutSicht = this.getScoutingEngine()?.sichtbarkeit?.(state);
+        if (scoutSicht) {
+            const vorher = marketPlayers.length;
+            marketPlayers = marketPlayers.filter(scoutSicht.istSichtbar);
+            unbekannt = vorher - marketPlayers.length;
+        }
+
         const reichweiteEl = document.getElementById("transferReachHint");
         if (reichweiteEl && transferEngine && typeof transferEngine.describeReach === "function") {
             const reich = transferEngine.describeReach(userClub, state.leagues || []);
@@ -707,6 +717,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 + `🌍 <strong>Marktreichweite:</strong> ${this.escapeHtml(reich.text)}`
                 + (ausserReichweite > 0
                     ? ` <span class="text-muted">(${ausserReichweite.toLocaleString("de-DE")} Spieler höherer Ligen sind für Sie außer Reichweite.)</span>`
+                    : "")
+                + (unbekannt > 0
+                    ? `<div class="text-muted tf-landwissen">🔭 ${unbekannt.toLocaleString("de-DE")} Spieler im Ausland kennt Ihr Scout noch nicht. Ein Auftrag mit Länderfokus (Scouting) macht sie sichtbar.</div>`
                     : "");
         }
 
@@ -853,13 +866,15 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 assignList.innerHTML = beobachtungenHtml + assignments.map(a => `
                     <div class="news-item-dash" style="justify-content: space-between;">
                         <div>
-                            🔭 <strong>Scout-Fokus:</strong> Position: ${a.position} | Alter bis: ${a.maxAge} | Mindestens ${this.starsFor(a.minOverall)}
+                            🔭 <strong>Scout-Fokus:</strong> Position: ${a.position} | Alter bis: ${a.maxAge} | Mindestens ${this.starsFor(a.minOverall)}${a.land && this.getScoutingEngine() ? ` | ${this.flaggeVon(a.land)} ${this.escapeHtml(this.getScoutingEngine().landName(a.land))}` : ""}
                         </div>
                         <span class="header-tag" style="background:var(--accent-primary); color:#000;">⏳ Noch ${a.matchdaysRemaining} Spieltag(e)</span>
                     </div>
                 `).join("");
             }
         }
+
+        this.renderLaenderwissen(state);
 
         // Wer die Berichte schreibt - und wie viel man auf sie geben kann
         const stabInfo = document.getElementById("scoutStabInfo");
@@ -908,6 +923,67 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     });
                 });
             }
+        }
+    },
+
+    getScoutingEngine() {
+        return (typeof ScoutingEngine !== "undefined" && ScoutingEngine)
+            ? ScoutingEngine
+            : ((typeof window !== "undefined" && window.ScoutingEngine) ? window.ScoutingEngine : null);
+    },
+
+    /**
+     * Länderwissen: je Land ein Balken, wie viele Spieler dort bekannt sind,
+     * und die Länderauswahl im Auftragsformular.
+     */
+    renderLaenderwissen(state) {
+        const se = this.getScoutingEngine();
+        const liste = document.getElementById("scoutLaenderList");
+        const auswahl = document.getElementById("scoutLandSelect");
+        if (!se || typeof se.laender !== "function" || !state) return;
+
+        const sicht = se.sichtbarkeit(state);
+        const bekannt = {}, gesamt = {};
+        state.players.forEach(p => {
+            if (!p.clubId || p.clubId === state.userClubId) return;
+            const land = se.landVon(state, p, sicht.vereine);
+            if (!land) return;
+            gesamt[land] = (gesamt[land] || 0) + 1;
+            if (sicht.istSichtbar(p)) bekannt[land] = (bekannt[land] || 0) + 1;
+        });
+        const userClub = state.clubs.find(c => c.id === state.userClubId);
+        const heim = userClub?.countryId || "de";
+        const laender = se.laender(state)
+            .map(l => ({ ...l, wissen: sicht.wissenVon(l.id), zugewinn: Number(state.scouting?.laender?.[l.id]) || 0 }))
+            .sort((a, b) => (b.id === heim) - (a.id === heim) || b.wissen - a.wissen || a.name.localeCompare(b.name));
+
+        if (auswahl) {
+            // Länder, deren Ligen alle über der eigenen Marktreichweite liegen,
+            // lohnen keinen Auftrag - der Scout käme mit leeren Händen zurück
+            const te = (typeof TransferEngine !== "undefined" && TransferEngine)
+                ? TransferEngine : ((typeof window !== "undefined" && window.TransferEngine) ? window.TransferEngine : null);
+            const reich = te && typeof te.marketReach === "function" && userClub ? te.marketReach(userClub) : 1;
+            const erreichbar = new Set(state.clubs.filter(c => (c.level || 1) >= reich).map(c => c.countryId));
+            const gewaehlt = auswahl.value || "ALL";
+            auswahl.innerHTML = `<option value="ALL">Alle Länder</option>`
+                + laender.map(l => {
+                    const zu = !erreichbar.has(l.id);
+                    return `<option value="${l.id}"${zu ? " disabled" : ""}>${l.flag || ""} ${this.escapeHtml(l.name)}${zu ? " (außer Reichweite)" : (l.id === heim ? "" : ` (${l.wissen} %)`)}</option>`;
+                }).join("");
+            auswahl.value = laender.some(l => l.id === gewaehlt && erreichbar.has(l.id)) ? gewaehlt : "ALL";
+        }
+
+        if (liste) {
+            liste.innerHTML = `<div class="text-muted land-wissen-hinweis">Aus dem eigenen Land kennt Ihr Verein jeden Spieler, aus dem Ausland die Stars und einen Teil der übrigen. Ein Scout-Auftrag mit Länderfokus erweitert das Wissen; ohne Pflege verblasst es langsam.</div>`
+                + `<div class="land-wissen-liste">` + laender.map(l => {
+                    const farbe = l.wissen >= 70 ? "var(--accent-success, #22c55e)" : (l.wissen >= 40 ? "#f59e0b" : "#ef4444");
+                    return `<div class="land-wissen-zeile">
+                        <span class="land-wissen-name">${l.flag || ""} ${this.escapeHtml(l.name)}</span>
+                        <span class="land-wissen-balken"><span style="width:${l.wissen}%; background:${farbe};"></span></span>
+                        <span class="land-wissen-wert">${l.wissen} %</span>
+                        <span class="land-wissen-zahl text-muted">${l.id === heim ? "Heimat · " : ""}${(bekannt[l.id] || 0).toLocaleString("de-DE")} von ${(gesamt[l.id] || 0).toLocaleString("de-DE")} Spielern bekannt${l.zugewinn >= 1 ? ` · +${Math.round(l.zugewinn)} durch Aufträge` : ""}</span>
+                    </div>`;
+                }).join("") + `</div>`;
         }
     },
 

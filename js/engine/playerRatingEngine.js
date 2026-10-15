@@ -655,7 +655,14 @@ class PlayerRatingEngine {
         // Liga Data-Coverage berücksichtigen
         const leagueCoverage = context.leagueDataCoverage || 85;
         if (!isUserPlayer) {
-            confidence = Math.round(confidence * (leagueCoverage / 100));
+            // Ohne eigenen Bericht zählt, wie gut der Verein das Land kennt
+            // (ScoutingEngine.landFaktor: 0,7 bis 1)
+            const scouting = context.state
+                ? ((typeof ScoutingEngine !== "undefined" && ScoutingEngine)
+                    || (typeof require !== "undefined" ? (() => { try { return require("./scoutingEngine.js").ScoutingEngine; } catch (e) { return null; } })() : null))
+                : null;
+            const landFaktor = scouting && typeof scouting.landFaktor === "function" ? scouting.landFaktor(context.state, player) : 1;
+            confidence = Math.round(confidence * (leagueCoverage / 100) * landFaktor);
         }
         confidence = Math.max(10, Math.min(100, confidence));
 

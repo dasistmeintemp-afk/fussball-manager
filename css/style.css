@@ -8065,6 +8065,22 @@ td.nowrap { white-space: nowrap; }
 .inbox-detail-aktionen { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
 .scout-beobachtung { color: var(--text-muted); }
 
+/* Länderwissen im Scouting: Name, Balken, Wert, bekannte Spieler */
+.land-wissen-hinweis { font-size: 13px; margin-bottom: 10px; }
+.land-wissen-liste { display: grid; gap: 6px; }
+.land-wissen-zeile {
+    display: grid; grid-template-columns: minmax(130px, 180px) 1fr 56px; gap: 4px 10px; align-items: center;
+}
+.land-wissen-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.land-wissen-balken { height: 8px; border-radius: 4px; background: var(--bg-input); overflow: hidden; }
+.land-wissen-balken > span { display: block; height: 100%; border-radius: 4px; }
+.land-wissen-wert { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.land-wissen-zahl { grid-column: 1 / -1; font-size: 12px; margin-top: -2px; }
+.tf-landwissen { margin-top: 4px; font-size: 13px; }
+@media (max-width: 600px) {
+    .land-wissen-zeile { grid-template-columns: minmax(120px, 1fr) 1fr 52px; }
+}
+
 /* Einzelne Tage wie im Vorbild: der kleine Bruder des Weiter-Knopfs */
 .btn-ein-tag { padding: 10px 14px; font-size: 13.5px; white-space: nowrap; }
 @media (max-width: 1100px) { .btn-ein-tag { padding: 8px 10px; font-size: 12px; min-height: 40px; } }

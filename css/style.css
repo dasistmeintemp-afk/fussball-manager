@@ -8892,3 +8892,5 @@ td.nowrap { white-space: nowrap; }
 .eingewoehnung-karte .kb-gut { background: var(--accent-secondary); }
 .eingewoehnung-karte .kb-mittel { background: var(--accent-gold); }
 .eingewoehnung-karte .kb-schlecht { background: var(--accent-danger); }
+.sp-erklaerung { font-size: 12px; line-height: 1.5; color: #cbd5e1; margin: 6px 0 10px; padding: 8px 10px; border-left: 3px solid #38bdf8; background: rgba(56, 189, 248, 0.06); border-radius: 6px; }
+.talent-quelle.talent-ausnahme { background: rgba(250, 204, 21, 0.15); color: #facc15; border-color: rgba(250, 204, 21, 0.4); }

@@ -13149,6 +13149,36 @@ function runEngineTests() {
         }
     });
 
+    test("Internationale Jugendsichtung: mehr Potenzial aus dem Ausland, Ausnahmetalente, Regionalscouts lenken das Netz", () => {
+        const { YouthEngine: Y } = require('./js/engine/youthEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Sichtung" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        club.akademieSchwerpunkte = Object.assign({}, Y.schwerpunkteVon(club), { einzug: "international", jahrgang: "normal", positionen: [] });
+        const heimat = Y.heimatland(state, club);
+        const ziehe = (n) => {
+            const alle = [];
+            for (let i = 0; i < n; i++) alle.push(...Y.generateProspects(state, club.id, { ohneKosten: true, vorschau: true }));
+            return alle;
+        };
+        const jahrgaenge = ziehe(400);
+        const aus = jahrgaenge.filter(p => p.nationality !== heimat), daheim = jahrgaenge.filter(p => p.nationality === heimat);
+        const schnitt = (l) => l.reduce((x, p) => x + p.truePotentialAbility, 0) / l.length;
+        // +3 in Gesamtstärke sind gut 6 in der Fähigkeit - abzüglich der Ausnahmetalente bleibt es deutlich darüber
+        if (!(schnitt(aus) - schnitt(daheim) > 4)) throw new Error(`Ausland ${schnitt(aus).toFixed(1)} gegen daheim ${schnitt(daheim).toFixed(1)}`);
+        const quote = aus.filter(p => p.ausnahmetalent).length / aus.length;
+        if (!(quote > 0.03 && quote < 0.1)) throw new Error(`Ausnahmetalente ${(quote * 100).toFixed(1)} %`);
+        if (daheim.some(p => p.ausnahmetalent)) throw new Error("Ausnahmetalent aus dem Umland");
+        // Ein Regionalscout in Südamerika lenkt das Netz dorthin
+        const sued = (l) => l.filter(p => Y.NATION_REGION[p.nationality] === "suedamerika").length / l.filter(p => p.nationality !== heimat).length;
+        const vorher = sued(jahrgaenge);
+        ScoutingEngine.stelleRegionalScoutEin(state, "suedamerika");
+        const nachher = sued(ziehe(400));
+        if (!(nachher > vorher * 1.6)) throw new Error(`Anteil Südamerika ${(vorher * 100).toFixed(0)} % -> ${(nachher * 100).toFixed(0)} %`);
+        // Aus der Region ohne internationale Sichtung: nichts davon
+        club.akademieSchwerpunkte.einzug = "region";
+        if (ziehe(100).some(p => p.ausnahmetalent)) throw new Error("Ausnahmetalent ohne internationale Sichtung");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

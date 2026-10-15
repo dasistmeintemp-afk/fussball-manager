@@ -54,6 +54,23 @@ const YouthEngine = {
         national: { name: "National", kosten: 300000, pot: 2, heimat: 0.75, text: "Sichter im ganzen Land - etwas mehr Potenzial" },
         international: { name: "International", kosten: 1000000, pot: 4, heimat: 0.4, text: "Weltweites Sichtungsnetz - das meiste Potenzial" }
     },
+    /**
+     * Die internationale Sichtung lohnt sich vor allem bei den Talenten aus
+     * dem Ausland - deretwegen zahlt man sie. Bisher bekam jedes Talent des
+     * Jahrgangs dieselben +4, gleich ob es aus dem Umland oder aus Brasilien
+     * kam, und Ausnahmetalente gab es nicht.
+     *
+     * Jetzt: Talente aus dem Ausland +3 dazu. Eines von siebzehn ist ein
+     * Ausnahmetalent (+12). Wo der Verein einen Regionalscout hat, sucht
+     * das Netz dreimal so oft, und dort ist schon eines von zehn ein
+     * Ausnahmetalent - der Scout kennt die Akademien.
+     */
+    INTERNATIONAL: { auslandPot: 3, ausnahmeChance: 0.06, ausnahmeChanceRegion: 0.1, ausnahmePot: 12, regionGewicht: 3 },
+    NATION_REGION: {
+        Brasilien: "suedamerika", Argentinien: "suedamerika", Kolumbien: "suedamerika", Uruguay: "suedamerika",
+        Niederlande: "benelux", Belgien: "benelux", Spanien: "iberien", Portugal: "iberien",
+        Frankreich: "frankreich", Italien: "italien", Österreich: "alpen", Schweiz: "alpen"
+    },
     WELT_NATIONEN: ["Brasilien", "Argentinien", "Frankreich", "Niederlande", "Portugal", "Belgien", "Spanien", "Italien",
         "Kroatien", "Serbien", "Dänemark", "Schweden", "Nigeria", "Ghana", "Senegal", "Elfenbeinküste", "Japan",
         "Südkorea", "USA", "Kolumbien", "Uruguay", "Polen", "Österreich", "Schweiz"],
@@ -667,11 +684,21 @@ const YouthEngine = {
 
         // Woher die Talente kommen, hängt am Einzugsgebiet
         const heimat = eigen ? this.heimatland(state, club) : null;
+        const international = eigen && sp?.einzug === "international";
+        const scouting = international ? _youthResolve("ScoutingEngine", "./scoutingEngine.js") : null;
+        const regional = (nat) => {
+            const region = this.NATION_REGION[nat];
+            return !!(region && scouting && typeof scouting.regionalScouts === "function" && scouting.regionalScouts(state)[region]);
+        };
         const waehleNation = () => {
             if (!eigen || !heimat) return poolNat[Math.floor(Math.random() * poolNat.length)];
             if (Math.random() < einzug.heimat) return heimat;
-            const welt = sp.einzug === "international" ? this.WELT_NATIONEN : poolNat;
-            return welt[Math.floor(Math.random() * welt.length)];
+            if (!international) return poolNat[Math.floor(Math.random() * poolNat.length)];
+            // Wo ein Regionalscout sitzt, sucht das Netz öfter
+            const gewichte = this.WELT_NATIONEN.map(n => regional(n) ? this.INTERNATIONAL.regionGewicht : 1);
+            let r = Math.random() * gewichte.reduce((a, b) => a + b, 0);
+            for (let i = 0; i < this.WELT_NATIONEN.length; i++) { r -= gewichte[i]; if (r < 0) return this.WELT_NATIONEN[i]; }
+            return this.WELT_NATIONEN[this.WELT_NATIONEN.length - 1];
         };
 
         const newProspects = [];
@@ -688,7 +715,14 @@ const YouthEngine = {
 
             // Stärke und Potenzial nach Ligastufe und Akademie-Level, beim
             // eigenen Verein dazu Jahrgang, Einzugsgebiet und Nachwuchsleiter
-            const potPlus = eigen ? (mitJahrgang ? jahrgang.pot : 0) + einzug.pot + leiterBonus + (optionen.pot || 0) : 0;
+            let potPlus = eigen ? (mitJahrgang ? jahrgang.pot : 0) + einzug.pot + leiterBonus + (optionen.pot || 0) : 0;
+            // Aus dem Ausland, über das internationale Netz: mehr, selten viel mehr
+            let ausnahme = false;
+            if (international && nat !== heimat) {
+                const I = this.INTERNATIONAL;
+                potPlus += I.auslandPot;
+                if (Math.random() < (regional(nat) ? I.ausnahmeChanceRegion : I.ausnahmeChance)) { potPlus += I.ausnahmePot; ausnahme = true; }
+            }
             const werte = this.talentWerte(club, academyLevel, { ovr: eigen ? (mitJahrgang ? jahrgang.ovr : 0) + (optionen.ovr || 0) : 0, pot: potPlus });
 
             const prospect = {
@@ -709,6 +743,7 @@ const YouthEngine = {
                 quelle: optionen.quelle || "jugendtag",
                 promoted: false
             };
+            if (ausnahme) prospect.ausnahmetalent = true;
             // Die Kopfwerte folgen fest aus Kennung, Stärke und Alter. Die
             // Talente der KI-Vereine bekommen sie erst mit dem Profivertrag -
             // sonst trüge jeder Spielstand Tausende Werte, die niemand sieht.

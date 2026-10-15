@@ -191,10 +191,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         : `<button class="btn btn-sm btn-primary btn-promote-prospect" data-prospect-id="${p.id}">Vertragsgespräche aufnehmen</button>
                            <button class="btn btn-sm btn-secondary btn-release-prospect" data-prospect-id="${p.id}" title="Platz in der Akademie freimachen">Freigeben</button>`;
                     const quelle = ({ probetraining: "Probetraining", sichtung: "Sichtungstag" })[p.quelle];
+                    // Aus der internationalen Sichtung: woher er kommt, und ob er ein Ausnahmetalent ist
+                    const heimatName = typeof YouthEngine !== "undefined" && YouthEngine.heimatland ? YouthEngine.heimatland(state, userClub) : null;
+                    const herkunft = p.nationality && heimatName && p.nationality !== heimatName ? ` <span class="text-muted">· ${this.escapeHtml(p.nationality)}</span>` : "";
+                    const ausnahme = p.ausnahmetalent ? ` <span class="talent-quelle talent-ausnahme">⭐ Ausnahmetalent</span>` : "";
 
                     return `
                     <tr class="row-clickable" data-prospect-id="${p.id}" title="Spielerakte von ${this.escapeHtml(p.name)} öffnen">
-                        <td><strong>${this.escapeHtml(p.name)}</strong>${quelle ? ` <span class="talent-quelle">${quelle}</span>` : ""}</td>
+                        <td><strong>${this.escapeHtml(p.name)}</strong>${herkunft}${quelle ? ` <span class="talent-quelle">${quelle}</span>` : ""}${ausnahme}</td>
                         <td><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span></td>
                         <td>${p.age} Jahre</td>
                         <td colspan="2">${this.abilityStarsFor(p)}</td>
@@ -431,6 +435,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <div class="sp-titel">Einzugsgebiet <span class="sp-hinweis">Kosten je Jahrgang</span></div>
                 <div class="sp-reihe">${einzugChips}</div>
             </div>
+            ${sp.einzug === "international" && youth.INTERNATIONAL ? `<div class="sp-erklaerung">🌍 Rund ${Math.round((1 - einzug.heimat) * 100)} % der Talente kommen aus dem Ausland, aus ${youth.WELT_NATIONEN.length} Nationen. Sie bringen ${youth.INTERNATIONAL.auslandPot} Potenzial mehr mit als die aus dem Umland, und etwa eines von ${Math.round(1 / youth.INTERNATIONAL.ausnahmeChance)} ist ein Ausnahmetalent (+${youth.INTERNATIONAL.ausnahmePot}). Wo Sie einen Regionalscout haben (Scouting-Zentrale), sucht das Netz öfter, und dort ist schon eines von ${Math.round(1 / youth.INTERNATIONAL.ausnahmeChanceRegion)} ein Ausnahmetalent. Bedenken Sie: Wer nicht aus der EU kommt, belegt in Spanien einen Nicht-EU-Platz.</div>` : ""}
             <div class="sp-fazit">Nächster Jahrgang ${jugendtagText}: <strong>${jahrgang.anzahl} Talente</strong>, Schwerpunkt ${esc(posText)},
                 Potenzial <strong>${potSumme >= 0 ? "+" : ""}${potSumme}</strong> gegenüber einem normalen Jahrgang${kosten > 0 ? `, Sichtung ${this.geldKurz(kosten)}` : ""}.</div>`;
 

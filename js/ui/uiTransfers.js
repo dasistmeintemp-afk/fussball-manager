@@ -989,7 +989,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         }
 
         if (liste) {
-            liste.innerHTML = `<div class="text-muted land-wissen-hinweis">Aus dem eigenen Land kennt Ihr Verein jeden Spieler, aus dem Ausland die Stars und einen Teil der übrigen. Ein Scout-Auftrag mit Länderfokus erweitert das Wissen; ohne Pflege verblasst es langsam.</div>`
+            liste.innerHTML = `<div class="text-muted land-wissen-hinweis">Aus dem eigenen Land kennt Ihr Verein jeden Spieler, aus dem Ausland die Stars und einen Teil der übrigen. Ein Scout-Auftrag mit Länderfokus erweitert das Wissen, ebenso jedes Europapokalspiel gegen einen Verein aus dem Land; ohne Pflege verblasst es langsam.</div>`
                 + `<div class="land-wissen-liste">` + laender.map(l => {
                     const farbe = l.wissen >= 70 ? "var(--accent-success, #22c55e)" : (l.wissen >= 40 ? "#f59e0b" : "#ef4444");
                     return `<div class="land-wissen-zeile">

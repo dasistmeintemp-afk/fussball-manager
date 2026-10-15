@@ -231,13 +231,21 @@ class LoanEngine {
     /**
      * Der Leihmarkt: Spieler anderer Vereine, die ihr Verein abgibt - junge
      * Spieler ohne Stammplatz und Reservisten. Angeboten wird nur, was den
-     * eigenen Kader verstärkt (oder ein Talent ist).
+     * eigenen Kader verstärkt (oder ein Talent ist) - so, wie der eigene
+     * Verein die Spieler sieht: Wen er nicht kennt, steht nicht da, und
+     * ob einer verstärkt, entscheidet die Einschätzung, nicht die wahre
+     * Stärke. Sonst verriet schon die Liste, wer wirklich gut ist.
      */
     static leihmarkt(state, anzahl = 30) {
         const eigener = this._club(state, state.userClubId);
         if (!eigener) return [];
         const eigenesNiveau = this.niveau(state, eigener);
         const eigeneStufe = eigener.level || 1;
+        const se = this._resolve("ScoutingEngine", "./scoutingEngine.js");
+        const sicht = se && typeof se.sichtbarkeit === "function" ? se.sichtbarkeit(state) : null;
+        const re = this._resolve("PlayerRatingEngine", "./playerRatingEngine.js");
+        const kontext = { userClubId: state.userClubId, leagueDataCoverage: 85, state };
+        const geschaetzt = (p) => re && typeof re.geschaetzteStaerke === "function" ? re.geschaetzteStaerke(p, kontext) : (p.overall || 0);
         const liste = [];
         (state.clubs || []).forEach(c => {
             if (c.id === eigener.id) return;
@@ -249,12 +257,14 @@ class LoanEngine {
                 .sort((a, b) => (b.overall || 0) - (a.overall || 0));
             kader.slice(14).forEach(p => {
                 if (p.leihe || p.vorvertrag || (p.injuredWeeks || 0) > 0 || (p.contractYears ?? 1) < 1) return;
+                if (sicht && !sicht.istSichtbar(p)) return;
                 const talent = (p.age || 30) <= 21 && (p.pot || 0) >= eigenesNiveau + 4;
-                if ((p.overall || 0) < eigenesNiveau - 2 && !talent) return;
-                liste.push(this._leihKonditionen(state, p, c, eigenesNiveau));
+                const staerke = geschaetzt(p);
+                if (staerke < eigenesNiveau - 2 && !talent) return;
+                liste.push(Object.assign(this._leihKonditionen(state, p, c, eigenesNiveau), { geschaetzt: staerke }));
             });
         });
-        return liste.sort((a, b) => b.overall - a.overall).slice(0, anzahl);
+        return liste.sort((a, b) => b.geschaetzt - a.geschaetzt).slice(0, anzahl);
     }
 
     static _leihKonditionen(state, p, stammverein, eigenesNiveau) {

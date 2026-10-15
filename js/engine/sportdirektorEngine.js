@@ -90,9 +90,16 @@ class SportdirektorEngine {
         return Math.abs(h);
     }
 
-    /** Seine Schätzung der Stärke - für denselben Spieler immer dieselbe */
+    /**
+     * Seine Schätzung der Stärke - für denselben Spieler immer dieselbe.
+     * Aus einem Land, das der Verein kaum kennt, liegt er weiter daneben -
+     * auch mit dem besten Scout: bei halbem Wissen um bis zu zwei Punkte
+     * mehr, bei keinem um bis zu vier.
+     */
     static schaetzung(state, player) {
-        const u = this.ungenauigkeit(state);
+        const se = _sdResolve("ScoutingEngine", "./scoutingEngine.js");
+        const wissen = se && typeof se.landWissen === "function" ? se.landWissen(state, se.landVon(state, player)) : 100;
+        const u = this.ungenauigkeit(state) + (100 - wissen) / 25;
         const anteil = (this._hash(`${player.id}|${state.userClubId}`) % 1000) / 999;
         return Math.round((player.overall || 0) + (anteil * 2 - 1) * u);
     }
@@ -160,10 +167,14 @@ class SportdirektorEngine {
         const proGruppe = ziele.length > 1 ? 2 : Infinity;
         const ohne = new Set((kriterien.ohne || []).map(String));
         const vereinVon = new Map((state.clubs || []).map(c => [c.id, c]));
+        // Er schlägt nur vor, wen der Verein kennt - wie der Transfermarkt
+        const se = _sdResolve("ScoutingEngine", "./scoutingEngine.js");
+        const sicht = se && typeof se.sichtbarkeit === "function" ? se.sichtbarkeit(state) : null;
 
         const treffer = [];
         (state.players || []).forEach(p => {
             if (p.clubId === club.id || p.leihe || ohne.has(String(p.id))) return;
+            if (sicht && !sicht.istSichtbar(p)) return;
             if ((p.age || 25) > maxAlter) return;
             const gruppe = ziele.find(g => this.GRUPPEN[g.key].positionen.includes(p.pos));
             if (!gruppe) return;

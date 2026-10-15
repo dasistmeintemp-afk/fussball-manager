@@ -1059,8 +1059,8 @@ class SeasonEngine {
                 const club = state.clubs.find(c => c.id === entry.clubId);
                 if (!club) return;
 
-                const sponsor = (financeEngine && typeof financeEngine.sponsorPerMatchday === 'function')
-                    ? financeEngine.sponsorPerMatchday(club)
+                const sponsor = (financeEngine && typeof financeEngine.kommerzJeSpieltag === 'function')
+                    ? financeEngine.kommerzJeSpieltag(club)
                     : Math.round((club.reputation || 70) * 15000);
 
                 // Die Tabellenprämie kommt zum Fernsehgeld dazu, das den Rang
@@ -1661,9 +1661,9 @@ class SeasonEngine {
         // Was die KI-Vereine über ihre übliche Rücklage hinaus angespart haben,
         // fließt zur Hälfte in Anlagen und Tilgung - nicht in den Etat
         if (finanzen && typeof finanzen.ruecklagenAnpassen === 'function') finanzen.ruecklagenAnpassen(state);
-        if (finanzen && typeof finanzen.sponsorPerMatchday === 'function') {
+        if (finanzen && typeof finanzen.kommerzJeSpieltag === 'function') {
             state.clubs.forEach(club => {
-                const jahresumsatz = (finanzen.sponsorPerMatchday(club)
+                const jahresumsatz = (finanzen.kommerzJeSpieltag(club)
                     + Math.round((club.stadiumCapacity || club.capacity || 20000) * 0.8 * (club.ticketPrice || 35) / 2)) * 34;
                 const etat = Math.min(Math.max(0, (club.balance || 0)) * 0.35, jahresumsatz * 0.6);
                 club.transferBudget = Math.max(0, Math.round(etat));

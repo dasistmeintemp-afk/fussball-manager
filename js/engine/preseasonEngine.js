@@ -393,8 +393,8 @@ class PreseasonEngine {
 
     static turnierGeldBasis(club) {
         const finance = _preResolve("FinanceEngine", "./financeEngine.js");
-        return finance && typeof finance.sponsorPerMatchday === "function"
-            ? Math.max(50000, finance.sponsorPerMatchday(club))
+        return finance && typeof finance.kommerzJeSpieltag === "function"
+            ? Math.max(50000, finance.kommerzJeSpieltag(club))
             : 400000;
     }
 
@@ -993,7 +993,9 @@ class PreseasonEngine {
             praemie: angebot.praemie,
             // Markiert den Vertrag als selbst ausgehandelt - nur dann zaehlt
             // sein Betrag, nicht das Ligamodell der Finanz-Engine.
-            ausgehandelt: true
+            ausgehandelt: true,
+            // Die Fanartikel kommen getrennt dazu (FinanceEngine.FANARTIKEL)
+            fanartikelGetrennt: true
         };
         pre.sponsorGewaehlt = true;
         return { ok: true, sponsor: club.sponsor };

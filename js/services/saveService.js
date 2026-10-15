@@ -210,6 +210,7 @@ const SaveService = {
             // Ältere Stände bekommen die Signatur-Eigenschaften nachgereicht
             const gs = (typeof GameState !== "undefined" && GameState) ? GameState
                 : (typeof require !== "undefined" ? (() => { try { return require("../engine/gameState.js").GameState; } catch (e) { return null; } })() : null);
+            if (gs && typeof gs.ergaenzeAltstand === "function") gs.ergaenzeAltstand(finalState);
             if (gs && typeof gs.sichereSignaturen === "function") gs.sichereSignaturen(finalState);
             this.save(finalState);
 

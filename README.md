@@ -96,7 +96,7 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Stimmen der Fans (`FanEngine`):** Die Fanstimmung folgt den Ergebnissen, gemessen an der Erwartung, im Derby stärker. Nach jedem Pflichtspiel und nach großen Transfers melden sich Fans mit kurzen Beiträgen; die Übersicht zeigt die jüngsten.
 - **Spieler in den Medien (`MedienEngine`):** Nach Ligaspielen gibt ab und zu ein Spieler ein Interview: der Frustrierte auf der Bank, der Matchwinner, das Talent, der Kapitän nach einer Pleitenserie, der Umworbene, der Spieler mit auslaufendem Vertrag. Was er sagt, wirkt auf Mediendruck, Kabine und Fans.
 - **Meilensteine, Trophäenschrank und Saisonrückblick (`MeilensteinEngine`):** Jubiläen von Trainer und Spielern (Spiele, Siege, Tore, Titel, Jahre im Verein) kommen als Nachricht und in die Chronik. Die Vereinsseite zeigt den Trophäenschrank, der Saisonabschluss die Saison in Zahlen.
-- **U19-Liga (`JugendligaEngine`):** Die Talente der Akademie spielen in einer Liga mit zwölf Nachwuchsteams aus dem eigenen Land - mit Tabelle, Ergebnissen und Torjägern im Training-Reiter. Die U19-Meisterschaft kommt in den Trophäenschrank.
+- **U19-Liga (`JugendligaEngine`):** Die Talente der Akademie spielen in einer Liga mit zwölf Nachwuchsteams aus dem eigenen Land - mit Tabelle, Ergebnissen und Torjägern im Reiter Jugend. Die U19-Meisterschaft kommt in den Trophäenschrank.
 
 ### 1. 🏆 Liga & Wettbewerb
 - **18 Vereine der Liga 1**: Vollständige Kader, Budgets, Stadien, Fanbasen, Sponsoren und Vereinsinfrastruktur.
@@ -439,7 +439,7 @@ Bisher kamen Angebote nur nach einer Entlassung, wer Erfolg hatte, blieb für im
 - **Rücktritt:** Kostet keinen Ruf, aber die Station endet. Danach melden sich die Vereine, die einen nehmen würden – wie nach einer Entlassung.
 
 ### 3c. 📌 Der Schreibtisch
-Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit sortiert, ein Klick springt in den zuständigen Reiter: unvollständige Startelf, Verhandlungen mit uns am Zug, Ausfälle, überlastete Spieler, auslaufende Verträge, unzufriedene Spieler, ungelesene Post. Gesprächswünsche, Wechselwünsche und offene Versprechen stehen ebenfalls dort – ein Klick öffnet die Akte des Spielers.
+Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit sortiert, ein Klick springt in den zuständigen Reiter: unvollständige Startelf, Verhandlungen mit uns am Zug, Talente, um die ein größerer Verein wirbt (mit der Frist), Ausfälle, überlastete Spieler, auslaufende Verträge, unzufriedene Spieler, ungelesene Post. Gesprächswünsche, Wechselwünsche und offene Versprechen stehen ebenfalls dort – ein Klick öffnet die Akte des Spielers.
 
 - **Direkt ans Ziel:** Bei auslaufenden Verträgen steht jeder Spieler einzeln da, die stärksten zuerst. Ein Tipp auf den Namen öffnet seine Akte gleich bei der Vertragsverlängerung, der Cursor steht im Gehaltsfeld. Eine Verhandlung, bei der wir am Zug sind, führt direkt zu ihrer Karte im Transfermarkt. Dasselbe gilt für Talente: *Vertragsgespräche aufnehmen* springt sofort in die Verhandlung mit dem Berater, *Zur Verhandlung* ebenso. Die Post über einen auslaufenden Vertrag hat einen Knopf *Vertrag verlängern*.
 
@@ -560,6 +560,13 @@ Ein Transfer ist kein Knopfdruck mehr, sondern ein Vorgang über mehrere Tage:
 - **Alles im Blick:** Der Reiter *Transfermarkt* zeigt jede laufende Verhandlung mit Phase, aktueller Forderung, Restgeduld, Frist und dem letzten Satz der Gegenseite.
 
 ### 5. 🏋️ Training & Jugendakademie
+- **Zwei Reiter:** *Training* zeigt Trainerstab, Trainingslager, Schwerpunkt und Intensität, Trainingsbericht und die individuellen Pläne. Alles zum Nachwuchs steht im eigenen Reiter *Jugend*, gleich darunter in der Seitenleiste und im Menü am Handy:
+  - die Akademie mit Stufe, Plätzen, Jugendtag, Probetrainings, Sichtungstag und Jugendvorschau
+  - die Talente der Akademie mit Jugendvertrag, Werbern und Knöpfen
+  - Talente anderer Akademien und die Schwerpunkte für den nächsten Jahrgang, auf breiten Bildschirmen nebeneinander
+  - die U19-Liga
+
+  Vorher stand das alles unten im Reiter Training, und für die Akademie musste man an Trainingsbericht und Plänen vorbei weit scrollen. Wirbt ein Verein um ein Talent, zeigt der Reiter die Zahl der offenen Anfragen. Post der Nachwuchsabteilung hat im Postfach die Kategorie *Nachwuchs*, einen eigenen Filter und den Knopf *Zur Jugend*.
 - **Trainingsschwerpunkte:** Allround, Angriff, Defensive, Technik, Taktik, Regeneration, Jugendförderung.
 - **Nachwuchsakademie (`YouthEngine`):** Akademie-Ausbau (Stufe 1 bis 5) für stärkere Talente und direkte Beförderung von Jugendspielern mit Profi-Vertrag in die 1. Mannschaft.
 - **Jugendtag:** Einmal je Saison, im Frühjahr um den Spieltag bei 70 % der Saison (34 Spieltage: der 24.), stellt sich der neue Jahrgang vor. Drei Spieltage vorher kündigt der Nachwuchsleiter ihn im Postfach an und schätzt ein, wie gut er wird. Am Jugendtag selbst kommt eine Nachricht mit allen Namen.
@@ -567,10 +574,10 @@ Ein Transfer ist kein Knopfdruck mehr, sondern ein Vorgang über mehrere Tage:
   - Der Nachwuchsleiter beschreibt ihn: goldener, guter, ordentlicher oder schwacher Jahrgang, die Positionen und der Vielversprechendste („ein echtes Ausnahmetalent“).
   - Gemessen wird an dem, was die eigene Akademie üblicherweise hervorbringt. Mit einem ligaüblichen Nachwuchsleiter sind etwa 5–10 % der Jahrgänge golden und 35–45 % gut.
   - Ein guter Nachwuchsleiter schätzt genau. Ein schwacher oder die Aushilfe ohne Nachwuchsleiter irrt sich spürbar und sagt das auch.
-  - Die Vorschau steht als Karte im Reiter *Training*. Wer bis zum Jugendtag die Schwerpunkte ändert, lässt neu sichten.
+  - Die Vorschau steht in der Akademie-Karte im Reiter *Jugend*. Wer bis zum Jugendtag die Schwerpunkte ändert, lässt neu sichten.
   - Die Sichtungskosten fallen erst am Jugendtag an.
 - **Befördert ist befördert:** Die Talente des eigenen Vereins stehen in genau einer Liste. Vorher waren es nach dem Laden zwei Kopien: Ein beförderter Spieler blieb in der Akademie stehen und ließ sich ein zweites Mal befördern.
-- **Schwerpunkte der Akademie:** Im Reiter *Training* lassen sich vier Dinge einstellen. Alles wirkt auf den nächsten Jahrgang am Jugendtag.
+- **Schwerpunkte der Akademie:** Im Reiter *Jugend* lassen sich vier Dinge einstellen. Alles wirkt auf den nächsten Jahrgang am Jugendtag.
 
   | Schwerpunkt | Auswahl | Wirkung |
   |---|---|---|
@@ -612,7 +619,7 @@ Zu jedem Monatswechsel schickt der Co-Trainer einen Bericht ins Postfach (Katego
 ### 5c. 🎓 Nachwuchs: Beförderung über den Berater
 Ein Talent in den Profikader zu holen dauert jetzt seine Zeit. *Profivertrag anbieten* startet die Verhandlung mit dem Berater über Gehalt, Laufzeit und Handgeld; erst nach der Einigung – meist drei bis sechs Tage – unterschreibt der Spieler seinen ersten Profivertrag und taucht im Kader auf. Die Forderung richtet sich nach Potenzial und Ligastufe.
 
-- **Talente kommen öfter und auf mehr Wegen:** Neben dem Jugendtag im Frühjahr meldet der Nachwuchsleiter unter dem Jahr immer wieder ein einzelnes Talent, das im Probetraining überzeugt hat – in der Grundausstattung etwa dreimal je Saison, mit ausgebauter Akademie, gutem Nachwuchsleiter und weltweitem Sichtungsnetz bis rund neunmal. Wer gezielt suchen will, setzt im Reiter Training selbst einen *Sichtungstag* an: ein bis zwei Talente gegen eine Gebühr nach Ligastufe (50.000 € in der 1. Liga, 1.500 € in der untersten Liga), danach sechs Wochen Pause. Die Herkunft steht als Marke am Namen.
+- **Talente kommen öfter und auf mehr Wegen:** Neben dem Jugendtag im Frühjahr meldet der Nachwuchsleiter unter dem Jahr immer wieder ein einzelnes Talent, das im Probetraining überzeugt hat – in der Grundausstattung etwa dreimal je Saison, mit ausgebauter Akademie, gutem Nachwuchsleiter und weltweitem Sichtungsnetz bis rund neunmal. Wer gezielt suchen will, setzt im Reiter Jugend selbst einen *Sichtungstag* an: ein bis zwei Talente gegen eine Gebühr nach Ligastufe (50.000 € in der 1. Liga, 1.500 € in der untersten Liga), danach sechs Wochen Pause. Die Herkunft steht als Marke am Namen.
 - **Akademie mit Plätzen:** Platz für 8 Talente und 2 je Ausbaustufe; ist sie voll, kommt niemand mehr dazu. Ein Talent lässt sich *freigeben*. Zum Saisonwechsel werden die Talente ein Jahr älter, mit 19 ist ohne Profivertrag Schluss – vorher blieben sie für immer 15 bis 17 Jahre alt und für immer in der Akademie.
 - Am Handy steht jedes Talent als Karte da statt als Tabellenzeile mit zerquetschten Spalten.
 
@@ -621,7 +628,7 @@ Bisher stand ein Talent ohne Vertrag in der Akademie, ließ sich in jedem Alter 
 
 - **Jugendvertrag:** Jedes Talent hat einen Jugendvertrag bis 19 mit einer Ausbildungsvergütung je Woche (600 € in der 1. Liga, 20 € in der Landesliga; im Buchungsjournal als eigener Posten).
 - **Profivertrag ab Mindestalter:** Den ersten Profivertrag darf ein Talent erst ab 16 unterschreiben, in England ab 17. Als Minderjähriger unterschreibt jeder höchstens drei Jahre - nach der Regel des Weltverbands auch bei Verlängerungen und Wechseln.
-- **Abwerben:** Größere Vereine (mindestens 4 Punkte mehr Ruf) werben um die Besten der Akademie, die noch keinen Profivertrag haben - je besser das Talent für diese Akademie, desto öfter; bei einer guten Erstliga-Akademie ein- bis zweimal je Saison. Aus dem Ausland werben nur Erstligisten, und Minderjährige dürfen wie in Wirklichkeit nur im eigenen Land wechseln, mit 16 und 17 auch innerhalb der EU (England, Schottland, die Türkei und Brasilien gehören nicht dazu). Der Verein hat sieben Tage: Ein Profivertrag bindet das Talent, ein Gespräch über seine Perspektive kann ihn halten (einmal je Anfrage), oder man lässt ihn sofort ziehen. Sonst entscheidet er nach Ehrgeiz, Treue und Abstand der Vereine.
+- **Abwerben:** Größere Vereine (mindestens 4 Punkte mehr Ruf) werben um die Besten der Akademie, die noch keinen Profivertrag haben - je besser das Talent für diese Akademie, desto öfter; bei einer guten Erstliga-Akademie ein- bis zweimal je Saison. Aus dem Ausland werben nur Erstligisten, und Minderjährige dürfen wie in Wirklichkeit nur im eigenen Land wechseln, mit 16 und 17 auch innerhalb der EU (England, Schottland, die Türkei und Brasilien gehören nicht dazu). Der Verein hat sieben Tage: Ein Profivertrag bindet das Talent, ein Gespräch über seine Perspektive kann ihn halten (einmal je Anfrage), oder man lässt ihn sofort ziehen. Sonst entscheidet er nach Ehrgeiz, Treue und Abstand der Vereine. Die Frist steht auf dem Schreibtisch, die Zahl der offenen Anfragen am Reiter *Jugend*.
 - **Ausbildungsentschädigung:** Wer ein Talent ohne Profivertrag holt, zahlt dem Ausbilder je Ausbildungsjahr einen Betrag nach dessen Ligastufe (150.000 € in der 1. Liga bis 2.500 € in der Landesliga; die Länder im Hintergrund zählen wie die Kategorien des Weltverbands eine Stufe tiefer), für ein großes Talent bis zum 3,25-Fachen.
 - **Talente anderer Akademien:** Die Nachwuchsabteilung hat je Saison vier Jugendliche kleinerer Vereine im Blick, drei von vier aus dem eigenen Land. Ihr Potenzial kennt man nur aus der Einschätzung des Nachwuchsleiters. Wer einen holt, zahlt die Entschädigung, und das Talent muss wollen.
 - **Entwicklung:** Talente haben eine Persönlichkeit (fest je Talent, ein guter Nachwuchsleiter zieht professionellere Jungs heran). Wie schnell sie wachsen, hängt neben Akademie und Nachwuchsleiter an Professionalität und Ehrgeiz, an den Einsätzen in der U19 und am Training: Bis zu drei Talente ab 16 können mit den Profis trainieren, ohne befördert zu sein, und wachsen dann ein Fünftel schneller. Wer befördert wird, nimmt seine Persönlichkeit mit.
@@ -983,7 +990,7 @@ untitled/
 │   │   ├── uiKader.js          # Kader: Kennzahlen, Kabine, Kaderplanung, Meldeliste
 │   │   ├── uiTaktik.js         # Taktiktafel, Formationen, Rollen, Aufstellung
 │   │   ├── uiWettbewerbe.js    # Tabellen, Spielplan, Pokal, Relegation, Europapokal
-│   │   ├── uiTraining.js       # Trainingspläne, Akademie, Trainerstab, Trainingsbericht
+│   │   ├── uiTraining.js       # Reiter Training (Pläne, Trainerstab, Bericht) und Jugend (Akademie, Talente, U19)
 │   │   ├── uiFinanzen.js       # Budget umschichten, Raten, Finanzregeln, Vorstandsanfragen
 │   │   ├── uiVerein.js         # Vereinsseite: Jobmarkt, Vision, Investor, Partner, Chronik, Anlagen, Preise
 │   │   ├── uiPostfach.js       # Postfach: Liste und Nachricht

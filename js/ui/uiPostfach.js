@@ -63,6 +63,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             else if (msg.type === "retirement") { icon = "🎖️"; typeLabel = "Karriereende"; }
             else if (msg.type === "development") { icon = "📈"; typeLabel = "Entwicklung"; }
             else if (msg.type === "sportdirektor") { icon = "🎯"; typeLabel = "Sportdirektor"; }
+            else if (msg.type === "youth") { icon = "🎓"; typeLabel = "Nachwuchs"; }
 
             const displayDate = msg.date || "Saisonstart";
 
@@ -170,6 +171,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         else if (msg.type === "retirement") { icon = "🎖️"; typeLabel = "Karriereende"; }
         else if (msg.type === "development") { icon = "📈"; typeLabel = "Entwicklung"; }
         else if (msg.type === "sportdirektor") { icon = "🎯"; typeLabel = "Sportdirektor"; }
+        else if (msg.type === "youth") { icon = "🎓"; typeLabel = "Nachwuchs"; }
 
         let formattedBody = (msg.body || msg.text || "").replace(/\n/g, "<br>");
         const displayDate = msg.date || "Saisonstart";
@@ -192,6 +194,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     <button class="btn btn-secondary btn-sm" data-inbox-akte="${this.escapeHtml(spieler.id)}"><svg class="ico" aria-hidden="true"><use href="#i-clipboard"/></svg><span>Spielerakte</span></button>
                     ${eigener ? "" : `<button class="btn btn-primary btn-sm" data-inbox-angebot="${this.escapeHtml(spieler.id)}">Verhandeln</button>`}
                     ${eigener && /^contract/.test(msg.type || "") ? `<button class="btn btn-primary btn-sm" data-inbox-vertrag="${this.escapeHtml(spieler.id)}">Vertrag verlängern</button>` : ""}
+                </div>`;
+        }
+
+        // Post der Nachwuchsabteilung führt in den Reiter Jugend
+        if (msg.type === "youth") {
+            aktionen = `
+                <div class="inbox-detail-aktionen">
+                    <button class="btn btn-secondary btn-sm" data-inbox-jugend="1"><svg class="ico" aria-hidden="true"><use href="#i-leaf"/></svg><span>Zur Jugend</span></button>
                 </div>`;
         }
 
@@ -233,6 +243,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const pId = this.resolvePlayerId(el.dataset.entwicklungAkte);
             if (pId !== null) this.showPlayerDetailsModal(pId);
         }));
+        detailContainer.querySelector("[data-inbox-jugend]")?.addEventListener("click", () => this.switchTab("youth"));
         detailContainer.querySelector("[data-inbox-akte]")?.addEventListener("click", (e) => {
             const pId = this.resolvePlayerId(e.currentTarget.dataset.inboxAkte);
             if (pId !== null) this.showPlayerDetailsModal(pId);

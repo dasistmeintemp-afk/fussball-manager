@@ -1,5 +1,6 @@
 /**
- * Training: Pläne, Akademie, Trainerstab und Trainingsbericht.
+ * Training und Jugend: Pläne, Trainerstab und Trainingsbericht im Reiter
+ * Training, Akademie, Talente und U19 im Reiter Jugend.
  *
  * Teil des UIManager: Die Methoden hängen sich an UIManager.prototype und
  * verhalten sich genau so, als stünden sie in der Klasse (auch im strikten
@@ -9,9 +10,6 @@
 
 Object.assign(((typeof window !== "undefined" && window.UIManager)
     || require("./uiManager.js").UIManager).prototype, {
-    /**
-     * Training rendern & Jugendakademie anzeigen
-     */
     /**
      * Die individuellen Pläne im Trainings-Reiter: alle mit Plan, dazu die
      * jungen Spieler mit ihrer Spielpraxis - wer nicht spielt, ist ein
@@ -107,8 +105,18 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this.renderCoachingStaffCard();
         this.renderTrainingslager();
         this.renderTrainingsPlaene();
+        this.renderTrainingReport();
+    },
 
-        // Jugendakademie rendern
+    /**
+     * Der Reiter Jugend: Akademie, Talente, Talente anderer Akademien,
+     * Schwerpunkte für den nächsten Jahrgang und die U19-Liga.
+     *
+     * Das alles stand bisher unten im Reiter Training - der wurde so lang,
+     * dass man für die Akademie weit scrollen musste.
+     */
+    renderJugend() {
+        const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         const levelBadge = document.getElementById("youthAcademyLevelBadge");
         if (levelBadge && userClub) {
@@ -140,7 +148,6 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             }
         }
 
-        this.renderTrainingReport();
         this.renderAkademieSchwerpunkte(state, userClub);
         this.renderAkademieZugang(state);
         this.renderFremdeTalente(state);
@@ -156,6 +163,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 ? youthListe.eigeneTalente(state)
                 : (state.youthAcademy?.prospects || []);
             const prospects = alleTalente.filter(p => !p.promoted);
+            const meta = document.getElementById("youthTalenteMeta");
+            if (meta) {
+                const werben = this.offeneJugendAnfragen(state);
+                meta.textContent = `${prospects.length} ${prospects.length === 1 ? "Talent" : "Talente"}`
+                    + (werben > 0 ? ` · ${werben} ${werben === 1 ? "Verein wirbt" : "Vereine werben"}` : "");
+                meta.classList.toggle("header-tag-warnung", werben > 0);
+            }
             if (prospects.length === 0) {
                 prospectsBody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">Aktuell keine unbeförderten Jugendspieler in der Akademie.</td></tr>`;
             } else {
@@ -239,7 +253,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 const speichernUndNeu = () => {
                     if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
                     this.renderHeader();
-                    this.renderTraining();
+                    this.renderJugend();
                 };
 
                 // Der erste Profivertrag läuft über den Berater und dauert einige Tage
@@ -301,7 +315,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         if (!res.success) return this.showToast(res.error, "error");
                         this.showToast(`${talent.name} verlässt die Akademie.`, "info");
                         if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
-                        this.renderTraining();
+                        this.renderJugend();
                     });
                 });
 
@@ -321,6 +335,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
      * Woher die Talente kommen: Jugendtag, Probetrainings unter dem Jahr und
      * der Sichtungstag, den der Manager selbst ansetzt.
      */
+    /** Wie viele Vereine gerade um Talente der Akademie werben */
+    offeneJugendAnfragen(state) {
+        return (state?.youthAcademy?.anfragen || []).filter(a => a.status === "offen").length;
+    },
+
     /** Die U19-Liga: Tabelle, eigene Ergebnisse, Torschützen */
     renderJugendliga(state) {
         const el = document.getElementById("jugendligaKarte");
@@ -368,9 +387,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const voll = youth.akademiePlaetze(state, club).frei <= 0;
         const esc = (x) => this.escapeHtml(String(x ?? ""));
         box.innerHTML = `
-            <div class="fremde-talente">
-                <div class="fremde-kopf"><strong>🔭 Talente anderer Akademien</strong>
-                    <span class="text-muted">Jugendliche ohne Profivertrag, die unsere Nachwuchsabteilung im Blick hat. Wer einen holt, zahlt seinem Verein die Ausbildungsentschädigung - und er muss wollen.</span></div>
+            <div class="card-header"><h3>Talente anderer Akademien</h3><span class="header-tag">${liste.length} im Blick</span></div>
+            <p class="text-muted fremde-hinweis">Jugendliche ohne Profivertrag, die unsere Nachwuchsabteilung im Blick hat. Wer einen holt, zahlt seinem Verein die Ausbildungsentschädigung - und er muss wollen.</p>
+            <div>
                 ${liste.length ? `<div class="fremde-liste">${liste.map(t => `
                     <div class="fremde-zeile">
                         <div class="fremde-name"><strong>${esc(t.name)}</strong> <span class="pos-tag pos-${this.getPosGroup(t.pos)}">${esc(t.pos)}</span>
@@ -388,7 +407,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 this.showToast(res.text, res.kommt ? "success" : "warning", 6000);
                 if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
                 this.renderHeader();
-                this.renderTraining();
+                this.renderJugend();
             });
         });
     },
@@ -438,7 +457,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             this.showToast(`🎓 Sichtungstag: ${res.neu.map(t => t.name).join(", ")} ${res.neu.length === 1 ? "kommt" : "kommen"} in die Akademie.`, "success", 6000);
             if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
             this.renderHeader();
-            this.renderTraining();
+            this.renderJugend();
         });
     },
 
@@ -558,7 +577,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     this.showToast(`🎓 Neu gesichtet: ${b.text}`, "info", 7000);
                 }
                 if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
-                this.renderTraining();
+                this.renderJugend();
             });
         });
     },

@@ -743,6 +743,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
             this.renderClub();
             this.renderTraining();
+            this.renderJugend();
             this.renderHeader();
             return true;
         };

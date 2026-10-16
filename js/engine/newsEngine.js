@@ -118,6 +118,8 @@ const NewsEngine = {
             list = list.filter(m => m.type === "transfer_done" || m.type === "transfer_offer" || m.type === "contract_news" || m.type === "sportdirektor" || m.type === "transfer_window");
         } else if (filter === "training") {
             list = list.filter(m => m.type === "training_report" || m.type === "injury" || m.type === "development");
+        } else if (filter === "youth") {
+            list = list.filter(m => m.type === "youth" || m.type === "youth_prospect");
         } else if (filter === "scouting") {
             list = list.filter(m => m.type === "scout_report" || m.type === "youth_prospect");
         } else if (filter === "finance") {

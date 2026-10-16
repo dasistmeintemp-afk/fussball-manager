@@ -630,7 +630,7 @@ function runWizardTests() {
             "modalNewGame", "btnWizardNext", "btnWizardBack", "clubSelectionList", "clubDetailPanel",
             "filterClubSearch", "filterClubSort", "filterClubDifficulty",
             "pane-dashboard", "pane-squad", "pane-tactics", "pane-fixtures", "pane-calendar",
-            "pane-transfers", "pane-training", "pane-finances", "pane-stats", "pane-inbox", "pane-settings",
+            "pane-transfers", "pane-training", "pane-youth", "pane-finances", "pane-stats", "pane-inbox", "pane-settings",
             "btnDashLiveMatch", "btnDashInstantSim", "btnDashOpponentAnalysis", "btnHeaderAdvance",
             "livePitchCanvas", "modalLiveMatch", "inboxList", "inboxDetail",
             // Formations-Editor & Live-Uhr
@@ -654,7 +654,7 @@ function runWizardTests() {
 
         const requiredTabs = [
             "dashboard", "squad", "tactics", "fixtures", "calendar",
-            "transfers", "training", "finances", "stats", "inbox", "settings"
+            "transfers", "training", "youth", "finances", "stats", "inbox", "settings"
         ];
 
         requiredTabs.forEach(tab => {
@@ -1281,6 +1281,99 @@ function runWizardTests() {
         ui.app = { state: Object.assign({}, state, { einstieg: undefined }) };
         if (ui.einstiegSchritte().length !== 0) throw new Error("Ein alter Spielstand bekommt ungefragt erste Schritte");
         ui.einstiegMerkeTab("squad");
+    });
+
+    test("Reiter Jugend: Akademie, Talente und U19 stehen im eigenen Reiter, nicht mehr unter Training", () => {
+        const { ManagerEngine } = require('./js/engine/managerEngine.js');
+        const { NewsEngine } = require('./js/engine/newsEngine.js');
+        const html = fs.readFileSync('./index.html', 'utf8');
+        const bereich = (id) => {
+            const start = html.indexOf(`<section class="tab-pane" id="${id}">`);
+            if (start < 0) throw new Error(`Bereich ${id} fehlt`);
+            return html.slice(start, html.indexOf("</section>", start));
+        };
+        const jugend = bereich("pane-youth"), training = bereich("pane-training");
+        ["youthAcademyLevelBadge", "btnUpgradeYouthAcademy", "youthZugang", "youthTalenteMeta", "youthProspectsBody",
+         "youthFremde", "youthSchwerpunkte", "jugendligaKarte"].forEach(id => {
+            if (!jugend.includes(`id="${id}"`)) throw new Error(`#${id} fehlt im Reiter Jugend`);
+            if (training.includes(`id="${id}"`)) throw new Error(`#${id} steht noch im Reiter Training`);
+            if (html.split(`id="${id}"`).length !== 2) throw new Error(`#${id} gibt es nicht genau einmal`);
+        });
+        ["trainingReportBody", "trainingPlaeneBody", "coachingStaffCard"].forEach(id => {
+            if (!training.includes(`id="${id}"`)) throw new Error(`#${id} fehlt im Reiter Training`);
+        });
+        // In der Seitenleiste und im Menü am Handy, gleich nach dem Training
+        for (const klasse of ["nav-item", "mobile-drawer-item"]) {
+            const reiter = [...html.matchAll(new RegExp(`class="${klasse}"[^>]*data-tab="([a-z]+)"`, "g"))].map(m => m[1]);
+            if (reiter.indexOf("youth") !== reiter.indexOf("training") + 1) throw new Error(`${klasse}: Jugend steht nicht nach Training (${reiter.join(", ")})`);
+        }
+
+        // Jeder Reiter zeichnet nur sich selbst
+        const state = GameState.createNewGame("muc", "normal", { name: "Jugend" });
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        const gezeichnet = [];
+        ["renderTraining", "renderJugend"].forEach(f => { ui[f] = () => gezeichnet.push(f); });
+        ui.renderHeader = () => {};
+        ui.zeigeEinstiegErklaerung = () => {};
+        ui.activeTab = "youth"; ui.renderCurrentTab();
+        ui.activeTab = "training"; ui.renderCurrentTab();
+        if (gezeichnet.join() !== "renderJugend,renderTraining") throw new Error("Falsche Reiter gezeichnet: " + gezeichnet.join());
+
+        // Das Training zeichnet keine Akademie mehr, die Jugend alles davon
+        const teile = [];
+        const ui2 = Object.create(UIManager.prototype);
+        ui2.app = { state };
+        ["renderCoachingStaffCard", "renderTrainingslager", "renderTrainingsPlaene", "renderTrainingReport",
+         "renderAkademieSchwerpunkte", "renderAkademieZugang", "renderFremdeTalente", "renderJugendliga"].forEach(f => { ui2[f] = () => teile.push(f); });
+        ui2.getNegotiationEngine = () => null;
+        const altesDokument = global.document;
+        global.document = { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [] };
+        try {
+            ui2.renderTraining();
+            if (teile.join() !== "renderCoachingStaffCard,renderTrainingslager,renderTrainingsPlaene,renderTrainingReport") throw new Error("Training zeichnet: " + teile.join());
+            teile.length = 0;
+            ui2.renderJugend();
+            if (teile.join() !== "renderAkademieSchwerpunkte,renderAkademieZugang,renderFremdeTalente,renderJugendliga") throw new Error("Jugend zeichnet: " + teile.join());
+        } finally {
+            global.document = altesDokument;
+        }
+
+        // Wirbt ein Verein um ein Talent, steht das mit Frist auf der Übersicht und führt in den Reiter Jugend
+        const heute = (state.seasonYear || 1) * 1000 + (state.currentDayIndex || 0);
+        state.youthAcademy = state.youthAcademy || { prospects: [], level: 1 };
+        state.youthAcademy.anfragen = [
+            { id: "a1", talentId: "t1", talentName: "Timo Talent", clubId: "x", clubName: "Großverein", betrag: 100000, seit: heute, bis: heute + 3, status: "offen" },
+            { id: "a2", talentId: "t2", talentName: "Alt", clubId: "x", clubName: "Großverein", betrag: 100000, seit: heute - 9, bis: heute - 2, status: "gewechselt" }
+        ];
+        if (ui.offeneJugendAnfragen(state) !== 1) throw new Error("Offene Anfragen falsch gezählt");
+        const punkt = ManagerEngine.getAttentionItems(state).find(i => i.tab === "youth");
+        if (!punkt || !punkt.title.includes("Timo Talent") || !punkt.detail.includes("Noch 3 Tage")) throw new Error("Übersicht ohne Anfrage: " + JSON.stringify(punkt));
+
+        // Post der Nachwuchsabteilung: eigener Filter, eigene Kategorie, ein Knopf zur Jugend
+        state.inbox = [
+            { id: 1, subject: "Neuer Jahrgang", body: "Text", sender: "Nachwuchsabteilung", type: "youth", read: false },
+            { id: 2, subject: "Spielbericht", body: "Text", sender: "Co-Trainer", type: "match_report", read: false }
+        ];
+        const gefiltert = NewsEngine.getFilteredMessages(state, "youth");
+        if (gefiltert.length !== 1 || String(gefiltert[0].id) !== "1") throw new Error("Filter Jugend falsch");
+        const knopf = { listeners: [], addEventListener(t, f) { this.listeners.push(f); } };
+        const detail = { innerHTML: "", querySelectorAll: () => [], querySelector: sel => sel === "[data-inbox-jugend]" ? knopf : null };
+        const wechsel = [];
+        ui.switchTab = t => wechsel.push(t);
+        global.document = { getElementById: id => id === "inboxDetail" ? detail : null };
+        try {
+            ui.renderInboxDetail(state.inbox[0]);
+        } finally {
+            global.document = altesDokument;
+        }
+        if (!detail.innerHTML.includes("Nachwuchs") || !detail.innerHTML.includes("data-inbox-jugend")) throw new Error("Post der Nachwuchsabteilung ohne Kategorie oder Knopf");
+        knopf.listeners.forEach(f => f({}));
+        if (wechsel.join() !== "youth") throw new Error("Der Knopf führt nicht in den Reiter Jugend");
+
+        // Die Meldungen der Akademie verweisen auf den neuen Reiter
+        const quelle = fs.readFileSync('./js/engine/youthEngine.js', 'utf8');
+        if (/\(Reiter Training/.test(quelle) || !quelle.includes("(Reiter Jugend)")) throw new Error("Meldungen verweisen noch auf den Reiter Training");
     });
 
     test("Sterne: Der Karrierestart misst Spieler wie nach der Übernahme, der Maßstab ist wählbar", () => {

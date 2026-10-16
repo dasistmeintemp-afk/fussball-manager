@@ -58,8 +58,10 @@ const JugendligaEngine = {
         const talente = (youth && typeof youth.eigeneTalente === "function" ? youth.eigeneTalente(state) : (state.youthAcademy?.prospects || []))
             .filter(t => t && !t.promoted);
         const elf = new Set((club.lineup || []).map(String));
+        // Wer in die U19 geschickt wurde (reserve "u19"), spielt immer mit;
+        // die U23 (reserve true) hat ihr eigenes Spiel
         const junge = (state.players || []).filter(p => p.clubId === club.id && (p.age || 30) <= 19 && !elf.has(String(p.id))
-            && (p.injuredWeeks || 0) <= 0 && !p.reserve);
+            && (p.injuredWeeks || 0) <= 0 && (!p.reserve || p.reserve === "u19"));
         return talente.concat(junge);
     },
 
@@ -113,6 +115,7 @@ const JugendligaEngine = {
         const eigenStaerke = this.eigeneStaerke(state);
         const staerke = (i) => (i === 0 ? eigenStaerke : j.teams[i].staerke);
         const ergebnisse = [];
+        let eigenesSpiel = null;
         j.runden[j.runde].forEach(([h, a]) => {
             const diff = staerke(h) - staerke(a);
             const th = this._poisson(Math.max(0.3, 1.55 * Math.exp((diff + 1.5) / 14)));
@@ -128,6 +131,7 @@ const JugendligaEngine = {
                 const heim = h === 0;
                 const tore = heim ? th : ta, gegentore = heim ? ta : th;
                 const schuetzen = this._torschuetzen(state, tore);
+                eigenesSpiel = { tore, gegentore, schuetzen };
                 j.eigene.push({ runde: j.runde + 1, gegner: j.teams[heim ? a : h].name, heim, tore, gegentore, schuetzen: schuetzen.map(s => s.name) });
                 schuetzen.forEach(s => {
                     const e = j.torschuetzen[String(s.id)] || (j.torschuetzen[String(s.id)] = { name: s.name, tore: 0 });
@@ -136,7 +140,7 @@ const JugendligaEngine = {
             }
         });
         j.letzte = ergebnisse;
-        this._zaehleEinsaetze(state, j.saison);
+        this._zaehleEinsaetze(state, j.saison, eigenesSpiel, j.runde + 1);
         j.runde++;
         if (j.runde >= j.runden.length) this._saisonende(state);
         return ergebnisse;
@@ -144,14 +148,23 @@ const JugendligaEngine = {
 
     /**
      * Wer in der Elf der U19 steht, sammelt Einsätze - das zählt für seine
-     * Entwicklung (YouthEngine.wachstumsChance). Gezählt wird nur bei den
-     * Talenten der Akademie; die Profis tragen dafür kein eigenes Feld.
+     * Entwicklung (YouthEngine.wachstumsChance), gezählt bei den Talenten der
+     * Akademie. Dazu bekommt jeder in der Elf eine Note (Feld u19), auch die
+     * jungen Profis: So sieht man, wer sich für die Profis aufdrängt.
      */
-    _zaehleEinsaetze(state, saison) {
+    _zaehleEinsaetze(state, saison, spiel = null, runde = 0) {
         const youth = _jlResolve("YouthEngine", "./youthEngine.js");
         if (!youth || typeof youth.eigeneTalente !== "function") return;
         const talente = new Set(youth.eigeneTalente(state).filter(t => t && !t.promoted));
-        this.eigeneSpieler(state).slice().sort((a, b) => (b.overall || 0) - (a.overall || 0)).slice(0, 11).forEach(p => {
+        const elf = this.eigeneSpieler(state).slice().sort((a, b) => (b.overall || 0) - (a.overall || 0)).slice(0, 11);
+        const reserve = _jlResolve("ReserveEngine", "./reserveEngine.js");
+        const schnitt = elf.length ? elf.reduce((s, p) => s + (p.overall || 0), 0) / elf.length : 50;
+        elf.forEach(p => {
+            // Jeder in der Elf bekommt seine Note, Talente wie junge Profis
+            if (spiel && reserve && typeof reserve.bucheEinsatz === "function") {
+                const tore = spiel.schuetzen.filter(s => String(s.id) === String(p.id)).length;
+                reserve.bucheEinsatz(p, "u19", saison, reserve.note(p, tore, spiel.tore - spiel.gegentore, schnitt, `u19|${saison}|${runde}`), tore);
+            }
             if (!talente.has(p)) return;
             if (p.u19Saison !== saison) { p.u19Saison = saison; p.u19Spiele = 0; }
             p.u19Spiele++;

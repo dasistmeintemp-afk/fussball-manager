@@ -177,6 +177,13 @@ const ContractEngine = {
         if ((player.happiness?.overall ?? 70) < this.UNZUFRIEDEN) {
             return `${player.name} ist zu unzufrieden, um zu verlängern. Mehr Spielzeit oder ein Gespräch könnten helfen.`;
         }
+        // Aus der U19 hochgezogen: Den Profivertrag gibt es erst ab dem Mindestalter
+        if (player.jugendvertrag) {
+            const youth = (typeof YouthEngine !== "undefined" && YouthEngine) ? YouthEngine
+                : (typeof require !== "undefined" ? (() => { try { return require("./youthEngine.js").YouthEngine; } catch (e) { return null; } })() : null);
+            const ab = youth ? youth.profiAb({ countryId: player.jugendvertrag.land }) : 16;
+            if ((player.age || 0) < ab) return `${player.name} hat einen Jugendvertrag. Einen Profivertrag darf er erst mit ${ab} unterschreiben.`;
+        }
         return null;
     },
 
@@ -258,6 +265,8 @@ const ContractEngine = {
 
         // Vertrag erfolgreich verlängert - eine offene Anfrage ist damit erledigt
         player.vorvertragInteresse = undefined;
+        // Aus dem Jugendvertrag wird ein Profivertrag
+        player.jugendvertrag = undefined;
         player.wage = Math.round(offeredWage);
         player.contractYears = offeredYears;
         // Wer gerade verlängert hat, hört zum Saisonwechsel nicht auf

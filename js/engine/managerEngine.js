@@ -461,6 +461,79 @@ class ManagerEngine {
         return (state.players || []).filter(p => club.playerIds.includes(p.id));
     }
 
+    /** Ab so wenigen einsatzbereiten Profis wird es eng: eine Elf und fünf auf der Bank */
+    static PERSONALNOT_AB = 16;
+
+    /**
+     * Wer aus U23 und U19 einspringen kann: die Profis in U23 und U19 und die
+     * Talente der Akademie, die alt genug sind (YouthEngine.hochziehen) -
+     * die in Form zuerst, dann die Stärksten.
+     */
+    static unterbauKandidaten(state, club) {
+        const reserve = _mgrResolve("ReserveEngine", "./reserveEngine.js");
+        const youth = _mgrResolve("YouthEngine", "./youthEngine.js");
+        if (!reserve || !club) return [];
+        const saison = state.seasonYear || 1;
+        const fit = (p) => (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0;
+        const kandidaten = [];
+        this.squadOf(state, club).filter(p => p.reserve && fit(p)).forEach(p => {
+            const team = reserve.inU19(p) ? "U19" : "U23";
+            kandidaten.push({ p, team, bilanz: reserve.bilanz(p, team === "U19" ? "u19" : "u23", saison), talent: false });
+        });
+        if (youth && typeof youth.eigeneTalente === "function") {
+            youth.eigeneTalente(state).filter(t => t && !t.promoted && (t.age || 0) >= youth.MIT_PROFIS.abAlter
+                && !youth.offeneAnfrage(state, t.id)).forEach(t => {
+                kandidaten.push({ p: t, team: "U19", bilanz: reserve.bilanz(t, "u19", saison), talent: true });
+            });
+        }
+        return kandidaten.sort((a, b) => ((b.bilanz?.form ?? 0) - (a.bilanz?.form ?? 0)) || ((b.p.overall || 0) - (a.p.overall || 0)));
+    }
+
+    /**
+     * Für den Schreibtisch: Personalnot (zu wenige einsatzbereite Profis oder
+     * kein Torwart) mit den besten Kandidaten aus U23 und U19, und wer im
+     * Unterbau so gut spielt, dass er sich aufdrängt.
+     */
+    static unterbauPunkte(state, club, squad) {
+        const reserve = _mgrResolve("ReserveEngine", "./reserveEngine.js");
+        if (!reserve || !club) return [];
+        const items = [];
+        const fit = (p) => (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0 && !p.abgestellt;
+        const profis = squad.filter(p => !p.reserve && fit(p));
+        const ohneTorwart = !profis.some(p => p.pos === "TW");
+        const kandidaten = this.unterbauKandidaten(state, club);
+        const zahl = (x) => String(x).replace(".", ",");
+        const name = (k) => `${k.p.name} (${k.p.pos}, ${k.team}${k.bilanz?.form ? `, Form ${zahl(k.bilanz.form.toFixed(1))}` : ""})`;
+        if (profis.length < this.PERSONALNOT_AB || ohneTorwart) {
+            const passend = ohneTorwart ? kandidaten.filter(k => k.p.pos === "TW").concat(kandidaten.filter(k => k.p.pos !== "TW")) : kandidaten;
+            const beste = passend.slice(0, 3);
+            items.push({
+                priority: 0,
+                icon: "🚑",
+                tab: "squad",
+                title: ohneTorwart ? "Kein Torwart einsatzbereit" : `Personalnot: nur ${profis.length} Profis einsatzbereit`,
+                detail: beste.length
+                    ? `Aus U23 und U19 bieten sich an: ${beste.map(name).join(", ")}. Ein Tipp auf den Namen öffnet die Akte.`
+                    : "Weder in der U23 noch in der U19 steht jemand bereit - der Transfermarkt hilft.",
+                spieler: beste.map(k => ({ id: k.p.id, name: k.p.name, pos: k.p.pos })),
+                abschnitt: "unterbau"
+            });
+        }
+        const inForm = kandidaten.filter(k => k.bilanz && k.bilanz.spiele >= 3 && (k.bilanz.form ?? 0) >= reserve.IN_FORM).slice(0, 3);
+        if (inForm.length) {
+            items.push({
+                priority: 5,
+                icon: "⭐",
+                tab: "squad",
+                title: inForm.length === 1 ? `${inForm[0].p.name} drängt sich auf` : `${inForm.length} Spieler drängen sich auf`,
+                detail: `In Form im Unterbau: ${inForm.map(name).join(", ")}.`,
+                spieler: inForm.map(k => ({ id: k.p.id, name: k.p.name, pos: k.p.pos })),
+                abschnitt: "unterbau"
+            });
+        }
+        return items;
+    }
+
     // ------------------------------------------------------------ Ansprache
 
     /**
@@ -1110,6 +1183,9 @@ class ManagerEngine {
                 detail: `${rest === 0 ? "Er entscheidet sich heute" : `Noch ${rest} Tag${rest === 1 ? "" : "e"}`} · Halten oder ziehen lassen?`
             });
         });
+
+        // 1b3. Personalnot und Form im Unterbau: Wer aus U23 und U19 hilft?
+        this.unterbauPunkte(state, club, squad).forEach(item => items.push(item));
 
         // 1c. Pflichtposten im Stab vor dem Saisonstart
         const pre = _mgrResolve("PreseasonEngine", "./preseasonEngine.js");

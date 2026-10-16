@@ -12759,6 +12759,73 @@ function runEngineTests() {
         if (flow.abschlussWert(Object.assign({}, kopf, { fein: { longShots: 10 } }), false, false) !== flow.abschlussWert(kopf, false, false)) throw new Error("Distanzschuss zählt im Strafraum");
     });
 
+    test("Unterbau: U23 und U19 mit Bilanz je Spieler, Hochziehen mit Jugendvertrag, Personalnot auf dem Schreibtisch", () => {
+        const { ReserveEngine: R } = require('./js/engine/reserveEngine.js');
+        const { JugendligaEngine: J } = require('./js/engine/jugendligaEngine.js');
+        const { ManagerEngine: M } = require('./js/engine/managerEngine.js');
+        const { ContractEngine: C } = require('./js/engine/contractEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Unterbau" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const kader = () => state.players.filter(p => p.clubId === club.id);
+
+        // U23: Wer dort spielt, bekommt Spiele, Tore und Noten - ohne den Zufall der Simulation anzufassen
+        const u23 = kader().filter(p => !club.lineup.includes(p.id)).slice(0, 3);
+        u23.forEach(p => { if (!R.hinunter(state, p.id).success) throw new Error("Hinunter in die U23 geht nicht"); });
+        let s = 3; const wurf = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+        for (let i = 0; i < 4; i++) { state.currentMatchday = i + 1; R.spieltag(state, club, wurf); }
+        const b23 = R.bilanz(u23[0], "u23", state.seasonYear);
+        if (!b23 || b23.spiele !== 4 || !(b23.schnitt >= 3 && b23.schnitt <= 10) || u23[0].u23.letzte.length !== 3) throw new Error("U23 ohne Bilanz: " + JSON.stringify(u23[0].u23));
+
+        // U19: Ein junger Profi kann hinunter, steht den Profis nicht zur Verfügung und spielt in der U19 mit
+        const jung = kader().find(p => !p.reserve && !club.lineup.includes(p.id) && p.pos !== "TW");
+        jung.age = 18;
+        if (!R.hinunterU19(state, jung.id).success || !R.inU19(jung)) throw new Error("Hinunter in die U19 geht nicht");
+        if (R.spieler(state, club).includes(jung) || !R.spielerU19(state, club).includes(jung)) throw new Error("U19 und U23 verwechselt");
+        if (!J.eigeneSpieler(state).includes(jung)) throw new Error("Er spielt nicht in der U19 mit");
+        if (GameState.getCleanLineup && GameState.getCleanLineup(club, state.players).some(p => p.id === jung.id)) throw new Error("Er steht den Profis noch zur Verfügung");
+        const alt = kader().find(p => !p.reserve && (p.age || 0) >= 25);
+        if (R.pruefeU19(state, alt).ok) throw new Error("Ein Fünfundzwanzigjähriger darf in die U19");
+        for (let i = 0; i < 3; i++) J.spieltag(state);
+        if (!(R.bilanz(jung, "u19", state.seasonYear)?.spiele >= 1)) throw new Error("U19 ohne Bilanz");
+        const zurueck = R.hinauf(state, jung.id);
+        if (!zurueck.success || zurueck.von !== "U19" || jung.reserve) throw new Error("Zurück aus der U19 geht nicht");
+
+        // Hochziehen: sofort, mit Jugendvertrag und Ausbildungsvergütung
+        const talente = YouthEngine.eigeneTalente(state).filter(t => !t.promoted);
+        const t17 = talente[0], t15 = talente[1];
+        t17.age = 17; t15.age = 15;
+        state.youthAcademy.anfragen = [];
+        if (YouthEngine.hochziehen(state, t15.id).success) throw new Error("Ein Fünfzehnjähriger wird hochgezogen");
+        state.youthAcademy.anfragen = [{ id: "a", talentId: t15.id, clubName: "X", status: "offen", bis: 99999 }];
+        t15.age = 16;
+        if (YouthEngine.hochziehen(state, t15.id).success) throw new Error("Trotz offener Anfrage hochgezogen");
+        const res = YouthEngine.hochziehen(state, t17.id);
+        if (!res.success) throw new Error(res.error);
+        const p = res.player;
+        if (p.clubId !== club.id || !club.playerIds.includes(p.id) || !t17.promoted) throw new Error("Nicht im Profikader");
+        if (!p.jugendvertrag || p.wage !== YouthEngine.VERGUETUNG[club.level || 1] || p.contractYears !== 2) throw new Error(`Jugendvertrag falsch: ${p.wage} / ${p.contractYears}`);
+        if (!PlayerGenerator.FORM_FELDER.includes("jugendvertrag") || !PlayerGenerator.FORM_FELDER.includes("u23")) throw new Error("Felder fehlen in der Spielerform");
+        // Den Profivertrag gibt es erst ab dem Mindestalter - in England ab 17
+        p.age = 16; p.jugendvertrag.land = "en";
+        if (!/erst mit 17/.test(C.verlaengerungsHindernis(p) || "")) throw new Error("Profivertrag vor dem Mindestalter");
+        p.age = 17;
+        if (/Jugendvertrag/.test(C.verlaengerungsHindernis(p) || "")) throw new Error("Mit 17 noch gesperrt");
+
+        // Personalnot: zu wenige Profis fit - der Schreibtisch nennt Kandidaten aus U23 und U19
+        const profis = kader().filter(x => !x.reserve);
+        profis.slice(0, profis.length - 12).forEach(x => { x.injuredWeeks = 3; });
+        u23[1].u23 = { saison: state.seasonYear, spiele: 3, tore: 2, noten: 22.5, letzte: [7.6, 7.5, 7.4] };
+        const punkte = M.unterbauPunkte(state, club, kader());
+        const not = punkte.find(x => /Personalnot|Kein Torwart/.test(x.title));
+        if (!not || !not.spieler.length || not.tab !== "squad") throw new Error("Keine Personalnot gemeldet: " + JSON.stringify(punkte));
+        if (not.spieler[0].id !== u23[1].id) throw new Error("Der Spieler in Form steht nicht vorn");
+        const form = punkte.find(x => x.icon === "⭐");
+        if (!form || !form.spieler.some(x => x.id === u23[1].id)) throw new Error("Wer in Form ist, wird nicht genannt");
+        // Zum Saisonwechsel: Wer aus dem U19-Alter herauswächst, ist wieder Profi
+        const quelle = require('fs').readFileSync('./js/engine/seasonEngine.js', 'utf8');
+        if (!/player\.reserve === "u19" && player\.age > 19/.test(quelle)) throw new Error("Saisonwechsel holt Zwanzigjährige nicht aus der U19");
+    });
+
     test("Kompressor: Große Stände gehen verdichtet in den LocalStorage und kommen unverändert zurück", () => {
         const { Kompressor: K } = require('./js/services/kompressor.js');
         const { SaveCodec } = require('./js/services/saveCodec.js');

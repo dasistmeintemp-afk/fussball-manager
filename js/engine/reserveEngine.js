@@ -45,10 +45,26 @@ const ReserveEngine = {
         return !!player?.reserve;
     },
 
+    /**
+     * reserve: true heißt U23, "u19" heißt U19. Beide stehen den Profis
+     * nicht zur Verfügung - überall, wo das zählt, reicht die Frage, ob
+     * reserve gesetzt ist.
+     */
+    U19: "u19",
+    inU19(player) {
+        return player?.reserve === this.U19;
+    },
+
     /** Die U23 eines Vereins */
     spieler(state, club) {
         const ids = new Set(club?.playerIds || []);
-        return (state?.players || []).filter(p => ids.has(p.id) && p.reserve);
+        return (state?.players || []).filter(p => ids.has(p.id) && p.reserve && p.reserve !== this.U19);
+    },
+
+    /** Die Profis eines Vereins in der U19 */
+    spielerU19(state, club) {
+        const ids = new Set(club?.playerIds || []);
+        return (state?.players || []).filter(p => ids.has(p.id) && p.reserve === this.U19);
     },
 
     /** Der Profikader ohne die U23 */
@@ -62,7 +78,7 @@ const ReserveEngine = {
         const club = (state?.clubs || []).find(c => c.id === player?.clubId);
         if (!player || !club) return { ok: false, grund: "Spieler nicht gefunden." };
         if (!club.playerIds.includes(player.id)) return { ok: false, grund: "Er gehört nicht zum Kader." };
-        if (player.reserve) return { ok: false, grund: `${player.name} spielt schon in der U23.` };
+        if (player.reserve) return { ok: false, grund: `${player.name} spielt schon in der ${player.reserve === this.U19 ? "U19" : "U23"}.` };
         if (player.abgestellt) return { ok: false, grund: `${player.name} ist gerade bei der Nationalmannschaft.` };
         if ((player.age || 30) > this.ALTERSGRENZE) {
             const alte = this.spieler(state, club).filter(p => (p.age || 30) > this.ALTERSGRENZE).length;
@@ -94,13 +110,84 @@ const ReserveEngine = {
         return { success: true, player, ausElf: warDabei };
     },
 
-    /** In den Profikader zurückholen */
+    /** In den Profikader zurückholen - aus der U23 wie aus der U19 */
     hinauf(state, playerId) {
         const player = (state?.players || []).find(p => String(p.id) === String(playerId));
-        if (!player || !player.reserve) return { success: false, error: "Er spielt nicht in der U23." };
+        if (!player || !player.reserve) return { success: false, error: "Er spielt weder in der U23 noch in der U19." };
+        const von = player.reserve === this.U19 ? "U19" : "U23";
         player.reserve = undefined;
-        return { success: true, player };
+        return { success: true, player, von };
     },
+
+    /**
+     * Darf ein Profi in die U19? Nur wer noch im Alter der A-Jugend ist
+     * (YouthEngine.AKADEMIE_HOECHSTALTER), und im Profikader müssen genug
+     * bleiben.
+     */
+    pruefeU19(state, player) {
+        const club = (state?.clubs || []).find(c => c.id === player?.clubId);
+        if (!player || !club || !club.playerIds.includes(player.id)) return { ok: false, grund: "Er gehört nicht zum Kader." };
+        if (player.reserve) return { ok: false, grund: `${player.name} spielt schon in der ${player.reserve === this.U19 ? "U19" : "U23"}.` };
+        if (player.abgestellt) return { ok: false, grund: `${player.name} ist gerade bei der Nationalmannschaft.` };
+        const youth = _reResolve("YouthEngine", "./youthEngine.js");
+        const grenze = youth?.AKADEMIE_HOECHSTALTER ?? 19;
+        if ((player.age || 30) > grenze) return { ok: false, grund: `In der U19 spielt nur, wer höchstens ${grenze} ist.` };
+        if (this.profis(state, club).length - 1 < this.MIN_PROFIKADER) {
+            return { ok: false, grund: `Im Profikader müssen mindestens ${this.MIN_PROFIKADER} Spieler bleiben.` };
+        }
+        return { ok: true };
+    },
+
+    /** In die U19 schicken: Er spielt dort mit, bis Sie ihn zurückholen */
+    hinunterU19(state, playerId) {
+        const player = (state?.players || []).find(p => String(p.id) === String(playerId));
+        const check = this.pruefeU19(state, player);
+        if (!check.ok) return { success: false, error: check.grund };
+        const club = state.clubs.find(c => c.id === player.clubId);
+        player.reserve = this.U19;
+        const warDabei = (club.lineup || []).includes(player.id) || (club.bench || []).includes(player.id);
+        const gs = _reResolve("GameState", "./gameState.js");
+        if (warDabei && gs && typeof gs.repairLineup === "function") gs.repairLineup(club, state.players);
+        return { success: true, player, ausElf: warDabei };
+    },
+
+    // ----------------------------------------------- Leistung je Spieler
+
+    /**
+     * Die Note eines Spielers in einem Spiel von U23 oder U19: Tore, das
+     * Ergebnis, wie er im Vergleich zur Elf steht, und ein Anteil Tagesform.
+     * Gewürfelt wird nach einer festen Zahl je Spieler und Spiel - der
+     * Zufall der Simulation bleibt unberührt.
+     */
+    note(p, tore, ergebnis, schnitt, schluessel) {
+        const gen = _reResolve("PlayerGenerator", "./playerGenerator.js");
+        const h = gen && typeof gen._hashZahl === "function" ? gen._hashZahl(`${p.id}|${schluessel}|note`) : 0;
+        const n = 6.3 + tore * 0.9 + (ergebnis > 0 ? 0.3 : (ergebnis < 0 ? -0.3 : 0))
+            + ((p.overall || 50) - schnitt) * 0.04 + h * 0.7;
+        return Math.round(Math.max(3, Math.min(10, n)) * 10) / 10;
+    },
+
+    /** Eine Partie in die Bilanz des Spielers (u23 oder u19) eintragen */
+    bucheEinsatz(p, feld, saison, note, tore) {
+        const b = p[feld] && p[feld].saison === saison ? p[feld] : { saison, spiele: 0, tore: 0, noten: 0, letzte: [] };
+        b.spiele++;
+        b.tore += tore;
+        b.noten = Math.round((b.noten + note) * 10) / 10;
+        b.letzte = [note].concat(b.letzte || []).slice(0, 3);
+        p[feld] = b;
+        return b;
+    },
+
+    /** Saisonbilanz in U23 oder U19: Spiele, Tore, Schnitt, Form (letzte drei) */
+    bilanz(p, feld, saison) {
+        const b = p?.[feld];
+        if (!b || (saison !== undefined && b.saison !== saison) || !b.spiele) return null;
+        const form = b.letzte.length ? b.letzte.reduce((s, x) => s + x, 0) / b.letzte.length : null;
+        return { spiele: b.spiele, tore: b.tore, schnitt: Math.round(b.noten / b.spiele * 100) / 100, form: form === null ? null : Math.round(form * 100) / 100 };
+    },
+
+    /** Ab dieser Form (Schnitt der letzten drei, mindestens drei Spiele) drängt sich einer auf */
+    IN_FORM: 7.2,
 
     /** Beim Vereinswechsel, bei Leihe oder Karriereende gilt die U23 nicht mehr */
     entlasse(player) {
@@ -155,10 +242,16 @@ const ReserveEngine = {
         // Torschützen grob aus den Offensiven
         const vorne = elf.filter(p => ["ST", "LA", "RA", "OM", "LM", "RM"].includes(p.pos)).concat(elf);
         const schuetzen = [];
+        const toreVon = new Map();
         for (let i = 0; i < tore; i++) {
             const s = vorne[Math.floor(zufall() * Math.min(vorne.length, elf.length + 3))] || elf[0];
-            if (s) schuetzen.push(s.name);
+            if (s) { schuetzen.push(s.name); toreVon.set(s, (toreVon.get(s) || 0) + 1); }
         }
+        // Jeder in der Elf bekommt seine Note - so sieht man, wer sich aufdrängt
+        const saison = state.seasonYear || 1;
+        const schnitt = elf.reduce((s, p) => s + (p.overall || 0), 0) / elf.length;
+        elf.forEach(p => this.bucheEinsatz(p, "u23", saison,
+            this.note(p, toreVon.get(p) || 0, tore - gegentore, schnitt, `u23|${saison}|${state.currentMatchday || 0}`), toreVon.get(p) || 0));
 
         const bilanz = club.reserveBilanz || (club.reserveBilanz = { spiele: 0, s: 0, u: 0, n: 0, tore: 0, gegentore: 0, letzte: [] });
         bilanz.spiele++;

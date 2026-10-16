@@ -323,8 +323,9 @@ class TransferEngine {
         player.morale = 95; // Frische Motivation beim Wechsel
         // Ab heute neu in der Kabine
         player.vereinSeit = (state.seasonYear || state.season || 1) * 1000 + (state.currentDayIndex || 0);
-        // Die U23 des alten Vereins gilt beim neuen nicht
+        // Die U23 des alten Vereins gilt beim neuen nicht, ebenso wenig sein Jugendvertrag
         player.reserve = undefined;
+        player.jugendvertrag = undefined;
         player.vereinslosAb = undefined;
         // Die Klauseln (KlauselEngine) gehören zum alten Vertrag
         player.klauseln = undefined;

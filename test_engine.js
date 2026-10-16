@@ -12872,6 +12872,48 @@ function runEngineTests() {
         if (!R.hinunterU19(state, stamm.id).success || stamm.morale !== 72) throw new Error(`Moral ${stamm.morale}`);
     });
 
+    test("Nominierung: Aus U23 und U19 nur für den nächsten Spieltag, danach von selbst zurück", () => {
+        const { ReserveEngine: R } = require('./js/engine/reserveEngine.js');
+        const { JugendligaEngine: J } = require('./js/engine/jugendligaEngine.js');
+        const { ManagerEngine: M } = require('./js/engine/managerEngine.js');
+        const state = GameState.createNewGame("scf", "normal", { name: "Nominierung" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const kader = () => state.players.filter(p => p.clubId === club.id);
+        const [a, b] = kader().filter(p => !club.lineup.includes(p.id) && p.pos !== "TW").slice(0, 2);
+        [a, b].forEach(p => { if (!R.hinunter(state, p.id).success) throw new Error("Hinunter geht nicht"); });
+        // Nominiert: steht den Profis bereit, ist aber noch als U23-Spieler vermerkt
+        if (!R.nominieren(state, a.id).success || a.reserve || a.nominiertAus !== true) throw new Error("Nominieren geht nicht");
+        if (R.spieler(state, club).includes(a)) throw new Error("Nominierter spielt noch in der U23");
+        // Behalten macht es dauerhaft
+        R.nominieren(state, b.id);
+        const behalten = R.hinauf(state, b.id);
+        if (!behalten.success || behalten.von !== "U23" || b.nominiertAus || b.reserve) throw new Error("Behalten geht nicht");
+        // Ein Talent nur für den Spieltag: mit Jugendvertrag, danach junger Profi in der U19
+        const talent = YouthEngine.eigeneTalente(state).find(t => !t.promoted);
+        talent.age = 17; state.youthAcademy.anfragen = [];
+        const t = YouthEngine.hochziehen(state, talent.id, { nurSpieltag: true }).player;
+        if (!t || t.nominiertAus !== R.U19 || !t.jugendvertrag || t.reserve) throw new Error("Talent nicht für den Spieltag hochgezogen");
+        // Nach dem nächsten Ligaspieltag gehen beide zurück
+        const tag = state.currentMatchday;
+        while (state.currentMatchday === tag) SeasonEngine.advanceToNextMatchday(state);
+        if (a.reserve !== true || a.nominiertAus) throw new Error("U23-Spieler nicht zurück: " + a.reserve);
+        if (t.reserve !== R.U19 || t.nominiertAus || !t.jugendvertrag || !J.eigeneSpieler(state).includes(t)) throw new Error("Talent nicht in der U19");
+        if (b.reserve) throw new Error("Behaltener ging zurück");
+        if (!(state.inbox || []).some(m => m.sender === "Co-Trainer" && /sind zurück|ist zurück/.test(m.subject))) throw new Error("Keine Nachricht vom Co-Trainer");
+        // Wer zwischendurch verkauft wird, bleibt beim neuen Verein
+        R.nominieren(state, a.id);
+        a.clubId = "anderer"; R.zurueckNachNominierung(state, a);
+        if (a.reserve || a.nominiertAus) throw new Error("Verkaufter geht in die alte U23");
+        a.clubId = club.id; a.reserve = true;
+        // Der Hinweis über der Aufstellung bekommt Team und Talent-Merker
+        const profis = kader().filter(x => !x.reserve);
+        profis.slice(0, profis.length - 12).forEach(x => { x.injuredWeeks = 3; });
+        const not = M.unterbauPunkte(state, club, kader()).find(x => x.personalnot);
+        if (!not || !not.spieler.length || !not.spieler.every(s => s.team === "U23" || s.team === "U19") || !not.spieler.every(s => typeof s.talent === "boolean")) throw new Error("Personalnot ohne Kandidaten für die Aufstellung");
+        const html = require('fs').readFileSync('./index.html', 'utf8');
+        if (!/id="taktikUnterbau"/.test(html)) throw new Error("Kein Platz für den Hinweis in der Aufstellung");
+    });
+
     test("Kompressor: Große Stände gehen verdichtet in den LocalStorage und kommen unverändert zurück", () => {
         const { Kompressor: K } = require('./js/services/kompressor.js');
         const { SaveCodec } = require('./js/services/saveCodec.js');

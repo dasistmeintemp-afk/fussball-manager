@@ -99,6 +99,7 @@ const ReserveEngine = {
         if (!check.ok) return { success: false, error: check.grund };
         const club = state.clubs.find(c => c.id === player.clubId);
         player.reserve = true;
+        player.nominiertAus = undefined;
         // Aus Elf und Bank nehmen - die Aufstellung rückt nach
         const warDabei = (club.lineup || []).includes(player.id) || (club.bench || []).includes(player.id);
         const gs = _reResolve("GameState", "./gameState.js");
@@ -110,13 +111,61 @@ const ReserveEngine = {
         return { success: true, player, ausElf: warDabei };
     },
 
-    /** In den Profikader zurückholen - aus der U23 wie aus der U19 */
+    /** In den Profikader zurückholen - aus der U23 wie aus der U19, auch einen nur für den Spieltag Nominierten für immer */
     hinauf(state, playerId) {
         const player = (state?.players || []).find(p => String(p.id) === String(playerId));
+        if (player && player.nominiertAus) {
+            const von = player.nominiertAus === this.U19 ? "U19" : "U23";
+            player.nominiertAus = undefined;
+            return { success: true, player, von };
+        }
         if (!player || !player.reserve) return { success: false, error: "Er spielt weder in der U23 noch in der U19." };
         const von = player.reserve === this.U19 ? "U19" : "U23";
         player.reserve = undefined;
         return { success: true, player, von };
+    },
+
+    // ----------------------------------------------- Nur für den Spieltag
+
+    /**
+     * Nur für den nächsten Spieltag zu den Profis, wie im Vorbild: bei einer
+     * kurzen Verletzungswelle oder einer Sperre. Er steht für Elf und Bank
+     * bereit - auch im Pokal dazwischen - und geht nach dem nächsten
+     * Ligaspiel von selbst zurück in seine Mannschaft (nominiertAus).
+     */
+    nominieren(state, playerId) {
+        const player = (state?.players || []).find(p => String(p.id) === String(playerId));
+        if (!player || !player.reserve) return { success: false, error: "Er spielt weder in der U23 noch in der U19." };
+        const von = player.reserve === this.U19 ? "U19" : "U23";
+        player.nominiertAus = player.reserve;
+        player.reserve = undefined;
+        return { success: true, player, von };
+    },
+
+    /** Einen Nominierten sofort zurückschicken (oder alle nach dem Spieltag) */
+    zurueckNachNominierung(state, player) {
+        if (!player || !player.nominiertAus) return false;
+        const club = (state?.clubs || []).find(c => c.id === player.clubId);
+        const youth = _reResolve("YouthEngine", "./youthEngine.js");
+        // Wer inzwischen gewechselt, verliehen oder zu alt für die U19 ist, bleibt, wo er ist
+        const weiterU19 = player.nominiertAus === this.U19 && (player.age || 30) > (youth?.AKADEMIE_HOECHSTALTER ?? 19);
+        if (club && club.id === state.userClubId && !player.leihe && !weiterU19) player.reserve = player.nominiertAus;
+        player.nominiertAus = undefined;
+        return !!player.reserve;
+    },
+
+    /** Nach dem Ligaspieltag: Die Nominierten gehen zurück in U23 und U19 */
+    nominierteZurueck(state) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        const zurueck = (state?.players || []).filter(p => p.nominiertAus).filter(p => this.zurueckNachNominierung(state, p));
+        if (club && zurueck.length) {
+            const gs = _reResolve("GameState", "./gameState.js");
+            if (gs && typeof gs.repairLineup === "function") gs.repairLineup(club, state.players);
+            this._post(state, "Co-Trainer", zurueck.length === 1 ? `${zurueck[0].name} ist zurück` : `${zurueck.length} Nominierte sind zurück`,
+                zurueck.map(p => `${p.name} spielt wieder in der ${p.reserve === this.U19 ? "U19" : "U23"}.`).join(" ")
+                + " Für den nächsten Spieltag nominieren Sie sie im Kader-Reiter erneut, oder holen Sie sie ganz zu den Profis.");
+        }
+        return zurueck;
     },
 
     /**
@@ -145,6 +194,7 @@ const ReserveEngine = {
         if (!check.ok) return { success: false, error: check.grund };
         const club = state.clubs.find(c => c.id === player.clubId);
         player.reserve = this.U19;
+        player.nominiertAus = undefined;
         const warDabei = (club.lineup || []).includes(player.id) || (club.bench || []).includes(player.id);
         const gs = _reResolve("GameState", "./gameState.js");
         if (warDabei && gs && typeof gs.repairLineup === "function") gs.repairLineup(club, state.players);
@@ -196,6 +246,7 @@ const ReserveEngine = {
     /** Beim Vereinswechsel, bei Leihe oder Karriereende gilt die U23 nicht mehr */
     entlasse(player) {
         if (player && player.reserve) player.reserve = undefined;
+        if (player) player.nominiertAus = undefined;
     },
 
     _kaderSchnitt(state, club) {

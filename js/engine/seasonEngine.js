@@ -657,6 +657,8 @@ class SeasonEngine {
                 // ... und die U19 in ihrer Liga
                 const jugendliga = _resolve('JugendligaEngine', './jugendligaEngine.js');
                 if (jugendliga && typeof jugendliga.nachSpieltag === 'function') jugendliga.nachSpieltag(state);
+                // Wer nur für diesen Spieltag hochgeholt war, geht zurück (ReserveEngine.nominieren)
+                if (reserve && typeof reserve.nominierteZurueck === 'function') reserve.nominierteZurueck(state);
                 // Was gespielt wurde, sitzt danach besser
                 const taktik = _resolve('TacticsEngine', './tacticsEngine.js');
                 const eigenerVerein = state.clubs.find(c => c.id === state.userClubId);

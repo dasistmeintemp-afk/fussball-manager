@@ -1444,7 +1444,7 @@ const YouthEngine = {
      * Vertrag verhandelt wird. Werben dürfen andere Vereine auch danach,
      * bis er einen Profivertrag hat (umwerbbare).
      */
-    hochziehen(state, talentId) {
+    hochziehen(state, talentId, optionen = {}) {
         const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
         const talent = this.eigeneTalente(state).find(t => t && String(t.id) === String(talentId) && !t.promoted);
         if (!club || !talent) return { success: false, error: "Talent nicht gefunden." };
@@ -1467,8 +1467,10 @@ const YouthEngine = {
         p.squadRole = p.squadRole === "Toptalent" ? "Toptalent" : "Zukunftstalent";
         // Die Bilanz aus der U19 nimmt er mit
         if (talent.u19) p.u19 = Object.assign({}, talent.u19);
+        // Nur für den Spieltag: Danach spielt er in der U19 weiter - als Profi mit Jugendvertrag
+        if (optionen.nurSpieltag) p.nominiertAus = "u19";
         if (p.happiness) p.happiness.reason = "Aus der U19 zu den Profis hochgezogen.";
-        this.nachwuchsPost(state, club, `🎓 ${p.name} bei den Profis`,
+        if (!optionen.nurSpieltag) this.nachwuchsPost(state, club, `🎓 ${p.name} bei den Profis`,
             `${p.name} (${p.pos}, ${p.age} Jahre) trainiert und spielt ab sofort bei den Profis - mit seinem Jugendvertrag (${this._geld(verguetung)} je Woche, noch ${jahre} ${jahre === 1 ? "Saison" : "Saisons"}). `
             + `Einen Profivertrag können Sie ihm in seiner Akte anbieten${(p.age || 0) < this.profiAb(club) ? ` - ab ${this.profiAb(club)}` : ""}. In die U19 zurück schicken Sie ihn ebenfalls dort.`);
         return { success: true, player: p };

@@ -56,6 +56,40 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     },
 
     /**
+     * Über der Aufstellung, nur bei Personalnot oder einem Engpass in einem
+     * Mannschaftsteil: die Kandidaten aus U23 und U19 mit dem Knopf
+     * "Spieltag" (ReserveEngine.nominieren, YouthEngine.hochziehen) - dort,
+     * wo die Lücke auffällt, statt erst im Kader-Reiter.
+     */
+    renderTaktikUnterbau(club) {
+        const box = document.getElementById("taktikUnterbau");
+        if (!box) return;
+        const state = this.app.state;
+        const mgr = typeof ManagerEngine !== "undefined" ? ManagerEngine : null;
+        const squad = (state.players || []).filter(p => (club.playerIds || []).includes(p.id));
+        const punkte = mgr && typeof mgr.unterbauPunkte === "function"
+            ? mgr.unterbauPunkte(state, club, squad).filter(i => i.personalnot) : [];
+        if (!punkte.length) { box.hidden = true; box.innerHTML = ""; return; }
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const zahl = (x) => String(x.toFixed(1)).replace(".", ",");
+        const knopf = (s) => s.talent
+            ? `<button class="btn btn-sm btn-primary btn-hochziehen-spieltag" data-talent-id="${esc(s.id)}" title="Mit Jugendvertrag für den nächsten Ligaspieltag - danach spielt er in der U19">Spieltag</button>`
+            : `<button class="btn btn-sm btn-primary btn-nominieren" data-id="${esc(s.id)}" title="Nach dem nächsten Ligaspiel geht er zurück in die ${esc(s.team)}">Spieltag</button>`;
+        box.hidden = false;
+        box.innerHTML = punkte.map(i => `
+            <div class="tu-punkt">
+                <div class="tu-titel">${esc(i.icon)} ${esc(i.title)}</div>
+                ${i.spieler.length ? `<div class="tu-liste">${i.spieler.map(s => `
+                    <span class="tu-spieler"><button type="button" class="btn-link tu-name" data-id="${esc(s.id)}">${esc(s.name)}</button>
+                        <span class="text-muted">${esc(s.pos)} · ${esc(s.team)}${s.form ? ` · Form ${zahl(s.form)}` : ""}</span>${knopf(s)}</span>`).join("")}</div>`
+                    : `<div class="text-muted">${esc(i.detail)}</div>`}
+            </div>`).join("")
+            + `<small class="text-muted">Spieltag holt nur für das nächste Ligaspiel hoch. Danach gehen sie von selbst zurück.</small>`;
+        box.querySelectorAll(".tu-name").forEach(b => b.addEventListener("click", () => this.showPlayerDetailsModal(b.dataset.id, { abschnitt: "unterbau" })));
+        if (typeof this.bindeUnterbauKnoepfe === "function") this.bindeUnterbauKnoepfe(box);
+    },
+
+    /**
      * Aufstellung & Taktik rendern
      */
     renderTactics() {
@@ -89,6 +123,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         }
 
         const slots = this.getActiveFormationPositions(userClub);
+        this.renderTaktikUnterbau(userClub);
 
         // Taktik nach Phasen: Spielstil, Formen mit und gegen den Ball,
         // Rollen, Anweisungen, Check

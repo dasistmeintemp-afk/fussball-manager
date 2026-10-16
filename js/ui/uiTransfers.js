@@ -355,13 +355,28 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const praxis = Math.round((player.spielpraxis ?? 0.5) * 100);
         const bilanz = this.unterbauBilanzText(player);
         const kopf = `<h4 class="gs-titel"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg> Unterbau: U23 und U19</h4>`;
+        if (player.nominiertAus) {
+            const team = player.nominiertAus === engine.U19 ? "U19" : "U23";
+            return `
+                <div class="dash-card mb-3 gs-karte">${kopf}
+                    <div class="gs-lage gs-info">Für den nächsten Spieltag aus der ${team} hochgeholt - nach dem Ligaspiel geht er zurück.</div>
+                    ${bilanz ? `<div class="gs-sub">${esc(bilanz)}</div>` : ""}
+                    <div class="gs-knoepfe">
+                        <button class="btn btn-secondary" id="btnPdReserve">Ganz bei den Profis behalten</button>
+                        <button class="btn btn-secondary" id="btnPdNominiertZurueck">Sofort zurück in die ${team}</button>
+                    </div>
+                </div>`;
+        }
         if (player.reserve) {
             const team = engine.inU19(player) ? "U19" : "U23";
             return `
                 <div class="dash-card mb-3 gs-karte">${kopf}
                     <div class="gs-lage gs-info">Spielt in der ${team} und steht den Profis nicht zur Verfügung · Spielpraxis ${praxis} %</div>
                     ${bilanz ? `<div class="gs-sub">${esc(bilanz)}</div>` : ""}
-                    <button class="btn btn-secondary" id="btnPdReserve">Zu den Profis holen</button>
+                    <div class="gs-knoepfe">
+                        <button class="btn btn-primary" id="btnPdNominieren" title="Danach geht er von selbst zurück in die ${team}">Für den nächsten Spieltag</button>
+                        <button class="btn btn-secondary" id="btnPdReserve">Ganz zu den Profis</button>
+                    </div>
                 </div>`;
         }
         const check = engine.pruefe(state, player);
@@ -416,7 +431,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const u19 = mgr && typeof mgr.unterbauKandidaten === "function"
             ? mgr.unterbauKandidaten(state, club).filter(k => k.team === "U19").slice(0, 6) : [];
         const b = club?.reserveBilanz;
-        if (!spieler.length && !b && !u19.length) { box.style.display = "none"; box.innerHTML = ""; return; }
+        if (!spieler.length && !b && !u19.length && !state.players.some(p => p.clubId === club.id && p.nominiertAus)) { box.style.display = "none"; box.innerHTML = ""; return; }
         box.style.display = "";
         const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
         const letzte = (b?.letzte || []).map(e => {
@@ -424,26 +439,41 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             return `<span class="u23-ergebnis u23-${klasse}" title="Spieltag ${e.matchday}${e.schuetzen.length ? " · Tore: " + esc(e.schuetzen.join(", ")) : ""}">${e.tore}:${e.gegentore}</span>`;
         }).join("");
         const verletzt = (p) => (p.injuredWeeks || 0) > 0 ? ' <span class="text-danger">verletzt</span>' : "";
+        // Wer nur für den Spieltag oben ist
+        const nominiert = state.players.filter(p => p.clubId === club.id && p.nominiertAus);
+        const nominiertHtml = nominiert.length ? `
+            <div class="unterbau-nominiert">
+                <strong>Für den nächsten Spieltag oben:</strong>
+                ${nominiert.map(p => `<div class="unterbau-nom"><span>${esc(p.name)} <span class="text-muted">aus der ${p.nominiertAus === engine.U19 ? "U19" : "U23"}</span></span>
+                    <span class="unterbau-knoepfe"><button class="btn btn-sm btn-secondary btn-nominiert-zurueck" data-id="${esc(p.id)}">Zurück</button>
+                    <button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(p.id)}">Behalten</button></span></div>`).join("")}
+                <small class="text-muted">Nach dem nächsten Ligaspiel gehen sie von selbst zurück.</small>
+            </div>` : "";
+        const knoepfe = (hoch, nom) => `<div class="unterbau-knoepfe">${nom}${hoch}</div>`;
         const kopfZeile = `<thead><tr><th>Spieler</th><th>Pos</th><th>Alter</th><th>Stärke</th><th>Sp</th><th>Tore</th><th>Ø</th><th>Form</th><th></th></tr></thead>`;
         box.innerHTML = `
             <div class="kb-kopf">
                 <h3><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg>Unterbau: U23 und U19</h3>
                 ${b ? `<span class="text-muted">U23: ${b.s} S · ${b.u} U · ${b.n} N · ${b.tore}:${b.gegentore} Tore</span>` : ""}
             </div>
+            ${nominiertHtml}
             <h4 class="unterbau-titel">Zweite Mannschaft (U23)</h4>
             ${letzte ? `<div class="u23-letzte"><span class="kb-label">Letzte Spiele</span>${letzte}</div>` : ""}
             ${spieler.length ? `<div class="table-container"><table class="compact-table u23-tabelle">${kopfZeile}<tbody>
                 ${spieler.map(p => `<tr data-u23="${esc(p.id)}"><td>${esc(p.name)}${verletzt(p)}</td><td>${esc(p.pos)}</td><td>${p.age || "-"}</td><td>${p.overall || "-"}</td>${this.unterbauZellen(p, "u23")}
-                    <td><button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(p.id)}">Zu den Profis</button></td></tr>`).join("")}
+                    <td>${knoepfe(`<button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(p.id)}" title="Für immer zu den Profis">Ganz hoch</button>`,
+                        `<button class="btn btn-sm btn-primary btn-nominieren" data-id="${esc(p.id)}" title="Nach dem nächsten Ligaspiel geht er zurück">Spieltag</button>`)}</td></tr>`).join("")}
             </tbody></table></div>` : `<p class="text-muted">Niemand spielt gerade in der U23.</p>`}
             <h4 class="unterbau-titel">U19: bereit für die Profis</h4>
             ${u19.length ? `<div class="table-container"><table class="compact-table u23-tabelle">${kopfZeile}<tbody>
                 ${u19.map(k => `<tr data-u23="${esc(k.p.id)}"><td>${esc(k.p.name)} <span class="text-muted">${k.talent ? "Akademie" : "Profi"}</span></td><td>${esc(k.p.pos)}</td><td>${k.p.age || "-"}</td><td>${k.p.overall || "-"}</td>${this.unterbauZellen(k.p, "u19")}
                     <td>${k.talent
-                        ? `<button class="btn btn-sm btn-primary btn-hochziehen" data-talent-id="${esc(k.p.id)}" title="Mit Jugendvertrag zu den Profis - ohne Berater">Hochziehen</button>`
-                        : `<button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(k.p.id)}">Zu den Profis</button>`}</td></tr>`).join("")}
+                        ? knoepfe(`<button class="btn btn-sm btn-secondary btn-hochziehen" data-talent-id="${esc(k.p.id)}" title="Mit Jugendvertrag ganz zu den Profis - ohne Berater">Ganz hoch</button>`,
+                            `<button class="btn btn-sm btn-primary btn-hochziehen-spieltag" data-talent-id="${esc(k.p.id)}" title="Mit Jugendvertrag für den nächsten Ligaspieltag - danach spielt er in der U19">Spieltag</button>`)
+                        : knoepfe(`<button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(k.p.id)}">Ganz hoch</button>`,
+                            `<button class="btn btn-sm btn-primary btn-nominieren" data-id="${esc(k.p.id)}">Spieltag</button>`)}</td></tr>`).join("")}
             </tbody></table></div>` : `<p class="text-muted">In der U19 ist niemand alt genug für die Profis (ab ${typeof YouthEngine !== "undefined" ? YouthEngine.MIT_PROFIS.abAlter : 16}).</p>`}
-            <p class="text-muted kb-hinweis">Hinunter schicken Sie Spieler über die Spielerakte. In der U23 höchstens ${engine.MAX_UEBERALTERT} Spieler über ${engine.ALTERSGRENZE}, im Profikader bleiben mindestens ${engine.MIN_PROFIKADER}. Hochgezogene Talente spielen mit ihrem Jugendvertrag.
+            <p class="text-muted kb-hinweis">Hinunter schicken Sie Spieler über die Spielerakte. In der U23 höchstens ${engine.MAX_UEBERALTERT} Spieler über ${engine.ALTERSGRENZE}, im Profikader bleiben mindestens ${engine.MIN_PROFIKADER}. Hochgezogene Talente spielen mit ihrem Jugendvertrag. <em>Spieltag</em> holt nur für das nächste Ligaspiel hoch, <em>Ganz hoch</em> für immer.
                 <button type="button" class="btn-link" id="btnUnterbauZurJugend">Ganze U19 im Reiter Jugend</button></p>`;
         box.querySelectorAll("[data-u23]").forEach(tr => tr.addEventListener("click", (e) => {
             if (e.target.closest("button")) return;
@@ -466,6 +496,26 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const res = ReserveEngine.hinauf(state, btn.dataset.id);
             if (!res.success) return this.showToast(res.error, "error");
             fertig(`${res.player.name} gehört wieder zum Profikader.`);
+        }));
+        box.querySelectorAll(".btn-nominieren").forEach(btn => btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const res = ReserveEngine.nominieren(state, btn.dataset.id);
+            if (!res.success) return this.showToast(res.error, "error");
+            fertig(`${res.player.name} ist für den nächsten Spieltag dabei und geht danach zurück in die ${res.von}.`);
+        }));
+        box.querySelectorAll(".btn-nominiert-zurueck").forEach(btn => btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const p = state.players.find(x => String(x.id) === btn.dataset.id);
+            if (!p || !ReserveEngine.zurueckNachNominierung(state, p)) return this.showToast("Er kann nicht zurück.", "error");
+            const club = state.clubs.find(c => c.id === state.userClubId);
+            if (typeof GameState !== "undefined" && GameState.repairLineup) GameState.repairLineup(club, state.players);
+            fertig(`${p.name} spielt wieder in der ${p.reserve === ReserveEngine.U19 ? "U19" : "U23"}.`);
+        }));
+        box.querySelectorAll(".btn-hochziehen-spieltag").forEach(btn => btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const res = typeof YouthEngine !== "undefined" ? YouthEngine.hochziehen(state, btn.dataset.talentId, { nurSpieltag: true }) : { success: false, error: "Nicht verfügbar." };
+            if (!res.success) return this.showToast(res.error, "error", 6000);
+            fertig(`🎓 ${res.player.name} ist für den nächsten Spieltag dabei - danach spielt er in der U19, mit seinem Jugendvertrag.`);
         }));
         box.querySelectorAll(".btn-hochziehen").forEach(btn => btn.addEventListener("click", (e) => {
             e.stopPropagation();

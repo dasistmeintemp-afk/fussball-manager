@@ -496,6 +496,22 @@ class TransferEngine {
     }
 
     /**
+     * Ist heute der letzte Tag des Fensters? Nach Datum - ohne Kalender am
+     * letzten Spieltag des Fensters. heute ist der Kalendertag, sonst der,
+     * auf dem der Manager steht.
+     */
+    static istDeadlineDay(state, heute = null) {
+        const info = this.fensterInfo(state);
+        if (!info.offen) return false;
+        if (info.bis) {
+            const datum = this.heute(state);
+            return !!(datum && datum.monat === info.bis[0] && datum.tag === info.bis[1]);
+        }
+        const tag = heute || (Array.isArray(state?.calendar) ? state.calendar[state.currentDayIndex || 0] : null);
+        return !!(tag && tag.type === "matchday" && tag.matchday === info.bisSpieltag);
+    }
+
+    /**
      * Wie viele Transferversuche die KI an einem Spieltag im Fenster macht.
      * Das Winterfenster dauert jetzt einen Monat statt zwei Spieltagen - je
      * Spieltag wird dort deshalb weniger versucht.
@@ -543,21 +559,22 @@ class TransferEngine {
             } else {
                 post("🔒 Transferfenster geschlossen",
                     `Ab jetzt wechseln nur noch vereinslose Spieler. Das nächste Fenster öffnet ${info.oeffnet}.`);
+                // Was bis zum Schluss nicht unterschrieben war, platzt jetzt
+                const verhandlung = _transferResolve("NegotiationEngine", "./negotiationEngine.js");
+                const geplatzt = verhandlung && typeof verhandlung.pruefeFenster === "function" ? verhandlung.pruefeFenster(state) : [];
+                if (geplatzt.length) meldungen.push(`${geplatzt.length === 1 ? `Die Verhandlung um ${geplatzt[0].negotiation.playerName} ist` : `${geplatzt.length} Verhandlungen sind`} mit dem Fenster geplatzt.`);
             }
         }
 
-        // Der letzte Tag des Fensters - nach Datum, ohne Kalender am letzten Spieltag
-        const datum = this.heute(state);
-        const letzterTag = info.offen && (info.bis
-            ? (datum && datum.monat === info.bis[0] && datum.tag === info.bis[1])
-            : (heute && heute.type === "matchday" && heute.matchday === info.bisSpieltag));
-        if (letzterTag) {
+        // Der letzte Tag des Fensters
+        if (this.istDeadlineDay(state, heute)) {
             const schluessel = `${state.seasonYear || 1}-${info.art}`;
             if (merk.deadline !== schluessel) {
                 merk.deadline = schluessel;
                 post("⏰ Deadline Day: das Transferfenster schließt",
                     `Heute ist der letzte Tag des ${info.art === "winter" ? "Winter" : "Sommer"}transferfensters - ${info.bis ? "heute Abend" : `nach dem ${info.bisSpieltag}. Spieltag`} ist Schluss. `
-                    + `Was noch verhandelt wird, muss heute abgeschlossen sein; vereinslose Spieler bleiben danach zu haben.`);
+                    + `Vereine und Berater antworten heute sofort, auch der Medizincheck geht noch am selben Tag. `
+                    + `Was bis heute Abend nicht unterschrieben ist, platzt; vereinslose Spieler bleiben danach zu haben.`);
             }
         }
         return meldungen;

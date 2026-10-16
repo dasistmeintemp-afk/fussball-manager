@@ -713,6 +713,21 @@ class PlayerRatingEngine {
     /**
      * Ermittelt die Genauigkeit und Schätzspannen für sichtbare Werte abhängig von Scouting und Club-Zugehörigkeit
      */
+    /**
+     * Für die Filter im Transfermarkt: Marktwert-Spanne und Potenzial in
+     * Sternen, so wie der Scout sie sieht - ohne die ganze Karte zu bauen.
+     */
+    static sichtwerte(player, context = {}) {
+        const s = PlayerRatingEngine.schaetzung(player, context);
+        const faktor = (100 - s.confidence) / 100 * 0.4;
+        const ref = { squadAverageAbility: context.userSquadAvgAbility || 140 };
+        return {
+            wertMin: Math.round(s.trueVal * (1 - faktor)),
+            wertMax: Math.round(s.trueVal * (1 + faktor)),
+            potSterne: Math.round(PlayerRatingEngine.calculateStarRating(Math.round((s.estPaMin + s.estPaMax) / 2), ref) * 2) / 2
+        };
+    }
+
     static calculateVisiblePlayerCard(player, context = {}) {
         const { isUserPlayer, confidence, isPrecise, trueVal, estCaMin, estCaMax, estPaMin, estPaMax } = PlayerRatingEngine.schaetzung(player, context);
 

@@ -10,6 +10,11 @@
  * Jede Partei antwortet erst nach ein bis drei Tagen. Wer zu niedrig bietet,
  * kostet Geduld; ist die Geduld aufgebraucht oder die Frist verstrichen,
  * platzt die Verhandlung.
+ *
+ * Genauso laufen Leihen (mit dem Stammverein) und Talente aus anderen
+ * Akademien (Entschädigung mit dem Verein, dann die Familie). Am Deadline
+ * Day antworten alle noch am selben Tag; schließt das Fenster, platzt, was
+ * dafür ein offenes Fenster braucht.
  */
 
 const _negResolve = (() => {
@@ -27,6 +32,8 @@ const NEGOTIATION_STAGES = {
     FEE: "fee",
     TERMS: "terms",
     MEDICAL: "medical",
+    // Leihe: Gehaltsanteil, Leihgebühr, Einsatzzusage und Kaufoption mit dem Stammverein
+    LOAN: "loan",
     DONE: "done"
 };
 
@@ -42,6 +49,9 @@ const NEGOTIATION_STATUS = {
 class NegotiationEngine {
     static STAGES = NEGOTIATION_STAGES;
     static STATUS = NEGOTIATION_STATUS;
+
+    /** Einsatzzusagen bei einer Leihe, von wenig nach viel ("Talent": keine Zusage) */
+    static ROLLEN = ["Talent", "Rotation", "Stammspieler"];
 
     /** Beraterprofile: bestimmen Tempo, Geduld und Höhe der Forderungen */
     static AGENT_PROFILES = [
@@ -353,6 +363,188 @@ class NegotiationEngine {
         return { success: true, negotiation };
     }
 
+    // -------------------------------------------------------------- Leihe
+
+    /**
+     * Eine Leihe verhandeln statt per Knopfdruck. Der Stammverein nennt
+     * Gehaltsanteil, Leihgebühr und die Einsatzzusage, die er erwartet. Wer
+     * bei uns Stammspieler wäre, will das auch zugesagt bekommen - sonst kommt
+     * er nicht. Die Antwort dauert ein bis drei Tage, am Deadline Day nicht.
+     */
+    static startLeihVerhandlung(state, playerId, angebot = null) {
+        const loan = _negResolve("LoanEngine", "./loanEngine.js");
+        if (!loan) return { success: false, error: "Leihen sind nicht verfügbar." };
+        const player = (state.players || []).find(p => String(p.id) === String(playerId));
+        const hindernis = loan.leihHindernis(state, player);
+        if (hindernis) return { success: false, error: hindernis };
+        const existing = this.getOpenNegotiations(state)
+            .find(n => String(n.playerId) === String(playerId) && n.clubId === state.userClubId);
+        if (existing) return { success: false, error: "Für diesen Spieler läuft bereits eine Verhandlung.", negotiation: existing };
+        const eintrag = loan.leihmarkt(state, Infinity).find(e => String(e.playerId) === String(playerId));
+        if (!eintrag) return { success: false, error: "Sein Verein gibt ihn nicht ab." };
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const agent = this.getAgentFor(player);
+        const wunsch = loan.rolleBei(state, player, club) || "Talent";
+        const rolle = this.ROLLEN.indexOf(wunsch) > this.ROLLEN.indexOf(eintrag.rolle) ? wunsch : eintrag.rolle;
+
+        const negotiation = {
+            id: `neg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            type: "leihe",
+            playerId: player.id,
+            playerName: player.name,
+            playerPos: player.pos,
+            clubId: club.id,
+            sellerClubId: eintrag.clubId,
+            sellerClubName: eintrag.clubName,
+            agentName: agent.name,
+            agentProfile: agent.profile,
+            agentLabel: agent.label,
+            stage: NEGOTIATION_STAGES.LOAN,
+            status: NEGOTIATION_STATUS.AWAITING_US,
+            openedDay: this.today(state),
+            deadlineDay: this.today(state) + 10,
+            replyDay: null,
+            round: 0,
+            patience: this.geduldMitRuf(state, 70),
+            demand: {
+                lohnAnteil: eintrag.lohnAnteil,
+                // Weiter als zwanzig Prozentpunkte geht der Stammverein nicht herunter
+                minAnteil: Math.max(0.3, Math.round((eintrag.lohnAnteil - 0.2) * 20) / 20),
+                gebuehr: eintrag.gebuehr,
+                rolle,
+                kaufoption: eintrag.kaufoption,
+                optionsAufschlag: eintrag.optionsAufschlag,
+                wage: eintrag.wage
+            },
+            agreed: {},
+            lastOffer: null,
+            log: []
+        };
+        this.log(negotiation, state, "club",
+            `${eintrag.clubName} gibt ${player.name} bis zum Saisonende ab: ${Math.round(eintrag.lohnAnteil * 100)} % des Gehalts`
+            + `${eintrag.gebuehr ? `, Leihgebühr ${this.formatMoney(eintrag.gebuehr)}` : ", ohne Leihgebühr"}, Einsatz als ${this.rolleText(eintrag.rolle)}.`);
+        if (rolle !== eintrag.rolle) {
+            this.log(negotiation, state, "agent", `Berater ${agent.name}: "Er kommt nur, wenn er als ${rolle} eingeplant ist."`);
+        }
+        this.ensureList(state).push(negotiation);
+        if (angebot) return this.submitOffer(state, negotiation.id, angebot);
+        return { success: true, negotiation };
+    }
+
+    /** "Stammspieler", "Rotation" - und "Talent" heißt: keine Einsatzzusage */
+    static rolleText(rolle) {
+        return rolle === "Talent" ? "Talent ohne Einsatzzusage" : rolle;
+    }
+
+    // ------------------------------------------------ Talente anderer Akademien
+
+    /**
+     * Ein Talent aus einer anderen Akademie holen - in zwei Schritten wie
+     * ein Transfer: Erst die Ausbildungsentschädigung mit seinem Verein, dann
+     * entscheidet die Familie. Sie wägt Ruf und Perspektive ab; ein Handgeld
+     * oder die Zusage, mit den Profis zu trainieren, kann sie überzeugen.
+     */
+    static startFremdtalent(state, talentId) {
+        const youth = _negResolve("YouthEngine", "./youthEngine.js");
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        if (!youth || !club || typeof youth.fremdeTalente !== "function") return { success: false, error: "Nicht verfügbar." };
+        const t = youth.fremdeTalente(state).find(x => String(x.id) === String(talentId));
+        if (!t) return { success: false, error: "Talent nicht gefunden." };
+        const existing = this.getOpenNegotiations(state)
+            .find(n => n.type === "fremdtalent" && String(n.prospectId) === String(talentId));
+        if (existing) return { success: false, error: "Die Gespräche laufen bereits.", negotiation: existing };
+        if (youth.akademiePlaetze(state, club).frei <= 0) return { success: false, error: "Die Akademie ist voll - erst muss ein Talent gehen oder befördert werden." };
+        const negotiation = {
+            id: `neg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            type: "fremdtalent",
+            prospectId: t.id,
+            playerName: t.name,
+            playerPos: t.pos,
+            clubId: club.id,
+            sellerClubId: t.vonClubId,
+            sellerClubName: t.vonClubName,
+            agentName: `Familie ${String(t.name).split(" ").slice(-1)[0]}`,
+            agentProfile: "family",
+            agentLabel: "Eltern",
+            stage: NEGOTIATION_STAGES.FEE,
+            status: NEGOTIATION_STATUS.AWAITING_US,
+            openedDay: this.today(state),
+            deadlineDay: this.today(state) + 14,
+            replyDay: null,
+            round: 0,
+            patience: this.geduldMitRuf(state, 80),
+            demand: { fee: t.betrag, signingBonus: 0, wage: 0 },
+            agreed: { fee: null, signingBonus: null, perspektive: false },
+            lastOffer: null,
+            log: []
+        };
+        this.log(negotiation, state, "club",
+            `${t.vonClubName} lässt ${t.name} gehen - gegen eine Ausbildungsentschädigung von ${this.formatMoney(t.betrag)}.`);
+        this.ensureList(state).push(negotiation);
+        return { success: true, negotiation };
+    }
+
+    // --------------------------------------------------------- Deadline Day
+
+    /** Braucht der Abschluss ein offenes Fenster? Ein Wechsel mit Ablöse und jede Leihe */
+    static brauchtFenster(negotiation) {
+        if (!negotiation) return false;
+        if (negotiation.type === "leihe") return true;
+        return negotiation.type === "transfer" && !negotiation.vorvertrag && !!negotiation.sellerClubId;
+    }
+
+    static istDeadlineDay(state) {
+        const te = this.getTransferEngine();
+        return !!(te && typeof te.istDeadlineDay === "function" && te.istDeadlineDay(state));
+    }
+
+    /**
+     * Ist das Fenster zu, platzt, was dafür ein offenes Fenster braucht.
+     * Vorher liefen solche Verhandlungen weiter - ein Spieler kam noch eine
+     * Woche nach Fensterschluss. Gibt die geplatzten zurück.
+     */
+    static pruefeFenster(state) {
+        const te = this.getTransferEngine();
+        if (!te || typeof te.fensterHindernis !== "function" || !te.fensterHindernis(state)) return [];
+        const heute = this.today(state);
+        return this.getOpenNegotiations(state).filter(n => this.brauchtFenster(n)).map(n => {
+            n.status = NEGOTIATION_STATUS.EXPIRED;
+            n.closedDay = heute;
+            this.log(n, state, "system", "Das Transferfenster ist geschlossen. Der Wechsel kommt nicht mehr zustande.");
+            this.notify(state, n, `Fenster zu: ${n.playerName}`,
+                `Die Gespräche um ${n.playerName} waren bis zum Fensterschluss nicht abgeschlossen. Erst im nächsten Fenster geht es wieder.`);
+            return { negotiation: n, kind: "expired" };
+        });
+    }
+
+    /**
+     * Der Morgen des Deadline Day: Was noch geprüft wird, ist sofort
+     * beantwortet - sonst käme die Antwort erst mit dem Tageswechsel, und
+     * auf eine Gegenforderung ließe sich nicht mehr reagieren.
+     */
+    static deadlineMorgen(state) {
+        if (!this.istDeadlineDay(state)) return [];
+        const schritte = [];
+        this.getOpenNegotiations(state)
+            .filter(n => n.status === NEGOTIATION_STATUS.WAITING_REPLY && this.brauchtFenster(n))
+            .forEach(n => this.antworteSofort(state, n).forEach(x => schritte.push(x)));
+        return schritte;
+    }
+
+    /**
+     * Deadline Day: Die Gegenseite antwortet noch heute, der Medizincheck
+     * folgt am selben Tag. Gibt die Schritte zurück.
+     */
+    static antworteSofort(state, negotiation) {
+        const schritte = [];
+        for (let i = 0; i < 4 && negotiation.status === NEGOTIATION_STATUS.WAITING_REPLY; i++) {
+            negotiation.replyDay = this.today(state);
+            const schritt = this.evaluateOffer(state, negotiation);
+            if (schritt) schritte.push(schritt);
+        }
+        return schritte;
+    }
+
     /**
      * Die längste Laufzeit, die in dieser Verhandlung möglich ist: Ein
      * Minderjähriger darf höchstens drei Jahre unterschreiben.
@@ -396,8 +588,38 @@ class NegotiationEngine {
 
         const club = state.clubs.find(c => c.id === negotiation.clubId);
         if (!club) return { success: false, error: "Verein nicht gefunden." };
+        // Nach Fensterschluss geht kein Angebot mehr hinaus
+        if (this.brauchtFenster(negotiation) && this.pruefeFenster(state).some(s => s.negotiation === negotiation)) {
+            return { success: false, error: "Das Transferfenster ist geschlossen. Der Wechsel kommt nicht mehr zustande." };
+        }
 
-        if (negotiation.stage === NEGOTIATION_STAGES.FEE) {
+        if (negotiation.type === "fremdtalent" && negotiation.stage === NEGOTIATION_STAGES.FEE) {
+            const fee = Math.max(0, Math.round(Number(offer.fee) || 0));
+            if (fee > Math.max(0, club.balance || 0)) return { success: false, error: "Für die Ausbildungsentschädigung reicht das Geld nicht." };
+            negotiation.lastOffer = { fee };
+            this.log(negotiation, state, "us", `Angebot über eine Ausbildungsentschädigung von ${this.formatMoney(fee)}.`);
+        } else if (negotiation.type === "fremdtalent" && negotiation.stage === NEGOTIATION_STAGES.TERMS) {
+            const bonus = Math.max(0, Math.round(Number(offer.signingBonus) || 0));
+            const perspektive = !!offer.perspektive;
+            if ((negotiation.agreed.fee || 0) + bonus > Math.max(0, club.balance || 0)) {
+                return { success: false, error: "Entschädigung und Handgeld zusammen übersteigen den Kontostand." };
+            }
+            negotiation.lastOffer = { signingBonus: bonus, perspektive };
+            this.log(negotiation, state, "us", `Jugendvertrag angeboten${bonus ? `, Handgeld ${this.formatMoney(bonus)}` : ", ohne Handgeld"}${perspektive ? ", Zusage: Training mit den Profis" : ""}.`);
+        } else if (negotiation.stage === NEGOTIATION_STAGES.LOAN) {
+            const d = negotiation.demand;
+            // In Schritten von fünf Prozent
+            const anteil = Math.max(0, Math.min(1, Math.round((Number(offer.lohnAnteil) || 0) * 20) / 20));
+            const gebuehr = Math.max(0, Math.round(Number(offer.gebuehr) || 0));
+            const rolle = this.ROLLEN.includes(offer.rolle) ? offer.rolle : d.rolle;
+            const kaufoption = !!offer.kaufoption && !!d.kaufoption;
+            const kosten = gebuehr + (kaufoption ? (d.optionsAufschlag || 0) : 0);
+            if (kosten > Math.max(0, club.balance || 0)) return { success: false, error: "Für die Leihgebühr reicht das Geld nicht." };
+            negotiation.lastOffer = { lohnAnteil: anteil, gebuehr, rolle, kaufoption };
+            this.log(negotiation, state, "us",
+                `Leihangebot: ${Math.round(anteil * 100)} % des Gehalts, ${gebuehr ? `Leihgebühr ${this.formatMoney(gebuehr)}` : "ohne Leihgebühr"}, Einsatz als ${this.rolleText(rolle)}`
+                + `${kaufoption ? `, mit Kaufoption für ${this.formatMoney(d.kaufoption)} (Aufschlag ${this.formatMoney(d.optionsAufschlag || 0)})` : ""}.`);
+        } else if (negotiation.stage === NEGOTIATION_STAGES.FEE) {
             const fee = Math.max(0, Math.round(Number(offer.fee) || 0));
             // In Raten muss nur die Anzahlung ins Transferbudget passen - die
             // Raten aber müssen auf dem Konto gedeckt sein
@@ -453,7 +675,18 @@ class NegotiationEngine {
 
         negotiation.round++;
         negotiation.status = NEGOTIATION_STATUS.WAITING_REPLY;
-        negotiation.replyDay = this.today(state) + this.replyDelay({ profile: negotiation.agentProfile });
+        // Eine Familie überlegt länger als ein Verein
+        negotiation.replyDay = this.today(state) + (negotiation.type === "fremdtalent" && negotiation.stage === NEGOTIATION_STAGES.TERMS
+            ? 2 + Math.floor(Math.random() * 2)
+            : this.replyDelay({ profile: negotiation.agentProfile }));
+
+        // Deadline Day: keine Bedenkzeit, sonst wäre am letzten Tag nichts mehr zu machen
+        if (this.brauchtFenster(negotiation) && this.istDeadlineDay(state)) {
+            const schritte = this.antworteSofort(state, negotiation);
+            const letzter = (negotiation.log || [])[negotiation.log.length - 1];
+            return { success: true, negotiation, sofort: true, schritte,
+                message: `⏰ Deadline Day - die Antwort kommt sofort: ${letzter ? letzter.text : this.describe(negotiation)}` };
+        }
 
         return { success: true, negotiation, message: "Das Angebot liegt der Gegenseite vor. Eine Antwort dauert einige Tage." };
     }
@@ -477,7 +710,9 @@ class NegotiationEngine {
      */
     static processDay(state) {
         const heute = this.today(state);
-        const ereignisse = [];
+        // Fenster zu: Was dafür ein Fenster braucht, ist geplatzt
+        const ereignisse = this.pruefeFenster(state);
+        const deadline = this.istDeadlineDay(state);
 
         this.ensureList(state).forEach(negotiation => {
             if (negotiation.status !== NEGOTIATION_STATUS.WAITING_REPLY &&
@@ -495,6 +730,11 @@ class NegotiationEngine {
             }
 
             if (negotiation.status !== NEGOTIATION_STATUS.WAITING_REPLY) return;
+            // Am Deadline Day wartet niemand mehr - auch nicht auf den Medizincheck
+            if (deadline && this.brauchtFenster(negotiation)) {
+                this.antworteSofort(state, negotiation).forEach(s => ereignisse.push(s));
+                return;
+            }
             if (negotiation.replyDay === null || heute < negotiation.replyDay) return;
 
             ereignisse.push(this.evaluateOffer(state, negotiation));
@@ -510,6 +750,8 @@ class NegotiationEngine {
         if (negotiation.stage === NEGOTIATION_STAGES.MEDICAL) {
             return this.finishMedical(state, negotiation);
         }
+        if (negotiation.stage === NEGOTIATION_STAGES.LOAN) return this.bewerteLeihe(state, negotiation);
+        if (negotiation.type === "fremdtalent" && negotiation.stage === NEGOTIATION_STAGES.TERMS) return this.bewerteFamilie(state, negotiation);
 
         const offer = negotiation.lastOffer || {};
         const istAblöse = negotiation.stage === NEGOTIATION_STAGES.FEE;
@@ -566,6 +808,17 @@ class NegotiationEngine {
     static acceptCurrentOffer(state, negotiation, istAblöse, offer) {
         const heute = this.today(state);
 
+        if (istAblöse && negotiation.type === "fremdtalent") {
+            negotiation.agreed.fee = offer.fee;
+            negotiation.stage = NEGOTIATION_STAGES.TERMS;
+            negotiation.status = NEGOTIATION_STATUS.AWAITING_US;
+            negotiation.replyDay = null;
+            this.log(negotiation, state, "club",
+                `${negotiation.sellerClubName} ist mit ${this.formatMoney(offer.fee)} einverstanden. Jetzt entscheidet die Familie.`);
+            this.notify(state, negotiation, `Einigung mit ${negotiation.sellerClubName}: ${negotiation.playerName}`,
+                `${negotiation.sellerClubName} lässt ${negotiation.playerName} für ${this.formatMoney(offer.fee)} gehen. Jetzt fehlt das Ja der Familie: Machen Sie ihr ein Angebot zum Jugendvertrag.`, "youth");
+            return { negotiation, kind: "fee_agreed" };
+        }
         if (istAblöse) {
             negotiation.agreed.fee = offer.fee;
             if (offer.zahlweise && offer.zahlweise !== "sofort") negotiation.agreed.zahlweise = offer.zahlweise;
@@ -598,11 +851,12 @@ class NegotiationEngine {
 
         negotiation.stage = NEGOTIATION_STAGES.MEDICAL;
         negotiation.status = NEGOTIATION_STATUS.WAITING_REPLY;
-        negotiation.replyDay = heute + 2;
+        const eilig = this.brauchtFenster(negotiation) && this.istDeadlineDay(state);
+        negotiation.replyDay = eilig ? heute : heute + 2;
         this.log(negotiation, state, "agent",
-            `Berater ${negotiation.agentName} ist einverstanden. Der Medizincheck ist für die nächsten Tage angesetzt.`);
+            `Berater ${negotiation.agentName} ist einverstanden. Der Medizincheck ist ${eilig ? "noch für heute" : "für die nächsten Tage"} angesetzt.`);
         this.notify(state, negotiation, `Konditionen geklärt: ${negotiation.playerName}`,
-            `${negotiation.playerName} ist sich mit uns einig. Der Medizincheck steht in zwei Tagen an.`);
+            `${negotiation.playerName} ist sich mit uns einig. Der Medizincheck steht ${eilig ? "noch heute" : "in zwei Tagen"} an.`);
         return { negotiation, kind: "terms_agreed" };
     }
 
@@ -645,6 +899,140 @@ class NegotiationEngine {
         negotiation.status = NEGOTIATION_STATUS.AWAITING_US;
         negotiation.replyDay = null;
         return { negotiation, kind: "counter" };
+    }
+
+    /**
+     * Der Stammverein prüft das Leihangebot: Gehaltsanteil und Gebühr wie
+     * eine Ablöse, die Einsatzzusage als Bedingung. Wer weniger Einsatz
+     * zusagt als verlangt, braucht mehr Geld, um zu überzeugen.
+     */
+    static bewerteLeihe(state, negotiation) {
+        const heute = this.today(state);
+        const o = negotiation.lastOffer || {};
+        const d = negotiation.demand;
+        const anteilQuote = d.lohnAnteil > 0 ? (o.lohnAnteil || 0) / d.lohnAnteil : 1;
+        const gebuehrQuote = d.gebuehr > 0 ? (o.gebuehr || 0) / d.gebuehr : 1;
+        const stufen = this.ROLLEN.indexOf(o.rolle) - this.ROLLEN.indexOf(d.rolle);
+        const rollenFaktor = stufen < 0 ? Math.pow(0.85, -stufen) : 1;
+        const bewertung = (d.gebuehr > 0 ? Math.min(1.2, anteilQuote) * 0.6 + Math.min(1.2, gebuehrQuote) * 0.4 : Math.min(1.2, anteilQuote)) * rollenFaktor;
+
+        if (bewertung >= 0.97 && stufen >= 0) return this.schliesseLeihe(state, negotiation);
+
+        const verlust = Math.round((1 - Math.min(1, bewertung)) * 45) + negotiation.round * 3;
+        negotiation.patience = Math.max(0, negotiation.patience - verlust);
+        if (negotiation.patience <= 0 || bewertung < 0.6) {
+            negotiation.status = NEGOTIATION_STATUS.REJECTED;
+            negotiation.closedDay = heute;
+            const text = stufen < 0
+                ? `Berater ${negotiation.agentName}: "Ohne Zusage als ${d.rolle} kommt er nicht." Die Gespräche sind beendet.`
+                : `${negotiation.sellerClubName} bricht die Gespräche ab - so geben wir ihn nicht her.`;
+            this.log(negotiation, state, stufen < 0 ? "agent" : "club", text);
+            this.notify(state, negotiation, `Leihe gescheitert: ${negotiation.playerName}`, text);
+            return { negotiation, kind: "rejected" };
+        }
+
+        // Gegenvorschlag: Der Stammverein geht ein Stück herunter, die Einsatzzusage bleibt
+        const nachgeben = 0.04 + negotiation.round * 0.02;
+        d.lohnAnteil = Math.max(d.minAnteil || 0.3, Math.round(d.lohnAnteil * (1 - nachgeben) * 20) / 20);
+        d.gebuehr = this.runde(d.gebuehr * (1 - nachgeben));
+        if (stufen >= 0 && (o.lohnAnteil || 0) + 1e-9 >= d.lohnAnteil && (o.gebuehr || 0) >= d.gebuehr) return this.schliesseLeihe(state, negotiation);
+        const text = `${negotiation.sellerClubName} will ${Math.round(d.lohnAnteil * 100)} % des Gehalts${d.gebuehr ? ` und ${this.formatMoney(d.gebuehr)} Leihgebühr` : ""}`
+            + `${stufen < 0 ? ` - und einen Einsatz als ${d.rolle}` : ""}.`;
+        this.log(negotiation, state, "club", text);
+        this.notify(state, negotiation, `Gegenforderung: ${negotiation.playerName}`, `${text} Verbleibende Geduld: ${negotiation.patience}%.`);
+        negotiation.status = NEGOTIATION_STATUS.AWAITING_US;
+        negotiation.replyDay = null;
+        return { negotiation, kind: "counter" };
+    }
+
+    /** Leihe perfekt: Er spielt bis zum Saisonende bei uns */
+    static schliesseLeihe(state, negotiation) {
+        const heute = this.today(state);
+        const loan = _negResolve("LoanEngine", "./loanEngine.js");
+        const o = negotiation.lastOffer || {};
+        const d = negotiation.demand;
+        const res = loan ? loan.ausleihen(state, negotiation.playerId, o.lohnAnteil, {
+            kaufoption: !!o.kaufoption,
+            vereinbart: { stammvereinId: negotiation.sellerClubId, gebuehr: o.gebuehr || 0, rolle: o.rolle || d.rolle, kaufoption: d.kaufoption, optionsAufschlag: d.optionsAufschlag || 0 }
+        }) : { success: false, error: "Leihen sind nicht verfügbar." };
+        negotiation.closedDay = heute;
+        if (!res.success) {
+            negotiation.status = NEGOTIATION_STATUS.REJECTED;
+            this.log(negotiation, state, "system", `Die Leihe kommt nicht zustande: ${res.error}`);
+            this.notify(state, negotiation, `Leihe gescheitert: ${negotiation.playerName}`, res.error);
+            return { negotiation, kind: "failed" };
+        }
+        negotiation.status = NEGOTIATION_STATUS.ACCEPTED;
+        negotiation.stage = NEGOTIATION_STAGES.DONE;
+        negotiation.agreed = Object.assign({}, o);
+        this.log(negotiation, state, "club", `${negotiation.sellerClubName} ist einverstanden: ${negotiation.playerName} spielt bis zum Saisonende für uns.`);
+        return { negotiation, kind: "completed" };
+    }
+
+    /**
+     * Die Familie eines fremden Talents entscheidet. Fehlt ihr etwas, sagt
+     * sie, welches Handgeld sie überzeugen würde; holt ihn auch das nicht,
+     * bleibt er, wo er ist.
+     */
+    static bewerteFamilie(state, negotiation) {
+        const heute = this.today(state);
+        const youth = _negResolve("YouthEngine", "./youthEngine.js");
+        const club = (state.clubs || []).find(c => c.id === negotiation.clubId);
+        const t = youth ? youth.fremdeTalente(state).find(x => String(x.id) === String(negotiation.prospectId)) : null;
+        const o = negotiation.lastOffer || {};
+        if (!youth || !club || !t) {
+            negotiation.status = NEGOTIATION_STATUS.REJECTED;
+            negotiation.closedDay = heute;
+            this.log(negotiation, state, "system", "Das Talent ist nicht mehr zu haben.");
+            return { negotiation, kind: "failed" };
+        }
+        if (youth.fremdWille(state, club, t, { handgeld: o.signingBonus, perspektive: o.perspektive }) >= youth.FREMD_JA) {
+            return this.completeFremdtalent(state, negotiation, t);
+        }
+        const noetig = youth.fremdHandgeldFuer(state, club, t, !!o.perspektive);
+        negotiation.patience = Math.max(0, negotiation.patience - 25 - negotiation.round * 5);
+        if (noetig === null || negotiation.patience <= 0) {
+            negotiation.status = NEGOTIATION_STATUS.REJECTED;
+            negotiation.closedDay = heute;
+            const text = `${negotiation.playerName} bleibt bei ${negotiation.sellerClubName}. Die Familie sieht seine Zukunft dort.`;
+            this.log(negotiation, state, "agent", text);
+            this.notify(state, negotiation, `Absage: ${negotiation.playerName}`, text, "youth");
+            return { negotiation, kind: "rejected" };
+        }
+        negotiation.demand.signingBonus = noetig;
+        // Die Zusage, bei den Profis mitzutrainieren, gibt es erst ab 16
+        const profisMoeglich = !o.perspektive && (t.age || 0) >= (youth.MIT_PROFIS?.abAlter ?? 16);
+        const mitProfis = profisMoeglich ? youth.fremdHandgeldFuer(state, club, t, true) : null;
+        const alternative = mitProfis === null || mitProfis >= noetig ? ""
+            : (mitProfis === 0 ? " - oder schon mit der Zusage, bei den Profis mitzutrainieren"
+                : ` - mit der Zusage, bei den Profis mitzutrainieren, reichten ${this.formatMoney(mitProfis)}`);
+        const text = `Die Familie zögert. Mit einem Handgeld von ${this.formatMoney(noetig)} wäre ${negotiation.playerName} dabei${alternative}.`;
+        this.log(negotiation, state, "agent", text);
+        this.notify(state, negotiation, `Die Familie zögert: ${negotiation.playerName}`, text, "youth");
+        negotiation.status = NEGOTIATION_STATUS.AWAITING_US;
+        negotiation.replyDay = null;
+        return { negotiation, kind: "counter" };
+    }
+
+    /** Das fremde Talent kommt in die Akademie */
+    static completeFremdtalent(state, negotiation, talent) {
+        const youth = _negResolve("YouthEngine", "./youthEngine.js");
+        const o = negotiation.lastOffer || {};
+        const res = youth.holeFremdesTalent(state, talent.id, Math.random, {
+            zugesagt: true, betrag: negotiation.agreed.fee ?? talent.betrag, handgeld: o.signingBonus || 0, perspektive: !!o.perspektive
+        });
+        negotiation.closedDay = this.today(state);
+        if (!res.success || !res.kommt) {
+            negotiation.status = NEGOTIATION_STATUS.REJECTED;
+            this.log(negotiation, state, "system", res.error || res.text || "Der Wechsel ist gescheitert.");
+            return { negotiation, kind: "failed" };
+        }
+        negotiation.status = NEGOTIATION_STATUS.ACCEPTED;
+        negotiation.stage = NEGOTIATION_STAGES.DONE;
+        negotiation.agreed.signingBonus = o.signingBonus || 0;
+        negotiation.agreed.perspektive = !!o.perspektive;
+        this.log(negotiation, state, "agent", `Die Familie sagt zu: ${negotiation.playerName} kommt in unsere Akademie.`);
+        return { negotiation, kind: "completed", talent: res.talent };
     }
 
     /** Medizincheck: selten, aber er kann einen Transfer noch kippen */
@@ -944,14 +1332,19 @@ class NegotiationEngine {
         if (!negotiation) return "";
         switch (negotiation.status) {
             case NEGOTIATION_STATUS.WAITING_REPLY:
-                return negotiation.stage === NEGOTIATION_STAGES.MEDICAL
-                    ? "Medizincheck läuft"
-                    : "Die Gegenseite prüft unser Angebot";
+                if (negotiation.stage === NEGOTIATION_STAGES.MEDICAL) return "Medizincheck läuft";
+                if (negotiation.type === "fremdtalent" && negotiation.stage === NEGOTIATION_STAGES.TERMS) return "Die Familie überlegt";
+                return negotiation.stage === NEGOTIATION_STAGES.LOAN ? "Der Stammverein prüft das Leihangebot" : "Die Gegenseite prüft unser Angebot";
             case NEGOTIATION_STATUS.AWAITING_US:
+                if (negotiation.stage === NEGOTIATION_STAGES.LOAN) return "Wir sind am Zug: Leihe";
+                if (negotiation.type === "fremdtalent") return negotiation.stage === NEGOTIATION_STAGES.FEE ? "Wir sind am Zug: Entschädigung" : "Wir sind am Zug: Angebot an die Familie";
                 return negotiation.stage === NEGOTIATION_STAGES.FEE
                     ? "Wir sind am Zug: Ablöse"
                     : (negotiation.vorvertrag ? "Wir sind am Zug: Vorvertrag" : "Wir sind am Zug: persönliche Konditionen");
-            case NEGOTIATION_STATUS.ACCEPTED: return negotiation.vorvertrag ? "Vorvertrag unterschrieben" : "Abgeschlossen";
+            case NEGOTIATION_STATUS.ACCEPTED:
+                if (negotiation.type === "leihe") return "Leihe perfekt";
+                if (negotiation.type === "fremdtalent") return "Kommt in die Akademie";
+                return negotiation.vorvertrag ? "Vorvertrag unterschrieben" : "Abgeschlossen";
             case NEGOTIATION_STATUS.REJECTED: return "Gescheitert";
             case NEGOTIATION_STATUS.EXPIRED: return "Frist abgelaufen";
             case NEGOTIATION_STATUS.WITHDRAWN: return "Von uns abgebrochen";

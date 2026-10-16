@@ -1236,8 +1236,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         };
         document.getElementById("btnPdLeiheZurueck")?.addEventListener("click", () =>
             nachLeihe(leihEngine.zurueckholen(state, player.id), `${player.name} kehrt zurück.`));
-        document.getElementById("btnPdAusleihen")?.addEventListener("click", () =>
-            nachLeihe(leihEngine.ausleihen(state, player.id), `${player.name} spielt bis zum Saisonende für Sie.`));
+        document.getElementById("btnPdAusleihen")?.addEventListener("click", () => this.leiheAnfragen(player.id));
         document.getElementById("btnPdKaufoption")?.addEventListener("click", () => {
             const res = leihEngine.zieheKaufoption(state, player.id);
             nachLeihe(res, res.success ? `${player.name} ist fest verpflichtet (${this.geldKurz(res.preis)}).` : "");

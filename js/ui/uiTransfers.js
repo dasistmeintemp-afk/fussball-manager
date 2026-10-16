@@ -72,6 +72,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         container.style.display = "block";
         const heute = state.currentDayIndex || 0;
+        const deadline = typeof engine.istDeadlineDay === "function" && engine.istDeadlineDay(state);
 
         // Schrittweite der Eingaben passend zum Betrag: in der Landesliga
         // geht ein Gehalt in Zehnern, in der Bundesliga in Tausendern
@@ -83,14 +84,27 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const restTage = Math.max(0, n.deadlineDay - heute);
             const geduldFarbe = n.patience >= 60 ? "#34d399" : n.patience >= 30 ? "#f59e0b" : "#f87171";
 
+            const istLeihe = n.type === "leihe";
+            const istFremd = n.type === "fremdtalent";
+            const verein = this.escapeHtml(n.sellerClubName || "dem Verein");
             const phaseText = n.type === "youth_promotion"
                 ? "Erstvertrag mit dem Berater"
+                : istLeihe ? `Leihe von ${verein} bis zum Saisonende`
+                : istFremd ? (istAblöse ? `Ausbildungsentschädigung mit ${verein}` : "Jugendvertrag: Gespräch mit der Familie")
                 : (n.vorvertrag ? `Vorvertrag - ablösefrei von ${this.escapeHtml(n.sellerClubName || "seinem Verein")} zum Saisonwechsel`
-                    : (istAblöse ? `Ablöse mit ${this.escapeHtml(n.sellerClubName || "dem Verein")}` : "Persönliche Konditionen"));
+                    : (istAblöse ? `Ablöse mit ${verein}` : "Persönliche Konditionen"));
+            const beteiligte = istFremd ? `${this.escapeHtml(n.agentName)}` : `Berater ${this.escapeHtml(n.agentName)} (${this.escapeHtml(n.agentLabel || "")})`;
 
-            const forderung = istAblöse
+            const d = n.demand || {};
+            const forderung = istLeihe
+                ? `Forderung: <strong>${Math.round((d.lohnAnteil || 0) * 100)} %</strong> des Gehalts (${this.formatMoneySafe(Math.round((d.wage || 0) * (d.lohnAnteil || 0)))} / Woche)${d.gebuehr ? `, Leihgebühr ${this.formatMoneySafe(d.gebuehr)}` : ", keine Leihgebühr"}, Einsatz als ${this.escapeHtml(engine.rolleText ? engine.rolleText(d.rolle) : d.rolle)}`
+                : istFremd
+                    ? (istAblöse ? `Forderung: <strong>${this.formatMoneySafe(d.fee)}</strong> Entschädigung`
+                        : (d.signingBonus ? `Die Familie wünscht ein Handgeld von <strong>${this.formatMoneySafe(d.signingBonus)}</strong>` : "Die Familie hat noch keinen Wunsch geäußert"))
+                : istAblöse
                 ? `Forderung: <strong>${this.formatMoneySafe(n.demand.fee)}</strong> Ablöse`
                 : `Forderung: <strong>${this.formatMoneySafe(n.demand.wage)}</strong> / Woche, Handgeld ${this.formatMoneySafe(n.demand.signingBonus)}${n.demand.agentFee ? `, Berater ${this.formatMoneySafe(n.demand.agentFee)}` : ""}`;
+            const eilig = deadline && typeof engine.brauchtFenster === "function" && engine.brauchtFenster(n);
 
             const letzterEintrag = (n.log || [])[n.log.length - 1];
 
@@ -103,7 +117,37 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         </select>
                     </label>
                     <p class="neg-hinweis neg-raten-info" data-neg-id="${n.id}"></p>` : "";
-            const eingabe = amZug ? (istAblöse ? `
+            const talent = istFremd && typeof YouthEngine !== "undefined" ? YouthEngine.fremdeTalente(state).find(t => String(t.id) === String(n.prospectId)) : null;
+            const eingabe = !amZug ? "" : istLeihe ? `
+                <div class="negotiation-inputs">
+                    <label>Gehaltsanteil (%)
+                        <input type="number" class="styled-input neg-anteil" data-neg-id="${n.id}" value="${Math.round((d.lohnAnteil || 0) * 100)}" step="5" min="0" max="100">
+                    </label>
+                    <label>Leihgebühr (€)
+                        <input type="number" class="styled-input neg-gebuehr" data-neg-id="${n.id}" value="${d.gebuehr || 0}" step="${schritt(d.gebuehr || 10000)}" min="0">
+                    </label>
+                    <label>Einsatzzusage
+                        <select class="styled-select neg-rolle" data-neg-id="${n.id}">
+                            ${["Stammspieler", "Rotation", "Talent"].map(r => `<option value="${r}" ${r === d.rolle ? "selected" : ""}>${r === "Talent" ? "Keine Zusage (zum Lernen)" : r}</option>`).join("")}
+                        </select>
+                    </label>
+                    ${d.kaufoption ? `<label class="neg-check"><input type="checkbox" class="neg-kaufoption" data-neg-id="${n.id}"> Kaufoption für ${this.geldKurz(d.kaufoption)} (Aufschlag ${this.geldKurz(d.optionsAufschlag || 0)} auf die Gebühr)</label>` : ""}
+                    <p class="neg-hinweis">Wer bei Ihnen Stammspieler wäre, will das zugesagt bekommen. Spielt er dann zu wenig, beschwert sich sein Verein.</p>
+                </div>`
+                : istFremd ? (istAblöse ? `
+                <div class="negotiation-inputs">
+                    <label>Entschädigung (€)
+                        <input type="number" class="styled-input neg-fee" data-neg-id="${n.id}" value="${d.fee}" step="${schritt(d.fee)}" min="0">
+                    </label>
+                </div>` : `
+                <div class="negotiation-inputs">
+                    <label>Handgeld für die Familie (€)
+                        <input type="number" class="styled-input neg-bonus" data-neg-id="${n.id}" value="${d.signingBonus || 0}" step="${schritt(d.signingBonus || 1000)}" min="0">
+                    </label>
+                    <label class="neg-check"><input type="checkbox" class="neg-perspektive" data-neg-id="${n.id}" ${talent && (talent.age || 0) < (YouthEngine.MIT_PROFIS?.abAlter || 16) ? "disabled" : ""}> Zusage: trainiert mit den Profis${talent && (talent.age || 0) < (YouthEngine.MIT_PROFIS?.abAlter || 16) ? ` (erst ab ${YouthEngine.MIT_PROFIS.abAlter})` : ""}</label>
+                    <p class="neg-hinweis">Die Familie wägt unseren Ruf gegen den seines Vereins ab. Ein Handgeld oder eine Perspektive bei den Profis hilft.</p>
+                </div>`)
+                : (istAblöse ? `
                 <div class="negotiation-inputs">
                     <label>Ablöse (€)
                         <input type="number" class="styled-input neg-fee" data-neg-id="${n.id}" value="${n.demand.fee}" step="${schritt(n.demand.fee)}" min="0">
@@ -135,7 +179,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     <p class="neg-hinweis">Prämien ersetzen einen Teil des Grundgehalts. Der Spieler rechnet sie mit Abschlag ein und bekommt sie nur, wenn er spielt oder trifft.</p>
                     ${this.klauselFelder(state.clubs.find(c => c.id === n.clubId), state.players.find(p => String(p.id) === String(n.playerId)))}
                 </div>
-            `) : "";
+            `);
 
             return `
                 <div class="negotiation-card ${amZug ? "our-turn" : ""}" data-neg-card="${this.escapeHtml(n.id)}">
@@ -144,7 +188,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                             <strong>${this.escapeHtml(n.playerName)}</strong>
                             <span class="text-muted" style="font-size:12px;">(${this.escapeHtml(n.playerPos || "")})</span>
                             <div style="font-size:12px; color:var(--text-muted);">
-                                ${phaseText} · Berater ${this.escapeHtml(n.agentName)} (${this.escapeHtml(n.agentLabel || "")})
+                                ${phaseText} · ${beteiligte}
                             </div>
                         </div>
                         <span class="badge ${amZug ? "badge-warning" : "badge-info"}">${this.escapeHtml(engine.describe(n))}</span>
@@ -153,7 +197,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     <div class="negotiation-meta">
                         <span>${forderung}</span>
                         <span>Geduld: <strong style="color:${geduldFarbe};">${n.patience}%</strong></span>
-                        <span>Frist: noch <strong>${restTage}</strong> Tage</span>
+                        <span>${eilig ? `<strong class="neg-deadline">⏰ Deadline Day: Antwort sofort, heute Abend ist Schluss</strong>` : `Frist: noch <strong>${restTage}</strong> Tage`}</span>
                     </div>
 
                     ${letzterEintrag ? `<div class="negotiation-log">„${this.escapeHtml(letzterEintrag.text)}"</div>` : ""}
@@ -210,7 +254,18 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 const n = engine.findNegotiation(state, id);
                 if (!n) return;
 
-                const angebot = n.stage === engine.STAGES.FEE
+                const feld = (klasse) => list.querySelector(`.${klasse}[data-neg-id="${id}"]`);
+                const angebot = n.type === "leihe" ? {
+                        lohnAnteil: Number(feld("neg-anteil")?.value || 0) / 100,
+                        gebuehr: Number(feld("neg-gebuehr")?.value || 0),
+                        rolle: feld("neg-rolle")?.value,
+                        kaufoption: !!feld("neg-kaufoption")?.checked
+                    }
+                    : (n.type === "fremdtalent" && n.stage === engine.STAGES.TERMS) ? {
+                        signingBonus: Number(feld("neg-bonus")?.value || 0),
+                        perspektive: !!feld("neg-perspektive")?.checked
+                    }
+                    : n.stage === engine.STAGES.FEE
                     ? {
                         fee: Number(list.querySelector(`.neg-fee[data-neg-id="${id}"]`)?.value || 0),
                         zahlweise: list.querySelector(`.neg-zahlweise[data-neg-id="${id}"]`)?.value || "sofort"
@@ -227,9 +282,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
                 const res = engine.submitOffer(state, id, angebot);
                 if (res.success) {
-                    this.playSound("click");
-                    this.showToast(res.message || "Angebot abgegeben.", "success");
-                    this.renderNegotiations();
+                    this.playSound(res.sofort && n.status === engine.STATUS.ACCEPTED ? "erfolg" : "click");
+                    this.showToast(res.message || "Angebot abgegeben.", n.status === engine.STATUS.REJECTED ? "warning" : "success", res.sofort ? 7000 : 4000);
+                    if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                    // Am Deadline Day kann der Wechsel schon durch sein: Kader, Geld und Leihen neu
+                    if (res.sofort) { this.renderHeader?.(); this.renderTransfers(); } else this.renderNegotiations();
                 } else {
                     this.showToast(res.error || "Angebot nicht möglich.", "error");
                 }
@@ -296,10 +353,32 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         ].join("") : `<div class="text-muted" style="font-size:13px;">Keine laufenden Leihen.</div>`;
 
         const ratingEngine = this.getRatingEngine();
-        const liste = engine.leihmarkt(state, 30);
+        // Filter: Mannschaftsteil, Alter, Stärke nach Einschätzung, Rolle, Kosten
+        const wert = (id) => document.getElementById(id)?.value || "";
+        const lmPos = wert("lmPosFilter"), lmAlter = wert("lmAlterFilter"), lmRolle = wert("lmRolleFilter"), lmKosten = wert("lmKostenFilter");
+        const lmSterne = parseFloat(wert("lmStaerkeFilter") || "0");
+        const kaderLoehne = state.players.filter(p => p.clubId === state.userClubId).map(p => p.wage || 0);
+        const lohnSchnitt = kaderLoehne.length ? kaderLoehne.reduce((a, b) => a + b, 0) / kaderLoehne.length : 0;
+        const grenze = lmSterne > 0 && ratingEngine ? ratingEngine.overallForStars(lmSterne, this.starContext()) : 0;
+        const [alterVon, alterBis] = lmAlter ? lmAlter.split("-").map(Number) : [0, 99];
+        const alle = engine.leihmarkt(state, Infinity);
+        const gefiltert = alle.filter(e => (!lmPos || this.positionsGruppe(e.pos) === lmPos)
+            && (e.age || 0) >= alterVon && (e.age || 0) <= alterBis
+            && (!lmRolle || e.rolle === lmRolle)
+            && (lmKosten !== "ohne" || !e.gebuehr)
+            && (lmKosten !== "schnitt" || e.wage * e.lohnAnteil <= lohnSchnitt)
+            && (!grenze || (e.geschaetzt || 0) >= grenze));
+        const lmKey = [lmPos, lmAlter, lmRolle, lmKosten, lmSterne].join("|");
+        if (this._lmKey !== lmKey) { this._lmKey = lmKey; this._lmLimit = 30; }
+        const liste = gefiltert.slice(0, this._lmLimit || 30);
+        const lmMeta = document.getElementById("loanMarketMeta");
+        if (lmMeta) lmMeta.textContent = gefiltert.length === alle.length ? `${alle.length} Spieler` : `${gefiltert.length} von ${alle.length} Spielern`;
+        const ne = this.getNegotiationEngine();
+        const offen = ne ? ne.getOpenNegotiations(state).filter(n => n.type === "leihe") : [];
         markt.innerHTML = liste.length ? liste.map(e => {
             const p = state.players.find(q => String(q.id) === String(e.playerId));
             const card = ratingEngine && p ? ratingEngine.calculateVisiblePlayerCard(p, Object.assign({ userClubId: state.userClubId, leagueDataCoverage: 85 }, this.starContext())) : null;
+            const laeuft = offen.find(n => String(n.playerId) === String(e.playerId));
             return `
                 <tr class="clickable-row" data-player-id="${esc(e.playerId)}">
                     <td><strong>${esc(e.name)}</strong></td>
@@ -310,10 +389,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     <td><span class="badge badge-info">${esc(e.rolle)}</span></td>
                     <td>${Math.round(e.lohnAnteil * 100)} % von ${this.geldKurz(e.wage)}</td>
                     <td>${e.gebuehr ? this.geldKurz(e.gebuehr) : "-"}</td>
-                    <td class="leih-option"><label title="Aufschlag ${esc(this.geldKurz(e.optionsAufschlag))} auf die Leihgebühr"><input type="checkbox" data-kaufoption="${esc(e.playerId)}"> ${this.geldKurz(e.kaufoption)}</label></td>
-                    <td><button class="btn btn-sm btn-primary" data-ausleihen="${esc(e.playerId)}" ${fenster && !fenster.offen ? `disabled title="${esc(fenster.text)}"` : ""}>Ausleihen</button></td>
+                    <td class="leih-option" title="Aufschlag ${esc(this.geldKurz(e.optionsAufschlag))} auf die Leihgebühr">${this.geldKurz(e.kaufoption)}</td>
+                    <td>${laeuft
+                        ? `<button class="btn btn-sm btn-secondary" data-leih-verhandlung="${esc(laeuft.id)}">Verhandlung</button>`
+                        : `<button class="btn btn-sm btn-primary" data-ausleihen="${esc(e.playerId)}" ${fenster && !fenster.offen ? `disabled title="${esc(fenster.text)}"` : ""}>Anfragen</button>`}</td>
                 </tr>`;
-        }).join("") : `<tr><td colspan="10" class="text-center text-muted">Gerade gibt kein Verein einen passenden Spieler ab.</td></tr>`;
+        }).join("") + (gefiltert.length > liste.length ? `<tr><td colspan="10" class="text-center"><button class="btn btn-sm btn-secondary" id="btnLmMehr">${Math.min(30, gefiltert.length - liste.length)} weitere anzeigen</button></td></tr>` : "")
+            : `<tr><td colspan="10" class="text-center text-muted">${alle.length ? "Kein Leihspieler passt zu diesen Filtern." : "Gerade gibt kein Verein einen passenden Spieler ab."}</td></tr>`;
+        markt.querySelector("#btnLmMehr")?.addEventListener("click", (ev) => { ev.stopPropagation(); this._lmLimit = (this._lmLimit || 30) + 30; this.renderLeihen(); });
 
         const neuZeichnen = () => {
             if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
@@ -332,18 +415,44 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             this.showToast(res.success ? "Er kehrt zurück." : res.error, res.success ? "success" : "error");
             if (res.success) neuZeichnen();
         }));
-        markt.querySelectorAll("[data-kaufoption]").forEach(box => box.addEventListener("click", (ev) => ev.stopPropagation()));
+        // Leihen ist kein Knopfdruck: Die Anfrage eröffnet eine Verhandlung mit dem Stammverein
         markt.querySelectorAll("[data-ausleihen]").forEach(btn => btn.addEventListener("click", (ev) => {
             ev.stopPropagation();
-            const option = markt.querySelector(`[data-kaufoption="${btn.dataset.ausleihen}"]`)?.checked;
-            const res = engine.ausleihen(state, btn.dataset.ausleihen, null, { kaufoption: !!option });
-            this.showToast(res.success ? `${res.eintrag.name} spielt bis zum Saisonende für Sie.` : res.error, res.success ? "success" : "error", 5000);
-            if (res.success) { this.playSound("erfolg"); neuZeichnen(); }
+            this.leiheAnfragen(btn.dataset.ausleihen);
+        }));
+        markt.querySelectorAll("[data-leih-verhandlung]").forEach(btn => btn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            this.zeigeVerhandlung(btn.dataset.leihVerhandlung);
         }));
         [...eigene.querySelectorAll(".leih-zeile"), ...markt.querySelectorAll("tr[data-player-id]")].forEach(el => el.addEventListener("click", () => {
             const ziel = state.players.find(p => String(p.id) === el.dataset.playerId);
             if (ziel) this.showPlayerDetailsModal(ziel.id);
         }));
+    },
+
+    /** Eine Leihe anfragen: Verhandlung mit dem Stammverein eröffnen und dorthin springen */
+    leiheAnfragen(playerId) {
+        const state = this.app.state;
+        const ne = this.getNegotiationEngine();
+        const res = ne && typeof ne.startLeihVerhandlung === "function" ? ne.startLeihVerhandlung(state, playerId) : { success: false, error: "Leihen sind nicht verfügbar." };
+        if (!res.success && !res.negotiation) { this.showToast(res.error, "error", 5000); return null; }
+        if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+        if (res.success) {
+            this.playSound("click");
+            this.showToast(`Anfrage an ${res.negotiation.sellerClubName}. Jetzt sind Sie mit Ihrem Leihangebot am Zug.`, "success", 5000);
+        }
+        const modal = document.getElementById("modalPlayerDetails");
+        if (modal) modal.style.display = "none";
+        this.zeigeVerhandlung(res.negotiation.id);
+        return res.negotiation;
+    },
+
+    /** Mannschaftsteil einer Position - für die Filter */
+    positionsGruppe(pos) {
+        if (pos === "TW") return "tw";
+        if (["IV", "LV", "RV"].includes(pos)) return "abw";
+        if (["LA", "RA", "ST"].includes(pos)) return "st";
+        return "mf";
     },
 
     /** U23 und U19 in der Spielerakte: hinunterschicken, zurückholen, die Bilanz unten */
@@ -570,8 +679,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             if (!e) return "";
             return `
                 <div class="dash-card mb-3 gs-karte">${kopf}
-                    <div class="gs-lage gs-info">${esc(e.clubName)} gibt ihn ab: bis zum Saisonende, Sie übernehmen ${Math.round(e.lohnAnteil * 100)} % des Gehalts${e.gebuehr ? `, Leihgebühr ${this.geldKurz(e.gebuehr)}` : ""}. Erwartet wird ein Einsatz als ${esc(e.rolle)}.</div>
-                    <button class="btn btn-primary" id="btnPdAusleihen">Ausleihen</button>
+                    <div class="gs-lage gs-info">${esc(e.clubName)} gibt ihn ab: bis zum Saisonende, gefordert sind ${Math.round(e.lohnAnteil * 100)} % des Gehalts${e.gebuehr ? `, Leihgebühr ${this.geldKurz(e.gebuehr)}` : ""} und ein Einsatz als ${esc(e.rolle)}.</div>
+                    <button class="btn btn-primary" id="btnPdAusleihen">Leihe anfragen</button>
                 </div>`;
         }
         return "";
@@ -850,7 +959,46 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         }
 
         if (searchVal) marketPlayers = marketPlayers.filter(p => p.name.toLowerCase().includes(searchVal));
-        if (posVal !== "all") marketPlayers = marketPlayers.filter(p => p.pos === posVal);
+        if (posVal.startsWith("grp:")) marketPlayers = marketPlayers.filter(p => this.positionsGruppe(p.pos) === posVal.slice(4));
+        else if (posVal !== "all") marketPlayers = marketPlayers.filter(p => p.pos === posVal);
+
+        // Mehr Filter: Alter, Vertrag, Land - dann Potenzial und Marktwert so, wie der Scout sie sieht
+        const feldWert = (id) => document.getElementById(id)?.value || "";
+        const alterVal = feldWert("tfAlterFilter"), vertragVal = feldWert("tfVertragFilter"), landVal = feldWert("tfLandFilter");
+        const wertVal = feldWert("tfWertFilter"), sortVal = feldWert("tfSortierung") || "staerke";
+        const potVal = parseFloat(feldWert("tfPotFilter") || "0");
+        const landWahl = document.getElementById("tfLandFilter");
+        const scouting = this.getScoutingEngine();
+        if (landWahl && landWahl.options.length <= 1 && scouting && typeof scouting.laender === "function") {
+            scouting.laender(state).forEach(l => landWahl.add(new Option(l.name, l.id)));
+            landWahl.value = landVal;
+        }
+        const vereinVon = new Map(state.clubs.map(c => [c.id, c]));
+        if (alterVal) {
+            const [von, bis] = alterVal.split("-").map(Number);
+            marketPlayers = marketPlayers.filter(p => (p.age || 0) >= von && (p.age || 0) <= bis);
+        }
+        if (vertragVal === "aus") marketPlayers = marketPlayers.filter(p => p.clubId && (p.contractYears ?? 1) <= 1);
+        if (vertragVal === "liste") marketPlayers = marketPlayers.filter(p => p.transferListed);
+        if (vertragVal === "frei") marketPlayers = marketPlayers.filter(p => !vereinVon.get(p.clubId));
+        if (landVal) marketPlayers = marketPlayers.filter(p => vereinVon.get(p.clubId)?.countryId === landVal);
+        const sichtKontext = Object.assign({ userClubId: state.userClubId, leagueDataCoverage: 85, state }, this.starContext());
+        const sicht = new Map();
+        const sichtwerte = (p) => {
+            if (!sicht.has(p.id)) {
+                const re = this.getRatingEngine();
+                sicht.set(p.id, re && typeof re.sichtwerte === "function" ? re.sichtwerte(p, sichtKontext) : { wertMin: p.value || 0, wertMax: p.value || 0, potSterne: 0 });
+            }
+            return sicht.get(p.id);
+        };
+        if (potVal > 0) marketPlayers = marketPlayers.filter(p => sichtwerte(p).potSterne >= potVal);
+        if (wertVal) {
+            const grenzeWert = wertVal === "budget" ? Math.max(0, userClub.transferBudget || 0) : Number(wertVal);
+            marketPlayers = marketPlayers.filter(p => sichtwerte(p).wertMin <= grenzeWert);
+        }
+        const mehrZahl = [alterVal, potVal > 0, wertVal, vertragVal, landVal, sortVal !== "staerke"].filter(Boolean).length;
+        const mehrEl = document.getElementById("tfMehrZahl");
+        if (mehrEl) mehrEl.textContent = mehrZahl ? `(${mehrZahl} aktiv)` : "";
 
         // Gefiltert und sortiert wird nach der Stärke, wie der Scout sie
         // sieht - nicht nach der wahren. Sonst verriet schon die Reihenfolge,
@@ -872,13 +1020,19 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             marketPlayers = marketPlayers.filter(p => staerke(p) >= grenze);
         }
 
-        marketPlayers.sort((a, b) => staerke(b) - staerke(a) || (a.age || 0) - (b.age || 0));
+        const sortierer = {
+            staerke: (a, b) => staerke(b) - staerke(a) || (a.age || 0) - (b.age || 0),
+            potenzial: (a, b) => sichtwerte(b).potSterne - sichtwerte(a).potSterne || staerke(b) - staerke(a),
+            alter: (a, b) => (a.age || 0) - (b.age || 0) || staerke(b) - staerke(a),
+            wert: (a, b) => sichtwerte(b).wertMin - sichtwerte(a).wertMin
+        };
+        marketPlayers.sort(sortierer[sortVal] || sortierer.staerke);
 
         // Niemand liest viertausend Zeilen. Der Markt zeigt die besten
         // Treffer seitenweise - erst 30, auf Wunsch mehr. Vorher standen
         // 120 Zeilen untereinander, über zehntausend Pixel Seite.
         const TREFFER_PRO_SEITE = 30;
-        const filterKey = `${searchVal}|${posVal}|${minStars}`;
+        const filterKey = [searchVal, posVal, minStars, alterVal, potVal, wertVal, vertragVal, landVal, sortVal].join("|");
         if (this._tfFilterKey !== filterKey) {
             this._tfFilterKey = filterKey;
             this._tfLimit = TREFFER_PRO_SEITE;

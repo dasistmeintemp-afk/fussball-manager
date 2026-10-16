@@ -265,7 +265,10 @@ const ContractEngine = {
 
         // Vertrag erfolgreich verlängert - eine offene Anfrage ist damit erledigt
         player.vorvertragInteresse = undefined;
-        // Aus dem Jugendvertrag wird ein Profivertrag
+        // Aus dem Jugendvertrag wird ein Profivertrag - wer um ihn warb, geht leer aus
+        if (player.jugendvertrag && state?.youthAcademy?.anfragen) {
+            state.youthAcademy.anfragen.forEach(a => { if (a.status === "offen" && String(a.talentId) === String(player.id)) a.status = "geblieben"; });
+        }
         player.jugendvertrag = undefined;
         player.wage = Math.round(offeredWage);
         player.contractYears = offeredYears;

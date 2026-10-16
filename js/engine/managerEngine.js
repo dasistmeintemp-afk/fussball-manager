@@ -464,6 +464,34 @@ class ManagerEngine {
     /** Ab so wenigen einsatzbereiten Profis wird es eng: eine Elf und fünf auf der Bank */
     static PERSONALNOT_AB = 16;
 
+    /** Die Mannschaftsteile, nach denen Engpässe gesucht werden */
+    static TEILE = { tw: "im Tor", abw: "in der Abwehr", mf: "im Mittelfeld", st: "im Angriff" };
+
+    static TEIL_VON(pos) {
+        const me = _mgrResolve("MatchEngine", "./matchEngine.js");
+        const p = me && typeof me.grundPosition === "function" ? me.grundPosition(pos) : pos;
+        if (p === "TW") return "tw";
+        if (["IV", "LV", "RV"].includes(p)) return "abw";
+        if (["ST", "LA", "RA"].includes(p)) return "st";
+        return "mf";
+    }
+
+    /**
+     * Wo die Formation mehr Spieler braucht, als fit sind - nach Stammposition.
+     * Vorher zählte nur die Kopfzahl: Fielen alle Linksverteidiger aus,
+     * meldete niemand etwas.
+     */
+    static engpaesse(club, fitteProfis) {
+        const me = _mgrResolve("MatchEngine", "./matchEngine.js");
+        const slots = me && typeof me.getFormationSlots === "function" ? me.getFormationSlots(club) : [];
+        if (!slots.length) return [];
+        const braucht = {}, fit = {};
+        slots.forEach(s => { const t = this.TEIL_VON(s.pos); braucht[t] = (braucht[t] || 0) + 1; });
+        fitteProfis.forEach(p => { const t = this.TEIL_VON(p.pos); fit[t] = (fit[t] || 0) + 1; });
+        return Object.keys(this.TEILE).filter(t => (fit[t] || 0) < (braucht[t] || 0))
+            .map(t => ({ teil: t, name: this.TEILE[t], fit: fit[t] || 0, braucht: braucht[t] }));
+    }
+
     /**
      * Wer aus U23 und U19 einspringen kann: die Profis in U23 und U19 und die
      * Talente der Akademie, die alt genug sind (YouthEngine.hochziehen) -
@@ -517,6 +545,24 @@ class ManagerEngine {
                     : "Weder in der U23 noch in der U19 steht jemand bereit - der Transfermarkt hilft.",
                 spieler: beste.map(k => ({ id: k.p.id, name: k.p.name, pos: k.p.pos })),
                 abschnitt: "unterbau"
+            });
+        }
+        // Engpass in einem Mannschaftsteil: weniger Fitte, als die Formation dort braucht
+        // (nur, wenn nicht ohnehin Personalnot gemeldet ist)
+        if (!items.length) {
+            this.engpaesse(club, profis).forEach(e => {
+                const passend = kandidaten.filter(k => this.TEIL_VON(k.p.pos) === e.teil).slice(0, 3);
+                items.push({
+                    priority: 0,
+                    icon: "🚑",
+                    tab: "squad",
+                    title: `Engpass ${e.name}: ${e.fit} fit, die Formation braucht ${e.braucht}`,
+                    detail: passend.length
+                        ? `Aus U23 und U19 bieten sich an: ${passend.map(name).join(", ")}.`
+                        : "In U23 und U19 spielt niemand auf diesen Positionen - jemand muss umgestellt werden oder vom Transfermarkt kommen.",
+                    spieler: passend.map(k => ({ id: k.p.id, name: k.p.name, pos: k.p.pos })),
+                    abschnitt: "unterbau"
+                });
             });
         }
         const inForm = kandidaten.filter(k => k.bilanz && k.bilanz.spiele >= 3 && (k.bilanz.form ?? 0) >= reserve.IN_FORM).slice(0, 3);
@@ -1175,13 +1221,14 @@ class ManagerEngine {
         const heute = (state.seasonYear || 1) * 1000 + (state.currentDayIndex || 0);
         (state.youthAcademy?.anfragen || []).filter(a => a.status === "offen").forEach(a => {
             const rest = Math.max(0, (a.bis ?? heute) - heute);
-            items.push({
+            // Ein hochgezogener Profi mit Jugendvertrag: Halten oder ziehen lassen in seiner Akte
+            items.push(Object.assign({
                 priority: 1,
                 icon: "🎓",
-                tab: "youth",
+                tab: a.profi ? "squad" : "youth",
                 title: `${a.clubName} wirbt um ${a.talentName}`,
                 detail: `${rest === 0 ? "Er entscheidet sich heute" : `Noch ${rest} Tag${rest === 1 ? "" : "e"}`} · Halten oder ziehen lassen?`
-            });
+            }, a.profi ? { spieler: [{ id: a.talentId, name: a.talentName }], abschnitt: "vertrag" } : {}));
         });
 
         // 1b3. Personalnot und Form im Unterbau: Wer aus U23 und U19 hilft?

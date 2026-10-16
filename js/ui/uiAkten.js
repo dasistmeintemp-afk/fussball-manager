@@ -847,6 +847,21 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             `;
         }
 
+        // Ein Werber für einen hochgezogenen Profi mit Jugendvertrag: halten oder ziehen lassen
+        const werberAnfrage = !isProspect && player.jugendvertrag && typeof YouthEngine !== "undefined" ? YouthEngine.offeneAnfrage(state, player.id) : null;
+        if (werberAnfrage) {
+            const rest = Math.max(0, werberAnfrage.bis - YouthEngine._heute(state));
+            contractSectionHtml = `
+                <div class="dash-card mt-3" id="pdAnfrage" style="padding:14px; background: var(--surface-2); border:1px solid var(--line);">
+                    <h4 style="font-size:14px; margin-bottom:8px; color:#fbbf24;">📨 ${this.escapeHtml(werberAnfrage.clubName)} wirbt um ihn</h4>
+                    <p style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">Er hat nur einen Jugendvertrag. Geht er, bekommen wir ${this.formatMoneySafe(werberAnfrage.betrag)} Ausbildungsentschädigung. Noch ${rest} ${rest === 1 ? "Tag" : "Tage"} - ein Profivertrag bindet ihn.</p>
+                    <div class="gs-knoepfe">
+                        ${werberAnfrage.gespraech ? "" : `<button class="btn btn-primary" id="btnPdPerspektive" data-anfrage-id="${this.escapeHtml(werberAnfrage.id)}">Perspektive aufzeigen</button>`}
+                        <button class="btn btn-secondary" id="btnPdZiehenLassen" data-anfrage-id="${this.escapeHtml(werberAnfrage.id)}">Ziehen lassen</button>
+                    </div>
+                </div>` + contractSectionHtml;
+        }
+
         let scoutExternalHtml = "";
         if (!isUserClub && !eigenerVerliehen) {
             // Vorvertrag: ablösefrei zum Saisonwechsel, ab Januar
@@ -1291,6 +1306,24 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         }));
 
         // Aus der Akte heraus die Vertragsgespräche mit dem Talent eröffnen
+        document.getElementById("btnPdPerspektive")?.addEventListener("click", (e) => {
+            const res = YouthEngine.perspektiveAufzeigen(state, e.currentTarget.dataset.anfrageId);
+            if (!res.success) return this.showToast(res.error, "error");
+            this.showToast(res.text, res.bleibt ? "success" : "warning", 6000);
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.renderHeader?.();
+            this.showPlayerDetailsModal(player.id, { abschnitt: "vertrag" });
+        });
+        document.getElementById("btnPdZiehenLassen")?.addEventListener("click", (e) => {
+            if (typeof confirm === "function" && !confirm(`${player.name} gegen die Ausbildungsentschädigung ziehen lassen?`)) return;
+            const res = YouthEngine.talentZiehenLassen(state, e.currentTarget.dataset.anfrageId);
+            if (!res.success) return this.showToast(res.error, "error");
+            this.showToast(`Er wechselt - als Ausbildungsentschädigung kommen ${this.formatMoneySafe(res.betrag)}.`, "info", 6000);
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            document.getElementById("modalPlayerDetails").style.display = "none";
+            this.renderHeader?.();
+            this.renderCurrentTab();
+        });
         document.getElementById("btnPdHochziehen")?.addEventListener("click", () => {
             const res = YouthEngine.hochziehen(state, player.id);
             if (!res.success) return this.showToast(res.error, "error", 6000);

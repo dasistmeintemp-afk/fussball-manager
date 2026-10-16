@@ -8936,3 +8936,47 @@ td.nowrap { white-space: nowrap; }
 }
 .header-tag.header-tag-warnung { color: #fbbf24; border-color: rgba(251, 191, 36, 0.4); background: rgba(251, 191, 36, 0.1); }
 .fremde-hinweis { font-size: 12px; margin: 4px 0 0; }
+
+/* Vorstand, Fans & Medien: Ziel und Balken teilen sich ein Raster. Vorher
+   nahm jede Beschriftung so viel Platz, wie sie brauchte - neben
+   "Vorstandszufriedenheit" blieb der kürzeste Balken. Am Handy steht die
+   Beschriftung über dem Balken. */
+.goal-balken {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) 3.2em;
+    align-items: center;
+    column-gap: 14px;
+    row-gap: 12px;
+    font-size: 14px;
+}
+.goal-balken > .goal-item { display: contents; }
+.goal-balken .progress-bar-lg { margin: 0; }
+.goal-balken .goal-val { grid-column: 2 / -1; }
+.goal-balken .goal-pct { text-align: right; font-variant-numeric: tabular-nums; }
+.goal-balken > .fan-stimmen { grid-column: 1 / -1; margin: 0; }
+@media (max-width: 560px) {
+    .goal-balken { grid-template-columns: minmax(0, 1fr) 3.2em; row-gap: 4px; }
+    .goal-balken .goal-label { grid-column: 1 / -1; margin-top: 8px; }
+    .goal-balken > .goal-item:first-child .goal-label { margin-top: 0; }
+    .goal-balken .goal-val { grid-column: 1 / -1; }
+}
+
+/* Die Spielerakte: Auf breiten Bildschirmen war sie auf 600 Pixel
+   beschränkt - eine schmale Spalte mitten im Bild, in der man weit scrollen
+   musste. Jetzt nutzt sie die Breite: Im Überblick stehen links Werte und
+   Laufbahn, rechts Positionen, Eigenheiten und Bilanz; unter "Vertrag" die
+   Lage links und die Verhandlung rechts. Am Handy bleibt alles untereinander. */
+.modal-akte { max-width: 1180px; }
+.pd-spalten { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 22px; }
+.pd-spalte { min-width: 0; }
+.pd-werte { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
+.pd-werte > * { min-width: 0; }
+@media (min-width: 1000px) {
+    .pd-spalten { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: start; }
+    .pd-spalten.pd-eine-spalte { grid-template-columns: minmax(0, 1fr); }
+    [data-pd-tab="vertrag"] .pd-spalten { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    [data-pd-tab="vertrag"] .pd-spalte > #pdVertrag { margin-top: 0 !important; }
+    .pd-werte { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .pd-werte .kopf-karte { grid-column: auto; }
+    .pd-werte .kopf-raster { grid-template-columns: minmax(0, 1fr); }
+}

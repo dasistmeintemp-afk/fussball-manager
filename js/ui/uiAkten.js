@@ -1036,6 +1036,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ${reiterLeiste}
 
             <section class="pd-tab" data-pd-tab="ueberblick"${reiter === "ueberblick" ? "" : " hidden"}>
+            <div class="pd-spalten">
+            <div class="pd-spalte">
             ${confidenceBarHtml}
 
             ${isProspect ? "" : `
@@ -1045,13 +1047,15 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 ${this.wettbewerbsTeile(player)}
             </div>`}
 
-            <div class="stats-grid" style="grid-template-columns: 1fr 1fr; gap:14px; margin-bottom:16px;">
+            <div class="pd-werte">
                 ${attributeBlocks}
                 ${kopfBlock}
             </div>
             ${isProspect ? "" : this.laufbahnHtml(state, player)}
             ${isProspect || typeof DatenzentraleEngine === "undefined" ? "" : `<button type="button" class="btn btn-secondary btn-sm pd-vergleich" id="btnPdVergleich">⚖️ Mit anderem Spieler vergleichen</button>`}
+            </div>
 
+            <div class="pd-spalte">
             ${positionMapHtml}
 
             ${eigenheitenHtml}
@@ -1073,6 +1077,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <span>Kondition / Moral:</span>
                 <strong>${player.fitness ?? 95} % / ${player.morale ?? 85} %</strong>
             </div>` : ""}
+            </div>
+            </div>
             </section>
 
             ${entwicklungInhalt ? `
@@ -1081,6 +1087,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             </section>` : ""}
 
             <section class="pd-tab" data-pd-tab="vertrag"${reiter === "vertrag" ? "" : " hidden"}>
+            <div class="pd-spalten${contractSectionHtml ? "" : " pd-eine-spalte"}">
+            <div class="pd-spalte">
             ${isProspect ? "" : `
             <!-- Zufriedenheit & Rolle -->
             <div class="dash-card mb-3" style="padding:14px;">
@@ -1131,7 +1139,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             </div>` : ""}`}
 
             ${scoutExternalHtml}
-            ${contractSectionHtml}
+            </div>
+            ${contractSectionHtml ? `<div class="pd-spalte">${contractSectionHtml}</div>` : ""}
+            </div>
             </section>
         `;
 

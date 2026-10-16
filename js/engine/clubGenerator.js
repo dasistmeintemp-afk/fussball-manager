@@ -163,11 +163,16 @@ class ClubGenerator {
         };
     }
 
-    /** Ruf eines Vereins aus Ligastufe, Rangfolge und Landesstärke */
-    static calculateReputation(level = 1, clubStrength = 0.5, countryReputation = 88) {
+    /**
+     * Ruf eines Vereins aus Ligastufe, Rangfolge und Landesstärke. Das Land
+     * zählt in der ersten Liga - und in den Ländern im Hintergrund auch in
+     * der zweiten, sonst hätte ein Schweizer Zweitligist den Ruf eines
+     * Spitzenteams der zweiten Bundesliga.
+     */
+    static calculateReputation(level = 1, clubStrength = 0.5, countryReputation = 88, mitLand = level === 1) {
         const [min, span] = this.REPUTATION_BANDS[level] || [15, 8];
         const s = Math.max(0, Math.min(1, clubStrength));
-        const countryBonus = level === 1 ? Math.round((countryReputation - 86) / 3) : 0;
+        const countryBonus = mitLand ? Math.round((countryReputation - 86) / 3) : 0;
         return Math.max(1, Math.min(99, Math.round(min + span * s) + countryBonus));
     }
 
@@ -190,7 +195,7 @@ class ClubGenerator {
             ? { stadium: options.stadium, stadiumCapacity: options.stadiumCapacity }
             : this.generateStadium(city, level, clubStrength, countryId);
         const finances = this.generateFinances(level, clubStrength, countryId);
-        const reputation = this.calculateReputation(level, clubStrength, options.countryReputation ?? 88);
+        const reputation = this.calculateReputation(level, clubStrength, options.countryReputation ?? 88, level === 1 || (level === 2 && !!options.hintergrund));
 
         const primaryColor = this.pick(this.PRIMARY_COLORS, "#2563eb");
         let secondaryColor = this.pick(this.SECONDARY_COLORS, "#ffffff");
@@ -302,6 +307,7 @@ class ClubGenerator {
                 countryReputation: options.countryReputation ?? 88,
                 leagueId: league.id,
                 level: league.level || 1,
+                hintergrund: !!league.hintergrund,
                 region: league.region || "Zentral",
                 clubStrength: clubStrength,
                 city: city,

@@ -133,8 +133,9 @@ class PlayerGenerator {
      * 88, in Belgien, Österreich, der Schweiz und Schottland keines ab 85.
      *
      * Jetzt wird bei Spielern bis 21 dieser Anteil des Abschlags beim
-     * Potenzial zurückgenommen: Sie spielen heute auf dem Niveau ihrer
-     * Liga, können aber darüber hinauswachsen.
+     * Potenzial zurückgenommen, in der ersten wie in der zweiten Liga: Sie
+     * spielen heute auf dem Niveau ihrer Liga, können aber darüber
+     * hinauswachsen. Die Schlüssel sind zugleich die Länder im Hintergrund.
      */
     static TALENTSCHMIEDE = { br: 1.0, nl: 0.9, pt: 0.9, be: 0.7, ch: 0.5, tr: 0.4, at: 0.4, sc: 0.2 };
     static KADER_KOPF = 0.35;
@@ -405,7 +406,13 @@ class PlayerGenerator {
         const abilityRange = this.getAbilityRangeForClub(level, options.clubStrength ?? 0.5, { ganzerKader: options.ganzerKader === true });
         // Dazu der Ausgleich je Liga (WorldGenerator.niveauAusgleich): Wer
         // beim Saisonwechsel nachgezogen wird, passt zur Liga, wie sie war
-        const landVerschiebung = (level === 1 ? (this.LAND_STAERKE[options.countryId] || 0) : 0) + (Number(options.staerkeVersatz) || 0);
+        // Die großen Länder unterscheiden sich nur in der ersten Liga; ihre
+        // Unterhäuser sind gleich gebaut. Die Länder im Hintergrund haben
+        // auch in der zweiten Liga ihren Abschlag - sonst spielte die zweite
+        // niederländische Liga auf dem Niveau der zweiten Bundesliga.
+        const imHintergrund = this.TALENTSCHMIEDE[options.countryId] !== undefined;
+        const mitLandesabschlag = level === 1 || (level === 2 && imHintergrund);
+        const landVerschiebung = (mitLandesabschlag ? (this.LAND_STAERKE[options.countryId] || 0) : 0) + (Number(options.staerkeVersatz) || 0);
         if (landVerschiebung) {
             abilityRange.minCA += landVerschiebung;
             abilityRange.maxCA += landVerschiebung;
@@ -419,7 +426,7 @@ class PlayerGenerator {
         let truePA = Math.max(trueCA, trueCA + Math.floor(Math.random() * (abilityRange.maxPA - trueCA + 1)));
 
         // Talentschmiede: der zurückgenommene Teil des Landesabschlags (CA-Punkte)
-        const schmiede = (age <= 21 && level === 1 && landVerschiebung < 0)
+        const schmiede = (age <= 21 && mitLandesabschlag && landVerschiebung < 0)
             ? Math.round(-(this.LAND_STAERKE[options.countryId] || 0) * (this.TALENTSCHMIEDE[options.countryId] || 0))
             : 0;
         if (age <= 21) {

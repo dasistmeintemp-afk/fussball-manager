@@ -616,6 +616,153 @@ const REAL_CLUBS_BY_LEAGUE = {
         { id: "br_juv", name: "Caxias Serrano", city: "Caxias do Sul", stadium: "Estádio Serrano", capacity: 19924 },
         { id: "br_spo", name: "Capibaribe EC", city: "Recife", stadium: "Estádio Capibaribe", capacity: 26418 },
         { id: "br_mir", name: "Mirassol Paulista", city: "Mirassol", stadium: "Estádio de Mirassol", capacity: 15000 }
+    ],
+
+    // ---------------------------------------------------------- Niederlande, zweite Liga
+    nl_liga_2: [
+        { id: "nl_ado", name: "SV Den Haag", city: "Den Haag", stadium: "Stadion Den Haag", capacity: 15000 },
+        { id: "nl_vit", name: "Arnhem Gelre", city: "Arnhem", stadium: "Stadion Arnhem", capacity: 21248 },
+        { id: "nl_cam", name: "SC Leeuwarden", city: "Leeuwarden", stadium: "Stadion Leeuwarden", capacity: 10500 },
+        { id: "nl_rod", name: "SV Kerkrade", city: "Kerkrade", stadium: "Stadion Kerkrade", capacity: 19979 },
+        { id: "nl_emm", name: "SV Emmen", city: "Emmen", stadium: "Stadion Emmen", capacity: 8600 },
+        { id: "nl_vvv", name: "Venlo Voorwaarts", city: "Venlo", stadium: "Stadion Venlo", capacity: 8000 },
+        { id: "nl_vol", name: "SC Volendam", city: "Volendam", stadium: "Stadion Volendam", capacity: 6984 },
+        { id: "nl_dgr", name: "VV Doetinchem", city: "Doetinchem", stadium: "Stadion Doetinchem", capacity: 12600 },
+        { id: "nl_dbo", name: "SC Den Bosch", city: "'s-Hertogenbosch", stadium: "Stadion Den Bosch", capacity: 8500 },
+        { id: "nl_mvv", name: "SC Maastricht", city: "Maastricht", stadium: "Stadion Maastricht", capacity: 10000 },
+        { id: "nl_dor", name: "SV Dordrecht", city: "Dordrecht", stadium: "Stadion Dordrecht", capacity: 4100 },
+        { id: "nl_hel", name: "Helmond Voorwaarts", city: "Helmond", stadium: "Stadion Helmond", capacity: 4142 },
+        { id: "nl_ein", name: "Eindhoven Vooruit", city: "Eindhoven", stadium: "Sportpark Eindhoven", capacity: 4600 },
+        { id: "nl_oss", name: "SC Oss", city: "Oss", stadium: "Stadion Oss", capacity: 4700 },
+        { id: "nl_tel", name: "SV Velsen", city: "Velsen", stadium: "Sportpark Velsen", capacity: 3625 },
+        { id: "nl_hfc", name: "VV Haarlem", city: "Haarlem", stadium: "Stadion Haarlem", capacity: 3500 },
+        { id: "nl_ame", name: "SC Amersfoort", city: "Amersfoort", stadium: "Sportpark Amersfoort", capacity: 2500 },
+        { id: "nl_lel", name: "VV Lelystad", city: "Lelystad", stadium: "Sportpark Lelystad", capacity: 2000 }
+    ],
+    // ---------------------------------------------------------- Portugal, zweite Liga
+    pt_liga_2: [
+        { id: "pt_mar", name: "Funchal Atlântico", city: "Funchal", stadium: "Estádio do Funchal", capacity: 10600 },
+        { id: "pt_ton", name: "Tondela Beira", city: "Tondela", stadium: "Estádio de Tondela", capacity: 5000 },
+        { id: "pt_cha", name: "Trás-os-Montes FC", city: "Chaves", stadium: "Estádio de Chaves", capacity: 8400 },
+        { id: "pt_pac", name: "Paços Futebol", city: "Paços de Ferreira", stadium: "Estádio de Paços", capacity: 9077 },
+        { id: "pt_por", name: "Portimão SC", city: "Portimão", stadium: "Estádio de Portimão", capacity: 9544 },
+        { id: "pt_viz", name: "Vizela Atlético", city: "Vizela", stadium: "Estádio de Vizela", capacity: 6000 },
+        { id: "pt_lei", name: "Leiria Desportivo", city: "Leiria", stadium: "Estádio de Leiria", capacity: 23888 },
+        { id: "pt_vis", name: "Dão Viseu FC", city: "Viseu", stadium: "Estádio de Viseu", capacity: 9000 },
+        { id: "pt_set", name: "Setúbal Sado", city: "Setúbal", stadium: "Estádio de Setúbal", capacity: 15000 },
+        { id: "pt_lix", name: "Matosinhos FC", city: "Matosinhos", stadium: "Estádio de Matosinhos", capacity: 9730 },
+        { id: "pt_fei", name: "Feira Desportivo", city: "Santa Maria da Feira", stadium: "Estádio da Feira", capacity: 5600 },
+        { id: "pt_pen", name: "Penafiel Sport", city: "Penafiel", stadium: "Estádio de Penafiel", capacity: 5200 },
+        { id: "pt_tor", name: "Torres Vedras SC", city: "Torres Vedras", stadium: "Estádio de Torres Vedras", capacity: 2500 },
+        { id: "pt_oli", name: "Oliveira Atlético", city: "Oliveira de Azeméis", stadium: "Estádio de Oliveira", capacity: 4000 },
+        { id: "pt_alv", name: "Alverca Ribeirinho", city: "Alverca", stadium: "Estádio de Alverca", capacity: 7700 },
+        { id: "pt_fel", name: "Felgueiras Atlético", city: "Felgueiras", stadium: "Estádio de Felgueiras", capacity: 7000 },
+        { id: "pt_var", name: "Póvoa SC", city: "Póvoa de Varzim", stadium: "Estádio da Póvoa", capacity: 7280 },
+        { id: "pt_maf", name: "Mafra Desportivo", city: "Mafra", stadium: "Estádio de Mafra", capacity: 2000 }
+    ],
+    // ---------------------------------------------------------- Belgien, zweite Liga
+    be_liga_2: [
+        { id: "be_zwa", name: "Waregem SV", city: "Waregem", stadium: "Stadion Waregem", capacity: 12400 },
+        { id: "be_eup", name: "Eupen Hertogenwald", city: "Eupen", stadium: "Stadion Eupen", capacity: 8363 },
+        { id: "be_ost", name: "Oostende Kust", city: "Oostende", stadium: "Stadion Oostende", capacity: 8432 },
+        { id: "be_rwd", name: "Molenbeek Sport", city: "Molenbeek", stadium: "Stadion Molenbeek", capacity: 12266 },
+        { id: "be_lom", name: "Lommel Sport", city: "Lommel", stadium: "Stadion Lommel", capacity: 8000 },
+        { id: "be_bev", name: "Beveren Schelde", city: "Beveren", stadium: "Stadion Beveren", capacity: 8190 },
+        { id: "be_lok", name: "Lokeren Durme", city: "Lokeren", stadium: "Stadion Lokeren", capacity: 9560 },
+        { id: "be_ser", name: "Seraing Meuse", city: "Seraing", stadium: "Stade de Seraing", capacity: 8207 },
+        { id: "be_lie", name: "Lier Nete", city: "Lier", stadium: "Stadion Lier", capacity: 14538 },
+        { id: "be_pat", name: "Maasmechelen FC", city: "Maasmechelen", stadium: "Stadion Maasmechelen", capacity: 5000 },
+        { id: "be_lal", name: "La Louvière Centre", city: "La Louvière", stadium: "Stade de La Louvière", capacity: 8000 },
+        { id: "be_mon", name: "Mons Hainaut", city: "Mons", stadium: "Stade de Mons", capacity: 12662 },
+        { id: "be_mou", name: "Mouscron Frontière", city: "Mouscron", stadium: "Stade de Mouscron", capacity: 10800 },
+        { id: "be_fbo", name: "Borinage FC", city: "Boussu", stadium: "Stade du Borinage", capacity: 3000 },
+        { id: "be_roe", name: "Roeselare Mandel", city: "Roeselare", stadium: "Stadion Roeselare", capacity: 9000 },
+        { id: "be_tub", name: "Tubize Senne", city: "Tubize", stadium: "Stade de Tubize", capacity: 9000 }
+    ],
+    // ---------------------------------------------------------- Türkei, zweite Liga
+    tr_liga_2: [
+        { id: "tr_ank", name: "Başkent Ankara SK", city: "Ankara", stadium: "Ankara Stadı", capacity: 19209 },
+        { id: "tr_koc", name: "Kocaeli Sanayi SK", city: "Kocaeli", stadium: "Kocaeli Stadı", capacity: 34712 },
+        { id: "tr_bur", name: "Bursa Uludağ", city: "Bursa", stadium: "Bursa Stadı", capacity: 43331 },
+        { id: "tr_ada", name: "Adana Seyhan", city: "Adana", stadium: "Adana Stadı", capacity: 33543 },
+        { id: "tr_erz", name: "Erzurum Palandöken", city: "Erzurum", stadium: "Erzurum Stadı", capacity: 21374 },
+        { id: "tr_sak", name: "Sakarya Adapazarı", city: "Sakarya", stadium: "Sakarya Stadı", capacity: 28154 },
+        { id: "tr_gen", name: "Ankara Gençlik", city: "Ankara", stadium: "Ankara Kuzey Stadı", capacity: 19209 },
+        { id: "tr_esk", name: "Eskişehir Porsuk", city: "Eskişehir", stadium: "Eskişehir Stadı", capacity: 32500 },
+        { id: "tr_man", name: "Manisa Spil", city: "Manisa", stadium: "Manisa Stadı", capacity: 16597 },
+        { id: "tr_mal", name: "Malatya Kayısı", city: "Malatya", stadium: "Malatya Stadı", capacity: 27044 },
+        { id: "tr_dia", name: "Diyarbakır Dicle", city: "Diyarbakır", stadium: "Diyarbakır Stadı", capacity: 33000 },
+        { id: "tr_den", name: "Denizli Pamukkale", city: "Denizli", stadium: "Denizli Stadı", capacity: 18745 },
+        { id: "tr_bol", name: "Bolu Abant", city: "Bolu", stadium: "Bolu Stadı", capacity: 8881 },
+        { id: "tr_urf", name: "Urfa Harran", city: "Şanlıurfa", stadium: "Şanlıurfa Stadı", capacity: 28965 },
+        { id: "tr_cor", name: "Çorum Hitit", city: "Çorum", stadium: "Çorum Stadı", capacity: 15000 },
+        { id: "tr_gir", name: "Giresun Fındık", city: "Giresun", stadium: "Giresun Stadı", capacity: 22028 },
+        { id: "tr_ban", name: "Bandırma Liman", city: "Bandırma", stadium: "Bandırma Stadı", capacity: 12000 },
+        { id: "tr_igd", name: "Iğdır Aras", city: "Iğdır", stadium: "Iğdır Stadı", capacity: 8000 }
+    ],
+    // ---------------------------------------------------------- Österreich, zweite Liga
+    at_liga_2: [
+        { id: "at_rie", name: "Innviertel Ried", city: "Ried", stadium: "Stadion Ried", capacity: 7680 },
+        { id: "at_adm", name: "Mödling Südstadt", city: "Maria Enzersdorf", stadium: "Stadion Südstadt", capacity: 10600 },
+        { id: "at_lus", name: "Lustenau Rhein", city: "Lustenau", stadium: "Stadion Lustenau", capacity: 5138 },
+        { id: "at_stp", name: "St. Pöltner SC", city: "St. Pölten", stadium: "Stadion St. Pölten", capacity: 8000 },
+        { id: "at_kap", name: "Kapfenberg Mürz", city: "Kapfenberg", stadium: "Stadion Kapfenberg", capacity: 12000 },
+        { id: "at_bre", name: "Bregenz Bodensee", city: "Bregenz", stadium: "Stadion Bregenz", capacity: 12000 },
+        { id: "at_leo", name: "Leobener SV", city: "Leoben", stadium: "Stadion Leoben", capacity: 6000 },
+        { id: "at_flo", name: "Floridsdorfer SK", city: "Wien", stadium: "Stadion Floridsdorf", capacity: 3000 },
+        { id: "at_ams", name: "Amstetten Mostviertel", city: "Amstetten", stadium: "Stadion Amstetten", capacity: 3000 },
+        { id: "at_dor", name: "Dornbirn Ach", city: "Dornbirn", stadium: "Stadion Dornbirn", capacity: 5000 },
+        { id: "at_hor", name: "Horner SC", city: "Horn", stadium: "Stadion Horn", capacity: 3500 },
+        { id: "at_laf", name: "Lafnitztal FC", city: "Lafnitz", stadium: "Stadion Lafnitz", capacity: 2500 }
+    ],
+    // ---------------------------------------------------------- Schweiz, zweite Liga
+    ch_liga_2: [
+        { id: "ch_thu", name: "Thun Aare", city: "Thun", stadium: "Stadion Thun", capacity: 10000 },
+        { id: "ch_aar", name: "Aarau Jura", city: "Aarau", stadium: "Stadion Aarau", capacity: 9249 },
+        { id: "ch_xam", name: "Neuchâtel Lac", city: "Neuenburg", stadium: "Stade de Neuchâtel", capacity: 12000 },
+        { id: "ch_wil", name: "Wil Toggenburg", city: "Wil", stadium: "Stadion Wil", capacity: 6048 },
+        { id: "ch_sha", name: "Schaffhausen Munot", city: "Schaffhausen", stadium: "Stadion Schaffhausen", capacity: 8200 },
+        { id: "ch_bel", name: "Bellinzona Ticino", city: "Bellinzona", stadium: "Stadio di Bellinzona", capacity: 5000 },
+        { id: "ch_nyo", name: "Nyon La Côte", city: "Nyon", stadium: "Stade de Nyon", capacity: 7200 },
+        { id: "ch_kri", name: "Kriens Sonnenberg", city: "Kriens", stadium: "Stadion Kriens", capacity: 5360 },
+        { id: "ch_bad", name: "Baden Aargau", city: "Baden", stadium: "Stadion Baden", capacity: 7000 },
+        { id: "ch_car", name: "Carouge Arve", city: "Carouge", stadium: "Stade de Carouge", capacity: 3600 }
+    ],
+    // ---------------------------------------------------------- Schottland, zweite Liga
+    sc_liga_2: [
+        { id: "sc_fal", name: "Falkirk Forth", city: "Falkirk", stadium: "Falkirk Park", capacity: 7937 },
+        { id: "sc_liv", name: "Livingston West Lothian", city: "Livingston", stadium: "Livingston Park", capacity: 9512 },
+        { id: "sc_par", name: "Glasgow Maryhill", city: "Glasgow", stadium: "Maryhill Park", capacity: 10102 },
+        { id: "sc_dfl", name: "Dunfermline Fife", city: "Dunfermline", stadium: "Dunfermline Park", capacity: 11480 },
+        { id: "sc_ict", name: "Inverness Ness", city: "Inverness", stadium: "Inverness Park", capacity: 7512 },
+        { id: "sc_ayr", name: "Ayr Carrick", city: "Ayr", stadium: "Ayr Park", capacity: 10185 },
+        { id: "sc_mor", name: "Greenock Inverclyde", city: "Greenock", stadium: "Greenock Park", capacity: 11589 },
+        { id: "sc_rai", name: "Kirkcaldy Rovers", city: "Kirkcaldy", stadium: "Kirkcaldy Park", capacity: 8867 },
+        { id: "sc_ham", name: "Hamilton Lanark", city: "Hamilton", stadium: "Hamilton Park", capacity: 6018 },
+        { id: "sc_air", name: "Airdrie Monklands", city: "Airdrie", stadium: "Airdrie Park", capacity: 10101 }
+    ],
+    // ---------------------------------------------------------- Brasilien, zweite Liga
+    br_liga_2: [
+        { id: "br_cap", name: "Curitiba Araucária", city: "Curitiba", stadium: "Estádio de Curitiba", capacity: 42372 },
+        { id: "br_cfc", name: "Paraná Pinheiros", city: "Curitiba", stadium: "Estádio do Alto", capacity: 40502 },
+        { id: "br_goi", name: "Goiânia EC", city: "Goiânia", stadium: "Estádio de Goiânia", capacity: 14450 },
+        { id: "br_cui", name: "Cuiabá Pantanal", city: "Cuiabá", stadium: "Arena Cuiabá", capacity: 44000 },
+        { id: "br_ava", name: "Florianópolis Ilha", city: "Florianópolis", stadium: "Estádio da Ilha", capacity: 17826 },
+        { id: "br_chp", name: "Chapecó Oeste", city: "Chapecó", stadium: "Arena Chapecó", capacity: 20089 },
+        { id: "br_cri", name: "Criciúma Carvão", city: "Criciúma", stadium: "Estádio de Criciúma", capacity: 19225 },
+        { id: "br_acg", name: "Cerrado Atlético", city: "Goiânia", stadium: "Estádio do Cerrado", capacity: 12000 },
+        { id: "br_pay", name: "Pará EC", city: "Belém", stadium: "Estádio de Belém", capacity: 16200 },
+        { id: "br_rem", name: "Marajó FC", city: "Belém", stadium: "Estádio do Marajó", capacity: 13792 },
+        { id: "br_pon", name: "Campinas Paulista", city: "Campinas", stadium: "Estádio de Campinas", capacity: 19728 },
+        { id: "br_gua", name: "Campinas Atlético", city: "Campinas", stadium: "Estádio Campinas Norte", capacity: 29130 },
+        { id: "br_ama", name: "Manaus Floresta", city: "Manaus", stadium: "Arena Manaus", capacity: 44000 },
+        { id: "br_crb", name: "Alagoas EC", city: "Maceió", stadium: "Estádio de Maceió", capacity: 17126 },
+        { id: "br_nov", name: "Novo Horizonte FC", city: "Novo Horizonte", stadium: "Estádio de Novo Horizonte", capacity: 16000 },
+        { id: "br_bsp", name: "Ribeirão Preto FC", city: "Ribeirão Preto", stadium: "Estádio de Ribeirão Preto", capacity: 29292 },
+        { id: "br_ldr", name: "Londrina Café", city: "Londrina", stadium: "Estádio de Londrina", capacity: 31000 },
+        { id: "br_vre", name: "Volta Redonda Aço", city: "Volta Redonda", stadium: "Estádio de Volta Redonda", capacity: 18230 },
+        { id: "br_ope", name: "Ponta Grossa FC", city: "Ponta Grossa", stadium: "Estádio de Ponta Grossa", capacity: 10632 },
+        { id: "br_itu", name: "Itu Sorocabana", city: "Itu", stadium: "Estádio de Itu", capacity: 16420 }
     ]
 };
 

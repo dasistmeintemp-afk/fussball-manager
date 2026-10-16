@@ -369,7 +369,7 @@ const LEAGUES_DATA = [
         relegationSpots: [15, 16, 17, 18]
     },
 
-    // --- LÄNDER IM HINTERGRUND (je eine Liga, ohne Auf- und Abstieg) ---
+    // --- LÄNDER IM HINTERGRUND (erste und zweite Liga, direkter Auf- und Abstieg) ---
     {
         id: "nl_liga_1",
         code: "nl1",
@@ -389,7 +389,7 @@ const LEAGUES_DATA = [
             europaLeague: [3],
             conferenceLeague: [4]
         },
-        relegationSpots: []
+        relegationSpots: [17, 18]
     },
     {
         id: "pt_liga_1",
@@ -410,7 +410,7 @@ const LEAGUES_DATA = [
             europaLeague: [3],
             conferenceLeague: [4]
         },
-        relegationSpots: []
+        relegationSpots: [17, 18]
     },
     {
         id: "be_liga_1",
@@ -431,7 +431,7 @@ const LEAGUES_DATA = [
             europaLeague: [2],
             conferenceLeague: [3]
         },
-        relegationSpots: []
+        relegationSpots: [15, 16]
     },
     {
         id: "tr_liga_1",
@@ -452,7 +452,7 @@ const LEAGUES_DATA = [
             europaLeague: [2],
             conferenceLeague: [3]
         },
-        relegationSpots: []
+        relegationSpots: [16, 17, 18]
     },
     {
         id: "at_liga_1",
@@ -473,7 +473,7 @@ const LEAGUES_DATA = [
             europaLeague: [2],
             conferenceLeague: [3]
         },
-        relegationSpots: []
+        relegationSpots: [12]
     },
     {
         id: "ch_liga_1",
@@ -494,7 +494,7 @@ const LEAGUES_DATA = [
             europaLeague: [2],
             conferenceLeague: [3]
         },
-        relegationSpots: []
+        relegationSpots: [12]
     },
     {
         id: "sc_liga_1",
@@ -515,7 +515,7 @@ const LEAGUES_DATA = [
             europaLeague: [2],
             conferenceLeague: [3]
         },
-        relegationSpots: []
+        relegationSpots: [12]
     },
     {
         id: "br_liga_1",
@@ -531,6 +531,152 @@ const LEAGUES_DATA = [
         pointsPerDraw: 1,
         pointsPerLoss: 0,
         hintergrund: true,
+        relegationSpots: [17, 18, 19, 20]
+    },
+
+    // Die zweiten Ligen der Länder im Hintergrund: direkter Auf- und Abstieg
+    {
+        id: "nl_liga_2",
+        code: "nl2",
+        name: "Niederlande Liga 2",
+        countryId: "nl",
+        shortName: "Eerste Divisie",
+        level: 2,
+        tier: "professional",
+        teamCount: 18,
+        matchdays: 34,
+        pointsPerWin: 3,
+        pointsPerDraw: 1,
+        pointsPerLoss: 0,
+        hintergrund: true,
+        promotionTo: "nl_liga_1",
+        promotionSpots: [1, 2],
+        relegationSpots: []
+    },
+    {
+        id: "pt_liga_2",
+        code: "pt2",
+        name: "Portugal Liga 2",
+        countryId: "pt",
+        shortName: "Segunda Divisão",
+        level: 2,
+        tier: "professional",
+        teamCount: 18,
+        matchdays: 34,
+        pointsPerWin: 3,
+        pointsPerDraw: 1,
+        pointsPerLoss: 0,
+        hintergrund: true,
+        promotionTo: "pt_liga_1",
+        promotionSpots: [1, 2],
+        relegationSpots: []
+    },
+    {
+        id: "be_liga_2",
+        code: "be2",
+        name: "Belgien Liga 2",
+        countryId: "be",
+        shortName: "Tweede Klasse",
+        level: 2,
+        tier: "professional",
+        teamCount: 16,
+        matchdays: 30,
+        pointsPerWin: 3,
+        pointsPerDraw: 1,
+        pointsPerLoss: 0,
+        hintergrund: true,
+        promotionTo: "be_liga_1",
+        promotionSpots: [1, 2],
+        relegationSpots: []
+    },
+    {
+        id: "tr_liga_2",
+        code: "tr2",
+        name: "Türkei Liga 2",
+        countryId: "tr",
+        shortName: "İkinci Lig",
+        level: 2,
+        tier: "professional",
+        teamCount: 18,
+        matchdays: 34,
+        pointsPerWin: 3,
+        pointsPerDraw: 1,
+        pointsPerLoss: 0,
+        hintergrund: true,
+        promotionTo: "tr_liga_1",
+        promotionSpots: [1, 2, 3],
+        relegationSpots: []
+    },
+    {
+        id: "at_liga_2",
+        code: "at2",
+        name: "Österreich Liga 2",
+        countryId: "at",
+        shortName: "2. Liga Österreich",
+        level: 2,
+        tier: "professional",
+        teamCount: 12,
+        matchdays: 22,
+        pointsPerWin: 3,
+        pointsPerDraw: 1,
+        pointsPerLoss: 0,
+        hintergrund: true,
+        promotionTo: "at_liga_1",
+        promotionSpots: [1],
+        relegationSpots: []
+    },
+    {
+        id: "ch_liga_2",
+        code: "ch2",
+        name: "Schweiz Liga 2",
+        countryId: "ch",
+        shortName: "Nationalliga B",
+        level: 2,
+        tier: "professional",
+        teamCount: 10,
+        matchdays: 18,
+        pointsPerWin: 3,
+        pointsPerDraw: 1,
+        pointsPerLoss: 0,
+        hintergrund: true,
+        promotionTo: "ch_liga_1",
+        promotionSpots: [1],
+        relegationSpots: []
+    },
+    {
+        id: "sc_liga_2",
+        code: "sc2",
+        name: "Schottland Liga 2",
+        countryId: "sc",
+        shortName: "Scottish Second Division",
+        level: 2,
+        tier: "professional",
+        teamCount: 10,
+        matchdays: 18,
+        pointsPerWin: 3,
+        pointsPerDraw: 1,
+        pointsPerLoss: 0,
+        hintergrund: true,
+        promotionTo: "sc_liga_1",
+        promotionSpots: [1],
+        relegationSpots: []
+    },
+    {
+        id: "br_liga_2",
+        code: "br2",
+        name: "Brasilien Liga 2",
+        countryId: "br",
+        shortName: "Série Nacional B",
+        level: 2,
+        tier: "professional",
+        teamCount: 20,
+        matchdays: 38,
+        pointsPerWin: 3,
+        pointsPerDraw: 1,
+        pointsPerLoss: 0,
+        hintergrund: true,
+        promotionTo: "br_liga_1",
+        promotionSpots: [1, 2, 3, 4],
         relegationSpots: []
     }
 ];

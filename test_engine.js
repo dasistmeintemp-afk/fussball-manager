@@ -584,7 +584,8 @@ function runEngineTests() {
 
         // Verlängern geht in der Pause
         club.wageBudget = Math.max(club.wageBudget || 0, 1e9);
-        const forderung = ContractEngine.getExtensionDemand(bleibt, club, state).demandWage;
+        // Die Forderung für die angebotene Rolle, wie in der Verhandlungsmaske
+        const forderung = ContractEngine.getExtensionDemand(bleibt, club, state, "Stammspieler").demandWage;
         const ja = ContractEngine.negotiateExtension(bleibt, club, forderung, 3, "Stammspieler", 0, state);
         if (!ja.success || bleibt.contractYears !== 3) throw new Error("In der Sommerpause lässt sich nicht verlängern: " + ja.reason);
 
@@ -3799,9 +3800,12 @@ function runEngineTests() {
         });
 
         // Kaderstärke muss über die Ligastufen deutlich fallen
+        // Gestaffelt wird über die wählbaren Länder; die Länder im Hintergrund
+        // haben ihre eigene Stärke
         const avgByLevel = {};
+        const hinten = new Set(LEAGUES_DATA.filter(l => l.hintergrund).map(l => l.id));
         [1, 2, 3, 4, 5, 6, 7].forEach(level => {
-            const clubIds = new Set(state.clubs.filter(c => c.level === level).map(c => c.id));
+            const clubIds = new Set(state.clubs.filter(c => c.level === level && !hinten.has(c.leagueId)).map(c => c.id));
             const squad = state.players.filter(p => clubIds.has(p.clubId));
             avgByLevel[level] = squad.reduce((sum, p) => sum + p.overall, 0) / Math.max(1, squad.length);
         });
@@ -3921,14 +3925,14 @@ function runEngineTests() {
 
         // Gespeichert wird in IndexedDB; der LocalStorage ist der Notfallweg
         // und fasst in den gängigen Browsern rund fünf Millionen Zeichen. Mit
-        // 510 Vereinen und gut 11.000 Spielern liegt ein frischer Stand bei
-        // rund 5 MB - für den LocalStorage wird er verdichtet. 4 MB lassen
+        // 632 Vereinen und gut 14.000 Spielern liegt ein frischer Stand bei
+        // rund 7 MB - für den LocalStorage wird er verdichtet. 4 MB lassen
         // dort reichlich Luft für das, was die Saisons anhäufen.
         const lsText = GameState._lsText(JSON.stringify(encoded));
         if (lsText.length > 4 * 1024 * 1024) {
             throw new Error(`Spielstand ist mit ${(lsText.length / 1048576).toFixed(2)} MB zu groß für den LocalStorage`);
         }
-        if (encodedSize > 6 * 1024 * 1024) {
+        if (encodedSize > 8 * 1024 * 1024) {
             throw new Error(`Kodierter Spielstand ist mit ${(encodedSize / 1048576).toFixed(2)} MB unerwartet groß`);
         }
         if (GameState._ausText(lsText).players.length !== state.players.length) throw new Error("Verdichteter Stand lässt sich nicht lesen");
@@ -5968,8 +5972,8 @@ function runEngineTests() {
         Object.values(state.europeanCompetitions || {}).forEach(w => namen.push(w && w.name));
         const treffer = namen.filter(n => n && echt.has(h(n)));
         if (treffer.length) throw new Error(`Echte Namen in den Spieldaten: ${treffer.length} (z. B. "${treffer[0]}")`);
-        // 384 Vereine der wählbaren Ligen, 126 aus den Ländern im Hintergrund
-        if (Object.keys(s.vereine).length !== 510 || Object.keys(s.spieler).length !== 290) throw new Error("Vorlage unvollständig");
+        // 384 Vereine der wählbaren Ligen, 248 aus den Ländern im Hintergrund
+        if (Object.keys(s.vereine).length !== 632 || Object.keys(s.spieler).length !== 290) throw new Error("Vorlage unvollständig");
     });
 
     test("Namen: Eine Namensdatei wird geprüft, gilt für neue und laufende Karrieren und lässt sich zurücknehmen", () => {
@@ -5991,7 +5995,7 @@ function runEngineTests() {
 
         // Die Vorlage ist selbst eine gültige Namensdatei
         const vorlage = NamenEngine.pruefe(JSON.parse(NamenEngine.vorlage()));
-        if (!vorlage.ok || vorlage.zahlen.vereine !== 510 || vorlage.zahlen.spieler !== 290 || vorlage.zahlen.wettbewerbe !== 44) throw new Error(`Vorlage: ${JSON.stringify(vorlage.zahlen)}`);
+        if (!vorlage.ok || vorlage.zahlen.vereine !== 632 || vorlage.zahlen.spieler !== 290 || vorlage.zahlen.wettbewerbe !== 52) throw new Error(`Vorlage: ${JSON.stringify(vorlage.zahlen)}`);
 
         const laufend = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const dor = laufend.clubs.find(c => c.id === "dor");
@@ -12703,7 +12707,13 @@ function runEngineTests() {
         const neu = ["nl", "pt", "be", "tr", "at", "ch", "sc", "br"];
         const state = GameState.createNewGame("muc", "normal", { name: "Welt" });
         const hintergrund = LEAGUES_DATA.filter(l => l.hintergrund);
-        if (hintergrund.map(l => l.countryId).sort().join() !== neu.slice().sort().join()) throw new Error(`Länder: ${hintergrund.map(l => l.countryId)}`);
+        const ersteLigen = hintergrund.filter(l => l.level === 1);
+        if (ersteLigen.map(l => l.countryId).sort().join() !== neu.slice().sort().join()) throw new Error(`Länder: ${ersteLigen.map(l => l.countryId)}`);
+        // Jedes Land hat eine zweite Liga, die in seine erste aufsteigt
+        ersteLigen.forEach(l => {
+            const zweite = hintergrund.filter(z => z.countryId === l.countryId && z.level === 2);
+            if (zweite.length !== 1 || zweite[0].promotionTo !== l.id) throw new Error(`${l.countryId}: keine zweite Liga unter ${l.id}`);
+        });
         hintergrund.forEach(l => {
             const vereine = state.clubs.filter(c => c.leagueId === l.id);
             if (vereine.length !== l.teamCount) throw new Error(`${l.id}: ${vereine.length} von ${l.teamCount} Vereinen`);
@@ -12721,6 +12731,10 @@ function runEngineTests() {
         const schnitt = (id) => { const v = state.clubs.filter(c => c.leagueId === id).map(elf); return v.reduce((a, b) => a + b, 0) / v.length; };
         if (!(schnitt("nl_liga_1") < schnitt("de_liga_1") - 3 && schnitt("nl_liga_1") > schnitt("de_liga_2"))) throw new Error("Niederlande falsch eingeordnet");
         if (!(schnitt("sc_liga_1") < schnitt("nl_liga_1") - 3)) throw new Error("Schottland nicht schwächer als die Niederlande");
+        // Die zweiten Ligen liegen deutlich unter den ersten
+        neu.forEach(l => {
+            if (!(schnitt(`${l}_liga_2`) < schnitt(`${l}_liga_1`) - 5)) throw new Error(`${l}: zweite Liga nicht deutlich schwächer`);
+        });
         // Wirtschaft: Der Spitzenverein der Niederlande setzt weniger um als der der Bundesliga
         const spitze = (id) => state.clubs.filter(c => c.leagueId === id).sort((a, b) => (b.clubStrength || 0) - (a.clubStrength || 0))[0];
         if (!(FinanceEngine.kommerzBasis(spitze("nl_liga_1")) < FinanceEngine.kommerzBasis(spitze("de_liga_1")) * 0.6)) throw new Error("Niederlande zu reich");
@@ -12853,10 +12867,14 @@ function runEngineTests() {
         SE.erweitereLandWissen(state, "tr", 100);
         if (!(SE.beobachtungsDauer(state, fremd) < kurz)) throw new Error("Bekanntes Land beschleunigt die Beobachtung nicht");
 
-        // Ein Drittligist kann keinen Scout in Länder schicken, deren Ligen außer Reichweite liegen
+        // Ein Drittligist schickt seinen Scout nur in Länder mit Ligen in Reichweite:
+        // in die zweite Liga der Türkei ja, ein Landesligist auch dorthin nicht
         const klein = GameState.createNewGame("en3_cha", "normal", { name: "Scout" });
-        if (SE.startAssignment(klein, { land: "tr" }).success) throw new Error("Auftrag außerhalb der Reichweite angenommen");
+        if (!SE.startAssignment(klein, { land: "tr" }).success) throw new Error("Auftrag in die zweite türkische Liga abgelehnt");
         if (!SE.startAssignment(klein, { land: "es" }).success) throw new Error("Auftrag nach Spanien abgelehnt");
+        const landesligist = GameState.getSelectableClubs().find(c => c.leagueId === "de_ll_1");
+        const ganzKlein = GameState.createNewGame(landesligist.id, "normal", { name: "Scout" });
+        if (SE.startAssignment(ganzKlein, { land: "tr" }).success) throw new Error("Auftrag außerhalb der Reichweite angenommen");
     });
 
     test("Transfermarkt: Sortiert wird nach der geschätzten Stärke, nicht nach der wahren", () => {
@@ -13047,14 +13065,17 @@ function runEngineTests() {
         PG.TALENTSCHMIEDE.nl = alt;
         if (!(mit - ohne > 6)) throw new Error(`Talentschmiede wirkt nicht: ${ohne.toFixed(1)} -> ${mit.toFixed(1)}`);
 
-        // Landespokale: 16 Vereine ab dem Achtelfinale, 8 ab dem Viertelfinale
+        // Landespokale mit erster und zweiter Liga: Mit 36 Vereinen ab der
+        // ersten Runde (mit Freilosen), mit 32 ab der zweiten, mit 24 ab dem Achtelfinale
         const state = GameState.createNewGame("muc", "normal", { name: "Pokale" });
-        const nl = state.cups.nl_cup, at = state.cups.at_cup;
-        if (!nl || nl.teilnehmer.length !== 16 || nl.runden[nl.rundenIndex].roundName !== "Achtelfinale") throw new Error(`Pokal Niederlande: ${nl && nl.teilnehmer.length}`);
-        if (!at || at.teilnehmer.length !== 8 || at.runden[at.rundenIndex].roundName !== "Viertelfinale") throw new Error(`Pokal Österreich: ${at && at.teilnehmer.length}`);
+        const nl = state.cups.nl_cup, at = state.cups.at_cup, be = state.cups.be_cup;
+        if (!nl || nl.teilnehmer.length !== 36 || nl.rundenIndex !== 0) throw new Error(`Pokal Niederlande: ${nl && nl.teilnehmer.length}`);
+        if (!be || be.teilnehmer.length !== 32 || be.runden[be.rundenIndex].roundName !== "2. Runde") throw new Error(`Pokal Belgien: ${be && be.teilnehmer.length}`);
+        if (!at || at.teilnehmer.length !== 16 || at.runden[at.rundenIndex].roundName !== "Achtelfinale") throw new Error(`Pokal Österreich: ${at && at.teilnehmer.length}`);
+        if (!state.clubs.filter(c => c.leagueId === "at_liga_2").some(c => at.teilnehmer.includes(c.id))) throw new Error("Kein Zweitligist im Pokal Österreich");
         if (state.cups.de_cup.teilnehmer.length !== 64 || state.cups.de_cup.rundenIndex !== 0) throw new Error("Der deutsche Pokal hat sich verändert");
         // An den ersten Pokalabenden passiert in den kleinen Pokalen nichts, danach werden sie fertig
-        if (CupEngine.spielePokalrunde(state, 0, "nl_cup") !== null) throw new Error("Kleiner Pokal spielt am ersten Abend");
+        if (CupEngine.spielePokalrunde(state, 0, "at_cup") !== null) throw new Error("Kleiner Pokal spielt am ersten Abend");
         for (let i = 0; i < 6; i++) ["nl_cup", "at_cup"].forEach(id => { CupEngine.spielePokalrunde(state, i, id); CupEngine.schliessePokalrundeAb(state, i, id); });
         if (!nl.completed || !nl.winnerId || !at.completed || !at.winnerId) throw new Error("Kleine Pokale ohne Sieger");
         if (!CupEngine.pokalsiegerJeLand(state).nl) throw new Error("Pokalsieger der Niederlande fehlt");
@@ -13063,6 +13084,79 @@ function runEngineTests() {
         const nachher = CompetitionEngine.generateEuropeanCompetitions(state.clubs, { leagues: state.leagues, standingsByLeague: state.standingsByLeague, pokalsieger: { nl: nl.winnerId } });
         const zahl = (ec) => ["ucl", "uel", "uecl"].reduce((x, id) => x + (ec[id]?.participants || []).filter(c => c.startsWith("nl_")).length, 0);
         if (zahl(nachher) !== zahl(vorher)) throw new Error("Pokalsieger im Hintergrund bekommt einen Europapokalplatz");
+    });
+
+    test("Zweite Ligen im Hintergrund: Auf- und Abstieg zur ersten Liga, ältere Spielstände bekommen sie dazu", () => {
+        const laender = ["nl", "pt", "be", "tr", "at", "ch", "sc", "br"];
+        const state = GameState.createNewGame("muc", "normal", { name: "Zweite" });
+        laender.forEach(l => {
+            const erste = state.leagues.find(x => x.id === `${l}_liga_1`), zweite = state.leagues.find(x => x.id === `${l}_liga_2`);
+            if (!erste || !zweite) throw new Error(`${l}: Ligen fehlen`);
+            // So viele steigen ab, wie aufsteigen
+            if (erste.relegationSpots.length !== zweite.promotionSpots.length) throw new Error(`${l}: ${erste.relegationSpots.length} Ab-, ${zweite.promotionSpots.length} Aufsteiger`);
+            const vereine = state.clubs.filter(c => c.leagueId === zweite.id);
+            if (vereine.length !== zweite.teamCount || vereine.some(c => c.level !== 2 || c.countryId !== l)) throw new Error(`${zweite.id}: Vereine falsch`);
+            // Ruf unter der ersten Liga des Landes
+            const ruf = (id) => { const v = state.clubs.filter(c => c.leagueId === id); return v.reduce((s, c) => s + c.reputation, 0) / v.length; };
+            if (!(ruf(zweite.id) < ruf(erste.id))) throw new Error(`${l}: Ruf der zweiten Liga nicht unter der ersten`);
+        });
+        // Jede Liga der Welt hat ihren eigenen Namen in der Auswahl
+        const kurz = LEAGUES_DATA.map(l => l.shortName);
+        if (new Set(kurz).size !== kurz.length) throw new Error(`Doppelte Liganamen: ${kurz.filter((n, i) => kurz.indexOf(n) !== i)}`);
+        // Zweitligisten bleiben Hintergrund: keine Trainerposten, nicht wählbar
+        if (GameState.getSelectableClubs().some(c => /_liga_2$/.test(c.leagueId) && laender.includes(c.countryId))) throw new Error("Zweitligist im Hintergrund wählbar");
+
+        // Saisonende: Die Besten der zweiten Liga steigen auf, die Letzten der ersten ab
+        state.leagues.forEach(league => {
+            const clubs = state.clubs.filter(c => c.leagueId === league.id);
+            state.standingsByLeague[league.id] = GameState.calculateStandings(clubs, GameState.getScheduleForLeague(state, league.id), 999);
+        });
+        const erwartet = {};
+        laender.forEach(l => {
+            const zweite = state.leagues.find(x => x.id === `${l}_liga_2`), erste = state.leagues.find(x => x.id === `${l}_liga_1`);
+            erwartet[l] = {
+                hoch: state.standingsByLeague[zweite.id].slice(0, zweite.promotionSpots.length).map(z => z.clubId),
+                runter: state.standingsByLeague[erste.id].slice(-erste.relegationSpots.length).map(z => z.clubId)
+            };
+        });
+        const groesse = {};
+        state.leagues.forEach(l => { groesse[l.id] = state.clubs.filter(c => c.leagueId === l.id).length; });
+        CompetitionEngine.processSeasonEndPromotionsRelegations(state);
+        laender.forEach(l => {
+            erwartet[l].hoch.forEach(id => { const c = state.clubs.find(x => x.id === id); if (c.leagueId !== `${l}_liga_1` || c.level !== 1) throw new Error(`${l}: ${c.name} nicht aufgestiegen`); });
+            erwartet[l].runter.forEach(id => { const c = state.clubs.find(x => x.id === id); if (c.leagueId !== `${l}_liga_2` || c.level !== 2) throw new Error(`${l}: ${c.name} nicht abgestiegen`); });
+        });
+        state.leagues.forEach(l => { if (state.clubs.filter(c => c.leagueId === l.id).length !== groesse[l.id]) throw new Error(`${l.id} hat die Größe verändert`); });
+
+        // Ein Spielstand mit den Ländern, aber ohne ihre zweiten Ligen
+        const frisch = GameState.createNewGame("muc", "normal", { name: "Alt" });
+        for (let i = 0; i < 3; i++) SeasonEngine.advanceToNextMatchday(frisch);
+        const alt = Object.assign(new GameState(), JSON.parse(JSON.stringify(frisch)));
+        const zweiteIds = laender.map(l => `${l}_liga_2`);
+        const weg = new Set(alt.clubs.filter(c => zweiteIds.includes(c.leagueId)).map(c => c.id));
+        alt.clubs = alt.clubs.filter(c => !weg.has(c.id));
+        alt.players = alt.players.filter(p => !weg.has(p.clubId));
+        alt.leagues = alt.leagues.filter(l => !zweiteIds.includes(l.id));
+        alt.leagues.filter(l => l.hintergrund).forEach(l => { l.relegationSpots = []; });
+        zweiteIds.forEach(id => { delete alt.otherSchedules[id]; delete alt.standingsByLeague[id]; });
+        Object.values(alt.cups || {}).forEach(c => { if (Array.isArray(c.teilnehmer)) c.teilnehmer = c.teilnehmer.filter(id => !weg.has(id)); });
+        const geladen = GameState._zuState(SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(alt)))));
+        laender.forEach(l => {
+            const zweite = geladen.leagues.find(x => x.id === `${l}_liga_2`), erste = geladen.leagues.find(x => x.id === `${l}_liga_1`);
+            if (!zweite || geladen.clubs.filter(c => c.leagueId === zweite.id).length !== zweite.teamCount) throw new Error(`${l}: zweite Liga nicht nachgetragen`);
+            if (!(geladen.otherSchedules[zweite.id] || []).length) throw new Error(`${l}: zweite Liga ohne Spielplan`);
+            // Die erste Liga hat ab jetzt Absteiger
+            if (erste.relegationSpots.length !== zweite.promotionSpots.length) throw new Error(`${l}: erste Liga ohne Absteiger`);
+        });
+        const nachricht = geladen.inbox.find(m => /Die Spielwelt wächst/.test(m.subject));
+        if (!nachricht || !/Eerste Divisie/.test(nachricht.body) || !/Auf- und Abstieg/.test(nachricht.body)) throw new Error("Keine Nachricht zu den zweiten Ligen");
+        if (/Europapokal mit/.test(nachricht.body)) throw new Error("Nachricht kündigt die Länder noch einmal an");
+        const vereine = geladen.clubs.length;
+        GameState.ergaenzeAltstand(geladen);
+        if (geladen.clubs.length !== vereine) throw new Error("Zweite Ligen doppelt nachgetragen");
+        // Sie holen die verpassten Spieltage nach
+        SeasonEngine.advanceToNextMatchday(geladen);
+        if (!(geladen.standingsByLeague.nl_liga_2 || []).some(z => z.played >= 3)) throw new Error("Nachgetragene zweite Liga holt nicht auf");
     });
 
     test("Regionalscouts: mehr Wissen in der Region, Talentmeldungen, Kosten und Rahmen je Liga", () => {

@@ -1078,15 +1078,17 @@ class GameState {
         const welt = GameState._resolveEngine("WorldGenerator", "./worldGenerator.js");
         const neu = welt && typeof welt.ergaenzeNeueLigen === "function" ? welt.ergaenzeNeueLigen(state) : [];
         if (neu.length && Array.isArray(state.inbox)) {
-            const hintergrund = neu.filter(l => l.hintergrund);
+            const hintergrund = neu.filter(l => l.hintergrund && (l.level || 1) === 1);
+            const zweite = neu.filter(l => l.hintergrund && (l.level || 1) === 2);
             state.inbox.unshift({
                 id: "msg_neue_ligen_" + Date.now(),
                 matchday: state.currentMatchday || 1,
                 date: state.currentDate || "Heute",
                 sender: "Ligavorstand",
                 subject: "Die Spielwelt wächst: neue Ligen",
-                body: `Ab sofort spielen auch diese Ligen mit:\n\n${neu.map(l => `• ${l.shortName || l.name}`).join("\n")}`
+                body: `Ab sofort spielen auch diese Ligen mit:\n\n${neu.map(l => `• ${l.shortName || l.name}${l.shortName && l.name ? ` (${l.name})` : ""}`).join("\n")}`
                     + (hintergrund.length ? `\n\nDie Länder im Hintergrund haben Tabellen, Kader und Transfers, ihre Vereine spielen ab der nächsten Saison im Europapokal mit.` : "")
+                    + (zweite.length ? `\n\nZwischen erster und zweiter Liga dieser Länder gibt es ab dem Saisonende Auf- und Abstieg - und in den zweiten Ligen junge Talente für den Scout.` : "")
                     + `\n\nDie bisher verpassten Spieltage dieser Saison holen die neuen Ligen am nächsten Spieltag nach.`,
                 read: false,
                 type: "info"

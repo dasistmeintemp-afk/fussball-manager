@@ -1391,6 +1391,52 @@ const YouthEngine = {
     },
 
     /**
+     * Ein Talent der U19 zu den Profis hochziehen - sofort, ohne Berater und
+     * ohne Profivertrag, wie im Vorbild: wenn die erste Mannschaft wegen
+     * Verletzungen zu dünn ist oder einer in der U19 glänzt.
+     *
+     * Er spielt mit seinem Jugendvertrag weiter: Ausbildungsvergütung als
+     * Gehalt, Laufzeit bis 19 (jugendvertrag am Spieler). Den Profivertrag
+     * handelt man später aus wie eine Verlängerung, ab dem Mindestalter des
+     * Landes. Läuft der Jugendvertrag aus, ohne dass er unterschreibt, ist
+     * er frei - wie in der Akademie. Zurück in die U19 schickt ihn
+     * ReserveEngine.hinunterU19, solange er höchstens 19 ist.
+     *
+     * Nicht, solange ein Verein um ihn wirbt (die Anfrage entscheidet erst
+     * der Profivertrag oder das Gespräch) und solange über seinen ersten
+     * Vertrag verhandelt wird.
+     */
+    hochziehen(state, talentId) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        const talent = this.eigeneTalente(state).find(t => t && String(t.id) === String(talentId) && !t.promoted);
+        if (!club || !talent) return { success: false, error: "Talent nicht gefunden." };
+        const ab = this.MIT_PROFIS.abAlter;
+        if ((talent.age || 0) < ab) return { success: false, error: `${talent.name} ist ${talent.age} - bei den Profis spielen darf er erst mit ${ab}.` };
+        const anfrage = this.offeneAnfrage(state, talent.id);
+        if (anfrage) return { success: false, error: `${anfrage.clubName} wirbt um ihn. Erst muss das entschieden sein - mit einem Profivertrag oder einem Gespräch über seine Perspektive.` };
+        const neg = _youthResolve("NegotiationEngine", "./negotiationEngine.js");
+        if (neg && typeof neg.getOpenNegotiations === "function"
+            && neg.getOpenNegotiations(state).some(n => n.type === "youth_promotion" && String(n.prospectId) === String(talent.id))) {
+            return { success: false, error: "Mit seinem Berater wird gerade über den Profivertrag verhandelt." };
+        }
+        const verguetung = this.VERGUETUNG[club.level || 1] ?? 20;
+        const jahre = Math.max(1, this.AKADEMIE_HOECHSTALTER - (talent.age || 16));
+        const res = this.promoteProspect(state, club.id, talent.id, { wage: verguetung, contractYears: jahre, skipNews: true });
+        if (!res.success) return res;
+        const p = res.player;
+        p.wage = verguetung;
+        p.jugendvertrag = { land: club.countryId || "de", seit: (state.seasonYear || 1) * 1000 + (state.currentDayIndex || 0) };
+        p.squadRole = p.squadRole === "Toptalent" ? "Toptalent" : "Zukunftstalent";
+        // Die Bilanz aus der U19 nimmt er mit
+        if (talent.u19) p.u19 = Object.assign({}, talent.u19);
+        if (p.happiness) p.happiness.reason = "Aus der U19 zu den Profis hochgezogen.";
+        this.nachwuchsPost(state, club, `🎓 ${p.name} bei den Profis`,
+            `${p.name} (${p.pos}, ${p.age} Jahre) trainiert und spielt ab sofort bei den Profis - mit seinem Jugendvertrag (${this._geld(verguetung)} je Woche, noch ${jahre} ${jahre === 1 ? "Saison" : "Saisons"}). `
+            + `Einen Profivertrag können Sie ihm in seiner Akte anbieten${(p.age || 0) < this.profiAb(club) ? ` - ab ${this.profiAb(club)}` : ""}. In die U19 zurück schicken Sie ihn ebenfalls dort.`);
+        return { success: true, player: p };
+    },
+
+    /**
      * Drückt einem Talent die Handschrift seiner Schule auf.
      *
      * Die Stärken steigen, die Schwächen sinken - in Summe bleibt der Spieler

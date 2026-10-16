@@ -218,9 +218,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         ? (anfrage.gespraech ? "" : `<button class="btn btn-sm btn-primary btn-perspektive" data-anfrage-id="${this.escapeHtml(anfrage.id)}" title="Ein Gespräch über seinen Weg bei uns - einmal je Anfrage">Perspektive aufzeigen</button>`)
                             + `<button class="btn btn-sm btn-secondary btn-ziehen-lassen" data-anfrage-id="${this.escapeHtml(anfrage.id)}">Ziehen lassen</button>`
                         : "";
+                    // Sofort zu den Profis, mit dem Jugendvertrag (YouthEngine.hochziehen)
+                    const hochKnopf = !anfrage && (p.age || 0) >= (youthV?.MIT_PROFIS?.abAlter ?? 16)
+                        ? `<button class="btn btn-sm btn-secondary btn-hochziehen" data-talent-id="${p.id}" title="Sofort zu den Profis - ohne Berater, mit seinem Jugendvertrag">Hochziehen</button>`
+                        : "";
                     const aktion = gespraech
                         ? `<button class="btn btn-sm btn-secondary btn-goto-negotiation" data-neg-id="${this.escapeHtml(gespraech.id)}">Zur Verhandlung</button>${anfrageKnoepfe}`
-                        : `${profiKnopf}${anfrageKnoepfe}${profisKnopf}
+                        : `${profiKnopf}${hochKnopf}${anfrageKnoepfe}${profisKnopf}
                            <button class="btn btn-sm btn-secondary btn-release-prospect" data-prospect-id="${p.id}" title="Platz in der Akademie freimachen">Freigeben</button>`;
                     const quelle = ({ probetraining: "Probetraining", sichtung: "Sichtungstag" })[p.quelle]
                         || (p.quelle === "fremd" && p.vonClubName ? `aus ${p.vonClubName}` : null);
@@ -322,6 +326,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 document.querySelectorAll(".btn-goto-negotiation").forEach(btn => {
                     btn.addEventListener("click", () => this.zeigeVerhandlung(btn.dataset.negId));
                 });
+                this.bindeUnterbauKnoepfe(prospectsBody);
             }
         }
     },
@@ -371,7 +376,49 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     }).join("")}</ul>` : `<p class="text-muted">Der erste Spieltag der U19 kommt mit dem zweiten der Profis.</p>`}
                     ${schuetzen.length ? `<h4>Torjäger der U19</h4><ol class="jl-schuetzen">${schuetzen.map(s => `<li>${esc(s.name)}<b>${s.tore}</b></li>`).join("")}</ol>` : ""}
                 </div>
-            </div>`;
+            </div>
+            ${this.u19KaderHtml(state, engine)}`;
+        el.querySelectorAll("[data-u19-akte]").forEach(tr => tr.addEventListener("click", (e) => {
+            if (e.target.closest("button")) return;
+            this.showPlayerDetailsModal(tr.dataset.u19Akte, { abschnitt: "unterbau" });
+        }));
+        this.bindeUnterbauKnoepfe(el);
+    },
+
+    /**
+     * Der Kader der U19: Talente der Akademie und junge Profis, mit ihrer
+     * Bilanz - wer in Form ist, steht oben und lässt sich hochziehen.
+     */
+    u19KaderHtml(state, engine) {
+        const reserve = typeof ReserveEngine !== "undefined" ? ReserveEngine : null;
+        const youth = typeof YouthEngine !== "undefined" ? YouthEngine : null;
+        if (!reserve || !youth) return "";
+        const saison = state.seasonYear || 1;
+        const talente = new Set(youth.eigeneTalente(state).filter(t => t && !t.promoted));
+        const kader = engine.eigeneSpieler(state).map(p => ({ p, b: reserve.bilanz(p, "u19", saison), talent: talente.has(p) }))
+            .sort((a, b) => ((b.b?.form ?? 0) - (a.b?.form ?? 0)) || ((b.p.overall || 0) - (a.p.overall || 0)));
+        if (!kader.length) return "";
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const ab = youth.MIT_PROFIS.abAlter;
+        const aktion = (k) => {
+            if (k.talent) {
+                if ((k.p.age || 0) < ab) return `<span class="text-muted">ab ${ab}</span>`;
+                if (youth.offeneAnfrage(state, k.p.id)) return `<span class="text-muted">Anfrage offen</span>`;
+                return `<button class="btn btn-sm btn-primary btn-hochziehen" data-talent-id="${esc(k.p.id)}">Hochziehen</button>`;
+            }
+            return reserve.inU19(k.p)
+                ? `<button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(k.p.id)}">Zu den Profis</button>`
+                : `<span class="text-muted" title="Profi ohne Stammplatz - spielt in der U19 mit">Profikader</span>`;
+        };
+        return `
+            <h4 class="unterbau-titel">Kader der U19</h4>
+            <div class="table-container">
+                <table class="compact-table u19-kader">
+                    <thead><tr><th>Spieler</th><th>Pos</th><th>Alter</th><th>Stärke</th><th>Sp</th><th>Tore</th><th>Ø</th><th>Form</th><th></th></tr></thead>
+                    <tbody>${kader.map(k => `<tr class="row-clickable" data-u19-akte="${esc(k.p.id)}"><td><strong>${esc(k.p.name)}</strong> <span class="text-muted">${k.talent ? "Akademie" : (reserve.inU19(k.p) ? "Profi in der U19" : "Profi")}</span></td><td>${esc(k.p.pos)}</td><td>${k.p.age || "-"}</td><td>${k.p.overall || "-"}</td>${this.unterbauZellen(k.p, "u19")}<td>${aktion(k)}</td></tr>`).join("")}</tbody>
+                </table>
+            </div>
+            <p class="text-muted jl-hinweis">Hochgezogene Talente spielen mit ihrem Jugendvertrag bei den Profis - ab ${ab}, ohne Berater. Den Profivertrag bieten Sie ihnen in der Akte an. Junge Profis bis ${youth.AKADEMIE_HOECHSTALTER} schicken Sie über die Akte in die U19.</p>`;
     },
 
     /**

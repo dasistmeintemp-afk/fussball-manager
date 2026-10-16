@@ -756,7 +756,7 @@ class UIManager {
 
         const knopf = item => `
             <button class="attention-item" data-tab="${this.escapeHtml(item.tab)}"${item.playerId !== undefined ? ` data-player="${this.escapeHtml(String(item.playerId))}"` : ""}${item.negId ? ` data-neg="${this.escapeHtml(String(item.negId))}"` : ""}>
-                <span class="attention-icon ton-${({ "🚑": "bad", "⚠️": "bad", "🩺": "bad", "📢": "bad", "🥵": "warn", "😞": "warn", "💰": "warn", "💬": "warn", "🎓": "warn", "🤝": "ok" })[item.icon] || "info"}">${this.symbolHtml(item.icon)}</span>
+                <span class="attention-icon ton-${({ "🚑": "bad", "⚠️": "bad", "🩺": "bad", "📢": "bad", "🥵": "warn", "😞": "warn", "💰": "warn", "💬": "warn", "🎓": "warn", "⭐": "ok", "🤝": "ok" })[item.icon] || "info"}">${this.symbolHtml(item.icon)}</span>
                 <span class="attention-text">
                     <strong>${this.escapeHtml(item.title)}</strong>
                     <span>${this.escapeHtml(item.detail)}</span>
@@ -788,7 +788,8 @@ class UIManager {
         list.querySelectorAll(".attention-name").forEach(btn => {
             btn.addEventListener("click", () => {
                 const ziel = state.players.find(p => String(p.id) === btn.dataset.player);
-                if (ziel) this.showPlayerDetailsModal(ziel.id, { abschnitt: btn.dataset.abschnitt });
+                // Ein Talent der Akademie steht nicht in der Spielerliste - die Akte findet es trotzdem
+                this.showPlayerDetailsModal(ziel ? ziel.id : btn.dataset.player, { abschnitt: btn.dataset.abschnitt });
             });
         });
     }
@@ -2228,7 +2229,7 @@ class UIManager {
             "🚑": "i-medical", "🥵": "i-flame", "📄": "i-doc", "😞": "i-frown", "📬": "i-mail",
             "🏗️": "i-build", "⚠️": "i-alert", "🤝": "i-briefcase", "🧊": "i-leaf", "🔥": "i-flame",
             "📣": "i-mic", "💢": "i-alert", "💰": "i-wallet", "🩺": "i-medical",
-            "💬": "i-chat", "📢": "i-alert", "🔁": "i-transfer", "🎓": "i-leaf", "👥": "i-users", "🌍": "i-globe"
+            "💬": "i-chat", "📢": "i-alert", "🔁": "i-transfer", "🎓": "i-leaf", "👥": "i-users", "🌍": "i-globe", "⭐": "i-star"
         })[emoji];
         return id
             ? `<svg class="ico" aria-hidden="true"><use href="#${id}"/></svg>`

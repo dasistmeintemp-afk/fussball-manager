@@ -1149,6 +1149,8 @@ class SeasonEngine {
         const kopfGen = _resolve('PlayerGenerator', './playerGenerator.js');
         state.players.forEach(player => {
             player.age += 1;
+            // Aus dem U19-Alter heraus: zurück zu den Profis (ReserveEngine.U19)
+            if (player.reserve === "u19" && player.age > 19) player.reserve = undefined;
             if (kopfGen && typeof kopfGen.kopfReife === 'function') kopfGen.kopfReife(player, player.age - 1, state.seasonYear || 1);
             player.stats.matches = 0;
             player.stats.goals = 0;

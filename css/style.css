@@ -8992,3 +8992,24 @@ td.nowrap { white-space: nowrap; }
 .pd-grundwerte { font-size: 11.5px; color: var(--text-muted); margin: 0 0 16px; line-height: 1.5; }
 .pd-grundwerte strong { color: var(--text-main, #e5e7eb); }
 @media (max-width: 360px) { .pd-wertliste { grid-template-columns: minmax(0, 1fr); } }
+
+/* Unterbau: U23 und U19 mit Bilanz, die Kandidaten für die Profis */
+.unterbau-titel { font-size: 13px; margin: 14px 0 6px; color: var(--text-muted); }
+.u-form-top { color: #a3e635; font-weight: 700; }
+.gs-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.pd-unterbau-bilanz { font-size: 12px; color: var(--text-muted); margin: 0 0 10px; }
+.u19-kader td, .u23-tabelle td { white-space: nowrap; }
+.u19-kader td:first-child, .u23-tabelle td:first-child { white-space: normal; }
+/* Am Handy: Alter, Stärke und Tore weg (stehen in der Akte), kleinere Knöpfe -
+   und wird es doch zu breit, scrollt die Tabelle für sich */
+@media (max-width: 640px) {
+    .u23-tabelle th:nth-child(3), .u23-tabelle td:nth-child(3),
+    .u23-tabelle th:nth-child(4), .u23-tabelle td:nth-child(4),
+    .u23-tabelle th:nth-child(6), .u23-tabelle td:nth-child(6),
+    .u19-kader th:nth-child(3), .u19-kader td:nth-child(3),
+    .u19-kader th:nth-child(4), .u19-kader td:nth-child(4),
+    .u19-kader th:nth-child(6), .u19-kader td:nth-child(6) { display: none; }
+    .u23-tabelle td, .u23-tabelle th, .u19-kader td, .u19-kader th { padding: 6px 5px; font-size: 12px; }
+    .u23-tabelle .btn-sm, .u19-kader .btn-sm { padding: 5px 8px; font-size: 11px; }
+    #pane-squad #squadReserve .table-container, #jugendligaKarte .table-container { overflow-x: auto; }
+}

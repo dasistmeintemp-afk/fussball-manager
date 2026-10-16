@@ -764,12 +764,16 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         Entwicklungstempo: <strong>${((player.developmentRate || 1) * 100).toFixed(0)} %</strong>${player.mitProfis ? " · trainiert mit den Profis" : ""}.
                     </p>
                     ${anfrage ? `<div class="hint-box" style="margin:0 0 10px;">📨 ${this.escapeHtml(anfrage.clubName)} wirbt um ihn. Geht er, bekommen wir ${this.formatMoneySafe(anfrage.betrag)} Ausbildungsentschädigung.</div>` : ""}
+                    ${this.unterbauBilanzText(player) ? `<p class="pd-unterbau-bilanz">${this.escapeHtml(this.unterbauBilanzText(player))}</p>` : ""}
                     ${laufend
                         ? `<div class="hint-box" style="margin:0;">Berater <strong>${this.escapeHtml(laufend.agentName)}</strong> verhandelt bereits: ${this.escapeHtml(engine.describe(laufend))}</div>
                            <button class="btn btn-secondary" id="btnPdZurVerhandlung" data-neg-id="${this.escapeHtml(laufend.id)}" style="width:100%; margin-top:10px;">Zur Verhandlung</button>`
                         : zuJung
                             ? `<button class="btn btn-secondary" disabled style="width:100%;">${this.escapeHtml(zuJung)}</button>`
                             : `<button class="btn btn-primary" id="btnPdPromoteProspect" style="width:100%;">Profivertrag anbieten</button>`}
+                    ${!laufend && !anfrage && youthA && (player.age || 0) >= youthA.MIT_PROFIS.abAlter
+                        ? `<button class="btn btn-secondary" id="btnPdHochziehen" style="width:100%; margin-top:8px;" title="Sofort, ohne Berater - er spielt mit seinem Jugendvertrag">Zu den Profis hochziehen (Jugendvertrag)</button>`
+                        : ""}
                 </div>
             `;
         } else if (isUserClub && player.vorvertrag) {
@@ -796,7 +800,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ];
             contractSectionHtml = `
                 <div class="dash-card mt-3" id="pdVertrag" style="padding:14px; background: var(--surface-2); border:1px solid var(--line);">
-                    <h4 style="font-size:14px; margin-bottom:8px; color:#38bdf8;"><svg class="ico h-ico" aria-hidden="true"><use href="#i-briefcase"/></svg>Vertragsverlängerung verhandeln</h4>
+                    <h4 style="font-size:14px; margin-bottom:8px; color:#38bdf8;"><svg class="ico h-ico" aria-hidden="true"><use href="#i-briefcase"/></svg>${player.jugendvertrag ? "Profivertrag aushandeln" : "Vertragsverlängerung verhandeln"}</h4>
+                    ${player.jugendvertrag ? `<p class="ext-rolle">Aus der U19 hochgezogen: Er spielt mit seinem Jugendvertrag (${this.formatMoneySafe(player.wage)} je Woche, noch ${player.contractYears} ${player.contractYears === 1 ? "Saison" : "Saisons"}). Läuft er aus, ohne dass er unterschreibt, ist er frei.</p>` : ""}
                     <p style="font-size:12px; color:var(--text-muted); margin-bottom:6px;">Forderung des Spielers: ca. <strong id="extForderung">${GameState.formatMoney(demand.demandWage)} / Woche</strong></p>
                     <p class="ext-rolle" id="extRolleHinweis">Er sieht sich als <strong>${this.escapeHtml(demand.preferredRole)}</strong>.${demand.treu ? " Er ist gern hier und kommt beim Gehalt entgegen." : ""}</p>
                     ${(player.contractYears || 0) <= 0 ? `<p class="vertrag-endet">Sein Vertrag endet zum Saisonwechsel${this.sommerpauseText()}. Andere Vereine werben schon.</p>` : ""}
@@ -973,7 +978,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             { key: "vertrag", label: isUserClub ? (isProspect ? "Vertrag" : "Vertrag & Kabine") : "Vertrag & Transfer" }
         ].filter(Boolean);
         const gemerkt = this._akteReiter && String(this._akteReiter.id) === String(player.id) ? this._akteReiter.reiter : null;
-        let reiter = optionen.abschnitt === "vertrag" ? "vertrag" : (optionen.reiter || gemerkt || "ueberblick");
+        // "unterbau": dorthin, wo er hinauf- oder hinuntergeschickt wird
+        let reiter = optionen.abschnitt === "vertrag" ? "vertrag"
+            : (optionen.abschnitt === "unterbau" ? (isProspect ? "vertrag" : "entwicklung") : (optionen.reiter || gemerkt || "ueberblick"));
         if (!reiterListe.some(r => r.key === reiter)) reiter = "ueberblick";
         this._akteReiter = { id: player.id, reiter };
         const reiterLeiste = `<nav class="pd-tabs" role="tablist">${reiterListe.map(r =>
@@ -1225,7 +1232,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const res = hinunter ? reserveEngine.hinunter(state, player.id) : reserveEngine.hinauf(state, player.id);
             nachLeihe(res, hinunter
                 ? `${player.name} spielt jetzt in der U23${res.ausElf ? " - die Aufstellung ist nachgerückt" : ""}.`
-                : `${player.name} gehört wieder zum Profikader.`);
+                : `${player.name} ist zurück aus der ${res.von || "U23"} und gehört wieder zum Profikader.`);
+            if (res.success && this.activeTab === "tactics") this.renderCurrentTab();
+        });
+        document.getElementById("btnPdU19")?.addEventListener("click", () => {
+            if (!reserveEngine || typeof reserveEngine.hinunterU19 !== "function") return;
+            const res = reserveEngine.hinunterU19(state, player.id);
+            nachLeihe(res, `${player.name} spielt jetzt in der U19${res.ausElf ? " - die Aufstellung ist nachgerückt" : ""}.`);
             if (res.success && this.activeTab === "tactics") this.renderCurrentTab();
         });
         document.getElementById("btnPdLeiheAnfragen")?.addEventListener("click", () => {
@@ -1278,6 +1291,16 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         }));
 
         // Aus der Akte heraus die Vertragsgespräche mit dem Talent eröffnen
+        document.getElementById("btnPdHochziehen")?.addEventListener("click", () => {
+            const res = YouthEngine.hochziehen(state, player.id);
+            if (!res.success) return this.showToast(res.error, "error", 6000);
+            this.playSound("erfolg");
+            this.showToast(`🎓 ${res.player.name} ist bei den Profis - mit seinem Jugendvertrag.`, "success", 5000);
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.renderHeader?.();
+            this.renderCurrentTab();
+            this.showPlayerDetailsModal(res.player.id);
+        });
         document.getElementById("btnPdPromoteProspect")?.addEventListener("click", () => {
             const engine = this.getNegotiationEngine();
             if (!engine) {

@@ -1376,6 +1376,29 @@ function runWizardTests() {
         if (/\(Reiter Training/.test(quelle) || !quelle.includes("(Reiter Jugend)")) throw new Error("Meldungen verweisen noch auf den Reiter Training");
     });
 
+    test("Übersicht und Akte: Balken gleich lang, die Spielerakte nutzt breite Bildschirme", () => {
+        const html = fs.readFileSync('./index.html', 'utf8');
+        const css = fs.readFileSync('./css/style.css', 'utf8');
+        // Ziel und alle drei Balken stehen in einem gemeinsamen Raster
+        const start = html.indexOf('<div class="goal-balken">');
+        if (start < 0) throw new Error("Raster für die Balken fehlt");
+        const ende = html.indexOf('id="dashBoardMsg"', start);
+        const raster = html.slice(start, ende);
+        ["dashBoardGoal", "dashBoardFill", "dashFanMoodFill", "dashFanStimmen", "dashMediaFill"].forEach(id => {
+            if (!raster.includes(`id="${id}"`)) throw new Error(`#${id} steht nicht im Raster`);
+        });
+        if ((raster.match(/<div class="goal-item">/g) || []).length !== 4) throw new Error("Nicht genau vier Zeilen im Raster");
+        const regel = /\.goal-balken \{[^}]*grid-template-columns:\s*max-content minmax\(0, 1fr\)/.exec(css);
+        if (!regel || !/\.goal-balken > \.goal-item \{ display: contents; \}/.test(css)) throw new Error("Die Balken teilen sich keine Spalte");
+
+        // Die Akte ist breit und im Überblick zweispaltig
+        if (!/id="modalPlayerDetails"[^>]*>\s*<div class="modal-box modal-akte">/.test(html)) throw new Error("Die Akte nutzt nicht die breite Fensterklasse");
+        const breite = /\.modal-akte \{ max-width: (\d+)px; \}/.exec(css);
+        if (!breite || Number(breite[1]) < 1000) throw new Error("Die Akte ist nicht breiter geworden");
+        const akte = fs.readFileSync('./js/ui/uiAkten.js', 'utf8');
+        if ((akte.match(/<div class="pd-spalten/g) || []).length < 2 || !akte.includes('<div class="pd-werte">')) throw new Error("Überblick und Vertrag stehen nicht in Spalten");
+    });
+
     test("Sterne: Der Karrierestart misst Spieler wie nach der Übernahme, der Maßstab ist wählbar", () => {
         const { PlayerRatingEngine } = require('./js/engine/playerRatingEngine.js');
         const vorher = { rating: global.PlayerRatingEngine, ls: global.localStorage };

@@ -451,6 +451,10 @@ Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit 
 
 Die Leiste bleibt beim Scrollen oben. Der gewählte Reiter bleibt erhalten, solange dieselbe Akte offen ist, auch wenn eine Änderung sie neu aufbaut. Ein Klick auf einen auslaufenden Vertrag öffnet gleich „Vertrag“. Vorher stand alles untereinander, am Handy über viele Bildschirme.
 
+**Breit wie ein Arbeitsblatt:** Auf großen Bildschirmen ist die Akte bis zu 1.180 Pixel breit statt 600. Im Überblick stehen links Werte, Saison und Laufbahn, rechts Positionsprofil, Eigenheiten, Bilanz und Persönlichkeit. Unter „Vertrag“ steht die Lage links und die Verhandlung rechts. Am Handy bleibt alles untereinander.
+
+**Gleich lange Balken:** Auf der Übersicht teilen sich Saisonziel, Vorstandszufriedenheit, Fanstimmung und Mediendruck ein Raster. Vorher nahm jede Beschriftung so viel Platz, wie sie brauchte, und neben „Vorstandszufriedenheit“ blieb der kürzeste Balken. Am Handy steht die Beschriftung über dem Balken.
+
 In der Spielerakte führt der Manager Gespräche mit jedem eigenen Spieler. Wie er reagiert, hängt an Form und Persönlichkeit:
 
 | Gespräch | Wirkung |

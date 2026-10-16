@@ -336,6 +336,8 @@
                                 <h3>Vorstand, Fans & Medien</h3>
                             </div>
                             <div class="board-body">
+                                <!-- Ziel und Balken teilen sich ein Raster: alle Balken gleich lang -->
+                                <div class="goal-balken">
                                 <div class="goal-item">
                                     <span class="goal-label">Saisonziel:</span>
                                     <span class="goal-val" id="dashBoardGoal">Qualifikation für die Top 3</span>
@@ -361,6 +363,7 @@
                                         <div class="progress-fill" id="dashMediaFill" style="width: 45%; background:#f59e0b;"></div>
                                     </div>
                                     <span class="goal-pct" id="dashMediaPct">45%</span>
+                                </div>
                                 </div>
                                 <div class="board-msg-box" id="dashBoardMsg">
                                     Der Vorstand ist mit dem aktuellen Saisonverlauf zufrieden.
@@ -2099,7 +2102,7 @@
 
         <!-- Modal: Player Details / Contract Offer -->
         <div class="modal-overlay" id="modalPlayerDetails" style="display: none;">
-            <div class="modal-box modal-md">
+            <div class="modal-box modal-akte">
                 <div class="modal-header">
                     <h2 id="pdPlayerName">Spieler Details</h2>
                     <button class="modal-close" id="btnClosePlayerDetails">×</button>

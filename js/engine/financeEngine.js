@@ -842,6 +842,13 @@ const FinanceEngine = {
                     club.balance -= regional;
                     this.recordTransaction(state, club.id, "scouting", -regional, "Regionalscouts (Gehälter)");
                 }
+                // 4c. Die Talente der Akademie bekommen ihre Ausbildungsvergütung
+                const jugend = _feResolve("YouthEngine", "./youthEngine.js");
+                const verguetung = jugend && typeof jugend.ausbildungsVerguetung === "function" ? jugend.ausbildungsVerguetung(state) : 0;
+                if (verguetung > 0) {
+                    club.balance -= verguetung;
+                    this.recordTransaction(state, club.id, "youth_academy", -verguetung, "Ausbildungsvergütung der Akademie");
+                }
             }
 
             this.recordTransaction(

@@ -751,17 +751,25 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 ? engine.getOpenNegotiations(state).find(n => n.type === "youth_promotion" && String(n.prospectId) === String(player.id))
                 : null;
 
+            // Jugendvertrag, Mindestalter für den Profivertrag und ein Werber
+            const youthA = (typeof YouthEngine !== "undefined" && YouthEngine) ? YouthEngine : null;
+            const vertrag = youthA && typeof youthA.vertragsLage === "function" ? youthA.vertragsLage(state, club, player) : null;
+            const zuJung = youthA && typeof youthA.profiHindernis === "function" ? youthA.profiHindernis(club, player) : null;
+            const anfrage = youthA && typeof youthA.offeneAnfrage === "function" ? youthA.offeneAnfrage(state, player.id) : null;
             contractSectionHtml = `
                 <div class="dash-card mt-3" id="pdVertrag" style="padding:14px; background: var(--surface-2); border:1px solid var(--line);">
                     <h4 style="font-size:14px; margin-bottom:8px; color:#38bdf8;"><svg class="ico h-ico" aria-hidden="true"><use href="#i-user"/></svg>Aus der Jugendakademie</h4>
                     <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">
-                        ${player.name} spielt in der eigenen Nachwuchsabteilung und hat noch keinen Profivertrag.
-                        Entwicklungstempo: <strong>${((player.developmentRate || 1) * 100).toFixed(0)} %</strong>.
+                        ${this.escapeHtml(player.name)} spielt in der eigenen Nachwuchsabteilung mit einem Jugendvertrag${vertrag ? ` (${this.escapeHtml(vertrag.text)}, Ausbildungsvergütung ${this.formatMoneySafe(vertrag.verguetung)} pro Woche)` : ""}.
+                        Entwicklungstempo: <strong>${((player.developmentRate || 1) * 100).toFixed(0)} %</strong>${player.mitProfis ? " · trainiert mit den Profis" : ""}.
                     </p>
+                    ${anfrage ? `<div class="hint-box" style="margin:0 0 10px;">📨 ${this.escapeHtml(anfrage.clubName)} wirbt um ihn. Geht er, bekommen wir ${this.formatMoneySafe(anfrage.betrag)} Ausbildungsentschädigung.</div>` : ""}
                     ${laufend
                         ? `<div class="hint-box" style="margin:0;">Berater <strong>${this.escapeHtml(laufend.agentName)}</strong> verhandelt bereits: ${this.escapeHtml(engine.describe(laufend))}</div>
                            <button class="btn btn-secondary" id="btnPdZurVerhandlung" data-neg-id="${this.escapeHtml(laufend.id)}" style="width:100%; margin-top:10px;">Zur Verhandlung</button>`
-                        : `<button class="btn btn-primary" id="btnPdPromoteProspect" style="width:100%;">Vertragsgespräche aufnehmen</button>`}
+                        : zuJung
+                            ? `<button class="btn btn-secondary" disabled style="width:100%;">${this.escapeHtml(zuJung)}</button>`
+                            : `<button class="btn btn-primary" id="btnPdPromoteProspect" style="width:100%;">Profivertrag anbieten</button>`}
                 </div>
             `;
         } else if (isUserClub && player.vorvertrag) {
@@ -782,7 +790,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         } else if (isUserClub && leiheModus !== "geliehen") {
             const rollen = [
                 ["Schlüsselspieler", "Höchste Wichtigkeit"], ["Stammspieler", "Regelmäßige Startelf"],
-                ["Rotationsspieler", "Teilzeit-Einsätze"], ["Ergänzungsspieler", "Backup"], ["Zukunftstalent", "Entwicklung"]
+                ["Rotationsspieler", "Teilzeit-Einsätze"], ["Ergänzungsspieler", "Backup"],
+                // Für Junge: gelegentlich bei den Profis oder ganz für die Entwicklung
+                ...((player.age || 30) <= 21 ? [["Toptalent", "Gelegentliche Einsätze"]] : []), ["Zukunftstalent", "Entwicklung"]
             ];
             contractSectionHtml = `
                 <div class="dash-card mt-3" id="pdVertrag" style="padding:14px; background: var(--surface-2); border:1px solid var(--line);">
@@ -800,11 +810,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         <div>
                             <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:4px;">Laufzeit:</label>
                             <select id="extYearsSelect" class="styled-select" style="width:100%;">
-                                <option value="1">1 Jahr</option>
-                                <option value="2">2 Jahre</option>
-                                <option value="3" selected>3 Jahre</option>
-                                <option value="4">4 Jahre</option>
-                                <option value="5">5 Jahre</option>
+                                ${[1, 2, 3, 4, 5].filter(j => j <= ContractEngine.maxLaufzeit(player.age)).map(j => `<option value="${j}" ${j === 3 ? "selected" : ""}>${j} Jahr${j > 1 ? "e" : ""}</option>`).join("")}
                             </select>
                         </div>
                     </div>
@@ -1061,7 +1067,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ${isProspect ? `
             <div class="finance-stat-row">
                 <span>Jahrgang:</span>
-                <strong>${player.age} Jahre – noch ${Math.max(0, 21 - (player.age || 17))} Jahre Nachwuchsalter</strong>
+                <strong>${player.age} Jahre – Jugendvertrag bis ${typeof YouthEngine !== "undefined" ? YouthEngine.AKADEMIE_HOECHSTALTER : 19}</strong>
             </div>
             <div class="finance-stat-row">
                 <span>Kondition / Moral:</span>

@@ -4,8 +4,10 @@
  * Bisher durfte jeder Spieler des Kaders in jedem Wettbewerb spielen. Im
  * Vorbild und in Wirklichkeit gibt es Meldelisten:
  *
- *   Europapokal  - Liste A mit höchstens 25 Spielern, davon mindestens acht
- *                  im Land ausgebildet. Fehlen welche, schrumpft die Liste
+ *   Europapokal  - Liste A mit höchstens 25 Spielern, davon acht Plätze für
+ *                  lokal Ausgebildete: höchstens vier dürfen nur im Land
+ *                  ausgebildet sein, die übrigen im Verein (drei Saisons
+ *                  zwischen 15 und 21). Fehlen welche, schrumpft die Liste
  *                  um genau so viele Plätze. Liste B für junge Spieler (bis
  *                  21), die seit zwei Saisons im Verein sind oder aus der
  *                  eigenen Jugend kommen - ohne Obergrenze.
@@ -41,7 +43,7 @@ const _krResolve = (() => {
 
 const KaderregelEngine = {
     REGELN: {
-        europa: { name: "Europapokal", max: 25, minLokal: 8, listeB: true },
+        europa: { name: "Europapokal", max: 25, minLokal: 8, maxVerband: 4, listeB: true },
         // Der Name folgt der Liga - erfunden oder aus der Namensdatei
         liga_en_liga_1: { get name() { return KaderregelEngine.ligaName("en_liga_1"); }, max: 25, maxFremd: 17, u21frei: true },
         liga_es_liga_1: { get name() { return KaderregelEngine.ligaName("es_liga_1"); }, max: 25, maxNichtEU: 3, u21frei: true }
@@ -83,6 +85,43 @@ const KaderregelEngine = {
         if (!p || !club) return false;
         if (p.eigengewaechsVon && p.eigengewaechsVon === club.id) return true;
         return (this.LAND_NATION[club.countryId] || []).includes(p.nationality);
+    },
+
+    /**
+     * Im Verein ausgebildet: drei Saisons zwischen 15 und 21 im Verein, wie
+     * in der Regel des Europapokals - wer aus der eigenen Jugend kommt,
+     * immer. Wer schon zum Start der Karriere im Kader stand, dessen
+     * Jugendjahre kennt das Spiel nicht: Von den Spielern mit der
+     * Nationalität des Landes gilt dann ein fester Teil als im Verein
+     * ausgebildet, etwa jeder vierte - fest je Spieler und Verein.
+     */
+    IM_VEREIN: { jahre: 3, von: 15, bis: 21, startAnteil: 0.25 },
+    imVerein(state, p, club) {
+        if (!p || !club) return false;
+        if (p.eigengewaechsVon && p.eigengewaechsVon === club.id) return true;
+        const V = this.IM_VEREIN;
+        if (typeof p.vereinSeit !== "number") {
+            if (!(this.LAND_NATION[club.countryId] || []).includes(p.nationality)) return false;
+            const gen = _krResolve("PlayerGenerator", "./playerGenerator.js");
+            const h = gen && typeof gen._hashZahl === "function" ? (gen._hashZahl(`${p.id}|${club.id}|imVerein`) + 1) / 2 : 1;
+            return h < V.startAnteil;
+        }
+        const jahre = (state?.seasonYear || 1) - Math.floor(p.vereinSeit / 1000);
+        const alter = p.age || 25;
+        return Math.min(V.bis, alter) - Math.max(V.von, alter - jahre) >= V.jahre;
+    },
+
+    /** Für den Europapokal: im Verein, nur im Land oder gar nicht lokal ausgebildet */
+    ausbildung(state, p, club) {
+        if (this.imVerein(state, p, club)) return "verein";
+        return this.lokal(p, club) ? "land" : null;
+    },
+
+    /** Wie viele der acht Plätze eine Liste A besetzt: die aus dem Verein, dazu höchstens vier nur aus dem Land */
+    anrechenbar(state, liste, club, r = this.REGELN.europa) {
+        let verein = 0, land = 0;
+        liste.forEach(p => { const a = this.ausbildung(state, p, club); if (a === "verein") verein++; else if (a === "land") land++; });
+        return { verein, land, anrechenbar: Math.min(r.minLokal, verein + Math.min(r.maxVerband, land)) };
     },
 
     /**
@@ -156,11 +195,11 @@ const KaderregelEngine = {
         const b = (liste?.b || []).map(id => nachId.get(id)).filter(Boolean);
         const zahlen = { a: a.length, b: b.length, max: r.max };
         if (art === "europa") {
-            const lokal = a.filter(p => this.lokal(p, club)).length;
-            const platz = r.max - Math.max(0, r.minLokal - lokal);
-            Object.assign(zahlen, { lokal, minLokal: r.minLokal, platz });
-            if (a.length > platz) fehler.push(lokal < r.minLokal
-                ? `Liste A: ${a.length} Spieler, erlaubt sind ${platz} - es fehlen ${r.minLokal - lokal} im Land ausgebildete.`
+            const { verein, land, anrechenbar } = this.anrechenbar(state, a, club, r);
+            const platz = r.max - (r.minLokal - anrechenbar);
+            Object.assign(zahlen, { lokal: verein + land, verein, land, anrechenbar, minLokal: r.minLokal, maxVerband: r.maxVerband, platz });
+            if (a.length > platz) fehler.push(anrechenbar < r.minLokal
+                ? `Liste A: ${a.length} Spieler, erlaubt sind ${platz} - von den ${r.minLokal} Plätzen für lokal Ausgebildete sind ${r.minLokal - anrechenbar} frei (höchstens ${r.maxVerband} nur im Land ausgebildet, die übrigen im Verein).`
                 : `Liste A: ${a.length} statt höchstens ${r.max} Spieler.`);
             const falschB = b.filter(p => !this.fuerListeB(state, p, club));
             if (falschB.length) fehler.push(`Nicht für Liste B zugelassen: ${falschB.map(p => p.name).join(", ")}.`);
@@ -191,16 +230,15 @@ const KaderregelEngine = {
         if (art === "europa") {
             const b = kader.filter(p => this.fuerListeB(state, p, club));
             const rest = kader.filter(p => !b.includes(p));
-            const lokale = rest.filter(p => this.lokal(p, club));
-            // Erst die Besten, solange Platz ist - die lokalen Plätze bleiben frei
-            const a = [];
             // Freigehalten werden nur Plätze für Ausgebildete, die es auch gibt
-            const nochLokal = () => Math.max(0, Math.min(r.minLokal, lokale.length) - a.filter(p => this.lokal(p, club)).length);
-            const platz = () => r.max - Math.max(0, r.minLokal - Math.min(r.minLokal, lokale.length));
+            const moeglich = this.anrechenbar(state, rest, club, r).anrechenbar;
+            const platz = r.max - (r.minLokal - moeglich);
+            // Erst die Besten, solange Platz ist - die Plätze der Ausgebildeten bleiben frei
+            const a = [];
             rest.forEach(p => {
-                if (a.length >= platz()) return;
-                const freiFuerFremde = platz() - a.length - nochLokal();
-                if (this.lokal(p, club) || freiFuerFremde > 0) a.push(p);
+                if (a.length >= platz) return;
+                const mit = a.concat([p]);
+                if (platz - mit.length >= moeglich - this.anrechenbar(state, mit, club, r).anrechenbar) a.push(p);
             });
             return { a: a.map(p => p.id), b: b.map(p => p.id) };
         }

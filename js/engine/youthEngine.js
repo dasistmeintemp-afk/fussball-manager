@@ -541,6 +541,58 @@ const YouthEngine = {
     AKADEMIE_HOECHSTALTER: 19,
 
     /**
+     * Verträge in der Akademie, wie im Vorbild.
+     *
+     * Bisher stand ein Talent ohne Vertrag in der Akademie, und einen
+     * Profivertrag gab es in jedem Alter - auch für einen Fünfzehnjährigen.
+     * Jetzt hat jedes Talent einen Jugendvertrag mit einer kleinen
+     * Ausbildungsvergütung je Woche. Den ersten Profivertrag darf es erst ab
+     * dem Mindestalter seines Landes unterschreiben - in England mit 17,
+     * sonst mit 16 - und als Minderjähriger höchstens für drei Jahre
+     * (ContractEngine.maxLaufzeit). Ohne Profivertrag ist mit 19 Schluss in
+     * der Akademie, und bis dahin dürfen andere Vereine um das Talent werben.
+     */
+    PROFI_AB: { en: 17 },
+    PROFI_AB_SONST: 16,
+    VERGUETUNG: { 1: 600, 2: 350, 3: 180, 4: 90, 5: 50, 6: 30, 7: 20 },
+
+    /** Ab welchem Alter ein Talent dieses Vereins Profi werden darf */
+    profiAb(club) {
+        return this.PROFI_AB[club?.countryId || "de"] ?? this.PROFI_AB_SONST;
+    },
+
+    /** Darf das Talent einen Profivertrag unterschreiben? null, wenn ja - sonst der Grund */
+    profiHindernis(club, talent) {
+        const ab = this.profiAb(club);
+        if (!talent || (talent.age || 0) >= ab) return null;
+        return `${talent.name} ist ${talent.age}. Einen Profivertrag darf er ${club?.countryId === "en" ? "in England " : ""}erst mit ${ab} unterschreiben - bis dahin läuft sein Jugendvertrag.`;
+    },
+
+    /** Was die Talente der eigenen Akademie je Woche an Ausbildungsvergütung bekommen */
+    ausbildungsVerguetung(state) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        if (!club) return 0;
+        const je = this.VERGUETUNG[club.level || 1] ?? 20;
+        return je * this.eigeneTalente(state).filter(t => t && !t.promoted).length;
+    },
+
+    /** Der Vertrag eines Talents: Art, ab wann Profi, wie lange er noch läuft */
+    vertragsLage(state, club, talent) {
+        const ab = this.profiAb(club);
+        const alter = talent?.age || 16;
+        const saisons = Math.max(1, this.AKADEMIE_HOECHSTALTER - alter);
+        const profi = alter >= ab;
+        return {
+            art: "Jugendvertrag",
+            profiAb: ab,
+            profiMoeglich: profi,
+            saisons,
+            verguetung: this.VERGUETUNG[club?.level || 1] ?? 20,
+            text: `Jugendvertrag ${saisons === 1 ? "bis Saisonende" : `noch ${saisons} Saisons`} · ${profi ? "Profivertrag möglich" : `Profi ab ${ab}`}`
+        };
+    },
+
+    /**
      * Ein Talent freigeben - Platz für neue. Läuft schon ein Gespräch über
      * seinen ersten Vertrag, geht das nicht.
      */
@@ -572,12 +624,405 @@ const YouthEngine = {
             t.age = (t.age || 16) + 1;
             if (t.age >= this.AKADEMIE_HOECHSTALTER) gehen.unshift(...liste.splice(i, 1));
         }
+        // Wer geht, ist auch für Werber nicht mehr zu haben
+        (state.youthAcademy?.anfragen || []).forEach(a => {
+            if (a.status === "offen" && gehen.some(t => String(t.id) === String(a.talentId))) a.status = "erledigt";
+        });
+        // Erledigte Anfragen braucht niemand mehr
+        if (Array.isArray(state.youthAcademy?.anfragen)) state.youthAcademy.anfragen = state.youthAcademy.anfragen.filter(a => a.status === "offen");
         if (gehen.length) {
             this.nachwuchsPost(state, club, `🎓 ${gehen.length} ${gehen.length === 1 ? "Talent verlässt" : "Talente verlassen"} die Akademie`,
                 `Ohne Profivertrag ist mit ${this.AKADEMIE_HOECHSTALTER} Schluss in der Akademie:\n`
                 + gehen.map(t => `• ${t.name} (${t.pos})`).join("\n"));
         }
         return gehen;
+    },
+
+    /**
+     * Die Persönlichkeit eines Talents - fest aus seiner Kennung, ohne den
+     * Zufall zu verbrauchen, auf derselben Skala wie bei den Profis (1-20).
+     * Bisher hatten Talente keine, und wer befördert wurde, bekam überall
+     * den Mittelwert. Wie im Vorbild prägt der Nachwuchsleiter mit: Ein
+     * guter Mann zieht professionellere Jungs heran.
+     */
+    PERSOENLICHKEIT: {
+        professionalism: [8, 18], ambition: [7, 18], consistency: [8, 18], importantMatches: [8, 18],
+        injuryProneness: [4, 15], adaptability: [9, 18], loyalty: [8, 18], temperament: [7, 18]
+    },
+    ergaenzePersoenlichkeit(talent, leiterBonus = 0) {
+        if (!talent || talent.hiddenAttributes) return false;
+        const gen = _youthResolve("PlayerGenerator", "./playerGenerator.js");
+        const hash = gen && typeof gen._hashZahl === "function" ? (t) => gen._hashZahl(t) : () => 0;
+        const werte = {};
+        Object.entries(this.PERSOENLICHKEIT).forEach(([key, [lo, hi]]) => {
+            const h = (hash(`${talent.id}|pers|${key}`) + 1) / 2;
+            werte[key] = Math.min(hi, lo + Math.floor(h * (hi - lo + 1)));
+        });
+        werte.professionalism = Math.max(1, Math.min(20, werte.professionalism + Math.round(leiterBonus / 2)));
+        talent.hiddenAttributes = werte;
+        return true;
+    },
+
+    /** Heute als Zahl: Saison * 1000 + Kalendertag */
+    _heute(state) {
+        return (state?.seasonYear || 1) * 1000 + (state?.currentDayIndex || 0);
+    },
+
+    /**
+     * Ausbildungsentschädigung, wie im Vorbild: Geht ein Talent ohne
+     * Profivertrag zu einem anderen Verein, zahlt der dem Ausbilder eine
+     * Entschädigung - je Ausbildungsjahr nach der Ligastufe des Ausbilders,
+     * für ein großes Talent mehr. Wer über den Jugendtag kam, ist im Verein
+     * groß geworden (ab 15); wer später dazukam, zählt ab seiner Ankunft.
+     */
+    ENTSCHAEDIGUNG: { 1: 150000, 2: 80000, 3: 40000, 4: 20000, 5: 10000, 6: 5000, 7: 2500 },
+    ausbildungsJahre(state, talent) {
+        const saison = state?.seasonYear || 1;
+        const imVerein = saison - (talent?.seit ?? saison) + 1;
+        const aufgewachsen = (talent?.quelle || "jugendtag") === "jugendtag" ? (talent?.age || 15) - 14 : 1;
+        return Math.max(1, Math.min(5, Math.max(imVerein, aufgewachsen)));
+    },
+    /** massstab: der Verein, an dessen Akademie die Qualität des Talents gemessen wird (sonst der Ausbilder) */
+    ausbildungsEntschaedigung(state, ausbilder, talent, jahre = null, massstab = null) {
+        // Wie die Vereinskategorien des Weltverbands: Die Länder im
+        // Hintergrund zählen eine Stufe tiefer als die großen fünf
+        const hinten = (state?.leagues || []).some(l => l.id === ausbilder?.leagueId && l.hintergrund);
+        const basis = this.ENTSCHAEDIGUNG[(ausbilder?.level || 1) + (hinten ? 1 : 0)] ?? 2500;
+        const skala = (massstab || ausbilder) ? this._potSkala(state, massstab || ausbilder)(talent?.pot || 0) : 0;
+        const faktor = 1 + Math.max(0, Math.min(1.5, skala)) * 1.5;
+        const betrag = basis * (jahre ?? this.ausbildungsJahre(state, talent)) * faktor;
+        const ce = _youthResolve("ContractEngine", "./contractEngine.js");
+        return ce && typeof ce.rundeBetrag === "function" ? ce.rundeBetrag(betrag) : Math.round(betrag / 1000) * 1000;
+    },
+
+    /**
+     * Minderjährige dürfen nach der Regel des Weltverbands nur im eigenen
+     * Land wechseln - mit 16 und 17 auch innerhalb der EU. England,
+     * Schottland, die Türkei und Brasilien gehören nicht dazu.
+     */
+    EU_LAENDER: ["de", "es", "it", "fr", "nl", "pt", "be", "at", "ch"],
+    wechselErlaubt(vonLand, nachLand, alter) {
+        if (vonLand === nachLand || (alter || 0) >= 18) return true;
+        return (alter || 0) >= 16 && this.EU_LAENDER.includes(vonLand) && this.EU_LAENDER.includes(nachLand);
+    },
+
+    /**
+     * Abwerben, wie im Vorbild: Ein Talent ohne Profivertrag dürfen andere
+     * Vereine holen. Größere Vereine fragen nach den Besten der Akademie -
+     * je besser das Talent für diese Akademie, desto öfter. Der Verein hat
+     * sieben Tage: Ist das Talent alt genug, bindet ihn ein Profivertrag;
+     * sonst kann ein Gespräch über seine Perspektive ihn halten. Geht er,
+     * bekommt der Verein die Ausbildungsentschädigung.
+     */
+    ABWERBEN: { basis: 0.0015, abSkala: 0, frist: 7, rufVorsprung: 4 },
+
+    anfragen(state) {
+        if (!state.youthAcademy) state.youthAcademy = { prospects: [], level: 1 };
+        if (!Array.isArray(state.youthAcademy.anfragen)) state.youthAcademy.anfragen = [];
+        return state.youthAcademy.anfragen;
+    },
+
+    /** Die offene Anfrage für ein Talent oder null */
+    offeneAnfrage(state, talentId) {
+        return (state?.youthAcademy?.anfragen || []).find(a => a.status === "offen" && String(a.talentId) === String(talentId)) || null;
+    },
+
+    /** Welcher größere Verein wirbt um dieses Talent? null, wenn keiner passt */
+    werberFuer(state, club, talent, zufall = Math.random) {
+        const ruf = club.reputation || 50;
+        // Aus dem Ausland werben nur Erstligisten
+        const kandidaten = (state.clubs || []).filter(c => c.id !== club.id
+            && (c.reputation || 0) >= ruf + this.ABWERBEN.rufVorsprung
+            && (c.countryId === club.countryId || (c.level || 1) === 1)
+            && this.wechselErlaubt(club.countryId || "de", c.countryId || "de", talent.age)
+            && this._potSkala(state, c)(talent.pot || 0) >= 0);
+        if (!kandidaten.length) return null;
+        const gewicht = (c) => (c.countryId === club.countryId ? 3 : 1);
+        let r = zufall() * kandidaten.reduce((s, c) => s + gewicht(c), 0);
+        for (const c of kandidaten) { r -= gewicht(c); if (r < 0) return c; }
+        return kandidaten[kandidaten.length - 1];
+    },
+
+    /** Wie wahrscheinlich geht das Talent, wenn er die Wahl hat */
+    wechselChance(state, club, werber, talent) {
+        const h = talent.hiddenAttributes || {};
+        const abstand = (werber?.reputation || 0) - (club?.reputation || 0);
+        let p = 0.55 + abstand * 0.02 + ((h.ambition ?? 12) - 12) * 0.03 - ((h.loyalty ?? 12) - 12) * 0.03;
+        if (talent.mitProfis) p -= 0.15;
+        return Math.max(0.2, Math.min(0.95, p));
+    },
+
+    /**
+     * Ein Tag: Fristen auslaufender Anfragen und neue Anfragen. Gibt eine
+     * Meldung für den Tagesbericht zurück oder null.
+     */
+    pruefeAbwerben(state, zufall = null) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        if (!club) return null;
+        const heute = this._heute(state);
+        // Ohne vorgegebenen Würfel ein fester Wurf je Talent und Tag: Der
+        // Zufall des übrigen Spiels bleibt, wie er war
+        const gen = _youthResolve("PlayerGenerator", "./playerGenerator.js");
+        const w = (schluessel) => zufall ? zufall()
+            : (gen && typeof gen._hashZahl === "function" ? (gen._hashZahl(`${schluessel}|${heute}`) + 1) / 2 : Math.random());
+        const talente = this.eigeneTalente(state).filter(t => t && !t.promoted);
+        const meldungen = [];
+
+        // Die Frist ist um
+        this.anfragen(state).filter(a => a.status === "offen" && heute >= a.bis).forEach(a => {
+            const talent = talente.find(t => String(t.id) === String(a.talentId));
+            const werber = (state.clubs || []).find(c => c.id === a.clubId);
+            if (!talent || !werber) { a.status = "erledigt"; return; }
+            // Laufen die Gespräche über den Profivertrag noch, wartet der Werber
+            const neg = _youthResolve("NegotiationEngine", "./negotiationEngine.js");
+            const laeuft = neg && typeof neg.getOpenNegotiations === "function"
+                && neg.getOpenNegotiations(state).some(n => n.type === "youth_promotion" && String(n.prospectId) === String(talent.id));
+            if (laeuft) return;
+            if (a.gespraech === "ja" || w(`geht|${a.id}`) >= this.wechselChance(state, club, werber, talent)) {
+                a.status = "geblieben";
+                this.nachwuchsPost(state, club, `🎓 ${talent.name} bleibt`, `${talent.name} hat das Angebot von ${werber.name} abgelehnt und bleibt in unserer Akademie.`);
+                meldungen.push(`🎓 ${talent.name} bleibt - ${werber.name} geht leer aus.`);
+            } else {
+                this.wechsleTalent(state, talent, werber, a.betrag);
+                a.status = "gewechselt";
+                meldungen.push(`🎓 ${talent.name} wechselt zu ${werber.name}.`);
+            }
+        });
+
+        // Neue Anfragen - für die Besten der Akademie
+        const skala = this._potSkala(state, club);
+        talente.forEach(t => {
+            if (this.offeneAnfrage(state, t.id)) return;
+            const s = skala(t.pot || 0);
+            if (s < this.ABWERBEN.abSkala) return;
+            if (w(`ab|${t.id}`) >= this.ABWERBEN.basis * (1 + 2 * Math.min(1.5, s))) return;
+            const werber = this.werberFuer(state, club, t, () => w(`werber|${t.id}`));
+            if (!werber) return;
+            const betrag = this.ausbildungsEntschaedigung(state, club, t);
+            const zuJung = this.profiHindernis(club, t);
+            this.anfragen(state).push({
+                id: `anfrage_${t.id}_${heute}`, talentId: t.id, talentName: t.name,
+                clubId: werber.id, clubName: werber.name, betrag, seit: heute, bis: heute + this.ABWERBEN.frist,
+                gespraech: null, status: "offen"
+            });
+            this.nachwuchsPost(state, club, `📨 ${werber.name} will ${t.name} holen`,
+                `${werber.name} möchte ${t.name} (${t.pos}, ${t.age} Jahre) in seine Akademie holen. Er hat bei uns nur einen Jugendvertrag - `
+                + `geht er, steht uns eine Ausbildungsentschädigung von ${this._geld(betrag)} zu.\n\n`
+                + (zuJung
+                    ? `Für einen Profivertrag ist er noch zu jung. Ein Gespräch über seine Perspektive bei uns kann ihn halten (Reiter Training, Akademie).`
+                    : `Halten können wir ihn mit einem Profivertrag - oder mit einem Gespräch über seine Perspektive (Reiter Training, Akademie).`)
+                + ` In sieben Tagen entscheidet er sich.`);
+            meldungen.push(`📨 ${werber.name} wirbt um ${t.name}.`);
+        });
+        return meldungen.length ? meldungen.join(" ") : null;
+    },
+
+    /** Einmal je Anfrage: dem Talent seine Perspektive im Verein aufzeigen */
+    perspektiveAufzeigen(state, anfrageId, zufall = Math.random) {
+        const a = this.anfragen(state).find(x => x.id === anfrageId && x.status === "offen");
+        if (!a) return { success: false, error: "Die Anfrage ist nicht mehr offen." };
+        if (a.gespraech) return { success: false, error: "Das Gespräch hat schon stattgefunden." };
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        const werber = (state.clubs || []).find(c => c.id === a.clubId);
+        const talent = this.eigeneTalente(state).find(t => String(t.id) === String(a.talentId));
+        if (!club || !werber || !talent) return { success: false, error: "Talent oder Verein nicht gefunden." };
+        const bleibt = zufall() < Math.min(0.9, 1 - this.wechselChance(state, club, werber, talent) + 0.25);
+        a.gespraech = bleibt ? "ja" : "nein";
+        if (bleibt) {
+            a.status = "geblieben";
+            return { success: true, bleibt: true, text: `${talent.name} glaubt an seinen Weg bei uns und sagt ${werber.name} ab.` };
+        }
+        return { success: true, bleibt: false, text: `${talent.name} hört sich das Angebot von ${werber.name} trotzdem an.` };
+    },
+
+    /** Das Talent sofort ziehen lassen - gegen die Ausbildungsentschädigung */
+    talentZiehenLassen(state, anfrageId) {
+        const a = this.anfragen(state).find(x => x.id === anfrageId && x.status === "offen");
+        if (!a) return { success: false, error: "Die Anfrage ist nicht mehr offen." };
+        const werber = (state.clubs || []).find(c => c.id === a.clubId);
+        const talent = this.eigeneTalente(state).find(t => String(t.id) === String(a.talentId) && !t.promoted);
+        if (!werber || !talent) return { success: false, error: "Talent oder Verein nicht gefunden." };
+        this.wechsleTalent(state, talent, werber, a.betrag);
+        a.status = "gewechselt";
+        return { success: true, betrag: a.betrag };
+    },
+
+    /**
+     * Das Talent wechselt zu einem anderen Verein: Er bekommt dort seinen
+     * ersten Vertrag, der Ausbilder die Entschädigung.
+     */
+    wechsleTalent(state, talent, ziel, betrag) {
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        const liste = this.eigeneTalente(state);
+        const i = liste.indexOf(talent);
+        if (i >= 0) liste.splice(i, 1);
+        const gen = _youthResolve("PlayerGenerator", "./playerGenerator.js");
+        const ce = _youthResolve("ContractEngine", "./contractEngine.js");
+        const lohn = gen && typeof gen.getValueAndWage === "function" ? gen.getValueAndWage(talent.overall, ziel.level || 1, talent.age || 16).wage : 500;
+        const spieler = this.spielerAusTalent(state, ziel, talent, {
+            wage: lohn, contractYears: ce ? ce.maxLaufzeit(talent.age) : 3, eigengewaechs: false
+        });
+        spieler.happiness.reason = `Neu bei ${ziel.name}.`;
+        state.players.push(spieler);
+        if (Array.isArray(ziel.playerIds)) ziel.playerIds.push(spieler.id);
+        const fin = _youthResolve("FinanceEngine", "./financeEngine.js");
+        if (club && betrag > 0) {
+            club.balance = (club.balance || 0) + betrag;
+            ziel.balance = (ziel.balance || 0) - betrag;
+            if (fin && typeof fin.recordTransaction === "function") {
+                fin.recordTransaction(state, club.id, "youth_compensation", betrag, `Ausbildungsentschädigung für ${talent.name} (${ziel.name})`);
+            }
+        }
+        if (club) {
+            this.nachwuchsPost(state, club, `🎓 ${talent.name} wechselt zu ${ziel.name}`,
+                `${talent.name} verlässt unsere Akademie und unterschreibt bei ${ziel.name}. Als Ausbildungsentschädigung bekommen wir ${this._geld(betrag)}.`);
+        }
+        return spieler;
+    },
+
+    _geld(betrag) {
+        return (typeof Formatters !== "undefined" && Formatters.formatMoney) ? Formatters.formatMoney(betrag)
+            : `${Math.round(betrag).toLocaleString("de-DE")} €`;
+    },
+
+    /**
+     * Die Gegenrichtung: Talente aus den Akademien kleinerer Vereine, die
+     * unsere Nachwuchsabteilung im Blick hat - vier je Saison, Jugendliche
+     * ohne Profivertrag. Wer sie holt, zahlt dem Ausbilder die
+     * Entschädigung, und das Talent muss wollen. Das Potenzial kennt man nur
+     * aus der Einschätzung des Nachwuchsleiters.
+     */
+    FREMDE: { anzahl: 4, rufAbstand: 3, heimAnteil: 0.75 },
+
+    fremdeTalente(state, zufall = Math.random) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        if (!club) return [];
+        if (!state.youthAcademy) state.youthAcademy = { prospects: [], level: 1 };
+        const saison = state.seasonYear || 1;
+        const ya = state.youthAcademy;
+        if (ya.fremde && ya.fremde.saison === saison) return ya.fremde.talente;
+
+        const ruf = club.reputation || 50;
+        const land = club.countryId || "de";
+        const quellen = (state.clubs || []).filter(c => c.id !== club.id && (c.reputation || 0) <= ruf - this.FREMDE.rufAbstand
+            && this.wechselErlaubt(c.countryId || "de", land, 16));
+        const talente = [];
+        const stufe = this.akademieStufe(state, club);
+        const gen = _youthResolve("PlayerGenerator", "./playerGenerator.js");
+        const positionen = ["TW", "IV", "IV", "LV", "RV", "DM", "ZM", "ZM", "OM", "LA", "RA", "ST", "ST"];
+        // Die Akademien im eigenen Land kennt die Nachwuchsabteilung besser:
+        // drei von vier Talenten kommen von dort
+        const heim = quellen.filter(c => c.countryId === land), ausland = quellen.filter(c => c.countryId !== land);
+        const ziehe = () => {
+            const topf = heim.length && (!ausland.length || zufall() < this.FREMDE.heimAnteil) ? heim : ausland;
+            return topf[Math.floor(zufall() * topf.length)];
+        };
+        for (let i = 0; i < this.FREMDE.anzahl && quellen.length; i++) {
+            const von = ziehe();
+            // Namen aus dem Land seines Vereins
+            const pool = gen && typeof gen.resolveNamePool === "function" ? gen.resolveNamePool(von.countryId || "de") : null;
+            const vornamen = pool?.firstNames || ["Max"], nachnamen = pool?.lastNames || ["Müller"];
+            // Im eigenen Land ab 15, aus dem EU-Ausland erst mit 16
+            const alter = von.countryId === land ? 15 + Math.floor(zufall() * 2) : 16;
+            const werte = this.talentWerte(club, stufe, { ovr: -1, pot: 2 + zufall() * 4 });
+            const t = {
+                id: `fremd_${saison}_${i}_${Math.floor(zufall() * 1e6)}`,
+                clubId: club.id,
+                name: `${vornamen[Math.floor(zufall() * vornamen.length)]} ${nachnamen[Math.floor(zufall() * nachnamen.length)]}`,
+                age: alter,
+                nationality: this.heimatland(state, von),
+                pos: positionen[Math.floor(zufall() * positionen.length)],
+                overall: werte.overall, pot: werte.pot,
+                trueCurrentAbility: werte.trueCurrentAbility, truePotentialAbility: werte.truePotentialAbility,
+                developmentRate: 1.0 + stufe * 0.1,
+                schule: null, schulName: null,
+                quelle: "fremd", vonClubId: von.id, vonClubName: von.name,
+                promoted: false
+            };
+            this.ergaenzePersoenlichkeit(t);
+            if (gen && typeof gen.ergaenzeKopfwerte === "function") gen.ergaenzeKopfwerte(t);
+            // Grundbetrag nach dem Ausbilder, die Qualität gemessen an unserer Akademie - so,
+            // wie unsere Sichter ihn sehen
+            t.betrag = this.ausbildungsEntschaedigung(state, von, t, Math.max(1, alter - 14), club);
+            talente.push(t);
+        }
+        ya.fremde = { saison, talente };
+        return talente;
+    },
+
+    /** Was der Nachwuchsleiter über ein fremdes Talent sagt - so gut er hinsieht */
+    fremdEinschaetzung(state, talent) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        const b = this.vorschauBericht(state, club, [talent]);
+        if (b.urteil === "gut" || b.urteil === "golden") return b.unsicher ? "vielleicht ein Ausnahmetalent" : "ein Ausnahmetalent";
+        return b.urteil === "ordentlich" ? "einer für die erste Mannschaft, wenn er sich entwickelt" : "eher einer für die Breite";
+    },
+
+    /** Ein fremdes Talent holen: Platz, Geld und sein Ja vorausgesetzt */
+    holeFremdesTalent(state, talentId, zufall = Math.random) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        const liste = this.fremdeTalente(state);
+        const t = liste.find(x => String(x.id) === String(talentId));
+        if (!club || !t) return { success: false, error: "Talent nicht gefunden." };
+        if (this.akademiePlaetze(state, club).frei <= 0) return { success: false, error: "Die Akademie ist voll - erst muss ein Talent gehen oder befördert werden." };
+        if ((club.balance || 0) < t.betrag) return { success: false, error: "Für die Ausbildungsentschädigung reicht das Geld nicht." };
+        const von = (state.clubs || []).find(c => c.id === t.vonClubId);
+        liste.splice(liste.indexOf(t), 1);
+        const h = t.hiddenAttributes || {};
+        const ja = 0.55 + ((club.reputation || 50) - (von?.reputation || 40)) * 0.02 + ((h.ambition ?? 12) - 12) * 0.03 - ((h.loyalty ?? 12) - 12) * 0.02;
+        if (zufall() >= Math.max(0.3, Math.min(0.95, ja))) {
+            return { success: true, kommt: false, text: `${t.name} will bei ${t.vonClubName} bleiben.` };
+        }
+        club.balance -= t.betrag;
+        if (von) von.balance = (von.balance || 0) + t.betrag;
+        const fin = _youthResolve("FinanceEngine", "./financeEngine.js");
+        if (fin && typeof fin.recordTransaction === "function") {
+            fin.recordTransaction(state, club.id, "youth_compensation", -t.betrag, `Ausbildungsentschädigung für ${t.name} (${t.vonClubName})`);
+        }
+        t.seit = state.seasonYear || 1;
+        delete t.betrag;
+        this.eigeneTalente(state).push(t);
+        this.nachwuchsPost(state, club, `🎓 ${t.name} kommt in die Akademie`,
+            `${t.name} (${t.pos}, ${t.age} Jahre) wechselt aus der Akademie von ${t.vonClubName} zu uns. Er bekommt einen Jugendvertrag.`);
+        return { success: true, kommt: true, talent: t, text: `${t.name} kommt von ${t.vonClubName} in unsere Akademie.` };
+    },
+
+    /**
+     * Mit den Profis trainieren, ohne befördert zu sein - wie im Vorbild.
+     * Bessere Trainer, bessere Mitspieler: Das Talent entwickelt sich
+     * schneller und fühlt sich gesehen. Höchstens drei, ab 16.
+     */
+    MIT_PROFIS: { max: 3, abAlter: 16, faktor: 1.2 },
+
+    mitProfisTrainieren(state, talentId, an = true) {
+        const talente = this.eigeneTalente(state).filter(t => t && !t.promoted);
+        const t = talente.find(x => String(x.id) === String(talentId));
+        if (!t) return { success: false, error: "Talent nicht gefunden." };
+        if (an) {
+            if ((t.age || 0) < this.MIT_PROFIS.abAlter) return { success: false, error: `Mit den Profis trainieren Talente erst ab ${this.MIT_PROFIS.abAlter}.` };
+            if (!t.mitProfis && talente.filter(x => x.mitProfis).length >= this.MIT_PROFIS.max) {
+                return { success: false, error: `Höchstens ${this.MIT_PROFIS.max} Talente trainieren mit den Profis.` };
+            }
+        }
+        t.mitProfis = !!an;
+        return { success: true, talent: t };
+    },
+
+    /**
+     * Wie wahrscheinlich ein Talent an einem Spieltag einen Schritt macht.
+     * Bisher hing das nur an Akademie und Nachwuchsleiter. Jetzt zählen wie
+     * im Vorbild auch die Persönlichkeit (Professionalität, Ehrgeiz), die
+     * Einsätze in der U19 und das Training mit den Profis.
+     */
+    wachstumsChance(state, club, t) {
+        const basis = 0.20 + this.akademieStufe(state, club) * 0.05 + this.leiterBonus(state, club) * 0.01;
+        const h = t.hiddenAttributes || {};
+        const charakter = 0.75 + 0.5 * ((h.professionalism ?? 12) / 20) + 0.05 * (((h.ambition ?? 12) - 12) / 4);
+        const j = state?.jugendliga;
+        const runden = j && j.saison === (state.seasonYear || 1) ? j.runde : 0;
+        const quote = runden > 0 ? Math.min(1, (t.u19Saison === j.saison ? (t.u19Spiele || 0) : 0) / runden) : 1;
+        const spiel = 0.8 + 0.2 * quote;
+        return basis * charakter * spiel * (t.mitProfis ? this.MIT_PROFIS.faktor : 1);
     },
 
     /** Post der Nachwuchsabteilung */
@@ -741,15 +1186,19 @@ const YouthEngine = {
                 schulName: schule ? schule.name : null,
                 // Wie er kam: Jugendtag, Probetraining oder Sichtungstag
                 quelle: optionen.quelle || "jugendtag",
+                // Seit wann er in der Akademie ist - für die Ausbildungsentschädigung
+                seit: state.seasonYear || 1,
                 promoted: false
             };
             if (ausnahme) prospect.ausnahmetalent = true;
-            // Die Kopfwerte folgen fest aus Kennung, Stärke und Alter. Die
+            // Persönlichkeit und Kopfwerte folgen fest aus der Kennung (die
+            // Kopfwerte zusätzlich aus Stärke, Alter und Persönlichkeit). Die
             // Talente der KI-Vereine bekommen sie erst mit dem Profivertrag -
             // sonst trüge jeder Spielstand Tausende Werte, die niemand sieht.
             const kopfGen = _youthResolve("PlayerGenerator", "./playerGenerator.js");
-            if (kopfGen && typeof kopfGen.ergaenzeKopfwerte === "function" && (clubId === state.userClubId || optionen.vorschau)) {
-                kopfGen.ergaenzeKopfwerte(prospect);
+            if (clubId === state.userClubId || optionen.vorschau) {
+                this.ergaenzePersoenlichkeit(prospect, leiterBonus);
+                if (kopfGen && typeof kopfGen.ergaenzeKopfwerte === "function") kopfGen.ergaenzeKopfwerte(prospect);
             }
 
             if (optionen.vorschau) {
@@ -780,10 +1229,12 @@ const YouthEngine = {
 
         prospects.forEach(prospect => {
             if (prospect.promoted || prospect.clubId !== clubId) return;
+            // Talente aus älteren Spielständen bekommen ihre Persönlichkeit nachgetragen
+            if (clubId === state.userClubId) this.ergaenzePersoenlichkeit(prospect);
 
-            // Chance auf Attributssteigerung abhängig vom Level - und beim
-            // eigenen Verein vom Nachwuchsleiter
-            const growthChance = 0.20 + (academyLvl * 0.05) + leiterBonus * 0.01;
+            // Akademie, Nachwuchsleiter, Persönlichkeit, U19-Einsätze und
+            // Training mit den Profis (wachstumsChance)
+            const growthChance = club ? this.wachstumsChance(state, club, prospect) : 0.20 + academyLvl * 0.05 + leiterBonus * 0.01;
             if (Math.random() < growthChance && prospect.overall < prospect.pot) {
                 prospect.overall += 1;
                 if (typeof prospect.trueCurrentAbility === "number") prospect.trueCurrentAbility += 2;
@@ -792,27 +1243,15 @@ const YouthEngine = {
     },
 
     /**
-     * Befördert ein Akademie-Talent in die 1. Mannschaft
+     * Macht aus einem Talent einen Profi dieses Vereins - bei der
+     * Beförderung und wenn ein anderer Verein ihn abwirbt.
+     * terms: wage, contractYears, eigengewaechs (false, wenn er abgeworben wurde)
      */
-    promoteProspect(state, clubId, prospectId, terms = {}) {
-        if (!state) return { success: false, error: "Kein State vorhanden." };
-        const club = state.clubs.find(c => c.id === clubId);
-        if (!club) return { success: false, error: "Verein nicht gefunden." };
-        if (clubId === state.userClubId) this.eigeneTalente(state);
-
-        let prospect = club.youthAcademy?.prospects?.find(p => String(p.id) === String(prospectId));
-        if (!prospect && state.youthAcademy?.prospects) {
-            prospect = state.youthAcademy.prospects.find(p => String(p.id) === String(prospectId));
-        }
-        if (!prospect) return { success: false, error: "Jugendspieler nicht gefunden." };
-        if (prospect.promoted) return { success: false, error: "Spieler wurde bereits befördert." };
-        // Ein Talent aus einem älteren Spielstand kommt mit ligagerechten Werten
-        this.passeTalenteAnLigaAn(state, clubId);
-
+    spielerAusTalent(state, club, prospect, terms = {}) {
         // Neuen vollwertigen Spieler in state.players erzeugen.
         // Die IDs der handgepflegten Vereine sind Zahlen, erzeugte Vereine
         // nutzen Text - deshalb wird hier eine eindeutige Text-ID gebildet.
-        const newPlayerId = `youth_${clubId}_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 5)}`;
+        const newPlayerId = `youth_${club.id}_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 5)}`;
 
         const playerGen = _youthResolve("PlayerGenerator", "./playerGenerator.js");
         const level = club.level || 1;
@@ -844,7 +1283,7 @@ const YouthEngine = {
             name: prospect.name,
             age: prospect.age,
             nationality: prospect.nationality || "Deutschland",
-            clubId: clubId,
+            clubId: club.id,
             // Aus der eigenen Jugend: neu bei den Profis, aber kein Fremder
             vereinSeit: (state.seasonYear || state.season || 1) * 1000 + (state.currentDayIndex || 0) - 250,
             pos: prospect.pos,
@@ -869,12 +1308,17 @@ const YouthEngine = {
             suspendedMatches: 0,
             yellowCards: 0,
             yellowCardsTotal: 0,
-            squadRole: "Zukunftstalent",
+            // Ein Ausnahmetalent für diese Akademie soll gelegentlich spielen
+            squadRole: this._potSkala(state, club)(prospect.pot || 0) >= this.AUSNAHME ? "Toptalent" : "Zukunftstalent",
+            // Seine Persönlichkeit nimmt er aus der Akademie mit
+            hiddenAttributes: prospect.hiddenAttributes ? Object.assign({}, prospect.hiddenAttributes) : undefined,
             // Woher er kommt, bleibt an ihm haengen - ein Eigengewaechs aus
             // der Technikschule ist kein beliebiger Neuzugang.
             schule: prospect.schule || club.akademieProfil || null,
             schulName: prospect.schulName || null,
-            eigengewaechsVon: club.id,
+            eigengewaechsVon: terms.eigengewaechs === false ? null : club.id,
+            // Wo er ausgebildet wurde - auch wenn er woanders Profi wird
+            ausgebildetVon: prospect.vonClubId || prospect.clubId || club.id,
             agent: prospect.agent || null,
             happiness: {
                 overall: 85,
@@ -903,9 +1347,35 @@ const YouthEngine = {
             else playerGen.ergaenzeKopfwerte(newPlayer);
         }
 
+        return newPlayer;
+    },
+
+    /**
+     * Befördert ein Akademie-Talent in die 1. Mannschaft
+     */
+    promoteProspect(state, clubId, prospectId, terms = {}) {
+        if (!state) return { success: false, error: "Kein State vorhanden." };
+        const club = state.clubs.find(c => c.id === clubId);
+        if (!club) return { success: false, error: "Verein nicht gefunden." };
+        if (clubId === state.userClubId) this.eigeneTalente(state);
+
+        let prospect = club.youthAcademy?.prospects?.find(p => String(p.id) === String(prospectId));
+        if (!prospect && state.youthAcademy?.prospects) {
+            prospect = state.youthAcademy.prospects.find(p => String(p.id) === String(prospectId));
+        }
+        if (!prospect) return { success: false, error: "Jugendspieler nicht gefunden." };
+        if (prospect.promoted) return { success: false, error: "Spieler wurde bereits befördert." };
+        // Ein Talent aus einem älteren Spielstand kommt mit ligagerechten Werten
+        this.passeTalenteAnLigaAn(state, clubId);
+
+        const newPlayer = this.spielerAusTalent(state, club, prospect, terms);
         state.players.push(newPlayer);
         club.playerIds.push(newPlayer.id);
         prospect.promoted = true;
+        // Wer einen Profivertrag hat, ist für Werber nicht mehr zu haben
+        (state.youthAcademy?.anfragen || []).forEach(a => {
+            if (a.status === "offen" && String(a.talentId) === String(prospect.id)) a.status = "geblieben";
+        });
 
         if (!terms.skipNews && typeof NewsEngine !== 'undefined' && clubId === state.userClubId) {
             NewsEngine.addMessage(state, "youth", {

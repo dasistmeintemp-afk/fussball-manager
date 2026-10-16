@@ -298,6 +298,10 @@ class NegotiationEngine {
         const prospect = this.findProspect(state, club, prospectId);
         if (!prospect) return { success: false, error: "Jugendspieler nicht gefunden." };
         if (prospect.promoted) return { success: false, error: "Der Spieler wurde bereits befördert." };
+        // Einen Profivertrag gibt es erst ab dem Mindestalter des Landes
+        const youth = _negResolve("YouthEngine", "./youthEngine.js");
+        const zuJung = youth && typeof youth.profiHindernis === "function" ? youth.profiHindernis(club, prospect) : null;
+        if (zuJung) return { success: false, error: zuJung };
 
         const existing = this.getOpenNegotiations(state)
             .find(n => n.type === "youth_promotion" && String(n.prospectId) === String(prospectId));
@@ -333,7 +337,7 @@ class NegotiationEngine {
             demand: {
                 fee: 0,
                 wage: wageDemand,
-                years: 3,
+                years: Math.min(3, this.maxJahre(state, { type: "youth_promotion", clubId, prospectId: prospect.id })),
                 signingBonus: this.runde(wageDemand * 4),
                 agentFee: this.runde(wageDemand * 2)
             },
@@ -347,6 +351,23 @@ class NegotiationEngine {
 
         this.ensureList(state).push(negotiation);
         return { success: true, negotiation };
+    }
+
+    /**
+     * Die längste Laufzeit, die in dieser Verhandlung möglich ist: Ein
+     * Minderjähriger darf höchstens drei Jahre unterschreiben.
+     */
+    static maxJahre(state, negotiation) {
+        const ce = _negResolve("ContractEngine", "./contractEngine.js");
+        if (!ce || typeof ce.maxLaufzeit !== "function" || !negotiation) return 5;
+        let alter = null;
+        if (negotiation.type === "youth_promotion") {
+            const club = (state.clubs || []).find(c => c.id === negotiation.clubId);
+            alter = this.findProspect(state, club, negotiation.prospectId)?.age;
+        } else if (negotiation.playerId !== undefined) {
+            alter = (state.players || []).find(p => p.id === negotiation.playerId)?.age;
+        }
+        return ce.maxLaufzeit(alter);
     }
 
     static findProspect(state, club, prospectId) {
@@ -400,6 +421,10 @@ class NegotiationEngine {
         } else if (negotiation.stage === NEGOTIATION_STAGES.TERMS) {
             const wage = Math.max(0, Math.round(Number(offer.wage) || 0));
             const years = Math.max(1, Math.min(5, Math.round(Number(offer.years) || 3)));
+            const maxJahre = this.maxJahre(state, negotiation);
+            if (years > maxJahre) {
+                return { success: false, error: `${negotiation.playerName} ist minderjährig und darf höchstens ${maxJahre} Jahre unterschreiben.` };
+            }
             // Ohne Angabe gilt die Forderung - Number(undefined) wäre NaN, und "??" griffe nicht
             const bonus = Math.max(0, Math.round(Number(offer.signingBonus ?? negotiation.demand.signingBonus) || 0));
             const honorar = Math.max(0, Math.round(offer.agentFee !== undefined ? Number(offer.agentFee) || 0 : (negotiation.demand.agentFee || 0)));

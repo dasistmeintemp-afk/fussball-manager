@@ -214,7 +214,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             kopf.push(art === "europa" ? `${regel.name} ${z.a}/${z.platz}`
                 : nichtEU ? `${regel.name} ${z.nichtEU}/${z.maxNichtEU} ohne EU-Pass` : `${regel.name} ${z.fremd}/${z.maxFremd} fremd`);
             const zahlText = art === "europa"
-                ? `Liste A: ${z.a} von ${z.platz} Plätzen · im Land ausgebildet ${z.lokal} (mindestens ${z.minLokal}) · Liste B: ${z.b}`
+                ? `Liste A: ${z.a} von ${z.platz} Plätzen · lokal ausgebildet ${z.anrechenbar} von ${z.minLokal} (im Verein ${z.verein}, nur im Land ${z.land}, davon zählen höchstens ${z.maxVerband}) · Liste B: ${z.b}`
                 : nichtEU
                     ? `Über ${engine.U21}: ${z.zaehlt} von ${z.max} · ohne EU-Pass ${z.nichtEU} von ${z.maxNichtEU} · U21 frei`
                     : `Über ${engine.U21}: ${z.zaehlt} von ${z.max} · nicht im Land ausgebildet ${z.fremd} von ${z.maxFremd} · U21 frei`;
@@ -226,12 +226,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     ${pruef.fehler.map(f => `<p class="ml-fehler">⚠️ ${esc(f)}</p>`).join("")}
                     <ul class="ml-liste">${kader.map(p => {
                         const lokal = engine.lokal(p, club);
+                        const imVerein = art === "europa" && typeof engine.imVerein === "function" && engine.imVerein(state, p, club);
                         const b = art === "europa" && engine.fuerListeB(state, p, club);
                         const jung = art === "liga" && (p.age || 99) <= engine.U21;
                         const ohnePass = nichtEU && !engine.eu(state, p, club);
                         return `<li>
                             <label class="ml-wahl"><input type="checkbox" data-ml-a="${esc(p.id)}"${e.a.has(p.id) ? " checked" : ""}${darf ? "" : " disabled"}> <span class="ml-pos">${esc(p.pos)}</span> ${esc(p.name)} <small>${p.age} J. · ${p.overall}</small></label>
-                            <span class="ml-marken">${lokal ? `<span class="ml-marke" title="im Land ausgebildet">🏠</span>` : ""}${jung ? `<span class="ml-marke">U21 frei</span>` : ""}${ohnePass ? `<span class="ml-marke" title="ohne EU-Pass">Nicht-EU</span>` : ""}${b ? `<label class="ml-b"><input type="checkbox" data-ml-b="${esc(p.id)}"${e.b.has(p.id) ? " checked" : ""}${darf ? "" : " disabled"}> B</label>` : ""}</span>
+                            <span class="ml-marken">${imVerein ? `<span class="ml-marke" title="im Verein ausgebildet">🎓</span>` : lokal ? `<span class="ml-marke" title="im Land ausgebildet">🏠</span>` : ""}${jung ? `<span class="ml-marke">U21 frei</span>` : ""}${ohnePass ? `<span class="ml-marke" title="ohne EU-Pass">Nicht-EU</span>` : ""}${b ? `<label class="ml-b"><input type="checkbox" data-ml-b="${esc(p.id)}"${e.b.has(p.id) ? " checked" : ""}${darf ? "" : " disabled"}> B</label>` : ""}</span>
                         </li>`;
                     }).join("")}</ul>
                     ${darf ? `<div class="ml-knoepfe">
@@ -242,7 +243,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         });
         box.innerHTML = `
             <summary><h3>📋 Meldeliste</h3><span class="header-tag">${esc(kopf.join(" · "))}</span></summary>
-            <p class="muted-note">Nur wer gemeldet ist, darf im Wettbewerb spielen. 🏠 = im Land ausgebildet (eigene Jugend oder Nationalität des Landes). Liste B: bis 21 und seit zwei Saisons im Verein oder aus der eigenen Jugend.${arten.includes("liga") && engine.regel(club, "liga")?.maxNichtEU != null ? " Nicht-EU: ohne Pass eines EU-Landes. Spieler aus den AKP-Staaten zählen wie EU-Bürger, Südamerikaner nach zwei Saisons im Verein auch." : ""}</p>
+            <p class="muted-note">Nur wer gemeldet ist, darf im Wettbewerb spielen. 🎓 = im Verein ausgebildet (drei Saisons zwischen 15 und 21 oder aus der eigenen Jugend), 🏠 = im Land ausgebildet (Nationalität des Landes). Im Europapokal sind acht Plätze für beide reserviert, höchstens vier davon für 🏠. Liste B: bis 21 und seit zwei Saisons im Verein oder aus der eigenen Jugend.${arten.includes("liga") && engine.regel(club, "liga")?.maxNichtEU != null ? " Nicht-EU: ohne Pass eines EU-Landes. Spieler aus den AKP-Staaten zählen wie EU-Bürger, Südamerikaner nach zwei Saisons im Verein auch." : ""}</p>
             ${teile.join("")}`;
         box.open = offen;
         const neu = () => this.renderMeldeliste(state);

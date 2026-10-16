@@ -5008,6 +5008,8 @@ function runEngineTests() {
         const club = state.clubs.find(c => c.id === "muc");
         const talent = (club.youthAcademy?.prospects || state.youthAcademy.prospects).find(p => !p.promoted);
         if (!talent) throw new Error("Kein Jugendspieler in der Akademie");
+        // Einen Profivertrag gibt es erst ab 16
+        talent.age = Math.max(talent.age || 15, 17);
 
         const kaderVorher = club.playerIds.length;
         const start = NegotiationEngine.startYouthPromotion(state, "muc", talent.id);
@@ -13157,6 +13159,227 @@ function runEngineTests() {
         // Sie holen die verpassten Spieltage nach
         SeasonEngine.advanceToNextMatchday(geladen);
         if (!(geladen.standingsByLeague.nl_liga_2 || []).some(z => z.played >= 3)) throw new Error("Nachgetragene zweite Liga holt nicht auf");
+    });
+
+    test("Jugend wie im Vorbild: Jugendvertrag, Profivertrag ab Mindestalter, Minderjährige höchstens drei Jahre", () => {
+        const { YouthEngine: Y } = require('./js/engine/youthEngine.js');
+        const { NegotiationEngine: N } = require('./js/engine/negotiationEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Jugend" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const talente = Y.eigeneTalente(state);
+        // Jedes Talent hat einen Jugendvertrag, eine Ankunftssaison und eine Persönlichkeit
+        talente.forEach(t => {
+            if (t.seit !== state.seasonYear || !t.hiddenAttributes || !(t.hiddenAttributes.professionalism >= 1)) throw new Error(`${t.name}: Akademiedaten fehlen`);
+            if (!/^Jugendvertrag/.test(Y.vertragsLage(state, club, t).text)) throw new Error("Kein Jugendvertrag");
+        });
+        // Profivertrag erst ab 16, in England ab 17
+        const t = talente[0];
+        t.age = 15;
+        const zuJung = N.startYouthPromotion(state, club.id, t.id);
+        if (zuJung.success || !/erst mit 16/.test(zuJung.error)) throw new Error(`15-Jähriger: ${zuJung.error}`);
+        if (Y.profiAb({ countryId: "en" }) !== 17 || !Y.profiHindernis({ countryId: "en" }, { name: "X", age: 16 })) throw new Error("England: Profi ab 17");
+        // Mit 17: Gespräche ja, aber höchstens drei Jahre
+        t.age = 17;
+        const start = N.startYouthPromotion(state, club.id, t.id);
+        if (!start.success) throw new Error(start.error);
+        if (N.maxJahre(state, start.negotiation) !== 3 || start.negotiation.demand.years > 3) throw new Error("Minderjähriger mit mehr als drei Jahren");
+        const zuLang = N.submitOffer(state, start.negotiation.id, { wage: start.negotiation.demand.wage, years: 4 });
+        if (zuLang.success || !/höchstens 3 Jahre/.test(zuLang.error)) throw new Error(`Vier Jahre angenommen: ${zuLang.error}`);
+        if (!N.submitOffer(state, start.negotiation.id, { wage: start.negotiation.demand.wage, years: 3 }).success) throw new Error("Drei Jahre abgelehnt");
+        // Auch bei der Verlängerung eines Siebzehnjährigen
+        const jungerProfi = Object.assign({}, state.players.find(p => p.clubId === club.id), { age: 17, contractYears: 1 });
+        club.wageBudget = 1e9;
+        const lang = ContractEngine.negotiateExtension(jungerProfi, club, 1e7, 4, null, 0, state);
+        if (lang.success || !/minderjährig/.test(lang.reason)) throw new Error(`Verlängerung über vier Jahre: ${lang.reason}`);
+        if (ContractEngine.maxLaufzeit(18) !== 5) throw new Error("Volljährige dürfen fünf Jahre");
+
+        // Die Talente bekommen ihre Ausbildungsvergütung
+        const erwartet = Y.VERGUETUNG[club.level || 1] * talente.filter(x => !x.promoted).length;
+        FinanceEngine.applyWeeklyCosts(state);
+        const buchung = state.finances.transactions.find(x => x.clubId === club.id && /Ausbildungsvergütung/.test(x.description));
+        if (!buchung || buchung.amount !== -erwartet) throw new Error(`Ausbildungsvergütung: ${buchung && buchung.amount} statt ${-erwartet}`);
+    });
+
+    test("Jugend wie im Vorbild: Abwerben mit Ausbildungsentschädigung, Perspektive und Talente anderer Akademien", () => {
+        const { YouthEngine: Y } = require('./js/engine/youthEngine.js');
+        // Wer darf als Minderjähriger wohin wechseln?
+        if (!Y.wechselErlaubt("de", "de", 15) || Y.wechselErlaubt("de", "fr", 15) || !Y.wechselErlaubt("de", "fr", 16)
+            || Y.wechselErlaubt("de", "en", 17) || !Y.wechselErlaubt("de", "en", 18)) throw new Error("Regel für Minderjährige falsch");
+
+        const state = GameState.createNewGame("scf", "normal", { name: "Werber" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const talente = Y.eigeneTalente(state);
+        talente.forEach(t => { t.pot = 93; t.age = 16; });
+        // Die Entschädigung: mehr für ein größeres Talent, mehr für eine höhere Liga
+        const gross = Object.assign({}, talente[0], { pot: 99 }), klein = Object.assign({}, talente[0], { pot: 30 });
+        if (!(Y.ausbildungsEntschaedigung(state, club, gross, 2) > Y.ausbildungsEntschaedigung(state, club, klein, 2) * 1.5)) throw new Error("Großes Talent nicht teurer");
+        const drittligist = state.clubs.find(c => c.level === 3 && c.countryId === "de");
+        if (!(Y.ausbildungsEntschaedigung(state, club, klein, 2) > Y.ausbildungsEntschaedigung(state, drittligist, klein, 2))) throw new Error("Erstligist bekommt nicht mehr");
+        // Die erste Liga der Niederlande zählt wie eine zweite Liga der großen fünf
+        const niederlande = state.clubs.find(c => c.leagueId === "nl_liga_1");
+        const zweitligist = state.clubs.find(c => c.leagueId === "de_liga_2");
+        if (Y.ausbildungsEntschaedigung(state, niederlande, klein, 2) !== Y.ausbildungsEntschaedigung(state, zweitligist, klein, 2)) throw new Error("Länder im Hintergrund nicht eine Stufe tiefer");
+
+        // Größere Vereine fragen an
+        const meldung = Y.pruefeAbwerben(state, () => 0);
+        const anfragen = Y.anfragen(state).filter(a => a.status === "offen");
+        if (!meldung || anfragen.length !== talente.length) throw new Error(`Anfragen: ${anfragen.length} für ${talente.length} Talente`);
+        anfragen.forEach(a => {
+            const w = state.clubs.find(c => c.id === a.clubId);
+            if (!(w.reputation >= club.reputation + Y.ABWERBEN.rufVorsprung) || !Y.wechselErlaubt("de", w.countryId, 16)
+                || (w.countryId !== "de" && w.level !== 1)) throw new Error(`Falscher Werber: ${w.name}`);
+            if (!(a.betrag > 0) || a.bis - a.seit !== Y.ABWERBEN.frist) throw new Error("Anfrage ohne Entschädigung oder Frist");
+        });
+        if (!state.inbox.some(m => /will .* holen/.test(m.subject) && /Ausbildungsentschädigung/.test(m.body))) throw new Error("Keine Nachricht zur Anfrage");
+        if (Y.pruefeAbwerben(state, () => 0) && Y.anfragen(state).filter(a => a.status === "offen").length !== anfragen.length) throw new Error("Zweite Anfrage für dasselbe Talent");
+
+        // 1) Die Perspektive überzeugt - er bleibt
+        const [a1, a2, a3] = anfragen;
+        const p1 = Y.perspektiveAufzeigen(state, a1.id, () => 0);
+        if (!p1.success || !p1.bleibt || a1.status !== "geblieben") throw new Error("Perspektive hält ihn nicht");
+        if (Y.perspektiveAufzeigen(state, a1.id, () => 0).success) throw new Error("Zweites Gespräch");
+        // 2) Ziehen lassen: Er wechselt, der Verein bekommt die Entschädigung
+        const kasse = club.balance;
+        const t2 = talente.find(t => String(t.id) === String(a2.talentId));
+        const z = Y.talentZiehenLassen(state, a2.id);
+        const neu = state.players.find(p => p.clubId === a2.clubId && p.ausgebildetVon === club.id && p.name === t2.name);
+        if (!z.success || club.balance !== kasse + a2.betrag || !neu) throw new Error("Wechsel oder Entschädigung fehlt");
+        if (neu.eigengewaechsVon || neu.contractYears > 3 || Y.eigeneTalente(state).includes(t2)) throw new Error("Abgeworbener falsch angelegt");
+        if (!state.finances.transactions.some(x => x.clubId === club.id && x.amount === a2.betrag && /Ausbildungsentschädigung/.test(x.description))) throw new Error("Keine Buchung");
+        // 3) Die Frist läuft ab: Er entscheidet - hier geht er
+        if (a3) {
+            state.currentDayIndex = (state.currentDayIndex || 0) + Y.ABWERBEN.frist;
+            Y.pruefeAbwerben(state, () => 0);
+            if (a3.status !== "gewechselt") throw new Error(`Nach der Frist: ${a3.status}`);
+        }
+        // Ein Profivertrag beendet jede Anfrage
+        const rest = Y.eigeneTalente(state).filter(t => !t.promoted);
+        if (rest.length) {
+            Y.anfragen(state).push({ id: "probe", talentId: rest[0].id, clubId: a2.clubId, clubName: "X", betrag: 1, seit: 0, bis: 1e9, status: "offen" });
+            Y.promoteProspect(state, club.id, rest[0].id, { skipNews: true });
+            if (Y.anfragen(state).find(a => a.id === "probe").status !== "geblieben") throw new Error("Profivertrag beendet die Anfrage nicht");
+        }
+
+        // Die Gegenrichtung: Talente kleinerer Vereine gegen Entschädigung holen
+        const fremde = Y.fremdeTalente(state, () => 0.3);
+        if (fremde.length !== Y.FREMDE.anzahl || Y.fremdeTalente(state) !== fremde) throw new Error("Keine feste Liste je Saison");
+        fremde.forEach(f => {
+            const von = state.clubs.find(c => c.id === f.vonClubId);
+            if (!(von.reputation <= club.reputation - Y.FREMDE.rufAbstand) || !Y.wechselErlaubt(von.countryId, "de", f.age)) throw new Error(`Talent von ${von.name} (${f.age})`);
+            if (f.age > 16 || !(f.betrag > 0) || !f.hiddenAttributes) throw new Error("Fremdes Talent unvollständig");
+        });
+        const f0 = fremde[0];
+        const vonClub = state.clubs.find(c => c.id === f0.vonClubId);
+        const kasse2 = club.balance, kasseVon = vonClub.balance, betrag = f0.betrag;
+        const h = Y.holeFremdesTalent(state, f0.id, () => 0);
+        if (!h.success || !h.kommt || !Y.eigeneTalente(state).includes(f0) || club.balance !== kasse2 - betrag || vonClub.balance !== kasseVon + betrag) throw new Error("Holen klappt nicht");
+        if (f0.quelle !== "fremd" || f0.seit !== state.seasonYear || f0.betrag !== undefined) throw new Error("Geholtes Talent falsch eingetragen");
+        // Er kann auch ablehnen - dann ist er von der Liste
+        const f1 = fremde[0];
+        const nein = Y.holeFremdesTalent(state, f1.id, () => 0.99);
+        if (!nein.success || nein.kommt || fremde.includes(f1)) throw new Error("Ablehnung nicht verarbeitet");
+        // Ist die Akademie voll, geht nichts
+        const plaetze = Y.akademiePlaetze;
+        Y.akademiePlaetze = () => ({ plaetze: 1, belegt: 1, frei: 0 });
+        try {
+            if (fremde.length && Y.holeFremdesTalent(state, fremde[0].id, () => 0).success) throw new Error("Volle Akademie nimmt auf");
+        } finally { Y.akademiePlaetze = plaetze; }
+    });
+
+    test("Jugend wie im Vorbild: Entwicklung nach Persönlichkeit, U19-Einsätzen und Training mit den Profis, Toptalent", () => {
+        const { YouthEngine: Y } = require('./js/engine/youthEngine.js');
+        const { JugendligaEngine: J } = require('./js/engine/jugendligaEngine.js');
+        const { DressingRoomEngine: D } = require('./js/engine/dressingRoomEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Entwicklung" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const t = Y.eigeneTalente(state)[0];
+        // Die Persönlichkeit ist fest je Talent
+        const kopie = { id: t.id };
+        Y.ergaenzePersoenlichkeit(kopie);
+        if (JSON.stringify(kopie.hiddenAttributes) !== JSON.stringify(Object.assign({}, t.hiddenAttributes, { professionalism: kopie.hiddenAttributes.professionalism }))) throw new Error("Persönlichkeit nicht fest");
+        // Ein älteres Talent ohne Persönlichkeit bekommt sie beim Training
+        const alt = Y.eigeneTalente(state)[1];
+        delete alt.hiddenAttributes;
+        Y.trainProspects(state, club.id);
+        if (!alt.hiddenAttributes) throw new Error("Älteres Talent ohne Persönlichkeit");
+
+        // Professionalität, Training mit den Profis
+        const profi = Object.assign({}, t, { hiddenAttributes: Object.assign({}, t.hiddenAttributes, { professionalism: 18 }) });
+        const locker = Object.assign({}, t, { hiddenAttributes: Object.assign({}, t.hiddenAttributes, { professionalism: 6 }) });
+        if (!(Y.wachstumsChance(state, club, profi) > Y.wachstumsChance(state, club, locker) * 1.15)) throw new Error("Professionalität wirkt nicht");
+        t.age = 15;
+        if (Y.mitProfisTrainieren(state, t.id, true).success) throw new Error("15-Jähriger bei den Profis");
+        t.age = 17;
+        const ohne = Y.wachstumsChance(state, club, t);
+        if (!Y.mitProfisTrainieren(state, t.id, true).success || !(Y.wachstumsChance(state, club, t) > ohne * 1.15)) throw new Error("Training mit den Profis wirkt nicht");
+        Y.eigeneTalente(state).forEach(x => { x.age = 17; });
+        const mehr = Y.eigeneTalente(state).filter(x => x !== t).slice(0, 3);
+        while (Y.eigeneTalente(state).length < 5) Y.generateProspects(state, club.id, { anzahl: 1, jahrgang: false, ohneKosten: true });
+        Y.eigeneTalente(state).forEach(x => { x.age = 17; });
+        const andere = Y.eigeneTalente(state).filter(x => x !== t);
+        andere.slice(0, 2).forEach(x => Y.mitProfisTrainieren(state, x.id, true));
+        if (Y.mitProfisTrainieren(state, andere[2].id, true).success) throw new Error("Mehr als drei bei den Profis");
+        Y.mitProfisTrainieren(state, t.id, false);
+
+        // U19-Einsätze zählen - nur bei Talenten der Akademie, die Profis bekommen kein Feld
+        J.spieltag(state);
+        const elf = J.eigeneSpieler(state).slice().sort((a, b) => (b.overall || 0) - (a.overall || 0)).slice(0, 11);
+        const imTeam = Y.eigeneTalente(state).filter(x => elf.includes(x));
+        if (!imTeam.length || imTeam.some(x => x.u19Spiele !== 1)) throw new Error("U19-Einsätze nicht gezählt");
+        if (state.players.some(p => "u19Spiele" in p)) throw new Error("Profis tragen ein U19-Feld");
+        const draussen = Object.assign({}, imTeam[0], { u19Spiele: 0, mitProfis: false });
+        const drin = Object.assign({}, imTeam[0], { mitProfis: false });
+        if (!(Y.wachstumsChance(state, club, drin) > Y.wachstumsChance(state, club, draussen))) throw new Error("Einsätze wirken nicht");
+
+        // Befördert: Persönlichkeit kommt mit, ein Ausnahmetalent wird Toptalent
+        const top = Y.eigeneTalente(state).find(x => !x.promoted);
+        top.pot = 99;
+        const r = Y.promoteProspect(state, club.id, top.id, { skipNews: true });
+        if (!r.success || r.player.squadRole !== "Toptalent" || r.player.hiddenAttributes?.professionalism !== top.hiddenAttributes.professionalism) throw new Error("Beförderter ohne Persönlichkeit oder Rolle");
+        if (r.player.ausgebildetVon !== club.id || r.player.eigengewaechsVon !== club.id) throw new Error("Ausbildung nicht vermerkt");
+        if (ContractEngine.rollenAbstand({ age: 19, overall: 60, pot: 80 }, "Stammspieler", "Toptalent") !== 0) throw new Error("Toptalent passt nicht zum Talent");
+        const bank = (rolle) => D.bankFrust({ squadRole: rolle, id: "x" }, { lineup: [], bench: ["x"] });
+        if (!(bank("Toptalent") > bank("Zukunftstalent"))) throw new Error("Toptalent erwartet keine Einsätze");
+    });
+
+    test("Kaderregeln: im Verein ausgebildet - acht Plätze, höchstens vier nur aus dem Land", () => {
+        const { KaderregelEngine: K } = require('./js/engine/kaderregelEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Meldung" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const saison = state.seasonYear || 1;
+        // Drei Saisons zwischen 15 und 21
+        const mit = (age, jahre) => ({ id: `v${age}_${jahre}`, age, nationality: "Brasilien", vereinSeit: (saison - jahre) * 1000 });
+        if (!K.imVerein(state, mit(19, 3), club) || K.imVerein(state, mit(19, 2), club) || K.imVerein(state, mit(26, 4), club) || !K.imVerein(state, mit(24, 6), club)) throw new Error("Drei Saisons zwischen 15 und 21 falsch");
+        if (!K.imVerein(state, { id: "e", age: 30, nationality: "Brasilien", eigengewaechsVon: club.id, vereinSeit: saison * 1000 }, club)) throw new Error("Eigengewächs nicht im Verein ausgebildet");
+        // Zum Start: etwa jeder vierte mit der Nationalität des Landes, keiner ohne
+        const start = state.players.filter(p => p.clubId && typeof p.vereinSeit !== "number");
+        const deutsche = start.filter(p => p.nationality === "Deutschland");
+        const anteil = deutsche.filter(p => K.imVerein(state, p, { id: p.clubId, countryId: "de" })).length / deutsche.length;
+        if (anteil < 0.2 || anteil > 0.3) throw new Error(`Anteil im Verein Ausgebildeter: ${anteil.toFixed(2)}`);
+        if (start.some(p => p.nationality === "Brasilien" && K.imVerein(state, p, { id: p.clubId, countryId: "de" }))) throw new Error("Brasilianer zum Start im Verein ausgebildet");
+
+        // Die Liste: zwei aus dem Verein und sechs nur aus dem Land zählen sechs - 23 Plätze
+        const kader = K._kader(state, club).filter(p => !K.fuerListeB(state, p, club)).slice(0, 25);
+        const stand = new Map(kader.map(p => [p.id, [p.nationality, p.eigengewaechsVon, p.vereinSeit]]));
+        const setze = (verein, land) => kader.forEach((p, i) => {
+            p.vereinSeit = saison * 1000; p.eigengewaechsVon = i < verein ? club.id : null;
+            p.nationality = i < verein + land ? "Deutschland" : "Brasilien";
+        });
+        try {
+            setze(2, 6);
+            const z = K.pruefe(state, club, "europa", { a: kader.map(p => p.id), b: [] });
+            if (z.zahlen.verein !== 2 || z.zahlen.land !== 6 || z.zahlen.anrechenbar !== 6 || z.zahlen.platz !== 23 || z.ok !== (kader.length <= 23)) throw new Error(`Zahlen: ${JSON.stringify(z.zahlen)}`);
+            // Ohne einen im Verein Ausgebildeten zählen höchstens vier - hier zwei: 19 Plätze
+            setze(0, 2);
+            const knapp = K.pruefe(state, club, "europa", { a: kader.map(p => p.id), b: [] });
+            if (knapp.zahlen.platz !== 19 || (kader.length > 19 && (knapp.ok || !/im Verein/.test(knapp.fehler.join(" "))))) throw new Error(`Ohne Vereinsausgebildete: ${JSON.stringify(knapp.zahlen)} ${knapp.fehler}`);
+            // Der Vorschlag des Co-Trainers hält die Regel ein
+            const v = K.vorschlag(state, club, "europa");
+            const pv = K.pruefe(state, club, "europa", v);
+            if (!pv.ok) throw new Error(`Vorschlag: ${pv.fehler.join(" ")}`);
+        } finally {
+            kader.forEach(p => { const [n, e, v] = stand.get(p.id); p.nationality = n; p.eigengewaechsVon = e; p.vereinSeit = v; });
+        }
     });
 
     test("Regionalscouts: mehr Wissen in der Region, Talentmeldungen, Kosten und Rahmen je Liga", () => {

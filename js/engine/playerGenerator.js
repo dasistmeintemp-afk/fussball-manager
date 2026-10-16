@@ -826,6 +826,204 @@ class PlayerGenerator {
         return fehlt;
     }
 
+    // ----------------------------------------------------------- Detailwerte
+
+    /**
+     * Die Detailwerte: was in den groben Werten steckt.
+     *
+     * "Schuss" stand für den Abschluss im Strafraum wie für den Freistoß aus
+     * 25 Metern, "Physis" für Kopfball, Kraft und Sprungkraft, "Defensive"
+     * für das Tackling wie für die Manndeckung. Das Vorbild führt dafür
+     * jeweils eigene Werte, und erst damit unterscheidet sich der
+     * Kopfballspezialist vom Freistoßschützen. Jetzt hat jeder Spieler sie:
+     *
+     * - Technik: Abschluss, Distanzschüsse, Kopfball, Flanken, Ballannahme,
+     *   Tackling, Manndeckung, Freistöße, Elfmeter, Ecken
+     * - Kopf: Aggressivität, Mut, Entschlossenheit, Kreativität
+     * - Körper: Antritt, Beweglichkeit, Balance, Sprungkraft, Kraft,
+     *   Grundfitness
+     * - Torwart: Hohe Bälle, Strafraumbeherrschung, Herauslaufen,
+     *   Kommunikation, Abwurf
+     *
+     * Jeder Detailwert folgt aus den groben Werten. Die bleiben die Grundlage
+     * für Training, Entwicklung und Stärke: Wer im Training Schuss gewinnt,
+     * schießt auch die Freistöße besser. Dazu kommen die Position (ein
+     * Außenverteidiger flankt, ein Innenverteidiger köpft), bei Kopfball,
+     * Kraft, Sprungkraft und Beweglichkeit die Körpergröße, bei Aggressivität,
+     * Mut, Entschlossenheit und Grundfitness die Persönlichkeit, und ein
+     * persönlicher Anteil, fest je Spieler. Eigenheiten passen dazu: Wer
+     * "Gefährlich bei direkten Freistößen" ist, hat gute Freistöße.
+     *
+     * Gespeichert wird nichts. Der Spielstand wird nicht größer, alte
+     * Spielstände haben die Werte sofort, und für die Erzeugung wird kein
+     * Zufall verbraucht.
+     *
+     * basis: Anteile der groben Werte · pos: Auf- und Abschläge je Position ·
+     * groesse: Punkte je Zentimeter über dem Üblichen der Position ·
+     * charakter: was die Persönlichkeit (1 bis 20) beisteuert · tw: eigene
+     * Anteile für Torhüter · nurTW / nurFeld: nur für Torhüter oder nur für
+     * Feldspieler
+     */
+    static DETAILWERTE = {
+        // Technik
+        finishing: { nurFeld: true, name: "Abschluss", gruppe: "technik", basis: { shooting: 0.85, technique: 0.15 }, streuung: 8,
+            pos: { ST: 3, LA: 1, RA: 1, IV: -4, DM: -2 } },
+        longShots: { nurFeld: true, name: "Distanzschüsse", gruppe: "technik", basis: { shooting: 0.6, technique: 0.4 }, streuung: 11,
+            pos: { OM: 4, ZM: 4, DM: 2, ST: -3, IV: -3 } },
+        heading: { nurFeld: true, name: "Kopfball", gruppe: "technik", basis: { physical: 0.55, shooting: 0.2, positioning: 0.25 }, streuung: 10, groesse: 0.55,
+            pos: { IV: 7, ST: 5, DM: 2, LM: -4, RM: -4, OM: -6, LA: -6, RA: -6 } },
+        crossing: { nurFeld: true, name: "Flanken", gruppe: "technik", basis: { passing: 0.7, technique: 0.3 }, streuung: 10,
+            pos: { LV: 6, RV: 6, LM: 6, RM: 6, LA: 4, RA: 4, ST: -6, DM: -4, IV: -10 } },
+        firstTouch: { name: "Ballannahme", gruppe: "technik", basis: { technique: 0.7, dribbling: 0.3 }, streuung: 7,
+            tw: { technique: 0.6, passing: 0.4 } },
+        tackling: { nurFeld: true, name: "Tackling", gruppe: "technik", basis: { defense: 0.85, physical: 0.15 }, streuung: 8,
+            pos: { DM: 3, IV: 2 } },
+        marking: { nurFeld: true, name: "Manndeckung", gruppe: "technik", basis: { defense: 0.6, positioning: 0.4 }, streuung: 8,
+            pos: { IV: 4, LV: 1, RV: 1, DM: 1 } },
+        freeKicks: { nurFeld: true, name: "Freistöße", gruppe: "technik", basis: { shooting: 0.5, technique: 0.5 }, versatz: -5, streuung: 14 },
+        penalties: { nurFeld: true, name: "Elfmeter", gruppe: "technik", basis: { shooting: 0.65, technique: 0.35 }, versatz: -1, streuung: 12 },
+        corners: { nurFeld: true, name: "Ecken", gruppe: "technik", basis: { passing: 0.5, technique: 0.5 }, versatz: -4, streuung: 13,
+            pos: { LM: 3, RM: 3, LA: 3, RA: 3, OM: 3, IV: -6 } },
+        // Kopf
+        aggression: { name: "Aggressivität", gruppe: "kopf", basis: { overall: 0.5 }, versatz: 30, streuung: 10,
+            charakter: (h) => (h("temperament") - 12) * 2.2,
+            pos: { IV: 6, DM: 6, ST: 2, LV: 2, RV: 2, LA: -3, RA: -3, OM: -6, TW: -10 } },
+        bravery: { name: "Mut", gruppe: "kopf", basis: { overall: 0.5, physical: 0.2 }, versatz: 18, streuung: 9,
+            charakter: (h) => (h("importantMatches") - 12) * 1.2,
+            pos: { IV: 6, TW: 6, ST: 5, DM: 3, LA: -3, RA: -3, OM: -5 } },
+        determination: { name: "Entschlossenheit", gruppe: "kopf", basis: { overall: 0.45 }, versatz: 33, streuung: 6,
+            charakter: (h) => (h("ambition") - 12) * 1.6 + (h("professionalism") - 12) * 1.4 },
+        flair: { nurFeld: true, name: "Kreativität", gruppe: "kopf", basis: { technique: 0.4, dribbling: 0.35, vision: 0.25 }, streuung: 12,
+            pos: { OM: 6, LA: 5, RA: 5, ST: 2, LV: -3, RV: -3, DM: -6, IV: -10 } },
+        // Körper
+        acceleration: { name: "Antritt", gruppe: "koerper", basis: { pace: 1 }, streuung: 7, groesse: -0.25 },
+        agility: { name: "Beweglichkeit", gruppe: "koerper", basis: { pace: 0.35, dribbling: 0.4, technique: 0.25 }, streuung: 8, groesse: -0.35,
+            tw: { reflexes: 0.6, pace: 0.4 } },
+        balance: { name: "Balance", gruppe: "koerper", basis: { physical: 0.5, dribbling: 0.3, technique: 0.2 }, streuung: 9, groesse: -0.15,
+            tw: { physical: 0.6, reflexes: 0.4 } },
+        jumpingReach: { name: "Sprungkraft", gruppe: "koerper", basis: { physical: 0.85, pace: 0.15 }, streuung: 9, groesse: 0.55,
+            tw: { physical: 0.6, reflexes: 0.4 } },
+        strength: { name: "Kraft", gruppe: "koerper", basis: { physical: 1 }, streuung: 8, groesse: 0.45 },
+        naturalFitness: { name: "Grundfitness", gruppe: "koerper", basis: { stamina: 0.6, physical: 0.4 }, streuung: 8,
+            charakter: (h) => (h("professionalism") - 12) * 1.0 - (h("injuryProneness", 8) - 8) * 1.2 },
+        // Torwart
+        aerialReach: { name: "Hohe Bälle", gruppe: "torwart", basis: { handling: 0.5, positioning: 0.3, physical: 0.2 }, streuung: 6, groesse: 0.5, nurTW: true },
+        commandOfArea: { name: "Strafraumbeherrschung", gruppe: "torwart", basis: { positioning: 0.5, handling: 0.3, decisions: 0.2 }, streuung: 7, nurTW: true },
+        rushingOut: { name: "Herauslaufen", gruppe: "torwart", basis: { oneOnOne: 0.65, pace: 0.2, anticipation: 0.15 }, streuung: 7, nurTW: true },
+        communication: { name: "Kommunikation", gruppe: "torwart", basis: { leadership: 0.5, concentration: 0.3, positioning: 0.2 }, streuung: 7, nurTW: true },
+        throwing: { name: "Abwurf", gruppe: "torwart", basis: { kicking: 0.4, passing: 0.4, physical: 0.2 }, streuung: 7, nurTW: true }
+    };
+
+    /** Die Eigenheiten verlangen einen passenden Detailwert (mindestens) */
+    static DETAIL_EIGENHEITEN = {
+        distanzschuss: { longShots: 76 }, flanken: { crossing: 74 }, zweikampf: { tackling: 76 }, kopfball: { heading: 78 },
+        antritt: { acceleration: 85 }, ausdauer: { naturalFitness: 80 }, freistoss: { freeKicks: 76 }, elfmeter: { penalties: 76 },
+        knipser: { finishing: 80 }, ruhe: { finishing: 75 }, mitspielen: { throwing: 64 }, dribbler: { agility: 76 }
+    };
+
+    /** Übliche Körpergröße je Position (wie MatchEngine.GROESSE_BASIS) */
+    static GROESSE_UEBLICH = { TW: 190, IV: 188, ST: 184, DM: 182, ZM: 179, OM: 177, LV: 178, RV: 178, LM: 176, RM: 176, LA: 175, RA: 175 };
+
+    /** Körpergröße wie in der Spiel-Engine: fest je Spieler */
+    static groesseVon(player) {
+        if (typeof player?.groesse === "number") return player.groesse;
+        const basis = this.GROESSE_UEBLICH[player?.pos] || 180;
+        const streuung = this._hashZahl(String(player?.id ?? player?.name ?? ""));
+        const physis = typeof player?.physical === "number" ? (player.physical - 70) * 0.12 : 0;
+        return Math.round(Math.max(163, Math.min(203, basis + streuung * 7 + physis)));
+    }
+
+    /** Der persönliche Anteil eines Detailwerts: fest je Spieler und Wert */
+    static _detailPersoenlich = new Map();
+
+    static detailPersoenlich(id, key, streuung) {
+        const schluessel = `${id}|${key}`;
+        let w = this._detailPersoenlich.get(schluessel);
+        if (w === undefined) {
+            w = (this._hashZahl(`${schluessel}|d1`) + this._hashZahl(`${schluessel}|d2`)) / 2;
+            if (this._detailPersoenlich.size > 400000) this._detailPersoenlich.clear();
+            this._detailPersoenlich.set(schluessel, w);
+        }
+        return w * streuung;
+    }
+
+    /** Ein Detailwert eines Spielers (1 bis 99) oder null, wenn es ihn nicht gibt */
+    static detailWert(player, key) {
+        const d = this.DETAILWERTE[key];
+        if (!d || !player) return null;
+        const tw = player.pos === "TW";
+        if ((d.nurTW && !tw) || (d.nurFeld && tw)) return null;
+        const ovr = typeof player.overall === "number" ? player.overall : 60;
+        const v = (k) => (typeof player[k] === "number" ? player[k] : ovr);
+        const anteile = (tw && d.tw) || d.basis;
+        let wert = d.versatz || 0;
+        for (const k in anteile) wert += v(k) * anteile[k];
+        wert += (d.pos && d.pos[player.pos]) || 0;
+        if (d.groesse) wert += (this.groesseVon(player) - (this.GROESSE_UEBLICH[player.pos] || 180)) * d.groesse;
+        if (d.charakter) {
+            const h = player.hiddenAttributes || {};
+            wert += d.charakter((k, std = 12) => (typeof h[k] === "number" ? h[k] : std));
+        }
+        wert += this.detailPersoenlich(player.id ?? player.name ?? "", key, d.streuung || 6);
+        // Eine Eigenheit steht nie im Widerspruch zum Wert
+        (player.traits || []).forEach(t => {
+            const boden = this.DETAIL_EIGENHEITEN[t && t.key]?.[key];
+            if (boden) wert = Math.max(wert, boden);
+        });
+        return Math.max(1, Math.min(99, Math.round(wert)));
+    }
+
+    /**
+     * Wie weit ein Detailwert über oder unter dem liegt, was die groben Werte
+     * allein ergeben: Position, Größe, Persönlichkeit, persönlicher Anteil,
+     * Eigenheit. Damit rechnen die Spiel-Engines - im Mittel bleibt alles, wie
+     * es gemessen und eingestellt war, und der Spezialist sticht heraus.
+     * ohneGroesse: wo die Engine die Körpergröße schon selbst rechnet.
+     * ohnePosition: für die Engines - dort steckt die Position schon in den
+     * groben Werten und in den Rollen. Mit dem Aufschlag schossen Stürmer
+     * und Innenverteidiger gemessen 2 % mehr Tore als vorher.
+     */
+    static detailAbweichung(player, key, ohneGroesse = false, ohnePosition = false) {
+        const wert = this.detailWert(player, key);
+        if (wert === null) return 0;
+        const d = this.DETAILWERTE[key];
+        const ovr = typeof player.overall === "number" ? player.overall : 60;
+        const anteile = (player.pos === "TW" && d.tw) || d.basis;
+        let basis = d.versatz || 0;
+        for (const k in anteile) basis += (typeof player[k] === "number" ? player[k] : ovr) * anteile[k];
+        let ab = wert - basis;
+        if (ohneGroesse && d.groesse) ab -= (this.groesseVon(player) - (this.GROESSE_UEBLICH[player.pos] || 180)) * d.groesse;
+        if (ohnePosition && d.pos) ab -= d.pos[player.pos] || 0;
+        return ab;
+    }
+
+    /** Die Abweichungen, mit denen das Livespiel rechnet (MatchEngine.werte2D) */
+    static FEIN_2D = {
+        feld: ["finishing", "longShots", "heading", "crossing", "tackling", "marking", "freeKicks", "penalties", "corners", "agility", "jumpingReach"],
+        tw: ["aerialReach", "commandOfArea", "rushingOut"],
+        ohneGroesse: ["heading", "jumpingReach"]
+    };
+
+    static feinwerte2D(player) {
+        if (!player) return {};
+        const liste = player.pos === "TW" ? this.FEIN_2D.tw : this.FEIN_2D.feld;
+        const fein = {};
+        liste.forEach(k => {
+            const ab = this.detailAbweichung(player, k, this.FEIN_2D.ohneGroesse.includes(k), true);
+            if (ab) fein[k] = Math.round(ab * 10) / 10;
+        });
+        return fein;
+    }
+
+    /** Die Detailwerte einer Gruppe, die zu diesem Spieler gehören */
+    static detailSchluessel(player, gruppe = null) {
+        const tw = player?.pos === "TW";
+        return Object.keys(this.DETAILWERTE).filter(k => {
+            const d = this.DETAILWERTE[k];
+            return (!gruppe || d.gruppe === gruppe) && (!d.nurTW || tw) && (!d.nurFeld || !tw);
+        });
+    }
+
     /**
      * Erzeugt einen kompletten Kader für einen Verein
      */

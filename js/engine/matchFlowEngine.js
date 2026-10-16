@@ -157,6 +157,16 @@ class MatchFlowEngine {
         return Math.min(1, nearest / 18);
     }
 
+    /**
+     * Was ein Detailwert (Kopfball, Flanken, Tackling ...) über die groben
+     * Werte hinaus beisteuert. Steht im FM-Modus in den Feldwerten
+     * (MatchEngine.werte2D), sonst null.
+     */
+    fein(player, name) {
+        const v = player?.fein?.[name];
+        return typeof v === "number" ? v : 0;
+    }
+
     attr(player, name, fallback = 70) {
         const v = player?.[name];
         let wert = (typeof v === "number" && v > 0) ? v : fallback;
@@ -761,19 +771,22 @@ class MatchFlowEngine {
     }
 
     /** Abschlussstaerke: Fuss oder Kopf */
-    abschlussWert(p, kopfball = false) {
+    abschlussWert(p, kopfball = false, fern = false) {
         if (kopfball) {
             return this.attr(p, "physical") * 0.45 + this.attr(p, "positioning") * 0.25
-                + this.attr(p, "shooting") * 0.3 + (this.eig(p).luft || 0) * 0.6;
+                + this.attr(p, "shooting") * 0.3 + (this.eig(p).luft || 0) * 0.6 + this.fein(p, "heading") * 0.6;
         }
-        return this.attr(p, "shooting") * 0.65 + this.attr(p, "technique") * 0.35;
+        // Im Strafraum zählt der Abschluss, von weiter weg der Distanzschuss
+        return this.attr(p, "shooting") * 0.65 + this.attr(p, "technique") * 0.35
+            + this.fein(p, fern ? "longShots" : "finishing") * 0.65;
     }
 
     /** Torwartstaerke - im Eins-gegen-eins zaehlt das Herauslaufen mehr */
     torwartWert(gk, nah = false) {
         if (!gk) return 40;
         return this.attr(gk, "reflexes", 60) * 0.4 + this.attr(gk, "handling", 60) * 0.2
-            + this.attr(gk, "positioning", 60) * 0.2 + this.attr(gk, "oneOnOne", 60) * (nah ? 0.3 : 0.2);
+            + this.attr(gk, "positioning", 60) * 0.2 + this.attr(gk, "oneOnOne", 60) * (nah ? 0.3 : 0.2)
+            + (nah ? this.fein(gk, "rushingOut") * 0.3 : 0);
     }
 
     /** Wie gut ein Spieler in der Luft ist */
@@ -784,7 +797,11 @@ class MatchFlowEngine {
             : this.attr(p, "physical") * 0.55 + this.attr(p, "defense") * 0.25 + this.attr(p, "positioning") * 0.2;
         // Größe zählt in der Luft: zehn Zentimeter sind gut fünf Punkte
         const groesse = typeof p.groesse === "number" ? (p.groesse - 181) * 0.55 : 0;
-        return basis + groesse + (e.luft || 0) + (angreifer ? (e.strafraum || 0) * 5 : 0);
+        // Dazu Kopfball und Sprungkraft - beim Verteidiger auch die Manndeckung
+        const detail = angreifer
+            ? this.fein(p, "heading") * 0.55 + this.fein(p, "jumpingReach") * 0.3
+            : this.fein(p, "heading") * 0.35 + this.fein(p, "jumpingReach") * 0.35 + this.fein(p, "marking") * 0.2;
+        return basis + groesse + detail + (e.luft || 0) + (angreifer ? (e.strafraum || 0) * 5 : 0);
     }
 
     /**
@@ -829,7 +846,7 @@ class MatchFlowEngine {
         if (g.dist > reichweite || g.winkel < 0.1) return null;
 
         const q = this.chancenQualitaet(carrier, opponents);
-        const koennen = this.abschlussWert(carrier) / 100;
+        const koennen = this.abschlussWert(carrier, false, g.dist > 18) / 100;
         // Wie sehr er sich den Abschluss zutraut
         const zutrauen = 0.7 + koennen * 0.55 + (e.abschluss || 0) * 2 + (e.ruhe ? 0.08 : 0)
             + (carrier.group === "att" ? 0.12 : carrier.group === "def" ? -0.2 : 0);
@@ -877,10 +894,10 @@ class MatchFlowEngine {
         }
 
         const abschluss = opts.freistoss
-            ? this.attr(schuetze, "shooting") * 0.45 + this.attr(schuetze, "technique") * 0.55
+            ? this.attr(schuetze, "shooting") * 0.45 + this.attr(schuetze, "technique") * 0.55 + this.fein(schuetze, "freeKicks")
             : opts.elfmeter
-                ? this.attr(schuetze, "shooting") * 0.6 + this.attr(schuetze, "technique") * 0.4
-                : this.abschlussWert(schuetze, !!opts.kopfball);
+                ? this.attr(schuetze, "shooting") * 0.6 + this.attr(schuetze, "technique") * 0.4 + this.fein(schuetze, "penalties")
+                : this.abschlussWert(schuetze, !!opts.kopfball, (q.dist || 0) > 18);
         const halter = this.torwartWert(gk, nah);
         // Torhueter haben ihre Werte genau dort, wo es zaehlt; ein Schuetze
         // nur zum Teil. Gleich gute Spieler sollen sich die Waage halten.
@@ -962,7 +979,7 @@ class MatchFlowEngine {
 
         const e = this.eig(carrier);
         const wk = _flowTaktik()?.wirkung(tactics) || {};
-        const koennen = (this.attr(carrier, "passing") * 0.55 + this.attr(carrier, "technique") * 0.45) / 100;
+        const koennen = (this.attr(carrier, "passing") * 0.55 + this.attr(carrier, "technique") * 0.45 + this.fein(carrier, "crossing")) / 100;
         const amGrundlinie = Math.abs(carrier.x - tor.x) < 12;
         let taktik = 0;
         if (wk.flanken === "frueh") taktik += 0.35;
@@ -996,7 +1013,9 @@ class MatchFlowEngine {
         const pressure = opts.pressure || 0;
         const basis = { type: "cross", from: carrier, pressure, phase: opts.phase, ecke: !!opts.ecke, standard: !!opts.standard };
 
-        let qualitaet = (this.attr(carrier, "passing") * 0.55 + this.attr(carrier, "technique") * 0.45) / 100
+        // Die Hereingabe: Flanken aus dem Spiel, Ecken vom Eckenspezialisten
+        let qualitaet = (this.attr(carrier, "passing") * 0.55 + this.attr(carrier, "technique") * 0.45
+            + this.fein(carrier, opts.ecke ? "corners" : "crossing")) / 100
             + (e.flankeKoennen || 0) - pressure * 0.1;
         if ((opts.ecke || opts.standard) && e.eckenQualitaet) qualitaet += 0.08;
 
@@ -1043,7 +1062,8 @@ class MatchFlowEngine {
             // Scharf an den ersten Pfosten kommt der Torwart schwer heran,
             // die hohe Flanke an den zweiten eher
             const varianteFangen = variante === "ersterPfosten" ? 0.5 : (variante === "zweiterPfosten" ? 1.2 : 1);
-            const pFangen = Math.min(0.6, ((this.attr(gk, "handling", 60) + this.attr(gk, "positioning", 60)) / 330
+            const pFangen = Math.min(0.6, ((this.attr(gk, "handling", 60) + this.attr(gk, "positioning", 60)
+                + this.fein(gk, "aerialReach") + this.fein(gk, "commandOfArea")) / 330
                 + (this.eig(gk).twStrafraum || 0) * 0.2) * varianteFangen);
             if (_flowRandom.chance(pFangen)) return { ...basis, outcome: "claimed", landung, to: landung, gk };
         }
@@ -1358,9 +1378,9 @@ class MatchFlowEngine {
         const pace = this.attr(carrier, "pace");
         const defSkill = !defender ? 60 : (typeof defender.anticipation === "number"
             ? this.attr(defender, "defense") * 0.5 + this.attr(defender, "pace") * 0.35 + this.attr(defender, "anticipation") * 0.15
-            : this.attr(defender, "defense") * 0.6 + this.attr(defender, "pace") * 0.4);
+            : this.attr(defender, "defense") * 0.6 + this.attr(defender, "pace") * 0.4) + this.fein(defender, "tackling") * 0.5;
 
-        const edge = (dribbling * 0.6 + pace * 0.4) - defSkill;
+        const edge = (dribbling * 0.6 + pace * 0.4 + this.fein(carrier, "agility") * 0.4) - defSkill;
         // Wer hart einsteigt, gewinnt mehr Zweikaempfe (und foult oefter -
         // das zaehlt die Timeline); wer auf den Fuessen bleibt, weniger
         const gegnerTaktik = defender ? this.getTactics(defender.team) || {} : {};

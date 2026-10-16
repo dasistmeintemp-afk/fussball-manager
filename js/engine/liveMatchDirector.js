@@ -3403,7 +3403,7 @@ class LiveMatchDirector {
         const vorgabe = this.match.standards?.[team]?.elfmeter;
         const fest = kandidaten.find(p => p.id === vorgabe);
         if (fest) return fest;
-        const wert = (p) => (p.shooting || 60) * 0.6 + (p.technique || 60) * 0.4 + ((p.eig?.elfmeter || 0) * 100);
+        const wert = (p) => (p.shooting || 60) * 0.6 + (p.technique || 60) * 0.4 + (p.fein?.penalties || 0) + ((p.eig?.elfmeter || 0) * 100);
         return kandidaten.sort((a, b) => wert(b) - wert(a))[0] || null;
     }
 
@@ -3446,7 +3446,7 @@ class LiveMatchDirector {
             if (spot.entfernung >= 34) return false;
             const g = this.flow.torGeometrie({ x: info.x, y: info.y }, info.team);
             const e = taker.eig || {};
-            const wert = (taker.shooting || 60) * 0.45 + (taker.technique || 60) * 0.55 + (e.freistoss || 0) * 100;
+            const wert = (taker.shooting || 60) * 0.45 + (taker.technique || 60) * 0.55 + (taker.fein?.freeKicks || 0) + (e.freistoss || 0) * 100;
             const direkt = g.dist >= 16 && g.dist <= 32 && g.winkel > 0.22
                 ? Math.max(0.15, Math.min(0.88, (wert - 50) / 45 + (e.freistoss ? 0.25 : 0)))
                 : 0;

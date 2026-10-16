@@ -206,14 +206,20 @@ const DatenzentraleEngine = {
         const torhueter = a.pos === "TW" && b.pos === "TW";
         const mitKopf = typeof a.decisions === "number" && typeof b.decisions === "number";
         const kopf = !mitKopf ? [] : this.KOPF_WERTE.filter(([k]) => !(torhueter && (k === "offTheBall" || k === "workRate")));
-        const liste = (torhueter ? this.TORWART_WERTE : this.FELD_WERTE).concat(kopf);
+        // Dazu die Detailwerte (PlayerGenerator.DETAILWERTE), die beide haben
+        const gen = _dzResolve("PlayerGenerator", "./playerGenerator.js");
+        const details = gen && typeof gen.detailSchluessel === "function"
+            ? gen.detailSchluessel(a).filter(k => gen.detailSchluessel(b).includes(k)).map(k => [k, gen.DETAILWERTE[k].name])
+            : [];
+        const liste = (torhueter ? this.TORWART_WERTE : this.FELD_WERTE).concat(kopf, details);
         const seite = (p) => {
             const wissen = this._wissen(state, p);
             const club = (state.clubs || []).find(c => c.id === p.clubId);
             const saison = this._saison(state, p);
+            const wert = (k) => typeof p[k] === "number" ? p[k] : (gen && gen.DETAILWERTE?.[k] ? gen.detailWert(p, k) : null);
             const sicht = (k) => rating && typeof rating.getVisibleAttribute === "function"
-                ? rating.getVisibleAttribute(p, k, wissen)
-                : { known: true, exact: p[k], min: p[k], max: p[k], text: String(p[k] ?? "?") };
+                ? rating.getVisibleAttribute({ id: p.id, [k]: wert(k) }, k, wissen)
+                : { known: true, exact: wert(k), min: wert(k), max: wert(k), text: String(wert(k) ?? "?") };
             const klasse = rating && typeof rating.klasse === "function" && wissen >= 88 ? rating.klasse(state, p.overall).text : null;
             return {
                 id: p.id, name: p.name, pos: p.pos, alter: p.age, verein: club?.name || "vereinslos",

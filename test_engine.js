@@ -12679,6 +12679,86 @@ function runEngineTests() {
         if (!(MatchEngine.calculateEffectivePlayerSkill(zm, "ZM") > vor + 2)) throw new Error("Kopfwerte ohne Wirkung auf die Stärke");
     });
 
+    test("Detailwerte: Technik, Kopf, Körper und Torwart nach Position, Größe und Persönlichkeit, fest je Spieler, wirksam im Spiel", () => {
+        const G = PlayerGenerator;
+        const state = GameState.createNewGame("muc", "normal", { name: "Detail" });
+        const feld = state.players.filter(p => p.pos !== "TW"), tw = state.players.filter(p => p.pos === "TW");
+        // Jeder hat seine Werte, Torhüter die Torwartwerte statt Abschluss und Ecken
+        const fehlt = (p, k) => { const w = G.detailWert(p, k); return !(w >= 1 && w <= 99); };
+        const feldKeys = G.detailSchluessel(feld[0]), twKeys = G.detailSchluessel(tw[0]);
+        if (feldKeys.length < 20 || feld.some(p => feldKeys.some(k => fehlt(p, k)))) throw new Error("Feldspieler ohne Detailwerte");
+        if (!twKeys.includes("aerialReach") || twKeys.includes("finishing") || tw.some(p => twKeys.some(k => fehlt(p, k)))) throw new Error("Torhüter mit falschen Werten");
+        if (G.detailWert(feld[0], "rushingOut") !== null || G.detailWert(tw[0], "corners") !== null) throw new Error("Wert für die falsche Rolle");
+
+        // Fest je Spieler, ohne den Zufall zu verbrauchen, und nichts wird gespeichert
+        const random = Math.random; let wuerfe = 0;
+        Math.random = () => { wuerfe++; return random(); };
+        try {
+            const p = feld[7];
+            const a = feldKeys.map(k => G.detailWert(p, k));
+            G._detailPersoenlich.clear();
+            const b = feldKeys.map(k => G.detailWert(Object.assign({}, p), k));
+            if (a.join() !== b.join()) throw new Error("Detailwerte nicht fest je Spieler");
+        } finally { Math.random = random; }
+        if (wuerfe) throw new Error(`${wuerfe} Zufallszahlen verbraucht`);
+        if (feldKeys.some(k => k in feld[0])) throw new Error("Detailwerte stehen im Spielstand");
+
+        // Im Mittel liegen sie auf den groben Werten - der Spezialist sticht heraus
+        const mittel = (liste, f) => liste.reduce((s, p) => s + f(p), 0) / liste.length;
+        const abFrei = mittel(feld, p => G.detailAbweichung(p, "freeKicks"));
+        if (Math.abs(abFrei) > 1) throw new Error(`Freistöße weichen im Mittel um ${abFrei.toFixed(2)} ab`);
+        const spanne = feld.map(p => G.detailAbweichung(p, "freeKicks")).sort((x, y) => x - y);
+        if (!(spanne[Math.floor(spanne.length * 0.95)] - spanne[Math.floor(spanne.length * 0.05)] > 10)) throw new Error("Kein Unterschied zwischen Spezialist und Rest");
+
+        // Position: Innenverteidiger köpfen, Außenverteidiger flanken, Flügel sind schnell im Antritt
+        const je = (pos, k) => mittel(state.players.filter(p => p.pos === pos), p => G.detailWert(p, k) - p.overall);
+        if (!(je("IV", "heading") > je("LA", "heading") + 10)) throw new Error("Kopfball nach Position fehlt");
+        if (!(je("LV", "crossing") > je("IV", "crossing") + 10)) throw new Error("Flanken nach Position fehlt");
+        if (!(je("LA", "acceleration") > je("IV", "acceleration") + 6)) throw new Error("Antritt nach Position fehlt");
+        // Größe: Unter Innenverteidigern köpft der Größere besser, der Kleinere ist beweglicher
+        const iv = state.players.filter(p => p.pos === "IV").sort((x, y) => G.groesseVon(x) - G.groesseVon(y));
+        const viertel = Math.floor(iv.length / 4);
+        const klein = iv.slice(0, viertel), gross = iv.slice(-viertel);
+        if (!(mittel(gross, p => G.detailAbweichung(p, "heading")) > mittel(klein, p => G.detailAbweichung(p, "heading")) + 3)) throw new Error("Größe zählt beim Kopfball nicht");
+        if (!(mittel(klein, p => G.detailAbweichung(p, "agility")) > mittel(gross, p => G.detailAbweichung(p, "agility")) + 1.5)) throw new Error("Größe zählt bei der Beweglichkeit nicht");
+        if (G.groesseVon(iv[3]) !== MatchEngine.koerpergroesse(iv[3])) throw new Error("Größe weicht von der Spiel-Engine ab");
+        // Persönlichkeit: Ehrgeizige und Profis sind entschlossener, Hitzköpfe aggressiver
+        const mit = (h) => Object.assign({}, feld[3], { hiddenAttributes: Object.assign({}, feld[3].hiddenAttributes, h) });
+        if (!(G.detailWert(mit({ ambition: 19, professionalism: 19 }), "determination") > G.detailWert(mit({ ambition: 6, professionalism: 6 }), "determination") + 25)) throw new Error("Entschlossenheit ohne Persönlichkeit");
+        if (!(G.detailWert(mit({ temperament: 19 }), "aggression") > G.detailWert(mit({ temperament: 6 }), "aggression") + 20)) throw new Error("Aggressivität ohne Temperament");
+
+        // Eigenheiten passen: Wer gefährlich bei Freistößen ist, hat gute Freistöße
+        const schuetzen = state.players.filter(p => (p.traits || []).some(t => t.key === "freistoss"));
+        if (!schuetzen.length || schuetzen.some(p => G.detailWert(p, "freeKicks") < 76)) throw new Error("Freistoß-Eigenheit ohne guten Freistoßwert");
+        // Training: Wer Schuss gewinnt, schließt besser ab und schießt bessere Freistöße
+        const stuermer = Object.assign({}, state.players.find(p => p.pos === "ST" && p.shooting < 80));
+        const vorher = ["finishing", "freeKicks", "longShots"].map(k => G.detailWert(stuermer, k));
+        stuermer.shooting += 10;
+        const nachher = ["finishing", "freeKicks", "longShots"].map(k => G.detailWert(stuermer, k));
+        if (!nachher.every((w, i) => w >= vorher[i] + 4)) throw new Error(`Training wirkt nicht: ${vorher} -> ${nachher}`);
+
+        // Im Spiel: Den Freistoß tritt der Freistoßspezialist, nicht nur der beste Schütze
+        const kandidaten = feld.filter(p => p.pos === "ZM").slice(0, 40).map(p => Object.assign({}, p, { shooting: 70, technique: 70, traits: [] }));
+        const besterFreistoss = kandidaten.slice().sort((x, y) => G.detailAbweichung(y, "freeKicks") - G.detailAbweichung(x, "freeKicks"))[0];
+        if (MatchEngine.standardSchuetze("freistoss", kandidaten) !== besterFreistoss) throw new Error("Nicht der Freistoßspezialist tritt an");
+        // Der Kopfballspieler kommt nach der Ecke eher an den Ball - bei gleicher Größe
+        const luft = (k) => Object.assign({}, kandidaten[0], { id: `kopf_${k}`, pos: "IV", groesse: 188 });
+        const kopfball = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(luft).sort((x, y) => G.detailAbweichung(y, "heading", true) - G.detailAbweichung(x, "heading", true));
+        const random2 = Math.random; const zaehler = new Map(kopfball.map(p => [p, 0]));
+        let s = 7; Math.random = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+        try { for (let i = 0; i < 3000; i++) { const w = MatchEngine.waehleSchuetze(kopfball, "corner"); zaehler.set(w, zaehler.get(w) + 1); } } finally { Math.random = random2; }
+        if (!(zaehler.get(kopfball[0]) > zaehler.get(kopfball[9]) * 1.1)) throw new Error(`Der Kopfballstärkere kommt nicht öfter an den Ball: ${[...zaehler.values()]}`);
+        // Im Livespiel stehen sie als Abweichung in den Feldwerten
+        const w2d = MatchEngine.werte2D(feld[5], feld[5].pos, 0.8);
+        if (!w2d.fein || Object.keys(w2d.fein).length < 5) throw new Error("Livespiel ohne Detailwerte");
+        if (JSON.stringify(MatchEngine.werte2D(feld[5], feld[5].pos, 1.2).fein) !== JSON.stringify(w2d.fein)) throw new Error("Detailwerte hängen an der Skalierung");
+        const flow = new MatchFlowEngine({ fm: true, getPlayers: () => [] });
+        const kopf = { team: "home", physical: 70, positioning: 70, shooting: 70, technique: 70, pace: 70 };
+        if (!(flow.kopfballWert(Object.assign({}, kopf, { fein: { heading: 8 } })) > flow.kopfballWert(kopf) + 3)) throw new Error("Kopfball im Livespiel ohne Wirkung");
+        if (!(flow.abschlussWert(Object.assign({}, kopf, { fein: { longShots: 10 } }), false, true) > flow.abschlussWert(kopf, false, true) + 5)) throw new Error("Distanzschuss im Livespiel ohne Wirkung");
+        if (flow.abschlussWert(Object.assign({}, kopf, { fein: { longShots: 10 } }), false, false) !== flow.abschlussWert(kopf, false, false)) throw new Error("Distanzschuss zählt im Strafraum");
+    });
+
     test("Kompressor: Große Stände gehen verdichtet in den LocalStorage und kommen unverändert zurück", () => {
         const { Kompressor: K } = require('./js/services/kompressor.js');
         const { SaveCodec } = require('./js/services/saveCodec.js');

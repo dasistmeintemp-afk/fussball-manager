@@ -455,6 +455,30 @@ Die Leiste bleibt beim Scrollen oben. Der gewählte Reiter bleibt erhalten, sola
 
 **Gleich lange Balken:** Auf der Übersicht teilen sich Saisonziel, Vorstandszufriedenheit, Fanstimmung und Mediendruck ein Raster. Vorher nahm jede Beschriftung so viel Platz, wie sie brauchte, und neben „Vorstandszufriedenheit“ blieb der kürzeste Balken. Am Handy steht die Beschriftung über dem Balken.
 
+**Spielerwerte wie im Vorbild (`PlayerGenerator.DETAILWERTE`):** Die Akte zeigt die Werte in drei Karten, nach Höhe eingefärbt:
+
+| Karte | Werte |
+|---|---|
+| **Technik** | Abschluss, Ballannahme, Distanzschüsse, Dribbling, Ecken, Elfmeter, Flanken, Freistöße, Kopfball, Manndeckung, Passspiel, Tackling, Technik |
+| **Kopf** | Aggressivität, Antizipation, Einsatz, Entscheidungen, Entschlossenheit, Führung, Konzentration, Kreativität, Mut, Nervenstärke, Ohne Ball, Stellungsspiel, Teamwork, Übersicht |
+| **Körper** | Antritt, Ausdauer, Balance, Beweglichkeit, Grundfitness, Kraft, Schnelligkeit, Sprungkraft |
+| **Torwart** (statt Technik) | Abschlag, Abwurf, Ballannahme, Eins gegen eins, Fangsicherheit, Herauslaufen, Hohe Bälle, Kommunikation, Passspiel, Reflexe, Stellungsspiel, Strafraumbeherrschung |
+
+- **Woher sie kommen:** Die 22 neuen Werte folgen aus den groben Werten, die weiter im Training wachsen. Wer Schuss gewinnt, schließt besser ab und schießt bessere Freistöße. Dazu kommen:
+  - die Position: Außenverteidiger flanken, Innenverteidiger köpfen, Flügel haben Antritt
+  - die Größe bei Kopfball, Kraft, Sprungkraft und Beweglichkeit
+  - die Persönlichkeit bei Aggressivität, Mut, Entschlossenheit und Grundfitness
+  - ein persönlicher Anteil, fest je Spieler
+  - Eigenheiten als Untergrenze: Wer „gefährlich bei direkten Freistößen“ ist, hat gute Freistöße.
+- **Gespeichert wird nichts:** Der Spielstand wird nicht größer, alte Spielstände haben die Werte sofort.
+- **Im Spiel:** Beide Engines rechnen mit der Abweichung vom groben Wert, ohne den Positionsaufschlag, denn die Position steckt dort schon in den groben Werten und den Rollen. Im Mittel bleibt alles, wie es eingestellt war, der Spezialist sticht heraus.
+  - Elfmeter, Freistöße und Ecken tritt, wer sie am besten kann.
+  - Nach Flanke und Ecke zählen Kopfball und Sprungkraft, beim Steilpass Abschluss, Ballannahme und Antritt, beim Dribbling die Beweglichkeit.
+  - Im Livespiel zählt im Strafraum der Abschluss, von weiter weg der Distanzschuss. Dazu Manndeckung im verteidigenden Kopfballduell und Tackling gegen den Dribbler.
+  - Torhüter: Herauslaufen im Eins-gegen-eins, hohe Bälle und Strafraumbeherrschung bei Flanken.
+  - Aggressivität, Mut, Entschlossenheit, Kreativität, Balance und Grundfitness zeigen, was in der Persönlichkeit und den groben Werten schon wirkt. Eigene Effekte haben sie nicht.
+- **Scoutwissen:** Bei fremden Spielern stehen die Werte als Spanne. Unter den Karten stehen die Grundwerte, denen die Detailwerte folgen. Der Spielervergleich führt alle Werte.
+
 In der Spielerakte führt der Manager Gespräche mit jedem eigenen Spieler. Wie er reagiert, hängt an Form und Persönlichkeit:
 
 | Gespräch | Wirkung |

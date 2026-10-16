@@ -266,7 +266,7 @@ const YouthEngine = {
      * Die Talente des eigenen Vereins standen an zwei Stellen: am Verein und
      * im Spielstand. Vor dem Speichern war es dieselbe Liste, nach dem Laden
      * zwei Kopien - und die Beförderung markierte nur die am Verein. Der
-     * Reiter Training zeigt aber die andere: Der Beförderte stand weiter in
+     * Reiter Jugend zeigt aber die andere: Der Beförderte stand weiter in
      * der Akademie und ließ sich ein zweites Mal befördern. Jetzt werden
      * beide wieder zu einer Liste zusammengeführt.
      */
@@ -434,7 +434,7 @@ const YouthEngine = {
             const b = this.vorschauBericht(state, club, vs.talente);
             postfach("🎓 Jugendtag in drei Wochen",
                 `Um den ${tag}. Spieltag stellt sich unser neuer Jahrgang vor: ${vs.talente.length} Talente.\n\n${b.text}\n\n`
-                + "Ändern Sie die Schwerpunkte der Akademie (Reiter Training) bis dahin, sichten wir noch einmal neu.");
+                + "Ändern Sie die Schwerpunkte der Akademie (Reiter Jugend) bis dahin, sichten wir noch einmal neu.");
             return `🎓 Der Nachwuchsleiter kündigt den Jugendtag an (um den ${tag}. Spieltag).`;
         }
 
@@ -447,7 +447,7 @@ const YouthEngine = {
             delete ya.vorschau;
             const namen = neu.map(t => `• ${t.name} (${t.pos}, ${t.age} Jahre)`).join("\n");
             postfach(`🎓 Jugendtag: ${neu.length} neue Talente`,
-                `Der neue Jahrgang ist da:\n${namen}\n\nSie stehen ab sofort in der Akademie (Reiter Training). `
+                `Der neue Jahrgang ist da:\n${namen}\n\nSie stehen ab sofort in der Akademie (Reiter Jugend). `
                 + "Wer einen Profivertrag bekommen soll, entscheiden Sie mit den Beratern.");
             return `🎓 Jugendtag: ${neu.length} neue Talente in der Akademie.`;
         }
@@ -499,7 +499,7 @@ const YouthEngine = {
         const [talent] = this.generateProspects(state, club.id, { anzahl: 1, ovr: P.ovr, pot: P.pot, jahrgang: false, ohneKosten: true, quelle: "probetraining" });
         if (!talent) return null;
         this.nachwuchsPost(state, club, `🎓 Probetraining: ${talent.name} überzeugt`,
-            `${talent.name} (${talent.pos}, ${talent.age} Jahre) war zum Probetraining bei uns und hat überzeugt. Er steht ab sofort in der Akademie (Reiter Training).`);
+            `${talent.name} (${talent.pos}, ${talent.age} Jahre) war zum Probetraining bei uns und hat überzeugt. Er steht ab sofort in der Akademie (Reiter Jugend).`);
         return `🎓 ${talent.name} hat im Probetraining überzeugt und kommt in die Akademie.`;
     },
 
@@ -809,8 +809,8 @@ const YouthEngine = {
                 `${werber.name} möchte ${t.name} (${t.pos}, ${t.age} Jahre) in seine Akademie holen. Er hat bei uns nur einen Jugendvertrag - `
                 + `geht er, steht uns eine Ausbildungsentschädigung von ${this._geld(betrag)} zu.\n\n`
                 + (zuJung
-                    ? `Für einen Profivertrag ist er noch zu jung. Ein Gespräch über seine Perspektive bei uns kann ihn halten (Reiter Training, Akademie).`
-                    : `Halten können wir ihn mit einem Profivertrag - oder mit einem Gespräch über seine Perspektive (Reiter Training, Akademie).`)
+                    ? `Für einen Profivertrag ist er noch zu jung. Ein Gespräch über seine Perspektive bei uns kann ihn halten (Reiter Jugend).`
+                    : `Halten können wir ihn mit einem Profivertrag - oder mit einem Gespräch über seine Perspektive (Reiter Jugend).`)
                 + ` In sieben Tagen entscheidet er sich.`);
             meldungen.push(`📨 ${werber.name} wirbt um ${t.name}.`);
         });

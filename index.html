@@ -193,6 +193,11 @@
                         <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-dumbbell"/></svg></span>
                         <span class="nav-text">Training</span>
                     </button>
+                    <button class="nav-item" data-tab="youth">
+                        <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-leaf"/></svg></span>
+                        <span class="nav-text">Jugend</span>
+                        <span class="badge" id="navYouthBadge" style="display:none;">0</span>
+                    </button>
                     <button class="nav-item" data-tab="national">
                         <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg></span>
                         <span class="nav-text">Nationalteam</span>
@@ -1183,19 +1188,34 @@
                                 </table>
                             </div>
                         </div>
+                    </div>
+                </section>
 
-                        <!-- Jugendakademie -->
-                        <div class="dash-card" style="grid-column: 1 / -1;">
+                <!-- Tab: Jugend (Akademie, Talente, U19) -->
+                <section class="tab-pane" id="pane-youth">
+                    <div class="pane-header">
+                        <h2>Jugend & Akademie</h2>
+                    </div>
+
+                    <div class="jugend-grid">
+                        <!-- Akademie: Stufe, Plätze, Jugendtag, Sichtungstag -->
+                        <div class="dash-card jugend-breit">
                             <div class="card-header">
-                                <h3>Nachwuchsakademie & Jugendförderung</h3>
+                                <h3>Nachwuchsakademie</h3>
                                 <div>
                                     <span id="youthAcademyLevelBadge" class="header-tag">Akademie: Stufe 1</span>
                                     <button class="btn btn-sm btn-secondary ml-2" id="btnUpgradeYouthAcademy">Akademie ausbauen (+2.5 Mio. €)</button>
                                 </div>
                             </div>
-                            <div id="youthSchwerpunkte" class="akademie-sp mt-2"></div>
                             <div id="youthZugang" class="mt-2"></div>
-                            <div id="youthFremde" class="mt-2"></div>
+                        </div>
+
+                        <!-- Die Talente der eigenen Akademie -->
+                        <div class="dash-card jugend-breit">
+                            <div class="card-header">
+                                <h3>Talente der Akademie</h3>
+                                <span id="youthTalenteMeta" class="header-tag">-</span>
+                            </div>
                             <div class="table-container mt-2">
                                 <table class="compact-table akademie-tabelle">
                                     <thead>
@@ -1215,8 +1235,20 @@
                             </div>
                         </div>
 
+                        <!-- Talente kleinerer Akademien -->
+                        <div class="dash-card" id="youthFremde"></div>
+
+                        <!-- Schwerpunkte für den nächsten Jahrgang -->
+                        <div class="dash-card">
+                            <div class="card-header">
+                                <h3>Schwerpunkte der Akademie</h3>
+                                <span class="header-tag">für den nächsten Jahrgang</span>
+                            </div>
+                            <div id="youthSchwerpunkte" class="akademie-sp mt-2"></div>
+                        </div>
+
                         <!-- U19-Liga (JugendligaEngine) -->
-                        <div class="dash-card" style="grid-column: 1 / -1;" id="jugendligaKarte"></div>
+                        <div class="dash-card jugend-breit" id="jugendligaKarte"></div>
                     </div>
                 </section>
 
@@ -1441,6 +1473,7 @@
                             <button class="filter-chip" data-inbox-filter="match">Spiel</button>
                             <button class="filter-chip" data-inbox-filter="transfer">Transfers</button>
                             <button class="filter-chip" data-inbox-filter="training">Training</button>
+                            <button class="filter-chip" data-inbox-filter="youth">Jugend</button>
                             <button class="filter-chip" data-inbox-filter="scouting">Scouting</button>
                             <button class="filter-chip" data-inbox-filter="finance">Finanzen</button>
                         </div>
@@ -2229,6 +2262,11 @@
                     <button class="mobile-drawer-item" data-tab="training">
                         <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-dumbbell"/></svg></span>
                         <span class="drawer-text">Training</span>
+                    </button>
+                    <button class="mobile-drawer-item" data-tab="youth">
+                        <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-leaf"/></svg></span>
+                        <span class="drawer-text">Jugend</span>
+                        <span class="badge" id="mobileYouthBadge" style="display:none;">0</span>
                     </button>
                     <button class="mobile-drawer-item" data-tab="national">
                         <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-globe"/></svg></span>

@@ -70,7 +70,7 @@ const EINSTIEG_ERKLAERUNGEN = {
         punkte: [
             "Stadion, Trainingsgelände, Akademie und Medizin lassen sich ausbauen – das kostet Geld und Zeit, wirkt aber über Jahre.",
             "Der Trainerstab entscheidet mit: Ein guter Co-Trainer gibt bessere Hinweise, ein guter Chefscout genauere Berichte.",
-            "In der Jugendakademie wachsen eigene Talente heran."
+            "In der Jugendakademie wachsen eigene Talente heran – sie stehen im Reiter Jugend."
         ]
     },
     squad: {
@@ -124,7 +124,16 @@ const EINSTIEG_ERKLAERUNGEN = {
         punkte: [
             "Der Trainerstab plant die Woche; du kannst Schwerpunkte setzen und Einheiten ablehnen.",
             "Hohe Last bringt mehr Fortschritt, aber auch mehr Verletzungen.",
-            "Entwicklungspläne fördern einzelne Spieler gezielt – auch auf einer neuen Position."
+            "Entwicklungspläne fördern einzelne Spieler gezielt – auch auf einer neuen Position.",
+            "Akademie und Talente haben einen eigenen Reiter: Jugend."
+        ]
+    },
+    youth: {
+        titel: "Jugend",
+        punkte: [
+            "Die Akademie: Plätze, Jugendtag, Probetrainings und Sichtungstage – darunter die Talente mit ihrem Jugendvertrag.",
+            "Ab dem Mindestalter bekommt ein Talent einen Profivertrag. Wirbt ein größerer Verein um eines, zeigt das Abzeichen am Reiter die Frist an.",
+            "Die Schwerpunkte gelten für den nächsten Jahrgang, die U19 sammelt Spielpraxis in ihrer eigenen Liga."
         ]
     },
     finances: {

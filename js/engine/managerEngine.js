@@ -1096,6 +1096,21 @@ class ManagerEngine {
             });
         });
 
+        // 1b2. Ein größerer Verein wirbt um ein Talent der Akademie - in
+        // sieben Tagen entscheidet er sich
+        // (Die Frist zählt wie die YouthEngine: Saison mal tausend plus Tag)
+        const heute = (state.seasonYear || 1) * 1000 + (state.currentDayIndex || 0);
+        (state.youthAcademy?.anfragen || []).filter(a => a.status === "offen").forEach(a => {
+            const rest = Math.max(0, (a.bis ?? heute) - heute);
+            items.push({
+                priority: 1,
+                icon: "🎓",
+                tab: "youth",
+                title: `${a.clubName} wirbt um ${a.talentName}`,
+                detail: `${rest === 0 ? "Er entscheidet sich heute" : `Noch ${rest} Tag${rest === 1 ? "" : "e"}`} · Halten oder ziehen lassen?`
+            });
+        });
+
         // 1c. Pflichtposten im Stab vor dem Saisonstart
         const pre = _mgrResolve("PreseasonEngine", "./preseasonEngine.js");
         if (pre && state.preseason?.aktiv && typeof pre.pflichtLuecken === "function") {

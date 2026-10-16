@@ -660,6 +660,9 @@ class UIManager {
             case "training":
                 this.renderTraining();
                 break;
+            case "youth":
+                this.renderJugend();
+                break;
             case "finances":
                 this.renderFinances();
                 break;
@@ -753,7 +756,7 @@ class UIManager {
 
         const knopf = item => `
             <button class="attention-item" data-tab="${this.escapeHtml(item.tab)}"${item.playerId !== undefined ? ` data-player="${this.escapeHtml(String(item.playerId))}"` : ""}${item.negId ? ` data-neg="${this.escapeHtml(String(item.negId))}"` : ""}>
-                <span class="attention-icon ton-${({ "🚑": "bad", "⚠️": "bad", "🩺": "bad", "📢": "bad", "🥵": "warn", "😞": "warn", "💰": "warn", "💬": "warn", "🤝": "ok" })[item.icon] || "info"}">${this.symbolHtml(item.icon)}</span>
+                <span class="attention-icon ton-${({ "🚑": "bad", "⚠️": "bad", "🩺": "bad", "📢": "bad", "🥵": "warn", "😞": "warn", "💰": "warn", "💬": "warn", "🎓": "warn", "🤝": "ok" })[item.icon] || "info"}">${this.symbolHtml(item.icon)}</span>
                 <span class="attention-text">
                     <strong>${this.escapeHtml(item.title)}</strong>
                     <span>${this.escapeHtml(item.detail)}</span>
@@ -1028,12 +1031,20 @@ class UIManager {
             mobileInboxBadge.textContent = unreadCount;
             mobileInboxBadge.style.display = unreadCount > 0 ? "inline-block" : "none";
         }
+        // Ein Verein wirbt um ein Talent: Die Frist läuft, also ans Abzeichen
+        const werben = typeof this.offeneJugendAnfragen === "function" ? this.offeneJugendAnfragen(state) : 0;
+        ["navYouthBadge", "mobileYouthBadge"].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.textContent = werben;
+            el.style.display = werben > 0 ? "inline-block" : "none";
+        });
         const mehrPunkt = document.getElementById("mobileMoreBadgeDot");
         if (mehrPunkt) {
             const preOffen = (state.preseason && state.preseason.aktiv && this.getPreseasonEngine())
                 ? this.getPreseasonEngine().offenePunkte(state).length : 0;
             const angeboteOffen = (state.transferMarket?.offers || []).filter(o => o.status === "pending").length;
-            mehrPunkt.style.display = (unreadCount > 0 || preOffen > 0 || angeboteOffen > 0 || natAngebot) ? "" : "none";
+            mehrPunkt.style.display = (unreadCount > 0 || preOffen > 0 || angeboteOffen > 0 || natAngebot || werben > 0) ? "" : "none";
         }
 
         const pendingOffers = state.transferMarket.offers.filter(o => o.status === "pending").length;
@@ -2168,7 +2179,8 @@ class UIManager {
     postfachSymbol(emoji) {
         const id = ({
             "✉️": "i-mail", "👔": "i-briefcase", "⚽": "i-ball", "🔄": "i-transfer", "🏥": "i-medical",
-            "🔍": "i-search", "💰": "i-wallet", "📝": "i-doc", "🎖️": "i-trophy", "📈": "i-chart", "🎯": "i-target"
+            "🔍": "i-search", "💰": "i-wallet", "📝": "i-doc", "🎖️": "i-trophy", "📈": "i-chart", "🎯": "i-target",
+            "🎓": "i-leaf"
         })[emoji] || "i-mail";
         return `<svg class="ico" aria-hidden="true"><use href="#${id}"/></svg>`;
     }
@@ -2216,7 +2228,7 @@ class UIManager {
             "🚑": "i-medical", "🥵": "i-flame", "📄": "i-doc", "😞": "i-frown", "📬": "i-mail",
             "🏗️": "i-build", "⚠️": "i-alert", "🤝": "i-briefcase", "🧊": "i-leaf", "🔥": "i-flame",
             "📣": "i-mic", "💢": "i-alert", "💰": "i-wallet", "🩺": "i-medical",
-            "💬": "i-chat", "📢": "i-alert", "🔁": "i-transfer", "🎓": "i-user", "👥": "i-users", "🌍": "i-globe"
+            "💬": "i-chat", "📢": "i-alert", "🔁": "i-transfer", "🎓": "i-leaf", "👥": "i-users", "🌍": "i-globe"
         })[emoji];
         return id
             ? `<svg class="ico" aria-hidden="true"><use href="#${id}"/></svg>`

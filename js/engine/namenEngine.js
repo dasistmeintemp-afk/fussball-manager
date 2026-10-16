@@ -41,7 +41,9 @@ const NamenEngine = {
         nl_cup: "Nationale Beker", pt_cup: "Taça Nacional", be_cup: "Beker van het Land", tr_cup: "Ulusal Kupa",
         at_cup: "Österreichischer Landespokal", ch_cup: "Schweizer Landespokal", sc_cup: "Scottish National Cup", br_cup: "Copa Nacional do Brasil",
         nl_liga_1: "Hoofdklasse", pt_liga_1: "Primeira Divisão", be_liga_1: "Eerste Klasse", tr_liga_1: "Birinci Lig",
-        at_liga_1: "Liga Österreich", ch_liga_1: "Nationalliga", sc_liga_1: "Scottish Division", br_liga_1: "Série Nacional"
+        at_liga_1: "Liga Österreich", ch_liga_1: "Nationalliga", sc_liga_1: "Scottish Division", br_liga_1: "Série Nacional",
+        nl_liga_2: "Eerste Divisie", pt_liga_2: "Segunda Divisão", be_liga_2: "Tweede Klasse", tr_liga_2: "İkinci Lig",
+        at_liga_2: "2. Liga Österreich", ch_liga_2: "Nationalliga B", sc_liga_2: "Scottish Second Division", br_liga_2: "Série Nacional B"
     },
 
     /** Erfundene Hauptsponsoren der ersten deutschen Liga, in der Reihenfolge der Vereine */

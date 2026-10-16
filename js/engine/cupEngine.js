@@ -177,10 +177,11 @@ class CupEngine {
             const imLand = state.clubs.filter(c => (c.countryId || c.country || "de") === land);
             if (imLand.length < 8) return;
             const pool = imLand.slice().sort((a, b) => (b.reputation || 0) - (a.reputation || 0));
-            // Die Länder im Hintergrund haben nur ihre erste Liga: Dort
-            // spielen 16 Vereine ab dem Achtelfinale, in Ländern mit zwölf
-            // Erstligisten 8 ab dem Viertelfinale. Wer weniger als 33 hat,
-            // fängt mit so vielen an, wie die nächste Runde fasst.
+            // Die Länder im Hintergrund haben zwei Ligen: Mit mehr als 32
+            // Vereinen spielen sie wie die großen ab der ersten Runde (mit
+            // Freilosen), Österreich, Schweiz und Schottland mit 16 ab dem
+            // Achtelfinale. Wer weniger als 33 hat, fängt mit so vielen an,
+            // wie die nächste Runde fasst.
             const anzahl = imLand.length > this.POKAL_RUNDEN[1].teams
                 ? this.POKAL_TEILNEHMER
                 : this.POKAL_RUNDEN.map(r => r.teams).find(t => t <= imLand.length);

@@ -196,7 +196,9 @@ class WorldGenerator {
     /** Die Ligen, die nach dem ersten Aufbau der Welt dazugekommen sind */
     static NACHTRAEGLICHE_LIGEN = ["en_liga_2", "en_liga_3", "es_liga_2", "es_liga_3", "it_liga_2", "it_liga_3", "fr_liga_2", "fr_liga_3",
         // die Länder im Hintergrund
-        "nl_liga_1", "pt_liga_1", "be_liga_1", "tr_liga_1", "at_liga_1", "ch_liga_1", "sc_liga_1", "br_liga_1"];
+        "nl_liga_1", "pt_liga_1", "be_liga_1", "tr_liga_1", "at_liga_1", "ch_liga_1", "sc_liga_1", "br_liga_1",
+        // ... und ihre zweiten Ligen
+        "nl_liga_2", "pt_liga_2", "be_liga_2", "tr_liga_2", "at_liga_2", "ch_liga_2", "sc_liga_2", "br_liga_2"];
 
     /**
      * Ein Spielstand aus der Zeit vor den zweiten und dritten Ligen in
@@ -220,6 +222,14 @@ class WorldGenerator {
 
         if (!Array.isArray(state.leagues)) state.leagues = [];
         fehlend.forEach(l => { if (!state.leagues.some(x => x.id === l.id)) state.leagues.push(l); });
+        // Bekommt eine Liga eine Liga darunter, hat sie ab jetzt Absteiger
+        // (die Ligadefinition steht im Spielstand und stammt von früher)
+        const aktuell = this.getLeagues();
+        fehlend.filter(l => l.promotionTo).forEach(l => {
+            const oben = state.leagues.find(x => x.id === l.promotionTo);
+            const def = aktuell.find(x => x.id === l.promotionTo);
+            if (oben && def && Array.isArray(def.relegationSpots)) oben.relegationSpots = def.relegationSpots.slice();
+        });
 
         const usedNames = new Set(state.clubs.map(c => c.name));
         const usedCities = new Set(state.clubs.map(c => c.city).filter(Boolean));

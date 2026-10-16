@@ -374,7 +374,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             return `
                 <tr class="row-clickable" data-player-id="${p.id}" title="Details zu ${this.escapeHtml(p.name)} öffnen">
                     <td class="sq-status">${statusBadge}</td>
-                    <td class="sq-name"><strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}<span class="squad-role-hint">${p.reserve ? (p.reserve === "u19" ? "U19" : "U23") : (p.leihe ? "Leihspieler" : this.escapeHtml((p.squadRole || "Kader") + (p.jugendvertrag ? " · Jugendvertrag" : "")))} · ${p.age} J.</span></td>
+                    <td class="sq-name"><strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}<span class="squad-role-hint">${p.reserve ? (p.reserve === "u19" ? "U19" : "U23") : (p.nominiertAus ? `aus der ${p.nominiertAus === "u19" ? "U19" : "U23"} · nur Spieltag` : (p.leihe ? "Leihspieler" : this.escapeHtml((p.squadRole || "Kader") + (p.jugendvertrag ? " · Jugendvertrag" : ""))))} · ${p.age} J.</span></td>
                     <td class="sq-pos nowrap">
                         <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>${secondaryHtml}
                     </td>

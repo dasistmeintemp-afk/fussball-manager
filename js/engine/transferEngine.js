@@ -326,6 +326,7 @@ class TransferEngine {
         // Die U23 des alten Vereins gilt beim neuen nicht, ebenso wenig sein Jugendvertrag
         player.reserve = undefined;
         player.jugendvertrag = undefined;
+        player.nominiertAus = undefined;
         player.vereinslosAb = undefined;
         // Die Klauseln (KlauselEngine) gehören zum alten Vertrag
         player.klauseln = undefined;

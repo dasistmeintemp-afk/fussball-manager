@@ -532,6 +532,8 @@ class ManagerEngine {
         const kandidaten = this.unterbauKandidaten(state, club);
         const zahl = (x) => String(x).replace(".", ",");
         const name = (k) => `${k.p.name} (${k.p.pos}, ${k.team}${k.bilanz?.form ? `, Form ${zahl(k.bilanz.form.toFixed(1))}` : ""})`;
+        // Team und Talent-Merker: Die Aufstellung bietet daneben den Knopf "Spieltag" an
+        const eintrag = (k) => ({ id: k.p.id, name: k.p.name, pos: k.p.pos, team: k.team, talent: k.talent, form: k.bilanz?.form });
         if (profis.length < this.PERSONALNOT_AB || ohneTorwart) {
             const passend = ohneTorwart ? kandidaten.filter(k => k.p.pos === "TW").concat(kandidaten.filter(k => k.p.pos !== "TW")) : kandidaten;
             const beste = passend.slice(0, 3);
@@ -543,8 +545,9 @@ class ManagerEngine {
                 detail: beste.length
                     ? `Aus U23 und U19 bieten sich an: ${beste.map(name).join(", ")}. Ein Tipp auf den Namen öffnet die Akte.`
                     : "Weder in der U23 noch in der U19 steht jemand bereit - der Transfermarkt hilft.",
-                spieler: beste.map(k => ({ id: k.p.id, name: k.p.name, pos: k.p.pos })),
-                abschnitt: "unterbau"
+                spieler: beste.map(eintrag),
+                abschnitt: "unterbau",
+                personalnot: true
             });
         }
         // Engpass in einem Mannschaftsteil: weniger Fitte, als die Formation dort braucht
@@ -560,8 +563,9 @@ class ManagerEngine {
                     detail: passend.length
                         ? `Aus U23 und U19 bieten sich an: ${passend.map(name).join(", ")}.`
                         : "In U23 und U19 spielt niemand auf diesen Positionen - jemand muss umgestellt werden oder vom Transfermarkt kommen.",
-                    spieler: passend.map(k => ({ id: k.p.id, name: k.p.name, pos: k.p.pos })),
-                    abschnitt: "unterbau"
+                    spieler: passend.map(eintrag),
+                    abschnitt: "unterbau",
+                    personalnot: true
                 });
             });
         }

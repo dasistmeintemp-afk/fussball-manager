@@ -8997,6 +8997,21 @@ td.nowrap { white-space: nowrap; }
 .unterbau-titel { font-size: 13px; margin: 14px 0 6px; color: var(--text-muted); }
 .u-form-top { color: #a3e635; font-weight: 700; }
 .gs-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.unterbau-knoepfe { display: flex; gap: 6px; justify-content: flex-end; }
+.unterbau-nominiert { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; margin: 8px 0 4px;
+    border: 1px solid var(--border-color); border-left: 3px solid var(--accent-info); border-radius: var(--radius-sm); background: var(--bg-card); }
+.unterbau-nominiert small { flex-basis: 100%; }
+.unterbau-nom { display: flex; align-items: center; justify-content: space-between; gap: 6px 10px; flex-wrap: wrap; flex-basis: 100%; }
+/* Personalnot über der Aufstellung */
+.taktik-unterbau { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; margin: 0 0 12px;
+    border: 1px solid var(--border-color); border-left: 3px solid var(--accent-danger); border-radius: var(--radius-sm); background: var(--bg-card); }
+.taktik-unterbau[hidden] { display: none; }
+.tu-titel { font-weight: 600; margin-bottom: 4px; }
+.tu-liste { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.tu-spieler { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+.unterbau-nominiert, .unterbau-nom { font-size: 13px; }
+.unterbau-nominiert strong { flex-basis: 100%; }
+.taktik-unterbau .btn-sm, .unterbau-nominiert .btn-sm { padding: 5px 10px; font-size: 12px; line-height: 1.2; }
 .pd-unterbau-bilanz { font-size: 12px; color: var(--text-muted); margin: 0 0 10px; }
 .u19-kader td, .u23-tabelle td { white-space: nowrap; }
 .u19-kader td:first-child, .u23-tabelle td:first-child { white-space: normal; }

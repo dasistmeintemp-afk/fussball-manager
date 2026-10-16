@@ -404,10 +404,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             if (k.talent) {
                 if ((k.p.age || 0) < ab) return `<span class="text-muted">ab ${ab}</span>`;
                 if (youth.offeneAnfrage(state, k.p.id)) return `<span class="text-muted">Anfrage offen</span>`;
-                return `<button class="btn btn-sm btn-primary btn-hochziehen" data-talent-id="${esc(k.p.id)}">Hochziehen</button>`;
+                return `<div class="unterbau-knoepfe"><button class="btn btn-sm btn-primary btn-hochziehen-spieltag" data-talent-id="${esc(k.p.id)}" title="Für den nächsten Ligaspieltag - danach spielt er in der U19">Spieltag</button>`
+                    + `<button class="btn btn-sm btn-secondary btn-hochziehen" data-talent-id="${esc(k.p.id)}">Ganz hoch</button></div>`;
             }
             return reserve.inU19(k.p)
-                ? `<button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(k.p.id)}">Zu den Profis</button>`
+                ? `<div class="unterbau-knoepfe"><button class="btn btn-sm btn-primary btn-nominieren" data-id="${esc(k.p.id)}">Spieltag</button>`
+                    + `<button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(k.p.id)}">Ganz hoch</button></div>`
                 : `<span class="text-muted" title="Profi ohne Stammplatz - spielt in der U19 mit">Profikader</span>`;
         };
         return `
@@ -418,7 +420,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     <tbody>${kader.map(k => `<tr class="row-clickable" data-u19-akte="${esc(k.p.id)}"><td><strong>${esc(k.p.name)}</strong> <span class="text-muted">${k.talent ? "Akademie" : (reserve.inU19(k.p) ? "Profi in der U19" : "Profi")}</span></td><td>${esc(k.p.pos)}</td><td>${k.p.age || "-"}</td><td>${k.p.overall || "-"}</td>${this.unterbauZellen(k.p, "u19")}<td>${aktion(k)}</td></tr>`).join("")}</tbody>
                 </table>
             </div>
-            <p class="text-muted jl-hinweis">Hochgezogene Talente spielen mit ihrem Jugendvertrag bei den Profis - ab ${ab}, ohne Berater. Den Profivertrag bieten Sie ihnen in der Akte an. Junge Profis bis ${youth.AKADEMIE_HOECHSTALTER} schicken Sie über die Akte in die U19.</p>`;
+            <p class="text-muted jl-hinweis"><em>Spieltag</em> holt nur für das nächste Ligaspiel hoch, <em>Ganz hoch</em> für immer. Hochgezogene Talente spielen mit ihrem Jugendvertrag bei den Profis - ab ${ab}, ohne Berater. Den Profivertrag bieten Sie ihnen in der Akte an. Junge Profis bis ${youth.AKADEMIE_HOECHSTALTER} schicken Sie über die Akte in die U19.</p>`;
     },
 
     /**

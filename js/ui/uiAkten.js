@@ -772,7 +772,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                             ? `<button class="btn btn-secondary" disabled style="width:100%;">${this.escapeHtml(zuJung)}</button>`
                             : `<button class="btn btn-primary" id="btnPdPromoteProspect" style="width:100%;">Profivertrag anbieten</button>`}
                     ${!laufend && !anfrage && youthA && (player.age || 0) >= youthA.MIT_PROFIS.abAlter
-                        ? `<button class="btn btn-secondary" id="btnPdHochziehen" style="width:100%; margin-top:8px;" title="Sofort, ohne Berater - er spielt mit seinem Jugendvertrag">Zu den Profis hochziehen (Jugendvertrag)</button>`
+                        ? `<div class="gs-knoepfe">
+                            <button class="btn btn-secondary" id="btnPdHochziehenSpieltag" title="Für den nächsten Ligaspieltag - danach spielt er in der U19, mit seinem Jugendvertrag">Für den nächsten Spieltag hochziehen</button>
+                            <button class="btn btn-secondary" id="btnPdHochziehen" title="Sofort, ohne Berater - er spielt mit seinem Jugendvertrag">Ganz zu den Profis (Jugendvertrag)</button>
+                           </div>`
                         : ""}
                 </div>
             `;
@@ -1243,12 +1246,22 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const reserveEngine = typeof ReserveEngine !== "undefined" ? ReserveEngine : null;
         document.getElementById("btnPdReserve")?.addEventListener("click", () => {
             if (!reserveEngine) return;
-            const hinunter = !player.reserve;
+            const hinunter = !player.reserve && !player.nominiertAus;
             const res = hinunter ? reserveEngine.hinunter(state, player.id) : reserveEngine.hinauf(state, player.id);
             nachLeihe(res, hinunter
                 ? `${player.name} spielt jetzt in der U23${res.ausElf ? " - die Aufstellung ist nachgerückt" : ""}.`
                 : `${player.name} ist zurück aus der ${res.von || "U23"} und gehört wieder zum Profikader.`);
             if (res.success && this.activeTab === "tactics") this.renderCurrentTab();
+        });
+        document.getElementById("btnPdNominieren")?.addEventListener("click", () => {
+            const res = reserveEngine.nominieren(state, player.id);
+            nachLeihe(res, `${player.name} ist für den nächsten Spieltag dabei und geht danach zurück in die ${res.von}.`);
+        });
+        document.getElementById("btnPdNominiertZurueck")?.addEventListener("click", () => {
+            const ok = reserveEngine.zurueckNachNominierung(state, player);
+            if (ok && club && GameState.repairLineup) GameState.repairLineup(club, state.players);
+            nachLeihe(ok ? { success: true } : { success: false, error: "Er kann nicht zurück." },
+                `${player.name} spielt wieder in der ${player.reserve === reserveEngine.U19 ? "U19" : "U23"}.`);
         });
         document.getElementById("btnPdU19")?.addEventListener("click", () => {
             if (!reserveEngine || typeof reserveEngine.hinunterU19 !== "function") return;
@@ -1323,6 +1336,15 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             document.getElementById("modalPlayerDetails").style.display = "none";
             this.renderHeader?.();
             this.renderCurrentTab();
+        });
+        document.getElementById("btnPdHochziehenSpieltag")?.addEventListener("click", () => {
+            const res = YouthEngine.hochziehen(state, player.id, { nurSpieltag: true });
+            if (!res.success) return this.showToast(res.error, "error", 6000);
+            this.showToast(`🎓 ${res.player.name} ist für den nächsten Spieltag dabei - danach spielt er in der U19.`, "success", 5000);
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            this.renderHeader?.();
+            this.renderCurrentTab();
+            this.showPlayerDetailsModal(res.player.id, { abschnitt: "unterbau" });
         });
         document.getElementById("btnPdHochziehen")?.addEventListener("click", () => {
             const res = YouthEngine.hochziehen(state, player.id);

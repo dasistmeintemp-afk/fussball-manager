@@ -86,6 +86,13 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 ### 🎙️ Rund um den Spieltag
 - **Konferenz (`KonferenzEngine`):** Im Ligaspiel zeigt der Reiter *Konferenz* die Zwischenstände der anderen Partien zur laufenden Minute und die Tabelle, wie sie gerade stünde. Tore auf anderen Plätzen stehen im Ticker; trifft ein Tabellennachbar, blendet sich die Konferenz kurz über dem Spielfeld ein.
 - **Stadion-Atmosphäre (`AtmosphaereEngine`):** Derbys, Europapokalnächte, Finals und Spiele um Titel oder Klassenerhalt sind lauter und bekommen zum Anpfiff eine Choreo in den Vereinsfarben. Die Ränge reagieren auf die Lage: Gesang, Stille, „Olé“, Pfiffe, Applaus oder Pfeifkonzert zum Abpfiff.
+- **Klang und Menümusik (`js/ui/klang.js`):** Alles entsteht im Browser - keine Aufnahmen, keine Rechte Dritter.
+  - **Pfiffe wie mit einer Kugelpfeife:** zwei eng beieinanderliegende Töne um 3 kHz, das Flattern der Kugel, etwas Atem. Kurz beim Abseits und Freistoß, kräftig beim Foul, länger bei der Karte, lang zum Anstoß, zweimal zur Halbzeit, dreimal zum Abpfiff (der letzte lang). Zur Ecke, zum Einwurf und zum Abstoß wird nicht gepfiffen.
+  - **Kulisse:** Rauschen in drei Stimmlagen und ein tiefes Grollen, jede Lage schwillt für sich an und ab. Sie wird lauter und heller, je näher der Ball am Tor ist, und ist in großen Spielen größer.
+  - **Was man hört, sagt etwas:** Beim Heimtor schreit das Stadion auf, beim Gegentor jubelt nur der ferne Gästeblock, und die Kulisse fällt zusammen. Bei der eigenen Chance raunt es laut, bei der des Gegners leise. Dazu Schuss, Pfosten, Applaus, Pfeifkonzert und der Takt der Kurve (Trommeln, Klatschen, Rufe, ohne fremde Melodie). In der Konferenz kündigt ein Gong Tore der Tabellennachbarn an.
+  - **Menü:** leise Glockentöne für Vertrag, Transfer und Bau statt Pfiff und Torfanfare; der echte Anpfiff zum Karrierestart und zur neuen Saison, der Abpfiff zum Saisonende.
+  - **Menümusik:** ein ruhiges, selbst komponiertes Stück im Lo-fi-Stil: weiches E-Piano, Bass, Besen, ab und zu eine Glockenmelodie, 74 Schläge je Minute. Es wird beim Spielen aus jazzigen Akkorden (Form A-A-B-A, 32 Takte) zusammengesetzt und klingt deshalb nie ganz gleich; Durchgangstöne reiben nie am Akkord, jede Phrase endet auf einem Akkordton. Sie beginnt nach dem ersten Tippen, blendet im Livespiel aus (dort spielt die Kulisse) und kommt mit dem Spielbericht zurück. Ist die Seite verborgen, pausiert der Ton.
+  - **Einstellungen:** Sound (Pfiffe, Kulisse, Menütöne) und Musik getrennt schaltbar, dazu ein Regler für die Lautstärke der Musik - gespeichert im Gerät.
 - **Stimmen der Fans (`FanEngine`):** Die Fanstimmung folgt den Ergebnissen, gemessen an der Erwartung, im Derby stärker. Nach jedem Pflichtspiel und nach großen Transfers melden sich Fans mit kurzen Beiträgen; die Übersicht zeigt die jüngsten.
 - **Spieler in den Medien (`MedienEngine`):** Nach Ligaspielen gibt ab und zu ein Spieler ein Interview: der Frustrierte auf der Bank, der Matchwinner, das Talent, der Kapitän nach einer Pleitenserie, der Umworbene, der Spieler mit auslaufendem Vertrag. Was er sagt, wirkt auf Mediendruck, Kabine und Fans.
 - **Meilensteine, Trophäenschrank und Saisonrückblick (`MeilensteinEngine`):** Jubiläen von Trainer und Spielern (Spiele, Siege, Tore, Titel, Jahre im Verein) kommen als Nachricht und in die Chronik. Die Vereinsseite zeigt den Trophäenschrank, der Saisonabschluss die Saison in Zahlen.
@@ -983,6 +990,7 @@ untitled/
 │   │   ├── uiDialoge.js        # Gegneranalyse, Transferangebot, Matchplan, Ansprache
 │   │   ├── uiKarriere.js       # Entlassung, Angebote an den Trainer, Laufbahnende, Zeugnis
 │   │   ├── uiSpielfeld.js      # Leinwand des 2D-Spiels: Rasen, Radar, Einblendungen, Stadionklang
+│   │   ├── klang.js            # Pfiffe, Stadionkulisse, Menütöne und Menümusik (Web Audio, ohne Aufnahmen)
 │   │   ├── uiVorbereitung.js   # Vorbereitung: Stab, Sponsoren, Testspiele, Turniere
 │   │   ├── uiTransfers.js      # Verhandlungen, Leihen, U23, Transfermarkt, Scoutberichte
 │   │   ├── uiAkten.js          # Spieler- und Vereinsakte

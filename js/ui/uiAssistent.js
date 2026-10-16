@@ -854,7 +854,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             this.hideStartScreen();
             this.switchTab("dashboard");
             this.renderCurrentTab();
-            this.playSound("whistle");
+            this.playSound("anpfiff");
 
             const clubName = this.app.state?.clubs?.find(c => c.id === this.app.state.userClubId)?.name || selectedClub.name;
             this.showToast(`Karriere erfolgreich gestartet! Viel Erfolg bei ${clubName}! (Speicherplatz ${GameState.platzNummer(platz)})`, "success");

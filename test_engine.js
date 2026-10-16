@@ -4533,7 +4533,8 @@ function runEngineTests() {
         if (Math.hypot(live.ball.x - 50, live.ball.y - 50) > 2.5) {
             throw new Error(`Der Ball liegt nicht auf dem Anstoßpunkt (${live.ball.x.toFixed(1)}/${live.ball.y.toFixed(1)})`);
         }
-        if (!live.soundCues.includes("whistle")) throw new Error("Zum Anstoß ist kein Pfiff zu hören");
+        // Der Anstoß hat sein eigenes Pfiffmuster (Klang.PFIFFE.anpfiff)
+        if (!live.soundCues.includes("anpfiff")) throw new Error("Zum Anstoß ist kein Pfiff zu hören");
 
         // Erst nach dem Pfiff rollt der Ball wieder
         laufen(() => !!dir.kickoff);
@@ -13380,6 +13381,107 @@ function runEngineTests() {
         } finally {
             kader.forEach(p => { const [n, e, v] = stand.get(p.id); p.nationality = n; p.eigengewaechsVon = e; p.vereinSeit = v; });
         }
+    });
+
+    test("Klang: Kugelpfeife mit Pfiffmustern, Kulisse, Jubel nach Heim und Gast, selbst komponierte Menümusik", () => {
+        const { Klang } = require('./js/ui/klang.js');
+        // Ein nachgebauter AudioContext, der mitschreibt, was geplant wird
+        const protokoll = [];
+        const param = (wert = 0, art = "") => {
+            const p = { value: wert, art, punkte: [] };
+            ["setValueAtTime", "linearRampToValueAtTime", "exponentialRampToValueAtTime", "setTargetAtTime"].forEach(m => {
+                p[m] = (v, t) => { p.punkte.push([m, v, t]); return p; };
+            });
+            p.cancelScheduledValues = () => p;
+            return p;
+        };
+        const knoten = (typ, felder = {}) => Object.assign({ typ, connect: () => {}, disconnect: () => {} }, felder);
+        const ctx = {
+            sampleRate: 8000, currentTime: 0, destination: knoten("ziel"),
+            createGain: () => knoten("gain", { gain: param(1, "gain") }),
+            createOscillator: () => { const o = knoten("osc", { frequency: param(440, "freq"), detune: param(0), type: "sine", start: (t) => { o.startZeit = t; }, stop: (t) => { o.stopZeit = t; } }); protokoll.push(o); return o; },
+            createBiquadFilter: () => knoten("filter", { frequency: param(1000, "filter"), Q: param(1), type: "lowpass" }),
+            createBufferSource: () => knoten("quelle", { start: () => {}, stop: () => {}, loop: false, buffer: null }),
+            createBuffer: (k, n) => { const d = Array.from({ length: k }, () => new Float32Array(n)); return { duration: n / 8000, getChannelData: (i) => d[i] }; },
+            createDynamicsCompressor: () => knoten("komp", { threshold: param(), knee: param(), ratio: param(), attack: param(), release: param() }),
+            createConvolver: () => knoten("hall", { buffer: null }),
+            createStereoPanner: () => knoten("pan", { pan: param() })
+        };
+        const k = new Klang(ctx, { seed: 3 });
+
+        // Pfiffmuster: kurz beim Abseits, zweimal zur Halbzeit, dreimal zum Abpfiff - der letzte lang
+        const P = Klang.PFIFFE;
+        if (P.kurz.teile.length !== 1 || P.halbzeit.teile.length !== 2 || P.abpfiff.teile.length !== 3) throw new Error("Pfiffmuster falsch");
+        if (!(P.abpfiff.teile[2] > 2 * P.abpfiff.teile[0]) || !(P.anpfiff.teile[0] > P.foul.teile[0])) throw new Error("Langer Schlusspfiff fehlt");
+        const vorher = protokoll.length;
+        const ende = k.pfiff("abpfiff", 1);
+        const pfeifen = protokoll.slice(vorher).filter(o => o.frequency.punkte.some(([m, v]) => m === "linearRampToValueAtTime" && v > 2800 && v < 3300));
+        // Je Pfiff zwei Töne der Kugelpfeife - gezählt werden die Einsätze
+        const einsaetze = new Set(pfeifen.map(o => o.startZeit.toFixed(3)));
+        if (einsaetze.size !== 3 || pfeifen.length !== 6 || !(ende > 1 + 1.9)) throw new Error(`Abpfiff: ${einsaetze.size} Pfiffe bis ${ende}`);
+        // Zwei eng beieinander liegende Töne um 3 kHz, dazu die Kugel (Flattern um 30 Hz)
+        const neu = protokoll.slice(vorher);
+        if (!neu.some(o => o.frequency.value >= 25 && o.frequency.value <= 35)) throw new Error("Kugel flattert nicht");
+
+        // Jubel: das Stadion beim Heimtor deutlich lauter als der Gästeblock
+        const spitzen = [];
+        const gainVorher = ctx.createGain;
+        ctx.createGain = () => { const g = gainVorher(); spitzen.push(g); return g; };
+        const sammle = (f) => { spitzen.length = 0; f(); return Math.max(...spitzen.flatMap(g => g.gain.punkte.filter(([m]) => m === "linearRampToValueAtTime").map(([, v]) => v))); };
+        const heim = sammle(() => k.jubel(true, 2)), gast = sammle(() => k.jubel(false, 2));
+        ctx.createGain = gainVorher;
+        if (!(heim > gast * 2.5)) throw new Error(`Heimtor ${heim} nicht deutlich lauter als Gästetor ${gast}`);
+
+        // Kulisse: startet, lässt sich führen und stoppen
+        k.starteKulisse(0.8, 0);
+        k.setzeKulisse(0.3, 0.9, 1);
+        if (!k._kulisse || k._kulisse.lagen.length !== 3) throw new Error("Kulisse ohne Stimmlagen");
+        k.stoppeKulisse(1, 2);
+        if (k._kulisse) throw new Error("Kulisse läuft weiter");
+
+        // Alte Namen zeigen auf die neuen Klänge, keiner wirft
+        ["whistle", "goal", "gasp", "pfiffe", "gesang", "click", "crowd", "konferenz", "pfosten", "schuss", "tor_heim", "tor_gast", "halbzeit"].forEach(n => k.spiele(n, 3));
+
+        // Menümusik: A A B A, 32 Takte, nur Töne aus dem Akkord oder ohne Reibung
+        const M = Klang.MUSIK;
+        if (Klang.musikTakt(0).teil !== "A" || Klang.musikTakt(16).teil !== "B" || Klang.musikTakt(24).teil !== "A" || Klang.musikTakt(32).teil !== "A") throw new Error("Form falsch");
+        if (!(M.tempo >= 60 && M.tempo <= 90)) throw new Error("Zu schnell für entspannte Musik");
+        // Über drei Durchläufe: Kein Durchgangston reibt einen Halbton am Akkord,
+        // jede Phrase endet auf einem Akkordton, Pausen bleiben
+        const z = Klang.zufallsgenerator(5);
+        let letzte = null, melodieTakte = 0, toene = 0;
+        for (let i = 0; i < 96; i++) {
+            const plan = Klang.taktPlan(i, z, letzte);
+            letzte = plan.letzteNote;
+            const akkord = Klang.musikTakt(i).akkord[1];
+            plan.melodie.forEach(n => {
+                toene++;
+                // Akkordtöne dürfen nebeneinander liegen (die None am Grundton), Durchgangstöne nicht
+                if (!n.akkordton && akkord.some(a => [1, 11].includes(((n.note - a) % 12 + 12) % 12))) throw new Error(`Takt ${i}: Durchgangston ${n.note} reibt am Akkord`);
+                if (n.letzter && !n.akkordton) throw new Error(`Takt ${i}: Phrase endet nicht auf einem Akkordton`);
+                if (n.note < 60 || n.note > 81) throw new Error(`Takt ${i}: Melodie außerhalb der Lage`);
+            });
+            if (plan.melodie.length) melodieTakte++;
+            if (plan.piano.some(p => p.noten.join() !== akkord.join())) throw new Error(`Takt ${i}: E-Piano spielt nicht den Akkord`);
+            if (i < 4 && plan.besen) throw new Error("Besen von Anfang an");
+        }
+        if (!(melodieTakte > 25 && melodieTakte < 70) || toene < 80) throw new Error(`Melodie in ${melodieTakte} von 96 Takten`);
+        k.starteMusik(0, { planeBis: 0.1 + 32 * 240 / Klang.MUSIK.tempo - 0.01, seed: 5 });
+        if (k._musik.takt !== 32) throw new Error(`${k._musik.takt} Takte geplant`);
+        k.stoppeMusik(1, 100);
+        if (k.musikLaeuft) throw new Error("Musik läuft weiter");
+
+        // Keine Aufnahmen: Das Spiel bringt keine Audiodateien mit
+        const fs = require('fs'), path = require('path');
+        const dateien = [];
+        const lauf = (d) => fs.readdirSync(d, { withFileTypes: true }).forEach(e => {
+            if (["node_modules", ".git"].includes(e.name)) return;
+            const p = path.join(d, e.name);
+            if (e.isDirectory()) lauf(p); else dateien.push(p);
+        });
+        lauf(__dirname);
+        const audio = dateien.filter(p => /\.(mp3|ogg|wav|m4a|aac|flac|opus|webm)$/i.test(p));
+        if (audio.length) throw new Error(`Audiodateien im Projekt: ${audio.slice(0, 3).join(", ")}`);
     });
 
     test("Regionalscouts: mehr Wissen in der Region, Talentmeldungen, Kosten und Rahmen je Liga", () => {

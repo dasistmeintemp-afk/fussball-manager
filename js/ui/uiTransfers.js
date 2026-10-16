@@ -324,7 +324,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ev.stopPropagation();
             const res = engine.zieheKaufoption(state, btn.dataset.kaufoptionZiehen);
             this.showToast(res.success ? `Fest verpflichtet für ${this.geldKurz(res.preis)}.` : res.error, res.success ? "success" : "error", 5000);
-            if (res.success) { this.playSound("goal"); neuZeichnen(); }
+            if (res.success) { this.playSound("erfolg"); neuZeichnen(); }
         }));
         eigene.querySelectorAll("[data-leihe-zurueck]").forEach(btn => btn.addEventListener("click", (ev) => {
             ev.stopPropagation();
@@ -338,7 +338,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const option = markt.querySelector(`[data-kaufoption="${btn.dataset.ausleihen}"]`)?.checked;
             const res = engine.ausleihen(state, btn.dataset.ausleihen, null, { kaufoption: !!option });
             this.showToast(res.success ? `${res.eintrag.name} spielt bis zum Saisonende für Sie.` : res.error, res.success ? "success" : "error", 5000);
-            if (res.success) { this.playSound("goal"); neuZeichnen(); }
+            if (res.success) { this.playSound("erfolg"); neuZeichnen(); }
         }));
         [...eigene.querySelectorAll(".leih-zeile"), ...markt.querySelectorAll("tr[data-player-id]")].forEach(el => el.addEventListener("click", () => {
             const ziel = state.players.find(p => String(p.id) === el.dataset.playerId);

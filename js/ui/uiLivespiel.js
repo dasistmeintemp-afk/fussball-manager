@@ -261,8 +261,6 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         }
         this.bereiteMatchCenterVor(liveMatch);
 
-        this.playSound("whistle");
-
         const canvas = document.getElementById("livePitchCanvas");
         const ctx = canvas.getContext("2d");
 
@@ -285,6 +283,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this.liveStatCache = {};
         this.renderedEventCount = 0;
         this._halftimeTalkShown = false;
+        this._halbzeitPfiff = false;
 
         const updateLiveUI = () => {
             // Halbzeitansprache: einmal, sobald die Pause erreicht ist - also
@@ -294,6 +293,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const halbzeitErreicht = typeof liveMatch.istHalbzeitpause === "function"
                 ? liveMatch.istHalbzeitpause()
                 : (liveMatch.minute >= 45 && liveMatch.minute < 47);
+            // Zur Pause zwei Pfiffe, der zweite lang
+            if (halbzeitErreicht && !this._halbzeitPfiff && !liveMatch.isFinished) {
+                this._halbzeitPfiff = true;
+                if (!liveMatch.ohneBild) this.playSound("halbzeit");
+            }
             if (!this._halftimeTalkShown && halbzeitErreicht && !liveMatch.isFinished) {
                 this._halftimeTalkShown = true;
                 const warPausiert = liveMatch.isPaused;
@@ -861,10 +865,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     window.removeEventListener("resize", this.liveResizeHandler);
                     this.liveResizeHandler = null;
                 }
-                this.stopCrowdAmbience();
+                // Abpfiff: drei Pfiffe, der letzte lang - die Kulisse klingt aus,
+                // die Menümusik kommt erst mit dem Spielbericht zurück
+                if (!liveMatch.ohneBild) this.playSound("abpfiff");
+                this.stopCrowdAmbience({ ohneMusik: true, ausblenden: 3 });
                 updateLiveUI();
                 if (!this.zeichne3D(liveMatch)) render2DCanvas();
-                this.playSound("whistle");
                 // Die übrigen Partien laufen parallel - beim Abpfiff steht
                 // auch die Tabelle beziehungsweise das Tableau der Runde
                 if (this._laufenderPokaltermin) {
@@ -1053,6 +1059,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 blitz.innerHTML = `<span class="lm-konf-blitz-kopf">Konferenz · ${t.minute}'</span>`
                     + `<span class="lm-konf-blitz-text">${this.escapeHtml(p.heim)} <strong>${t.heim}:${t.gast}</strong> ${this.escapeHtml(p.gast)}</span>`;
                 blitz.hidden = false;
+                // Der Gong vor der Durchsage - nur bei den Tabellennachbarn, sonst gongte es ständig
+                this.playSound("konferenz");
                 clearTimeout(this._konfBlitzTimer);
                 this._konfBlitzTimer = setTimeout(() => { blitz.hidden = true; }, 4500);
             }
@@ -1175,7 +1183,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (!r) return;
         // Tore haben ihren eigenen Ticker-Eintrag - die Ränge kommen eine Zeile später
         this.atmoTicker(`${r.art === "pfiffe" ? "📣" : r.art === "stille" ? "🤫" : r.art === "applaus" ? "👏" : "🎶"} ${r.text}`, minute);
-        if (r.klang && !liveMatch.ohneBild) this.playSound(r.klang);
+        // Applaus hat in der Stimmung keinen eigenen Klang - jetzt schon
+        const klang = r.klang || (r.art === "applaus" ? "applaus" : null);
+        if (klang && !liveMatch.ohneBild) this.playSound(klang);
     },
 
     // ------------------------------------------------------------ Seitenlinie
@@ -1184,7 +1194,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     schalteOhneBild(liveMatch) {
         if (!liveMatch || liveMatch.isFinished) return;
         if (this.spielfeld3d) this.spielfeld3d.beendeWiederholung();
-        this.stopCrowdAmbience();
+        this.stopCrowdAmbience({ ohneMusik: true });
         if (this.coach) {
             this.coach = null;
             const coachModal = document.getElementById("modalCoaching");

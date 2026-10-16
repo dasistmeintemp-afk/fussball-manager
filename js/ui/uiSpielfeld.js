@@ -188,53 +188,22 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     },
 
     /**
-     * Stadionatmosphäre: ein durchgehendes Rauschen als Publikum, dessen
-     * Lautstärke sich nach der Spielsituation richtet. Ohne Ton wirkt selbst
-     * eine gute Simulation leblos.
+     * Stadionatmosphäre: die Kulisse der Klang-Engine (js/ui/klang.js), deren
+     * Lautstärke und Helligkeit sich nach der Spielsituation richten. Ohne Ton
+     * wirkt selbst eine gute Simulation leblos.
      */
     startCrowdAmbience() {
+        // Im Livespiel spielt die Kulisse, nicht die Menümusik
+        if (typeof this.setzeLivespielTon === "function") this.setzeLivespielTon(true);
         if (!this.soundEnabled) return;
+        const k = typeof this.klang === "function" ? this.klang() : null;
+        if (!k) return;
         try {
-            if (!this.audioCtx && typeof window !== "undefined") {
-                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-                if (typeof AudioContextClass === "function") this.audioCtx = new AudioContextClass();
-            }
-            const ctx = this.audioCtx;
-            if (!ctx || this.crowd) return;
-            if (ctx.state === "suspended") ctx.resume();
-
-            // Rosa-artiges Rauschen als Grundlage für den Zuschauerteppich
-            const seconds = 3;
-            const buffer = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);
-            const data = buffer.getChannelData(0);
-            let b0 = 0, b1 = 0, b2 = 0;
-            for (let i = 0; i < data.length; i++) {
-                const white = Math.random() * 2 - 1;
-                b0 = 0.99765 * b0 + white * 0.0990460;
-                b1 = 0.96300 * b1 + white * 0.2965164;
-                b2 = 0.57000 * b2 + white * 1.0526913;
-                data[i] = (b0 + b1 + b2 + white * 0.1848) * 0.16;
-            }
-
-            const source = ctx.createBufferSource();
-            source.buffer = buffer;
-            source.loop = true;
-
-            // Bandpass macht aus dem Rauschen ein Stimmengewirr
-            const filter = ctx.createBiquadFilter();
-            filter.type = "bandpass";
-            filter.frequency.value = 620;
-            filter.Q.value = 0.7;
-
-            const gain = ctx.createGain();
-            gain.gain.value = 0.0;
-
-            source.connect(filter);
-            filter.connect(gain);
-            gain.connect(ctx.destination);
-            source.start();
-
-            this.crowd = { source, gain, filter, level: 0 };
+            if (k.ctx.state === "suspended") k.ctx.resume();
+            // Die Größe der Kulisse: Auslastung und Bedeutung (AtmosphaereEngine)
+            const stimmung = this._atmo ? this._atmo.intensitaet : 0.5;
+            k.starteKulisse(Math.max(0.15, Math.min(1, stimmung)));
+            this.crowd = { level: 0, erregung: 0 };
         } catch (e) {
             console.warn("Stadionatmosphäre nicht verfügbar:", e);
         }
@@ -245,7 +214,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
      */
     updateCrowdAmbience(liveMatch, dt) {
         const crowd = this.crowd;
-        if (!crowd || !this.audioCtx) return;
+        const k = this._klang;
+        if (!crowd || !k) return;
 
         const dir = liveMatch.director;
         const mode = dir?.mode || "ambient";
@@ -256,29 +226,30 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             Math.abs(liveMatch.ball.x - 96)
         ) / 45);
 
-        let target = 0.05 + ballThreat * 0.09;
-        if (mode === "highlight") target += 0.06;
+        let target = 0.1 + ballThreat * 0.12;
+        let erregung = ballThreat * 0.5;
+        if (mode === "highlight") { target += 0.08; erregung += 0.3; }
         if (dir?.deadBall) target += 0.02;
-        if (liveMatch.goalFlash > 0) target = 0.34;
-        if (mode === "celebration") target = 0.3;
-        // Ein Derby ist lauter als ein Testspiel (AtmosphaereEngine)
-        const stimmung = this._atmo ? this._atmo.intensitaet : 0.5;
-        target *= 0.75 + stimmung * 0.5;
+        if (liveMatch.goalFlash > 0 || mode === "celebration") { target = 0.3; erregung = 0.9; }
 
         crowd.level += (target - crowd.level) * Math.min(1, dt * 2.2);
+        crowd.erregung += (Math.min(1, erregung) - crowd.erregung) * Math.min(1, dt * 1.5);
+        // Nicht jedes Bild neu setzen - alle Zehntelsekunde reicht
+        crowd.seit = (crowd.seit || 0) + dt;
+        if (crowd.seit < 0.1) return;
+        crowd.seit = 0;
         try {
-            crowd.gain.gain.setTargetAtTime(crowd.level, this.audioCtx.currentTime, 0.12);
+            k.setzeKulisse(crowd.level, crowd.erregung);
         } catch (e) { /* Browser ohne setTargetAtTime */ }
     },
 
-    /** Beendet die Stadionatmosphäre */
-    stopCrowdAmbience() {
-        if (!this.crowd) return;
-        try {
-            this.crowd.gain.gain.value = 0;
-            this.crowd.source.stop();
-        } catch (e) { /* bereits gestoppt */ }
+    /** Beendet die Stadionatmosphäre - danach darf die Menümusik wieder */
+    stopCrowdAmbience(optionen = {}) {
+        if (this._klang) {
+            try { this._klang.stoppeKulisse(optionen.ausblenden || 1.2); } catch (e) { /* bereits gestoppt */ }
+        }
         this.crowd = null;
+        if (!optionen.ohneMusik && typeof this.setzeLivespielTon === "function") this.setzeLivespielTon(false);
     },
 
     /**

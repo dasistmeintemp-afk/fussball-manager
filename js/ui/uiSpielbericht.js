@@ -172,6 +172,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     },
 
     showMatchReportModal(match) {
+        // Nach dem Spiel darf die Menümusik wieder
+        if (typeof this.setzeLivespielTon === "function") this.setzeLivespielTon(false);
         const state = this.app.state;
         const home = state.clubs.find(c => c.id === match.homeClubId);
         const away = state.clubs.find(c => c.id === match.awayClubId);

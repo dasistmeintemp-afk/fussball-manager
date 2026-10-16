@@ -443,132 +443,91 @@ class UIManager {
     }
 
     /**
-     * Töne synthetisieren (Web Audio API)
+     * Der Klang des Spiels (js/ui/klang.js): ein AudioContext für alles,
+     * erzeugt beim ersten Ton. Die Effekte schaltet "Sound", die
+     * Menümusik "Musik" - beides eine Vorliebe des Geräts.
      */
+    klang() {
+        if (this._klang) return this._klang;
+        try {
+            const AudioContextClass = typeof window !== "undefined" ? (window.AudioContext || window.webkitAudioContext) : null;
+            const KlangKlasse = typeof Klang !== "undefined" ? Klang : (typeof window !== "undefined" ? window.Klang : null);
+            if (typeof AudioContextClass !== "function" || !KlangKlasse) return null;
+            this.audioCtx = new AudioContextClass();
+            this._klang = new KlangKlasse(this.audioCtx, { seed: Date.now() % 1e9, musikLautstaerke: this.musikLautstaerke ?? 0.6 });
+        } catch (e) {
+            console.warn("Audio nicht verfügbar:", e);
+            this._klang = null;
+        }
+        return this._klang;
+    }
+
+    /** Spielt einen Klang (Pfiff, Jubel, Menüton ...) - siehe Klang.spiele */
     playSound(type) {
         if (!this.soundEnabled) return;
+        const k = this.klang();
+        if (!k) return;
         try {
-            if (!this.audioCtx && typeof window !== "undefined") {
-                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-                if (typeof AudioContextClass === "function") {
-                    this.audioCtx = new AudioContextClass();
-                }
-            }
-            if (!this.audioCtx) return;
-            if (this.audioCtx.state === 'suspended') {
-                this.audioCtx.resume();
-            }
+            if (k.ctx.state === "suspended") k.ctx.resume();
+            k.spiele(type);
+        } catch (e) {
+            console.warn("Klang nicht verfügbar:", e);
+        }
+    }
 
-            const ctx = this.audioCtx;
-            const now = ctx.currentTime;
-
-            if (type === "whistle") {
-                // Pfiff: Hoher Sinus-Ton mit kurzer Frequenzmodulation
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = "sine";
-                osc.frequency.setValueAtTime(2200, now);
-                osc.frequency.exponentialRampToValueAtTime(1800, now + 0.25);
-                gain.gain.setValueAtTime(0.15, now);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(now);
-                osc.stop(now + 0.3);
-            } else if (type === "goal") {
-                // Torjubel: Akkord & Aufsteigende Fanfare
-                [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
-                    const osc = ctx.createOscillator();
-                    const gain = ctx.createGain();
-                    osc.type = "triangle";
-                    osc.frequency.setValueAtTime(freq, now + i * 0.08);
-                    gain.gain.setValueAtTime(0.15, now + i * 0.08);
-                    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.6);
-                    osc.connect(gain);
-                    gain.connect(ctx.destination);
-                    osc.start(now + i * 0.08);
-                    osc.stop(now + i * 0.08 + 0.6);
-                });
-            } else if (type === "pfiffe") {
-                // Pfeifkonzert: viele hohe, leicht schwankende Pfiffe durcheinander
-                for (let i = 0; i < 9; i++) {
-                    const start = now + Math.random() * 0.9;
-                    const dauer = 0.35 + Math.random() * 0.6;
-                    const osc = ctx.createOscillator();
-                    const gain = ctx.createGain();
-                    osc.type = "sine";
-                    const f = 2300 + Math.random() * 1400;
-                    osc.frequency.setValueAtTime(f, start);
-                    osc.frequency.linearRampToValueAtTime(f * (0.93 + Math.random() * 0.12), start + dauer);
-                    gain.gain.setValueAtTime(0.0001, start);
-                    gain.gain.exponentialRampToValueAtTime(0.025, start + 0.05);
-                    gain.gain.exponentialRampToValueAtTime(0.0001, start + dauer);
-                    osc.connect(gain);
-                    gain.connect(ctx.destination);
-                    osc.start(start);
-                    osc.stop(start + dauer + 0.05);
-                }
-            } else if (type === "gesang") {
-                // Gesang der Kurve: ein tiefer Chor im Takt, darunter Trommelschläge
-                const melodie = [196, 196, 220, 247, 220, 196, 175, 196];
-                melodie.forEach((f, i) => {
-                    const start = now + i * 0.26;
-                    [1, 1.5].forEach(teil => {
-                        const osc = ctx.createOscillator();
-                        const gain = ctx.createGain();
-                        osc.type = "sawtooth";
-                        osc.frequency.setValueAtTime(f * teil, start);
-                        gain.gain.setValueAtTime(0.0001, start);
-                        gain.gain.exponentialRampToValueAtTime(teil === 1 ? 0.03 : 0.012, start + 0.06);
-                        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.24);
-                        osc.connect(gain);
-                        gain.connect(ctx.destination);
-                        osc.start(start);
-                        osc.stop(start + 0.26);
-                    });
-                    if (i % 2 === 0) {
-                        const trommel = ctx.createOscillator();
-                        const tg = ctx.createGain();
-                        trommel.type = "sine";
-                        trommel.frequency.setValueAtTime(110, start);
-                        trommel.frequency.exponentialRampToValueAtTime(50, start + 0.12);
-                        tg.gain.setValueAtTime(0.09, start);
-                        tg.gain.exponentialRampToValueAtTime(0.0001, start + 0.15);
-                        trommel.connect(tg);
-                        tg.connect(ctx.destination);
-                        trommel.start(start);
-                        trommel.stop(start + 0.16);
-                    }
-                });
-            } else if (type === "gasp") {
-                // Raunen im Stadion bei einer vergebenen Chance
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = "sawtooth";
-                osc.frequency.setValueAtTime(180, now);
-                osc.frequency.exponentialRampToValueAtTime(90, now + 0.55);
-                gain.gain.setValueAtTime(0.0001, now);
-                gain.gain.exponentialRampToValueAtTime(0.06, now + 0.12);
-                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(now);
-                osc.stop(now + 0.6);
-            } else if (type === "click") {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = "sine";
-                osc.frequency.setValueAtTime(800, now);
-                gain.gain.setValueAtTime(0.05, now);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start(now);
-                osc.stop(now + 0.05);
+    /**
+     * Die Menümusik läuft, wenn sie eingeschaltet ist und gerade kein
+     * Livespiel läuft - dort spielt die Kulisse. Browser lassen Ton erst
+     * nach dem ersten Tippen zu; bis dahin wartet sie.
+     */
+    pruefeMusik() {
+        const soll = this.musikAn && this._tonFrei && !this._imLivespiel && !(typeof document !== "undefined" && document.hidden);
+        const k = soll || this._klang ? this.klang() : null;
+        if (!k) return;
+        try {
+            if (soll) {
+                if (k.ctx.state === "suspended") k.ctx.resume();
+                if (!k.musikLaeuft) k.starteMusik();
+            } else if (k.musikLaeuft) {
+                k.stoppeMusik(this._imLivespiel ? 1.5 : 0.8);
             }
         } catch (e) {
-            console.warn("Audio Context nicht verfügbar:", e);
+            console.warn("Musik nicht verfügbar:", e);
         }
+    }
+
+    /** Livespiel beginnt oder endet: Musik aus, Kulisse an - und umgekehrt */
+    setzeLivespielTon(laeuft) {
+        this._imLivespiel = !!laeuft;
+        this.pruefeMusik();
+    }
+
+    musikKnopfHtml() {
+        return this.musikAn
+            ? `<svg class="ico" aria-hidden="true"><use href="#i-volume"/></svg><span>Musik: An</span>`
+            : `<svg class="ico" aria-hidden="true"><use href="#i-volume-off"/></svg><span>Musik: Aus</span>`;
+    }
+
+    /** Ton freigeben: beim ersten Tippen, dazu Pause, wenn die Seite verborgen ist */
+    richteTonEin() {
+        if (typeof document === "undefined" || this._tonEingerichtet) return;
+        this._tonEingerichtet = true;
+        const frei = () => {
+            if (this._tonFrei) return;
+            this._tonFrei = true;
+            const k = this._klang;
+            if (k && k.ctx.state === "suspended") k.ctx.resume();
+            this.pruefeMusik();
+        };
+        ["pointerdown", "keydown", "touchend"].forEach(art => document.addEventListener(art, frei, { once: false, passive: true }));
+        document.addEventListener("visibilitychange", () => {
+            const k = this._klang;
+            if (!k) return;
+            try {
+                if (document.hidden) k.ctx.suspend();
+                else if (this._tonFrei) { k.ctx.resume(); this.pruefeMusik(); }
+            } catch (e) { /* ohne suspend/resume läuft es weiter */ }
+        });
     }
 
     /**
@@ -1844,7 +1803,7 @@ class UIManager {
         const wahl = document.querySelector(`[data-wv-offer="${offerId}"]`);
         const r = TransferEngine.nimmAngebotAn(state, offerId, { weiterverkauf: parseInt(wahl?.value || "0", 10) });
         if (!r.ok) { this.showToast(r.grund || "Das Angebot liegt nicht mehr vor.", "error"); return false; }
-        this.playSound("goal");
+        this.playSound("erfolg");
         this.showToast(`✅ ${r.offer.playerName} wechselt für ${this.geldKurz(r.offer.fee)} zu ${r.offer.fromClubName}.`, "success", 6000);
         if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
         this.renderHeader();
@@ -3019,7 +2978,7 @@ class UIManager {
             // das Saisonende im Kalender verschluckt: keine Ehrung, keine neue
             // Saison - das Spiel blieb für immer am 34. Spieltag stehen.
             if (res.matchResult && res.matchResult.seasonEnded) {
-                this.playSound("whistle");
+                this.playSound("abpfiff");
                 if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
                 this.showSeasonEndCelebration(res.matchResult);
                 return;
@@ -3027,10 +2986,10 @@ class UIManager {
             if (res.type === "season_change") return this.zeigeSaisonwechsel(res);
 
             if (res.type === "matchday" && res.matchResult) {
-                this.playSound("whistle");
+                this.playSound("pfiff_menue");
                 this.showToast(`⚽ Spieltag ${state.currentMatchday - 1} wurde simuliert!`, "success");
             } else if (res.type === "cup" || res.type === "euro") {
-                this.playSound("whistle");
+                this.playSound("pfiff_menue");
                 this.showToast(this.pokalabendMeldung(state, res), "info");
             } else {
                 // Der volle Tagesbericht landet im Kalender, die Kurzfassung im Toast
@@ -3074,7 +3033,7 @@ class UIManager {
                 .map(tag => tag.matchResult)
                 .find(m => m && m.seasonEnded);
             if (saisonEnde) {
-                this.playSound("whistle");
+                this.playSound("abpfiff");
                 if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
                 this.showSeasonEndCelebration(saisonEnde);
                 return;
@@ -3123,7 +3082,7 @@ class UIManager {
         `;
 
         modal.style.display = "flex";
-        this.playSound("goal");
+        this.playSound("erfolg");
 
         details.querySelectorAll(".attention-name").forEach(btn => btn.addEventListener("click", () => {
             modal.style.display = "none";
@@ -3201,7 +3160,7 @@ class UIManager {
     zeigeSaisonwechsel(res) {
         const state = this.app.state;
         if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
-        this.playSound("whistle");
+        this.playSound("anpfiff");
         const saison = res?.neueSaison || state.seasonYear;
         if (this.frischLadenFaellig()) {
             this.ladeFrisch(saison);
@@ -3695,17 +3654,41 @@ class UIManager {
         };
 
         // Der Ton ist eine Vorliebe des Geräts, nicht des Spielstands
-        try {
-            if (typeof localStorage !== "undefined" && localStorage.getItem("fm_sound") === "aus") this.soundEnabled = false;
-        } catch (e) { /* ohne Speicher bleibt der Ton an */ }
+        const lies = (key) => { try { return typeof localStorage !== "undefined" ? localStorage.getItem(key) : null; } catch (e) { return null; } };
+        const merke = (key, wert) => { try { if (typeof localStorage !== "undefined") localStorage.setItem(key, wert); } catch (e) { /* gilt dann nur für diese Sitzung */ } };
+        if (lies("fm_sound") === "aus") this.soundEnabled = false;
+        this.musikAn = lies("fm_musik") !== "aus";
+        const vol = parseInt(lies("fm_musik_vol") || "", 10);
+        this.musikLautstaerke = Number.isFinite(vol) ? Math.max(0, Math.min(100, vol)) / 100 : 0.6;
         document.getElementById("btnToggleSound").innerHTML = this.soundKnopfHtml();
         document.getElementById("btnToggleSound").onclick = () => {
             this.soundEnabled = !this.soundEnabled;
             document.getElementById("btnToggleSound").innerHTML = this.soundKnopfHtml();
-            try {
-                if (typeof localStorage !== "undefined") localStorage.setItem("fm_sound", this.soundEnabled ? "an" : "aus");
-            } catch (e) { /* nicht speicherbar - gilt dann nur für diese Sitzung */ }
+            merke("fm_sound", this.soundEnabled ? "an" : "aus");
+            // Ohne Effekte auch keine Kulisse
+            if (!this.soundEnabled && typeof this.stopCrowdAmbience === "function") this.stopCrowdAmbience({ ohneMusik: true });
         };
+        const musikKnopf = document.getElementById("btnToggleMusik");
+        if (musikKnopf) {
+            musikKnopf.innerHTML = this.musikKnopfHtml();
+            musikKnopf.onclick = () => {
+                this.musikAn = !this.musikAn;
+                musikKnopf.innerHTML = this.musikKnopfHtml();
+                merke("fm_musik", this.musikAn ? "an" : "aus");
+                this._tonFrei = true;
+                this.pruefeMusik();
+            };
+        }
+        const regler = document.getElementById("musikLautstaerke");
+        if (regler) {
+            regler.value = String(Math.round(this.musikLautstaerke * 100));
+            regler.oninput = () => {
+                this.musikLautstaerke = Math.max(0, Math.min(100, parseInt(regler.value, 10) || 0)) / 100;
+                merke("fm_musik_vol", String(Math.round(this.musikLautstaerke * 100)));
+                if (this._klang) this._klang.setzeMusikLautstaerke(this.musikLautstaerke);
+            };
+        }
+        this.richteTonEin();
     }
 }
 

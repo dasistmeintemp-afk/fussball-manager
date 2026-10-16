@@ -737,7 +737,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 this.showToast(res.grund, "error", 6000);
                 return false;
             }
-            this.playSound("whistle");
+            this.playSound("erfolg");
             this.showToast(`${res.name}: ${art === "ausbau" ? "Ausbau" : "Sanierung"} begonnen — ${res.spieltage} Spieltage`
                 + (res.rate ? `, ${geld(res.rate)} je Spieltag an die Bank.` : `, ${geld(res.kosten)}.`), "success");
             if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();

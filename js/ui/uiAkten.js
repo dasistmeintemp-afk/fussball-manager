@@ -118,7 +118,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             this.showToast(res.error || "Der Scout kann gerade nicht los.", "warning", 5000);
             return;
         }
-        this.playSound("whistle");
+        this.playSound("erfolg");
         this.showToast(`🔭 ${res.scout.name} beobachtet ${res.player.name} - Bericht in etwa ${res.tage} Tagen im Postfach.`, "success", 5000);
         if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
         if (typeof danach === "function") danach();
@@ -1188,7 +1188,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             document.getElementById("btnPdKlausel")?.addEventListener("click", () => {
                 const res = TransferEngine.zieheAusstiegsklausel(state, player.id);
                 if (!res.success) { this.showToast(res.error, "error"); return; }
-                this.playSound("goal");
+                this.playSound("erfolg");
                 this.showToast(`⚡ Klausel gezogen: ${player.name} kommt für ${this.geldKurz(res.klausel)} (${this.geldKurz(res.lohn)} / Woche, ${res.laufzeit} Jahre).`, "success", 6000);
                 if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
                 this.renderHeader();
@@ -1356,7 +1356,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 if (res.success) {
                     feedback.style.color = "#34d399";
                     feedback.textContent = `✅ ${res.reason}`;
-                    this.playSound("goal");
+                    this.playSound("erfolg");
                     this.showToast(`Vertrag mit ${player.name} erfolgreich verlängert!`, "success");
                     this.app.state.saveToLocalStorage();
                     setTimeout(() => {

@@ -1716,7 +1716,7 @@ class LiveMatchDirector {
                     this.match.setPiece = { ...ecke };
                     this._eckeSchnitt = true;
                 }
-                this.cueSound("whistle");
+                // Zur Ecke zeigt der Schiedsrichter nur - gepfiffen wird nicht
             }
 
             // Elfmeter: Zwischen Pfiff und Ausführung liegen in der Timeline
@@ -1744,7 +1744,7 @@ class LiveMatchDirector {
                 this.deadBall = { kind: "freekick", team: schuetzenTeam, x: start.x, y: start.y, direkt: true };
                 this.match.setPiece = { kind: "freekick", team: schuetzenTeam, x: start.x, y: start.y };
                 this.setPieceWall = this.buildWall(schuetzenTeam, start.x, start.y);
-                this.cueSound("whistle");
+                this.cueSound("pfiff_kurz");
             }
 
             // Wer die Ecke tritt, steht nicht immer in der Timeline - dann
@@ -2201,12 +2201,18 @@ class LiveMatchDirector {
                 ? (this.match.awayClub?.name || "Gast") : (this.match.homeClub?.name || "Heim"), "rgba(22, 101, 52, 0.9)");
             return;
         }
-        if (ev.type === "foul" || ev.type === "yellow_card" || ev.type === "red_card") {
-            this.cueSound("whistle");
+        // Klänge: Pfiffmuster je Vergehen, Jubel je nachdem, wer trifft, ein
+        // Raunen der Heimfans bei der eigenen Chance, ein leiseres bei der des Gegners
+        if (ev.type === "foul") {
+            this.cueSound("pfiff_foul");
+        } else if (ev.type === "yellow_card" || ev.type === "red_card") {
+            this.cueSound("pfiff_karte");
         } else if (ev.type === "goal") {
-            this.cueSound("goal");
+            this.cueSound("schuss");
+            this.cueSound(ev.team === "home" ? "tor_heim" : "tor_gast");
         } else if (ev.type === "save" || ev.type === "shot_miss") {
-            this.cueSound("gasp");
+            this.cueSound(ev.outcome === "woodwork" ? "pfosten" : "schuss");
+            this.cueSound(ev.team === "home" ? "raunen" : "raunen_gast");
         }
 
         const tatort = this.eventPoint(ev.start) || this.eventPoint(ev.end) || null;
@@ -2729,7 +2735,7 @@ class LiveMatchDirector {
 
         this.flowStats.turnovers++;
         this.abseitsSperre = 12;
-        this.cueSound("whistle");
+        this.cueSound("pfiff_kurz");
         this.showBanner("🚩 ABSEITS", receiver.name || "", "rgba(180, 83, 9, 0.94)");
 
         this.startAmbient(team, { pickCarrier: false });
@@ -3700,7 +3706,7 @@ class LiveMatchDirector {
                 this.carrierId = this.kickoffTakerId || this.carrierId;
                 k.timer = this.bildschirmZeit(1.0);
                 this.match.kickoff = { team: k.team, phase: "whistle", reason: k.reason };
-                this.cueSound("whistle");
+                this.cueSound("anpfiff");
 
                 // Der Banner gehoert an den Pfiff. Vorher hing er am
                 // Minutenzaehler und erschien erst, wenn die erste Spielminute
@@ -3783,7 +3789,8 @@ class LiveMatchDirector {
             this.bildschirmZeit(3.2),
             wegZumBall / laufTempo + this.bildschirmZeit(0.35)
         ));
-        if (kind !== "throwin") this.cueSound("whistle");
+        // Gepfiffen wird zum Freistoß und zum Elfmeter, nicht zu Einwurf, Ecke oder Abstoß
+        if (kind === "freekick" || kind === "penalty") this.cueSound("pfiff_kurz");
         this.match.setPiece = { kind, team, x, y };
 
         // Ein Freistoß an der Mittellinie ist nicht "aussichtsreich" - dafür

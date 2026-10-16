@@ -1508,9 +1508,15 @@
                         </div>
 
                         <div class="dash-card">
-                            <h3>Sound & Audio-Effekte</h3>
-                            <p>Synthetisierte Soundeffekte für Stadion-Atmosphäre, Pfiffe und Tore.</p>
-                            <button class="btn btn-secondary" id="btnToggleSound"><svg class="ico" aria-hidden="true"><use href="#i-volume"/></svg><span>Sound: Aktiviert</span></button>
+                            <h3>Sound & Musik</h3>
+                            <p>Pfiffe, Stadionkulisse und Menütöne entstehen im Browser. Dazu ruhige Menümusik, die im Livespiel ausblendet - dort spielt die Kulisse.</p>
+                            <div class="ton-knoepfe">
+                                <button class="btn btn-secondary" id="btnToggleSound"><svg class="ico" aria-hidden="true"><use href="#i-volume"/></svg><span>Sound: Aktiviert</span></button>
+                                <button class="btn btn-secondary" id="btnToggleMusik"><svg class="ico" aria-hidden="true"><use href="#i-volume"/></svg><span>Musik: An</span></button>
+                            </div>
+                            <label class="ton-regler">Lautstärke der Musik
+                                <input type="range" id="musikLautstaerke" min="0" max="100" step="5" value="60">
+                            </label>
                         </div>
 
                         <div class="dash-card">
@@ -2383,6 +2389,7 @@
     <script src="js/engine/trainerProfilEngine.js"></script>
     <script src="js/engine/rivalryEngine.js"></script>
     <script src="js/engine/seasonEngine.js"></script>
+    <script src="js/ui/klang.js"></script>
     <script src="js/ui/uiManager.js"></script>
     <script src="js/ui/uiAssistent.js"></script>
     <script src="js/ui/uiKader.js"></script>

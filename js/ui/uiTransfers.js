@@ -117,7 +117,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     </label>
                     <label>Laufzeit
                         <select class="styled-select neg-years" data-neg-id="${n.id}">
-                            ${[1, 2, 3, 4, 5].map(j => `<option value="${j}" ${j === (n.demand.years || 3) ? "selected" : ""}>${j} Jahr${j > 1 ? "e" : ""}</option>`).join("")}
+                            ${[1, 2, 3, 4, 5].filter(j => j <= (typeof engine.maxJahre === "function" ? engine.maxJahre(state, n) : 5)).map(j => `<option value="${j}" ${j === (n.demand.years || 3) ? "selected" : ""}>${j} Jahr${j > 1 ? "e" : ""}</option>`).join("")}
                         </select>
                     </label>
                     <label>Handgeld (€)

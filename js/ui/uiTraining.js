@@ -143,6 +143,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this.renderTrainingReport();
         this.renderAkademieSchwerpunkte(state, userClub);
         this.renderAkademieZugang(state);
+        this.renderFremdeTalente(state);
         this.renderJugendliga(state);
 
         const engine = this.getNegotiationEngine();
@@ -176,34 +177,53 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     if (ergaenzt && typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
                 }
 
+                const youthV = (typeof YouthEngine !== "undefined" && YouthEngine) ? YouthEngine : window.YouthEngine;
+                const heute = youthV && typeof youthV._heute === "function" ? youthV._heute(state) : 0;
                 prospectsBody.innerHTML = prospects.map(p => {
                     const gespraech = laufende.find(n => String(n.prospectId) === String(p.id));
+                    const vertrag = youthV && typeof youthV.vertragsLage === "function" ? youthV.vertragsLage(state, userClub, p) : null;
+                    const anfrage = youthV && typeof youthV.offeneAnfrage === "function" ? youthV.offeneAnfrage(state, p.id) : null;
 
-                    const standHtml = gespraech
+                    // Vertrag und Stand: der Jugendvertrag, laufende Gespräche, ein Werber
+                    const standHtml = (gespraech
                         ? `<div style="font-size:12px;">
                                <strong>${this.escapeHtml(gespraech.agentName)}</strong>
                                <div class="text-muted">${this.escapeHtml(engine.describe(gespraech))}</div>
                            </div>`
-                        : `<span class="text-muted" style="font-size:12px;">Noch keine Gespräche</span>`;
+                        : `<span class="text-muted talent-vertrag">${this.escapeHtml(vertrag ? vertrag.text : "Noch keine Gespräche")}</span>`)
+                        + (anfrage ? `<div class="talent-anfrage">📨 ${this.escapeHtml(anfrage.clubName)} wirbt · noch ${Math.max(0, anfrage.bis - heute)} Tage · Entschädigung ${this.formatMoneySafe(anfrage.betrag)}</div>` : "");
 
+                    const zuJung = youthV && typeof youthV.profiHindernis === "function" ? youthV.profiHindernis(userClub, p) : null;
+                    const profiKnopf = zuJung
+                        ? `<button class="btn btn-sm btn-secondary" disabled title="${this.escapeHtml(zuJung)}">Profi ab ${vertrag ? vertrag.profiAb : 16}</button>`
+                        : `<button class="btn btn-sm btn-primary btn-promote-prospect" data-prospect-id="${p.id}">Profivertrag anbieten</button>`;
+                    const profisKnopf = (p.age || 0) >= (youthV?.MIT_PROFIS?.abAlter ?? 16)
+                        ? `<button class="btn btn-sm btn-secondary btn-mit-profis" data-prospect-id="${p.id}" data-an="${p.mitProfis ? "0" : "1"}">${p.mitProfis ? "Zurück in die U19" : "Mit den Profis trainieren"}</button>`
+                        : "";
+                    const anfrageKnoepfe = anfrage
+                        ? (anfrage.gespraech ? "" : `<button class="btn btn-sm btn-primary btn-perspektive" data-anfrage-id="${this.escapeHtml(anfrage.id)}" title="Ein Gespräch über seinen Weg bei uns - einmal je Anfrage">Perspektive aufzeigen</button>`)
+                            + `<button class="btn btn-sm btn-secondary btn-ziehen-lassen" data-anfrage-id="${this.escapeHtml(anfrage.id)}">Ziehen lassen</button>`
+                        : "";
                     const aktion = gespraech
-                        ? `<button class="btn btn-sm btn-secondary btn-goto-negotiation" data-neg-id="${this.escapeHtml(gespraech.id)}">Zur Verhandlung</button>`
-                        : `<button class="btn btn-sm btn-primary btn-promote-prospect" data-prospect-id="${p.id}">Vertragsgespräche aufnehmen</button>
+                        ? `<button class="btn btn-sm btn-secondary btn-goto-negotiation" data-neg-id="${this.escapeHtml(gespraech.id)}">Zur Verhandlung</button>${anfrageKnoepfe}`
+                        : `${profiKnopf}${anfrageKnoepfe}${profisKnopf}
                            <button class="btn btn-sm btn-secondary btn-release-prospect" data-prospect-id="${p.id}" title="Platz in der Akademie freimachen">Freigeben</button>`;
-                    const quelle = ({ probetraining: "Probetraining", sichtung: "Sichtungstag" })[p.quelle];
+                    const quelle = ({ probetraining: "Probetraining", sichtung: "Sichtungstag" })[p.quelle]
+                        || (p.quelle === "fremd" && p.vonClubName ? `aus ${p.vonClubName}` : null);
                     // Aus der internationalen Sichtung: woher er kommt, und ob er ein Ausnahmetalent ist
                     const heimatName = typeof YouthEngine !== "undefined" && YouthEngine.heimatland ? YouthEngine.heimatland(state, userClub) : null;
                     const herkunft = p.nationality && heimatName && p.nationality !== heimatName ? ` <span class="text-muted">· ${this.escapeHtml(p.nationality)}</span>` : "";
                     const ausnahme = p.ausnahmetalent ? ` <span class="talent-quelle talent-ausnahme">⭐ Ausnahmetalent</span>` : "";
+                    const profis = p.mitProfis ? ` <span class="talent-quelle talent-profis">🏋️ trainiert mit den Profis</span>` : "";
 
                     return `
                     <tr class="row-clickable" data-prospect-id="${p.id}" title="Spielerakte von ${this.escapeHtml(p.name)} öffnen">
-                        <td><strong>${this.escapeHtml(p.name)}</strong>${herkunft}${quelle ? ` <span class="talent-quelle">${quelle}</span>` : ""}${ausnahme}</td>
+                        <td><strong>${this.escapeHtml(p.name)}</strong>${herkunft}${quelle ? ` <span class="talent-quelle">${this.escapeHtml(quelle)}</span>` : ""}${ausnahme}${profis}</td>
                         <td><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span></td>
                         <td>${p.age} Jahre</td>
                         <td colspan="2">${this.abilityStarsFor(p)}</td>
                         <td>${standHtml}</td>
-                        <td>${aktion}</td>
+                        <td><div class="talent-aktionen">${aktion}</div></td>
                     </tr>
                 `;
                 }).join("");
@@ -216,7 +236,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     });
                 });
 
-                // Die Beförderung läuft über den Berater und dauert einige Tage
+                const speichernUndNeu = () => {
+                    if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                    this.renderHeader();
+                    this.renderTraining();
+                };
+
+                // Der erste Profivertrag läuft über den Berater und dauert einige Tage
                 document.querySelectorAll(".btn-promote-prospect").forEach(btn => {
                     btn.addEventListener("click", () => {
                         if (!engine) {
@@ -234,6 +260,34 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         } else {
                             this.showToast(res.error || "Gespräche konnten nicht aufgenommen werden.", "error");
                         }
+                    });
+                });
+
+                document.querySelectorAll(".btn-mit-profis").forEach(btn => {
+                    btn.addEventListener("click", () => {
+                        const res = youthV.mitProfisTrainieren(state, btn.dataset.prospectId, btn.dataset.an === "1");
+                        if (!res.success) return this.showToast(res.error, "error");
+                        this.showToast(res.talent.mitProfis ? `🏋️ ${res.talent.name} trainiert ab jetzt mit den Profis.` : `${res.talent.name} trainiert wieder in der U19.`, "info");
+                        speichernUndNeu();
+                    });
+                });
+
+                document.querySelectorAll(".btn-perspektive").forEach(btn => {
+                    btn.addEventListener("click", () => {
+                        const res = youthV.perspektiveAufzeigen(state, btn.dataset.anfrageId);
+                        if (!res.success) return this.showToast(res.error, "error");
+                        this.showToast(res.text, res.bleibt ? "success" : "warning", 6000);
+                        speichernUndNeu();
+                    });
+                });
+
+                document.querySelectorAll(".btn-ziehen-lassen").forEach(btn => {
+                    btn.addEventListener("click", () => {
+                        if (typeof confirm === "function" && !confirm("Das Talent gegen die Ausbildungsentschädigung ziehen lassen?")) return;
+                        const res = youthV.talentZiehenLassen(state, btn.dataset.anfrageId);
+                        if (!res.success) return this.showToast(res.error, "error");
+                        this.showToast(`Er wechselt - als Ausbildungsentschädigung kommen ${this.formatMoneySafe(res.betrag)}.`, "info", 6000);
+                        speichernUndNeu();
                     });
                 });
 
@@ -301,6 +355,44 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             </div>`;
     },
 
+    /**
+     * Talente aus den Akademien kleinerer Vereine: Jugendliche ohne
+     * Profivertrag, die man gegen die Ausbildungsentschädigung holen kann.
+     */
+    renderFremdeTalente(state) {
+        const box = document.getElementById("youthFremde");
+        const youth = (typeof YouthEngine !== "undefined" && YouthEngine) ? YouthEngine : (typeof window !== "undefined" ? window.YouthEngine : null);
+        if (!box || !youth || typeof youth.fremdeTalente !== "function") return;
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const liste = youth.fremdeTalente(state);
+        const voll = youth.akademiePlaetze(state, club).frei <= 0;
+        const esc = (x) => this.escapeHtml(String(x ?? ""));
+        box.innerHTML = `
+            <div class="fremde-talente">
+                <div class="fremde-kopf"><strong>🔭 Talente anderer Akademien</strong>
+                    <span class="text-muted">Jugendliche ohne Profivertrag, die unsere Nachwuchsabteilung im Blick hat. Wer einen holt, zahlt seinem Verein die Ausbildungsentschädigung - und er muss wollen.</span></div>
+                ${liste.length ? `<div class="fremde-liste">${liste.map(t => `
+                    <div class="fremde-zeile">
+                        <div class="fremde-name"><strong>${esc(t.name)}</strong> <span class="pos-tag pos-${this.getPosGroup(t.pos)}">${esc(t.pos)}</span>
+                            <span class="text-muted">${t.age} Jahre · ${this.flaggeVon ? this.flaggeVon(state.clubs.find(c => c.id === t.vonClubId)?.countryId) : ""} ${esc(t.vonClubName)}</span></div>
+                        <div class="fremde-urteil">Nachwuchsleiter: ${esc(youth.fremdEinschaetzung(state, t))}</div>
+                        <div class="fremde-aktion"><span>${this.formatMoneySafe(t.betrag)}</span>
+                            <button class="btn btn-sm btn-primary btn-fremd-holen" data-id="${esc(t.id)}" ${voll ? "disabled title=\"Die Akademie ist voll\"" : ""}>Holen</button></div>
+                    </div>`).join("")}</div>`
+                    : `<p class="text-muted fremde-leer">In dieser Saison hat die Nachwuchsabteilung niemanden mehr im Blick.</p>`}
+            </div>`;
+        box.querySelectorAll(".btn-fremd-holen").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const res = youth.holeFremdesTalent(state, btn.dataset.id);
+                if (!res.success) return this.showToast(res.error, "error");
+                this.showToast(res.text, res.kommt ? "success" : "warning", 6000);
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.renderHeader();
+                this.renderTraining();
+            });
+        });
+    },
+
     renderAkademieZugang(state) {
         const box = document.getElementById("youthZugang");
         const youth = (typeof YouthEngine !== "undefined" && YouthEngine) ? YouthEngine : (typeof window !== "undefined" ? window.YouthEngine : null);
@@ -334,7 +426,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <div class="akademie-zugang">
                 <div class="akademie-zugang-text">
                     <strong>${lage.plaetze.belegt} von ${lage.plaetze.plaetze} Plätzen belegt</strong>
-                    <span>${this.escapeHtml(jugendtagText)} · Probetrainings etwa alle ${wochen} Wochen · Mit ${youth.AKADEMIE_HOECHSTALTER} ist ohne Vertrag Schluss</span>
+                    <span>${this.escapeHtml(jugendtagText)} · Probetrainings etwa alle ${wochen} Wochen · Jugendverträge bis ${youth.AKADEMIE_HOECHSTALTER}, Profivertrag ab ${youth.profiAb(club)}</span>
                 </div>
                 ${knopf}
             </div>

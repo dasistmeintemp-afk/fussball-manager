@@ -1579,6 +1579,9 @@ const CalendarEngine = {
             // Unter dem Jahr: ein Talent aus dem Probetraining
             const probe = typeof youthEngineTag.pruefeProbetraining === "function" ? youthEngineTag.pruefeProbetraining(state) : null;
             if (probe) summary.messages.push(probe);
+            // Andere Vereine werben um Talente ohne Profivertrag
+            const werben = typeof youthEngineTag.pruefeAbwerben === "function" ? youthEngineTag.pruefeAbwerben(state) : null;
+            if (werben) summary.messages.push(werben);
         }
         // Alle zwei Wochen: die Spielervorschläge des Sportdirektors
         const sportdirektor = (typeof SportdirektorEngine !== "undefined" && SportdirektorEngine)

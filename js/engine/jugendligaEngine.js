@@ -136,9 +136,26 @@ const JugendligaEngine = {
             }
         });
         j.letzte = ergebnisse;
+        this._zaehleEinsaetze(state, j.saison);
         j.runde++;
         if (j.runde >= j.runden.length) this._saisonende(state);
         return ergebnisse;
+    },
+
+    /**
+     * Wer in der Elf der U19 steht, sammelt Einsätze - das zählt für seine
+     * Entwicklung (YouthEngine.wachstumsChance). Gezählt wird nur bei den
+     * Talenten der Akademie; die Profis tragen dafür kein eigenes Feld.
+     */
+    _zaehleEinsaetze(state, saison) {
+        const youth = _jlResolve("YouthEngine", "./youthEngine.js");
+        if (!youth || typeof youth.eigeneTalente !== "function") return;
+        const talente = new Set(youth.eigeneTalente(state).filter(t => t && !t.promoted));
+        this.eigeneSpieler(state).slice().sort((a, b) => (b.overall || 0) - (a.overall || 0)).slice(0, 11).forEach(p => {
+            if (!talente.has(p)) return;
+            if (p.u19Saison !== saison) { p.u19Saison = saison; p.u19Spiele = 0; }
+            p.u19Spiele++;
+        });
     },
 
     _torschuetzen(state, anzahl) {

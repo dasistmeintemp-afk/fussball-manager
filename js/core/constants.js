@@ -112,7 +112,9 @@ const SQUAD_ROLES = {
     STARTER: "Stammspieler",
     ROTATION: "Rotationsspieler",
     BACKUP: "Ergänzungsspieler",
-    TALENT: "Zukunftstalent"
+    TALENT: "Zukunftstalent",
+    // Wie im Vorbild: ein Junger, der gelegentlich bei den Profis spielen soll
+    TOP_TALENT: "Toptalent"
 };
 
 const INJURY_TYPES = {

@@ -168,7 +168,7 @@ class PlayerGenerator {
         "spielpraxis", "matchSharpness", "daysSinceInjury", "laufbahn", "laufbahnTeile", "vereinSeit", "laenderspiele", "laenderspielTore",
         "abgestellt", "verletztVomLaenderspiel", "auszeichnungen", "transferListed", "vereinslosAb", "leihe", "reserve",
         "vorvertrag", "vorvertragInteresse", "klauseln", "praemien", "versprechen", "mentorId", "wechselwunsch", "gespraechswunsch",
-        "unmutTage", "trainingsfokus", "umschulung", "eigenheitTraining", "weiterverkauf", "trainingLog", "medien", "eigengewaechsVon"];
+        "unmutTage", "trainingsfokus", "umschulung", "eigenheitTraining", "weiterverkauf", "trainingLog", "medien", "eigengewaechsVon", "ausgebildetVon"];
 
     /**
      * Ein Spieler in der gemeinsamen Form: alle Felder in fester Reihenfolge,
@@ -202,7 +202,8 @@ class PlayerGenerator {
             versprechen: p.versprechen, mentorId: p.mentorId, wechselwunsch: p.wechselwunsch,
             gespraechswunsch: p.gespraechswunsch, unmutTage: p.unmutTage, trainingsfokus: p.trainingsfokus,
             umschulung: p.umschulung, eigenheitTraining: p.eigenheitTraining, weiterverkauf: p.weiterverkauf,
-            trainingLog: p.trainingLog, medien: p.medien, eigengewaechsVon: p.eigengewaechsVon
+            trainingLog: p.trainingLog, medien: p.medien, eigengewaechsVon: p.eigengewaechsVon,
+            ausgebildetVon: p.ausgebildetVon
         };
         for (const k in p) if (!(k in o)) o[k] = p[k];
         return o;

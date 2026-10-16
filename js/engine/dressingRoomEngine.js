@@ -157,6 +157,7 @@ class DressingRoomEngine {
             "Stammspieler": 2.0,
             "Rotationsspieler": 0.8,
             "Ergänzungsspieler": 0.3,
+            "Toptalent": 0.5,
             "Zukunftstalent": 0.2
         };
         let frust = ERWARTUNG[rolle] ?? 0.6;

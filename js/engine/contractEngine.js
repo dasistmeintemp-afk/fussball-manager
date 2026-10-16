@@ -36,6 +36,17 @@ const ContractEngine = {
     },
 
     /**
+     * Die längste erlaubte Laufzeit. Ein Minderjähriger darf nach der Regel
+     * des Weltverbands höchstens drei Jahre unterschreiben - bei der
+     * Verlängerung, beim Wechsel und beim ersten Profivertrag.
+     */
+    VOLLJAEHRIG: 18,
+    MINDERJAEHRIG_MAX_JAHRE: 3,
+    maxLaufzeit(alter) {
+        return (Number(alter) || 99) < this.VOLLJAEHRIG ? this.MINDERJAEHRIG_MAX_JAHRE : 5;
+    },
+
+    /**
      * Ermittelt die Gehaltsforderung eines Spielers für eine Vertragsverlängerung.
      *
      * Vorher galt ein Mindestgehalt von 10.000 € pro Woche, gerundet auf
@@ -125,7 +136,8 @@ const ContractEngine = {
      */
     rollenAbstand(player, gewuenscht, angeboten) {
         const rang = (rolle) => {
-            if (rolle === "Zukunftstalent") {
+            // Toptalent und Zukunftstalent sind Rollen für Junge
+            if (rolle === "Zukunftstalent" || rolle === "Toptalent") {
                 const jung = (player?.age || 25) <= 21 && (player?.pot || 0) >= (player?.overall || 0) + 5;
                 return jung ? null : this.ROLLEN.length - 1;
             }
@@ -235,6 +247,12 @@ const ContractEngine = {
             return {
                 success: false,
                 reason: "Die gewünschte Vertragslaufzeit muss zwischen 1 und 5 Jahren liegen."
+            };
+        }
+        if (offeredYears > this.maxLaufzeit(player.age)) {
+            return {
+                success: false,
+                reason: `${player.name} ist minderjährig und darf höchstens ${this.MINDERJAEHRIG_MAX_JAHRE} Jahre unterschreiben.`
             };
         }
 

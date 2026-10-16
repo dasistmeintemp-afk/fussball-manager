@@ -8478,6 +8478,39 @@ td.nowrap { white-space: nowrap; }
     white-space: nowrap;
 }
 
+/* Akademie: Jugendvertrag, Werber und die Knöpfe je Talent */
+.talent-profis { background: rgba(167, 139, 250, 0.14); color: #c4b5fd; }
+.talent-vertrag { font-size: 12px; }
+.talent-anfrage {
+    margin-top: 4px;
+    font-size: 11px;
+    color: #fbbf24;
+}
+.talent-aktionen { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Talente anderer Akademien */
+.fremde-talente {
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgba(29, 37, 48, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.fremde-kopf { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.fremde-kopf span { font-size: 11px; }
+.fremde-liste { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.fremde-zeile {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 12px;
+    padding: 8px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.fremde-name { font-size: 13px; min-width: 0; }
+.fremde-name .text-muted { font-size: 11px; margin-left: 4px; }
+.fremde-urteil { grid-column: 1; font-size: 11px; color: var(--text-muted); }
+.fremde-aktion { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: center; gap: 8px; font-size: 12px; white-space: nowrap; }
+.fremde-leer { font-size: 12px; margin: 8px 0 0; }
+
 /* Akademie am Handy: jedes Talent als Karte statt als zerquetschte Zeile */
 @media (max-width: 760px) {
     .akademie-tabelle thead { display: none; }

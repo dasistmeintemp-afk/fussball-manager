@@ -1115,6 +1115,17 @@ const CalendarEngine = {
                 res.fenster = meldungen;
             }
         }
+        // Deadline Day: Offene Antworten kommen am Morgen, damit heute noch Zeit zum Reagieren bleibt
+        const verhandlung = (typeof NegotiationEngine !== 'undefined' && NegotiationEngine)
+            ? NegotiationEngine
+            : ((typeof window !== 'undefined' && window.NegotiationEngine) ? window.NegotiationEngine : (typeof require !== 'undefined' ? require('./negotiationEngine.js').NegotiationEngine : null));
+        if (res && res.success && verhandlung && typeof verhandlung.deadlineMorgen === "function") {
+            verhandlung.deadlineMorgen(state).forEach(schritt => {
+                if (res.summary && Array.isArray(res.summary.messages) && schritt?.negotiation) {
+                    res.summary.messages.push(`⏰ ${schritt.negotiation.playerName}: ${verhandlung.describe(schritt.negotiation)}`);
+                }
+            });
+        }
         return res;
     },
 

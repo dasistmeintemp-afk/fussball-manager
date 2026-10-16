@@ -815,7 +815,7 @@
                         <div class="ai-offers-container" id="negotiationsContainer" style="display:none;">
                             <h3>Laufende Verhandlungen</h3>
                             <p class="text-muted" style="font-size:12px; margin:2px 0 10px;">
-                                Ablöse, persönliche Konditionen und Medizincheck brauchen ihre Zeit. Die Gegenseite antwortet nach ein bis drei Tagen.
+                                Ablöse, persönliche Konditionen, Medizincheck, Leihen und Talente anderer Akademien brauchen ihre Zeit. Die Gegenseite antwortet nach ein bis drei Tagen, am Deadline Day sofort.
                             </p>
                             <div id="negotiationsList"></div>
                         </div>
@@ -836,6 +836,11 @@
                                 <option value="LA">Linksaußen</option>
                                 <option value="RA">Rechtsaußen</option>
                                 <option value="ST">Stürmer</option>
+                                <optgroup label="Mannschaftsteil">
+                                    <option value="grp:abw">Abwehr (IV, LV, RV)</option>
+                                    <option value="grp:mf">Mittelfeld (DM bis RM)</option>
+                                    <option value="grp:st">Angriff (LA, RA, ST)</option>
+                                </optgroup>
                             </select>
                             <select id="tfRatingFilter" class="styled-select">
                                 <option value="0">Stärke beliebig</option>
@@ -844,6 +849,50 @@
                                 <option value="4">Ab ★ 4,0 (Verstärkung)</option>
                                 <option value="4.5">Ab ★ 4,5 (Topzugang)</option>
                             </select>
+                            <details class="tf-mehr" id="tfMehr">
+                                <summary>Mehr Filter <span id="tfMehrZahl" class="tf-zahl"></span></summary>
+                                <div class="transfer-filters tf-mehr-felder">
+                                    <select id="tfAlterFilter" class="styled-select" aria-label="Alter">
+                                        <option value="">Alter beliebig</option>
+                                        <option value="0-21">Bis 21 Jahre</option>
+                                        <option value="0-25">Bis 25 Jahre</option>
+                                        <option value="26-30">26 bis 30 Jahre</option>
+                                        <option value="31-99">Ab 31 Jahre</option>
+                                    </select>
+                                    <select id="tfPotFilter" class="styled-select" aria-label="Potenzial">
+                                        <option value="0">Potenzial beliebig</option>
+                                        <option value="3.5">Potenzial ab ★ 3,5</option>
+                                        <option value="4">Potenzial ab ★ 4,0</option>
+                                        <option value="4.5">Potenzial ab ★ 4,5</option>
+                                    </select>
+                                    <select id="tfWertFilter" class="styled-select" aria-label="Marktwert">
+                                        <option value="">Marktwert beliebig</option>
+                                        <option value="budget">Bis zum Transferbudget</option>
+                                        <option value="500000">Bis 0,5 Mio. €</option>
+                                        <option value="1000000">Bis 1 Mio. €</option>
+                                        <option value="2500000">Bis 2,5 Mio. €</option>
+                                        <option value="5000000">Bis 5 Mio. €</option>
+                                        <option value="10000000">Bis 10 Mio. €</option>
+                                        <option value="25000000">Bis 25 Mio. €</option>
+                                    </select>
+                                    <select id="tfVertragFilter" class="styled-select" aria-label="Vertrag">
+                                        <option value="">Vertrag beliebig</option>
+                                        <option value="aus">Vertrag läuft aus</option>
+                                        <option value="liste">Auf der Transferliste</option>
+                                        <option value="frei">Vereinslos</option>
+                                    </select>
+                                    <select id="tfLandFilter" class="styled-select" aria-label="Land">
+                                        <option value="">Alle Länder</option>
+                                    </select>
+                                    <select id="tfSortierung" class="styled-select" aria-label="Sortierung">
+                                        <option value="staerke">Sortiert nach Stärke</option>
+                                        <option value="potenzial">Sortiert nach Potenzial</option>
+                                        <option value="alter">Sortiert nach Alter</option>
+                                        <option value="wert">Sortiert nach Marktwert</option>
+                                    </select>
+                                    <button type="button" class="btn btn-sm btn-secondary" id="btnTfZuruecksetzen">Filter zurücksetzen</button>
+                                </div>
+                            </details>
                         </div>
 
                         <!-- Transfer Market Table -->
@@ -920,7 +969,39 @@
                             <div id="loansOwnList"></div>
                         </div>
                         <div class="dash-card">
-                            <div class="card-header"><h3>Leihmarkt</h3><span class="header-tag">Spieler, die ihr Verein abgibt</span></div>
+                            <div class="card-header"><h3>Leihmarkt</h3><span class="header-tag" id="loanMarketMeta">Spieler, die ihr Verein abgibt</span></div>
+                            <div class="transfer-filters lm-filter mb-2">
+                                <select id="lmPosFilter" class="styled-select" aria-label="Mannschaftsteil">
+                                    <option value="">Alle Positionen</option>
+                                    <option value="tw">Torwart</option>
+                                    <option value="abw">Abwehr</option>
+                                    <option value="mf">Mittelfeld</option>
+                                    <option value="st">Angriff</option>
+                                </select>
+                                <select id="lmAlterFilter" class="styled-select" aria-label="Alter">
+                                    <option value="">Alter beliebig</option>
+                                    <option value="0-21">Bis 21 Jahre</option>
+                                    <option value="0-23">Bis 23 Jahre</option>
+                                    <option value="24-99">Ab 24 Jahre</option>
+                                </select>
+                                <select id="lmStaerkeFilter" class="styled-select" aria-label="Stärke">
+                                    <option value="0">Stärke beliebig</option>
+                                    <option value="3">Ab ★ 3,0</option>
+                                    <option value="3.5">Ab ★ 3,5</option>
+                                    <option value="4">Ab ★ 4,0</option>
+                                </select>
+                                <select id="lmRolleFilter" class="styled-select" aria-label="Rolle">
+                                    <option value="">Alle Rollen</option>
+                                    <option value="Stammspieler">Stammspieler</option>
+                                    <option value="Rotation">Rotation</option>
+                                    <option value="Talent">Talent</option>
+                                </select>
+                                <select id="lmKostenFilter" class="styled-select" aria-label="Kosten">
+                                    <option value="">Kosten beliebig</option>
+                                    <option value="ohne">Ohne Leihgebühr</option>
+                                    <option value="schnitt">Wochenkosten bis zum Kaderschnitt</option>
+                                </select>
+                            </div>
                             <div class="table-container">
                                 <table class="data-table">
                                     <thead>

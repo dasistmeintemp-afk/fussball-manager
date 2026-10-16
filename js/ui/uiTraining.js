@@ -435,30 +435,39 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const liste = youth.fremdeTalente(state);
         const voll = youth.akademiePlaetze(state, club).frei <= 0;
         const esc = (x) => this.escapeHtml(String(x ?? ""));
+        const ne = this.getNegotiationEngine();
+        const offen = ne ? ne.getOpenNegotiations(state).filter(n => n.type === "fremdtalent") : [];
+        const knopf = (t) => {
+            const laeuft = offen.find(n => String(n.prospectId) === String(t.id));
+            return laeuft
+                ? `<button class="btn btn-sm btn-secondary btn-fremd-verhandlung" data-neg="${esc(laeuft.id)}">Verhandlung</button>`
+                : `<button class="btn btn-sm btn-primary btn-fremd-holen" data-id="${esc(t.id)}" ${voll ? "disabled title=\"Die Akademie ist voll\"" : ""}>Anfragen</button>`;
+        };
         box.innerHTML = `
             <div class="card-header"><h3>Talente anderer Akademien</h3><span class="header-tag">${liste.length} im Blick</span></div>
-            <p class="text-muted fremde-hinweis">Jugendliche ohne Profivertrag, die unsere Nachwuchsabteilung im Blick hat. Wer einen holt, zahlt seinem Verein die Ausbildungsentschädigung - und er muss wollen.</p>
+            <p class="text-muted fremde-hinweis">Jugendliche ohne Profivertrag, die unsere Nachwuchsabteilung im Blick hat. Erst einigen wir uns mit seinem Verein auf die Ausbildungsentschädigung, dann entscheidet die Familie.</p>
             <div>
                 ${liste.length ? `<div class="fremde-liste">${liste.map(t => `
                     <div class="fremde-zeile">
                         <div class="fremde-name"><strong>${esc(t.name)}</strong> <span class="pos-tag pos-${this.getPosGroup(t.pos)}">${esc(t.pos)}</span>
                             <span class="text-muted">${t.age} Jahre · ${this.flaggeVon ? this.flaggeVon(state.clubs.find(c => c.id === t.vonClubId)?.countryId) : ""} ${esc(t.vonClubName)}</span></div>
                         <div class="fremde-urteil">Nachwuchsleiter: ${esc(youth.fremdEinschaetzung(state, t))}</div>
-                        <div class="fremde-aktion"><span>${this.formatMoneySafe(t.betrag)}</span>
-                            <button class="btn btn-sm btn-primary btn-fremd-holen" data-id="${esc(t.id)}" ${voll ? "disabled title=\"Die Akademie ist voll\"" : ""}>Holen</button></div>
+                        <div class="fremde-aktion"><span title="Forderung seines Vereins">${this.formatMoneySafe(t.betrag)}</span>
+                            ${knopf(t)}</div>
                     </div>`).join("")}</div>`
                     : `<p class="text-muted fremde-leer">In dieser Saison hat die Nachwuchsabteilung niemanden mehr im Blick.</p>`}
             </div>`;
+        // Kein Sofortkauf mehr: Die Anfrage eröffnet die Verhandlung (NegotiationEngine.startFremdtalent)
         box.querySelectorAll(".btn-fremd-holen").forEach(btn => {
             btn.addEventListener("click", () => {
-                const res = youth.holeFremdesTalent(state, btn.dataset.id);
-                if (!res.success) return this.showToast(res.error, "error");
-                this.showToast(res.text, res.kommt ? "success" : "warning", 6000);
+                const res = ne ? ne.startFremdtalent(state, btn.dataset.id) : { success: false, error: "Nicht verfügbar." };
+                if (!res.success && !res.negotiation) return this.showToast(res.error, "error");
                 if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
-                this.renderHeader();
-                this.renderJugend();
+                if (res.success) this.showToast(`Anfrage an ${res.negotiation.sellerClubName}: Machen Sie Ihr Angebot zur Ausbildungsentschädigung.`, "success", 5000);
+                this.zeigeVerhandlung(res.negotiation.id);
             });
         });
+        box.querySelectorAll(".btn-fremd-verhandlung").forEach(btn => btn.addEventListener("click", () => this.zeigeVerhandlung(btn.dataset.neg)));
     },
 
     renderAkademieZugang(state) {

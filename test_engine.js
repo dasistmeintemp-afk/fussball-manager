@@ -12872,6 +12872,115 @@ function runEngineTests() {
         if (!R.hinunterU19(state, stamm.id).success || stamm.morale !== 72) throw new Error(`Moral ${stamm.morale}`);
     });
 
+    test("Form in der Tabelle: nur Ligaspiele, keine Testspiele und kein Pokal", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Form" });
+        const heim = state.clubs.find(c => c.id === state.userClubId);
+        const gast = state.clubs.find(c => c.id !== heim.id && c.leagueId === heim.leagueId);
+        heim.form = ["-", "-", "-", "-", "-"];
+        MatchEngine.simulateFullMatch({ id: "f1", played: false, freundschaftsspiel: true, competitionId: "friendly", homeClubId: heim.id, awayClubId: gast.id }, heim, gast, state.players);
+        MatchEngine.simulateFullMatch({ id: "p1", played: false, isCup: true, competitionId: "de_cup", homeClubId: heim.id, awayClubId: gast.id }, heim, gast, state.players);
+        if (heim.form.some(f => f !== "-")) throw new Error("Testspiel oder Pokal in der Form: " + heim.form.join(""));
+        MatchEngine.simulateFullMatch({ id: "l1", played: false, homeClubId: heim.id, awayClubId: gast.id, leagueId: heim.leagueId, competitionId: heim.leagueId }, heim, gast, state.players);
+        if (heim.form.filter(f => f !== "-").length !== 1) throw new Error("Ligaspiel fehlt in der Form: " + heim.form.join(""));
+    });
+
+    test("Deadline Day: Antworten noch am selben Tag, mit dem Fensterschluss platzt der Rest", () => {
+        const state = GameState.createNewGame("scf", "normal", { name: "Deadline" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        club.transferBudget = 60e6; club.balance = 90e6;
+        // Auf den letzten Tag des Sommerfensters springen
+        const bis = TransferEngine.FENSTER.sommerBis.de || [9, 1];
+        const tagText = `${String(bis[1]).padStart(2, "0")}.${String(bis[0]).padStart(2, "0")}.`;
+        const idx = state.calendar.findIndex(t => String(t.date).startsWith(tagText));
+        if (idx < 0) throw new Error("Kein letzter Fenstertag im Kalender");
+        state.currentDayIndex = idx;
+        // Gesprungen, nicht gespielt: Die Vorbereitung ist am 31. August längst vorbei
+        if (state.preseason) state.preseason.aktiv = false;
+        if (!TransferEngine.istDeadlineDay(state)) throw new Error("Deadline Day nicht erkannt");
+        const ziel = state.players.find(p => p.clubId && p.clubId !== club.id && !p.leihe && (p.overall || 0) < 70
+            && state.clubs.find(c => c.id === p.clubId)?.leagueId === club.leagueId);
+        const verkaeufer = state.clubs.find(c => c.id === ziel.clubId);
+        const res = NegotiationEngine.startTransferNegotiation(state, ziel.id, club.id, TransferEngine.calculateAskingPrice(ziel, verkaeufer));
+        const n = res.negotiation;
+        if (!res.sofort || n.stage !== "terms" || n.status !== "awaiting_us") throw new Error(`Ablöse nicht sofort beantwortet: ${n.stage} / ${n.status}`);
+        const terms = NegotiationEngine.submitOffer(state, n.id, { wage: n.demand.wage, years: 3, signingBonus: n.demand.signingBonus });
+        // Medizincheck noch heute - er kann selten scheitern, dann ist es trotzdem am selben Tag entschieden
+        if (!terms.sofort || !["accepted", "rejected"].includes(n.status)) throw new Error("Konditionen und Medizincheck nicht am selben Tag: " + n.status);
+        if (n.status === "accepted" && ziel.clubId !== club.id) throw new Error("Abgeschlossen, aber nicht im Kader");
+        // Eine offene Verhandlung platzt mit dem Fenster; ein Vorvertrag nicht
+        const zweiter = state.players.find(p => p.clubId && p.clubId !== club.id && p.id !== ziel.id && !p.leihe
+            && state.clubs.find(c => c.id === p.clubId)?.leagueId === club.leagueId);
+        const offen = NegotiationEngine.startTransferNegotiation(state, zweiter.id, club.id).negotiation;
+        // Der nächste Kalendertag (an einem Tag können mehrere Einträge stehen)
+        let nach = idx + 1;
+        while (state.calendar[nach] && state.calendar[nach].date === state.calendar[idx].date) nach++;
+        state.currentDayIndex = nach;
+        if (TransferEngine.istDeadlineDay(state) || !TransferEngine.fensterHindernis(state)) throw new Error("Fenster am Tag danach noch offen: " + state.calendar[nach]?.date);
+        NegotiationEngine.processDay(state);
+        if (offen.status !== "expired") throw new Error("Offene Verhandlung lief nach Fensterschluss weiter: " + offen.status);
+        if (!/fenster/i.test(offen.log.slice(-1)[0].text)) throw new Error("Kein Hinweis auf das Fenster");
+        if (NegotiationEngine.brauchtFenster({ type: "transfer", vorvertrag: true, sellerClubId: "x" }) || NegotiationEngine.brauchtFenster({ type: "transfer", sellerClubId: null })) throw new Error("Vorvertrag oder Vereinsloser braucht kein Fenster");
+    });
+
+    test("Leihe: Verhandlung mit dem Stammverein statt Knopfdruck, mit Einsatzzusage und Kaufoption", () => {
+        const { LoanEngine: L } = require('./js/engine/loanEngine.js');
+        const state = GameState.createNewGame("scf", "normal", { name: "Leihe" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        club.balance = 80e6;
+        const e = L.leihmarkt(state, 30).find(x => x.kaufoption) || L.leihmarkt(state, 30)[0];
+        const res = NegotiationEngine.startLeihVerhandlung(state, e.playerId);
+        const n = res.negotiation;
+        const spieler = state.players.find(p => p.id === e.playerId);
+        if (!res.success || n.type !== "leihe" || n.stage !== "loan" || spieler.clubId === club.id) throw new Error("Anfrage leiht sofort aus oder öffnet keine Verhandlung");
+        if (n.demand.lohnAnteil !== e.lohnAnteil || n.demand.gebuehr !== e.gebuehr) throw new Error("Forderung weicht vom Leihmarkt ab");
+        const antwort = () => { state.currentDayIndex = Math.max(state.currentDayIndex, n.replyDay || 0); NegotiationEngine.processDay(state); };
+        // Zu wenig Gehalt: Gegenforderung, er bleibt beim Stammverein
+        NegotiationEngine.submitOffer(state, n.id, { lohnAnteil: n.demand.lohnAnteil - 0.1, gebuehr: n.demand.gebuehr, rolle: n.demand.rolle });
+        antwort();
+        if (n.status !== "awaiting_us" || spieler.clubId === club.id) throw new Error("Kein Gegenvorschlag: " + n.status);
+        if (!(n.demand.lohnAnteil <= e.lohnAnteil)) throw new Error("Der Stammverein bewegt sich nicht");
+        // Weniger Einsatz als verlangt: auch mit genug Geld kein Abschluss
+        if (n.demand.rolle !== "Talent") {
+            NegotiationEngine.submitOffer(state, n.id, { lohnAnteil: 1, gebuehr: n.demand.gebuehr * 2, rolle: "Talent" });
+            antwort();
+            if (n.status === "accepted") throw new Error("Abschluss ohne die verlangte Einsatzzusage");
+        }
+        if (n.status === "awaiting_us") {
+            NegotiationEngine.submitOffer(state, n.id, { lohnAnteil: n.demand.lohnAnteil, gebuehr: n.demand.gebuehr, rolle: n.demand.rolle, kaufoption: !!n.demand.kaufoption });
+            antwort();
+            if (n.status !== "accepted" || spieler.clubId !== club.id) throw new Error("Leihe nicht abgeschlossen: " + n.status);
+            if (spieler.leihe.lohnAnteil !== n.agreed.lohnAnteil || spieler.leihe.rolle !== n.agreed.rolle) throw new Error("Leihe ohne die vereinbarten Bedingungen");
+            if (n.demand.kaufoption && spieler.leihe.kaufoption !== n.demand.kaufoption) throw new Error("Kaufoption fehlt");
+        }
+    });
+
+    test("Talente anderer Akademien: erst die Entschädigung mit dem Verein, dann entscheidet die Familie", () => {
+        const state = GameState.createNewGame("scf", "normal", { name: "Fremde" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        club.balance = 20e6;
+        const t = YouthEngine.fremdeTalente(state)[0];
+        const vorher = club.balance;
+        const n = NegotiationEngine.startFremdtalent(state, t.id).negotiation;
+        if (!n || n.stage !== "fee" || YouthEngine.eigeneTalente(state).includes(t)) throw new Error("Anfrage holt sofort oder öffnet keine Verhandlung");
+        const antwort = () => { state.currentDayIndex = Math.max(state.currentDayIndex, n.replyDay || 0); NegotiationEngine.processDay(state); };
+        NegotiationEngine.submitOffer(state, n.id, { fee: t.betrag });
+        antwort();
+        if (n.stage !== "terms" || n.status !== "awaiting_us") throw new Error("Entschädigung nicht vereinbart: " + n.stage);
+        // Eine zögernde Familie: Sein Verein ist kaum kleiner, er hängt an ihm - sie nennt das Handgeld, das sie überzeugt
+        state.clubs.find(c => c.id === t.vonClubId).reputation = (club.reputation || 50) - 3;
+        t.hiddenAttributes = Object.assign({}, t.hiddenAttributes, { ambition: 12, loyalty: 14 });
+        const noetig = YouthEngine.fremdHandgeldFuer(state, club, t);
+        if (!(noetig > 0)) throw new Error("Testaufbau: Die Familie zögert nicht");
+        NegotiationEngine.submitOffer(state, n.id, { signingBonus: 0 });
+        antwort();
+        if (n.status !== "awaiting_us" || n.demand.signingBonus !== noetig) throw new Error(`Familie nennt kein Handgeld: ${n.status} / ${n.demand.signingBonus} statt ${noetig}`);
+        NegotiationEngine.submitOffer(state, n.id, { signingBonus: noetig });
+        antwort();
+        if (n.status !== "accepted" || !YouthEngine.eigeneTalente(state).includes(t)) throw new Error("Talent nicht in der Akademie: " + n.status);
+        if (Math.abs(club.balance - (vorher - n.agreed.fee - noetig)) > 1) throw new Error("Entschädigung und Handgeld nicht bezahlt");
+        if (YouthEngine.fremdeTalente(state).includes(t)) throw new Error("Steht noch unter den fremden Talenten");
+    });
+
     test("Nominierung: Aus U23 und U19 nur für den nächsten Spieltag, danach von selbst zurück", () => {
         const { ReserveEngine: R } = require('./js/engine/reserveEngine.js');
         const { JugendligaEngine: J } = require('./js/engine/jugendligaEngine.js');

@@ -9028,3 +9028,20 @@ td.nowrap { white-space: nowrap; }
     .u23-tabelle .btn-sm, .u19-kader .btn-sm { padding: 5px 8px; font-size: 11px; }
     #pane-squad #squadReserve .table-container, #jugendligaKarte .table-container { overflow-x: auto; }
 }
+
+/* Mehr Filter im Transfermarkt, Filter im Leihmarkt */
+.tf-mehr { flex: 1 1 100%; }
+.tf-mehr > summary { cursor: pointer; font-size: 13px; color: var(--text-soft); padding: 6px 2px; list-style: none; }
+.tf-mehr > summary::-webkit-details-marker { display: none; }
+.tf-mehr > summary::before { content: "▸ "; color: var(--text-muted); }
+.tf-mehr[open] > summary::before { content: "▾ "; }
+.tf-zahl { color: var(--accent-primary); font-weight: 600; }
+.tf-mehr-felder { margin-top: 6px; }
+@media (max-width: 640px) {
+    .tf-mehr-felder .styled-select, .lm-filter .styled-select { flex: 1 1 calc(50% - 4px); }
+    .tf-mehr-felder .btn { flex: 1 1 100%; }
+}
+/* Verhandlung: Ankreuzfelder und Deadline Day */
+.negotiation-inputs .neg-check { flex-direction: row; align-items: center; gap: 8px; grid-column: 1 / -1; font-size: 13px; }
+.negotiation-inputs .neg-check input { width: auto; flex: 0 0 auto; }
+.neg-deadline { color: var(--accent-gold); }

@@ -3580,6 +3580,20 @@ class UIManager {
         document.getElementById("tfSearch")?.addEventListener("input", () => this.renderTransfers());
         document.getElementById("tfPosFilter")?.addEventListener("change", () => this.renderTransfers());
         document.getElementById("tfRatingFilter")?.addEventListener("change", () => this.renderTransfers());
+        ["tfAlterFilter", "tfPotFilter", "tfWertFilter", "tfVertragFilter", "tfLandFilter", "tfSortierung"].forEach(id =>
+            document.getElementById(id)?.addEventListener("change", () => this.renderTransfers()));
+        document.getElementById("btnTfZuruecksetzen")?.addEventListener("click", () => {
+            const s = document.getElementById("tfSearch");
+            if (s) s.value = "";
+            ["tfPosFilter", "tfRatingFilter", "tfAlterFilter", "tfPotFilter", "tfWertFilter", "tfVertragFilter", "tfLandFilter", "tfSortierung"].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.selectedIndex = 0;
+            });
+            this.renderTransfers();
+        });
+        // Leihmarkt
+        ["lmPosFilter", "lmAlterFilter", "lmStaerkeFilter", "lmRolleFilter", "lmKostenFilter"].forEach(id =>
+            document.getElementById(id)?.addEventListener("change", () => this.renderLeihen()));
 
         // Training: Jede Änderung des Managers ist ein Veto gegen den Stab und
         // gilt für einige Tage - danach übernimmt der Trainerstab wieder.

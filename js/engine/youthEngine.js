@@ -995,32 +995,79 @@ const YouthEngine = {
         return b.urteil === "ordentlich" ? "einer für die erste Mannschaft, wenn er sich entwickelt" : "eher einer für die Breite";
     },
 
-    /** Ein fremdes Talent holen: Platz, Geld und sein Ja vorausgesetzt */
-    holeFremdesTalent(state, talentId, zufall = Math.random) {
+    /**
+     * Wie gern ein fremdes Talent kommt: unser Ruf gegen den seines Vereins,
+     * Ehrgeiz und Treue - dazu, was wir der Familie bieten. Ein Handgeld
+     * von einem halben Jahr Ausbildungsvergütung bringt 0,15, die Zusage,
+     * mit den Profis zu trainieren, 0,1. Ab FREMD_JA sagt sie zu.
+     */
+    FREMD_JA: 0.75,
+
+    fremdWille(state, club, t, { handgeld = 0, perspektive = false } = {}) {
+        const von = (state?.clubs || []).find(c => c.id === t?.vonClubId);
+        const h = t?.hiddenAttributes || {};
+        const basis = 0.55 + ((club?.reputation || 50) - (von?.reputation || 40)) * 0.02 + ((h.ambition ?? 12) - 12) * 0.03 - ((h.loyalty ?? 12) - 12) * 0.02;
+        return basis + Math.min(0.3, 0.15 * (handgeld || 0) / this.fremdHandgeldRef(club)) + (perspektive ? 0.1 : 0);
+    },
+
+    /** Ein halbes Jahr Ausbildungsvergütung - der Maßstab für das Handgeld */
+    fremdHandgeldRef(club) {
+        return (this.VERGUETUNG[club?.level || 1] ?? 20) * 26;
+    },
+
+    /** Welches Handgeld die Familie überzeugt - 0, wenn keins nötig ist, null, wenn auch das Doppelte nicht reicht */
+    fremdHandgeldFuer(state, club, t, perspektive = false) {
+        const fehlt = this.FREMD_JA - this.fremdWille(state, club, t, { perspektive });
+        if (fehlt <= 0) return 0;
+        if (fehlt > 0.3 + 1e-9) return null;
+        return Math.ceil(this.fremdHandgeldRef(club) * fehlt / 0.15 / 100) * 100;
+    },
+
+    /**
+     * Ein fremdes Talent holen: Platz, Geld und sein Ja vorausgesetzt.
+     * Aus der Verhandlung (NegotiationEngine.startFremdtalent) kommt es mit
+     * optionen.zugesagt - dann gelten die vereinbarte Entschädigung, das
+     * Handgeld und die Zusage, mit den Profis zu trainieren. Ohne das würfelt
+     * das Ja wie bisher.
+     */
+    holeFremdesTalent(state, talentId, zufall = Math.random, optionen = {}) {
         const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
         const liste = this.fremdeTalente(state);
         const t = liste.find(x => String(x.id) === String(talentId));
         if (!club || !t) return { success: false, error: "Talent nicht gefunden." };
         if (this.akademiePlaetze(state, club).frei <= 0) return { success: false, error: "Die Akademie ist voll - erst muss ein Talent gehen oder befördert werden." };
-        if ((club.balance || 0) < t.betrag) return { success: false, error: "Für die Ausbildungsentschädigung reicht das Geld nicht." };
+        const betrag = optionen.zugesagt ? Math.max(0, optionen.betrag ?? t.betrag) : t.betrag;
+        const handgeld = optionen.zugesagt ? Math.max(0, optionen.handgeld || 0) : 0;
+        if ((club.balance || 0) < betrag + handgeld) return { success: false, error: "Für die Ausbildungsentschädigung reicht das Geld nicht." };
         const von = (state.clubs || []).find(c => c.id === t.vonClubId);
-        liste.splice(liste.indexOf(t), 1);
-        const h = t.hiddenAttributes || {};
-        const ja = 0.55 + ((club.reputation || 50) - (von?.reputation || 40)) * 0.02 + ((h.ambition ?? 12) - 12) * 0.03 - ((h.loyalty ?? 12) - 12) * 0.02;
-        if (zufall() >= Math.max(0.3, Math.min(0.95, ja))) {
-            return { success: true, kommt: false, text: `${t.name} will bei ${t.vonClubName} bleiben.` };
+        if (!optionen.zugesagt) {
+            liste.splice(liste.indexOf(t), 1);
+            const ja = this.fremdWille(state, club, t);
+            if (zufall() >= Math.max(0.3, Math.min(0.95, ja))) {
+                return { success: true, kommt: false, text: `${t.name} will bei ${t.vonClubName} bleiben.` };
+            }
+        } else {
+            liste.splice(liste.indexOf(t), 1);
         }
-        club.balance -= t.betrag;
-        if (von) von.balance = (von.balance || 0) + t.betrag;
+        club.balance -= betrag + handgeld;
+        if (von) von.balance = (von.balance || 0) + betrag;
         const fin = _youthResolve("FinanceEngine", "./financeEngine.js");
         if (fin && typeof fin.recordTransaction === "function") {
-            fin.recordTransaction(state, club.id, "youth_compensation", -t.betrag, `Ausbildungsentschädigung für ${t.name} (${t.vonClubName})`);
+            fin.recordTransaction(state, club.id, "youth_compensation", -betrag, `Ausbildungsentschädigung für ${t.name} (${t.vonClubName})`);
+            if (handgeld > 0) fin.recordTransaction(state, club.id, "youth_compensation", -handgeld, `Handgeld für die Familie von ${t.name}`);
         }
         t.seit = state.seasonYear || 1;
         delete t.betrag;
         this.eigeneTalente(state).push(t);
+        // Die Zusage gilt: mit den Profis trainieren, sobald er alt genug ist und Platz ist
+        let zusage = "";
+        if (optionen.perspektive) {
+            const res = this.mitProfisTrainieren(state, t.id, true);
+            zusage = res.success ? " Wie zugesagt trainiert er mit den Profis." : ` Mit den Profis trainieren kann er noch nicht: ${res.error}`;
+        }
         this.nachwuchsPost(state, club, `🎓 ${t.name} kommt in die Akademie`,
-            `${t.name} (${t.pos}, ${t.age} Jahre) wechselt aus der Akademie von ${t.vonClubName} zu uns. Er bekommt einen Jugendvertrag.`);
+            `${t.name} (${t.pos}, ${t.age} Jahre) wechselt aus der Akademie von ${t.vonClubName} zu uns. Er bekommt einen Jugendvertrag.`
+            + (optionen.zugesagt ? ` Entschädigung: ${this._geld(betrag)}${handgeld ? `, Handgeld: ${this._geld(handgeld)}` : ""}.` : "") + zusage);
         return { success: true, kommt: true, talent: t, text: `${t.name} kommt von ${t.vonClubName} in unsere Akademie.` };
     },
 

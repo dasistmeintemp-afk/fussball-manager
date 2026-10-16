@@ -2754,12 +2754,15 @@ class MatchEngine {
             }
         });
 
-        // Formkurven der Vereine
-        if (Array.isArray(homeClub.form)) {
+        // Formkurven der Vereine - nur aus der Liga. Vorher liefen
+        // Testspiele der Vorbereitung und Pokalspiele mit hinein: Zum
+        // ersten Spieltag zeigte die Tabelle schon fünf Ergebnisse.
+        const ligaspiel = statistik ? wettbewerb === "liga" : (pflichtspiel && !(match && match.isCup));
+        if (ligaspiel && Array.isArray(homeClub.form)) {
             homeClub.form.shift();
             homeClub.form.push(homeGoals > awayGoals ? "W" : homeGoals === awayGoals ? "D" : "L");
         }
-        if (Array.isArray(awayClub.form)) {
+        if (ligaspiel && Array.isArray(awayClub.form)) {
             awayClub.form.shift();
             awayClub.form.push(awayGoals > homeGoals ? "W" : homeGoals === awayGoals ? "D" : "L");
         }

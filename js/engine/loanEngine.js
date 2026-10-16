@@ -314,19 +314,28 @@ class LoanEngine {
     /**
      * Einen Spieler ausleihen. angebotenerAnteil: welchen Teil des Gehalts
      * man übernimmt - unter der Forderung des Stammvereins lehnt er ab.
+     * Aus der Verhandlung (NegotiationEngine.startLeihVerhandlung) kommen
+     * die ausgehandelten Bedingungen in optionen.vereinbart: Gebühr,
+     * Einsatzzusage, Kaufoption. Der Spieler muss dann nicht mehr im
+     * Leihmarkt stehen - sein Verein hat schon zugesagt.
      */
     static ausleihen(state, playerId, angebotenerAnteil = null, optionen = {}) {
         const player = this._player(state, playerId);
         const hindernis = this.leihHindernis(state, player);
         if (hindernis) return { success: false, error: hindernis };
-        const eintrag = this.leihmarkt(state, Infinity).find(e => String(e.playerId) === String(playerId));
+        const v = optionen.vereinbart || null;
+        const eintrag = v
+            ? { clubId: v.stammvereinId, clubName: this._club(state, v.stammvereinId)?.name || "", lohnAnteil: angebotenerAnteil ?? 1, gebuehr: v.gebuehr || 0,
+                rolle: v.rolle || "Rotation", kaufoption: v.kaufoption || null, optionsAufschlag: v.optionsAufschlag || 0, name: player.name }
+            : this.leihmarkt(state, Infinity).find(e => String(e.playerId) === String(playerId));
         if (!eintrag) return { success: false, error: "Sein Verein gibt ihn nicht ab." };
+        if (v && player.clubId !== v.stammvereinId) return { success: false, error: "Er spielt nicht mehr für den Verein, mit dem verhandelt wurde." };
         const anteil = angebotenerAnteil === null ? eintrag.lohnAnteil : Math.max(0, Math.min(1, angebotenerAnteil));
         if (anteil + 1e-9 < eintrag.lohnAnteil) {
             return { success: false, error: `${eintrag.clubName} will, dass Sie mindestens ${Math.round(eintrag.lohnAnteil * 100)} % des Gehalts übernehmen.` };
         }
         const eigener = this._club(state, state.userClubId);
-        const mitOption = !!optionen.kaufoption;
+        const mitOption = !!optionen.kaufoption && !!eintrag.kaufoption;
         const gebuehr = eintrag.gebuehr + (mitOption ? eintrag.optionsAufschlag : 0);
         if ((eigener.balance || 0) < gebuehr) return { success: false, error: "Für die Leihgebühr reicht das Geld nicht." };
         const stammverein = this._club(state, eintrag.clubId);

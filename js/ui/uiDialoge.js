@@ -271,7 +271,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <div class="hint-box" style="margin-top:12px;">
                 So läuft es ab: Zuerst einigen wir uns mit ${this.escapeHtml(sellerClub.name)} auf die Ablöse,
                 danach verhandelt der Berater über Gehalt, Laufzeit und Handgeld, zum Schluss folgt der Medizincheck.
-                Jede Antwort dauert ein bis drei Tage – den Stand sehen Sie im Reiter <strong>Transfers</strong>.
+                ${this.getNegotiationEngine()?.istDeadlineDay?.(state)
+                    ? "<strong>Heute ist Deadline Day:</strong> Alle antworten sofort, der Medizincheck geht noch heute, und am Abend schließt das Fenster"
+                    : "Jede Antwort dauert ein bis drei Tage"} – den Stand sehen Sie im Reiter <strong>Transfers</strong>.
             </div>
             ${passHinweis}
             ${typeof this.erlaubnisHinweis === "function" ? this.erlaubnisHinweis(player) : ""}
@@ -314,14 +316,17 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             }
 
             feedback.style.color = "#34d399";
-            feedback.textContent = `✅ Angebot über ${this.formatMoneySafe(fee)} liegt ${sellerClub.name} vor. Berater ${res.negotiation.agentName} begleitet die Gespräche.`;
+            feedback.textContent = res.sofort
+                ? res.message
+                : `✅ Angebot über ${this.formatMoneySafe(fee)} liegt ${sellerClub.name} vor. Berater ${res.negotiation.agentName} begleitet die Gespräche.`;
             this.playSound("click");
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
 
             setTimeout(() => {
                 modal.style.display = "none";
-                this.switchTab("transfers");
+                this.zeigeVerhandlung(res.negotiation.id) || this.switchTab("transfers");
                 this.renderHeader();
-            }, 1400);
+            }, res.sofort ? 2600 : 1400);
         };
     },
 

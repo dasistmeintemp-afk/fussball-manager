@@ -8422,9 +8422,6 @@ td.nowrap { white-space: nowrap; }
 .vv-hinweis { margin: 10px 0 0; }
 .vv-zeile { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
 /* Kopfwerte in der Akte: über beide Spalten, innen zweispaltig */
-.kopf-karte { grid-column: 1 / -1; }
-.kopf-raster { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; }
-@media (max-width: 420px) { .kopf-raster { grid-template-columns: 1fr; } }
 /* Arbeitserlaubnis (England) in Akte und Transferdialog */
 .ae-hinweis { margin: 10px 0 0; font-size: 13px; }
 .ae-hinweis summary { cursor: pointer; font-weight: 600; }
@@ -8969,7 +8966,7 @@ td.nowrap { white-space: nowrap; }
 .modal-akte { max-width: 1180px; }
 .pd-spalten { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 22px; }
 .pd-spalte { min-width: 0; }
-.pd-werte { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
+.pd-werte { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-bottom: 10px; }
 .pd-werte > * { min-width: 0; }
 @media (min-width: 1000px) {
     .pd-spalten { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: start; }
@@ -8977,6 +8974,21 @@ td.nowrap { white-space: nowrap; }
     [data-pd-tab="vertrag"] .pd-spalten { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     [data-pd-tab="vertrag"] .pd-spalte > #pdVertrag { margin-top: 0 !important; }
     .pd-werte { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .pd-werte .kopf-karte { grid-column: auto; }
-    .pd-werte .kopf-raster { grid-template-columns: minmax(0, 1fr); }
+    .pd-werte .pd-wertliste { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Die Wertetafel: Technik (beim Torwart die Torwartwerte), Kopf und Körper.
+   Breit drei Spalten nebeneinander, schmal jede Karte über die volle Breite
+   mit zwei Spalten Werten. Farbe nach Höhe, wie im Vorbild. */
+.pd-wertkarte { padding: 12px 14px; }
+.pd-wertkarte h4 { font-size: 13px; margin-bottom: 8px; color: var(--text-muted); }
+.pd-wertliste { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 18px; }
+.pd-wert { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.06)); font-size: 12.5px; color: var(--text-muted); }
+.pd-wert span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pd-wert strong { flex: 0 0 auto; color: var(--text-main, #e5e7eb); font-variant-numeric: tabular-nums; }
+.pd-wert strong.wert-top { color: #a3e635; }
+.pd-wert strong.wert-gut { color: #86efac; }
+.pd-wert strong.wert-schwach { color: #f87171; }
+.pd-grundwerte { font-size: 11.5px; color: var(--text-muted); margin: 0 0 16px; line-height: 1.5; }
+.pd-grundwerte strong { color: var(--text-main, #e5e7eb); }
+@media (max-width: 360px) { .pd-wertliste { grid-template-columns: minmax(0, 1fr); } }

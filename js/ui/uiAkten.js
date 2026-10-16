@@ -886,69 +886,55 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             || (ratingEngine ? ratingEngine.getConfidenceDescriptor(confidence) : { label: "Unbekannt", color: "#94a3b8", hint: "" });
         const confidenceBarHtml = this.buildScoutConfidenceHtml(confidence, confInfo, isUserClub);
 
-        // Attributzeile: exakter Wert bei gutem Wissen, sonst eine Spanne
-        const attrLine = (label, attrName) => {
-            if (!ratingEngine) {
-                return `<div class="club-stat-line"><span>${label}:</span><strong>${player[attrName] ?? "?"}</strong></div>`;
-            }
-            const vis = ratingEngine.getVisibleAttribute(player, attrName, confidence);
-            const cls = vis.known ? "" : "estimated-value";
-            const title = vis.known ? "Gesicherter Wert" : `Geschätzt (${confInfo.label})`;
-            return `<div class="club-stat-line"><span>${label}:</span><strong class="${cls}" title="${title}">${vis.text}</strong></div>`;
+        // Die Werte wie im Vorbild: Technik, Kopf und Körper - beim Torwart
+        // statt der Technik die Torwartwerte. Die Detailwerte (Abschluss,
+        // Kopfball, Freistöße ...) folgen aus den groben Werten
+        // (PlayerGenerator.DETAILWERTE), die im Training wachsen.
+        const gen = typeof PlayerGenerator !== "undefined" ? PlayerGenerator : null;
+        const wertVon = (k) => typeof player[k] === "number" ? player[k]
+            : (gen && gen.DETAILWERTE && gen.DETAILWERTE[k] ? gen.detailWert(player, k) : null);
+        // Eine Zeile: exakter Wert bei gutem Wissen, sonst eine Spanne
+        const sicht = (k) => {
+            const raw = wertVon(k);
+            if (!ratingEngine) return { text: raw ?? "?", known: true, wert: raw };
+            const vis = ratingEngine.getVisibleAttribute({ id: player.id, [k]: raw }, k, confidence);
+            return { text: vis.text, known: vis.known, wert: vis.known ? raw : (vis.min !== null ? (vis.min + vis.max) / 2 : null) };
         };
+        const stufe = (w) => w === null ? "" : (w >= 80 ? " wert-top" : (w >= 65 ? " wert-gut" : (w < 40 ? " wert-schwach" : "")));
+        const zeile = ([k, label]) => {
+            const v = sicht(k);
+            return `<div class="pd-wert"><span>${this.escapeHtml(label)}</span><strong class="${v.known ? "" : "estimated-value"}${stufe(v.wert)}" title="${v.known ? "Gesicherter Wert" : `Geschätzt (${this.escapeHtml(confInfo.label)})`}">${v.text}</strong></div>`;
+        };
+        const sortiert = (liste) => liste.filter(([k]) => wertVon(k) !== null).sort((a, b) => a[1].localeCompare(b[1], "de"));
+        const name = (k) => gen?.DETAILWERTE?.[k]?.name || gen?.KOPF_NAMEN?.[k] || k;
 
-        // Torhüter und Feldspieler haben unterschiedliche Attributprofile.
-        // Feldspielern fehlen die Torwartwerte (sie stehen pauschal auf 30),
-        // sie wurden bisher trotzdem als "Stellungsspiel" ausgewiesen.
         const isKeeper = player.pos === "TW";
-        const attributeBlocks = isKeeper
-            ? `
-                <div class="dash-card" style="padding:14px;">
-                    <h4 style="font-size:13px; margin-bottom:8px; color:var(--text-muted);">Torwartspiel</h4>
-                    ${attrLine("Reflexe", "reflexes")}
-                    ${attrLine("Fangsicherheit", "handling")}
-                    ${attrLine("Eins gegen eins", "oneOnOne")}
-                    ${attrLine("Stellungsspiel", "positioning")}
-                    ${attrLine("Abschlag", "kicking")}
-                </div>
-
-                <div class="dash-card" style="padding:14px;">
-                    <h4 style="font-size:13px; margin-bottom:8px; color:var(--text-muted);">Spielaufbau & Physis</h4>
-                    ${attrLine("Passen", "passing")}
-                    ${attrLine("Übersicht", "vision")}
-                    ${attrLine("Physis", "physical")}
-                    ${attrLine("Ausdauer", "stamina")}
-                    ${attrLine("Technik", "technique")}
-                </div>
-            `
-            : `
-                <div class="dash-card" style="padding:14px;">
-                    <h4 style="font-size:13px; margin-bottom:8px; color:var(--text-muted);">Offensive & Technik</h4>
-                    ${attrLine("Tempo", "pace")}
-                    ${attrLine("Schuss", "shooting")}
-                    ${attrLine("Passen", "passing")}
-                    ${attrLine("Dribbling", "dribbling")}
-                    ${attrLine("Technik", "technique")}
-                </div>
-
-                <div class="dash-card" style="padding:14px;">
-                    <h4 style="font-size:13px; margin-bottom:8px; color:var(--text-muted);">Defensive & Physis</h4>
-                    ${attrLine("Defensive", "defense")}
-                    ${attrLine("Physis", "physical")}
-                    ${attrLine("Ausdauer", "stamina")}
-                    ${attrLine("Übersicht", "vision")}
-                </div>
-            `;
-
-        // Die Kopfwerte - beim Torwart ohne Laufwege und Einsatz
-        const kopfGen = typeof PlayerGenerator !== "undefined" ? PlayerGenerator : null;
-        const kopfKeys = kopfGen && typeof player.decisions === "number"
-            ? kopfGen.KOPFWERTE.filter(k => !(isKeeper && (k === "offTheBall" || k === "workRate"))) : [];
-        const kopfBlock = kopfKeys.length ? `
-                <div class="dash-card kopf-karte" style="padding:14px;">
-                    <h4 style="font-size:13px; margin-bottom:8px; color:var(--text-muted);">Kopf</h4>
-                    <div class="kopf-raster">${kopfKeys.map(k => attrLine(kopfGen.KOPF_NAMEN[k], k)).join("")}</div>
-                </div>` : "";
+        const kopfKeys = (gen?.KOPFWERTE || []).filter(k => !(isKeeper && (k === "offTheBall" || k === "workRate")));
+        const technik = isKeeper
+            ? [["reflexes", "Reflexe"], ["handling", "Fangsicherheit"], ["oneOnOne", "Eins gegen eins"], ["positioning", "Stellungsspiel"],
+               ["kicking", "Abschlag"], ["passing", "Passspiel"], ["firstTouch", name("firstTouch")],
+               ...["aerialReach", "commandOfArea", "rushingOut", "communication", "throwing"].map(k => [k, name(k)])]
+            : [["passing", "Passspiel"], ["dribbling", "Dribbling"], ["technique", "Technik"],
+               ...(gen ? gen.detailSchluessel(player, "technik") : []).map(k => [k, name(k)])];
+        const kopf = [...kopfKeys.map(k => [k, name(k)]), ["vision", "Übersicht"],
+            ...(isKeeper ? [] : [["positioning", "Stellungsspiel"]]),
+            ...(gen ? gen.detailSchluessel(player, "kopf") : []).map(k => [k, name(k)])];
+        const koerper = [["pace", "Schnelligkeit"], ["stamina", "Ausdauer"],
+            ...(gen ? gen.detailSchluessel(player, "koerper") : []).map(k => [k, name(k)])];
+        const karte = (titel, liste, klasse) => `
+                <div class="dash-card pd-wertkarte ${klasse}">
+                    <h4>${titel}</h4>
+                    <div class="pd-wertliste">${sortiert(liste).map(zeile).join("")}</div>
+                </div>`;
+        const attributeBlocks = karte(isKeeper ? "Torwart" : "Technik", technik, isKeeper ? "pd-torwart" : "pd-technik")
+            + karte("Kopf", kopf, "pd-kopf") + karte("Körper", koerper, "pd-koerper");
+        const kopfBlock = "";
+        // Die Grundwerte, denen die Detailwerte folgen - sie wachsen im Training
+        const grund = (isKeeper ? [["physical", "Physis"]] : [["shooting", "Schuss"], ["physical", "Physis"], ["defense", "Defensive"]])
+            .map(([k, l]) => `${l} <strong>${sicht(k).text}</strong>`).join(" · ");
+        const grundwerteHtml = gen ? `<p class="pd-grundwerte">Grundwerte aus dem Training: ${grund}. ${isKeeper
+            ? "Hohe Bälle, Herauslaufen und die übrigen Detailwerte folgen den Werten im Training"
+            : "Abschluss, Kopfball, Tackling und die übrigen Detailwerte folgen ihnen"}, dazu Position, Größe und Persönlichkeit.</p>` : "";
 
         const abilityStars = card ? card.abilityStarsHtml : "";
         const abilityStarsText = card ? card.abilityStarsText : "";
@@ -1051,6 +1037,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 ${attributeBlocks}
                 ${kopfBlock}
             </div>
+            ${grundwerteHtml}
             ${isProspect ? "" : this.laufbahnHtml(state, player)}
             ${isProspect || typeof DatenzentraleEngine === "undefined" ? "" : `<button type="button" class="btn btn-secondary btn-sm pd-vergleich" id="btnPdVergleich">⚖️ Mit anderem Spieler vergleichen</button>`}
             </div>

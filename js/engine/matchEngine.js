@@ -101,6 +101,12 @@ const _eigEngine = _einmal(() => (typeof EigenschaftenEngine !== 'undefined' && 
     : ((typeof window !== 'undefined' && window.EigenschaftenEngine) ? window.EigenschaftenEngine
         : (typeof require !== 'undefined' ? (() => { try { return require('./eigenschaftenEngine.js').EigenschaftenEngine; } catch (e) { return null; } })() : null)));
 
+/** Die Detailwerte der Spieler (PlayerGenerator.DETAILWERTE) */
+const _genEngine = _einmal(() => (typeof PlayerGenerator !== 'undefined' && PlayerGenerator)
+    ? PlayerGenerator
+    : ((typeof window !== 'undefined' && window.PlayerGenerator) ? window.PlayerGenerator
+        : (typeof require !== 'undefined' ? (() => { try { return require('./playerGenerator.js').PlayerGenerator; } catch (e) { return null; } })() : null)));
+
 const _stabEngine = _einmal(() => (typeof CoachingStaffEngine !== 'undefined' && CoachingStaffEngine)
     ? CoachingStaffEngine
     : ((typeof window !== 'undefined' && window.CoachingStaffEngine)
@@ -704,9 +710,22 @@ class MatchEngine {
      */
     static standardWert(art, p) {
         const v = (k) => (p && typeof p[k] === "number") ? p[k] : (p?.overall || 60);
-        if (art === "elfmeter") return v("shooting") * 0.7 + v("technique") * 0.3;
-        if (art === "freistoss") return v("shooting") * 0.5 + v("technique") * 0.5;
-        return v("technique") * 0.5 + v("passing") * 0.5;
+        // Dazu der Detailwert: der Elfmeter-, Freistoß- oder Eckenspezialist
+        if (art === "elfmeter") return v("shooting") * 0.7 + v("technique") * 0.3 + this.fein(p, "penalties");
+        if (art === "freistoss") return v("shooting") * 0.5 + v("technique") * 0.5 + this.fein(p, "freeKicks");
+        return v("technique") * 0.5 + v("passing") * 0.5 + this.fein(p, "corners");
+    }
+
+    /**
+     * Was ein Detailwert (Kopfball, Flanken, Freistöße ...) über die groben
+     * Werte hinaus beisteuert - im Mittel null, beim Spezialisten deutlich
+     * (PlayerGenerator.detailAbweichung, ohne den Positionsaufschlag: Die
+     * Position steckt hier schon in den groben Werten und den Rollen).
+     */
+    static fein(p, key, ohneGroesse = false) {
+        if (!p) return 0;
+        const gen = _genEngine();
+        return gen && typeof gen.detailAbweichung === "function" ? gen.detailAbweichung(p, key, ohneGroesse, true) : 0;
     }
 
     /**
@@ -859,7 +878,10 @@ class MatchEngine {
         const rolle = MatchEngine.SCHUETZEN_ROLLE[attackType === "corner" ? "ecke" : (attackType === "cross" ? "flanke" : "spiel")];
         const gewichte = kandidaten.map(p => {
             const v = k => typeof p[k] === "number" ? p[k] : (p.overall || 60);
-            const wert = luftig ? v("physical") * 0.6 + v("shooting") * 0.4 : v("shooting") * 0.8 + v("technique") * 0.2;
+            // Dazu der Kopfball (in der Luft) oder der Abschluss - die Größe zählt unten eigens
+            const wert = luftig
+                ? v("physical") * 0.6 + v("shooting") * 0.4 + MatchEngine.fein(p, "heading", true) * 0.6
+                : v("shooting") * 0.8 + v("technique") * 0.2 + MatchEngine.fein(p, "finishing") * 0.8;
             let g = Math.pow(Math.max(20, wert) / 60, 2);
             const w = eig ? eig.wirkung(p) : {};
             g *= 1 + (w.strafraum || 0) * 0.5 + (luftig ? (w.luft || 0) / 30 : 0);
@@ -914,23 +936,33 @@ class MatchEngine {
         let shooterSkill = getVal(shooter, "overall");
         let gkSkill = getVal(gk, "overall");
 
+        // Zu den groben Werten kommen die Detailwerte: Abschluss, Kopfball,
+        // Ballannahme, Elfmeter, Freistöße - beim Torwart Herauslaufen und
+        // hohe Bälle. Im Mittel ändern sie nichts, den Spezialisten heben sie.
+        const f = (pl, k) => MatchEngine.fein(pl, k);
         if (shotType === "through_ball") {
-            shooterSkill = getVal(shooter, "shooting") * 0.5 + getVal(shooter, "technique") * 0.3 + getVal(shooter, "pace") * 0.2;
-            gkSkill = getVal(gk, "oneOnOne") * 0.55 + getVal(gk, "reflexes") * 0.45;
+            shooterSkill = getVal(shooter, "shooting") * 0.5 + getVal(shooter, "technique") * 0.3 + getVal(shooter, "pace") * 0.2
+                + f(shooter, "finishing") * 0.5 + f(shooter, "firstTouch") * 0.3 + f(shooter, "acceleration") * 0.2;
+            gkSkill = getVal(gk, "oneOnOne") * 0.55 + getVal(gk, "reflexes") * 0.45 + f(gk, "rushingOut") * 0.55;
         } else if (shotType === "cross") {
-            shooterSkill = getVal(shooter, "physical") * 0.45 + getVal(shooter, "shooting") * 0.35 + getVal(shooter, "pace") * 0.2;
-            gkSkill = getVal(gk, "positioning") * 0.5 + getVal(gk, "handling") * 0.5;
+            shooterSkill = getVal(shooter, "physical") * 0.45 + getVal(shooter, "shooting") * 0.35 + getVal(shooter, "pace") * 0.2
+                + f(shooter, "heading") * 0.45 + f(shooter, "finishing") * 0.35 + f(shooter, "jumpingReach") * 0.2;
+            gkSkill = getVal(gk, "positioning") * 0.5 + getVal(gk, "handling") * 0.5
+                + f(gk, "aerialReach") * 0.5 + f(gk, "commandOfArea") * 0.5;
         } else if (shotType === "dribble") {
-            shooterSkill = getVal(shooter, "dribbling") * 0.5 + getVal(shooter, "technique") * 0.3 + getVal(shooter, "shooting") * 0.2;
-            gkSkill = getVal(gk, "oneOnOne") * 0.5 + getVal(gk, "reflexes") * 0.5;
+            shooterSkill = getVal(shooter, "dribbling") * 0.5 + getVal(shooter, "technique") * 0.3 + getVal(shooter, "shooting") * 0.2
+                + f(shooter, "agility") * 0.3 + f(shooter, "firstTouch") * 0.3 + f(shooter, "finishing") * 0.2;
+            gkSkill = getVal(gk, "oneOnOne") * 0.5 + getVal(gk, "reflexes") * 0.5 + f(gk, "rushingOut") * 0.5;
         } else if (shotType === "corner") {
-            shooterSkill = getVal(shooter, "physical") * 0.5 + getVal(shooter, "shooting") * 0.3 + getVal(shooter, "technique") * 0.2;
-            gkSkill = getVal(gk, "positioning") * 0.55 + getVal(gk, "handling") * 0.45;
+            shooterSkill = getVal(shooter, "physical") * 0.5 + getVal(shooter, "shooting") * 0.3 + getVal(shooter, "technique") * 0.2
+                + f(shooter, "heading") * 0.5 + f(shooter, "jumpingReach") * 0.2 + f(shooter, "strength") * 0.1;
+            gkSkill = getVal(gk, "positioning") * 0.55 + getVal(gk, "handling") * 0.45
+                + f(gk, "aerialReach") * 0.5 + f(gk, "commandOfArea") * 0.5;
         } else if (shotType === "penalty") {
-            shooterSkill = getVal(shooter, "shooting") * 0.7 + getVal(shooter, "technique") * 0.3;
+            shooterSkill = getVal(shooter, "shooting") * 0.7 + getVal(shooter, "technique") * 0.3 + f(shooter, "penalties");
             gkSkill = getVal(gk, "reflexes") * 0.6 + getVal(gk, "oneOnOne") * 0.4;
         } else if (shotType === "freekick") {
-            shooterSkill = getVal(shooter, "shooting") * 0.5 + getVal(shooter, "technique") * 0.5;
+            shooterSkill = getVal(shooter, "shooting") * 0.5 + getVal(shooter, "technique") * 0.5 + f(shooter, "freeKicks");
             gkSkill = getVal(gk, "positioning") * 0.5 + getVal(gk, "reflexes") * 0.5;
         }
 
@@ -1418,7 +1450,7 @@ class MatchEngine {
                 || anderer(attPlayers)[0] || attPlayers[0];
             // Flanken kommen von den Außen - und von den Außenverteidigern
             const winger = gestalter(anderer(attPlayers.filter(p => rollen.flanke[attPos(p)])),
-                p => zahl(p, "passing") * 0.7 + zahl(p, "technique") * 0.3, rollen.flanke) || passer;
+                p => zahl(p, "passing") * 0.7 + zahl(p, "technique") * 0.3 + MatchEngine.fein(p, "crossing"), rollen.flanke) || passer;
             const defender = defenders.length > 0 ? _Random.choice(defenders) : defPlayers[0];
 
             // Koordinaten für das 2D-Feld.
@@ -1531,6 +1563,8 @@ class MatchEngine {
             // Eine gute Hereingabe macht den Kopfball nach der Ecke gefährlicher
             const eckenBonus = attackType === "corner" && passer
                 ? (MatchEngine.standardWert("ecken", passer) - 70) * 0.12 : 0;
+            // Ebenso die gute Flanke - gemessen an dem, was sein Passspiel erwarten lässt
+            const flankenBonus = attackType === "cross" && winger ? MatchEngine.fein(winger, "crossing") * 0.12 : 0;
             // Die Eckenvariante gegen die Standarddeckung des Gegners
             let variantenBonus = 0;
             if (attackType === "corner" && _mTaktik()) {
@@ -1540,7 +1574,7 @@ class MatchEngine {
                     attPlayers, defPlayers);
             }
 
-            const modifiedAttPower = { ...attPowerLocal, attack: attPowerLocal.attack + staminaBonus + momentumBonus + zurufBonus + eckenBonus + variantenBonus };
+            const modifiedAttPower = { ...attPowerLocal, attack: attPowerLocal.attack + staminaBonus + momentumBonus + zurufBonus + eckenBonus + flankenBonus + variantenBonus };
             const { outcome, xG } = MatchEngine.resolveShotAttempt(attackType, shooter, gk, modifiedAttPower, defPowerLocal, attTactics, umfeld);
 
             if (outcome === "goal") {
@@ -3142,6 +3176,10 @@ class MatchEngine {
         w.temperament = player?.hiddenAttributes?.temperament ?? 12;
         const eig = _eigEngine();
         w.eig = eig ? eig.wirkung(player) : {};
+        // Die Detailwerte als Abweichung von den groben Werten - unabhängig
+        // von der Skalierung der Partie (PlayerGenerator.feinwerte2D)
+        const gen = _genEngine();
+        w.fein = gen && typeof gen.feinwerte2D === "function" ? gen.feinwerte2D(player) : {};
         return w;
     }
 

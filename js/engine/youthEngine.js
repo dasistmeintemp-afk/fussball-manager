@@ -722,6 +722,23 @@ const YouthEngine = {
         return state.youthAcademy.anfragen;
     },
 
+    /**
+     * Wer umworben werden kann: die Talente der Akademie und die Profis mit
+     * Jugendvertrag (hochgezogen, noch ohne Profivertrag). Vorher schützte
+     * das Hochziehen vor jedem Werber - man hätte jedes Talent ab 16 für
+     * die Ausbildungsvergütung hochziehen können.
+     */
+    umwerbbare(state) {
+        const talente = this.eigeneTalente(state).filter(t => t && !t.promoted);
+        const profis = (state?.players || []).filter(p => p.clubId === state?.userClubId && p.jugendvertrag && !p.leihe);
+        return talente.concat(profis);
+    },
+
+    /** Ist er schon Profi im Kader (mit Jugendvertrag) und kein Talent der Akademie? */
+    _imKader(state, wer) {
+        return !!wer && (state?.players || []).includes(wer);
+    },
+
     /** Die offene Anfrage für ein Talent oder null */
     offeneAnfrage(state, talentId) {
         return (state?.youthAcademy?.anfragen || []).find(a => a.status === "offen" && String(a.talentId) === String(talentId)) || null;
@@ -765,7 +782,7 @@ const YouthEngine = {
         const gen = _youthResolve("PlayerGenerator", "./playerGenerator.js");
         const w = (schluessel) => zufall ? zufall()
             : (gen && typeof gen._hashZahl === "function" ? (gen._hashZahl(`${schluessel}|${heute}`) + 1) / 2 : Math.random());
-        const talente = this.eigeneTalente(state).filter(t => t && !t.promoted);
+        const talente = this.umwerbbare(state);
         const meldungen = [];
 
         // Die Frist ist um
@@ -780,12 +797,13 @@ const YouthEngine = {
             if (laeuft) return;
             if (a.gespraech === "ja" || w(`geht|${a.id}`) >= this.wechselChance(state, club, werber, talent)) {
                 a.status = "geblieben";
-                this.nachwuchsPost(state, club, `🎓 ${talent.name} bleibt`, `${talent.name} hat das Angebot von ${werber.name} abgelehnt und bleibt in unserer Akademie.`);
+                this.nachwuchsPost(state, club, `🎓 ${talent.name} bleibt`, `${talent.name} hat das Angebot von ${werber.name} abgelehnt und bleibt ${this._imKader(state, talent) ? "bei uns" : "in unserer Akademie"}.`);
                 meldungen.push(`🎓 ${talent.name} bleibt - ${werber.name} geht leer aus.`);
-            } else {
-                this.wechsleTalent(state, talent, werber, a.betrag);
+            } else if (this.wechsle(state, talent, werber, a.betrag)) {
                 a.status = "gewechselt";
                 meldungen.push(`🎓 ${talent.name} wechselt zu ${werber.name}.`);
+            } else {
+                a.status = "erledigt";
             }
         });
 
@@ -800,17 +818,18 @@ const YouthEngine = {
             if (!werber) return;
             const betrag = this.ausbildungsEntschaedigung(state, club, t);
             const zuJung = this.profiHindernis(club, t);
+            const imKader = this._imKader(state, t);
             this.anfragen(state).push({
                 id: `anfrage_${t.id}_${heute}`, talentId: t.id, talentName: t.name,
                 clubId: werber.id, clubName: werber.name, betrag, seit: heute, bis: heute + this.ABWERBEN.frist,
-                gespraech: null, status: "offen"
+                gespraech: null, status: "offen", profi: imKader || undefined
             });
             this.nachwuchsPost(state, club, `📨 ${werber.name} will ${t.name} holen`,
-                `${werber.name} möchte ${t.name} (${t.pos}, ${t.age} Jahre) in seine Akademie holen. Er hat bei uns nur einen Jugendvertrag - `
+                `${werber.name} möchte ${t.name} (${t.pos}, ${t.age} Jahre) ${imKader ? "verpflichten" : "in seine Akademie holen"}. Er hat bei uns nur einen Jugendvertrag - `
                 + `geht er, steht uns eine Ausbildungsentschädigung von ${this._geld(betrag)} zu.\n\n`
                 + (zuJung
-                    ? `Für einen Profivertrag ist er noch zu jung. Ein Gespräch über seine Perspektive bei uns kann ihn halten (Reiter Jugend).`
-                    : `Halten können wir ihn mit einem Profivertrag - oder mit einem Gespräch über seine Perspektive (Reiter Jugend).`)
+                    ? `Für einen Profivertrag ist er noch zu jung. Ein Gespräch über seine Perspektive bei uns kann ihn halten (${imKader ? "in seiner Akte" : "Reiter Jugend"}).`
+                    : `Halten können wir ihn mit einem Profivertrag - oder mit einem Gespräch über seine Perspektive (${imKader ? "in seiner Akte" : "Reiter Jugend"}).`)
                 + ` In sieben Tagen entscheidet er sich.`);
             meldungen.push(`📨 ${werber.name} wirbt um ${t.name}.`);
         });
@@ -824,7 +843,7 @@ const YouthEngine = {
         if (a.gespraech) return { success: false, error: "Das Gespräch hat schon stattgefunden." };
         const club = (state.clubs || []).find(c => c.id === state.userClubId);
         const werber = (state.clubs || []).find(c => c.id === a.clubId);
-        const talent = this.eigeneTalente(state).find(t => String(t.id) === String(a.talentId));
+        const talent = this.umwerbbare(state).find(t => String(t.id) === String(a.talentId));
         if (!club || !werber || !talent) return { success: false, error: "Talent oder Verein nicht gefunden." };
         const bleibt = zufall() < Math.min(0.9, 1 - this.wechselChance(state, club, werber, talent) + 0.25);
         a.gespraech = bleibt ? "ja" : "nein";
@@ -840,11 +859,29 @@ const YouthEngine = {
         const a = this.anfragen(state).find(x => x.id === anfrageId && x.status === "offen");
         if (!a) return { success: false, error: "Die Anfrage ist nicht mehr offen." };
         const werber = (state.clubs || []).find(c => c.id === a.clubId);
-        const talent = this.eigeneTalente(state).find(t => String(t.id) === String(a.talentId) && !t.promoted);
+        const talent = this.umwerbbare(state).find(t => String(t.id) === String(a.talentId));
         if (!werber || !talent) return { success: false, error: "Talent oder Verein nicht gefunden." };
-        this.wechsleTalent(state, talent, werber, a.betrag);
+        if (!this.wechsle(state, talent, werber, a.betrag)) return { success: false, error: "Der Wechsel kam nicht zustande." };
         a.status = "gewechselt";
         return { success: true, betrag: a.betrag };
+    },
+
+    /** Ein Talent der Akademie oder ein Profi mit Jugendvertrag wechselt gegen die Entschädigung */
+    wechsle(state, wer, ziel, betrag) {
+        if (!this._imKader(state, wer)) return !!this.wechsleTalent(state, wer, ziel, betrag);
+        const te = _youthResolve("TransferEngine", "./transferEngine.js");
+        const gen = _youthResolve("PlayerGenerator", "./playerGenerator.js");
+        const ce = _youthResolve("ContractEngine", "./contractEngine.js");
+        if (!te || typeof te.executeTransfer !== "function") return false;
+        const lohn = gen && typeof gen.getValueAndWage === "function" ? gen.getValueAndWage(wer.overall, ziel.level || 1, wer.age || 17).wage : 500;
+        // Die Jugendregeln (Alter, Land) hat der Werber schon beachtet (werberFuer)
+        const ok = te.executeTransfer(state, wer.id, ziel.id, betrag, lohn, ce ? ce.maxLaufzeit(wer.age) : 3, { erlaubnis: true });
+        if (ok) {
+            const club = (state.clubs || []).find(c => c.id === state.userClubId);
+            if (club) this.nachwuchsPost(state, club, `🎓 ${wer.name} wechselt zu ${ziel.name}`,
+                `${wer.name} hatte bei uns nur einen Jugendvertrag und unterschreibt bei ${ziel.name}. Als Ausbildungsentschädigung bekommen wir ${this._geld(betrag)}.`);
+        }
+        return !!ok;
     },
 
     /**
@@ -1404,7 +1441,8 @@ const YouthEngine = {
      *
      * Nicht, solange ein Verein um ihn wirbt (die Anfrage entscheidet erst
      * der Profivertrag oder das Gespräch) und solange über seinen ersten
-     * Vertrag verhandelt wird.
+     * Vertrag verhandelt wird. Werben dürfen andere Vereine auch danach,
+     * bis er einen Profivertrag hat (umwerbbare).
      */
     hochziehen(state, talentId) {
         const club = (state?.clubs || []).find(c => c.id === state?.userClubId);

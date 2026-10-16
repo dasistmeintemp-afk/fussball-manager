@@ -148,6 +148,10 @@ const ReserveEngine = {
         const warDabei = (club.lineup || []).includes(player.id) || (club.bench || []).includes(player.id);
         const gs = _reResolve("GameState", "./gameState.js");
         if (warDabei && gs && typeof gs.repairLineup === "function") gs.repairLineup(club, state.players);
+        // Wer in der Elf stand oder zu den Besten gehört, ist nicht begeistert - wie bei der U23
+        if (warDabei || (player.overall || 0) >= this._kaderSchnitt(state, club)) {
+            player.morale = Math.max(0, (player.morale ?? 70) - 8);
+        }
         return { success: true, player, ausElf: warDabei };
     },
 

@@ -12826,6 +12826,52 @@ function runEngineTests() {
         if (!/player\.reserve === "u19" && player\.age > 19/.test(quelle)) throw new Error("Saisonwechsel holt Zwanzigjährige nicht aus der U19");
     });
 
+    test("Unterbau nachgeschärft: Hochgezogene bleiben umwerbbar, Engpass je Mannschaftsteil, Moral beim Gang in die U19", () => {
+        const { ReserveEngine: R } = require('./js/engine/reserveEngine.js');
+        const { ManagerEngine: M } = require('./js/engine/managerEngine.js');
+        const state = GameState.createNewGame("scf", "normal", { name: "Nachschaerfen" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        // Hochziehen schützt nicht vor Werbern: Ein Profi mit Jugendvertrag wechselt gegen die Entschädigung
+        const talent = YouthEngine.eigeneTalente(state).find(t => !t.promoted);
+        talent.age = 17; talent.pot = 95; state.youthAcademy.anfragen = [];
+        const p = YouthEngine.hochziehen(state, talent.id).player;
+        if (!YouthEngine.umwerbbare(state).includes(p)) throw new Error("Hochgezogener Profi ist nicht umwerbbar");
+        let anfrage = null;
+        for (let i = 0; i < 40 && !anfrage; i++) {
+            YouthEngine.pruefeAbwerben(state, () => 0);
+            anfrage = YouthEngine.offeneAnfrage(state, p.id);
+            state.currentDayIndex = (state.currentDayIndex || 0) + 1;
+        }
+        if (!anfrage || !anfrage.profi) throw new Error("Kein Werber für den hochgezogenen Profi");
+        const vorher = club.balance;
+        anfrage.bis = YouthEngine._heute(state);
+        YouthEngine.pruefeAbwerben(state, () => 0);
+        if (p.clubId === club.id || club.playerIds.includes(p.id) || p.jugendvertrag) throw new Error("Er ist nicht gewechselt");
+        if (!(club.balance >= vorher + anfrage.betrag - 1)) throw new Error("Keine Ausbildungsentschädigung");
+        if (anfrage.status !== "gewechselt") throw new Error("Anfrage nicht abgeschlossen: " + anfrage.status);
+        // Der Schreibtisch führt bei einem Profi in seine Akte
+        state.youthAcademy.anfragen.push({ id: "x", talentId: "p1", talentName: "Profi", clubName: "Werber", status: "offen", bis: YouthEngine._heute(state) + 3, profi: true });
+        const punkt = M.getAttentionItems(state).find(i => i.title === "Werber wirbt um Profi");
+        if (!punkt || punkt.tab !== "squad" || punkt.spieler?.[0]?.id !== "p1" || punkt.abschnitt !== "vertrag") throw new Error("Werber-Hinweis führt nicht in die Akte");
+        state.youthAcademy.anfragen = [];
+
+        // Engpass je Mannschaftsteil: Fallen die Verteidiger aus, meldet der Schreibtisch es - auch bei genug Profis
+        const kader = state.players.filter(x => club.playerIds.includes(x.id) && !x.reserve);
+        const abwehr = kader.filter(x => ["IV", "LV", "RV"].includes(x.pos));
+        abwehr.slice(2).forEach(x => { x.injuredWeeks = 3; });
+        const fit = kader.filter(x => (x.injuredWeeks || 0) <= 0);
+        if (fit.length < M.PERSONALNOT_AB) throw new Error("Testaufbau: zu viele verletzt");
+        const engpass = M.unterbauPunkte(state, club, kader).find(x => /Engpass in der Abwehr/.test(x.title));
+        if (!engpass) throw new Error("Engpass in der Abwehr nicht gemeldet");
+        abwehr.forEach(x => { x.injuredWeeks = 0; });
+        if (M.unterbauPunkte(state, club, kader).some(x => /Engpass/.test(x.title))) throw new Error("Engpass trotz vollem Kader");
+
+        // Wer aus der Elf in die U19 muss, ist nicht begeistert
+        const stamm = state.players.find(x => club.lineup.includes(x.id) && x.pos !== "TW");
+        stamm.age = 19; stamm.morale = 80;
+        if (!R.hinunterU19(state, stamm.id).success || stamm.morale !== 72) throw new Error(`Moral ${stamm.morale}`);
+    });
+
     test("Kompressor: Große Stände gehen verdichtet in den LocalStorage und kommen unverändert zurück", () => {
         const { Kompressor: K } = require('./js/services/kompressor.js');
         const { SaveCodec } = require('./js/services/saveCodec.js');

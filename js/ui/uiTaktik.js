@@ -1264,6 +1264,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <button class="btn btn-secondary" data-spm-zu-wechsel>Auswechseln</button>
                 <button class="btn btn-secondary" data-spm-tauschen title="Danach einen zweiten Spieler auf dem Feld oder auf der Bank antippen">Platz tauschen</button>
                 ${T ? `<button class="btn btn-secondary" data-spm-verbindungen title="Seine Linien auf der Tafel hervorheben">Verbindungen</button>` : ""}
+                <button class="btn btn-secondary" data-spm-nummer>Rückennummer</button>
             </div>
             ${rollenHtml}
             <div class="spm-abschnitt"><h4>Aufgaben</h4><div class="spm-aufgaben">
@@ -1292,6 +1293,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         el.querySelector("[data-spm-alle]")?.addEventListener("click", () => this.zeigeSpielerMenue(slotIndex, { alle: true, wechsel: true }));
         if (!player) return;
         el.querySelector("[data-spm-akte]")?.addEventListener("click", () => { this.schliesseSpielerMenue(); this.showPlayerDetailsModal(player.id); });
+        el.querySelector("[data-spm-nummer]")?.addEventListener("click", () => this.zeigeNummernWahl(player.id, () => this.zeigeSpielerMenue(slotIndex)));
         el.querySelector("[data-spm-zu-wechsel]")?.addEventListener("click", () => el.querySelector("#spmWechsel")?.scrollIntoView({ behavior: "smooth", block: "start" }));
         el.querySelector("[data-spm-tauschen]")?.addEventListener("click", () => {
             this.schliesseSpielerMenue();
@@ -1351,6 +1353,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ${this.menueWerteHtml(player)}
             <div class="spm-aktionen">
                 <button class="btn btn-primary" data-spm-akte>Akte öffnen</button>
+                <button class="btn btn-secondary" data-spm-nummer>Rückennummer</button>
                 ${aufBank ? `<button class="btn btn-secondary" data-spm-bank="raus">Von der Bank nehmen</button>`
                     : (userClub.bench.length < 7 && !fehlt ? `<button class="btn btn-secondary" data-spm-bank="rein">Auf die Bank</button>` : "")}
             </div>
@@ -1365,6 +1368,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const nummer = Number.isInteger(player.trikot) ? `<span class="spm-titel-nr">${player.trikot}</span>` : "";
         this.oeffneSpielerMenue(`${nummer}${esc(player.name)}`, html, (el) => {
             el.querySelector("[data-spm-akte]")?.addEventListener("click", () => { this.schliesseSpielerMenue(); this.showPlayerDetailsModal(player.id); });
+            el.querySelector("[data-spm-nummer]")?.addEventListener("click", () => this.zeigeNummernWahl(player.id, () => this.zeigeBankMenue(player.id)));
             el.querySelector("[data-spm-bank]")?.addEventListener("click", (e) => {
                 if (e.currentTarget.dataset.spmBank === "raus") userClub.bench = userClub.bench.filter(id => id !== player.id);
                 else if (!userClub.bench.includes(player.id) && userClub.bench.length < 7) userClub.bench.push(player.id);
@@ -1498,6 +1502,47 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
                     this.playSound("click");
                     this.renderTactics();
+                };
+            });
+        });
+    },
+
+    /**
+     * Rückennummer wählen: alle Nummern von 1 bis 99, die vergebenen mit dem
+     * Namen ihres Trägers. Eine vergebene zu wählen, tauscht die beiden.
+     * Danach geht es zurück, woher man kam (zurueck), sonst schließt es.
+     */
+    zeigeNummernWahl(playerId, zurueck = null) {
+        const state = this.app.state;
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        if (!club || typeof GameState.rueckennummern !== "function") return;
+        GameState.rueckennummern(state, club);
+        const esc = (x) => this.escapeHtml(String(x ?? ""));
+        const kader = state.players.filter(p => p.clubId === club.id);
+        const spieler = kader.find(p => String(p.id) === String(playerId));
+        if (!spieler) return;
+        const traeger = new Map(kader.filter(p => Number.isInteger(p.trikot)).map(p => [p.trikot, p]));
+        let html = `<p class="spm-sub">Freie Nummern sind hervorgehoben. Wer eine vergebene wählt, tauscht mit ihrem Träger.</p><div class="nr-raster">`;
+        for (let n = 1; n <= 99; n++) {
+            const t = traeger.get(n);
+            const art = t === spieler ? "aktuell" : (t ? "vergeben" : "frei");
+            html += `<button class="nr-wahl ${art}" data-nr="${n}" title="${t ? esc(t === spieler ? "trägt er jetzt" : `${t.name} (${t.pos}) – tauschen`) : "frei"}"><b>${n}</b>${t && t !== spieler ? `<small>${esc(t.name.split(" ").pop())}</small>` : ""}</button>`;
+        }
+        html += `</div>`;
+        this.oeffneSpielerMenue(`<span class="spm-titel-nr">${spieler.trikot || "–"}</span>Nummer für ${esc(spieler.name.split(" ").pop())}`, html, (el) => {
+            el.querySelector(".nr-wahl.aktuell")?.scrollIntoView({ block: "center" });
+            el.querySelectorAll("[data-nr]").forEach(b => {
+                b.onclick = () => {
+                    const res = GameState.setzeRueckennummer(state, club, spieler.id, Number(b.dataset.nr));
+                    if (!res.ok) { this.showToast(res.grund, "error"); return; }
+                    this.playSound("click");
+                    if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                    this.showToast(res.getauscht
+                        ? `${spieler.name} trägt jetzt die ${spieler.trikot}, ${res.getauscht.name} die ${res.getauscht.trikot}.`
+                        : `${spieler.name} trägt jetzt die ${spieler.trikot}.`, "success");
+                    if (document.getElementById("pane-tactics")?.offsetParent !== null) this.renderTactics();
+                    this.schliesseSpielerMenue();
+                    if (typeof zurueck === "function") zurueck();
                 };
             });
         });

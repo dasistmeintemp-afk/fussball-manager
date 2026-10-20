@@ -635,6 +635,16 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         document.getElementById("pdPlayerName").textContent = isProspect
             ? `${player.name} (${player.pos}) · Nachwuchs`
             : `${player.name} (${player.pos})`;
+        // Eigene Spieler: die Rückennummer vorn, ein Tipp darauf ändert sie
+        if (!isProspect && player.clubId === state.userClubId && club && typeof GameState.rueckennummern === "function") {
+            GameState.rueckennummern(state, club);
+            const titel = document.getElementById("pdPlayerName");
+            titel.innerHTML = `<button class="pd-nr" type="button" title="Rückennummer ändern">${player.trikot || "–"}</button> ${this.escapeHtml(`${player.name} (${player.pos})`)}`;
+            titel.querySelector(".pd-nr").onclick = () => {
+                modal.style.display = "none";
+                this.zeigeNummernWahl(player.id, () => this.showPlayerDetailsModal(player.id));
+            };
+        }
 
         const happy = player.happiness || { overall: 75, playingTime: 75, contract: 75, teamPerformance: 75, reason: "Zufrieden mit der Rolle im Team." };
         // Talente der eigenen Akademie gehören zum Verein, auch ohne Profivertrag

@@ -6218,6 +6218,11 @@ function runEngineTests() {
         if (paare.size !== 132 || [...paare.values()].some(n => n !== 1)) throw new Error("Spielplan ist keine Doppelrunde");
         if (j.teams.slice(1).some(t => !state.clubs.find(c => c.id === t.clubId && c.countryId === "de"))) throw new Error("Fremde Teams in der deutschen U19-Liga");
 
+        // Eine überragende Akademie - von Beginn an, sonst entscheidet der
+        // Zufall der Hinrunde, ob sie den Rückstand noch aufholt
+        YouthEngine.eigeneTalente(state).forEach(t => { t.overall = 99; });
+        for (let i = 0; i < 11; i++) YouthEngine.eigeneTalente(state).push({ id: `jl_${i}`, name: `Talent ${i}`, pos: "ST", age: 17, overall: 99, promoted: false });
+
         // Takt: nach Spieltag 17 von 34 ist die Hinrunde gespielt
         state.totalMatchdays = 34; state.currentMatchday = 17;
         J.nachSpieltag(state);
@@ -6231,9 +6236,7 @@ function runEngineTests() {
         const namentlich = Object.values(j.torschuetzen).reduce((a, t) => a + t.tore, 0);
         if (eigeneTore !== namentlich) throw new Error(`${eigeneTore} Tore, ${namentlich} mit Namen`);
 
-        // Eine überragende Akademie wird Meister - der Titel kommt in die Chronik
-        YouthEngine.eigeneTalente(state).forEach(t => { t.overall = 99; });
-        for (let i = 0; i < 11; i++) YouthEngine.eigeneTalente(state).push({ id: `jl_${i}`, name: `Talent ${i}`, pos: "ST", age: 17, overall: 99, promoted: false });
+        // Die überragende Akademie wird Meister - der Titel kommt in die Chronik
         state.currentMatchday = 34;
         J.nachSpieltag(state);
         if (j.runde !== 22 || !j.meister || !j.meister.startsWith(state.clubs.find(c => c.id === "muc").name)) throw new Error(`Meister: ${j.meister}`);
@@ -7750,11 +7753,15 @@ function runEngineTests() {
             throw new Error("Die Verpflichtung wird nicht mit Etat und offenen Posten gemeldet");
         }
 
-        // Der Etat setzt eine Grenze
+        // Der Etat setzt eine Grenze. Die Pflichtposten zum üblichen Gehalt
+        // passen immer hinein - wer mehr verlangt als der ganze Etat, nicht.
         const etat = club.wageBudget;
         club.wageBudget = 1000;
         const teuer = pre.bewerber.fitness[0];
+        const forderung = teuer.gehalt;
+        teuer.gehalt = PreseasonEngine.stabRahmen(club) + 1000;
         if (PreseasonEngine.verpflichte(state, "fitness", teuer.id).ok) throw new Error("Verpflichtung über dem Stab-Etat möglich");
+        teuer.gehalt = forderung;
         club.wageBudget = etat;
 
         // Eine Woche vor dem Start erinnert der Sportdirektor - einmal
@@ -13060,6 +13067,37 @@ function runEngineTests() {
             if (elf.length !== 11 || falsch.length || new Set(elf.map(p => p.number)).size !== 11) throw new Error(`Spielnummern ${seite}: ${falsch.map(p => p.name + " " + p.number).join(", ")}`);
         });
         if (state.players.filter(p => p.clubId === gegnerId).some(p => !p.trikot)) throw new Error("Gegnerkader ohne feste Nummern");
+        // Selbst vergeben: eine freie Nummer nimmt er, eine vergebene tauscht er
+        const a = kader.find(p => p.trikot === 1), b = kader.find(p => p.trikot !== 1);
+        const frei = [...Array(99).keys()].map(i => i + 1).find(n => !kader.some(p => p.trikot === n));
+        if (!GameState.setzeRueckennummer(state, club, b.id, frei).ok || b.trikot !== frei) throw new Error("Freie Nummer nicht vergeben");
+        const res = GameState.setzeRueckennummer(state, club, b.id, 1);
+        if (!res.ok || b.trikot !== 1 || a.trikot !== frei || res.getauscht !== a) throw new Error("Vergebene Nummer nicht getauscht");
+        if (GameState.setzeRueckennummer(state, club, b.id, 100).ok || GameState.setzeRueckennummer(state, club, b.id, 0).ok) throw new Error("Nummer außerhalb 1-99 angenommen");
+        const fest = kader.map(p => p.trikot).join(",");
+        GameState.rueckennummern(state, club);
+        if (kader.map(p => p.trikot).join(",") !== fest) throw new Error("Selbst vergebene Nummern werden überschrieben");
+    });
+
+    test("Trainerstab: Die Pflichtposten passen in jeder Liga in den Etat", () => {
+        const P = PreseasonEngine;
+        for (const id of ["muc", "oln_hei", "ll_hoe"]) {
+            const state = GameState.createNewGame(id, "normal", { name: "Stabpruefer" });
+            const club = state.clubs.find(c => c.id === state.userClubId);
+            // Auch mit dem knappen Budget eines alten Spielstands
+            club.wageBudget = Math.round(club.wageBudget * 0.3);
+            const rahmen = P.stabRahmen(club);
+            for (let runde = 0; runde < 20; runde++) {
+                const summe = P.PFLICHT.reduce((s, k) => {
+                    const bewerber = P.erzeugeBewerber(club, P.BEREICHE.find(b => b.key === k), 3);
+                    const ueblich = P.marktGehalt(club, k, P.stabNiveau(club));
+                    const billig = Math.min(...bewerber.map(b => b.gehalt));
+                    if (billig > P.rundeGehalt(ueblich)) throw new Error(`${club.name}, ${k}: günstigster Bewerber ${billig} über dem Üblichen (${Math.round(ueblich)})`);
+                    return s + billig;
+                }, 0);
+                if (summe > rahmen) throw new Error(`${club.name}: Pflichtposten ${summe} bei ${rahmen} Etat`);
+            }
+        }
     });
 
     test("Saisonende: Siegermails nur für den eigenen Pokal, den Meisterpokal und wo wir dabei waren", () => {

@@ -1219,6 +1219,20 @@ class ManagerEngine {
             });
         });
 
+        // 1b1. Leihangebote für Spieler auf der Leihliste - mit Frist
+        const leihen = _mgrResolve("LoanEngine", "./loanEngine.js");
+        (leihen && typeof leihen.offeneLeihangebote === "function" ? leihen.offeneLeihangebote(state) : []).filter(a => a.status === "offen").forEach(a => {
+            const rest = Math.max(0, a.frist - (state.currentDayIndex || 0));
+            items.push({
+                priority: 0,
+                icon: "📨",
+                tab: "transfers",
+                unterreiter: "leihen",
+                title: `Leihangebot für ${a.playerName}: ${a.clubName}`,
+                detail: `${a.rolle} · ${Math.round(a.lohnAnteil * 100)} % des Gehalts${a.gebuehr ? ` · ${_mgrGeld(a.gebuehr)} Gebühr` : ""} · ${rest === 0 ? "läuft heute ab" : `noch ${rest} Tag${rest === 1 ? "" : "e"}`}`
+            });
+        });
+
         // 1b2. Ein größerer Verein wirbt um ein Talent der Akademie - in
         // sieben Tagen entscheidet er sich
         // (Die Frist zählt wie die YouthEngine: Saison mal tausend plus Tag)

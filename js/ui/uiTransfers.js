@@ -97,7 +97,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
             const d = n.demand || {};
             const forderung = istLeihe
-                ? `Forderung: <strong>${Math.round((d.lohnAnteil || 0) * 100)} %</strong> des Gehalts (${this.formatMoneySafe(Math.round((d.wage || 0) * (d.lohnAnteil || 0)))} / Woche)${d.gebuehr ? `, Leihgebühr ${this.formatMoneySafe(d.gebuehr)}` : ", keine Leihgebühr"}, Einsatz als ${this.escapeHtml(engine.rolleText ? engine.rolleText(d.rolle) : d.rolle)}`
+                ? `Forderung: <strong>${Math.round((d.lohnAnteil || 0) * 100)} %</strong> des Gehalts (${this.formatMoneySafe(Math.round((d.wage || 0) * (d.lohnAnteil || 0)))} / Woche)${d.gebuehr ? `, Leihgebühr ${this.formatMoneySafe(d.gebuehr)} für die Saison` : ", keine Leihgebühr"}, Einsatz als ${this.escapeHtml(engine.rolleText ? engine.rolleText(d.rolle) : d.rolle)}${d.rueckholrecht ? ", Rückholrecht" : ""}`
                 : istFremd
                     ? (istAblöse ? `Forderung: <strong>${this.formatMoneySafe(d.fee)}</strong> Entschädigung`
                         : (d.signingBonus ? `Die Familie wünscht ein Handgeld von <strong>${this.formatMoneySafe(d.signingBonus)}</strong>` : "Die Familie hat noch keinen Wunsch geäußert"))
@@ -118,6 +118,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     </label>
                     <p class="neg-hinweis neg-raten-info" data-neg-id="${n.id}"></p>` : "";
             const talent = istFremd && typeof YouthEngine !== "undefined" ? YouthEngine.fremdeTalente(state).find(t => String(t.id) === String(n.prospectId)) : null;
+            const sommer = istLeihe && typeof TransferEngine !== "undefined" && TransferEngine.fensterInfo?.(state)?.art === "sommer";
             const eingabe = !amZug ? "" : istLeihe ? `
                 <div class="negotiation-inputs">
                     <label>Gehaltsanteil (%)
@@ -131,8 +132,15 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                             ${["Stammspieler", "Rotation", "Talent"].map(r => `<option value="${r}" ${r === d.rolle ? "selected" : ""}>${r === "Talent" ? "Keine Zusage (zum Lernen)" : r}</option>`).join("")}
                         </select>
                     </label>
+                    ${sommer ? `<label>Dauer
+                        <select class="styled-select neg-dauer" data-neg-id="${n.id}">
+                            <option value="saison">Bis zum Saisonende</option>
+                            <option value="winter">Bis zur Winterpause (halbe Gebühr)</option>
+                        </select>
+                    </label>` : ""}
+                    <label class="neg-check"><input type="checkbox" class="neg-rueckholrecht" data-neg-id="${n.id}" ${d.rueckholrecht ? "checked" : ""}> Rückholrecht für ${this.escapeHtml(n.sellerClubName || "den Stammverein")}: Spielt er nicht, holt er ihn im Winter zurück</label>
                     ${d.kaufoption ? `<label class="neg-check"><input type="checkbox" class="neg-kaufoption" data-neg-id="${n.id}"> Kaufoption für ${this.geldKurz(d.kaufoption)} (Aufschlag ${this.geldKurz(d.optionsAufschlag || 0)} auf die Gebühr)</label>` : ""}
-                    <p class="neg-hinweis">Wer bei Ihnen Stammspieler wäre, will das zugesagt bekommen. Spielt er dann zu wenig, beschwert sich sein Verein.</p>
+                    <p class="neg-hinweis">Wer bei Ihnen Stammspieler wäre, will das zugesagt bekommen. Spielt er dann zu wenig, beschwert sich sein Verein. Ohne das verlangte Rückholrecht muss das Angebot höher sein.</p>
                 </div>`
                 : istFremd ? (istAblöse ? `
                 <div class="negotiation-inputs">
@@ -259,7 +267,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         lohnAnteil: Number(feld("neg-anteil")?.value || 0) / 100,
                         gebuehr: Number(feld("neg-gebuehr")?.value || 0),
                         rolle: feld("neg-rolle")?.value,
-                        kaufoption: !!feld("neg-kaufoption")?.checked
+                        kaufoption: !!feld("neg-kaufoption")?.checked,
+                        dauer: feld("neg-dauer")?.value || "saison",
+                        rueckholrecht: !!feld("neg-rueckholrecht")?.checked
                     }
                     : (n.type === "fremdtalent" && n.stage === engine.STAGES.TERMS) ? {
                         signingBonus: Number(feld("neg-bonus")?.value || 0),
@@ -328,6 +338,20 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             fensterEl.className = `tf-fenster ${fenster.offen ? "offen" : "zu"}`;
             fensterEl.textContent = `${fenster.offen ? "🟢" : "🔒"} ${fenster.text}`;
         }
+        // Leihangebote für eigene Spieler und wer auf der Leihliste steht
+        const gelistet = state.players.filter(p => p.clubId === state.userClubId && p.leihListe);
+        const angebote = typeof engine.offeneLeihangebote === "function" ? engine.offeneLeihangebote(state) : [];
+        const angeboteKarte = document.getElementById("loansAngeboteKarte");
+        const angeboteBox = document.getElementById("loansAngebote");
+        if (angeboteKarte && angeboteBox) {
+            angeboteKarte.hidden = !angebote.length && !gelistet.length;
+            const ohne = gelistet.filter(p => !angebote.some(a => String(a.playerId) === String(p.id)));
+            angeboteBox.innerHTML = angebote.map(a => this.leihangebotHtml(a, true)).join("")
+                + (ohne.length ? `<div class="text-muted la-warten">Auf der Leihliste, noch ohne Angebot: ${ohne.map(p => esc(p.name)).join(", ")}</div>` : "");
+            const angeboteMeta = document.getElementById("loansAngeboteMeta");
+            if (angeboteMeta) angeboteMeta.textContent = `${angebote.length} Angebot${angebote.length === 1 ? "" : "e"} · ${gelistet.length} auf der Leihliste`;
+            this.bindeLeihangebote(angeboteBox, () => { this.renderLeihen(); this.renderHeader?.(); });
+        }
         const meta = document.getElementById("loansMeta");
         if (meta) meta.textContent = `${verliehen.length} verliehen · ${geliehen.length} geliehen`;
         const zeile = (p, text, knopf = "") => `
@@ -342,12 +366,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 const spiele = (p.stats?.matches || 0) - (l.startSpiele || 0);
                 const noten = (p.stats?.ratingSum || 0) - (l.startNoten || 0);
                 return zeile(p,
-                    `Verliehen an <strong>${esc(club(l.leihvereinId)?.name || "?")}</strong> (${esc(l.rolle)}) · ${spiele} Spiele${spiele ? `, Note ${(noten / spiele).toFixed(2).replace(".", ",")}` : ""} · Spielpraxis ${Math.round((p.spielpraxis ?? 0.5) * 100)} %`,
-                    `<button class="btn btn-sm btn-secondary" data-leihe-zurueck="${esc(p.id)}">Zurückholen</button>`);
+                    `Verliehen an <strong>${esc(club(l.leihvereinId)?.name || "?")}</strong> (${esc(l.rolle)}) ${l.bisWinter ? "bis zur Winterpause" : "bis Saisonende"} · ${spiele} Spiele${spiele ? `, Note ${(noten / spiele).toFixed(2).replace(".", ",")}` : ""} · Spielpraxis ${Math.round((p.spielpraxis ?? 0.5) * 100)} %${l.rueckholrecht === false ? " · ohne Rückholrecht" : ""}`,
+                    l.rueckholrecht === false ? "" : `<button class="btn btn-sm btn-secondary" data-leihe-zurueck="${esc(p.id)}">Zurückholen</button>`);
             }),
             ...geliehen.map(p => {
                 const l = p.leihe;
-                return zeile(p, `Geliehen von <strong>${esc(club(l.stammvereinId)?.name || "?")}</strong> · Sie zahlen ${Math.round(l.lohnAnteil * 100)} % des Gehalts · erwartet: ${esc(l.rolle)}${l.kaufoption ? ` · Kaufoption ${this.geldKurz(l.kaufoption)}` : ""}`,
+                return zeile(p, `Geliehen von <strong>${esc(club(l.stammvereinId)?.name || "?")}</strong> ${l.bisWinter ? "bis zur Winterpause" : "bis Saisonende"} · Sie zahlen ${Math.round(l.lohnAnteil * 100)} % des Gehalts · erwartet: ${esc(l.rolle)}${l.rueckholrecht ? " · Rückholrecht des Stammvereins" : ""}${l.kaufoption ? ` · Kaufoption ${this.geldKurz(l.kaufoption)}` : ""}`,
                     l.kaufoption ? `<button class="btn btn-sm btn-primary" data-kaufoption-ziehen="${esc(p.id)}">Kaufoption ziehen</button>` : "");
             })
         ].join("") : `<div class="text-muted" style="font-size:13px;">Keine laufenden Leihen.</div>`;
@@ -427,6 +451,78 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         [...eigene.querySelectorAll(".leih-zeile"), ...markt.querySelectorAll("tr[data-player-id]")].forEach(el => el.addEventListener("click", () => {
             const ziel = state.players.find(p => String(p.id) === el.dataset.playerId);
             if (ziel) this.showPlayerDetailsModal(ziel.id);
+        }));
+    },
+
+    /** "mindestens 50 % des Gehalts, mindestens Rotation, bis zum Saisonende, mit Rückholrecht" */
+    leihBedingungenText(l) {
+        return [
+            l.minAnteil > 0 ? `mindestens ${Math.round(l.minAnteil * 100)} % des Gehalts` : "Gehaltsanteil egal",
+            l.einsatz === "Stammspieler" ? "als Stammspieler" : (l.einsatz === "Rotation" ? "mindestens Rotation" : "Einsatz egal"),
+            l.dauer === "winter" ? "bis zur Winterpause" : "bis zum Saisonende",
+            l.rueckholrecht ? "mit Rückholrecht" : "ohne Rückholrecht"
+        ].join(", ");
+    },
+
+    /** Ein Leihangebot für einen eigenen Spieler - mit Annehmen, Mehr fordern, Ablehnen */
+    leihangebotHtml(a, mitName = false) {
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const rest = Math.max(0, a.frist - (this.app.state.currentDayIndex || 0));
+        const pct = Math.round(a.lohnAnteil * 100);
+        const kopf = `${mitName ? `<button type="button" class="btn-link la-spieler" data-player-id="${esc(a.playerId)}">${esc(a.playerName)}</button> · ` : ""}<strong>${esc(a.clubName)}</strong> <span class="text-muted">Liga ${a.stufe}</span> <span class="badge badge-info">${esc(a.rolle)}</span>`;
+        const text = `${pct} % des Gehalts${a.gebuehr ? ` · Leihgebühr ${this.geldKurz(a.gebuehr)}` : ""}${a.kaufoption ? ` · Kaufoption ${this.geldKurz(a.kaufoption)}` : ""} · ${a.dauer === "winter" ? "bis zur Winterpause" : "bis zum Saisonende"}${a.rueckholrecht ? " · mit Rückholrecht" : ""}`;
+        if (a.status === "zugesagt") {
+            return `<div class="leih-angebot" data-leih-angebot="${esc(a.id)}"><div class="la-kopf">${kopf}</div><div class="la-text">${text}</div>
+                <div class="la-status">Angenommen - ${esc(a.playerName)} entscheidet sich bis morgen.</div></div>`;
+        }
+        return `<div class="leih-angebot" data-leih-angebot="${esc(a.id)}">
+            <div class="la-kopf">${kopf}</div>
+            <div class="la-text">${text} · <span class="text-muted">${rest === 0 ? "läuft heute ab" : `noch ${rest} Tag${rest === 1 ? "" : "e"}`}</span></div>
+            <div class="la-knoepfe">
+                <button class="btn btn-sm btn-primary" data-la-annehmen="${esc(a.id)}">Annehmen</button>
+                ${a.nachgebessert || pct >= 100 ? "" : `<span class="la-mehr"><input type="number" class="styled-input la-anteil" data-la-id="${esc(a.id)}" value="${Math.min(100, pct + 10)}" min="${Math.min(100, pct + 5)}" max="100" step="5" aria-label="Geforderter Gehaltsanteil in Prozent"> %
+                    <button class="btn btn-sm btn-secondary" data-la-mehr="${esc(a.id)}">Mehr fordern</button></span>`}
+                <button class="btn btn-sm btn-secondary" data-la-ablehnen="${esc(a.id)}">Ablehnen</button>
+            </div>
+        </div>`;
+    },
+
+    /** Die Knöpfe der Leihangebote - in der Akte wie im Unterreiter Leihen */
+    bindeLeihangebote(box, nachher) {
+        const engine = this.getLoanEngine();
+        const state = this.app.state;
+        if (!box || !engine) return;
+        const fertig = (text, art = "success") => {
+            this.showToast(text, art, 6000);
+            if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+            if (typeof nachher === "function") nachher();
+        };
+        box.querySelectorAll("[data-la-annehmen]").forEach(btn => btn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            const res = engine.leihangebotAnnehmen(state, btn.dataset.laAnnehmen);
+            if (!res.success) return this.showToast(res.error, "error", 5000);
+            if (res.perfekt) { this.playSound("erfolg"); return fertig(`${res.angebot.playerName} ist an ${res.angebot.clubName} verliehen.`); }
+            if (res.spielerNein) return fertig(res.grund, "warning");
+            this.playSound("click");
+            fertig(`Angenommen. ${res.angebot.playerName} entscheidet sich bis morgen.`);
+        }));
+        box.querySelectorAll("[data-la-mehr]").forEach(btn => btn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            const id = btn.dataset.laMehr;
+            const feld = box.querySelector(`.la-anteil[data-la-id="${id}"]`);
+            const res = engine.leihangebotMehrFordern(state, id, Number(feld?.value || 0) / 100);
+            if (res.status === "fehler") return this.showToast(res.text, "error");
+            fertig(res.text, res.status === "zurueckgezogen" ? "warning" : "success");
+        }));
+        box.querySelectorAll("[data-la-ablehnen]").forEach(btn => btn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            const res = engine.leihangebotAblehnen(state, btn.dataset.laAblehnen);
+            if (!res.success) return this.showToast(res.error, "error");
+            fertig(`Abgelehnt. ${res.angebot.clubName} bietet für ${res.angebot.playerName} nicht noch einmal.`, "warning");
+        }));
+        box.querySelectorAll(".la-spieler").forEach(btn => btn.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            this.showPlayerDetailsModal(btn.dataset.playerId);
         }));
     },
 
@@ -647,31 +743,59 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
         const club = (id) => state.clubs.find(c => c.id === id);
         const kopf = `<h4 class="gs-titel"><svg class="ico" aria-hidden="true"><use href="#i-transfer"/></svg> Leihe</h4>`;
+        const bis = (l) => l.bisWinter ? "bis zur Winterpause" : "bis zum Saisonende";
         if (modus === "verliehen") {
             const l = player.leihe;
             const spiele = (player.stats?.matches || 0) - (l.startSpiele || 0);
             return `
                 <div class="dash-card mb-3 gs-karte">${kopf}
-                    <div class="gs-lage gs-info">Verliehen an <strong>${esc(club(l.leihvereinId)?.name || "?")}</strong> bis zum Saisonende (${esc(l.rolle)}, dort ${Math.round(l.lohnAnteil * 100)} % des Gehalts) · ${spiele} Spiele seit der Leihe · Spielpraxis ${Math.round((player.spielpraxis ?? 0.5) * 100)} %</div>
-                    <button class="btn btn-secondary" id="btnPdLeiheZurueck">Vorzeitig zurückholen</button>
+                    <div class="gs-lage gs-info">Verliehen an <strong>${esc(club(l.leihvereinId)?.name || "?")}</strong> ${bis(l)} (${esc(l.rolle)}, dort ${Math.round(l.lohnAnteil * 100)} % des Gehalts${l.kaufoption ? `, Kaufoption ${this.geldKurz(l.kaufoption)}` : ""}) · ${spiele} Spiele seit der Leihe · Spielpraxis ${Math.round((player.spielpraxis ?? 0.5) * 100)} %</div>
+                    ${l.rueckholrecht === false
+                        ? `<div class="gs-sub">Ohne Rückholrecht - er bleibt bis zum Ende der Leihe.</div>`
+                        : `<button class="btn btn-secondary" id="btnPdLeiheZurueck">${l.rueckholrecht ? "Rückholrecht ziehen" : "Vorzeitig zurückholen"}</button>`}
                 </div>`;
         }
         if (modus === "geliehen") {
             const l = player.leihe;
             return `
                 <div class="dash-card mb-3 gs-karte">${kopf}
-                    <div class="gs-lage gs-info">Leihspieler von <strong>${esc(club(l.stammvereinId)?.name || "?")}</strong> bis zum Saisonende. Sie zahlen ${Math.round(l.lohnAnteil * 100)} % seines Gehalts; erwartet wird ein Einsatz als ${esc(l.rolle)}.${l.kaufoption ? ` Kaufoption: ${this.geldKurz(l.kaufoption)}.` : ""}</div>
+                    <div class="gs-lage gs-info">Leihspieler von <strong>${esc(club(l.stammvereinId)?.name || "?")}</strong> ${bis(l)}. Sie zahlen ${Math.round(l.lohnAnteil * 100)} % seines Gehalts; erwartet wird ein Einsatz als ${esc(l.rolle)}.${l.rueckholrecht ? " Spielt er nicht, holt ihn sein Verein im Winter zurück." : ""}${l.kaufoption ? ` Kaufoption: ${this.geldKurz(l.kaufoption)}.` : ""}</div>
                     ${l.kaufoption ? `<button class="btn btn-primary" id="btnPdKaufoption">Kaufoption ziehen (${this.geldKurz(l.kaufoption)})</button>` : ""}
                 </div>`;
         }
         if (modus === "eigener") {
+            const liste = player.leihListe;
+            if (liste) {
+                const angebote = engine.offeneLeihangebote(state, player.id);
+                return `
+                <div class="dash-card mb-3 gs-karte">${kopf}
+                    <div class="gs-lage gs-info">Auf der Leihliste: ${esc(this.leihBedingungenText(liste))}. ${angebote.length ? `${angebote.length} Angebot${angebote.length === 1 ? "" : "e"}:` : "Noch kein Angebot - die Vereine melden sich in den nächsten Tagen."}</div>
+                    <div id="pdLeihAngebote" class="leih-angebote">${angebote.map(a => this.leihangebotHtml(a)).join("")}</div>
+                    <button class="btn btn-secondary" id="btnPdVonLeihliste">Von der Leihliste nehmen</button>
+                </div>`;
+            }
             const hindernis = engine.verleihHindernis(state, player);
+            const sommer = typeof TransferEngine !== "undefined" && TransferEngine.fensterInfo?.(state)?.art === "sommer";
             return `
                 <div class="dash-card mb-3 gs-karte">${kopf}
-                    <div class="gs-sub">Ein Verein, bei dem er spielt, leiht ihn bis zum Saisonende aus und übernimmt einen Teil des Gehalts.</div>
-                    ${hindernis
-                        ? `<div class="gs-lage">${esc(hindernis)}</div>`
-                        : `<button class="btn btn-secondary" id="btnPdLeiheAnfragen">Interessenten anfragen</button><div id="pdLeiheAngebote" class="leih-angebote"></div>`}
+                    <div class="gs-sub">Sie nennen die Bedingungen, die Vereine melden sich in den nächsten Tagen mit Angeboten, und er muss zustimmen. Der Leihverein übernimmt einen Teil des Gehalts.</div>
+                    ${hindernis ? `<div class="gs-lage">${esc(hindernis)}</div>` : `
+                    <div class="leih-bedingungen">
+                        <label>Gehaltsanteil mindestens
+                            <select class="styled-select" id="pdLeihAnteil">
+                                <option value="0">Egal</option><option value="0.5" selected>50 %</option><option value="0.75">75 %</option><option value="1">100 %</option>
+                            </select></label>
+                        <label>Einsatz dort
+                            <select class="styled-select" id="pdLeihEinsatz">
+                                <option value="Stammspieler">Stammspieler</option><option value="Rotation" selected>Mindestens Rotation</option><option value="Talent">Egal</option>
+                            </select></label>
+                        ${sommer ? `<label>Dauer
+                            <select class="styled-select" id="pdLeihDauer">
+                                <option value="saison">Bis zum Saisonende</option><option value="winter">Bis zur Winterpause</option>
+                            </select></label>` : ""}
+                        <label class="neg-check"><input type="checkbox" id="pdLeihRueck"> Rückholrecht im Winter (dafür zahlen die Vereine etwas weniger)</label>
+                    </div>
+                    <button class="btn btn-primary" id="btnPdZurLeihe">Zur Leihe anbieten</button>`}
                 </div>`;
         }
         if (modus === "markt") {

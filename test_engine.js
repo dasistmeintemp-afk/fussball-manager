@@ -12922,6 +12922,66 @@ function runEngineTests() {
         if (NegotiationEngine.brauchtFenster({ type: "transfer", vorvertrag: true, sellerClubId: "x" }) || NegotiationEngine.brauchtFenster({ type: "transfer", sellerClubId: null })) throw new Error("Vorvertrag oder Vereinsloser braucht kein Fenster");
     });
 
+    test("Verleihen wie im Vorbild: Leihliste mit Bedingungen, Angebote, Zusage des Spielers, Dauer und Rückholrecht", () => {
+        const { LoanEngine: L } = require('./js/engine/loanEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Verleih" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const kader = state.players.filter(p => p.clubId === club.id).sort((a, b) => a.overall - b.overall);
+        const p = kader.find(x => L.interessenten(state, x.id, 50).filter(i => i.rolle === "Stammspieler").length >= 4);
+        if (!p) throw new Error("Testaufbau: niemand mit genug Interessenten");
+        p.hiddenAttributes = Object.assign({}, p.hiddenAttributes, { ambition: 10 });
+        // Auf die Leihliste: kein Sofortwechsel, die Bedingungen gelten
+        const res = L.zurLeiheAnbieten(state, p.id, { minAnteil: 0.5, einsatz: "Stammspieler", dauer: "winter", rueckholrecht: true });
+        if (!res.success || !p.leihListe || p.clubId !== club.id || p.leihe) throw new Error("Leihliste verleiht sofort oder fehlt");
+        const angebote = L.sammleAngebote(state, p, 3);
+        if (angebote.length < 2) throw new Error(`Nur ${angebote.length} Angebote`);
+        angebote.forEach(a => {
+            if (a.rolle !== "Stammspieler" || a.lohnAnteil + 1e-9 < 0.5 || a.dauer !== "winter" || !a.rueckholrecht || a.maxAnteil + 1e-9 < a.lohnAnteil) throw new Error("Angebot hält die Bedingungen nicht ein: " + JSON.stringify(a));
+        });
+        if (L.sammleAngebote(state, p, 3).length + angebote.length > L.MAX_ANGEBOTE) throw new Error("Zu viele Angebote je Spieler");
+        // Mehr fordern bis zur Grenze, nur einmal
+        const [a1, a2] = angebote;
+        if (a1.maxAnteil > a1.lohnAnteil) {
+            const m = L.leihangebotMehrFordern(state, a1.id, a1.maxAnteil);
+            if (m.status !== "angenommen" || a1.lohnAnteil !== a1.maxAnteil) throw new Error("Mehr fordern bis zur Grenze nicht angenommen");
+            if (L.leihangebotMehrFordern(state, a1.id, 1).status !== "fehler") throw new Error("Zweimal nachgebessert");
+        }
+        // Ablehnen: dieser Verein bietet nicht noch einmal
+        L.leihangebotAblehnen(state, a2.id);
+        if (!p.leihListe.abgelehnt.includes(a2.clubId)) throw new Error("Absage nicht gemerkt");
+        // Annehmen: Erst über Nacht entscheidet er, dann ist er verliehen - mit allen Bedingungen
+        const an = L.leihangebotAnnehmen(state, a1.id);
+        if (!an.success || !an.wartet || p.leihe) throw new Error("Annehmen verleiht sofort");
+        state.currentDayIndex++;
+        L.tag(state);
+        if (a1.status !== "perfekt" || !p.leihe || p.clubId !== a1.clubId) throw new Error("Nicht verliehen: " + a1.status);
+        if (!p.leihe.bisWinter || !p.leihe.rueckholrecht || p.leihe.lohnAnteil !== a1.lohnAnteil || p.leihListe) throw new Error("Leihe ohne die vereinbarten Bedingungen");
+        if (L.offeneLeihangebote(state, p.id).length) throw new Error("Übrige Angebote nicht erledigt");
+        // Ohne Rückholrecht kein Zurückholen
+        p.leihe.rueckholrecht = false;
+        if (L.zurueckholen(state, p.id).success) throw new Error("Zurückgeholt ohne Rückholrecht");
+        p.leihe.rueckholrecht = true;
+        // Fenster zu: Leihliste leer, offene Angebote verfallen
+        const q = kader.find(x => x !== p && !x.leihe && L.interessenten(state, x.id, 20).length);
+        L.zurLeiheAnbieten(state, q.id, { minAnteil: 0, einsatz: "Talent" });
+        const offen = L.sammleAngebote(state, q, 1);
+        if (state.preseason) state.preseason.aktiv = false;
+        state.currentDayIndex = state.calendar.findIndex(t => String(t.date).startsWith("01.10."));
+        L.tag(state);
+        if (q.leihListe || offen.some(a => a.status !== "verfallen")) throw new Error("Nach Fensterschluss noch auf der Leihliste");
+        // Winterpause: Die Halbjahresleihe endet, ein Stammverein mit Rückholrecht holt seinen Spieler, der nicht spielt
+        const fremd = state.players.find(x => x.clubId && x.clubId !== club.id && !x.leihe && (x.contractYears ?? 1) >= 1);
+        const stamm = state.clubs.find(c => c.id === fremd.clubId);
+        L._wechsle(state, fremd, stamm, club);
+        fremd.leihe = { stammvereinId: stamm.id, leihvereinId: club.id, bisSaison: state.seasonYear, lohnAnteil: 0.8, rolle: "Stammspieler", rueckholrecht: true };
+        fremd.spielpraxis = 0.1;
+        state.currentDayIndex = state.calendar.findIndex(t => String(t.date).startsWith("03.01."));
+        if (!TransferEngine.fensterInfo(state).offen || TransferEngine.fensterInfo(state).art !== "winter") throw new Error("Testaufbau: Winterfenster nicht offen");
+        L.tag(state);
+        if (p.leihe || p.clubId !== club.id) throw new Error("Halbjahresleihe nicht zur Winterpause beendet");
+        if (fremd.leihe || fremd.clubId !== stamm.id) throw new Error("Stammverein hat trotz Rückholrecht nicht zurückgeholt");
+    });
+
     test("Leihe: Verhandlung mit dem Stammverein statt Knopfdruck, mit Einsatzzusage und Kaufoption", () => {
         const { LoanEngine: L } = require('./js/engine/loanEngine.js');
         const state = GameState.createNewGame("scf", "normal", { name: "Leihe" });

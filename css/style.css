@@ -9045,3 +9045,17 @@ td.nowrap { white-space: nowrap; }
 .negotiation-inputs .neg-check { flex-direction: row; align-items: center; gap: 8px; grid-column: 1 / -1; font-size: 13px; }
 .negotiation-inputs .neg-check input { width: auto; flex: 0 0 auto; }
 .neg-deadline { color: var(--accent-gold); }
+
+/* Leihangebote für eigene Spieler und Bedingungen der Leihliste */
+.leih-angebot { padding: 10px 0; border-bottom: 1px solid var(--border-color); font-size: 13px; }
+.leih-angebot:last-child { border-bottom: none; }
+.la-kopf { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.la-text { color: var(--text-soft); margin: 4px 0 8px; }
+.la-status { color: var(--accent-info); font-size: 12px; }
+.la-knoepfe { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.la-mehr { display: inline-flex; align-items: center; gap: 6px; }
+.la-mehr .la-anteil { width: 72px; padding: 6px 8px; }
+.la-warten { font-size: 12px; padding-top: 8px; }
+.leih-bedingungen { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 10px 0; }
+.leih-bedingungen label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--text-muted); }
+.leih-bedingungen .neg-check { flex-direction: row; align-items: center; gap: 8px; grid-column: 1 / -1; font-size: 13px; color: var(--text-soft); }

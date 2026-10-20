@@ -12,7 +12,13 @@
  *
  * Ein verliehener Spieler gehört für die Dauer der Leihe zum Kader des
  * Leihvereins (clubId), spielt dort, sammelt dort Spielpraxis und kehrt zum
- * Saisonende zurück. Das Gehalt teilen sich beide Vereine nach dem Anteil.
+ * Saisonende zurück - oder schon zur Winterpause, wenn es so vereinbart
+ * ist. Das Gehalt teilen sich beide Vereine nach dem Anteil.
+ *
+ * Wie im Vorbild ist keine Leihe ein Knopfdruck: Wer einen eigenen Spieler
+ * verleihen will, setzt ihn mit Bedingungen auf die Leihliste, die Vereine
+ * melden sich in den Tagen danach mit Angeboten, und der Spieler muss
+ * zustimmen. Zurückholen geht nur mit vereinbartem Rückholrecht.
  */
 
 class LoanEngine {
@@ -20,6 +26,14 @@ class LoanEngine {
     static MAX_VERLIEHEN = 6;
     /** Höchstens so viele Leihspieler im eigenen Kader */
     static MAX_GELIEHEN = 4;
+    /** So lange gilt ein Leihangebot für einen eigenen Spieler */
+    static ANGEBOTS_FRIST = 3;
+    /** Höchstens so viele offene Angebote je Spieler auf der Leihliste */
+    static MAX_ANGEBOTE = 3;
+    /** Wie lange eine Leihe läuft */
+    static DAUER = { saison: "bis zum Saisonende", winter: "bis zur Winterpause" };
+    /** Einsatzzeit von wenig nach viel - "Talent": keine Zusage */
+    static ROLLEN = ["Talent", "Rotation", "Stammspieler"];
 
     static _resolve(name, pfad) {
         if (typeof globalThis !== "undefined" && globalThis[name]) return globalThis[name];
@@ -177,7 +191,12 @@ class LoanEngine {
         return angebote.sort((a, b) => b.wert - a.wert).slice(0, anzahl);
     }
 
-    static verleihen(state, playerId, clubId) {
+    /**
+     * Den Wechsel vollziehen. bedingungen kommen aus einem angenommenen
+     * Leihangebot (Gehaltsanteil, Einsatz, Gebühr, Kaufoption, Dauer,
+     * Rückholrecht); ohne sie gilt, was der Verein von sich aus bietet.
+     */
+    static verleihen(state, playerId, clubId, bedingungen = null) {
         const player = this._player(state, playerId);
         const hindernis = this.verleihHindernis(state, player);
         if (hindernis) return { success: false, error: hindernis };
@@ -185,17 +204,42 @@ class LoanEngine {
         // dritten Ligen in fünf Ländern sind es oft über 200, und die
         // Reihenfolge hat einen Zufallsanteil - das gewählte Angebot fiel
         // sonst manchmal heraus
-        const angebot = this.interessenten(state, playerId, Infinity).find(a => a.clubId === clubId);
+        const angebot = bedingungen
+            ? Object.assign({ clubId, clubName: this._club(state, clubId)?.name || "" }, bedingungen)
+            : this.interessenten(state, playerId, Infinity).find(a => a.clubId === clubId);
         if (!angebot) return { success: false, error: "Dieser Verein will ihn nicht ausleihen." };
-        this._belegeAusnahme(state, this._erlaubnis(state, player, this._club(state, clubId)), this._club(state, clubId));
-        this._wechsle(state, player, this._club(state, state.userClubId), this._club(state, clubId));
+        const leihverein = this._club(state, clubId);
+        if (!leihverein) return { success: false, error: "Verein nicht gefunden." };
+        const pruefung = this._erlaubnis(state, player, leihverein);
+        if (pruefung && !pruefung.erteilt) return { success: false, error: pruefung.text };
+        this._belegeAusnahme(state, pruefung, leihverein);
+        const eigener = this._club(state, state.userClubId);
+        // Die Leihgebühr zahlt der Leihverein
+        const gebuehr = Math.max(0, Math.round(angebot.gebuehr || 0));
+        if (gebuehr > 0) {
+            leihverein.balance = (leihverein.balance || 0) - gebuehr;
+            eigener.balance = (eigener.balance || 0) + gebuehr;
+            const finanzen = this._resolve("FinanceEngine", "./financeEngine.js");
+            if (finanzen && typeof finanzen.recordTransaction === "function") {
+                finanzen.recordTransaction(state, eigener.id, "transfer_in", gebuehr, `Leihgebühr für ${player.name}`);
+                finanzen.recordTransaction(state, leihverein.id, "transfer_out", -gebuehr, `Leihgebühr für ${player.name}`);
+            }
+        }
+        this._wechsle(state, player, eigener, leihverein);
         player.reserve = undefined;
+        player.leihListe = undefined;
+        const winter = angebot.dauer === "winter";
         player.leihe = {
             stammvereinId: state.userClubId,
             leihvereinId: clubId,
             bisSaison: state.seasonYear || 1,
+            bisWinter: winter || undefined,
             lohnAnteil: angebot.lohnAnteil,
             rolle: angebot.rolle,
+            gebuehr: gebuehr || undefined,
+            kaufoption: angebot.kaufoption || null,
+            // Ohne Absprache (alte Wege, Partnerverein) bleibt das Zurückholen wie bisher möglich
+            rueckholrecht: bedingungen ? !!angebot.rueckholrecht : undefined,
             seit: this._stempel(state),
             startSpiele: player.stats?.matches || 0,
             startTore: player.stats?.goals || 0,
@@ -206,16 +250,26 @@ class LoanEngine {
         player.versprechen = undefined;
         player.mentorId = undefined;
         this._post(state, "Transferabteilung", `${player.name} verliehen`,
-            `${player.name} spielt bis zum Saisonende bei ${angebot.clubName} (${angebot.rolle}). `
-            + `${angebot.clubName} übernimmt ${Math.round(angebot.lohnAnteil * 100)} % seines Gehalts.`);
+            `${player.name} spielt ${this.DAUER[winter ? "winter" : "saison"]} bei ${angebot.clubName} (${angebot.rolle}). `
+            + `${angebot.clubName} übernimmt ${Math.round(angebot.lohnAnteil * 100)} % seines Gehalts`
+            + (gebuehr ? ` und zahlt ${this._geld(gebuehr)} Leihgebühr` : "") + "."
+            + (angebot.kaufoption ? ` ${angebot.clubName} kann ihn bis zum Saisonende für ${this._geld(angebot.kaufoption)} fest verpflichten.` : "")
+            + (player.leihe.rueckholrecht ? " Wir können ihn im Winterfenster zurückholen." : (bedingungen ? " Ein Rückholrecht haben wir nicht." : "")));
         return { success: true, angebot };
     }
 
-    /** Einen verliehenen Spieler vorzeitig zurückholen */
+    /**
+     * Einen verliehenen Spieler vorzeitig zurückholen - nur mit
+     * vereinbartem Rückholrecht und im Fenster. Leihen von früher (ohne
+     * Angabe) gelten wie bisher als zurückholbar.
+     */
     static zurueckholen(state, playerId) {
         const player = this._player(state, playerId);
         if (!player?.leihe || player.leihe.stammvereinId !== state.userClubId) {
             return { success: false, error: "Er ist nicht von Ihnen verliehen." };
+        }
+        if (player.leihe.rueckholrecht === false) {
+            return { success: false, error: "Ein Rückholrecht wurde nicht vereinbart - er bleibt bis zum Ende der Leihe." };
         }
         const fenster = this._fenster(state);
         if (fenster) return { success: false, error: `Zurückholen geht nur im Transferfenster. ${fenster}` };
@@ -224,6 +278,307 @@ class LoanEngine {
         this._post(state, "Transferabteilung", `${player.name} zurückgeholt`,
             `${player.name} kehrt vorzeitig von ${leihverein?.name || "seinem Leihverein"} zurück.`);
         return { success: true };
+    }
+
+    // ------------------------------------------------------------ Leihliste
+
+    /** Fester Wert zwischen 0 und 1 je Text - die Entscheidungen der Leihe verbrauchen keinen Zufall */
+    static _hash(text) {
+        const gen = this._resolve("PlayerGenerator", "./playerGenerator.js");
+        const z = gen && typeof gen._hashZahl === "function" ? gen._hashZahl(text) : 0;
+        return (z + 1) / 2;
+    }
+
+    static _angebote(state) {
+        if (!Array.isArray(state.leihAngebote)) state.leihAngebote = [];
+        return state.leihAngebote;
+    }
+
+    static _te() {
+        return this._resolve("TransferEngine", "./transferEngine.js");
+    }
+
+    static _istDeadlineDay(state) {
+        const te = this._te();
+        return !!(te && typeof te.istDeadlineDay === "function" && te.istDeadlineDay(state));
+    }
+
+    /**
+     * Einen eigenen Spieler zur Leihe anbieten - wie im Vorbild mit
+     * Bedingungen: welchen Gehaltsanteil der Leihverein mindestens übernimmt,
+     * wie viel er dort spielen soll ("Talent": egal), wie lange (bis zur
+     * Winterpause geht nur im Sommer) und ob wir ihn im Winter zurückholen
+     * dürfen. Die Angebote kommen in den Tagen danach (tag), am Deadline Day
+     * sofort.
+     */
+    static zurLeiheAnbieten(state, playerId, bedingungen = {}) {
+        const player = this._player(state, playerId);
+        const hindernis = this.verleihHindernis(state, player);
+        if (hindernis) return { success: false, error: hindernis };
+        const te = this._te();
+        const fenster = te && typeof te.fensterInfo === "function" ? te.fensterInfo(state) : null;
+        player.leihListe = {
+            minAnteil: Math.max(0, Math.min(1, Math.round((Number(bedingungen.minAnteil) || 0) * 20) / 20)),
+            einsatz: this.ROLLEN.includes(bedingungen.einsatz) ? bedingungen.einsatz : "Rotation",
+            dauer: bedingungen.dauer === "winter" && fenster?.art === "sommer" ? "winter" : "saison",
+            rueckholrecht: !!bedingungen.rueckholrecht,
+            seit: this._stempel(state),
+            saison: state.seasonYear || 1,
+            abgelehnt: []
+        };
+        const neu = this._istDeadlineDay(state) ? this.sammleAngebote(state, player, 2) : [];
+        return { success: true, player, neu };
+    }
+
+    /** Von der Leihliste nehmen - offene Angebote für ihn sind damit erledigt */
+    static vonLeihlisteNehmen(state, playerId) {
+        const player = this._player(state, playerId);
+        if (!player?.leihListe) return { success: false, error: "Er steht nicht auf der Leihliste." };
+        player.leihListe = undefined;
+        this._angebote(state).filter(a => String(a.playerId) === String(player.id) && a.status === "offen").forEach(a => { a.status = "zurueckgezogen"; });
+        return { success: true };
+    }
+
+    /** Offene Leihangebote für eigene Spieler, dringendste zuerst */
+    static offeneLeihangebote(state, playerId = null) {
+        return (state?.leihAngebote || [])
+            .filter(a => (a.status === "offen" || a.status === "zugesagt") && (playerId === null || String(a.playerId) === String(playerId)))
+            .sort((a, b) => a.frist - b.frist);
+    }
+
+    /**
+     * Was ein Verein für einen Spieler auf der Leihliste bietet - oder null,
+     * wenn er ihn nicht so einsetzen will wie verlangt oder ihm der
+     * Mindestanteil zu teuer ist. maxAnteil ist seine Grenze beim Nachfordern.
+     */
+    static _angebotVon(state, player, interessent) {
+        const l = player.leihListe;
+        if (this.ROLLEN.indexOf(interessent.rolle) < this.ROLLEN.indexOf(l.einsatz)) return null;
+        // Ein Rückholrecht ist dem Leihverein etwas weniger wert
+        const eigenes = Math.max(0.3, interessent.lohnAnteil - (l.rueckholrecht ? 0.05 : 0));
+        const grenze = Math.min(1, eigenes + 0.1);
+        if (grenze + 1e-9 < l.minAnteil) return null;
+        const anteil = Math.round(Math.max(eigenes, l.minAnteil) * 20) / 20;
+        const club = this._club(state, interessent.clubId);
+        const diff = (player.overall || 50) - this.niveau(state, club);
+        // Für einen, der sofort spielt, zahlt ein Verein eine Gebühr - für eine halbe Saison die Hälfte
+        const gebuehr = interessent.rolle === "Stammspieler" && diff >= 3
+            ? Math.round((player.value || 0) * (l.dauer === "winter" ? 0.015 : 0.03) / 10000) * 10000 : 0;
+        // Etwa jeder dritte will sich den Kauf offenhalten
+        const kaufoption = (player.age || 30) <= 27 && this._hash(`${player.id}|${interessent.clubId}|option`) < 0.33
+            ? Math.max(50000, Math.round((player.value || 0) * 1.25 / 50000) * 50000) : null;
+        return { lohnAnteil: anteil, maxAnteil: Math.max(anteil, Math.round(grenze * 20) / 20), gebuehr, kaufoption };
+    }
+
+    /**
+     * Neue Angebote für einen Spieler auf der Leihliste - von Vereinen, bei
+     * denen er spielen würde und die nicht schon geboten oder eine Absage
+     * bekommen haben. Gibt die neuen zurück.
+     */
+    static sammleAngebote(state, player, anzahl = 1) {
+        const l = player?.leihListe;
+        if (!l) return [];
+        const liste = this._angebote(state);
+        const saison = state.seasonYear || 1;
+        const seine = liste.filter(a => String(a.playerId) === String(player.id));
+        const offen = seine.filter(a => a.status === "offen" || a.status === "zugesagt");
+        if (offen.some(a => a.status === "zugesagt")) return [];
+        const schonDa = new Set(seine.filter(a => a.saison === saison).map(a => a.clubId));
+        const heute = state.currentDayIndex || 0;
+        const neu = [];
+        for (const i of this.interessenten(state, player.id, 12)) {
+            if (neu.length >= anzahl || offen.length + neu.length >= this.MAX_ANGEBOTE) break;
+            if (schonDa.has(i.clubId) || (l.abgelehnt || []).includes(i.clubId)) continue;
+            const b = this._angebotVon(state, player, i);
+            if (!b) continue;
+            const a = Object.assign({
+                id: `leih_${saison}_${heute}_${player.id}_${i.clubId}`,
+                playerId: player.id, playerName: player.name, playerPos: player.pos,
+                clubId: i.clubId, clubName: i.clubName, stufe: i.stufe, rolle: i.rolle,
+                dauer: l.dauer, rueckholrecht: l.rueckholrecht,
+                eingang: heute, frist: heute + this.ANGEBOTS_FRIST, saison, status: "offen"
+            }, b);
+            liste.unshift(a);
+            neu.push(a);
+            this._post(state, i.clubName, `📨 Leihangebot für ${player.name}`,
+                `${i.clubName} (Liga ${i.stufe}) möchte ${player.name} ${this.DAUER[l.dauer]} ausleihen - als ${i.rolle}, mit ${Math.round(a.lohnAnteil * 100)} % des Gehalts`
+                + (a.gebuehr ? ` und ${this._geld(a.gebuehr)} Leihgebühr` : "")
+                + (a.kaufoption ? `, dazu eine Kaufoption für ${this._geld(a.kaufoption)}` : "")
+                + `. Das Angebot gilt ${this.ANGEBOTS_FRIST} Tage - annehmen, mehr fordern oder ablehnen im Transfermarkt unter Leihen.`);
+        }
+        return neu;
+    }
+
+    /**
+     * Ein Leihangebot annehmen. Dann entscheidet der Spieler - über Nacht,
+     * am Deadline Day sofort. Die anderen Vereine warten so lange.
+     */
+    static leihangebotAnnehmen(state, angebotId) {
+        const a = this._angebote(state).find(x => String(x.id) === String(angebotId));
+        if (!a || a.status !== "offen") return { success: false, error: "Das Angebot liegt nicht mehr vor." };
+        const fenster = this._fenster(state);
+        if (fenster) return { success: false, error: fenster };
+        const player = this._player(state, a.playerId);
+        if (!player || player.clubId !== state.userClubId || player.leihe) return { success: false, error: "Er steht nicht mehr zur Verfügung." };
+        if (this.offeneLeihangebote(state, a.playerId).some(x => x.status === "zugesagt")) return { success: false, error: "Er denkt schon über ein anderes Angebot nach." };
+        a.status = "zugesagt";
+        a.entscheidung = state.currentDayIndex || 0;
+        if (this._istDeadlineDay(state)) return this._spielerEntscheidet(state, a);
+        return { success: true, angebot: a, wartet: true };
+    }
+
+    /**
+     * Will er dorthin? Als Stammspieler fast immer - nur einem sehr
+     * Ehrgeizigen sind zwei Ligen tiefer zu wenig. Als Ergänzungsspieler
+     * sagt der Ehrgeizige eher ab, und je tiefer die Liga, desto eher.
+     */
+    static spielerWillLeihe(state, player, a) {
+        const eigener = this._club(state, state.userClubId);
+        const tiefer = Math.max(0, (a.stufe || 1) - (eigener?.level || 1));
+        const ehrgeiz = player?.hiddenAttributes?.ambition ?? 12;
+        const wurf = this._hash(`${player.id}|${a.clubId}|${a.saison}|ja`);
+        if (a.rolle === "Stammspieler") {
+            if (tiefer >= 2 && ehrgeiz >= 16 && wurf < 0.5) return { ok: false, grund: `${player.name} will nicht zwei Ligen tiefer spielen - er traut sich mehr zu.` };
+            return { ok: true };
+        }
+        const chance = 0.85 - Math.max(0, ehrgeiz - 12) * 0.08 - tiefer * 0.1;
+        if (wurf < chance) return { ok: true };
+        return { ok: false, grund: `${player.name} will nicht als Ergänzungsspieler zu ${a.clubName} - er will spielen.` };
+    }
+
+    static _spielerEntscheidet(state, a) {
+        const player = this._player(state, a.playerId);
+        const will = player ? this.spielerWillLeihe(state, player, a) : { ok: false, grund: "Er steht nicht mehr zur Verfügung." };
+        if (!will.ok) {
+            a.status = "spielerNein";
+            if (player?.leihListe) player.leihListe.abgelehnt = [...(player.leihListe.abgelehnt || []), a.clubId];
+            this._post(state, "Transferabteilung", `${a.playerName} sagt ${a.clubName} ab`, `${will.grund} Er bleibt auf der Leihliste, die anderen Angebote gelten weiter.`);
+            return { success: true, angebot: a, spielerNein: true, grund: will.grund };
+        }
+        const res = this.verleihen(state, player.id, a.clubId, {
+            lohnAnteil: a.lohnAnteil, rolle: a.rolle, gebuehr: a.gebuehr, kaufoption: a.kaufoption, dauer: a.dauer, rueckholrecht: a.rueckholrecht
+        });
+        if (!res.success) {
+            a.status = "geplatzt";
+            this._post(state, "Transferabteilung", `Leihe von ${a.playerName} geplatzt`, res.error);
+            return { success: false, error: res.error, angebot: a };
+        }
+        a.status = "perfekt";
+        this._angebote(state).filter(x => x !== a && String(x.playerId) === String(a.playerId) && x.status === "offen").forEach(x => { x.status = "erledigt"; });
+        return { success: true, angebot: a, perfekt: true };
+    }
+
+    /** Ein Leihangebot ablehnen - dieser Verein bietet für ihn nicht noch einmal */
+    static leihangebotAblehnen(state, angebotId) {
+        const a = this._angebote(state).find(x => String(x.id) === String(angebotId));
+        if (!a || a.status !== "offen") return { success: false, error: "Das Angebot liegt nicht mehr vor." };
+        a.status = "abgelehnt";
+        const player = this._player(state, a.playerId);
+        if (player?.leihListe) player.leihListe.abgelehnt = [...(player.leihListe.abgelehnt || []), a.clubId];
+        return { success: true, angebot: a };
+    }
+
+    /**
+     * Mehr Gehalt fordern. Der Verein hat eine Grenze, die er nicht verrät:
+     * Darunter geht er mit, knapp darüber bessert er bis zur Grenze nach, weit
+     * darüber zieht er zurück. Nachgebessert wird einmal.
+     */
+    static leihangebotMehrFordern(state, angebotId, anteil) {
+        const a = this._angebote(state).find(x => String(x.id) === String(angebotId));
+        if (!a || a.status !== "offen") return { status: "fehler", text: "Das Angebot liegt nicht mehr vor." };
+        const neu = Math.max(0, Math.min(1, Math.round((Number(anteil) || 0) * 20) / 20));
+        if (neu <= a.lohnAnteil + 1e-9) return { status: "fehler", text: "Die Forderung muss über dem Angebot liegen." };
+        if (a.nachgebessert) return { status: "fehler", text: `${a.clubName} hat bereits nachgebessert und geht nicht weiter.` };
+        a.nachgebessert = true;
+        const pct = (x) => `${Math.round(x * 100)} %`;
+        if (neu <= a.maxAnteil + 1e-9) {
+            a.lohnAnteil = neu;
+            return { status: "angenommen", angebot: a, text: `${a.clubName} übernimmt ${pct(neu)} des Gehalts.` };
+        }
+        if (neu > a.maxAnteil + 0.15 + 1e-9) {
+            a.status = "zurueckgezogen";
+            return { status: "zurueckgezogen", angebot: a, text: `${a.clubName} zieht das Angebot zurück - so viel Gehalt zahlen sie nicht.` };
+        }
+        a.lohnAnteil = a.maxAnteil;
+        return { status: "nachgebessert", angebot: a, text: `${a.clubName} bessert auf ${pct(a.maxAnteil)} nach - mehr ist nicht drin.` };
+    }
+
+    /**
+     * Jeden Tag: Für Spieler auf der Leihliste melden sich Vereine (etwa
+     * jeden dritten Tag einer), Angebote verfallen nach drei Tagen, wer
+     * zugesagt hat, entscheidet sich über Nacht. Schließt das Fenster, ist
+     * die Leihliste leer. Zur Winterpause enden Halbjahresleihen, und ein
+     * Stammverein mit Rückholrecht holt seinen Spieler, wenn er nicht spielt.
+     * Gibt Zeilen für den Tagesbericht zurück.
+     */
+    static tag(state) {
+        const meldungen = [];
+        if (!state?.userClubId) return meldungen;
+        const heute = state.currentDayIndex || 0;
+        const saison = state.seasonYear || 1;
+        const fensterZu = !!this._fenster(state);
+        const liste = this._angebote(state);
+        liste.forEach(a => {
+            if ((a.status === "offen" || a.status === "zugesagt") && (fensterZu || a.saison !== saison)) a.status = "verfallen";
+        });
+        if (fensterZu) {
+            const gelistet = (state.players || []).filter(p => p.leihListe);
+            gelistet.forEach(p => { p.leihListe = undefined; });
+            if (gelistet.some(p => p.clubId === state.userClubId)) meldungen.push("📋 Das Fenster ist zu: Die Leihliste ist leer.");
+        } else {
+            liste.filter(a => a.status === "zugesagt" && heute >= (a.entscheidung ?? heute)).forEach(a => {
+                const r = this._spielerEntscheidet(state, a);
+                if (r.perfekt) meldungen.push(`🤝 ${a.playerName} ist an ${a.clubName} verliehen.`);
+                else if (r.spielerNein) meldungen.push(`🙅 ${a.playerName} sagt ${a.clubName} ab.`);
+            });
+            liste.filter(a => a.status === "offen" && heute > a.frist).forEach(a => {
+                a.status = "verfallen";
+                this._post(state, a.clubName, `Leihangebot für ${a.playerName} verfallen`, `Sie haben auf unser Leihangebot für ${a.playerName} nicht reagiert. Wir sehen uns anderweitig um.`);
+            });
+            (state.players || []).filter(p => p.leihListe && p.clubId === state.userClubId && !p.leihe).forEach(p => {
+                if (this._hash(`${p.id}|${saison}|${heute}|tag`) < 0.35) {
+                    this.sammleAngebote(state, p, 1).forEach(a => meldungen.push(`📨 Leihangebot für ${p.name} von ${a.clubName}.`));
+                }
+            });
+        }
+        this._winterpause(state, meldungen);
+        // Erledigtes nicht ewig mitschleppen
+        if (liste.length > 40) {
+            state.leihAngebote = liste.filter((a, i) => a.status === "offen" || a.status === "zugesagt" || i < 20);
+        }
+        return meldungen;
+    }
+
+    /** Einmal zum Winterfenster: Halbjahresleihen enden, Rückholrechte greifen */
+    static _winterpause(state, meldungen) {
+        const te = this._te();
+        const info = te && typeof te.fensterInfo === "function" ? te.fensterInfo(state) : null;
+        const saison = state.seasonYear || 1;
+        if (!info || !info.offen || info.art !== "winter" || state.leihWinter === saison) return;
+        state.leihWinter = saison;
+        (state.players || []).filter(p => p.leihe && p.leihe.bisWinter && (p.leihe.bisSaison || 0) <= saison).forEach(p => {
+            const l = p.leihe;
+            const eigen = l.stammvereinId === state.userClubId || l.leihvereinId === state.userClubId;
+            const andere = this._club(state, l.stammvereinId === state.userClubId ? l.leihvereinId : l.stammvereinId);
+            this._beende(state, p);
+            if (eigen) {
+                this._post(state, "Leihabteilung", `Halbjahresleihe beendet: ${p.name}`,
+                    l.stammvereinId === state.userClubId
+                        ? `${p.name} kehrt zur Winterpause von ${andere?.name || "seinem Leihverein"} zurück.`
+                        : `${p.name} kehrt zur Winterpause zu ${andere?.name || "seinem Verein"} zurück.`);
+                meldungen.push(`↩️ ${p.name}: Halbjahresleihe beendet.`);
+            }
+        });
+        // Wer als Stammspieler zugesagt war und kaum spielt, holt sein Verein zurück
+        this.geliehenVon(state, state.userClubId)
+            .filter(p => p.leihe.rueckholrecht && p.leihe.rolle === "Stammspieler" && (p.spielpraxis ?? 0.5) < 0.35)
+            .forEach(p => {
+                const stamm = this._club(state, p.leihe.stammvereinId);
+                this._beende(state, p);
+                this._post(state, stamm?.name || "Stammverein", `${p.name} wird zurückgeholt`,
+                    `Wir haben ${p.name} als Stammspieler verliehen, bei Ihnen spielt er kaum. Wir machen von unserem Rückholrecht Gebrauch.`);
+                meldungen.push(`↩️ ${stamm?.name || "Sein Verein"} holt ${p.name} zurück.`);
+            });
     }
 
     // ------------------------------------------------------------ Ausleihen
@@ -356,6 +711,9 @@ class LoanEngine {
             stammvereinId: stammverein.id,
             leihvereinId: eigener.id,
             bisSaison: state.seasonYear || 1,
+            bisWinter: v && v.dauer === "winter" ? true : undefined,
+            // Mit Rückholrecht holt ihn sein Verein im Winter zurück, wenn er nicht spielt
+            rueckholrecht: v ? !!v.rueckholrecht : undefined,
             lohnAnteil: anteil,
             rolle: eintrag.rolle,
             seit: this._stempel(state),
@@ -367,7 +725,7 @@ class LoanEngine {
         };
         player.morale = Math.min(99, (player.morale ?? 75) + 5);
         this._post(state, "Transferabteilung", `${player.name} ausgeliehen`,
-            `${player.name} spielt bis zum Saisonende für Sie. Sie übernehmen ${Math.round(anteil * 100)} % seines Gehalts`
+            `${player.name} spielt ${this.DAUER[player.leihe.bisWinter ? "winter" : "saison"]} für Sie. Sie übernehmen ${Math.round(anteil * 100)} % seines Gehalts`
             + (gebuehr ? `, die Leihgebühr beträgt ${this._geld(gebuehr)}` : "")
             + `. ${stammverein.name} erwartet, dass er als ${eintrag.rolle} spielt.`
             + (mitOption ? ` Sie können ihn bis zum Saisonende für ${this._geld(eintrag.kaufoption)} fest verpflichten.` : ""));

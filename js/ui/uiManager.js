@@ -755,7 +755,7 @@ class UIManager {
         }
 
         const knopf = item => `
-            <button class="attention-item" data-tab="${this.escapeHtml(item.tab)}"${item.playerId !== undefined ? ` data-player="${this.escapeHtml(String(item.playerId))}"` : ""}${item.negId ? ` data-neg="${this.escapeHtml(String(item.negId))}"` : ""}>
+            <button class="attention-item" data-tab="${this.escapeHtml(item.tab)}"${item.playerId !== undefined ? ` data-player="${this.escapeHtml(String(item.playerId))}"` : ""}${item.negId ? ` data-neg="${this.escapeHtml(String(item.negId))}"` : ""}${item.unterreiter ? ` data-sub="${this.escapeHtml(item.unterreiter)}"` : ""}>
                 <span class="attention-icon ton-${({ "🚑": "bad", "⚠️": "bad", "🩺": "bad", "📢": "bad", "🥵": "warn", "😞": "warn", "💰": "warn", "💬": "warn", "🎓": "warn", "⭐": "ok", "🤝": "ok" })[item.icon] || "info"}">${this.symbolHtml(item.icon)}</span>
                 <span class="attention-text">
                     <strong>${this.escapeHtml(item.title)}</strong>
@@ -783,6 +783,8 @@ class UIManager {
                     if (ziel) return this.showPlayerDetailsModal(ziel.id);
                 }
                 this.switchTab(btn.dataset.tab);
+                // Leihangebote stehen im Unterreiter Leihen
+                if (btn.dataset.sub === "leihen") document.getElementById("btnSubTransfersLoans")?.click();
             });
         });
         list.querySelectorAll(".attention-name").forEach(btn => {

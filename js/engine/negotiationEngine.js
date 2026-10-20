@@ -414,7 +414,10 @@ class NegotiationEngine {
                 rolle,
                 kaufoption: eintrag.kaufoption,
                 optionsAufschlag: eintrag.optionsAufschlag,
-                wage: eintrag.wage
+                wage: eintrag.wage,
+                // Für ein junges Talent will sein Verein zurückholen können, wenn es nicht spielt
+                rueckholrecht: (player.age || 30) <= 23,
+                dauer: "saison"
             },
             agreed: {},
             lastOffer: null,
@@ -422,7 +425,8 @@ class NegotiationEngine {
         };
         this.log(negotiation, state, "club",
             `${eintrag.clubName} gibt ${player.name} bis zum Saisonende ab: ${Math.round(eintrag.lohnAnteil * 100)} % des Gehalts`
-            + `${eintrag.gebuehr ? `, Leihgebühr ${this.formatMoney(eintrag.gebuehr)}` : ", ohne Leihgebühr"}, Einsatz als ${this.rolleText(eintrag.rolle)}.`);
+            + `${eintrag.gebuehr ? `, Leihgebühr ${this.formatMoney(eintrag.gebuehr)}` : ", ohne Leihgebühr"}, Einsatz als ${this.rolleText(eintrag.rolle)}`
+            + `${negotiation.demand.rueckholrecht ? ", mit Rückholrecht im Winter" : ""}.`);
         if (rolle !== eintrag.rolle) {
             this.log(negotiation, state, "agent", `Berater ${agent.name}: "Er kommt nur, wenn er als ${rolle} eingeplant ist."`);
         }
@@ -613,12 +617,18 @@ class NegotiationEngine {
             const gebuehr = Math.max(0, Math.round(Number(offer.gebuehr) || 0));
             const rolle = this.ROLLEN.includes(offer.rolle) ? offer.rolle : d.rolle;
             const kaufoption = !!offer.kaufoption && !!d.kaufoption;
+            // Bis zur Winterpause geht nur im Sommer
+            const te = this.getTransferEngine();
+            const sommer = te && typeof te.fensterInfo === "function" && te.fensterInfo(state).art === "sommer";
+            const dauer = offer.dauer === "winter" && sommer ? "winter" : "saison";
+            const rueckholrecht = offer.rueckholrecht === undefined ? !!d.rueckholrecht : !!offer.rueckholrecht;
             const kosten = gebuehr + (kaufoption ? (d.optionsAufschlag || 0) : 0);
             if (kosten > Math.max(0, club.balance || 0)) return { success: false, error: "Für die Leihgebühr reicht das Geld nicht." };
-            negotiation.lastOffer = { lohnAnteil: anteil, gebuehr, rolle, kaufoption };
+            negotiation.lastOffer = { lohnAnteil: anteil, gebuehr, rolle, kaufoption, dauer, rueckholrecht };
             this.log(negotiation, state, "us",
-                `Leihangebot: ${Math.round(anteil * 100)} % des Gehalts, ${gebuehr ? `Leihgebühr ${this.formatMoney(gebuehr)}` : "ohne Leihgebühr"}, Einsatz als ${this.rolleText(rolle)}`
-                + `${kaufoption ? `, mit Kaufoption für ${this.formatMoney(d.kaufoption)} (Aufschlag ${this.formatMoney(d.optionsAufschlag || 0)})` : ""}.`);
+                `Leihangebot ${dauer === "winter" ? "bis zur Winterpause" : "bis zum Saisonende"}: ${Math.round(anteil * 100)} % des Gehalts, ${gebuehr ? `Leihgebühr ${this.formatMoney(gebuehr)}` : "ohne Leihgebühr"}, Einsatz als ${this.rolleText(rolle)}`
+                + `${kaufoption ? `, mit Kaufoption für ${this.formatMoney(d.kaufoption)} (Aufschlag ${this.formatMoney(d.optionsAufschlag || 0)})` : ""}`
+                + `${rueckholrecht ? ", mit Rückholrecht" : ", ohne Rückholrecht"}.`);
         } else if (negotiation.stage === NEGOTIATION_STAGES.FEE) {
             const fee = Math.max(0, Math.round(Number(offer.fee) || 0));
             // In Raten muss nur die Anzahlung ins Transferbudget passen - die
@@ -910,11 +920,15 @@ class NegotiationEngine {
         const heute = this.today(state);
         const o = negotiation.lastOffer || {};
         const d = negotiation.demand;
+        // Eine halbe Saison kostet die halbe Gebühr
+        const gebuehrSoll = (d.gebuehr || 0) * (o.dauer === "winter" ? 0.5 : 1);
         const anteilQuote = d.lohnAnteil > 0 ? (o.lohnAnteil || 0) / d.lohnAnteil : 1;
-        const gebuehrQuote = d.gebuehr > 0 ? (o.gebuehr || 0) / d.gebuehr : 1;
+        const gebuehrQuote = gebuehrSoll > 0 ? (o.gebuehr || 0) / gebuehrSoll : 1;
         const stufen = this.ROLLEN.indexOf(o.rolle) - this.ROLLEN.indexOf(d.rolle);
         const rollenFaktor = stufen < 0 ? Math.pow(0.85, -stufen) : 1;
-        const bewertung = (d.gebuehr > 0 ? Math.min(1.2, anteilQuote) * 0.6 + Math.min(1.2, gebuehrQuote) * 0.4 : Math.min(1.2, anteilQuote)) * rollenFaktor;
+        // Ohne das verlangte Rückholrecht muss es sich anders lohnen
+        const rueckFaktor = d.rueckholrecht && !o.rueckholrecht ? 0.9 : 1;
+        const bewertung = (gebuehrSoll > 0 ? Math.min(1.2, anteilQuote) * 0.6 + Math.min(1.2, gebuehrQuote) * 0.4 : Math.min(1.2, anteilQuote)) * rollenFaktor * rueckFaktor;
 
         if (bewertung >= 0.97 && stufen >= 0) return this.schliesseLeihe(state, negotiation);
 
@@ -935,9 +949,11 @@ class NegotiationEngine {
         const nachgeben = 0.04 + negotiation.round * 0.02;
         d.lohnAnteil = Math.max(d.minAnteil || 0.3, Math.round(d.lohnAnteil * (1 - nachgeben) * 20) / 20);
         d.gebuehr = this.runde(d.gebuehr * (1 - nachgeben));
-        if (stufen >= 0 && (o.lohnAnteil || 0) + 1e-9 >= d.lohnAnteil && (o.gebuehr || 0) >= d.gebuehr) return this.schliesseLeihe(state, negotiation);
-        const text = `${negotiation.sellerClubName} will ${Math.round(d.lohnAnteil * 100)} % des Gehalts${d.gebuehr ? ` und ${this.formatMoney(d.gebuehr)} Leihgebühr` : ""}`
-            + `${stufen < 0 ? ` - und einen Einsatz als ${d.rolle}` : ""}.`;
+        const fehltRueck = d.rueckholrecht && !o.rueckholrecht;
+        if (stufen >= 0 && !fehltRueck && (o.lohnAnteil || 0) + 1e-9 >= d.lohnAnteil && (o.gebuehr || 0) >= (d.gebuehr || 0) * (o.dauer === "winter" ? 0.5 : 1)) return this.schliesseLeihe(state, negotiation);
+        const gebuehrJetzt = this.runde((d.gebuehr || 0) * (o.dauer === "winter" ? 0.5 : 1));
+        const text = `${negotiation.sellerClubName} will ${Math.round(d.lohnAnteil * 100)} % des Gehalts${gebuehrJetzt ? ` und ${this.formatMoney(gebuehrJetzt)} Leihgebühr` : ""}`
+            + `${stufen < 0 ? ` - und einen Einsatz als ${d.rolle}` : ""}${fehltRueck ? `${stufen < 0 ? "" : " -"} und ein Rückholrecht` : ""}.`;
         this.log(negotiation, state, "club", text);
         this.notify(state, negotiation, `Gegenforderung: ${negotiation.playerName}`, `${text} Verbleibende Geduld: ${negotiation.patience}%.`);
         negotiation.status = NEGOTIATION_STATUS.AWAITING_US;
@@ -953,7 +969,8 @@ class NegotiationEngine {
         const d = negotiation.demand;
         const res = loan ? loan.ausleihen(state, negotiation.playerId, o.lohnAnteil, {
             kaufoption: !!o.kaufoption,
-            vereinbart: { stammvereinId: negotiation.sellerClubId, gebuehr: o.gebuehr || 0, rolle: o.rolle || d.rolle, kaufoption: d.kaufoption, optionsAufschlag: d.optionsAufschlag || 0 }
+            vereinbart: { stammvereinId: negotiation.sellerClubId, gebuehr: o.gebuehr || 0, rolle: o.rolle || d.rolle, kaufoption: d.kaufoption, optionsAufschlag: d.optionsAufschlag || 0,
+                dauer: o.dauer || "saison", rueckholrecht: !!o.rueckholrecht }
         }) : { success: false, error: "Leihen sind nicht verfügbar." };
         negotiation.closedDay = heute;
         if (!res.success) {
@@ -965,7 +982,7 @@ class NegotiationEngine {
         negotiation.status = NEGOTIATION_STATUS.ACCEPTED;
         negotiation.stage = NEGOTIATION_STAGES.DONE;
         negotiation.agreed = Object.assign({}, o);
-        this.log(negotiation, state, "club", `${negotiation.sellerClubName} ist einverstanden: ${negotiation.playerName} spielt bis zum Saisonende für uns.`);
+        this.log(negotiation, state, "club", `${negotiation.sellerClubName} ist einverstanden: ${negotiation.playerName} spielt ${o.dauer === "winter" ? "bis zur Winterpause" : "bis zum Saisonende"} für uns.`);
         return { negotiation, kind: "completed" };
     }
 

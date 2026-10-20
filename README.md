@@ -240,6 +240,28 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   - *Wirkung:* Alles wirkt in der 2D-Simulation (Positionen, Deckung, Pressing, Umschalten), im Ballbesitzspiel (Passwahl, Dribblings, Torwartabspiel) und – bewusst maßvoll – in der Ergebnissimulation (Stärke, Angriffsmuster, Fouls, Ermüdung).
 - **Aufstellungstabelle:** Eine Tabelle mit Positions-Chip, Sternen, Rollenkürzel samt Rollenwahl und Kondition je Spieler – umschaltbar zwischen *Mit Ball* und *Gegen den Ball*, synchron zur Taktiktafel.
 - **Taktiktafel:** Ansichten *Kombiniert*, *Mit Ball*, *Gegen den Ball* und *Beide* (beide Formen übereinander mit dem Weg jedes Spielers), Rollenkürzel auf jeder Karte, Verbindungslinien, die zeigen, wer zusammenspielt und ob die Rollen zueinander passen (stark / passt / hakt), dazu ein Taktik-Check mit Hinweisen. Im Live-Coaching lassen sich Anweisungen und beide Formen während des Spiels ändern.
+- **Spielerkarten auf der Taktiktafel:** Jeder Spieler steht als Karte wie im Vorbild auf dem Feld. Vorher war es ein Kreis mit einer Sternzahl.
+  - Die Karte zeigt das Trikot in den Vereinsfarben mit Rückennummer (der Torwart in seiner eigenen Farbe) und darunter die Rolle als farbiges Band.
+  - Darunter folgen fünf Sterne für die Stärke auf genau diesem Platz, der Nachname und ein Balken für die Kondition (grün, gelb, rot).
+  - Am Trikot stehen die Kapitänsbinde, ein rotes Kreuz bei Verletzung, eine rote Karte bei Sperre und das Symbol der Signatur-Eigenschaft.
+  - Wer fremd spielt, hat einen gelben, orangen oder roten Rahmen und darunter die Eignung mit Abzug.
+  - Das Augen-Menü blendet Rollen, Sterne, Namen, Verbindungen, Eignung und Kondition einzeln aus. Am großen Bildschirm sind die Karten größer.
+- **Menü beim Antippen:** Ein Tipp auf einen Spieler der Elf öffnet sein Menü, am Handy als Blatt von unten. Vorher markierte ein Tipp den Spieler nur zum Tauschen.
+  - Oben stehen Nummer, Name, Nationalität, Alter, Stammposition, die Sterne auf diesem Platz mit der Eignung, eine Verletzung oder Sperre und die Signatur.
+  - Darunter folgen Kondition, Form, Moral und Spielpraxis mit Balken.
+  - Die Knöpfe: *Akte öffnen*, *Auswechseln*, *Platz tauschen* (danach einen zweiten Spieler auf dem Feld oder der Bank antippen) und *Verbindungen* (seine Linien hervorgehoben, unter der Tafel erklärt).
+  - Die Rolle mit und gegen den Ball lässt sich im Menü wählen.
+  - Kapitän, Elfmeter, Freistöße und Ecken werden mit einem Tipp vergeben oder wieder abgegeben.
+  - *Auswechseln* listet, wer auf diesem Platz spielen kann: zuerst die Bank, dann der Kader, jeweils nach der Stärke dort, mit Kondition. Verletzte und Gesperrte stehen ausgegraut am Ende.
+  - Ein freier Platz zeigt dieselbe Liste zum Besetzen.
+- **Menü für Bank und Kader:** Ein Tipp auf einen Spieler unter *Ersatzbank* zeigt seine Werte, *Akte öffnen*, *Auf die Bank* oder *Von der Bank nehmen* und *Einwechseln für*.
+  - *Einwechseln für* nennt die Plätze der Elf, die er spielen kann, mit seinen Sternen dort und denen des Spielers, der jetzt dort steht.
+  - Ein Torwart wird nicht als Verteidiger angeboten.
+  - Ist vorher ein Platz gewählt, wechselt ein Tipp wie bisher sofort.
+- **Rückennummern (`GameState.rueckennummern`):** Jeder Spieler hat eine feste Nummer, einmalig im Kader und klassisch nach Position. Die Besten wählen zuerst: der Torwart die 1, die Innenverteidiger 4 und 5, der offensive Mittelfeldspieler die 10, der Mittelstürmer die 9.
+  - Die Nummer bleibt, bis er den Verein wechselt. Ein Neuzugang bekommt eine freie.
+  - Im Livespiel tragen beide Mannschaften diese Nummern, auch ein Eingewechselter seine eigene. Vorher spielte jede Elf mit 1 bis 11.
+  - Die Bankleiste nennt die Nummer und, unter 90 %, die Kondition.
 - **Spezialrollen:** Kapitän, Elfmeterschütze, Freistoßschütze, Eckenschütze.
 - **Teamchemie & Spielerzufriedenheit:** Individuelle Zufriedenheit je Spieler (Spielzeit, Vertrag, Teamleistung) und Einfluss auf Spielgeschehen.
 
@@ -798,6 +820,10 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
   - **Offene Posten:** Ein offener Posten wird mit Aushilfen besetzt und ist spürbar schwächer als ein eigener Mann.
 - **Detaillierte Spielberichte:** Textzusammenfassungen, xG-Vergleiche, Zweikampfquoten, Paraden und Auszeichnungen für den Mann des Spiels.
 - **Verbessertes Postfach (`NewsEngine`):** Vollständige Suche, Filterleiste (Vorstand, Spiel, Transfers, Training, Finanzen) und dauerhafte Mail-Historie. Am Handy und auf schmalen Bildschirmen klappt eine Nachricht direkt unter ihrem Eintrag auf; ein zweiter Tipp klappt sie zu. Vorher stand sie unter der ganzen Liste, und man musste erst ans Ende scrollen. Breit steht sie wie gewohnt rechts daneben.
+- **Weniger Post über fremde Wettbewerbe:** Eine Siegermail kommt nur noch für den eigenen Landespokal, für den Meisterpokal und für Wettbewerbe, in denen der eigene Verein gespielt hat oder ein Verein aus dem eigenen Land gewinnt.
+  - Vorher kam am Saisonende für jeden der dreizehn Landespokale und alle drei Europapokale eine eigene Mail, vom brasilianischen bis zum schottischen.
+  - Die Sieger stehen weiter an den Wettbewerben und in der Historie.
+  - Der Saisonabschluss nennt den Meister der eigenen Liga („Meister der First Division ist …“). Vorher hieß es überall „Deutscher Meister“.
 
 ### 8. 🌐 Die Spielwelt: 384 Vereine aus fünf Ländern (`WorldGenerator`)
 - **Zwanzig spielbare Ligen, 384 Vereine, über 8300 Spieler.** Die komplette Welt wird beim Karrierestart erzeugt und läuft Saison für Saison mit.
@@ -805,6 +831,12 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
 - **Laufende Karrieren bekommen die neuen Ligen beim Laden** (Spielstand-Version 9): Vereine, Kader und Spielplan werden nachträglich angelegt, die verpassten Spieltage holt die Simulation am nächsten Spieltag anteilig nach, und eine Nachricht des Ligavorstands kündigt sie an.
 - **Was die größere Welt kostet:** Im Browser dauert der Aufbau 1,7 statt 0,7 Sekunden und ein Kalendertag 119 statt 77 ms; der Spielstand wächst kodiert von 2,4 auf 4,0 MB (er liegt in IndexedDB).
 - **Acht Länder im Hintergrund mit je zwei Ligen:** Niederlande, Portugal, Belgien, Türkei, Österreich, Schweiz, Schottland und Brasilien spielen mit Tabellen, Kadern, Transfers und Landespokal mit, sind aber nicht wählbar. Jedes Land hat eine erste und eine zweite Liga (Eerste Divisie, Segunda Divisão, Tweede Klasse, İkinci Lig, 2. Liga Österreich, Nationalliga B, Scottish Second Division, Série Nacional B; 10 bis 20 Vereine) mit direktem Auf- und Abstieg: ein Platz in Österreich, der Schweiz und Schottland, zwei in den Niederlanden, Portugal und Belgien, drei in der Türkei, vier in Brasilien.
+- **Namen passend zur Nationalität:** Ein Spieler heißt wie sein Land, nicht wie sein Verein. Vorher hieß ein Italiener bei einem deutschen Verein etwa „Jannik Hahn“.
+  - Die Länder mit Liga haben ihre Namenspools. Für 41 weitere Nationen gibt es eigene Pools mit gewöhnlichen Vor- und Nachnamen, etwa Senegal, Kroatien, Japan oder Argentinien.
+  - Das gilt für neue Spieler und für die Talente der eigenen Akademie.
+  - Sprachräume zählen: Ein Österreicher darf deutsch heißen, ein Belgier französisch oder niederländisch, ein Kanadier englisch.
+  - Ältere Spielstände werden beim Laden einmal berichtigt, fest je Spieler und ohne Zufall. Umbenannt wird nur, wessen Name ganz aus dem Pool eines fremden Sprachraums stammt. Die Kader der ersten Ligen und Namen aus einer Namensdatei bleiben.
+  - Nebenbei behoben: „Kap Verde“ und „DR Kongo“ waren in den Listen in zwei Wörter zerfallen.
   - **Stärke:** Die zweiten Ligen liegen rund 12 Punkte unter der ersten Liga ihres Landes, ihr Ruf etwa auf Höhe der 2. Liga. Die Talentschmieden der Länder wirken auch dort: Der Scout findet in den zweiten Ligen junge Spieler mit Potenzial.
   - **Pokale:** Mit beiden Ligen haben die Niederlande, Portugal, die Türkei und Brasilien mehr als 32 Vereine und spielen ab der ersten Runde mit Freilosen, Belgien ab der zweiten, Österreich, Schweiz und Schottland ab dem Achtelfinale.
   - **Laufende Karrieren** bekommen die zweiten Ligen beim Laden dazu, die erste Liga des Landes hat ab dann Absteiger. Die Welt wächst auf 632 Vereine und rund 14.000 Spieler, der Spielstand kodiert von 5,7 auf 6,9 MB.

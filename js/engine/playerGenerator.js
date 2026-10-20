@@ -169,7 +169,7 @@ class PlayerGenerator {
         "abgestellt", "verletztVomLaenderspiel", "auszeichnungen", "transferListed", "vereinslosAb", "leihe", "reserve",
         "vorvertrag", "vorvertragInteresse", "klauseln", "praemien", "versprechen", "mentorId", "wechselwunsch", "gespraechswunsch",
         "unmutTage", "trainingsfokus", "umschulung", "eigenheitTraining", "weiterverkauf", "trainingLog", "medien", "eigengewaechsVon", "ausgebildetVon",
-        "jugendvertrag", "u19", "u23", "nominiertAus", "leihListe"];
+        "jugendvertrag", "u19", "u23", "nominiertAus", "leihListe", "trikot"];
 
     /**
      * Ein Spieler in der gemeinsamen Form: alle Felder in fester Reihenfolge,
@@ -205,7 +205,7 @@ class PlayerGenerator {
             umschulung: p.umschulung, eigenheitTraining: p.eigenheitTraining, weiterverkauf: p.weiterverkauf,
             trainingLog: p.trainingLog, medien: p.medien, eigengewaechsVon: p.eigengewaechsVon,
             ausgebildetVon: p.ausgebildetVon, jugendvertrag: p.jugendvertrag, u19: p.u19, u23: p.u23,
-            nominiertAus: p.nominiertAus, leihListe: p.leihListe
+            nominiertAus: p.nominiertAus, leihListe: p.leihListe, trikot: p.trikot
         };
         for (const k in p) if (!(k in o)) o[k] = p[k];
         return o;
@@ -310,6 +310,114 @@ class PlayerGenerator {
         };
     }
 
+    /** Das Länderkürzel zu einer Nationalität in Worten: "Deutschland" → "de" - oder null */
+    static landZuNation(nation) {
+        if (!this._landNachName) {
+            const daten = (typeof COUNTRIES_DATA !== "undefined" && COUNTRIES_DATA)
+                ? COUNTRIES_DATA
+                : ((typeof window !== "undefined" && window.COUNTRIES_DATA) ? window.COUNTRIES_DATA
+                    : (typeof require !== "undefined" ? (() => { try { return require("../data/leagueData.js").COUNTRIES_DATA; } catch (e) { return null; } })() : null));
+            this._landNachName = new Map((daten || []).map(c => [c.name, c.id]));
+        }
+        return this._landNachName.get(nation) || null;
+    }
+
+    /**
+     * Woher die Namen eines Spielers kommen: aus seiner Nationalität, nicht
+     * aus dem Land seines Vereins. Länder mit eigener Liga haben ihren Pool,
+     * die übrigen stehen in NATION_NAME_POOLS. Vorher hieß ein Italiener
+     * bei einem deutschen Verein "Jannik Hahn".
+     */
+    static namenspoolFuer(nation, ersatzLand = null) {
+        const land = this.landZuNation(nation);
+        const laenderPools = (typeof COUNTRY_NAME_POOLS !== "undefined" && COUNTRY_NAME_POOLS)
+            ? COUNTRY_NAME_POOLS
+            : ((typeof window !== "undefined" && window.COUNTRY_NAME_POOLS) ? window.COUNTRY_NAME_POOLS
+                : (typeof require !== "undefined" ? (() => { try { return require("../data/countryNamePools.js").COUNTRY_NAME_POOLS; } catch (e) { return null; } })() : null));
+        if (land && laenderPools && laenderPools[land]) return laenderPools[land];
+        const nationen = (typeof NATION_NAME_POOLS !== "undefined" && NATION_NAME_POOLS)
+            ? NATION_NAME_POOLS
+            : ((typeof window !== "undefined" && window.NATION_NAME_POOLS) ? window.NATION_NAME_POOLS
+                : (typeof require !== "undefined" ? (() => { try { return require("../data/countryNamePools.js").NATION_NAME_POOLS; } catch (e) { return null; } })() : null));
+        if (nationen && nationen[nation]) return nationen[nation];
+        return this.resolveNamePool(ersatzLand);
+    }
+
+    /**
+     * Sprachräume: Ein Österreicher darf deutsch heißen, ein Belgier
+     * französisch oder niederländisch, ein Kanadier englisch. Je Namenspool
+     * eines Landes und je Nationalität - wo sie sich treffen, passt der Name.
+     */
+    static SPRACHRAUM_POOL = { de: ["de"], at: ["de"], ch: ["de", "fr", "it"], en: ["en"], sc: ["en"], es: ["es"], br: ["pt"], pt: ["pt"], fr: ["fr"], be: ["fr", "nl"], nl: ["nl"], it: ["it"], tr: ["tr"] };
+    static SPRACHRAUM_NATION = {
+        de: ["Deutschland", "Österreich", "Schweiz"],
+        en: ["England", "Schottland", "Wales", "Irland", "Nordirland", "USA", "Kanada", "Australien"],
+        es: ["Spanien", "Argentinien", "Uruguay", "Chile", "Kolumbien", "Mexiko", "Paraguay", "Ecuador", "Venezuela", "Peru"],
+        pt: ["Portugal", "Brasilien", "Angola", "Kap Verde"],
+        fr: ["Frankreich", "Belgien", "Schweiz", "Senegal", "Mali", "Elfenbeinküste", "Kamerun", "DR Kongo", "Marokko", "Algerien"],
+        nl: ["Niederlande", "Belgien", "Suriname", "Curaçao"],
+        it: ["Italien", "Schweiz"],
+        tr: ["Türkei"]
+    };
+
+    /** Der Namenspool genau dieser Nationalität - oder null, wenn es keinen gibt */
+    static namenspoolGenau(nation) {
+        const pool = this.namenspoolFuer(nation, "__keiner__");
+        const ersatz = this.resolveNamePool("__keiner__");
+        return pool && pool !== ersatz ? pool : (this.landZuNation(nation) === "de" ? ersatz : null);
+    }
+
+    /**
+     * Ältere Spielstände: Wessen Name aus dem Pool eines anderen Landes
+     * stammt und nicht zu seiner Nationalität passt, bekommt einen Namen aus
+     * ihr - fest je Spieler, ohne Zufall. Namen, die in keinem Pool stehen
+     * (die Kader der ersten Liga, nachgeladene echte Namen), bleiben.
+     * "Kap Verde" und "DR Kongo" standen zerfallen in den Listen. Gibt die
+     * Zahl der neuen Namen zurück.
+     */
+    static korrigiereNamen(state) {
+        const laender = (typeof COUNTRY_NAME_POOLS !== "undefined" && COUNTRY_NAME_POOLS)
+            ? COUNTRY_NAME_POOLS
+            : ((typeof window !== "undefined" && window.COUNTRY_NAME_POOLS) ? window.COUNTRY_NAME_POOLS
+                : (typeof require !== "undefined" ? (() => { try { return require("../data/countryNamePools.js").COUNTRY_NAME_POOLS; } catch (e) { return null; } })() : null));
+        if (!laender) return 0;
+        const mengen = Object.entries(laender).map(([land, p]) => ({ land, vor: new Set(p.firstNames), nach: new Set(p.lastNames) }));
+        const raeumeVon = (nation) => Object.keys(this.SPRACHRAUM_NATION).filter(r => this.SPRACHRAUM_NATION[r].includes(nation));
+        const wurf = (text) => (this._hashZahl(text) + 1) / 2;
+        let geaendert = 0;
+        const pruefe = (p) => {
+            if (!p) return;
+            if (p.nationality === "Kap" || p.nationality === "Verde") p.nationality = "Kap Verde";
+            if (p.nationality === "DR" || p.nationality === "Kongo") p.nationality = "DR Kongo";
+            const teile = String(p.name || "").split(" ");
+            if (teile.length < 2) return;
+            const vor = teile[0], nach = teile.slice(1).join(" ");
+            const eigen = this.namenspoolGenau(p.nationality);
+            if (!eigen || eigen.firstNames.includes(vor) || eigen.lastNames.includes(nach)) return;
+            const herkunft = mengen.filter(m => m.vor.has(vor) && m.nach.has(nach));
+            if (!herkunft.length) return;
+            // Aus einem Land desselben Sprachraums passt er
+            const raeume = raeumeVon(p.nationality);
+            if (herkunft.some(m => (this.SPRACHRAUM_POOL[m.land] || []).some(r => raeume.includes(r)))) return;
+            p.name = this.nameFuer(p.nationality, wurf(`${p.id}|vor`), wurf(`${p.id}|nach`)).name;
+            geaendert++;
+        };
+        (state?.players || []).forEach(pruefe);
+        (state?.youthAcademy?.prospects || []).forEach(pruefe);
+        // Laufende Verhandlungen tragen den Namen mit
+        const nachId = new Map((state?.players || []).map(p => [String(p.id), p.name]));
+        (state?.negotiations || []).forEach(n => { if (n.playerId !== undefined && nachId.has(String(n.playerId))) n.playerName = nachId.get(String(n.playerId)); });
+        return geaendert;
+    }
+
+    /** Vor- und Nachname zu einer Nationalität aus zwei festen Würfen (0 bis 1) */
+    static nameFuer(nation, wurfVor, wurfNach, ersatzLand = null) {
+        const pool = this.namenspoolFuer(nation, ersatzLand);
+        const vorname = pool.firstNames[Math.min(pool.firstNames.length - 1, Math.floor(wurfVor * pool.firstNames.length))];
+        const nachname = pool.lastNames[Math.min(pool.lastNames.length - 1, Math.floor(wurfNach * pool.lastNames.length))];
+        return { vorname, nachname, name: `${vorname} ${nachname}` };
+    }
+
     /**
      * Marktwert und Wochengehalt.
      *
@@ -389,9 +497,12 @@ class PlayerGenerator {
     static generatePlayer(clubId, level = 1, preferredPosition = null, customId = null, options = {}) {
         const pool = this.resolveNamePool(options.countryId);
 
-        const firstName = pool.firstNames[Math.floor(Math.random() * pool.firstNames.length)];
-        const lastName = pool.lastNames[Math.floor(Math.random() * pool.lastNames.length)];
+        // Erst die Nationalität aus dem Land des Vereins, dann der Name aus ihr -
+        // mit denselben drei Würfen wie bisher
+        const wurfVor = Math.random();
+        const wurfNach = Math.random();
         const nationality = pool.nationalities[Math.floor(Math.random() * pool.nationalities.length)];
+        const { vorname: firstName, nachname: lastName } = this.nameFuer(nationality, wurfVor, wurfNach, options.countryId);
 
         const pos = preferredPosition || this.POSITIONS[Math.floor(Math.random() * this.POSITIONS.length)];
         // Standard ist der volle Altersbogen eines Kaders. Beim Nachziehen von

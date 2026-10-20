@@ -11824,7 +11824,8 @@ function runEngineTests() {
             // Niemand fällt ohne Spiel heraus: Jeder außer dem Sieger ist genau einmal ausgeschieden
             if (new Set(cup.ausgeschieden).size !== cup.teilnehmer.length - 1 || cup.ausgeschieden.includes(cup.winnerId)) throw new Error(`${id}: ${cup.ausgeschieden.length} ausgeschieden`);
         }
-        if (!state.inbox.some(m => (m.subject || "").startsWith(`${englischerPokal}: `) && /ist Sieger/.test(m.subject))) throw new Error("Keine Meldung zum englischen Pokal");
+        // Wer in Deutschland spielt, bekommt keine Post über den englischen Pokalsieger - festgehalten wird er trotzdem
+        if (state.inbox.some(m => (m.subject || "").startsWith(`${englischerPokal}: `))) throw new Error("Meldung zum englischen Pokal, obwohl wir in Deutschland spielen");
         if (Object.keys(CupEngine.pokalsiegerJeLand(state)).sort().join() !== "at,be,br,ch,de,en,es,fr,it,nl,pt,sc,tr") throw new Error("Pokalsieger fehlen");
 
         // Der Pokalsieger spielt Europa League - auch aus der 2. Liga
@@ -12980,6 +12981,106 @@ function runEngineTests() {
         L.tag(state);
         if (p.leihe || p.clubId !== club.id) throw new Error("Halbjahresleihe nicht zur Winterpause beendet");
         if (fremd.leihe || fremd.clubId !== stamm.id) throw new Error("Stammverein hat trotz Rückholrecht nicht zurückgeholt");
+    });
+
+    test("Namen passen zur Nationalität: eigener Namenspool je Land, alte Stände werden berichtigt", () => {
+        const PG = PlayerGenerator;
+        const { COUNTRY_NAME_POOLS } = require('./js/data/countryNamePools.js');
+        // Jede Nationalität, die ein Land vergibt, hat ihren eigenen Pool - und heißt ganz
+        const nationen = new Set();
+        COUNTRIES_DATA.forEach(c => (PG.resolveNamePool(c.id).nationalities || []).forEach(n => nationen.add(n)));
+        const ohne = [...nationen].filter(n => !PG.namenspoolGenau(n));
+        if (ohne.length) throw new Error(`Ohne eigenen Namenspool: ${ohne.join(", ")}`);
+        if (["Kap", "Verde", "DR", "Kongo"].some(n => nationen.has(n))) throw new Error("Zerfallene Ländernamen in den Listen");
+        // Ein Spieler bei einem deutschen Verein heißt wie sein Land, nicht wie der Verein
+        let fremde = 0;
+        for (let i = 0; i < 300; i++) {
+            const p = PG.generatePlayer("nm_" + i, 2, "ZM", null, { countryId: "de" });
+            const pool = PG.namenspoolGenau(p.nationality);
+            const [vor, ...nach] = p.name.split(" ");
+            if (!pool.firstNames.includes(vor) || !pool.lastNames.includes(nach.join(" "))) throw new Error(`${p.name} (${p.nationality}) nicht aus dem eigenen Pool`);
+            if (p.nationality !== "Deutschland") fremde++;
+        }
+        if (fremde < 5) throw new Error(`Testaufbau: nur ${fremde} Ausländer`);
+        // Eine neue Welt braucht keine Berichtigung - auch nicht für Österreicher mit deutschem Namen
+        const state = GameState.createNewGame("muc", "normal", { name: "Namenspruefer" });
+        if (state.namenNachNation !== 1) throw new Error("Neue Welt nicht als berichtigt markiert");
+        const vorher = state.players.map(p => p.name).join("|");
+        if (PG.korrigiereNamen(state) !== 0 || state.players.map(p => p.name).join("|") !== vorher) throw new Error("Neue Welt wurde umbenannt");
+        // Alter Stand: ein Italiener mit deutschem Namen, ein Österreicher mit deutschem, ein Name aus keinem Pool
+        const de = COUNTRY_NAME_POOLS.de, it = COUNTRY_NAME_POOLS.it;
+        const deutsch = `${de.firstNames[0]} ${de.lastNames[0]}`;
+        const [a, b, c, d] = state.players.filter(p => p.clubId !== state.userClubId).slice(0, 4);
+        Object.assign(a, { name: deutsch, nationality: "Italien" });
+        Object.assign(b, { name: deutsch, nationality: "Österreich" });
+        Object.assign(c, { name: "Quirin Zebedäus", nationality: "Italien" });
+        Object.assign(d, { name: `${it.firstNames[0]} ${it.lastNames[0]}`, nationality: "Kap" });
+        PG.korrigiereNamen(state);
+        const [vorA, ...nachA] = a.name.split(" ");
+        if (!it.firstNames.includes(vorA) || !it.lastNames.includes(nachA.join(" "))) throw new Error(`Italiener heißt ${a.name}`);
+        if (b.name !== deutsch) throw new Error("Österreicher mit deutschem Namen umbenannt");
+        if (c.name !== "Quirin Zebedäus") throw new Error("Name aus keinem Pool umbenannt");
+        if (d.nationality !== "Kap Verde") throw new Error("Kap Verde nicht berichtigt");
+        // Fest je Spieler: ein zweiter Lauf ändert nichts mehr
+        const nachEinem = a.name;
+        if (PG.korrigiereNamen(state) !== 0 || a.name !== nachEinem) throw new Error("Zweiter Lauf ändert wieder");
+    });
+
+    test("Rückennummern: einmalig im Kader, klassisch nach Position, fest bis zum Wechsel", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Nummernpruefer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const nummern = GameState.rueckennummern(state, club);
+        const kader = state.players.filter(p => p.clubId === club.id);
+        const werte = kader.map(p => p.trikot);
+        if (werte.some(n => !Number.isInteger(n) || n < 1 || n > 99)) throw new Error("Nummer außerhalb 1-99");
+        if (new Set(werte).size !== werte.length) throw new Error("Nummer doppelt vergeben");
+        if (nummern.size !== kader.length) throw new Error("Nicht jeder hat eine Nummer");
+        const torwart = kader.filter(p => p.pos === "TW").sort((x, y) => y.overall - x.overall)[0];
+        if (torwart.trikot !== 1) throw new Error(`Der beste Torwart trägt ${torwart.trikot}`);
+        // Fest: ein zweiter Aufruf ändert nichts; wer seine Nummer verliert (Wechsel), bekommt eine freie
+        const vorher = kader.map(p => p.trikot).join(",");
+        GameState.rueckennummern(state, club);
+        if (kader.map(p => p.trikot).join(",") !== vorher) throw new Error("Nummern ändern sich ohne Grund");
+        const neu = kader.find(p => p.trikot !== 1);
+        neu.trikot = undefined;
+        GameState.rueckennummern(state, club);
+        if (!Number.isInteger(neu.trikot) || kader.filter(p => p.trikot === neu.trikot).length !== 1) throw new Error("Neuer bekommt keine freie Nummer");
+        // Im Spiel tragen beide Teams ihre Nummern - der Gegner bekommt sie beim Anpfiff
+        const partie = state.schedule[0].matches.find(m => m.homeClubId === club.id || m.awayClubId === club.id);
+        const heim = state.clubs.find(c => c.id === partie.homeClubId), gast = state.clubs.find(c => c.id === partie.awayClubId);
+        const gegnerId = partie.homeClubId === club.id ? gast.id : heim.id;
+        if (state.players.some(p => p.clubId === gegnerId && p.trikot)) throw new Error("Testaufbau: Gegner hat schon Nummern");
+        const live = MatchEngine.createLiveMatch(partie, heim, gast, state.players);
+        ["home", "away"].forEach(seite => {
+            const elf = live.players2D.filter(p => p.team === seite);
+            const falsch = elf.filter(p => !Number.isInteger(p.number) || p.number !== state.players.find(x => x.id === p.id)?.trikot);
+            if (elf.length !== 11 || falsch.length || new Set(elf.map(p => p.number)).size !== 11) throw new Error(`Spielnummern ${seite}: ${falsch.map(p => p.name + " " + p.number).join(", ")}`);
+        });
+        if (state.players.filter(p => p.clubId === gegnerId).some(p => !p.trikot)) throw new Error("Gegnerkader ohne feste Nummern");
+    });
+
+    test("Saisonende: Siegermails nur für den eigenen Pokal, den Meisterpokal und wo wir dabei waren", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Siegerpost" });
+        for (let runde = 0; runde < CupEngine.POKAL_RUNDEN.length; runde++) {
+            const ergebnis = CupEngine.spieleTermin(state, "cup", runde);
+            if (ergebnis && ergebnis.eigenePartie && !ergebnis.eigenePartie.played) CupEngine.austragen(state, ergebnis.eigenePartie, true);
+            CupEngine.schliesseTerminAb(state, "cup", runde);
+        }
+        const entschieden = Object.values(state.cups).filter(c => c.completed && c.winnerId);
+        if (entschieden.length < 5) throw new Error(`Nur ${entschieden.length} Pokale entschieden`);
+        const post = state.inbox.filter(m => m.sender === "Wettbewerbsleitung" && /ist Sieger|gewonnen!/.test(m.subject || ""));
+        const eigenerName = CupEngine.eigenerPokal(state).name;
+        if (post.length !== 1 || !post[0].subject.includes(eigenerName)) throw new Error(`Siegermails: ${post.map(m => m.subject).join(" | ")}`);
+        // Ein fremder Sieger, der uns nicht betrifft, kommt nicht mehr; der eigene Titel immer
+        const fremd = state.clubs.find(c => c.countryId && c.countryId !== "de");
+        const anzahl = state.inbox.length;
+        CupEngine.meldeSieger(state, "Euro-Cup", fremd.id, 99, false);
+        if (state.inbox.length !== anzahl) throw new Error("Fremder Sieger gemeldet");
+        CupEngine.meldeSieger(state, "Euro-Cup", state.userClubId, 99, false);
+        if (!state.inbox.slice(0, state.inbox.length - anzahl).some(m => m.subject === "🏆 Euro-Cup gewonnen!")) throw new Error("Eigener Titel nicht gemeldet");
+        // Der Saisonabschluss nennt die eigene Liga, nicht immer "Deutscher Meister"
+        const quelle = require('fs').readFileSync('./js/engine/seasonEngine.js', 'utf8');
+        if (/Deutscher Meister ist/.test(quelle)) throw new Error("Saisonabschluss sagt fest \"Deutscher Meister\"");
     });
 
     test("Leihe: Verhandlung mit dem Stammverein statt Knopfdruck, mit Einsatzzusage und Kaufoption", () => {

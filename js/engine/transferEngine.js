@@ -328,6 +328,8 @@ class TransferEngine {
         player.jugendvertrag = undefined;
         player.nominiertAus = undefined;
         player.leihListe = undefined;
+        // Beim neuen Verein gibt es eine neue Rückennummer (GameState.rueckennummern)
+        player.trikot = undefined;
         player.vereinslosAb = undefined;
         // Die Klauseln (KlauselEngine) gehören zum alten Vertrag
         player.klauseln = undefined;

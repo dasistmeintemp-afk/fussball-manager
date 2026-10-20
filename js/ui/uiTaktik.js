@@ -163,7 +163,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const vorschau = (T && formAnsicht !== "grund") ? T.vorschau(userClub, slots, formAnsicht, configs) : null;
         const schatten = (T && ansicht === "beide") ? T.vorschau(userClub, slots, "gegen", configs) : null;
         const rollenElf = T ? T.rollenDerElf(userClub, slots) : [];
-        const anzeige = Object.assign({ rollen: true, sterne: true, namen: true, verbindungen: true, eignung: true }, this.taktikAnzeige || {});
+        const anzeige = Object.assign({ rollen: true, sterne: true, namen: true, verbindungen: true, eignung: true, zustand: true }, this.taktikAnzeige || {});
+        // Rückennummern für den eigenen Kader (fest, bis einer den Verein wechselt)
+        if (typeof GameState !== "undefined" && typeof GameState.rueckennummern === "function") GameState.rueckennummern(state, userClub);
         this.taktikAnzeige = anzeige;
         const pitchEl = document.getElementById("tacticsPitch");
         if (pitchEl) {
@@ -173,6 +175,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             pitchEl.classList.toggle("ohne-sterne", !anzeige.sterne);
             pitchEl.classList.toggle("ohne-namen", !anzeige.namen);
             pitchEl.classList.toggle("ohne-eignung", !anzeige.eignung);
+            pitchEl.classList.toggle("ohne-zustand", !anzeige.zustand);
         }
         document.querySelectorAll("#tacAuge [data-anzeige]").forEach(cb => {
             cb.checked = !!anzeige[cb.dataset.anzeige];
@@ -194,27 +197,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const player = state.players.find(p => p.id === playerId);
 
             const node = document.createElement("div");
-            node.className = `pitch-node ${this.selectedPitchSlot === index ? "selected" : ""}`;
+            node.className = `pitch-node spk-knoten ${this.selectedPitchSlot === index ? "selected" : ""}`;
             const ort = orte[index];
             node.style.left = `${ort.x}%`;
             node.style.top = `${ort.y}%`;
             node.dataset.slotIndex = index;
-            // Die Rolle als Kuerzel wie im Vorbild - kombiniert beide Rollen
-            let rolleHtml = "";
-            if (rollenElf[index] && T) {
-                const rm = T.rolleMitBall(rollenElf[index].familie, rollenElf[index].mit);
-                const rg = T.rolleGegenBall(rollenElf[index].familie, rollenElf[index].gegen);
-                const km = T.kuerzel(rm, "mit"), kg = T.kuerzel(rg, "gegen");
-                const badge = (k, r, gegen) => `<span class="rolle-badge kat-${k.kategorie}${gegen ? " gegen" : ""}" title="${this.escapeHtml((gegen ? "Gegen den Ball: " : "Mit Ball: ") + r.name)}">${this.escapeHtml(k.text)}</span>`;
-                // In "Kombiniert" nur dann zwei Marken, wenn die Rollen sich
-                // unterscheiden - "MS MS" war doppelt und füllte die Tafel
-                const teile = ansicht === "mit" ? [badge(km, rm, false)]
-                    : ansicht === "gegen" ? [badge(kg, rg, true)]
-                        : (km.text === kg.text ? [badge(km, rm, false)] : [badge(km, rm, false), badge(kg, rg, true)]);
-                rolleHtml = `<div class="rolle-badges">${teile.join("")}</div>`;
-            }
-
-            const isSelected = this.selectedPitchSlot === index;
 
             // Eignung des Spielers auf genau dieser Position
             let fit = null;
@@ -224,27 +211,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     misfits.push({ player, slot, fit });
                 }
             }
-
-            // Auf dem Trikot stehen Sterne, keine Zahl: Sie sagen sofort, ob
-            // der Spieler für diese Position im eigenen Kader gut genug ist.
-            const wirkStaerke = player ? (fit ? fit.effectiveOverall : player.overall) : null;
-            const shirtValue = player
-                ? this.starsFor(wirkStaerke, { title: `${player.name} auf ${slot.pos}`, color: "inherit" })
-                : "–";
-            const fitClass = fit ? `fit-${fit.level}` : "";
-            const selectedStyle = isSelected ? "border-color:#f59e0b; box-shadow:0 0 12px #f59e0b;" : "";
-
-            node.innerHTML = `
-                <div class="pitch-node-shirt ${fitClass}" style="background: ${userClub.primaryColor}; color: ${userClub.secondaryColor}; ${selectedStyle}">
-                    <span class="shirt-wert">${shirtValue}</span>
-                    <span class="pitch-node-pos">${slot.pos}</span>
-                </div>
-                ${rolleHtml}
-                <div class="pitch-node-name">
-                    <span class="spielername">${player ? this.escapeHtml(player.name.split(" ").pop()) : "Leer"}</span>
-                    ${fit && !fit.isNatural ? `<span class="pitch-node-fit" style="color:${fit.color};">${fit.shortLabel}${fit.penalty > 0 ? ` −${fit.penalty}` : ""}</span>` : ""}
-                </div>
-            `;
+            node.innerHTML = this.spielerKarteHtml(userClub, slot, player, fit, rollenElf[index], ansicht);
 
             if (this.formationEditMode) {
                 node.addEventListener("pointerdown", (e) => this.startSlotDrag(e, index));
@@ -318,9 +285,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 </span>`;
             }
 
+            const kond = Math.round(p.fitness ?? 100);
             benchEl.innerHTML = `
+                ${Number.isInteger(p.trikot) ? `<span class="bank-nr">${p.trikot}</span>` : ""}
                 <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>
-                <strong>${this.escapeHtml(p.name)}</strong> ${this.starsFor(p.overall, { title: `Stärke im Vergleich zum eigenen Kader` })}
+                <strong>${this.escapeHtml(p.name)}</strong>${kond < 90 ? ` <span class="bank-kond" style="color:${this.zustandsFarbe(kond)}" title="Kondition">${kond} %</span>` : ""} ${this.starsFor(p.overall, { title: `Stärke im Vergleich zum eigenen Kader` })}
                 ${fitHtml}
                 ${isInj ? "🚑" : isSusp ? "🟥" : isBench ? '<span style="color:#34d399">Bank</span>' : '<span style="color:#94a3b8">Res</span>'}
             `;
@@ -766,7 +735,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <span><i class="link-muster schwach"></i>Rollen beißen sich</span>
                 <span><i class="link-muster dick"></i>dick: eingespielt · dünn: noch fremd</span>
             </div>
-            <p class="taktik-hilfe">Die Linien verbinden, wer zusammenspielt. Wie gut die Rollen passen, wie lange die beiden schon im Verein sind und wie oft sie zusammen gespielt haben, gibt der Elf bis zu zwei Prozent Stärke mehr oder weniger - und verbundene Spieler suchen sich im Spiel häufiger. Einen Spieler antippen zeigt seine Verbindungen.</p>`;
+            <p class="taktik-hilfe">Die Linien verbinden, wer zusammenspielt. Wie gut die Rollen passen, wie lange die beiden schon im Verein sind und wie oft sie zusammen gespielt haben, gibt der Elf bis zu zwei Prozent Stärke mehr oder weniger - und verbundene Spieler suchen sich im Spiel häufiger. Einen Spieler antippen und <em>Verbindungen</em> wählen zeigt seine.</p>`;
 
         // Der angetippte Spieler: Rollen und Verbindungen
         const i = this.selectedPitchSlot;
@@ -1084,10 +1053,381 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this.renderTactics();
     },
 
+    // ------------------------------------------------- Spielerkarten auf dem Feld
+
+    /** Trikotfarben wie im Spiel: lesbar auf dem Rasen, der Torwart abgesetzt */
+    vereinsTrikot(club) {
+        const kits = (typeof ermittleTrikots === "function") ? ermittleTrikots(club, null) : null;
+        if (kits && kits.home) return kits.home;
+        return { farbe: club?.primaryColor || "#1d4ed8", text: club?.secondaryColor || "#ffffff", tw: "#facc15", twText: "#0f172a" };
+    },
+
+    /** Ein Trikot mit Rückennummer */
+    trikotSvg(farbe, schrift, nummer) {
+        return `<svg class="spk-trikot" viewBox="0 0 40 38" aria-hidden="true">`
+            + `<path d="M14 2 L7 4.5 L1 11 L5.5 16.5 L9.5 13.5 L9.5 36 L30.5 36 L30.5 13.5 L34.5 16.5 L39 11 L33 4.5 L26 2 C24.5 5.5 15.5 5.5 14 2 Z" fill="${farbe}" stroke="rgba(0,0,0,0.5)" stroke-width="1.2" stroke-linejoin="round"/>`
+            + `<text x="20" y="27.5" text-anchor="middle" fill="${schrift}">${this.escapeHtml(String(nummer))}</text></svg>`;
+    },
+
+    /** Fünf Sterne, halbe genau: die volle Reihe liegt über der leeren */
+    sternReihe(sterne, titel = "") {
+        const anteil = Math.max(0, Math.min(5, Math.round((Number(sterne) || 0) * 2) / 2)) / 5 * 100;
+        return `<span class="spk-sterne"${titel ? ` title="${this.escapeHtml(titel)}"` : ""}><span class="spk-sterne-leer">★★★★★</span><span class="spk-sterne-voll" style="width:${anteil}%">★★★★★</span></span>`;
+    },
+
+    /** Die Rollen als Band unter dem Trikot - beide nur, wenn sie sich unterscheiden */
+    rollenBandHtml(rollen, ansicht) {
+        const T = this.getTacticsEngine();
+        if (!rollen || !T) return "";
+        const rm = T.rolleMitBall(rollen.familie, rollen.mit);
+        const rg = T.rolleGegenBall(rollen.familie, rollen.gegen);
+        const km = T.kuerzel(rm, "mit"), kg = T.kuerzel(rg, "gegen");
+        const badge = (k, r, gegen) => `<span class="rolle-badge kat-${k.kategorie}${gegen ? " gegen" : ""}" title="${this.escapeHtml((gegen ? "Gegen den Ball: " : "Mit Ball: ") + r.name)}">${this.escapeHtml(k.text)}</span>`;
+        const teile = ansicht === "mit" ? [badge(km, rm, false)]
+            : ansicht === "gegen" ? [badge(kg, rg, true)]
+                : (km.text === kg.text ? [badge(km, rm, false)] : [badge(km, rm, false), badge(kg, rg, true)]);
+        return `<div class="rolle-badges">${teile.join("")}</div>`;
+    },
+
+    /** Wie es dem Spieler geht: Farbe für Kondition und Spielpraxis */
+    zustandsFarbe(prozent) {
+        return prozent >= 85 ? "#4ade80" : (prozent >= 70 ? "#facc15" : "#f87171");
+    },
+
+    /**
+     * Ein Spieler auf dem Feld als Karte wie im Vorbild: Trikot mit
+     * Rückennummer, Rolle, Sterne auf genau diesem Platz, Name, Kondition,
+     * dazu Kapitän, Verletzung, Sperre und Signatur. Die Sterne gelten für
+     * den Platz, nicht für seine Stammposition - wer fremd spielt, verliert.
+     */
+    spielerKarteHtml(club, slot, player, fit, rollen, ansicht) {
+        const esc = (x) => this.escapeHtml(String(x ?? ""));
+        const kit = this.vereinsTrikot(club);
+        const tw = slot.pos === "TW";
+        const band = this.rollenBandHtml(rollen, ansicht);
+        if (!player) {
+            return `<div class="spk spk-leer" title="${esc(slot.pos)}: niemand aufgestellt">
+                <div class="spk-kopf">${this.trikotSvg("rgba(15,23,42,0.6)", "#cbd5e1", "+")}<span class="pitch-node-pos">${esc(slot.pos)}</span></div>
+                ${band}
+                <div class="pitch-node-name"><span class="spielername">Leer</span></div>
+            </div>`;
+        }
+        const wirk = fit ? fit.effectiveOverall : player.overall;
+        const sterne = this.starValueFor(wirk);
+        const kondition = Math.max(0, Math.min(100, Math.round(player.fitness ?? 100)));
+        const nummer = Number.isInteger(player.trikot) && player.trikot > 0 ? player.trikot : "";
+        const rollenV = club.roles || {};
+        const marken = [];
+        if (String(rollenV.captain) === String(player.id)) marken.push(`<span class="spk-marke spk-kapitaen" title="Kapitän">C</span>`);
+        if (player.injuredWeeks > 0) marken.push(`<span class="spk-marke spk-verletzt" title="Verletzt, noch ${player.injuredWeeks} ${player.injuredWeeks === 1 ? "Woche" : "Wochen"}">✚</span>`);
+        else if (player.suspendedMatches > 0) marken.push(`<span class="spk-marke spk-gesperrt" title="Gesperrt für ${player.suspendedMatches} ${player.suspendedMatches === 1 ? "Spiel" : "Spiele"}"></span>`);
+        const sig = this.signaturVon(player);
+        const titel = [
+            `${player.name} (${player.pos}) auf ${slot.pos}`,
+            `${this.starValueFor(wirk).toFixed(1).replace(".", ",")} Sterne hier`,
+            fit && !fit.isNatural ? `${fit.label}${fit.penalty > 0 ? `, −${fit.penalty} Stärke` : ""}` : null,
+            `Kondition ${kondition} %`,
+            sig ? `${sig.name}` : null
+        ].filter(Boolean).join(" · ");
+        return `<div class="spk ${fit ? `fit-${fit.level}` : ""}${player.injuredWeeks > 0 || player.suspendedMatches > 0 ? " spk-fehlt" : ""}" title="${esc(titel)}">
+            <div class="spk-kopf">
+                ${this.trikotSvg(tw ? kit.tw : kit.farbe, tw ? kit.twText : kit.text, nummer)}
+                <span class="pitch-node-pos">${esc(slot.pos)}</span>
+                ${marken.length ? `<span class="spk-marken">${marken.join("")}</span>` : ""}
+                ${sig ? `<span class="spk-signatur" aria-hidden="true">${sig.icon}</span>` : ""}
+            </div>
+            ${band}
+            <div class="spk-schild">
+                ${this.sternReihe(sterne)}
+                <span class="spielername">${esc(player.name.split(" ").pop())}</span>
+                <span class="spk-zustand"><i style="width:${kondition}%;background:${this.zustandsFarbe(kondition)}"></i></span>
+            </div>
+            ${fit && !fit.isNatural ? `<span class="pitch-node-fit" style="color:${fit.color};">${esc(fit.shortLabel)}${fit.penalty > 0 ? ` −${fit.penalty}` : ""}</span>` : ""}
+        </div>`;
+    },
+
+    // --------------------------------------------- Menü beim Antippen eines Spielers
+
+    /** Das Menü öffnen (oder neu füllen, wenn es schon offen ist) */
+    oeffneSpielerMenue(titel, html, binden) {
+        const modal = document.getElementById("modalSpielerMenue");
+        const inhalt = document.getElementById("spkMenueInhalt");
+        if (!modal || !inhalt) return;
+        document.getElementById("spkMenueTitel").innerHTML = titel;
+        inhalt.innerHTML = html;
+        const zu = document.getElementById("btnCloseSpielerMenue");
+        if (zu) zu.onclick = () => this.schliesseSpielerMenue();
+        modal.style.display = "flex";
+        if (typeof binden === "function") binden(inhalt);
+    },
+
+    schliesseSpielerMenue() {
+        const modal = document.getElementById("modalSpielerMenue");
+        if (modal) modal.style.display = "none";
+        this.spielerMenue = null;
+    },
+
+    /** Kondition, Form, Moral und Spielpraxis mit Balken */
+    menueWerteHtml(player) {
+        const kondition = Math.round(player.fitness ?? 100);
+        const praxis = Math.round((typeof player.spielpraxis === "number" ? player.spielpraxis : 0.5) * 100);
+        const moral = Math.round(player.morale ?? 75);
+        const form = Number(player.form ?? 7);
+        // Grün, gelb, rot - je Wert mit eigenen Schwellen (Spielpraxis 50 % ist normal)
+        const farbe = (wert, gut, mittel) => wert >= gut ? "#4ade80" : (wert >= mittel ? "#facc15" : "#f87171");
+        const zeile = (name, text, prozent, f) => `<div class="spm-wert"><span>${name}</span><strong>${text}</strong><span class="spm-balken"><i style="width:${Math.max(0, Math.min(100, prozent))}%;background:${f}"></i></span></div>`;
+        return `<div class="spm-werte">
+            ${zeile("Kondition", `${kondition} %`, kondition, farbe(kondition, 85, 70))}
+            ${zeile("Form", form.toFixed(1).replace(".", ","), form * 10, farbe(form, 6.5, 5))}
+            ${zeile("Moral", `${moral} %`, moral, farbe(moral, 70, 45))}
+            ${zeile("Spielpraxis", `${praxis} %`, praxis, farbe(praxis, 45, 25))}
+        </div>`;
+    },
+
+    /** Kopfzeile des Menüs: Nummer, Name, Alter, Land, Stammposition */
+    menueKopfHtml(player, unterzeile = "") {
+        const esc = (x) => this.escapeHtml(String(x ?? ""));
+        const land = (typeof PlayerGenerator !== "undefined" && typeof PlayerGenerator.landZuNation === "function")
+            ? PlayerGenerator.landZuNation(player.nationality) : null;
+        const fehlt = player.injuredWeeks > 0 ? `<span class="spm-status schlecht">Verletzt, noch ${player.injuredWeeks} ${player.injuredWeeks === 1 ? "Woche" : "Wochen"}</span>`
+            : (player.suspendedMatches > 0 ? `<span class="spm-status schlecht">Gesperrt für ${player.suspendedMatches} ${player.suspendedMatches === 1 ? "Spiel" : "Spiele"}</span>` : "");
+        const sig = this.signaturVon(player);
+        return `<div class="spm-kopf">
+            <div class="spm-sub">${land ? this.flaggeVon(land) + " " : ""}${esc(player.nationality || "")} · ${player.age} Jahre · Stammposition <strong>${esc(player.pos)}</strong>${player.leihe ? " · Leihspieler" : ""}</div>
+            ${unterzeile ? `<div class="spm-sub">${unterzeile}</div>` : ""}
+            ${fehlt}
+            ${sig ? `<div class="spm-sub">${sig.icon} <strong>${esc(sig.name)}</strong>: ${esc(sig.text)}</div>` : ""}
+        </div>`;
+    },
+
+    /** Setzt einen Spieler aus Bank oder Kader auf einen Platz der Elf */
+    setzeEin(slotIndex, playerId) {
+        const userClub = this.app.state.clubs.find(c => c.id === this.app.state.userClubId);
+        if (!userClub) return;
+        const alt = userClub.lineup[slotIndex];
+        const warPlatz = userClub.lineup.findIndex(id => id === playerId);
+        if (warPlatz >= 0) {
+            // Schon in der Elf: die beiden tauschen die Plätze
+            userClub.lineup[warPlatz] = alt;
+            userClub.lineup[slotIndex] = playerId;
+        } else {
+            userClub.lineup[slotIndex] = playerId;
+            // Aus Bank/Reserve entfernen und alten Spieler dort einfügen
+            userClub.bench = userClub.bench.filter(id => id !== playerId);
+            if (alt && !userClub.bench.includes(alt) && userClub.bench.length < 7) userClub.bench.push(alt);
+        }
+        this.selectedPitchSlot = null;
+        this.playSound("click");
+        if (typeof this.app.state.saveToLocalStorage === "function") this.app.state.saveToLocalStorage();
+        this.renderTactics();
+    },
+
+    /** Kapitän und Standards: noch einmal tippen nimmt die Aufgabe wieder weg */
+    schalteAufgabe(playerId, aufgabe) {
+        const userClub = this.app.state.clubs.find(c => c.id === this.app.state.userClubId);
+        if (!userClub) return;
+        userClub.roles = userClub.roles || {};
+        userClub.roles[aufgabe] = String(userClub.roles[aufgabe]) === String(playerId) ? null : playerId;
+        if (typeof this.app.state.saveToLocalStorage === "function") this.app.state.saveToLocalStorage();
+        this.renderTactics();
+    },
+
+    /**
+     * Antippen eines Spielers in der Elf: was er kann, wie es ihm geht und
+     * was man mit ihm machen will - auswechseln, Platz tauschen, Rolle,
+     * Kapitän und Standards, die Akte.
+     */
+    zeigeSpielerMenue(slotIndex, optionen = {}) {
+        const state = this.app.state;
+        const userClub = state.clubs.find(c => c.id === state.userClubId);
+        if (!userClub) return;
+        const slots = this.getActiveFormationPositions(userClub);
+        const slot = slots[slotIndex];
+        if (!slot) return;
+        const esc = (x) => this.escapeHtml(String(x ?? ""));
+        const posEngine = this.getPositionEngine();
+        const T = this.getTacticsEngine();
+        const player = state.players.find(p => p.id === userClub.lineup[slotIndex]) || null;
+        this.spielerMenue = { art: "platz", slotIndex };
+
+        // Wer für diesen Platz in Frage kommt: Bank zuerst, dann der Kader,
+        // jeweils nach der Stärke genau auf diesem Platz
+        const kader = state.players.filter(p => userClub.playerIds.includes(p.id) && !userClub.lineup.includes(p.id));
+        const kandidaten = kader.map(p => {
+            const fit = posEngine ? posEngine.getSuitability(p, slot.pos) : null;
+            return { p, fit, wirk: fit ? fit.effectiveOverall : p.overall, bank: userClub.bench.includes(p.id), fehlt: p.injuredWeeks > 0 || p.suspendedMatches > 0 };
+        }).sort((a, b) => (a.fehlt - b.fehlt) || (b.bank - a.bank) || (b.wirk - a.wirk));
+        const kandidatHtml = (k) => `<button class="spm-kandidat${k.fehlt ? " fehlt" : ""}" data-spm-einsetzen="${esc(k.p.id)}"${k.fehlt ? " disabled" : ""}>
+                <span class="pos-tag pos-${this.getPosGroup(k.p.pos)}">${esc(k.p.pos)}</span>
+                <span class="spm-kandidat-name">${esc(k.p.name)}</span>
+                ${this.starsFor(k.wirk, { color: k.fit ? k.fit.color : undefined, title: k.fit ? `${k.fit.label} auf ${slot.pos}` : "" })}
+                <span class="spm-kandidat-info">${k.fehlt ? (k.p.injuredWeeks > 0 ? "verletzt" : "gesperrt") : `${k.bank ? "Bank" : "Kader"} · ${Math.round(k.p.fitness ?? 100)} %`}</span>
+            </button>`;
+        const zeigeAlle = !!optionen.alle;
+        const liste = zeigeAlle ? kandidaten : kandidaten.slice(0, 6);
+        const wechselHtml = `<div class="spm-abschnitt" id="spmWechsel">
+                <h4>${player ? "Auswechseln" : "Besetzen"}: wer auf ${esc(slot.pos)} spielen kann</h4>
+                <div class="spm-kandidaten">${liste.map(kandidatHtml).join("") || `<p class="text-muted">Niemand mehr frei.</p>`}</div>
+                ${!zeigeAlle && kandidaten.length > liste.length ? `<button class="btn btn-sm btn-secondary" data-spm-alle>Alle ${kandidaten.length} zeigen</button>` : ""}
+            </div>`;
+
+        if (!player) {
+            this.oeffneSpielerMenue(`<span class="spm-titel-pos">${esc(slot.pos)}</span> Platz frei`, wechselHtml, (el) => this.bindeSpielerMenue(el, slotIndex, null));
+            return;
+        }
+
+        const fit = posEngine ? posEngine.getSuitability(player, slot.pos) : null;
+        const wirk = fit ? fit.effectiveOverall : player.overall;
+        const fitText = fit ? (fit.isNatural ? "Stammposition" : `${fit.label}${fit.penalty > 0 ? `, −${fit.penalty} Stärke` : ""}`) : "";
+        const unterzeile = `Auf ${esc(slot.pos)}: ${this.sternReihe(this.starValueFor(wirk))} <span style="color:${fit ? fit.color : "inherit"}">${esc(fitText)}</span>`;
+
+        // Rollen mit und gegen den Ball
+        let rollenHtml = "";
+        if (T) {
+            const rollen = T.rollenDerElf(userClub, slots)[slotIndex];
+            const dreier = slots.filter(sl => (typeof T._norm === "function" ? T._norm(sl.pos) : sl.pos) === "IV").length >= 3;
+            const auswahl = (phase) => (phase === "mit" ? T.rollenMitBall(rollen.familie) : T.rollenGegenBall(rollen.familie))
+                .filter(r => !r.nurDreier || dreier)
+                .map(r => `<option value="${esc(r.id)}" ${r.id === rollen[phase] ? "selected" : ""}>${esc(r.name)}</option>`).join("");
+            rollenHtml = `<div class="spm-abschnitt"><h4>Rolle</h4><div class="zs-rollen">
+                <label>Mit Ball <select class="styled-select" data-spm-rolle="mit">${auswahl("mit")}</select></label>
+                <label>Gegen den Ball <select class="styled-select" data-spm-rolle="gegen">${auswahl("gegen")}</select></label>
+            </div></div>`;
+        }
+        const r = userClub.roles || {};
+        const aufgabe = (key, text) => `<button class="spm-aufgabe${String(r[key]) === String(player.id) ? " aktiv" : ""}" data-spm-aufgabe="${key}" aria-pressed="${String(r[key]) === String(player.id)}">${text}</button>`;
+        const html = `
+            ${this.menueKopfHtml(player, unterzeile)}
+            ${this.menueWerteHtml(player)}
+            <div class="spm-aktionen">
+                <button class="btn btn-primary" data-spm-akte>Akte öffnen</button>
+                <button class="btn btn-secondary" data-spm-zu-wechsel>Auswechseln</button>
+                <button class="btn btn-secondary" data-spm-tauschen title="Danach einen zweiten Spieler auf dem Feld oder auf der Bank antippen">Platz tauschen</button>
+                ${T ? `<button class="btn btn-secondary" data-spm-verbindungen title="Seine Linien auf der Tafel hervorheben">Verbindungen</button>` : ""}
+            </div>
+            ${rollenHtml}
+            <div class="spm-abschnitt"><h4>Aufgaben</h4><div class="spm-aufgaben">
+                ${aufgabe("captain", "Kapitän")}${aufgabe("penaltyTaker", "Elfmeter")}${aufgabe("freeKickTaker", "Freistöße")}${aufgabe("cornerTaker", "Ecken")}
+            </div></div>
+            ${wechselHtml}`;
+        const nummer = Number.isInteger(player.trikot) ? `<span class="spm-titel-nr">${player.trikot}</span>` : "";
+        this.oeffneSpielerMenue(`${nummer}${esc(player.name)}`, html, (el) => {
+            this.bindeSpielerMenue(el, slotIndex, player);
+            if (optionen.wechsel) el.querySelector("#spmWechsel")?.scrollIntoView({ block: "nearest" });
+        });
+    },
+
+    bindeSpielerMenue(el, slotIndex, player) {
+        const state = this.app.state;
+        const userClub = state.clubs.find(c => c.id === state.userClubId);
+        el.querySelectorAll("[data-spm-einsetzen]").forEach(btn => {
+            btn.onclick = () => {
+                const ziel = state.players.find(p => String(p.id) === btn.dataset.spmEinsetzen);
+                if (!ziel) return;
+                this.schliesseSpielerMenue();
+                this.setzeEin(slotIndex, ziel.id);
+                this.showToast(player ? `${ziel.name} für ${player.name}.` : `${ziel.name} spielt jetzt.`, "info");
+            };
+        });
+        el.querySelector("[data-spm-alle]")?.addEventListener("click", () => this.zeigeSpielerMenue(slotIndex, { alle: true, wechsel: true }));
+        if (!player) return;
+        el.querySelector("[data-spm-akte]")?.addEventListener("click", () => { this.schliesseSpielerMenue(); this.showPlayerDetailsModal(player.id); });
+        el.querySelector("[data-spm-zu-wechsel]")?.addEventListener("click", () => el.querySelector("#spmWechsel")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+        el.querySelector("[data-spm-tauschen]")?.addEventListener("click", () => {
+            this.schliesseSpielerMenue();
+            this.selectedPitchSlot = slotIndex;
+            this.playSound("click");
+            this.renderTactics();
+            this.showToast(`Jetzt den Spieler antippen, mit dem ${player.name.split(" ").pop()} tauschen soll.`, "info");
+        });
+        el.querySelector("[data-spm-verbindungen]")?.addEventListener("click", () => {
+            this.schliesseSpielerMenue();
+            this.selectedPitchSlot = slotIndex;
+            this.renderTactics();
+            document.getElementById("tacZusammenspiel")?.querySelector(".zs-spieler")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        });
+        el.querySelectorAll("[data-spm-aufgabe]").forEach(btn => {
+            btn.onclick = () => { this.schalteAufgabe(player.id, btn.dataset.spmAufgabe); this.zeigeSpielerMenue(slotIndex); };
+        });
+        const T = this.getTacticsEngine();
+        el.querySelectorAll("[data-spm-rolle]").forEach(sel => {
+            sel.onchange = (e) => {
+                const slots = this.getActiveFormationPositions(userClub);
+                const t = T.normalisiere(userClub.tactics || (userClub.tactics = {}));
+                userClub.tactics = t;
+                const aktuell = T.rollenDerElf(userClub, slots)[slotIndex];
+                t.rollen[slotIndex] = { mit: aktuell.mit, gegen: aktuell.gegen, [sel.dataset.spmRolle]: e.target.value };
+                this.taktikGeaendert(userClub);
+            };
+        });
+    },
+
+    /**
+     * Antippen eines Spielers auf der Bank oder im Kader: seine Werte, die
+     * Akte und für welchen Platz der Elf er in Frage kommt.
+     */
+    zeigeBankMenue(playerId) {
+        const state = this.app.state;
+        const userClub = state.clubs.find(c => c.id === state.userClubId);
+        const player = state.players.find(p => p.id === playerId);
+        if (!userClub || !player) return;
+        const esc = (x) => this.escapeHtml(String(x ?? ""));
+        const posEngine = this.getPositionEngine();
+        const slots = this.getActiveFormationPositions(userClub);
+        this.spielerMenue = { art: "bank", playerId };
+        const aufBank = userClub.bench.includes(player.id);
+        const fehlt = player.injuredWeeks > 0 || player.suspendedMatches > 0;
+        // Für wen er kommen könnte: die Plätze, die er spielen kann, mit
+        // seiner Stärke dort - ein Torwart taugt nicht als Verteidiger
+        const alle = slots.map((slot, i) => {
+            const fit = posEngine ? posEngine.getSuitability(player, slot.pos) : null;
+            const jetzt = state.players.find(p => p.id === userClub.lineup[i]);
+            return { i, slot, fit, wirk: fit ? fit.effectiveOverall : player.overall, jetzt };
+        }).sort((a, b) => b.wirk - a.wirk);
+        const passend = alle.filter(pl => !pl.fit || pl.fit.familiarity >= 0.45);
+        const plaetze = (passend.length ? passend : alle.slice(0, 1)).slice(0, 5);
+        const html = `
+            ${this.menueKopfHtml(player, `${aufBank ? "Auf der Bank" : "Im Kader, nicht auf der Bank"} · ${this.sternReihe(this.starValueFor(player.overall))}`)}
+            ${this.menueWerteHtml(player)}
+            <div class="spm-aktionen">
+                <button class="btn btn-primary" data-spm-akte>Akte öffnen</button>
+                ${aufBank ? `<button class="btn btn-secondary" data-spm-bank="raus">Von der Bank nehmen</button>`
+                    : (userClub.bench.length < 7 && !fehlt ? `<button class="btn btn-secondary" data-spm-bank="rein">Auf die Bank</button>` : "")}
+            </div>
+            ${fehlt ? "" : `<div class="spm-abschnitt"><h4>Einwechseln für</h4><div class="spm-kandidaten">
+                ${plaetze.map(pl => `<button class="spm-kandidat" data-spm-platz="${pl.i}">
+                    <span class="pos-tag pos-${this.getPosGroup(pl.slot.pos)}">${esc(pl.slot.pos)}</span>
+                    <span class="spm-kandidat-name">${pl.jetzt ? `für ${esc(pl.jetzt.name)}` : "freier Platz"}</span>
+                    ${this.starsFor(pl.wirk, { color: pl.fit ? pl.fit.color : undefined, title: pl.fit ? `${player.name}: ${pl.fit.label} auf ${pl.slot.pos}` : "" })}
+                    <span class="spm-kandidat-info">${pl.jetzt ? `${esc(pl.jetzt.name.split(" ").pop())} dort: ${this.starValueFor(posEngine ? posEngine.getSuitability(pl.jetzt, pl.slot.pos).effectiveOverall : pl.jetzt.overall).toFixed(1).replace(".", ",")} Sterne` : ""}${pl.fit && !pl.fit.isNatural ? ` · ${esc(pl.fit.label)}` : ""}</span>
+                </button>`).join("")}
+            </div></div>`}`;
+        const nummer = Number.isInteger(player.trikot) ? `<span class="spm-titel-nr">${player.trikot}</span>` : "";
+        this.oeffneSpielerMenue(`${nummer}${esc(player.name)}`, html, (el) => {
+            el.querySelector("[data-spm-akte]")?.addEventListener("click", () => { this.schliesseSpielerMenue(); this.showPlayerDetailsModal(player.id); });
+            el.querySelector("[data-spm-bank]")?.addEventListener("click", (e) => {
+                if (e.currentTarget.dataset.spmBank === "raus") userClub.bench = userClub.bench.filter(id => id !== player.id);
+                else if (!userClub.bench.includes(player.id) && userClub.bench.length < 7) userClub.bench.push(player.id);
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.renderTactics();
+                this.zeigeBankMenue(player.id);
+            });
+            el.querySelectorAll("[data-spm-platz]").forEach(btn => {
+                btn.onclick = () => {
+                    const i = Number(btn.dataset.spmPlatz);
+                    const raus = state.players.find(p => p.id === userClub.lineup[i]);
+                    this.schliesseSpielerMenue();
+                    this.setzeEin(i, player.id);
+                    this.showToast(raus ? `${player.name} für ${raus.name}.` : `${player.name} spielt jetzt.`, "info");
+                };
+            });
+        });
+    },
+
     handlePitchSlotClick(slotIndex) {
         if (this.selectedPitchSlot === slotIndex) {
             this.selectedPitchSlot = null;
-        } else if (this.selectedPitchSlot !== null) {
+        } else if (this.selectedPitchSlot !== null && this.selectedPitchSlot !== undefined) {
             // Tausche zwei Startelf-Spieler
             const userClub = this.app.state.clubs.find(c => c.id === this.app.state.userClubId);
             const temp = userClub.lineup[this.selectedPitchSlot];
@@ -1096,28 +1436,21 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             this.selectedPitchSlot = null;
             this.playSound("click");
         } else {
-            this.selectedPitchSlot = slotIndex;
+            // Ohne Auswahl öffnet ein Tipp das Menü des Spielers
             this.playSound("click");
+            this.zeigeSpielerMenue(slotIndex);
+            return;
         }
         this.renderTactics();
     },
 
     handleBenchPlayerClick(playerId) {
-        const userClub = this.app.state.clubs.find(c => c.id === this.app.state.userClubId);
-        if (this.selectedPitchSlot !== null) {
+        if (this.selectedPitchSlot !== null && this.selectedPitchSlot !== undefined) {
             // Tausche ausgewählten Startelf-Slot mit diesem Bankspieler
-            const oldPlayerId = userClub.lineup[this.selectedPitchSlot];
-            userClub.lineup[this.selectedPitchSlot] = playerId;
-
-            // Aus Bank/Reserve entfernen und alten Spieler dort einfügen
-            userClub.bench = userClub.bench.filter(id => id !== playerId);
-            if (oldPlayerId && !userClub.bench.includes(oldPlayerId) && userClub.bench.length < 7) {
-                userClub.bench.push(oldPlayerId);
-            }
-
-            this.selectedPitchSlot = null;
+            this.setzeEin(this.selectedPitchSlot, playerId);
+        } else {
             this.playSound("click");
-            this.renderTactics();
+            this.zeigeBankMenue(playerId);
         }
     },
 });

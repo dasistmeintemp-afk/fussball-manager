@@ -3647,6 +3647,20 @@ class LiveMatch {
         const awayPositions = (formConfigs && formConfigs[this.awayClub.formation]) ? formConfigs[this.awayClub.formation].positions : (formConfigs && formConfigs["4-4-2"] ? formConfigs["4-4-2"].positions : []);
 
         const players = [];
+        // Rückennummern (GameState.rueckennummern), wenn die ganze Elf welche hat - sonst 1 bis 11
+        const nummernVon = (elf) => {
+            const n = (elf || []).map(p => p && p.trikot);
+            return n.length && n.every(x => Number.isInteger(x) && x > 0) && new Set(n).size === n.length ? n : null;
+        };
+        // Wer noch keine hat (KI-Vereine, Neuzugänge), bekommt sie jetzt - fest wie im eigenen Kader
+        const GS = (typeof GameState !== 'undefined' && GameState) ? GameState
+            : (typeof require !== 'undefined' ? (() => { try { return require('./gameState.js').GameState; } catch (e) { return null; } })() : null);
+        if (GS && typeof GS.rueckennummern === "function" && Array.isArray(this.allPlayers)) {
+            [[this.homeClub, this.homeLineup], [this.awayClub, this.awayLineup]].forEach(([club, elf]) => {
+                if (club && !nummernVon(elf)) GS.rueckennummern({ players: this.allPlayers }, club);
+            });
+        }
+        const homeNummern = nummernVon(this.homeLineup), awayNummern = nummernVon(this.awayLineup);
 
         this.homeLineup.forEach((p, idx) => {
             const slot = homePositions[idx] || { x: 50, y: 90, pos: p.pos };
@@ -3655,7 +3669,7 @@ class LiveMatch {
             players.push({
                 id: p.id,
                 name: p.name,
-                number: idx + 1,
+                number: homeNummern ? homeNummern[idx] : idx + 1,
                 // Der Platz in der Formation: an ihm haengen die Rollen
                 slot: idx,
                 // Im 2D-Feld zählt die Position, auf der gespielt wird
@@ -3689,7 +3703,7 @@ class LiveMatch {
             players.push({
                 id: p.id,
                 name: p.name,
-                number: idx + 1,
+                number: awayNummern ? awayNummern[idx] : idx + 1,
                 slot: idx,
                 pos: slot.pos || p.pos,
                 naturalPos: p.pos,
@@ -4565,6 +4579,8 @@ class LiveMatch {
             this._abgang(p2d);
             p2d.id = playerIn.id;
             p2d.name = playerIn.name;
+            // Der Eingewechselte trägt seine eigene Nummer, wenn er eine hat
+            if (Number.isInteger(playerIn.trikot) && playerIn.trikot > 0) p2d.number = playerIn.trikot;
             // Der Slot auf dem Feld bleibt bestehen, nur der Spieler wechselt
             p2d.naturalPos = playerIn.pos;
             p2d.pace = playerIn.pace || playerIn.overall || 70;

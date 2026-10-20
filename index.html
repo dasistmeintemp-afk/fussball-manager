@@ -576,6 +576,7 @@
                                         <label><input type="checkbox" data-anzeige="namen" checked> Namen</label>
                                         <label><input type="checkbox" data-anzeige="verbindungen" checked> Verbindungen</label>
                                         <label><input type="checkbox" data-anzeige="eignung" checked> Eignung</label>
+                                        <label><input type="checkbox" data-anzeige="zustand" checked> Kondition</label>
                                     </div>
                                 </details>
                             </div>
@@ -2189,6 +2190,16 @@
         </div>
 
         <!-- Modal: Player Details / Contract Offer -->
+        <div class="modal-overlay" id="modalSpielerMenue" style="display: none;">
+            <div class="modal-box modal-sm modal-spm" role="dialog" aria-labelledby="spkMenueTitel">
+                <div class="modal-header">
+                    <h2 id="spkMenueTitel">Spieler</h2>
+                    <button class="modal-close" id="btnCloseSpielerMenue" aria-label="Schließen">×</button>
+                </div>
+                <div class="modal-body" id="spkMenueInhalt"></div>
+            </div>
+        </div>
+
         <div class="modal-overlay" id="modalPlayerDetails" style="display: none;">
             <div class="modal-box modal-akte">
                 <div class="modal-header">

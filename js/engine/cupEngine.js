@@ -492,7 +492,10 @@ class CupEngine {
         if (sieger.length === 1) {
             cup.completed = true;
             cup.winnerId = sieger[0];
-            this.meldeSieger(state, cup.name, sieger[0], cup.rundenIndex);
+            // Gemeldet wird der eigene Landespokal - und ein fremder nur, wenn wir mitgespielt haben
+            const land = cup.land || (id === "de_cup" ? this.eigenesLand(state) : id.split("_")[0]);
+            const betrifftUns = land === this.eigenesLand(state) || (cup.teilnehmer || []).includes(state.userClubId);
+            this.meldeSieger(state, cup.name, sieger[0], cup.rundenIndex, betrifftUns);
             return { fertig: true, sieger: sieger[0] };
         }
 
@@ -585,7 +588,13 @@ class CupEngine {
                 w.completed = true;
                 w.winnerId = sieger[0];
                 this.zahlePraemie(state, sieger[0], praemien.sieg || 0, `${w.name} gewonnen`);
-                this.meldeSieger(state, w.name, sieger[0], 99);
+                // Gemeldet wird der Meisterpokal, und die anderen nur, wenn wir
+                // dabei waren oder ein Verein aus dem eigenen Land gewinnt
+                const siegerClub = state.clubs.find(c => c.id === sieger[0]);
+                const dabei = (w.participants || []).includes(state.userClubId)
+                    || (w.endrunde || []).some(r => (r.matches || []).some(m => m.homeClubId === state.userClubId || m.awayClubId === state.userClubId));
+                const betrifftUns = id === "ucl" || dabei || (siegerClub?.countryId || "de") === this.eigenesLand(state);
+                this.meldeSieger(state, w.name, sieger[0], 99, betrifftUns);
                 return;
             }
 
@@ -870,7 +879,13 @@ class CupEngine {
         return /finale$/i.test(name || "") ? `im ${name}` : `in der ${name}`;
     }
 
-    static meldeSieger(state, wettbewerb, clubId, rundenIndex) {
+    /**
+     * Der Sieger eines Wettbewerbs. Eine Mail gibt es nur, wenn er uns
+     * betrifft (betrifftUns) - vorher kam am Saisonende für jeden Pokal der
+     * Welt eine, vom brasilianischen bis zum schottischen. Der Titel steht
+     * trotzdem am Wettbewerb (winnerId) und in der Historie.
+     */
+    static meldeSieger(state, wettbewerb, clubId, rundenIndex, betrifftUns = true) {
         const club = state.clubs.find(c => c.id === clubId);
         if (!club) return;
         const eigener = clubId === state.userClubId;
@@ -884,6 +899,7 @@ class CupEngine {
             }
         }
 
+        if (!eigener && !betrifftUns) return;
         this.postfach(state,
             eigener ? `🏆 ${wettbewerb} gewonnen!` : `${wettbewerb}: ${club.name} ist Sieger`,
             eigener

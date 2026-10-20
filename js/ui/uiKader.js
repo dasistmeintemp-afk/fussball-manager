@@ -283,6 +283,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
+        // Rückennummern: vor dem Namen, ein Tipp ändert sie
+        if (typeof GameState !== "undefined" && typeof GameState.rueckennummern === "function") GameState.rueckennummern(state, userClub);
 
         // Wer gerade verliehen ist, steht nicht im Kader - aber hier darunter
         const verliehenBox = document.getElementById("squadLoanedOut");
@@ -374,7 +376,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             return `
                 <tr class="row-clickable" data-player-id="${p.id}" title="Details zu ${this.escapeHtml(p.name)} öffnen">
                     <td class="sq-status">${statusBadge}</td>
-                    <td class="sq-name"><strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}<span class="squad-role-hint">${p.reserve ? (p.reserve === "u19" ? "U19" : "U23") : (p.nominiertAus ? `aus der ${p.nominiertAus === "u19" ? "U19" : "U23"} · nur Spieltag` : (p.leihe ? "Leihspieler" : this.escapeHtml((p.squadRole || "Kader") + (p.jugendvertrag ? " · Jugendvertrag" : ""))))} · ${p.age} J.</span></td>
+                    <td class="sq-name"><button class="sq-nr" type="button" data-nr-id="${this.escapeHtml(String(p.id))}" title="Rückennummer ändern">${Number.isInteger(p.trikot) ? p.trikot : "–"}</button><strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}<span class="squad-role-hint">${p.reserve ? (p.reserve === "u19" ? "U19" : "U23") : (p.nominiertAus ? `aus der ${p.nominiertAus === "u19" ? "U19" : "U23"} · nur Spieltag` : (p.leihe ? "Leihspieler" : this.escapeHtml((p.squadRole || "Kader") + (p.jugendvertrag ? " · Jugendvertrag" : ""))))} · ${p.age} J.</span></td>
                     <td class="sq-pos nowrap">
                         <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>${secondaryHtml}
                     </td>
@@ -399,6 +401,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 </tr>
             `;
         }).join("");
+
+        tbody.querySelectorAll(".sq-nr").forEach(btn => {
+            btn.addEventListener("click", () => this.zeigeNummernWahl(this.resolvePlayerId(btn.dataset.nrId), () => this.renderSquad(posFilter)));
+        });
 
         // Ein Klick irgendwo in der Zeile öffnet die Spielerdetails
         tbody.querySelectorAll("tr.row-clickable").forEach(row => {

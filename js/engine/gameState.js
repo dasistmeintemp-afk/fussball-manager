@@ -1103,6 +1103,24 @@ class GameState {
     }
 
     /**
+     * Eine Rückennummer selbst vergeben (1 bis 99). Trägt sie schon einer im
+     * Kader, tauschen die beiden ihre Nummern.
+     */
+    static setzeRueckennummer(state, club, playerId, nr) {
+        const nummer = Number(nr);
+        if (!Number.isInteger(nummer) || nummer < 1 || nummer > 99) return { ok: false, grund: "Rückennummern gehen von 1 bis 99." };
+        GameState.rueckennummern(state, club);
+        const kader = (state?.players || []).filter(p => p.clubId === club?.id);
+        const spieler = kader.find(p => String(p.id) === String(playerId));
+        if (!spieler) return { ok: false, grund: "Der Spieler gehört nicht zum Kader." };
+        if (spieler.trikot === nummer) return { ok: true, getauscht: null };
+        const anderer = kader.find(p => p !== spieler && p.trikot === nummer) || null;
+        if (anderer) anderer.trikot = spieler.trikot;
+        spieler.trikot = nummer;
+        return { ok: true, getauscht: anderer };
+    }
+
+    /**
      * Ein älterer Spielstand bekommt beim Laden, was neue Stände von Anfang
      * an haben. Jeder Schritt prüft selbst, ob er nötig ist - ein zweites
      * Laden ändert nichts mehr.

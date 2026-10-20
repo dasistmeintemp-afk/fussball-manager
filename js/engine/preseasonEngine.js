@@ -163,6 +163,17 @@ class PreseasonEngine {
                 ruf: this.rufText(guete)
             });
         }
+        // Für einen Pflichtposten ist immer einer zum üblichen Gehalt dabei.
+        // Vorher konnten alle drei teurer sein als der Etat erlaubte - bei
+        // einem Oberligisten verlangte der günstigste Co-Trainer 460 € bei
+        // 1.000 € Etat für den ganzen Stab.
+        const ueblich = this.marktGehalt(club, bereich.key, this.stabNiveau(club));
+        if (this.PFLICHT.includes(bereich.key) && bewerber.length && !bewerber.some(b => b.gehalt <= ueblich)) {
+            const guete = Math.max(20, this.stabNiveau(club) - _preRandom.int(2, 8));
+            const gehalt = this.rundeGehalt(Math.min(ueblich, this.marktGehalt(club, bereich.key, guete) * _preRandom.float(0.85, 1.0)));
+            const teuerster = bewerber.reduce((m, b) => (b.gehalt > m.gehalt ? b : m), bewerber[0]);
+            Object.assign(teuerster, { guete, gehalt, mindestGehalt: this.rundeGehalt(gehalt * _preRandom.float(0.85, 0.95)), ruf: this.rufText(guete) });
+        }
         return bewerber.sort((a, b) => b.guete - a.guete);
     }
 
@@ -842,7 +853,9 @@ class PreseasonEngine {
     static stabRahmen(club) {
         const rahmen = this.erwarteteStabKosten(club) * this.STAB_ETAT_FAKTOR;
         const obergrenze = (club?.wageBudget || 0) * this.STAB_ANTEIL;
-        return this.rundeGehalt(obergrenze > 0 ? Math.min(rahmen, obergrenze) : rahmen);
+        // Die Pflichtposten zum üblichen Gehalt passen immer hinein, mit etwas Luft
+        const pflicht = this.PFLICHT.reduce((s, k) => s + this.marktGehalt(club, k, this.stabNiveau(club)), 0) * 1.25;
+        return this.rundeGehalt(Math.max(pflicht, obergrenze > 0 ? Math.min(rahmen, obergrenze) : rahmen));
     }
 
     /**

@@ -265,6 +265,7 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   - Ist vorher ein Platz gewählt, wechselt ein Tipp wie bisher sofort.
 - **Rückennummern (`GameState.rueckennummern`):** Jeder Spieler hat eine feste Nummer, einmalig im Kader und klassisch nach Position. Die Besten wählen zuerst: der Torwart die 1, die Innenverteidiger 4 und 5, der offensive Mittelfeldspieler die 10, der Mittelstürmer die 9.
   - Die Nummer bleibt, bis er den Verein wechselt. Ein Neuzugang bekommt eine freie.
+  - *Nummer selbst wählen:* im Kader über das Feld vor dem Namen, in der Akte über die Nummer im Titel oder im Spielermenü über *Rückennummer*. Die Wahl zeigt alle Nummern von 1 bis 99, die vergebenen mit dem Namen ihres Trägers. Wer eine vergebene wählt, tauscht mit ihm. Selbst gewählte Nummern bleiben.
   - Im Livespiel tragen beide Mannschaften diese Nummern, auch ein Eingewechselter seine eigene. Vorher spielte jede Elf mit 1 bis 11.
   - Die Bankleiste nennt die Nummer und, unter 90 %, die Kondition.
 - **Spezialrollen:** Kapitän, Elfmeterschütze, Freistoßschütze, Eckenschütze.
@@ -832,7 +833,10 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
 - **Trainerstab in der Vorbereitung:**
   - **Posten:** Sechs Posten sind zu besetzen – Co-Trainer, Athletiktrainer, Spielanalyst, Mannschaftsarzt, Nachwuchsleiter und Chefscout.
   - **Gehälter nach Liga und Posten:** Ein Co-Trainer in der 1. Liga verdient rund 16 Tsd. € je Woche, in der Landesliga gibt es 100 € Aufwandsentschädigung. Arzt, Scout, Athletiktrainer, Analyst und Nachwuchsleiter verdienen weniger. Wer besser ist als das übliche Niveau des Vereins, verlangt mehr, etwa das Doppelte bei 15 Punkten darüber.
-  - **Stab-Etat:** Der Etat ist anderthalb Mal ein durchschnittlich besetzter Stab. Er steht als Balken über der Liste. Jeder Bewerber zeigt Sterne, Forderung und ob er in den Etat passt.
+  - **Stab-Etat:** Der Etat ist anderthalb Mal ein durchschnittlich besetzter Stab, höchstens ein Viertel des Gehaltsbudgets. Er steht als Balken über der Liste. Jeder Bewerber zeigt Sterne, Forderung und ob er in den Etat passt.
+  - **Pflichtposten passen immer:** Co-Trainer, Athletiktrainer und Arzt zum üblichen Gehalt passen immer in den Etat, mit einem Viertel Luft. Für jeden Pflichtposten ist mindestens ein Bewerber zum üblichen Gehalt dabei.
+    - Vorher konnten alle drei Bewerber teurer sein, und der Etat hing am alten, zu niedrigen Gehaltsbudget. Bei Sportfreunde Heide (5. Liga) standen rund 1.000 € Etat einem günstigsten Co-Trainer für 460 € gegenüber.
+    - Jetzt sind es dort rund 2.000 € Etat. Die günstigsten Pflichtbewerber kosten zusammen etwa 500 bis 800 €.
   - **Echte Kosten:** Die Gehälter gehen jede Woche als eigener Posten „Trainerstab“ von der Kasse ab. Der übliche Stabsanteil ist dafür aus dem Betriebsaufwand herausgenommen: Ein teurer Stab kostet mehr, ein sparsamer spart. Eine Aushilfe auf einem offenen Posten kostet gut ein Drittel eines üblichen Gehalts.
   - **Gehaltsverhandlung:** Wer verhandelt statt zur Forderung zu verpflichten, bietet Gehalt und Laufzeit. Längere Verträge machen den Bewerber günstiger. Er antwortet mit einem Gegenangebot. Wer ihn zu tief ansetzt oder drei Runden feilscht, verliert ihn.
   - **Meldungen:** Jede Verpflichtung meldet der Sportdirektor mit dem Stand des Etats und den noch offenen Posten.

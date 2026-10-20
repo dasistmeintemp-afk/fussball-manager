@@ -1268,20 +1268,26 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             nachLeihe(res, `${player.name} spielt jetzt in der U19${res.ausElf ? " - die Aufstellung ist nachgerückt" : ""}.`);
             if (res.success && this.activeTab === "tactics") this.renderCurrentTab();
         });
-        document.getElementById("btnPdLeiheAnfragen")?.addEventListener("click", () => {
-            const ziel = document.getElementById("pdLeiheAngebote");
-            const angebote = leihEngine.interessenten(state, player.id);
-            if (!ziel) return;
-            const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
-            ziel.innerHTML = angebote.length ? angebote.map(a => `
-                <div class="leih-zeile">
-                    <div><strong>${esc(a.clubName)}</strong> <span class="text-muted">Liga ${a.stufe}</span></div>
-                    <div class="leih-text">${esc(a.rolle)} · übernimmt ${Math.round(a.lohnAnteil * 100)} % des Gehalts</div>
-                    <button class="btn btn-sm btn-primary" data-verleihen-an="${esc(a.clubId)}">Verleihen</button>
-                </div>`).join("")
-                : `<div class="gs-lage">Kein Verein, bei dem er spielen würde, will ihn gerade ausleihen.</div>`;
-            ziel.querySelectorAll("[data-verleihen-an]").forEach(btn => btn.addEventListener("click", () =>
-                nachLeihe(leihEngine.verleihen(state, player.id, btn.dataset.verleihenAn), `${player.name} ist bis zum Saisonende verliehen.`)));
+        // Verleihen wie im Vorbild: auf die Leihliste mit Bedingungen, dann Angebote, dann sein Ja
+        document.getElementById("btnPdZurLeihe")?.addEventListener("click", () => {
+            const wert = (id) => document.getElementById(id)?.value;
+            const res = leihEngine.zurLeiheAnbieten(state, player.id, {
+                minAnteil: Number(wert("pdLeihAnteil") || 0),
+                einsatz: wert("pdLeihEinsatz") || "Rotation",
+                dauer: wert("pdLeihDauer") || "saison",
+                rueckholrecht: !!document.getElementById("pdLeihRueck")?.checked
+            });
+            nachLeihe(res, res.neu && res.neu.length
+                ? `${player.name} steht auf der Leihliste - Deadline Day: ${res.neu.length} Angebot${res.neu.length === 1 ? "" : "e"} sofort.`
+                : `${player.name} steht auf der Leihliste. Die Vereine melden sich in den nächsten Tagen.`);
+        });
+        document.getElementById("btnPdVonLeihliste")?.addEventListener("click", () =>
+            nachLeihe(leihEngine.vonLeihlisteNehmen(state, player.id), `${player.name} steht nicht mehr auf der Leihliste.`));
+        this.bindeLeihangebote(document.getElementById("pdLeihAngebote"), () => {
+            this.showPlayerDetailsModal(player.id);
+            if (this.activeTab === "transfers") this.renderLeihen?.();
+            if (this.activeTab === "squad") this.renderSquad?.();
+            this.renderHeader?.();
         });
 
         // Entwicklungsplan: Schwerpunkt, Umschulung, Mentor

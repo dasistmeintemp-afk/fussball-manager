@@ -565,7 +565,14 @@ In der Spielerakte führt der Manager Gespräche mit jedem eigenen Spieler. Wie 
   - Gespeichert werden die letzten zwölf Zeilen je Spieler, rund 165 KB je Saison im Spielstand.
   - Nebenbei behoben: Die Vereinsakte zeigt den Torjäger jetzt. Sie las ein Feld, das es nicht gab, und zeigte ihn deshalb nie.
 - **Leihgeschäfte (`LoanEngine`, Unterreiter *Leihen*):**
-  - *Verleihen:* In der Akte eines eigenen Spielers fragt man Interessenten an: Vereine bis zwei Ligen tiefer, bei denen er Stammspieler oder Rotation wäre. Der Leihverein übernimmt einen Teil des Gehalts. Bis zum Saisonende, vorzeitiges Zurückholen ist möglich.
+  - *Verleihen wie im Vorbild:* In der Akte setzt man einen eigenen Spieler mit Bedingungen auf die Leihliste.
+    - Die Bedingungen: Gehaltsanteil mindestens (egal, 50, 75 oder 100 %), Einsatz dort (Stammspieler, mindestens Rotation oder egal), Dauer bis zum Saisonende oder (im Sommer) bis zur Winterpause, Rückholrecht ja oder nein.
+    - In den Tagen danach melden sich Vereine bis zwei Ligen tiefer, bei denen er so spielen würde, etwa jeden dritten Tag einer, höchstens drei zugleich. Jedes Angebot nennt Rolle, Gehaltsanteil, eine Leihgebühr für einen, der sofort spielt, manchmal eine Kaufoption, und gilt drei Tage. Mit Rückholrecht bieten die Vereine etwas weniger.
+    - *Annehmen*, *Mehr fordern* (einmal: bis zur verborgenen Grenze geht der Verein mit, knapp darüber bessert er nach, weit darüber zieht er zurück) oder *Ablehnen*. Die Angebote stehen im Unterreiter *Leihen*, in der Akte und auf dem Schreibtisch.
+    - Nach dem Annehmen entscheidet der Spieler über Nacht. Als Stammspieler geht er fast immer, ein sehr Ehrgeiziger aber nicht zwei Ligen tiefer. Als Ergänzungsspieler sagt der Ehrgeizige eher ab, je tiefer die Liga, desto eher.
+    - Am Deadline Day kommen Angebote und Antwort sofort. Schließt das Fenster, ist die Leihliste leer.
+    - Zurückholen geht nur mit vereinbartem Rückholrecht. Vorher war ein Spieler mit einem Tipp sofort verliehen und jederzeit zurückzuholen.
+  - *Dauer und Rückholrecht:* Eine Leihe bis zur Winterpause endet mit dem Winterfenster. Ein Stammverein mit Rückholrecht holt seinen Spieler im Winter zurück, wenn er als Stammspieler kaum spielt. Beim Ausleihen verlangt der Stammverein für Spieler bis 23 ein Rückholrecht, ohne muss das Angebot höher sein. Bis zur Winterpause kostet die halbe Leihgebühr.
   - *Ausleihen:* Der Leihmarkt zeigt junge Spieler ohne Stammplatz und Reservisten anderer Vereine. *Anfragen* eröffnet eine Verhandlung mit dem Stammverein, wie bei einem Transfer:
     - Er fordert einen Gehaltsanteil, bei starken Spielern eine Leihgebühr und eine Einsatzzusage. Wer bei uns Stammspieler wäre, will das zugesagt bekommen.
     - Man bietet Anteil, Gebühr, Einsatzzusage und auf Wunsch die Kaufoption. Die Antwort kommt nach ein bis drei Tagen: Zusage, Gegenforderung oder Abbruch.

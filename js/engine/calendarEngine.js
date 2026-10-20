@@ -1115,6 +1115,15 @@ const CalendarEngine = {
                 res.fenster = meldungen;
             }
         }
+        // Jeden Morgen: Leihangebote für Spieler auf der Leihliste, Zusagen, Winterpause (LoanEngine.tag)
+        const leihen = (typeof LoanEngine !== 'undefined' && LoanEngine)
+            ? LoanEngine
+            : ((typeof window !== 'undefined' && window.LoanEngine) ? window.LoanEngine : (typeof require !== 'undefined' ? require('./loanEngine.js').LoanEngine : null));
+        if (res && res.success && res.type !== "season_change" && leihen && typeof leihen.tag === "function") {
+            const zeilen = leihen.tag(state);
+            if (res.summary && Array.isArray(res.summary.messages)) zeilen.forEach(m => res.summary.messages.push(m));
+            if (zeilen.length) res.leihen = zeilen;
+        }
         // Deadline Day: Offene Antworten kommen am Morgen, damit heute noch Zeit zum Reagieren bleibt
         const verhandlung = (typeof NegotiationEngine !== 'undefined' && NegotiationEngine)
             ? NegotiationEngine

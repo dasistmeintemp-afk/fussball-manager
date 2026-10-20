@@ -1206,10 +1206,12 @@ const YouthEngine = {
             const gewicht = k === "TW" ? 8 : 4;
             for (let i = 0; i < gewicht; i++) posTopf = posTopf.concat(gruppe);
         });
-        const namePools = (typeof NAME_POOLS !== 'undefined') ? NAME_POOLS : (typeof window !== 'undefined' ? window.NAME_POOLS : (typeof require !== 'undefined' ? require('../data/namePools.js').NAME_POOLS : {}));
-        const poolFirst = (namePools && namePools.firstNames) ? namePools.firstNames : ["Max", "Lukas", "Leon", "Finn", "Elias"];
-        const poolLast = (namePools && namePools.lastNames) ? namePools.lastNames : ["Müller", "Schmidt", "Weber", "Bauer", "Fischer"];
-        const poolNat = (namePools && namePools.nationalities) ? namePools.nationalities : ["Deutschland"];
+        // Nationalitäten nach dem Land des Vereins, der Name nach der Nationalität
+        // (PlayerGenerator.nameFuer). Vorher kamen alle Talente aus dem deutschen
+        // Pool - auch beim englischen Verein hießen sie "Max Müller".
+        const gen = _youthResolve("PlayerGenerator", "./playerGenerator.js");
+        const landPool = gen && typeof gen.resolveNamePool === "function" ? gen.resolveNamePool(club?.countryId || "de") : null;
+        const poolNat = landPool && landPool.nationalities ? landPool.nationalities : ["Deutschland"];
 
         // Woher die Talente kommen, hängt am Einzugsgebiet
         const heimat = eigen ? this.heimatland(state, club) : null;
@@ -1236,9 +1238,12 @@ const YouthEngine = {
         const mitJahrgang = optionen.jahrgang !== false;
 
         for (let i = 0; i < count; i++) {
-            const firstName = poolFirst[Math.floor(Math.random() * poolFirst.length)];
-            const lastName = poolLast[Math.floor(Math.random() * poolLast.length)];
+            const wurfVor = Math.random();
+            const wurfNach = Math.random();
             const nat = waehleNation();
+            const { vorname: firstName, nachname: lastName } = gen && typeof gen.nameFuer === "function"
+                ? gen.nameFuer(nat, wurfVor, wurfNach, club?.countryId)
+                : { vorname: "Max", nachname: "Müller" };
             const pos = posTopf[Math.floor(Math.random() * posTopf.length)];
             const age = 15 + Math.floor(Math.random() * 3); // 15, 16 oder 17
 

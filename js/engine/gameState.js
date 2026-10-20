@@ -1032,6 +1032,8 @@ class GameState {
         // Alle Spieler in eine gemeinsame Form (PlayerGenerator.forme) - hier
         // hält noch niemand eine Referenz auf ein Spielerobjekt
         GameState.formeSpieler(state);
+        // Eine neue Welt hat die Namen schon nach Nationalität (ergaenzeAltstand)
+        state.namenNachNation = 1;
 
         return state;
     }
@@ -1064,6 +1066,38 @@ class GameState {
         return neu;
     }
 
+    /** Rückennummern nach Position: wer zuerst gewählt wird, bekommt die klassische */
+    static NUMMERN_WUNSCH = {
+        TW: [1, 12, 30, 33, 40], IV: [4, 5, 15, 3, 2, 6, 14, 24, 23], LV: [3, 13, 26, 21], RV: [2, 20, 22, 32],
+        DM: [6, 8, 16, 18, 26], ZM: [8, 6, 14, 16, 18, 20, 28], OM: [10, 8, 7, 19], LM: [11, 7, 17, 27], LA: [11, 7, 17, 19, 27],
+        RM: [7, 17, 11, 21, 27], RA: [7, 17, 11, 21, 27], ST: [9, 19, 29, 39, 11]
+    };
+
+    /**
+     * Rückennummern für den Kader eines Vereins: Wer keine hat, bekommt eine
+     * freie, die zu seiner Position passt - die Besten zuerst. Wer schon eine
+     * hat, behält sie (TransferEngine nimmt sie beim Wechsel weg). Gibt eine
+     * Map Spieler-ID → Nummer zurück.
+     */
+    static rueckennummern(state, club) {
+        const kader = (state?.players || []).filter(p => p.clubId === club?.id);
+        const vergeben = new Set();
+        kader.forEach(p => {
+            if (Number.isInteger(p.trikot) && p.trikot > 0 && p.trikot < 100 && !vergeben.has(p.trikot)) vergeben.add(p.trikot);
+            else p.trikot = undefined;
+        });
+        const posEngine = GameState._getPositionEngine();
+        kader.filter(p => !p.trikot).sort((a, b) => (b.overall || 0) - (a.overall || 0)).forEach(p => {
+            const pos = posEngine && typeof posEngine.normalizePosition === "function" ? posEngine.normalizePosition(p.pos) : p.pos;
+            const wunsch = (GameState.NUMMERN_WUNSCH[pos] || []).find(n => !vergeben.has(n));
+            let nr = wunsch;
+            for (let n = 1; !nr && n < 100; n++) if (!vergeben.has(n)) nr = n;
+            p.trikot = nr;
+            vergeben.add(nr);
+        });
+        return new Map(kader.map(p => [p.id, p.trikot]));
+    }
+
     /**
      * Ein älterer Spielstand bekommt beim Laden, was neue Stände von Anfang
      * an haben. Jeder Schritt prüft selbst, ob er nötig ist - ein zweites
@@ -1071,6 +1105,24 @@ class GameState {
      */
     static ergaenzeAltstand(state) {
         if (!state || !Array.isArray(state.clubs)) return;
+        // Namen passend zur Nationalität - einmal je Spielstand
+        if (!state.namenNachNation) {
+            state.namenNachNation = 1;
+            const gen = GameState._resolveEngine("PlayerGenerator", "./playerGenerator.js");
+            const zahl = gen && typeof gen.korrigiereNamen === "function" ? gen.korrigiereNamen(state) : 0;
+            if (zahl && Array.isArray(state.inbox)) {
+                state.inbox.unshift({
+                    id: "msg_namen_" + Date.now(),
+                    matchday: state.currentMatchday || 1,
+                    date: state.currentDate || "Heute",
+                    sender: "Spielwelt",
+                    subject: "Namen passen jetzt zur Nationalität",
+                    body: `${zahl} Spieler hießen nicht wie ihr Land - etwa ein Italiener mit deutschem Namen. Sie tragen jetzt Namen aus ihrer Nationalität. Frühere Einträge in Archiven und Postfach nennen noch die alten Namen.`,
+                    read: false,
+                    type: "info"
+                });
+            }
+        }
         // Die Kopfwerte: dieselben, die eine neue Welt für diese Spieler hätte
         GameState.ergaenzeKopfwerte(state);
         // Ligen, die nach dem Start der Karriere dazugekommen sind - mit einer

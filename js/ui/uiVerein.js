@@ -606,6 +606,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         const geld = (b) => (typeof GameState !== "undefined" && GameState.formatMoney)
             ? GameState.formatMoney(b) : `${Math.round(b / 1000)} Tsd. €`;
+        // Bauzeit auf dem Knopf: "4 Mon." oder "9 Wo."
+        const dauerKurz = (t) => t >= 75 ? `${Math.round(t / 30)} Mon.` : `${Math.round(t / 7)} Wo.`;
 
         const zustandsFarbe = (z) => z >= 80 ? "#10b981" : z >= 60 ? "#84cc16"
             : z >= 42 ? "#f59e0b" : "#ef4444";
@@ -640,13 +642,17 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 extra += `<div class="fac-profil"><strong>${a.profil.name}</strong><br>${st}</div>`;
             }
 
+            // Fertig gebaut, aber noch nicht abbezahlt
+            const kredit = (userClub.baukredite || []).find(k => k.name === a.name && k.offen > 0);
+            if (kredit) extra += `<p class="fac-note">Baukredit: noch ${geld(kredit.offen)} offen, ${geld(kredit.rate)} je Woche.</p>`;
+
             let bau = "";
             if (a.projekt) {
-                const anteil = Math.round((1 - a.projekt.restSpieltage / a.projekt.spieltage) * 100);
+                const anteil = Math.round((1 - a.projekt.restTage / Math.max(1, a.projekt.tage)) * 100);
                 bau = `
                     <div class="fac-bau">
                         🏗️ <strong>${a.projekt.art === "ausbau" ? `Ausbau auf Stufe ${a.stufe + 1}` : "Sanierung"}</strong>
-                        läuft &middot; noch ${a.projekt.restSpieltage} Spieltage.<br>
+                        läuft${a.projekt.schnell ? " im Schichtbetrieb" : ""} &middot; ${a.projekt.restText}${a.projekt.fertigAm ? `, fertig um den ${a.projekt.fertigAm}` : ""}.<br>
                         Betrieb eingeschränkt um ${Math.round(a.projekt.beeintraechtigung * 100)} %.
                         <div class="fac-bau-fortschritt"><span style="width:${anteil}%"></span></div>
                     </div>`;
@@ -659,24 +665,24 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const ausbauBtn = `
                 <button class="btn btn-sm btn-primary btn-fac" data-facility="${a.key}" data-art="ausbau"
                         ${sperre || maxStufe ? "disabled" : ""}
-                        title="${maxStufe ? "Stufe 5 ist die höchste" : `${a.dauerAusbau} Spieltage Bauzeit`}">
+                        title="${maxStufe ? "Stufe 5 ist die höchste" : `${fac.dauerText(a.dauerAusbau)} Bauzeit`}">
                     Ausbauen
-                    <small>${maxStufe ? "Stufe 5 erreicht" : `${geld(a.kostenAusbau)} &middot; ${a.dauerAusbau} ST`}</small>
+                    <small>${maxStufe ? "Stufe 5 erreicht" : `${geld(a.kostenAusbau)} &middot; ${dauerKurz(a.dauerAusbau)}`}</small>
                 </button>`;
 
             const sanierBtn = `
                 <button class="btn btn-sm btn-secondary btn-fac" data-facility="${a.key}" data-art="sanierung"
                         ${sperre || neuwertig ? "disabled" : ""}
-                        title="${neuwertig ? "Noch in gutem Zustand" : `${a.dauerSanierung} Spieltage Bauzeit`}">
+                        title="${neuwertig ? "Noch in gutem Zustand" : `${fac.dauerText(a.dauerSanierung)} Bauzeit`}">
                     Sanieren
-                    <small>${neuwertig ? "nicht nötig" : `${geld(a.kostenSanierung)} &middot; ${a.dauerSanierung} ST`}</small>
+                    <small>${neuwertig ? "nicht nötig" : `${geld(a.kostenSanierung)} &middot; ${dauerKurz(a.dauerSanierung)}`}</small>
                 </button>`;
 
             const teuer = !sperre && !maxStufe && a.kostenAusbau > kasse;
             const bank = a.finanzierungAusbau;
             const hinweisGeld = teuer
                 ? `<p class="fac-note" style="color:#f59e0b;">Für den Ausbau fehlen ${geld(a.kostenAusbau - kasse)}.`
-                  + (bank?.moeglich ? ` Die Hausbank finanziert: ${geld(bank.anzahlung)} Anzahlung, dann ${geld(bank.rate)} je Spieltag.` : "")
+                  + (bank?.moeglich ? ` Die Hausbank finanziert: ${geld(bank.anzahlung)} Anzahlung, dann ${geld(bank.rate)} je Woche.` : "")
                   + `</p>`
                 : "";
             const hinweisFoerderung = !sperre && !maxStufe && a.foerderungAusbau > 0
@@ -728,18 +734,22 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const bank = fac.finanzierung(state, club, key, art);
         const kasse = club.balance || 0;
         const barGeht = kasse >= detail.netto;
-        const dauer = fac.dauer(key, art);
+        const dauer = fac.dauer(key, art, club);
+        const S = fac.SCHICHTBETRIEB;
+        const dauerSchnell = fac.dauer(key, art, club, true);
+        const aufpreis = Math.round(detail.brutto * (S.kosten - 1));
         const stoerung = Math.round(((fac.BEEINTRAECHTIGUNG[key] || {})[art] || 0.2) * 100);
 
         const starte = (finanzierung) => {
-            const res = fac.starteProjekt(state, club.id, key, art, finanzierung ? { finanzierung } : {});
+            const schnell = !!document.getElementById("bauSchnell")?.checked;
+            const res = fac.starteProjekt(state, club.id, key, art, Object.assign(finanzierung ? { finanzierung } : {}, { schnell }));
             if (!res.erfolg) {
                 this.showToast(res.grund, "error", 6000);
                 return false;
             }
             this.playSound("erfolg");
-            this.showToast(`${res.name}: ${art === "ausbau" ? "Ausbau" : "Sanierung"} begonnen — ${res.spieltage} Spieltage`
-                + (res.rate ? `, ${geld(res.rate)} je Spieltag an die Bank.` : `, ${geld(res.kosten)}.`), "success");
+            this.showToast(`${res.name}: ${art === "ausbau" ? "Ausbau" : "Sanierung"} begonnen — ${fac.dauerText(res.tage)}`
+                + (res.rate ? `, ${geld(res.rate)} je Woche an die Bank.` : `, ${geld(res.kosten)}.`), "success");
             if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
             this.renderClub();
             this.renderTraining();
@@ -751,15 +761,18 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const zeile = (t, w, stark = false) => `<div${stark ? ` class="bau-eigen"` : ""}><span>${t}</span><strong>${w}</strong></div>`;
         const html = `
             <p><strong>${name}</strong>: ${art === "ausbau" ? `Ausbau von Stufe ${anlage.stufe} auf ${anlage.stufe + 1}` : `Sanierung (Zustand ${Math.round(anlage.zustand)} %)`}.
-               ${dauer} Spieltage Bauzeit, der Betrieb läuft so lange um ${stoerung} % eingeschränkt.</p>
+               Bauzeit ${fac.dauerText(dauer)}${fac.fertigAm(state, { restTage: dauer }) ? ` (fertig um den ${fac.fertigAm(state, { restTage: dauer })})` : ""}, der Betrieb läuft so lange um ${stoerung} % eingeschränkt.
+               Gebaut wird auch in der Sommer- und Winterpause.</p>
             <div class="verh-zahlen bau-rechnung">
                 ${zeile("Baukosten", geld(detail.brutto))}
                 ${detail.foerderung > 0 ? zeile(`Sportstättenförderung (${Math.round(detail.quote * 100)} %)`, `− ${geld(detail.foerderung)}`) : ""}
                 ${zeile("Eigenanteil", geld(detail.netto), true)}
                 ${zeile("In der Kasse", geld(kasse))}
             </div>
+            <label class="bau-schnell"><input type="checkbox" id="bauSchnell">
+                <span><strong>Im Schichtbetrieb bauen:</strong> ${fac.dauerText(dauerSchnell)} statt ${fac.dauerText(dauer)}, ${geld(aufpreis)} Aufpreis (+${Math.round((S.kosten - 1) * 100)} % der Baukosten, ohne Förderung).</span></label>
             ${bank.moeglich
-                ? `<p class="muted-note">Hausbank: ${geld(bank.anzahlung)} Anzahlung, danach ${geld(bank.rate)} je Spieltag über ${bank.spieltage} Spieltage.
+                ? `<p class="muted-note">Hausbank: ${geld(bank.anzahlung)} Anzahlung, danach ${geld(bank.rate)} je Woche über ${bank.wochen} Wochen, auch über das Bauende hinaus.
                    Zinsen ${geld(bank.zinsen)}, zusammen ${geld(bank.gesamt)}.</p>`
                 : `<p class="muted-note">Hausbank: ${this.escapeHtml(bank.grund || "keine Finanzierung möglich")}</p>`}
             ${!barGeht && !bank.moeglich ? `<p style="color:var(--accent-danger);">Es fehlen ${geld(detail.netto - kasse)} - so lässt sich nicht bauen.</p>` : ""}`;

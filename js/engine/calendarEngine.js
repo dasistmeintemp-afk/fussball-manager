@@ -663,7 +663,7 @@ const CalendarEngine = {
                 const p = club.anlagen[k]?.projekt;
                 if (!p) return;
                 marken.push(k === "stadium"
-                    ? `Stadionumbau (noch ${p.restSpieltage})`
+                    ? `Stadionumbau (${fac.restText(fac.migriereProjekt(p))})`
                     : `${fac.FACILITY_NAMES[k]}: Baustelle`);
             });
         }
@@ -1115,6 +1115,9 @@ const CalendarEngine = {
                 res.fenster = meldungen;
             }
         }
+        // Jeden Tag: Die Baustellen kommen voran, auch in Sommer- und Winterpause
+        const anlagen = _getCalFacilityEngine();
+        if (res && res.success && anlagen && typeof anlagen.tagesTick === "function") anlagen.tagesTick(state);
         // Jeden Morgen: Leihangebote für Spieler auf der Leihliste, Zusagen, Winterpause (LoanEngine.tag)
         const leihen = (typeof LoanEngine !== 'undefined' && LoanEngine)
             ? LoanEngine
@@ -1672,9 +1675,16 @@ const CalendarEngine = {
 
         // 4. Sponsorentag
         else if (currentDay.type === CALENDAR_DAY_TYPES.SPONSOR) {
-            const bonusIncome = 50000 + Math.floor(Math.random() * 50000);
+            // Eine Antrittsprämie des Sponsors für den Termin, nach seiner
+            // Größe. Vorher waren es überall 50.000 bis 100.000 € - und sie
+            // landeten in einem Feld, das kein Konto war: Das Journal zeigte
+            // das Geld, der Kontostand nie.
+            const fe = (typeof FinanceEngine !== 'undefined' && FinanceEngine) ? FinanceEngine
+                : (typeof require !== 'undefined' ? (() => { try { return require('./financeEngine.js').FinanceEngine; } catch (e) { return null; } })() : null);
+            const sponsorJe = userClub && fe && typeof fe.sponsorPerMatchday === 'function' ? fe.sponsorPerMatchday(userClub) : 0;
+            const bonusIncome = Math.round(sponsorJe * (0.15 + Math.random() * 0.15) / 10) * 10;
             if (userClub) {
-                userClub.budget = (userClub.budget || 0) + bonusIncome;
+                userClub.balance = (userClub.balance || 0) + bonusIncome;
                 const financeEngine = (typeof FinanceEngine !== 'undefined' && FinanceEngine) 
                     ? FinanceEngine 
                     : ((typeof window !== 'undefined' && window.FinanceEngine) ? window.FinanceEngine : (typeof require !== 'undefined' ? require('./financeEngine.js').FinanceEngine : null));

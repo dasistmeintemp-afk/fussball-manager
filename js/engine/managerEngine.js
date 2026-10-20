@@ -1363,7 +1363,7 @@ class ManagerEngine {
 
         // 7. Laufende Bauvorhaben
         //
-        // Ein Stadionumbau läuft dreißig Spieltage und drückt so lange die
+        // Ein Stadionausbau läuft fast eine Saison und drückt so lange die
         // Zuschauereinnahmen. Er stand bisher nur im Verein-Reiter - wer dort
         // nicht nachsah, wunderte sich über die Einnahmen und fand den Grund
         // nicht.
@@ -1383,7 +1383,7 @@ class ManagerEngine {
                     icon: "🏗️",
                     tab: "club",
                     title: `${fac.FACILITY_NAMES[key]}: ${p.art === "ausbau" ? "Ausbau" : "Sanierung"} läuft`,
-                    detail: `Noch ${p.restSpieltage} von ${p.spieltage} Spieltagen · ${einbusse}.`
+                    detail: `${fac.restText(fac.migriereProjekt(p)).replace(/^noch/, "Noch")}${fac.fertigAm(state, p) ? `, fertig um den ${fac.fertigAm(state, p)}` : ""} · ${einbusse}.`
                 });
             });
         }

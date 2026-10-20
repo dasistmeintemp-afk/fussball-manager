@@ -258,48 +258,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this.renderFormationEditorBar(userClub, slots);
         this.renderZusammenspiel(userClub, slots);
 
-        // Ersatzbank rendern
-        const benchContainer = document.getElementById("benchSlots");
-        benchContainer.innerHTML = "";
-
-        const squadPlayers = state.players.filter(p => userClub.playerIds.includes(p.id));
-        const benchPlayers = userClub.bench.map(id => squadPlayers.find(p => p.id === id)).filter(Boolean);
-        const reservePlayers = squadPlayers.filter(p => !userClub.lineup.includes(p.id) && !userClub.bench.includes(p.id));
-
-        // Ist ein Slot gewählt, zeigt die Bank die Eignung für genau diese Position
-        const targetSlot = (this.selectedPitchSlot !== null) ? slots[this.selectedPitchSlot] : null;
-
-        [...benchPlayers, ...reservePlayers].forEach(p => {
-            const isBench = userClub.bench.includes(p.id);
-            const isInj = p.injuredWeeks > 0;
-            const isSusp = p.suspendedMatches > 0;
-
-            const benchEl = document.createElement("div");
-            benchEl.className = "bench-node";
-
-            let fitHtml = "";
-            if (targetSlot && posEngine) {
-                const fit = posEngine.getSuitability(p, targetSlot.pos);
-                fitHtml = `<span class="bench-fit" style="color:${fit.color};" title="${fit.label} auf ${targetSlot.pos}">
-                    ${targetSlot.pos}: ${this.starsFor(fit.effectiveOverall, { color: fit.color })}
-                </span>`;
-            }
-
-            const kond = Math.round(p.fitness ?? 100);
-            benchEl.innerHTML = `
-                ${Number.isInteger(p.trikot) ? `<span class="bank-nr">${p.trikot}</span>` : ""}
-                <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>
-                <strong>${this.escapeHtml(p.name)}</strong>${kond < 90 ? ` <span class="bank-kond" style="color:${this.zustandsFarbe(kond)}" title="Kondition">${kond} %</span>` : ""} ${this.starsFor(p.overall, { title: `Stärke im Vergleich zum eigenen Kader` })}
-                ${fitHtml}
-                ${isInj ? "🚑" : isSusp ? "🟥" : isBench ? '<span style="color:#34d399">Bank</span>' : '<span style="color:#94a3b8">Res</span>'}
-            `;
-
-            benchEl.addEventListener("click", () => {
-                this.handleBenchPlayerClick(p.id);
-            });
-
-            benchContainer.appendChild(benchEl);
-        });
+        // Ersatzbank und übriger Kader
+        this.renderBank(userClub, slots, posEngine);
 
         this.renderLineupWarnings(misfits);
 
@@ -1419,6 +1379,125 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     this.schliesseSpielerMenue();
                     this.setzeEin(i, player.id);
                     this.showToast(raus ? `${player.name} für ${raus.name}.` : `${player.name} spielt jetzt.`, "info");
+                };
+            });
+        });
+    },
+
+    // ------------------------------------------------ Ersatzbank und Kader
+
+    /** Plätze auf der Bank */
+    BANK_PLAETZE: 7,
+
+    /**
+     * Die Bank als Karten, darunter der übrige Kader nach Mannschaftsteil.
+     * Vorher stand dort eine Reihe gleich aussehender Kästchen mit Name und
+     * Sternzahl, Bank und Reserve nur am Wort "Bank" oder "Res" zu unterscheiden.
+     * Ist ein Platz der Elf gewählt, zeigt beides die Stärke genau dort.
+     */
+    renderBank(userClub, slots, posEngine) {
+        const state = this.app.state;
+        const esc = (x) => this.escapeHtml(String(x ?? ""));
+        const benchEl = document.getElementById("benchSlots");
+        const reserveEl = document.getElementById("reserveSlots");
+        if (!benchEl) return;
+        const kader = state.players.filter(p => userClub.playerIds.includes(p.id));
+        const bank = userClub.bench.map(id => kader.find(p => p.id === id)).filter(Boolean);
+        const rest = kader.filter(p => !userClub.lineup.includes(p.id) && !userClub.bench.includes(p.id));
+        const ziel = (this.selectedPitchSlot !== null && this.selectedPitchSlot !== undefined) ? slots[this.selectedPitchSlot] : null;
+        const kit = this.vereinsTrikot(userClub);
+        const nr = (p) => Number.isInteger(p.trikot) ? p.trikot : "";
+        const wert = (p) => {
+            const fit = ziel && posEngine ? posEngine.getSuitability(p, ziel.pos) : null;
+            return { fit, sterne: this.starValueFor(fit ? fit.effectiveOverall : p.overall) };
+        };
+        const status = (p) => p.injuredWeeks > 0 ? `<span class="bk-status schlecht" title="Verletzt">✚ ${p.injuredWeeks} Wo.</span>`
+            : (p.suspendedMatches > 0 ? `<span class="bk-status schlecht" title="Gesperrt">Sperre ${p.suspendedMatches}</span>` : "");
+        const balken = (k) => `<span class="bk-kond" title="Kondition ${k} %"><i style="width:${k}%;background:${this.zustandsFarbe(k)}"></i></span>`;
+
+        // Kopfzeilen: wie voll die Bank ist, was ein Tipp tut
+        const zahl = document.getElementById("benchZahl");
+        if (zahl) zahl.textContent = `${bank.length} / ${this.BANK_PLAETZE}`;
+        const hilfe = document.getElementById("benchHilfe");
+        if (hilfe) hilfe.textContent = ziel ? `Antippen wechselt auf ${ziel.pos} ein` : "Antippen: Werte, Akte, Einwechseln";
+
+        // Die Bank: Karten mit Trikot
+        let html = bank.map(p => {
+            const w = wert(p);
+            const k = Math.round(p.fitness ?? 100);
+            const tw = p.pos === "TW";
+            return `<button class="bank-karte${p.injuredWeeks > 0 || p.suspendedMatches > 0 ? " fehlt" : ""}${w.fit ? ` fit-${w.fit.level}` : ""}" data-bank-id="${esc(p.id)}" title="${esc(p.name)} (${esc(p.pos)}, ${p.age} J.) · Kondition ${k} %">
+                <span class="bk-trikot">${this.trikotSvg(tw ? kit.tw : kit.farbe, tw ? kit.twText : kit.text, nr(p))}</span>
+                <span class="bk-info">
+                    <span class="bk-name"><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${esc(p.pos)}</span><strong>${esc(p.name.split(" ").pop())}</strong></span>
+                    <span class="bk-zeile">${this.sternReihe(w.sterne)}${w.fit && !w.fit.isNatural ? `<small style="color:${w.fit.color}">${esc(w.fit.shortLabel)}</small>` : ""}${status(p)}</span>
+                    <span class="bk-zeile">${balken(k)}<small>${k} % · ${p.age} J.</small></span>
+                </span>
+            </button>`;
+        }).join("");
+        for (let i = bank.length; i < this.BANK_PLAETZE; i++) {
+            html += `<button class="bank-karte frei" data-bank-frei="1" title="Einen Spieler aus dem Kader auf die Bank setzen">
+                <span class="bk-trikot">${this.trikotSvg("rgba(148,163,184,0.18)", "#94a3b8", "+")}</span>
+                <span class="bk-info"><span class="bk-name"><strong>Freier Platz</strong></span><small>Antippen und Spieler wählen</small></span>
+            </button>`;
+        }
+        benchEl.innerHTML = html;
+        benchEl.querySelectorAll("[data-bank-id]").forEach(b => {
+            b.onclick = () => this.handleBenchPlayerClick(kader.find(p => String(p.id) === b.dataset.bankId)?.id);
+        });
+        benchEl.querySelectorAll("[data-bank-frei]").forEach(b => { b.onclick = () => this.zeigeBankAuswahl(); });
+
+        // Der übrige Kader nach Mannschaftsteil
+        if (!reserveEl) return;
+        const anzahl = document.getElementById("reserveZahl");
+        if (anzahl) anzahl.textContent = String(rest.length);
+        const teile = [["tw", "Tor"], ["def", "Abwehr"], ["mid", "Mittelfeld"], ["att", "Angriff"]];
+        reserveEl.innerHTML = rest.length ? teile.map(([g, titel]) => {
+            const liste = rest.filter(p => this.getPosGroup(p.pos) === g)
+                .map(p => ({ p, w: wert(p) }))
+                .sort((x, y) => (x.p.injuredWeeks > 0 || x.p.suspendedMatches > 0) - (y.p.injuredWeeks > 0 || y.p.suspendedMatches > 0) || y.w.sterne - x.w.sterne);
+            if (!liste.length) return "";
+            return `<div class="kader-gruppe"><div class="kader-gruppe-titel">${titel}</div>${liste.map(({ p, w }) => {
+                const k = Math.round(p.fitness ?? 100);
+                const herkunft = p.reserve ? (p.reserve === "u19" ? "U19" : "U23") : (p.leihe && p.leihe.leihvereinId === state.userClubId ? "Leihe" : "");
+                return `<button class="kader-zeile${p.injuredWeeks > 0 || p.suspendedMatches > 0 ? " fehlt" : ""}" data-kader-id="${esc(p.id)}">
+                    <span class="kz-nr">${nr(p)}</span>
+                    <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${esc(p.pos)}</span>
+                    <span class="kz-name"><strong>${esc(p.name)}</strong>${herkunft ? ` <small>${herkunft}</small>` : ""}</span>
+                    <span class="kz-sterne">${this.sternReihe(w.sterne)}${w.fit && !w.fit.isNatural ? `<small style="color:${w.fit.color}">${esc(w.fit.shortLabel)}</small>` : ""}</span>
+                    <span class="kz-kond">${status(p) || `${balken(k)}<small>${k} %</small>`}</span>
+                </button>`;
+            }).join("")}</div>`;
+        }).join("") : `<p class="text-muted">Alle Spieler stehen in der Elf oder auf der Bank.</p>`;
+        reserveEl.querySelectorAll("[data-kader-id]").forEach(b => {
+            b.onclick = () => this.handleBenchPlayerClick(kader.find(p => String(p.id) === b.dataset.kaderId)?.id);
+        });
+    },
+
+    /** Freier Bankplatz: wer aus dem Kader soll drauf? Die Stärksten zuerst, je Mannschaftsteil */
+    zeigeBankAuswahl() {
+        const state = this.app.state;
+        const userClub = state.clubs.find(c => c.id === state.userClubId);
+        if (!userClub) return;
+        const esc = (x) => this.escapeHtml(String(x ?? ""));
+        const frei = state.players.filter(p => userClub.playerIds.includes(p.id) && !userClub.lineup.includes(p.id)
+            && !userClub.bench.includes(p.id) && !(p.injuredWeeks > 0) && !(p.suspendedMatches > 0))
+            .sort((a, b) => (b.overall || 0) - (a.overall || 0));
+        const html = frei.length ? `<div class="spm-kandidaten">${frei.map(p => `<button class="spm-kandidat" data-auf-bank="${esc(p.id)}">
+                <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${esc(p.pos)}</span>
+                <span class="spm-kandidat-name">${esc(p.name)}</span>
+                ${this.starsFor(p.overall)}
+                <span class="spm-kandidat-info">${Math.round(p.fitness ?? 100)} % Kondition · ${p.age} J.</span>
+            </button>`).join("")}</div>` : `<p class="text-muted">Niemand frei: Verletzte und Gesperrte dürfen nicht auf die Bank.</p>`;
+        this.oeffneSpielerMenue("Auf die Bank", html, (el) => {
+            el.querySelectorAll("[data-auf-bank]").forEach(b => {
+                b.onclick = () => {
+                    const p = frei.find(x => String(x.id) === b.dataset.aufBank);
+                    if (p && userClub.bench.length < this.BANK_PLAETZE && !userClub.bench.includes(p.id)) userClub.bench.push(p.id);
+                    this.schliesseSpielerMenue();
+                    if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                    this.playSound("click");
+                    this.renderTactics();
                 };
             });
         });

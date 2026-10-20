@@ -987,10 +987,12 @@ class SeasonEngine {
     /**
      * Saisonabschluss, Meisterehrung, Prämien und Vorbereitung der nächsten Saison
      */
-    /** Bauvorhaben aller Vereine einen Spieltag weiterbringen */
-    static tickAnlagen(state) {
-        const fac = _resolve('FacilityEngine', './facilityEngine.js');
-        if (fac && typeof fac.tickSpieltag === 'function') fac.tickSpieltag(state);
+    /**
+     * Bauvorhaben kamen früher je Spieltag voran. Jetzt geht es jeden
+     * Kalendertag weiter, auch in den Pausen (FacilityEngine.tagesTick in
+     * CalendarEngine.advanceOneDay) - am Spieltag ist nichts mehr zu tun.
+     */
+    static tickAnlagen() {
     }
 
     static finishSeason(state) {
@@ -1629,6 +1631,9 @@ class SeasonEngine {
                 .map(m => state.clubs.find(c => c.id === (m.clubId || m.id || m)))
                 .filter(Boolean);
             if (gewechselt.length) finanzenGehalt.normalisiereGehaelter(state, gewechselt);
+            // Das Budget der neuen Liga folgt den neuen Einnahmen - vorher
+            // galt pauschal das 2,2-Fache beim Aufstieg und die Hälfte beim Abstieg
+            if (gewechselt.length && typeof finanzenGehalt.setzeGehaltsrahmen === 'function') finanzenGehalt.setzeGehaltsrahmen(state, gewechselt);
         }
         // ... und wer über seine Verhältnisse zahlt, kommt halb zurück
         if (finanzenGehalt && typeof finanzenGehalt.gehaltsDisziplin === 'function') {

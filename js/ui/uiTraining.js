@@ -130,7 +130,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             if (anlage && fac) text += ` · ${fac.zustandsText(anlage.zustand)}`;
             if (schule) text += ` · ${schule.name}`;
             if (anlage?.projekt) {
-                text += ` · Umbau (noch ${anlage.projekt.restSpieltage} ST)`;
+                text += ` · Umbau (${fac.restText(fac.migriereProjekt(anlage.projekt))})`;
             }
             levelBadge.textContent = text;
             levelBadge.title = anlage

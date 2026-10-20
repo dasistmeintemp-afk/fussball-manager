@@ -778,6 +778,8 @@ class GameState {
         if (finance && typeof finance.normalisiereGehaelter === "function") {
             finance.normalisiereGehaelter(world);
         }
+        // ... und das Gehaltsbudget passt zu dieser Gehaltsliste
+        if (finance && typeof finance.setzeGehaltsrahmen === "function") finance.setzeGehaltsrahmen(world);
 
         return world;
     }
@@ -868,7 +870,8 @@ class GameState {
                 userClub.balance = Math.round(userClub.balance * 1.3);
             } else if (difficulty === "hard") {
                 userClub.transferBudget = Math.round(userClub.transferBudget * 0.75);
-                userClub.wageBudget = Math.round(userClub.wageBudget * 0.85);
+                // Schwer: ohne Spielraum über der Gehaltsliste
+                userClub.wageBudget = Math.round(userClub.wageBudget * 0.93);
                 userClub.balance = Math.round(userClub.balance * 0.8);
             }
 
@@ -1034,6 +1037,7 @@ class GameState {
         GameState.formeSpieler(state);
         // Eine neue Welt hat die Namen schon nach Nationalität (ergaenzeAltstand)
         state.namenNachNation = 1;
+        state.gehaltsrahmenV1 = 1;
 
         return state;
     }
@@ -1105,6 +1109,18 @@ class GameState {
      */
     static ergaenzeAltstand(state) {
         if (!state || !Array.isArray(state.clubs)) return;
+        // Gehaltsbudgets aus der alten festen Tabelle: an die Gehälter
+        // angleichen. Das eigene Budget wird nur angehoben, nie gekürzt.
+        if (!state.gehaltsrahmenV1) {
+            state.gehaltsrahmenV1 = 1;
+            const fin = GameState._resolveEngine("FinanceEngine", "./financeEngine.js");
+            if (fin && typeof fin.gehaltsrahmen === "function") {
+                const eigen = state.clubs.find(c => c.id === state.userClubId);
+                const vorher = eigen ? eigen.wageBudget || 0 : 0;
+                fin.setzeGehaltsrahmen(state, state.clubs.filter(c => c.id !== state.userClubId));
+                if (eigen) eigen.wageBudget = Math.max(vorher, fin.gehaltsrahmen(state, eigen));
+            }
+        }
         // Namen passend zur Nationalität - einmal je Spielstand
         if (!state.namenNachNation) {
             state.namenNachNation = 1;

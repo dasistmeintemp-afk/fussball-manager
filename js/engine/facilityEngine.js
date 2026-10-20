@@ -88,23 +88,39 @@ const FacilityEngine = {
 
     /**
      * Baufinanzierung über die Hausbank: ein Viertel sofort, der Rest in
-     * gleichen Raten über die Bauzeit, mit Zinsen. Die Bank macht nur mit,
-     * wenn die Rate höchstens ein Viertel der Einnahmen je Spieltag frisst.
+     * gleichen Wochenraten mit Zinsen, mindestens über ein halbes Jahr - auch
+     * über das Bauende hinaus. Die Bank macht nur mit, wenn die Rate höchstens
+     * ein Viertel der Einnahmen je Spieltag frisst.
      */
-    FINANZIERUNG: { anzahlung: 0.25, zins: 0.06, maxRatenAnteil: 0.25 },
+    FINANZIERUNG: { anzahlung: 0.25, zins: 0.06, maxRatenAnteil: 0.25, minWochen: 26 },
 
     /**
-     * Wie lange gebaut wird - in Spieltagen.
+     * Wie lange gebaut wird - in Kalendertagen, für einen Erstligisten.
      *
-     * Ein Stadionausbau ist keine Sache von Tagen. Er begleitet eine ganze
-     * Saison und mehr, und genau das macht ihn zu einer Entscheidung.
+     * Ein Stadionausbau ist keine Sache von Tagen, er begleitet fast eine
+     * Saison. Vorher zählte die Bauzeit in Spieltagen: In der Sommer- und
+     * der Winterpause stand jede Baustelle still - gerade dann, wenn in
+     * Wirklichkeit gebaut wird, weil kein Spiel stört. Und ein Landesligist
+     * brauchte für einen Kunstrasenplatz so lange wie ein Bundesligist für
+     * ein neues Trainingszentrum.
      */
     BAUZEIT: {
-        stadium:        { ausbau: 30, sanierung: 12 },
-        trainingGround: { ausbau: 16, sanierung: 7 },
-        youthCenter:    { ausbau: 18, sanierung: 8 },
-        medicalCenter:  { ausbau: 10, sanierung: 5 }
+        stadium:        { ausbau: 300, sanierung: 120 },
+        trainingGround: { ausbau: 150, sanierung: 60 },
+        youthCenter:    { ausbau: 180, sanierung: 75 },
+        medicalCenter:  { ausbau: 90, sanierung: 40 }
     },
+
+    /**
+     * Kleinere Vereine bauen Kleineres: eine überdachte Stehtribüne statt
+     * eines neuen Oberrangs, einen Kunstrasenplatz statt eines
+     * Leistungszentrums. Die siebte Liga baut ihr Stadion in vier Monaten aus,
+     * das Trainingsgelände in zwei.
+     */
+    BAUZEIT_STUFE: { 1: 1.0, 2: 0.85, 3: 0.7, 4: 0.6, 5: 0.5, 6: 0.45, 7: 0.4 },
+
+    /** Schichtbetrieb: schneller fertig, dafür teurer */
+    SCHICHTBETRIEB: { zeit: 0.7, kosten: 1.35 },
 
     /**
      * Wie stark der Betrieb während der Bauarbeiten leidet (0 bis 1).
@@ -354,15 +370,16 @@ const FacilityEngine = {
      *
      * Liefert Anzahlung, Rate je Spieltag, Zinsen und ob die Bank mitmacht.
      */
-    finanzierung(state, club, key, art = "ausbau") {
+    finanzierung(state, club, key, art = "ausbau", schnell = false) {
         const saison = state?.seasonYear || 1;
-        const preis = this.kosten(club, key, art, saison);
+        const preis = Math.round(this.kosten(club, key, art, saison) * (schnell ? this.SCHICHTBETRIEB.kosten : 1));
         const f = this.FINANZIERUNG;
-        const spieltage = this.dauer(key, art);
+        const tage = this.dauer(key, art, club, schnell);
+        const wochen = Math.max(f.minWochen, Math.ceil(tage / 7));
         const anzahlung = Math.round(preis * f.anzahlung / 100) * 100;
         const kredit = preis - anzahlung;
         const zinsen = Math.round(kredit * f.zins / 100) * 100;
-        const rate = Math.ceil((kredit + zinsen) / spieltage / 100) * 100;
+        const rate = Math.ceil((kredit + zinsen) / wochen / 100) * 100;
 
         const finance = _facResolve("FinanceEngine", "./financeEngine.js");
         const einnahmen = finance && typeof finance.einnahmenSchaetzung === "function"
@@ -372,18 +389,76 @@ const FacilityEngine = {
         if (kasse < anzahlung) {
             grund = `Für die Anzahlung von ${this.geld(anzahlung)} reicht die Kasse nicht.`;
         } else if (einnahmen > 0 && rate > einnahmen * f.maxRatenAnteil) {
-            grund = `Die Bank winkt ab: Eine Rate von ${this.geld(rate)} je Spieltag wäre mehr als ein Viertel der Einnahmen.`;
+            grund = `Die Bank winkt ab: Eine Rate von ${this.geld(rate)} je Woche wäre mehr als ein Viertel der Einnahmen.`;
         }
         return {
-            preis, anzahlung, kredit, zinsen, rate, spieltage,
+            preis, anzahlung, kredit, zinsen, rate, tage, wochen,
             gesamt: anzahlung + kredit + zinsen,
             moeglich: !grund, grund
         };
     },
 
-    /** Wie viele Spieltage die Arbeit dauert */
-    dauer(key, art) {
-        return (this.BAUZEIT[key] || { ausbau: 16, sanierung: 8 })[art] || 10;
+    /** Wie viele Tage die Arbeit dauert - nach Anlage, Ligastufe und Tempo */
+    dauer(key, art, club = null, schnell = false) {
+        const basis = (this.BAUZEIT[key] || { ausbau: 120, sanierung: 60 })[art] || 70;
+        const stufe = this.BAUZEIT_STUFE[club?.level || 1] ?? 0.4;
+        return Math.max(14, Math.round(basis * stufe * (schnell ? this.SCHICHTBETRIEB.zeit : 1)));
+    },
+
+    /** Ältere Spielstände zählten in Spieltagen - ein Spieltag ist eine Woche */
+    migriereProjekt(p) {
+        if (!p || typeof p.restTage === "number") return p;
+        p.restTage = Math.max(1, Math.round((p.restSpieltage || 1) * 7));
+        p.tage = Math.max(p.restTage, Math.round((p.spieltage || p.restSpieltage || 1) * 7));
+        p.tagZurRate = 7;
+        delete p.restSpieltage;
+        delete p.spieltage;
+        return p;
+    },
+
+    /** Fertige Anlagen, die noch abbezahlt werden: jede Woche eine Rate */
+    bedieneBaukredite(state, club) {
+        const finance = _facResolve("FinanceEngine", "./financeEngine.js");
+        club.baukredite.forEach(k => {
+            k.tagZurRate = (k.tagZurRate || 7) - 1;
+            if (k.tagZurRate > 0 || !(k.offen > 0)) return;
+            k.tagZurRate = 7;
+            const zahlung = Math.min(k.rate, k.offen);
+            club.balance = (club.balance || 0) - zahlung;
+            k.offen -= zahlung;
+            if (finance && typeof finance.recordTransaction === "function") {
+                finance.recordTransaction(state, club.id, "facility_cost", -zahlung, `Baukredit: ${k.name}`);
+            }
+        });
+        club.baukredite = club.baukredite.filter(k => k.offen > 0);
+    },
+
+    /** Was der Verein der Bank für Bauten noch schuldet */
+    offeneBaukredite(state, club) {
+        const laufend = this.ANLAGEN.reduce((s, k) => s + (club?.anlagen?.[k]?.projekt?.raten?.offen || 0), 0);
+        return laufend + (club?.baukredite || []).reduce((s, k) => s + (k.offen || 0), 0);
+    },
+
+    /** "4 Monate" / "9 Wochen" / "20 Tage" */
+    dauerText(tage) {
+        if (tage >= 75) return `rund ${Math.round(tage / 30)} Monate`;
+        if (tage >= 14) return `${Math.round(tage / 7)} Wochen`;
+        return `${tage} Tage`;
+    },
+
+    /** "noch 9 Wochen" / "noch 5 Tage" */
+    restText(p) {
+        const t = Math.max(0, p?.restTage || 0);
+        if (t < 14) return `noch ${t} ${t === 1 ? "Tag" : "Tage"}`;
+        return `noch ${Math.round(t / 7)} Wochen`;
+    },
+
+    /** Das Datum, an dem es voraussichtlich fertig ist (aus dem Kalender), oder null */
+    fertigAm(state, p) {
+        const kal = state?.calendar;
+        if (!Array.isArray(kal) || !p) return null;
+        const tag = kal[(state.currentDayIndex || 0) + Math.max(0, p.restTage || 0)];
+        return tag && tag.date ? String(tag.date).replace(/\.\d{4}$/, "") : null;
     },
 
     /**
@@ -404,7 +479,7 @@ const FacilityEngine = {
         const name = this.FACILITY_NAMES[key];
 
         if (a.projekt) {
-            return { erfolg: false, grund: `Am ${name} wird bereits gebaut - noch ${a.projekt.restSpieltage} Spieltage.` };
+            return { erfolg: false, grund: `Am ${name} wird bereits gebaut - ${this.restText(this.migriereProjekt(a.projekt))}.` };
         }
         if (art === "ausbau" && a.stufe >= 5) {
             return { erfolg: false, grund: `${name}: Stufe 5 ist die höchste. Halten lässt sie sich nur durch Sanierung.` };
@@ -421,18 +496,20 @@ const FacilityEngine = {
             };
         }
 
+        const schnell = !!optionen.schnell;
         const detail = this.kostenDetail(club, key, art, saison);
-        const preis = detail.netto;
+        // Schichtbetrieb: Der Aufpreis trägt der Verein, nicht die Förderung
+        const preis = Math.round(detail.netto + (schnell ? detail.brutto * (this.SCHICHTBETRIEB.kosten - 1) : 0));
         // Ein vom Vorstand bewilligter Zuschuss fließt mit dem Baubeginn
         // (nur in der Saison, in der er bewilligt wurde)
         const zuschuss = art === "ausbau" && club.bauzuschuss && club.bauzuschuss.key === key
             && club.bauzuschuss.saison === (state.seasonYear || 1)
             ? Math.min(preis, club.bauzuschuss.betrag || 0) : 0;
-        const raten = optionen.finanzierung === "raten" ? this.finanzierung(state, club, key, art) : null;
+        const raten = optionen.finanzierung === "raten" ? this.finanzierung(state, club, key, art, schnell) : null;
         if (raten && !raten.moeglich) return { erfolg: false, grund: raten.grund };
         if (!raten && (club.balance || 0) + zuschuss < preis) {
             const fehlt = preis - (club.balance || 0);
-            const bank = this.finanzierung(state, club, key, art);
+            const bank = this.finanzierung(state, club, key, art, schnell);
             return {
                 erfolg: false,
                 grund: `Nicht genug Geld: ${name} ${art === "ausbau" ? "ausbauen" : "sanieren"} kostet `
@@ -442,15 +519,17 @@ const FacilityEngine = {
             };
         }
 
-        const spieltage = this.dauer(key, art);
+        const tage = this.dauer(key, art, club, schnell);
         const sofort = raten ? raten.anzahlung : preis;
         club.balance -= sofort;
 
         a.projekt = {
             art,
             kosten: raten ? raten.gesamt : preis,
-            spieltage,
-            restSpieltage: spieltage,
+            tage,
+            restTage: tage,
+            tagZurRate: 7,
+            schnell,
             beeintraechtigung: (this.BEEINTRAECHTIGUNG[key] || {})[art] || 0.2,
             begonnen: state.currentMatchday || 1,
             saison
@@ -474,13 +553,14 @@ const FacilityEngine = {
 
         if (club.id === state.userClubId) {
             const zahlung = raten
-                ? `Anzahlung ${this.geld(raten.anzahlung)}, danach ${this.geld(raten.rate)} je Spieltag `
+                ? `Anzahlung ${this.geld(raten.anzahlung)}, danach ${this.geld(raten.rate)} je Woche `
                   + `(${this.geld(raten.zinsen)} Zinsen, zusammen ${this.geld(raten.gesamt)})`
                 : this.geld(preis);
             this.postfach(state, `Baubeginn: ${name}`,
                 `Die Arbeiten am ${name} haben begonnen.\n\n`
                 + `${art === "ausbau" ? `Ausbau auf Stufe ${a.stufe + 1}` : "Sanierung"} · `
-                + `${zahlung} · ${spieltage} Spieltage.`
+                + `${zahlung} · ${this.dauerText(tage)}${schnell ? " im Schichtbetrieb" : ""}`
+                + (this.fertigAm(state, a.projekt) ? `, fertig um den ${this.fertigAm(state, a.projekt)}.` : ".")
                 + (detail.foerderung > 0 ? `\nDie Sportstättenförderung trägt ${this.geld(detail.foerderung)} der Baukosten.` : "")
                 + `\n\n`
                 + (key === "stadium"
@@ -490,31 +570,40 @@ const FacilityEngine = {
         }
 
         return {
-            erfolg: true, projekt: a.projekt, name, kosten: a.projekt.kosten, spieltage,
+            erfolg: true, projekt: a.projekt, name, kosten: a.projekt.kosten, tage,
             sofort, rate: raten ? raten.rate : 0, foerderung: detail.foerderung
         };
     },
 
     /**
-     * Ein Spieltag vergeht - Bauvorhaben kommen voran.
+     * Ein Tag vergeht - Bauvorhaben kommen voran, auch in der Sommer- und
+     * der Winterpause (CalendarEngine.advanceOneDay).
      *
      * Wird für alle Vereine gerufen, damit auch die Konkurrenz baut.
      */
-    tickSpieltag(state) {
+    tagesTick(state) {
         if (!state || !Array.isArray(state.clubs)) return [];
         const saison = state.seasonYear || 1;
         const fertig = [];
 
         state.clubs.forEach(club => {
+            if (Array.isArray(club.baukredite) && club.baukredite.length) this.bedieneBaukredite(state, club);
+            // Nur wer baut: Vereine ohne Anlagen oder ohne Baustelle kosten nichts
+            if (!club.anlagen || !this.ANLAGEN.some(k => club.anlagen[k]?.projekt)) return;
             const anlagen = this.hole(club, saison);
             this.ANLAGEN.forEach(key => {
                 const a = anlagen[key];
                 if (!a || !a.projekt) return;
+                this.migriereProjekt(a.projekt);
+                a.projekt.restTage--;
 
-                // Finanzierte Vorhaben zahlen je Spieltag eine Rate an die Bank
+                // Finanzierte Vorhaben zahlen jede Woche eine Rate an die Bank,
+                // am letzten Tag den Rest
                 const raten = a.projekt.raten;
-                if (raten && raten.offen > 0) {
-                    const zahlung = a.projekt.restSpieltage <= 1 ? raten.offen : Math.min(raten.rate, raten.offen);
+                a.projekt.tagZurRate = (a.projekt.tagZurRate || 7) - 1;
+                if (raten && raten.offen > 0 && a.projekt.tagZurRate <= 0) {
+                    a.projekt.tagZurRate = 7;
+                    const zahlung = Math.min(raten.rate, raten.offen);
                     club.balance = (club.balance || 0) - zahlung;
                     raten.offen -= zahlung;
                     const finance = _facResolve("FinanceEngine", "./financeEngine.js");
@@ -524,10 +613,14 @@ const FacilityEngine = {
                     }
                 }
 
-                a.projekt.restSpieltage--;
-                if (a.projekt.restSpieltage > 0) return;
+                if (a.projekt.restTage > 0) return;
 
                 const art = a.projekt.art;
+                // Was der Bank noch zusteht, läuft als Baukredit weiter
+                if (raten && raten.offen > 0) {
+                    if (!Array.isArray(club.baukredite)) club.baukredite = [];
+                    club.baukredite.push({ name: this.FACILITY_NAMES[key], rate: raten.rate, offen: raten.offen, tagZurRate: a.projekt.tagZurRate || 7 });
+                }
                 a.projekt = null;
 
                 if (art === "ausbau") {
@@ -705,11 +798,13 @@ const FacilityEngine = {
                 zustand: Math.round(a.zustand),
                 zustandsText: this.zustandsText(a.zustand),
                 alter: Math.max(0, saison - a.baujahr),
-                projekt: a.projekt ? { ...a.projekt } : null,
+                projekt: a.projekt ? { ...this.migriereProjekt(a.projekt), restText: this.restText(a.projekt), fertigAm: this.fertigAm(state, a.projekt) } : null,
                 kostenAusbau: a.stufe < 5 ? this.kosten(club, key, "ausbau", saison) : null,
                 kostenSanierung: this.kosten(club, key, "sanierung", saison),
-                dauerAusbau: this.dauer(key, "ausbau"),
-                dauerSanierung: this.dauer(key, "sanierung"),
+                dauerAusbau: this.dauer(key, "ausbau", club),
+                dauerSanierung: this.dauer(key, "sanierung", club),
+                dauerAusbauSchnell: this.dauer(key, "ausbau", club, true),
+                dauerSanierungSchnell: this.dauer(key, "sanierung", club, true),
                 kapazitaet: key === "stadium" ? this.verfuegbareKapazitaet(club, saison) : null,
                 vollKapazitaet: key === "stadium" ? (club.stadiumCapacity || club.capacity) : null,
                 profil: key === "youthCenter"
@@ -754,7 +849,7 @@ const FacilityEngine = {
         if (!res.erfolg) return { success: false, error: res.grund };
         return {
             success: true,
-            message: `${res.name}: Ausbau begonnen - ${res.spieltage} Spieltage, ${this.geld(res.kosten)}.`
+            message: `${res.name}: Ausbau begonnen - ${this.dauerText(res.tage)}, ${this.geld(res.kosten)}.`
         };
     }
 };

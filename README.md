@@ -254,7 +254,12 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   - Kapitän, Elfmeter, Freistöße und Ecken werden mit einem Tipp vergeben oder wieder abgegeben.
   - *Auswechseln* listet, wer auf diesem Platz spielen kann: zuerst die Bank, dann der Kader, jeweils nach der Stärke dort, mit Kondition. Verletzte und Gesperrte stehen ausgegraut am Ende.
   - Ein freier Platz zeigt dieselbe Liste zum Besetzen.
-- **Menü für Bank und Kader:** Ein Tipp auf einen Spieler unter *Ersatzbank* zeigt seine Werte, *Akte öffnen*, *Auf die Bank* oder *Von der Bank nehmen* und *Einwechseln für*.
+- **Ersatzbank und übriger Kader:** Unter dem Feld steht die Bank als Karten, darunter der übrige Kader nach Mannschaftsteil. Vorher war beides eine Reihe gleich aussehender Kästchen mit Name und Sternzahl, Bank und Reserve nur am Wort „Bank“ oder „Res“ zu unterscheiden.
+  - Eine Bankkarte zeigt Trikot mit Nummer, Position, Nachname, Sterne, Kondition mit Balken, Alter und eine Verletzung oder Sperre.
+  - Über der Bank steht, wie voll sie ist (etwa 5 / 7). Freie Plätze sind als eigene Karte zu sehen, ein Tipp darauf listet die Spieler aus dem Kader zum Draufsetzen.
+  - Der übrige Kader steht in Tor, Abwehr, Mittelfeld und Angriff. Jede Zeile nennt Nummer, Position, Name (mit U23, U19 oder Leihe), Sterne und Kondition, Verletzte und Gesperrte stehen ausgegraut am Ende ihrer Gruppe.
+  - Ist ein Platz der Elf gewählt, zeigen Bank und Kader die Sterne genau dort, mit der Eignung und einem farbigen Rahmen. Ein Tipp wechselt dann sofort ein.
+- **Menü für Bank und Kader:** Ein Tipp auf einen Spieler unter *Ersatzbank* oder *Übriger Kader* zeigt seine Werte, *Akte öffnen*, *Auf die Bank* oder *Von der Bank nehmen* und *Einwechseln für*.
   - *Einwechseln für* nennt die Plätze der Elf, die er spielen kann, mit seinen Sternen dort und denen des Spielers, der jetzt dort steht.
   - Ein Torwart wird nicht als Verteidiger angeboten.
   - Ist vorher ein Platz gewählt, wechselt ein Tipp wie bisher sofort.
@@ -712,8 +717,23 @@ Bisher stand ein Talent ohne Vertrag in der Akademie, ließ sich in jedem Alter 
   - Wer zum Saisonwechsel mehr als 8 % darüber liegt, kommt jetzt auf halbem Weg zurück. Der eigene Verein bleibt außen vor.
   - Über fünf Saisons bleiben die Gehälter so bei 96–104 % des Tragbaren. Der Kassen-Median der KI-Vereine wächst von 3 auf 17 Mio. €, und kaum ein Verein steht im Minus.
 - **Finanzübersicht (`FinanceEngine`):** Kontostand, Transferbudget, Gehaltsetat, Ticketeinnahmen und wöchentliche Sponsorenzahlungen.
+- **Gehaltsbudget passend zur Gehaltsliste (`FinanceEngine.gehaltsrahmen`):** Das Budget ist, was der Verein nach seinen Einnahmen trägt, mit 10 % Spielraum, und nie weniger als die heutige Gehaltsliste plus 3 %.
+  - Vorher kam das Budget aus einer festen Tabelle je Ligastufe, die Gehälter aber aus den Einnahmen. Die Gehaltsliste lag dadurch in der zweiten Liga im Schnitt bei 116 % des Budgets, in der sechsten bei 153 %, in der siebten bei 219 %. Der VfR Höchst startete bei weit über 200 %.
+  - Jetzt startet ein Verein im Schnitt bei 91 % seines Budgets, keiner darüber. Steigt oder fällt er ab, folgt das Budget den Einnahmen der neuen Liga. Vorher galt pauschal das 2,2-Fache beim Aufstieg und die Hälfte beim Abstieg.
+  - Nebenbei können die KI-Vereine der unteren Ligen wieder Spieler kaufen. Mit dem alten Budget lag ihre Gehaltsliste fast immer darüber.
+  - Ältere Spielstände werden beim Laden einmal angeglichen. Das eigene Budget wird dabei nur angehoben, nie gekürzt.
+- **Untergrenze je Liga:** Ein Spieler bekommt mindestens 120 € je Woche, in der sechsten Liga 80 €, in der siebten 50 €. Mit 120 € für jeden zahlte der kleinste Landesligist mehr Gehalt, als er tragen kann.
+- **Betriebsaufwand nach echten Zuschauern:** Der Betrieb (Verwaltung, Reisen, Spieltag) richtet sich nach den Einnahmen, beim Eintritt jetzt nach dem gleitenden Schnitt der echten Heimspiele. Vorher stand dort immer ein zu 80 % gefülltes Stadion: Ein schwacher Verein vor halbleeren Rängen zahlte Kosten für Zuschauer, die nicht kamen.
+- **Sponsorentag:** Der Termin bringt eine Antrittsprämie von 15 bis 30 % der Sponsorenzahlung eines Spieltags. Vorher waren es überall 50.000 bis 100.000 €, die zwar im Journal standen, aber nie auf dem Konto ankamen.
+- **Gemessen über eine Saison** mit dem VfR Höchst (7. Liga, schwächster Kader): vorher von 9.600 € auf −19.500 €, jetzt von 7.400 € auf 30.200 €. Die Erstligisten stehen im Median bei +6 % statt −19 % ihres Startguthabens, die übrigen Ligen bleiben in ihrer Spanne.
 - **Transaktionsjournal:** Detailliertes Buchungsjournal mit lückenloser Historie aller Einnahmen und Ausgaben.
-- **Infrastruktur:** Stadion, Trainingsgelände, Jugendzentrum und medizinische Abteilung. Jede Anlage hat Stufe, Zustand und Alter. Ausbau und Sanierung dauern Spieltage, und so lange ist der Betrieb eingeschränkt.
+- **Infrastruktur:** Stadion, Trainingsgelände, Jugendzentrum und medizinische Abteilung. Jede Anlage hat Stufe, Zustand und Alter. Ausbau und Sanierung brauchen Zeit, und so lange ist der Betrieb eingeschränkt.
+- **Bauzeit in Kalendertagen:** Gebaut wird jeden Tag, auch in der Sommer- und der Winterpause. Vorher zählte die Bauzeit in Spieltagen, und eine Baustelle stand in den Pausen still, gerade dann, wenn kein Spiel stört.
+  - Ein Erstligist braucht für den Stadionausbau rund 10 Monate, für Trainingsgelände 5, Jugendakademie 6 und Medizin 3. Sanieren geht schneller.
+  - Kleinere Vereine bauen Kleineres und brauchen weniger Zeit: zweite Liga 85 %, dritte 70 %, vierte 60 %, fünfte 50 %, sechste 45 % und siebte 40 % der Erstliga-Zeit. Ein Landesligist baut sein Stadion in 4 Monaten aus, das Trainingsgelände in 2.
+  - *Im Schichtbetrieb bauen:* Im Baudialog lässt sich die Bauzeit um 30 % kürzen, für 35 % der Baukosten als Aufpreis. Den Aufpreis trägt der Verein allein, die Förderung zahlt nicht mit.
+  - Anlagenkarte, Schreibtisch und Kalender nennen die Restzeit in Wochen, Anlagenkarte, Schreibtisch und Baubeginn-Post auch das Datum, an dem es voraussichtlich fertig ist.
+  - Laufende Bauvorhaben aus älteren Spielständen werden umgerechnet: ein Spieltag ist eine Woche.
 - **Bauen nach Ligastufe:** Die Preise richten sich nach der Liga. Ein Landesligist zahlt 4 % des Erstliga-Preises, ein Drittligist 28 %. So kostet der nächste Ausbau überall ungefähr einen ähnlichen Teil der Saisoneinnahmen. Beim FC Hanau 93 kostet ein zweites Trainingsfeld jetzt knapp 40.000 € statt 1,5 Millionen.
 
   | Liga | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
@@ -721,7 +741,7 @@ Bisher stand ein Talent ohne Vertrag in der Akademie, ließ sich in jedem Alter 
   | Preis gegenüber Liga 1 | 100 % | 55 % | 28 % | 14 % | 8 % | 5,5 % | 4 % |
   | Sportstättenförderung | – | – | – | 15 % | 25 % | 30 % | 35 % |
 
-- **Finanzierung über die Hausbank:** Reicht die Kasse nicht, zahlt man ein Viertel an und den Rest mit 6 % Zinsen in Raten über die Bauzeit. Die Bank macht nur mit, wenn eine Rate höchstens ein Viertel der Einnahmen je Spieltag ausmacht. Vor jedem Bau zeigt ein Dialog Baukosten, Förderung, Eigenanteil und die Raten.
+- **Finanzierung über die Hausbank:** Reicht die Kasse nicht, zahlt man ein Viertel an und den Rest mit 6 % Zinsen in Wochenraten, mindestens über ein halbes Jahr. Ist die Anlage vorher fertig, läuft der Kredit weiter, die Anlagenkarte nennt, was noch offen ist. Die Bank macht nur mit, wenn eine Rate höchstens ein Viertel der Einnahmen je Spieltag ausmacht. Vor jedem Bau zeigt ein Dialog Baukosten, Förderung, Eigenanteil und die Raten.
 - **Budget umschichten:** In den Finanzen lässt sich freier Gehaltsetat ins Transferbudget schieben und umgekehrt. Der Kurs sind die Wochen bis zum Saisonwechsel: 10.000 € pro Woche bringen bei noch 30 Wochen 300.000 € Transferbudget. Mehr als frei ist, geht nicht – die laufenden Verträge müssen bezahlt bleiben –, und mehr Gehaltsetat kostet entsprechend Transferbudget. Die Umschichtung gilt für die laufende Saison; zum Wechsel steht der Gehaltsetat wieder dort, wo der Vorstand ihn haben will. Vorher lagen beide Budgets fest.
 - **Kennzahlen auf einen Blick:** Die Vereinsseite beginnt mit einem Kopf aus Wappen, Liga und Kacheln für Tabellenplatz, Ruf, Fans, Stimmung, Teamchemie und Kontostand. Kader und Finanzen haben dieselbe Kennzahlenleiste (Kadergröße und Alter, Marktwert, Gehälter, Fitness, Ausfälle, auslaufende Verträge bzw. Kontostand, Budgets, Gehaltsquote, Sponsor, Heimspiel).
 

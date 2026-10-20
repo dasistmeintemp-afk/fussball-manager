@@ -382,6 +382,56 @@ const FinanceEngine = {
         return Math.round(this.einnahmenSchaetzung(club, state) * grund * (1 - rang * 0.05));
     },
 
+    /** Gewicht des letzten Heimspiels im gleitenden Ticketschnitt */
+    TICKET_SCHNITT_GEWICHT: 0.2,
+
+    /** Eintritt je Spieltag (jedes zweite ist ein Heimspiel): gemessen oder, solange es keinen Schnitt gibt, geschätzt */
+    ticketJeSpieltag(club) {
+        if (!club) return 0;
+        if (typeof club.ticketSchnitt === "number") return Math.round(club.ticketSchnitt / 2);
+        return Math.round((club.stadiumCapacity || club.capacity || 20000) * 0.8 * (club.ticketPrice || 35) / 2);
+    },
+
+    /**
+     * Was ein Spieler mindestens bekommt, je Woche. In der siebten Liga zahlt
+     * ein kleiner Verein Aufwandsentschädigungen von ein paar hundert Euro im
+     * Monat. Mit 120 € für jeden lag der kleinste Landesligist über dem, was
+     * er einnimmt, und verlor Spieltag für Spieltag Geld.
+     */
+    MINDESTLOHN: { 6: 80, 7: 50 },
+
+    mindestlohn(club) {
+        return this.MINDESTLOHN[club?.level || 1] ?? 120;
+    },
+
+    /**
+     * Das Gehaltsbudget, das der Vorstand freigibt: was der Verein trägt,
+     * mit etwas Spielraum - und nie unter dem, was er heute schon zahlt.
+     * Vorher kam das Budget aus einer festen Tabelle je Ligastufe, die
+     * Gehälter aber aus den Einnahmen. In der siebten Liga lag die
+     * Gehaltsliste dadurch im Schnitt bei 219 % des Budgets, in der zweiten
+     * bei 116 %, und die KI-Vereine darunter konnten kaum je einen Spieler
+     * kaufen.
+     */
+    GEHALTSRAHMEN: { spielraum: 1.1, ueberIst: 1.03 },
+
+    gehaltsrahmen(state, club, lohnsumme = null) {
+        if (!club) return 0;
+        const ist = lohnsumme ?? (state?.players || []).filter(p => p.clubId === club.id && !p.leihe).reduce((s, p) => s + (p.wage || 0), 0);
+        const tragbar = this.gehaltsbudgetJeSpieltag(club, state);
+        return Math.round(Math.max(tragbar * this.GEHALTSRAHMEN.spielraum, ist * this.GEHALTSRAHMEN.ueberIst) / 10) * 10;
+    },
+
+    /** Das Gehaltsbudget für mehrere Vereine neu setzen (alle, wenn keine Liste) */
+    setzeGehaltsrahmen(state, clubs = null) {
+        if (!state || !Array.isArray(state.players)) return 0;
+        const lohn = new Map();
+        state.players.forEach(p => { if (p.clubId && !p.leihe) lohn.set(p.clubId, (lohn.get(p.clubId) || 0) + (p.wage || 0)); });
+        const liste = clubs || state.clubs || [];
+        liste.forEach(club => { club.wageBudget = this.gehaltsrahmen(state, club, lohn.get(club.id) || 0); });
+        return liste.length;
+    },
+
     /**
      * Die Kadergehälter auf das legen, was der Verein tragen kann.
      *
@@ -416,8 +466,9 @@ const FinanceEngine = {
             const faktor = Math.max(0.25, Math.min(3.0, ziel / ist));
             if (Math.abs(faktor - 1) < 0.02) return;
 
+            const boden = this.mindestlohn(club);
             kader.forEach(p => {
-                p.wage = Math.max(120, Math.round((p.wage || 0) * faktor / 10) * 10);
+                p.wage = Math.max(boden, Math.round((p.wage || 0) * faktor / 10) * 10);
             });
             angepasst++;
         });
@@ -457,7 +508,8 @@ const FinanceEngine = {
             const quote = ist / ziel;
             if (quote <= this.GEHALT_GRENZE) return;
             const faktor = Math.sqrt(1 / quote);
-            kader.forEach(p => { p.wage = Math.max(120, Math.round((p.wage || 0) * faktor / 10) * 10); });
+            const boden = this.mindestlohn(club);
+            kader.forEach(p => { p.wage = Math.max(boden, Math.round((p.wage || 0) * faktor / 10) * 10); });
             angepasst++;
         });
         return angepasst;
@@ -690,6 +742,11 @@ const FinanceEngine = {
         const ticketIncome = Math.round(attendance * ticketPrice * this.heimspielAnteil(state, homeClub));
 
         homeClub.balance = (homeClub.balance || 0) + ticketIncome;
+        // Was ein Heimspiel wirklich einbringt, als gleitender Schnitt - daran
+        // misst sich der Betriebsaufwand (applyWeeklyCosts)
+        homeClub.ticketSchnitt = Math.round(typeof homeClub.ticketSchnitt === "number"
+            ? homeClub.ticketSchnitt * (1 - this.TICKET_SCHNITT_GEWICHT) + ticketIncome * this.TICKET_SCHNITT_GEWICHT
+            : ticketIncome);
         match.attendance = attendance;
         match.ticketIncome = ticketIncome;
         match.attendancePct = Math.round(finalPct * 100);
@@ -812,7 +869,11 @@ const FinanceEngine = {
             //    Reisen, Spieltagsorganisation. Ohne diesen Posten kannte die
             //    Bilanz jedes Vereins nur eine Richtung - nach fünf Saisons
             //    saß selbst der Landesligist auf einem Millionenpolster.
-            const ticketSchnitt = Math.round((club.stadiumCapacity || club.capacity || 20000) * 0.8 * (club.ticketPrice || 35) / 2);
+            // Gemessen an dem, was die Heimspiele wirklich einbringen. Vorher
+            // stand hier immer ein zu 80 % gefülltes Stadion: Ein schwacher
+            // Verein vor halbleeren Rängen zahlte Betriebskosten für
+            // Zuschauer, die nicht kamen, und verlor Spieltag für Spieltag Geld.
+            const ticketSchnitt = this.ticketJeSpieltag(club);
             let operatingCosts = Math.round(
                 (kommerzSchnitt + ticketSchnitt) * this.operatingShare(club)
                 + totalWeeklyWages * this.OPERATING_WAGE_SHARE);
@@ -1153,7 +1214,9 @@ const FinanceEngine = {
             wageBudgetRemaining: (club.wageBudget || 0) - weeklyWages,
             estimatedWeeklyIncome: sponsorPerWeek + fanartikelPerWeek + Math.round(estTicketPerMatch / 2),
             fanartikelPerWeek,
-            estimatedWeeklyExpenses: weeklyWages + 100000,
+            estimatedWeeklyExpenses: Math.round(weeklyWages * (1 + this.OPERATING_WAGE_SHARE)
+                + (sponsorPerWeek + this.fanartikelBasis(club) + this.ticketJeSpieltag(club)) * this.operatingShare(club)
+                + this.maintenancePerMatchday(club, state)),
             transactions: txns.slice(0, 20)
         };
     }

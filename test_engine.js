@@ -6684,13 +6684,13 @@ function runEngineTests() {
         if (club.anlagen.medicalCenter.stufe !== 2) throw new Error("Die Stufe stieg sofort statt nach der Bauzeit");
         if (club.balance >= vorher) throw new Error("Der Ausbau kostete nichts");
 
-        const dauer = FacilityEngine.dauer("medicalCenter", "ausbau");
-        for (let i = 0; i < dauer - 1; i++) FacilityEngine.tickSpieltag(state);
+        const dauer = FacilityEngine.dauer("medicalCenter", "ausbau", club);
+        for (let i = 0; i < dauer - 1; i++) FacilityEngine.tagesTick(state);
         if (club.anlagen.medicalCenter.stufe !== 2) throw new Error("Die Stufe stieg vor dem Ende der Bauzeit");
 
-        FacilityEngine.tickSpieltag(state);
+        FacilityEngine.tagesTick(state);
         if (club.anlagen.medicalCenter.stufe !== 3) {
-            throw new Error(`Nach ${dauer} Spieltagen steht die Anlage auf Stufe ${club.anlagen.medicalCenter.stufe}, nicht auf 3`);
+            throw new Error(`Nach ${dauer} Tagen steht die Anlage auf Stufe ${club.anlagen.medicalCenter.stufe}, nicht auf 3`);
         }
         if (club.facilities.medicalCenter !== 3) throw new Error("Der alte facilities-Wert wurde nicht nachgezogen");
         if (club.anlagen.medicalCenter.projekt) throw new Error("Das Bauvorhaben läuft nach Fertigstellung weiter");
@@ -6726,8 +6726,8 @@ function runEngineTests() {
         const res = FacilityEngine.starteProjekt(state, "svw", "trainingGround", "sanierung");
         if (!res.erfolg) throw new Error("Sanierung ließ sich nicht starten: " + res.grund);
 
-        const dauer = FacilityEngine.dauer("trainingGround", "sanierung");
-        for (let i = 0; i < dauer; i++) FacilityEngine.tickSpieltag(state);
+        const dauer = FacilityEngine.dauer("trainingGround", "sanierung", club);
+        for (let i = 0; i < dauer; i++) FacilityEngine.tagesTick(state);
 
         const a = club.anlagen.trainingGround;
         if (a.stufe !== 3) throw new Error(`Die Sanierung hob die Stufe auf ${a.stufe}`);
@@ -6815,9 +6815,12 @@ function runEngineTests() {
         const res = FacilityEngine.starteProjekt(state, han.id, "stadium", "ausbau", { finanzierung: "raten" });
         if (!res.erfolg) throw new Error("Die Finanzierung klappt nicht: " + res.grund);
         if (kasseVorher - han.balance !== bank.anzahlung) throw new Error("Es wurde mehr als die Anzahlung abgebucht");
-        const dauer = FacilityEngine.dauer("stadium", "ausbau");
-        for (let i = 0; i < dauer; i++) FacilityEngine.tickSpieltag(state);
+        const dauer = FacilityEngine.dauer("stadium", "ausbau", han);
+        for (let i = 0; i < dauer; i++) FacilityEngine.tagesTick(state);
         if (han.anlagen.stadium.stufe !== 2 || han.anlagen.stadium.projekt) throw new Error("Der finanzierte Ausbau wird nicht fertig");
+        // Der Kredit läuft über das Bauende hinaus weiter, bis er abbezahlt ist
+        for (let i = 0; i < bank.wochen * 7 && FacilityEngine.offeneBaukredite(state, han) > 0; i++) FacilityEngine.tagesTick(state);
+        if (FacilityEngine.offeneBaukredite(state, han) !== 0 || (han.baukredite || []).length) throw new Error("Baukredit nicht abbezahlt");
         const gezahlt = kasseVorher - han.balance;
         if (gezahlt !== bank.gesamt || bank.zinsen <= 0) throw new Error(`Gezahlt ${gezahlt} statt ${bank.gesamt} (mit Zinsen)`);
 
@@ -13081,6 +13084,119 @@ function runEngineTests() {
         // Der Saisonabschluss nennt die eigene Liga, nicht immer "Deutscher Meister"
         const quelle = require('fs').readFileSync('./js/engine/seasonEngine.js', 'utf8');
         if (/Deutscher Meister ist/.test(quelle)) throw new Error("Saisonabschluss sagt fest \"Deutscher Meister\"");
+    });
+
+    test("Finanzen: Gehaltsbudget passt zur Gehaltsliste, Betrieb nach echten Zuschauern, Sponsorentag zahlt", () => {
+        const F = FinanceEngine;
+        const state = GameState.createNewGame("ll_hoe", "normal", { name: "Budgetpruefer" });
+        if (state.gehaltsrahmenV1 !== 1) throw new Error("Neue Welt nicht als angeglichen markiert");
+        // Niemand startet über dem Budget, und das Budget lässt in jeder Stufe Luft
+        const lohn = new Map();
+        state.players.forEach(p => { if (p.clubId && !p.leihe) lohn.set(p.clubId, (lohn.get(p.clubId) || 0) + (p.wage || 0)); });
+        const quoten = {};
+        state.clubs.forEach(c => {
+            const q = (lohn.get(c.id) || 0) / Math.max(1, c.wageBudget || 0);
+            if (q > 1) throw new Error(`${c.name} (Stufe ${c.level}) startet bei ${Math.round(q * 100)} % des Gehaltsbudgets`);
+            if ((c.countryId || "de") === "de") (quoten[c.level] = quoten[c.level] || []).push(q);
+        });
+        Object.entries(quoten).forEach(([stufe, q]) => {
+            const m = q.sort((a, b) => a - b)[Math.floor(q.length / 2)];
+            if (m < 0.8 || m > 0.97) throw new Error(`Stufe ${stufe}: Gehaltsliste im Schnitt bei ${Math.round(m * 100)} % des Budgets`);
+        });
+        // Die Untergrenze je Spieler lässt auch dem kleinsten Siebtligisten Luft
+        state.clubs.filter(c => c.level === 7).forEach(c => {
+            const tragbar = F.gehaltsbudgetJeSpieltag(c, state);
+            if ((lohn.get(c.id) || 0) > tragbar * 1.1) throw new Error(`${c.name}: Gehälter ${lohn.get(c.id)} über dem Tragbaren (${tragbar})`);
+        });
+        if (F.mindestlohn({ level: 7 }) >= F.mindestlohn({ level: 3 })) throw new Error("Mindestlohn in der siebten Liga nicht niedriger");
+
+        // Alter Spielstand: KI-Budgets werden angeglichen, das eigene nur angehoben
+        const eigen = state.clubs.find(c => c.id === state.userClubId);
+        const ki = state.clubs.find(c => c.id !== eigen.id && c.level === eigen.level);
+        delete state.gehaltsrahmenV1;
+        ki.wageBudget = 1; eigen.wageBudget = 10;
+        GameState.ergaenzeAltstand(state);
+        if (ki.wageBudget !== F.gehaltsrahmen(state, ki)) throw new Error("KI-Budget nicht angeglichen");
+        if (eigen.wageBudget < F.gehaltsrahmen(state, eigen)) throw new Error("Eigenes Budget nicht angehoben");
+        delete state.gehaltsrahmenV1;
+        eigen.wageBudget = 99999999;
+        GameState.ergaenzeAltstand(state);
+        if (eigen.wageBudget !== 99999999) throw new Error("Eigenes Budget beim Laden gekürzt");
+
+        // Betriebsaufwand nach dem, was die Heimspiele wirklich einbringen
+        const ohne = F.ticketJeSpieltag({ capacity: 1500, ticketPrice: 10 });
+        if (ohne !== 6000) throw new Error(`Schätzung ohne Schnitt: ${ohne}`);
+        const leer = { capacity: 1500, ticketPrice: 10, ticketSchnitt: 4000 };
+        if (F.ticketJeSpieltag(leer) !== 2000) throw new Error("Gemessener Schnitt wird nicht genutzt");
+        const partie = state.schedule[0].matches[0];
+        const heim = state.clubs.find(c => c.id === partie.homeClubId);
+        delete heim.ticketSchnitt;
+        const erste = F.applyMatchdayIncome(state, partie);
+        if (heim.ticketSchnitt !== erste) throw new Error("Erstes Heimspiel setzt den Schnitt nicht");
+        const zweite = F.applyMatchdayIncome(state, partie);
+        if (heim.ticketSchnitt !== Math.round(erste * 0.8 + zweite * 0.2)) throw new Error("Schnitt gleitet nicht");
+
+        // Der Sponsorentag zahlt wirklich - nach der Größe des Sponsors
+        const idx = state.calendar.findIndex((t, i) => i > state.currentDayIndex && t.type === "sponsor");
+        if (idx < 0) throw new Error("Testaufbau: kein Sponsorentag");
+        while (state.currentDayIndex < idx) CalendarEngine.advanceOneDay(state);
+        const vorher = eigen.balance, buchungen = state.finances.transactions.length;
+        CalendarEngine.advanceOneDay(state);
+        const neu = state.finances.transactions.slice(0, state.finances.transactions.length - buchungen);
+        const bonus = neu.find(t => t.type === "sponsor_event");
+        const je = F.sponsorPerMatchday(eigen);
+        if (!bonus || bonus.amount < je * 0.14 || bonus.amount > je * 0.31) throw new Error(`Sponsorentag: ${bonus ? bonus.amount : "keine Buchung"} bei ${je} je Spieltag`);
+        if (eigen.balance - vorher !== neu.reduce((s, t) => s + t.amount, 0)) throw new Error("Gebuchtes Geld kommt nicht auf dem Konto an");
+    });
+
+    test("Bauzeiten: Kalendertage auch in den Pausen, kürzer in kleinen Ligen, Schichtbetrieb, Raten je Woche", () => {
+        const Fac = FacilityEngine;
+        const state = GameState.createNewGame("muc", "normal", { name: "Baupruefer" });
+        const gross = state.clubs.find(c => c.id === "muc");
+        const klein = state.clubs.find(c => c.level === 7);
+        // Kleine Vereine bauen Kleineres und schneller
+        const tageGross = Fac.dauer("stadium", "ausbau", gross), tageKlein = Fac.dauer("stadium", "ausbau", klein);
+        if (!(tageKlein < tageGross * 0.5) || tageKlein > 130) throw new Error(`Stadion: Bundesliga ${tageGross}, siebte Liga ${tageKlein} Tage`);
+        if (Fac.dauer("trainingGround", "ausbau", klein) > 70) throw new Error("Kunstrasenplatz dauert zu lange");
+        if (Fac.dauer("stadium", "ausbau", gross, true) !== Math.round(tageGross * Fac.SCHICHTBETRIEB.zeit)) throw new Error("Schichtbetrieb verkürzt nicht");
+
+        // Schichtbetrieb kostet mehr, und gebaut wird auch vor dem ersten Spieltag
+        Fac.hole(gross, 1);
+        Object.assign(gross.anlagen.medicalCenter, { stufe: 2, zustand: 80, projekt: null });
+        Object.assign(gross.anlagen.trainingGround, { stufe: 2, zustand: 80, projekt: null });
+        gross.balance = 500000000;
+        let k = gross.balance;
+        Fac.starteProjekt(state, gross.id, "medicalCenter", "ausbau");
+        const normal = k - gross.balance;
+        k = gross.balance;
+        const res = Fac.starteProjekt(state, gross.id, "trainingGround", "ausbau", { schnell: true });
+        if (!res.erfolg || !res.projekt.schnell) throw new Error("Schichtbetrieb startet nicht: " + res.grund);
+        const detail = Fac.kostenDetail(gross, "trainingGround", "ausbau", 1);
+        if (k - gross.balance !== Math.round(detail.netto + detail.brutto * (Fac.SCHICHTBETRIEB.kosten - 1))) throw new Error("Schichtbetrieb kostet nicht den Aufpreis");
+        if (!(normal > 0)) throw new Error("Ausbau kostet nichts");
+        const rest = gross.anlagen.medicalCenter.projekt.restTage;
+        const spieltag = state.currentMatchday;
+        for (let i = 0; i < 10; i++) CalendarEngine.advanceOneDay(state);
+        if (state.currentMatchday !== spieltag) throw new Error("Testaufbau: ein Spieltag lag dazwischen");
+        if (gross.anlagen.medicalCenter.projekt.restTage !== rest - 10) throw new Error(`Ohne Spieltag gebaut: ${rest} -> ${gross.anlagen.medicalCenter.projekt.restTage}`);
+
+        // Raten je Woche
+        Fac.hole(klein, 1);
+        Object.assign(klein.anlagen.stadium, { stufe: 1, zustand: 70, projekt: null });
+        const bank = Fac.finanzierung(state, klein, "stadium", "ausbau");
+        klein.balance = bank.anzahlung + 1000000;
+        const r = Fac.starteProjekt(state, klein.id, "stadium", "ausbau", { finanzierung: "raten" });
+        if (!r.erfolg) throw new Error("Finanzierung klappt nicht: " + r.grund);
+        const nachAnzahlung = klein.balance;
+        for (let i = 0; i < 6; i++) Fac.tagesTick(state);
+        if (klein.balance !== nachAnzahlung) throw new Error("Rate vor Ablauf der Woche");
+        Fac.tagesTick(state);
+        if (nachAnzahlung - klein.balance !== bank.rate) throw new Error(`Wochenrate ${nachAnzahlung - klein.balance} statt ${bank.rate}`);
+
+        // Alte Stände zählten Spieltage: ein Spieltag wird eine Woche
+        const alt = { art: "ausbau", spieltage: 10, restSpieltage: 5, beeintraechtigung: 0.2 };
+        Fac.migriereProjekt(alt);
+        if (alt.restTage !== 35 || alt.tage !== 70 || "restSpieltage" in alt) throw new Error("Altes Bauvorhaben nicht umgerechnet: " + JSON.stringify(alt));
     });
 
     test("Leihe: Verhandlung mit dem Stammverein statt Knopfdruck, mit Einsatzzusage und Kaufoption", () => {

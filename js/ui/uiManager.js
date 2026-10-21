@@ -3129,7 +3129,7 @@ class UIManager {
                 <p>Die Saisonprämien wurden auf Ihr Vereinskonto überwiesen.</p>
             </div>
             <div class="dash-card se-pause">
-                <h4>☀️ Sommerpause: ${wochen} Wochen bis zum Saisonwechsel</h4>
+                <h4><svg class="ico h-ico" aria-hidden="true"><use href="#i-sun"/></svg>Sommerpause: ${wochen} Wochen bis zum Saisonwechsel</h4>
                 ${auslaufend.length ? `
                     <p>${auslaufend.length === 1 ? "Ein Vertrag endet" : `${auslaufend.length} Verträge enden`} zum Saisonwechsel. Wer bleiben soll, mit dem jetzt verlängern - andere Vereine werben schon:</p>
                     <div class="attention-namen se-namen">

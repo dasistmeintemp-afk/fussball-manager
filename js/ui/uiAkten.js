@@ -388,7 +388,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         preise.forEach(p => { if (!gruppen.has(p.name)) gruppen.set(p.name, []); gruppen.get(p.name).push(p.wann); });
         return `
             <div class="dash-card mb-3 akte-preise">
-                <h4 class="gs-titel">🏆 Auszeichnungen</h4>
+                <h4 class="gs-titel"><svg class="ico h-ico" aria-hidden="true"><use href="#i-trophy"/></svg>Auszeichnungen</h4>
                 <ul>${[...gruppen].map(([name, wann]) => `<li><strong>${this.escapeHtml(name)}${wann.length > 1 ? ` ×${wann.length}` : ""}</strong> <small>${this.escapeHtml(wann.join(", "))}</small></li>`).join("")}</ul>
             </div>`;
     },
@@ -866,7 +866,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const rest = Math.max(0, werberAnfrage.bis - YouthEngine._heute(state));
             contractSectionHtml = `
                 <div class="dash-card mt-3" id="pdAnfrage" style="padding:14px; background: var(--surface-2); border:1px solid var(--line);">
-                    <h4 style="font-size:14px; margin-bottom:8px; color:#fbbf24;">📨 ${this.escapeHtml(werberAnfrage.clubName)} wirbt um ihn</h4>
+                    <h4 style="font-size:14px; margin-bottom:8px; color:#fbbf24;"><svg class="ico h-ico" aria-hidden="true"><use href="#i-mail"/></svg>${this.escapeHtml(werberAnfrage.clubName)} wirbt um ihn</h4>
                     <p style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">Er hat nur einen Jugendvertrag. Geht er, bekommen wir ${this.formatMoneySafe(werberAnfrage.betrag)} Ausbildungsentschädigung. Noch ${rest} ${rest === 1 ? "Tag" : "Tage"} - ein Profivertrag bindet ihn.</p>
                     <div class="gs-knoepfe">
                         ${werberAnfrage.gespraech ? "" : `<button class="btn btn-primary" id="btnPdPerspektive" data-anfrage-id="${this.escapeHtml(werberAnfrage.id)}">Perspektive aufzeigen</button>`}

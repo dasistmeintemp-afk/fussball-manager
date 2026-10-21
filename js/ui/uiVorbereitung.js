@@ -23,7 +23,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         const verbleibend = Math.max(0, (pre.dauer || 0) - (pre.tagIndex || 0));
         DOM.setText("preCountdown", pre.aktiv ? `noch ${verbleibend} Tage` : "abgeschlossen");
-        DOM.setText("preHeadTitle", pre.aktiv ? "☀️ Bis zum ersten Spieltag" : "☀️ Bilanz der Vorbereitung");
+        DOM.setText("preHeadTitle", pre.aktiv ? "Bis zum ersten Spieltag" : "Bilanz der Vorbereitung");
 
         const offen = engine.offenePunkte(state);
         const offenEl = document.getElementById("preOpenItems");

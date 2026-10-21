@@ -35,7 +35,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const ansicht = this.dzAnsicht || "liga";
         const kopf = `
             <div class="dz-kopf">
-                <h3>📊 Datenzentrale</h3>
+                <h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-chart"/></svg>Datenzentrale</h3>
                 <div class="dz-wahl" role="tablist">
                     ${[["liga", "Liga"], ["form", "Form"], ["spieler", "Spieler"]].map(([k, t]) =>
                         `<button type="button" class="sp-chip${ansicht === k ? " aktiv" : ""}" data-dz="${k}" role="tab" aria-selected="${ansicht === k}">${t}</button>`).join("")}

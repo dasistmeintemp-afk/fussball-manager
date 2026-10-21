@@ -155,7 +155,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const hinweise = engine.hinweise(state);
         const offen = box.open;
         box.innerHTML = `
-            <summary><h3>🗂️ Kaderplanung</h3><span class="header-tag">${hinweise.length ? `${hinweise.length} Baustelle${hinweise.length === 1 ? "" : "n"}` : "alles besetzt"}</span></summary>
+            <summary><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-folder"/></svg>Kaderplanung</h3><span class="header-tag">${hinweise.length ? `${hinweise.length} Baustelle${hinweise.length === 1 ? "" : "n"}` : "alles besetzt"}</span></summary>
             ${hinweise.length ? `<div class="kp-hinweise">${hinweise.map(h => `
                 <div class="partner-zeile"><span>${esc(h.text)}</span>
                 <button class="btn btn-sm btn-secondary" data-kp-suche="${h.key}">Suchauftrag</button></div>`).join("")}</div>` : ""}
@@ -243,7 +243,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 </section>`;
         });
         box.innerHTML = `
-            <summary><h3>📋 Meldeliste</h3><span class="header-tag">${esc(kopf.join(" · "))}</span></summary>
+            <summary><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-clipboard"/></svg>Meldeliste</h3><span class="header-tag">${esc(kopf.join(" · "))}</span></summary>
             <p class="muted-note">Nur wer gemeldet ist, darf im Wettbewerb spielen. 🎓 = im Verein ausgebildet (drei Saisons zwischen 15 und 21 oder aus der eigenen Jugend), 🏠 = im Land ausgebildet (Nationalität des Landes). Im Europapokal sind acht Plätze für beide reserviert, höchstens vier davon für 🏠. Liste B: bis 21 und seit zwei Saisons im Verein oder aus der eigenen Jugend.${arten.includes("liga") && engine.regel(club, "liga")?.maxNichtEU != null ? " Nicht-EU: ohne Pass eines EU-Landes. Spieler aus den AKP-Staaten zählen wie EU-Bürger, Südamerikaner nach zwei Saisons im Verein auch." : ""}</p>
             ${teile.join("")}`;
         box.open = offen;

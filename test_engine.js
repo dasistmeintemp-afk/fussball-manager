@@ -6247,6 +6247,47 @@ function runEngineTests() {
         if (J.starte(state).runde !== 0) throw new Error("Neue Saison beginnt nicht bei null");
     });
 
+    test("U23-Liga: ein Spieltag je Profispieltag, Tabelle stimmig, leere U23 spielt mit Amateuren, Nachholen und Saisonende", () => {
+        const { ReserveEngine: R } = require('./js/engine/reserveEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = state.clubs.find(c => c.id === "muc");
+        state.totalMatchdays = 34; state.currentMatchday = 1;
+        const liga = R.ligaStarte(state);
+        if (liga.teams.length !== 18 || liga.runden.length !== 34) throw new Error(`${liga.teams.length} Teams, ${liga.runden.length} Runden`);
+        const paare = new Map();
+        liga.runden.forEach(r => r.forEach(([h, a]) => paare.set(`${h}-${a}`, (paare.get(`${h}-${a}`) || 0) + 1)));
+        if (paare.size !== 18 * 17 || [...paare.values()].some(n => n !== 1)) throw new Error("Spielplan ist keine Doppelrunde");
+        if (liga.teams.slice(1).some(t => !state.clubs.find(c => c.id === t.clubId && c.countryId === "de"))) throw new Error("Fremde Teams in der deutschen U23-Liga");
+
+        // Niemand in der U23: das Ligaspiel findet trotzdem statt, mit Amateuren
+        if (R.spieler(state, club).length) R.spieler(state, club).forEach(p => R.hinauf(state, p.id));
+        const leer = R.spieltag(state, club);
+        if (!leer || leer.auffuellen !== 11 || liga.runde !== 1 || !leer.gegner) throw new Error("Leere U23 spielt nicht: " + JSON.stringify(leer));
+
+        // Fünf junge Profis hinunter, dann die übrigen 33 Spieltage
+        state.players.filter(p => p.clubId === "muc" && !p.reserve && p.age <= 21).slice(0, 5).forEach(p => R.hinunter(state, p.id));
+        for (let md = 2; md <= 34; md++) { state.currentMatchday = md; R.spieltag(state, club); }
+        const tab = R.ligaTabelle(state);
+        const s = tab.reduce((a, z) => a + z.s, 0), n = tab.reduce((a, z) => a + z.n, 0);
+        const tore = tab.reduce((a, z) => a + z.tore, 0), gegentore = tab.reduce((a, z) => a + z.gegentore, 0);
+        if (liga.runde !== 34 || s !== n || tore !== gegentore || tab.some(z => z.spiele !== 34)) throw new Error("Tabelle unstimmig");
+        if (liga.eigene.length !== 34 || tab.filter(z => z.eigen).length !== 1) throw new Error("Eigene Spiele fehlen");
+        // Wer in der U23 spielt, trifft mit Namen
+        const benannt = liga.eigene.slice(1).reduce((a, e) => a + e.schuetzen.length, 0);
+        if (benannt !== liga.eigene.slice(1).reduce((a, e) => a + e.tore, 0)
+            || benannt !== Object.values(liga.torschuetzen).reduce((a, t) => a + t.tore, 0)) throw new Error("Torschützen unstimmig");
+        // Saisonende: Meister und Post vom Nachwuchsleiter
+        if (!liga.meister || !state.inbox.some(m => /U23 ist Meister|U23-Liga: Platz/.test(m.subject))) throw new Error("Kein Saisonabschluss der U23-Liga");
+        // Danach kein Ligaspiel mehr, aber weiter Praxis
+        const danach = R.spieltag(state, club);
+        if (!danach || danach.gegner !== null || liga.runde !== 34) throw new Error("Nach der Saison noch Ligaspiele");
+
+        // Ein Spielstand mitten in der Saison holt die gespielten Spieltage nach
+        state.seasonYear++; state.currentMatchday = 12;
+        const neu = R.ligaStarte(state);
+        if (neu === liga || neu.runde !== 11 || R.ligaTabelle(state).some(z => z.spiele !== 11)) throw new Error(`Nachholen: Runde ${neu.runde}`);
+    });
+
     test("Atmosphäre: Derby und Finale sind lauter und bekommen eine Choreo, die Ränge reagieren auf die Lage", () => {
         const { AtmosphaereEngine: A } = require('./js/engine/atmosphaereEngine.js');
         const heim = { name: "Heim", city: "Teststadt", primaryColor: "#123456", secondaryColor: "#ffffff" };

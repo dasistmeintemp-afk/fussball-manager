@@ -97,6 +97,7 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Spieler in den Medien (`MedienEngine`):** Nach Ligaspielen gibt ab und zu ein Spieler ein Interview: der Frustrierte auf der Bank, der Matchwinner, das Talent, der Kapitän nach einer Pleitenserie, der Umworbene, der Spieler mit auslaufendem Vertrag. Was er sagt, wirkt auf Mediendruck, Kabine und Fans.
 - **Meilensteine, Trophäenschrank und Saisonrückblick (`MeilensteinEngine`):** Jubiläen von Trainer und Spielern (Spiele, Siege, Tore, Titel, Jahre im Verein) kommen als Nachricht und in die Chronik. Die Vereinsseite zeigt den Trophäenschrank, der Saisonabschluss die Saison in Zahlen.
 - **U19-Liga (`JugendligaEngine`):** Die Talente der Akademie spielen in einer Liga mit zwölf Nachwuchsteams aus dem eigenen Land - mit Tabelle, Ergebnissen und Torjägern im Reiter Jugend. Die U19-Meisterschaft kommt in den Trophäenschrank.
+- **U23-Liga (`ReserveEngine.ligaStarte`):** Die zweite Mannschaft spielt gegen die zweiten Mannschaften anderer Vereine aus dem eigenen Land, so viele, dass jeder Spieltag der Profis ein Spieltag der U23 ist (34 Spieltage: 18 Teams). Tabelle, Ergebnisse und Torjäger stehen im Reiter Jugend, die U23-Meisterschaft kommt in den Trophäenschrank. Steht niemand in der U23, spielt sie mit Amateuren. Ein Spielstand mitten in der Saison holt die gespielten Spieltage nach.
 
 ### 1. 🏆 Liga & Wettbewerb
 - **18 Vereine der Liga 1**: Vollständige Kader, Budgets, Stadien, Fanbasen, Sponsoren und Vereinsinfrastruktur.
@@ -639,6 +640,9 @@ Ein Transfer ist kein Knopfdruck mehr, sondern ein Vorgang über mehrere Tage:
   - die Talente der Akademie mit Jugendvertrag, Werbern und Knöpfen
   - Talente anderer Akademien und die Schwerpunkte für den nächsten Jahrgang, auf breiten Bildschirmen nebeneinander
   - die U19-Liga
+  - oben eine Übersicht des Nachwuchses: U23 (Spieler, Tabellenplatz), U19, Akademie und verliehene Talente bis 23, ein Tipp springt zur Karte
+  - die zweite Mannschaft (U23) mit Liga, letzten Spielen, Torjägern und Kader (Spiele, Tore, Schnitt, Form, Praxis, *Spieltag*, *Ganz hoch*), darunter junge Profis bis 23 ohne Platz in der Elf mit *In die U23*
+  - die verliehenen Talente bis 23 mit Verein, Liga, Spielpraxis, Leihende und Rückholrecht
 
   Vorher stand das alles unten im Reiter Training, und für die Akademie musste man an Trainingsbericht und Plänen vorbei weit scrollen. Wirbt ein Verein um ein Talent, zeigt der Reiter die Zahl der offenen Anfragen. Post der Nachwuchsabteilung hat im Postfach die Kategorie *Nachwuchs*, einen eigenen Filter und den Knopf *Zur Jugend*.
 - **Trainingsschwerpunkte:** Allround, Angriff, Defensive, Technik, Taktik, Regeneration, Jugendförderung.
@@ -957,7 +961,7 @@ Eine komplette Welt mit über 4300 Spielern belegt als gewöhnliches JSON knapp 
 - **Wetter und Platz (`WetterEngine`):** Jede Partie bekommt Wetter nach Jahreszeit und einen Rasen nach Ligastufe. Nasser Rasen macht Fernschüsse tückisch, tiefer Boden kostet Kraft und Genauigkeit, Wind verweht lange Bälle, Hitze zehrt an der Ausdauer. Vorschau, Livespiel und Spielbericht zeigen es an.
 - **Spielanalyse:** Zu jedem eigenen Spiel – live oder als Sofort-Ergebnis – gehören Heatmaps beider Mannschaften und ein Passnetz: wer mit wem wie oft zusammengespielt hat und wo er im Schnitt stand. Fehlen die Laufwege (ältere Spielstände), sagt der Bericht das, statt eine Karte zu erfinden.
 - **Trainerprofil (`TrainerProfilEngine`):** Fünf Werte von 1 bis 20 (Taktik, Motivation, Menschenführung, Jugendarbeit, Spielerbewertung), die wirklich wirken – auf Vertrautheit, Ansprachen, Einzelgespräche, Talententwicklung und Scoutberichte. Dazu B-, A- und Pro-Lizenz: Ab der Regionalliga verlangt der Verband die A-Lizenz, in den Bundesligen die Pro-Lizenz. Lehrgänge kosten Geld und Zeit. Am Saisonende wächst, was gefordert war.
-- **Zweite Mannschaft (U23, `ReserveEngine`):** Talente, die bei den Profis nicht spielen, schickt man in die U23. Sie spielt an jedem Spieltag ein eigenes Spiel und bringt Spielpraxis (etwas weniger als bei den Profis), Spielschärfe und eine eigene Bilanz. Höchstens drei Spieler über 23, im Profikader bleiben mindestens 16. Die KI-Vereine geben ihren Talenten ohne Einsatz ebenfalls etwas Praxis.
+- **Zweite Mannschaft (U23, `ReserveEngine`):** Talente, die bei den Profis nicht spielen, schickt man in die U23. Sie spielt an jedem Spieltag ein Spiel ihrer eigenen U23-Liga und bringt Spielpraxis (etwas weniger als bei den Profis), Spielschärfe und eine eigene Bilanz. Höchstens drei Spieler über 23, im Profikader bleiben mindestens 16. Die KI-Vereine geben ihren Talenten ohne Einsatz ebenfalls etwas Praxis.
 - **Zugriff auf U23 und U19 (`ReserveEngine`, `YouthEngine.hochziehen`):** Beide Kader stehen mit ihrer Bilanz da, und wer gebraucht wird, ist mit einem Tipp bei den Profis.
   - **Bilanz je Spieler:** In U23 und U19 bekommt jeder in der Elf eine Note: Tore, Ergebnis, Stärke gegenüber der Elf und etwas Tagesform. Gezählt werden Spiele, Tore, Schnitt und Form (die letzten drei). Wer in drei Spielen eine Form ab 7,2 hat, ist mit ⭐ markiert.
   - **Kader-Reiter, Block „Unterbau“:** die U23 mit Bilanz und Knopf *Zu den Profis*, darunter die U19-Kandidaten, die alt genug sind, mit *Hochziehen*.

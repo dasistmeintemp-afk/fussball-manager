@@ -152,6 +152,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this.renderAkademieZugang(state);
         this.renderFremdeTalente(state);
         this.renderJugendliga(state);
+        this.renderU23(state);
+        this.renderVerlieheneTalente(state);
+        this.renderNachwuchsUebersicht(state);
 
         const engine = this.getNegotiationEngine();
         const prospectsBody = document.getElementById("youthProspectsBody");
@@ -383,6 +386,137 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             this.showPlayerDetailsModal(tr.dataset.u19Akte, { abschnitt: "unterbau" });
         }));
         this.bindeUnterbauKnoepfe(el);
+    },
+
+    /**
+     * Oben im Reiter: der ganze Nachwuchs auf einen Blick - zweite
+     * Mannschaft, U19, Akademie und Verliehene. Ein Tipp springt hin.
+     * Vorher stand die U23 nur im Kader-Reiter und hier gar nicht.
+     */
+    renderNachwuchsUebersicht(state) {
+        const el = document.getElementById("nachwuchsKennzahlen");
+        if (!el) return;
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const reserve = typeof ReserveEngine !== "undefined" ? ReserveEngine : null;
+        const youth = typeof YouthEngine !== "undefined" ? YouthEngine : null;
+        const jl = typeof JugendligaEngine !== "undefined" ? JugendligaEngine : null;
+        const loan = this.getLoanEngine ? this.getLoanEngine() : null;
+        const platz = (tab) => { const z = tab.find(t => t.eigen); return z && z.spiele ? `${z.rang}. von ${tab.length}` : `${tab.length} Teams`; };
+        const u23 = reserve ? reserve.spieler(state, club) : [];
+        const u19 = jl ? jl.eigeneSpieler(state) : [];
+        const talente = youth ? youth.eigeneTalente(state).filter(t => t && !t.promoted) : [];
+        const weg = loan ? loan.verlieheneVon(state, club.id).filter(p => (p.age || 30) <= reserve?.ALTERSGRENZE) : [];
+        const kacheln = [
+            { titel: "U23", wert: `${u23.length} Spieler`, ziel: "u23Karte", extra: reserve && state.u23liga ? `<small>${platz(reserve.ligaTabelle(state))}</small>` : "" },
+            { titel: "U19", wert: `${u19.length} Spieler`, ziel: "jugendligaKarte", extra: jl && state.jugendliga ? `<small>${platz(jl.tabelle(state))}</small>` : "" },
+            { titel: "Akademie", wert: `${talente.length} Talente`, ziel: "youthProspectsBody" },
+            { titel: "Verliehen", wert: `${weg.length} bis ${reserve ? reserve.ALTERSGRENZE : 23}`, ziel: "verliehenKarte" }
+        ];
+        const esc = (v) => this.escapeHtml(String(v ?? ""));
+        el.innerHTML = kacheln.map(k => `<button type="button" class="vk-kachel nw-kachel" data-ziel="${k.ziel}"><span>${esc(k.titel)}</span><strong>${esc(k.wert)}</strong>${k.extra || ""}</button>`).join("");
+        el.querySelectorAll("[data-ziel]").forEach(b => b.addEventListener("click", () => {
+            document.getElementById(b.dataset.ziel)?.closest(".dash-card, #" + b.dataset.ziel)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }));
+    },
+
+    /**
+     * Die zweite Mannschaft im Reiter Jugend: ihre Liga mit Tabelle,
+     * letzten Spielen und Torjägern, der Kader mit Bilanz je Spieler und
+     * junge Profis ohne Einsatz, die in der U23 spielen könnten.
+     */
+    renderU23(state) {
+        const el = document.getElementById("u23Karte");
+        const R = typeof ReserveEngine !== "undefined" ? ReserveEngine : null;
+        if (!el || !R) return;
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const liga = R.ligaStarte(state);
+        if (!club || !liga) { el.hidden = true; return; }
+        el.hidden = false;
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const saison = state.seasonYear || 1;
+        const tabelle = R.ligaTabelle(state);
+        // Lange Tabellen: die Spitze und das Umfeld der eigenen U23, der Rest auf Knopfdruck
+        const eigenerRang = (tabelle.find(z => z.eigen) || { rang: 1 }).rang;
+        const weit = (z) => tabelle.length > 10 && z.rang > 4 && Math.abs(z.rang - eigenerRang) > 2;
+        const eigene = liga.eigene.slice(-5).reverse();
+        const schuetzen = Object.values(liga.torschuetzen).sort((a, b) => b.tore - a.tore).slice(0, 5);
+        const { staerke, auffuellen } = R.u23Staerke(state, club);
+        const kader = R.spieler(state, club).map(p => ({ p, b: R.bilanz(p, "u23", saison) }))
+            .sort((a, b) => ((b.b?.form ?? 0) - (a.b?.form ?? 0)) || ((b.p.overall || 0) - (a.p.overall || 0)));
+        // Junge Profis ohne Stammplatz: Kandidaten für Spielpraxis in der U23
+        const elf = new Set((club.lineup || []).map(String));
+        const bank = new Set((club.bench || []).map(String));
+        const kandidaten = R.profis(state, club).filter(p => (p.age || 30) <= R.ALTERSGRENZE && !elf.has(String(p.id)) && !p.nominiertAus && !p.leihe)
+            .sort((a, b) => (bank.has(String(a.id)) - bank.has(String(b.id))) || ((a.spielpraxis ?? 0.5) - (b.spielpraxis ?? 0.5))).slice(0, 6);
+        const zeileKader = ({ p, b }) => `<tr data-u23-akte="${esc(p.id)}"><td>${esc(p.name)}${(p.injuredWeeks || 0) > 0 ? ' <span class="text-danger">verletzt</span>' : ""}</td><td>${esc(p.pos)}</td><td>${p.age || "-"}</td>
+            <td>${this.starsFor(p.overall)}</td>${this.unterbauZellen(p, "u23")}<td>${Math.round((p.spielpraxis ?? 0.5) * 100)} %</td>
+            <td><div class="unterbau-knoepfe"><button class="btn btn-sm btn-primary btn-nominieren" data-id="${esc(p.id)}" title="Nach dem nächsten Ligaspiel geht er zurück">Spieltag</button><button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(p.id)}" title="Für immer zu den Profis">Ganz hoch</button></div></td></tr>`;
+        el.innerHTML = `
+            <div class="card-header"><h3>🛡️ Zweite Mannschaft (U23)</h3><span class="header-tag">${esc(liga.name)} · ${liga.runde} / ${liga.runden.length} Spieltage${liga.meister ? ` · Meister: ${esc(liga.meister)}` : ""}</span></div>
+            <p class="text-muted jl-hinweis">Die U23 spielt an jedem Spieltag der Profis gegen die zweite Mannschaft eines anderen Vereins aus dem Land. Wer dort spielt, sammelt Spielpraxis und steht den Profis nicht zur Verfügung. Höchstens ${R.MAX_UEBERALTERT} Spieler über ${R.ALTERSGRENZE}. Stärke im Moment ${staerke.toFixed(1).replace(".", ",")}${auffuellen ? `, ${auffuellen} ${auffuellen === 1 ? "Platz füllt" : "Plätze füllen"} Amateure auf` : ""}.</p>
+            <div class="jl-raster">
+                <div class="table-container">
+                    <table class="compact-table jl-tabelle" id="u23Tabelle">
+                        <thead><tr><th>Pl.</th><th>Team</th><th>Sp</th><th>Tore</th><th>Pkt</th></tr></thead>
+                        <tbody>${tabelle.map(z => `<tr class="${z.eigen ? "jl-eigen" : ""}${weit(z) ? " jl-weit" : ""}"><td>${z.rang}.</td><td>${esc(z.name)}</td><td>${z.spiele}</td><td>${z.tore}:${z.gegentore}</td><td><strong>${z.punkte}</strong></td></tr>`).join("")}</tbody>
+                    </table>
+                    ${tabelle.some(weit) ? `<button type="button" class="btn-link jl-alle" data-tabelle="u23Tabelle">Ganze Tabelle (${tabelle.length} Teams)</button>` : ""}
+                </div>
+                <div>
+                    <h4>Letzte Spiele</h4>
+                    ${eigene.length ? `<ul class="jl-spiele">${eigene.map(e => {
+                        const art = e.tore > e.gegentore ? "s" : (e.tore === e.gegentore ? "u" : "n");
+                        return `<li><span class="jl-erg jl-${art}">${e.tore}:${e.gegentore}</span><span>${e.heim ? "gegen" : "bei"} ${esc(e.gegner)}<small>${e.schuetzen && e.schuetzen.length ? `Tore: ${esc(e.schuetzen.join(", "))}` : `${e.runde}. Spieltag`}</small></span></li>`;
+                    }).join("")}</ul>` : `<p class="text-muted">Die U23 spielt zum ersten Mal mit dem ersten Spieltag der Profis.</p>`}
+                    ${schuetzen.length ? `<h4>Torjäger der U23</h4><ol class="jl-schuetzen">${schuetzen.map(t => `<li>${esc(t.name)}<b>${t.tore}</b></li>`).join("")}</ol>` : ""}
+                </div>
+            </div>
+            <h4 class="unterbau-titel">Kader der U23</h4>
+            ${kader.length ? `<div class="table-container"><table class="compact-table u23-tabelle">
+                <thead><tr><th>Spieler</th><th>Pos</th><th>Alter</th><th>Stärke</th><th>Sp</th><th>Tore</th><th>Ø</th><th>Form</th><th>Praxis</th><th></th></tr></thead>
+                <tbody>${kader.map(zeileKader).join("")}</tbody></table></div>`
+                : `<p class="text-muted">Niemand spielt gerade in der U23 - die Elf stellen Amateure.</p>`}
+            ${kandidaten.length ? `<h4 class="unterbau-titel">Ohne Einsatz bei den Profis: Spielpraxis in der U23</h4>
+                <div class="table-container"><table class="compact-table nw-tabelle">
+                <thead><tr><th>Spieler</th><th>Pos</th><th>Alter</th><th>Stärke</th><th>Praxis</th><th></th></tr></thead>
+                <tbody>${kandidaten.map(p => `<tr data-u23-akte="${esc(p.id)}"><td>${esc(p.name)}${bank.has(String(p.id)) ? ' <span class="text-muted">Bank</span>' : ""}</td><td>${esc(p.pos)}</td><td>${p.age || "-"}</td><td>${this.starsFor(p.overall)}</td><td>${Math.round((p.spielpraxis ?? 0.5) * 100)} %</td>
+                    <td><button class="btn btn-sm btn-secondary btn-unterbau-runter" data-id="${esc(p.id)}" title="Spielt in der U23 und steht den Profis nicht zur Verfügung">In die U23</button></td></tr>`).join("")}</tbody></table></div>` : ""}`;
+        el.querySelectorAll("[data-u23-akte]").forEach(tr => tr.addEventListener("click", (e) => {
+            if (e.target.closest("button")) return;
+            this.showPlayerDetailsModal(tr.dataset.u23Akte, { abschnitt: "unterbau" });
+        }));
+        el.querySelector(".jl-alle")?.addEventListener("click", (e) => {
+            const tab = document.getElementById(e.currentTarget.dataset.tabelle);
+            const alle = tab?.classList.toggle("alle");
+            e.currentTarget.textContent = alle ? "Weniger zeigen" : `Ganze Tabelle (${tabelle.length} Teams)`;
+        });
+        this.bindeUnterbauKnoepfe(el);
+    },
+
+    /** Junge Spieler, die gerade verliehen sind: wo, wie viel Praxis, bis wann */
+    renderVerlieheneTalente(state) {
+        const el = document.getElementById("verliehenKarte");
+        const loan = this.getLoanEngine ? this.getLoanEngine() : null;
+        if (!el || !loan) return;
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const grenze = typeof ReserveEngine !== "undefined" ? ReserveEngine.ALTERSGRENZE : 23;
+        const weg = loan.verlieheneVon(state, club.id).filter(p => (p.age || 30) <= grenze)
+            .sort((a, b) => (a.age || 0) - (b.age || 0));
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const verein = (id) => state.clubs.find(c => c.id === id);
+        const liga = (c) => (state.leagues || []).find(l => l.id === c?.leagueId);
+        el.innerHTML = `
+            <div class="card-header"><h3>✈️ Verliehene Talente</h3><span class="header-tag">bis ${grenze} Jahre</span></div>
+            ${weg.length ? `<div class="table-container"><table class="compact-table nw-tabelle">
+                <thead><tr><th>Spieler</th><th>Pos</th><th>Alter</th><th>Stärke</th><th>Bei</th><th>Praxis</th><th>Bis</th></tr></thead>
+                <tbody>${weg.map(p => {
+                    const v = verein(p.leihe.leihvereinId);
+                    return `<tr data-leih-akte="${esc(p.id)}"><td>${esc(p.name)}</td><td>${esc(p.pos)}</td><td>${p.age || "-"}</td><td>${this.starsFor(p.overall)}</td>
+                        <td>${esc(v ? v.name : "?")}<small class="text-muted"> ${esc(liga(v)?.shortName || liga(v)?.name || "")}</small></td>
+                        <td>${Math.round((p.spielpraxis ?? 0.5) * 100)} %</td><td>${p.leihe.bisWinter ? "Winterpause" : "Saisonende"}${p.leihe.rueckholrecht ? " · Rückholrecht" : ""}</td></tr>`;
+                }).join("")}</tbody></table></div>`
+                : `<p class="text-muted">Kein junger Spieler ist gerade verliehen. Verleihen lässt sich über die Akte eines Spielers, unter <em>Entwicklung</em>.</p>`}`;
+        el.querySelectorAll("[data-leih-akte]").forEach(tr => tr.addEventListener("click", () => this.showPlayerDetailsModal(tr.dataset.leihAkte)));
     },
 
     /**

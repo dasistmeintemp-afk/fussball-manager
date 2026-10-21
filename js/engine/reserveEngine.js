@@ -254,6 +254,143 @@ const ReserveEngine = {
         return profis.length ? profis.reduce((a, b) => a + b, 0) / profis.length : 60;
     },
 
+    // ------------------------------------------------------------ U23-Liga
+
+    /**
+     * Die U23 spielt eine eigene Liga gegen die zweiten Mannschaften anderer
+     * Vereine aus dem Land - so viele, dass jeder Spieltag der Profis ein
+     * Spieltag der U23 ist (34 Spieltage: 18 Teams). Vorher spielte sie
+     * jede Woche gegen einen gedachten Gegner, ohne Tabelle.
+     */
+    LIGA: { name: "U23-Liga", titel: "U23-Meisterschaft", minTeams: 10, maxTeams: 24, abstand: 11 },
+
+    /** Stärke der zweiten Mannschaft eines Vereins: etwas unter den Profis */
+    zweiteStaerke(schnitt, zufall = Math.random) {
+        return Math.round((schnitt - this.LIGA.abstand + (zufall() - 0.5) * 6) * 10) / 10;
+    },
+
+    /** Zur neuen Saison: Teams, Spielplan und leere Tabelle (state.u23liga) */
+    ligaStarte(state, zufall = Math.random) {
+        const saison = state?.seasonYear || 1;
+        if (state.u23liga && state.u23liga.saison === saison) return state.u23liga;
+        const eigen = (state.clubs || []).find(c => c.id === state.userClubId);
+        if (!eigen) return null;
+        const land = eigen.countryId || "de";
+        const spieltage = Math.max(18, state.totalMatchdays || (state.schedule ? state.schedule.length : 34));
+        const kandidaten = (state.clubs || []).filter(c => c.id !== eigen.id && (c.countryId || "de") === land)
+            .sort((a, b) => (Math.abs((a.level || 1) - (eigen.level || 1)) - Math.abs((b.level || 1) - (eigen.level || 1)))
+                || ((b.reputation || 0) - (a.reputation || 0)));
+        let anzahl = Math.max(this.LIGA.minTeams, Math.min(this.LIGA.maxTeams, Math.floor(spieltage / 2) + 1, kandidaten.length + 1));
+        if (anzahl % 2) anzahl--;
+        const andere = kandidaten.slice(0, anzahl - 1);
+        // Stärke der anderen: ihre Profis (die besten vierzehn) minus Abstand
+        const nachVerein = new Map(andere.map(c => [c.id, []]));
+        (state.players || []).forEach(p => { if (nachVerein.has(p.clubId) && !p.reserve) nachVerein.get(p.clubId).push(p.overall || 0); });
+        const schnitt = (werte) => { const w = werte.sort((a, b) => b - a).slice(0, 14); return w.length ? w.reduce((a, b) => a + b, 0) / w.length : 55; };
+        const teams = [{ clubId: eigen.id, name: `${eigen.name} U23`, staerke: null }]
+            .concat(andere.map(c => ({ clubId: c.id, name: `${c.name} U23`, staerke: this.zweiteStaerke(schnitt(nachVerein.get(c.id)), zufall) })));
+        // Doppelrunde nach dem Kreisverfahren
+        const n = teams.length;
+        const idx = teams.map((_, i) => i);
+        const hin = [];
+        for (let r = 0; r < n - 1; r++) {
+            const runde = [];
+            for (let i = 0; i < n / 2; i++) {
+                const a = idx[i], b = idx[n - 1 - i];
+                runde.push(r % 2 === 0 ? [a, b] : [b, a]);
+            }
+            hin.push(runde);
+            idx.splice(1, 0, idx.pop());
+        }
+        const liga = state.u23liga = {
+            saison, name: this.LIGA.name, teams, runden: hin.concat(hin.map(r => r.map(([a, b]) => [b, a]))), runde: 0,
+            tabelle: teams.map(() => [0, 0, 0, 0, 0, 0]),      // s, u, n, tore, gegentore, punkte
+            eigene: [], torschuetzen: {}, meister: null
+        };
+        // Ein älterer Spielstand mitten in der Saison: die schon gespielten
+        // Spieltage nachholen, damit die Liga mit den Profis endet
+        const vorbei = Math.min(liga.runden.length, Math.max(0, (state.currentMatchday || 1) - 1));
+        if (vorbei > 0) {
+            const eigeneStaerke = this.u23Staerke(state, eigen).staerke;
+            const lam = (d) => Math.max(0.25, 1.35 * Math.exp(d / 22));
+            while (liga.runde < vorbei) {
+                const paarung = liga.runden[liga.runde].find(([h, a]) => h === 0 || a === 0);
+                const heim = paarung[0] === 0, gegnerIndex = heim ? paarung[1] : paarung[0];
+                const diff = eigeneStaerke - liga.teams[gegnerIndex].staerke;
+                const tore = this._poisson(lam(diff + (heim ? 2 : 0)), zufall), gegentore = this._poisson(lam(-diff + (heim ? 0 : 2)), zufall);
+                this._ligaRunde(state, liga, liga.runden[liga.runde], eigeneStaerke, { tore, gegentore, heim, gegnerIndex }, zufall);
+            }
+        }
+        return liga;
+    },
+
+    /** Eine Runde: die eigene Partie steht fest, die übrigen werden gespielt */
+    _ligaRunde(state, liga, runde, eigeneStaerke, eigenes, zufall) {
+        const staerke = (i) => (i === 0 ? eigeneStaerke : liga.teams[i].staerke);
+        const lam = (d) => Math.max(0.25, 1.35 * Math.exp(d / 22));
+        const buche = (i, t, g) => {
+            const z = liga.tabelle[i];
+            z[3] += t; z[4] += g;
+            if (t > g) { z[0]++; z[5] += 3; } else if (t === g) { z[1]++; z[5]++; } else z[2]++;
+        };
+        runde.forEach(([h, a]) => {
+            let th, ta;
+            if (h === 0 || a === 0) {
+                th = eigenes.heim ? eigenes.tore : eigenes.gegentore;
+                ta = eigenes.heim ? eigenes.gegentore : eigenes.tore;
+                liga.eigene.push({ runde: liga.runde + 1, gegner: liga.teams[eigenes.gegnerIndex].name, heim: eigenes.heim, tore: eigenes.tore, gegentore: eigenes.gegentore, schuetzen: [] });
+            } else {
+                const diff = staerke(h) - staerke(a);
+                th = this._poisson(lam(diff + 2), zufall);
+                ta = this._poisson(lam(-diff), zufall);
+            }
+            buche(h, th, ta); buche(a, ta, th);
+        });
+        liga.runde++;
+    },
+
+    /**
+     * Die Elf der U23 und ihre Stärke: die besten Elf, fehlende Plätze
+     * füllen Amateure und A-Jugendliche auf (ein gutes Stück schwächer).
+     */
+    u23Staerke(state, club, kader = null) {
+        const verfuegbar = kader || this.spieler(state, club).filter(p => (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0);
+        const elf = verfuegbar.slice().sort((a, b) => (b.overall || 0) - (a.overall || 0)).slice(0, 11);
+        const profiSchnitt = this._kaderSchnitt(state, club);
+        const auffuellen = Math.max(0, 11 - elf.length);
+        const staerke = (elf.reduce((s, p) => s + (p.overall || 0), 0) + auffuellen * (profiSchnitt - 16)) / 11;
+        return { elf, auffuellen, staerke, profiSchnitt };
+    },
+
+    /** Die Tabelle, sortiert: [{ rang, name, eigen, spiele, s, u, n, tore, gegentore, punkte }] */
+    ligaTabelle(state) {
+        const liga = state && state.u23liga;
+        if (!liga) return [];
+        return liga.teams.map((t, i) => {
+            const z = liga.tabelle[i];
+            return { name: t.name, clubId: t.clubId, eigen: i === 0, spiele: z[0] + z[1] + z[2], s: z[0], u: z[1], n: z[2], tore: z[3], gegentore: z[4], punkte: z[5] };
+        }).sort((a, b) => (b.punkte - a.punkte) || ((b.tore - b.gegentore) - (a.tore - a.gegentore)) || (b.tore - a.tore) || a.name.localeCompare(b.name))
+            .map((z, i) => Object.assign(z, { rang: i + 1 }));
+    },
+
+    _ligaSaisonende(state, liga) {
+        const tab = this.ligaTabelle(state);
+        const meister = tab[0];
+        liga.meister = meister ? meister.name : null;
+        const eigen = tab.find(z => z.eigen);
+        const bester = Object.values(liga.torschuetzen).sort((a, b) => b.tore - a.tore)[0];
+        if (meister && meister.eigen) {
+            const chronik = _reResolve("ChronikEngine", "./chronikEngine.js");
+            if (chronik && typeof chronik.titel === "function") chronik.titel(state, this.LIGA.titel, liga.saison);
+        }
+        this._post(state, "Nachwuchsleiter",
+            meister && meister.eigen ? "🏅 Unsere U23 ist Meister!" : `${this.LIGA.name}: ${eigen ? `Platz ${eigen.rang}` : "Saison beendet"}`,
+            (meister && meister.eigen
+                ? `Die U23 holt die Meisterschaft der ${this.LIGA.name} - ${meister.punkte} Punkte aus ${meister.spiele} Spielen.`
+                : `Die ${this.LIGA.name} ist gespielt. Meister: ${meister ? meister.name : "-"}. Unsere U23 wird ${eigen ? `${eigen.rang}.` : "-"} mit ${eigen ? eigen.punkte : 0} Punkten.`)
+            + (bester ? `\n\nBester Torschütze unserer U23: ${bester.name} mit ${bester.tore} Toren.` : ""));
+    },
+
     // ------------------------------------------------------------ Spieltag
 
     /**
@@ -264,21 +401,27 @@ const ReserveEngine = {
     spieltag(state, club, zufall = Math.random) {
         if (!state || !club) return null;
         const kader = this.spieler(state, club).filter(p => (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0);
-        if (!kader.length) return null;
+        // Die eigene Partie der U23-Liga an diesem Spieltag - sie wird auch
+        // gespielt, wenn niemand in der U23 steht: dann mit Amateuren
+        const liga = club.id === state.userClubId ? this.ligaStarte(state) : null;
+        const ligaRunde = liga && liga.runde < liga.runden.length ? liga.runden[liga.runde] : null;
+        if (!kader.length && !ligaRunde) return null;
 
-        const elf = kader.slice().sort((a, b) => (b.overall || 0) - (a.overall || 0)).slice(0, 11);
-        const profiSchnitt = this._kaderSchnitt(state, club);
-        const auffuellen = Math.max(0, 11 - elf.length);
-        const amateur = profiSchnitt - 16;
-        const eigene = (elf.reduce((s, p) => s + (p.overall || 0), 0) + auffuellen * amateur) / 11;
-        // Der Gegner: eine zweite Mannschaft, im Mittel etwas schwächer als die Profis
-        const gegner = profiSchnitt - 11 + (zufall() - 0.5) * 10;
+        const { elf, auffuellen, staerke: eigene, profiSchnitt } = this.u23Staerke(state, club, kader);
+        // Der Gegner: in der Liga die angesetzte zweite Mannschaft, sonst
+        // eine, die im Mittel etwas schwächer ist als die eigenen Profis
+        const paarung = ligaRunde ? ligaRunde.find(([h, a]) => h === 0 || a === 0) : null;
+        const gegnerIndex = paarung ? (paarung[0] === 0 ? paarung[1] : paarung[0]) : null;
+        const gegner = gegnerIndex !== null ? liga.teams[gegnerIndex].staerke : profiSchnitt - 11 + (zufall() - 0.5) * 10;
+        const heim = paarung ? paarung[0] === 0 : true;
         const diff = eigene - gegner;
         const lam = (d) => Math.max(0.25, 1.35 * Math.exp(d / 22));
-        const tore = this._poisson(lam(diff + 2), zufall);
-        const gegentore = this._poisson(lam(-diff), zufall);
+        // Der Heimvorteil (zwei Punkte) gilt für den, der zu Hause spielt
+        const tore = this._poisson(lam(diff + (heim ? 2 : 0)), zufall);
+        const gegentore = this._poisson(lam(-diff + (heim ? 0 : 2)), zufall);
 
         const meldungen = [];
+        if (ligaRunde) this._ligaRunde(state, liga, ligaRunde, eigene, { tore, gegentore, heim, gegnerIndex }, zufall);
         elf.forEach(p => {
             p.spielpraxis = Math.round(((p.spielpraxis ?? 0.5) * 0.82 + this.PRAXIS_WERT * 0.18) * 1000) / 1000;
             p.matchSharpness = Math.min(100, (p.matchSharpness ?? 60) + 6);
@@ -298,13 +441,22 @@ const ReserveEngine = {
         const vorne = elf.filter(p => ["ST", "LA", "RA", "OM", "LM", "RM"].includes(p.pos)).concat(elf);
         const schuetzen = [];
         const toreVon = new Map();
-        for (let i = 0; i < tore; i++) {
+        for (let i = 0; i < tore && elf.length; i++) {
             const s = vorne[Math.floor(zufall() * Math.min(vorne.length, elf.length + 3))] || elf[0];
             if (s) { schuetzen.push(s.name); toreVon.set(s, (toreVon.get(s) || 0) + 1); }
         }
+        if (liga && ligaRunde) {
+            toreVon.forEach((n, s) => {
+                const e = liga.torschuetzen[String(s.id)] || (liga.torschuetzen[String(s.id)] = { name: s.name, tore: 0 });
+                e.tore += n;
+            });
+            const letztes = liga.eigene[liga.eigene.length - 1];
+            if (letztes) letztes.schuetzen = schuetzen.slice();
+            if (liga.runde >= liga.runden.length) this._ligaSaisonende(state, liga);
+        }
         // Jeder in der Elf bekommt seine Note - so sieht man, wer sich aufdrängt
         const saison = state.seasonYear || 1;
-        const schnitt = elf.reduce((s, p) => s + (p.overall || 0), 0) / elf.length;
+        const schnitt = elf.length ? elf.reduce((s, p) => s + (p.overall || 0), 0) / elf.length : 50;
         elf.forEach(p => this.bucheEinsatz(p, "u23", saison,
             this.note(p, toreVon.get(p) || 0, tore - gegentore, schnitt, `u23|${saison}|${state.currentMatchday || 0}`), toreVon.get(p) || 0));
 
@@ -313,7 +465,8 @@ const ReserveEngine = {
         bilanz.tore += tore;
         bilanz.gegentore += gegentore;
         if (tore > gegentore) bilanz.s++; else if (tore === gegentore) bilanz.u++; else bilanz.n++;
-        const ergebnis = { matchday: state.currentMatchday || 0, tore, gegentore, schuetzen, auffuellen, elf: elf.map(p => p.id) };
+        const ergebnis = { matchday: state.currentMatchday || 0, tore, gegentore, schuetzen, auffuellen, elf: elf.map(p => p.id),
+            gegner: gegnerIndex !== null ? liga.teams[gegnerIndex].name : null, heim };
         bilanz.letzte.unshift(ergebnis);
         bilanz.letzte = bilanz.letzte.slice(0, 6);
         return { ...ergebnis, meldungen };

@@ -679,7 +679,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                             `<button class="btn btn-sm btn-primary btn-nominieren" data-id="${esc(k.p.id)}">Spieltag</button>`)}</td></tr>`).join("")}
             </tbody></table></div>` : `<p class="text-muted">In der U19 ist niemand alt genug für die Profis (ab ${typeof YouthEngine !== "undefined" ? YouthEngine.MIT_PROFIS.abAlter : 16}).</p>`}
             <p class="text-muted kb-hinweis">Hinunter schicken Sie Spieler über die Spielerakte. In der U23 höchstens ${engine.MAX_UEBERALTERT} Spieler über ${engine.ALTERSGRENZE}, im Profikader bleiben mindestens ${engine.MIN_PROFIKADER}. Hochgezogene Talente spielen mit ihrem Jugendvertrag. <em>Spieltag</em> holt nur für das nächste Ligaspiel hoch, <em>Ganz hoch</em> für immer.
-                <button type="button" class="btn-link" id="btnUnterbauZurJugend">Ganze U19 im Reiter Jugend</button></p>`;
+                <button type="button" class="btn-link" id="btnUnterbauZurJugend">U23-Liga, U19 und Verliehene im Reiter Jugend</button></p>`;
         box.querySelectorAll("[data-u23]").forEach(tr => tr.addEventListener("click", (e) => {
             if (e.target.closest("button")) return;
             this.showPlayerDetailsModal(tr.dataset.u23, { abschnitt: "unterbau" });
@@ -701,6 +701,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const res = ReserveEngine.hinauf(state, btn.dataset.id);
             if (!res.success) return this.showToast(res.error, "error");
             fertig(`${res.player.name} gehört wieder zum Profikader.`);
+        }));
+        box.querySelectorAll(".btn-unterbau-runter").forEach(btn => btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const res = ReserveEngine.hinunter(state, btn.dataset.id);
+            if (!res.success) return this.showToast(res.error, "error", 6000);
+            const club = state.clubs.find(c => c.id === state.userClubId);
+            if (res.ausElf && typeof GameState !== "undefined" && GameState.repairLineup) GameState.repairLineup(club, state.players);
+            fertig(`${res.player.name} spielt jetzt in der U23.`);
         }));
         box.querySelectorAll(".btn-nominieren").forEach(btn => btn.addEventListener("click", (e) => {
             e.stopPropagation();

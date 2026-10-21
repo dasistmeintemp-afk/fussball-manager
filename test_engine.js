@@ -1701,37 +1701,42 @@ function runEngineTests() {
     // 14a7c. Ein Angriff wird mit der ganzen Mannschaft gespielt
     test("LiveMatchDirector: Die ganze Elf rückt beim Angriff auf, nicht nur die Spitzen", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
-        const homeClub = state.clubs.find(c => c.id === "muc");
-        const awayClub = state.clubs.find(c => c.id === "dor");
-        const match = { id: "aufruecken_elf", played: false, homeClubId: "muc", awayClubId: "dor" };
-        const live = new LiveMatch(match, homeClub, awayClub, state.players);
-        live.speed = 1;
-        const dir = live.director;
-
-        // Hoehe als Anteil der Feldlaenge vom eigenen Tor aus
+        // Hoehe als Anteil der Feldlaenge vom eigenen Tor aus. Gemessen über
+        // Hin- und Rückspiel: Eine einzelne Partie streut um mehrere
+        // Prozentpunkte, je nachdem, wie sie läuft (über acht Startwerte
+        // 12 bis 19 Prozent beim Mittelfeld).
         const drittel = { mitte: [], letztes: [] };
-        let frames = 0, besitzer = null, seit = 0;
-        while (!live.isFinished && live.minute < 60 && frames < 60 * 900) {
-            live.advanceRealTime(1000 / 60);
-            live.updateBallAndPlayers(1000 / 60);
-            frames++;
-            if (dir.possessionTeam !== besitzer) { besitzer = dir.possessionTeam; seit = frames; }
-            if (frames % 15 || dir.mode !== "ambient" || dir.deadBall || dir.kickoff) continue;
-            // Nach einem Ballwechsel braucht die Elf einen Moment zum Umschalten
-            if (frames - seit < 90) continue;
+        [["muc", "dor"], ["dor", "muc"]].forEach(([heim, gast], nr) => {
+            const homeClub = state.clubs.find(c => c.id === heim);
+            const awayClub = state.clubs.find(c => c.id === gast);
+            const match = { id: `aufruecken_elf_${nr}`, played: false, homeClubId: heim, awayClubId: gast };
+            const live = new LiveMatch(match, homeClub, awayClub, state.players);
+            live.speed = 1;
+            const dir = live.director;
 
-            const team = dir.possessionTeam;
-            const richtung = dir.attackDir(team), tor = dir.ownGoalX(team);
-            const hoehe = x => (x - tor) * richtung / 92;
-            const b = hoehe(live.ball.x);
-            const reihe = g => {
-                const l = live.players2D.filter(p => p.team === team && p.group === g);
-                return l.reduce((s, p) => s + hoehe(p.x), 0) / (l.length || 1);
-            };
-            const probe = { ball: b, abwehr: reihe("def"), mittelfeld: reihe("mid"), angriff: reihe("att") };
-            if (b > 0.66) drittel.letztes.push(probe);
-            else if (b > 0.36) drittel.mitte.push(probe);
-        }
+            let frames = 0, besitzer = null, seit = 0;
+            while (!live.isFinished && live.minute < 60 && frames < 60 * 900) {
+                live.advanceRealTime(1000 / 60);
+                live.updateBallAndPlayers(1000 / 60);
+                frames++;
+                if (dir.possessionTeam !== besitzer) { besitzer = dir.possessionTeam; seit = frames; }
+                if (frames % 15 || dir.mode !== "ambient" || dir.deadBall || dir.kickoff) continue;
+                // Nach einem Ballwechsel braucht die Elf einen Moment zum Umschalten
+                if (frames - seit < 90) continue;
+
+                const team = dir.possessionTeam;
+                const richtung = dir.attackDir(team), tor = dir.ownGoalX(team);
+                const hoehe = x => (x - tor) * richtung / 92;
+                const b = hoehe(live.ball.x);
+                const reihe = g => {
+                    const l = live.players2D.filter(p => p.team === team && p.group === g);
+                    return l.reduce((s, p) => s + hoehe(p.x), 0) / (l.length || 1);
+                };
+                const probe = { ball: b, abwehr: reihe("def"), mittelfeld: reihe("mid"), angriff: reihe("att") };
+                if (b > 0.66) drittel.letztes.push(probe);
+                else if (b > 0.36) drittel.mitte.push(probe);
+            }
+        });
 
         if (drittel.letztes.length < 20 || drittel.mitte.length < 20) {
             throw new Error(`Zu wenige Proben: ${drittel.mitte.length}/${drittel.letztes.length}`);
@@ -12857,6 +12862,109 @@ function runEngineTests() {
         if (!(flow.kopfballWert(Object.assign({}, kopf, { fein: { heading: 8 } })) > flow.kopfballWert(kopf) + 3)) throw new Error("Kopfball im Livespiel ohne Wirkung");
         if (!(flow.abschlussWert(Object.assign({}, kopf, { fein: { longShots: 10 } }), false, true) > flow.abschlussWert(kopf, false, true) + 5)) throw new Error("Distanzschuss im Livespiel ohne Wirkung");
         if (flow.abschlussWert(Object.assign({}, kopf, { fein: { longShots: 10 } }), false, false) !== flow.abschlussWert(kopf, false, false)) throw new Error("Distanzschuss zählt im Strafraum");
+    });
+
+    test("Detailwerte mit eigenem Verlauf: Alter, Feinschliff im Training, Spielpraxis, Bericht, Speichern, Wirkung im Spiel", () => {
+        const G = PlayerGenerator;
+        const { DevelopmentPlanEngine: D } = require('./js/engine/developmentPlanEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Feinschliff" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const eigene = state.players.filter(p => p.clubId === club.id);
+
+        // Alter: Mit 26 nichts, Standards reifen, der Körper baut ab dreißig ab, Kraft kommt mit Anfang zwanzig
+        if (Object.keys(G.DETAILWERTE).some(k => Math.abs(G.detailAlter(k, 26)) > 0.5)) throw new Error("Mit 26 verschiebt das Alter Werte");
+        if (!(G.detailAlter("freeKicks", 18) < -3 && G.detailAlter("freeKicks", 32) > 3)) throw new Error("Freistöße reifen nicht");
+        if (!(G.detailAlter("commandOfArea", 33) > 3)) throw new Error("Torwart reift nicht");
+        if (!(G.detailAlter("agility", 34) < -5 && G.detailAlter("agility", 28) === 0)) throw new Error("Beweglichkeit baut nicht ab");
+        if (!(G.detailAlter("strength", 18) < -2)) throw new Error("Kraft kommt nicht mit den Jahren");
+        // Über alle Spieler gemittelt bleibt die Spiel-Engine geeicht
+        const vereinsspieler = state.players.filter(p => p.clubId);
+        Object.keys(G.DETAILWERTE).forEach(k => {
+            const liste = vereinsspieler.filter(p => G.detailWert(p, k) !== null);
+            const m = liste.reduce((s, p) => s + G.detailAlter(k, p.age), 0) / liste.length;
+            if (Math.abs(m) > 0.3) throw new Error(`${k}: Alter verschiebt im Mittel um ${m.toFixed(2)}`);
+        });
+        // Der 34-Jährige ist bei gleichen Werten weniger beweglich, tritt aber bessere Freistöße
+        const st = eigene.find(p => p.pos === "ST");
+        const mitte = { shooting: 70, technique: 70, pace: 70, dribbling: 70, traits: [] };
+        const alt = Object.assign({}, st, mitte, { age: 34 }), jung = Object.assign({}, st, mitte, { age: 22 });
+        if (!(G.detailWert(alt, "agility") < G.detailWert(jung, "agility") - 5)) throw new Error("Alter wirkt nicht auf die Beweglichkeit");
+        if (!(G.detailAbweichung(alt, "freeKicks") > G.detailAbweichung(jung, "freeKicks") + 5)) throw new Error("Alter wirkt nicht auf die Freistoß-Abweichung");
+
+        // Erarbeitetes: steckt im Wert, bleibt zwischen 0 und 12, verschwindet bei 0 ganz
+        const p = Object.assign({}, st, mitte, { physical: 70, positioning: 70 });
+        const ohne = G.detailWert(p, "heading");
+        if (G.aendereDetailPlus(p, "heading", 5) !== 5 || G.detailWert(p, "heading") !== Math.min(99, ohne + 5)) throw new Error("Erarbeitetes nicht im Wert");
+        if (G.aendereDetailPlus(p, "heading", 20) !== 7 || G.detailPlus(p, "heading") !== G.DETAIL_PLUS_MAX) throw new Error("Obergrenze greift nicht");
+        G.aendereDetailPlus(p, "heading", -99);
+        if (p.detailPlus !== undefined) throw new Error("Leeres Erarbeitetes bleibt stehen");
+        if (G.aendereDetailPlus(p, "gibtsNicht", 3) !== 0) throw new Error("Unbekannter Wert angenommen");
+
+        // Feinschliff: nur eigene Spieler, nur Technik/Körper (Torwart: Torwartwerte), nicht die Kopfwerte
+        const fremd = state.players.find(x => x.clubId && x.clubId !== club.id && x.pos === "ST");
+        if (D.setzeFeinschliff(state, fremd.id, "finishing").success) throw new Error("Feinschliff beim fremden Spieler");
+        if (D.setzeFeinschliff(state, st.id, "aggression").success) throw new Error("Aggressivität lässt sich pauken");
+        if (D.setzeFeinschliff(state, st.id, "rushingOut").success) throw new Error("Torwartwert beim Stürmer");
+        const tw = eigene.find(x => x.pos === "TW");
+        if (!D.feinschliffWerte(tw).some(w => w.key === "rushingOut") || D.feinschliffWerte(tw).some(w => w.key === "finishing")) throw new Error("Torwart mit falschen Feinschliff-Werten");
+        if (!D.setzeFeinschliff(state, st.id, "freeKicks").success || st.feinschliff !== "freeKicks") throw new Error("Feinschliff nicht gesetzt");
+        // Jede Einheit mit Glück ein Punkt, die Zusatzschicht kostet Kraft
+        const fit0 = st.fitness = 90, plus0 = G.detailPlus(st, "freeKicks");
+        for (let i = 0; i < 3; i++) D.nachEinheit(state, st, { stab: 1 }, () => 0);
+        if (G.detailPlus(st, "freeKicks") !== plus0 + 3 || !(st.fitness < fit0)) throw new Error("Feinschliff wirkt nicht");
+        // Jung schneller als alt, zäher je mehr schon da ist
+        const chance = (alter, plus) => D.feinschliffChance(Object.assign({}, st, { age: alter, detailPlus: { freeKicks: plus } }), 1);
+        if (!(chance(20, 0) > chance(31, 0) * 2 && chance(20, 0) > chance(20, 10) * 1.5)) throw new Error("Feinschliff ohne Alters- oder Sättigungskurve");
+        // Rund vier Punkte je Saison für einen jungen Profi (gut 170 Einheiten)
+        const saison = 170 * chance(22, 2);
+        if (!(saison > 3 && saison < 7)) throw new Error(`Feinschliff ${saison.toFixed(1)} Punkte je Saison`);
+        if (!D.setzeFeinschliff(state, st.id, null).success || st.feinschliff !== undefined) throw new Error("Feinschliff nicht beendet");
+        if (G.detailPlus(st, "freeKicks") !== plus0 + 3) throw new Error("Erarbeitetes beim Beenden verloren");
+
+        // Spielpraxis zum Saisonende: ab 15 Einsätzen ein Punkt, ab 28 zwei, auf Werten der Position
+        const neu = (pos, alter) => ({ id: `praxis_${pos}_${alter}`, pos, age: alter, overall: 70 });
+        const s1 = neu("ST", 24);
+        if (Object.keys(G.detailReife(s1, 10, 1)).length) throw new Error("Spielpraxis ohne Einsätze");
+        const a1 = G.detailReife(s1, 30, 1);
+        if (Object.values(a1).reduce((s, d) => s + d, 0) !== 2 || Object.keys(a1).some(k => !G.PRAXIS_DETAIL.ST.includes(k))) throw new Error("Spielpraxis: " + JSON.stringify(a1));
+        // Verteilt: wer schon etwas hat, kommt zuletzt dran
+        G.detailReife(s1, 30, 2);
+        const verteilt = G.PRAXIS_DETAIL.ST.map(k => G.detailPlus(s1, k));
+        if (Math.min(...verteilt) < 1 || Math.max(...verteilt) > 2) throw new Error("Spielpraxis nicht verteilt: " + verteilt);
+        // Mit 31 baut das erarbeitete Körperliche ab, Älteren bringt Praxis nichts mehr
+        const veteran = Object.assign(neu("LA", 31), { detailPlus: { agility: 3, crossing: 2 } });
+        G.detailReife(veteran, 0, 1);
+        if (G.detailPlus(veteran, "agility") !== 2 || G.detailPlus(veteran, "crossing") !== 2) throw new Error("Körperliches baut nicht ab: " + JSON.stringify(veteran.detailPlus));
+        if (Object.keys(G.detailReife(neu("ST", 35), 34, 1)).length) throw new Error("Praxis mit 35");
+
+        // Der Monatsbericht nennt, was an Detailwerten dazukam
+        const regular = eigene.find(x => x.pos === "IV");
+        const stand = D._stichtag(state, "08.2026");
+        G.aendereDetailPlus(regular, "marking", 2);
+        const bericht = D.monatsbericht(state, stand);
+        const eintrag = bericht.feinschliff.find(e => e.id === regular.id);
+        if (!eintrag || !eintrag.werte.some(w => w.key === "marking" && w.diff === 2)) throw new Error("Bericht ohne Feinschliff: " + JSON.stringify(bericht.feinschliff));
+        if (!/Feinschliff und Spielpraxis:[\s\S]*Manndeckung \+2/.test(D.berichtText(bericht))) throw new Error("Berichtstext ohne Feinschliff");
+
+        // Gespeichert und geladen bleibt es
+        st.feinschliff = "corners";
+        const zurueck = SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(state))));
+        const st2 = zurueck.players.find(x => x.id === st.id), iv2 = zurueck.players.find(x => x.id === regular.id);
+        if (st2.feinschliff !== "corners" || G.detailPlus(st2, "freeKicks") !== plus0 + 3 || G.detailPlus(iv2, "marking") !== 2) throw new Error("Nach dem Laden verloren");
+
+        // Im Livespiel: Aggressivität, Kraft, Balance, Antritt und Mut stehen in den Feldwerten
+        const w2d = MatchEngine.werte2D(st, st.pos, 1);
+        if (!["aggression", "strength", "balance", "acceleration", "bravery"].some(k => k in w2d.fein)) throw new Error("Neue Detailwerte fehlen im Livespiel");
+        // Der Aggressive foult öfter, im Mittel bleibt es beim Temperament
+        const flow = new MatchFlowEngine({ fm: true, getPlayers: () => [] });
+        const traeger = { team: "home", x: 50, y: 50 };
+        const zaehle = (fein) => {
+            let s = 11, fouls = 0;
+            const r = Math.random; Math.random = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+            try { for (let i = 0; i < 4000; i++) if (flow.foulImZweikampf(traeger, { team: "away", fein })) fouls++; } finally { Math.random = r; }
+            return fouls;
+        };
+        if (!(zaehle({ aggression: 12 }) > zaehle({ aggression: -12 }) * 1.2)) throw new Error("Aggressivität ohne Wirkung auf Fouls");
     });
 
     test("Unterbau: U23 und U19 mit Bilanz je Spieler, Hochziehen mit Jugendvertrag, Personalnot auf dem Schreibtisch", () => {

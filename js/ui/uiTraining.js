@@ -26,14 +26,21 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const ids = new Set(club.playerIds.map(String));
         const kader = state.players.filter(p => ids.has(String(p.id)));
         const zeilen = kader
-            .filter(p => p.trainingsfokus || p.umschulung || p.mentorId || p.eigenheitTraining || (p.age || 30) <= 23)
+            .filter(p => p.trainingsfokus || p.feinschliff || p.umschulung || p.mentorId || p.eigenheitTraining || (p.age || 30) <= 23)
             .sort((a, b) => (a.age || 0) - (b.age || 0));
         const meta = document.getElementById("trainingPlaeneMeta");
-        if (meta) meta.textContent = `${kader.filter(p => p.trainingsfokus || p.umschulung || p.mentorId || p.eigenheitTraining).length} mit Plan`;
+        if (meta) meta.textContent = `${kader.filter(p => p.trainingsfokus || p.feinschliff || p.umschulung || p.mentorId || p.eigenheitTraining).length} mit Plan`;
         if (!zeilen.length) {
             body.innerHTML = `<tr><td colspan="7" class="text-center text-muted">Noch keine individuellen Pläne.</td></tr>`;
             return;
         }
+        // Der Feinschliff steht beim Schwerpunkt, mit dem bisher Erarbeiteten
+        const gen = typeof PlayerGenerator !== "undefined" ? PlayerGenerator : null;
+        const feinschliff = (p) => {
+            if (!p.feinschliff || !gen?.DETAILWERTE?.[p.feinschliff]) return "";
+            const plus = gen.detailPlus(p, p.feinschliff);
+            return `${p.trainingsfokus ? "<br>" : ""}<small class="text-muted">Feinschliff: ${esc(gen.DETAILWERTE[p.feinschliff].name)}${plus ? ` +${plus}` : ""}</small>`;
+        };
         body.innerHTML = zeilen.map(p => {
             const praxis = Math.round((typeof p.spielpraxis === "number" ? p.spielpraxis : 0.5) * 100);
             const mentor = p.mentorId ? state.players.find(m => String(m.id) === String(p.mentorId)) : null;
@@ -42,7 +49,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     <td><strong>${esc(p.name)}</strong> <span class="text-muted">${esc(p.pos)}</span></td>
                     <td>${p.age}</td>
                     <td><span class="${praxis < 30 && (p.age || 30) <= 23 ? "text-warning" : ""}">${praxis} %</span></td>
-                    <td>${p.trainingsfokus ? esc(engine.SCHWERPUNKTE[p.trainingsfokus]?.label) : "-"}</td>
+                    <td>${p.trainingsfokus ? esc(engine.SCHWERPUNKTE[p.trainingsfokus]?.label) : (p.feinschliff ? "" : "-")}${feinschliff(p)}</td>
                     <td>${p.umschulung ? `${esc(p.umschulung.pos)} · ${engine.umschulungsStand(p)} %` : "-"}</td>
                     <td>${p.eigenheitTraining
                         ? `<span title="${esc(engine.eigenheitText(p.eigenheitTraining.key))}">${p.eigenheitTraining.art === "ablegen" ? "ablegen" : "lernen"} · ${engine.eigenheitStand(p)} %</span>`

@@ -415,6 +415,18 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             : "In seinem Alter zählt die Spielpraxis für die Entwicklung kaum noch.";
         const fokusOptionen = engine.schwerpunkteFuer(player)
             .map(sp => `<option value="${esc(sp.key)}" ${(player.trainingsfokus || "keiner") === sp.key ? "selected" : ""}>${esc(sp.label)}</option>`).join("");
+        // Feinschliff an einem Detailwert, mit dem bisher Erarbeiteten
+        const feinWerte = engine.feinschliffWerte ? engine.feinschliffWerte(player) : [];
+        const feinOption = (w) => `<option value="${esc(w.key)}" ${player.feinschliff === w.key ? "selected" : ""}>${esc(w.label)}${w.plus ? ` (+${w.plus})` : ""}</option>`;
+        const feinschliff = feinWerte.length ? `
+            <label class="ep-feld">
+                <span>Feinschliff an einem Detailwert</span>
+                <select id="pdPlanFeinschliff" class="styled-select">
+                    <option value="">Kein Feinschliff</option>
+                    ${feinWerte.map(feinOption).join("")}
+                </select>
+                <small>Gezielte Zusatzarbeit an einem Wert. Ein junger Spieler gewinnt so einige Punkte je Saison, ein älterer weniger, und je mehr schon erarbeitet ist, desto zäher wird es. Was er sich erarbeitet hat, bleibt auch nach einem Wechsel des Schwerpunkts.</small>
+            </label>` : "";
         const ziele = engine.umschulungsZiele(player);
         const stand = engine.umschulungsStand(player);
         const umschulung = player.pos === "TW" ? "" : `
@@ -489,6 +501,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     <select id="pdPlanFokus" class="styled-select">${fokusOptionen}</select>
                     <small>Wächst er, wachsen diese Werte mit. Die Zusatzschichten kosten etwas Kraft.</small>
                 </label>
+                ${feinschliff}
                 ${umschulung}
                 ${eigenheit}
                 ${mentorHtml}
@@ -935,9 +948,17 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             return { text: vis.text, known: vis.known, wert: vis.known ? raw : (vis.min !== null ? (vis.min + vis.max) / 2 : null) };
         };
         const stufe = (w) => w === null ? "" : (w >= 80 ? " wert-top" : (w >= 65 ? " wert-gut" : (w < 40 ? " wert-schwach" : "")));
+        // Beim eigenen Spieler: was er sich an einem Detailwert erarbeitet hat
+        const erarbeitet = (k) => {
+            const plus = isUserClub && gen?.detailPlus ? gen.detailPlus(player, k) : 0;
+            const fokus = isUserClub && player.feinschliff === k;
+            if (!plus && !fokus) return "";
+            const titel = `${plus ? `+${plus} erarbeitet (Feinschliff und Spielpraxis)` : ""}${plus && fokus ? " · " : ""}${fokus ? "im Feinschliff" : ""}`;
+            return `<sup class="pd-plus${fokus ? " pd-plus-fokus" : ""}" title="${titel}">${plus ? `+${plus}` : "•"}</sup>`;
+        };
         const zeile = ([k, label]) => {
             const v = sicht(k);
-            return `<div class="pd-wert"><span>${this.escapeHtml(label)}</span><strong class="${v.known ? "" : "estimated-value"}${stufe(v.wert)}" title="${v.known ? "Gesicherter Wert" : `Geschätzt (${this.escapeHtml(confInfo.label)})`}">${v.text}</strong></div>`;
+            return `<div class="pd-wert"><span>${this.escapeHtml(label)}</span><strong class="${v.known ? "" : "estimated-value"}${stufe(v.wert)}" title="${v.known ? "Gesicherter Wert" : `Geschätzt (${this.escapeHtml(confInfo.label)})`}">${v.text}${erarbeitet(k)}</strong></div>`;
         };
         const sortiert = (liste) => liste.filter(([k]) => wertVon(k) !== null).sort((a, b) => a[1].localeCompare(b[1], "de"));
         const name = (k) => gen?.DETAILWERTE?.[k]?.name || gen?.KOPF_NAMEN?.[k] || k;
@@ -968,7 +989,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             .map(([k, l]) => `${l} <strong>${sicht(k).text}</strong>`).join(" · ");
         const grundwerteHtml = gen ? `<p class="pd-grundwerte">Grundwerte aus dem Training: ${grund}. ${isKeeper
             ? "Hohe Bälle, Herauslaufen und die übrigen Detailwerte folgen den Werten im Training"
-            : "Abschluss, Kopfball, Tackling und die übrigen Detailwerte folgen ihnen"}, dazu Position, Größe und Persönlichkeit.</p>` : "";
+            : "Abschluss, Kopfball, Tackling und die übrigen Detailwerte folgen ihnen"}, dazu Position, Größe, Persönlichkeit und Alter: Standards und Übersicht im Strafraum reifen bis Anfang dreißig, Beweglichkeit und Sprungkraft lassen ab dreißig nach.${isUserClub ? " Was er sich mit Feinschliff und Spielpraxis erarbeitet hat, steht hochgestellt am Wert." : ""}</p>` : "";
 
         const abilityStars = card ? card.abilityStarsHtml : "";
         const abilityStarsText = card ? card.abilityStarsText : "";
@@ -1314,6 +1335,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             if (this.activeTab === "training") this.renderTraining?.();
         };
         document.getElementById("pdPlanFokus")?.addEventListener("change", (e) => planAendern(planEngine.setzeSchwerpunkt(state, player.id, e.target.value)));
+        document.getElementById("pdPlanFeinschliff")?.addEventListener("change", (e) => planAendern(planEngine.setzeFeinschliff(state, player.id, e.target.value || null)));
         document.getElementById("pdPlanUmschulung")?.addEventListener("change", (e) => planAendern(planEngine.setzeUmschulung(state, player.id, e.target.value || null)));
         document.getElementById("pdPlanMentor")?.addEventListener("change", (e) => planAendern(planEngine.setzeMentor(state, player.id, e.target.value || null)));
         document.getElementById("pdPlanEigenheit")?.addEventListener("change", (e) => {

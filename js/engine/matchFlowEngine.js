@@ -797,10 +797,12 @@ class MatchFlowEngine {
             : this.attr(p, "physical") * 0.55 + this.attr(p, "defense") * 0.25 + this.attr(p, "positioning") * 0.2;
         // Größe zählt in der Luft: zehn Zentimeter sind gut fünf Punkte
         const groesse = typeof p.groesse === "number" ? (p.groesse - 181) * 0.55 : 0;
-        // Dazu Kopfball und Sprungkraft - beim Verteidiger auch die Manndeckung
-        const detail = angreifer
+        // Dazu Kopfball und Sprungkraft - beim Verteidiger auch die
+        // Manndeckung, bei beiden der Mut, dorthin zu gehen, wo es wehtut
+        const detail = (angreifer
             ? this.fein(p, "heading") * 0.55 + this.fein(p, "jumpingReach") * 0.3
-            : this.fein(p, "heading") * 0.35 + this.fein(p, "jumpingReach") * 0.35 + this.fein(p, "marking") * 0.2;
+            : this.fein(p, "heading") * 0.35 + this.fein(p, "jumpingReach") * 0.35 + this.fein(p, "marking") * 0.2)
+            + this.fein(p, "bravery") * 0.15;
         return basis + groesse + detail + (e.luft || 0) + (angreifer ? (e.strafraum || 0) * 5 : 0);
     }
 
@@ -1113,9 +1115,14 @@ class MatchFlowEngine {
     foulImZweikampf(carrier, defender, haerte = 0, edge = 0) {
         const ed = this.eig(defender);
         const ea = this.eig(carrier);
-        const temperament = typeof defender.temperament === "number" ? defender.temperament : 12;
+        // Die Aggressivität enthält das Temperament (2,2 Punkte je Stufe) und
+        // dazu, was den Spieler sonst ausmacht. Ohne Detailwerte zählt das
+        // Temperament allein - im Mittel dasselbe.
+        const aggressiv = defender.fein
+            ? this.fein(defender, "aggression") * 0.0055
+            : ((typeof defender.temperament === "number" ? defender.temperament : 12) - 12) * 0.012;
         const p = 0.27 + haerte * 0.06 + (ed.haerte || 0) * 0.1 + (ea.ziehtFouls || 0)
-            + (temperament - 12) * 0.012 + Math.max(0, edge) / 400;
+            + aggressiv + Math.max(0, edge) / 400;
         const pfeife = this.schiri()?.pfeife || 1;
         // Auf rutschigem Boden kommt der Verteidiger öfter zu spät
         const rutschig = 1 + (this.wetter()?.rutschig || 0) * 0.5;
@@ -1378,9 +1385,12 @@ class MatchFlowEngine {
         const pace = this.attr(carrier, "pace");
         const defSkill = !defender ? 60 : (typeof defender.anticipation === "number"
             ? this.attr(defender, "defense") * 0.5 + this.attr(defender, "pace") * 0.35 + this.attr(defender, "anticipation") * 0.15
-            : this.attr(defender, "defense") * 0.6 + this.attr(defender, "pace") * 0.4) + this.fein(defender, "tackling") * 0.5;
+            : this.attr(defender, "defense") * 0.6 + this.attr(defender, "pace") * 0.4) + this.fein(defender, "tackling") * 0.5
+            // Wer kräftig und bissig ist, setzt sich öfter durch
+            + this.fein(defender, "strength") * 0.15 + this.fein(defender, "aggression") * 0.1;
 
-        const edge = (dribbling * 0.6 + pace * 0.4 + this.fein(carrier, "agility") * 0.4) - defSkill;
+        // Wer die Balance hält, bleibt im Kontakt auf den Beinen
+        const edge = (dribbling * 0.6 + pace * 0.4 + this.fein(carrier, "agility") * 0.4 + this.fein(carrier, "balance") * 0.2) - defSkill;
         // Wer hart einsteigt, gewinnt mehr Zweikaempfe (und foult oefter -
         // das zaehlt die Timeline); wer auf den Fuessen bleibt, weniger
         const gegnerTaktik = defender ? this.getTactics(defender.team) || {} : {};
@@ -1404,7 +1414,7 @@ class MatchFlowEngine {
         const ed = fm && defender ? this.eig(defender) : {};
         chance += (ea.dribbelKoennen || 0) - (ed.zweikampf || 0);
         // Im freien Raum hilft der Antritt: Wer schneller ist, ist weg
-        if (fm && (action.space || 0) > 0.4) chance += ea.antritt || 0;
+        if (fm && (action.space || 0) > 0.4) chance += (ea.antritt || 0) + this.fein(carrier, "acceleration") * 0.004;
         chance = Math.max(0.2, Math.min(0.92, chance));
 
         if (_flowRandom.chance(chance)) {

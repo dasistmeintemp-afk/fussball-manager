@@ -8135,8 +8135,18 @@ function runEngineTests() {
             throw new Error("Eine Antwort in der Verhandlung hält nicht an");
         }
         if (!state.transferMarket) state.transferMarket = {};
-        state.transferMarket.offers = [{ status: "pending", gemeldet: false, fromClubName: "FC Test", playerName: "Max Muster" }];
+        state.transferMarket.offers = [{ id: "of_1", status: "pending", gemeldet: false, fromClubName: "FC Test", playerName: "Max Muster" }];
         if (!/Angebot von FC Test/.test(CalendarEngine.unterbrechungsGrund(state, leer, ids) || "")) throw new Error("Ein neues Angebot hält nicht an");
+        // Mit Anlass, damit die Meldung dorthin führt (Ansehen)
+        const a = CalendarEngine.unterbrechung(state, leer, ids);
+        if (!a || a.art !== "angebot" || a.offerId !== "of_1") throw new Error("Anlass Angebot: " + JSON.stringify(a));
+        state.transferMarket.offers = [];
+        const v = CalendarEngine.unterbrechung(state, { summary: { negotiations: [{ negotiation: { id: "neg_7", playerName: "Max Muster" } }] } }, ids);
+        if (!v || v.art !== "verhandlung" || v.negId !== "neg_7") throw new Error("Anlass Verhandlung: " + JSON.stringify(v));
+        const ids2 = bekannt();
+        NewsEngine.addMessage(state, "scouting", { title: "Scoutbericht: Erik Probe", text: "..." });
+        const post = CalendarEngine.unterbrechung(state, leer, ids2);
+        if (!post || post.art !== "post" || !state.inbox.some(m => String(m.id) === String(post.msgId))) throw new Error("Anlass Post: " + JSON.stringify(post));
     });
 
     test("Spielplan: Heim und Auswärts wechseln sich ab - keine langen Serien", () => {

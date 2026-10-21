@@ -1907,3 +1907,13 @@ h4 .h-ico { color: var(--accent); opacity: 0.85; }
 .vk-kachel strong,
 .fin-val,
 .info-val { font-variant-numeric: tabular-nums; }
+
+/* Meldungen mit Knöpfen (Anhalten: Ansehen / Weiter) */
+.toast-item.klickbar { cursor: pointer; }
+.toast-item .toast-text { flex: 1; min-width: 0; }
+.toast-aktionen { display: flex; gap: 6px; flex: none; }
+.toast-aktionen .btn { min-height: 32px; padding: 5px 12px; }
+@media (max-width: 640px) {
+    .toast-item.klickbar { flex-wrap: wrap; }
+    .toast-aktionen { width: 100%; justify-content: flex-end; }
+}

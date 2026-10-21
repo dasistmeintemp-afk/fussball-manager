@@ -1062,16 +1062,26 @@ const CalendarEngine = {
      * die vor dem Tag schon im Postfach lagen. Liefert den Grund oder null.
      */
     unterbrechungsGrund(state, res, bekannteIds = new Set()) {
+        const u = this.unterbrechung(state, res, bekannteIds);
+        return u ? u.text : null;
+    },
+
+    /**
+     * Wie unterbrechungsGrund, aber mit dem Anlass, damit die Oberfläche
+     * dorthin springen kann: { text, art, offerId | negId | spielerName | msgId }.
+     * art: "angebot", "verhandlung", "verletzung", "post"
+     */
+    unterbrechung(state, res, bekannteIds = new Set()) {
         if (!state) return null;
         const angebot = (state.transferMarket?.offers || []).find(o => o.status === "pending" && o.gemeldet === false);
-        if (angebot) return `💰 Angebot von ${angebot.fromClubName || "einem Verein"} für ${angebot.playerName || "einen Spieler"}`;
+        if (angebot) return { art: "angebot", offerId: angebot.id, text: `💰 Angebot von ${angebot.fromClubName || "einem Verein"} für ${angebot.playerName || "einen Spieler"}` };
         const verhandlung = (res?.summary?.negotiations || []).find(s => s && s.negotiation);
-        if (verhandlung) return `💬 Neues in der Verhandlung um ${verhandlung.negotiation.playerName}`;
+        if (verhandlung) return { art: "verhandlung", negId: verhandlung.negotiation.id, text: `💬 Neues in der Verhandlung um ${verhandlung.negotiation.playerName}` };
         const verletzt = res?.summary?.training?.injuries?.[0];
-        if (verletzt) return `⚠️ ${verletzt} hat sich im Training verletzt`;
+        if (verletzt) return { art: "verletzung", spielerName: verletzt, text: `⚠️ ${verletzt} hat sich im Training verletzt` };
         const post = (state.inbox || []).find(m => m && !bekannteIds.has(String(m.id))
             && (this.WICHTIGE_POST.includes(m.type) || m.priority === "high"));
-        if (post) return `✉️ ${post.subject || post.title || "Neue Nachricht"}`;
+        if (post) return { art: "post", msgId: post.id, text: `✉️ ${post.subject || post.title || "Neue Nachricht"}` };
         return null;
     },
 

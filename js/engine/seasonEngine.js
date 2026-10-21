@@ -570,6 +570,13 @@ class SeasonEngine {
     /**
      * Schließt den aktuellen Spieltag ab und bereitet den nächsten vor
      */
+    /**
+     * Tabellenprämie je Ligastufe, als Vielfaches der Sponsorenzahlung eines
+     * Spieltags je Platz vor dem 14. Oben verteilt die Liga Fernsehgeld nach
+     * Rang, in den Amateurligen gibt es höchstens eine kleine Prämie.
+     */
+    static PRAEMIE_JE_STUFE = { 1: 0.30, 2: 0.30, 3: 0.15, 4: 0.06, 5: 0.04, 6: 0.03, 7: 0.03 };
+
     static advanceToNextMatchday(state) {
         // Die Uhr fürs Einspielen der Spieler (TacticsEngine.zusammenspiel)
         const taktikUhr = _resolve('TacticsEngine', './tacticsEngine.js');
@@ -1073,11 +1080,25 @@ class SeasonEngine {
                 // Die Tabellenprämie kommt zum Fernsehgeld dazu, das den Rang
                 // schon belohnt - mit 0,9 bekam der Meister zusätzlich fast
                 // ein Fünftel seines Umsatzes und legte jedes Jahr zu.
-                const prizeMoney = Math.max(Math.round(sponsor * 0.45), Math.round(sponsor * Math.max(1, 14 - index) * 0.45));
+                // Sie fällt mit der Ligastufe: Mit 0,45 überall bekam der
+                // Zweite der siebten Liga 302 Tsd. € - mehr, als seine ganze
+                // Mannschaft im Jahr verdiente (256 Tsd. €).
+                const faktor = SeasonEngine.PRAEMIE_JE_STUFE[club.level || 1] ?? 0.03;
+                const prizeMoney = Math.max(Math.round(sponsor * faktor), Math.round(sponsor * Math.max(1, 14 - index) * faktor));
                 club.balance += prizeMoney;
                 club.transferBudget += Math.round(prizeMoney * 0.7);
                 if (club.id === state.userClubId && financeEngine && typeof financeEngine.recordTransaction === 'function') {
                     financeEngine.recordTransaction(state, club.id, "prize_money", prizeMoney, `Tabellenprämie (Platz ${index + 1})`);
+                }
+                // Der Meister zahlt seiner Mannschaft eine Prämie (FinanceEngine.ERFOLGSPRAEMIE)
+                if (index === 0 && financeEngine && financeEngine.ERFOLGSPRAEMIE && typeof financeEngine.lohnsummen === 'function') {
+                    const meister = Math.round((financeEngine.lohnsummen(state).get(club.id) || 0) * financeEngine.ERFOLGSPRAEMIE.meister);
+                    if (meister > 0) {
+                        club.balance -= meister;
+                        if (club.id === state.userClubId && typeof financeEngine.recordTransaction === 'function') {
+                            financeEngine.recordTransaction(state, club.id, "bonus", -meister, "Meisterprämie für die Mannschaft");
+                        }
+                    }
                 }
             });
         });

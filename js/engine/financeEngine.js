@@ -81,7 +81,22 @@ const FinanceEngine = {
      * diesen Anteil würde ein Verein mit teurem Kader und kleinem Stadion
      * unrealistisch gut dastehen.
      */
-    OPERATING_WAGE_SHARE: 0.16,
+    OPERATING_WAGE_SHARE: 0.05,
+
+    /**
+     * Erfolgsprämien: Je Ligasieg bekommt die Mannschaft ein Viertel, je
+     * Remis acht Prozent der Lohnsumme eines Spieltags, der Meister am
+     * Saisonende das Anderthalbfache (seasonEngine, Tabellenprämie).
+     *
+     * Vorher kostete Erfolg nichts: Der stärkste Verein jeder Liga legte in
+     * einer Saison 28 bis 31 % seines Umsatzes zurück, das Mittelfeld 0 bis
+     * 15 %. Im Mittel gewinnt ein Verein gut ein Drittel seiner Spiele - das
+     * kostet rund 11 % der Lohnsumme. Um genau so viel ist der Anteil des
+     * Betriebsaufwands an den Gehältern gesunken (OPERATING_WAGE_SHARE von
+     * 0,16 auf 0,05): Der Durchschnittsverein steht wie vorher da, wer viel
+     * gewinnt, zahlt mehr, wer wenig gewinnt, spart.
+     */
+    ERFOLGSPRAEMIE: { sieg: 0.25, remis: 0.08, meister: 1.5 },
 
     /**
      * Wirtschaftskraft nach Ligastufe.
@@ -664,11 +679,60 @@ const FinanceEngine = {
     /**
      * Berechnet die Ticketeinnahmen und Zuschauerzahl für ein Heimspiel
      */
+    /**
+     * Lohnsumme eines Spieltags je Verein (wie in applyWeeklyCosts, Leihen nach
+     * Anteil) - einmal je Tag gerechnet, nicht für jedes Spiel neu.
+     */
+    lohnsummen(state) {
+        const stempel = `${state.seasonYear || 1}|${state.currentDayIndex || 0}|${(state.players || []).length}`;
+        if (this._lohnCache && this._lohnCache.state === state && this._lohnCache.stempel === stempel) return this._lohnCache.map;
+        const map = new Map();
+        (state.players || []).forEach(p => {
+            if (!p || !p.clubId) return;
+            const anteil = p.leihe ? Math.max(0, Math.min(1, p.leihe.lohnAnteil ?? 1)) : 1;
+            map.set(p.clubId, (map.get(p.clubId) || 0) + (p.wage || 10000) * anteil);
+            if (p.leihe && anteil < 1 && p.leihe.stammvereinId) {
+                map.set(p.leihe.stammvereinId, (map.get(p.leihe.stammvereinId) || 0) + (p.wage || 10000) * (1 - anteil));
+            }
+        });
+        this._lohnCache = { state, stempel, map };
+        return map;
+    },
+
+    /**
+     * Sieg- und Remisprämie nach einem Ligaspiel, für beide Vereine
+     * (ERFOLGSPRAEMIE). Liefert die gebuchten Beträge { heim, gast }.
+     */
+    bucheErfolgspraemie(state, match) {
+        if (!state || !match || typeof match.homeGoals !== "number" || typeof match.awayGoals !== "number") return null;
+        if (match.praemieGebucht) return null;
+        match.praemieGebucht = true;
+        const lohn = this.lohnsummen(state);
+        const satz = (eigene, fremde) => eigene > fremde ? this.ERFOLGSPRAEMIE.sieg : (eigene === fremde ? this.ERFOLGSPRAEMIE.remis : 0);
+        const ergebnis = {};
+        [["heim", match.homeClubId, match.homeGoals, match.awayGoals, match.awayClubId],
+            ["gast", match.awayClubId, match.awayGoals, match.homeGoals, match.homeClubId]].forEach(([seite, id, eigene, fremde, gegnerId]) => {
+            const club = state.clubs.find(c => c.id === id);
+            const betrag = club ? Math.round((lohn.get(id) || 0) * satz(eigene, fremde)) : 0;
+            ergebnis[seite] = betrag;
+            if (!club || betrag <= 0) return;
+            club.balance = (club.balance || 0) - betrag;
+            if (club.id === state.userClubId) {
+                const gegner = state.clubs.find(c => c.id === gegnerId);
+                this.recordTransaction(state, club.id, "bonus", -betrag,
+                    `${eigene > fremde ? "Siegprämie" : "Remisprämie"} (${eigene}:${fremde} gegen ${gegner ? gegner.name : "den Gegner"})`);
+            }
+        });
+        return ergebnis;
+    },
+
     applyMatchdayIncome(state, match) {
         if (!state || !match) return 0;
         const homeClub = state.clubs.find(c => c.id === match.homeClubId);
         const awayClub = state.clubs.find(c => c.id === match.awayClubId);
         if (!homeClub) return 0;
+        // Erfolg kostet: Sieg- und Remisprämie für beide Mannschaften
+        this.bucheErfolgspraemie(state, match);
 
         // C4: Auslastung abhängig von Reputation, Tabellenplatz, Form, fanMood, Stadionstufe
         const repFactor = ((homeClub.reputation || 70) * 1.2 + (awayClub?.reputation || 60) * 0.8) / 200;

@@ -13213,6 +13213,37 @@ function runEngineTests() {
         if (/Deutscher Meister ist/.test(quelle)) throw new Error("Saisonabschluss sagt fest \"Deutscher Meister\"");
     });
 
+    test("Finanzen: Erfolg kostet - Sieg- und Remisprämie, Meisterprämie, Tabellenprämie nach Ligastufe", () => {
+        const { FinanceEngine: F } = require('./js/engine/financeEngine.js');
+        const { SeasonEngine: SE } = require('./js/engine/seasonEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Prämie" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.leagueId === heim.leagueId && c.id !== "muc");
+        const lohn = F.lohnsummen(state);
+        const k0h = heim.balance, k0g = gast.balance;
+        // Sieg: der Sieger zahlt ein Viertel der Lohnsumme eines Spieltags, der Verlierer nichts
+        const sieg = { homeClubId: heim.id, awayClubId: gast.id, homeGoals: 2, awayGoals: 1 };
+        const b = F.bucheErfolgspraemie(state, sieg);
+        if (b.heim !== Math.round(lohn.get(heim.id) * F.ERFOLGSPRAEMIE.sieg) || b.gast !== 0) throw new Error("Siegprämie: " + JSON.stringify(b));
+        if (heim.balance !== k0h - b.heim || gast.balance !== k0g) throw new Error("Kontostand nach dem Sieg falsch");
+        if (F.bucheErfolgspraemie(state, sieg) !== null || heim.balance !== k0h - b.heim) throw new Error("Prämie doppelt gebucht");
+        // Das Journal des eigenen Vereins nennt sie
+        if (!(state.finances.transactions || []).some(t => t.type === "bonus" && /Siegprämie \(2:1/.test(t.description))) throw new Error("Siegprämie fehlt im Journal");
+        // Remis: beide zahlen acht Prozent
+        const remis = F.bucheErfolgspraemie(state, { homeClubId: heim.id, awayClubId: gast.id, homeGoals: 0, awayGoals: 0 });
+        if (remis.heim !== Math.round(lohn.get(heim.id) * F.ERFOLGSPRAEMIE.remis) || remis.gast !== Math.round(lohn.get(gast.id) * F.ERFOLGSPRAEMIE.remis)) {
+            throw new Error("Remisprämie: " + JSON.stringify(remis));
+        }
+        // Ohne Ergebnis keine Prämie
+        if (F.bucheErfolgspraemie(state, { homeClubId: heim.id, awayClubId: gast.id }) !== null) throw new Error("Prämie ohne Ergebnis");
+        // Ausgleich: Im Mittel (gut ein Drittel Siege) entspricht die Prämie dem gesunkenen Betriebsanteil
+        const mittel = (12.4 * F.ERFOLGSPRAEMIE.sieg + 9 * F.ERFOLGSPRAEMIE.remis) / 34;
+        if (Math.abs(mittel - (0.16 - F.OPERATING_WAGE_SHARE)) > 0.02) throw new Error(`Mittlere Prämie ${mittel.toFixed(3)} gleicht den Betrieb nicht aus`);
+        // Tabellenprämie fällt mit der Ligastufe
+        const P = SE.PRAEMIE_JE_STUFE;
+        if (!(P[1] >= P[3] && P[3] > P[4] && P[4] >= P[7] && P[7] <= P[1] / 5)) throw new Error("Tabellenprämie fällt nicht mit der Stufe: " + JSON.stringify(P));
+    });
+
     test("Finanzen: Gehaltsbudget passt zur Gehaltsliste, Betrieb nach echten Zuschauern, Sponsorentag zahlt", () => {
         const F = FinanceEngine;
         const state = GameState.createNewGame("ll_hoe", "normal", { name: "Budgetpruefer" });

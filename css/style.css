@@ -9432,3 +9432,141 @@ button, .btn, input, select, th, .nowrap, .club-name { -webkit-hyphens: manual; 
 @media (max-width: 640px) {
     .preview-team h4[data-lang] { font-size: 15px; }
 }
+
+/* ==========================================================================
+   Bedienung wie im Vorbild (uiNavigation.js): Unterreiter, Suche,
+   Zurück, Kontextmenü, sortierbare Tabellen, Beobachtungsliste
+   ========================================================================== */
+
+/* Unterreiter: eine Leiste unter dem Titel statt einer langen Seite */
+.unterreiter {
+    display: flex; gap: 2px; margin: -10px 0 20px; border-bottom: 1px solid var(--border-color);
+    overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.unterreiter::-webkit-scrollbar { display: none; }
+.ur-knopf {
+    flex: none; background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
+    padding: 10px 14px 9px; color: var(--text-muted); font: inherit; font-size: 13.5px; font-weight: 600;
+    cursor: pointer; white-space: nowrap; transition: color 0.15s ease, border-color 0.15s ease;
+}
+.ur-knopf:hover { color: var(--text-main); }
+.ur-knopf.aktiv { color: var(--text-main); border-bottom-color: var(--accent-primary); }
+.ur-knopf:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: -2px; border-radius: 6px 6px 0 0; }
+.ur-knopf[hidden] { display: none; }
+.ur-aus { display: none !important; }
+@media (max-width: 900px) {
+    .unterreiter { margin: 0 -14px 14px; padding: 0 10px; }
+    .ur-knopf { padding: 11px 12px 10px; min-height: 44px; }
+}
+
+/* Kopfleiste: Zurück und Suche */
+.kopf-icon {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; flex: none;
+    height: 38px; min-width: 38px; padding: 0 10px; border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-color); color: var(--text-soft);
+    font: inherit; font-size: 13px; cursor: pointer; transition: background 0.15s ease, color 0.15s ease;
+}
+.kopf-icon:hover:not(:disabled) { background: rgba(255, 255, 255, 0.08); color: var(--text-main); }
+.kopf-icon:disabled { opacity: 0.35; cursor: default; }
+.kopf-icon .ico { width: 16px; height: 16px; }
+.kopf-suche { min-width: 170px; justify-content: flex-start; color: var(--text-muted); }
+.kopf-suche kbd, .suche-zu kbd {
+    margin-left: auto; font: 600 11px/1 var(--font-body, inherit); padding: 3px 6px; border-radius: 5px;
+    border: 1px solid var(--border-color); color: var(--text-muted); background: rgba(0, 0, 0, 0.25);
+}
+@media (max-width: 1500px) { .kopf-suche { min-width: 0; } .kopf-suche-text, .kopf-suche kbd { display: none; } }
+@media (max-width: 640px) {
+    .kopf-zurueck { display: none; }
+    .kopf-icon { height: 36px; min-width: 36px; padding: 0; }
+}
+
+/* Suche: wie eine Befehlszeile über dem Spiel */
+.suche-overlay {
+    position: fixed; inset: 0; z-index: 3000; background: rgba(3, 6, 10, 0.6); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+    display: flex; justify-content: center; align-items: flex-start; padding: 10vh 16px 16px;
+}
+.suche-overlay[hidden] { display: none; }
+.suche-box {
+    width: min(620px, 100%); max-height: 76vh; display: flex; flex-direction: column; overflow: hidden;
+    background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 14px; box-shadow: var(--shadow-lg);
+}
+.suche-feld { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border-color); }
+.suche-feld .ico { width: 18px; height: 18px; color: var(--text-muted); flex: none; }
+.suche-feld input { flex: 1; min-width: 0; background: none; border: 0; outline: none; color: var(--text-main); font: inherit; font-size: 16px; }
+.suche-zu { background: none; border: 0; padding: 0; cursor: pointer; }
+.suche-ergebnisse { overflow-y: auto; padding: 6px; }
+.suche-gruppe { padding: 10px 10px 4px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-muted); }
+.suche-treffer {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%;
+    padding: 8px 10px; border: 0; border-radius: 9px; background: none; color: var(--text-main); font: inherit; text-align: left; cursor: pointer;
+}
+.suche-treffer.aktiv, .suche-treffer:hover { background: rgba(var(--accent-rgb), 0.12); }
+.suche-treffer .ico { width: 15px; height: 15px; color: var(--text-muted); }
+.suche-name { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suche-sub { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.suche-leer { padding: 18px 14px; font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+.suche-leer span { font-size: 12px; opacity: 0.8; }
+@media (max-width: 640px) {
+    .suche-overlay { padding: 8px; }
+    .suche-box { max-height: 86vh; }
+    .suche-treffer { grid-template-columns: auto minmax(0, 1fr); }
+    .suche-sub { grid-column: 2; max-width: none; }
+}
+
+/* Kontextmenü am Spieler (Rechtsklick) */
+.kontextmenue {
+    position: fixed; z-index: 3100; min-width: 230px; max-width: 300px; padding: 6px;
+    background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: var(--shadow-lg);
+}
+.km-kopf { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px 10px; border-bottom: 1px solid var(--border-color); margin-bottom: 4px; }
+.km-kopf strong { font-size: 14px; }
+.km-kopf span { font-size: 12px; color: var(--text-muted); }
+.km-eintrag {
+    display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px;
+    background: none; color: var(--text-main); font: inherit; font-size: 13.5px; text-align: left; cursor: pointer;
+}
+.km-eintrag:hover:not(:disabled), .km-eintrag:focus-visible { background: rgba(var(--accent-rgb), 0.12); outline: none; }
+.km-eintrag:disabled { color: var(--text-muted); cursor: default; }
+.km-eintrag .ico { width: 15px; height: 15px; color: var(--text-muted); }
+
+/* Sortierbare Tabellen: Spaltenkopf antippen */
+table.sortierbar th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
+table.sortierbar th[data-sort]:hover { color: var(--text-main); }
+table.sortierbar th.sortiert { color: var(--accent-primary); }
+table.sortierbar th.sortiert::after { content: " ▴"; font-size: 0.9em; }
+table.sortierbar th.sortiert-ab::after { content: " ▾"; }
+
+/* Beobachtungsliste */
+.gemerkt-marke { color: var(--accent-gold); margin: 0 4px 0 2px; font-size: 0.95em; }
+.btn-merken.aktiv { border-color: rgba(251, 191, 36, 0.45); color: var(--accent-gold); }
+.bl-hinweise { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.bl-hinweis { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: rgba(148, 163, 184, 0.12); color: var(--text-soft); }
+.bl-hinweis.gut { background: rgba(52, 211, 153, 0.13); color: #6ee7b7; }
+.bl-hinweis.schlecht { background: rgba(239, 68, 68, 0.13); color: #fca5a5; }
+.bl-aktion { text-align: right; }
+.bl-aktion .btn { margin-left: 4px; }
+.bl-tabelle { width: 100%; }
+.bl-tabelle tr.row-clickable { cursor: pointer; }
+.bl-tabelle tr.row-clickable:hover td { background: rgba(255, 255, 255, 0.025); }
+@media (max-width: 640px) {
+    /* Am Handy: Spieler, Position, Stärke, Stand und Knöpfe */
+    .bl-tabelle th:nth-child(2), .bl-tabelle td:nth-child(2),
+    .bl-tabelle th:nth-child(4), .bl-tabelle td:nth-child(4),
+    .bl-tabelle th:nth-child(6), .bl-tabelle td:nth-child(6),
+    .bl-tabelle th:nth-child(7), .bl-tabelle td:nth-child(7) { display: none; }
+    .bl-tabelle td { padding: 8px 5px; }
+    .bl-aktion .btn-primary { display: none; }
+}
+@media (max-width: 900px) {
+    /* Die Ansichten im Transfermarkt: eine wischbare Zeile wie die Unterreiter */
+    #pane-transfers .view-switch-buttons {
+        flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+        margin: 0 -14px; padding: 4px 14px;
+    }
+    #pane-transfers .view-switch-buttons::-webkit-scrollbar { display: none; }
+    #pane-transfers .view-switch-buttons .btn { flex: none; white-space: nowrap; }
+    /* Sonst spannt die Knopfzeile den Kopf auf ihre volle Breite auf */
+    #pane-transfers > .pane-header { display: grid; grid-template-columns: minmax(0, 1fr); }
+}
+/* Wappen in den Suchtreffern: drei Buchstaben im kleinen Kreis */
+.suche-treffer .crest-sm { font-size: 8px; letter-spacing: -0.04em; }

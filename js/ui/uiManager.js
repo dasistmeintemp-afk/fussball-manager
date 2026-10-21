@@ -52,6 +52,8 @@ class UIManager {
         this.bindStartScreenEvents();
         this.bindWizardEvents();
         this.bindModalDismiss();
+        // Unterreiter, Suche, Zurück, Tasten, Kontextmenü, Sortieren (uiNavigation.js)
+        if (typeof this.initNavigation === "function") this.initNavigation();
     }
 
     /**
@@ -633,6 +635,7 @@ class UIManager {
 
         // Tab-spezifische Renderings anstoßen
         this.renderCurrentTab();
+        if (typeof this.merkeVerlauf === "function") this.merkeVerlauf();
     }
 
     renderCurrentTab() {
@@ -686,6 +689,8 @@ class UIManager {
                 this.renderSettings();
                 break;
         }
+        // Unterreiter ohne Inhalt (etwa Preise vor dem ersten Saisonende) blenden aus
+        if (typeof this.pruefeUnterreiter === "function") this.pruefeUnterreiter(`pane-${this.activeTab}`);
         // Beim ersten Besuch erklärt sich der Bereich selbst
         this.zeigeEinstiegErklaerung(this.activeTab);
     }
@@ -789,6 +794,7 @@ class UIManager {
                 this.switchTab(btn.dataset.tab);
                 // Leihangebote stehen im Unterreiter Leihen
                 if (btn.dataset.sub === "leihen") document.getElementById("btnSubTransfersLoans")?.click();
+                else if (btn.dataset.sub && typeof this.zeigeUnterreiter === "function") this.zeigeUnterreiter(`pane-${btn.dataset.tab}`, btn.dataset.sub);
             });
         });
         list.querySelectorAll(".attention-name").forEach(btn => {
@@ -3561,9 +3567,9 @@ class UIManager {
 
         // Transfer, Scouting und Leihen als Unterreiter
         const transferAnsicht = (knopf, ansicht) => {
-            ["btnSubTransfersMarket", "btnSubTransfersScouting", "btnSubTransfersLoans", "btnSubTransfersSD"].forEach(id =>
+            ["btnSubTransfersMarket", "btnSubTransfersScouting", "btnSubTransfersLoans", "btnSubTransfersSD", "btnSubTransfersListe"].forEach(id =>
                 document.getElementById(id)?.classList.toggle("active", id === knopf));
-            ["viewTransferMarket", "viewScoutingCenter", "viewLoans", "viewSportdirektor"].forEach(id =>
+            ["viewTransferMarket", "viewScoutingCenter", "viewLoans", "viewSportdirektor", "viewBeobachtung"].forEach(id =>
                 id === ansicht ? DOM.show(id) : DOM.hide(id));
         };
         document.getElementById("btnSubTransfersMarket")?.addEventListener("click", () => {
@@ -3583,6 +3589,11 @@ class UIManager {
         document.getElementById("btnSubTransfersSD")?.addEventListener("click", () => {
             transferAnsicht("btnSubTransfersSD", "viewSportdirektor");
             this.renderSportdirektor();
+        });
+
+        document.getElementById("btnSubTransfersListe")?.addEventListener("click", () => {
+            transferAnsicht("btnSubTransfersListe", "viewBeobachtung");
+            this.renderBeobachtungsliste();
         });
 
         // Scout Auftrag absenden
@@ -3767,6 +3778,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // Die ausgelagerten Teile hängen sich an die Klasse - im Browser lädt sie
     // index.html der Reihe nach, unter Node holen wir sie hier dazu
     ["./uiAssistent.js", "./uiKader.js", "./uiTaktik.js", "./uiWettbewerbe.js", "./uiTraining.js", "./uiFinanzen.js", "./uiVerein.js", "./uiPostfach.js", "./uiDialoge.js", "./uiKarriere.js",
-        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiLivespiel.js", "./uiSpielbericht.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js"]
+        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiLivespiel.js", "./uiSpielbericht.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
         .forEach(teil => require(teil));
 }

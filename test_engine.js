@@ -6247,6 +6247,44 @@ function runEngineTests() {
         if (J.starte(state).runde !== 0) throw new Error("Neue Saison beginnt nicht bei null");
     });
 
+    test("Beobachtungsliste: merken und herunternehmen, keine eigenen Spieler, Hinweise auf Vertrag und Vereinslosigkeit, Obergrenze, Sortierwerte", () => {
+        const { ScoutingEngine: SE } = require('./js/engine/scoutingEngine.js');
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Liste" });
+        const fremde = state.players.filter(p => p.clubId && p.clubId !== "muc");
+        const a = fremde[0], b = fremde[1];
+        if (!SE.merke(state, a.id).gemerkt || !SE.istGemerkt(state, a.id)) throw new Error("Merken klappt nicht");
+        SE.merke(state, b.id, true);
+        if (SE.merke(state, b.id, true).gemerkt !== true || state.scouting.shortlist.length !== 2) throw new Error("Doppelt auf der Liste");
+        // Gespeichert wird die ID wie in state.players - das lesen Saisonwechsel und Datenzentrale
+        if (state.scouting.shortlist[0] !== a.id) throw new Error("Falsches Format auf der Liste");
+        const eigen = state.players.find(p => p.clubId === "muc");
+        if (SE.merke(state, eigen.id).success) throw new Error("Eigener Spieler auf der Liste");
+        // Hinweise: Vertrag läuft aus, vereinslos, verletzt
+        a.contractYears = 1; b.clubId = null; b.injuredWeeks = 2;
+        const liste = SE.beobachtungsliste(state);
+        const ea = liste.find(e => e.player === a), eb = liste.find(e => e.player === b);
+        if (!ea.hinweise.some(h => h.text === "Vertrag läuft aus") || !eb.hinweise.some(h => h.text === "vereinslos") || !eb.hinweise.some(h => /verletzt/.test(h.text))) {
+            throw new Error("Hinweise fehlen: " + JSON.stringify(liste.map(e => e.hinweise)));
+        }
+        // Wer zu uns wechselt, fällt aus der Anzeige
+        a.clubId = "muc";
+        if (SE.beobachtungsliste(state).some(e => e.player === a)) throw new Error("Eigener Spieler in der Anzeige");
+        // Herunternehmen
+        if (SE.merke(state, b.id).gemerkt !== false || SE.istGemerkt(state, b.id)) throw new Error("Herunternehmen klappt nicht");
+        // Obergrenze
+        state.scouting.shortlist = fremde.slice(2, 2 + SE.LISTE_MAX).map(p => p.id);
+        const voll = SE.merke(state, fremde[2 + SE.LISTE_MAX].id);
+        if (voll.success || !/voll/.test(voll.error)) throw new Error("Obergrenze greift nicht");
+        // Wer auf der Liste steht, ist auf dem Markt sichtbar (wie bisher für Gemerkte)
+        if (!SE.sichtbarkeit(state).istSichtbar(fremde[3])) throw new Error("Gemerkter Spieler unsichtbar");
+        // Sortierwerte aus dem Text: Spanne zählt mit der Mitte, Einheiten werden umgerechnet
+        const z = (t) => UIManager.prototype.zahlAus(t);
+        if (Math.round(z("1,07 Mrd. €")) !== 1070000000 || Math.round(z("35,6–70,3 Mio. €")) !== 52950000 || z("85%") !== 85 || z("207 Tsd. €") !== 207000 || !Number.isNaN(z("–"))) {
+            throw new Error(`Zahlen: ${z("1,07 Mrd. €")}, ${z("35,6–70,3 Mio. €")}, ${z("85%")}, ${z("207 Tsd. €")}`);
+        }
+    });
+
     test("U23-Liga: ein Spieltag je Profispieltag, Tabelle stimmig, leere U23 spielt mit Amateuren, Nachholen und Saisonende", () => {
         const { ReserveEngine: R } = require('./js/engine/reserveEngine.js');
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });

@@ -39,6 +39,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     /** Ein Element in den Blick holen und kurz aufleuchten lassen */
     hebeHervor(el) {
         if (!el) return;
+        // Steht es in einem anderen Unterreiter, erst dorthin
+        if (typeof this.zeigeUnterreiterFuer === "function") this.zeigeUnterreiterFuer(el);
         // Was höher ist als der halbe Bildschirm, beginnt oben - sonst läge
         // sein Kopf mit dem Namen außer Sicht
         const hoehe = typeof el.getBoundingClientRect === "function" ? el.getBoundingClientRect().height : 0;
@@ -1201,24 +1203,26 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 const valueClass = card && !card.isPrecise ? "estimated-value" : "";
 
                 const vereinsName = club ? this.escapeHtml(club.name) : "Ablösefrei";
+                // Sortierwerte: Mitte der geschätzten Spanne
+                const sternWert = card ? ((Number(card.starsCaMin) + Number(card.starsCaMax)) / 2 + (Number(card.starsPaMax) || 0) / 100).toFixed(3) : (p.overall || 0);
                 return `
                     <tr class="row-clickable" data-player-id="${p.id}" title="Details zu ${this.escapeHtml(p.name)} anzeigen">
-                        <td class="tm-name">
-                            <strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}
+                        <td class="tm-name" data-wert="${this.escapeHtml(p.name)}">
+                            ${this.gemerktMarke(p.id)}<strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}
                             <span class="tm-sub">${this.escapeHtml(p.nationality || "Profi")} · ${p.age} J.</span>
                         </td>
-                        <td class="tm-verein">${club ? vereinsName : `<span class="badge badge-success" title="${this.escapeHtml(this.vereinslosFrist(p))}">Ablösefrei</span>`}</td>
-                        <td class="tm-pos"><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span></td>
+                        <td class="tm-verein" data-wert="${club ? vereinsName : ""}">${club ? vereinsName : `<span class="badge badge-success" title="${this.escapeHtml(this.vereinslosFrist(p))}">Ablösefrei</span>`}</td>
+                        <td class="tm-pos" data-wert="${["TW", "IV", "LV", "RV", "DM", "ZM", "LM", "RM", "OM", "LA", "RA", "ST"].indexOf(p.pos)}"><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span></td>
                         <td class="tm-alter">${p.age}</td>
-                        <td class="tm-staerke nowrap">
+                        <td class="tm-staerke nowrap" data-wert="${sternWert}">
                             ${sterne}
                             <div class="tm-sub">${abilityText}</div>
                         </td>
                         <td class="tm-rolle"><span class="badge badge-info">${roleDisplay}</span></td>
                         <td class="tm-wert nowrap"><strong class="${valueClass}">${valDisplay}</strong></td>
-                        <td class="tm-wissen"><span class="badge ${confBadgeClass}" title="${confInfo.label}: ${confInfo.hint}">${confPercent}%</span></td>
-                        <td class="tm-gehalt nowrap">${this.geldKurz(p.wage)}</td>
-                        <td class="tm-vertrag nowrap">${p.clubId ? `${p.contractYears} J.` : "-"}</td>
+                        <td class="tm-wissen" data-wert="${confPercent}"><span class="badge ${confBadgeClass}" title="${confInfo.label}: ${confInfo.hint}">${confPercent}%</span></td>
+                        <td class="tm-gehalt nowrap" data-wert="${p.wage || 0}">${this.geldKurz(p.wage)}</td>
+                        <td class="tm-vertrag nowrap" data-wert="${p.clubId ? p.contractYears : 0}">${p.clubId ? `${p.contractYears} J.` : "-"}</td>
                         <td class="tm-meta">${vereinsName} · ${valDisplay} · Scout ${confPercent} %</td>
                         <td class="tm-aktion">
                             <div class="tm-knoepfe">

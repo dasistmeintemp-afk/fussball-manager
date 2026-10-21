@@ -415,7 +415,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const esc = (v) => this.escapeHtml(String(v ?? ""));
         el.innerHTML = kacheln.map(k => `<button type="button" class="vk-kachel nw-kachel" data-ziel="${k.ziel}"><span>${esc(k.titel)}</span><strong>${esc(k.wert)}</strong>${k.extra || ""}</button>`).join("");
         el.querySelectorAll("[data-ziel]").forEach(b => b.addEventListener("click", () => {
-            document.getElementById(b.dataset.ziel)?.closest(".dash-card, #" + b.dataset.ziel)?.scrollIntoView({ behavior: "smooth", block: "start" });
+            const ziel = document.getElementById(b.dataset.ziel)?.closest(".dash-card, #" + b.dataset.ziel);
+            if (ziel && typeof this.zeigeUnterreiterFuer === "function") this.zeigeUnterreiterFuer(ziel);
+            ziel?.scrollIntoView({ behavior: "smooth", block: "start" });
         }));
     },
 

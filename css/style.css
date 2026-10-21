@@ -9292,3 +9292,22 @@ td.nowrap { white-space: nowrap; }
 .nr-wahl.vergeben { opacity: 0.75; }
 .nr-wahl.aktuell { background: var(--accent-primary); border-color: var(--accent-primary); color: #0b1210; }
 .nr-wahl:hover { border-color: var(--accent-primary); opacity: 1; }
+
+/* Reiter Jugend: Übersicht über den ganzen Nachwuchs, ein Tipp springt hin */
+.nw-kachel { font: inherit; color: var(--text-main); text-align: left; cursor: pointer; }
+.nw-kachel:hover { border-color: var(--accent-primary); }
+.nw-kachel small { color: var(--text-muted); font-size: 12px; }
+.jl-tabelle:not(.alle) tr.jl-weit { display: none; }
+.jl-alle { margin-top: 6px; }
+.nw-tabelle tr[data-u23-akte], .nw-tabelle tr[data-leih-akte] { cursor: pointer; }
+.nw-tabelle td, .nw-tabelle th { padding: 6px 8px; white-space: nowrap; }
+.nw-tabelle td:first-child { white-space: normal; }
+.nw-tabelle small { display: block; }
+@media (max-width: 640px) {
+    /* Alter und Stärke stehen in der Akte */
+    .nw-tabelle th:nth-child(3), .nw-tabelle td:nth-child(3),
+    .nw-tabelle th:nth-child(4), .nw-tabelle td:nth-child(4) { display: none; }
+    .nw-tabelle td, .nw-tabelle th { padding: 6px 5px; font-size: 12px; }
+    .nw-tabelle .btn-sm { padding: 5px 8px; font-size: 11px; }
+    #u23Karte .table-container, #verliehenKarte .table-container { overflow-x: auto; }
+}

@@ -841,6 +841,23 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
      * Trainingsbericht zwischen den Spieltagen: Belastung, Ermüdung,
      * Spielschärfe, Verletzungsrisiko und Entwicklung je Spieler.
      */
+    /**
+     * Die Einschätzung des Stabs als kurzes Etikett, der ganze Satz im Tooltip.
+     * Vorher stand "Deutlich überlastet - Pause dringend empfohlen" in jeder
+     * zweiten Zeile und machte sie vier Zeilen hoch.
+     */
+    trainingsEinschaetzung(text) {
+        const t = String(text || "");
+        const [kurz, art] = /^Verletzt/.test(t) ? ["Verletzt", "rot"]
+            : /überlastet/i.test(t) ? ["Pause nötig", "rot"]
+            : /^Müde/.test(t) ? ["Schonen", "gelb"]
+            : /Verletzungsrisiko/.test(t) ? ["Risiko", "gelb"]
+            : /Spielpraxis/.test(t) ? ["Praxis fehlt", "blau"]
+            : /^Belastbar/.test(t) ? ["Belastbar", "gruen"]
+            : [t, ""];
+        return `<span class="tr-etikett ${art}" title="${this.escapeHtml(t)}">${this.escapeHtml(kurz)}</span>`;
+    },
+
     renderTrainingReport() {
         const state = this.app.state;
         const body = document.getElementById("trainingReportBody");
@@ -888,7 +905,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     </td>
                     <td class="nowrap"><strong style="color:${risikoFarbe};">${e.injuryRiskPercent.toFixed(1).replace(".", ",")} %</strong></td>
                     <td>${entwicklung}</td>
-                    <td style="font-size:12px; color:var(--text-muted);">${this.escapeHtml(e.note)}</td>
+                    <td>${this.trainingsEinschaetzung(e.note)}</td>
                 </tr>
             `;
         }).join("");

@@ -108,6 +108,8 @@ class UIManager {
         const zahl = Number(betrag) || 0;
         const abs = Math.abs(zahl);
         const vz = zahl < 0 ? "-" : "";
+        // Ab einer Milliarde: "1,09 Mrd. €" statt "1090 Mio. €", das in den Kacheln abgeschnitten wurde
+        if (abs >= 1e9) return `${vz}${(abs / 1e9).toFixed(2).replace(".", ",")} Mrd. €`;
         if (abs >= 1e6) return `${vz}${(abs / 1e6).toFixed(abs >= 1e8 ? 0 : 1).replace(".", ",")} Mio. €`;
         if (abs >= 1e3) return `${vz}${Math.round(abs / 1e3)} Tsd. €`;
         return `${vz}${Math.round(abs)} €`;
@@ -205,6 +207,8 @@ class UIManager {
     formPunkt(f) {
         const k = String(f || "").toLowerCase();
         const titel = { w: "Sieg", d: "Unentschieden", l: "Niederlage" }[k] || "";
+        // Noch nicht gespielt: ein leerer Platz statt eines Bindestrichs
+        if (!titel) return `<span class="form-dot leer" title="Noch kein Spiel"></span>`;
         return `<span class="form-dot ${k}" title="${titel}">${UIManager.formKuerzel(f)}</span>`;
     }
 
@@ -987,7 +991,12 @@ class UIManager {
         // Spieltag und übersprang damit Training, Presse und Vorbereitung.
         const ziel = this.beschreibeWeiter();
         const knopf = document.getElementById("btnHeaderAdvance");
-        knopf.innerHTML = `<span class="btn-advance-text">${ziel.text}</span> <span class="btn-arrow"><svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg></span>`;
+        // Zwei Zeilen: oben wann, darunter wohin. Vorher brach "Weiter zum
+        // Spiel bei Blau-Weiß Gelsen…" am breiten Bildschirm auf zwei Zeilen um.
+        const ziel2 = this.weiterZiel(ziel.text);
+        const wann = ziel.art === "sprung" && ziel.tage > 0 ? `Weiter · ${this.wannText(ziel.tage)}` : "Heute";
+        knopf.title = ziel.text;
+        knopf.innerHTML = `<span class="btn-advance-text"><small class="btn-advance-wann">${this.escapeHtml(wann)}</small><span class="btn-advance-ziel">${this.escapeHtml(ziel2)}</span></span> <span class="btn-arrow"><svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg></span>`;
         // Auf schmalen Geräten zeigt der Knopf nur die Kurzfassung
         // (Ohne dataset - etwa im Test-DOM - brach hier der ganze Kopf ab.)
         if (knopf.dataset) knopf.dataset.kurz = ziel.kurz || "Weiter";
@@ -1133,6 +1142,7 @@ class UIManager {
             const gastClub = testHeute.heim ? testHeute.gegner : userClub;
             DOM.setText("dashHomeName", heimClub?.name || "Heim");
             DOM.setText("dashAwayName", gastClub?.name || "Auswärts");
+            this.markiereLangeNamen("dashHomeName", "dashAwayName");
             DOM.setText("dashHomeRank", "");
             DOM.setText("dashAwayRank", "");
             DOM.setText("dashVenue", testHeute.partie.neutralerPlatz ? "Neutraler Platz" : (heimClub?.stadium || ""));
@@ -1180,6 +1190,7 @@ class UIManager {
 
         DOM.setText("dashHomeName", heimClub?.name || "Heim");
         DOM.setText("dashAwayName", gastClub?.name || "Auswärts");
+        this.markiereLangeNamen("dashHomeName", "dashAwayName");
         DOM.setText("dashHomeRank", termin.art === "liga" ? platz(heimClub?.id) : "");
         DOM.setText("dashAwayRank", termin.art === "liga" ? platz(gastClub?.id) : "");
         // Supercups und Endspiele finden auf neutralem Platz statt
@@ -1333,7 +1344,7 @@ class UIManager {
                                 <span>${this.escapeHtml((day.date || "").substring(0, 5))}</span>
                             </div>
                             <div class="cal-day-info">
-                                <div class="cal-day-title">${this.tagIcon(day.type)} ${this.escapeHtml(inhalt.titel || day.title)}</div>
+                                <div class="cal-day-title">${this.tagIcon(day.type)} ${this.escapeHtml(this.ohneSymbol(inhalt.titel || day.title))}</div>
                                 <div class="cal-day-desc">${this.escapeHtml(inhalt.text || day.description || "")}</div>
                             </div>
                             ${isToday ? '<span class="badge badge-success">HEUTE</span>' : ''}
@@ -2106,7 +2117,7 @@ class UIManager {
                             <span class="cal-date">${day.date}</span>
                         </div>
                         <div class="cal-card-icon">${this.tagIcon(day.type)}</div>
-                        <div class="cal-card-title">${inhalt.titel || day.title}</div>
+                        <div class="cal-card-title">${this.ohneSymbol(inhalt.titel || day.title)}</div>
                         <div class="cal-card-desc">${inhalt.text || ""}</div>
                         ${marken ? `<div class="cal-marks">${marken}</div>` : ""}
                         ${isToday ? '<span class="cal-status-badge">HEUTE</span>' : ''}
@@ -2131,7 +2142,7 @@ class UIManager {
                     <div class="cal-full-item ${isCurrent ? 'current' : ''} ${wichtig ? 'wichtig' : ''}">
                         <div class="cal-full-date">${d.date} (${d.dayOfWeek})</div>
                         <div class="cal-full-title">
-                            ${this.tagIcon(d.type)} ${inhalt.titel || d.title}
+                            <span class="cal-full-kopf">${this.tagIcon(d.type)}<span>${this.ohneSymbol(inhalt.titel || d.title)}</span></span>
                             <span class="cal-full-sub">${inhalt.text || ""}</span>
                         </div>
                         <div class="cal-full-status">${isCurrent ? '⏳ Heute' : ''}</div>
@@ -2404,7 +2415,8 @@ class UIManager {
         const beschriftung = {
             matchday: () => {
                 const n = cal.naechstesSpiel(state);
-                return n ? `Weiter zum Spiel ${n.heim ? "gegen" : "bei"} ${this.kurzName(n.gegnerName)}` : "Weiter zum Spieltag";
+                // Voller Name: der Knopf kürzt selbst, wenn der Platz nicht reicht
+                return n ? `Weiter zum Spiel ${n.heim ? "gegen" : "bei"} ${n.gegnerName}` : "Weiter zum Spieltag";
             },
             friendly: () => "Weiter zum Spieltermin",
             media: () => "Weiter zur Pressekonferenz",
@@ -2420,6 +2432,30 @@ class UIManager {
         };
         const text = (beschriftung[halt.grund] || (() => "Weiter"))();
         return { art: "sprung", text, kurz: kurzformen[halt.grund] || "Weiter", tage, zielIndex: halt.index };
+    }
+
+    /**
+     * Ein Name mit einem langen Wort ("Gelsenkirchen") wird am Handy etwas
+     * kleiner gesetzt - sonst bricht er mitten im Wort um.
+     */
+    markiereLangeNamen(...ids) {
+        ids.forEach(id => {
+            const el = typeof document !== "undefined" ? document.getElementById(id) : null;
+            if (!el || !el.dataset) return;
+            const laengstes = Math.max(0, ...String(el.textContent || "").split(/[\s-]+/).map(w => w.length));
+            if (laengstes > 10) el.dataset.lang = "1"; else delete el.dataset.lang;
+        });
+    }
+
+    /** "Weiter zum Spiel bei X" -> "Spiel bei X": das "Weiter" steht im Knopf schon oben */
+    weiterZiel(text) {
+        const t = String(text || "Weiter").replace(/^Weiter(?: zum| zur|:)\s+/, "");
+        return t.charAt(0).toUpperCase() + t.slice(1);
+    }
+
+    /** Ein Emoji am Anfang eines Titels weglassen, wenn daneben schon ein Symbol steht */
+    ohneSymbol(text) {
+        return String(text || "").replace(/^[\p{Extended_Pictographic}\uFE0F\u200D\s]+/u, "");
     }
 
     /** Wenn heute kein Spiel ist, sagt die Oberfläche auch, wann eines ist */
@@ -2486,6 +2522,7 @@ class UIManager {
         el.style.color = f.schrift;
         el.style.boxShadow = `inset 0 0 0 3px ${f.zweit}, 0 0 0 1px rgba(255,255,255,0.25)`;
         el.textContent = this.vereinsKuerzel(club.name);
+        if (el.dataset) el.dataset.zeichen = String(el.textContent.length);
     }
 
     kurzName(name) {

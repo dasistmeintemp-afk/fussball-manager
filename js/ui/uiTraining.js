@@ -76,7 +76,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <button class="btn btn-sm btn-primary" data-lager="${art}" ${!fenster || gebucht ? "disabled" : ""}>Buchen</button>
             </div>`).join("");
         box.innerHTML = `
-            <div class="card-header"><h3>🏕️ Trainingslager</h3></div>
+            <div class="card-header"><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-flag"/></svg>Trainingslager</h3></div>
             <p class="taktik-hilfe">Zwei, drei Wochen, in denen die Mannschaft nichts anderes tut: Neuzugänge gewöhnen sich schneller ein (für die Eingespieltheit zählt das Lager wie zusätzliche Tage im Verein und gemeinsame Spiele), und die Taktik sitzt besser.</p>
             ${status}
             <div class="lager-optionen">${optionen}</div>`;
@@ -362,7 +362,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const schuetzen = Object.values(j.torschuetzen).sort((a, b) => b.tore - a.tore).slice(0, 5);
         const staerke = engine.eigeneStaerke(state);
         el.innerHTML = `
-            <div class="card-header"><h3>🏅 ${esc(j.name)}</h3><span class="header-tag">${j.runde} / ${j.runden.length} Spieltage${j.meister ? ` · Meister: ${esc(j.meister)}` : ""}</span></div>
+            <div class="card-header"><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-trophy"/></svg>${esc(j.name)}</h3><span class="header-tag">${j.runde} / ${j.runden.length} Spieltage${j.meister ? ` · Meister: ${esc(j.meister)}` : ""}</span></div>
             <p class="text-muted jl-hinweis">Die U19 spielt mit den Talenten der Akademie und den Spielern bis 19 ohne Stammplatz bei den Profis - Stärke im Moment ${staerke.toFixed(1).replace(".", ",")}. Gespielt wird parallel zu den Spieltagen der Profis.</p>
             <div class="jl-raster">
                 <div class="table-container">
@@ -454,7 +454,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <td>${this.starsFor(p.overall)}</td>${this.unterbauZellen(p, "u23")}<td>${Math.round((p.spielpraxis ?? 0.5) * 100)} %</td>
             <td><div class="unterbau-knoepfe"><button class="btn btn-sm btn-primary btn-nominieren" data-id="${esc(p.id)}" title="Nach dem nächsten Ligaspiel geht er zurück">Spieltag</button><button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(p.id)}" title="Für immer zu den Profis">Ganz hoch</button></div></td></tr>`;
         el.innerHTML = `
-            <div class="card-header"><h3>🛡️ Zweite Mannschaft (U23)</h3><span class="header-tag">${esc(liga.name)} · ${liga.runde} / ${liga.runden.length} Spieltage${liga.meister ? ` · Meister: ${esc(liga.meister)}` : ""}</span></div>
+            <div class="card-header"><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-shield"/></svg>Zweite Mannschaft (U23)</h3><span class="header-tag">${esc(liga.name)} · ${liga.runde} / ${liga.runden.length} Spieltage${liga.meister ? ` · Meister: ${esc(liga.meister)}` : ""}</span></div>
             <p class="text-muted jl-hinweis">Die U23 spielt an jedem Spieltag der Profis gegen die zweite Mannschaft eines anderen Vereins aus dem Land. Wer dort spielt, sammelt Spielpraxis und steht den Profis nicht zur Verfügung. Höchstens ${R.MAX_UEBERALTERT} Spieler über ${R.ALTERSGRENZE}. Stärke im Moment ${staerke.toFixed(1).replace(".", ",")}${auffuellen ? `, ${auffuellen} ${auffuellen === 1 ? "Platz füllt" : "Plätze füllen"} Amateure auf` : ""}.</p>
             <div class="jl-raster">
                 <div class="table-container">
@@ -508,7 +508,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const verein = (id) => state.clubs.find(c => c.id === id);
         const liga = (c) => (state.leagues || []).find(l => l.id === c?.leagueId);
         el.innerHTML = `
-            <div class="card-header"><h3>✈️ Verliehene Talente</h3><span class="header-tag">bis ${grenze} Jahre</span></div>
+            <div class="card-header"><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-transfer"/></svg>Verliehene Talente</h3><span class="header-tag">bis ${grenze} Jahre</span></div>
             ${weg.length ? `<div class="table-container"><table class="compact-table nw-tabelle">
                 <thead><tr><th>Spieler</th><th>Pos</th><th>Alter</th><th>Stärke</th><th>Bei</th><th>Praxis</th><th>Bis</th></tr></thead>
                 <tbody>${weg.map(p => {

@@ -172,7 +172,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const fernMarke = f.status === "erfuellt" ? `<span class="vis-marke gut">erreicht</span>`
             : (f.status === "verfehlt" ? `<span class="vis-marke schlecht">verfehlt</span>` : `<span class="vis-marke offen">Frist Saison ${f.bisSaison}</span>`);
         el.innerHTML = `
-            <div class="card-header"><h3>🧭 Vereinsvision</h3><span class="header-tag">Saison ${u.seit}–${u.bisSaison}</span></div>
+            <div class="card-header"><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-target"/></svg>Vereinsvision</h3><span class="header-tag">Saison ${u.seit}–${u.bisSaison}</span></div>
             <div class="vis-zeile vis-fern"><span><small>Fernziel</small><strong>${esc(f.text)}</strong></span>${fernMarke}</div>
             ${u.jahresziele.map(z => `
                 <div class="vis-zeile"><span><small>${esc(z.bereich)} · jede Saison</small><strong>${esc(z.text)}</strong>
@@ -247,7 +247,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const historie = u.historie.length ? `<h4>Verlauf</h4><ul class="inv-historie">${u.historie.map(h => `<li>Saison ${h.saison}: ${esc(h.name)} ${esc(h.ergebnis)}</li>`).join("")}</ul>` : "";
 
         el.innerHTML = `
-            <div class="card-header"><h3>💼 Eigentümer & Investor</h3>${u.fuenfzigPlusEins ? `<span class="header-tag">50+1</span>` : ""}</div>
+            <div class="card-header"><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-briefcase"/></svg>Eigentümer & Investor</h3>${u.fuenfzigPlusEins ? `<span class="header-tag">50+1</span>` : ""}</div>
             ${haupt}${auflagen}${abzug}${historie}`;
         const nachher = (res, ok) => {
             if (!res.success) { this.showToast(res.error || "Das ging nicht.", "error"); return; }
@@ -309,7 +309,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         }
 
         el.innerHTML = `
-            <div class="card-header"><h3>🤝 Partnervereine</h3></div>
+            <div class="card-header"><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-users"/></svg>Partnervereine</h3></div>
             <div class="partner-raster">
                 <div><h4>Ausbildungspartner</h4>${klein}</div>
                 <div><h4>Großer Partner</h4>${gross}</div>
@@ -376,7 +376,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <h4>Meilensteine</h4>
             <ul class="meilenstein-liste">${meilensteine.map(m => `<li><span aria-hidden="true">${esc(m.icon)}</span><span>${esc(m.text)}</span><small>Saison ${m.saison}${m.datum ? ` · ${esc(m.datum)}` : ""}</small></li>`).join("")}</ul>` : "";
         el.innerHTML = `
-            <div class="card-header"><h3>📜 Chronik & Rekorde</h3><span class="header-tag">seit Saison ${u.seit}</span></div>
+            <div class="card-header"><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-doc"/></svg>Chronik & Rekorde</h3><span class="header-tag">seit Saison ${u.seit}</span></div>
             <h4>Trophäenschrank</h4>
             ${schrankHtml}
             ${meilensteinHtml}
@@ -427,7 +427,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             : `<p class="muted-note">Wer ${engine.MIN_SPIELE} Spiele für den Verein gemacht hat und die Karriere beendet, steht hier. In der Vorbereitung bewirbt er sich vielleicht für den Trainerstab - für weniger Geld als ein Fremder. Legenden bekommen ein Abschiedsspiel.</p>`;
         const stab = u.imStab.length ? `<p class="muted-note">Im Stab: ${u.imStab.map(s => `${esc(s.name)} (${esc(s.titel)})`).join(", ")}.</p>` : "";
         el.innerHTML = `
-            <div class="card-header"><h3>👋 Ehemalige</h3></div>
+            <div class="card-header"><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-user"/></svg>Ehemalige</h3></div>
             ${abschiede}${stab}${liste}${gespielt}`;
         el.querySelectorAll("[data-abschied]").forEach(b => b.addEventListener("click", () => {
             const r = engine.abschiedsspiel(state, b.dataset.abschied);
@@ -843,7 +843,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <div class="elf-reihe">${reihe(["TW"])}</div>
             </div>` : ""}` : "";
         el.innerHTML = `
-            <div class="card-header"><h3>🏆 Auszeichnungen</h3></div>
+            <div class="card-header"><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-trophy"/></svg>Auszeichnungen</h3></div>
             ${monate ? `<h4>Monatspreise ${state.seasonYear ? `Saison ${state.seasonYear}` : ""}</h4><ul class="preis-liste">${monate}</ul>` : ""}
             ${saison}`;
         el.querySelectorAll("[data-player-id]").forEach(b => b.addEventListener("click", () => {
@@ -878,7 +878,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             .sort((a, b) => plaetze.indexOf(a.platz) - plaetze.indexOf(b.platz))
             .map(e => `<span class="elf-spieler">${person(e)}</span>`).join("");
         el.innerHTML = `
-            <div class="card-header"><h3>🌍 Gala des Jahres</h3><span class="header-tag">Saison ${esc(j.saison)}</span></div>
+            <div class="card-header"><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-globe"/></svg>Gala des Jahres</h3><span class="header-tag">Saison ${esc(j.saison)}</span></div>
             <h4>Weltfußballer</h4>
             <ul class="preis-liste">${podest}</ul>
             <ul class="preis-liste">
@@ -924,7 +924,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 return `<div class="tu-zeile${eigen(sp.h) || eigen(sp.a)}"><span>${team(sp.h)} - ${team(sp.a)}</span><span>${sp.t ? ergebnis(sp) : "offen"}</span></div>`;
             }).join("")}</div>`).join("");
         el.innerHTML = `
-            <div class="card-header"><h3>🏆 ${esc(t.name)}</h3><span class="header-tag">${t.siegerName ? `Sieger: ${esc(t.siegerName)}` : "läuft"}</span></div>
+            <div class="card-header"><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-trophy"/></svg>${esc(t.name)}</h3><span class="header-tag">${t.siegerName ? `Sieger: ${esc(t.siegerName)}` : "läuft"}</span></div>
             ${t.torjaeger ? `<p class="muted-note">Torschützenkönig: <strong>${esc(t.torjaeger.name)}</strong> (${esc(t.torjaeger.nation)}), ${t.torjaeger.tore} Tore</p>` : ""}
             ${ko ? `<div class="tu-ko">${ko}</div>` : ""}
             <details class="tu-gruppen"${t.ko.length ? "" : " open"}><summary>Gruppenphase</summary><div class="tu-raster">${gruppen}</div></details>`;
@@ -948,7 +948,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         // Am Handy passen fünf Saisonspalten nicht: die vier vergangenen
         // stehen klein unter dem Land, daneben die laufende und die Summe
         el.innerHTML = `
-            <div class="card-header"><h3>🇪🇺 Fünfjahreswertung</h3><span class="header-tag">5 Saisons</span></div>
+            <div class="card-header"><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-globe"/></svg>Fünfjahreswertung</h3><span class="header-tag">5 Saisons</span></div>
             <table class="data-table kf-tabelle">
                 <thead><tr><th>#</th><th>Land <small>(vier Saisons davor)</small></th><th>Saison ${saison}</th><th>Summe</th><th title="Plätze in der Königsklasse, wenn die Saison jetzt endete">CL</th></tr></thead>
                 <tbody>${liste.map(z => `<tr class="${z.land === eigenesLand ? "eigene-zeile" : ""}">
@@ -973,7 +973,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const esc = (t) => this.escapeHtml(String(t ?? ""));
         const wahr = liste.filter(g => g.wahr).length;
         el.innerHTML = `
-            <div class="card-header"><h3>🗞️ Gerüchteküche</h3><span class="header-tag">${wahr} von ${liste.length} bestätigt</span></div>
+            <div class="card-header"><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-chat"/></svg>Gerüchteküche</h3><span class="header-tag">${wahr} von ${liste.length} bestätigt</span></div>
             <ul class="preis-liste">${liste.map(g => `
                 <li>
                     <span class="preis-monat">${esc(g.datum || "")}</span>
@@ -992,7 +992,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         el.hidden = false;
         const esc = (t) => this.escapeHtml(String(t ?? ""));
         el.innerHTML = `
-            <div class="card-header"><h3>🔄 Trainerkarussell</h3><span class="header-tag">${liste.length} Wechsel</span></div>
+            <div class="card-header"><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-transfer"/></svg>Trainerkarussell</h3><span class="header-tag">${liste.length} Wechsel</span></div>
             <ul class="preis-liste">${liste.map(w => `
                 <li>
                     <span class="preis-monat">${esc(w.datum || `Saison ${w.saison}`)}</span>

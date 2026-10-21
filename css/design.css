@@ -1862,3 +1862,48 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .lm-choreo-text { font-family: var(--font-display); font-size: 16px; font-weight: 700; line-height: 1.25; }
 @keyframes lm-choreo-welle { from { background-position: 0% 0; } to { background-position: 200% 0; } }
 @media (prefers-reduced-motion: reduce) { .lm-choreo { animation: none; } }
+
+/* ==========================================================================
+   Ruhigere Optik: Symbole statt Emojis in Überschriften, weniger Leuchten,
+   Hauptknöpfe in Listen als Umriss, gleich breite Ziffern
+   ========================================================================== */
+.dash-card h3 .h-ico,
+.card-header h3 .h-ico,
+.kb-kopf h3 .h-ico,
+summary .h-ico,
+h4 .h-ico { color: var(--accent); opacity: 0.85; }
+
+/* Der Weiter-Knopf und die Hauptknöpfe ohne farbigen Schein */
+.btn-advance { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset; }
+.btn-advance:hover:not(:disabled) { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3) inset, 0 4px 14px rgba(var(--accent-rgb), 0.18); }
+.btn-primary,
+.btn-success { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.22) inset; }
+.btn-primary:hover:not(:disabled),
+.btn-success:hover:not(:disabled) { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.28) inset, 0 4px 14px rgba(var(--accent-rgb), 0.16); }
+
+/* In Tabellen sind Hauptknöpfe Umrisse - dreißig leuchtende Knöpfe
+   untereinander lenken von den Spielern ab. Die Zeile unter dem Zeiger
+   zeigt ihren Knopf voll. */
+.data-table .btn-primary,
+.compact-table .btn-primary {
+    background: transparent;
+    color: var(--accent);
+    border-color: rgba(var(--accent-rgb), 0.45);
+    box-shadow: none;
+}
+.data-table .btn-primary:hover:not(:disabled),
+.compact-table .btn-primary:hover:not(:disabled),
+.data-table tr:hover .btn-primary:not(:disabled),
+.compact-table tr:hover .btn-primary:not(:disabled) {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: transparent;
+    transform: none;
+}
+
+/* Gleich breite Ziffern: Spalten mit Zahlen stehen sauber untereinander */
+.data-table td,
+.compact-table td,
+.vk-kachel strong,
+.fin-val,
+.info-val { font-variant-numeric: tabular-nums; }

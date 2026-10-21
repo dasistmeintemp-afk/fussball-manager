@@ -14,14 +14,15 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
      */
     /**
      * Eine Leiste mit Kennzahlen-Kacheln - wie der Kopf der Vereinsseite.
-     * kacheln: [{ titel, wert, extra (HTML), klasse }]
+     * kacheln: [{ titel, wert, extra (HTML), klasse }], hinweis: eine Zeile darunter (HTML)
      */
-    renderKennzahlen(elId, kacheln) {
+    renderKennzahlen(elId, kacheln, hinweis = "") {
         const el = document.getElementById(elId);
         if (!el) return;
         const esc = (v) => this.escapeHtml(String(v ?? ""));
         el.innerHTML = kacheln.map(k =>
-            `<div class="vk-kachel${k.klasse ? " " + k.klasse : ""}"><span>${esc(k.titel)}</span><strong>${esc(k.wert)}</strong>${k.extra || ""}</div>`).join("");
+            `<div class="vk-kachel${k.klasse ? " " + k.klasse : ""}" title="${esc(k.titel)}: ${esc(k.wert)}"><span>${esc(k.titel)}</span><strong>${esc(k.wert)}</strong>${k.extra || ""}</div>`).join("")
+            + (hinweis ? `<p class="kz-hinweis">${hinweis}</p>` : "");
     },
 
     /**
@@ -322,9 +323,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 { titel: "Gehälter", wert: this.geldKurz(gehalt), extra: `<small>pro Woche</small>` },
                 { titel: "Fitness", wert: `${fit} %`, extra: `<span class="vk-balken"><i style="width:${fit}%"></i></span>`, klasse: fit < 80 ? "warnung" : "" },
                 { titel: "Ausfälle", wert: String(ausfall), extra: `<small>verletzt oder gesperrt</small>`, klasse: ausfall >= 3 ? "gefahr" : "" },
-                { titel: "Verträge", wert: String(auslaufend), extra: `<small>laufen bald aus</small>`, klasse: auslaufend >= 4 ? "warnung" : "" },
-                { titel: "★★★ heißt", wert: this.constructor.STERN_MASSSTAEBE[this.sternMassstab()].kurz, extra: `<small>Maßstab in den Einstellungen</small>` }
-            ]);
+                { titel: "Verträge", wert: String(auslaufend), extra: `<small>laufen bald aus</small>`, klasse: auslaufend >= 4 ? "warnung" : "" }
+            // Der Sternemaßstab ist keine Kennzahl des Kaders: eine Zeile statt einer siebten Kachel
+            ], `<span class="kz-hinweis-sterne">★★★</span> heißt ${this.escapeHtml(this.constructor.STERN_MASSSTAEBE[this.sternMassstab()].kurz)} · Maßstab in den Einstellungen`);
         }
 
         let players = state.players.filter(p => userClub.playerIds.includes(p.id));

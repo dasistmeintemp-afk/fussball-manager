@@ -9311,3 +9311,124 @@ td.nowrap { white-space: nowrap; }
     .nw-tabelle .btn-sm { padding: 5px 8px; font-size: 11px; }
     #u23Karte .table-container, #verliehenKarte .table-container { overflow-x: auto; }
 }
+
+/* ==========================================================================
+   UI-Feinschliff: Kopfleiste, Wappen, Formkurve, Kennzahlen, Postfach,
+   Kalender und Trainingsbericht
+   ========================================================================== */
+
+/* Silbentrennung (lang="de"): lange Wörter brechen an der Silbe statt
+   mitten im Wort ("Gelsenkirc|hen", "Nationalmannschafte|n") */
+body { -webkit-hyphens: auto; hyphens: auto; }
+button, .btn, input, select, th, .nowrap, .club-name { -webkit-hyphens: manual; hyphens: manual; }
+
+/* Kopfleiste breit: nichts bricht um. Vorher standen Vereinsname, Spieltag,
+   Kontostand und der Weiter-Knopf auf zwei Zeilen, der Kontostand stieß oben an. */
+@media (min-width: 901px) {
+    .app-header { gap: 12px; padding: 0 20px; }
+    .app-header .header-left,
+    .app-header .header-center,
+    .app-header .header-right { gap: 10px; min-width: 0; }
+    .app-header .header-left { flex: 0 1 auto; }
+    .app-header .header-center { flex: none; }
+    .app-header .header-right { flex: 1 1 auto; justify-content: flex-end; }
+    .brand { flex: none; }
+    .club-badge-container { min-width: 0; white-space: nowrap; }
+    .club-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+    .season-info-pill, .finance-pill, .confidence-pill { white-space: nowrap; flex: none; }
+    .season-info-pill { padding: 6px 14px; gap: 7px; }
+    .fin-val, .fin-sub { white-space: nowrap; }
+    .app-header .btn-advance {
+        flex: 0 1 290px; min-width: 150px; max-width: 290px;
+        padding: 6px 14px 6px 16px; justify-content: space-between; text-align: left; gap: 10px;
+    }
+    .btn-advance-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+    .btn-advance-wann { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.72; }
+    .btn-advance-ziel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+    .app-header .btn-advance .btn-arrow { flex: none; }
+}
+@media (min-width: 901px) and (max-width: 1500px) {
+    #headerDifficulty { display: none; }
+    .club-name { max-width: 160px; }
+}
+@media (min-width: 901px) and (max-width: 1280px) {
+    .conf-label { display: none; }
+    /* "Saison 1 •" weglassen - der Spieltag ist die Information */
+    .season-info-pill > :nth-child(-n+3) { display: none; }
+    .brand-title { display: none; }
+}
+
+/* Wappen: drei Buchstaben passen in den Kreis (vorher ragte "BLA" heraus) */
+.preview-crest[data-zeichen="2"] { font-size: 19px; }
+.preview-crest[data-zeichen="3"] { font-size: 16px; letter-spacing: -0.02em; }
+@media (max-width: 640px) {
+    .preview-crest[data-zeichen="2"] { font-size: 16px; }
+    .preview-crest[data-zeichen="3"] { font-size: 13.5px; }
+}
+
+/* Formkurve: noch nicht gespielt ist ein leerer Platz, kein Bindestrich */
+.form-dot.leer { background: transparent; border: 1px dashed rgba(148, 163, 184, 0.35); }
+
+/* Kennzahlen: Hinweiszeile und am Handy drei Kacheln je Reihe statt zwei */
+.kz-hinweis { grid-column: 1 / -1; margin: -4px 2px 0; font-size: 12px; color: var(--text-muted); }
+.kz-hinweis-sterne { color: var(--accent-gold); letter-spacing: 1px; }
+@media (max-width: 600px) {
+    .kz-leiste:not(.nw-leiste) { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+    .kz-leiste:not(.nw-leiste) .vk-kachel { padding: 8px 9px; gap: 2px; }
+    .kz-leiste:not(.nw-leiste) .vk-kachel span { font-size: 9.5px; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .kz-leiste:not(.nw-leiste) .vk-kachel strong { font-size: 15px; }
+    .kz-leiste:not(.nw-leiste) .vk-kachel small { font-size: 10px; line-height: 1.2; }
+    .kz-hinweis { margin-top: -2px; font-size: 11.5px; }
+}
+
+/* Postfach: dichtere Liste, Gelesenes tritt zurück. Die Leiste stand als
+   Inline-Stil im HTML - der schlug die Handy-Regel, und die Filter
+   brachen am Handy auf drei Zeilen um. */
+.inbox-toolbar { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.inbox-search-wrap { flex: 1; min-width: 200px; }
+.inbox-search-wrap .styled-input { width: 100%; }
+.inbox-filter-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.inbox-aktionen { display: flex; gap: 10px; }
+.inbox-list { gap: 6px; }
+.inbox-item { padding: 10px 12px; gap: 4px; }
+.inbox-item:hover { transform: none; }
+.inbox-item.unread { border-left-width: 3px; background: rgba(var(--accent-rgb), 0.045); }
+.inbox-item:not(.unread) .inbox-item-title { font-weight: 600; color: var(--text-soft); }
+.inbox-item:not(.unread) .inbox-sender { font-weight: 600; color: var(--text-muted); }
+.inbox-item-title { font-size: 13.5px; }
+.inbox-date { background: none; border: 0; padding: 0; }
+.inbox-item-meta { margin-top: 0; }
+@media (min-width: 1201px) {
+    .inbox-list { max-height: calc(100vh - 250px); min-height: 420px; }
+}
+@media (max-width: 900px) {
+    .inbox-search-wrap { flex-basis: 100%; }
+    .inbox-filter-tags {
+        flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+        width: 100%; padding-bottom: 4px;
+    }
+    .inbox-filter-tags::-webkit-scrollbar { display: none; }
+    .inbox-filter-tags .filter-chip { flex: none; white-space: nowrap; }
+    #pane-inbox .pane-actions { width: auto; align-self: flex-start; }
+}
+
+/* Kalender: Symbol und Titel in einer Zeile, die Beschreibung darunter */
+.cal-full-kopf { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cal-full-kopf .ico { flex: none; width: 16px; height: 16px; color: var(--text-muted); }
+.cal-full-item.wichtig .cal-full-kopf .ico { color: var(--accent-primary); }
+.cal-full-item .cal-full-sub { padding-left: 24px; }
+
+/* Trainingsbericht: Einschätzung als Etikett */
+.tr-etikett {
+    display: inline-block; font-size: 11.5px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+    white-space: nowrap; background: rgba(148, 163, 184, 0.12); color: var(--text-soft);
+}
+.tr-etikett.rot { background: rgba(239, 68, 68, 0.14); color: #fca5a5; }
+.tr-etikett.gelb { background: rgba(245, 158, 11, 0.14); color: #fcd34d; }
+.tr-etikett.blau { background: rgba(56, 189, 248, 0.12); color: #7dd3fc; }
+.tr-etikett.gruen { background: rgba(52, 211, 153, 0.12); color: #6ee7b7; }
+
+/* Spielvorschau am Handy: lange Vereinsnamen etwas kleiner */
+@media (max-width: 640px) {
+    .preview-team h4[data-lang] { font-size: 15px; }
+}

@@ -77,10 +77,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         <span class="inbox-date">${displayDate}</span>
                     </div>
                     <div class="inbox-item-title">${msg.subject || msg.title || 'Nachricht'}</div>
-                    <div class="inbox-item-meta">
-                        <span class="inbox-type">${typeLabel}</span>
+                    ${typeLabel !== "Info" || priorityBadge ? `<div class="inbox-item-meta">
+                        ${typeLabel !== "Info" ? `<span class="inbox-type">${typeLabel}</span>` : ""}
                         ${priorityBadge}
-                    </div>
+                    </div>` : ""}
                 </div>
             `;
         }).join("");

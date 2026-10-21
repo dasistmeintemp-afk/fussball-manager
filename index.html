@@ -1563,16 +1563,16 @@
                 <section class="tab-pane" id="pane-inbox">
                     <div class="pane-header">
                         <h2>Postfach & Vereinsnachrichten</h2>
-                        <div class="pane-actions" style="display:flex; gap:10px;">
-                            <button class="btn btn-secondary btn-sm" id="btnInboxMarkAllRead"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span>Alle als gelesen markieren</span></button>
+                        <div class="pane-actions inbox-aktionen">
+                            <button class="btn btn-secondary btn-sm" id="btnInboxMarkAllRead" title="Alle als gelesen markieren"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span>Alle als gelesen markieren</span></button>
                         </div>
                     </div>
                     
-                    <div class="inbox-toolbar" style="display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; align-items:center;">
-                        <div class="inbox-search-wrap" style="flex:1; min-width:200px;">
-                            <input type="text" id="inboxSearchInput" class="styled-input" placeholder="Nachrichten durchsuchen..." style="width:100%;">
+                    <div class="inbox-toolbar">
+                        <div class="inbox-search-wrap">
+                            <input type="text" id="inboxSearchInput" class="styled-input" placeholder="Nachrichten durchsuchen...">
                         </div>
-                        <div class="inbox-filter-tags" id="inboxFilterTags" style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <div class="inbox-filter-tags" id="inboxFilterTags">
                             <button class="filter-chip active" data-inbox-filter="all">Alle</button>
                             <button class="filter-chip" data-inbox-filter="unread">Ungelesen</button>
                             <button class="filter-chip" data-inbox-filter="board">Vorstand</button>

@@ -310,7 +310,7 @@ class UIManager {
     /**
      * Zeigt eine Toast-Meldung an
      */
-    showToast(message, type = "info", duration = 3500) {
+    showToast(message, type = "info", duration = 3500, optionen = {}) {
         const tc = document.getElementById("toastContainer") || document.body;
         const toast = document.createElement("div");
         toast.className = `toast-item ${type}`;
@@ -320,15 +320,35 @@ class UIManager {
         if (type === "error") icon = "⚠️";
         if (type === "warning") icon = "🔔";
 
-        toast.innerHTML = `<span>${icon}</span><span>${message}</span>`;
-        tc.appendChild(toast);
-
-        setTimeout(() => {
+        // Knöpfe in der Meldung: Was sie verspricht, tut ein Tipp auch.
+        // Vorher hieß es "Weiter geht es mit dem nächsten Klick" - ein Tipp
+        // auf die Meldung selbst tat aber nichts.
+        const aktionen = Array.isArray(optionen.aktionen) ? optionen.aktionen.filter(a => a && typeof a.aktion === "function") : [];
+        toast.innerHTML = `<span>${icon}</span><span class="toast-text">${message}</span>`
+            + (aktionen.length ? `<span class="toast-aktionen">${aktionen.map((a, i) =>
+                `<button type="button" class="btn btn-sm ${a.haupt ? "btn-primary" : "btn-secondary"}" data-toast-aktion="${i}">${this.escapeHtml(a.text)}</button>`).join("")}</span>` : "");
+        let weg = false;
+        const entferne = () => {
+            if (weg) return;
+            weg = true;
             toast.style.opacity = "0";
             toast.style.transform = "translateX(50px)";
             toast.style.transition = "all 0.3s ease";
             setTimeout(() => toast.remove(), 300);
-        }, duration);
+        };
+        if (aktionen.length || typeof optionen.beiKlick === "function") {
+            toast.classList.add("klickbar");
+            if (typeof toast.addEventListener === "function") toast.addEventListener("click", (e) => {
+                const knopf = e.target && e.target.closest ? e.target.closest("[data-toast-aktion]") : null;
+                const ziel = knopf ? aktionen[Number(knopf.dataset.toastAktion)] : null;
+                entferne();
+                if (ziel) ziel.aktion();
+                else if (typeof optionen.beiKlick === "function") optionen.beiKlick();
+            });
+        }
+        tc.appendChild(toast);
+
+        setTimeout(entferne, duration);
     }
 
     /**
@@ -2947,6 +2967,7 @@ class UIManager {
 
         let gelaufen = 0;
         let angehalten = null;
+        let anlass = null;
         const berichte = [];
         while (gelaufen < maxTage) {
             const heute = cal.getCurrentDay(state);
@@ -2977,8 +2998,9 @@ class UIManager {
 
             // Wie im Vorbild: Passiert etwas, das den Manager angeht, hält die
             // Zeit an - auch zwischen zwei Terminen (im Urlaub nur, wenn gewünscht)
-            angehalten = (!urlaub || optionen.anhalten) && typeof cal.unterbrechungsGrund === "function"
-                ? cal.unterbrechungsGrund(state, res, bekannt) : null;
+            anlass = (!urlaub || optionen.anhalten) && typeof cal.unterbrechung === "function"
+                ? cal.unterbrechung(state, res, bekannt) : null;
+            angehalten = anlass ? anlass.text : null;
             if (angehalten) break;
         }
         const urlaubsBilanz = urlaubEngine ? urlaubEngine.bilanz(vorher, urlaubEngine.stand(state), gelaufen) : null;
@@ -2994,15 +3016,48 @@ class UIManager {
 
         if (urlaubsBilanz) {
             this.showToast(`🏖️ Zurück aus dem Urlaub: ${urlaubsBilanz.text}.${angehalten ? ` Angehalten: ${angehalten}.` : ""}`, angehalten ? "warning" : "success", 8000);
-        } else if (angehalten) {
-            this.showToast(`⏸ ${heuteNeu?.date || ""}: ${angehalten}. Weiter geht es mit dem nächsten Klick.`, "warning", 6000);
-        } else {
+        } else if (!angehalten) {
             this.showToast(`📅 ${gelaufen} Tage weiter - ${heuteNeu?.title || ""}`, "info");
         }
         this.renderHeader();
         this.renderCurrentTab();
         if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
         if (!this.pruefeEntlassung()) this.pruefeNeueAngebote();
+        // Wie im Vorbild: Die Meldung führt zum Anlass, und Weiter spielt weiter.
+        // Öffnet sich gleich ein Fenster dafür (etwa das Angebot), ist das der Anlass -
+        // dann würde die Meldung nur über seinen Knöpfen liegen.
+        if (angehalten && !urlaubsBilanz && !(typeof this.einFensterOffen === "function" && this.einFensterOffen())) {
+            const ansehen = () => this.zeigeAnlass(anlass);
+            this.showToast(`⏸ ${heuteNeu?.date || ""}: ${angehalten}.`, "warning", 12000, {
+                beiKlick: ansehen,
+                aktionen: [{ text: "Ansehen", aktion: ansehen }, { text: "Weiter", haupt: true, aktion: () => this.handleWeiter() }]
+            });
+        }
+    }
+
+    /** Zum Anlass eines Anhaltens springen: Angebot, Verhandlung, Verletzter, Nachricht */
+    zeigeAnlass(anlass) {
+        const state = this.app.state;
+        if (!anlass || !state) return;
+        if (anlass.art === "verhandlung" && anlass.negId && typeof this.zeigeVerhandlung === "function" && this.zeigeVerhandlung(anlass.negId)) return;
+        if (anlass.art === "angebot") {
+            this.switchTab("transfers");
+            document.getElementById("btnSubTransfersMarket")?.click();
+            const karten = document.getElementById("aiOffersContainer");
+            if (karten && typeof this.hebeHervor === "function") this.hebeHervor(karten);
+            return;
+        }
+        if (anlass.art === "verletzung") {
+            const p = (state.players || []).find(x => x.clubId === state.userClubId && x.name === anlass.spielerName);
+            if (p) return this.showPlayerDetailsModal(p.id);
+            return this.switchTab("squad");
+        }
+        if (anlass.art === "post" && anlass.msgId !== undefined) {
+            const msg = (state.inbox || []).find(m => String(m.id) === String(anlass.msgId));
+            if (msg) { msg.read = true; this.selectedInboxMessageId = String(msg.id); }
+        }
+        this.switchTab(anlass.art === "verhandlung" ? "transfers" : "inbox");
+        this.renderHeader();
     }
 
     handleCalendarAdvanceDay() {

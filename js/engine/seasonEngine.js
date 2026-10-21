@@ -1177,6 +1177,13 @@ class SeasonEngine {
             // Aus dem U19-Alter heraus: zurück zu den Profis (ReserveEngine.U19)
             if (player.reserve === "u19" && player.age > 19) player.reserve = undefined;
             if (kopfGen && typeof kopfGen.kopfReife === 'function') kopfGen.kopfReife(player, player.age - 1, state.seasonYear || 1);
+            // Spielpraxis feilt an den Detailwerten seiner Position - beim
+            // eigenen Verein, auch verliehen. Wer schon etwas erarbeitet hat,
+            // baut ab dreißig auch anderswo körperlich ab.
+            const eigen = player.clubId === state.userClubId || player.leihe?.stammvereinId === state.userClubId;
+            if (kopfGen && typeof kopfGen.detailReife === 'function' && (eigen || player.detailPlus)) {
+                kopfGen.detailReife(player, eigen ? (player.stats.matches || 0) : 0, state.seasonYear || 1);
+            }
             player.stats.matches = 0;
             player.stats.goals = 0;
             player.stats.assists = 0;

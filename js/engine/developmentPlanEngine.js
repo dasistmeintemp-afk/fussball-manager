@@ -7,6 +7,8 @@
  *
  * Jetzt hat jeder Spieler einen eigenen Plan:
  * - Ein individueller Trainingsschwerpunkt lenkt, welche Werte wachsen.
+ * - Der Feinschliff feilt an einem einzelnen Detailwert (Freistöße,
+ *   Kopfball, Beweglichkeit ...).
  * - Eine Umschulung bringt ihm im Training eine neue Position bei.
  * - Ein erfahrener Mentor färbt auf einen jungen Spieler ab: Einstellung,
  *   Ehrgeiz, Nerven - und mit etwas Glück eine seiner Eigenheiten.
@@ -104,6 +106,52 @@ class DevelopmentPlanEngine {
         if (key === "keiner") p.trainingsfokus = undefined;
         else p.trainingsfokus = key;
         return { success: true };
+    }
+
+    // ------------------------------------------------------------ Feinschliff
+
+    /**
+     * Feinschliff an einem Detailwert: Freistöße, Kopfball, Flanken,
+     * Beweglichkeit, beim Torwart Herauslaufen oder hohe Bälle. Der
+     * Schwerpunkt oben hebt grobe Werte und mit ihnen ein ganzes Bündel
+     * Detailwerte, der Feinschliff genau einen - als Erarbeitetes
+     * (PlayerGenerator.detailPlus), das bleibt, auch wenn die groben Werte
+     * sich verschieben. Die Kopfwerte (Aggressivität, Mut, Entschlossenheit,
+     * Kreativität) kommen aus der Persönlichkeit und lassen sich nicht pauken.
+     *
+     * Ein junger Profi gewinnt so gut vier Punkte je Saison, ein Dreißigjähriger
+     * die Hälfte. Je mehr schon erarbeitet ist, desto zäher. Die Zusatzschicht
+     * kostet etwas Kraft.
+     */
+    static FEINSCHLIFF_JE_EINHEIT = 0.03;
+    static FEINSCHLIFF_GRUPPEN = { feld: ["technik", "koerper"], tw: ["torwart", "koerper"] };
+
+    static feinschliffWerte(player) {
+        const gen = this._playerGenerator();
+        if (!gen || !player) return [];
+        const gruppen = this.FEINSCHLIFF_GRUPPEN[player.pos === "TW" ? "tw" : "feld"];
+        return gruppen.flatMap(g => gen.detailSchluessel(player, g))
+            .map(key => ({ key, label: gen.DETAILWERTE[key].name, plus: gen.detailPlus(player, key) }));
+    }
+
+    static setzeFeinschliff(state, playerId, key) {
+        const p = this._eigenerSpieler(state, playerId);
+        if (!p) return { success: false, error: "Nur für Spieler des eigenen Vereins." };
+        if (!key) { p.feinschliff = undefined; return { success: true }; }
+        if (!this.feinschliffWerte(p).some(w => w.key === key)) return { success: false, error: "Dieser Wert passt nicht zu ihm." };
+        p.feinschliff = key;
+        return { success: true };
+    }
+
+    /** Chance je Trainingseinheit auf einen Punkt: Alter, Einstellung, Trainerstab, wie viel schon da ist */
+    static feinschliffChance(player, stab = 1) {
+        const gen = this._playerGenerator();
+        if (!gen || !player?.feinschliff) return 0;
+        const alter = player.age || 25;
+        const alterFaktor = alter <= 21 ? 1.3 : alter <= 24 ? 1.1 : alter <= 27 ? 0.9 : alter <= 30 ? 0.65 : alter <= 33 ? 0.4 : 0.25;
+        const prof = player.hiddenAttributes?.professionalism ?? 12;
+        const schon = gen.detailPlus(player, player.feinschliff) / gen.DETAIL_PLUS_MAX;
+        return this.FEINSCHLIFF_JE_EINHEIT * alterFaktor * stab * (0.7 + prof / 20 * 0.6) * (1 - schon * 0.7);
     }
 
     // ------------------------------------------------------------- Umschulung
@@ -418,6 +466,17 @@ class DevelopmentPlanEngine {
             const fertig = this._eigenheitEinheit(state, player, stab, zufall);
             if (fertig) meldungen.push(fertig);
         }
+
+        // 5. Feinschliff an einem Detailwert
+        if (player.feinschliff) {
+            const gen = this._playerGenerator();
+            if (gen && gen.DETAILWERTE[player.feinschliff]) {
+                if (zufall() < this.feinschliffChance(player, stab)) gen.aendereDetailPlus(player, player.feinschliff, 1);
+                player.fitness = Math.max(20, (player.fitness ?? 100) - 0.2);
+            } else {
+                player.feinschliff = undefined;
+            }
+        }
         return meldungen;
     }
 
@@ -491,6 +550,7 @@ class DevelopmentPlanEngine {
             const attr = {};
             Object.keys(this.BERICHT_WERTE).forEach(k => { if (typeof p[k] === "number") attr[k] = p[k]; });
             werte[p.id] = { o: p.overall || 0, a: attr };
+            if (p.detailPlus) werte[p.id].f = { ...p.detailPlus };
         });
         const jugend = {};
         const youth = this._youthEngine();
@@ -553,11 +613,18 @@ class DevelopmentPlanEngine {
 
     /** Vergleich zwischen einem Stichtag und heute */
     static monatsbericht(state, stand) {
-        const besser = [], schlechter = [];
+        const besser = [], schlechter = [], feinschliff = [];
         let gleich = 0;
+        const gen = this._playerGenerator();
         this._eigenerKader(state).forEach(p => {
             const vorher = stand.werte[p.id];
             if (!vorher) return;
+            // Was er an einzelnen Detailwerten dazugewonnen oder verloren hat
+            const fv = vorher.f || {}, fn = p.detailPlus || {};
+            const fein = [...new Set([...Object.keys(fv), ...Object.keys(fn)])]
+                .map(k => ({ key: k, label: gen?.DETAILWERTE?.[k]?.name || k, diff: (fn[k] || 0) - (fv[k] || 0) }))
+                .filter(w => w.diff !== 0);
+            if (fein.length) feinschliff.push({ id: p.id, name: p.name, pos: p.pos, age: p.age, werte: fein });
             const diff = (p.overall || 0) - vorher.o;
             const werte = Object.keys(vorher.a || {})
                 .map(k => ({ key: k, label: this.BERICHT_WERTE[k], diff: Math.round((p[k] || 0) - vorher.a[k]) }))
@@ -584,7 +651,7 @@ class DevelopmentPlanEngine {
             .filter(t => t.diff !== 0)
             .sort((a, b) => b.diff - a.diff);
 
-        return { monat: stand.monat, besser, schlechter, gleich, jugend };
+        return { monat: stand.monat, besser, schlechter, gleich, jugend, feinschliff };
     }
 
     /** Der Bericht als Text - fürs Postfach und für alte Ansichten */
@@ -596,6 +663,9 @@ class DevelopmentPlanEngine {
         teile.push(b.besser.length ? `Verbessert:\n${b.besser.map(zeile).join("\n")}` : "Verbessert hat sich diesen Monat niemand.");
         if (b.schlechter.length) teile.push(`Nachgelassen:\n${b.schlechter.map(zeile).join("\n")}`);
         if (b.gleich) teile.push(`${b.gleich} Spieler ${b.gleich === 1 ? "hält" : "halten"} ${b.gleich === 1 ? "sein" : "ihr"} Niveau.`);
+        if (b.feinschliff && b.feinschliff.length) {
+            teile.push(`Feinschliff und Spielpraxis:\n${b.feinschliff.map(e => `• ${e.name} (${e.pos}): ${e.werte.map(w => `${w.label} ${w.diff > 0 ? "+" : ""}${w.diff}`).join(", ")}`).join("\n")}`);
+        }
         if (b.jugend && b.jugend.length) teile.push(`Aus der Akademie:\n${b.jugend.map(zeile).join("\n")}`);
         return teile.join("\n\n");
     }
@@ -603,12 +673,13 @@ class DevelopmentPlanEngine {
     /** Überblick für den Trainings-Reiter: Wer hat welchen Plan? */
     static uebersicht(state) {
         return this._eigenerKader(state)
-            .filter(p => p.trainingsfokus || p.umschulung || p.mentorId || p.eigenheitTraining)
+            .filter(p => p.trainingsfokus || p.feinschliff || p.umschulung || p.mentorId || p.eigenheitTraining)
             .map(p => {
                 const mentor = p.mentorId ? (state.players || []).find(m => String(m.id) === String(p.mentorId)) : null;
                 return {
                     player: p,
                     schwerpunkt: p.trainingsfokus ? this.SCHWERPUNKTE[p.trainingsfokus]?.label : null,
+                    feinschliff: p.feinschliff ? (this._playerGenerator()?.DETAILWERTE?.[p.feinschliff]?.name || null) : null,
                     umschulung: p.umschulung ? { pos: p.umschulung.pos, stand: this.umschulungsStand(p) } : null,
                     mentor: mentor ? mentor.name : null,
                     eigenheit: p.eigenheitTraining

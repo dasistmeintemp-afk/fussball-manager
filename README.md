@@ -499,14 +499,32 @@ Die Leiste bleibt beim Scrollen oben. Der gewählte Reiter bleibt erhalten, sola
   - die Persönlichkeit bei Aggressivität, Mut, Entschlossenheit und Grundfitness
   - ein persönlicher Anteil, fest je Spieler
   - Eigenheiten als Untergrenze: Wer „gefährlich bei direkten Freistößen“ ist, hat gute Freistöße.
-- **Gespeichert wird nichts:** Der Spielstand wird nicht größer, alte Spielstände haben die Werte sofort.
+- **Gespeichert wird davon nichts:** Der Spielstand wird nicht größer, alte Spielstände haben die Werte sofort. Gespeichert wird nur, was sich ein Spieler erarbeitet (siehe unten).
 - **Im Spiel:** Beide Engines rechnen mit der Abweichung vom groben Wert, ohne den Positionsaufschlag, denn die Position steckt dort schon in den groben Werten und den Rollen. Im Mittel bleibt alles, wie es eingestellt war, der Spezialist sticht heraus.
   - Elfmeter, Freistöße und Ecken tritt, wer sie am besten kann.
   - Nach Flanke und Ecke zählen Kopfball und Sprungkraft, beim Steilpass Abschluss, Ballannahme und Antritt, beim Dribbling die Beweglichkeit.
   - Im Livespiel zählt im Strafraum der Abschluss, von weiter weg der Distanzschuss. Dazu Manndeckung im verteidigenden Kopfballduell und Tackling gegen den Dribbler.
   - Torhüter: Herauslaufen im Eins-gegen-eins, hohe Bälle und Strafraumbeherrschung bei Flanken.
-  - Aggressivität, Mut, Entschlossenheit, Kreativität, Balance und Grundfitness zeigen, was in der Persönlichkeit und den groben Werten schon wirkt. Eigene Effekte haben sie nicht.
+  - Im Livespiel außerdem: Aggressivität beim Foul (sie enthält das Temperament, das vorher allein zählte) und im Zweikampf, Kraft im Zweikampf, Balance beim Dribbling im Kontakt, Antritt im freien Raum und Mut im Kopfballduell. In der Sofort-Simulation foult der Aggressivere öfter, die Zahl der Fouls bleibt.
+  - Entschlossenheit, Kreativität und Grundfitness zeigen, was in der Persönlichkeit und den groben Werten schon wirkt. Eigene Effekte haben sie nicht.
 - **Scoutwissen:** Bei fremden Spielern stehen die Werte als Spanne. Unter den Karten stehen die Grundwerte, denen die Detailwerte folgen. Der Spielervergleich führt alle Werte.
+
+**Detailwerte mit eigenem Verlauf (`PlayerGenerator.detailAlter`, `detailPlus`, `detailReife`, `DevelopmentPlanEngine.setzeFeinschliff`):** Bisher folgten die Detailwerte allein den groben Werten. Ein 34-jähriger Flügelspieler war so beweglich wie mit 25, solange Dribbling und Technik hielten. Ein 19-Jähriger trat Freistöße wie ein Routinier. Und was einer im Training an einem einzelnen Wert feilte, ging in den groben Werten unter. Jetzt kommen zwei Anteile dazu:
+
+- **Alter**, für alle Spieler, berechnet statt gespeichert:
+  - Freistöße, Elfmeter, Ecken, Distanzschüsse, Manndeckung, Kopfball und Entschlossenheit reifen bis Anfang dreißig, ebenso Strafraumbeherrschung, Kommunikation, hohe Bälle und Herauslaufen beim Torwart. Mit 18 liegen sie bis zu 5 Punkte unter dem, was die groben Werte ergeben, mit 26 genau darauf, ab 32 bis zu 4 Punkte darüber.
+  - Beweglichkeit, Sprungkraft, Balance, Antritt und Grundfitness: mit Anfang zwanzig leicht vorn, ab 30 geht es bergab, mit 35 bis zu 7 Punkte.
+  - Die volle Kraft kommt erst mit Mitte zwanzig.
+  - Über alle Spieler gemittelt verschiebt das keinen Wert um mehr als 0,3 Punkte. Die Spiel-Engine bleibt also geeicht, es ändert sich nur, wer wo stark ist.
+- **Erarbeitetes**, nur für Spieler, die durch den eigenen Verein gehen. Gespeichert wird es als `player.detailPlus`, höchstens 12 Punkte je Wert:
+  - **Feinschliff** im Entwicklungsplan der Akte: Gezielte Zusatzarbeit an einem Detailwert, etwa Freistöße, Kopfball, Flanken, Beweglichkeit oder beim Torwart Herauslaufen. Ein junger Profi gewinnt so rund vier Punkte je Saison, ein Dreißigjähriger die Hälfte. Je mehr schon erarbeitet ist und je weniger professionell er ist, desto zäher wird es. Die Zusatzschicht kostet etwas Kraft. Die Kopfwerte Aggressivität, Mut, Entschlossenheit und Kreativität kommen aus der Persönlichkeit und lassen sich nicht pauken.
+  - **Spielpraxis** zum Saisonende, auch für verliehene Spieler: Ab 15 Einsätzen gibt es einen Punkt, ab 28 zwei. Sie gehen auf das, was die Position jede Woche verlangt: beim Innenverteidiger Manndeckung, Kopfball und Tackling, beim Stürmer Abschluss, Kopfball und Ballannahme, beim Torwart Strafraumbeherrschung, hohe Bälle, Kommunikation und Herauslaufen. Zuerst bekommt etwas, was bisher am wenigsten dazugewonnen hat. Ab 34 bringt Praxis nichts mehr.
+  - Ab 30 baut das erarbeitete Körperliche ab, je Wert und Saison ein Punkt. Das gilt auch, wenn der Spieler den Verein inzwischen verlassen hat.
+- **Sichtbar:**
+  - In der Akte steht das Erarbeitete hochgestellt am Wert (+3). Ein Punkt markiert den laufenden Feinschliff.
+  - Der Trainingsreiter (*Individuell*) zeigt den Feinschliff beim Schwerpunkt.
+  - Der Monatsbericht hat einen Abschnitt „Feinschliff und Spielpraxis“.
+- KI-Vereine bekommen kein Erarbeitetes. Ihre Spieler entwickeln sich wie bisher über die groben Werte, das Alter wirkt bei ihnen wie bei allen.
 
 In der Spielerakte führt der Manager Gespräche mit jedem eigenen Spieler. Wie er reagiert, hängt an Form und Persönlichkeit:
 

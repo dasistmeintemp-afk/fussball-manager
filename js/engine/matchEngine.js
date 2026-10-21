@@ -1974,7 +1974,15 @@ class MatchEngine {
 
                 // Der Torwart begeht keine Feldzweikämpfe im Mittelfeld
                 const foulEligible = defPlayers.filter(p => !sentOffPlayerIds.has(p.id) && foulDefPos(p) !== "TW" && p.pos !== "TW");
-                const defender = _Random.choice(foulEligible) || defPlayers.find(p => p.pos !== "TW") || defPlayers[0];
+                // Wer aggressiver ist (Temperament, persönlicher Anteil), foult
+                // öfter - die Zahl der Fouls bleibt, es trifft nur andere
+                let defender = null;
+                if (foulEligible.length) {
+                    const gewicht = foulEligible.map(p => Math.max(0.3, 1 + MatchEngine.fein(p, "aggression") * 0.04));
+                    let wurf = _Random.float(0, gewicht.reduce((s, g) => s + g, 0));
+                    defender = foulEligible.find((p, i) => (wurf -= gewicht[i]) <= 0) || foulEligible[foulEligible.length - 1];
+                }
+                defender = defender || defPlayers.find(p => p.pos !== "TW") || defPlayers[0];
                 let shooter = _Random.choice(attPlayers.filter(p => ["ST", "LA", "RA", "OM"].includes(foulAttPos(p)))) || attPlayers[0];
                 // Wer hart angegangen werden soll, wird öfter gefoult
                 const harte = anwAktiv ? attPlayers.filter(p => zweikampfGegen(p) === "hart") : [];

@@ -2188,7 +2188,8 @@ class UIManager {
 
     /** Absender-Symbol im Postfach aus dem Iconset */
     /**
-     * Der monatliche Entwicklungsbericht: verbessert, nachgelassen, Akademie.
+     * Der monatliche Entwicklungsbericht: verbessert, nachgelassen,
+     * Feinschliff an einzelnen Detailwerten, Akademie.
      * Je Spieler die Stärke vorher und nachher und die Werte, die sich am
      * meisten bewegt haben.
      */
@@ -2207,11 +2208,21 @@ class UIManager {
         const tabelle = (titel, liste, akte = true) => liste.length ? `
             <h4 class="eb-titel">${titel}</h4>
             <div class="eb-liste">${liste.map(e => zeile(e, akte)).join("")}</div>` : "";
+        // Feinschliff und Spielpraxis an einzelnen Detailwerten
+        const fein = b.feinschliff || [];
+        const feinHtml = fein.length ? `
+            <h4 class="eb-titel">🎯 Feinschliff und Spielpraxis (${fein.length})</h4>
+            <div class="eb-liste">${fein.map(e => `
+                <div class="eb-zeile row-clickable" data-entwicklung-akte="${esc(e.id)}" role="button" tabindex="0">
+                    <div class="eb-kopf"><span class="eb-name"><strong>${esc(e.name)}</strong> <span class="text-muted">${esc(e.pos)}, ${esc(e.age)}</span></span></div>
+                    <div class="eb-werte">${e.werte.map(w => `<span class="${w.diff > 0 ? "eb-plus" : "eb-minus"}">${esc(w.label)} ${vorzeichen(w.diff)}</span>`).join("")}</div>
+                </div>`).join("")}</div>` : "";
         return `
             <div class="entwicklungsbericht">
                 ${tabelle(`📈 Verbessert (${b.besser.length})`, b.besser) || `<p class="text-muted">Verbessert hat sich diesen Monat niemand.</p>`}
                 ${tabelle(`📉 Nachgelassen (${b.schlechter.length})`, b.schlechter)}
                 ${b.gleich ? `<p class="text-muted eb-gleich">${b.gleich} Spieler ${b.gleich === 1 ? "hält sein" : "halten ihr"} Niveau.</p>` : ""}
+                ${feinHtml}
                 ${tabelle(`🎓 Aus der Akademie (${(b.jugend || []).length})`, b.jugend || [], false)}
             </div>`;
     }

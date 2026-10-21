@@ -967,9 +967,10 @@ class PlayerGenerator {
      * persönlicher Anteil, fest je Spieler. Eigenheiten passen dazu: Wer
      * "Gefährlich bei direkten Freistößen" ist, hat gute Freistöße.
      *
-     * Gespeichert wird nichts. Der Spielstand wird nicht größer, alte
+     * Gespeichert wird davon nichts. Der Spielstand wird nicht größer, alte
      * Spielstände haben die Werte sofort, und für die Erzeugung wird kein
-     * Zufall verbraucht.
+     * Zufall verbraucht. Dazu kommen Alter und Erarbeitetes (detailAlter,
+     * detailPlus, weiter unten).
      *
      * basis: Anteile der groben Werte · pos: Auf- und Abschläge je Position ·
      * groesse: Punkte je Zentimeter über dem Üblichen der Position ·
@@ -1078,6 +1079,8 @@ class PlayerGenerator {
             wert += d.charakter((k, std = 12) => (typeof h[k] === "number" ? h[k] : std));
         }
         wert += this.detailPersoenlich(player.id ?? player.name ?? "", key, d.streuung || 6);
+        // Was das Alter daraus macht und was er sich erarbeitet hat
+        wert += this.detailAlter(key, player.age) + this.detailPlus(player, key);
         // Eine Eigenheit steht nie im Widerspruch zum Wert
         (player.traits || []).forEach(t => {
             const boden = this.DETAIL_EIGENHEITEN[t && t.key]?.[key];
@@ -1112,7 +1115,8 @@ class PlayerGenerator {
 
     /** Die Abweichungen, mit denen das Livespiel rechnet (MatchEngine.werte2D) */
     static FEIN_2D = {
-        feld: ["finishing", "longShots", "heading", "crossing", "tackling", "marking", "freeKicks", "penalties", "corners", "agility", "jumpingReach"],
+        feld: ["finishing", "longShots", "heading", "crossing", "tackling", "marking", "freeKicks", "penalties", "corners", "agility", "jumpingReach",
+            "acceleration", "balance", "strength", "aggression", "bravery"],
         tw: ["aerialReach", "commandOfArea", "rushingOut"],
         ohneGroesse: ["heading", "jumpingReach"]
     };
@@ -1135,6 +1139,127 @@ class PlayerGenerator {
             const d = this.DETAILWERTE[k];
             return (!gruppe || d.gruppe === gruppe) && (!d.nurTW || tw) && (!d.nurFeld || !tw);
         });
+    }
+
+    // ------------------------------------------- Detailwerte mit eigenem Verlauf
+
+    /**
+     * Die Detailwerte gehen ihren eigenen Weg.
+     *
+     * Bisher folgten sie allein den groben Werten: Ein 34-jähriger
+     * Flügelspieler war so beweglich wie mit 25, solange Dribbling und Technik
+     * hielten, ein 19-Jähriger trat Freistöße wie ein Routinier, und was einer
+     * im Training an einem einzelnen Wert feilte, ging in den groben Werten
+     * unter. Jetzt kommen zwei Anteile dazu:
+     *
+     * - Das Alter (detailAlter): Standards, Manndeckung, Strafraumbeherrschung
+     *   und Entschlossenheit reifen bis Anfang dreißig. Beweglichkeit,
+     *   Sprungkraft, Balance, Antritt und Grundfitness lassen ab dreißig nach,
+     *   die volle Kraft kommt erst mit Anfang zwanzig. Mit 26 ändert sich
+     *   nichts, über alle Spieler gemittelt kaum etwas - die Spiel-Engine
+     *   bleibt geeicht. Berechnet, nicht gespeichert.
+     * - Das Erarbeitete (player.detailPlus): Feinschliff im Training
+     *   (DevelopmentPlanEngine) und Spielpraxis auf der eigenen Position
+     *   (detailReife, zum Saisonende), höchstens DETAIL_PLUS_MAX je Wert.
+     *   Gespeichert nur, wo es etwas gibt: bei Spielern, die durch den
+     *   eigenen Verein gegangen sind.
+     *
+     * Beides steckt im Detailwert und damit in der Abweichung, mit der die
+     * Spiel-Engines rechnen (detailAbweichung, feinwerte2D).
+     */
+    static DETAIL_ALTER = {
+        // Erfahrung: -5 mit 18, 0 mit 26, +4 ab 32 (mal Gewicht)
+        erfahrung: {
+            freeKicks: 1, penalties: 0.8, corners: 0.8, longShots: 0.5, marking: 0.8, heading: 0.4, determination: 0.8,
+            aerialReach: 0.6, commandOfArea: 1, communication: 1, rushingOut: 0.4
+        },
+        // Körper: mit Anfang zwanzig leicht vorn, ab 30 bergab (mal Gewicht)
+        koerper: { agility: 1, jumpingReach: 0.8, balance: 0.6, acceleration: 0.4, naturalFitness: 0.6 },
+        // Kraft: kommt mit den Jahren und bleibt lange
+        kraft: { strength: 1 }
+    };
+
+    /** Was das Alter an einem Detailwert ändert (Punkte, 0 mit 26) */
+    static detailAlter(key, age) {
+        const a = typeof age === "number" ? age : 26;
+        const t = this.DETAIL_ALTER;
+        if (t.erfahrung[key]) return t.erfahrung[key] * Math.max(-5, Math.min(4, (a - 26) * 0.7));
+        if (t.koerper[key]) {
+            const k = a < 27 ? Math.min(1.5, (27 - a) * 0.4) : (a <= 29 ? 0 : -Math.min(8, (a - 29) * 1.2));
+            return t.koerper[key] * k;
+        }
+        if (t.kraft[key]) {
+            const k = a < 23 ? -Math.min(3, (23 - a) * 0.6) : (a < 25 ? 0 : (a <= 31 ? 0.5 : -Math.min(3, (a - 31) * 0.5)));
+            return t.kraft[key] * k;
+        }
+        return 0;
+    }
+
+    /** Mehr als so viel erarbeitet keiner an einem Wert */
+    static DETAIL_PLUS_MAX = 12;
+
+    /** Das Erarbeitete an einem Detailwert */
+    static detailPlus(player, key) {
+        const v = player?.detailPlus?.[key];
+        return typeof v === "number" ? v : 0;
+    }
+
+    /** Erarbeitetes dazu oder ab (0 bis DETAIL_PLUS_MAX). Gibt die tatsächliche Änderung zurück */
+    static aendereDetailPlus(player, key, n) {
+        if (!player || !this.DETAILWERTE[key] || !n) return 0;
+        const alt = this.detailPlus(player, key);
+        const neu = Math.max(0, Math.min(this.DETAIL_PLUS_MAX, alt + n));
+        if (neu === alt) return 0;
+        const plus = player.detailPlus || (player.detailPlus = {});
+        if (neu) plus[key] = neu;
+        else delete plus[key];
+        if (!Object.keys(plus).length) player.detailPlus = undefined;
+        return neu - alt;
+    }
+
+    /** Woran Spielpraxis feilt: je Position, was sie jede Woche verlangt */
+    static PRAXIS_DETAIL = {
+        TW: ["commandOfArea", "aerialReach", "communication", "rushingOut"],
+        IV: ["marking", "heading", "tackling"],
+        LV: ["crossing", "tackling", "marking"], RV: ["crossing", "tackling", "marking"],
+        DM: ["tackling", "marking", "firstTouch"], ZM: ["firstTouch", "longShots", "tackling"],
+        OM: ["firstTouch", "longShots", "finishing"],
+        LM: ["crossing", "firstTouch", "corners"], RM: ["crossing", "firstTouch", "corners"],
+        LA: ["crossing", "finishing", "firstTouch"], RA: ["crossing", "finishing", "firstTouch"],
+        ST: ["finishing", "heading", "firstTouch"]
+    };
+    /** Ab so vielen Einsätzen ein Punkt, ab dem zweiten Wert zwei */
+    static PRAXIS_STUFEN = [15, 28];
+    static PRAXIS_HOECHSTALTER = 33;
+
+    /**
+     * Zum Saisonende: Wer regelmäßig gespielt hat, hat an dem gefeilt, was
+     * seine Position jede Woche verlangt - ein Punkt ab 15 Einsätzen, zwei ab
+     * 28, jeweils auf den Werten, die bisher am wenigsten dazugewonnen haben.
+     * Ab 30 lässt der erarbeitete Körper nach, ein Punkt je Wert und Saison.
+     * Gibt die Änderungen zurück ({ Wert: Punkte }).
+     */
+    static detailReife(player, einsaetze = 0, saison = 0) {
+        const aenderung = {};
+        if (!player) return aenderung;
+        if ((player.age || 0) >= 30 && player.detailPlus) {
+            this.detailSchluessel(player, "koerper").forEach(k => {
+                const d = this.aendereDetailPlus(player, k, -1);
+                if (d) aenderung[k] = d;
+            });
+        }
+        const punkte = this.PRAXIS_STUFEN.filter(s => einsaetze >= s).length;
+        const liste = this.PRAXIS_DETAIL[player.pos] || [];
+        if (!punkte || !liste.length || (player.age || 0) > this.PRAXIS_HOECHSTALTER) return aenderung;
+        liste.slice()
+            .sort((a, b) => this.detailPlus(player, a) - this.detailPlus(player, b)
+                || this._hashZahl(`${player.id}|${a}|${saison}`) - this._hashZahl(`${player.id}|${b}|${saison}`))
+            .slice(0, punkte)
+            .forEach(k => {
+                const d = this.aendereDetailPlus(player, k, 1);
+                if (d) aenderung[k] = (aenderung[k] || 0) + d;
+            });
+        return aenderung;
     }
 
     /**

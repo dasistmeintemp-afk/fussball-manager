@@ -729,6 +729,11 @@ Bisher stand ein Talent ohne Vertrag in der Akademie, ließ sich in jedem Alter 
   - Ältere Spielstände werden beim Laden einmal angeglichen. Das eigene Budget wird dabei nur angehoben, nie gekürzt.
 - **Untergrenze je Liga:** Ein Spieler bekommt mindestens 120 € je Woche, in der sechsten Liga 80 €, in der siebten 50 €. Mit 120 € für jeden zahlte der kleinste Landesligist mehr Gehalt, als er tragen kann.
 - **Betriebsaufwand nach echten Zuschauern:** Der Betrieb (Verwaltung, Reisen, Spieltag) richtet sich nach den Einnahmen, beim Eintritt jetzt nach dem gleitenden Schnitt der echten Heimspiele. Vorher stand dort immer ein zu 80 % gefülltes Stadion: Ein schwacher Verein vor halbleeren Rängen zahlte Kosten für Zuschauer, die nicht kamen.
+- **Erfolg kostet (`FinanceEngine.ERFOLGSPRAEMIE`, `SeasonEngine.PRAEMIE_JE_STUFE`):**
+  - Nach jedem Ligaspiel zahlt ein Verein seiner Mannschaft eine Siegprämie (ein Viertel der Lohnsumme eines Spieltags) oder eine Remisprämie (8 %), der Meister am Saisonende das Anderthalbfache. Im Journal steht sie als „Siegprämie (2:1 gegen …)“.
+  - Im Mittel kostet das rund 11 % der Lohnsumme. Um genau so viel ist der Anteil des Betriebsaufwands an den Gehältern gesunken: Der Durchschnittsverein steht wie vorher da, wer viel gewinnt, zahlt mehr.
+  - Die Tabellenprämie fällt mit der Ligastufe: oben das 0,3-Fache einer Sponsorenzahlung je Platz vor dem 14., in der 4. Liga das 0,06-Fache, in der 6. und 7. das 0,03-Fache. Vorher galt überall 0,45 - der Zweite der 7. Liga bekam 302 Tsd. €, mehr als seine ganze Mannschaft im Jahr verdiente.
+  - Gemessen über eine Saison: Der stärkste Verein einer Liga legte vorher 28 bis 31 % seines Umsatzes zurück, jetzt 19 bis 22 %. Das Mittelfeld bleibt bei rund 7 bis 16 %.
 - **Sponsorentag:** Der Termin bringt eine Antrittsprämie von 15 bis 30 % der Sponsorenzahlung eines Spieltags. Vorher waren es überall 50.000 bis 100.000 €, die zwar im Journal standen, aber nie auf dem Konto ankamen.
 - **Gemessen über eine Saison** mit dem VfR Höchst (7. Liga, schwächster Kader): vorher von 9.600 € auf −19.500 €, jetzt von 7.400 € auf 30.200 €. Die Erstligisten stehen im Median bei +6 % statt −19 % ihres Startguthabens, die übrigen Ligen bleiben in ihrer Spanne.
 - **Transaktionsjournal:** Detailliertes Buchungsjournal mit lückenloser Historie aller Einnahmen und Ausgaben.

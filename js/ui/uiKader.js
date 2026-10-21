@@ -376,25 +376,25 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const form = (Number(p.form) || 0).toFixed(1).replace(".", ",");
             return `
                 <tr class="row-clickable" data-player-id="${p.id}" title="Details zu ${this.escapeHtml(p.name)} öffnen">
-                    <td class="sq-status">${statusBadge}</td>
-                    <td class="sq-name"><button class="sq-nr" type="button" data-nr-id="${this.escapeHtml(String(p.id))}" title="Rückennummer ändern">${Number.isInteger(p.trikot) ? p.trikot : "–"}</button><strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}<span class="squad-role-hint">${p.reserve ? (p.reserve === "u19" ? "U19" : "U23") : (p.nominiertAus ? `aus der ${p.nominiertAus === "u19" ? "U19" : "U23"} · nur Spieltag` : (p.leihe ? "Leihspieler" : this.escapeHtml((p.squadRole || "Kader") + (p.jugendvertrag ? " · Jugendvertrag" : ""))))} · ${p.age} J.</span></td>
-                    <td class="sq-pos nowrap">
+                    <td class="sq-status" data-wert="${p.injuredWeeks > 0 || p.suspendedMatches > 0 ? 0 : (isLineup ? 3 : (isBench ? 2 : 1))}">${statusBadge}</td>
+                    <td class="sq-name" data-wert="${this.escapeHtml(p.name)}"><button class="sq-nr" type="button" data-nr-id="${this.escapeHtml(String(p.id))}" title="Rückennummer ändern">${Number.isInteger(p.trikot) ? p.trikot : "–"}</button><strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}<span class="squad-role-hint">${p.reserve ? (p.reserve === "u19" ? "U19" : "U23") : (p.nominiertAus ? `aus der ${p.nominiertAus === "u19" ? "U19" : "U23"} · nur Spieltag` : (p.leihe ? "Leihspieler" : this.escapeHtml((p.squadRole || "Kader") + (p.jugendvertrag ? " · Jugendvertrag" : ""))))} · ${p.age} J.</span></td>
+                    <td class="sq-pos nowrap" data-wert="${["TW", "IV", "LV", "RV", "DM", "ZM", "LM", "RM", "OM", "LA", "RA", "ST"].indexOf(p.pos)}">
                         <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>${secondaryHtml}
                     </td>
                     <td class="sq-alter">${p.age}</td>
-                    <td class="sq-staerke nowrap">
+                    <td class="sq-staerke nowrap" data-wert="${card ? ((Number(card.starsCaMin) + Number(card.starsCaMax)) / 2 + (Number(card.starsPaMax) || 0) / 100).toFixed(3) : (p.overall || 0)}">
                         ${sterne}
                         <div class="squad-ability-hint">${abilityText}</div>
                     </td>
                     <td class="sq-rolle"><span class="role-chip" title="${roleName}">${roleName}</span></td>
-                    <td class="sq-fit nowrap">
+                    <td class="sq-fit nowrap" data-wert="${fitness}">
                         <span class="mini-bar"><span class="mini-bar-fill" style="width:${fitness}%;background:${this.fitnessFarbe(fitness)}"></span></span>${fitness}%
                     </td>
-                    <td class="sq-moral nowrap" title="Moral">${happyIcon} ${happyOverall}%</td>
-                    <td class="sq-form">${form}</td>
-                    <td class="sq-wert nowrap">${valText}</td>
-                    <td class="sq-gehalt nowrap">${this.geldKurz(p.wage)}</td>
-                    <td class="sq-vertrag nowrap">${p.vorvertrag ? `<span title="Geht zum Saisonwechsel zu ${this.escapeHtml(p.vorvertrag.clubName)}">✍️</span> ` : ""}${p.contractYears} J.</td>
+                    <td class="sq-moral nowrap" title="Moral" data-wert="${happyOverall}">${happyIcon} ${happyOverall}%</td>
+                    <td class="sq-form" data-wert="${Number(p.form) || 0}">${form}</td>
+                    <td class="sq-wert nowrap" data-wert="${p.value || 0}">${valText}</td>
+                    <td class="sq-gehalt nowrap" data-wert="${p.wage || 0}">${this.geldKurz(p.wage)}</td>
+                    <td class="sq-vertrag nowrap" data-wert="${p.contractYears ?? 0}">${p.vorvertrag ? `<span title="Geht zum Saisonwechsel zu ${this.escapeHtml(p.vorvertrag.clubName)}">✍️</span> ` : ""}${p.contractYears} J.</td>
                     <td class="sq-meta">Form ${form} · ${valText} · ${this.geldKurz(p.wage)}/Wo · ${p.vorvertrag ? `geht zu ${this.escapeHtml(p.vorvertrag.clubName)}` : `${p.contractYears} J. Vertrag`}</td>
                     <td class="sq-aktion">
                         <button class="btn btn-sm btn-secondary btn-player-details" data-player-id="${p.id}" aria-label="Details zu ${this.escapeHtml(p.name)}">›</button>

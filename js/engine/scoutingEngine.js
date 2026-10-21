@@ -607,6 +607,78 @@ const ScoutingEngine = {
         return Math.max(2, Math.min(28, Math.round(tage)));
     },
 
+    // --------------------------------------------------- Beobachtungsliste
+
+    /** So viele Spieler passen auf die Beobachtungsliste */
+    LISTE_MAX: 60,
+
+    _listenId(x) {
+        return String((x && typeof x === "object") ? (x.playerId ?? x.id) : x);
+    },
+
+    /** Steht ein Spieler auf der Beobachtungsliste (state.scouting.shortlist)? */
+    istGemerkt(state, playerId) {
+        return (state?.scouting?.shortlist || []).some(x => this._listenId(x) === String(playerId));
+    },
+
+    /**
+     * Einen Spieler auf die Beobachtungsliste setzen oder herunternehmen.
+     * an: true / false, ohne Angabe umschalten. Eigene Spieler kommen
+     * nicht darauf. Gespeichert wird die Spieler-ID wie in state.players,
+     * so wie es Saisonwechsel und Datenzentrale schon lesen.
+     */
+    merke(state, playerId, an = null) {
+        if (!state) return { success: false, error: "Ungültiger Spielstand." };
+        const player = (state.players || []).find(x => String(x.id) === String(playerId));
+        if (!player) return { success: false, error: "Spieler nicht gefunden." };
+        const drauf = this.istGemerkt(state, playerId);
+        const soll = an === null ? !drauf : !!an;
+        if (soll && player.clubId && player.clubId === state.userClubId) {
+            return { success: false, error: "Eigene Spieler stehen nicht auf der Beobachtungsliste." };
+        }
+        if (!state.scouting) state.scouting = { assignments: [], reports: [], shortlist: [] };
+        if (!Array.isArray(state.scouting.shortlist)) state.scouting.shortlist = [];
+        if (soll && !drauf) {
+            if (state.scouting.shortlist.length >= this.LISTE_MAX) {
+                return { success: false, error: `Die Beobachtungsliste ist voll (${this.LISTE_MAX} Spieler).` };
+            }
+            state.scouting.shortlist.push(player.id);
+        } else if (!soll && drauf) {
+            state.scouting.shortlist = state.scouting.shortlist.filter(x => this._listenId(x) !== String(playerId));
+        }
+        return { success: true, gemerkt: soll, player };
+    },
+
+    /**
+     * Die Beobachtungsliste zum Anzeigen: je Spieler Verein, Vertrag, ob ein
+     * Bericht vorliegt oder ein Scout unterwegs ist, und was sich getan hat
+     * (vereinslos, Vertrag läuft aus, auf der Transferliste, verliehen).
+     * Wer inzwischen bei uns spielt, fällt heraus.
+     */
+    beobachtungsliste(state) {
+        const ids = (state?.scouting?.shortlist || []).map(x => this._listenId(x));
+        if (!ids.length) return [];
+        const spieler = new Map((state.players || []).map(p => [String(p.id), p]));
+        const vereine = new Map((state.clubs || []).map(c => [c.id, c]));
+        return ids.map(id => spieler.get(id)).filter(p => p && p.clubId !== state.userClubId).map(p => {
+            const vertrag = p.contractYears ?? p.contract?.years ?? null;
+            const hinweise = [];
+            if (!p.clubId) hinweise.push({ text: "vereinslos", art: "gut" });
+            else if (vertrag !== null && vertrag <= 1) hinweise.push({ text: "Vertrag läuft aus", art: "gut" });
+            if (p.transferListed) hinweise.push({ text: "auf der Transferliste", art: "gut" });
+            if (p.leihe) hinweise.push({ text: "verliehen", art: "" });
+            if ((p.injuredWeeks || 0) > 0) hinweise.push({ text: `verletzt (${p.injuredWeeks} Wo.)`, art: "schlecht" });
+            return {
+                player: p,
+                verein: vereine.get(p.clubId) || null,
+                vertrag,
+                bericht: (p.scoutingKnowledge?.reportsCount || 0) > 0,
+                beobachtung: this.beobachtungVon(state, p.id),
+                hinweise
+            };
+        });
+    },
+
     /** Die laufende Beobachtung eines Spielers oder null */
     beobachtungVon(state, playerId) {
         return (state?.scouting?.beobachtungen || []).find(b => String(b.playerId) === String(playerId)) || null;

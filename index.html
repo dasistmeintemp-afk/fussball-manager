@@ -107,11 +107,13 @@
                     <svg class="brand-icon logo-mark" aria-hidden="true"><use href="#logo-mark"/></svg>
                     <span class="brand-title">Vierer<span class="brand-accent">kette</span></span>
                 </div>
+                <button type="button" class="kopf-icon kopf-zurueck" id="btnKopfZurueck" title="Zurück (Alt + ←)" aria-label="Zurück" disabled><svg class="ico" aria-hidden="true"><use href="#i-arrow-left"/></svg></button>
                 <div class="club-badge-container" id="headerClubInfo">
                     <span class="club-color-dot" id="headerClubDot"></span>
                     <span class="club-name" id="headerClubName">Kein Verein</span>
                     <span class="header-tag" id="headerDifficulty">Normal</span>
                 </div>
+                <button type="button" class="kopf-icon kopf-suche" id="btnKopfSuche" title="Suchen: Spieler, Vereine, Bereiche ( / )" aria-label="Suchen"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg><span class="kopf-suche-text">Suchen</span><kbd>/</kbd></button>
             </div>
 
             <div class="header-center">
@@ -412,7 +414,7 @@
                     </div>
                     <div class="dashboard-grid">
                         <!-- Club Overview Card -->
-                        <div class="dash-card">
+                        <div class="dash-card" data-ur="Übersicht">
                             <div class="card-header">
                                 <h3>Vereinsübersicht</h3>
                             </div>
@@ -427,7 +429,7 @@
                         </div>
 
                         <!-- Stadium & Tickets Card -->
-                        <div class="dash-card">
+                        <div class="dash-card" data-ur="Übersicht">
                             <div class="card-header">
                                 <h3>Stadion & Ticketpreise</h3>
                             </div>
@@ -451,7 +453,7 @@
                         </div>
 
                         <!-- Sponsor Card -->
-                        <div class="dash-card">
+                        <div class="dash-card" data-ur="Übersicht">
                             <div class="card-header">
                                 <h3>Hauptsponsor</h3>
                             </div>
@@ -463,7 +465,7 @@
                         </div>
 
                         <!-- Facilities Upgrade Center Card -->
-                        <div class="dash-card" style="grid-column: 1 / -1;">
+                        <div class="dash-card" style="grid-column: 1 / -1;" data-ur="Anlagen">
                             <div class="card-header">
                                 <h3>Infrastruktur- & Ausbauzentrum</h3>
                             </div>
@@ -475,18 +477,18 @@
                         </div>
 
                         <!-- Der Trainer selbst: Werte, Lizenz, Ruf -->
-                        <div class="dash-card" style="grid-column: 1 / -1;" id="clubTrainerProfil"></div>
-                        <div class="dash-card jm-karte" style="grid-column: 1 / -1;" id="clubJobmarkt"></div>
+                        <div class="dash-card" style="grid-column: 1 / -1;" id="clubTrainerProfil" data-ur="Trainer"></div>
+                        <div class="dash-card jm-karte" style="grid-column: 1 / -1;" id="clubJobmarkt" data-ur="Trainer"></div>
 
-                        <div class="dash-card partner-karte" style="grid-column: 1 / -1;" id="clubVision"></div>
+                        <div class="dash-card partner-karte" style="grid-column: 1 / -1;" id="clubVision" data-ur="Vision & Partner"></div>
 
-                        <div class="dash-card partner-karte" style="grid-column: 1 / -1;" id="clubInvestor"></div>
+                        <div class="dash-card partner-karte" style="grid-column: 1 / -1;" id="clubInvestor" data-ur="Vision & Partner"></div>
 
-                        <div class="dash-card partner-karte" style="grid-column: 1 / -1;" id="clubPartner"></div>
+                        <div class="dash-card partner-karte" style="grid-column: 1 / -1;" id="clubPartner" data-ur="Vision & Partner"></div>
 
-                        <div class="dash-card chronik-karte" style="grid-column: 1 / -1;" id="clubChronik"></div>
+                        <div class="dash-card chronik-karte" style="grid-column: 1 / -1;" id="clubChronik" data-ur="Chronik"></div>
 
-                        <div class="dash-card partner-karte" style="grid-column: 1 / -1;" id="clubEhemalige"></div>
+                        <div class="dash-card partner-karte" style="grid-column: 1 / -1;" id="clubEhemalige" data-ur="Chronik"></div>
                     </div>
                 </section>
 
@@ -495,7 +497,7 @@
                     <div class="pane-header">
                         <h2>Kaderübersicht</h2>
                         <div class="pane-actions">
-                            <div class="filter-group">
+                            <div class="filter-group" data-ur="Spieler">
                                 <button class="btn btn-sm filter-btn active" data-filter-pos="all">Alle</button>
                                 <button class="btn btn-sm filter-btn" data-filter-pos="TW">Torwart</button>
                                 <button class="btn btn-sm filter-btn" data-filter-pos="DEF">Abwehr</button>
@@ -504,23 +506,23 @@
                             </div>
                         </div>
                     </div>
-                    <div class="kz-leiste" id="squadKennzahlen"></div>
-                    <div class="table-container full-page">
-                        <table class="data-table" id="squadTable">
+                    <div class="kz-leiste" id="squadKennzahlen" data-ur="Spieler"></div>
+                    <div class="table-container full-page" data-ur="Spieler">
+                        <table class="data-table sortierbar" id="squadTable">
                             <thead>
                                 <tr>
-                                    <th class="sq-status">Status</th>
-                                    <th class="sq-name">Name</th>
-                                    <th class="sq-pos">Pos</th>
-                                    <th class="sq-alter">Alter</th>
-                                    <th class="sq-staerke">Stärke &amp; Potenzial</th>
-                                    <th class="sq-rolle">Beste Rolle</th>
-                                    <th class="sq-fit">Fitness</th>
-                                    <th class="sq-moral">Moral</th>
-                                    <th class="sq-form">Form</th>
-                                    <th class="sq-wert">Marktwert</th>
-                                    <th class="sq-gehalt">Gehalt/Wo.</th>
-                                    <th class="sq-vertrag">Vertrag</th>
+                                    <th class="sq-status" data-sort="zahl">Status</th>
+                                    <th class="sq-name" data-sort="text">Name</th>
+                                    <th class="sq-pos" data-sort="auf">Pos</th>
+                                    <th class="sq-alter" data-sort="auf">Alter</th>
+                                    <th class="sq-staerke" data-sort="zahl">Stärke &amp; Potenzial</th>
+                                    <th class="sq-rolle" data-sort="text">Beste Rolle</th>
+                                    <th class="sq-fit" data-sort="zahl">Fitness</th>
+                                    <th class="sq-moral" data-sort="zahl">Moral</th>
+                                    <th class="sq-form" data-sort="zahl">Form</th>
+                                    <th class="sq-wert" data-sort="zahl">Marktwert</th>
+                                    <th class="sq-gehalt" data-sort="zahl">Gehalt/Wo.</th>
+                                    <th class="sq-vertrag" data-sort="zahl">Vertrag</th>
                                     <th class="sq-meta"></th>
                                     <th class="sq-aktion"></th>
                                 </tr>
@@ -530,11 +532,11 @@
                             </tbody>
                         </table>
                     </div>
-                    <div id="squadLoanedOut" class="hint-box mt-2" style="display:none;"></div>
-                    <div id="squadReserve" class="card kabine-card mt-3" style="display:none;"></div>
-                    <div id="squadKabine" class="card kabine-card mt-3"></div>
-                    <details id="squadPlanung" class="card kabine-card mt-3 kp-karte"></details>
-                    <details id="squadMeldeliste" class="card kabine-card mt-3 kp-karte" hidden></details>
+                    <div id="squadLoanedOut" data-ur="Spieler" class="hint-box mt-2" style="display:none;"></div>
+                    <div id="squadReserve" data-ur="Unterbau" class="card kabine-card mt-3" style="display:none;"></div>
+                    <div id="squadKabine" data-ur="Kabine" class="card kabine-card mt-3"></div>
+                    <details id="squadPlanung" data-ur="Planung" class="card kabine-card mt-3 kp-karte"></details>
+                    <details id="squadMeldeliste" data-ur="Meldeliste" class="card kabine-card mt-3 kp-karte" hidden></details>
                 </section>
 
                 <!-- Tab: Tactics & Pitch (Aufstellung) -->
@@ -808,6 +810,7 @@
                             <button class="btn btn-sm" id="btnSubTransfersScouting"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg><span>Scouting-Zentrale</span></button>
                             <button class="btn btn-sm" id="btnSubTransfersLoans"><svg class="ico" aria-hidden="true"><use href="#i-transfer"/></svg><span>Leihen</span></button>
                             <button class="btn btn-sm" id="btnSubTransfersSD"><svg class="ico" aria-hidden="true"><use href="#i-target"/></svg><span>Sportdirektor</span></button>
+                            <button class="btn btn-sm" id="btnSubTransfersListe"><svg class="ico" aria-hidden="true"><use href="#i-star"/></svg><span>Beobachtungsliste</span></button>
                         </div>
                     </div>
 
@@ -905,19 +908,19 @@
 
                         <!-- Transfer Market Table -->
                         <div class="table-container full-page">
-                            <table class="data-table">
+                            <table class="data-table sortierbar" id="transferTable">
                                 <thead>
                                     <tr>
-                                        <th class="tm-name">Name</th>
-                                        <th class="tm-verein">Verein</th>
-                                        <th class="tm-pos">Pos</th>
-                                        <th class="tm-alter">Alter</th>
-                                        <th class="tm-staerke">Stärke &amp; Potenzial</th>
-                                        <th class="tm-rolle">Beste Rolle</th>
-                                        <th class="tm-wert">Marktwert</th>
-                                        <th class="tm-wissen">Scout</th>
-                                        <th class="tm-gehalt">Gehalt/Wo.</th>
-                                        <th class="tm-vertrag">Vertrag</th>
+                                        <th class="tm-name" data-sort="text">Name</th>
+                                        <th class="tm-verein" data-sort="text">Verein</th>
+                                        <th class="tm-pos" data-sort="auf">Pos</th>
+                                        <th class="tm-alter" data-sort="auf">Alter</th>
+                                        <th class="tm-staerke" data-sort="zahl">Stärke &amp; Potenzial</th>
+                                        <th class="tm-rolle" data-sort="text">Beste Rolle</th>
+                                        <th class="tm-wert" data-sort="zahl">Marktwert</th>
+                                        <th class="tm-wissen" data-sort="zahl">Scout</th>
+                                        <th class="tm-gehalt" data-sort="zahl">Gehalt/Wo.</th>
+                                        <th class="tm-vertrag" data-sort="zahl">Vertrag</th>
                                         <th class="tm-meta"></th>
                                         <th class="tm-aktion"></th>
                                     </tr>
@@ -931,6 +934,14 @@
 
                     <!-- Leihen: eigene Leihen und der Leihmarkt -->
                     <!-- Sportdirektor: Vorschläge und Beratung -->
+                    <div id="viewBeobachtung" style="display:none;">
+                        <div class="dash-card">
+                            <div class="card-header"><h3>Beobachtungsliste</h3><span id="beobachtungMeta" class="header-tag">-</span></div>
+                            <p class="muted-note">Spieler, die Sie im Auge behalten. Aufnehmen über den Stern in der Akte oder mit einem Rechtsklick auf einen Namen. Die Liste meldet, wenn ein Vertrag ausläuft oder ein Spieler vereinslos wird.</p>
+                            <div class="table-container" id="beobachtungInhalt"></div>
+                        </div>
+                    </div>
+
                     <div id="viewSportdirektor" style="display:none;">
                         <div class="dash-card mb-3">
                             <div class="card-header"><h3 id="sdTitel">Sportdirektor</h3><span id="sdGenauigkeit" class="header-tag">-</span></div>
@@ -1087,7 +1098,7 @@
                 <section class="tab-pane" id="pane-preseason">
                     <h2 class="pane-title">Saisonvorbereitung</h2>
 
-                    <div class="dash-card" style="margin-bottom:20px;">
+                    <div class="dash-card" style="margin-bottom:20px;" data-ur="Überblick">
                         <div class="card-header-row">
                             <h3 id="preHeadTitle">Bis zum ersten Spieltag</h3>
                             <span id="preCountdown" class="header-tag">-</span>
@@ -1095,43 +1106,43 @@
                         <div id="preOpenItems" style="font-size:13px; line-height:1.7;"></div>
                     </div>
 
-                    <div class="dash-card" id="preZielKarte" style="margin-bottom:20px;">
+                    <div class="dash-card" id="preZielKarte" data-ur="Überblick" style="margin-bottom:20px;">
                         <h3>Saisonziel mit dem Vorstand</h3>
                         <div id="preZiel"></div>
                     </div>
 
                     <div class="training-grid">
-                        <div class="dash-card">
+                        <div class="dash-card" data-ur="Trainerstab">
                             <h3>Trainerstab zusammenstellen</h3>
                             <p class="muted-note">Fünf Fachbereiche. Wer gut einkauft, entwickelt seine Spieler schneller, hält sie länger fit und hat im Spiel einen besseren Co-Trainer an der Seite. Der Stab darf höchstens ein Viertel des Gehaltsetats kosten.</p>
                             <div id="preStaffList"></div>
                         </div>
 
-                        <div class="dash-card">
+                        <div class="dash-card" data-ur="Sponsoren">
                             <h3>Sponsorenangebote</h3>
                             <p class="muted-note">Ein Angebot gilt für die gewählte Laufzeit. Mehr Geld heißt nicht immer mehr Ruhe.</p>
                             <div id="preSponsorList"></div>
                         </div>
 
-                        <div class="dash-card" style="grid-column: 1 / -1;">
+                        <div class="dash-card" style="grid-column: 1 / -1;" data-ur="Testspiele">
                             <h3>Terminplan</h3>
                             <p class="muted-note">Vier Termine stehen im Kalender. Ein Turnier belegt zwei davon, ein vereinbartes Testspiel einen. Was Sie nicht verplanen, besetzt der Sportdirektor kurzfristig - mit dem, was kurzfristig zu haben ist.</p>
                             <div id="prePlanList"></div>
                         </div>
 
-                        <div class="dash-card">
+                        <div class="dash-card" data-ur="Testspiele">
                             <h3>Turniereinladungen</h3>
                             <p class="muted-note">Antrittsgeld gibt es fürs Kommen, die Prämie für die Platzierung. Zwei Runden: Halbfinale, danach Endspiel oder Spiel um Platz drei.</p>
                             <div id="preTournamentList"></div>
                         </div>
 
-                        <div class="dash-card">
+                        <div class="dash-card" data-ur="Testspiele">
                             <h3>Testspiele vereinbaren</h3>
                             <p class="muted-note">Wer lieber selbst plant, fragt Vereine einzeln an. Zusagen müssen die selbst - und wer absagt, ist für diese Vorbereitung weg.</p>
                             <div id="preContactList"></div>
                         </div>
 
-                        <div class="dash-card" style="grid-column: 1 / -1;">
+                        <div class="dash-card" style="grid-column: 1 / -1;" data-ur="Testspiele">
                             <h3>Berichte</h3>
                             <p class="muted-note">Was die Vorbereitungsspiele gezeigt haben.</p>
                             <div id="preReportList"></div>
@@ -1145,7 +1156,7 @@
                     </div>
 
                     <!-- Trainerstab: er plant, der Manager kann eingreifen -->
-                    <div class="dash-card mb-3" id="coachingStaffCard">
+                    <div class="dash-card mb-3" id="coachingStaffCard" data-ur="Training">
                         <div class="card-header">
                             <h3>Trainerstab</h3>
                             <span id="staffQualityTag" class="header-tag">-</span>
@@ -1159,10 +1170,10 @@
                     </div>
 
                     <!-- Trainingslager: in der Vorbereitung und in der Winterpause -->
-                    <div class="dash-card mb-3" id="trainingslagerKarte"></div>
+                    <div class="dash-card mb-3" id="trainingslagerKarte" data-ur="Trainingslager"></div>
 
                     <div class="training-grid">
-                        <div class="dash-card">
+                        <div class="dash-card" data-ur="Training">
                             <h3>Trainingsschwerpunkt wählen</h3>
                             <div class="training-focus-options">
                                 <label class="focus-option-card">
@@ -1217,7 +1228,7 @@
                             </div>
                         </div>
 
-                        <div class="dash-card">
+                        <div class="dash-card" data-ur="Training">
                             <h3>Trainingsintensität</h3>
                             <div class="intensity-picker">
                                 <label class="intensity-btn">
@@ -1239,7 +1250,7 @@
                         </div>
 
                         <!-- Trainingsbericht: Belastung, Ermüdung, Risiko -->
-                        <div class="dash-card" style="grid-column: 1 / -1;">
+                        <div class="dash-card" style="grid-column: 1 / -1;" data-ur="Bericht">
                             <div class="card-header">
                                 <h3>Trainingsbericht</h3>
                                 <span id="trainingReportMeta" class="header-tag">-</span>
@@ -1248,18 +1259,18 @@
                                 Wer steht kurz vor dem Überziehen? Sortiert nach Verletzungsrisiko der nächsten Einheit.
                             </p>
                             <div class="table-container">
-                                <table class="compact-table">
+                                <table class="compact-table sortierbar" id="trainingReportTable">
                                     <thead>
                                         <tr>
-                                            <th>Spieler</th>
-                                            <th>Pos.</th>
-                                            <th>Fitness</th>
-                                            <th>Ermüdung</th>
-                                            <th>Tageslast</th>
-                                            <th>Spielschärfe</th>
-                                            <th>Verletzungsrisiko</th>
-                                            <th>Entwicklung</th>
-                                            <th>Einschätzung</th>
+                                            <th data-sort="text">Spieler</th>
+                                            <th data-sort="text">Pos.</th>
+                                            <th data-sort="zahl">Fitness</th>
+                                            <th data-sort="zahl">Ermüdung</th>
+                                            <th data-sort="zahl">Tageslast</th>
+                                            <th data-sort="zahl">Spielschärfe</th>
+                                            <th data-sort="zahl">Verletzungsrisiko</th>
+                                            <th data-sort="zahl">Entwicklung</th>
+                                            <th data-sort="text">Einschätzung</th>
                                         </tr>
                                     </thead>
                                     <tbody id="trainingReportBody">
@@ -1270,7 +1281,7 @@
                         </div>
 
                         <!-- Individuelle Entwicklungspläne -->
-                        <div class="dash-card" style="grid-column: 1 / -1;">
+                        <div class="dash-card" style="grid-column: 1 / -1;" data-ur="Individuell">
                             <div class="card-header">
                                 <h3>Individuelle Pläne</h3>
                                 <span id="trainingPlaeneMeta" class="header-tag">-</span>
@@ -1299,7 +1310,7 @@
 
                     <div class="jugend-grid">
                         <!-- Akademie: Stufe, Plätze, Jugendtag, Sichtungstag -->
-                        <div class="dash-card jugend-breit">
+                        <div class="dash-card jugend-breit" data-ur="Akademie">
                             <div class="card-header">
                                 <h3>Nachwuchsakademie</h3>
                                 <div>
@@ -1311,7 +1322,7 @@
                         </div>
 
                         <!-- Die Talente der eigenen Akademie -->
-                        <div class="dash-card jugend-breit">
+                        <div class="dash-card jugend-breit" data-ur="Akademie">
                             <div class="card-header">
                                 <h3>Talente der Akademie</h3>
                                 <span id="youthTalenteMeta" class="header-tag">-</span>
@@ -1336,10 +1347,10 @@
                         </div>
 
                         <!-- Talente kleinerer Akademien -->
-                        <div class="dash-card" id="youthFremde"></div>
+                        <div class="dash-card" id="youthFremde" data-ur="Akademie"></div>
 
                         <!-- Schwerpunkte für den nächsten Jahrgang -->
-                        <div class="dash-card">
+                        <div class="dash-card" data-ur="Akademie">
                             <div class="card-header">
                                 <h3>Schwerpunkte der Akademie</h3>
                                 <span class="header-tag">für den nächsten Jahrgang</span>
@@ -1348,13 +1359,13 @@
                         </div>
 
                         <!-- U19-Liga (JugendligaEngine) -->
-                        <div class="dash-card jugend-breit" id="jugendligaKarte"></div>
+                        <div class="dash-card jugend-breit" id="jugendligaKarte" data-ur="U19"></div>
 
                         <!-- Zweite Mannschaft: U23-Liga und Kader (ReserveEngine) -->
-                        <div class="dash-card jugend-breit" id="u23Karte"></div>
+                        <div class="dash-card jugend-breit" id="u23Karte" data-ur="U23"></div>
 
                         <!-- Verliehene Talente (LoanEngine) -->
-                        <div class="dash-card jugend-breit" id="verliehenKarte"></div>
+                        <div class="dash-card jugend-breit" id="verliehenKarte" data-ur="Verliehen"></div>
                     </div>
                 </section>
 
@@ -1363,9 +1374,9 @@
                     <div class="pane-header">
                         <h2>Vereinsfinanzen & Bilanz</h2>
                     </div>
-                    <div class="kz-leiste" id="finKennzahlen"></div>
+                    <div class="kz-leiste" id="finKennzahlen" data-ur="Übersicht"></div>
                     <div class="finances-grid">
-                        <div class="dash-card">
+                        <div class="dash-card" data-ur="Übersicht">
                             <h3>Vermögen & Budgets</h3>
                             <div class="finance-stat-row">
                                 <span>Gesamter Kontostand:</span>
@@ -1388,7 +1399,7 @@
                             <div id="finRegeln" class="fin-regeln"></div>
                         </div>
 
-                        <div class="dash-card">
+                        <div class="dash-card" data-ur="Übersicht">
                             <h3>Einnahmequellen & Sponsoring</h3>
                             <div class="finance-stat-row">
                                 <span>Stadionkapazität:</span>
@@ -1417,7 +1428,7 @@
                         </div>
 
                         <!-- Was die Anlagen je Spieltag kosten -->
-                        <div class="dash-card">
+                        <div class="dash-card" data-ur="Übersicht">
                             <h3>Unterhalt der Anlagen</h3>
                             <p class="text-muted" style="font-size:12px; margin:-2px 0 10px;">
                                 Je Spieltag. Was verfällt, kostet mehr &ndash; Flickwerk ist teurer als Pflege.
@@ -1430,7 +1441,7 @@
                         </div>
 
                         <!-- Transaktionshistorie -->
-                        <div class="dash-card" style="grid-column: 1 / -1;">
+                        <div class="dash-card" style="grid-column: 1 / -1;" data-ur="Journal">
                             <h3>Buchungs- und Transaktionsjournal</h3>
                             <div class="table-container mt-2" style="max-height: 260px; overflow-y: auto;">
                                 <table class="compact-table">
@@ -1451,19 +1462,19 @@
                 </section>
 
                 <!-- Tab: Statistics (Statistiken) -->
-                <section class="tab-pane" id="pane-stats">
+                <section class="tab-pane" id="pane-stats" data-ur-reihe="Ranglisten|Datenzentrale|Auszeichnungen|Fünfjahreswertung|Gerüchte &amp; Trainer">
                     <div class="pane-header">
                         <h2>Liga-Statistiken & Ranglisten</h2>
                         <select id="statsLeagueSelect" class="styled-select stats-liga-wahl" aria-label="Liga für die Ranglisten"></select>
                     </div>
-                    <div class="dash-card dz-karte" id="statsDatenzentrale"></div>
-                    <div class="dash-card preise-karte" id="statsPreise" hidden></div>
-                    <div class="dash-card preise-karte" id="statsJahrespreise" hidden></div>
-                    <div class="dash-card preise-karte" id="statsTurnier" hidden></div>
-                    <div class="dash-card preise-karte" id="statsKoeffizient" hidden></div>
-                    <div class="dash-card karussell-karte" id="statsKarussell" hidden></div>
-                    <div class="dash-card karussell-karte" id="statsGeruechte" hidden></div>
-                    <div class="stats-grid">
+                    <div class="dash-card dz-karte" id="statsDatenzentrale" data-ur="Datenzentrale"></div>
+                    <div class="dash-card preise-karte" id="statsPreise" data-ur="Auszeichnungen" hidden></div>
+                    <div class="dash-card preise-karte" id="statsJahrespreise" data-ur="Auszeichnungen" hidden></div>
+                    <div class="dash-card preise-karte" id="statsTurnier" data-ur="Auszeichnungen" hidden></div>
+                    <div class="dash-card preise-karte" id="statsKoeffizient" data-ur="Fünfjahreswertung" hidden></div>
+                    <div class="dash-card karussell-karte" id="statsKarussell" data-ur="Gerüchte & Trainer" hidden></div>
+                    <div class="dash-card karussell-karte" id="statsGeruechte" data-ur="Gerüchte & Trainer" hidden></div>
+                    <div class="stats-grid" data-ur="Ranglisten">
                         <div class="dash-card">
                             <h3>Torjäger</h3>
                             <div class="leaderboard-list" id="statsTopScorers"></div>
@@ -2565,6 +2576,7 @@
     <script src="js/ui/uiEinstieg.js"></script>
     <script src="js/ui/uiNational.js"></script>
     <script src="js/ui/uiDaten.js"></script>
+    <script src="js/ui/uiNavigation.js"></script>
     <script src="js/ui/spielfeld3d.js"></script>
     <script src="js/app.js"></script>
 </body>

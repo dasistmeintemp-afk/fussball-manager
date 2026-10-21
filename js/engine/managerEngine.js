@@ -540,7 +540,7 @@ class ManagerEngine {
             items.push({
                 priority: 0,
                 icon: "🚑",
-                tab: "squad",
+                tab: "squad", unterreiter: "Unterbau",
                 title: ohneTorwart ? "Kein Torwart einsatzbereit" : `Personalnot: nur ${profis.length} Profis einsatzbereit`,
                 detail: beste.length
                     ? `Aus U23 und U19 bieten sich an: ${beste.map(name).join(", ")}. Ein Tipp auf den Namen öffnet die Akte.`
@@ -558,7 +558,7 @@ class ManagerEngine {
                 items.push({
                     priority: 0,
                     icon: "🚑",
-                    tab: "squad",
+                    tab: "squad", unterreiter: "Unterbau",
                     title: `Engpass ${e.name}: ${e.fit} fit, die Formation braucht ${e.braucht}`,
                     detail: passend.length
                         ? `Aus U23 und U19 bieten sich an: ${passend.map(name).join(", ")}.`
@@ -574,7 +574,7 @@ class ManagerEngine {
             items.push({
                 priority: 5,
                 icon: "⭐",
-                tab: "squad",
+                tab: "squad", unterreiter: "Unterbau",
                 title: inForm.length === 1 ? `${inForm[0].p.name} drängt sich auf` : `${inForm.length} Spieler drängen sich auf`,
                 detail: `In Form im Unterbau: ${inForm.map(name).join(", ")}.`,
                 spieler: inForm.map(k => ({ id: k.p.id, name: k.p.name, pos: k.p.pos })),
@@ -1184,7 +1184,7 @@ class ManagerEngine {
                 icon: "🤝",
                 title: `${a.clubName} will Sie als Trainer`,
                 detail: `${a.leagueName} · Angebot gilt noch ${Math.max(0, a.bis - jobmarkt._jetzt(state))} Tage`,
-                tab: "club"
+                tab: "club", unterreiter: "Trainer"
             }));
         }
 
@@ -1273,7 +1273,7 @@ class ManagerEngine {
             items.push({
                 priority: 2,
                 icon: "🚑",
-                tab: "squad",
+                tab: "squad", unterreiter: "Spieler",
                 title: `${ausfaelle.length} Spieler nicht einsatzbereit`,
                 detail: ausfaelle.slice(0, 3).map(p => p.name).join(", ") + (ausfaelle.length > 3 ? " …" : "")
             });
@@ -1285,7 +1285,7 @@ class ManagerEngine {
             items.push({
                 priority: 3,
                 icon: "🥵",
-                tab: "training",
+                tab: "training", unterreiter: "Bericht",
                 title: `${muede.length} Spieler sind überlastet`,
                 detail: "Trainingsintensität senken oder rotieren, sonst steigt das Verletzungsrisiko."
             });
@@ -1304,7 +1304,7 @@ class ManagerEngine {
             items.push({
                 priority: 0,
                 icon: "📄",
-                tab: "squad",
+                tab: "squad", unterreiter: "Spieler",
                 title: `${zumWechsel.length} ${zumWechsel.length === 1 ? "Vertrag endet" : "Verträge enden"} zum Saisonwechsel`,
                 detail: (rest !== null ? `Noch ${rest} ${rest === 1 ? "Tag" : "Tage"}. ` : "") + "Auf einen Namen tippen, um zu verlängern.",
                 spieler: zumWechsel.map(p => ({ id: p.id, name: p.name, pos: p.pos })),
@@ -1317,7 +1317,7 @@ class ManagerEngine {
             items.push({
                 priority: 4,
                 icon: "📄",
-                tab: "squad",
+                tab: "squad", unterreiter: "Spieler",
                 title: `${auslaufend.length} ${auslaufend.length === 1 ? "Vertrag läuft" : "Verträge laufen"} aus`,
                 detail: "Auf einen Namen tippen, um zu verlängern.",
                 spieler: auslaufend.map(p => ({ id: p.id, name: p.name, pos: p.pos })),
@@ -1331,7 +1331,7 @@ class ManagerEngine {
             items.push({
                 priority: 5,
                 icon: "😞",
-                tab: "squad",
+                tab: "squad", unterreiter: "Spieler",
                 title: `${unzufrieden.length} Spieler sind unzufrieden`,
                 detail: unzufrieden.slice(0, 3).map(p => p.name).join(", ") + (unzufrieden.length > 3 ? " …" : "")
             });
@@ -1381,7 +1381,7 @@ class ManagerEngine {
                 items.push({
                     priority: 7,
                     icon: "🏗️",
-                    tab: "club",
+                    tab: "club", unterreiter: "Anlagen",
                     title: `${fac.FACILITY_NAMES[key]}: ${p.art === "ausbau" ? "Ausbau" : "Sanierung"} läuft`,
                     detail: `${fac.restText(fac.migriereProjekt(p)).replace(/^noch/, "Noch")}${fac.fertigAm(state, p) ? `, fertig um den ${fac.fertigAm(state, p)}` : ""} · ${einbusse}.`
                 });

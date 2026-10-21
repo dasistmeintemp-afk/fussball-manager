@@ -904,6 +904,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         : `<button class="btn btn-secondary" id="btnPdScoutPlayer" style="flex:1;" title="Der Bericht kommt nach einigen Tagen ins Postfach"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg> Scout entsenden</button>`}
                     <button class="btn btn-primary" id="btnPdBidPlayer" style="flex:1;"><svg class="ico" aria-hidden="true"><use href="#i-briefcase"/></svg> Transfer verhandeln</button>
                 </div>
+                ${this.gemerktKnopfHtml ? this.gemerktKnopfHtml(player.id, "btnPdMerken") : ""}
                 ${klausel ? `<button class="btn btn-secondary" id="btnPdKlausel" style="width:100%; margin-top:10px;" title="Sein Verein kann nicht ablehnen"><svg class="ico" aria-hidden="true"><use href="#i-bolt"/></svg> Ausstiegsklausel ziehen (${this.geldKurz(klausel)})</button>` : ""}
                 ${vorvertragHtml}
                 ${this.erlaubnisHinweis(player)}
@@ -1200,6 +1201,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     if (this.activeTab === "transfers") this.renderTransfers();
                     this.showPlayerDetailsModal(player.id);
                 });
+            });
+
+            document.getElementById("btnPdMerken")?.addEventListener("click", () => {
+                if (this.schalteBeobachtungsliste(player.id)) this.showPlayerDetailsModal(player.id);
             });
 
             document.getElementById("btnPdBidPlayer")?.addEventListener("click", () => {

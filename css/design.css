@@ -2348,7 +2348,7 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
    durch, der Hinweis über dem Feld sagt es; der Knopf schaltet um.
    -------------------------------------------------------------------------- */
 .lm-spulen {
-    position: absolute; left: 50%; top: 12px; z-index: 6; transform: translateX(-50%);
+    position: absolute; left: 14px; top: 12px; z-index: 6;
     display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px;
     background: rgba(9, 12, 17, 0.82); border: 1px solid rgba(255, 255, 255, 0.16);
     color: #f8fafc; font-size: 12.5px; font-weight: 600; white-space: nowrap; pointer-events: none;
@@ -2362,3 +2362,185 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
 }
 #modalLiveMatch .lm-ansicht-btn.active { background: rgba(var(--accent-rgb), 0.16); border-color: var(--accent-line); color: var(--text-main); }
 @media (max-width: 640px) { #modalLiveMatch .lm-ansicht-btn { padding: 4px 8px; font-size: 11px; } }
+
+/* ===== Livespiel als Kachelansicht wie im Vorbild (uiLiveKacheln.js) =====
+   Breite Bildschirme: das Feld in der Mitte, ringsum Kacheln; unten die
+   Leiste mit Kondition und Note. Schmaler bleibt es bei Feld und
+   Seitenleiste mit Reitern. */
+#modalLiveMatch .lm-spalte,
+#modalLiveMatch .lm-k-stat,
+#modalLiveMatch .lm-k-ereignisse,
+#modalLiveMatch .lm-leiste { display: none; }
+#modalLiveMatch .lm-mentalitaet {
+    display: inline-flex; align-items: center; gap: 6px; padding: 0 4px 0 10px; min-height: 32px; border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); color: var(--text-muted);
+}
+#modalLiveMatch .lm-mentalitaet[hidden] { display: none; }
+#modalLiveMatch .lm-mentalitaet .ico { width: 15px; height: 15px; }
+#modalLiveMatch .lm-mentalitaet select {
+    background: transparent; border: 0; color: var(--text-main); font: inherit; font-size: 13px; font-weight: 600;
+    padding: 4px 6px; min-height: 30px; cursor: pointer;
+}
+#modalLiveMatch .lm-mentalitaet select option { background: #10151c; color: #f1f5f9; }
+@media (max-width: 640px) { #modalLiveMatch .lm-mentalitaet .ico { display: none; } #modalLiveMatch .lm-mentalitaet { padding-left: 4px; } }
+
+#modalLiveMatch .lm-kachel {
+    display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden auto; scrollbar-width: thin;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02));
+    border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 14px; padding: 10px 12px;
+}
+#modalLiveMatch .lm-k-kopf { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; flex: 0 0 auto; }
+#modalLiveMatch .lm-k-titel { color: var(--accent); font-size: 13px; font-weight: 700; letter-spacing: 0.02em; }
+#modalLiveMatch .lm-k-sub { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#modalLiveMatch .lm-k-leer { color: var(--text-muted); font-size: 12.5px; padding: 8px 2px; }
+
+/* Aufstellung als kleines Feld: eigenes Tor unten */
+#modalLiveMatch .lm-ke-feld {
+    position: relative; flex: 1 1 auto; min-height: 260px; border-radius: 10px; overflow: hidden;
+    background: repeating-linear-gradient(180deg, #164b2f 0 12.5%, #18522f 12.5% 25%);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+}
+#modalLiveMatch .lm-ke-linie.mitte { position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid rgba(255, 255, 255, 0.35); }
+#modalLiveMatch .lm-ke-kreis { position: absolute; left: 50%; top: 50%; width: 22%; aspect-ratio: 1; transform: translate(-50%, -50%); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 50%; }
+#modalLiveMatch .lm-ke-strafraum { position: absolute; left: 22%; right: 22%; height: 15%; border: 1px solid rgba(255, 255, 255, 0.35); }
+#modalLiveMatch .lm-ke-strafraum.unten { bottom: -1px; }
+#modalLiveMatch .lm-ke-strafraum.oben { top: -1px; }
+#modalLiveMatch .lm-ke-sp {
+    position: absolute; transform: translate(-50%, -38%); display: flex; flex-direction: column; align-items: center; gap: 1px;
+    width: 76px; pointer-events: auto;
+}
+#modalLiveMatch .lm-ke-sp.off { opacity: 0.4; }
+#modalLiveMatch .lm-ke-trikot {
+    display: grid; place-items: center; width: 26px; height: 24px; font-size: 11px; font-weight: 800; line-height: 1;
+    color: var(--kit-text, #fff); background: var(--kit, #2563eb); font-variant-numeric: tabular-nums;
+    clip-path: polygon(28% 0, 72% 0, 100% 18%, 92% 42%, 80% 36%, 80% 100%, 20% 100%, 20% 36%, 8% 42%, 0 18%);
+    padding-top: 4px; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+#modalLiveMatch .lm-ke-zeile { display: inline-flex; align-items: center; gap: 2px; }
+#modalLiveMatch .lm-ke-zeile .coach-note { font-size: 10px; min-width: 24px; padding: 1px 4px; }
+#modalLiveMatch .lm-ke-pos { font-size: 9px; font-weight: 700; color: #e2e8f0; background: rgba(9, 12, 17, 0.7); border-radius: 4px; padding: 1px 4px; }
+#modalLiveMatch .lm-ke-name { max-width: 76px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; font-weight: 600; color: #f8fafc; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9); }
+#modalLiveMatch .lm-ke-icons { display: inline-flex; gap: 2px; min-height: 0; position: absolute; top: -2px; left: 54px; }
+#modalLiveMatch .lm-ke-ico { display: inline-flex; align-items: center; gap: 1px; font-style: normal; font-size: 10px; color: #f8fafc; line-height: 1; }
+#modalLiveMatch .lm-ke-ico.tor::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 2px #0f172a; }
+#modalLiveMatch .lm-ke-ico.vorlage::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: transparent; box-shadow: inset 0 0 0 2px #fff; }
+#modalLiveMatch .lm-ke-ico.rein { color: #4ade80; font-weight: 700; }
+#modalLiveMatch .lm-ke-icons .lm-card { width: 7px; height: 10px; margin: 0; }
+
+/* Statistik */
+#modalLiveMatch .lm-ks-teams { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 600; color: var(--text-main); margin-bottom: 6px; }
+#modalLiveMatch .lm-ks-teams > span { display: inline-flex; align-items: center; gap: 6px; }
+#modalLiveMatch .lm-ks-zeile { display: grid; grid-template-columns: 42px 1fr 42px; align-items: center; column-gap: 8px; margin: 3px 0; }
+#modalLiveMatch .lm-ks-label { grid-column: 1 / -1; text-align: center; font-size: 11px; color: var(--text-muted); }
+#modalLiveMatch .lm-ks-wert { font-size: 14px; font-weight: 700; color: var(--text-main); font-variant-numeric: tabular-nums; }
+#modalLiveMatch .lm-ks-wert:last-child { text-align: right; }
+#modalLiveMatch .lm-ks-balken { display: flex; gap: 3px; height: 7px; }
+#modalLiveMatch .lm-ks-balken i { border-radius: 4px; }
+#modalLiveMatch .lm-ks-balken i:first-child { width: var(--anteil); background: var(--heim); }
+#modalLiveMatch .lm-ks-balken i:last-child { flex: 1; background: var(--gast); }
+
+/* Ereignisse */
+#modalLiveMatch .lm-kv-stand { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px; }
+#modalLiveMatch .lm-kv-stand b { font-size: 20px; color: var(--text-main); font-variant-numeric: tabular-nums; }
+#modalLiveMatch .lm-kv-stand span:last-child { text-align: right; }
+#modalLiveMatch .lm-kv-liste { display: flex; flex-direction: column; gap: 5px; overflow-y: auto; min-height: 0; }
+#modalLiveMatch .lm-kv {
+    display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; max-width: 92%;
+    padding: 4px 9px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.07); font-size: 12px;
+}
+#modalLiveMatch .lm-kv.away { align-self: flex-end; flex-direction: row-reverse; }
+#modalLiveMatch .lm-kv.tor { border-color: rgba(var(--accent-rgb), 0.35); }
+#modalLiveMatch .lm-kv-min { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+#modalLiveMatch .lm-kv-text { color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#modalLiveMatch .lm-ke-vorlage { color: var(--text-muted); font-weight: 400; }
+
+/* Bank */
+#modalLiveMatch .lm-kb-striche { display: inline-flex; gap: 2px; }
+#modalLiveMatch .lm-kb-striche i { width: 10px; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.18); }
+#modalLiveMatch .lm-kb-striche i.voll { background: #4ade80; }
+#modalLiveMatch .lm-kb-offen { font-size: 12px; color: var(--text-main); margin-bottom: 6px; }
+#modalLiveMatch .lm-kb-offen span { display: block; color: var(--text-muted); font-size: 11px; }
+#modalLiveMatch .lm-kb-art { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: var(--text-main); }
+#modalLiveMatch .lm-kb-text { font-size: 12.5px; color: var(--text-main); margin: 3px 0; }
+#modalLiveMatch .lm-kb-grund { font-size: 12px; color: var(--text-muted); line-height: 1.35; }
+#modalLiveMatch .lm-kb-knoepfe { display: flex; gap: 6px; margin-top: 8px; }
+#modalLiveMatch .lm-kb-seitenlinie { margin-top: auto; align-self: flex-start; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); color: var(--text-main); }
+
+/* Andere Plätze */
+#modalLiveMatch .lm-kr-liste { display: flex; flex-direction: column; gap: 5px; overflow-y: auto; min-height: 0; }
+#modalLiveMatch .lm-kr-spiel { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; font-size: 12px; padding: 5px 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.04); }
+#modalLiveMatch .lm-kr-heim, #modalLiveMatch .lm-kr-gast { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main); }
+#modalLiveMatch .lm-kr-gast { text-align: right; }
+#modalLiveMatch .lm-kr-erg { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-main); padding: 1px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.08); }
+
+/* Leiste: Kondition und Note je Position */
+#modalLiveMatch .lm-leiste {
+    align-items: center; gap: 6px; padding: 8px 14px; border-top: 1px solid rgba(255, 255, 255, 0.07);
+    overflow-x: auto; scrollbar-width: thin; flex: 0 0 auto;
+}
+#modalLiveMatch .lm-ll-wechsel { font-size: 12px; color: var(--text-muted); white-space: nowrap; margin-right: 6px; }
+#modalLiveMatch .lm-ll-pos {
+    display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 999px; white-space: nowrap;
+    background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08);
+}
+#modalLiveMatch .lm-ll-kurz { font-size: 11.5px; font-weight: 700; color: var(--text-main); }
+#modalLiveMatch .lm-ll-herz { width: 14px; height: 14px; }
+#modalLiveMatch .lm-ll-herz.gut { fill: #22c55e; }
+#modalLiveMatch .lm-ll-herz.mittel { fill: #f59e0b; }
+#modalLiveMatch .lm-ll-herz.schlecht { fill: #ef4444; }
+
+/* Ab 1280 Pixeln: die Kachelansicht */
+@media (min-width: 1280px) and (min-height: 700px) {
+    #modalLiveMatch .modal-fullscreen { width: 98vw; max-width: 1920px; height: 96vh; max-height: 96vh; }
+    #modalLiveMatch .live-match-header {
+        display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        grid-template-areas: "steuer banner zeit" "steuer tafel zeit" "streifen streifen streifen";
+        align-items: center; column-gap: 18px; row-gap: 4px;
+    }
+    #modalLiveMatch .live-comp-banner { grid-area: banner; justify-self: center; }
+    #modalLiveMatch .live-scoreboard { grid-area: tafel; flex: none; }
+    #modalLiveMatch .live-controls-bar { grid-area: steuer; justify-self: start; flex-wrap: wrap; }
+    #modalLiveMatch .lm-timeline { grid-area: zeit; justify-self: stretch; max-width: none; }
+    #modalLiveMatch .lm-wetter { grid-area: zeit; align-self: end; justify-self: end; }
+    #modalLiveMatch .lm-pending-strip { grid-area: streifen; }
+    #modalLiveMatch .live-match-body {
+        grid-template-columns: minmax(250px, 0.9fr) minmax(0, 1.25fr) minmax(0, 1.25fr) minmax(250px, 0.9fr);
+        grid-template-rows: minmax(0, 0.74fr) minmax(0, 1.4fr);
+        grid-template-areas: "heim stat ereig gast" "heim feld feld gast";
+        gap: 12px; padding: 12px;
+    }
+    #modalLiveMatch .lm-spalte { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+    #modalLiveMatch .lm-spalte-heim { grid-area: heim; }
+    #modalLiveMatch .lm-spalte-gast { grid-area: gast; }
+    #modalLiveMatch .lm-k-elf { flex: 1 1 62%; }
+    #modalLiveMatch .lm-k-bank, #modalLiveMatch .lm-k-ergebnisse { flex: 0 1 38%; }
+    #modalLiveMatch .lm-k-stat { display: flex; grid-area: stat; }
+    #modalLiveMatch .lm-k-ereignisse { display: flex; grid-area: ereig; }
+    #modalLiveMatch .live-pitch-wrapper { grid-area: feld; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.09); padding: 10px; }
+    #modalLiveMatch .live-match-sidebar { display: none; }
+    #modalLiveMatch .lm-leiste { display: flex; }
+}
+/* 1280 bis 1599 Pixel: kurze Beschriftungen, damit die Steuerung in zwei Zeilen passt */
+@media (min-width: 1280px) and (max-width: 1599px) and (min-height: 700px) {
+    #modalLiveMatch .lm-speed-lang { display: none; }
+    #modalLiveMatch .lm-speed-kurz { display: inline; }
+    #modalLiveMatch .lm-pause-btn .lm-btn-text, #modalLiveMatch #btnLmSkip .lm-btn-text { display: none; }
+    #modalLiveMatch .lm-mentalitaet .ico { display: none; }
+    #modalLiveMatch .live-controls-bar { gap: 6px; }
+    #modalLiveMatch .lm-ke-sp { width: 64px; }
+    #modalLiveMatch .lm-ke-name { max-width: 64px; font-size: 10px; }
+}
+/* Niedrige Bildschirme: Zurufe und Statistik rücken zusammen */
+@media (min-width: 1280px) and (max-height: 900px) {
+    #modalLiveMatch .lm-kachel { padding: 8px 10px; }
+    #modalLiveMatch .lm-k-kopf { margin-bottom: 4px; }
+    #modalLiveMatch .lm-ks-teams { margin-bottom: 2px; }
+    #modalLiveMatch .lm-ks-zeile { margin: 0; row-gap: 0; }
+    #modalLiveMatch .lm-ks-label { font-size: 10px; line-height: 1.15; }
+    #modalLiveMatch .lm-ks-wert { font-size: 12.5px; line-height: 1.2; }
+    #modalLiveMatch .lm-ks-balken { height: 5px; }
+    #modalLiveMatch .lm-kv-stand { margin-bottom: 4px; }
+    #modalLiveMatch .lm-kv-stand b { font-size: 17px; }
+    #modalLiveMatch .lm-zurufe { padding-top: 4px; }
+    #modalLiveMatch .lm-zuruf-btn { min-height: 30px; padding: 3px 10px; }
+}

@@ -745,6 +745,7 @@ class UIManager {
         el.innerHTML = `
             <h4 class="einstellung-h">Was gezeigt wird</h4>
             ${wahl("liveAnsicht", e.ansicht, [
+                ["schluessel", "Schlüsselszenen", "Nur Szenen mit Torgefahr, Standards vor dem Tor, Tore und Karten - das kürzeste Spiel."],
                 ["hoehepunkte", "Höhepunkte", "Angriffe, Standards vor dem Tor, Tore und Karten. Ruhige Phasen laufen ohne Bild durch - das Spiel ist dasselbe."],
                 ["ganz", "Ganzes Spiel", "Alle 90 Minuten."]
             ])}
@@ -3815,6 +3816,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // Die ausgelagerten Teile hängen sich an die Klasse - im Browser lädt sie
     // index.html der Reihe nach, unter Node holen wir sie hier dazu
     ["./uiAssistent.js", "./uiKader.js", "./uiTaktik.js", "./uiWettbewerbe.js", "./uiTraining.js", "./uiFinanzen.js", "./uiVerein.js", "./uiPostfach.js", "./uiDialoge.js", "./uiKarriere.js",
-        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiSeiten.js", "./uiProfil.js", "./uiAngebot.js", "./uiLivespiel.js", "./uiSpielbericht.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
+        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiSeiten.js", "./uiProfil.js", "./uiAngebot.js", "./uiLivespiel.js", "./uiLiveKacheln.js", "./uiLiveDarstellung.js", "./uiSpielbericht.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
         .forEach(teil => require(teil));
 }

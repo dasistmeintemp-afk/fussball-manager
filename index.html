@@ -2044,6 +2044,16 @@
                             <svg class="ico" aria-hidden="true"><use href="#i-clipboard"/></svg><span class="lm-btn-text"> Seitenlinie</span>
                             <span class="lm-coach-badge" id="lmCoachBadge" style="display:none;"></span>
                         </button>
+                        <label class="lm-mentalitaet" hidden title="Mentalität - wirkt sofort, ohne Pause">
+                            <svg class="ico" aria-hidden="true"><use href="#i-tactics"/></svg>
+                            <select id="lmMentalitaet" aria-label="Mentalität">
+                                <option value="very_defensive">Sehr defensiv</option>
+                                <option value="defensive">Defensiv</option>
+                                <option value="balanced">Ausgewogen</option>
+                                <option value="offensive">Offensiv</option>
+                                <option value="very_offensive">Sehr offensiv</option>
+                            </select>
+                        </label>
                         <button class="btn btn-sm btn-secondary" id="btnLmSkip" aria-label="Sofort-Ergebnis"><svg class="ico" aria-hidden="true"><use href="#i-bolt"/></svg><span class="lm-btn-text"> Sofort-Ergebnis</span></button>
                     </div>
                     <div class="lm-timeline" id="lmTimeline" aria-hidden="true">
@@ -2058,6 +2068,19 @@
                 </div>
 
                 <div class="live-match-body">
+                    <!-- Kachelansicht (breite Bildschirme): links die Heimelf und die Bank -->
+                    <div class="lm-spalte lm-spalte-heim">
+                        <section class="lm-kachel lm-k-elf" id="lmKElfHome" aria-label="Aufstellung Heim"></section>
+                        <section class="lm-kachel lm-k-bank" id="lmKBank" aria-label="Bank"></section>
+                    </div>
+                    <section class="lm-kachel lm-k-stat" id="lmKStat" aria-label="Statistik"></section>
+                    <section class="lm-kachel lm-k-ereignisse" id="lmKEreignisse" aria-label="Ereignisse"></section>
+                    <!-- Rechts der Gast und die anderen Plätze -->
+                    <div class="lm-spalte lm-spalte-gast">
+                        <section class="lm-kachel lm-k-elf" id="lmKElfAway" aria-label="Aufstellung Gast"></section>
+                        <section class="lm-kachel lm-k-ergebnisse" id="lmKErgebnisse" aria-label="Andere Plätze"></section>
+                    </div>
+
                     <!-- Left: 2D Pitch Canvas -->
                     <div class="live-pitch-wrapper">
                         <canvas id="livePitchCanvas" width="800" height="500"></canvas>
@@ -2092,6 +2115,9 @@
                                         <option value="hoch">Hoch</option>
                                     </select>
                                 </label>
+                                <label><input type="checkbox" data-anzeige2d="wiederholung2D"> Torwiederholung (2D)</label>
+                                <label><input type="checkbox" data-anzeige2d="passwege"> Passwege</label>
+                                <label><input type="checkbox" data-anzeige2d="laufwege"> Laufwege</label>
                                 <label><input type="checkbox" data-anzeige2d="namen"> Namen aller Spieler</label>
                                 <label><input type="checkbox" data-anzeige2d="formEigene"> Formation eigene Elf</label>
                                 <label><input type="checkbox" data-anzeige2d="formGegner"> Formation Gegner</label>
@@ -2150,6 +2176,8 @@
                         </div>
                     </div>
                 </div>
+                <!-- Kachelansicht: jede Position der eigenen Elf mit Kondition und Note -->
+                <div class="lm-leiste" id="lmLeiste" aria-label="Kondition und Noten der eigenen Elf"></div>
             </div>
         </div>
 
@@ -2579,6 +2607,8 @@
     <script src="js/ui/uiProfil.js"></script>
     <script src="js/ui/uiAngebot.js"></script>
     <script src="js/ui/uiLivespiel.js"></script>
+    <script src="js/ui/uiLiveKacheln.js"></script>
+    <script src="js/ui/uiLiveDarstellung.js"></script>
     <script src="js/ui/uiSpielbericht.js"></script>
     <script src="js/ui/uiSpeicher.js"></script>
     <script src="js/ui/uiEinstieg.js"></script>

@@ -2445,6 +2445,135 @@ button.pf-verein:hover span { text-decoration: underline; text-underline-offset:
 }
 
 /* --------------------------------------------------------------------------
+   Transfermarkt als Spielerdatenbank (uiSpielerdatenbank.js): Kopf mit
+   Trefferzahl, Fenster und Schalter, Status und Note in der Tabelle,
+   sechs Kacheln darunter
+   -------------------------------------------------------------------------- */
+.tm-kopf { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 10px; }
+.tm-treffer { font-size: 13.5px; color: var(--text-muted); }
+.tm-treffer strong { color: var(--text-main); font-size: 15px; font-variant-numeric: tabular-nums; }
+.tm-fenster-chip { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid var(--line-strong); }
+.tm-fenster-chip:empty { display: none; }
+.tm-fenster-chip.offen { color: var(--ok); border-color: rgba(52, 211, 153, 0.45); background: rgba(52, 211, 153, 0.08); }
+.tm-fenster-chip.zu { color: var(--warn); border-color: rgba(245, 158, 11, 0.45); background: rgba(245, 158, 11, 0.08); }
+.tm-schalter { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; font-size: 13px; cursor: pointer; user-select: none; }
+.tm-schalter input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.tm-schalter-bahn { position: relative; width: 34px; height: 20px; border-radius: 999px; background: var(--surface-3); box-shadow: inset 0 0 0 1px var(--line-strong); transition: background 0.15s; }
+.tm-schalter-bahn::after { content: ""; position: absolute; left: 3px; top: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--text-muted); transition: transform 0.15s, background 0.15s; }
+.tm-schalter input:checked + .tm-schalter-bahn { background: var(--accent); }
+.tm-schalter input:checked + .tm-schalter-bahn::after { transform: translateX(14px); background: #0b1220; }
+.tm-schalter input:focus-visible + .tm-schalter-bahn { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Vierzehn Spalten: enger als die übrigen Tabellen */
+#transferTable th, #transferTable td { padding: 9px 6px; }
+#transferTable th:first-child, #transferTable td:first-child { padding-left: 12px; }
+#transferTable th:last-child, #transferTable td:last-child { padding-right: 12px; }
+#pane-transfers .tm-alter, #pane-transfers .tm-gehalt { display: table-cell; }
+#pane-transfers td.tm-alter { font-variant-numeric: tabular-nums; }
+.tm-status { width: 1%; white-space: nowrap; }
+.tm-status .tm-st + .tm-st { margin-left: 3px; }
+.tm-st { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px; background: var(--surface-2); color: var(--text-muted); vertical-align: middle; }
+.tm-st .ico { width: 13px; height: 13px; }
+.tm-st.st-merk { color: #fbbf24; }
+.tm-st.st-scout, .tm-st.st-verh { color: var(--accent); }
+.tm-st.st-frei, .tm-st.st-verkauf { color: var(--ok); }
+.tm-st.st-vertrag { color: var(--warn); }
+.tm-st.st-verletzt { color: var(--bad); }
+.tm-nation { white-space: nowrap; }
+.tm-flagge { font-size: 16px; line-height: 1; vertical-align: -2px; }
+.tm-nation-name { display: inline-block; max-width: 92px; margin-left: 6px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; font-size: 12.5px; color: var(--text-muted); }
+#pane-transfers td.tm-verein { white-space: nowrap; }
+td.tm-verein .crest { width: 24px; height: 24px; margin-right: 7px; font-size: 7.5px; letter-spacing: -0.04em; vertical-align: middle; }
+td.tm-verein > span:not(.crest) { display: inline-block; max-width: 130px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+.tm-rolle-name { max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-nation-kuerzel { display: inline-block; padding: 1px 4px; border-radius: 4px; background: var(--surface-3); font-size: 10px; font-weight: 700; letter-spacing: 0.04em; color: var(--text-muted); vertical-align: 1px; }
+.tm-nur-schmal { display: none; }
+.tm-note { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 22px; padding: 0 6px; border-radius: 6px; font-size: 12.5px; font-weight: 800; color: #0b1220; }
+.tm-note.note-a { background: #34d399; }
+.tm-note.note-b { background: #a3e635; }
+.tm-note.note-c { background: #facc15; }
+.tm-note.note-d { background: #fb923c; }
+.tm-note.note-e { background: var(--surface-3); color: var(--text-muted); }
+/* Ein erster Eindruck ohne Bericht: blass und gestrichelt */
+.tm-note.unsicher { background: transparent; color: var(--text-muted); box-shadow: inset 0 0 0 1.5px currentColor; border-radius: 6px; opacity: 0.85; }
+.tm-note.unsicher.note-a { color: #34d399; }
+.tm-note.unsicher.note-b { color: #a3e635; }
+.tm-note.unsicher.note-c { color: #facc15; }
+.tm-note.unsicher.note-d { color: #fb923c; }
+.tm-note-zelle { text-align: center; }
+.tm-wissen { white-space: nowrap; }
+.tm-wissen-balken { display: inline-block; width: 36px; height: 5px; margin-right: 7px; border-radius: 3px; background: rgba(255, 255, 255, 0.1); overflow: hidden; vertical-align: middle; }
+.tm-wissen-balken i { display: block; height: 100%; border-radius: 3px; background: var(--bad); }
+.tm-wissen-balken.mittel i { background: var(--warn); }
+.tm-wissen-balken.hoch i { background: var(--ok); }
+.tm-wissen-zahl { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+
+.tm-raster { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+.tm-raster > * { min-width: 0; }
+.tm-kachel { padding: 14px 16px; margin: 0; display: flex; flex-direction: column; }
+.tm-gross { font-size: 22px; font-weight: 800; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.tm-gross small { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+.tm-gross.offen { color: var(--ok); }
+.tm-gross.zu { color: var(--warn); }
+.tm-text { margin: 2px 0 8px; font-size: 12.5px; color: var(--text-muted); }
+.tm-leer { margin: 4px 0 8px; font-size: 12.5px; color: var(--text-muted); }
+.tm-hinweis { display: block; margin: 6px 0 0; font-size: 12px; color: var(--text-muted); }
+.tm-kachel-fuss { margin-top: auto; padding-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tm-land { display: grid; grid-template-columns: minmax(0, 1fr) 70px 40px; align-items: center; gap: 8px; padding: 3px 0; font-size: 12.5px; }
+.tm-land span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-land strong { text-align: right; font-variant-numeric: tabular-nums; }
+.tm-balken { display: block; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.tm-balken i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+.tm-balken.breit { height: 6px; margin: 2px 0 6px; }
+.tm-balken.ueber i { background: var(--bad); }
+.tm-liste { display: grid; gap: 4px; margin: 4px 0; }
+.tm-eintrag {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%;
+    padding: 6px 8px; border: 0; border-radius: 8px; background: var(--surface-2); color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.tm-eintrag:hover { background: var(--surface-3); }
+.tm-eintrag-name { display: grid; min-width: 0; }
+.tm-eintrag-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.tm-eintrag-name .tm-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-eintrag-wert { font-size: 12px; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 1600px) {
+    .tm-nation-name { display: none; }
+    td.tm-verein > span:not(.crest) { max-width: 100px; }
+    .tm-rolle-name { max-width: 98px; }
+}
+@media (max-width: 1500px) {
+    #pane-transfers .tm-wissen-zahl { display: none; }
+}
+@media (max-width: 1250px) {
+    #pane-transfers .tm-gehalt { display: none; }
+    .tm-raster { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 980px) {
+    #pane-transfers .tm-pot, #pane-transfers .tm-nation { display: none; }
+}
+@media (max-width: 640px) {
+    .tm-schalter { margin-left: 0; }
+    .tm-raster { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+    .tm-nur-breit { display: none; }
+    .tm-nur-schmal { display: block; }
+    .tm-status-inline.tm-nur-schmal { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: middle; }
+    .tm-status-inline .tm-st { width: 18px; height: 18px; }
+    #pane-transfers .btn-bid-player .tm-knopf-text { display: inline; }
+    #pane-transfers .data-table tr.row-clickable {
+        grid-template-columns: 40px minmax(0, 1fr) auto auto;
+        grid-template-areas:
+            "pos name name note"
+            "pos staerke aktion aktion"
+            "pos meta meta meta";
+    }
+    #pane-transfers .data-table tr.row-clickable td.tm-note-zelle { display: block; grid-area: note; align-self: start; text-align: right; }
+    #pane-transfers .data-table tr.row-clickable td.tm-aktion { align-self: center; }
+    #pane-transfers .tm-knoepfe { flex-direction: row; }
+    #pane-transfers .tm-rolle-name { display: none; }
+}
+
+/* --------------------------------------------------------------------------
    Transferangebot als eigene Seite (uiAngebot.js): Käufer und Ablöse oben,
    darunter Angebot, Spieler, Folgen und Käufer, dann die Entscheidung
    -------------------------------------------------------------------------- */

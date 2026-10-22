@@ -631,6 +631,27 @@ In der Spielerakte führt der Manager Gespräche mit jedem eigenen Spieler. Wie 
   - Die Menschenführung des Trainers verstärkt die Wirkung, der Kapitän trägt seine Stimmung zu allen, und dieselbe Ansprache zweimal hintereinander wirkt nur noch halb.
 
 ### 4. 🔄 Transfersystem, Scouting & Verträge
+- **Transfermarkt als Spielerdatenbank wie im Vorbild (`uiSpielerdatenbank.js`):**
+  - Über der Tabelle stehen die Zahl der Treffer, das Transferfenster (offen bis … oder geschlossen) und der Schalter *Nur gescoutete Spieler*: ein eigener Bericht oder mindestens halbes Wissen (`ScoutingEngine.istGescoutet`).
+  - Vierzehn Spalten: Status, Spieler, Nation, Verein mit Wappen, Position mit bester Rolle, Alter, Stärke und Potenzial getrennt, Ablöse und Gehalt als Spanne, Empfehlung, Wissen und die Knöpfe *Scouten* und *Verhandeln*.
+  - **Status als Symbole:** auf der Beobachtungsliste, Scout unterwegs, Bericht liegt vor, Verhandlung läuft, steht zum Verkauf, Vertrag läuft aus, vereinslos, verletzt, ausgeliehen, woanders unterschrieben.
+  - **Nation:** Die Flagge auch für Länder ohne eigene Liga im Spielstand, etwa Japan, Kroatien oder Senegal. Vorher stand dort ein Globus.
+  - **Gehalt als Spanne (`TransferEngine.gehaltsSpanne`):** was der Spieler beim Wechsel ungefähr fordert, je Woche: von genügsam bis gierig, je nach Berater. Nach einer Verhandlung kennt man den Berater, dann steht die genaue Forderung da.
+  - **Empfehlung als Note von A+ bis E (`ScoutingEngine.empfehlung`):** aus der Schätzung des Scouts, nicht aus den wahren Werten.
+    - Gewertet wird, welchen Platz der Spieler im eigenen Mannschaftsteil hätte: der Beste, Stammspieler, Rotation, Ergänzung oder schwächer als alle.
+    - Bei Jungen bis 23 zählt auch der Platz nach dem Potenzial. Ab 31 gibt es Abzug.
+    - Eine Ablöse über dem Transferbudget kostet, ablösefrei bringt etwas. A+ gibt es nur, wenn er klar besser ist als der beste eigene Spieler.
+    - Ohne Bericht ist die Note ein erster Eindruck, blass und gestrichelt. Die Gründe stehen im Tooltip.
+    - Gemessen mit Dortmund zum Start, zwei Welten: 16 bis 28 A, 195 bis 247 B, gut 1.500 C, knapp 1.100 D, der Rest E von rund 9.000 erreichbaren Spielern. A+ ist selten.
+  - Sortieren auch nach Empfehlung.
+  - **Sechs Kacheln unter der Tabelle:**
+    - *Transferfenster*: offen oder zu, wie lange noch, laufende Verhandlungen und Angebote.
+    - *Scouting-Reichweite*: ab welcher Ligastufe, das Wissen über die fünf bekanntesten Länder, wie viele Spieler im Ausland noch unbekannt sind.
+    - *Spielerempfehlungen*: die besten Noten unter den gescouteten Spielern, ohne Berichte die besten der Liste als erster Eindruck.
+    - *Beobachtungsliste*: Zahl und die ersten vier mit dem, was sich getan hat.
+    - *Budgets*: Transferbudget, Gehälter gegen Gehaltsbudget und was frei ist.
+    - *Aufträge*: laufende Suchaufträge, Spieler in Beobachtung, Regionalscouts und der Suchauftrag des Sportdirektors.
+  - Am Handy wird jede Zeile zur Karte mit Position, Name, Statussymbolen, Note, Sternen, Knöpfen und einer Zeile mit Verein, Ablöse und Wissen.
 - **Transfermarkt mit Suchfiltern:** Name, Position oder Mannschaftsteil und Stärke stehen oben. Unter *Mehr Filter* kommen dazu:
   - Alter, Potenzial, Marktwert (auch „bis zum Transferbudget“)
   - Vertrag: läuft aus, auf der Transferliste, vereinslos

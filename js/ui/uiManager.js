@@ -3668,7 +3668,7 @@ class UIManager {
         document.getElementById("tfSearch")?.addEventListener("input", () => this.renderTransfers());
         document.getElementById("tfPosFilter")?.addEventListener("change", () => this.renderTransfers());
         document.getElementById("tfRatingFilter")?.addEventListener("change", () => this.renderTransfers());
-        ["tfAlterFilter", "tfPotFilter", "tfWertFilter", "tfVertragFilter", "tfLandFilter", "tfSortierung"].forEach(id =>
+        ["tfAlterFilter", "tfPotFilter", "tfWertFilter", "tfVertragFilter", "tfLandFilter", "tfSortierung", "tfNurGescoutet"].forEach(id =>
             document.getElementById(id)?.addEventListener("change", () => this.renderTransfers()));
         document.getElementById("btnTfZuruecksetzen")?.addEventListener("click", () => {
             const s = document.getElementById("tfSearch");
@@ -3677,6 +3677,8 @@ class UIManager {
                 const el = document.getElementById(id);
                 if (el) el.selectedIndex = 0;
             });
+            const gescoutet = document.getElementById("tfNurGescoutet");
+            if (gescoutet) gescoutet.checked = false;
             this.renderTransfers();
         });
         // Leihmarkt
@@ -3816,6 +3818,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // Die ausgelagerten Teile hängen sich an die Klasse - im Browser lädt sie
     // index.html der Reihe nach, unter Node holen wir sie hier dazu
     ["./uiAssistent.js", "./uiKader.js", "./uiTaktik.js", "./uiWettbewerbe.js", "./uiTraining.js", "./uiFinanzen.js", "./uiVerein.js", "./uiPostfach.js", "./uiDialoge.js", "./uiKarriere.js",
-        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiSeiten.js", "./uiProfil.js", "./uiProfilLaufbahn.js", "./uiAngebot.js", "./uiVereinSeite.js", "./uiLivespiel.js", "./uiLiveKacheln.js", "./uiLiveDarstellung.js", "./uiSpielbericht.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
+        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiSeiten.js", "./uiProfil.js", "./uiProfilLaufbahn.js", "./uiAngebot.js", "./uiVereinSeite.js", "./uiSpielerdatenbank.js", "./uiLivespiel.js", "./uiLiveKacheln.js", "./uiLiveDarstellung.js", "./uiSpielbericht.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
         .forEach(teil => require(teil));
 }

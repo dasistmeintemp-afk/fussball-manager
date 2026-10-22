@@ -208,6 +208,30 @@ class TransferEngine {
     }
 
     /**
+     * Was ein Spieler beim Wechsel ungefähr verdienen will, als Spanne je
+     * Woche: sein Gehalt mit Wechselaufschlag mal dem Zuschlag seines
+     * Beraters (NegotiationEngine.startTransferNegotiation). Den Berater
+     * kennt man erst nach einer Verhandlung - bis dahin die ganze Spanne
+     * von genügsam bis gierig, danach die eine Zahl.
+     */
+    static gehaltsSpanne(player) {
+        const basis = (player?.wage || 10000) * 1.18;
+        const ne = _transferResolve("NegotiationEngine", "./negotiationEngine.js");
+        // Gerundet wie die Forderung in der Verhandlung
+        const runde = ne && typeof ne.runde === "function" ? (b) => ne.runde(b) : (b) => Math.round(b / 100) * 100;
+        if (player?.agent && typeof player.agent.greed === "number") {
+            const forderung = runde(basis * player.agent.greed);
+            return { min: forderung, max: forderung, bekannt: true };
+        }
+        const gier = (ne?.AGENT_PROFILES || []).map(a => a.greed);
+        return {
+            min: runde(basis * (gier.length ? Math.min(...gier) : 0.9)),
+            max: runde(basis * (gier.length ? Math.max(...gier) : 1.3)),
+            bekannt: false
+        };
+    }
+
+    /**
      * Bewertet ein Transferangebot der KI
      */
     static evaluateTransferOffer(state, playerId, buyerClubId, offeredFee) {

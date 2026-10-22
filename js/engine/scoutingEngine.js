@@ -958,6 +958,92 @@ const ScoutingEngine = {
         return { key: "ergaenzung", text: "Wäre bei uns nur Ergänzung" };
     },
 
+    // ------------------------------------------- Empfehlung als Note
+
+    /** Gescoutet heißt: ein eigener Bericht liegt vor oder das Wissen reicht dafür */
+    istGescoutet(player) {
+        const k = player?.scoutingKnowledge;
+        return !!k && ((k.reportsCount || 0) > 0 || (k.knowledgeLevel || 0) >= 50);
+    },
+
+    /** Plätze je Mannschaftsteil, an denen sich Stammspieler und Rotation messen */
+    KADER_PLAETZE: { TW: 1, ABW: 4, MF: 4, ST: 2 },
+
+    /** Von der Punktzahl zur Note; darunter E */
+    NOTEN: [{ ab: 4.5, note: "A+" }, { ab: 3.75, note: "A" }, { ab: 3, note: "B" }, { ab: 2, note: "C" }, { ab: 1, note: "D" }],
+
+    /** So viel Stärke (CA) über dem besten eigenen gilt als klar besser */
+    KLAR_BESSER: 10,
+
+    /** Ab diesem Wissen ist die Note belastbar, darunter ein erster Eindruck */
+    NOTE_SICHER_AB: 40,
+
+    /**
+     * Was die Empfehlungen brauchen: die Stärke des eigenen Kaders je
+     * Mannschaftsteil (absteigend) und das Transferbudget. Einmal je
+     * Durchgang - der Transfermarkt bewertet tausende Spieler.
+     */
+    empfehlungsRahmen(state) {
+        const gruppen = { TW: [], ABW: [], MF: [], ST: [] };
+        (state?.players || []).forEach(p => {
+            if (!p.clubId || p.clubId !== state.userClubId) return;
+            gruppen[this.positionsGruppe(p.pos)].push(p.trueCurrentAbility || (p.overall || 60) * 2);
+        });
+        Object.values(gruppen).forEach(l => l.sort((a, b) => b - a));
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        return { gruppen, budget: Math.max(0, club?.transferBudget || 0) };
+    },
+
+    /**
+     * Die Empfehlung des Scouts als Note von A+ bis E, wie im Vorbild.
+     * Sie folgt seiner Schätzung (PlayerRatingEngine.schaetzung), nicht den
+     * wahren Werten: welchen Platz der Spieler im eigenen Mannschaftsteil
+     * hätte, bei Jungen auch der nach seinem Potenzial, dazu das Alter und
+     * ob die Ablöse ins Budget passt. wertMin ist die untere Grenze der
+     * geschätzten Ablöse.
+     */
+    empfehlung(player, schaetzung, rahmen, wertMin = 0) {
+        const gruppe = this.positionsGruppe(player.pos);
+        const eigene = rahmen?.gruppen?.[gruppe] || [];
+        const plaetze = this.KADER_PLAETZE[gruppe] || 4;
+        const platz = (ca) => {
+            const rang = eigene.filter(x => x > ca).length;
+            if (rang === 0) return 4;
+            if (rang < plaetze) return 3;
+            if (rang < plaetze * 2) return 2;
+            return rang < eigene.length ? 1 : 0;
+        };
+        const caMitte = (schaetzung.estCaMin + schaetzung.estCaMax) / 2;
+        const paMitte = (schaetzung.estPaMin + schaetzung.estPaMax) / 2;
+        let punkte = platz(caMitte);
+        const gruende = [["schwächer als der eigene Kader", "wäre Ergänzungsspieler", "wäre Rotationsspieler", "wäre Stammspieler", "wäre sofort der Beste im Mannschaftsteil"][punkte]];
+        // Klar besser als der beste eigene: das ist die Ausnahme, A+
+        if (punkte === 4 && eigene.length && caMitte >= eigene[0] + this.KLAR_BESSER) {
+            punkte += 0.5;
+            gruende[0] = "klar besser als alle eigenen im Mannschaftsteil";
+        }
+        const alter = player.age || 25;
+        if (alter <= 23) {
+            const spaeter = platz(paMitte);
+            if (spaeter > punkte) {
+                punkte += (spaeter - punkte) / 2;
+                gruende.push(spaeter === 4 ? "kann der Beste werden" : spaeter === 3 ? "kann Stammspieler werden" : "kann sich noch steigern");
+            }
+        }
+        if (alter >= 33) { punkte -= 1; gruende.push("schon über 32"); }
+        else if (alter >= 31) { punkte -= 0.5; gruende.push("über 30"); }
+        if (!player.clubId) {
+            punkte += 0.25;
+            gruende.push("ablösefrei");
+        } else if (rahmen && wertMin > rahmen.budget) {
+            const weit = wertMin > rahmen.budget * 2;
+            punkte -= weit ? 1.5 : 0.75;
+            gruende.push(weit ? "Ablöse weit über dem Budget" : "Ablöse über dem Budget");
+        }
+        const note = (this.NOTEN.find(n => punkte >= n.ab) || { note: "E" }).note;
+        return { note, punkte: Math.round(punkte * 100) / 100, gruende, sicher: (schaetzung.confidence || 0) >= this.NOTE_SICHER_AB };
+    },
+
     /** Wie sehr man sich auf den Bericht verlassen kann */
     zuverlaessigkeit(scoutGuete, konfidenz) {
         const wert = 0.55 * scoutGuete + 0.45 * konfidenz;

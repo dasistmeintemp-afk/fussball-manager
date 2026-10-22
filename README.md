@@ -854,6 +854,13 @@ Gemessen über drei Saisons mit einem Spitzenklub und einem Viertligisten:
   - Wer zum Saisonwechsel mehr als 8 % darüber liegt, kommt jetzt auf halbem Weg zurück. Der eigene Verein bleibt außen vor.
   - Über fünf Saisons bleiben die Gehälter so bei 96–104 % des Tragbaren. Der Kassen-Median der KI-Vereine wächst von 3 auf 17 Mio. €, und kaum ein Verein steht im Minus.
 - **Finanzübersicht (`FinanceEngine`):** Kontostand, Transferbudget, Gehaltsetat, Ticketeinnahmen und wöchentliche Sponsorenzahlungen.
+- **Finanzseite in Kacheln wie im Vorbild (`uiFinanzen.js`):** Der Reiter *Finanzen* öffnet mit acht Kacheln, die alten Karten stehen im Unterreiter *Budgets*.
+  - *Übersicht*: Kontostand, Verlauf als Linie mit einem Punkt je Monatserstem (`FinanceEngine.monatsStand`, bis zu 36 Monate) und die letzten Monatsstände als Tabelle.
+  - *Einnahmen* und *Ausgaben* des laufenden Monats mit den drei größten Posten, dazu der Umsatz der Saison. Jede Buchung trägt dafür ihren Monat.
+  - *Finanzregeln* mit Status und Kaderkostenquote, *Schulden und Raten* mit offenen Raten, Forderungen und Baukrediten.
+  - *Gehälter*: Lohnsumme gegen Budget und aufgeteilt nach Kaderrolle.
+  - *Sponsoren* nach Art mit farbigem Balken: Hauptsponsor, Fanartikel, Aktionen, Investor.
+  - *Prognose* für das Ende dieser und der nächsten Saison mit Kontostand, Umsatz und Transferbudget, ab dem dritten Spieltag aus den echten Buchungen, ohne Transfers, Prämien und Investor.
 - **Gehaltsbudget passend zur Gehaltsliste (`FinanceEngine.gehaltsrahmen`):** Das Budget ist, was der Verein nach seinen Einnahmen trägt, mit 10 % Spielraum, und nie weniger als die heutige Gehaltsliste plus 3 %.
   - Vorher kam das Budget aus einer festen Tabelle je Ligastufe, die Gehälter aber aus den Einnahmen. Die Gehaltsliste lag dadurch in der zweiten Liga im Schnitt bei 116 % des Budgets, in der sechsten bei 153 %, in der siebten bei 219 %. Der VfR Höchst startete bei weit über 200 %.
   - Jetzt startet ein Verein im Schnitt bei 91 % seines Budgets, keiner darüber. Steigt oder fällt er ab, folgt das Budget den Einnahmen der neuen Liga. Vorher galt pauschal das 2,2-Fache beim Aufstieg und die Hälfte beim Abstieg.

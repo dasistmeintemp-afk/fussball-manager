@@ -1530,6 +1530,8 @@ const CalendarEngine = {
             const zeile = ratenEngine.zahleRaten(state, currentDay.date);
             if (zeile) summary.messages.push(zeile);
         }
+        // ... und der Kontostand des Monats für den Verlauf auf der Finanzseite
+        if (ratenEngine && typeof ratenEngine.monatsStand === 'function') ratenEngine.monatsStand(state, currentDay.date);
 
         // Die Vision des Vorstands - neu bei Amtsantritt und nach einem Vereinswechsel
         const vision = (typeof VisionEngine !== 'undefined' && VisionEngine)

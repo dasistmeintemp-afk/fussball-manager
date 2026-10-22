@@ -280,7 +280,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         }));
     },
 
-    renderSquad(posFilter = "all") {
+    renderSquad(posFilter) {
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         if (!userClub) return;
@@ -328,22 +328,234 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ], `<span class="kz-hinweis-sterne">★★★</span> heißt ${this.escapeHtml(this.constructor.STERN_MASSSTAEBE[this.sternMassstab()].kurz)} · Maßstab in den Einstellungen`);
         }
 
-        let players = state.players.filter(p => userClub.playerIds.includes(p.id));
+        this.zeichneKaderliste(state, userClub, posFilter);
+    },
 
-        if (posFilter === "TW") players = players.filter(p => p.pos === "TW");
-        else if (posFilter === "DEF") players = players.filter(p => ["IV", "LV", "RV"].includes(p.pos));
-        else if (posFilter === "MID") players = players.filter(p => ["DM", "ZM", "OM", "LM", "RM"].includes(p.pos));
-        else if (posFilter === "ATT") players = players.filter(p => ["ST", "LA", "RA"].includes(p.pos));
+    // ------------------------------------------------------------ Kaderliste
 
-        // Nach Position und Stärke sortieren
-        players.sort((a, b) => (b.trueCurrentAbility || b.overall * 2) - (a.trueCurrentAbility || a.overall * 2));
+    /**
+     * Die Kaderliste wie im Vorbild: Ansichten mit eigenen Spalten
+     * (Übersicht, Vertrag, Leistung, Fitness), Sortieren nach allem, was
+     * praktisch ist - auch am Handy, wo es keine Spaltenköpfe gibt -, und
+     * Schnellfilter. Die Wahl bleibt, auch nach dem Neuladen.
+     */
+    KADER_SPEICHER: "viererkette-kaderliste",
+    KADER_POSITIONEN: ["TW", "IV", "LV", "RV", "DM", "ZM", "LM", "RM", "OM", "LA", "RA", "ST"],
 
-        const ratingEngine = (typeof PlayerRatingEngine !== 'undefined' && PlayerRatingEngine) 
-            ? PlayerRatingEngine 
-            : ((typeof window !== 'undefined' && window.PlayerRatingEngine) ? window.PlayerRatingEngine : null);
+    /** Sortierschlüssel: Name, ob zuerst absteigend, und der Wert je Spieler (z = vorbereitete Zahlen) */
+    KADER_SORTEN: {
+        pos: { name: "Position", ab: false, wert: (p, z) => z.posIndex * 1000 - z.staerke },
+        staerke: { name: "Stärke", ab: true, wert: (p, z) => z.staerke },
+        potenzial: { name: "Potenzial", ab: true, wert: (p, z) => z.potenzial },
+        alter: { name: "Alter", ab: false, wert: (p) => p.age || 0 },
+        vertrag: { name: "Vertragsende", ab: false, wert: (p) => (p.contractYears ?? 0) * 1e9 - (p.wage || 0) },
+        gehalt: { name: "Gehalt", ab: true, wert: (p) => p.wage || 0 },
+        wert: { name: "Marktwert", ab: true, wert: (p) => p.value || 0 },
+        form: { name: "Form", ab: true, wert: (p) => Number(p.form) || 0 },
+        fitness: { name: "Kondition", ab: true, wert: (p) => p.fitness ?? 100 },
+        praxis: { name: "Spielpraxis", ab: true, wert: (p, z) => z.praxis },
+        moral: { name: "Zufriedenheit", ab: true, wert: (p) => p.happiness?.overall ?? 75 },
+        spiele: { name: "Einsätze", ab: true, wert: (p, z) => z.saison.matches || 0 },
+        minuten: { name: "Minuten", ab: true, wert: (p, z) => z.saison.minutes || 0 },
+        tore: { name: "Tore", ab: true, wert: (p, z) => z.saison.goals || 0 },
+        vorlagen: { name: "Vorlagen", ab: true, wert: (p, z) => z.saison.assists || 0 },
+        note: { name: "Note", ab: true, wert: (p, z) => z.saison.matches ? z.saison.ratingSum / z.saison.matches : -1 },
+        nummer: { name: "Rückennummer", ab: false, wert: (p) => Number.isInteger(p.trikot) ? p.trikot : 999 },
+        name: { name: "Name", ab: false, text: true, wert: (p) => p.name || "" }
+    },
+
+    /** Die Ansichten und ihre Spalten (zwischen Pos und dem Knopf am Ende) */
+    KADER_ANSICHTEN: {
+        uebersicht: { name: "Übersicht", spalten: ["staerke", "rolle", "fitness", "moral", "form", "wert", "gehalt", "vertrag"] },
+        vertrag: { name: "Vertrag", spalten: ["kaderrolle", "vertragBis", "gehalt", "wert", "vertragZufrieden", "hinweis"] },
+        leistung: { name: "Leistung", spalten: ["spiele", "minuten", "tore", "vorlagen", "note", "form", "karten"] },
+        fitness: { name: "Fitness", spalten: ["fitness", "praxis", "ausfall", "belastung", "moral"] }
+    },
+
+    /** Schnellfilter */
+    KADER_FILTER: {
+        alle: { name: "Alle", passt: () => true },
+        auslaufend: { name: "Vertrag läuft aus", passt: (p, state) => typeof SeasonEngine !== "undefined" && SeasonEngine.vertragEndetZumWechsel ? SeasonEngine.vertragEndetZumWechsel(state, p) : (p.contractYears ?? 2) <= 1 },
+        ausfall: { name: "Ausfälle", passt: (p) => (p.injuredWeeks || 0) > 0 || (p.suspendedMatches || 0) > 0 },
+        jung: { name: "U21", passt: (p) => (p.age || 30) <= 21 },
+        markt: { name: "Auf dem Markt", passt: (p) => !!(p.transferListed || p.leihListe || p.vorvertrag) }
+    },
+
+    /** Die gemerkte Wahl: Ansicht, Sortierung, Richtung, Schnellfilter, Position */
+    kaderWahl() {
+        if (!this._kaderWahl) {
+            let gemerkt = {};
+            try { gemerkt = JSON.parse(localStorage.getItem(this.KADER_SPEICHER) || "{}") || {}; } catch (e) { gemerkt = {}; }
+            this._kaderWahl = {
+                ansicht: this.KADER_ANSICHTEN[gemerkt.ansicht] ? gemerkt.ansicht : "uebersicht",
+                sorte: this.KADER_SORTEN[gemerkt.sorte] ? gemerkt.sorte : "pos",
+                ab: typeof gemerkt.ab === "boolean" ? gemerkt.ab : null,
+                filter: this.KADER_FILTER[gemerkt.filter] ? gemerkt.filter : "alle",
+                pos: ["all", "TW", "DEF", "MID", "ATT"].includes(gemerkt.pos) ? gemerkt.pos : "all"
+            };
+        }
+        return this._kaderWahl;
+    },
+
+    setzeKaderWahl(teil) {
+        Object.assign(this.kaderWahl(), teil);
+        try { localStorage.setItem(this.KADER_SPEICHER, JSON.stringify(this._kaderWahl)); } catch (e) { /* ohne Speicher geht es auch */ }
+        this.renderSquad();
+    },
+
+    /** Die Spieler der Liste: Position und Schnellfilter, sortiert - mit den vorbereiteten Zahlen */
+    kaderZeilen(state, userClub, posFilter) {
+        const wahl = this.kaderWahl();
+        const gruppen = { TW: ["TW"], DEF: ["IV", "LV", "RV"], MID: ["DM", "ZM", "OM", "LM", "RM"], ATT: ["ST", "LA", "RA"] };
+        const ratingEngine = this.getRatingEngine?.();
+        const filter = this.KADER_FILTER[wahl.filter] || this.KADER_FILTER.alle;
+        const zeilen = state.players
+            .filter(p => userClub.playerIds.includes(p.id))
+            .filter(p => posFilter === "all" || (gruppen[posFilter] || []).includes(p.pos))
+            .filter(p => filter.passt(p, state))
+            .map(p => {
+                const card = ratingEngine ? ratingEngine.calculateVisiblePlayerCard(p, Object.assign({ userClubId: userClub.id, leagueDataCoverage: 95 }, this.starContext())) : null;
+                const saison = typeof StatistikEngine !== "undefined" ? StatistikEngine.von(p, "alle") : (p.stats || {});
+                return {
+                    p, card, saison: { ...saison, yellowCards: p.stats?.yellowCards || 0, redCards: p.stats?.redCards || 0 },
+                    staerke: card ? (Number(card.starsCaMin) + Number(card.starsCaMax)) / 2 : (p.overall || 0) / 20,
+                    potenzial: card ? Number(card.starsPaMax) || 0 : (p.pot || 0) / 20,
+                    posIndex: Math.max(0, this.KADER_POSITIONEN.indexOf(p.pos)),
+                    praxis: typeof p.spielpraxis === "number" ? Math.round(p.spielpraxis * 100) : (p.matchSharpness ?? 60)
+                };
+            });
+        const sorte = this.KADER_SORTEN[wahl.sorte] || this.KADER_SORTEN.pos;
+        const ab = wahl.ab === null ? sorte.ab : wahl.ab;
+        zeilen.sort((a, b) => {
+            const va = sorte.wert(a.p, a), vb = sorte.wert(b.p, b);
+            const v = sorte.text ? String(va).localeCompare(String(vb), "de") : va - vb;
+            return (ab ? -v : v) || (b.staerke - a.staerke);
+        });
+        return zeilen;
+    },
+
+    /** Eine Zelle je Spalte: Kopf, Sortierschlüssel und Inhalt */
+    kaderSpalte(key) {
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const geld = (x) => this.geldKurz(x || 0);
+        const komma = (x, n = 1) => Number(x).toFixed(n).replace(".", ",");
+        const state = this.app.state;
+        const spalten = {
+            staerke: { titel: "Stärke & Potenzial", sorte: "staerke", klasse: "sq-staerke nowrap", zelle: (z) => `${z.card ? z.card.abilityStarsHtml : ""}<div class="squad-ability-hint">${esc(z.card?.abilityLabel || "")}</div>` },
+            rolle: { titel: "Beste Rolle", sorte: null, klasse: "sq-rolle", zelle: (z) => { const r = z.card?.bestRole?.role || z.p.squadRole || "Kader"; return `<span class="role-chip" title="${esc(r)}">${esc(r)}</span>`; } },
+            fitness: { titel: "Kondition", sorte: "fitness", klasse: "sq-fit nowrap", zelle: (z) => { const f = Math.round(z.p.fitness ?? 100); return `<span class="mini-bar"><span class="mini-bar-fill" style="width:${f}%;background:${this.fitnessFarbe(f)}"></span></span>${f}%`; } },
+            moral: { titel: "Zufriedenheit", sorte: "moral", klasse: "sq-moral nowrap", zelle: (z) => { const h = Math.round(z.p.happiness?.overall ?? 75); return `${h >= 80 ? "😊" : h >= 60 ? "😐" : "😞"} ${h}%`; } },
+            form: { titel: "Form", sorte: "form", klasse: "sq-form", zelle: (z) => komma(Number(z.p.form) || 0) },
+            wert: { titel: "Marktwert", sorte: "wert", klasse: "sq-wert nowrap", zelle: (z) => geld(z.p.value) },
+            gehalt: { titel: "Gehalt/Wo.", sorte: "gehalt", klasse: "sq-gehalt nowrap", zelle: (z) => geld(z.p.wage) },
+            vertrag: { titel: "Vertrag", sorte: "vertrag", klasse: "sq-vertrag nowrap", zelle: (z) => `${z.p.vorvertrag ? `<span title="Geht zum Saisonwechsel zu ${esc(z.p.vorvertrag.clubName)}">✍️</span> ` : ""}<span class="${this.kaderVertragTon(z.p)}">${z.p.contractYears} J.</span>` },
+            alter: { titel: "Alter", sorte: "alter", klasse: "sq-alter-spalte", zelle: (z) => String(z.p.age) },
+            kaderrolle: { titel: "Kaderrolle", sorte: null, klasse: "sq-kaderrolle", zelle: (z) => esc(z.p.squadRole || "Kader") + (z.p.jugendvertrag ? ` <small class="text-muted">Jugendvertrag</small>` : "") },
+            vertragBis: { titel: "Vertrag bis", sorte: "vertrag", klasse: "sq-vertrag nowrap", zelle: (z) => `<span class="${this.kaderVertragTon(z.p)}">${esc(this.vertragsEnde ? (this.vertragsEnde(z.p) || "–") : `${z.p.contractYears} J.`)}</span>` },
+            vertragZufrieden: { titel: "Zufrieden", sorte: null, klasse: "sq-zufrieden nowrap", zelle: (z) => `<span title="Zufriedenheit mit dem Vertrag">${Math.round(z.p.happiness?.contract ?? 75)} %</span>` },
+            // Was um den Vertrag gerade läuft - oder eine Ausstiegsklausel
+            hinweis: { titel: "Hinweis", sorte: null, klasse: "sq-hinweis", zelle: (z) => {
+                const lage = this.kaderLage(z.p);
+                const k = typeof TransferEngine !== "undefined" && TransferEngine.ausstiegsklausel ? TransferEngine.ausstiegsklausel(state, z.p) : null;
+                return [lage ? esc(lage) : "", k ? `Klausel ${geld(k)}` : ""].filter(Boolean).join(" · ") || "–";
+            } },
+            spiele: { titel: "Sp", sorte: "spiele", klasse: "sq-zahl", zelle: (z) => String(z.saison.matches || 0) },
+            minuten: { titel: "Min", sorte: "minuten", klasse: "sq-zahl", zelle: (z) => String(z.saison.minutes || 0) },
+            tore: { titel: "Tore", sorte: "tore", klasse: "sq-zahl", zelle: (z) => String(z.saison.goals || 0) },
+            vorlagen: { titel: "Vorl.", sorte: "vorlagen", klasse: "sq-zahl", zelle: (z) => String(z.saison.assists || 0) },
+            note: { titel: "Note", sorte: "note", klasse: "sq-zahl", zelle: (z) => z.saison.matches ? komma(z.saison.ratingSum / z.saison.matches, 2) : "–" },
+            karten: { titel: "Karten", sorte: null, klasse: "sq-karten nowrap", zelle: (z) => `<span class="sq-gelb${z.saison.yellowCards ? "" : " sq-null"}">${z.saison.yellowCards}</span> <span class="sq-rot${z.saison.redCards ? "" : " sq-null"}">${z.saison.redCards}</span>` },
+            praxis: { titel: "Spielpraxis", sorte: "praxis", klasse: "sq-praxis nowrap", zelle: (z) => `<span class="mini-bar"><span class="mini-bar-fill" style="width:${z.praxis}%;background:${this.fitnessFarbe(z.praxis)}"></span></span>${z.praxis}%` },
+            ausfall: { titel: "Ausfall", sorte: null, klasse: "sq-ausfall", zelle: (z) => z.p.injuredWeeks > 0 ? `<span class="pf-ton-schlecht">${esc(z.p.injuryName || "Verletzt")} · ${z.p.injuredWeeks} Wo.</span>` : (z.p.suspendedMatches > 0 ? `<span class="pf-ton-schlecht">Gesperrt · ${z.p.suspendedMatches} Sp.</span>` : "–") },
+            belastung: { titel: "Belastung", sorte: null, klasse: "sq-belastung", zelle: (z) => { const l = z.p.trainingLog?.load; return l === undefined || l === null ? "–" : (l >= 7 ? `<span class="pf-ton-schlecht">hoch</span>` : (l >= 4 ? "normal" : "gering")); } }
+        };
+        return spalten[key];
+    },
+
+    /** Ein auslaufender Vertrag fällt auf */
+    kaderVertragTon(p) {
+        const endet = typeof SeasonEngine !== "undefined" && SeasonEngine.vertragEndetZumWechsel ? SeasonEngine.vertragEndetZumWechsel(this.app.state, p) : (p.contractYears ?? 2) <= 1;
+        return endet && !p.vorvertrag ? "pf-ton-schlecht" : ((p.contractYears ?? 2) <= 2 ? "pf-ton-mittel" : "");
+    },
+
+    /** Was um seinen Vertrag gerade läuft */
+    kaderLage(p) {
+        if (p.vorvertrag) return `geht zu ${p.vorvertrag.clubName}`;
+        if (p.vorvertragInteresse) return `${p.vorvertragInteresse.clubName} wirbt`;
+        if (p.wechselwunsch && !p.wechselwunsch.akzeptiert) return "will weg";
+        if (p.transferListed) return "Transferliste";
+        if (p.leihListe) return "Leihliste";
+        if (p.leihe) return "Leihspieler";
+        return "";
+    },
+
+    /** Die Zeile darunter am Handy: das Wichtigste der Ansicht */
+    kaderMeta(z, ansicht) {
+        const p = z.p;
+        const geld = (x) => this.geldKurz(x || 0);
+        const form = (Number(p.form) || 0).toFixed(1).replace(".", ",");
+        if (ansicht === "vertrag") return `Vertrag bis ${this.vertragsEnde ? this.vertragsEnde(p) || "–" : p.contractYears + " J."} · ${geld(p.wage)}/Wo · ${geld(p.value)}${this.kaderLage(p) ? " · " + this.kaderLage(p) : ""}`;
+        if (ansicht === "leistung") return `${z.saison.matches || 0} Sp · ${z.saison.goals || 0} T · ${z.saison.assists || 0} V · Note ${z.saison.matches ? (z.saison.ratingSum / z.saison.matches).toFixed(2).replace(".", ",") : "–"} · Form ${form}`;
+        if (ansicht === "fitness") return `Spielpraxis ${z.praxis} %${p.injuredWeeks > 0 ? ` · verletzt ${p.injuredWeeks} Wo.` : ""}${p.suspendedMatches > 0 ? ` · gesperrt ${p.suspendedMatches} Sp.` : ""} · Moral ${Math.round(p.happiness?.overall ?? 75)} %`;
+        return `Form ${form} · ${geld(p.value)} · ${geld(p.wage)}/Wo · ${p.vorvertrag ? `geht zu ${p.vorvertrag.clubName}` : `${p.contractYears} J. Vertrag`}`;
+    },
+
+    /** Leiste über der Liste: Ansicht, Sortieren mit Richtung, Schnellfilter */
+    kaderWerkzeugeHtml(anzahl) {
+        const wahl = this.kaderWahl();
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const sorte = this.KADER_SORTEN[wahl.sorte];
+        const ab = wahl.ab === null ? sorte.ab : wahl.ab;
+        return `
+            <div class="kw-gruppe kw-ansichten" role="tablist" aria-label="Ansicht">
+                ${Object.entries(this.KADER_ANSICHTEN).map(([k, a]) => `<button type="button" role="tab" class="filter-chip${k === wahl.ansicht ? " active" : ""}" data-kw-ansicht="${k}" aria-selected="${k === wahl.ansicht}">${esc(a.name)}</button>`).join("")}
+            </div>
+            <div class="kw-gruppe kw-sortieren">
+                <label for="kwSorte">Sortieren</label>
+                <select id="kwSorte" class="styled-select">
+                    ${Object.entries(this.KADER_SORTEN).map(([k, x]) => `<option value="${k}"${k === wahl.sorte ? " selected" : ""}>${esc(x.name)}</option>`).join("")}
+                </select>
+                <button type="button" class="btn btn-sm btn-secondary kw-richtung" id="kwRichtung" title="${ab ? "absteigend - umkehren" : "aufsteigend - umkehren"}" aria-label="Richtung umkehren">${ab ? "↓" : "↑"}</button>
+            </div>
+            <div class="kw-gruppe kw-filter">
+                ${Object.entries(this.KADER_FILTER).map(([k, f]) => `<button type="button" class="filter-chip${k === wahl.filter ? " active" : ""}" data-kw-filter="${k}">${esc(f.name)}</button>`).join("")}
+                <span class="kw-anzahl">${anzahl} ${anzahl === 1 ? "Spieler" : "Spieler"}</span>
+            </div>`;
+    },
+
+    zeichneKaderliste(state, userClub, posFilter) {
+        const wahl = this.kaderWahl();
+        // Die Positionsknöpfe merken sich ihre Wahl - vorher fiel die Liste
+        // beim Neuzeichnen auf "Alle" zurück, der Knopf blieb aber markiert
+        if (posFilter !== undefined) { wahl.pos = posFilter; try { localStorage.setItem(this.KADER_SPEICHER, JSON.stringify(wahl)); } catch (e) { /* egal */ } }
+        const pos = wahl.pos;
+        document.querySelectorAll("[data-filter-pos]").forEach(b => b.classList.toggle("active", b.dataset.filterPos === pos));
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const zeilen = this.kaderZeilen(state, userClub, pos);
+        const ansicht = this.KADER_ANSICHTEN[wahl.ansicht] || this.KADER_ANSICHTEN.uebersicht;
+        const spalten = ansicht.spalten.map(k => ({ key: k, ...this.kaderSpalte(k) })).filter(s => s.zelle);
+        const sorte = this.KADER_SORTEN[wahl.sorte];
+        const ab = wahl.ab === null ? sorte.ab : wahl.ab;
+
+        const werkzeuge = document.getElementById("squadWerkzeuge");
+        if (werkzeuge) werkzeuge.innerHTML = this.kaderWerkzeugeHtml(zeilen.length);
+
+        // Kopf: Status, Name, Pos, die Spalten der Ansicht - ein Tipp sortiert
+        const kopf = document.getElementById("squadTableHead");
+        const th = (titel, klasse, key) => {
+            const an = key && key === wahl.sorte;
+            return `<th class="${klasse.split(" ")[0]}${an ? ` sortiert${ab ? " sortiert-ab" : ""}` : ""}"${key ? ` data-kader-sort="${key}" aria-sort="${an ? (ab ? "descending" : "ascending") : "none"}"` : ""}>${titel}</th>`;
+        };
+        if (kopf) {
+            kopf.innerHTML = `<tr>${th("Status", "sq-status", null)}${th("Name", "sq-name", "name")}${th("Pos", "sq-pos", "pos")}${spalten.map(s => th(esc(s.titel), s.klasse, s.sorte)).join("")}<th class="sq-meta"></th><th class="sq-aktion"></th></tr>`;
+            const tabelle = document.getElementById("squadTable");
+            if (tabelle) tabelle.dataset.ansicht = wahl.ansicht;
+        }
 
         const tbody = document.getElementById("squadTableBody");
-        tbody.innerHTML = players.map(p => {
+        if (!tbody) return;
+        tbody.innerHTML = zeilen.length ? zeilen.map(z => {
+            const p = z.p;
             const isLineup = userClub.lineup.includes(p.id);
             const isBench = userClub.bench.includes(p.id);
             let statusBadge = `<span class="badge-status-fit">Fit</span>`;
@@ -351,62 +563,33 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             else if (p.suspendedMatches > 0) statusBadge = `<span class="badge-status-susp">🟥 ${p.suspendedMatches} Sp.</span>`;
             else if (isLineup) statusBadge = `<span class="badge-status-lineup">Startelf</span>`;
             else if (isBench) statusBadge = `<span class="badge-status-bench">Bank</span>`;
-
-            const happyOverall = p.happiness?.overall || 75;
-            const happyIcon = happyOverall >= 80 ? "😊" : happyOverall >= 60 ? "😐" : "😞";
-
-            const card = ratingEngine ? ratingEngine.calculateVisiblePlayerCard(p, Object.assign({ userClubId: userClub.id, leagueDataCoverage: 95 }, this.starContext())) : null;
-            // Eine Reihe für beides: gefüllt ist die heutige Stärke,
-            // schraffiert das, was noch aus ihm werden kann
-            const sterne = card ? card.abilityStarsHtml : "";
-            const roleName = card?.bestRole?.role || p.squadRole || "Stammspieler";
-            const abilityText = card?.abilityLabel || "Guter Spieler";
-            // Den eigenen Spieler kennt man genau - also die kurze, exakte Zahl
-            const valText = this.geldKurz(p.value);
-            const fitness = Math.round(p.fitness ?? 100);
-
-            // Nebenpositionen sichtbar machen: nicht jeder kann überall spielen
-            const secondary = (Array.isArray(p.positions) ? p.positions : [])
-                .filter(pos => pos && pos !== p.pos)
-                .slice(0, 2);
-            const secondaryHtml = secondary.length
-                ? secondary.map(pos => `<span class="pos-tag pos-secondary" title="Nebenposition">${pos}</span>`).join("")
-                : "";
-
-            const form = (Number(p.form) || 0).toFixed(1).replace(".", ",");
+            const neben = (Array.isArray(p.positions) ? p.positions : []).filter(x => x && x !== p.pos).slice(0, 2)
+                .map(x => `<span class="pos-tag pos-secondary" title="Nebenposition">${x}</span>`).join("");
+            const hinweis = p.reserve ? (p.reserve === "u19" ? "U19" : "U23")
+                : (p.nominiertAus ? `aus der ${p.nominiertAus === "u19" ? "U19" : "U23"} · nur Spieltag` : (p.leihe ? "Leihspieler" : esc((p.squadRole || "Kader") + (p.jugendvertrag ? " · Jugendvertrag" : ""))));
             return `
-                <tr class="row-clickable" data-player-id="${p.id}" title="Details zu ${this.escapeHtml(p.name)} öffnen">
-                    <td class="sq-status" data-wert="${p.injuredWeeks > 0 || p.suspendedMatches > 0 ? 0 : (isLineup ? 3 : (isBench ? 2 : 1))}">${statusBadge}</td>
-                    <td class="sq-name" data-wert="${this.escapeHtml(p.name)}"><button class="sq-nr" type="button" data-nr-id="${this.escapeHtml(String(p.id))}" title="Rückennummer ändern">${Number.isInteger(p.trikot) ? p.trikot : "–"}</button><strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}<span class="squad-role-hint">${p.reserve ? (p.reserve === "u19" ? "U19" : "U23") : (p.nominiertAus ? `aus der ${p.nominiertAus === "u19" ? "U19" : "U23"} · nur Spieltag` : (p.leihe ? "Leihspieler" : this.escapeHtml((p.squadRole || "Kader") + (p.jugendvertrag ? " · Jugendvertrag" : ""))))} · ${p.age} J.</span></td>
-                    <td class="sq-pos nowrap" data-wert="${["TW", "IV", "LV", "RV", "DM", "ZM", "LM", "RM", "OM", "LA", "RA", "ST"].indexOf(p.pos)}">
-                        <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>${secondaryHtml}
-                    </td>
-                    <td class="sq-alter">${p.age}</td>
-                    <td class="sq-staerke nowrap" data-wert="${card ? ((Number(card.starsCaMin) + Number(card.starsCaMax)) / 2 + (Number(card.starsPaMax) || 0) / 100).toFixed(3) : (p.overall || 0)}">
-                        ${sterne}
-                        <div class="squad-ability-hint">${abilityText}</div>
-                    </td>
-                    <td class="sq-rolle"><span class="role-chip" title="${roleName}">${roleName}</span></td>
-                    <td class="sq-fit nowrap" data-wert="${fitness}">
-                        <span class="mini-bar"><span class="mini-bar-fill" style="width:${fitness}%;background:${this.fitnessFarbe(fitness)}"></span></span>${fitness}%
-                    </td>
-                    <td class="sq-moral nowrap" title="Moral" data-wert="${happyOverall}">${happyIcon} ${happyOverall}%</td>
-                    <td class="sq-form" data-wert="${Number(p.form) || 0}">${form}</td>
-                    <td class="sq-wert nowrap" data-wert="${p.value || 0}">${valText}</td>
-                    <td class="sq-gehalt nowrap" data-wert="${p.wage || 0}">${this.geldKurz(p.wage)}</td>
-                    <td class="sq-vertrag nowrap" data-wert="${p.contractYears ?? 0}">${p.vorvertrag ? `<span title="Geht zum Saisonwechsel zu ${this.escapeHtml(p.vorvertrag.clubName)}">✍️</span> ` : ""}${p.contractYears} J.</td>
-                    <td class="sq-meta">Form ${form} · ${valText} · ${this.geldKurz(p.wage)}/Wo · ${p.vorvertrag ? `geht zu ${this.escapeHtml(p.vorvertrag.clubName)}` : `${p.contractYears} J. Vertrag`}</td>
-                    <td class="sq-aktion">
-                        <button class="btn btn-sm btn-secondary btn-player-details" data-player-id="${p.id}" aria-label="Details zu ${this.escapeHtml(p.name)}">›</button>
-                    </td>
-                </tr>
-            `;
-        }).join("");
+                <tr class="row-clickable" data-player-id="${p.id}" title="Details zu ${esc(p.name)} öffnen">
+                    <td class="sq-status">${statusBadge}</td>
+                    <td class="sq-name"><button class="sq-nr" type="button" data-nr-id="${esc(String(p.id))}" title="Rückennummer ändern">${Number.isInteger(p.trikot) ? p.trikot : "–"}</button><strong>${esc(p.name)}</strong>${this.signaturMarke(p)}<span class="squad-role-hint">${hinweis} · ${p.age} J.</span></td>
+                    <td class="sq-pos nowrap"><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>${neben}</td>
+                    ${spalten.map(s => `<td class="${s.klasse}">${s.zelle(z)}</td>`).join("")}
+                    <td class="sq-meta">${esc(this.kaderMeta(z, wahl.ansicht))}</td>
+                    <td class="sq-aktion"><button class="btn btn-sm btn-secondary btn-player-details" data-player-id="${p.id}" aria-label="Details zu ${esc(p.name)}">›</button></td>
+                </tr>`;
+        }).join("") : `<tr><td colspan="${spalten.length + 5}" class="kw-leer">Kein Spieler passt zu dieser Auswahl.</td></tr>`;
 
+        // Bedienung: Ansicht, Sortierung, Richtung, Schnellfilter, Spaltenköpfe
+        werkzeuge?.querySelectorAll("[data-kw-ansicht]").forEach(b => b.addEventListener("click", () => this.setzeKaderWahl({ ansicht: b.dataset.kwAnsicht })));
+        werkzeuge?.querySelector("#kwSorte")?.addEventListener("change", (e) => this.setzeKaderWahl({ sorte: e.target.value, ab: null }));
+        werkzeuge?.querySelector("#kwRichtung")?.addEventListener("click", () => this.setzeKaderWahl({ ab: !ab }));
+        werkzeuge?.querySelectorAll("[data-kw-filter]").forEach(b => b.addEventListener("click", () => this.setzeKaderWahl({ filter: b.dataset.kwFilter })));
+        kopf?.querySelectorAll("[data-kader-sort]").forEach(h => h.addEventListener("click", () => {
+            const key = h.dataset.kaderSort;
+            this.setzeKaderWahl(key === wahl.sorte ? { ab: !ab } : { sorte: key, ab: null });
+        }));
         tbody.querySelectorAll(".sq-nr").forEach(btn => {
-            btn.addEventListener("click", () => this.zeigeNummernWahl(this.resolvePlayerId(btn.dataset.nrId), () => this.renderSquad(posFilter)));
+            btn.addEventListener("click", () => this.zeigeNummernWahl(this.resolvePlayerId(btn.dataset.nrId), () => this.renderSquad()));
         });
-
         // Ein Klick irgendwo in der Zeile öffnet die Spielerdetails
         tbody.querySelectorAll("tr.row-clickable").forEach(row => {
             row.addEventListener("click", (e) => {
@@ -415,12 +598,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 if (pId !== null) this.showPlayerDetailsModal(pId);
             });
         });
-
-        document.querySelectorAll(".btn-player-details").forEach(btn => {
+        tbody.querySelectorAll(".btn-player-details").forEach(btn => {
             btn.addEventListener("click", () => {
                 const pId = this.resolvePlayerId(btn.dataset.playerId);
                 if (pId !== null) this.showPlayerDetailsModal(pId);
             });
         });
-    },
+    }
 });

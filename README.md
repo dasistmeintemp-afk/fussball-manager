@@ -961,7 +961,18 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
   - **Zurück:** Knopf in der Kopfleiste, `Alt+←`, die Zurück-Taste der Maus und am Handy die Systemtaste. Ein offenes Fenster schließt dabei zuerst.
   - **Leertaste** spielt weiter wie der Weiter-Knopf.
   - **Kontextmenü:** Rechtsklick auf einen Spieler (am Handy langes Drücken, wo der Browser es meldet): Akte, Beobachtungsliste, Scouten, Verhandeln, Vergleichen.
-  - **Sortieren:** Kader, Transfermarkt, Trainingsbericht und Beobachtungsliste sortieren per Spaltenkopf, Zahlen zuerst absteigend. Die Sortierung bleibt beim Neuzeichnen. Geschätzte Marktwerte zählen mit der Mitte ihrer Spanne, nicht mit dem verdeckten echten Wert.
+  - **Sortieren:** Transfermarkt, Trainingsbericht und Beobachtungsliste sortieren per Spaltenkopf, Zahlen zuerst absteigend. Die Sortierung bleibt beim Neuzeichnen. Geschätzte Marktwerte zählen mit der Mitte ihrer Spanne, nicht mit dem verdeckten echten Wert.
+  - **Kaderliste wie im Vorbild (`uiKader.js`):** Über der Liste steht eine Leiste. Vorher sortierte der Kader nur über die Spaltenköpfe. Die gibt es am Handy nicht, und bei mittlerer Breite fehlten Gehalt und Moral ganz.
+    - **Ansichten** mit eigenen Spalten:
+      - *Übersicht*: Stärke, Rolle, Kondition, Zufriedenheit, Form, Marktwert, Gehalt, Vertrag
+      - *Vertrag*: Kaderrolle, Vertragsende als Datum, Gehalt, Marktwert, Zufriedenheit mit dem Vertrag und ein Hinweis (Vorvertrag, Werber, Wechselwunsch, Transfer- oder Leihliste, Ausstiegsklausel)
+      - *Leistung*: Einsätze, Minuten, Tore, Vorlagen, Note, Form, Karten
+      - *Fitness*: Kondition, Spielpraxis, Ausfall, Belastung, Zufriedenheit
+      - Am Handy zeigt die Zeile unter jedem Spieler das Wichtigste der gewählten Ansicht.
+    - **Sortieren** nach Position, Stärke, Potenzial, Alter, Vertragsende, Gehalt, Marktwert, Form, Kondition, Spielpraxis, Zufriedenheit, Einsätzen, Minuten, Toren, Vorlagen, Note, Rückennummer oder Name. Der Pfeil daneben dreht die Richtung. Die Spaltenköpfe sortieren am breiten Bildschirm genauso, ein zweiter Tipp dreht um.
+    - **Schnellfilter:** *Vertrag läuft aus*, *Ausfälle*, *U21*, *Auf dem Markt* (Transfer- oder Leihliste, Vorvertrag), dazu die Zahl der gezeigten Spieler. Sie wirken zusammen mit den Knöpfen für den Mannschaftsteil.
+    - Auslaufende Verträge stehen rot, solche mit noch zwei Jahren gelb.
+    - Ansicht, Sortierung, Filter und Mannschaftsteil bleiben gemerkt, auch nach dem Neuladen. Vorher fiel die Liste beim Neuzeichnen auf „Alle“ zurück, obwohl der Knopf für den Mannschaftsteil markiert blieb.
   - **Beobachtungsliste (`ScoutingEngine.merke`, `beobachtungsliste`):** Bis zu 60 fremde Spieler, aufgenommen über die Akte oder das Kontextmenü, mit Stern im Transfermarkt und eigener Ansicht dort. Je Spieler Verein, Stärke, Marktwert, Vertrag, ob ein Bericht vorliegt oder ein Scout unterwegs ist, und Hinweise: Vertrag läuft aus, vereinslos, auf der Transferliste, verliehen, verletzt.
 - **Weniger Post über fremde Wettbewerbe:** Eine Siegermail kommt nur noch für den eigenen Landespokal, für den Meisterpokal und für Wettbewerbe, in denen der eigene Verein gespielt hat oder ein Verein aus dem eigenen Land gewinnt.
   - Vorher kam am Saisonende für jeden der dreizehn Landespokale und alle drei Europapokale eine eigene Mail, vom brasilianischen bis zum schottischen.

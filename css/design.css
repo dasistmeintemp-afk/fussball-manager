@@ -2305,3 +2305,40 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
     .ag-knoepfe .btn { flex: 1 1 calc(50% - 10px); }
     .ag-forderung-zeile .styled-input { flex: 1 1 140px; width: auto; }
 }
+
+/* --------------------------------------------------------------------------
+   Kaderliste wie im Vorbild: Ansichten, Sortieren, Schnellfilter (uiKader.js).
+   Am Handy gibt es keine Spaltenköpfe - die Leiste sortiert trotzdem.
+   -------------------------------------------------------------------------- */
+.kader-werkzeuge { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin: 4px 0 12px; }
+.kw-gruppe { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.kw-sortieren label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.kw-sortieren .styled-select { min-width: 150px; padding-top: 6px; padding-bottom: 6px; }
+.kw-richtung { min-width: 36px; font-size: 15px; line-height: 1; }
+.kw-filter { margin-left: auto; }
+.kw-anzahl { margin-left: 4px; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+#squadTable th[data-kader-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
+#squadTable th[data-kader-sort]:hover { color: var(--text-main); }
+#squadTable th.sortiert { color: var(--accent); }
+#squadTable th.sortiert::after { content: " ▴"; font-size: 0.9em; }
+#squadTable th.sortiert-ab::after { content: " ▾"; }
+#squadTable .sq-zahl { text-align: right; font-variant-numeric: tabular-nums; }
+#squadTable .sq-gelb, #squadTable .sq-rot { display: inline-block; min-width: 18px; padding: 1px 4px; border-radius: 3px; font-size: 11.5px; font-weight: 700; text-align: center; color: #111; }
+#squadTable .sq-gelb { background: #facc15; }
+#squadTable .sq-rot { background: #ef4444; color: #fff; }
+#squadTable .sq-null { opacity: 0.3; }
+#squadTable .kw-leer { padding: 18px; text-align: center; color: var(--text-muted); }
+/* Nummer und Name in einer Zeile - sonst drückten die Spalten der Ansicht die Nummer über den Namen */
+@media (min-width: 641px) { #squadTable td.sq-name { min-width: 210px; } }
+@media (max-width: 900px) {
+    .kw-filter { margin-left: 0; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; max-width: 100%; }
+    .kw-filter .filter-chip { flex: none; }
+    .kw-ansichten { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; max-width: 100%; }
+    .kw-ansichten .filter-chip { flex: none; }
+}
+@media (max-width: 640px) {
+    .kader-werkzeuge { gap: 8px; }
+    .kw-sortieren { width: 100%; }
+    .kw-sortieren .styled-select { flex: 1; }
+    #pane-squad .data-table td.kw-leer { display: block; }
+}

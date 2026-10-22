@@ -10,101 +10,12 @@
 
 Object.assign(((typeof window !== "undefined" && window.UIManager)
     || require("./uiManager.js").UIManager).prototype, {
-    /**
-     * Zeigt an, wie belastbar die Werte eines Spielers sind (Scoutwissen)
-     */
     /** Wann sich ein umworbener Spieler entscheidet: "in 4 Tagen", "morgen" */
     bedenkzeitText(anfrage) {
         const rest = Math.max(0, (anfrage?.entscheidetTag ?? 0) - (this.app.state.currentDayIndex || 0));
         return this.wannText(rest);
     },
 
-    buildScoutConfidenceHtml(confidence, confInfo, isUserPlayer) {
-        const pct = Math.max(0, Math.min(100, Math.round(confidence)));
-        const note = isUserPlayer
-            ? "Eigene Spieler sind vollständig bekannt."
-            : (confInfo?.hint || "");
-
-        return `
-            <div class="scout-confidence-bar">
-                <span style="font-weight:700; color:${confInfo?.color || '#94a3b8'};">🔍 ${confInfo?.label || 'Unbekannt'}</span>
-                <div class="scout-confidence-track">
-                    <div class="scout-confidence-fill" style="width:${pct}%; background:${confInfo?.color || '#94a3b8'};"></div>
-                </div>
-                <span style="font-weight:700;">${pct}%</span>
-                <span style="color:var(--text-muted); flex-basis:100%;">${note}</span>
-            </div>
-        `;
-    },
-
-    /**
-     * Positionsprofil eines Spielers: Auf welchen Positionen ist er wie stark?
-     */
-    buildPositionMapHtml(player, confidence = 100) {
-        const posEngine = this.getPositionEngine();
-        if (!posEngine || !player) return "";
-
-        // Bei geringem Scoutwissen darf das Profil nicht die wahre Stärke
-        // verraten - gerechnet wird deshalb mit der geschätzten Stärke.
-        const ratingEngine = (typeof PlayerRatingEngine !== "undefined" && PlayerRatingEngine)
-            ? PlayerRatingEngine
-            : ((typeof window !== "undefined" && window.PlayerRatingEngine) ? window.PlayerRatingEngine : null);
-
-        let basePlayer = player;
-        let isEstimate = false;
-
-        if (ratingEngine && confidence < 85) {
-            const card = ratingEngine.calculateVisiblePlayerCard(player, Object.assign({ userClubId: null, leagueDataCoverage: 100 }, this.starContext()));
-            const estOverall = ratingEngine.abilityToOverall(Math.round((card.estimatedCa.min + card.estimatedCa.max) / 2));
-            basePlayer = { ...player, overall: estOverall };
-            isEstimate = true;
-        }
-
-        const ranking = posEngine.getPositionRanking(basePlayer);
-        const usable = ranking.filter(r => r.familiarity >= 0.55);
-        const shown = usable.length > 0 ? usable.slice(0, 8) : ranking.slice(0, 4);
-
-        const stamm = player.pos;
-        const neben = (Array.isArray(player.positions) ? player.positions : []).filter(p => p !== stamm);
-        const erfahrung = player.positionExperience || {};
-
-        const rows = shown.map(r => {
-            const istStamm = r.position === stamm;
-            const istNeben = neben.includes(r.position);
-            const lernt = !istStamm && !istNeben && (erfahrung[r.position] || 0) > 0;
-            const titel = lernt
-                ? `${r.label} · wird gerade eingelernt (${Math.round(erfahrung[r.position] * 100)} % Routine)`
-                : `${r.label} (${r.familiarityPercent} % Vertrautheit)`;
-
-            return `
-            <div class="position-map-item${lernt ? " pos-learned" : ""}" title="${titel}">
-                <span class="position-map-code" style="border-color:${r.color};${lernt ? "border-style:dashed;" : ""}">${r.position}</span>
-                <span class="position-map-value" style="color:${r.color};">${this.starsFor(r.effectiveOverall, { color: r.color })}</span>
-                <span class="position-map-label">${istStamm ? "Stammposition" : (istNeben ? "Nebenposition" : r.shortLabel)}</span>
-            </div>
-        `;
-        }).join("");
-
-        const nebenText = neben.length > 0
-            ? `Nebenpositionen: <strong>${neben.map(p => this.escapeHtml(p)).join(", ")}</strong>.`
-            : "Der Spieler ist auf keiner weiteren Position eingespielt.";
-
-        return `
-            <div class="dash-card mb-3" style="padding:14px;">
-                <h4 style="font-size:13px; margin-bottom:4px; color:var(--text-muted);"><svg class="ico h-ico" aria-hidden="true"><use href="#i-pin"/></svg>Positionsprofil</h4>
-                <p style="font-size:11px; color:var(--text-muted); margin:0 0 10px 0;">
-                    Effektive Stärke je Einsatzposition – abseits der Stammposition verliert der Spieler an Wirkung.
-                    ${nebenText} Wer regelmäßig woanders aufläuft, wächst mit der Zeit in die Position hinein.
-                    ${isEstimate ? '<em>Die Werte beruhen auf einer Schätzung; mehr Scoutwissen macht sie genauer.</em>' : ''}
-                </p>
-                <div class="position-map${isEstimate ? ' estimated-value' : ''}">${rows}</div>
-            </div>
-        `;
-    },
-
-    /**
-     * Modal: Spieler Details & Vertragsverlängerung
-     */
     /**
      * Einen Spieler vom Scout beobachten lassen. Der Bericht kommt nach
      * einigen Tagen ins Postfach - nicht mehr sofort auf Knopfdruck.
@@ -126,7 +37,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
     /** Knopfbeschriftung: läuft schon eine Beobachtung? */
     beobachtungsText(playerId) {
-        const engine = (typeof ScoutingEngine !== "undefined" && ScoutingEngine) ? ScoutingEngine : window.ScoutingEngine;
+        const engine = (typeof ScoutingEngine !== "undefined" && ScoutingEngine) ? ScoutingEngine
+            : (typeof window !== "undefined" ? window.ScoutingEngine : null);
         const b = engine && typeof engine.beobachtungVon === "function" ? engine.beobachtungVon(this.app?.state, playerId) : null;
         return b ? `noch ${b.tageRest} T.` : null;
     },
@@ -597,23 +509,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 : "Steigerungen und eine Mindestablöse gefallen ihm, eine Option nicht. Er rechnet das ins Gehalt ein.");
     },
 
-    /**
-     * Unter der Saisonbilanz: wie sie sich auf Liga, Pokal und Europapokal
-     * verteilt - nur, wenn der Spieler nicht ausschließlich in der Liga spielte.
-     */
-    wettbewerbsTeile(player) {
-        const statistik = typeof StatistikEngine !== "undefined" ? StatistikEngine : null;
-        if (!statistik || !player?.stats) return "";
-        const teile = [["liga", "Liga"], ["pokal", "Pokal"], ["europa", "Europapokal"]]
-            .map(([art, name]) => ({ name, s: statistik.von(player, art) }))
-            .filter(t => t.s.matches > 0);
-        if (teile.length < 2) return "";
-        return `<small class="pd-saison-teile">${teile.map(t =>
-            `${t.name} ${t.s.matches} Sp. · ${t.s.goals} T · ${t.s.assists} V`).join(" | ")}</small>`;
-    },
-
-    /** Die Laufbahn Saison für Saison (LaufbahnEngine) - eingeklappt, mit Summe */
-    laufbahnHtml(state, player) {
+    /** Die Laufbahn Saison für Saison (LaufbahnEngine) mit Summe - im eigenen Reiter aufgeklappt */
+    laufbahnHtml(state, player, offen = false) {
         const engine = typeof LaufbahnEngine !== "undefined" ? LaufbahnEngine : null;
         if (!engine) return "";
         const t = engine.tabelle(state, player);
@@ -621,7 +518,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const esc = (x) => this.escapeHtml(String(x ?? ""));
         const note = (n) => n ? n.toFixed(2).replace(".", ",") : "–";
         return `
-            <details class="pd-laufbahn"${t.zeilen.length <= 3 ? " open" : ""}>
+            <details class="pd-laufbahn"${offen || t.zeilen.length <= 3 ? " open" : ""}>
                 <summary>Laufbahn <span class="text-muted">${t.summe.spiele} Spiele · ${t.summe.tore} Tore · ${t.summe.vorlagen} Vorlagen</span></summary>
                 <div class="table-container"><table class="compact-table lb-tabelle">
                     <thead><tr><th>Saison</th><th>Verein</th><th>Sp</th><th>T</th><th>V</th><th>Note</th></tr></thead>
@@ -643,21 +540,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const isProspect = treffer.isProspect;
         const club = state.clubs.find(c => c.id === player.clubId);
 
-        const modal = document.getElementById("modalPlayerDetails");
+        // Die Akte ist eine eigene Seite (uiProfil.js): Kopf, Reiter, Übersicht
         const body = document.getElementById("playerDetailsContent");
-        document.getElementById("pdPlayerName").textContent = isProspect
-            ? `${player.name} (${player.pos}) · Nachwuchs`
-            : `${player.name} (${player.pos})`;
-        // Eigene Spieler: die Rückennummer vorn, ein Tipp darauf ändert sie
-        if (!isProspect && player.clubId === state.userClubId && club && typeof GameState.rueckennummern === "function") {
-            GameState.rueckennummern(state, club);
-            const titel = document.getElementById("pdPlayerName");
-            titel.innerHTML = `<button class="pd-nr" type="button" title="Rückennummer ändern">${player.trikot || "–"}</button> ${this.escapeHtml(`${player.name} (${player.pos})`)}`;
-            titel.querySelector(".pd-nr").onclick = () => {
-                modal.style.display = "none";
-                this.zeigeNummernWahl(player.id, () => this.showPlayerDetailsModal(player.id));
-            };
-        }
 
         const happy = player.happiness || { overall: 75, playingTime: 75, contract: 75, teamPerformance: 75, reason: "Zufrieden mit der Rolle im Team." };
         // Talente der eigenen Akademie gehören zum Verein, auch ohne Profivertrag
@@ -687,8 +571,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const eigenheiten = Array.isArray(player.traits) ? player.traits : [];
         if (eigenheiten.length > 0 || signatur) {
             eigenheitenHtml = `
-                <div class="dash-card mb-3" style="padding:14px; background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.2);">
-                    <h4 style="font-size:13px; margin-bottom:8px; color:#f59e0b;"><svg class="ico h-ico" aria-hidden="true"><use href="#i-ball"/></svg>Auf dem Platz</h4>
+                <div class="dash-card pf-karte pf-eigenheiten">
+                    <h4 class="gs-titel"><svg class="ico h-ico" aria-hidden="true"><use href="#i-ball"/></svg>Eigenheiten</h4>
                     ${signatur ? `
                         <div class="signatur-karte">
                             <span class="signatur-icon">${signatur.icon}</span>
@@ -698,10 +582,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                             </div>
                         </div>` : ""}
                     ${eigenheiten.length ? `
-                    <ul style="margin:0; padding-left:18px; font-size:12px; color:#e2e8f0; line-height:1.6;">
+                    <ul class="pf-liste">
                         ${eigenheiten.map(t => `<li>${this.escapeHtml(t.text)}</li>`).join("")}
                     </ul>` : ""}
-                    <div style="font-size:11px; color:var(--text-muted, #94a3b8); margin-top:8px;">Im Livespiel entscheiden diese Eigenschaften mit: wie er spielt und wie gut es gelingt.</div>
+                    <p class="pf-klein">Im Livespiel entscheiden sie mit: wie er spielt und wie gut es gelingt.</p>
                 </div>
             `;
         }
@@ -720,9 +604,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     ? `Dort werden vor allem ${this.profilWorte(profil.staerken)} ausgebildet`
                     : "Eine Schule ohne besondere Handschrift";
                 schuleHtml = `
-                    <div class="dash-card mb-3" style="padding:14px; background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2);">
-                        <h4 style="font-size:13px; margin-bottom:8px; color:#10b981;"><svg class="ico h-ico" aria-hidden="true"><use href="#i-user"/></svg>Aus der eigenen Jugend</h4>
-                        <div style="font-size:12px; color:#e2e8f0; line-height:1.6;">
+                    <div class="dash-card pf-karte">
+                        <h4 class="gs-titel"><svg class="ico h-ico" aria-hidden="true"><use href="#i-leaf"/></svg>Ausgebildet</h4>
+                        <div class="pf-text">
                             <strong>${this.escapeHtml(profil.name)}</strong>${heimat ? ` &middot; ${this.escapeHtml(heimat.name)}` : ""}<br>
                             ${this.escapeHtml(praegung)}${(profil.schwaechen || []).length
                                 ? ` &ndash; auf Kosten von ${this.escapeHtml(this.profilWorte(profil.schwaechen))}` : ""}.
@@ -735,9 +619,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         let traitsHtml = "";
         if (card && card.hiddenTraits && card.hiddenTraits.length > 0) {
             traitsHtml = `
-                <div class="dash-card mb-3" style="padding:14px; background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.2);">
-                    <h4 style="font-size:13px; margin-bottom:8px; color:#38bdf8;"><svg class="ico h-ico" aria-hidden="true"><use href="#i-spark"/></svg>Persönlichkeit & Beobachtungen</h4>
-                    <ul style="margin:0; padding-left:18px; font-size:12px; color:#e2e8f0; line-height:1.5;">
+                <div class="dash-card pf-karte">
+                    <h4 class="gs-titel"><svg class="ico h-ico" aria-hidden="true"><use href="#i-spark"/></svg>Beobachtungen</h4>
+                    <ul class="pf-liste">
                         ${card.hiddenTraits.map(t => `<li>${t}</li>`).join("")}
                     </ul>
                 </div>
@@ -757,7 +641,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 taktik.einsaetzeImVerein(player).forEach(n => { spiele += n; });
                 const lager = taktik.lagerBonus(player);
                 traitsHtml = `
-                <div class="dash-card mb-3 eingewoehnung-karte">
+                <div class="dash-card pf-karte eingewoehnung-karte">
                     <h4><svg class="ico h-ico" aria-hidden="true"><use href="#i-users"/></svg>Eingewöhnung <span class="eingewoehnung-wert">${prozent} %</span></h4>
                     <span class="kb-balken"><i class="kb-${prozent >= 70 ? "gut" : (prozent >= 40 ? "mittel" : "schlecht")}" style="width:${prozent}%"></i></span>
                     <p>${tage} ${tage === 1 ? "Tag" : "Tage"} im Verein${lager.tage ? ` (davon ${lager.tage} aus dem Trainingslager)` : ""}, ${spiele} ${spiele === 1 ? "Spiel" : "Spiele"}. So weit ist er mit den Mitspielern eingespielt - das zählt für die Linien der Taktiktafel. Einsätze und ein Trainingslager beschleunigen es.</p>
@@ -927,11 +811,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         // Genauigkeit der angezeigten Werte hängt am Scoutwissen
         const confidence = card ? card.confidence : (player.scoutingKnowledge?.knowledgeLevel || 25);
 
-        // Positionsprofil: Wo kann dieser Spieler wirklich spielen?
-        const positionMapHtml = this.buildPositionMapHtml(player, isUserClub ? 100 : confidence);
         const confInfo = card?.confidenceInfo
             || (ratingEngine ? ratingEngine.getConfidenceDescriptor(confidence) : { label: "Unbekannt", color: "#94a3b8", hint: "" });
-        const confidenceBarHtml = this.buildScoutConfidenceHtml(confidence, confInfo, isUserClub);
 
         // Die Werte wie im Vorbild: Technik, Kopf und Körper - beim Torwart
         // statt der Technik die Torwartwerte. Die Detailwerte (Abschluss,
@@ -983,7 +864,6 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 </div>`;
         const attributeBlocks = karte(isKeeper ? "Torwart" : "Technik", technik, isKeeper ? "pd-torwart" : "pd-technik")
             + karte("Kopf", kopf, "pd-kopf") + karte("Körper", koerper, "pd-koerper");
-        const kopfBlock = "";
         // Die Grundwerte, denen die Detailwerte folgen - sie wachsen im Training
         const grund = (isKeeper ? [["physical", "Physis"]] : [["shooting", "Schuss"], ["physical", "Physis"], ["defense", "Defensive"]])
             .map(([k, l]) => `${l} <strong>${sicht(k).text}</strong>`).join(" · ");
@@ -991,10 +871,6 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ? "Hohe Bälle, Herauslaufen und die übrigen Detailwerte folgen den Werten im Training"
             : "Abschluss, Kopfball, Tackling und die übrigen Detailwerte folgen ihnen"}, dazu Position, Größe, Persönlichkeit und Alter: Standards und Übersicht im Strafraum reifen bis Anfang dreißig, Beweglichkeit und Sprungkraft lassen ab dreißig nach.${isUserClub ? " Was er sich mit Feinschliff und Spielpraxis erarbeitet hat, steht hochgestellt am Wert." : ""}</p>` : "";
 
-        const abilityStars = card ? card.abilityStarsHtml : "";
-        const abilityStarsText = card ? card.abilityStarsText : "";
-        const abilityLabel = card ? card.abilityLabel : "Ligaspieler";
-        const potentialLabel = card ? card.potentialLabel : "Entwicklungspotenzial";
         // Auch die Rollenbewertung ist bei wenig Scoutwissen nur eine Spanne
         const roleStarsHtml = (roleEntry) => {
             if (!roleEntry) return null;
@@ -1007,14 +883,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             );
         };
 
-        const bestRoleName = card?.bestRole?.role || "Allrounder";
-        const bestRoleStars = roleStarsHtml(card?.bestRole) || "★★★☆☆";
-        const altRoleName = card?.alternativeRole?.role || null;
-        const altRoleStars = roleStarsHtml(card?.alternativeRole);
-
-        // Die Akte in Reitern: Überblick, Entwicklung, Vertrag. Vorher stand
-        // alles untereinander - am Handy eine Liste über viele Bildschirme,
-        // Entwicklungsplan und Vertrag ganz unten.
+        // Die Seite in Reitern wie im Vorbild: Übersicht, Entwicklung, Vertrag,
+        // Leistung, Laufbahn, Vergleich. Vorher war die Akte ein Fenster mit
+        // drei Reitern, Laufbahn und Vergleich standen unten im Überblick.
         const leiheInEntwicklung = leiheModus === "eigener" || leiheModus === "verliehen";
         const leiheImVertrag = !!leiheModus && !leiheInEntwicklung;
         const entwicklungInhalt = [
@@ -1022,10 +893,19 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             leiheModus === "eigener" ? this.reserveHtml(player) : "",
             leiheInEntwicklung ? this.leiheHtml(player, leiheModus) : ""
         ].filter(Boolean).join("\n");
+        const laufbahnInhalt = isProspect ? "" : [
+            this.laufbahnHtml(state, player, true),
+            this.vereinsbilanzHtml(player, isUserClub),
+            this.preiseHtml(player)
+        ].filter(Boolean).join("\n");
+        const mitVergleich = !isProspect && typeof DatenzentraleEngine !== "undefined" && typeof this.vergleichInhalt === "function";
         const reiterListe = [
-            { key: "ueberblick", label: "Überblick" },
+            { key: "ueberblick", label: "Übersicht" },
             entwicklungInhalt ? { key: "entwicklung", label: "Entwicklung" } : null,
-            { key: "vertrag", label: isUserClub ? (isProspect ? "Vertrag" : "Vertrag & Kabine") : "Vertrag & Transfer" }
+            { key: "vertrag", label: isUserClub ? (isProspect ? "Vertrag" : "Vertrag & Kabine") : "Vertrag & Transfer" },
+            isProspect ? null : { key: "leistung", label: "Leistung" },
+            laufbahnInhalt ? { key: "laufbahn", label: "Laufbahn" } : null,
+            mitVergleich ? { key: "vergleich", label: "Vergleich" } : null
         ].filter(Boolean);
         const gemerkt = this._akteReiter && String(this._akteReiter.id) === String(player.id) ? this._akteReiter.reiter : null;
         // "unterbau": dorthin, wo er hinauf- oder hinuntergeschickt wird
@@ -1036,93 +916,29 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const reiterLeiste = `<nav class="pd-tabs" role="tablist">${reiterListe.map(r =>
             `<button type="button" role="tab" class="pd-tab-knopf${r.key === reiter ? " aktiv" : ""}" data-pd-reiter="${r.key}" aria-selected="${r.key === reiter}">${r.label}</button>`).join("")}</nav>`;
 
+        // Übersicht wie im Vorbild: Positionen und Rollen links, die Werte in
+        // drei Spalten, Info und Eigenheiten rechts, darunter die Kacheln
+        const profilCtx = { player, club, card, isUserClub, isProspect, klausel, confidence, confInfo };
+        const positionenHtml = this.profilPositionenHtml(player, isUserClub ? 100 : confidence, card, roleStarsHtml);
+
         body.innerHTML = `
-            <div class="player-detail-top">
-                <div class="player-detail-meta">
-                    <span class="pos-tag pos-${this.getPosGroup(player.pos)}" style="font-size:13px;">${player.pos}</span>
-                    <span style="font-size:14px; margin-left:8px; color:var(--text-muted);">${club ? club.name : ''} • Alter: ${player.age}${player.foot ? ` • ${this.escapeHtml(player.foot === "beidfüßig" ? "beidfüßig" : player.foot + "er Fuß")}` : ''}${typeof MatchEngine !== "undefined" && MatchEngine.koerpergroesse ? ` • ${(MatchEngine.koerpergroesse(player) / 100).toFixed(2).replace(".", ",")} m` : ''}</span>
-                    ${this.nationalHtml(player)}
-                </div>
-                <div class="player-detail-rating">
-                    <div class="player-detail-stars team-strength-stars">${abilityStars}</div>
-                    <div class="player-detail-label">${abilityLabel}</div>
-                    ${card?.potentialKlasse ? `<div class="player-detail-ziel">${this.escapeHtml(card.potentialKlasse)}</div>` : ""}
-                </div>
-            </div>
-
-            <!-- Stärke, Potenzial und Rolle auf einen Blick -->
-            <div class="player-role-summary-card">
-                <div class="player-role-box">
-                    <span class="role-box-label">Stärke &amp; Potenzial</span>
-                    <div class="role-box-main">
-                        <span class="role-stars">${abilityStars}</span>
-                    </div>
-                    <div class="role-box-sub">${this.escapeHtml(abilityStarsText)}</div>
-                    <div class="star-legend">
-                        <span><i class="star-solid"></i> heute</span>
-                        ${card && !card.isPrecise ? '<span><i class="star-maybe"></i> geschätzt</span>' : ''}
-                        <span><i class="star-growth"></i> Potenzial</span>
-                    </div>
-                </div>
-
-                <div class="player-role-box">
-                    <span class="role-box-label">Hauptrolle</span>
-                    <div class="role-box-main">
-                        <span class="role-name">${bestRoleName}</span>
-                        <span class="role-stars">${bestRoleStars}</span>
-                    </div>
-                    ${altRoleName ? `<div class="role-box-sub">Alt: ${altRoleName} <span>${altRoleStars}</span></div>` : ''}
-                    <div class="role-box-sub">${potentialLabel}</div>
-                </div>
-            </div>
-
             ${reiterLeiste}
 
             <section class="pd-tab" data-pd-tab="ueberblick"${reiter === "ueberblick" ? "" : " hidden"}>
-            <div class="pd-spalten">
-            <div class="pd-spalte">
-            ${confidenceBarHtml}
-
-            ${isProspect ? "" : `
-            <div class="pd-saison">
-                <span>Saison</span>
-                <strong>${player.stats.matches} Spiele · ${player.stats.goals} Tore · ${player.stats.assists} Vorlagen · Note ${(player.stats.matches > 0 ? (player.stats.ratingSum / player.stats.matches).toFixed(2) : '-')}</strong>
-                ${this.wettbewerbsTeile(player)}
-            </div>`}
-
-            <div class="pd-werte">
-                ${attributeBlocks}
-                ${kopfBlock}
+            <div class="pf-raster">
+                <div class="pf-spalte pf-links">${positionenHtml}</div>
+                <div class="pf-mitte">
+                    <div class="pd-werte">${attributeBlocks}</div>
+                    ${grundwerteHtml}
+                </div>
+                <div class="pf-spalte pf-rechts">
+                    ${this.profilInfoHtml(player, profilCtx)}
+                    ${eigenheitenHtml}
+                    ${schuleHtml}
+                    ${traitsHtml}
+                </div>
             </div>
-            ${grundwerteHtml}
-            ${isProspect ? "" : this.laufbahnHtml(state, player)}
-            ${isProspect || typeof DatenzentraleEngine === "undefined" ? "" : `<button type="button" class="btn btn-secondary btn-sm pd-vergleich" id="btnPdVergleich">⚖️ Mit anderem Spieler vergleichen</button>`}
-            </div>
-
-            <div class="pd-spalte">
-            ${positionMapHtml}
-
-            ${eigenheitenHtml}
-
-            ${this.vereinsbilanzHtml(player, isUserClub && !isProspect)}
-
-            ${this.preiseHtml(player)}
-
-            ${schuleHtml}
-
-            ${traitsHtml}
-
-            ${isProspect ? `
-            <div class="finance-stat-row">
-                <span>Jahrgang:</span>
-                <strong>${player.age} Jahre – Jugendvertrag bis ${typeof YouthEngine !== "undefined" ? YouthEngine.AKADEMIE_HOECHSTALTER : 19}</strong>
-            </div>
-            <div class="finance-stat-row">
-                <span>Kondition / Moral:</span>
-                <strong>${player.fitness ?? 95} % / ${player.morale ?? 85} %</strong>
-            </div>` : ""}
-            </div>
-            </div>
+            ${this.profilKachelnHtml(player, profilCtx)}
             </section>
 
             ${entwicklungInhalt ? `
@@ -1138,8 +954,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <div class="dash-card mb-3" style="padding:14px;">
                 <h4 style="font-size:13px; margin-bottom:8px; color:var(--text-muted);"><svg class="ico h-ico" aria-hidden="true"><use href="#i-user"/></svg>Spielerzufriedenheit & Status</h4>
                 <div class="club-stat-line"><span>Kaderrolle:</span><strong>${player.squadRole || 'Kader'}</strong></div>
-                <div class="club-stat-line"><span>Gesamtzufriedenheit:</span><strong>${happy.overall}%</strong></div>
-                <div class="club-stat-line"><span>Spielzeit / Vertrag:</span><span>${happy.playingTime}% / ${happy.contract}%</span></div>
+                <div class="club-stat-line"><span>Gesamtzufriedenheit:</span><strong>${Math.round(happy.overall)} %</strong></div>
+                <div class="club-stat-line"><span>Spielzeit / Vertrag:</span><span>${Math.round(happy.playingTime)} % / ${Math.round(happy.contract)} %</span></div>
                 <div style="font-size:12px; color:var(--text-muted); margin-top:4px; font-style:italic;">"${happy.reason || 'Zufrieden mit der Situation.'}"</div>
             </div>`}
 
@@ -1187,10 +1003,42 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ${contractSectionHtml ? `<div class="pd-spalte">${contractSectionHtml}</div>` : ""}
             </div>
             </section>
+
+            ${isProspect ? "" : `
+            <section class="pd-tab" data-pd-tab="leistung"${reiter === "leistung" ? "" : " hidden"}>
+                ${this.profilLeistungHtml(player)}
+            </section>`}
+
+            ${laufbahnInhalt ? `
+            <section class="pd-tab pd-laufbahn-reiter" data-pd-tab="laufbahn"${reiter === "laufbahn" ? "" : " hidden"}>
+                ${laufbahnInhalt}
+            </section>` : ""}
+
+            ${mitVergleich ? `
+            <section class="pd-tab" data-pd-tab="vergleich"${reiter === "vergleich" ? "" : " hidden"}>
+                <div class="dash-card pf-karte pf-vergleich" id="pdVergleichInhalt"></div>
+            </section>` : ""}
         `;
 
-        modal.style.display = "flex";
+        this._akteZeichnet = true;
+        try {
+            this.zeichneProfilKopf(profilCtx);
+            this.zeigeAkteSeite(player.id);
+            this.zeichneProfilAktionen(profilCtx, body);
+        } finally {
+            this._akteZeichnet = false;
+        }
         this.playSound("click");
+
+        // Der Vergleich rechnet erst, wenn man ihn aufschlägt
+        const vergleichZeigen = () => {
+            const ort = body.querySelector("#pdVergleichInhalt");
+            if (ort && !ort.dataset.gezeichnet) {
+                ort.dataset.gezeichnet = "1";
+                this.vergleichInhalt(ort, player.id, null, "pdVg");
+            }
+        };
+        if (reiter === "vergleich") vergleichZeigen();
 
         // Reiter umschalten - die Wahl bleibt, solange dieselbe Akte offen ist
         body.querySelectorAll("[data-pd-reiter]").forEach(knopf => knopf.addEventListener("click", () => {
@@ -1202,6 +1050,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 k.setAttribute("aria-selected", String(an));
             });
             body.querySelectorAll(".pd-tab").forEach(t => { t.hidden = t.dataset.pdTab !== ziel; });
+            if (ziel === "vergleich") vergleichZeigen();
             body.querySelector(".pd-tabs")?.scrollIntoView({ block: "nearest" });
         }));
 
@@ -1229,7 +1078,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             });
 
             document.getElementById("btnPdBidPlayer")?.addEventListener("click", () => {
-                modal.style.display = "none";
+                this.schliesseAkte();
                 this.showTransferOfferModal(player.id);
             });
 
@@ -1239,7 +1088,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 if (!res || !res.success) { this.showToast(res?.error || "Verhandlungen sind derzeit nicht verfügbar.", "error"); return; }
                 this.playSound("click");
                 this.showToast(`Berater ${res.negotiation.agentName} spricht über einen Vorvertrag. Forderung: ${this.formatMoneySafe(res.negotiation.demand.wage)} pro Woche.`, "success", 6000);
-                modal.style.display = "none";
+                this.schliesseAkte();
                 this.zeigeVerhandlung(res.negotiation.id);
             });
 
@@ -1255,9 +1104,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             });
         }
 
-        document.getElementById("btnClosePlayerDetails").onclick = () => {
-            modal.style.display = "none";
-        };
+        const zurueck = document.getElementById("btnClosePlayerDetails");
+        if (zurueck) zurueck.onclick = () => this.akteZurueck();
 
         // Leihe: anfragen, verleihen, zurückholen, ausleihen
         const leihEngine = this.getLoanEngine();
@@ -1375,7 +1223,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             if (!res.success) return this.showToast(res.error, "error");
             this.showToast(`Er wechselt - als Ausbildungsentschädigung kommen ${this.formatMoneySafe(res.betrag)}.`, "info", 6000);
             if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
-            document.getElementById("modalPlayerDetails").style.display = "none";
+            this.schliesseAkte();
             this.renderHeader?.();
             this.renderCurrentTab();
         });
@@ -1410,16 +1258,15 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 this.showToast(
                     `Berater ${res.negotiation.agentName} verhandelt über den Erstvertrag. Erste Forderung: ${this.formatMoneySafe(res.negotiation.demand.wage)} pro Woche.`,
                     "success", 6000);
-                modal.style.display = "none";
+                this.schliesseAkte();
                 // Gleich zur Verhandlung: Der Berater wartet auf unser Angebot
                 this.zeigeVerhandlung(res.negotiation.id);
             } else {
                 this.showToast(res.error || "Gespräche konnten nicht aufgenommen werden.", "error");
             }
         });
-        document.getElementById("btnPdVergleich")?.addEventListener("click", () => this.zeigeVergleich(player.id));
         document.getElementById("btnPdZurVerhandlung")?.addEventListener("click", (e) => {
-            modal.style.display = "none";
+            this.schliesseAkte();
             this.zeigeVerhandlung(e.currentTarget.dataset.negId);
         });
 

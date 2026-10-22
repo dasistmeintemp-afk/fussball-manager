@@ -14388,6 +14388,71 @@ function runEngineTests() {
         if ((html.match(/data-spieler-link/g) || []).length !== 1) throw new Error("Ein Name mitten im Wort wird verlinkt");
     });
 
+    test("Spielerprofil als Seite: Vertragsende, Formdaten, Kacheln, Persönlichkeit, starker Fuß für alle", () => {
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Profil" });
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        const club = state.clubs.find(c => c.id === "muc");
+        const p = state.players.find(x => x.clubId === "muc" && x.pos !== "TW");
+
+        // Jeder Spieler hat einen starken Fuß - auch die von Hand angelegten Kader, fest aus der Kennung
+        const ohne = state.players.filter(x => !x.foot);
+        if (ohne.length) throw new Error(`${ohne.length} Spieler ohne starken Fuß, etwa ${ohne[0].name}`);
+        if (PlayerGenerator.fussFuer(p) !== PlayerGenerator.fussFuer({ ...p })) throw new Error("Der Fuß hängt am Zufall");
+        const alt = { ...p, foot: undefined };
+        const altStand = { ...state, players: [alt], fussV1: undefined };
+        GameState.ergaenzeAltstand(altStand);
+        if (alt.foot !== PlayerGenerator.fussFuer(p)) throw new Error("Ein alter Spielstand bekommt den Fuß nicht nach");
+        const deutsche = state.players.filter(x => state.clubs.find(c => c.id === x.clubId)?.leagueId === "de_liga_1");
+        const links = deutsche.filter(x => x.foot === "links").length / deutsche.length;
+        if (links < 0.15 || links > 0.4) throw new Error(`Linksfüßer in der ersten Liga: ${Math.round(links * 100)} %`);
+
+        // Vertragsende: Saisonende plus Restjahre, in der Sommerpause ist das Jahr schon abgezogen
+        const start = Number(state.calendar[0].date.slice(-4));
+        p.contractYears = 1;
+        if (ui.vertragsEnde(p) !== `30.06.${start + 1}`) throw new Error(`Vertrag mit einem Jahr endet ${ui.vertragsEnde(p)}`);
+        p.contractYears = 3;
+        if (ui.vertragsEnde(p) !== `30.06.${start + 3}`) throw new Error(`Vertrag mit drei Jahren endet ${ui.vertragsEnde(p)}`);
+
+        // Formdaten aus den Partien der eigenen Liga: nur mit Einsatz, in Reihenfolge, höchstens die letzten
+        const gegner = state.clubs.find(c => c.leagueId === club.leagueId && c.id !== "muc");
+        state.schedule.slice(0, 7).forEach((t, i) => {
+            t.matches = [{ homeClubId: "muc", awayClubId: gegner.id, played: true, homeGoals: 2, awayGoals: i % 2,
+                playerRatings: [{ playerId: p.id, clubId: "muc", minutes: i === 3 ? 0 : 90, rating: 6 + i * 0.3, goals: i === 6 ? 1 : 0 }] }];
+        });
+        const form = ui.profilFormDaten(p, 5);
+        if (form.length !== 5 || form[form.length - 1].note !== 6 + 6 * 0.3 || form.some(d => d.minuten === 0)) throw new Error(`Formdaten falsch: ${JSON.stringify(form.map(d => d.note))}`);
+        if (form[0].gegner !== gegner.name || !form[0].heim || form[form.length - 1].tore !== 1) throw new Error("Gegner, Heimspiel oder Tore fehlen");
+        const kurve = ui.formKurveHtml(form);
+        if ((kurve.match(/class="pf-punkt/g) || []).length !== 5 || !kurve.includes("<polyline")) throw new Error("Die Formkurve zeigt nicht jedes Spiel");
+        if (!/title="[^"]*Note 7,8, 1 Tor"/.test(kurve)) throw new Error("Der Tooltip nennt Note und Tor nicht");
+
+        // Kacheln: der eigene Spieler mit Zufriedenheit und Training, der fremde mit Scoutwissen statt Einblick.
+        // Im Browser ist die Statistik global - hier für die Dauer des Tests
+        const hatteStatistik = Object.prototype.hasOwnProperty.call(global, "StatistikEngine");
+        if (!hatteStatistik) global.StatistikEngine = require('./js/engine/statistikEngine.js').StatistikEngine;
+        try {
+        const ctx = { isUserClub: true, isProspect: false, confidence: 100, confInfo: { label: "Bekannt" } };
+        const eigen = ui.profilKachelnHtml(p, ctx);
+        ["Zufriedenheit", "Fitness", "Form", "Disziplin", "Training", "Saison"].forEach(t => { if (!eigen.includes(`</svg>${t}</h4>`)) throw new Error(`Kachel ${t} fehlt`); });
+        const fremd = state.players.find(x => x.clubId && x.clubId !== "muc");
+        const fremdHtml = ui.profilKachelnHtml(fremd, { isUserClub: false, isProspect: false, confidence: 30, confInfo: { label: "Kaum bekannt" } });
+        if (fremdHtml.includes("</svg>Training</h4>") || fremdHtml.includes("</svg>Zufriedenheit</h4>") || !fremdHtml.includes("</svg>Scoutwissen</h4>")) throw new Error("Beim fremden Spieler stehen Einblicke, die man nicht hat");
+        // Karten: nur die Gesamtzählung, jede fünfte Gelbe sperrt
+        p.stats.yellowCards = 3; p.yellowCardsTotal = 3;
+        if (!/Bis zur Gelbsperre<\/span><strong>2 Karten/.test(ui.profilKachelnHtml(p, ctx))) throw new Error("Die Gelbsperre ist falsch gezählt");
+        } finally {
+            if (!hatteStatistik) delete global.StatistikEngine;
+        }
+
+        // Persönlichkeit erst mit Scoutwissen, mit denselben Schwellen wie die Beobachtungen
+        const h = { professionalism: 17, ambition: 17, loyalty: 12, importantMatches: 12, consistency: 12 };
+        if (ui.persoenlichkeitWort({ hiddenAttributes: h }, 20) !== "noch unbekannt") throw new Error("Persönlichkeit ohne Scoutwissen sichtbar");
+        if (ui.persoenlichkeitWort({ hiddenAttributes: h }, 80) !== "Musterprofi") throw new Error("Musterprofi nicht erkannt");
+        if (ui.persoenlichkeitWort({ hiddenAttributes: { ...h, professionalism: 12, ambition: 12, loyalty: 17 } }, 50) !== "Ausgeglichen") throw new Error("Vereinstreue schon bei halbem Wissen sichtbar");
+    });
+
     test("Kaderregeln: im Verein ausgebildet - acht Plätze, höchstens vier nur aus dem Land", () => {
         const { KaderregelEngine: K } = require('./js/engine/kaderregelEngine.js');
         const state = GameState.createNewGame("muc", "normal", { name: "Meldung" });

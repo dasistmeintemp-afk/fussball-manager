@@ -705,8 +705,9 @@ function runWizardTests() {
         if (!uiJs.includes('class="inbox-detail-title-row"') || !uiJs.includes('class="inbox-detail-meta-grid"')) {
             throw new Error("Postfach-Detail in uiManager.js verwendet nicht die neuen Klassen .inbox-detail-title-row / .inbox-detail-meta-grid");
         }
-        if (!uiJs.includes('class="player-role-summary-card"') || !uiJs.includes('class="player-role-box"')) {
-            throw new Error("Spieler-Detail in uiManager.js verwendet nicht .player-role-summary-card / .player-role-box");
+        // Die Spielerakte ist eine eigene Seite: Positionen mit Rollen, Werte, Kacheln
+        if (!uiJs.includes('class="pf-raster"') || !uiJs.includes('pf-positionen') || !uiJs.includes('class="pf-kacheln"')) {
+            throw new Error("Spieler-Detail verwendet nicht das Seitenraster .pf-raster / .pf-positionen / .pf-kacheln");
         }
         if (!uiJs.includes('class="role-chip"')) {
             throw new Error("Kader-Tabelle in uiManager.js verwendet nicht .role-chip");
@@ -1391,12 +1392,15 @@ function runWizardTests() {
         const regel = /\.goal-balken \{[^}]*grid-template-columns:\s*max-content minmax\(0, 1fr\)/.exec(css);
         if (!regel || !/\.goal-balken > \.goal-item \{ display: contents; \}/.test(css)) throw new Error("Die Balken teilen sich keine Spalte");
 
-        // Die Akte ist breit und im Überblick zweispaltig
-        if (!/id="modalPlayerDetails"[^>]*>\s*<div class="modal-box modal-akte">/.test(html)) throw new Error("Die Akte nutzt nicht die breite Fensterklasse");
-        const breite = /\.modal-akte \{ max-width: (\d+)px; \}/.exec(css);
-        if (!breite || Number(breite[1]) < 1000) throw new Error("Die Akte ist nicht breiter geworden");
+        // Die Akte ist eine eigene Seite im Inhaltsbereich - kein Fenster -, die
+        // Übersicht steht in Spalten, der Vertrag zweispaltig
+        const inhalt = html.slice(html.indexOf('id="contentArea"'), html.indexOf("</main>"));
+        if (!/<section class="seite spieler-seite" id="modalPlayerDetails"/.test(inhalt)) throw new Error("Die Akte ist keine Seite im Inhaltsbereich");
+        if (/class="modal-overlay" id="modalPlayerDetails"/.test(html)) throw new Error("Die Akte ist noch ein Fenster");
+        const design = fs.readFileSync('./css/design.css', 'utf8');
+        if (!/\.content-area\.seite-offen > \.tab-pane \{ display: none !important; \}/.test(design)) throw new Error("Die Seite löst den Reiter nicht ab");
         const akte = fs.readFileSync('./js/ui/uiAkten.js', 'utf8');
-        if ((akte.match(/<div class="pd-spalten/g) || []).length < 2 || !akte.includes('<div class="pd-werte">')) throw new Error("Überblick und Vertrag stehen nicht in Spalten");
+        if (!akte.includes('<div class="pf-raster">') || !akte.includes('<div class="pd-werte">') || !akte.includes('<div class="pd-spalten')) throw new Error("Übersicht und Vertrag stehen nicht in Spalten");
     });
 
     test("Sterne: Der Karrierestart misst Spieler wie nach der Übernahme, der Maßstab ist wählbar", () => {

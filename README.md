@@ -108,7 +108,7 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   - Kopf mit Tabellenplatz, Mannschaftsstärke in Sternen, Ruf, Fans, Kader und Stimmung, dazu ein Hinweis bei einem Derby gegen den eigenen Verein.
   - Die letzten fünf Ergebnisse und die nächsten drei Spiele.
   - Spielweise (Formation, Grundhaltung, Pressing, Passspiel, Abwehrlinie, Torjäger) und Anlagen.
-  - Den Kader nach Mannschaftsteilen, mit Sternen und Werten so, wie das eigene Scouting sie kennt. Ein Klick öffnet die Spielerakte darüber.
+  - Den Kader nach Mannschaftsteilen, mit Sternen und Werten so, wie das eigene Scouting sie kennt. Ein Klick öffnet das Spielerprofil.
 - **Auszeichnungen (`AuszeichnungEngine`):**
   - **Monatspreise:** Am Monatsersten kürt die eigene Liga Spieler, Talent (bis 21) und Trainer des Monats.
     - Für den Spieler zählen Notenschnitt, Tore und Vorlagen im Monat, ab drei Spielen.
@@ -416,7 +416,7 @@ Im Livespiel wird nichts mehr vorab gewürfelt. Wie in den großen Managerspiele
 - **Eigenheiten** wie „Zieht nach innen“, „Schießt aus der Distanz“, „Sucht den tiefen Pass“ oder „Freistoßspezialist“ verschieben, was ein Spieler tut, und ein wenig, wie gut es gelingt. Ein Zweikämpfer gewinnt mehr Duelle und foult öfter.
 - **Signaturen** sind einzigartige Eigenschaften der Besten: Rund vier Prozent der Spieler jeder Liga – nach Stärke, höchstens fünf je Verein – bekommen eine, die zu ihrem Profil passt. Beispiele: 🎯 Eiskalter Vollstrecker, 🪄 Standardkünstler, 🎼 Spielgestalter, 🌀 Dribbelkünstler, 🦅 Kopfballungeheuer, 🛡️ Abwehrchef, 🐈 Katze im Tor, 🧱 Elfmeterkiller, ⚡ Pfeilschnell, 🔋 Unermüdlicher Motor und 🔥 Mentalitätsmonster (wächst in Derbys und in der Schlussphase).
 - Sie wirken im Livespiel und in der Sofort-Simulation gleich: Der Eiskalte verwandelt rund 30 % mehr seiner Chancen, die Katze im Tor hält entsprechend mehr. Wer gut abschließt oder in der Luft stark ist, kommt öfter zum Abschluss.
-- Zu sehen sind sie in der Spielerakte („Auf dem Platz“), als Symbol hinter dem Namen in Kader, Transfermarkt und Vereinsdetails und im Ticker („… 🎯 Eiskalter Vollstrecker!“). Jede Saison werden sie neu vergeben, ältere Spielstände bekommen sie beim Laden nachgereicht.
+- Zu sehen sind sie in der Spielerakte (Eigenheiten), als Symbol hinter dem Namen in Kader, Transfermarkt und Vereinsdetails und im Ticker („… 🎯 Eiskalter Vollstrecker!“). Jede Saison werden sie neu vergeben, ältere Spielstände bekommen sie beim Laden nachgereicht.
 
 ### 3b. 🗣️ Kabinenansprache & Pressekonferenz (`ManagerEngine`)
 Ein Manager verwaltet keine Tabellen, er redet mit Leuten.
@@ -473,14 +473,40 @@ Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit 
 - **Direkt ans Ziel:** Bei auslaufenden Verträgen steht jeder Spieler einzeln da, die stärksten zuerst. Ein Tipp auf den Namen öffnet seine Akte gleich bei der Vertragsverlängerung, der Cursor steht im Gehaltsfeld. Eine Verhandlung, bei der wir am Zug sind, führt direkt zu ihrer Karte im Transfermarkt. Dasselbe gilt für Talente: *Vertragsgespräche aufnehmen* springt sofort in die Verhandlung mit dem Berater, *Zur Verhandlung* ebenso. Die Post über einen auslaufenden Vertrag hat einen Knopf *Vertrag verlängern*.
 
 ### 3d. 🗣️ Gespräche unter vier Augen (`PlayerTalkEngine`)
-**Die Spielerakte in Reitern:** Kopf, Stärke und Hauptrolle stehen immer oben, darunter wechseln drei Reiter.
-- **Überblick:** Saisonbilanz, Werte, Positionen, Eigenheiten und Signatur.
-- **Entwicklung:** Entwicklungsplan, U23 und Leihe. Nur bei eigenen Spielern.
-- **Vertrag & Kabine:** Zufriedenheit, Gespräche, Vertrag, Gehalt und Klauseln. Bei fremden Spielern heißt er **Vertrag & Transfer**, mit Scouting, Angebot und Vorvertrag.
-
-Die Leiste bleibt beim Scrollen oben. Der gewählte Reiter bleibt erhalten, solange dieselbe Akte offen ist, auch wenn eine Änderung sie neu aufbaut. Ein Klick auf einen auslaufenden Vertrag öffnet gleich „Vertrag“. Vorher stand alles untereinander, am Handy über viele Bildschirme.
-
-**Breit wie ein Arbeitsblatt:** Auf großen Bildschirmen ist die Akte bis zu 1.180 Pixel breit statt 600. Im Überblick stehen links Werte, Saison und Laufbahn, rechts Positionsprofil, Eigenheiten, Bilanz und Persönlichkeit. Unter „Vertrag“ steht die Lage links und die Verhandlung rechts. Am Handy bleibt alles untereinander.
+**Das Spielerprofil als eigene Seite wie im Vorbild (`uiProfil.js`):** Die Akte war ein Fenster über dem Reiter. Jetzt löst sie den Reiter ab, wie eine eigene Seite. Kopfleiste, Navigation und *Weiter* bleiben.
+- **Zurück:** Der Knopf auf der Seite, der in der Kopfleiste, Alt+←, Escape und die Zurück-Taste am Handy führen dorthin, wo man herkam. Von einem Profil zum nächsten führt Zurück zum vorigen Profil.
+  - Ein anderer Reiter schließt die Seite.
+  - Nach *Weiter* zeigt eine offene Seite den neuen Stand.
+  - Liegt ein Fenster darüber, schließt Escape nur das Fenster.
+- **Kopf:**
+  - links Rückennummer (beim eigenen Spieler zum Ändern), Name, Position mit allen Positionen, Flagge, Nation, Alter, Größe und Verein (ein Tipp öffnet ihn)
+  - darunter Marken für Kaderrolle, Verletzung, Sperre, Leihe, U19/U23, Transferliste, Vorvertrag und Beobachtungsliste
+  - in der Mitte Marktwert (beim fremden Spieler als Spanne), Gehalt, Vertragsende als Datum und eine Ausstiegsklausel
+  - rechts Sterne für Stärke und Potenzial getrennt, jeweils mit Klasse
+  - Das Menü **Aktionen** sammelt, was man mit ihm tun kann: verlängern, Gespräch, Entwicklung, verleihen, Rückennummer, verhandeln, ausleihen, Vorvertrag, Klausel, scouten, Beobachtungsliste, vergleichen. Jeder Eintrag führt zum passenden Reiter oder drückt den Knopf, den die Seite schon hat.
+- **Übersicht:**
+  - **Positionen** auf einem Feld: Wo er spielen kann, steht die Position in der Farbe seiner Eignung, die Stammposition mit Ring. Wo es nur zur Not geht, steht ein farbiger Punkt, sonst ein grauer.
+  - Darunter die Positionen mit Sternen und die **Rollen** seiner Position mit Sternen.
+  - In der Mitte die Werte in drei Spalten: Technik (beim Torwart die Torwartwerte), Kopf und Körper.
+  - Rechts **Info**: Größe, starker Fuß, Persönlichkeit in einem Wort (erst, wenn der Scout ihn kennt) und Bekanntheit nach dem Marktwert unter allen Spielern. Dazu „Im Verein seit“ und Länderspiele.
+  - Ebenfalls rechts: Eigenheiten mit Signatur, Ausbildung, Eingewöhnung und Beobachtungen.
+- **Kacheln** unter der Übersicht:
+  - *Zufriedenheit* mit Spielzeit, Vertrag und Moral. Beim fremden Spieler steht stattdessen *Scoutwissen*.
+  - *Fitness* mit Kondition, Spielpraxis, Verletzung und Anfälligkeit.
+  - *Form* als Kurve der letzten Ligaspiele mit den Noten (Tooltip: Gegner, Ergebnis, Tore).
+  - *Disziplin* mit Gelb, Rot, Sperre und den Karten bis zur Gelbsperre.
+  - *Training* mit Schwerpunkt, Feinschliff, Umschulung, Eigenheit, Mentor, Belastung und Fortschritt. Nur beim eigenen Spieler.
+  - *Saison* je Wettbewerb und *Laufbahn* in Summe.
+- **Reiter:**
+  - **Übersicht**
+  - **Entwicklung** (eigene Spieler)
+  - **Vertrag & Kabine** (bei fremden **Vertrag & Transfer**)
+  - **Leistung**: Saison je Wettbewerb mit Minuten, Karten und Note, die Form der letzten zehn Ligaspiele als Kurve und Tabelle, dazu die Werte je 90 Minuten aus der Datenzentrale.
+  - **Laufbahn**: Saison für Saison, mit Vereinsbilanz und Auszeichnungen.
+  - **Vergleich**: der Spielervergleich direkt auf der Seite statt in einem eigenen Fenster.
+- Die Reiterleiste bleibt am breiten Bildschirm beim Scrollen oben. Der gewählte Reiter bleibt erhalten, solange dieselbe Akte offen ist. Ein Klick auf einen auslaufenden Vertrag öffnet gleich „Vertrag“.
+- **Am Handy** steht alles untereinander: Kopfdaten und Sterne zu zweit, Kacheln zu zweit, die Werte über die volle Breite.
+- **Starker Fuß für alle:** Den von Hand angelegten Kadern der deutschen ersten Liga (290 Spieler) fehlte er. Das Profil zeigte einen Strich, und die Regeln zum schwachen Fuß im Spiel griffen bei ihnen nicht. Jetzt bekommen sie ihn fest aus der Kennung (`PlayerGenerator.fussFuer`), ohne den Zufall zu verbrauchen. Ältere Spielstände bekommen ihn beim Laden nach.
 
 **Gleich lange Balken:** Auf der Übersicht teilen sich Saisonziel, Vorstandszufriedenheit, Fanstimmung und Mediendruck ein Raster. Vorher nahm jede Beschriftung so viel Platz, wie sie brauchte, und neben „Vorstandszufriedenheit“ blieb der kürzeste Balken. Am Handy steht die Beschriftung über dem Balken.
 
@@ -1201,7 +1227,8 @@ untitled/
 │   │   ├── klang.js            # Pfiffe, Stadionkulisse, Menütöne und Menümusik (Web Audio, ohne Aufnahmen)
 │   │   ├── uiVorbereitung.js   # Vorbereitung: Stab, Sponsoren, Testspiele, Turniere
 │   │   ├── uiTransfers.js      # Verhandlungen, Leihen, U23, Transfermarkt, Scoutberichte
-│   │   ├── uiAkten.js          # Spieler- und Vereinsakte
+│   │   ├── uiAkten.js          # Spieler- und Vereinsakte: Reiter, Werte, Vertrag
+│   │   ├── uiProfil.js         # Spielerprofil als eigene Seite: Kopf, Übersicht, Kacheln, Verlauf
 │   │   ├── uiLivespiel.js      # Match-Center, Zurufe, Seitenlinie während der Partie
 │   │   ├── uiSpielbericht.js   # Spielbericht mit Schusskarte, Heatmaps und Passnetz
 │   │   ├── uiSpeicher.js       # Speicherplätze, Sicherungen, Laden, Löschen, Import

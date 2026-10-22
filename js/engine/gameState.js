@@ -752,6 +752,7 @@ class GameState {
                 // Einzelwerte auf das Niveau der erzeugten Ligen (PlayerGenerator)
                 const generator = GameState._resolveEngine('PlayerGenerator', './playerGenerator.js');
                 if (generator && typeof generator.gleicheWerteAn === 'function') generator.gleicheWerteAn(player);
+                if (generator && typeof generator.fussFuer === 'function' && !player.foot) player.foot = generator.fussFuer(player);
 
                 world.players.push(player);
                 club.playerIds.push(player.id);
@@ -1138,6 +1139,12 @@ class GameState {
                 fin.setzeGehaltsrahmen(state, state.clubs.filter(c => c.id !== state.userClubId));
                 if (eigen) eigen.wageBudget = Math.max(vorher, fin.gehaltsrahmen(state, eigen));
             }
+        }
+        // Der starke Fuß für die von Hand angelegten Kader - einmal je Spielstand
+        if (!state.fussV1) {
+            state.fussV1 = 1;
+            const gen = GameState._resolveEngine("PlayerGenerator", "./playerGenerator.js");
+            if (gen && typeof gen.fussFuer === "function") (state.players || []).forEach(p => { if (!p.foot) p.foot = gen.fussFuer(p); });
         }
         // Namen passend zur Nationalität - einmal je Spielstand
         if (!state.namenNachNation) {

@@ -159,11 +159,23 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
     /** Spielervergleich: Auswahl des zweiten Spielers, dann nebeneinander */
     zeigeVergleich(idA, idB = null) {
-        const state = this.app.state;
-        const dz = this.getDatenzentrale();
         const modal = document.getElementById("modalVergleich");
         const body = document.getElementById("vergleichContent");
-        if (!dz || !modal || !body) return;
+        if (!this.getDatenzentrale() || !modal || !body) return;
+        this.vergleichInhalt(body, idA, idB);
+        const zu = document.getElementById("btnCloseVergleich");
+        if (zu) zu.onclick = () => { modal.style.display = "none"; };
+        modal.style.display = "flex";
+    },
+
+    /**
+     * Der Vergleich in einem Behälter - im Fenster und im Reiter Vergleich
+     * der Spielerseite. praefix trennt die Kennungen, falls beide offen sind.
+     */
+    vergleichInhalt(body, idA, idB = null, praefix = "vg") {
+        const state = this.app.state;
+        const dz = this.getDatenzentrale();
+        if (!dz || !body) return;
         const kandidaten = dz.vergleichsKandidaten(state, idA);
         const b = idB ?? kandidaten[0]?.id ?? null;
         const v = b !== null ? dz.vergleich(state, idA, b) : null;
@@ -171,12 +183,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         const auswahl = `
             <div class="vg-auswahl">
-                <label for="vgWahl">Vergleichen mit</label>
-                <select id="vgWahl" class="styled-select">
+                <label for="${praefix}Wahl">Vergleichen mit</label>
+                <select id="${praefix}Wahl" class="styled-select vg-wahl">
                     ${kandidaten.map(k => `<option value="${esc(k.id)}" ${String(k.id) === String(b) ? "selected" : ""}>${esc(k.name)} (${esc(k.pos)}, ${esc(k.verein)})${k.eigen ? " · eigener" : ""}</option>`).join("")}
                 </select>
-                <input type="search" id="vgSuche" class="styled-input" placeholder="Oder Namen suchen …" autocomplete="off">
-                <div class="vg-treffer" id="vgTreffer"></div>
+                <input type="search" id="${praefix}Suche" class="styled-input vg-suche" placeholder="Oder Namen suchen …" autocomplete="off">
+                <div class="vg-treffer"></div>
             </div>`;
         if (!v) {
             body.innerHTML = auswahl + `<p class="dz-leer">Kein Spieler zum Vergleich - eigene Spieler derselben Position oder gut gescoutete erscheinen hier.</p>`;
@@ -236,19 +248,18 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <p class="dz-fazit">Fett ist der bessere Wert. Bei fremden Spielern zeigt die Spanne, wie genau der Scout ihn kennt.</p>`;
         }
 
-        document.getElementById("vgWahl")?.addEventListener("change", (e) => this.zeigeVergleich(idA, e.target.value));
-        const suche = document.getElementById("vgSuche");
+        const neu = (b) => this.vergleichInhalt(body, idA, b, praefix);
+        body.querySelector(".vg-wahl")?.addEventListener("change", (e) => neu(e.target.value));
+        const suche = body.querySelector(".vg-suche");
         suche?.addEventListener("input", () => {
             const q = suche.value.trim().toLowerCase();
-            const treffer = document.getElementById("vgTreffer");
+            const treffer = body.querySelector(".vg-treffer");
             if (!treffer) return;
             if (q.length < 3) { treffer.innerHTML = ""; return; }
             const liste = state.players.filter(p => p.clubId && String(p.id) !== String(idA) && p.name.toLowerCase().includes(q)).slice(0, 8);
             treffer.innerHTML = liste.map(p => `<button type="button" class="dz-link" data-vg="${esc(p.id)}">${esc(p.name)} <span class="text-muted">(${esc(p.pos)}, ${esc(state.clubs.find(c => c.id === p.clubId)?.name || "")})</span></button>`).join("")
                 || `<span class="text-muted">Kein Treffer</span>`;
-            treffer.querySelectorAll("[data-vg]").forEach(t => t.addEventListener("click", () => this.zeigeVergleich(idA, t.dataset.vg)));
+            treffer.querySelectorAll("[data-vg]").forEach(t => t.addEventListener("click", () => neu(t.dataset.vg)));
         });
-        document.getElementById("btnCloseVergleich")?.addEventListener("click", () => { modal.style.display = "none"; });
-        modal.style.display = "flex";
     }
 });

@@ -43,6 +43,16 @@ const _MatchFlowEngine = (typeof MatchFlowEngine !== 'undefined' && MatchFlowEng
         ? window.MatchFlowEngine
         : ((typeof require !== 'undefined') ? require('./matchFlowEngine.js').MatchFlowEngine : null));
 
+/** Der Ball als Körper (Stufe 1 der 2D-Simulation) */
+const _dirPhysik = () => {
+    if (typeof BallPhysik !== 'undefined' && BallPhysik) return BallPhysik;
+    if (typeof window !== 'undefined' && window.BallPhysik) return window.BallPhysik;
+    if (typeof require !== 'undefined') {
+        try { return require('./ballPhysik.js').BallPhysik; } catch (e) { /* ohne Ballphysik */ }
+    }
+    return null;
+};
+
 /** Taktik (Rollen, Formen mit und gegen den Ball, Anweisungen) */
 const _dirTaktik = () => {
     if (typeof TacticsEngine !== 'undefined' && TacticsEngine) return TacticsEngine;
@@ -360,6 +370,17 @@ class LiveMatchDirector {
     static BALLVERLUST_GNADE = 4.5;
     static BALLVERLUST_GNADE_SPIELZEIT = 60;
 
+    /**
+     * Stufe 1 der 2D-Simulation: Im Livespiel des Vorbilds ist der Ball ein
+     * Körper (BallPhysik). Zuspiele und Flanken bekommen eine Flugbahn, und
+     * wer zuerst am Ball ist, bekommt ihn - statt eines vorher gewürfelten
+     * Ausgangs. Ein Spiel kann es mit der Option ballPhysik abweichend
+     * festlegen (Messläufe gegen das alte Modell).
+     */
+    static BALL_PHYSIK = true;
+    /** Mit dieser Dringlichkeit laeuft, wer an den Ball geht - wie BallPhysik.DRINGLICHKEIT */
+    static JAEGER_DRINGLICHKEIT = 1.9;
+
     constructor(liveMatch) {
         this.match = liveMatch;
 
@@ -438,7 +459,9 @@ class LiveMatchDirector {
             schiri: () => this.match.schiedsrichter || null,
             wetter: () => this.match.wetter || null,
             anweisung: (id) => this.match.matchplan?.anweisungen?.[String(id)] || null,
-            zusammenspiel: (a, b) => this.zusammenspielPaar(a, b)
+            zusammenspiel: (a, b) => this.zusammenspielPaar(a, b),
+            physik: () => this.physik,
+            getBall: () => this.match.ball
         }) : null;
 
         this.initPlayers();
@@ -2643,13 +2666,16 @@ class LiveMatchDirector {
         const dist = Math.hypot((to.x ?? from.x) - from.x, (to.y ?? from.y) - from.y);
 
         const actionType = action.type === "longball" ? "cross" : "pass";
+        // Mit Ballphysik steht die Flugzeit fest: bis der Ball erreicht ist
+        const ph = action.physik || null;
         // Die geplante Dauer ist im Grundtempo gemessen. Vorher stand hier eine
         // Mischung aus fester und gerasterter Sekunde (0.55 + scale * 0.6): Auf
         // der schnellsten Stufe bekam ein kurzes Zuspiel dadurch rund viermal so
         // viel Spielzeit wie auf der langsamsten - derselbe Pass, ein anderes
         // Spiel.
-        const duration = this.bildschirmZeit(
-            Math.max(0.2, Math.min(0.95, dist / (action.type === "longball" ? 62 : 78))));
+        const duration = ph && ph.t > 0
+            ? this.bildschirmZeit(Math.max(0.05, ph.t))
+            : this.bildschirmZeit(Math.max(0.2, Math.min(0.95, dist / (action.type === "longball" ? 62 : 78))));
 
         // Ein Ball, der ins Aus geht, geht erst einmal ins Aus.
         //
@@ -2661,6 +2687,7 @@ class LiveMatchDirector {
         // die Spielfortsetzung geholt und hingelegt.
         if (this.planeStandard(action, to)) {
             if (action.outcome === "out") this.flowStats.turnovers++;
+            this._physikBahn = ph;
             this.setBallTravel(to.x, to.y, duration, actionType);
             return;
         }
@@ -2682,11 +2709,12 @@ class LiveMatchDirector {
                 // In den Lauf: Der Ball geht in den Raum vor den Mitspieler,
                 // und der startet hinein
                 const dir = this.attackDir(to.team);
-                const ziel = {
+                const ziel = ph ? { x: ph.punkt.x, y: ph.punkt.y } : {
                     x: Math.max(6, Math.min(94, to.x + dir * 4.5)),
                     y: Math.max(4, Math.min(96, to.y))
                 };
-                this.setBallTravel(ziel.x, ziel.y, duration * 1.1, actionType);
+                this._physikBahn = ph;
+                this.setBallTravel(ziel.x, ziel.y, ph ? duration : duration * 1.1, actionType);
                 this.setCarrier(to);
                 this.carryTarget = { id: to.id, x: ziel.x, y: ziel.y, rest: duration * 1.4 };
                 this.flowStats.inDenLauf = (this.flowStats.inDenLauf || 0) + 1;
@@ -2694,7 +2722,8 @@ class LiveMatchDirector {
                 this.narrateFlow(action);
                 return;
             }
-            this.setBallTravel(to.x, to.y, duration, actionType);
+            this._physikBahn = ph;
+            this.setBallTravel(ph ? ph.punkt.x : to.x, ph ? ph.punkt.y : to.y, duration, actionType);
             this.setCarrier(to);
             this.setzeAnnahme();
             this.narrateFlow(action);
@@ -2705,14 +2734,16 @@ class LiveMatchDirector {
             this.flowStats.turnovers++;
             const winner = action.interceptor;
             this.possessionTeam = winner.team;
-            this.setBallTravel(winner.x, winner.y, duration * 0.9, actionType);
+            this._physikBahn = ph;
+            this.setBallTravel(ph ? ph.punkt.x : winner.x, ph ? ph.punkt.y : winner.y, ph ? duration : duration * 0.9, actionType);
             this.setCarrier(winner);
             this.narrateFlow(action);
             return;
         }
 
         this.flowStats.turnovers++;
-        this.setBallTravel(to.x, to.y, duration, actionType);
+        // Verstolpert oder halb abgewehrt: erst zum Spieler, dann springt er weg
+        this.setBallTravel(to.x, to.y, ph ? duration + this.bildschirmZeit(0.35) : duration, actionType);
         this.claimLooseBall(to);
         this.narrateFlow(action);
     }
@@ -2883,6 +2914,13 @@ class LiveMatchDirector {
 
     get fm() {
         return this.match.modus === "fm";
+    }
+
+    /** Ist der Ball in diesem Spiel ein Körper? (Stufe 1, siehe BALL_PHYSIK) */
+    get physik() {
+        if (!this.fm || !_dirPhysik()) return false;
+        const eigen = this.match.ballPhysik;
+        return typeof eigen === "boolean" ? eigen : LiveMatchDirector.BALL_PHYSIK;
     }
 
     /** Bildschirm- in Zeitleistenkoordinaten (die Zeitleiste denkt in Halbzeit eins) */
@@ -3183,28 +3221,47 @@ class LiveMatchDirector {
             this.match.lastCommentary = this.fmText("flanke", { flanker: flanker.name || "" });
         }
 
+        const ph = r.physik && r.physik.bahn ? r.physik : null;
+        this._ballJaeger = null;
         if (r.outcome === "out") {
             // Ueber alles hinweg ins Toraus: Abstoss
             this.planeStandard({ from: flanker }, r.to);
-            this.setBallTravel(r.to.x, r.to.y, 0.8 * scale + this.bildschirmZeit(0.2), "cross");
+            this._physikBahn = ph;
+            this.setBallTravel(r.to.x, r.to.y, ph ? this.bildschirmZeit(Math.max(0.05, ph.t)) : 0.8 * scale + this.bildschirmZeit(0.2), "cross");
             this.match.ball.holderId = null;
             this.match.lastCommentary = this.fmText("flanke_misslungen", { flanker: flanker.name || "" });
             return;
         }
 
         const dist = Math.hypot(landung.x - this.match.ball.x, landung.y - this.match.ball.y);
-        this.setBallTravel(landung.x, landung.y, Math.max(0.55, Math.min(1.1, dist / 45)) * scale + this.bildschirmZeit(0.15), "cross");
+        this._physikBahn = ph;
+        this.setBallTravel(landung.x, landung.y, ph ? this.bildschirmZeit(Math.max(0.05, ph.t))
+            : Math.max(0.55, Math.min(1.1, dist / 45)) * scale + this.bildschirmZeit(0.15), "cross");
+        // Wer an den Ball geht, laeuft zu dem Punkt, an dem er ihn erreicht
+        if (ph && Array.isArray(ph.jaeger)) this._ballJaeger = { ids: ph.jaeger.slice(), x: landung.x, y: landung.y };
         this.match.ball.holderId = null;
         this.carrierId = null;
         this.carryTarget = null;
 
         this._fmBeiLandung = () => {
+            this._ballJaeger = null;
             if (r.outcome === "header" && r.kopfballer) {
                 const kopfballer = this.getPlayer2D(r.kopfballer.id);
                 if (!kopfballer) { this.claimLooseBall(landung); return; }
                 const vorlage = { id: flanker.id, name: flanker.name };
-                this.fmSchuss(kopfballer, { kopfball: true, start: landung, vorlage });
+                this.fmSchuss(kopfballer, { kopfball: r.kopfball !== false, start: landung, vorlage });
                 return;
+            }
+            // Mit Ballphysik: Zu weit vom Tor fuer den Abschluss - der Angreifer
+            // nimmt die Flanke an, und es geht weiter
+            if (r.outcome === "gehalten" && r.annehmer) {
+                const annehmer = this.getPlayer2D(r.annehmer.id);
+                if (annehmer) {
+                    this.possessionTeam = annehmer.team;
+                    this.setCarrier(annehmer);
+                    this.setzeAnnahme();
+                    return;
+                }
             }
             if (r.outcome === "claimed" && r.gk) {
                 const gk = this.getPlayer2D(r.gk.id);
@@ -4216,13 +4273,22 @@ class LiveMatchDirector {
         }
 
         const ball = this.match.ball;
+        // Mit Ballphysik folgt der Ball seiner Flugbahn, und die Dauer steht fest
+        const physik = this._physikBahn && this._physikBahn.bahn ? this._physikBahn : null;
+        this._physikBahn = null;
+        ball.physik = physik;
+        if (physik) {
+            const start = _dirPhysik().punkt(physik.bahn, 0);
+            ball.x = start.x;
+            ball.y = start.y;
+        }
         ball.originX = ball.x;
         ball.originY = ball.y;
         ball.targetX = Math.max(1, Math.min(99, targetX));
         ball.targetY = Math.max(1, Math.min(99, targetY));
         ball.distance = Math.hypot(ball.targetX - ball.originX, ball.targetY - ball.originY);
 
-        const minDuration = ball.distance / this.ballTempo(actionType);
+        const minDuration = physik ? 0 : ball.distance / this.ballTempo(actionType);
 
         ball.travelDuration = Math.max(0.01, durationSeconds, minDuration);
         ball.travelElapsed = 0;
@@ -4283,6 +4349,7 @@ class LiveMatchDirector {
         ball.travelElapsed = 0.01;
         ball.distance = 0;
         ball.inFlight = false;
+        ball.physik = null;
 
         this._lastTargetX = ball.targetX;
         this._lastTargetY = ball.targetY;
@@ -4328,21 +4395,38 @@ class LiveMatchDirector {
         ball.travelElapsed = Math.min(ball.travelDuration, (ball.travelElapsed || 0) + dt);
         const t = ball.travelDuration > 0 ? ball.travelElapsed / ball.travelDuration : 1;
 
-        const eased = ball.actionType === "shot" ? t : 1 - Math.pow(1 - t, 2.2);
+        if (ball.physik) {
+            // Der Ball als Körper: Er rollt mit Reibung aus oder fliegt im
+            // Bogen - genau die Bahn, nach der entschieden wurde, wer ihn
+            // bekommt. Am Ende liegt er dort, wo er erreicht wurde.
+            if (t < 1) {
+                const d = _dirPhysik().darstellung(ball.physik.bahn, t * ball.physik.t);
+                ball.x = d.x;
+                ball.y = d.y;
+                ball.height = d.height;
+            } else {
+                ball.x = ball.targetX;
+                ball.y = ball.targetY;
+                ball.height = 0;
+                ball.physik = null;
+            }
+        } else {
+            const eased = ball.actionType === "shot" ? t : 1 - Math.pow(1 - t, 2.2);
 
-        ball.x = ball.originX + (ball.targetX - ball.originX) * eased;
-        ball.y = ball.originY + (ball.targetY - ball.originY) * eased;
+            ball.x = ball.originX + (ball.targetX - ball.originX) * eased;
+            ball.y = ball.originY + (ball.targetY - ball.originY) * eased;
 
-        const arc = (ball.actionType === "cross" ? 1.0 : (ball.actionType === "shot" ? 0.45 : 0.2))
-            * (ball.actionType === "cross" ? (ball.bogen || 1) : 1);
-        const weite = Math.min(1, (ball.distance || 0) / 35);
+            const arc = (ball.actionType === "cross" ? 1.0 : (ball.actionType === "shot" ? 0.45 : 0.2))
+                * (ball.actionType === "cross" ? (ball.bogen || 1) : 1);
+            const weite = Math.min(1, (ball.distance || 0) / 35);
 
-        // Flugkurve: Ein hoher Ball beschreibt eine Parabel und setzt danach
-        // zweimal auf, ein flacher Pass bleibt am Boden. Vorher schwebte jeder
-        // Ball in derselben Sinuskurve und landete weich wie eine Feder.
-        ball.height = (ball.actionType === "cross" && weite > 0.3)
-            ? this.bounceHeight(t) * arc * weite
-            : Math.sin(Math.PI * t) * arc * weite;
+            // Flugkurve: Ein hoher Ball beschreibt eine Parabel und setzt danach
+            // zweimal auf, ein flacher Pass bleibt am Boden. Vorher schwebte jeder
+            // Ball in derselben Sinuskurve und landete weich wie eine Feder.
+            ball.height = (ball.actionType === "cross" && weite > 0.3)
+                ? this.bounceHeight(t) * arc * weite
+                : Math.sin(Math.PI * t) * arc * weite;
+        }
         ball.inFlight = t < 1;
 
         // Ist eine Etappe angekommen, übernimmt die nächste Station. So legt
@@ -5102,6 +5186,12 @@ class LiveMatchDirector {
         // Wer mit dem Ball laeuft, laeuft dorthin, wohin er ihn mitnimmt
         if (this.carryTarget && p.id === this.carryTarget.id) {
             return { x: this.carryTarget.x, y: this.carryTarget.y, urgency: 1.45, sprint: true };
+        }
+
+        // Mit Ballphysik: Wer an die Flanke geht, laeuft zu dem Punkt, an dem er
+        // sie erreicht - im Duell beide
+        if (ball.inFlight && this._ballJaeger && this._ballJaeger.ids.includes(p.id)) {
+            return { x: this._ballJaeger.x, y: this._ballJaeger.y, urgency: LiveMatchDirector.JAEGER_DRINGLICHKEIT, sprint: true };
         }
 
         // Wer dem Ball am naechsten ist, laeuft dorthin, wo er ankommt.

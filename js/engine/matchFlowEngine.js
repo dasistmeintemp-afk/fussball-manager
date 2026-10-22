@@ -40,6 +40,16 @@ const _flowRandom = (typeof Random !== 'undefined' && Random)
         clamp: (val, min, max) => Math.max(min, Math.min(max, val))
     });
 
+/** Der Ball als Körper (Stufe 1) - im Browser global, unter Node nachgeladen */
+const _flowPhysik = () => {
+    if (typeof BallPhysik !== 'undefined' && BallPhysik) return BallPhysik;
+    if (typeof window !== 'undefined' && window.BallPhysik) return window.BallPhysik;
+    if (typeof require !== 'undefined') {
+        try { return require('./ballPhysik.js').BallPhysik; } catch (e) { /* ohne Ballphysik */ }
+    }
+    return null;
+};
+
 /** Spielphasen des Ballbesitzes */
 const FLOW_PHASES = {
     GOAL_KICK: "goalkick",
@@ -54,6 +64,24 @@ class MatchFlowEngine {
     static ABSICHERUNG_RADIUS = 9;
     static ABSICHERUNG_JE_HELFER = 0.06;
     static ABSICHERUNG_MAX = 0.18;
+
+    /**
+     * Ballphysik (Stufe 1): Streuung eines Zuspiels. Aus der Genauigkeit des
+     * Passgebers (dieselbe Rechnung wie bisher, nur ohne Passweg und vollen
+     * Strafraum - die stecken jetzt in der Geometrie) wird eine Abweichung in
+     * Richtung (Bogenmaß) und Tempo (Anteil). Gemessen und geeicht in
+     * physik_mess: siehe README.
+     */
+    static PASS_STREUUNG = { winkel0: 0.02, winkel: 0.2, tempo0: 0.05, tempo: 0.32 };
+    /**
+     * Reaktionszeiten beim Zuspiel in Laufzeit-Sekunden: Der Angespielte weiß,
+     * dass der Ball kommt; ein Gegner reagiert mit seiner Spielübersicht
+     * (p.reaktion aus Antizipation und Übersicht), ein Mitspieler lässt den
+     * Ball zum Angespielten durch.
+     */
+    static PASS_REAKTION = { empfaenger: 0.05, gegner: 1.0, mitspieler: 0.15 };
+    /** Wie oft der schwache Fuß ran muss (zur falschen Seite öfter) und wie viel mehr er streut */
+    static PASS_SCHWACHER_FUSS = { basis: 0.15, falscheSeite: 0.35, streuung: 1.4 };
 
     // Geduld am Ball (siehe qualitaetsVorsprung): Bisher spielten Bayern und
     // Augsburg denselben Fußball - gemessen 52 Prozent Ballbesitz für Bayern
@@ -87,6 +115,11 @@ class MatchFlowEngine {
         this.anweisung = typeof options.anweisung === "function" ? options.anweisung : (() => null);
         // Zusammenspiel zweier Spieler (die Linien der Taktiktafel), 0 = neutral
         this.zusammenspiel = typeof options.zusammenspiel === "function" ? options.zusammenspiel : (() => 0);
+        // Stufe 1: Der Ball als Körper (BallPhysik). Ohne sie wird der Ausgang
+        // eines Zuspiels gewürfelt wie bisher.
+        this.physik = typeof options.physik === "function" ? options.physik : (() => !!options.physik);
+        // Wo der Ball liegt - die Flugbahn beginnt am Fuß, nicht in der Körpermitte
+        this.getBall = typeof options.getBall === "function" ? options.getBall : (() => null);
 
         this.phase = FLOW_PHASES.BUILDUP;
     }
@@ -1046,6 +1079,10 @@ class MatchFlowEngine {
             ? (_flowTaktik()?.wirkung(this.getTactics(team === "home" ? "away" : "home") || {}).standardDeckung || "raum")
             : null;
 
+        if (this.mitPhysik()) {
+            return this.resolveCrossPhysik(carrier, opts, basis, { qualitaet, ziel, landung, deckung, variante });
+        }
+
         // Missglueckt: zu lang, zu kurz oder direkt in die Arme des Gegners
         const pSchlecht = Math.max(0.07, Math.min(0.36, 0.36 - qualitaet * 0.3));
         if (_flowRandom.chance(pSchlecht)) {
@@ -1094,6 +1131,115 @@ class MatchFlowEngine {
             ...basis, outcome: "cleared", verteidiger, landung,
             to: { x: tor.x - dir * _flowRandom.float(14, 24), y: Math.max(12, Math.min(88, landung.y + _flowRandom.float(-15, 15))) },
             eckeFolgt: _flowRandom.chance(0.5)
+        };
+    }
+
+    /**
+     * Stufe 1 der 2D-Simulation: Die Flanke wird geschlagen, nicht gewürfelt.
+     *
+     * Der Ball fliegt mit einer Streuung aus der Qualität der Hereingabe zum
+     * geplanten Punkt. Wer zuerst unter ihm ist, zählt (BallPhysik.wettlauf):
+     * Der Torwart kommt im Strafraum mit den Händen höher, Kopfbälle reichen
+     * so hoch, wie einer springt. Sind Angreifer und Verteidiger fast
+     * gleichzeitig dort, entscheidet das Kopfballduell - mit einem Vorteil für
+     * den, der früher da ist. Was keiner erreicht, geht ins Aus oder springt
+     * auf und wird zum zweiten Ball.
+     */
+    static FLANKE_DUELL = 0.3;     // so knapp hintereinander geht es ins Duell (Laufzeit-Sekunden)
+
+    resolveCrossPhysik(carrier, opts, basis, plan) {
+        const P = _flowPhysik();
+        const team = carrier.team;
+        const dir = this.attackDir(team);
+        const tor = this.gegnerTor(team);
+        const { qualitaet, deckung, variante } = plan;
+
+        // Die Hereingabe streut: zu kurz, zu lang, zu nah an den Torwart
+        const streu = 1.2 + Math.max(0, 1.05 - qualitaet) * 9;
+        const landung = {
+            x: plan.landung.x + _flowRandom.gaussian(0, streu),
+            y: plan.landung.y + _flowRandom.gaussian(0, streu * 1.2)
+        };
+        const start = this.abspielPunkt(carrier);
+        const weite = Math.max(4, Math.hypot(landung.x - start.x, landung.y - start.y));
+        const winkel = Math.atan2(landung.y - start.y, landung.x - start.x);
+        // Scharf an den ersten Pfosten kommt sie flacher
+        const hoehe = variante === "ersterPfosten" ? 3.2 : Math.max(3.5, Math.min(9, 2.5 + weite * 0.15));
+        const bahn = P.hoch(start, winkel, weite, { hoehe, tempo: Math.max(16, Math.min(24, 15 + weite * 0.18)), aufprall: 0.35 });
+
+        // Wer im Strafraum auf die Flanke geht, weiß, dass sie kommt; in
+        // Manndeckung klebt der Verteidiger an seinem Mann
+        const mannDeckung = deckung === "mann" || (deckung === "gemischt" && _flowRandom.chance(0.5));
+        const imStrafraum = (q) => Math.abs(q.x - tor.x) < 18 && Math.abs(q.y - 50) < 24;
+        const reaktion = (p) => {
+            if (p.team === team) return imStrafraum(p) ? 0.08 : (p.reaktion ?? 0.3) + 0.1;
+            if (p.pos === "TW") {
+                const ruhig = (this.attr(p, "positioning", 60) - 60) / 400 + this.fein(p, "commandOfArea") * 0.01;
+                return Math.max(0.1, 0.3 - ruhig - (this.eig(p).twStrafraum || 0) * 0.1);
+            }
+            return Math.max(0.08, (p.reaktion ?? 0.3) * (mannDeckung ? 0.6 : 0.9));
+        };
+        const { reihenfolge, aus } = this.ballRennen(bahn, [carrier.id], reaktion);
+        const physik = { bahn, art: "hoch" };
+        if (!reihenfolge.length) {
+            const ende = aus ? aus.punkt : P.punkt(bahn, bahn.ruhe);
+            return { ...basis, outcome: "out", landung: ende, to: ende, physik: { ...physik, t: aus ? aus.t : bahn.ruhe, punkt: ende } };
+        }
+        const erster = reihenfolge[0];
+        const fenster = erster.t + MatchFlowEngine.FLANKE_DUELL;
+        const angreifer = reihenfolge.find(e => e.p.team === team && e.p.pos !== "TW" && e.t <= fenster) || null;
+        const verteidiger = reihenfolge.find(e => e.p.team !== team && e.p.pos !== "TW" && e.t <= fenster) || null;
+        const gk = reihenfolge.find(e => e.p.team !== team && e.p.pos === "TW" && e.t <= fenster) || null;
+        const treffen = (e) => Object.assign(physik, { t: e.t, punkt: e.punkt, h: e.h, jaeger: [e.p.id] });
+        const klaerung = (von) => ({
+            x: tor.x - dir * _flowRandom.float(14, 24),
+            y: Math.max(12, Math.min(88, von.y + _flowRandom.float(-15, 15)))
+        });
+
+        // Der Torwart ist vor den Angreifern da: Er fängt oder faustet
+        if (gk && (!angreifer || gk.t <= angreifer.t)) {
+            treffen(gk);
+            const p = gk.p;
+            const varianteFangen = variante === "ersterPfosten" ? 0.6 : (variante === "zweiterPfosten" ? 1.1 : 1);
+            const pFangen = Math.max(0.3, Math.min(0.9, ((this.attr(p, "handling", 60) + this.attr(p, "positioning", 60)
+                + this.fein(p, "aerialReach") + this.fein(p, "commandOfArea")) / 175 - 0.05
+                + (this.eig(p).twStrafraum || 0) * 0.15) * varianteFangen - (angreifer ? 0.15 : 0)));
+            if (_flowRandom.chance(pFangen)) return { ...basis, outcome: "claimed", landung: gk.punkt, to: gk.punkt, gk: p, physik };
+            return { ...basis, outcome: "cleared", verteidiger: p, landung: gk.punkt, to: klaerung(gk.punkt), eckeFolgt: _flowRandom.chance(0.3), physik };
+        }
+
+        // Kopfballduell, wenn beide fast gleichzeitig unter dem Ball sind
+        let angreiferGewinnt = !!angreifer && !verteidiger;
+        if (angreifer && verteidiger) {
+            const zone = !mannDeckung && deckung && variante === "ersterPfosten" ? 5 : 0;
+            const angriff = this.kopfballWert(angreifer.p, true) + qualitaet * 8;
+            const abwehr = this.kopfballWert(verteidiger.p, false) + zone;
+            const vorsprung = (verteidiger.t - angreifer.t) * 25;
+            const pKopf = Math.max(0.1, Math.min(0.85, 1 / (1 + Math.exp(-(angriff - abwehr + vorsprung - 6) / 9))));
+            angreiferGewinnt = _flowRandom.chance(pKopf);
+            physik.duell = [angreifer.p.id, verteidiger.p.id];
+        }
+
+        if (angreiferGewinnt) {
+            treffen(angreifer);
+            if (angreifer.p.id !== undefined && verteidiger) physik.jaeger.push(verteidiger.p.id);
+            const nahAmTor = Math.abs(angreifer.punkt.x - tor.x) < 15 && Math.abs(angreifer.punkt.y - 50) < 18;
+            if (!nahAmTor) {
+                // Zu weit vom Tor für einen Abschluss: Er nimmt den Ball an
+                return { ...basis, outcome: "gehalten", landung: angreifer.punkt, to: angreifer.punkt, annehmer: angreifer.p, physik };
+            }
+            return {
+                ...basis, outcome: "header", landung: angreifer.punkt, to: angreifer.punkt,
+                kopfballer: angreifer.p, verteidiger: verteidiger ? verteidiger.p : null,
+                kopfball: angreifer.h > P.ANNAHME_HOEHE, physik
+            };
+        }
+        const wer = verteidiger || erster;
+        treffen(wer);
+        if (angreifer) physik.jaeger.push(angreifer.p.id);
+        return {
+            ...basis, outcome: "cleared", verteidiger: wer.p.team !== team ? wer.p : null, landung: wer.punkt,
+            to: klaerung(wer.punkt), eckeFolgt: wer.h > P.ANNAHME_HOEHE && _flowRandom.chance(0.45), physik
         };
     }
 
@@ -1278,10 +1424,12 @@ class MatchFlowEngine {
         }
         // Wer druckfest ist, spielt auch bedraengt sauber
         accuracy -= pressure * 0.11 * (1 - Math.min(0.7, (eg.druckfest || 0) * 0.5));
-        accuracy -= (action.laneRisk || 0) * 0.17;
+        // Mit Ballphysik entscheidet die Geometrie, ob der Passweg zu ist
+        const geometrisch = this.mitPhysik();
+        if (!geometrisch) accuracy -= (action.laneRisk || 0) * 0.17;
         // Pässe in einen vollen Strafraum werden eher abgefangen
         const passZiel = action.target || action.to;
-        if (passZiel && this.imGegnerStrafraum(passZiel, carrier.team)) {
+        if (!geometrisch && passZiel && this.imGegnerStrafraum(passZiel, carrier.team)) {
             accuracy -= Math.min(0.16, this.strafraumDichte(carrier.team) * 0.045);
         }
         if (isLong) accuracy -= 0.13;
@@ -1301,6 +1449,10 @@ class MatchFlowEngine {
         if ((action.forward ?? 1) <= 0) accuracy += 0.07;
 
         accuracy = Math.max(0.34, Math.min(0.97, accuracy));
+
+        if (geometrisch && action.target) {
+            return this.resolvePassPhysik(carrier, action, opponents, tactics, pressure, phase, accuracy, isLong);
+        }
 
         const success = _flowRandom.chance(accuracy);
 
@@ -1369,6 +1521,159 @@ class MatchFlowEngine {
             pressure,
             phase
         };
+    }
+
+    /** Ballphysik eingeschaltet - und geladen? */
+    mitPhysik() {
+        return this.fm() && this.physik() && !!_flowPhysik();
+    }
+
+    /** Liegt ein Punkt im Strafraum vor dem eigenen Tor der Mannschaft? */
+    imEigenenStrafraum(punkt, team) {
+        return Math.abs(punkt.x - this.ownGoalX(team)) < 16.5 && Math.abs(punkt.y - 50) < 22;
+    }
+
+    /**
+     * Wo die Flugbahn beginnt: am Ball. Auch wenn der Spieler noch nicht ganz
+     * bei ihm ist - sonst spränge der Ball beim Abspiel zum Spieler.
+     */
+    abspielPunkt(carrier) {
+        const ball = this.getBall();
+        const p = ball && typeof ball.x === "number" ? { x: ball.x, y: ball.y } : { x: carrier.x, y: carrier.y };
+        // Am Fuß eines Spielers an der Grundlinie liegt der Ball rechnerisch
+        // oft knapp dahinter - gespielt wird er aber im Feld. Ohne diese
+        // Grenze galten zwei von drei Flanken von der Grundlinie sofort als Aus.
+        const l = _flowPhysik()?.LINIEN || { x0: 3.2, x1: 96.8, y0: 1.5, y1: 98.5 };
+        return {
+            x: Math.max(l.x0 + 0.4, Math.min(l.x1 - 0.4, p.x)),
+            y: Math.max(l.y0 + 0.4, Math.min(l.y1 - 0.4, p.y))
+        };
+    }
+
+    /**
+     * Der Wettlauf zum Ball mit den Regeln des Spiels: Der Torwart kommt nur
+     * im eigenen Strafraum heraus und nimmt dort die Hände.
+     */
+    ballRennen(bahn, ohne, reaktion) {
+        const P = _flowPhysik();
+        const alle = this.getPlayers().filter(p => p && !ohne.includes(p.id));
+        return P.wettlauf(bahn, alle, {
+            reaktion,
+            radius: p => (p.pos === "TW" ? P.RADIUS_TW : P.RADIUS),
+            reichweite: p => P.reichweite(p, p.pos === "TW"),
+            darf: (p, q) => p.pos !== "TW" || this.imEigenenStrafraum(q, p.team)
+        });
+    }
+
+    /**
+     * Stufe 1 der 2D-Simulation: Der Pass wird gespielt, nicht gewürfelt.
+     *
+     * Der Passgeber spielt den Ball mit Richtung und Tempo auf den
+     * Mitspieler - in den Lauf vor ihn, wenn er schon unterwegs ist -, mit
+     * einer Streuung aus seiner Genauigkeit. Lange Bälle gehen hoch. Dann
+     * entscheidet der Wettlauf (BallPhysik.wettlauf), wer zuerst dran ist:
+     * Der Angespielte kommt dem Ball entgegen, ein Gegner, der den Pass
+     * liest, geht dazwischen, ein verunglückter Ball landet beim Nächsten
+     * oder im Aus. Ein scharfer, hoher oder bedrängter Ball springt bei der
+     * Annahme weg.
+     *
+     * Liefert dieselben Ausgänge wie resolvePass, dazu physik: die Bahn, den
+     * Zeitpunkt (Laufzeit-Sekunden) und den Punkt, an dem der Ball
+     * erreicht wird - die Regie spielt genau diese Bahn ab.
+     */
+    resolvePassPhysik(carrier, action, opponents, tactics, pressure, phase, accuracy, isLong) {
+        const P = _flowPhysik();
+        const typ = isLong ? "longball" : "pass";
+        const ziel = action.target;
+        const dir = this.attackDir(carrier.team);
+        const annahme = _flowTaktik()?.wirkung(tactics).ballannahme || 0;
+        const nachVorn = (action.forward ?? 0) > 4 && ziel.pos !== "TW";
+        const inDenLauf = nachVorn && (annahme > 0 || (annahme === 0 && _flowRandom.chance(0.3)));
+        const zielPunkt = inDenLauf
+            ? { x: Math.max(6, Math.min(94, ziel.x + dir * 4.5)), y: Math.max(4, Math.min(96, ziel.y)) }
+            : { x: ziel.x, y: ziel.y };
+        const start = this.abspielPunkt(carrier);
+        const weite = Math.max(1, Math.hypot(zielPunkt.x - start.x, zielPunkt.y - start.y));
+        const winkel = Math.atan2(zielPunkt.y - start.y, zielPunkt.x - start.x);
+
+        // Die Streuung: Wer genau spielt, trifft Richtung und Tempo - mit dem
+        // schwachen Fuß weniger gut. Ein Rechtsfuß, der nach links spielen
+        // muss, nimmt öfter den linken.
+        const st = MatchFlowEngine.PASS_STREUUNG;
+        const fehler = 1 - accuracy;
+        const quer = (zielPunkt.y - start.y) * dir;
+        const falscheSeite = (carrier.foot === "rechts" && quer < -3) || (carrier.foot === "links" && quer > 3);
+        const schwach = carrier.foot && carrier.foot !== "beidfüßig"
+            && _flowRandom.chance(MatchFlowEngine.PASS_SCHWACHER_FUSS.basis + (falscheSeite ? MatchFlowEngine.PASS_SCHWACHER_FUSS.falscheSeite : 0));
+        const mal = schwach ? MatchFlowEngine.PASS_SCHWACHER_FUSS.streuung : 1;
+        const w = winkel + _flowRandom.gaussian(0, (st.winkel0 + fehler * st.winkel) * mal);
+        const dosierung = Math.max(0.55, 1 + _flowRandom.gaussian(0, (st.tempo0 + fehler * st.tempo) * mal));
+        const hoch = isLong || action.type === "clearance";
+        const bahn = hoch
+            ? P.hoch(start, w, weite * dosierung)
+            : P.flach(start, w, P.passTempo(weite) * dosierung);
+
+        // Wie weit kommt der Ball am Angespielten vorbei?
+        const tPlan = Math.min(P.zeitBis(bahn, weite), bahn.ruhe);
+        const amZiel = P.punkt(bahn, tPlan);
+        const abweichung = Math.hypot(amZiel.x - zielPunkt.x, amZiel.y - zielPunkt.y);
+
+        const re = MatchFlowEngine.PASS_REAKTION;
+        const reaktion = (p) => {
+            if (p.team === carrier.team) {
+                if (p.id === ziel.id) return re.empfaenger + Math.min(0.3, abweichung * 0.05);
+                // Ein Mitspieler lässt den Ball zum Angespielten durch, solange
+                // er auf ihn zuläuft
+                const eigene = (p.reaktion ?? 0.3) + re.mitspieler;
+                return abweichung < 3 ? Math.max(eigene, tPlan + 0.2) : eigene;
+            }
+            // Ein Abwehrchef liest den Pass und ist früher am Ball
+            const abfangen = this.eig(p).abfangen || 0;
+            return Math.max(0.08, (p.reaktion ?? 0.3) * re.gegner - abfangen * 0.08);
+        };
+        const { reihenfolge, aus } = this.ballRennen(bahn, [carrier.id], reaktion);
+        const erster = reihenfolge[0] || null;
+        const physik = { bahn, art: hoch ? "hoch" : "flach", abweichung };
+
+        if (!erster) {
+            const ende = aus ? aus.punkt : P.punkt(bahn, bahn.ruhe);
+            return { type: typ, outcome: "out", from: carrier, to: ende, pressure, phase,
+                physik: { ...physik, t: aus ? aus.t : bahn.ruhe, punkt: ende } };
+        }
+        const p = erster.p;
+        physik.t = erster.t;
+        physik.punkt = erster.punkt;
+        physik.h = erster.h;
+        // Zur Seite springt ein Ball, den einer nur halb erwischt
+        const weg = (von) => {
+            const w2 = Math.atan2(bahn.uy, bahn.ux) + _flowRandom.float(-1.1, 1.1);
+            const s = _flowRandom.float(2.5, 6);
+            return { x: Math.max(5, Math.min(95, von.x + Math.cos(w2) * s)), y: Math.max(3, Math.min(97, von.y + Math.sin(w2) * s)) };
+        };
+
+        if (p.team === carrier.team) {
+            // Die Annahme: Ein scharfer, hoher oder bedrängter Ball springt weg
+            const v = P.tempo(bahn, erster.t);
+            const druck = this.getPressure(p, opponents);
+            const technik = (this.attr(p, "technique") - 70) / 400 + this.fein(p, "firstTouch") * 0.004;
+            const pFehl = Math.max(0.005, Math.min(0.4, 0.02 + Math.max(0, v - 10) * 0.012 + druck * 0.07
+                + (erster.h > P.ANNAHME_HOEHE ? 0.1 : 0) - technik));
+            if (!erster.liegend && _flowRandom.chance(pFehl)) {
+                return { type: typ, outcome: "loose", from: carrier, to: weg(erster.punkt), verstolpert: p, pressure, phase, physik };
+            }
+            return { type: typ, outcome: "complete", from: carrier, to: p, inDenLauf: inDenLauf && p.id === ziel.id,
+                umgeleitet: p.id !== ziel.id, pressure, phase, physik };
+        }
+
+        // Der Gegner ist zuerst dran. Ein hoher Ball wird oft nur weggeköpft.
+        if (erster.h > P.ANNAHME_HOEHE && _flowRandom.chance(0.45)) {
+            return { type: typ, outcome: "loose", from: carrier, to: weg(erster.punkt), abgewehrt: p, pressure, phase, physik };
+        }
+        // Im eigenen Strafraum abgefaelscht geht der Ball oft ins Toraus
+        if (this.imEigenenStrafraum(erster.punkt, p.team) && p.pos !== "TW" && _flowRandom.chance(0.22)) {
+            return { type: typ, outcome: "corner", from: carrier, to: { x: erster.punkt.x, y: erster.punkt.y }, interceptor: p, pressure, phase, physik };
+        }
+        return { type: typ, outcome: "intercepted", from: carrier, to: ziel, interceptor: p, pressure, phase, physik };
     }
 
     resolveDribble(carrier, action, opponents, tactics, pressure, phase) {

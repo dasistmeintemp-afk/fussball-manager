@@ -3329,6 +3329,8 @@ class LiveMatch {
         // "fm": Die Partie entsteht auf dem Platz aus den Entscheidungen der
         // Spieler. "timeline": Die vorab erzeugte Zeitleiste wird inszeniert.
         this.modus = options.modus === "fm" ? "fm" : "timeline";
+        // Ballphysik (Stufe 1) abweichend vom Standard - für Messläufe gegen das alte Modell
+        if (typeof options.ballPhysik === "boolean") this.ballPhysik = options.ballPhysik;
         const del = options.delegation || {};
         this.delegation = {
             wechsel: this.userSide ? !!del.wechsel : true,

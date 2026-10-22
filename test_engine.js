@@ -4373,6 +4373,108 @@ function runEngineTests() {
         if (live.soundCues && live.soundCues.length > 20) throw new Error("Gespulte Pfiffe stauen sich");
     });
 
+    test("Ballphysik: rollen, fliegen, ins Aus - und wer zuerst am Ball ist, bekommt ihn", () => {
+        const { BallPhysik: P } = require('./js/engine/ballPhysik.js');
+        const nah = (a, b, eps, was) => { if (Math.abs(a - b) > eps) throw new Error(`${was}: ${a.toFixed(2)} statt ${b}`); };
+
+        // Ein flacher Pass über 20 Einheiten kommt mit dem geplanten Tempo an
+        const pass = P.flach({ x: 30, y: 50 }, 0, P.passTempo(20));
+        const tAn = P.zeitBis(pass, 20);
+        if (!(tAn > 0.6 && tAn < 1.6)) throw new Error(`Flugzeit ${tAn}`);
+        nah(P.tempo(pass, tAn), P.ANKUNFT, 0.3, "Ankunftstempo");
+        nah(P.punkt(pass, tAn).x, 50, 0.05, "Ankunftspunkt");
+        // Er rollt aus und bleibt liegen
+        const liegt = P.punkt(pass, pass.ruhe);
+        nah(P.punkt(pass, pass.ruhe + 5).x, liegt.x, 1e-9, "Liegender Ball");
+        if (P.punkt(pass, tAn / 2).x - 30 <= 10) throw new Error("Ein rollender Ball wird nicht langsamer");
+
+        // Ein hoher Ball steigt bis zum Scheitel und landet in der Weite
+        const lang = P.hoch({ x: 20, y: 50 }, 0, 40);
+        nah(P.punkt(lang, 0).h, 0, 1e-9, "Höhe beim Abschlag");
+        nah(P.punkt(lang, lang.flug / 2).h, lang.hoehe, 0.01, "Scheitel");
+        nah(P.punkt(lang, lang.flug).x, 60, 0.05, "Landepunkt");
+        if (P.punkt(lang, lang.ruhe).x <= 60) throw new Error("Ein hoher Ball rollt nach dem Aufsetzen nicht weiter");
+
+        // Ins Seitenaus: Der Punkt liegt hinter der Linie
+        const aus = P.ausBei(P.flach({ x: 50, y: 10 }, -Math.PI / 2, 30));
+        if (!aus || aus.punkt.y >= P.LINIEN.y0) throw new Error("Der Ball ins Seitenaus wird nicht erkannt");
+        if (P.ausBei(pass)) throw new Error("Ein Pass im Feld gilt als Aus");
+
+        // Laufzeit: schneller, wer schneller ist, wer schon in die Richtung läuft und wer früher reagiert
+        const langsam = { x: 0, y: 0, baseSpeed: 2.4 }, schnell = { x: 0, y: 0, baseSpeed: 3.1 };
+        const ziel = { x: 15, y: 0 };
+        if (P.laufzeit(schnell, ziel) >= P.laufzeit(langsam, ziel)) throw new Error("Tempo zählt nicht");
+        if (P.laufzeit({ ...langsam, lvx: 4, lvy: 0 }, ziel) >= P.laufzeit(langsam, ziel)) throw new Error("Anlauf zählt nicht");
+        nah(P.laufzeit(langsam, ziel, 0.3) - P.laufzeit(langsam, ziel), 0.3, 1e-9, "Reaktion");
+
+        // Der Wettlauf: Ein Verteidiger im Passweg fängt ab, einer weit daneben nicht
+        const empfaenger = { id: "e", x: 50, y: 50, baseSpeed: 2.8 };
+        const imWeg = { id: "v", x: 45, y: 51.5, baseSpeed: 2.8 };
+        const daneben = { id: "w", x: 40, y: 72, baseSpeed: 2.8 };
+        const r1 = P.wettlauf(pass, [empfaenger, imWeg], { reaktion: p => (p.id === "e" ? 0.05 : 0.25) });
+        if (r1.reihenfolge[0].p.id !== "v") throw new Error("Der Verteidiger im Passweg kommt nicht dazwischen");
+        const r2 = P.wettlauf(pass, [empfaenger, daneben], { reaktion: p => (p.id === "e" ? 0.05 : 0.25) });
+        if (r2.reihenfolge[0].p.id !== "e") throw new Error("Der Pass am Verteidiger vorbei kommt nicht an");
+        const zeit = r2.reihenfolge[0];
+        if (zeit.t > tAn + 0.01) throw new Error("Der Angespielte kommt dem Ball nicht entgegen");
+        // Über einen Verteidiger im Weg fliegt der hohe Ball hinweg
+        const empfaengerWeit = { id: "e", x: 60, y: 50, baseSpeed: 2.8 };
+        const mitte = { id: "v", x: 40, y: 50, baseSpeed: 2.8 };
+        const r3 = P.wettlauf(lang, [empfaengerWeit, mitte], { reaktion: p => (p.id === "e" ? 0.05 : 0.6) });
+        if (r3.reihenfolge[0].p.id !== "e") throw new Error("Der hohe Ball wird in der Luft abgefangen");
+        if (r3.reihenfolge[0].h > P.reichweite(empfaengerWeit)) throw new Error("Angenommen über der Reichweite");
+    });
+
+    test("Ballphysik im Livespiel: Zuspiele und Flanken mit Flugbahn, der Ballführende steht am Ball, Schalter fürs alte Modell", () => {
+        const state = GameState.createNewGame("dor", "normal", { name: "Ballphysik" });
+        const partie = state.schedule[0].matches.find(m => m.homeClubId === "dor" || m.awayClubId === "dor");
+        const heim = state.clubs.find(c => c.id === partie.homeClubId), gast = state.clubs.find(c => c.id === partie.awayClubId);
+        const live = MatchEngine.createLiveMatch(partie, heim, gast, state.players, { modus: "fm", userSide: partie.homeClubId === "dor" ? "home" : "away" });
+        const d = live.director;
+        if (!d.physik) throw new Error("Im Livespiel ist der Ball kein Körper");
+        // Mitschreiben, was die Engine entscheidet
+        const aktionen = [];
+        const original = d.applyFlowAction.bind(d);
+        d.applyFlowAction = (a) => { aktionen.push(a); return original(a); };
+        live.speed = 2;
+        const abstand = [];
+        let warFlug = false;
+        for (let i = 0; i < 40000 && live.minute < 25 && !live.isFinished; i++) {
+            live.advanceRealTime(16); live.updateBallAndPlayers(16);
+            const b = live.ball;
+            if (warFlug && !b.inFlight && d.mode === "ambient" && !d.deadBall) {
+                const c = d.getPlayer2D(d.carrierId);
+                if (c) abstand.push(Math.hypot(c.x - b.x, c.y - b.y));
+            }
+            warFlug = b.inFlight;
+        }
+        const paesse = aktionen.filter(a => ["pass", "longball"].includes(a.type));
+        if (paesse.length < 40) throw new Error(`Nur ${paesse.length} Zuspiele`);
+        if (paesse.some(a => !a.physik || !a.physik.bahn || !(a.physik.t > 0))) throw new Error("Ein Zuspiel ohne Flugbahn");
+        const an = paesse.filter(a => a.outcome === "complete").length / paesse.length;
+        if (an < 0.6 || an > 0.95) throw new Error(`Passquote ${Math.round(an * 100)} %`);
+        if (!paesse.some(a => a.outcome === "intercepted")) throw new Error("Kein Pass wurde abgefangen");
+        // Wer den Ball bekommt, war rechtzeitig an dem Punkt, an dem er ihn erreicht
+        abstand.sort((a, b) => a - b);
+        const median = abstand[Math.floor(abstand.length / 2)];
+        if (!(median < 1.5)) throw new Error(`Der Ballführende steht bei Ankunft ${median?.toFixed(1)} vom Ball weg`);
+        if (abstand.filter(x => x > 3).length > abstand.length * 0.08) throw new Error("Zu oft liegt der Ball, und der Spieler ist weit weg");
+        const flanken = aktionen.filter(a => a.type === "cross");
+        if (flanken.length && flanken.some(f => !f.physik)) throw new Error("Eine Flanke ohne Flugbahn");
+
+        // Der Schalter: das alte Modell ohne Flugbahn
+        const zweite = state.schedule[1].matches.find(m => m.homeClubId === "dor" || m.awayClubId === "dor");
+        const alt = MatchEngine.createLiveMatch(zweite, state.clubs.find(c => c.id === zweite.homeClubId),
+            state.clubs.find(c => c.id === zweite.awayClubId), state.players, { modus: "fm", ballPhysik: false });
+        if (alt.director.physik) throw new Error("Der Schalter schaltet die Ballphysik nicht ab");
+        const altAktionen = [];
+        const altOriginal = alt.director.applyFlowAction.bind(alt.director);
+        alt.director.applyFlowAction = (a) => { altAktionen.push(a); return altOriginal(a); };
+        alt.speed = 4;
+        for (let i = 0; i < 6000 && alt.minute < 10; i++) { alt.advanceRealTime(16); alt.updateBallAndPlayers(16); }
+        if (!altAktionen.length || altAktionen.some(a => a.physik)) throw new Error("Das alte Modell rechnet mit Flugbahn");
+    });
+
     test("U23: Spieler hinunterschicken, Regeln für Alter und Kadergröße, Spielpraxis in der zweiten Mannschaft", () => {
         const { ReserveEngine } = require('./js/engine/reserveEngine.js');
         const state = GameState.createNewGame("muc", "normal", { name: "U23" });

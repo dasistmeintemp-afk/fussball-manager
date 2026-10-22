@@ -14863,6 +14863,43 @@ function runEngineTests() {
         }
     });
 
+    test("Vereinsprofil als Seite: Finanzlage in Worten, Tabellenausschnitt, Geschichte, Aktionen nach Themen", () => {
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const state = GameState.createNewGame("dor", "normal", { name: "Verein" });
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        if (UIManager.prototype.SEITEN.verein !== "vereinsSeite") throw new Error("Das Vereinsprofil ist keine Seite");
+
+        // Finanzlage: Kontostand gegen die Gehälter eines Jahres
+        const lage = (balance) => ui.vereinFinanzWort({ balance, wageBudget: 100000 });
+        const worte = [lage(9e6), lage(4e6), lage(1e6), lage(1e5), lage(-1)];
+        if (worte.join() !== "Reich,Gesund,Solide,Knapp,Verschuldet") throw new Error(`Finanzlage: ${worte}`);
+
+        // Tabelle: fünf Zeilen um den Verein, am Rand verschoben
+        const liga = state.clubs.filter(c => c.leagueId === "de_liga_1");
+        state.standings = liga.map((c, i) => ({ clubId: c.id, points: 40 - i, goalsFor: 30, goalsAgainst: 20 }));
+        const mitte = liga[8], erster = liga[0];
+        const a = ui.vereinTabellenAusschnitt(state, mitte);
+        if (a.length !== 5 || a[2].clubId !== mitte.id || a[2].platz !== 9) throw new Error(`Ausschnitt um Platz 9: ${a.map(z => z.platz)}`);
+        const b = ui.vereinTabellenAusschnitt(state, erster);
+        if (b.length !== 5 || b[0].clubId !== erster.id || b[0].platz !== 1) throw new Error("Ausschnitt für den Ersten");
+
+        // Geschichte: Platzierungen aus den archivierten Saisons
+        state.history = state.history || {};
+        state.history.pastSeasons = [{ season: 1, championId: mitte.id, standings: [{ clubId: mitte.id, points: 70, goalsFor: 60, goalsAgainst: 20 }, { clubId: erster.id, points: 65, goalsFor: 50, goalsAgainst: 30 }] }];
+        const g = ui.vereinGeschichte(state, erster);
+        if (g.length !== 1 || g[0].platz !== 2 || g[0].meister) throw new Error("Geschichte des Zweiten falsch");
+        if (!ui.vereinGeschichte(state, mitte)[0].meister) throw new Error("Der Meister ist nicht vermerkt");
+
+        // Aktionen: Ansehen immer, die Gegneranalyse nur gegen den nächsten Gegner
+        const spieler = state.players.find(p => p.clubId === mitte.id);
+        const ohne = ui.vereinAktionen(state, mitte, { naechsterGegner: false, bester: spieler, torjaeger: null });
+        if (ohne[0].titel !== "Ansehen" || ohne.some(gr => gr.titel === "Spiel")) throw new Error("Aktionen ohne nächsten Gegner falsch");
+        const mit = ui.vereinAktionen(state, mitte, { naechsterGegner: true, bester: spieler, torjaeger: null });
+        if (!mit.some(gr => gr.titel === "Spiel" && gr.eintraege[0].text.startsWith("Gegneranalyse"))) throw new Error("Gegneranalyse fehlt");
+        if (!mit.some(gr => gr.eintraege.some(e => e.text.includes(spieler.name)))) throw new Error("Der beste Spieler fehlt im Menü");
+    });
+
     test("Transferangebot als Seite: Erlös mit Raten und Weiterverkauf, wer auf der Position bleibt, Dashboard führt zum Angebot", () => {
         const { UIManager } = require('./js/ui/uiManager.js');
         const state = GameState.createNewGame("muc", "normal", { name: "Angebot" });

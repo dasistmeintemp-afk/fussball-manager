@@ -104,11 +104,13 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Vollständiger Spielplan**: 34 Spieltage (Hin- & Rückrunde) nach Round-Robin-Verfahren.
 - **Vollwertige Simulation**: An jedem Spieltag spielen alle 18 Klubs zeitgleich gegeneinander.
 - **Live-Tabelle & Historie**: Punkte (3/1/0-System), Tordifferenz, Tore, Gegentore, Formkurven sowie Archivierung vergangener Meisterschaften. Die Form zählt nur Ligaspiele: Testspiele der Vorbereitung und Pokalspiele stehen nicht darin.
-- **Vereinsdetails per Klick:** Ein Klick auf einen Verein in der Tabelle, in der Dashboard-Tabelle oder im Spielplan öffnet seine Seite. Der eigene Verein führt in den Reiter *Verein*. Die Seite zeigt:
-  - Kopf mit Tabellenplatz, Mannschaftsstärke in Sternen, Ruf, Fans, Kader und Stimmung, dazu ein Hinweis bei einem Derby gegen den eigenen Verein.
-  - Die letzten fünf Ergebnisse und die nächsten drei Spiele.
-  - Spielweise (Formation, Grundhaltung, Pressing, Passspiel, Abwehrlinie, Torjäger) und Anlagen.
-  - Den Kader nach Mannschaftsteilen, mit Sternen und Werten so, wie das eigene Scouting sie kennt. Ein Klick öffnet das Spielerprofil.
+- **Das Vereinsprofil als eigene Seite wie im Vorbild (`uiVereinSeite.js`):** Ein Klick auf einen Verein in der Tabelle, in der Dashboard-Tabelle, im Spielplan oder im Spielerprofil öffnet seine Seite. Sie löst den Reiter ab wie Spielerprofil und Transferangebot; vorher war sie ein Fenster darüber. Zurück führt dorthin, wo man herkam, vom Spieler zum Verein und weiter zurück. Der eigene Verein führt in den Reiter *Verein*.
+  - **Kopf:** Wappen, Name, Liga und Land, Stadt und Stadion, eine Marke bei einem Derby gegen den eigenen Verein, das Menü **Aktionen**. Daneben Tabellenplatz, Kader mit Durchschnittsalter, Fans, Stimmung, Ruf, Finanzlage in Worten (*Reich*, *Gesund*, *Solide*, *Knapp*, *Verschuldet*; Zahlen kennt man von fremden Vereinen nicht) und die Mannschaftsstärke in Sternen.
+  - **Aktionen** nach Themen wie im Spielerprofil: *Ansehen* (Kader, Spiele, Geschichte), *Spiel* (Gegneranalyse, wenn er der nächste Gegner ist), *Spieler* (bester Spieler, Torjäger).
+  - **Übersicht** in Kacheln: Form und nächste Spiele, die Tabelle um den Verein herum, Spielweise mit Trainer, Schlüsselspieler, Verein (Finanzlage, Stadion, Fans, Ruf, Rivalität) und Anlagen. Jeder Verein und jeder Spieler darin ist ein Verweis.
+  - **Kader** nach Mannschaftsteilen, mit Sternen und Werten so, wie das eigene Scouting sie kennt, dazu Vertragslaufzeit, Spiele und Tore und die Transferliste.
+  - **Spiele:** der ganze Spielplan der Saison mit Ergebnissen.
+  - **Geschichte:** die Platzierungen seit dem Spielstart mit Meistertiteln und bestem Platz (für Vereine der eigenen Liga).
 - **Auszeichnungen (`AuszeichnungEngine`):**
   - **Monatspreise:** Am Monatsersten kürt die eigene Liga Spieler, Talent (bis 21) und Trainer des Monats.
     - Für den Spieler zählen Notenschnitt, Tore und Vorlagen im Monat, ab drei Spielen.
@@ -1305,6 +1307,7 @@ untitled/
 │   │   ├── uiProfil.js         # Spielerprofil als eigene Seite: Kopf, Übersicht, Kacheln
 │   │   ├── uiProfilLaufbahn.js # Spielerprofil: Laufbahn in sieben Kacheln wie im Vorbild
 │   │   ├── uiAngebot.js        # Transferangebot als eigene Seite: Angebot, Folgen, Käufer, Entscheidung
+│   │   ├── uiVereinSeite.js    # Vereinsprofil als eigene Seite: Kopf, Übersicht, Kader, Spiele, Geschichte
 │   │   ├── uiLivespiel.js      # Match-Center, Zurufe, Seitenlinie während der Partie
 │   │   ├── uiLiveKacheln.js    # Livespiel als Kachelansicht: Aufstellungen, Statistik, Bank, Leiste
 │   │   ├── uiLiveDarstellung.js # Torwiederholung im 2D-Bild, Pass- und Laufwege

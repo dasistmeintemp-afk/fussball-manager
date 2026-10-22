@@ -1,6 +1,7 @@
 /**
  * Eigene Seiten im Inhaltsbereich, wie im Vorbild: das Spielerprofil
- * (uiProfil.js) und das Transferangebot (uiAngebot.js).
+ * (uiProfil.js), das Transferangebot (uiAngebot.js) und das Vereinsprofil
+ * (uiVereinSeite.js).
  *
  * Teil des UIManager: Die Methoden hängen sich an UIManager.prototype und
  * verhalten sich genau so, als stünden sie in der Klasse.
@@ -18,7 +19,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     || require("./uiManager.js").UIManager).prototype, {
 
     /** Die Seiten und ihre Elemente */
-    SEITEN: { akte: "modalPlayerDetails", angebot: "angebotSeite" },
+    SEITEN: { akte: "modalPlayerDetails", angebot: "angebotSeite", verein: "vereinsSeite" },
 
     /** Fenster, die über allem bleiben: das laufende Spiel, der Karriere-Assistent, der Saisonabschluss */
     SEITE_GESCHUETZT: ["modalLiveMatch", "modalNewGame", "modalSeasonEnd"],
@@ -27,7 +28,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         return typeof document !== "undefined" && document.getElementById ? document.getElementById(this.SEITEN[art]) : null;
     },
 
-    /** Welche Seite offen ist: "akte", "angebot" oder null */
+    /** Welche Seite offen ist: "akte", "angebot", "verein" oder null */
     offeneSeite() {
         return Object.keys(this.SEITEN).find(art => {
             const el = this._seitenElement(art);
@@ -144,6 +145,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     seiteAusVerlauf(art, id) {
         if (art === "akte" && this.findAnyPlayer?.(id)) return this.showPlayerDetailsModal(id);
         if (art === "angebot" && typeof this.zeigeAngebotSeite === "function" && this.angebotVon?.(id)) return this.zeigeAngebotSeite(id);
+        if (art === "verein" && (this.app?.state?.clubs || []).some(c => String(c.id) === String(id))) return this.showClubDetailsModal(id);
         this.schliesseSeite();
     },
 
@@ -158,6 +160,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         } else if (art === "angebot") {
             if (!this.angebotVon?.(this._seitenId)) { this.schliesseSeite(); return; }
             this.zeigeAngebotSeite(this._seitenId);
+        } else if (art === "verein") {
+            if (!(this.app.state.clubs || []).some(c => String(c.id) === String(this._seitenId))) { this.schliesseSeite(); return; }
+            this.showClubDetailsModal(this._seitenId);
         }
     },
 

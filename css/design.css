@@ -2329,6 +2329,45 @@ button.pf-verein:hover span { text-decoration: underline; text-underline-offset:
 }
 
 /* --------------------------------------------------------------------------
+   Vereinsprofil als eigene Seite (uiVereinSeite.js): Kopf mit Wappen und
+   Aktionen, Reiter Übersicht, Kader, Spiele, Geschichte
+   -------------------------------------------------------------------------- */
+.vs-kopf { background: linear-gradient(120deg, var(--vk-farbe, rgba(var(--accent-rgb), 0.10)), transparent 55%), var(--surface-1); }
+.vs-wappen {
+    display: grid; place-items: center; flex: 0 0 auto; width: 76px; height: 76px; border-radius: 20px;
+    font-size: 22px; font-weight: 800; letter-spacing: 0.02em;
+}
+.vs-wappen[data-zeichen="4"] { font-size: 19px; }
+.vereins-seite .pd-tabs { top: -28px; margin: 0 0 16px; padding: 10px 0; background: var(--surface-0); }
+.vereins-seite .pd-tab-knopf { flex: 0 0 auto; padding: 8px 16px; }
+.vs-raster { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.vs-raster > .pf-kachel { min-width: 0; }
+.vs-raster > .vs-breit { grid-row: span 2; }
+.vs-unter { margin: 14px 0 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.vs-tabelle tr.vs-dieser td { background: rgba(var(--accent-rgb), 0.10); font-weight: 700; }
+.vs-tabelle .pf-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.vs-spielerliste { display: grid; gap: 6px; margin-bottom: 8px; }
+.vs-spieler {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 7px 8px;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); color: var(--text-main); font: inherit; text-align: left; cursor: pointer;
+}
+.vs-spieler:hover { border-color: var(--accent-line); }
+.vs-spieler-name { display: grid; min-width: 0; font-size: 13px; font-weight: 600; overflow: hidden; }
+.vs-spieler-name small { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+.vs-schmal { max-width: 760px; }
+.vs-zahlen { margin-bottom: 10px; }
+.vs-pokal { width: 14px; height: 14px; color: var(--warn); vertical-align: -2px; }
+.vd-spiele .pf-name { text-align: left; }
+@media (max-width: 1250px) {
+    .vs-raster { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .vs-raster > .vs-breit { grid-row: auto; }
+}
+@media (max-width: 700px) {
+    .vs-raster { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+    .vs-wappen { width: 56px; height: 56px; border-radius: 16px; font-size: 17px; }
+}
+
+/* --------------------------------------------------------------------------
    Transferangebot als eigene Seite (uiAngebot.js): Käufer und Ablöse oben,
    darunter Angebot, Spieler, Folgen und Käufer, dann die Entscheidung
    -------------------------------------------------------------------------- */

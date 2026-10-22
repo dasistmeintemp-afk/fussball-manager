@@ -800,7 +800,6 @@
                     </div>
 
                     <div id="viewTransferMarket">
-                        <div class="hint-box mb-2" id="transferReachHint"></div>
                         <!-- AI Offers Card if available -->
                         <div class="ai-offers-container" id="aiOffersContainer" style="display:none;">
                             <h3>Eingehende Transferangebote für Ihre Spieler</h3>
@@ -885,27 +884,36 @@
                                         <option value="potenzial">Sortiert nach Potenzial</option>
                                         <option value="alter">Sortiert nach Alter</option>
                                         <option value="wert">Sortiert nach Marktwert</option>
+                                        <option value="empfehlung">Sortiert nach Empfehlung</option>
                                     </select>
                                     <button type="button" class="btn btn-sm btn-secondary" id="btnTfZuruecksetzen">Filter zurücksetzen</button>
                                 </div>
                             </details>
                         </div>
 
-                        <!-- Transfer Market Table -->
+                        <!-- Spielerdatenbank wie im Vorbild (uiSpielerdatenbank.js): Trefferzahl,
+                             Fenster und der Schalter für gescoutete Spieler über der Tabelle -->
+                        <div class="tm-kopf">
+                            <span class="tm-treffer" id="tfTreffer"></span>
+                            <span class="tm-fenster-chip" id="tfFensterChip"></span>
+                            <label class="tm-schalter"><input type="checkbox" id="tfNurGescoutet"><span class="tm-schalter-bahn" aria-hidden="true"></span><span>Nur gescoutete Spieler</span></label>
+                        </div>
                         <div class="table-container full-page">
                             <table class="data-table sortierbar" id="transferTable">
                                 <thead>
                                     <tr>
-                                        <th class="tm-name" data-sort="text">Name</th>
+                                        <th class="tm-status" title="Status"></th>
+                                        <th class="tm-name" data-sort="text">Spieler</th>
+                                        <th class="tm-nation" data-sort="text" title="Nationalität">Nat.</th>
                                         <th class="tm-verein" data-sort="text">Verein</th>
-                                        <th class="tm-pos" data-sort="auf">Pos</th>
-                                        <th class="tm-alter" data-sort="auf">Alter</th>
-                                        <th class="tm-staerke" data-sort="zahl">Stärke &amp; Potenzial</th>
-                                        <th class="tm-rolle" data-sort="text">Beste Rolle</th>
-                                        <th class="tm-wert" data-sort="zahl">Marktwert</th>
-                                        <th class="tm-wissen" data-sort="zahl">Scout</th>
-                                        <th class="tm-gehalt" data-sort="zahl">Gehalt/Wo.</th>
-                                        <th class="tm-vertrag" data-sort="zahl">Vertrag</th>
+                                        <th class="tm-pos" data-sort="auf">Position</th>
+                                        <th class="tm-alter" data-sort="zahl">Alter</th>
+                                        <th class="tm-staerke" data-sort="zahl">Stärke</th>
+                                        <th class="tm-pot" data-sort="zahl">Potenzial</th>
+                                        <th class="tm-wert" data-sort="zahl">Ablöse</th>
+                                        <th class="tm-gehalt" data-sort="zahl" title="Geschätzte Gehaltsforderung je Woche">Gehalt/Wo.</th>
+                                        <th class="tm-note-zelle" data-sort="zahl" title="Empfehlung des Scouts">Empf.</th>
+                                        <th class="tm-wissen" data-sort="zahl">Wissen</th>
                                         <th class="tm-meta"></th>
                                         <th class="tm-aktion"></th>
                                     </tr>
@@ -915,6 +923,8 @@
                                 </tbody>
                             </table>
                         </div>
+                        <!-- Kacheln: Transferfenster, Scouting-Reichweite, Empfehlungen, Beobachtungsliste, Budgets, Aufträge -->
+                        <div class="tm-raster" id="tmKacheln"></div>
                     </div>
 
                     <!-- Leihen: eigene Leihen und der Leihmarkt -->
@@ -2611,6 +2621,7 @@
     <script src="js/ui/uiProfilLaufbahn.js"></script>
     <script src="js/ui/uiAngebot.js"></script>
     <script src="js/ui/uiVereinSeite.js"></script>
+    <script src="js/ui/uiSpielerdatenbank.js"></script>
     <script src="js/ui/uiLivespiel.js"></script>
     <script src="js/ui/uiLiveKacheln.js"></script>
     <script src="js/ui/uiLiveDarstellung.js"></script>

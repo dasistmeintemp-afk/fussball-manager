@@ -14983,6 +14983,89 @@ function runEngineTests() {
         if (state.players.filter(p => p.clubId === "dor").some(p => !verlinkt.has(String(p.id)))) throw new Error("Nicht jeder Spieler steht in seiner Gehaltsgruppe");
     });
 
+    test("Spielerdatenbank wie im Vorbild: Note des Scouts, Gehaltsspanne, Statussymbole, vierzehn Spalten, sechs Kacheln", () => {
+        const SE = ScoutingEngine;
+        const state = GameState.createNewGame("dor", "normal", { name: "Datenbank" });
+        const club = state.clubs.find(c => c.id === "dor");
+
+        // Rahmen: der eigene Kader je Mannschaftsteil, der Stärkste zuerst, dazu das Budget
+        const rahmen = SE.empfehlungsRahmen(state);
+        if (rahmen.gruppen.TW.length !== state.players.filter(p => p.clubId === "dor" && p.pos === "TW").length) throw new Error("Torhüter im Rahmen falsch");
+        if (rahmen.gruppen.ABW.some((x, i) => i > 0 && x > rahmen.gruppen.ABW[i - 1])) throw new Error("Rahmen nicht nach Stärke sortiert");
+        if (rahmen.budget !== Math.max(0, club.transferBudget || 0)) throw new Error("Budget im Rahmen falsch");
+
+        // Die Note folgt der Schätzung: Platz im Mannschaftsteil, Potenzial, Alter, Ablöse
+        const r = { gruppen: { TW: [150], ABW: [150, 140, 130, 120], MF: [150, 140, 130, 120], ST: [160, 150, 140, 130, 120] }, budget: 1e6 };
+        const sch = (ca, pa = ca, confidence = 60) => ({ estCaMin: ca, estCaMax: ca, estPaMin: pa, estPaMax: pa, confidence });
+        const st = (alter, clubId = "x") => ({ pos: "ST", age: alter, clubId });
+        const note = (sp, s, wert = 0) => SE.empfehlung(sp, s, r, wert).note;
+        const reihe = [175, 165, 155, 135, 125, 110].map(ca => note(st(26), sch(ca)));
+        if (reihe.join() !== "A+,A,B,C,D,E") throw new Error(`Noten nach Platz im Mannschaftsteil: ${reihe}`);
+        const jung = SE.empfehlung(st(20), sch(125, 165), r);
+        if (jung.note !== "C" || !jung.gruende.includes("kann der Beste werden")) throw new Error(`Junger mit Potenzial: ${JSON.stringify(jung)}`);
+        if (note(st(34), sch(165)) !== "B") throw new Error("Das Alter zählt nicht");
+        if (note(st(26), sch(165), 1.5e6) !== "B" || note(st(26), sch(165), 3e6) !== "C") throw new Error("Die Ablöse über dem Budget zählt nicht");
+        const frei = SE.empfehlung(st(26, null), sch(155), r, 5e6);
+        if (frei.note !== "B" || !frei.gruende.includes("ablösefrei")) throw new Error(`Vereinslos: ${JSON.stringify(frei)}`);
+        if (SE.empfehlung(st(26), sch(165, 165, 30), r).sicher || !SE.empfehlung(st(26), sch(165, 165, 45), r).sicher) throw new Error("Erster Eindruck und belastbare Note verwechselt");
+
+        // Gescoutet heißt: ein Bericht oder genug Wissen
+        if (SE.istGescoutet({ scoutingKnowledge: { knowledgeLevel: 25 } })
+            || !SE.istGescoutet({ scoutingKnowledge: { knowledgeLevel: 25, reportsCount: 1 } })
+            || !SE.istGescoutet({ scoutingKnowledge: { knowledgeLevel: 50 } })) throw new Error("Gescoutet falsch erkannt");
+
+        // Gehalt: ohne bekannten Berater die Spanne von genügsam bis gierig, nach der Verhandlung die Forderung
+        const fremd = state.players.find(p => p.clubId && p.clubId !== "dor" && !p.agent && !p.vorvertrag && (p.wage || 0) > 20000);
+        const spanne = TransferEngine.gehaltsSpanne(fremd);
+        if (spanne.bekannt || !(spanne.min < fremd.wage * 1.18 && spanne.max > fremd.wage * 1.18 * 1.2)) throw new Error(`Gehaltsspanne: ${JSON.stringify(spanne)} bei ${fremd.wage}`);
+        const verh = NegotiationEngine.startTransferNegotiation(state, fremd.id, "dor");
+        if (!verh.success) throw new Error(`Verhandlung: ${verh.error}`);
+        const genau = TransferEngine.gehaltsSpanne(fremd);
+        if (!genau.bekannt || genau.min !== verh.negotiation.demand.wage || genau.max !== genau.min) throw new Error(`Nach der Verhandlung ${JSON.stringify(genau)} statt ${verh.negotiation.demand.wage}`);
+
+        // Spannen in deutscher Schreibweise
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        const spannen = [ui.spanneText(57.9e6, 92.1e6), ui.spanneText(4.2e6, 7.9e6), ui.spanneText(146000, 210900), ui.spanneText(5e5, 5e5)];
+        if (spannen.join(" | ") !== "58–92 Mio. € | 4,2–7,9 Mio. € | 146–211 Tsd. € | 500 Tsd. €") throw new Error(`Spannen: ${spannen.join(" | ")}`);
+
+        // Die Zeile: vierzehn Spalten wie der Kopf, Statussymbole, Note; darunter sechs Kacheln
+        const hatte = { pr: global.PlayerRatingEngine, se: global.ScoutingEngine, te: global.TransferEngine, doc: global.document };
+        global.PlayerRatingEngine = PlayerRatingEngine; global.ScoutingEngine = SE; global.TransferEngine = TransferEngine;
+        const box = { innerHTML: "", querySelectorAll: () => [] };
+        global.document = { getElementById: (id) => id === "tmKacheln" ? box : null };
+        try {
+            SE.merke(state, fremd.id, true);
+            fremd.transferListed = true;
+            const ctx = { userClubId: "dor", leagueDataCoverage: 85, state };
+            const kontext = {
+                schaetzKontext: ctx,
+                sichtwerte: (p) => PlayerRatingEngine.sichtwerte(p, ctx),
+                note: (p) => SE.empfehlung(p, PlayerRatingEngine.schaetzung(p, ctx), rahmen, PlayerRatingEngine.sichtwerte(p, ctx).wertMin),
+                verhandelt: new Set([String(fremd.id)]),
+                vereinVon: new Map(state.clubs.map(c => [c.id, c]))
+            };
+            const zeile = ui.tmZeileHtml(fremd, state, kontext);
+            if ((zeile.match(/<td /g) || []).length !== 14) throw new Error(`Die Zeile hat ${(zeile.match(/<td /g) || []).length} Spalten`);
+            ["tm-status", "tm-nation", "tm-verein", "tm-pos", "tm-alter", "tm-staerke", "tm-pot", "tm-wert", "tm-gehalt", "tm-note-zelle", "tm-wissen", "tm-aktion"]
+                .forEach(k => { if (!zeile.includes(`class="${k}`)) throw new Error(`Spalte ${k} fehlt`); });
+            ["st-merk", "st-verh", "st-verkauf"].forEach(k => { if (!zeile.includes(k)) throw new Error(`Status ${k} fehlt`); });
+            if (!/class="tm-note note-[a-e]/.test(zeile)) throw new Error("Die Zeile hat keine Note");
+
+            ui.renderMarktKacheln(state, club, { empfehlungen: [{ p: fremd, e: kontext.note(fremd), wert: { wertMin: 1e6, wertMax: 2e6 } }], verhandelt: kontext.verhandelt, vereinVon: kontext.vereinVon, angebote: 0 });
+            ["Transferfenster", "Scouting-Reichweite", "Spielerempfehlungen", "Beobachtungsliste", "Budgets", "Aufträge"]
+                .forEach(t => { if (!box.innerHTML.includes(`</svg>${t}</h4>`)) throw new Error(`Kachel ${t} fehlt`); });
+            if ((box.innerHTML.match(new RegExp(`data-tm-spieler="${fremd.id}"`, "g")) || []).length !== 2) throw new Error("Empfehlung und Beobachtungsliste nennen den Spieler nicht");
+        } finally {
+            ["pr", "se", "te"].forEach((k, i) => {
+                const name = ["PlayerRatingEngine", "ScoutingEngine", "TransferEngine"][i];
+                if (hatte[k] === undefined) delete global[name]; else global[name] = hatte[k];
+            });
+            if (hatte.doc === undefined) delete global.document; else global.document = hatte.doc;
+        }
+    });
+
     test("Vereinsprofil als Seite: Finanzlage in Worten, Tabellenausschnitt, Geschichte, Aktionen nach Themen", () => {
         const { UIManager } = require('./js/ui/uiManager.js');
         const state = GameState.createNewGame("dor", "normal", { name: "Verein" });

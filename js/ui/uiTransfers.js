@@ -1076,21 +1076,18 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             unbekannt = vorher - marketPlayers.length;
         }
 
-        const reichweiteEl = document.getElementById("transferReachHint");
-        if (reichweiteEl && transferEngine && typeof transferEngine.describeReach === "function") {
-            const reich = transferEngine.describeReach(userClub, state.leagues || []);
-            const fenster = typeof transferEngine.fensterInfo === "function" ? transferEngine.fensterInfo(state) : null;
-            reichweiteEl.innerHTML = (fenster
-                    ? `<div class="tf-fenster ${fenster.offen ? "offen" : "zu"}">${fenster.offen ? "🟢" : "🔒"} ${this.escapeHtml(fenster.text)}</div>`
-                    : "")
-                + `🌍 <strong>Marktreichweite:</strong> ${this.escapeHtml(reich.text)}`
-                + (ausserReichweite > 0
-                    ? ` <span class="text-muted">(${ausserReichweite.toLocaleString("de-DE")} Spieler höherer Ligen sind für Sie außer Reichweite.)</span>`
-                    : "")
-                + (unbekannt > 0
-                    ? `<div class="text-muted tf-landwissen">🔭 ${unbekannt.toLocaleString("de-DE")} Spieler im Ausland kennt Ihr Scout noch nicht. Ein Auftrag mit Länderfokus (Scouting) macht sie sichtbar.</div>`
-                    : "");
+        // Das Fenster steht knapp über der Datenbank, ausführlich mit
+        // Reichweite und Länderwissen in den Kacheln darunter
+        const fensterEl = document.getElementById("tfFensterChip");
+        if (fensterEl && transferEngine && typeof transferEngine.fensterInfo === "function") {
+            const fenster = transferEngine.fensterInfo(state);
+            fensterEl.className = `tm-fenster-chip ${fenster.offen ? "offen" : "zu"}`;
+            fensterEl.textContent = fenster.offen
+                ? `Fenster offen${fenster.bis ? ` bis ${transferEngine._datumText(fenster.bis)}` : ""}`
+                : "Fenster geschlossen";
+            fensterEl.title = fenster.text;
         }
+        const sichtbarerMarkt = marketPlayers;
 
         if (searchVal) marketPlayers = marketPlayers.filter(p => p.name.toLowerCase().includes(searchVal));
         if (posVal.startsWith("grp:")) marketPlayers = marketPlayers.filter(p => this.positionsGruppe(p.pos) === posVal.slice(4));
@@ -1125,6 +1122,23 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             }
             return sicht.get(p.id);
         };
+        // Die Note des Scouts (ScoutingEngine.empfehlung) - nur für die
+        // Spieler, die man wirklich ansieht oder danach sortiert
+        const empfehlungsRahmen = scouting && typeof scouting.empfehlungsRahmen === "function" ? scouting.empfehlungsRahmen(state) : null;
+        const noten = new Map();
+        const note = (p) => {
+            if (!empfehlungsRahmen) return null;
+            if (!noten.has(p.id)) {
+                const re = this.getRatingEngine();
+                const s = re && typeof re.schaetzung === "function" ? re.schaetzung(p, sichtKontext) : null;
+                noten.set(p.id, s ? scouting.empfehlung(p, s, empfehlungsRahmen, sichtwerte(p).wertMin) : null);
+            }
+            return noten.get(p.id);
+        };
+        const nurGescoutet = !!document.getElementById("tfNurGescoutet")?.checked;
+        if (nurGescoutet && scouting && typeof scouting.istGescoutet === "function") {
+            marketPlayers = marketPlayers.filter(p => scouting.istGescoutet(p));
+        }
         if (potVal > 0) marketPlayers = marketPlayers.filter(p => sichtwerte(p).potSterne >= potVal);
         if (wertVal) {
             const grenzeWert = wertVal === "budget" ? Math.max(0, userClub.transferBudget || 0) : Number(wertVal);
@@ -1158,7 +1172,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             staerke: (a, b) => staerke(b) - staerke(a) || (a.age || 0) - (b.age || 0),
             potenzial: (a, b) => sichtwerte(b).potSterne - sichtwerte(a).potSterne || staerke(b) - staerke(a),
             alter: (a, b) => (a.age || 0) - (b.age || 0) || staerke(b) - staerke(a),
-            wert: (a, b) => sichtwerte(b).wertMin - sichtwerte(a).wertMin
+            wert: (a, b) => sichtwerte(b).wertMin - sichtwerte(a).wertMin,
+            empfehlung: (a, b) => (note(b)?.punkte ?? -9) - (note(a)?.punkte ?? -9) || staerke(b) - staerke(a)
         };
         marketPlayers.sort(sortierer[sortVal] || sortierer.staerke);
 
@@ -1166,7 +1181,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         // Treffer seitenweise - erst 30, auf Wunsch mehr. Vorher standen
         // 120 Zeilen untereinander, über zehntausend Pixel Seite.
         const TREFFER_PRO_SEITE = 30;
-        const filterKey = [searchVal, posVal, minStars, alterVal, potVal, wertVal, vertragVal, landVal, sortVal].join("|");
+        const filterKey = [searchVal, posVal, minStars, alterVal, potVal, wertVal, vertragVal, landVal, sortVal, nurGescoutet].join("|");
         if (this._tfFilterKey !== filterKey) {
             this._tfFilterKey = filterKey;
             this._tfLimit = TREFFER_PRO_SEITE;
@@ -1175,74 +1190,30 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const gesamtTreffer = marketPlayers.length;
         marketPlayers = marketPlayers.slice(0, limit);
 
-        const ratingEngine = (typeof PlayerRatingEngine !== 'undefined' && PlayerRatingEngine) ? PlayerRatingEngine : ((typeof window !== 'undefined' && window.PlayerRatingEngine) ? window.PlayerRatingEngine : null);
+        // Was die Zeilen und Kacheln der Spielerdatenbank brauchen (uiSpielerdatenbank.js)
+        const negEngine = typeof NegotiationEngine !== "undefined" ? NegotiationEngine : (typeof window !== "undefined" ? window.NegotiationEngine : null);
+        const verhandelt = new Set((negEngine && typeof negEngine.getOpenNegotiations === "function" ? negEngine.getOpenNegotiations(state) : [])
+            .filter(n => n.clubId === userClub.id).map(n => String(n.playerId)));
+        const kontext = { schaetzKontext: sichtKontext, sichtwerte, note, verhandelt, vereinVon };
+
+        const trefferEl = document.getElementById("tfTreffer");
+        if (trefferEl) trefferEl.innerHTML = `<strong>${gesamtTreffer.toLocaleString("de-DE")}</strong> Spieler gefunden`;
 
         const tbody = document.getElementById("transferTableBody");
         if (tbody && marketPlayers.length === 0) {
             // Sterne messen sich am eigenen Kader. Bei einem Spitzenverein
             // gibt es oberhalb von vier Sternen schlicht niemanden mehr -
             // das soll dastehen und nicht als leere Tabelle wirken.
-            tbody.innerHTML = `<tr><td colspan="11" class="text-center text-muted" style="padding:22px;">
-                Kein Spieler entspricht diesen Kriterien. Gemessen wird an Ihrem eigenen Kader –
-                je stärker Ihre Mannschaft, desto seltener sind echte Verstärkungen.
+            tbody.innerHTML = `<tr><td colspan="14" class="text-center text-muted" style="padding:22px;">
+                ${nurGescoutet ? "Noch kein gescouteter Spieler passt zu diesen Filtern. Schicken Sie einen Scout los oder nehmen Sie den Schalter heraus." : "Kein Spieler entspricht diesen Kriterien. Gemessen wird an Ihrem eigenen Kader – je stärker Ihre Mannschaft, desto seltener sind echte Verstärkungen."}
             </td></tr>`;
         } else if (tbody) {
-            tbody.innerHTML = marketPlayers.map(p => {
-                const club = state.clubs.find(c => c.id === p.clubId);
-                const card = ratingEngine ? ratingEngine.calculateVisiblePlayerCard(p, Object.assign({ userClubId: state.userClubId, leagueDataCoverage: 85 }, this.starContext())) : null;
-
-                const sterne = card ? card.abilityStarsHtml : "";
-                const roleDisplay = card?.bestRole?.role || "Allrounder";
-                const abilityText = card ? card.abilityLabel : "Unbekannt";
-                const valDisplay = card ? card.visibleValueText : this.formatMoneySafe(p.value);
-                const confPercent = card ? card.confidence : (p.scoutingKnowledge?.knowledgeLevel || 30);
-                const confBadgeClass = confPercent >= 70 ? "badge-success" : confPercent >= 40 ? "badge-warning" : "badge-danger";
-
-                const confInfo = card?.confidenceInfo || { label: "Unbekannt", color: "#94a3b8", hint: "" };
-                // Bei geringem Wissen ist auch die Marktwertschätzung nur eine Näherung
-                const valueClass = card && !card.isPrecise ? "estimated-value" : "";
-
-                const vereinsName = club ? this.escapeHtml(club.name) : "Ablösefrei";
-                // Sortierwerte: Mitte der geschätzten Spanne
-                const sternWert = card ? ((Number(card.starsCaMin) + Number(card.starsCaMax)) / 2 + (Number(card.starsPaMax) || 0) / 100).toFixed(3) : (p.overall || 0);
-                return `
-                    <tr class="row-clickable" data-player-id="${p.id}" title="Details zu ${this.escapeHtml(p.name)} anzeigen">
-                        <td class="tm-name" data-wert="${this.escapeHtml(p.name)}">
-                            ${this.gemerktMarke(p.id)}<strong>${this.escapeHtml(p.name)}</strong>${this.signaturMarke(p)}
-                            <span class="tm-sub">${this.escapeHtml(p.nationality || "Profi")} · ${p.age} J.</span>
-                        </td>
-                        <td class="tm-verein" data-wert="${club ? vereinsName : ""}">${club ? vereinsName : `<span class="badge badge-success" title="${this.escapeHtml(this.vereinslosFrist(p))}">Ablösefrei</span>`}</td>
-                        <td class="tm-pos" data-wert="${["TW", "IV", "LV", "RV", "DM", "ZM", "LM", "RM", "OM", "LA", "RA", "ST"].indexOf(p.pos)}"><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span></td>
-                        <td class="tm-alter">${p.age}</td>
-                        <td class="tm-staerke nowrap" data-wert="${sternWert}">
-                            ${sterne}
-                            <div class="tm-sub">${abilityText}</div>
-                        </td>
-                        <td class="tm-rolle"><span class="badge badge-info">${roleDisplay}</span></td>
-                        <td class="tm-wert nowrap"><strong class="${valueClass}">${valDisplay}</strong></td>
-                        <td class="tm-wissen" data-wert="${confPercent}"><span class="badge ${confBadgeClass}" title="${confInfo.label}: ${confInfo.hint}">${confPercent}%</span></td>
-                        <td class="tm-gehalt nowrap" data-wert="${p.wage || 0}">${this.geldKurz(p.wage)}</td>
-                        <td class="tm-vertrag nowrap" data-wert="${p.clubId ? p.contractYears : 0}">${p.clubId ? `${p.contractYears} J.` : "-"}</td>
-                        <td class="tm-meta">${vereinsName} · ${valDisplay} · Scout ${confPercent} %</td>
-                        <td class="tm-aktion">
-                            <div class="tm-knoepfe">
-                                ${(() => {
-                                    const laeuft = this.beobachtungsText(p.id);
-                                    return laeuft
-                                        ? `<button class="btn btn-sm btn-secondary btn-scout-direct" data-player-id="${p.id}" disabled title="Der Scout beobachtet ihn - Bericht ${laeuft}"><svg class="ico" aria-hidden="true"><use href="#i-eye"/></svg><span class="tm-knopf-text"> ${laeuft}</span></button>`
-                                        : `<button class="btn btn-sm btn-secondary btn-scout-direct" data-player-id="${p.id}" title="Scout zur Beobachtung schicken - der Bericht kommt nach einigen Tagen"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg><span class="tm-knopf-text"> Scouten</span></button>`;
-                                })()}
-                                <button class="btn btn-sm btn-primary btn-bid-player" data-player-id="${p.id}">Verhandeln</button>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-            }).join("");
+            tbody.innerHTML = marketPlayers.map(p => this.tmZeileHtml(p, state, kontext)).join("");
 
             // Wie viele es wirklich gibt, gehört unter die Liste - und ein
             // Knopf, der die nächsten dreißig holt
             if (gesamtTreffer > marketPlayers.length) {
-                tbody.innerHTML += `<tr class="tm-mehr-zeile"><td colspan="12" class="text-center text-muted" style="padding:14px;">
+                tbody.innerHTML += `<tr class="tm-mehr-zeile"><td colspan="14" class="text-center text-muted" style="padding:14px;">
                     <div>Die ${marketPlayers.length} stärksten von ${gesamtTreffer.toLocaleString("de-DE")} passenden Spielern.</div>
                     <button class="btn btn-sm btn-secondary" id="btnTfMehr" style="margin-top:8px;">Weitere ${Math.min(TREFFER_PRO_SEITE, gesamtTreffer - marketPlayers.length)} anzeigen</button>
                 </td></tr>`;
@@ -1280,6 +1251,19 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 });
             });
         }
+
+        // Die Kacheln unter der Datenbank. Empfohlen wird, wen der Scout
+        // gesehen hat; ohne Berichte die besten Noten der Liste als erster Eindruck.
+        const mitNote = (liste) => liste.map(p => ({ p, e: note(p), wert: sichtwerte(p) })).filter(x => x.e)
+            .sort((a, b) => b.e.punkte - a.e.punkte || staerke(b.p) - staerke(a.p));
+        let empfehlungen = scouting && typeof scouting.istGescoutet === "function"
+            ? mitNote(sichtbarerMarkt.filter(p => scouting.istGescoutet(p))).slice(0, 5) : [];
+        const ersterEindruck = empfehlungen.length === 0;
+        if (ersterEindruck) empfehlungen = mitNote(marketPlayers).slice(0, 3);
+        this.renderMarktKacheln(state, userClub, Object.assign({}, kontext, {
+            empfehlungen, empfehlungenErsterEindruck: ersterEindruck && empfehlungen.length > 0,
+            unbekannt, ausserReichweite, angebote: pendingOffers.length
+        }));
 
         // 3. Scouting Aufträge & Berichte
         const assignList = document.getElementById("scoutAssignmentsList");

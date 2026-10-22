@@ -1917,3 +1917,141 @@ h4 .h-ico { color: var(--accent); opacity: 0.85; }
     .toast-item.klickbar { flex-wrap: wrap; }
     .toast-aktionen { width: 100%; justify-content: flex-end; }
 }
+
+/* --------------------------------------------------------------------------
+   Postfach wie im Vorbild: Abteilungen mit Zeichen, Wappen der Vereine,
+   Fristen, Anhänge, anklickbare Namen (uiPostfach.js)
+   -------------------------------------------------------------------------- */
+.post-kat-transfer { --post-farbe: #60a5fa; }
+.post-kat-sportdirektor { --post-farbe: #38bdf8; }
+.post-kat-vertrag { --post-farbe: #a78bfa; }
+.post-kat-spieler { --post-farbe: #f472b6; }
+.post-kat-medizin { --post-farbe: #f87171; }
+.post-kat-spiel { --post-farbe: #34d399; }
+.post-kat-presse { --post-farbe: #fbbf24; }
+.post-kat-vorstand { --post-farbe: #e2e8f0; }
+.post-kat-jugend { --post-farbe: #a3e635; }
+.post-kat-training { --post-farbe: #2dd4bf; }
+.post-kat-scouting { --post-farbe: #818cf8; }
+.post-kat-finanzen { --post-farbe: #4ade80; }
+.post-kat-verein { --post-farbe: #94a3b8; }
+
+.post-avatar {
+    position: relative;
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: color-mix(in srgb, var(--post-farbe, #94a3b8) 18%, var(--surface-2));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--post-farbe, #94a3b8) 45%, transparent);
+    color: var(--post-farbe, #94a3b8);
+    font: 700 10px/1 var(--font-display, inherit); letter-spacing: 0.3px;
+}
+.post-avatar.gross { width: 40px; height: 40px; font-size: 14px; }
+.post-avatar .post-avatar-zeichen {
+    position: absolute; right: -3px; bottom: -3px; width: 13px; height: 13px; padding: 2px;
+    border-radius: 50%; background: var(--surface-1); box-shadow: 0 0 0 1px var(--line-strong); color: var(--post-farbe, #94a3b8);
+}
+.post-avatar.gross .post-avatar-zeichen { width: 17px; height: 17px; }
+.crest.post-avatar { width: 26px; height: 26px; font-size: 9px; }
+.crest.post-avatar.gross { width: 40px; height: 40px; font-size: 13px; }
+.inbox-item .inbox-sender-wrap { align-items: center; gap: 8px; }
+.inbox-item { border-left-color: var(--post-farbe, var(--line-strong)); }
+.inbox-item.post-dringend { box-shadow: inset 3px 0 0 var(--bad); }
+.post-vorschau {
+    font-size: 12px; color: var(--text-muted); line-height: 1.4;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.inbox-item-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.inbox-item .inbox-type { color: var(--post-farbe, var(--text-muted)); border-color: color-mix(in srgb, var(--post-farbe, #94a3b8) 35%, transparent); }
+.post-anhang-zahl { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted); }
+.post-anhang-zahl .ico { width: 12px; height: 12px; }
+
+.post-flag {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    background: var(--surface-3); color: var(--text-soft, #cbd5e1);
+}
+.post-flag .ico { width: 12px; height: 12px; }
+.post-flag strong { font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; font-size: 10px; }
+.post-flag-dringend { background: rgba(248, 113, 113, 0.16); color: #fca5a5; box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.45); }
+.post-flag-antwort { background: rgba(251, 191, 36, 0.13); color: #fcd34d; box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.38); }
+.post-flag-wichtig { background: rgba(96, 165, 250, 0.13); color: #93c5fd; }
+.post-flag-erledigt { background: rgba(148, 163, 184, 0.12); color: var(--text-muted); }
+.post-status { margin-top: 12px; }
+.post-status .post-flag { font-size: 12.5px; padding: 6px 12px; }
+.post-status-dringend .post-flag { animation: post-puls 2.4s var(--ease) infinite; }
+@keyframes post-puls { 50% { box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.85), 0 0 0 4px rgba(248, 113, 113, 0.12); } }
+@media (prefers-reduced-motion: reduce) { .post-status-dringend .post-flag { animation: none; } }
+
+.inbox-detail-header { border-top: 3px solid var(--post-farbe, transparent); padding-top: 12px; border-radius: 4px 4px 0 0; }
+.inbox-detail-header .inbox-detail-icon { color: var(--post-farbe, var(--accent)); }
+.post-absender { display: flex; align-items: center; gap: 10px; }
+
+.post-link {
+    color: var(--accent); text-decoration: none; font-weight: 600;
+    border-bottom: 1px dotted var(--accent-line); cursor: pointer;
+}
+.post-link:hover, .post-link:focus-visible { border-bottom-style: solid; }
+.post-link-verein { color: #93c5fd; border-bottom-color: rgba(147, 197, 253, 0.45); }
+
+.post-spielerkarte {
+    display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 10px 14px;
+    border-radius: 12px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line-strong);
+    cursor: pointer; transition: box-shadow 0.15s var(--ease), background 0.15s var(--ease);
+}
+.post-spielerkarte:hover, .post-spielerkarte:focus-visible { background: var(--surface-3); box-shadow: inset 0 0 0 1px var(--accent-line); }
+.post-spielerkarte.eigen { box-shadow: inset 3px 0 0 var(--accent), inset 0 0 0 1px var(--line-strong); }
+.post-sk-name { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.post-sk-name strong { font-size: 14px; color: var(--text-main); }
+.post-sk-name small, .post-sk-werte small { color: var(--text-muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.post-sk-werte { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.post-sk-verletzt { display: inline-flex; align-items: center; gap: 3px; color: var(--bad); font-size: 12px; font-weight: 700; }
+.post-sk-verletzt .ico { width: 13px; height: 13px; }
+.post-sk-pfeil { width: 16px; height: 16px; color: var(--text-muted); }
+
+.post-anhaenge { margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--line-strong); }
+.post-anhaenge-kopf { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; }
+.post-anhaenge-kopf .ico { width: 13px; height: 13px; }
+.post-anhang-leiste { display: flex; flex-wrap: wrap; gap: 8px; }
+.post-anhang {
+    display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px 7px 9px;
+    border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface-2);
+    color: var(--text-main); font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.post-anhang .ico { width: 16px; height: 16px; padding: 3px; border-radius: 5px; background: rgba(var(--accent-rgb), 0.14); color: var(--accent); }
+.post-anhang:hover { border-color: var(--accent-line); }
+.post-anhang.offen { border-color: var(--accent-line); background: var(--accent-soft); }
+.post-anhang-inhalt {
+    margin-top: 10px; padding: 12px; border-radius: 12px;
+    background: var(--surface-1); box-shadow: inset 0 0 0 1px var(--line);
+}
+.post-anhang-inhalt[hidden] { display: none; }
+.post-anhang-inhalt .angebot-karte { margin: 0; }
+.post-tabelle { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px 16px; }
+.post-tabelle > div { display: flex; flex-direction: column; gap: 2px; }
+.post-tabelle span { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; }
+.post-tabelle strong { font-size: 13.5px; color: var(--text-main); font-variant-numeric: tabular-nums; }
+.post-form { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-right: 3px; border-radius: 4px; font-size: 10px; font-weight: 800; background: var(--surface-3); color: var(--text-muted); }
+.post-form-W { background: rgba(52, 211, 153, 0.2); color: var(--ok); }
+.post-form-L { background: rgba(248, 113, 113, 0.2); color: var(--bad); }
+.post-form-D { background: rgba(251, 191, 36, 0.18); color: var(--warn); }
+.post-tabelle-liga { width: 100%; font-size: 12.5px; }
+.post-tabelle-liga tr.eigen td { color: var(--accent); font-weight: 700; }
+.post-tabelle-luecke td { text-align: center; color: var(--text-muted); padding: 0; }
+.post-jahrgang { display: grid; gap: 6px; }
+.post-jahrgang > div { display: flex; align-items: center; gap: 10px; }
+.post-jahrgang small { color: var(--text-muted); }
+.post-buchungen { margin-top: 10px; display: grid; gap: 4px; font-size: 12.5px; }
+.post-buchungen > div { display: flex; justify-content: space-between; gap: 12px; }
+.post-buchungen .minus { color: var(--bad); }
+.post-buchungen .plus { color: var(--ok); }
+@media (max-width: 640px) {
+    .post-spielerkarte { flex-wrap: wrap; }
+    .post-sk-werte { align-items: flex-start; }
+    .post-tabelle { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* Der linke Rand trägt die Farbe der Abteilung, ungelesen wird er breiter */
+.inbox-item.unread { border-left-color: var(--post-farbe, var(--accent)); }
+.inbox-item.unread .inbox-item-title::before {
+    content: ""; display: inline-block; width: 7px; height: 7px; margin: 0 6px 1px 0; border-radius: 50%;
+    background: var(--accent); vertical-align: middle;
+}

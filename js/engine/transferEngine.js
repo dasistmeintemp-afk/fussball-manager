@@ -1063,7 +1063,9 @@ class TransferEngine {
                     subject: `Angebot für ${o.playerName} verfallen`,
                     body: `Sie haben auf unser Angebot von ${_formatTransferMoney(o.fee)} für ${o.playerName} nicht reagiert. Wir betrachten die Sache als erledigt.`,
                     read: false,
-                    type: "transfer_offer"
+                    type: "transfer_offer",
+                    offerId: o.id,
+                    relatedEntity: o.playerId !== undefined ? { type: "player", id: o.playerId } : null
                 });
             }
         });
@@ -1228,8 +1230,13 @@ class TransferEngine {
                     const zahlText = zahlweise !== "sofort" ? ` (${fin.ratenText(angebot, zahlweise)})` : "";
 
                     const tag = state.currentDayIndex || 0;
+                    // Eindeutig, auch wenn im selben Durchlauf mehrere Angebote
+                    // kommen - mit der Millisekunde allein trugen zwei dieselbe
+                    // Kennung, und Annehmen traf womöglich das andere
+                    let offerId = Date.now() * 1000;
+                    while (state.transferMarket.offers.some(o => o.id === offerId)) offerId++;
                     state.transferMarket.offers.unshift({
-                        id: Date.now(),
+                        id: offerId,
                         playerId: player.id,
                         playerName: player.name,
                         playerOverall: player.overall,
@@ -1250,14 +1257,18 @@ class TransferEngine {
                     });
 
                     state.inbox.unshift({
-                        id: Date.now() + 1,
+                        id: `angebot_${offerId}`,
                         matchday: state.currentMatchday,
                         date: state.currentDate || `Spieltag ${state.currentMatchday}`,
                         sender: interestedClub.name,
                         subject: `💰 Angebot: ${_formatTransferMoney(angebot)} für ${player.name}${zahlweise !== "sofort" ? " in Raten" : ""}`,
                         body: `${interestedClub.name} bietet ${_formatTransferMoney(angebot)} Ablösesumme${zahlText} für Ihren Spieler ${player.name} (${player.pos}, ${player.age} Jahre, Marktwert ${_formatTransferMoney(player.value)}).\n\nDas Angebot gilt ${this.ANGEBOTS_FRIST} Tage. Sie können annehmen, ablehnen oder mehr fordern - im Transfermarkt ganz oben.`,
                         read: false,
-                        type: "transfer_offer"
+                        type: "transfer_offer",
+                        // Damit das Postfach Frist, Anhang und Knöpfe kennt
+                        offerId,
+                        relatedEntity: { type: "player", id: player.id },
+                        priority: "high"
                     });
                 }
             }

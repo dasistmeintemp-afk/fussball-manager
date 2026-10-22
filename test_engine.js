@@ -14307,6 +14307,87 @@ function runEngineTests() {
         if (!(jung[1].spielpraxis < 0.2)) throw new Error("Auf der U19-Bank bleibt die Spielpraxis");
     });
 
+    test("Postfach wie im Vorbild: Abteilungen, Frist und Dringend, Anhänge, Namen als Verweise, Filter", () => {
+        const NE = NewsEngine;
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Post" });
+        const club = state.clubs.find(c => c.id === "muc");
+        if (!state.transferMarket) state.transferMarket = { offers: [] };
+
+        // Jede Art hat eine Abteilung, Unbekanntes landet beim Verein
+        [["preview", "spiel"], ["news", "presse"], ["injury_healed", "medizin"], ["player_talk", "spieler"], ["transfer_offer", "transfer"], ["unbekannt", "verein"]].forEach(([typ, key]) => {
+            if (NE.kategorie({ type: typ }).key !== key) throw new Error(`${typ} landet unter ${NE.kategorie({ type: typ }).key} statt ${key}`);
+        });
+        const zeile = NE.vorschau({ body: "💰 Guten Tag,\n\nwir " + "bieten ".repeat(20) }, 40);
+        if (zeile.length > 40 || /\n|💰/.test(zeile) || !zeile.endsWith("…")) throw new Error(`Vorschauzeile: "${zeile}"`);
+
+        // Zwei Angebote in derselben Millisekunde: verschiedene Kennungen,
+        // die Nachricht kennt Angebot und Spieler
+        const erzeuge = () => {
+            const offen = new Set(state.transferMarket.offers.map(o => o.playerId));
+            const kandidat = state.players.filter(p => p.clubId === "muc" && p.overall >= 74 && !offen.has(p.id)).sort((a, b) => a.value - b.value)[0];
+            const ids = club.playerIds.filter(id => id !== kandidat.id);
+            ids.splice(Math.floor(0.1 * club.playerIds.length), 0, kandidat.id);
+            club.playerIds = ids;
+            state.clubs.forEach(c => { if (c.id !== "muc") c.transferBudget = Math.max(c.transferBudget || 0, kandidat.value * 2); });
+            const zufall = Math.random;
+            Math.random = () => 0.1;
+            try { TransferEngine.processAITransferMarket(state); } finally { Math.random = zufall; }
+            return state.transferMarket.offers[0];
+        };
+        const uhr = Date.now, zeit = uhr();
+        let a, b;
+        Date.now = () => zeit;
+        try { a = erzeuge(); b = erzeuge(); } finally { Date.now = uhr; }
+        if (!a || !b || a === b || a.id === b.id) throw new Error(`Zwei Angebote ohne eigene Kennung: ${a?.id} / ${b?.id}`);
+        const postA = state.inbox.find(m => m.offerId === a.id), postB = state.inbox.find(m => m.offerId === b.id);
+        if (!postA || !postB || String(postA.id) === String(postB.id)) throw new Error("Die Angebotsnachrichten tragen keine eigene Kennung");
+        if (postA.relatedEntity?.id !== a.playerId || postA.priority !== "high") throw new Error("Die Angebotsnachricht kennt den Spieler nicht");
+
+        // Frist: erst eine Antwort erwartet, zwei Tage vorher dringend
+        const heute = state.currentDayIndex || 0;
+        state.currentDayIndex = a.frist - 4;
+        const frueh = NE.dringlichkeit(state, postA);
+        if (frueh?.stufe !== "antwort" || !frueh.text.includes("noch 4 Tage") || !frueh.text.startsWith(`bis ${state.calendar[a.frist].date.slice(0, 6)}`)) throw new Error(`Frist früh: ${JSON.stringify(frueh)}`);
+        state.currentDayIndex = a.frist - 2;
+        if (NE.dringlichkeit(state, postA)?.stufe !== "dringend") throw new Error("Zwei Tage vor Ablauf nicht dringend");
+        state.currentDayIndex = heute;
+        if (!NE.getFilteredMessages(state, "antwort").some(m => m.offerId === a.id)) throw new Error("Das Angebot fehlt unter Antwort nötig");
+        if (!NE.anhaenge(state, postA).some(x => x.art === "angebot" && x.offen)) throw new Error("Das offene Angebot hängt nicht aufgeklappt an");
+        // Nachrichten älterer Spielstände ohne Kennung finden ihr Angebot über Betreff und Absender
+        if (NE.angebotZu(state, { type: "transfer_offer", subject: postB.subject, sender: postB.sender }) !== b) throw new Error("Alte Nachricht findet ihr Angebot nicht");
+        // Abgelehnt: steht an der Nachricht, keine Antwort mehr nötig
+        TransferEngine.lehneAngebotAb(state, a.id);
+        const danach = NE.dringlichkeit(state, postA);
+        if (danach?.stufe !== "erledigt" || danach.text !== "Abgelehnt") throw new Error(`Nach dem Ablehnen: ${JSON.stringify(danach)}`);
+        const antwort = NE.getFilteredMessages(state, "antwort");
+        if (antwort.some(m => m.offerId === a.id) || !antwort.some(m => m.offerId === b.id)) throw new Error("Antwort nötig zeigt Erledigtes oder vergisst Offenes");
+
+        // Verletzung: der Spieler auch ohne Bezug aus dem Betreff, Befund im Anhang, unter Training
+        const verletzt = state.players.find(p => p.clubId === "muc" && p.id !== a.playerId && p.id !== b.playerId);
+        verletzt.injuredWeeks = 3;
+        const befund = NE.addMessage(state, "injury", { subject: `Verletzung: ${verletzt.name}`, sender: "Mannschaftsarzt" });
+        if (NE.spielerZu(state, befund) !== verletzt) throw new Error("Der Spieler im Betreff wird nicht erkannt");
+        if (NE.dringlichkeit(state, befund)?.text !== "Fällt aus · 3 Wo.") throw new Error("Die Ausfallzeit steht nicht an der Nachricht");
+        if (!NE.anhaenge(state, befund).some(x => x.art === "befund")) throw new Error("Kein ärztlicher Befund");
+        if (!NE.getFilteredMessages(state, "training").includes(befund)) throw new Error("Verletzung fehlt unter Training");
+        const rundschau = NE.addMessage(state, "news", { subject: "Rundschau zum Spieltag" });
+        if (!NE.anhaenge(state, rundschau).some(x => x.art === "tabelle")) throw new Error("Die Rundschau hat keine Tabelle");
+        const vorbericht = NE.addMessage(state, "preview", { subject: "Vorbericht" });
+        if (!NE.getFilteredMessages(state, "match").includes(vorbericht)) throw new Error("Vorbericht fehlt unter Spiel");
+
+        // Verweise: der eigene Spieler gewinnt gegen einen Namensvetter der Liga
+        const rivale = state.clubs.find(c => c.leagueId === club.leagueId && c.id !== "muc");
+        const vetter = state.players.find(p => p.clubId === rivale.id);
+        vetter.name = verletzt.name;
+        const verweise = NE.verweisNamen(state);
+        if (verweise.spieler.get(verletzt.name) !== verletzt.id || verweise.vereine.get(rivale.name) !== rivale.id) throw new Error("Verweise falsch zugeordnet");
+        const html = UIManager.prototype.verlinkePost.call(UIManager.prototype, `<b>Gespräch</b> mit ${verletzt.name} gegen ${rivale.name}\nNicht hier: X${verletzt.name}`, verweise);
+        if (!html.includes("&lt;b&gt;") || !html.includes("<br>")) throw new Error("Der Text wird nicht maskiert");
+        if (!html.includes(`data-spieler-link="${verletzt.id}">${UIManager.prototype.escapeHtml(verletzt.name)}</a>`) || !html.includes(`data-verein-link="${rivale.id}"`)) throw new Error(`Namen nicht verlinkt: ${html}`);
+        if ((html.match(/data-spieler-link/g) || []).length !== 1) throw new Error("Ein Name mitten im Wort wird verlinkt");
+    });
+
     test("Kaderregeln: im Verein ausgebildet - acht Plätze, höchstens vier nur aus dem Land", () => {
         const { KaderregelEngine: K } = require('./js/engine/kaderregelEngine.js');
         const state = GameState.createNewGame("muc", "normal", { name: "Meldung" });

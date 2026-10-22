@@ -717,62 +717,76 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 ctx.restore();
             });
 
-            // 5. Namen aller Spieler unter den Punkten - wie im Vorbild. Der
-            //    Ballführende bekommt zusätzlich sein Schild.
-            if (anzeige.namen) {
-                const kleinFont = `600 ${Math.round(radius * 0.7)}px 'Inter', system-ui, sans-serif`;
-                ctx.font = kleinFont;
-                ctx.lineJoin = "round";
-                players.forEach(p => {
-                    if (liveMatch.activePlayerId === p.id) return;
-                    const lastName = p.name ? p.name.split(" ").pop() : "";
-                    if (!lastName) return;
-                    const px = toX(p.x);
-                    const py = toY(p.y) + radius * 1.72;
-                    if (px < -60 || px > canvas.width + 60 || py < -60 || py > canvas.height + 60) return;
-                    ctx.strokeStyle = "rgba(6, 10, 14, 0.85)";
-                    ctx.lineWidth = Math.max(2, radius * 0.32);
-                    ctx.strokeText(lastName, px, py);
-                    ctx.fillStyle = "rgba(241, 245, 249, 0.92)";
-                    ctx.fillText(lastName, px, py);
-                });
-            }
-
-            // Namensschilder: nur der Ballführende und die nächsten Spieler,
-            // sonst überlagern sich die Schilder im Getümmel.
-            const nearBall = players
-                .filter(p => liveMatch.activePlayerId === p.id || Math.hypot(p.x - ball.x, p.y - ball.y) < 20)
-                .sort((a, b) => {
-                    if (liveMatch.activePlayerId === a.id) return -1;
-                    if (liveMatch.activePlayerId === b.id) return 1;
-                    return Math.hypot(a.x - ball.x, a.y - ball.y) - Math.hypot(b.x - ball.x, b.y - ball.y);
-                })
-                .slice(0, anzeige.namen ? 1 : 5);
-
-            nearBall.forEach(p => {
+            // 5. Namen unter den Punkten - wie im Vorbild. Im Getümmel lagen sie
+            //    übereinander und waren nicht zu lesen. Jetzt bekommt jeder
+            //    Name einen freien Platz: zuerst das Schild des Ballführenden,
+            //    dann nach Nähe zum Ball, unter dem Punkt oder darüber. Findet
+            //    ein Name keinen Platz, bleibt er weg. Der Platz vom letzten
+            //    Bild wird bevorzugt, damit nichts hin und her springt.
+            const belegt = [];
+            const frei = (k) => k.x1 > -60 && k.x2 < canvas.width + 60 && k.y1 > -60 && k.y2 < canvas.height + 60
+                && !belegt.some(b => k.x1 < b.x2 && k.x2 > b.x1 && k.y1 < b.y2 && k.y2 > b.y1);
+            const kasten = (px, mitteY, breite, hoehe) => ({ x1: px - breite / 2, x2: px + breite / 2, y1: mitteY - hoehe / 2, y2: mitteY + hoehe / 2, y: mitteY });
+            const plaetze = this._namenPlatz || (this._namenPlatz = new Map());
+            const nachBall = (a, b) => Math.hypot(a.x - ball.x, a.y - ball.y) - Math.hypot(b.x - ball.x, b.y - ball.y);
+            const padX = radius * 0.42;
+            const pillH = radius * 1.06;
+            const schild = (p, k) => {
                 const lastName = p.name ? p.name.split(" ").pop() : "";
-                if (!lastName) return;
-
-                const px = toX(p.x);
-                const py = toY(p.y);
-                const textWidth = this.measureCached(ctx, lastName, nameFont);
-                const padX = radius * 0.42;
-                const pillH = radius * 1.06;
-                const pillY = py + radius * 1.15;
-
                 ctx.fillStyle = "rgba(12, 16, 22, 0.82)";
                 ctx.beginPath();
-                if (ctx.roundRect) {
-                    ctx.roundRect(px - textWidth / 2 - padX, pillY, textWidth + padX * 2, pillH, pillH / 2);
-                } else {
-                    ctx.rect(px - textWidth / 2 - padX, pillY, textWidth + padX * 2, pillH);
-                }
+                if (ctx.roundRect) ctx.roundRect(k.x1, k.y1, k.x2 - k.x1, pillH, pillH / 2);
+                else ctx.rect(k.x1, k.y1, k.x2 - k.x1, pillH);
                 ctx.fill();
-
                 ctx.fillStyle = "#f1f5f9";
                 ctx.font = nameFont;
-                ctx.fillText(lastName, px, pillY + pillH / 2);
-            });
+                ctx.fillText(lastName, (k.x1 + k.x2) / 2, k.y);
+            };
+            const schildKasten = (p, oben = false) => {
+                const lastName = p.name ? p.name.split(" ").pop() : "";
+                if (!lastName) return null;
+                const breite = this.measureCached(ctx, lastName, nameFont) + padX * 2;
+                const py = toY(p.y);
+                return kasten(toX(p.x), oben ? py - radius * 1.15 - pillH / 2 : py + radius * 1.15 + pillH / 2, breite, pillH);
+            };
+            const aktiver = players.find(p => liveMatch.activePlayerId === p.id);
+            const aktivKasten = aktiver ? schildKasten(aktiver) : null;
+            if (aktivKasten) belegt.push(aktivKasten);
+
+            if (anzeige.namen) {
+                const kleinFont = `600 ${Math.round(radius * 0.7)}px 'Inter', system-ui, sans-serif`;
+                const hoehe = radius * 0.95;
+                ctx.font = kleinFont;
+                ctx.lineJoin = "round";
+                players.filter(p => p !== aktiver).sort(nachBall).forEach(p => {
+                    const lastName = p.name ? p.name.split(" ").pop() : "";
+                    if (!lastName) return;
+                    const px = toX(p.x), py = toY(p.y);
+                    const breite = this.measureCached(ctx, lastName, kleinFont) + 4;
+                    const unten = kasten(px, py + radius * 1.72, breite, hoehe);
+                    const oben = kasten(px, py - radius * 1.72, breite, hoehe);
+                    const k = (plaetze.get(p.id) === "oben" ? [oben, unten] : [unten, oben]).find(frei);
+                    if (!k) { plaetze.delete(p.id); return; }
+                    plaetze.set(p.id, k === oben ? "oben" : "unten");
+                    belegt.push(k);
+                    ctx.font = kleinFont;
+                    ctx.strokeStyle = "rgba(6, 10, 14, 0.85)";
+                    ctx.lineWidth = Math.max(2, radius * 0.32);
+                    ctx.strokeText(lastName, px, k.y);
+                    ctx.fillStyle = "rgba(241, 245, 249, 0.92)";
+                    ctx.fillText(lastName, px, k.y);
+                });
+            } else {
+                // Ohne Namen: Schilder für die Spieler am Ball, höchstens vier,
+                // und nur, wo sie sich nicht überdecken
+                players.filter(p => p !== aktiver && Math.hypot(p.x - ball.x, p.y - ball.y) < 20).sort(nachBall).slice(0, 4).forEach(p => {
+                    const k = [schildKasten(p), schildKasten(p, true)].find(x => x && frei(x));
+                    if (!k) return;
+                    belegt.push(k);
+                    schild(p, k);
+                });
+            }
+            if (aktivKasten) schild(aktiver, aktivKasten);
 
             // 6. Ball mit Flughöhe
             const bx = toX(ball.x);

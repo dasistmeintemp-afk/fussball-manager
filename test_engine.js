@@ -14488,6 +14488,46 @@ function runEngineTests() {
         if (ui.angebotVon("4711") !== state.transferMarket.offers[0]) throw new Error("Das Angebot wird über seine Kennung nicht gefunden");
     });
 
+    test("Kaderliste: sortieren nach Vertrag und mehr, Richtung, Schnellfilter, Ansichten mit Spalten", () => {
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Kader" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        ui._kaderWahl = { ansicht: "uebersicht", sorte: "pos", ab: null, filter: "alle", pos: "all" };
+        const reihe = (teil, pos = "all") => { Object.assign(ui._kaderWahl, teil); return ui.kaderZeilen(state, club, pos).map(z => z.p); };
+        const steigt = (liste, f) => liste.every((p, i) => i === 0 || f(liste[i - 1]) <= f(p));
+        // Vertragsende: kürzeste zuerst, umgekehrt die längsten
+        const kader = state.players.filter(p => p.clubId === "muc");
+        kader.forEach((p, i) => { p.contractYears = 1 + (i % 4); });
+        const vertrag = reihe({ sorte: "vertrag", ab: null });
+        if (vertrag.length !== kader.length || !steigt(vertrag, p => p.contractYears)) throw new Error(`Nicht nach Vertrag sortiert: ${vertrag.map(p => p.contractYears)}`);
+        if (!steigt(reihe({ ab: true }).reverse(), p => p.contractYears)) throw new Error("Die Richtung dreht nicht um");
+        // Zahlen absteigend, Alter und Name aufsteigend, Position nach Mannschaftsteil
+        if (!steigt(reihe({ sorte: "gehalt", ab: null }).reverse(), p => p.wage)) throw new Error("Gehalt nicht absteigend");
+        if (!steigt(reihe({ sorte: "alter", ab: null }), p => p.age)) throw new Error("Alter nicht aufsteigend");
+        const namen = reihe({ sorte: "name", ab: null }).map(p => p.name);
+        if (namen.join() !== [...namen].sort((a, b) => a.localeCompare(b, "de")).join()) throw new Error("Name nicht alphabetisch");
+        const pos = reihe({ sorte: "pos", ab: null }).map(p => ui.KADER_POSITIONEN.indexOf(p.pos));
+        if (!steigt(pos, x => x)) throw new Error("Position nicht in Reihenfolge TW bis ST");
+        // Jede Sortierung liefert eine Zahl oder einen Text, auch ohne Spiele
+        Object.keys(ui.KADER_SORTEN).forEach(k => { if (reihe({ sorte: k, ab: null }).length !== kader.length) throw new Error(`Sortierung ${k} verliert Spieler`); });
+        // Schnellfilter und Position
+        const auslaufend = reihe({ sorte: "pos", filter: "auslaufend" });
+        if (!auslaufend.length || auslaufend.some(p => p.contractYears > 1)) throw new Error("Vertrag läuft aus zeigt die Falschen");
+        kader[0].injuredWeeks = 2;
+        if (reihe({ filter: "ausfall" }).map(p => p.id).join() !== String(kader[0].id)) throw new Error("Ausfälle falsch");
+        if (reihe({ filter: "jung" }).some(p => p.age > 21)) throw new Error("U21 zeigt Ältere");
+        if (reihe({ filter: "alle" }, "DEF").some(p => !["IV", "LV", "RV"].includes(p.pos))) throw new Error("Positionsfilter wirkt nicht");
+        // Jede Ansicht hat nur Spalten, die es gibt, und jede sortierbare Spalte einen Schlüssel
+        Object.entries(ui.KADER_ANSICHTEN).forEach(([k, a]) => a.spalten.forEach(sp => {
+            const s = ui.kaderSpalte(sp);
+            if (!s || typeof s.zelle !== "function") throw new Error(`Ansicht ${k}: Spalte ${sp} fehlt`);
+            if (s.sorte && !ui.KADER_SORTEN[s.sorte]) throw new Error(`Spalte ${sp} sortiert nach Unbekanntem`);
+        }));
+        if (!ui.KADER_ANSICHTEN.vertrag.spalten.includes("vertragBis") || !ui.KADER_ANSICHTEN.leistung.spalten.includes("tore")) throw new Error("Vertrag oder Leistung ohne ihre Spalten");
+    });
+
     test("Kaderregeln: im Verein ausgebildet - acht Plätze, höchstens vier nur aus dem Land", () => {
         const { KaderregelEngine: K } = require('./js/engine/kaderregelEngine.js');
         const state = GameState.createNewGame("muc", "normal", { name: "Meldung" });

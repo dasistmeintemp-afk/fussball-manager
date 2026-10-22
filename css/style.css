@@ -7088,12 +7088,14 @@ td.nowrap { white-space: nowrap; }
 }
 #pane-squad .filter-group .filter-btn { flex: none; }
 
+/* In der Übersicht weichen Gehalt, Moral und Rolle bei mittlerer Breite -
+   die Ansichten Vertrag, Leistung und Fitness zeigen sie, wo sie hingehören */
 @media (max-width: 1500px) {
-    #pane-squad .sq-gehalt,
-    #pane-squad .sq-moral { display: none; }
+    #squadTable[data-ansicht="uebersicht"] .sq-gehalt,
+    #squadTable[data-ansicht="uebersicht"] .sq-moral { display: none; }
 }
 @media (max-width: 1200px) {
-    #pane-squad .sq-rolle { display: none; }
+    #squadTable[data-ansicht="uebersicht"] .sq-rolle { display: none; }
 }
 
 /* Handy: jede Zeile eine Karte - Position, Name, Status, Sterne, Fitness,

@@ -609,10 +609,20 @@ In der Spielerakte führt der Manager Gespräche mit jedem eigenen Spieler. Wie 
 
   Jeder Bericht zeigt, wie verlässlich er ist. Die Empfehlung folgt der Schätzung des Scouts, nicht den wahren Werten. Ein guter Scout bringt von einem Auftrag bis zu vier Berichte mit und hält sich an die verlangte Mindeststärke, ein schwacher liegt dabei auch mal daneben.
 - **KI-Manager (`AIManagerEngine`):** KI-Vereine optimieren vor jedem Spieltag ihre Aufstellung und unterbreiten Angebote für deine Stars.
-- **Angebote für eigene Spieler – nicht zu übersehen:** Ein neues Angebot öffnet nach dem Weiterklicken ein eigenes Fenster und steht oben auf dem Schreibtisch. Im Transfermarkt erscheint es als Karte mit Frist, Verhältnis zum Marktwert und drei Antworten:
+- **Angebote für eigene Spieler – nicht zu übersehen:** Ein neues Angebot springt nach dem Weiterklicken auf seine eigene Seite und steht oben auf dem Schreibtisch. Im Transfermarkt erscheint es als Karte mit Frist, Verhältnis zum Marktwert und den Knöpfen *Annehmen*, *Zum Angebot* und *Ablehnen*:
   - **Annehmen:** Der Spieler wechselt sofort.
-  - **Mehr fordern:** Einmal möglich. Der Käufer geht mit, bessert bis zu seiner Grenze nach oder zieht bei einer maßlosen Forderung zurück.
+  - **Mehr fordern:** Einmal möglich, auf der Seite des Angebots. Der Käufer geht mit, bessert bis zu seiner Grenze nach oder zieht bei einer maßlosen Forderung zurück.
   - **Ablehnen.**
+- **Das Transferangebot als eigene Seite wie im Vorbild (`uiAngebot.js`):** Vorher kam ein Angebot als kleines Fenster mit der Karte aus dem Transfermarkt. Jetzt hat es eine eigene Seite wie das Spielerprofil, mit Zurück über den Verlauf (`uiSeiten.js`).
+  - **Wege dorthin:** beim Eingang nach *Weiter*, *Zum Angebot* im Postfach, der Punkt auf dem Schreibtisch, *Ansehen* in der Meldung beim Anhalten und *Zum Angebot* auf der Karte im Transfermarkt. Von dort steht der Cursor gleich im Feld für die Forderung.
+  - **Kopf:** der Käufer mit Wappen, der Spieler (ein Tipp öffnet sein Profil), die Ablöse in groß mit dem Verhältnis zum Marktwert und die Frist (*Antwort erwartet · bis 25.08. · noch 4 Tage*, zwei Tage vorher *Dringend*).
+  - **Das Angebot:** Ablöse, Marktwert mit Balken (die Marke steht bei 100 %), Zahlweise mit Raten, das Gehalt beim Käufer neben dem heutigen und die Weiterverkaufsbeteiligung.
+  - **Der Spieler:** Nummer, Position, Alter, Sterne, Rolle, Vertragsende und Saison. Darunter steht, wer auf seiner Position bleibt (die drei Besten des Mannschaftsteils, gleiche Position zuerst). Steht dort niemand mehr, sagt die Seite das.
+  - **Was der Verkauf bringt:** Kasse und Transferbudget vorher und nachher (85 % des sofort fälligen Erlöses), bei Raten die Anzahlung und die Monatsraten, dazu das frei werdende Gehalt. Wer die Weiterverkaufsbeteiligung wählt, sieht die Zahlen gleich mit der kleineren Ablöse.
+  - **Der Käufer:** Liga, Tabellenplatz, Ruf neben dem eigenen und ein Knopf zur Vereinsseite.
+  - **Ihre Entscheidung:** Forderung mit Schnellwahl (+10, +20, +30 %), *Annehmen* mit dem Betrag, *Mehr fordern*, *Ablehnen*, *Später entscheiden*.
+  - **Danach** bleibt die Seite offen und zeigt den Ausgang: *Angenommen*, *Abgelehnt*, *Verfallen* oder *Zurückgezogen*. Hat der Käufer nachgebessert, steht seine Antwort oben.
+  - **Weitere offene Angebote** stehen unten und führen jeweils auf ihre Seite.
 
   Ein Angebot gilt vier Tage. Wer nicht antwortet, hat abgelehnt.
 - **Angebote für eigene Spieler** kommen nur noch auf einem Weg: mit Frist, verdeckter Obergrenze und Zahlweise. Ein zweiter, älterer Weg legte Angebote ohne Frist ab, bei denen man nicht mehr fordern konnte. Solche Angebote aus alten Spielständen bekommen beim Laden die übliche Frist. Wer an einen KI-Verein verkauft wird, verdient dort ein Fünftel mehr als bisher, mit einer Laufzeit nach Alter. Vorher bekam jeder pauschal 50.000 € pro Woche.
@@ -943,7 +953,7 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
   - **Eindeutige Kennungen:** Kamen zwei Angebote in derselben Millisekunde, trugen sie dieselbe Kennung, und *Annehmen* traf womöglich das andere. Jetzt hat jedes Angebot seine eigene, und die Nachricht kennt Angebot und Spieler. Nachrichten älterer Spielstände ohne Kennung finden ihr Angebot über Betreff und Absender.
 - **Kopfleiste:** Am breiten Bildschirm bleibt alles einzeilig. Der Weiter-Knopf nennt oben, wann es weitergeht („Weiter · in 9 Tagen“), darunter wohin („Spiel bei Blau-Weiß Gelsenkirchen“), und kürzt bei Bedarf. Bis 1500 px Breite fällt der Schwierigkeitsgrad weg, bis 1280 px auch „Saison 1“ und die Beschriftung „Vorstand“.
 - **Kleinigkeiten überall:** Dreibuchstabige Wappen passen in den Kreis. In der Formkurve sind noch nicht gespielte Partien leere Plätze statt Bindestriche. Ab einer Milliarde heißt es „1,09 Mrd. €“. Lange Wörter trennen an der Silbe (`hyphens: auto`). Im Kalender steht vor einem Termin nur noch ein Symbol, nicht Symbol und Emoji. Der Trainingsbericht zeigt die Einschätzung als Etikett („Pause nötig“, „Schonen“, „Praxis fehlt“), den ganzen Satz beim Darüberfahren. Die Kennzahlen im Kader stehen am Handy zu dritt in einer Reihe, der Sternemaßstab als Zeile darunter.
-- **Anhalten mit Knöpfen (`CalendarEngine.unterbrechung`, `zeigeAnlass`):** Hält der Weiter-Knopf unterwegs an (Angebot, Neues in einer Verhandlung, Verletzung im Training, wichtige Post), nennt die Meldung den Anlass und hat zwei Knöpfe: *Ansehen* springt dorthin (Verhandlungskarte, Angebote im Transfermarkt, Akte des Verletzten, die Nachricht im Postfach), *Weiter* spielt weiter. Ein Tipp auf die Meldung selbst wirkt wie *Ansehen*. Vorher hieß es „Weiter geht es mit dem nächsten Klick“, und ein Tipp auf die Meldung tat nichts. Öffnet sich für den Anlass ohnehin ein Fenster (ein neues Angebot), bleibt die Meldung weg.
+- **Anhalten mit Knöpfen (`CalendarEngine.unterbrechung`, `zeigeAnlass`):** Hält der Weiter-Knopf unterwegs an (Angebot, Neues in einer Verhandlung, Verletzung im Training, wichtige Post), nennt die Meldung den Anlass und hat zwei Knöpfe: *Ansehen* springt dorthin (Verhandlungskarte, die Seite des Angebots, Akte des Verletzten, die Nachricht im Postfach), *Weiter* spielt weiter. Ein Tipp auf die Meldung selbst wirkt wie *Ansehen*. Vorher hieß es „Weiter geht es mit dem nächsten Klick“, und ein Tipp auf die Meldung tat nichts. Springt die Ansicht für den Anlass ohnehin auf eine Seite (ein neues Angebot), bleibt die Meldung weg.
 - **Ruhigere Optik:** Überschriften tragen Liniensymbole aus dem Symbolsatz des Spiels statt Emojis (22 Stellen). Der Weiter-Knopf und die Hauptknöpfe leuchten nicht mehr. In Tabellen sind Hauptknöpfe wie *Verhandeln* Umrisse und füllen sich erst in der Zeile unter dem Zeiger. Vorher standen im Transfermarkt dreißig leuchtend grüne Knöpfe untereinander. Zahlen in Tabellen und Kacheln haben gleich breite Ziffern.
 - **Bedienung wie im Vorbild (`uiNavigation.js`):**
   - **Unterreiter:** Lange Reiter zeigen ihre Karten in Unterreitern unter dem Titel statt untereinander. Verein: Übersicht, Anlagen, Trainer, Vision & Partner, Chronik. Kader: Spieler, Unterbau, Kabine, Planung, Meldeliste. Training: Training, Trainingslager, Bericht, Individuell. Jugend: Akademie, U19, U23, Verliehen. Finanzen: Übersicht, Journal. Statistik: Ranglisten, Datenzentrale, Auszeichnungen, Fünfjahreswertung, Gerüchte & Trainer. Vorbereitung: Überblick, Trainerstab, Sponsoren, Testspiele. Der zuletzt gewählte bleibt gemerkt, leere blenden aus, und der Schreibtisch springt direkt in den passenden.
@@ -1228,7 +1238,9 @@ untitled/
 │   │   ├── uiVorbereitung.js   # Vorbereitung: Stab, Sponsoren, Testspiele, Turniere
 │   │   ├── uiTransfers.js      # Verhandlungen, Leihen, U23, Transfermarkt, Scoutberichte
 │   │   ├── uiAkten.js          # Spieler- und Vereinsakte: Reiter, Werte, Vertrag
-│   │   ├── uiProfil.js         # Spielerprofil als eigene Seite: Kopf, Übersicht, Kacheln, Verlauf
+│   │   ├── uiSeiten.js         # Eigene Seiten im Inhaltsbereich: zeigen, ablösen, Zurück über den Verlauf
+│   │   ├── uiProfil.js         # Spielerprofil als eigene Seite: Kopf, Übersicht, Kacheln
+│   │   ├── uiAngebot.js        # Transferangebot als eigene Seite: Angebot, Folgen, Käufer, Entscheidung
 │   │   ├── uiLivespiel.js      # Match-Center, Zurufe, Seitenlinie während der Partie
 │   │   ├── uiSpielbericht.js   # Spielbericht mit Schusskarte, Heatmaps und Passnetz
 │   │   ├── uiSpeicher.js       # Speicherplätze, Sicherungen, Laden, Löschen, Import

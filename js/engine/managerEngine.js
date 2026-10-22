@@ -1212,6 +1212,7 @@ class ManagerEngine {
                 priority: 0,
                 icon: "💰",
                 tab: "transfers",
+                offerId: o.id,
                 title: `Angebot für ${o.playerName}: ${o.fromClubName || "ein Verein"}`,
                 detail: `${_mgrGeld(o.fee)} Ablöse`
                     + (o.playerValue ? ` · Marktwert ${_mgrGeld(o.playerValue)}` : "")

@@ -5,10 +5,9 @@
  * verhalten sich genau so, als stünden sie in der Klasse.
  *
  * Die Akte war ein Fenster über dem Reiter. Jetzt ist sie eine Seite im
- * Inhaltsbereich: Kopfleiste, Navigation und Weiter bleiben, Zurück (der
- * Knopf auf der Seite, der in der Kopfleiste, Alt+←, Escape, die Zurück-Taste
- * am Handy) führt dorthin, wo man herkam - von einem Profil zum nächsten
- * auch zum vorigen Profil.
+ * Inhaltsbereich (uiSeiten.js): Kopfleiste, Navigation und Weiter bleiben,
+ * Zurück führt dorthin, wo man herkam - von einem Profil zum nächsten auch
+ * zum vorigen Profil.
  *
  *   Kopf      - Rückennummer, Name, Position, Nation, Alter, Verein, Status,
  *               Marktwert, Gehalt, Vertragsende, Sterne für Stärke und
@@ -26,117 +25,6 @@
 
 Object.assign(((typeof window !== "undefined" && window.UIManager)
     || require("./uiManager.js").UIManager).prototype, {
-
-    // ------------------------------------------------------------ Seite
-
-    /** Fenster, die über allem bleiben: das laufende Spiel, der Karriere-Assistent, der Saisonabschluss */
-    SEITE_GESCHUETZT: ["modalLiveMatch", "modalNewGame", "modalSeasonEnd"],
-
-    akteOffen() {
-        const seite = typeof document !== "undefined" && document.getElementById ? document.getElementById("modalPlayerDetails") : null;
-        return !!seite && !!seite.style && !!seite.style.display && seite.style.display !== "none";
-    },
-
-    /**
-     * Die Seite zeigen. Für einen neuen Spieler: offene Fenster schließen (die
-     * Seite liegt nicht über ihnen), den Reiter darunter zurücktreten lassen,
-     * oben beginnen und einen Eintrag im Verlauf anlegen. Zeichnet die Akte
-     * denselben Spieler neu (nach einer Aktion), bleibt alles, wie es ist.
-     */
-    zeigeAkteSeite(playerId) {
-        if (typeof document === "undefined" || !document.getElementById) return;
-        const seite = document.getElementById("modalPlayerDetails");
-        if (!seite) return;
-        const bereich = document.getElementById("contentArea");
-        const offen = this.akteOffen();
-        const neu = !offen || String(this._akteSeiteId) !== String(playerId);
-        if (neu && typeof document.querySelectorAll === "function") {
-            document.querySelectorAll(".modal-overlay").forEach(m => {
-                if (m.style.display && m.style.display !== "none" && !this.SEITE_GESCHUETZT.includes(m.id)) m.style.display = "none";
-            });
-            this.schliesseKontextmenue?.();
-        }
-        if (!offen) {
-            this._akteRueckweg = { bereich: bereich ? bereich.scrollTop : 0, fenster: typeof window !== "undefined" ? (window.scrollY || 0) : 0 };
-        }
-        this._akteSeiteId = playerId;
-        this._akteState = this.app?.state || null;
-        seite.style.display = "block";
-        if (bereich && bereich.classList) bereich.classList.add("seite-offen");
-        this._beobachteAkteSeite(seite, bereich);
-        if (neu) {
-            if (bereich) bereich.scrollTop = 0;
-            if (typeof window !== "undefined" && typeof window.scrollTo === "function") window.scrollTo(0, 0);
-            this.merkeAkteVerlauf(playerId);
-        }
-    },
-
-    /**
-     * Wer die Seite auf anderem Weg schließt (style.display = "none", etwa vor
-     * einer Verhandlung), bringt den Reiter darunter trotzdem zurück.
-     */
-    _beobachteAkteSeite(seite, bereich) {
-        if (this._akteBeobachter || typeof MutationObserver === "undefined") return;
-        this._akteBeobachter = new MutationObserver(() => {
-            if (seite.style.display && seite.style.display !== "none") return;
-            this._nachAkteZu(bereich);
-        });
-        this._akteBeobachter.observe(seite, { attributes: true, attributeFilter: ["style"] });
-    },
-
-    _nachAkteZu(bereich = document.getElementById("contentArea")) {
-        if (!bereich || !bereich.classList || !bereich.classList.contains("seite-offen")) return;
-        bereich.classList.remove("seite-offen");
-        this._akteSeiteId = null;
-        const weg = this._akteRueckweg;
-        this._akteRueckweg = null;
-        if (weg) {
-            bereich.scrollTop = weg.bereich || 0;
-            if (typeof window !== "undefined" && typeof window.scrollTo === "function") window.scrollTo(0, weg.fenster || 0);
-        }
-    },
-
-    /** Seite schließen, ohne den Verlauf anzufassen */
-    schliesseAkte() {
-        if (typeof document === "undefined" || !document.getElementById) return false;
-        const seite = document.getElementById("modalPlayerDetails");
-        if (!seite || !this.akteOffen()) return false;
-        seite.style.display = "none";
-        this._nachAkteZu();
-        return true;
-    },
-
-    /** Zurück von der Seite: über den Verlauf, wenn sie dort steht - sonst einfach zu */
-    akteZurueck() {
-        const stand = typeof history !== "undefined" ? history.state : null;
-        if (stand && stand.vkAkte !== undefined && stand.vkAkte !== null && (this._verlaufTiefe || 0) > 0) {
-            history.back();
-            return;
-        }
-        this.schliesseAkte();
-    },
-
-    /** Ein Profil ist ein Eintrag im Verlauf: Zurück führt zum vorigen Profil oder zum Reiter */
-    merkeAkteVerlauf(playerId) {
-        if (this._ausVerlauf || !this.app?.state || typeof history === "undefined" || typeof history.pushState !== "function") return;
-        const stand = typeof this._verlaufStand === "function" ? this._verlaufStand() : { vkTab: this.activeTab };
-        stand.vkAkte = playerId;
-        try {
-            history.pushState(stand, "");
-            this._verlaufTiefe = (this._verlaufTiefe || 0) + 1;
-        } catch (e) { /* ohne Verlauf geht es auch */ }
-        this.aktualisiereZurueck?.();
-    },
-
-    /** Nach einem neuen Spieltag oder einer Aktion woanders: die offene Seite neu zeichnen */
-    aktualisiereAkte() {
-        if (!this.akteOffen() || this._akteSeiteId === null || this._akteSeiteId === undefined || this._akteZeichnet) return;
-        if (this._akteState !== this.app?.state || !this.findAnyPlayer(this._akteSeiteId)) {
-            this.schliesseAkte();
-            return;
-        }
-        this.showPlayerDetailsModal(this._akteSeiteId);
-    },
 
     // ------------------------------------------------------------ Kopf
 

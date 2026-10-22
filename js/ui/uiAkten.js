@@ -1020,13 +1020,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             </section>` : ""}
         `;
 
-        this._akteZeichnet = true;
+        this._seiteZeichnet = true;
         try {
             this.zeichneProfilKopf(profilCtx);
             this.zeigeAkteSeite(player.id);
             this.zeichneProfilAktionen(profilCtx, body);
         } finally {
-            this._akteZeichnet = false;
+            this._seiteZeichnet = false;
         }
         this.playSound("click");
 

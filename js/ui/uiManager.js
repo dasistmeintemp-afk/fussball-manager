@@ -638,8 +638,8 @@ class UIManager {
             if (bar) bar.style.display = "none";
         }
 
-        // Ein Reiter löst die Spielerseite ab
-        if (typeof this.schliesseAkte === "function") this.schliesseAkte();
+        // Ein Reiter löst eine offene Seite ab (Profil, Angebot)
+        if (typeof this.schliesseSeite === "function") this.schliesseSeite();
         this.activeTab = tabId;
         // Erste Schritte: Wer einen Bereich besucht hat, hat den Schritt getan
         this.einstiegMerkeTab(tabId);
@@ -714,8 +714,8 @@ class UIManager {
         }
         // Unterreiter ohne Inhalt (etwa Preise vor dem ersten Saisonende) blenden aus
         if (typeof this.pruefeUnterreiter === "function") this.pruefeUnterreiter(`pane-${this.activeTab}`);
-        // Liegt die Spielerseite darüber (nach Weiter oder einer Aktion), zeigt sie den neuen Stand
-        if (typeof this.aktualisiereAkte === "function") this.aktualisiereAkte();
+        // Liegt eine Seite darüber (nach Weiter oder einer Aktion), zeigt sie den neuen Stand
+        if (typeof this.aktualisiereSeite === "function") this.aktualisiereSeite();
         // Beim ersten Besuch erklärt sich der Bereich selbst
         this.zeigeEinstiegErklaerung(this.activeTab);
     }
@@ -789,7 +789,7 @@ class UIManager {
         }
 
         const knopf = item => `
-            <button class="attention-item" data-tab="${this.escapeHtml(item.tab)}"${item.playerId !== undefined ? ` data-player="${this.escapeHtml(String(item.playerId))}"` : ""}${item.negId ? ` data-neg="${this.escapeHtml(String(item.negId))}"` : ""}${item.unterreiter ? ` data-sub="${this.escapeHtml(item.unterreiter)}"` : ""}>
+            <button class="attention-item" data-tab="${this.escapeHtml(item.tab)}"${item.playerId !== undefined ? ` data-player="${this.escapeHtml(String(item.playerId))}"` : ""}${item.negId ? ` data-neg="${this.escapeHtml(String(item.negId))}"` : ""}${item.offerId !== undefined ? ` data-angebot="${this.escapeHtml(String(item.offerId))}"` : ""}${item.unterreiter ? ` data-sub="${this.escapeHtml(item.unterreiter)}"` : ""}>
                 <span class="attention-icon ton-${({ "🚑": "bad", "⚠️": "bad", "🩺": "bad", "📢": "bad", "🥵": "warn", "😞": "warn", "💰": "warn", "💬": "warn", "🎓": "warn", "⭐": "ok", "🤝": "ok" })[item.icon] || "info"}">${this.symbolHtml(item.icon)}</span>
                 <span class="attention-text">
                     <strong>${this.escapeHtml(item.title)}</strong>
@@ -809,8 +809,9 @@ class UIManager {
 
         list.querySelectorAll(".attention-item").forEach(btn => {
             btn.addEventListener("click", () => {
-                // Eine Verhandlung führt direkt zu ihrer Karte
+                // Eine Verhandlung führt direkt zu ihrer Karte, ein Angebot auf seine Seite
                 if (btn.dataset.neg) return this.zeigeVerhandlung(btn.dataset.neg);
+                if (btn.dataset.angebot !== undefined && typeof this.zeigeAngebotSeite === "function") return this.zeigeAngebotSeite(btn.dataset.angebot);
                 // Ein Gespräch führt direkt in die Akte des Spielers
                 if (btn.dataset.player !== undefined) {
                     const ziel = state.players.find(p => String(p.id) === btn.dataset.player);
@@ -1847,17 +1848,18 @@ class UIManager {
                 </label>
                 <div class="ak-knoepfe">
                     <button class="btn btn-sm btn-primary btn-accept-offer" data-offer-id="${o.id}">Annehmen</button>
-                    <button class="btn btn-sm btn-secondary btn-more-offer" data-offer-id="${o.id}"${o.nachgebessert ? " disabled title=\"Der Verein hat schon nachgebessert\"" : ""}>Mehr fordern</button>
+                    <button class="btn btn-sm btn-secondary btn-more-offer" data-offer-id="${o.id}" title="Zur Seite des Angebots: Folgen, Käufer, Mehr fordern">Zum Angebot</button>
                     <button class="btn btn-sm btn-secondary btn-reject-offer" data-offer-id="${o.id}">Ablehnen</button>
                 </div>
             </article>`;
     }
 
-    /** Angebot annehmen - der Spieler wechselt sofort */
-    nimmAngebotAn(offerId) {
+    /** Angebot annehmen - der Spieler wechselt sofort. Ohne Angabe gilt die Wahl auf der Karte im Transfermarkt */
+    nimmAngebotAn(offerId, weiterverkauf = null) {
         const state = this.app.state;
-        const wahl = document.querySelector(`[data-wv-offer="${offerId}"]`);
-        const r = TransferEngine.nimmAngebotAn(state, offerId, { weiterverkauf: parseInt(wahl?.value || "0", 10) });
+        const wahl = weiterverkauf === null ? document.querySelector(`#aiOffersContainer [data-wv-offer="${offerId}"]`) : null;
+        const prozent = weiterverkauf !== null ? weiterverkauf : parseInt(wahl?.value || "0", 10);
+        const r = TransferEngine.nimmAngebotAn(state, offerId, { weiterverkauf: prozent });
         if (!r.ok) { this.showToast(r.grund || "Das Angebot liegt nicht mehr vor.", "error"); return false; }
         this.playSound("erfolg");
         this.showToast(`✅ ${r.offer.playerName} wechselt für ${this.geldKurz(r.offer.fee)} zu ${r.offer.fromClubName}.`, "success", 6000);
@@ -1880,69 +1882,9 @@ class UIManager {
     }
 
     /**
-     * Ein Angebot im Dialog: beim Eingang oder wenn man mehr fordern will.
-     * Mehr fordern geht einmal - der Käufer geht mit, bessert bis zu seiner
-     * Grenze nach oder zieht zurück, wenn es maßlos wird.
-     */
-    zeigeAngebotDialog(offerId, fordern = false) {
-        const state = this.app.state;
-        const o = (state.transferMarket?.offers || []).find(x => String(x.id) === String(offerId));
-        if (!o || o.status !== "pending") return;
-        const club = state.clubs.find(c => c.id === state.userClubId);
-        const esc = (t) => this.escapeHtml(String(t ?? ""));
-        const vorschlag = Math.round(o.fee * 1.2 / 50000) * 50000;
-        const kannFordern = !o.nachgebessert;
-
-        const html = `
-            <div class="angebot-dialog">${this.angebotKarteHtml(o, state, club).replace(/<div class="ak-knoepfe">[\s\S]*?<\/div>/, "")}</div>
-            ${kannFordern ? `<div class="verh-eingabe" style="margin-top:12px;">
-                <label>Ihre Forderung (Ablöse)
-                    <input type="number" id="angebotForderung" class="styled-input" min="0" step="50000" value="${vorschlag}">
-                </label>
-            </div>
-            <div class="verh-antwort" id="angebotAntwort">${fordern ? "Nachgebessert wird nur einmal. Wer zu viel verlangt, verliert das Angebot." : ""}</div>`
-            : `<div class="verh-antwort">${esc(o.fromClubName)} hat bereits nachgebessert - jetzt heißt es annehmen oder ablehnen.</div>`}`;
-
-        const knoepfe = [
-            { text: "Später entscheiden", klasse: "btn-secondary" },
-            { text: "Ablehnen", klasse: "btn-secondary", aktion: () => { this.lehneAngebotAb(o.id); } }
-        ];
-        if (kannFordern) {
-            knoepfe.push({
-                text: "Mehr fordern", klasse: "btn-secondary", aktion: () => {
-                    const betrag = Number(document.getElementById("angebotForderung")?.value) || 0;
-                    const r = TransferEngine.fordereMehr(state, o.id, betrag);
-                    if (r.status === "fehler") {
-                        const a = document.getElementById("angebotAntwort");
-                        if (a) a.innerHTML = `<span style="color:var(--accent-danger);">${esc(r.text)}</span>`;
-                        return false;
-                    }
-                    if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
-                    this.showToast(r.text, r.status === "zurueckgezogen" ? "warning" : "info", 6000);
-                    this.renderHeader();
-                    this.renderCurrentTab();
-                    // Wer mitgeht oder nachbessert, wartet auf die Antwort
-                    if (r.status !== "zurueckgezogen") setTimeout(() => this.zeigeAngebotDialog(o.id), 0);
-                }
-            });
-        }
-        knoepfe.push({ text: `Annehmen (${this.geldKurz(o.fee)})`, klasse: "btn-primary", aktion: () => { this.nimmAngebotAn(o.id); } });
-
-        this.zeigeEntscheidung({
-            titel: `💰 Angebot für ${o.playerName}`,
-            html,
-            knoepfe,
-            nachOeffnen: (inhalt) => {
-                const feld = inhalt.querySelector("#angebotForderung");
-                if (feld && fordern) feld.focus();
-            }
-        });
-    }
-
-    /**
-     * Neue Angebote melden sich selbst: Nach dem Weiterklicken geht für das
-     * erste noch nicht gemeldete Angebot ein Dialog auf - aber nur, wenn
-     * gerade kein anderes Fenster offen ist.
+     * Neue Angebote melden sich selbst: Nach dem Weiterklicken springt die
+     * Ansicht auf die Seite des ersten noch nicht gemeldeten Angebots
+     * (uiAngebot.js) - aber nur, wenn gerade kein Fenster offen ist.
      */
     pruefeNeueAngebote() {
         const state = this.app.state;
@@ -1952,9 +1894,9 @@ class UIManager {
         if (offen) return false;
         neu.forEach(o => { o.gemeldet = true; });
         this.playSound("click");
-        this.zeigeAngebotDialog(neu[0].id);
+        this.zeigeAngebotSeite(neu[0].id);
         if (neu.length > 1) {
-            this.showToast(`Dazu ${neu.length - 1} weitere${neu.length === 2 ? "s" : ""} Angebot${neu.length === 2 ? "" : "e"} - alle im Transfermarkt ganz oben.`, "info", 6000);
+            this.showToast(`Dazu ${neu.length - 1} weitere${neu.length === 2 ? "s" : ""} Angebot${neu.length === 2 ? "" : "e"} - unten auf der Seite und im Transfermarkt ganz oben.`, "info", 6000);
         }
         return true;
     }
@@ -3056,6 +2998,9 @@ class UIManager {
         const state = this.app.state;
         if (!anlass || !state) return;
         if (anlass.art === "verhandlung" && anlass.negId && typeof this.zeigeVerhandlung === "function" && this.zeigeVerhandlung(anlass.negId)) return;
+        if (anlass.art === "angebot" && anlass.offerId !== undefined && typeof this.zeigeAngebotSeite === "function" && this.angebotVon(anlass.offerId)) {
+            return this.zeigeAngebotSeite(anlass.offerId);
+        }
         if (anlass.art === "angebot") {
             this.switchTab("transfers");
             document.getElementById("btnSubTransfersMarket")?.click();
@@ -3849,6 +3794,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // Die ausgelagerten Teile hängen sich an die Klasse - im Browser lädt sie
     // index.html der Reihe nach, unter Node holen wir sie hier dazu
     ["./uiAssistent.js", "./uiKader.js", "./uiTaktik.js", "./uiWettbewerbe.js", "./uiTraining.js", "./uiFinanzen.js", "./uiVerein.js", "./uiPostfach.js", "./uiDialoge.js", "./uiKarriere.js",
-        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiProfil.js", "./uiLivespiel.js", "./uiSpielbericht.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
+        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiSeiten.js", "./uiProfil.js", "./uiAngebot.js", "./uiLivespiel.js", "./uiSpielbericht.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
         .forEach(teil => require(teil));
 }

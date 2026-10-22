@@ -653,9 +653,8 @@ class PlayerGenerator {
      * Fachsimpelei: Jeder versteht sofort, warum ein Linksfuß auf links
      * anders wirkt als ein Rechtsfuß.
      */
-    static rollFoot(pos) {
+    static rollFoot(pos, wurf = Math.random()) {
         const linksLastig = ["LV", "LM", "LA"].includes(pos);
-        const wurf = Math.random();
 
         if (wurf < 0.06) return "beidfüßig";
         if (linksLastig) return wurf < 0.62 ? "links" : "rechts";
@@ -853,6 +852,16 @@ class PlayerGenerator {
     }
 
     /** Feste Zahl zwischen -1 und +1 je Schlüssel (FNV-1a), ohne Zufall zu verbrauchen */
+    /**
+     * Der starke Fuß für einen Spieler, der keinen hat - fest aus seiner
+     * Kennung, ohne den Zufall zu verbrauchen. Den von Hand angelegten Kadern
+     * der deutschen ersten Liga fehlte er: Das Profil zeigte einen Strich, und
+     * die Regeln zum schwachen Fuß im Spiel griffen bei ihnen nicht.
+     */
+    static fussFuer(player) {
+        return this.rollFoot(player?.pos, (this._hashZahl(`${player?.id}|fuss`) + 1) / 2);
+    }
+
     static _hashZahl(text) {
         let h = 2166136261;
         const t = String(text);

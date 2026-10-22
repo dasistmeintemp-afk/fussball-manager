@@ -351,6 +351,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             try {
                 if (ziel.vkTab !== this.activeTab) this.switchTab(ziel.vkTab);
                 if (ziel.vkUr) this.zeigeUnterreiter(`pane-${ziel.vkTab}`, ziel.vkUr, { still: true });
+                // Die Spielerseite: zurück zum vorigen Profil oder zum Reiter darunter
+                if (ziel.vkAkte !== undefined && ziel.vkAkte !== null && this.findAnyPlayer?.(ziel.vkAkte)) this.showPlayerDetailsModal(ziel.vkAkte);
+                else this.schliesseAkte?.();
             } finally {
                 this._ausVerlauf = false;
             }
@@ -360,7 +363,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
     _verlaufStand() {
         const pane = typeof document !== "undefined" && document.getElementById ? document.getElementById(`pane-${this.activeTab}`) : null;
-        return { vkTab: this.activeTab, vkUr: (pane && pane.dataset && pane.dataset.urAktiv) || null };
+        const stand = { vkTab: this.activeTab, vkUr: (pane && pane.dataset && pane.dataset.urAktiv) || null };
+        if (typeof this.akteOffen === "function" && this.akteOffen() && this._akteSeiteId !== undefined && this._akteSeiteId !== null) stand.vkAkte = this._akteSeiteId;
+        return stand;
     },
 
     /** Nach jedem Wechsel von Reiter oder Unterreiter: ein Eintrag im Verlauf */
@@ -368,7 +373,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (this._ausVerlauf || !this.app?.state || typeof history === "undefined" || typeof history.pushState !== "function") return;
         const stand = this._verlaufStand();
         const jetzt = history.state || {};
-        if (jetzt.vkTab === stand.vkTab && (jetzt.vkUr || null) === stand.vkUr) return;
+        if (jetzt.vkTab === stand.vkTab && (jetzt.vkUr || null) === stand.vkUr && (jetzt.vkAkte ?? null) === (stand.vkAkte ?? null)) return;
         try {
             if (!jetzt.vkTab) history.replaceState(stand, "");
             else { history.pushState(stand, ""); this._verlaufTiefe = (this._verlaufTiefe || 0) + 1; }
@@ -406,6 +411,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             if (e.altKey && e.key === "ArrowLeft") {
                 e.preventDefault();
                 this.geheZurueck();
+                return;
+            }
+            // Escape verlässt die Spielerseite - wenn kein Fenster darüber liegt
+            if (e.key === "Escape" && typeof this.akteOffen === "function" && this.akteOffen() && !this.einFensterOffen()) {
+                e.preventDefault();
+                this.akteZurueck();
                 return;
             }
             if (e.altKey || e.shiftKey) return;

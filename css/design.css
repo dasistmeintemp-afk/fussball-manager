@@ -2055,3 +2055,197 @@ h4 .h-ico { color: var(--accent); opacity: 0.85; }
     content: ""; display: inline-block; width: 7px; height: 7px; margin: 0 6px 1px 0; border-radius: 50%;
     background: var(--accent); vertical-align: middle;
 }
+
+/* --------------------------------------------------------------------------
+   Spielerprofil als eigene Seite wie im Vorbild (uiProfil.js): Die Akte
+   war ein Fenster über dem Reiter. Jetzt löst sie den Reiter ab, Kopfleiste
+   und Navigation bleiben, Zurück führt dorthin, wo man herkam.
+   -------------------------------------------------------------------------- */
+.content-area.seite-offen > .tab-pane { display: none !important; }
+.seite { animation: fadeIn 0.2s ease-in-out; }
+.seite-leiste { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.seite-zurueck {
+    display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 14px 6px 10px;
+    border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface-1);
+    color: var(--text-main); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.seite-zurueck:hover { background: var(--surface-2); border-color: var(--accent-line); }
+.seite-zurueck .ico { width: 16px; height: 16px; }
+.seite-pfad { font-size: 11.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.seite-aktionen { margin-left: auto; }
+.pf-aktionen-knopf { display: inline-flex; align-items: center; gap: 8px; }
+.pf-aktionen-knopf .ico { width: 15px; height: 15px; }
+
+/* Kopf: Nummer und Name links, Vertragsdaten in der Mitte, Sterne rechts */
+.pf-kopf {
+    display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; gap: 16px 28px; align-items: center;
+    padding: 18px 22px; margin-bottom: 6px; border: 1px solid var(--line); border-radius: 16px;
+    background: linear-gradient(120deg, rgba(var(--accent-rgb), 0.10), transparent 50%), var(--surface-1);
+}
+.pf-kopf-person { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.pf-trikot .pd-nr {
+    min-width: 60px; height: 60px; margin: 0; border-radius: 14px; font-size: 26px;
+    background: rgba(var(--accent-rgb), 0.14); border-color: var(--accent-line); color: var(--text-main);
+}
+.pf-trikot .pd-nr-fremd { cursor: default; font-size: 17px; background: var(--surface-2); border-color: var(--line-strong); }
+.pf-kopf-text { min-width: 0; }
+.pf-kopf-text h2 { margin: 0 0 4px; font-size: 26px; line-height: 1.15; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.pf-position { font-size: 14px; font-weight: 600; color: var(--text-main); }
+.pf-codes { margin-left: 6px; font-size: 12px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.04em; }
+.pf-person { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 4px; font-size: 13px; color: var(--text-muted); }
+.pf-verein {
+    display: inline-flex; align-items: center; gap: 7px; padding: 0; border: 0; background: none;
+    color: var(--text-main); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+button.pf-verein:hover span { text-decoration: underline; text-underline-offset: 3px; }
+.crest.pf-wappen { width: 22px; height: 22px; font-size: 8px; }
+.pf-marken { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.pf-marke { padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; border: 1px solid var(--line-strong); color: var(--text-muted); }
+.pf-marke.pf-schlecht { color: var(--bad); border-color: rgba(248, 113, 113, 0.4); background: rgba(248, 113, 113, 0.08); }
+.pf-marke.pf-warn { color: var(--warn); border-color: rgba(251, 191, 36, 0.4); background: rgba(251, 191, 36, 0.08); }
+.pf-marke.pf-info { color: #7dd3fc; border-color: rgba(125, 211, 252, 0.35); background: rgba(125, 211, 252, 0.07); }
+.pf-kopf-daten { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 18px; }
+.pf-datum span { display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); }
+.pf-datum strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+.pf-kopf-sterne { display: grid; gap: 8px; justify-items: end; }
+.pf-sterne { display: grid; grid-template-columns: auto auto; align-items: center; column-gap: 10px; }
+.pf-sterne > span { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); text-align: right; }
+.pf-sterne small { grid-column: 2; font-size: 11.5px; color: var(--text-muted); }
+.pf-sternreihe { font-size: 18px; line-height: 1; white-space: nowrap; }
+
+/* Reiter direkt unter dem Kopf, beim Scrollen oben */
+.spieler-seite .pd-tabs { top: -28px; margin: 0 0 16px; padding: 10px 0; background: var(--surface-0); }
+.spieler-seite .pd-tab-knopf { flex: 0 0 auto; padding: 8px 16px; }
+
+/* Übersicht: Positionen | Werte in drei Spalten | Info, darunter die Kacheln */
+.pf-raster { display: grid; grid-template-columns: minmax(220px, 0.8fr) minmax(0, 2.6fr) minmax(220px, 0.9fr); gap: 16px; align-items: start; }
+.pf-raster > * { min-width: 0; }
+.pf-spalte { display: grid; gap: 14px; }
+.pf-mitte .pd-werte { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pf-mitte .pd-werte .pd-wertliste { grid-template-columns: minmax(0, 1fr); }
+.pf-karte { padding: 14px 16px; margin: 0; }
+.pf-karte .gs-titel { margin-bottom: 10px; }
+.pf-unter { margin-top: 14px; }
+.pf-zeile { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0 10px; padding: 4px 0; font-size: 12.5px; color: var(--text-muted); border-bottom: 1px solid var(--line); }
+.pf-zeile:last-child { border-bottom: 0; }
+.pf-zeile span { flex: 0 1 auto; min-width: 0; }
+.pf-zeile strong { margin-left: auto; min-width: 0; color: var(--text-main); text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: break-word; }
+.pf-klein { margin: 8px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--text-muted); }
+.pf-text { font-size: 12.5px; line-height: 1.6; color: var(--text-main); }
+.pf-liste { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.6; color: var(--text-main); }
+.pf-karte.eingewoehnung-karte { margin: 0; }
+
+/* Das Feld: oben greift man an, die Farbe sagt, wie vertraut er dort ist */
+.pf-feld {
+    position: relative; aspect-ratio: 68 / 92; max-width: 260px; margin: 0 auto 12px; border-radius: 10px; overflow: hidden;
+    background: repeating-linear-gradient(180deg, rgba(52, 211, 153, 0.07) 0 12.5%, rgba(52, 211, 153, 0.03) 12.5% 25%), #0f1c17;
+    border: 1px solid rgba(52, 211, 153, 0.18);
+}
+.pf-feld-linien { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; stroke: rgba(255, 255, 255, 0.16); stroke-width: 0.5; vector-effect: non-scaling-stroke; }
+.pf-feld-punkt {
+    position: absolute; transform: translate(-50%, -50%); display: grid; place-items: center;
+    min-width: 30px; height: 22px; padding: 0 5px; border-radius: 999px; font-size: 10.5px; font-weight: 800; letter-spacing: 0.03em;
+    color: #0b1015; background: var(--pf-farbe, #64748b); box-shadow: 0 0 0 2px #0f1c17;
+}
+.pf-feld-punkt.pf-stamm { min-width: 36px; height: 26px; font-size: 11.5px; box-shadow: 0 0 0 2px #0f1c17, 0 0 0 4px var(--pf-farbe, #64748b); }
+.pf-feld-punkt.pf-geht { min-width: 12px; width: 12px; height: 12px; padding: 0; opacity: 0.85; }
+.pf-feld-punkt.pf-fremd { min-width: 7px; width: 7px; height: 7px; padding: 0; background: rgba(255, 255, 255, 0.16); box-shadow: none; }
+.pf-pos-liste { display: grid; gap: 4px; }
+.pf-pos-zeile { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-muted); }
+.pf-pos-code { min-width: 30px; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--pf-farbe); color: var(--text-main); font-size: 11px; font-weight: 700; text-align: center; }
+.pf-pos-sterne { font-size: 12px; white-space: nowrap; }
+.pf-rollen { display: grid; gap: 6px; }
+.pf-rolle { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12.5px; }
+.pf-rolle .role-stars { font-size: 13px; white-space: nowrap; }
+
+/* Kacheln: Zufriedenheit, Fitness, Form, Disziplin, Training, Saison, Laufbahn */
+.pf-kacheln { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; margin-top: 16px; }
+.pf-kachel { padding: 14px 16px; margin: 0; }
+.pf-kachel.pf-breit { grid-column: span 2; }
+.pf-gross { margin-bottom: 8px; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pf-gross small { font-size: 11.5px; font-weight: 500; color: var(--text-muted); }
+.pf-ton-gut { color: var(--ok); }
+.pf-ton-mittel { color: var(--warn); }
+.pf-ton-schlecht { color: var(--bad); }
+.pf-balken { display: block; height: 4px; margin: 2px 0 6px; border-radius: 2px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.pf-balken i { display: block; height: 100%; border-radius: 2px; }
+.pf-balken .kb-gut { background: var(--ok); }
+.pf-balken .kb-mittel { background: var(--warn); }
+.pf-balken .kb-schlecht { background: var(--bad); }
+.pf-kachel .pf-zeile { border-bottom: 0; padding: 2px 0 0; }
+.pf-formkurve { position: relative; width: 100%; margin: 6px 0 10px; }
+.pf-formkurve svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.pf-formkurve .pf-bezug { stroke: rgba(255, 255, 255, 0.18); stroke-width: 1; stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; }
+.pf-formkurve .pf-linie { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.pf-bezug-text { position: absolute; right: 0; transform: translateY(-115%); font-size: 10px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+/* Die Trefferfläche ist größer als der Punkt */
+.pf-formkurve .pf-punkt { position: absolute; width: 18px; height: 18px; transform: translate(-50%, -50%); cursor: default; }
+.pf-formkurve .pf-punkt::after {
+    content: ""; position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; transform: translate(-50%, -50%);
+    border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--surface-1);
+}
+.pf-formkurve .pf-punkt:hover::after { width: 12px; height: 12px; }
+.pf-formkurve .pf-punkt.pf-stark::after { background: var(--ok); }
+.pf-formkurve .pf-punkt.pf-schwach::after { background: var(--bad); }
+.pf-noten { display: flex; flex-wrap: wrap; gap: 4px; }
+.pf-note { min-width: 32px; padding: 2px 5px; border-radius: 6px; background: var(--surface-2); font-size: 11.5px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+.pf-note.pf-stark { background: rgba(52, 211, 153, 0.16); color: var(--ok); }
+.pf-note.pf-schwach { background: rgba(248, 113, 113, 0.14); color: var(--bad); }
+.pf-karten { display: grid; grid-template-columns: auto auto 1fr auto auto 1fr; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 12.5px; color: var(--text-muted); }
+.pf-karten strong { font-size: 17px; color: var(--text-main); font-variant-numeric: tabular-nums; }
+.pf-karte-gelb, .pf-karte-rot { width: 12px; height: 16px; border-radius: 2px; }
+.pf-karte-gelb { background: #facc15; }
+.pf-karte-rot { background: #ef4444; }
+.pf-tabelle { width: 100%; font-variant-numeric: tabular-nums; }
+.pf-tabelle th, .pf-tabelle td { padding: 4px 6px; text-align: right; }
+.pf-tabelle th:first-child, .pf-tabelle td:first-child, .pf-tabelle .pf-links-text { text-align: left; }
+.pf-tabelle .pf-summe td { font-weight: 700; border-top: 1px solid var(--line-strong); }
+.pf-zahlen { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; }
+.pf-zahlen-viele { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+.pf-zahlen > div { display: grid; gap: 2px; }
+.pf-zahlen strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+.pf-zahlen span { font-size: 11px; color: var(--text-muted); }
+.pf-leistung { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.pf-leistung > .pf-karte:first-child { grid-column: 1 / -1; }
+.pd-laufbahn-reiter { display: grid; gap: 14px; }
+.pd-laufbahn-reiter > * { margin: 0; }
+.pf-vergleich { max-width: 860px; }
+
+@media (max-width: 1400px) {
+    .pf-raster { grid-template-columns: minmax(210px, 0.9fr) minmax(0, 2.4fr); }
+    .pf-rechts { grid-column: 1 / -1; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); align-items: start; }
+}
+@media (max-width: 1100px) {
+    .pf-kopf { grid-template-columns: minmax(0, 1fr) auto; }
+    .pf-kopf-daten { grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+    .pf-raster { grid-template-columns: minmax(0, 1fr); }
+    .pf-links { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+    .pf-leistung { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 900px) {
+    /* Am Handy scrollt die ganze Seite unter der Kopfleiste - die Reiter bleiben stehen */
+    .spieler-seite .pd-tabs { position: static; }
+    .pf-feld { max-width: 210px; }
+    .pf-mitte .pd-werte { grid-template-columns: minmax(0, 1fr); }
+    .pf-mitte .pd-werte .pd-wertliste { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+    .seite-pfad { display: none; }
+    .pf-kopf { grid-template-columns: minmax(0, 1fr); padding: 14px 14px 16px; gap: 14px; }
+    .pf-kopf-person { gap: 12px; align-items: flex-start; }
+    .pf-trikot .pd-nr { min-width: 46px; height: 46px; font-size: 20px; border-radius: 12px; }
+    .pf-kopf-text h2 { font-size: 21px; }
+    .pf-kopf-daten { grid-row: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .pf-kopf-sterne { justify-items: start; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .pf-sterne { grid-template-columns: minmax(0, 1fr); row-gap: 2px; }
+    .pf-sterne > span { text-align: left; }
+    .pf-sterne small { grid-column: 1; }
+    .pf-kacheln { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+    .pf-kachel { padding: 12px; }
+    .pf-kachel.pf-breit { grid-column: 1 / -1; }
+    .pf-gross { font-size: 16px; }
+}
+@media (max-width: 380px) {
+    .pf-kacheln { grid-template-columns: minmax(0, 1fr); }
+    .pf-mitte .pd-werte .pd-wertliste { grid-template-columns: minmax(0, 1fr); }
+}

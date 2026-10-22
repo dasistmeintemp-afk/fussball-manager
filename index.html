@@ -1689,6 +1689,26 @@
                         </div>
                     </div>
                 </section>
+                <!-- Spielerprofil: eine eigene Seite statt eines Fensters (uiProfil.js) -->
+                <section class="seite spieler-seite" id="modalPlayerDetails" style="display: none;" aria-labelledby="pdPlayerName">
+                    <div class="seite-leiste">
+                        <button type="button" class="seite-zurueck" id="btnClosePlayerDetails" title="Zurück (Esc)"><svg class="ico" aria-hidden="true"><use href="#i-arrow-left"/></svg><span>Zurück</span></button>
+                        <span class="seite-pfad">Spielerprofil</span>
+                        <div class="seite-aktionen" id="pdAktionen"></div>
+                    </div>
+                    <header class="pf-kopf">
+                        <div class="pf-kopf-person">
+                            <div class="pf-trikot" id="pdTrikot"></div>
+                            <div class="pf-kopf-text">
+                                <h2 id="pdPlayerName">Spieler</h2>
+                                <div class="pf-kopf-zeile" id="pdKopfZeile"></div>
+                            </div>
+                        </div>
+                        <div class="pf-kopf-daten" id="pdKopfDaten"></div>
+                        <div class="pf-kopf-sterne" id="pdKopfSterne"></div>
+                    </header>
+                    <div class="pf-inhalt" id="playerDetailsContent"></div>
+                </section>
             </main>
         </div>
 
@@ -2226,18 +2246,6 @@
             </div>
         </div>
 
-        <div class="modal-overlay" id="modalPlayerDetails" style="display: none;">
-            <div class="modal-box modal-akte">
-                <div class="modal-header">
-                    <h2 id="pdPlayerName">Spieler Details</h2>
-                    <button class="modal-close" id="btnClosePlayerDetails">×</button>
-                </div>
-                <div class="modal-body" id="playerDetailsContent">
-                    <!-- Dynamische Spielerdaten -->
-                </div>
-            </div>
-        </div>
-
         <div class="modal-overlay" id="modalVergleich" style="display: none;">
             <div class="modal-box modal-md">
                 <div class="modal-header">
@@ -2571,6 +2579,7 @@
     <script src="js/ui/uiVorbereitung.js"></script>
     <script src="js/ui/uiTransfers.js"></script>
     <script src="js/ui/uiAkten.js"></script>
+    <script src="js/ui/uiProfil.js"></script>
     <script src="js/ui/uiLivespiel.js"></script>
     <script src="js/ui/uiSpielbericht.js"></script>
     <script src="js/ui/uiSpeicher.js"></script>

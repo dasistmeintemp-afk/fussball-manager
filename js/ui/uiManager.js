@@ -86,7 +86,8 @@ class UIManager {
             const offen = [...document.querySelectorAll(".modal-overlay")]
                 .filter(m => m.style.display && m.style.display !== "none");
             if (offen.length === 0) return;
-            schliesse(offen[offen.length - 1]);
+            // Erledigt - die Spielerseite darunter bleibt offen
+            if (schliesse(offen[offen.length - 1])) event.preventDefault();
         });
     }
 
@@ -637,6 +638,8 @@ class UIManager {
             if (bar) bar.style.display = "none";
         }
 
+        // Ein Reiter löst die Spielerseite ab
+        if (typeof this.schliesseAkte === "function") this.schliesseAkte();
         this.activeTab = tabId;
         // Erste Schritte: Wer einen Bereich besucht hat, hat den Schritt getan
         this.einstiegMerkeTab(tabId);
@@ -711,6 +714,8 @@ class UIManager {
         }
         // Unterreiter ohne Inhalt (etwa Preise vor dem ersten Saisonende) blenden aus
         if (typeof this.pruefeUnterreiter === "function") this.pruefeUnterreiter(`pane-${this.activeTab}`);
+        // Liegt die Spielerseite darüber (nach Weiter oder einer Aktion), zeigt sie den neuen Stand
+        if (typeof this.aktualisiereAkte === "function") this.aktualisiereAkte();
         // Beim ersten Besuch erklärt sich der Bereich selbst
         this.zeigeEinstiegErklaerung(this.activeTab);
     }
@@ -3844,6 +3849,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // Die ausgelagerten Teile hängen sich an die Klasse - im Browser lädt sie
     // index.html der Reihe nach, unter Node holen wir sie hier dazu
     ["./uiAssistent.js", "./uiKader.js", "./uiTaktik.js", "./uiWettbewerbe.js", "./uiTraining.js", "./uiFinanzen.js", "./uiVerein.js", "./uiPostfach.js", "./uiDialoge.js", "./uiKarriere.js",
-        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiLivespiel.js", "./uiSpielbericht.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
+        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiProfil.js", "./uiLivespiel.js", "./uiSpielbericht.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
         .forEach(teil => require(teil));
 }

@@ -1696,6 +1696,15 @@
                     <div class="pf-inhalt" id="playerDetailsContent"></div>
                 </section>
 
+                <!-- Vereinsprofil: eine eigene Seite statt eines Fensters (uiVereinSeite.js) -->
+                <section class="seite vereins-seite" id="vereinsSeite" style="display: none;" aria-labelledby="vsName">
+                    <div class="seite-leiste">
+                        <button type="button" class="seite-zurueck" id="btnVereinsSeiteZurueck" title="Zurück (Esc)"><svg class="ico" aria-hidden="true"><use href="#i-arrow-left"/></svg><span>Zurück</span></button>
+                        <span class="seite-pfad">Vereinsprofil</span>
+                    </div>
+                    <div id="vereinsSeiteInhalt"></div>
+                </section>
+
                 <!-- Transferangebot: eine eigene Seite statt eines Fensters (uiAngebot.js) -->
                 <section class="seite angebot-seite" id="angebotSeite" style="display: none;" aria-labelledby="agTitel">
                     <div class="seite-leiste">
@@ -2250,16 +2259,6 @@
 
         <!-- Modal: Vereinsdetails (aus Tabelle und Dashboard) - steht vor der
              Spielerakte, damit ein Spieler aus dem Kader darüber aufgeht -->
-        <div class="modal-overlay" id="modalVereinsDetails" style="display: none;">
-            <div class="modal-box modal-lg vd-box">
-                <div class="modal-header">
-                    <h2 id="vdTitel">Verein</h2>
-                    <button class="modal-close" id="btnCloseVereinsDetails">×</button>
-                </div>
-                <div class="modal-body" id="vereinsDetailsInhalt"></div>
-            </div>
-        </div>
-
         <!-- Modal: Player Details / Contract Offer -->
         <div class="modal-overlay" id="modalSpielerMenue" style="display: none;">
             <div class="modal-box modal-sm modal-spm" role="dialog" aria-labelledby="spkMenueTitel">
@@ -2609,6 +2608,7 @@
     <script src="js/ui/uiProfil.js"></script>
     <script src="js/ui/uiProfilLaufbahn.js"></script>
     <script src="js/ui/uiAngebot.js"></script>
+    <script src="js/ui/uiVereinSeite.js"></script>
     <script src="js/ui/uiLivespiel.js"></script>
     <script src="js/ui/uiLiveKacheln.js"></script>
     <script src="js/ui/uiLiveDarstellung.js"></script>

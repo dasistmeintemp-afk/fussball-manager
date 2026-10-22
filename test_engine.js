@@ -4317,6 +4317,62 @@ function runEngineTests() {
         if (!live2.rechneOhneBild() || !zweite.played || !zweite.analyse) throw new Error("Ein ganzes Spiel ohne Bild endet nicht sauber");
     });
 
+    test("Höhepunkte: ruhige Phasen werden gespult, Szenen gezeigt - das Spiel dauert deutlich kürzer", () => {
+        const state = GameState.createNewGame("dor", "normal", { name: "Höhepunkte" });
+        const partie = state.schedule[0].matches.find(m => m.homeClubId === "dor" || m.awayClubId === "dor");
+        const live = MatchEngine.createLiveMatch(partie,
+            state.clubs.find(c => c.id === partie.homeClubId), state.clubs.find(c => c.id === partie.awayClubId),
+            state.players, { modus: "fm", userSide: partie.homeClubId === "dor" ? "home" : "away" });
+        const d = live.director;
+        if (typeof d.istRuhig !== "function") throw new Error("Der Regisseur kennt keine ruhigen Phasen");
+
+        // Was als ruhig gilt
+        const vorher = { mode: d.mode, drama: d.drama, kickoff: d.kickoff, deadBall: d.deadBall };
+        d.mode = "ambient"; d.drama = null; d.kickoff = null;
+        const tief = d.attackDir("home") > 0 ? 85 : 15;
+        const weit = d.attackDir("home") > 0 ? 30 : 70;
+        const faelle = [
+            [{ kind: "corner", team: "home", x: tief }, false, "Ecke"],
+            [{ kind: "penalty", team: "home", x: tief }, false, "Elfmeter"],
+            [{ kind: "freekick", team: "home", x: tief }, false, "Freistoß vor dem Tor"],
+            [{ kind: "freekick", team: "home", x: weit }, true, "Freistoß in der eigenen Hälfte"],
+            [{ kind: "goalkick", team: "home", x: weit }, true, "Abstoß"]
+        ];
+        for (const [ball, ruhig, name] of faelle) {
+            d.deadBall = ball;
+            if (d.istRuhig() !== ruhig) throw new Error(`${name} gilt als ${ruhig ? "Szene" : "ruhig"}`);
+        }
+        d.deadBall = null; d.kickoff = { team: "home" };
+        if (!d.istRuhig()) throw new Error("Der Anstoß wird nicht gespult");
+        d.kickoff = null; d.drama = { kind: "goal" };
+        if (d.istRuhig()) throw new Error("Eine Szene wird gespult");
+        Object.assign(d, vorher);
+
+        // Nur das Livespiel des Vorbilds spult, und nicht in der Pause
+        live.isPaused = true;
+        if (live.spuleRuhigePhase(1000)) throw new Error("In der Pause wird gespult");
+        live.isPaused = false;
+
+        // Eine halbe Stunde auf Normal: Bilder zählen, gespult wird in einem Zug je ruhiger Phase
+        live.speed = 2;
+        let bilder = 0, gespult = 0;
+        const uhr = () => live.minute * 60 + live.seconds;
+        while (live.minute < 30 && !live.isFinished) {
+            const vor = uhr();
+            const weiter = live.spuleRuhigePhase(1000);
+            if (uhr() - vor > 1) gespult++;
+            if (!weiter) { live.advanceRealTime(16); live.updateBallAndPlayers(16); }
+            if (++bilder > 20000) throw new Error("Die halbe Stunde endet nicht");
+        }
+        if (live.speed !== 2) throw new Error("Nach dem Spulen stimmt das Tempo nicht mehr");
+        const ohneSpulen = 30 * 60 / (d.getBaseClockRate() * 0.016);
+        if (gespult < 5) throw new Error(`Nur ${gespult}-mal gespult`);
+        if (!live.sprung || !(live.sprung.bis >= live.sprung.von)) throw new Error("Der letzte Sprung ist nicht vermerkt");
+        if (bilder > ohneSpulen * 0.8) throw new Error(`Kaum schneller: ${bilder} Bilder statt ${Math.round(ohneSpulen)}`);
+        if (bilder < ohneSpulen * 0.15) throw new Error(`Fast alles gespult: ${bilder} Bilder statt ${Math.round(ohneSpulen)}`);
+        if (live.soundCues && live.soundCues.length > 20) throw new Error("Gespulte Pfiffe stauen sich");
+    });
+
     test("U23: Spieler hinunterschicken, Regeln für Alter und Kadergröße, Spielpraxis in der zweiten Mannschaft", () => {
         const { ReserveEngine } = require('./js/engine/reserveEngine.js');
         const state = GameState.createNewGame("muc", "normal", { name: "U23" });

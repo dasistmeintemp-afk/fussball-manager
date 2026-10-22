@@ -897,7 +897,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
             // Während der Torwiederholung in 3D steht die Simulation still
             const wiederholung = this.spielfeld3d && this.spielfeld3d.wiederholungLaeuft() && this.anzeige2D().dreiD;
-            if (!wiederholung) {
+            // Höhepunkte: Ruhige Phasen laufen ohne Bild durch, bis die nächste Szene beginnt
+            const spult = !wiederholung && this.liveEinstellungen().ansicht === "hoehepunkte"
+                && typeof liveMatch.spuleRuhigePhase === "function" && liveMatch.spuleRuhigePhase(14);
+            this.zeigeSpulen(liveMatch, spult);
+            if (!wiederholung && !spult) {
                 liveMatch.advanceRealTime(deltaMs);
                 liveMatch.updateBallAndPlayers(deltaMs);
             }
@@ -943,15 +947,40 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             coachBtn.onclick = () => this.openCoachingWindow(null);
         }
 
+        // Tempo: zum Anpfiff das zuletzt gewählte, jede Wahl wird gemerkt
+        const liveWahl = this.liveEinstellungen();
+        liveMatch.speed = liveWahl.tempo;
         document.querySelectorAll(".speed-btn").forEach(btn => {
+            btn.classList.toggle("active", Number(btn.dataset.speed) === liveMatch.speed);
             btn.onclick = () => {
                 document.querySelectorAll(".speed-btn").forEach(b => b.classList.remove("active"));
                 btn.classList.add("active");
                 const speedVal = btn.dataset.speed;
                 liveMatch.speed = isNaN(speedVal) ? speedVal : parseInt(speedVal, 10);
+                if ([1, 2, 4].includes(liveMatch.speed)) liveWahl.tempo = liveMatch.speed;
                 lastFrameTime = performance.now();
             };
         });
+        // Höhepunkte oder das ganze Spiel - umschaltbar mitten in der Partie
+        const ansichtKnopf = document.getElementById("btnLmAnsicht");
+        const zeigeAnsicht = () => {
+            if (!ansichtKnopf) return;
+            const hp = liveWahl.ansicht === "hoehepunkte";
+            ansichtKnopf.classList.toggle("active", hp);
+            ansichtKnopf.setAttribute("aria-pressed", String(hp));
+            ansichtKnopf.innerHTML = `<span class="lm-speed-lang">${hp ? "Höhepunkte" : "Ganzes Spiel"}</span><span class="lm-speed-kurz">${hp ? "Szenen" : "Alles"}</span>`;
+            ansichtKnopf.title = hp ? "Nur die Szenen - ruhige Phasen laufen ohne Bild durch. Tippen: ganzes Spiel zeigen"
+                : "Alle 90 Minuten. Tippen: nur die Höhepunkte zeigen";
+        };
+        if (ansichtKnopf) {
+            ansichtKnopf.style.display = liveMatch.modus === "fm" ? "" : "none";
+            ansichtKnopf.onclick = () => {
+                liveWahl.ansicht = liveWahl.ansicht === "hoehepunkte" ? "ganz" : "hoehepunkte";
+                zeigeAnsicht();
+                lastFrameTime = performance.now();
+            };
+            zeigeAnsicht();
+        }
 
         document.getElementById("btnLmSkip").onclick = () => {
             if (liveMatch.isFinished || liveMatch.ohneBild) return;
@@ -1227,7 +1256,31 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const e = state.liveEinstellungen;
         e.delegation = { wechsel: false, taktik: false, ...(e.delegation || {}) };
         e.autoOeffnen = { halbzeit: true, verletzung: true, platzverweis: true, ...(e.autoOeffnen || {}) };
+        // Wie das Spiel gezeigt wird: nur die Szenen (ruhige Phasen laufen
+        // ohne Bild durch) oder alle 90 Minuten - und in welchem Tempo
+        if (!["hoehepunkte", "ganz"].includes(e.ansicht)) e.ansicht = "hoehepunkte";
+        if (![1, 2, 4].includes(e.tempo)) e.tempo = 2;
         return e;
+    },
+
+    /** Der Hinweis über dem Feld, solange eine ruhige Phase durchläuft */
+    zeigeSpulen(liveMatch, an) {
+        const el = document.getElementById("lmSpulen");
+        if (!el) return;
+        // Ein Sprung ist oft in einem Bild vorbei - er bleibt kurz stehen,
+        // damit man sieht, dass und wie weit gespult wurde
+        const s = liveMatch.sprung;
+        const jetzt = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+        const frisch = !!s && jetzt - s.um < 900;
+        if (!an && !frisch) { if (!el.hidden) el.hidden = true; return; }
+        el.hidden = false;
+        const text = !an && s && s.bis > s.von
+            ? `Zeitraffer · ${s.von}' bis ${s.bis}'`
+            : `Zeitraffer bis zur nächsten Szene · ${liveMatch.minute}'`;
+        if (el.dataset.text !== text) {
+            el.dataset.text = text;
+            el.innerHTML = `<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.2v9.6l6.3-4.8zM8.2 3.2v9.6l6.3-4.8z" fill="currentColor"/></svg><span>${text}</span>`;
+        }
     },
 
     updateLivePauseButton(liveMatch) {

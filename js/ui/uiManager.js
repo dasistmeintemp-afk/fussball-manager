@@ -737,7 +737,23 @@ class UIManager {
                     <span class="coach-switch-text"><strong>${titel}</strong><br><span class="coach-muted">${text}</span></span>
                 </label>`;
         };
+        const wahl = (name, aktuell, optionen) => optionen.map(([wert, titel, text]) => `
+                <label class="coach-switch einstellung-schalter">
+                    <input type="radio" name="${name}" value="${wert}" ${String(wert) === String(aktuell) ? "checked" : ""}>
+                    <span class="coach-switch-text"><strong>${titel}</strong><br><span class="coach-muted">${text}</span></span>
+                </label>`).join("");
         el.innerHTML = `
+            <h4 class="einstellung-h">Was gezeigt wird</h4>
+            ${wahl("liveAnsicht", e.ansicht, [
+                ["hoehepunkte", "Höhepunkte", "Angriffe, Standards vor dem Tor, Tore und Karten. Ruhige Phasen laufen ohne Bild durch - das Spiel ist dasselbe."],
+                ["ganz", "Ganzes Spiel", "Alle 90 Minuten."]
+            ])}
+            <h4 class="einstellung-h">Tempo zum Anpfiff</h4>
+            ${wahl("liveTempo", e.tempo, [
+                [1, "Langsam", "Echtes Abspieltempo."],
+                [2, "Normal", "Knapp dreifach."],
+                [4, "Schnell", "Gut sechsfach."]
+            ])}
             <h4 class="einstellung-h">Dem Co-Trainer überlassen</h4>
             ${schalter("delegation", "wechsel", "Wechsel", "Er wechselt Müde und Verletzte positionsgerecht aus.")}
             ${schalter("delegation", "taktik", "Taktik anpassen", "Bei Rückstand offensiver, bei später Führung sicherer.")}
@@ -759,6 +775,11 @@ class UIManager {
                 this.showToast(`Sterne: ${UIManager.STERN_MASSSTAEBE[inp.value].titel}`, "success");
             });
         }
+        el.querySelectorAll("input[name=liveAnsicht], input[name=liveTempo]").forEach(inp => inp.onchange = () => {
+            if (inp.name === "liveAnsicht") e.ansicht = inp.value;
+            else e.tempo = Number(inp.value);
+            if (typeof this.app.state.saveToLocalStorage === "function") this.app.state.saveToLocalStorage();
+        });
         el.querySelectorAll("input[data-gruppe]").forEach(inp => inp.onchange = () => {
             const ziel = inp.dataset.gruppe === "delegation" ? e.delegation : e.autoOeffnen;
             ziel[inp.dataset.key] = inp.checked;

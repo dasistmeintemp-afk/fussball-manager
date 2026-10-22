@@ -2368,6 +2368,67 @@ button.pf-verein:hover span { text-decoration: underline; text-underline-offset:
 }
 
 /* --------------------------------------------------------------------------
+   Finanzen auf einen Blick (uiFinanzen.js, renderFinanzKacheln): Kacheln wie
+   im Vorbild - Übersicht mit Verlauf, Einnahmen und Ausgaben, Finanzregeln,
+   Schulden, Gehälter nach Kaderrolle, Sponsoren, Prognose
+   -------------------------------------------------------------------------- */
+.fin-raster { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: stretch; margin-bottom: 16px; }
+.fin-raster > * { min-width: 0; }
+.fin-spalte { display: grid; gap: 14px; align-content: stretch; }
+.fin-kachel { padding: 14px 16px; margin: 0; display: flex; flex-direction: column; }
+.fin-gross { font-size: 24px; font-weight: 800; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.fin-unter { margin: 2px 0 8px; font-size: 12px; color: var(--text-muted); }
+.fin-kachel .pf-zeile { border-bottom: 1px solid var(--line); padding: 5px 0; }
+.fin-kachel .pf-zeile:last-child { border-bottom: 0; }
+.fin-fuss { margin-top: auto; padding-top: 8px; border-top: 1px solid var(--line); }
+.fin-verlauf-box { position: relative; height: 96px; margin: 4px 0 10px; }
+.fin-verlauf { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.fin-linie { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.fin-null { stroke: rgba(255, 255, 255, 0.2); stroke-width: 1; stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; }
+.fin-verlauf-punkte { position: absolute; inset: 0; }
+/* Die Trefferfläche ist größer als der Punkt */
+.fin-punkt { position: absolute; width: 18px; height: 18px; transform: translate(-50%, -50%); }
+.fin-punkt::after { content: ""; position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; transform: translate(-50%, -50%); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--surface-1); }
+.fin-punkt.minus::after { background: var(--bad); }
+.fin-punkt.heute::after { width: 11px; height: 11px; }
+.fin-punkt:hover::after { width: 13px; height: 13px; }
+.fin-tabelle th, .fin-tabelle td { padding: 5px 6px; }
+.fin-regel { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 16px; font-weight: 700; }
+.fin-regel .ico { width: 18px; height: 18px; }
+.fin-gehalt { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; }
+.fin-budget { font-size: 14px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.fin-gehalt strong { margin-left: auto; font-size: 18px; }
+.fin-balken { display: block; height: 6px; margin: 0 0 10px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.fin-balken i { display: block; height: 100%; border-radius: 3px; }
+.fin-balken .fin-gut { background: var(--ok); }
+.fin-balken .fin-mittel { background: var(--warn); }
+.fin-balken .fin-schlecht { background: var(--bad); }
+.fin-rollen b { display: inline-block; min-width: 18px; color: var(--text-main); font-variant-numeric: tabular-nums; }
+.fin-segmente { display: flex; gap: 2px; height: 8px; margin: 0 0 10px; border-radius: 4px; overflow: hidden; }
+.fin-segmente i { flex-basis: 0; min-width: 4px; }
+.fin-s1 { background: var(--accent); }
+.fin-s2 { background: #38bdf8; }
+.fin-s3 { background: #f59e0b; }
+.fin-s4 { background: #a78bfa; }
+.fin-punkt-farbe { display: inline-block; width: 9px; height: 9px; margin-right: 7px; border-radius: 50%; vertical-align: 0; }
+.fin-posten small { margin-left: 4px; color: var(--text-muted); }
+.fin-prognose + .fin-prognose { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.fin-prognose h5 { margin: 0 0 6px; font-size: 13px; font-weight: 700; }
+.fin-prog-zahlen { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; }
+.fin-prog-zahlen div { display: grid; gap: 1px; }
+.fin-prog-zahlen span { font-size: 11px; color: var(--text-muted); }
+.fin-prog-zahlen strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+@media (max-width: 1150px) {
+    .fin-raster { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .fin-uebersicht { grid-column: 1 / -1; }
+}
+@media (max-width: 680px) {
+    .fin-raster { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+    .fin-spalte { gap: 10px; }
+    .fin-gross { font-size: 21px; }
+}
+
+/* --------------------------------------------------------------------------
    Transferangebot als eigene Seite (uiAngebot.js): Käufer und Ablöse oben,
    darunter Angebot, Spieler, Folgen und Käufer, dann die Entscheidung
    -------------------------------------------------------------------------- */

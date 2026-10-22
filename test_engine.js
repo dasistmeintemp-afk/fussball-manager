@@ -14863,6 +14863,90 @@ function runEngineTests() {
         }
     });
 
+    test("Finanzen wie im Vorbild: Kontoverlauf je Monat, Monatsbilanz, Sponsoren, Gehälter nach Rolle, Schulden, Prognose, acht Kacheln", () => {
+        const F = FinanceEngine;
+        const state = GameState.createNewGame("dor", "normal", { name: "Finanzen" });
+        const club = state.clubs.find(c => c.id === "dor");
+
+        // Jede Buchung kennt ihren Monat; die Monatsbilanz zählt nur den laufenden
+        state.currentDate = "15.10.2026";
+        if (F.monatVon(state) !== "2026-10") throw new Error(`Monat ${F.monatVon(state)}`);
+        state.finances.transactions = [];
+        F.recordTransaction(state, "dor", "ticket_income", 500000, "Heimspiel");
+        F.recordTransaction(state, "dor", "wages", -300000, "Gehälter");
+        F.recordTransaction(state, "muc", "ticket_income", 999999, "fremd");
+        state.currentDate = "02.11.2026";
+        F.recordTransaction(state, "dor", "sponsor_income", 200000, "Sponsor");
+        const okt = F.monatsBilanz(state, "2026-10");
+        if (okt.einnahmen !== 500000 || okt.ausgaben !== 300000 || okt.nachArt.wages !== -300000) throw new Error(`Oktober: ${JSON.stringify(okt)}`);
+        if (F.monatsBilanz(state).einnahmen !== 200000) throw new Error("Der laufende Monat ist falsch");
+
+        // Kontostand am Monatsersten, nicht an anderen Tagen, nicht doppelt
+        state.finances.verlauf = [];
+        club.balance = 10e6;
+        F.monatsStand(state, "01.11.2026");
+        F.monatsStand(state, "01.11.2026");
+        F.monatsStand(state, "02.11.2026");
+        club.balance = 12e6;
+        const v = F.kontoVerlauf(state);
+        if (v.length !== 2 || v[0].saldo !== 10e6 || !v[1].heute || v[1].saldo !== 12e6) throw new Error(`Verlauf: ${JSON.stringify(v)}`);
+        for (let m = 1; m <= 40; m++) F.monatsStand(state, `01.${String((m % 12) + 1).padStart(2, "0")}.${2027 + Math.floor(m / 12)}`);
+        if (state.finances.verlauf.length !== F.VERLAUF_MAX) throw new Error("Der Verlauf wächst ohne Grenze");
+        // Am Monatsersten schreibt der Kalender den Stand
+        if (!require('fs').readFileSync('./js/engine/calendarEngine.js', 'utf8').includes("ratenEngine.monatsStand(state, currentDay.date)")) throw new Error("Der Kalender schreibt keinen Monatsstand");
+
+        // Sponsoren: der Hauptsponsor nach dem, was je Spieltag gebucht wird
+        const sp = F.sponsoring(state, club);
+        if (sp.posten[0].art !== "haupt" || sp.posten[0].betrag !== Math.round(F.sponsorPerMatchday(club) * (state.totalMatchdays || 34))) throw new Error("Hauptsponsor falsch");
+        if (sp.summe !== sp.posten.reduce((a, p) => a + p.betrag, 0)) throw new Error("Summe der Sponsoren falsch");
+
+        // Gehälter nach Rolle: jede Rolle in der Reihenfolge, die Summe stimmt
+        const g = F.gehaltNachRolle(state, club);
+        const kader = state.players.filter(p => p.clubId === "dor");
+        if (g.liste[0].rolle !== "Schlüsselspieler" || g.summe !== kader.reduce((a, p) => a + (p.wage || 0), 0)) throw new Error("Gehälter nach Rolle falsch");
+        if (g.liste.reduce((a, e) => a + e.anzahl, 0) !== kader.length) throw new Error("Nicht jeder Spieler hat eine Rolle");
+
+        // Schulden: Ablöseraten und Baukredite
+        club.baukredite = [{ name: "Stadion", rate: 100000, offen: 900000 }];
+        const s = F.schulden(state, club);
+        if (s.baukredite !== 900000 || s.gesamt !== s.raten + 900000) throw new Error(`Schulden: ${JSON.stringify(s)}`);
+
+        // Prognose: vor dem dritten Spieltag aus den Schätzungen, danach aus den Buchungen ohne Transfers
+        state.currentMatchday = 1;
+        const p0 = F.prognose(state, club);
+        if (p0.ausBuchungen || !(p0.naechste.umsatz > 0)) throw new Error("Prognose ohne Spieltage");
+        state.currentMatchday = 11;
+        state.seasonYear = 1;
+        state.finances.transactions = [];
+        for (let i = 0; i < 10; i++) {
+            F.recordTransaction(state, "dor", "ticket_income", 1e6, "x");
+            F.recordTransaction(state, "dor", "wages", -600000, "x");
+        }
+        F.recordTransaction(state, "dor", "transfer_out", -50e6, "Ablöse");
+        club.balance = 20e6;
+        const p = F.prognose(state, club);
+        const rest = (state.totalMatchdays || 34) - 10;
+        if (!p.ausBuchungen || p.nettoJeSpieltag !== 400000 || p.diese.saldo !== 20e6 + 400000 * rest) throw new Error(`Prognose: ${JSON.stringify(p)}`);
+
+        // Die Seite: acht Kacheln, der Verlauf mit einem Punkt je Stand
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        const el = { innerHTML: "" };
+        const vorher = { document: global.document, fe: global.FinanceEngine };
+        global.document = { getElementById: (id) => id === "finKacheln" ? el : null };
+        global.FinanceEngine = F;
+        try {
+            ui.renderFinanzKacheln(state, club);
+        } finally {
+            if (vorher.document === undefined) delete global.document; else global.document = vorher.document;
+            if (vorher.fe === undefined) delete global.FinanceEngine; else global.FinanceEngine = vorher.fe;
+        }
+        ["Übersicht", "Einnahmen", "Ausgaben", "Finanzregeln", "Schulden und Raten", "Gehälter", "Sponsoren", "Prognose"]
+            .forEach(t => { if (!el.innerHTML.includes(`</svg>${t}</h4>`)) throw new Error(`Kachel ${t} fehlt`); });
+        if ((el.innerHTML.match(/class="fin-punkt[ "]/g) || []).length !== F.kontoVerlauf(state).length) throw new Error("Nicht jeder Stand ist ein Punkt im Verlauf");
+    });
+
     test("Vereinsprofil als Seite: Finanzlage in Worten, Tabellenausschnitt, Geschichte, Aktionen nach Themen", () => {
         const { UIManager } = require('./js/ui/uiManager.js');
         const state = GameState.createNewGame("dor", "normal", { name: "Verein" });

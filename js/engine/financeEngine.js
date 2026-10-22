@@ -662,6 +662,8 @@ const FinanceEngine = {
             matchday: state.currentMatchday || 1,
             season: state.seasonYear || 1,
             type: type, // 'ticket_income', 'sponsor_income', 'wages', 'staff_wages', 'transfer_in', 'transfer_out', 'facility_cost', 'bonus'
+            // Der Kalendermonat ("2026-08") - für Einnahmen und Ausgaben des Monats
+            monat: this.monatVon(state),
             amount: amount,
             description: description || ""
         };
@@ -1253,6 +1255,153 @@ const FinanceEngine = {
     /**
      * Erstellt eine detaillierte Finanzübersicht für einen Verein
      */
+    // ------------------------------------------------------------ Finanzseite
+    // Für die Kacheln der Finanzseite wie im Vorbild (uiFinanzen.js):
+    // Kontoverlauf, Monatsbilanz, Sponsoren, Gehälter nach Kaderrolle,
+    // Schulden und eine Prognose. Gerechnet wird nur aus dem, was gebucht
+    // ist oder fest vereinbart - eine Prognose sagt, was sie weglässt.
+
+    /** Der Kalendermonat einer Buchung: "2026-08" */
+    monatVon(state) {
+        const d = String(state?.currentDate || state?.calendar?.[state?.currentDayIndex || 0]?.date || "");
+        const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(d);
+        return m ? `${m[3]}-${m[2]}` : null;
+    },
+
+    /** Höchstens so viele Monatsstände (drei Jahre) */
+    VERLAUF_MAX: 36,
+
+    /** Am Monatsersten: den Kontostand des eigenen Vereins festhalten */
+    monatsStand(state, datum = state?.currentDate) {
+        if (!state || !/^01\./.test(String(datum || ""))) return;
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        if (!club) return;
+        if (!state.finances) state.finances = { transactions: [] };
+        const verlauf = Array.isArray(state.finances.verlauf) ? state.finances.verlauf : [];
+        if (verlauf.length && verlauf[verlauf.length - 1].datum === datum) return;
+        verlauf.push({ datum, saldo: Math.round(club.balance || 0) });
+        state.finances.verlauf = verlauf.slice(-this.VERLAUF_MAX);
+    },
+
+    /** Der Kontoverlauf: die Monatsstände und heute */
+    kontoVerlauf(state) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        const punkte = (state?.finances?.verlauf || []).map(v => ({ datum: v.datum, saldo: v.saldo }));
+        const heute = state?.currentDate || "";
+        if (club && (!punkte.length || punkte[punkte.length - 1].datum !== heute)) punkte.push({ datum: heute, saldo: Math.round(club.balance || 0), heute: true });
+        return punkte;
+    },
+
+    /** Einnahmen und Ausgaben eines Monats (Standard: der laufende), nach Art */
+    monatsBilanz(state, monat = this.monatVon(state)) {
+        const id = state?.userClubId;
+        const r = { monat, einnahmen: 0, ausgaben: 0, nachArt: {} };
+        (state?.finances?.transactions || []).forEach(t => {
+            if (t.clubId !== id || t.monat !== monat) return;
+            if (t.amount >= 0) r.einnahmen += t.amount; else r.ausgaben -= t.amount;
+            r.nachArt[t.type] = (r.nachArt[t.type] || 0) + t.amount;
+        });
+        return r;
+    },
+
+    /** Summen der laufenden Saison nach Art der Buchung */
+    saisonBuchungen(state) {
+        const id = state?.userClubId, saison = state?.seasonYear || 1;
+        const r = { einnahmen: 0, ausgaben: 0, nachArt: {} };
+        (state?.finances?.transactions || []).forEach(t => {
+            if (t.clubId !== id || (t.season || 1) !== saison) return;
+            if (t.amount >= 0) r.einnahmen += t.amount; else r.ausgaben -= t.amount;
+            r.nachArt[t.type] = (r.nachArt[t.type] || 0) + t.amount;
+        });
+        return r;
+    },
+
+    /**
+     * Sponsoring der Saison: der Hauptsponsor mit dem, was je Spieltag
+     * gebucht wird, mal den Spieltagen; dazu was an Fanartikeln,
+     * Sponsorenaktionen und vom Investor gebucht ist.
+     */
+    sponsoring(state, club) {
+        const spieltage = state?.totalMatchdays || 34;
+        const s = this.saisonBuchungen(state).nachArt;
+        const posten = [
+            { art: "haupt", name: club?.sponsor?.name ? `Hauptsponsor: ${club.sponsor.name}` : "Hauptsponsor", betrag: Math.round(this.sponsorPerMatchday(club) * spieltage),
+                hinweis: club?.sponsor?.yearsRemaining ? `noch ${club.sponsor.yearsRemaining} ${club.sponsor.yearsRemaining === 1 ? "Saison" : "Saisons"}` : "" },
+            { art: "fanartikel", name: "Fanartikel und Trikots", betrag: Math.max(0, s.merch_income || 0), hinweis: "bisher gebucht" },
+            { art: "aktion", name: "Sponsorenaktionen", betrag: Math.max(0, s.sponsor_event || 0), hinweis: "bisher gebucht" },
+            { art: "investor", name: "Investor", betrag: Math.max(0, s.investor || 0), hinweis: "bisher gebucht" }
+        ].filter((p, i) => i === 0 || p.betrag > 0);
+        return { posten, summe: posten.reduce((a, p) => a + p.betrag, 0) };
+    },
+
+    /** Reihenfolge der Kaderrollen für die Gehaltskachel */
+    ROLLEN_REIHE: ["Schlüsselspieler", "Stammspieler", "Rotationsspieler", "Ergänzungsspieler", "Perspektivspieler", "Talent"],
+
+    /** Wochengehälter nach Kaderrolle: Anzahl und Summe je Rolle */
+    gehaltNachRolle(state, club) {
+        const kader = (state?.players || []).filter(p => p.clubId === club?.id);
+        const rolle = (p) => p.squadRole === "Rotation" ? "Rotationsspieler" : (p.squadRole || "Ohne Rolle");
+        const map = new Map(this.ROLLEN_REIHE.map(r => [r, { rolle: r, anzahl: 0, summe: 0 }]));
+        kader.forEach(p => {
+            const r = rolle(p);
+            if (!map.has(r)) map.set(r, { rolle: r, anzahl: 0, summe: 0 });
+            const e = map.get(r);
+            e.anzahl++;
+            e.summe += p.wage || 0;
+        });
+        const liste = [...map.values()];
+        return { liste, summe: liste.reduce((a, e) => a + e.summe, 0), budget: club?.wageBudget || 0 };
+    },
+
+    /** Was der Verein schuldet und was ihm zusteht: Ablöseraten und Baukredite */
+    schulden(state, club) {
+        const raten = this.ratenUebersicht(state, club?.id);
+        const anlagen = _feResolve("FacilityEngine", "./facilityEngine.js");
+        const bau = anlagen && typeof anlagen.offeneBaukredite === "function" ? anlagen.offeneBaukredite(state, club) : 0;
+        const bauRate = (club?.baukredite || []).reduce((a, k) => a + (k.rate || 0), 0);
+        return {
+            raten: raten.schulden, forderungen: raten.forderungen, baukredite: bau,
+            gesamt: raten.schulden + bau,
+            naechsterMonat: raten.naechsterMonat.zahlen + bauRate * 4
+        };
+    },
+
+    /**
+     * Prognose bis zum Saisonende und für die Saison danach: aus dem, was je
+     * Spieltag im Schnitt hereinkommt und hinausgeht. Ab drei Spieltagen aus
+     * den Buchungen dieser Saison, davor aus den Schätzungen. Transfers,
+     * Prämien und Investor bleiben draußen - sie lassen sich nicht planen.
+     */
+    PROGNOSE_OHNE: ["transfer_in", "transfer_out", "prize", "prize_money", "investor"],
+
+    prognose(state, club) {
+        const gesamt = state?.totalMatchdays || 34;
+        const gespielt = Math.max(0, (state?.currentMatchday || 1) - 1);
+        const rest = Math.max(0, gesamt - gespielt);
+        let ein = 0, aus = 0;
+        (state?.finances?.transactions || []).forEach(t => {
+            if (t.clubId !== state.userClubId || (t.season || 1) !== (state.seasonYear || 1) || this.PROGNOSE_OHNE.includes(t.type)) return;
+            if (t.amount >= 0) ein += t.amount; else aus -= t.amount;
+        });
+        let einJe, ausJe;
+        if (gespielt >= 3) {
+            einJe = ein / gespielt;
+            ausJe = aus / gespielt;
+        } else {
+            const s = this.getFinanceSummary(state, club?.id) || {};
+            einJe = s.estimatedWeeklyIncome || 0;
+            ausJe = s.estimatedWeeklyExpenses || 0;
+        }
+        const saldo = club?.balance || 0;
+        const saisonende = Math.round(saldo + (einJe - ausJe) * rest);
+        return {
+            ausBuchungen: gespielt >= 3,
+            nettoJeSpieltag: Math.round(einJe - ausJe),
+            diese: { saldo: saisonende, umsatz: Math.round(ein + einJe * rest), transferbudget: club?.transferBudget || 0 },
+            naechste: { saldo: Math.round(saisonende + (einJe - ausJe) * gesamt), umsatz: Math.round(einJe * gesamt) }
+        };
+    },
+
     getFinanceSummary(state, clubId) {
         if (!state) return null;
         const club = state.clubs.find(c => c.id === clubId);

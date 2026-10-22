@@ -1359,9 +1359,11 @@
                     <div class="pane-header">
                         <h2>Vereinsfinanzen & Bilanz</h2>
                     </div>
-                    <div class="kz-leiste" id="finKennzahlen" data-ur="Übersicht"></div>
+                    <!-- Wie im Vorbild: die Finanzen auf einen Blick in Kacheln (uiFinanzen.js) -->
+                    <div class="fin-raster" id="finKacheln" data-ur="Übersicht"></div>
+                    <div class="kz-leiste" id="finKennzahlen" data-ur="Budgets"></div>
                     <div class="finances-grid">
-                        <div class="dash-card" data-ur="Übersicht">
+                        <div class="dash-card" data-ur="Budgets">
                             <h3>Vermögen & Budgets</h3>
                             <div class="finance-stat-row">
                                 <span>Gesamter Kontostand:</span>
@@ -1384,7 +1386,7 @@
                             <div id="finRegeln" class="fin-regeln"></div>
                         </div>
 
-                        <div class="dash-card" data-ur="Übersicht">
+                        <div class="dash-card" data-ur="Budgets">
                             <h3>Einnahmequellen & Sponsoring</h3>
                             <div class="finance-stat-row">
                                 <span>Stadionkapazität:</span>
@@ -1413,7 +1415,7 @@
                         </div>
 
                         <!-- Was die Anlagen je Spieltag kosten -->
-                        <div class="dash-card" data-ur="Übersicht">
+                        <div class="dash-card" data-ur="Budgets">
                             <h3>Unterhalt der Anlagen</h3>
                             <p class="text-muted" style="font-size:12px; margin:-2px 0 10px;">
                                 Je Spieltag. Was verfällt, kostet mehr &ndash; Flickwerk ist teurer als Pflege.

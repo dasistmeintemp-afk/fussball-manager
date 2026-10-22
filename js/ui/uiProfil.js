@@ -104,7 +104,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 ["Gehalt", `${this.geldKurz(player.wage || 0)} / Wo.`],
                 ["Vertrag bis", player.clubId ? (ende || `${player.contractYears} J.`) : "–"],
                 ...(klausel ? [["Ausstiegsklausel", this.geldKurz(klausel)]] : [])];
-        setze("pdKopfDaten", daten.map(([l, w]) => `<div class="pf-datum"><span>${esc(l)}</span><strong>${esc(w)}</strong></div>`).join(""));
+        // Wie im Vorbild: das Land mit Länderspielen und Toren
+        const flagge = nation ? this.flaggeVon(nation) : "";
+        const land = player.nationality
+            ? `<div class="pf-datum pf-land"><span>${flagge} ${esc(player.nationality)}</span><strong>${player.laenderspiele ? `${player.laenderspiele} Spiele · ${player.laenderspielTore || 0} Tore` : "ohne Länderspiel"}</strong></div>` : "";
+        setze("pdKopfDaten", daten.map(([l, w]) => `<div class="pf-datum"><span>${esc(l)}</span><strong>${esc(w)}</strong></div>`).join("") + land);
 
         // Sterne: Stärke heute und Potenzial, wie im Vorbild getrennt
         setze("pdKopfSterne", card ? `
@@ -113,39 +117,60 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     },
 
     /**
-     * Das Menü Aktionen: was man mit dem Spieler tun kann. Jeder Eintrag
-     * führt zu einem Reiter oder drückt einen Knopf, den die Seite schon hat -
-     * so gibt es jede Handlung nur einmal.
+     * Das Menü Aktionen, wie im Vorbild nach Themen gruppiert: was man mit
+     * dem Spieler tun kann. Ein Eintrag führt zu einem Reiter, drückt einen
+     * Knopf, den die Seite schon hat - so gibt es jede Handlung nur einmal -,
+     * oder ruft eine eigene Aktion auf (Verfügbarkeit erfragen, ähnliche
+     * Spieler suchen, Vereinsseite).
      */
     profilAktionen(ctx, body) {
-        const { player, isUserClub, isProspect } = ctx;
+        const { player, club, card, isUserClub, isProspect } = ctx;
         const eigen = isUserClub && !isProspect;
         const da = (sel) => !!body.querySelector(sel);
-        const liste = [
-            eigen && da("#btnSubmitExtension") ? { text: "Vertrag verlängern", icon: "i-doc", reiter: "vertrag", ziel: "#pdVertrag" } : null,
-            isProspect && da("#btnPdPromoteProspect") ? { text: "Profivertrag anbieten", icon: "i-doc", knopf: "#btnPdPromoteProspect" } : null,
-            eigen && da("[data-gespraech]") ? { text: "Gespräch unter vier Augen", icon: "i-chat", reiter: "vertrag", ziel: "[data-gespraech]" } : null,
-            eigen && da("[data-pd-reiter='entwicklung']") ? { text: "Entwicklung planen", icon: "i-dumbbell", reiter: "entwicklung" } : null,
-            eigen && da("#btnPdZurLeihe") ? { text: "Verleihen", icon: "i-transfer", reiter: "entwicklung", ziel: "#btnPdZurLeihe" } : null,
-            eigen ? { text: "Rückennummer ändern", icon: "i-edit", knopf: "#pdTrikot button.pd-nr", ausserhalb: true } : null,
-            da("#btnPdBidPlayer") ? { text: "Transfer verhandeln", icon: "i-briefcase", knopf: "#btnPdBidPlayer" } : null,
-            da("#btnPdAusleihen") ? { text: "Ausleihen", icon: "i-transfer", knopf: "#btnPdAusleihen" } : null,
-            da("#btnPdVorvertrag") ? { text: "Vorvertrag anbieten", icon: "i-edit", knopf: "#btnPdVorvertrag" } : null,
-            da("#btnPdKlausel") ? { text: "Ausstiegsklausel ziehen", icon: "i-bolt", knopf: "#btnPdKlausel" } : null,
-            da("#btnPdScoutPlayer:not([disabled])") ? { text: "Scouten", icon: "i-search", knopf: "#btnPdScoutPlayer" } : null,
-            da("#btnPdMerken") ? { text: body.querySelector("#btnPdMerken")?.textContent?.trim() || "Beobachtungsliste", icon: "i-star", knopf: "#btnPdMerken" } : null,
-            da("[data-pd-reiter='vergleich']") ? { text: "Mit anderem vergleichen", icon: "i-chart", reiter: "vergleich" } : null
-        ].filter(Boolean);
-        return liste;
+        const fremdImVerein = !isUserClub && !isProspect && !!player.clubId;
+        const gruppen = [
+            { titel: "Vertrag", eintraege: [
+                eigen && da("#btnSubmitExtension") ? { text: "Vertrag verlängern", icon: "i-doc", reiter: "vertrag", ziel: "#pdVertrag" } : null,
+                isProspect && da("#btnPdPromoteProspect") ? { text: "Profivertrag anbieten", icon: "i-doc", knopf: "#btnPdPromoteProspect" } : null,
+                eigen && da("#btnPdZurLeihe") ? { text: "Verleihen", icon: "i-transfer", reiter: "entwicklung", ziel: "#btnPdZurLeihe" } : null
+            ] },
+            { titel: "Kabine", eintraege: [
+                eigen && da("[data-gespraech]") ? { text: "Gespräch unter vier Augen", icon: "i-chat", reiter: "vertrag", ziel: "[data-gespraech]" } : null,
+                eigen ? { text: "Rückennummer ändern", icon: "i-edit", knopf: "#pdTrikot button.pd-nr", ausserhalb: true } : null
+            ] },
+            { titel: "Training", eintraege: [
+                eigen && da("[data-pd-reiter='entwicklung']") ? { text: "Entwicklung planen", icon: "i-dumbbell", reiter: "entwicklung" } : null
+            ] },
+            { titel: "Transfer", eintraege: [
+                da("#btnPdBidPlayer") ? { text: player.clubId ? "Transfer verhandeln" : "Vertrag anbieten", icon: "i-briefcase", knopf: "#btnPdBidPlayer" } : null,
+                da("#btnPdAusleihen") ? { text: "Ausleihen", icon: "i-transfer", knopf: "#btnPdAusleihen" } : null,
+                da("#btnPdVorvertrag") ? { text: "Vorvertrag anbieten", icon: "i-edit", knopf: "#btnPdVorvertrag" } : null,
+                da("#btnPdKlausel") ? { text: "Ausstiegsklausel ziehen", icon: "i-bolt", knopf: "#btnPdKlausel" } : null,
+                fremdImVerein && typeof TransferEngine !== "undefined" && typeof TransferEngine.verfuegbarkeit === "function"
+                    ? { text: "Verfügbarkeit erfragen", icon: "i-chat", aktion: () => this.zeigeVerfuegbarkeit(player, body) } : null
+            ] },
+            { titel: "Scouting", eintraege: [
+                da("#btnPdScoutPlayer:not([disabled])") ? { text: "Scouten", icon: "i-search", knopf: "#btnPdScoutPlayer" } : null,
+                da("#btnPdMerken") ? { text: body.querySelector("#btnPdMerken")?.textContent?.trim() || "Beobachtungsliste", icon: "i-star", knopf: "#btnPdMerken" } : null,
+                isProspect ? null : { text: eigen ? "Ersatz suchen" : "Ähnliche Spieler suchen", icon: "i-search", aktion: () => this.sucheAehnlicheSpieler(player, card) }
+            ] },
+            { titel: "Mehr", eintraege: [
+                da("[data-pd-reiter='vergleich']") ? { text: "Mit anderem vergleichen", icon: "i-chart", reiter: "vergleich" } : null,
+                da("[data-pd-reiter='laufbahn']") ? { text: "Laufbahn ansehen", icon: "i-trophy", reiter: "laufbahn" } : null,
+                club && !isUserClub ? { text: `Zum Verein: ${club.name}`, icon: "i-shield", aktion: () => this.showClubDetailsModal(club.id) } : null
+            ] }
+        ];
+        return gruppen.map(g => ({ titel: g.titel, eintraege: g.eintraege.filter(Boolean) })).filter(g => g.eintraege.length);
     },
 
     zeichneProfilAktionen(ctx, body) {
         const ort = document.getElementById("pdAktionen");
         if (!ort) return;
-        const liste = this.profilAktionen(ctx, body);
-        if (!liste.length) { ort.innerHTML = ""; return; }
+        const gruppen = this.profilAktionen(ctx, body);
+        if (!gruppen.length) { ort.innerHTML = ""; return; }
+        const liste = gruppen.flatMap(g => g.eintraege);
         const esc = (t) => this.escapeHtml(String(t ?? ""));
-        ort.innerHTML = `<button type="button" class="btn btn-secondary btn-sm pf-aktionen-knopf" aria-haspopup="menu" aria-expanded="false">Aktionen <svg class="ico" aria-hidden="true"><use href="#i-menu"/></svg></button>`;
+        ort.innerHTML = `<button type="button" class="btn btn-primary btn-sm pf-aktionen-knopf" aria-haspopup="menu" aria-expanded="false"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg>Aktionen <svg class="ico pf-pfeil" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>`;
         const knopf = ort.querySelector("button");
         knopf.onclick = (e) => {
             e.stopPropagation();
@@ -153,10 +178,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const menue = document.createElement("div");
             menue.className = "kontextmenue pf-aktionen-menue";
             menue.setAttribute("role", "menu");
-            menue.innerHTML = liste.map((a, i) => `<button type="button" role="menuitem" class="km-eintrag" data-pf-akt="${i}"><svg class="ico" aria-hidden="true"><use href="#${a.icon}"/></svg>${esc(a.text)}</button>`).join("");
+            let i = 0;
+            menue.innerHTML = gruppen.map(g => `
+                <div class="km-gruppe" role="presentation">${esc(g.titel)}</div>
+                ${g.eintraege.map(a => `<button type="button" role="menuitem" class="km-eintrag" data-pf-akt="${i++}"><svg class="ico" aria-hidden="true"><use href="#${a.icon}"/></svg>${esc(a.text)}</button>`).join("")}`).join("");
             document.body.appendChild(menue);
             const r = knopf.getBoundingClientRect(), m = menue.getBoundingClientRect();
-            menue.style.left = `${Math.max(8, Math.min(r.right - m.width, window.innerWidth - m.width - 8))}px`;
+            menue.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - m.width - 8))}px`;
             menue.style.top = `${Math.max(8, Math.min(r.bottom + 6, window.innerHeight - m.height - 8))}px`;
             knopf.setAttribute("aria-expanded", "true");
             menue.addEventListener("click", (ev) => {
@@ -172,6 +200,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
     fuehreProfilAktionAus(a, body) {
         if (!a) return;
+        if (typeof a.aktion === "function") { a.aktion(); return; }
         if (a.reiter) body.querySelector(`[data-pd-reiter="${a.reiter}"]`)?.click();
         const ziel = a.ziel ? body.querySelector(a.ziel) : null;
         if (ziel) {
@@ -179,6 +208,72 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             if (typeof this.hebeHervor === "function") this.hebeHervor(ziel.closest(".dash-card") || ziel);
         }
         if (a.knopf) (a.ausserhalb ? document.querySelector(a.knopf) : body.querySelector(a.knopf))?.click();
+    },
+
+    /**
+     * Verfügbarkeit erfragen: Die Antwort des Vereins steht oben im Reiter
+     * Vertrag & Transfer, mit den Knöpfen für den nächsten Schritt. Sie gilt
+     * für diese Sitzung - wer noch einmal fragt, bekommt dieselbe Antwort.
+     */
+    zeigeVerfuegbarkeit(player, body) {
+        const v = TransferEngine.verfuegbarkeit(this.app.state, player);
+        if (!v) return;
+        this._verfuegbarkeit = this._verfuegbarkeit || {};
+        this._verfuegbarkeit[player.id] = v;
+        body.querySelector('[data-pd-reiter="vertrag"]')?.click();
+        const reiter = body.querySelector('[data-pd-tab="vertrag"]');
+        if (!reiter) return;
+        reiter.querySelector(".pf-anfrage")?.remove();
+        reiter.insertAdjacentHTML("afterbegin", this.verfuegbarkeitHtml(v));
+        const karte = reiter.querySelector(".pf-anfrage");
+        karte?.querySelectorAll("[data-pf-weiter]").forEach(b => {
+            b.onclick = () => body.querySelector(b.dataset.pfWeiter)?.click();
+        });
+        karte?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+        if (typeof this.hebeHervor === "function" && karte) this.hebeHervor(karte);
+    },
+
+    verfuegbarkeitHtml(v) {
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const ton = { frei: "gut", verkauf: "gut", gespraechsbereit: "gut", offen: "mittel", schluessel: "schlecht", vergeben: "schlecht" }[v.stufe] || "mittel";
+        const weiter = [
+            v.stufe !== "vergeben" ? ["#btnPdBidPlayer", v.stufe === "frei" ? "Vertrag anbieten" : "Transfer verhandeln"] : null,
+            v.stufe !== "vergeben" && v.stufe !== "frei" ? ["#btnPdAusleihen", "Ausleihen"] : null
+        ].filter(Boolean);
+        return `
+            <div class="dash-card pf-karte pf-anfrage pf-anfrage-${ton}">
+                <h4 class="gs-titel"><svg class="ico h-ico" aria-hidden="true"><use href="#i-chat"/></svg>Anfrage beim Verein</h4>
+                <div class="pf-gross pf-ton-${ton}">${esc(v.titel)}</div>
+                <p>${esc(v.text)}</p>
+                ${v.hinweise.length ? `<ul class="pf-hinweise">${v.hinweise.map(h => `<li>${esc(h)}</li>`).join("")}</ul>` : ""}
+                ${weiter.length ? `<div class="pf-anfrage-knoepfe">${weiter.map(([sel, text]) => `<button type="button" class="btn btn-secondary btn-sm" data-pf-weiter="${esc(sel)}">${esc(text)}</button>`).join("")}</div>` : ""}
+            </div>`;
+    },
+
+    /**
+     * Ähnliche Spieler suchen: der Transfermarkt mit Position, Alter und
+     * Stärke dieses Spielers als Filter - beim eigenen Spieler die Suche
+     * nach einem Ersatz.
+     */
+    sucheAehnlicheSpieler(player, card) {
+        this.switchTab("transfers");
+        document.getElementById("btnSubTransfersMarket")?.click();
+        const setze = (id, wert) => {
+            const el = document.getElementById(id);
+            if (el && [...(el.options || [])].some(o => o.value === wert)) el.value = wert;
+        };
+        const alter = player.age || 25;
+        const band = alter <= 21 ? "0-21" : (alter <= 25 ? "0-25" : (alter <= 30 ? "26-30" : "31-99"));
+        const sterne = Number(card?.starsCa) || 0;
+        const stufe = [4.5, 4, 3.5, 3].find(s => s <= sterne - 0.5) || 0;
+        const suche = document.getElementById("tfSearch");
+        if (suche) suche.value = "";
+        setze("tfPosFilter", player.pos);
+        setze("tfAlterFilter", band);
+        setze("tfRatingFilter", String(stufe));
+        setze("tfSortierung", "staerke");
+        if (typeof this.renderTransfers === "function") this.renderTransfers();
+        this.showToast?.(`Ähnlich wie ${player.name}: ${player.pos}, ${band.replace("0-", "bis ").replace("31-99", "ab 31").replace("-", " bis ")} Jahre${stufe ? `, ab ★ ${String(stufe).replace(".", ",")}` : ""}`, "info");
     },
 
     // ------------------------------------------------------------ Übersicht

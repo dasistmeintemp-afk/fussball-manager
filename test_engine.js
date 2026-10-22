@@ -14793,6 +14793,76 @@ function runEngineTests() {
         if (ui.persoenlichkeitWort({ hiddenAttributes: { ...h, professionalism: 12, ambition: 12, loyalty: 17 } }, 50) !== "Ausgeglichen") throw new Error("Vereinstreue schon bei halbem Wissen sichtbar");
     });
 
+    test("Spielerprofil wie im Vorbild: Verfügbarkeit erfragen, Aktionen nach Themen, Laufbahn in sieben Kacheln", () => {
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const state = GameState.createNewGame("dor", "normal", { name: "Bericht" });
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+
+        // Verfügbarkeit: die Antwort folgt der Forderung einer Verhandlung, gerundet
+        const kader = state.players.filter(p => p.clubId === "muc").sort((a, b) => b.overall - a.overall);
+        const star = kader[0], mitte = kader[8];
+        const muc = state.clubs.find(c => c.id === "muc");
+        star.contractYears = 3; mitte.contractYears = 3;
+        if (TransferEngine.verfuegbarkeit(state, state.players.find(p => p.clubId === "dor")) !== null) throw new Error("Anfrage beim eigenen Verein");
+        const s = TransferEngine.verfuegbarkeit(state, star);
+        if (s.stufe !== "schluessel" || s.preis !== TransferEngine.calculateAskingPrice(star, muc)) throw new Error(`Der Beste: ${s.stufe}, ${s.preis}`);
+        if (TransferEngine.verfuegbarkeit(state, mitte).stufe !== "offen") throw new Error("Ein Stammspieler ist nicht offen für Angebote");
+        mitte.contractYears = 1;
+        if (TransferEngine.verfuegbarkeit(state, mitte).stufe !== "gespraechsbereit") throw new Error("Auslaufender Vertrag ohne Gesprächsbereitschaft");
+        mitte.transferListed = true;
+        const liste = TransferEngine.verfuegbarkeit(state, mitte);
+        if (liste.stufe !== "verkauf" || !/Mio\. €|Tsd\. €/.test(liste.text) || /,\d\d Mio/.test(liste.text)) throw new Error(`Transferliste: ${liste.stufe} - ${liste.text}`);
+        mitte.transferListed = false;
+        mitte.vorvertrag = { clubId: "lev", clubName: "Leverkusen" };
+        if (TransferEngine.verfuegbarkeit(state, mitte).stufe !== "vergeben") throw new Error("Ein Vorvertrag mit einem anderen Verein zählt nicht");
+        delete mitte.vorvertrag;
+        const frei = { id: "frei_1", name: "Ohne Verein", clubId: null, value: 500000 };
+        if (TransferEngine.verfuegbarkeit(state, frei).stufe !== "frei") throw new Error("Ein Vereinsloser ist nicht frei");
+
+        // Im Browser sind die Engines global - hier für die Dauer des Tests
+        const hatte = { lb: global.LaufbahnEngine, kr: global.KaderregelEngine, te: global.TransferEngine };
+        global.LaufbahnEngine = require('./js/engine/laufbahnEngine.js').LaufbahnEngine;
+        global.KaderregelEngine = require('./js/engine/kaderregelEngine.js').KaderregelEngine;
+        global.TransferEngine = TransferEngine;
+        try {
+        // Aktionen nach Themen: beim fremden Spieler Transfer, Scouting und Mehr, nie Kabine
+        const body = { querySelector: (sel) => /btnPdBidPlayer|btnPdScoutPlayer|btnPdMerken|vergleich|laufbahn/.test(sel) ? { textContent: "Auf die Beobachtungsliste" } : null };
+        const fremd = ui.profilAktionen({ player: star, club: muc, card: { starsCa: 4.2 }, isUserClub: false, isProspect: false }, body);
+        const titel = fremd.map(g => g.titel);
+        if (titel.join() !== "Transfer,Scouting,Mehr") throw new Error(`Gruppen beim fremden Spieler: ${titel}`);
+        const texte = fremd.flatMap(g => g.eintraege.map(e => e.text));
+        ["Transfer verhandeln", "Verfügbarkeit erfragen", "Scouten", "Ähnliche Spieler suchen", "Mit anderem vergleichen", "Zum Verein: " + muc.name]
+            .forEach(t => { if (!texte.includes(t)) throw new Error(`Aktion fehlt: ${t}`); });
+        const eigen = ui.profilAktionen({ player: state.players.find(p => p.clubId === "dor"), club: null, card: null, isUserClub: true, isProspect: false },
+            { querySelector: (sel) => /pd-reiter='entwicklung'|data-gespraech|btnSubmitExtension/.test(sel) ? {} : null });
+        if (!eigen.some(g => g.titel === "Kabine") || eigen.some(g => g.eintraege.some(e => e.text === "Verfügbarkeit erfragen"))) throw new Error("Aktionen beim eigenen Spieler falsch");
+
+        // Laufbahn: sieben Kacheln, frühere Mitspieler aus der Laufbahn, Saison als Jahre
+        const alt = state.clubs.find(c => c.leagueId === "de_liga_1" && c.id !== "muc" && c.id !== "dor");
+        star.laufbahn = [[1, alt.id, 30, 11, 6, 715]];
+        const ehemalig = state.players.find(p => p.clubId === alt.id);
+        ehemalig.laufbahn = [[1, alt.id, 25, 2, 3, 690]];
+        star.laenderspiele = 12; star.laenderspielTore = 3;
+        const b = ui.profilBezugspersonen(state, star);
+        if (!b.ehemalige.some(p => p.id === ehemalig.id)) throw new Error("Der frühere Mitspieler fehlt");
+        if (b.landsleute.some(p => p.nationality !== star.nationality || p.clubId !== "muc")) throw new Error("Falsche Landsleute");
+            const html = ui.profilLaufbahnKachelnHtml(star, { isUserClub: false, isProspect: false, confidence: 30 });
+            ["Biografie", "Karrierestatistik", "Medien", "Bezugspersonen", "Vereine", "Nationalität", "Meilensteine"]
+                .forEach(t => { if (!html.includes(`</svg>${t}</h4>`)) throw new Error(`Kachel ${t} fehlt`); });
+            const start = Number(state.calendar[0].date.slice(-4));
+            if (!html.includes(`${String(start).slice(-2)}/${String(start + 1).slice(-2)}`)) throw new Error("Die Saison steht nicht als Jahre da");
+            if (!html.includes(alt.name) || !html.includes("12 Länderspiele")) throw new Error("Laufbahn oder Länderspiele fehlen");
+            // Ohne Scoutwissen verrät die Biografie keine Stärken
+            if (ui.profilBiografie(state, star, { confidence: 30 }).some(s => s.startsWith("Seine Stärken"))) throw new Error("Stärken ohne Scoutwissen");
+            if (!ui.profilBiografie(state, star, { confidence: 90 }).some(s => s.startsWith("Seine Stärken"))) throw new Error("Stärken fehlen trotz Scoutwissen");
+        } finally {
+            if (hatte.lb === undefined) delete global.LaufbahnEngine; else global.LaufbahnEngine = hatte.lb;
+            if (hatte.kr === undefined) delete global.KaderregelEngine; else global.KaderregelEngine = hatte.kr;
+            if (hatte.te === undefined) delete global.TransferEngine; else global.TransferEngine = hatte.te;
+        }
+    });
+
     test("Transferangebot als Seite: Erlös mit Raten und Weiterverkauf, wer auf der Position bleibt, Dashboard führt zum Angebot", () => {
         const { UIManager } = require('./js/ui/uiManager.js');
         const state = GameState.createNewGame("muc", "normal", { name: "Angebot" });

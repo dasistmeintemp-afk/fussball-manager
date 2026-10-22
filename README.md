@@ -523,9 +523,11 @@ Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit 
 - **Kopf:**
   - links Rückennummer (beim eigenen Spieler zum Ändern), Name, Position mit allen Positionen, Flagge, Nation, Alter, Größe und Verein (ein Tipp öffnet ihn)
   - darunter Marken für Kaderrolle, Verletzung, Sperre, Leihe, U19/U23, Transferliste, Vorvertrag und Beobachtungsliste
-  - in der Mitte Marktwert (beim fremden Spieler als Spanne), Gehalt, Vertragsende als Datum und eine Ausstiegsklausel
+  - in der Mitte Marktwert (beim fremden Spieler als Spanne), Gehalt, Vertragsende als Datum, eine Ausstiegsklausel und das Land mit Länderspielen und Toren
   - rechts Sterne für Stärke und Potenzial getrennt, jeweils mit Klasse
-  - Das Menü **Aktionen** sammelt, was man mit ihm tun kann: verlängern, Gespräch, Entwicklung, verleihen, Rückennummer, verhandeln, ausleihen, Vorvertrag, Klausel, scouten, Beobachtungsliste, vergleichen. Jeder Eintrag führt zum passenden Reiter oder drückt den Knopf, den die Seite schon hat.
+  - Der Knopf **Aktionen** steht wie im Vorbild direkt unter dem Namen. Sein Menü ist nach Themen gruppiert: *Vertrag* (verlängern, Profivertrag, verleihen), *Kabine* (Gespräch, Rückennummer), *Training* (Entwicklung), *Transfer* (verhandeln oder beim Vereinslosen Vertrag anbieten, ausleihen, Vorvertrag, Klausel ziehen, Verfügbarkeit erfragen), *Scouting* (scouten, Beobachtungsliste, ähnliche Spieler suchen, beim eigenen Spieler Ersatz suchen) und *Mehr* (vergleichen, Laufbahn, zum Verein). Ein Eintrag führt zum passenden Reiter, drückt den Knopf, den die Seite schon hat, oder ruft eine eigene Aktion auf.
+  - **Verfügbarkeit erfragen** (`TransferEngine.verfuegbarkeit`): Der Verein antwortet, oben im Reiter *Vertrag & Transfer*, mit Knöpfen für den nächsten Schritt. Die Antwort folgt derselben Forderung, mit der eine Verhandlung eröffnet würde, gerundet („um 26 Mio. €“). Je nach Lage heißt sie *Vereinslos*, *Steht zum Verkauf* (Transferliste), *Gesprächsbereit* (Vertrag läuft aus), *Nicht auf dem Markt*, *Schlüsselspieler* (unter den drei Besten des Kaders mit mindestens zwei Jahren Vertrag) oder *Schon vergeben* (Vorvertrag woanders). Dazu steht, was einem Wechsel im Weg steht: geschlossenes Fenster, fehlende Arbeitserlaubnis, Leihe, Ausstiegsklausel.
+  - **Ähnliche Spieler suchen** öffnet den Transfermarkt mit Position, Altersgruppe und Stärke dieses Spielers als Filter.
 - **Übersicht:**
   - **Positionen** auf einem Feld: Wo er spielen kann, steht die Position in der Farbe seiner Eignung, die Stammposition mit Ring. Wo es nur zur Not geht, steht ein farbiger Punkt, sonst ein grauer.
   - Darunter die Positionen mit Sternen und die **Rollen** seiner Position mit Sternen.
@@ -544,7 +546,15 @@ Das Dashboard zeigt, was heute eine Entscheidung braucht – nach Dringlichkeit 
   - **Entwicklung** (eigene Spieler)
   - **Vertrag & Kabine** (bei fremden **Vertrag & Transfer**)
   - **Leistung**: Saison je Wettbewerb mit Minuten, Karten und Note, die Form der letzten zehn Ligaspiele als Kurve und Tabelle, dazu die Werte je 90 Minuten aus der Datenzentrale.
-  - **Laufbahn**: Saison für Saison, mit Vereinsbilanz und Auszeichnungen.
+  - **Laufbahn** in sieben Kacheln wie im Vorbild (`uiProfilLaufbahn.js`), für jeden Spieler außer Talenten:
+    - *Biografie*: ein paar Sätze aus dem Spielstand: Alter, Position und Herkunft, Verein, Liga und Vertrag, Stellung im Kader, die drei größten Stärken (erst mit Scoutwissen), Spiele und Tore seit dem Start, Länderspiele, Auszeichnungen.
+    - *Karrierestatistik*: Vereine, Spiele, Tore und Vorlagen, darunter Saison für Saison mit Wappen und Jahreszahlen („26/27“).
+    - *Medien*: das Urteil der Presse aus Form, Bekanntheit, Wechselwunsch und Verletzung, dazu Bekanntheit und Persönlichkeit.
+    - *Bezugspersonen*: Mentor, Schützlinge, Landsleute im Kader und frühere Mitspieler (dieselbe Saison beim selben Verein, heute woanders). Jeder Name öffnet sein Profil.
+    - *Vereine*: aus der Jugend von, ausgebildet bei, die meisten Spiele für, heute bei.
+    - *Nationalität*: Flagge, im Verein oder im Land ausgebildet, EU-Pass, Arbeitserlaubnis für England (wenn der eigene Verein dort spielt), Länderspiele und Sprachen (Muttersprache, nach zwei Jahren die Landessprache des Vereins).
+    - *Meilensteine*: Auszeichnungen, Titel mit seinem Verein, runde Zahlen an Spielen und Toren, Vereinslegende, daneben die Summen.
+    - Erfunden wird nichts. Was das Spiel erst seit dem Start kennt (Laufbahn, Länderspiele), steht ab dann da.
   - **Vergleich**: der Spielervergleich direkt auf der Seite statt in einem eigenen Fenster.
 - Die Reiterleiste bleibt am breiten Bildschirm beim Scrollen oben. Der gewählte Reiter bleibt erhalten, solange dieselbe Akte offen ist. Ein Klick auf einen auslaufenden Vertrag öffnet gleich „Vertrag“.
 - **Am Handy** steht alles untereinander: Kopfdaten und Sterne zu zweit, Kacheln zu zweit, die Werte über die volle Breite.
@@ -1293,6 +1303,7 @@ untitled/
 │   │   ├── uiAkten.js          # Spieler- und Vereinsakte: Reiter, Werte, Vertrag
 │   │   ├── uiSeiten.js         # Eigene Seiten im Inhaltsbereich: zeigen, ablösen, Zurück über den Verlauf
 │   │   ├── uiProfil.js         # Spielerprofil als eigene Seite: Kopf, Übersicht, Kacheln
+│   │   ├── uiProfilLaufbahn.js # Spielerprofil: Laufbahn in sieben Kacheln wie im Vorbild
 │   │   ├── uiAngebot.js        # Transferangebot als eigene Seite: Angebot, Folgen, Käufer, Entscheidung
 │   │   ├── uiLivespiel.js      # Match-Center, Zurufe, Seitenlinie während der Partie
 │   │   ├── uiLiveKacheln.js    # Livespiel als Kachelansicht: Aufstellungen, Statistik, Bank, Leiste

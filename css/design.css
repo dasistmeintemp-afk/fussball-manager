@@ -2211,6 +2211,84 @@ button.pf-verein:hover span { text-decoration: underline; text-underline-offset:
 .pd-laufbahn-reiter > * { margin: 0; }
 .pf-vergleich { max-width: 860px; }
 
+/* Aktionen wie im Vorbild: der Knopf unter dem Namen, das Menü nach Themen */
+.pf-kopf-aktionen { margin-top: 12px; }
+.pf-kopf-aktionen:empty { display: none; }
+.pf-aktionen-knopf .pf-pfeil { width: 14px; height: 14px; margin-left: -2px; }
+.pf-aktionen-menue { min-width: 250px; max-height: min(70vh, 560px); overflow-y: auto; }
+.km-gruppe { padding: 9px 12px 3px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.km-gruppe:first-child { padding-top: 4px; }
+.pf-land span { display: flex; align-items: center; gap: 6px; }
+
+/* Anfrage beim Verein: die Antwort oben im Reiter Vertrag & Transfer */
+.pf-anfrage { margin: 0 0 14px; border-left: 3px solid var(--line-strong); }
+.pf-anfrage-gut { border-left-color: var(--ok); }
+.pf-anfrage-mittel { border-left-color: var(--warn); }
+.pf-anfrage-schlecht { border-left-color: var(--bad); }
+.pf-anfrage p { margin: 0 0 8px; font-size: 13.5px; line-height: 1.5; }
+.pf-hinweise { margin: 0 0 10px; padding-left: 18px; font-size: 12.5px; color: var(--text-muted); }
+.pf-hinweise li { margin: 2px 0; }
+.pf-anfrage-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Laufbahn wie im Vorbild: oben Biografie, Karriere, Medien; darunter
+   Bezugspersonen, Vereine, Nationalität, Meilensteine */
+.pf-laufbahn-raster { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
+.pf-laufbahn-raster > .pf-kachel { grid-column: span 2; min-width: 0; display: flex; flex-direction: column; }
+.pf-laufbahn-raster > .pf-biografie, .pf-laufbahn-raster > .pf-karriere-kachel, .pf-laufbahn-raster > .pf-meilensteine-kachel { grid-column: span 4; }
+.pf-laufbahn-raster + .pd-saison { margin-top: 14px; }
+.pf-bio { display: grid; grid-template-columns: minmax(130px, 0.8fr) minmax(0, 2fr); gap: 14px; align-items: start; }
+.pf-bio-bild {
+    display: grid; place-items: center; align-content: center; gap: 10px; min-height: 180px; padding: 12px; border-radius: 12px;
+    border: 1px solid var(--line); background: linear-gradient(160deg, rgba(var(--accent-rgb), 0.12), transparent 60%), var(--surface-2);
+}
+.pf-bio-bild span { max-width: 100%; font-size: 16px; font-weight: 800; letter-spacing: 0.01em; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-bio-bild i { padding: 2px 10px; border-radius: 6px; background: var(--surface-0); font-style: normal; font-size: 12px; font-weight: 700; color: var(--text-muted); }
+.pf-bio-text p { margin: 0 0 8px; font-size: 13px; line-height: 1.55; color: var(--text-muted); }
+.pf-bio-text .pf-bio-lead { font-size: 15.5px; font-weight: 700; line-height: 1.4; color: var(--text-main); }
+.pf-karriere-kachel .pf-zahlen { margin-bottom: 8px; }
+.pf-karriere { margin-top: 4px; }
+.pf-verein-zelle { display: inline-flex; align-items: center; gap: 8px; }
+.pf-zeile-lang { flex-wrap: wrap; }
+.pf-namen { flex-basis: 100%; margin: 2px 0 6px; font-size: 12px; line-height: 1.5; }
+.pf-name { appearance: none; padding: 0; border: 0; background: none; color: var(--text-main); font: inherit; cursor: pointer; }
+.pf-name:hover { text-decoration: underline; text-underline-offset: 3px; }
+.pf-verein-zeile { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 4px 8px; padding: 5px 0; font-size: 13px; border-bottom: 1px solid var(--line); }
+.pf-verein-zeile:last-child { border-bottom: 0; }
+.pf-verein-art { grid-column: 1 / -1; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; color: var(--text-muted); }
+.pf-verein-zeile .pf-name { font-weight: 600; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-punkte { margin: 0 0 8px; padding-left: 16px; font-size: 12.5px; color: var(--text-muted); }
+.pf-punkte li { margin: 3px 0; }
+.pf-fuss { margin-top: auto; padding-top: 8px; border-top: 1px solid var(--line); }
+.pf-meilensteine { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 14px; }
+.pf-ms-liste { display: grid; gap: 8px; align-content: start; }
+.pf-ms { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.pf-ms .ico { width: 16px; height: 16px; color: var(--accent); }
+.pf-ms small { font-weight: 500; color: var(--text-muted); }
+.pf-ms-zahl { padding: 1px 7px; border-radius: 999px; border: 1px solid var(--warn); color: var(--warn); font-size: 11px; }
+.pf-ms-summen { padding-left: 14px; border-left: 1px solid var(--line); }
+.pf-ms-summen .pf-zeile span { display: inline-flex; align-items: center; gap: 6px; }
+.pf-ms-summen .ico { width: 14px; height: 14px; }
+@media (max-width: 1400px) {
+    .pf-laufbahn-raster { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .pf-laufbahn-raster > .pf-kachel { grid-column: span 2; }
+    .pf-laufbahn-raster > .pf-biografie, .pf-laufbahn-raster > .pf-karriere-kachel { grid-column: span 3; }
+    .pf-laufbahn-raster > .pf-meilensteine-kachel { grid-column: span 4; }
+}
+@media (max-width: 900px) {
+    .pf-laufbahn-raster { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+    .pf-laufbahn-raster > .pf-kachel { grid-column: span 1; }
+    .pf-laufbahn-raster > .pf-biografie, .pf-laufbahn-raster > .pf-karriere-kachel, .pf-laufbahn-raster > .pf-meilensteine-kachel { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+    .pf-bio { grid-template-columns: minmax(0, 1fr); }
+    .pf-bio-bild { min-height: 0; grid-auto-flow: column; justify-content: start; padding: 10px 12px; }
+    .pf-meilensteine { grid-template-columns: minmax(0, 1fr); }
+    .pf-ms-summen { padding-left: 0; border-left: 0; }
+}
+@media (max-width: 420px) {
+    .pf-laufbahn-raster > .pf-kachel { grid-column: 1 / -1; }
+}
+
 @media (max-width: 1400px) {
     .pf-raster { grid-template-columns: minmax(210px, 0.9fr) minmax(0, 2.4fr); }
     .pf-rechts { grid-column: 1 / -1; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); align-items: start; }

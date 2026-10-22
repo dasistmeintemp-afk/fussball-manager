@@ -135,6 +135,79 @@ class TransferEngine {
     }
 
     /**
+     * Verfügbarkeit erfragen, wie im Vorbild: Was sagt der Verein, wenn man
+     * unverbindlich nach einem Spieler fragt? Die Antwort folgt derselben
+     * Forderung, mit der eine Verhandlung eröffnet würde
+     * (calculateAskingPrice), gerundet - dazu, was einem Wechsel im Weg
+     * steht. Liefert { stufe, titel, text, preis, hinweise } oder null für
+     * eigene Spieler.
+     *
+     *   frei          - vereinslos, sofort zu haben
+     *   verkauf       - auf der Transferliste, der Verein will ihn abgeben
+     *   gespraechsbereit - Vertrag läuft aus, der Verein hört zu
+     *   offen         - nicht auf dem Markt, für ein gutes Angebot zu haben
+     *   schluessel    - Leistungsträger mit langem Vertrag: Der Verein will
+     *                   ihn nicht abgeben, unter der Forderung braucht man
+     *                   nicht anzufragen
+     *   vergeben      - schon für einen anderen Verein unterschrieben
+     */
+    static verfuegbarkeit(state, player, kaeuferId = state?.userClubId) {
+        if (!player || (player.clubId && player.clubId === kaeuferId)) return null;
+        const runde = (b) => {
+            if (!b) return 0;
+            const stelle = Math.pow(10, Math.max(0, Math.floor(Math.log10(b)) - 1));
+            return Math.round(b / stelle) * stelle;
+        };
+        // Eine Auskunft, kein Angebot: "um 26 Mio. €", nicht "25,97 Mio. €"
+        const geld = (b) => {
+            const r = runde(b);
+            return r >= 1e6 ? `${(r / 1e6).toLocaleString("de-DE", { maximumFractionDigits: 1 })} Mio. €`
+                : `${Math.round(r / 1000).toLocaleString("de-DE")} Tsd. €`;
+        };
+        const hinweise = [];
+        const verein = (state.clubs || []).find(c => c.id === player.clubId) || null;
+        const kaeufer = (state.clubs || []).find(c => c.id === kaeuferId) || null;
+        const fenster = this.fensterHindernis(state, { vereinslos: !verein });
+        if (fenster) hinweise.push(fenster);
+        const erlaubnis = typeof NegotiationEngine !== "undefined" && typeof NegotiationEngine.erlaubnisPruefung === "function" && kaeufer
+            ? NegotiationEngine.erlaubnisPruefung(state, player, kaeufer) : null;
+        if (erlaubnis && !erlaubnis.erteilt) hinweise.push(erlaubnis.text);
+        const klausel = typeof this.ausstiegsklausel === "function" ? this.ausstiegsklausel(state, player) : null;
+        if (klausel) hinweise.push(`Ausstiegsklausel über ${geld(klausel)} - wer sie zahlt, muss nicht verhandeln.`);
+
+        if (player.vorvertrag && player.vorvertrag.clubId !== kaeuferId) {
+            return { stufe: "vergeben", titel: "Schon vergeben", preis: null, hinweise,
+                text: `${player.name} hat bereits bei ${player.vorvertrag.clubName || "einem anderen Verein"} unterschrieben und wechselt zum Saisonende.` };
+        }
+        if (!verein) {
+            return { stufe: "frei", titel: "Vereinslos", preis: 0, hinweise,
+                text: `${player.name} ist ohne Verein und kann sofort unterschreiben - ohne Ablöse, aber mit Handgeld.` };
+        }
+        const preis = this.calculateAskingPrice(player, verein);
+        if (player.leihe && player.leihe.stammvereinId && player.leihe.stammvereinId !== verein.id) {
+            const stamm = (state.clubs || []).find(c => c.id === player.leihe.stammvereinId);
+            hinweise.unshift(`Er ist nur ausgeliehen. Über einen Wechsel entscheidet ${stamm ? stamm.name : "sein Stammverein"}.`);
+        }
+        if (player.transferListed || (verein.transferList || []).includes(player.id)) {
+            return { stufe: "verkauf", titel: "Steht zum Verkauf", preis, hinweise,
+                text: `${verein.name} will ${player.name} abgeben. Ab etwa ${geld(preis)} ist man gesprächsbereit.` };
+        }
+        // Leistungsträger: unter den drei Besten des Kaders
+        const kader = (state.players || []).filter(p => p.clubId === verein.id && !p.reserve);
+        const rang = kader.filter(p => (p.overall || 0) > (player.overall || 0)).length;
+        if (rang < 3 && (player.contractYears ?? 0) >= 2) {
+            return { stufe: "schluessel", titel: "Schlüsselspieler", preis, hinweise,
+                text: `${player.name} gehört zu den wichtigsten Spielern von ${verein.name}, abgeben will man ihn eigentlich nicht. Unter ${geld(preis)} braucht man gar nicht erst anzufragen.` };
+        }
+        if ((player.contractYears ?? 0) <= 1) {
+            return { stufe: "gespraechsbereit", titel: "Gesprächsbereit", preis, hinweise,
+                text: `Sein Vertrag läuft aus. ${verein.name} würde ihn lieber jetzt verkaufen als ablösefrei ziehen lassen: um ${geld(preis)}.` };
+        }
+        return { stufe: "offen", titel: "Nicht auf dem Markt", preis, hinweise,
+            text: `${verein.name} sucht keinen Käufer, würde ein gutes Angebot aber anhören: um ${geld(preis)}.` };
+    }
+
+    /**
      * Bewertet ein Transferangebot der KI
      */
     static evaluateTransferOffer(state, playerId, buyerClubId, offeredFee) {

@@ -14453,6 +14453,41 @@ function runEngineTests() {
         if (ui.persoenlichkeitWort({ hiddenAttributes: { ...h, professionalism: 12, ambition: 12, loyalty: 17 } }, 50) !== "Ausgeglichen") throw new Error("Vereinstreue schon bei halbem Wissen sichtbar");
     });
 
+    test("Transferangebot als Seite: Erlös mit Raten und Weiterverkauf, wer auf der Position bleibt, Dashboard führt zum Angebot", () => {
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Angebot" });
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        const club = state.clubs.find(c => c.id === "muc");
+        const hatteFinanzen = Object.prototype.hasOwnProperty.call(global, "FinanceEngine");
+        if (!hatteFinanzen) global.FinanceEngine = FinanceEngine;
+        try {
+            // Sofort: alles in die Kasse, 85 % ins Transferbudget; 20 % Weiterverkauf kosten 10 % Ablöse
+            const o = { id: 1, fee: 10000000, zahlweise: "sofort" };
+            const f = ui.angebotsFolgen(o, club, 0);
+            if (f.sofort !== 10000000 || f.kasseNachher - f.kasseVorher !== 10000000 || f.budgetNachher - f.budgetVorher !== 8500000) throw new Error(`Sofort falsch: ${JSON.stringify(f)}`);
+            const mitWv = ui.angebotsFolgen(o, club, 20);
+            if (mitWv.fee !== 9000000) throw new Error(`Mit Weiterverkauf: ${mitWv.fee}`);
+            // In Raten: heute nur die Anzahlung
+            const raten = Object.keys(FinanceEngine.ZAHLWEISEN).find(k => FinanceEngine.ZAHLWEISEN[k].monate);
+            const r = ui.angebotsFolgen({ ...o, zahlweise: raten }, club, 0);
+            if (!(r.sofort < o.fee) || r.sofort !== FinanceEngine.ratenPlan(o.fee, raten).anzahlung || r.kasseNachher - r.kasseVorher !== r.sofort) throw new Error(`Raten: ${JSON.stringify(r)}`);
+        } finally {
+            if (!hatteFinanzen) delete global.FinanceEngine;
+        }
+        // Wer bleibt: eigene Spieler desselben Mannschaftsteils, gleiche Position zuerst, ohne ihn selbst
+        const st = state.players.filter(p => p.clubId === "muc" && p.pos === "ST").sort((a, b) => b.overall - a.overall);
+        const ersatz = ui.angebotsErsatz(st[0]);
+        if (!ersatz.length || ersatz.some(p => p.id === st[0].id || p.clubId !== "muc" || ui.getPosGroup(p.pos) !== ui.getPosGroup("ST"))) throw new Error("Falsche Ersatzleute");
+        if (st.length > 1 && ersatz[0].pos !== "ST") throw new Error("Die gleiche Position steht nicht vorn");
+        // Das Dashboard kennt das Angebot und führt auf seine Seite
+        if (!state.transferMarket) state.transferMarket = { offers: [] };
+        state.transferMarket.offers.push({ id: 4711, playerId: st[0].id, playerName: st[0].name, fromClubId: "x", fromClubName: "Testverein", fee: 1000000, status: "pending", frist: 5 });
+        const punkt = ManagerEngine.getAttentionItems(state).find(i => i.icon === "💰");
+        if (!punkt || punkt.offerId !== 4711) throw new Error("Der Dashboard-Punkt kennt das Angebot nicht");
+        if (ui.angebotVon("4711") !== state.transferMarket.offers[0]) throw new Error("Das Angebot wird über seine Kennung nicht gefunden");
+    });
+
     test("Kaderregeln: im Verein ausgebildet - acht Plätze, höchstens vier nur aus dem Land", () => {
         const { KaderregelEngine: K } = require('./js/engine/kaderregelEngine.js');
         const state = GameState.createNewGame("muc", "normal", { name: "Meldung" });

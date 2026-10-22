@@ -351,9 +351,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             try {
                 if (ziel.vkTab !== this.activeTab) this.switchTab(ziel.vkTab);
                 if (ziel.vkUr) this.zeigeUnterreiter(`pane-${ziel.vkTab}`, ziel.vkUr, { still: true });
-                // Die Spielerseite: zurück zum vorigen Profil oder zum Reiter darunter
-                if (ziel.vkAkte !== undefined && ziel.vkAkte !== null && this.findAnyPlayer?.(ziel.vkAkte)) this.showPlayerDetailsModal(ziel.vkAkte);
-                else this.schliesseAkte?.();
+                // Eine Seite (Profil, Angebot): zurück zur vorigen Seite oder zum Reiter darunter
+                if (ziel.vkSeite) this.seiteAusVerlauf?.(ziel.vkSeite, ziel.vkId);
+                else this.schliesseSeite?.();
             } finally {
                 this._ausVerlauf = false;
             }
@@ -364,7 +364,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     _verlaufStand() {
         const pane = typeof document !== "undefined" && document.getElementById ? document.getElementById(`pane-${this.activeTab}`) : null;
         const stand = { vkTab: this.activeTab, vkUr: (pane && pane.dataset && pane.dataset.urAktiv) || null };
-        if (typeof this.akteOffen === "function" && this.akteOffen() && this._akteSeiteId !== undefined && this._akteSeiteId !== null) stand.vkAkte = this._akteSeiteId;
+        const seite = typeof this.offeneSeite === "function" ? this.offeneSeite() : null;
+        if (seite && this._seitenId !== undefined && this._seitenId !== null) { stand.vkSeite = seite; stand.vkId = this._seitenId; }
         return stand;
     },
 
@@ -373,7 +374,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (this._ausVerlauf || !this.app?.state || typeof history === "undefined" || typeof history.pushState !== "function") return;
         const stand = this._verlaufStand();
         const jetzt = history.state || {};
-        if (jetzt.vkTab === stand.vkTab && (jetzt.vkUr || null) === stand.vkUr && (jetzt.vkAkte ?? null) === (stand.vkAkte ?? null)) return;
+        if (jetzt.vkTab === stand.vkTab && (jetzt.vkUr || null) === stand.vkUr && (jetzt.vkSeite ?? null) === (stand.vkSeite ?? null) && String(jetzt.vkId ?? "") === String(stand.vkId ?? "")) return;
         try {
             if (!jetzt.vkTab) history.replaceState(stand, "");
             else { history.pushState(stand, ""); this._verlaufTiefe = (this._verlaufTiefe || 0) + 1; }
@@ -413,10 +414,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 this.geheZurueck();
                 return;
             }
-            // Escape verlässt die Spielerseite - wenn kein Fenster darüber liegt
-            if (e.key === "Escape" && typeof this.akteOffen === "function" && this.akteOffen() && !this.einFensterOffen()) {
+            // Escape verlässt eine Seite - wenn kein Fenster darüber liegt
+            if (e.key === "Escape" && typeof this.offeneSeite === "function" && this.offeneSeite() && !this.einFensterOffen()) {
                 e.preventDefault();
-                this.akteZurueck();
+                this.seiteZurueck();
                 return;
             }
             if (e.altKey || e.shiftKey) return;

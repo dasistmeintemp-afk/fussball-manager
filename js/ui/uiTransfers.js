@@ -1023,7 +1023,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     b.addEventListener("click", () => this.nimmAngebotAn(b.dataset.offerId));
                 });
                 offersList.querySelectorAll(".btn-more-offer").forEach(b => {
-                    b.addEventListener("click", () => this.zeigeAngebotDialog(b.dataset.offerId, true));
+                    b.addEventListener("click", () => this.zeigeAngebotSeite(b.dataset.offerId, { fordern: !this.angebotVon(b.dataset.offerId)?.nachgebessert }));
                 });
                 offersList.querySelectorAll(".btn-reject-offer").forEach(b => {
                     b.addEventListener("click", () => this.lehneAngebotAb(b.dataset.offerId));

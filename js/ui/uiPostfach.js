@@ -447,7 +447,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             else if (art === "verhandeln") { const pId = this.resolvePlayerId(wert); if (pId !== null) this.showTransferOfferModal(pId); }
             else if (art === "vertrag") { const pId = this.resolvePlayerId(wert); if (pId !== null) this.showPlayerDetailsModal(pId, { abschnitt: "vertrag" }); }
             else if (art === "gespraech") { const pId = this.resolvePlayerId(wert); if (pId !== null) this.showPlayerDetailsModal(pId, { reiter: "vertrag" }); }
-            else if (art === "angebot") this.zeigeAngebotDialog(wert);
+            else if (art === "angebot") this.zeigeAngebotSeite(wert);
             else if (art === "ablehnen") { if (this.lehneAngebotAb(wert) && this.activeTab === "inbox") this.renderInbox(); }
             else if (art === "annehmen") this.bestaetigeAngebotAusPost(wert);
             else if (art === "verein") { if (typeof this.showClubDetailsModal === "function") this.showClubDetailsModal(wert); }

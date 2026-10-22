@@ -3607,8 +3607,13 @@ function runEngineTests() {
         // ob ueberhaupt durchgehend gespielt wird - nicht wie dicht.
         if (stats.actions < 20) throw new Error(`Zu wenig Spielfluss: nur ${stats.actions} Aktionen`);
 
+        // Untergrenze 30 statt 35 %: Seit die Zeitleiste gegen das 2D-Modell
+        // geeicht ist (mehr kleine Fouls, mehr Wechsel des Ballbesitzes), liegt
+        // die Quote in dieser Darstellung gemessen über 18 Spiele bei 39 statt
+        // 42 %, einzelne Spiele bei 32 %. Gezählt werden alle Aktionen, nicht
+        // nur Pässe - die Passquote im 2D-Modell liegt bei gut 80 %.
         const completionRate = stats.passesCompleted / Math.max(1, stats.actions);
-        if (completionRate < 0.35 || completionRate > 0.9) {
+        if (completionRate < 0.3 || completionRate > 0.9) {
             throw new Error(`Unrealistische Passquote: ${(completionRate * 100).toFixed(0)} %`);
         }
         if (stats.turnovers < 5) throw new Error(`Kaum Ballverluste: ${stats.turnovers}`);
@@ -4537,6 +4542,60 @@ function runEngineTests() {
             if (abstand(mit, lane) < abstand(ohne, lane) - 0.2) naeher++;
         });
         if (geprueft && naeher < Math.ceil(geprueft / 2)) throw new Error(`Nur ${naeher} von ${geprueft} Verteidigern ahnen den Pass voraus`);
+    });
+
+    test("Eine Engine für das eigene Spiel: Ohne Anpfiff rechnet es das 2D-Modell, alle anderen die Zeitleiste", () => {
+        const vorher = MatchEngine.EIGENES_SPIEL_2D;
+        MatchEngine.EIGENES_SPIEL_2D = true;
+        try {
+            const state = GameState.createNewGame("dor", "normal", { name: "Eine Engine" });
+            // Der Spieltag läuft weiter, ohne dass das eigene Spiel angepfiffen wurde
+            const runde = state.schedule.find(r => r.matchday === state.currentMatchday);
+            SeasonEngine.simulateRemainingMatchesOfDay(state);
+            const eigenes = runde.matches.find(m => m.homeClubId === "dor" || m.awayClubId === "dor");
+            if (!eigenes.played || !eigenes.analyse || !eigenes.analyse.heat) throw new Error("Das eigene Ligaspiel lief nicht im 2D-Modell");
+            if (!Array.isArray(eigenes.playerRatings) || eigenes.playerRatings.length < 22) throw new Error("Ohne Einzelkritiken");
+            const fremde = runde.matches.filter(m => m !== eigenes);
+            if (!fremde.every(m => m.played)) throw new Error("Ein fremdes Spiel blieb liegen");
+            if (fremde.some(m => m.analyse)) throw new Error("Ein fremdes Spiel lief im 2D-Modell");
+
+            // Pokal: auch das eigene Spiel unter der Woche
+            const gegner = state.clubs.find(c => c.leagueId === state.clubs.find(k => k.id === "dor").leagueId && c.id !== "dor");
+            const pokal = { id: "pokal_test", homeClubId: gegner.id, awayClubId: "dor", played: false, competition: "cup" };
+            CupEngine.austragen(state, pokal, true);
+            if (!pokal.played || !pokal.analyse) throw new Error("Das eigene Pokalspiel lief nicht im 2D-Modell");
+
+            // Der Schalter führt zur Zeitleiste zurück
+            MatchEngine.EIGENES_SPIEL_2D = false;
+            const zweites = { id: "pokal_test2", homeClubId: "dor", awayClubId: gegner.id, played: false, competition: "cup" };
+            CupEngine.austragen(state, zweites, true);
+            if (!zweites.played || zweites.analyse) throw new Error("Ohne Schalter läuft das eigene Spiel trotzdem im 2D-Modell");
+        } finally {
+            MatchEngine.EIGENES_SPIEL_2D = vorher;
+        }
+    });
+
+    test("Zeitleiste und 2D-Modell laufen nicht auseinander: Tore, Schüsse, aufs Tor, Ecken, Fouls, Heimsiege", () => {
+        // Das eigene Spiel rechnet das 2D-Modell, alle anderen die Zeitleiste.
+        // Sie sind gegeneinander geeicht (eichung.js); läuft eine davon weg,
+        // spielte die eigene Mannschaft in einer anderen Welt als die Liga.
+        const { vergleiche } = require('./eichung.js');
+        const v = vergleiche(24, 400);
+        const zd = v.zweiD, zl = v.zeitleiste;
+        const grenzen = { tore: 0.9, schuesse: 3.5, aufsTor: 2.5, ecken: 2.5, fouls: 3.5, heim: 0.25 };
+        Object.entries(grenzen).forEach(([k, g]) => {
+            if (Math.abs(zd[k] - zl[k]) > g) {
+                throw new Error(`${k}: 2D-Modell ${zd[k].toFixed(2)}, Zeitleiste ${zl[k].toFixed(2)} - mehr als ${g} auseinander (node eichung.js --schreiben)`);
+            }
+        });
+        if (zd.favorit !== null && zl.favorit !== null && Math.abs(zd.favorit - zl.favorit) > 0.3) {
+            throw new Error(`Favoritensiege: 2D-Modell ${zd.favorit.toFixed(2)}, Zeitleiste ${zl.favorit.toFixed(2)}`);
+        }
+        // Und beide in den Zielkorridoren der echten Ligen
+        const korridor = { tore: [2.3, 3.7], schuesse: [20, 30], aufsTor: [6.5, 11], ecken: [6.5, 12], fouls: [17, 28] };
+        [["2D-Modell", zd], ["Zeitleiste", zl]].forEach(([name, w]) => Object.entries(korridor).forEach(([k, [lo, hi]]) => {
+            if (w[k] < lo || w[k] > hi) throw new Error(`${name}: ${k} ${w[k].toFixed(2)} außerhalb ${lo}-${hi}`);
+        }));
     });
 
     test("U23: Spieler hinunterschicken, Regeln für Alter und Kadergröße, Spielpraxis in der zweiten Mannschaft", () => {
@@ -8816,7 +8875,7 @@ function runEngineTests() {
         const live = MatchEngine.createLiveMatch({ id: "heim", played: false, homeClubId: "sge", awayClubId: "wob" },
             heim, gast, state.players, { modus: "fm" });
         if (!(live.fmHeim > 1)) throw new Error("Kein Heimvorteil im Livespiel");
-        if (Math.abs((live.fmHeim - 1) - (MatchEngine.heimvorteil(heim) - 1) * 0.5) > 1e-9) throw new Error("Der Heimvorteil im Livespiel folgt nicht dem Stadion");
+        if (Math.abs((live.fmHeim - 1) - (MatchEngine.heimvorteil(heim) - 1) * MatchEngine.FM_HEIM_ANTEIL) > 1e-9) throw new Error("Der Heimvorteil im Livespiel folgt nicht dem Stadion");
         const neutral = MatchEngine.createLiveMatch({ id: "neutral", played: false, homeClubId: "sge", awayClubId: "wob", neutralerPlatz: true },
             heim, gast, state.players, { modus: "fm" });
         if (neutral.fmHeim !== 1) throw new Error("Auf neutralem Platz gibt es einen Heimvorteil");

@@ -3246,6 +3246,8 @@ class LiveMatchDirector {
             xG: Math.round((r.xg || 0.05) * 100) / 100,
             isHeader: !!opts.kopfball, isPenalty: !!opts.elfmeter,
             isFreekick: !!opts.freistoss, _fmDirekt: !!opts.freistoss,
+            // Nach Ecke, Freistoß oder Elfmeter: zählt als Standardtor
+            ausStandard: !!(opts.standard || opts.freistoss || opts.elfmeter),
             vorbereiterId: vorlage?.id ?? null,
             fmFolge: { ecke: !!r.ecke, festgehalten: !!r.festgehalten, blockerId: r.blocker?.id ?? null }
         };
@@ -3331,7 +3333,7 @@ class LiveMatchDirector {
                 const kopfballer = this.getPlayer2D(r.kopfballer.id);
                 if (!kopfballer) { this.claimLooseBall(landung); return; }
                 const vorlage = { id: flanker.id, name: flanker.name };
-                this.fmSchuss(kopfballer, { kopfball: r.kopfball !== false, start: landung, vorlage });
+                this.fmSchuss(kopfballer, { kopfball: r.kopfball !== false, start: landung, vorlage, standard: !!(r.ecke || r.standard) });
                 return;
             }
             // Mit Ballphysik: Zu weit vom Tor fuer den Abschluss - der Angreifer

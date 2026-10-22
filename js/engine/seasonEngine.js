@@ -482,7 +482,9 @@ class SeasonEngine {
                     // das eigene Spiel ohne Livespiel berechnet wird
                     const planEngine = _resolve('MatchplanEngine', './matchplanEngine.js');
                     const plan = planEngine ? planEngine.spielOptionen(state, match) : null;
-                    matchEngine.simulateFullMatch(match, homeClub, awayClub, state.players, plan ? { matchplan: plan } : {});
+                    // Das eigene Spiel rechnet das 2D-Modell (Stufe 3), alle anderen die Zeitleiste
+                    if (typeof matchEngine.spieleAus === 'function') matchEngine.spieleAus(state, match, homeClub, awayClub, plan ? { matchplan: plan } : {});
+                    else matchEngine.simulateFullMatch(match, homeClub, awayClub, state.players, plan ? { matchplan: plan } : {});
                     if (plan) planEngine.abschliessen(state, match);
                 }
             }

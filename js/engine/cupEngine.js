@@ -747,7 +747,9 @@ class CupEngine {
         const gast = state.clubs.find(c => c.id === match.awayClubId);
         if (!matchEngine || !heim || !gast) return null;
 
-        matchEngine.simulateFullMatch(match, heim, gast, state.players);
+        // Das eigene Spiel rechnet das 2D-Modell (Stufe 3), alle anderen die Zeitleiste
+        if (typeof matchEngine.spieleAus === "function") matchEngine.spieleAus(state, match, heim, gast);
+        else matchEngine.simulateFullMatch(match, heim, gast, state.players);
 
         if (koSpiel && match.homeGoals === match.awayGoals) {
             this.elfmeterschiessen(state, match);

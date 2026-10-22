@@ -1094,7 +1094,9 @@ class PreseasonEngine {
         const partie = livePartie || this.neuePartie(state, club, gegner, heim, kennung, neutral);
 
         if (!livePartie) {
-            matchEngine.simulateFullMatch(partie, heim ? club : gegner, heim ? gegner : club, state.players);
+            // Das eigene Testspiel rechnet das 2D-Modell (Stufe 3)
+            if (typeof matchEngine.spieleAus === "function") matchEngine.spieleAus(state, partie, heim ? club : gegner, heim ? gegner : club);
+            else matchEngine.simulateFullMatch(partie, heim ? club : gegner, heim ? gegner : club, state.players);
         }
 
         const eigene = heim ? partie.homeGoals : partie.awayGoals;

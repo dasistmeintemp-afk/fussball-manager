@@ -895,7 +895,26 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
   - **Offene Posten:** Ein offener Posten wird mit Aushilfen besetzt und ist spürbar schwächer als ein eigener Mann.
 - **Detaillierte Spielberichte:** Textzusammenfassungen, xG-Vergleiche, Zweikampfquoten, Paraden und Auszeichnungen für den Mann des Spiels.
 - **Verbessertes Postfach (`NewsEngine`):** Vollständige Suche, Filterleiste (Vorstand, Spiel, Transfers, Training, Finanzen) und dauerhafte Mail-Historie. Am Handy und auf schmalen Bildschirmen klappt eine Nachricht direkt unter ihrem Eintrag auf; ein zweiter Tipp klappt sie zu. Vorher stand sie unter der ganzen Liste, und man musste erst ans Ende scrollen. Breit steht sie wie gewohnt rechts daneben.
-  Die Liste ist dicht: Absender und Datum in einer Zeile, darunter der Betreff, die Kategorie nur, wenn sie mehr sagt als *Info*. Gelesenes tritt zurück. Am Handy stehen die Filter in einer wischbaren Zeile.
+  Die Liste ist dicht: Absender und Datum in einer Zeile, darunter der Betreff. Gelesenes tritt zurück. Am Handy stehen die Filter in einer wischbaren Zeile.
+- **Postfach wie im Vorbild (`NewsEngine.kategorie`, `dringlichkeit`, `anhaenge`, `uiPostfach.js`):** Vorher war jede Nachricht ein Absatz Text mit höchstens einem Knopf.
+  - **Abteilungen:** Jede Nachricht gehört zu einer Abteilung, zum Beispiel Transfer, Verträge, Medizin, Spiel, Presse, Vorstand, Nachwuchs, Scouting oder Finanzen. Sie hat dafür eine eigene Farbe am Rand und ein eigenes Zeichen. Schreibt ein Verein, steht sein Wappen davor. In der Liste steht unter dem Betreff die erste Zeile des Textes.
+  - **Die Filter folgen den Abteilungen.** Vorher fehlten Vorberichte unter *Spiel* und Verletzungen unter *Training*.
+  - **Frist und Dringend:** Ein Angebot für einen eigenen Spieler steht als *Antwort erwartet · bis 25.08. · noch 4 Tage* da. Ab zwei Tagen vor Ablauf heißt es *Dringend*, in Rot mit einem leichten Puls.
+    - Ist es entschieden, steht das an der Nachricht: *Angenommen*, *Abgelehnt*, *Verfallen* oder *Zurückgezogen*.
+    - Ebenso markiert sind die Werbung um ein Talent der Akademie, ein Spieler mit Wechsel- oder Gesprächswunsch, ein auslaufender Vertrag und eine Verletzung (*Fällt aus · 3 Wo.*).
+    - Der neue Filter *Antwort nötig* zeigt alles, was noch offen ist.
+  - **Anhänge**, aufklappbar und immer mit dem Stand von heute:
+    - das Angebot
+    - der ärztliche Befund mit Ausfall, Rückkehrdatum und Anfälligkeit
+    - Scoutbericht, Entwicklungsbericht und Kandidatenliste des Sportdirektors
+    - die Gegneranalyse zum Vorbericht mit Rang, Form, Stärke der ersten Elf und bestem Torschützen
+    - die Tabelle zur Rundschau
+    - die Vertragsdaten mit der Forderung des Spielers
+    - der neue Jahrgang zum Jugendtag
+    - der Kontoauszug zur Finanzpost
+  - **Namen als Verweise:** Spieler und Vereine im Text sind Links und öffnen Profil oder Vereinsseite. Bei gleichen Namen gewinnt der eigene Spieler.
+  - **Knöpfe:** Unter jeder Nachricht steht, was man mit ihr tun kann, zum Beispiel *Zum Angebot*, *Annehmen*, *Ablehnen*, *Profil*, *Verhandeln*, *Vertrag verlängern*, *Gespräch führen*, der Verein des Absenders oder der passende Reiter.
+  - **Eindeutige Kennungen:** Kamen zwei Angebote in derselben Millisekunde, trugen sie dieselbe Kennung, und *Annehmen* traf womöglich das andere. Jetzt hat jedes Angebot seine eigene, und die Nachricht kennt Angebot und Spieler. Nachrichten älterer Spielstände ohne Kennung finden ihr Angebot über Betreff und Absender.
 - **Kopfleiste:** Am breiten Bildschirm bleibt alles einzeilig. Der Weiter-Knopf nennt oben, wann es weitergeht („Weiter · in 9 Tagen“), darunter wohin („Spiel bei Blau-Weiß Gelsenkirchen“), und kürzt bei Bedarf. Bis 1500 px Breite fällt der Schwierigkeitsgrad weg, bis 1280 px auch „Saison 1“ und die Beschriftung „Vorstand“.
 - **Kleinigkeiten überall:** Dreibuchstabige Wappen passen in den Kreis. In der Formkurve sind noch nicht gespielte Partien leere Plätze statt Bindestriche. Ab einer Milliarde heißt es „1,09 Mrd. €“. Lange Wörter trennen an der Silbe (`hyphens: auto`). Im Kalender steht vor einem Termin nur noch ein Symbol, nicht Symbol und Emoji. Der Trainingsbericht zeigt die Einschätzung als Etikett („Pause nötig“, „Schonen“, „Praxis fehlt“), den ganzen Satz beim Darüberfahren. Die Kennzahlen im Kader stehen am Handy zu dritt in einer Reihe, der Sternemaßstab als Zeile darunter.
 - **Anhalten mit Knöpfen (`CalendarEngine.unterbrechung`, `zeigeAnlass`):** Hält der Weiter-Knopf unterwegs an (Angebot, Neues in einer Verhandlung, Verletzung im Training, wichtige Post), nennt die Meldung den Anlass und hat zwei Knöpfe: *Ansehen* springt dorthin (Verhandlungskarte, Angebote im Transfermarkt, Akte des Verletzten, die Nachricht im Postfach), *Weiter* spielt weiter. Ein Tipp auf die Meldung selbst wirkt wie *Ansehen*. Vorher hieß es „Weiter geht es mit dem nächsten Klick“, und ein Tipp auf die Meldung tat nichts. Öffnet sich für den Anlass ohnehin ein Fenster (ein neues Angebot), bleibt die Meldung weg.

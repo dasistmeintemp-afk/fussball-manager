@@ -92,6 +92,39 @@ class MatchFlowEngine {
      */
     static MOMENT = { steil: 2.3, nachlass: 0.35, schuss: 0.14, druck: 0.95, vorn: 8, weg: 0.3, raum: 0.5 };
 
+    /**
+     * Stufe 5: Die Eichung des 2D-Modells in Zielkorridoren (Tore, Schüsse,
+     * Passquote, Ecken, Fouls, Standardtore - siehe README). Mit der
+     * Ballphysik verschoben sich alle Zahlen; diese Werte holen sie in die
+     * Korridore zurück. Gemessen mit physik_mess und eich_detail über
+     * Hunderte Spiele.
+     *
+     * - annahme: Wie oft ein Ball bei der Annahme wegspringt - Grundwert, je
+     *   Einheit Tempo über ab, je Druck, beim hohen Ball
+     * - schussLust, flankenLust: Zuschlag auf die Bewertung von Abschluss und
+     *   Flanke (vorher kamen 20 statt 25 Schüsse und 9 statt 15 Flanken)
+     * - ecke: Wie oft eine Kopfballabwehr nach der Flanke und eine Faust des
+     *   Torwarts ins Toraus geht
+     * - foul: Faktor auf Fouls im Zweikampf und unter Druck, im eigenen
+     *   Strafraum (Elfmeter) zusätzlich vorsichtiger
+     * - standard: Bei Ecke und Freistoßflanke ist der Strafraum voll - der
+     *   Torwart kommt später heraus (twReaktion), und die einstudierte
+     *   Variante bringt den Angreifern einen Vorteil im Kopfballduell
+     *   (kopfball). Vorher fing der Torwart fast jede dritte Ecke, und nur
+     *   jede sechste brachte einen Kopfball.
+     * - tore: Faktor auf die Torwahrscheinlichkeit eines Abschlusses aus dem
+     *   Spiel und nach Standards (Elfmeter ausgenommen)
+     */
+    static EICHUNG = {
+        annahme: { basis: 0.012, ab: 11, jeTempo: 0.008, druck: 0.05, hoch: 0.07 },
+        schussLust: 0.45,
+        flankenLust: 0.35,
+        ecke: { kopfball: 0.6, faust: 0.4 },
+        foul: { zweikampf: 0.94, druck: 0.94, strafraum: 0.14 },
+        standard: { twReaktion: 0.14, kopfball: 7 },
+        tore: 1.12
+    };
+
     // Geduld am Ball (siehe qualitaetsVorsprung): Bisher spielten Bayern und
     // Augsburg denselben Fußball - gemessen 52 Prozent Ballbesitz für Bayern
     // bei fast gleicher Passquote. Jetzt lässt die technisch überlegene Elf
@@ -905,6 +938,7 @@ class MatchFlowEngine {
         // Mit dem schwachen Fuß traut er sich weniger zu
         const schwach = this.fm() ? this.schwacherFuss(carrier) : false;
         if (schwach) score -= 0.15;
+        if (this.mitPhysik()) score += MatchFlowEngine.EICHUNG.schussLust;
         return { type: "shot", score, xg: q.xg, dist: q.dist, druck: q.druck, block: q.block, schwach };
     }
 
@@ -980,6 +1014,8 @@ class MatchFlowEngine {
         const fussCfg = (typeof MatchEngine !== "undefined" && MatchEngine.SCHWACHER_FUSS) || { faktorSchwach: 0.8, faktorStark: 1.05 };
         if (fussArt === "schwach") pTor *= fussCfg.faktorSchwach;
         else if (fussArt === "stark") pTor *= fussCfg.faktorStark;
+        // Stufe 5: Mit der Ballphysik fielen 2,65 statt rund drei Tore je Spiel
+        if (!opts.elfmeter && this.mitPhysik()) pTor *= MatchFlowEngine.EICHUNG.tore;
         pTor = Math.max(0.005, Math.min(opts.elfmeter ? 0.93 : 0.9, pTor));
 
         // Aufs Tor kommt, wer sauber trifft - unabhaengig davon, ob es reicht
@@ -1032,6 +1068,7 @@ class MatchFlowEngine {
 
         const score = 0.45 + koennen * 1.1 + Math.min(3, imStrafraum.length) * 0.3
             + (e.flankeWille || 0) + taktik - pressure * 0.2
+            + (this.mitPhysik() ? MatchFlowEngine.EICHUNG.flankenLust : 0)
             + _flowRandom.float(-0.2, 0.2);
         return { type: "cross", score, ziele: imStrafraum };
     }
@@ -1155,6 +1192,8 @@ class MatchFlowEngine {
      * auf und wird zum zweiten Ball.
      */
     static FLANKE_DUELL = 0.3;     // so knapp hintereinander geht es ins Duell (Laufzeit-Sekunden)
+    /** Streuung der Hereingabe in Einheiten: Grundwert und Zuschlag je fehlender Qualität */
+    static FLANKE_STREUUNG = { basis: 1.0, je: 6 };
 
     resolveCrossPhysik(carrier, opts, basis, plan) {
         const P = _flowPhysik();
@@ -1164,7 +1203,7 @@ class MatchFlowEngine {
         const { qualitaet, deckung, variante } = plan;
 
         // Die Hereingabe streut: zu kurz, zu lang, zu nah an den Torwart
-        const streu = 1.2 + Math.max(0, 1.05 - qualitaet) * 9;
+        const streu = MatchFlowEngine.FLANKE_STREUUNG.basis + Math.max(0, 0.95 - qualitaet) * MatchFlowEngine.FLANKE_STREUUNG.je;
         const landung = {
             x: plan.landung.x + _flowRandom.gaussian(0, streu),
             y: plan.landung.y + _flowRandom.gaussian(0, streu * 1.2)
@@ -1172,8 +1211,9 @@ class MatchFlowEngine {
         const start = this.abspielPunkt(carrier);
         const weite = Math.max(4, Math.hypot(landung.x - start.x, landung.y - start.y));
         const winkel = Math.atan2(landung.y - start.y, landung.x - start.x);
-        // Scharf an den ersten Pfosten kommt sie flacher
-        const hoehe = variante === "ersterPfosten" ? 3.2 : Math.max(3.5, Math.min(9, 2.5 + weite * 0.15));
+        // Scharf an den ersten Pfosten kommt sie flacher; eine Flanke ist ein
+        // Ball in Kopfhöhe, keine Kerze
+        const hoehe = variante === "ersterPfosten" ? 3.2 : Math.max(3, Math.min(7, 2.5 + weite * 0.09));
         const bahn = P.hoch(start, winkel, weite, { hoehe, tempo: Math.max(16, Math.min(24, 15 + weite * 0.18)), aufprall: 0.35 });
 
         // Wer im Strafraum auf die Flanke geht, weiß, dass sie kommt; in
@@ -1184,7 +1224,8 @@ class MatchFlowEngine {
             if (p.team === team) return imStrafraum(p) ? 0.08 : (p.reaktion ?? 0.3) + 0.1;
             if (p.pos === "TW") {
                 const ruhig = (this.attr(p, "positioning", 60) - 60) / 400 + this.fein(p, "commandOfArea") * 0.01;
-                return Math.max(0.1, 0.3 - ruhig - (this.eig(p).twStrafraum || 0) * 0.1);
+                const voll = (opts.ecke || opts.standard) ? MatchFlowEngine.EICHUNG.standard.twReaktion : 0;
+                return Math.max(0.1, 0.3 + voll - ruhig - (this.eig(p).twStrafraum || 0) * 0.1);
             }
             return Math.max(0.08, (p.reaktion ?? 0.3) * (mannDeckung ? 0.6 : 0.9));
         };
@@ -1214,14 +1255,15 @@ class MatchFlowEngine {
                 + this.fein(p, "aerialReach") + this.fein(p, "commandOfArea")) / 175 - 0.05
                 + (this.eig(p).twStrafraum || 0) * 0.15) * varianteFangen - (angreifer ? 0.15 : 0)));
             if (_flowRandom.chance(pFangen)) return { ...basis, outcome: "claimed", landung: gk.punkt, to: gk.punkt, gk: p, physik };
-            return { ...basis, outcome: "cleared", verteidiger: p, landung: gk.punkt, to: klaerung(gk.punkt), eckeFolgt: _flowRandom.chance(0.3), physik };
+            return { ...basis, outcome: "cleared", verteidiger: p, landung: gk.punkt, to: klaerung(gk.punkt), eckeFolgt: _flowRandom.chance(MatchFlowEngine.EICHUNG.ecke.faust), physik };
         }
 
         // Kopfballduell, wenn beide fast gleichzeitig unter dem Ball sind
         let angreiferGewinnt = !!angreifer && !verteidiger;
         if (angreifer && verteidiger) {
             const zone = !mannDeckung && deckung && variante === "ersterPfosten" ? 5 : 0;
-            const angriff = this.kopfballWert(angreifer.p, true) + qualitaet * 8;
+            const angriff = this.kopfballWert(angreifer.p, true) + qualitaet * 8
+                + ((opts.ecke || opts.standard) ? MatchFlowEngine.EICHUNG.standard.kopfball : 0);
             const abwehr = this.kopfballWert(verteidiger.p, false) + zone;
             const vorsprung = (verteidiger.t - angreifer.t) * 25;
             const pKopf = Math.max(0.1, Math.min(0.85, 1 / (1 + Math.exp(-(angriff - abwehr + vorsprung - 6) / 9))));
@@ -1248,7 +1290,7 @@ class MatchFlowEngine {
         if (angreifer) physik.jaeger.push(angreifer.p.id);
         return {
             ...basis, outcome: "cleared", verteidiger: wer.p.team !== team ? wer.p : null, landung: wer.punkt,
-            to: klaerung(wer.punkt), eckeFolgt: wer.h > P.ANNAHME_HOEHE && _flowRandom.chance(0.45), physik
+            to: klaerung(wer.punkt), eckeFolgt: wer.h > P.ANNAHME_HOEHE && _flowRandom.chance(MatchFlowEngine.EICHUNG.ecke.kopfball), physik
         };
     }
 
@@ -1264,7 +1306,8 @@ class MatchFlowEngine {
      */
     strafraumVorsicht(carrier) {
         const tor = this.gegnerTor(carrier.team);
-        return Math.abs(tor.x - carrier.x) < 16.5 && Math.abs(carrier.y - 50) < 30 ? 0.2 : 1;
+        const imStrafraum = Math.abs(tor.x - carrier.x) < 16.5 && Math.abs(carrier.y - 50) < 30;
+        return imStrafraum ? (this.mitPhysik() ? MatchFlowEngine.EICHUNG.foul.strafraum : 0.2) : 1;
     }
 
     foulImZweikampf(carrier, defender, haerte = 0, edge = 0) {
@@ -1281,7 +1324,8 @@ class MatchFlowEngine {
         const pfeife = this.schiri()?.pfeife || 1;
         // Auf rutschigem Boden kommt der Verteidiger öfter zu spät
         const rutschig = 1 + (this.wetter()?.rutschig || 0) * 0.5;
-        if (!_flowRandom.chance(Math.max(0.03, Math.min(0.45, p * rutschig)) * pfeife * this.strafraumVorsicht(carrier))) return null;
+        const eich = this.mitPhysik() ? MatchFlowEngine.EICHUNG.foul.zweikampf : 1;
+        if (!_flowRandom.chance(Math.max(0.03, Math.min(0.45, p * rutschig)) * pfeife * eich * this.strafraumVorsicht(carrier))) return null;
         return { type: "foul", outcome: "foul", from: carrier, to: { x: carrier.x, y: carrier.y }, foulender: defender, opfer: carrier };
     }
 
@@ -1299,7 +1343,8 @@ class MatchFlowEngine {
         const ed = this.eig(naechster);
         const haerte = (_flowTaktik()?.wirkung(this.getTactics(naechster.team) || {}).zweikampf || 0) + this.anweisungsHaerte(carrier);
         const p = (pressure - 0.6) * 0.085 * (1 + haerte * 0.4 + (ed.haerte || 0) * 0.5 + (ed.pressing || 0) * 0.3);
-        if (!_flowRandom.chance(p * (this.schiri()?.pfeife || 1) * this.strafraumVorsicht(carrier))) return null;
+        const eich = this.mitPhysik() ? MatchFlowEngine.EICHUNG.foul.druck : 1;
+        if (!_flowRandom.chance(p * (this.schiri()?.pfeife || 1) * eich * this.strafraumVorsicht(carrier))) return null;
         return { type: "foul", outcome: "foul", from: carrier, to: { x: carrier.x, y: carrier.y }, foulender: naechster, opfer: carrier, pressure, phase };
     }
 
@@ -1729,8 +1774,9 @@ class MatchFlowEngine {
             const v = P.tempo(bahn, erster.t);
             const druck = this.getPressure(p, opponents);
             const technik = (this.attr(p, "technique") - 70) / 400 + this.fein(p, "firstTouch") * 0.004;
-            const pFehl = Math.max(0.005, Math.min(0.4, 0.02 + Math.max(0, v - 10) * 0.012 + druck * 0.07
-                + (erster.h > P.ANNAHME_HOEHE ? 0.1 : 0) - technik));
+            const an = MatchFlowEngine.EICHUNG.annahme;
+            const pFehl = Math.max(0.005, Math.min(0.4, an.basis + Math.max(0, v - an.ab) * an.jeTempo + druck * an.druck
+                + (erster.h > P.ANNAHME_HOEHE ? an.hoch : 0) - technik));
             if (!erster.liegend && _flowRandom.chance(pFehl)) {
                 return { type: typ, outcome: "loose", from: carrier, to: weg(erster.punkt), verstolpert: p, pressure, phase, physik };
             }

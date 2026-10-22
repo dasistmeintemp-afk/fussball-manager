@@ -149,3 +149,9 @@ function ersterTeil() {
 }
 
 module.exports = { testAusgewaehlt, laufzeit, zufallFuer, uebersprungeneTests, ersterTeil, LANGSAM };
+
+// Das eigene Spiel ohne Anpfiff rechnet im Spiel das 2D-Modell (Stufe 3). In
+// den Saison- und Karrieretests kostete das je Spiel ein, zwei Sekunden. Sie
+// nehmen deshalb die Zeitleiste; der Test "Eine Engine für das eigene Spiel"
+// schaltet das 2D-Modell ausdrücklich ein.
+require('./js/engine/matchEngine.js').MatchEngine.EIGENES_SPIEL_2D = false;

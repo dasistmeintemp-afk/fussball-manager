@@ -209,6 +209,16 @@ const MATCH_TUNING = {
     // stärker gilt (Teamstärke, die Bundesliga spannt rund 13 Punkte)
     remisStaerkeKlar: 4,
 
+    // Gegen das 2D-Modell geeicht (Stufe 3 der 2D-Simulation). Das eigene
+    // Spiel rechnet das 2D-Modell, alle anderen Spiele der Welt diese
+    // Zeitleiste. Damit beide gleich viele Tore, Schüsse, Schüsse aufs Tor,
+    // Ecken und Fouls bringen, skaliert die Zeitleiste damit ihre Torchancen,
+    // die Zahl ihrer Szenen, die Paraden, die Ecken nach Parade und
+    // Fehlschuss und die kleinen Fouls ohne Karte (die Karten bleiben, wie
+    // sie gegen die echten Ligen geeicht sind). Die Werte schreibt der Messlauf:
+    // node eichung.js --schreiben
+    eichung2D: { tore: 1.06, szenen: 0.95, paraden: 0.51, ecken: 1.08, fouls: 1.33 },
+
     // Zurufe von der Seitenlinie wirken zehn Minuten lang
     zurufDauer: 10,
     // ... danach braucht die Mannschaft fünf Minuten, bevor der nächste greift
@@ -993,11 +1003,11 @@ class MatchEngine {
             pGoal *= _Random.chance(cfg.basis + 0.04) ? cfg.faktorSchwach : cfg.faktorStark;
         }
         // Die Spielkultur der Liga - Elfmeter sind überall gleich schwer
-        const kultur = shotType === "penalty" ? 1 : (umfeld.torFaktor || 1);
+        const kultur = shotType === "penalty" ? 1 : (umfeld.torFaktor || 1) * (MATCH_TUNING.eichung2D?.tore || 1);
         pGoal = _Random.clamp(pGoal * kultur, MATCH_TUNING.minGoalChance, MATCH_TUNING.maxGoalChance);
 
         let pSave = 0.42 - skillEdge / 500;
-        pSave = _Random.clamp(pSave, 0.22, 0.62);
+        pSave = _Random.clamp(pSave, 0.22, 0.62) * (MATCH_TUNING.eichung2D?.paraden || 1);
 
         const pWoodwork = 0.05;
 
@@ -1196,7 +1206,7 @@ class MatchEngine {
         // Hälfte: Es entstehen nicht nur anteilig mehr Szenen, sondern
         // insgesamt mehr.
         const powerDiff = homePower.total - awayPower.total;
-        const totalScenes = Math.max(20, Math.round(totalScenesBase + (powerDiff / 6) + _Random.float(-3, 3)));
+        const totalScenes = Math.max(20, Math.round(totalScenesBase * (MATCH_TUNING.eichung2D?.szenen || 1) + (powerDiff / 6) + _Random.float(-3, 3)));
 
         // Kaderunterschied für die Szenenverteilung: Das Mittelfeld erobert den
         // Ball, die beiden anderen Mannschaftsteile entscheiden, wer ihn behält.
@@ -1448,10 +1458,34 @@ class MatchEngine {
                 || gestalter(anderer(attPlayers.filter(p => attPos(p) !== "TW")),
                     p => zahl(p, "passing") * 0.55 + zahl(p, "vision") * 0.45, rollen.pass)
                 || anderer(attPlayers)[0] || attPlayers[0];
-            // Flanken kommen von den Außen - und von den Außenverteidigern
-            const winger = gestalter(anderer(attPlayers.filter(p => rollen.flanke[attPos(p)])),
-                p => zahl(p, "passing") * 0.7 + zahl(p, "technique") * 0.3 + MatchEngine.fein(p, "crossing"), rollen.flanke) || passer;
             const defender = defenders.length > 0 ? _Random.choice(defenders) : defPlayers[0];
+
+            // Die Angriffsseite aus dem Taktikbogen: "Links" meint die linke
+            // Seite in Angriffsrichtung - wer nach rechts angreift, hat sie
+            // oben. Vorher las die Simulation ein Feld, das die Taktik gar
+            // nicht setzt, und die Einstellung blieb ohne Wirkung.
+            const fokus = attTactics.focus || attTactics.attackFocus;
+            const fokusFlanke = fokus === "left" ? (isHomeAttacking ? "oben" : "unten")
+                : (fokus === "right" ? (isHomeAttacking ? "unten" : "oben") : null);
+            const flanke = fokusFlanke
+                ? (_Random.chance(0.75) ? fokusFlanke : (fokusFlanke === "oben" ? "unten" : "oben"))
+                : (_Random.chance(0.5) ? "oben" : "unten");
+
+            // Flanken kommen von den Außen - und von den Außenverteidigern,
+            // und zwar von denen auf dieser Seite. Vorher war die Seite
+            // unabhängig vom Flankengeber gewürfelt: Ein Rechtsaußen lief im
+            // Livespiel quer über den Platz an die linke Fahne und kam oft
+            // nicht an, bevor die Flanke geschlagen wurde.
+            const aufDerFlanke = (p) => {
+                const pos = attPos(p) || "";
+                const links = /^L/.test(pos);
+                if (!links && !/^R/.test(pos)) return true;
+                return (links === isHomeAttacking ? "oben" : "unten") === flanke;
+            };
+            const flankengeber = anderer(attPlayers.filter(p => rollen.flanke[attPos(p)]));
+            const flankenWert = p => zahl(p, "passing") * 0.7 + zahl(p, "technique") * 0.3 + MatchEngine.fein(p, "crossing");
+            const winger = gestalter(flankengeber.filter(aufDerFlanke), flankenWert, rollen.flanke)
+                || gestalter(flankengeber, flankenWert, rollen.flanke) || passer;
 
             // Koordinaten für das 2D-Feld.
             //
@@ -1464,16 +1498,6 @@ class MatchEngine {
             // Gerechnet wird im Bild "Heim greift nach rechts an"; für die
             // Auswärtsmannschaft wird gespiegelt.
             const spiegel = (v) => isHomeAttacking ? v : 100 - v;
-            // Die Angriffsseite aus dem Taktikbogen: "Links" meint die linke
-            // Seite in Angriffsrichtung - wer nach rechts angreift, hat sie
-            // oben. Vorher las die Simulation ein Feld, das die Taktik gar
-            // nicht setzt, und die Einstellung blieb ohne Wirkung.
-            const fokus = attTactics.focus || attTactics.attackFocus;
-            const fokusFlanke = fokus === "left" ? (isHomeAttacking ? "oben" : "unten")
-                : (fokus === "right" ? (isHomeAttacking ? "unten" : "oben") : null);
-            const flanke = fokusFlanke
-                ? (_Random.chance(0.75) ? fokusFlanke : (fokusFlanke === "oben" ? "unten" : "oben"))
-                : (_Random.chance(0.5) ? "oben" : "unten");
             const flankenY = (nah, fern) => flanke === "oben"
                 ? _Random.float(nah, fern)
                 : 100 - _Random.float(nah, fern);
@@ -1625,7 +1649,7 @@ class MatchEngine {
                     text: formatCommentary("save", { minute: min, gk: gk?.name, shooter: shooter?.name })
                 });
                 // Ecke nach der Parade, wenn der Torwart zur Seite lenkt
-                if (_Random.chance(MATCH_TUNING.eckeNachParade)) {
+                if (_Random.chance(Math.min(0.95, MATCH_TUNING.eckeNachParade * (MATCH_TUNING.eichung2D?.ecken || 1)))) {
                     timeline.push({
                         minute: min,
                         second: 40,
@@ -1672,7 +1696,7 @@ class MatchEngine {
                 });
                 // Abgefälscht ins Toraus: Ecke - wie im Livespiel, wo geblockte
                 // und abgefälschte Schüsse die meisten Ecken bringen
-                if (_Random.chance(MATCH_TUNING.eckeNachFehlschuss)) {
+                if (_Random.chance(Math.min(0.95, MATCH_TUNING.eckeNachFehlschuss * (MATCH_TUNING.eichung2D?.ecken || 1)))) {
                     timeline.push({
                         minute: min,
                         second: 38,
@@ -1702,12 +1726,14 @@ class MatchEngine {
         // 76. Rot sah, fehlte beim Freistoß in der 5. Minute als Schütze.
         // Anteilig zur verbleibenden Spielzeit - eine Neuberechnung ab der 80.
         // Minute verteilte vorher die Fouls eines ganzen Spiels auf zehn Minuten
-        const kleineFouls = Math.round(_Random.int(10, 16) * schiri.pfeife * Math.max(0, 91 - startMinute) / 90);
+        const kleineFouls = Math.round(_Random.int(10, 16) * schiri.pfeife * (MATCH_TUNING.eichung2D?.fouls || 1) * Math.max(0, 91 - startMinute) / 90);
         const foulMinuten = [];
         for (let i = 0; i < kleineFouls; i++) foulMinuten.push(_Random.int(Math.max(2, startMinute), 89));
         foulMinuten.sort((x, y) => x - y);
+        // Wer hart einsteigt, foult auch im Kleinen öfter (Zweikampfhärte der Taktik)
+        const haerteKlein = (_mTaktik()?.wirkung(homeTactics).zweikampf || 0) - (_mTaktik()?.wirkung(awayTactics).zweikampf || 0);
         const kleinesFoul = (min) => {
-            const heimFoult = _Random.chance(0.5);
+            const heimFoult = _Random.chance(Math.max(0.25, Math.min(0.75, 0.5 + haerteKlein * 0.05)));
             const foulClub = heimFoult ? homeClub : awayClub;
             const kandidaten = (heimFoult ? activeHomePlayers : activeAwayPlayers)
                 .filter(p => !sentOffPlayerIds.has(p.id) && p.pos !== "TW");
@@ -2950,6 +2976,49 @@ class MatchEngine {
     }
 
     /**
+     * Stufe 3 der 2D-Simulation: Eine Engine für das eigene Spiel.
+     *
+     * Das eigene Spiel lief nur im 2D-Modell, wenn man es anpfiff - live
+     * oder als Sofort-Ergebnis. Lief der Tag ohne Anpfiff weiter (im Urlaub,
+     * im Pokal, im Testspiel), rechnete die Zeitleiste. Dasselbe Spiel lief
+     * also anders, je nachdem, ob man zuschaute. Jetzt rechnet jedes eigene
+     * Spiel das 2D-Modell, ohne Bild und mit dem Co-Trainer an der
+     * Seitenlinie. Die Zeitleiste bleibt für die übrigen Spiele der Welt; sie
+     * ist gegen das 2D-Modell geeicht (MATCH_TUNING.eichung2D, eichung.js).
+     */
+    static EIGENES_SPIEL_2D = true;
+
+    /**
+     * Wie viel vom Heimvorteil des Vereins im 2D-Modell auf die Werte der
+     * Heimspieler geht. Mit der Hälfte gewann die Heimelf seit der
+     * Ballphysik gut die Hälfte ihrer Spiele, echt sind es 43 bis 45 von
+     * hundert.
+     */
+    static FM_HEIM_ANTEIL = 0.15;
+
+    /** Ein Spiel im 2D-Modell ohne Bild durchrechnen - wie das Sofort-Ergebnis */
+    static spieleOhneBild(match, homeClub, awayClub, allPlayers, options = {}) {
+        const live = this.createLiveMatch(match, homeClub, awayClub, allPlayers, {
+            modus: "fm",
+            userSide: options.userSide || null,
+            delegation: { wechsel: true, taktik: true },
+            matchplan: options.matchplan || null
+        });
+        live.rechneOhneBild();
+        return match;
+    }
+
+    /** Ein Spiel austragen: das eigene im 2D-Modell, alle anderen mit der Zeitleiste */
+    static spieleAus(state, match, homeClub, awayClub, options = {}) {
+        const seite = !state ? null : (match.homeClubId === state.userClubId ? "home"
+            : (match.awayClubId === state.userClubId ? "away" : null));
+        if (seite && this.EIGENES_SPIEL_2D && !match.played) {
+            return this.spieleOhneBild(match, homeClub, awayClub, state.players, { userSide: seite, matchplan: options.matchplan });
+        }
+        return this.simulateFullMatch(match, homeClub, awayClub, state ? state.players : [], options);
+    }
+
+    /**
      * Schnelle Hintergrund-Simulation für Matches (nutzt dieselbe Timeline)
      */
     static simulateFullMatch(match, homeClub, awayClub, allPlayers, options = {}) {
@@ -3218,6 +3287,35 @@ class MatchEngine {
         if (!alle.length) return 1;
         const schnitt = alle.reduce((s, p) => s + (p.overall || 60), 0) / alle.length;
         return Math.round(70 / Math.max(5, schnitt) * 1000) / 1000;
+    }
+
+    /**
+     * Stufe 5: Wie weit der Stärkeabstand zweier Elfen im 2D-Modell wirkt.
+     *
+     * Im 2D-Modell wirkt jeder Wert in jedem Duell, jedem Pass und jedem
+     * Lauf - ein Abstand von zwei Punkten im Kader summiert sich dort mehr
+     * als in der Zeitleiste. Gemessen gewann der Favorit 72 von hundert
+     * Spielen (Zeitleiste 64), und nur 18 endeten unentschieden (echt
+     * 24 bis 27). Gestaucht wird nur der Abstand der beiden Mannschaften,
+     * nicht der Unterschied der Spieler innerhalb einer Elf: Jede Elf wird
+     * um ihren Schnitt so verschoben, dass ihr Abstand zur Mitte der Partie
+     * auf diesen Anteil schrumpft.
+     */
+    static FM_ABSTAND = 0.8;
+
+    static fmAbstand(heim, gast) {
+        const schnitt = (elf) => {
+            const s = (elf || []).filter(Boolean);
+            return s.length ? s.reduce((x, p) => x + (p.overall || 60), 0) / s.length : 0;
+        };
+        const h = schnitt(heim), g = schnitt(gast);
+        if (!h || !g) return { home: 1, away: 1 };
+        const mitte = (h + g) / 2;
+        const k = this.FM_ABSTAND;
+        return {
+            home: Math.round((mitte + (h - mitte) * k) / h * 10000) / 10000,
+            away: Math.round((mitte + (g - mitte) * k) / g * 10000) / 10000
+        };
     }
 
     static createLiveMatch(match, homeClub, awayClub, allPlayers, options = {}) {
@@ -3511,6 +3609,8 @@ class LiveMatch {
         this.sceneRoles = null;
         this.kits = ermittleTrikots(homeClub, awayClub);
         this.fmSkala = this.modus === "fm" ? MatchEngine.fmSkala([this.homeLineup, this.awayLineup]) : 1;
+        // Der Abstand zwischen beiden Elfen, gestaucht (MatchEngine.FM_ABSTAND)
+        this.fmAbstand = this.modus === "fm" ? MatchEngine.fmAbstand(this.homeLineup, this.awayLineup) : { home: 1, away: 1 };
         // Heimvorteil im Livespiel: Die Heimelf spielt mit dem Publikum im
         // Ruecken ein paar Prozent besser - vorher gewann sie gemessen nur
         // drei von zehn Spielen, in echten Ligen sind es gut vier.
@@ -3519,7 +3619,7 @@ class LiveMatch {
         // Simulation: Im Livespiel wirkt jeder Wert in jedem Duell, der volle
         // Faktor gab gemessen doppelt so viele zusätzliche Heimschüsse wie in
         // echten Ligen.
-        this.fmHeim = neutral ? 1 : 1 + (MatchEngine.heimvorteil(homeClub) - 1) * 0.5;
+        this.fmHeim = neutral ? 1 : 1 + (MatchEngine.heimvorteil(homeClub) - 1) * MatchEngine.FM_HEIM_ANTEIL;
         // Tagesform je Spieler - einmal je Partie gewürfelt, auch für die Bank
         this.tagesform = new Map();
         const formFuer = (p) => { if (p && !this.tagesform.has(p.id)) this.tagesform.set(p.id, MatchEngine.tagesform(p)); };
@@ -3699,7 +3799,7 @@ class LiveMatch {
                 freshness: 1,
                 color: this.kits.home.farbe,
                 textColor: this.kits.home.text,
-                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmSkala * this.fmHeim * (this.tagesform.get(p.id) || 1)) : {})
+                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmSkala * this.fmHeim * this.fmAbstand.home * (this.tagesform.get(p.id) || 1)) : {})
             });
         });
 
@@ -3731,7 +3831,7 @@ class LiveMatch {
                 freshness: 1,
                 color: this.kits.away.farbe,
                 textColor: this.kits.away.text,
-                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmSkala * (this.tagesform.get(p.id) || 1)) : {})
+                ...(this.modus === "fm" ? MatchEngine.werte2D(p, slot.pos || p.pos, this.fmSkala * this.fmAbstand.away * (this.tagesform.get(p.id) || 1)) : {})
             });
         });
 
@@ -4597,7 +4697,7 @@ class LiveMatch {
             p2d.stamina = playerIn.stamina || 75;
             p2d.vision = playerIn.vision || playerIn.overall || 65;
             if (this.modus === "fm") Object.assign(p2d, MatchEngine.werte2D(playerIn, p2d.pos,
-                this.fmSkala * (side === "home" ? this.fmHeim : 1) * (this.tagesform?.get(playerIn.id) || 1)));
+                this.fmSkala * (side === "home" ? this.fmHeim : 1) * (this.fmAbstand?.[side] || 1) * (this.tagesform?.get(playerIn.id) || 1)));
             // Ein eingewechselter Spieler kommt frisch aufs Feld
             p2d.freshness = 1;
             p2d.verletzt = false;

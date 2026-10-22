@@ -716,7 +716,7 @@ Zu jedem Monatswechsel schickt der Co-Trainer einen Bericht ins Postfach (Katego
 Ein Talent in den Profikader zu holen dauert jetzt seine Zeit. *Profivertrag anbieten* startet die Verhandlung mit dem Berater über Gehalt, Laufzeit und Handgeld; erst nach der Einigung – meist drei bis sechs Tage – unterschreibt der Spieler seinen ersten Profivertrag und taucht im Kader auf. Die Forderung richtet sich nach Potenzial und Ligastufe.
 
 - **Talente kommen öfter und auf mehr Wegen:** Neben dem Jugendtag im Frühjahr meldet der Nachwuchsleiter unter dem Jahr immer wieder ein einzelnes Talent, das im Probetraining überzeugt hat – in der Grundausstattung etwa dreimal je Saison, mit ausgebauter Akademie, gutem Nachwuchsleiter und weltweitem Sichtungsnetz bis rund neunmal. Wer gezielt suchen will, setzt im Reiter Jugend selbst einen *Sichtungstag* an: ein bis zwei Talente gegen eine Gebühr nach Ligastufe (50.000 € in der 1. Liga, 1.500 € in der untersten Liga), danach sechs Wochen Pause. Die Herkunft steht als Marke am Namen.
-- **Akademie mit Plätzen:** Platz für 8 Talente und 2 je Ausbaustufe; ist sie voll, kommt niemand mehr dazu. Ein Talent lässt sich *freigeben*. Zum Saisonwechsel werden die Talente ein Jahr älter, mit 19 ist ohne Profivertrag Schluss – vorher blieben sie für immer 15 bis 17 Jahre alt und für immer in der Akademie.
+- **Akademie mit Plätzen:** Platz für 8 Talente und 2 je Ausbaustufe; ist sie voll, kommt niemand mehr dazu. Ein Talent lässt sich *freigeben*. Zum Saisonwechsel werden die Talente ein Jahr älter, mit 19 ist ohne Profivertrag Schluss – vorher blieben sie für immer 15 bis 17 Jahre alt und für immer in der Akademie. Wer geht, steht danach vereinslos auf dem Markt (5e).
 - Am Handy steht jedes Talent als Karte da statt als Tabellenzeile mit zerquetschten Spalten.
 
 ### 5d. 🎓 Nachwuchs wie im Vorbild: Jugendvertrag, Abwerben, Ausbildungsentschädigung
@@ -733,6 +733,30 @@ Bisher stand ein Talent ohne Vertrag in der Akademie, ließ sich in jedem Alter 
 - **Entwicklung:** Talente haben eine Persönlichkeit (fest je Talent, ein guter Nachwuchsleiter zieht professionellere Jungs heran). Wie schnell sie wachsen, hängt neben Akademie und Nachwuchsleiter an Professionalität und Ehrgeiz, an den Einsätzen in der U19 und am Training: Bis zu drei Talente ab 16 können mit den Profis trainieren, ohne befördert zu sein, und wachsen dann ein Fünftel schneller. Wer befördert wird, nimmt seine Persönlichkeit mit.
 - **Kaderstatus Toptalent:** Ein Ausnahmetalent wird als *Toptalent* befördert. Es erwartet gelegentliche Einsätze bei den Profis und murrt auf der Bank eher als ein Zukunftstalent.
 - **Im Verein ausgebildet:** Im Europapokal sind acht Plätze der Liste A für lokal Ausgebildete reserviert, höchstens vier davon für Spieler, die nur im Land ausgebildet sind - die übrigen müssen im Verein ausgebildet sein (drei Saisons zwischen 15 und 21, oder aus der eigenen Jugend). Fehlen welche, schrumpft die Liste. Wer schon zum Start der Karriere im Kader stand, dessen Jugendjahre kennt das Spiel nicht: Von den Spielern mit der Nationalität des Landes gilt dann etwa jeder vierte als im Verein ausgebildet. Die Meldeliste zeigt 🎓 für im Verein und 🏠 für im Land ausgebildet.
+
+### 5e. 🎓 Nachwuchs realistisch: Tempo, Jahrgänge, Potenzial
+Gemessen über drei Saisons mit einem Spitzenklub und einem Viertligisten:
+
+- **Wachstum wie junge Profis (`YouthEngine.WACHSTUM_JE_SAISON`, `wachstumsChance`):**
+  - Bisher machte ein Talent an jedem Spieltag mit 30 bis 45 % Chance einen Schritt, also zwölf bis fünfzehn Punkte je Saison. Ein Siebzehnjähriger ging so von 55 auf 82 und stand mit 18 an seinem Potenzial. Ein gleichaltriger Profi legte 3 bis 4 Punkte zu: Wer beförderte, bremste sein Talent aus.
+  - Jetzt wächst ein Talent mit viel Luft rund 6 Punkte je Saison (mit 18: 5), verteilt auf die Spieltage der eigenen Liga.
+  - Akademie, Nachwuchsleiter, Persönlichkeit, U19-Einsätze und das Talent selbst bewegen das um je gut zehn Prozent. Alle zusammen kommen auf höchstens neun Punkte, mit dem Training bei den Profis auf knapp elf. Nahe am Potenzial wird es zäh wie bei den Profis.
+  - Fertig ist mit 18 kaum einer: Bei einem Spitzenklub stehen die Besten dann bei 70 bis 80. Der Weg in die erste Elf führt über Einsätze, die U23 oder eine Leihe.
+- **Jahrgänge:**
+  - Zum Jugendtag kommen Fünfzehn- und Sechzehnjährige (60 zu 40), im Probetraining und am Sichtungstag auch mal ein Siebzehnjähriger.
+  - Wer älter kommt, ist schon weiter (2,5 Punkte je Jahr). Bisher war ein Siebzehnjähriger beim Einzug so stark wie ein Fünfzehnjähriger.
+  - Wer mehr Potenzial hat, ist meist auch heute schon etwas weiter.
+- **Potenzial schief verteilt (`potVerteilung`):**
+  - Bisher lag es gleichmäßig in einem engen Band hoch oben. An der besten Akademie eines Spitzenklubs hatte das schwächste Talent Potenzial 82, fast jedes zweite 88 und mehr.
+  - Jetzt werden die meisten Profis ihrer Liga, knapp unter dem Kaderschnitt. An der besten Akademie eines Spitzenklubs liegt die Mitte bei 83, eines von zehn erreicht 91. In der 4. Liga mit mittlerer Akademie liegt die Mitte bei 53, das beste Zehntel bei 61.
+  - Die Einordnung als Ausnahmetalent und die Ausbildungsentschädigung messen an derselben Verteilung.
+- **Entlassene bleiben in der Welt (`alsVereinslos`):**
+  - Wer mit 19 ohne Profivertrag geht, stand bisher nirgends mehr.
+  - Jetzt ist er vereinslos auf dem Markt, mit der Gehaltsvorstellung für einen Verein zwei Ligen tiefer, und findet meist einen Verein weiter unten. Das kann auch ein Rivale sein.
+  - Zurückholen lässt er sich über den Transfermarkt. Ausgebildet bleibt er beim alten Verein.
+- **U19 als Spielpraxis für junge Profis:** Wer als Profi in die U19 geschickt wird, sammelt dort jetzt Spielpraxis, etwas weniger als in der U23. Auf ihrer Bank verliert er sie. Bisher zählte die U19 für Profis gar nicht.
+- **Gegner in der U19-Liga:** Ihre Stärke entspricht jetzt einem Jahrgang mit gut zwei Jahren Ausbildung, denn eine U19 spielt mit Siebzehn- und Achtzehnjährigen. Vorher wurde jede halbwegs gefüllte eigene Akademie Meister.
+- **Talente anderer Akademien** kommen ebenfalls mit ihrem Alter: Ein Sechzehnjähriger ist weiter als ein Fünfzehnjähriger.
 
 ### 6. 💼 Finanzen, Sponsoren & Buchungsjournal
 - **Gehaltsdisziplin der KI-Vereine (`FinanceEngine.gehaltsDisziplin`):** Jeder Wechsel und jede Verlängerung legt beim Gehalt etwas drauf. Angeglichen wurde bisher nur bei Auf- und Abstieg.

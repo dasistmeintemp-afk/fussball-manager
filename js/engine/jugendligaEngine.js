@@ -45,8 +45,11 @@ const JugendligaEngine = {
         const gen = _jlResolve("PlayerGenerator", "./playerGenerator.js");
         const bereich = gen && typeof gen.getAbilityRangeForLevel === "function" ? gen.getAbilityRangeForLevel(club?.level || 1) : { minCA: 128 };
         const akademie = Math.max(1, Math.min(5, (club?.facilities && club.facilities.youthCenter) || (club?.youthAcademy && club.youthAcademy.level) || 1));
-        // Wie YouthEngine.talentWerte, ein Jahr älter: das Mittel eines Jahrgangs plus etwas Reife
-        const ca = bereich.minCA * 0.72 + akademie * 3 + 10;
+        // Wie YouthEngine.talentWerte, dazu gut zwei Jahre Ausbildung: Eine
+        // U19 spielt mit Siebzehn- und Achtzehnjährigen. Vorher stand hier ein
+        // Jahrgang Fünfzehnjähriger plus ein Jahr - jede halbwegs gefüllte
+        // eigene Akademie wurde damit Meister.
+        const ca = bereich.minCA * 0.72 + akademie * 3 + 22;
         return gen && typeof gen.toOverall === "function" ? gen.toOverall(ca) : Math.round(ca / 2);
     },
 
@@ -151,7 +154,14 @@ const JugendligaEngine = {
      * Entwicklung (YouthEngine.wachstumsChance), gezählt bei den Talenten der
      * Akademie. Dazu bekommt jeder in der Elf eine Note (Feld u19), auch die
      * jungen Profis: So sieht man, wer sich für die Profis aufdrängt.
+     *
+     * Ein junger Profi sammelt in der U19 Spielpraxis wie in der U23
+     * (ReserveEngine.PRAXIS_WERT), nur etwas weniger: Gegen Gleichaltrige
+     * lernt er nicht so viel wie gegen Männer. Bisher zählte die U19 für
+     * Profis gar nicht - wer dorthin geschickt wurde, um zu spielen, kam in
+     * seiner Entwicklung (DevelopmentPlanEngine.praxisFaktor) nicht voran.
      */
+    U19_PRAXIS: 0.6,
     _zaehleEinsaetze(state, saison, spiel = null, runde = 0) {
         const youth = _jlResolve("YouthEngine", "./youthEngine.js");
         if (!youth || typeof youth.eigeneTalente !== "function") return;
@@ -165,10 +175,18 @@ const JugendligaEngine = {
                 const tore = spiel.schuetzen.filter(s => String(s.id) === String(p.id)).length;
                 reserve.bucheEinsatz(p, "u19", saison, reserve.note(p, tore, spiel.tore - spiel.gegentore, schnitt, `u19|${saison}|${runde}`), tore);
             }
-            if (!talente.has(p)) return;
+            if (!talente.has(p)) {
+                p.spielpraxis = Math.round(((p.spielpraxis ?? 0.5) * 0.82 + this.U19_PRAXIS * 0.18) * 1000) / 1000;
+                return;
+            }
             if (p.u19Saison !== saison) { p.u19Saison = saison; p.u19Spiele = 0; }
             p.u19Spiele++;
         });
+        // In die U19 geschickt, aber nicht in der Elf: Er sitzt auf deren Bank
+        // (die Profispiele zählen für ihn nicht, MatchEngine)
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        (state.players || []).filter(p => club && p.clubId === club.id && p.reserve === "u19" && !elf.includes(p))
+            .forEach(p => { p.spielpraxis = Math.round(((p.spielpraxis ?? 0.5) * 0.82) * 1000) / 1000; });
     },
 
     _torschuetzen(state, anzahl) {

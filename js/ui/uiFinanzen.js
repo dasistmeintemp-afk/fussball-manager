@@ -265,15 +265,30 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ${sch.forderungen ? `<div class="pf-zeile"><span>Uns stehen zu</span><strong class="pf-ton-gut">${geld(sch.forderungen)}</strong></div>` : ""}
             ${sch.naechsterMonat ? `<div class="pf-zeile"><span>Fällig im nächsten Monat</span><strong>${geld(sch.naechsterMonat)}</strong></div>` : ""}`);
 
-        // Gehälter nach Kaderrolle gegen das Budget
+        // Gehälter nach Kaderrolle gegen das Budget; aufgeklappte Gruppen bleiben offen
         const g = fin.gehaltNachRolle(state, club);
+        const offen = this._finOffeneRollen || (this._finOffeneRollen = new Set());
         const quote = g.budget ? g.summe / g.budget : 0;
         const ton = quote > 1 ? "schlecht" : (quote > 0.9 ? "mittel" : "gut");
         const gehaelter = kachel("Gehälter", "i-users", `
             <div class="fin-gehalt"><span class="fin-gross pf-ton-${ton === "gut" ? "" : ton}">${geld(g.summe)}</span><span class="fin-budget">/ ${geld(g.budget)}</span><strong class="pf-ton-${ton}">${Math.round(quote * 100)} %</strong></div>
             <div class="fin-unter">Gehälter je Woche / Budget</div>
             <span class="fin-balken"><i class="fin-${ton}" style="width:${Math.min(100, Math.round(quote * 100))}%"></i></span>
-            <div class="fin-rollen">${g.liste.map(e => `<div class="pf-zeile"><span><b>${e.anzahl}</b> ${esc(e.rolle)}</span><strong>${geld(e.summe)}</strong></div>`).join("")}</div>`, "fin-hoch");
+            <div class="fin-rollen">${g.liste.map(e => {
+                const zeile = `<span><b>${e.anzahl}</b> ${esc(e.rolle)}</span><strong>${geld(e.summe)}</strong>`;
+                if (!e.anzahl) return `<div class="pf-zeile">${zeile}</div>`;
+                // Ein Klick auf die Gruppe zeigt, wer dazugehört und was er verdient
+                return `<details class="fin-rolle" data-fin-rolle="${esc(e.rolle)}"${offen.has(e.rolle) ? " open" : ""}>
+                    <summary class="pf-zeile">${zeile}</summary>
+                    <div class="fin-rolle-spieler">${e.spieler.map(p => `
+                        <button type="button" class="fin-spieler" data-fin-spieler="${esc(p.id)}" title="Profil von ${esc(p.name)}">
+                            <span class="pos-tag pos-${this.getPosGroup(p.pos)}">${esc(p.pos)}</span>
+                            <span class="fin-spieler-name">${esc(p.name)}</span>
+                            <small>${p.vertrag !== null ? `${esc(p.vertrag)} J.` : ""}</small>
+                            <strong>${geld(p.wage)}</strong>
+                        </button>`).join("")}</div>
+                </details>`;
+            }).join("")}</div>`, "fin-hoch");
 
         // Sponsoren
         const sp = fin.sponsoring(state, club);
@@ -306,6 +321,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <div class="fin-spalte">${einnahmen}${ausgaben}</div>
             <div class="fin-spalte">${regeln}${schulden}</div>
             ${gehaelter}${sponsoren}${prognose}`;
+        if (typeof el.querySelectorAll !== "function") return;
+        el.querySelectorAll("details[data-fin-rolle]").forEach(d => d.addEventListener("toggle", () => {
+            if (d.open) offen.add(d.dataset.finRolle); else offen.delete(d.dataset.finRolle);
+        }));
+        el.querySelectorAll("[data-fin-spieler]").forEach(b => b.addEventListener("click", () => {
+            const id = this.resolvePlayerId(b.dataset.finSpieler);
+            if (id !== null) this.showPlayerDetailsModal(id);
+        }));
     },
 
     renderFinances() {

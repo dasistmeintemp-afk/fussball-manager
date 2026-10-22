@@ -405,6 +405,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         // Kamera: folgt dem Ball und zoomt je nach Spielsituation
         this.camera = { x: 50, y: 50, zoom: 1.25, targetZoom: 1.25 };
+        this._kameraSchnitte = liveMatch.schnitte || 0;
+        this._kameraSprung = false;
 
         const updateCamera = (dt) => {
             const cam = this.camera;
@@ -434,6 +436,18 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const lead = (ball.targetX - ball.x) * 0.25;
             const focusX = ball.x + lead;
             const focusY = ball.y + (ball.targetY - ball.y) * 0.2;
+
+            // Ein Schnitt (Spulen, Anstoß, Wiederholung): Die Kamera springt
+            // mit, wie bei einer Übertragung - sonst führe sie hinter der
+            // Blende quer über den Platz
+            if ((liveMatch.schnitte || 0) !== this._kameraSchnitte || this._kameraSprung) {
+                this._kameraSchnitte = liveMatch.schnitte || 0;
+                this._kameraSprung = false;
+                cam.x = focusX;
+                cam.y = focusY;
+                cam.zoom = cam.targetZoom;
+                return;
+            }
 
             const follow = Math.min(1, dt * (mode === "highlight" ? 4.5 : 2.6));
             cam.x += (focusX - cam.x) * follow;

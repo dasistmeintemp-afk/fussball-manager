@@ -42,7 +42,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (canvas && !canvas.dataset.wdhGebunden) {
             canvas.dataset.wdhGebunden = "1";
             canvas.addEventListener("click", () => {
-                if (this._wdh && this._wdh.aktiv) this._wdh = null;
+                if (this._wdh && this._wdh.aktiv) {
+                    this._wdh = null;
+                    // Der Klick gilt dem Spiel, das gerade läuft - gebunden wird nur einmal
+                    if (this.app?.currentLiveMatch) this.blendeSchnitt(this.app.currentLiveMatch);
+                }
             });
         }
     },
@@ -92,12 +96,23 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             w.aktiv = true;
             w.start = jetzt;
             w.dauer = w.bilder.length * cfg.takt * 1000 / cfg.tempo;
+            this.blendeSchnitt(liveMatch);
         }
         if (jetzt - w.start > w.dauer) {
             this._wdh = null;
+            this.blendeSchnitt(liveMatch);
             return false;
         }
         return true;
+    },
+
+    /**
+     * Anfang und Ende der Wiederholung sind Schnitte: kurz abblenden, und
+     * die Kamera springt mit (updateCamera in uiLivespiel.js)
+     */
+    blendeSchnitt(liveMatch) {
+        liveMatch.blende = Math.max(liveMatch.blende || 0, 0.45);
+        this._kameraSprung = true;
     },
 
     /** Ein Bild der Wiederholung: Positionen setzen, zeichnen, zurücksetzen */

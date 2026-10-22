@@ -7967,9 +7967,14 @@ function runEngineTests() {
             const schnitt = a => a.reduce((x, y) => x + y, 0) / a.length;
             if (schnitt(heute) > 3) throw new Error(`Stufe ${stufe}: Die Talente sind heute schon ${schnitt(heute).toFixed(1)} Sterne stark`);
             if (heute.some(x => x >= 5)) throw new Error(`Stufe ${stufe}: Ein Fünfzehnjähriger steht heute mit fünf Sternen da`);
-            if (schnitt(potenzial) < 2.5 || schnitt(potenzial) > 4.5) {
+            // Das Potenzial ist schief verteilt (YouthEngine.potVerteilung): Die
+            // meisten werden Profis ihrer Liga, knapp unter dem Kaderschnitt
+            // (3 Sterne), das beste Zehntel reicht an ihn heran oder darüber
+            if (schnitt(potenzial) < 2 || schnitt(potenzial) > 4) {
                 throw new Error(`Stufe ${stufe}: Das Potenzial liegt im Schnitt bei ${schnitt(potenzial).toFixed(1)} Sternen`);
             }
+            const besteZehntel = potenzial.slice().sort((a, b) => b - a)[Math.floor(potenzial.length / 10)];
+            if (besteZehntel < 3) throw new Error(`Stufe ${stufe}: Selbst das beste Zehntel hat nur ${besteZehntel} Sterne Potenzial`);
             if (talente.some(t => typeof t.trueCurrentAbility !== "number" || t.pot <= t.overall)) {
                 throw new Error(`Stufe ${stufe}: Talente ohne innere Stärke oder ohne Luft nach oben`);
             }
@@ -14228,6 +14233,78 @@ function runEngineTests() {
         if (ContractEngine.rollenAbstand({ age: 19, overall: 60, pot: 80 }, "Stammspieler", "Toptalent") !== 0) throw new Error("Toptalent passt nicht zum Talent");
         const bank = (rolle) => D.bankFrust({ squadRole: rolle, id: "x" }, { lineup: [], bench: ["x"] });
         if (!(bank("Toptalent") > bank("Zukunftstalent"))) throw new Error("Toptalent erwartet keine Einsätze");
+    });
+
+    test("Jugend realistisch: Talente wachsen wie junge Profis, Jahrgang mit 15 und 16, Potenzial schief verteilt, Entlassene bleiben in der Welt, U19 als Spielpraxis", () => {
+        const { YouthEngine: Y } = require('./js/engine/youthEngine.js');
+        const { JugendligaEngine: J } = require('./js/engine/jugendligaEngine.js');
+        const { ReserveEngine: R } = require('./js/engine/reserveEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Realismus" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const spieltage = state.totalMatchdays || state.schedule.length;
+
+        // Wachstum: Mit viel Luft legt ein Sechzehnjähriger rund sechs Punkte je
+        // Saison zu, nahe am Potenzial deutlich weniger. Vorher waren es zwölf
+        // bis fünfzehn - mit 18 stand jedes Talent an seiner Grenze.
+        const basis = Object.assign({}, Y.eigeneTalente(state)[0], { age: 16, overall: 55, pot: 80, mitProfis: false,
+            hiddenAttributes: { professionalism: 12, ambition: 12 } });
+        const jeSaison = (t) => Y.wachstumsChance(state, club, t) * spieltage;
+        if (!(jeSaison(basis) > 4 && jeSaison(basis) < 8.5)) throw new Error(`Talent wächst ${jeSaison(basis).toFixed(1)} Punkte je Saison`);
+        if (!(jeSaison(Object.assign({}, basis, { overall: 78 })) < jeSaison(basis) * 0.5)) throw new Error("Nahe am Potenzial wird es nicht zäh");
+        // Alle Einflüsse zusammen: höchstens neun Punkte, mit den Profis knapp elf
+        const bester = Object.assign({}, basis, { pot: 99, hiddenAttributes: { professionalism: 20, ambition: 20 } });
+        if (jeSaison(bester) > 9.5) throw new Error(`Bestes Talent wächst ${jeSaison(bester).toFixed(1)} Punkte je Saison`);
+        if (jeSaison(Object.assign({}, bester, { mitProfis: true })) > 11.5) throw new Error("Mit den Profis wächst das beste Talent zu schnell");
+        // Eine ganze Saison Jugendtraining: im Schnitt vier bis acht Punkte
+        let s = 11; const r = Math.random;
+        Math.random = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+        try {
+            const probe = [];
+            for (let i = 0; i < 12; i++) probe.push(Object.assign({}, basis, { id: `probe_${i}`, clubId: club.id, promoted: false }));
+            const liste = Y.eigeneTalente(state);
+            const vorher = liste.splice(0, liste.length);
+            liste.push(...probe);
+            for (let i = 0; i < spieltage; i++) Y.trainProspects(state, club.id);
+            const zuwachs = probe.reduce((x, t) => x + t.overall - 55, 0) / probe.length;
+            liste.splice(0, liste.length, ...vorher);
+            if (!(zuwachs >= 4 && zuwachs <= 8)) throw new Error(`Eine Saison Jugendtraining bringt ${zuwachs.toFixed(1)} Punkte`);
+        } finally { Math.random = r; }
+
+        // Jahrgang: zum Jugendtag Fünfzehn- und Sechzehnjährige, im Probetraining
+        // auch Ältere - und wer älter kommt, ist schon weiter
+        const jahrgang = [];
+        for (let i = 0; i < 40; i++) jahrgang.push(...Y.generateProspects(state, club.id, { vorschau: true }));
+        if (jahrgang.some(t => t.age < 15 || t.age > 16)) throw new Error("Jugendtag bringt andere Jahrgänge als 15 und 16");
+        const werte = (alter) => { const w = []; for (let i = 0; i < 300; i++) w.push(Y.talentWerte(club, 3, { alter }).overall); return w.reduce((a, b) => a + b, 0) / w.length; };
+        if (!(werte(17) > werte(15) + 3)) throw new Error("Ein Siebzehnjähriger kommt so stark wie ein Fünfzehnjähriger");
+
+        // Potenzial schief: das beste Zehntel klar über der Mitte, Ausnahmetalente selten
+        const skala = Y._potSkala(state, club);
+        const pots = []; for (let i = 0; i < 1000; i++) pots.push(Y.talentWerte(club, Y.akademieStufe(state, club)).pot);
+        pots.sort((a, b) => a - b);
+        if (!(pots[900] - pots[500] >= 6)) throw new Error(`Potenzial nicht schief: Median ${pots[500]}, 90 % ${pots[900]}`);
+        const ausnahmen = pots.filter(p => skala(p) >= Y.AUSNAHME).length / pots.length;
+        if (!(ausnahmen > 0.04 && ausnahmen < 0.2)) throw new Error(`${Math.round(ausnahmen * 100)} % Ausnahmetalente`);
+
+        // Mit 19 ohne Profivertrag: vereinslos in der Welt, nicht verschwunden
+        const geht = Y.eigeneTalente(state).find(t => !t.promoted);
+        geht.age = 18;
+        const anzahl = state.players.length;
+        Y.alterTalente(state);
+        const frei = state.players.find(p => p.name === geht.name && p.ausgebildetVon === club.id);
+        if (Y.eigeneTalente(state).includes(geht) || state.players.length !== anzahl + 1 || !frei) throw new Error("Entlassenes Talent verschwindet");
+        if (frei.clubId !== null || frei.contractYears !== 0 || frei.eigengewaechsVon) throw new Error("Entlassener nicht vereinslos");
+        const profiLohn = PlayerGenerator.getValueAndWage(frei.overall, club.level, frei.age).wage;
+        if (!(frei.wage < profiLohn)) throw new Error("Entlassener erwartet ein Gehalt wie beim Spitzenklub");
+
+        // Ein junger Profi in der U19 sammelt Spielpraxis, auf ihrer Bank verliert er sie
+        const jung = state.players.filter(p => p.clubId === club.id && !club.lineup.includes(p.id) && p.pos !== "TW").slice(0, 2);
+        jung.forEach(p => { p.age = 18; p.spielpraxis = 0.2; p.overall = 99; R.hinunterU19(state, p.id); });
+        jung[1].overall = 1;
+        while (J.eigeneSpieler(state).length < 13) Y.generateProspects(state, club.id, { anzahl: 1, jahrgang: false, ohneKosten: true });
+        J.spieltag(state);
+        if (!(jung[0].spielpraxis > 0.2)) throw new Error("U19-Einsatz bringt keine Spielpraxis");
+        if (!(jung[1].spielpraxis < 0.2)) throw new Error("Auf der U19-Bank bleibt die Spielpraxis");
     });
 
     test("Kaderregeln: im Verein ausgebildet - acht Plätze, höchstens vier nur aus dem Land", () => {

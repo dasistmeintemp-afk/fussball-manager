@@ -172,8 +172,11 @@ const YouthEngine = {
      * des Vereins - wie bei den Spielern, die ein Verein ohnehin hat.
      *
      * zusatz.ovr / zusatz.pot verschieben in Gesamtstärke-Punkten
-     * (Jahrgang, Einzugsgebiet, Nachwuchsleiter).
+     * (Jahrgang, Einzugsgebiet, Nachwuchsleiter). zusatz.alter: Wer mit 16
+     * oder 17 kommt, ist schon ein Stück weiter - bisher war ein
+     * Siebzehnjähriger beim Einzug so stark wie ein Fünfzehnjähriger.
      */
+    TALENT_JE_JAHR: 5,
     talentWerte(club, academyLevel, zusatz = {}) {
         const gen = _youthResolve("PlayerGenerator", "./playerGenerator.js");
         const bereich = gen && typeof gen.getAbilityRangeForLevel === "function"
@@ -185,13 +188,17 @@ const YouthEngine = {
         const stufe = Math.max(1, Math.min(5, academyLevel || 1));
 
         // Heute: deutlich unter dem Ligaschnitt - es sind Fünfzehnjährige
-        const ca = Math.max(15, Math.round(bereich.minCA * 0.72 + stufe * 3
-            + Math.floor(Math.random() * 16) + (zusatz.ovr || 0) * 2));
+        const jahre = Math.max(0, Math.min(3, (zusatz.alter || 15) - 15));
+        let ca = Math.max(15, Math.round(bereich.minCA * 0.72 + stufe * 3
+            + Math.floor(Math.random() * 16) + (zusatz.ovr || 0) * 2 + jahre * this.TALENT_JE_JAHR));
         // Potenzial: innerhalb der Spanne der Liga, eine gute Akademie holt
-        // mehr heraus. Die Besten können über die Liga hinauswachsen.
-        const spanne = Math.max(20, (bereich.maxPA || bereich.minPA + 50) - bereich.minPA);
-        const pa = Math.min(190, Math.max(ca + 12, Math.round(bereich.minPA + spanne * (0.25 + stufe * 0.07)
-            + Math.random() * spanne * 0.5 + (zusatz.pot || 0) * 2)));
+        // mehr heraus, die Besten wachsen über die Liga hinaus (potVerteilung)
+        const v = this.potVerteilung(bereich, stufe);
+        const roh = Math.round(v.unten + v.breite * Math.pow(Math.random(), v.schiefe) + (zusatz.pot || 0) * 2);
+        const mitte = v.unten + v.breite * v.median;
+        // Wer mehr Potenzial hat, ist meist schon heute etwas weiter
+        ca = Math.max(15, ca + Math.round((roh - mitte) * 0.15));
+        const pa = Math.min(190, Math.max(ca + 12, roh));
         const overall = zuStaerke(ca);
         return {
             trueCurrentAbility: ca,
@@ -350,10 +357,32 @@ const YouthEngine = {
             ? gen.getAbilityRangeForLevel(club?.level || 1) : { minPA: 134, maxPA: 184 };
         const zuStaerke = (pa) => gen && typeof gen.toOverall === "function" ? gen.toOverall(pa) : Math.round(pa / 2);
         const stufe = Math.max(1, Math.min(5, this.akademieStufe(state, club)));
-        const spanne = Math.max(20, (bereich.maxPA || bereich.minPA + 50) - bereich.minPA);
-        const basis = bereich.minPA + spanne * (0.25 + stufe * 0.07);
-        const norm = zuStaerke(basis + spanne * 0.25), top = zuStaerke(basis + spanne * 0.5);
+        const v = this.potVerteilung(bereich, stufe);
+        const norm = zuStaerke(v.unten + v.breite * v.median), top = zuStaerke(v.unten + v.breite);
         return (pot) => (pot - norm) / Math.max(1, top - norm);
+    },
+
+    /**
+     * Wie das Potenzial eines Jahrgangs verteilt ist (innere Skala, ohne
+     * Zuschläge): ab unten, bis zu breite darüber, schief - die meisten
+     * werden solide Profis ihrer Liga, wenige mehr.
+     *
+     * Bisher lag es gleichmäßig in einem engen Band hoch oben: An der besten
+     * Akademie eines Spitzenklubs hatte das schwächste Talent Potenzial 82,
+     * fast jedes zweite 88 und mehr - Stammspieler beim Spitzenklub, und das
+     * bei sieben Talenten je Saison. Jetzt liegt dort die Mitte bei 83, und
+     * etwa eines von zehn erreicht 91.
+     */
+    POT_SCHIEFE: 1.5,
+    potVerteilung(bereich, stufe) {
+        const spanne = Math.max(20, (bereich.maxPA || bereich.minPA + 50) - bereich.minPA);
+        return {
+            unten: bereich.minPA + spanne * (0.1 + stufe * 0.06),
+            breite: spanne * 0.65,
+            schiefe: this.POT_SCHIEFE,
+            // Der Median von x hoch schiefe
+            median: Math.pow(0.5, this.POT_SCHIEFE)
+        };
     },
 
     /**
@@ -539,6 +568,8 @@ const YouthEngine = {
 
     /** Mit diesem Alter verlässt ein Talent ohne Profivertrag die Akademie */
     AKADEMIE_HOECHSTALTER: 19,
+    /** Anteil der Fünfzehnjährigen in einem Jahrgang (der Rest ist 16) */
+    JUGENDTAG_FUENFZEHN: 0.6,
 
     /**
      * Verträge in der Akademie, wie im Vorbild.
@@ -630,12 +661,40 @@ const YouthEngine = {
         });
         // Erledigte Anfragen braucht niemand mehr
         if (Array.isArray(state.youthAcademy?.anfragen)) state.youthAcademy.anfragen = state.youthAcademy.anfragen.filter(a => a.status === "offen");
+        // Wer geht, sucht sich einen neuen Verein
+        gehen.forEach(t => this.alsVereinslos(state, club, t));
         if (gehen.length) {
             this.nachwuchsPost(state, club, `🎓 ${gehen.length} ${gehen.length === 1 ? "Talent verlässt" : "Talente verlassen"} die Akademie`,
                 `Ohne Profivertrag ist mit ${this.AKADEMIE_HOECHSTALTER} Schluss in der Akademie:\n`
-                + gehen.map(t => `• ${t.name} (${t.pos})`).join("\n"));
+                + gehen.map(t => `• ${t.name} (${t.pos})`).join("\n")
+                + `\n\n${gehen.length === 1 ? "Er ist" : "Sie sind"} jetzt vereinslos und ${gehen.length === 1 ? "sucht" : "suchen"} einen neuen Verein - auch einen Rivalen. Zurückholen können Sie ${gehen.length === 1 ? "ihn" : "sie"} über den Transfermarkt.`);
         }
         return gehen;
+    },
+
+    /**
+     * Ein Talent, das die Akademie ohne Profivertrag verlässt, steht danach
+     * vereinslos auf dem Markt. Bisher verschwand es aus der Welt - dabei
+     * finden die meisten Entlassenen einen Verein ein paar Ligen tiefer.
+     * Ausgebildet bleibt es beim alten Verein (ausgebildetVon).
+     */
+    alsVereinslos(state, club, talent) {
+        if (!state || !club || !talent || !Array.isArray(state.players)) return null;
+        // Seine Gehaltsvorstellung: wie für einen Verein zwei Ligen tiefer -
+        // ein Profigehalt des Ausbildungsvereins hat er nie bekommen
+        const gen = _youthResolve("PlayerGenerator", "./playerGenerator.js");
+        const lohn = gen && typeof gen.getValueAndWage === "function"
+            ? gen.getValueAndWage(talent.overall, Math.min(7, (club.level || 1) + 2), talent.age || 19).wage : undefined;
+        const p = this.spielerAusTalent(state, club, talent, { eigengewaechs: false, contractYears: 1, wage: lohn });
+        p.clubId = null;
+        p.contractYears = 0;
+        p.vereinslosAb = state.seasonYear || 1;
+        p.vereinSeit = undefined;
+        p.squadRole = "Zukunftstalent";
+        p.morale = 60;
+        if (p.happiness) Object.assign(p.happiness, { overall: 55, contract: 40, reason: `Ohne Vertrag nach der Akademie von ${club.name}.` });
+        state.players.push(p);
+        return p;
     },
 
     /**
@@ -961,7 +1020,7 @@ const YouthEngine = {
             const vornamen = pool?.firstNames || ["Max"], nachnamen = pool?.lastNames || ["Müller"];
             // Im eigenen Land ab 15, aus dem EU-Ausland erst mit 16
             const alter = von.countryId === land ? 15 + Math.floor(zufall() * 2) : 16;
-            const werte = this.talentWerte(club, stufe, { ovr: -1, pot: 2 + zufall() * 4 });
+            const werte = this.talentWerte(club, stufe, { ovr: -1, pot: 2 + zufall() * 4, alter });
             const t = {
                 id: `fremd_${saison}_${i}_${Math.floor(zufall() * 1e6)}`,
                 clubId: club.id,
@@ -1093,20 +1152,49 @@ const YouthEngine = {
     },
 
     /**
-     * Wie wahrscheinlich ein Talent an einem Spieltag einen Schritt macht.
-     * Bisher hing das nur an Akademie und Nachwuchsleiter. Jetzt zählen wie
-     * im Vorbild auch die Persönlichkeit (Professionalität, Ehrgeiz), die
-     * Einsätze in der U19 und das Training mit den Profis.
+     * Was ein Talent in einer Saison zulegt (Gesamtstärke), solange es weit
+     * unter seinem Potenzial ist: bei einer Akademie der Stufe drei, einem
+     * durchschnittlichen Nachwuchsleiter, normaler Einstellung und
+     * regelmäßigen U19-Einsätzen.
+     *
+     * Bisher machte ein Talent an jedem Spieltag mit einer Chance von 30 bis
+     * 45 Prozent einen Schritt - zwölf bis fünfzehn Punkte je Saison. Ein
+     * Siebzehnjähriger ging so in einem Jahr von 55 auf 82 und stand mit 18
+     * an seinem Potenzial, während ein gleichaltriger Profi drei bis vier
+     * Punkte zulegte. Wer ein Talent beförderte, bremste es also aus. Jetzt
+     * wächst es wie ein junger Profi mit Spielpraxis, und wie bei den Profis
+     * wird es zäh, je näher es seinem Potenzial kommt (TrainingEngine.
+     * developPlayer). Fertig ist kaum einer mit 18 - die Besten brauchen
+     * Einsätze bei den Profis, in der U23 oder auf Leihe.
+     */
+    WACHSTUM_JE_SAISON: { 15: 6, 16: 6, 17: 5.5, 18: 5 },
+
+    /**
+     * Wie wahrscheinlich ein Talent an einem Spieltag einen Schritt macht -
+     * die Saison verteilt auf die Spieltage der eigenen Liga. Es zählen
+     * Akademie und Nachwuchsleiter, wie im Vorbild die Persönlichkeit
+     * (Professionalität, Ehrgeiz), die Einsätze in der U19, das Training mit
+     * den Profis und das Talent selbst: Ein großes wächst schneller.
      */
     wachstumsChance(state, club, t) {
-        const basis = 0.20 + this.akademieStufe(state, club) * 0.05 + this.leiterBonus(state, club) * 0.01;
+        const alter = Math.max(15, Math.min(18, t.age || 16));
+        // Jeder Einfluss für sich bewegt das Tempo um gut zehn Prozent - alle
+        // zusammen machen aus sechs Punkten je Saison höchstens neun, mit dem
+        // Training bei den Profis knapp elf
+        const qualitaet = 0.8 + this.akademieStufe(state, club) * 0.06 + this.leiterBonus(state, club) * 0.02;
         const h = t.hiddenAttributes || {};
-        const charakter = 0.75 + 0.5 * ((h.professionalism ?? 12) / 20) + 0.05 * (((h.ambition ?? 12) - 12) / 4);
+        const charakter = 0.75 + 0.4 * ((h.professionalism ?? 12) / 20) + 0.04 * (((h.ambition ?? 12) - 12) / 4);
         const j = state?.jugendliga;
         const runden = j && j.saison === (state.seasonYear || 1) ? j.runde : 0;
         const quote = runden > 0 ? Math.min(1, (t.u19Saison === j.saison ? (t.u19Spiele || 0) : 0) / runden) : 1;
         const spiel = 0.8 + 0.2 * quote;
-        return basis * charakter * spiel * (t.mitProfis ? this.MIT_PROFIS.faktor : 1);
+        const talent = 0.95 + 0.1 * Math.max(0, Math.min(1.5, this._potSkala(state, club)(t.pot || 0)));
+        // Wie bei den Profis: die letzten Schritte zum Potenzial sind die zähesten
+        const luft = Math.max(0, (t.pot || 0) - (t.overall || 0));
+        const naehe = 0.35 + 0.65 * Math.min(1, luft / 12);
+        const spieltage = Math.max(1, state?.totalMatchdays || (Array.isArray(state?.schedule) ? state.schedule.length : 0) || 34);
+        return this.WACHSTUM_JE_SAISON[alter] * qualitaet * charakter * spiel * talent * naehe
+            * (t.mitProfis ? this.MIT_PROFIS.faktor : 1) / spieltage;
     },
 
     /** Post der Nachwuchsabteilung */
@@ -1245,7 +1333,12 @@ const YouthEngine = {
                 ? gen.nameFuer(nat, wurfVor, wurfNach, club?.countryId)
                 : { vorname: "Max", nachname: "Müller" };
             const pos = posTopf[Math.floor(Math.random() * posTopf.length)];
-            const age = 15 + Math.floor(Math.random() * 3); // 15, 16 oder 17
+            // Zum Jugendtag kommt ein Jahrgang von Fünfzehn- und Sechzehnjährigen,
+            // im Probetraining und am Sichtungstag auch mal ein Spätstarter
+            const wurfAlter = Math.random();
+            const age = (optionen.quelle || "jugendtag") === "jugendtag"
+                ? (wurfAlter < this.JUGENDTAG_FUENFZEHN ? 15 : 16)
+                : 15 + Math.floor(wurfAlter * 3);
 
             // Stärke und Potenzial nach Ligastufe und Akademie-Level, beim
             // eigenen Verein dazu Jahrgang, Einzugsgebiet und Nachwuchsleiter
@@ -1257,7 +1350,7 @@ const YouthEngine = {
                 potPlus += I.auslandPot;
                 if (Math.random() < (regional(nat) ? I.ausnahmeChanceRegion : I.ausnahmeChance)) { potPlus += I.ausnahmePot; ausnahme = true; }
             }
-            const werte = this.talentWerte(club, academyLevel, { ovr: eigen ? (mitJahrgang ? jahrgang.ovr : 0) + (optionen.ovr || 0) : 0, pot: potPlus });
+            const werte = this.talentWerte(club, academyLevel, { ovr: eigen ? (mitJahrgang ? jahrgang.ovr : 0) + (optionen.ovr || 0) : 0, pot: potPlus, alter: age });
 
             const prospect = {
                 id: "youth_" + Date.now() + "_" + i + "_" + Math.floor(Math.random() * 1000),
@@ -1305,15 +1398,15 @@ const YouthEngine = {
     },
 
     /**
-     * Wöchentliches Jugendtraining zur Weiterentwicklung der Talente
+     * Das Jugendtraining eines Spieltags: Jedes Talent macht mit seiner
+     * Chance (wachstumsChance) einen Schritt
      */
     trainProspects(state, clubId) {
         if (!state) return;
         const club = state.clubs?.find(c => c.id === clubId);
-        const academyLvl = this.akademieStufe(state, club);
-        const leiterBonus = this.leiterBonus(state, club);
+        if (!club) return;
 
-        const prospects = (club?.youthAcademy?.prospects) || (clubId === state.userClubId ? state.youthAcademy?.prospects : []);
+        const prospects = (club.youthAcademy?.prospects) || (clubId === state.userClubId ? state.youthAcademy?.prospects : []);
         if (!Array.isArray(prospects)) return;
 
         prospects.forEach(prospect => {
@@ -1321,9 +1414,9 @@ const YouthEngine = {
             // Talente aus älteren Spielständen bekommen ihre Persönlichkeit nachgetragen
             if (clubId === state.userClubId) this.ergaenzePersoenlichkeit(prospect);
 
-            // Akademie, Nachwuchsleiter, Persönlichkeit, U19-Einsätze und
-            // Training mit den Profis (wachstumsChance)
-            const growthChance = club ? this.wachstumsChance(state, club, prospect) : 0.20 + academyLvl * 0.05 + leiterBonus * 0.01;
+            // Akademie, Nachwuchsleiter, Persönlichkeit, U19-Einsätze,
+            // Training mit den Profis und Talent (wachstumsChance)
+            const growthChance = this.wachstumsChance(state, club, prospect);
             if (Math.random() < growthChance && prospect.overall < prospect.pot) {
                 prospect.overall += 1;
                 if (typeof prospect.trueCurrentAbility === "number") prospect.trueCurrentAbility += 2;

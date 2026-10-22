@@ -5191,6 +5191,48 @@ class LiveMatch {
         return this.isFinished;
     }
 
+    /**
+     * Höhepunkte wie im Vorbild: Ruhige Phasen rechnet die Simulation ohne
+     * Bild durch - dieselbe Simulation, nur ungezeigt -, gezeigt werden die
+     * Szenen (LiveMatchDirector.istRuhig). Eine Szene läuft noch ein paar
+     * Spielsekunden nach, bevor wieder gespult wird. Liefert true, solange
+     * gespult wird; budgetMs begrenzt die Rechenzeit je Bild.
+     */
+    static SPULEN_NACHLAUF = 5;
+    spuleRuhigePhase(budgetMs = 14) {
+        const d = this.director;
+        if (!d || this.modus !== "fm" || this.isFinished || this.isPaused || this.ohneBild || typeof d.istRuhig !== "function") return false;
+        const jetzt = () => (this.minute || 0) * 60 + (this.seconds || 0);
+        if (!d.istRuhig()) { this._ruhigSeit = null; this.spult = false; return false; }
+        if (this._ruhigSeit === null || this._ruhigSeit === undefined) this._ruhigSeit = jetzt();
+        if (jetzt() - this._ruhigSeit < LiveMatch.SPULEN_NACHLAUF) return false;
+
+        const uhr = (typeof performance !== "undefined" && performance.now) ? () => performance.now() : () => Date.now();
+        const start = uhr();
+        const tempo = this.speed;
+        const vonMinute = this.minute || 0;
+        this.speed = 4;
+        this.spult = true;
+        let schritte = 0;
+        try {
+            while (!this.isFinished && !this.isPaused && d.istRuhig()) {
+                this.advanceRealTime(LiveMatch.OHNE_BILD_SCHRITT_MS);
+                this.updateBallAndPlayers(LiveMatch.OHNE_BILD_SCHRITT_MS);
+                if ((++schritte & 15) === 0 && uhr() - start >= budgetMs) break;
+            }
+        } finally {
+            this.speed = tempo;
+        }
+        // Was beim Spulen gepfiffen wurde, hört niemand - nur der Ticker zählt es
+        if (Array.isArray(this.soundCues)) this.soundCues.length = 0;
+        // Der Sprung, den die Anzeige kurz einblendet - eine ruhige Phase ist
+        // oft in einem einzigen Bild durchgerechnet
+        if (schritte > 0) this.sprung = { von: vonMinute, bis: this.minute || 0, um: uhr() };
+        const weiter = !this.isFinished && !this.isPaused && d.istRuhig();
+        if (!weiter) { this.spult = false; this._ruhigSeit = null; }
+        return weiter;
+    }
+
     finishMatch() {
         this.isFinished = true;
         this.currentPhase = "full_time";

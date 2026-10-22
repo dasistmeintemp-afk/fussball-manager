@@ -2035,10 +2035,11 @@
                     <div class="live-controls-bar">
                         <button class="btn btn-sm btn-icon lm-pause-btn" id="btnLmPause" aria-label="Pause"><svg class="lm-ico" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="2" width="3.6" height="12" rx="1"/><rect x="9.4" y="2" width="3.6" height="12" rx="1"/></svg><span class="lm-btn-text"> Pause</span></button>
                         <div class="speed-selector">
-                            <button class="btn btn-sm speed-btn active" data-speed="1" title="Langsam - echtes Tempo"><span class="lm-speed-lang">Langsam</span><span class="lm-speed-kurz">1×</span></button>
-                            <button class="btn btn-sm speed-btn" data-speed="2" title="Normal - knapp dreifach"><span class="lm-speed-lang">Normal</span><span class="lm-speed-kurz">3×</span></button>
+                            <button class="btn btn-sm speed-btn" data-speed="1" title="Langsam - echtes Tempo"><span class="lm-speed-lang">Langsam</span><span class="lm-speed-kurz">1×</span></button>
+                            <button class="btn btn-sm speed-btn active" data-speed="2" title="Normal - knapp dreifach"><span class="lm-speed-lang">Normal</span><span class="lm-speed-kurz">3×</span></button>
                             <button class="btn btn-sm speed-btn" data-speed="4" title="Schnell - gut sechsfach"><span class="lm-speed-lang">Schnell</span><span class="lm-speed-kurz">6×</span></button>
                         </div>
+                        <button class="btn btn-sm lm-ansicht-btn active" id="btnLmAnsicht" type="button" aria-pressed="true"><span class="lm-speed-lang">Höhepunkte</span><span class="lm-speed-kurz">Szenen</span></button>
                         <button class="btn btn-sm btn-primary lm-coach-btn" id="btnLmCoaching" title="Wechsel, Taktik und Co-Trainer - das Spiel pausiert">
                             <svg class="ico" aria-hidden="true"><use href="#i-clipboard"/></svg><span class="lm-btn-text"> Seitenlinie</span>
                             <span class="lm-coach-badge" id="lmCoachBadge" style="display:none;"></span>
@@ -2064,6 +2065,7 @@
                         <div class="lm-3d-banner" id="lm3dBanner" style="display:none;"></div>
                         <div class="lm-konf-blitz" id="lmKonfBlitz" role="status" aria-live="polite" hidden></div>
                         <div class="lm-choreo" id="lmChoreo" role="status" aria-live="polite" hidden></div>
+                        <div class="lm-spulen" id="lmSpulen" role="status" hidden></div>
                         <div class="lm-3d-kamera" id="lm3dKamera" style="display:none;" role="group" aria-label="Kamera">
                             <button type="button" data-kamera3d="tv">TV</button>
                             <button type="button" data-kamera3d="taktik">Taktik</button>

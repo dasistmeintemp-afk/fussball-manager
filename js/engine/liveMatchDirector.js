@@ -847,6 +847,30 @@ class LiveMatchDirector {
         this.step(dt, false);
     }
 
+    /**
+     * Für die Höhepunkte (LiveMatch.spuleRuhigePhase): Ist gerade nichts
+     * los? Ruhig sind der Aufbau bis knapp über die Mittellinie, Anstoß,
+     * Einwurf, Abstoß und ein Freistoß weit vor dem Tor. Gezeigt wird alles
+     * andere: ein Angriff in der gegnerischen Hälfte, Ecke, Elfmeter, ein
+     * Freistoß im letzten Drittel, eine Szene, ein Torjubel, eine Karte.
+     */
+    static RUHIG_BIS = 52;
+    istRuhig() {
+        if (this.mode !== "ambient" || this.drama) return false;
+        if (this.kickoff) return true;
+        const vor = (team, x) => this.attackDir(team) > 0 ? x : 100 - x;
+        if (this.deadBall) {
+            const d = this.deadBall;
+            if (d.kind === "corner" || d.kind === "penalty") return false;
+            if (d.kind === "freekick" && vor(d.team, d.x) >= 62) return false;
+            return true;
+        }
+        const team = this.possessionTeam;
+        const ball = this.match.ball;
+        if (!team || !ball) return true;
+        return vor(team, ball.x) < LiveMatchDirector.RUHIG_BIS;
+    }
+
     startDrama(kind, options = {}) {
         const scale = this.getSpeedScale();
         this.drama = {

@@ -2342,3 +2342,23 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
     .kw-sortieren .styled-select { flex: 1; }
     #pane-squad .data-table td.kw-leer { display: block; }
 }
+
+/* --------------------------------------------------------------------------
+   Livespiel: Höhepunkte wie im Vorbild. Ruhige Phasen laufen ohne Bild
+   durch, der Hinweis über dem Feld sagt es; der Knopf schaltet um.
+   -------------------------------------------------------------------------- */
+.lm-spulen {
+    position: absolute; left: 50%; top: 12px; z-index: 6; transform: translateX(-50%);
+    display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px;
+    background: rgba(9, 12, 17, 0.82); border: 1px solid rgba(255, 255, 255, 0.16);
+    color: #f8fafc; font-size: 12.5px; font-weight: 600; white-space: nowrap; pointer-events: none;
+    font-variant-numeric: tabular-nums; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+.lm-spulen[hidden] { display: none; }
+.lm-spulen .ico { width: 14px; height: 14px; color: var(--accent); }
+#modalLiveMatch .lm-ansicht-btn {
+    min-height: 30px; padding: 4px 12px; border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); color: var(--text-muted);
+}
+#modalLiveMatch .lm-ansicht-btn.active { background: rgba(var(--accent-rgb), 0.16); border-color: var(--accent-line); color: var(--text-main); }
+@media (max-width: 640px) { #modalLiveMatch .lm-ansicht-btn { padding: 4px 8px; font-size: 11px; } }

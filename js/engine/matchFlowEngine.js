@@ -83,6 +83,15 @@ class MatchFlowEngine {
     /** Wie oft der schwache Fuß ran muss (zur falschen Seite öfter) und wie viel mehr er streut */
     static PASS_SCHWACHER_FUSS = { basis: 0.15, falscheSeite: 0.35, streuung: 1.4 };
 
+    /**
+     * Stufe 2: Wann der Ballführende den Moment erkennt (lageAmBall). Ein
+     * Ball nach vorn in den freien Raum mit offenem Passweg wird sofort
+     * gespielt, wenn er mindestens so gut ist (steil; je Sekunde am Ball
+     * etwas weniger), eine Torchance ab dieser Qualität (schuss, xG) sofort
+     * genutzt, unter starkem Druck (druck) der sichere Ball direkt gespielt.
+     */
+    static MOMENT = { steil: 2.3, nachlass: 0.35, schuss: 0.14, druck: 0.95, vorn: 8, weg: 0.3, raum: 0.5 };
+
     // Geduld am Ball (siehe qualitaetsVorsprung): Bisher spielten Bayern und
     // Augsburg denselben Fußball - gemessen 52 Prozent Ballbesitz für Bayern
     // bei fast gleicher Passquote. Jetzt lässt die technisch überlegene Elf
@@ -1295,6 +1304,57 @@ class MatchFlowEngine {
     }
 
     /**
+     * Stufe 2 der 2D-Simulation: Was der Ballführende sieht, während er den
+     * Ball hat - im Takt von etwa einer Viertelsekunde, nicht erst, wenn die
+     * Annahme vorbei ist.
+     *
+     * - gelegenheit: Jetzt spielen. Ein Mitspieler ist vorn in den freien
+     *   Raum gestartet und der Passweg offen, eine Torchance ist da, oder er
+     *   steht so unter Druck, dass er den sicheren Ball direkt spielt.
+     * - absicht: Wen er gerade anspielen würde - das liest, wer vorausahnt.
+     * - tragen: Freier Raum vor ihm, er läuft mit dem Ball hinein.
+     * - kopfHoch: Er hat Zeit und schaut nach vorn - der Moment für die Läufe
+     *   in die Tiefe.
+     */
+    lageAmBall(carrier, ctx = {}) {
+        if (!carrier) return null;
+        const team = carrier.team;
+        const dir = this.attackDir(team);
+        const tactics = this.getTactics(team) || {};
+        const mates = this.teamOf(team).filter(p => p.id !== carrier.id && p.pos !== "TW");
+        const opponents = this.opponentsOf(team);
+        const pressure = this.getPressure(carrier, opponents);
+        const phase = this.derivePhase(carrier, team);
+        const optionen = this.ratePassOptions(carrier, mates, opponents, tactics, {
+            phase, pressure, chainLength: ctx.chainLength || 0
+        }).sort((a, b) => b.score - a.score);
+        const beste = optionen[0] || null;
+        const m = MatchFlowEngine.MOMENT;
+        const zeit = ctx.zeitAmBall || 0;
+
+        let gelegenheit = null;
+        const steil = optionen.find(o => o.forward > m.vorn && o.laneRisk < m.weg && o.space > m.raum && o.target.pos !== "TW");
+        if (steil && steil.score >= m.steil - zeit * m.nachlass) gelegenheit = "steil";
+        if (!gelegenheit && this.fm() && carrier.pos !== "TW") {
+            const g = this.torGeometrie(carrier, team);
+            if (g.dist < 22 && this.chancenQualitaet(carrier, opponents).xg >= m.schuss) gelegenheit = "schuss";
+        }
+        if (!gelegenheit && pressure > m.druck && beste && beste.laneRisk < m.weg) gelegenheit = "druck";
+
+        const fortschritt = dir > 0 ? carrier.x / 100 : 1 - carrier.x / 100;
+        const vor = { x: carrier.x + dir * 6, y: carrier.y + (50 - carrier.y) * 0.06 };
+        const frei = carrier.pos !== "TW" && pressure < 0.45 && this.getSpace(vor, opponents) > 0.4 && fortschritt < 0.85;
+        const ziel = (gelegenheit && steil) ? steil : beste;
+        return {
+            gelegenheit,
+            absicht: ziel ? { id: ziel.target.id, x: ziel.target.x, y: ziel.target.y } : null,
+            tragen: frei ? vor : null,
+            kopfHoch: pressure < 0.4 && fortschritt > 0.3,
+            pressure
+        };
+    }
+
+    /**
      * Trifft die Entscheidung für die nächste Aktion des Ballführenden
      */
     decide(carrier, options = {}) {
@@ -1336,9 +1396,12 @@ class MatchFlowEngine {
             const flanke = this.rateCross(carrier, mates, opponents, tactics, pressure);
             if (flanke) candidates.push(flanke);
 
-            // Unter hohem Druck wird der Ballfuehrende auch mal umgerissen
-            const foul = this.pruefeDruckFoul(carrier, opponents, pressure, phase);
-            if (foul) return foul;
+            // Unter hohem Druck wird der Ballfuehrende auch mal umgerissen -
+            // es sei denn, er spielt den Ball direkt, bevor der Gegner da ist
+            if (!options.direkt) {
+                const foul = this.pruefeDruckFoul(carrier, opponents, pressure, phase);
+                if (foul) return foul;
+            }
         }
 
         candidates.sort((a, b) => b.score - a.score);
@@ -1589,10 +1652,20 @@ class MatchFlowEngine {
         const annahme = _flowTaktik()?.wirkung(tactics).ballannahme || 0;
         const nachVorn = (action.forward ?? 0) > 4 && ziel.pos !== "TW";
         const inDenLauf = nachVorn && (annahme > 0 || (annahme === 0 && _flowRandom.chance(0.3)));
-        const zielPunkt = inDenLauf
-            ? { x: Math.max(6, Math.min(94, ziel.x + dir * 4.5)), y: Math.max(4, Math.min(96, ziel.y)) }
-            : { x: ziel.x, y: ziel.y };
         const start = this.abspielPunkt(carrier);
+        // In den Lauf: dorthin, wo der Läufer sein wird, wenn der Ball ankommt.
+        // Wer schon nach vorn läuft, bekommt ihn vor die Füße seines Laufs.
+        let zielPunkt = { x: ziel.x, y: ziel.y };
+        if (inDenLauf) {
+            const vx = ziel.lvx || 0, vy = ziel.lvy || 0;
+            const unterwegs = vx * dir > 1;
+            const tSchaetz = Math.hypot(ziel.x - start.x, ziel.y - start.y) / 19;
+            zielPunkt = unterwegs
+                ? { x: ziel.x + vx * tSchaetz + dir * 1.5, y: ziel.y + vy * tSchaetz }
+                : { x: ziel.x + dir * 4.5, y: ziel.y };
+            zielPunkt.x = Math.max(6, Math.min(94, zielPunkt.x));
+            zielPunkt.y = Math.max(4, Math.min(96, zielPunkt.y));
+        }
         const weite = Math.max(1, Math.hypot(zielPunkt.x - start.x, zielPunkt.y - start.y));
         const winkel = Math.atan2(zielPunkt.y - start.y, zielPunkt.x - start.x);
 

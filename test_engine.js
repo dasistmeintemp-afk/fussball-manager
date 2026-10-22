@@ -4475,6 +4475,70 @@ function runEngineTests() {
         if (!altAktionen.length || altAktionen.some(a => a.physik)) throw new Error("Das alte Modell rechnet mit Flugbahn");
     });
 
+    test("Entscheiden im Takt: Der Ballführende spielt im richtigen Moment, trägt den Ball, Läufe starten, Verteidiger ahnen den Pass", () => {
+        const state = GameState.createNewGame("dor", "normal", { name: "Takt" });
+        const partie = state.schedule[0].matches.find(m => m.homeClubId === "dor" || m.awayClubId === "dor");
+        const live = MatchEngine.createLiveMatch(partie, state.clubs.find(c => c.id === partie.homeClubId),
+            state.clubs.find(c => c.id === partie.awayClubId), state.players, { modus: "fm" });
+        const d = live.director;
+        const abstand = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+        live.speed = 2;
+        // Wie oft läuft der Ballführende mit dem Ball am Fuß?
+        let amFuss = 0, mitBall = 0;
+        for (let i = 0; i < 40000 && live.minute < 25 && !live.isFinished; i++) {
+            live.advanceRealTime(16); live.updateBallAndPlayers(16);
+            const c = d.mode === "ambient" && !d.deadBall && !live.ball.inFlight ? d.getPlayer2D(d.carrierId) : null;
+            if (c && abstand(c, live.ball) < 3) {
+                amFuss++;
+                if (Math.hypot(c.lvx || 0, c.lvy || 0) > 1.5) mitBall++;
+            }
+        }
+        const f = d.flowStats;
+        if (!(f.imMoment > 5)) throw new Error(`Nur ${f.imMoment || 0}-mal im Moment gespielt`);
+        if (!(f.moment_steil > 0)) throw new Error("Nie den Steilpass im richtigen Moment gespielt");
+        if (mitBall < amFuss * 0.1) throw new Error(`Mit dem Ball gelaufen nur in ${mitBall} von ${amFuss} Bildern`);
+
+        // Eine Lage mitten im Spiel: Was der Ballführende sieht
+        const traeger = d.getPlayer2D(d.carrierId) || d.teamPlayers(d.possessionTeam).find(p => p.pos !== "TW");
+        const lage = d.flow.lageAmBall(traeger, { chainLength: 2 });
+        if (!lage || typeof lage.kopfHoch !== "boolean" || !("gelegenheit" in lage)) throw new Error("Keine Lage am Ball");
+        if (lage.absicht && !d.teamPlayers(traeger.team).some(p => p.id === lage.absicht.id)) throw new Error("Die Absicht zielt auf einen Gegner");
+
+        // Läufe in die Tiefe starten, wenn der Ballführende den Kopf oben hat
+        const dir = d.attackDir(traeger.team);
+        const vorn = d.teamPlayers(traeger.team).filter(p => p.id !== traeger.id && p.group === "att" && (p.x - traeger.x) * dir >= 2);
+        if (vorn.length) {
+            let gestartet = false;
+            for (let v = 0; v < 6 && !gestartet; v++) {
+                vorn.forEach(p => { p.lauf = { art: "freilaufen", bis: (d._laufUhr || 0) + 50, ox: 0, oy: 0, team: traeger.team }; p.offTheBall = 95; });
+                d._steilMoment = null;
+                d.starteTiefenlaeufe(traeger);
+                gestartet = vorn.some(p => p.lauf.bis <= (d._laufUhr || 0));
+            }
+            if (!gestartet) throw new Error("Kein Angreifer startet in die Tiefe");
+        }
+
+        // Vorausahnen: Wer das Spiel liest, schiebt sich in den Passweg
+        const team = traeger.team;
+        const gegner = d.teamPlayers(team === "home" ? "away" : "home").filter(p => p.pos !== "TW");
+        const presser = d.selectPressingPlayers();
+        let geprueft = 0, naeher = 0;
+        d.teamPlayers(team).filter(p => p.id !== traeger.id && p.pos !== "TW").forEach(ziel => {
+            const v = gegner.filter(g => !presser.has(g.id) && abstand(g, ziel) < 10).sort((a, b) => abstand(a, ziel) - abstand(b, ziel))[0];
+            if (!v) return;
+            v.reaktion = 0.14;
+            const lane = { x: traeger.x + (ziel.x - traeger.x) * 0.75, y: traeger.y + (ziel.y - traeger.y) * 0.75 };
+            d._passAbsicht = null;
+            const ohne = d.computeTarget(v, live.ball, presser);
+            d._passAbsicht = { id: ziel.id, x: ziel.x, y: ziel.y, team, vonId: traeger.id };
+            const mit = d.computeTarget(v, live.ball, presser);
+            d._passAbsicht = null;
+            geprueft++;
+            if (abstand(mit, lane) < abstand(ohne, lane) - 0.2) naeher++;
+        });
+        if (geprueft && naeher < Math.ceil(geprueft / 2)) throw new Error(`Nur ${naeher} von ${geprueft} Verteidigern ahnen den Pass voraus`);
+    });
+
     test("U23: Spieler hinunterschicken, Regeln für Alter und Kadergröße, Spielpraxis in der zweiten Mannschaft", () => {
         const { ReserveEngine } = require('./js/engine/reserveEngine.js');
         const state = GameState.createNewGame("muc", "normal", { name: "U23" });

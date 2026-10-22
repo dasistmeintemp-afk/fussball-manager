@@ -381,6 +381,20 @@ class LiveMatchDirector {
     /** Mit dieser Dringlichkeit laeuft, wer an den Ball geht - wie BallPhysik.DRINGLICHKEIT */
     static JAEGER_DRINGLICHKEIT = 1.9;
 
+    /**
+     * Stufe 2 der 2D-Simulation: Entscheiden im Takt. Waehrend der
+     * Ballfuehrende den Ball hat, schaut er alle ENTSCHEID_TAKT
+     * Laufzeit-Sekunden neu (MatchFlowEngine.lageAmBall) - nicht erst, wenn
+     * die Annahme vorbei ist. Ist der Moment da, spielt er sofort; ist vor ihm
+     * frei, laeuft er mit dem Ball. Hat er Zeit, starten die Angreifer in die
+     * Tiefe (STEIL_MOMENT Sekunden lang lohnt der Lauf mehr). Verteidiger,
+     * die das Spiel lesen, ahnen den Pass voraus und schieben sich bis zu
+     * diesem Anteil in den Passweg (VORAUSAHNEN).
+     */
+    static ENTSCHEID_TAKT = 0.25;
+    static STEIL_MOMENT = 1.6;
+    static VORAUSAHNEN = 0.5;
+
     constructor(liveMatch) {
         this.match = liveMatch;
 
@@ -2436,6 +2450,8 @@ class LiveMatchDirector {
         // Ein Lauf mit dem Ball endet, sobald ihn jemand anders hat
         if (this.carryTarget && this.carryTarget.id !== player.id) this.carryTarget = null;
 
+        this._passAbsicht = null;
+        this._amBallSeit = 0;
         if (player.team === this.possessionTeam) {
             this.possessionChain = (this.possessionChain || 0) + 1;
         } else {
@@ -2535,6 +2551,7 @@ class LiveMatchDirector {
         }
         if (this._annahmeTimer > 0) {
             this._annahmeTimer -= dt;
+            this.taktAmBall(dt);
             return;
         }
 
@@ -2595,9 +2612,12 @@ class LiveMatchDirector {
         }
 
         const ziel = this.anlaufZiel();
+        const direkt = this._direktSpiel === carrier.id;
+        this._direktSpiel = null;
         let action = this.flow.decide(carrier, {
             chainLength: this.possessionChain || 0,
-            zielSpieler: (ziel && ziel.team === carrier.team && ziel.id !== carrier.id) ? ziel : null
+            zielSpieler: (ziel && ziel.team === carrier.team && ziel.id !== carrier.id) ? ziel : null,
+            direkt
         });
         if (!action) {
             this.ambientInterval = 0.8;
@@ -2629,7 +2649,69 @@ class LiveMatchDirector {
         this.ambientInterval = this.flow.getActionInterval(carrier.team, action.type) * 0.18;
     }
 
+    /**
+     * Stufe 2: Der Ballfuehrende schaut im Takt, was geht (siehe
+     * ENTSCHEID_TAKT). Nur mit Ballphysik - ohne sie wird der Ausgang
+     * gewuerfelt, und es gaebe nichts vorauszuahnen.
+     */
+    taktAmBall(dt) {
+        if (!this.physik || !this.flow || typeof this.flow.lageAmBall !== "function") return;
+        if (this.mode !== "ambient" || this.deadBall || this.kickoff || this._offenerStandard) return;
+        const carrier = this.getPlayer2D(this.carrierId);
+        if (!carrier || carrier.team !== this.possessionTeam) return;
+        const lauf = dt * this.getAbspielTempo();
+        this._amBallSeit = (this._amBallSeit || 0) + lauf;
+        this._taktUhr = (this._taktUhr || 0) + lauf;
+        if (this._taktUhr < LiveMatchDirector.ENTSCHEID_TAKT) return;
+        this._taktUhr = 0;
+
+        const lage = this.flow.lageAmBall(carrier, { chainLength: this.possessionChain || 0, zeitAmBall: this._amBallSeit });
+        if (!lage) return;
+        this._passAbsicht = lage.absicht ? { ...lage.absicht, team: carrier.team, vonId: carrier.id } : null;
+        if (lage.kopfHoch) this.starteTiefenlaeufe(carrier);
+        if (lage.gelegenheit) {
+            // Der Moment ist da: jetzt spielen, nicht erst nach der Annahme
+            this._annahmeTimer = 0;
+            if (this.carryTarget && this.carryTarget.id === carrier.id) this.carryTarget = null;
+            this.ambientTimer = Math.max(this.ambientTimer, this.ambientInterval * this.getSpeedScale() * this.AMBIENT_TAKT);
+            this.flowStats.imMoment = (this.flowStats.imMoment || 0) + 1;
+            const grund = "moment_" + lage.gelegenheit;
+            // Unter Druck direkt gespielt: Er ist den Ball los, bevor ihn einer umreisst
+            this._direktSpiel = lage.gelegenheit === "druck" ? carrier.id : null;
+            this.flowStats[grund] = (this.flowStats[grund] || 0) + 1;
+            return;
+        }
+        if (lage.tragen && !this.carryTarget) {
+            // Vor ihm ist frei: Er nimmt den Ball mit, statt zu stehen
+            this.carryTarget = { id: carrier.id, x: lage.tragen.x, y: lage.tragen.y, rest: this.bildschirmZeit(1.4) };
+            this.flowStats.getragen = (this.flowStats.getragen || 0) + 1;
+        }
+    }
+
+    /**
+     * Der Ballfuehrende hat den Kopf oben: Jetzt starten die Angreifer vor dem
+     * Ball in die Tiefe - wer sich ohne Ball gut bewegt, eher.
+     */
+    starteTiefenlaeufe(carrier) {
+        const uhr = this._laufUhr || 0;
+        const m = this._steilMoment;
+        if (m && m.team === carrier.team && uhr < m.bis) return;
+        this._steilMoment = { team: carrier.team, bis: uhr + LiveMatchDirector.STEIL_MOMENT };
+        const dir = this.attackDir(carrier.team);
+        this.teamPlayers(carrier.team).forEach(p => {
+            if (p.id === carrier.id || p.pos === "TW") return;
+            if (p.group !== "att" && !p.rolleMit?.laeuft) return;
+            if ((p.x - carrier.x) * dir < 2 || !p.lauf || p.lauf.art === "tiefe") return;
+            const ohneBall = typeof p.offTheBall === "number" ? (p.offTheBall - 45) / 45 : 0.5;
+            if (_dirRandom.chance(Math.max(0.15, Math.min(0.9, ohneBall)))) p.lauf.bis = uhr;
+        });
+    }
+
     applyFlowAction(action) {
+        // Gespielt ist gespielt - die Absicht ist keine mehr
+        this._passAbsicht = null;
+        this._amBallSeit = 0;
+        this._taktUhr = 0;
         // FM-Modus: Abschluss, Flanke und Foul sind eigene Szenen
         if (this.fm) {
             if (action.type === "shot") {
@@ -4784,10 +4866,12 @@ class LiveMatchDirector {
             const s = 0.35 + Math.random() * 0.65;
             kandidaten.push({ ox: Math.cos(w) * r.x * s, oy: Math.sin(w) * r.y * s, art: "freilaufen", urgency: s > 0.7 ? 1.12 : 0 });
         }
-        if (p.group === "att") {
+        // Stufe 2: Hat der Ballfuehrende den Kopf oben, ist jetzt der Moment fuer den Lauf in die Tiefe
+        const steilMoment = this._steilMoment && this._steilMoment.team === p.team && (this._laufUhr || 0) < this._steilMoment.bis ? 2.5 : 0;
+        if (p.group === "att" || (steilMoment && p.rolleMit?.laeuft)) {
             kandidaten.push({ ox: dir * r.x, oy: (Math.random() - 0.5) * r.y, art: "tiefe",
                 urgency: 1.45, sprint: true,
-                bonus: (vorne > (direkt ? 0.3 : 0.45) ? 2.2 : -1) + (direkt ? 1.5 : kurz ? -0.8 : 0) + (mutig ? 0.8 : 0) });
+                bonus: (vorne > (direkt ? 0.3 : 0.45) ? 2.2 : -1) + (direkt ? 1.5 : kurz ? -0.8 : 0) + (mutig ? 0.8 : 0) + steilMoment });
             kandidaten.push({ ox: -dir * r.x * 0.9, oy: zumBall * r.y * 0.4, art: "entgegen",
                 urgency: 1.2, bonus: (vorne < 0.55 ? 1.6 : 0) + (kurz ? 1.0 : direkt ? -0.8 : 0) });
         }
@@ -5306,6 +5390,21 @@ class LiveMatchDirector {
                 if (attacking) tx += (ball.x - tx) * pull;
                 ty += (ball.y - ty) * pull;
                 urgency = 1.25;
+            }
+        }
+
+        // Stufe 2: Wer das Spiel liest, ahnt den Pass voraus und schiebt sich
+        // in den Passweg - kurz vor den, den der Ballfuehrende anspielen will
+        const absicht = this._passAbsicht;
+        if (!attacking && modus !== "press" && absicht && absicht.team !== p.team && p.pos !== "TW"
+            && Math.hypot(p.x - absicht.x, p.y - absicht.y) < 12) {
+            const von = this.getPlayer2D(absicht.vonId);
+            if (von) {
+                const lesen = Math.max(0, Math.min(1, (0.5 - (p.reaktion ?? 0.3)) / 0.36));
+                const k = lesen * LiveMatchDirector.VORAUSAHNEN;
+                tx += (von.x + (absicht.x - von.x) * 0.75 - tx) * k;
+                ty += (von.y + (absicht.y - von.y) * 0.75 - ty) * k;
+                if (urgency < 1.3) urgency = 1.3;
             }
         }
 

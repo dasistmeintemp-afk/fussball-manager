@@ -1341,15 +1341,18 @@ const FinanceEngine = {
     gehaltNachRolle(state, club) {
         const kader = (state?.players || []).filter(p => p.clubId === club?.id);
         const rolle = (p) => p.squadRole === "Rotation" ? "Rotationsspieler" : (p.squadRole || "Ohne Rolle");
-        const map = new Map(this.ROLLEN_REIHE.map(r => [r, { rolle: r, anzahl: 0, summe: 0 }]));
+        const map = new Map(this.ROLLEN_REIHE.map(r => [r, { rolle: r, anzahl: 0, summe: 0, spieler: [] }]));
         kader.forEach(p => {
             const r = rolle(p);
-            if (!map.has(r)) map.set(r, { rolle: r, anzahl: 0, summe: 0 });
+            if (!map.has(r)) map.set(r, { rolle: r, anzahl: 0, summe: 0, spieler: [] });
             const e = map.get(r);
             e.anzahl++;
             e.summe += p.wage || 0;
+            // Wer zur Gruppe gehört - die Kachel klappt sie auf
+            e.spieler.push({ id: p.id, name: p.name, pos: p.pos, wage: p.wage || 0, vertrag: p.contractYears ?? null });
         });
         const liste = [...map.values()];
+        liste.forEach(e => e.spieler.sort((a, b) => b.wage - a.wage));
         return { liste, summe: liste.reduce((a, e) => a + e.summe, 0), budget: club?.wageBudget || 0 };
     },
 

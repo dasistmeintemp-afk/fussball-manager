@@ -2404,6 +2404,22 @@ button.pf-verein:hover span { text-decoration: underline; text-underline-offset:
 .fin-balken .fin-mittel { background: var(--warn); }
 .fin-balken .fin-schlecht { background: var(--bad); }
 .fin-rollen b { display: inline-block; min-width: 18px; color: var(--text-main); font-variant-numeric: tabular-nums; }
+/* Gehaltsgruppen zum Aufklappen: wer dazugehört und was er verdient */
+.fin-rolle > summary { cursor: pointer; list-style: none; border-bottom: 1px solid var(--line); }
+.fin-rolle > summary::-webkit-details-marker { display: none; }
+.fin-rolle > summary span::before { content: "›"; display: inline-block; width: 12px; color: var(--text-muted); transition: transform 0.15s; }
+.fin-rolle[open] > summary span::before { transform: rotate(90deg); }
+.fin-rolle > summary:hover { color: var(--text-main); }
+.fin-rollen > .pf-zeile { padding-left: 12px; }
+.fin-rolle-spieler { display: grid; gap: 2px; padding: 4px 0 8px 12px; }
+.fin-spieler {
+    display: grid; grid-template-columns: 34px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; width: 100%;
+    padding: 4px 6px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; font-size: 12.5px; text-align: left; cursor: pointer;
+}
+.fin-spieler:hover { background: var(--surface-2); }
+.fin-spieler-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fin-spieler small { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.fin-spieler strong { font-variant-numeric: tabular-nums; }
 .fin-segmente { display: flex; gap: 2px; height: 8px; margin: 0 0 10px; border-radius: 4px; overflow: hidden; }
 .fin-segmente i { flex-basis: 0; min-width: 4px; }
 .fin-s1 { background: var(--accent); }

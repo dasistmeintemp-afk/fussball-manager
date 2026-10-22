@@ -886,12 +886,14 @@ class LiveMatchDirector {
 
     /**
      * Für die Höhepunkte (LiveMatch.spuleRuhigePhase): Ist gerade nichts
-     * los? Ruhig sind der Aufbau bis knapp über die Mittellinie, Anstoß,
+     * los? Ruhig sind der Aufbau bis ein Stück über die Mittellinie, Anstoß,
      * Einwurf, Abstoß und ein Freistoß weit vor dem Tor. Gezeigt wird alles
-     * andere: ein Angriff in der gegnerischen Hälfte, Ecke, Elfmeter, ein
-     * Freistoß im letzten Drittel, eine Szene, ein Torjubel, eine Karte.
+     * andere: ein Angriff tief in der gegnerischen Hälfte, Ecke, Elfmeter,
+     * ein Freistoß im letzten Drittel, eine Szene, ein Torjubel, eine Karte.
+     * Die Grenze lag bei 52: Jeder Ball knapp über die Mittellinie war eine
+     * Szene, jeder zurück ein Schnitt - zu viele Sprünge im Bild.
      */
-    static RUHIG_BIS = 52;
+    static RUHIG_BIS = 64;
     /** Ab dieser Torgefahr zeigen die Schlüsselszenen (Stufe 4) das Spiel */
     static SCHLUESSEL_GEFAHR = 0.4;
 

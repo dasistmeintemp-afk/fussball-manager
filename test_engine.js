@@ -4358,18 +4358,37 @@ function runEngineTests() {
         if (live.spuleRuhigePhase(1000)) throw new Error("In der Pause wird gespult");
         live.isPaused = false;
 
-        // Eine halbe Stunde auf Normal: Bilder zählen, gespult wird in einem Zug je ruhiger Phase
+        // Eine halbe Stunde auf Normal: Bilder zählen, gespult wird in einem Zug je ruhiger Phase.
+        // Jeder Schnitt blendet ab, eine Szene steht mindestens SZENE_MIN_MS
+        // Bildschirmzeit, und ein Schnitt springt in aller Regel mindestens
+        // SPRUNG_MIN Spielsekunden weit - vorher sprang das Bild alle
+        // anderthalb Sekunden, oft nur um ein paar Spielsekunden.
         live.speed = 2;
-        let bilder = 0, gespult = 0;
+        let bilder = 0, gespult = 0, gezeigtSeit = null, kurzeSzenen = 0, ohneBlende = 0;
+        const weiten = [];
         const uhr = () => live.minute * 60 + live.seconds;
         while (live.minute < 30 && !live.isFinished) {
             const vor = uhr();
             const weiter = live.spuleRuhigePhase(1000);
-            if (uhr() - vor > 1) gespult++;
-            if (!weiter) { live.advanceRealTime(16); live.updateBallAndPlayers(16); }
+            const weite = uhr() - vor;
+            if (weite > 1) {
+                gespult++;
+                weiten.push(weite);
+                if (gezeigtSeit !== null && gezeigtSeit < LiveMatch.SZENE_MIN_MS.hoehepunkte) kurzeSzenen++;
+                if (!weiter) { gezeigtSeit = 0; if (!(live.blende > 0)) ohneBlende++; }
+            }
+            if (!weiter) {
+                live.advanceRealTime(16); live.updateBallAndPlayers(16);
+                if (gezeigtSeit !== null) gezeigtSeit += 16;
+                live.blende = Math.max(0, (live.blende || 0) - 0.016);
+            }
             if (++bilder > 20000) throw new Error("Die halbe Stunde endet nicht");
         }
         if (live.speed !== 2) throw new Error("Nach dem Spulen stimmt das Tempo nicht mehr");
+        if (kurzeSzenen > 0) throw new Error(`${kurzeSzenen} Szenen kürzer als ${LiveMatch.SZENE_MIN_MS.hoehepunkte} ms`);
+        if (ohneBlende > 0) throw new Error(`${ohneBlende} Schnitte ohne Blende`);
+        const lange = weiten.filter(w => w >= LiveMatch.SPRUNG_MIN).length;
+        if (lange < weiten.length * 0.75) throw new Error(`Nur ${lange} von ${weiten.length} Schnitten springen mindestens ${LiveMatch.SPRUNG_MIN} s: ${weiten.join(", ")}`);
         const ohneSpulen = 30 * 60 / (d.getBaseClockRate() * 0.016);
         if (gespult < 5) throw new Error(`Nur ${gespult}-mal gespult`);
         if (!live.sprung || !(live.sprung.bis >= live.sprung.von)) throw new Error("Der letzte Sprung ist nicht vermerkt");
@@ -4395,10 +4414,15 @@ function runEngineTests() {
         const dir = d.attackDir("home");
         const vorn = (x) => dir > 0 ? x : 100 - x;
 
-        // Knapp über der Mittellinie: Höhepunkt ja, Schlüsselszene nein
+        // Ein Stück über der Mittellinie ist noch Aufbau: in beiden Stufen ruhig, ohne Torgefahr.
+        // Bis 52 galt das schon als Szene - jeder Ball hin und zurück war ein Schnitt.
         ball.x = vorn(60); ball.y = 50;
-        if (d.torGefahr() !== 0) throw new Error(`Torgefahr an der Mittellinie: ${d.torGefahr()}`);
-        if (d.istRuhig() || !d.istRuhig("schluessel")) throw new Error("Ein Angriff über die Mittellinie ist in beiden Stufen gleich");
+        if (d.torGefahr() !== 0) throw new Error(`Torgefahr kurz hinter der Mittellinie: ${d.torGefahr()}`);
+        if (!d.istRuhig() || !d.istRuhig("schluessel")) throw new Error("Der Aufbau über die Mittellinie wird gezeigt");
+        // Tief in der gegnerischen Hälfte: Höhepunkt ja, Schlüsselszene nein
+        ball.x = vorn(d.constructor.RUHIG_BIS + 2);
+        if (!(d.torGefahr() < d.constructor.SCHLUESSEL_GEFAHR)) throw new Error(`Schon Torgefahr ${d.torGefahr()}`);
+        if (d.istRuhig() || !d.istRuhig("schluessel")) throw new Error("Ein Angriff in die gegnerische Hälfte ist in beiden Stufen gleich");
 
         // Elf Meter vor dem Tor, keiner mehr dazwischen: höchste Gefahr
         ball.x = vorn(85);
@@ -4421,7 +4445,9 @@ function runEngineTests() {
         ball.x = ballVorher.x; ball.y = ballVorher.y;
         gegner.forEach((p, i) => { p.x = gegnerVorher[i][0]; p.y = gegnerVorher[i][1]; });
 
-        // Eine halbe Stunde auf Normal: weniger als die Hälfte der Bilder ohne Spulen
+        // Eine halbe Stunde auf Normal: gut die Hälfte der Bilder ohne Spulen. Jede
+        // Chance steht mindestens SZENE_MIN_MS.schluessel - vorher waren es oft
+        // weniger als eine Sekunde, und das Bild sprang fast jede Sekunde.
         live.speed = 2;
         let bilder = 0, gespult = 0;
         const uhr = () => live.minute * 60 + live.seconds;
@@ -4434,7 +4460,7 @@ function runEngineTests() {
         }
         const ohneSpulen = 30 * 60 / (d.getBaseClockRate() * 0.016);
         if (gespult < 5) throw new Error(`Nur ${gespult}-mal gespult`);
-        if (bilder > ohneSpulen * 0.45) throw new Error(`Kaum kürzer als die Höhepunkte: ${bilder} Bilder statt ${Math.round(ohneSpulen)}`);
+        if (bilder > ohneSpulen * 0.55) throw new Error(`Kaum kürzer als die Höhepunkte: ${bilder} Bilder statt ${Math.round(ohneSpulen)}`);
     });
 
     test("Ballphysik: rollen, fliegen, ins Aus - und wer zuerst am Ball ist, bekommt ihn", () => {
@@ -14905,6 +14931,11 @@ function runEngineTests() {
         const kader = state.players.filter(p => p.clubId === "dor");
         if (g.liste[0].rolle !== "Schlüsselspieler" || g.summe !== kader.reduce((a, p) => a + (p.wage || 0), 0)) throw new Error("Gehälter nach Rolle falsch");
         if (g.liste.reduce((a, e) => a + e.anzahl, 0) !== kader.length) throw new Error("Nicht jeder Spieler hat eine Rolle");
+        // Jede Gruppe kennt ihre Spieler, der Bestverdiener zuerst
+        g.liste.forEach(e => {
+            if (e.spieler.length !== e.anzahl || e.spieler.reduce((a, p) => a + p.wage, 0) !== e.summe) throw new Error(`${e.rolle}: Spieler passen nicht zur Summe`);
+            if (e.spieler.some((p, i) => i > 0 && p.wage > e.spieler[i - 1].wage)) throw new Error(`${e.rolle}: nicht nach Gehalt sortiert`);
+        });
 
         // Schulden: Ablöseraten und Baukredite
         club.baukredite = [{ name: "Stadion", rate: 100000, offen: 900000 }];
@@ -14945,6 +14976,11 @@ function runEngineTests() {
         ["Übersicht", "Einnahmen", "Ausgaben", "Finanzregeln", "Schulden und Raten", "Gehälter", "Sponsoren", "Prognose"]
             .forEach(t => { if (!el.innerHTML.includes(`</svg>${t}</h4>`)) throw new Error(`Kachel ${t} fehlt`); });
         if ((el.innerHTML.match(/class="fin-punkt[ "]/g) || []).length !== F.kontoVerlauf(state).length) throw new Error("Nicht jeder Stand ist ein Punkt im Verlauf");
+        // Die Gehaltsgruppen klappen auf: jede besetzte Rolle, darin jeder Spieler des Kaders
+        const gruppen = F.gehaltNachRolle(state, club).liste.filter(e => e.anzahl > 0).length;
+        if ((el.innerHTML.match(/<details class="fin-rolle"/g) || []).length !== gruppen) throw new Error("Nicht jede Gehaltsgruppe klappt auf");
+        const verlinkt = new Set([...el.innerHTML.matchAll(/data-fin-spieler="([^"]+)"/g)].map(m => m[1]));
+        if (state.players.filter(p => p.clubId === "dor").some(p => !verlinkt.has(String(p.id)))) throw new Error("Nicht jeder Spieler steht in seiner Gehaltsgruppe");
     });
 
     test("Vereinsprofil als Seite: Finanzlage in Worten, Tabellenausschnitt, Geschichte, Aktionen nach Themen", () => {

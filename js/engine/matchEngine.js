@@ -3711,6 +3711,8 @@ class LiveMatch {
             return;
         }
         if (this.isFinished || this.isPaused) return;
+        // Bildschirmzeit, die wirklich gezeigt wurde - danach richten sich die Schnitte der Höhepunkte
+        if (!this.spult) this._gezeigtMs = (this._gezeigtMs || 0) + (Number(realDeltaMs) || 0);
         this.director.advanceRealTime(realDeltaMs);
         this.bewegeAbgaenge(Math.min(0.25, (Number(realDeltaMs) || 0) / 1000));
         this.seitenlinie();
@@ -5296,29 +5298,58 @@ class LiveMatch {
     /**
      * Höhepunkte wie im Vorbild: Ruhige Phasen rechnet die Simulation ohne
      * Bild durch - dieselbe Simulation, nur ungezeigt -, gezeigt werden die
-     * Szenen (LiveMatchDirector.istRuhig). Eine Szene läuft noch ein paar
-     * Spielsekunden nach, bevor wieder gespult wird. Liefert true, solange
-     * gespult wird; budgetMs begrenzt die Rechenzeit je Bild. Die stufe
-     * "schluessel" zeigt nur die Szenen mit Torgefahr (Stufe 4).
+     * Szenen (LiveMatchDirector.istRuhig). Liefert true, solange gespult
+     * wird; budgetMs begrenzt die Rechenzeit je Bild. Die stufe "schluessel"
+     * zeigt nur die Szenen mit Torgefahr (Stufe 4).
+     *
+     * Gemessen sprang das Bild auf Normal alle anderthalb Sekunden: Der
+     * Nachlauf zählte Sekunden der Spieluhr, und die läuft dreiundzwanzigmal
+     * so schnell wie das Bild - fünf Sekunden waren ein Fünftel Bild. Jeder
+     * Ballwechsel über die Mittellinie war eine Szene, jeder zurück ein
+     * Schnitt, ein Fünftel davon sprang keine zehn Spielsekunden weit. So
+     * ein Sprung sieht aus wie ein Ruckeln, nicht wie ein Schnitt.
+     *
+     * Jetzt zählt die Bildschirmzeit (_gezeigtMs, siehe advanceRealTime):
+     * Eine Szene steht mindestens SZENE_MIN_MS, nach ihrem Ende läuft das
+     * Bild SPULEN_NACHLAUF_MS nach. Ein Schnitt überspringt mindestens
+     * SPRUNG_MIN Spielsekunden - was danach kommt, wird ein wenig später
+     * gezeigt, nie aber Torgefahr, Ecke oder Elfmeter (mussZeigen). Jeder
+     * Schnitt blendet ab wie der zum Anstoß (markiereSchnitt).
      */
-    static SPULEN_NACHLAUF = 5;
+    static SZENE_MIN_MS = { hoehepunkte: 3000, schluessel: 2000 };
+    static SPULEN_NACHLAUF_MS = { hoehepunkte: 1000, schluessel: 600 };
+    static SPRUNG_MIN = 20;
     spuleRuhigePhase(budgetMs = 14, stufe = "hoehepunkte") {
         const d = this.director;
         if (!d || this.modus !== "fm" || this.isFinished || this.isPaused || this.ohneBild || typeof d.istRuhig !== "function") return false;
         const jetzt = () => (this.minute || 0) * 60 + (this.seconds || 0);
-        if (!d.istRuhig(stufe)) { this._ruhigSeit = null; this.spult = false; return false; }
-        if (this._ruhigSeit === null || this._ruhigSeit === undefined) this._ruhigSeit = jetzt();
-        if (jetzt() - this._ruhigSeit < LiveMatch.SPULEN_NACHLAUF) return false;
+        // Was nie übersprungen wird, auch nicht für einen längeren Schnitt
+        const mussZeigen = () => d.mode !== "ambient" || !!d.drama
+            || (d.deadBall && !d.istRuhig(stufe))
+            || (typeof d.torGefahr === "function" && d.torGefahr() >= 0.3);
+        if (!this.spult) {
+            const gezeigt = this._gezeigtMs || 0;
+            if (!d.istRuhig(stufe)) { this._ruhigSeitMs = null; return false; }
+            if (this._ruhigSeitMs === null || this._ruhigSeitMs === undefined) this._ruhigSeitMs = gezeigt;
+            const wert = (tabelle) => tabelle[stufe] ?? tabelle.hoehepunkte;
+            if (gezeigt - this._ruhigSeitMs < wert(LiveMatch.SPULEN_NACHLAUF_MS)) return false;
+            if (typeof this._szeneSeitMs === "number" && gezeigt - this._szeneSeitMs < wert(LiveMatch.SZENE_MIN_MS)) return false;
+            // Ein neuer Schnitt beginnt
+            this._schnittVon = jetzt();
+            this._schnittVonMinute = this.minute || 0;
+            this._schnittSchritte = 0;
+        }
+        const weiterSpulen = () => !this.isFinished && !this.isPaused
+            && (d.istRuhig(stufe) || (jetzt() - this._schnittVon < LiveMatch.SPRUNG_MIN && !mussZeigen()));
 
         const uhr = (typeof performance !== "undefined" && performance.now) ? () => performance.now() : () => Date.now();
         const start = uhr();
         const tempo = this.speed;
-        const vonMinute = this.minute || 0;
         this.speed = 4;
         this.spult = true;
         let schritte = 0;
         try {
-            while (!this.isFinished && !this.isPaused && d.istRuhig(stufe)) {
+            while (weiterSpulen()) {
                 this.advanceRealTime(LiveMatch.OHNE_BILD_SCHRITT_MS);
                 this.updateBallAndPlayers(LiveMatch.OHNE_BILD_SCHRITT_MS);
                 // Die Anzeige darf mitschreiben (Puffer der Torwiederholung)
@@ -5328,13 +5359,25 @@ class LiveMatch {
         } finally {
             this.speed = tempo;
         }
+        this._schnittSchritte = (this._schnittSchritte || 0) + schritte;
+        // Reicht das Spulen über mehrere Bilder, bleibt das Bild so lange abgeblendet
+        if (schritte > 0) this.blende = Math.max(this.blende || 0, 0.45);
         // Was beim Spulen gepfiffen wurde, hört niemand - nur der Ticker zählt es
         if (Array.isArray(this.soundCues)) this.soundCues.length = 0;
         // Der Sprung, den die Anzeige kurz einblendet - eine ruhige Phase ist
         // oft in einem einzigen Bild durchgerechnet
-        if (schritte > 0) this.sprung = { von: vonMinute, bis: this.minute || 0, um: uhr() };
-        const weiter = !this.isFinished && !this.isPaused && d.istRuhig(stufe);
-        if (!weiter) { this.spult = false; this._ruhigSeit = null; }
+        if (schritte > 0) this.sprung = { von: this._schnittVonMinute ?? (this.minute || 0), bis: this.minute || 0, um: uhr() };
+        const weiter = weiterSpulen();
+        if (!weiter) {
+            this.spult = false;
+            this._ruhigSeitMs = null;
+            if (this._schnittSchritte > 0) {
+                // Die neue Szene beginnt: Sie steht jetzt eine Weile, und das Bild blendet auf
+                this._szeneSeitMs = this._gezeigtMs || 0;
+                if (typeof d.markiereSchnitt === "function") d.markiereSchnitt();
+            }
+            this._schnittSchritte = 0;
+        }
         return weiter;
     }
 

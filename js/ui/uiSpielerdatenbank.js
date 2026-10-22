@@ -25,7 +25,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
     /**
      * Länder ohne eigene Liga im Spielstand haben keine Flagge in den
-     * Länderdaten. Hier stehen ihre Kürzel, daraus wird die Flagge.
+     * Länderdaten. Hier stehen ihre Kürzel, daraus wird die Flagge. Ein
+     * Kürzel aus drei Buchstaben hat keine eigene Flagge und steht als Text
+     * da: Nordirland hieß vorher "NOR" wie Norwegen.
      */
     NATION_KUERZEL: {
         "Albanien": "AL", "Algerien": "DZ", "Angola": "AO", "Argentinien": "AR", "Armenien": "AM", "Australien": "AU",
@@ -34,7 +36,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         "Finnland": "FI", "Gambia": "GM", "Georgien": "GE", "Ghana": "GH", "Griechenland": "GR", "Guinea": "GN",
         "Irland": "IE", "Island": "IS", "Israel": "IL", "Jamaika": "JM", "Japan": "JP", "Kamerun": "CM", "Kanada": "CA",
         "Kap Verde": "CV", "Kolumbien": "CO", "Kosovo": "XK", "Kroatien": "HR", "Libyen": "LY", "Mali": "ML",
-        "Marokko": "MA", "Mexiko": "MX", "Montenegro": "ME", "Nigeria": "NG", "Nordmazedonien": "MK", "Norwegen": "NO",
+        "Marokko": "MA", "Mexiko": "MX", "Montenegro": "ME", "Nordirland": "NIR", "Nigeria": "NG", "Nordmazedonien": "MK", "Norwegen": "NO",
         "Paraguay": "PY", "Peru": "PE", "Polen": "PL", "Rumänien": "RO", "Russland": "RU", "Schweden": "SE",
         "Senegal": "SN", "Serbien": "RS", "Slowakei": "SK", "Slowenien": "SI", "Südafrika": "ZA", "Südkorea": "KR",
         "Suriname": "SR", "Tschechien": "CZ", "Tunesien": "TN", "Ukraine": "UA", "Ungarn": "HU", "Uruguay": "UY",
@@ -50,8 +52,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (nationalitaet === "Wales") return "\u{1F3F4}\u{E0067}\u{E0062}\u{E0077}\u{E006C}\u{E0073}\u{E007F}";
         if (nationalitaet === "Schottland") return "\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}";
         const kuerzel = this.NATION_KUERZEL[nationalitaet];
-        if (kuerzel) return String.fromCodePoint(...[...kuerzel].map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
-        return `<span class="tm-nation-kuerzel">${this.escapeHtml(String(nationalitaet || "?").slice(0, 3).toUpperCase())}</span>`;
+        if (kuerzel && kuerzel.length === 2) return String.fromCodePoint(...[...kuerzel].map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
+        return `<span class="tm-nation-kuerzel">${this.escapeHtml(kuerzel || String(nationalitaet || "?").slice(0, 3).toUpperCase())}</span>`;
     },
 
     /** Eine Spanne in Euro: "58–92 Mio. €", "8,5–12 Mio. €", "146–211 Tsd. €", gleich: eine Zahl */

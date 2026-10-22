@@ -893,11 +893,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             leiheModus === "eigener" ? this.reserveHtml(player) : "",
             leiheInEntwicklung ? this.leiheHtml(player, leiheModus) : ""
         ].filter(Boolean).join("\n");
-        const laufbahnInhalt = isProspect ? "" : [
+        // Laufbahn als Kacheln wie im Vorbild (uiProfilLaufbahn.js)
+        const mitKacheln = typeof this.profilLaufbahnKachelnHtml === "function";
+        const kachelCtx = { isUserClub, isProspect, confidence };
+        const laufbahnInhalt = isProspect ? "" : (mitKacheln ? this.profilLaufbahnKachelnHtml(player, kachelCtx) : [
             this.laufbahnHtml(state, player, true),
             this.vereinsbilanzHtml(player, isUserClub),
             this.preiseHtml(player)
-        ].filter(Boolean).join("\n");
+        ].filter(Boolean).join("\n"));
         const mitVergleich = !isProspect && typeof DatenzentraleEngine !== "undefined" && typeof this.vergleichInhalt === "function";
         const reiterListe = [
             { key: "ueberblick", label: "Übersicht" },
@@ -1025,6 +1028,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             this.zeichneProfilKopf(profilCtx);
             this.zeigeAkteSeite(player.id);
             this.zeichneProfilAktionen(profilCtx, body);
+            if (typeof this.bindeProfilVerweise === "function") this.bindeProfilVerweise(body);
+            // Eine Anfrage beim Verein aus dieser Sitzung steht weiter oben im Vertrag
+            const anfrage = this._verfuegbarkeit && this._verfuegbarkeit[player.id];
+            if (anfrage && typeof this.verfuegbarkeitHtml === "function") body.querySelector('[data-pd-tab="vertrag"]')?.insertAdjacentHTML("afterbegin", this.verfuegbarkeitHtml(anfrage));
         } finally {
             this._seiteZeichnet = false;
         }

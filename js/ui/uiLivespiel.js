@@ -21,6 +21,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this._anzeige2D = {
             namen: true, formEigene: false, formGegner: false,
             dreiD: false, kamera3D: "tv", qualitaet3D: "auto", wiederholung3D: true,
+            wiederholung2D: true, passwege: false, laufwege: false,
             ...(gespeichert || {})
         };
         return this._anzeige2D;
@@ -260,6 +261,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             wetterBox.style.display = w ? "" : "none";
         }
         this.bereiteMatchCenterVor(liveMatch);
+        if (typeof this.bereiteKachelnVor === "function") this.bereiteKachelnVor(liveMatch);
+        if (typeof this.bereiteDarstellungVor === "function") this.bereiteDarstellungVor(liveMatch);
 
         const canvas = document.getElementById("livePitchCanvas");
         const ctx = canvas.getContext("2d");
@@ -370,6 +373,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
             this.renderLiveStats(liveMatch);
             this.renderLiveVerlauf(liveMatch);
+            if (typeof this.renderLiveKacheln === "function") this.renderLiveKacheln(liveMatch);
             this.updateLiveZurufe(liveMatch);
             this.updateKonferenz(liveMatch);
             this.updateAtmosphaere(liveMatch);
@@ -418,6 +422,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 zoom = 1.45;
             } else if (mode === "highlight") {
                 zoom = (phase === "action" || phase === "resolve") ? 1.85 : 1.45;
+            } else if (mode === "ambient" && dir && typeof dir.torGefahr === "function") {
+                // Stufe 4: Wird es gefährlich, fährt die Kamera in den Strafraum
+                const gefahr = dir.torGefahr();
+                if (gefahr > 0.3) zoom = 1.06 + Math.min(1, (gefahr - 0.3) / 0.5) * 0.55;
             }
             cam.targetZoom = zoom;
 
@@ -565,6 +573,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 });
                 ctx.restore();
             });
+
+            // Stufe 4: Laufwege und Passwege, im Augen-Menü einblendbar - nicht
+            // in der Wiederholung, sie gehören zum laufenden Spiel
+            const inWiederholung = !!(this._wdh && this._wdh.aktiv);
+            if (anzeige.laufwege && !inWiederholung) this.zeichneLaufwege(ctx, players, toX, toY, radius);
+            if (anzeige.passwege && !inWiederholung) this.zeichnePasswege(ctx, liveMatch, toX, toY, radius);
 
             // 3. Schatten
             ctx.fillStyle = "rgba(0, 0, 0, 0.34)";
@@ -895,11 +909,15 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const deltaMs = Math.min(120, now - lastFrameTime);
             lastFrameTime = now;
 
-            // Während der Torwiederholung in 3D steht die Simulation still
-            const wiederholung = this.spielfeld3d && this.spielfeld3d.wiederholungLaeuft() && this.anzeige2D().dreiD;
+            // Während der Torwiederholung (3D oder 2D) steht die Simulation still
+            const wiederholung2D = this.wiederholung2DLaeuft(liveMatch, now);
+            const wiederholung = wiederholung2D || (this.spielfeld3d && this.spielfeld3d.wiederholungLaeuft() && this.anzeige2D().dreiD);
             // Höhepunkte: Ruhige Phasen laufen ohne Bild durch, bis die nächste Szene beginnt
-            const spult = !wiederholung && this.liveEinstellungen().ansicht === "hoehepunkte"
-                && typeof liveMatch.spuleRuhigePhase === "function" && liveMatch.spuleRuhigePhase(14);
+            const ansicht = this.liveEinstellungen().ansicht;
+            // Steht eine Torwiederholung aus, wird bis dahin nicht gespult - sonst
+            // ginge der Anstoß im Zeitraffer weg, und mit ihm der Puffer
+            const spult = !wiederholung && !this._wdh && ansicht !== "ganz"
+                && typeof liveMatch.spuleRuhigePhase === "function" && liveMatch.spuleRuhigePhase(14, ansicht);
             this.zeigeSpulen(liveMatch, spult);
             if (!wiederholung && !spult) {
                 liveMatch.advanceRealTime(deltaMs);
@@ -915,7 +933,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             this.updateCrowdAmbience(liveMatch, deltaMs / 1000);
 
             updateLiveUI();
-            if (!this.zeichne3D(liveMatch, deltaMs / 1000)) render2DCanvas(deltaMs / 1000);
+            if (wiederholung2D) {
+                // Die Wiederholung: die gespeicherten Positionen zeichnen, danach
+                // wieder die echten - das Spiel steht so lange
+                this.zeigeWiederholungsBild(liveMatch, now, () => render2DCanvas(deltaMs / 1000));
+            } else {
+                if (!wiederholung && !spult) this.nimmBildAuf(liveMatch, deltaMs);
+                if (!this.zeichne3D(liveMatch, deltaMs / 1000)) render2DCanvas(deltaMs / 1000);
+            }
 
             this.liveMatchAnimFrame = requestAnimationFrame(tickLoop);
         };
@@ -963,19 +988,26 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         });
         // Höhepunkte oder das ganze Spiel - umschaltbar mitten in der Partie
         const ansichtKnopf = document.getElementById("btnLmAnsicht");
+        // Drei Stufen wie im Vorbild: Schlüsselszenen (nur Torgefahr),
+        // Höhepunkte (jeder Angriff), ganzes Spiel
+        const ANSICHTEN = {
+            schluessel: { lang: "Schlüsselszenen", kurz: "Schlüssel", titel: "Nur Szenen mit Torgefahr. Tippen: alle Höhepunkte", weiter: "hoehepunkte" },
+            hoehepunkte: { lang: "Höhepunkte", kurz: "Szenen", titel: "Jeder Angriff, ruhige Phasen laufen ohne Bild durch. Tippen: ganzes Spiel", weiter: "ganz" },
+            ganz: { lang: "Ganzes Spiel", kurz: "Alles", titel: "Alle 90 Minuten. Tippen: nur Schlüsselszenen", weiter: "schluessel" }
+        };
         const zeigeAnsicht = () => {
             if (!ansichtKnopf) return;
-            const hp = liveWahl.ansicht === "hoehepunkte";
-            ansichtKnopf.classList.toggle("active", hp);
-            ansichtKnopf.setAttribute("aria-pressed", String(hp));
-            ansichtKnopf.innerHTML = `<span class="lm-speed-lang">${hp ? "Höhepunkte" : "Ganzes Spiel"}</span><span class="lm-speed-kurz">${hp ? "Szenen" : "Alles"}</span>`;
-            ansichtKnopf.title = hp ? "Nur die Szenen - ruhige Phasen laufen ohne Bild durch. Tippen: ganzes Spiel zeigen"
-                : "Alle 90 Minuten. Tippen: nur die Höhepunkte zeigen";
+            const a = ANSICHTEN[liveWahl.ansicht] || ANSICHTEN.hoehepunkte;
+            const gekuerzt = liveWahl.ansicht !== "ganz";
+            ansichtKnopf.classList.toggle("active", gekuerzt);
+            ansichtKnopf.setAttribute("aria-pressed", String(gekuerzt));
+            ansichtKnopf.innerHTML = `<span class="lm-speed-lang">${a.lang}</span><span class="lm-speed-kurz">${a.kurz}</span>`;
+            ansichtKnopf.title = a.titel;
         };
         if (ansichtKnopf) {
             ansichtKnopf.style.display = liveMatch.modus === "fm" ? "" : "none";
             ansichtKnopf.onclick = () => {
-                liveWahl.ansicht = liveWahl.ansicht === "hoehepunkte" ? "ganz" : "hoehepunkte";
+                liveWahl.ansicht = (ANSICHTEN[liveWahl.ansicht] || ANSICHTEN.hoehepunkte).weiter;
                 zeigeAnsicht();
                 lastFrameTime = performance.now();
             };
@@ -1258,7 +1290,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         e.autoOeffnen = { halbzeit: true, verletzung: true, platzverweis: true, ...(e.autoOeffnen || {}) };
         // Wie das Spiel gezeigt wird: nur die Szenen (ruhige Phasen laufen
         // ohne Bild durch) oder alle 90 Minuten - und in welchem Tempo
-        if (!["hoehepunkte", "ganz"].includes(e.ansicht)) e.ansicht = "hoehepunkte";
+        if (!["schluessel", "hoehepunkte", "ganz"].includes(e.ansicht)) e.ansicht = "hoehepunkte";
         if (![1, 2, 4].includes(e.tempo)) e.tempo = 2;
         return e;
     },

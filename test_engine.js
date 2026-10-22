@@ -4378,6 +4378,65 @@ function runEngineTests() {
         if (live.soundCues && live.soundCues.length > 20) throw new Error("Gespulte Pfiffe stauen sich");
     });
 
+    test("Schlüsselszenen: gezeigt wird nur, was nach Tor riecht - deutlich kürzer als die Höhepunkte", () => {
+        const state = GameState.createNewGame("dor", "normal", { name: "Schlüsselszenen" });
+        const partie = state.schedule[0].matches.find(m => m.homeClubId === "dor" || m.awayClubId === "dor");
+        const live = MatchEngine.createLiveMatch(partie,
+            state.clubs.find(c => c.id === partie.homeClubId), state.clubs.find(c => c.id === partie.awayClubId),
+            state.players, { modus: "fm", userSide: partie.homeClubId === "dor" ? "home" : "away" });
+        const d = live.director;
+        if (typeof d.torGefahr !== "function") throw new Error("Der Regisseur kennt keine Torgefahr");
+
+        const vorher = { mode: d.mode, drama: d.drama, kickoff: d.kickoff, deadBall: d.deadBall, possessionTeam: d.possessionTeam };
+        const ball = live.ball, ballVorher = { x: ball.x, y: ball.y };
+        const gegner = d.teamPlayers("away").filter(p => p.pos !== "TW");
+        const gegnerVorher = gegner.map(p => [p.x, p.y]);
+        d.mode = "ambient"; d.drama = null; d.kickoff = null; d.deadBall = null; d.possessionTeam = "home";
+        const dir = d.attackDir("home");
+        const vorn = (x) => dir > 0 ? x : 100 - x;
+
+        // Knapp über der Mittellinie: Höhepunkt ja, Schlüsselszene nein
+        ball.x = vorn(60); ball.y = 50;
+        if (d.torGefahr() !== 0) throw new Error(`Torgefahr an der Mittellinie: ${d.torGefahr()}`);
+        if (d.istRuhig() || !d.istRuhig("schluessel")) throw new Error("Ein Angriff über die Mittellinie ist in beiden Stufen gleich");
+
+        // Elf Meter vor dem Tor, keiner mehr dazwischen: höchste Gefahr
+        ball.x = vorn(85);
+        gegner.forEach(p => { p.x = ball.x - dir * 15; p.y = 50; });
+        const frei = d.torGefahr();
+        if (frei < 0.9 || d.istRuhig("schluessel")) throw new Error(`Frei vor dem Tor nur Gefahr ${frei.toFixed(2)}`);
+        // Mit fünf Verteidigern im Weg weniger
+        gegner.slice(0, 5).forEach(p => { p.x = ball.x + dir * 4; });
+        const zu = d.torGefahr();
+        if (!(zu < frei)) throw new Error(`Verteidiger im Weg ändern nichts (${zu.toFixed(2)})`);
+
+        // Freistoß knapp im letzten Drittel: nur ein Höhepunkt; Ecke: beides
+        d.deadBall = { kind: "freekick", team: "home", x: vorn(66) };
+        if (d.istRuhig() || !d.istRuhig("schluessel")) throw new Error("Freistoß im letzten Drittel falsch eingeordnet");
+        d.deadBall = { kind: "corner", team: "home", x: vorn(97) };
+        if (d.istRuhig("schluessel")) throw new Error("Eine Ecke wird gespult");
+        d.deadBall = null; d.mode = "highlight";
+        if (d.torGefahr() !== 1) throw new Error("Eine Szene ist keine Torgefahr");
+        Object.assign(d, vorher);
+        ball.x = ballVorher.x; ball.y = ballVorher.y;
+        gegner.forEach((p, i) => { p.x = gegnerVorher[i][0]; p.y = gegnerVorher[i][1]; });
+
+        // Eine halbe Stunde auf Normal: weniger als die Hälfte der Bilder ohne Spulen
+        live.speed = 2;
+        let bilder = 0, gespult = 0;
+        const uhr = () => live.minute * 60 + live.seconds;
+        while (live.minute < 30 && !live.isFinished) {
+            const vor = uhr();
+            const weiter = live.spuleRuhigePhase(1000, "schluessel");
+            if (uhr() - vor > 1) gespult++;
+            if (!weiter) { live.advanceRealTime(16); live.updateBallAndPlayers(16); }
+            if (++bilder > 20000) throw new Error("Die halbe Stunde endet nicht");
+        }
+        const ohneSpulen = 30 * 60 / (d.getBaseClockRate() * 0.016);
+        if (gespult < 5) throw new Error(`Nur ${gespult}-mal gespult`);
+        if (bilder > ohneSpulen * 0.45) throw new Error(`Kaum kürzer als die Höhepunkte: ${bilder} Bilder statt ${Math.round(ohneSpulen)}`);
+    });
+
     test("Ballphysik: rollen, fliegen, ins Aus - und wer zuerst am Ball ist, bekommt ihn", () => {
         const { BallPhysik: P } = require('./js/engine/ballPhysik.js');
         const nah = (a, b, eps, was) => { if (Math.abs(a - b) > eps) throw new Error(`${was}: ${a.toFixed(2)} statt ${b}`); };

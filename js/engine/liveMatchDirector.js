@@ -892,20 +892,49 @@ class LiveMatchDirector {
      * Freistoß im letzten Drittel, eine Szene, ein Torjubel, eine Karte.
      */
     static RUHIG_BIS = 52;
-    istRuhig() {
+    /** Ab dieser Torgefahr zeigen die Schlüsselszenen (Stufe 4) das Spiel */
+    static SCHLUESSEL_GEFAHR = 0.4;
+
+    istRuhig(stufe = "hoehepunkte") {
         if (this.mode !== "ambient" || this.drama) return false;
         if (this.kickoff) return true;
         const vor = (team, x) => this.attackDir(team) > 0 ? x : 100 - x;
+        const schluessel = stufe === "schluessel";
         if (this.deadBall) {
             const d = this.deadBall;
             if (d.kind === "corner" || d.kind === "penalty") return false;
-            if (d.kind === "freekick" && vor(d.team, d.x) >= 62) return false;
+            if (d.kind === "freekick" && vor(d.team, d.x) >= (schluessel ? 70 : 62)) return false;
             return true;
         }
         const team = this.possessionTeam;
         const ball = this.match.ball;
         if (!team || !ball) return true;
+        if (schluessel) return this.torGefahr() < LiveMatchDirector.SCHLUESSEL_GEFAHR;
         return vor(team, ball.x) < LiveMatchDirector.RUHIG_BIS;
+    }
+
+    /**
+     * Stufe 4: Wie gefährlich ist die Lage gerade - null bis eins? Aus dem
+     * Abstand des Balls zum Tor, dem Winkel und den Verteidigern, die noch
+     * zwischen Ball und Tor stehen. Danach richten sich die Schlüsselszenen
+     * und die Kamera, die bei Gefahr in den Strafraum fährt.
+     */
+    torGefahr() {
+        if (this.mode !== "ambient") return this.mode === "highlight" ? 1 : 0;
+        const team = this.possessionTeam;
+        const ball = this.match.ball;
+        if (!team || !ball || this.kickoff) return 0;
+        const gegner = team === "home" ? "away" : "home";
+        const torX = this.ownGoalX(gegner);
+        const dist = Math.hypot(ball.x - torX, (ball.y - 50) * 0.8);
+        let g = Math.max(0, Math.min(1, (34 - dist) / 22));
+        if (g <= 0) return 0;
+        // Wer steht noch zwischen Ball und Tor?
+        const dir = this.attackDir(team);
+        const dazwischen = this.teamPlayers(gegner).filter(p => p.pos !== "TW"
+            && (p.x - ball.x) * dir > -1 && Math.abs(p.y - ball.y) < 14 + Math.abs(p.x - ball.x) * 0.4).length;
+        g *= dazwischen <= 1 ? 1.3 : (dazwischen <= 3 ? 1 : 0.75);
+        return Math.max(0, Math.min(1, g));
     }
 
     startDrama(kind, options = {}) {

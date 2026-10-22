@@ -1440,6 +1440,93 @@ function runWizardTests() {
         }
     });
 
+    test("Livespiel in Kacheln und Torwiederholung im 2D-Bild", () => {
+        const { MatchEngine } = require('./js/engine/matchEngine.js');
+        const state = GameState.createNewGame("dor", "normal", { name: "Kacheln" });
+        const partie = state.schedule[0].matches.find(m => m.homeClubId === "dor" || m.awayClubId === "dor");
+        const live = MatchEngine.createLiveMatch(partie,
+            state.clubs.find(c => c.id === partie.homeClubId), state.clubs.find(c => c.id === partie.awayClubId),
+            state.players, { modus: "fm", userSide: partie.homeClubId === "dor" ? "home" : "away" });
+        const elemente = {};
+        const el = id => elemente[id] || (elemente[id] = {
+            id, innerHTML: "", offsetParent: {}, dataset: {}, value: "",
+            addEventListener() {}, closest: () => ({ hidden: false }), getContext: () => null
+        });
+        const vorher = { document: global.document, engine: global.MatchEngine };
+        global.document = { getElementById: el };
+        global.MatchEngine = MatchEngine;
+        try {
+            const ui = Object.create(UIManager.prototype);
+            ui.app = { state, currentLiveMatch: live };
+            ui.showToast = () => {};
+            let wiederholung = true;
+            ui.anzeige2D = () => ({ wiederholung2D: wiederholung });
+            ui.bereiteKachelnVor(live);
+            ui.bereiteDarstellungVor(live);
+            for (let i = 0; i < 900; i++) {
+                live.advanceRealTime(16); live.updateBallAndPlayers(16);
+                ui.nimmBildAuf(live, 16);
+            }
+
+            // Die Kacheln: beide Elfen als Feld, Statistik, Bank, Leiste
+            ui.renderLiveKacheln(live);
+            const seite = live.userSide;
+            const elf = elemente.lmKElfHome.innerHTML;
+            const zahl = (elf.match(/class="lm-ke-sp/g) || []).length;
+            if (zahl !== live.aufDemPlatz("home").length) throw new Error(`${zahl} Spieler in der Aufstellung`);
+            const hoehen = [...elf.matchAll(/top:([\d.]+)%/g)].map(m => Number(m[1]));
+            if (Math.min(...hoehen) > 13 || Math.max(...hoehen) < 87) throw new Error(`Die Elf nutzt das Feld nicht: ${Math.min(...hoehen)} bis ${Math.max(...hoehen)}`);
+            if (!/lm-ke-sp[^>]*>/.test(elemente.lmKElfAway.innerHTML)) throw new Error("Der Gegner fehlt");
+            if (!elemente.lmKStat.innerHTML.includes("Schüsse") || !elemente.lmKStat.innerHTML.includes("Ballbesitz")) throw new Error("Statistik unvollständig");
+            if (!/Wechsel \d\/\d/.test(elemente.lmKBank.innerHTML)) throw new Error("Die Bank zeigt die Wechsel nicht");
+            const leiste = (elemente.lmLeiste.innerHTML.match(/class="lm-ll-pos"/g) || []).length;
+            if (leiste !== live.aufDemPlatz(seite).length) throw new Error(`${leiste} Positionen in der Leiste`);
+            // Nur Geändertes wird neu gezeichnet, unsichtbare Kacheln gar nicht
+            elemente.lmKStat.innerHTML = "alt";
+            ui.renderLiveKacheln(live);
+            if (elemente.lmKStat.innerHTML !== "alt") throw new Error("Unveränderte Statistik neu gezeichnet");
+            elemente.lmKStat.offsetParent = null;
+            ui._lmKachelKeys = {};
+            elemente.lmKElfHome.innerHTML = "";
+            ui.renderLiveKacheln(live);
+            if (elemente.lmKElfHome.innerHTML) throw new Error("Unsichtbare Kacheln gezeichnet");
+
+            // Der Puffer zählt Spielzeit: so viele Bilder, wie Spielsekunden vergingen
+            const cfg = ui.WIEDERHOLUNG_2D;
+            const erwartet = Math.min(cfg.puffer, 900 * 0.016 * live.director.getMotionScale() / cfg.takt);
+            if (ui._wdhPuffer.length > cfg.puffer || Math.abs(ui._wdhPuffer.length - erwartet) > erwartet * 0.25 + 2) throw new Error(`Puffer mit ${ui._wdhPuffer.length} Bildern statt etwa ${Math.round(erwartet)}`);
+            // Ein Tor: Nach dem Jubel laufen die Sekunden davor noch einmal
+            const tore = live.homeScore;
+            live.homeScore++;
+            ui.nimmBildAuf(live, 16);
+            const w = ui._wdh;
+            if (!w || w.aktiv) throw new Error("Das Tor ist nicht vorgemerkt");
+            if (ui.wiederholung2DLaeuft(live, w.ab - 1)) throw new Error("Die Wiederholung kommt vor dem Jubel");
+            if (!ui.wiederholung2DLaeuft(live, w.ab + 1)) throw new Error("Die Wiederholung startet nicht");
+            if (w.bilder.length < 30 || w.bilder.length > cfg.vorher + 1 + cfg.nachher) throw new Error(`Wiederholung mit ${w.bilder.length} Bildern`);
+            const jetzt = { x: live.ball.x, y: live.ball.y };
+            let gezeigt = null;
+            ui.zeigeWiederholungsBild(live, w.start, () => { gezeigt = { x: live.ball.x, y: live.ball.y }; });
+            if (Math.abs(gezeigt.x - w.bilder[0].ball[0]) > 1e-9) throw new Error("Die Wiederholung zeigt nicht das erste Bild");
+            if (live.ball.x !== jetzt.x || live.ball.y !== jetzt.y) throw new Error("Nach dem Bild steht der Ball nicht wieder, wo er war");
+            if (ui.wiederholung2DLaeuft(live, w.start + w.dauer + 1) || ui._wdh) throw new Error("Die Wiederholung endet nicht");
+            // Abgeschaltet: keine Wiederholung
+            wiederholung = false;
+            live.homeScore++;
+            ui.nimmBildAuf(live, 16);
+            if (ui._wdh) throw new Error("Abgeschaltete Wiederholung vorgemerkt");
+            live.homeScore = tore;
+            // Was der Zeitraffer durchrechnet, landet auch im Puffer
+            ui._wdhPuffer = [];
+            if (typeof live.beimSpulen !== "function") throw new Error("Der Zeitraffer schreibt nicht mit");
+            for (let i = 0; i < 60; i++) live.beimSpulen(16);
+            if (ui._wdhPuffer.length < 3) throw new Error("Bilder aus dem Zeitraffer fehlen im Puffer");
+        } finally {
+            if (vorher.document === undefined) delete global.document; else global.document = vorher.document;
+            if (vorher.engine === undefined) delete global.MatchEngine; else global.MatchEngine = vorher.engine;
+        }
+    });
+
     console.log(`\n  Ergebnis Wizard-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Wizard-Tests fehlgeschlagen.`);
     return { passed, failed };

@@ -300,6 +300,20 @@ class LiveMatchDirector {
     static AUFNAHME_TEMPO = 72;
 
     /**
+     * Wie schnell der Ball bei der Annahme zum Fuss kommt - in Feldeinheiten
+     * je Laufsekunde, zusaetzlich zu dem Tempo, mit dem der Spieler ihm
+     * davonlaeuft.
+     *
+     * Nach einem Zuspiel steht der Annehmende ein, zwei Meter neben dem Ball.
+     * Vorher holte er ihn mit dem neunfachen Abstand je Sekunde heran: Der Ball
+     * schnappte mit bis zu fuenfzig Metern je Sekunde zum Fuss, ohne dass ihn
+     * jemand gespielt hatte - im Livespiel rund viermal je Minute. Jetzt rollt
+     * er ihm zu, und der Spieler geht ihm entgegen. Beim Dribbeln aendert sich
+     * nichts: Dort laeuft der Ball genau so schnell wie der Spieler.
+     */
+    static AUFNAHME_ZULAUF = 8;
+
+    /**
      * Wie lange vor einem Ereignis das Aufbauspiel beginnt, es zu suchen -
      * in Spielsekunden.
      *
@@ -4600,7 +4614,16 @@ class LiveMatchDirector {
                     // der Spieler laeuft - auf jeder Abspielstufe
                     const ld = dt * this.getMotionTempo();
                     const anteil = Math.min(1, ld * 9);
-                    const grenze = LiveMatchDirector.AUFNAHME_TEMPO * ld;
+                    let grenze = LiveMatchDirector.AUFNAHME_TEMPO * ld;
+                    // Bei der Annahme rollt der Ball zum Fuss, er schnappt nicht
+                    // hin: so schnell, wie der Spieler ihm davonlaeuft, und
+                    // einen Zulauf dazu. Laeuft er dem Ball entgegen, kommt der
+                    // Ball nur mit dem Zulauf. Der weite Weg im Anlauf einer
+                    // Szene bleibt, wie er ist.
+                    if (weg < 8 && weg > 1e-6) {
+                        const mit = Math.max(0, ((carrier.lvx || 0) * (anchorX - ball.x) + (carrier.lvy || 0) * (anchorY - ball.y)) / weg);
+                        grenze = Math.min(grenze, (mit + LiveMatchDirector.AUFNAHME_ZULAUF) * ld);
+                    }
                     const faktor = weg * anteil > grenze ? grenze / weg : anteil;
                     ball.x += (anchorX - ball.x) * faktor;
                     ball.y += (anchorY - ball.y) * faktor;

@@ -1669,6 +1669,9 @@ class SeasonEngine {
         if (finanzenGehalt && typeof finanzenGehalt.gehaltsDisziplin === 'function') {
             finanzenGehalt.gehaltsDisziplin(state);
         }
+        // Die KI-Vereine ordnen ihre Kaderrollen nach dem neuen Kader
+        const gsRollen = _resolve('GameState', './gameState.js');
+        if (gsRollen && typeof gsRollen.ordneKaderrollen === 'function') gsRollen.ordneKaderrollen(state);
 
         // Pokal neu auslosen und den europäischen Wettbewerben ihren Spielplan
         // geben - sonst stünden auch in der neuen Saison nur Teilnehmerlisten

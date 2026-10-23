@@ -714,7 +714,8 @@ class GameState {
                     suspendedMatches: 0,
                     yellowCards: 0,
                     yellowCardsTotal: 0,
-                    squadRole: pData.overall >= 84 ? "Schlüsselspieler" : pData.overall >= 78 ? "Stammspieler" : "Rotationsspieler",
+                    // Vorläufig - verteilt wird, wenn alle Kader stehen (ordneKaderrollen)
+                    squadRole: "Rotationsspieler",
                     happiness: {
                         overall: 75,
                         playingTime: 75,
@@ -1023,6 +1024,12 @@ class GameState {
             type: "welcome"
         });
 
+        // Die Kaderrollen nach Rang, wenn alle Kader stehen - auch die
+        // aufgefüllten Plätze der vorgegebenen Kader. Beim Start hat noch
+        // niemand etwas zugesagt, also auch im eigenen Verein.
+        GameState.ordneKaderrollen(state, true);
+        state.kaderrollenV1 = 1;
+
         // Die Vision des Vorstands über mehrere Spielzeiten (VisionEngine)
         const visionEngine = GameState._resolveEngine("VisionEngine", "./visionEngine.js");
         if (visionEngine && typeof visionEngine.vision === "function") visionEngine.vision(state);
@@ -1163,6 +1170,12 @@ class GameState {
                     type: "info"
                 });
             }
+        }
+        // Kaderrollen nach Rang - einmal je Spielstand und nur für die
+        // KI-Vereine: Im eigenen Verein sind die Rollen Zusagen an die Spieler
+        if (!state.kaderrollenV1) {
+            state.kaderrollenV1 = 1;
+            GameState.ordneKaderrollen(state);
         }
         // Die Kopfwerte: dieselben, die eine neue Welt für diese Spieler hätte
         GameState.ergaenzeKopfwerte(state);
@@ -1579,6 +1592,24 @@ class GameState {
         club.bench = bench;
 
         return veraendert;
+    }
+
+    /**
+     * Die Kaderrollen der KI-Vereine nach Rang neu ordnen - zur neuen Saison
+     * und einmal für ältere Spielstände. Ohne das nahm jeder Neuzugang seine
+     * Rolle vom alten Verein mit. Der eigene Verein bleibt, wie er ist.
+     */
+    static ordneKaderrollen(state, mitEigenem = false) {
+        const gen = GameState._resolveEngine("PlayerGenerator", "./playerGenerator.js");
+        if (!state || !gen || typeof gen.verteileKaderrollen !== "function") return 0;
+        const nachVerein = new Map();
+        (state.players || []).forEach(p => {
+            if (!p.clubId || (!mitEigenem && p.clubId === state.userClubId) || p.reserve) return;
+            if (!nachVerein.has(p.clubId)) nachVerein.set(p.clubId, []);
+            nachVerein.get(p.clubId).push(p);
+        });
+        nachVerein.forEach(kader => gen.verteileKaderrollen(kader));
+        return nachVerein.size;
     }
 
     /** Aufstellungen aller Vereine prüfen und Lücken schließen */

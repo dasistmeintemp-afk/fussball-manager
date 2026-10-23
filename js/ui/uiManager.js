@@ -444,12 +444,12 @@ class UIManager {
         // stehen, das andere setzte niemand.
         const injured = lineupPlayers.filter(p => (p.injuredWeeks || 0) > 0);
         if (injured.length > 0) {
-            return { valid: false, message: `Folgende Spieler in der Startelf sind verletzt: ${injured.map(p => p.name).join(", ")}. Bitte wechseln Sie diese aus.` };
+            return { valid: false, ausfall: true, message: `Folgende Spieler in der Startelf sind verletzt: ${injured.map(p => p.name).join(", ")}. Bitte wechseln Sie diese aus.` };
         }
 
         const suspended = lineupPlayers.filter(p => (p.suspendedMatches || 0) > 0);
         if (suspended.length > 0) {
-            return { valid: false, message: `Folgende Spieler in der Startelf sind gesperrt: ${suspended.map(p => p.name).join(", ")}. Bitte wechseln Sie diese aus.` };
+            return { valid: false, ausfall: true, message: `Folgende Spieler in der Startelf sind gesperrt: ${suspended.map(p => p.name).join(", ")}. Bitte wechseln Sie diese aus.` };
         }
 
         // Meldeliste: Im Europapokal und in Ligen mit Kaderregeln spielt nur,
@@ -2589,8 +2589,7 @@ class UIManager {
         const state = this.app.state;
         const val = this.validateLineupForMatch();
         if (!val.valid) {
-            this.showToast(val.message, "error");
-            this.switchTab("tactics");
+            this.meldeAufstellungsProblem(val);
             return true;
         }
         this._laufendesTestspiel = test;
@@ -2622,8 +2621,7 @@ class UIManager {
 
         const val = this.validateLineupForMatch();
         if (!val.valid) {
-            this.showToast(val.message, "error");
-            this.switchTab("tactics");
+            this.meldeAufstellungsProblem(val);
             return true;
         }
 
@@ -2652,6 +2650,41 @@ class UIManager {
         this._teamTalkDone = false;
         this.startLiveMatchSimulation(heute.partie);
         return true;
+    }
+
+    /**
+     * Die Elf ist nicht spielbereit. Bei einem Ausfall in der Startelf hielt
+     * das Spiel bisher an: Jeder Klick auf Weiter brachte dieselbe Meldung,
+     * und wer sie übersah, hing fest. Jetzt stellt der Co-Trainer auf Wunsch
+     * um - nur die Ausfälle, der Rest der Elf bleibt -, dann geht es los.
+     */
+    meldeAufstellungsProblem(val) {
+        const aktionen = val.ausfall ? [
+            { text: "Co-Trainer stellt um", haupt: true, aktion: () => this.ersetzeAusfaelle(true) },
+            { text: "Selbst umstellen", aktion: () => this.switchTab("tactics") }
+        ] : [];
+        this.showToast(val.message, "error", aktionen.length ? 15000 : 3500, { aktionen });
+        this.switchTab("tactics");
+    }
+
+    /**
+     * Verletzte und Gesperrte in der eigenen Elf ersetzen: Auf ihren Platz
+     * rückt der beste verfügbare Ersatz, kehrt der Stammspieler zurück,
+     * bekommt er ihn wieder (GameState.repairLineup). anpfiff: danach gleich
+     * weiter zum Spiel.
+     */
+    ersetzeAusfaelle(anpfiff = false) {
+        const state = this.app.state;
+        const club = state?.clubs.find(c => c.id === state.userClubId);
+        if (!club || typeof GameState === "undefined" || typeof GameState.repairLineup !== "function") return false;
+        const vorher = (club.lineup || []).slice();
+        GameState.repairLineup(club, state.players);
+        const name = (id) => (state.players.find(p => p.id === id)?.name || "?").split(" ").pop();
+        const wechsel = vorher.map((id, i) => [id, club.lineup[i]]).filter(([a, b]) => a !== b).map(([a, b]) => `${name(b)} für ${name(a)}`);
+        this.showToast(wechsel.length ? `Der Co-Trainer hat umgestellt: ${wechsel.join(", ")}.` : "Die Elf steht schon ohne Ausfälle.", "success", 5000);
+        this.renderCurrentTab();
+        if (anpfiff && wechsel.length) this.handleWeiter();
+        return wechsel.length > 0;
     }
 
     getCupEngine() {

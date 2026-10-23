@@ -104,7 +104,7 @@ class DressingRoomEngine {
             player.happiness.teamPerformance = Math.max(10, Math.min(100,
                 (player.happiness.teamPerformance ?? 75) + grundstimmung * 0.6));
             player.happiness.playingTime = Math.max(10, Math.min(100,
-                (player.happiness.playingTime ?? 75) + (minuten >= 45 ? 2.5 : -2.2)));
+                (player.happiness.playingTime ?? 75) + this.spielzeitDelta(player, minuten)));
             player.happiness.overall = Math.round(
                 (player.happiness.teamPerformance * 0.35)
                 + (player.happiness.playingTime * 0.35)
@@ -150,17 +150,32 @@ class DressingRoomEngine {
      * Ein Schlüsselspieler auf der Bank ist ein Problem, ein Ergänzungsspieler
      * hat damit gerechnet.
      */
+    /**
+     * Wie ein Spiel seine Zufriedenheit mit der Spielzeit verschiebt - gemessen
+     * an dem, was seine Rolle verspricht. Vorher verlor jeder ohne Einsatz
+     * gleich viel: Ein Ergänzungsspieler, der nie mit Spielzeit gerechnet
+     * hatte, war zur Saisonmitte genauso unzufrieden wie ein Schlüsselspieler.
+     */
+    static spielzeitDelta(player, minuten) {
+        if (minuten >= 45) return 2.5;
+        // Volle Erwartung ab dem Stammspieler (2,0), darunter anteilig
+        const erwartung = Math.min(1, (this.BANK_FRUST[player.squadRole] ?? 0.6) / 2);
+        if (minuten > 0) return erwartung >= 1 ? -1.1 : 1;
+        return -2.2 * erwartung;
+    }
+
+    static BANK_FRUST = {
+        "Schlüsselspieler": 3.2,
+        "Stammspieler": 2.0,
+        "Rotationsspieler": 0.8,
+        "Ergänzungsspieler": 0.3,
+        "Toptalent": 0.5,
+        "Zukunftstalent": 0.2
+    };
+
     static bankFrust(player, club) {
         const rolle = player.squadRole || "Kader";
-        const ERWARTUNG = {
-            "Schlüsselspieler": 3.2,
-            "Stammspieler": 2.0,
-            "Rotationsspieler": 0.8,
-            "Ergänzungsspieler": 0.3,
-            "Toptalent": 0.5,
-            "Zukunftstalent": 0.2
-        };
-        let frust = ERWARTUNG[rolle] ?? 0.6;
+        let frust = this.BANK_FRUST[rolle] ?? 0.6;
 
         // Wer nicht einmal im Kader steht, ärgert sich zusätzlich
         const imKader = (club.lineup || []).includes(player.id) || (club.bench || []).includes(player.id);

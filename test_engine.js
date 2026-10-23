@@ -15048,6 +15048,73 @@ function runEngineTests() {
         if (typeof UIManager.prototype.createToastContainer === "function") throw new Error("Der alte Kasten-Stapel existiert noch");
     });
 
+    test("Wettbewerbsseite wie im Vorbild: Tabelle aus den Ergebnissen, Heim und Auswärts, Wechselbilanz je Liga, Siegerarchiv, Kacheln", () => {
+        const state = GameState.createNewGame("scf", "normal", { name: "Liga" });
+        for (let i = 0; i < 45; i++) {
+            CalendarEngine.advanceOneDay(state);
+            GameState.repairLineup(state.clubs.find(c => c.id === state.userClubId), state.players);
+        }
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        const ligaId = ui.getUserLeagueId(state);
+        const d = ui.wbDaten(state, ligaId);
+        if (!d.tabelle.length || !d.tabelle[0].played) throw new Error("Noch kein Spieltag gespielt");
+
+        // Die Tabelle aus den Ergebnissen trifft die echte; Heim und Auswärts ergeben zusammen das Ganze
+        const gerechnet = ui.wbTabelleAusSpielen(state, d.liga, d.plan);
+        const punkte = new Map(gerechnet.map(z => [z.clubId, z.points]));
+        d.tabelle.forEach(z => {
+            if (punkte.get(z.clubId) !== z.points + (z.abzug || 0)) throw new Error(`${z.clubName}: ${punkte.get(z.clubId)} statt ${z.points} Punkte`);
+        });
+        const heim = new Map(ui.wbTabelleAusSpielen(state, d.liga, d.plan, { art: "home" }).map(z => [z.clubId, z]));
+        const ausw = new Map(ui.wbTabelleAusSpielen(state, d.liga, d.plan, { art: "away" }).map(z => [z.clubId, z]));
+        gerechnet.forEach(z => {
+            const h = heim.get(z.clubId), a = ausw.get(z.clubId);
+            if (h.points + a.points !== z.points || h.played + a.played !== z.played) throw new Error(`Heim und Auswärts passen nicht: ${z.clubId}`);
+        });
+        // Bis zum vorigen Spieltag: daraus kommen die Pfeile
+        if (d.vorher.size !== d.tabelle.length) throw new Error("Für die Pfeile fehlt der Stand vom vorigen Spieltag");
+
+        // Kacheln: Kopf, Tabelle mit allen Vereinen, Statistik mit dem Torjäger
+        const kopf = ui.wbKopfHtml(state, d);
+        if (!/Erste Saison/.test(kopf) || !/Weltklasse|Hervorragend/.test(kopf)) throw new Error(`Kopf: ${kopf.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ")}`);
+        if ((ui.wbKachelTabelle(state, d).match(/<tr class=/g) || []).length !== d.tabelle.length) throw new Error("In der Tabellenkachel fehlen Vereine");
+        // Die Seite liest Ligawerte über StatistikEngine - im Browser ist sie global
+        const { StatistikEngine } = require('./js/engine/statistikEngine.js');
+        const hatte = global.StatistikEngine;
+        global.StatistikEngine = StatistikEngine;
+        let stat;
+        try { stat = ui.wbStatistik(state, d, 5); } finally { if (hatte === undefined) delete global.StatistikEngine; else global.StatistikEngine = hatte; }
+        if (stat.teams.length !== 4 || stat.spieler.length !== 4) throw new Error("Statistik ohne vier Wertungen je Seite");
+        const ids = new Set(d.tabelle.map(z => z.clubId));
+        const torjaeger = Math.max(...state.players.filter(p => ids.has(p.clubId)).map(p => StatistikEngine.von(p, "liga").goals || 0));
+        if (stat.spieler[1].liste[0]?.wert !== torjaeger) throw new Error(`Torjäger ${stat.spieler[1].liste[0]?.wert} statt ${torjaeger}`);
+        if (ui.saisonText(state, 1) !== "2026/27" || ui.saisonText(state, 3) !== "2028/29") throw new Error(`Saison: ${ui.saisonText(state, 1)}`);
+
+        // Wechselbilanz: ein Zugang aus dem Ausland zählt bei Käufer und Verkäufer
+        const kaeufer = state.clubs.find(c => c.leagueId === ligaId && c.id !== state.userClubId);
+        const fremd = state.players.find(p => !p.leihe && !p.vorvertrag && state.clubs.find(c => c.id === p.clubId)?.countryId === "it");
+        const vonLiga = state.clubs.find(c => c.id === fremd.clubId).leagueId;
+        const vorher = { ...(state.ligaWechsel?.[ligaId] || { zu: 0, ausland: 0, ausgaben: 0 }) }, vorherAb = state.ligaWechsel?.[vonLiga]?.ab || 0;
+        TransferEngine.merkeLigaWechsel(state, fremd, state.clubs.find(c => c.id === fremd.clubId), kaeufer, 3e6);
+        const b = state.ligaWechsel[ligaId];
+        if (b.zu !== vorher.zu + 1 || b.ausland !== vorher.ausland + 1 || b.ausgaben !== vorher.ausgaben + 3e6) throw new Error(`Bilanz: ${JSON.stringify(b)}`);
+        if (b.liste[b.liste.length - 1].p !== fremd.id || state.ligaWechsel[vonLiga].ab !== vorherAb + 1) throw new Error("Zugang oder Abgang nicht vermerkt");
+        if (b.liste.length > 12) throw new Error("Die Liste wächst über zwölf");
+
+        // Siegerarchiv: einmal je Saison und Liga, höchstens dreißig
+        CompetitionEngine.merkeLigaMeister(state, 1);
+        CompetitionEngine.merkeLigaMeister(state, 1);
+        const archiv = state.ligaMeister[ligaId];
+        if (archiv.length !== 1 || archiv[0].c !== d.tabelle[0].clubId || archiv[0].z !== d.tabelle[1].clubId) throw new Error(`Archiv: ${JSON.stringify(archiv)}`);
+        for (let saison = 2; saison <= 40; saison++) CompetitionEngine.merkeLigaMeister(state, saison);
+        if (state.ligaMeister[ligaId].length !== 30 || state.ligaMeister[ligaId][0].s !== 11) throw new Error("Das Archiv wird nicht auf dreißig Saisons gekürzt");
+        const mitMeister = ui.wbDaten(state, ligaId);
+        if (!ui.wbKopfHtml(state, mitMeister).includes(ui.escapeHtml(d.vereinNach.get(d.tabelle[0].clubId).name.slice(0, 10)))) throw new Error("Der Titelverteidiger fehlt im Kopf");
+        if (!/Saison|Meister/.test(ui.wbAnsichtSieger(state, mitMeister))) throw new Error("Die Ansicht der früheren Sieger ist leer");
+    });
+
     test("Finanzen wie im Vorbild: Kontoverlauf je Monat, Monatsbilanz, Sponsoren, Gehälter nach Rolle, Schulden, Prognose, acht Kacheln", () => {
         const F = FinanceEngine;
         const state = GameState.createNewGame("dor", "normal", { name: "Finanzen" });

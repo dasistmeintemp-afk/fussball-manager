@@ -126,6 +126,28 @@ class CompetitionEngine {
      * Liegt bereits eine Abschlusstabelle vor, entscheidet die Platzierung;
      * zum Start einer Karriere wird nach dem Ruf der Vereine gesetzt.
      */
+    /**
+     * Das Siegerarchiv je Liga für die Wettbewerbsseite ("Frühere Sieger"):
+     * Saison, Meister mit Punkten und der Zweite. Gerufen zum Saisonwechsel,
+     * solange die Abschlusstabellen noch stehen. Höchstens dreißig Saisons.
+     */
+    static merkeLigaMeister(state, saison) {
+        const archiv = state.ligaMeister || (state.ligaMeister = {});
+        const tabellen = state.standingsByLeague || {};
+        (state.leagues || []).forEach(liga => {
+            const tabelle = tabellen[liga.id] || (liga.id === state.userLeagueId ? state.standings : null) || [];
+            const erster = tabelle[0];
+            if (!erster || !(erster.played > 0)) return;
+            const liste = archiv[liga.id] || (archiv[liga.id] = []);
+            if (liste.some(e => e.s === saison)) return;
+            const name = (id) => (state.clubs || []).find(c => c.id === id)?.name || "";
+            liste.push({ s: saison, c: erster.clubId, n: erster.clubName || name(erster.clubId), p: erster.points,
+                z: tabelle[1] ? tabelle[1].clubId : null, zn: tabelle[1] ? (tabelle[1].clubName || name(tabelle[1].clubId)) : "" });
+            if (liste.length > 30) liste.splice(0, liste.length - 30);
+        });
+        return archiv;
+    }
+
     static generateEuropeanCompetitions(allClubs, options = {}) {
         const leagues = options.leagues || CompetitionEngine._resolveLeagues();
         const standingsByLeague = options.standingsByLeague || {};

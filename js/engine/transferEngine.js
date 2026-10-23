@@ -104,6 +104,38 @@ class TransferEngine {
         };
     }
 
+    /**
+     * Die Wechselbilanz je Liga und Saison für die Wettbewerbsseite: Zugänge,
+     * Abgänge, wie viele davon aus dem Ausland kamen, Ausgaben, Einnahmen und
+     * die letzten zwölf Zugänge. Klein gehalten, sie steht im Spielstand.
+     */
+    static merkeLigaWechsel(state, player, von, zu, fee) {
+        if (!state || !player || !zu) return;
+        const saison = state.seasonYear || 1;
+        const buch = state.ligaWechsel || (state.ligaWechsel = {});
+        const bilanz = (ligaId) => {
+            if (!ligaId) return null;
+            if (!buch[ligaId] || buch[ligaId].saison !== saison) {
+                buch[ligaId] = { saison, zu: 0, ab: 0, ausland: 0, ausgaben: 0, einnahmen: 0, liste: [] };
+            }
+            return buch[ligaId];
+        };
+        const betrag = Math.max(0, Number(fee) || 0);
+        const rein = bilanz(zu.leagueId);
+        if (rein) {
+            rein.zu++;
+            rein.ausgaben += betrag;
+            if (von && von.countryId && zu.countryId && von.countryId !== zu.countryId) rein.ausland++;
+            rein.liste.push({ s: player.name, p: player.id, v: von ? von.name : "vereinslos", z: zu.id, f: betrag, d: state.currentDate || "" });
+            if (rein.liste.length > 12) rein.liste.splice(0, rein.liste.length - 12);
+        }
+        const raus = von ? bilanz(von.leagueId) : null;
+        if (raus) {
+            raus.ab++;
+            raus.einnahmen += betrag;
+        }
+    }
+
     /** Arbeitserlaubnis (England): null, wenn sie erteilt würde - sonst der Grund */
     static erlaubnisHindernis(state, player, club) {
         const erlaubnis = _transferResolve("ArbeitserlaubnisEngine", "./arbeitserlaubnisEngine.js");
@@ -454,6 +486,9 @@ class TransferEngine {
         if (state.transferMarket && Array.isArray(state.transferMarket.listedPlayerIds)) {
             state.transferMarket.listedPlayerIds = state.transferMarket.listedPlayerIds.filter(id => id !== player.id);
         }
+
+        // Für die Wettbewerbsseite: Wechsel je Liga und Saison
+        TransferEngine.merkeLigaWechsel(state, player, sellerClub, buyerClub, fee);
 
         // Nachricht ins Postfach - aber nur, wenn es den eigenen Verein
         // betrifft. Seit die KI-Vereine untereinander handeln, sind das sonst

@@ -1271,12 +1271,19 @@ class ManagerEngine {
         // 2. Gesperrte und verletzte Stammspieler
         const ausfaelle = squad.filter(p => (p.injuredWeeks || 0) > 0 || (p.suspendedMatches || 0) > 0);
         if (ausfaelle.length > 0) {
+            // Wer davon noch in der Startelf steht, hält den Anpfiff auf - das gehört nach vorn
+            const inElf = ausfaelle.filter(p => (club?.lineup || []).includes(p.id));
             items.push({
-                priority: 2,
+                priority: inElf.length ? 1 : 2,
                 icon: "🚑",
-                tab: "squad", unterreiter: "Spieler",
-                title: `${ausfaelle.length} Spieler nicht einsatzbereit`,
-                detail: ausfaelle.slice(0, 3).map(p => p.name).join(", ") + (ausfaelle.length > 3 ? " …" : "")
+                tab: inElf.length ? "tactics" : "squad", unterreiter: inElf.length ? undefined : "Spieler",
+                title: `${ausfaelle.length} Spieler nicht einsatzbereit`
+                    + (!inElf.length ? ""
+                        : inElf.length < ausfaelle.length ? `, ${inElf.length} davon in der Startelf`
+                            : inElf.length === 1 ? ", er steht in der Startelf" : ", alle in der Startelf"),
+                detail: inElf.length
+                    ? `${inElf.map(p => p.name).join(", ")} - vor dem Anpfiff umstellen oder den Co-Trainer umstellen lassen.`
+                    : ausfaelle.slice(0, 3).map(p => p.name).join(", ") + (ausfaelle.length > 3 ? " …" : "")
             });
         }
 

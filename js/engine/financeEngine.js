@@ -1335,7 +1335,7 @@ const FinanceEngine = {
     },
 
     /** Reihenfolge der Kaderrollen für die Gehaltskachel */
-    ROLLEN_REIHE: ["Schlüsselspieler", "Stammspieler", "Rotationsspieler", "Ergänzungsspieler", "Perspektivspieler", "Talent"],
+    ROLLEN_REIHE: ["Schlüsselspieler", "Stammspieler", "Rotationsspieler", "Ergänzungsspieler", "Toptalent", "Zukunftstalent"],
 
     /** Wochengehälter nach Kaderrolle: Anzahl und Summe je Rolle */
     gehaltNachRolle(state, club) {

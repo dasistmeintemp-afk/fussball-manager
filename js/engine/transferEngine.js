@@ -423,6 +423,16 @@ class TransferEngine {
         // Die U23 des alten Vereins gilt beim neuen nicht, ebenso wenig sein Jugendvertrag
         player.reserve = undefined;
         player.jugendvertrag = undefined;
+        // Seine Rolle folgt dem Rang im neuen Kader. Vorher nahm er sie vom
+        // alten Verein mit: Der Schlüsselspieler eines Drittligisten blieb es
+        // auch als Ersatzmann beim Spitzenklub.
+        const rollenGen = _getTransferPlayerGenerator();
+        if (rollenGen && typeof rollenGen.rolleImKader === "function") {
+            const kader = optionen.index instanceof Map
+                ? (buyerClub.playerIds || []).map(id => optionen.index.get(id)).filter(p => p && p.clubId === buyerClub.id)
+                : state.players.filter(p => p.clubId === buyerClub.id);
+            player.squadRole = rollenGen.rolleImKader(kader, player);
+        }
         player.nominiertAus = undefined;
         player.leihListe = undefined;
         // Beim neuen Verein gibt es eine neue Rückennummer (GameState.rueckennummern)
@@ -1307,8 +1317,10 @@ class TransferEngine {
                 // Wer bietet, ist mindestens ein ähnlich großer Verein - für einen
                 // Spieler auf der Transferliste auch ein etwas kleinerer
                 const rufGrenze = (userClub.reputation || 50) - (verkaeuflich ? 15 : 5);
+                // Nach England bietet nur, wer die Arbeitserlaubnis bekäme - sonst
+                // nähme der Manager an und der Wechsel scheiterte erst danach
                 const aiClubs = state.clubs.filter(c => c.id !== userClub.id && c.transferBudget >= player.value * 0.9
-                    && (c.reputation || 50) >= rufGrenze);
+                    && (c.reputation || 50) >= rufGrenze && !this.erlaubnisHindernis(state, player, c));
                 if (aiClubs.length > 0) {
                     const interestedClub = aiClubs[Math.floor(Math.random() * aiClubs.length)];
                     const offerFee = Math.round(player.value * (verkaeuflich ? 0.8 + Math.random() * 0.25 : 0.95 + Math.random() * 0.3));

@@ -1327,14 +1327,49 @@ class PlayerGenerator {
         // Innerhalb des Kaders gibt es Stammspieler und Ergänzung: die
         // Startelf ist im Schnitt etwas stärker als die hinteren Plätze.
         squad.sort((a, b) => b.overall - a.overall);
-        squad.forEach((p, idx) => {
-            p.squadRole = idx < 4 ? "Schlüsselspieler"
-                : idx < 11 ? "Stammspieler"
-                : idx < 16 ? "Rotationsspieler"
-                : (p.age <= 21 ? "Zukunftstalent" : "Ergänzungsspieler");
-        });
+        this.verteileKaderrollen(squad);
 
         return squad;
+    }
+
+    /**
+     * Kaderrollen nach Rang im Kader - für erzeugte und vorgegebene Kader
+     * gleich. Die beste Elf (ein Torwart, zehn Feldspieler) spielt, ihre
+     * vier Stärksten tragen die Mannschaft. Dahinter sechs Feldspieler für
+     * die Rotation, der Rest ergänzt; Junge mit Luft nach oben als
+     * Zukunftstalent, ein Toptalent bleibt es. Ersatztorhüter rechnen nicht
+     * mit Spielzeit.
+     *
+     * Vorher zählte der Torwart wie ein Feldspieler: Drei Torhüter waren
+     * Schlüssel-, Stamm- und Rotationsspieler, obwohl nur einer spielt. Die
+     * vorgegebenen Kader der ersten Liga bekamen ihre Rolle nach festen
+     * Schwellen (ab 84 Schlüssel-, ab 78 Stammspieler) - dort war fast jeder
+     * Stammspieler, und keiner war Ergänzung.
+     */
+    static verteileKaderrollen(kader) {
+        if (!Array.isArray(kader) || !kader.length) return kader;
+        const jung = (p) => (p.age || 30) <= 21 && (p.pot || 0) >= (p.overall || 0) + 5;
+        const hinten = (p) => jung(p) ? (p.squadRole === "Toptalent" ? "Toptalent" : "Zukunftstalent") : "Ergänzungsspieler";
+        const staerker = (a, b) => (b.overall || 0) - (a.overall || 0);
+        const torhueter = kader.filter(p => p.pos === "TW").sort(staerker);
+        const feld = kader.filter(p => p.pos !== "TW").sort(staerker);
+        [...torhueter.slice(0, 1), ...feld.slice(0, 10)].sort(staerker)
+            .forEach((p, i) => { p.squadRole = i < 4 ? "Schlüsselspieler" : "Stammspieler"; });
+        feld.slice(10).forEach((p, i) => { p.squadRole = i < 6 ? "Rotationsspieler" : hinten(p); });
+        torhueter.slice(1).forEach(p => { p.squadRole = hinten(p); });
+        return kader;
+    }
+
+    /**
+     * Die Rolle, die ein Neuzugang nach seinem Rang im neuen Kader hätte -
+     * ohne die Rollen der anderen zu ändern
+     */
+    static rolleImKader(kader, spieler) {
+        const kopie = (kader || []).filter(p => p && p.id !== spieler.id)
+            .map(p => ({ id: p.id, pos: p.pos, overall: p.overall, pot: p.pot, age: p.age, squadRole: p.squadRole }));
+        const neu = { id: spieler.id, pos: spieler.pos, overall: spieler.overall, pot: spieler.pot, age: spieler.age, squadRole: spieler.squadRole };
+        this.verteileKaderrollen([...kopie, neu]);
+        return neu.squadRole;
     }
 
     /**

@@ -1033,7 +1033,7 @@ class PreseasonEngine {
                 matchday: 0,
                 date: state.currentDate || `Vorbereitung Saison ${state.seasonYear || 1}`,
                 sender: "Sportdirektor",
-                subject: `⚠️ ${luecken.map(b => b.titel).join(", ")} fehlt noch`,
+                subject: `⚠️ ${luecken.map(b => b.titel).join(", ")} ${luecken.length === 1 ? "fehlt" : "fehlen"} noch`,
                 body: text,
                 read: false,
                 type: "preseason"

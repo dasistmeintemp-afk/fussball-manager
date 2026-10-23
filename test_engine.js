@@ -14889,6 +14889,85 @@ function runEngineTests() {
         }
     });
 
+    test("Kaderrollen nach Rang: vier Schlüssel-, sieben Stammspieler, Ersatztorhüter ohne Spielzeit, Neuzugänge nach Rang, Spielzeit nach Rolle", () => {
+        const state = GameState.createNewGame("scf", "normal", { name: "Rollen" });
+        const kaderVon = (id) => state.players.filter(p => p.clubId === id && !p.reserve);
+        const zaehle = (kader, rolle) => kader.filter(p => p.squadRole === rolle).length;
+
+        // Erste Liga (vorgegebene Kader) wie die erzeugten Ligen
+        ["scf", "muc", state.clubs.find(c => c.leagueId === "en_liga_1").id, state.clubs.find(c => c.leagueId === "de_liga_3").id].forEach(id => {
+            const kader = kaderVon(id);
+            if (zaehle(kader, "Schlüsselspieler") !== 4 || zaehle(kader, "Stammspieler") !== 7) {
+                throw new Error(`${id}: ${zaehle(kader, "Schlüsselspieler")} Schlüssel-, ${zaehle(kader, "Stammspieler")} Stammspieler`);
+            }
+            const torhueter = kader.filter(p => p.pos === "TW").sort((a, b) => b.overall - a.overall);
+            if (torhueter.slice(1).some(p => !["Ergänzungsspieler", "Zukunftstalent", "Toptalent"].includes(p.squadRole))) {
+                throw new Error(`${id}: Ersatztorhüter mit Spielzeit-Zusage (${torhueter.map(p => p.squadRole)})`);
+            }
+            if (!["Schlüsselspieler", "Stammspieler"].includes(torhueter[0].squadRole)) throw new Error(`${id}: Die Nummer eins spielt nicht`);
+        });
+        if (state.kaderrollenV1 !== 1) throw new Error("Eine neue Welt würde beim Laden noch einmal umsortiert");
+
+        // Ein Neuzugang bekommt die Rolle nach seinem Rang im neuen Kader
+        const PG = PlayerGenerator;
+        const schwach = kaderVon("de3_rwe").sort((a, b) => a.overall - b.overall)[3];
+        const stark = kaderVon("muc").filter(p => p.pos !== "TW").sort((a, b) => b.overall - a.overall)[0];
+        if (PG.rolleImKader(kaderVon("muc"), schwach) !== "Ergänzungsspieler" && PG.rolleImKader(kaderVon("muc"), schwach) !== "Zukunftstalent") throw new Error("Ein Drittligist wird beim Spitzenklub mehr als Ergänzung");
+        if (PG.rolleImKader(kaderVon("de3_rwe"), stark) !== "Schlüsselspieler") throw new Error("Der Beste der Liga ist beim Drittligisten kein Schlüsselspieler");
+        const vorherRollen = kaderVon("muc").map(p => p.squadRole).join();
+        PG.rolleImKader(kaderVon("muc"), schwach);
+        if (kaderVon("muc").map(p => p.squadRole).join() !== vorherRollen) throw new Error("Die Rollenprüfung verändert den Kader");
+        schwach.squadRole = "Schlüsselspieler";
+        state.transferWindowOpen = true;
+        if (!TransferEngine.executeTransfer(state, schwach.id, "muc", 0, schwach.wage || 1000, 2, { erlaubnis: true })) throw new Error("Wechsel gescheitert");
+        if (schwach.squadRole === "Schlüsselspieler") throw new Error("Der Neuzugang nimmt seine alte Rolle mit");
+
+        // Alte Spielstände: einmal angleichen, nur die KI-Vereine
+        const eigene = kaderVon("scf");
+        eigene.forEach(p => { p.squadRole = "Stammspieler"; });
+        kaderVon("muc").forEach(p => { p.squadRole = "Stammspieler"; });
+        delete state.kaderrollenV1;
+        GameState.ergaenzeAltstand(state);
+        if (zaehle(kaderVon("muc"), "Stammspieler") !== 7) throw new Error("Die KI-Vereine werden beim Laden nicht angeglichen");
+        if (eigene.some(p => p.squadRole !== "Stammspieler")) throw new Error("Die Zusagen im eigenen Verein wurden geändert");
+        kaderVon("muc").forEach(p => { p.squadRole = "Stammspieler"; });
+        GameState.ergaenzeAltstand(state);
+        if (zaehle(kaderVon("muc"), "Stammspieler") === 7) throw new Error("Die Angleichung läuft bei jedem Laden");
+
+        // Die Zufriedenheit mit der Spielzeit richtet sich nach der Rolle
+        const { DressingRoomEngine: D } = require('./js/engine/dressingRoomEngine.js');
+        const delta = (rolle, min) => D.spielzeitDelta({ squadRole: rolle }, min);
+        if (delta("Stammspieler", 0) !== -2.2 || delta("Schlüsselspieler", 0) !== -2.2) throw new Error("Stammspieler ohne Einsatz");
+        if (!(delta("Ergänzungsspieler", 0) > -0.5 && delta("Ergänzungsspieler", 0) < 0)) throw new Error(`Ergänzungsspieler ohne Einsatz: ${delta("Ergänzungsspieler", 0)}`);
+        if (!(delta("Rotationsspieler", 0) > delta("Stammspieler", 0))) throw new Error("Rotation trifft die Bank so hart wie Stammspieler");
+        if (delta("Rotationsspieler", 20) <= 0 || delta("Stammspieler", 20) >= 0 || delta("Ergänzungsspieler", 90) !== 2.5) throw new Error("Einwechslungen falsch bewertet");
+
+        // Ausfall in der Startelf: Der Schreibtisch nennt ihn zuerst, der Co-Trainer stellt um
+        const club = state.clubs.find(c => c.id === "scf");
+        GameState.autoSetLineupForClub(club, state.players);
+        const verletzt = state.players.find(p => p.id === club.lineup[5]);
+        verletzt.injuredWeeks = 3;
+        const punkt = ManagerEngine.getAttentionItems(state).find(i => i.icon === "🚑");
+        if (!punkt || punkt.priority !== 1 || !punkt.title.includes("in der Startelf") || punkt.tab !== "tactics") throw new Error(`Schreibtisch: ${JSON.stringify(punkt)}`);
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        const meldungen = [];
+        let weiter = 0;
+        ui.showToast = (text) => meldungen.push(text);
+        ui.renderCurrentTab = () => {};
+        ui.handleWeiter = () => { weiter++; };
+        const hatte = global.GameState;
+        global.GameState = GameState;
+        try {
+            if (!ui.ersetzeAusfaelle(true)) throw new Error("Der Co-Trainer stellt nicht um");
+        } finally {
+            if (hatte === undefined) delete global.GameState; else global.GameState = hatte;
+        }
+        if (club.lineup.includes(verletzt.id) || club.lineup.length !== 11) throw new Error("Der Verletzte steht noch in der Elf");
+        if (!meldungen[0].includes(`für ${verletzt.name.split(" ").pop()}`) || weiter !== 1) throw new Error(`Meldung oder Anpfiff fehlen: ${meldungen[0]}`);
+    });
+
     test("Finanzen wie im Vorbild: Kontoverlauf je Monat, Monatsbilanz, Sponsoren, Gehälter nach Rolle, Schulden, Prognose, acht Kacheln", () => {
         const F = FinanceEngine;
         const state = GameState.createNewGame("dor", "normal", { name: "Finanzen" });

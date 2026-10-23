@@ -2867,3 +2867,159 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
     #modalLiveMatch .lm-zurufe { padding-top: 4px; }
     #modalLiveMatch .lm-zuruf-btn { min-height: 30px; padding: 3px 10px; }
 }
+
+/* --------------------------------------------------------------------------
+   Spielbericht wie im Vorbild (uiSpielbericht.js): Kopf mit Wappen, Ergebnis
+   und Torschützen, darunter die Reiter Übersicht, Spieler und Analyse
+   -------------------------------------------------------------------------- */
+.spb-box { max-width: 1100px; }
+#matchReportContent { padding: 0; }
+.spb-kopf { padding: 18px 24px 16px; border-bottom: 1px solid var(--line); }
+.spb-wettbewerb { margin-bottom: 12px; text-align: center; font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--spb-comp, var(--accent)); }
+.spb-paarung { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; gap: 18px; }
+.spb-team { display: flex; align-items: flex-start; gap: 14px; min-width: 0; }
+.spb-team.spb-gast { flex-direction: row-reverse; text-align: right; }
+.spb-team-text { min-width: 0; padding-top: 6px; }
+.spb-team-text strong { display: block; font-size: 19px; line-height: 1.2; overflow-wrap: anywhere; }
+.spb-schuetzen { display: grid; gap: 3px; margin: 8px 0 0; padding: 0; list-style: none; font-size: 12.5px; color: var(--text-main); }
+.spb-schuetzen li { display: flex; align-items: center; gap: 6px; }
+/* Beim Gast steht der Ball außen: Name, Minute, Ball */
+.spb-gast .spb-schuetzen li { justify-content: flex-end; }
+.spb-gast .spb-schuetzen .spb-ball { order: 1; }
+.spb-schuetzen li span:last-child { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.spb-ergebnis { display: grid; justify-items: center; gap: 4px; padding-top: 2px; }
+.spb-tore { margin: 0; font-size: 46px; line-height: 1; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--text-main); white-space: nowrap; }
+.spb-tore span { margin: 0 8px; color: var(--text-muted); font-weight: 600; }
+.spb-zusatz { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.spb-umstaende { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 0; margin-top: 14px; font-size: 12px; color: var(--text-muted); }
+.spb-umstaende span + span::before { content: "·"; margin: 0 8px; color: var(--text-dim); }
+#matchReportContent .spb-tabs { top: 0; margin: 0; padding: 10px 24px; background: var(--surface-1); }
+#matchReportContent .spb-tabs .pd-tab-knopf { flex: 0 0 auto; padding: 8px 18px; }
+.spb-inhalt { padding: 16px 24px 24px; }
+.spb-inhalt[hidden] { display: none; }
+.spb-karte { padding: 14px 16px; margin: 0; }
+.spb-karte .gs-titel { margin-bottom: 10px; }
+.spb-raster { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.spb-spalte { display: grid; gap: 14px; min-width: 0; }
+.spb-leer { margin: 0; font-size: 13px; }
+.spb-bericht { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-main); }
+
+/* Zeichen: Ball, Vorlage, Wechsel, Verletzung (Karten wie im Livespiel) */
+.spb-ball { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 2.5px #0f172a, 0 0 0 1px rgba(255, 255, 255, 0.5); }
+.spb-vorlage { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--text-muted); }
+.spb-wechsel { flex: none; font-size: 12px; font-weight: 800; color: var(--ok); line-height: 1; }
+.spb-verletzt { display: inline-grid; place-items: center; flex: none; width: 12px; height: 12px; border-radius: 3px; background: var(--bad); color: #fff; font-size: 11px; font-weight: 800; line-height: 1; }
+.spb-rein, .spb-raus { font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.spb-rein { color: var(--ok); }
+.spb-raus { color: var(--bad); }
+
+/* Zeitleiste: Heim über der Linie, Gast darunter */
+.spb-leiste { position: relative; height: 70px; margin: 4px 6px 0; }
+.spb-leiste-linie { position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; border-radius: 1px; background: var(--line-strong); }
+.spb-leiste-hz { position: absolute; top: 18%; bottom: 18%; width: 1px; background: var(--line-strong); }
+.spb-marke { position: absolute; display: inline-grid; place-items: center; width: 18px; height: 18px; transform: translateX(-50%); cursor: default; }
+.spb-marke.spb-oben { bottom: calc(50% + 4px + var(--reihe, 0) * 15px); }
+.spb-marke.spb-unten { top: calc(50% + 4px + var(--reihe, 0) * 15px); }
+.spb-marke .lm-card { margin: 0; }
+.spb-marke.tor .spb-ball { width: 12px; height: 12px; }
+.spb-leiste-achse { position: relative; height: 14px; margin: 2px 6px 10px; font-size: 10.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.spb-leiste-achse span { position: absolute; top: 0; }
+.spb-leiste-achse span:first-child { left: 0; }
+.spb-leiste-achse span:nth-child(2) { transform: translateX(-50%); }
+.spb-leiste-achse span:last-child { right: 0; }
+
+/* Ereignisse als Liste: Heim links, Minute in der Mitte, Gast rechts */
+.spb-ev-liste { display: grid; gap: 2px; }
+.spb-ev { display: grid; grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr); align-items: center; gap: 10px; padding: 5px 4px; border-radius: 8px; font-size: 12.5px; }
+.spb-ev.tor { background: rgba(255, 255, 255, 0.035); }
+.spb-ev-heim, .spb-ev-gast { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.spb-ev-heim { flex-direction: row-reverse; text-align: right; }
+.spb-ev-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main); }
+.spb-ev-text small { font-size: 11.5px; color: var(--text-muted); }
+.spb-ev-stand { flex: none; padding: 1px 6px; border-radius: 5px; background: var(--surface-3); font-size: 11.5px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.spb-ev-min { justify-self: center; min-width: 38px; padding: 2px 0; border-radius: 999px; border: 1px solid var(--line-strong); text-align: center; font-size: 11.5px; font-weight: 700; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.spb-ev-trenner { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.spb-ev-trenner::before, .spb-ev-trenner::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+/* Spieler des Spiels */
+.spb-motm { background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.10), transparent 60%), var(--surface-1); border-color: var(--accent-line); }
+.spb-motm-person { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+.spb-motm-name { display: grid; min-width: 0; }
+.spb-motm-name strong { font-size: 17px; line-height: 1.2; overflow-wrap: anywhere; }
+.spb-motm-name small { font-size: 12px; color: var(--text-muted); }
+.coach-note.spb-note-gross { min-width: 46px; padding: 5px 8px; border-radius: 9px; font-size: 18px; }
+.spb-motm-zahlen { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.spb-motm-zahlen span { padding: 3px 9px; border-radius: 999px; background: var(--surface-3); font-size: 11.5px; font-weight: 600; color: var(--text-main); }
+
+/* Statistik: Werte außen, Bezeichnung in der Mitte, darunter der geteilte Balken */
+.spb-stat-teams { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 12px; font-weight: 700; color: var(--text-main); }
+.spb-stat-teams > span { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.spb-stat-teams .crest-sm { width: 22px; height: 22px; font-size: 8.5px; box-shadow: inset 0 0 0 1.5px var(--crest-ring, #fff); }
+.spb-stat { display: grid; grid-template-columns: 52px minmax(0, 1fr) 52px; align-items: baseline; column-gap: 8px; row-gap: 4px; padding: 5px 0; }
+.spb-stat-label { text-align: center; font-size: 11.5px; color: var(--text-muted); }
+.spb-stat-wert { font-size: 13.5px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.spb-stat-wert.vorn { font-weight: 800; color: var(--text-main); }
+.spb-stat-wert:nth-child(3) { text-align: right; }
+.spb-stat-balken { grid-column: 1 / -1; display: flex; gap: 2px; height: 6px; }
+.spb-stat-balken i { border-radius: 3px; }
+.spb-stat-balken i:first-child { width: var(--anteil); background: var(--spb-heim); }
+.spb-stat-balken i:last-child { flex: 1; background: var(--spb-gast); }
+.spb-stat.leer .spb-stat-balken i { background: var(--surface-3); }
+
+/* Ausfälle */
+.spb-ausfall { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--text-muted); }
+.spb-ausfall:last-child { border-bottom: 0; }
+.spb-ausfall b { color: var(--text-main); }
+.spb-ausfall small { font-size: 11.5px; white-space: nowrap; }
+.spb-ausfall .lm-card { margin: 0 2px; }
+
+/* Spieler: Noten je Mannschaft */
+.spb-teams { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.spb-team-kopf { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; }
+.spb-team-kopf strong { min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spb-schnitt { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
+.spb-unter { margin: 10px 0 4px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.spb-spieler { display: grid; grid-template-columns: 38px minmax(0, 1fr) 34px auto; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 8px; font-size: 12.5px; }
+.spb-spieler:nth-child(even) { background: rgba(255, 255, 255, 0.025); }
+.spb-spieler.bester { background: rgba(var(--accent-rgb), 0.10); }
+.spb-spieler .pos-tag { padding: 1px 0; font-size: 10.5px; }
+.spb-spieler-name { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--text-main); }
+.spb-spieler-name > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spb-spieler-name .lm-card { margin: 0; }
+.spb-stern { flex: none; width: 13px; height: 13px; color: var(--accent); }
+.spb-spieler-min { text-align: right; font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 900px) {
+    .spb-raster { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 700px) {
+    .spb-teams { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+    .spb-kopf { padding: 14px 14px 12px; }
+    .spb-paarung { gap: 8px; }
+    .spb-team, .spb-team.spb-gast { flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+    .spb-team .crest-lg { width: 44px; height: 44px; font-size: 14px; }
+    .spb-team-text { padding-top: 0; }
+    .spb-team-text strong { font-size: 14px; }
+    .spb-schuetzen { font-size: 11.5px; justify-items: center; }
+    /* Schmal als Fließtext, sonst bricht der Name Wort für Wort um */
+    .spb-schuetzen li { display: block; line-height: 1.35; }
+    .spb-schuetzen .spb-ball { width: 9px; height: 9px; margin-right: 4px; vertical-align: -1px; }
+    .spb-umstaende { flex-direction: column; align-items: center; gap: 2px; }
+    .spb-umstaende span + span::before { content: none; }
+    .spb-tore { font-size: 34px; }
+    .spb-tore span { margin: 0 4px; }
+    #matchReportContent .spb-tabs { padding: 8px 14px; }
+    #matchReportContent .spb-tabs .pd-tab-knopf { flex: 1 0 auto; padding: 8px 10px; }
+    .spb-inhalt { padding: 12px 14px 18px; }
+    .spb-raster, .spb-spalte, .spb-teams { gap: 10px; }
+    /* Einspaltig: Minute links, das Ereignis daneben, ein Farbstrich sagt, für wen */
+    .spb-ev { grid-template-columns: 38px minmax(0, 1fr); gap: 8px; font-size: 12px; }
+    .spb-ev-min { grid-column: 1; grid-row: 1; min-width: 34px; }
+    .spb-ev-heim, .spb-ev-gast { grid-column: 2; grid-row: 1; flex-direction: row; text-align: left; padding-left: 8px; border-left: 3px solid var(--spb-heim); }
+    .spb-ev-gast { border-left-color: var(--spb-gast); }
+    .spb-ev-heim:empty, .spb-ev-gast:empty { display: none; }
+    .spb-ev-stand { margin-left: auto; }
+    .spb-lang { display: none; }
+}

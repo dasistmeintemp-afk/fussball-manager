@@ -2474,7 +2474,8 @@ class MatchEngine {
                     playerId: event.playerId,
                     playerName: event.playerName,
                     assistId: event.assistId,
-                    assistName: event.assistName
+                    assistName: event.assistName,
+                    ...(event.isPenalty ? { elfmeter: true } : {})
                 });
             } else if (event.type === "save") {
                 if (event.team === "away") {
@@ -2554,7 +2555,8 @@ class MatchEngine {
                     clubId: event.clubId,
                     text: event.text,
                     playerId: event.playerId,
-                    playerName: event.playerName
+                    playerName: event.playerName,
+                    ...(event.isSecondYellow ? { zweiteGelbe: true } : {})
                 });
             } else if (event.type === "red_card") {
                 if (event.team === "home") { homeFouls++; homeRedCards++; }

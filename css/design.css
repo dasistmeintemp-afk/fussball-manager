@@ -3270,3 +3270,184 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
     .wb-tab-voll { font-size: 12px; }
     .wb-tab-voll td, .wb-tab-voll th { padding: 5px 3px; }
 }
+
+/* --------------------------------------------------------------------------
+   Menü oben wie im Vorbild (uiKopfmenue.js) und die schmale Seitenleiste.
+   Nur am breiten Bildschirm - am Handy bleibt die Leiste unten.
+   Zeile 1: Marke, Zurück, Verein | Bereiche | Suche, Glocke, Optionen, Weiter
+   Zeile 2: Seiten des Bereichs | Platz und Form, Spieltag, Kontostand, Vorstand
+   -------------------------------------------------------------------------- */
+.kopf-menue, .kopf-optionen, .kopf-umbruch, .kopf-unter, .kopf-stand, .nav-einklappen { display: none; }
+.kopf-zahl-klein {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px; padding: 0 5px;
+    border-radius: 99px; background: var(--bad); color: #1b0505; font-size: 10.5px; font-weight: 800; line-height: 1;
+}
+.kopf-zahl-klein[hidden] { display: none; }
+
+@media (min-width: 901px) {
+    body.menue-oben .sidebar { display: none; }
+    body.menue-oben .app-header {
+        height: auto; flex-wrap: wrap; align-items: center; align-content: flex-start;
+        column-gap: 10px; row-gap: 0; padding: 0 20px;
+    }
+    /* Das Band der zweiten Zeile */
+    body.menue-oben .app-header::after {
+        content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 40px; z-index: -1; pointer-events: none;
+        background: rgba(255, 255, 255, 0.025); border-top: 1px solid var(--line);
+    }
+    body.menue-oben .app-header > .header-left,
+    body.menue-oben .app-header > .header-center,
+    body.menue-oben .app-header > .header-right { display: contents; }
+    body.menue-oben .brand { order: 1; margin-right: 4px; }
+    body.menue-oben .brand-title { font-size: 19px; }
+    body.menue-oben #btnKopfZurueck { order: 2; }
+    body.menue-oben .club-badge-container { order: 3; }
+    body.menue-oben .kopf-menue { order: 4; display: flex; flex: 1 1 auto; min-width: 0; height: 56px; align-items: center; gap: 2px; margin-left: 6px; }
+    body.menue-oben #btnKopfSuche { order: 5; }
+    body.menue-oben #btnMeldungen { order: 6; }
+    body.menue-oben .kopf-optionen { order: 7; display: inline-flex; }
+    body.menue-oben #btnHeaderTag { order: 8; height: 40px; min-height: 0; }
+    /* Der Weiter-Knopf dehnt sich bis 290 Pixel, rechnet aber nur mit 150 -
+       so bricht die Zeile nicht um, wenn der Platz knapp wird */
+    body.menue-oben #btnHeaderAdvance { order: 9; height: 42px; min-height: 0; }
+    body.menue-oben .app-header .btn-advance { flex: 1 1 150px; min-width: 120px; max-width: 290px; }
+    body.menue-oben .btn-advance-wann { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    body.menue-oben .kopf-umbruch { order: 10; display: block; flex-basis: 100%; height: 0; }
+    body.menue-oben .kopf-unter {
+        order: 11; display: flex; flex: 1 1 0; min-width: 160px; height: 40px; align-items: stretch; gap: 2px;
+        overflow-x: auto; scrollbar-width: none; margin-left: -8px;
+    }
+    body.menue-oben .kopf-unter::-webkit-scrollbar { display: none; }
+    body.menue-oben .kopf-stand { order: 12; display: inline-flex; }
+    body.menue-oben .season-info-pill { order: 13; }
+    body.menue-oben .finance-pill { order: 14; }
+    body.menue-oben .confidence-pill { order: 15; }
+
+    /* Die Angaben der zweiten Zeile: schmal und auf einer Linie */
+    body.menue-oben .season-info-pill,
+    body.menue-oben .finance-pill,
+    body.menue-oben .confidence-pill { min-height: 0; height: 30px; padding: 0 11px; border-radius: 8px; background: transparent; }
+    body.menue-oben .season-info-pill { font-size: 12px; gap: 6px; }
+    body.menue-oben .season-info-pill .info-val { font-size: 14px; }
+    body.menue-oben .fin-icon, body.menue-oben .conf-icon { width: 20px; height: 20px; border-radius: 6px; background: transparent; }
+    body.menue-oben .fin-icon .ico, body.menue-oben .conf-icon .ico { width: 15px; height: 15px; }
+    body.menue-oben .finance-pill { gap: 6px; padding-left: 7px; }
+    body.menue-oben .fin-text { flex-direction: row; align-items: baseline; gap: 8px; }
+    body.menue-oben .fin-val { font-size: 13px; }
+    body.menue-oben .confidence-pill { gap: 7px; padding-left: 7px; }
+    body.menue-oben .conf-label { font-size: 11.5px; }
+
+    .kopf-stand { align-items: center; gap: 10px; height: 30px; padding: 0 4px 0 10px; white-space: nowrap; }
+    .ks-platz { display: inline-flex; align-items: baseline; gap: 5px; }
+    .ks-platz small { font-size: 12px; color: var(--text-dim); }
+    .ks-platz b { font-family: var(--font-display); font-size: 15px; }
+    .ks-form { display: inline-flex; gap: 3px; }
+    .ks-form .form-dot { width: 17px; height: 17px; font-size: 9.5px; line-height: 17px; }
+
+    /* Bereiche */
+    .kopf-gruppe { position: relative; display: inline-flex; align-items: stretch; height: 38px; border-radius: 9px; }
+    .kopf-gruppe-knopf, .kopf-gruppe-pfeil {
+        display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: var(--text-muted);
+        font: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
+        transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+    }
+    .kopf-gruppe-knopf { padding: 0 4px 0 13px; border-radius: 9px 0 0 9px; }
+    .kopf-gruppe-pfeil { padding: 0 9px 0 3px; border-radius: 0 9px 9px 0; color: var(--text-dim); }
+    .kopf-gruppe-pfeil .ico { width: 14px; height: 14px; transition: transform 0.15s var(--ease); }
+    .kopf-gruppe:hover .kopf-gruppe-knopf, .kopf-gruppe:hover .kopf-gruppe-pfeil,
+    .kopf-gruppe.offen .kopf-gruppe-knopf, .kopf-gruppe.offen .kopf-gruppe-pfeil { background: var(--surface-1); color: var(--text-main); }
+    .kopf-gruppe.offen .kopf-gruppe-pfeil .ico { transform: rotate(180deg); }
+    .kopf-gruppe.aktiv .kopf-gruppe-knopf { color: var(--text-main); }
+    .kopf-gruppe.aktiv::after {
+        content: ""; position: absolute; left: 13px; right: 13px; bottom: -9px; height: 3px; border-radius: 3px 3px 0 0; background: var(--accent);
+    }
+    .kopf-gruppe-knopf:focus-visible, .kopf-gruppe-pfeil:focus-visible, .ku-knopf:focus-visible,
+    .ka-seite:focus-visible, .ka-unter:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    .kopf-optionen.aktiv { color: var(--accent); border-color: rgba(var(--accent-rgb), 0.45); }
+
+    /* Aufklappmenü */
+    .kopf-aufklapp {
+        position: absolute; z-index: 400; top: calc(100% + 10px); left: 0; display: flex; align-items: flex-start; gap: 4px;
+        padding: 8px; min-width: 220px; max-height: calc(100vh - 90px); overflow-y: auto;
+        background: var(--surface-1); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: var(--shadow-lg);
+    }
+    .kopf-aufklapp[hidden] { display: none; }
+    /* Die Lücke zwischen Knopf und Menü gehört zum Menü - sonst schließt es auf dem Weg dorthin */
+    .kopf-aufklapp::before { content: ""; position: absolute; left: 0; right: 0; top: -12px; height: 12px; }
+    .ka-spalte { display: flex; flex-direction: column; gap: 1px; min-width: 190px; }
+    .ka-spalte + .ka-spalte { border-left: 1px solid var(--line); padding-left: 4px; }
+    .ka-seite, .ka-unter {
+        display: flex; align-items: center; gap: 10px; width: 100%; border: 0; border-radius: 8px; background: transparent;
+        font: inherit; text-align: left; cursor: pointer; white-space: nowrap; color: var(--text-soft);
+    }
+    .ka-seite { padding: 9px 10px; font-size: 14px; font-weight: 600; color: var(--text-main); }
+    .ka-seite .ico { width: 17px; height: 17px; flex: none; color: var(--text-dim); }
+    .ka-seite .kopf-zahl-klein { margin-left: auto; }
+    .ka-unter { padding: 6px 10px 6px 37px; font-size: 13px; color: var(--text-muted); }
+    .ka-seite:hover, .ka-unter:hover { background: var(--surface-2); color: var(--text-main); }
+    .ka-seite.aktiv .ico, .ka-unter.aktiv { color: var(--accent); }
+    .ka-seite.aktiv { background: var(--accent-soft); }
+
+    /* Seiten des Bereichs */
+    .ku-knopf {
+        position: relative; display: inline-flex; align-items: center; gap: 7px; flex: none; padding: 0 12px;
+        border: 0; background: transparent; color: var(--text-muted); font: inherit; font-size: 13.5px; font-weight: 600;
+        cursor: pointer; white-space: nowrap; transition: color 0.15s var(--ease);
+    }
+    .ku-knopf:hover { color: var(--text-main); }
+    .ku-knopf.aktiv { color: var(--text-main); }
+    .ku-knopf.aktiv::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 2px; border-radius: 2px 2px 0 0; background: var(--accent); }
+
+    /* Die Ansichten des Transfermarkts stehen schon in der zweiten Zeile */
+    body.menue-oben #pane-transfers > .pane-header .view-switch-buttons { display: none; }
+
+    /* Der Inhalt rollt unter der höheren Kopfleiste */
+    body.menue-oben .content-area { max-height: calc(100vh - var(--kopf-hoehe, 97px)); }
+
+    /* Seitenleiste mit Knopf zum Einklappen; schmal nur mit Symbolen */
+    body:not(.menue-oben) .nav-einklappen {
+        display: flex; align-items: center; gap: 12px; margin: 0 12px 12px; padding: 8px 12px; border: 0; border-radius: 10px;
+        background: transparent; color: var(--text-dim); font: inherit; font-size: 13px; cursor: pointer;
+    }
+    .nav-einklappen:hover { background: var(--surface-1); color: var(--text-main); }
+    .nav-einklappen .ico { width: 17px; height: 17px; transform: rotate(90deg); transition: transform 0.15s var(--ease); }
+    body.menue-schmal .sidebar { width: 68px; }
+    body.menue-schmal .nav-menu { padding: 16px 10px; }
+    body.menue-schmal .nav-item { justify-content: center; padding: 10px 0; }
+    body.menue-schmal .nav-item .nav-text, body.menue-schmal .nav-einklappen .nav-text, body.menue-schmal .sidebar-footer { display: none; }
+    body.menue-schmal .nav-item.active::before { left: -10px; }
+    body.menue-schmal .nav-item > .badge {
+        position: absolute; top: 4px; right: 6px; min-width: 16px; height: 16px; padding: 0 4px; font-size: 10px; line-height: 16px;
+    }
+    body.menue-schmal .nav-einklappen { justify-content: center; margin: 0 10px 12px; padding: 8px 0; }
+    body.menue-schmal .nav-einklappen .ico { transform: rotate(-90deg); }
+}
+/* Schmalere Fenster: Schriftzug, Suchtext, Schwierigkeit und Vereinsname weichen den Bereichen */
+@media (min-width: 901px) and (max-width: 1699px) {
+    body.menue-oben .brand-title { display: none; }
+}
+@media (min-width: 901px) and (max-width: 1799px) {
+    body.menue-oben #headerDifficulty, body.menue-oben .kopf-suche-text, body.menue-oben .kopf-suche kbd { display: none; }
+    body.menue-oben .kopf-suche { min-width: 0; }
+}
+@media (min-width: 901px) and (max-width: 1400px) {
+    body.menue-oben .kopf-stand .ks-form { display: none; }
+}
+@media (min-width: 901px) and (max-width: 1280px) {
+    body.menue-oben .club-name, body.menue-oben .conf-label, body.menue-oben .fin-sub { display: none; }
+    body.menue-oben .club-badge-container { padding: 5px; }
+    body.menue-oben .kopf-gruppe-knopf { padding-left: 10px; font-size: 14px; }
+}
+@media (min-width: 901px) and (max-width: 1100px) {
+    body.menue-oben .app-header { column-gap: 6px; padding: 0 12px; }
+    body.menue-oben .kopf-gruppe-knopf { padding-left: 8px; }
+    body.menue-oben .kopf-gruppe-pfeil { padding-right: 6px; }
+    body.menue-oben .kopf-stand { display: none; }
+}
+@media (min-width: 901px) and (max-width: 1000px) {
+    body.menue-oben .brand, body.menue-oben .club-badge-container { display: none; }
+    body.menue-oben .kopf-menue { margin-left: 0; }
+    body.menue-oben .kopf-gruppe-knopf { padding-left: 8px; gap: 5px; font-size: 13.5px; }
+    body.menue-oben .kopf-gruppe-pfeil { padding: 0 5px 0 2px; }
+    body.menue-oben .app-header .btn-advance { flex-basis: 120px; min-width: 110px; }
+}

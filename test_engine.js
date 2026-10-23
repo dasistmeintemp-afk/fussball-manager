@@ -15115,6 +15115,63 @@ function runEngineTests() {
         if (!/Saison|Meister/.test(ui.wbAnsichtSieger(state, mitMeister))) throw new Error("Die Ansicht der früheren Sieger ist leer");
     });
 
+    test("Menü oben wie im Vorbild: jeder Reiter in genau einem Bereich, Ansichten des Transfermarkts, Zahlen, Wahl je Gerät", () => {
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const ui = Object.create(UIManager.prototype);
+        const html = require('fs').readFileSync('./index.html', 'utf8');
+        const sw = require('fs').readFileSync('./service-worker.js', 'utf8');
+        // Jeder Reiter der Seitenleiste steht in genau einem Bereich - keiner fehlt, keiner doppelt
+        const leiste = [...html.matchAll(/<button class="nav-item[^"]*" data-tab="(\w+)"/g)].map(m => m[1]);
+        const reiter = ui.KOPFMENUE.flatMap(g => g.seiten.filter(s => !s.knopf).map(s => s.tab));
+        const imMenue = new Set(reiter.concat(ui.KOPFMENUE.flatMap(g => g.seiten.filter(s => s.knopf).map(s => s.tab))));
+        if (leiste.length < 15) throw new Error(`Nur ${leiste.length} Reiter in der Seitenleiste gefunden`);
+        leiste.forEach(t => { if (!imMenue.has(t)) throw new Error(`Reiter ${t} fehlt im Menü`); });
+        imMenue.forEach(t => { if (!leiste.includes(t)) throw new Error(`Menü kennt ${t}, die Seitenleiste nicht`); });
+        if (new Set(reiter).size !== reiter.length) throw new Error("Ein Reiter steht in zwei Bereichen");
+        // Die Ansichten des Transfermarkts: alle fünf Knöpfe, jeder vorhanden
+        const knoepfe = [...html.matchAll(/id="(btnSubTransfers\w+)"/g)].map(m => m[1]);
+        const imMenueKnoepfe = ui.KOPFMENUE.flatMap(g => g.seiten).filter(s => s.knopf).map(s => s.knopf);
+        if (knoepfe.length !== 5 || knoepfe.some(k => !imMenueKnoepfe.includes(k))) throw new Error(`Transferansichten: ${knoepfe} / ${imMenueKnoepfe}`);
+        // Zahlen, Zeichen und der Reiter auf Zeit gibt es wirklich
+        ui.KOPFMENUE.flatMap(g => g.seiten).forEach(s => {
+            [s.zahl, s.nurWenn].filter(Boolean).forEach(id => { if (!html.includes(`id="${id}"`)) throw new Error(`${s.titel}: ${id} fehlt`); });
+            if (!html.includes(`<symbol id="${s.icon}"`)) throw new Error(`${s.titel}: Zeichen ${s.icon} fehlt`);
+        });
+        ["kopfMenue", "kopfUnter", "kopfStand", "btnKopfOptionen", "btnLeisteEinklappen", "settingsMenue"].forEach(id => {
+            if (!html.includes(`id="${id}"`)) throw new Error(`${id} fehlt in index.html`);
+        });
+        if (!html.includes('src="js/ui/uiKopfmenue.js"') || !sw.includes('"./js/ui/uiKopfmenue.js"')) throw new Error("Modul nicht eingebunden");
+        if (ui.KOPFMENUE.filter(g => g.zahnrad).length !== 1) throw new Error("Die Optionen gehören ans Zahnrad");
+
+        const altDoc = global.document, altSpeicher = global.localStorage;
+        try {
+            // Wo man steht: der Reiter, im Transfermarkt die aktive Ansicht
+            global.document = { getElementById: id => id === "btnSubTransfersLoans" ? { classList: { contains: c => c === "active" } } : null };
+            const wo = (tab) => { const h = ui.kopfAktiveSeite(tab); return h ? `${h.gruppe.id}:${h.gruppe.seiten[h.index].titel}` : null; };
+            [["transfers", "transfers:Leihen"], ["youth", "kader:Jugend"], ["settings", "optionen:Spielstand & Optionen"], ["fixtures", "spieltag:Spielplan & Tabelle"], ["gibtsnicht", null]].forEach(([tab, soll]) => {
+                if (wo(tab) !== soll) throw new Error(`${tab}: ${wo(tab)} statt ${soll}`);
+            });
+            // Zahlen übernimmt das Menü von der Seitenleiste, verborgene zählen nicht
+            const marken = { navInboxBadge: { textContent: "4", style: { display: "inline-block" } }, navOffersBadge: { textContent: "2", style: { display: "none" } }, navNationalBadge: { textContent: "1", style: { display: "" } } };
+            global.document = { getElementById: id => marken[id] || null };
+            const seite = (titel) => ui.KOPFMENUE.flatMap(g => g.seiten).find(s => s.titel === titel);
+            if (ui.kopfZahl(seite("Postfach")) !== 4 || ui.kopfZahl(seite("Transfermarkt")) !== 0 || ui.kopfZahl(seite("Nationalteam")) !== 1 || ui.kopfZahl(seite("Kalender")) !== 0) throw new Error("Zahlen falsch übernommen");
+            if (ui.kopfSeiteDa(seite("Vorbereitung"))) throw new Error("Die Vorbereitung steht da, obwohl ihr Reiter fehlt");
+            // Die Wahl gilt je Gerät: Standard oben, Unsinn wird nicht gespeichert
+            const speicher = {};
+            global.localStorage = { getItem: k => (k in speicher ? speicher[k] : null), setItem: (k, v) => { speicher[k] = String(v); } };
+            global.document = undefined;
+            if (ui.menueArt() !== "oben") throw new Error(`Standard ist ${ui.menueArt()}`);
+            ui.setzeMenueArt("schmal");
+            if (ui.menueArt() !== "schmal" || speicher[ui.MENUE_SPEICHER] !== "schmal") throw new Error("Die Wahl wird nicht gemerkt");
+            ui.setzeMenueArt("quer");
+            if (ui.menueArt() !== "schmal") throw new Error("Eine unbekannte Wahl wurde übernommen");
+        } finally {
+            global.document = altDoc;
+            global.localStorage = altSpeicher;
+        }
+    });
+
     test("Finanzen wie im Vorbild: Kontoverlauf je Monat, Monatsbilanz, Sponsoren, Gehälter nach Rolle, Schulden, Prognose, acht Kacheln", () => {
         const F = FinanceEngine;
         const state = GameState.createNewGame("dor", "normal", { name: "Finanzen" });

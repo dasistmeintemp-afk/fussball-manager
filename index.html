@@ -153,6 +153,14 @@
                     <span class="btn-arrow"><svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg></span>
                 </button>
             </div>
+
+            <!-- Menü oben wie im Vorbild (uiKopfmenue.js): die Bereiche mit Aufklappmenü,
+                 darunter die Seiten des gewählten Bereichs. Nur am breiten Bildschirm. -->
+            <nav class="kopf-menue" id="kopfMenue" aria-label="Hauptmenü"></nav>
+            <button type="button" class="kopf-icon kopf-optionen" id="btnKopfOptionen" title="Spielstand & Optionen" aria-label="Spielstand & Optionen"><svg class="ico" aria-hidden="true"><use href="#i-sliders"/></svg></button>
+            <i class="kopf-umbruch" aria-hidden="true"></i>
+            <nav class="kopf-unter" id="kopfUnter" aria-label="Seiten des Bereichs"></nav>
+            <div class="kopf-stand" id="kopfStand"></div>
         </header>
 
         <!-- Main Layout -->
@@ -241,6 +249,7 @@
                         </div>
                     </div>
                 </div>
+                <button type="button" class="nav-einklappen" id="btnLeisteEinklappen" title="Seitenleiste einklappen" aria-label="Seitenleiste einklappen"><svg class="ico" aria-hidden="true"><use href="#i-chevron-down"/></svg><span class="nav-text">Einklappen</span></button>
             </aside>
 
             <!-- Main Content Area -->
@@ -1679,6 +1688,12 @@
                         </div>
 
                         <div class="dash-card einstellungen-live">
+                            <h3>Menü</h3>
+                            <p>Wo die Bereiche am breiten Bildschirm stehen. Am Handy bleibt die Leiste unten.</p>
+                            <div id="settingsMenue"></div>
+                        </div>
+
+                        <div class="dash-card einstellungen-live">
                             <h3>Sterne</h3>
                             <p>Woran die Sterne der Spieler gemessen werden - im Kader, in der Taktik, auf dem Transfermarkt und schon bei der Vereinswahl.</p>
                             <div id="settingsSterne"></div>
@@ -2641,6 +2656,7 @@
     <script src="js/ui/uiLiveDarstellung.js"></script>
     <script src="js/ui/uiSpielbericht.js"></script>
     <script src="js/ui/uiMeldungen.js"></script>
+    <script src="js/ui/uiKopfmenue.js"></script>
     <script src="js/ui/uiSpeicher.js"></script>
     <script src="js/ui/uiEinstieg.js"></script>
     <script src="js/ui/uiNational.js"></script>

@@ -45,6 +45,7 @@
         <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5.8v12.4a.8.8 0 001.2.7l9.6-6.2a.8.8 0 000-1.4L9.2 5.1A.8.8 0 008 5.8z"/></symbol>
         <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></symbol>
         <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4.5M7.5 9L12 4.5 16.5 9M4.5 15v3.5A1.5 1.5 0 006 20h12a1.5 1.5 0 001.5-1.5V15"/></symbol>
+        <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 16.5V11a5.5 5.5 0 0111 0v5.5l1.5 2h-14z"/><path d="M10 20.5a2.1 2.1 0 004 0"/></symbol>
         <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.8v.2"/></symbol>
         <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 7h15M9.5 7V5h5v2M6.5 7l1 13h9l1-13"/></symbol>
         <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
@@ -115,6 +116,7 @@
                     <span class="header-tag" id="headerDifficulty">Normal</span>
                 </div>
                 <button type="button" class="kopf-icon kopf-suche" id="btnKopfSuche" title="Suchen: Spieler, Vereine, Bereiche ( / )" aria-label="Suchen"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg><span class="kopf-suche-text">Suchen</span><kbd>/</kbd></button>
+                <button type="button" class="kopf-icon kopf-meldungen" id="btnMeldungen" title="Meldungen" aria-label="Meldungen" aria-expanded="false"><svg class="ico" aria-hidden="true"><use href="#i-bell"/></svg><span class="kopf-zahl" id="meldungenZahl" hidden>0</span></button>
             </div>
 
             <div class="header-center">
@@ -2623,6 +2625,7 @@
     <script src="js/ui/uiLiveKacheln.js"></script>
     <script src="js/ui/uiLiveDarstellung.js"></script>
     <script src="js/ui/uiSpielbericht.js"></script>
+    <script src="js/ui/uiMeldungen.js"></script>
     <script src="js/ui/uiSpeicher.js"></script>
     <script src="js/ui/uiEinstieg.js"></script>
     <script src="js/ui/uiNational.js"></script>

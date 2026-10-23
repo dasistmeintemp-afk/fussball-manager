@@ -46,7 +46,8 @@ class UIManager {
      * Initialisiert die UI
      */
     init() {
-        this.createToastContainer();
+        // Meldungen: eine Zeile unter der Kopfleiste und die Zentrale (uiMeldungen.js)
+        if (typeof this.richteMeldungenEin === "function") this.richteMeldungenEin();
         this.bindNavigation();
         this.bindGlobalEvents();
         this.bindStartScreenEvents();
@@ -257,18 +258,6 @@ class UIManager {
     }
 
     /**
-     * Erstellt den Toast-Container im DOM
-     */
-    createToastContainer() {
-        if (!document.getElementById("toastContainer")) {
-            const tc = document.createElement("div");
-            tc.id = "toastContainer";
-            tc.className = "toast-container";
-            document.body.appendChild(tc);
-        }
-    }
-
-    /**
      * Ladeanzeige für alles, was spürbar dauert: Karrierestart (die ganze
      * Spielwelt entsteht), Spielstand laden, Saisonwechsel. Vorher stand die
      * Oberfläche dabei ein bis drei Sekunden still, ohne Rückmeldung.
@@ -306,50 +295,6 @@ class UIManager {
     versteckeLadeanzeige() {
         const overlay = typeof document !== "undefined" ? document.getElementById("ladeOverlay") : null;
         if (overlay) overlay.hidden = true;
-    }
-
-    /**
-     * Zeigt eine Toast-Meldung an
-     */
-    showToast(message, type = "info", duration = 3500, optionen = {}) {
-        const tc = document.getElementById("toastContainer") || document.body;
-        const toast = document.createElement("div");
-        toast.className = `toast-item ${type}`;
-        
-        let icon = "ℹ️";
-        if (type === "success") icon = "✅";
-        if (type === "error") icon = "⚠️";
-        if (type === "warning") icon = "🔔";
-
-        // Knöpfe in der Meldung: Was sie verspricht, tut ein Tipp auch.
-        // Vorher hieß es "Weiter geht es mit dem nächsten Klick" - ein Tipp
-        // auf die Meldung selbst tat aber nichts.
-        const aktionen = Array.isArray(optionen.aktionen) ? optionen.aktionen.filter(a => a && typeof a.aktion === "function") : [];
-        toast.innerHTML = `<span>${icon}</span><span class="toast-text">${message}</span>`
-            + (aktionen.length ? `<span class="toast-aktionen">${aktionen.map((a, i) =>
-                `<button type="button" class="btn btn-sm ${a.haupt ? "btn-primary" : "btn-secondary"}" data-toast-aktion="${i}">${this.escapeHtml(a.text)}</button>`).join("")}</span>` : "");
-        let weg = false;
-        const entferne = () => {
-            if (weg) return;
-            weg = true;
-            toast.style.opacity = "0";
-            toast.style.transform = "translateX(50px)";
-            toast.style.transition = "all 0.3s ease";
-            setTimeout(() => toast.remove(), 300);
-        };
-        if (aktionen.length || typeof optionen.beiKlick === "function") {
-            toast.classList.add("klickbar");
-            if (typeof toast.addEventListener === "function") toast.addEventListener("click", (e) => {
-                const knopf = e.target && e.target.closest ? e.target.closest("[data-toast-aktion]") : null;
-                const ziel = knopf ? aktionen[Number(knopf.dataset.toastAktion)] : null;
-                entferne();
-                if (ziel) ziel.aktion();
-                else if (typeof optionen.beiKlick === "function") optionen.beiKlick();
-            });
-        }
-        tc.appendChild(toast);
-
-        setTimeout(entferne, duration);
     }
 
     /**
@@ -2708,6 +2653,8 @@ class UIManager {
      * Kalender, damit es nur eine Zeitrechnung gibt.
      */
     handleWeiter() {
+        // Was bis hierher stehen blieb, gilt nach dem Weiterspielen nicht mehr
+        if (typeof this.raeumeMeldungenAuf === "function") this.raeumeMeldungenAuf();
         // Ohne Verein läuft die Zeit nicht weiter - erst die Entscheidung
         if (this.pruefeEntlassung()) return;
         // Ohne Arzt, Athletik- und Co-Trainer beginnt die Saison nicht einfach so
@@ -2735,6 +2682,7 @@ class UIManager {
      * Anpfiff jeden Trainingstag selbst sehen will.
      */
     handleEinTag() {
+        if (typeof this.raeumeMeldungenAuf === "function") this.raeumeMeldungenAuf();
         if (this.pruefeEntlassung()) return;
         if (this.pruefePflichtpostenVorStart(() => this.handleEinTag())) return;
         const ziel = this.beschreibeWeiter();
@@ -3041,9 +2989,10 @@ class UIManager {
         // dann würde die Meldung nur über seinen Knöpfen liegen.
         if (angehalten && !urlaubsBilanz && !(typeof this.einFensterOffen === "function" && this.einFensterOffen())) {
             const ansehen = () => this.zeigeAnlass(anlass);
-            this.showToast(`⏸ ${heuteNeu?.date || ""}: ${angehalten}.`, "warning", 12000, {
+            this.showToast(`${angehalten}.`, "warning", 12000, {
+                titel: `Angehalten · ${heuteNeu?.date || ""}`,
                 beiKlick: ansehen,
-                aktionen: [{ text: "Ansehen", aktion: ansehen }, { text: "Weiter", haupt: true, aktion: () => this.handleWeiter() }]
+                aktionen: [{ text: "Ansehen", haupt: true, aktion: ansehen }]
             });
         }
     }
@@ -3130,9 +3079,10 @@ class UIManager {
                 };
                 const anzahl = state.lastDayReport.messages.length;
                 const msg = state.lastDayReport.messages[0] || `${res.day?.title} abgeschlossen.`;
-                this.showToast(
-                    `📅 ${res.day?.date}: ${msg}${anzahl > 1 ? ` (+${anzahl - 1} weitere im Tagesbericht)` : ""}`,
-                    "info");
+                // Das Datum steht klein darüber, der Text ohne vorangestelltes Zeichen
+                const text = typeof this.meldungOhneZeichen === "function" ? this.meldungOhneZeichen(msg) : msg;
+                this.showToast(`${text}${anzahl > 1 ? ` (+${anzahl - 1} weitere im Tagesbericht)` : ""}`, "info", 3500,
+                    { titel: res.day?.date ? `Tagesbericht · ${res.day.date}` : "" });
             }
 
             this.renderHeader();
@@ -3851,6 +3801,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // Die ausgelagerten Teile hängen sich an die Klasse - im Browser lädt sie
     // index.html der Reihe nach, unter Node holen wir sie hier dazu
     ["./uiAssistent.js", "./uiKader.js", "./uiTaktik.js", "./uiWettbewerbe.js", "./uiTraining.js", "./uiFinanzen.js", "./uiVerein.js", "./uiPostfach.js", "./uiDialoge.js", "./uiKarriere.js",
-        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiSeiten.js", "./uiProfil.js", "./uiProfilLaufbahn.js", "./uiAngebot.js", "./uiVereinSeite.js", "./uiSpielerdatenbank.js", "./uiLivespiel.js", "./uiLiveKacheln.js", "./uiLiveDarstellung.js", "./uiSpielbericht.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
+        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiSeiten.js", "./uiProfil.js", "./uiProfilLaufbahn.js", "./uiAngebot.js", "./uiVereinSeite.js", "./uiSpielerdatenbank.js", "./uiLivespiel.js", "./uiLiveKacheln.js", "./uiLiveDarstellung.js", "./uiSpielbericht.js", "./uiMeldungen.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
         .forEach(teil => require(teil));
 }

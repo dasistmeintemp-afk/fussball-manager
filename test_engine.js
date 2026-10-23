@@ -15021,6 +15021,33 @@ function runEngineTests() {
         if (gewechselt && !spieler.includes("Eingewechselt")) throw new Error("Eingewechselte fehlen");
     });
 
+    test("Meldungen: eine Zeile statt Stapel, Zeichen vorn entfallen, Knöpfe gelten bis zum Weiterspielen, Zentrale begrenzt", () => {
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state: { currentDate: "30.08.2026" } };
+        // Die Art hat ihr eigenes Symbol - vorn stehende Zeichen fallen weg
+        [["✅ Aufstellung gespeichert.", "Aufstellung gespeichert."], ["✉️ 🎓 Probetraining: Jonas überzeugt.", "Probetraining: Jonas überzeugt."],
+            ["⏸ Angehalten", "Angehalten"], ["Kein Zeichen ✅", "Kein Zeichen ✅"]].forEach(([ein, aus]) => {
+            if (ui.meldungOhneZeichen(ein) !== aus) throw new Error(`"${ein}" wird "${ui.meldungOhneZeichen(ein)}"`);
+        });
+        const kurz = ui.showToast("✅ Gespeichert.", "success", 1000);
+        const fehler = ui.showToast("Zu wenig Budget.", "error", 1000);
+        const halt = ui.showToast("Leon Bauer hat sich verletzt.", "warning", 12000, { titel: "Angehalten · 30.08.2026", aktionen: [{ text: "Ansehen", aktion: () => {} }] });
+        if (kurz.bleibt || kurz.wichtig || kurz.html !== "Gespeichert.") throw new Error(`Kurze Meldung: ${JSON.stringify(kurz)}`);
+        if (fehler.dauer < 5000 || !fehler.wichtig) throw new Error("Ein Fehler steht zu kurz oder zählt nicht an der Glocke");
+        if (!halt.bleibt || !halt.wichtig || halt.datum !== "30.08.2026" || !ui.meldungAktiv(halt)) throw new Error("Die Halt-Meldung bleibt nicht stehen");
+        if (ui._meldungen[0] !== halt || ui._meldungen.length !== 3) throw new Error("Die neueste Meldung steht nicht oben");
+        // Weiterspielen: Knöpfe verfallen, alles gilt als gesehen
+        ui.raeumeMeldungenAuf();
+        if (ui.meldungAktiv(halt) || ui._meldungen.some(m => !m.gesehen)) throw new Error("Nach dem Weiterspielen gelten alte Knöpfe noch");
+        if (!ui.meldungAktiv(ui.showToast("Neu", "warning", 0, { aktionen: [{ text: "Ansehen", aktion: () => {} }] }))) throw new Error("Eine neue Meldung gilt nicht");
+        // Die Zentrale hebt höchstens vierzig auf
+        for (let i = 0; i < 60; i++) ui.showToast(`Meldung ${i}`, "info");
+        if (ui._meldungen.length !== ui.MELDUNGEN_MAX || ui._meldungen[0].html !== "Meldung 59") throw new Error(`${ui._meldungen.length} Meldungen aufgehoben`);
+        // Die alten Kästen sind weg
+        if (typeof UIManager.prototype.createToastContainer === "function") throw new Error("Der alte Kasten-Stapel existiert noch");
+    });
+
     test("Finanzen wie im Vorbild: Kontoverlauf je Monat, Monatsbilanz, Sponsoren, Gehälter nach Rolle, Schulden, Prognose, acht Kacheln", () => {
         const F = FinanceEngine;
         const state = GameState.createNewGame("dor", "normal", { name: "Finanzen" });

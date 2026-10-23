@@ -6999,7 +6999,8 @@ function runEngineTests() {
             const genannt = spieler.find(p => p.id === live.activePlayerId);
             if (genannt && weg(genannt) > 4) weitAlt++;
             const ring = ui2.spielerAmBall(live, spieler, live.ball, DT);
-            if (ring && ring.alpha > 0.5 && weg(ring.spieler) > 4) weitNeu++;
+            // Gezählt wird der voll sichtbare Ring - beim Ausblenden nach einem Pass ist der Ball schon unterwegs
+            if (ring && ring.alpha > 0.9 && weg(ring.spieler) > 4) weitNeu++;
         }
         if (bilder < 600) throw new Error(`Zu kurz gemessen: ${bilder} Bilder`);
         if (weitAlt / bilder < 0.2) throw new Error(`Der Genannte steht kaum weg vom Ball (${(weitAlt / bilder * 100).toFixed(0)} %) - die Prüfung misst nichts`);
@@ -7025,6 +7026,62 @@ function runEngineTests() {
         const tempo = meter / (live.ball.travelDuration * d.getAbspielTempo());
         // Vorher flog er mit rund 22 m/s hinüber, im Bild in drei Bildern
         if (tempo > 10) throw new Error(`Der Ball fliegt mit ${tempo.toFixed(1)} m/s zum Verteidiger`);
+    });
+
+    test("Spielstil: Passfolgen statt Pingpong - Ball laufen lassen, abschirmen, mit dem Ball in den freien Raum, selten ins Dribbling gegen den Mann", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Stil" });
+        const live = MatchEngine.createLiveMatch({ id: "stil", played: false, homeClubId: "muc", awayClubId: "dor" },
+            state.clubs.find(c => c.id === "muc"), state.clubs.find(c => c.id === "dor"), state.players, { modus: "fm", userSide: "home" });
+        live.speed = 2;
+        const d = live.director, f = d.flow;
+
+        // 1. Eine halbe Stunde: Wie lang sind die Ballbesitzphasen, wie oft geht es ins Dribbling gegen den Mann?
+        let duelle = 0, abgedreht = 0, besitz = null;
+        const phasen = [];
+        const orig = d.applyFlowAction.bind(d);
+        d.applyFlowAction = function (a) {
+            const team = a.from && a.from.team;
+            if (team && (!besitz || besitz.team !== team)) { if (besitz) phasen.push(besitz.paesse); besitz = { team, paesse: 0 }; }
+            if (a.type === "dribble" && a.abdrehen) abgedreht++;
+            else if (a.type === "dribble" && !a.frei) duelle++;
+            if (besitz && (a.type === "pass" || a.type === "longball") && a.outcome === "complete") besitz.paesse++;
+            return orig(a);
+        };
+        let bilder = 0;
+        while (!live.isFinished && live.minute < 30 && bilder < 60 * 900) {
+            live.advanceRealTime(1000 / 60);
+            live.updateBallAndPlayers(1000 / 60);
+            bilder++;
+        }
+        d.applyFlowAction = orig;
+        if (besitz) phasen.push(besitz.paesse);
+        if (phasen.length < 8) throw new Error(`Nur ${phasen.length} Ballbesitzphasen in einer halben Stunde`);
+        const mittel = phasen.reduce((a, b) => a + b, 0) / phasen.length;
+        // Vorher über sechs Startwerte 1,4 bis 2,9 Pässe je Ballbesitz und 20 bis 32 Dribblings gegen den Mann
+        if (mittel < 2) throw new Error(`Im Mittel ${mittel.toFixed(2)} Pässe je Ballbesitz - die Passfolgen reißen ab`);
+        if (duelle > 22) throw new Error(`${duelle} Dribblings gegen den Mann in einer halben Stunde`);
+        if (abgedreht < 3) throw new Error(`Nur ${abgedreht}-mal unter Druck abgeschirmt und weggedreht`);
+
+        // 2. Vor ihm ist das Feld frei: Er trägt den Ball weit hinein, nicht nur sechs Einheiten
+        const traeger = d.teamPlayers("home").find(p => p.pos !== "TW");
+        const richtung = d.attackDir("home");
+        const gegner = d.teamPlayers("away");
+        const alt = gegner.map(p => [p.x, p.y]);
+        try {
+            traeger.x = richtung > 0 ? 30 : 70; traeger.y = 50;
+            gegner.forEach((p, i) => { p.x = richtung > 0 ? 94 : 6; p.y = 10 + i * 7; });
+            const lage = f.lageAmBall(traeger, { chainLength: 1 });
+            if (!lage.tragen || Math.abs(lage.tragen.x - traeger.x) < 14) throw new Error(`Im freien Feld trägt er den Ball nur ${lage.tragen ? Math.abs(lage.tragen.x - traeger.x).toFixed(0) : 0} Einheiten`);
+            // Steht einer dicht vor ihm, dreht er vom Gegner weg
+            gegner[0].x = traeger.x + richtung * 2.5; gegner[0].y = traeger.y;
+            const druck = f.getPressure(traeger, f.opponentsOf("home"));
+            const weg = f.rateAbdrehen(traeger, f.opponentsOf("home"), druck);
+            if (!weg) throw new Error("Unter Druck kein Abschirmen");
+            if ((weg.target.x - traeger.x) * richtung > 0) throw new Error("Er dreht in den Gegner hinein statt von ihm weg");
+            if (f.rateAbdrehen(traeger, f.opponentsOf("home"), 0.2)) throw new Error("Ohne Druck schirmt er ab");
+        } finally {
+            gegner.forEach((p, i) => { p.x = alt[i][0]; p.y = alt[i][1]; });
+        }
     });
 
     test("LiveMatchDirector: Ein gewonnenes Dribbling ist ein Lauf mit dem Ball", () => {

@@ -19,7 +19,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         let gespeichert = null;
         try { gespeichert = JSON.parse(localStorage.getItem("fm_anzeige2d") || "null"); } catch (e) { gespeichert = null; }
         this._anzeige2D = {
-            namen: true, formEigene: false, formGegner: false,
+            namen: true, formEigene: false, formGegner: false, feldGross: false,
             dreiD: false, kamera3D: "tv", qualitaet3D: "auto", wiederholung3D: true,
             wiederholung2D: true, passwege: false, laufwege: false,
             ...(gespeichert || {})
@@ -49,6 +49,34 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 }
             };
         });
+        // Großes Feld: nur das Spiel, die Kacheln treten zurück - auch mit G
+        const gross = document.getElementById("btnLmFeldGross");
+        if (gross) {
+            const setze = (an) => {
+                anzeige.feldGross = an;
+                document.getElementById("modalLiveMatch")?.classList.toggle("feld-gross", an);
+                gross.setAttribute("aria-pressed", String(an));
+                gross.title = an ? "Kacheln wieder zeigen (G)" : "Großes Feld: nur das Spiel (G)";
+                const zeichen = gross.querySelector("use");
+                if (zeichen) zeichen.setAttribute("href", an ? "#i-klein" : "#i-gross");
+                try { localStorage.setItem("fm_anzeige2d", JSON.stringify(anzeige)); } catch (e) { /* ohne Speicher */ }
+                // Das Feld bekommt eine neue Fläche
+                if (this.liveResizeHandler) this.liveResizeHandler();
+            };
+            gross.onclick = () => setze(!anzeige.feldGross);
+            setze(!!anzeige.feldGross);
+            if (!this._feldGrossTaste) {
+                this._feldGrossTaste = true;
+                document.addEventListener("keydown", (e) => {
+                    const modal = document.getElementById("modalLiveMatch");
+                    if (e.key !== "g" && e.key !== "G") return;
+                    if (!modal || modal.style.display === "none" || e.ctrlKey || e.metaKey || e.altKey) return;
+                    if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+                    if (document.getElementById("modalCoaching")?.style.display === "flex") return;
+                    document.getElementById("btnLmFeldGross")?.click();
+                });
+            }
+        }
         document.querySelectorAll("#lm3dKamera [data-kamera3d]").forEach(btn => {
             btn.classList.toggle("aktiv", btn.dataset.kamera3d === anzeige.kamera3D);
             btn.onclick = () => {
@@ -58,6 +86,46 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 try { localStorage.setItem("fm_anzeige2d", JSON.stringify(anzeige)); } catch (e) { /* ohne Speicher */ }
             };
         });
+    },
+
+    /**
+     * Eine kritisch gedämpfte Feder für die Kamera: Sie läuft auf das Ziel zu,
+     * ohne zu überschwingen, und ihr Tempo ändert sich stetig - auch wenn das
+     * Ziel springt. zeit ist die Glättung in Sekunden. Liefert [wert, tempo].
+     */
+    kameraFeder(wert, tempo, ziel, zeit, dt) {
+        if (!(dt > 0)) return [wert, tempo || 0];
+        const omega = 2 / Math.max(0.01, zeit);
+        const x = omega * dt;
+        const abkling = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+        const abstand = wert - ziel;
+        const zwischen = ((tempo || 0) + omega * abstand) * dt;
+        return [ziel + (abstand + zwischen) * abkling, ((tempo || 0) - omega * zwischen) * abkling];
+    },
+
+    /**
+     * Gezeichnet wird eine geglättete Lage: Jede Figur und der Ball folgen
+     * ihrer Lage in der Simulation mit einer kurzen Verzögerung (Zeitkonstante
+     * LAGE_GLAETTUNG). Ändert sich ein Tempo in der Simulation schlagartig -
+     * zwei Spieler laufen in den Mindestabstand und werden getrennt, ein Ball
+     * wird gespielt -, verteilt sich das im Bild über ein paar Bilder statt
+     * eines. Die Simulation selbst bleibt unberührt. Nach einem Schnitt oder
+     * einem Sprung über sechs Einheiten steht die Figur sofort am neuen Ort.
+     */
+    LAGE_GLAETTUNG: 0.07,
+    /** Der Ball bekommt eine kürzere Glättung: Er soll nicht sichtbar hinterherhängen */
+    BALL_GLAETTUNG: 0.035,
+    glaetteLage(speicher, id, x, y, dt, neu = false, zeit = this.LAGE_GLAETTUNG) {
+        let g = speicher.get(id);
+        if (!g || neu || Math.hypot(x - g.x, y - g.y) > 6) {
+            g = { x, y };
+            speicher.set(id, g);
+            return g;
+        }
+        const k = 1 - Math.exp(-Math.max(0, dt) / zeit);
+        g.x += (x - g.x) * k;
+        g.y += (y - g.y) * k;
+        return g;
     },
 
     /**
@@ -404,7 +472,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         };
 
         // Kamera: folgt dem Ball und zoomt je nach Spielsituation
-        this.camera = { x: 50, y: 50, zoom: 1.25, targetZoom: 1.25 };
+        this.camera = { x: 50, y: 50, zoom: 1.25, targetZoom: 1.25, vx: 0, vy: 0, vz: 0 };
+        this._bildTakt = null;
+        // Namensschilder und geglättete Lagen der letzten Partie vergessen
+        this._glatteLagen = new Map();
+        this._namenPlatz = new Map();
+        this._namenDeckung = new Map();
         this._kameraSchnitte = liveMatch.schnitte || 0;
         this._kameraSprung = false;
 
@@ -446,13 +519,18 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 cam.x = focusX;
                 cam.y = focusY;
                 cam.zoom = cam.targetZoom;
+                cam.vx = 0; cam.vy = 0; cam.vz = 0;
                 return;
             }
 
-            const follow = Math.min(1, dt * (mode === "highlight" ? 4.5 : 2.6));
-            cam.x += (focusX - cam.x) * follow;
-            cam.y += (focusY - cam.y) * follow;
-            cam.zoom += (cam.targetZoom - cam.zoom) * Math.min(1, dt * 2.2);
+            // Wie eine geführte Kamera: gedämpft, ihr Tempo ändert sich stetig.
+            // Vorher folgte sie dem Blickpunkt direkt - sprang der (ein Pass,
+            // der Vorhalt aufs Ziel, eine neue Zoomstufe), änderte sich ihr
+            // Tempo im selben Bild, und das ganze Feld ruckte.
+            const glatt = mode === "highlight" ? 0.26 : 0.42;
+            [cam.x, cam.vx] = this.kameraFeder(cam.x, cam.vx, focusX, glatt, dt);
+            [cam.y, cam.vy] = this.kameraFeder(cam.y, cam.vy, focusY, glatt, dt);
+            [cam.zoom, cam.vz] = this.kameraFeder(cam.zoom, cam.vz, cam.targetZoom, 0.55, dt);
         };
 
         const render2DCanvas = (dt = 0.016) => {
@@ -513,16 +591,31 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ctx.drawImage(bg.canvas, 0, 0);
             ctx.restore();
 
-            // 2. Ballschweif
+            // Die geglättete Lage von Spielern und Ball (glaetteLage). Der Rest
+            // der Figur - Name, Nummer, Tempo, Blickrichtung - bleibt, wie er ist.
+            const wdhJetzt = !!(this._wdh && this._wdh.aktiv);
+            const neueSzene = (liveMatch.schnitte || 0) !== this._glattSchnitte || wdhJetzt !== this._glattWdh;
+            this._glattSchnitte = liveMatch.schnitte || 0;
+            this._glattWdh = wdhJetzt;
+            const lagen = this._glatteLagen || (this._glatteLagen = new Map());
+            const players = (liveMatch.players2D || []).map(p => {
+                const g = this.glaetteLage(lagen, p.id, p.x, p.y, dt, neueSzene);
+                return Object.assign(Object.create(p), { x: g.x, y: g.y });
+            });
+            const ballLage = this.glaetteLage(lagen, "ball", liveMatch.ball.x, liveMatch.ball.y, dt, neueSzene, this.BALL_GLAETTUNG);
+            const ball = Object.assign(Object.create(liveMatch.ball), { x: ballLage.x, y: ballLage.y });
+
+            // 2. Ballschweif - er hängt am gezeichneten Ball, nicht am gerechneten
             const trail = liveMatch.ballTrail || [];
+            const schweifX = ball.x - liveMatch.ball.x, schweifY = ball.y - liveMatch.ball.y;
             if (trail.length > 1) {
                 ctx.lineCap = "round";
                 for (let i = 0; i < trail.length - 1; i++) {
                     const alpha = Math.max(0, trail[i].life / 0.28) * 0.5;
                     if (alpha <= 0.02) continue;
                     ctx.beginPath();
-                    ctx.moveTo(toX(trail[i].x), toY(trail[i].y));
-                    ctx.lineTo(toX(trail[i + 1].x), toY(trail[i + 1].y));
+                    ctx.moveTo(toX(trail[i].x + schweifX), toY(trail[i].y + schweifY));
+                    ctx.lineTo(toX(trail[i + 1].x + schweifX), toY(trail[i + 1].y + schweifY));
                     ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
                     ctx.lineWidth = unit * 0.45;
                     ctx.stroke();
@@ -538,9 +631,6 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
             const numberFont = `bold ${Math.round(radius * 0.92)}px 'Inter', system-ui, sans-serif`;
             const nameFont = `600 ${Math.round(radius * 0.78)}px 'Inter', system-ui, sans-serif`;
-
-            const players = liveMatch.players2D || [];
-            const ball = liveMatch.ball;
 
             const anzeige = this.anzeige2D();
 
@@ -758,6 +848,22 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 const hoehe = radius * 0.95;
                 ctx.font = kleinFont;
                 ctx.lineJoin = "round";
+                // Schilder blenden weich ein und aus, auch beim Wechsel unter den
+                // Punkt oder darüber. Vorher sprangen sie: Gemessen tauchte im
+                // Gedränge achtmal je Sekunde irgendwo ein Name auf, verschwand
+                // oder wechselte die Seite - das Bild flackerte.
+                const deckung = this._namenDeckung || (this._namenDeckung = new Map());
+                const blende = Math.min(1, Math.max(0, dt) / 0.18);
+                const gesetzt = new Set();
+                const zeichneName = (name, px, y, alpha) => {
+                    ctx.globalAlpha = alpha;
+                    ctx.strokeStyle = "rgba(6, 10, 14, 0.85)";
+                    ctx.lineWidth = Math.max(2, radius * 0.32);
+                    ctx.strokeText(name, px, y);
+                    ctx.fillStyle = "rgba(241, 245, 249, 0.92)";
+                    ctx.fillText(name, px, y);
+                    ctx.globalAlpha = 1;
+                };
                 players.filter(p => p !== aktiver).sort(nachBall).forEach(p => {
                     const lastName = p.name ? p.name.split(" ").pop() : "";
                     if (!lastName) return;
@@ -767,14 +873,27 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     const oben = kasten(px, py - radius * 1.72, breite, hoehe);
                     const k = (plaetze.get(p.id) === "oben" ? [oben, unten] : [unten, oben]).find(frei);
                     if (!k) { plaetze.delete(p.id); return; }
-                    plaetze.set(p.id, k === oben ? "oben" : "unten");
+                    const seite = k === oben ? "oben" : "unten";
+                    plaetze.set(p.id, seite);
                     belegt.push(k);
-                    ctx.font = kleinFont;
-                    ctx.strokeStyle = "rgba(6, 10, 14, 0.85)";
-                    ctx.lineWidth = Math.max(2, radius * 0.32);
-                    ctx.strokeText(lastName, px, k.y);
-                    ctx.fillStyle = "rgba(241, 245, 249, 0.92)";
-                    ctx.fillText(lastName, px, k.y);
+                    gesetzt.add(`${p.id}|${seite}`);
+                });
+                // Jedes Schild auf seinem Weg zu sichtbar oder unsichtbar zeichnen
+                ctx.font = kleinFont;
+                players.forEach(p => {
+                    if (p === aktiver) return;
+                    const lastName = p.name ? p.name.split(" ").pop() : "";
+                    if (!lastName) return;
+                    ["unten", "oben"].forEach(seite => {
+                        const schluessel = `${p.id}|${seite}`;
+                        const an = gesetzt.has(schluessel);
+                        const alt = deckung.get(schluessel) || 0;
+                        const alpha = an ? Math.min(1, alt + blende) : Math.max(0, alt - blende);
+                        if (alpha <= 0) { deckung.delete(schluessel); return; }
+                        deckung.set(schluessel, alpha);
+                        const px = toX(p.x), py = toY(p.y);
+                        zeichneName(lastName, px, seite === "oben" ? py - radius * 1.72 : py + radius * 1.72, alpha);
+                    });
                 });
             } else {
                 // Ohne Namen: Schilder für die Spieler am Ball, höchstens vier,
@@ -935,6 +1054,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
             // Delta-Zeit begrenzen, damit ein Tabwechsel keinen Sprung verursacht
             const deltaMs = Math.min(120, now - lastFrameTime);
+            if (!liveMatch.isPaused) this.pruefeBildrate(now - lastFrameTime);
             lastFrameTime = now;
 
             // Während der Torwiederholung (3D oder 2D) steht die Simulation still
@@ -975,6 +1095,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         // Canvas an Fenstergröße anpassen, solange das Modal offen ist
         this.liveResizeHandler = () => {
+            this._kachelSicht = null;
             if (this.resizeLiveCanvas()) render2DCanvas();
         };
         window.addEventListener("resize", this.liveResizeHandler);

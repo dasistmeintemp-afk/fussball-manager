@@ -15115,6 +15115,101 @@ function runEngineTests() {
         if (!/Saison|Meister/.test(ui.wbAnsichtSieger(state, mitMeister))) throw new Error("Die Ansicht der früheren Sieger ist leer");
     });
 
+    test("Livespiel flüssig: Bild geglättet, gefederte Kamera, Auflösung passt sich an, das Feld steht oben", () => {
+        // 1. Eine Partie auf "Normal": Im gezeichneten Bild kaum ruckartige Bewegungen
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const ui = Object.create(UIManager.prototype);
+        const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const match = { id: "fluss", played: false, homeClubId: "muc", awayClubId: "dor" };
+        const live = new LiveMatch(match, state.clubs.find(c => c.id === "muc"), state.clubs.find(c => c.id === "dor"), state.players);
+        live.speed = 2;
+        const dir = live.director;
+        const tf = dir.getAbspielTempo();
+        const DT = 1 / 60;
+        const lagen = new Map();
+        const zaehle = () => ({ n: 0, p: new Map(), v: new Map() });
+        const sim = zaehle(), bild = zaehle();
+        const pruefe = (z, id, x, y, frei) => {
+            const q = z.p.get(id);
+            z.p.set(id, [x, y]);
+            if (!q) return;
+            // Meter je Sekunde Spielzeit
+            const vx = (x - q[0]) * 1.14 / DT / tf, vy = (y - q[1]) * 0.68 / DT / tf;
+            const qv = z.v.get(id);
+            z.v.set(id, [vx, vy]);
+            if (qv && frei && Math.hypot(vx - qv[0], vy - qv[1]) / (DT * tf) > 30 && Math.hypot(vx, vy) > 1) z.n++;
+        };
+        let frames = 0, vorSchnitte = 0;
+        while (!live.isFinished && live.minute < 20 && frames < 60 * 600) {
+            live.advanceRealTime(1000 / 60);
+            live.updateBallAndPlayers(1000 / 60);
+            frames++;
+            // Die Blende klingt im Browser beim Zeichnen ab
+            const blende = live.blende || 0;
+            live.blende = Math.max(0, blende - DT);
+            const schnitt = (live.schnitte || 0) !== vorSchnitte;
+            vorSchnitte = live.schnitte || 0;
+            // Gemessen wird auch das Ende von Zeitlupe und Standbild - im Bild darf es nicht rucken
+            const frei = !live.motionFreeze && !schnitt && blende <= 0.3;
+            (live.players2D || []).forEach(p => {
+                pruefe(sim, p.id, p.x, p.y, frei);
+                const g = ui.glaetteLage(lagen, p.id, p.x, p.y, DT, schnitt);
+                pruefe(bild, p.id, g.x, g.y, frei);
+            });
+        }
+        const sekunden = frames / 60;
+        if (sekunden < 60) throw new Error(`Zu kurz gemessen: ${sekunden.toFixed(0)} s`);
+        // Die Simulation ruckt 1,6 bis 2,2-mal je Sekunde (Mindestabstand, Antritt, Ende der Zeitlupe) - gezeichnet um 0,1
+        if (bild.n / sekunden > 0.4) throw new Error(`${(bild.n / sekunden).toFixed(2)} ruckartige Bewegungen je Sekunde im Bild`);
+        if (!(bild.n < sim.n * 0.3)) throw new Error(`Die Glättung bringt kaum etwas: ${bild.n} gegen ${sim.n}`);
+
+        // 2. Die Glättung: folgt stetig, springt mit bei einem Schnitt oder einem weiten Satz
+        const sp = new Map();
+        ui.glaetteLage(sp, "x", 10, 10, DT);
+        const g1 = ui.glaetteLage(sp, "x", 10.5, 10, DT);
+        if (!(g1.x > 10 && g1.x < 10.3)) throw new Error(`Geglättet ${g1.x}`);
+        for (let i = 0; i < 60; i++) ui.glaetteLage(sp, "x", 10.5, 10, DT);
+        if (Math.abs(sp.get("x").x - 10.5) > 0.001) throw new Error("Die Lage holt nicht auf");
+        if (ui.glaetteLage(sp, "x", 30, 10, DT).x !== 30) throw new Error("Ein weiter Satz wird geglättet statt übernommen");
+        if (ui.glaetteLage(sp, "x", 31, 10, DT, true).x !== 31) throw new Error("Nach einem Schnitt wird geglättet");
+
+        // 3. Die Kamera folgt gefedert: stetiges Tempo, kein Überschwingen
+        let [x, v] = [0, 0];
+        [x, v] = ui.kameraFeder(x, v, 10, 0.42, DT);
+        if (x > 0.2) throw new Error(`Die Kamera springt beim ersten Bild um ${x.toFixed(2)}`);
+        let maxX = x;
+        for (let i = 0; i < 180; i++) { [x, v] = ui.kameraFeder(x, v, 10, 0.42, DT); maxX = Math.max(maxX, x); }
+        if (maxX > 10.0001 || Math.abs(x - 10) > 0.05) throw new Error(`Feder: höchstens ${maxX.toFixed(3)}, am Ende ${x.toFixed(3)}`);
+        // Springt der Blickpunkt (ein Pass mit Vorhalt), ändert sich das Tempo kaum - vorher um 19,5 je Sekunde
+        const vorSprung = v;
+        [x, v] = ui.kameraFeder(x, v, 17.5, 0.42, DT);
+        if (Math.abs(v - vorSprung) > 5) throw new Error(`Tempo der Kamera springt um ${Math.abs(v - vorSprung).toFixed(1)}`);
+
+        // 4. Läuft das Bild zäh, zeichnet das Feld bei dichtem Bildschirm mit weniger Bildpunkten
+        const altFenster = global.window;
+        try {
+            let neuGezeichnet = 0;
+            const g = Object.create(UIManager.prototype);
+            g.resizeLiveCanvas = () => { neuGezeichnet++; return true; };
+            global.window = { devicePixelRatio: 3 };
+            for (let i = 0; i < 120; i++) g.pruefeBildrate(16.7);
+            if (g._liveAufloesung) throw new Error("Bei flüssigem Bild wurde die Auflösung gesenkt");
+            for (let i = 0; i < 360; i++) g.pruefeBildrate(40);
+            if (neuGezeichnet !== 2 || Math.abs(g._liveAufloesung - 0.72 * 0.72) > 1e-9) throw new Error(`Zäh: ${neuGezeichnet} Stufen, Auflösung ${g._liveAufloesung}`);
+            const normal = Object.create(UIManager.prototype);
+            normal.resizeLiveCanvas = () => { throw new Error("Bei normaler Pixeldichte darf nichts passieren"); };
+            global.window = { devicePixelRatio: 1 };
+            for (let i = 0; i < 240; i++) normal.pruefeBildrate(50);
+        } finally {
+            global.window = altFenster;
+        }
+
+        // 5. Statistik und Ereignisse stehen nur in der Kachelansicht - und dort unter dem Feld
+        const css = require('fs').readFileSync('./css/design.css', 'utf8');
+        if (!css.includes("#modalLiveMatch .lm-kachel.lm-k-stat,\n#modalLiveMatch .lm-kachel.lm-k-ereignisse,\n#modalLiveMatch .lm-leiste { display: none; }")) throw new Error("Die Kacheln sind unter 1280 Pixeln nicht verborgen");
+        if (!css.includes(`grid-template-areas: "heim feld feld gast" "heim stat ereig gast";`)) throw new Error("Das Feld steht nicht oben");
+    });
+
     test("Menü oben wie im Vorbild: jeder Reiter in genau einem Bereich, Ansichten des Transfermarkts, Zahlen, Wahl je Gerät", () => {
         const { UIManager } = require('./js/ui/uiManager.js');
         const ui = Object.create(UIManager.prototype);

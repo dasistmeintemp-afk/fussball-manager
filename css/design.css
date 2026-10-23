@@ -437,15 +437,6 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 .modal-close:hover { background: var(--surface-3); color: var(--text-main); }
 .modal-close .ico { width: 18px; height: 18px; }
 
-.toast-item {
-    background: rgba(22, 28, 37, 0.96);
-    border: 1px solid var(--line-strong);
-    border-radius: 12px;
-    box-shadow: var(--shadow-md);
-    -webkit-backdrop-filter: blur(12px);
-    backdrop-filter: blur(12px);
-}
-
 /* --------------------------------------------------------------------------
    App-Rahmen: Kopfleiste
    -------------------------------------------------------------------------- */
@@ -1908,15 +1899,6 @@ h4 .h-ico { color: var(--accent); opacity: 0.85; }
 .fin-val,
 .info-val { font-variant-numeric: tabular-nums; }
 
-/* Meldungen mit Knöpfen (Anhalten: Ansehen / Weiter) */
-.toast-item.klickbar { cursor: pointer; }
-.toast-item .toast-text { flex: 1; min-width: 0; }
-.toast-aktionen { display: flex; gap: 6px; flex: none; }
-.toast-aktionen .btn { min-height: 32px; padding: 5px 12px; }
-@media (max-width: 640px) {
-    .toast-item.klickbar { flex-wrap: wrap; }
-    .toast-aktionen { width: 100%; justify-content: flex-end; }
-}
 
 /* --------------------------------------------------------------------------
    Postfach wie im Vorbild: Abteilungen mit Zeichen, Wappen der Vereine,
@@ -3022,4 +3004,77 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
     .spb-ev-heim:empty, .spb-ev-gast:empty { display: none; }
     .spb-ev-stand { margin-left: auto; }
     .spb-lang { display: none; }
+}
+
+/* --------------------------------------------------------------------------
+   Meldungen (uiMeldungen.js): eine Zeile mittig unter der Kopfleiste statt
+   gestapelter Kästen unten rechts, dazu die Meldungszentrale hinter der Glocke
+   -------------------------------------------------------------------------- */
+.meldung-zeile {
+    position: fixed; z-index: 3500; top: var(--mz-oben, 72px); left: 50%; transform: translateX(-50%);
+    width: min(560px, calc(100vw - 24px)); pointer-events: none;
+}
+.mz-karte {
+    position: relative; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 10px 8px 12px;
+    border: 1px solid var(--line-strong); border-radius: 12px; overflow: hidden;
+    background: rgba(22, 28, 37, 0.97); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+    font-size: 13px; line-height: 1.4; color: var(--text-main);
+    --mz-farbe: var(--accent);
+}
+.meldung-zeile .mz-karte {
+    position: absolute; left: 0; right: 0; top: 0; pointer-events: auto;
+    opacity: 0; transform: translateY(-8px) scale(0.98); transition: opacity 0.18s var(--ease), transform 0.22s var(--ease);
+}
+.meldung-zeile .mz-karte.da { opacity: 1; transform: none; }
+.meldung-zeile.unten { top: auto; bottom: 20px; }
+.meldung-zeile.unten .mz-karte { top: auto; bottom: 0; transform: translateY(8px) scale(0.98); }
+.meldung-zeile.unten .mz-karte.da { transform: none; }
+.mz-karte.klickbar { cursor: pointer; }
+.mz-success { --mz-farbe: var(--ok); }
+.mz-info { --mz-farbe: #38bdf8; }
+.mz-warning { --mz-farbe: var(--warn); }
+.mz-error { --mz-farbe: var(--bad); }
+.mz-zeichen { display: grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 8px; color: var(--mz-farbe); background: color-mix(in srgb, var(--mz-farbe) 16%, transparent); }
+@supports not (background: color-mix(in srgb, red 10%, transparent)) { .mz-zeichen { background: rgba(255, 255, 255, 0.06); } }
+.mz-zeichen .ico { width: 15px; height: 15px; }
+.mz-text { display: grid; flex: 1; min-width: 0; }
+.mz-text small { font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--mz-farbe); }
+.mz-text > span { overflow-wrap: anywhere; }
+.mz-aktionen { display: flex; flex: none; gap: 6px; }
+.mz-aktionen .btn { min-height: 30px; padding: 4px 12px; }
+.mz-zu { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.mz-zu:hover { background: var(--surface-3); color: var(--text-main); }
+.mz-zu .ico { width: 14px; height: 14px; }
+/* Restzeit als dünner Balken am unteren Rand */
+.mz-rest { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--mz-farbe); opacity: 0.7; transform-origin: left; animation: mz-ablauf linear forwards; }
+.mz-karte.halt .mz-rest { animation-play-state: paused; opacity: 0.25; }
+@keyframes mz-ablauf { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* Die Glocke mit der Zahl für Wichtiges, das noch niemand gesehen hat */
+.kopf-meldungen { position: relative; }
+.kopf-zahl {
+    position: absolute; top: 3px; right: 3px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
+    background: var(--bad); color: #fff; font-size: 10px; font-weight: 800; line-height: 16px; text-align: center; box-shadow: 0 0 0 2px var(--surface-1);
+}
+.kopf-zahl[hidden] { display: none; }
+
+/* Die Zentrale: unter der Glocke, die neueste Meldung oben */
+.meldung-zentrale {
+    position: fixed; z-index: 3600; top: var(--mzz-oben, 72px); left: var(--mzz-links, 16px);
+    width: min(400px, calc(100vw - 16px)); max-height: min(70vh, 560px); display: flex; flex-direction: column;
+    border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface-1); box-shadow: var(--shadow-lg);
+}
+.meldung-zentrale[hidden] { display: none; }
+.mzz-kopf { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.mzz-liste { display: grid; gap: 6px; padding: 10px 12px 12px; overflow-y: auto; }
+.mzz-tag { margin: 6px 2px 0; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.mzz-tag:first-child { margin-top: 0; }
+.mzz-eintrag { min-height: 0; padding: 8px 10px; box-shadow: none; background: var(--surface-2); border-color: var(--line); font-size: 12.5px; }
+.mzz-leer { margin: 6px 2px; font-size: 13px; color: var(--text-muted); }
+
+@media (max-width: 640px) {
+    .mz-karte { flex-wrap: wrap; }
+    .meldung-zeile .mz-aktionen { order: 3; width: 100%; justify-content: flex-end; }
+    .meldung-zentrale { left: 8px; right: 8px; width: auto; }
 }

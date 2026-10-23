@@ -85,9 +85,15 @@ class ManagerEngine {
             id: "form",
             gruppe: "form",
             gewicht: () => 1,
-            question: (ctx) => ctx.formTrend >= 0
-                ? `Ihre Mannschaft ist gut in Form. Reicht das für ${ctx.opponentName}?`
-                : `Zuletzt lief es nicht. Was macht Ihnen Hoffnung gegen ${ctx.opponentName}?`,
+            // Vor dem ersten Spiel gibt es noch keine Form - vorher hieß es auch
+            // dann "gut in Form", weil null Siege und null Niederlagen als gut galten
+            question: (ctx) => !ctx.formSpiele
+                ? `Der Saisonauftakt steht an. Wie bereit ist Ihre Mannschaft für ${ctx.opponentName}?`
+                : ctx.formTrend > 0
+                    ? `Ihre Mannschaft ist gut in Form. Reicht das für ${ctx.opponentName}?`
+                    : ctx.formTrend === 0
+                        ? `Ihre Mannschaft sucht noch ihre Linie. Was erwarten Sie gegen ${ctx.opponentName}?`
+                        : `Zuletzt lief es nicht. Was macht Ihnen Hoffnung gegen ${ctx.opponentName}?`,
             answers: [
                 { key: "confident", label: "Wir gewinnen dieses Spiel.", fanMood: 4, mediaPressure: 6, morale: 3, board: 2,
                   versprechen: "sieg",
@@ -849,6 +855,7 @@ class ManagerEngine {
             playerId: kritik ? kritik.id : null,
             kritikForm: kritik ? (kritik.form || 7) : 7,
             formTrend,
+            formSpiele: form.length,
             siegSerie: serie(sieg),
             niederlagenSerie: serie(niederlage),
             derbyTitel,

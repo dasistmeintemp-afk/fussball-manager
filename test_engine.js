@@ -6955,6 +6955,78 @@ function runEngineTests() {
         if (mitLauf > 7 + 10 || mitLauf < 7) throw new Error(`Beim Lauf: ${mitLauf.toFixed(1)} Einheiten je Laufsekunde`);
     });
 
+    test("Livespiel: Ring und Schild des Ballführenden erst, wenn der Ball bei ihm ist - auch in der Verbandsliga", () => {
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const ui = Object.create(UIManager.prototype);
+        const DT = 1 / 60;
+
+        // 1. Ein Pass: Die Regie nennt den Empfänger schon beim Abspiel
+        const a = { id: "a", x: 40, y: 50 }, b = { id: "b", x: 55, y: 50 };
+        const lm = { activePlayerId: "a", ball: { inFlight: false } };
+        let r = ui.spielerAmBall(lm, [a, b], { x: 41.6, y: 50 }, DT, true);
+        if (!r || r.spieler !== a || r.alpha !== 1) throw new Error("Zu Beginn einer Szene steht der Ring nicht sofort beim Ballführenden");
+        lm.activePlayerId = "b"; lm.ball.inFlight = true;
+        r = ui.spielerAmBall(lm, [a, b], { x: 42, y: 50 }, DT);
+        if (r && r.spieler === b) throw new Error("Der Ring springt mit dem Abspiel zum Empfänger");
+        for (let i = 0; i < 10; i++) r = ui.spielerAmBall(lm, [a, b], { x: 43 + i, y: 50 }, DT);
+        if (r) throw new Error("Der Ring bleibt während des Passes stehen");
+        // Der Ball kommt an: Der Ring blendet beim Empfänger ein
+        lm.ball.inFlight = false;
+        r = ui.spielerAmBall(lm, [a, b], { x: 56.6, y: 50 }, DT);
+        if (!r || r.spieler !== b || !(r.alpha < 1)) throw new Error("Der Ring blendet beim Empfänger nicht ein");
+        for (let i = 0; i < 10; i++) r = ui.spielerAmBall(lm, [a, b], { x: 56.6, y: 50 }, DT);
+        if (!r || r.alpha !== 1) throw new Error("Der Ring wird beim Empfänger nicht voll sichtbar");
+        // Liegt der Ball noch weg vom Genannten, bleibt der Ring weg
+        lm.activePlayerId = "a";
+        for (let i = 0; i < 10; i++) r = ui.spielerAmBall(lm, [a, b], { x: 50, y: 50 }, DT);
+        if (r) throw new Error("Der Ring steht bei einem Spieler, der den Ball noch nicht hat");
+
+        // 2. Eine Viertelstunde in der Verbandsliga auf Normal: Der Ring steht nie weit weg vom Ball.
+        // Vorher stand er dort in rund der Hälfte der Bilder - beim Empfänger, bevor der Ball ankam.
+        const state = GameState.createNewGame("vl_gie", "normal", { name: "Ring" });
+        const partie = state.schedule[0].matches.find(m => m.homeClubId === "vl_gie" || m.awayClubId === "vl_gie");
+        const live = MatchEngine.createLiveMatch(partie, state.clubs.find(c => c.id === partie.homeClubId),
+            state.clubs.find(c => c.id === partie.awayClubId), state.players, { modus: "fm", userSide: partie.homeClubId === "vl_gie" ? "home" : "away" });
+        live.speed = 2;
+        const ui2 = Object.create(UIManager.prototype);
+        let bilder = 0, weitAlt = 0, weitNeu = 0;
+        const weg = (p) => Math.hypot(p.x - live.ball.x, p.y - live.ball.y);
+        while (!live.isFinished && live.minute < 15 && bilder < 60 * 400) {
+            live.advanceRealTime(1000 / 60);
+            live.updateBallAndPlayers(1000 / 60);
+            bilder++;
+            const spieler = live.players2D || [];
+            const genannt = spieler.find(p => p.id === live.activePlayerId);
+            if (genannt && weg(genannt) > 4) weitAlt++;
+            const ring = ui2.spielerAmBall(live, spieler, live.ball, DT);
+            if (ring && ring.alpha > 0.5 && weg(ring.spieler) > 4) weitNeu++;
+        }
+        if (bilder < 600) throw new Error(`Zu kurz gemessen: ${bilder} Bilder`);
+        if (weitAlt / bilder < 0.2) throw new Error(`Der Genannte steht kaum weg vom Ball (${(weitAlt / bilder * 100).toFixed(0)} %) - die Prüfung misst nichts`);
+        if (weitNeu / bilder > 0.01) throw new Error(`In ${(weitNeu / bilder * 100).toFixed(1)} % der Bilder steht der Ring weit weg vom Ball`);
+    });
+
+    test("LiveMatchDirector: Ein gewonnener Zweikampf - der Ball rollt zum Verteidiger, er springt nicht", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Zweikampf" });
+        const live = MatchEngine.createLiveMatch({ id: "zk", played: false, homeClubId: "muc", awayClubId: "dor" },
+            state.clubs.find(c => c.id === "muc"), state.clubs.find(c => c.id === "dor"), state.players, { modus: "fm", userSide: "home" });
+        live.speed = 2;
+        const d = live.director;
+        for (let i = 0; i < 120; i++) { live.advanceRealTime(1000 / 60); live.updateBallAndPlayers(1000 / 60); }
+        const traeger = d.teamPlayers("home").find(p => p.pos !== "TW");
+        const verteidiger = d.teamPlayers("away").find(p => p.pos !== "TW");
+        Object.assign(live.ball, { x: traeger.x, y: traeger.y, inFlight: false });
+        verteidiger.x = traeger.x + 3; verteidiger.y = traeger.y;
+        d.carrierId = traeger.id;
+        // Die kürzeste Dauer, die ein Dribbling bisher bekam: 0,2 Laufsekunden
+        d.handleDribbleAction({ type: "dribble", from: traeger, defender: verteidiger, outcome: "tackled", to: { x: traeger.x + 5, y: traeger.y } }, d.bildschirmZeit(0.2));
+        if (d.carrierId !== verteidiger.id) throw new Error("Der Verteidiger hat den Ball nicht");
+        const meter = 3 * 1.14;
+        const tempo = meter / (live.ball.travelDuration * d.getAbspielTempo());
+        // Vorher flog er mit rund 22 m/s hinüber, im Bild in drei Bildern
+        if (tempo > 10) throw new Error(`Der Ball fliegt mit ${tempo.toFixed(1)} m/s zum Verteidiger`);
+    });
+
     test("LiveMatchDirector: Ein gewonnenes Dribbling ist ein Lauf mit dem Ball", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Dribbler" });
         const runde = state.schedule.find(r => r.matchday === 1);

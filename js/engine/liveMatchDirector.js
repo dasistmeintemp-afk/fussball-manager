@@ -313,6 +313,9 @@ class LiveMatchDirector {
      */
     static AUFNAHME_ZULAUF = 8;
 
+    /** Wie schnell der Ball nach einem gewonnenen Zweikampf zum Verteidiger rollt, in Metern je Sekunde Spielzeit */
+    static ABNAHME_TEMPO = 9;
+
     /**
      * Wie lange vor einem Ereignis das Aufbauspiel beginnt, es zu suchen -
      * in Spielsekunden.
@@ -2973,7 +2976,14 @@ class LiveMatchDirector {
             // Der Verteidiger gewinnt den Ball - das ist kein Abspiel des Dribblers
             this.meldeAktion("zweikampf", defender.id, { gegnerId: carrier.id });
             this._ohneKickAktion = true;
-            this.setBallTravel(defender.x, defender.y, duration * 0.7, "pass");
+            // Er nimmt ihn ab, der Ball springt nicht zu ihm: Vorher flog er in
+            // rund drei Bildern hinüber, bis zu vier Meter weit - im Bild ein
+            // Ball, der von Spieler zu Spieler springt. Jetzt rollt er höchstens
+            // mit ABNAHME_TEMPO Metern je Sekunde Spielzeit.
+            const ball = this.match.ball;
+            const meter = Math.hypot((defender.x - ball.x) * 1.14, (defender.y - ball.y) * 0.68);
+            this.setBallTravel(defender.x, defender.y,
+                Math.max(duration * 0.7, this.bildschirmZeit(meter / LiveMatchDirector.ABNAHME_TEMPO)), "pass");
             this.setCarrier(defender);
         }
         this.narrateFlow(action);

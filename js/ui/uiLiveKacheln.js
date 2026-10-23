@@ -28,6 +28,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     /** Zu Spielbeginn: Zwischenstände vergessen, die Mentalität der eigenen Elf zeigen */
     bereiteKachelnVor(liveMatch) {
         this._lmKachelKeys = {};
+        this._kachelSicht = null;
         this._lmVerworfen = new Set();
         const wahl = document.getElementById("lmMentalitaet");
         if (wahl) {
@@ -58,10 +59,19 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this.showToast(`Mentalität: ${name}`, "success");
     },
 
-    /** Sind die Kacheln zu sehen? Nur dann lohnt das Zeichnen. */
+    /**
+     * Sind die Kacheln zu sehen? Nur dann lohnt das Zeichnen. Die Frage
+     * erzwang in jedem Bild eine Layout-Berechnung - auf einem schwachen
+     * Handy ein Zwölftel der Rechenzeit. Die Antwort ändert sich nur mit
+     * der Fenstergröße, sie gilt deshalb eine halbe Sekunde.
+     */
     kachelnSichtbar() {
+        const jetzt = typeof performance !== "undefined" ? performance.now() : Date.now();
+        if (this._kachelSicht && jetzt - this._kachelSicht.um < 500) return this._kachelSicht.wert;
         const el = document.getElementById("lmKStat");
-        return !!el && el.offsetParent !== null;
+        const wert = !!el && el.offsetParent !== null;
+        this._kachelSicht = { um: jetzt, wert };
+        return wert;
     },
 
     /** Bei jedem Anzeigetakt: jede Kachel, deren Inhalt sich geändert hat */

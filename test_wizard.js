@@ -1486,6 +1486,9 @@ function runWizardTests() {
             ui.renderLiveKacheln(live);
             if (elemente.lmKStat.innerHTML !== "alt") throw new Error("Unveränderte Statistik neu gezeichnet");
             elemente.lmKStat.offsetParent = null;
+            // Die Sichtbarkeit gilt eine halbe Sekunde - eine Größenänderung
+            // oder "Großes Feld" fragt neu, wie hier
+            ui._kachelSicht = null;
             ui._lmKachelKeys = {};
             elemente.lmKElfHome.innerHTML = "";
             ui.renderLiveKacheln(live);

@@ -2671,10 +2671,12 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
 /* ===== Livespiel als Kachelansicht wie im Vorbild (uiLiveKacheln.js) =====
    Breite Bildschirme: das Feld in der Mitte, ringsum Kacheln; unten die
    Leiste mit Kondition und Note. Schmaler bleibt es bei Feld und
-   Seitenleiste mit Reitern. */
+   Seitenleiste mit Reitern. Statistik und Ereignisse sind auch Kacheln
+   (.lm-kachel zeigt sie als flex) - ohne die doppelte Klasse standen sie
+   unter 1280 Pixeln über dem Feld und verdeckten seine obere Hälfte. */
 #modalLiveMatch .lm-spalte,
-#modalLiveMatch .lm-k-stat,
-#modalLiveMatch .lm-k-ereignisse,
+#modalLiveMatch .lm-kachel.lm-k-stat,
+#modalLiveMatch .lm-kachel.lm-k-ereignisse,
 #modalLiveMatch .lm-leiste { display: none; }
 #modalLiveMatch .lm-mentalitaet {
     display: inline-flex; align-items: center; gap: 6px; padding: 0 4px 0 10px; min-height: 32px; border-radius: 999px;
@@ -2810,8 +2812,11 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
     #modalLiveMatch .lm-pending-strip { grid-area: streifen; }
     #modalLiveMatch .live-match-body {
         grid-template-columns: minmax(250px, 0.9fr) minmax(0, 1.25fr) minmax(0, 1.25fr) minmax(250px, 0.9fr);
-        grid-template-rows: minmax(0, 0.74fr) minmax(0, 1.4fr);
-        grid-template-areas: "heim stat ereig gast" "heim feld feld gast";
+        /* Das Feld oben und groß, Statistik und Ereignisse als Zeile darunter.
+           Vorher lagen sie über dem Feld, und es blieb ein Streifen von rund
+           770 x 340 Pixeln - die Spieler waren Punkte, die Namen kaum lesbar. */
+        grid-template-rows: minmax(0, 1.75fr) minmax(0, 0.6fr);
+        grid-template-areas: "heim feld feld gast" "heim stat ereig gast";
         gap: 12px; padding: 12px;
     }
     #modalLiveMatch .lm-spalte { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
@@ -2819,8 +2824,8 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
     #modalLiveMatch .lm-spalte-gast { grid-area: gast; }
     #modalLiveMatch .lm-k-elf { flex: 1 1 62%; }
     #modalLiveMatch .lm-k-bank, #modalLiveMatch .lm-k-ergebnisse { flex: 0 1 38%; }
-    #modalLiveMatch .lm-k-stat { display: flex; grid-area: stat; }
-    #modalLiveMatch .lm-k-ereignisse { display: flex; grid-area: ereig; }
+    #modalLiveMatch .lm-kachel.lm-k-stat { display: flex; grid-area: stat; }
+    #modalLiveMatch .lm-kachel.lm-k-ereignisse { display: flex; grid-area: ereig; }
     #modalLiveMatch .live-pitch-wrapper { grid-area: feld; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.09); padding: 10px; }
     #modalLiveMatch .live-match-sidebar { display: none; }
     #modalLiveMatch .lm-leiste { display: flex; }
@@ -3450,4 +3455,28 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
     body.menue-oben .kopf-gruppe-knopf { padding-left: 8px; gap: 5px; font-size: 13.5px; }
     body.menue-oben .kopf-gruppe-pfeil { padding: 0 5px 0 2px; }
     body.menue-oben .app-header .btn-advance { flex-basis: 120px; min-width: 110px; }
+}
+
+/* --------------------------------------------------------------------------
+   Livespiel: Großes Feld - nur das Spiel, die Kacheln treten zurück
+   -------------------------------------------------------------------------- */
+#modalLiveMatch .lm-feld-gross {
+    position: absolute; top: 10px; right: 52px; z-index: 4; display: grid; place-items: center;
+    width: 34px; height: 34px; padding: 0; border-radius: 10px; cursor: pointer;
+    background: rgba(9, 12, 17, 0.72); border: 1px solid var(--border-light); color: var(--text-soft);
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+#modalLiveMatch .lm-feld-gross:hover { color: var(--text-main); }
+#modalLiveMatch .lm-feld-gross[aria-pressed="true"] { color: var(--accent); border-color: rgba(var(--accent-rgb), 0.5); }
+#modalLiveMatch .lm-feld-gross .ico { width: 18px; height: 18px; }
+@media (max-width: 900px) { #modalLiveMatch .lm-feld-gross { display: none; } }
+@media (min-width: 901px) {
+    #modalLiveMatch.feld-gross .live-match-body { grid-template-columns: minmax(0, 1fr); }
+    #modalLiveMatch.feld-gross .live-match-sidebar { display: none; }
+}
+@media (min-width: 1280px) and (min-height: 700px) {
+    #modalLiveMatch.feld-gross .live-match-body { grid-template-rows: minmax(0, 1fr); grid-template-areas: "feld"; }
+    #modalLiveMatch.feld-gross .lm-spalte,
+    #modalLiveMatch.feld-gross .lm-kachel.lm-k-stat,
+    #modalLiveMatch.feld-gross .lm-kachel.lm-k-ereignisse { display: none; }
 }

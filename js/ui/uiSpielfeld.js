@@ -42,7 +42,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const polster = (parseFloat(wcs.paddingTop) || 0) + (parseFloat(wcs.paddingBottom) || 0);
         const cssHeight = Math.max(200, wrapper.clientHeight - polster - (darunter || 55) - 6);
 
-        const dpr = Math.min(2.5, (typeof window !== "undefined" && window.devicePixelRatio) || 1);
+        // Läuft das Bild zäh, zeichnet das Feld mit weniger Bildpunkten (pruefeBildrate)
+        const dpr = Math.max(1, Math.min(2.5, (typeof window !== "undefined" && window.devicePixelRatio) || 1) * (this._liveAufloesung || 1));
         const pixelWidth = Math.round(cssWidth * dpr);
         const pixelHeight = Math.round(cssHeight * dpr);
 
@@ -57,6 +58,29 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         canvas.style.height = `${Math.round(cssHeight)}px`;
 
         return changed;
+    },
+
+    /**
+     * Läuft das Livespiel zäh (unter etwa vierzig Bildern je Sekunde), zeichnet
+     * das Feld mit weniger Bildpunkten: Auf einem Handy mit sehr dichtem
+     * Bildschirm kostet die volle Auflösung mehr, als man sieht. Höchstens
+     * zweimal und nie zurück, damit das Bild nicht hin und her springt. Bei
+     * normaler Pixeldichte greift es nie.
+     */
+    pruefeBildrate(abstandMs) {
+        const t = this._bildTakt || (this._bildTakt = { werte: [], stufen: 0 });
+        // Pausen, Fenster und Tabwechsel zählen nicht
+        if (!(abstandMs > 0) || abstandMs > 250) return false;
+        t.werte.push(abstandMs);
+        if (t.werte.length < 120) return false;
+        const median = [...t.werte].sort((a, b) => a - b)[60];
+        t.werte.length = 0;
+        const roh = Math.min(2.5, (typeof window !== "undefined" && window.devicePixelRatio) || 1);
+        if (median <= 24 || t.stufen >= 2 || roh * (this._liveAufloesung || 1) <= 1.3) return false;
+        this._liveAufloesung = Math.max(1 / roh, (this._liveAufloesung || 1) * 0.72);
+        t.stufen++;
+        this.resizeLiveCanvas();
+        return true;
     },
 
     /**
@@ -260,7 +284,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const w = Math.min(190, canvas.width * 0.19);
         const h = w * 0.62;
         const x = canvas.width - w - 16;
-        const y = 16;
+        // Unter den Knöpfen oben rechts (Großes Feld, Anzeige) - sie lagen
+        // vorher über der Karte
+        const skala = canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
+        const y = Math.round(40 * skala);
 
         ctx.save();
         ctx.globalAlpha = 0.92;

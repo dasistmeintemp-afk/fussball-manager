@@ -4332,7 +4332,7 @@ function runEngineTests() {
         if (typeof d.istRuhig !== "function") throw new Error("Der Regisseur kennt keine ruhigen Phasen");
 
         // Was als ruhig gilt
-        const vorher = { mode: d.mode, drama: d.drama, kickoff: d.kickoff, deadBall: d.deadBall };
+        const vorher = { mode: d.mode, drama: d.drama, kickoff: d.kickoff, deadBall: d.deadBall, scene: d.scene };
         d.mode = "ambient"; d.drama = null; d.kickoff = null;
         const tief = d.attackDir("home") > 0 ? 85 : 15;
         const weit = d.attackDir("home") > 0 ? 30 : 70;
@@ -4351,6 +4351,12 @@ function runEngineTests() {
         if (!d.istRuhig()) throw new Error("Der Anstoß wird nicht gespult");
         d.kickoff = null; d.drama = { kind: "goal" };
         if (d.istRuhig()) throw new Error("Eine Szene wird gespult");
+        // Über ein Foul ohne Karte darf ein Schnitt hinweglaufen, über eine Karte nicht
+        d.drama = null; d.mode = "highlight";
+        d.scene = { events: [{ type: "foul", outcome: "freekick" }], index: 0 };
+        if (!d.istNebenszene()) throw new Error("Ein Foul ohne Karte beendet den Schnitt");
+        d.scene = { events: [{ type: "yellow_card", outcome: "yellow_card" }], index: 0 };
+        if (d.istNebenszene()) throw new Error("Eine Karte wird übersprungen");
         Object.assign(d, vorher);
 
         // Nur das Livespiel des Vorbilds spult, und nicht in der Pause
@@ -4591,7 +4597,12 @@ function runEngineTests() {
         if (!(f.moment_steil > 0)) throw new Error("Nie den Steilpass im richtigen Moment gespielt");
         if (mitBall < amFuss * 0.1) throw new Error(`Mit dem Ball gelaufen nur in ${mitBall} von ${amFuss} Bildern`);
 
-        // Eine Lage mitten im Spiel: Was der Ballführende sieht
+        // Eine Lage mitten im Spiel: Was der Ballführende sieht. Liegt der Ball
+        // gerade zu einem Standard bereit, gilt dessen Aufstellung, kein
+        // Vorausahnen - also weiter bis zum laufenden Spiel.
+        for (let i = 0; i < 6000 && (d.mode !== "ambient" || d.deadBall || live.ball.inFlight || !d.getPlayer2D(d.carrierId)); i++) {
+            live.advanceRealTime(16); live.updateBallAndPlayers(16);
+        }
         const traeger = d.getPlayer2D(d.carrierId) || d.teamPlayers(d.possessionTeam).find(p => p.pos !== "TW");
         const lage = d.flow.lageAmBall(traeger, { chainLength: 2 });
         if (!lage || typeof lage.kopfHoch !== "boolean" || !("gelegenheit" in lage)) throw new Error("Keine Lage am Ball");
@@ -7030,6 +7041,8 @@ function runEngineTests() {
 
     test("Spielstil: Passfolgen statt Pingpong - Ball laufen lassen, abschirmen, mit dem Ball in den freien Raum, selten ins Dribbling gegen den Mann", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Stil" });
+        // Geprüft wird das Passspiel, nicht das Pressing (dafür Taktiktreue): beide mit neutraler Taktik
+        for (const id of ["muc", "dor"]) state.clubs.find(c => c.id === id).tactics = TacticsEngine.normalisiere({});
         const live = MatchEngine.createLiveMatch({ id: "stil", played: false, homeClubId: "muc", awayClubId: "dor" },
             state.clubs.find(c => c.id === "muc"), state.clubs.find(c => c.id === "dor"), state.players, { modus: "fm", userSide: "home" });
         live.speed = 2;
@@ -7043,7 +7056,8 @@ function runEngineTests() {
             const team = a.from && a.from.team;
             if (team && (!besitz || besitz.team !== team)) { if (besitz) phasen.push(besitz.paesse); besitz = { team, paesse: 0 }; }
             if (a.type === "dribble" && a.abdrehen) abgedreht++;
-            else if (a.type === "dribble" && !a.frei) duelle++;
+            // Der Zugriff eines Pressingspielers ist kein Dribbling des Ballführenden
+            else if (a.type === "dribble" && !a.frei && !a.zugriff) duelle++;
             if (besitz && (a.type === "pass" || a.type === "longball") && a.outcome === "complete") besitz.paesse++;
             return orig(a);
         };
@@ -7057,7 +7071,9 @@ function runEngineTests() {
         if (besitz) phasen.push(besitz.paesse);
         if (phasen.length < 8) throw new Error(`Nur ${phasen.length} Ballbesitzphasen in einer halben Stunde`);
         const mittel = phasen.reduce((a, b) => a + b, 0) / phasen.length;
-        // Vorher über sechs Startwerte 1,4 bis 2,9 Pässe je Ballbesitz und 20 bis 32 Dribblings gegen den Mann
+        // Vorher über sechs Startwerte 1,4 bis 2,9 Pässe je Ballbesitz und 20 bis 32 Dribblings gegen den Mann.
+        // Mit Dortmunds eigener Taktik (Gegenpressing, hoch, öfter anlaufen) waren es, seit das Pressing
+        // zugreift, über 24 Startwerte im Mittel 2,5 Pässe und in einzelnen Welten unter zwei; neutral 3,3
         if (mittel < 2) throw new Error(`Im Mittel ${mittel.toFixed(2)} Pässe je Ballbesitz - die Passfolgen reißen ab`);
         if (duelle > 22) throw new Error(`${duelle} Dribblings gegen den Mann in einer halben Stunde`);
         if (abgedreht < 3) throw new Error(`Nur ${abgedreht}-mal unter Druck abgeschirmt und weggedreht`);
@@ -7081,6 +7097,139 @@ function runEngineTests() {
             if (f.rateAbdrehen(traeger, f.opponentsOf("home"), 0.2)) throw new Error("Ohne Druck schirmt er ab");
         } finally {
             gegner.forEach((p, i) => { p.x = alt[i][0]; p.y = alt[i][1]; });
+        }
+    });
+
+    test("Taktiktreue: Jede Anweisung wirkt im 2D-Spiel - Abschluss, Torwart, Flanken, Standards, Tempo, Zeitspiel, Pressing, Zugriff, Mentalität", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Taktik" });
+        const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");
+        const live = MatchEngine.createLiveMatch({ id: "taktiktreue", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { modus: "fm", userSide: "home" });
+        const d = live.director, f = d.flow;
+        const T = TacticsEngine;
+        const setze = (club, anweisungen) => { club.tactics = T.normalisiere({ ...T.normalisiere({}), ...anweisungen }); d._taktikCache = {}; };
+        const mitSaat = (saat, fn) => {
+            const zufall = Math.random;
+            let s = saat >>> 0;
+            Math.random = () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+            try { return fn(); } finally { Math.random = zufall; }
+        };
+        const mittel = (n, fn) => { let s = 0; for (let i = 0; i < n; i++) s += fn(i); return s / n; };
+        const dir = d.attackDir("home");
+        const torX = d.ownGoalX("away");
+        const alle = d.match.players2D;
+        const alt = alle.map(p => [p.x, p.y]);
+        const weg = (team) => d.teamPlayers(team).forEach((p, i) => { p.x = d.ownGoalX(team) + d.attackDir(team) * 2; p.y = 8 + i * 8; });
+        try {
+            // 1. Abschluss aus 23 Metern, zentral, ohne Gegner in der Nähe
+            weg("away");
+            const schuetze = d.teamPlayers("home").find(p => p.group === "att") || d.teamPlayers("home").find(p => p.pos !== "TW");
+            schuetze.x = torX - dir * 22; schuetze.y = 50;
+            const schuss = (anw) => {
+                setze(heim, anw);
+                return mitSaat(11, () => mittel(80, () => (f.rateShot(schuetze, f.opponentsOf("home"), heim.tactics, 0) || { score: -9 }).score));
+            };
+            const normal = schuss({});
+            if (!(schuss({ weitschuesse: "mehr" }) > normal + 0.25)) throw new Error("Distanzschüsse mehr: aus 23 Metern nicht eher geschossen");
+            if (!(schuss({ weitschuesse: "weniger" }) < normal - 0.25)) throw new Error("Distanzschüsse weniger: aus 23 Metern nicht seltener geschossen");
+            if (!(schuss({ abschluss: "weitschuss" }) > normal + 0.15)) throw new Error("Früh abschließen nimmt die halbe Chance nicht");
+            if (!(schuss({ abschluss: "herausspielen" }) < normal - 0.15)) throw new Error("Herausspielen schießt trotzdem von außerhalb");
+            if (!(schuss({ mentality: "very_offensive" }) > normal && normal > schuss({ mentality: "very_defensive" }))) throw new Error("Mentalität ändert die Abschlussfreude nicht");
+
+            // 2. Flankenart: flach unter Kniehöhe, hoch für die Kopfballspieler
+            const flanker = d.teamPlayers("home").filter(p => p.pos !== "TW" && p.id !== schuetze.id)[0];
+            flanker.x = torX - dir * 14; flanker.y = 88;
+            schuetze.x = torX - dir * 8; schuetze.y = 50;
+            const scheitel = (art) => {
+                setze(heim, { flankenart: art });
+                const r = mitSaat(5, () => f.resolveCross(flanker, null, f.opponentsOf("home"), {}));
+                return r.physik?.bahn?.hoehe ?? null;
+            };
+            const flach = scheitel("flach"), hoch = scheitel("hoch");
+            if (!(flach !== null && flach < 1.5)) throw new Error(`Flache Flanke mit Scheitel ${flach} m`);
+            if (!(hoch !== null && hoch > 6)) throw new Error(`Hohe Flanke mit Scheitel ${hoch} m`);
+
+            // 3. Standards herausholen: in der gegnerischen Hälfte, nicht in der eigenen
+            setze(heim, { standards: "herausholen" });
+            if (!(f.standardsHolen(schuetze, "foul") > 1 && f.standardsHolen(schuetze, "ecke") > 1)) throw new Error("Standards herausholen wirkt nicht");
+            const hinten = d.teamPlayers("home").find(p => p.group === "def");
+            hinten.x = d.ownGoalX("home") + dir * 15;
+            if (f.standardsHolen(hinten, "foul") !== 1) throw new Error("Standards herausholen gilt in der eigenen Hälfte");
+            setze(heim, {});
+            if (f.standardsHolen(schuetze, "foul") !== 1) throw new Error("Ohne Anweisung werden Standards herausgeholt");
+
+            // 4. Abwurf-Tempo: Wie lange der Torwart den gefangenen Ball hält
+            const tw = d.teamPlayers("home").find(p => p.pos === "TW");
+            const halten = (art) => { setze(heim, { torwartVerteilung: art }); return mitSaat(3, () => mittel(30, () => { d.torwartHatBall(tw); return d._annahmeTimer; })); };
+            const schnell = halten("schnell"), ruhig = halten("ruhig"), mitte = halten("normal");
+            if (!(schnell < mitte * 0.6 && ruhig > mitte * 1.5)) throw new Error(`Abwurf-Tempo: schnell ${schnell.toFixed(2)}, normal ${mitte.toFixed(2)}, ruhig ${ruhig.toFixed(2)}`);
+            d._annahmeTimer = 0; d._torwartRuhig = null;
+
+            // 5. Tempo und Zeitspiel
+            setze(heim, { tempo: "fast" }); const hochT = d.tempoFaktor("home");
+            setze(heim, { tempo: "slow" }); const geduldig = d.tempoFaktor("home");
+            if (!(hochT < 1 && geduldig > 1)) throw new Error(`Tempo wirkt nicht auf die Annahme: hoch ${hochT}, geduldig ${geduldig}`);
+            const stand = [d.match.minute, live.homeScore, live.awayScore];
+            d.match.minute = 70; live.minute = 70; d.match.homeScore = 2; d.match.awayScore = 0;
+            setze(heim, { zeitspiel: "oft" }); const oft = [d.zeitspielFaktor("home"), d.zeitspielStandard("home")];
+            setze(heim, { zeitspiel: "nie" }); const nie = [d.zeitspielFaktor("home"), d.zeitspielStandard("home")];
+            [d.match.minute, d.match.homeScore, d.match.awayScore] = stand; live.minute = stand[0];
+            if (!(oft[0] > 1.3 && oft[1] > 1.5)) throw new Error(`Zeitspiel oft: am Ball ${oft[0]}, beim Standard ${oft[1]}`);
+            if (!(nie[0] < 1 && nie[1] < 1)) throw new Error(`Zeitspiel nie: am Ball ${nie[0]}, beim Standard ${nie[1]}`);
+
+            // 6. Abstöße: Der Torwart sucht nach der Einstellung kurz oder weit nach vorn
+            alle.forEach((p, i) => { p.x = alt[i][0]; p.y = alt[i][1]; });
+            const twSpieler = d.teamPlayers("home").filter(p => p.pos !== "TW");
+            const vorsprung = (art) => {
+                setze(heim, { torwartAbspiel: art });
+                const o = mitSaat(7, () => f.ratePassOptions(tw, twSpieler, f.opponentsOf("home"), heim.tactics, { phase: "buildup", pressure: 0, chainLength: 0 }));
+                const best = (filter) => Math.max(...o.filter(filter).map(x => x.score));
+                return best(x => x.forward > 30) - best(x => x.forward < 20);
+            };
+            const lang = vorsprung("lang"), kurz = vorsprung("kurz");
+            if (!(lang > kurz + 1)) throw new Error(`Abstöße: Der weite Ball nach vorn bei lang nur ${(lang - kurz).toFixed(2)} besser als bei kurz`);
+
+            // 7. Pressing: Im Aufbau des Gegners geht bei hohem Pressing einer mehr drauf
+            const iv = d.teamPlayers("away").find(p => p.group === "def");
+            iv.x = d.ownGoalX("away") + d.attackDir("away") * 92 * 0.15; iv.y = 40;
+            d.mode = "ambient"; d.possessionTeam = "away"; d.carrierId = iv.id; d.deadBall = null;
+            live.ball.x = iv.x; live.ball.y = iv.y;
+            d._laufUhr = 500; d._wechselUhr = 0;
+            const presser = (anw) => { setze(heim, anw); return [...d.selectPressingPlayers().values()].filter(m => m === "press").length; };
+            const mittelPress = presser({ pressing: "medium" }), hochPress = presser({ pressing: "high" });
+            if (!(hochPress >= 2 && hochPress > mittelPress)) throw new Error(`Pressing im Aufbau: hoch ${hochPress}, mittel ${mittelPress} Spieler auf dem Ball`);
+
+            // 8. Gegnerische Flanken: verhindern läuft den Flügel vor dem Strafraum an, zulassen nicht
+            const fluegel = d.teamPlayers("away").find(p => p.pos !== "TW" && p.id !== iv.id);
+            fluegel.x = d.ownGoalX("home") + dir * 20; fluegel.y = 90;
+            d.carrierId = fluegel.id; live.ball.x = fluegel.x; live.ball.y = fluegel.y;
+            const zulassen = presser({ pressing: "low", flankenVerhindern: "zulassen" });
+            const verhindern = presser({ pressing: "low", flankenVerhindern: "verhindern" });
+            if (!(zulassen === 0 && verhindern >= 1)) throw new Error(`Flanken: zulassen ${zulassen}, verhindern ${verhindern} Spieler auf dem Flügel`);
+
+            // 9. Zugriff: Wer am Mann ist, holt sich den Ball - wer hart einsteigt, öfter
+            const jaeger = d.teamPlayers("home").find(p => p.group === "mid") || d.teamPlayers("home").find(p => p.pos !== "TW");
+            jaeger.x = fluegel.x + 3; jaeger.y = fluegel.y - 1;
+            d._presser = { team: "home", ids: [jaeger.id], zugriff: true, pressend: [jaeger.id] };
+            const zugriffe = (anw) => { setze(heim, anw); return mitSaat(9, () => mittel(400, () => d.zugriffAmBall(fluegel) ? 1 : 0)); };
+            const hart = zugriffe({ zweikampf: "hart" }), vorsichtig = zugriffe({ zweikampf: "zurueckhaltend" });
+            if (!(hart > 0.02 && hart > vorsichtig)) throw new Error(`Zugriff: hart ${(hart * 100).toFixed(1)} %, zurückhaltend ${(vorsichtig * 100).toFixed(1)} %`);
+            jaeger.x = fluegel.x + 9;
+            if (zugriffe({}) > 0) throw new Error("Zugriff aus neun Einheiten Entfernung");
+
+            // 10. Der sichere Ball unter Druck nach der Taktik
+            const vorsicht = f.sicherheitsFaktor({ passing: "short", tempo: "slow", mentality: "defensive" }, { durchsPressing: -0.25 });
+            const risiko = f.sicherheitsFaktor({ passing: "direct", tempo: "fast", mentality: "offensive" }, { durchsPressing: 0.35 });
+            if (!(vorsicht > 1.3 && risiko < 0.5)) throw new Error(`Sicherer Ball: vorsichtig ${vorsicht.toFixed(2)}, riskant ${risiko.toFixed(2)}`);
+
+            // 11. Mentalität: Wie weit die Elf mit dem Ball aufrückt
+            const mittelfeld = d.teamPlayers("home").find(p => p.group === "mid");
+            const hoehe = (m) => { setze(heim, { mentality: m }); return (d.hoeheImVerbund(mittelfeld, 0.5, true) - d.ownGoalX("home")) * dir; };
+            if (!(hoehe("very_offensive") > hoehe("very_defensive") + 6)) throw new Error("Sehr offensiv rückt kaum weiter auf als sehr defensiv");
+        } finally {
+            alle.forEach((p, i) => { p.x = alt[i][0]; p.y = alt[i][1]; });
+            heim.tactics = T.normalisiere({});
+            d._taktikCache = {};
         }
     });
 
@@ -8872,14 +9021,24 @@ function runEngineTests() {
             WERTE.forEach(w => { if (typeof q[w] === "number") q[w] = Math.max(25, Math.min(99, q[w] + d)); });
             return q;
         });
+        // Beide mit derselben Taktik: Hier sollen die Werte entscheiden. Bochum
+        // spielt sonst Gegenpressing - direkt und schnell, und seit die Taktik
+        // wirkt, bringt so eine Elf weniger Pässe an
+        const taktik = ["fca", "boc"].map(id => state.clubs.find(c => c.id === id));
+        const alt = taktik.map(c => c.tactics);
+        taktik.forEach(c => { c.tactics = TacticsEngine.normalisiere({}); });
         const summe = { xg: [0, 0], schuesse: [0, 0], paesse: [0, 0] };
-        for (let i = 0; i < 3; i++) {
-            const { partie } = fmSpiel(state, "fca", "boc", "fm_werte" + i, { spieler });
-            [0, 1].forEach(j => {
-                summe.xg[j] += partie.stats.xG[j];
-                summe.schuesse[j] += partie.stats.shots[j];
-                summe.paesse[j] += partie.stats.passAccuracy[j];
-            });
+        try {
+            for (let i = 0; i < 3; i++) {
+                const { partie } = fmSpiel(state, "fca", "boc", "fm_werte" + i, { spieler });
+                [0, 1].forEach(j => {
+                    summe.xg[j] += partie.stats.xG[j];
+                    summe.schuesse[j] += partie.stats.shots[j];
+                    summe.paesse[j] += partie.stats.passAccuracy[j];
+                });
+            }
+        } finally {
+            taktik.forEach((c, i) => { c.tactics = alt[i]; });
         }
         if (!(summe.xg[1] > summe.xg[0] * 1.3)) throw new Error(`xG schwach ${summe.xg[0].toFixed(2)} - stark ${summe.xg[1].toFixed(2)}`);
         if (!(summe.schuesse[1] > summe.schuesse[0])) throw new Error(`Schüsse ${summe.schuesse.join(":")}`);

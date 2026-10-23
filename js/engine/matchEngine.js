@@ -217,7 +217,7 @@ const MATCH_TUNING = {
     // Fehlschuss und die kleinen Fouls ohne Karte (die Karten bleiben, wie
     // sie gegen die echten Ligen geeicht sind). Die Werte schreibt der Messlauf:
     // node eichung.js --schreiben
-    eichung2D: { tore: 1.06, szenen: 0.95, paraden: 0.51, ecken: 1.08, fouls: 1.33 },
+    eichung2D: { tore: 1.09, szenen: 0.89, paraden: 0.49, ecken: 1.34, fouls: 1.37 },
 
     // Zurufe von der Seitenlinie wirken zehn Minuten lang
     zurufDauer: 10,
@@ -5315,8 +5315,9 @@ class LiveMatch {
      * Eine Szene steht mindestens SZENE_MIN_MS, nach ihrem Ende läuft das
      * Bild SPULEN_NACHLAUF_MS nach. Ein Schnitt überspringt mindestens
      * SPRUNG_MIN Spielsekunden - was danach kommt, wird ein wenig später
-     * gezeigt, nie aber Torgefahr, Ecke oder Elfmeter (mussZeigen). Jeder
-     * Schnitt blendet ab wie der zum Anstoß (markiereSchnitt).
+     * gezeigt, nie aber Torgefahr, Ecke oder Elfmeter (mussZeigen), wohl
+     * aber ein Foul ohne Karte (istNebenszene). Jeder Schnitt blendet ab
+     * wie der zum Anstoß (markiereSchnitt).
      */
     static SZENE_MIN_MS = { hoehepunkte: 3000, schluessel: 2000 };
     static SPULEN_NACHLAUF_MS = { hoehepunkte: 1000, schluessel: 600 };
@@ -5326,9 +5327,10 @@ class LiveMatch {
         if (!d || this.modus !== "fm" || this.isFinished || this.isPaused || this.ohneBild || typeof d.istRuhig !== "function") return false;
         const jetzt = () => (this.minute || 0) * 60 + (this.seconds || 0);
         // Was nie übersprungen wird, auch nicht für einen längeren Schnitt
-        const mussZeigen = () => d.mode !== "ambient" || !!d.drama
-            || (d.deadBall && !d.istRuhig(stufe))
-            || (typeof d.torGefahr === "function" && d.torGefahr() >= 0.3);
+        const mussZeigen = () => !(typeof d.istNebenszene === "function" && d.istNebenszene())
+            && (d.mode !== "ambient" || !!d.drama
+                || (d.deadBall && !d.istRuhig(stufe))
+                || (typeof d.torGefahr === "function" && d.torGefahr() >= 0.3));
         if (!this.spult) {
             const gezeigt = this._gezeigtMs || 0;
             if (!d.istRuhig(stufe)) { this._ruhigSeitMs = null; return false; }

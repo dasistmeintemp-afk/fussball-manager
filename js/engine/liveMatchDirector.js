@@ -417,9 +417,36 @@ class LiveMatchDirector {
      * Luft in der Deckung (deckungsZiel): Bis ballNah Einheiten vom Ball deckt
      * einer eng, darüber je Einheit jeEinheit mehr Abstand. Steht der Gegner
      * beim Aufbau noch hinter der eigenen Pressinglinie, hält er mindestens
-     * aufbau Einheiten Abstand und stellt den Raum zu.
+     * aufbau Einheiten Abstand und stellt den Raum zu - mannorientiert nur
+     * aufbauMann und mit halber Luft je Einheit.
      */
-    static DECKUNG_LUFT = { ballNah: 15, jeEinheit: 0.12, aufbau: 7 };
+    static DECKUNG_LUFT = { ballNah: 15, jeEinheit: 0.12, aufbau: 7, aufbauMann: 4.5 };
+
+    /**
+     * Abwurf-Tempo (torwartHatBall): So lange hält der Torwart den
+     * gefangenen Ball, in Laufzeit-Sekunden von bis. Schnell bringt ihn für
+     * den Konter sofort ins Spiel, ruhig wartet, bis die Mannschaft steht.
+     */
+    static TORWART_HALTEN = { schnell: [0.3, 0.7], normal: [1.2, 2.2], ruhig: [2.6, 4] };
+    /** Abwurf-Tempo, wenn der Torwart den Ball am Fuß annimmt (setzeAnnahme): Faktor je torwartSchnell */
+    static TORWART_FUSS = { 1: 0.6, "-1": 1.4 };
+
+    /** Kreative Freiheit (formMitBall): wie weit ein freier Spieler aus seiner Bahn wandert, je halbe Stufe, und wie langsam */
+    static FREIHEIT = { quer: 14, laengs: 7, periode: 6 };
+
+    /** Zurückziehen nach Ballverlust: so lange (Laufzeit-Sekunden) geht keiner auf den Ball, außer vor dem eigenen Tor */
+    static RUECKZUG_ZEIT = 3;
+
+    /** Tempo der Taktik: Faktor auf die Annahme (tempoFaktor) */
+    static TEMPO_ANNAHME = { fast: 0.7, normal: 1, slow: 1.4 };
+
+    /**
+     * Zeitspiel bei Führung ab der 60. Minute: Faktor auf die Zeit am Ball
+     * und auf die Zeit bis zur Ausführung eines Standards - "länger bis zum
+     * Einwurf", wie es die Anweisung verspricht. Vorher wirkte sie nur am
+     * Ball, und dort kaum: Gemessen vier Prozent länger.
+     */
+    static ZEITSPIEL = { amBall: 1.6, standard: 1.8, nie: 0.8 };
     static STEIL_MOMENT = 1.6;
     static VORAUSAHNEN = 0.5;
 
@@ -941,6 +968,17 @@ class LiveMatchDirector {
         if (!team || !ball) return true;
         if (schluessel) return this.torGefahr() < LiveMatchDirector.SCHLUESSEL_GEFAHR;
         return vor(team, ball.x) < LiveMatchDirector.RUHIG_BIS;
+    }
+
+    /**
+     * Ein Foul ohne Karte, über das ein Schnitt hinweglaufen darf. Ob der
+     * Freistoß danach gezeigt wird, entscheidet istRuhig. Seit Zugriff und
+     * Zweikampfhärte wirken, wird öfter gefoult, und jeder Pfiff im
+     * Mittelfeld beendete den Schnitt nach ein, zwei Spielsekunden.
+     */
+    istNebenszene() {
+        const events = this.mode === "highlight" && !this.drama ? this.scene?.events : null;
+        return !!events && events.length > 0 && events.every(e => e.type === "foul" && e.outcome === "freekick");
     }
 
     /**
@@ -2209,6 +2247,7 @@ class LiveMatchDirector {
             this.startAmbient(verteidigt, { pickCarrier: false });
             this.possessionTeam = verteidigt;
             this.setCarrier(keeper);
+            this.torwartHatBall(keeper);
             this.setBallTravel(keeper.x, keeper.y, 0.3 * this.getSpeedScale() + this.bildschirmZeit(0.1), "pass");
             this.match.lastCommentary =
                 `${this.match.minute}' - ${keeper.name || "Der Torwart"} hat den Ball sicher und eröffnet neu.`;
@@ -2511,6 +2550,7 @@ class LiveMatchDirector {
 
         this._passAbsicht = null;
         this._amBallSeit = 0;
+        this._torwartRuhig = null;
         if (player.team === this.possessionTeam) {
             this.possessionChain = (this.possessionChain || 0) + 1;
         } else {
@@ -2711,6 +2751,27 @@ class LiveMatchDirector {
         this.ambientInterval = this.flow.getActionInterval(carrier.team, action.type) * 0.18;
     }
 
+    /** Der nächste Pressingspieler in Reichweite des Ballführenden - und ob er den Ball holt (MatchFlowEngine.zugriff) */
+    zugriffAmBall(carrier) {
+        if (!this.fm || typeof this.flow.zugriff !== "function" || carrier.pos === "TW") return null;
+        const presser = this._presser;
+        if (!presser || presser.team === carrier.team || !presser.pressend || !presser.pressend.length) return null;
+        const reichweite = (this.flow.constructor.ZUGRIFF || {}).abstand || 5;
+        const nah = presser.pressend.map(id => this.getPlayer2D(id))
+            .filter(p => p && Math.hypot(p.x - carrier.x, p.y - carrier.y) < reichweite)
+            .sort((a, b) => Math.hypot(a.x - carrier.x, a.y - carrier.y) - Math.hypot(b.x - carrier.x, b.y - carrier.y))[0];
+        if (!nah) return null;
+        // Wie entschlossen die Elf presst: anlaufen, hoch im Aufbau, Gegenpressing
+        const z = this.flow.constructor.ZUGRIFF || {};
+        const w = this.taktik(nah.team).w;
+        const angreifer = carrier.team;
+        const fortschritt = (carrier.x - this.ownGoalX(angreifer)) * this.attackDir(angreifer) / 92;
+        const hoch = (typeof w.pressingLinie === "number" ? w.pressingLinie : 0.33) <= 0.05 && fortschritt < 0.4;
+        const gegen = (this._laufUhr || 0) - (this._wechselUhr ?? -99) < (w.gegenpressing || 0) && w.gegenpressing > 3;
+        const intensitaet = ((w.presser || 2) - 2) * (z.anlaufen || 0) + (hoch ? z.hoch || 0 : 0) + (gegen ? z.gegenpressing || 0 : 0);
+        return this.flow.zugriff(carrier, nah, intensitaet);
+    }
+
     /**
      * Stufe 2: Der Ballfuehrende schaut im Takt, was geht (siehe
      * ENTSCHEID_TAKT). Nur mit Ballphysik - ohne sie wird der Ausgang
@@ -2727,11 +2788,22 @@ class LiveMatchDirector {
         if (this._taktUhr < LiveMatchDirector.ENTSCHEID_TAKT) return;
         this._taktUhr = 0;
 
-        const lage = this.flow.lageAmBall(carrier, { chainLength: this.possessionChain || 0, zeitAmBall: this._amBallSeit });
+        // Ein Pressingspieler ist am Mann und geht dazwischen
+        const zugriff = this.zugriffAmBall(carrier);
+        if (zugriff) {
+            this.flowStats.zugriffe = (this.flowStats.zugriffe || 0) + 1;
+            this.applyFlowAction(zugriff);
+            return;
+        }
+
+        const lage = this.flow.lageAmBall(carrier, {
+            chainLength: this.possessionChain || 0, zeitAmBall: this._amBallSeit,
+            takt: this.tempoFaktor(carrier.team) * this.zeitspielFaktor(carrier.team)
+        });
         if (!lage) return;
         this._passAbsicht = lage.absicht ? { ...lage.absicht, team: carrier.team, vonId: carrier.id } : null;
         if (lage.kopfHoch) this.starteTiefenlaeufe(carrier);
-        if (lage.gelegenheit) {
+        if (lage.gelegenheit && this._torwartRuhig !== carrier.id) {
             // Der Moment ist da: jetzt spielen, nicht erst nach der Annahme
             this._annahmeTimer = 0;
             if (this.carryTarget && this.carryTarget.id === carrier.id) this.carryTarget = null;
@@ -3018,8 +3090,24 @@ class LiveMatchDirector {
         const [min, max] = LiveMatchDirector.ANNAHME;
         // Die Pause ist Bildschirmzeit und gehoert deshalb durch die
         // Abspielgeschwindigkeit geteilt - im Vorlauf nimmt man schneller an.
+        // Der Torwart am Fuß spielt nach dem Abwurf-Tempo weiter, nicht nur nach dem Fangen
+        const tw = this.getPlayer2D(this.carrierId)?.pos === "TW"
+            ? (LiveMatchDirector.TORWART_FUSS[this.taktik(this.possessionTeam).w.torwartSchnell] || 1) : 1;
         this._annahmeTimer = (min + Math.random() * (max - min)) / this.getAbspielTempo()
-            * this.zeitspielFaktor(this.possessionTeam);
+            * this.zeitspielFaktor(this.possessionTeam) * this.tempoFaktor(this.possessionTeam) * tw;
+    }
+
+    /**
+     * Tempo der Taktik: Wie lange der Spieler den Ball annimmt und sich
+     * umschaut, bevor er weiterspielt (TEMPO_ANNAHME). Seit die Pause in der
+     * Annahme steckt und nicht mehr im Wartetakt, wirkte das Tempo nur noch
+     * auf den kleinen Rest: Gemessen blieb der Ball bei hohem Tempo genauso
+     * lange am Fuß wie bei normalem.
+     */
+    tempoFaktor(team) {
+        if (!team) return 1;
+        const tempo = (this.flow?.getTactics(team) || {}).tempo;
+        return LiveMatchDirector.TEMPO_ANNAHME[tempo] || 1;
     }
 
     /**
@@ -3034,7 +3122,28 @@ class LiveMatchDirector {
         const m = this.match;
         const fuehrung = team === "home" ? m.homeScore - m.awayScore : m.awayScore - m.homeScore;
         if (fuehrung <= 0 || (m.minute || 0) < 60) return 1;
-        return zeitspiel > 0 ? 1.45 : 0.9;
+        return zeitspiel > 0 ? LiveMatchDirector.ZEITSPIEL.amBall : LiveMatchDirector.ZEITSPIEL.nie;
+    }
+
+    /**
+     * Der Torwart hat den Ball in der Hand: Jetzt gilt das Abwurf-Tempo der
+     * Taktik. Vorher eröffnete er immer sofort - die Anweisung wirkte nicht.
+     */
+    torwartHatBall(keeper) {
+        if (!keeper) return;
+        const schnell = this.taktik(keeper.team).w.torwartSchnell || 0;
+        const art = schnell > 0 ? "schnell" : (schnell < 0 ? "ruhig" : "normal");
+        const [von, bis] = LiveMatchDirector.TORWART_HALTEN[art];
+        this._annahmeTimer = (von + Math.random() * (bis - von)) / this.getAbspielTempo() * this.zeitspielFaktor(keeper.team);
+        // Wer sich Zeit lässt, wirft auch dem freien Läufer nicht gleich zu
+        this._torwartRuhig = art === "ruhig" ? keeper.id : null;
+    }
+
+    /** Zeitspiel beim ruhenden Ball: Wer führt und auf Zeit spielt, lässt sich mit dem Standard Zeit */
+    zeitspielStandard(team) {
+        const f = this.zeitspielFaktor(team);
+        if (f === 1) return 1;
+        return f > 1 ? LiveMatchDirector.ZEITSPIEL.standard : f;
     }
 
     claimLooseBall(point) {
@@ -3431,6 +3540,7 @@ class LiveMatchDirector {
                 if (gk) {
                     this.possessionTeam = gk.team;
                     this.setCarrier(gk);
+                    this.torwartHatBall(gk);
                     this.match.lastCommentary = this.fmText("flanke_gefangen", { torwart: gk.name || "" });
                     return;
                 }
@@ -3614,6 +3724,7 @@ class LiveMatchDirector {
             if (keeper && f.festgehalten) {
                 this.possessionTeam = verteidigt;
                 this.setCarrier(keeper);
+                this.torwartHatBall(keeper);
                 this.setBallTravel(keeper.x, keeper.y, 0.3 * scale + this.bildschirmZeit(0.1), "pass");
                 this.match.lastCommentary = `${this.match.minute}' - ${keeper.name || "Der Torwart"} hat den Ball sicher.`;
                 return true;
@@ -4032,7 +4143,7 @@ class LiveMatchDirector {
         this.deadBallTimer = Math.max(grund, Math.min(
             this.bildschirmZeit(3.2),
             wegZumBall / laufTempo + this.bildschirmZeit(0.35)
-        ));
+        )) * this.zeitspielStandard(team);
         // Gepfiffen wird zum Freistoß und zum Elfmeter, nicht zu Einwurf, Ecke oder Abstoß
         if (kind === "freekick" || kind === "penalty") this.cueSound("pfiff_kurz");
         this.match.setPiece = { kind, team, x, y };
@@ -4211,6 +4322,16 @@ class LiveMatchDirector {
                     Math.max(0.3, Math.min(0.9, dist / 75)) * this.getSpeedScale() + this.bildschirmZeit(0.15), "pass");
                 this.setCarrier(receiver);
             }
+            return;
+        }
+
+        if (info.kind === "goalkick" && this.fm && this.flow && taker.pos === "TW") {
+            // Der Abstoß ist ein Zuspiel des Torwarts wie jedes andere: kurz
+            // oder lang nach der Taktik (Abstöße, Torwart spielt auf,
+            // Aufbaustrategie), mit echter Flugbahn und offenem Ausgang.
+            // Vorher ging er pauschal zu 35 Prozent lang - und kam immer an.
+            this.possessionTeam = info.team;
+            this.ambientTimer = this.ambientInterval * this.getSpeedScale() * this.AMBIENT_TAKT;
             return;
         }
 
@@ -5227,7 +5348,17 @@ class LiveMatchDirector {
         // Vorher wechselte die Rolle fast mit jedem Bild zwischen zwei
         // gleich weit entfernten Spielern - beide rannten abwechselnd los und
         // zurueck.
-        const zugriff = this.presstImRaum(defendingTeam, ball);
+        // Gegnerische Flanken verhindern: Der Flügel wird vor dem eigenen
+        // Strafraum sofort angelaufen, auch unterhalb der Pressinglinie.
+        // Zulassen: Er darf flanken, die Elf verteidigt den Strafraum.
+        const flankenRaum = this.imFlankenRaum(defendingTeam, ball);
+        const flankenWehr = flankenRaum ? (w.flankenVerhindern || 0) : 0;
+        // Zurückziehen nach Ballverlust: Erst die Form, dann der Ball - in den
+        // ersten Sekunden geht keiner drauf. Vorher eroberte eine Elf, die sich
+        // zurückziehen sollte, den Ball gemessen genauso schnell zurück.
+        const seitVerlust = (this._laufUhr || 0) - (this._wechselUhr ?? -99);
+        const rueckzug = w.gegenpressing === 0 && seitVerlust < LiveMatchDirector.RUECKZUG_ZEIT && !this.imBlockVor(defendingTeam, ball);
+        const zugriff = !rueckzug && (flankenWehr > 0 || (flankenWehr >= 0 && this.presstImRaum(defendingTeam, ball)));
         // Nach dem Ballverlust geht beim Gegenpressing einer mehr drauf
         const seitWechsel = (this._laufUhr || 0) - (this._wechselUhr ?? -99);
         // Am eigenen Strafraum greift auch ein tiefer Block zu: "Seltener
@@ -5243,14 +5374,22 @@ class LiveMatchDirector {
         // vier Meter entfernt - kein Spieler hatte Zeit, den Ball laufen zu
         // lassen, und Passfolgen rissen nach zwei Stationen ab.
         const grundzahl = Math.max(1, (w.presser || 2) - 1);
-        const anzahl = zugriff ? Math.min(4, Math.max(imBlock ? 2 : 1, grundzahl + (seitWechsel < (w.gegenpressing || 0) && w.gegenpressing > 3 ? 1 : 0))) : 1;
+        // Hohes Pressing greift den Aufbau mit einem Mann mehr an - sonst
+        // unterschied sich "hoch" von "mittel" nur durch den einen Spieler,
+        // der im ersten Drittel anläuft statt zuzustellen, und gemessen wurde
+        // der Ball danach nicht höher erobert
+        const imAufbau = (ball.x - this.ownGoalX(angreifer)) * this.attackDir(angreifer) / 92 < 0.4;
+        const hochPress = (typeof w.pressingLinie === "number" ? w.pressingLinie : 0.33) <= 0.05 && imAufbau ? 1 : 0;
+        const flankenPress = flankenWehr > 0 ? 1 : 0;
+        const gegenPress = seitWechsel < (w.gegenpressing || 0) && w.gegenpressing > 3 ? 1 : 0;
+        const anzahl = zugriff ? Math.min(4, Math.max(imBlock ? 2 : 1, grundzahl + hochPress + gegenPress, flankenPress)) : 1;
         const bisher = (this._presser && this._presser.team === defendingTeam) ? this._presser.ids : [];
         const gewaehlt = sorted.slice(0, Math.max(4, anzahl + 1))
             .map(p => ({ id: p.id, wert: abstand(p) - (bisher.includes(p.id) ? 4 : 0) }))
             .sort((a, b) => a.wert - b.wert)
             .slice(0, Math.max(2, anzahl))
             .map(e => e.id);
-        this._presser = { team: defendingTeam, ids: gewaehlt, zugriff, imBlock };
+        this._presser = { team: defendingTeam, ids: gewaehlt, zugriff, imBlock, pressend: zugriff ? gewaehlt.slice(0, anzahl) : [] };
 
         const modus = new Map();
         if (zugriff) {
@@ -5281,6 +5420,19 @@ class LiveMatchDirector {
      * die Linie. Nach einem Ballverlust wird - je nach Anweisung - ueberall
      * gegengepresst.
      */
+    /** Liegt der Ball schon im letzten Drittel vor dem Tor dieser (verteidigenden) Mannschaft? */
+    imBlockVor(team, ball) {
+        const angreifer = team === "home" ? "away" : "home";
+        return (ball.x - this.ownGoalX(angreifer)) * this.attackDir(angreifer) / 92 > 0.66;
+    }
+
+    /** Liegt der Ball am Flügel vor dem Strafraum dieser (verteidigenden) Mannschaft? */
+    imFlankenRaum(team, ball) {
+        const angreifer = team === "home" ? "away" : "home";
+        const fortschritt = (ball.x - this.ownGoalX(angreifer)) * this.attackDir(angreifer) / 92;
+        return this.mode === "ambient" && fortschritt > 0.62 && Math.abs(ball.y - 50) > 22;
+    }
+
     presstImRaum(team, ball) {
         if (this.mode !== "ambient") return true;
         const w = this.taktik(team).w;
@@ -5464,8 +5616,8 @@ class LiveMatchDirector {
             // laesst dem Gegner nur den Weg zur Seitenlinie - und umgekehrt.
             const innen = Math.sign(50 - ball.y) || 1;
             let seitlich = (p.seed % 1) * 3 - 1.5;
-            if (wT.falle === "aussen") seitlich = innen * 2.8;
-            else if (wT.falle === "innen") seitlich = -innen * 2.8;
+            if (wT.falle === "aussen") seitlich = innen * 3.2;
+            else if (wT.falle === "innen") seitlich = -innen * 3.5;
             ty = ball.y + seitlich;
             urgency = (this._presser?.imBlock ? Math.max(1.85, wT.pressTempo || 1.85) : (wT.pressTempo || 1.85)) * this.einsatzFaktor(p);
             sprinting = true;
@@ -5634,6 +5786,17 @@ class LiveMatchDirector {
             y += (fokus === "left" ? 1 : -1) * this.linksVorzeichen(p.team) * 5.5;
         }
 
+        // Kreative Freiheit: Wer frei spielen darf, verlässt seine Bahn auch
+        // mal und sucht sich den Raum selbst - langsam, nicht im Zickzack.
+        // Vorher wirkte die Anweisung nur auf den kleinen Radius beim
+        // Freilaufen, gemessen standen die Spieler damit zwei Prozent freier.
+        const freiheit = (this.taktik(p.team).w.freiheit || 1) - 1;
+        if (freiheit > 0 && plan.bahn !== "linie" && p.group !== "def") {
+            const welle = (this._laufUhr || 0) / LiveMatchDirector.FREIHEIT.periode + (p.seed || 0) * 7;
+            y += Math.sin(welle) * LiveMatchDirector.FREIHEIT.quer * freiheit;
+            x += Math.cos(welle * 0.7) * dir * LiveMatchDirector.FREIHEIT.laengs * freiheit;
+        }
+
         // Wer vorn steht, wartet auf der Abseitslinie, solange der Ball noch
         // dahinter ist - den Lauf in die Tiefe startet er von dort
         if (p.group !== "def" || plan.bahn === "linie") {
@@ -5710,8 +5873,11 @@ class LiveMatchDirector {
 
         // Die Bahnen: Breite im Angriff schiebt die Linie hinaus oder herein.
         // Eng spielt niemand an der Seitenlinie.
-        const LINIE = 44 + Math.max(-8, Math.min(2, w.breite || 0));
-        const HALBRAUM = 21 + Math.min(0, (w.breite || 0) * 0.4);
+        // Breit: bis an die Linie und weiter auseinander in den Halbräumen.
+        // Vorher nahm "breit" nur zwei Einheiten an der Linie mit, gemessen
+        // stand die Elf damit zwei Prozent breiter.
+        const LINIE = 44 + Math.max(-8, Math.min(3, w.breite || 0));
+        const HALBRAUM = 21 + (w.breite || 0) * ((w.breite || 0) > 0 ? 1 : 0.4);
         const bahnVon = (y, q, t) => {
             const a = Math.abs(y - 50);
             if (a > 36) return "linie";
@@ -5782,8 +5948,10 @@ class LiveMatchDirector {
                 const q = will[0];
                 const r = rolle(q);
                 let hoch;
+                // Hinterlaufen ohne Flügelspieler davor (Raute, Dreierkette): Er geht auf der Ballseite bis ganz nach vorn
+                const vorbei = anweisung === "hinterlaufen" && seite === ballSeite && !aufbau;
                 if (typeof r.hoehe === "number") hoch = hoeheAus(q, r.hoehe);
-                else hoch = q.group === "def" ? (aufbau ? 0.35 : 0.78) : Math.max(tiefe(q), aufbau ? tiefe(q) : 0.85);
+                else hoch = q.group === "def" ? (aufbau ? 0.35 : (vorbei ? 0.95 : 0.78)) : Math.max(tiefe(q), aufbau ? tiefe(q) : 0.85);
                 rollen.set(q.id, { y: linie, tiefe: hoch, bahn: "linie", hinterlaeuft: q.group === "def" && !aufbau && seite === ballSeite });
                 return;
             }
@@ -5807,9 +5975,12 @@ class LiveMatchDirector {
                 rollen.set(vorn.id, { y: linie, tiefe: vornHoch, bahn: "linie" });
             } else if (hintenSchiene || (seite === ballSeite && b > ueberlappen)) {
                 // Im letzten Drittel auf der Ballseite hinterlaeuft der
-                // Aussenverteidiger, der Fluegelspieler zieht nach innen
-                rollen.set(hinten.id, { y: linie, tiefe: hintenSchiene ? hoeheAus(hinten, 0.85) : 0.85, bahn: "linie", hinterlaeuft: true });
-                rollen.set(vorn.id, { y: halbraum + lehnen * 0.5, tiefe: Math.max(vornHoch, 0.92), bahn: "halbraum" });
+                // Aussenverteidiger, der Fluegelspieler zieht nach innen. Mit
+                // der Anweisung "Hinterlaufen" geht er bis vor den Flügel -
+                // vorher blieb er auch dann gemessen fünfzehn Einheiten dahinter.
+                const vorbei = anweisung === "hinterlaufen" && !hintenSchiene;
+                rollen.set(hinten.id, { y: linie, tiefe: hintenSchiene ? hoeheAus(hinten, 0.85) : (vorbei ? 0.97 : 0.85), bahn: "linie", hinterlaeuft: true });
+                rollen.set(vorn.id, { y: halbraum + lehnen * 0.5, tiefe: vorbei ? Math.max(tiefe(vorn), 0.84) : Math.max(vornHoch, 0.92), bahn: "halbraum" });
             } else if (seite === ballSeite) {
                 rollen.set(hinten.id, { y: 50 + seite * 33, tiefe: 0.5, bahn: "halbraum" });
                 rollen.set(vorn.id, { y: linie, tiefe: vornHoch, bahn: "linie" });
@@ -5908,13 +6079,15 @@ class LiveMatchDirector {
         const ballAbstand = Math.min(1, Math.abs(gesehen.y - basisY) / 45);
         // Die Aussenspieler bleiben auch im Block etwas breiter: Nach dem
         // Ballgewinn ist ihr Weg an die Linie sonst zu weit
-        let kompakt = (breitRolle ? 0.55 : 0.42) - ballAbstand * 0.05 + (w.kompakt || 0);
+        // Die Breite des Blocks doppelt gewichtet: Mit dem Wert der Taktik
+        // allein stand ein enger Block gemessen nur fünf Prozent schmaler
+        let kompakt = (breitRolle ? 0.55 : 0.42) - ballAbstand * 0.05 + (w.kompakt || 0) * 2;
         // Pressingfalle: Wer nach aussen lenkt, macht das Zentrum zu und
         // schiebt mit der ganzen Elf auf die Seite; wer nach innen lenkt,
         // steht eng und wartet in der Mitte.
         let schieben = 0.5;
-        if (w.falle === "aussen") { schieben = 0.62; kompakt -= 0.03; }
-        else if (w.falle === "innen") { schieben = 0.4; kompakt -= 0.07; }
+        if (w.falle === "aussen") { schieben = 0.66; kompakt -= 0.03; }
+        else if (w.falle === "innen") { schieben = 0.34; kompakt -= 0.1; }
         if (r.schmal) kompakt -= r.schmal / 45;
         // Flanken zulassen: Die Aussenverteidiger ruecken ein, der Strafraum ist dicht
         if ((w.flankenVerhindern || 0) < 0 && p.group === "def" && breitRolle) kompakt -= 0.1;
@@ -5994,7 +6167,9 @@ class LiveMatchDirector {
         const taktik = (p.team === "home" ? this.match.homeClub?.tactics : this.match.awayClub?.tactics) || {};
 
         const linie = taktik.defensiveLine === "high" ? 1 : (taktik.defensiveLine === "deep" ? -1 : 0);
-        const mentalitaet = { very_offensive: 0.04, offensive: 0.02, defensive: -0.03, very_defensive: -0.06 }[taktik.mentality] || 0;
+        // Wie weit die Elf aufrückt: Mit 0.04 bis -0.06 stand eine sehr
+        // offensive Mannschaft gemessen kaum höher als eine ausgeglichene
+        const mentalitaet = { very_offensive: 0.08, offensive: 0.04, defensive: -0.04, very_defensive: -0.08 }[taktik.mentality] || 0;
 
         let hinten, laenge;
         if (mitBall) {
@@ -6014,10 +6189,13 @@ class LiveMatchDirector {
             // Tief steht die Kette etwas weiter hinten, nicht doppelt so weit -
             // mit 0.07 liess eine tiefe Linie gemessen 2.96 xG gegen Bayern
             // zu statt 1.84 (24 Spiele), mit 0.04 und der Strafraumgrenze 2.21
+            // Mit 0.03 und 0.015 stand eine herausrückende Kette gemessen genauso
+            // hoch wie eine ausgewogene, eine fallen gelassene fünf Prozent tiefer
             hinten = 0.04 + 0.42 * b + linie * (linie < 0 ? 0.04 : 0.07) + mentalitaet * 0.5 + falle
-                + verhalten * (b > 0.45 ? 0.03 : 0.015);
-            // Die Kette steht hinter dem Ball, nicht auf seiner Hoehe
-            hinten = Math.min(hinten, b - (verhalten < 0 ? 0.1 : 0.06));
+                + verhalten * (b > 0.45 ? 0.06 : 0.035);
+            // Die Kette steht hinter dem Ball, nicht auf seiner Hoehe - wer
+            // herausrückt, dicht dahinter, wer sich fallen lässt, mit Abstand
+            hinten = Math.min(hinten, b - (verhalten < 0 ? 0.13 : (verhalten > 0 ? 0.045 : 0.06)));
             // Tief heisst frueh zurueckweichen - nicht im eigenen Fuenfer
             // stehen. Solange der Ball vor dem Strafraum ist, haelt die Kette
             // die Strafraumgrenze. Vorher verteidigte eine tiefe Kette bei
@@ -6120,13 +6298,14 @@ class LiveMatchDirector {
         // jeder Entscheidung der nächste Gegner im Mittel vier Meter entfernt,
         // auch im eigenen Drittel. Ruhiger Aufbau und Passfolgen kamen so kaum
         // zustande.
+        // Mannorientiert bleibt er auch weiter weg vom Ball näher dran
         const d = LiveMatchDirector.DECKUNG_LUFT;
         const zumBall = Math.hypot(mark.x - ball.x, mark.y - ball.y);
-        eng += Math.max(0, zumBall - d.ballNah) * d.jeEinheit;
+        eng += Math.max(0, zumBall - d.ballNah) * d.jeEinheit * (mannorientiert ? 0.5 : 1);
         const angreifer = p.team === "home" ? "away" : "home";
         const imAufbau = (mark.x - this.ownGoalX(angreifer)) * this.attackDir(angreifer) / 92 < (typeof w.pressingLinie === "number" ? w.pressingLinie : 0.33);
         const gegenpressing = (this._laufUhr || 0) - (this._wechselUhr ?? -99) < (w.gegenpressing ?? 2.2);
-        if (imAufbau && !gegenpressing && w.deckung !== "mann") eng = Math.max(eng, d.aufbau);
+        if (imAufbau && !gegenpressing && w.deckung !== "mann") eng = Math.max(eng, mannorientiert ? d.aufbauMann : d.aufbau);
         return {
             x: tx + (mark.x - dir * eng - tx) * zugriff,
             y: ty + (mark.y + (p.seed % 1) * 2 - 1 - ty) * zugriff,
@@ -6229,6 +6408,17 @@ class LiveMatchDirector {
         if (info.kind === "goalkick") {
             if (attacking) {
                 return { x: p.baseX + dir * 4, y: p.baseY + (p.baseY < 50 ? -5 : 5), urgency: 1.1 };
+            }
+            // Kurze Abstöße verhindern: Die Angreifer stellen die
+            // Innenverteidiger an der Strafraumgrenze zu, das Mittelfeld rückt nach
+            if (this.taktik(p.team).w.abstossStoeren && p.group !== "def") {
+                if (p.group === "att") {
+                    const iv = this.teamPlayers(info.team).filter(q => q.group === "def")
+                        .sort((a, b) => Math.abs(a.y - p.baseY) - Math.abs(b.y - p.baseY))[0];
+                    const y = iv ? iv.y + (50 - iv.y) * 0.15 : Math.max(25, Math.min(75, p.baseY));
+                    return { x: this.ownGoalX(info.team) + dir * 18, y, urgency: 1.5 };
+                }
+                return { x: p.baseX - dir * 12, y: p.baseY, urgency: 1.3 };
             }
             return { x: p.baseX - dir * 6, y: p.baseY, urgency: 1.1 };
         }

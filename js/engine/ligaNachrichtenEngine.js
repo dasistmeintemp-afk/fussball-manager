@@ -241,8 +241,29 @@ const LigaNachrichtenEngine = {
             s.gemeldeteWechsel = [...(s.gemeldeteWechsel || []), ...wechsel.map(w => `${w.clubId}:${w.neu}`)].slice(-20);
         }
 
-        s.letzteRundschau = { saison, spieltag, tag: state.currentDayIndex || 0 };
-        this._post(state, `📰 Rundschau ${spieltag}. Spieltag: ${abstand > 0 ? `${vereinNach.get(erster.clubId)?.name || ""} vorn` : "Gleichstand oben"}`, zeilen.join("\n"));
+        // Die Schlagzeile sagt, was der Spieltag gebracht hat. Vorher hieß es
+        // bei gleichen Punkten immer "Gleichstand oben", auch wenn die
+        // Tordifferenz längst einen Spitzenreiter hatte, und sonst Woche für
+        // Woche "München vorn".
+        const fuehrer = vereinNach.get(erster.clubId)?.name || "";
+        const tordiff = (r) => (r.goalsFor || 0) - (r.goalsAgainst || 0);
+        const letzte = s.letzteRundschau && s.letzteRundschau.saison === saison ? s.letzteRundschau : null;
+        const punkte = (n) => `${n} Punkt${n === 1 ? "" : "e"}`;
+        const spielDesFuehrers = spiele.find(m => m.homeClubId === erster.clubId || m.awayClubId === erster.clubId);
+        const patzer = spielDesFuehrers && (spielDesFuehrers.homeClubId === erster.clubId
+            ? spielDesFuehrers.homeGoals <= spielDesFuehrers.awayGoals
+            : spielDesFuehrers.awayGoals <= spielDesFuehrers.homeGoals);
+        const kantersieg = hoch && Math.abs(hoch.homeGoals - hoch.awayGoals) >= 4
+            ? (hoch.homeGoals > hoch.awayGoals ? hoch.homeClubId : hoch.awayClubId) : null;
+        const schlagzeile = abstand === 0 && tordiff(erster) === tordiff(zweiter) ? "Gleichstand an der Spitze"
+            : letzte?.fuehrer && letzte.fuehrer !== erster.clubId ? `${fuehrer} übernimmt die Spitze`
+                : abstand === 0 ? `${fuehrer} vorn nach Tordifferenz`
+                    : patzer && typeof letzte?.abstand === "number" && abstand < letzte.abstand ? `${fuehrer} patzt, der Vorsprung schrumpft auf ${punkte(abstand)}`
+                        : typeof letzte?.abstand === "number" && abstand > letzte.abstand && abstand >= 5 ? `${fuehrer} baut den Vorsprung auf ${punkte(abstand)} aus`
+                            : kantersieg ? `Kantersieg für ${vereinNach.get(kantersieg)?.name || ""}`
+                                : `${fuehrer} bleibt vorn`;
+        s.letzteRundschau = { saison, spieltag, tag: state.currentDayIndex || 0, fuehrer: erster.clubId, abstand };
+        this._post(state, `📰 Rundschau ${spieltag}. Spieltag: ${schlagzeile}`, zeilen.join("\n"));
         return zeilen;
     },
 

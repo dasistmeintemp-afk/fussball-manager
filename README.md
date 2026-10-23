@@ -215,6 +215,7 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Nachrichten aus der Liga (`LigaNachrichtenEngine`):** Die Sportpresse berichtet über die eigene Liga.
   - **Saisonvorschau:** Zum Saisonstart nennt sie Favoriten, Geheimtipp (der Kader ist besser als sein Ruf), Abstiegskandidaten und den Platz, auf dem sie den eigenen Verein sieht. Sie rechnet mit drei Vierteln Kaderstärke und einem Viertel Ansehen, wie die Medienprognose.
   - **Rundschau nach jedem Spieltag:** Sie bringt die Spitze und den Abstand, das Ergebnis des Spieltags und Serien (fünf Siege oder fünf Spiele ohne Sieg). Dazu kommen die Torjäger sowie Transfers und Trainerwechsel seit der letzten Ausgabe.
+    - Die Schlagzeile sagt, was der Spieltag oben gebracht hat: Gleichstand an der Spitze, wer die Spitze übernimmt oder nach Tordifferenz vorn liegt, ein Patzer des Spitzenreiters, ein ausgebauter Vorsprung, sonst ein Kantersieg oder „bleibt vorn“. Vorher hieß es bei gleichen Punkten immer „Gleichstand oben“, auch wenn die Tordifferenz einen Spitzenreiter hatte, und danach Woche für Woche „München vorn“.
   - **Gerüchteküche:** Im offenen Fenster soll ein Konkurrent an einem Spieler interessiert sein, der seinen Kader verstärken würde.
     - Das Gerücht ist nicht erfunden: Der Verein greift bei diesem Spieler eher zu, wenn er auf der Position sucht und es sich leisten kann.
     - Kommt der Wechsel zustande, meldet die Rundschau „das Gerücht stimmte“.

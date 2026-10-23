@@ -129,6 +129,35 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     },
 
     /**
+     * Wer den Ball hat, zeigt das Bild erst, wenn der Ball bei ihm ist.
+     *
+     * Die Regie nennt den Angespielten schon beim Abspiel (setCarrier). Ring
+     * und Namensschild sprangen deshalb mit jedem Pass zum Empfänger, während
+     * der Ball noch unterwegs war - im Bild sah das aus, als springe der Ball
+     * von Spieler zu Spieler, auf Normal rund fünfzigmal je Minute. Jetzt
+     * blendet die Markierung aus, solange der Ball fliegt oder noch nicht am
+     * Fuß ist, und beim neuen Ballführenden wieder ein.
+     */
+    AM_BALL_ABSTAND: 3.5,
+    AM_BALL_BLENDE: 0.12,
+    spielerAmBall(liveMatch, players, ball, dt, neu = false) {
+        const p = players.find(q => q.id === liveMatch.activePlayerId);
+        const amFuss = !!p && !liveMatch.ball?.inFlight && Math.hypot(p.x - ball.x, p.y - ball.y) < this.AM_BALL_ABSTAND;
+        let z = this._amBall;
+        if (!z || neu) z = this._amBall = { id: amFuss ? p.id : null, alpha: amFuss ? 1 : 0 };
+        const schritt = Math.min(1, Math.max(0, dt) / this.AM_BALL_BLENDE);
+        // Erst blendet der alte Ballführende aus, dann der neue ein
+        if (amFuss && (z.id === p.id || z.alpha <= 0)) {
+            z.id = p.id;
+            z.alpha = Math.min(1, z.alpha + schritt);
+        } else {
+            z.alpha = Math.max(0, z.alpha - schritt);
+        }
+        const spieler = z.alpha > 0 ? players.find(q => q.id === z.id) : null;
+        return spieler ? { spieler, alpha: z.alpha } : null;
+    },
+
+    /**
      * Die 3D-Ansicht zeichnen, wenn sie gewählt ist. Liefert false, wenn
      * stattdessen das 2D-Feld zeichnen soll: solange die Bibliothek noch
      * lädt, und wenn der Browser kein WebGL kann - dann schaltet sie sich
@@ -604,6 +633,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             });
             const ballLage = this.glaetteLage(lagen, "ball", liveMatch.ball.x, liveMatch.ball.y, dt, neueSzene, this.BALL_GLAETTUNG);
             const ball = Object.assign(Object.create(liveMatch.ball), { x: ballLage.x, y: ballLage.y });
+            // Ring und Schild des Ballführenden erst, wenn der Ball bei ihm ist
+            const amBall = this.spielerAmBall(liveMatch, players, ball, dt, neueSzene);
 
             // 2. Ballschweif - er hängt am gezeichneten Ball, nicht am gerechneten
             const trail = liveMatch.ballTrail || [];
@@ -702,7 +733,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 const py = toY(p.y);
                 if (px < -60 || px > canvas.width + 60 || py < -60 || py > canvas.height + 60) return;
 
-                const isActive = liveMatch.activePlayerId === p.id;
+                const isActive = !!amBall && amBall.spieler.id === p.id;
                 const isKeeper = p.pos === "TW";
 
                 // Sprintanzeige: kurze Bewegungsspur hinter dem Spieler
@@ -719,11 +750,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 }
 
                 if (isActive) {
+                    ctx.globalAlpha = amBall.alpha;
                     ctx.beginPath();
                     ctx.arc(px, py, radius * 1.55 * pulse, 0, Math.PI * 2);
                     ctx.strokeStyle = "rgba(250, 204, 21, 0.9)";
                     ctx.lineWidth = Math.max(1.5, radius * 0.16);
                     ctx.stroke();
+                    ctx.globalAlpha = 1;
                 }
 
                 // Körper - der Torwart streckt sich beim Hechtsprung
@@ -839,7 +872,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 const py = toY(p.y);
                 return kasten(toX(p.x), oben ? py - radius * 1.15 - pillH / 2 : py + radius * 1.15 + pillH / 2, breite, pillH);
             };
-            const aktiver = players.find(p => liveMatch.activePlayerId === p.id);
+            const aktiver = amBall ? amBall.spieler : null;
             const aktivKasten = aktiver ? schildKasten(aktiver) : null;
             if (aktivKasten) belegt.push(aktivKasten);
 
@@ -905,7 +938,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     schild(p, k);
                 });
             }
-            if (aktivKasten) schild(aktiver, aktivKasten);
+            if (aktivKasten) {
+                ctx.globalAlpha = amBall.alpha;
+                schild(aktiver, aktivKasten);
+                ctx.globalAlpha = 1;
+            }
 
             // 6. Ball mit Flughöhe
             const bx = toX(ball.x);

@@ -55,6 +55,8 @@ class UIManager {
         this.bindModalDismiss();
         // Unterreiter, Suche, Zurück, Tasten, Kontextmenü, Sortieren (uiNavigation.js)
         if (typeof this.initNavigation === "function") this.initNavigation();
+        // Menü oben wie im Vorbild oder die Seitenleiste (uiKopfmenue.js)
+        if (typeof this.richteKopfmenueEin === "function") this.richteKopfmenueEin();
     }
 
     /**
@@ -671,6 +673,7 @@ class UIManager {
      */
     renderSettings() {
         this.renderEinstiegEinstellungen();
+        if (typeof this.renderMenueEinstellung === "function") this.renderMenueEinstellung();
         this.renderNamenEinstellungen();
         const el = document.getElementById("settingsLiveBody");
         if (!el || !this.app.state) return;
@@ -1071,6 +1074,8 @@ class UIManager {
             mobileOffersBadge.textContent = pendingOffers;
             mobileOffersBadge.style.display = pendingOffers > 0 ? "inline-block" : "none";
         }
+        // Das Menü oben übernimmt Zahlen, Platz und Form
+        if (typeof this.aktualisiereKopfmenue === "function") this.aktualisiereKopfmenue();
     }
 
     /**
@@ -3801,6 +3806,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // Die ausgelagerten Teile hängen sich an die Klasse - im Browser lädt sie
     // index.html der Reihe nach, unter Node holen wir sie hier dazu
     ["./uiAssistent.js", "./uiKader.js", "./uiTaktik.js", "./uiWettbewerbe.js", "./uiWettbewerbSeite.js", "./uiTraining.js", "./uiFinanzen.js", "./uiVerein.js", "./uiPostfach.js", "./uiDialoge.js", "./uiKarriere.js",
-        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiSeiten.js", "./uiProfil.js", "./uiProfilLaufbahn.js", "./uiAngebot.js", "./uiVereinSeite.js", "./uiSpielerdatenbank.js", "./uiLivespiel.js", "./uiLiveKacheln.js", "./uiLiveDarstellung.js", "./uiSpielbericht.js", "./uiMeldungen.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
+        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiSeiten.js", "./uiProfil.js", "./uiProfilLaufbahn.js", "./uiAngebot.js", "./uiVereinSeite.js", "./uiSpielerdatenbank.js", "./uiLivespiel.js", "./uiLiveKacheln.js", "./uiLiveDarstellung.js", "./uiSpielbericht.js", "./uiMeldungen.js", "./uiKopfmenue.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
         .forEach(teil => require(teil));
 }

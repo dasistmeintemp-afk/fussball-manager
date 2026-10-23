@@ -1159,6 +1159,24 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
   - **Anzeige:** Die Tabelle markiert Relegations- und Playoffplätze, der Reiter *Wettbewerbe* zeigt alle Paarungen mit Hin- und Rückspiel, Verlängerung und Elfmeterschießen.
   - **Saisonwechsel:** Die Ergebnisse entscheiden über Auf- und Abstieg; die Spiele zählen nicht zur Statistik der neuen Saison. Vorher stiegen feste Plätze auf – in der First Division etwa einfach der Dritte –, und die Relegationsplätze der Ligadaten wurden nie ausgewertet.
 - **Ligawechsel in der Tabellenansicht:** Der Wettbewerbswähler im Reiter *Wettbewerbe & Spielplan* zeigt jede Liga der Welt mit eigener Tabelle und eigenem Spielplan.
+- **Wettbewerbsseite wie im Vorbild (`uiWettbewerbSeite.js`):** Jede Liga hat im Reiter *Spielplan & Tabelle* eine eigene Seite mit Kacheln statt einer langen Tabelle. Pokal, Europapokal und Relegation bleiben bei Runden und Spielplan.
+  - **Kopf:** Name, Zahl der Vereine und Spieltage, Saison, Land, Titelverteidiger, Rang (bei ersten Ligen der Platz in der Fünfjahreswertung, sonst die Stufe im Land) und Ansehen.
+  - **Tabelle:** Platz, Zone als Farbstrich, ein Pfeil für Auf- oder Abstieg seit dem letzten Spieltag, Verein, Spiele, Punkte. Breit läuft sie neben zwei Kachelreihen und rollt in sich.
+  - **Spieltag:** die Paarungen des letzten gespielten Spieltags, mit Pfeilen zum Blättern.
+  - **Schlagzeilen** aus Tabelle und Ergebnissen für jede Liga: Spitze und Abstand, das höchste Ergebnis, Serien. In der eigenen Liga kommen die Gerüchte der Sportpresse dazu.
+  - **Rangliste:** die ersten sechs der Fünfjahreswertung, das eigene Land hervorgehoben.
+  - **Statistik:** Vereine (meiste Tore, wenigste Gegentore, meiste Spiele zu null, bestes Auswärtsteam) und Spieler (Notenschnitt, Tore, Vorlagen, Spiele zu null, nur Ligaspiele).
+  - **Zu- und Abgänge:** Zugänge, Anteil aus dem Ausland, Trainerwechsel, Ausgaben, Einnahmen und Abgänge der Saison (`TransferEngine.merkeLigaWechsel`, je Liga die Zahlen und die letzten zwölf Zugänge).
+  - **Frühere Sieger** aus dem neuen Siegerarchiv (`CompetitionEngine.merkeLigaMeister`): zum Saisonwechsel Meister, Punkte und Zweiter jeder Liga, höchstens dreißig Saisons. Vorher hielt der Spielstand nur den Meister der eigenen Liga fest.
+  - **Jede Kachel öffnet ihre ausführliche Ansicht** im Fenster:
+    - die volle Tabelle mit Toren, Tordifferenz und Form, umschaltbar auf Heim und Auswärts (aus den Ergebnissen gerechnet);
+    - alle Spieltage zum Anklicken, mit Zuschauern;
+    - alle Schlagzeilen und die Meldungen der Sportpresse;
+    - die Fünfjahreswertung mit allen Saisons;
+    - je Wertung die besten fünf Vereine und Spieler;
+    - die letzten Zugänge mit Ablöse und die Trainerwechsel;
+    - alle früheren Meister mit Punkten und Zweitem.
+  - Vereine und Spieler sind überall anklickbar und öffnen ihre Seite. Am Handy stehen die Kacheln untereinander, der Spieltag zuerst.
 - **Die Welt bleibt im Gleichgewicht:** Über sechs Saisons (Startwert 11, Schnitt der vierzehn Besten je Kader) stieg die Landesliga bisher von 22,9 auf 29,3, die Verbandsliga von 30,4 auf 37,3, die Zahl der Spieler ab 90 verdreifachte sich, und am Ende trieben 683 Vereinslose durch eine Welt von 5588 statt 4752 Spielern. Vier Ursachen, vier Änderungen:
   - **Talente:** Ihr Potenzial hing am jetzigen Können und lag im Mittel gut 8 Punkte über den gestandenen Spielern ihres Vereins – jede Generation wurde besser als die vorige. Jetzt liegt es um das Vereinsniveau, meist etwas darüber; 3 bis 8 % reichen 14 Punkte und mehr darüber hinaus (`PlayerGenerator.talentPotenzial`).
   - **Nachwuchs:** Jeder Verein hält mindestens drei statt fünf Spieler bis 21. Fünf war fast ein Viertel des Kaders und doppelt so viel, wie die Altersverteilung der erzeugten Welt hergibt; Jahr für Jahr rückten so Hunderte Talente nach, und die Verdrängten wurden vereinslos.

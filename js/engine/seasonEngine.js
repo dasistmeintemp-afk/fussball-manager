@@ -1624,6 +1624,12 @@ class SeasonEngine {
         const koeffizient = _resolve('KoeffizientEngine', './koeffizientEngine.js');
         const spotsByCountry = koeffizient && typeof koeffizient.saisonAbschluss === 'function' ? koeffizient.saisonAbschluss(state) : null;
 
+        // Die Meister aller Ligen ins Siegerarchiv der Wettbewerbsseite, solange
+        // die Abschlusstabellen noch stehen (seasonYear zählt schon die neue Saison)
+        if (competitionEngine && typeof competitionEngine.merkeLigaMeister === 'function') {
+            competitionEngine.merkeLigaMeister(state, Math.max(1, (state.seasonYear || 2) - 1));
+        }
+
         // Die Sieger von Königsklasse und Europa League für den Europäischen
         // Supercup festhalten - bevor der Europapokal neu besetzt wird
         const euroSupercup = _resolve('EuroSupercupEngine', './euroSupercupEngine.js');

@@ -74,6 +74,25 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         // Spiele, Punkte" stand dort über Paarungen und Ergebnissen.
         const cupIds = Object.keys(state.cups || {});
         const europa = ["ucl", "uel", "uecl"].includes(activeComp);
+
+        // Eine Liga bekommt ihre Wettbewerbsseite mit Kacheln wie im Vorbild;
+        // Pokal, Europapokal und Relegation bleiben bei Runden und Spielplan
+        const istLiga = (state.leagues || []).some(l => l.id === activeComp);
+        const seite = document.getElementById("wbSeite");
+        const kachelSeite = istLiga && !!seite && typeof this.renderWettbewerbSeite === "function";
+        if (seite) seite.style.display = kachelSeite ? "" : "none";
+        document.querySelector("#pane-fixtures .view-switch-buttons")?.style.setProperty("display", kachelSeite ? "none" : "");
+        const ansichtStand = document.getElementById("viewStandings"), ansichtPlan = document.getElementById("viewFixtures");
+        if (kachelSeite) {
+            if (ansichtStand) ansichtStand.style.display = "none";
+            if (ansichtPlan) ansichtPlan.style.display = "none";
+            this.renderWettbewerbSeite(state, activeComp);
+            return;
+        }
+        // Zurück von einer Liga: die zuletzt gewählte Ansicht wieder zeigen
+        const planAktiv = document.getElementById("btnToggleFixtures")?.classList.contains("active");
+        if (ansichtStand) ansichtStand.style.display = planAktiv ? "none" : "block";
+        if (ansichtPlan) ansichtPlan.style.display = planAktiv ? "block" : "none";
         const endrunde = europa && (state.europeanCompetitions?.[activeComp]?.endrunde || []).length > 0;
         if (tabelle) tabelle.classList.toggle("tabelle-runden", cupIds.includes(activeComp) || endrunde);
 

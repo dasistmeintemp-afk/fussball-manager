@@ -751,6 +751,9 @@
                         </div>
                     </div>
 
+                    <!-- Wettbewerbsseite einer Liga: Kopf und Kacheln (uiWettbewerbSeite.js) -->
+                    <div id="wbSeite" class="wb-seite" style="display: none;"></div>
+
                     <!-- View 1: Full Standings Table -->
                     <div id="viewStandings" class="table-container full-page">
                         <table class="data-table tabelle-liga" id="fullStandingsTable">
@@ -2240,6 +2243,17 @@
         </div>
 
         <!-- Modal: Match Report (Nach dem Abpfiff) -->
+        <!-- Modal: Ausführliche Ansicht einer Kachel der Wettbewerbsseite -->
+        <div class="modal-overlay" id="modalWettbewerb" style="display: none;">
+            <div class="modal-box modal-lg wb-ansicht" role="dialog" aria-labelledby="wbAnsichtTitel">
+                <div class="modal-header">
+                    <h2 id="wbAnsichtTitel">Wettbewerb</h2>
+                    <button class="modal-close" id="btnWbAnsichtZu" type="button" aria-label="Schließen"><svg class="ico" aria-hidden="true"><use href="#i-close"/></svg></button>
+                </div>
+                <div class="modal-body" id="wbAnsichtInhalt"></div>
+            </div>
+        </div>
+
         <div class="modal-overlay" id="modalMatchReport" style="display: none;">
             <div class="modal-box modal-lg spb-box" role="dialog" aria-label="Spielbericht">
                 <div class="modal-body" id="matchReportContent">
@@ -2605,6 +2619,7 @@
     <script src="js/ui/uiKader.js"></script>
     <script src="js/ui/uiTaktik.js"></script>
     <script src="js/ui/uiWettbewerbe.js"></script>
+    <script src="js/ui/uiWettbewerbSeite.js"></script>
     <script src="js/ui/uiTraining.js"></script>
     <script src="js/ui/uiFinanzen.js"></script>
     <script src="js/ui/uiVerein.js"></script>

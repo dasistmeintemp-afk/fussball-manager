@@ -14968,6 +14968,59 @@ function runEngineTests() {
         if (!meldungen[0].includes(`für ${verletzt.name.split(" ").pop()}`) || weiter !== 1) throw new Error(`Meldung oder Anpfiff fehlen: ${meldungen[0]}`);
     });
 
+    test("Spielbericht wie im Vorbild: Kopf mit Torschützen und Halbzeit, Spielverlauf, Spieler des Spiels nur einmal, Noten je Mannschaft", () => {
+        const state = GameState.createNewGame("scf", "normal", { name: "Bericht" });
+        let m = null;
+        for (let i = 0; i < 120 && !m; i++) {
+            CalendarEngine.advanceOneDay(state);
+            (state.schedule || []).forEach(md => (md.matches || []).forEach(x => {
+                if (!m && x.played && (x.homeClubId === "scf" || x.awayClubId === "scf") && x.homeGoals + x.awayGoals >= 2) m = x;
+            }));
+        }
+        if (!m) throw new Error("Kein eigenes Spiel mit Toren gefunden");
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        const home = state.clubs.find(c => c.id === m.homeClubId), away = state.clubs.find(c => c.id === m.awayClubId);
+        const d = ui.spielberichtDaten(m, home, away);
+
+        // Tore in zeitlicher Folge mit dem Stand danach, Halbzeit aus den Toren bis zur 45.
+        if (d.tore.length !== m.homeGoals + m.awayGoals) throw new Error(`${d.tore.length} Tore statt ${m.homeGoals + m.awayGoals}`);
+        if (d.tore[d.tore.length - 1].stand !== `${m.homeGoals}:${m.awayGoals}`) throw new Error(`Stand nach dem letzten Tor: ${d.tore[d.tore.length - 1].stand}`);
+        const hz = d.tore.filter(e => e.minute <= 45);
+        if (d.halbzeit.home + d.halbzeit.away !== hz.length) throw new Error("Halbzeitstand passt nicht zu den Toren");
+        if (!/^\d+\. Spieltag$/.test(d.runde)) throw new Error(`Runde: ${d.runde}`);
+
+        // Kopf: beide Vereine, jeder Torschütze, Halbzeit; Elfmeter und Elfmeterschießen sichtbar
+        const kopf = ui.spielberichtKopfHtml(d);
+        [home.name, away.name, `Halbzeit ${d.halbzeit.home}:${d.halbzeit.away}`, ...d.tore.map(e => e.playerName)].forEach(t => {
+            if (!kopf.includes(ui.escapeHtml(t))) throw new Error(`Im Kopf fehlt: ${t}`);
+        });
+        const erstesTor = m.events.findIndex(e => e.type === "goal");
+        const mitElfmeter = ui.spielberichtDaten({ ...m, penaltyWinner: m.homeClubId, penaltyScore: [4, 3],
+            events: m.events.map((e, i) => (i === erstesTor ? { ...e, elfmeter: true } : e)) }, home, away);
+        const kopf2 = ui.spielberichtKopfHtml(mitElfmeter);
+        if (!kopf2.includes("i. E. 4:3") || !kopf2.includes("(E)")) throw new Error("Elfmeter oder Elfmeterschießen fehlen im Kopf");
+
+        // Übersicht: Spielverlauf mit Anpfiff, Halbzeit, Abpfiff; Spieler des Spiels nur als Karte, nicht noch einmal im Text
+        const ueber = ui.spielberichtUebersichtHtml(d);
+        ["Spielverlauf", "Anpfiff", `Halbzeit · ${d.halbzeit.home}:${d.halbzeit.away}`, `Abpfiff · ${m.homeGoals}:${m.awayGoals}`, "Ballbesitz", "Erwartete Tore (xG)"].forEach(t => {
+            if (!ueber.includes(t)) throw new Error(`In der Übersicht fehlt: ${t}`);
+        });
+        if (/Man of the Match/.test(ueber)) throw new Error("Englische Überschrift im Bericht");
+        if (m.manOfTheMatch && (ueber.match(/Spieler des Spiels/g) || []).length !== 1) throw new Error("Spieler des Spiels steht nicht genau einmal da");
+        // Gelb-Rot hat ein eigenes Zeichen
+        const karte = { minute: 70, type: "yellow_card", clubId: home.id, playerName: "Test", zweiteGelbe: true };
+        if (!ui.spielberichtVerlaufHtml(ui.spielberichtDaten({ ...m, events: [...m.events, karte] }, home, away)).includes("lm-card gelbrot")) throw new Error("Gelb-Rot ohne eigenes Zeichen");
+
+        // Spieler: jede Note genau einmal, Startelf und Eingewechselte getrennt
+        const spieler = ui.spielberichtSpielerHtml(d);
+        const zeilen = (spieler.match(/class="spb-spieler[ "]/g) || []).length;
+        if (zeilen !== (m.playerRatings || []).length) throw new Error(`${zeilen} Zeilen für ${(m.playerRatings || []).length} Noten`);
+        const gewechselt = m.events.some(e => e.type === "substitution");
+        if (gewechselt && !spieler.includes("Eingewechselt")) throw new Error("Eingewechselte fehlen");
+    });
+
     test("Finanzen wie im Vorbild: Kontoverlauf je Monat, Monatsbilanz, Sponsoren, Gehälter nach Rolle, Schulden, Prognose, acht Kacheln", () => {
         const F = FinanceEngine;
         const state = GameState.createNewGame("dor", "normal", { name: "Finanzen" });

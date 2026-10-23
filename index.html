@@ -2239,16 +2239,13 @@
 
         <!-- Modal: Match Report (Nach dem Abpfiff) -->
         <div class="modal-overlay" id="modalMatchReport" style="display: none;">
-            <div class="modal-box modal-lg">
-                <div class="modal-header">
-                    <h2>Spielbericht & Analyse</h2>
-                </div>
+            <div class="modal-box modal-lg spb-box" role="dialog" aria-label="Spielbericht">
                 <div class="modal-body" id="matchReportContent">
                     <!-- Dynamischer Spielbericht -->
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-secondary" id="btnReportPress" style="display:none;"><svg class="ico" aria-hidden="true"><use href="#i-mic"/></svg><span>Pressekonferenz</span></button>
-                    <button class="btn btn-primary" id="btnCloseReport">Weiter zum Dashboard ▶</button>
+                    <button class="btn btn-primary" id="btnCloseReport">Weiter<span class="spb-lang"> zum Dashboard</span> ▶</button>
                 </div>
             </div>
         </div>

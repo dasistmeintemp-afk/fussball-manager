@@ -409,6 +409,17 @@ class LiveMatchDirector {
      * diesem Anteil in den Passweg (VORAUSAHNEN).
      */
     static ENTSCHEID_TAKT = 0.25;
+
+    /** Wie oft ein Lauf mit dem Ball in den freien Raum weitergeht, wenn vor ihm noch Platz ist */
+    static TRAGEN_KETTE = 2;
+
+    /**
+     * Luft in der Deckung (deckungsZiel): Bis ballNah Einheiten vom Ball deckt
+     * einer eng, darüber je Einheit jeEinheit mehr Abstand. Steht der Gegner
+     * beim Aufbau noch hinter der eigenen Pressinglinie, hält er mindestens
+     * aufbau Einheiten Abstand und stellt den Raum zu.
+     */
+    static DECKUNG_LUFT = { ballNah: 15, jeEinheit: 0.12, aufbau: 7 };
     static STEIL_MOMENT = 1.6;
     static VORAUSAHNEN = 0.5;
 
@@ -2602,6 +2613,9 @@ class LiveMatchDirector {
             this.taktAmBall(dt);
             return;
         }
+        // Wer den Ball trägt, schaut weiter, was geht: Der Steilpass, der
+        // Abschluss oder der sichere Ball unter Druck unterbrechen den Lauf
+        if (this.carryTarget && this.carryTarget.id === this.carrierId) this.taktAmBall(dt);
 
         // Der Ball ist über die Linie gerollt - jetzt wird er geholt und für
         // die Spielfortsetzung hingelegt.
@@ -2729,9 +2743,19 @@ class LiveMatchDirector {
             this.flowStats[grund] = (this.flowStats[grund] || 0) + 1;
             return;
         }
-        if (lage.tragen && !this.carryTarget) {
-            // Vor ihm ist frei: Er nimmt den Ball mit, statt zu stehen
-            this.carryTarget = { id: carrier.id, x: lage.tragen.x, y: lage.tragen.y, rest: this.bildschirmZeit(1.4) };
+        // Vor ihm ist frei: Er nimmt den Ball mit, statt zu stehen - so weit,
+        // wie frei ist. Ist er am Ziel und vor ihm noch immer Platz, läuft er
+        // weiter (höchstens TRAGEN_KETTE-mal), wie ein Spieler, der den Ball
+        // durchs Mittelfeld treibt.
+        const traegt = this.carryTarget && this.carryTarget.id === carrier.id ? this.carryTarget : null;
+        const amZiel = traegt && Math.hypot(carrier.x - traegt.x, carrier.y - traegt.y) < 2.5;
+        if (lage.tragen && (!this.carryTarget || (amZiel && (traegt.kette || 0) < LiveMatchDirector.TRAGEN_KETTE))) {
+            const weite = Math.hypot(lage.tragen.x - carrier.x, lage.tragen.y - carrier.y);
+            this.carryTarget = {
+                id: carrier.id, x: lage.tragen.x, y: lage.tragen.y,
+                rest: this.bildschirmZeit(Math.max(1.4, weite / 6 + 0.6)),
+                kette: traegt ? (traegt.kette || 0) + 1 : 0
+            };
             this.flowStats.getragen = (this.flowStats.getragen || 0) + 1;
         }
     }
@@ -5212,7 +5236,14 @@ class LiveMatchDirector {
         // kam der Gegner gemessen doppelt so oft frei zum Abschluss.
         const angreifer = defendingTeam === "home" ? "away" : "home";
         const imBlock = (ball.x - this.ownGoalX(angreifer)) * this.attackDir(angreifer) / 92 > 0.66;
-        const anzahl = zugriff ? Math.min(4, Math.max(imBlock ? 2 : 1, (w.presser || 2) + (seitWechsel < (w.gegenpressing || 0) && w.gegenpressing > 3 ? 1 : 0))) : 1;
+        // Auf den Ball geht einer, wer "öfter anlaufen" lässt, schickt zwei.
+        // Vorher sprinteten schon bei normalem Anlaufen zwei Spieler auf jeden
+        // Ballführenden, auf zwei Dritteln des Feldes: Gemessen war bei fast
+        // jeder Entscheidung ein Pressingspieler der nächste Gegner, im Mittel
+        // vier Meter entfernt - kein Spieler hatte Zeit, den Ball laufen zu
+        // lassen, und Passfolgen rissen nach zwei Stationen ab.
+        const grundzahl = Math.max(1, (w.presser || 2) - 1);
+        const anzahl = zugriff ? Math.min(4, Math.max(imBlock ? 2 : 1, grundzahl + (seitWechsel < (w.gegenpressing || 0) && w.gegenpressing > 3 ? 1 : 0))) : 1;
         const bisher = (this._presser && this._presser.team === defendingTeam) ? this._presser.ids : [];
         const gewaehlt = sorted.slice(0, Math.max(4, anzahl + 1))
             .map(p => ({ id: p.id, wert: abstand(p) - (bisher.includes(p.id) ? 4 : 0) }))
@@ -6081,7 +6112,21 @@ class LiveMatchDirector {
             ? Math.max(0, Math.min(1, 1.4 - ausDerZone / reichweite))
             : Math.max(0, 1 - ausDerZone / reichweite);
         // Mannorientiert steht er enger an seinem Gegenspieler
-        const eng = mannorientiert ? 1.8 : (p.group === "def" ? 2.5 : 3.5);
+        let eng = mannorientiert ? 1.8 : (p.group === "def" ? 2.5 : 3.5);
+        // Eng gedeckt wird in Ballnähe. Weiter weg lässt er Luft, und hinter
+        // der eigenen Pressinglinie - beim Aufbau des Gegners - stellt er nur
+        // den Raum zu, statt am Mann zu kleben. Vorher deckten die Stürmer die
+        // Innenverteidiger überall auf drei, vier Meter: Gemessen stand bei
+        // jeder Entscheidung der nächste Gegner im Mittel vier Meter entfernt,
+        // auch im eigenen Drittel. Ruhiger Aufbau und Passfolgen kamen so kaum
+        // zustande.
+        const d = LiveMatchDirector.DECKUNG_LUFT;
+        const zumBall = Math.hypot(mark.x - ball.x, mark.y - ball.y);
+        eng += Math.max(0, zumBall - d.ballNah) * d.jeEinheit;
+        const angreifer = p.team === "home" ? "away" : "home";
+        const imAufbau = (mark.x - this.ownGoalX(angreifer)) * this.attackDir(angreifer) / 92 < (typeof w.pressingLinie === "number" ? w.pressingLinie : 0.33);
+        const gegenpressing = (this._laufUhr || 0) - (this._wechselUhr ?? -99) < (w.gegenpressing ?? 2.2);
+        if (imAufbau && !gegenpressing && w.deckung !== "mann") eng = Math.max(eng, d.aufbau);
         return {
             x: tx + (mark.x - dir * eng - tx) * zugriff,
             y: ty + (mark.y + (p.seed % 1) * 2 - 1 - ty) * zugriff,

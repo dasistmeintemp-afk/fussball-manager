@@ -93,6 +93,39 @@ class MatchFlowEngine {
     static MOMENT = { steil: 2.3, nachlass: 0.35, schuss: 0.14, druck: 0.95, vorn: 8, weg: 0.3, raum: 0.5 };
 
     /**
+     * Ballführung (lageAmBall): Wie weit ein Spieler den Ball in den freien
+     * Raum trägt - geprüft von weit nach nah, in Feldeinheiten - und wie viel
+     * Platz der Zielpunkt und der Weg dorthin brauchen. Vorher waren es immer
+     * sechs Einheiten: Gemessen trug ein Spieler den Ball im Mittel sechs,
+     * sieben Meter, auch wenn vor ihm das halbe Feld frei war.
+     */
+    static TRAGEN = { weiten: [15, 11, 7], raum: 0.4, druck: 0.45 };
+
+    /**
+     * Ein Dribbling gegen einen Gegenspieler ist die Ausnahme: Abzug auf seine
+     * Bewertung. Vorher versuchte eine Elf in dreizehn Minuten Spielgeschehen
+     * bis zu siebzig Dribblings im Zweikampf und verlor davon bis zu dreißig -
+     * der Ball wechselte ständig den Besitzer, Passfolgen kamen kaum zustande.
+     * In echten Spielen sind es über neunzig Minuten dreißig bis vierzig.
+     */
+    static DRIBBEL_DUELL = 0.6;
+
+    /**
+     * Der sichere Ball unter Druck (ratePassOptions): Ab diesem Druck bekommt
+     * ein Zuspiel mit freiem Passweg zu einem freien Mitspieler - auch quer
+     * oder zurück - einen Zuschlag. So reißt eine Passfolge nicht ab, sobald
+     * ein Gegner kommt; vor dem Tor gilt das nicht.
+     */
+    static SICHERHEIT = { druck: 0.6, wert: 0.5 };
+
+    /**
+     * Abschirmen und wegdrehen (rateAbdrehen): ab welchem Druck, wie weit, die
+     * Grundbewertung, das Gewicht des freien Raums - und wie oft es gelingt
+     * (halten, verschoben um Ruhe am Ball gegen Zweikampfstärke).
+     */
+    static ABDREHEN = { druck: 0.6, weite: 6, basis: 0, raum: 0.5, halten: 0.9 };
+
+    /**
      * Stufe 5: Die Eichung des 2D-Modells in Zielkorridoren (Tore, Schüsse,
      * Passquote, Ecken, Fouls, Standardtore - siehe README). Mit der
      * Ballphysik verschoben sich alle Zahlen; diese Werte holen sie in die
@@ -120,9 +153,9 @@ class MatchFlowEngine {
         schussLust: 0.45,
         flankenLust: 0.35,
         ecke: { kopfball: 0.6, faust: 0.4 },
-        foul: { zweikampf: 0.94, druck: 0.94, strafraum: 0.14 },
+        foul: { zweikampf: 1.2, druck: 1.75, strafraum: 0.14 },
         standard: { twReaktion: 0.14, kopfball: 7 },
-        tore: 1.12
+        tore: 1.06
     };
 
     // Geduld am Ball (siehe qualitaetsVorsprung): Bisher spielten Bayern und
@@ -637,12 +670,17 @@ class MatchFlowEngine {
                 ? geduld * MatchFlowEngine.GEDULD_QUER * (istAufbau ? 1 : MatchFlowEngine.GEDULD_MITTE)
                 : 0;
 
+            // Unter Druck der sichere Ball zum freien Mitspieler
+            const sicherScore = (fm && !istAbschluss && druck > MatchFlowEngine.SICHERHEIT.druck
+                && laneRisk < 0.3 && space > 0.45 && mate.pos !== "TW") ? MatchFlowEngine.SICHERHEIT.wert : 0;
+
             // Die Linien der Taktiktafel: Gut verbundene Spieler suchen sich,
             // wo Rollen sich beißen oder ein Neuer noch fremd ist, seltener
             const zusammenScore = this.zusammenspiel(carrier, mate) * MatchFlowEngine.ZUSAMMEN_WAHL;
 
             const score = lengthScore * 0.8
                 + geduldScore
+                + sicherScore
                 + eigScore
                 + zusammenScore
                 + anlaufScore
@@ -727,12 +765,48 @@ class MatchFlowEngine {
             + tempoBonus
             + 0.3
             - pressure * 0.75
-            + (frei ? (carrier.group === "def" ? 0.8 : 0.55) : mentalDribbel)
+            + (frei ? (carrier.group === "def" ? 0.8 : 0.55) : mentalDribbel - MatchFlowEngine.DRIBBEL_DUELL)
             + taktik
             + eigen
             + _flowRandom.float(-0.2, 0.2) * this.entscheidungsRauschen(carrier);
 
         return { type: "dribble", target: ahead, space, score, frei };
+    }
+
+    /**
+     * Abschirmen und wegdrehen: Steht ein Gegner dicht am Ballführenden und
+     * ist kein Pass gut, schirmt er den Ball ab und dreht mit ihm vom Gegner
+     * weg in den freiesten Raum, meist zur Seite oder zurück. Danach sucht er
+     * die nächste Anspielstation. Vorher blieb in dieser Lage nur der
+     * Zweikampf: Neun von zehn Entscheidungen fielen unter starkem Druck, und
+     * wer dann ins Dribbling ging, hatte im Mittel keinen brauchbaren Pass -
+     * der Ball wechselte ständig den Besitzer.
+     */
+    rateAbdrehen(carrier, opponents, pressure) {
+        const a = MatchFlowEngine.ABDREHEN;
+        if (!carrier || carrier.pos === "TW" || pressure < a.druck) return null;
+        const gegner = opponents.filter(o => o.pos !== "TW")
+            .sort((p, q) => this.distance(carrier, p) - this.distance(carrier, q))[0];
+        if (!gegner) return null;
+        const dx = carrier.x - gegner.x, dy = carrier.y - gegner.y;
+        const len = Math.hypot(dx, dy) || 1;
+        let bester = null;
+        for (const winkel of [0, 0.6, -0.6, 1.1, -1.1]) {
+            const c = Math.cos(winkel), s = Math.sin(winkel);
+            const ziel = {
+                x: carrier.x + (dx * c - dy * s) / len * a.weite,
+                y: carrier.y + (dx * s + dy * c) / len * a.weite
+            };
+            if (ziel.x < 3 || ziel.x > 97 || ziel.y < 3 || ziel.y > 97) continue;
+            const raum = this.getSpace(ziel, opponents);
+            if (!bester || raum > bester.raum) bester = { ziel, raum };
+        }
+        if (!bester) return null;
+        const ruhe = (this.attr(carrier, "technique") + this.attr(carrier, "dribbling")) / 200;
+        const koerper = (this.fein(carrier, "strength") + this.fein(carrier, "balance")) * 0.004;
+        const score = a.basis + ruhe * 0.4 + koerper + bester.raum * a.raum - pressure * 0.15
+            + _flowRandom.float(-0.15, 0.15) * this.entscheidungsRauschen(carrier);
+        return { type: "dribble", abdrehen: true, target: bester.ziel, space: bester.raum, score, frei: false };
     }
 
     /**
@@ -1387,13 +1461,23 @@ class MatchFlowEngine {
         if (!gelegenheit && pressure > m.druck && beste && beste.laneRisk < m.weg) gelegenheit = "druck";
 
         const fortschritt = dir > 0 ? carrier.x / 100 : 1 - carrier.x / 100;
-        const vor = { x: carrier.x + dir * 6, y: carrier.y + (50 - carrier.y) * 0.06 };
-        const frei = carrier.pos !== "TW" && pressure < 0.45 && this.getSpace(vor, opponents) > 0.4 && fortschritt < 0.85;
+        // So weit in den freien Raum, wie Ziel und Weg frei sind
+        const t = MatchFlowEngine.TRAGEN;
+        let vor = null;
+        if (carrier.pos !== "TW" && pressure < t.druck && fortschritt < 0.85) {
+            for (const weite of t.weiten) {
+                const punkt = { x: carrier.x + dir * weite, y: carrier.y + (50 - carrier.y) * 0.01 * weite };
+                const mitte = { x: (carrier.x + punkt.x) / 2, y: (carrier.y + punkt.y) / 2 };
+                const fort = dir > 0 ? punkt.x / 100 : 1 - punkt.x / 100;
+                if (fort > 0.9) continue;
+                if (this.getSpace(punkt, opponents) > t.raum && (weite <= 7 || this.getSpace(mitte, opponents) > t.raum)) { vor = punkt; break; }
+            }
+        }
         const ziel = (gelegenheit && steil) ? steil : beste;
         return {
             gelegenheit,
             absicht: ziel ? { id: ziel.target.id, x: ziel.target.x, y: ziel.target.y } : null,
-            tragen: frei ? vor : null,
+            tragen: vor,
             kopfHoch: pressure < 0.4 && fortschritt > 0.3,
             pressure
         };
@@ -1432,6 +1516,8 @@ class MatchFlowEngine {
             zielSpieler: options.zielSpieler || null
         });
         candidates.push(this.rateDribble(carrier, opponents, tactics, pressure));
+        const abdrehen = this.rateAbdrehen(carrier, opponents, pressure);
+        if (abdrehen) candidates.push(abdrehen);
 
         // FM-Modus: Abschluss und Flanke stehen gleichberechtigt neben dem
         // Zuspiel. Ob einer schiesst, haengt an der Lage und an seinen Werten.
@@ -1459,7 +1545,12 @@ class MatchFlowEngine {
         // denen nur die Hälfte ankam.
         // Der Kompromisslose schlaegt den Ball schon bei weniger Druck weg
         const sicher = carrier.rolleMit?.sicher || 0;
-        if (!best || (pressure > 0.6 - sicher && best.score < 0.5 + sicher)) {
+        // Weggeschlagen wird in der eigenen Hälfte. Weiter vorn spielt der
+        // Bedrängte den besten Ball, den er hat, auch quer oder zurück - sonst
+        // endete fast jede Passfolge im Mittelfeld mit einem langen Ball ins
+        // Nichts, sobald ein Gegner kam.
+        const eigeneHaelfte = (this.attackDir(team) > 0 ? carrier.x : 100 - carrier.x) < 50;
+        if (!best || (eigeneHaelfte && pressure > 0.6 - sicher && best.score < 0.5 + sicher)) {
             best = this.rateClearance(carrier, mates, tactics, pressure);
         }
 
@@ -1803,6 +1894,25 @@ class MatchFlowEngine {
         // Andribbeln in den freien Raum: kein Zweikampf, niemand zu schlagen
         if (action.frei && (!defender || this.distance(carrier, defender) > 8)) {
             return { type: "dribble", outcome: "beaten", frei: true, from: carrier, to: action.target, defender: null, pressure, phase };
+        }
+
+        // Abschirmen und wegdrehen: gelingt meist - gegen einen zweikampfstarken
+        // Gegner seltener, wer ruhig am Ball und kräftig ist, öfter
+        if (action.abdrehen && defender) {
+            const ruhe = (this.attr(carrier, "technique") + this.attr(carrier, "dribbling")) / 200
+                + (this.fein(carrier, "strength") + this.fein(carrier, "balance")) * 0.004;
+            const gegen = this.attr(defender, "defense") / 100 + this.fein(defender, "tackling") * 0.004;
+            const halten = Math.max(0.6, Math.min(0.95, MatchFlowEngine.ABDREHEN.halten + (ruhe - gegen) * 0.5));
+            if (_flowRandom.chance(halten)) {
+                return { type: "dribble", outcome: "beaten", frei: true, abdrehen: true, from: carrier, to: action.target, defender: null, pressure, phase };
+            }
+            if (this.fm()) {
+                const gegnerTaktik = this.getTactics(defender.team) || {};
+                const haerte = (_flowTaktik()?.wirkung(gegnerTaktik).zweikampf || 0) + this.anweisungsHaerte(carrier);
+                const foul = this.foulImZweikampf(carrier, defender, haerte, (ruhe - gegen) * 100);
+                if (foul) return { ...foul, pressure, phase };
+            }
+            return { type: "dribble", outcome: "tackled", abdrehen: true, from: carrier, to: action.target, defender, pressure, phase };
         }
 
         const dribbling = this.attr(carrier, "dribbling");

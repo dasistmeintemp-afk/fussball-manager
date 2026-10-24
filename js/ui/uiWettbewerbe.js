@@ -56,9 +56,20 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const state = this.app.state;
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         const userLeagueId = this.getUserLeagueId(state);
-        const activeComp = this.activeCompetitionId || state.activeCompetitionId || userLeagueId;
+        // Wie im Vorbild öffnet der Reiter mit der Übersicht aller eigenen Wettbewerbe
+        const uebersicht = this.WB_UEBERSICHT && typeof this.renderWettbewerbeUebersicht === "function" ? this.WB_UEBERSICHT : null;
+        const activeComp = this.activeCompetitionId || uebersicht || state.activeCompetitionId || userLeagueId;
 
         this.populateCompetitionSelect(state, activeComp);
+        if (uebersicht && activeComp === uebersicht) {
+            this.setzeThema(document.getElementById("pane-fixtures"), this.wettbewerbsThema(userLeagueId));
+            const seite = document.getElementById("wbSeite");
+            if (seite) seite.style.display = "";
+            document.querySelector("#pane-fixtures .view-switch-buttons")?.style.setProperty("display", "none");
+            ["viewStandings", "viewFixtures"].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = "none"; });
+            this.renderWettbewerbeUebersicht(state);
+            return;
+        }
 
         // Der gewählte Wettbewerb färbt den ganzen Reiter
         this.setzeThema(document.getElementById("pane-fixtures"),
@@ -488,6 +499,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         // Die Länder im Hintergrund stehen gesammelt unter den eigenen Ligen
         const options = leagues.filter(l => !this.istHintergrundLiga(l)).map(option);
+        if (this.WB_UEBERSICHT && typeof this.renderWettbewerbeUebersicht === "function") options.unshift(`<option value="${this.WB_UEBERSICHT}">Übersicht</option>`);
         const hintergrund = leagues.filter(l => this.istHintergrundLiga(l));
         if (hintergrund.length) options.push(`<optgroup label="Weitere Länder">${hintergrund.map(option).join("")}</optgroup>`);
 

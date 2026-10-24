@@ -3579,12 +3579,9 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
         .dashboard-grid > .board-card, .dashboard-grid > .squad-status-card { grid-column: span 6; }
         .dashboard-grid > .full-width { grid-column: 1 / -1; }
     }
-    /* Mittel: zwei Spalten, die großen Kacheln über die ganze Breite. Auf
-       dem Dashboard rückt die Tabelle neben den Schreibtisch - sonst stünde
-       er allein, weil der Wochenplan danach die ganze Zeile nimmt. */
+    /* Mittel: zwei Spalten, die großen Kacheln über die ganze Breite */
     @container bereich (min-width: 600px) and (max-width: 949.98px) {
         .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        #pane-dashboard > .dashboard-grid { grid-auto-flow: row dense; }
         .dashboard-grid > .dash-card { grid-column: span 1; }
         .dashboard-grid > .next-match-card, .dashboard-grid > .calendar-snapshot-card,
         .dashboard-grid > .news-ticker-card, .dashboard-grid > .full-width { grid-column: 1 / -1; }
@@ -3595,10 +3592,321 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
         .dashboard-grid > .dash-card { grid-column: 1 / -1; }
     }
 
-    /* Das Innere einer schmalen Kachel: Kopf umbrechen statt quetschen,
-       in der Tabelle fallen die Spiele weg */
+    /* Das Innere einer schmalen Kachel: Kopf umbrechen statt quetschen */
     @container kachel (max-width: 380px) {
         .card-header { flex-wrap: wrap; gap: 6px 10px; }
-        #dashStandingsTable th:nth-child(3), #dashStandingsTable td:nth-child(3) { display: none; }
     }
+}
+
+
+/* --------------------------------------------------------------------------
+   Übersicht wie im Vorbild (uiPortal.js): vier Spalten - Post, Nachrichten
+   und Spielplan, Tabelle und Statistik, das nächste Spiel mit Datencenter,
+   Budgets, Trainingswoche und Vorstand. Vier Spalten ab 1240 px Bereich,
+   zwei ab 760 px, darunter eine (dann steht das nächste Spiel oben).
+   -------------------------------------------------------------------------- */
+.portal { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+.portal-spalte { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+/* Zwei Hälften: links Post, Nachrichten und Spielplan, rechts das nächste
+   Spiel über Tabelle und Statistik. Bei vier Spalten lösen sie sich auf. */
+.portal-haelfte { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ph-b .portal-s4 { order: -1; }
+.portal-karte { padding: 14px 16px; min-width: 0; }
+.portal-kopf { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; min-height: 26px; }
+.portal-titel {
+    padding: 0; border: 0; background: none; cursor: pointer;
+    font: inherit; font-family: var(--font-display); font-size: 15.5px; font-weight: 700; color: var(--accent);
+    text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 5px;
+    text-decoration-color: rgba(var(--accent-rgb), 0.45);
+}
+.portal-titel:hover { text-decoration-color: var(--accent); }
+.portal-kopf-klein h3, .portal-titel.klein {
+    margin: 0; font-family: var(--font-body, inherit); font-size: 11.5px; font-weight: 800;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-soft);
+}
+.portal-titel.klein { text-decoration: none; }
+.portal-titel.klein:hover { color: var(--accent); }
+.portal-wahl { min-height: 30px; padding: 3px 28px 3px 10px; font-size: 12.5px; max-width: 60%; }
+.pp-leer { margin: 6px 0; color: var(--text-muted); font-size: 13px; }
+
+/* Post: Filter, Tage, Einträge mit Etikett der Abteilung */
+.pp-filter-leiste { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.pp-filter {
+    padding: 4px 9px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface-2);
+    color: var(--text-soft); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.pp-filter:hover { border-color: var(--line-strong); color: var(--text-main); }
+.pp-filter.aktiv, .pp-filter.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink, #0b1004); }
+.pp-liste { max-height: min(72vh, 900px); overflow-y: auto; scrollbar-width: thin; margin: 0 -6px; padding: 0 6px; }
+.pp-tag {
+    margin: 6px -6px 2px; padding: 4px 10px; border-radius: 6px; background: var(--surface-2);
+    font-size: 11.5px; font-weight: 700; color: var(--text-muted);
+}
+.pp-eintrag {
+    display: block; width: 100%; padding: 8px 6px 9px; text-align: left; cursor: pointer;
+    border: 0; border-bottom: 1px solid var(--line); background: none; color: inherit; font: inherit;
+    border-left: 2px solid transparent; transition: background 0.12s ease;
+}
+.pp-eintrag:hover { background: var(--surface-2); }
+.pp-eintrag.ungelesen { border-left-color: var(--accent); }
+.pp-kopf { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.pp-absender { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--text-muted); }
+.pp-wichtig { color: var(--bad); font-weight: 900; font-size: 13px; line-height: 1; }
+.pp-etikett {
+    margin-left: auto; flex: none; padding: 1px 7px; border-radius: 5px; font-size: 10.5px; font-weight: 700;
+    color: var(--post-farbe, var(--text-soft)); box-shadow: inset 0 0 0 1px var(--post-farbe, var(--line)); background: rgba(255, 255, 255, 0.03);
+}
+.pp-betreff { display: block; margin-top: 2px; font-size: 13.5px; font-weight: 600; color: var(--text-muted); line-height: 1.3; }
+.pp-eintrag.ungelesen .pp-betreff { color: var(--text-main); font-weight: 700; }
+.pp-aufgaben { margin-bottom: 4px; }
+.pp-aufgaben .attention-item { padding: 8px 10px; margin-bottom: 5px; }
+
+/* Nachrichten: Aufmacher mit Wappen in Vereinsfarben, darunter Zeilen */
+.pn-aufmacher, .pn-zeile { display: flex; width: 100%; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.pn-aufmacher { flex-direction: column; padding: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface-2); }
+.pn-aufmacher:hover { border-color: var(--line-strong); }
+.pn-bild {
+    display: flex; align-items: center; justify-content: center; height: 118px;
+    background:
+        radial-gradient(120% 140% at 80% 0%, rgba(255, 255, 255, 0.12), transparent 55%),
+        linear-gradient(135deg, var(--pn-farbe, #2b3446) 0%, #0f141c 92%);
+    border-bottom: 2px solid var(--pn-zweit, var(--accent));
+}
+.pn-wappen { width: 64px; height: 64px; font-size: 20px; box-shadow: inset 0 0 0 4px var(--crest-ring, #fff), 0 8px 24px rgba(0, 0, 0, 0.45); }
+.pn-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 10px 12px 11px; }
+.pn-text strong { font-size: 15px; line-height: 1.3; color: var(--text-main); }
+.pn-auszug { font-size: 12.5px; color: var(--text-muted); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pn-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 3px; font-size: 11px; color: var(--text-dim); }
+.pn-meta span { display: inline-flex; align-items: center; gap: 4px; }
+.pn-meta .ico { width: 12px; height: 12px; }
+.pn-zeile { align-items: center; gap: 10px; padding: 8px 2px; border: 0; border-top: 1px solid var(--line); background: none; margin-top: 2px; }
+.pn-zeile .pn-text { padding: 0; }
+.pn-zeile .pn-text strong { font-size: 13px; }
+.pn-mini { flex: none; width: 34px; height: 34px; font-size: 11px; box-shadow: inset 0 0 0 2px var(--crest-ring, #fff); }
+
+/* Spielplan: Ergebnisse mit Punkt (Sieg voll, Remis halb, Niederlage Ring) */
+.ps-tab { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.ps-tab th { padding: 3px 4px 6px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); text-align: left; }
+.ps-tab td { padding: 5px 4px; border-top: 1px solid var(--line); white-space: nowrap; }
+.ps-tab .ps-gegner { max-width: 0; width: 100%; }
+.ps-tab .ps-ort, .ps-tab th:nth-child(3) { text-align: center; color: var(--text-muted); }
+.ps-tab .ps-wb { color: var(--text-muted); font-size: 11.5px; max-width: 76px; overflow: hidden; text-overflow: ellipsis; }
+.ps-tab tr.ps-offen td { color: var(--text-muted); }
+.ps-tab tr.ps-heute td { background: rgba(var(--accent-rgb), 0.10); }
+.ps-punkt { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 50%; vertical-align: -1px; }
+.ps-s { background: var(--ok); }
+.ps-u { background: linear-gradient(90deg, var(--text-soft) 50%, transparent 50%); box-shadow: inset 0 0 0 1.5px var(--text-soft); }
+.ps-n { box-shadow: inset 0 0 0 2px var(--bad); }
+
+/* Tabelle: Bilanz und Form als kleine Balken */
+.portal-tab td, .portal-tab th { padding-left: 3px; padding-right: 3px; }
+.pk-tabelle .wb-tab-rahmen { max-height: min(70vh, 760px); }
+.pt-form { white-space: nowrap; text-align: left !important; }
+.pt-f { display: inline-block; width: 5px; height: 12px; margin-right: 2px; border-radius: 1.5px; vertical-align: -2px; }
+.pt-f-s { background: var(--ok); }
+.pt-f-u { background: var(--text-dim); }
+.pt-f-n { background: var(--bad); }
+
+/* Spielerstatistik: Titel, Spieler mit Wappen, Wert (Note als Plakette) */
+.pst-zeile {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "titel wert" "name wert";
+    gap: 1px 10px; width: 100%; padding: 7px 2px; text-align: left; cursor: pointer;
+    border: 0; border-top: 1px solid var(--line); background: none; color: inherit; font: inherit;
+}
+.pst-zeile:first-child { border-top: 0; }
+.pst-zeile:hover .pst-name { text-decoration: underline; text-underline-offset: 2px; }
+.pst-titel { grid-area: titel; font-size: 11.5px; color: var(--text-muted); }
+.pst-name { grid-area: name; display: inline-flex; align-items: center; gap: 7px; min-width: 0; font-size: 13.5px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pst-wappen { flex: none; width: 18px; height: 18px; font-size: 6.5px; box-shadow: inset 0 0 0 1.5px var(--crest-ring, #fff); }
+.pst-wert { grid-area: wert; align-self: center; font-size: 15px; font-variant-numeric: tabular-nums; }
+.pst-note { padding: 2px 8px; border-radius: 6px; background: rgba(var(--accent-rgb), 0.18); color: var(--accent); font-size: 13px; }
+
+/* Nächstes Spiel in der schmalen Spalte */
+.pk-naechstes .match-preview-content { padding: 14px 6px; margin-bottom: 10px; }
+.pk-naechstes .preview-team h4 { font-size: 14.5px; line-height: 1.25; overflow-wrap: anywhere; }
+.pk-naechstes .preview-crest { width: 44px; height: 44px; font-size: 16px; }
+.pk-naechstes .vs-text { font-size: 18px; }
+.pk-naechstes .match-action-row { gap: 6px; justify-content: stretch; }
+.pk-naechstes .match-action-row .btn { flex: 1 1 auto; justify-content: center; }
+.portal-gegner:empty { display: none; }
+.portal-gegner { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.pg-kopf { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.pg-kopf span { display: flex; flex-direction: column; min-width: 0; }
+.pg-kopf small { font-size: 11.5px; color: var(--text-muted); }
+.pg-wappen { flex: none; width: 34px; height: 34px; font-size: 11px; box-shadow: inset 0 0 0 2px var(--crest-ring, #fff); }
+.pg-zeilen > div { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; font-size: 12.5px; color: var(--text-muted); }
+.pg-zeilen strong { color: var(--text-main); }
+.portal-ausfaelle { margin-top: 10px; font-size: 13px; }
+.portal-ausfaelle summary { cursor: pointer; color: var(--text-soft); font-weight: 600; }
+.portal-ausfaelle .medical-list { margin-top: 6px; }
+
+/* Datencenter: Netz gegen die Liga, Urteil, Balken je Kennzahl */
+.pd-reihe { display: flex; align-items: center; gap: 12px; }
+.pd-netz { flex: none; width: 112px; height: 104px; }
+.pd-ring { fill: rgba(255, 255, 255, 0.03); stroke: var(--line-strong); stroke-width: 1; }
+.pd-schnitt { fill: none; stroke: var(--text-dim); stroke-width: 1; stroke-dasharray: 3 3; }
+.pd-achse { stroke: var(--line); stroke-width: 1; }
+.pd-wert { fill: rgba(var(--accent-rgb), 0.28); stroke: var(--accent); stroke-width: 1.6; stroke-linejoin: round; }
+.pd-text p { margin: 6px 0 0; font-size: 12.5px; color: var(--text-muted); line-height: 1.4; }
+.pd-urteil { display: inline-block; padding: 3px 9px; border-radius: 6px; font-size: 12px; font-weight: 700; }
+.pd-ok { background: rgba(74, 222, 128, 0.16); color: var(--ok); }
+.pd-mittel { background: rgba(250, 204, 21, 0.14); color: #facc15; }
+.pd-bad { background: rgba(248, 113, 113, 0.16); color: var(--bad); }
+.pd-achsen { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 12px; margin-top: 10px; }
+.pd-achsen span { position: relative; padding-bottom: 5px; font-size: 11px; color: var(--text-muted); }
+.pd-achsen span::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; border-radius: 2px; background: var(--surface-3); }
+.pd-achsen i { position: absolute; left: 0; bottom: 0; height: 3px; border-radius: 2px; background: var(--accent); z-index: 1; }
+
+/* Budgets */
+.pb-zeile { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 3px 0; font-size: 12.5px; color: var(--text-muted); }
+.pb-zeile strong { color: var(--text-main); font-variant-numeric: tabular-nums; }
+.pb-gross { font-family: var(--font-display); font-size: 20px; }
+.pb-minus { color: var(--bad) !important; }
+.pb-balken { position: relative; height: 6px; margin-top: 8px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+.pb-balken i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--accent); }
+.pb-balken.voll i { background: var(--warn, #f59e0b); }
+
+/* Trainingswoche: Montag bis Sonntag */
+.pw-woche { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.pw-tag {
+    display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 0 8px;
+    border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); font-size: 11px; color: var(--text-muted);
+}
+.pw-tag .pw-kurz { font-weight: 700; }
+.pw-tag .pw-symbol .ico { width: 15px; height: 15px; }
+.pw-tag.spiel .pw-symbol { color: var(--accent); }
+.pw-tag.vorbei { opacity: 0.55; }
+.pw-tag.heute { border-color: var(--accent); background: rgba(var(--accent-rgb), 0.16); color: var(--text-main); }
+
+/* Vorstand in der schmalen Spalte: Balken unter dem Titel */
+.pk-vorstand .goal-item { flex-wrap: wrap; gap: 4px 10px; font-size: 12.5px; margin-bottom: 8px; }
+.pk-vorstand .board-msg-box { font-size: 12.5px; }
+
+/* Ohne Container Queries: nach der Fensterbreite */
+@supports not (container-type: inline-size) {
+    @media (min-width: 1500px) {
+        .portal { grid-template-columns: minmax(250px, 0.95fr) minmax(0, 1.2fr) minmax(0, 1.25fr) minmax(270px, 0.95fr); }
+        .portal-haelfte { display: contents; }
+        .ph-b .portal-s4 { order: 0; }
+    }
+    @media (min-width: 900px) and (max-width: 1499.98px) {
+        .portal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+}
+@supports (container-type: inline-size) {
+    .portal-karte { container: kachel / inline-size; }
+    @container bereich (min-width: 1240px) {
+        .portal { grid-template-columns: minmax(250px, 0.95fr) minmax(0, 1.2fr) minmax(0, 1.25fr) minmax(270px, 0.95fr); }
+        .portal-haelfte { display: contents; }
+        .ph-b .portal-s4 { order: 0; }
+    }
+    @container bereich (min-width: 760px) and (max-width: 1239.98px) {
+        .portal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    /* Eine Spalte: jede Karte für sich, das nächste Spiel zuerst */
+    @container bereich (max-width: 759.98px) {
+        .portal-haelfte, .portal-spalte { display: contents; }
+        .pk-naechstes { order: 1; } .pk-post { order: 2; } .pk-tabelle { order: 3; } .pk-spielplan { order: 4; }
+        .pk-nachrichten { order: 5; } .pk-statistik { order: 6; } .pk-daten { order: 7; } .pk-transfer { order: 8; }
+        .pk-gehalt { order: 9; } .pk-woche { order: 10; } .pk-vorstand { order: 11; }
+        .pp-liste { max-height: 420px; }
+    }
+    /* Schmale Tabelle: erst die Bilanz, dann Diff und Form */
+    @container kachel (max-width: 440px) {
+        .portal-tab .pt-suN { display: none; }
+    }
+    @container kachel (max-width: 340px) {
+        .portal-tab .pt-diff, .portal-tab .pt-form { display: none; }
+    }
+}
+@supports not (container-type: inline-size) {
+    @media (max-width: 899.98px) {
+        .portal-haelfte, .portal-spalte { display: contents; }
+        .pk-naechstes { order: 1; } .pk-post { order: 2; } .pk-tabelle { order: 3; } .pk-spielplan { order: 4; }
+        .pk-nachrichten { order: 5; } .pk-statistik { order: 6; } .pk-daten { order: 7; } .pk-transfer { order: 8; }
+        .pk-gehalt { order: 9; } .pk-woche { order: 10; } .pk-vorstand { order: 11; }
+        .portal-tab .pt-suN { display: none; }
+    }
+}
+
+/* --------------------------------------------------------------------------
+   Posteingang wie im Vorbild: links die Liste in ihrer Karte (Filter, Tage,
+   Einträge wie in der Übersicht), rechts die Nachricht
+   -------------------------------------------------------------------------- */
+#pane-inbox .inbox-layout { grid-template-columns: minmax(300px, 400px) minmax(0, 1fr); align-items: start; }
+.post-karte { display: flex; flex-direction: column; min-width: 0; padding: 14px 16px; position: sticky; top: 0; }
+.post-titel {
+    margin: 0; font-family: var(--font-display); font-size: 15.5px; font-weight: 700; color: var(--accent);
+    text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 5px; text-decoration-color: rgba(var(--accent-rgb), 0.45);
+}
+.post-werkzeuge { display: flex; gap: 6px; }
+.post-werkzeuge .kopf-icon[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+.post-suche { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.post-suche .post-abteilung { flex: 1 1 160px; min-height: 32px; padding: 4px 28px 4px 10px; font-size: 12.5px; }
+.post-suche #inboxSearchInput { flex: 1 1 100%; min-height: 34px; }
+#pane-inbox .inbox-list { gap: 0; max-height: calc(100vh - 230px); min-height: 280px; padding-right: 2px; margin: 0 -6px; padding-left: 6px; }
+#pane-inbox .inbox-list .inbox-item.pp-eintrag {
+    display: block; gap: 0; padding: 8px 6px 9px; border: 0; border-bottom: 1px solid var(--line); border-left: 2px solid transparent;
+    border-radius: 0; background: none; box-shadow: none; transform: none;
+}
+#pane-inbox .inbox-list .inbox-item.pp-eintrag:hover { background: var(--surface-2); }
+#pane-inbox .inbox-list .inbox-item.pp-eintrag.unread { border-left-color: var(--accent); }
+#pane-inbox .inbox-list .inbox-item.pp-eintrag.selected { background: rgba(var(--accent-rgb), 0.12); border-left-color: var(--accent); }
+#pane-inbox .inbox-list .inbox-item.pp-eintrag.post-dringend { box-shadow: none; }
+#pane-inbox .pp-eintrag .post-anhang-zahl { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; color: var(--text-muted); }
+#pane-inbox .pp-eintrag .post-anhang-zahl .ico { width: 12px; height: 12px; }
+.pp-frist { display: block; margin-top: 4px; }
+.pp-frist .post-flag { font-size: 11px; }
+@media (max-width: 1200px) {
+    #pane-inbox .inbox-layout { grid-template-columns: minmax(0, 1fr); }
+    .post-karte { position: static; }
+    #pane-inbox .inbox-list { max-height: none; }
+}
+/* Absender und Kategorie im Lesebereich: lange Absender brechen um statt in die Kategorie zu laufen */
+.inbox-detail-meta-grid > * { min-width: 0; overflow-wrap: anywhere; }
+.post-absender > :last-child { min-width: 0; }
+
+/* --------------------------------------------------------------------------
+   Wettbewerbe im Überblick (uiWettbewerbUebersicht.js): eine Spalte je
+   Wettbewerb, oben in seiner Farbe
+   -------------------------------------------------------------------------- */
+.wbu-raster { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+.wbu-spalte { display: flex; flex-direction: column; min-width: 0; padding: 0; overflow: hidden; }
+.wbu-kopf {
+    display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 16px; text-align: left; cursor: pointer;
+    border: 0; border-bottom: 2px solid var(--comp-accent, var(--accent)); color: #fff; font: inherit;
+    background: linear-gradient(135deg, var(--comp-accent, #38bdf8) -60%, var(--comp-flaeche, #121821) 62%);
+}
+.wbu-kopf:hover .wbu-name strong { text-decoration: underline; text-underline-offset: 3px; }
+.wbu-emblem { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 50%; background: rgba(255, 255, 255, 0.12); font-size: 20px; flex: none; }
+.wbu-name { display: flex; flex-direction: column; min-width: 0; }
+.wbu-name strong { font-family: var(--font-display); font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wbu-name small { font-size: 12px; color: rgba(255, 255, 255, 0.75); }
+.wbu-lage { display: flex; flex-direction: column; gap: 4px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.wbu-lage > div { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; }
+.wbu-lage > div > span { color: var(--text-muted); flex: none; }
+.wbu-lage strong { display: inline-flex; align-items: center; gap: 5px; text-align: right; font-size: 12.5px; }
+.wbu-lage .ico { width: 14px; height: 14px; flex: none; }
+.wbu-gut .ico { color: var(--ok); }
+.wbu-raus .ico { color: var(--bad); }
+.wbu-inhalt { padding: 8px 12px 4px; min-width: 0; }
+.wbu-tabelle { max-height: 520px; }
+.wbu-paarungen .wb-spiel { padding: 5px 2px; }
+.wbu-hinweis { margin: 6px 2px 2px; font-size: 11.5px; color: var(--text-dim); }
+.wbu-fuss { padding: 8px 16px 14px; border-top: 1px solid var(--line); margin-top: auto; }
+.wbu-fuss h4 { margin: 2px 0 4px; font-size: 11.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-soft); }
+.wbu-oeffnen { width: 100%; margin-top: 8px; justify-content: center; }
+@supports (container-type: inline-size) {
+    .wbu-spalte { container: kachel / inline-size; }
+    @container bereich (min-width: 760px) {
+        .wbu-raster { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @container bereich (min-width: 1240px) {
+        .wbu-raster.wbu-n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .wbu-raster.wbu-n4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+}
+@supports not (container-type: inline-size) {
+    @media (min-width: 900px) { .wbu-raster { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (min-width: 1500px) { .wbu-raster { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 }

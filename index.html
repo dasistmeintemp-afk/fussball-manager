@@ -259,154 +259,149 @@
                 <!-- Tab: Dashboard -->
                 <section class="tab-pane active" id="pane-dashboard">
                     <div id="dashEinstieg" style="display:none;"></div>
-                    <div class="dashboard-grid">
-                        <!-- Next Match Card -->
-                        <div class="dash-card next-match-card" id="dashNextCard">
-                            <div class="card-header">
-                                <h3 id="dashNextHeading">Als Nächstes</h3>
-                                <span class="matchday-tag" id="dashMatchdayTag">Spieltag 1</span>
-                            </div>
-
-                            <!-- Die Tagesleiste: wo wir stehen und was kommt -->
-                            <div class="day-rail" id="dashDayRail"></div>
-
-                            <div class="match-preview-content" id="dashMatchPreview">
-                                <div class="preview-team home-team">
-                                    <div class="preview-crest" id="dashHomeCrest"></div>
-                                    <h4 id="dashHomeName">Rot-Weiß München</h4>
-                                    <span class="preview-rank" id="dashHomeRank">Platz 1</span>
+                    <!-- Übersicht wie im Vorbild: vier Spalten (uiPortal.js) -->
+                    <div class="portal" id="dashPortal">
+                        <div class="portal-haelfte ph-a">
+                        <div class="portal-spalte portal-s1">
+                            <section class="dash-card portal-karte pk-post" aria-label="Posteingang">
+                                <header class="portal-kopf">
+                                    <button type="button" class="portal-titel" id="btnDashFullInbox">Posteingang</button>
+                                    <span class="badge badge-info" id="dashAttentionCount" hidden>0</span>
+                                </header>
+                                <div class="pp-filter-leiste" id="dashPostFilter" role="tablist" aria-label="Post filtern"></div>
+                                <div class="pp-aufgaben" id="dashAttentionWrap">
+                                    <div class="pp-tag">Aufgaben</div>
+                                    <div id="dashAttentionList"></div>
                                 </div>
-                                <div class="preview-vs">
-                                    <span class="vs-countdown" id="dashNextWhen">heute</span>
-                                    <span class="vs-text">VS</span>
-                                    <span class="preview-venue" id="dashVenue">Arena München</span>
+                                <div class="pp-liste" id="dashPostListe"></div>
+                            </section>
+                        </div>
+                        <div class="portal-spalte portal-s2">
+                            <section class="dash-card portal-karte pk-nachrichten" aria-label="Nachrichten">
+                                <header class="portal-kopf"><button type="button" class="portal-titel" data-portal-ziel="inbox" data-portal-filter="presse">Nachrichten</button></header>
+                                <div id="dashNachrichten"></div>
+                            </section>
+                            <section class="dash-card portal-karte pk-spielplan" aria-label="Spielplan">
+                                <header class="portal-kopf"><button type="button" class="portal-titel" data-portal-ziel="calendar">Spielplan</button></header>
+                                <div id="dashSpielplan"></div>
+                            </section>
+                        </div>
+                        </div>
+                        <div class="portal-haelfte ph-b">
+                        <div class="portal-spalte portal-s3">
+                            <section class="dash-card portal-karte pk-tabelle table-snapshot-card" aria-label="Tabelle">
+                                <header class="portal-kopf">
+                                    <button type="button" class="portal-titel" id="btnDashFullTable">Tabelle</button>
+                                    <select class="styled-select portal-wahl" id="dashTabelleWahl" aria-label="Wettbewerb"></select>
+                                </header>
+                                <div class="wb-tab-rahmen">
+                                    <table class="wb-tab portal-tab" id="dashStandingsTable">
+                                        <thead><tr><th>Pl.</th><th></th><th>Verein</th><th>Sp</th><th class="pt-suN">S</th><th class="pt-suN">U</th><th class="pt-suN">N</th><th class="pt-diff">Diff</th><th>Pkt</th><th class="pt-form">Form</th></tr></thead>
+                                        <tbody id="dashStandingsBody"></tbody>
+                                    </table>
                                 </div>
-                                <div class="preview-team away-team">
-                                    <div class="preview-crest" id="dashAwayCrest"></div>
-                                    <h4 id="dashAwayName">Concordia Dortmund</h4>
-                                    <span class="preview-rank" id="dashAwayRank">Platz 2</span>
-                                </div>
-                            </div>
-
-                            <!-- Steht kein Spiel an, erklärt diese Zeile, was stattdessen läuft -->
-                            <div class="next-note" id="dashNextNote"></div>
-
-                            <div class="match-action-row" id="dashMatchActions">
-                                <button class="btn btn-secondary" id="btnDashOpponentAnalysis"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg><span>Gegneranalyse</span></button>
-                                <button class="btn btn-secondary" id="btnDashMatchplan" style="display:none;"><svg class="ico" aria-hidden="true"><use href="#i-tactics"/></svg><span>Taktikbesprechung</span></button>
-                                <button class="btn btn-secondary" id="btnDashInstantSim"><svg class="ico" aria-hidden="true"><use href="#i-bolt"/></svg><span>Sofort berechnen</span></button>
-                                <button class="btn btn-primary btn-lg" id="btnDashLiveMatch"><svg class="ico" aria-hidden="true"><use href="#i-play"/></svg><span>Live-Spiel starten</span></button>
-                            </div>
+                                <footer class="wb-legende" id="dashTabelleLegende"></footer>
+                            </section>
+                            <section class="dash-card portal-karte pk-statistik" aria-label="Spielerstatistiken">
+                                <header class="portal-kopf"><button type="button" class="portal-titel" data-portal-ziel="stats">Spielerstatistiken</button></header>
+                                <div id="dashSpielerStat"></div>
+                            </section>
                         </div>
-
-                        <!-- Was heute ansteht -->
-                        <div class="dash-card attention-card">
-                            <div class="card-header">
-                                <h3>Auf Ihrem Schreibtisch</h3>
-                                <span class="badge badge-info" id="dashAttentionCount">0</span>
-                            </div>
-                            <div id="dashAttentionList"></div>
-                        </div>
-
-                        <!-- Calendar & Weekly Routine Snapshot Card -->
-                        <div class="dash-card calendar-snapshot-card">
-                            <div class="card-header">
-                                <h3>Wochenplan & Tagesablauf</h3>
-                                <span class="badge badge-info" id="dashCurrentDateBadge">01.08.2026</span>
-                            </div>
-                            <div class="calendar-timeline-list" id="dashCalendarList">
-                                <!-- Dynamische Tagesliste -->
-                            </div>
-                            <div class="calendar-action-bar">
-                                <button class="btn btn-secondary btn-sm" id="btnDashOpenCalendar"><svg class="ico" aria-hidden="true"><use href="#i-calendar"/></svg><span>Kalender öffnen</span></button>
-                            </div>
-                        </div>
-
-                        <!-- League Table Snapshot Card -->
-                        <div class="dash-card table-snapshot-card">
-                            <div class="card-header">
-                                <h3>Tabelle (Auszug)</h3>
-                                <button class="btn btn-sm btn-link" id="btnDashFullTable">Ganze Tabelle ➔</button>
-                            </div>
-                            <div class="table-container">
-                                <table class="compact-table" id="dashStandingsTable">
-                                    <thead>
-                                        <tr>
-                                            <th>#</th>
-                                            <th>Verein</th>
-                                            <th>Sp</th>
-                                            <th>Diff</th>
-                                            <th>Pkt</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="dashStandingsBody">
-                                        <!-- Dynamisch -->
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <!-- Board & Season Goals Card -->
-                        <div class="dash-card board-card">
-                            <div class="card-header">
-                                <h3>Vorstand, Fans & Medien</h3>
-                            </div>
-                            <div class="board-body">
-                                <!-- Ziel und Balken teilen sich ein Raster: alle Balken gleich lang -->
-                                <div class="goal-balken">
-                                <div class="goal-item">
-                                    <span class="goal-label">Saisonziel:</span>
-                                    <span class="goal-val" id="dashBoardGoal">Qualifikation für die Top 3</span>
-                                </div>
-                                <div class="goal-item">
-                                    <span class="goal-label">Vorstandszufriedenheit:</span>
-                                    <div class="progress-bar-lg">
-                                        <div class="progress-fill" id="dashBoardFill" style="width: 75%;"></div>
+                        <div class="portal-spalte portal-s4">
+                            <section class="dash-card portal-karte pk-naechstes next-match-card" id="dashNextCard">
+                                <header class="portal-kopf portal-kopf-klein">
+                                    <h3 id="dashNextHeading">Als Nächstes</h3>
+                                    <span class="matchday-tag" id="dashMatchdayTag">Spieltag 1</span>
+                                </header>
+                                <div class="match-preview-content" id="dashMatchPreview">
+                                    <div class="preview-team home-team">
+                                        <div class="preview-crest" id="dashHomeCrest"></div>
+                                        <h4 id="dashHomeName">Rot-Weiß München</h4>
+                                        <span class="preview-rank" id="dashHomeRank">Platz 1</span>
                                     </div>
-                                    <span class="goal-pct" id="dashBoardPct">75%</span>
-                                </div>
-                                <div class="goal-item">
-                                    <span class="goal-label">Fanstimmung:</span>
-                                    <div class="progress-bar-lg">
-                                        <div class="progress-fill" id="dashFanMoodFill" style="width: 75%; background:#10b981;"></div>
+                                    <div class="preview-vs">
+                                        <span class="vs-countdown" id="dashNextWhen">heute</span>
+                                        <span class="vs-text">VS</span>
+                                        <span class="preview-venue" id="dashVenue">Arena München</span>
                                     </div>
-                                    <span class="goal-pct" id="dashFanMoodPct">75%</span>
-                                </div>
-                                <div class="fan-stimmen" id="dashFanStimmen" hidden></div>
-                                <div class="goal-item">
-                                    <span class="goal-label">Mediendruck:</span>
-                                    <div class="progress-bar-lg">
-                                        <div class="progress-fill" id="dashMediaFill" style="width: 45%; background:#f59e0b;"></div>
+                                    <div class="preview-team away-team">
+                                        <div class="preview-crest" id="dashAwayCrest"></div>
+                                        <h4 id="dashAwayName">Concordia Dortmund</h4>
+                                        <span class="preview-rank" id="dashAwayRank">Platz 2</span>
                                     </div>
-                                    <span class="goal-pct" id="dashMediaPct">45%</span>
                                 </div>
-                                </div>
-                                <div class="board-msg-box" id="dashBoardMsg">
-                                    Der Vorstand ist mit dem aktuellen Saisonverlauf zufrieden.
-                                </div>
-                                <div class="board-anfrage" id="dashBoardAnfrage"></div>
-                            </div>
-                        </div>
 
-                        <!-- Squad Status & Medical Card -->
-                        <div class="dash-card squad-status-card">
-                            <div class="card-header">
-                                <h3>Kader-Status & Lazarett</h3>
-                            </div>
-                            <div class="medical-list" id="dashMedicalList">
-                                <div class="empty-state-sm">Keine verletzten oder gesperrten Spieler.</div>
-                            </div>
-                        </div>
+                                <!-- Steht kein Spiel an, erklärt diese Zeile, was stattdessen läuft -->
+                                <div class="next-note" id="dashNextNote"></div>
 
-                        <!-- Recent News Ticker Card -->
-                        <div class="dash-card news-ticker-card full-width">
-                            <div class="card-header">
-                                <h3>Aktuelle Vereinsnachrichten</h3>
-                                <button class="btn btn-sm btn-link" id="btnDashFullInbox">Postfach öffnen ➔</button>
-                            </div>
-                            <div class="news-list-dash" id="dashNewsList">
-                                <!-- Dynamisch -->
-                            </div>
+                                <div class="match-action-row" id="dashMatchActions">
+                                    <button class="btn btn-secondary" id="btnDashOpponentAnalysis"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg><span>Gegneranalyse</span></button>
+                                    <button class="btn btn-secondary" id="btnDashMatchplan" style="display:none;"><svg class="ico" aria-hidden="true"><use href="#i-tactics"/></svg><span>Taktikbesprechung</span></button>
+                                    <button class="btn btn-secondary" id="btnDashInstantSim"><svg class="ico" aria-hidden="true"><use href="#i-bolt"/></svg><span>Sofort berechnen</span></button>
+                                    <button class="btn btn-primary btn-lg" id="btnDashLiveMatch"><svg class="ico" aria-hidden="true"><use href="#i-play"/></svg><span>Live-Spiel starten</span></button>
+                                </div>
+                                <!-- Bericht über den Gegner: Form, Formation, Platz - und wer bei uns fehlt -->
+                                <div class="portal-gegner" id="dashGegnerBericht"></div>
+                                <details class="portal-ausfaelle">
+                                    <summary>Ausfälle</summary>
+                                    <div class="medical-list" id="dashMedicalList"></div>
+                                </details>
+                            </section>
+                            <section class="dash-card portal-karte pk-daten" aria-label="Datencenter">
+                                <header class="portal-kopf portal-kopf-klein"><h3>Datencenter</h3></header>
+                                <div id="dashDatencenter"></div>
+                            </section>
+                            <section class="dash-card portal-karte pk-transfer" aria-label="Transferbudget">
+                                <header class="portal-kopf portal-kopf-klein"><h3>Transferbudget</h3></header>
+                                <div id="dashTransferBudget"></div>
+                            </section>
+                            <section class="dash-card portal-karte pk-gehalt" aria-label="Gehaltsbudget">
+                                <header class="portal-kopf portal-kopf-klein"><h3>Gehaltsbudget</h3></header>
+                                <div id="dashGehaltBudget"></div>
+                            </section>
+                            <section class="dash-card portal-karte pk-woche" aria-label="Trainingswoche">
+                                <header class="portal-kopf portal-kopf-klein"><button type="button" class="portal-titel klein" data-portal-ziel="training">Training</button></header>
+                                <div id="dashWoche"></div>
+                            </section>
+                            <section class="dash-card portal-karte pk-vorstand board-card" aria-label="Vorstand, Fans und Medien">
+                                <header class="portal-kopf portal-kopf-klein"><h3>Vorstand, Fans &amp; Medien</h3></header>
+                                <div class="board-body">
+                                    <!-- Ziel und Balken teilen sich ein Raster: alle Balken gleich lang -->
+                                    <div class="goal-balken">
+                                    <div class="goal-item">
+                                        <span class="goal-label">Saisonziel:</span>
+                                        <span class="goal-val" id="dashBoardGoal">Qualifikation für die Top 3</span>
+                                    </div>
+                                    <div class="goal-item">
+                                        <span class="goal-label">Vorstandszufriedenheit:</span>
+                                        <div class="progress-bar-lg">
+                                            <div class="progress-fill" id="dashBoardFill" style="width: 75%;"></div>
+                                        </div>
+                                        <span class="goal-pct" id="dashBoardPct">75%</span>
+                                    </div>
+                                    <div class="goal-item">
+                                        <span class="goal-label">Fanstimmung:</span>
+                                        <div class="progress-bar-lg">
+                                            <div class="progress-fill" id="dashFanMoodFill" style="width: 75%; background:#10b981;"></div>
+                                        </div>
+                                        <span class="goal-pct" id="dashFanMoodPct">75%</span>
+                                    </div>
+                                    <div class="fan-stimmen" id="dashFanStimmen" hidden></div>
+                                    <div class="goal-item">
+                                        <span class="goal-label">Mediendruck:</span>
+                                        <div class="progress-bar-lg">
+                                            <div class="progress-fill" id="dashMediaFill" style="width: 45%; background:#f59e0b;"></div>
+                                        </div>
+                                        <span class="goal-pct" id="dashMediaPct">45%</span>
+                                    </div>
+                                    </div>
+                                    <div class="board-msg-box" id="dashBoardMsg">
+                                        Der Vorstand ist mit dem aktuellen Saisonverlauf zufrieden.
+                                    </div>
+                                    <div class="board-anfrage" id="dashBoardAnfrage"></div>
+                                </div>
+                            </section>
+                        </div>
                         </div>
                     </div>
                 </section>
@@ -1585,35 +1580,39 @@
 
                 <!-- Tab: Inbox (Postfach) -->
                 <section class="tab-pane" id="pane-inbox">
-                    <div class="pane-header">
-                        <h2>Postfach & Vereinsnachrichten</h2>
-                        <div class="pane-actions inbox-aktionen">
-                            <button class="btn btn-secondary btn-sm" id="btnInboxMarkAllRead" title="Alle als gelesen markieren"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg><span>Alle als gelesen markieren</span></button>
-                        </div>
-                    </div>
-                    
-                    <div class="inbox-toolbar">
-                        <div class="inbox-search-wrap">
-                            <input type="text" id="inboxSearchInput" class="styled-input" placeholder="Nachrichten durchsuchen...">
-                        </div>
-                        <div class="inbox-filter-tags" id="inboxFilterTags">
-                            <button class="filter-chip active" data-inbox-filter="all">Alle</button>
-                            <button class="filter-chip" data-inbox-filter="unread">Ungelesen</button>
-                            <button class="filter-chip" data-inbox-filter="antwort">Antwort nötig</button>
-                            <button class="filter-chip" data-inbox-filter="board">Vorstand</button>
-                            <button class="filter-chip" data-inbox-filter="match">Spiel</button>
-                            <button class="filter-chip" data-inbox-filter="transfer">Transfers</button>
-                            <button class="filter-chip" data-inbox-filter="training">Training</button>
-                            <button class="filter-chip" data-inbox-filter="youth">Jugend</button>
-                            <button class="filter-chip" data-inbox-filter="scouting">Scouting</button>
-                            <button class="filter-chip" data-inbox-filter="finance">Finanzen</button>
-                        </div>
-                    </div>
-
+                    <!-- Posteingang wie im Vorbild: links die Liste mit Filtern, rechts die Nachricht -->
                     <div class="inbox-layout">
-                        <div class="inbox-list" id="inboxList">
-                            <!-- Dynamisch -->
-                        </div>
+                        <section class="dash-card post-karte" aria-label="Posteingang">
+                            <header class="portal-kopf">
+                                <h2 class="post-titel">Posteingang</h2>
+                                <div class="post-werkzeuge">
+                                    <button type="button" class="kopf-icon" id="btnInboxSuche" title="Suchen" aria-label="Suchen" aria-expanded="false"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg></button>
+                                    <button type="button" class="kopf-icon" id="btnInboxMarkAllRead" title="Alle als gelesen markieren" aria-label="Alle als gelesen markieren"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg></button>
+                                </div>
+                            </header>
+                            <div class="pp-filter-leiste" id="inboxFilterTags" role="tablist" aria-label="Post filtern">
+                                <button type="button" class="pp-filter active" data-inbox-filter="all">Alle</button>
+                                <button type="button" class="pp-filter" data-inbox-filter="neu">Neu</button>
+                                <button type="button" class="pp-filter" data-inbox-filter="antwort">Aufgaben</button>
+                                <button type="button" class="pp-filter" data-inbox-filter="unread">Ungelesen</button>
+                            </div>
+                            <div class="post-suche">
+                                <select class="styled-select post-abteilung" id="inboxAbteilung" aria-label="Abteilung">
+                                    <option value="">Alle Abteilungen</option>
+                                    <option value="board">Vorstand</option>
+                                    <option value="match">Spiel &amp; Presse</option>
+                                    <option value="transfer">Transfers &amp; Verträge</option>
+                                    <option value="training">Training &amp; Medizin</option>
+                                    <option value="youth">Nachwuchs</option>
+                                    <option value="scouting">Scouting</option>
+                                    <option value="finance">Finanzen</option>
+                                </select>
+                                <input type="text" id="inboxSearchInput" class="styled-input" placeholder="Nachrichten durchsuchen..." hidden>
+                            </div>
+                            <div class="inbox-list" id="inboxList">
+                                <!-- Dynamisch -->
+                            </div>
+                        </section>
                         <div class="inbox-detail" id="inboxDetail">
                             <div class="empty-state">Wählen Sie eine Nachricht aus der Liste aus.</div>
                         </div>
@@ -2669,6 +2668,8 @@
     <script src="js/ui/uiMeldungen.js"></script>
     <script src="js/ui/uiKopfmenue.js"></script>
     <script src="js/ui/uiFarben.js"></script>
+    <script src="js/ui/uiPortal.js"></script>
+    <script src="js/ui/uiWettbewerbUebersicht.js"></script>
     <script src="js/ui/uiSpeicher.js"></script>
     <script src="js/ui/uiEinstieg.js"></script>
     <script src="js/ui/uiNational.js"></script>

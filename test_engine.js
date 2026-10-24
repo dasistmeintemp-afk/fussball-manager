@@ -15683,6 +15683,71 @@ function runEngineTests() {
         }
     });
 
+    test("Übersicht und Posteingang wie im Vorbild: eigene Spiele aus dem Kalender, Post nach Tagen, Filter Neu und Abteilung", () => {
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const { CalendarEngine } = require('./js/engine/calendarEngine.js');
+        const { NewsEngine } = require('./js/engine/newsEngine.js');
+        const fs = require('fs');
+        const ui = Object.create(UIManager.prototype);
+        ui.getCalendarEngine = () => CalendarEngine;
+        const state = GameState.createNewGame("sge", "normal", { name: "Portal" });
+
+        // Spielplan: jede Runde der Liga aus dem Kalender, gespielte mit Ergebnis aus eigener Sicht
+        const eigene = state.schedule.slice(0, 2).map(r => r.matches.find(m => m.homeClubId === "sge" || m.awayClubId === "sge"));
+        Object.assign(eigene[0], { played: true, homeGoals: 2, awayGoals: 1 });
+        Object.assign(eigene[1], { played: true, homeGoals: 0, awayGoals: 0 });
+        const spiele = ui.portalSpiele(state);
+        const liga = spiele.filter(s => s.kurz === "Liga");
+        const runden = (state.calendar || []).filter(t => t.type === "matchday").length;
+        if (!runden || liga.length !== runden) throw new Error(`${liga.length} Ligaspiele im Spielplan, ${runden} Spieltage im Kalender`);
+        if (spiele.some((s, i) => i > 0 && s.i < spiele[i - 1].i)) throw new Error("Der Spielplan steht nicht in der Reihenfolge der Termine");
+        const erstes = liga[0], heim = eigene[0].homeClubId === "sge";
+        if (!erstes.gespielt || erstes.heim !== heim || erstes.tore.join(":") !== (heim ? "2:1" : "1:2")) throw new Error(`Erstes Spiel: ${JSON.stringify({ g: erstes.gespielt, h: erstes.heim, t: erstes.tore })}`);
+        if (!liga[1].gespielt || liga[1].tore.join(":") !== "0:0" || liga[2].gespielt || liga[2].tore) throw new Error("Ergebnis oder offenes Spiel falsch");
+        if (!erstes.gegner || erstes.gegner.id === "sge") throw new Error("Der Gegner fehlt");
+
+        // Tage und Alter wie im Vorbild
+        if (ui.portalTagText("01.08.2026") !== "Sa, 1. Aug") throw new Error(ui.portalTagText("01.08.2026"));
+        if (ui.portalTagText("Saisonstart") !== "Saisonstart") throw new Error("Ein Tag ohne Datum bleibt, wie er ist");
+        const tag = { currentDate: "10.08.2026" };
+        if (ui.portalAlter(tag, "10.08.2026") !== "heute" || ui.portalAlter(tag, "09.08.2026") !== "gestern" || ui.portalAlter(tag, "07.08.2026") !== "vor 3 Tagen") throw new Error("Alter falsch");
+
+        // Filter: Neu ist heute eingegangen, die Abteilung kommt dazu
+        state.inbox = [
+            { id: 1, date: state.currentDate, type: "board", subject: "A", read: false },
+            { id: 2, date: "31.07.2026", type: "injury", subject: "B", read: true },
+            { id: 3, date: state.currentDate, type: "training_report", subject: "C", read: true }
+        ];
+        const ids = (f, a) => NewsEngine.getFilteredMessages(state, f, "", a).map(m => m.id).sort().join(",");
+        if (ids("neu") !== "1,3" || ids("all", "training") !== "2,3" || ids("neu", "training") !== "3" || ids("unread") !== "1" || ids("board") !== "1") {
+            throw new Error(`Filter: neu ${ids("neu")}, training ${ids("all", "training")}, neu+training ${ids("neu", "training")}, ungelesen ${ids("unread")}`);
+        }
+
+        // Wettbewerbe im Überblick: Liga zuerst, dann der Landespokal - der Europapokal nur, wer dabei ist
+        const wb = ui.eigeneWettbewerbe(state);
+        if (wb[0]?.art !== "liga" || wb[0].id !== state.clubs.find(c => c.id === "sge").leagueId) throw new Error(`Erst die Liga: ${JSON.stringify(wb)}`);
+        const pokal = wb.find(w => w.art === "pokal");
+        if (!pokal || (state.cups[pokal.id].land || pokal.id.split("_")[0]) !== "de") throw new Error(`Landespokal fehlt: ${JSON.stringify(wb)}`);
+        if (wb.filter(w => w.art === "pokal").length !== 1) throw new Error("Mehr als ein Landespokal");
+        const imEuropapokal = ["ucl", "uel", "uecl"].filter(id => ui.wbuTeilnehmer(state.europeanCompetitions?.[id]).has("sge"));
+        if (wb.filter(w => w.art === "europa").map(w => w.id).join() !== imEuropapokal.join()) throw new Error(`Europapokal: ${JSON.stringify(wb)} / ${imEuropapokal}`);
+        if (!fs.readFileSync('./js/ui/uiWettbewerbe.js', 'utf8').includes("this.activeCompetitionId || uebersicht")) throw new Error("Der Reiter öffnet nicht mit der Übersicht");
+
+        // Gerüst: alle Kacheln, und was das Dashboard schon konnte, bleibt
+        const html = fs.readFileSync('./index.html', 'utf8');
+        ["dashPortal", "dashPostListe", "dashPostFilter", "dashAttentionList", "dashNachrichten", "dashSpielplan", "dashStandingsBody", "dashTabelleWahl",
+            "dashSpielerStat", "dashNextCard", "dashGegnerBericht", "dashMedicalList", "dashDatencenter", "dashTransferBudget", "dashGehaltBudget", "dashWoche",
+            "btnDashLiveMatch", "btnDashInstantSim", "btnDashOpponentAnalysis", "dashBoardGoal", "dashBoardAnfrage", "inboxFilterTags", "inboxAbteilung", "btnInboxSuche"].forEach(id => {
+            if (!html.includes(`id="${id}"`)) throw new Error(`${id} fehlt in index.html`);
+        });
+        ["neu", "antwort", "unread", "all"].forEach(f => { if (!html.includes(`data-inbox-filter="${f}"`)) throw new Error(`Filter ${f} fehlt`); });
+        if (!html.includes('src="js/ui/uiPortal.js"') || !fs.readFileSync('./service-worker.js', 'utf8').includes('"./js/ui/uiPortal.js"')) throw new Error("Modul nicht eingebunden");
+        if (!html.includes('src="js/ui/uiWettbewerbUebersicht.js"')) throw new Error("Wettbewerbe-Übersicht nicht eingebunden");
+        const css = fs.readFileSync('./css/design.css', 'utf8');
+        if (!/@container bereich \(min-width: 1240px\)[\s\S]*?\.portal \{ grid-template-columns:/.test(css)) throw new Error("Vier Spalten nach dem Platz des Bereichs fehlen");
+        if (!/\.portal-haelfte, \.portal-spalte \{ display: contents; \}/.test(css)) throw new Error("Eine Spalte mit dem nächsten Spiel oben fehlt");
+    });
+
     test("Vereinsfarben und Kacheln nach Platz: Akzent lesbar, Silber ohne Farbe, Wahl je Gerät, Container Queries mit Rückfall", () => {
         const { UIManager } = require('./js/ui/uiManager.js');
         const ui = Object.create(UIManager.prototype);

@@ -98,10 +98,21 @@ const NewsEngine = {
         return message;
     },
 
+    /** Die Abteilungen der Postfach-Auswahl: welche Kategorien sie zeigen */
+    ABTEILUNGEN: {
+        board: ["vorstand"], match: ["spiel", "presse"], transfer: ["transfer", "sportdirektor", "vertrag", "spieler"],
+        training: ["training", "medizin"], youth: ["jugend"], scouting: ["scouting", "sportdirektor"], finance: ["finanzen"]
+    },
+
     /**
-     * Gefilterte und durchsuchte Nachrichten abrufen
+     * Gefilterte und durchsuchte Nachrichten abrufen.
+     *
+     * filter: all, neu (heute eingegangen), unread, antwort (wartet auf eine
+     * Antwort) oder eine Abteilung (ABTEILUNGEN). Die Abteilung lässt sich
+     * auch zusätzlich wählen - wie im Vorbild: oben Alle, Neu, Aufgaben,
+     * Ungelesen, daneben die Abteilung.
      */
-    getFilteredMessages(state, filter = "all", search = "") {
+    getFilteredMessages(state, filter = "all", search = "", abteilung = "") {
         if (!state || !Array.isArray(state.inbox)) return [];
         this.normalizeAllMessages(state);
 
@@ -110,27 +121,18 @@ const NewsEngine = {
         // 1. Filter anwenden - nach Abteilung (kategorie), damit jede Art
         // irgendwo auftaucht. Vorher fehlten etwa Vorberichte unter "Spiel"
         // und Verletzungen unter "Training".
-        const nach = (...keys) => list.filter(m => keys.includes(this.kategorie(m).key));
+        const nach = (keys) => list.filter(m => keys.includes(this.kategorie(m).key));
         if (filter === "unread") {
             list = list.filter(m => !m.read);
+        } else if (filter === "neu") {
+            list = list.filter(m => m.date && m.date === state.currentDate);
         } else if (filter === "antwort") {
             // Was auf eine Antwort wartet
             list = list.filter(m => ["dringend", "antwort"].includes(this.dringlichkeit(state, m)?.stufe));
-        } else if (filter === "board") {
-            list = nach("vorstand");
-        } else if (filter === "match") {
-            list = nach("spiel", "presse");
-        } else if (filter === "transfer") {
-            list = nach("transfer", "sportdirektor", "vertrag", "spieler");
-        } else if (filter === "training") {
-            list = nach("training", "medizin");
-        } else if (filter === "youth") {
-            list = nach("jugend");
-        } else if (filter === "scouting") {
-            list = nach("scouting", "sportdirektor");
-        } else if (filter === "finance") {
-            list = nach("finanzen");
+        } else if (this.ABTEILUNGEN[filter]) {
+            list = nach(this.ABTEILUNGEN[filter]);
         }
+        if (abteilung && this.ABTEILUNGEN[abteilung]) list = nach(this.ABTEILUNGEN[abteilung]);
 
         // 2. Suche anwenden
         if (search && search.trim()) {

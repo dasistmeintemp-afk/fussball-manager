@@ -699,8 +699,9 @@ function runWizardTests() {
         });
 
         // Template-Prüfungen in uiManager.js
-        if (!uiJs.includes('class="inbox-item-topline"') || !uiJs.includes('class="inbox-sender-wrap"')) {
-            throw new Error("Postfach-Template in uiManager.js verwendet nicht die neuen Klassen .inbox-item-topline / .inbox-sender-wrap");
+        // Die Postliste wie im Vorbild: nach Tagen, je Eintrag Kopf mit Absender und Etikett, darunter der Betreff
+        if (!uiJs.includes('class="pp-tag"') || !uiJs.includes('class="pp-kopf"') || !uiJs.includes('class="pp-etikett"') || !uiJs.includes('inbox-item pp-eintrag')) {
+            throw new Error("Postfach-Template verwendet nicht die Liste nach Tagen (.pp-tag / .pp-kopf / .pp-etikett / .pp-eintrag)");
         }
         if (!uiJs.includes('class="inbox-detail-title-row"') || !uiJs.includes('class="inbox-detail-meta-grid"')) {
             throw new Error("Postfach-Detail in uiManager.js verwendet nicht die neuen Klassen .inbox-detail-title-row / .inbox-detail-meta-grid");

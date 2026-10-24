@@ -1129,7 +1129,7 @@ class UIManager {
             if (heading) heading.textContent = "Als Nächstes";
             if (tag) tag.textContent = "Saisonende";
             if (note) {
-                note.style.display = "";
+                note.style.display = "block";
                 note.textContent = "Kein Spiel mehr angesetzt - die Saison läuft aus.";
             }
             return;
@@ -1177,7 +1177,7 @@ class UIManager {
             actions.style.display = "none";
             sperreKnoepfe();
             if (note) {
-                note.style.display = "";
+                note.style.display = "block";
                 note.innerHTML = `<strong>${this.escapeHtml(termin.titel)}</strong> ${this.wannText(termin.tage)}`
                     + `<span>${this.escapeHtml(termin.beschreibung
                         || "Noch nicht verplant - im Reiter Vorbereitung festlegen, sonst besetzt der Sportdirektor den Termin.")}</span>`;
@@ -1236,7 +1236,7 @@ class UIManager {
             btnInstant.disabled = true;
             btnInstant.style.display = "none";
             if (note) {
-                note.style.display = "";
+                note.style.display = "block";
                 note.innerHTML = `<strong>${this.escapeHtml(termin.titel)} ${this.wannText(termin.tage)}</strong>`
                     + `<span>${this.escapeHtml(this.wegBisZumSpiel(state, termin))}</span>`;
             }
@@ -1327,83 +1327,6 @@ class UIManager {
         // 1a. Was heute ansteht
         this.renderAttentionList();
 
-        // 1b. Kalender & Wochenplan Snapshot
-        const calBadge = document.getElementById("dashCurrentDateBadge");
-        if (calBadge) calBadge.textContent = state.currentDate || "01.08.2026";
-
-        const calList = document.getElementById("dashCalendarList");
-        if (calList) {
-            const calendarEngine = (typeof CalendarEngine !== 'undefined' && CalendarEngine) 
-                ? CalendarEngine 
-                : ((typeof window !== 'undefined' && window.CalendarEngine) ? window.CalendarEngine : null);
-            
-            const upcoming = calendarEngine ? calendarEngine.getUpcomingDays(state, 5) : [];
-            if (upcoming.length > 0) {
-                calList.innerHTML = upcoming.map((day, idx) => {
-                    const isToday = idx === 0;
-                    // Derselbe Inhalt wie im Kalenderreiter - nicht noch einmal
-                    // eigene Symbole und Texte danebenstellen.
-                    const inhalt = calendarEngine.tagesInhalt(state, day);
-                    return `
-                        <div class="calendar-timeline-item ${isToday ? 'current-day' : ''}">
-                            <div class="cal-day-date">
-                                <strong>${this.escapeHtml(day.dayOfWeek)}</strong>
-                                <span>${this.escapeHtml((day.date || "").substring(0, 5))}</span>
-                            </div>
-                            <div class="cal-day-info">
-                                <div class="cal-day-title">${this.tagIcon(day.type)} ${this.escapeHtml(this.ohneSymbol(inhalt.titel || day.title))}</div>
-                                <div class="cal-day-desc">${this.escapeHtml(inhalt.text || day.description || "")}</div>
-                            </div>
-                            ${isToday ? '<span class="badge badge-success">HEUTE</span>' : ''}
-                        </div>
-                    `;
-                }).join("");
-            } else {
-                calList.innerHTML = `<div class="empty-state-sm">Kein Kalender aktiv.</div>`;
-            }
-        }
-
-        // 2. League Snapshot Table (Top 5 + User Club)
-        const standingsBody = document.getElementById("dashStandingsBody");
-        const tabelle = state.standings || [];
-        const eigenerRang = tabelle.findIndex(s => s.clubId === userClub.id) + 1;
-        // Die Spitze und das eigene Umfeld: wer vor und hinter uns steht,
-        // ist wichtiger als Platz 4 und 5.
-        let plaetze;
-        if (eigenerRang <= 5) {
-            plaetze = [1, 2, 3, 4, 5, 6];
-        } else {
-            plaetze = [1, 2, 3, null, eigenerRang - 1, eigenerRang, eigenerRang + 1];
-        }
-        plaetze = plaetze.filter(p => p === null || (p >= 1 && p <= tabelle.length));
-        const zonen = this.tabellenZonen(state, this.getUserLeagueId(state), tabelle.length);
-
-        standingsBody.innerHTML = plaetze.map(rank => {
-            if (rank === null) {
-                return `<tr class="tabelle-luecke"><td colspan="5">···</td></tr>`;
-            }
-            const s = tabelle[rank - 1];
-            const isUser = s.clubId === userClub.id;
-            const zone = zonen.get(rank);
-            return `
-                <tr class="${isUser ? 'row-user-club' : ''}" data-club-id="${this.escapeHtml(s.clubId)}">
-                    <td><span class="rang${zone ? ` rang-${zone}` : ""}" title="${zone ? UIManager.ZONEN[zone] : ""}">${rank}</span></td>
-                    <td class="tb-verein"><span class="tb-verein-inhalt"><span class="mini-wappen" data-club="${this.escapeHtml(s.clubId)}"></span><span class="tb-verein-name">${this.escapeHtml(s.clubName)}</span></span></td>
-                    <td>${s.played}</td>
-                    <td>${this.vorzeichen(s.goalDiff)}</td>
-                    <td><strong>${s.points}</strong>${s.abzug ? `<sup class="tb-abzug" title="${s.abzug} Punkte Abzug">*</sup>` : ""}</td>
-                </tr>
-            `;
-        }).join("");
-        standingsBody.querySelectorAll(".mini-wappen").forEach(el => {
-            const club = state.clubs.find(c => String(c.id) === el.dataset.club);
-            if (club) {
-                this.setzeWappen(el, club);
-                el.textContent = this.vereinsKuerzel(club.name).slice(0, 1);
-            }
-        });
-        this.bindVereinsZeilen(standingsBody);
-
         // 3. Board Confidence, Fan Mood & Media Pressure (D4)
         document.getElementById("dashBoardGoal").textContent = (typeof BoardEngine !== "undefined" && typeof BoardEngine.zielText === "function")
             ? BoardEngine.zielText(state, userClub)
@@ -1458,35 +1381,9 @@ class UIManager {
             }).join("");
         }
 
-        // 5. Recent News List (Top 3)
-        const newsList = document.getElementById("dashNewsList");
-        const recentInbox = state.inbox.slice(0, 3);
-        if (recentInbox.length === 0) {
-            newsList.innerHTML = `<div class="empty-state-sm">Keine neuen Nachrichten.</div>`;
-        } else {
-            // Ganze Nachricht per Klick; der Vorschautext wird per CSS auf
-            // zwei Zeilen gekürzt statt immer "..." anzuhängen.
-            newsList.innerHTML = recentInbox.map(item => `
-                <button type="button" class="news-item-dash news-zeile${item.read ? "" : " ungelesen"}" data-msg-id="${this.escapeHtml(String(item.id))}">
-                    <span class="news-zeile-text">
-                        <span class="news-titel">${item.subject || item.title || "Nachricht"}</span>
-                        <span class="news-vorschau">${item.body || ""}</span>
-                    </span>
-                    <span class="news-date">${item.date || ""}</span>
-                </button>
-            `).join("");
-            newsList.querySelectorAll(".news-zeile").forEach(el => {
-                el.addEventListener("click", () => {
-                    const msg = state.inbox.find(m => String(m.id) === el.dataset.msgId);
-                    if (msg) {
-                        msg.read = true;
-                        this.selectedInboxMessageId = String(msg.id);
-                    }
-                    this.switchTab("inbox");
-                    this.renderHeader();
-                });
-            });
-        }
+        // 5. Die Übersicht wie im Vorbild: Post, Nachrichten, Spielplan,
+        // Tabelle, Statistik, Gegner, Datencenter, Budgets, Trainingswoche
+        if (typeof this.renderPortal === "function") this.renderPortal(state, userClub);
     }
 
     /**
@@ -3403,6 +3300,24 @@ class UIManager {
                 this.renderInbox();
             };
         });
+        // Daneben die Abteilung und die Suche, die erst auf Wunsch aufgeht
+        const inboxAbteilung = document.getElementById("inboxAbteilung");
+        if (inboxAbteilung) {
+            inboxAbteilung.onchange = () => {
+                this.inboxAbteilung = inboxAbteilung.value;
+                this.renderInbox();
+            };
+        }
+        const btnInboxSuche = document.getElementById("btnInboxSuche");
+        if (btnInboxSuche && inboxSearch) {
+            btnInboxSuche.onclick = () => {
+                const offen = inboxSearch.hidden;
+                inboxSearch.hidden = !offen;
+                btnInboxSuche.setAttribute("aria-expanded", offen ? "true" : "false");
+                if (offen) inboxSearch.focus();
+                else if (this.inboxSearch) { this.inboxSearch = ""; inboxSearch.value = ""; this.renderInbox(); }
+            };
+        }
 
         const btnMarkAll = document.getElementById("btnInboxMarkAllRead");
         if (btnMarkAll) {
@@ -3809,6 +3724,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // Die ausgelagerten Teile hängen sich an die Klasse - im Browser lädt sie
     // index.html der Reihe nach, unter Node holen wir sie hier dazu
     ["./uiAssistent.js", "./uiKader.js", "./uiTaktik.js", "./uiWettbewerbe.js", "./uiWettbewerbSeite.js", "./uiTraining.js", "./uiFinanzen.js", "./uiVerein.js", "./uiPostfach.js", "./uiDialoge.js", "./uiKarriere.js",
-        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiSeiten.js", "./uiProfil.js", "./uiProfilLaufbahn.js", "./uiAngebot.js", "./uiVereinSeite.js", "./uiSpielerdatenbank.js", "./uiLivespiel.js", "./uiLiveKacheln.js", "./uiLiveDarstellung.js", "./uiSpielbericht.js", "./uiMeldungen.js", "./uiKopfmenue.js", "./uiFarben.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
+        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiSeiten.js", "./uiProfil.js", "./uiProfilLaufbahn.js", "./uiAngebot.js", "./uiVereinSeite.js", "./uiSpielerdatenbank.js", "./uiLivespiel.js", "./uiLiveKacheln.js", "./uiLiveDarstellung.js", "./uiSpielbericht.js", "./uiMeldungen.js", "./uiKopfmenue.js", "./uiFarben.js", "./uiPortal.js", "./uiWettbewerbUebersicht.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
         .forEach(teil => require(teil));
 }

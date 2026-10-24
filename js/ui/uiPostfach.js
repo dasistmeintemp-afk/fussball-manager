@@ -36,13 +36,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         }
 
         const filtered = newsEngine && typeof newsEngine.getFilteredMessages === 'function'
-            ? newsEngine.getFilteredMessages(state, this.inboxFilter, this.inboxSearch)
+            ? newsEngine.getFilteredMessages(state, this.inboxFilter, this.inboxSearch, this.inboxAbteilung)
             : state.inbox;
+        this.zaehlePostfilter(state, newsEngine);
 
         // Die Detailansicht steht am Handy mitten in der Liste - vor dem
         // Neuzeichnen zurück an ihren Platz, sonst ginge sie mit verloren
         const detail = document.getElementById("inboxDetail");
-        if (detail && detail.parentElement === listContainer) listContainer.parentElement.appendChild(detail);
+        if (detail && detail.parentElement === listContainer) this.postfachLayout(listContainer).appendChild(detail);
 
         if (filtered.length === 0) {
             listContainer.innerHTML = `<div class="empty-state-sm" style="padding:24px; text-align:center;">Keine passenden Nachrichten im Postfach gefunden.</div>`;
@@ -58,32 +59,31 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             this.selectedInboxMessageId = String(filtered[0].id);
         }
 
+        // Wie im Vorbild: nach Tagen, je Nachricht Absender, Etikett der
+        // Abteilung und Betreff - dringend mit Ausrufezeichen, mit Frist
         const esc = (t) => this.escapeHtml(String(t ?? ""));
+        let letzterTag = null;
         listContainer.innerHTML = filtered.map(msg => {
             const isSelected = String(msg.id) === String(this.selectedInboxMessageId);
             const isUnread = !msg.read;
             const kat = newsEngine ? newsEngine.kategorie(msg) : { key: "verein", name: "Info", symbol: "i-mail" };
             const dringend = newsEngine ? newsEngine.dringlichkeit(state, msg) : null;
             const anhaenge = newsEngine ? newsEngine.anhaenge(state, msg) : [];
-            const vorschau = newsEngine ? newsEngine.vorschau(msg) : "";
-            const displayDate = msg.date || "Saisonstart";
+            const tag = msg.date || "Saisonstart";
+            const kopf = tag !== letzterTag ? `<div class="pp-tag">${esc(typeof this.portalTagText === "function" ? this.portalTagText(tag) : tag)}</div>` : "";
+            letzterTag = tag;
+            const frist = dringend && ["dringend", "antwort"].includes(dringend.stufe);
 
-            return `
-                <div class="inbox-item post-kat-${kat.key}${isUnread ? ' unread' : ''}${isSelected ? ' selected' : ''}${dringend?.stufe === "dringend" ? " post-dringend" : ""}" data-msg-id="${msg.id}">
-                    <div class="inbox-item-topline">
-                        <div class="inbox-sender-wrap">
-                            ${this.postAvatarHtml(msg, kat)}
-                            <span class="inbox-sender">${esc(msg.sender || 'System')}</span>
-                        </div>
-                        <span class="inbox-date">${esc(displayDate)}</span>
-                    </div>
-                    <div class="inbox-item-title">${esc(msg.subject || msg.title || 'Nachricht')}</div>
-                    ${vorschau ? `<div class="post-vorschau">${esc(vorschau)}</div>` : ""}
-                    <div class="inbox-item-meta">
-                        <span class="inbox-type">${esc(kat.name)}</span>
-                        ${dringend ? this.postFlagHtml(dringend) : ""}
+            return `${kopf}
+                <div class="inbox-item pp-eintrag post-kat-${kat.key}${isUnread ? ' unread ungelesen' : ''}${isSelected ? ' selected' : ''}${dringend?.stufe === "dringend" ? " post-dringend" : ""}" data-msg-id="${msg.id}">
+                    <span class="pp-kopf">
+                        <span class="pp-absender">${esc(msg.sender || 'System')}</span>
+                        ${dringend?.stufe === "dringend" ? '<b class="pp-wichtig" title="Dringend">!</b>' : ""}
                         ${anhaenge.length ? `<span class="post-anhang-zahl" title="${anhaenge.length} ${anhaenge.length === 1 ? "Anhang" : "Anhänge"}"><svg class="ico" aria-hidden="true"><use href="#i-clipboard"/></svg>${anhaenge.length}</span>` : ""}
-                    </div>
+                        <span class="pp-etikett">${esc(kat.name)}</span>
+                    </span>
+                    <span class="pp-betreff">${esc(this.ohneSymbol(msg.subject || msg.title || 'Nachricht'))}</span>
+                    ${frist ? `<span class="pp-frist">${this.postFlagHtml(dringend)}</span>` : ""}
                 </div>
             `;
         }).join("");
@@ -121,6 +121,27 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this.platziereInboxDetail(listContainer, detail);
     },
 
+    /** Der Rahmen aus Liste und Nachricht - die Liste steht in ihrer eigenen Karte */
+    postfachLayout(listContainer) {
+        return (listContainer && typeof listContainer.closest === "function" && listContainer.closest(".inbox-layout"))
+            || listContainer.parentElement;
+    },
+
+    /** Die Zahlen an den Filtern: Aufgaben und Ungelesen */
+    zaehlePostfilter(state, newsEngine) {
+        if (typeof document === "undefined" || !document.querySelector) return;
+        const inbox = Array.isArray(state.inbox) ? state.inbox : [];
+        const zahl = {
+            antwort: newsEngine ? inbox.filter(m => ["dringend", "antwort"].includes(newsEngine.dringlichkeit(state, m)?.stufe)).length : 0,
+            unread: inbox.filter(m => !m.read).length
+        };
+        const namen = { all: "Alle", neu: "Neu", antwort: "Aufgaben", unread: "Ungelesen" };
+        Object.keys(namen).forEach(k => {
+            const b = document.querySelector(`#inboxFilterTags [data-inbox-filter="${k}"]`);
+            if (b) b.textContent = zahl[k] !== undefined ? `${namen[k]} (${zahl[k]})` : namen[k];
+        });
+    },
+
     /** Einspaltiges Postfach (Handy, Tablet): dieselbe Grenze wie im Stylesheet */
     postfachSchmal() {
         return typeof window !== "undefined" && typeof window.matchMedia === "function"
@@ -135,7 +156,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
      */
     platziereInboxDetail(listContainer, detail) {
         if (!detail || !listContainer) return;
-        const layout = listContainer.parentElement;
+        const layout = this.postfachLayout(listContainer);
         const schmal = this.postfachSchmal();
         const eintrag = schmal && this.inboxOffen
             ? [...listContainer.querySelectorAll(".inbox-item")].find(el => el.dataset.msgId === String(this.inboxOffen)) : null;
@@ -384,7 +405,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         detailContainer.innerHTML = `
             <div class="inbox-detail-header post-kat-${kat.key}">
                 <div class="inbox-detail-title-row">
-                    <h2><span class="inbox-detail-icon"><svg class="ico" aria-hidden="true"><use href="#${kat.symbol}"/></svg></span>${esc(msg.subject || msg.title || 'Nachricht')}</h2>
+                    <h2><span class="inbox-detail-icon"><svg class="ico" aria-hidden="true"><use href="#${kat.symbol}"/></svg></span>${esc(this.ohneSymbol(msg.subject || msg.title || 'Nachricht'))}</h2>
                     <span class="inbox-detail-date">${esc(displayDate)}</span>
                 </div>
                 <div class="inbox-detail-meta-grid">

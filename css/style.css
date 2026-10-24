@@ -6807,6 +6807,12 @@ body {
     box-shadow: 0 0 14px rgba(245, 158, 11, 0.25);
 }
 .lm-zuruf-kurz { display: none; }
+/* Fünf Zurufe: bis 1600 px Breite in der kurzen Form, damit sie in eine
+   Zeile passen - der volle Text steht im Hinweis am Knopf */
+@media (max-width: 1599px) {
+    .lm-zuruf-lang { display: none; }
+    .lm-zuruf-kurz { display: inline; }
+}
 .lm-zuruf-status {
     margin-left: auto;
     font-size: 12px;
@@ -6908,8 +6914,11 @@ body {
 @media (max-width: 640px) {
     .lm-zuruf-lang { display: none; }
     .lm-zuruf-kurz { display: inline; }
-    .lm-zurufe { gap: 5px; margin-top: 6px; flex-wrap: nowrap; }
-    .lm-zuruf-btn { padding: 5px 10px; font-size: 12.5px; min-height: 36px; }
+    /* Fünf Zurufe passen nicht in die Breite: die Leiste rollt seitlich */
+    .lm-zurufe { gap: 5px; margin-top: 6px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+    .lm-zurufe::-webkit-scrollbar { display: none; }
+    .lm-zuruf-titel .lm-btn-text { display: none; }
+    .lm-zuruf-btn { padding: 5px 10px; font-size: 12.5px; min-height: 36px; flex: none; }
     .coach-tab-lang { display: none; }
     .coach-tab-kurz { display: inline; }
     #modalCoaching .coaching-tab { font-size: 12.5px; padding: 10px 2px; }

@@ -520,7 +520,8 @@ class LiveMatchDirector {
         // Ballbesitz-Mikrosimulation
         this.flow = _MatchFlowEngine ? new _MatchFlowEngine({
             getPlayers: () => this.match.players2D || [],
-            getTactics: (team) => (team === "home" ? this.match.homeClub?.tactics : this.match.awayClub?.tactics) || {},
+            // Die Taktik, die gerade gilt - mit einem laufenden Zuruf
+            getTactics: (team) => this.taktik(team).t,
             attackDir: (team) => this.attackDir(team),
             ownGoalX: (team) => this.ownGoalX(team),
             fm: () => this.fm,
@@ -648,7 +649,9 @@ class LiveMatchDirector {
         if (c && c.uhr === uhr) return c;
         const T = _dirTaktik();
         const club = team === "home" ? this.match.homeClub : this.match.awayClub;
-        const tactics = club?.tactics || {};
+        const eingestellt = club?.tactics || {};
+        // Ein Zuruf von der Seitenlinie gilt für seine Dauer obendrauf
+        const tactics = typeof this.match.wirksameTaktik === "function" ? this.match.wirksameTaktik(team, eingestellt) || eingestellt : eingestellt;
         const w = T ? T.wirkung(tactics) : {
             pressingLinie: { high: 0, medium: 0.33, low: 0.5 }[tactics.pressing] ?? 0.33, presser: 2, pressTempo: 1.85,
             gegenpressing: 2.2, rueckzugEile: 1.6, konter: 0, deckung: "raum", zoneFaktor: 1, falle: "keine",
@@ -1160,7 +1163,7 @@ class LiveMatchDirector {
             // Hitze und tiefer Boden zehren zusätzlich
             // Wer viel läuft, zahlt dafür - der Einsatz kostet etwas Kraft
             const rate = (p.sprinting ? 0.00009 : 0.00003) * endurance * (this.match.wetter?.ausdauer || 1)
-                * (typeof p.workRate === "number" ? 1 + (p.workRate - 72) / 400 : 1);
+                * (typeof p.workRate === "number" ? 1 + (p.workRate + (p.zuruf?.plus?.workRate || 0) - 72) / 400 : 1);
             p.freshness = Math.max(0.6, (p.freshness ?? 1) - rate * matchSeconds);
             // Wer angeschlagen weiterspielt, humpelt - langsamer als jeder Muede.
             if (p.verletzt) p.freshness = Math.min(p.freshness, 0.62);
@@ -1175,6 +1178,8 @@ class LiveMatchDirector {
             match.minute = minute;
             match.updatePhaseLabel();
             this.checkPhaseBanners(previous, minute);
+            // Ein Zuruf klingt nach seiner Dauer ab
+            (match.players2D || []).forEach(p => { if (p.zuruf && minute > p.zuruf.bis) p.zuruf = null; });
         }
         match.seconds = Math.floor(this.clock % 60);
     }
@@ -3636,7 +3641,8 @@ class LiveMatchDirector {
         const progress = dir > 0 ? opfer.x / 100 : 1 - opfer.x / 100;
         const konter = progress > 0.5 && verteidigerHinter <= 1;
         const letzterMann = verteidigerHinter === 0 && progress > 0.7 && Math.abs(opfer.y - 50) < 22;
-        const temperament = typeof taeter.temperament === "number" ? taeter.temperament : 12;
+        // Ein Zuruf kühlt ab oder heizt an (2,2 Punkte Aggressivität je Stufe)
+        const temperament = (typeof taeter.temperament === "number" ? taeter.temperament : 12) + (taeter.zuruf?.plus?.aggression || 0) / 2.2;
         const eigT = taeter.eig || {};
         const seite = foulTeam;
         const verwarnt = (m.verwarnt?.[seite] || []).includes(taeter.id);
@@ -5326,9 +5332,35 @@ class LiveMatchDirector {
         }
     }
 
+    /**
+     * Ein Zuruf von der Seitenlinie erreicht jeden Spieler anders - je nach
+     * Persönlichkeit (MatchEngine.ZURUFE: reaktion, plus). Bis zur Minute
+     * "bis" trägt der Spieler die Änderung an seinen Kopfwerten mit sich
+     * (MatchFlowEngine.attr). Liefert, wer wie reagiert hat - oder null für
+     * einen Zuruf, der nur die Taktik ändert.
+     */
+    zurufAnSpieler(team, def, bis) {
+        if (!def || typeof def.reaktion !== "function") return null;
+        const ergebnis = { zu: [], auf: [], kalt: [], genervt: [] };
+        this.teamPlayers(team).forEach(p => {
+            p.zuruf = null;
+            const m = p.mental || {};
+            const s = {
+                professionalitaet: m.professionalitaet ?? 12, ehrgeiz: m.ehrgeiz ?? 12, grosseSpiele: m.grosseSpiele ?? 12,
+                temperament: typeof p.temperament === "number" ? p.temperament : 12,
+                ruhe: this.flow.kopf20(p, "composure") ?? 12
+            };
+            const r = Math.max(-1, Math.min(1.5, def.reaktion(s)));
+            p.zuruf = { bis, r, plus: typeof def.plus === "function" ? def.plus(r, s) : {} };
+            const eintrag = { id: p.id, name: p.name, r: Math.round(r * 100) / 100 };
+            (r >= 0.75 ? ergebnis.zu : r >= 0.25 ? ergebnis.auf : r > -0.1 ? ergebnis.kalt : ergebnis.genervt).push(eintrag);
+        });
+        return ergebnis;
+    }
+
     /** Einsatz: Wer viel arbeitet, presst und läuft entschlossener zurück (um 72, ohne Wert 1) */
     einsatzFaktor(p) {
-        return typeof p?.workRate === "number" ? Math.max(0.88, Math.min(1.12, 1 + (p.workRate - 72) / 250)) : 1;
+        return typeof p?.workRate === "number" ? Math.max(0.88, Math.min(1.12, 1 + (p.workRate + (p.zuruf?.plus?.workRate || 0) - 72) / 250)) : 1;
     }
 
     selectPressingPlayers() {

@@ -388,7 +388,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const spieler = liveMatch.aufDemPlatz(seite) || [];
         const noten = typeof liveMatch.liveNoten === "function" ? liveMatch.liveNoten() : new Map();
         const p2d = id => (liveMatch.players2D || []).find(x => x.id === id) || {};
-        const key = spieler.map(p => `${p.id}:${Math.round((p2d(p.id).freshness ?? 1) * 20)}:${noten.get(p.id)?.note?.toFixed(1)}`).join("|");
+        // Nach einem Zuruf: wer zulegt, wer genervt ist (LiveMatchDirector.zurufAnSpieler)
+        const zuruf = s => s.zuruf ? (s.zuruf.r >= 0.75 ? "zu" : (s.zuruf.r <= -0.1 ? "genervt" : null)) : null;
+        const key = spieler.map(p => `${p.id}:${Math.round((p2d(p.id).freshness ?? 1) * 20)}:${noten.get(p.id)?.note?.toFixed(1)}:${zuruf(p2d(p.id))}`).join("|");
         if (!this._kachelNeu(el.id, key)) return;
         const esc = v => this.escapeHtml(String(v ?? ""));
         const stand = typeof liveMatch.wechselStand === "function" ? liveMatch.wechselStand(seite) : null;
@@ -399,8 +401,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 const s = p2d(p.id);
                 const fit = Math.round((s.freshness ?? 1) * 100);
                 const farbe = fit >= 86 ? "gut" : fit >= 74 ? "mittel" : "schlecht";
-                return `<span class="lm-ll-pos" title="${esc(p.name)} · Kondition ${fit} %">
+                const z = zuruf(s);
+                const zText = z === "zu" ? " · legt nach dem Zuruf zu" : (z === "genervt" ? " · vom Zuruf genervt" : "");
+                return `<span class="lm-ll-pos" title="${esc(p.name)} · Kondition ${fit} %${zText}">
                     <span class="lm-ll-kurz">${esc(s.pos || p.pos || "")}</span>
+                    ${z ? `<span class="lm-ll-zuruf ${z}" aria-label="${z === "zu" ? "legt zu" : "genervt"}">${z === "zu" ? "▲" : "▼"}</span>` : ""}
                     <svg class="lm-ll-herz ${farbe}" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 14.2 2.3 8.6A3.4 3.4 0 0 1 7.1 3.8L8 4.7l.9-.9a3.4 3.4 0 0 1 4.8 4.8z"/></svg>
                     ${this.liveNoteHtml(noten.get(p.id))}
                 </span>`;

@@ -2866,6 +2866,10 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
 #modalLiveMatch .lm-ll-herz.gut { fill: #22c55e; }
 #modalLiveMatch .lm-ll-herz.mittel { fill: #f59e0b; }
 #modalLiveMatch .lm-ll-herz.schlecht { fill: #ef4444; }
+/* Nach einem Zuruf: wer zulegt (grün), wer genervt ist (rot) */
+#modalLiveMatch .lm-ll-zuruf { font-size: 9px; line-height: 1; }
+#modalLiveMatch .lm-ll-zuruf.zu { color: #22c55e; }
+#modalLiveMatch .lm-ll-zuruf.genervt { color: #ef4444; }
 
 /* Ab 1280 Pixeln: die Kachelansicht */
 @media (min-width: 1280px) and (min-height: 700px) {

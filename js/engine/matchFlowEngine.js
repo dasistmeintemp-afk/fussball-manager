@@ -348,6 +348,9 @@ class MatchFlowEngine {
     attr(player, name, fallback = 70) {
         const v = player?.[name];
         let wert = (typeof v === "number" && v > 0) ? v : fallback;
+        // Ein Zuruf von der Seitenlinie wirkt, solange er nachhallt (LiveMatchDirector.zurufAnSpieler)
+        const zuruf = player?.zuruf?.plus?.[name];
+        if (zuruf) wert += zuruf;
         // Ein Mentalitaetsmonster waechst in grossen Momenten ueber sich hinaus,
         // und wer in grossen Spielen nervenstark ist, auch ein wenig - wer
         // es nicht ist, verkrampft
@@ -393,7 +396,7 @@ class MatchFlowEngine {
      */
     kopf20(player, key) {
         const v = player?.[key];
-        return typeof v === "number" ? 12 + (v - 70) / 4 : null;
+        return typeof v === "number" ? 12 + (v + (player.zuruf?.plus?.[key] || 0) - 70) / 4 : null;
     }
 
     /**
@@ -1572,9 +1575,10 @@ class MatchFlowEngine {
         // Die Aggressivität enthält das Temperament (2,2 Punkte je Stufe) und
         // dazu, was den Spieler sonst ausmacht. Ohne Detailwerte zählt das
         // Temperament allein - im Mittel dasselbe.
-        const aggressiv = defender.fein
+        const aggressiv = (defender.fein
             ? this.fein(defender, "aggression") * 0.0055
-            : ((typeof defender.temperament === "number" ? defender.temperament : 12) - 12) * 0.012;
+            : ((typeof defender.temperament === "number" ? defender.temperament : 12) - 12) * 0.012)
+            + (defender.zuruf?.plus?.aggression || 0) * 0.0055;
         const p = 0.27 + haerte * 0.06 + (ed.haerte || 0) * 0.1 + (ea.ziehtFouls || 0)
             + aggressiv + Math.max(0, edge) / 400;
         const pfeife = this.schiri()?.pfeife || 1;

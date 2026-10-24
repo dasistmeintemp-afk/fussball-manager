@@ -2060,7 +2060,7 @@ body {
 
 .intensity-btn:has(input:checked) {
     background: var(--accent-primary);
-    color: #042f2e;
+    color: var(--accent-ink);
     border-color: var(--accent-primary);
 }
 
@@ -2156,7 +2156,7 @@ body {
 
 .filter-chip.active {
     background: var(--accent-primary);
-    color: #ffffff;
+    color: var(--accent-ink);
     border-color: var(--accent-primary);
     box-shadow: 0 2px 10px rgba(var(--accent-rgb), 0.3);
 }
@@ -2960,7 +2960,8 @@ body {
 
 #livePitchCanvas {
     background: #0b4227;
-    border: 2px solid rgba(255,255,255,0.55);
+    /* In Vereinsfarben, wenn die Oberfläche sie trägt (uiFarben.js) */
+    border: 2px solid var(--rahmen-feld, rgba(255,255,255,0.55));
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-lg);
     /* Größe wird per JS (DPR-korrekt) gesetzt - hier nur eine Obergrenze */
@@ -6021,7 +6022,7 @@ body {
     min-height: 38px;
     cursor: pointer;
 }
-.coach-chip.active { background: var(--accent-primary); border-color: var(--accent-primary); color: #04121f; }
+.coach-chip.active { background: var(--accent-primary); border-color: var(--accent-primary); color: var(--accent-ink); }
 .coach-quick-btn { border-style: dashed; }
 
 .coach-tips { display: flex; flex-direction: column; gap: 6px; }
@@ -9156,7 +9157,7 @@ td.nowrap { white-space: nowrap; }
 .spm-titel-nr, .spm-titel-pos {
     display: inline-flex; align-items: center; justify-content: center;
     min-width: 34px; height: 34px; padding: 0 6px; border-radius: 8px;
-    background: var(--accent-primary); color: #0b1210;
+    background: var(--accent-primary); color: var(--accent-ink);
     font-size: 16px; font-variant-numeric: tabular-nums; flex: 0 0 auto;
 }
 .modal-spm .modal-body { display: flex; flex-direction: column; gap: 14px; padding: 14px 18px 18px; }
@@ -9238,7 +9239,7 @@ td.nowrap { white-space: nowrap; }
 .nr-wahl small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 10px; }
 .nr-wahl.frei { background: rgba(var(--accent-rgb), 0.08); border-color: rgba(var(--accent-rgb), 0.35); }
 .nr-wahl.vergeben { opacity: 0.75; }
-.nr-wahl.aktuell { background: var(--accent-primary); border-color: var(--accent-primary); color: #0b1210; }
+.nr-wahl.aktuell { background: var(--accent-primary); border-color: var(--accent-primary); color: var(--accent-ink); }
 .nr-wahl:hover { border-color: var(--accent-primary); opacity: 1; }
 
 /* Reiter Jugend: Übersicht über den ganzen Nachwuchs, ein Tipp springt hin */
@@ -9294,6 +9295,31 @@ button, .btn, input, select, th, .nowrap, .club-name { -webkit-hyphens: manual; 
     .btn-advance-wann { font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.72; }
     .btn-advance-ziel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
     .app-header .btn-advance .btn-arrow { flex: none; }
+}
+/* Bis 900 px stehen Wann und Wohin in einer Zeile - mit Abstand, sonst
+   klebte "in 5 Tagen" am Ziel */
+@media (max-width: 900px) {
+    .btn-advance-text { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
+    .btn-advance-ziel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+/* 641-900 px: Die obere Kopfzeile lief über - Suche und Glocke rutschten
+   unter die Saison-Anzeige. Jetzt gibt der Vereinsname nach, die
+   Schwierigkeit fällt weg, und unter 800 px bleibt vom Namen der App das
+   Zeichen. */
+@media (min-width: 641px) and (max-width: 900px) {
+    .header-left > * { flex: none; }
+    .header-left > .club-badge-container { flex: 0 1 auto; min-width: 0; }
+    .club-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #headerDifficulty { display: none; }
+    .fin-val, .fin-sub { white-space: nowrap; }
+}
+/* Darunter wird es in der zweiten Zeile eng: Wann und Wohin wieder
+   untereinander, der Balken des Vorstands fällt weg (die Zahl bleibt) */
+@media (min-width: 641px) and (max-width: 799.98px) {
+    .brand-title { display: none; }
+    .conf-bar-wrap { display: none; }
+    .btn-advance-text { flex-direction: column; align-items: flex-start; gap: 0; line-height: 1.15; }
+    .btn-advance-wann { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.72; white-space: nowrap; }
 }
 @media (min-width: 901px) and (max-width: 1500px) {
     #headerDifficulty { display: none; }

@@ -2250,64 +2250,135 @@ button.pf-verein:hover span { text-decoration: underline; text-underline-offset:
 .pf-ms-summen { padding-left: 14px; border-left: 1px solid var(--line); }
 .pf-ms-summen .pf-zeile span { display: inline-flex; align-items: center; gap: 6px; }
 .pf-ms-summen .ico { width: 14px; height: 14px; }
-@media (max-width: 1400px) {
-    .pf-laufbahn-raster { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-    .pf-laufbahn-raster > .pf-kachel { grid-column: span 2; }
-    .pf-laufbahn-raster > .pf-biografie, .pf-laufbahn-raster > .pf-karriere-kachel { grid-column: span 3; }
-    .pf-laufbahn-raster > .pf-meilensteine-kachel { grid-column: span 4; }
-}
-@media (max-width: 900px) {
-    .pf-laufbahn-raster { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
-    .pf-laufbahn-raster > .pf-kachel { grid-column: span 1; }
-    .pf-laufbahn-raster > .pf-biografie, .pf-laufbahn-raster > .pf-karriere-kachel, .pf-laufbahn-raster > .pf-meilensteine-kachel { grid-column: 1 / -1; }
-}
-@media (max-width: 600px) {
-    .pf-bio { grid-template-columns: minmax(0, 1fr); }
-    .pf-bio-bild { min-height: 0; grid-auto-flow: column; justify-content: start; padding: 10px 12px; }
-    .pf-meilensteine { grid-template-columns: minmax(0, 1fr); }
-    .pf-ms-summen { padding-left: 0; border-left: 0; }
-}
-@media (max-width: 420px) {
-    .pf-laufbahn-raster > .pf-kachel { grid-column: 1 / -1; }
-}
+/* Die Profilseite richtet sich nach ihrer eigenen Breite (Container
+   Queries), nicht nach dem Fenster: Mit Seitenleiste ist sie 240 Pixel
+   schmaler, und bei 1440 Pixeln Fenster stand das dreispaltige Raster in
+   1130 Pixeln Seite. Die Schwellen entsprechen beim Menü oben genau den
+   alten Fenstergrenzen. Ohne Container Queries (Safari vor 16, Firefox
+   vor 110) gelten die Fenstergrenzen wie bisher. */
+@supports not (container-type: inline-size) {
+    @media (max-width: 1400px) {
+        .pf-laufbahn-raster { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+        .pf-laufbahn-raster > .pf-kachel { grid-column: span 2; }
+        .pf-laufbahn-raster > .pf-biografie, .pf-laufbahn-raster > .pf-karriere-kachel { grid-column: span 3; }
+        .pf-laufbahn-raster > .pf-meilensteine-kachel { grid-column: span 4; }
+    }
+    @media (max-width: 900px) {
+        .pf-laufbahn-raster { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+        .pf-laufbahn-raster > .pf-kachel { grid-column: span 1; }
+        .pf-laufbahn-raster > .pf-biografie, .pf-laufbahn-raster > .pf-karriere-kachel, .pf-laufbahn-raster > .pf-meilensteine-kachel { grid-column: 1 / -1; }
+    }
+    @media (max-width: 600px) {
+        .pf-bio { grid-template-columns: minmax(0, 1fr); }
+        .pf-bio-bild { min-height: 0; grid-auto-flow: column; justify-content: start; padding: 10px 12px; }
+        .pf-meilensteine { grid-template-columns: minmax(0, 1fr); }
+        .pf-ms-summen { padding-left: 0; border-left: 0; }
+    }
+    @media (max-width: 420px) {
+        .pf-laufbahn-raster > .pf-kachel { grid-column: 1 / -1; }
+    }
 
-@media (max-width: 1400px) {
-    .pf-raster { grid-template-columns: minmax(210px, 0.9fr) minmax(0, 2.4fr); }
-    .pf-rechts { grid-column: 1 / -1; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); align-items: start; }
+    @media (max-width: 1400px) {
+        .pf-raster { grid-template-columns: minmax(210px, 0.9fr) minmax(0, 2.4fr); }
+        .pf-rechts { grid-column: 1 / -1; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); align-items: start; }
+    }
+    @media (max-width: 1100px) {
+        .pf-kopf { grid-template-columns: minmax(0, 1fr) auto; }
+        .pf-kopf-daten { grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+        .pf-raster { grid-template-columns: minmax(0, 1fr); }
+        .pf-links { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+        .pf-leistung { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (max-width: 900px) {
+        .pf-feld { max-width: 210px; }
+        .pf-mitte .pd-werte { grid-template-columns: minmax(0, 1fr); }
+        .pf-mitte .pd-werte .pd-wertliste { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 600px) {
+        .pf-kopf { grid-template-columns: minmax(0, 1fr); padding: 14px 14px 16px; gap: 14px; }
+        .pf-kopf-person { gap: 12px; align-items: flex-start; }
+        .pf-trikot .pd-nr { min-width: 46px; height: 46px; font-size: 20px; border-radius: 12px; }
+        .pf-kopf-text h2 { font-size: 21px; }
+        .pf-kopf-daten { grid-row: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .pf-kopf-sterne { justify-items: start; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .pf-sterne { grid-template-columns: minmax(0, 1fr); row-gap: 2px; }
+        .pf-sterne > span { text-align: left; }
+        .pf-sterne small { grid-column: 1; }
+        .pf-kacheln { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+        .pf-kachel { padding: 12px; }
+        .pf-kachel.pf-breit { grid-column: 1 / -1; }
+        .pf-gross { font-size: 16px; }
+    }
+    @media (max-width: 380px) {
+        .pf-kacheln { grid-template-columns: minmax(0, 1fr); }
+        .pf-mitte .pd-werte .pd-wertliste { grid-template-columns: minmax(0, 1fr); }
+    }
 }
-@media (max-width: 1100px) {
-    .pf-kopf { grid-template-columns: minmax(0, 1fr) auto; }
-    .pf-kopf-daten { grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
-    .pf-raster { grid-template-columns: minmax(0, 1fr); }
-    .pf-links { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
-    .pf-leistung { grid-template-columns: minmax(0, 1fr); }
+@supports (container-type: inline-size) {
+    @container seite (max-width: 1336px) {
+        .pf-laufbahn-raster { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+        .pf-laufbahn-raster > .pf-kachel { grid-column: span 2; }
+        .pf-laufbahn-raster > .pf-biografie, .pf-laufbahn-raster > .pf-karriere-kachel { grid-column: span 3; }
+        .pf-laufbahn-raster > .pf-meilensteine-kachel { grid-column: span 4; }
+    }
+    @container seite (max-width: 872px) {
+        .pf-laufbahn-raster { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+        .pf-laufbahn-raster > .pf-kachel { grid-column: span 1; }
+        .pf-laufbahn-raster > .pf-biografie, .pf-laufbahn-raster > .pf-karriere-kachel, .pf-laufbahn-raster > .pf-meilensteine-kachel { grid-column: 1 / -1; }
+    }
+    @container seite (max-width: 572px) {
+        .pf-bio { grid-template-columns: minmax(0, 1fr); }
+        .pf-bio-bild { min-height: 0; grid-auto-flow: column; justify-content: start; padding: 10px 12px; }
+        .pf-meilensteine { grid-template-columns: minmax(0, 1fr); }
+        .pf-ms-summen { padding-left: 0; border-left: 0; }
+    }
+    @container seite (max-width: 392px) {
+        .pf-laufbahn-raster > .pf-kachel { grid-column: 1 / -1; }
+    }
+
+    @container seite (max-width: 1336px) {
+        .pf-raster { grid-template-columns: minmax(210px, 0.9fr) minmax(0, 2.4fr); }
+        .pf-rechts { grid-column: 1 / -1; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); align-items: start; }
+    }
+    @container seite (max-width: 1036px) {
+        .pf-kopf { grid-template-columns: minmax(0, 1fr) auto; }
+        .pf-kopf-daten { grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+        .pf-raster { grid-template-columns: minmax(0, 1fr); }
+        .pf-links { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+        .pf-leistung { grid-template-columns: minmax(0, 1fr); }
+    }
+    @container seite (max-width: 872px) {
+        .pf-feld { max-width: 210px; }
+        .pf-mitte .pd-werte { grid-template-columns: minmax(0, 1fr); }
+        .pf-mitte .pd-werte .pd-wertliste { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @container seite (max-width: 572px) {
+        .pf-kopf { grid-template-columns: minmax(0, 1fr); padding: 14px 14px 16px; gap: 14px; }
+        .pf-kopf-person { gap: 12px; align-items: flex-start; }
+        .pf-trikot .pd-nr { min-width: 46px; height: 46px; font-size: 20px; border-radius: 12px; }
+        .pf-kopf-text h2 { font-size: 21px; }
+        .pf-kopf-daten { grid-row: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .pf-kopf-sterne { justify-items: start; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .pf-sterne { grid-template-columns: minmax(0, 1fr); row-gap: 2px; }
+        .pf-sterne > span { text-align: left; }
+        .pf-sterne small { grid-column: 1; }
+        .pf-kacheln { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+        .pf-kachel { padding: 12px; }
+        .pf-kachel.pf-breit { grid-column: 1 / -1; }
+        .pf-gross { font-size: 16px; }
+    }
+    @container seite (max-width: 352px) {
+        .pf-kacheln { grid-template-columns: minmax(0, 1fr); }
+        .pf-mitte .pd-werte .pd-wertliste { grid-template-columns: minmax(0, 1fr); }
+    }
 }
+/* Was am Fenster hängt: das Scrollen am Handy und der Pfad in der Seitenleiste */
 @media (max-width: 900px) {
     /* Am Handy scrollt die ganze Seite unter der Kopfleiste - die Reiter bleiben stehen */
     .spieler-seite .pd-tabs { position: static; }
-    .pf-feld { max-width: 210px; }
-    .pf-mitte .pd-werte { grid-template-columns: minmax(0, 1fr); }
-    .pf-mitte .pd-werte .pd-wertliste { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 600px) {
     .seite-pfad { display: none; }
-    .pf-kopf { grid-template-columns: minmax(0, 1fr); padding: 14px 14px 16px; gap: 14px; }
-    .pf-kopf-person { gap: 12px; align-items: flex-start; }
-    .pf-trikot .pd-nr { min-width: 46px; height: 46px; font-size: 20px; border-radius: 12px; }
-    .pf-kopf-text h2 { font-size: 21px; }
-    .pf-kopf-daten { grid-row: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .pf-kopf-sterne { justify-items: start; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .pf-sterne { grid-template-columns: minmax(0, 1fr); row-gap: 2px; }
-    .pf-sterne > span { text-align: left; }
-    .pf-sterne small { grid-column: 1; }
-    .pf-kacheln { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
-    .pf-kachel { padding: 12px; }
-    .pf-kachel.pf-breit { grid-column: 1 / -1; }
-    .pf-gross { font-size: 16px; }
-}
-@media (max-width: 380px) {
-    .pf-kacheln { grid-template-columns: minmax(0, 1fr); }
-    .pf-mitte .pd-werte .pd-wertliste { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* --------------------------------------------------------------------------
@@ -3479,4 +3550,51 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
     #modalLiveMatch.feld-gross .lm-spalte,
     #modalLiveMatch.feld-gross .lm-kachel.lm-k-stat,
     #modalLiveMatch.feld-gross .lm-kachel.lm-k-ereignisse { display: none; }
+}
+
+/* --------------------------------------------------------------------------
+   Container Queries: Kacheln richten sich nach ihrem Platz, nicht nach dem
+   Fenster. Gemessen stand das Dashboard mit Seitenleiste bei 1300 Pixeln
+   dreispaltig in 992 Pixeln Inhalt, mit Menü oben bei 1200 Pixeln nur
+   zweispaltig in 1136 Pixeln. Jetzt zählt die Breite des Bereichs (der
+   Reiter oder die Seite) und, für ihr Inneres, die Breite der Kachel.
+   Ohne Container Queries (Safari vor 16, Firefox vor 110) gelten die
+   Fenstergrenzen wie bisher.
+   -------------------------------------------------------------------------- */
+@supports (container-type: inline-size) {
+    .tab-pane { container: bereich / inline-size; }
+    .seite { container: seite / inline-size; }
+    .dashboard-grid > .dash-card { container: kachel / inline-size; }
+
+    /* Breiter Bereich: zwölf Spalten, die Reihen gehen auf */
+    @container bereich (min-width: 950px) {
+        .dashboard-grid { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+        .dashboard-grid > .dash-card { grid-column: span 4; }
+        .dashboard-grid > .next-match-card, .dashboard-grid > .calendar-snapshot-card { grid-column: span 7; }
+        .dashboard-grid > .attention-card, .dashboard-grid > .table-snapshot-card { grid-column: span 5; }
+        .dashboard-grid > .board-card, .dashboard-grid > .squad-status-card { grid-column: span 6; }
+        .dashboard-grid > .full-width { grid-column: 1 / -1; }
+    }
+    /* Mittel: zwei Spalten, die großen Kacheln über die ganze Breite. Auf
+       dem Dashboard rückt die Tabelle neben den Schreibtisch - sonst stünde
+       er allein, weil der Wochenplan danach die ganze Zeile nimmt. */
+    @container bereich (min-width: 600px) and (max-width: 949.98px) {
+        .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        #pane-dashboard > .dashboard-grid { grid-auto-flow: row dense; }
+        .dashboard-grid > .dash-card { grid-column: span 1; }
+        .dashboard-grid > .next-match-card, .dashboard-grid > .calendar-snapshot-card,
+        .dashboard-grid > .news-ticker-card, .dashboard-grid > .full-width { grid-column: 1 / -1; }
+    }
+    /* Schmal: eine Spalte */
+    @container bereich (max-width: 599.98px) {
+        .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+        .dashboard-grid > .dash-card { grid-column: 1 / -1; }
+    }
+
+    /* Das Innere einer schmalen Kachel: Kopf umbrechen statt quetschen,
+       in der Tabelle fallen die Spiele weg */
+    @container kachel (max-width: 380px) {
+        .card-header { flex-wrap: wrap; gap: 6px 10px; }
+        #dashStandingsTable th:nth-child(3), #dashStandingsTable td:nth-child(3) { display: none; }
+    }
 }

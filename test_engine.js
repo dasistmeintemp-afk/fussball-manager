@@ -15624,6 +15624,95 @@ function runEngineTests() {
         }
     });
 
+    test("Vereinsfarben und Kacheln nach Platz: Akzent lesbar, Silber ohne Farbe, Wahl je Gerät, Container Queries mit Rückfall", () => {
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const ui = Object.create(UIManager.prototype);
+        const fs = require('fs');
+        const html = fs.readFileSync('./index.html', 'utf8');
+        const sw = fs.readFileSync('./service-worker.js', 'utf8');
+        const css = fs.readFileSync('./css/design.css', 'utf8');
+        if (!html.includes('src="js/ui/uiFarben.js"') || !sw.includes('"./js/ui/uiFarben.js"') || !html.includes('id="settingsFarben"')) throw new Error("Modul oder Einstellung nicht eingebunden");
+
+        // Kontrast nach WCAG gegen die dunkelste Kartenfläche
+        const hell = (c) => c.map(v => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); })
+            .reduce((summe, v, i) => summe + v * [0.2126, 0.7152, 0.0722][i], 0);
+        const kontrast = (a, b) => { const x = hell(a), y = hell(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+        const vereine = [
+            { primaryColor: "#dc052d", secondaryColor: "#ffffff" },   // rot
+            { primaryColor: "#003399", secondaryColor: "#ffffff" },   // dunkelblau
+            { primaryColor: "#fde100", secondaryColor: "#000000" },   // gelb
+            { primaryColor: "#000000", secondaryColor: "#ffffff" },   // schwarz-weiß
+            { primaryColor: "#ffffff", secondaryColor: "#1a1a1a" },   // weiß-schwarz
+            { primaryColor: "#222222", secondaryColor: "#0a7a3e" },   // grau, dann grün
+            { primaryColor: "#06c", secondaryColor: "fff" }           // Kurzform, ohne #
+        ];
+        const akzente = vereine.map(v => ui.vereinsAkzent(v));
+        akzente.forEach((a, i) => {
+            if (!a || a.rgb.length !== 3 || a.rgb.some(x => !Number.isInteger(x) || x < 0 || x > 255)) throw new Error(`Verein ${i}: ${JSON.stringify(a)}`);
+            if (kontrast(a.rgb, ui.FARBEN_FLAECHE) < 4.5) throw new Error(`Verein ${i}: Akzent ${a.rgb} kaum lesbar (${kontrast(a.rgb, ui.FARBEN_FLAECHE).toFixed(2)})`);
+            // Die Schrift auf dem Akzent: die Wahl mit mehr Kontrast, mindestens 4,5:1
+            const tinte = a.tinte === "#ffffff" ? [255, 255, 255] : [11, 16, 4];
+            const andere = a.tinte === "#ffffff" ? [11, 16, 4] : [255, 255, 255];
+            if (kontrast(a.rgb, tinte) < kontrast(a.rgb, andere) || kontrast(a.rgb, tinte) < 4.5) throw new Error(`Verein ${i}: Schrift ${a.tinte} auf ${a.rgb}`);
+            if (!/^rgb\(\d+, \d+, \d+\)$/.test(a.hover)) throw new Error(`Verein ${i}: Hover ${a.hover}`);
+        });
+        // Rot bleibt rot, Gelb bleibt gelb, Dunkelblau wird nur aufgehellt
+        const [rot, blau, gelb, sw1, sw2, gruen, kurz] = akzente;
+        if (!(rot.rgb[0] > rot.rgb[1] + 60 && rot.rgb[0] > rot.rgb[2] + 60)) throw new Error(`Rot: ${rot.rgb}`);
+        if (gelb.rgb.join() !== "253,225,0") throw new Error(`Gelb verändert: ${gelb.rgb}`);
+        if (!(blau.rgb[2] > blau.rgb[0] + 60 && blau.rgb[2] > 153)) throw new Error(`Blau: ${blau.rgb}`);
+        // Ohne Farbe Silber, eine graue Hauptfarbe gibt an die Zweitfarbe ab
+        if (sw1.rgb.join() !== ui.FARBEN_SILBER.join() || sw2.rgb.join() !== ui.FARBEN_SILBER.join()) throw new Error(`Schwarz-weiß: ${sw1.rgb} / ${sw2.rgb}`);
+        if (!(gruen.rgb[1] > gruen.rgb[0] + 60)) throw new Error(`Grau-grün: ${gruen.rgb}`);
+        if (!(kurz.rgb[2] > kurz.rgb[0] + 60)) throw new Error(`Kurzform: ${kurz.rgb}`);
+        if (ui.vereinsAkzent(null) !== null || ui.vereinsAkzent({ primaryColor: "rot" }) !== null) throw new Error("Ohne Farbe kein Akzent");
+
+        const altDoc = global.document, altSpeicher = global.localStorage;
+        try {
+            const speicher = {};
+            global.localStorage = { getItem: k => (k in speicher ? speicher[k] : null), setItem: (k, v) => { speicher[k] = String(v); } };
+            const stil = {};
+            const root = { style: { setProperty: (k, v) => { stil[k] = v; }, removeProperty: k => { delete stil[k]; } }, dataset: {} };
+            global.document = { documentElement: root, getElementById: () => null };
+            if (ui.farbenArt() !== "verein") throw new Error(`Standard ist ${ui.farbenArt()}`);
+            // Vereinsfarben an: die Variablen stehen am Wurzelelement
+            ui.wendeVereinsfarbenAn(vereine[0]);
+            if (stil["--accent-rgb"] !== rot.rgb.join(", ") || stil["--accent-ink"] !== rot.tinte || !stil["--rahmen-feld"] || root.dataset.farben !== "verein") throw new Error(`Gesetzt: ${JSON.stringify(stil)}`);
+            // Vereinswechsel: neue Farbe
+            ui.wendeVereinsfarbenAn(vereine[2]);
+            if (stil["--accent-rgb"] !== "253, 225, 0") throw new Error(`Nach dem Wechsel: ${stil["--accent-rgb"]}`);
+            // Flutlicht: zurück zum Grundthema, die Wahl wird gemerkt
+            ui.app = { state: { userClubId: "x", clubs: [Object.assign({ id: "x" }, vereine[2])] } };
+            ui.setzeFarbenArt("flutlicht");
+            if (Object.keys(stil).length || root.dataset.farben || speicher[ui.FARBEN_SPEICHER] !== "flutlicht" || ui.farbenArt() !== "flutlicht") throw new Error(`Flutlicht: ${JSON.stringify(stil)}`);
+            ui.setzeFarbenArt("regenbogen");
+            if (ui.farbenArt() !== "flutlicht") throw new Error("Eine unbekannte Wahl wurde übernommen");
+            ui.setzeFarbenArt("verein");
+            if (stil["--accent-rgb"] !== "253, 225, 0") throw new Error("Zurück zu den Vereinsfarben greift nicht");
+            // Ohne Verein (Startbildschirm) kein Akzent
+            ui.wendeVereinsfarbenAn(null);
+            if (Object.keys(stil).length) throw new Error("Ohne Verein bleibt die Vereinsfarbe stehen");
+            // Ohne DOM (Server, Test) still
+            global.document = undefined;
+            ui.wendeVereinsfarbenAn(vereine[0]);
+        } finally {
+            global.document = altDoc;
+            global.localStorage = altSpeicher;
+        }
+
+        // Die Akzentfarbe steckt in den Variablen, von denen die übrigen abgeleitet sind
+        if (!/--accent:\s*rgb\(var\(--accent-rgb\)\)/.test(css)) throw new Error("--accent hängt nicht an --accent-rgb");
+        // Container Queries nur hinter @supports, der @media-Rückfall bleibt (Safari 15.4, Firefox 90)
+        const ab = css.indexOf("@supports (container-type: inline-size)");
+        if (ab < 0) throw new Error("Kein @supports-Block für Container Queries");
+        const vorher = css.slice(0, ab);
+        if (/@container\s/.test(vorher.replace(/\/\*[\s\S]*?\*\//g, ""))) throw new Error("@container außerhalb von @supports");
+        if (!css.includes("@supports not (container-type: inline-size)")) throw new Error("Kein Rückfall für ältere Browser");
+        ["container: bereich / inline-size", "container: seite / inline-size", "container: kachel / inline-size", "@container bereich", "@container seite", "@container kachel"].forEach(s => {
+            if (!css.includes(s)) throw new Error(`${s} fehlt`);
+        });
+    });
+
     test("Finanzen wie im Vorbild: Kontoverlauf je Monat, Monatsbilanz, Sponsoren, Gehälter nach Rolle, Schulden, Prognose, acht Kacheln", () => {
         const F = FinanceEngine;
         const state = GameState.createNewGame("dor", "normal", { name: "Finanzen" });

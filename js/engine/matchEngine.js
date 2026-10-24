@@ -233,14 +233,54 @@ const MATCH_TUNING = {
  * - gelb: Faktor auf die Kartenquote bei eigenen Fouls
  * - ruhe: Anteil der Szenen, die ausfallen, weil das Spiel verschleppt wird
  * - extraSzenen: zusätzliche Szenen im Fenster, weil die Mannschaft Tempo macht
+ *
+ * Im 2D-Spiel wirkt ein Zuruf auf dem Platz (vorher wirkte er nur in der
+ * Zeitleiste, die das eigene Spiel gar nicht mehr rechnet):
+ * - taktik: was die Elf für die Dauer anders spielt, ab dem nächsten Takt
+ * - reaktion: wie der einzelne Spieler den Zuruf aufnimmt, aus seinen
+ *   versteckten Werten (1-20, Mitte 12) - um 1 voll, um 0 gar nicht,
+ *   darunter genervt
+ * - plus: was sich dadurch an seinen Kopfwerten ändert (Skala um 70);
+ *   aggression zählt auf der Skala der Detailwerte
  */
+const _MENTALITAETEN = ["very_defensive", "defensive", "balanced", "offensive", "very_offensive"];
+const _TEMPI = ["slow", "normal", "fast"];
+const _HAERTEN = ["zurueckhaltend", "normal", "hart"];
+const _stufe = (liste, wert, schritt) => {
+    const i = liste.indexOf(wert);
+    return liste[Math.max(0, Math.min(liste.length - 1, (i < 0 ? Math.floor(liste.length / 2) : i) + schritt))];
+};
 const ZURUFE = {
     druck: { titel: "Mehr Druck!", kurz: "Druck!", icon: "🔥", szenen: 0.1, angriff: 3, gegnerAngriff: 4, gelb: 1.15, ruhe: 0, extraSzenen: 0.3,
-        text: "Die Mannschaft schiebt nach vorne - mehr Chancen, aber hinten wird es offener." },
+        text: "Die Mannschaft schiebt nach vorne - mehr Chancen, aber hinten wird es offener.",
+        taktik: t => ({ mentality: _stufe(_MENTALITAETEN, t.mentality || "balanced", 1), tempo: "fast", anlaufen: "oefter" }),
+        // Ehrgeizige Profis legen zu, Hitzköpfe werden dabei wild
+        reaktion: s => 0.6 + (s.professionalitaet - 12) * 0.05 + (s.ehrgeiz - 12) * 0.04,
+        plus: (r, s) => ({ workRate: 6 * r, concentration: 2 * r, aggression: s.temperament >= 15 ? 2.5 : 0 }) },
     ruhe: { titel: "Ruhe bewahren", kurz: "Ruhe", icon: "🧊", szenen: 0, angriff: -1, gegnerAngriff: -4, gelb: 0.5, ruhe: 0, extraSzenen: 0,
-        text: "Weniger Hektik: seltener Karten, der Gegner findet schwerer Lücken." },
+        text: "Weniger Hektik: seltener Karten, der Gegner findet schwerer Lücken.",
+        taktik: t => ({ tempo: _stufe(_TEMPI, t.tempo || "normal", -1), zweikampf: _stufe(_HAERTEN, t.zweikampf || "normal", -1) }),
+        // Wer zu Hitze oder Nervosität neigt, braucht es am meisten
+        reaktion: s => 0.5 + (s.temperament - 12) * 0.06 + (12 - s.grosseSpiele) * 0.03,
+        plus: r => ({ composure: 5 * r, decisions: 2 * r, aggression: -6 * r }) },
     zeit: { titel: "Zeit schinden", kurz: "Zeit", icon: "⏳", szenen: -0.03, angriff: -1, gegnerAngriff: 0, gelb: 1.5, ruhe: 0.35, extraSzenen: 0,
-        text: "Das Spiel wird verschleppt - weniger passiert, aber der Schiedsrichter sieht genau hin." }
+        text: "Das Spiel wird verschleppt - weniger passiert, aber der Schiedsrichter sieht genau hin.",
+        // Nur eine Frage der Taktik - an den Köpfen ändert er nichts
+        taktik: t => ({ zeitspiel: "oft", tempo: "slow", nachBallgewinn: "ballsichern", mentality: _stufe(_MENTALITAETEN, t.mentality || "balanced", -1) }) },
+    fordern: { titel: "Mehr verlangen", kurz: "Fordern", icon: "📢", szenen: 0.04, angriff: 1.5, gegnerAngriff: 0, gelb: 1.1, ruhe: 0, extraSzenen: 0,
+        text: "Jeder soll mehr investieren - Profis ziehen mit, Hitzköpfe fühlen sich angegriffen.",
+        taktik: () => ({}),
+        // Professionalität und Ehrgeiz nehmen es an, ein hitziges Temperament nimmt es übel
+        reaktion: s => 0.3 + (s.professionalitaet - 12) * 0.08 + (s.ehrgeiz - 12) * 0.05 - Math.max(0, s.temperament - 13) * 0.12,
+        plus: r => r >= 0
+            ? { workRate: 5 * r, concentration: 4 * r, decisions: 2 * r }
+            : { composure: 8 * r, aggression: -8 * r } },
+    anfeuern: { titel: "Anfeuern", kurz: "Anfeuern", icon: "👏", szenen: 0.02, angriff: 1, gegnerAngriff: -1, gelb: 1, ruhe: 0, extraSzenen: 0,
+        text: "Rückendeckung von der Bank - wer zittert, gewinnt Selbstvertrauen.",
+        taktik: () => ({}),
+        // Wer in großen Spielen zittert oder wenig Ruhe hat, wächst daran
+        reaktion: s => 0.35 + (12 - s.grosseSpiele) * 0.06 + (12 - s.ruhe) * 0.05,
+        plus: r => ({ composure: 6 * r, concentration: 2 * r }) }
 };
 
 const INJURY_CATALOG = [
@@ -3250,6 +3290,7 @@ class MatchEngine {
             bestaendigkeit: h.consistency ?? 12,
             grosseSpiele: h.importantMatches ?? 12,
             professionalitaet: h.professionalism ?? 12,
+            ehrgeiz: h.ambition ?? 12,
             alter: player?.age ?? 26
         };
         w.foot = player?.foot || null;
@@ -4152,13 +4193,45 @@ class LiveMatch {
         if (!stand.bereit) return { success: false, message: `Die Mannschaft hört erst ab der ${stand.wiederAb}. Minute wieder hin.` };
 
         const von = Math.max(1, this.minute + 1);
-        this.zurufe.push({ side, art, von, bis: Math.min(95, von + MATCH_TUNING.zurufDauer - 1) });
+        const bis = Math.min(95, von + MATCH_TUNING.zurufDauer - 1);
+        this.zurufe.push({ side, art, von, bis });
         const club = this.clubVon(side);
         const text = `${this.minute}' - 📣 ${club.name}: "${def.titel}" von der Seitenlinie.`;
         this.addEvent("zuruf", club.id, text);
         this.lastCommentary = text;
+        // Im 2D-Spiel hört jeder Spieler selbst hin - und gilt die neue
+        // Taktik ab dem nächsten Takt. Die Zeitleiste rechnet dort nur den
+        // Rahmen (Wechsel, Halbzeit) und bleibt, wie sie ist.
+        if (this.modus === "fm" && this.director && typeof this.director.zurufAnSpieler === "function") {
+            const reaktion = this.director.zurufAnSpieler(side, def, bis);
+            return { success: true, message: `${def.text} ${LiveMatch.zurufEcho(reaktion)}`.trim(), art, reaktion };
+        }
         this.resimulateRemainder();
         return { success: true, message: def.text, art };
+    }
+
+    /**
+     * Wie die Elf den Zuruf aufgenommen hat, in einem Satz: "7 legen zu,
+     * 3 unbeeindruckt, Müller ist genervt."
+     */
+    static zurufEcho(reaktion) {
+        if (!reaktion) return "";
+        const teile = [];
+        if (reaktion.zu.length) teile.push(`${reaktion.zu.length} ${reaktion.zu.length === 1 ? "legt" : "legen"} zu`);
+        if (reaktion.auf.length) teile.push(`${reaktion.auf.length} ${reaktion.auf.length === 1 ? "nimmt" : "nehmen"} es auf`);
+        if (reaktion.kalt.length) teile.push(`${reaktion.kalt.length} unbeeindruckt`);
+        if (reaktion.genervt.length) {
+            const namen = reaktion.genervt.slice(0, 2).map(p => p.name).join(" und ");
+            teile.push(`${namen}${reaktion.genervt.length > 2 ? ` und ${reaktion.genervt.length - 2} weitere` : ""} ${reaktion.genervt.length === 1 ? "ist" : "sind"} genervt`);
+        }
+        return teile.length ? `${teile.join(", ")}.` : "";
+    }
+
+    /** Die Taktik, die gerade auf dem Platz gilt: die eingestellte und ein laufender Zuruf */
+    wirksameTaktik(teamType, tactics) {
+        const stand = this.zurufStand(teamType);
+        const def = stand.aktiv ? ZURUFE[stand.art] : null;
+        return def && def.taktik ? { ...(tactics || {}), ...def.taktik(tactics || {}) } : tactics;
     }
 
     // -------------------------------------------------------- Standardschützen
@@ -5423,6 +5496,8 @@ class LiveMatch {
         });
     }
 }
+
+MatchEngine.ZURUFE = ZURUFE;
 
 if (typeof window !== "undefined") {
     window.MATCH_TUNING = MATCH_TUNING;

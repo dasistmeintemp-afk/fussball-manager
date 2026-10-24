@@ -8107,6 +8107,65 @@ function runEngineTests() {
         }
     });
 
+    test("Zurufe im 2D-Spiel: Taktik ab dem nächsten Takt, jeder Spieler reagiert nach seiner Persönlichkeit", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
+        const heim = state.clubs.find(c => c.id === "muc");
+        const gast = state.clubs.find(c => c.id === "dor");
+        heim.tactics = { ...(heim.tactics || {}), mentality: "balanced", tempo: "normal", anlaufen: "normal", zweikampf: "normal" };
+        const live = MatchEngine.createLiveMatch({ id: "zr_2d", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { modus: "fm", userSide: "home" });
+        const d = live.director;
+        const schritt = () => { live.advanceRealTime(LiveMatch.OHNE_BILD_SCHRITT_MS); live.updateBallAndPlayers(LiveMatch.OHNE_BILD_SCHRITT_MS); };
+        while (live.minute < 5) schritt();
+
+        // "Mehr Druck!": eine Stufe offensiver, hohes Tempo, öfter anlaufen - sofort, für Regie und Entscheidungen
+        const r = live.zuruf("home", "druck");
+        if (!r.success || !r.reaktion) throw new Error(`Zuruf: ${JSON.stringify(r)}`);
+        const gezaehlt = r.reaktion.zu.length + r.reaktion.auf.length + r.reaktion.kalt.length + r.reaktion.genervt.length;
+        if (gezaehlt !== d.teamPlayers("home").length) throw new Error(`Reaktion von ${gezaehlt} Spielern`);
+        if (!/zu|auf|unbeeindruckt|genervt/.test(r.message)) throw new Error(`Die Meldung nennt keine Reaktion: ${r.message}`);
+        d._laufUhr = (d._laufUhr || 0) + 0.001;
+        const t = d.taktik("home").t, f = d.flow.getTactics("home");
+        if (t.mentality !== "offensive" || t.tempo !== "fast" || t.anlaufen !== "oefter") throw new Error(`Taktik mit Zuruf: ${JSON.stringify({ m: t.mentality, t: t.tempo, a: t.anlaufen })}`);
+        if (f.mentality !== "offensive") throw new Error("Die Entscheidungen kennen den Zuruf nicht");
+        if (heim.tactics.mentality !== "balanced") throw new Error("Der Zuruf hat die eingestellte Taktik überschrieben");
+        if (d.taktik("away").t.mentality !== (gast.tactics?.mentality || "balanced")) throw new Error("Der Zuruf wirkt auf den Gegner");
+        // Wer zulegt, arbeitet mehr
+        const p = d.teamPlayers("home").find(x => x.pos !== "TW" && x.zuruf && x.zuruf.r > 0.3);
+        if (!p) throw new Error("Niemand hat den Zuruf aufgenommen");
+        const ohne = { ...p, zuruf: null };
+        if (!(d.flow.attr(p, "workRate") > d.flow.attr(ohne, "workRate") + 1)) throw new Error("Der Einsatz steigt nicht");
+
+        // Persönlichkeit: "Mehr verlangen" - der Profi legt zu, der Hitzkopf ist genervt
+        const def = MatchEngine.ZURUFE.fordern;
+        const [a, b] = d.teamPlayers("home").filter(x => x.pos !== "TW");
+        const altA = { mental: a.mental, temperament: a.temperament }, altB = { mental: b.mental, temperament: b.temperament };
+        a.mental = { ...(a.mental || {}), professionalitaet: 18, ehrgeiz: 17 }; a.temperament = 8;
+        b.mental = { ...(b.mental || {}), professionalitaet: 8, ehrgeiz: 10 }; b.temperament = 19;
+        const rf = d.zurufAnSpieler("home", def, live.minute + 9);
+        if (!rf.zu.some(x => x.id === a.id) || !rf.genervt.some(x => x.id === b.id)) throw new Error(`Fordern: ${JSON.stringify({ a: a.zuruf, b: b.zuruf })}`);
+        if (!(d.flow.kopf20(b, "composure") < d.flow.kopf20({ ...b, zuruf: null }, "composure"))) throw new Error("Der Genervte verliert keine Ruhe");
+        // "Anfeuern" hilft dem Nervösen mehr als dem Abgebrühten
+        a.mental = { ...a.mental, grosseSpiele: 5 }; b.mental = { ...b.mental, grosseSpiele: 19 };
+        d.zurufAnSpieler("home", MatchEngine.ZURUFE.anfeuern, live.minute + 9);
+        if (!(a.zuruf.r > b.zuruf.r + 0.4)) throw new Error(`Anfeuern: ${a.zuruf.r} / ${b.zuruf.r}`);
+        // "Zeit schinden" ist nur Taktik - keine Reaktion je Spieler
+        if (d.zurufAnSpieler("home", MatchEngine.ZURUFE.zeit, live.minute + 9) !== null) throw new Error("Zeit schinden wirkt auf die Köpfe");
+        Object.assign(a, altA); Object.assign(b, altB);
+
+        // Nach der Dauer ist alles wie eingestellt
+        const bis = live.zurufe[0].bis;
+        while (live.minute <= bis + 1 && !live.isFinished) schritt();
+        d._laufUhr = (d._laufUhr || 0) + 0.001;
+        if (d.taktik("home").t.mentality !== "balanced" || d.flow.getTactics("home").tempo !== "normal") throw new Error("Der Zuruf wirkt über seine Zeit hinaus");
+        if (d.teamPlayers("home").some(x => x.zuruf)) throw new Error("Die Spieler tragen den Zuruf weiter");
+        // Alle Zurufe haben im 2D-Spiel eine Wirkung auf dem Platz
+        Object.entries(MatchEngine.ZURUFE).forEach(([art, z]) => {
+            const taktik = z.taktik ? z.taktik(heim.tactics) : {};
+            if (!Object.keys(taktik).length && typeof z.reaktion !== "function") throw new Error(`${art} wirkt im 2D-Spiel nicht`);
+        });
+    });
+
     test("Standardschützen: Der Vorgegebene tritt an, direkte Freistöße gibt es", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
         const heim = state.clubs.find(c => c.id === "muc");

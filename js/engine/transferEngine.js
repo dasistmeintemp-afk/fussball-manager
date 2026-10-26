@@ -1160,17 +1160,44 @@ class TransferEngine {
             return { status: "fehler", text: `${offer.fromClubName} hat bereits nachgebessert und geht nicht weiter.` };
         }
         const grenze = offer.maxFee || Math.round(offer.fee * 1.15);
+        const vorher = offer.fee;
         offer.nachgebessert = true;
+        let ergebnis;
         if (betrag <= grenze) {
             offer.fee = betrag;
-            return { status: "angenommen", offer, text: `${offer.fromClubName} geht auf ${_formatTransferMoney(betrag)} mit.` };
-        }
-        if (betrag > grenze * 1.3) {
+            ergebnis = { status: "angenommen", offer, text: `${offer.fromClubName} geht auf ${_formatTransferMoney(betrag)} mit.` };
+        } else if (betrag > grenze * 1.3) {
             offer.status = "withdrawn";
-            return { status: "zurueckgezogen", offer, text: `${offer.fromClubName} zieht das Angebot zurück - die Forderung ist ihnen zu hoch.` };
+            ergebnis = { status: "zurueckgezogen", offer, text: `${offer.fromClubName} zieht das Angebot zurück - die Forderung ist ihnen zu hoch.` };
+        } else {
+            offer.fee = grenze;
+            ergebnis = { status: "nachgebessert", offer, text: `${offer.fromClubName} bessert auf ${_formatTransferMoney(grenze)} nach - mehr ist nicht drin.` };
         }
-        offer.fee = grenze;
-        return { status: "nachgebessert", offer, text: `${offer.fromClubName} bessert auf ${_formatTransferMoney(grenze)} nach - mehr ist nicht drin.` };
+        this.postZurForderung(state, offer, vorher, betrag, ergebnis);
+        return ergebnis;
+    }
+
+    /**
+     * Die Antwort auf die eigene Gegenforderung kommt auch per Post - mit
+     * Angebot vorher, Forderung und Stand. Vorher stand sie nur als Hinweis
+     * auf dem Bildschirm und war danach nirgends nachzulesen.
+     */
+    static postZurForderung(state, offer, vorher, forderung, ergebnis) {
+        const news = _transferResolve("NewsEngine", "./newsEngine.js");
+        if (!news || typeof news.addMessage !== "function") return;
+        const stand = ergebnis.status === "zurueckgezogen" ? "Das Angebot ist vom Tisch."
+            : `Es liegt jetzt bei ${_formatTransferMoney(offer.fee)}${typeof offer.frist === "number" ? ` und gilt noch ${Math.max(0, offer.frist - (state.currentDayIndex || 0))} Tage` : ""}. Weiter nachbessern wird ${offer.fromClubName} nicht.`;
+        const betreff = { angenommen: "Forderung akzeptiert", nachgebessert: "Nachgebessert", zurueckgezogen: "Angebot zurückgezogen" }[ergebnis.status];
+        news.addMessage(state, "transfer", {
+            title: `${betreff}: ${offer.playerName}`,
+            sender: offer.fromClubName || "Transfermarkt",
+            text: `${ergebnis.text}
+
+Angebot vorher: ${_formatTransferMoney(vorher)} · unsere Forderung: ${_formatTransferMoney(forderung)}
+${stand}`,
+            priority: ergebnis.status === "zurueckgezogen" ? "high" : "normal",
+            relatedEntity: offer.playerId !== undefined ? { type: "player", id: offer.playerId } : null
+        });
     }
 
     /**

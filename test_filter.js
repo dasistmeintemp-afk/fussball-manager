@@ -23,7 +23,8 @@ const LANGSAM = [
     "MatchEngine Kalibrierung: 500 Spiele",
     "MatchEngine Wirksamkeit: very_defensive vs. very_offensive",
     "LiveMatchDirector: Die Mannschaft steht als Block",
-    "Alle Formationen: Positionsspiel mit jeder Vorlage"
+    "Alle Formationen: Positionsspiel mit jeder Vorlage",
+    "Spielbild: Ballbesitz lässt den Ball laufen"
 ];
 let uebersprungen = 0;
 
@@ -61,7 +62,9 @@ const DAUER = [
     ["MatchEngine Wirksamkeit: very_defensive vs. very_offensive", 30],
     ["LiveMatchDirector: Die Mannschaft steht als Block", 30],
     ["Zurufe: zehn Minuten Wirkung", 30],
-    ["Alle Formationen: Positionsspiel mit jeder Vorlage", 25]
+    ["Alle Formationen: Positionsspiel mit jeder Vorlage", 25],
+    ["Spielbild: Ballbesitz lässt den Ball laufen", 30],
+    ["Ecken im Livespiel: Schütze an der Fahne", 16]
 ];
 const LEICHT_SEKUNDEN = 2.5;
 const teilLast = teil ? new Array(teil.n).fill(0) : null;

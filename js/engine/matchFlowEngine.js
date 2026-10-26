@@ -199,7 +199,12 @@ class MatchFlowEngine {
      * - ecke: Wie oft eine Kopfballabwehr nach der Flanke, eine Faust des
      *   Torwarts, ein geblockter und ein abgefälschter Schuss ins Toraus
      *   gehen. Mit Zugriff und gespielten Abstößen fielen gemessen 7,6 statt
-     *   8,5 Ecken, die Zeitleiste lag bei 8,8.
+     *   8,5 Ecken, die Zeitleiste lag bei 8,8. Seit die Ecke wirklich steht
+     *   (Schütze an der Fahne, sechs Angreifer und neun Verteidiger im
+     *   Strafraum) und die Mannschaften länger am Ball bleiben, waren es 12,1
+     *   je Partie: 3,0 nach abgefälschten und 2,7 nach geblockten Schüssen -
+     *   echt sind es zusammen um 4. Abgefälscht 0,45 und Block 0,55 sind
+     *   deshalb gesenkt, die Kopfballabwehr leicht.
      * - foul: Faktor auf Fouls im Zweikampf und unter Druck, im eigenen
      *   Strafraum (Elfmeter) zusätzlich vorsichtiger. Seit Feldspieler
      *   seltener lang schlagen, gibt es mehr Zweikämpfe am Ball: gemessen
@@ -216,7 +221,7 @@ class MatchFlowEngine {
         annahme: { basis: 0.012, ab: 11, jeTempo: 0.008, druck: 0.05, hoch: 0.07 },
         schussLust: 0.62,
         flankenLust: 0.35,
-        ecke: { kopfball: 0.75, faust: 0.5, block: 0.55, abgefaelscht: 0.45 },
+        ecke: { kopfball: 0.68, faust: 0.5, block: 0.45, abgefaelscht: 0.32 },
         foul: { zweikampf: 1.05, druck: 1.54, strafraum: 0.14 },
         standard: { twReaktion: 0.14, kopfball: 7 },
         tore: 0.91
@@ -232,6 +237,65 @@ class MatchFlowEngine {
     static GEDULD_QUER = 3;        // Gewicht des sicheren Balls quer oder zurück
     static ZUSAMMEN_WAHL = 0.18;   // Vorliebe für den gut verbundenen Mitspieler (TacticsEngine.zusammenspiel)
     static GEDULD_MITTE = 0.75;    // im Mittelfeld etwas weniger als im Aufbau
+
+    /**
+     * Geduld aus der Taktik (spielGeduld): Kurzpassspiel und geduldiges Tempo
+     * lassen den Ball laufen, direktes Spiel und hohes Tempo suchen früher
+     * den Weg nach vorn. Die Werte je Anweisung werden addiert; gewicht ist
+     * der Zuschlag auf den sicheren Ball quer oder zurück je Einheit Geduld
+     * (wie GEDULD_QUER, aber schwächer), aufruecken bremst, wie schnell die
+     * Elf mit jeder Station mutiger wird.
+     *
+     * Vorher kam Geduld nur aus der Qualität der Elf. Gemessen spielte eine
+     * Mannschaft mit Kurzpass und geduldigem Tempo gegen Wolfsburg genauso
+     * viele Pässe nach vorn wie in der Grundeinstellung (48 gegen 49 je
+     * Partie) und hatte kaum mehr Pässe je Ballbesitz.
+     */
+    static GEDULD_TAKTIK = { short: 0.3, direct: -0.3, slow: 0.2, fast: -0.15, spielen: 0.1, lang: -0.1, gewicht: 1.2, aufruecken: 0.6 };
+
+    /**
+     * Den Ball unter Druck lösen (lageAmBall): Steht ein Gegner näher als
+     * abstand Einheiten am Ballführenden, liegt der Druck über druck und hat
+     * er den Ball schon zeit Laufzeit-Sekunden, spielt er den sicheren Ball
+     * (freier Weg, Mitspieler mit Platz über raum) unter seinen besten
+     * auswahl Zuspielen - je Takt mit einer Wahrscheinlichkeit aus basis,
+     * seiner Ruhe am Ball (ruhe je Punkt über 0,7) und dem sicheren Ball der
+     * Taktik (taktik je Punkt über 1, siehe sicherheitsFaktor), zwischen min
+     * und max. Wer so löst, spielt direkt (decide mit direkt): Der sichere
+     * Ball zählt sicher-mal so viel, Dribbling und Abdrehen verlieren dribbel.
+     *
+     * Vorher löste er sich nur, wenn das beste Zuspiel zugleich das sichere
+     * war, und hielt den Ball sonst, bis der Zugriff kam: Gemessen hatte
+     * jeder dritte, dem ein Pressingspieler den Ball abnahm, einen sicheren
+     * Pass frei. Fast jede Entscheidung fiel unter starkem Druck.
+     */
+    static LOESEN = { abstand: 6, druck: 0.6, zeit: 0.3, raum: 0.42, auswahl: 3, basis: 0.3, ruhe: 0.8, taktik: 0.2, min: 0.12, max: 0.7, sicher: 1.6, dribbel: 0.35 };
+
+    /**
+     * Befreiung eines tiefen Blocks (ratePassOptions): Wer tief steht oder
+     * spät presst, schiebt den Ball in der eigenen Hälfte nicht hin und her,
+     * sondern sucht nach ab Pässen den langen Ball nach vorn (lang, sein
+     * Abzug für die Weite nur weite-mal) und meidet den kurzen Ball zurück
+     * (kurz). Vorher erst ab zwei Pässen und mit vollem Abzug für die Weite:
+     * Gemessen hielt ein tiefer Block den Ball gegen Wolfsburg länger als die
+     * Grundeinstellung (3,7 Pässe je Ballbesitz gegen 3,1) und hatte 55
+     * Prozent Ballbesitz.
+     */
+    static BEFREIEN = { ab: 1, lang: 0.7, weite: 0.65, kurz: -0.45, pressingAb: 0.5 };
+
+    /** Höchste Risikoscheu im Konter (die ersten Pässe nach dem Ballgewinn mit "Kontern"), siehe ratePassOptions */
+    static KONTER_RISIKO = 0.85;
+
+    /**
+     * Abgefälscht statt abgefangen (resolvePassPhysik): Kommt ein Gegner an
+     * einen flachen Pass, den er nur im Lauf erwischt, springt der Ball oft
+     * weg - ein zweiter Ball, an der Seitenlinie ein Einwurf. Wie oft: basis,
+     * je Meter je Sekunde Balltempo über ab dazu jeTempo, weniger mit guter
+     * Ballannahme (technik je Punkt Technik über 70), zwischen min und max.
+     * Vorher war jeder Ball, an den ein Gegner zuerst kam, sauber erobert -
+     * ein direkter Konter statt eines Kampfs um den zweiten Ball.
+     */
+    static ABPRALLER = { basis: 0.12, ab: 9, jeTempo: 0.015, technik: 0.004, min: 0.05, max: 0.3 };
 
     constructor(options = {}) {
         // Zugriff auf die Spieler des Feldes und die Vereinsdaten
@@ -525,9 +589,11 @@ class MatchFlowEngine {
         // sie auf - so entstehen echte Angriffszüge statt Dauerquerpässe.
         const chain = Math.min(8, context.chainLength || 0);
         // Der Geduldige rückt mit jeder Station langsamer auf, der
-        // Unterlegene schneller
+        // Unterlegene schneller - und wer kurz und geduldig spielen soll,
+        // auch langsamer (GEDULD_TAKTIK)
         const geduld = this.geduld(carrier.team);
-        forwardDrive *= 1 + chain * 0.07 * (1 - geduld * 0.5);
+        const taktikGeduld = this.fm() ? this.spielGeduld(tactics) : 0;
+        forwardDrive *= 1 + chain * 0.07 * (1 - (geduld + taktikGeduld * MatchFlowEngine.GEDULD_TAKTIK.aufruecken) * 0.5);
         // Der Konter kennt keine defensive Grundhaltung: Direkt nach dem
         // Ballgewinn geht es nach vorn, solange der Gegner ungeordnet ist.
         // Vorher bremste die defensive Mentalitaet auch diesen Moment - ein
@@ -535,6 +601,11 @@ class MatchFlowEngine {
         // gemessen auf neun Schuesse gegen zweiundzwanzig.
         const kontertGerade = chain <= 4 && (_flowTaktik()?.wirkung(tactics).konter || 0) > 0;
         if (kontertGerade) forwardDrive = Math.max(forwardDrive, 1.3);
+        // ... und auch nicht ihre Vorsicht: Wer kontert, nimmt den Pass in den
+        // Raum in Kauf (KONTER_RISIKO). Vorher spielte ein tiefer Block nach
+        // dem Ballgewinn so vorsichtig wie im Aufbau und hielt den Ball länger
+        // als die Grundeinstellung.
+        if (kontertGerade && this.fm()) riskAversion = Math.min(riskAversion, MatchFlowEngine.KONTER_RISIKO);
 
         // Die Absicht hängt daran, wo der Ball ist. Im eigenen Drittel wird
         // gesichert zirkuliert - auch quer, auch zurück -, im Mittelfeld
@@ -582,7 +653,9 @@ class MatchFlowEngine {
         // siebzig Paesse je Spiel in der eigenen Haelfte und kam gegen Bayern
         // auf 58 Prozent Ballbesitz.
         const fortschritt = dir > 0 ? carrier.x / 100 : 1 - carrier.x / 100;
-        const befreien = tactics.defensiveLine === "deep" && !istTorwart && fortschritt < 0.45 && chain >= 2;
+        const bf = MatchFlowEngine.BEFREIEN;
+        const tief = tactics.defensiveLine === "deep" || (typeof wk.pressingLinie === "number" && wk.pressingLinie >= bf.pressingAb);
+        const befreien = tief && !istTorwart && fortschritt < 0.45 && chain >= bf.ab;
         // Konter: Der Spieler, der vorn gewartet hat, ist das erste Ziel
         const konterZiel = chain <= 3 && (wk.konter || 0) > 0;
 
@@ -598,7 +671,11 @@ class MatchFlowEngine {
             const dist = this.distance(carrier, mate);
             if (dist < 3.5) return null;
 
-            const laneRisk = this.getLaneRisk(carrier, mate, opponents, istTorwart && dist > MatchFlowEngine.LANG_HOCH.weite);
+            // Den hohen Ball nach vorn schlägt der Torwart - und wer sich als
+            // tiefer Block befreit (BEFREIEN): Für ihn zählt nur, wer dort
+            // steht, wo er herunterkommt
+            const laneRisk = this.getLaneRisk(carrier, mate, opponents,
+                (istTorwart || (befreien && (mate.x - carrier.x) * dir > 12)) && dist > MatchFlowEngine.LANG_HOCH.weite);
             const space = this.getSpace(mate, opponents);
             const forward = (mate.x - carrier.x) * dir;
 
@@ -621,6 +698,7 @@ class MatchFlowEngine {
             const twLang = istTorwart ? MatchFlowEngine.TORWART_LANG[wk.torwartKurz > 0 ? "kurz" : (wk.torwartKurz < 0 ? "lang" : "gemischt")] : 1;
             const longMalus = dist > 24
                 ? Math.min(2.4, ((dist - 24) / 15) ** 1.4) * (passing === "direct" ? 0.62 : 1.0) * twLang
+                    * (befreien && forward > 12 ? bf.weite : 1)
                 : 0;
 
             // Raumgewinn zählt, Rückpässe sind nur die Notlösung. Ein Ball ist
@@ -719,8 +797,8 @@ class MatchFlowEngine {
             if ((wk.breite || 0) < 0 && quer < 18) taktikScore += 0.2;
             if (druck > 0.55 && dist > 26) taktikScore += (wk.durchsPressing || 0) * 1.2;
             if (befreien) {
-                if (dist > 24 && forward > 12) taktikScore += 0.55;
-                else if (forward < 4) taktikScore -= 0.35;
+                if (dist > 24 && forward > 12) taktikScore += bf.lang;
+                else if (forward < 4) taktikScore += bf.kurz;
             }
             if (konterZiel && mate.rolleGegen?.konter && forward > 8) taktikScore += 0.6;
             if (istAufbau && forwardDrive < 1 && dist > 26 && forward > 10) taktikScore += (1 - forwardDrive) * 0.6;
@@ -768,15 +846,24 @@ class MatchFlowEngine {
             // Geduld: Wer überlegen ist, spielt den sicheren Ball quer oder
             // zurück, bis sich eine Lücke auftut; wer unterlegen ist, meidet
             // ihn. Vor dem Tor gilt das nicht - dort zählt der Abschluss.
-            const geduldScore = (geduld !== 0 && !istAbschluss && forward <= 3 && laneRisk < 0.35 && mate.pos !== "TW")
-                ? geduld * MatchFlowEngine.GEDULD_QUER * (istAufbau ? 1 : MatchFlowEngine.GEDULD_MITTE)
+            // Dazu die Geduld der Taktik (GEDULD_TAKTIK): Wer kurz und
+            // geduldig spielen soll, lässt den Ball laufen, wer direkt spielen
+            // soll, meidet den Ball zurück - nicht den zur Seite: Quer spielt
+            // auch, wer schnell nach vorn will. Sonst ginge er, wenn vorn zu
+            // ist, ins Dribbling statt zur Seite.
+            const taktikTeil = taktikGeduld > 0 || forward < -3 ? taktikGeduld : 0;
+            const geduldScore = ((geduld !== 0 || taktikTeil !== 0) && !istAbschluss && forward <= 3 && laneRisk < 0.35 && mate.pos !== "TW")
+                ? (geduld * MatchFlowEngine.GEDULD_QUER + taktikTeil * MatchFlowEngine.GEDULD_TAKTIK.gewicht)
+                    * (istAufbau ? 1 : MatchFlowEngine.GEDULD_MITTE)
                 : 0;
 
             // Unter Druck der sichere Ball zum freien Mitspieler - wie gern,
             // sagt die Taktik (sicherheitsFaktor). Nach dem Ballgewinn mit
-            // "Ball sichern" auch ohne Druck.
+            // "Ball sichern" auch ohne Druck. Wer sich unter Druck löst
+            // (context.direkt, siehe LOESEN), sucht ihn erst recht.
             const sicherScore = (fm && !istAbschluss && (druck > MatchFlowEngine.SICHERHEIT.druck || sichern)
-                && laneRisk < 0.3 && space > 0.45 && mate.pos !== "TW") ? MatchFlowEngine.SICHERHEIT.wert * sicherheit : 0;
+                && laneRisk < 0.3 && space > 0.45 && mate.pos !== "TW")
+                ? MatchFlowEngine.SICHERHEIT.wert * sicherheit * (context.direkt ? MatchFlowEngine.LOESEN.sicher : 1) : 0;
 
             // Die Linien der Taktiktafel: Gut verbundene Spieler suchen sich,
             // wo Rollen sich beißen oder ein Neuer noch fremd ist, seltener
@@ -814,6 +901,23 @@ class MatchFlowEngine {
             + ({ very_defensive: 0.2, defensive: 0.1, offensive: -0.15, very_offensive: -0.3 }[tactics.mentality] || 0)
             - (wk.durchsPressing || 0) * 1.5;
         return Math.max(0.1, Math.min(1.8, f));
+    }
+
+    /** Geduld aus der Taktik (GEDULD_TAKTIK): positiv bei Kurzpass und geduldigem Tempo, negativ bei direktem Spiel */
+    spielGeduld(tactics) {
+        const g = MatchFlowEngine.GEDULD_TAKTIK;
+        const t = tactics || {};
+        return (t.passing === "short" ? g.short : t.passing === "direct" ? g.direct : 0)
+            + (t.tempo === "slow" ? g.slow : t.tempo === "fast" ? g.fast : 0)
+            + (t.durchsPressing === "spielen" ? g.spielen : t.durchsPressing === "lang" ? g.lang : 0);
+    }
+
+    /** Wie sicher einer den Ball unter Druck löst, je Takt (LOESEN) */
+    loesenChance(carrier, tactics) {
+        const l = MatchFlowEngine.LOESEN;
+        const wk = _flowTaktik()?.wirkung(tactics) || {};
+        const p = l.basis + (this.ruheAmBall(carrier) - 0.7) * l.ruhe + (this.sicherheitsFaktor(tactics, wk) - 1) * l.taktik;
+        return Math.max(l.min, Math.min(l.max, p));
     }
 
     /**
@@ -875,6 +979,16 @@ class MatchFlowEngine {
                 ahead.x = carrier.x + dir * 8;
                 eigen += 0.35;
             }
+        }
+
+        // Nicht über die Torlinie: Kurz vor ihr zieht er Richtung Tor, statt
+        // geradeaus ins Aus zu laufen. Vorher ging der Lauf immer zwölf
+        // Einheiten nach vorn - wer nach einer kurzen Ecke frei an der
+        // Strafraumecke stand, trug den Ball über die Grundlinie zum Abstoß.
+        const bisLinie = (this.gegnerTor(carrier.team).x - carrier.x) * dir;
+        if ((ahead.x - carrier.x) * dir > bisLinie - 4) {
+            ahead.x = carrier.x + dir * Math.max(0, bisLinie - 4);
+            ahead.y = carrier.y + (50 - carrier.y) * 0.35;
         }
 
         const score = skill * 1.15
@@ -1658,6 +1772,18 @@ class MatchFlowEngine {
             if (g.dist < 22 && this.chancenQualitaet(carrier, opponents).xg >= schwelle) gelegenheit = "schuss";
         }
         if (!gelegenheit && pressure > druckSchwelle && beste && beste.laneRisk < m.weg) gelegenheit = "druck";
+        // Ein Gegner ist am Mann: Er spielt den sicheren Ball, bevor der
+        // zugreift - auch wenn das beste Zuspiel ein anderes wäre (LOESEN)
+        let loesen = null;
+        const l = MatchFlowEngine.LOESEN;
+        if (!gelegenheit && this.fm() && carrier.pos !== "TW" && pressure > l.druck && zeit >= l.zeit) {
+            const naechster = opponents.reduce((min, o) => o.pos === "TW" ? min : Math.min(min, this.distance(carrier, o)), Infinity);
+            loesen = naechster < l.abstand
+                ? optionen.slice(0, l.auswahl).find(o => o.laneRisk < m.weg && o.space > l.raum && o.target.pos !== "TW") || null
+                : null;
+            if (loesen && _flowRandom.chance(this.loesenChance(carrier, tactics))) gelegenheit = "druck";
+            else loesen = null;
+        }
 
         const fortschritt = dir > 0 ? carrier.x / 100 : 1 - carrier.x / 100;
         // So weit in den freien Raum, wie Ziel und Weg frei sind
@@ -1674,9 +1800,10 @@ class MatchFlowEngine {
                 if (this.getSpace(punkt, opponents) > raumNoetig && (weite <= 7 || this.getSpace(mitte, opponents) > raumNoetig)) { vor = punkt; break; }
             }
         }
-        const ziel = (gelegenheit && steil) ? steil : beste;
+        const ziel = loesen || ((gelegenheit && steil) ? steil : beste);
         return {
             gelegenheit,
+            geloest: !!loesen,
             absicht: ziel ? { id: ziel.target.id, x: ziel.target.x, y: ziel.target.y } : null,
             tragen: vor,
             kopfHoch: pressure < 0.4 && fortschritt > 0.3,
@@ -1714,11 +1841,17 @@ class MatchFlowEngine {
             // Der Spieler, auf den die naechste Szene zulaeuft. Das Aufbauspiel
             // sucht ihn - dadurch entsteht die Szene aus dem Spiel heraus,
             // statt dass der Ball zu ihr transportiert wird.
-            zielSpieler: options.zielSpieler || null
+            zielSpieler: options.zielSpieler || null,
+            direkt: !!options.direkt
         });
-        candidates.push(this.rateDribble(carrier, opponents, tactics, pressure));
+        // Wer den Ball unter Druck direkt spielt, will ihn loswerden - nicht
+        // noch in den Zweikampf gehen (LOESEN)
+        const loesenAbzug = options.direkt && this.fm() ? MatchFlowEngine.LOESEN.dribbel : 0;
+        const dribbling = this.rateDribble(carrier, opponents, tactics, pressure);
+        if (!dribbling.frei) dribbling.score -= loesenAbzug;
+        candidates.push(dribbling);
         const abdrehen = this.rateAbdrehen(carrier, opponents, pressure);
-        if (abdrehen) candidates.push(abdrehen);
+        if (abdrehen) { abdrehen.score -= loesenAbzug; candidates.push(abdrehen); }
 
         // FM-Modus: Abschluss und Flanke stehen gleichberechtigt neben dem
         // Zuspiel. Ob einer schiesst, haengt an der Lage und an seinen Werten.
@@ -1757,7 +1890,10 @@ class MatchFlowEngine {
 
         if (!best) return null;
 
-        return this.resolve(carrier, best, opponents, tactics, pressure, phase);
+        const ergebnis = this.resolve(carrier, best, opponents, tactics, pressure, phase);
+        // Der Befreiungsschlag bleibt als solcher erkennbar (Analyse, Messläufe)
+        if (ergebnis && best.type === "clearance") ergebnis.klaerung = true;
+        return ergebnis;
     }
 
     /**
@@ -2084,7 +2220,34 @@ class MatchFlowEngine {
         if (this.imEigenenStrafraum(erster.punkt, p.team) && p.pos !== "TW" && _flowRandom.chance(0.22)) {
             return { type: typ, outcome: "corner", from: carrier, to: { x: erster.punkt.x, y: erster.punkt.y }, interceptor: p, pressure, phase, physik };
         }
+        // Einen scharfen flachen Ball, den er nur im Lauf erwischt, fälscht er
+        // oft nur ab (ABPRALLER): ein zweiter Ball, an der Seitenlinie ein
+        // Einwurf - zuletzt am Ball war er
+        if (p.pos !== "TW" && !erster.liegend && !(erster.h > P.ANNAHME_HOEHE)) {
+            const a = MatchFlowEngine.ABPRALLER;
+            const v = P.tempo(bahn, erster.t);
+            const technik = (this.attr(p, "technique") - 70) * a.technik + this.fein(p, "firstTouch") * 0.004;
+            if (_flowRandom.chance(Math.max(a.min, Math.min(a.max, a.basis + Math.max(0, v - a.ab) * a.jeTempo - technik)))) {
+                const ab = this.abpraller(erster.punkt, bahn);
+                return { type: typ, outcome: ab.aus ? "out" : "loose", from: carrier, to: ab.punkt, abgewehrt: p, letzterKontakt: p.team, pressure, phase, physik };
+            }
+        }
         return { type: typ, outcome: "intercepted", from: carrier, to: ziel, interceptor: p, pressure, phase, physik };
+    }
+
+    /**
+     * Wohin ein abgefälschter Ball springt: grob weiter in seine Richtung,
+     * drei bis acht Einheiten. Über die Seitenlinie geht er ins Aus (aus),
+     * über die Torlinie nicht - das regelt die Ecke (outcome "corner").
+     */
+    abpraller(von, bahn) {
+        const w = Math.atan2(bahn.uy, bahn.ux) + _flowRandom.float(-1.3, 1.3);
+        const s = _flowRandom.float(3, 8);
+        const x = Math.max(5, Math.min(95, von.x + Math.cos(w) * s));
+        const y = von.y + Math.sin(w) * s;
+        const l = _flowPhysik()?.LINIEN || { y0: 1.5, y1: 98.5 };
+        if (y < l.y0 || y > l.y1) return { punkt: { x, y: y < 50 ? -1 : 101 }, aus: true };
+        return { punkt: { x, y: Math.max(3, Math.min(97, y)) }, aus: false };
     }
 
     resolveDribble(carrier, action, opponents, tactics, pressure, phase) {

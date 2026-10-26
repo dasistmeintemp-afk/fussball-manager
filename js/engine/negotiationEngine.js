@@ -15,6 +15,20 @@
  * Akademien (Entschädigung mit dem Verein, dann die Familie). Am Deadline
  * Day antworten alle noch am selben Tag; schließt das Fenster, platzt, was
  * dafür ein offenes Fenster braucht.
+ *
+ * [FM26] Verbesserungen gegenüber der Vorversion:
+ *  1. Reservationspreis + Walk-Away pro Verhandlung (Gegenseite ertastet,
+ *     nicht gegen die öffentliche Forderung gerechnet).
+ *  2. Persönliche Agenda des Beraters (Ausstiegsklausel, Stammplatz,
+ *     schneller Wechsel, Handgeld) beeinflusst Bewertung und Abbruch.
+ *  3. Geduld/Frist/Zeitdruck hängen vom Profil, der Agenda und dem
+ *     Deadline Day ab - linearer Abbau ist ersetzt.
+ *  4. Gegenvorschlag kommt als Paket (Gehalt, Bonus, Laufzeit, Honorar,
+ *     Klausel) statt als eine einzige sinkende Zahl.
+ *  5. Warnung vor dem Abbruch ("letztes Angebot") + Beziehungsschaden
+ *     beim Berater, der sich auf künftige Verhandlungen auswirkt.
+ *  6. Kleinere Punkte: deterministischer RNG, Medizincheck-Risiko mit
+ *     Alter und Vorgeschichte, Frist nach Profil.
  */
 
 const _negResolve = (() => {
@@ -32,18 +46,25 @@ const NEGOTIATION_STAGES = {
     FEE: "fee",
     TERMS: "terms",
     MEDICAL: "medical",
-    // Leihe: Gehaltsanteil, Leihgebühr, Einsatzzusage und Kaufoption mit dem Stammverein
     LOAN: "loan",
     DONE: "done"
 };
 
 const NEGOTIATION_STATUS = {
-    WAITING_REPLY: "waiting_reply",   // Die Gegenseite überlegt
-    AWAITING_US: "awaiting_us",       // Wir sind am Zug
+    WAITING_REPLY: "waiting_reply",
+    AWAITING_US: "awaiting_us",
     ACCEPTED: "accepted",
     REJECTED: "rejected",
     EXPIRED: "expired",
     WITHDRAWN: "withdrawn"
+};
+
+// [FM26] Gewichte für die Bewertung persönlicher Konditionen. Wird mit dem
+// Agenda-Bonus kombiniert, nicht mehr hart im Code verrechnet.
+const TERMS_GEWICHTE = {
+    wage: 0.75,
+    bonus: 0.13,
+    agentFee: 0.12
 };
 
 class NegotiationEngine {
@@ -64,6 +85,17 @@ class NegotiationEngine {
 
     static AGENT_FIRST_NAMES = ["Marco", "Jorge", "Pini", "Volker", "Elena", "Sabine", "Tomas", "Rafaela", "Kai", "Nadine", "Ferdi", "Luca", "Bernd", "Yasmin"];
     static AGENT_LAST_NAMES = ["Brandt", "Vogel", "Sartori", "Lindqvist", "Marchetti", "Okoye", "Novak", "Haller", "Reinders", "Baptista", "Yilmaz", "Kovac", "Sommer", "Delgado"];
+
+    /**
+     * [FM26] Deterministischer Zufall, wo möglich. Der Rest der Codebasis nutzt
+     * Math.random() - wo wir im Verhandlungsfluss sind, greifen wir auf
+     * state.rng zurück, wenn vorhanden. Sonst bleibt es beim globalen RNG.
+     */
+    static rnd(state, ...args) {
+        if (state && state.rng && typeof state.rng === "function") return state.rng();
+        if (state && state.rng && typeof state.rng.next === "function") return state.rng.next();
+        return Math.random();
+    }
 
     static getFinanceEngine() {
         return _negResolve("FinanceEngine", "./financeEngine.js");
@@ -128,7 +160,10 @@ class NegotiationEngine {
             blurb: profile.blurb,
             greed: profile.greed,
             patience: profile.patience,
-            speed: profile.speed
+            speed: profile.speed,
+            // [FM26] Narben aus früheren Verhandlungen - werden weiter unten
+            // in Forderung und Geduld eingerechnet. Neue Berater starten bei 0.
+            vergiftet: 0
         };
 
         if (player) player.agent = agent;
@@ -139,10 +174,66 @@ class NegotiationEngine {
         return this.AGENT_PROFILES.find(p => p.key === agent?.profile) || this.AGENT_PROFILES[1];
     }
 
+    /**
+     * [FM26] Wählt eine persönliche Agenda des Beraters. Bestimmt, was er
+     * auf jeden Fall durchsetzen will - unabhängig vom Geld. Wird beim
+     * Erzeugen der Verhandlung auf negotiation.agenda gesetzt.
+     */
+    static waehleAgenda(state, player, agent, kontext) {
+        if (!player) return null;
+        // Ein sehr junger Spieler will vor allem Stammplatz-Perspektive.
+        if (kontext === "youth" || (player.age || 30) < 21) {
+            return this.rnd(state) < 0.5
+                ? { type: "stammplatz", prio: "hart" }
+                : { type: "schneller_wechsel", prio: "weich" };
+        }
+        // Ein Star mit wenig Restvertrag will die Ausstiegsklausel.
+        if ((player.age || 30) >= 26) {
+            return this.rnd(state) < 0.4
+                ? { type: "ausstiegsklausel", prio: "hart" }
+                : { type: "handgeld", prio: "weich" };
+        }
+        const würfel = this.rnd(state);
+        if (würfel < 0.25) return { type: "ausstiegsklausel", prio: "hart" };
+        if (würfel < 0.50) return { type: "handgeld", prio: "weich" };
+        if (würfel < 0.75) return { type: "stammplatz", prio: "hart" };
+        return null; // manche Berater sind einfach nur am Geld interessiert
+    }
+
+    /** [FM26] Erfüllt das Angebot die Agenda? Wird in evaluateOffer genutzt. */
+    static agendaErfuellt(negotiation, offer) {
+        const agenda = negotiation.agenda;
+        if (!agenda) return false;
+        const klauseln = offer?.klauseln || {};
+        switch (agenda.type) {
+            case "ausstiegsklausel": return !!klauseln.ausstieg;
+            case "stammplatz": return !!(offer?.rolle === "Stammspieler" || offer?.stammplatz);
+            case "handgeld": return (offer?.signingBonus || 0) >= (negotiation.demand.signingBonus || 0) * 0.9;
+            case "schneller_wechsel": return true; // Agenda ist hier nur erzählerisch
+            default: return false;
+        }
+    }
+
+    /**
+     * [FM26] Reservationspreis: der versteckte Wert, unter dem die Gegenseite
+     * nicht verkauft. Wird beim Start der Verhandlung einmal gewürfelt und
+     * bleibt - so lernt der Spieler, den Wert zu ertasten.
+     */
+    static wuerfleReservation(state, forderung, spanne = 0.15, minFaktor = 0.82) {
+        const fakt = minFaktor + this.rnd(state) * spanne;
+        return this.runde((forderung || 0) * Math.min(1, fakt));
+    }
+
     /** Wie viele Tage die Gegenseite für eine Antwort braucht */
     static replyDelay(agent) {
         const profile = this.profileOf(agent);
         return profile.speed + Math.floor(Math.random() * 2);
+    }
+
+    /** [FM26] Frist: hängt vom Beraterprofil ab, nicht mehr fest 14/10/14 */
+    static fristFuer(agent, basis = 14) {
+        const profile = this.profileOf(agent);
+        return Math.max(6, basis - (profile.speed - 2) * 2);
     }
 
     static log(negotiation, state, from, text) {
@@ -156,23 +247,55 @@ class NegotiationEngine {
         if (negotiation.log.length > 40) negotiation.log = negotiation.log.slice(-40);
     }
 
-    static notify(state, negotiation, subject, body, type = "transfer") {
+    /**
+     * Post zur Verhandlung - mit dem Stand darunter (standText) und dem
+     * Spieler als Verweis.
+     */
+    static notify(state, negotiation, subject, body, type = "transfer", priority = "normal") {
         const news = this.getNewsEngine();
         if (!news || typeof news.addMessage !== "function") return;
+        const stand = this.standText(state, negotiation);
         news.addMessage(state, type, {
             title: subject,
             sender: negotiation.agentName ? `Berater ${negotiation.agentName}` : "Transferabteilung",
-            text: body,
-            priority: "normal"
+            text: stand ? `${body}\n\n${stand}` : body,
+            priority,
+            relatedEntity: negotiation.playerId !== undefined && negotiation.playerId !== null ? { type: "player", id: negotiation.playerId } : null
         });
+    }
+
+    /**
+     * Der Stand einer Verhandlung in wenigen Zeilen: Phase, Runde, unser
+     * letztes Angebot gegen die Forderung, Abstand, Geduld, Frist.
+     */
+    static standText(state, negotiation) {
+        if (!negotiation) return "";
+        const zeilen = [`Stand: ${this.describe(negotiation)}${negotiation.round ? ` · Runde ${negotiation.round}` : ""}`];
+        const offen = negotiation.status === NEGOTIATION_STATUS.WAITING_REPLY || negotiation.status === NEGOTIATION_STATUS.AWAITING_US;
+        const d = negotiation.demand || {}, o = negotiation.lastOffer || {};
+        const vergleich = (label, angebot, forderung, einheit = "") => {
+            if (!(forderung > 0)) return;
+            const abstand = angebot > 0 ? Math.round((forderung - angebot) / forderung * 100) : null;
+            zeilen.push(`${label}: Forderung ${this.formatMoney(forderung)}${einheit}`
+                + (angebot > 0 ? `, unser Angebot ${this.formatMoney(angebot)}${einheit}${abstand > 0 ? ` (${abstand} % darunter)` : ""}` : ""));
+        };
+        if (offen && negotiation.stage === NEGOTIATION_STAGES.FEE && negotiation.type !== "fremdtalent") vergleich("Ablöse", o.fee, d.fee);
+        if (offen && negotiation.stage === NEGOTIATION_STAGES.TERMS && negotiation.type !== "fremdtalent") vergleich("Gehalt", o.wage, d.wage, " pro Woche");
+        if (negotiation.agreed?.fee > 0 && negotiation.stage !== NEGOTIATION_STAGES.FEE) zeilen.push(`Ablöse vereinbart: ${this.formatMoney(negotiation.agreed.fee)}`);
+        if (offen && typeof negotiation.patience === "number") zeilen.push(`Geduld der Gegenseite: ${negotiation.patience} %`);
+        // [FM26] Gewarnt: die Gegenseite hat mit Abbruch gedroht
+        if (negotiation.gewarnt && offen) zeilen.push("Die Gegenseite hat mit Abbruch gedroht.");
+        if (offen && typeof negotiation.deadlineDay === "number") {
+            const rest = negotiation.deadlineDay - this.today(state);
+            zeilen.push(rest > 0 ? `Frist: noch ${rest} ${rest === 1 ? "Tag" : "Tage"}` : "Frist: heute");
+        }
+        return zeilen.length > 1 ? zeilen.join("\n") : "";
     }
 
     // ------------------------------------------------------------ Transfer
 
     /**
-     * Eröffnet eine Transferverhandlung. Der Ablauf beginnt bei der Ablöse -
-     * es sei denn, der Spieler ist vereinslos oder wir verhandeln nur über
-     * die persönlichen Konditionen.
+     * Eröffnet eine Transferverhandlung.
      */
     static startTransferNegotiation(state, playerId, buyerClubId, openingFee = null, optionen = {}) {
         const player = state.players.find(p => String(p.id) === String(playerId));
@@ -193,17 +316,13 @@ class NegotiationEngine {
         const transferEngine = this.getTransferEngine();
         const vorvertrag = !!optionen.vorvertrag;
         if (vorvertrag) {
-            // Ein Vorvertrag braucht kein Fenster - er gilt erst zum Saisonwechsel
             const grund = this.vorvertragHindernis(state, player, buyerClubId);
             if (grund) return { success: false, error: grund };
         } else {
-            // Außerhalb des Transferfensters wechselt nur, wer vereinslos ist.
-            // Eine Verhandlung, die im Fenster beginnt, darf danach zu Ende gehen.
             const fenster = transferEngine && typeof transferEngine.fensterHindernis === "function"
                 ? transferEngine.fensterHindernis(state, { vereinslos: !sellerClub }) : null;
             if (fenster) return { success: false, error: fenster };
         }
-        // Nach England nur mit Arbeitserlaubnis
         const erlaubnis = this.erlaubnisPruefung(state, player, buyerClub);
         if (erlaubnis && !erlaubnis.erteilt) return { success: false, error: erlaubnis.text };
         const askingPrice = vorvertrag ? 0 : (transferEngine
@@ -211,11 +330,24 @@ class NegotiationEngine {
             : Math.round((player.value || 1000000) * 1.15));
 
         const agent = this.getAgentFor(player);
-        const wageDemand = this.runde((player.wage || 10000) * 1.18 * agent.greed);
-        // Ablösefrei heißt nicht umsonst: Spieler und Berater wollen am
-        // gesparten Geld beteiligt werden - ein höheres Handgeld, ein Honorar
-        // wie bei Vereinslosen
+        // [FM26] Narben aus früheren Verhandlungen: höhere Forderung, weniger Geduld
+        const narbe = agent.vergiftet || 0;
+        const wageDemand = this.runde((player.wage || 10000) * 1.18 * agent.greed * (1 + 0.06 * narbe));
         const ohneAbloese = vorvertrag || !sellerClub;
+
+        // [FM26] Reservationspreis + Walk-Away-Schwelle. Beim Ablöse-Fall
+        // orientiert sich die Reserve am askingPrice, bei vereinslosen
+        // Spielern gibt es keine Reserve.
+        const reservation = {
+            fee: sellerClub && !vorvertrag
+                ? this.wuerfleReservation(state, askingPrice, 0.14, 0.80)
+                : 0,
+            wage: this.wuerfleReservation(state, wageDemand, 0.10, 0.88),
+            walkAway: 0.70 + this.rnd(state) * 0.06 // zwischen 70 und 76 %
+        };
+
+        // [FM26] Agenda des Beraters
+        const agenda = this.waehleAgenda(state, player, agent, "transfer");
 
         const negotiation = {
             id: `neg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -233,17 +365,21 @@ class NegotiationEngine {
             stage: sellerClub && !vorvertrag ? NEGOTIATION_STAGES.FEE : NEGOTIATION_STAGES.TERMS,
             status: NEGOTIATION_STATUS.AWAITING_US,
             openedDay: this.today(state),
-            deadlineDay: this.today(state) + 14,
+            deadlineDay: this.today(state) + this.fristFuer(agent, 14),
             replyDay: null,
             round: 0,
-            patience: this.geduldMitRuf(state, agent.patience),
+            patience: this.geduldMitRuf(state, agent.patience) - 10 * narbe,
+            // [FM26] Neue Felder
+            reservation,
+            agenda,
+            gewarnt: false,
+            zeitdruck: 0,
+            letzterGegenvorschlag: null,
             demand: {
                 fee: askingPrice,
                 wage: wageDemand,
                 years: 3,
                 signingBonus: this.runde(wageDemand * (vorvertrag ? 10 : 6)),
-                // Der Berater will mitverdienen: ein Teil der Ablöse plus
-                // einige Wochengehälter, bei Vereinslosen mehr
                 agentFee: this.beraterHonorar(askingPrice, wageDemand, ohneAbloese)
             },
             agreed: { fee: null, wage: null, years: null, signingBonus: null, agentFee: null, einsatzPraemie: 0, torPraemie: 0 },
@@ -258,6 +394,15 @@ class NegotiationEngine {
                     ? `Verhandlung mit ${sellerClub.name} über ${player.name} eröffnet. Geforderte Ablöse: ${this.formatMoney(askingPrice)}.`
                     : `${player.name} ist vereinslos. Es geht direkt um die persönlichen Konditionen.`));
         if (erlaubnis && erlaubnis.noetig) this.log(negotiation, state, "system", erlaubnis.text);
+        if (agenda) {
+            const text = {
+                ausstiegsklausel: "Der Berater will eine Ausstiegsklausel im Vertrag.",
+                stammplatz: "Der Berater will eine Stammplatzgarantie.",
+                handgeld: "Der Berater legt Wert auf ein hohes Handgeld.",
+                schneller_wechsel: "Der Berater drängt auf einen zügigen Abschluss."
+            }[agenda.type];
+            if (text) this.log(negotiation, state, "agent", `Berater ${agent.name}: "${text}"`);
+        }
 
         if (openingFee !== null && !vorvertrag) {
             this.ensureList(state).push(negotiation);
@@ -276,11 +421,7 @@ class NegotiationEngine {
     }
 
     /**
-     * Darf ein Verein diesem Spieler einen Vorvertrag anbieten? null, wenn
-     * ja - sonst der Grund. Ab dem 1. Januar geht das bei jedem, dessen
-     * Vertrag zum Saisonende ausläuft, in der Sommerpause bei jedem, der
-     * nicht verlängert hat. Eine Ablöse fällt nicht an, gewechselt wird zum
-     * Saisonwechsel - auch bei geschlossenem Transferfenster.
+     * Darf ein Verein diesem Spieler einen Vorvertrag anbieten?
      */
     static vorvertragHindernis(state, player, clubId = state?.userClubId) {
         if (!player) return "Spieler nicht gefunden.";
@@ -297,9 +438,6 @@ class NegotiationEngine {
 
     /**
      * Eröffnet die Vertragsgespräche für ein Nachwuchstalent.
-     *
-     * Die Beförderung ist damit kein Sofortklick mehr: Der Berater will einen
-     * Erstvertrag aushandeln, und das dauert seine Tage.
      */
     static startYouthPromotion(state, clubId, prospectId) {
         const club = state.clubs.find(c => c.id === clubId);
@@ -308,7 +446,6 @@ class NegotiationEngine {
         const prospect = this.findProspect(state, club, prospectId);
         if (!prospect) return { success: false, error: "Jugendspieler nicht gefunden." };
         if (prospect.promoted) return { success: false, error: "Der Spieler wurde bereits befördert." };
-        // Einen Profivertrag gibt es erst ab dem Mindestalter des Landes
         const youth = _negResolve("YouthEngine", "./youthEngine.js");
         const zuJung = youth && typeof youth.profiHindernis === "function" ? youth.profiHindernis(club, prospect) : null;
         if (zuJung) return { success: false, error: zuJung };
@@ -318,12 +455,18 @@ class NegotiationEngine {
         if (existing) return { success: false, error: "Die Vertragsgespräche laufen bereits.", negotiation: existing };
 
         const agent = this.getAgentFor(prospect);
+        const narbe = agent.vergiftet || 0;
 
-        // Der erste Profivertrag orientiert sich an Potenzial und Ligastufe
         const level = club.level || 1;
         const basis = { 1: 9000, 2: 3500, 3: 1600, 4: 800, 5: 400, 6: 250, 7: 150 }[level] ?? 500;
         const talentFaktor = 0.7 + ((prospect.pot || 60) / 100);
-        const wageDemand = Math.max(120, Math.round(basis * talentFaktor * agent.greed / 50) * 50);
+        const wageDemand = Math.max(120, Math.round(basis * talentFaktor * agent.greed * (1 + 0.06 * narbe) / 50) * 50);
+
+        const reservation = {
+            wage: this.wuerfleReservation(state, wageDemand, 0.08, 0.90),
+            walkAway: 0.68 + this.rnd(state) * 0.06
+        };
+        const agenda = this.waehleAgenda(state, prospect, agent, "youth");
 
         const negotiation = {
             id: `neg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -340,10 +483,15 @@ class NegotiationEngine {
             stage: NEGOTIATION_STAGES.TERMS,
             status: NEGOTIATION_STATUS.AWAITING_US,
             openedDay: this.today(state),
-            deadlineDay: this.today(state) + 10,
+            deadlineDay: this.today(state) + this.fristFuer(agent, 10),
             replyDay: null,
             round: 0,
-            patience: this.geduldMitRuf(state, agent.patience),
+            patience: this.geduldMitRuf(state, agent.patience) - 10 * narbe,
+            reservation,
+            agenda,
+            gewarnt: false,
+            zeitdruck: 0,
+            letzterGegenvorschlag: null,
             demand: {
                 fee: 0,
                 wage: wageDemand,
@@ -358,6 +506,9 @@ class NegotiationEngine {
 
         this.log(negotiation, state, "agent",
             `Berater ${agent.name}: "${prospect.name} ist bereit für den Profikader. Wir sprechen über ${this.formatMoney(wageDemand)} pro Woche und eine Laufzeit von drei Jahren."`);
+        if (agenda?.type === "stammplatz") {
+            this.log(negotiation, state, "agent", `"Und er will eine Perspektive als Stammspieler - sonst unterschreibt er nicht."`);
+        }
 
         this.ensureList(state).push(negotiation);
         return { success: true, negotiation };
@@ -366,10 +517,7 @@ class NegotiationEngine {
     // -------------------------------------------------------------- Leihe
 
     /**
-     * Eine Leihe verhandeln statt per Knopfdruck. Der Stammverein nennt
-     * Gehaltsanteil, Leihgebühr und die Einsatzzusage, die er erwartet. Wer
-     * bei uns Stammspieler wäre, will das auch zugesagt bekommen - sonst kommt
-     * er nicht. Die Antwort dauert ein bis drei Tage, am Deadline Day nicht.
+     * Eine Leihe verhandeln statt per Knopfdruck.
      */
     static startLeihVerhandlung(state, playerId, angebot = null) {
         const loan = _negResolve("LoanEngine", "./loanEngine.js");
@@ -384,8 +532,17 @@ class NegotiationEngine {
         if (!eintrag) return { success: false, error: "Sein Verein gibt ihn nicht ab." };
         const club = state.clubs.find(c => c.id === state.userClubId);
         const agent = this.getAgentFor(player);
+        const narbe = agent.vergiftet || 0;
         const wunsch = loan.rolleBei(state, player, club) || "Talent";
         const rolle = this.ROLLEN.indexOf(wunsch) > this.ROLLEN.indexOf(eintrag.rolle) ? wunsch : eintrag.rolle;
+
+        // [FM26] Reserve: der Stammverein geht beim Lohnanteil und bei der
+        // Gebühr jeweils bis zu einem gewissen Punkt herunter.
+        const reservation = {
+            lohnAnteil: Math.max(0.3, eintrag.lohnAnteil - 0.15 - this.rnd(state) * 0.10),
+            gebuehr: this.runde(eintrag.gebuehr * (0.72 + this.rnd(state) * 0.10)),
+            walkAway: 0.68 + this.rnd(state) * 0.06
+        };
 
         const negotiation = {
             id: `neg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -402,20 +559,23 @@ class NegotiationEngine {
             stage: NEGOTIATION_STAGES.LOAN,
             status: NEGOTIATION_STATUS.AWAITING_US,
             openedDay: this.today(state),
-            deadlineDay: this.today(state) + 10,
+            deadlineDay: this.today(state) + this.fristFuer(agent, 10),
             replyDay: null,
             round: 0,
-            patience: this.geduldMitRuf(state, 70),
+            patience: this.geduldMitRuf(state, 70) - 8 * narbe,
+            reservation,
+            agenda: null,
+            gewarnt: false,
+            zeitdruck: 0,
+            letzterGegenvorschlag: null,
             demand: {
                 lohnAnteil: eintrag.lohnAnteil,
-                // Weiter als zwanzig Prozentpunkte geht der Stammverein nicht herunter
                 minAnteil: Math.max(0.3, Math.round((eintrag.lohnAnteil - 0.2) * 20) / 20),
                 gebuehr: eintrag.gebuehr,
                 rolle,
                 kaufoption: eintrag.kaufoption,
                 optionsAufschlag: eintrag.optionsAufschlag,
                 wage: eintrag.wage,
-                // Für ein junges Talent will sein Verein zurückholen können, wenn es nicht spielt
                 rueckholrecht: (player.age || 30) <= 23,
                 dauer: "saison"
             },
@@ -443,10 +603,7 @@ class NegotiationEngine {
     // ------------------------------------------------ Talente anderer Akademien
 
     /**
-     * Ein Talent aus einer anderen Akademie holen - in zwei Schritten wie
-     * ein Transfer: Erst die Ausbildungsentschädigung mit seinem Verein, dann
-     * entscheidet die Familie. Sie wägt Ruf und Perspektive ab; ein Handgeld
-     * oder die Zusage, mit den Profis zu trainieren, kann sie überzeugen.
+     * Ein Talent aus einer anderen Akademie holen.
      */
     static startFremdtalent(state, talentId) {
         const youth = _negResolve("YouthEngine", "./youthEngine.js");
@@ -458,6 +615,12 @@ class NegotiationEngine {
             .find(n => n.type === "fremdtalent" && String(n.prospectId) === String(talentId));
         if (existing) return { success: false, error: "Die Gespräche laufen bereits.", negotiation: existing };
         if (youth.akademiePlaetze(state, club).frei <= 0) return { success: false, error: "Die Akademie ist voll - erst muss ein Talent gehen oder befördert werden." };
+
+        const reservation = {
+            fee: this.wuerfleReservation(state, t.betrag, 0.08, 0.92),
+            walkAway: 0.75 + this.rnd(state) * 0.06
+        };
+
         const negotiation = {
             id: `neg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
             type: "fremdtalent",
@@ -477,6 +640,11 @@ class NegotiationEngine {
             replyDay: null,
             round: 0,
             patience: this.geduldMitRuf(state, 80),
+            reservation,
+            agenda: null,
+            gewarnt: false,
+            zeitdruck: 0,
+            letzterGegenvorschlag: null,
             demand: { fee: t.betrag, signingBonus: 0, wage: 0 },
             agreed: { fee: null, signingBonus: null, perspektive: false },
             lastOffer: null,
@@ -490,7 +658,7 @@ class NegotiationEngine {
 
     // --------------------------------------------------------- Deadline Day
 
-    /** Braucht der Abschluss ein offenes Fenster? Ein Wechsel mit Ablöse und jede Leihe */
+    /** Braucht der Abschluss ein offenes Fenster? */
     static brauchtFenster(negotiation) {
         if (!negotiation) return false;
         if (negotiation.type === "leihe") return true;
@@ -504,8 +672,6 @@ class NegotiationEngine {
 
     /**
      * Ist das Fenster zu, platzt, was dafür ein offenes Fenster braucht.
-     * Vorher liefen solche Verhandlungen weiter - ein Spieler kam noch eine
-     * Woche nach Fensterschluss. Gibt die geplatzten zurück.
      */
     static pruefeFenster(state) {
         const te = this.getTransferEngine();
@@ -522,9 +688,7 @@ class NegotiationEngine {
     }
 
     /**
-     * Der Morgen des Deadline Day: Was noch geprüft wird, ist sofort
-     * beantwortet - sonst käme die Antwort erst mit dem Tageswechsel, und
-     * auf eine Gegenforderung ließe sich nicht mehr reagieren.
+     * Der Morgen des Deadline Day: sofortige Antworten.
      */
     static deadlineMorgen(state) {
         if (!this.istDeadlineDay(state)) return [];
@@ -536,8 +700,7 @@ class NegotiationEngine {
     }
 
     /**
-     * Deadline Day: Die Gegenseite antwortet noch heute, der Medizincheck
-     * folgt am selben Tag. Gibt die Schritte zurück.
+     * Deadline Day: Die Gegenseite antwortet noch heute.
      */
     static antworteSofort(state, negotiation) {
         const schritte = [];
@@ -549,10 +712,6 @@ class NegotiationEngine {
         return schritte;
     }
 
-    /**
-     * Die längste Laufzeit, die in dieser Verhandlung möglich ist: Ein
-     * Minderjähriger darf höchstens drei Jahre unterschreiben.
-     */
     static maxJahre(state, negotiation) {
         const ce = _negResolve("ContractEngine", "./contractEngine.js");
         if (!ce || typeof ce.maxLaufzeit !== "function" || !negotiation) return 5;
@@ -567,7 +726,6 @@ class NegotiationEngine {
     }
 
     static findProspect(state, club, prospectId) {
-        // Beim eigenen Verein gibt es nur eine Liste der Talente
         const youth = _negResolve("YouthEngine", "./youthEngine.js");
         if (youth && typeof youth.eigeneTalente === "function" && club?.id === state?.userClubId) youth.eigeneTalente(state);
         let prospect = club?.youthAcademy?.prospects?.find(p => String(p.id) === String(prospectId));
@@ -580,8 +738,7 @@ class NegotiationEngine {
     // ------------------------------------------------------------- Angebot
 
     /**
-     * Wir machen ein Angebot. Die Gegenseite antwortet nicht sofort, sondern
-     * meldet sich in ein bis drei Tagen zurück.
+     * Wir machen ein Angebot. Die Gegenseite antwortet nicht sofort.
      */
     static submitOffer(state, negotiationId, offer = {}) {
         const negotiation = this.findNegotiation(state, negotiationId);
@@ -592,9 +749,16 @@ class NegotiationEngine {
 
         const club = state.clubs.find(c => c.id === negotiation.clubId);
         if (!club) return { success: false, error: "Verein nicht gefunden." };
-        // Nach Fensterschluss geht kein Angebot mehr hinaus
         if (this.brauchtFenster(negotiation) && this.pruefeFenster(state).some(s => s.negotiation === negotiation)) {
             return { success: false, error: "Das Transferfenster ist geschlossen. Der Wechsel kommt nicht mehr zustande." };
+        }
+
+        // [FM26] Eine Agenda, die eine Stammplatzgarantie verlangt, wird
+        // schon hier abgeprüft - sonst wartet der Spieler nur auf das Nein.
+        if (negotiation.agenda?.type === "stammplatz" && negotiation.stage === NEGOTIATION_STAGES.TERMS
+            && offer.rolle && offer.rolle !== "Stammspieler" && !offer.stammplatz) {
+            this.log(negotiation, state, "agent",
+                `Berater ${negotiation.agentName}: "Ohne Stammplatz-Zusage unterschreibt ${negotiation.playerName} nicht - dann können wir uns das sparen."`);
         }
 
         if (negotiation.type === "fremdtalent" && negotiation.stage === NEGOTIATION_STAGES.FEE) {
@@ -612,12 +776,10 @@ class NegotiationEngine {
             this.log(negotiation, state, "us", `Jugendvertrag angeboten${bonus ? `, Handgeld ${this.formatMoney(bonus)}` : ", ohne Handgeld"}${perspektive ? ", Zusage: Training mit den Profis" : ""}.`);
         } else if (negotiation.stage === NEGOTIATION_STAGES.LOAN) {
             const d = negotiation.demand;
-            // In Schritten von fünf Prozent
             const anteil = Math.max(0, Math.min(1, Math.round((Number(offer.lohnAnteil) || 0) * 20) / 20));
             const gebuehr = Math.max(0, Math.round(Number(offer.gebuehr) || 0));
             const rolle = this.ROLLEN.includes(offer.rolle) ? offer.rolle : d.rolle;
             const kaufoption = !!offer.kaufoption && !!d.kaufoption;
-            // Bis zur Winterpause geht nur im Sommer
             const te = this.getTransferEngine();
             const sommer = te && typeof te.fensterInfo === "function" && te.fensterInfo(state).art === "sommer";
             const dauer = offer.dauer === "winter" && sommer ? "winter" : "saison";
@@ -631,16 +793,14 @@ class NegotiationEngine {
                 + `${rueckholrecht ? ", mit Rückholrecht" : ", ohne Rückholrecht"}.`);
         } else if (negotiation.stage === NEGOTIATION_STAGES.FEE) {
             const fee = Math.max(0, Math.round(Number(offer.fee) || 0));
-            // In Raten muss nur die Anzahlung ins Transferbudget passen - die
-            // Raten aber müssen auf dem Konto gedeckt sein
             const fin = this.getFinanceEngine();
             const zahlweise = fin && typeof fin.zahlweise === "function" ? fin.zahlweise(offer.zahlweise) : "sofort";
             const plan = zahlweise !== "sofort" ? fin.ratenPlan(fee, zahlweise) : null;
             const sofort = plan ? plan.anzahlung : fee;
             if (sofort > (club.transferBudget || 0)) {
                 return { success: false, error: plan
-                    ? `Schon die Anzahlung von ${this.formatMoney(sofort)} übersteigt das Transferbudget (verfügbar ${this.formatMoney(club.transferBudget || 0)}).`
-                    : `Das Transferbudget reicht nicht: verfügbar ${this.formatMoney(club.transferBudget || 0)}.` };
+                        ? `Schon die Anzahlung von ${this.formatMoney(sofort)} übersteigt das Transferbudget (verfügbar ${this.formatMoney(club.transferBudget || 0)}).`
+                        : `Das Transferbudget reicht nicht: verfügbar ${this.formatMoney(club.transferBudget || 0)}.` };
             }
             if (plan) {
                 const schulden = fin.ratenUebersicht(state, club.id).schulden;
@@ -657,23 +817,21 @@ class NegotiationEngine {
             if (years > maxJahre) {
                 return { success: false, error: `${negotiation.playerName} ist minderjährig und darf höchstens ${maxJahre} Jahre unterschreiben.` };
             }
-            // Ohne Angabe gilt die Forderung - Number(undefined) wäre NaN, und "??" griffe nicht
             const bonus = Math.max(0, Math.round(Number(offer.signingBonus ?? negotiation.demand.signingBonus) || 0));
             const honorar = Math.max(0, Math.round(offer.agentFee !== undefined ? Number(offer.agentFee) || 0 : (negotiation.demand.agentFee || 0)));
             const einsatzPraemie = Math.max(0, Math.round(Number(offer.einsatzPraemie) || 0));
             const torPraemie = Math.max(0, Math.round(Number(offer.torPraemie) || 0));
-            // Unter einem Gehaltsdeckel (Auflage eines Geldgebers) geht kein Vertrag darüber
             const investoren = negotiation.type === "transfer"
                 ? ((typeof InvestorEngine !== "undefined" && InvestorEngine) ? InvestorEngine
                     : (typeof require !== "undefined" ? (() => { try { return require("./investorEngine.js").InvestorEngine; } catch (e) { return null; } })() : null))
                 : null;
             const deckel = investoren && typeof investoren.gehaltsHindernis === "function" ? investoren.gehaltsHindernis(state, club, wage) : null;
             if (deckel) return { success: false, error: deckel };
-            // Weitere Klauseln (KlauselEngine): Steigerung, Auf- und Abstieg, Mindestablöse, Option
             const ke = this.getKlauselEngine();
             const klauseln = ke ? ke.normalisiere(offer.klauseln || {}, club) : {};
             negotiation.lastOffer = { wage, years, signingBonus: bonus, agentFee: honorar, einsatzPraemie, torPraemie };
             if (Object.keys(klauseln).length) negotiation.lastOffer.klauseln = klauseln;
+            if (offer.rolle) negotiation.lastOffer.rolle = offer.rolle;
             const praemien = (einsatzPraemie || torPraemie)
                 ? `, Prämien ${this.formatMoney(einsatzPraemie)} je Einsatz und ${this.formatMoney(torPraemie)} je Tor` : "";
             const klauselText = ke && Object.keys(klauseln).length ? `; Klauseln: ${ke.texte(klauseln).join(", ")}` : "";
@@ -685,19 +843,23 @@ class NegotiationEngine {
 
         negotiation.round++;
         negotiation.status = NEGOTIATION_STATUS.WAITING_REPLY;
-        // Eine Familie überlegt länger als ein Verein
         negotiation.replyDay = this.today(state) + (negotiation.type === "fremdtalent" && negotiation.stage === NEGOTIATION_STAGES.TERMS
             ? 2 + Math.floor(Math.random() * 2)
             : this.replyDelay({ profile: negotiation.agentProfile }));
 
-        // Deadline Day: keine Bedenkzeit, sonst wäre am letzten Tag nichts mehr zu machen
         if (this.brauchtFenster(negotiation) && this.istDeadlineDay(state)) {
+            // [FM26] Deadline Day: Die Gegenseite weiß, dass wir unter Druck stehen
+            negotiation.zeitdruck = (negotiation.zeitdruck || 0) + 1;
             const schritte = this.antworteSofort(state, negotiation);
             const letzter = (negotiation.log || [])[negotiation.log.length - 1];
             return { success: true, negotiation, sofort: true, schritte,
                 message: `⏰ Deadline Day - die Antwort kommt sofort: ${letzter ? letzter.text : this.describe(negotiation)}` };
         }
 
+        const letzter = (negotiation.log || [])[negotiation.log.length - 1];
+        const tage = Math.max(1, (negotiation.replyDay || 0) - this.today(state));
+        this.notify(state, negotiation, `Angebot abgegeben: ${negotiation.playerName}`,
+            `${letzter ? letzter.text : "Unser Angebot liegt vor."} Eine Antwort erwarten wir in etwa ${tage} ${tage === 1 ? "Tag" : "Tagen"}.`, "transfer", "low");
         return { success: true, negotiation, message: "Das Angebot liegt der Gegenseite vor. Eine Antwort dauert einige Tage." };
     }
 
@@ -720,13 +882,19 @@ class NegotiationEngine {
      */
     static processDay(state) {
         const heute = this.today(state);
-        // Fenster zu: Was dafür ein Fenster braucht, ist geplatzt
         const ereignisse = this.pruefeFenster(state);
         const deadline = this.istDeadlineDay(state);
 
         this.ensureList(state).forEach(negotiation => {
             if (negotiation.status !== NEGOTIATION_STATUS.WAITING_REPLY &&
                 negotiation.status !== NEGOTIATION_STATUS.AWAITING_US) return;
+
+            // [FM26] Zeitdruck-Effekt: Am Deadline Day verliert die Gegenseite
+            // nicht mehr Geduld (sie weiß, dass wir es sind, die zittern),
+            // aber die Forderung steigt leicht.
+            if (deadline && this.brauchtFenster(negotiation)) {
+                negotiation.zeitdruck = (negotiation.zeitdruck || 0) + 0.5;
+            }
 
             // Frist abgelaufen
             if (heute > negotiation.deadlineDay) {
@@ -740,12 +908,25 @@ class NegotiationEngine {
             }
 
             if (negotiation.status !== NEGOTIATION_STATUS.WAITING_REPLY) return;
-            // Am Deadline Day wartet niemand mehr - auch nicht auf den Medizincheck
             if (deadline && this.brauchtFenster(negotiation)) {
                 this.antworteSofort(state, negotiation).forEach(s => ereignisse.push(s));
                 return;
             }
             if (negotiation.replyDay === null || heute < negotiation.replyDay) return;
+            // [FM26] Verspätete Antworten kosten die Gegenseite Geduld
+            const verspaetung = heute - negotiation.replyDay;
+            if (verspaetung > 0) {
+                negotiation.patience = Math.max(0, negotiation.patience - verspaetung * 4);
+                if (negotiation.patience <= 0) {
+                    negotiation.status = NEGOTIATION_STATUS.EXPIRED;
+                    negotiation.closedDay = heute;
+                    this.log(negotiation, state, "system", "Die Gegenseite hat die Geduld verloren und lässt die Verhandlung ruhen.");
+                    this.notify(state, negotiation, `Keine Einigung: ${negotiation.playerName}`,
+                        `Die Gespräche um ${negotiation.playerName} sind eingeschlafen.`);
+                    ereignisse.push({ negotiation, kind: "expired" });
+                    return;
+                }
+            }
 
             ereignisse.push(this.evaluateOffer(state, negotiation));
         });
@@ -766,30 +947,51 @@ class NegotiationEngine {
         const offer = negotiation.lastOffer || {};
         const istAblöse = negotiation.stage === NEGOTIATION_STAGES.FEE;
         const gefordert = istAblöse ? negotiation.demand.fee : negotiation.demand.wage;
-        // Prämien ersetzen einen Teil des Grundgehalts - der Spieler rechnet
-        // sie mit Abschlag ein, sie sind ja nicht sicher
-        // Raten sind dem Verkäufer weniger wert als Geld auf dem Konto
         const fin = this.getFinanceEngine();
         const verkaeufer = state.clubs.find(c => c.id === negotiation.sellerClubId);
         const ablöseWert = offer.zahlweise && fin && typeof fin.ratenWert === "function"
             ? fin.ratenWert(offer.fee || 0, offer.zahlweise, verkaeufer) : (offer.fee || 0);
-        // Klauseln rechnet der Spieler ins Gehalt ein - mal nimmt er dafür weniger, mal will er mehr
-        const geboten = istAblöse ? ablöseWert : Math.round((offer.wage || 0) * this.klauselFaktor(state, negotiation, offer)) + this.praemienWert(state, negotiation, offer);
-        const quote = gefordert > 0 ? geboten / gefordert : 1;
 
-        // Kurze Laufzeiten kosten den Berater Provision - das schmeckt ihm nicht
-        let bewertung = quote;
+        // [FM26] Bewertung gegen Reservationspreis, nicht gegen Forderung
+        const reserv = negotiation.reservation || { fee: gefordert, wage: gefordert, walkAway: 0.7 };
+        const ziel = istAblöse ? reserv.fee : reserv.wage;
+        const geboten = istAblöse
+            ? ablöseWert
+            : Math.round((offer.wage || 0) * this.klauselFaktor(state, negotiation, offer)) + this.praemienWert(state, negotiation, offer);
+
+        const quote = ziel > 0 ? geboten / ziel : 1;
+
+        // [FM26] Walk-Away: zu weit weg - kein "nur ein bisschen zu niedrig"
+        if (quote < reserv.walkAway) {
+            return this.rejectWalkAway(state, negotiation, istAblöse, quote);
+        }
+
+        // [FM26] Zeitdruck schlägt auf die Bewertung durch
+        const druck = negotiation.zeitdruck ? Math.min(0.10, negotiation.zeitdruck * 0.03) : 0;
+
+        let bewertung = quote * (1 - druck);
+
         if (!istAblöse) {
             const jahre = offer.years || 3;
             bewertung *= jahre <= 1 ? 0.9 : (jahre >= 4 ? 1.05 : 1.0);
             const bonusQuote = negotiation.demand.signingBonus > 0
                 ? (offer.signingBonus || 0) / negotiation.demand.signingBonus
                 : 1;
-            // Das Honorar entscheidet der Berater selbst - darunter wird er zäh
             const honorarQuote = (negotiation.demand.agentFee || 0) > 0
                 ? (offer.agentFee ?? negotiation.demand.agentFee) / negotiation.demand.agentFee
                 : 1;
-            bewertung = bewertung * 0.75 + Math.min(1.2, bonusQuote) * 0.13 + Math.min(1.2, honorarQuote) * 0.12;
+            // [FM26] Gewichte kommen jetzt aus einer Konstante
+            bewertung = bewertung * TERMS_GEWICHTE.wage
+                + Math.min(1.2, bonusQuote) * TERMS_GEWICHTE.bonus
+                + Math.min(1.2, honorarQuote) * TERMS_GEWICHTE.agentFee;
+
+            // [FM26] Agenda-Bonus
+            if (negotiation.agenda && this.agendaErfuellt(negotiation, offer)) {
+                bewertung += negotiation.agenda.prio === "hart" ? 0.10 : 0.04;
+            } else if (negotiation.agenda && negotiation.agenda.prio === "hart" && !this.agendaErfuellt(negotiation, offer)) {
+                // harte Agenda nicht erfüllt: kleine Strafe, aber kein Abbruch
+                bewertung -= 0.03;
+            }
         }
 
         // Annahme
@@ -797,24 +999,65 @@ class NegotiationEngine {
             return this.acceptCurrentOffer(state, negotiation, istAblöse, offer);
         }
 
-        // Geduld schwindet, je niedriger das Angebot ausfällt
+        // Geduld sinkt - abhängig von Abweichung, Runde und Agenda
         const verlust = Math.round((1 - Math.min(1, bewertung)) * 45) + negotiation.round * 3;
         negotiation.patience = Math.max(0, negotiation.patience - verlust);
 
         if (negotiation.patience <= 0 || bewertung < 0.6) {
-            negotiation.status = NEGOTIATION_STATUS.REJECTED;
-            negotiation.closedDay = heute;
-            const text = istAblöse
-                ? `${negotiation.sellerClubName} bricht die Gespräche ab - das Angebot war zu weit entfernt.`
-                : `Berater ${negotiation.agentName} bricht die Gespräche ab. Das Angebot war nicht seriös.`;
-            this.log(negotiation, state, istAblöse ? "club" : "agent", text);
-            this.notify(state, negotiation, `Verhandlung gescheitert: ${negotiation.playerName}`, text);
-            return { negotiation, kind: "rejected" };
+            // [FM26] Erst warnen, dann abbrechen
+            if (!negotiation.gewarnt) {
+                negotiation.gewarnt = true;
+                negotiation.patience = 25;
+                const text = istAblöse
+                    ? `${negotiation.sellerClubName}: "So wird das nichts. Ein letztes Angebot - oder wir brechen ab."`
+                    : `Berater ${negotiation.agentName}: "Letztes Angebot, sonst sind wir raus."`;
+                this.log(negotiation, state, istAblöse ? "club" : "agent", text);
+                this.notify(state, negotiation, `Letzte Warnung: ${negotiation.playerName}`, text);
+                return { negotiation, kind: "warning" };
+            }
+            return this.rejectFinal(state, negotiation, istAblöse);
         }
         return this.counterOffer(state, negotiation, istAblöse, geboten);
     }
 
-    /** Die Gegenseite nimmt unser Angebot an und die nächste Phase beginnt */
+    /** [FM26] Walk-Away: Die Gegenseite steigt sofort aus. */
+    static rejectWalkAway(state, negotiation, istAblöse, quote) {
+        const heute = this.today(state);
+        negotiation.status = NEGOTIATION_STATUS.REJECTED;
+        negotiation.closedDay = heute;
+        this.merkeBeziehungsschaden(state, negotiation);
+        const text = istAblöse
+            ? `${negotiation.sellerClubName} bricht die Gespräche sofort ab - das Angebot ist zu weit entfernt.`
+            : `Berater ${negotiation.agentName} bricht die Gespräche sofort ab. So weit kann er nicht heruntergehen.`;
+        this.log(negotiation, state, istAblöse ? "club" : "agent", text);
+        this.notify(state, negotiation, `Verhandlung gescheitert: ${negotiation.playerName}`, text);
+        return { negotiation, kind: "rejected" };
+    }
+
+    /** [FM26] Endgültiger Abbruch nach Warnung. */
+    static rejectFinal(state, negotiation, istAblöse) {
+        const heute = this.today(state);
+        negotiation.status = NEGOTIATION_STATUS.REJECTED;
+        negotiation.closedDay = heute;
+        this.merkeBeziehungsschaden(state, negotiation);
+        const text = istAblöse
+            ? `${negotiation.sellerClubName} bricht die Gespräche ab - das Angebot war nicht seriös.`
+            : `Berater ${negotiation.agentName} bricht die Gespräche ab. Das war kein seriöses Angebot.`;
+        this.log(negotiation, state, istAblöse ? "club" : "agent", text);
+        this.notify(state, negotiation, `Verhandlung gescheitert: ${negotiation.playerName}`, text);
+        return { negotiation, kind: "rejected" };
+    }
+
+    /** [FM26] Beziehungsschaden: Der Berater merkt sich das. */
+    static merkeBeziehungsschaden(state, negotiation) {
+        const player = state.players?.find(p => String(p.id) === String(negotiation.playerId));
+        const agent = player?.agent;
+        if (agent) {
+            agent.vergiftet = Math.min(3, (agent.vergiftet || 0) + 1);
+        }
+    }
+
+    /** Die Gegenseite nimmt unser Angebot an */
     static acceptCurrentOffer(state, negotiation, istAblöse, offer) {
         const heute = this.today(state);
 
@@ -851,6 +1094,7 @@ class NegotiationEngine {
         negotiation.agreed.einsatzPraemie = offer.einsatzPraemie || 0;
         negotiation.agreed.torPraemie = offer.torPraemie || 0;
         negotiation.agreed.klauseln = offer.klauseln || null;
+        if (offer.rolle) negotiation.agreed.rolle = offer.rolle;
 
         if (negotiation.type === "youth_promotion") {
             return this.completeYouthPromotion(state, negotiation);
@@ -870,73 +1114,105 @@ class NegotiationEngine {
         return { negotiation, kind: "terms_agreed" };
     }
 
-    /** Die Gegenseite macht einen Gegenvorschlag */
+    /**
+     * [FM26] Gegenvorschlag als Paket. Die Gegenseite bewegt sich in
+     * mehreren Dimensionen gleichzeitig: Gehalt/Lohn sinkt, Bonus bleibt
+     * stabil, Laufzeit wird verlängert, Agenda wird eingefordert. Bei
+     * Stillstand geht kaum noch etwas.
+     */
     static counterOffer(state, negotiation, istAblöse, geboten) {
         const offer = negotiation.lastOffer || {};
-        // Gegenvorschlag: Die Gegenseite bewegt sich ein Stück auf uns zu.
-        // Landet ihre neue Forderung auf oder unter unserem Gebot, ist die
-        // Einigung erreicht - sonst würde man sich endlos gegenseitig
-        // dieselbe Zahl zuschieben.
-        const nachgeben = 0.04 + (negotiation.round * 0.02);
-        const neueForderung = this.runde(istAblöse
-            ? negotiation.demand.fee * (1 - nachgeben)
-            : negotiation.demand.wage * (1 - nachgeben));
+        const d = negotiation.demand;
 
-        if (neueForderung <= geboten) {
-            if (istAblöse) negotiation.demand.fee = geboten;
-            else negotiation.demand.wage = geboten;
-            return this.acceptCurrentOffer(state, negotiation, istAblöse, offer);
-        }
+        // Stagnation: ähnelt das neue Angebot dem letzten Vorschlag?
+        const aehneln = (a, b) => {
+            if (!a || !b) return false;
+            const keys = Object.keys(a).filter(k => typeof a[k] === "number" && a[k] > 0);
+            return keys.length > 0 && keys.every(k => Math.abs((b[k] || 0) - a[k]) / a[k] < 0.02);
+        };
+        const stagnation = aehneln(negotiation.letzterGegenvorschlag, offer);
+        const nachgeben = stagnation ? 0.01 : (0.04 + negotiation.round * 0.015);
 
+        let neueForderung;
         if (istAblöse) {
-            negotiation.demand.fee = neueForderung;
-            // In Raten rechnet der Verkäufer mit Abschlag - so viel müsste es dann sein
+            neueForderung = this.runde(d.fee * (1 - nachgeben));
+            if (neueForderung <= geboten) {
+                d.fee = geboten;
+                return this.acceptCurrentOffer(state, negotiation, true, offer);
+            }
+            d.fee = neueForderung;
             const inRaten = offer.zahlweise && offer.zahlweise !== "sofort" && geboten > 0;
             const nominal = inRaten ? this.runde(neueForderung * (offer.fee || 0) / geboten) : 0;
             const ratenHinweis = inRaten ? ` In Raten wie angeboten entspräche das etwa ${this.formatMoney(nominal)}.` : "";
+            negotiation.status = NEGOTIATION_STATUS.AWAITING_US;
+            negotiation.replyDay = null;
+            negotiation.letzterGegenvorschlag = offer;
             this.log(negotiation, state, "club",
                 `${negotiation.sellerClubName} lehnt ab und fordert ${this.formatMoney(neueForderung)}.${ratenHinweis}`);
             this.notify(state, negotiation, `Gegenforderung: ${negotiation.playerName}`,
-                `${negotiation.sellerClubName} lehnt ${this.formatMoney(offer.fee || geboten)}${inRaten ? " in Raten" : ""} ab und fordert ${this.formatMoney(neueForderung)}.${ratenHinweis} Verbleibende Geduld: ${negotiation.patience}%.`);
-        } else {
-            negotiation.demand.wage = neueForderung;
-            this.log(negotiation, state, "agent",
-                `Berater ${negotiation.agentName} fordert ${this.formatMoney(neueForderung)} pro Woche.`);
-            this.notify(state, negotiation, `Gegenforderung: ${negotiation.playerName}`,
-                `Berater ${negotiation.agentName} lehnt ${this.formatMoney(geboten)} ab und fordert ${this.formatMoney(neueForderung)} pro Woche. Verbleibende Geduld: ${negotiation.patience}%.`);
+                `${negotiation.sellerClubName} lehnt ${this.formatMoney(offer.fee || geboten)}${inRaten ? " in Raten" : ""} ab und fordert ${this.formatMoney(neueForderung)}.${ratenHinweis}`);
+            return { negotiation, kind: "counter" };
+        }
+
+        // Persönliche Konditionen: Paket statt einer Zahl
+        const neueWage = this.runde(d.wage * (1 - nachgeben));
+        const neuerBonus = this.runde((d.signingBonus || 0) * (1 - nachgeben * 0.4));
+        const neuesHonorar = this.runde((d.agentFee || 0) * (1 - nachgeben * 0.3));
+        const neueJahre = Math.max(offer.years || 3, Math.min(4, 3));
+        d.wage = neueWage;
+        d.signingBonus = neuerBonus;
+        d.agentFee = neuesHonorar;
+        d.years = neueJahre;
+
+        // Agenda einfordern
+        let agendaText = "";
+        if (negotiation.agenda && !this.agendaErfuellt(negotiation, offer)) {
+            if (negotiation.agenda.type === "ausstiegsklausel") {
+                d.klauseln = Object.assign({}, offer.klauseln || {}, { ausstieg: this.runde(neueWage * 60) });
+                agendaText = " - und er will eine Ausstiegsklausel sehen.";
+            } else if (negotiation.agenda.type === "stammplatz") {
+                agendaText = " - ohne Zusage als Stammspieler bleibt es dabei.";
+            } else if (negotiation.agenda.type === "handgeld") {
+                agendaText = " - beim Handgeld gibt es keinen Spielraum.";
+            }
         }
 
         negotiation.status = NEGOTIATION_STATUS.AWAITING_US;
         negotiation.replyDay = null;
+        negotiation.letzterGegenvorschlag = offer;
+        this.log(negotiation, state, "agent",
+            `Berater ${negotiation.agentName}: ${this.formatMoney(neueWage)} pro Woche, Handgeld ${this.formatMoney(neuerBonus)}, ${neueJahre} Jahre, Honorar ${this.formatMoney(neuesHonorar)}${agendaText}`);
+        this.notify(state, negotiation, `Gegenforderung: ${negotiation.playerName}`,
+            `Berater ${negotiation.agentName} fordert ${this.formatMoney(neueWage)} pro Woche, Handgeld ${this.formatMoney(neuerBonus)}, ${neueJahre} Jahre Laufzeit, Honorar ${this.formatMoney(neuesHonorar)}${agendaText}`);
         return { negotiation, kind: "counter" };
     }
 
     /**
-     * Der Stammverein prüft das Leihangebot: Gehaltsanteil und Gebühr wie
-     * eine Ablöse, die Einsatzzusage als Bedingung. Wer weniger Einsatz
-     * zusagt als verlangt, braucht mehr Geld, um zu überzeugen.
+     * Der Stammverein prüft das Leihangebot.
      */
     static bewerteLeihe(state, negotiation) {
         const heute = this.today(state);
         const o = negotiation.lastOffer || {};
         const d = negotiation.demand;
-        // Eine halbe Saison kostet die halbe Gebühr
+        const reserv = negotiation.reservation || { lohnAnteil: 0.3, gebuehr: 0, walkAway: 0.7 };
+
         const gebuehrSoll = (d.gebuehr || 0) * (o.dauer === "winter" ? 0.5 : 1);
-        const anteilQuote = d.lohnAnteil > 0 ? (o.lohnAnteil || 0) / d.lohnAnteil : 1;
-        const gebuehrQuote = gebuehrSoll > 0 ? (o.gebuehr || 0) / gebuehrSoll : 1;
+        // [FM26] Bewertung gegen Reserve, nicht gegen Forderung
+        const anteilQuote = reserv.lohnAnteil > 0 ? (o.lohnAnteil || 0) / reserv.lohnAnteil : 1;
+        const gebuehrQuote = reserv.gebuehr > 0 ? (o.gebuehr || 0) / reserv.gebuehr : (gebuehrSoll > 0 ? 1 : 1);
         const stufen = this.ROLLEN.indexOf(o.rolle) - this.ROLLEN.indexOf(d.rolle);
         const rollenFaktor = stufen < 0 ? Math.pow(0.85, -stufen) : 1;
-        // Ohne das verlangte Rückholrecht muss es sich anders lohnen
         const rueckFaktor = d.rueckholrecht && !o.rueckholrecht ? 0.9 : 1;
-        const bewertung = (gebuehrSoll > 0 ? Math.min(1.2, anteilQuote) * 0.6 + Math.min(1.2, gebuehrQuote) * 0.4 : Math.min(1.2, anteilQuote)) * rollenFaktor * rueckFaktor;
+        const druck = negotiation.zeitdruck ? Math.min(0.08, negotiation.zeitdruck * 0.02) : 0;
+        const bewertung = ((gebuehrSoll > 0 ? Math.min(1.2, anteilQuote) * 0.6 + Math.min(1.2, gebuehrQuote) * 0.4 : Math.min(1.2, anteilQuote)) * rollenFaktor * rueckFaktor) * (1 - druck);
 
         if (bewertung >= 0.97 && stufen >= 0) return this.schliesseLeihe(state, negotiation);
 
-        const verlust = Math.round((1 - Math.min(1, bewertung)) * 45) + negotiation.round * 3;
-        negotiation.patience = Math.max(0, negotiation.patience - verlust);
-        if (negotiation.patience <= 0 || bewertung < 0.6) {
+        // [FM26] Walk-Away
+        if (bewertung < reserv.walkAway) {
             negotiation.status = NEGOTIATION_STATUS.REJECTED;
             negotiation.closedDay = heute;
+            this.merkeBeziehungsschaden(state, negotiation);
             const text = stufen < 0
                 ? `Berater ${negotiation.agentName}: "Ohne Zusage als ${d.rolle} kommt er nicht." Die Gespräche sind beendet.`
                 : `${negotiation.sellerClubName} bricht die Gespräche ab - so geben wir ihn nicht her.`;
@@ -945,7 +1221,23 @@ class NegotiationEngine {
             return { negotiation, kind: "rejected" };
         }
 
-        // Gegenvorschlag: Der Stammverein geht ein Stück herunter, die Einsatzzusage bleibt
+        // [FM26] Erst warnen
+        if (bewertung < 0.6 && !negotiation.gewarnt) {
+            negotiation.gewarnt = true;
+            negotiation.patience = 25;
+            const text = `${negotiation.sellerClubName}: "So wird das nichts. Ein letztes Leihangebot."`;
+            this.log(negotiation, state, "club", text);
+            this.notify(state, negotiation, `Letzte Warnung: ${negotiation.playerName}`, text);
+            return { negotiation, kind: "warning" };
+        }
+        if (bewertung < 0.6) {
+            return this.rejectFinal(state, negotiation, false);
+        }
+
+        const verlust = Math.round((1 - Math.min(1, bewertung)) * 45) + negotiation.round * 3;
+        negotiation.patience = Math.max(0, negotiation.patience - verlust);
+
+        // Gegenvorschlag: Stammverein geht herunter
         const nachgeben = 0.04 + negotiation.round * 0.02;
         d.lohnAnteil = Math.max(d.minAnteil || 0.3, Math.round(d.lohnAnteil * (1 - nachgeben) * 20) / 20);
         d.gebuehr = this.runde(d.gebuehr * (1 - nachgeben));
@@ -955,13 +1247,13 @@ class NegotiationEngine {
         const text = `${negotiation.sellerClubName} will ${Math.round(d.lohnAnteil * 100)} % des Gehalts${gebuehrJetzt ? ` und ${this.formatMoney(gebuehrJetzt)} Leihgebühr` : ""}`
             + `${stufen < 0 ? ` - und einen Einsatz als ${d.rolle}` : ""}${fehltRueck ? `${stufen < 0 ? "" : " -"} und ein Rückholrecht` : ""}.`;
         this.log(negotiation, state, "club", text);
-        this.notify(state, negotiation, `Gegenforderung: ${negotiation.playerName}`, `${text} Verbleibende Geduld: ${negotiation.patience}%.`);
         negotiation.status = NEGOTIATION_STATUS.AWAITING_US;
         negotiation.replyDay = null;
+        this.notify(state, negotiation, `Gegenforderung: ${negotiation.playerName}`, text);
         return { negotiation, kind: "counter" };
     }
 
-    /** Leihe perfekt: Er spielt bis zum Saisonende bei uns */
+    /** Leihe perfekt */
     static schliesseLeihe(state, negotiation) {
         const heute = this.today(state);
         const loan = _negResolve("LoanEngine", "./loanEngine.js");
@@ -987,9 +1279,7 @@ class NegotiationEngine {
     }
 
     /**
-     * Die Familie eines fremden Talents entscheidet. Fehlt ihr etwas, sagt
-     * sie, welches Handgeld sie überzeugen würde; holt ihn auch das nicht,
-     * bleibt er, wo er ist.
+     * Die Familie eines fremden Talents entscheidet.
      */
     static bewerteFamilie(state, negotiation) {
         const heute = this.today(state);
@@ -1008,6 +1298,15 @@ class NegotiationEngine {
         }
         const noetig = youth.fremdHandgeldFuer(state, club, t, !!o.perspektive);
         negotiation.patience = Math.max(0, negotiation.patience - 25 - negotiation.round * 5);
+        // [FM26] Erst warnen
+        if (negotiation.patience <= 0 && !negotiation.gewarnt) {
+            negotiation.gewarnt = true;
+            negotiation.patience = 20;
+            const text = `Die Familie zögert stark. Ein letztes Angebot könnte sie überzeugen.`;
+            this.log(negotiation, state, "agent", text);
+            this.notify(state, negotiation, `Letzte Warnung: ${negotiation.playerName}`, text, "youth");
+            return { negotiation, kind: "warning" };
+        }
         if (noetig === null || negotiation.patience <= 0) {
             negotiation.status = NEGOTIATION_STATUS.REJECTED;
             negotiation.closedDay = heute;
@@ -1017,7 +1316,6 @@ class NegotiationEngine {
             return { negotiation, kind: "rejected" };
         }
         negotiation.demand.signingBonus = noetig;
-        // Die Zusage, bei den Profis mitzutrainieren, gibt es erst ab 16
         const profisMoeglich = !o.perspektive && (t.age || 0) >= (youth.MIT_PROFIS?.abAlter ?? 16);
         const mitProfis = profisMoeglich ? youth.fremdHandgeldFuer(state, club, t, true) : null;
         const alternative = mitProfis === null || mitProfis >= noetig ? ""
@@ -1052,13 +1350,22 @@ class NegotiationEngine {
         return { negotiation, kind: "completed", talent: res.talent };
     }
 
-    /** Medizincheck: selten, aber er kann einen Transfer noch kippen */
+    /**
+     * [FM26] Medizincheck: Risiko hängt nicht nur von injuryProneness ab,
+     * sondern auch von Alter und Vorgeschichte. Ein 34-Jähriger mit
+     * Kreuzbandriss-Historie fällt häufiger durch als ein 21-Jähriger.
+     */
     static finishMedical(state, negotiation) {
         const player = state.players.find(p => String(p.id) === String(negotiation.playerId));
         const heute = this.today(state);
 
         const anfälligkeit = player?.hiddenAttributes?.injuryProneness ?? 10;
-        const risiko = 0.04 + Math.max(0, anfälligkeit - 10) * 0.012;
+        const alter = player?.age || 25;
+        const alterFaktor = alter >= 30 ? (alter - 29) * 0.01 : 0;
+        const vorverletzungen = Array.isArray(player?.injuryHistory) ? Math.min(3, player.injuryHistory.length) : 0;
+        const vorFaktor = vorverletzungen * 0.008;
+
+        const risiko = 0.04 + Math.max(0, anfälligkeit - 10) * 0.012 + alterFaktor + vorFaktor;
 
         if (Math.random() < risiko) {
             negotiation.status = NEGOTIATION_STATUS.REJECTED;
@@ -1084,7 +1391,6 @@ class NegotiationEngine {
             return { negotiation, kind: "failed" };
         }
 
-        // Die Ausnahmeplätze können inzwischen vergeben sein
         const player = state.players.find(p => String(p.id) === String(negotiation.playerId));
         const club = state.clubs.find(c => c.id === negotiation.clubId);
         const erlaubnis = this.erlaubnisPruefung(state, player, club);
@@ -1114,7 +1420,6 @@ class NegotiationEngine {
             return { negotiation, kind: "failed" };
         }
 
-        // Handgeld und Beraterhonorar getrennt verbuchen, Prämien in den Vertrag
         this.zahleNebenkosten(state, negotiation);
         this.setzePraemien(state, negotiation.playerId, negotiation.agreed);
         this.setzeKlauseln(state, negotiation.playerId, negotiation.agreed);
@@ -1131,9 +1436,7 @@ class NegotiationEngine {
     }
 
     /**
-     * Vorvertrag unterschreiben: Der Spieler bleibt bis zum Saisonwechsel bei
-     * seinem Verein und kommt dann ablösefrei zu den vereinbarten
-     * Konditionen. Handgeld und Honorar werden mit der Unterschrift fällig.
+     * Vorvertrag unterschreiben.
      */
     static completeVorvertrag(state, negotiation) {
         const heute = this.today(state);
@@ -1147,8 +1450,6 @@ class NegotiationEngine {
             return { negotiation, kind: "failed" };
         }
         const club = state.clubs.find(c => c.id === negotiation.clubId);
-        // Die Arbeitserlaubnis wird mit der Unterschrift beantragt - ein
-        // Ausnahmeplatz ist damit belegt
         const erlaubnis = this.erlaubnisPruefung(state, player, club);
         if (erlaubnis && !erlaubnis.erteilt) {
             negotiation.status = NEGOTIATION_STATUS.REJECTED;
@@ -1236,10 +1537,7 @@ class NegotiationEngine {
     }
 
     /**
-     * Beraterhonorar: ein Teil der Ablöse plus einige Wochengehälter.
-     * Vorher galten mindestens 1.000 € auf Tausender gerundet - in der
-     * Landesliga (Gehälter um 150 €) das Vielfache dessen, was die Formel
-     * ergibt. Jetzt wird nach der Größe gerundet, mindestens auf 100 €.
+     * Beraterhonorar.
      */
     static beraterHonorar(ablose, wochenlohn, vereinslos = false) {
         const roh = vereinslos ? wochenlohn * 12 : (ablose || 0) * 0.04 + wochenlohn * 4;
@@ -1247,9 +1545,7 @@ class NegotiationEngine {
     }
 
     /**
-     * Ein Betrag, wie ihn Menschen nennen: auf seine Größenordnung gerundet
-     * (ContractEngine.rundeBetrag). Vorher standen Forderungen wie 94.702 €
-     * Gehalt und 947.020 € Handgeld in der Verhandlung.
+     * Ein Betrag, wie ihn Menschen nennen.
      */
     static runde(betrag) {
         const ce = _negResolve("ContractEngine", "./contractEngine.js");
@@ -1257,8 +1553,7 @@ class NegotiationEngine {
     }
 
     /**
-     * Was Prämien dem Spieler je Woche wert sind: erwartete Einsätze und
-     * Tore, mit einem Abschlag von 30 %, weil nichts davon sicher ist.
+     * Was Prämien dem Spieler je Woche wert sind.
      */
     static praemienWert(state, negotiation, offer) {
         const einsatz = Number(offer?.einsatzPraemie) || 0;
@@ -1314,7 +1609,6 @@ class NegotiationEngine {
 
     /**
      * Prämien nach einem Pflichtspiel des eigenen Vereins auszahlen.
-     * Gibt die Summe zurück.
      */
     static zahlePraemien(state, match) {
         if (!state || !match || !Array.isArray(match.playerRatings)) return 0;

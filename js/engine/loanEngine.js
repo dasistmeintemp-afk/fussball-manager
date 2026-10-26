@@ -800,7 +800,14 @@ class LoanEngine {
             const kader = (stamm.playerIds || []).map(id => idx.get(String(id))).filter(Boolean)
                 .sort((a, b) => (b.overall || 0) - (a.overall || 0));
             if (kader.length <= 19) continue;
-            const kandidaten = kader.slice(13).filter(p => (p.age || 30) <= 22 && !p.leihe && !p.vorvertrag
+            // Verliehen wird nur, wer überzählig ist (KaderplanungEngine.
+            // bedarfsAnalyse). Vorher ging jeder junge Ersatzmann ab Platz 14:
+            // Weil die Kader genau auf ihrem Plan stehen, riss gemessen fast
+            // jede KI-Leihe (98 %) eine Lücke in ihrem Mannschaftsteil, die der
+            // Transfermarkt danach wieder füllen musste.
+            const planung = this._resolve("KaderplanungEngine", "./kaderplanungEngine.js");
+            const frei = planung ? new Set(planung.bedarfsAnalyse(state, stamm, kader).loanCandidates.map(x => x.id)) : null;
+            const kandidaten = kader.slice(13).filter(p => (!frei || frei.has(p.id)) && (p.age || 30) <= 22 && !p.leihe && !p.vorvertrag
                 && (p.injuredWeeks || 0) === 0 && (p.contractYears ?? 1) >= 1
                 && (typeof p.spielpraxis !== "number" || p.spielpraxis < 0.4));
             if (!kandidaten.length) continue;

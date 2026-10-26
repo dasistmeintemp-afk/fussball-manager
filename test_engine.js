@@ -2382,6 +2382,301 @@ function runEngineTests() {
         });
     });
 
+    // Ecken im Livespiel (FM-Modus): Vorher wurde die Ecke nach einer festen
+    // Wartezeit getreten - der Schütze stand dabei im Median gut dreißig
+    // Einheiten vom Ball, in 97 von 98 Ecken weiter als drei. Jetzt wartet
+    // sie, bis sie steht: auf Langsam, Normal und Schnell, ohne Bild wie das
+    // Sofort-Ergebnis, vor und nach dem Seitenwechsel (spielbild.js).
+    test("Ecken im Livespiel: Schütze an der Fahne, Strafraum besetzt, Torwart auf der Linie - auf jeder Abspielstufe", () => {
+        const { messeSpiel, leereWerte, eckenBericht } = require('./spielbild.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Ecken" });
+        const a = state.clubs.find(c => c.id === "sge"), b = state.clubs.find(c => c.id === "wob");
+        const w = leereWerte();
+        [1, 2, 4, null, null, null, null, null].forEach((tempo, i) => {
+            const daheim = i % 2 === 0;
+            messeSpiel(state, daheim ? a : b, daheim ? b : a, daheim ? "home" : "away", { tempo }, w);
+        });
+        const e = eckenBericht(w.ecke);
+        if (e.n < 80) throw new Error(`Zu wenige Ecken für eine Auswertung (${e.n})`);
+        if (e.fehlerhaft > 0) throw new Error(`${e.fehlerhaft} von ${e.n} Ecken nicht bereit: ${e.beispiele.join(" | ")}`);
+        [1, 2].forEach(t => { if (!w.ecke.some(x => x.tempo === t)) throw new Error(`Keine Ecke auf Stufe ${t}`); });
+        if (e.zweiteHalbzeit < e.n * 0.2 || e.zweiteHalbzeit > e.n * 0.8) throw new Error(`${e.zweiteHalbzeit} von ${e.n} Ecken in Halbzeit zwei`);
+        if (e.schuetzeMax > 3) throw new Error(`Ein Schütze stand ${e.schuetzeMax.toFixed(1)} vom Ball`);
+        if (w.notfall > 0) throw new Error(`${w.notfall} Ecken nur über die Notbremse ausgeführt`);
+        // Aus der Ecke wird etwas: Kopfballduell, Torwart, Abwehr, kurz gespielt
+        ["header", "claimed", "kurz"].forEach(k => { if (!e.ausgang[k]) throw new Error(`Keine Ecke endet mit ${k}: ${JSON.stringify(e.ausgang)}`); });
+        if (!(e.ausgang.cleared || e.ausgang.cleared_ecke)) throw new Error("Keine Ecke wird abgewehrt");
+    });
+
+    test("Standards: Der Schütze steht eindeutig fest und ist nie Abnehmer, die Ecke wartet, bis sie steht", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Schütze" });
+        const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");
+        const live = MatchEngine.createLiveMatch({ id: "schuetze", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { modus: "fm", userSide: "home" });
+        const d = live.director;
+        const bild = () => { live.advanceRealTime(1000 / 60); live.updateBallAndPlayers(1000 / 60); };
+        let f = 0;
+        while (d.kickoff && f++ < 60 * 30) bild();
+        const feld = d.teamPlayers("home").filter(p => p.pos !== "TW");
+        const torX = d.ownGoalX("away");
+        const fahne = { x: torX > 50 ? 95.6 : 4.4, y: 1.2 };
+        const weitWeg = (p) => { p.x = d.ownGoalX("home") + d.attackDir("home") * 6; p.y = 60; };
+
+        // 1. Wer tritt? Der in der Zeitleiste Genannte, sonst der Eingeteilte,
+        //    sonst der beste Eckenschütze - egal, wie weit er weg steht
+        live.standards.home.ecken = null;
+        const bester = feld.slice().sort((x, y) => d.setPieceSkill(y, "corners") - d.setPieceSkill(x, "corners"))[0];
+        weitWeg(bester);
+        if (d.standardSchuetzeFuer("corner", "home", fahne.x, fahne.y).id !== bester.id) throw new Error("Ohne Vorgabe tritt nicht der beste Eckenschütze");
+        const eingeteilt = feld.find(p => p.id !== bester.id);
+        live.standards.home.ecken = eingeteilt.id;
+        if (d.pickSetPieceTaker("corner", "home", fahne.x, fahne.y).id !== eingeteilt.id) throw new Error("Der eingeteilte Eckenschütze tritt nicht");
+        const genannt = feld.find(p => p.id !== bester.id && p.id !== eingeteilt.id);
+        if (d.standardSchuetzeFuer("corner", "home", fahne.x, fahne.y, genannt.id).id !== genannt.id) throw new Error("Der Genannte tritt nicht");
+
+        // 2. Die Ecke auf "Schnell", der Schütze am anderen Ende des Feldes und
+        //    ein fälliges Ereignis in der Zeitleiste: Sie wird trotzdem erst
+        //    getreten, wenn sie steht
+        live.speed = 4;
+        weitWeg(eingeteilt);
+        d.fmEcke("home", 10);
+        const info = d.deadBall;
+        if (!info || info.kind !== "corner") throw new Error("Keine Ecke aufgebaut");
+        const ecke = live.timeline[live.timelineIndex - 1];
+        if (!ecke || ecke.type !== "corner" || ecke.fromPlayerId !== eingeteilt.id) throw new Error("Der Ticker nennt den Schützen nicht");
+        if (d.istStandardBereit(info).bereit) throw new Error("Bereit, bevor der Ball an der Fahne liegt");
+        live.timeline.splice(live.timelineIndex, 0, { type: "foul", team: "away", playerId: d.teamPlayers("away")[3].id, playerName: "Test",
+            minute: 0, second: 0, outcome: "freekick", text: "Test" });
+        let szenen = 0, ausgefuehrt = null;
+        const abnehmer = [];
+        const start = d.startHighlight.bind(d);
+        d.startHighlight = () => { if (!ausgefuehrt) szenen++; return start(); };
+        const ausfuehren = d.resumeFromDeadBall.bind(d);
+        d.resumeFromDeadBall = () => {
+            if (d.deadBall === info) {
+                const t = d.getPlayer2D(d.carrierId);
+                ausgefuehrt = { schuetze: t, abstand: Math.hypot(t.x - live.ball.x, t.y - live.ball.y), lage: d.istStandardBereit(info),
+                    aufstellung: d.standardMindestAufstellungErreicht(info), spielLage: d.spielLage() };
+                // Das Ziel der Hereingabe ist nie der Schütze selbst
+                for (let i = 0; i < 150; i++) {
+                    const r = d.flow.resolveCross(t, null, d.teamPlayers("away"), { ecke: true, variante: ["ersterPfosten", "zweiterPfosten", null][i % 3] });
+                    [r.kopfballer, r.annehmer].forEach(x => { if (x) abnehmer.push(x.id); });
+                }
+            }
+            return ausfuehren();
+        };
+        const stati = new Set();
+        const schnitte = live.schnitte || 0;
+        f = 0;
+        while (!ausgefuehrt && f++ < 60 * 30) {
+            bild();
+            if (live.setPieceStatus) stati.add(live.setPieceStatus.split(":")[0]);
+        }
+        if (!ausgefuehrt) throw new Error("Die Ecke wurde nie ausgeführt");
+        if (szenen > 0) throw new Error("Ein fälliges Ereignis überrannte die Ecke");
+        if (ausgefuehrt.schuetze.id !== eingeteilt.id) throw new Error("Ein anderer trat die Ecke");
+        if (ausgefuehrt.abstand > 3) throw new Error(`Der Schütze stand beim Abspiel ${ausgefuehrt.abstand.toFixed(1)} vom Ball`);
+        if (!ausgefuehrt.lage.bereit) throw new Error(`Getreten, obwohl nicht bereit: ${ausgefuehrt.lage.grund}`);
+        if (ausgefuehrt.aufstellung.angreifer < 4 || ausgefuehrt.aufstellung.verteidiger < 5) {
+            throw new Error(`Im Strafraum ${ausgefuehrt.aufstellung.angreifer} Angreifer und ${ausgefuehrt.aufstellung.verteidiger} Verteidiger`);
+        }
+        if ((live.schnitte || 0) <= schnitte) throw new Error("Kein ausgewiesener Schnitt zur Fahne");
+        if (!stati.has("ball_unterwegs") || !stati.has("aufbau")) throw new Error(`Kein sichtbarer Aufbau: ${[...stati].join(", ")}`);
+        if (ausgefuehrt.spielLage.phase !== "standard" || ausgefuehrt.spielLage.standard?.art !== "corner") throw new Error("Die Spiellage kennt die Ecke nicht");
+        if (abnehmer.length < 50) throw new Error("Die Hereingabe findet kaum einen Abnehmer");
+        if (abnehmer.includes(eingeteilt.id)) throw new Error("Der Eckenschütze ist selbst der Abnehmer");
+        if ((d.flowStats.standardNotfall || 0) > 0) throw new Error("Die Ecke kam über die Notbremse");
+        if (live.setPieceStatus) throw new Error("Nach der Ecke steht noch ein Status");
+    });
+
+    // Vorher zog die Ballbindung den Ball zwischen zwei Etappen zum alten
+    // Ballführenden zurück und überschrieb jede neue Etappe: Am Ende rollte er
+    // ohne Zuspiel mit über siebzig Einheiten je Sekunde zum Genannten.
+    test("Ball und Ballführender: Eine Kombination über mehrere Stationen läuft als Zuspiele, der Ball wird nicht geschleift", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Route" });
+        const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");
+        const live = MatchEngine.createLiveMatch({ id: "route", played: false, homeClubId: "muc", awayClubId: "dor" }, heim, gast, state.players);
+        const d = live.director;
+        d.kickoff = null; d.deadBall = null; d.mode = "highlight";
+        d.scene = { events: [{ type: "pass" }], index: 0, phase: "approach" };
+        const b = live.ball;
+        const dir = d.attackDir("home");
+        const von = d.ownGoalX("home") + dir * 6;
+        Object.assign(b, { x: von, y: 50, targetX: von, targetY: 50, originX: von, originY: 50, inFlight: false, travelDuration: 0.01, travelElapsed: 0.01 });
+        d._lastTargetX = von; d._lastTargetY = 50;
+        const feld = d.teamPlayers("home").filter(p => p.pos !== "TW");
+        const ziel = feld[feld.length - 1];
+        ziel.x = von + dir * 75; ziel.y = 50;
+        d.carrierId = feld[0].id;
+        d.routeBallTo(ziel.x, ziel.y, "home", "pass", d.getSpeedScale(), ziel.id);
+        if (d.ballRoute.length < 2) throw new Error("Keine Kombination über mehrere Stationen geplant");
+        let geschleift = 0, vorher = { x: b.x, y: b.y };
+        for (let i = 0; i < 900 && (d.ballRoute.length > 0 || b.inFlight || d.carrierId !== ziel.id); i++) {
+            d.updateBall(1 / 60);
+            if (!b.inFlight && Math.hypot(b.x - vorher.x, b.y - vorher.y) > 0.6) geschleift++;
+            vorher = { x: b.x, y: b.y };
+        }
+        if (d.carrierId !== ziel.id) throw new Error("Der Genannte bekommt den Ball nicht");
+        if (geschleift > 0) throw new Error(`${geschleift} Bilder lang rollte der Ball ohne Zuspiel`);
+        if (Math.hypot(b.x - ziel.x, b.y - ziel.y) > 3) throw new Error(`Der Ball kam ${Math.hypot(b.x - ziel.x, b.y - ziel.y).toFixed(1)} Einheiten vor dem Ziel an`);
+    });
+
+    // Vorher bekam nach einem Wechsel ein zufälliger Spieler der wechselnden
+    // Mannschaft den Ball - gemessen gut zweimal je Partie flog er dabei ohne
+    // Schützen über zehn Einheiten, und manchmal wechselte so der Ballbesitz.
+    test("Nach einer Szene ohne Ball (Wechsel, Verletzung) bleibt der Ball, wo er war, bei der Mannschaft, die ihn hatte", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Wechsel" });
+        const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");
+        const live = MatchEngine.createLiveMatch({ id: "wechsel", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { modus: "fm", userSide: "home" });
+        const d = live.director;
+        let f = 0;
+        while ((d.kickoff || d.mode !== "ambient" || d.deadBall || !d.getPlayer2D(d.carrierId) || live.ball.inFlight) && f++ < 60 * 60) {
+            live.advanceRealTime(1000 / 60);
+            live.updateBallAndPlayers(1000 / 60);
+        }
+        const team = d.possessionTeam, traeger = d.carrierId, ball = { x: live.ball.x, y: live.ball.y };
+        const liegt = () => Math.hypot(live.ball.targetX - ball.x, live.ball.targetY - ball.y) < 0.5;
+        d.mode = "highlight";
+        d.scene = { events: [{ type: "substitution", team: team === "home" ? "away" : "home", minute: live.minute }], index: 0, phase: "resolve" };
+        d.endHighlight();
+        if (d.possessionTeam !== team || d.carrierId !== traeger) throw new Error("Nach dem Wechsel hat ein anderer den Ball");
+        if (!liegt()) throw new Error("Der Ball wurde nach dem Wechsel weitergespielt");
+        // Ist der Ballführende weg, übernimmt der Nächste - er geht zum Ball
+        d.carrierId = null;
+        d.mode = "highlight";
+        d.scene = { events: [{ type: "injury", team, minute: live.minute }], index: 0, phase: "resolve" };
+        d.endHighlight();
+        const naechster = d.teamPlayers(team).filter(p => p.pos !== "TW")
+            .sort((x, y) => Math.hypot(x.x - ball.x, x.y - ball.y) - Math.hypot(y.x - ball.x, y.y - ball.y))[0];
+        if (d.carrierId !== naechster.id) throw new Error("Nach der Verletzung übernimmt nicht der Nächste");
+        if (!liegt()) throw new Error("Der Ball flog nach der Verletzung zu jemandem");
+    });
+
+    // Taktik verändert das Spielbild (spielbild.js). Vorher spielte eine Elf
+    // mit Kurzpass und geduldigem Tempo kaum anders als in der
+    // Grundeinstellung, und ein tiefer Block hielt den Ball am längsten.
+    // Die Schwellen liegen unter dem schwächsten Wert aus fünf Startwerten.
+    test("Spielbild: Ballbesitz lässt den Ball laufen, Direktspiel geht schnell und lang, der tiefe Block befreit sich", () => {
+        const { messeTaktik, kennzahlen, TAKTIKEN } = require('./spielbild.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Spielbild" });
+        const z = {};
+        ["neutral", "ballbesitz", "direkt", "tieferBlock"].forEach(k => { z[k] = kennzahlen(messeTaktik(state, TAKTIKEN[k], 6, { saat: 900 })); });
+        const n = z.neutral, bb = z.ballbesitz, di = z.direkt, tb = z.tieferBlock;
+        const p = (x) => (x * 100).toFixed(0) + " %";
+        if (!(bb.kette > n.kette + 0.4 && bb.kette4 >= 0.5)) throw new Error(`Ballbesitz: ${bb.kette.toFixed(2)} Pässe je Ballbesitz (neutral ${n.kette.toFixed(2)}), ab vier ${p(bb.kette4)}`);
+        if (!(bb.paesse > n.paesse)) throw new Error(`Ballbesitz: ${bb.paesse.toFixed(0)} Pässe, neutral ${n.paesse.toFixed(0)}`);
+        if (!(bb.passquote > di.passquote + 0.05 && bb.besitz > di.besitz)) throw new Error(`Passquote ${p(bb.passquote)} gegen ${p(di.passquote)}, Ballbesitz ${p(bb.besitz)} gegen ${p(di.besitz)}`);
+        if (!(di.kette < n.kette - 0.5)) throw new Error(`Direkt: ${di.kette.toFixed(2)} Pässe je Ballbesitz (neutral ${n.kette.toFixed(2)})`);
+        if (!(di.langAnteil > 0.2 && di.langAnteil > 2.5 * bb.langAnteil)) throw new Error(`Lange Bälle: direkt ${p(di.langAnteil)}, Ballbesitz ${p(bb.langAnteil)}`);
+        if (!(tb.klaerungen > 1.25 * n.klaerungen && tb.langAnteil > 1.5 * n.langAnteil)) throw new Error(`Tiefer Block: ${tb.klaerungen.toFixed(1)} Klärungen (neutral ${n.klaerungen.toFixed(1)}), lang ${p(tb.langAnteil)}`);
+        if (!(tb.kette < bb.kette - 0.3)) throw new Error(`Tiefer Block: ${tb.kette.toFixed(2)} Pässe je Ballbesitz, Ballbesitz ${bb.kette.toFixed(2)}`);
+        if (!(tb.formGegen.linie < n.formGegen.linie - 0.04)) throw new Error(`Die letzte Linie des tiefen Blocks steht bei ${p(tb.formGegen.linie)}, neutral ${p(n.formGegen.linie)}`);
+        // Das Spiel zerfällt in keiner Taktik, und Ball und Ballführender gehören zusammen
+        Object.entries(z).forEach(([k, x]) => {
+            if (x.passquote < 0.7 || x.passquote > 0.95) throw new Error(`${k}: Passquote ${p(x.passquote)}`);
+            if (x.kette < 1.5) throw new Error(`${k}: ${x.kette.toFixed(2)} Pässe je Ballbesitz`);
+            if (x.halterWeg > 0.02) throw new Error(`${k}: Der Ballführende stand in ${p(x.halterWeg)} der Bilder weit vom liegenden Ball`);
+            if (x.spruenge > 0.5) throw new Error(`${k}: ${x.spruenge.toFixed(1)} Sprünge des Balls je Partie ohne Schnitt`);
+        });
+    });
+
+    test("MatchFlowEngine: Unter Druck den sicheren Ball lösen, Geduld aus der Taktik, abgefälschte Bälle, kein Lauf ins Toraus", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Druck" });
+        const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");
+        const live = MatchEngine.createLiveMatch({ id: "druck", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { modus: "fm", userSide: "home" });
+        const d = live.director, f = d.flow;
+        const T = TacticsEngine;
+        const mitSaat = (saat, fn) => {
+            const zufall = Math.random;
+            let s = saat >>> 0;
+            Math.random = () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+            try { return fn(); } finally { Math.random = zufall; }
+        };
+        const setze = (anw) => { heim.tactics = T.normalisiere({ ...T.normalisiere({}), ...anw }); d._taktikCache = {}; };
+        const alle = live.players2D, alt = alle.map(p => [p.x, p.y]);
+        const dir = d.attackDir("home");
+        try {
+            // Am Ball in der Mitte, ein Gegner drei Einheiten vor ihm, ein Mitspieler frei daneben, alle anderen weit weg
+            const traeger = d.teamPlayers("home").find(p => p.group === "mid");
+            const frei = d.teamPlayers("home").find(p => p.pos !== "TW" && p.id !== traeger.id);
+            d.teamPlayers("home").forEach((p, i) => { p.x = d.ownGoalX("home") + dir * 2; p.y = 5 + i * 8; });
+            d.teamPlayers("away").forEach((p, i) => { p.x = d.ownGoalX("away") - dir * 2; p.y = 5 + i * 8; });
+            traeger.x = 50; traeger.y = 50; frei.x = 50 - dir * 2; frei.y = 68;
+            const gegner = d.teamPlayers("away").find(p => p.pos !== "TW");
+            gegner.x = 50 + dir * 3; gegner.y = 50;
+            Object.assign(live.ball, { x: traeger.x + dir, y: 50 });
+            const loesen = (anw) => { setze(anw); return mitSaat(5, () => { let n = 0; for (let i = 0; i < 300; i++) if (f.lageAmBall(traeger, { zeitAmBall: 0.5 }).geloest) n++; return n / 300; }); };
+            const normal = loesen({}), kurz = loesen({ passing: "short", tempo: "slow" }), direkt = loesen({ passing: "direct", tempo: "fast" });
+            if (!(normal > 0.15)) throw new Error(`Bedrängt löst er den sicheren Ball nur in ${(normal * 100).toFixed(0)} % der Takte`);
+            if (!(kurz > normal && normal > direkt)) throw new Error(`Lösen: kurz ${kurz.toFixed(2)}, normal ${normal.toFixed(2)}, direkt ${direkt.toFixed(2)}`);
+            gegner.x = 50 + dir * 12;
+            if (loesen({}) > 0) throw new Error("Ohne Gegner am Mann wird gelöst");
+            gegner.x = 50 + dir * 3;
+            // Wer so löst, spielt den Ball und geht nicht ins Dribbling
+            setze({});
+            const arten = mitSaat(7, () => { const z = {}; for (let i = 0; i < 100; i++) { const a = f.decide(traeger, { direkt: true }); const k = a ? a.type : "-"; z[k] = (z[k] || 0) + 1; } return z; });
+            if ((arten.pass || 0) + (arten.longball || 0) < 70) throw new Error(`Direkt gespielt: ${JSON.stringify(arten)}`);
+
+            // Geduld aus der Taktik: kurz und geduldig positiv, direkt und schnell negativ, sonst null
+            if (!(f.spielGeduld({ passing: "short", tempo: "slow" }) > 0 && f.spielGeduld({ passing: "direct", tempo: "fast" }) < 0 && f.spielGeduld({}) === 0)) {
+                throw new Error("Die Geduld folgt der Taktik nicht");
+            }
+
+            // Ein flacher Pass durch einen Gegner: oft abgefangen, manchmal nur abgefälscht - zuletzt am Ball war der Gegner
+            setze({});
+            gegner.x = 50 + dir * 9; gegner.y = 50.5;
+            const ziel = frei;
+            ziel.x = 50 + dir * 20; ziel.y = 50;
+            const aktion = { type: "pass", target: ziel, dist: 20, forward: 20, laneRisk: f.getLaneRisk(traeger, ziel, f.opponentsOf("home")) };
+            const ausgang = mitSaat(11, () => { const z = {}; for (let i = 0; i < 300; i++) { const r = f.resolvePass(traeger, aktion, f.opponentsOf("home"), heim.tactics, 0.5, "progression"); const k = r.abgewehrt ? `${r.outcome}_abgewehrt_${r.letzterKontakt}` : r.outcome; z[k] = (z[k] || 0) + 1; } return z; });
+            const abgefaelscht = Object.keys(ausgang).filter(k => k.includes("_abgewehrt_")).reduce((s, k) => s + ausgang[k], 0);
+            const erobert = (ausgang.intercepted || 0) + abgefaelscht;
+            if (erobert < 60) throw new Error(`Der Gegner im Passweg kommt kaum an den Ball: ${JSON.stringify(ausgang)}`);
+            if (!(abgefaelscht >= 10 && abgefaelscht < ausgang.intercepted)) throw new Error(`Abgefälscht und abgefangen: ${JSON.stringify(ausgang)}`);
+            if (Object.keys(ausgang).some(k => k.includes("_abgewehrt_home"))) throw new Error(`Zuletzt am Ball war der Falsche: ${JSON.stringify(ausgang)}`);
+            // Ins Seitenaus abgefälscht: Einwurf für die Mannschaft des Passgebers
+            d._offenerStandard = null;
+            d.planeStandard({ from: traeger, letzterKontakt: "away" }, { x: 50, y: -1 });
+            if (d._offenerStandard?.kind !== "throwin" || d._offenerStandard.team !== "home") throw new Error("Nach dem Abfälschen bekommt der Falsche den Einwurf");
+            d._offenerStandard = null;
+
+            // Vor der Grundlinie trägt keiner den Ball ins Toraus
+            gegner.x = 50; gegner.y = 50;
+            traeger.x = d.ownGoalX("away") - dir * 6; traeger.y = 76;
+            const lauf = f.rateDribble(traeger, f.opponentsOf("home"), heim.tactics, 0);
+            if ((lauf.target.x - d.ownGoalX("away")) * dir > -3.5) throw new Error("Der Lauf mit dem Ball geht über die Torlinie");
+        } finally {
+            alle.forEach((p, i) => { p.x = alt[i][0]; p.y = alt[i][1]; });
+            heim.tactics = T.normalisiere({});
+            d._taktikCache = {};
+        }
+    });
+
+    test("Taktik ist zu sehen: Breite im Angriff zieht die Elf mit Ball auseinander oder zusammen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Breite" });
+        const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");
+        const live = MatchEngine.createLiveMatch({ id: "breite", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { modus: "fm", userSide: "home" });
+        const d = live.director;
+        const ball = { x: d.ownGoalX("home") + d.attackDir("home") * 92 * 0.6, y: 50 };
+        const breite = (wert) => {
+            heim.tactics = TacticsEngine.normalisiere({ ...TacticsEngine.normalisiere({}), breite: wert });
+            d.taktikAnwenden(); d._taktikCache = {}; d._planMitBall = {}; d._laufUhr = (d._laufUhr || 0) + 1;
+            const ys = d.teamPlayers("home").filter(p => p.pos !== "TW").map(p => d.planMitBall("home", ball).get(p.id).y);
+            return Math.max(...ys) - Math.min(...ys);
+        };
+        try {
+            const eng = breite("eng"), normal = breite("normal"), breit = breite("breit");
+            // Vorher stand "breit" im Plan nur sechs Einheiten weiter als normal - und auf dem Platz gleich breit
+            if (!(breit > normal + 5 && normal > eng + 8)) throw new Error(`Breite im Plan: eng ${eng.toFixed(0)}, normal ${normal.toFixed(0)}, breit ${breit.toFixed(0)}`);
+        } finally {
+            heim.tactics = TacticsEngine.normalisiere({});
+            d.taktikAnwenden();
+        }
+    });
+
     test("Anstoß: Der Schütze steht am Ball, nach einem Tor steht niemand in der falschen Hälfte", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
         const home = state.clubs.find(c => c.id === "muc");
@@ -5362,6 +5657,39 @@ function runEngineTests() {
     });
 
     // 37. Zu niedrige Gebote kosten Geduld und lassen die Gespräche platzen
+    test("Post zur Verhandlung: Bestätigung, Gegenforderung mit Stand und Verweis, Antwort auf die eigene Forderung", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Post" });
+        state.clubs.find(c => c.id === "muc").transferBudget = 2e8;
+        const ziel = state.players.find(p => p.clubId === "dor" && p.pos === "ST");
+        const neg = NegotiationEngine.startTransferNegotiation(state, ziel.id, "muc").negotiation;
+        const tag = () => { state.currentDayIndex = (state.currentDayIndex || 0) + 1; NegotiationEngine.processDay(state); };
+        const vorher = state.inbox.length;
+        const r = NegotiationEngine.submitOffer(state, neg.id, { fee: Math.round(neg.demand.fee * 0.6) });
+        if (!r.success) throw new Error(r.error);
+        const bestaetigung = state.inbox[0];
+        if (!/^Angebot abgegeben/.test(bestaetigung.subject) || bestaetigung.priority !== "low" || !/Antwort erwarten wir/.test(bestaetigung.body)) throw new Error(`Keine Bestätigung: ${bestaetigung.subject}`);
+        for (let i = 0; i < 10 && neg.status === "waiting_reply"; i++) tag();
+        const gegen = state.inbox.find(m => /^Gegenforderung/.test(m.subject));
+        if (!gegen) throw new Error(`Keine Post zur Gegenforderung: ${state.inbox.slice(0, state.inbox.length - vorher).map(m => m.subject).join(" | ")}`);
+        ["Stand: Wir sind am Zug", "Runde 1", "Forderung", "unser Angebot", "Geduld der Gegenseite", "Frist"].forEach(t => {
+            if (!gegen.body.includes(t)) throw new Error(`Im Stand fehlt "${t}": ${gegen.body}`);
+        });
+        if (gegen.relatedEntity?.type !== "player" || gegen.relatedEntity.id !== ziel.id) throw new Error("Die Post verweist nicht auf den Spieler");
+        if ((gegen.body.match(/Geduld/g) || []).length !== 1) throw new Error("Die Geduld steht doppelt");
+
+        // Angebot für einen eigenen Spieler: Die Antwort auf die Gegenforderung kommt per Post
+        const eigener = state.players.find(p => p.clubId === "muc");
+        state.transferMarket.offers.push({ id: "post_o1", status: "pending", playerId: eigener.id, playerName: eigener.name, fromClubId: "dor", fromClubName: "Dortmund", fee: 1e7, frist: (state.currentDayIndex || 0) + 4 });
+        const antwort = TransferEngine.fordereMehr(state, "post_o1", 1.25e7);
+        const post = state.inbox[0];
+        if (antwort.status !== "nachgebessert" || !/^Nachgebessert/.test(post.subject) || !post.body.includes("unsere Forderung") || post.relatedEntity?.id !== eigener.id) {
+            throw new Error(`Antwort ${antwort.status}, Post ${post.subject}: ${post.body}`);
+        }
+        state.transferMarket.offers.push({ id: "post_o2", status: "pending", playerId: eigener.id, playerName: eigener.name, fromClubId: "dor", fromClubName: "Dortmund", fee: 1e7 });
+        TransferEngine.fordereMehr(state, "post_o2", 5e7);
+        if (!/^Angebot zurückgezogen/.test(state.inbox[0].subject) || state.inbox[0].priority !== "high") throw new Error("Rückzug nicht als dringende Post");
+    });
+
     test("NegotiationEngine: Lowball-Angebote zehren an der Geduld und scheitern", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         state.clubs.find(c => c.id === "muc").transferBudget = 90000000;
@@ -6927,10 +7255,12 @@ function runEngineTests() {
         let frames = 0, schnapper = 0, beispiel = "";
         while (!live.isFinished && live.minute < 25 && frames < 60 * 700) {
             const b = live.ball, x0 = b.x, y0 = b.y, flog = !!b.inFlight;
+            // Ein ausgewiesener Schnitt (zur Ecke, zum Freistoß) legt den Ball hin - die Wiedergabe blendet ab
+            const vorSchnitte = live.schnitte || 0;
             live.advanceRealTime(1000 / 60);
             live.updateBallAndPlayers(1000 / 60);
             frames++;
-            if (flog || b.inFlight || live.motionFreeze) continue;
+            if (flog || b.inFlight || live.motionFreeze || (live.schnitte || 0) !== vorSchnitte) continue;
             const v = Math.hypot((b.x - x0) * 1.14, (b.y - y0) * 0.68) / DT / tf;
             if (v > 15) { schnapper++; beispiel = beispiel || `${live.minute}' ${v.toFixed(0)} m/s`; }
         }
@@ -10238,6 +10568,15 @@ function runEngineTests() {
             da[leih.id] = (da[leih.id] || 0) + 1;
         });
         if (Object.values(weg).some(n => n > 3) || Object.values(da).some(n => n > 2)) throw new Error("Grenzen je Verein überschritten");
+        // Verliehen wird nur, wer ersetzbar ist: Kein Mannschaftsteil fällt zwei unter
+        // seinen Plan oder auf seine Stammplätze (vorher bei jeder siebten KI-Leihe)
+        const { KaderplanungEngine } = require('./js/engine/kaderplanungEngine.js');
+        verliehen.forEach(p => {
+            const stamm = state.clubs.find(c => c.id === p.leihe.stammvereinId);
+            const teil = KaderplanungEngine.TEILE.find(t => t.positionen.includes(p.pos)) || KaderplanungEngine.TEILE[3];
+            const rest = state.players.filter(q => q.clubId === stamm.id && teil.positionen.includes(q.pos)).length;
+            if (rest < KaderplanungEngine.bedarf(stamm)[teil.key] - 1 || rest <= teil.stamm) throw new Error(`${p.name}: ${teil.titel} von ${stamm.name} bleibt mit ${rest} Spielern zurück`);
+        });
         // Wer spielt, bleibt
         state.players.forEach(p => { if (!p.leihe) p.spielpraxis = 0.8; });
         if (LoanEngine.kiLeihen(state, 30, zufall) !== 0) throw new Error("Ein Spieler mit Spielpraxis wurde verliehen");
@@ -12141,6 +12480,47 @@ function runEngineTests() {
         // Nach fünf Spielzeiten gibt es eine neue Vision
         state.seasonYear = vz.bisSaison + 1;
         if (Vision.vision(state).seit !== state.seasonYear) throw new Error("Keine neue Vision nach Ablauf");
+    });
+
+    test("Kaderplanung: Bedarfsanalyse für jeden Verein - Bedarf, Verkauf, Leihe, Verlängerung mit Begründung", () => {
+        const { KaderplanungEngine: K } = require('./js/engine/kaderplanungEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Bedarf" });
+        const club = state.clubs.find(c => c.id === "dor");
+        const kader = () => state.players.filter(p => p.clubId === club.id);
+        const a = K.bedarfsAnalyse(state, club);
+        ["needs", "sellCandidates", "loanCandidates", "renewalCandidates", "reasons"].forEach(k => { if (!Array.isArray(a[k])) throw new Error(`${k} fehlt`); });
+        if (a.reasons.length !== a.needs.length + a.sellCandidates.length + a.loanCandidates.length + a.renewalCandidates.length) throw new Error("Nicht jeder Befund hat einen Grund");
+        // Lücke: Alle Torhüter bis auf einen weg - das ist der dringendste Bedarf
+        const tws = kader().filter(p => p.pos === "TW");
+        tws.slice(1).forEach(p => { p.clubId = "weg"; });
+        const b = K.bedarfsAnalyse(state, club);
+        if (!b.needs.length || b.needs[0].teil !== "tw" || b.needs[0].art !== "luecke" || b.needs[0].fehlen !== tws.length - 1) throw new Error(`Torwartlücke nicht erkannt: ${JSON.stringify(b.needs[0])}`);
+        tws.slice(1).forEach(p => { p.clubId = club.id; });
+        // Nachfolge: Laufen im Sturm alle Verträge aus, fehlt dort nächste Saison jemand
+        const st = kader().filter(p => p.pos === "ST");
+        const alt = st.map(p => p.contractYears);
+        st.forEach(p => { p.contractYears = 1; });
+        const c = K.bedarfsAnalyse(state, club);
+        if (!c.needs.some(n => n.teil === "st" && (n.art === "nachfolge" || n.art === "luecke"))) throw new Error("Auslaufende Verträge im Sturm ergeben keinen Bedarf");
+        const besterSt = st.slice().sort((x, y) => y.overall - x.overall)[0];
+        if (besterSt.age < K.ENDE_ALTER - 2 && !c.renewalCandidates.some(r => r.id === besterSt.id)) throw new Error("Der beste Stürmer steht nicht zur Verlängerung an");
+        st.forEach((p, i) => { p.contractYears = alt[i]; });
+        // Überschuss: Drei zusätzliche junge Mittelfeldspieler sind leihbar, ein alter schwacher verkäuflich
+        const vorlage = kader().find(p => p.pos === "ZM");
+        const neu = [0, 1, 2].map(i => ({ ...vorlage, id: `bedarf_jung_${i}`, name: `Jung ${i}`, age: 19, overall: 40, contractYears: 3, leihe: null, vorvertrag: null }));
+        neu.push({ ...vorlage, id: "bedarf_alt", name: "Alt", age: 33, overall: 40, contractYears: 3, leihe: null, vorvertrag: null });
+        state.players.push(...neu);
+        const d = K.bedarfsAnalyse(state, club);
+        if (!d.loanCandidates.some(x => String(x.id).startsWith("bedarf_jung"))) throw new Error(`Kein junger Überzähliger leihbar: ${JSON.stringify(d.loanCandidates)}`);
+        if (!d.sellCandidates.some(x => x.id === "bedarf_alt")) throw new Error(`Der alte Überzählige ist nicht verkäuflich: ${JSON.stringify(d.sellCandidates)}`);
+        // Wer zur Leihe oder zum Verkauf steht, steht nie gleichzeitig zur Verlängerung - und fremde Leihspieler nirgends
+        const ids = (l) => new Set(l.map(x => x.id));
+        const v = ids(d.renewalCandidates);
+        if ([...ids(d.loanCandidates), ...ids(d.sellCandidates)].some(id => v.has(id))) throw new Error("Ein Spieler steht doppelt");
+        const gast = neu[0];
+        gast.leihe = { stammvereinId: "anderer", leihvereinId: club.id };
+        const e = K.bedarfsAnalyse(state, club);
+        if ([...e.loanCandidates, ...e.sellCandidates, ...e.renewalCandidates].some(x => x.id === gast.id)) throw new Error("Ein fremder Leihspieler wird verplant");
     });
 
     test("Kaderplanung: Verträge, Alter, Leihen und Vorverträge über drei Spielzeiten, Baustellen als Suchauftrag", () => {
@@ -14256,6 +14636,9 @@ function runEngineTests() {
         if (!res.success || n.type !== "leihe" || n.stage !== "loan" || spieler.clubId === club.id) throw new Error("Anfrage leiht sofort aus oder öffnet keine Verhandlung");
         if (n.demand.lohnAnteil !== e.lohnAnteil || n.demand.gebuehr !== e.gebuehr) throw new Error("Forderung weicht vom Leihmarkt ab");
         const antwort = () => { state.currentDayIndex = Math.max(state.currentDayIndex, n.replyDay || 0); NegotiationEngine.processDay(state); };
+        // Geprüft wird der Ablauf, nicht die Frist: Drei Runden mit einem
+        // langsamen Berater brauchen bis zu 18 Tage (je nach Zufall vorher abgelaufen)
+        n.deadlineDay += 30;
         // Zu wenig Gehalt: Gegenforderung, er bleibt beim Stammverein
         NegotiationEngine.submitOffer(state, n.id, { lohnAnteil: n.demand.lohnAnteil - 0.1, gebuehr: n.demand.gebuehr, rolle: n.demand.rolle });
         antwort();

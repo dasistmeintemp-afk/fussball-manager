@@ -302,6 +302,16 @@ function messeTaktik(state, anweisungen, n, opts = {}) {
     const a = state.clubs.find(c => c.id === (opts.mit || "sge"));
     const b = state.clubs.find(c => c.id === (opts.gegen || "wob"));
     const vorher = [{ ...(a.tactics || {}) }, { ...(b.tactics || {}) }];
+    // Jedes Messspiel beginnt mit denselben Spielern: Form, Moral und
+    // Statistik aus dem Spiel davor färben sonst auf das nächste ab - und
+    // eine Taktik würde anders gemessen, je nachdem, was vor ihr lief
+    const spieler = state.players.filter(p => p.clubId === a.id || p.clubId === b.id);
+    const stand = spieler.map(p => JSON.stringify(p));
+    const zuruecksetzen = () => spieler.forEach((p, k) => {
+        const alt = JSON.parse(stand[k]);
+        Object.keys(p).forEach(key => { if (!(key in alt)) delete p[key]; });
+        Object.assign(p, alt);
+    });
     const w = leereWerte();
     try {
         for (let i = 0; i < n; i++) {
@@ -310,10 +320,12 @@ function messeTaktik(state, anweisungen, n, opts = {}) {
             b.tactics = T.normalisiere({});
             const daheim = i % 2 === 0;
             messeSpiel(state, daheim ? a : b, daheim ? b : a, daheim ? "home" : "away", opts, w);
+            zuruecksetzen();
         }
     } finally {
         a.tactics = vorher[0];
         b.tactics = vorher[1];
+        zuruecksetzen();
     }
     return w;
 }

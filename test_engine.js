@@ -960,6 +960,57 @@ function runEngineTests() {
         }
     });
 
+    test("Trainingsplan: Vorgabe für Woche, Monat oder Saison, mit Rhythmus und Belastungsschutz, der Stab plant je Woche", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Plan" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const kader = state.players.filter(p => club.playerIds.includes(p.id));
+        const S = CoachingStaffEngine;
+        // 1. Zeiträume aus dem Kalender
+        const kal = state.calendar, heute = state.currentDayIndex || 0;
+        const monat = (t) => t.date.split(".").slice(1).join(".");
+        let monatsende = heute; while (kal[monatsende + 1] && monat(kal[monatsende + 1]) === monat(kal[heute])) monatsende++;
+        const saisonende = kal.findIndex(t => t.type === "season_end");
+        if (S.planTage(state, "woche") !== 7 || S.planTage(state, "zwei") !== 14) throw new Error("Woche oder zwei Wochen falsch");
+        if (S.planTage(state, "monat") !== monatsende - heute + 1) throw new Error(`Bis Monatsende: ${S.planTage(state, "monat")} statt ${monatsende - heute + 1}`);
+        if (S.planTage(state, "saison") !== saisonende - heute + 1) throw new Error("Bis Saisonende falsch");
+        const plan = S.setManagerVeto(state, "attack", "high", null, { dauer: "saison", rhythmus: true });
+        if (plan.daysRemaining !== saisonende - heute + 1 || plan.bis !== kal[saisonende].date || !plan.rhythmus) throw new Error(`Saisonplan falsch angelegt: ${JSON.stringify(plan)}`);
+
+        // 2. Mit Rhythmus: Regeneration bleibt Regeneration, der Plan läuft weiter
+        kader.forEach(p => { p.fitness = 95; });
+        const reg = S.applyDailyPlan(state, "recovery");
+        if (reg.intensity !== "low" || reg.focus !== "regeneration" || !S.activeVeto(state)) throw new Error("Rhythmus: Der Regenerationstag wurde überfahren");
+        const trainiert = S.applyDailyPlan(state, "training");
+        if (trainiert.focus !== "attack" || trainiert.intensity !== "high") throw new Error("Rhythmus: Am Trainingstag gilt der Plan nicht");
+        // Belastungsschutz: ausgelaugter Kader trainiert heute normal, der Plan bleibt intensiv
+        kader.forEach(p => { p.fitness = 65; });
+        const geschuetzt = S.applyDailyPlan(state, "training");
+        if (geschuetzt.intensity !== "normal" || !/Belastungsschutz/.test(geschuetzt.grund) || S.activeVeto(state).intensity !== "high") throw new Error("Kein Belastungsschutz bei müdem Kader");
+        // Ohne Rhythmus bleibt es beim alten Veto: Vorgabe gilt an jedem Tag
+        S.setManagerVeto(state, "defense", "high", 3);
+        if (S.applyDailyPlan(state, "recovery").intensity !== "high") throw new Error("Das einfache Veto gilt nicht mehr an jedem Tag");
+        S.clearManagerVeto(state);
+
+        // 3. Der Stab legt sich für die Woche fest: Die Kondition pendelt um die
+        //    Grenze, der Schwerpunkt bleibt. Im Notfall weicht er ab.
+        state.currentDayIndex = Math.ceil((state.currentDayIndex + 1) / 7) * 7;
+        const wechsel = [];
+        for (let i = 0; i < 5; i++) {
+            kader.forEach(p => { p.fitness = i % 2 ? 80 : 90; });
+            const t = S.applyDailyPlan(state, "training");
+            wechsel.push(`${t.focus}/${t.intensity}`);
+            state.currentDayIndex++;
+        }
+        if (new Set(wechsel).size !== 1) throw new Error(`Der Stab springt innerhalb der Woche: ${wechsel.join(", ")}`);
+        kader.forEach(p => { p.fitness = 60; });
+        const notfall = S.applyDailyPlan(state, "training");
+        if (notfall.intensity !== "low") throw new Error("Im Notfall bleibt der Stab beim Wochenplan");
+        state.currentDayIndex += 7;
+        kader.forEach(p => { p.fitness = 80; });
+        const neueWoche = S.applyDailyPlan(state, "training");
+        if (neueWoche.focus !== "fitness") throw new Error(`Neue Woche, neue Lage: ${neueWoche.focus}`);
+    });
+
     // 13c. Der Markt endet dort, wo das Standing des Vereins endet
     test("TransferEngine & ScoutingEngine: Der Markt richtet sich nach der eigenen Ligastufe", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });

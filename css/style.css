@@ -9563,3 +9563,10 @@ table.sortierbar th.sortiert-ab::after { content: " ▾"; }
 }
 /* Wappen in den Suchtreffern: drei Buchstaben im kleinen Kreis */
 .suche-treffer .crest-sm { font-size: 8px; letter-spacing: -0.04em; }
+
+/* Trainingsplan: Zeitraum und Rhythmus der Vorgabe des Managers */
+.trainplan-zeile { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 10px; font-size: 12.5px; }
+.trainplan-feld { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); }
+.trainplan-feld select { font-size: 12.5px; padding: 3px 6px; background: var(--bg-input); color: var(--text-main); border: 1px solid var(--border-color); border-radius: var(--radius-sm); }
+.trainplan-check small { opacity: 0.8; }
+.trainplan-stand { margin-top: 8px; font-size: 12px; font-weight: 600; color: var(--accent-gold, #f59e0b); }

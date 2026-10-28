@@ -881,8 +881,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         body.innerHTML = `
             <p class="text-muted" style="margin:0 0 10px; font-size:12px;">
-                Sie führen den Verein, nicht die Trainingsgruppe: Der Stab plant die Einheiten selbst.
-                Ändern Sie Schwerpunkt oder Intensität, gilt Ihre Vorgabe für ${staff.VETO_DAUER_TAGE} Tage.
+                Sie führen den Verein, nicht die Trainingsgruppe: Der Stab plant die Einheiten selbst, je Woche ein Schwerpunkt.
+                Ändern Sie Schwerpunkt oder Intensität, gilt Ihre Vorgabe für den Zeitraum unten - eine Woche bis die ganze Saison.
             </p>
             <div class="stab-faecher">
                 ${fach("Co-Trainer (Livespiel)", stab.coTrainer ?? stab.analyse)}
@@ -892,9 +892,15 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 ${fach("Nachwuchsarbeit", stab.nachwuchs)}
             </div>
             ${planText}
-            ${veto ? `<div style="margin-top:8px; color:#f59e0b; font-weight:600; font-size:12px;">
-                ⏳ Ihr Veto gilt noch ${veto.daysRemaining} Tag(e).</div>` : ""}
+            ${veto ? `<div class="trainplan-stand">
+                Ihr Plan: ${this.escapeHtml(staff.focusLabel(veto.focus))}, ${this.escapeHtml(staff.intensityLabel(veto.intensity))}
+                - noch ${veto.daysRemaining} Tag(e)${veto.bis ? `, bis ${this.escapeHtml(veto.bis)}` : ""}${veto.rhythmus ? " · Rhythmus beachtet" : ""}</div>` : ""}
         `;
+        // Die Auswahl zeigt, was gilt
+        const dauerFeld = document.getElementById("trainPlanDauer");
+        if (dauerFeld && veto?.dauer) dauerFeld.value = veto.dauer;
+        const rhythmusFeld = document.getElementById("trainPlanRhythmus");
+        if (rhythmusFeld && veto) rhythmusFeld.checked = !!veto.rhythmus;
 
         if (btn) btn.style.display = veto ? "inline-flex" : "none";
     },

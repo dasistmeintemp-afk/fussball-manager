@@ -1168,6 +1168,19 @@
                             <span id="staffQualityTag" class="header-tag">-</span>
                         </div>
                         <div id="staffPlanBody" style="font-size:13px; line-height:1.6;"></div>
+                        <!-- Ihr Plan: für wie lange eine Vorgabe gilt, und ob der Rhythmus der Woche bleibt -->
+                        <div class="trainplan-zeile">
+                            <label class="trainplan-feld">Ihre Vorgabe gilt
+                                <select id="trainPlanDauer" aria-label="Zeitraum des Trainingsplans">
+                                    <option value="woche">eine Woche</option>
+                                    <option value="zwei">zwei Wochen</option>
+                                    <option value="monat">bis Monatsende</option>
+                                    <option value="saison">bis Saisonende</option>
+                                </select>
+                            </label>
+                            <label class="trainplan-feld trainplan-check"><input type="checkbox" id="trainPlanRhythmus" checked>
+                                Rhythmus beachten <small>(Regeneration nach dem Spiel, Abschlusstraining davor, Belastungsschutz)</small></label>
+                        </div>
                         <div style="margin-top:10px;">
                             <button class="btn btn-sm btn-secondary" id="btnStaffTakeOver" style="display:none;">
                                 Trainerstab wieder übernehmen lassen

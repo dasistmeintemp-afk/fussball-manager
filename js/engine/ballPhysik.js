@@ -179,11 +179,12 @@ class BallPhysik {
 
     // ------------------------------------------------------------ Spieler
 
-    /** Höchsttempo beim Hinterherlaufen - wie laufeZu mit Dringlichkeit 1,9 */
+    /** Höchsttempo beim Hinterherlaufen - wie laufeZu mit Dringlichkeit 1,9, mit der Puste von gerade (pusteF) */
     static hoechstTempo(p) {
         const basis = typeof p.baseSpeed === "number" ? p.baseSpeed : 2.8;
         const frisch = typeof p.freshness === "number" ? p.freshness : 1;
-        return Math.min(basis * BallPhysik.DRINGLICHKEIT * (0.62 + frisch * 0.38), BallPhysik.SPRINT_DECKE);
+        const puste = typeof p.pusteF === "number" ? p.pusteF : 1;
+        return Math.min(basis * BallPhysik.DRINGLICHKEIT * (0.62 + frisch * 0.38) * puste, BallPhysik.SPRINT_DECKE);
     }
 
     /**
@@ -210,7 +211,8 @@ class BallPhysik {
         const d = Math.max(0, voll - radius);
         if (d <= 0) return reaktion;
         const vmax = BallPhysik.hoechstTempo(p);
-        const a = BallPhysik.ANTRITT;
+        // Wer explosiv ist, ist früher auf Tempo (LiveMatchDirector.initPlayers)
+        const a = BallPhysik.ANTRITT * (typeof p.antrittF === "number" ? p.antrittF : 1);
         const v0 = Math.max(0, Math.min(vmax, (vx * dx + vy * dy) / voll));
         const tA = (vmax - v0) / a;
         const dA = (v0 + vmax) / 2 * tA;

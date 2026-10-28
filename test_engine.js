@@ -2612,7 +2612,10 @@ function runEngineTests() {
         const { messeTaktik, kennzahlen, TAKTIKEN } = require('./spielbild.js');
         const state = GameState.createNewGame("muc", "normal", { name: "Spielbild" });
         const z = {};
-        ["neutral", "ballbesitz", "direkt", "tieferBlock"].forEach(k => { z[k] = kennzahlen(messeTaktik(state, TAKTIKEN[k], 6, { saat: 900 })); });
+        // Zehn Partien je Taktik: Seit dem Eins gegen eins mit Stellen streuen
+        // sechs zu stark (Seed 7: Klärungen des tiefen Blocks 1,17-fach statt
+        // im Mittel gut doppelt so viele wie neutral)
+        ["neutral", "ballbesitz", "direkt", "tieferBlock"].forEach(k => { z[k] = kennzahlen(messeTaktik(state, TAKTIKEN[k], 10, { saat: 900 })); });
         const n = z.neutral, bb = z.ballbesitz, di = z.direkt, tb = z.tieferBlock;
         const p = (x) => (x * 100).toFixed(0) + " %";
         if (!(bb.kette > n.kette + 0.4 && bb.kette4 >= 0.5)) throw new Error(`Ballbesitz: ${bb.kette.toFixed(2)} Pässe je Ballbesitz (neutral ${n.kette.toFixed(2)}), ab vier ${p(bb.kette4)}`);
@@ -4874,24 +4877,29 @@ function runEngineTests() {
         const state = GameState.createNewGame("dor", "normal", { name: "Ballphysik" });
         const partie = state.schedule[0].matches.find(m => m.homeClubId === "dor" || m.awayClubId === "dor");
         const heim = state.clubs.find(c => c.id === partie.homeClubId), gast = state.clubs.find(c => c.id === partie.awayClubId);
-        const live = MatchEngine.createLiveMatch(partie, heim, gast, state.players, { modus: "fm", userSide: partie.homeClubId === "dor" ? "home" : "away" });
-        const d = live.director;
-        if (!d.physik) throw new Error("Im Livespiel ist der Ball kein Körper");
         // Mitschreiben, was die Engine entscheidet
         const aktionen = [];
-        const original = d.applyFlowAction.bind(d);
-        d.applyFlowAction = (a) => { aktionen.push(a); return original(a); };
-        live.speed = 2;
         const abstand = [];
-        let warFlug = false;
-        for (let i = 0; i < 40000 && live.minute < 25 && !live.isFinished; i++) {
-            live.advanceRealTime(16); live.updateBallAndPlayers(16);
-            const b = live.ball;
-            if (warFlug && !b.inFlight && d.mode === "ambient" && !d.deadBall) {
-                const c = d.getPlayer2D(d.carrierId);
-                if (c) abstand.push(Math.hypot(c.x - b.x, c.y - b.y));
+        // Dreimal vierzig Minuten: Mit den rund neunzig Ankünften aus einmal
+        // fünfundzwanzig Minuten lag schon der alte Stand je nach Spielverlauf
+        // bei 4 bis 10 % (Grenze 8 %), im Mittel bei 7 %
+        for (let runde = 0; runde < 3; runde++) {
+            const live = MatchEngine.createLiveMatch(partie, heim, gast, state.players, { modus: "fm", userSide: partie.homeClubId === "dor" ? "home" : "away" });
+            const d = live.director;
+            if (!d.physik) throw new Error("Im Livespiel ist der Ball kein Körper");
+            const original = d.applyFlowAction.bind(d);
+            d.applyFlowAction = (a) => { aktionen.push(a); return original(a); };
+            live.speed = 2;
+            let warFlug = false;
+            for (let i = 0; i < 64000 && live.minute < 40 && !live.isFinished; i++) {
+                live.advanceRealTime(16); live.updateBallAndPlayers(16);
+                const b = live.ball;
+                if (warFlug && !b.inFlight && d.mode === "ambient" && !d.deadBall) {
+                    const c = d.getPlayer2D(d.carrierId);
+                    if (c) abstand.push(Math.hypot(c.x - b.x, c.y - b.y));
+                }
+                warFlug = b.inFlight;
             }
-            warFlug = b.inFlight;
         }
         const paesse = aktionen.filter(a => ["pass", "longball"].includes(a.type));
         if (paesse.length < 40) throw new Error(`Nur ${paesse.length} Zuspiele`);
@@ -4903,7 +4911,8 @@ function runEngineTests() {
         abstand.sort((a, b) => a - b);
         const median = abstand[Math.floor(abstand.length / 2)];
         if (!(median < 1.5)) throw new Error(`Der Ballführende steht bei Ankunft ${median?.toFixed(1)} vom Ball weg`);
-        if (abstand.filter(x => x > 3).length > abstand.length * 0.08) throw new Error("Zu oft liegt der Ball, und der Spieler ist weit weg");
+        const weit = abstand.filter(x => x > 3).length;
+        if (weit > abstand.length * 0.08) throw new Error(`Zu oft liegt der Ball, und der Spieler ist weit weg (${weit} von ${abstand.length})`);
         const flanken = aktionen.filter(a => a.type === "cross");
         if (flanken.length && flanken.some(f => !f.physik)) throw new Error("Eine Flanke ohne Flugbahn");
 
@@ -5101,7 +5110,9 @@ function runEngineTests() {
         // Sie sind gegeneinander geeicht (eichung.js); läuft eine davon weg,
         // spielte die eigene Mannschaft in einer anderen Welt als die Liga.
         const { vergleiche } = require('./eichung.js');
-        const v = vergleiche(24, 400);
+        // 48 Partien im 2D-Modell: Mit 24 schwankten die Ecken je nach Startwert
+        // zwischen 6,4 und 10,5 - beim alten wie beim neuen Laufmodell
+        const v = vergleiche(48, 400);
         const zd = v.zweiD, zl = v.zeitleiste;
         const grenzen = { tore: 0.9, schuesse: 3.5, aufsTor: 2.5, ecken: 2.5, fouls: 3.5, heim: 0.25 };
         Object.entries(grenzen).forEach(([k, g]) => {
@@ -7491,6 +7502,8 @@ function runEngineTests() {
         d.carrierId = traeger.id;
         // Die kürzeste Dauer, die ein Dribbling bisher bekam: 0,2 Laufsekunden
         d.handleDribbleAction({ type: "dribble", from: traeger, defender: verteidiger, outcome: "tackled", to: { x: traeger.x + 5, y: traeger.y } }, d.bildschirmZeit(0.2));
+        // Erst stellt er (Laufphysik), dann fällt der Zweikampf - mit dem Ball an derselben Stelle
+        if (d._duell) { Object.assign(live.ball, { x: traeger.x, y: traeger.y, inFlight: false }); d.fuehreDuell(99); }
         if (d.carrierId !== verteidiger.id) throw new Error("Der Verteidiger hat den Ball nicht");
         const meter = 3 * 1.14;
         const tempo = meter / (live.ball.travelDuration * d.getAbspielTempo());
@@ -8511,6 +8524,70 @@ function runEngineTests() {
 
     const schussVon = (e) => e.type === "save" ? (e.team === "home" ? "away" : "home")
         : (["goal", "shot_miss"].includes(e.type) ? e.team : null);
+
+    test("Laufphysik: Antritt und Wendigkeit je Spieler, Puste mit Erholung, Halbzeit, Eins gegen eins mit Stellen", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Läufer" });
+        const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");
+        const live = MatchEngine.createLiveMatch({ id: "lauf", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { modus: "fm", userSide: "home" });
+        const d = live.director;
+        const feld = d.teamPlayers("home").filter(p => p.pos !== "TW");
+        if (feld.some(p => !(p.antrittF >= 0.82 && p.antrittF <= 1.2) || !(p.wendigF >= 0.85 && p.wendigF <= 1.18) || p.puste !== 1)) {
+            throw new Error("Antritt, Wendigkeit oder Puste fehlen an den Spielern");
+        }
+        const laeufer = (extra) => ({ ...feld[0], x: 20, y: 50, lvx: 0, lvy: 0, puste: 1, freshness: 1, antrittF: 1, wendigF: 1, stamina: 75, id: "probe", ...extra });
+        const laufe = (p, ziel, sekunden) => { for (let i = 0; i < Math.round(sekunden * 60); i++) d.laufeZu(p, typeof ziel === "function" ? ziel(p) : ziel, 1 / 60); };
+
+        // Antritt: Wer explosiv ist, ist nach einer halben Sekunde weiter
+        const weit = (antrittF) => { const p = laeufer({ antrittF }); laufe(p, { x: 95, y: 50, urgency: 1.6 }, 0.5); return p.x - 20; };
+        if (!(weit(1.18) > weit(0.85) * 1.1)) throw new Error(`Antritt wirkt nicht: ${weit(1.18).toFixed(2)} gegen ${weit(0.85).toFixed(2)}`);
+        // Wendigkeit: Wer beweglich ist, hat nach einer Kehrtwende eher wieder Tempo in die neue Richtung
+        const kehrt = (wendigF) => { const p = laeufer({ wendigF, lvx: 4 }); laufe(p, { x: 0, y: 50, urgency: 1.6 }, 0.3); return p.lvx; };
+        if (!(kehrt(1.17) < kehrt(0.86) - 0.3)) throw new Error(`Wendigkeit wirkt nicht: ${kehrt(1.17).toFixed(2)} gegen ${kehrt(0.86).toFixed(2)}`);
+
+        // Puste: Ein langer Sprint kostet sie und macht langsamer, im Stand kommt sie zurück
+        const sprinter = laeufer({});
+        const vorn = (p) => ({ x: p.x + 30, y: 50, urgency: 2.2 });
+        laufe(sprinter, vorn, 1);
+        const frisch = Math.hypot(sprinter.lvx, sprinter.lvy);
+        laufe(sprinter, vorn, 9);
+        if (!(sprinter.puste < 0.5)) throw new Error(`Nach zehn Sekunden Sprint noch ${sprinter.puste.toFixed(2)} Puste`);
+        if (!(Math.hypot(sprinter.lvx, sprinter.lvy) < frisch * 0.95)) throw new Error("Ohne Puste läuft er so schnell wie frisch");
+        const leer = sprinter.puste;
+        laufe(sprinter, (p) => ({ x: p.x, y: p.y, urgency: 1 }), 6);
+        if (!(sprinter.puste > leer + 0.3)) throw new Error(`Im Stand kommt die Puste nicht zurück: ${leer.toFixed(2)} → ${sprinter.puste.toFixed(2)}`);
+        // Wer mehr Ausdauer hat, hält länger durch
+        const nachSprint = (stamina) => { const p = laeufer({ stamina }); laufe(p, vorn, 6); return p.puste; };
+        if (!(nachSprint(92) > nachSprint(50) + 0.1)) throw new Error("Die Ausdauer spielt beim Sprint keine Rolle");
+
+        // Eins gegen eins: Der Verteidiger stellt, erst danach fällt der gewürfelte Zweikampf
+        const bild = () => { live.advanceRealTime(1000 / 60); live.updateBallAndPlayers(1000 / 60); };
+        let f = 0;
+        while ((d.kickoff || d.mode !== "ambient" || d.deadBall || !d.carrierId || d.ballUnterwegs()) && f++ < 60 * 90) bild();
+        const a = d.getPlayer2D(d.carrierId);
+        const v = d.teamPlayers(a.team === "home" ? "away" : "home").filter(p => p.pos !== "TW")[0];
+        const richtung = d.attackDir(a.team);
+        v.x = a.x + richtung * 5; v.y = a.y;
+        d.handleDribbleAction({ type: "dribble", outcome: "tackled", from: a, to: { x: a.x + richtung * 9, y: a.y }, defender: v }, 0.5);
+        if (!d._duell || d.carrierId !== a.id || d.possessionTeam !== a.team) throw new Error("Der Zweikampf fällt sofort - ohne Stellen");
+        const ziel = d.duellZiel(v);
+        const torX = d.ownGoalX(v.team);
+        if (Math.abs(Math.hypot(ziel.x - a.x, ziel.y - a.y) - 2.6) > 0.05 || Math.abs(ziel.x - torX) >= Math.abs(a.x - torX)) {
+            throw new Error(`Der Verteidiger stellt nicht zwischen Ball und Tor: ${JSON.stringify(ziel)}`);
+        }
+        if (!(d.stellGeduld({ ...v, decisions: 88, composure: 88, fein: {} }) > d.stellGeduld({ ...v, decisions: 45, composure: 40, fein: { aggression: 8 } }) + 0.4)) {
+            throw new Error("Ein ruhiger Verteidiger stellt nicht länger als ein ungestümer");
+        }
+        for (let i = 0; i < 20 && d._duell; i++) bild();
+        if (d._duell && Math.hypot(a.x - v.x, a.y - v.y) > 4.5) throw new Error("Im Duell stehen beide nicht beieinander");
+        if (d._duell) d.fuehreDuell(99);
+        if (d._duell || d.carrierId !== v.id || d.possessionTeam !== v.team) throw new Error("Nach dem Stellen gilt der gewürfelte Zweikampf nicht");
+
+        // Halbzeit: In der Kabine kommt ein Drittel der verlorenen Kraft zurück, die Puste ganz
+        feld.forEach(p => { p.freshness = 0.8; p.puste = 0.2; });
+        d.swapSides();
+        if (feld.some(p => Math.abs(p.freshness - 0.87) > 0.001 || p.puste !== 1)) throw new Error("In der Halbzeit erholt sich niemand");
+    });
 
     test("Zurufe: zehn Minuten Wirkung, danach Pause - und sie verändern das Spiel", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });

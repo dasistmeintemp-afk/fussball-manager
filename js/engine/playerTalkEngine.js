@@ -25,6 +25,10 @@ class PlayerTalkEngine {
     static WUNSCH_FRIST = 7;
     /** So viele Tage tiefe Unzufriedenheit, bis ein Spieler weg will */
     static FRUST_TAGE = 21;
+    /** Unter dieser Zufriedenheit kann er um ein Gespräch bitten */
+    static GESPRAECH_UNTER = 58;
+    /** Unter dieser Zufriedenheit zählt jeder Tag als Unmut (FRUST_TAGE) */
+    static UNMUT_UNTER = 45;
 
     /** Fortlaufender Tag über die Saisons hinweg */
     /** Menschenführung des Trainers: 1 ist neutral, bis etwa ±20 % */
@@ -433,7 +437,7 @@ class PlayerTalkEngine {
             }
 
             // Anhaltender tiefer Frust wird zum Wechselwunsch
-            p.unmutTage = zufrieden < 45 ? (p.unmutTage || 0) + 1 : Math.max(0, (p.unmutTage || 0) - 2);
+            p.unmutTage = zufrieden < this.UNMUT_UNTER ? (p.unmutTage || 0) + 1 : Math.max(0, (p.unmutTage || 0) - 2);
             if (!p.wechselwunsch && p.unmutTage >= this.FRUST_TAGE && (p.injuredWeeks || 0) === 0) {
                 this.wechselwunschAeussern(state, p, "Ich bin hier nicht mehr glücklich.");
                 meldungen.push(`📢 ${p.name} will den Verein verlassen.`);
@@ -443,7 +447,7 @@ class PlayerTalkEngine {
         // Höchstens ein neuer Gesprächswunsch am Tag - von dem, den es am
         // meisten drückt
         const kandidaten = kader.filter(p => !p.gespraechswunsch && !p.wechselwunsch
-            && (p.happiness?.overall ?? 75) < 58 && (p.injuredWeeks || 0) <= 0
+            && (p.happiness?.overall ?? 75) < this.GESPRAECH_UNTER && (p.injuredWeeks || 0) <= 0
             && !(typeof p.gespraech?.letztes === "number" && heute - p.gespraech.letztes < 10));
         if (kandidaten.length && zufall() < 0.16) {
             const p = kandidaten.sort((a, b) => (a.happiness?.overall ?? 75) - (b.happiness?.overall ?? 75))[0];
@@ -451,6 +455,34 @@ class PlayerTalkEngine {
             meldungen.push(`💬 ${p.name} hat um ein Gespräch gebeten - er ist mit seiner ${p.gespraechswunsch.grund === "spielzeit" ? "Spielzeit" : "Situation"} unzufrieden.`);
         }
         return meldungen;
+    }
+
+    /**
+     * Klartext: was Moral und Zufriedenheit eines Spielers bewirken. Ein
+     * häufiger Wunsch an das Vorbild war, genau zu wissen, was ein Zustand
+     * heißt und ob er die Leistung beeinflusst. Die Zahlen sind die, mit
+     * denen das Spiel rechnet: die Moral im 2D-Modell (MatchEngine.werte2D),
+     * die Schwellen hier und im Vertrag (ContractEngine.UNZUFRIEDEN).
+     */
+    static klartext(p) {
+        const moral = Math.round(p?.morale ?? 75);
+        const z = Math.round(p?.happiness?.overall ?? 75);
+        // werte2D: 0,97 + Moral/100 * 0,04 - bei 75 genau 1
+        const wirkung = Math.round((moral - 75) * 0.04 * 10) / 10;
+        const komma = (x) => String(x).replace(".", ",");
+        const vertrag = (typeof ContractEngine !== "undefined" && ContractEngine?.UNZUFRIEDEN)
+            || (typeof require !== "undefined" ? (() => { try { return require("./contractEngine.js").ContractEngine.UNZUFRIEDEN; } catch (e) { return 30; } })() : 30);
+        const unmut = p?.unmutTage || 0;
+        return {
+            moral, zufriedenheit: z, wirkung,
+            moralText: `Moral ${moral} %: im Spiel ${wirkung > 0 ? "+" : ""}${komma(wirkung)} % auf alle Werte. Bei 75 % ist sie neutral, 25 % kosten 2 %, 99 % bringen 1 %.`,
+            leistungText: "Die Zufriedenheit wirkt nicht direkt auf die Leistung, aber auf Gespräche, Verträge und Wechselwünsche:",
+            schwellen: [
+                { unter: this.GESPRAECH_UNTER, text: `Unter ${this.GESPRAECH_UNTER}: Er kann um ein Gespräch bitten.`, aktiv: z < this.GESPRAECH_UNTER },
+                { unter: this.UNMUT_UNTER, text: `Unter ${this.UNMUT_UNTER}: Jeder Tag zählt als Unmut - nach ${this.FRUST_TAGE} Tagen will er wechseln${unmut ? ` (bisher ${unmut})` : ""}. Angebote anderer Vereine nimmt er eher an.`, aktiv: z < this.UNMUT_UNTER },
+                { unter: vertrag, text: `Unter ${vertrag}: Er verlängert seinen Vertrag nicht.`, aktiv: z < vertrag }
+            ]
+        };
     }
 
     static wechselwunschAeussern(state, p, grund) {

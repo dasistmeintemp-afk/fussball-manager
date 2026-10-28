@@ -9885,6 +9885,49 @@ function runEngineTests() {
         if (MatchplanEngine.fuerSpiel(state, match)) throw new Error("Der Plan bleibt nach dem Spiel stehen");
     });
 
+    test("Pressekonferenz mit Klartext: Vorschau vor der Antwort, Reaktion nach Persönlichkeit, Co-Trainer ohne Wirkung, Moral in Prozent", () => {
+        const { PlayerTalkEngine: PT } = require('./js/engine/playerTalkEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Klartext" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const kader = state.players.filter(p => club.playerIds.includes(p.id));
+        // Ein Ehrgeiziger, ein Nervöser, ein Hitzkopf, ein Profi - der Rest neutral
+        kader.forEach(p => { p.hiddenAttributes = { ...(p.hiddenAttributes || {}), ambition: 12, importantMatches: 12, temperament: 12, professionalism: 12 }; p.morale = 70; });
+        const [ehrgeiz, nervoes, hitzkopf, profi] = kader;
+        ehrgeiz.hiddenAttributes.ambition = 18; nervoes.hiddenAttributes.importantMatches = 5;
+        hitzkopf.hiddenAttributes.temperament = 18; profi.hiddenAttributes.professionalism = 18;
+        const M = ManagerEngine;
+        const antwort = (key) => [...M.PRESS_TOPICS, ...M.NACH_SPIEL_TOPICS].flatMap(t => t.answers.map(a => ({ t, a }))).find(x => x.a.key === key);
+        // 1. Ton aus den Folgen
+        if (M.antwortTon(antwort("confident").a) !== "mutig" || M.antwortTon(antwort("vorwurf").a) !== "kritisch"
+            || M.antwortTon(antwort("verantwortung").a) !== "schuetzend" || M.antwortTon(antwort("humble").a) !== "zurueckhaltend") throw new Error("Ton falsch gelesen");
+        // 2. Vorschau = Wirkung: Die Reaktionen der Vorschau treten genau so ein
+        const { t, a } = antwort("confident");
+        const frage = { topicId: t.id, medium: null };
+        const v = M.pressVorschau(state, frage, a, {});
+        const mag = v.reaktionen.filter(r => r.delta > 0).map(r => r.id), stoert = v.reaktionen.filter(r => r.delta < 0).map(r => r.id);
+        if (!mag.includes(ehrgeiz.id) || !stoert.includes(nervoes.id) || mag.includes(profi.id)) throw new Error(`Vorschau: ${JSON.stringify(v.reaktionen)}`);
+        if (v.effekte.squadMorale !== a.morale || v.versprechen !== "sieg") throw new Error("Vorschau ohne Kabine oder Versprechen");
+        const vorher = new Map(kader.map(p => [p.id, p.morale]));
+        const res = M.answerPressConference(state, t.id, a.key, { frage, kontext: {} });
+        const neu = (p) => p.morale - vorher.get(p.id);
+        if (neu(ehrgeiz) !== a.morale + 2 || neu(nervoes) !== a.morale - 2 || neu(profi) !== a.morale) throw new Error(`Wirkung weicht von der Vorschau ab: ${neu(ehrgeiz)}, ${neu(nervoes)}, ${neu(profi)}`);
+        if (!res.reaktionen || res.reaktionen.length !== v.reaktionen.length) throw new Error("Die Antwort nennt die Reaktionen nicht");
+        // Kritik: Der Profi nimmt sie als Ansporn, der Hitzkopf ist beleidigt
+        const krit = M.pressReaktionen(state, antwort("vorwurf").a);
+        if (!krit.some(r => r.id === profi.id && r.delta > 0) || !krit.some(r => r.id === hitzkopf.id && r.delta < 0)) throw new Error("Kritik: Profi und Hitzkopf reagieren nicht");
+        // 3. Der Co-Trainer: keine Wirkung
+        const stand = [state.fanMood, state.mediaPressure, state.boardConfidence, kader.map(p => p.morale).join()].join("|");
+        const co = M.coTrainerZurPresse(state, { nachSpiel: true, spielSchluessel: "test_1" });
+        if (!co.success || [state.fanMood, state.mediaPressure, state.boardConfidence, kader.map(p => p.morale).join()].join("|") !== stand) throw new Error("Der Co-Trainer verändert etwas");
+        if (state.nachSpielPresse !== "test_1") throw new Error("Nach dem Spiel gilt die Konferenz mit dem Co-Trainer nicht als erledigt");
+        // 4. Moral und Zufriedenheit in Zahlen
+        const k = PT.klartext({ morale: 50, happiness: { overall: 40 }, unmutTage: 5 });
+        if (k.wirkung !== -1 || !/-1 %/.test(k.moralText)) throw new Error(`Moral 50 sollte 1 % kosten: ${k.moralText}`);
+        if (PT.klartext({ morale: 75 }).wirkung !== 0) throw new Error("Moral 75 ist nicht neutral");
+        const aktiv = k.schwellen.filter(s => s.aktiv).map(s => s.unter);
+        if (aktiv.join() !== "58,45" || !/bisher 5/.test(k.schwellen[1].text)) throw new Error(`Schwellen bei 40: ${JSON.stringify(k.schwellen)}`);
+    });
+
     test("Pressekonferenz: Fragen nach Lage, Blatt verstärkt, Kampfansage motiviert den Gegner, Versprechen wird abgerechnet", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Presse" });
         const club = state.clubs.find(c => c.id === "muc");

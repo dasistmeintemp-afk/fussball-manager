@@ -44,7 +44,8 @@ html = html.replace(/[ \t]*<script[^>]*src=["']([^"']+)["'][^>]*>\s*<\/script>\s
     const p = path.join(WURZEL, datei);
     if (!fs.existsSync(p)) { fehlend.push(datei); return treffer; }
     skripte++;
-    return `<script>\n${entschaerfen(fs.readFileSync(p, 'utf8'))}\n</script>\n`;
+    // Die Herkunft bleibt am Skript: Der Web Worker (SpielWerk) lädt daraus die Engine
+    return `<script data-quelle="${datei}">\n${entschaerfen(fs.readFileSync(p, 'utf8'))}\n</script>\n`;
 });
 
 // 5. Bibliotheken, die das Spiel erst bei Bedarf lädt, liegen als Vorrat

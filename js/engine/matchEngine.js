@@ -3052,6 +3052,8 @@ class MatchEngine {
 
     /** Ein Spiel austragen: das eigene im 2D-Modell, alle anderen mit der Zeitleiste */
     static spieleAus(state, match, homeClub, awayClub, options = {}) {
+        // Schon gespielt - live, als Sofortergebnis oder im Hintergrund (SpielWerk)
+        if (match && match.played) return match;
         const seite = !state ? null : (match.homeClubId === state.userClubId ? "home"
             : (match.awayClubId === state.userClubId ? "away" : null));
         if (seite && this.EIGENES_SPIEL_2D && !match.played) {

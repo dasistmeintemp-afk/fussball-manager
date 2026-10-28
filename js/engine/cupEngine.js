@@ -741,6 +741,16 @@ class CupEngine {
     }
 
     /** Eine Partie austragen. K.-o.-Spiele brauchen einen Sieger. */
+    /**
+     * Ob ein Unentschieden an diesem Termin ins Elfmeterschießen geht.
+     * Relegation und Playoffs entscheidet die PlayoffEngine über beide
+     * Spiele - ein einzelnes Remis ist dort kein Elfmeterfall. Die Supercups
+     * sind ein Spiel: bei Gleichstand Elfmeter.
+     */
+    static elfmeterAm(art, runde) {
+        return art === "cup" || art === "supercup" || art === "eurosupercup" || (art === "euro" && (runde || 0) >= 6);
+    }
+
     static austragen(state, match, koSpiel) {
         const matchEngine = _cupResolve("MatchEngine", "./matchEngine.js");
         const heim = state.clubs.find(c => c.id === match.homeClubId);

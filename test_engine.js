@@ -4969,6 +4969,82 @@ function runEngineTests() {
         }
     });
 
+    test("Web Worker: Das eigene Spiel läuft im Hintergrund als dasselbe Spiel, der Spieltag findet es gespielt vor", () => {
+        const { SpielWerk } = require("./js/engine/spielWerk.js");
+        const zweiD = MatchEngine.EIGENES_SPIEL_2D;
+        MatchEngine.EIGENES_SPIEL_2D = true;
+        try {
+            const sortiert = (o) => Array.isArray(o) ? o.map(sortiert)
+                : (o && typeof o === "object" ? Object.keys(o).sort().reduce((a, k) => { a[k] = sortiert(o[k]); return a; }, {}) : o);
+            const kanon = (o) => JSON.stringify(sortiert(o));
+            const state = GameState.createNewGame("dor", "normal", { name: "Hintergrund" });
+            const runde = state.schedule.find(r => r.matchday === state.currentMatchday);
+            const eigenes = runde.matches.find(m => m.homeClubId === "dor" || m.awayClubId === "dor");
+
+            // Vorbereitet wie im Kalender; mit dem ersten Spieltag endet die Vorbereitung
+            const termin = SpielWerk.vorbereiten(state, { type: "matchday", date: state.currentDate });
+            if (!termin || termin.match !== eigenes) throw new Error("Das eigene Ligaspiel wurde nicht erkannt");
+            if (state.preseason && state.preseason.aktiv) throw new Error("Die Vorbereitung lief am ersten Spieltag weiter");
+            const imPaket = new Set(termin.paket.spieler);
+            const beider = state.players.filter(p => p.clubId === termin.heim.id || p.clubId === termin.gast.id);
+            if (beider.some(p => !imPaket.has(p)) || termin.paket.spieler.length > beider.length + 10) {
+                throw new Error("Das Paket trägt nicht genau die Spieler beider Vereine");
+            }
+
+            // Hin wie postMessage (Kopie), im "Worker" mit festem Zufall, zurück als Kopie
+            const vorher = structuredClone(termin.paket);
+            const antwort = structuredClone(SpielWerk.rechne({ ...structuredClone(termin.paket), seed: 99 }));
+            const spielerVorher = termin.paket.spieler[0];
+            if (!SpielWerk.fertigstellen(termin, antwort)) throw new Error("Die Antwort wurde nicht übernommen");
+            if (!eigenes.played || !eigenes.analyse || termin.paket.spieler[0] !== spielerVorher) throw new Error("Nicht in die Objekte des Spielstands übernommen");
+
+            // Dasselbe Spiel auf dem Hauptfaden mit demselben Zufall: in jedem Wert gleich
+            TacticsEngine.stelleUhr(state);
+            const zufall = Math.random;
+            Math.random = SpielWerk.zufall(99);
+            try {
+                MatchEngine.spieleOhneBild(vorher.match, vorher.heim, vorher.gast, vorher.spieler, vorher.optionen);
+            } finally {
+                Math.random = zufall;
+            }
+            if (kanon(vorher.match) !== kanon(eigenes)) throw new Error("Das Spiel im Hintergrund ist ein anderes als auf dem Hauptfaden");
+            if (kanon(vorher.heim) !== kanon(termin.heim) || kanon(vorher.gast) !== kanon(termin.gast)) throw new Error("Die Vereine weichen ab");
+            const nachId = new Map(state.players.map(p => [String(p.id), p]));
+            if (vorher.spieler.some(p => kanon(p) !== kanon(nachId.get(String(p.id))))) throw new Error("Ein Spieler weicht ab");
+
+            // Der Spieltag rechnet das Spiel nicht noch einmal, die übrigen schon
+            const analyse = eigenes.analyse, tore = `${eigenes.homeGoals}:${eigenes.awayGoals}`;
+            SeasonEngine.simulateRemainingMatchesOfDay(state);
+            if (eigenes.analyse !== analyse || `${eigenes.homeGoals}:${eigenes.awayGoals}` !== tore) throw new Error("Das eigene Spiel wurde ein zweites Mal gerechnet");
+            if (!runde.matches.every(m => m.played)) throw new Error("Ein Spiel des Spieltags blieb liegen");
+            if (MatchEngine.spieleAus(state, eigenes, termin.heim, termin.gast) !== eigenes || eigenes.analyse !== analyse) throw new Error("spieleAus rechnet ein gespieltes Spiel neu");
+
+            // Ohne Browser kein Worker; aus einer per file:// geöffneten Seite auch nicht
+            if (SpielWerk.verfuegbar()) throw new Error("Unter Node darf es keinen Worker geben");
+            SpielWerk._quellen = undefined;
+            const seite = (skripte) => ({ querySelectorAll: () => skripte.map(([src, quelle]) => ({ src, getAttribute: (k) => (k === "src" ? (src ? src.replace(/^.*?(js\/)/, "$1") : null) : (k === "data-quelle" ? quelle : null)), textContent: "//" })) });
+            try {
+                if (SpielWerk.quellen(seite([["file:///spiel/js/engine/matchEngine.js"], ["file:///spiel/js/engine/spielWerk.js"]])) !== null) throw new Error("file:// gilt als ladbar");
+                SpielWerk._quellen = undefined;
+                const einzeln = SpielWerk.quellen(seite([[null, "js/core/random.js"], [null, "js/engine/matchEngine.js"], [null, "js/engine/spielWerk.js"], [null, "js/ui/uiManager.js"]]));
+                if (!einzeln || einzeln.length !== 3 || einzeln.some(q => /js\/ui\//.test(q.pfad))) throw new Error("Die Einzeldatei liefert nicht genau die Engine-Skripte");
+            } finally {
+                SpielWerk._quellen = undefined;
+            }
+
+            // Eingebunden: auf der Seite, im Service Worker, in der Einzeldatei mit Herkunft
+            const fs = require("fs");
+            const html = fs.readFileSync("./index.html", "utf8");
+            const stelle = (datei) => html.indexOf(`<script src="${datei}"`);
+            if (stelle("js/engine/spielWerk.js") < stelle("js/engine/matchEngine.js") || stelle("js/engine/spielWerk.js") > stelle("js/ui/klang.js")) throw new Error("spielWerk.js fehlt im Engine-Block der Seite");
+            if (!fs.readFileSync("./service-worker.js", "utf8").includes("./js/engine/spielWerk.js")) throw new Error("spielWerk.js fehlt im Service Worker");
+            if (!/data-quelle="\$\{datei\}"/.test(fs.readFileSync("./build-einzeldatei.js", "utf8"))) throw new Error("Die Einzeldatei merkt sich die Herkunft der Skripte nicht");
+            if (!html.includes('id="ladeBalken"')) throw new Error("Die Ladeanzeige hat keinen Fortschrittsbalken");
+        } finally {
+            MatchEngine.EIGENES_SPIEL_2D = zweiD;
+        }
+    });
+
     test("Zeitleiste und 2D-Modell laufen nicht auseinander: Tore, Schüsse, aufs Tor, Ecken, Fouls, Heimsiege", () => {
         // Das eigene Spiel rechnet das 2D-Modell, alle anderen die Zeitleiste.
         // Sie sind gegeneinander geeicht (eichung.js); läuft eine davon weg,

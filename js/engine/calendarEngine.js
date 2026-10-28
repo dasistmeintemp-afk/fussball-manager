@@ -1264,11 +1264,7 @@ const CalendarEngine = {
                     const regeln = (typeof KaderregelEngine !== 'undefined' && KaderregelEngine) ? KaderregelEngine : ((typeof window !== 'undefined' && window.KaderregelEngine) ? window.KaderregelEngine : (typeof require !== 'undefined' ? (() => { try { return require('./kaderregelEngine.js').KaderregelEngine; } catch (e) { return null; } })() : null));
                     const eigenerVerein = state.clubs.find(c => c.id === state.userClubId);
                     if (regeln && eigenerVerein) regeln.passeAufstellungAn(state, eigenerVerein, regeln.artVon(state, eigenerVerein, eigene));
-                    // Relegation und Playoffs entscheidet die PlayoffEngine über
-                    // beide Spiele - ein einzelnes Remis ist dort kein Elfmeterfall.
-                    // Die Supercups sind ein Spiel: bei Gleichstand Elfmeter.
-                    const elfmeter = art === "cup" || art === "supercup" || art === "eurosupercup" || (art === "euro" && runde >= 6);
-                    cupEngine.austragen(state, eigene, elfmeter);
+                    cupEngine.austragen(state, eigene, cupEngine.elfmeterAm(art, runde));
                 }
                 cupEngine.schliesseTerminAb(state, art, runde);
             }

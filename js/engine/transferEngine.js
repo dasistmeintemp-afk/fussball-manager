@@ -467,6 +467,8 @@ class TransferEngine {
         }
         player.nominiertAus = undefined;
         player.leihListe = undefined;
+        // Die Transferliste galt beim alten Verein
+        player.transferListed = false;
         // Beim neuen Verein gibt es eine neue Rückennummer (GameState.rueckennummern)
         player.trikot = undefined;
         player.vereinslosAb = undefined;
@@ -485,6 +487,9 @@ class TransferEngine {
         // Transfermarkt bereinigen
         if (state.transferMarket && Array.isArray(state.transferMarket.listedPlayerIds)) {
             state.transferMarket.listedPlayerIds = state.transferMarket.listedPlayerIds.filter(id => id !== player.id);
+        }
+        if (state.transferMarket && Array.isArray(state.transferMarket.ablosefrei)) {
+            state.transferMarket.ablosefrei = state.transferMarket.ablosefrei.filter(id => id !== player.id);
         }
 
         // Für die Wettbewerbsseite: Wechsel je Liga und Saison
@@ -1376,74 +1381,358 @@ ${stand}`,
             const begehrt = player && (kader.indexOf(player) > -1 && kader.indexOf(player) < this.BEGEHRT_AB_RANG);
 
             if (player && !player.leihe && (player.overall >= 74 || begehrt || verkaeuflich)) {
-                // Wer bietet, ist mindestens ein ähnlich großer Verein - für einen
-                // Spieler auf der Transferliste auch ein etwas kleinerer
-                const rufGrenze = (userClub.reputation || 50) - (verkaeuflich ? 15 : 5);
-                // Nach England bietet nur, wer die Arbeitserlaubnis bekäme - sonst
-                // nähme der Manager an und der Wechsel scheiterte erst danach
-                const aiClubs = state.clubs.filter(c => c.id !== userClub.id && c.transferBudget >= player.value * 0.9
-                    && (c.reputation || 50) >= rufGrenze && !this.erlaubnisHindernis(state, player, c));
-                if (aiClubs.length > 0) {
-                    const interestedClub = aiClubs[Math.floor(Math.random() * aiClubs.length)];
-                    const offerFee = Math.round(player.value * (verkaeuflich ? 0.8 + Math.random() * 0.25 : 0.95 + Math.random() * 0.3));
-                    // Wie weit der Verein höchstens gehen würde - verrät er nicht
-                    const maxFee = Math.min(interestedClub.transferBudget || offerFee,
-                        Math.round(offerFee * (1.06 + Math.random() * 0.24)));
-                    // Wer das Geld nicht auf dem Konto hat, bietet Raten an -
-                    // und manchmal auch, wer es einfach strecken will
-                    const fin = _getTransferFinanceEngine();
-                    const knapp = (interestedClub.balance || 0) < offerFee * 1.5;
-                    const zahlweise = fin && fin.ZAHLWEISEN && Math.random() < (knapp ? 0.6 : 0.2)
-                        ? (Math.random() < 0.65 ? "raten12" : "raten24") : "sofort";
-                    // Für das Warten legt er etwas drauf
-                    const aufschlag = zahlweise === "raten24" ? 1.08 : (zahlweise === "raten12" ? 1.04 : 1);
-                    const angebot = Math.round(offerFee * aufschlag);
-                    const zahlText = zahlweise !== "sofort" ? ` (${fin.ratenText(angebot, zahlweise)})` : "";
-
-                    const tag = state.currentDayIndex || 0;
-                    // Eindeutig, auch wenn im selben Durchlauf mehrere Angebote
-                    // kommen - mit der Millisekunde allein trugen zwei dieselbe
-                    // Kennung, und Annehmen traf womöglich das andere
-                    let offerId = Date.now() * 1000;
-                    while (state.transferMarket.offers.some(o => o.id === offerId)) offerId++;
-                    state.transferMarket.offers.unshift({
-                        id: offerId,
-                        playerId: player.id,
-                        playerName: player.name,
-                        playerOverall: player.overall,
-                        playerPos: player.pos,
-                        playerAge: player.age,
-                        playerValue: player.value,
-                        fromClubId: interestedClub.id,
-                        fromClubName: interestedClub.name,
-                        toClubId: userClub.id,
-                        fee: angebot,
-                        maxFee: Math.max(angebot, Math.round(maxFee * aufschlag)),
-                        ...(zahlweise !== "sofort" ? { zahlweise } : {}),
-                        eingang: tag,
-                        frist: tag + this.ANGEBOTS_FRIST,
-                        saison: state.seasonYear || 1,
-                        gemeldet: false,
-                        status: "pending"
-                    });
-
-                    state.inbox.unshift({
-                        id: `angebot_${offerId}`,
-                        matchday: state.currentMatchday,
-                        date: state.currentDate || `Spieltag ${state.currentMatchday}`,
-                        sender: interestedClub.name,
-                        subject: `💰 Angebot: ${_formatTransferMoney(angebot)} für ${player.name}${zahlweise !== "sofort" ? " in Raten" : ""}`,
-                        body: `${interestedClub.name} bietet ${_formatTransferMoney(angebot)} Ablösesumme${zahlText} für Ihren Spieler ${player.name} (${player.pos}, ${player.age} Jahre, Marktwert ${_formatTransferMoney(player.value)}).\n\nDas Angebot gilt ${this.ANGEBOTS_FRIST} Tage. Sie können annehmen, ablehnen oder mehr fordern - im Transfermarkt ganz oben.`,
-                        read: false,
-                        type: "transfer_offer",
-                        // Damit das Postfach Frist, Anhang und Knöpfe kennt
-                        offerId,
-                        relatedEntity: { type: "player", id: player.id },
-                        priority: "high"
-                    });
+                // Für einen Spieler auf der Transferliste bieten Vereine, bei
+                // denen er spielen würde (abnehmer). Vorher bot jeder ab dem
+                // eigenen Ruf minus 15: der Spitzenklub für den Ersatzmann
+                // eines Viertligisten, nie aber ein Verein eine Liga tiefer.
+                const frei = verkaeuflich && this.istAblosefrei(state, player);
+                const passend = verkaeuflich ? this.abnehmer(state, player, { ablosefrei: frei }) : [];
+                const treffer = passend.length ? passend[Math.floor(Math.random() * passend.length)] : null;
+                let interestedClub = treffer ? treffer.club : null;
+                if (!interestedClub) {
+                    // Wer bietet, ist mindestens ein ähnlich großer Verein - für einen
+                    // Spieler auf der Transferliste auch ein etwas kleinerer
+                    const rufGrenze = (userClub.reputation || 50) - (verkaeuflich ? 15 : 5);
+                    // Nach England bietet nur, wer die Arbeitserlaubnis bekäme - sonst
+                    // nähme der Manager an und der Wechsel scheiterte erst danach
+                    const aiClubs = state.clubs.filter(c => c.id !== userClub.id && c.transferBudget >= player.value * 0.9
+                        && (c.reputation || 50) >= rufGrenze && !this.erlaubnisHindernis(state, player, c));
+                    interestedClub = aiClubs.length ? aiClubs[Math.floor(Math.random() * aiClubs.length)] : null;
                 }
+                if (interestedClub) this.legeAngebotVor(state, player, interestedClub, { verkaeuflich, ablosefrei: frei, lohn: treffer?.lohn });
             }
         }
+    }
+
+    /**
+     * Ein Angebot eines KI-Vereins für einen Spieler des Managers anlegen,
+     * mit Post samt Frist und Knöpfen. verkaeuflich: Er steht zum Verkauf,
+     * das Angebot fällt etwas niedriger aus. ablosefrei: Der Verein bietet
+     * keine Ablöse, würde auf Nachfrage aber eine kleine zahlen. lohn: was
+     * er dort verdienen würde (sonst 20 % mehr als bisher).
+     */
+    static legeAngebotVor(state, player, interestedClub, { verkaeuflich = false, ablosefrei = false, lohn = null } = {}) {
+        const userClub = state.clubs.find(c => c.id === state.userClubId);
+        if (!userClub || !player || !interestedClub) return null;
+        // Ein kleiner Verein bietet für einen Spieler auf der Liste, was er hat
+        const roh = Math.round(player.value * (verkaeuflich ? 0.8 + Math.random() * 0.25 : 0.95 + Math.random() * 0.3));
+        const offerFee = ablosefrei ? 0 : (verkaeuflich ? Math.min(roh, Math.max(0, Math.round(interestedClub.transferBudget || 0))) : roh);
+        // Wie weit der Verein höchstens gehen würde - verrät er nicht. Wer
+        // ablösefrei übernimmt, legt auf Nachfrage höchstens ein Viertel
+        // des Marktwerts hin.
+        const maxFee = ablosefrei
+            ? Math.max(0, Math.min(interestedClub.transferBudget || 0, Math.round(player.value * (0.1 + Math.random() * 0.15))))
+            : Math.min(interestedClub.transferBudget || offerFee, Math.round(offerFee * (1.06 + Math.random() * 0.24)));
+        // Wer das Geld nicht auf dem Konto hat, bietet Raten an -
+        // und manchmal auch, wer es einfach strecken will
+        const fin = _getTransferFinanceEngine();
+        const knapp = (interestedClub.balance || 0) < offerFee * 1.5;
+        const zahlweise = !ablosefrei && fin && fin.ZAHLWEISEN && Math.random() < (knapp ? 0.6 : 0.2)
+            ? (Math.random() < 0.65 ? "raten12" : "raten24") : "sofort";
+        // Für das Warten legt er etwas drauf
+        const aufschlag = zahlweise === "raten24" ? 1.08 : (zahlweise === "raten12" ? 1.04 : 1);
+        const angebot = Math.round(offerFee * aufschlag);
+        const zahlText = zahlweise !== "sofort" ? ` (${fin.ratenText(angebot, zahlweise)})` : "";
+
+        const tag = state.currentDayIndex || 0;
+        // Eindeutig, auch wenn im selben Durchlauf mehrere Angebote
+        // kommen - mit der Millisekunde allein trugen zwei dieselbe
+        // Kennung, und Annehmen traf womöglich das andere
+        let offerId = Date.now() * 1000;
+        while (state.transferMarket.offers.some(o => o.id === offerId)) offerId++;
+        const offer = {
+            id: offerId,
+            playerId: player.id,
+            playerName: player.name,
+            playerOverall: player.overall,
+            playerPos: player.pos,
+            playerAge: player.age,
+            playerValue: player.value,
+            fromClubId: interestedClub.id,
+            fromClubName: interestedClub.name,
+            toClubId: userClub.id,
+            fee: angebot,
+            maxFee: Math.max(angebot, Math.round(maxFee * aufschlag)),
+            ...(zahlweise !== "sofort" ? { zahlweise } : {}),
+            ...(lohn > 0 ? { wage: lohn } : {}),
+            ...(ablosefrei ? { ablosefrei: true } : {}),
+            eingang: tag,
+            frist: tag + this.ANGEBOTS_FRIST,
+            saison: state.seasonYear || 1,
+            gemeldet: false,
+            status: "pending"
+        };
+        state.transferMarket.offers.unshift(offer);
+
+        const lohnText = lohn > 0 ? ` Er würde dort ${_formatTransferMoney(lohn)} pro Woche verdienen.` : "";
+        state.inbox.unshift({
+            id: `angebot_${offerId}`,
+            matchday: state.currentMatchday,
+            date: state.currentDate || `Spieltag ${state.currentMatchday}`,
+            sender: interestedClub.name,
+            subject: ablosefrei
+                ? `🤝 Angebot: ${interestedClub.name} übernimmt ${player.name} ablösefrei`
+                : `💰 Angebot: ${_formatTransferMoney(angebot)} für ${player.name}${zahlweise !== "sofort" ? " in Raten" : ""}`,
+            body: (ablosefrei
+                ? `${interestedClub.name} würde Ihren Spieler ${player.name} (${player.pos}, ${player.age} Jahre, Marktwert ${_formatTransferMoney(player.value)}) ablösefrei übernehmen.${lohnText}`
+                : `${interestedClub.name} bietet ${_formatTransferMoney(angebot)} Ablösesumme${zahlText} für Ihren Spieler ${player.name} (${player.pos}, ${player.age} Jahre, Marktwert ${_formatTransferMoney(player.value)}).${lohnText}`)
+                + `\n\nDas Angebot gilt ${this.ANGEBOTS_FRIST} Tage. Sie können annehmen, ablehnen oder mehr fordern - im Transfermarkt ganz oben.`,
+            read: false,
+            type: "transfer_offer",
+            // Damit das Postfach Frist, Anhang und Knöpfe kennt
+            offerId,
+            relatedEntity: { type: "player", id: player.id },
+            priority: "high"
+        });
+        return offer;
+    }
+
+    // ------------------------------------------- Abgeben, auch im Unterhaus
+    //
+    // Einen Spieler loszuwerden war vor allem unten schwer: Auf die
+    // Transferliste setzte ihn nur sein eigener Wechselwunsch, Angebote kamen
+    // von Vereinen, bei denen er nie gespielt hätte, und wer keinen
+    // Abnehmer fand, blieb bis zum Vertragsende auf der Gehaltsliste.
+
+    /** Wie weit ein Abnehmer über oder unter der eigenen Liga spielen darf */
+    static ABNEHMER_STUFEN = { hoch: 1, tief: 2 };
+
+    /** Nach wie vielen Tagen der Berater denselben Spieler wieder anbieten kann */
+    static SUCHE_ABSTAND = 7;
+
+    /** Kleiner darf der Kader durch Abgaben nicht werden */
+    static MINDESTKADER = 16;
+
+    /** Welcher Anteil des Restgehalts bei einer Vertragsauflösung fällig wird */
+    static ABFINDUNG_ANTEIL = 0.5;
+
+    static _liste(state, name) {
+        if (!state.transferMarket) state.transferMarket = { listedPlayerIds: [], offers: [], history: [], shortlist: [] };
+        if (!Array.isArray(state.transferMarket[name])) state.transferMarket[name] = [];
+        return state.transferMarket[name];
+    }
+
+    /** Steht er ablösefrei zur Verfügung? */
+    static istAblosefrei(state, player) {
+        return !!player && (state?.transferMarket?.ablosefrei || []).includes(player.id);
+    }
+
+    /** Warum ein eigener Spieler nicht abgegeben werden kann - oder null */
+    static abgabeHindernis(state, player) {
+        if (!player || player.clubId !== state.userClubId) return "Nur Spieler des eigenen Vereins.";
+        if (player.leihe) return "Er ist verliehen.";
+        if (player.vorvertrag) return `Er hat bei ${player.vorvertrag.clubName || "einem anderen Verein"} unterschrieben.`;
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        if ((club?.playerIds || []).length <= this.MINDESTKADER) return `Der Kader ist mit ${this.MINDESTKADER} Spielern zu klein, um jemanden abzugeben.`;
+        return null;
+    }
+
+    /**
+     * Was er bei einem Verein verdienen würde: nach dessen Liga, nicht weit
+     * weg vom bisherigen Gehalt. Weniger gibt es nur eine Liga tiefer - wer
+     * in derselben Liga oder höher wechselt, verdient mindestens so viel
+     * wie bisher.
+     */
+    static lohnBei(player, club, eigeneStufe = null) {
+        const gen = _getTransferPlayerGenerator();
+        const bisher = player.wage || 1000;
+        const dort = gen && typeof gen.getValueAndWage === "function"
+            ? gen.getValueAndWage(player.overall || 50, club.level || 1, player.age || 25).wage : bisher;
+        const tiefer = eigeneStufe !== null && (club.level || 1) > eigeneStufe;
+        const boden = tiefer ? bisher * 0.7 : ((club.level || 1) < (eigeneStufe ?? 99) ? bisher * 1.1 : bisher);
+        return Math.round(Math.max(boden, Math.min(bisher * 1.25, dort)) / 10) * 10;
+    }
+
+    /**
+     * Wer einen Spieler des Managers nehmen würde: Vereine eine Liga höher
+     * bis zwei tiefer, bei denen er spielen würde (LoanEngine.rolleBei), die
+     * wenigstens die halbe Ablöse aufbringen und die Arbeitserlaubnis bekämen. Ins Ausland
+     * geht es nur in den ersten beiden Ligen. Die besten zuerst - Stammplatz
+     * vor Rotation, dann wie klar er sich durchsetzen würde.
+     * ablosefrei: Die Ablöse zählt nicht. streuung: etwas Zufall in der
+     * Reihenfolge (0 für eine feste Vorschau).
+     */
+    static abnehmer(state, player, { ablosefrei = false, anzahl = 6, streuung = 0.4 } = {}) {
+        const loan = _transferResolve("LoanEngine", "./loanEngine.js");
+        const eigener = player ? state.clubs.find(c => c.id === player.clubId) : null;
+        if (!eigener || !loan || typeof loan.rolleBei !== "function") return [];
+        const stufe = eigener.level || 1;
+        // Wer weniger als die halbe Ablöse hat, bietet nicht - darüber bietet
+        // ein kleiner Verein, was er hat (legeAngebotVor)
+        const preis = ablosefrei ? 0 : Math.round((player.value || 0) * 0.45);
+        const liste = [];
+        state.clubs.forEach(c => {
+            if (c.id === eigener.id) return;
+            const s = c.level || 1;
+            if (s < stufe - this.ABNEHMER_STUFEN.hoch || s > stufe + this.ABNEHMER_STUFEN.tief) return;
+            if (c.countryId !== eigener.countryId && (s > 2 || stufe > 2)) return;
+            if ((c.transferBudget || 0) < preis) return;
+            const rolle = loan.rolleBei(state, player, c);
+            if (!rolle) return;
+            if (this.erlaubnisHindernis(state, player, c)) return;
+            const vorsprung = (player.overall || 50) - loan.niveau(state, c);
+            liste.push({
+                club: c, clubId: c.id, clubName: c.name, stufe: s, rolle,
+                lohn: this.lohnBei(player, c, stufe),
+                wert: (rolle === "Stammspieler" ? 2 : 1) + Math.min(vorsprung, 6) * 0.05 + (streuung ? Math.random() * streuung : 0)
+            });
+        });
+        return liste.sort((a, b) => b.wert - a.wert).slice(0, anzahl);
+    }
+
+    /** Auf die Transferliste - zum Verkauf oder ablösefrei */
+    static aufTransferliste(state, playerId, { ablosefrei = false } = {}) {
+        const player = state.players.find(p => p.id === playerId);
+        const hindernis = this.abgabeHindernis(state, player);
+        if (hindernis) return { success: false, error: hindernis };
+        player.transferListed = true;
+        const frei = this._liste(state, "ablosefrei");
+        const i = frei.indexOf(player.id);
+        if (ablosefrei && i < 0) frei.push(player.id);
+        if (!ablosefrei && i >= 0) frei.splice(i, 1);
+        return { success: true, player, ablosefrei };
+    }
+
+    /** Von der Transferliste nehmen. Einen erfüllten Wechselwunsch nimmt das nicht zurück. */
+    static vonTransferliste(state, playerId) {
+        const player = state.players.find(p => p.id === playerId);
+        if (!player || player.clubId !== state.userClubId) return { success: false, error: "Nur Spieler des eigenen Vereins." };
+        player.transferListed = false;
+        const frei = this._liste(state, "ablosefrei");
+        if (frei.includes(player.id)) state.transferMarket.ablosefrei = frei.filter(id => id !== player.id);
+        return { success: true, player };
+    }
+
+    /** Wie viele Tage es noch dauert, bis er wieder angeboten werden kann (0: jetzt) */
+    static sucheGesperrt(state, player) {
+        const zuletzt = player ? state?.transferMarket?.suche?.[player.id] : null;
+        if (!zuletzt || zuletzt.saison !== (state.seasonYear || 1)) return 0;
+        return Math.max(0, this.SUCHE_ABSTAND - ((state.currentDayIndex || 0) - zuletzt.tag));
+    }
+
+    /**
+     * Verein suchen: Der Spieler wird den passenden Vereinen angeboten (und
+     * steht damit auf der Transferliste). Wer ihn will, bietet sofort - mit
+     * Frist und Knöpfen wie jedes andere Angebot. Findet sich keiner, sagt
+     * der Sportdirektor, was bleibt: ablösefrei abgeben oder den Vertrag
+     * auflösen.
+     */
+    static vereinSuchen(state, playerId, { ablosefrei = null } = {}) {
+        const player = state.players.find(p => p.id === playerId);
+        const hindernis = this.abgabeHindernis(state, player) || this.fensterHindernis(state);
+        if (hindernis) return { success: false, error: hindernis };
+        const rest = this.sucheGesperrt(state, player);
+        if (rest) return { success: false, error: `Er wurde gerade erst angeboten - in ${rest} Tag${rest === 1 ? "" : "en"} wieder.` };
+        const tag = state.currentDayIndex || 0;
+        const saison = state.seasonYear || 1;
+        const suche = state.transferMarket.suche || (state.transferMarket.suche = {});
+        const frei = ablosefrei === null ? this.istAblosefrei(state, player) : !!ablosefrei;
+        this.aufTransferliste(state, player.id, { ablosefrei: frei });
+        suche[player.id] = { tag, saison };
+
+        const kandidaten = this.abnehmer(state, player, { ablosefrei: frei, anzahl: 5 });
+        const angebote = [];
+        const absagen = [];
+        kandidaten.forEach((k, i) => {
+            const schonDa = state.transferMarket.offers.some(o => o.status === "pending" && o.playerId === player.id && o.fromClubId === k.clubId);
+            // Der Verein, zu dem er am besten passt, greift fast immer zu; die
+            // übrigen eher für einen Stammplatz - ablösefrei sowieso
+            const chance = i === 0 ? 0.9 : (k.rolle === "Stammspieler" ? 0.6 : 0.4) + (frei ? 0.2 : 0);
+            if (!schonDa && angebote.length < 3 && Math.random() < chance) {
+                angebote.push(this.legeAngebotVor(state, player, k.club, { verkaeuflich: true, ablosefrei: frei, lohn: k.lohn }));
+            } else if (!schonDa) {
+                absagen.push(k.clubName);
+            }
+        });
+        if (!angebote.length) {
+            const news = _transferResolve("NewsEngine", "./newsEngine.js");
+            const rat = frei
+                ? `Bleibt der Vertrag aufzulösen - die Abfindung läge bei ${_formatTransferMoney(this.abfindung(state, player))}.`
+                : "Ablösefrei hätte er bessere Karten. Oder Sie lösen den Vertrag auf.";
+            if (news && typeof news.addMessage === "function") {
+                news.addMessage(state, "transfer", {
+                    title: `Kein Abnehmer für ${player.name}`,
+                    sender: "Sportdirektor",
+                    text: kandidaten.length
+                        ? `Wir haben ${player.name} ${kandidaten.length} Vereinen angeboten, bei denen er spielen würde (${absagen.join(", ")}). Im Moment beißt keiner an. ${rat}`
+                        : `Für ${player.name} gibt es keinen Verein, bei dem er spielen würde und der ${frei ? "ihn nimmt" : "die Ablöse zahlen kann"}. ${rat}`,
+                    priority: "normal",
+                    relatedEntity: { type: "player", id: player.id }
+                });
+            }
+        }
+        return { success: true, player, angebote, absagen, kandidaten: kandidaten.length, ablosefrei: frei };
+    }
+
+    /**
+     * Was es kostet, den Vertrag aufzulösen: die Hälfte des Gehalts, das
+     * bis zum Vertragsende noch fällig wäre, mindestens vier Wochen. Der
+     * Kalender zählt jede Saison ab Tag 0.
+     */
+    static abfindung(state, player) {
+        if (!player) return 0;
+        const wochenSeit = Math.min(51, Math.floor((state?.currentDayIndex || 0) / 7));
+        const jahre = Math.max(1, player.contractYears || 1);
+        const wochen = Math.max(4, (jahre - 1) * 52 + (52 - wochenSeit));
+        return Math.round((player.wage || 0) * wochen * this.ABFINDUNG_ANTEIL / 100) * 100;
+    }
+
+    /**
+     * Den Vertrag auflösen: Der Verein zahlt die Abfindung, der Spieler ist
+     * vereinslos und kann sofort woanders unterschreiben. Das geht auch
+     * außerhalb des Transferfensters.
+     */
+    static vertragAufloesen(state, playerId) {
+        const player = state.players.find(p => p.id === playerId);
+        const hindernis = this.abgabeHindernis(state, player);
+        if (hindernis) return { success: false, error: hindernis };
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const summe = this.abfindung(state, player);
+        if ((club.balance || 0) < summe) return { success: false, error: `Für die Abfindung von ${_formatTransferMoney(summe)} fehlt das Geld.` };
+
+        club.balance -= summe;
+        const fin = _getTransferFinanceEngine();
+        if (fin && summe > 0) fin.recordTransaction(state, club.id, "abfindung", -summe, `Abfindung ${player.name}`);
+
+        const kabine = _transferResolve("DressingRoomEngine", "./dressingRoomEngine.js");
+        if (kabine && typeof kabine.spielerGeht === "function") kabine.spielerGeht(state, player);
+        const laufbahn = _transferResolve("LaufbahnEngine", "./laufbahnEngine.js");
+        if (laufbahn && typeof laufbahn.wechsel === "function") laufbahn.wechsel(state, player, club.id);
+
+        club.playerIds = (club.playerIds || []).filter(id => id !== player.id);
+        club.bench = (club.bench || []).filter(id => id !== player.id);
+        // Die Lücke in der Aufstellung an ihrer Stelle schließen (wie bei executeTransfer)
+        club.lineup = (club.lineup || []).filter(id => id !== player.id);
+        const gs = _getTransferGameState();
+        if (gs && typeof gs.repairLineup === "function") gs.repairLineup(club, state.players);
+
+        player.clubId = null;
+        player.contractYears = 0;
+        player.vereinslosAb = state.seasonYear || 1;
+        player.transferListed = false;
+        player.wechselwunsch = undefined;
+        player.reserve = undefined;
+        player.jugendvertrag = undefined;
+        player.nominiertAus = undefined;
+        player.leihListe = undefined;
+        player.trikot = undefined;
+        player.klauseln = undefined;
+        player.praemien = undefined;
+        state.transferMarket.offers.forEach(o => { if (o.status === "pending" && o.playerId === player.id) o.status = "withdrawn"; });
+        if (Array.isArray(state.transferMarket.ablosefrei)) state.transferMarket.ablosefrei = state.transferMarket.ablosefrei.filter(id => id !== player.id);
+
+        state.inbox.unshift({
+            id: Date.now() + 3,
+            matchday: state.currentMatchday,
+            date: state.currentDate || `Spieltag ${state.currentMatchday}`,
+            sender: "Sportdirektor",
+            subject: `Vertrag aufgelöst: ${player.name}`,
+            body: `Der Vertrag mit ${player.name} ist aufgelöst. Er erhält eine Abfindung von ${_formatTransferMoney(summe)} und ist ab sofort vereinslos.`,
+            read: false,
+            type: "transfer",
+            relatedEntity: { type: "player", id: player.id }
+        });
+        return { success: true, player, abfindung: summe };
     }
 }
 

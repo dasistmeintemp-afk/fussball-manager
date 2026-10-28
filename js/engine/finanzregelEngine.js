@@ -26,7 +26,7 @@ const FinanzregelEngine = {
     STRAFE: { leicht: 0.02, schwer: 0.05 },
     ABZUG: { erst: 3, wieder: 6 },
     UMSATZ: ["sponsor_income", "merch_income", "ticket_income", "prize", "prize_money", "sponsor_event", "transfer_in"],
-    KADER: ["wages", "staff_wages", "bonus"],
+    KADER: ["wages", "staff_wages", "bonus", "abfindung"],
     ABLOESE_JAHRE: 3,
     GEMERKT: 5,
 

@@ -723,7 +723,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const entwicklungInhalt = [
             isUserClub && !isProspect ? this.entwicklungsplanHtml(player) : "",
             leiheModus === "eigener" ? this.reserveHtml(player) : "",
-            leiheInEntwicklung ? this.leiheHtml(player, leiheModus) : ""
+            leiheInEntwicklung ? this.leiheHtml(player, leiheModus) : "",
+            leiheModus === "eigener" && typeof this.abgabeHtml === "function" ? this.abgabeHtml(player) : ""
         ].filter(Boolean).join("\n");
         // Laufbahn als Kacheln wie im Vorbild (uiProfilLaufbahn.js)
         const mitKacheln = typeof this.profilLaufbahnKachelnHtml === "function";
@@ -1003,6 +1004,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             nachLeihe(res, res.neu && res.neu.length
                 ? `${player.name} steht auf der Leihliste - Deadline Day: ${res.neu.length} Angebot${res.neu.length === 1 ? "" : "e"} sofort.`
                 : `${player.name} steht auf der Leihliste. Die Vereine melden sich in den nächsten Tagen.`);
+        });
+        // Abgabe: Transferliste, Verein suchen, Vertrag auflösen
+        if (typeof this.bindeAbgabe === "function") this.bindeAbgabe(player, (res, text) => {
+            nachLeihe(res, text);
+            if (res.success) this.renderHeader?.();
         });
         document.getElementById("btnPdVonLeihliste")?.addEventListener("click", () =>
             nachLeihe(leihEngine.vonLeihlisteNehmen(state, player.id), `${player.name} steht nicht mehr auf der Leihliste.`));

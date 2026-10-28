@@ -9586,3 +9586,6 @@ table.sortierbar th.sortiert-ab::after { content: " ▾"; }
 .pf-klartext p { margin: 6px 0 0; line-height: 1.45; }
 .pf-klartext ul { margin: 4px 0 0; padding-left: 18px; line-height: 1.45; }
 .pf-klartext li.aktiv { color: #f87171; font-weight: 600; }
+
+/* Abgabe in der Spielerakte: Transferliste, Verein suchen, Vertrag auflösen */
+.abgabe-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 6px; }

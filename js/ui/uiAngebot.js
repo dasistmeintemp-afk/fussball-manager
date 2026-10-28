@@ -65,7 +65,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const spieler = state.players.find(p => String(p.id) === String(o.playerId)) || null;
         const offen = o.status === "pending";
         const wert = spieler?.value || o.playerValue || 0;
-        const quote = wert > 0 ? Math.round(o.fee / wert * 100) : null;
+        const quote = wert > 0 && !(o.ablosefrei && !o.fee) ? Math.round(o.fee / wert * 100) : null;
         const news = typeof NewsEngine !== "undefined" ? NewsEngine : null;
         const lage = news ? news.dringlichkeit(state, { type: "transfer_offer", offerId: o.id }) : null;
         const fin = typeof FinanceEngine !== "undefined" ? FinanceEngine : null;
@@ -91,7 +91,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             rejected: ["neutral", "Abgelehnt", `${o.fromClubName} hat eine Absage bekommen. ${o.playerName} bleibt.`],
             expired: ["neutral", "Verfallen", `Die Frist ist abgelaufen, ohne dass wir geantwortet haben. ${o.playerName} bleibt.`],
             withdrawn: ["schlecht", "Zurückgezogen", `${o.fromClubName} hat das Angebot zurückgezogen. ${o.playerName} bleibt.`] }[o.status];
-        const vorschlag = Math.round(o.fee * 1.2 / 50000) * 50000;
+        // Ablösefrei angeboten: Gefordert wird etwas vom Marktwert, gerundet
+        // nach der Größe des Betrags - auf 50.000 gerundet blieb im Unterhaus 0
+        const basis = o.fee || Math.round(wert * 0.15);
+        const runde = (b) => { const schritt = b >= 1e6 ? 50000 : (b >= 1e5 ? 5000 : 500); return Math.max(schritt, Math.round(b / schritt) * schritt); };
+        const vorschlag = runde(basis * 1.2);
+        this._angebotRunde = { id: o.id, basis, runde };
+        const abl = (x) => (o.ablosefrei && !x) ? "ablösefrei" : geld(x);
         const andere = (state.transferMarket?.offers || []).filter(x => x.status === "pending" && String(x.id) !== String(o.id));
 
         inhalt.innerHTML = `
@@ -106,7 +112,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 </div>
                 <div class="ag-summe">
                     <span>Ablöse</span>
-                    <strong>${geld(o.fee)}</strong>
+                    <strong>${abl(o.fee)}</strong>
                     ${quote !== null ? `<small class="ag-quote ${quote >= 115 ? "pf-ton-gut" : (quote < 95 ? "pf-ton-schlecht" : "")}">${quote} % des Marktwerts</small>` : ""}
                 </div>
             </header>
@@ -117,7 +123,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <div class="ag-raster">
                 <div class="dash-card pf-karte ag-angebot">
                     <h4 class="gs-titel"><svg class="ico h-ico" aria-hidden="true"><use href="#i-briefcase"/></svg>Das Angebot</h4>
-                    ${zeile("Ablöse", geld(o.fee))}
+                    ${zeile("Ablöse", abl(o.fee))}
                     ${zeile("Marktwert", wert ? geld(wert) : "–")}
                     ${quote !== null ? `<div class="ag-verhaeltnis" title="Ablöse im Verhältnis zum Marktwert"><i style="width:${Math.min(100, quote / 2)}%"></i><b style="left:50%"></b></div>` : ""}
                     ${zeile("Zahlweise", esc(o.zahlweise && fin?.ratenText ? fin.ratenText(o.fee, o.zahlweise) : "sofort fällig"))}
@@ -232,7 +238,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const betragText = () => { const t = inhalt.querySelector("#agForderungText"); if (t && feld) t.textContent = this.geldKurz(Number(feld.value) || 0); };
         feld?.addEventListener("input", betragText);
         inhalt.querySelectorAll("[data-ag-plus]").forEach(el => el.addEventListener("click", () => {
-            if (feld) feld.value = String(Math.round(o.fee * (1 + Number(el.dataset.agPlus) / 100) / 50000) * 50000);
+            const r = this._angebotRunde && String(this._angebotRunde.id) === String(o.id) ? this._angebotRunde : null;
+            if (feld) feld.value = String(r ? r.runde(r.basis * (1 + Number(el.dataset.agPlus) / 100)) : Math.round(o.fee * (1 + Number(el.dataset.agPlus) / 100) / 50000) * 50000);
             betragText();
         }));
         inhalt.querySelector("#btnAgAnnehmen")?.addEventListener("click", () => {

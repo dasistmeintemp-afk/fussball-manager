@@ -9097,6 +9097,64 @@ function runEngineTests() {
         if (kleiner.length) throw new Error(`Angebote von kleineren Vereinen: ${kleiner.map(o => o.fromClubName)}`);
     });
 
+    test("Abgabe im Unterhaus: passende Abnehmer, Verein suchen, ablösefrei abgeben und Vertrag auflösen", () => {
+        const { LoanEngine } = require('./js/engine/loanEngine.js');
+        const state = GameState.createNewGame("rlw_msv", "normal", { name: "Prüfer" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        if (!TransferEngine.istTransferfenster(state)) throw new Error("Zum Start ist kein Fenster offen");
+        const stufe = club.level;
+        const kader = () => club.playerIds.map(id => state.players.find(p => p.id === id)).filter(Boolean).sort((a, b) => b.overall - a.overall);
+        const [p1, p2, p3, p4] = kader().slice(-6, -2);
+        const passt = (o, p) => {
+            const c = state.clubs.find(x => x.id === o.fromClubId);
+            return c && c.level >= stufe - 1 && c.level <= stufe + 2 && c.countryId === club.countryId && LoanEngine.rolleBei(state, p, c);
+        };
+
+        // Wer auf der Transferliste steht, bekommt Angebote von Vereinen, bei
+        // denen er spielen würde - kein Erstligist für den Ersatzmann
+        const ab = TransferEngine.abnehmer(state, p1, { anzahl: Infinity });
+        if (!ab.length || ab.some(a => !passt({ fromClubId: a.clubId }, p1))) throw new Error(`Abnehmer passen nicht: ${ab.map(a => a.clubName + " " + a.stufe)}`);
+        if (!TransferEngine.aufTransferliste(state, p1.id).success || !p1.transferListed) throw new Error("Nicht auf die Transferliste gekommen");
+        for (let i = 0; i < 120; i++) TransferEngine.processAITransferMarket(state);
+        const fuerP1 = state.transferMarket.offers.filter(o => o.playerId === p1.id);
+        if (!fuerP1.length) throw new Error("Kein Angebot für den Spieler auf der Transferliste");
+        const fremd = fuerP1.filter(o => !passt(o, p1));
+        if (fremd.length) throw new Error(`Angebote von Vereinen, bei denen er nicht spielen würde: ${fremd.map(o => o.fromClubName)}`);
+
+        // Verein suchen: sofort Angebote passender Vereine, dann eine Woche Pause
+        const suche = TransferEngine.vereinSuchen(state, p2.id);
+        if (!suche.success || !suche.angebote.length || !p2.transferListed) throw new Error(`Verein suchen ohne Angebot: ${JSON.stringify({ ...suche, player: undefined })}`);
+        if (suche.angebote.some(o => !passt(o, p2) || !(o.wage > 0) || !state.inbox.some(m => m.offerId === o.id))) throw new Error("Angebot aus der Suche passt nicht oder kam nicht per Post");
+        if (TransferEngine.vereinSuchen(state, p2.id).success) throw new Error("Derselbe Spieler lässt sich sofort wieder anbieten");
+
+        // Ablösefrei: Angebote ohne Ablöse, nach dem Wechsel ist er von der Liste
+        TransferEngine.aufTransferliste(state, p3.id, { ablosefrei: true });
+        const frei = TransferEngine.vereinSuchen(state, p3.id);
+        if (!frei.angebote.length || frei.angebote.some(o => o.fee !== 0 || !o.ablosefrei)) throw new Error("Ablösefrei kommt kein Angebot ohne Ablöse");
+        const vorher = club.balance;
+        const wechsel = TransferEngine.nimmAngebotAn(state, frei.angebote[0].id);
+        if (!wechsel.ok || p3.clubId !== frei.angebote[0].fromClubId || p3.transferListed || TransferEngine.istAblosefrei(state, p3)) throw new Error("Der ablösefreie Wechsel hinterlässt ihn auf der Liste");
+        if (club.balance !== vorher) throw new Error("Ein ablösefreier Wechsel bringt Geld");
+
+        // Vertrag auflösen: Abfindung vom Konto, danach vereinslos - auch außerhalb des Fensters
+        if (state.preseason) state.preseason.aktiv = false;
+        state.currentDayIndex = state.calendar.findIndex(t => /^15\.10\./.test(t.date));
+        if (state.currentDayIndex < 0 || !TransferEngine.fensterHindernis(state)) throw new Error("Mitte Oktober ist das Fenster offen");
+        if (TransferEngine.vereinSuchen(state, p4.id).success) throw new Error("Verein suchen außerhalb des Fensters");
+        const abfindung = TransferEngine.abfindung(state, p4);
+        if (!(abfindung >= p4.wage * 2)) throw new Error(`Abfindung ${abfindung} bei ${p4.wage} pro Woche`);
+        const konto = club.balance;
+        const aus = TransferEngine.vertragAufloesen(state, p4.id);
+        if (!aus.success || p4.clubId !== null || club.playerIds.includes(p4.id) || club.lineup.includes(p4.id) || p4.vereinslosAb !== state.seasonYear) throw new Error("Nach der Auflösung gehört er noch zum Verein");
+        if (club.balance !== konto - abfindung) throw new Error(`Konto ${konto} → ${club.balance}, Abfindung ${abfindung}`);
+        if (!state.finances.transactions.some(t => t.type === "abfindung" && t.amount === -abfindung)) throw new Error("Die Abfindung fehlt in der Buchhaltung");
+
+        // Unter der Mindestgröße gibt niemand mehr ab
+        club.playerIds = club.playerIds.slice(0, TransferEngine.MINDESTKADER);
+        const rest = state.players.find(p => p.id === club.playerIds[0]);
+        if (!TransferEngine.abgabeHindernis(state, rest) || TransferEngine.vertragAufloesen(state, rest.id).success) throw new Error("Abgabe trotz zu kleinem Kader");
+    });
+
     test("Angebote für eigene Spieler: Frist, Mehr fordern, Annehmen und Verfall", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
         const club = state.clubs.find(c => c.id === "muc");

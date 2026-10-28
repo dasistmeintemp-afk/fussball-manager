@@ -175,7 +175,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         prize_money: "Prämien und Fernsehgeld", prize: "Prämien", transfer_in: "Transfers", investor: "Investor", board_support: "Vorstand",
         other: "Sonstiges", wages: "Gehälter", staff_wages: "Trainerstab", facility_cost: "Anlagen", operating_cost: "Betrieb",
         bonus: "Prämien", transfer_out: "Transfers", scouting: "Scouting", youth_academy: "Jugend", youth_scouting: "Jugend",
-        youth_compensation: "Ausbildungsentschädigung", trainingslager: "Trainingslager"
+        youth_compensation: "Ausbildungsentschädigung", trainingslager: "Trainingslager", abfindung: "Abfindungen"
     },
 
     /** Der Kontoverlauf als Linie: Monatsstände und heute, Werte als Tooltip */

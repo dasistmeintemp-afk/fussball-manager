@@ -132,7 +132,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             { titel: "Vertrag", eintraege: [
                 eigen && da("#btnSubmitExtension") ? { text: "Vertrag verlängern", icon: "i-doc", reiter: "vertrag", ziel: "#pdVertrag" } : null,
                 isProspect && da("#btnPdPromoteProspect") ? { text: "Profivertrag anbieten", icon: "i-doc", knopf: "#btnPdPromoteProspect" } : null,
-                eigen && da("#btnPdZurLeihe") ? { text: "Verleihen", icon: "i-transfer", reiter: "entwicklung", ziel: "#btnPdZurLeihe" } : null
+                eigen && da("#btnPdZurLeihe") ? { text: "Verleihen", icon: "i-transfer", reiter: "entwicklung", ziel: "#btnPdZurLeihe" } : null,
+                eigen && da("#btnPdAufloesen") ? { text: "Vertrag auflösen", icon: "i-trash", reiter: "entwicklung", ziel: "#pdAbgabe" } : null
             ] },
             { titel: "Kabine", eintraege: [
                 eigen && da("[data-gespraech]") ? { text: "Gespräch unter vier Augen", icon: "i-chat", reiter: "vertrag", ziel: "[data-gespraech]" } : null,
@@ -142,6 +143,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 eigen && da("[data-pd-reiter='entwicklung']") ? { text: "Entwicklung planen", icon: "i-dumbbell", reiter: "entwicklung" } : null
             ] },
             { titel: "Transfer", eintraege: [
+                eigen && da("#btnPdTransferliste") ? { text: "Auf die Transferliste", icon: "i-wallet", knopf: "#btnPdTransferliste" } : null,
+                eigen && da("#btnPdVonTransferliste") ? { text: "Von der Transferliste nehmen", icon: "i-wallet", knopf: "#btnPdVonTransferliste" } : null,
+                eigen && da("#btnPdVereinSuchen:not([disabled])") ? { text: "Verein suchen", icon: "i-search", knopf: "#btnPdVereinSuchen" } : null,
                 da("#btnPdBidPlayer") ? { text: player.clubId ? "Transfer verhandeln" : "Vertrag anbieten", icon: "i-briefcase", knopf: "#btnPdBidPlayer" } : null,
                 da("#btnPdAusleihen") ? { text: "Ausleihen", icon: "i-transfer", knopf: "#btnPdAusleihen" } : null,
                 da("#btnPdVorvertrag") ? { text: "Vorvertrag anbieten", icon: "i-edit", knopf: "#btnPdVorvertrag" } : null,

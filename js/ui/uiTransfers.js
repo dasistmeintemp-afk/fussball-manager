@@ -821,6 +821,67 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     },
 
     /**
+     * Abgabe in der Spielerakte: auf die Transferliste (zum Verkauf oder
+     * ablösefrei), einen Verein suchen lassen, den Vertrag auflösen. Dazu,
+     * bei wem er spielen würde - damit man vorher weiß, ob sich die Suche
+     * lohnt.
+     */
+    abgabeHtml(player) {
+        const te = typeof TransferEngine !== "undefined" ? TransferEngine : null;
+        if (!te || typeof te.abnehmer !== "function") return "";
+        const state = this.app.state;
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const kopf = `<h4 class="gs-titel"><svg class="ico" aria-hidden="true"><use href="#i-wallet"/></svg> Abgabe</h4>`;
+        const hindernis = te.abgabeHindernis(state, player);
+        if (hindernis) return `<div class="dash-card mb-3 gs-karte" id="pdAbgabe">${kopf}<div class="gs-lage">${esc(hindernis)}</div></div>`;
+        const frei = te.istAblosefrei(state, player);
+        const gelistet = !!player.transferListed;
+        const passend = te.abnehmer(state, player, { ablosefrei: frei, anzahl: 3, streuung: 0 });
+        const gesperrt = te.sucheGesperrt(state, player);
+        const fenster = te.fensterHindernis(state) || (gesperrt ? `Gerade angeboten - wieder in ${gesperrt} Tag${gesperrt === 1 ? "" : "en"}` : null);
+        const stand = gelistet ? `Steht ${frei ? "ablösefrei" : "zum Verkauf"} auf der Transferliste.` : "Steht nicht zum Verkauf.";
+        const passt = passend.length
+            ? `Spielen würde er etwa bei ${passend.map(a => `<strong>${esc(a.clubName)}</strong> (${a.stufe}. Liga, ${esc(a.rolle)})`).join(", ")}.`
+            : `Im Moment gibt es keinen Verein, bei dem er spielen würde${frei ? "" : " und der die Ablöse zahlen kann"}.`;
+        return `
+            <div class="dash-card mb-3 gs-karte" id="pdAbgabe">${kopf}
+                <div class="gs-lage ${gelistet ? "gs-warn" : "gs-info"}">${stand} ${passt}</div>
+                <div class="abgabe-knoepfe">
+                    ${gelistet
+                        ? `<button class="btn btn-secondary" id="btnPdVonTransferliste">Von der Transferliste nehmen</button>`
+                        : `<button class="btn btn-secondary" id="btnPdTransferliste">Auf die Transferliste</button>`}
+                    ${frei ? "" : `<button class="btn btn-secondary" id="btnPdAblosefrei">Ablösefrei abgeben</button>`}
+                    <button class="btn btn-primary" id="btnPdVereinSuchen"${fenster ? ` disabled title="${esc(fenster)}"` : ""}>Verein suchen</button>
+                    <button class="btn btn-danger" id="btnPdAufloesen">Vertrag auflösen (${this.geldKurz(te.abfindung(state, player))})</button>
+                </div>
+                <div class="gs-sub">Verein suchen: Der Sportdirektor bietet ihn den passenden Vereinen an, wer ihn will, bietet sofort${fenster ? ` (${esc(fenster)})` : ""}. Vertrag auflösen: Die Hälfte des Restgehalts geht als Abfindung an ihn, danach ist er vereinslos - das geht auch außerhalb des Fensters.</div>
+            </div>`;
+    },
+
+    /** Die Knöpfe der Abgabe-Karte; fertig(res, text) meldet und zeichnet neu */
+    bindeAbgabe(player, fertig) {
+        const te = typeof TransferEngine !== "undefined" ? TransferEngine : null;
+        if (!te || typeof te.abnehmer !== "function") return;
+        const state = this.app.state;
+        const klick = (id, fn) => document.getElementById(id)?.addEventListener("click", fn);
+        klick("btnPdTransferliste", () => fertig(te.aufTransferliste(state, player.id), `${player.name} steht auf der Transferliste.`));
+        klick("btnPdAblosefrei", () => fertig(te.aufTransferliste(state, player.id, { ablosefrei: true }), `${player.name} ist ablösefrei zu haben.`));
+        klick("btnPdVonTransferliste", () => fertig(te.vonTransferliste(state, player.id), `${player.name} steht nicht mehr zum Verkauf.`));
+        klick("btnPdVereinSuchen", () => {
+            const res = te.vereinSuchen(state, player.id);
+            const n = res.angebote?.length || 0;
+            fertig(res, n
+                ? `${n} Angebot${n === 1 ? "" : "e"} für ${player.name}: ${res.angebote.map(o => o.fromClubName).join(", ")} - im Postfach und im Transfermarkt.`
+                : `Für ${player.name} beißt im Moment keiner an. Der Sportdirektor hat geschrieben.`);
+        });
+        klick("btnPdAufloesen", () => {
+            const summe = te.abfindung(state, player);
+            if (typeof confirm === "function" && !confirm(`Den Vertrag mit ${player.name} auflösen? Die Abfindung beträgt ${this.geldKurz(summe)}, danach ist er vereinslos.`)) return;
+            fertig(te.vertragAufloesen(state, player.id), `Der Vertrag mit ${player.name} ist aufgelöst.`);
+        });
+    },
+
+    /**
      * Wie lange ein Vereinsloser noch zu haben ist: Wer eine ganze Saison
      * keinen Verein findet, hört auf (SeasonEngine.processRetirements),
      * ein Talent bekommt eine Saison mehr.

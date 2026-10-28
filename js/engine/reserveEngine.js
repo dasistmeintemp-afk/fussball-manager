@@ -355,11 +355,106 @@ const ReserveEngine = {
      */
     u23Staerke(state, club, kader = null) {
         const verfuegbar = kader || this.spieler(state, club).filter(p => (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0);
-        const elf = verfuegbar.slice().sort((a, b) => (b.overall || 0) - (a.overall || 0)).slice(0, 11);
+        const saison = state?.seasonYear || 1;
+        const liga = state?.u23liga && state.u23liga.saison === saison ? state.u23liga : null;
+        const elf = this.elfNachPlan(verfuegbar, "u23", saison, liga ? liga.eigene.length : 0);
         const profiSchnitt = this._kaderSchnitt(state, club);
         const auffuellen = Math.max(0, 11 - elf.length);
-        const staerke = (elf.reduce((s, p) => s + (p.overall || 0), 0) + auffuellen * (profiSchnitt - 16)) / 11;
+        const staerke = (elf.reduce((s, p) => s + this.einsatzStaerke(p), 0) + auffuellen * (profiSchnitt - 16)) / 11;
         return { elf, auffuellen, staerke, profiSchnitt };
+    },
+
+    // ------------------------------------------------------------ Einsatzplan
+
+    /**
+     * Der Einsatzplan für U23 und U19: wer wie oft spielt und wo.
+     *
+     * Bisher stellten beide Mannschaften immer die elf Stärksten auf, ohne
+     * Rücksicht auf Positionen. Wer schwächer war, spielte nie und kam ohne
+     * Spielpraxis kaum voran - genau dafür ist die zweite Mannschaft aber da.
+     * Jetzt bekommt jeder eine Rolle und, wenn gewünscht, eine Position.
+     * Ohne Plan bleibt es bei den Besten, jetzt mit genau einem Torwart.
+     */
+    EINSATZ: {
+        auto: { label: "Automatisch", text: "Spielt, wenn er zu den Besten gehört" },
+        stamm: { label: "Stammspieler", text: "Spielt immer, wenn er fit ist" },
+        rotation: { label: "Rotation", text: "Spielt etwa jedes zweite Spiel" },
+        bedarf: { label: "Bei Bedarf", text: "Spielt nur, wenn sonst die Elf nicht voll wird" },
+        schonen: { label: "Schonen", text: "Spielt nicht" }
+    },
+    /** Wo einer in der U23 oder U19 spielen kann - der Torwart bleibt im Tor */
+    PLAN_POSITIONEN: ["IV", "LV", "RV", "DM", "ZM", "LM", "RM", "OM", "LA", "RA", "ST"],
+    /**
+     * Positionserfahrung je Spiel auf einer fremden Position: wie bei den
+     * Profis (TrainingEngine, 0,05 für neunzig Minuten), mal dem Anteil, den
+     * das Spiel an Praxis bringt (U23 0,7, U19 0,6)
+     */
+    POSITION_JE_SPIEL: 0.05,
+
+    einsatzVon(p) {
+        const e = p?.einsatz || {};
+        return { rolle: this.EINSATZ[e.rolle] ? e.rolle : "auto", pos: e.pos || null };
+    },
+
+    /** U23 und U19 des eigenen Vereins - Talente der Akademie eingeschlossen */
+    unterbauSpieler(state, playerId) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        const jl = _reResolve("JugendligaEngine", "./jugendligaEngine.js");
+        const alle = this.spieler(state, club).concat(jl && typeof jl.eigeneSpieler === "function" ? jl.eigeneSpieler(state) : []);
+        return alle.find(p => String(p.id) === String(playerId)) || null;
+    },
+
+    /** Rolle und Position im Einsatzplan setzen; undefined lässt den Teil, wie er ist */
+    setzeEinsatz(state, playerId, rolle, pos) {
+        const p = this.unterbauSpieler(state, playerId);
+        if (!p) return { success: false, error: "Er spielt weder in der U23 noch in der U19." };
+        if (rolle !== undefined && !this.EINSATZ[rolle]) return { success: false, error: "Diese Rolle gibt es nicht." };
+        if (pos && (p.pos === "TW" || !this.PLAN_POSITIONEN.includes(pos))) return { success: false, error: "Auf dieser Position kann er nicht spielen." };
+        const alt = this.einsatzVon(p);
+        const neu = { rolle: rolle === undefined ? alt.rolle : rolle, pos: pos === undefined ? alt.pos : (pos && pos !== p.pos ? pos : null) };
+        p.einsatz = neu.rolle === "auto" && !neu.pos ? undefined : neu;
+        return { success: true, einsatz: this.einsatzVon(p) };
+    },
+
+    /** Was einer in der Elf beiträgt: auf einer fremden Position weniger (wie im Spiel) */
+    einsatzStaerke(p) {
+        const pos = this.einsatzVon(p).pos;
+        if (!pos) return p.overall || 0;
+        const me = _reResolve("MatchEngine", "./matchEngine.js");
+        const mod = me && typeof me.getPositionModifier === "function" ? me.getPositionModifier(p, pos) : 1;
+        return (p.overall || 0) * (0.5 + 0.5 * mod);
+    },
+
+    /**
+     * Die Elf nach dem Einsatzplan: zuerst die Stammspieler, dann die
+     * Rotation, die an der Reihe ist (höchstens halb so viele Spiele wie die
+     * Mannschaft), dann wer automatisch zu den Besten gehört, dann die übrige
+     * Rotation (wer am wenigsten gespielt hat, zuerst) und zuletzt die für
+     * den Notfall. Geschonte spielen nicht. Im Tor steht genau einer.
+     */
+    elfNachPlan(kandidaten, feld, saison, mannschaftsSpiele = 0) {
+        const spiele = (p) => (p[feld] && p[feld].saison === saison ? p[feld].spiele : 0);
+        const stufe = (p) => {
+            const r = this.einsatzVon(p).rolle;
+            if (r === "stamm") return 0;
+            if (r === "rotation") return spiele(p) * 2 <= mannschaftsSpiele ? 1 : 3;
+            if (r === "auto") return 2;
+            if (r === "bedarf") return 4;
+            return 9;
+        };
+        const reihe = (kandidaten || []).filter(p => stufe(p) < 9)
+            .sort((a, b) => (stufe(a) - stufe(b)) || (stufe(a) === 3 ? spiele(a) - spiele(b) : 0) || (this.einsatzStaerke(b) - this.einsatzStaerke(a)));
+        const torwart = reihe.find(p => p.pos === "TW");
+        const feldspieler = reihe.filter(p => p.pos !== "TW").slice(0, torwart ? 10 : 11);
+        return torwart ? [torwart, ...feldspieler] : feldspieler;
+    },
+
+    /** Nach dem Spiel: Wer auf einer fremden Position stand, lernt sie (wie bei den Profis) */
+    lerneAufPosition(p, praxis) {
+        const pos = this.einsatzVon(p).pos;
+        const pe = _reResolve("PositionEngine", "./positionEngine.js");
+        if (!pos || !pe || typeof pe.gainPositionExperience !== "function") return null;
+        return pe.gainPositionExperience(p, pos, this.POSITION_JE_SPIEL * praxis);
     },
 
     /** Die Tabelle, sortiert: [{ rang, name, eigen, spiele, s, u, n, tore, gegentore, punkte }] */
@@ -426,6 +521,7 @@ const ReserveEngine = {
             p.spielpraxis = Math.round(((p.spielpraxis ?? 0.5) * 0.82 + this.PRAXIS_WERT * 0.18) * 1000) / 1000;
             p.matchSharpness = Math.min(100, (p.matchSharpness ?? 60) + 6);
             p.fitness = Math.max(40, (p.fitness ?? 100) - 6);
+            this.lerneAufPosition(p, this.PRAXIS_WERT);
             if (zufall() < this.VERLETZUNG) {
                 p.injuredWeeks = 1 + Math.floor(zufall() * 3);
                 p.injuryName = "Muskelverletzung (U23)";

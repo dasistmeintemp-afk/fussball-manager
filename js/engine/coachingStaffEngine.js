@@ -35,6 +35,25 @@ class CoachingStaffEngine {
     /** Wie lange ein Veto des Managers gilt, bevor der Stab wieder übernimmt */
     static VETO_DAUER_TAGE = 7;
 
+    /**
+     * Der Trainingsplan des Managers für einen längeren Zeitraum. Ein häufiger
+     * Wunsch an das Vorbild: den Plan für einen Monat oder die ganze Saison
+     * einmal festlegen, statt jede Woche neu zu klicken.
+     */
+    static PLAN_DAUERN = {
+        woche: "Eine Woche",
+        zwei: "Zwei Wochen",
+        monat: "Bis Monatsende",
+        saison: "Bis Saisonende"
+    };
+    /**
+     * Mit Rhythmus bleiben diese Tage, wie der Kalender sie setzt:
+     * Regeneration, Termintage und das Abschlusstraining vor dem Spiel
+     */
+    static RHYTHMUS_TAGE = ["recovery", "rest", "opponent_analysis", "media", "sponsor"];
+    /** Unter dieser Kondition (Kaderschnitt) wird aus "intensiv" mit Rhythmus "normal" */
+    static BELASTUNGSSCHUTZ = 74;
+
     /** Titel des Stabs je nach Güte */
     static STAB_STUFEN = [
         { ab: 82, titel: "Weltklasse-Trainerteam", kurz: "Weltklasse" },
@@ -138,20 +157,53 @@ class CoachingStaffEngine {
      * Der Manager übergeht den Stab. Die Vorgabe gilt für einige Tage, danach
      * übernimmt der Trainerstab wieder von selbst.
      */
-    static setManagerVeto(state, focus, intensity, tage = null) {
+    static setManagerVeto(state, focus, intensity, tage = null, optionen = {}) {
         if (!state) return null;
         if (!state.trainingSettings) state.trainingSettings = {};
 
+        const dauer = this.PLAN_DAUERN[optionen.dauer] ? optionen.dauer : null;
+        const tageGesamt = tage ?? (dauer ? this.planTage(state, dauer) : this.VETO_DAUER_TAGE);
         state.trainingSettings.managerVeto = {
             focus: focus || state.trainingSettings.focus || "allround",
             intensity: intensity || state.trainingSettings.intensity || "normal",
-            daysRemaining: tage ?? this.VETO_DAUER_TAGE,
-            setAt: state.currentDate || null
+            daysRemaining: tageGesamt,
+            setAt: state.currentDate || null,
+            // Der letzte Tag des Plans - für die Anzeige
+            bis: this.datumIn(state, tageGesamt - 1),
+            ...(dauer ? { dauer } : {}),
+            ...(optionen.rhythmus ? { rhythmus: true } : {})
         };
         state.trainingSettings.focus = state.trainingSettings.managerVeto.focus;
         state.trainingSettings.intensity = state.trainingSettings.managerVeto.intensity;
 
         return state.trainingSettings.managerVeto;
+    }
+
+    /**
+     * Wie viele Tage ein Plan ab heute dauert: eine oder zwei Wochen, bis zum
+     * letzten Tag des Monats oder bis zum Saisonende im Kalender
+     */
+    static planTage(state, dauer) {
+        if (dauer === "woche") return 7;
+        if (dauer === "zwei") return 14;
+        const kal = Array.isArray(state?.calendar) ? state.calendar : [];
+        const start = state?.currentDayIndex || 0;
+        if (!kal[start]) return this.VETO_DAUER_TAGE;
+        const monat = (tag) => String(tag?.date || "").split(".").slice(1).join(".");
+        let i = start;
+        if (dauer === "monat") {
+            while (kal[i + 1] && monat(kal[i + 1]) === monat(kal[start])) i++;
+        } else {
+            while (kal[i + 1] && kal[i].type !== "season_end") i++;
+        }
+        return i - start + 1;
+    }
+
+    /** Das Datum in so vielen Tagen laut Kalender */
+    static datumIn(state, tage) {
+        const kal = Array.isArray(state?.calendar) ? state.calendar : [];
+        const i = Math.min(kal.length - 1, (state?.currentDayIndex || 0) + Math.max(0, tage));
+        return kal[i]?.date || null;
     }
 
     /** Der Manager gibt das Training wieder aus der Hand */
@@ -237,6 +289,14 @@ class CoachingStaffEngine {
             focus = "regeneration";
             grund = "Termintag - die Einheit bleibt kurz.";
         }
+        // Der Stab legt sich für die Woche fest - vorher plante er jeden Tag
+        // neu, und an der Grenze (Kondition um 84 %) sprang der Schwerpunkt
+        // von Tag zu Tag hin und her. Nur ein Notfall (ausgelaugt, viele
+        // Verletzte) ändert die Woche.
+        else if (this._wochenplan(state, lage)) {
+            const w = this._wochenplan(state, lage);
+            return { focus: w.focus, intensity: w.intensity, grund: w.grund, stab, lage, danebengegriffen: !!w.danebengegriffen, ausWoche: true };
+        }
         // 3. Der Zustand des Kaders schlägt alles andere
         else if (lage.fitness < 74) {
             intensity = "low";
@@ -291,7 +351,25 @@ class CoachingStaffEngine {
             danebengegriffen = true;
         }
 
+        // Normale Trainingstage: Die Entscheidung gilt für die Woche
+        if (!this.RHYTHMUS_TAGE.includes(dayType) && lage.fitness >= 74 && lage.verletzt < 4) {
+            if (!state.trainingSettings) state.trainingSettings = {};
+            state.trainingSettings.stabWoche = { woche: this.wocheVon(state), focus, intensity, grund, danebengegriffen };
+        }
         return { focus, intensity, grund, stab, lage, danebengegriffen };
+    }
+
+    /** Die Trainingswoche: sieben Kalendertage, über die Saisons fortlaufend */
+    static wocheVon(state) {
+        return (state?.seasonYear || 1) * 100 + Math.floor((state?.currentDayIndex || 0) / 7);
+    }
+
+    /** Die Entscheidung des Stabs für diese Woche - außer im Notfall */
+    static _wochenplan(state, lage) {
+        const w = state?.trainingSettings?.stabWoche;
+        if (!w || w.woche !== this.wocheVon(state)) return null;
+        if (lage.fitness < 74 || lage.verletzt >= 4) return null;
+        return w;
     }
 
     /**
@@ -305,20 +383,38 @@ class CoachingStaffEngine {
         const veto = this.activeVeto(state);
         if (veto) {
             veto.daysRemaining = Math.max(0, veto.daysRemaining - 1);
-            state.trainingSettings.focus = veto.focus;
-            state.trainingSettings.intensity = veto.intensity;
-
             const auslaufend = veto.daysRemaining === 0;
             if (auslaufend) state.trainingSettings.managerVeto = null;
+            const weiter = auslaufend
+                ? "Ab morgen übernimmt wieder der Trainerstab."
+                : `Ihr Plan gilt noch ${veto.daysRemaining} Tag(e).`;
+
+            let focus = veto.focus, intensity = veto.intensity, grund = null;
+            if (veto.rhythmus && this.RHYTHMUS_TAGE.includes(dayType)) {
+                // Mit Rhythmus: Regeneration, Termintage und Abschlusstraining wie im Kalender
+                const tag = this.planTraining(state, dayType);
+                if (tag) { focus = tag.focus; intensity = tag.intensity; grund = `${tag.grund} ${weiter}`; }
+            } else if (veto.rhythmus && intensity === "high") {
+                // Belastungsschutz: Ein ausgelaugter Kader wird nicht noch härter rangenommen
+                const club = state.clubs.find(c => c.id === state.userClubId);
+                const lage = club ? this.squadCondition(state, club) : null;
+                if (lage && lage.fitness < this.BELASTUNGSSCHUTZ) {
+                    intensity = "normal";
+                    grund = `Belastungsschutz: Die Kondition liegt bei Ø ${lage.fitness} %, heute normal statt intensiv. ${weiter}`;
+                }
+            }
+            state.trainingSettings.focus = focus;
+            state.trainingSettings.intensity = intensity;
 
             const plan = {
-                focus: veto.focus,
-                intensity: veto.intensity,
+                focus,
+                intensity,
                 vomManager: true,
                 daysRemaining: veto.daysRemaining,
-                grund: auslaufend
+                ...(veto.rhythmus ? { rhythmus: true } : {}),
+                grund: grund || (auslaufend
                     ? "Umgesetzt wie angewiesen. Ab morgen übernimmt wieder der Trainerstab."
-                    : `Der Stab führt Ihre Anweisung aus - noch ${veto.daysRemaining} Tag(e), dann plant er wieder selbst.`
+                    : `Der Stab führt Ihre Anweisung aus - noch ${veto.daysRemaining} Tag(e), dann plant er wieder selbst.`)
             };
             state.trainingSettings.lastPlan = plan;
             return plan;

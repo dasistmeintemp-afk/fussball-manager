@@ -3716,9 +3716,12 @@ class UIManager {
                 this.app.state.trainingSettings.intensity = intensity;
                 return;
             }
-            const veto = staff.setManagerVeto(this.app.state, focus, intensity);
+            // Für wie lange und ob der Rhythmus der Woche bleibt (Trainingsplan)
+            const dauer = document.getElementById("trainPlanDauer")?.value || "woche";
+            const rhythmus = !!document.getElementById("trainPlanRhythmus")?.checked;
+            const veto = staff.setManagerVeto(this.app.state, focus, intensity, null, { dauer, rhythmus });
             this.showToast(
-                `Ihre Vorgabe gilt für ${veto.daysRemaining} Tage: ${staff.focusLabel(veto.focus)}, ${staff.intensityLabel(veto.intensity)}.`,
+                `Ihr Plan gilt ${veto.bis ? `bis ${veto.bis}` : `für ${veto.daysRemaining} Tage`} (${veto.daysRemaining} Tage): ${staff.focusLabel(veto.focus)}, ${staff.intensityLabel(veto.intensity)}${rhythmus ? ", Rhythmus beachtet" : ""}.`,
                 "success");
             this.renderTraining();
         };

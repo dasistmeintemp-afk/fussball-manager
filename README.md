@@ -852,6 +852,22 @@ Ein Transfer ist kein Knopfdruck mehr, sondern ein Vorgang über mehrere Tage:
 - **Alles im Blick:** Der Reiter *Transfermarkt* zeigt jede laufende Verhandlung mit Phase, aktueller Forderung, Restgeduld, Frist und dem letzten Satz der Gegenseite, auch Leihen und Talente anderer Akademien. Am Deadline Day steht dort statt der Frist der Hinweis, dass heute Abend Schluss ist.
 
 ### 5. 🏋️ Training & Jugendakademie
+- **Trainingsplan über Wochen, Monat oder Saison (`CoachingStaffEngine.setManagerVeto`, `planTage`, `PLAN_DAUERN`):** Ein häufiger Wunsch an das Vorbild war, den Plan für einen Monat oder die ganze Saison einmal festzulegen. Bisher galt jede Vorgabe des Managers genau sieben Tage, dann plante wieder der Stab.
+  - **Zeitraum:** Im Trainerstab wählt man, wie lange eine Änderung von Schwerpunkt oder Intensität gilt: eine Woche, zwei Wochen, bis Monatsende oder bis Saisonende. Monat und Saison kommen aus dem Kalender. Die Karte zeigt, was gilt und bis wann.
+  - **Rhythmus beachten** (Standard):
+    - Regeneration nach dem Spiel, Termintage und das Abschlusstraining vor dem Spiel bleiben, wie der Kalender sie setzt. Der Plan gilt an den normalen Trainingstagen.
+    - Belastungsschutz: Fällt die Kondition im Kaderschnitt unter 74 %, wird aus „intensiv“ für den Tag „normal“, der Plan selbst bleibt.
+    - Ohne Rhythmus gilt die Vorgabe wie bisher an jedem Tag.
+  - **Der Stab legt sich je Woche fest:** Bisher plante er jeden Tag neu. An der Grenze (Kondition um 84 %) sprang der Schwerpunkt von Tag zu Tag zwischen Kondition und dem sportlichen Thema hin und her, und bei einem schwachen Stab würfelte er täglich daneben. In der Kritik am Vorbild heißt das „Ratschläge, die sich gegenseitig aufheben“. Jetzt gilt seine Entscheidung für die Trainingswoche (sieben Kalendertage), nur ein Notfall ändert sie: Kader ausgelaugt (unter 74 %) oder vier Verletzte.
+  - **Test** *Trainingsplan*:
+    - Zeiträume aus dem Kalender
+    - Saisonplan mit letztem Tag
+    - Regeneration bleibt Regeneration
+    - Belastungsschutz bei müdem Kader
+    - das einfache Veto gilt weiter an jedem Tag
+    - eine Woche mit pendelnder Kondition ohne Wechsel
+    - Notfall
+    - neue Woche, neue Lage
 - **Zwei Reiter:** *Training* zeigt Trainerstab, Trainingslager, Schwerpunkt und Intensität, Trainingsbericht und die individuellen Pläne. Alles zum Nachwuchs steht im eigenen Reiter *Jugend*, gleich darunter in der Seitenleiste und im Menü am Handy:
   - die Akademie mit Stufe, Plätzen, Jugendtag, Probetrainings, Sichtungstag und Jugendvorschau
   - die Talente der Akademie mit Jugendvertrag, Werbern und Knöpfen

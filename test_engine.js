@@ -14262,7 +14262,9 @@ function runEngineTests() {
         // Personalnot: zu wenige Profis fit - der Schreibtisch nennt Kandidaten aus U23 und U19
         const profis = kader().filter(x => !x.reserve);
         profis.slice(0, profis.length - 12).forEach(x => { x.injuredWeeks = 3; });
-        u23[1].u23 = { saison: state.seasonYear, spiele: 3, tore: 2, noten: 22.5, letzte: [7.6, 7.5, 7.4] };
+        // Klar über allem, was die U23-Spieltage davor ergeben haben - seit dem
+        // Einsatzplan spielen dort mehr Spieler, und einer kam schon auf 7,8
+        u23[1].u23 = { saison: state.seasonYear, spiele: 3, tore: 2, noten: 25.5, letzte: [8.6, 8.5, 8.4] };
         const punkte = M.unterbauPunkte(state, club, kader());
         const not = punkte.find(x => /Personalnot|Kein Torwart/.test(x.title));
         if (!not || !not.spieler.length || not.tab !== "squad") throw new Error("Keine Personalnot gemeldet: " + JSON.stringify(punkte));
@@ -14272,6 +14274,70 @@ function runEngineTests() {
         // Zum Saisonwechsel: Wer aus dem U19-Alter herauswächst, ist wieder Profi
         const quelle = require('fs').readFileSync('./js/engine/seasonEngine.js', 'utf8');
         if (!/player\.reserve === "u19" && player\.age > 19/.test(quelle)) throw new Error("Saisonwechsel holt Zwanzigjährige nicht aus der U19");
+    });
+
+    test("Einsatzplan für U23 und U19: Stamm, Rotation, Bedarf und Schonen, ein Torwart, eine fremde Position wird gelernt", () => {
+        const { ReserveEngine: R } = require('./js/engine/reserveEngine.js');
+        const { JugendligaEngine: J } = require('./js/engine/jugendligaEngine.js');
+        // 1. Die Reihenfolge an erfundenen Spielern: 14 Feldspieler, zwei Torhüter
+        const saison = 1;
+        const kader = Array.from({ length: 14 }, (_, i) => ({ id: `f${i}`, pos: i % 2 ? "ZM" : "IV", overall: 70 - i }))
+            .concat([{ id: "tw1", pos: "TW", overall: 72 }, { id: "tw2", pos: "TW", overall: 60 }]);
+        const ohnePlan = R.elfNachPlan(kader, "u23", saison, 0);
+        if (ohnePlan.length !== 11 || ohnePlan.filter(p => p.pos === "TW").length !== 1 || ohnePlan[0].id !== "tw1") throw new Error("Ohne Plan: nicht die Besten mit genau einem Torwart");
+        if (ohnePlan.some(p => p.id === "f13" || p.id === "f12")) throw new Error("Ohne Plan spielen die Schwächsten");
+        const schwach = kader.find(p => p.id === "f13"), rot = kader.find(p => p.id === "f12"), bester = kader.find(p => p.id === "f0"), notfall = kader.find(p => p.id === "f11");
+        schwach.einsatz = { rolle: "stamm" };
+        rot.einsatz = { rolle: "rotation" };
+        bester.einsatz = { rolle: "schonen" };
+        notfall.einsatz = { rolle: "bedarf" };
+        kader.find(p => p.id === "tw2").einsatz = { rolle: "stamm" };
+        let spiele = 0;
+        const verlauf = { schwach: 0, rot: "", bester: 0, notfall: 0, tw2: 0 };
+        for (let i = 0; i < 8; i++) {
+            const elf = R.elfNachPlan(kader, "u23", saison, spiele);
+            const drin = (p) => elf.includes(p);
+            if (elf.filter(p => p.pos === "TW").length !== 1) throw new Error("Nicht genau ein Torwart");
+            verlauf.schwach += drin(schwach); verlauf.rot += drin(rot) ? "1" : "0"; verlauf.bester += drin(bester); verlauf.notfall += drin(notfall);
+            verlauf.tw2 += elf.some(p => p.id === "tw2");
+            elf.forEach(p => R.bucheEinsatz(p, "u23", saison, 6.5, 0));
+            spiele++;
+        }
+        if (verlauf.schwach !== 8 || verlauf.tw2 !== 8) throw new Error(`Stammspieler nicht immer in der Elf: ${JSON.stringify(verlauf)}`);
+        if (verlauf.bester !== 0) throw new Error("Ein Geschonter spielt");
+        if (verlauf.rot !== "10101010") throw new Error(`Rotation nicht jedes zweite Spiel: ${verlauf.rot}`);
+        if (verlauf.notfall !== 0) throw new Error("Bei Bedarf spielt, obwohl genug da sind");
+        // Bei Personalnot spielt auch, wer nur für den Notfall da ist
+        if (!R.elfNachPlan(kader.filter(p => p.id === "f11" || p.pos === "TW" || ["f1", "f2", "f3"].includes(p.id)), "u23", saison, spiele).includes(notfall)) throw new Error("Bei Personalnot fehlt der Notfallspieler");
+
+        // 2. Im Spielstand: Plan setzen, Spieltag der U23, fremde Position
+        const state = GameState.createNewGame("muc", "normal", { name: "Einsatzplan" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const imKader = new Set(club.lineup.map(String));
+        state.players.filter(p => club.playerIds.includes(p.id) && !imKader.has(String(p.id)) && (p.age || 30) <= 23 && p.pos !== "TW")
+            .slice(0, 3).forEach(p => R.hinunter(state, p.id));
+        const u23 = R.spieler(state, club);
+        if (u23.length < 2) throw new Error("Zu wenige Spieler für die U23");
+        const lerner = u23[0];
+        const ziel = ["IV", "ST"].find(x => x !== lerner.pos && !(lerner.positions || []).includes(x) && lerner.secondPos !== x);
+        if (!R.setzeEinsatz(state, lerner.id, "stamm", ziel).success) throw new Error("Plan ließ sich nicht setzen");
+        if (R.setzeEinsatz(state, lerner.id, "egal").success || R.setzeEinsatz(state, lerner.id, undefined, "TW").success) throw new Error("Ungültige Rolle oder Torwartposition angenommen");
+        const mitPlan = R.u23Staerke(state, club).staerke;
+        R.setzeEinsatz(state, lerner.id, undefined, null);
+        if (!(R.u23Staerke(state, club).staerke > mitPlan)) throw new Error("Auf der fremden Position ist die U23 nicht schwächer");
+        R.setzeEinsatz(state, lerner.id, undefined, ziel);
+        for (let i = 0; i < 4; i++) { R.spieltag(state, club); state.currentMatchday++; }
+        const erfahrung = lerner.positionExperience?.[ziel] || 0;
+        if (!(erfahrung > 0.05)) throw new Error(`Auf ${ziel} nichts gelernt (${erfahrung})`);
+        if (R.setzeEinsatz(state, lerner.id, "auto", null).einsatz.rolle !== "auto" || lerner.einsatz !== undefined) throw new Error("Zurück auf Automatisch bleibt ein leerer Plan stehen");
+
+        // 3. Die U19 zieht dieselbe Elf heran - Stärke, Einsätze und Torschützen
+        const j = J.starte(state);
+        const vorher = J.elf(state).map(p => p.id);
+        J.spieltag(state);
+        const torschuetzen = (j.eigene[j.eigene.length - 1]?.schuetzen || []);
+        const namen = new Set(J.eigeneSpieler(state).filter(p => vorher.includes(p.id)).map(p => p.name));
+        if (torschuetzen.some(n => !namen.has(n))) throw new Error("In der U19 trifft einer, der nicht spielt");
     });
 
     test("Unterbau nachgeschärft: Hochgezogene bleiben umwerbbar, Engpass je Mannschaftsteil, Moral beim Gang in die U19", () => {

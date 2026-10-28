@@ -8956,6 +8956,10 @@ td.nowrap { white-space: nowrap; }
 .u-form-top { color: #a3e635; font-weight: 700; }
 .gs-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .unterbau-knoepfe { display: flex; gap: 6px; justify-content: flex-end; }
+/* Einsatzplan in U23 und U19: Rolle und Position je Spieler, wer im nächsten Spiel aufläuft */
+.einsatz-rolle, .einsatz-pos { font-size: 12px; padding: 3px 6px; max-width: 128px; background: var(--bg-input); color: var(--text-main); border: 1px solid var(--border-color); border-radius: var(--radius-sm); }
+.einsatz-elf { display: inline-block; margin-left: 6px; padding: 0 6px; font-size: 10.5px; font-weight: 700; line-height: 17px; border-radius: 9px; color: var(--ok, #34d399); border: 1px solid var(--ok, #34d399); vertical-align: 1px; }
+.einsatz-hinweis { margin-top: 6px; }
 .unterbau-nominiert { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; margin: 8px 0 4px;
     border: 1px solid var(--border-color); border-left: 3px solid var(--accent-info); border-radius: var(--radius-sm); background: var(--bg-card); }
 .unterbau-nominiert small { flex-basis: 100%; }
@@ -8973,15 +8977,21 @@ td.nowrap { white-space: nowrap; }
 .pd-unterbau-bilanz { font-size: 12px; color: var(--text-muted); margin: 0 0 10px; }
 .u19-kader td, .u23-tabelle td { white-space: nowrap; }
 .u19-kader td:first-child, .u23-tabelle td:first-child { white-space: normal; }
-/* Am Handy: Alter, Stärke und Tore weg (stehen in der Akte), kleinere Knöpfe -
-   und wird es doch zu breit, scrollt die Tabelle für sich */
+/* Am Handy: Alter, Stärke, Tore, Schnitt und Form weg (stehen in der Akte),
+   kleinere Knöpfe - Platz für den Einsatzplan. Wird es doch zu breit,
+   scrollt die Tabelle für sich */
 @media (max-width: 640px) {
     .u23-tabelle th:nth-child(3), .u23-tabelle td:nth-child(3),
     .u23-tabelle th:nth-child(4), .u23-tabelle td:nth-child(4),
     .u23-tabelle th:nth-child(6), .u23-tabelle td:nth-child(6),
+    .u23-tabelle th:nth-child(7), .u23-tabelle td:nth-child(7),
+    .u23-tabelle th:nth-child(8), .u23-tabelle td:nth-child(8),
     .u19-kader th:nth-child(3), .u19-kader td:nth-child(3),
     .u19-kader th:nth-child(4), .u19-kader td:nth-child(4),
-    .u19-kader th:nth-child(6), .u19-kader td:nth-child(6) { display: none; }
+    .u19-kader th:nth-child(6), .u19-kader td:nth-child(6),
+    .u19-kader th:nth-child(7), .u19-kader td:nth-child(7),
+    .u19-kader th:nth-child(8), .u19-kader td:nth-child(8) { display: none; }
+    .einsatz-rolle, .einsatz-pos { max-width: 104px; font-size: 11.5px; }
     .u23-tabelle td, .u23-tabelle th, .u19-kader td, .u19-kader th { padding: 6px 5px; font-size: 12px; }
     .u23-tabelle .btn-sm, .u19-kader .btn-sm { padding: 5px 8px; font-size: 11px; }
     #pane-squad #squadReserve .table-container, #jugendligaKarte .table-container { overflow-x: auto; }

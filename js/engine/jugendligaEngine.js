@@ -68,9 +68,23 @@ const JugendligaEngine = {
         return talente.concat(junge);
     },
 
+    /**
+     * Die Elf der U19 nach dem Einsatzplan (ReserveEngine.elfNachPlan): wer
+     * wie oft spielt und wo. Ohne Plan die Besten, mit genau einem Torwart.
+     */
+    elf(state) {
+        const reserve = _jlResolve("ReserveEngine", "./reserveEngine.js");
+        const spieler = this.eigeneSpieler(state);
+        const saison = state.seasonYear || 1;
+        const j = state.jugendliga && state.jugendliga.saison === saison ? state.jugendliga : null;
+        if (!reserve || typeof reserve.elfNachPlan !== "function") return spieler.slice().sort((a, b) => (b.overall || 0) - (a.overall || 0)).slice(0, 11);
+        return reserve.elfNachPlan(spieler, "u19", saison, j ? j.eigene.length : 0);
+    },
+
     eigeneStaerke(state) {
         const club = (state.clubs || []).find(c => c.id === state.userClubId);
-        const spieler = this.eigeneSpieler(state).map(p => p.overall || 0).sort((a, b) => b - a).slice(0, 11);
+        const reserve = _jlResolve("ReserveEngine", "./reserveEngine.js");
+        const spieler = this.elf(state).map(p => (reserve && typeof reserve.einsatzStaerke === "function" ? reserve.einsatzStaerke(p) : (p.overall || 0)));
         const auffuellen = this.basis(club) - 4;
         while (spieler.length < 11) spieler.push(auffuellen);
         return spieler.reduce((s, x) => s + x, 0) / 11;
@@ -116,6 +130,8 @@ const JugendligaEngine = {
         const j = this.starte(state);
         if (!j || j.runde >= j.runden.length) return null;
         const eigenStaerke = this.eigeneStaerke(state);
+        // Wer heute spielt - dieselbe Elf trifft, bekommt Noten und Einsätze
+        const elf = this.elf(state);
         const staerke = (i) => (i === 0 ? eigenStaerke : j.teams[i].staerke);
         const ergebnisse = [];
         let eigenesSpiel = null;
@@ -133,7 +149,7 @@ const JugendligaEngine = {
             if (h === 0 || a === 0) {
                 const heim = h === 0;
                 const tore = heim ? th : ta, gegentore = heim ? ta : th;
-                const schuetzen = this._torschuetzen(state, tore);
+                const schuetzen = this._torschuetzen(state, tore, elf);
                 eigenesSpiel = { tore, gegentore, schuetzen };
                 j.eigene.push({ runde: j.runde + 1, gegner: j.teams[heim ? a : h].name, heim, tore, gegentore, schuetzen: schuetzen.map(s => s.name) });
                 schuetzen.forEach(s => {
@@ -143,7 +159,7 @@ const JugendligaEngine = {
             }
         });
         j.letzte = ergebnisse;
-        this._zaehleEinsaetze(state, j.saison, eigenesSpiel, j.runde + 1);
+        this._zaehleEinsaetze(state, j.saison, eigenesSpiel, j.runde + 1, elf);
         j.runde++;
         if (j.runde >= j.runden.length) this._saisonende(state);
         return ergebnisse;
@@ -162,11 +178,11 @@ const JugendligaEngine = {
      * seiner Entwicklung (DevelopmentPlanEngine.praxisFaktor) nicht voran.
      */
     U19_PRAXIS: 0.6,
-    _zaehleEinsaetze(state, saison, spiel = null, runde = 0) {
+    _zaehleEinsaetze(state, saison, spiel = null, runde = 0, aufgestellt = null) {
         const youth = _jlResolve("YouthEngine", "./youthEngine.js");
         if (!youth || typeof youth.eigeneTalente !== "function") return;
         const talente = new Set(youth.eigeneTalente(state).filter(t => t && !t.promoted));
-        const elf = this.eigeneSpieler(state).slice().sort((a, b) => (b.overall || 0) - (a.overall || 0)).slice(0, 11);
+        const elf = aufgestellt || this.elf(state);
         const reserve = _jlResolve("ReserveEngine", "./reserveEngine.js");
         const schnitt = elf.length ? elf.reduce((s, p) => s + (p.overall || 0), 0) / elf.length : 50;
         elf.forEach(p => {
@@ -175,6 +191,8 @@ const JugendligaEngine = {
                 const tore = spiel.schuetzen.filter(s => String(s.id) === String(p.id)).length;
                 reserve.bucheEinsatz(p, "u19", saison, reserve.note(p, tore, spiel.tore - spiel.gegentore, schnitt, `u19|${saison}|${runde}`), tore);
             }
+            // Auf einer fremden Position lernt er sie - wie in der U23
+            if (spiel && reserve && typeof reserve.lerneAufPosition === "function") reserve.lerneAufPosition(p, this.U19_PRAXIS);
             if (!talente.has(p)) {
                 p.spielpraxis = Math.round(((p.spielpraxis ?? 0.5) * 0.82 + this.U19_PRAXIS * 0.18) * 1000) / 1000;
                 return;
@@ -189,8 +207,9 @@ const JugendligaEngine = {
             .forEach(p => { p.spielpraxis = Math.round(((p.spielpraxis ?? 0.5) * 0.82) * 1000) / 1000; });
     },
 
-    _torschuetzen(state, anzahl) {
-        const spieler = this.eigeneSpieler(state);
+    _torschuetzen(state, anzahl, elf = null) {
+        // Treffen kann nur, wer auf dem Platz steht (vorher der ganze Kader der U19)
+        const spieler = elf && elf.length ? elf : this.eigeneSpieler(state);
         if (!spieler.length || !anzahl) return [];
         const vorne = { ST: 5, LA: 3, RA: 3, OM: 3, LM: 2, RM: 2, ZM: 1.5, DM: 0.7, LV: 0.5, RV: 0.5, IV: 0.5, TW: 0 };
         const gewicht = spieler.map(p => (vorne[p.pos] ?? 1) * Math.max(1, (p.overall || 40) - 35));

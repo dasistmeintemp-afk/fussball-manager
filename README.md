@@ -1352,6 +1352,19 @@ Eine komplette Welt mit über 4300 Spielern belegt als gewöhnliches JSON knapp 
 - **Trainerprofil (`TrainerProfilEngine`):** Fünf Werte von 1 bis 20 (Taktik, Motivation, Menschenführung, Jugendarbeit, Spielerbewertung), die wirklich wirken – auf Vertrautheit, Ansprachen, Einzelgespräche, Talententwicklung und Scoutberichte. Dazu B-, A- und Pro-Lizenz: Ab der Regionalliga verlangt der Verband die A-Lizenz, in den Bundesligen die Pro-Lizenz. Lehrgänge kosten Geld und Zeit. Am Saisonende wächst, was gefordert war.
 - **Zweite Mannschaft (U23, `ReserveEngine`):** Talente, die bei den Profis nicht spielen, schickt man in die U23. Sie spielt an jedem Spieltag ein Spiel ihrer eigenen U23-Liga und bringt Spielpraxis (etwas weniger als bei den Profis), Spielschärfe und eine eigene Bilanz. Höchstens drei Spieler über 23, im Profikader bleiben mindestens 16. Die KI-Vereine geben ihren Talenten ohne Einsatz ebenfalls etwas Praxis.
 - **Zugriff auf U23 und U19 (`ReserveEngine`, `YouthEngine.hochziehen`):** Beide Kader stehen mit ihrer Bilanz da, und wer gebraucht wird, ist mit einem Tipp bei den Profis.
+- **Einsatzplan für U23 und U19 (`ReserveEngine.EINSATZ`, `elfNachPlan`, `setzeEinsatz`):** Bisher stellten beide Mannschaften immer die elf Stärksten auf, ohne Rücksicht auf Positionen. Wer schwächer war, spielte nie und kam ohne Spielpraxis kaum voran. Ein häufiger Wunsch an das Vorbild war, selbst festzulegen, wer im Unterbau wie oft und wo spielt.
+  - **Rolle je Spieler** (Spalte *Einsatz* in beiden Kaderlisten):
+    - *Stammspieler* spielen immer, wenn sie fit sind.
+    - *Rotation* spielt, sobald einer höchstens halb so viele Spiele hat wie die Mannschaft, also etwa jedes zweite.
+    - *Automatisch* spielt, wer zu den Besten gehört; ohne Plan bleibt es dabei.
+    - *Bei Bedarf* spielt nur, wenn sonst die Elf nicht voll wird.
+    - *Schonen* heißt, er spielt gar nicht.
+  - **Im Tor steht genau einer.** Vorher konnten zwei Torhüter in der Elf stehen oder keiner.
+  - **Position** (Spalte *Spielt als*): Auf einer fremden Position lernt er sie mit jedem Spiel, wie bei den Profis: 0,05 je Spiel mal dem Praxisanteil, in der U23 0,7, in der U19 0,6, dazu seine Anpassungsfähigkeit. Die Mannschaft ist dort etwas schwächer, gerechnet wie im Livespiel. Die Auswahl zeigt, wie weit er eine Position schon kann (✓ oder Prozent).
+  - **Anzeige:** Wer im nächsten Spiel aufläuft, trägt in der Liste ein grünes *Elf*.
+  - **U19:** Stärke, Noten, Einsätze und Torschützen hängen jetzt an derselben Elf. Vorher konnte ein Spieler treffen, der gar nicht auf dem Platz stand.
+  - **Gemessen:** Ein Stürmer als Innenverteidiger in der U23 hat nach zehn Spielen 22 % der neuen Position gelernt, die U23 war dabei 1,4 Punkte schwächer (76,7 statt 78,1). Der Stammspieler spielte zehnmal, der Geschonte nie.
+  - **Test** *Einsatzplan für U23 und U19*: Reihenfolge an erfundenen Spielern (Stamm immer, Rotation 10101010, Bedarf nur bei Personalnot, Schonen nie, ein Torwart), fremde Position im Spielstand, ungültige Rolle und Torwartposition, U19-Torschützen nur aus der Elf.
   - **Bilanz je Spieler:** In U23 und U19 bekommt jeder in der Elf eine Note: Tore, Ergebnis, Stärke gegenüber der Elf und etwas Tagesform. Gezählt werden Spiele, Tore, Schnitt und Form (die letzten drei). Wer in drei Spielen eine Form ab 7,2 hat, ist mit ⭐ markiert.
   - **Kader-Reiter, Block „Unterbau“:** die U23 mit Bilanz und Knopf *Zu den Profis*, darunter die U19-Kandidaten, die alt genug sind, mit *Hochziehen*.
   - **Reiter Jugend:** der ganze Kader der U19 mit Talenten und jungen Profis, nach Form sortiert.

@@ -5740,7 +5740,9 @@ function runEngineTests() {
         const neg = NegotiationEngine.startTransferNegotiation(state, ziel.id, "muc").negotiation;
         const tag = () => { state.currentDayIndex = (state.currentDayIndex || 0) + 1; NegotiationEngine.processDay(state); };
         const vorher = state.inbox.length;
-        const r = NegotiationEngine.submitOffer(state, neg.id, { fee: Math.round(neg.demand.fee * 0.6) });
+        // Drei Viertel der Forderung: zu wenig zum Annehmen, aber über der
+        // Schwelle, ab der die Gegenseite sofort aussteigt (NegotiationEngine.rejectWalkAway)
+        const r = NegotiationEngine.submitOffer(state, neg.id, { fee: Math.round(neg.demand.fee * 0.75) });
         if (!r.success) throw new Error(r.error);
         const bestaetigung = state.inbox[0];
         if (!/^Angebot abgegeben/.test(bestaetigung.subject) || bestaetigung.priority !== "low" || !/Antwort erwarten wir/.test(bestaetigung.body)) throw new Error(`Keine Bestätigung: ${bestaetigung.subject}`);
@@ -11937,6 +11939,9 @@ function runEngineTests() {
         club.balance = Math.round(forderung * 0.8);
         if (!/nicht gedeckt/.test(NegotiationEngine.submitOffer(state, n.id, { fee: forderung, zahlweise: "raten24" }).error || "")) throw new Error("Raten ohne Deckung auf dem Konto");
         club.balance = forderung * 3;
+        // Der Verkäufer besteht auf seiner Forderung - sonst reichte ihm schon
+        // weniger (verdeckter Mindestpreis), und der Abschlag für Raten fiele nicht auf
+        if (n.reservation) n.reservation.fee = forderung;
         if (!NegotiationEngine.submitOffer(state, n.id, { fee: forderung, zahlweise: "raten24" }).success) throw new Error("Raten-Angebot abgewiesen");
         const e1 = NegotiationEngine.evaluateOffer(state, n);
         if (e1.kind !== "counter") throw new Error(`Raten zum Nennwert der Forderung: ${e1.kind}`);
@@ -14715,8 +14720,12 @@ function runEngineTests() {
         // Geprüft wird der Ablauf, nicht die Frist: Drei Runden mit einem
         // langsamen Berater brauchen bis zu 18 Tage (je nach Zufall vorher abgelaufen)
         n.deadlineDay += 30;
-        // Zu wenig Gehalt: Gegenforderung, er bleibt beim Stammverein
-        NegotiationEngine.submitOffer(state, n.id, { lohnAnteil: n.demand.lohnAnteil - 0.1, gebuehr: n.demand.gebuehr, rolle: n.demand.rolle });
+        // Zu wenig Gehalt: Gegenforderung, er bleibt beim Stammverein. Der
+        // Stammverein besteht auf seiner Forderung (sonst reichte ihm schon
+        // weniger, der verdeckte Mindestanteil), geboten werden gut 80 % davon:
+        // zu wenig zum Annehmen, genug, damit er nicht gleich aussteigt
+        if (n.reservation) Object.assign(n.reservation, { lohnAnteil: n.demand.lohnAnteil, gebuehr: n.demand.gebuehr });
+        NegotiationEngine.submitOffer(state, n.id, { lohnAnteil: Math.floor(n.demand.lohnAnteil * 0.85 * 20) / 20, gebuehr: n.demand.gebuehr, rolle: n.demand.rolle });
         antwort();
         if (n.status !== "awaiting_us" || spieler.clubId === club.id) throw new Error("Kein Gegenvorschlag: " + n.status);
         if (!(n.demand.lohnAnteil <= e.lohnAnteil)) throw new Error("Der Stammverein bewegt sich nicht");

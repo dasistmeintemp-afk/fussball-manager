@@ -16,7 +16,7 @@
  * Day antworten alle noch am selben Tag; schließt das Fenster, platzt, was
  * dafür ein offenes Fenster braucht.
  *
- * [FM26] Verbesserungen gegenüber der Vorversion:
+ * Verbesserungen gegenüber der Vorversion:
  *  1. Reservationspreis + Walk-Away pro Verhandlung (Gegenseite ertastet,
  *     nicht gegen die öffentliche Forderung gerechnet).
  *  2. Persönliche Agenda des Beraters (Ausstiegsklausel, Stammplatz,
@@ -59,7 +59,7 @@ const NEGOTIATION_STATUS = {
     WITHDRAWN: "withdrawn"
 };
 
-// [FM26] Gewichte für die Bewertung persönlicher Konditionen. Wird mit dem
+// Gewichte für die Bewertung persönlicher Konditionen. Wird mit dem
 // Agenda-Bonus kombiniert, nicht mehr hart im Code verrechnet.
 const TERMS_GEWICHTE = {
     wage: 0.75,
@@ -87,7 +87,7 @@ class NegotiationEngine {
     static AGENT_LAST_NAMES = ["Brandt", "Vogel", "Sartori", "Lindqvist", "Marchetti", "Okoye", "Novak", "Haller", "Reinders", "Baptista", "Yilmaz", "Kovac", "Sommer", "Delgado"];
 
     /**
-     * [FM26] Deterministischer Zufall, wo möglich. Der Rest der Codebasis nutzt
+     * Deterministischer Zufall, wo möglich. Der Rest der Codebasis nutzt
      * Math.random() - wo wir im Verhandlungsfluss sind, greifen wir auf
      * state.rng zurück, wenn vorhanden. Sonst bleibt es beim globalen RNG.
      */
@@ -161,7 +161,7 @@ class NegotiationEngine {
             greed: profile.greed,
             patience: profile.patience,
             speed: profile.speed,
-            // [FM26] Narben aus früheren Verhandlungen - werden weiter unten
+            // Narben aus früheren Verhandlungen - werden weiter unten
             // in Forderung und Geduld eingerechnet. Neue Berater starten bei 0.
             vergiftet: 0
         };
@@ -175,7 +175,7 @@ class NegotiationEngine {
     }
 
     /**
-     * [FM26] Wählt eine persönliche Agenda des Beraters. Bestimmt, was er
+     * Wählt eine persönliche Agenda des Beraters. Bestimmt, was er
      * auf jeden Fall durchsetzen will - unabhängig vom Geld. Wird beim
      * Erzeugen der Verhandlung auf negotiation.agenda gesetzt.
      */
@@ -200,7 +200,7 @@ class NegotiationEngine {
         return null; // manche Berater sind einfach nur am Geld interessiert
     }
 
-    /** [FM26] Erfüllt das Angebot die Agenda? Wird in evaluateOffer genutzt. */
+    /** Erfüllt das Angebot die Agenda? Wird in evaluateOffer genutzt. */
     static agendaErfuellt(negotiation, offer) {
         const agenda = negotiation.agenda;
         if (!agenda) return false;
@@ -215,7 +215,7 @@ class NegotiationEngine {
     }
 
     /**
-     * [FM26] Reservationspreis: der versteckte Wert, unter dem die Gegenseite
+     * Reservationspreis: der versteckte Wert, unter dem die Gegenseite
      * nicht verkauft. Wird beim Start der Verhandlung einmal gewürfelt und
      * bleibt - so lernt der Spieler, den Wert zu ertasten.
      */
@@ -230,7 +230,7 @@ class NegotiationEngine {
         return profile.speed + Math.floor(Math.random() * 2);
     }
 
-    /** [FM26] Frist: hängt vom Beraterprofil ab, nicht mehr fest 14/10/14 */
+    /** Frist: hängt vom Beraterprofil ab, nicht mehr fest 14/10/14 */
     static fristFuer(agent, basis = 14) {
         const profile = this.profileOf(agent);
         return Math.max(6, basis - (profile.speed - 2) * 2);
@@ -283,7 +283,7 @@ class NegotiationEngine {
         if (offen && negotiation.stage === NEGOTIATION_STAGES.TERMS && negotiation.type !== "fremdtalent") vergleich("Gehalt", o.wage, d.wage, " pro Woche");
         if (negotiation.agreed?.fee > 0 && negotiation.stage !== NEGOTIATION_STAGES.FEE) zeilen.push(`Ablöse vereinbart: ${this.formatMoney(negotiation.agreed.fee)}`);
         if (offen && typeof negotiation.patience === "number") zeilen.push(`Geduld der Gegenseite: ${negotiation.patience} %`);
-        // [FM26] Gewarnt: die Gegenseite hat mit Abbruch gedroht
+        // Gewarnt: die Gegenseite hat mit Abbruch gedroht
         if (negotiation.gewarnt && offen) zeilen.push("Die Gegenseite hat mit Abbruch gedroht.");
         if (offen && typeof negotiation.deadlineDay === "number") {
             const rest = negotiation.deadlineDay - this.today(state);
@@ -330,12 +330,12 @@ class NegotiationEngine {
             : Math.round((player.value || 1000000) * 1.15));
 
         const agent = this.getAgentFor(player);
-        // [FM26] Narben aus früheren Verhandlungen: höhere Forderung, weniger Geduld
+        // Narben aus früheren Verhandlungen: höhere Forderung, weniger Geduld
         const narbe = agent.vergiftet || 0;
         const wageDemand = this.runde((player.wage || 10000) * 1.18 * agent.greed * (1 + 0.06 * narbe));
         const ohneAbloese = vorvertrag || !sellerClub;
 
-        // [FM26] Reservationspreis + Walk-Away-Schwelle. Beim Ablöse-Fall
+        // Reservationspreis + Walk-Away-Schwelle. Beim Ablöse-Fall
         // orientiert sich die Reserve am askingPrice, bei vereinslosen
         // Spielern gibt es keine Reserve.
         const reservation = {
@@ -346,7 +346,7 @@ class NegotiationEngine {
             walkAway: 0.70 + this.rnd(state) * 0.06 // zwischen 70 und 76 %
         };
 
-        // [FM26] Agenda des Beraters
+        // Agenda des Beraters
         const agenda = this.waehleAgenda(state, player, agent, "transfer");
 
         const negotiation = {
@@ -369,7 +369,7 @@ class NegotiationEngine {
             replyDay: null,
             round: 0,
             patience: this.geduldMitRuf(state, agent.patience) - 10 * narbe,
-            // [FM26] Neue Felder
+            // Neue Felder
             reservation,
             agenda,
             gewarnt: false,
@@ -536,7 +536,7 @@ class NegotiationEngine {
         const wunsch = loan.rolleBei(state, player, club) || "Talent";
         const rolle = this.ROLLEN.indexOf(wunsch) > this.ROLLEN.indexOf(eintrag.rolle) ? wunsch : eintrag.rolle;
 
-        // [FM26] Reserve: der Stammverein geht beim Lohnanteil und bei der
+        // Reserve: der Stammverein geht beim Lohnanteil und bei der
         // Gebühr jeweils bis zu einem gewissen Punkt herunter.
         const reservation = {
             lohnAnteil: Math.max(0.3, eintrag.lohnAnteil - 0.15 - this.rnd(state) * 0.10),
@@ -753,7 +753,7 @@ class NegotiationEngine {
             return { success: false, error: "Das Transferfenster ist geschlossen. Der Wechsel kommt nicht mehr zustande." };
         }
 
-        // [FM26] Eine Agenda, die eine Stammplatzgarantie verlangt, wird
+        // Eine Agenda, die eine Stammplatzgarantie verlangt, wird
         // schon hier abgeprüft - sonst wartet der Spieler nur auf das Nein.
         if (negotiation.agenda?.type === "stammplatz" && negotiation.stage === NEGOTIATION_STAGES.TERMS
             && offer.rolle && offer.rolle !== "Stammspieler" && !offer.stammplatz) {
@@ -848,7 +848,7 @@ class NegotiationEngine {
             : this.replyDelay({ profile: negotiation.agentProfile }));
 
         if (this.brauchtFenster(negotiation) && this.istDeadlineDay(state)) {
-            // [FM26] Deadline Day: Die Gegenseite weiß, dass wir unter Druck stehen
+            // Deadline Day: Die Gegenseite weiß, dass wir unter Druck stehen
             negotiation.zeitdruck = (negotiation.zeitdruck || 0) + 1;
             const schritte = this.antworteSofort(state, negotiation);
             const letzter = (negotiation.log || [])[negotiation.log.length - 1];
@@ -889,7 +889,7 @@ class NegotiationEngine {
             if (negotiation.status !== NEGOTIATION_STATUS.WAITING_REPLY &&
                 negotiation.status !== NEGOTIATION_STATUS.AWAITING_US) return;
 
-            // [FM26] Zeitdruck-Effekt: Am Deadline Day verliert die Gegenseite
+            // Zeitdruck-Effekt: Am Deadline Day verliert die Gegenseite
             // nicht mehr Geduld (sie weiß, dass wir es sind, die zittern),
             // aber die Forderung steigt leicht.
             if (deadline && this.brauchtFenster(negotiation)) {
@@ -913,7 +913,7 @@ class NegotiationEngine {
                 return;
             }
             if (negotiation.replyDay === null || heute < negotiation.replyDay) return;
-            // [FM26] Verspätete Antworten kosten die Gegenseite Geduld
+            // Verspätete Antworten kosten die Gegenseite Geduld
             const verspaetung = heute - negotiation.replyDay;
             if (verspaetung > 0) {
                 negotiation.patience = Math.max(0, negotiation.patience - verspaetung * 4);
@@ -952,7 +952,7 @@ class NegotiationEngine {
         const ablöseWert = offer.zahlweise && fin && typeof fin.ratenWert === "function"
             ? fin.ratenWert(offer.fee || 0, offer.zahlweise, verkaeufer) : (offer.fee || 0);
 
-        // [FM26] Bewertung gegen Reservationspreis, nicht gegen Forderung
+        // Bewertung gegen Reservationspreis, nicht gegen Forderung
         const reserv = negotiation.reservation || { fee: gefordert, wage: gefordert, walkAway: 0.7 };
         const ziel = istAblöse ? reserv.fee : reserv.wage;
         const geboten = istAblöse
@@ -961,12 +961,12 @@ class NegotiationEngine {
 
         const quote = ziel > 0 ? geboten / ziel : 1;
 
-        // [FM26] Walk-Away: zu weit weg - kein "nur ein bisschen zu niedrig"
+        // Walk-Away: zu weit weg - kein "nur ein bisschen zu niedrig"
         if (quote < reserv.walkAway) {
             return this.rejectWalkAway(state, negotiation, istAblöse, quote);
         }
 
-        // [FM26] Zeitdruck schlägt auf die Bewertung durch
+        // Zeitdruck schlägt auf die Bewertung durch
         const druck = negotiation.zeitdruck ? Math.min(0.10, negotiation.zeitdruck * 0.03) : 0;
 
         let bewertung = quote * (1 - druck);
@@ -980,12 +980,12 @@ class NegotiationEngine {
             const honorarQuote = (negotiation.demand.agentFee || 0) > 0
                 ? (offer.agentFee ?? negotiation.demand.agentFee) / negotiation.demand.agentFee
                 : 1;
-            // [FM26] Gewichte kommen jetzt aus einer Konstante
+            // Gewichte kommen jetzt aus einer Konstante
             bewertung = bewertung * TERMS_GEWICHTE.wage
                 + Math.min(1.2, bonusQuote) * TERMS_GEWICHTE.bonus
                 + Math.min(1.2, honorarQuote) * TERMS_GEWICHTE.agentFee;
 
-            // [FM26] Agenda-Bonus
+            // Agenda-Bonus
             if (negotiation.agenda && this.agendaErfuellt(negotiation, offer)) {
                 bewertung += negotiation.agenda.prio === "hart" ? 0.10 : 0.04;
             } else if (negotiation.agenda && negotiation.agenda.prio === "hart" && !this.agendaErfuellt(negotiation, offer)) {
@@ -1004,7 +1004,7 @@ class NegotiationEngine {
         negotiation.patience = Math.max(0, negotiation.patience - verlust);
 
         if (negotiation.patience <= 0 || bewertung < 0.6) {
-            // [FM26] Erst warnen, dann abbrechen
+            // Erst warnen, dann abbrechen
             if (!negotiation.gewarnt) {
                 negotiation.gewarnt = true;
                 negotiation.patience = 25;
@@ -1020,10 +1020,11 @@ class NegotiationEngine {
         return this.counterOffer(state, negotiation, istAblöse, geboten);
     }
 
-    /** [FM26] Walk-Away: Die Gegenseite steigt sofort aus. */
+    /** Walk-Away: Die Gegenseite steigt sofort aus - ihre Geduld ist damit am Ende. */
     static rejectWalkAway(state, negotiation, istAblöse, quote) {
         const heute = this.today(state);
         negotiation.status = NEGOTIATION_STATUS.REJECTED;
+        negotiation.patience = 0;
         negotiation.closedDay = heute;
         this.merkeBeziehungsschaden(state, negotiation);
         const text = istAblöse
@@ -1034,7 +1035,7 @@ class NegotiationEngine {
         return { negotiation, kind: "rejected" };
     }
 
-    /** [FM26] Endgültiger Abbruch nach Warnung. */
+    /** Endgültiger Abbruch nach Warnung. */
     static rejectFinal(state, negotiation, istAblöse) {
         const heute = this.today(state);
         negotiation.status = NEGOTIATION_STATUS.REJECTED;
@@ -1048,7 +1049,7 @@ class NegotiationEngine {
         return { negotiation, kind: "rejected" };
     }
 
-    /** [FM26] Beziehungsschaden: Der Berater merkt sich das. */
+    /** Beziehungsschaden: Der Berater merkt sich das. */
     static merkeBeziehungsschaden(state, negotiation) {
         const player = state.players?.find(p => String(p.id) === String(negotiation.playerId));
         const agent = player?.agent;
@@ -1115,7 +1116,7 @@ class NegotiationEngine {
     }
 
     /**
-     * [FM26] Gegenvorschlag als Paket. Die Gegenseite bewegt sich in
+     * Gegenvorschlag als Paket. Die Gegenseite bewegt sich in
      * mehreren Dimensionen gleichzeitig: Gehalt/Lohn sinkt, Bonus bleibt
      * stabil, Laufzeit wird verlängert, Agenda wird eingefordert. Bei
      * Stillstand geht kaum noch etwas.
@@ -1197,7 +1198,7 @@ class NegotiationEngine {
         const reserv = negotiation.reservation || { lohnAnteil: 0.3, gebuehr: 0, walkAway: 0.7 };
 
         const gebuehrSoll = (d.gebuehr || 0) * (o.dauer === "winter" ? 0.5 : 1);
-        // [FM26] Bewertung gegen Reserve, nicht gegen Forderung
+        // Bewertung gegen Reserve, nicht gegen Forderung
         const anteilQuote = reserv.lohnAnteil > 0 ? (o.lohnAnteil || 0) / reserv.lohnAnteil : 1;
         const gebuehrQuote = reserv.gebuehr > 0 ? (o.gebuehr || 0) / reserv.gebuehr : (gebuehrSoll > 0 ? 1 : 1);
         const stufen = this.ROLLEN.indexOf(o.rolle) - this.ROLLEN.indexOf(d.rolle);
@@ -1208,7 +1209,7 @@ class NegotiationEngine {
 
         if (bewertung >= 0.97 && stufen >= 0) return this.schliesseLeihe(state, negotiation);
 
-        // [FM26] Walk-Away
+        // Walk-Away
         if (bewertung < reserv.walkAway) {
             negotiation.status = NEGOTIATION_STATUS.REJECTED;
             negotiation.closedDay = heute;
@@ -1221,7 +1222,7 @@ class NegotiationEngine {
             return { negotiation, kind: "rejected" };
         }
 
-        // [FM26] Erst warnen
+        // Erst warnen
         if (bewertung < 0.6 && !negotiation.gewarnt) {
             negotiation.gewarnt = true;
             negotiation.patience = 25;
@@ -1298,7 +1299,7 @@ class NegotiationEngine {
         }
         const noetig = youth.fremdHandgeldFuer(state, club, t, !!o.perspektive);
         negotiation.patience = Math.max(0, negotiation.patience - 25 - negotiation.round * 5);
-        // [FM26] Erst warnen
+        // Erst warnen
         if (negotiation.patience <= 0 && !negotiation.gewarnt) {
             negotiation.gewarnt = true;
             negotiation.patience = 20;
@@ -1351,7 +1352,7 @@ class NegotiationEngine {
     }
 
     /**
-     * [FM26] Medizincheck: Risiko hängt nicht nur von injuryProneness ab,
+     * Medizincheck: Risiko hängt nicht nur von injuryProneness ab,
      * sondern auch von Alter und Vorgeschichte. Ein 34-Jähriger mit
      * Kreuzbandriss-Historie fällt häufiger durch als ein 21-Jähriger.
      */

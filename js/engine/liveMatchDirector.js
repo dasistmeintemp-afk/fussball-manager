@@ -172,6 +172,31 @@ const POSITIONS_RADIUS = {
 const ANTRITT = 6.5;
 const BREMSKRAFT = 11;
 
+/**
+ * Puste: Wer lange sprintet, wird langsamer und muss erst durchschnaufen.
+ *
+ * Bisher sank die Kraft eines Spielers nur, und zwar gleichmäßig über die
+ * neunzig Minuten - wer zehn Sekunden am Stück gesprintet war, lief danach
+ * so schnell wie vorher. Jetzt verbraucht ein Sprint die Puste (je
+ * Laufsekunde, bei einer Ausdauer von 75), im Trab, im Stand und vor allem
+ * bei ruhendem Ball kommt sie zurück. Ganz leer läuft er noch mit
+ * PUSTE.boden seines Tempos.
+ */
+const PUSTE = { sprint: 0.07, erholung: 0.05, boden: 0.82, ruhenderBall: 1.6, ab: 1.25, voll: 1.75, trab: 1.05 };
+
+/** Welcher Anteil der verlorenen Kraft in der Halbzeitpause zurückkommt */
+const HALBZEIT_ERHOLUNG = 0.35;
+
+/**
+ * Eins gegen eins: Der Verteidiger stellt sich zwischen Ball und Tor, hält
+ * Abstand und geht rückwärts mit, bis der Zweikampf fällt. Wie lange das
+ * dauert (Spielzeit in Sekunden, von - bis), hängt an seiner Geduld. Gestellt
+ * wird nur, wer höchstens STELLEN.weit entfernt und torseitig steht. Mit
+ * anderthalb Sekunden und ohne diese Bedingung kamen gemessen drei Schüsse
+ * je Partie weniger zustande - die Abwehr hatte zu viel Zeit.
+ */
+const STELLEN = { abstand: 2.6, dauer: [0.35, 1.1], weit: 9, nah: 1.4 };
+
 /** Wie lange ein Spieler bei seinem gewaehlten Laufweg bleibt (Sekunden) */
 const LAUFWEG_DAUER = { angriff: [1.6, 4.2], abwehr: [2.2, 5.0] };
 
@@ -517,6 +542,8 @@ class LiveMatchDirector {
         this.ambientInterval = 1.1;
         // Laufweg eines Spielers, der den Ball mitnimmt
         this.carryTarget = null;
+        // Eins gegen eins: wer wen stellt, bis der Zweikampf fällt (stelleDuell)
+        this._duell = null;
         // Vorgemerkte Spielfortsetzung, sobald der Ball im Aus liegt
         this._offenerStandard = null;
         // Ballannahme: solange sie laeuft, bleibt der Ball beim Spieler
@@ -594,6 +621,13 @@ class LiveMatchDirector {
             p.seed = (idx * 1.7) % (Math.PI * 2);
             p.group = this.getGroup(p.pos);
             p.baseSpeed = (LINE_BASE_SPEED[p.group] || 11) * (0.86 + ((p.pace || 70) / 100) * 0.32);
+            // Antritt und Wendigkeit je Spieler: Wer schnell und explosiv ist,
+            // ist früher auf Tempo; wer beweglich ist und die Balance hält,
+            // bremst und wendet enger. Vorher traten alle gleich an.
+            const fein = p.fein || {};
+            p.antrittF = Math.max(0.82, Math.min(1.2, 1 + ((p.pace || 70) - 70) * 0.004 + (fein.acceleration || 0) * 0.015));
+            p.wendigF = Math.max(0.85, Math.min(1.18, 1 + (fein.agility || 0) * 0.02 + (fein.balance || 0) * 0.008));
+            if (typeof p.puste !== "number") p.puste = 1;
             p.urgency = 1;
             // Frische: sinkt über die 90 Minuten und bremst den Spieler
             if (typeof p.freshness !== "number") p.freshness = 1;
@@ -764,6 +798,7 @@ class LiveMatchDirector {
         if (this.kickoffPartnerId === playerId) this.kickoffPartnerId = null;
         if (this._routeHolder === playerId) this._routeHolder = null;
         if (this.carryTarget && this.carryTarget.id === playerId) this.carryTarget = null;
+        if (this._duell && (this._duell.angreiferId === playerId || this._duell.verteidigerId === playerId)) this._duell = null;
         if (match.sceneRoles instanceof Map) match.sceneRoles.delete(playerId);
         if (Array.isArray(this.setPieceWall)) {
             this.setPieceWall = this.setPieceWall.filter(id => id !== playerId);
@@ -1239,6 +1274,10 @@ class LiveMatchDirector {
         const players = this.match.players2D || [];
 
         players.forEach(p => {
+            // In der Kabine kommt ein Teil der Kraft zurück, die Puste ganz
+            if (typeof p.freshness === "number") p.freshness = Math.min(1, p.freshness + (1 - p.freshness) * HALBZEIT_ERHOLUNG);
+            p.puste = 1;
+            p.pusteF = 1;
             p.baseX = 100 - p.baseX;
             p.baseY = 100 - p.baseY;
             p.x = 100 - p.x;
@@ -1722,6 +1761,7 @@ class LiveMatchDirector {
 
         this.mode = "highlight";
         this.carryTarget = null;
+        this._duell = null;
         this._annahmeTimer = 0;
         this.scene = { events, index: 0, phase: null };
         this.beginEventPhase("approach");
@@ -2724,8 +2764,9 @@ class LiveMatchDirector {
     setCarrier(player) {
         if (!player) return;
 
-        // Ein Lauf mit dem Ball endet, sobald ihn jemand anders hat
+        // Ein Lauf mit dem Ball endet, sobald ihn jemand anders hat - ebenso ein Eins gegen eins
         if (this.carryTarget && this.carryTarget.id !== player.id) this.carryTarget = null;
+        if (this._duell && this._duell.angreiferId !== player.id) this._duell = null;
 
         this._passAbsicht = null;
         this._amBallSeit = 0;
@@ -2832,6 +2873,10 @@ class LiveMatchDirector {
             const landung = this._fmBeiLandung;
             this._fmBeiLandung = null;
             landung();
+            return;
+        }
+        if (this._duell) {
+            this.fuehreDuell(dt);
             return;
         }
         if (this._annahmeTimer > 0) {
@@ -3254,6 +3299,8 @@ class LiveMatchDirector {
      * seinem Fuss, und beide bewegen sich zusammen.
      */
     handleDribbleAction(action, duration) {
+        // Eins gegen eins: erst stellen, dann der Zweikampf
+        if (this.stelleDuell(action, duration)) return;
         const carrier = action.from;
         if (this.fm && this.match.fmStats && action.defender && !action.frei) {
             const f = this.match.fmStats;
@@ -3297,6 +3344,66 @@ class LiveMatchDirector {
             this.setCarrier(defender);
         }
         this.narrateFlow(action);
+    }
+
+    /**
+     * Eins gegen eins wie auf dem Platz: Der Verteidiger stellt sich zwischen
+     * Ball und Tor, hält Abstand und geht rückwärts mit, der Angreifer geht
+     * mit dem Ball auf ihn zu. Erst nach einem Moment - bei einem geduldigen
+     * Verteidiger länger, bei einem ungestümen kürzer - fällt der Zweikampf.
+     * Vorher war er im selben Bild entschieden, in dem der Angreifer losging.
+     * Den Ausgang hat die Spiel-Engine schon gewürfelt; in der Zwischenzeit
+     * laufen die Mitspieler zurück.
+     */
+    stelleDuell(action, duration) {
+        if (!this.fm || action.frei || action.abdrehen || action._gestellt || !action.defender || !action.from) return false;
+        const a = action.from, d = action.defender;
+        const abstand = Math.hypot(a.x - d.x, a.y - d.y);
+        if (abstand < STELLEN.nah || abstand > STELLEN.weit) return false;
+        // Stellen kann nur, wer zwischen Angreifer und Tor steht
+        if ((d.x - a.x) * this.attackDir(a.team) < 0.5) return false;
+        const [kurz, lang] = STELLEN.dauer;
+        this._duell = {
+            angreiferId: a.id, verteidigerId: d.id, duration,
+            action: { ...action, _gestellt: true },
+            rest: this.bildschirmZeit(kurz + (lang - kurz) * this.stellGeduld(d))
+        };
+        this.flowStats.gestellt = (this.flowStats.gestellt || 0) + 1;
+        return true;
+    }
+
+    /** Wie geduldig ein Verteidiger stellt (0 bis 1): Entscheidungen und Ruhe halten ihn, Aggressivität treibt ihn hinein */
+    stellGeduld(d) {
+        const entscheiden = typeof d.decisions === "number" ? d.decisions : 65;
+        const ruhe = (this.flow && typeof this.flow.kopf20 === "function" ? this.flow.kopf20(d, "composure") : null) ?? 12;
+        const biss = d.fein?.aggression || 0;
+        return Math.max(0, Math.min(1, (entscheiden - 45) / 45 * 0.6 + (ruhe - 6) / 14 * 0.4 - biss * 0.03));
+    }
+
+    /** Die Laufziele im Eins gegen eins: der Angreifer treibt den Ball weiter, der Verteidiger stellt zwischen Ball und Tor */
+    duellZiel(p) {
+        const du = this._duell;
+        if (!du || (p.id !== du.angreiferId && p.id !== du.verteidigerId)) return null;
+        const a = this.getPlayer2D(du.angreiferId), d = this.getPlayer2D(du.verteidigerId);
+        if (!a || !d) return null;
+        if (p.id === du.angreiferId) {
+            const ziel = du.action.to || d;
+            return { x: ziel.x, y: ziel.y, urgency: 0.95 };
+        }
+        const dx = this.ownGoalX(d.team) - a.x, dy = 50 - a.y;
+        const l = Math.hypot(dx, dy) || 1;
+        return { x: a.x + dx / l * STELLEN.abstand, y: a.y + dy / l * STELLEN.abstand, urgency: 1.25 };
+    }
+
+    /** Läuft ein Eins gegen eins, fällt es, sobald die Zeit um ist - bis dahin geht am Ball nichts anderes */
+    fuehreDuell(dt) {
+        const du = this._duell;
+        const a = this.getPlayer2D(du.angreiferId), d = this.getPlayer2D(du.verteidigerId);
+        if (!a || !d || this.carrierId !== a.id) { this._duell = null; return; }
+        du.rest -= dt;
+        if (du.rest > 0) return;
+        this._duell = null;
+        this.handleDribbleAction(du.action, du.duration);
     }
 
     /** Die Pause, in der ein Spieler den Ball annimmt und sich umschaut */
@@ -3728,6 +3835,7 @@ class LiveMatchDirector {
         this.match.ball.holderId = null;
         this.carrierId = null;
         this.carryTarget = null;
+        this._duell = null;
 
         this._fmBeiLandung = () => {
             this._ballJaeger = null;
@@ -4320,6 +4428,7 @@ class LiveMatchDirector {
 
     startDeadBall(kind, team, x, y, opts = {}) {
         this.carryTarget = null;
+        this._duell = null;
         this._offenerStandard = null;
         this._annahmeTimer = 0;
         if (kind === "kickoff") {
@@ -5336,7 +5445,10 @@ class LiveMatchDirector {
             // sich zum Ball - im Fussball schaut niemand ins Leere.
             let blick = null;
             let drehen = 9;
-            if (speed > 0.9 * tempo) {
+            const stellt = this._duell && p.id === this._duell.verteidigerId ? this.getPlayer2D(this._duell.angreiferId) : null;
+            if (stellt) {
+                blick = Math.atan2(stellt.y - p.y, stellt.x - p.x);
+            } else if (speed > 0.9 * tempo) {
                 blick = Math.atan2(p.vy, p.vx);
             } else if (Math.hypot(ball.x - p.x, ball.y - p.y) > 1) {
                 blick = Math.atan2(ball.y - p.y, ball.x - p.x);
@@ -5725,10 +5837,15 @@ class LiveMatchDirector {
         if (typeof p.lvx !== "number") { p.lvx = 0; p.lvy = 0; }
 
         const u = target.urgency || 1;
-        const vmax = Math.min(p.baseSpeed * u * (0.62 + (p.freshness ?? 1) * 0.38), SPRINT_DECKE);
-        // Wer es eilig hat, tritt auch haerter an
-        const antritt = ANTRITT * Math.max(0.8, Math.min(2.4, u));
-        const bremsen = BREMSKRAFT * Math.max(1, Math.min(2.2, u));
+        // Puste: im Sprint verbraucht, im Trab zurück (PUSTE, atme)
+        const puste = typeof p.pusteF === "number" ? p.pusteF : 1;
+        // Mit dem Ball am Fuß ist niemand ganz so schnell - wer gut dribbelt, fast
+        const amBall = p.id === this.carrierId && !this.match.ball?.inFlight
+            ? 0.88 + Math.min(1, (p.dribbling || 65) / 100) * 0.1 : 1;
+        const vmax = Math.min(p.baseSpeed * u * (0.62 + (p.freshness ?? 1) * 0.38) * puste * amBall, SPRINT_DECKE);
+        // Wer es eilig hat, tritt auch haerter an - wer explosiv ist, ohnehin
+        const antritt = ANTRITT * (p.antrittF || 1) * Math.max(0.8, Math.min(2.4, u));
+        const bremsen = BREMSKRAFT * (p.wendigF || 1) * Math.max(1, Math.min(2.2, u));
         const nachziehen = 3.2 * Math.max(1, u);
 
         const schritte = Math.max(1, Math.ceil(lauf * 45));
@@ -5763,6 +5880,29 @@ class LiveMatchDirector {
             p.x += p.lvx * h;
             p.y += p.lvy * h;
         }
+        this.atme(p, lauf);
+    }
+
+    /**
+     * Puste: Wer sprintet, verbraucht sie, wer trabt oder steht, holt sie
+     * zurück - bei ruhendem Ball schneller. Gemessen wird am tatsächlichen
+     * Tempo im Verhältnis zum eigenen Grundtempo: Ab PUSTE.ab geht Puste
+     * verloren, voll ab PUSTE.voll; unter PUSTE.trab kommt sie zurück. Wer
+     * mehr Ausdauer hat, hält länger durch und erholt sich schneller.
+     */
+    atme(p, lauf) {
+        if (!(lauf > 0)) return;
+        const ausdauer = Math.max(0.3, Math.min(1, (typeof p.stamina === "number" ? p.stamina : 75) / 100));
+        const v = typeof p.puste === "number" ? p.puste : 1;
+        const tempo = Math.hypot(p.lvx || 0, p.lvy || 0) / Math.max(0.5, p.baseSpeed || 2.7);
+        if (tempo > PUSTE.ab) {
+            const anteil = Math.min(1, (tempo - PUSTE.ab) / (PUSTE.voll - PUSTE.ab));
+            p.puste = Math.max(0, v - PUSTE.sprint * anteil * (1.6 - ausdauer * 0.8) * lauf);
+        } else if (tempo < PUSTE.trab) {
+            p.puste = Math.min(1, v + PUSTE.erholung * (0.5 + ausdauer * 0.67) * (this.deadBall ? PUSTE.ruhenderBall : 1) * lauf);
+        }
+        // Was davon im Tempo ankommt - auch für die Ballphysik (BallPhysik.hoechstTempo)
+        p.pusteF = PUSTE.boden + (1 - PUSTE.boden) * p.puste;
     }
 
     /**
@@ -5980,6 +6120,10 @@ class LiveMatchDirector {
 
         const sceneRole = match.sceneRoles?.get(p.id);
         if (sceneRole) return sceneRole;
+
+        // Eins gegen eins: auf den Mann zu und stellen
+        const duell = this._duell ? this.duellZiel(p) : null;
+        if (duell) return duell;
 
         // Wer mit dem Ball laeuft, laeuft dorthin, wohin er ihn mitnimmt
         if (this.carryTarget && p.id === this.carryTarget.id) {
@@ -7158,8 +7302,13 @@ class LiveMatchDirector {
         // jedem Zuspiel hin und her, und die Spieler ruckelten.
         const ZWEIKAMPF_DIST = 1.8;
         const ev = this.mode === "highlight" ? this.currentEvent() : null;
-        const foulender = ev && FOUL_ARTEN.includes(ev.type) ? ev.playerId : null;
-        const opfer = foulender !== null && foulender !== undefined ? this.carrierId : null;
+        let foulender = ev && FOUL_ARTEN.includes(ev.type) ? ev.playerId : null;
+        let opfer = foulender !== null && foulender !== undefined ? this.carrierId : null;
+        // Im Eins gegen eins steht der Verteidiger ebenso am Mann
+        if (this._duell && (foulender === null || foulender === undefined)) {
+            foulender = this._duell.verteidigerId;
+            opfer = this._duell.angreiferId;
+        }
         // Gleich stark bei jeder Bildrate und Abspielstufe. Die Staerke ist
         // die, mit der das Laufmodell auf "Langsam" bei sechzig Bildern
         // abgestimmt wurde: je Bild ein Fuenftel des Rueckstands - staerker

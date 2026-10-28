@@ -455,7 +455,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 ${isProspect ? "" : zeile("Spielzeit", `${Math.round(happy.playingTime ?? 75)} %`, this._pfBalken(happy.playingTime ?? 75))}
                 ${isProspect ? "" : zeile("Vertrag", `${Math.round(happy.contract ?? 75)} %`, this._pfBalken(happy.contract ?? 75))}
                 ${zeile("Moral", `${Math.round(player.morale ?? 75)} %`, this._pfBalken(player.morale ?? 75))}
-                ${happy.reason ? `<p class="pf-klein">„${esc(happy.reason)}“</p>` : ""}`));
+                ${happy.reason ? `<p class="pf-klein">„${esc(happy.reason)}“</p>` : ""}
+                ${this.pfKlartext(player)}`));
         } else {
             const pct = Math.max(0, Math.min(100, Math.round(confidence)));
             kacheln.push(kachel("Scoutwissen", "i-search", `
@@ -589,5 +590,18 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     <div class="pf-zahlen pf-zahlen-viele">${je90.map(([l, w]) => `<div><strong>${esc(w)}</strong><span>${esc(l)}</span></div>`).join("")}</div>
                 </div>` : ""}
             </div>`;
+    },
+
+    /** Was Moral und Zufriedenheit bewirken - aufklappbar, mit den Zahlen des Spiels */
+    pfKlartext(player) {
+        const pt = typeof PlayerTalkEngine !== "undefined" ? PlayerTalkEngine : null;
+        if (!pt || typeof pt.klartext !== "function") return "";
+        const k = pt.klartext(player);
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        return `<details class="pf-klartext"><summary>Was das heißt</summary>
+            <p>${esc(k.moralText)}</p>
+            <p>${esc(k.leistungText)}</p>
+            <ul>${k.schwellen.map(s => `<li class="${s.aktiv ? "aktiv" : ""}">${esc(s.text)}</li>`).join("")}</ul>
+        </details>`;
     }
 });

@@ -868,11 +868,17 @@ class UIManager {
                 <p class="press-question">„${esc(f.question)}“</p>
                 <div class="press-answers">
                     ${f.answers.map(a => `
-                        <button class="press-answer" data-answer="${esc(a.key)}">${esc(a.label)}</button>
+                        <button class="press-answer" data-answer="${esc(a.key)}"><span class="press-answer-text">${esc(a.label)}</span>${typeof engine.pressVorschau === "function" ? this.pressVorschauHtml(engine.pressVorschau(state, f, a, pk.context || {})) : ""}</button>
                     `).join("")}
                 </div>
+                ${index === 0 && typeof engine.coTrainerZurPresse === "function" ? `<div class="press-cotrainer"><button type="button" class="btn btn-sm btn-secondary" id="btnPressCoTrainer">Co-Trainer schicken</button><span class="text-muted">Er beantwortet die Fragen, ohne dass etwas hängen bleibt - keine Wirkung auf Fans, Medien, Vorstand oder Kabine.</span></div>` : ""}
                 <div id="pressResult"></div>
             `;
+            document.getElementById("btnPressCoTrainer")?.addEventListener("click", () => {
+                const res = engine.coTrainerZurPresse(state, pk.context || {});
+                this.showToast(res.response, "info", 6000);
+                beenden();
+            });
 
             body.querySelectorAll(".press-answer").forEach(btn => {
                 btn.addEventListener("click", () => {
@@ -882,6 +888,7 @@ class UIManager {
 
                     const folgen = [];
                     if (res.affectedPlayer) folgen.push(`${esc(res.affectedPlayer.name)}: ${res.affectedPlayer.delta > 0 ? "+" : ""}${res.affectedPlayer.delta} Moral`);
+                    if (res.reaktionen && res.reaktionen.length) folgen.push(`Persönlich: ${res.reaktionen.map(r => `${esc(r.name)} ${r.delta > 0 ? "+" : ""}${r.delta} (${esc(r.warum)})`).join(", ")}`);
                     if (res.gegnerMotiviert) folgen.push(`🔥 ${esc(res.gegnerMotiviert.name)} fühlt sich herausgefordert (Moral +${res.gegnerMotiviert.delta})`);
                     if (res.versprechen) folgen.push(`🤝 Versprochen: ${res.versprechen.art === "sieg" ? "ein Sieg" : "keine Niederlage"} gegen ${esc(res.versprechen.gegnerName)} - nach dem Spiel wird abgerechnet`);
                     if (res.schlagzeile) folgen.push(`📰 Morgen in der Zeitung: „${esc(res.schlagzeile)}“`);
@@ -930,6 +937,29 @@ class UIManager {
 
         zeigeFrage();
         modal.style.display = "flex";
+    }
+
+    /**
+     * Was eine Antwort bewirkt, bevor man sie gibt (ManagerEngine.pressVorschau):
+     * Ton, Fans, Medien, Vorstand, Kabine - und wer im Kader persönlich
+     * reagiert, mit Grund im Tooltip
+     */
+    pressVorschauHtml(v) {
+        if (!v) return "";
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const plus = (w) => `${w > 0 ? "+" : ""}${w}`;
+        const chip = (label, wert, umgekehrt = false) => wert
+            ? `<span class="pv-chip ${(umgekehrt ? wert < 0 : wert > 0) ? "gut" : "schlecht"}">${label} ${plus(wert)}</span>` : "";
+        const kurz = (liste) => liste.slice(0, 3).map(r => String(r.name).split(" ").slice(-1)[0]).join(", ") + (liste.length > 3 ? ` +${liste.length - 3}` : "");
+        const mag = v.reaktionen.filter(r => r.delta > 0), stoert = v.reaktionen.filter(r => r.delta < 0);
+        const tonName = (typeof ManagerEngine !== "undefined" && ManagerEngine.TON_NAMEN?.[v.ton]) || v.ton;
+        return `<span class="press-vorschau">
+                <span class="pv-ton">${esc(tonName)}</span>
+                ${chip("Fans", v.effekte.fanMood)}${chip("Medien", v.effekte.mediaPressure, true)}${chip("Vorstand", v.effekte.boardConfidence)}${chip("Kabine", v.effekte.squadMorale)}
+                ${v.betroffen ? `<span class="pv-chip ${v.betroffen.delta > 0 ? "gut" : "schlecht"}">${esc(v.betroffen.name)} ${plus(v.betroffen.delta)}</span>` : ""}
+                ${v.gegner ? `<span class="pv-chip schlecht">Gegner ${plus(v.gegner)}</span>` : ""}
+                ${v.versprechen ? `<span class="pv-chip">Versprechen</span>` : ""}
+            </span>${mag.length || stoert.length ? `<span class="press-reaktion" title="${esc(v.reaktionen.map(r => `${r.name}: ${plus(r.delta)} Moral (${r.warum})`).join("\n"))}">${mag.length ? `Gefällt: ${esc(kurz(mag))}` : ""}${mag.length && stoert.length ? " · " : ""}${stoert.length ? `Stört: ${esc(kurz(stoert))}` : ""}</span>` : ""}`;
     }
 
     /**

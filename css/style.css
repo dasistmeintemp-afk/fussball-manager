@@ -4631,6 +4631,15 @@ body {
 .press-fortschritt { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 .press-answer.gewaehlt { border-color: #38bdf8; opacity: 1; }
 .press-bilanz { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 12px; }
+/* Klartext vor der Antwort: Ton, Folgen, persönliche Reaktionen */
+.press-answer-text { display: block; }
+.press-vorschau { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 7px; }
+.pv-ton { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); margin-right: 2px; }
+.pv-chip { font-size: 11px; line-height: 18px; padding: 0 7px; border-radius: 9px; background: rgba(255, 255, 255, 0.06); color: #cbd5e1; white-space: nowrap; }
+.pv-chip.gut { color: var(--ok, #34d399); background: rgba(52, 211, 153, 0.1); }
+.pv-chip.schlecht { color: #f87171; background: rgba(248, 113, 113, 0.1); }
+.press-reaktion { display: block; margin-top: 5px; font-size: 11.5px; color: var(--text-muted); }
+.press-cotrainer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 12px; font-size: 12px; }
 
 /* Schreibtisch: Was heute ansteht */
 .attention-card { grid-column: span 4; min-width: 0; }
@@ -9570,3 +9579,10 @@ table.sortierbar th.sortiert-ab::after { content: " ▾"; }
 .trainplan-feld select { font-size: 12.5px; padding: 3px 6px; background: var(--bg-input); color: var(--text-main); border: 1px solid var(--border-color); border-radius: var(--radius-sm); }
 .trainplan-check small { opacity: 0.8; }
 .trainplan-stand { margin-top: 8px; font-size: 12px; font-weight: 600; color: var(--accent-gold, #f59e0b); }
+
+/* Profil: was Moral und Zufriedenheit bewirken */
+.pf-klartext { margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+.pf-klartext summary { cursor: pointer; color: var(--text-main); font-weight: 600; }
+.pf-klartext p { margin: 6px 0 0; line-height: 1.45; }
+.pf-klartext ul { margin: 4px 0 0; padding-left: 18px; line-height: 1.45; }
+.pf-klartext li.aktiv { color: #f87171; font-weight: 600; }

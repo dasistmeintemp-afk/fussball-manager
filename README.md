@@ -575,6 +575,29 @@ Manche Antworten haben **Folgen**: Eine Kampfansage vor dem Derby liest auch der
 
 **Nach dem Abpfiff** bietet der Spielbericht eine kurze Pressekonferenz an: ein, zwei Fragen zum Ergebnis, zum besten Mann auf dem Platz, zu einer Roten Karte – oder zu dem, was vorher versprochen wurde.
 
+**Klartext vor der Antwort (`ManagerEngine.pressVorschau`, `antwortTon`, `PRESSE_REAKTION`, `coTrainerZurPresse`):** In der Kritik am Vorbild hieß es oft, Pressekonferenzen sollten entweder bedeutungslos sein oder beim Antworten klar zeigen, was jeder Spieler davon hält.
+- **Ton:** Jede Antwort zeigt vorher, wie sie klingt (mutig, kritisch, schützend, zurückhaltend, sachlich), dazu ihre Wirkung auf Fans, Medien, Vorstand und Kabine samt Blatt, wen sie namentlich trifft, ob der Gegner sie liest und ob sie ein Versprechen ist. Bisher sah man das erst nach der Antwort.
+- **Reaktion nach Persönlichkeit**, zusätzlich zur Wirkung auf die ganze Kabine:
+  - Ehrgeizige (ab 15) mögen mutige Ansagen (+2) und vermissen sie bei zurückhaltenden (−1).
+  - Nervöse vor großen Spielen (bis 8) fürchten Ansagen (−2) und mögen Rückendeckung (+2).
+  - Profis (ab 15) nehmen Kritik als Ansporn (+1), Hitzköpfe (ab 15) sind beleidigt (−2).
+  - Die Vorschau nennt, wem es gefällt und wen es stört, die Gründe stehen im Tooltip. Nach der Antwort tritt genau das ein.
+- **Co-Trainer schicken:** Er beantwortet die Fragen, ohne dass etwas hängen bleibt, also keine Wirkung auf Fans, Medien, Vorstand oder Kabine. Für alle, die die Konferenz bedeutungslos haben wollen.
+- **Moral und Zufriedenheit in Zahlen (`PlayerTalkEngine.klartext`):** Unter der Zufriedenheit im Profil steht aufklappbar *Was das heißt*.
+  - Moral: im Spiel −2 % bis +1 % auf alle Werte, bei 75 % neutral, mit der genauen Zahl des Spielers.
+  - Die Zufriedenheit wirkt nicht direkt auf die Leistung, aber über drei Schwellen. Die erreichten sind markiert:
+    - unter 58: er kann um ein Gespräch bitten;
+    - unter 45: jeder Tag zählt als Unmut, nach 21 Tagen will er wechseln, mit der bisherigen Zahl;
+    - unter 30: er verlängert nicht.
+  - Die Schwellen stehen jetzt als Konstanten in der Engine, die Anzeige liest sie dort.
+- **Test** *Pressekonferenz mit Klartext*:
+  - Ton aus den Folgen
+  - Vorschau und Wirkung stimmen überein, je Spieler
+  - Kritik bei Profi und Hitzkopf
+  - der Co-Trainer ändert nichts
+  - Moral 50 kostet 1 %
+  - Schwellen bei Zufriedenheit 40
+
 ### 3b-2. 📋 Taktikbesprechung vor dem Spiel (`MatchplanEngine`)
 Die Taktik im Taktik-Reiter ist die Grundordnung. Vor dem Anpfiff stellt der Trainer seine Elf aber auf **diesen** Gegner ein: Vor jedem Livespiel (und über den Knopf **Taktikbesprechung** auf dem Dashboard auch fürs Sofort-Ergebnis) zeigt die Besprechung die Analyse auf einen Blick – voraussichtliche Formation, Stärken, Schwächen, Schwachstelle, Schlüsselspieler – und bietet sieben Punkte an, von denen **höchstens zwei** gelten:
 

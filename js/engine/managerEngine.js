@@ -1006,6 +1006,95 @@ class ManagerEngine {
         };
     }
 
+    // ------------------------------------------------------------ Klartext
+
+    /**
+     * Wie eine Antwort klingt - gelesen aus ihren Folgen. Ein häufiger Wunsch
+     * an das Vorbild: beim Antworten zu sehen, was jeder Spieler davon hält.
+     * Dafür braucht jede Antwort einen Ton, und an ihm hängt, wer persönlich
+     * reagiert (PRESSE_REAKTION).
+     */
+    static antwortTon(answer) {
+        if (!answer) return "neutral";
+        if ((answer.morale || 0) < 0) return "kritisch";
+        if (answer.versprechen || answer.gegnerMoral || (answer.mediaPressure || 0) >= 5) return "mutig";
+        if ((answer.morale || 0) >= 4) return "schuetzend";
+        if ((answer.mediaPressure || 0) <= -4) return "zurueckhaltend";
+        return "neutral";
+    }
+
+    static TON_NAMEN = { mutig: "mutig", kritisch: "kritisch", schuetzend: "schützend", zurueckhaltend: "zurückhaltend", neutral: "sachlich" };
+
+    /**
+     * Wer auf welchen Ton persönlich reagiert, nach Persönlichkeit (versteckte
+     * Werte 1-20): Ehrgeizige mögen Ansagen und vermissen sie, Nervöse fürchten
+     * sie und brauchen Rückendeckung, Profis nehmen Kritik als Ansporn,
+     * Hitzköpfe sind beleidigt. Zusätzlich zur Wirkung auf die ganze Kabine.
+     */
+    static PRESSE_REAKTION = {
+        mutig: [{ wert: "ambition", ab: 15, delta: 2, warum: "ehrgeizig" }, { wert: "importantMatches", bis: 8, delta: -2, warum: "nervös vor großen Spielen" }],
+        kritisch: [{ wert: "professionalism", ab: 15, delta: 1, warum: "Profi, nimmt Kritik als Ansporn" }, { wert: "temperament", ab: 15, delta: -2, warum: "Hitzkopf" }],
+        schuetzend: [{ wert: "importantMatches", bis: 8, delta: 2, warum: "nervös, braucht Rückendeckung" }],
+        zurueckhaltend: [{ wert: "ambition", ab: 15, delta: -1, warum: "ehrgeizig, will eine Ansage" }],
+        neutral: []
+    };
+
+    /** Die persönlichen Reaktionen im Kader: [{ id, name, delta, warum }] */
+    static pressReaktionen(state, answer, squad = null) {
+        const regeln = this.PRESSE_REAKTION[this.antwortTon(answer)] || [];
+        if (!regeln.length) return [];
+        const kader = squad || this.squadOf(state, this.clubOf(state));
+        const liste = [];
+        kader.forEach(p => {
+            const h = p.hiddenAttributes || {};
+            const r = regeln.find(x => {
+                const w = h[x.wert] ?? 12;
+                return (x.ab !== undefined && w >= x.ab) || (x.bis !== undefined && w <= x.bis);
+            });
+            if (r) liste.push({ id: p.id, name: p.name, delta: r.delta, warum: r.warum });
+        });
+        return liste.sort((a, b) => b.delta - a.delta);
+    }
+
+    /**
+     * Was eine Antwort bewirkt, bevor sie gegeben wird: Fans, Medien, Vorstand,
+     * Kabine (mit dem Blatt, das fragt), dazu wer persönlich reagiert, wen sie
+     * namentlich trifft und ob der Gegner sie liest.
+     */
+    static pressVorschau(state, frage, antwort, ctx = {}) {
+        const faktor = this.PRESSE_MEDIEN[frage?.medium?.typ]?.faktor || { fanMood: 1, mediaPressure: 1, board: 1 };
+        const topic = frage ? [...this.PRESS_TOPICS, ...this.NACH_SPIEL_TOPICS].find(t => t.id === frage.topicId) : null;
+        // Die Konferenz reicht Antworten nur mit Text weiter - die Wirkung steht im Thema
+        const answer = topic?.answers.find(a => a.key === antwort?.key) || antwort || {};
+        const zielId = ctx[topic?.ziel || "playerId"];
+        const kader = this.squadOf(state, this.clubOf(state));
+        const betroffen = answer.targetMorale && zielId !== null && zielId !== undefined ? kader.find(p => String(p.id) === String(zielId)) : null;
+        return {
+            ton: this.antwortTon(answer),
+            effekte: {
+                fanMood: Math.round((answer.fanMood || 0) * faktor.fanMood),
+                mediaPressure: Math.round((answer.mediaPressure || 0) * faktor.mediaPressure),
+                boardConfidence: Math.round((answer.board || 0) * faktor.board),
+                squadMorale: answer.morale || 0
+            },
+            reaktionen: this.pressReaktionen(state, answer, kader),
+            betroffen: betroffen ? { name: betroffen.name, delta: answer.targetMorale } : null,
+            gegner: answer.gegnerMoral ? answer.gegnerMoral : 0,
+            versprechen: answer.versprechen || null
+        };
+    }
+
+    /**
+     * Den Co-Trainer schicken: Er beantwortet die Fragen, ohne dass etwas
+     * hängen bleibt - keine Wirkung auf Fans, Medien, Vorstand oder Kabine.
+     * Für den, der die Konferenz bedeutungslos haben will.
+     */
+    static coTrainerZurPresse(state, kontext = {}) {
+        if (kontext.nachSpiel) state.nachSpielPresse = kontext.spielSchluessel;
+        state.lastPressConference = { topicId: null, answerKey: "cotrainer", matchday: state.currentMatchday, tag: state.currentDayIndex || 0, response: "Der Co-Trainer war bei der Presse.", antworten: [] };
+        return { success: true, response: "Der Co-Trainer stellt sich den Fragen - sachlich, ohne Schlagzeile. Fans, Medien, Vorstand und Kabine bleiben, wie sie sind." };
+    }
+
     /**
      * Wertet die gegebene Antwort aus.
      *
@@ -1044,6 +1133,12 @@ class ManagerEngine {
 
         squad.forEach(p => {
             p.morale = Math.max(25, Math.min(100, (p.morale || 70) + effekte.squadMorale));
+        });
+        // Wer nach seiner Persönlichkeit auf den Ton reagiert (wie in der Vorschau)
+        const reaktionen = this.pressReaktionen(state, answer, squad);
+        reaktionen.forEach(r => {
+            const p = squad.find(x => x.id === r.id);
+            if (p) p.morale = Math.max(25, Math.min(100, (p.morale || 70) + r.delta));
         });
 
         // Wer namentlich genannt wurde, reagiert besonders
@@ -1111,6 +1206,8 @@ class ManagerEngine {
             response: text(answer.response),
             effects: effekte,
             affectedPlayer: betroffen ? { id: betroffen.id, name: betroffen.name, delta: answer.targetMorale } : null,
+            reaktionen,
+            ton: this.antwortTon(answer),
             gegnerMotiviert,
             versprechen,
             schlagzeile

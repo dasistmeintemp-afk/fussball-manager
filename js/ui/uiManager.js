@@ -291,6 +291,9 @@ class UIManager {
         const u = document.getElementById("ladeUnter");
         if (t) t.textContent = text || "Einen Moment …";
         if (u) u.textContent = unter || "";
+        // Den Balken zeigt nur der Lauf über mehrere Tage (zeigeTagesfortschritt)
+        const balken = document.getElementById("ladeBalken");
+        if (balken) balken.hidden = true;
         overlay.hidden = false;
     }
 
@@ -2558,6 +2561,8 @@ class UIManager {
      * Kalender, damit es nur eine Zeitrechnung gibt.
      */
     handleWeiter() {
+        // Ein Lauf über mehrere Tage ist noch unterwegs
+        if (this._tageLaufen) return;
         // Was bis hierher stehen blieb, gilt nach dem Weiterspielen nicht mehr
         if (typeof this.raeumeMeldungenAuf === "function") this.raeumeMeldungenAuf();
         // Ohne Verein läuft die Zeit nicht weiter - erst die Entscheidung
@@ -2587,6 +2592,7 @@ class UIManager {
      * Anpfiff jeden Trainingstag selbst sehen will.
      */
     handleEinTag() {
+        if (this._tageLaufen) return;
         if (typeof this.raeumeMeldungenAuf === "function") this.raeumeMeldungenAuf();
         if (this.pruefeEntlassung()) return;
         if (this.pruefePflichtpostenVorStart(() => this.handleEinTag())) return;
@@ -2811,7 +2817,7 @@ class UIManager {
     laufeBisTermin(maxTage, optionen = {}) {
         const state = this.app.state;
         const cal = this.getCalendarEngine();
-        if (!cal) return;
+        if (!cal || this._tageLaufen) return;
         if (this.saisonwechselHeute(cal, state)) {
             return this.mitLadeanzeige("Die neue Saison wird vorbereitet …", () => this._laufeBisTermin(cal, state, maxTage, optionen),
                 "Verträge, Aufsteiger, Spielplan und Vorbereitung");
@@ -2825,11 +2831,105 @@ class UIManager {
         return !!(heute && heute.saisonwechsel);
     }
 
+    /**
+     * Der Lauf über mehrere Tage. Im Browser gibt er nach jedem Tag die
+     * Oberfläche frei und zeigt, wie weit er ist; das eigene Spiel rechnet,
+     * wo es geht, ein Web Worker (SpielWerk). Vorher waren 21 Tage Urlaub
+     * ein einziger Block von fast zwölf Sekunden ohne jede Rückmeldung.
+     * Ohne Browser (Tests) läuft alles am Stück wie bisher.
+     */
     _laufeBisTermin(cal, state, maxTage, optionen) {
+        return this.treibeTage(this._tageSchritte(cal, state, maxTage, optionen), optionen);
+    }
+
+    /**
+     * Treibt einen Lauf voran: Ein Promise im Lauf (das Spiel im Worker) wird
+     * abgewartet, nach jedem Tag kommt ein Bildaufbau.
+     */
+    treibeTage(lauf, optionen = {}) {
+        const browser = typeof window !== "undefined" && typeof window.setTimeout === "function"
+            && typeof document !== "undefined" && typeof document.getElementById === "function"
+            && !!document.getElementById("ladeOverlay");
+        if (!browser) {
+            let s = lauf.next();
+            // Ohne Browser gibt es keinen Worker - ein Promise heißt dann: selbst rechnen
+            while (!s.done) s = lauf.next(s.value && typeof s.value.then === "function" ? false : undefined);
+            return s.value;
+        }
+        this._tageLaufen = true;
+        const start = Date.now();
+        const raf = typeof window.requestAnimationFrame === "function" ? window.requestAnimationFrame.bind(window) : null;
+        const bild = (weiter) => {
+            if (raf && !document.hidden) raf(() => setTimeout(weiter, 0));
+            else setTimeout(weiter, 0);
+        };
+        return new Promise((resolve, reject) => {
+            const ende = (fertig) => {
+                this._tageLaufen = false;
+                this._fortschrittAus();
+                fertig();
+            };
+            let letztesBild = start;
+            const weiter = (wert) => {
+                for (;;) {
+                    let s;
+                    try {
+                        s = lauf.next(wert);
+                    } catch (e) {
+                        return ende(() => reject(e));
+                    }
+                    wert = undefined;
+                    if (s.done) return ende(() => resolve(s.value));
+                    const v = s.value;
+                    if (v && typeof v.then === "function") {
+                        v.then(weiter, () => weiter(false));
+                        return;
+                    }
+                    // Im Urlaub gleich, sonst erst, wenn der Sprung spürbar dauert
+                    if (v && v.stand && (optionen.urlaub || v.stand.spiel || Date.now() - start > 300)) this.zeigeTagesfortschritt(v.stand, optionen);
+                    // Ein Bildaufbau höchstens alle 50 ms - kurze Tage laufen dazwischen am Stück
+                    if (Date.now() - letztesBild >= 50 || (v && v.stand && v.stand.spiel)) {
+                        bild(() => { letztesBild = Date.now(); weiter(); });
+                        return;
+                    }
+                }
+            };
+            weiter();
+        });
+    }
+
+    /** Wie weit der Lauf ist: Tag, Datum, Balken - in der Ladeanzeige */
+    zeigeTagesfortschritt(stand, optionen = {}) {
+        // Steht schon eine andere Ladeanzeige (Saisonwechsel), bleibt sie
+        if (this._ladeAnzeigeLaeuft && !this._fortschrittGezeigt) return;
+        const tag = Math.min(stand.von, stand.gelaufen + (stand.spiel ? 1 : 0));
+        const titel = optionen.urlaub ? `Urlaub · Tag ${tag} von ${stand.von}` : `Weiter · Tag ${tag} von ${stand.von}`;
+        const datum = stand.datum ? this.portalTagText?.(stand.datum) || stand.datum : "";
+        const unter = stand.spiel ? `${stand.spiel} wird gespielt` : (optionen.urlaub ? `${datum} · Der Co-Trainer übernimmt` : datum);
+        this.zeigeLadeanzeige(titel, unter);
+        const balken = document.getElementById("ladeBalken");
+        if (balken) {
+            balken.hidden = false;
+            const fuellung = balken.firstElementChild;
+            if (fuellung) fuellung.style.width = `${Math.round(100 * stand.gelaufen / Math.max(1, stand.von))}%`;
+        }
+        this._fortschrittGezeigt = true;
+    }
+
+    _fortschrittAus() {
+        if (!this._fortschrittGezeigt) return;
+        this._fortschrittGezeigt = false;
+        if (!this._ladeAnzeigeLaeuft) this.versteckeLadeanzeige();
+    }
+
+    *_tageSchritte(cal, state, maxTage, optionen) {
         // Im Urlaub übernimmt der Co-Trainer die Termine - angehalten wird nur am Ziel
         const urlaub = !!optionen.urlaub;
         const urlaubEngine = urlaub && typeof UrlaubEngine !== "undefined" ? UrlaubEngine : null;
         const vorher = urlaubEngine ? urlaubEngine.stand(state) : null;
+        // Das eigene Spiel im Hintergrund - nur im Browser und mit ladbaren Skripten
+        const werk = typeof SpielWerk !== "undefined" && SpielWerk && typeof SpielWerk.verfuegbar === "function"
+            && SpielWerk.verfuegbar() ? SpielWerk : null;
 
         let gelaufen = 0;
         let angehalten = null;
@@ -2846,17 +2946,29 @@ class UIManager {
             if (!urlaub && gelaufen > 0 && (heute.type === "cup" || heute.type === "euro")
                 && this.eigenePokalpartie(heute)) break;
 
+            // Das eigene Spiel des Tages rechnet, wo es geht, der Worker. Der
+            // Kalender findet es danach gespielt vor und macht weiter wie immer.
+            const vorab = werk ? werk.vorab(state, heute) : null;
+            if (vorab) {
+                yield { stand: { gelaufen, von: maxTage, datum: heute.date, spiel: vorab.titel || "Das Spiel" } };
+                yield vorab;
+            }
+
             const bekannt = new Set((state.inbox || []).map(m => String(m.id)));
             const res = cal.advanceOneDay(state);
             if (!res || !res.success) break;
             gelaufen++;
 
             if (res.matchResult && res.matchResult.seasonEnded) {
+                this._fortschrittAus();
                 if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
                 this.showSeasonEndCelebration(res.matchResult);
                 return;
             }
-            if (res.type === "season_change") return this.zeigeSaisonwechsel(res);
+            if (res.type === "season_change") {
+                this._fortschrittAus();
+                return this.zeigeSaisonwechsel(res);
+            }
             (res.summary?.messages || []).forEach(m => berichte.push(m));
 
             // Eine Entlassung beendet den Vorlauf sofort
@@ -2868,7 +2980,9 @@ class UIManager {
                 ? cal.unterbrechung(state, res, bekannt) : null;
             angehalten = anlass ? anlass.text : null;
             if (angehalten) break;
+            if (gelaufen < maxTage) yield { stand: { gelaufen, von: maxTage, datum: cal.getCurrentDay(state)?.date } };
         }
+        this._fortschrittAus();
         const urlaubsBilanz = urlaubEngine ? urlaubEngine.bilanz(vorher, urlaubEngine.stand(state), gelaufen) : null;
 
         const heuteNeu = cal.getCurrentDay(state);
@@ -2932,11 +3046,11 @@ class UIManager {
 
     handleCalendarAdvanceDay() {
         const state = this.app.state;
-        const calendarEngine = (typeof CalendarEngine !== 'undefined' && CalendarEngine) 
-            ? CalendarEngine 
+        const calendarEngine = (typeof CalendarEngine !== 'undefined' && CalendarEngine)
+            ? CalendarEngine
             : ((typeof window !== 'undefined' && window.CalendarEngine) ? window.CalendarEngine : null);
 
-        if (!calendarEngine) return;
+        if (!calendarEngine || this._tageLaufen) return;
         if (this.saisonwechselHeute(calendarEngine, state)) {
             return this.mitLadeanzeige("Die neue Saison wird vorbereitet …", () => this._handleCalendarAdvanceDay(calendarEngine, state),
                 "Verträge, Aufsteiger, Spielplan und Vorbereitung");

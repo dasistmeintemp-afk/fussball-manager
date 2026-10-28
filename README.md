@@ -1066,6 +1066,35 @@ Die Begrüßung und die Post zum Saisonstart nennen Ziel und Gründe, das Dashbo
   - Der Co-Trainer übernimmt: Er stellt auf, Spiele und Pokalabende werden ohne Livespiel gerechnet, Pressetermine nimmt er wahr.
   - Zum Saisonende, beim Saisonwechsel und bei einer Entlassung ist der Urlaub vorbei. Auf Wunsch hält er auch bei Wichtigem an, mit denselben Gründen wie der Weiter-Knopf (dazu jetzt auch Post zum Jobmarkt).
   - Danach steht die Bilanz im Tagesbericht: Tage, Ligaspiele mit Siegen, Remis und Niederlagen, Tabellenplatz vorher und nachher.
+- **Das eigene Spiel im Hintergrund (Web Worker, `SpielWerk`):** Seit Stufe 3 rechnet jedes eigene Spiel das 2D-Modell, auch ohne Bild, und so lange stand die Oberfläche still. 21 Tage Urlaub waren gemessen ein einziger Block von 6,9 bis 8,2 Sekunden ohne Rückmeldung.
+  - **Der Worker** rechnet das Spiel in einem eigenen Faden, mit demselben Code.
+    - Hin geht ein Paket: das Spiel, beide Vereine, ihre Spieler und die Uhr fürs Einspielen.
+    - Zurück kommt dasselbe nach dem Abpfiff. Es wird in die Objekte des Spielstands übernommen, die Objekte selbst bleiben dieselben.
+    - Erst danach schließt der Kalender den Tag ab. Er findet die Partie gespielt vor, und alles Weitere läuft wie bisher: Tabelle, Finanzen, Kabine, Spielbericht, am Pokalabend Elfmeterschießen, Prämien und Chronik.
+    - So laufen das Ligaspiel (auch der erste Spieltag, an dem die Vorbereitung endet), die eigene Partie am Pokal- und Europapokalabend und das Testspiel der Vorbereitung.
+    - Supercups, Relegation und Länderspieltage rechnet weiter die Seite, weil dort erst am Abend feststeht, wer spielt, oder sich der Kader am Morgen noch ändert.
+  - **Laden:** Vom Server lädt der Worker die Engine-Skripte (ohne Oberfläche) über ihre Adressen.
+    - In der Einzeldatei trägt jedes eingebettete Skript seine Herkunft (`data-quelle`), und der Worker bekommt die Engine als ein einziges Skript.
+    - Eine per `file://` geöffnete Seite darf ihm keine Adressen zum Nachladen geben. Liegen dort die Skripte als einzelne Dateien daneben, rechnet die Seite selbst.
+  - **Fehler:** Geht im Worker etwas schief oder dauert ein Spiel länger als 30 Sekunden, rechnet für den Rest der Sitzung wieder die Seite. Nach 90 Sekunden Ruhe gibt der Worker seinen Speicher frei.
+  - **Die Tagesschleife** (Urlaub und Weiter über mehrere Tage) gibt die Oberfläche zwischen den Tagen frei, höchstens alle 50 ms für einen Bildaufbau.
+    - Die Ladeanzeige zeigt Tag, Datum und einen Balken, am Spieltag auch die Paarung, die gerade gespielt wird.
+    - Solange der Lauf unterwegs ist, startet kein zweiter (Weiter, Ein Tag).
+    - Ohne Browser, also in den Tests, läuft alles am Stück wie bisher.
+  - **Gleiches Spiel:** Mit festem Zufall rechnet der Worker dasselbe Spiel wie der Hauptfaden, in jedem Wert von Spiel, Vereinen und Spielern. Geprüft ist das unter Node (Test) und im Browser, vom Server und aus der Einzeldatei.
+  - **Gemessen** in der Einzeldatei über `file://`, je 21 Tage Urlaub, der längste Block vorher → nachher:
+    - Vorbereitung mit vier Testspielen: 7,6 s → 0,14 s
+    - Saisonstart mit erstem Spieltag und Pokal: 6,9 s → 1,7 s
+    - drei Spieltage mit Europapokal: 8,2 s → 0,8 s
+
+    Gesamtdauer 8,1 bis 8,7 s statt 6,9 bis 8,2 s. Was an einem Spieltag bleibt (0,6 bis 1,7 s), sind die übrigen Spiele der Welt, Finanzen und Kabine.
+  - **Test** *Web Worker*:
+    - Paket mit genau beiden Kadern
+    - mit festem Zufall in jedem Wert dasselbe Spiel wie auf dem Hauptfaden
+    - übernommen in die Objekte des Spielstands
+    - der Spieltag rechnet es nicht noch einmal
+    - unter Node kein Worker, aus `file://` keine einzelnen Dateien
+    - Einbindung in Seite, Service Worker und Einzeldatei
 - **Ein Tag rechnet ein Drittel schneller:** gemessen über 60 Tage ab Saisonstart von 136 auf 78 ms an spielfreien Tagen und von 156 auf 114 ms an Spieltagen.
   - Die KI sucht Verstärkungen in einer nach Stärke sortierten Liste und hört auf, sobald niemand mehr besser ist. Zu teure Spieler fallen mit einer billigen Vorprüfung heraus.
   - Ein KI-Transfer baut kein eigenes Verzeichnis aller Spieler mehr auf.
@@ -1461,6 +1490,7 @@ untitled/
 │   │   ├── jobmarktEngine.js   # Anfragen, offene Stellen, Bewerbung, Wechsel und Rücktritt des Trainers
 │   │   ├── laufbahnEngine.js   # Laufbahn je Spieler: Saison, Verein, Spiele, Tore, Vorlagen, Note
 │   │   ├── urlaubEngine.js     # Urlaub: Ziele bis Monats-, Fenster- und Saisonende, Bilanz
+│   │   ├── spielWerk.js        # Web Worker: das eigene Spiel im Hintergrund, Paket hin und zurück
 │   │   ├── supercupEngine.js   # Supercup: Meister gegen Pokalsieger am Ende der Vorbereitung
 │   │   ├── euroSupercupEngine.js # Europäischer Supercup: Sieger der Königsklasse gegen den der Kontinentalpokal
 │   │   ├── jahrespreisEngine.js # Gala des Jahres: Weltfußballer, Talent, Torjäger Europas, Trainer, Elf

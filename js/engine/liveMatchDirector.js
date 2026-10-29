@@ -2477,6 +2477,11 @@ class LiveMatchDirector {
         this.celebrationTimer = 1.1 * this.getSpeedScale();
         this.scoringTeam = ev.team;
         this.match.celebratingTeam = ev.team;
+        // Wer jubelt vorneweg, und an welcher Eckfahne
+        const schuetze = this.getPlayer2D(ev.playerId);
+        this._jubelSchuetze = schuetze && schuetze.team === ev.team ? schuetze.id : null;
+        this.match.jubelSchuetze = this._jubelSchuetze;
+        this._jubelSeite = schuetze && schuetze.y > 50 ? 94 : 6;
         this.match.goalFlash = 1.0;
         this.match.slowMotion = 1;
         this.match.celebrationInfo = {
@@ -2492,6 +2497,8 @@ class LiveMatchDirector {
 
     finishCelebration() {
         this.match.celebratingTeam = null;
+        this._jubelSchuetze = null;
+        this.match.jubelSchuetze = null;
         this.match.slowMotion = 0;
         this.match.celebrationInfo = null;
         this.celebrationPhase = null;
@@ -3199,6 +3206,8 @@ class LiveMatchDirector {
                 return;
             }
             this.flowStats.passesCompleted++;
+            // Für das Bild: wer den Ball bekommt, und ob in den Lauf
+            this._passMeldung = { empf: to.id, tief: !!action.inDenLauf };
             if (action.inDenLauf) {
                 // In den Lauf: Der Ball geht in den Raum vor den Mitspieler,
                 // und der startet hinein
@@ -5231,10 +5240,11 @@ class LiveMatchDirector {
             if (amBall) {
                 const art = actionType === "shot" ? (this._kopfballSzene ? "kopfball" : "schuss")
                     : actionType === "cross" ? "flanke" : "pass";
-                this.meldeAktion(art, amBall.id, { x: ball.targetX, y: ball.targetY });
+                this.meldeAktion(art, amBall.id, Object.assign({ x: ball.targetX, y: ball.targetY }, this._passMeldung));
             }
         }
         this._kopfballSzene = false;
+        this._passMeldung = null;
     }
 
     /**
@@ -6243,6 +6253,28 @@ class LiveMatchDirector {
                 if (p.pos === "TW") {
                     const goalX = this.ownGoalX(p.team);
                     return { x: goalX + this.attackDir(p.team) * 16, y: 50, urgency: 1.2 };
+                }
+                // Der Torschütze läuft zur Eckfahne auf seiner Seite, die
+                // Mitspieler ihm hinterher und um ihn herum. Vorher liefen alle
+                // zu festen Punkten an derselben Ecke, der Schütze mittendrin.
+                const schuetze = this.getPlayer2D(this._jubelSchuetze);
+                if (schuetze && schuetze.team === p.team && schuetze.pos !== "TW") {
+                    const torX = this.ownGoalX(p.team === "home" ? "away" : "home");
+                    const fahne = { x: torX - this.attackDir(p.team) * 3, y: this._jubelSeite };
+                    if (p.id === schuetze.id) return { x: fahne.x, y: fahne.y, urgency: 1.6 };
+                    // Die Mitspieler laufen dorthin, wo er gleich ist - ein
+                    // Stück vor ihm auf dem Weg zur Fahne
+                    const weg = Math.hypot(fahne.x - schuetze.x, fahne.y - schuetze.y);
+                    const vor = weg > 0.1 ? Math.min(weg, 6) / weg : 0;
+                    const mitteX = schuetze.x + (fahne.x - schuetze.x) * vor;
+                    const mitteY = schuetze.y + (fahne.y - schuetze.y) * vor;
+                    const winkel = p.seed % (Math.PI * 2);
+                    const abstand = 2.4 + (p.seed % 1.7) * 1.6;
+                    return {
+                        x: Math.max(2, Math.min(98, mitteX + Math.cos(winkel) * abstand)),
+                        y: Math.max(3, Math.min(97, mitteY + Math.sin(winkel) * abstand * 1.6)),
+                        urgency: 1.9
+                    };
                 }
                 const cornerX = p.team === "home" ? (this.isSecondHalf ? 12 : 88) : (this.isSecondHalf ? 88 : 12);
                 return {

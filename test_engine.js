@@ -8525,6 +8525,93 @@ function runEngineTests() {
     const schussVon = (e) => e.type === "save" ? (e.team === "home" ? "away" : "home")
         : (["goal", "shot_miss"].includes(e.type) ? e.team : null);
 
+    test("Strafraumbesetzung: Zonen bei der Flanke, Spieleranweisungen Strafraum und Tiefe, blinder Winkel", () => {
+        const state = GameState.createNewGame("muc", "normal", { name: "Strafraum" });
+        const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");
+
+        // Die Anweisungen gehören zum Platz und überstehen einen Rollenwechsel
+        const T = TacticsEngine;
+        const t = T.normalisiere(heim.tactics || {});
+        heim.tactics = t;
+        const slots = (FORMATION_CONFIGS[heim.formation] || FORMATION_CONFIGS["4-4-2"]).positions;
+        const rollen = T.rollenDerElf(heim, slots);
+        if (rollen.some(r => r.strafraum !== "normal" || r.tiefe !== "normal")) throw new Error("Ohne Anweisung ist nicht alles normal");
+        T.setzeRolle(t, 0, rollen[0], "strafraum", "oft");
+        T.setzeRolle(t, 0, T.rollenDerElf(heim, slots)[0], "mit", rollen[0].mit);
+        if (T.rollenDerElf(heim, slots)[0].strafraum !== "oft") throw new Error("Die Anweisung geht beim Rollenwechsel verloren");
+        T.setzeRolle(t, 0, T.rollenDerElf(heim, slots)[0], "strafraum", "normal");
+        if ("strafraum" in t.rollen[0]) throw new Error("Normal wird gespeichert statt weggelassen");
+        heim.tactics.rollen = {};
+
+        const live = MatchEngine.createLiveMatch({ id: "strafraum", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { modus: "fm", userSide: "home" });
+        const d = live.director;
+        const bild = () => { live.advanceRealTime(1000 / 60); live.updateBallAndPlayers(1000 / 60); };
+        let f = 0;
+        while ((d.kickoff || d.mode !== "ambient" || d.deadBall) && f++ < 60 * 90) bild();
+        // Der Ball ist beim Heimteam auf dem rechten Flügel im letzten Drittel
+        const dir = d.attackDir("home"), torX = d.ownGoalX("away");
+        const feld = d.teamPlayers("home").filter(p => p.pos !== "TW");
+        const fluegel = feld.find(p => ["RM", "RA", "LM", "LA"].includes(p.rolle)) || feld[feld.length - 1];
+        fluegel.x = torX - dir * 16; fluegel.y = 90;
+        d.possessionTeam = "home";
+        d.setCarrier(fluegel);
+        Object.assign(live.ball, { x: fluegel.x, y: fluegel.y, inFlight: false });
+        d._besetzung = null;
+        const lage = d.strafraumLage();
+        if (!lage || lage.team !== "home" || lage.seite !== 1 || !lage.los) throw new Error(`Keine Flankenlage erkannt: ${JSON.stringify(lage)}`);
+        const b = d.besetzeStrafraum(lage);
+        const zonen = [...b.zuordnung.values()];
+        const imStrafraum = zonen.filter(z => ["kurz", "lang", "elfer", "fuenfer"].includes(z));
+        if (imStrafraum.length !== 3 || new Set(imStrafraum).size !== 3 || !zonen.includes("rueckraum")) throw new Error(`Zonen bei ausgeglichener Mentalität: ${zonen}`);
+        const stuermer = feld.filter(p => p.rolle === "ST");
+        if (stuermer.some(p => !["kurz", "lang", "elfer", "fuenfer"].includes(b.zuordnung.get(p.id)))) throw new Error("Ein Stürmer geht nicht in den Strafraum");
+        // Läufer und Ziele: in der Zone, nie ins Abseits vor der Flanke
+        const linie = d.abseitsLinie("home");
+        stuermer.forEach(p => {
+            const z = d.strafraumZiel(p, live.ball);
+            if (!z || !(Math.abs(z.x - torX) < 16.5) || z.urgency < 1.3) throw new Error(`Der Stürmer läuft nicht ein: ${JSON.stringify(z)}`);
+            if ((z.x - linie) * dir > 0.01) throw new Error("Der Lauf geht vor der Flanke ins Abseits");
+        });
+
+        // Anweisungen: "oft" kommt dazu, "selten" wartet an der Kante
+        const sechser = feld.find(p => ["DM", "ZM"].includes(p.rolle));
+        sechser.anw = { strafraum: "oft", tiefe: "normal" };
+        stuermer[0].anw = { strafraum: "selten", tiefe: "normal" };
+        stuermer[0].x = torX - dir * 12; stuermer[0].y = 50;
+        d._besetzung = null;
+        const b2 = d.besetzeStrafraum(d.strafraumLage());
+        if (!["kurz", "lang", "elfer", "fuenfer"].includes(b2.zuordnung.get(sechser.id))) throw new Error("Wer oft in den Strafraum soll, geht nicht mit");
+        if (b2.zuordnung.get(stuermer[0].id) !== "draussen") throw new Error("Wer selten in den Strafraum soll, bleibt drin");
+        const draussen = d.strafraumZiel(stuermer[0], live.ball);
+        if (!(Math.abs(draussen.x - torX) > 18)) throw new Error("Draußen heißt nicht vor dem Strafraum");
+
+        // Läufe in die Tiefe: Ohne Läuferrolle startet nur, wer es soll
+        const mittel = feld.filter(p => p.group === "mid" && !p.rolleMit?.laeuft && p !== fluegel && p !== sechser)[0];
+        const traeger = feld.find(p => p.group === "def");
+        d.setCarrier(traeger);
+        mittel.x = traeger.x + dir * 15; mittel.offTheBall = 95;
+        const startet = (anw) => {
+            mittel.anw = { strafraum: "normal", tiefe: anw };
+            for (let i = 0; i < 6; i++) {
+                mittel.lauf = { art: "freilaufen", bis: 9999 };
+                d._steilMoment = null;
+                d.starteTiefenlaeufe(traeger);
+                if (mittel.lauf.bis !== 9999) return true;
+            }
+            return false;
+        };
+        if (startet("normal")) throw new Error("Ein Mittelfeldspieler ohne Läuferrolle startet in die Tiefe");
+        if (!startet("oft")) throw new Error("Mit der Anweisung startet er nicht in die Tiefe");
+
+        // Der blinde Winkel: Wer hinter dem Verteidiger steht, den sieht er nicht, der zum Ball schaut
+        const flow = d.flow;
+        const v = { x: 85, y: 50 }, ballPunkt = { x: 70, y: 50 };
+        if (!flow.imRuecken(v, { x: 89, y: 52 }, ballPunkt)) throw new Error("Hinter dem Verteidiger ist kein blinder Winkel");
+        if (flow.imRuecken(v, { x: 80, y: 52 }, ballPunkt)) throw new Error("Vor dem Verteidiger ist ein blinder Winkel");
+        if (flow.imRuecken(v, { x: 99, y: 50 }, ballPunkt)) throw new Error("Auch weit weg gilt der blinde Winkel");
+    });
+
     test("Laufphysik: Antritt und Wendigkeit je Spieler, Puste mit Erholung, Halbzeit, Eins gegen eins mit Stellen", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Läufer" });
         const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");

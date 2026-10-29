@@ -446,6 +446,30 @@ const ROLLEN_MIT_BALL = {
 };
 
 /**
+ * Spieleranweisungen je Platz, neben den Rollen: wie oft einer in den
+ * Strafraum geht, wenn der Ball über den Flügel kommt, und wie oft er in
+ * die Tiefe startet. "normal" ist, was die Rolle ohnehin vorsieht.
+ */
+const SPIELER_ANWEISUNGEN = {
+    strafraum: {
+        label: "In den Strafraum gehen", werte: { oft: "Oft", normal: "Normal", selten: "Selten" },
+        text: {
+            oft: "Geht bei jeder Flanke mit in den Strafraum - auch aus dem Mittelfeld oder der Abwehr.",
+            normal: "Geht in den Strafraum, wenn seine Rolle es vorsieht.",
+            selten: "Bleibt bei Flanken draußen, höchstens im Rückraum."
+        }
+    },
+    tiefe: {
+        label: "Läufe in die Tiefe", werte: { oft: "Oft", normal: "Normal", selten: "Selten" },
+        text: {
+            oft: "Startet hinter die Abwehr, sobald der Ballführende den Kopf hebt - auch aus dem Mittelfeld.",
+            normal: "Startet in die Tiefe, wenn seine Rolle es vorsieht.",
+            selten: "Kommt lieber entgegen, als hinter die Abwehr zu starten."
+        }
+    }
+};
+
+/**
  * Rollen gegen den Ball. Die fuenf Grundtypen des Vorbilds: normal,
  * pressend (geht aus seiner Zone heraus), zurueckarbeitend (folgt seinem
  * Gegenspieler nach hinten), absichernd (bleibt hinter dem Ball) und
@@ -727,6 +751,7 @@ let _anweisungNach = null;
 
 const TacticsEngine = {
     ANWEISUNGEN: TAKTIK_ANWEISUNGEN,
+    SPIELER_ANWEISUNGEN,
     FAMILIEN: TAKTIK_FAMILIEN,
     ROLLEN_MIT_BALL,
     ROLLEN_GEGEN_BALL,
@@ -918,9 +943,27 @@ const TacticsEngine = {
             return {
                 familie: fam,
                 mit: (mitOk && !(mitOk.nurDreier && !dreier)) ? mitOk.id : std.mit,
-                gegen: this.rollenGegenBall(fam).some(r => r.id === gespeichert.gegen) ? gespeichert.gegen : std.gegen
+                gegen: this.rollenGegenBall(fam).some(r => r.id === gespeichert.gegen) ? gespeichert.gegen : std.gegen,
+                // Spieleranweisungen gelten auch nach einem Rollenwechsel
+                strafraum: SPIELER_ANWEISUNGEN.strafraum.werte[gespeichert.strafraum] ? gespeichert.strafraum : "normal",
+                tiefe: SPIELER_ANWEISUNGEN.tiefe.werte[gespeichert.tiefe] ? gespeichert.tiefe : "normal"
             };
         });
+    },
+
+    /**
+     * Rolle oder Spieleranweisung eines Platzes setzen. aktuell ist der
+     * Eintrag aus rollenDerElf; was nicht geändert wird, bleibt - vorher
+     * ging beim Wechsel der Rolle mit Ball die gegen den Ball nicht
+     * verloren, eine Anweisung aber schon.
+     */
+    setzeRolle(t, i, aktuell, feld, wert) {
+        const neu = { mit: aktuell.mit, gegen: aktuell.gegen };
+        ["strafraum", "tiefe"].forEach(k => { if (aktuell[k] && aktuell[k] !== "normal") neu[k] = aktuell[k]; });
+        if (wert === "normal" && (feld === "strafraum" || feld === "tiefe")) delete neu[feld];
+        else neu[feld] = wert;
+        t.rollen[i] = neu;
+        return neu;
     },
 
     _abgestimmtSicher(stil, positions) {

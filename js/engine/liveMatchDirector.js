@@ -482,6 +482,31 @@ class LiveMatchDirector {
      */
     static ZEITSPIEL = { amBall: 1.6, standard: 1.8, nie: 0.8 };
     static STEIL_MOMENT = 1.6;
+
+    /**
+     * Strafraumbesetzung: Kommt der Ball über den Flügel ins letzte Drittel,
+     * besetzen die Angreifer feste Zonen - kurzer Pfosten, langer Pfosten,
+     * Elfmeterpunkt, bei offensiver Ausrichtung dazu die Mitte vor dem
+     * Fünfer -, ein Mittelfeldspieler den Rückraum. Erst stehen sie bereit
+     * (bereit Einheiten weiter vom Tor), ab "los" laufen sie ein.
+     * tief: Abstand zur Torlinie, quer: zur Mitte, positiv zur Ballseite.
+     * Vorher stand bei einer Flanke im Schnitt nicht einmal ein Angreifer
+     * vor dem Tor - die meisten am Rand des Strafraums.
+     */
+    static STRAFRAUM = {
+        zonen: {
+            kurz: { tief: 5.5, quer: 6 }, lang: { tief: 7, quer: -8 }, elfer: { tief: 11, quer: -2 },
+            fuenfer: { tief: 4, quer: -1 }, rueckraum: { tief: 18, quer: 4 },
+            // Wer "selten" in den Strafraum soll, wartet an der Kante
+            draussen: { tief: 21, quer: -6 }
+        },
+        reihenfolge: ["kurz", "lang", "elfer", "fuenfer"],
+        ab: 0.58, los: 0.66, breit: 15, bereit: 2.5, neu: 3, flug: 1.6, tempo: 1.55,
+        anzahl: { very_defensive: 1, defensive: 2, balanced: 3, offensive: 3, very_offensive: 4 }
+    };
+
+    /** Wie die Spieleranweisung "Läufe in die Tiefe" wirkt: Zuschlag auf die Wahl des Laufwegs und auf den Start im Steilmoment */
+    static TIEFE_ANWEISUNG = { oft: { bonus: 1.6, start: 1.6 }, selten: { bonus: -2.2, start: 0.35 } };
     static VORAUSAHNEN = 0.5;
 
     /**
@@ -667,6 +692,7 @@ class LiveMatchDirector {
         const T = _dirTaktik();
         this._mannZuordnung = {};
         this._taktikCache = {};
+        this._besetzung = null;
         if (!T) return;
         const configs = _dirFormationen();
         ["home", "away"].forEach(team => {
@@ -683,6 +709,8 @@ class LiveMatchDirector {
                 p.fam = r ? r.familie : null;
                 p.rolleMit = r ? T.rolleMitBall(r.familie, r.mit) : null;
                 p.rolleGegen = r ? T.rolleGegenBall(r.familie, r.gegen) : null;
+                // Spieleranweisungen (TacticsEngine.SPIELER_ANWEISUNGEN)
+                p.anw = { strafraum: r?.strafraum || "normal", tiefe: r?.tiefe || "normal" };
                 p.formMit = mit ? mit[p.slot] || null : null;
                 p.formGegen = gegen ? gegen[p.slot] || null : null;
             });
@@ -3075,10 +3103,11 @@ class LiveMatchDirector {
         const dir = this.attackDir(carrier.team);
         this.teamPlayers(carrier.team).forEach(p => {
             if (p.id === carrier.id || p.pos === "TW") return;
-            if (p.group !== "att" && !p.rolleMit?.laeuft) return;
+            const anw = LiveMatchDirector.TIEFE_ANWEISUNG[p.anw?.tiefe] || null;
+            if (p.group !== "att" && !p.rolleMit?.laeuft && p.anw?.tiefe !== "oft") return;
             if ((p.x - carrier.x) * dir < 2 || !p.lauf || p.lauf.art === "tiefe") return;
             const ohneBall = typeof p.offTheBall === "number" ? (p.offTheBall - 45) / 45 : 0.5;
-            if (_dirRandom.chance(Math.max(0.15, Math.min(0.9, ohneBall)))) p.lauf.bis = uhr;
+            if (_dirRandom.chance(Math.max(0.1, Math.min(0.95, ohneBall * (anw ? anw.start : 1))))) p.lauf.bis = uhr;
         });
     }
 
@@ -3404,6 +3433,107 @@ class LiveMatchDirector {
         if (du.rest > 0) return;
         this._duell = null;
         this.handleDribbleAction(du.action, du.duration);
+    }
+
+    // ------------------------------------------------- Strafraumbesetzung
+
+    /**
+     * Kommt der Ball gerade über den Flügel? Der Ballführende ist im
+     * letzten Drittel und weit außen. Liefert { team, seite (-1 oben, 1
+     * unten), los (jetzt einlaufen) } oder null.
+     */
+    strafraumLage() {
+        if (this.mode !== "ambient" || this.deadBall || this.kickoff || this._offenerStandard) return null;
+        // Die Flanke ist unterwegs: Wer eingeteilt ist, greift seine Zone an
+        const fl = this._flankenLauf;
+        if (fl && this.match.ball.inFlight && (this._laufUhr || 0) < fl.bis) return { team: fl.team, seite: fl.seite, los: true, flug: true, carrierId: fl.carrierId };
+        const carrier = this.getPlayer2D(this.carrierId);
+        if (!carrier || carrier.pos === "TW" || carrier.team !== this.possessionTeam) return null;
+        const S = LiveMatchDirector.STRAFRAUM;
+        const fortschritt = (carrier.x - this.ownGoalX(carrier.team)) * this.attackDir(carrier.team) / 92;
+        if (fortschritt < S.ab || Math.abs(carrier.y - 50) < S.breit) return null;
+        return { team: carrier.team, seite: carrier.y < 50 ? -1 : 1, los: fortschritt >= S.los, carrierId: carrier.id };
+    }
+
+    /**
+     * Wer in welche Zone geht. Wer läuft: Stürmer zuerst, dann Läuferrollen,
+     * Flügelspieler und Zehner - die Anweisung "In den Strafraum gehen" zählt
+     * mehr als alles andere ("selten" geht höchstens in den Rückraum). Die
+     * Zahl der Läufer folgt der Mentalität, wer "oft" hat, geht immer mit.
+     * Die Zonen werden nach Nähe verteilt: Der Flügelspieler von der anderen
+     * Seite nimmt den langen Pfosten, der Stürmer den kurzen. Gilt, bis der
+     * Ball die Seite wechselt oder STRAFRAUM.neu Laufsekunden vergangen sind.
+     */
+    besetzeStrafraum(lage) {
+        const S = LiveMatchDirector.STRAFRAUM;
+        const uhr = this._laufUhr || 0;
+        const b = this._besetzung;
+        if (b && b.team === lage.team && b.seite === lage.seite && b.carrierId === lage.carrierId && uhr - b.uhr < S.neu) return b;
+        const team = lage.team;
+        const dir = this.attackDir(team);
+        const torX = this.ownGoalX(team === "home" ? "away" : "home");
+        const punkt = (z) => ({ x: torX - dir * z.tief, y: 50 + lage.seite * z.quer });
+        const wert = (p) => {
+            const a = p.anw?.strafraum;
+            if (a === "selten") return -99;
+            let w = p.rolle === "ST" ? 3 : (p.group === "att" || ["LA", "RA", "LM", "RM"].includes(p.rolle)) ? 2
+                : p.rolle === "OM" ? 1.6 : p.rolle === "ZM" ? 0.9 : p.rolle === "DM" ? 0.2
+                : (p.rolle === "LV" || p.rolle === "RV") ? 0.1 : -5;
+            if (p.rolleMit?.laeuft) w += 1;
+            if (a === "oft") w += 6;
+            return w;
+        };
+        const kandidaten = this.teamPlayers(team).filter(p => p.pos !== "TW" && p.id !== lage.carrierId && !p.verletzt);
+        const mentalitaet = (team === "home" ? this.match.homeClub?.tactics : this.match.awayClub?.tactics)?.mentality || "balanced";
+        const sortiert = kandidaten.map(p => ({ p, w: wert(p) })).filter(e => e.w > 0).sort((x, y) => y.w - x.w);
+        // Wer "oft" hat, kommt zu den Läufern der Mentalität dazu - er verdrängt keinen Stürmer
+        const pflicht = sortiert.filter(e => e.p.anw?.strafraum === "oft").map(e => e.p);
+        const uebrige = sortiert.filter(e => e.p.anw?.strafraum !== "oft").slice(0, S.anzahl[mentalitaet] ?? 3).map(e => e.p);
+        const laeufer = pflicht.concat(uebrige).slice(0, S.reihenfolge.length);
+        const anzahl = laeufer.length;
+        const zuordnung = new Map();
+        const offen = S.reihenfolge.slice(0, anzahl);
+        // Wer am nächsten an einer Zone steht, nimmt sie - der Beste wählt zuerst
+        laeufer.forEach(p => {
+            let beste = null, bestDist = Infinity;
+            offen.forEach(k => { const q = punkt(S.zonen[k]); const d = Math.hypot(p.x - q.x, p.y - q.y); if (d < bestDist) { bestDist = d; beste = k; } });
+            if (!beste) return;
+            offen.splice(offen.indexOf(beste), 1);
+            zuordnung.set(p.id, beste);
+        });
+        // Den Rückraum besetzt ein Mittelfeldspieler, der nicht einläuft
+        const rueck = kandidaten.filter(p => !zuordnung.has(p.id) && (p.group === "mid" || p.rolle === "OM"))
+            .sort((x, y) => Math.hypot(x.x - punkt(S.zonen.rueckraum).x, x.y - punkt(S.zonen.rueckraum).y)
+                - Math.hypot(y.x - punkt(S.zonen.rueckraum).x, y.y - punkt(S.zonen.rueckraum).y))[0];
+        if (rueck) zuordnung.set(rueck.id, "rueckraum");
+        // "Selten in den Strafraum": Wer vorn steht, geht bei der Flanke an die Kante zurück
+        kandidaten.filter(p => p.anw?.strafraum === "selten" && !zuordnung.has(p.id)
+            && Math.abs(p.x - torX) < 26).forEach(p => zuordnung.set(p.id, "draussen"));
+        this._besetzung = { team, seite: lage.seite, carrierId: lage.carrierId, uhr, zuordnung, punkt, dir };
+        this.flowStats.besetzungen = (this.flowStats.besetzungen || 0) + 1;
+        return this._besetzung;
+    }
+
+    /**
+     * Das Laufziel in der Strafraumbesetzung: bereit stehen, solange der
+     * Flügelspieler noch nicht zur Flanke kommt, dann einlaufen. Nie ins
+     * Abseits - vor der Flanke bleibt jeder auf Höhe des vorletzten
+     * Verteidigers.
+     */
+    strafraumZiel(p, ball) {
+        if (p.pos === "TW" || p.id === this.carrierId || p.team !== this.possessionTeam) return null;
+        const lage = this.strafraumLage();
+        if (!lage || lage.team !== p.team) return null;
+        const b = this.besetzeStrafraum(lage);
+        const zone = b.zuordnung.get(p.id);
+        if (!zone) return null;
+        const S = LiveMatchDirector.STRAFRAUM;
+        const ziel = b.punkt(S.zonen[zone]);
+        const rueckraum = zone === "rueckraum" || zone === "draussen";
+        if (!lage.los && !rueckraum) ziel.x -= b.dir * S.bereit;
+        const linie = this._abseitsLinie?.[p.team];
+        if (!lage.flug && typeof linie === "number" && (ziel.x - (linie - b.dir * 0.6)) * b.dir > 0) ziel.x = linie - b.dir * 0.6;
+        return { x: ziel.x, y: ziel.y, urgency: lage.los && !rueckraum ? S.tempo : 1.1, sprint: lage.los && !rueckraum, zone };
     }
 
     /** Die Pause, in der ein Spieler den Ball annimmt und sich umschaut */
@@ -3813,6 +3943,10 @@ class LiveMatchDirector {
         if (!r.ecke) {
             this.match.lastCommentary = this.fmText("flanke", { flanker: flanker.name || "" });
         }
+        // Aus dem Spiel: Die Eingeteilten greifen ihre Zonen an, während der Ball fliegt
+        this._flankenLauf = !r.ecke && !r.standard && this._besetzung && this._besetzung.team === flanker.team
+            ? { team: flanker.team, seite: this._besetzung.seite, carrierId: this._besetzung.carrierId, bis: (this._laufUhr || 0) + LiveMatchDirector.STRAFRAUM.flug }
+            : null;
 
         const ph = r.physik && r.physik.bahn ? r.physik : null;
         this._ballJaeger = null;
@@ -5630,14 +5764,16 @@ class LiveMatchDirector {
         }
         // Stufe 2: Hat der Ballfuehrende den Kopf oben, ist jetzt der Moment fuer den Lauf in die Tiefe
         const steilMoment = this._steilMoment && this._steilMoment.team === p.team && (this._laufUhr || 0) < this._steilMoment.bis ? 2.5 : 0;
-        if (p.group === "att" || (steilMoment && p.rolleMit?.laeuft)) {
+        const tiefeAnw = LiveMatchDirector.TIEFE_ANWEISUNG[p.anw?.tiefe] || null;
+        if (p.group === "att" || (steilMoment && (p.rolleMit?.laeuft || p.anw?.tiefe === "oft"))) {
             kandidaten.push({ ox: dir * r.x, oy: (Math.random() - 0.5) * r.y, art: "tiefe",
                 urgency: 1.45, sprint: true,
-                bonus: (vorne > (direkt ? 0.3 : 0.45) ? 2.2 : -1) + (direkt ? 1.5 : kurz ? -0.8 : 0) + (mutig ? 0.8 : 0) + steilMoment });
+                bonus: (vorne > (direkt ? 0.3 : 0.45) ? 2.2 : -1) + (direkt ? 1.5 : kurz ? -0.8 : 0) + (mutig ? 0.8 : 0) + steilMoment
+                    + (tiefeAnw ? tiefeAnw.bonus : 0) });
             kandidaten.push({ ox: -dir * r.x * 0.9, oy: zumBall * r.y * 0.4, art: "entgegen",
                 urgency: 1.2, bonus: (vorne < 0.55 ? 1.6 : 0) + (kurz ? 1.0 : direkt ? -0.8 : 0) });
         }
-        if (p.group === "att" && vorne > 0.68) {
+        if (p.group === "att" && vorne > 0.68 && p.anw?.strafraum !== "selten") {
             // Liegt der Ball im letzten Drittel, gehen die Spitzen in den
             // Strafraum - an den ersten oder an den zweiten Pfosten
             const torX = this.ownGoalX(p.team === "home" ? "away" : "home");
@@ -6149,6 +6285,10 @@ class LiveMatchDirector {
             && this.laeuftDemBallEntgegen(p)) {
             return { x: ball.targetX, y: ball.targetY, urgency: p.id === this.carrierId ? 1.9 : 1.55, sprint: true };
         }
+
+        // Der Ball kommt über den Flügel: in die eigene Zone im Strafraum
+        const zone = this.strafraumZiel(p, ball);
+        if (zone) return zone;
 
         if (p.pos === "TW") {
             // Den Abstoß führt er selbst aus - er geht zum Ball

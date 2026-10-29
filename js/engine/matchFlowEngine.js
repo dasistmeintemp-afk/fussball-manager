@@ -1523,6 +1523,16 @@ class MatchFlowEngine {
      * auf und wird zum zweiten Ball.
      */
     static FLANKE_DUELL = 0.3;     // so knapp hintereinander geht es ins Duell (Laufzeit-Sekunden)
+
+    /**
+     * Der blinde Winkel: Ein Verteidiger schaut zum Ball. Wer hinter ihm
+     * steht - mehr als "winkel" Grad von der Blickrichtung weg und nicht
+     * weiter als "nah" Einheiten -, den sieht er nicht, und er startet erst,
+     * wenn der Ball schon unterwegs ist ("reaktion" Laufsekunden später). In
+     * Manndeckung behält er seinen Mann eher im Auge (Faktor mann), bei einem
+     * Pass in den Lauf wirkt es zu "pass" Teilen.
+     */
+    static TOTER_WINKEL = { winkel: 115, nah: 9, reaktion: 0.16, mann: 0.5, pass: 0.6 };
     /** Streuung der Hereingabe in Einheiten: Grundwert und Zuschlag je fehlender Qualität */
     static FLANKE_STREUUNG = { basis: 1.0, je: 6 };
     // Flankenart (resolveCrossPhysik): Scheitelhöhe in Metern und Tempo,
@@ -1531,6 +1541,17 @@ class MatchFlowEngine {
         flach: { hoehe: [0.9, 1.3, 0.8, 0.01], tempo: [20, 28, 19, 0.25] },
         hoch: { hoehe: [6, 9.5, 4, 0.14], tempo: [13, 18, 12, 0.12] }
     };
+
+    /** Steht a im blinden Winkel von v, der zum Ball schaut? Gerechnet in Metern (105 x 68) */
+    imRuecken(v, a, ball) {
+        if (!v || !a || !ball) return false;
+        const T = MatchFlowEngine.TOTER_WINKEL;
+        const bx = (ball.x - v.x) * 1.05, by = (ball.y - v.y) * 0.68;
+        const ax = (a.x - v.x) * 1.05, ay = (a.y - v.y) * 0.68;
+        const lb = Math.hypot(bx, by), la = Math.hypot(ax, ay);
+        if (lb < 0.5 || la < 0.3 || la > T.nah) return false;
+        return (bx * ax + by * ay) / (lb * la) < Math.cos(T.winkel * Math.PI / 180);
+    }
 
     resolveCrossPhysik(carrier, opts, basis, plan) {
         const P = _flowPhysik();
@@ -1564,6 +1585,10 @@ class MatchFlowEngine {
         // Manndeckung klebt der Verteidiger an seinem Mann
         const mannDeckung = deckung === "mann" || (deckung === "gemischt" && _flowRandom.chance(0.5));
         const imStrafraum = (q) => Math.abs(q.x - tor.x) < 18 && Math.abs(q.y - 50) < 24;
+        // Wer im Rücken eines Verteidigers einläuft, gegen den startet er zu spät
+        const tw = MatchFlowEngine.TOTER_WINKEL;
+        const laeufer = this.fm() ? this.teamOf(team).filter(m => m.id !== carrier.id && m.pos !== "TW" && imStrafraum(m)) : [];
+        const blind = (v) => laeufer.some(a => this.imRuecken(v, a, start));
         const reaktion = (p) => {
             if (p.team === team) return imStrafraum(p) ? 0.08 : (p.reaktion ?? 0.3) + 0.1;
             if (p.pos === "TW") {
@@ -1571,7 +1596,8 @@ class MatchFlowEngine {
                 const voll = (opts.ecke || opts.standard) ? MatchFlowEngine.EICHUNG.standard.twReaktion : 0;
                 return Math.max(0.1, 0.3 + voll - ruhig - (this.eig(p).twStrafraum || 0) * 0.1);
             }
-            return Math.max(0.08, (p.reaktion ?? 0.3) * (mannDeckung ? 0.6 : 0.9));
+            return Math.max(0.08, (p.reaktion ?? 0.3) * (mannDeckung ? 0.6 : 0.9))
+                + (blind(p) ? tw.reaktion * (mannDeckung ? tw.mann : 1) : 0);
         };
         const { reihenfolge, aus } = this.ballRennen(bahn, [carrier.id], reaktion);
         const physik = { bahn, art: "hoch" };
@@ -1617,6 +1643,10 @@ class MatchFlowEngine {
 
         if (angreiferGewinnt) {
             treffen(angreifer);
+            // Kam er aus dem Rücken seines nächsten Verteidigers? (für die Messung)
+            const naechster = this.opponentsOf(team).filter(o => o.pos !== "TW")
+                .sort((x, y) => this.distance(x, angreifer.p) - this.distance(y, angreifer.p))[0];
+            if (naechster && this.imRuecken(naechster, angreifer.p, start)) physik.blind = true;
             if (angreifer.p.id !== undefined && verteidiger) physik.jaeger.push(verteidiger.p.id);
             const nahAmTor = Math.abs(angreifer.punkt.x - tor.x) < 15 && Math.abs(angreifer.punkt.y - 50) < 18;
             if (!nahAmTor) {
@@ -2173,9 +2203,12 @@ class MatchFlowEngine {
                 const eigene = (p.reaktion ?? 0.3) + re.mitspieler;
                 return abweichung < 3 ? Math.max(eigene, tPlan + 0.2) : eigene;
             }
-            // Ein Abwehrchef liest den Pass und ist früher am Ball
+            // Ein Abwehrchef liest den Pass und ist früher am Ball - wer den
+            // Läufer im Rücken hat, sieht ihn erst, wenn der Ball unterwegs ist
             const abfangen = this.eig(p).abfangen || 0;
-            return Math.max(0.08, (p.reaktion ?? 0.3) * re.gegner - abfangen * 0.08);
+            const tw = MatchFlowEngine.TOTER_WINKEL;
+            const blind = inDenLauf && this.fm() && this.imRuecken(p, ziel, start) ? tw.reaktion * tw.pass : 0;
+            return Math.max(0.08, (p.reaktion ?? 0.3) * re.gegner - abfangen * 0.08) + blind;
         };
         const { reihenfolge, aus } = this.ballRennen(bahn, [carrier.id], reaktion);
         const erster = reihenfolge[0] || null;

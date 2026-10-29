@@ -399,14 +399,19 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         </span>
                         <span class="aufst-kond ${fitKlasse}" title="Kondition ${fit} %"><i style="width:${Math.max(4, Math.min(100, fit))}%"></i><b>${fit}</b></span>
                         ${aktiv ? `<div class="rollen-text"><strong>${esc(rolle.name)}:</strong> ${esc(rolle.beschreibung)}</div>` : ""}
+                        ${aktiv && phase === "mit" ? `<div class="spieler-anw">${this.spielerAnweisungenHtml(r, "data-rollen-anw")}</div>` : ""}
                     </div>`;
             }).join("");
             const setze = (i, feld, wert) => {
-                const aktuell = T.rollenDerElf(userClub, slots)[i];
-                t.rollen[i] = { mit: aktuell.mit, gegen: aktuell.gegen, [feld]: wert };
+                T.setzeRolle(t, i, T.rollenDerElf(userClub, slots)[i], feld, wert);
                 this.selectedPitchSlot = i;
                 this.taktikGeaendert(userClub);
             };
+            rollenEl.querySelectorAll("[data-rollen-anw]").forEach(sel => {
+                const i = Number(sel.closest("[data-rollen-slot]")?.dataset.rollenSlot);
+                sel.onchange = (e) => setze(i, sel.dataset.rollenAnw, e.target.value);
+                sel.onclick = (e) => e.stopPropagation();
+            });
             rollenEl.querySelectorAll("[data-rolle-mit]").forEach(sel => {
                 sel.onchange = (e) => setze(Number(sel.dataset.rolleMit), "mit", e.target.value);
                 sel.onclick = (e) => e.stopPropagation();
@@ -721,6 +726,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <div class="zs-rollen">
                     <label>Mit Ball <select class="styled-select" data-zs-rolle="mit">${auswahl("mit")}</select></label>
                     <label>Gegen den Ball <select class="styled-select" data-zs-rolle="gegen">${auswahl("gegen")}</select></label>
+                    ${this.spielerAnweisungenHtml(rollen, "data-zs-rolle")}
                 </div>
                 <ul class="taktik-check zs-liste">
                     ${meine.length ? meine.map(v => {
@@ -737,8 +743,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             sel.onchange = (e) => {
                 const t = T.normalisiere(userClub.tactics || (userClub.tactics = {}));
                 userClub.tactics = t;
-                const aktuell = T.rollenDerElf(userClub, slots)[i];
-                t.rollen[i] = { mit: aktuell.mit, gegen: aktuell.gegen, [sel.dataset.zsRolle]: e.target.value };
+                T.setzeRolle(t, i, T.rollenDerElf(userClub, slots)[i], sel.dataset.zsRolle, e.target.value);
                 this.taktikGeaendert(userClub);
             };
         });
@@ -1252,7 +1257,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             rollenHtml = `<div class="spm-abschnitt"><h4>Rolle</h4><div class="zs-rollen">
                 <label>Mit Ball <select class="styled-select" data-spm-rolle="mit">${auswahl("mit")}</select></label>
                 <label>Gegen den Ball <select class="styled-select" data-spm-rolle="gegen">${auswahl("gegen")}</select></label>
-            </div></div>`;
+            </div></div>
+            <div class="spm-abschnitt"><h4>Anweisungen</h4><div class="zs-rollen">${this.spielerAnweisungenHtml(rollen, "data-spm-rolle")}</div></div>`;
         }
         const r = userClub.roles || {};
         const aufgabe = (key, text) => `<button class="spm-aufgabe${String(r[key]) === String(player.id) ? " aktiv" : ""}" data-spm-aufgabe="${key}" aria-pressed="${String(r[key]) === String(player.id)}">${text}</button>`;
@@ -1276,6 +1282,22 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             this.bindeSpielerMenue(el, slotIndex, player);
             if (optionen.wechsel) el.querySelector("#spmWechsel")?.scrollIntoView({ block: "nearest" });
         });
+    },
+
+    /**
+     * Die Spieleranweisungen eines Platzes (TacticsEngine.SPIELER_ANWEISUNGEN)
+     * als Auswahlfelder - attr ist das data-Attribut, das den Schlüssel trägt.
+     * Der Tooltip sagt, was die gewählte Stufe bewirkt.
+     */
+    spielerAnweisungenHtml(rollen, attr) {
+        const A = this.getTacticsEngine()?.SPIELER_ANWEISUNGEN;
+        if (!A || !rollen) return "";
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        return Object.entries(A).map(([k, a]) => {
+            const wert = rollen[k] || "normal";
+            return `<label title="${esc(a.text[wert])}">${esc(a.label)} <select class="styled-select" ${attr}="${k}">${Object.entries(a.werte)
+                .map(([w, l]) => `<option value="${w}" ${w === wert ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`;
+        }).join("");
     },
 
     bindeSpielerMenue(el, slotIndex, player) {
@@ -1317,8 +1339,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 const slots = this.getActiveFormationPositions(userClub);
                 const t = T.normalisiere(userClub.tactics || (userClub.tactics = {}));
                 userClub.tactics = t;
-                const aktuell = T.rollenDerElf(userClub, slots)[slotIndex];
-                t.rollen[slotIndex] = { mit: aktuell.mit, gegen: aktuell.gegen, [sel.dataset.spmRolle]: e.target.value };
+                T.setzeRolle(t, slotIndex, T.rollenDerElf(userClub, slots)[slotIndex], sel.dataset.spmRolle, e.target.value);
                 this.taktikGeaendert(userClub);
             };
         });

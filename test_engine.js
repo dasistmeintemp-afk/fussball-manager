@@ -3825,6 +3825,28 @@ function runEngineTests() {
             try { return fn(); } finally { Math.random = zufall; }
         };
 
+        // Jede Partie beginnt mit denselben Spielern. Ein Livespiel ändert
+        // Fitness, Form, Spielpraxis, Karten und Verletzungen, dazu die Form
+        // der Vereine. Ohne Zurücksetzen spielte die Mentalität als letzte
+        // Messung nach zweiunddreißig Partien mit einer müden, teils
+        // verletzten Elf, und die Paarung galt nur noch dem Namen nach:
+        // Derselbe Startwert ergab allein gerechnet 31 Punkte Abstand, nach
+        // 48 Partien im selben Lauf 12.
+        const beteiligte = state.players.filter(p => p.clubId === "muc" || p.clubId === "dor");
+        const anfang = beteiligte.map(p => JSON.stringify(p));
+        const formAnfang = [homeClub, awayClub].map(c => c.form === undefined ? undefined : JSON.stringify(c.form));
+        const zuruecksetzen = () => {
+            beteiligte.forEach((p, i) => {
+                const alt = JSON.parse(anfang[i]);
+                Object.keys(p).forEach(k => { if (!(k in alt)) delete p[k]; });
+                Object.assign(p, alt);
+            });
+            [homeClub, awayClub].forEach((c, i) => {
+                if (formAnfang[i] === undefined) delete c.form;
+                else c.form = JSON.parse(formAnfang[i]);
+            });
+        };
+
         const measure = (tactics) => {
             const agg = { dist: 0, n: 0, forward: 0, left: 0, right: 0 };
 
@@ -3834,6 +3856,7 @@ function runEngineTests() {
             // Zeit, die ein Laufweg wirklich kostet. Die Stichprobe bleibt, sie
             // wird nur ueber mehr Partien gezogen.
             for (let run = 0; run < 8; run++) mitSaat(saatBasis + run * 7919, () => {
+                zuruecksetzen();
                 Object.assign(homeClub.tactics, tactics);
                 const match = { id: `flow_${run}_${tactics.passing}_${tactics.focus}_${tactics.mentality}`, played: false, homeClubId: "muc", awayClubId: "dor" };
                 match.timeline = MatchEngine.generateTimeline(match, homeClub, awayClub, state.players);
@@ -8610,6 +8633,153 @@ function runEngineTests() {
         if (!flow.imRuecken(v, { x: 89, y: 52 }, ballPunkt)) throw new Error("Hinter dem Verteidiger ist kein blinder Winkel");
         if (flow.imRuecken(v, { x: 80, y: 52 }, ballPunkt)) throw new Error("Vor dem Verteidiger ist ein blinder Winkel");
         if (flow.imRuecken(v, { x: 99, y: 50 }, ballPunkt)) throw new Error("Auch weit weg gilt der blinde Winkel");
+    });
+
+    test("2D-Bild: Ballspur in der Luft, Steilpass-Linie, Netz und Konfetti beim Tor, der Torschütze jubelt vorneweg", () => {
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const ui = Object.create(UIManager.prototype);
+        let uhr = 100;
+        ui.optikUhr = () => uhr;
+        // Eine Leinwand, die nur mitschreibt
+        const aufrufe = [];
+        const ctx = new Proxy({ canvas: { width: 1000, height: 640 } }, {
+            get(z, k) { return k in z ? z[k] : (...a) => { aufrufe.push({ k, a, farbe: z.strokeStyle }); }; },
+            set(z, k, v) { z[k] = v; return true; }
+        });
+        const toX = x => x * 10, toY = y => y * 6.4, unit = 9;
+
+        // 1. Die Ballspur folgt dem Ball in die Luft - und nicht auf dem Rasen
+        const ball = { x: 30, y: 50, height: 0.2, inFlight: true, distance: 30, actionType: "cross" };
+        for (let i = 0; i < 10; i++) {
+            ball.x += 1.2; ball.height = 0.2 + i * 0.1; uhr += 1 / 60;
+            ui.merkeBallspur(ball, i === 0, 1, false);
+        }
+        aufrufe.length = 0;
+        ui.zeichneBallspur(ctx, ball, toX, toY, unit, 4, false);
+        if (aufrufe.some(a => a.k === "lineTo")) throw new Error("Die Spur eines hohen Balls liegt am Boden");
+        ui.zeichneBallspur(ctx, ball, toX, toY, unit, 4, true);
+        const stuecke = aufrufe.filter(a => a.k === "lineTo");
+        if (stuecke.length < 8) throw new Error(`Zu wenig Spur in der Luft: ${stuecke.length}`);
+        const ende = stuecke[stuecke.length - 1].a;
+        if (Math.abs(ende[1] - (toY(ball.y) - ball.height * unit * 1.4)) > 0.01) throw new Error(`Die Spur endet nicht am Ball: ${ende}`);
+        // Sie verblasst, und ein hingelegter Ball zieht keine
+        uhr += 0.5; ball.inFlight = false;
+        ui.merkeBallspur(ball, false, 1, false);
+        aufrufe.length = 0;
+        ui.zeichneBallspur(ctx, ball, toX, toY, unit, 4, true);
+        if (aufrufe.some(a => a.k === "lineTo")) throw new Error("Die Spur verblasst nicht");
+        ball.inFlight = true; uhr += 1 / 60; ball.x += 30;
+        ui.merkeBallspur(ball, false, 1, false);
+        if (ui._ballSpur.length) throw new Error("Ein Satz des Balls gilt als Flug");
+
+        // 2. Steilpass: Weg, Zielring und der Laufweg dessen, der hineinstartet
+        const passgeber = { id: "a", team: "home", x: 40, y: 50 }, laeufer = { id: "b", team: "home", x: 55, y: 30 };
+        const spieler = [passgeber, laeufer];
+        const live = {
+            ball: { x: 40, y: 50, originX: 40, originY: 50, targetX: 70, targetY: 35, inFlight: true },
+            aktionen: [{ nr: 7, art: "pass", id: "a", x: 70, y: 35, empf: "b", tief: true }],
+            kits: { home: { farbe: "#dc2626", zweit: "#ffffff" } }
+        };
+        ui.zeichneSteilpass(ctx, live, spieler, live.ball, toX, toY, 10);
+        if (ui._steilpass) throw new Error("Ein Pass von vorher wird gezeigt");
+        live.aktionen.push({ nr: 8, art: "pass", id: "a", x: 70, y: 35, empf: "b", tief: true });
+        aufrufe.length = 0;
+        uhr += 0.02;
+        ui.zeichneSteilpass(ctx, live, spieler, live.ball, toX, toY, 10);
+        const ring = aufrufe.find(a => a.k === "arc" && a.a[0] === toX(70) && a.a[1] === toY(35) && a.farbe === "#dc2626");
+        const lauf = aufrufe.find(a => a.k === "moveTo" && a.a[0] === toX(55) && a.a[1] === toY(30));
+        if (!ring || !lauf) throw new Error("Zielring oder Laufweg fehlen");
+        // Ist der Ball angekommen, klingt das Bild nach und ist dann weg
+        live.ball.inFlight = false; uhr += 0.3;
+        ui.zeichneSteilpass(ctx, live, spieler, live.ball, toX, toY, 10);
+        if (!ui._steilpass || ui._steilpass.ende === null) throw new Error("Die Linie merkt die Ankunft nicht");
+        uhr += ui.OPTIK_2D.steilpass.nachlauf + 0.05;
+        ui.zeichneSteilpass(ctx, live, spieler, live.ball, toX, toY, 10);
+        if (ui._steilpass) throw new Error("Die Linie bleibt stehen");
+        // Ein kurzer Pass in den Lauf und ein gewöhnliches Zuspiel zeigen nichts
+        live.aktionen.push({ nr: 9, art: "pass", id: "a", x: 46, y: 52, empf: "b", tief: true });
+        live.aktionen.push({ nr: 10, art: "pass", id: "a", x: 75, y: 50, empf: "b", tief: false });
+        ui.zeichneSteilpass(ctx, live, spieler, live.ball, toX, toY, 10);
+        if (ui._steilpass) throw new Error("Ein kurzer oder gewöhnlicher Pass bekommt eine Linie");
+
+        // 3. Tor: Das Netz beult sich nach außen, Konfetti aus der Kurve
+        const tor = { ball: {}, goalFlash: 1, celebratingTeam: "home", kits: live.kits, jubelSchuetze: "a" };
+        const imNetz = { x: 97, y: 52, height: 0 };
+        aufrufe.length = 0;
+        ui.zeichneTorjubel(ctx, tor, spieler, imNetz, toX, toY, unit, 10, [4, 96], false, "boden", 1 / 60);
+        if (!ui._netz || ui._netz.links) throw new Error("Das Netz rührt sich nicht");
+        if ((ui._konfetti || []).length !== ui.OPTIK_2D.jubel.heim) throw new Error(`Konfetti beim Heimtor: ${(ui._konfetti || []).length}`);
+        uhr += 0.1;
+        aufrufe.length = 0;
+        ui.zeichneTorjubel(ctx, tor, spieler, imNetz, toX, toY, unit, 10, [4, 96], false, "boden", 1 / 60);
+        const beule = aufrufe.find(a => a.k === "bezierCurveTo");
+        if (!beule || !(beule.a[0] > toX(96) + 2 * unit)) throw new Error("Das Netz beult sich nicht nach außen");
+        if (!aufrufe.some(a => a.k === "arc" && a.a[0] === toX(40) && a.a[1] === toY(50))) throw new Error("Der Torschütze leuchtet nicht");
+        if ((ui._konfetti || []).length !== ui.OPTIK_2D.jubel.heim) throw new Error("Dasselbe Tor wirft noch einmal Konfetti");
+        // Das Konfetti fliegt aufs Feld und ist nach seiner Zeit weg
+        const mitte = () => ui._konfetti.reduce((s, k) => s + k.x, 0) / ui._konfetti.length;
+        const x0 = mitte();
+        for (let i = 0; i < 60; i++) ui.zeichneTorjubel(ctx, tor, spieler, imNetz, toX, toY, unit, 10, [4, 96], false, "oben", 1 / 60);
+        if (!(mitte() < x0 - 3)) throw new Error("Das Konfetti fliegt nicht aufs Feld");
+        for (let i = 0; i < 300; i++) ui.zeichneTorjubel(ctx, tor, spieler, imNetz, toX, toY, unit, 10, [4, 96], false, "oben", 1 / 60);
+        if (ui._konfetti.length) throw new Error("Das Konfetti bleibt liegen");
+        // Ein Tor der Gäste: links, und nur aus dem Gästeblock
+        Object.assign(tor, { goalFlash: 0, celebratingTeam: null });
+        ui.zeichneTorjubel(ctx, tor, spieler, { x: 50, y: 50 }, toX, toY, unit, 10, [4, 96], false, "boden", 1 / 60);
+        Object.assign(tor, { goalFlash: 1, celebratingTeam: "away" });
+        ui.zeichneTorjubel(ctx, tor, spieler, { x: 3, y: 47 }, toX, toY, unit, 10, [4, 96], false, "boden", 1 / 60);
+        if (!ui._netz.links || ui._konfetti.length !== ui.OPTIK_2D.jubel.gast) throw new Error(`Gästetor: ${JSON.stringify(ui._netz)} ${ui._konfetti.length}`);
+        // In der Wiederholung bewegt sich das Netz noch einmal, ohne Konfetti
+        Object.assign(tor, { goalFlash: 0, celebratingTeam: null });
+        ui.zeichneTorjubel(ctx, tor, spieler, { x: 50, y: 50 }, toX, toY, unit, 10, [4, 96], true, "boden", 1 / 60);
+        ui._netz = null;
+        ui.zeichneTorjubel(ctx, tor, spieler, { x: 3, y: 47 }, toX, toY, unit, 10, [4, 96], true, "boden", 1 / 60);
+        if (!ui._netz || ui._konfetti) throw new Error("Die Wiederholung zeigt das Netz nicht oder wirft Konfetti");
+
+        // 4. Die Regie: Der Torschütze läuft zur Eckfahne, die Mitspieler ihm nach
+        const state = GameState.createNewGame("muc", "normal", { name: "Optik" });
+        const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");
+        const lm = MatchEngine.createLiveMatch({ id: "optik", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { modus: "fm", userSide: "home" });
+        const d = lm.director;
+        const meldungen = [];
+        const melde = d.meldeAktion.bind(d);
+        d.meldeAktion = (art, id, daten) => { meldungen.push(Object.assign({ art }, daten)); return melde(art, id, daten); };
+        const bild = () => { lm.advanceRealTime(1000 / 60); lm.updateBallAndPlayers(1000 / 60); };
+        for (let f = 0; f < 60 * 400 && meldungen.filter(m => m.art === "pass" && m.tief).length < 3; f++) bild();
+        const paesse = meldungen.filter(m => m.art === "pass");
+        // Ein abgefangener Ball hat keinen Empfänger, ein angekommener schon
+        const mitEmpf = paesse.filter(m => "empf" in m).length;
+        if (!(mitEmpf >= paesse.length * 0.5) || paesse.some(m => m.tief && !("empf" in m))) throw new Error(`Pässe nennen ihren Empfänger nicht: ${mitEmpf} von ${paesse.length}`);
+        if (!paesse.some(m => m.tief)) throw new Error("Kein Pass in den Lauf ist als solcher gemeldet");
+
+        let f = 0;
+        while ((d.kickoff || d.mode !== "ambient" || d.deadBall) && f++ < 60 * 90) bild();
+        const torX = d.ownGoalX("away"), dir = d.attackDir("home");
+        const elf = d.teamPlayers("home").filter(p => p.pos !== "TW");
+        const schuetze = elf.find(p => p.rolle === "ST") || elf[elf.length - 1];
+        schuetze.x = torX - dir * 8; schuetze.y = 62;
+        d.startCelebration({ team: "home", playerId: schuetze.id, playerName: schuetze.name });
+        if (lm.jubelSchuetze !== schuetze.id) throw new Error("Das Bild erfährt nicht, wer jubelt");
+        const ziel = d.computeTarget(schuetze, lm.ball, []);
+        if (Math.abs(ziel.x - torX) > 4 || ziel.y < 90) throw new Error(`Der Torschütze läuft nicht zur Eckfahne: ${JSON.stringify(ziel)}`);
+        elf.filter(p => p !== schuetze).forEach(p => {
+            const z = d.computeTarget(p, lm.ball, []);
+            if (Math.hypot(z.x - schuetze.x, (z.y - schuetze.y) / 1.6) > 12.5) throw new Error(`Ein Mitspieler läuft nicht zum Torschützen: ${JSON.stringify(z)}`);
+        });
+        const abstand = () => elf.filter(p => p !== schuetze).map(p => Math.hypot(p.x - schuetze.x, p.y - schuetze.y)).sort((a, b) => a - b).slice(0, 4).reduce((s, x) => s + x, 0) / 4;
+        const vorher = abstand(), eckeVorher = Math.hypot(schuetze.x - torX, schuetze.y - 94);
+        // Gemessen im letzten Bild des Jubels - danach stellt der Anstoß auf
+        let n = 0, nachher = vorher, eckeNachher = eckeVorher;
+        for (; n < 60 * 8; n++) {
+            bild();
+            if (d.mode !== "celebration") break;
+            nachher = abstand();
+            eckeNachher = Math.hypot(schuetze.x - torX, schuetze.y - 94);
+        }
+        if (n < 60 * 2) throw new Error(`Der Jubel ist nach ${n} Bildern vorbei`);
+        if (!(eckeNachher < eckeVorher - 5)) throw new Error(`Der Torschütze kommt der Eckfahne nicht näher: ${eckeVorher.toFixed(1)} -> ${eckeNachher.toFixed(1)}`);
+        if (!(nachher < vorher - 3)) throw new Error(`Die Mitspieler kommen nicht dazu: ${vorher.toFixed(1)} -> ${nachher.toFixed(1)}`);
     });
 
     test("Laufphysik: Antritt und Wendigkeit je Spieler, Puste mit Erholung, Halbzeit, Eins gegen eins mit Stellen", () => {

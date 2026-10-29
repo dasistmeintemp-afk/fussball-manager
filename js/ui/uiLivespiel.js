@@ -21,7 +21,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this._anzeige2D = {
             namen: true, formEigene: false, formGegner: false, feldGross: false,
             dreiD: false, kamera3D: "tv", qualitaet3D: "auto", wiederholung3D: true,
-            wiederholung2D: true, passwege: false, laufwege: false,
+            wiederholung2D: true, passwege: false, laufwege: false, steilpaesse: true,
             ...(gespeichert || {})
         };
         return this._anzeige2D;
@@ -636,23 +636,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             // Ring und Schild des Ballführenden erst, wenn der Ball bei ihm ist
             const amBall = this.spielerAmBall(liveMatch, players, ball, dt, neueSzene);
 
-            // 2. Ballschweif - er hängt am gezeichneten Ball, nicht am gerechneten
-            const trail = liveMatch.ballTrail || [];
-            const schweifX = ball.x - liveMatch.ball.x, schweifY = ball.y - liveMatch.ball.y;
-            if (trail.length > 1) {
-                ctx.lineCap = "round";
-                for (let i = 0; i < trail.length - 1; i++) {
-                    const alpha = Math.max(0, trail[i].life / 0.28) * 0.5;
-                    if (alpha <= 0.02) continue;
-                    ctx.beginPath();
-                    ctx.moveTo(toX(trail[i].x + schweifX), toY(trail[i].y + schweifY));
-                    ctx.lineTo(toX(trail[i + 1].x + schweifX), toY(trail[i + 1].y + schweifY));
-                    ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
-                    ctx.lineWidth = unit * 0.45;
-                    ctx.stroke();
-                }
-                ctx.lineCap = "butt";
-            }
+            // 2. Ballspur aus dem gezeichneten Ball - am Boden unter den
+            //    Spielern, das Stück in der Luft kommt mit dem Ball (6.)
+            const ballGrund = Math.max(3, (pitchW / 105) * 0.62 * cam.zoom);
+            const dir = liveMatch.director;
+            const wdhSkala = (typeof dir?.getAbspielTempo === "function" ? dir.getAbspielTempo() : 1) * this.WIEDERHOLUNG_2D.tempo;
+            this.merkeBallspur(ball, neueSzene, wdhSkala, wdhJetzt);
+            this.zeichneBallspur(ctx, ball, toX, toY, unit, ballGrund, false);
 
             // Spielergröße wächst mit dem Zoom, aber gedämpft
             // Gut ein Siebtel größer als vorher: Die Rückennummern waren in der
@@ -714,14 +704,15 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const inWiederholung = !!(this._wdh && this._wdh.aktiv);
             if (anzeige.laufwege && !inWiederholung) this.zeichneLaufwege(ctx, players, toX, toY, radius);
             if (anzeige.passwege && !inWiederholung) this.zeichnePasswege(ctx, liveMatch, toX, toY, radius);
+            // Steilpass und langer Ball: Weg, Zielpunkt, Laufweg des Empfängers
+            if (anzeige.steilpaesse !== false && !inWiederholung) this.zeichneSteilpass(ctx, liveMatch, players, ball, toX, toY, radius);
+
+            // Jubel am Boden: Netz, Ringe, der Torschütze
+            const torlinien = [TORLINIE_LINKS, TORLINIE_RECHTS];
+            this.zeichneTorjubel(ctx, liveMatch, players, ball, toX, toY, unit, radius, torlinien, inWiederholung, "boden", dt);
 
             // 3. Schatten
-            ctx.fillStyle = "rgba(0, 0, 0, 0.34)";
-            players.forEach(p => {
-                ctx.beginPath();
-                ctx.ellipse(toX(p.x) + radius * 0.16, toY(p.y) + radius * 0.34, radius * 0.95, radius * 0.48, 0, 0, Math.PI * 2);
-                ctx.fill();
-            });
+            this.zeichneSchatten(ctx, players, toX, toY, radius);
 
             // 4. Spieler
             ctx.textAlign = "center";
@@ -735,19 +726,6 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
                 const isActive = !!amBall && amBall.spieler.id === p.id;
                 const isKeeper = p.pos === "TW";
-
-                // Sprintanzeige: kurze Bewegungsspur hinter dem Spieler
-                if (p.sprinting && p.speed > 2) {
-                    const back = Math.atan2(p.vy, p.vx) + Math.PI;
-                    ctx.beginPath();
-                    ctx.moveTo(px, py);
-                    ctx.lineTo(px + Math.cos(back) * radius * 1.9, py + Math.sin(back) * radius * 1.9);
-                    ctx.strokeStyle = "rgba(255,255,255,0.22)";
-                    ctx.lineWidth = radius * 0.5;
-                    ctx.lineCap = "round";
-                    ctx.stroke();
-                    ctx.lineCap = "butt";
-                }
 
                 if (isActive) {
                     ctx.globalAlpha = amBall.alpha;
@@ -772,26 +750,31 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     }
                 };
 
+                // Die Figur als klassisches Spielersymbol: Punkt in der
+                // Vereinsfarbe, dünner weißer Ring, die Nummer darauf und
+                // außen am Rand ein weißer Pfeil in Blickrichtung. Vorher lag
+                // ein halbdurchsichtiger Keil über der Nummer und verdeckte sie.
+                // Der Pfeil kommt zuerst, der Punkt deckt seinen Fuß ab.
+                if (typeof p.facing === "number" && !hechtet) {
+                    const w = p.facing, spitze = radius * 1.72, fuss = radius * 0.8;
+                    ctx.beginPath();
+                    ctx.moveTo(px + Math.cos(w) * spitze, py + Math.sin(w) * spitze);
+                    ctx.lineTo(px + Math.cos(w + 0.62) * fuss, py + Math.sin(w + 0.62) * fuss);
+                    ctx.lineTo(px + Math.cos(w - 0.62) * fuss, py + Math.sin(w - 0.62) * fuss);
+                    ctx.closePath();
+                    ctx.fillStyle = "#f8fafc";
+                    ctx.fill();
+                    ctx.strokeStyle = "rgba(6, 10, 14, 0.35)";
+                    ctx.lineWidth = Math.max(0.8, radius * 0.07);
+                    ctx.stroke();
+                }
+
                 koerper();
                 ctx.fillStyle = isKeeper ? torwartFarbe(p.team) : (p.color || "#3b82f6");
                 ctx.fill();
-
-                // Flach wie im Vorbild: Vereinsfarbe, heller Rand, keine Glanzkante
-                koerper();
-                ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-                ctx.lineWidth = Math.max(1, radius * 0.11);
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+                ctx.lineWidth = Math.max(1.2, radius * 0.14);
                 ctx.stroke();
-
-                // Blickrichtung als kleiner Keil
-                if (typeof p.facing === "number") {
-                    ctx.beginPath();
-                    ctx.moveTo(px + Math.cos(p.facing) * radius * 1.42, py + Math.sin(p.facing) * radius * 1.42);
-                    ctx.lineTo(px + Math.cos(p.facing + 2.5) * radius * 0.82, py + Math.sin(p.facing + 2.5) * radius * 0.82);
-                    ctx.lineTo(px + Math.cos(p.facing - 2.5) * radius * 0.82, py + Math.sin(p.facing - 2.5) * radius * 0.82);
-                    ctx.closePath();
-                    ctx.fillStyle = "rgba(255,255,255,0.55)";
-                    ctx.fill();
-                }
 
                 ctx.fillStyle = isKeeper ? (liveMatch.kits?.[p.team]?.twText || "#0f172a") : (p.textColor || "#ffffff");
                 ctx.font = numberFont;
@@ -948,13 +931,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const bx = toX(ball.x);
             const by = toY(ball.y);
             const height = ball.height || 0;
-            const ballR = Math.max(3, (pitchW / 105) * 0.62 * cam.zoom) * (1 + height * 0.45);
+            const ballR = ballGrund * (1 + height * 0.45);
 
-            ctx.beginPath();
-            ctx.ellipse(bx + ballR * 0.4 + height * unit * 1.2, by + ballR * 0.8 + height * unit * 1.6,
-                ballR * 0.9, ballR * 0.45, 0, 0, Math.PI * 2);
-            ctx.fillStyle = `rgba(0, 0, 0, ${0.45 - height * 0.15})`;
-            ctx.fill();
+            this.zeichneBallschatten(ctx, bx, by, ballR, height, unit);
+            this.zeichneBallspur(ctx, ball, toX, toY, unit, ballGrund, true);
 
             ctx.beginPath();
             ctx.arc(bx, by - height * unit * 1.4, ballR, 0, Math.PI * 2);
@@ -992,6 +972,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     }
                 }
             }
+
+            // 6c. Konfetti nach einem Tor, über allem auf dem Rasen
+            this.zeichneTorjubel(ctx, liveMatch, players, ball, toX, toY, unit, radius, torlinien, inWiederholung, "oben", dt);
 
             // 7. Übersichtsradar, sobald herangezoomt wird
             if (cam.zoom > 1.3) {

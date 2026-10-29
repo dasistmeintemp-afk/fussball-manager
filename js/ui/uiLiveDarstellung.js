@@ -1,6 +1,7 @@
 /**
  * Darstellung des Livespiels (Stufe 4 der 2D-Simulation): Torwiederholung im
- * 2D-Bild, einblendbare Laufwege und Passwege.
+ * 2D-Bild, einblendbare Laufwege und Passwege, dazu die Optik des Bilds:
+ * weiche Schatten, Ballspur, Steilpass-Linie und Torjubel.
  *
  * Teil des UIManager: Die Methoden hängen sich an UIManager.prototype und
  * verhalten sich genau so, als stünden sie in der Klasse.
@@ -233,5 +234,389 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ctx.fill();
         }
         ctx.restore();
+    },
+
+    /**
+     * Optik des 2D-Bilds. Schatten: Versatz und Größe in Spielerradien, alle
+     * vom selben Flutlicht geworfen. Ballspur: Sekunden Bildschirmzeit, die
+     * ein Stück sichtbar bleibt, ab welchem Tempo (m/s im Spiel) die
+     * Wiederholung eine Spur zieht, und welcher Satz zwischen zwei Bildern
+     * kein Flug ist (Meter). Steilpass: ab welcher Länge (Feldeinheiten) und
+     * wie lange er nachklingt. Jubel: Konfetti aus der Heimkurve und dem
+     * Gästeblock, Lebensdauer, Ausschlag des Netzes in Metern.
+     */
+    OPTIK_2D: {
+        schatten: { dx: 0.26, dy: 0.42, breit: 1.32, hoch: 0.74, deckung: 0.5 },
+        spur: { dauer: 0.24, dauerSchuss: 0.4, ab: 11, sprung: 12 },
+        steilpass: { ab: 15, nachlauf: 0.7 },
+        jubel: { heim: 110, gast: 50, leben: [2.2, 3.4], netz: 1.5, netzDauer: 1.4, ring: 0.9 }
+    },
+
+    /** Die Uhr der Optik: Sekunden Bildschirmzeit */
+    optikUhr() {
+        return ((typeof performance !== "undefined") ? performance.now() : Date.now()) / 1000;
+    },
+
+    /** Ein weicher Schatten als fertiges Bild - je Größe einmal gezeichnet */
+    schattenBild(r) {
+        const groesse = Math.max(4, Math.round(r));
+        const bilder = this._schattenBilder || (this._schattenBilder = new Map());
+        if (bilder.has(groesse)) return bilder.get(groesse);
+        if (typeof document === "undefined") return null;
+        const bild = document.createElement("canvas");
+        bild.width = bild.height = groesse * 2;
+        const c = bild.getContext("2d");
+        if (!c) return null;
+        const verlauf = c.createRadialGradient(groesse, groesse, 0, groesse, groesse, groesse);
+        verlauf.addColorStop(0, "rgba(0, 0, 0, 1)");
+        verlauf.addColorStop(0.5, "rgba(0, 0, 0, 0.72)");
+        verlauf.addColorStop(1, "rgba(0, 0, 0, 0)");
+        c.fillStyle = verlauf;
+        c.fillRect(0, 0, groesse * 2, groesse * 2);
+        // Der Zoom ändert die Größe stetig - nicht jede Stufe aufheben
+        if (bilder.size > 32) bilder.clear();
+        bilder.set(groesse, bild);
+        return bild;
+    },
+
+    /**
+     * Schatten der Spieler: weich statt hart umrandet, alle in dieselbe
+     * Richtung. Der Torwart im Hechtsprung wirft einen langen Schatten.
+     */
+    zeichneSchatten(ctx, spieler, toX, toY, radius) {
+        const s = this.OPTIK_2D.schatten;
+        const bild = this.schattenBild(radius);
+        const w = radius * 2 * s.breit, h = radius * 2 * s.hoch;
+        const cw = ctx.canvas.width, ch = ctx.canvas.height;
+        ctx.save();
+        ctx.globalAlpha = s.deckung;
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        spieler.forEach(p => {
+            const x = toX(p.x) + radius * s.dx, y = toY(p.y) + radius * s.dy;
+            if (x < -w || x > cw + w || y < -h || y > ch + h) return;
+            const streckung = p.diving > 0 ? 1 + Math.min(1, p.diving / 0.85) * 0.95 : 1;
+            if (!bild) {
+                ctx.beginPath();
+                ctx.ellipse(x, y, w / 2 * streckung, h / 2, streckung > 1 ? (p.diveAngle || 0) : 0, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (streckung > 1) {
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(p.diveAngle || 0);
+                ctx.drawImage(bild, -w * streckung / 2, -h / 2, w * streckung, h);
+                ctx.restore();
+            } else {
+                ctx.drawImage(bild, x - w / 2, y - h / 2, w, h);
+            }
+        });
+        ctx.restore();
+    },
+
+    /** Der Schatten des Balls: je höher der Ball, desto weiter weg, größer und blasser */
+    zeichneBallschatten(ctx, bx, by, ballR, hoehe, unit) {
+        const bild = this.schattenBild(ballR * 1.2);
+        const w = ballR * 2.3 * (1 + hoehe * 0.6), h = w * 0.5;
+        const x = bx + ballR * 0.4 + hoehe * unit * 1.2, y = by + ballR * 0.8 + hoehe * unit * 1.6;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0.12, 0.6 - hoehe * 0.22);
+        if (bild) ctx.drawImage(bild, x - w / 2, y - h / 2, w, h);
+        else {
+            ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+            ctx.beginPath();
+            ctx.ellipse(x, y, w / 2, h / 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    },
+
+    /**
+     * Die Ballspur hängt am gezeichneten Ball, auch in der Luft. Vorher kam
+     * sie aus der Rechnung und lag auf dem Rasen, während der Ball über die
+     * Köpfe flog. Je Bild ein Punkt, solange der Ball fliegt; ein Schuss
+     * zieht eine längere, wärmere Spur. In der Wiederholung entsteht sie aus
+     * dem Tempo im Bild.
+     */
+    merkeBallspur(ball, neueSzene, skala, inWdh) {
+        const cfg = this.OPTIK_2D.spur;
+        const jetzt = this.optikUhr();
+        if (!this._ballSpur || neueSzene) { this._ballSpur = []; this._ballZuletzt = null; }
+        const spur = this._ballSpur;
+        const vorher = this._ballZuletzt;
+        this._ballZuletzt = { x: ball.x, y: ball.y, t: jetzt };
+        while (spur.length && jetzt - spur[0].t > cfg.dauerSchuss) spur.shift();
+        if (!vorher) return;
+        const meter = Math.hypot((ball.x - vorher.x) * 1.14, (ball.y - vorher.y) * 0.68);
+        // Ein Satz ist kein Flug: Der Ball wurde hingelegt
+        if (meter > cfg.sprung) { spur.length = 0; return; }
+        const fliegt = inWdh
+            ? meter / Math.max(1e-3, jetzt - vorher.t) / Math.max(0.05, skala) > cfg.ab
+            : !!ball.inFlight && (ball.distance || 0) > 6 && ball.actionType !== "dead";
+        if (fliegt) spur.push({ x: ball.x, y: ball.y, h: ball.height || 0, t: jetzt, schuss: !inWdh && ball.actionType === "shot" });
+        if (spur.length > 40) spur.shift();
+    },
+
+    /**
+     * Zeichnet die Ballspur: am Boden unter den Spielern, in der Luft über
+     * ihnen - wie der Ball selbst. Sie wird zum Ball hin breiter und heller.
+     */
+    zeichneBallspur(ctx, ball, toX, toY, unit, ballR, luft) {
+        const spur = this._ballSpur;
+        if (!spur || spur.length === 0) return;
+        const cfg = this.OPTIK_2D.spur;
+        const jetzt = this.optikUhr();
+        const letzter = spur[spur.length - 1];
+        const punkte = jetzt - letzter.t < 0.08
+            ? spur.concat([{ x: ball.x, y: ball.y, h: ball.height || 0, t: jetzt, schuss: letzter.schuss }])
+            : spur;
+        const lage = (e) => [toX(e.x), toY(e.y) - e.h * unit * 1.4];
+        ctx.save();
+        ctx.lineCap = "round";
+        for (let i = 1; i < punkte.length; i++) {
+            const a = punkte[i - 1], b = punkte[i];
+            if (((a.h + b.h) / 2 > 0.2) !== luft) continue;
+            const f = 1 - (jetzt - a.t) / (b.schuss ? cfg.dauerSchuss : cfg.dauer);
+            if (f <= 0.03) continue;
+            const [x1, y1] = lage(a), [x2, y2] = lage(b);
+            ctx.strokeStyle = b.schuss ? `rgba(255, 238, 205, ${0.78 * f})` : `rgba(255, 255, 255, ${0.5 * f})`;
+            ctx.lineWidth = Math.max(1, ballR * (b.schuss ? 1.5 : 1.1) * (0.3 + 0.7 * f));
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+        }
+        ctx.restore();
+    },
+
+    /**
+     * Steilpass und langer Ball: Eine Linie zeigt, wohin der Ball geht, ein
+     * Ring den Zielpunkt, und wer hineinstartet, seinen Laufweg dorthin. Das
+     * Stück, das der Ball schon hinter sich hat, ist durchgezogen. Nach der
+     * Ankunft klingt das Bild kurz nach. Im Augen-Menü abschaltbar.
+     */
+    zeichneSteilpass(ctx, liveMatch, spieler, ball, toX, toY, radius) {
+        const cfg = this.OPTIK_2D.steilpass;
+        const jetzt = this.optikUhr();
+        const b = liveMatch.ball || {};
+        const liste = liveMatch.aktionen || [];
+        const letzte = liste.length ? liste[liste.length - 1].nr : 0;
+        // Beim ersten Blick (oder nach neuem Spiel) zählt nichts von vorher
+        if (this._steilNr === undefined || letzte < this._steilNr) this._steilNr = letzte;
+        for (let i = liste.length - 1; i >= 0 && liste[i].nr > this._steilNr; i--) {
+            const a = liste[i];
+            if (!((a.art === "pass" && a.tief) || a.art === "flanke")) continue;
+            const x1 = typeof b.originX === "number" ? b.originX : ball.x;
+            const y1 = typeof b.originY === "number" ? b.originY : ball.y;
+            if (Math.hypot(a.x - x1, a.y - y1) < cfg.ab) continue;
+            const von = spieler.find(p => p.id === a.id);
+            this._steilpass = { x1, y1, x2: a.x, y2: a.y, empf: a.empf ?? null, team: von ? von.team : null, start: jetzt, ende: null };
+            break;
+        }
+        this._steilNr = letzte;
+
+        const sp = this._steilpass;
+        if (!sp) return;
+        const unterwegs = jetzt - sp.start < 0.15
+            || (b.inFlight && Math.abs((b.targetX ?? -99) - sp.x2) < 0.5 && Math.abs((b.targetY ?? -99) - sp.y2) < 0.5);
+        if (!unterwegs && sp.ende === null) sp.ende = jetzt;
+        const deckung = sp.ende === null ? 1 : 1 - (jetzt - sp.ende) / cfg.nachlauf;
+        if (deckung <= 0) { this._steilpass = null; return; }
+
+        const farbe = liveMatch.kits?.[sp.team]?.farbe || "#ffffff";
+        const x1 = toX(sp.x1), y1 = toY(sp.y1), x2 = toX(sp.x2), y2 = toY(sp.y2);
+        ctx.save();
+        ctx.lineCap = "round";
+        // Der ganze Weg, hell gestrichelt
+        ctx.globalAlpha = 0.55 * deckung;
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = Math.max(1, radius * 0.14);
+        ctx.setLineDash([radius * 0.5, radius * 0.42]);
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+        // Der Laufweg dessen, der hineinstartet
+        const empf = sp.ende === null && sp.empf !== null ? spieler.find(p => p.id === sp.empf) : null;
+        if (empf && Math.hypot(empf.x - sp.x2, empf.y - sp.y2) > 2.5) {
+            ctx.globalAlpha = 0.8 * deckung;
+            ctx.strokeStyle = farbe;
+            ctx.lineWidth = Math.max(1, radius * 0.2);
+            ctx.setLineDash([radius * 0.22, radius * 0.36]);
+            ctx.beginPath();
+            ctx.moveTo(toX(empf.x), toY(empf.y));
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+        }
+        ctx.setLineDash([]);
+        // Was der Ball schon zurückgelegt hat
+        if (sp.ende === null) {
+            ctx.globalAlpha = 0.85;
+            ctx.strokeStyle = farbe;
+            ctx.lineWidth = Math.max(1.2, radius * 0.22);
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(toX(ball.x), toY(ball.y));
+            ctx.stroke();
+        }
+        // Der Zielpunkt - größer als ein Spieler, damit der Empfänger ihn nicht verdeckt
+        const puls = 1 + Math.sin(jetzt * 9) * 0.12;
+        ctx.globalAlpha = 0.9 * deckung;
+        ctx.strokeStyle = farbe;
+        ctx.lineWidth = Math.max(1.2, radius * 0.2);
+        ctx.beginPath();
+        ctx.arc(x2, y2, radius * 1.6 * puls, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(x2, y2, Math.max(1.5, radius * 0.22), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    },
+
+    /**
+     * Der Jubel auf dem Rasen. Am Boden (unter den Spielern): Das Netz beult
+     * sich, wo der Ball einschlägt, zwei Ringe laufen vom Ball weg, und der
+     * Torschütze leuchtet, solange gejubelt wird. Oben (über allem): Aus der
+     * Kurve hinter dem Tor regnet Konfetti in den Vereinsfarben, bei einem Tor
+     * der Gäste nur aus ihrem Block. Das Netz bewegt sich auch in der
+     * Wiederholung, das Konfetti fällt nur einmal.
+     */
+    zeichneTorjubel(ctx, liveMatch, spieler, ball, toX, toY, unit, radius, linien, inWdh, ebene, dt) {
+        const cfg = this.OPTIK_2D.jubel;
+        const jetzt = this.optikUhr();
+        if (ebene === "boden") {
+            // Der Ball schlägt ein: Er erreicht die Linie zwischen den Pfosten.
+            // Ein Torschuss endet in der Simulation genau auf der Linie, nicht
+            // dahinter - also zählt schon die Linie.
+            const jubel = (liveMatch.goalFlash || 0) > 0 || !!liveMatch.celebratingTeam || inWdh;
+            const imTor = jubel && Math.abs(ball.y - 50) < 5.6 && (ball.x <= linien[0] + 0.4 || ball.x >= linien[1] - 0.4);
+            if (imTor && !this._ballImTor) this._netz = { links: ball.x < 50, y: ball.y, start: jetzt };
+            this._ballImTor = imTor;
+
+            // Konfetti beim ersten Bild des Tors
+            const blitz = liveMatch.goalFlash || 0;
+            if (!inWdh && blitz > (this._jubelBlitz || 0) + 0.2 && liveMatch.celebratingTeam) {
+                // Die Seite nach dem Ziel des Schusses - der Ball fliegt in dem Moment noch
+                const zielX = typeof liveMatch.ball?.targetX === "number" ? liveMatch.ball.targetX : ball.x;
+                this.starteKonfetti(liveMatch, liveMatch.celebratingTeam, zielX < 50, linien);
+            }
+            this._jubelBlitz = blitz;
+            if (inWdh) this._konfetti = null;
+
+            const n = this._netz;
+            if (n) {
+                const t = jetzt - n.start;
+                if (t > cfg.netzDauer) this._netz = null;
+                else {
+                    const nach = 1 - t / cfg.netzDauer;
+                    const aus = Math.max(-0.35, Math.exp(-t * 2.6) * Math.cos(t * 8)) * cfg.netz * unit;
+                    const dir = n.links ? -1 : 1;
+                    const xb = toX(n.links ? linien[0] : linien[1]) + dir * 2 * unit;
+                    const yo = toY(50 - 5.38), yu = toY(50 + 5.38), yb = toY(Math.max(46, Math.min(54, n.y)));
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.moveTo(xb, yo);
+                    ctx.bezierCurveTo(xb + dir * aus * 1.35, yb - (yb - yo) * 0.3, xb + dir * aus * 1.35, yb + (yu - yb) * 0.3, xb, yu);
+                    ctx.closePath();
+                    ctx.fillStyle = `rgba(255, 255, 255, ${0.24 * nach})`;
+                    ctx.fill();
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${0.9 * nach})`;
+                    ctx.lineWidth = Math.max(1.5, unit * 0.18);
+                    ctx.stroke();
+                    // Zwei Ringe laufen vom Einschlag weg
+                    [0, 0.18].forEach(verzug => {
+                        const tr = t - verzug;
+                        if (tr <= 0 || tr > cfg.ring) return;
+                        ctx.globalAlpha = 0.75 * (1 - tr / cfg.ring);
+                        ctx.lineWidth = Math.max(1.2, unit * 0.22);
+                        ctx.beginPath();
+                        ctx.arc(toX(n.links ? linien[0] - 0.8 : linien[1] + 0.8), yb, unit * (1 + tr * 10), 0, Math.PI * 2);
+                        ctx.stroke();
+                    });
+                    ctx.restore();
+                }
+            }
+
+            // Der Torschütze leuchtet
+            if (liveMatch.celebratingTeam && !inWdh) {
+                const id = liveMatch.jubelSchuetze;
+                const schuetze = id !== null && id !== undefined ? spieler.find(p => p.id === id) : null;
+                if (schuetze) {
+                    const x = toX(schuetze.x), y = toY(schuetze.y);
+                    const farbe = liveMatch.kits?.[schuetze.team]?.akzent || "#facc15";
+                    const puls = 1 + Math.sin(jetzt * 7) * 0.1;
+                    ctx.save();
+                    ctx.globalAlpha = 0.3;
+                    ctx.fillStyle = farbe;
+                    ctx.beginPath();
+                    ctx.arc(x, y, radius * 2.1 * puls, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.globalAlpha = 0.8;
+                    ctx.strokeStyle = farbe;
+                    ctx.lineWidth = Math.max(1.5, radius * 0.18);
+                    ctx.beginPath();
+                    ctx.arc(x, y, radius * 1.7 * puls, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+            return;
+        }
+
+        // Oben: das Konfetti
+        const teile = this._konfetti;
+        if (!teile || teile.length === 0) return;
+        const schritt = Math.max(0, Math.min(0.05, dt || 0));
+        const groesse = Math.max(2, radius * 0.34);
+        ctx.save();
+        for (let i = teile.length - 1; i >= 0; i--) {
+            const k = teile[i];
+            k.alter += schritt;
+            if (k.alter >= k.leben) { teile.splice(i, 1); continue; }
+            if (k.alter < 0) continue;
+            const bremse = Math.exp(-1.7 * schritt);
+            k.vx *= bremse;
+            k.vy = k.vy * bremse + Math.sin(k.alter * 3 + k.flatter) * schritt * 3;
+            k.x += k.vx * schritt;
+            k.y += k.vy * schritt;
+            k.dreh += k.drehV * schritt;
+            const px = toX(k.x), py = toY(k.y);
+            if (px < -20 || px > ctx.canvas.width + 20 || py < -20 || py > ctx.canvas.height + 20) continue;
+            const rest = (k.leben - k.alter) / k.leben;
+            ctx.globalAlpha = Math.min(1, rest / 0.3);
+            ctx.fillStyle = k.farbe;
+            const g = groesse * k.groesse * (0.75 + 0.25 * rest);
+            const breite = g * 1.6 * Math.abs(Math.cos(k.flatter + k.alter * 7));
+            const c = Math.cos(k.dreh), s = Math.sin(k.dreh);
+            ctx.setTransform(c, s, -s, c, px, py);
+            ctx.fillRect(-breite / 2, -g / 2, Math.max(0.6, breite), g);
+        }
+        ctx.restore();
+    },
+
+    /** Konfetti aus der Kurve hinter dem Tor, in den Farben dessen, der getroffen hat */
+    starteKonfetti(liveMatch, team, links, linien) {
+        const cfg = this.OPTIK_2D.jubel;
+        const kit = liveMatch.kits?.[team] || {};
+        const farben = [kit.farbe || "#facc15", kit.zweit || "#ffffff", "#ffffff"];
+        const anzahl = team === "home" ? cfg.heim : cfg.gast;
+        // Der Gästeblock liegt in einer Ecke der Kurve
+        const yVon = team === "home" ? 16 : 62, yBis = team === "home" ? 84 : 86;
+        const teile = this._konfetti || (this._konfetti = []);
+        for (let i = 0; i < anzahl; i++) {
+            teile.push({
+                x: links ? linien[0] - 1.5 - Math.random() * 3 : linien[1] + 1.5 + Math.random() * 3,
+                y: yVon + Math.random() * (yBis - yVon),
+                vx: (links ? 1 : -1) * (5 + Math.random() * 13),
+                vy: (Math.random() - 0.5) * 14,
+                alter: -Math.random() * 0.6,
+                leben: cfg.leben[0] + Math.random() * (cfg.leben[1] - cfg.leben[0]),
+                farbe: farben[i % farben.length],
+                dreh: Math.random() * Math.PI * 2,
+                drehV: (Math.random() - 0.5) * 14,
+                flatter: Math.random() * Math.PI * 2,
+                groesse: 0.6 + Math.random() * 0.6
+            });
+        }
+        if (teile.length > 260) teile.splice(0, teile.length - 260);
     }
 });

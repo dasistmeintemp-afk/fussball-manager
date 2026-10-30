@@ -940,22 +940,40 @@ function runWizardTests() {
             bild(5);
             if (sf.figuren.size !== 22) throw new Error(`${sf.figuren.size} Figuren statt 22`);
 
-            // Schuss mit dem starken Fuß: Das linke Bein (0) schwingt nach vorn, das rechte nicht
+            // Schuss mit dem starken Fuß: Das linke Bein (0) schwingt nach vorn, das rechte nicht.
+            // Das Bild läuft VERZOEGERUNG hinter der Simulation: Der Spieler holt
+            // aus, bevor der Ball abgeht, und trifft ihn im Moment der Meldung.
             melde("schuss", "home_9", { x: 96, y: 50 });
-            const links = maxWinkel("home_9", f => f.beine[0].rotation.z, 12);
+            const links = maxWinkel("home_9", f => f.beine[0].rotation.z, 18);
             if (figur("home_9").schussBein !== 0 || !(links > 1)) throw new Error(`Der Linksfuß schießt nicht mit links (${links.toFixed(2)})`);
             bild(20);
             if (figur("home_9").anim !== null) throw new Error("Der Schuss endet nicht");
-            melde("pass", "home_6");
+            // Der Ball liegt einen Schritt vor ihm, der Pass geht quer
+            Object.assign(lm.ball, { x: 53.6, y: 36.5 });
+            bild(15);
+            melde("pass", "home_6", { x: 60, y: 70 });
             bild(1);
+            if (figur("home_6").anim) throw new Error("Der Pass beginnt, bevor das Bild so weit ist");
+            bild(5);
             if (figur("home_6").schussBein !== 1 || figur("home_6").anim?.art !== "pass") throw new Error("Der Pass des Rechtsfußes fehlt");
+            // Zum Kontakt steht er am Ball und schaut dorthin, wohin er spielt
+            const passAnim = figur("home_6").anim;
+            for (let i = 0; i < 12 && passAnim.t < passAnim.kontakt; i++) bild();
+            const fuss = figur("home_6").figur.position, ballWelt = Spielfeld3D.welt(lm.ball.x, lm.ball.y);
+            const amBall = Math.hypot(fuss.x - ballWelt.x, fuss.z - ballWelt.z);
+            if (amBall > 0.8) throw new Error(`Beim Pass steht er ${amBall.toFixed(1)} m vom Ball`);
+            const passRichtung = Math.atan2(-(Spielfeld3D.welt(60, 70).z - ballWelt.z), Spielfeld3D.welt(60, 70).x - ballWelt.x);
+            const abweichung = Math.abs(Math.atan2(Math.sin(figur("home_6").richtung - passRichtung), Math.cos(figur("home_6").richtung - passRichtung)));
+            if (abweichung > 0.35) throw new Error(`Beim Pass schaut er ${abweichung.toFixed(2)} rad an der Passrichtung vorbei`);
+            bild(20);
+            Object.assign(lm.ball, { x: 50, y: 50 });
 
             // Parade: erst kurz vor dem Ball, dann zur Seite des Balls
             melde("parade", "away_0", { x: 92, y: 30, verzoegerung: 0.3 });
             bild(1);
             const tw = figur("away_0");
-            if (!(tw.anim.t < 0) || tw.koerper.position.z !== 0) throw new Error("Der Torwart fliegt, bevor der Ball kommt");
-            bild(20);
+            if (tw.anim?.art === "parade" || tw.koerper.position.z !== 0) throw new Error("Der Torwart fliegt, bevor der Ball kommt");
+            bild(35);
             if (tw.anim?.art !== "parade" || Math.sign(tw.koerper.position.z) !== tw.anim.seite || Math.abs(tw.koerper.position.z) < 0.5) {
                 throw new Error("Der Torwart fliegt nicht zur Seite");
             }
@@ -964,7 +982,7 @@ function runWizardTests() {
             bild(40);
             if (tw.anim !== null) throw new Error("Die Parade endet nicht");
             melde("parade", "away_0", { x: 92, y: 10 });
-            bild(1);
+            bild(16);
             if (tw.anim?.seite !== -seite) throw new Error("Der Torwart fliegt immer zur selben Seite");
             bild(40);
 
@@ -974,7 +992,8 @@ function runWizardTests() {
             // Tor: Schütze und nahe Mitspieler jubeln, der eigene Torwart nicht
             const aufnahme = sf._aufnahme.length;
             melde("tor", "home_9", { team: "home" });
-            bild(1);
+            // Gejubelt wird, wenn das verzögerte Bild beim Tor ankommt
+            for (let i = 0; i < 20 && figur("home_9").anim?.art !== "jubel"; i++) bild();
             const jubel = spieler.filter(p => figur(p.id).anim?.art === "jubel").map(p => p.id);
             if (!jubel.includes("home_9") || jubel.includes("home_0") || jubel.some(id => id.startsWith("away"))) throw new Error("Jubel: " + jubel.join(","));
             if (jubel.length < 2) throw new Error("Kein Mitspieler jubelt mit");
@@ -998,7 +1017,7 @@ function runWizardTests() {
             bild(10);
             if (sf.wiederholungLaeuft()) throw new Error("Die Wiederholung endet nicht von selbst");
             if (sf._torGeplant) throw new Error("Das Tor in der Wiederholung plant eine weitere");
-            if (Math.abs(sf.camera.fov - 27) > 0.1) throw new Error(`Die Kamera kehrt nicht auf die Tribüne zurück (Brennweite ${sf.camera.fov.toFixed(1)})`);
+            if (Math.abs(sf.camera.fov - sf._kameraFov("tv")) > 0.1) throw new Error(`Die Kamera kehrt nicht auf die Tribüne zurück (Brennweite ${sf.camera.fov.toFixed(1)})`);
             bild(1);
             if (sf._letzteAktion <= gesehen) throw new Error("Die Meldung aus der Wiederholungszeit geht verloren");
 
@@ -1033,6 +1052,98 @@ function runWizardTests() {
             if (ab === null || ab < 3.7 || ab > 4.3) throw new Error(`5 Bilder je Sekunde: Urteil nach ${ab} s statt nach Anlauf und Messfenster (4 s)`);
         } finally {
             Spielfeld3D.uhr = uhrVorher;
+            if (vorher === undefined) delete global.THREE; else global.THREE = vorher;
+        }
+    });
+
+    test("3D-Ansicht: Figuren mit Gelenken, Kopfball in Kopfhöhe, Wetter, Kamera nach Seitenverhältnis, Schilder ohne Überlagerung", () => {
+        const vorher = global.THREE;
+        global.THREE = require('./js/vendor/three.min.js');
+        const { Spielfeld3D } = require('./js/ui/spielfeld3d.js');
+        const { WetterEngine } = require('./js/engine/wetterEngine.js');
+        try {
+            // Nachbearbeitung liegt mit in der Bibliothek
+            const N = THREE.Nachbearbeitung || {};
+            ["EffectComposer", "RenderPass", "OutputPass", "HBAOPass", "UnrealBloomPass"].forEach(k => {
+                if (typeof N[k] !== "function") throw new Error(`Nachbearbeitung: ${k} fehlt`);
+            });
+            if (Spielfeld3D.QUALITAET.niedrig.ao || Spielfeld3D.QUALITAET.niedrig.glanz || !Spielfeld3D.QUALITAET.hoch.ao) throw new Error("Nachbearbeitung je Qualität falsch");
+            // Jedes Wetter hat Himmel und Licht
+            Object.keys(WetterEngine.ARTEN).forEach(art => {
+                if (!Spielfeld3D.STIMMUNG[art]) throw new Error(`Kein Himmel für ${art}`);
+            });
+
+            const sf = Object.create(Spielfeld3D.prototype);
+            Object.assign(sf, {
+                canvas: { clientWidth: 800, clientHeight: 480 },
+                qualitaet: "niedrig", q: Spielfeld3D.QUALITAET.niedrig,
+                renderer: { setSize() {}, render() {}, dispose() {} },
+                scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(34, 16 / 9, 0.5, 400), kamera: "tv",
+                _ziel: new THREE.Vector3(), _kamPos: new THREE.Vector3(0, 19, 64),
+                ball: new THREE.Mesh(), ballSchatten: new THREE.Mesh(undefined, new THREE.MeshBasicMaterial()),
+                figuren: new Map(), zeit: 0, _letzteAktion: 0, _aufnahme: [], _wiederholung: null, _bildzeiten: []
+            });
+            const spieler = [
+                { id: "a", team: "home", pos: "ST", x: 80, y: 50, vx: 0, vy: 0, speed: 0, name: "Stürmer", number: 9 },
+                { id: "b", team: "away", pos: "IV", x: 70, y: 40, vx: 0, vy: 0, speed: 0, name: "Verteidiger", number: 4 }
+            ];
+            const lm = { ball: { x: 80.5, y: 50, height: 0, inFlight: false }, players2D: spieler, abgaenge: [], aktionen: [], activePlayerId: null, kits: {} };
+            sf.spielKey = lm;
+            const bild = (n = 1) => { for (let i = 0; i < n; i++) sf.zeichne(lm, 1 / 30, { namen: false }); };
+            bild(20);
+
+            // Gelenke: Knie und Ellbogen hängen an Hüfte und Schulter, jedes Glied ist ein Netz
+            const f = sf.figuren.get("a");
+            if (f.knie.length !== 2 || f.ellbogen.length !== 2 || !f.rumpf || !f.kopf) throw new Error("Der Figur fehlen Gelenke");
+            if (f.knie[0].parent !== f.beine[0] || f.ellbogen[1].parent !== f.arme[1] || f.kopf.parent !== f.rumpf) throw new Error("Die Gelenke hängen falsch");
+            let netze = 0;
+            f.figur.traverse(o => { if (o.isMesh) netze++; });
+            // Becken, Rumpf, Kopf, je zwei Ober- und Unterarme, Ober- und Unterschenkel
+            if (netze > 11) throw new Error(`${netze} Netze je Figur - jedes Glied sollte eines sein`);
+            const geo = f.rumpf.children.find(o => o.isMesh).geometry;
+            if (!geo.attributes.color) throw new Error("Die Glieder tragen ihre Farben nicht an den Ecken");
+            // Im Lauf beugt sich das Knie
+            spieler[0].speed = 6; spieler[0].vx = 6;
+            let knie = 0;
+            for (let i = 0; i < 30; i++) { bild(); knie = Math.min(knie, f.knie[0].rotation.z, f.knie[1].rotation.z); }
+            if (!(knie < -0.8)) throw new Error(`Im Lauf beugt sich das Knie nur bis ${knie.toFixed(2)}`);
+            spieler[0].speed = 0; spieler[0].vx = 0;
+            bild(20);
+
+            // Kopfball: Der Ball kommt in Kopfhöhe an, der Spieler springt ihm entgegen
+            lm.aktionen.push({ nr: 1, art: "kopfball", id: "a", x: 96, y: 50 });
+            let ballHoch = 0, sprung = 0, beiKontakt = null;
+            for (let i = 0; i < 40; i++) {
+                bild();
+                ballHoch = Math.max(ballHoch, sf.ball.position.y);
+                sprung = Math.max(sprung, f.figur.position.y);
+                if (f.anim && f.anim.art === "kopfball" && beiKontakt === null && f.anim.t >= f.anim.kontakt) beiKontakt = { ball: sf.ball.position.y, kopf: f.figur.position.y + 1.68 };
+            }
+            if (!(ballHoch > 1.9)) throw new Error(`Beim Kopfball kommt der Ball nur auf ${ballHoch.toFixed(2)} m`);
+            if (!(sprung > 0.3)) throw new Error(`Zum Kopfball springt er nur ${sprung.toFixed(2)} m`);
+            if (!beiKontakt || Math.abs(beiKontakt.ball - beiKontakt.kopf) > 0.45) throw new Error(`Beim Kopfball liegen Ball und Kopf auseinander: ${JSON.stringify(beiKontakt)}`);
+            bild(30);
+            if (sf.ball.position.y > 1) throw new Error("Nach dem Kopfball bleibt der Ball in der Luft hängen");
+
+            // Kamera: dieselbe Breite des Spiels, egal wie breit das Bild ist
+            const breite = (seiten) => { sf.camera.aspect = seiten; const v = sf._kameraFov("tv") * Math.PI / 180; return 2 * Math.atan(Math.tan(v / 2) * seiten) * 180 / Math.PI; };
+            const breitBild = breite(2.2), schmalBild = breite(1.5);
+            if (Math.abs(breitBild - Spielfeld3D.KAMERA.tv.breite) > 0.5 || Math.abs(schmalBild - Spielfeld3D.KAMERA.tv.breite) > 0.5) {
+                throw new Error(`Die Fernsehkamera zeigt ${breitBild.toFixed(1)}° und ${schmalBild.toFixed(1)}° statt ${Spielfeld3D.KAMERA.tv.breite}°`);
+            }
+            sf.camera.aspect = 800 / 480;
+
+            // Namensschilder: zwei an derselben Stelle - eines weicht
+            const schild = (vorrang) => { const s = new THREE.Sprite(new THREE.SpriteMaterial()); s.position.set(0, 2.5, 0); s.userData = { vorrang, breite: 0.5 }; return s; };
+            const s1 = schild(-1), s2 = schild(3), s3 = schild(5);
+            s3.position.set(30, 2.5, -20);
+            const figuren = sf.figuren;
+            sf.figuren = new Map([[1, { label: s1 }], [2, { label: s2 }], [3, { label: s3 }]]);
+            sf.camera.position.set(0, 19, 64); sf.camera.lookAt(0, 0, 0); sf.camera.updateMatrixWorld(); sf.camera.updateProjectionMatrix();
+            sf._ordneNamen();
+            sf.figuren = figuren;
+            if (!s1.visible || s2.visible || !s3.visible) throw new Error(`Schilder: am Ball ${s1.visible}, darüber ${s2.visible}, frei ${s3.visible}`);
+        } finally {
             if (vorher === undefined) delete global.THREE; else global.THREE = vorher;
         }
     });

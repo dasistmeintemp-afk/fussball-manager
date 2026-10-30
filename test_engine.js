@@ -17685,6 +17685,102 @@ function runEngineTests() {
         if (!(FinanceEngine.erwarteteAuslastung(s, heim, 80) < FinanceEngine.erwarteteAuslastung(s, heim, 20))) throw new Error("Teure Karten füllen das Stadion nicht schlechter");
     });
 
+    test("U23 und U19 wie die Profis: Formation, feste Plätze, Mentalität, Stärke nach Position, Speichern, Kaderliste je Mannschaft", () => {
+        const { ReserveEngine: R } = require('./js/engine/reserveEngine.js');
+        const { JugendligaEngine: J } = require('./js/engine/jugendligaEngine.js');
+        const { SaveCodec } = require('./js/services/saveCodec.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Unterbau" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        // Sechs junge Profis in die U23, darunter ein Torwart
+        const junge = R.profis(state, club).filter(p => (p.age || 30) <= 23).sort((a, b) => (a.overall || 0) - (b.overall || 0));
+        const tw = R.profis(state, club).find(p => p.pos === "TW" && !junge.slice(0, 5).includes(p));
+        junge.slice(0, 5).concat(tw ? [tw] : []).forEach(p => R.hinunter(state, p.id));
+        const kader = R.spieler(state, club);
+        if (kader.length < 5) throw new Error(`Nur ${kader.length} in der U23`);
+
+        // Ohne Vorgabe: die Formation steht, jeder auf dem Platz, der ihm am besten liegt
+        const plan = R.teamPlan(state, "u23");
+        if (plan.formation !== "4-4-2" || plan.mentalitaet !== "ausgewogen") throw new Error("Plan ohne Grundeinstellung");
+        let elf = R.aufstellung(state, "u23");
+        if (elf.length !== 11) throw new Error(`Aufstellung mit ${elf.length} Plätzen`);
+        const besetzt = elf.filter(pl => pl.spieler);
+        if (besetzt.length !== kader.filter(p => R._einsatzbereit(p)).length) throw new Error("Nicht alle Einsatzbereiten stehen in der Elf");
+        if (besetzt.some(pl => pl.pos === "TW" && pl.spieler.pos !== "TW") || besetzt.some(pl => pl.pos !== "TW" && pl.spieler.pos === "TW")) throw new Error("Torwart und Feldspieler vertauscht");
+        if (new Set(besetzt.map(pl => pl.spieler.id)).size !== besetzt.length) throw new Error("Ein Spieler steht doppelt");
+
+        // Fest setzen: ein Feldspieler auf einen Sturmplatz, dann tauschen
+        const feld = kader.find(p => p.pos !== "TW" && p.pos !== "ST");
+        const st = elf.findIndex(pl => pl.pos === "ST");
+        if (!R.setzeAufPlatz(state, "u23", st, feld.id).success) throw new Error("Fest setzen klappt nicht");
+        elf = R.aufstellung(state, "u23");
+        if (elf[st].spieler !== feld || !elf[st].fest) throw new Error("Der feste Platz hält nicht");
+        const andererPlatz = elf.findIndex((pl, i) => i !== st && pl.pos !== "TW");
+        R.setzeAufPlatz(state, "u23", andererPlatz, feld.id);
+        if (String(plan.lineup[andererPlatz]) !== String(feld.id) || plan.lineup[st] != null) throw new Error("Umsetzen räumt den alten Platz nicht");
+        // Auf einer fremden Position bringt er weniger
+        if (!(R.staerkeAuf(feld, "ST") < R.staerkeAuf(feld, feld.pos))) throw new Error("Fremde Position kostet nichts");
+        if (R.platzEignung(feld, "TW") > 0.2) throw new Error("Ein Feldspieler taugt im Tor");
+        // Verletzt: Sein Platz geht an den Einsatzplan, die Vorgabe bleibt gemerkt
+        feld.injuredWeeks = 2;
+        elf = R.aufstellung(state, "u23");
+        if (elf.some(pl => pl.spieler === feld)) throw new Error("Ein Verletzter steht in der Elf");
+        if (String(plan.lineup[andererPlatz]) !== String(feld.id)) throw new Error("Die Vorgabe geht verloren");
+        if (R.setzeAufPlatz(state, "u23", 0, feld.id).success) throw new Error("Ein Verletzter lässt sich aufstellen");
+        feld.injuredWeeks = 0;
+
+        // Formation wechseln: Wer fest auf einer Position stand, bleibt dort, wenn es sie gibt
+        R.automatischAufstellen(state, "u23");
+        const iv = kader.find(p => p.pos === "IV") || kader.find(p => p.pos !== "TW");
+        const ivPlatz = R.aufstellung(state, "u23").findIndex(pl => pl.pos === iv.pos);
+        if (ivPlatz >= 0) {
+            R.setzeAufPlatz(state, "u23", ivPlatz, iv.id);
+            if (!R.setzeFormation(state, "u23", "4-3-3").success) throw new Error("Formation lässt sich nicht wechseln");
+            const neu = R.aufstellung(state, "u23");
+            const wo = neu.find(pl => pl.spieler === iv);
+            if (!wo || !wo.fest) throw new Error("Nach dem Formationswechsel ist der feste Spieler weg");
+        }
+        if (R.setzeFormation(state, "u23", "gibt-es-nicht").success) throw new Error("Unbekannte Formation angenommen");
+
+        // Mentalität: offensiv mehr Tore auf beiden Seiten
+        const tore = (ment) => {
+            R.setzeMentalitaet(state, "u23", ment);
+            let t = 0;
+            let z = 7;
+            const zufall = () => { z = (z * 16807) % 2147483647; return z / 2147483647; };
+            for (let i = 0; i < 300; i++) {
+                const kopie = { ...state, u23liga: null };
+                const e = R.spieltag(kopie, club, zufall);
+                t += e.tore + e.gegentore;
+            }
+            return t / 300;
+        };
+        const def = tore("defensiv"), off = tore("offensiv");
+        if (!(off > def * 1.15)) throw new Error(`Mentalität ohne Wirkung: defensiv ${def.toFixed(2)}, offensiv ${off.toFixed(2)} Tore je Spiel`);
+        R.setzeMentalitaet(state, "u23", "ausgewogen");
+
+        // U19: dieselbe Aufstellung, Stärke aus den Plätzen
+        const u19 = J.aufstellung(state);
+        if (u19.length !== 11) throw new Error("U19 ohne volle Formation");
+        if (!(J.eigeneStaerke(state) > 0)) throw new Error("U19 ohne Stärke");
+
+        // Speichern und Laden behalten den Plan
+        R.setzeFormation(state, "u19", "3-5-2");
+        const geladen = GameState._zuState(SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(state)))));
+        if (geladen.unterbau?.u19?.formation !== "3-5-2" || geladen.unterbau?.u23?.formation !== "4-3-3") throw new Error("Der Plan geht beim Speichern verloren");
+
+        // Die Kaderliste zeigt je Mannschaft ihre Spieler
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        ui._kaderWahl = { ansicht: "uebersicht", sorte: "pos", ab: null, filter: "alle", pos: "all", team: "u23" };
+        const u23Liste = ui.kaderZeilen(state, club, "all").map(z => z.p);
+        if (u23Liste.length !== kader.length || u23Liste.some(p => !kader.includes(p))) throw new Error("Die U23-Liste zeigt die Falschen");
+        ui._kaderWahl.team = "profis";
+        if (ui.kaderZeilen(state, club, "all").some(z => z.p.reserve)) throw new Error("U23-Spieler stehen bei den Profis");
+        ui._kaderWahl.team = "u19";
+        if (ui.kaderZeilen(state, club, "all").length !== J.eigeneSpieler(state).length) throw new Error("Die U19-Liste ist unvollständig");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

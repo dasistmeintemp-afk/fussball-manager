@@ -355,13 +355,15 @@ const ReserveEngine = {
      */
     u23Staerke(state, club, kader = null) {
         const verfuegbar = kader || this.spieler(state, club).filter(p => (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0);
-        const saison = state?.seasonYear || 1;
-        const liga = state?.u23liga && state.u23liga.saison === saison ? state.u23liga : null;
-        const elf = this.elfNachPlan(verfuegbar, "u23", saison, liga ? liga.eigene.length : 0);
+        // Die Elf auf den Plätzen der Formation (nur die eigene U23 hat eine)
+        const aufstellung = club && club.id === state?.userClubId
+            ? this.aufstellung(state, "u23", verfuegbar)
+            : this.elfNachPlan(verfuegbar, "u23", state?.seasonYear || 1, 0).map((p, i) => ({ slot: i, pos: p.pos, spieler: p, fest: false }));
+        const elf = aufstellung.filter(pl => pl.spieler).map(pl => pl.spieler);
         const profiSchnitt = this._kaderSchnitt(state, club);
         const auffuellen = Math.max(0, 11 - elf.length);
-        const staerke = (elf.reduce((s, p) => s + this.einsatzStaerke(p), 0) + auffuellen * (profiSchnitt - 16)) / 11;
-        return { elf, auffuellen, staerke, profiSchnitt };
+        const staerke = (aufstellung.reduce((s, pl) => s + (pl.spieler ? this.staerkeAuf(pl.spieler, pl.pos) : 0), 0) + auffuellen * (profiSchnitt - 16)) / 11;
+        return { elf, auffuellen, staerke, profiSchnitt, aufstellung };
     },
 
     // ------------------------------------------------------------ Einsatzplan
@@ -450,12 +452,209 @@ const ReserveEngine = {
     },
 
     /** Nach dem Spiel: Wer auf einer fremden Position stand, lernt sie (wie bei den Profis) */
-    lerneAufPosition(p, praxis) {
-        const pos = this.einsatzVon(p).pos;
+    lerneAufPosition(p, praxis, auf = null) {
+        const pos = auf && auf !== p.pos ? auf : this.einsatzVon(p).pos;
         const pe = _reResolve("PositionEngine", "./positionEngine.js");
-        if (!pos || !pe || typeof pe.gainPositionExperience !== "function") return null;
+        if (!pos || pos === p.pos || !pe || typeof pe.gainPositionExperience !== "function") return null;
         return pe.gainPositionExperience(p, pos, this.POSITION_JE_SPIEL * praxis);
     },
+
+    // ------------------------------------------- Aufstellung von U23 und U19
+
+    /**
+     * U23 und U19 wie die Profis: eine Formation, eine Startelf auf festen
+     * Plätzen und eine Mentalität (state.unterbau.u23 / .u19).
+     *
+     * Bisher stellte sich die Elf allein aus dem Einsatzplan, ohne Formation:
+     * Wer spielte, stand irgendwo, und zählte mit seiner Stärke, egal ob als
+     * Linksverteidiger im Sturm. Jetzt steht jeder auf einem Platz der
+     * Formation und bringt dort, was er auf dieser Position kann. Plätze,
+     * die der Trainer festlegt, bleiben so, solange der Spieler fit ist; die
+     * übrigen füllt der Einsatzplan - jeder auf den Platz, der ihm am besten
+     * liegt.
+     */
+    MANNSCHAFTEN: { u23: "U23", u19: "U19" },
+    MENTALITAETEN: {
+        defensiv: { label: "Defensiv", text: "Tief stehen, wenig zulassen - vorne kommt weniger", eigen: 0.86, gegner: 0.84 },
+        ausgewogen: { label: "Ausgewogen", text: "Wie es das Spiel hergibt", eigen: 1, gegner: 1 },
+        offensiv: { label: "Offensiv", text: "Früh nach vorn - mehr Tore auf beiden Seiten", eigen: 1.14, gegner: 1.12 }
+    },
+    STANDARD_FORMATION: "4-4-2",
+
+    /** Plan einer Mannschaft - wird beim ersten Zugriff angelegt */
+    teamPlan(state, team) {
+        if (!this.MANNSCHAFTEN[team] || !state) return null;
+        if (!state.unterbau || typeof state.unterbau !== "object") state.unterbau = {};
+        const plan = state.unterbau[team] || (state.unterbau[team] = {});
+        if (!this._formationVon(plan.formation)) plan.formation = this.STANDARD_FORMATION;
+        if (!Array.isArray(plan.lineup)) plan.lineup = [];
+        if (!this.MENTALITAETEN[plan.mentalitaet]) plan.mentalitaet = "ausgewogen";
+        return plan;
+    },
+
+    /** Alle Formationen der Spielwelt (Browser und Node) */
+    _konfigs() {
+        if (typeof FORMATION_CONFIGS !== "undefined" && FORMATION_CONFIGS) return FORMATION_CONFIGS;
+        return _reResolve("FORMATION_CONFIGS", "./gameState.js") || {};
+    },
+
+    /** Eine Formation, die es gibt - eigene Entwürfe der Profis zählen nicht */
+    _formationVon(key) {
+        const cfg = key ? this._konfigs()[key] : null;
+        return cfg && !cfg.custom && Array.isArray(cfg.positions) && cfg.positions.length === 11 ? cfg : null;
+    },
+
+    /** Die Formationen, die eine Unterbau-Mannschaft spielen kann */
+    formationen() {
+        return Object.keys(this._konfigs()).filter(key => this._formationVon(key))
+            .map(key => ({ key, name: this._konfigs()[key].name || key }));
+    },
+
+    /** Die Plätze der Formation einer Mannschaft */
+    teamSlots(state, team) {
+        const plan = this.teamPlan(state, team);
+        return plan ? this._formationVon(plan.formation).positions : [];
+    },
+
+    /** Wer zur Mannschaft gehört: U23 die zweite Mannschaft, U19 Akademie und junge Profis */
+    teamKader(state, team) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        if (!club) return [];
+        if (team === "u23") return this.spieler(state, club);
+        const jl = _reResolve("JugendligaEngine", "./jugendligaEngine.js");
+        return jl && typeof jl.eigeneSpieler === "function" ? jl.eigeneSpieler(state) : [];
+    },
+
+    _einsatzbereit(p) {
+        return (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0 && !p.abgestellt;
+    },
+
+    /** Wie gut einer auf einem Platz steht (0 bis 1): die eigene Position zählt voll */
+    platzEignung(p, pos) {
+        if (!p || !pos) return 0;
+        if (p.pos === pos) return 1;
+        if (pos === "TW" || p.pos === "TW") return 0.15;
+        const me = _reResolve("MatchEngine", "./matchEngine.js");
+        return me && typeof me.getPositionModifier === "function" ? me.getPositionModifier(p, pos) : 0.7;
+    },
+
+    /** Was einer auf einem Platz beiträgt - wie einsatzStaerke, nur für den Platz */
+    staerkeAuf(p, pos) {
+        return (p.overall || 0) * (0.5 + 0.5 * this.platzEignung(p, pos));
+    },
+
+    /**
+     * Die Startelf auf den Plätzen der Formation:
+     * [{ slot, pos, spieler | null, fest }] - fest heißt vom Trainer gesetzt.
+     * Wer fehlt (verletzt, gesperrt, nicht mehr im Team), dessen Platz füllt
+     * der Einsatzplan; reicht der Kader nicht, bleibt er leer (Amateure).
+     */
+    aufstellung(state, team, kandidaten = null) {
+        const plan = this.teamPlan(state, team);
+        if (!plan) return [];
+        const slots = this._formationVon(plan.formation).positions;
+        const saison = state?.seasonYear || 1;
+        const kader = (kandidaten || this.teamKader(state, team)).filter(p => this._einsatzbereit(p));
+        const nachId = new Map(kader.map(p => [String(p.id), p]));
+        const platz = slots.map((s, i) => ({ slot: i, pos: s.pos, spieler: null, fest: false }));
+        const vergeben = new Set();
+        // 1. Was der Trainer festgelegt hat
+        platz.forEach((pl, i) => {
+            const p = plan.lineup[i] != null ? nachId.get(String(plan.lineup[i])) : null;
+            if (p && !vergeben.has(p)) { pl.spieler = p; pl.fest = true; vergeben.add(p); }
+        });
+        // 2. Der Rest nach dem Einsatzplan - jeder auf den freien Platz, der ihm am besten liegt
+        const frei = platz.filter(pl => !pl.spieler);
+        if (frei.length) {
+            const liga = team === "u23" ? state?.u23liga : state?.jugendliga;
+            const spiele = liga && liga.saison === saison ? (liga.eigene || []).length : 0;
+            let reihe = this.elfNachPlan(kader.filter(p => !vergeben.has(p)), team, saison, spiele);
+            const twFrei = frei.some(pl => pl.pos === "TW");
+            if (!twFrei) reihe = reihe.filter(p => p.pos !== "TW");
+            const feldFrei = frei.filter(pl => pl.pos !== "TW").length;
+            const tw = twFrei ? reihe.find(p => p.pos === "TW") : null;
+            reihe = (tw ? [tw] : []).concat(reihe.filter(p => p.pos !== "TW").slice(0, feldFrei));
+            reihe.forEach(p => {
+                const wunsch = this.einsatzVon(p).pos;
+                const offen = frei.filter(pl => !pl.spieler && (p.pos === "TW") === (pl.pos === "TW"));
+                if (!offen.length) return;
+                const best = offen.reduce((b, pl) => {
+                    const wert = this.platzEignung(p, pl.pos) + (wunsch && wunsch === pl.pos ? 0.5 : 0);
+                    return wert > b.wert ? { pl, wert } : b;
+                }, { pl: null, wert: -1 }).pl;
+                if (best) { best.spieler = p; vergeben.add(p); }
+            });
+            // Ohne eigenen Torwart hütet ein Amateur das Tor - kein Feldspieler
+        }
+        return platz;
+    },
+
+    /** Den Trainer einen Spieler auf einen Platz stellen lassen (null macht den Platz wieder frei) */
+    setzeAufPlatz(state, team, slotIndex, playerId) {
+        const plan = this.teamPlan(state, team);
+        if (!plan) return { success: false, error: "Diese Mannschaft gibt es nicht." };
+        const slots = this._formationVon(plan.formation).positions;
+        if (!(slotIndex >= 0 && slotIndex < slots.length)) return { success: false, error: "Diesen Platz gibt es nicht." };
+        while (plan.lineup.length < slots.length) plan.lineup.push(null);
+        if (playerId == null) { plan.lineup[slotIndex] = null; return { success: true }; }
+        const p = this.teamKader(state, team).find(x => String(x.id) === String(playerId));
+        if (!p) return { success: false, error: `Er spielt nicht in der ${this.MANNSCHAFTEN[team]}.` };
+        if (!this._einsatzbereit(p)) return { success: false, error: `${p.name} ist nicht einsatzbereit.` };
+        // Stand er schon woanders, tauschen beide die Plätze
+        const alt = plan.lineup.findIndex(id => id != null && String(id) === String(p.id));
+        const vorher = plan.lineup[slotIndex];
+        if (alt >= 0 && alt !== slotIndex) plan.lineup[alt] = vorher ?? null;
+        plan.lineup[slotIndex] = p.id;
+        // Wer eingeteilt wird, wird nicht mehr geschont
+        if (this.einsatzVon(p).rolle === "schonen") this.setzeEinsatz(state, p.id, "auto", undefined);
+        return { success: true };
+    },
+
+    /** Formation wechseln: festgelegte Spieler bleiben, wo die Position passt */
+    setzeFormation(state, team, formation) {
+        const plan = this.teamPlan(state, team);
+        const neu = this._formationVon(formation);
+        if (!plan || !neu) return { success: false, error: "Diese Formation gibt es nicht." };
+        const alt = this._formationVon(plan.formation).positions;
+        const fest = plan.lineup.map((id, i) => (id != null ? { id, pos: alt[i]?.pos } : null)).filter(Boolean);
+        const lineup = neu.positions.map(() => null);
+        // Erst gleiche Position, dann die Reihenfolge
+        fest.forEach(f => {
+            const i = neu.positions.findIndex((s, k) => lineup[k] == null && s.pos === f.pos);
+            if (i >= 0) { lineup[i] = f.id; f.gesetzt = true; }
+        });
+        fest.filter(f => !f.gesetzt && f.pos !== "TW").forEach(f => {
+            const i = neu.positions.findIndex((s, k) => lineup[k] == null && s.pos !== "TW");
+            if (i >= 0) lineup[i] = f.id;
+        });
+        plan.formation = formation;
+        plan.lineup = lineup;
+        return { success: true };
+    },
+
+    setzeMentalitaet(state, team, mentalitaet) {
+        const plan = this.teamPlan(state, team);
+        if (!plan || !this.MENTALITAETEN[mentalitaet]) return { success: false, error: "Diese Mentalität gibt es nicht." };
+        plan.mentalitaet = mentalitaet;
+        return { success: true };
+    },
+
+    /** Alle Plätze wieder dem Einsatzplan überlassen */
+    automatischAufstellen(state, team) {
+        const plan = this.teamPlan(state, team);
+        if (!plan) return { success: false };
+        plan.lineup = [];
+        return { success: true };
+    },
+
+    /** Stärke der Elf auf ihren Plätzen; leere Plätze zählen mit dem Wert der Aushilfen */
+    staerkeDerElf(aufstellung, aushilfe) {
+        const summe = aufstellung.reduce((s, pl) => s + (pl.spieler ? this.staerkeAuf(pl.spieler, pl.pos) : aushilfe), 0);
+        return summe / Math.max(1, aufstellung.length);
+    },
+
+    /** Torgefahr je Platz - so treffen vor allem die Vorderen */
+    TORGEFAHR: { ST: 5, LA: 3, RA: 3, OM: 3, LM: 2, RM: 2, ZM: 1.5, DM: 0.7, LV: 0.5, RV: 0.5, IV: 0.5, TW: 0 },
 
     /** Die Tabelle, sortiert: [{ rang, name, eigen, spiele, s, u, n, tore, gegentore, punkte }] */
     ligaTabelle(state) {
@@ -502,7 +701,8 @@ const ReserveEngine = {
         const ligaRunde = liga && liga.runde < liga.runden.length ? liga.runden[liga.runde] : null;
         if (!kader.length && !ligaRunde) return null;
 
-        const { elf, auffuellen, staerke: eigene, profiSchnitt } = this.u23Staerke(state, club, kader);
+        const { elf, auffuellen, staerke: eigene, profiSchnitt, aufstellung } = this.u23Staerke(state, club, kader);
+        const platzVon = new Map(aufstellung.filter(pl => pl.spieler).map(pl => [pl.spieler, pl.pos]));
         // Der Gegner: in der Liga die angesetzte zweite Mannschaft, sonst
         // eine, die im Mittel etwas schwächer ist als die eigenen Profis
         const paarung = ligaRunde ? ligaRunde.find(([h, a]) => h === 0 || a === 0) : null;
@@ -511,9 +711,11 @@ const ReserveEngine = {
         const heim = paarung ? paarung[0] === 0 : true;
         const diff = eigene - gegner;
         const lam = (d) => Math.max(0.25, 1.35 * Math.exp(d / 22));
+        // Die Mentalität: offensiv mehr Tore auf beiden Seiten, defensiv weniger
+        const ment = club.id === state.userClubId ? this.MENTALITAETEN[this.teamPlan(state, "u23").mentalitaet] : this.MENTALITAETEN.ausgewogen;
         // Der Heimvorteil (zwei Punkte) gilt für den, der zu Hause spielt
-        const tore = this._poisson(lam(diff + (heim ? 2 : 0)), zufall);
-        const gegentore = this._poisson(lam(-diff + (heim ? 0 : 2)), zufall);
+        const tore = this._poisson(lam(diff + (heim ? 2 : 0)) * ment.eigen, zufall);
+        const gegentore = this._poisson(lam(-diff + (heim ? 0 : 2)) * ment.gegner, zufall);
 
         const meldungen = [];
         if (ligaRunde) this._ligaRunde(state, liga, ligaRunde, eigene, { tore, gegentore, heim, gegnerIndex }, zufall);
@@ -521,7 +723,7 @@ const ReserveEngine = {
             p.spielpraxis = Math.round(((p.spielpraxis ?? 0.5) * 0.82 + this.PRAXIS_WERT * 0.18) * 1000) / 1000;
             p.matchSharpness = Math.min(100, (p.matchSharpness ?? 60) + 6);
             p.fitness = Math.max(40, (p.fitness ?? 100) - 6);
-            this.lerneAufPosition(p, this.PRAXIS_WERT);
+            this.lerneAufPosition(p, this.PRAXIS_WERT, platzVon.get(p));
             if (zufall() < this.VERLETZUNG) {
                 p.injuredWeeks = 1 + Math.floor(zufall() * 3);
                 p.injuryName = "Muskelverletzung (U23)";
@@ -533,13 +735,16 @@ const ReserveEngine = {
             p.spielpraxis = Math.round(((p.spielpraxis ?? 0.5) * 0.82) * 1000) / 1000;
         });
 
-        // Torschützen grob aus den Offensiven
-        const vorne = elf.filter(p => ["ST", "LA", "RA", "OM", "LM", "RM"].includes(p.pos)).concat(elf);
+        // Torschützen nach dem Platz in der Formation: vorne trifft man öfter
+        const gewicht = elf.map(p => (this.TORGEFAHR[platzVon.get(p) || p.pos] ?? 1) * Math.max(1, (p.overall || 40) - 35));
+        const summe = gewicht.reduce((s, x) => s + x, 0);
         const schuetzen = [];
         const toreVon = new Map();
-        for (let i = 0; i < tore && elf.length; i++) {
-            const s = vorne[Math.floor(zufall() * Math.min(vorne.length, elf.length + 3))] || elf[0];
-            if (s) { schuetzen.push(s.name); toreVon.set(s, (toreVon.get(s) || 0) + 1); }
+        for (let i = 0; i < tore && elf.length && summe > 0; i++) {
+            let r = zufall() * summe, k = 0;
+            while (k < elf.length - 1 && r > gewicht[k]) { r -= gewicht[k]; k++; }
+            const s = elf[k];
+            schuetzen.push(s.name); toreVon.set(s, (toreVon.get(s) || 0) + 1);
         }
         if (liga && ligaRunde) {
             toreVon.forEach((n, s) => {

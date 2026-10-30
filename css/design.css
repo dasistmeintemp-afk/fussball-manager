@@ -196,6 +196,9 @@ body {
 .btn-lg { border-radius: 12px; padding: 13px 24px; font-size: 15px; }
 .btn-icon-only { padding: 0; width: 42px; min-width: 42px; }
 
+/* Gedämpfte Hinweistexte - die Klasse stand überall, hatte aber keine Farbe */
+.text-muted { color: var(--text-muted); }
+
 /* Umschalter-Gruppen (Tabelle/Spielplan, Transfermarkt/Scouting) als Segment */
 .view-switch-buttons {
     display: inline-flex;
@@ -3954,4 +3957,78 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
 @supports not (container-type: inline-size) {
     @media (min-width: 900px) { .wbu-raster { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (min-width: 1500px) { .wbu-raster { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+}
+
+/* --------------------------------------------------------------------------
+   Aufstellung von U23 und U19 (uiUnterbau.js): Formation, Mentalität und die
+   Elf auf dem Feld - ein Tipp auf einen Platz setzt einen Spieler fest
+   -------------------------------------------------------------------------- */
+#u23Aufstellung[hidden], #u19Aufstellung[hidden] { display: none; }
+.ub-listen p { margin: 0; font-size: 13px; }
+.ub-steuer { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 14px; margin: 2px 0 14px; }
+.ub-steuer label { display: grid; gap: 4px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.ub-steuer .styled-select { min-width: 170px; }
+.ub-steuer .ub-auto { margin-left: auto; }
+.ub-raster { display: grid; grid-template-columns: minmax(260px, 420px) minmax(0, 1fr); gap: 18px; align-items: start; }
+.ub-feld {
+    position: relative; aspect-ratio: 68 / 100; width: 100%; border-radius: 14px; overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background:
+        repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.035) 0 9%, transparent 9% 18%),
+        linear-gradient(180deg, #1d5a35, #17492b);
+}
+.ub-linien { position: absolute; inset: 4%; border: 2px solid rgba(255, 255, 255, 0.22); border-radius: 4px; pointer-events: none; }
+.ub-linien i { position: absolute; display: block; border: 2px solid rgba(255, 255, 255, 0.22); }
+.ub-linien .ub-mitte { left: -2px; right: -2px; top: 50%; height: 0; border-width: 2px 0 0; }
+.ub-linien .ub-kreis { left: 50%; top: 50%; width: 26%; aspect-ratio: 1; border-radius: 50%; transform: translate(-50%, -50%); }
+.ub-linien .ub-strafraum { left: 22%; right: 22%; height: 15%; }
+.ub-linien .ub-strafraum.oben { top: -2px; border-top: 0; }
+.ub-linien .ub-strafraum.unten { bottom: -2px; border-bottom: 0; }
+.ub-knoten {
+    position: absolute; transform: translate(-50%, -50%); z-index: 1;
+    display: grid; justify-items: center; gap: 1px; width: 84px; padding: 4px 4px 5px;
+    border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(10, 16, 24, 0.86); color: var(--text-main); font: inherit; cursor: pointer;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35); transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.ub-knoten:hover { border-color: var(--accent-line); transform: translate(-50%, -50%) scale(1.04); }
+.ub-knoten .ub-pos { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 800; letter-spacing: 0.05em; color: var(--text-muted); }
+.ub-knoten .ub-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; }
+.ub-knoten .ub-info { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+/* Eignung als Strich oben: grün eigene Position, gelb verwandt, rot fremd */
+.ub-knoten::before { content: ""; position: absolute; left: 10px; right: 10px; top: -1px; height: 3px; border-radius: 0 0 3px 3px; background: var(--ok); }
+.ub-knoten.eignung-mittel::before { background: var(--warn); }
+.ub-knoten.eignung-schlecht::before { background: var(--bad); }
+.ub-knoten.leer { border-style: dashed; background: rgba(10, 16, 24, 0.55); }
+.ub-knoten.leer::before { display: none; }
+.ub-knoten.leer .ub-name { color: var(--text-muted); font-weight: 600; }
+.ub-knoten.fest { border-color: var(--accent-line); }
+/* Festgelegt: eine kleine Nadel */
+.ub-fest { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.25); vertical-align: middle; }
+.ub-listen h4 { margin: 0 0 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); }
+.ub-listen h4:not(:first-child) { margin-top: 14px; }
+.ub-liste { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.ub-zeile {
+    display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%;
+    min-height: 36px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-1);
+    color: var(--text-main); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+.ub-zeile:hover { border-color: var(--accent-line); }
+.ub-zeile .pos-tag { justify-self: start; }
+.ub-zeile-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.ub-eignung, .ub-grund { font-size: 12px; white-space: nowrap; }
+.ub-ton-gut { color: var(--ok); } .ub-ton-mittel { color: var(--warn); } .ub-ton-schlecht { color: var(--bad); }
+.ub-wahl-hinweis { margin: 0 0 10px; font-size: 13px; }
+.spm-kandidat.aktiv { border-color: var(--accent-primary); background: rgba(var(--accent-rgb), 0.12); }
+.spm-kandidat:disabled { cursor: default; opacity: 0.6; }
+.spm-kandidat.aktiv:disabled { opacity: 1; }
+.ub-freigeben { margin-bottom: 10px; }
+@media (max-width: 720px) {
+    .ub-raster { grid-template-columns: minmax(0, 1fr); }
+    .ub-feld { max-width: 440px; justify-self: center; }
+    .ub-knoten { width: 72px; padding: 3px 3px 4px; }
+    .ub-knoten .ub-name { font-size: 11px; }
+    .ub-steuer .styled-select { min-width: 0; width: 100%; }
+    .ub-steuer label { flex: 1 1 140px; }
+    .ub-steuer .ub-auto { margin-left: 0; flex: 1 1 100%; }
 }

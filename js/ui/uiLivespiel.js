@@ -12,7 +12,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     || require("./uiManager.js").UIManager).prototype, {
     /**
      * Was das 2D-Feld zeigt - pro Geraet gemerkt. Namen sind wie im Vorbild
-     * voreingestellt, die Formationslinien schaltet man bei Bedarf dazu.
+     * voreingestellt, die Formationslinien schaltet man bei Bedarf dazu. Der
+     * Rasen ist im alten Stil olivbraun, auf Wunsch modern grün.
      */
     anzeige2D() {
         if (this._anzeige2D) return this._anzeige2D;
@@ -21,7 +22,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this._anzeige2D = {
             namen: true, formEigene: false, formGegner: false, feldGross: false,
             dreiD: false, kamera3D: "tv", qualitaet3D: "auto", wiederholung3D: true,
-            wiederholung2D: true, passwege: false, laufwege: false, steilpaesse: true,
+            wiederholung2D: true, passwege: false, laufwege: false, steilpaesse: true, rasen: "klassisch",
             ...(gespeichert || {})
         };
         return this._anzeige2D;
@@ -563,8 +564,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         };
 
         const render2DCanvas = (dt = 0.016) => {
-            if (!this.pitchBackdrop || this.pitchBackdrop.canvas.width !== canvas.width || this.pitchBackdrop.canvas.height !== canvas.height) {
-                this.pitchBackdrop = this.buildPitchBackdrop(canvas.width, canvas.height);
+            const rasen = this.anzeige2D().rasen === "modern" ? "modern" : "klassisch";
+            if (!this.pitchBackdrop || this.pitchBackdrop.canvas.width !== canvas.width || this.pitchBackdrop.canvas.height !== canvas.height
+                || this.pitchBackdrop.stil !== rasen) {
+                this.pitchBackdrop = this.buildPitchBackdrop(canvas.width, canvas.height, rasen);
             }
             const bg = this.pitchBackdrop;
             if (!bg) return;
@@ -611,7 +614,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             //    Ein Punkt (bx) des vorgerenderten Rasens liegt auf dem Bildschirm
             //    bei originX + (bx - pitchX) * zoom - also eine reine Verschiebung
             //    plus Skalierung.
-            ctx.fillStyle = "#08301d";
+            ctx.fillStyle = bg.umfeld || "#08301d";
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             ctx.save();

@@ -99,6 +99,11 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Meilensteine, Trophäenschrank und Saisonrückblick (`MeilensteinEngine`):** Jubiläen von Trainer und Spielern (Spiele, Siege, Tore, Titel, Jahre im Verein) kommen als Nachricht und in die Chronik. Die Vereinsseite zeigt den Trophäenschrank, der Saisonabschluss die Saison in Zahlen.
 - **U19-Liga (`JugendligaEngine`):** Die Talente der Akademie spielen in einer Liga mit zwölf Nachwuchsteams aus dem eigenen Land - mit Tabelle, Ergebnissen und Torjägern im Reiter Jugend. Die U19-Meisterschaft kommt in den Trophäenschrank.
 - **U23-Liga (`ReserveEngine.ligaStarte`):** Die zweite Mannschaft spielt gegen die zweiten Mannschaften anderer Vereine aus dem eigenen Land, so viele, dass jeder Spieltag der Profis ein Spieltag der U23 ist (34 Spieltage: 18 Teams). Tabelle, Ergebnisse und Torjäger stehen im Reiter Jugend, die U23-Meisterschaft kommt in den Trophäenschrank. Steht niemand in der U23, spielt sie mit Amateuren. Ein Spielstand mitten in der Saison holt die gespielten Spieltage nach.
+- **U23 und U19 wie die Profis (`ReserveEngine.aufstellung`, `uiUnterbau.js`):** Beide Mannschaften haben eine Formation, eine Startelf auf festen Plätzen und eine Mentalität (`state.unterbau`).
+  - Im Reiter Jugend steht die Elf auf dem Feld; ein Tipp auf einen Platz setzt einen Spieler fest, steht er schon woanders, tauschen beide. *Automatisch aufstellen* löst alle festen Plätze.
+  - Freie Plätze füllt der Einsatzplan, jeden Spieler auf dem Platz, der ihm am besten liegt. Fällt ein festgesetzter Spieler aus, springt der Einsatzplan ein, die Vorgabe bleibt gemerkt.
+  - Im Spiel zählt jeder mit dem, was er auf seinem Platz kann - auf einer fremden Position weniger, dafür lernt er sie. Torschützen kommen nach dem Platz in der Formation. Offensiv gibt es mehr Tore auf beiden Seiten, defensiv weniger.
+  - Die Kaderliste im Reiter Kader schaltet zwischen Profis, U23 und U19 um - mit denselben Ansichten, Spalten, Sortierungen und Filtern; U23 und U19 zeigen ihre eigenen Spiele, Tore, Noten und ihre Form.
 
 ### 1. 🏆 Liga & Wettbewerb
 - **18 Vereine der Liga 1**: Vollständige Kader, Budgets, Stadien, Fanbasen, Sponsoren und Vereinsinfrastruktur.
@@ -288,6 +293,9 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Formation nach Kader:** „Beste 11 automatisch aufstellen“ wählt vorher die Formation, die am besten zu den einsatzfähigen Spielern passt – jede Formation (auch eigene) wird mit dem Kader besetzt und nach der Stärke der Elf auf ihren Positionen bewertet. Verletzte und Gesperrte zählen nicht. Die bisherige Formation bleibt, wenn keine andere spürbar besser ist, und ungewöhnliche Systeme müssen ihren Vorteil deutlicher zeigen als gebräuchliche.
 
 ### 3. 🎮 2D-Live-Match-Engine & Sofort-Simulation
+- **Livespiel am Handy (`uiLivespiel.ordneLivesteuerung`):** Hochkant stehen *Seitenlinie* und *Sofort-Ergebnis* beschriftet in einer festen Leiste unten, in Daumenreichweite. Oben bleiben Pause, Tempo und Ansicht, darunter Mentalität und Anweisungen.
+  - Vorher lag eine Meldung unter der Kopfleiste (etwa der Tagesbericht) unsichtbar über der Steuerung, und *Sofort-Ergebnis* war erst quer zu erreichen. Zum Anpfiff wandert die Meldungszeile in die Zentrale; Meldungen im Spiel erscheinen über der Leiste und bleiben nicht stehen.
+  - Quer passt die Steuerzeile jetzt in den Bildschirm: kurze Beschriftungen, sonst eine zweite Zeile. Vorher waren Pause links und *Sofort-Ergebnis* rechts abgeschnitten.
 - **Testspiele zählen nicht:** Tore, Einsätze, Noten und Karten aus Freundschaftsspielen laufen weder in die Saisonstatistik noch in die Kartensperren. Fitness, Form und Spielschärfe wirken weiter.
   - Vorher hatte der beste Torjäger der 1. Liga nach sieben Spieltagen 24 Tore, neun davon aus vier Testspielen.
   - Mit der fünften Gelben aus einem Testspiel war ein Spieler im nächsten Pflichtspiel gesperrt.

@@ -28,6 +28,40 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         return this._anzeige2D;
     },
 
+    /**
+     * Am Handy hochkant gehören Seitenlinie und Sofort-Ergebnis unten in
+     * Daumenreichweite, mit Beschriftung. Oben in der Steuerzeile waren sie
+     * nur Symbole - und eine Meldung unter der Kopfleiste lag genau darüber,
+     * Sofort-Ergebnis war erst quer zu erreichen. Breiter wandern beide
+     * zurück an ihren Platz in der Steuerzeile.
+     */
+    ordneLivesteuerung() {
+        if (typeof document === "undefined" || typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+        const fuss = document.getElementById("lmFussleiste");
+        const leiste = document.querySelector("#modalLiveMatch .live-controls-bar");
+        const seitenlinie = document.getElementById("btnLmCoaching");
+        const sofort = document.getElementById("btnLmSkip");
+        if (!fuss || !leiste || !seitenlinie || !sofort) return;
+        const handy = window.matchMedia("(max-width: 640px)");
+        const ordne = () => {
+            if (handy.matches) {
+                fuss.append(seitenlinie, sofort);
+            } else if (seitenlinie.parentElement === fuss) {
+                // Seitenlinie hinter die Ansicht, Sofort-Ergebnis ans Ende
+                document.getElementById("btnLmAnsicht")?.after(seitenlinie);
+                leiste.append(sofort);
+            }
+        };
+        ordne();
+        // Die Zurufe sind am Handy eine wischbare Zeile - mit weichem Rand, wo es weitergeht
+        if (typeof this.wischHinweis === "function") this.wischHinweis(document.getElementById("lmZurufe"));
+        if (!this._livesteuerungGebunden) {
+            this._livesteuerungGebunden = true;
+            if (typeof handy.addEventListener === "function") handy.addEventListener("change", ordne);
+            else if (typeof handy.addListener === "function") handy.addListener(ordne);
+        }
+    },
+
     verdrahteAnzeige2D() {
         const anzeige = this.anzeige2D();
         document.querySelectorAll("#lmAnsicht [data-anzeige2d]").forEach(box => {
@@ -340,6 +374,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         const modal = document.getElementById("modalLiveMatch");
         modal.style.display = "flex";
+        this.ordneLivesteuerung();
+        // Was vor dem Anpfiff gemeldet wurde, steht in der Zentrale - nicht über der Anzeigetafel
+        if (typeof this.leereMeldungsZeile === "function") this.leereMeldungsZeile();
 
         // Der Wettbewerb färbt den Abend: Pokalnächte sehen anders aus als
         // der 14. Spieltag.

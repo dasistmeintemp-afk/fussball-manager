@@ -17704,7 +17704,10 @@ function runEngineTests() {
         let elf = R.aufstellung(state, "u23");
         if (elf.length !== 11) throw new Error(`Aufstellung mit ${elf.length} Plätzen`);
         const besetzt = elf.filter(pl => pl.spieler);
-        if (besetzt.length !== kader.filter(p => R._einsatzbereit(p)).length) throw new Error("Nicht alle Einsatzbereiten stehen in der Elf");
+        // Alle Einsatzbereiten spielen - im Tor steht genau einer, auch wenn es zwei Torhüter gibt
+        const bereit = kader.filter(p => R._einsatzbereit(p));
+        const erwartet = Math.min(10, bereit.filter(p => p.pos !== "TW").length) + (bereit.some(p => p.pos === "TW") ? 1 : 0);
+        if (besetzt.length !== erwartet) throw new Error(`${besetzt.length} statt ${erwartet} in der Elf`);
         if (besetzt.some(pl => pl.pos === "TW" && pl.spieler.pos !== "TW") || besetzt.some(pl => pl.pos !== "TW" && pl.spieler.pos === "TW")) throw new Error("Torwart und Feldspieler vertauscht");
         if (new Set(besetzt.map(pl => pl.spieler.id)).size !== besetzt.length) throw new Error("Ein Spieler steht doppelt");
 

@@ -188,6 +188,13 @@ const PUSTE = { sprint: 0.07, erholung: 0.05, boden: 0.82, ruhenderBall: 1.6, ab
 const HALBZEIT_ERHOLUNG = 0.35;
 
 /**
+ * Grundfitness je Punkt über dem, was Ausdauer und Physis erwarten lassen:
+ * so viel schneller kommt die Puste zurück (erholung) und so viel langsamer
+ * sinkt die Frische über das Spiel (abbau).
+ */
+const WERTE_KOERPER = { erholung: 0.015, abbau: 0.012 };
+
+/**
  * Eins gegen eins: Der Verteidiger stellt sich zwischen Ball und Tor, hält
  * Abstand und geht rückwärts mit, bis der Zweikampf fällt. Wie lange das
  * dauert (Spielzeit in Sekunden, von - bis), hängt an seiner Geduld. Gestellt
@@ -1266,7 +1273,9 @@ class LiveMatchDirector {
             // Hitze und tiefer Boden zehren zusätzlich
             // Wer viel läuft, zahlt dafür - der Einsatz kostet etwas Kraft
             const rate = (p.sprinting ? 0.00009 : 0.00003) * endurance * (this.match.wetter?.ausdauer || 1)
-                * (typeof p.workRate === "number" ? 1 + (p.workRate + (p.zuruf?.plus?.workRate || 0) - 72) / 400 : 1);
+                * (typeof p.workRate === "number" ? 1 + (p.workRate + (p.zuruf?.plus?.workRate || 0) - 72) / 400 : 1)
+                // Die Grundfitness trägt über die neunzig Minuten
+                * Math.max(0.75, Math.min(1.25, 1 - (p.fein?.naturalFitness || 0) * WERTE_KOERPER.abbau));
             p.freshness = Math.max(0.6, (p.freshness ?? 1) - rate * matchSeconds);
             // Wer angeschlagen weiterspielt, humpelt - langsamer als jeder Muede.
             if (p.verletzt) p.freshness = Math.min(p.freshness, 0.62);
@@ -3679,6 +3688,7 @@ class LiveMatchDirector {
         return {
             minute,
             derby: !!m.match?.isDerby,
+            rueckstand: eigene < fremde,
             grosserMoment: !!m.match?.isDerby || (minute >= 70 && eigene < fremde) || (minute >= 85 && eigene === fremde)
         };
     }
@@ -6045,7 +6055,9 @@ class LiveMatchDirector {
             const anteil = Math.min(1, (tempo - PUSTE.ab) / (PUSTE.voll - PUSTE.ab));
             p.puste = Math.max(0, v - PUSTE.sprint * anteil * (1.6 - ausdauer * 0.8) * lauf);
         } else if (tempo < PUSTE.trab) {
-            p.puste = Math.min(1, v + PUSTE.erholung * (0.5 + ausdauer * 0.67) * (this.deadBall ? PUSTE.ruhenderBall : 1) * lauf);
+            // Wer eine gute Grundfitness hat, kommt schneller wieder zu Atem
+            const fitness = Math.max(0.7, Math.min(1.35, 1 + (p.fein?.naturalFitness || 0) * WERTE_KOERPER.erholung));
+            p.puste = Math.min(1, v + PUSTE.erholung * (0.5 + ausdauer * 0.67) * fitness * (this.deadBall ? PUSTE.ruhenderBall : 1) * lauf);
         }
         // Was davon im Tempo ankommt - auch für die Ballphysik (BallPhysik.hoechstTempo)
         p.pusteF = PUSTE.boden + (1 - PUSTE.boden) * p.puste;

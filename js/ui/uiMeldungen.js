@@ -159,7 +159,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         zeile.style.setProperty("--mz-oben", `${Math.max(8, Math.round(unten) + 8)}px`);
         // Im Livespiel stehen oben Spielstand und Uhr - dort erscheint die Zeile unten
         const live = document.getElementById("modalLiveMatch");
-        zeile.classList.toggle("unten", !!(live && live.style && live.style.display && live.style.display !== "none"));
+        const imLivespiel = !!(live && live.style && live.style.display && live.style.display !== "none");
+        zeile.classList.toggle("unten", imLivespiel);
 
         [...zeile.children].forEach(alt => {
             alt.classList.remove("da");
@@ -183,12 +184,22 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         zeile.appendChild(karte);
         const zeigen = () => karte.classList.add("da");
         if (typeof requestAnimationFrame === "function") requestAnimationFrame(zeigen); else zeigen();
-        if (!m.bleibt) {
+        // Im Livespiel bleibt nichts stehen: Die Zeile läge sonst dauerhaft
+        // über der Steuerung. Knöpfe gelten weiter - in der Zentrale.
+        if (!m.bleibt || imLivespiel) {
             this._meldungUhr = setTimeout(() => {
                 m.gesehen = m.gesehen || !m.wichtig;
                 this.schliesseMeldungsZeile(m.id);
-            }, m.dauer);
+            }, m.bleibt ? Math.max(m.dauer, 6000) : m.dauer);
         }
+    },
+
+    /** Die Zeile leeren - die Meldungen bleiben in der Zentrale (etwa zum Anpfiff) */
+    leereMeldungsZeile() {
+        const zeile = typeof document !== "undefined" && document.getElementById ? document.getElementById("meldungZeile") : null;
+        if (!zeile || !zeile.children) return;
+        clearTimeout(this._meldungUhr);
+        [...zeile.children].forEach(karte => this.schliesseMeldungsZeile(karte.dataset?.meldung));
     },
 
     /** Eine Meldung aus der Zeile nehmen (sie bleibt in der Zentrale) */

@@ -1155,6 +1155,107 @@ function runWizardTests() {
         }
     });
 
+    test("3D-Ansicht: echte Menschen mit Kleidung, Füße am Boden, aufgenommene Bewegungen treffen den Ball", () => {
+        const vorher = global.THREE, vorherSf = global.Spielfeld3D;
+        global.THREE = require('./js/vendor/three.min.js');
+        const { Spielfeld3D } = require('./js/ui/spielfeld3d.js');
+        global.Spielfeld3D = Spielfeld3D;
+        const Menschen3D = require('./js/ui/menschen3d.js');
+        try {
+            // Dateien: im Offline-Vorrat, in der Einzeldatei, mit Herkunft
+            const sw = fs.readFileSync('./service-worker.js', 'utf8'), buendler = fs.readFileSync('./build-einzeldatei.js', 'utf8');
+            [Menschen3D.DATEI, Menschen3D.BEWEGUNGEN, "js/ui/menschen3d.js"].forEach(d => {
+                if (!fs.existsSync('./' + d)) throw new Error(`${d} fehlt`);
+                if (!sw.includes('./' + d)) throw new Error(`${d} fehlt im Offline-Vorrat`);
+            });
+            if (!buendler.includes('"' + Menschen3D.VORRAT_ID + '"') || !buendler.includes('"' + Menschen3D.BEWEGUNGEN_ID + '"')) throw new Error("Die Einzeldatei bündelt die Menschen nicht");
+            const lizenz = fs.readFileSync('./assets/3d/LIZENZ.md', 'utf8');
+            if (!lizenz.includes("CC0") || !lizenz.includes("Carnegie Mellon")) throw new Error("Die Herkunft der Menschen oder Bewegungen fehlt");
+
+            const m = new Menschen3D(new Uint8Array(fs.readFileSync('./' + Menschen3D.DATEI)), JSON.parse(fs.readFileSync('./' + Menschen3D.BEWEGUNGEN, 'utf8')));
+            ["stand", "gehen", "traben", "laufen", "schuss", "pass", "sprung"].forEach(c => { if (!m.bw || !m.bw.clips[c]) throw new Error(`Bewegung ${c} fehlt`); });
+
+            const sf = Object.create(Spielfeld3D.prototype);
+            Object.assign(sf, {
+                canvas: { clientWidth: 800, clientHeight: 480 },
+                qualitaet: "mittel", q: Spielfeld3D.QUALITAET.mittel,
+                renderer: { setSize() {}, render() {}, dispose() {} },
+                scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(34, 16 / 9, 0.5, 400), kamera: "tv",
+                _ziel: new THREE.Vector3(), _kamPos: new THREE.Vector3(0, 19, 64),
+                ball: new THREE.Mesh(), ballSchatten: new THREE.Mesh(undefined, new THREE.MeshBasicMaterial()),
+                figuren: new Map(), zeit: 0, _letzteAktion: 0, _aufnahme: [], _wiederholung: null, _bildzeiten: [], menschen: m
+            });
+            const spieler = [
+                { id: "a", team: "home", pos: "ST", x: 80, y: 50, vx: 0, vy: 0, speed: 0, name: "Stürmer", number: 9, foot: "rechts" },
+                { id: "l", team: "home", pos: "LM", x: 60, y: 30, vx: 0, vy: 0, speed: 0, name: "Links", number: 11, foot: "links" },
+                { id: "t", team: "away", pos: "TW", x: 95, y: 50, vx: 0, vy: 0, speed: 0, name: "Torwart", number: 1 }
+            ];
+            const lm = { ball: { x: 80.5, y: 50, height: 0, inFlight: false }, players2D: spieler, abgaenge: [], aktionen: [], activePlayerId: null, kits: {} };
+            sf.spielKey = lm;
+            const bild = (n = 1) => { for (let i = 0; i < n; i++) { sf.zeichne(lm, 1 / 30, { namen: false }); sf.scene.updateMatrixWorld(true); } };
+            bild(30);
+            const f = sf.figuren.get("a"), tw = sf.figuren.get("t"), fl = sf.figuren.get("l");
+            const welt = (fig, n) => fig.mensch.knochen.find(b => b.name === n).getWorldPosition(new THREE.Vector3());
+            const tiefsterFuss = (fig) => Math.min(...["LeftToeBase", "RightToeBase", "LeftFoot", "RightFoot"].map(n => welt(fig, n).y));
+            const amBall = (fig) => { const b = sf.ball.position, d = (n) => { const p = welt(fig, n); return Math.hypot(p.x - b.x, p.z - b.z); }; return { rechts: d("RightToeBase"), links: d("LeftToeBase") }; };
+
+            // Ein Mensch: Haut, Kleidung, Augen, Brauen, Wimpern (und Haare) über einem Skelett
+            if (!f.mensch || !f.netz.isSkinnedMesh || f.netz.skeleton.bones.length !== 52) throw new Error("Die Figur ist kein Mensch über 52 Knochen");
+            if (f.mensch.netze.length < 5 || f.mensch.netze.some(n => n.skeleton !== f.netz.skeleton)) throw new Error("Nicht alle Teile hängen am selben Skelett");
+            const kleid = f.mensch.kleidung.geometry;
+            if (!kleid.attributes.teil || !kleid.attributes.saum) throw new Error("Der Kleidung fehlen Stück und Bündchen");
+            const stuecke = (g) => [...new Set(g.attributes.teil.array)].sort().join("");
+            if (stuecke(kleid) !== "0123" || stuecke(tw.mensch.kleidung.geometry) !== "01234") throw new Error(`Kleidung: Feld ${stuecke(kleid)}, Torwart ${stuecke(tw.mensch.kleidung.geometry)}`);
+            // Unter langen Ärmeln und Handschuhen bleibt weniger Haut sichtbar
+            if (!(tw.netz.geometry.index.count < f.netz.geometry.index.count * 0.8)) throw new Error("Beim Torwart liegt die Haut nicht unter Ärmeln und Handschuhen");
+
+            // Im Stand und im Lauf stehen die Füße auf dem Rasen, das Knie beugt sich
+            const stand = tiefsterFuss(f);
+            if (!(stand > -0.02 && stand < 0.08)) throw new Error(`Im Stand stehen die Füße bei ${stand.toFixed(3)} m`);
+            let knie = 0, boden = 9;
+            for (let i = 0; i < 60; i++) {
+                spieler[0].x += 6 * 0.9 / 30; bild();
+                if (i < 20) continue;
+                const h = welt(f, "LeftUpLeg"), k = welt(f, "LeftLeg"), s = welt(f, "LeftFoot");
+                knie = Math.max(knie, Math.acos(k.clone().sub(h).normalize().dot(s.clone().sub(k).normalize())));
+                boden = Math.min(boden, tiefsterFuss(f));
+            }
+            if (!(knie > 1.2)) throw new Error(`Im Lauf beugt sich das Knie nur ${knie.toFixed(2)}`);
+            if (!(boden < 0.06 && boden > -0.03)) throw new Error(`Im Lauf berührt kein Fuß den Rasen (tiefster ${boden.toFixed(3)} m)`);
+            bild(40);
+
+            // Schuss: Beim Kontakt ist der Schussfuß am Ball, nicht das Standbein
+            lm.ball.x = spieler[0].x + 0.5; bild(20);
+            lm.aktionen.push({ nr: 1, art: "schuss", id: "a", x: 96, y: 50 });
+            let kontakt = null;
+            for (let i = 0; i < 40; i++) { bild(); if (!kontakt && f.anim && f.anim.art === "schuss" && f.anim.t >= f.anim.kontakt) kontakt = amBall(f); }
+            if (!kontakt || !(kontakt.rechts < 0.45 && kontakt.rechts < kontakt.links)) throw new Error(`Schuss: Füße am Ball ${JSON.stringify(kontakt)}`);
+
+            // Kopfball: Der Kopf ist beim Kontakt am Ball
+            bild(30);
+            lm.aktionen.push({ nr: 2, art: "kopfball", id: "a", x: 96, y: 50 });
+            let kopf = null;
+            for (let i = 0; i < 40; i++) {
+                bild();
+                if (!kopf && f.anim && f.anim.art === "kopfball" && f.anim.t >= f.anim.kontakt) {
+                    const k = welt(f, "Head"), b = sf.ball.position;
+                    kopf = { hoehe: Math.abs(b.y - (k.y + 0.1)), seite: Math.hypot(k.x - b.x, k.z - b.z) };
+                }
+            }
+            if (!kopf || kopf.hoehe > 0.45 || kopf.seite > 0.35) throw new Error(`Kopfball: Kopf und Ball ${JSON.stringify(kopf)}`);
+
+            // Linksfuß: die gespiegelte Aufnahme, der linke Fuß trifft
+            lm.ball.x = 60.5; lm.ball.y = 30; bild(40);
+            lm.aktionen.push({ nr: 3, art: "schuss", id: "l", x: 96, y: 50 });
+            let links = null;
+            for (let i = 0; i < 40; i++) { bild(); if (!links && fl.anim && fl.anim.art === "schuss" && fl.anim.t >= fl.anim.kontakt) links = amBall(fl); }
+            if (!links || !(links.links < 0.45 && links.links < links.rechts)) throw new Error(`Linksfuß: Füße am Ball ${JSON.stringify(links)}`);
+        } finally {
+            if (vorher === undefined) delete global.THREE; else global.THREE = vorher;
+            if (vorherSf === undefined) delete global.Spielfeld3D; else global.Spielfeld3D = vorherSf;
+        }
+    });
+
     test("Postfach: Am Handy klappt die Nachricht unter ihrem Eintrag auf, breit steht sie daneben", () => {
         // Ein kleines DOM: genug für Liste, Einträge und Detailansicht
         const machEl = (id, klassen = "") => {

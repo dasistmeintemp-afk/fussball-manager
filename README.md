@@ -424,6 +424,31 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   - **Blinder Winkel:** Ein Verteidiger schaut zum Ball. Wer hinter ihm einläuft (mehr als 115 Grad von der Blickrichtung, höchstens 9 Meter), den sieht er erst, wenn der Ball unterwegs ist: Bei der Flanke startet er 0,16 Sekunden später, in Manndeckung die Hälfte; beim Pass in den Lauf gilt es zu 60 %. Gemessen gewinnt so knapp ein Angreifer je Spiel einen Kopfball aus dem Rücken seines Verteidigers.
   - **Spieleranweisungen je Platz:** In der Taktik (Rollenzeile aufklappen, Spielermenü oder Zusammenspiel) neben den Rollen *In den Strafraum gehen* und *Läufe in die Tiefe*, je oft, normal oder selten. Sie bleiben beim Rollenwechsel erhalten. *Oft* in den Strafraum kommt zu den Läufern der Mentalität dazu, *selten* wartet bei der Flanke an der Strafraumkante. *Oft* in die Tiefe startet auch ohne Läuferrolle, sobald der Ballführende den Kopf hebt, *selten* kommt lieber entgegen.
   - **Gemessen** (Frankfurt gegen Wolfsburg, je 24 Partien): Mit dem zentralen Mittelfeld auf *oft* stehen dort 1,42 statt 0,44 Spieler je Flanke im Strafraum, mit dem Sturm auf *selten* 0,47 statt 0,89 Stürmer und Flügelspieler; mit dem Mittelfeld auf *oft* in die Tiefe sind 8 % seiner Laufwege Tiefenläufe statt keine. Gegen den alten Stand (Eichlauf, je 144 Partien): Tore 2,81 statt 2,83, Schüsse 25,7 statt 24,0, Kopfbälle nach Flanken 36 % statt 31 %.
+- **Alle Spielerwerte wirken im 2D-Spiel (`MatchFlowEngine.WERTE_WIRKUNG`, `PlayerGenerator.FEIN_2D`):** Ein Prüfstand spielt dieselbe Szene tausendfach, einmal mit dem Wert, wie er ist, einmal mit fünfzehn Punkten mehr, mit derselben Zufallsfolge. Ganze Spiele taugen dafür nicht: Die kleinste Änderung lässt eine Partie nach wenigen Szenen ganz anders laufen, und der Zufall von 40 Partien überdeckt Wirkungen von wenigen Prozentpunkten.
+  - *Vorher ohne Wirkung:* Ballannahme, Entschlossenheit, Kreativität, Grundfitness, Kommunikation und Abwurf des Torwarts kamen im 2D-Spiel nicht an (sie fehlten in `FEIN_2D`); die Ballannahme fragte das Spiel an zwei Stellen ab und bekam immer null. Abstoß, Stellungsspiel und Mut wirkten in den gemessenen Szenen gar nicht.
+  - *Passgenauigkeit ohne harte Grenze:* Jeder vierte Pass lag an der Obergrenze 0,97, dort bewirkten Passen, Übersicht, Technik und Entscheidungen nichts mehr. Jetzt flacht die Genauigkeit über 0,90 ab und nähert sich 0,985 (`PASS_GENAU_OBEN`). Im Mittel bleibt sie gleich (Liga 1: 0,877 statt 0,875).
+  - *Gemessen, je 3000 Szenen, Wert +15:*
+
+    | Wert | Szene | normal | mit +15 |
+    |---|---|---|---|
+    | Ballannahme | bedrängt verstolpert | 8,1 % | 1,8 % |
+    | Kreativität | Dribbling gelingt | 55,6 % | 60,2 % |
+    | Entschlossenheit (bei Rückstand) | Dribbling gelingt | 56,7 % | 61,6 % |
+    | Entschlossenheit des Verteidigers (bei Rückstand) | Dribbling gegen ihn gelingt | 55,6 % | 49,6 % |
+    | Stellungsspiel des Verteidigers (einen Schritt neben der Passbahn) | Pass in den Lauf kommt an | 60,7 % | 50,7 % |
+    | Mut des Verteidigers | Schuss geblockt | 40,2 % | 48,0 % |
+    | Abstoß | Ball geht am Ziel vorbei | 2,56 m | 1,84 m |
+    | Abwurf | kurzes Zuspiel des Torwarts kommt an | 88,0 % | 88,7 % |
+    | Kommunikation des Torwarts | Reaktion auf den Läufer im Rücken | 0,152 s | 0,104 s |
+    | Manndeckung | ebenso | 0,152 s | 0,104 s |
+    | Konzentration | ebenso | 0,152 s | 0,128 s |
+    | Grundfitness | Puste zurück in 5 s Stehen | +24 Punkte | +29 Punkte |
+    | Grundfitness | Frische nach 90 Minuten | 90,1 % | 91,8 % |
+    | Passen | Pass geht am Ziel vorbei | 0,69 m | 0,64 m |
+
+  - *Lesen nur, wer lesen muss:* Stellungsspiel und Kreativität des Passgebers verschieben die Reaktion eines Gegners auf den Pass nur, wenn er neben der Passbahn steht (`WERTE_WIRKUNG.lesen`: bis eine Einheit Abstand gar nicht, ab drei ganz, dazwischen gleitend). Wer schon im Weg steht, muss nichts lesen. Vorher kippten wenige Hundertstel Reaktion bei einem Gegner direkt im Passweg ein knappes Laufduell: In einer Prüfszene fing er je nach Spielwelt statt gut 115 von 300 Pässen nur noch 37 ab.
+  - *Entscheidungen:* Wer gut entscheidet, nimmt die gute Chance und lässt die schlechte liegen, und er spielt den Pass im richtigen Moment. Weniger Zufall bei der Wahl allein machte die Mannschaft gemessen schlechter (0,36 xG weniger): Die Bewertung der Möglichkeiten ist nicht so gut, dass immer die bestbewertete gewählt gehört.
+  - *Eichung:* Über je 96 Partien Tore 2,85 statt 2,71, Schüsse 25,2 statt 25,6, aufs Tor 8,4 statt 8,5, Ecken 8,5 statt 9,0, Fouls 23,2 statt 24,5 - innerhalb der Streuung zweier Läufe.
 - **Laufen nach den Werten des Spielers (`LiveMatchDirector.laufeZu`, `atme`, `stelleDuell`):**
   - **Antritt und Wendigkeit je Spieler:** Wer schnell und explosiv ist (Schnelligkeit, Antritt), ist früher auf Tempo, wer beweglich ist und die Balance hält, bremst und wendet enger. Vorher traten alle gleich an und bremsten gleich. Spanne: 0,82 bis 1,2 beim Antritt, 0,85 bis 1,18 beim Wenden.
   - **Puste mit Erholung:** Ein Sprint kostet Puste, gemessen am tatsächlichen Tempo im Verhältnis zum eigenen Grundtempo. Im Trab, im Stand und bei ruhendem Ball (dort schneller) kommt sie zurück. Wer leer ist, läuft noch mit 82 % seines Tempos. Mehr Ausdauer heißt länger durchhalten und schneller erholen. Vorher sank nur die Kraft über die neunzig Minuten, ein Spieler nach zehn Sekunden Sprint lief so schnell wie vorher. Gemessen: im Schnitt knapp 90 % Puste, unter 30 % nur nach langen Läufen (0,7 bis 2 % der Zeit).

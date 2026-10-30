@@ -8787,6 +8787,133 @@ function runEngineTests() {
         if (!(nachher < vorher - 3)) throw new Error(`Die Mitspieler kommen nicht dazu: ${vorher.toFixed(1)} -> ${nachher.toFixed(1)}`);
     });
 
+    test("Spielerwerte im 2D-Spiel: Kreativität, Entschlossenheit, Stellungsspiel, Mut, Abstoß, Abwurf, Torwart-Kommunikation, Manndeckung, Konzentration, Grundfitness, Ballannahme, Entscheidungen", () => {
+        // Dieselbe Szene vielfach, einmal mit dem Wert, wie er ist, einmal
+        // mit fünfzehn Punkten mehr - mit derselben Zufallsfolge, damit nur
+        // der Wert den Unterschied macht. Ganze Spiele taugen dafür nicht:
+        // Die kleinste Änderung lässt eine Partie nach wenigen Szenen ganz
+        // anders laufen.
+        const folge = (s0) => { let s = s0 >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
+        const mitSaat = (s0, fn) => { const z = Math.random; Math.random = folge(s0); try { return fn(); } finally { Math.random = z; } };
+        const N = 1500;
+        const anteil = (fn) => { let k = 0; for (let i = 0; i < N; i++) if (fn()) k++; return k / N; };
+        const state = GameState.createNewGame("muc", "normal", { name: "Werte" });
+        const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");
+        const lm = MatchEngine.createLiveMatch({ id: "werte2d", played: false, homeClubId: "muc", awayClubId: "dor" }, heim, gast, state.players, { modus: "fm", userSide: "home" });
+        const d = lm.director, F = d.flow;
+        const alle = lm.players2D;
+        const feld = (t) => alle.filter(p => p.team === t && p.pos !== "TW");
+        const H = feld("home"), G = feld("away");
+        const rolle = (liste, r, sonst) => liste.find(p => p.rolle === r) || liste[sonst];
+        const aufstellen = (liste) => {
+            alle.forEach((p, i) => { p.x = p.team === "home" ? 8 + (i % 3) : 92 - (i % 3); p.y = 5 + (i * 4) % 90; p.lvx = 0; p.lvy = 0; });
+            liste.forEach(([p, x, y, vx = 0]) => { p.x = x; p.y = y; p.lvx = vx; p.lvy = 0; });
+            lm.ball.x = liste[0][1]; lm.ball.y = liste[0][2];
+        };
+        const mit = (p, aenderung, fn) => {
+            const fein = Object.assign({}, p.fein), werte = { ...p };
+            aenderung(p);
+            try { return fn(); } finally { Object.keys(p).forEach(k => { if (!(k in werte)) delete p[k]; }); Object.assign(p, werte); p.fein = fein; }
+        };
+        const fein = (k) => (p) => { p.fein = Object.assign({}, p.fein, { [k]: (p.fein?.[k] || 0) + 15 }); };
+        const grob = (k) => (p) => { p[k] = (p[k] || 70) + 15; };
+        const taktik = F.getTactics("home") || {};
+
+        // Die Werte kommen überhaupt im Spiel an
+        ["firstTouch", "determination", "flair", "naturalFitness"].forEach(k => {
+            if (!PlayerGenerator.FEIN_2D.feld.includes(k)) throw new Error(`${k} fehlt im 2D-Spiel`);
+        });
+        ["communication", "throwing"].forEach(k => {
+            if (!PlayerGenerator.FEIN_2D.tw.includes(k)) throw new Error(`${k} fehlt beim Torwart im 2D-Spiel`);
+        });
+
+        // Dribbling: Kreativität; Entschlossenheit nur bei Rückstand
+        const st = rolle(H, "ST", 0), iv = rolle(G, "IV", 0);
+        const dribbling = () => { aufstellen([[st, 70, 50], [iv, 73, 50]]); return F.resolveDribble(st, { type: "dribble", target: { x: 78, y: 50 }, space: 0.2 }, G, taktik, 0.4, "final").outcome === "beaten"; };
+        const dr = (fn) => mitSaat(11, () => anteil(fn));
+        const dr0 = dr(dribbling);
+        const drKreativ = mit(st, fein("flair"), () => dr(dribbling));
+        if (!(drKreativ > dr0 + 0.02)) throw new Error(`Kreativität: Dribbling ${dr0.toFixed(3)} -> ${drKreativ.toFixed(3)}`);
+        if (mit(st, fein("determination"), () => dr(dribbling)) !== dr0) throw new Error("Entschlossenheit wirkt auch ohne Rückstand");
+        const lage = F.lage;
+        try {
+            F.lage = (t) => ({ ...lage(t), rueckstand: t === "home" });
+            const hinten = dr(dribbling);
+            const entschlossen = mit(st, fein("determination"), () => dr(dribbling));
+            if (!(entschlossen > hinten + 0.02)) throw new Error(`Entschlossenheit bei Rückstand: ${hinten.toFixed(3)} -> ${entschlossen.toFixed(3)}`);
+            F.lage = (t) => ({ ...lage(t), rueckstand: t === "away" });
+            const gegner = dr(dribbling);
+            const gegnerEntschlossen = mit(iv, fein("determination"), () => dr(dribbling));
+            if (!(gegnerEntschlossen < gegner - 0.02)) throw new Error(`Entschlossener Verteidiger: ${gegner.toFixed(3)} -> ${gegnerEntschlossen.toFixed(3)}`);
+        } finally { F.lage = lage; }
+
+        // Pass in den Lauf: Wer gut steht, liest ihn - hier einen Schritt
+        // neben der Passbahn, direkt im Weg muss keiner etwas lesen
+        const zm = rolle(H, "ZM", 1), lauf = H.find(p => p !== zm && p !== st) || H[2];
+        const steil = () => { aufstellen([[zm, 50, 50], [lauf, 66, 42, 6], [iv, 63, 46]]); return F.resolvePass(zm, { type: "pass", target: lauf, forward: 16, dist: 18 }, G, Object.assign({}, taktik, { passing: "direct" }), 0.2, "progression").outcome === "complete"; };
+        const p0 = mitSaat(12, () => anteil(steil));
+        const pStellung = mit(iv, grob("positioning"), () => mitSaat(12, () => anteil(steil)));
+        if (!(pStellung < p0 - 0.015)) throw new Error(`Stellungsspiel: Pass kommt an ${p0.toFixed(3)} -> ${pStellung.toFixed(3)}`);
+
+        // Ballannahme: Bedrängt verstolpert der Empfänger seltener, wer den Ball gut annimmt
+        const annahme = () => { aufstellen([[zm, 40, 50], [lauf, 58, 50], [iv, 60, 51.5]]); const r = F.resolvePass(zm, { type: "pass", target: lauf, forward: 18, dist: 18 }, G, taktik, 0.2, "progression"); return r.outcome === "loose" && r.verstolpert === lauf; };
+        const s0 = mitSaat(18, () => anteil(annahme));
+        const sAnnahme = mit(lauf, fein("firstTouch"), () => mitSaat(18, () => anteil(annahme)));
+        if (!(s0 > 0.02) || !(sAnnahme < s0 * 0.8)) throw new Error(`Ballannahme: verstolpert ${s0.toFixed(3)} -> ${sAnnahme.toFixed(3)}`);
+
+        // Schuss durch einen Verteidiger: Mut
+        const twG = alle.find(p => p.team === "away" && p.pos === "TW");
+        const block = () => { aufstellen([[st, 78, 50], [iv, 83, 50]]); return F.schussAusgang(st, G.concat([twG]), {}).ausgang === "blocked"; };
+        const b0 = mitSaat(13, () => anteil(block));
+        const bMut = mit(iv, fein("bravery"), () => mitSaat(13, () => anteil(block)));
+        if (!(bMut > b0 + 0.03)) throw new Error(`Mut: geblockt ${b0.toFixed(3)} -> ${bMut.toFixed(3)}`);
+
+        // Der Torwart eröffnet: Wie weit geht der Ball am Ziel vorbei?
+        const twH = alle.find(p => p.team === "home" && p.pos === "TW");
+        const vorbei = (g, ziel, x, vorn, weite, druck) => () => {
+            let summe = 0;
+            for (let i = 0; i < N; i++) {
+                aufstellen([[g, x, 50], [ziel, x + weite * 0.9, 35]]);
+                summe += F.resolvePass(g, { type: "pass", target: ziel, forward: vorn, dist: weite }, G, taktik, druck, "buildup").physik?.abweichung || 0;
+            }
+            return summe / N;
+        };
+        const abstoss = vorbei(twH, st, 8, 42, 45, 0);
+        const a0 = mitSaat(14, abstoss), aKick = mit(twH, grob("kicking"), () => mitSaat(14, abstoss));
+        if (!(aKick < a0 * 0.9)) throw new Error(`Abstoß: ${a0.toFixed(2)} -> ${aKick.toFixed(2)} vorbei`);
+        const abwurf = vorbei(twH, rolle(H, "IV", 1), 8, 14, 22, 0.3);
+        const w0 = mitSaat(15, abwurf), wWurf = mit(twH, fein("throwing"), () => mitSaat(15, abwurf));
+        if (!(wWurf < w0 * 0.97)) throw new Error(`Abwurf: ${w0.toFixed(2)} -> ${wWurf.toFixed(2)} vorbei`);
+        // Passen und Entscheidungen bleiben wirksam, auch für den, der schon gut passt
+        const pass = vorbei(zm, lauf, 40, 18, 22, 0.3);
+        const v0 = mitSaat(16, pass);
+        const vPass = mit(zm, grob("passing"), () => mitSaat(16, pass));
+        const vEnt = mit(zm, grob("decisions"), () => mitSaat(16, pass));
+        if (!(vPass < v0 * 0.97) || !(vEnt < v0)) throw new Error(`Pass vorbei: ${v0.toFixed(3)}, mit Passen +15 ${vPass.toFixed(3)}, mit Entscheidungen +15 ${vEnt.toFixed(3)}`);
+
+        // Der Läufer im Rücken: Kommunikation, Manndeckung, Konzentration
+        const blind0 = F.blindFaktor(iv);
+        const bKomm = mit(twG, fein("communication"), () => F.blindFaktor(iv));
+        const bDeck = mit(iv, fein("marking"), () => F.blindFaktor(iv));
+        const bKonz = mit(iv, grob("concentration"), () => F.blindFaktor(iv));
+        if (!(bKomm < blind0 - 0.2 && bDeck < blind0 - 0.2 && bKonz < blind0 - 0.1)) throw new Error(`Blinder Winkel: ${blind0.toFixed(2)}, Kommunikation ${bKomm.toFixed(2)}, Manndeckung ${bDeck.toFixed(2)}, Konzentration ${bKonz.toFixed(2)}`);
+
+        // Grundfitness: schneller wieder zu Atem, länger frisch
+        const spieler = H[3];
+        const verschnauf = () => { spieler.puste = 0.3; spieler.lvx = 0; spieler.lvy = 0; for (let i = 0; i < 300; i++) d.atme(spieler, 1 / 60); return spieler.puste - 0.3; };
+        const e0 = verschnauf(), eFit = mit(spieler, fein("naturalFitness"), verschnauf);
+        if (!(eFit > e0 * 1.15)) throw new Error(`Grundfitness: Erholung ${e0.toFixed(3)} -> ${eFit.toFixed(3)}`);
+        const spiel = () => { const alt = alle.map(q => q.freshness); alle.forEach(q => { q.freshness = 1; q.sprinting = false; }); d.drainStamina(5400); const f = spieler.freshness; alle.forEach((q, i) => { q.freshness = alt[i]; }); return f; };
+        const f0 = spiel(), fFit = mit(spieler, fein("naturalFitness"), spiel);
+        if (!(fFit > f0 + 0.01)) throw new Error(`Grundfitness: Frische nach 90 Minuten ${f0.toFixed(3)} -> ${fFit.toFixed(3)}`);
+
+        // Entscheidungen: die gute Chance nehmen, die schlechte liegen lassen
+        const lust = (x) => { aufstellen([[st, x, 50]]); return mitSaat(17, () => F.rateShot(st, G, taktik, 0)).score; };
+        const nah0 = lust(88), fern0 = lust(76);
+        const nahE = mit(st, grob("decisions"), () => lust(88)), fernE = mit(st, grob("decisions"), () => lust(76));
+        if (!(nahE > nah0) || !(fernE < fern0)) throw new Error(`Entscheidungen beim Schuss: nah ${nah0.toFixed(2)} -> ${nahE.toFixed(2)}, fern ${fern0.toFixed(2)} -> ${fernE.toFixed(2)}`);
+    });
+
     test("Laufphysik: Antritt und Wendigkeit je Spieler, Puste mit Erholung, Halbzeit, Eins gegen eins mit Stellen", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Läufer" });
         const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");

@@ -171,6 +171,8 @@ class MatchFlowEngine {
      * 14 Prozent ihrer Pässe lang, und die Passfolgen rissen ab.
      */
     static LANG_HOCH = { weite: 32, ab: 0.75 };
+    /** Passgenauigkeit oben: ab hier flacht sie ab und nähert sich ab + spanne */
+    static PASS_GENAU_OBEN = { ab: 0.9, spanne: 0.085 };
 
     /** Abzug für den langen Ball beim Torwart je Einstellung "Abstöße" (ratePassOptions) */
     static TORWART_LANG = { kurz: 1, gemischt: 0.45, lang: 0.12 };
@@ -1252,6 +1254,11 @@ class MatchFlowEngine {
             score += geduld > 0 ? at.frueh : -at.herausspielen;
         }
         score += MatchFlowEngine.MENTAL_SCHUSS[tactics.mentality] || 0;
+        // Wer gut entscheidet, nimmt die gute Chance und lässt die schlechte liegen
+        if (this.fm() && typeof carrier.decisions === "number") {
+            const e = MatchFlowEngine.WERTE_WIRKUNG.entscheiden;
+            score += (this.attr(carrier, "decisions") - 70) * e.schuss * (q.xg - e.schussAb);
+        }
         score += _flowRandom.float(-0.2, 0.2) * this.entscheidungsRauschen(carrier);
         // Mit dem schwachen Fuß traut er sich weniger zu
         const schwach = this.fm() ? this.schwacherFuss(carrier) : false;
@@ -1282,9 +1289,15 @@ class MatchFlowEngine {
         // Verteidiger im Schussweg blocken - nicht beim Elfmeter
         const feldspieler = opponents.filter(o => o.pos !== "TW");
         if (!opts.elfmeter && !opts.freistoss) {
-            const pBlock = Math.max(0, Math.min(0.42, q.block * 0.34));
+            let pBlock = Math.max(0, Math.min(0.42, q.block * 0.34));
+            // Wer sich traut, wirft sich in den Schuss
+            const imWeg = pBlock > 0 && this.fm() ? this.findInterceptor(schuetze, this.gegnerTor(schuetze.team), feldspieler) : null;
+            if (imWeg) {
+                const m = MatchFlowEngine.WERTE_WIRKUNG.mut;
+                pBlock *= Math.max(m.min, Math.min(m.max, 1 + this.fein(imWeg, "bravery") * m.block));
+            }
             if (_flowRandom.chance(pBlock)) {
-                const blocker = this.findInterceptor(schuetze, this.gegnerTor(schuetze.team), feldspieler) || feldspieler[0] || null;
+                const blocker = imWeg || this.findInterceptor(schuetze, this.gegnerTor(schuetze.team), feldspieler) || feldspieler[0] || null;
                 return { ausgang: "blocked", xg: q.xg, gk, blocker, ecke: _flowRandom.chance(MatchFlowEngine.EICHUNG.ecke.block * this.standardsHolen(schuetze, "ecke")) };
             }
         }
@@ -1533,6 +1546,69 @@ class MatchFlowEngine {
      * Pass in den Lauf wirkt es zu "pass" Teilen.
      */
     static TOTER_WINKEL = { winkel: 115, nah: 9, reaktion: 0.16, mann: 0.5, pass: 0.6 };
+
+    /**
+     * Werte, die im 2D-Spiel vorher kaum oder gar nicht wirkten. Detailwerte
+     * zählen als Abweichung von dem, was die groben Werte ergeben (fein),
+     * Kopfwerte auf der Skala 1-20 (kopf20).
+     *
+     * kreativ: Ein kreativer Passgeber überrascht - der Gegner reagiert auf
+     * seinen Ball in den Lauf später (Sekunden je Punkt), und seine
+     * Dribblings gelingen öfter (Anteil je Punkt).
+     * entschlossen: Bei Rückstand geht der Entschlossene in jeden
+     * Zweikampf, als ginge es um alles (Zweikampfpunkte je Punkt).
+     * blind: Wie lange ein Verteidiger den Läufer in seinem Rücken übersieht,
+     * als Faktor auf TOTER_WINKEL.reaktion - der Torwart ruft (Kommunikation),
+     * wer gut deckt, hat Mann und Ball im Blick (Manndeckung), wer
+     * unkonzentriert ist, verliert ihn öfter (Konzentration, je Punkt unter 12).
+     * mut: Wer sich traut, wirft sich in den Schuss (Faktor auf die
+     * Blockchance je Punkt).
+     * stellung: Wer gut steht, liest den Pass früher (Sekunden je Punkt
+     * Stellungsspiel über 70).
+     * torwart: Abstoß (lange Bälle) und Abwurf (kurze Zuspiele) des
+     * Torwarts, Genauigkeit je Punkt.
+     * entscheiden: Wer gut entscheidet, wählt den Moment - er schießt bei
+     * einer guten Chance eher und lässt die schlechte liegen (Schusslust je
+     * Punkt über 70 und je xG über schussAb), und er spielt den Pass, wenn
+     * er ankommt (Genauigkeit je Punkt über 70). Weniger Zufall bei der Wahl
+     * allein machte die Mannschaft gemessen schlechter: Die Bewertung der
+     * Möglichkeiten ist nicht so gut, dass immer die beste gewählt gehört.
+     */
+    static WERTE_WIRKUNG = {
+        kreativ: { reaktion: 0.004, dribbling: 0.003 },
+        entschlossen: { zweikampf: 0.5 },
+        blind: { kommunikation: 0.02, manndeckung: 0.02, konzentration: 0.04, min: 0.4, max: 1.6 },
+        mut: { block: 0.012, min: 0.7, max: 1.3 },
+        stellung: { reaktion: 0.006 },
+        torwart: { abstoss: 0.004, abwurf: 0.004 },
+        entscheiden: { schuss: 0.08, schussAb: 0.1, pass: 0.0015 },
+        // Wer nah an der Passbahn steht, muss den Pass nicht lesen: bis
+        // "ab" Einheiten gar nicht, ab "bis" ganz, dazwischen gleitend
+        lesen: { ab: 1, bis: 3 }
+    };
+
+    /** Wie weit ein Spieler neben der Strecke von a nach b steht (Feldeinheiten) */
+    abstandZurBahn(p, a, b) {
+        const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+        const t = l2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2)) : 0;
+        return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+    }
+
+    /** Faktor auf die Reaktion eines Verteidigers, der einen Läufer im Rücken hat */
+    blindFaktor(v) {
+        const b = MatchFlowEngine.WERTE_WIRKUNG.blind;
+        const tw = this.teamOf(v.team).find(p => p.pos === "TW");
+        const f = 1 - (tw ? this.fein(tw, "communication") : 0) * b.kommunikation
+            - this.fein(v, "marking") * b.manndeckung
+            + (12 - this.konzentration(v)) * b.konzentration;
+        return Math.max(b.min, Math.min(b.max, f));
+    }
+
+    /** Zweikampfpunkte aus der Entschlossenheit - nur bei Rückstand */
+    entschlossenheit(p) {
+        if (!p || !this.lage(p.team)?.rueckstand) return 0;
+        return this.fein(p, "determination") * MatchFlowEngine.WERTE_WIRKUNG.entschlossen.zweikampf;
+    }
     /** Streuung der Hereingabe in Einheiten: Grundwert und Zuschlag je fehlender Qualität */
     static FLANKE_STREUUNG = { basis: 1.0, je: 6 };
     // Flankenart (resolveCrossPhysik): Scheitelhöhe in Metern und Tempo,
@@ -1597,7 +1673,7 @@ class MatchFlowEngine {
                 return Math.max(0.1, 0.3 + voll - ruhig - (this.eig(p).twStrafraum || 0) * 0.1);
             }
             return Math.max(0.08, (p.reaktion ?? 0.3) * (mannDeckung ? 0.6 : 0.9))
-                + (blind(p) ? tw.reaktion * (mannDeckung ? tw.mann : 1) : 0);
+                + (blind(p) ? tw.reaktion * (mannDeckung ? tw.mann : 1) * this.blindFaktor(p) : 0);
         };
         const { reihenfolge, aus } = this.ballRennen(bahn, [carrier.id], reaktion);
         const physik = { bahn, art: "hoch" };
@@ -1979,6 +2055,15 @@ class MatchFlowEngine {
             accuracy += (skill - 0.72) * 0.12;
         }
         accuracy += eg.passKoennen || 0;
+        // Wer gut entscheidet, spielt den Pass im richtigen Moment
+        if (this.fm() && typeof carrier.decisions === "number") {
+            accuracy += (this.attr(carrier, "decisions") - 70) * MatchFlowEngine.WERTE_WIRKUNG.entscheiden.pass;
+        }
+        // Der Torwart eröffnet: lang mit dem Abstoß, kurz mit dem Abwurf
+        if (this.fm() && carrier.pos === "TW") {
+            const t = MatchFlowEngine.WERTE_WIRKUNG.torwart;
+            accuracy += isLong ? (this.attr(carrier, "kicking", 60) - 70) * t.abstoss : this.fein(carrier, "throwing") * t.abwurf;
+        }
         // Teamwork: Wer füreinander spielt, findet sich blind
         if (this.fm() && typeof carrier.teamwork === "number" && typeof action.target?.teamwork === "number") {
             accuracy += ((this.attr(carrier, "teamwork") + this.attr(action.target, "teamwork")) / 2 - 72) * 0.0008;
@@ -2014,7 +2099,13 @@ class MatchFlowEngine {
         // Der sichere Ball zur Seite oder zurück kommt fast immer an
         if ((action.forward ?? 1) <= 0) accuracy += 0.07;
 
-        accuracy = Math.max(0.34, Math.min(0.97, accuracy));
+        // Oben flacht die Genauigkeit ab, statt bei 0.97 abzubrechen: Gemessen
+        // lag jeder vierte Pass an dieser Grenze, und dort bewirkten Passen,
+        // Übersicht, Technik und Entscheidungen nichts mehr. Jetzt bleibt der
+        // bessere Passgeber immer ein wenig besser.
+        const ob = MatchFlowEngine.PASS_GENAU_OBEN;
+        if (this.fm() && accuracy > ob.ab) accuracy = ob.ab + ob.spanne * (1 - Math.exp(-(accuracy - ob.ab) / ob.spanne));
+        accuracy = Math.max(0.34, Math.min(this.fm() ? ob.ab + ob.spanne : 0.97, accuracy));
 
         if (geometrisch && action.target) {
             return this.resolvePassPhysik(carrier, action, opponents, tactics, pressure, phase, accuracy, isLong);
@@ -2207,8 +2298,15 @@ class MatchFlowEngine {
             // Läufer im Rücken hat, sieht ihn erst, wenn der Ball unterwegs ist
             const abfangen = this.eig(p).abfangen || 0;
             const tw = MatchFlowEngine.TOTER_WINKEL;
-            const blind = inDenLauf && this.fm() && this.imRuecken(p, ziel, start) ? tw.reaktion * tw.pass : 0;
-            return Math.max(0.08, (p.reaktion ?? 0.3) * re.gegner - abfangen * 0.08) + blind;
+            const ww = MatchFlowEngine.WERTE_WIRKUNG;
+            const blind = inDenLauf && this.fm() && this.imRuecken(p, ziel, start) ? tw.reaktion * tw.pass * this.blindFaktor(p) : 0;
+            // Wer den Pass lesen muss: Den Ball des Kreativen ahnt er nicht
+            // voraus, gut gestellt liest er ihn früher. Wer schon im Passweg
+            // steht, muss nichts lesen.
+            const lesen = this.fm() ? Math.max(0, Math.min(1, (this.abstandZurBahn(p, start, zielPunkt) - ww.lesen.ab) / (ww.lesen.bis - ww.lesen.ab))) : 0;
+            const kreativ = inDenLauf ? lesen * this.fein(carrier, "flair") * ww.kreativ.reaktion : 0;
+            const stellung = lesen * (this.attr(p, "positioning", 60) - 70) * ww.stellung.reaktion;
+            return Math.max(0.08, (p.reaktion ?? 0.3) * re.gegner - abfangen * 0.08 - stellung + kreativ) + blind;
         };
         const { reihenfolge, aus } = this.ballRennen(bahn, [carrier.id], reaktion);
         const erster = reihenfolge[0] || null;
@@ -2318,10 +2416,13 @@ class MatchFlowEngine {
             ? this.attr(defender, "defense") * 0.5 + this.attr(defender, "pace") * 0.35 + this.attr(defender, "anticipation") * 0.15
             : this.attr(defender, "defense") * 0.6 + this.attr(defender, "pace") * 0.4) + this.fein(defender, "tackling") * 0.5
             // Wer kräftig und bissig ist, setzt sich öfter durch
-            + this.fein(defender, "strength") * 0.15 + this.fein(defender, "aggression") * 0.1;
+            + this.fein(defender, "strength") * 0.15 + this.fein(defender, "aggression") * 0.1
+            // Wer hinten liegt und entschlossen ist, wirft alles hinein
+            + this.entschlossenheit(defender);
 
         // Wer die Balance hält, bleibt im Kontakt auf den Beinen
-        const edge = (dribbling * 0.6 + pace * 0.4 + this.fein(carrier, "agility") * 0.4 + this.fein(carrier, "balance") * 0.2) - defSkill;
+        const edge = (dribbling * 0.6 + pace * 0.4 + this.fein(carrier, "agility") * 0.4 + this.fein(carrier, "balance") * 0.2
+            + this.entschlossenheit(carrier)) - defSkill;
         // Wer hart einsteigt, gewinnt mehr Zweikaempfe (und foult oefter -
         // das zaehlt die Timeline); wer auf den Fuessen bleibt, weniger
         const gegnerTaktik = defender ? this.getTactics(defender.team) || {} : {};
@@ -2344,6 +2445,8 @@ class MatchFlowEngine {
         const ea = fm ? this.eig(carrier) : {};
         const ed = fm && defender ? this.eig(defender) : {};
         chance += (ea.dribbelKoennen || 0) - (ed.zweikampf || 0);
+        // Der Kreative macht, womit keiner rechnet
+        if (fm) chance += this.fein(carrier, "flair") * MatchFlowEngine.WERTE_WIRKUNG.kreativ.dribbling;
         // Im freien Raum hilft der Antritt: Wer schneller ist, ist weg
         if (fm && (action.space || 0) > 0.4) chance += (ea.antritt || 0) + this.fein(carrier, "acceleration") * 0.004;
         chance = Math.max(0.2, Math.min(0.92, chance));

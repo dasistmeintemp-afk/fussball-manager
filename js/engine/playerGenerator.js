@@ -1122,11 +1122,16 @@ class PlayerGenerator {
         return ab;
     }
 
-    /** Die Abweichungen, mit denen das Livespiel rechnet (MatchEngine.werte2D) */
+    /**
+     * Die Abweichungen, mit denen das Livespiel rechnet (MatchEngine.werte2D).
+     * Ballannahme, Entschlossenheit, Kreativität, Grundfitness, Kommunikation
+     * und Abwurf fehlten hier: Die Ballannahme fragte das Spiel an zwei
+     * Stellen ab und bekam immer null, die anderen kamen gar nicht vor.
+     */
     static FEIN_2D = {
-        feld: ["finishing", "longShots", "heading", "crossing", "tackling", "marking", "freeKicks", "penalties", "corners", "agility", "jumpingReach",
-            "acceleration", "balance", "strength", "aggression", "bravery"],
-        tw: ["aerialReach", "commandOfArea", "rushingOut"],
+        feld: ["finishing", "longShots", "heading", "crossing", "firstTouch", "tackling", "marking", "freeKicks", "penalties", "corners", "agility", "jumpingReach",
+            "acceleration", "balance", "strength", "aggression", "bravery", "determination", "flair", "naturalFitness"],
+        tw: ["aerialReach", "commandOfArea", "rushingOut", "communication", "throwing"],
         ohneGroesse: ["heading", "jumpingReach"]
     };
 

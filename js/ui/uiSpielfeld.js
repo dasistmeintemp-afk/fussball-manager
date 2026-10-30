@@ -88,7 +88,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
      * Pro Frame wird nur noch dieses Bild kopiert - das spart bei 60 fps
      * hunderte Zeichenbefehle und beseitigt das Ruckeln.
      */
-    buildPitchBackdrop(width, height) {
+    buildPitchBackdrop(width, height, stil = "modern") {
         const canvas = (typeof document !== "undefined") ? document.createElement("canvas") : null;
         if (!canvas) return null;
 
@@ -114,27 +114,32 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const midY = pitchY + pitchH / 2;
         const unit = pitchW / 105; // ein Meter in Pixeln
 
-        // Rasen mit Mähstreifen
-        ctx.fillStyle = "#0b4227";
-        ctx.fillRect(0, 0, width, height);
+        const klassisch = stil === "klassisch";
+        if (klassisch) {
+            this.zeichneAltenRasen(ctx, width, height, { pitchX, pitchY, pitchW, pitchH, midX, midY, unit });
+        } else {
+            // Rasen mit Mähstreifen
+            ctx.fillStyle = "#0b4227";
+            ctx.fillRect(0, 0, width, height);
 
-        const stripes = 14;
-        const stripeW = pitchW / stripes;
-        for (let i = 0; i < stripes; i++) {
-            ctx.fillStyle = (i % 2 === 0) ? "#15803d" : "#137236";
-            ctx.fillRect(pitchX + i * stripeW, pitchY, stripeW + 1, pitchH);
+            const stripes = 14;
+            const stripeW = pitchW / stripes;
+            for (let i = 0; i < stripes; i++) {
+                ctx.fillStyle = (i % 2 === 0) ? "#15803d" : "#137236";
+                ctx.fillRect(pitchX + i * stripeW, pitchY, stripeW + 1, pitchH);
+            }
+
+            // Flutlicht-Stimmung
+            const glow = ctx.createRadialGradient(midX, midY, pitchH * 0.1, midX, midY, pitchW * 0.7);
+            glow.addColorStop(0, "rgba(255, 255, 255, 0.07)");
+            glow.addColorStop(1, "rgba(0, 0, 0, 0.28)");
+            ctx.fillStyle = glow;
+            ctx.fillRect(pitchX, pitchY, pitchW, pitchH);
         }
 
-        // Flutlicht-Stimmung
-        const glow = ctx.createRadialGradient(midX, midY, pitchH * 0.1, midX, midY, pitchW * 0.7);
-        glow.addColorStop(0, "rgba(255, 255, 255, 0.07)");
-        glow.addColorStop(1, "rgba(0, 0, 0, 0.28)");
-        ctx.fillStyle = glow;
-        ctx.fillRect(pitchX, pitchY, pitchW, pitchH);
-
-        // Linien
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
-        ctx.lineWidth = Math.max(1.5, unit * 0.14);
+        // Linien - auf dem alten Rasen dünner und blasser, wie mit Kreide
+        ctx.strokeStyle = klassisch ? "rgba(255, 255, 255, 0.62)" : "rgba(255, 255, 255, 0.85)";
+        ctx.lineWidth = klassisch ? Math.max(1.2, unit * 0.11) : Math.max(1.5, unit * 0.14);
 
         ctx.strokeRect(pitchX, pitchY, pitchW, pitchH);
         ctx.beginPath();
@@ -208,7 +213,77 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ctx.lineWidth = Math.max(2, unit * 0.2);
         });
 
-        return { canvas, pitchX, pitchY, pitchW, pitchH, midX, midY, unit };
+        return { canvas, pitchX, pitchY, pitchW, pitchH, midX, midY, unit, stil, umfeld: klassisch ? "#6d693c" : "#08301d" };
+    },
+
+    /**
+     * Rasen im alten Stil: olivbraun, ohne Mähstreifen, mit körniger
+     * Oberfläche und abgespielten Stellen vor den Toren und am Anstoßpunkt -
+     * wie die klassischen 2D-Ansichten. Die Körnung ist ein kleines
+     * Kachelbild, das als Muster über das Feld gelegt wird. Alles wird
+     * einmal gezeichnet, nicht je Bild, und mit festem Zufall: Nach einem
+     * Neuzeichnen sieht der Rasen gleich aus.
+     */
+    zeichneAltenRasen(ctx, width, height, f) {
+        let saat = 20260417;
+        const zufall = () => (saat = (Math.imul(saat, 1103515245) + 12345) >>> 0) / 4294967296;
+
+        ctx.fillStyle = "#857f4b";
+        ctx.fillRect(0, 0, width, height);
+        // Außerhalb der Linien etwas dunkler
+        ctx.fillStyle = "rgba(30, 28, 10, 0.16)";
+        ctx.fillRect(0, 0, width, f.pitchY);
+        ctx.fillRect(0, f.pitchY + f.pitchH, width, height - f.pitchY - f.pitchH);
+        ctx.fillRect(0, f.pitchY, f.pitchX, f.pitchH);
+        ctx.fillRect(f.pitchX + f.pitchW, f.pitchY, width - f.pitchX - f.pitchW, f.pitchH);
+
+        const fleck = (x, y, r, farbe) => {
+            const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+            g.addColorStop(0, farbe);
+            g.addColorStop(1, "rgba(0, 0, 0, 0)");
+            ctx.fillStyle = g;
+            ctx.fillRect(x - r, y - r, r * 2, r * 2);
+        };
+        // Ungleichmäßiger Wuchs: hellere und dunklere Flächen
+        for (let i = 0; i < 28; i++) {
+            const x = f.pitchX + zufall() * f.pitchW, y = f.pitchY + zufall() * f.pitchH;
+            const r = (0.05 + zufall() * 0.12) * f.pitchW;
+            fleck(x, y, r, zufall() < 0.5 ? "rgba(255, 244, 196, 0.07)" : "rgba(38, 34, 10, 0.09)");
+        }
+        // Abgespielt: vor den Toren, am Elfmeterpunkt und am Anstoßpunkt
+        [f.pitchX + f.unit * 3, f.pitchX + f.pitchW - f.unit * 3].forEach(x => {
+            fleck(x, f.midY, f.unit * 7, "rgba(160, 128, 70, 0.30)");
+        });
+        [f.pitchX + f.unit * 11, f.pitchX + f.pitchW - f.unit * 11].forEach(x => {
+            fleck(x, f.midY, f.unit * 3.5, "rgba(160, 128, 70, 0.18)");
+        });
+        fleck(f.midX, f.midY, f.unit * 5, "rgba(160, 128, 70, 0.16)");
+
+        // Körnung
+        if (typeof document !== "undefined") {
+            const kachel = document.createElement("canvas");
+            kachel.width = kachel.height = 96;
+            const k = kachel.getContext("2d");
+            if (k) {
+                for (let i = 0; i < 1500; i++) {
+                    const x = zufall() * 96, y = zufall() * 96, dunkel = zufall() < 0.55;
+                    k.fillStyle = dunkel ? `rgba(30, 28, 8, ${0.06 + zufall() * 0.1})` : `rgba(255, 250, 210, ${0.04 + zufall() * 0.07})`;
+                    k.fillRect(x, y, 1 + zufall() * 1.5, 1 + zufall() * 1.5);
+                }
+                const muster = ctx.createPattern(kachel, "repeat");
+                if (muster) {
+                    ctx.fillStyle = muster;
+                    ctx.fillRect(0, 0, width, height);
+                }
+            }
+        }
+
+        // Zu den Rändern hin etwas dunkler
+        const rand = ctx.createRadialGradient(f.midX, f.midY, f.pitchH * 0.25, f.midX, f.midY, f.pitchW * 0.75);
+        rand.addColorStop(0, "rgba(0, 0, 0, 0)");
+        rand.addColorStop(1, "rgba(20, 18, 6, 0.22)");
+        ctx.fillStyle = rand;
+        ctx.fillRect(0, 0, width, height);
     },
 
     /**

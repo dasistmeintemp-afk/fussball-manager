@@ -8648,6 +8648,11 @@ function runEngineTests() {
         });
         const toX = x => x * 10, toY = y => y * 6.4, unit = 9;
 
+        // 0. Der Rasen: im alten Stil voreingestellt, modern im Augen-Menü wählbar
+        if (ui.anzeige2D().rasen !== "klassisch") throw new Error(`Rasen voreingestellt: ${ui.anzeige2D().rasen}`);
+        const seite = require("fs").readFileSync(require("path").join(__dirname, "index.html"), "utf8");
+        if (!/data-anzeige-wahl="rasen"[\s\S]{0,200}value="klassisch"[\s\S]{0,120}value="modern"/.test(seite)) throw new Error("Der Rasen ist im Augen-Menü nicht wählbar");
+
         // 1. Die Ballspur folgt dem Ball in die Luft - und nicht auf dem Rasen
         const ball = { x: 30, y: 50, height: 0.2, inFlight: true, distance: 30, actionType: "cross" };
         for (let i = 0; i < 10; i++) {

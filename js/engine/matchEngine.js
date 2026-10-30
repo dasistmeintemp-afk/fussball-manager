@@ -3578,6 +3578,8 @@ class LiveMatch {
         });
         // Zurufe von der Seitenlinie: [{ side, art, von, bis }]
         this.zurufe = [];
+        // Schnellanweisungen je Seite und Gruppe: { key, setzt, vorher, seit }
+        this.schnell = { home: {}, away: {} };
         // Vorgegebene Standardschützen - null heißt: der Beste auf dem Platz
         this.standards = {
             home: { elfmeter: null, ecken: null, freistoss: null, ...MatchEngine.standardsAusRollen(homeClub) },
@@ -4227,6 +4229,60 @@ class LiveMatch {
             teile.push(`${namen}${reaktion.genervt.length > 2 ? ` und ${reaktion.genervt.length - 2} weitere` : ""} ${reaktion.genervt.length === 1 ? "ist" : "sind"} genervt`);
         }
         return teile.length ? `${teile.join(", ")}.` : "";
+    }
+
+    // ------------------------------------------------------- Schnellanweisungen
+
+    /** Welche Schnellanweisung je Gruppe gerade gilt: { gruppe: optionKey } */
+    schnellStand(teamType) {
+        const side = this.seiteVon(teamType);
+        const stand = {};
+        Object.entries((this.schnell || {})[side] || {}).forEach(([gruppe, a]) => { stand[gruppe] = a.key; });
+        return stand;
+    }
+
+    /**
+     * Eine Schnellanweisung an- oder abschalten - ohne Pause, ohne
+     * Taktikmenü. Je Gruppe gilt höchstens eine. Abschalten stellt wieder
+     * ein, was vorher galt, aber nur dort, wo noch der Wert der Anweisung
+     * steht: Was der Co-Trainer oder das Taktikmenü inzwischen umgestellt
+     * hat, bleibt.
+     */
+    schnellAnweisung(teamType, gruppeKey, optionKey) {
+        const side = this.seiteVon(teamType);
+        const T = _mTaktik();
+        const gruppe = T && (T.SCHNELL_ANWEISUNGEN || []).find(g => g.key === gruppeKey);
+        const option = gruppe && gruppe.optionen.find(o => o.key === optionKey);
+        if (!option) return { success: false, message: "Unbekannte Anweisung." };
+        if (this.isFinished) return { success: false, message: "Das Spiel ist vorbei." };
+        const club = this.clubVon(side);
+        this.schnell = this.schnell || { home: {}, away: {} };
+        const meine = this.schnell[side];
+        const aktiv = meine[gruppeKey];
+        const aenderung = {};
+        if (aktiv) {
+            Object.entries(aktiv.vorher).forEach(([k, v]) => {
+                if (T.wert(club.tactics, k) === aktiv.setzt[k]) aenderung[k] = v;
+            });
+            delete meine[gruppeKey];
+        }
+        const aus = !!aktiv && aktiv.key === optionKey;
+        if (!aus) {
+            const vorher = {};
+            Object.entries(option.setzt).forEach(([k, v]) => {
+                vorher[k] = k in aenderung ? aenderung[k] : T.wert(club.tactics, k);
+                aenderung[k] = v;
+            });
+            meine[gruppeKey] = { key: optionKey, setzt: { ...option.setzt }, vorher, seit: this.minute };
+        }
+        const text = aus
+            ? `${this.minute}' - 📋 ${club.name} nimmt "${option.titel}" zurück.`
+            : `${this.minute}' - 📋 ${club.name}: "${option.titel}".`;
+        this.updateTactics(side, aenderung, { text });
+        return {
+            success: true, aktiv: !aus, gruppe: gruppeKey, option: optionKey, aenderung,
+            message: aus ? `"${option.titel}" zurückgenommen.` : `${option.titel}: ${option.hilfe}`
+        };
     }
 
     /** Die Taktik, die gerade auf dem Platz gilt: die eingestellte und ein laufender Zuruf */

@@ -50,14 +50,21 @@ html = html.replace(/[ \t]*<script[^>]*src=["']([^"']+)["'][^>]*>\s*<\/script>\s
 
 // 5. Bibliotheken, die das Spiel erst bei Bedarf lädt, liegen als Vorrat
 // bereit: im Dokument, aber nicht ausgeführt. So parst der Browser die
-// 668 KB von three.js nur, wenn jemand die 3D-Ansicht einschaltet.
-const VORRAT = { "vorrat-three": "js/vendor/three.min.js" };
+// 668 KB von three.js nur, wenn jemand die 3D-Ansicht einschaltet. Die
+// Menschen der 3D-Ansicht (Körper, Bilder) liegen als Base64 dabei, ihre
+// Bewegungen als Text.
+const VORRAT = {
+    "vorrat-three": "js/vendor/three.min.js",
+    "vorrat-menschen": "assets/3d/menschen.bin",
+    "vorrat-bewegungen": "assets/3d/bewegungen.json"
+};
 let vorrat = 0;
 const vorratsBloecke = Object.entries(VORRAT).map(([id, datei]) => {
     const p = path.join(WURZEL, datei);
     if (!fs.existsSync(p)) { fehlend.push(datei); return ""; }
     vorrat++;
-    return `<script type="text/plain" id="${id}">\n${entschaerfen(fs.readFileSync(p, 'utf8'))}\n</script>\n`;
+    const inhalt = datei.endsWith(".bin") ? fs.readFileSync(p).toString("base64") : entschaerfen(fs.readFileSync(p, 'utf8'));
+    return `<script type="text/plain" id="${id}">\n${inhalt}\n</script>\n`;
 }).join("");
 html = html.replace(/<\/body>/i, () => vorratsBloecke + "</body>");
 

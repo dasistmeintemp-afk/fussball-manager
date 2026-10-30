@@ -11,11 +11,13 @@
  * 2,44 Meter. In der Simulation liegen die Torlinien bei x = 4 und x = 96,
  * die Breite geht von y = 0 bis 100.
  *
- * Die Spieler sind Menschen in den Trikotfarben des Spiels: ein Netz mit
- * Haut über einem Skelett aus elf Knochen, mit Gesicht, Frisur, Trikot,
- * Hose, Stutzen und Schuhen - ein Zeichenaufruf je Figur. An den Gelenken
- * biegt sich die Haut weich. Sie laufen mit, pendeln die Beine im Takt
- * ihrer Geschwindigkeit und schauen dorthin, wohin sie laufen - oder zum Ball.
+ * Die Spieler sind echte Menschen in den Trikotfarben des Spiels
+ * (Menschen3D: MakeHuman-Körper mit Kleidung, aufgenommene Bewegungen).
+ * Auf niedriger Stufe, oder wenn die Datei fehlt, sind es gezeichnete
+ * Figuren: ein Netz mit Haut über einem Skelett aus elf Knochen, mit
+ * Gesicht, Frisur, Trikot, Hose, Stutzen und Schuhen. Dieselben elf
+ * Gelenke treiben auch die Menschen. Die Spieler laufen mit, im Takt ihrer
+ * Geschwindigkeit, und schauen dorthin, wohin sie laufen - oder zum Ball.
  * Was sie tun, meldet die Regie (LiveMatchDirector.meldeAktion): Pass,
  * Schuss, Flanke, Kopfball, Zweikampf, Parade, Tor. Dazu gibt es je einen
  * Bewegungsablauf, aus Gelenkwinkeln gerechnet statt aus fertigen Modellen.
@@ -177,6 +179,14 @@ class Spielfeld3D {
         this._aufnahme = [];          // die letzten Sekunden, für die Wiederholung
         this._wiederholung = null;
         this._bildzeiten = [];        // für die automatische Qualität
+
+        // Echte Menschen statt gezeichneter Figuren - außer auf niedriger Stufe
+        this.menschen = null;
+        if (this.qualitaet !== "niedrig" && optionen.menschen !== false && typeof Menschen3D !== "undefined" && typeof document !== "undefined") {
+            Menschen3D.laden().then(m => {
+                if (m && !this._entsorgt) { this.menschen = m; this._figurenNeu = true; }
+            });
+        }
     }
 
     // ---------------------------------------------------------------- Aufbau
@@ -1022,24 +1032,12 @@ class Spielfeld3D {
      * Hüften, Knie -, die Bewegungsabläufe drehen sie. Vorn ist +x; ein
      * positiver Winkel um z schwingt ein Glied nach vorn.
      */
-    _figur(p, kit, istTorwart) {
-        if (!this._koerperMat) this._koerperMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.66, metalness: 0 });
-        const h = (s) => this._hash(String(p.id) + s);
-        const hemd = istTorwart ? (kit?.tw || "#facc15") : (p.color || kit?.farbe || "#3b82f6");
-        const hose = istTorwart ? "#111827" : (kit?.zweit || "#f8fafc");
-        const geo = Spielfeld3D.mensch({
-            hemd, hose,
-            stutzen: istTorwart ? "#111827" : hemd,
-            kragen: this._dunkler(hemd, 0.7),
-            haut: ["#f1c7a3", "#e3b28a", "#c68e63", "#8d5a3b", "#5e3b28"][Math.floor(h("haut") * 5)],
-            haar: ["#1c140f", "#3b2a1f", "#5a3d26", "#0b0b0b", "#a57a4a", "#d6b16b", "#2b2b2b"][Math.floor(h("haar") * 7)],
-            schuh: ["#0f172a", "#0f172a", "#f8fafc", "#ef4444", "#22c55e", "#f59e0b", "#0f172a"][Math.floor(h("schuh") * 7)],
-            frisur: Math.floor(h("frisur") * 4),
-            langarm: istTorwart,
-            handschuh: istTorwart ? "#d9f99d" : null
-        }, Math.max(8, Math.round(12 * this.q.teile)));
-
-        // Das Skelett in Ruhehaltung - die Lage passt zu Spielfeld3D.mensch
+    /**
+     * Die elf Gelenke der Bewegungen in Ruhehaltung - die Lage passt zu
+     * Spielfeld3D.mensch. Beim echten Menschen (Menschen3D) treiben sie
+     * dessen Skelett, statt selbst eine Haut zu tragen.
+     */
+    static gelenke() {
         const knochen = (eltern, x, y, z) => {
             const b = new THREE.Bone();
             b.position.set(x, y, z);
@@ -1060,34 +1058,73 @@ class Spielfeld3D {
             beine.push(huefte);
             knie.push(knochen(huefte, 0, -0.42, 0));
         });
-        const netz = new THREE.SkinnedMesh(geo, this._koerperMat);
-        netz.add(koerper);
-        netz.updateMatrixWorld(true);
-        netz.bind(new THREE.Skeleton([koerper, rumpf, kopf, arme[0], ellbogen[0], arme[1], ellbogen[1], beine[0], knie[0], beine[1], knie[1]]));
-        netz.castShadow = !!this.q.schatten;
-        // Bei Grätsche und Parade verlässt der Körper die Ruhehaltung weit
-        netz.frustumCulled = false;
+        return { koerper, rumpf, kopf, arme, ellbogen, beine, knie };
+    }
 
+    _figur(p, kit, istTorwart) {
+        const h = (s) => this._hash(String(p.id) + s);
+        const hemd = istTorwart ? (kit?.tw || "#facc15") : (p.color || kit?.farbe || "#3b82f6");
+        const hose = istTorwart ? "#111827" : (kit?.zweit || "#f8fafc");
+        const schuh = ["#0f172a", "#0f172a", "#f8fafc", "#ef4444", "#22c55e", "#f59e0b", "#0f172a"][Math.floor(h("schuh") * 7)];
+        const g = Spielfeld3D.gelenke();
         const figur = new THREE.Group();
-        figur.add(netz);
-        // Rückennummer
-        if (typeof document !== "undefined" && p.nummer) {
-            const nummer = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22), this._nummerMaterial(p.nummer, istTorwart ? (kit?.twText || "#111827") : (kit?.text || "#ffffff")));
-            nummer.position.set(-0.128, 0.25, 0);
-            nummer.rotation.y = -Math.PI / 2;
-            rumpf.add(nummer);
+        let netz, mensch = null;
+
+        if (this.menschen) {
+            // Ein echter Mensch: Haut, Gesicht, Haare, Kleidung als Stoff
+            const nummerFarbe = istTorwart ? (kit?.twText || "#111827") : (kit?.text || "#ffffff");
+            const besatz = istTorwart ? this._dunkler(hemd, 0.55) : (kit?.zweit && kit.zweit !== hemd ? kit.zweit : this._dunkler(hemd, 0.6));
+            mensch = this.menschen.erzeuge({
+                zufall: Spielfeld3D.zufall(Math.floor(h("mensch") * 4294967296)),
+                torwart: istTorwart,
+                farben: [hemd, hose, istTorwart ? "#111827" : hemd, schuh, "#e8f5c8"],
+                saumFarben: [besatz, istTorwart ? "#374151" : hemd, besatz, schuh, "#1f2937"],
+                nummer: p.nummer, name: (p.name || "").split(" ").pop(), nummerFarbe,
+                schatten: !!this.q.schatten, glaetten: !!this.q.antialias
+            });
+            figur.add(mensch.gruppe);
+            netz = mensch.koerper;
+        } else {
+            if (!this._koerperMat) this._koerperMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.66, metalness: 0 });
+            const geo = Spielfeld3D.mensch({
+                hemd, hose,
+                stutzen: istTorwart ? "#111827" : hemd,
+                kragen: this._dunkler(hemd, 0.7),
+                haut: ["#f1c7a3", "#e3b28a", "#c68e63", "#8d5a3b", "#5e3b28"][Math.floor(h("haut") * 5)],
+                haar: ["#1c140f", "#3b2a1f", "#5a3d26", "#0b0b0b", "#a57a4a", "#d6b16b", "#2b2b2b"][Math.floor(h("haar") * 7)],
+                schuh,
+                frisur: Math.floor(h("frisur") * 4),
+                langarm: istTorwart,
+                handschuh: istTorwart ? "#d9f99d" : null
+            }, Math.max(8, Math.round(12 * this.q.teile)));
+            netz = new THREE.SkinnedMesh(geo, this._koerperMat);
+            netz.add(g.koerper);
+            netz.updateMatrixWorld(true);
+            netz.bind(new THREE.Skeleton([g.koerper, g.rumpf, g.kopf, g.arme[0], g.ellbogen[0], g.arme[1], g.ellbogen[1], g.beine[0], g.knie[0], g.beine[1], g.knie[1]]));
+            netz.castShadow = !!this.q.schatten;
+            // Bei Grätsche und Parade verlässt der Körper die Ruhehaltung weit
+            netz.frustumCulled = false;
+            figur.add(netz);
+            // Rückennummer
+            const nummerStoff = typeof document !== "undefined" && p.nummer ? this._nummerMaterial(p.nummer, istTorwart ? (kit?.twText || "#111827") : (kit?.text || "#ffffff")) : null;
+            if (nummerStoff) {
+                const nummer = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22), nummerStoff);
+                nummer.position.set(-0.128, 0.25, 0);
+                nummer.rotation.y = -Math.PI / 2;
+                g.rumpf.add(nummer);
+            }
         }
         const blob = this._schatten(0.42);
         this.scene.add(blob);
 
         // Größe aus dem Spieler: 1,81 Meter ist der Durchschnitt
         const groesse = typeof p.groesse === "number" ? p.groesse / 181 : 1;
-        figur.scale.setScalar(Math.max(0.9, Math.min(1.12, groesse)));
+        figur.scale.setScalar(Math.max(0.9, Math.min(1.12, groesse)) * (mensch ? 1.81 / this.menschen.d.groesse : 1));
 
         this.scene.add(figur);
         return {
-            figur, netz, koerper, rumpf, kopf, schatten: blob,
-            beine, knie, arme, ellbogen,
+            figur, netz, mensch, koerper: g.koerper, rumpf: g.rumpf, kopf: g.kopf, schatten: blob,
+            beine: g.beine, knie: g.knie, arme: g.arme, ellbogen: g.ellbogen,
             phase: this._hash(String(p.id) + "p") * Math.PI * 2,
             richtung: p.team === "home" ? 0 : Math.PI,
             name: p.name || "", label: null, gesehen: 0,
@@ -1098,7 +1135,8 @@ class Spielfeld3D {
     }
 
     _nummerMaterial(nummer, farbe) {
-        const c = document.createElement("canvas");
+        const c = typeof document.createElement === "function" ? document.createElement("canvas") : null;
+        if (!c || typeof c.getContext !== "function") return null;
         c.width = c.height = 64;
         const g = c.getContext("2d");
         g.font = "800 46px Inter, system-ui, sans-serif";
@@ -1153,13 +1191,18 @@ class Spielfeld3D {
     }
 
     /** Ein neues Spiel: Figuren, Stadion und Wetter neu aufbauen */
-    _neuesSpiel(liveMatch) {
+    _entferneFiguren() {
         this.figuren.forEach(f => {
             this.scene.remove(f.figur);
             this.scene.remove(f.schatten);
             if (f.label) f.label.removeFromParent();
+            if (f.mensch) f.mensch.stoff.dispose();
         });
         this.figuren.clear();
+    }
+
+    _neuesSpiel(liveMatch) {
+        this._entferneFiguren();
         const k = liveMatch.kits || {};
         this._stimmung(liveMatch.wetter?.art);
         const heim = liveMatch.homeClub || {}, gast = liveMatch.awayClub || {};
@@ -1233,6 +1276,8 @@ class Spielfeld3D {
     zeichne(liveMatch, dt = 0.016, optionen = {}) {
         if (!liveMatch) return;
         if (this.spielKey !== liveMatch) this._neuesSpiel(liveMatch);
+        // Die Menschen sind geladen: die Figuren neu aufbauen
+        if (this._figurenNeu) { this._figurenNeu = false; this._entferneFiguren(); }
         this.groesse();
         this._misst();
 
@@ -1408,10 +1453,19 @@ class Spielfeld3D {
                 if (a.art === "kopfball") {
                     zx = a.ball.x - vx * 0.06; zz = a.ball.z - vz * 0.06;
                 } else {
-                    // Der Schussfuß neben den Ball, der Körper dahinter
-                    const seite = f.schussBein ? 1 : -1;
-                    zx = a.ball.x - vx * 0.5 - Math.sin(blick) * seite * 0.12;
-                    zz = a.ball.z - vz * 0.5 - Math.cos(blick) * seite * 0.12;
+                    // Der Schussfuß an den Ball, der Körper dahinter. Beim
+                    // echten Menschen genau dort, wo die Aufnahme den Fuß hat;
+                    // die Ballmitte liegt knapp vor dem Zehengelenk
+                    const amBall = f.mensch && f.mensch.fussAmBall(a.art, f.schussBein === 0);
+                    if (amBall) {
+                        const s = f.figur.scale.x, lx = amBall.x * s + 0.05, lz = amBall.z * s;
+                        zx = a.ball.x - (lx * Math.cos(blick) + lz * Math.sin(blick));
+                        zz = a.ball.z - (-lx * Math.sin(blick) + lz * Math.cos(blick));
+                    } else {
+                        const seite = f.schussBein ? 1 : -1;
+                        zx = a.ball.x - vx * 0.5 - Math.sin(blick) * seite * 0.12;
+                        zz = a.ball.z - vz * 0.5 - Math.cos(blick) * seite * 0.12;
+                    }
                 }
                 let dx = zx - w.x, dz = zz - w.z;
                 const l = Math.hypot(dx, dz);
@@ -1432,6 +1486,7 @@ class Spielfeld3D {
             this._laufe(f, p, lauf, dt, Math.hypot(bw.x - w.x, bw.z - w.z));
             // Ein Bewegungsablauf überlagert das Laufen
             if (f.anim) this._pose(f, dt);
+            if (f.mensch) f.mensch.treibe(f, dt);
 
             // Namen: alle, oder nur wer am Ball ist
             const zeigeName = namenAlle || p.id === z.aktiv;
@@ -1501,8 +1556,10 @@ class Spielfeld3D {
      */
     _laufe(f, p, lauf, dt, ballAbstand) {
         f.phase += dt * (4.5 + lauf * 8.5);
+        f.lauf = lauf;
         const weite = 0.1 + 0.55 * lauf;
         const bereit = p.pos === "TW" && lauf < 0.3 && ballAbstand < 26 ? 1 - lauf / 0.3 : 0;
+        f.bereit = bereit;
         for (let i = 0; i < 2; i++) {
             const ph = f.phase + i * Math.PI;
             f.beine[i].rotation.set(0, 0, weite * Math.sin(ph) + 0.25 * bereit);
@@ -1961,6 +2018,7 @@ class Spielfeld3D {
     }
 
     entsorgen() {
+        this._entsorgt = true;
         if (this.composer && typeof this.composer.dispose === "function") this.composer.dispose();
         this.renderer.dispose();
         // Den Grafikspeicher sofort freigeben, nicht erst beim Aufräumen des Browsers

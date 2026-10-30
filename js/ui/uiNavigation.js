@@ -89,6 +89,30 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             });
             this.zeigeUnterreiter(pane.id, namen.includes(gemerkt[pane.id]) ? gemerkt[pane.id] : namen[0], { still: true });
         });
+        document.querySelectorAll(".unterreiter, #pane-transfers .view-switch-buttons").forEach(z => this.wischHinweis(z));
+    },
+
+    /**
+     * Wischbare Zeilen am Handy: Ein weicher Rand zeigt, dass rechts oder
+     * links noch Reiter stehen - vorher endete die Zeile mitten im Wort,
+     * und „Gerüchte & Trainer“ oder „Beobachtungsliste“ fand niemand.
+     */
+    wischHinweis(zeile) {
+        if (!zeile || zeile._wischHinweis) return;
+        zeile._wischHinweis = true;
+        const pruefe = () => {
+            const rest = zeile.scrollWidth - zeile.clientWidth - zeile.scrollLeft;
+            zeile.classList.toggle("mehr-rechts", rest > 2);
+            zeile.classList.toggle("mehr-links", zeile.scrollLeft > 2);
+        };
+        zeile.addEventListener("scroll", pruefe, { passive: true });
+        // Auch wenn die Zeile erst mit ihrem Reiter sichtbar wird oder ein
+        // Unterreiter später dazukommt (Auszeichnungen nach dem Saisonende)
+        if (typeof ResizeObserver === "function") {
+            const beobachter = new ResizeObserver(pruefe);
+            [zeile, ...zeile.children].forEach(e => beobachter.observe(e));
+        }
+        pruefe();
     },
 
     /** Einen Unterreiter zeigen: nur seine Karten sind sichtbar */
@@ -112,9 +136,15 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         });
         this._urWahl = Object.assign(this._urWahl || {}, { [paneId]: name });
         try { localStorage.setItem(this.UNTERREITER_SPEICHER, JSON.stringify(this._urWahl)); } catch (e) { /* ohne Speicher geht es auch */ }
-        if (optionen.nachOben) {
-            const leiste = pane.querySelector(":scope > .unterreiter");
-            if (leiste && leiste.getBoundingClientRect().top < 0) leiste.scrollIntoView({ block: "start" });
+        const leiste = pane.querySelector(":scope > .unterreiter");
+        if (optionen.nachOben && leiste && leiste.getBoundingClientRect().top < 0) leiste.scrollIntoView({ block: "start" });
+        // Der gewählte Reiter steht in der wischbaren Zeile ganz im Bild
+        const aktiv = knoepfe.find(k => k.dataset.urZiel === name);
+        if (leiste && aktiv && leiste.scrollWidth > leiste.clientWidth) {
+            const links = aktiv.getBoundingClientRect().left - leiste.getBoundingClientRect().left + leiste.scrollLeft;
+            const rechts = links + aktiv.offsetWidth;
+            if (links < leiste.scrollLeft) leiste.scrollLeft = Math.max(0, links - 24);
+            else if (rechts > leiste.scrollLeft + leiste.clientWidth) leiste.scrollLeft = rechts - leiste.clientWidth + 24;
         }
         if (!optionen.still && vorher !== name) this.merkeVerlauf();
         return true;

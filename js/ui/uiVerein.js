@@ -470,7 +470,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             : vollePlaetze.toLocaleString("de-DE"));
         DOM.setText("clubTabStadiumLvl", facEngine
             ? `Stufe ${userClub.anlagen?.stadium?.stufe ?? userClub.facilities?.stadium ?? 2}`
-              + ` (${facEngine.zustandsText(userClub.anlagen?.stadium?.zustand ?? 100)})`
+              + ` · Zustand ${Math.round(userClub.anlagen?.stadium?.zustand ?? 100)} % (${facEngine.zustandsText(userClub.anlagen?.stadium?.zustand ?? 100)})`
             : `Stufe ${userClub.facilities?.stadium || 2}`);
 
         this.renderVereinsKopf(state, userClub, nutzbar);
@@ -493,9 +493,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             if (valText) valText.textContent = `${slider.value} €`;
             
             const updateForecast = (price) => {
-                const rep = userClub.reputation || 70;
-                const priceFactor = 1.0 - ((price - 35) / 100) * 0.6;
-                const estPct = Math.round(Math.min(100, Math.max(35, (0.68 + (rep / 200) * 0.22) * priceFactor * 100)));
+                // Dieselbe Rechnung wie am Spieltag - gegen einen Durchschnittsgegner
+                const fe = typeof FinanceEngine !== "undefined" ? FinanceEngine : null;
+                const estPct = fe && typeof fe.erwarteteAuslastung === "function"
+                    ? Math.round(fe.erwarteteAuslastung(state, userClub, Number(price)) * 100)
+                    : Math.round(Math.min(100, Math.max(35, (0.68 + ((userClub.reputation || 70) / 200) * 0.22) * (1.0 - ((price - 35) / 100) * 0.6) * 100)));
                 if (forecastText) forecastText.textContent = `Prognostizierte Auslastung: ~${estPct}% (Kapazität: ${userClub.capacity.toLocaleString('de-DE')})`;
             };
             updateForecast(slider.value);

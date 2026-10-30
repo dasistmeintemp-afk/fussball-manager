@@ -708,6 +708,13 @@ body {
     color: var(--text-main);
 }
 
+/* Am Handy: Kopf umbrechen statt Titel, Marken und Knöpfe nebeneinander zu quetschen */
+@media (max-width: 640px) {
+    .dash-card .card-header { flex-wrap: wrap; gap: 8px 12px; }
+    .dash-card .card-header > div:has(> .btn) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .dash-card .card-header > div > .btn.ml-2 { margin-left: 0; }
+}
+
 .matchday-tag {
     background: rgba(16, 185, 129, 0.15);
     color: var(--accent-primary);
@@ -2071,6 +2078,27 @@ body {
     border-radius: var(--radius-sm);
     font-size: 13px;
     border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+/* Was die Trainingsvorgabe bewirkt - unter der Intensität */
+.training-wirkung h4 {
+    margin: 18px 0 4px;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+}
+.training-wirkung > p { margin: 0 0 4px; font-size: 13px; }
+.training-wirkung .wirkung-gut { color: var(--ok, #34d399); }
+.training-wirkung .wirkung-kostet { color: var(--warn, #fbbf24); }
+.training-wirkung-rat {
+    margin: 12px 0 0;
+    padding: 10px 12px;
+    border-left: 3px solid var(--warn, #fbbf24);
+    background: var(--bg-input);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
 }
 
 /* ==========================================================================
@@ -9456,6 +9484,19 @@ button, .btn, input, select, th, .nowrap, .club-name { -webkit-hyphens: manual; 
 .ur-knopf:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: -2px; border-radius: 6px 6px 0 0; }
 .ur-knopf[hidden] { display: none; }
 .ur-aus { display: none !important; }
+/* Wischbare Zeilen: ein weicher Rand, wo noch Reiter stehen (uiNavigation.wischHinweis) */
+.unterreiter.mehr-rechts, .view-switch-buttons.mehr-rechts {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 64px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 64px), transparent);
+}
+.unterreiter.mehr-links, .view-switch-buttons.mehr-links {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 64px);
+    mask-image: linear-gradient(to right, transparent, #000 64px);
+}
+.unterreiter.mehr-links.mehr-rechts, .view-switch-buttons.mehr-links.mehr-rechts {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 64px, #000 calc(100% - 64px), transparent);
+    mask-image: linear-gradient(to right, transparent, #000 64px, #000 calc(100% - 64px), transparent);
+}
 @media (max-width: 900px) {
     .unterreiter { margin: 0 -14px 14px; padding: 0 10px; }
     .ur-knopf { padding: 11px 12px 10px; min-height: 44px; }

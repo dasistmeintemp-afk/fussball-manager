@@ -2761,7 +2761,11 @@ class MatchEngine {
             }
             const staminaVal = player.stamina || 70;
             const ageMod = (player.age || 25) >= 31 ? 1.15 : 1.0;
-            const fitLoss = Math.round(13 * (minutes / 90) * (1.3 - staminaVal / 250) * ageMod * pressingFactor);
+            // Der Torwart läuft gut halb so viel wie ein Feldspieler und presst
+            // nicht mit - seine Ausdauer spielt dabei kaum eine Rolle
+            const fitLoss = isTW
+                ? Math.round(13 * 0.45 * (minutes / 90) * ageMod)
+                : Math.round(13 * (minutes / 90) * (1.3 - staminaVal / 250) * ageMod * pressingFactor);
             player.fitness = Math.max(35, (player.fitness || 100) - fitLoss);
 
             // Gelbe Karten & Sperren (A8) - Testspiele bleiben folgenlos

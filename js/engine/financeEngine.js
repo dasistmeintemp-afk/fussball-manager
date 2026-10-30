@@ -728,16 +728,13 @@ const FinanceEngine = {
         return ergebnis;
     },
 
-    applyMatchdayIncome(state, match) {
-        if (!state || !match) return 0;
-        const homeClub = state.clubs.find(c => c.id === match.homeClubId);
-        const awayClub = state.clubs.find(c => c.id === match.awayClubId);
-        if (!homeClub) return 0;
-        // Erfolg kostet: Sieg- und Remisprämie für beide Mannschaften
-        this.bucheErfolgspraemie(state, match);
-
-        // C4: Auslastung abhängig von Reputation, Tabellenplatz, Form, fanMood, Stadionstufe
-        const repFactor = ((homeClub.reputation || 70) * 1.2 + (awayClub?.reputation || 60) * 0.8) / 200;
+    /**
+     * Grundauslastung eines Heimspiels: Ruf beider Vereine, Stadionstufe,
+     * Fanstimmung, Ticketpreis. Form, Tabelle, Derby und Zufall kommen am
+     * Spieltag dazu. Dieselbe Rechnung liefert die Preisprognose im Verein.
+     */
+    auslastungsBasis(state, homeClub, gegnerRuf = 60, ticketPrice = homeClub.ticketPrice || 35) {
+        const repFactor = ((homeClub.reputation || 70) * 1.2 + (gegnerRuf || 60) * 0.8) / 200;
         const stadiumLevel = (typeof FacilityEngine !== "undefined" && FacilityEngine?.stufeGerundet)
             ? FacilityEngine.stufeGerundet(homeClub, "stadium", state.seasonYear || 1)
             : (homeClub.facilities?.stadium || 2);
@@ -747,13 +744,27 @@ const FinanceEngine = {
         // begeistert, kamen auch in Lens und Wigan mehr Zuschauer.
         const stimmung = homeClub.id === state.userClubId ? (state.fanMood || 75) : 75;
         const moodFactor = (stimmung - 50) / 250; // -0.1 bis +0.2
-
-        const ticketPrice = homeClub.ticketPrice || 35;
         // Preis-Elastizität: Höherer Preis senkt Auslastung, tieferer Preis füllt das Stadion
         const priceFactor = 1.0 - ((ticketPrice - 35) / 100) * 0.6;
+        return (0.62 + (repFactor * 0.2) + stadiumBonus + moodFactor) * Math.max(0.4, Math.min(1.2, priceFactor));
+    },
 
-        let baseAttendancePct = 0.62 + (repFactor * 0.2) + stadiumBonus + moodFactor;
-        baseAttendancePct *= Math.max(0.4, Math.min(1.2, priceFactor));
+    /** Erwartete Auslastung eines gewöhnlichen Heimspiels (0,3 bis 1) - für die Preisprognose */
+    erwarteteAuslastung(state, homeClub, ticketPrice = homeClub.ticketPrice || 35) {
+        return Math.min(1, Math.max(0.3, this.auslastungsBasis(state, homeClub, 60, ticketPrice)));
+    },
+
+    applyMatchdayIncome(state, match) {
+        if (!state || !match) return 0;
+        const homeClub = state.clubs.find(c => c.id === match.homeClubId);
+        const awayClub = state.clubs.find(c => c.id === match.awayClubId);
+        if (!homeClub) return 0;
+        // Erfolg kostet: Sieg- und Remisprämie für beide Mannschaften
+        this.bucheErfolgspraemie(state, match);
+
+        // C4: Auslastung abhängig von Reputation, Tabellenplatz, Form, fanMood, Stadionstufe
+        const ticketPrice = homeClub.ticketPrice || 35;
+        let baseAttendancePct = this.auslastungsBasis(state, homeClub, awayClub?.reputation, ticketPrice);
 
         // Das Stadion atmet mit der Saison. Vorher war ein Spitzenverein immer
         // ausverkauft - beim Derby genauso wie beim Kellerduell im Februar.

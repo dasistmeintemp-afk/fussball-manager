@@ -40,6 +40,25 @@ class TrainingEngine {
     };
 
     /**
+     * Der Schwerpunkt Regeneration: mehr Erholung, weniger Risiko, dafür
+     * weniger Entwicklung. Im Tagestraining des eigenen Vereins wirkte er
+     * bisher gar nicht - nur in der Wochenrunde der KI-Vereine.
+     */
+    static REGENERATION = { erholung: 1.15, risiko: 0.7, entwicklung: 0.6 };
+
+    /** Was ein Schwerpunkt schult - für die Trainingsseite */
+    static FOKUS_WIRKUNG = {
+        allround: "alle Bereiche gleichmäßig",
+        attack: "Schuss und Dribbling",
+        defense: "Zweikampf und Physis",
+        technique: "Technik und Passspiel",
+        tactics: "Übersicht, Stellungsspiel und Entscheidungen",
+        fitness: "Ausdauer und Tempo",
+        regeneration: "Erholung statt Entwicklung",
+        youth: "die Spieler bis 22 wachsen schneller"
+    };
+
+    /**
      * Tagesbelastung eines Spielers.
      *
      * Ermüdung, Alter und Verletzungsanfälligkeit entscheiden, wie hart eine
@@ -89,10 +108,11 @@ class TrainingEngine {
      * anfälliger Routinier im intensiven Training kommt schnell über 8 %,
      * ein frischer Zwanzigjähriger bleibt unter 1 %.
      */
-    static calculateInjuryRisk(player, intensity = "normal", medicalLevel = 1) {
+    static calculateInjuryRisk(player, intensity = "normal", medicalLevel = 1, focus = "allround") {
         const profil = this.INTENSITY_PROFILE[intensity] || this.INTENSITY_PROFILE.normal;
 
         let risiko = 0.006 * profil.risk;
+        if (focus === "regeneration") risiko *= this.REGENERATION.risiko;
 
         const ermuedung = 100 - (player.fitness ?? 100);
         risiko *= 1 + (ermuedung / 100) * 2.4;
@@ -131,8 +151,8 @@ class TrainingEngine {
      * noch Ermuedung noch das Medizinzentrum kannte, nuetzte ihr ein guter
      * Arzt nichts.
      */
-    static weeklyInjuryRisk(player, intensity = "normal", medicalLevel = 1) {
-        const proEinheit = this.calculateInjuryRisk(player, intensity, medicalLevel);
+    static weeklyInjuryRisk(player, intensity = "normal", medicalLevel = 1, focus = "allround") {
+        const proEinheit = this.calculateInjuryRisk(player, intensity, medicalLevel, focus);
         return Math.min(0.5, proEinheit * this.WOCHENGEWICHT);
     }
 
@@ -158,7 +178,7 @@ class TrainingEngine {
 
         const entries = kader.map(player => {
             const ermuedung = Math.max(0, Math.min(100, 100 - (player.fitness ?? 100)));
-            const risiko = this.calculateInjuryRisk(player, intensity, medicalLevel);
+            const risiko = this.calculateInjuryRisk(player, intensity, medicalLevel, focus);
             const last = this.calculateDailyLoad(player, "training", intensity);
             const schaerfe = Math.max(0, Math.min(100, player.matchSharpness ?? 60));
 
@@ -200,6 +220,53 @@ class TrainingEngine {
     }
 
     /**
+     * Was die aktuelle Vorgabe bewirkt, gemessen an Standard und Allround,
+     * dazu die Lage im Kader - damit die Wahl auf der Trainingsseite nicht
+     * im Blindflug fällt.
+     */
+    static wirkungDerVorgabe(state) {
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const intensity = state.trainingSettings?.intensity || "normal";
+        const focus = state.trainingSettings?.focus || "allround";
+        const profil = this.INTENSITY_PROFILE[intensity] || this.INTENSITY_PROFILE.normal;
+        const normal = this.INTENSITY_PROFILE.normal;
+        const reg = focus === "regeneration" ? this.REGENERATION : { erholung: 1, risiko: 1, entwicklung: 1 };
+        // Vollgas hebt die Wachstumschance in developPlayer noch einmal an
+        const entwicklung = profil.gain * (intensity === "high" ? 1.15 : 1) * reg.entwicklung / normal.gain;
+
+        const medicalLevel = club ? _facStufe(club, "medicalCenter", state) : 1;
+        const ids = new Set(club?.playerIds || []);
+        const kader = state.players.filter(p => ids.has(p.id) && !(p.injuredWeeks > 0) && !p.abgestellt);
+        const risiken = kader.map(p => this.calculateInjuryRisk(p, intensity, medicalLevel, focus));
+        const muede = kader.filter(p => (p.fitness ?? 100) <= 72).length;
+        const gefaehrdet = risiken.filter(r => r >= 0.05).length;
+
+        let rat = "";
+        if (intensity === "high" && (muede >= 3 || gefaehrdet >= 2)) {
+            rat = "Für Vollgas ist der Kader gerade zu müde - das kostet Verletzungen.";
+        } else if (intensity === "low" && focus !== "regeneration" && muede === 0 && gefaehrdet === 0) {
+            rat = "Der Kader ist frisch - schonendes Training verschenkt Entwicklung.";
+        } else if (focus === "regeneration" && muede === 0) {
+            rat = "Niemand ist müde - Regeneration bremst gerade nur die Entwicklung.";
+        }
+
+        return {
+            intensity,
+            focus,
+            fokusText: this.FOKUS_WIRKUNG[focus] || this.FOKUS_WIRKUNG.allround,
+            entwicklung,
+            belastung: profil.load / normal.load,
+            risiko: profil.risk * reg.risiko / normal.risk,
+            erholung: profil.recovery * reg.erholung / normal.recovery,
+            spieler: kader.length,
+            muede,
+            gefaehrdet,
+            risikoSchnitt: risiken.length ? risiken.reduce((s, r) => s + r, 0) / risiken.length : 0,
+            rat
+        };
+    }
+
+    /**
      * Eine Trainingseinheit an einem einzelnen Kalendertag.
      *
      * Das Training läuft dadurch nicht mehr im Wochenblock ab, sondern Tag für
@@ -214,6 +281,7 @@ class TrainingEngine {
         const profil = this.INTENSITY_PROFILE[intensity] || this.INTENSITY_PROFILE.normal;
         const medicalLevel = _facStufe(club, "medicalCenter", state);
         const trainingLevel = _facStufe(club, "trainingGround", state);
+        const regeneration = focus === "regeneration" ? this.REGENERATION : null;
 
         // Die Güte des Trainerstabs entscheidet mit, wie viel eine Einheit
         // bringt: Beim Landesligisten leitet ein Übungsleiter das Training,
@@ -253,7 +321,7 @@ class TrainingEngine {
             // wenig, ein ausgelaugter umso mehr - dadurch pendelt sich die
             // Fitness bei jeder Intensität auf einem eigenen Niveau ein,
             // statt endlos weiter abzurutschen.
-            const erholungsBasis = (5.5 + trainingLevel * 1.1) * profil.recovery;
+            const erholungsBasis = (5.5 + trainingLevel * 1.1) * profil.recovery * (regeneration ? regeneration.erholung : 1);
             const erholung = erholungsBasis *
                 (0.55 + (ermuedungVorher / 100) * 1.7) *
                 (dayType === "recovery" || dayType === "rest" ? 1.7 : 1);
@@ -274,7 +342,8 @@ class TrainingEngine {
                 // Ein Ausbilder holt mehr aus den Jungen heraus
                 const trainer = (player.age || 25) <= 21 ? _trainerProfil() : null;
                 const jugendFaktor = trainer ? trainer.faktor(state, "jugend", 0.2) : 1;
-                this.developPlayer(player, focus, intensity, trainingLevel, profil.gain * 0.22 * stabFaktor * planFaktor * jugendFaktor);
+                this.developPlayer(player, focus, intensity, trainingLevel, profil.gain * 0.22 * stabFaktor * planFaktor * jugendFaktor
+                    * (regeneration ? regeneration.entwicklung : 1));
                 if (plan) {
                     plan.nachEinheit(state, player, { gewachsen: player.overall > vorher, stab: stabFaktor })
                         .forEach(m => planMeldungen.push(m));
@@ -307,7 +376,7 @@ class TrainingEngine {
             // Ein freier Tag - etwa in der Sommerpause - birgt kein Trainingsrisiko
             const tagesanteil = (dayType === "training" ? 1 : dayType === "tactics" ? 0.5 : dayType === "rest" ? 0 : 0.15)
                 / TrainingEngine.WOCHENGEWICHT;
-            const risiko = this.weeklyInjuryRisk(player, intensity, medicalLevel) * tagesanteil;
+            const risiko = this.weeklyInjuryRisk(player, intensity, medicalLevel, focus) * tagesanteil;
 
             if (Math.random() < risiko) {
                 this.inflictInjury(state, player, club);
@@ -443,6 +512,35 @@ class TrainingEngine {
     }
 
     /**
+     * Die Erholung der KI-Vereine, Tag für Tag.
+     *
+     * Ein fester Zuschlag von 7 bis 12 Punkten je Spieltag reichte einst
+     * nicht: Die Stammkräfte der KI rutschten auf eine Fitness um 64 vor dem
+     * Anpfiff, die eigene Elf stand bei 90. Danach schloss die Wochenrunde
+     * nach dem Ligaspieltag einen Anteil der Lücke zu 100 - aber nur dort.
+     * Ein Pokal- oder Europapokalspiel unter der Woche zehrte dann bis zum
+     * übernächsten Ligaspiel, und die KI ging im Schnitt mit 91 % in ihre
+     * Spiele, der eigene Verein mit 98 %. Jetzt erholt sich die KI täglich:
+     * Eine Woche schließt wie bisher 74 bis 90 % der Lücke, je nach
+     * Trainingsgelände, drei Tage gut die Hälfte davon.
+     */
+    static dailyRecoveryAI(state) {
+        const anteilJeTag = new Map();
+        (state.clubs || []).forEach(club => {
+            if (club.id === state.userClubId) return;
+            const woche = Math.min(0.9, 0.7 + _facStufe(club, "trainingGround", state) * 0.04);
+            anteilJeTag.set(club.id, 1 - Math.pow(1 - woche, 1 / 7));
+        });
+        (state.players || []).forEach(player => {
+            const anteil = anteilJeTag.get(player.clubId);
+            if (!anteil) return;
+            const fit = player.fitness ?? 100;
+            if (fit >= 100) return;
+            player.fitness = Math.min(100, Math.round((fit + (100 - fit) * anteil) * 10) / 10);
+        });
+    }
+
+    /**
      * Führt das wöchentliche Training für alle Vereine durch
      */
     static processWeeklyTraining(state) {
@@ -477,24 +575,7 @@ class TrainingEngine {
             const medicalLvl = _facStufe(club, "medicalCenter", state);
 
             clubPlayers.forEach(player => {
-                // 1. Fitness-Regeneration (C2: beeinflusst durch trainingGround)
-                //
-                // Ein fester Zuschlag von 7 bis 12 Punkten je Spieltag reichte
-                // nicht: Ein Spiel kostet 13 bis 17, und die Stammkräfte der KI
-                // rutschten über die Saison auf eine Fitness um 64 vor dem
-                // Anpfiff. Die eigene Elf, die Tag für Tag regeneriert (wer
-                // müder ist, erholt sich stärker), stand bei 90. Das waren rund
-                // 7 % Spielstärke - mehr als der Abstand zwischen dem besten und
-                // dem schwächsten Bundesligakader. Jetzt schließt die Woche wie
-                // beim eigenen Verein einen Anteil der Lücke zu 100, je nach
-                // Trainingsgelände 74 bis 90 %; vor dem Anpfiff steht die KI
-                // damit wie der Nutzer bei rund 90 (Pokal- und Europapokal-
-                // spiele kosten zwischen zwei Spieltagen zusätzlich).
-                const anteil = Math.min(0.9, 0.7 + trainingLvl * 0.04
-                    + (intensity === "low" ? 0.05 : 0) - (intensity === "high" ? 0.05 : 0)
-                    + (focus === "regeneration" ? 0.1 : 0));
-                const fit = player.fitness ?? 100;
-                player.fitness = Math.min(100, Math.round(fit + (100 - fit) * anteil));
+                // 1. Die Erholung läuft Tag für Tag in dailyRecoveryAI
 
                 // 2. Moral-Entwicklung
                 if (player.stats.matches > 0 && player.form >= 7.0) {

@@ -199,6 +199,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this.renderFremdeTalente(state);
         this.renderJugendliga(state);
         this.renderU23(state);
+        if (typeof this.renderUnterbauAufstellung === "function") {
+            this.renderUnterbauAufstellung(state, "u19");
+            this.renderUnterbauAufstellung(state, "u23");
+        }
         this.renderVerlieheneTalente(state);
         this.renderNachwuchsUebersicht(state);
 
@@ -588,8 +592,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 const res = R.setzeEinsatz(this.app.state, sel.dataset.id, rolle ? sel.value : undefined, rolle ? undefined : (sel.value || null));
                 if (!res.success) { this.showToast(res.error, "error"); return; }
                 if (typeof this.app.state.saveToLocalStorage === "function") this.app.state.saveToLocalStorage();
-                this.renderU23(this.app.state);
-                this.renderJugendliga(this.app.state);
+                // Der Einsatzplan füllt die freien Plätze der Aufstellung - auch sie neu
+                if (typeof this.unterbauGeaendert === "function") this.unterbauGeaendert();
+                else { this.renderU23(this.app.state); this.renderJugendliga(this.app.state); }
             });
         });
     },

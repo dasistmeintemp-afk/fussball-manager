@@ -69,25 +69,33 @@ const JugendligaEngine = {
     },
 
     /**
-     * Die Elf der U19 nach dem Einsatzplan (ReserveEngine.elfNachPlan): wer
-     * wie oft spielt und wo. Ohne Plan die Besten, mit genau einem Torwart.
+     * Die Startelf der U19 auf den Plätzen ihrer Formation
+     * (ReserveEngine.aufstellung): festgelegte Plätze, der Rest nach dem
+     * Einsatzplan. Ohne ReserveEngine die Besten.
      */
-    elf(state) {
+    aufstellung(state) {
         const reserve = _jlResolve("ReserveEngine", "./reserveEngine.js");
-        const spieler = this.eigeneSpieler(state);
-        const saison = state.seasonYear || 1;
-        const j = state.jugendliga && state.jugendliga.saison === saison ? state.jugendliga : null;
-        if (!reserve || typeof reserve.elfNachPlan !== "function") return spieler.slice().sort((a, b) => (b.overall || 0) - (a.overall || 0)).slice(0, 11);
-        return reserve.elfNachPlan(spieler, "u19", saison, j ? j.eigene.length : 0);
+        if (!reserve || typeof reserve.aufstellung !== "function") {
+            return this.eigeneSpieler(state).slice().sort((a, b) => (b.overall || 0) - (a.overall || 0)).slice(0, 11)
+                .map((p, i) => ({ slot: i, pos: p.pos, spieler: p, fest: false }));
+        }
+        return reserve.aufstellung(state, "u19");
+    },
+
+    /** Wer in der Elf steht */
+    elf(state) {
+        return this.aufstellung(state).filter(pl => pl.spieler).map(pl => pl.spieler);
     },
 
     eigeneStaerke(state) {
         const club = (state.clubs || []).find(c => c.id === state.userClubId);
         const reserve = _jlResolve("ReserveEngine", "./reserveEngine.js");
-        const spieler = this.elf(state).map(p => (reserve && typeof reserve.einsatzStaerke === "function" ? reserve.einsatzStaerke(p) : (p.overall || 0)));
         const auffuellen = this.basis(club) - 4;
-        while (spieler.length < 11) spieler.push(auffuellen);
-        return spieler.reduce((s, x) => s + x, 0) / 11;
+        const aufstellung = this.aufstellung(state);
+        const werte = aufstellung.map(pl => !pl.spieler ? auffuellen
+            : (reserve && typeof reserve.staerkeAuf === "function" ? reserve.staerkeAuf(pl.spieler, pl.pos) : (pl.spieler.overall || 0)));
+        while (werte.length < 11) werte.push(auffuellen);
+        return werte.reduce((s, x) => s + x, 0) / werte.length;
     },
 
     /** Zur neuen Saison: Teams, Spielplan und leere Tabelle */
@@ -131,14 +139,22 @@ const JugendligaEngine = {
         if (!j || j.runde >= j.runden.length) return null;
         const eigenStaerke = this.eigeneStaerke(state);
         // Wer heute spielt - dieselbe Elf trifft, bekommt Noten und Einsätze
-        const elf = this.elf(state);
+        const aufstellung = this.aufstellung(state);
+        const elf = aufstellung.filter(pl => pl.spieler).map(pl => pl.spieler);
+        const platzVon = new Map(aufstellung.filter(pl => pl.spieler).map(pl => [pl.spieler, pl.pos]));
+        const reserve = _jlResolve("ReserveEngine", "./reserveEngine.js");
+        const ment = reserve && typeof reserve.teamPlan === "function"
+            ? reserve.MENTALITAETEN[reserve.teamPlan(state, "u19").mentalitaet] : { eigen: 1, gegner: 1 };
         const staerke = (i) => (i === 0 ? eigenStaerke : j.teams[i].staerke);
         const ergebnisse = [];
         let eigenesSpiel = null;
         j.runden[j.runde].forEach(([h, a]) => {
             const diff = staerke(h) - staerke(a);
-            const th = this._poisson(Math.max(0.3, 1.55 * Math.exp((diff + 1.5) / 14)));
-            const ta = this._poisson(Math.max(0.3, 1.35 * Math.exp(-(diff + 1.5) / 14)));
+            // Die Mentalität der eigenen U19 wirkt auf beide Tore ihres Spiels
+            const mh = h === 0 ? ment.eigen : (a === 0 ? ment.gegner : 1);
+            const ma = a === 0 ? ment.eigen : (h === 0 ? ment.gegner : 1);
+            const th = this._poisson(Math.max(0.3, 1.55 * Math.exp((diff + 1.5) / 14)) * mh);
+            const ta = this._poisson(Math.max(0.3, 1.35 * Math.exp(-(diff + 1.5) / 14)) * ma);
             const buche = (i, t, g) => {
                 const z = j.tabelle[i];
                 z[3] += t; z[4] += g;
@@ -149,7 +165,7 @@ const JugendligaEngine = {
             if (h === 0 || a === 0) {
                 const heim = h === 0;
                 const tore = heim ? th : ta, gegentore = heim ? ta : th;
-                const schuetzen = this._torschuetzen(state, tore, elf);
+                const schuetzen = this._torschuetzen(state, tore, elf, platzVon);
                 eigenesSpiel = { tore, gegentore, schuetzen };
                 j.eigene.push({ runde: j.runde + 1, gegner: j.teams[heim ? a : h].name, heim, tore, gegentore, schuetzen: schuetzen.map(s => s.name) });
                 schuetzen.forEach(s => {
@@ -159,7 +175,7 @@ const JugendligaEngine = {
             }
         });
         j.letzte = ergebnisse;
-        this._zaehleEinsaetze(state, j.saison, eigenesSpiel, j.runde + 1, elf);
+        this._zaehleEinsaetze(state, j.saison, eigenesSpiel, j.runde + 1, elf, platzVon);
         j.runde++;
         if (j.runde >= j.runden.length) this._saisonende(state);
         return ergebnisse;
@@ -178,7 +194,7 @@ const JugendligaEngine = {
      * seiner Entwicklung (DevelopmentPlanEngine.praxisFaktor) nicht voran.
      */
     U19_PRAXIS: 0.6,
-    _zaehleEinsaetze(state, saison, spiel = null, runde = 0, aufgestellt = null) {
+    _zaehleEinsaetze(state, saison, spiel = null, runde = 0, aufgestellt = null, platzVon = null) {
         const youth = _jlResolve("YouthEngine", "./youthEngine.js");
         if (!youth || typeof youth.eigeneTalente !== "function") return;
         const talente = new Set(youth.eigeneTalente(state).filter(t => t && !t.promoted));
@@ -192,7 +208,7 @@ const JugendligaEngine = {
                 reserve.bucheEinsatz(p, "u19", saison, reserve.note(p, tore, spiel.tore - spiel.gegentore, schnitt, `u19|${saison}|${runde}`), tore);
             }
             // Auf einer fremden Position lernt er sie - wie in der U23
-            if (spiel && reserve && typeof reserve.lerneAufPosition === "function") reserve.lerneAufPosition(p, this.U19_PRAXIS);
+            if (spiel && reserve && typeof reserve.lerneAufPosition === "function") reserve.lerneAufPosition(p, this.U19_PRAXIS, platzVon ? platzVon.get(p) : null);
             if (!talente.has(p)) {
                 p.spielpraxis = Math.round(((p.spielpraxis ?? 0.5) * 0.82 + this.U19_PRAXIS * 0.18) * 1000) / 1000;
                 return;
@@ -207,12 +223,13 @@ const JugendligaEngine = {
             .forEach(p => { p.spielpraxis = Math.round(((p.spielpraxis ?? 0.5) * 0.82) * 1000) / 1000; });
     },
 
-    _torschuetzen(state, anzahl, elf = null) {
+    _torschuetzen(state, anzahl, elf = null, platzVon = null) {
         // Treffen kann nur, wer auf dem Platz steht (vorher der ganze Kader der U19)
         const spieler = elf && elf.length ? elf : this.eigeneSpieler(state);
         if (!spieler.length || !anzahl) return [];
         const vorne = { ST: 5, LA: 3, RA: 3, OM: 3, LM: 2, RM: 2, ZM: 1.5, DM: 0.7, LV: 0.5, RV: 0.5, IV: 0.5, TW: 0 };
-        const gewicht = spieler.map(p => (vorne[p.pos] ?? 1) * Math.max(1, (p.overall || 40) - 35));
+        // Es zählt der Platz in der Formation, nicht die gelernte Position
+        const gewicht = spieler.map(p => (vorne[(platzVon && platzVon.get(p)) || p.pos] ?? 1) * Math.max(1, (p.overall || 40) - 35));
         const summe = gewicht.reduce((s, x) => s + x, 0);
         const wer = [];
         for (let i = 0; i < anzahl; i++) {

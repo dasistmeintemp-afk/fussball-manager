@@ -308,8 +308,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this.renderKaderplanung(state);
         this.renderMeldeliste(state);
 
-        // Kennzahlen des ganzen Kaders - unabhaengig vom Filter
-        const kader = state.players.filter(p => userClub.playerIds.includes(p.id));
+        // Kennzahlen der gezeigten Mannschaft - unabhaengig vom Filter
+        const kader = this.kaderQuelle(state, userClub, this.kaderWahl().team);
         if (kader.length) {
             const alter = kader.reduce((s, p) => s + (p.age || 0), 0) / kader.length;
             const wert = kader.reduce((s, p) => s + (p.value || 0), 0);
@@ -351,7 +351,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         vertrag: { name: "Vertragsende", ab: false, wert: (p) => (p.contractYears ?? 0) * 1e9 - (p.wage || 0) },
         gehalt: { name: "Gehalt", ab: true, wert: (p) => p.wage || 0 },
         wert: { name: "Marktwert", ab: true, wert: (p) => p.value || 0 },
-        form: { name: "Form", ab: true, wert: (p) => Number(p.form) || 0 },
+        form: { name: "Form", ab: true, wert: (p, z) => z.formWert ?? (Number(p.form) || 0) },
         fitness: { name: "Kondition", ab: true, wert: (p) => p.fitness ?? 100 },
         praxis: { name: "Spielpraxis", ab: true, wert: (p, z) => z.praxis },
         moral: { name: "Zufriedenheit", ab: true, wert: (p) => p.happiness?.overall ?? 75 },
@@ -381,6 +381,28 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         markt: { name: "Auf dem Markt", passt: (p) => !!(p.transferListed || p.leihListe || p.vorvertrag) }
     },
 
+    /**
+     * Welche Mannschaft die Liste zeigt: die Profis, die U23 oder die U19 -
+     * alle mit denselben Ansichten, Spalten und Sortierungen. U23 und U19
+     * zeigen ihre eigenen Einsätze, Tore und Noten.
+     */
+    KADER_TEAMS: { profis: "Profis", u23: "U23", u19: "U19" },
+
+    /** Die ReserveEngine - im Browser global, unter Node per require */
+    _kaderReserve() {
+        if (typeof ReserveEngine !== "undefined" && ReserveEngine) return ReserveEngine;
+        if (typeof require !== "undefined") { try { return require("../engine/reserveEngine.js").ReserveEngine; } catch (e) { return null; } }
+        return null;
+    },
+
+    kaderQuelle(state, userClub, team = "profis") {
+        const R = this._kaderReserve();
+        if (team !== "profis" && R && typeof R.teamKader === "function") return R.teamKader(state, team);
+        const ids = new Set(userClub.playerIds);
+        // Wer in U23 oder U19 spielt, steht dort - nicht bei den Profis
+        return state.players.filter(p => ids.has(p.id) && !p.reserve);
+    },
+
     /** Die gemerkte Wahl: Ansicht, Sortierung, Richtung, Schnellfilter, Position */
     kaderWahl() {
         if (!this._kaderWahl) {
@@ -391,7 +413,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 sorte: this.KADER_SORTEN[gemerkt.sorte] ? gemerkt.sorte : "pos",
                 ab: typeof gemerkt.ab === "boolean" ? gemerkt.ab : null,
                 filter: this.KADER_FILTER[gemerkt.filter] ? gemerkt.filter : "alle",
-                pos: ["all", "TW", "DEF", "MID", "ATT"].includes(gemerkt.pos) ? gemerkt.pos : "all"
+                pos: ["all", "TW", "DEF", "MID", "ATT"].includes(gemerkt.pos) ? gemerkt.pos : "all",
+                team: this.KADER_TEAMS[gemerkt.team] ? gemerkt.team : "profis"
             };
         }
         return this._kaderWahl;
@@ -409,15 +432,24 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const gruppen = { TW: ["TW"], DEF: ["IV", "LV", "RV"], MID: ["DM", "ZM", "OM", "LM", "RM"], ATT: ["ST", "LA", "RA"] };
         const ratingEngine = this.getRatingEngine?.();
         const filter = this.KADER_FILTER[wahl.filter] || this.KADER_FILTER.alle;
-        const zeilen = state.players
-            .filter(p => userClub.playerIds.includes(p.id))
+        const team = this.KADER_TEAMS[wahl.team] ? wahl.team : "profis";
+        const R = this._kaderReserve();
+        const saisonJahr = state.seasonYear || 1;
+        // U23 und U19: ihre eigenen Spiele, Tore und Noten
+        const bilanzVon = (p) => {
+            const b = R && typeof R.bilanz === "function" ? R.bilanz(p, team, saisonJahr) : null;
+            return b ? { matches: b.spiele, minutes: b.spiele * 90, goals: b.tore, assists: 0, ratingSum: b.schnitt * b.spiele, form: b.form } : { matches: 0, minutes: 0, goals: 0, assists: 0, ratingSum: 0, form: null };
+        };
+        const zeilen = this.kaderQuelle(state, userClub, team)
             .filter(p => posFilter === "all" || (gruppen[posFilter] || []).includes(p.pos))
             .filter(p => filter.passt(p, state))
             .map(p => {
                 const card = ratingEngine ? ratingEngine.calculateVisiblePlayerCard(p, Object.assign({ userClubId: userClub.id, leagueDataCoverage: 95 }, this.starContext())) : null;
-                const saison = typeof StatistikEngine !== "undefined" ? StatistikEngine.von(p, "alle") : (p.stats || {});
+                const saison = team !== "profis" ? bilanzVon(p) : (typeof StatistikEngine !== "undefined" ? StatistikEngine.von(p, "alle") : (p.stats || {}));
                 return {
                     p, card, saison: { ...saison, yellowCards: p.stats?.yellowCards || 0, redCards: p.stats?.redCards || 0 },
+                    // Form: bei U23 und U19 der Schnitt der letzten drei Noten dort
+                    formWert: team !== "profis" ? (saison.form ?? 0) : (Number(p.form) || 0),
                     staerke: card ? (Number(card.starsCaMin) + Number(card.starsCaMax)) / 2 : (p.overall || 0) / 20,
                     potenzial: card ? Number(card.starsPaMax) || 0 : (p.pot || 0) / 20,
                     posIndex: Math.max(0, this.KADER_POSITIONEN.indexOf(p.pos)),
@@ -445,10 +477,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             rolle: { titel: "Beste Rolle", sorte: null, klasse: "sq-rolle", zelle: (z) => { const r = z.card?.bestRole?.role || z.p.squadRole || "Kader"; return `<span class="role-chip" title="${esc(r)}">${esc(r)}</span>`; } },
             fitness: { titel: "Kondition", sorte: "fitness", klasse: "sq-fit nowrap", zelle: (z) => { const f = Math.round(z.p.fitness ?? 100); return `<span class="mini-bar"><span class="mini-bar-fill" style="width:${f}%;background:${this.fitnessFarbe(f)}"></span></span>${f}%`; } },
             moral: { titel: "Zufriedenheit", sorte: "moral", klasse: "sq-moral nowrap", zelle: (z) => { const h = Math.round(z.p.happiness?.overall ?? 75); return `${h >= 80 ? "😊" : h >= 60 ? "😐" : "😞"} ${h}%`; } },
-            form: { titel: "Form", sorte: "form", klasse: "sq-form", zelle: (z) => komma(Number(z.p.form) || 0) },
+            form: { titel: "Form", sorte: "form", klasse: "sq-form", zelle: (z) => (z.formWert ?? Number(z.p.form)) ? komma(z.formWert ?? Number(z.p.form)) : "–" },
             wert: { titel: "Marktwert", sorte: "wert", klasse: "sq-wert nowrap", zelle: (z) => geld(z.p.value) },
             gehalt: { titel: "Gehalt/Wo.", sorte: "gehalt", klasse: "sq-gehalt nowrap", zelle: (z) => geld(z.p.wage) },
-            vertrag: { titel: "Vertrag", sorte: "vertrag", klasse: "sq-vertrag nowrap", zelle: (z) => `${z.p.vorvertrag ? `<span title="Geht zum Saisonwechsel zu ${esc(z.p.vorvertrag.clubName)}">✍️</span> ` : ""}<span class="${this.kaderVertragTon(z.p)}">${z.p.contractYears} J.</span>` },
+            vertrag: { titel: "Vertrag", sorte: "vertrag", klasse: "sq-vertrag nowrap", zelle: (z) => `${z.p.vorvertrag ? `<span title="Geht zum Saisonwechsel zu ${esc(z.p.vorvertrag.clubName)}">✍️</span> ` : ""}<span class="${this.kaderVertragTon(z.p)}">${z.p.contractYears ?? "–"} J.</span>` },
             alter: { titel: "Alter", sorte: "alter", klasse: "sq-alter-spalte", zelle: (z) => String(z.p.age) },
             kaderrolle: { titel: "Kaderrolle", sorte: null, klasse: "sq-kaderrolle", zelle: (z) => esc(z.p.squadRole || "Kader") + (z.p.jugendvertrag ? ` <small class="text-muted">Jugendvertrag</small>` : "") },
             vertragBis: { titel: "Vertrag bis", sorte: "vertrag", klasse: "sq-vertrag nowrap", zelle: (z) => `<span class="${this.kaderVertragTon(z.p)}">${esc(this.vertragsEnde ? (this.vertragsEnde(z.p) || "–") : `${z.p.contractYears} J.`)}</span>` },
@@ -493,11 +525,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     kaderMeta(z, ansicht) {
         const p = z.p;
         const geld = (x) => this.geldKurz(x || 0);
-        const form = (Number(p.form) || 0).toFixed(1).replace(".", ",");
+        const formZahl = z.formWert ?? (Number(p.form) || 0);
+        const form = formZahl ? formZahl.toFixed(1).replace(".", ",") : "–";
         if (ansicht === "vertrag") return `Vertrag bis ${this.vertragsEnde ? this.vertragsEnde(p) || "–" : p.contractYears + " J."} · ${geld(p.wage)}/Wo · ${geld(p.value)}${this.kaderLage(p) ? " · " + this.kaderLage(p) : ""}`;
         if (ansicht === "leistung") return `${z.saison.matches || 0} Sp · ${z.saison.goals || 0} T · ${z.saison.assists || 0} V · Note ${z.saison.matches ? (z.saison.ratingSum / z.saison.matches).toFixed(2).replace(".", ",") : "–"} · Form ${form}`;
         if (ansicht === "fitness") return `Spielpraxis ${z.praxis} %${p.injuredWeeks > 0 ? ` · verletzt ${p.injuredWeeks} Wo.` : ""}${p.suspendedMatches > 0 ? ` · gesperrt ${p.suspendedMatches} Sp.` : ""} · Moral ${Math.round(p.happiness?.overall ?? 75)} %`;
-        return `Form ${form} · ${geld(p.value)} · ${geld(p.wage)}/Wo · ${p.vorvertrag ? `geht zu ${p.vorvertrag.clubName}` : `${p.contractYears} J. Vertrag`}`;
+        return `Form ${form} · ${geld(p.value)} · ${geld(p.wage)}/Wo · ${p.vorvertrag ? `geht zu ${p.vorvertrag.clubName}` : (p.contractYears != null ? `${p.contractYears} J. Vertrag` : "Akademie")}`;
     },
 
     /** Leiste über der Liste: Ansicht, Sortieren mit Richtung, Schnellfilter */
@@ -506,7 +539,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const esc = (t) => this.escapeHtml(String(t ?? ""));
         const sorte = this.KADER_SORTEN[wahl.sorte];
         const ab = wahl.ab === null ? sorte.ab : wahl.ab;
+        const team = this.KADER_TEAMS[wahl.team] ? wahl.team : "profis";
         return `
+            <div class="kw-gruppe kw-teams" role="tablist" aria-label="Mannschaft">
+                ${Object.entries(this.KADER_TEAMS).map(([k, n]) => `<button type="button" role="tab" class="filter-chip${k === team ? " active" : ""}" data-kw-team="${k}" aria-selected="${k === team}">${esc(n)}</button>`).join("")}
+                ${team !== "profis" ? `<button type="button" class="btn btn-sm btn-secondary kw-aufstellung" data-kw-aufstellung="${team}">Aufstellung der ${esc(this.KADER_TEAMS[team])}</button>` : ""}
+            </div>
             <div class="kw-gruppe kw-ansichten" role="tablist" aria-label="Ansicht">
                 ${Object.entries(this.KADER_ANSICHTEN).map(([k, a]) => `<button type="button" role="tab" class="filter-chip${k === wahl.ansicht ? " active" : ""}" data-kw-ansicht="${k}" aria-selected="${k === wahl.ansicht}">${esc(a.name)}</button>`).join("")}
             </div>
@@ -554,10 +592,19 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         const tbody = document.getElementById("squadTableBody");
         if (!tbody) return;
+        // Startelf und Bank der gezeigten Mannschaft - bei U23 und U19 ihre eigene Elf
+        const team = this.KADER_TEAMS[wahl.team] ? wahl.team : "profis";
+        const R = this._kaderReserve();
+        const elf = team === "profis" || !R ? new Set(userClub.lineup)
+            : new Set(R.aufstellung(state, team).filter(pl => pl.spieler).map(pl => pl.spieler.id));
+        const bank = team === "profis" ? new Set(userClub.bench) : new Set();
+        // Talente der Akademie stehen nicht in der Spielerliste der Welt
+        const akademie = new Set(team === "u19" && typeof YouthEngine !== "undefined" && typeof YouthEngine.eigeneTalente === "function"
+            ? YouthEngine.eigeneTalente(state) : []);
         tbody.innerHTML = zeilen.length ? zeilen.map(z => {
             const p = z.p;
-            const isLineup = userClub.lineup.includes(p.id);
-            const isBench = userClub.bench.includes(p.id);
+            const isLineup = elf.has(p.id);
+            const isBench = bank.has(p.id) || (team !== "profis" && !isLineup);
             let statusBadge = `<span class="badge-status-fit">Fit</span>`;
             if (p.injuredWeeks > 0) statusBadge = `<span class="badge-status-inj">🚑 ${p.injuredWeeks} Wo.</span>`;
             else if (p.suspendedMatches > 0) statusBadge = `<span class="badge-status-susp">🟥 ${p.suspendedMatches} Sp.</span>`;
@@ -565,12 +612,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             else if (isBench) statusBadge = `<span class="badge-status-bench">Bank</span>`;
             const neben = (Array.isArray(p.positions) ? p.positions : []).filter(x => x && x !== p.pos).slice(0, 2)
                 .map(x => `<span class="pos-tag pos-secondary" title="Nebenposition">${x}</span>`).join("");
-            const hinweis = p.reserve ? (p.reserve === "u19" ? "U19" : "U23")
+            const hinweis = akademie.has(p) ? "Akademie" : p.reserve ? (p.reserve === "u19" ? "U19" : "U23")
                 : (p.nominiertAus ? `aus der ${p.nominiertAus === "u19" ? "U19" : "U23"} · nur Spieltag` : (p.leihe ? "Leihspieler" : esc((p.squadRole || "Kader") + (p.jugendvertrag ? " · Jugendvertrag" : ""))));
             return `
                 <tr class="row-clickable" data-player-id="${p.id}" title="Details zu ${esc(p.name)} öffnen">
                     <td class="sq-status">${statusBadge}</td>
-                    <td class="sq-name"><button class="sq-nr" type="button" data-nr-id="${esc(String(p.id))}" title="Rückennummer ändern">${Number.isInteger(p.trikot) ? p.trikot : "–"}</button><strong>${esc(p.name)}</strong>${this.signaturMarke(p)}<span class="squad-role-hint">${hinweis} · ${p.age} J.</span></td>
+                    <td class="sq-name">${team === "profis" ? `<button class="sq-nr" type="button" data-nr-id="${esc(String(p.id))}" title="Rückennummer ändern">${Number.isInteger(p.trikot) ? p.trikot : "–"}</button>` : `<span class="sq-nr">${Number.isInteger(p.trikot) ? p.trikot : "–"}</span>`}<strong>${esc(p.name)}</strong>${this.signaturMarke(p)}<span class="squad-role-hint">${hinweis} · ${p.age} J.</span></td>
                     <td class="sq-pos nowrap"><span class="pos-tag pos-${this.getPosGroup(p.pos)}">${p.pos}</span>${neben}</td>
                     ${spalten.map(s => `<td class="${s.klasse}">${s.zelle(z)}</td>`).join("")}
                     <td class="sq-meta">${esc(this.kaderMeta(z, wahl.ansicht))}</td>
@@ -579,6 +626,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         }).join("") : `<tr><td colspan="${spalten.length + 5}" class="kw-leer">Kein Spieler passt zu dieser Auswahl.</td></tr>`;
 
         // Bedienung: Ansicht, Sortierung, Richtung, Schnellfilter, Spaltenköpfe
+        werkzeuge?.querySelectorAll("[data-kw-team]").forEach(b => b.addEventListener("click", () => this.setzeKaderWahl({ team: b.dataset.kwTeam })));
+        werkzeuge?.querySelector("[data-kw-aufstellung]")?.addEventListener("click", (e) => {
+            this.switchTab("youth");
+            if (typeof this.zeigeUnterreiter === "function") this.zeigeUnterreiter("pane-youth", this.KADER_TEAMS[e.currentTarget.dataset.kwAufstellung], { nachOben: true });
+        });
         werkzeuge?.querySelectorAll("[data-kw-ansicht]").forEach(b => b.addEventListener("click", () => this.setzeKaderWahl({ ansicht: b.dataset.kwAnsicht })));
         werkzeuge?.querySelector("#kwSorte")?.addEventListener("change", (e) => this.setzeKaderWahl({ sorte: e.target.value, ab: null }));
         werkzeuge?.querySelector("#kwRichtung")?.addEventListener("click", () => this.setzeKaderWahl({ ab: !ab }));

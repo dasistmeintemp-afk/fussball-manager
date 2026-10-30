@@ -1056,7 +1056,7 @@ function runWizardTests() {
         }
     });
 
-    test("3D-Ansicht: Figuren mit Gelenken, Kopfball in Kopfhöhe, Wetter, Kamera nach Seitenverhältnis, Schilder ohne Überlagerung", () => {
+    test("3D-Ansicht: Figuren mit Haut über dem Skelett, Kopfball in Kopfhöhe, Wetter, Kamera nach Seitenverhältnis, Schilder ohne Überlagerung", () => {
         const vorher = global.THREE;
         global.THREE = require('./js/vendor/three.min.js');
         const { Spielfeld3D } = require('./js/ui/spielfeld3d.js');
@@ -1098,10 +1098,17 @@ function runWizardTests() {
             if (f.knie[0].parent !== f.beine[0] || f.ellbogen[1].parent !== f.arme[1] || f.kopf.parent !== f.rumpf) throw new Error("Die Gelenke hängen falsch");
             let netze = 0;
             f.figur.traverse(o => { if (o.isMesh) netze++; });
-            // Becken, Rumpf, Kopf, je zwei Ober- und Unterarme, Ober- und Unterschenkel
-            if (netze > 11) throw new Error(`${netze} Netze je Figur - jedes Glied sollte eines sein`);
-            const geo = f.rumpf.children.find(o => o.isMesh).geometry;
-            if (!geo.attributes.color) throw new Error("Die Glieder tragen ihre Farben nicht an den Ecken");
+            // Ein Netz für den Körper, dazu die Rückennummer
+            if (netze > 2) throw new Error(`${netze} Netze je Figur - der Körper sollte eines sein`);
+            // Ein Netz mit Haut über dem Skelett: Farben, Knochen und Gewichte je Ecke
+            const geo = f.netz.geometry;
+            if (!f.netz.isSkinnedMesh || f.netz.skeleton.bones.length !== 11) throw new Error("Die Figur ist kein Netz über elf Knochen");
+            if (!geo.attributes.color || !geo.attributes.skinIndex || !geo.attributes.skinWeight) throw new Error("Den Ecken fehlen Farbe, Knochen oder Gewicht");
+            // Am Knie gehören Ecken zwei Knochen zugleich - sonst knickt es hart
+            const gew = geo.attributes.skinWeight, kn = geo.attributes.skinIndex;
+            let weich = 0;
+            for (let i = 0; i < gew.count; i++) if (gew.getY(i) > 0.2 && [kn.getX(i), kn.getY(i)].includes(Spielfeld3D.KNOCHEN.knie[0])) weich++;
+            if (weich < 8) throw new Error(`Nur ${weich} Ecken verbinden Oberschenkel und Wade`);
             // Im Lauf beugt sich das Knie
             spieler[0].speed = 6; spieler[0].vx = 6;
             let knie = 0;

@@ -11,10 +11,10 @@
  * 2,44 Meter. In der Simulation liegen die Torlinien bei x = 4 und x = 96,
  * die Breite geht von y = 0 bis 100.
  *
- * Die Spieler sind Figuren in den Trikotfarben des Spiels: Rumpf mit
- * Rückennummer, Kopf mit Haaren, Arme, Beine mit Stutzen und Schuhen. Jedes
- * Glied ist ein einziges Netz mit Farben je Ecke - so kostet eine Figur sechs
- * statt zwanzig Zeichenaufrufe. Sie laufen mit, pendeln die Beine im Takt
+ * Die Spieler sind Menschen in den Trikotfarben des Spiels: ein Netz mit
+ * Haut über einem Skelett aus elf Knochen, mit Gesicht, Frisur, Trikot,
+ * Hose, Stutzen und Schuhen - ein Zeichenaufruf je Figur. An den Gelenken
+ * biegt sich die Haut weich. Sie laufen mit, pendeln die Beine im Takt
  * ihrer Geschwindigkeit und schauen dorthin, wohin sie laufen - oder zum Ball.
  * Was sie tun, meldet die Regie (LiveMatchDirector.meldeAktion): Pass,
  * Schuss, Flanke, Kopfball, Zweikampf, Parade, Tor. Dazu gibt es je einen
@@ -863,121 +863,220 @@ class Spielfeld3D {
     }
 
     /**
-     * Mehrere Grundkörper zu einem Netz mit Farben je Ecke verschmelzen.
-     * teile: [{ geo, farbe, pos, dreh, skal }]
+     * Knochen des Skeletts, in dieser Reihenfolge: Becken, Rumpf, Kopf,
+     * linke Schulter und Ellbogen, rechte Schulter und Ellbogen, linke
+     * Hüfte und Knie, rechte Hüfte und Knie. Links liegt auf der -z-Seite.
      */
-    static verschmelze(teile) {
-        const pos = [], nor = [], col = [];
-        const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
-        const v = new THREE.Vector3(), s = new THREE.Vector3();
-        teile.forEach(t => {
-            const g = t.geo.index ? t.geo.toNonIndexed() : t.geo.clone();
-            e.set(...(t.dreh || [0, 0, 0]));
-            q.setFromEuler(e);
-            m.compose(v.set(...(t.pos || [0, 0, 0])), q, s.set(...(t.skal || [1, 1, 1])));
-            g.applyMatrix4(m);
-            const p = g.attributes.position.array, n = g.attributes.normal.array;
-            const f = new THREE.Color(t.farbe);
-            for (let i = 0; i < p.length; i += 3) {
-                pos.push(p[i], p[i + 1], p[i + 2]);
-                nor.push(n[i], n[i + 1], n[i + 2]);
-                col.push(f.r, f.g, f.b);
+    static KNOCHEN = { becken: 0, rumpf: 1, kopf: 2, schulter: [3, 5], ellbogen: [4, 6], huefte: [7, 9], knie: [8, 10] };
+
+    /**
+     * Ein Spieler als ein einziges Netz über dem Skelett: Rumpf mit Brust,
+     * Taille und Hüfte, Hals, Kopf mit Kiefer, Nase, Augen, Ohren und
+     * Frisur, Arme mit Schulter, Ellbogen und Hand, Beine mit Oberschenkel,
+     * Knie, Wade und Schuh. Die Kleidung ist Farbe auf der Haut: Trikot mit
+     * kurzen Ärmeln (beim Torwart lang), Hose, Stutzen. An den Gelenken
+     * gehören die Ecken zwei Knochen zugleich - so biegt sich ein Knie
+     * weich, statt dass zwei Röhren aneinanderstoßen.
+     *
+     * Ruhehaltung: aufrecht, Blick nach +x, Arme hängen. Maße eines 1,81 m
+     * großen Spielers. Liefert eine Geometrie mit Position, Normale, Farbe,
+     * Knochen und Gewichten.
+     */
+    static mensch(f, n) {
+        const pos = [], nor = [], col = [], si = [], sw = [], idx = [];
+        let zahl = 0;
+        const glatt = Spielfeld3D.glatt;
+        const C = (hex) => { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; };
+        const punkt = (x, y, z, nx, ny, nz, c, gew) => {
+            const l = Math.hypot(nx, ny, nz) || 1;
+            pos.push(x, y, z); nor.push(nx / l, ny / l, nz / l); col.push(c[0], c[1], c[2]);
+            const g = gew.filter(w => w[1] > 0).slice(0, 4);
+            const summe = g.reduce((s, w) => s + w[1], 0) || 1;
+            while (g.length < 4) g.push([0, 0]);
+            g.forEach(([k, w]) => { si.push(k); sw.push(w / summe); });
+            return zahl++;
+        };
+        const mische = (a, b, t) => t <= 0 ? [[a, 1]] : [[a, 1 - t], [b, t]];
+
+        // Röhre entlang y: Ringe [y, Tiefe (x), Breite (z), Farbe, nach vorn]
+        const roehre = (cx, cz, ringe, gew) => {
+            const start = zahl;
+            const auf = ringe[ringe.length - 1][0] > ringe[0][0] ? 1 : -1;
+            ringe.forEach(([y, rx, rz, farbe, ox = 0], r) => {
+                const a = ringe[Math.max(0, r - 1)], b = ringe[Math.min(ringe.length - 1, r + 1)];
+                const dy = b[0] - a[0];
+                const steig = Math.abs(dy) > 1e-6 ? ((b[1] + b[2]) - (a[1] + a[2])) / 2 / dy : 0;
+                const c = C(farbe), g = gew(y);
+                for (let k = 0; k < n; k++) {
+                    const w = k / n * Math.PI * 2, co = Math.cos(w), s = Math.sin(w);
+                    punkt(cx + ox + rx * co, y, cz + rz * s, co * rz, -steig * (rx + rz) / 2, s * rx, c, g);
+                }
+            });
+            for (let r = 0; r < ringe.length - 1; r++) {
+                for (let k = 0; k < n; k++) {
+                    const a = start + r * n + k, b = start + r * n + (k + 1) % n, c = a + n, d = b + n;
+                    if (auf > 0) idx.push(a, c, b, b, c, d); else idx.push(a, b, c, b, d, c);
+                }
             }
+            // Deckel an beiden Enden
+            [0, ringe.length - 1].forEach((r, i) => {
+                const [y, , , farbe, ox = 0] = ringe[r];
+                const raus = (i === 0 ? -1 : 1) * auf;
+                const mitte = punkt(cx + ox, y, cz, 0, raus, 0, C(farbe), gew(y));
+                for (let k = 0; k < n; k++) {
+                    const a = start + r * n + k, b = start + r * n + (k + 1) % n;
+                    if (raus < 0) idx.push(mitte, a, b); else idx.push(mitte, b, a);
+                }
+            });
+        };
+        // Ellipsoid, auch als Kappe (Haare) und gekippt
+        const kugel = (cx, cy, cz, rx, ry, rz, farbe, gew, teil = {}) => {
+            const g = new THREE.SphereGeometry(1, n, Math.max(4, Math.round(n * 0.6)), 0, Math.PI * 2, 0, teil.bis || Math.PI);
+            if (teil.kipp) g.rotateZ(teil.kipp);
+            const p = g.attributes.position.array, q = g.attributes.normal.array, c = C(farbe), start = zahl;
+            for (let i = 0; i < p.length; i += 3) {
+                punkt(cx + p[i] * rx, cy + p[i + 1] * ry, cz + p[i + 2] * rz, q[i] / rx, q[i + 1] / ry, q[i + 2] / rz, c, gew);
+            }
+            const ix = g.index.array;
+            for (let i = 0; i < ix.length; i++) idx.push(start + ix[i]);
             g.dispose();
-            t.geo.dispose();
+        };
+
+        const K = Spielfeld3D.KNOCHEN;
+        const hemd = f.hemd, hose = f.hose, haut = f.haut;
+        const armFarbe = f.langarm ? hemd : haut;
+
+        // Rumpf: Hüfte in der Hose, Taille, Brust, Schultern, Kragen
+        roehre(0, 0, [
+            [0.84, 0.098, 0.152, hose], [0.88, 0.112, 0.17, hose], [0.95, 0.116, 0.175, hose],
+            [1.01, 0.106, 0.16, hose], [1.016, 0.108, 0.162, f.kragen], [1.03, 0.106, 0.158, hemd],
+            [1.1, 0.102, 0.15, hemd], [1.2, 0.112, 0.163, hemd, 0.004], [1.3, 0.124, 0.183, hemd, 0.012],
+            [1.39, 0.122, 0.198, hemd, 0.01], [1.46, 0.106, 0.19, hemd], [1.51, 0.08, 0.13, hemd],
+            [1.535, 0.06, 0.068, f.kragen]
+        ], (y) => mische(K.becken, K.rumpf, glatt((y - 0.96) / 0.14)));
+        // Hals und Kopf
+        roehre(0.006, 0, [[1.5, 0.052, 0.055, haut], [1.57, 0.05, 0.052, haut], [1.63, 0.048, 0.05, haut]],
+            (y) => mische(K.rumpf, K.kopf, glatt((y - 1.52) / 0.07)));
+        const kopf = [[K.kopf, 1]];
+        kugel(0.006, 1.705, 0, 0.098, 0.116, 0.08, haut, kopf);
+        kugel(0.034, 1.638, 0, 0.068, 0.052, 0.064, haut, kopf);
+        kugel(0.103, 1.69, 0, 0.018, 0.026, 0.014, haut, kopf);
+        [-1, 1].forEach(s => {
+            kugel(0.088, 1.718, s * 0.033, 0.012, 0.008, 0.014, "#1b1410", kopf);
+            kugel(0.094, 1.736, s * 0.034, 0.008, 0.005, 0.02, f.haar, kopf);
+            kugel(0.0, 1.698, s * 0.079, 0.016, 0.028, 0.012, haut, kopf);
         });
+        if (f.frisur > 0) {
+            // Kappe nach hinten gekippt: Stirn frei, Hinterkopf bedeckt
+            kugel(-0.004, 1.712, 0, 0.104, 0.122, 0.086, f.haar, kopf, { bis: Math.PI * (0.36 + 0.1 * f.frisur), kipp: 0.32 });
+        }
+
+        [-1, 1].forEach((s, i) => {
+            const sch = K.schulter[i], ell = K.ellbogen[i], hue = K.huefte[i], kn = K.knie[i];
+            const z = s * 0.2;
+            // Schulter, Oberarm mit Ärmel, Unterarm, Hand
+            kugel(0, 1.44, s * 0.175, 0.062, 0.056, 0.064, hemd, [[K.rumpf, 0.6], [sch, 0.4]]);
+            roehre(0, z, [
+                [1.48, 0.046, 0.048, hemd], [1.43, 0.055, 0.058, hemd], [1.34, 0.052, 0.055, hemd],
+                [1.285, 0.051, 0.054, hemd], [1.28, 0.046, 0.048, armFarbe], [1.21, 0.044, 0.046, armFarbe],
+                [1.15, 0.041, 0.043, armFarbe]
+            ], (y) => y > 1.38 ? mische(sch, K.rumpf, 0.4 * glatt((y - 1.38) / 0.1))
+                : mische(sch, ell, 0.5 * glatt((1.2 - y) / 0.05)));
+            roehre(0, z, [
+                [1.17, 0.041, 0.043, armFarbe], [1.08, 0.043, 0.046, armFarbe], [0.96, 0.033, 0.037, armFarbe],
+                [0.885, 0.027, 0.031, armFarbe]
+            ], (y) => mische(ell, sch, 0.5 * glatt((y - 1.1) / 0.05)));
+            const hand = f.handschuh ? [0.044, 0.066, 0.032, f.handschuh] : [0.031, 0.055, 0.022, haut];
+            kugel(0.004, 0.83, z, hand[0], hand[1], hand[2], hand[3], [[ell, 1]]);
+
+            // Oberschenkel mit Hosenbein, Knie, Wade im Stutzen, Schuh
+            const zb = s * 0.095;
+            roehre(0, zb, [
+                [0.97, 0.096, 0.1, hose], [0.9, 0.101, 0.105, hose], [0.77, 0.094, 0.097, hose],
+                [0.765, 0.082, 0.083, haut], [0.69, 0.078, 0.078, haut, 0.006], [0.57, 0.063, 0.061, haut, 0.006],
+                [0.49, 0.054, 0.053, haut]
+            ], (y) => y > 0.7 ? mische(hue, K.becken, 0.5 * glatt((y - 0.86) / 0.08))
+                : mische(hue, kn, 0.5 * glatt((0.53 - y) / 0.05)));
+            roehre(0, zb, [
+                [0.51, 0.055, 0.053, haut, 0.004], [0.45, 0.051, 0.049, haut, 0.006], [0.43, 0.052, 0.05, f.stutzen],
+                [0.34, 0.058, 0.054, f.stutzen, -0.008], [0.23, 0.045, 0.042, f.stutzen, -0.004],
+                [0.13, 0.035, 0.034, f.stutzen], [0.075, 0.033, 0.032, f.stutzen]
+            ], (y) => mische(kn, hue, 0.5 * glatt((y - 0.44) / 0.05)));
+            kugel(0.045, 0.042, zb, 0.13, 0.042, 0.048, f.schuh, [[kn, 1]]);
+        });
+
         const geo = new THREE.BufferGeometry();
         geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
         geo.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
         geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+        geo.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(si, 4));
+        geo.setAttribute("skinWeight", new THREE.Float32BufferAttribute(sw, 4));
+        geo.setIndex(idx);
         geo.computeBoundingSphere();
         return geo;
     }
 
     /**
-     * Eine Figur mit Skelett: vorn ist +x, die Schultern liegen quer (z).
-     * Das Becken (koerper) trägt alles; darauf sitzt der Rumpf mit Kopf und
-     * Armen, darunter hängen die Beine. Jedes Glied ist ein Netz, jedes
-     * Gelenk eine Gruppe: Hüfte und Knie, Schulter und Ellbogen, Rumpf und
-     * Nacken. Ein positiver Winkel um z schwingt ein Glied nach vorn.
+     * Eine Figur: ein Netz mit Haut über elf Knochen. Die Gelenke sind die
+     * Knochen selbst - Becken (koerper), Rumpf, Kopf, Schultern, Ellbogen,
+     * Hüften, Knie -, die Bewegungsabläufe drehen sie. Vorn ist +x; ein
+     * positiver Winkel um z schwingt ein Glied nach vorn.
      */
     _figur(p, kit, istTorwart) {
-        if (!this._koerperMat) this._koerperMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0 });
+        if (!this._koerperMat) this._koerperMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.66, metalness: 0 });
         const h = (s) => this._hash(String(p.id) + s);
         const hemd = istTorwart ? (kit?.tw || "#facc15") : (p.color || kit?.farbe || "#3b82f6");
         const hose = istTorwart ? "#111827" : (kit?.zweit || "#f8fafc");
-        const stutzen = istTorwart ? "#111827" : hemd;
-        const haut = ["#f1c7a3", "#e3b28a", "#c68e63", "#8d5a3b", "#5e3b28"][Math.floor(h("haut") * 5)];
-        const haar = ["#1c140f", "#3b2a1f", "#5a3d26", "#0b0b0b", "#a57a4a", "#d6b16b", "#2b2b2b"][Math.floor(h("haar") * 7)];
-        const schuh = ["#0f172a", "#0f172a", "#f8fafc", "#ef4444", "#22c55e", "#f59e0b", "#0f172a"][Math.floor(h("schuh") * 7)];
-        const handschuh = "#d9f99d";
-        const t = this.q.teile;
-        const n = (zahl) => Math.max(5, Math.round(zahl * t));
-        const schatten = !!this.q.schatten;
-        const netz = (teile) => {
-            const m = new THREE.Mesh(Spielfeld3D.verschmelze(teile), this._koerperMat);
-            m.castShadow = schatten;
-            return m;
+        const geo = Spielfeld3D.mensch({
+            hemd, hose,
+            stutzen: istTorwart ? "#111827" : hemd,
+            kragen: this._dunkler(hemd, 0.7),
+            haut: ["#f1c7a3", "#e3b28a", "#c68e63", "#8d5a3b", "#5e3b28"][Math.floor(h("haut") * 5)],
+            haar: ["#1c140f", "#3b2a1f", "#5a3d26", "#0b0b0b", "#a57a4a", "#d6b16b", "#2b2b2b"][Math.floor(h("haar") * 7)],
+            schuh: ["#0f172a", "#0f172a", "#f8fafc", "#ef4444", "#22c55e", "#f59e0b", "#0f172a"][Math.floor(h("schuh") * 7)],
+            frisur: Math.floor(h("frisur") * 4),
+            langarm: istTorwart,
+            handschuh: istTorwart ? "#d9f99d" : null
+        }, Math.max(8, Math.round(12 * this.q.teile)));
+
+        // Das Skelett in Ruhehaltung - die Lage passt zu Spielfeld3D.mensch
+        const knochen = (eltern, x, y, z) => {
+            const b = new THREE.Bone();
+            b.position.set(x, y, z);
+            if (eltern) eltern.add(b);
+            return b;
         };
-        const gelenk = (eltern, x, y, z) => {
-            const g = new THREE.Group();
-            g.position.set(x, y, z);
-            eltern.add(g);
-            return g;
-        };
+        const koerper = knochen(null, 0, 0, 0);
+        const rumpf = knochen(koerper, 0, 1.02, 0);
+        const kopf = knochen(rumpf, 0, 0.54, 0);
+        const arme = [], ellbogen = [], beine = [], knie = [];
+        [-1, 1].forEach(s => {
+            const schulter = knochen(rumpf, 0, 0.43, s * 0.2);
+            arme.push(schulter);
+            ellbogen.push(knochen(schulter, 0, -0.3, 0));
+        });
+        [-1, 1].forEach(s => {
+            const huefte = knochen(koerper, 0, 0.9, s * 0.095);
+            beine.push(huefte);
+            knie.push(knochen(huefte, 0, -0.42, 0));
+        });
+        const netz = new THREE.SkinnedMesh(geo, this._koerperMat);
+        netz.add(koerper);
+        netz.updateMatrixWorld(true);
+        netz.bind(new THREE.Skeleton([koerper, rumpf, kopf, arme[0], ellbogen[0], arme[1], ellbogen[1], beine[0], knie[0], beine[1], knie[1]]));
+        netz.castShadow = !!this.q.schatten;
+        // Bei Grätsche und Parade verlässt der Körper die Ruhehaltung weit
+        netz.frustumCulled = false;
 
         const figur = new THREE.Group();
-        const koerper = new THREE.Group();
-        figur.add(koerper);
-        // Becken mit Hose
-        koerper.add(netz([
-            { geo: new THREE.CylinderGeometry(0.17, 0.185, 0.24, n(12)), farbe: hose, pos: [0, 0.92, 0], skal: [0.7, 1, 1] }
-        ]));
-        // Rumpf: dreht sich über dem Becken, neigt sich vor und zurück
-        const rumpf = gelenk(koerper, 0, 1.0, 0);
-        rumpf.add(netz([
-            { geo: new THREE.CylinderGeometry(0.205, 0.165, 0.5, n(12)), farbe: hemd, pos: [0, 0.22, 0], skal: [0.62, 1, 1] },
-            { geo: new THREE.CapsuleGeometry(0.085, 0.34, 2, n(8)), farbe: hemd, pos: [0, 0.45, 0], dreh: [Math.PI / 2, 0, 0], skal: [0.85, 1, 1] },
-            { geo: new THREE.CylinderGeometry(0.052, 0.058, 0.1, n(8)), farbe: haut, pos: [0, 0.56, 0] }
-        ]));
-        const kopf = gelenk(rumpf, 0, 0.6, 0);
-        kopf.add(netz([
-            { geo: new THREE.SphereGeometry(0.112, n(14), n(10)), farbe: haut, pos: [0.005, 0.08, 0], skal: [1.04, 1.12, 0.94] },
-            { geo: new THREE.SphereGeometry(0.119, n(14), n(6), 0, Math.PI * 2, 0, Math.PI * 0.52), farbe: haar, pos: [-0.008, 0.1, 0], skal: [1.06, 1.12, 0.98] }
-        ]));
+        figur.add(netz);
         // Rückennummer
         if (typeof document !== "undefined" && p.nummer) {
-            const nummer = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.24), this._nummerMaterial(p.nummer, istTorwart ? (kit?.twText || "#111827") : (kit?.text || "#ffffff")));
-            nummer.position.set(-0.122, 0.25, 0);
+            const nummer = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22), this._nummerMaterial(p.nummer, istTorwart ? (kit?.twText || "#111827") : (kit?.text || "#ffffff")));
+            nummer.position.set(-0.128, 0.25, 0);
             nummer.rotation.y = -Math.PI / 2;
             rumpf.add(nummer);
         }
-
-        const arme = [], ellbogen = [], beine = [], knie = [];
-        [-1, 1].forEach(seite => {
-            const schulter = gelenk(rumpf, 0, 0.44, seite * 0.25);
-            schulter.add(netz([{ geo: new THREE.CylinderGeometry(0.058, 0.05, 0.3, n(8)), farbe: hemd, pos: [0, -0.15, 0] }]));
-            const ell = gelenk(schulter, 0, -0.29, 0);
-            ell.add(netz([
-                { geo: new THREE.CylinderGeometry(0.047, 0.04, 0.26, n(8)), farbe: istTorwart ? hemd : haut, pos: [0, -0.13, 0] },
-                { geo: new THREE.SphereGeometry(istTorwart ? 0.065 : 0.045, n(8), n(6)), farbe: istTorwart ? handschuh : haut, pos: [0, -0.3, 0] }
-            ]));
-            arme.push(schulter);
-            ellbogen.push(ell);
-
-            const huefte = gelenk(koerper, 0, 0.86, seite * 0.1);
-            huefte.add(netz([
-                { geo: new THREE.CylinderGeometry(0.09, 0.072, 0.42, n(8)), farbe: haut, pos: [0, -0.21, 0] },
-                { geo: new THREE.CylinderGeometry(0.104, 0.098, 0.17, n(8)), farbe: hose, pos: [0, -0.07, 0] }
-            ]));
-            const kn = gelenk(huefte, 0, -0.42, 0);
-            kn.add(netz([
-                { geo: new THREE.CylinderGeometry(0.068, 0.05, 0.4, n(8)), farbe: stutzen, pos: [0, -0.2, 0] },
-                { geo: new THREE.BoxGeometry(0.25, 0.075, 0.1), farbe: schuh, pos: [0.05, -0.4, 0] }
-            ]));
-            beine.push(huefte);
-            knie.push(kn);
-        });
         const blob = this._schatten(0.42);
         this.scene.add(blob);
 
@@ -987,7 +1086,7 @@ class Spielfeld3D {
 
         this.scene.add(figur);
         return {
-            figur, koerper, rumpf, kopf, schatten: blob,
+            figur, netz, koerper, rumpf, kopf, schatten: blob,
             beine, knie, arme, ellbogen,
             phase: this._hash(String(p.id) + "p") * Math.PI * 2,
             richtung: p.team === "home" ? 0 : Math.PI,
@@ -1662,7 +1761,7 @@ class Spielfeld3D {
             f.ellbogen[0].rotation.z = f.ellbogen[1].rotation.z = 0.3 * an;
             if (a.knie) {
                 // Auf den Knien über den Rasen, der Oberkörper zurück
-                k.position.y = -0.42 * an;
+                k.position.y = -0.46 * an;
                 f.beine[0].rotation.z = f.beine[1].rotation.z = 0;
                 f.knie[0].rotation.z = f.knie[1].rotation.z = -1.55 * an;
                 f.rumpf.rotation.z = 0.35 * an;
@@ -1754,7 +1853,7 @@ class Spielfeld3D {
      * sondern nur weniger Himmel und Tribüne.
      */
     static KAMERA = {
-        tv: { hoehe: 17, abstand: 30, breite: 40, min: 15, max: 32 },
+        tv: { hoehe: 26, abstand: 14, breite: 44, min: 14, max: 32 },
         taktik: { hoehe: 72, abstand: 14, breite: 84, min: 30, max: 60 },
         nah: { hoehe: 4.2, abstand: 10, breite: 44, min: 20, max: 40 },
         wiederholung: { breite: 62, min: 30, max: 52 }
@@ -1798,10 +1897,10 @@ class Spielfeld3D {
             blick = new THREE.Vector3(bw.x + vorlauf * 0.4, 1 + hoehe * 0.3, bw.z);
             art = "nah";
         } else {
-            // Übertragung: oben auf der Haupttribüne, schwenkt mit dem Ball
+            // Übertragung: hoch auf der Haupttribüne, nah am Spiel, schwenkt mit dem Ball
             const c = Spielfeld3D.KAMERA.tv;
-            pos = new THREE.Vector3(zielX * 0.7, c.hoehe, S3D_BREITE / 2 + c.abstand);
-            blick = new THREE.Vector3(zielX, 0, bw.z * 0.55 - 1.5);
+            pos = new THREE.Vector3(zielX * 0.85, c.hoehe, S3D_BREITE / 2 + c.abstand);
+            blick = new THREE.Vector3(zielX, 0, bw.z * 0.75 - 1);
             art = "tv";
         }
         const fov = this._kameraFov(art);

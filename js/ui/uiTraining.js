@@ -110,9 +110,48 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (intensityRadio) intensityRadio.checked = true;
 
         this.renderCoachingStaffCard();
+        this.renderTrainingWirkung();
         this.renderTrainingslager();
         this.renderTrainingsPlaene();
         this.renderTrainingReport();
+    },
+
+    /** Was die Vorgabe bewirkt: gemessen an Standard, dazu die Lage im Kader */
+    renderTrainingWirkung() {
+        const box = document.getElementById("trainingWirkung");
+        const engine = typeof TrainingEngine !== "undefined" ? TrainingEngine : null;
+        if (!box || !engine || typeof engine.wirkungDerVorgabe !== "function") return;
+        const w = engine.wirkungDerVorgabe(this.app.state);
+        // Gegenüber Standard: +35 %, −30 %, oder „wie Standard“
+        const relativ = (faktor) => {
+            const pct = Math.round((faktor - 1) * 100);
+            return pct === 0 ? "wie Standard" : `${pct > 0 ? "+" : "−"}${Math.abs(pct)} %`;
+        };
+        // Grün, wo die Abweichung hilft, gelb, wo sie kostet
+        const ton = (faktor, gutWennHoeher) => {
+            if (Math.abs(faktor - 1) < 0.005) return "";
+            return (faktor > 1) === gutWennHoeher ? "wirkung-gut" : "wirkung-kostet";
+        };
+        const zeile = (label, faktor, gutWennHoeher) =>
+            `<div><span>${label}</span><strong class="${ton(faktor, gutWennHoeher)}">${relativ(faktor)}</strong></div>`;
+        const risiko = (w.risikoSchnitt * 100).toFixed(1).replace(".", ",");
+        box.innerHTML = `
+            <h4>Was Ihre Vorgabe bewirkt</h4>
+            <p class="text-muted">Schwerpunkt: ${this.escapeHtml(w.fokusText)}.</p>
+            <div class="kv-liste">
+                ${zeile("Entwicklung", w.entwicklung, true)}
+                ${zeile("Belastung je Einheit", w.belastung, false)}
+                ${zeile("Erholung", w.erholung, true)}
+                ${zeile("Verletzungsrisiko", w.risiko, false)}
+            </div>
+            <h4>Im Kader jetzt</h4>
+            <div class="kv-liste">
+                <div><span>Einsatzbereit</span><strong>${w.spieler}</strong></div>
+                <div><span>Müde (Kondition ≤ 72 %)</span><strong class="${w.muede ? "wirkung-kostet" : ""}">${w.muede}</strong></div>
+                <div><span>Erhöhtes Risiko (ab 5 % je Einheit)</span><strong class="${w.gefaehrdet ? "wirkung-kostet" : ""}">${w.gefaehrdet}</strong></div>
+                <div><span>Risiko je Einheit im Schnitt</span><strong>${risiko} %</strong></div>
+            </div>
+            ${w.rat ? `<p class="training-wirkung-rat">${this.escapeHtml(w.rat)}</p>` : ""}`;
     },
 
     /**
@@ -415,7 +454,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const talente = youth ? youth.eigeneTalente(state).filter(t => t && !t.promoted) : [];
         const weg = loan ? loan.verlieheneVon(state, club.id).filter(p => (p.age || 30) <= reserve?.ALTERSGRENZE) : [];
         const kacheln = [
-            { titel: "U23", wert: `${u23.length} Spieler`, ziel: "u23Karte", extra: reserve && state.u23liga ? `<small>${platz(reserve.ligaTabelle(state))}</small>` : "" },
+            // Ohne eigene Spieler spielt die U23 trotzdem - mit Amateuren
+            { titel: "U23", wert: `${u23.length} Spieler`, ziel: "u23Karte", extra: reserve && state.u23liga
+                ? `<small>${u23.length ? "" : "nur Amateure · "}${platz(reserve.ligaTabelle(state))}</small>` : "" },
             { titel: "U19", wert: `${u19.length} Spieler`, ziel: "jugendligaKarte", extra: jl && state.jugendliga ? `<small>${platz(jl.tabelle(state))}</small>` : "" },
             { titel: "Akademie", wert: `${talente.length} Talente`, ziel: "youthProspectsBody" },
             { titel: "Verliehen", wert: `${weg.length} bis ${reserve ? reserve.ALTERSGRENZE : 23}`, ziel: "verliehenKarte" }

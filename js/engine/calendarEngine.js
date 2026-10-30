@@ -1472,6 +1472,10 @@ const CalendarEngine = {
             // Entwicklungsplan: Umschulungen und was sich einer beim Mentor abschaut
             (tag.plan || []).forEach(m => summary.messages.push(m));
         }
+        // Die KI-Vereine erholen sich ebenso Tag für Tag
+        if (trainingEngine && typeof trainingEngine.dailyRecoveryAI === 'function') {
+            trainingEngine.dailyRecoveryAI(state);
+        }
 
         // Einmal im Monat: Leihbericht und Nachfragen der Stammvereine
         const leihen = (typeof LoanEngine !== 'undefined' && LoanEngine)

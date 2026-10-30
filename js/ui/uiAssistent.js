@@ -24,6 +24,15 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     hideStartScreen() {
         const overlay = document.getElementById("startScreenOverlay");
         if (overlay) overlay.style.display = "none";
+        // Den sichtbaren Reiter einmal neu aufbauen, wie ein Reiterwechsel:
+        // Chromium legt beim Laden der Seite die Karten der Übersicht bei
+        // breitem Bereich (vier Spalten) teils nicht an - sie blieben leer.
+        const pane = typeof document.querySelector === "function" ? document.querySelector(".tab-pane.active") : null;
+        if (pane && pane.style) {
+            pane.style.display = "none";
+            void pane.offsetHeight;
+            pane.style.display = "";
+        }
 
         // Wer mitten in einer offenen Entlassung gespeichert hat, landet nicht
         // stillschweigend wieder im Verein, aus dem er geflogen ist.

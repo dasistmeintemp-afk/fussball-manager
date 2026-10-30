@@ -12152,11 +12152,13 @@ function runEngineTests() {
 
         // Ein Spiel kostet 15, die Woche danach holt den Großteil zurück -
         // über eine Saison pendelt sich die KI-Fitness bei rund 90 ein,
-        // statt Woche für Woche weiter abzusacken
+        // statt Woche für Woche weiter abzusacken. Die Erholung läuft Tag
+        // für Tag, die Wochenrunde bringt Moral, Entwicklung und Risiko.
         kiSpieler.fitness = 100;
         for (let i = 0; i < 20; i++) {
             kiSpieler.fitness = Math.max(35, kiSpieler.fitness - 15);
             TrainingEngine.processWeeklyTraining(state);
+            for (let tag = 0; tag < 7; tag++) TrainingEngine.dailyRecoveryAI(state);
         }
         if (kiSpieler.fitness < 85) throw new Error(`KI-Fitness vor dem Anpfiff nach 20 Spielen: ${kiSpieler.fitness}`);
 
@@ -17619,6 +17621,68 @@ function runEngineTests() {
             }
         });
         if (funde.length) throw new Error(`delete auf Spielerfeldern: ${funde.join(", ")}`);
+    });
+
+    test("Rundgang 2: Regeneration wirkt im Tagestraining, KI erholt sich täglich, Torwart läuft weniger, Ticketprognose wie am Spieltag", () => {
+        // 1. Der Schwerpunkt Regeneration wirkte im Tagestraining des eigenen
+        //    Vereins gar nicht - jetzt mehr Erholung, weniger Risiko
+        const s = GameState.createNewGame("muc", "normal", { name: "Trainer" });
+        const club = s.clubs.find(c => c.id === s.userClubId);
+        const kader = () => s.players.filter(p => club.playerIds.includes(p.id));
+        const spieler = kader()[0];
+        if (!(TrainingEngine.calculateInjuryRisk(spieler, "low", 2, "regeneration") < TrainingEngine.calculateInjuryRisk(spieler, "low", 2, "allround"))) {
+            throw new Error("Regeneration senkt das Verletzungsrisiko nicht");
+        }
+        const nachErholungstag = (focus) => {
+            kader().forEach(p => { p.fitness = 60; p.injuredWeeks = 0; });
+            s.trainingSettings.focus = focus;
+            s.trainingSettings.intensity = "low";
+            TrainingEngine.processDailyTraining(s, "recovery");
+            return kader().reduce((sum, p) => sum + p.fitness, 0) / kader().length;
+        };
+        const ohne = nachErholungstag("allround"), mit = nachErholungstag("regeneration");
+        if (!(mit > ohne + 1.5)) throw new Error(`Regeneration erholt nicht stärker: ${ohne.toFixed(1)} gegen ${mit.toFixed(1)}`);
+
+        // Die Trainingsseite zeigt, was die Vorgabe bewirkt
+        s.trainingSettings.focus = "regeneration"; s.trainingSettings.intensity = "low";
+        const ruhig = TrainingEngine.wirkungDerVorgabe(s);
+        if (!(ruhig.entwicklung < 1 && ruhig.erholung > 1 && ruhig.risiko < 1)) throw new Error("Wirkung von Regeneration falsch: " + JSON.stringify(ruhig));
+        kader().forEach((p, i) => { p.fitness = i < 4 ? 60 : 100; });
+        s.trainingSettings.focus = "attack"; s.trainingSettings.intensity = "high";
+        const hart = TrainingEngine.wirkungDerVorgabe(s);
+        if (!(hart.entwicklung > 1 && hart.risiko > 1 && hart.belastung > 1)) throw new Error("Wirkung von Vollgas falsch: " + JSON.stringify(hart));
+        if (hart.muede !== 4 || !/müde/.test(hart.rat)) throw new Error(`Müde Spieler oder Rat fehlen: ${hart.muede}, „${hart.rat}“`);
+
+        // 2. Die KI erholt sich Tag für Tag - nicht nur nach dem Ligaspieltag
+        const fremd = s.players.find(p => p.clubId && p.clubId !== s.userClubId);
+        const eigener = kader()[0];
+        fremd.fitness = 70; eigener.fitness = 70;
+        TrainingEngine.dailyRecoveryAI(s);
+        if (!(fremd.fitness > 72 && fremd.fitness < 80)) throw new Error(`Ein Tag Erholung der KI: ${fremd.fitness}`);
+        if (eigener.fitness !== 70) throw new Error("Die KI-Erholung greift auch beim eigenen Verein");
+        for (let i = 0; i < 6; i++) TrainingEngine.dailyRecoveryAI(s);
+        if (!(fremd.fitness >= 92 && fremd.fitness < 100)) throw new Error(`Eine Woche Erholung der KI: ${fremd.fitness}`);
+        fremd.fitness = 70;
+        TrainingEngine.processWeeklyTraining(s);
+        if (fremd.fitness !== 70) throw new Error(`Die Wochenrunde erholt noch einmal: ${fremd.fitness}`);
+
+        // 3. Der Torwart läuft gut halb so viel und ermüdet weniger
+        const heim = s.clubs.find(c => c.id === "muc"), gast = s.clubs.find(c => c.leagueId === heim.leagueId && c.id !== heim.id);
+        const ids = new Set([...heim.playerIds, ...gast.playerIds]);
+        s.players.forEach(p => { if (ids.has(p.id)) { p.fitness = 100; p.injuredWeeks = 0; p.suspendedMatches = 0; } });
+        const m = { id: "rg2", played: false, homeClubId: heim.id, awayClubId: gast.id, leagueId: heim.leagueId };
+        MatchEngine.simulateFullMatch(m, heim, gast, s.players);
+        const gespielt = s.players.filter(p => ids.has(p.id) && p.fitness < 100);
+        const tw = gespielt.filter(p => p.pos === "TW"), feld = gespielt.filter(p => p.pos !== "TW");
+        const verlust = (l) => l.reduce((sum, p) => sum + (100 - p.fitness), 0) / Math.max(1, l.length);
+        if (!tw.length || !feld.length) throw new Error(`Keine Einsätze gefunden (${tw.length} Torhüter, ${feld.length} Feldspieler)`);
+        if (!(verlust(tw) < verlust(feld) * 0.7)) throw new Error(`Torwart ermüdet wie ein Feldspieler: ${verlust(tw).toFixed(1)} gegen ${verlust(feld).toFixed(1)}`);
+
+        // 4. Die Preisprognose im Verein rechnet wie der Spieltag
+        const basis = FinanceEngine.auslastungsBasis(s, heim, 60, 35);
+        const prognose = FinanceEngine.erwarteteAuslastung(s, heim, 35);
+        if (Math.abs(prognose - Math.min(1, Math.max(0.3, basis))) > 1e-9) throw new Error("Prognose weicht von der Spieltagsrechnung ab");
+        if (!(FinanceEngine.erwarteteAuslastung(s, heim, 80) < FinanceEngine.erwarteteAuslastung(s, heim, 20))) throw new Error("Teure Karten füllen das Stadion nicht schlechter");
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

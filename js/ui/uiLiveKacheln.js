@@ -40,6 +40,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 wahl.addEventListener("change", () => this.setzeLiveMentalitaet(wahl.value));
             }
         }
+        this.bereiteSchnellVor(liveMatch);
         const bank = document.getElementById("lmKBank");
         if (bank && !bank.dataset.gebunden) {
             bank.dataset.gebunden = "1";
@@ -57,6 +58,64 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (typeof lm.resimulateRemainder === "function") lm.resimulateRemainder();
         const name = (this.LIVE_MENTALITAETEN.find(m => m[0] === wert) || [])[1] || wert;
         this.showToast(`Mentalität: ${name}`, "success");
+    },
+
+    /** Schnellanweisungen: nur für die eigene Elf, das Menü einmal gebunden */
+    bereiteSchnellVor(liveMatch) {
+        const box = document.getElementById("lmSchnell");
+        const menu = document.getElementById("lmSchnellMenu");
+        if (!box || !menu) return;
+        box.hidden = !liveMatch.userSide || typeof liveMatch.schnellAnweisung !== "function";
+        box.open = false;
+        if (!menu.dataset.gebunden) {
+            menu.dataset.gebunden = "1";
+            menu.addEventListener("click", (e) => {
+                const btn = e.target.closest("[data-schnell]");
+                if (!btn) return;
+                const [gruppe, option] = btn.dataset.schnell.split(":");
+                this.setzeSchnellAnweisung(gruppe, option);
+            });
+            // Ein Tipp neben das Menü schließt es. Der Pfad statt contains():
+            // Der angetippte Knopf ist nach dem Neuzeichnen schon ausgehängt.
+            if (typeof document.addEventListener === "function") {
+                document.addEventListener("click", (e) => { if (box.open && !e.composedPath().includes(box)) box.open = false; });
+            }
+        }
+        this.renderSchnell(liveMatch);
+    },
+
+    /** Die Gruppen mit je zwei Knöpfen; der aktive leuchtet */
+    renderSchnell(liveMatch) {
+        const menu = document.getElementById("lmSchnellMenu");
+        const T = typeof TacticsEngine !== "undefined" ? TacticsEngine : null;
+        if (!menu || !T || !liveMatch || !liveMatch.userSide) return;
+        const stand = liveMatch.schnellStand(liveMatch.userSide);
+        menu.innerHTML = (T.SCHNELL_ANWEISUNGEN || []).map(g => `<div class="lm-schnell-gruppe">
+                <div class="lm-schnell-titel">${this.escapeHtml(g.titel)}</div>
+                <div class="lm-schnell-wahl">${g.optionen.map(o => {
+                    const an = stand[g.key] === o.key;
+                    return `<button type="button" class="lm-schnell-btn${an ? " aktiv" : ""}" data-schnell="${g.key}:${o.key}" aria-pressed="${an}" title="${this.escapeHtml(o.hilfe)}"><svg class="ico" aria-hidden="true"><use href="#${o.icon}"/></svg><span>${this.escapeHtml(o.titel)}</span></button>`;
+                }).join("")}</div>
+            </div>`).join("")
+            + `<p class="lm-schnell-hinweis">Wirkt sofort und bis zum Abpfiff. Noch einmal tippen nimmt sie zurück.</p>`;
+        const zahl = document.getElementById("lmSchnellZahl");
+        if (zahl) {
+            const n = Object.keys(stand).length;
+            zahl.hidden = n === 0;
+            zahl.textContent = String(n);
+        }
+    },
+
+    /** Eine Schnellanweisung an- oder abschalten, ohne das Spiel anzuhalten */
+    setzeSchnellAnweisung(gruppe, option) {
+        const lm = this.app.currentLiveMatch;
+        if (!lm || !lm.userSide) return;
+        const r = lm.schnellAnweisung(lm.userSide, gruppe, option);
+        this.showToast(r.message, r.success ? "success" : "error");
+        this.renderSchnell(lm);
+        // Die Mentalität in der Kopfleiste zeigt, was jetzt gilt
+        const wahl = document.getElementById("lmMentalitaet");
+        if (wahl) wahl.value = lm.clubVon(lm.userSide)?.tactics?.mentality || "balanced";
     },
 
     /**

@@ -9091,6 +9091,63 @@ function runEngineTests() {
         });
     });
 
+    test("Schnellanweisungen im Livespiel: an, umschalten, zurücknehmen - und das 2D-Spiel spielt sie", () => {
+        const T = TacticsEngine;
+        // Jede Anweisung gehört zu genau einer Gruppe, jeder Wert gibt es in der Taktik
+        const gesehen = new Map();
+        T.SCHNELL_ANWEISUNGEN.forEach(g => {
+            if (g.optionen.length !== 2) throw new Error(`${g.key}: zwei Gegensätze erwartet`);
+            g.optionen.forEach(o => Object.entries(o.setzt).forEach(([k, v]) => {
+                const def = T.ANWEISUNGEN.find(a => a.key === k);
+                if (!def || !def.optionen.some(x => x.value === v)) throw new Error(`${g.key}/${o.key}: ${k}=${v} gibt es nicht`);
+                if (gesehen.has(k) && gesehen.get(k) !== g.key) throw new Error(`${k} steht in ${gesehen.get(k)} und ${g.key}`);
+                gesehen.set(k, g.key);
+            }));
+        });
+
+        const state = GameState.createNewGame("muc", "normal", { name: "Schnell" });
+        const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");
+        heim.tactics = T.normalisiere({});
+        const live = MatchEngine.createLiveMatch({ id: "schnell", played: false, homeClubId: "muc", awayClubId: "dor" },
+            heim, gast, state.players, { modus: "fm", userSide: "home" });
+        const d = live.director;
+        const schritt = () => { live.advanceRealTime(LiveMatch.OHNE_BILD_SCHRITT_MS); live.updateBallAndPlayers(LiveMatch.OHNE_BILD_SCHRITT_MS); };
+        while (live.minute < 3) schritt();
+        const w = (k) => T.wert(heim.tactics, k);
+
+        // An: Die Werte gelten sofort, auch für die Entscheidungen im 2D-Spiel
+        let r = live.schnellAnweisung("home", "gegenBall", "hoch");
+        if (!r.success || !r.aktiv) throw new Error(`An: ${JSON.stringify(r)}`);
+        if (w("pressing") !== "high" || w("defensiveLine") !== "high" || w("anlaufen") !== "oefter") throw new Error("Höher pressen setzt die Werte nicht");
+        d._laufUhr = (d._laufUhr || 0) + 0.001;
+        if (d.taktik("home").t.pressing !== "high" || d.flow.getTactics("home").pressing !== "high") throw new Error("Das 2D-Spiel kennt die Anweisung nicht");
+        if (live.schnellStand("home").gegenBall !== "hoch") throw new Error("Der Stand nennt die Anweisung nicht");
+        if (!live.events.some(e => /Höher pressen/.test(e.text || ""))) throw new Error("Kein Eintrag im Ticker");
+
+        // Umschalten in derselben Gruppe: erst zurück, dann das Gegenteil
+        live.schnellAnweisung("home", "gegenBall", "tief");
+        if (w("pressing") !== "low" || w("anlaufen") !== "normal" || w("linienVerhalten") !== "fallenlassen") throw new Error("Tiefer stehen nach Höher pressen falsch");
+        // Andere Gruppen bleiben unberührt
+        live.schnellAnweisung("home", "abschluss", "schiessen");
+        if (w("pressing") !== "low" || w("weitschuesse") !== "mehr") throw new Error("Zwei Gruppen stören sich");
+
+        // Was inzwischen von Hand umgestellt wurde, bleibt beim Zurücknehmen
+        live.updateTactics("home", { defensiveLine: "high" });
+        r = live.schnellAnweisung("home", "gegenBall", "tief");
+        if (r.aktiv || live.schnellStand("home").gegenBall) throw new Error("Zurücknehmen schaltet nicht ab");
+        if (w("pressing") !== "medium" || w("linienVerhalten") !== "ausgewogen") throw new Error("Zurücknehmen stellt nicht wieder her");
+        if (w("defensiveLine") !== "high") throw new Error("Die Umstellung von Hand ging verloren");
+
+        // Der Gegner bleibt, wie er ist
+        if (T.wert(gast.tactics, "weitschuesse") === "mehr" && live._vorSpiel.away.tactics.weitschuesse !== "mehr") throw new Error("Die Anweisung ging an den Gegner");
+        if (live.schnellAnweisung("home", "gibts", "nicht").success) throw new Error("Unbekannte Anweisung angenommen");
+
+        // Nach dem Abpfiff gilt wieder die Taktik von vor dem Spiel
+        live.skipToEnd();
+        if (live.schnellAnweisung("home", "zweikampf", "hart").success) throw new Error("Anweisung nach dem Abpfiff");
+        if (w("weitschuesse") !== "normal" || w("defensiveLine") !== "medium") throw new Error("Die Anweisungen gelten über das Spiel hinaus");
+    });
+
     test("Standardschützen: Der Vorgegebene tritt an, direkte Freistöße gibt es", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Prüfer" });
         const heim = state.clubs.find(c => c.id === "muc");

@@ -746,12 +746,71 @@ const ROLLEN_STILE = {
     }
 };
 
+/**
+ * Schnellanweisungen im Livespiel: ein Knopf statt fünf Regler im
+ * Taktikmenü, ohne Pause. Je Gruppe gilt höchstens eine; derselbe Knopf
+ * noch einmal nimmt sie zurück und stellt wieder ein, was vorher galt.
+ * Jede Anweisung gehört zu genau einer Gruppe - sonst nähme eine Gruppe
+ * beim Zurücknehmen der anderen etwas weg.
+ */
+const SCHNELL_ANWEISUNGEN = [
+    {
+        key: "ausrichtung", titel: "Ausrichtung", optionen: [
+            { key: "vorn", titel: "Alles nach vorn", icon: "i-up", setzt: { mentality: "very_offensive", tempo: "fast", zeitspiel: "nie", nachBallgewinn: "kontern" },
+                hilfe: "Sehr offensiv, hohes Tempo, nach Ballgewinn sofort nach vorn - hinten wird es offen." },
+            { key: "halten", titel: "Ergebnis halten", icon: "i-shield", setzt: { mentality: "defensive", tempo: "slow", zeitspiel: "oft", nachBallgewinn: "ballsichern" },
+                hilfe: "Defensiv, geduldig, Ball sichern und Zeit von der Uhr nehmen." }
+        ]
+    },
+    {
+        key: "gegenBall", titel: "Gegen den Ball", optionen: [
+            { key: "hoch", titel: "Höher pressen", icon: "i-flame", setzt: { pressing: "high", defensiveLine: "high", anlaufen: "oefter", nachBallverlust: "gegenpressing" },
+                hilfe: "Früh anlaufen, Linie hoch, nach Ballverlust sofort nachsetzen - kostet Kraft, öffnet den Raum hinter der Kette." },
+            { key: "tief", titel: "Tiefer stehen", icon: "i-back", setzt: { pressing: "low", defensiveLine: "deep", linienVerhalten: "fallenlassen", nachBallverlust: "zurueckziehen" },
+                hilfe: "Tief und kompakt, nach Ballverlust zurück in die Ordnung - wenig Raum im Rücken, der Gegner hat den Ball." }
+        ]
+    },
+    {
+        key: "angriffsweg", titel: "Angriffsweg", optionen: [
+            { key: "fluegel", titel: "Über die Flügel", icon: "i-width", setzt: { breite: "breit", aufbauUeber: "aussen", flanken: "frueh", focus: "balanced" },
+                hilfe: "Breit machen, über außen aufbauen, früh flanken." },
+            { key: "mitte", titel: "Durch die Mitte", icon: "i-target", setzt: { breite: "eng", aufbauUeber: "innen", flanken: "wenig", focus: "center" },
+                hilfe: "Eng zusammen, über innen aufbauen, kaum flanken." }
+        ]
+    },
+    {
+        key: "spielweise", titel: "Spielweise", optionen: [
+            { key: "laufen", titel: "Ball laufen lassen", icon: "i-foot", setzt: { passing: "short", ballannahme: "fuss", dribbling: "weniger", durchsPressing: "spielen" },
+                hilfe: "Kurze Pässe in den Fuß, wenig Dribblings, auch gegen Pressing flach herausspielen." },
+            { key: "direkt", titel: "Direkter spielen", icon: "i-speed", setzt: { passing: "direct", ballannahme: "raum", dribbling: "normal", durchsPressing: "lang" },
+                hilfe: "Früh in die Tiefe, Pässe in den Lauf, gegen Pressing lang überspielen." }
+        ]
+    },
+    {
+        key: "zweikampf", titel: "Zweikampf", optionen: [
+            { key: "hart", titel: "Härter rangehen", icon: "i-bolt", setzt: { zweikampf: "hart" },
+                hilfe: "Mehr Zweikämpfe gewonnen, mehr Fouls und Karten." },
+            { key: "vorsicht", titel: "Vorsichtiger", icon: "i-alert", setzt: { zweikampf: "zurueckhaltend" },
+                hilfe: "Auf den Füßen bleiben - weniger Karten, wenn schon einige verwarnt sind." }
+        ]
+    },
+    {
+        key: "abschluss", titel: "Abschluss", optionen: [
+            { key: "schiessen", titel: "Mehr Schüsse", icon: "i-ball", setzt: { abschluss: "weitschuss", weitschuesse: "mehr" },
+                hilfe: "Früh abschließen, auch aus der Distanz." },
+            { key: "heraus", titel: "Herausspielen", icon: "i-zigzag", setzt: { abschluss: "herausspielen", weitschuesse: "weniger" },
+                hilfe: "Lieber den besseren Abschluss suchen als aus der Ferne schießen." }
+        ]
+    }
+];
+
 /** Die Anweisungen nach Schlüssel - erst beim ersten Bedarf gebaut */
 let _anweisungNach = null;
 
 const TacticsEngine = {
     ANWEISUNGEN: TAKTIK_ANWEISUNGEN,
     SPIELER_ANWEISUNGEN,
+    SCHNELL_ANWEISUNGEN,
     FAMILIEN: TAKTIK_FAMILIEN,
     ROLLEN_MIT_BALL,
     ROLLEN_GEGEN_BALL,

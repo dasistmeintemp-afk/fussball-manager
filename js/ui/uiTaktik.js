@@ -128,7 +128,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (satzKnopf) {
             const n = taktikModul && typeof taktikModul.saetze === "function" ? taktikModul.saetze(userClub).length : 0;
             satzKnopf.onclick = () => this.oeffneTaktikSaetze();
-            const zahl = satzKnopf.querySelector(".satz-zahl");
+            const zahl = typeof satzKnopf.querySelectorAll === "function" ? satzKnopf.querySelectorAll(".satz-zahl")[0] : null;
             if (zahl) { zahl.hidden = !n; zahl.textContent = String(n); }
         }
 
@@ -566,7 +566,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         </div>
                     </div>`).join("") || `<p class="text-muted">Noch kein Paket.</p>`}
             </div>`;
-        box.querySelector("[data-paket-neu]")?.addEventListener("click", () => this.oeffnePaketEditor(null));
+        box.querySelectorAll("[data-paket-neu]").forEach(b => b.addEventListener("click", () => this.oeffnePaketEditor(null)));
         box.querySelectorAll("[data-paket-bearbeiten]").forEach(b => b.addEventListener("click", () => this.oeffnePaketEditor(b.dataset.paketBearbeiten)));
         box.querySelectorAll("[data-paket-loeschen]").forEach(b => b.addEventListener("click", () => {
             const p = pakete.find(x => x.id === b.dataset.paketLoeschen);

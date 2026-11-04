@@ -2802,6 +2802,31 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
 #modalLiveMatch .lm-schnell-btn.aktiv { background: rgba(var(--accent-rgb), 0.16); border-color: var(--accent-line); color: var(--text-main); }
 #modalLiveMatch .lm-schnell-btn.aktiv .ico { color: var(--accent); }
 #modalLiveMatch .lm-schnell-hinweis { grid-column: 1 / -1; margin: 0; font-size: 12px; color: var(--text-muted); }
+/* Anweisungspakete: über die ganze Breite, oben im Menü */
+#modalLiveMatch .lm-pakete { grid-column: 1 / -1; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+#modalLiveMatch .lm-pakete .lm-schnell-titel span { text-transform: none; letter-spacing: 0; font-weight: 500; margin-left: 4px; }
+#modalLiveMatch .lm-paket-wahl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+#modalLiveMatch .lm-paket-btn small, #modalLiveMatch .lm-paket-chip small {
+    margin-left: auto; min-width: 18px; padding: 0 5px; border-radius: 999px; text-align: center;
+    background: rgba(255, 255, 255, 0.08); font-size: 11px; font-weight: 700; color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+#modalLiveMatch .lm-paket-btn.aktiv small, #modalLiveMatch .lm-paket-chip.aktiv small { background: var(--accent); color: #0a1018; }
+/* Am Handy: eine wischbare Zeile über Seitenlinie und Sofort-Ergebnis */
+#modalLiveMatch .lm-paket-leiste { display: none; }
+@media (max-width: 640px) {
+    #modalLiveMatch .lm-paket-leiste:not([hidden]) {
+        grid-column: 1 / -1; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 -2px; padding: 0 2px;
+    }
+    #modalLiveMatch .lm-paket-leiste::-webkit-scrollbar { display: none; }
+    #modalLiveMatch .lm-paket-chip {
+        flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 10px; border-radius: 999px;
+        background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); color: var(--text-soft);
+        font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer;
+    }
+    #modalLiveMatch .lm-paket-chip .ico { width: 15px; height: 15px; color: var(--text-muted); }
+    #modalLiveMatch .lm-paket-chip.aktiv { background: rgba(var(--accent-rgb), 0.16); border-color: var(--accent-line); color: var(--text-main); }
+    #modalLiveMatch .lm-paket-chip.aktiv .ico { color: var(--accent); }
+}
 @media (max-width: 640px) {
     /* Mit Mentalität und Anweisungen passt die Steuerung nicht mehr in eine
        Zeile - vorher ragte die Mentalität rechts aus dem Bild */
@@ -4032,3 +4057,121 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
     .ub-steuer label { flex: 1 1 140px; }
     .ub-steuer .ub-auto { margin-left: 0; flex: 1 1 100%; }
 }
+
+/* ==========================================================================
+   Taktische Wirksamkeit (uiTaktik.renderWirksamkeit)
+   Vier Teile als dünne Balken im Raster, die Komplexität als Stufenleiste.
+   ========================================================================== */
+.wk-karte[hidden] { display: none; }
+.wk-kopf { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.wk-kopf h3 { margin: 0; }
+.wk-gesamt { font-family: var(--font-display); font-size: 26px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.wk-teile { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+.wk-teil, .wk-komplex { display: grid; gap: 4px; min-width: 0; }
+.wk-zeile { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12px; color: var(--text-muted); }
+.wk-zeile strong { color: var(--text-main); font-variant-numeric: tabular-nums; }
+.wk-teil small, .wk-komplex small { font-size: 11.5px; line-height: 1.35; color: var(--text-muted); overflow-wrap: anywhere; }
+.wk-balken { display: block; height: 6px; border-radius: 3px; background: var(--line-strong); overflow: hidden; }
+.wk-balken i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+.wk-balken i.wk-ton-gut { background: var(--ok); }
+.wk-balken i.wk-ton-mittel { background: var(--warn); }
+.wk-balken i.wk-ton-schlecht { background: var(--bad); }
+.wk-gesamt.wk-ton-gut, .wk-wirkung .wk-ton-gut { color: var(--ok); }
+.wk-gesamt.wk-ton-mittel, .wk-wirkung .wk-ton-mittel { color: var(--warn); }
+.wk-gesamt.wk-ton-schlecht, .wk-wirkung .wk-ton-schlecht { color: var(--bad); }
+.wk-komplex { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.wk-stufen { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; }
+.wk-stufen i { display: block; height: 6px; background: var(--line-strong); }
+.wk-stufen i:first-child { border-radius: 3px 0 0 3px; }
+.wk-stufen i:last-child { border-radius: 0 3px 3px 0; }
+/* Je komplexer, desto wärmer - die Farbe gilt für alle belegten Stufen */
+.wk-stufen i.an.s0 { background: var(--ok); }
+.wk-stufen i.an.s1 { background: var(--accent); }
+.wk-stufen i.an.s2 { background: var(--warn); }
+.wk-stufen i.an.s3 { background: var(--bad); }
+.wk-wirkung { margin: 12px 0 0; font-size: 12.5px; color: var(--text-muted); }
+.wk-wirkung strong { font-variant-numeric: tabular-nums; }
+.wk-hinweise { margin: 8px 0 0; padding: 0 0 0 16px; display: grid; gap: 4px; font-size: 12.5px; line-height: 1.4; color: var(--text-main); }
+.wk-satz { display: block; margin-top: 4px; }
+@media (max-width: 380px) {
+    .wk-teile { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ==========================================================================
+   Anweisungspakete im Taktik-Reiter (uiTaktik.renderPakete, oeffnePaketEditor)
+   ========================================================================== */
+.paket-flaeche { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.paket-flaeche:empty { display: none; }
+.paket-kopf { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.paket-kopf h3 { margin: 0; }
+.paket-liste { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-top: 10px; }
+.paket-karte {
+    display: grid; gap: 6px; padding: 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-1);
+}
+.paket-titel { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.paket-titel .ico { width: 16px; height: 16px; color: var(--accent); flex: none; }
+.paket-titel strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.paket-titel small { margin-left: auto; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.paket-text { margin: 0; font-size: 12px; line-height: 1.45; color: var(--text-muted); }
+.paket-aktionen { display: flex; gap: 6px; margin-top: 2px; }
+.paket-aktionen .paket-loeschen { margin-left: auto; }
+.paket-editor { display: grid; gap: 12px; }
+.paket-name { display: grid; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.paket-icons { display: flex; flex-wrap: wrap; gap: 6px; }
+.paket-icon {
+    display: inline-grid; place-items: center; width: 38px; height: 38px; border-radius: 10px;
+    border: 1px solid var(--line-strong); background: transparent; color: var(--text-muted); cursor: pointer;
+}
+.paket-icon .ico { width: 17px; height: 17px; }
+.paket-icon.aktiv { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); }
+.paket-editor h4 { margin: 4px 0 0; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); }
+.paket-zeilen { display: grid; gap: 6px; }
+.paket-zeile { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 180px); align-items: center; gap: 10px; font-size: 13px; }
+.paket-zeile .styled-select { width: 100%; min-height: 36px; }
+.paket-zeile.gesetzt span { color: var(--accent); font-weight: 600; }
+.paket-fuss {
+    position: sticky; bottom: -18px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    margin: 0 -18px -18px; padding: 12px 18px; background: var(--surface-2); border-top: 1px solid var(--line);
+}
+.paket-zahl { font-size: 12px; color: var(--text-muted); }
+.paket-zahl.voll { color: var(--warn); }
+@media (max-width: 640px) {
+    .paket-fuss { margin: 0 -14px calc(-16px - env(safe-area-inset-bottom, 0px)); padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px)); bottom: calc(-16px - env(safe-area-inset-bottom, 0px)); }
+    .paket-zeile { grid-template-columns: minmax(0, 1fr) minmax(0, 150px); }
+}
+/* Meldungen im Livespiel über Fußleiste und Paketzeile */
+@media (max-width: 640px) {
+    body:has(#lmPaketLeiste:not([hidden])) .meldung-zeile.unten { bottom: calc(122px + env(safe-area-inset-bottom)); }
+}
+
+/* ==========================================================================
+   Gespeicherte Aufstellungen (uiTaktik.oeffneSatzMenue)
+   ========================================================================== */
+.satz-zahl {
+    min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; display: inline-grid; place-items: center;
+    background: var(--accent); color: #0a1018; font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums;
+}
+.satz-zahl[hidden] { display: none; }
+.satz-menue { display: grid; gap: 14px; }
+.satz-speichern { display: grid; gap: 8px; }
+.satz-speichern > label { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.satz-eingabe { display: flex; gap: 8px; }
+.satz-eingabe .styled-input { flex: 1 1 auto; min-width: 0; }
+.satz-vorschlaege { display: flex; flex-wrap: wrap; gap: 6px; }
+.satz-vorschlag {
+    min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-strong); background: transparent;
+    color: var(--text-soft); font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.satz-vorschlag:hover { border-color: var(--accent-line); color: var(--text-main); }
+.satz-speichern .taktik-hilfe { margin: 0; }
+.satz-menue h4 { display: flex; justify-content: space-between; margin: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); }
+.satz-menue h4 span { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.satz-liste { display: grid; gap: 8px; }
+.satz-karte { display: grid; gap: 6px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-1); }
+.satz-titel { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.satz-titel strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.satz-titel small { margin-left: auto; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.satz-text { margin: 0; font-size: 12px; line-height: 1.45; color: var(--text-muted); overflow-wrap: anywhere; }
+.satz-aktionen { display: flex; gap: 6px; flex-wrap: wrap; }
+.satz-aktionen .satz-loeschen { margin-left: auto; }
+.satz-aktionen .btn { min-height: 36px; }

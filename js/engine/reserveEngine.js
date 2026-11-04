@@ -647,6 +647,61 @@ const ReserveEngine = {
         return { success: true };
     },
 
+    /**
+     * Gespeicherte Aufstellungen wie bei den Profis (TacticsEngine.satz…):
+     * Formation, festgelegte Plätze und Mentalität unter einem Namen.
+     */
+    SAETZE_MAX: 6,
+
+    saetze(state, team) {
+        const plan = this.teamPlan(state, team);
+        return plan && Array.isArray(plan.saetze) ? plan.saetze : [];
+    },
+
+    satzSpeichern(state, team, name) {
+        const plan = this.teamPlan(state, team);
+        if (!plan) return { success: false, error: "Diese Mannschaft gibt es nicht." };
+        const titel = String(name || "").trim().slice(0, 28);
+        if (!titel) return { success: false, error: "Bitte einen Namen eingeben." };
+        const liste = this.saetze(state, team).slice();
+        const i = liste.findIndex(s => String(s.name).toLowerCase() === titel.toLowerCase());
+        if (i < 0 && liste.length >= this.SAETZE_MAX) return { success: false, error: `Höchstens ${this.SAETZE_MAX} gespeicherte Aufstellungen - erst eine löschen.` };
+        let id = i >= 0 ? liste[i].id : null;
+        while (!id) {
+            const neu = `us_${Math.random().toString(36).slice(2, 8)}`;
+            if (!liste.some(s => s.id === neu)) id = neu;
+        }
+        const satz = { id, name: titel, saison: state.seasonYear || 1, formation: plan.formation, lineup: plan.lineup.slice(), mentalitaet: plan.mentalitaet };
+        if (i >= 0) liste[i] = satz; else liste.push(satz);
+        plan.saetze = liste;
+        return { success: true, satz, ersetzt: i >= 0 };
+    },
+
+    /** Laden: wer nicht mehr da oder nicht fit ist, dessen Platz füllt der Einsatzplan - die Vorgabe bleibt */
+    satzLaden(state, team, id) {
+        const plan = this.teamPlan(state, team);
+        const satz = this.saetze(state, team).find(s => s.id === id);
+        if (!plan || !satz) return { success: false, error: "Diese Aufstellung gibt es nicht." };
+        if (this._formationVon(satz.formation)) {
+            plan.formation = satz.formation;
+            plan.lineup = (satz.lineup || []).slice();
+        }
+        if (this.MENTALITAETEN[satz.mentalitaet]) plan.mentalitaet = satz.mentalitaet;
+        const kader = new Map(this.teamKader(state, team).map(p => [String(p.id), p]));
+        const fehlen = (satz.lineup || []).filter(x => x != null && !(kader.get(String(x)) && this._einsatzbereit(kader.get(String(x)))))
+            .map(x => kader.get(String(x))?.name || (state.players || []).find(p => String(p.id) === String(x))?.name || "ein Spieler, der nicht mehr dabei ist");
+        return { success: true, satz, fehlen };
+    },
+
+    satzLoeschen(state, team, id) {
+        const plan = this.teamPlan(state, team);
+        const liste = this.saetze(state, team);
+        const rest = liste.filter(s => s.id !== id);
+        if (!plan || rest.length === liste.length) return { success: false, error: "Diese Aufstellung gibt es nicht." };
+        plan.saetze = rest;
+        return { success: true };
+    },
+
     /** Stärke der Elf auf ihren Plätzen; leere Plätze zählen mit dem Wert der Aushilfen */
     staerkeDerElf(aufstellung, aushilfe) {
         const summe = aufstellung.reduce((s, pl) => s + (pl.spieler ? this.staerkeAuf(pl.spieler, pl.pos) : aushilfe), 0);

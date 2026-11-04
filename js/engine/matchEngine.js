@@ -1187,15 +1187,20 @@ class MatchEngine {
         // Mannschaft etwas besser eingestellt
         const planBonus = (side) => (options.matchplan && options.matchplan.side === side ? (options.matchplan.bonus || 1) : 1);
         // Taktische Vertrautheit: Eine neue Formation sitzt noch nicht
-        const vertraut = (club, wert) => (typeof wert === "number" ? wert
-            : (_mTaktik()?.vertrautheitsFaktor ? _mTaktik().vertrautheitsFaktor(club) : 1));
+        // - dazu beim eigenen Verein Rückhalt und Analysetag (TacticsEngine.wirksamkeitsFaktor)
+        const vertraut = (club, wert, elf, gegner) => {
+            if (typeof wert === "number") return wert;
+            const T = _mTaktik();
+            if (T?.wirksamkeitsFaktor) return T.wirksamkeitsFaktor(club, elf, gegner, club?.wirksamkeit ? MatchEngine.getFormationSlots(club) : null);
+            return T?.vertrautheitsFaktor ? T.vertrautheitsFaktor(club) : 1;
+        };
         // Zusammenspiel: die Linien der Taktiktafel - Rollen, die sich
         // ergänzen, und Spieler, die eingespielt sind
         const zusammen = (club, elf, wert) => (typeof wert === "number" ? wert
             : (_mTaktik()?.zusammenspielFaktor ? _mTaktik().zusammenspielFaktor(club, MatchEngine.getFormationSlots(club), elf) : 1));
-        const formHeim = teamForm(activeHomePlayers, options.tagesformHome) * planBonus("home") * vertraut(homeClub, options.vertrautheitHome)
+        const formHeim = teamForm(activeHomePlayers, options.tagesformHome) * planBonus("home") * vertraut(homeClub, options.vertrautheitHome, activeHomePlayers, awayClub)
             * zusammen(homeClub, activeHomePlayers, options.zusammenspielHome);
-        const formGast = teamForm(activeAwayPlayers, options.tagesformAway) * planBonus("away") * vertraut(awayClub, options.vertrautheitAway)
+        const formGast = teamForm(activeAwayPlayers, options.tagesformAway) * planBonus("away") * vertraut(awayClub, options.vertrautheitAway, activeAwayPlayers, homeClub)
             * zusammen(awayClub, activeAwayPlayers, options.zusammenspielAway);
         [[homePower, formHeim], [homePowerNeutral, formHeim], [awayPower, formGast]].forEach(([pw, f]) => {
             pw.attack *= f; pw.midfield *= f; pw.defense *= f; pw.goalkeeper *= f;
@@ -3078,9 +3083,14 @@ class MatchEngine {
         // Wie eingespielt die Elf ist, zählt mit der gewohnten Taktik - die
         // Punkte der Taktikbesprechung sind für dieses Spiel einstudiert
         const T = _mTaktik();
+        // Beim eigenen Verein dazu Rückhalt und Analysetag - die Elf nur dort
+        // ermitteln, die KI-Spiele des Spieltags brauchen sie nicht
         if (T && typeof T.vertrautheitsFaktor === "function") {
-            if (options.vertrautheitHome === undefined) options = { ...options, vertrautheitHome: T.vertrautheitsFaktor(homeClub) };
-            if (options.vertrautheitAway === undefined) options = { ...options, vertrautheitAway: T.vertrautheitsFaktor(awayClub) };
+            const faktor = (club, gegner) => (typeof T.wirksamkeitsFaktor === "function" && club?.wirksamkeit
+                ? T.wirksamkeitsFaktor(club, MatchEngine.getCleanLineup(club, allPlayers), gegner, MatchEngine.getFormationSlots(club))
+                : T.vertrautheitsFaktor(club));
+            if (options.vertrautheitHome === undefined) options = { ...options, vertrautheitHome: faktor(homeClub, awayClub) };
+            if (options.vertrautheitAway === undefined) options = { ...options, vertrautheitAway: faktor(awayClub, homeClub) };
         }
         if (planClub && plan.taktik) planClub.tactics = { ...(planClub.tactics || {}), ...plan.taktik };
         try {
@@ -3519,6 +3529,11 @@ class LiveMatch {
             this.vertrautheit.home *= T.zusammenspielFaktor(homeClub, MatchEngine.getFormationSlots(homeClub), this.homeLineup);
             this.vertrautheit.away *= T.zusammenspielFaktor(awayClub, MatchEngine.getFormationSlots(awayClub), this.awayLineup);
         }
+        // Beim eigenen Verein: Rückhalt der Elf und Analysetag (taktische Wirksamkeit)
+        if (T && typeof T.rueckhaltFaktor === "function") {
+            if (homeClub.wirksamkeit) this.vertrautheit.home *= T.rueckhaltFaktor(homeClub, this.homeLineup, MatchEngine.getFormationSlots(homeClub)) * T.studiumFaktor(homeClub, awayClub);
+            if (awayClub.wirksamkeit) this.vertrautheit.away *= T.rueckhaltFaktor(awayClub, this.awayLineup, MatchEngine.getFormationSlots(awayClub)) * T.studiumFaktor(awayClub, homeClub);
+        }
         // Wer von Anfang an spielt - für die Einsatzminuten der Live-Noten
         this._startelf = {
             home: new Set(this.homeLineup.map(p => p.id)),
@@ -3584,6 +3599,8 @@ class LiveMatch {
         this.zurufe = [];
         // Schnellanweisungen je Seite und Gruppe: { key, setzt, vorher, seit }
         this.schnell = { home: {}, away: {} };
+        // Das Anweisungspaket je Seite (paketAnweisung)
+        this.paket = { home: null, away: null };
         // Vorgegebene Standardschützen - null heißt: der Beste auf dem Platz
         this.standards = {
             home: { elfmeter: null, ecken: null, freistoss: null, ...MatchEngine.standardsAusRollen(homeClub) },
@@ -4286,6 +4303,64 @@ class LiveMatch {
         return {
             success: true, aktiv: !aus, gruppe: gruppeKey, option: optionKey, aenderung,
             message: aus ? `"${option.titel}" zurückgenommen.` : `${option.titel}: ${option.hilfe}`
+        };
+    }
+
+    /** Welches Anweisungspaket gerade gilt (Kennung) - oder null */
+    paketStand(teamType) {
+        const side = this.seiteVon(teamType);
+        return (this.paket || {})[side]?.id || null;
+    }
+
+    /**
+     * Ein Anweisungspaket an- oder abschalten: mehrere Anweisungen auf
+     * einmal, ohne Pause (TacticsEngine.pakete). Es gilt höchstens eines.
+     * Ein Paket ersetzt die Schnellanweisungen - sie werden vorher
+     * zurückgenommen, damit Abschalten wirklich zur eigenen Taktik
+     * zurückführt. Abschalten stellt nur wieder her, wo noch der Wert des
+     * Pakets steht: Was der Trainer danach umgestellt hat, bleibt.
+     */
+    paketAnweisung(teamType, paket) {
+        const side = this.seiteVon(teamType);
+        const T = _mTaktik();
+        const p = T && typeof T.normalisierePaket === "function" ? T.normalisierePaket(paket) : null;
+        if (!p || !Object.keys(p.setzt).length) return { success: false, message: "Das Paket ist leer." };
+        if (this.isFinished) return { success: false, message: "Das Spiel ist vorbei." };
+        const club = this.clubVon(side);
+        this.paket = this.paket || { home: null, away: null };
+        this.schnell = this.schnell || { home: {}, away: {} };
+        const aenderung = {};
+        const zurueck = (eintrag) => Object.entries(eintrag.vorher).forEach(([k, v]) => {
+            if (T.wert(club.tactics, k) === eintrag.setzt[k]) aenderung[k] = v;
+        });
+        const aktiv = this.paket[side];
+        const aus = !!aktiv && aktiv.id === p.id;
+        if (aktiv) {
+            zurueck(aktiv);
+            // Eine Schnellanweisung, die über dem Paket liegt, führt beim
+            // Zurücknehmen zur eigenen Taktik zurück, nicht zum Paket
+            Object.values(this.schnell[side]).forEach(s => Object.keys(s.vorher).forEach(k => {
+                if (k in aktiv.setzt && s.vorher[k] === aktiv.setzt[k]) s.vorher[k] = aktiv.vorher[k];
+            }));
+            this.paket[side] = null;
+        }
+        if (!aus) {
+            Object.keys(this.schnell[side]).forEach(g => { zurueck(this.schnell[side][g]); delete this.schnell[side][g]; });
+            const vorher = {};
+            Object.entries(p.setzt).forEach(([k, v]) => {
+                vorher[k] = k in aenderung ? aenderung[k] : T.wert(club.tactics, k);
+                aenderung[k] = v;
+            });
+            this.paket[side] = { id: p.id, name: p.name, setzt: { ...p.setzt }, vorher, seit: this.minute };
+        }
+        const n = Object.keys(p.setzt).length;
+        const text = aus
+            ? `${this.minute}' - 📋 ${club.name} nimmt das Paket "${p.name}" zurück.`
+            : `${this.minute}' - 📋 ${club.name}: Paket "${p.name}" mit ${n} Anweisung${n === 1 ? "" : "en"}.`;
+        this.updateTactics(side, aenderung, { text });
+        return {
+            success: true, aktiv: !aus, id: p.id, aenderung,
+            message: aus ? `Paket „${p.name}“ zurückgenommen.` : `${p.name}: ${n} Anweisung${n === 1 ? "" : "en"} auf einmal.`
         };
     }
 

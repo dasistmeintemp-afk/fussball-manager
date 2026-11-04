@@ -124,6 +124,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         const slots = this.getActiveFormationPositions(userClub);
         this.renderTaktikUnterbau(userClub);
+        const satzKnopf = document.getElementById("btnTaktikSaetze");
+        if (satzKnopf) {
+            const n = taktikModul && typeof taktikModul.saetze === "function" ? taktikModul.saetze(userClub).length : 0;
+            satzKnopf.onclick = () => this.oeffneTaktikSaetze();
+            const zahl = satzKnopf.querySelector(".satz-zahl");
+            if (zahl) { zahl.hidden = !n; zahl.textContent = String(n); }
+        }
 
         // Taktik nach Phasen: Spielstil, Formen mit und gegen den Ball,
         // Rollen, Anweisungen, Check
@@ -456,8 +463,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     ${d.formation < 0.85 ? `Die Formation <strong>${esc(userClub.formation || "")}</strong> ist noch neu (${Math.round(d.formation * 100)} %). ` : ""}
                     ${d.neu.length ? `Noch nicht eingespielt: ${d.neu.map(n => `${esc(n.label)} „${esc(n.wert)}“ (${Math.round(n.vertraut * 100)} %)`).join(", ")}. ` : ""}
                     ${kosten > 0.2 ? `Das kostet im Spiel etwa ${String(kosten).replace(".", ",")} % Stärke - Spiele und Taktiktraining schleifen es ein.` : "Die Mannschaft kennt ihre Abläufe."}
+                    ${this.komplexitaetSatz(userClub, slots)}
                 </div>`;
         }
+        this.renderWirksamkeit(userClub, slots);
 
         // Mannschaftsanweisungen als Kacheln, getrennt nach Mit Ball und
         // Gegen den Ball - wie im Vorbild
@@ -522,6 +531,311 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             checkEl.innerHTML = T.pruefe(userClub, slots)
                 .map(h => `<li class="${h.art === "warn" ? "warn" : ""}">${esc(h.text)}</li>`).join("");
         }
+        this.renderPakete();
+    },
+
+    /**
+     * Anweisungspakete für die Seitenlinie: mehrere Anweisungen, die im
+     * Livespiel mit einem Tipp gelten. Liste mit Bearbeiten und Löschen.
+     */
+    renderPakete() {
+        const box = document.getElementById("tacPakete");
+        const T = this.getTacticsEngine();
+        if (!box || !T || typeof T.pakete !== "function") return;
+        const esc = v => this.escapeHtml(String(v ?? ""));
+        const pakete = T.pakete(this.app.state);
+        const voll = pakete.length >= T.PAKETE_MAX;
+        box.innerHTML = `
+            <div class="paket-kopf">
+                <h3>Pakete für die Seitenlinie</h3>
+                <button class="btn btn-sm btn-secondary" type="button" data-paket-neu ${voll ? "disabled" : ""} title="${voll ? `Höchstens ${T.PAKETE_MAX} Pakete` : "Ein neues Paket anlegen"}"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg><span>Neues Paket</span></button>
+            </div>
+            <p class="taktik-hilfe">Mehrere Anweisungen auf einmal: Im Livespiel genügt ein Tipp unter Anweisungen (am Handy unten über Seitenlinie), und alle gelten sofort. Noch ein Tipp nimmt sie zurück.</p>
+            <div class="paket-liste">
+                ${pakete.map(p => `
+                    <div class="paket-karte">
+                        <div class="paket-titel">
+                            <svg class="ico" aria-hidden="true"><use href="#${esc(p.icon)}"/></svg>
+                            <strong>${esc(p.name)}</strong>
+                            <small>${Object.keys(p.setzt).length} Anweisung${Object.keys(p.setzt).length === 1 ? "" : "en"}</small>
+                        </div>
+                        <p class="paket-text">${esc(T.paketText(p))}</p>
+                        <div class="paket-aktionen">
+                            <button class="btn btn-sm btn-secondary" type="button" data-paket-bearbeiten="${esc(p.id)}"><svg class="ico" aria-hidden="true"><use href="#i-edit"/></svg><span>Bearbeiten</span></button>
+                            <button class="btn btn-sm btn-secondary paket-loeschen" type="button" data-paket-loeschen="${esc(p.id)}" aria-label="${esc(p.name)} löschen"><svg class="ico" aria-hidden="true"><use href="#i-trash"/></svg></button>
+                        </div>
+                    </div>`).join("") || `<p class="text-muted">Noch kein Paket.</p>`}
+            </div>`;
+        box.querySelector("[data-paket-neu]")?.addEventListener("click", () => this.oeffnePaketEditor(null));
+        box.querySelectorAll("[data-paket-bearbeiten]").forEach(b => b.addEventListener("click", () => this.oeffnePaketEditor(b.dataset.paketBearbeiten)));
+        box.querySelectorAll("[data-paket-loeschen]").forEach(b => b.addEventListener("click", () => {
+            const p = pakete.find(x => x.id === b.dataset.paketLoeschen);
+            if (!p || (typeof confirm === "function" && !confirm(`Paket „${p.name}“ löschen?`))) return;
+            const r = T.paketLoeschen(this.app.state, p.id);
+            if (r.success && typeof this.app.state.saveToLocalStorage === "function") this.app.state.saveToLocalStorage();
+            this.showToast(r.success ? `Paket „${p.name}“ gelöscht.` : r.error, r.success ? "success" : "error");
+            this.renderPakete();
+        }));
+    },
+
+    /**
+     * Ein Paket anlegen oder ändern: Name, Symbol und für jede Anweisung
+     * "unverändert" oder ein Wert. Nur was gewählt ist, ändert das Paket.
+     */
+    oeffnePaketEditor(id) {
+        const T = this.getTacticsEngine();
+        if (!T) return;
+        const state = this.app.state;
+        const esc = v => this.escapeHtml(String(v ?? ""));
+        const alt = id ? T.pakete(state).find(p => p.id === id) : null;
+        const entwurf = alt ? { ...alt, setzt: { ...alt.setzt } } : { id: "", name: "", icon: "i-flame", setzt: {} };
+        const phase = (key, titel) => `
+            <h4>${titel}</h4>
+            <div class="paket-zeilen">
+                ${T.ANWEISUNGEN.filter(a => a.phase === key).map(a => `
+                    <label class="paket-zeile${entwurf.setzt[a.key] ? " gesetzt" : ""}">
+                        <span>${esc(a.label)}</span>
+                        <select class="styled-select" data-pe-key="${esc(a.key)}">
+                            <option value="">unverändert</option>
+                            ${a.optionen.map(o => `<option value="${esc(o.value)}" ${entwurf.setzt[a.key] === o.value ? "selected" : ""}>${esc(o.label)}</option>`).join("")}
+                        </select>
+                    </label>`).join("")}
+            </div>`;
+        const html = `
+            <div class="paket-editor">
+                <label class="paket-name">Name
+                    <input type="text" class="styled-input" maxlength="28" data-pe-name value="${esc(entwurf.name)}" placeholder="z. B. Pressing in der Schlussphase">
+                </label>
+                <div class="paket-icons" role="radiogroup" aria-label="Symbol">
+                    ${T.PAKET_ICONS.map(ic => `<button type="button" class="paket-icon${ic === entwurf.icon ? " aktiv" : ""}" data-pe-icon="${ic}" role="radio" aria-checked="${ic === entwurf.icon}"><svg class="ico" aria-hidden="true"><use href="#${ic}"/></svg></button>`).join("")}
+                </div>
+                <p class="taktik-hilfe">Nur, was Sie hier wählen, ändert das Paket - alles andere bleibt, wie es gerade eingestellt ist. Höchstens ${T.PAKET_ANWEISUNGEN_MAX} Anweisungen.</p>
+                ${phase("mitBall", "Mit Ball")}
+                ${phase("gegenBall", "Gegen den Ball")}
+                <div class="paket-fuss">
+                    <span class="paket-zahl" data-pe-zahl></span>
+                    <button class="btn btn-primary" type="button" data-pe-speichern><svg class="ico" aria-hidden="true"><use href="#i-save"/></svg><span>Speichern</span></button>
+                </div>
+            </div>`;
+        this.oeffneSpielerMenue(alt ? `Paket „${esc(alt.name)}“` : "Neues Paket", html, (inhalt) => {
+            const zahl = () => {
+                const n = Object.keys(entwurf.setzt).length;
+                const el = inhalt.querySelector("[data-pe-zahl]");
+                if (el) {
+                    el.textContent = `${n} von ${T.PAKET_ANWEISUNGEN_MAX} Anweisungen`;
+                    el.classList.toggle("voll", n >= T.PAKET_ANWEISUNGEN_MAX);
+                }
+                inhalt.querySelectorAll("[data-pe-key]").forEach(sel => {
+                    // Ist das Paket voll, lassen sich nur noch gesetzte ändern
+                    sel.disabled = n >= T.PAKET_ANWEISUNGEN_MAX && !entwurf.setzt[sel.dataset.peKey];
+                });
+            };
+            inhalt.querySelectorAll("[data-pe-key]").forEach(sel => sel.addEventListener("change", () => {
+                if (sel.value) entwurf.setzt[sel.dataset.peKey] = sel.value;
+                else delete entwurf.setzt[sel.dataset.peKey];
+                sel.closest(".paket-zeile")?.classList.toggle("gesetzt", !!sel.value);
+                zahl();
+            }));
+            inhalt.querySelectorAll("[data-pe-icon]").forEach(b => b.addEventListener("click", () => {
+                entwurf.icon = b.dataset.peIcon;
+                inhalt.querySelectorAll("[data-pe-icon]").forEach(x => {
+                    x.classList.toggle("aktiv", x === b);
+                    x.setAttribute("aria-checked", x === b ? "true" : "false");
+                });
+            }));
+            inhalt.querySelector("[data-pe-speichern]")?.addEventListener("click", () => {
+                entwurf.name = inhalt.querySelector("[data-pe-name]")?.value || "";
+                const r = T.paketSpeichern(state, entwurf);
+                if (!r.success) { this.showToast(r.error, "error"); return; }
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.schliesseSpielerMenue();
+                this.showToast(`Paket „${r.paket.name}“ gespeichert.`, "success");
+                this.renderPakete();
+            });
+            zahl();
+        });
+    },
+
+    /**
+     * Das Menü der gespeicherten Aufstellungen - für die Profis wie für U23
+     * und U19. opts: titel, saetze(), speichern(name), laden(id, nur),
+     * loeschen(id), zeile(satz) (Text unter dem Namen), nurTaktik (zweiter
+     * Knopf "Nur Spielweise"), fertig() nach jeder Änderung.
+     */
+    oeffneSatzMenue(opts) {
+        const esc = v => this.escapeHtml(String(v ?? ""));
+        const VORSCHLAEGE = ["Pokalelf", "Rotation", "Auswärts", "Heimspiel", "Gegen Spitzenteams"];
+        const zeichne = () => {
+            const saetze = opts.saetze();
+            const voll = saetze.length >= opts.max;
+            return `
+                <div class="satz-menue">
+                    <div class="satz-speichern">
+                        <label for="satzName">${esc(opts.speichernText || "Jetzige Aufstellung und Taktik speichern als")}</label>
+                        <div class="satz-eingabe">
+                            <input type="text" id="satzName" class="styled-input" maxlength="28" placeholder="Name" data-satz-name>
+                            <button class="btn btn-primary" type="button" data-satz-speichern><svg class="ico" aria-hidden="true"><use href="#i-save"/></svg><span>Speichern</span></button>
+                        </div>
+                        <div class="satz-vorschlaege">${VORSCHLAEGE.map(v => `<button type="button" class="satz-vorschlag" data-satz-vorschlag="${esc(v)}">${esc(v)}</button>`).join("")}</div>
+                        <p class="taktik-hilfe">${voll ? `Alle ${opts.max} Plätze belegt - ein gleicher Name überschreibt, sonst erst eine löschen.` : "Ein gleicher Name überschreibt die alte Fassung."}</p>
+                    </div>
+                    <h4>Gespeichert <span>${saetze.length} von ${opts.max}</span></h4>
+                    <div class="satz-liste">
+                        ${saetze.length ? saetze.map(st => `
+                            <div class="satz-karte">
+                                <div class="satz-titel"><strong>${esc(st.name)}</strong><small>${esc(st.formation || "")}</small></div>
+                                <p class="satz-text">${esc(opts.zeile(st))}</p>
+                                <div class="satz-aktionen">
+                                    <button class="btn btn-sm btn-primary" type="button" data-satz-laden="${esc(st.id)}">Laden</button>
+                                    ${opts.nurTaktik ? `<button class="btn btn-sm btn-secondary" type="button" data-satz-taktik="${esc(st.id)}" title="Anweisungen, Formen und Rollen - die jetzige Elf bleibt">Nur Spielweise</button>` : ""}
+                                    <button class="btn btn-sm btn-secondary satz-loeschen" type="button" data-satz-loeschen="${esc(st.id)}" aria-label="${esc(st.name)} löschen"><svg class="ico" aria-hidden="true"><use href="#i-trash"/></svg></button>
+                                </div>
+                            </div>`).join("") : `<p class="text-muted">Noch nichts gespeichert.</p>`}
+                    </div>
+                </div>`;
+        };
+        const binden = (inhalt) => {
+            const feld = inhalt.querySelector("[data-satz-name]");
+            inhalt.querySelectorAll("[data-satz-vorschlag]").forEach(b => b.addEventListener("click", () => { if (feld) { feld.value = b.dataset.satzVorschlag; feld.focus(); } }));
+            const speichern = () => {
+                const r = opts.speichern(feld ? feld.value : "");
+                if (!r.success) { this.showToast(r.error, "error"); return; }
+                opts.fertig();
+                this.showToast(`„${r.satz.name}“ ${r.ersetzt ? "überschrieben" : "gespeichert"}.`, "success");
+                neu();
+            };
+            inhalt.querySelector("[data-satz-speichern]")?.addEventListener("click", speichern);
+            feld?.addEventListener("keydown", (e) => { if (e.key === "Enter") speichern(); });
+            const laden = (id, nur) => {
+                const r = opts.laden(id, nur);
+                if (!r.success) { this.showToast(r.error, "error"); return; }
+                this.schliesseSpielerMenue();
+                opts.fertig();
+                const teile = [`„${r.satz.name}“ ${nur === "taktik" ? "- Spielweise geladen" : "geladen"}.`];
+                if (r.formationFehlt) teile.push("Die Formation gibt es nicht mehr - nur die Spielweise ist geladen.");
+                if (r.fehlen && r.fehlen.length) teile.push(`Es fehlen ${r.fehlen.slice(0, 3).join(", ")}${r.fehlen.length > 3 ? ` und ${r.fehlen.length - 3} weitere` : ""} - die Plätze sind neu besetzt.`);
+                this.showToast(teile.join(" "), r.fehlen && r.fehlen.length ? "info" : "success");
+            };
+            inhalt.querySelectorAll("[data-satz-laden]").forEach(b => b.addEventListener("click", () => laden(b.dataset.satzLaden, null)));
+            inhalt.querySelectorAll("[data-satz-taktik]").forEach(b => b.addEventListener("click", () => laden(b.dataset.satzTaktik, "taktik")));
+            inhalt.querySelectorAll("[data-satz-loeschen]").forEach(b => b.addEventListener("click", () => {
+                const st = opts.saetze().find(x => x.id === b.dataset.satzLoeschen);
+                if (!st || (typeof confirm === "function" && !confirm(`„${st.name}“ löschen?`))) return;
+                const r = opts.loeschen(st.id);
+                if (!r.success) { this.showToast(r.error, "error"); return; }
+                opts.fertig();
+                neu();
+            }));
+        };
+        const neu = () => this.oeffneSpielerMenue(esc(opts.titel), zeichne(), binden);
+        neu();
+    },
+
+    /** Gespeicherte Aufstellungen der Profis */
+    oeffneTaktikSaetze() {
+        const T = this.getTacticsEngine();
+        const state = this.app.state;
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        if (!T || !club || typeof T.saetze !== "function") return;
+        const nachId = new Map((state.players || []).map(p => [String(p.id), p]));
+        this.oeffneSatzMenue({
+            titel: "Gespeicherte Aufstellungen",
+            max: T.SAETZE_MAX,
+            nurTaktik: true,
+            saetze: () => T.saetze(club),
+            speichern: (name) => T.satzSpeichern(state, club, name),
+            laden: (id, nur) => T.satzLaden(state, club, id, nur),
+            loeschen: (id) => T.satzLoeschen(club, id),
+            zeile: (st) => {
+                const namen = (st.lineup || []).map(x => nachId.get(String(x))?.name.split(" ").pop()).filter(Boolean);
+                const stil = st.tactics?.vorlage && T.VORLAGEN[st.tactics.vorlage] ? T.VORLAGEN[st.tactics.vorlage].name : "Eigene Taktik";
+                return `${stil} · ${namen.join(", ")}`;
+            },
+            fertig: () => {
+                if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+                this.renderTactics();
+            }
+        });
+    },
+
+    /** Ein Satz zur Komplexität - unter den Anweisungen, wo sie entsteht */
+    komplexitaetSatz(club, slots) {
+        const T = this.getTacticsEngine();
+        if (!T || typeof T.komplexitaet !== "function") return "";
+        const k = T.komplexitaet(club, slots);
+        const tempo = k.lernFaktor >= 1.05 ? "Neues sitzt schnell." : (k.lernFaktor <= 0.85 ? "Neues braucht länger, bis es sitzt." : "Neues sitzt in normalem Tempo.");
+        return `<span class="wk-satz">Komplexität: <strong>${this.escapeHtml(k.stufe)}</strong> (${String(k.punkte).replace(".", ",")} Punkte). ${tempo}</span>`;
+    },
+
+    /**
+     * Die Karte "Taktische Wirksamkeit": vier Teile mit Balken, die
+     * Komplexität als Stufenleiste, die Wirkung im Spiel und was fehlt.
+     */
+    renderWirksamkeit(club, slots) {
+        const box = document.getElementById("tacWirksamkeit");
+        const T = this.getTacticsEngine();
+        if (!box) return;
+        if (!T || typeof T.wirksamkeit !== "function" || this.formationEditMode) { box.hidden = true; return; }
+        const state = this.app.state;
+        if (typeof T.wirksamkeitPflegen === "function" && !club.wirksamkeit) T.wirksamkeitPflegen(state);
+        const index = new Map((state.players || []).map(p => [String(p.id), p]));
+        const elf = (club.lineup || []).map(id => index.get(String(id))).filter(Boolean);
+        const w = T.wirksamkeit(state, club, { positions: slots, elf });
+        if (!w) { box.hidden = true; return; }
+        box.hidden = false;
+        const esc = v => this.escapeHtml(String(v ?? ""));
+        const pct = x => Math.round(Math.max(0, Math.min(1, x)) * 100);
+        const ton = x => x >= 0.8 ? "gut" : (x >= 0.62 ? "mittel" : "schlecht");
+        const v = T.vertrautheitDetails(club);
+        const g = w.gegnerInfo;
+        const teile = [
+            {
+                name: "Verständnis", wert: w.verstaendnis,
+                text: v.formation < 0.85 ? `Formation ${club.formation || ""} noch neu` : (v.neu.length ? `${v.neu.length} Anweisung${v.neu.length === 1 ? "" : "en"} noch nicht eingespielt` : "Formation und Anweisungen sitzen"),
+                hilfe: "Wie vertraut die Mannschaft mit Formation und Anweisungen ist. Wächst mit Spielen und Taktiktraining - wie schnell, hängt an der Komplexität."
+            },
+            {
+                name: "Können", wert: w.koennen,
+                text: w.fremd.length ? (w.fremd.length === 1 ? `${w.fremd[0].name.split(" ").pop()} auf fremder Position` : `${w.fremd.length} Spieler auf fremder Position`) : "Alle auf ihrer Position",
+                hilfe: "Ob die Elf auf ihren Plätzen kann, was sie spielen soll: die Eignung jedes Spielers auf seiner Position."
+            },
+            {
+                name: "Rückhalt", wert: w.rueckhalt,
+                text: w.zweifler.length ? `${w.zweifler[0].name.split(" ").pop()}: ${w.zweifler[0].grund}`
+                    : (w.vertrauen < 0.6 ? "Die Elf kennt den Trainer erst kurz" : "Die Elf zieht mit"),
+                hilfe: "Ob die Spieler hinter der Taktik stehen: Zufriedenheit, Moral, Charakter, wie lange sie den Trainer kennen und ob sie auf ihrer Position spielen."
+            },
+            {
+                name: "Gegnerinfo", wert: w.gegner,
+                text: g.gegnerName ? `${g.gegnerName}: ${g.studiert ? "studiert" : "noch kein Analysetag"}` : "Kein Spiel angesetzt",
+                hilfe: g.teile.map(t => `${t.an ? "✓" : "–"} ${t.text}`).join("\n")
+            }
+        ];
+        const k = w.komplexitaet;
+        const stufe = ["Einfach", "Überschaubar", "Anspruchsvoll", "Sehr komplex"].indexOf(k.stufe);
+        const lern = String(w.lernFaktor.toFixed(2)).replace(".", ",");
+        const prozent = (w.staerke - 1) * 100;
+        const wirkung = Math.abs(prozent) < 0.05 ? "±0" : `${prozent > 0 ? "+" : "−"}${Math.abs(prozent).toFixed(1).replace(".", ",")}`;
+        box.innerHTML = `
+            <div class="wk-kopf">
+                <h3>Taktische Wirksamkeit</h3>
+                <span class="wk-gesamt wk-ton-${ton(w.gesamt)}" title="Verständnis, Können, Rückhalt und Gegnerinfo zusammen">${pct(w.gesamt)} %</span>
+            </div>
+            <div class="wk-teile">
+                ${teile.map(t => `
+                    <div class="wk-teil" title="${esc(t.hilfe)}">
+                        <div class="wk-zeile"><span>${esc(t.name)}</span><strong>${pct(t.wert)} %</strong></div>
+                        <span class="wk-balken" aria-hidden="true"><i class="wk-ton-${ton(t.wert)}" style="width:${Math.max(3, pct(t.wert))}%"></i></span>
+                        <small>${esc(t.text)}</small>
+                    </div>`).join("")}
+            </div>
+            <div class="wk-komplex" title="${esc(k.teile.map(t => `${t.text}: ${String(t.punkte).replace(".", ",")}`).join("\n") || "Nichts außer der Grundeinstellung")}">
+                <div class="wk-zeile"><span>Komplexität</span><strong>${esc(k.stufe)}</strong></div>
+                <span class="wk-stufen" role="img" aria-label="Stufe ${stufe + 1} von 4">${[0, 1, 2, 3].map(i => `<i class="${i <= stufe ? `an s${stufe}` : ""}"></i>`).join("")}</span>
+                <small>${esc(String(k.punkte).replace(".", ","))} Punkte · Lerntempo ×${lern}${w.lernFaktor < 0.9 ? " - Neues sitzt langsamer" : (w.lernFaktor > 1.1 ? " - Neues sitzt schnell" : "")}</small>
+            </div>
+            <p class="wk-wirkung">Im Spiel <strong class="wk-ton-${prozent >= 0 ? "gut" : (prozent > -1.5 ? "mittel" : "schlecht")}">${wirkung} %</strong> Stärke aus Vertrautheit, Rückhalt und Vorbereitung.</p>
+            ${w.hinweise.length ? `<ul class="wk-hinweise">${w.hinweise.slice(0, 3).map(h => `<li>${esc(h)}</li>`).join("")}</ul>` : ""}`;
     },
 
     escapeHtml(text) {

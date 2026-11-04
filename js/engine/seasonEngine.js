@@ -674,7 +674,10 @@ class SeasonEngine {
                 if (taktik && typeof taktik.vertrautheitUeben === 'function' && eigenerVerein) {
                     // Ein Taktiker schleift die Abläufe schneller ein
                     const profilT = _resolve('TrainerProfilEngine', './trainerProfilEngine.js');
-                    taktik.vertrautheitUeben(eigenerVerein, 0.12 * (profilT ? profilT.faktor(state, "taktik", 0.25) : 1));
+                    // ... und eine einfache Taktik mit klugen Köpfen schneller als eine komplexe
+                    const elf = (eigenerVerein.lineup || []).map(id => state.players.find(p => p.id === id)).filter(Boolean);
+                    const lernen = typeof taktik.lernFaktor === 'function' ? taktik.lernFaktor(eigenerVerein, elf) : 1;
+                    taktik.vertrautheitUeben(eigenerVerein, 0.12 * lernen * (profilT ? profilT.faktor(state, "taktik", 0.25) : 1));
                 }
             }
             // Die Gegner haben ebenfalls eine Kabine - sonst spielt der Nutzer

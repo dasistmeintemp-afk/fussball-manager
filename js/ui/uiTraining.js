@@ -151,7 +151,36 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <div><span>Erhöhtes Risiko (ab 5 % je Einheit)</span><strong class="${w.gefaehrdet ? "wirkung-kostet" : ""}">${w.gefaehrdet}</strong></div>
                 <div><span>Risiko je Einheit im Schnitt</span><strong>${risiko} %</strong></div>
             </div>
+            ${this.trainingTaktikHtml()}
             ${w.rat ? `<p class="training-wirkung-rat">${this.escapeHtml(w.rat)}</p>` : ""}`;
+    },
+
+    /**
+     * Die Taktik im Training: wie gut sie sitzt, wie komplex sie ist und
+     * wie schnell Taktikeinheiten sie einschleifen - dazu, ob der nächste
+     * Gegner schon studiert ist (Analysetag im Wochenplan).
+     */
+    trainingTaktikHtml() {
+        const T = typeof TacticsEngine !== "undefined" ? TacticsEngine : null;
+        const state = this.app.state;
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        if (!T || !club || typeof T.wirksamkeit !== "function") return "";
+        const slots = typeof MatchEngine !== "undefined" ? MatchEngine.getFormationSlots(club) : null;
+        const w = T.wirksamkeit(state, club, { positions: slots });
+        if (!w) return "";
+        const pct = x => `${Math.round(x * 100)} %`;
+        const tempo = w.lernFaktor;
+        const g = w.gegnerInfo;
+        return `
+            <h4>Taktik</h4>
+            <div class="kv-liste">
+                <div><span>Taktische Wirksamkeit</span><strong>${pct(w.gesamt)}</strong></div>
+                <div><span>Verständnis</span><strong class="${w.verstaendnis < 0.85 ? "wirkung-kostet" : ""}">${pct(w.verstaendnis)}</strong></div>
+                <div><span>Komplexität</span><strong>${this.escapeHtml(w.komplexitaet.stufe)}</strong></div>
+                <div><span>Lerntempo je Einheit</span><strong class="${tempo > 1.02 ? "wirkung-gut" : (tempo < 0.9 ? "wirkung-kostet" : "")}">×${tempo.toFixed(2).replace(".", ",")}</strong></div>
+                ${g.gegnerName ? `<div><span>${this.escapeHtml(g.gegnerName)} studiert</span><strong class="${g.studiert ? "wirkung-gut" : ""}">${g.studiert ? "ja" : "noch nicht"}</strong></div>` : ""}
+            </div>
+            <p class="text-muted">Taktikeinheiten und Spiele schleifen die Taktik ein - je komplexer sie ist, desto länger dauert es. Ein Analysetag vor dem Spiel bringt die Abläufe des Gegners mit.</p>`;
     },
 
     /**

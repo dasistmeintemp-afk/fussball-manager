@@ -804,6 +804,23 @@ const SCHNELL_ANWEISUNGEN = [
     }
 ];
 
+/**
+ * Anweisungspakete für die Seitenlinie, wie in der neuesten Ausgabe des
+ * Vorbilds: mehrere Mannschaftsanweisungen auf einmal, vorher festgelegt
+ * und im Spiel mit einem Tipp ausgelöst. Drei zum Start; der Trainer legt
+ * eigene an (state.taktikPakete), sie gelten bei jedem Verein.
+ */
+const _schnellSetzt = (gruppe, option) =>
+    (SCHNELL_ANWEISUNGEN.find(g => g.key === gruppe)?.optionen.find(o => o.key === option)?.setzt) || {};
+const PAKET_VORLAGEN = [
+    { id: "halten", name: "Ergebnis halten", icon: "i-shield",
+        setzt: { ..._schnellSetzt("ausrichtung", "halten"), ..._schnellSetzt("gegenBall", "tief") } },
+    { id: "sturm", name: "Alles nach vorn", icon: "i-up",
+        setzt: { ..._schnellSetzt("ausrichtung", "vorn"), ..._schnellSetzt("gegenBall", "hoch"), ..._schnellSetzt("angriffsweg", "fluegel") } },
+    { id: "ruhe", name: "Ruhe reinbringen", icon: "i-foot",
+        setzt: { ..._schnellSetzt("spielweise", "laufen"), ..._schnellSetzt("zweikampf", "vorsicht"), tempo: "slow" } }
+];
+
 /** Die Anweisungen nach Schlüssel - erst beim ersten Bedarf gebaut */
 let _anweisungNach = null;
 
@@ -816,6 +833,169 @@ const TacticsEngine = {
     ROLLEN_GEGEN_BALL,
     FORMEN_MIT_BALL,
     VORLAGEN: TAKTIK_VORLAGEN,
+    PAKET_VORLAGEN,
+
+    // ------------------------------------------------------- Anweisungspakete
+
+    PAKET_ICONS: ["i-shield", "i-up", "i-foot", "i-flame", "i-back", "i-width", "i-target", "i-bolt", "i-speed", "i-clock", "i-ball", "i-alert"],
+    PAKETE_MAX: 6,
+    PAKET_ANWEISUNGEN_MAX: 14,
+
+    /** Die Definition einer Mannschaftsanweisung */
+    anweisung(key) {
+        if (!_anweisungNach) _anweisungNach = new Map(TAKTIK_ANWEISUNGEN.map(a => [a.key, a]));
+        return _anweisungNach.get(key) || null;
+    },
+
+    /** Ein Paket in gültiger Form: bekannte Anweisungen mit erlaubten Werten, Name, Symbol */
+    normalisierePaket(p) {
+        if (!p || typeof p !== "object") return null;
+        const setzt = {};
+        Object.entries(p.setzt || {}).forEach(([k, v]) => {
+            const def = this.anweisung(k);
+            if (def && def.optionen.some(o => o.value === v) && Object.keys(setzt).length < this.PAKET_ANWEISUNGEN_MAX) setzt[k] = v;
+        });
+        return {
+            id: String(p.id || ""),
+            name: String(p.name || "").trim().slice(0, 28) || "Paket",
+            icon: this.PAKET_ICONS.includes(p.icon) ? p.icon : "i-sliders",
+            setzt
+        };
+    },
+
+    /** Die Pakete des Trainers - ohne eigene die drei Vorlagen */
+    pakete(state) {
+        const liste = Array.isArray(state?.taktikPakete) ? state.taktikPakete : PAKET_VORLAGEN;
+        return liste.map(p => this.normalisierePaket(p)).filter(p => p && p.id && Object.keys(p.setzt).length);
+    },
+
+    /** Ein Paket anlegen oder ändern */
+    paketSpeichern(state, paket) {
+        if (!state) return { success: false, error: "Kein Spielstand." };
+        const neu = this.normalisierePaket(paket);
+        if (!neu || !Object.keys(neu.setzt).length) return { success: false, error: "Ein Paket braucht mindestens eine Anweisung." };
+        const liste = this.pakete(state);
+        const i = neu.id ? liste.findIndex(p => p.id === neu.id) : -1;
+        if (i >= 0) liste[i] = neu;
+        else {
+            if (liste.length >= this.PAKETE_MAX) return { success: false, error: `Höchstens ${this.PAKETE_MAX} Pakete - erst eines löschen.` };
+            let id;
+            do { id = `pk_${Math.random().toString(36).slice(2, 8)}`; } while (liste.some(p => p.id === id));
+            neu.id = id;
+            liste.push(neu);
+        }
+        state.taktikPakete = liste;
+        return { success: true, paket: neu };
+    },
+
+    paketLoeschen(state, id) {
+        const liste = this.pakete(state);
+        const rest = liste.filter(p => p.id !== String(id));
+        if (rest.length === liste.length) return { success: false, error: "Das Paket gibt es nicht." };
+        state.taktikPakete = rest;
+        return { success: true };
+    },
+
+    /** Was ein Paket setzt, in Worten: "Mentalität: Defensiv · Tempo: Geduldig" */
+    paketText(paket, trenner = " · ") {
+        return Object.entries(paket?.setzt || {}).map(([k, v]) => {
+            const def = this.anweisung(k);
+            const opt = def?.optionen.find(o => o.value === v);
+            return def ? `${def.label}: ${opt ? opt.label : v}` : null;
+        }).filter(Boolean).join(trenner);
+    },
+
+    // ------------------------------------- Gespeicherte Aufstellungen und Taktiken
+
+    /**
+     * Aufstellung und Taktik unter einem Namen sichern - Pokalelf,
+     * Rotation, Auswärtstaktik - und später mit einem Tipp laden. Im
+     * Vorbild seit der vorigen Ausgabe vermisst. Je Verein (die Spieler
+     * gehören zu ihm), höchstens acht.
+     */
+    SAETZE_MAX: 8,
+
+    saetze(club) {
+        return Array.isArray(club?.taktikSaetze) ? club.taktikSaetze : [];
+    },
+
+    _formationenAlle() {
+        if (typeof FORMATION_CONFIGS !== "undefined" && FORMATION_CONFIGS) return FORMATION_CONFIGS;
+        return this._modul("FORMATION_CONFIGS", "./gameState.js") || {};
+    },
+
+    /** Speichern - unter einem neuen Namen oder über einen gleichnamigen */
+    satzSpeichern(state, club, name) {
+        if (!club) return { success: false, error: "Kein Verein." };
+        const titel = String(name || "").trim().slice(0, 28);
+        if (!titel) return { success: false, error: "Bitte einen Namen eingeben." };
+        const liste = this.saetze(club).slice();
+        const i = liste.findIndex(s => String(s.name).toLowerCase() === titel.toLowerCase());
+        if (i < 0 && liste.length >= this.SAETZE_MAX) return { success: false, error: `Höchstens ${this.SAETZE_MAX} gespeicherte Aufstellungen - erst eine löschen.` };
+        let id = i >= 0 ? liste[i].id : null;
+        while (!id) {
+            const neu = `ts_${Math.random().toString(36).slice(2, 8)}`;
+            if (!liste.some(s => s.id === neu)) id = neu;
+        }
+        const satz = {
+            id, name: titel,
+            saison: state?.seasonYear || 1, tag: state?.currentDayIndex || 0,
+            formation: club.formation,
+            tactics: JSON.parse(JSON.stringify(club.tactics || {})),
+            lineup: (club.lineup || []).slice(),
+            bench: (club.bench || []).slice(),
+            roles: Object.assign({}, club.roles || {})
+        };
+        if (i >= 0) liste[i] = satz; else liste.push(satz);
+        club.taktikSaetze = liste;
+        return { success: true, satz, ersetzt: i >= 0 };
+    },
+
+    satzLoeschen(club, id) {
+        const liste = this.saetze(club);
+        const rest = liste.filter(s => s.id !== id);
+        if (rest.length === liste.length) return { success: false, error: "Diese Aufstellung gibt es nicht." };
+        club.taktikSaetze = rest;
+        return { success: true };
+    },
+
+    /**
+     * Laden. nur: "taktik" lädt nur die Spielweise (Anweisungen, Formen,
+     * Rollen) zur jetzigen Elf; sonst Formation, Elf, Bank, Rollen und
+     * Taktik. Wer fehlt (verletzt, gesperrt, abgegeben), dessen Platz
+     * füllt die Aufstellung wie bei jedem Ausfall - kommt er zurück,
+     * bekommt er ihn wieder.
+     */
+    satzLaden(state, club, id, nur = null) {
+        const satz = this.saetze(club).find(s => s.id === id);
+        if (!satz) return { success: false, error: "Diese Aufstellung gibt es nicht." };
+        const nurTaktik = nur === "taktik";
+        const formationDa = !!(satz.formation && this._formationenAlle()[satz.formation]);
+        club.tactics = this.normalisiere(JSON.parse(JSON.stringify(satz.tactics || {})));
+        if (nurTaktik) return { success: true, satz, fehlen: [], formationFehlt: false };
+        if (formationDa) club.formation = satz.formation;
+        const index = new Map((state?.players || []).map(p => [String(p.id), p]));
+        const kader = new Set((club.playerIds || []).map(String));
+        const da = x => {
+            const p = index.get(String(x));
+            return !!p && kader.has(String(x)) && (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0 && !p.reserve;
+        };
+        const fehlen = (satz.lineup || []).filter(x => !da(x))
+            .map(x => index.get(String(x)) && kader.has(String(x)) ? index.get(String(x)).name : "ein Spieler, der nicht mehr im Kader ist");
+        if (formationDa) {
+            club.lineup = (satz.lineup || []).slice();
+            club.bench = (satz.bench || []).filter(x => kader.has(String(x)));
+            club.lineupCover = {};
+        }
+        const gs = this._modul("GameState", "./gameState.js");
+        if (gs && typeof gs.repairLineup === "function") gs.repairLineup(club, state.players);
+        club.roles = club.roles || {};
+        ["captain", "penaltyTaker", "freeKickTaker", "cornerTaker"].forEach(r => {
+            const v = satz.roles?.[r];
+            if (v !== undefined && v !== null && kader.has(String(v))) club.roles[r] = v;
+        });
+        return { success: true, satz, fehlen, formationFehlt: !formationDa };
+    },
 
     /** Die Standardwerte aller Anweisungen */
     standardAnweisungen() {
@@ -1271,6 +1451,387 @@ const TacticsEngine = {
             if (x < 0.85) neu.push({ key: k, label: def.label, wert: def.optionen.find(o => o.value === w)?.label || w, vertraut: x });
         });
         return { gesamt: this.vertrautheit(club), formation, neu };
+    },
+
+    // --------------------------------------------- Taktische Wirksamkeit
+
+    /**
+     * Taktische Wirksamkeit wie in der neuesten Ausgabe des Vorbilds: Ob eine
+     * Taktik wirkt, hängt an mehr als daran, ob sie eingespielt ist.
+     *
+     *   Verständnis - wie vertraut Formation und Anweisungen sind
+     *                 (vertrautheit). Wie schnell es wächst, hängt an der
+     *                 Komplexität, an den Köpfen der Spieler und am Trainer.
+     *   Können      - ob die Elf auf ihren Plätzen kann, was sie spielen
+     *                 soll: die Eignung jedes Spielers auf seiner Position.
+     *   Rückhalt    - ob die Spieler hinter der Taktik stehen: Zufriedenheit,
+     *                 Moral, Charakter, wie lange sie den Trainer kennen und
+     *                 ob sie auf ihrer Position spielen.
+     *   Gegnerinfo  - was der Stab über den nächsten Gegner weiß:
+     *                 Spielanalyst, Analysetag, Matchplan, Gegneranweisungen.
+     *
+     * Dazu die Komplexität: Je mehr eine Taktik verlangt, desto länger
+     * dauert es, bis sie sitzt.
+     *
+     * Neu auf die Stärke wirken nur der Rückhalt (nur beim eigenen Verein,
+     * höchstens gut zwei Prozent) und der Analysetag (ein halbes Prozent).
+     * Verständnis, Können und Matchplan wirkten schon - die Wirksamkeit
+     * zeigt sie an einer Stelle und erklärt, was fehlt.
+     */
+    WIRKSAMKEIT: {
+        gewichte: { verstaendnis: 0.35, koennen: 0.3, rueckhalt: 0.2, gegner: 0.15 },
+        // Der Rückhalt eines Spielers: so viel zählt jeder Teil
+        rueckhaltTeile: { zufriedenheit: 0.32, moral: 0.13, vertrauen: 0.2, charakter: 0.17, position: 0.18 },
+        // Nach so vielen Tagen vertrauen die Spieler dem Trainer zu zwei Dritteln
+        vertrauenTage: 90,
+        // Um diesen Wert ist der Rückhalt ohne Wirkung; je Punkt darüber oder
+        // darunter so viel Stärke, begrenzt
+        rueckhaltNeutral: 0.7,
+        rueckhaltStaerke: 0.08,
+        rueckhaltMin: -0.025,
+        rueckhaltMax: 0.015,
+        // Ein Analysetag vor dem Spiel: Die Mannschaft kennt die Abläufe des Gegners
+        studium: 0.005,
+        // Wie lange ein Analysetag gilt (Kalendertage)
+        studiumTage: 10,
+        // So viele Punkte Komplexität sind "sehr komplex"
+        komplexVoll: 32
+    },
+
+    /** PositionEngine - unter Node per require, einmal gemerkt (wie in _norm) */
+    _pe() {
+        if (!this._posEngine) this._norm("ST");
+        return this._posEngine;
+    },
+
+    /** Ein Modul aus dem Browser oder unter Node */
+    _modul(name, pfad) {
+        if (typeof globalThis !== "undefined" && globalThis[name]) return globalThis[name];
+        if (typeof window !== "undefined" && window[name]) return window[name];
+        if (typeof require !== "undefined") {
+            try { return require(pfad)[name]; } catch (e) { return null; }
+        }
+        return null;
+    },
+
+    /**
+     * Wie komplex eine Taktik ist: Punkte für jede Anweisung, die vom
+     * Standard abweicht, für eigene Formen mit und gegen den Ball, für
+     * besondere Rollen und Spieleranweisungen und für Abläufe, bei denen
+     * alle mitgehen müssen (Manndeckung, Abseitsfalle, Pressingfalle).
+     * lernFaktor: wie schnell Spiele und Training sie einschleifen
+     * (einfach 1,3, sehr komplex 0,5).
+     */
+    komplexitaet(club, positions = null) {
+        const t = this.normalisiere(Object.assign({}, club?.tactics || {}));
+        const teile = [];
+        const plus = (key, text, punkte) => {
+            if (punkte > 0) teile.push({ key, text, punkte: Math.round(punkte * 10) / 10 });
+        };
+        const geaendert = TAKTIK_ANWEISUNGEN.filter(a => this.wert(t, a.key) !== a.standard).length;
+        plus("anweisungen", `${geaendert} Mannschaftsanweisung${geaendert === 1 ? "" : "en"} abweichend vom Standard`, geaendert);
+        let formen = 0;
+        if (t.formMitBall === "auto") formen += 1;
+        else if (t.formMitBall !== "grund") formen += 2;
+        if (t.formGegenBall !== "grund") formen += 2;
+        plus("formen", "eigene Form mit oder gegen den Ball", formen);
+        if (Array.isArray(positions) && positions.length) {
+            let rollen = 0, spieler = 0;
+            this.rollenDerElf({ tactics: t }, positions).forEach((r, i) => {
+                const grund = this.standardRollen(r.familie, "standard", Math.sign((positions[i].x ?? 50) - 50), positions);
+                if (r.mit !== grund.mit) rollen += 0.5;
+                if (r.gegen !== grund.gegen) rollen += 0.3;
+                if (r.strafraum !== "normal") spieler += 0.5;
+                if (r.tiefe !== "normal") spieler += 0.5;
+            });
+            plus("rollen", "besondere Rollen", rollen);
+            plus("spieler", "Spieleranweisungen", spieler);
+        }
+        let abstimmung = 0;
+        const deckung = this.wert(t, "deckung");
+        if (deckung === "mann") abstimmung += 2;
+        else if (deckung === "mannorientiert") abstimmung += 1;
+        if (this.wert(t, "abseitsfalle") === "ja") abstimmung += 1;
+        const falle = TAKTIK_ANWEISUNGEN.find(a => a.key === "pressingfalle");
+        if (falle && this.wert(t, "pressingfalle") !== falle.standard) abstimmung += 1;
+        plus("abstimmung", "Abläufe, bei denen alle mitgehen müssen", abstimmung);
+        const punkte = Math.round(teile.reduce((s, x) => s + x.punkte, 0) * 10) / 10;
+        const wert = Math.max(0, Math.min(1, punkte / this.WIRKSAMKEIT.komplexVoll));
+        const stufe = wert < 0.25 ? "Einfach" : (wert < 0.5 ? "Überschaubar" : (wert < 0.75 ? "Anspruchsvoll" : "Sehr komplex"));
+        return { wert, punkte, stufe, teile, lernFaktor: Math.round((1.3 - 0.8 * wert) * 1000) / 1000 };
+    },
+
+    /**
+     * Wie schnell die Mannschaft eine Taktik lernt - Faktor auf jede
+     * Einheit und jedes Spiel. Je komplexer, desto langsamer; kluge Köpfe
+     * (Entscheidungen, Antizipation, Teamwork über der eigenen Stärke) und
+     * anpassungsfähige Spieler lernen schneller.
+     */
+    lernFaktor(club, spieler = null, positions = null) {
+        const k = this.komplexitaet(club, positions || this._positionenVon(club));
+        const elf = (spieler || []).filter(Boolean);
+        let kopf = 1;
+        if (elf.length) {
+            const schnitt = elf.reduce((s, p) => {
+                const basis = p.overall ?? 60;
+                const rel = ((p.decisions ?? basis) + (p.anticipation ?? basis) + (p.teamwork ?? basis)) / 3 - basis;
+                return s + rel * 0.01 + ((p.hiddenAttributes?.adaptability ?? 12) - 12) * 0.02;
+            }, 0) / elf.length;
+            kopf = Math.max(0.85, Math.min(1.15, 1 + schnitt));
+        }
+        return Math.round(k.lernFaktor * kopf * 1000) / 1000;
+    },
+
+    /** Die Plätze der Formation eines Vereins (auch eigene Formationen) */
+    _positionenVon(club) {
+        const me = this._modul("MatchEngine", "./matchEngine.js");
+        const liste = me && typeof me.getFormationSlots === "function" ? me.getFormationSlots(club) : null;
+        return Array.isArray(liste) && liste.length ? liste : null;
+    },
+
+    /** Kalendertage seit einem Stempel der Uhr (Saison * 1000 + Tag) */
+    _tageSeit(stempel, jetzt = this.uhr) {
+        if (typeof stempel !== "number" || typeof jetzt !== "number") return null;
+        const saisons = Math.floor(jetzt / 1000) - Math.floor(stempel / 1000);
+        return Math.max(0, saisons * this.ZUSAMMENSPIEL.tageJeSaison + (jetzt % 1000) - (stempel % 1000));
+    },
+
+    /**
+     * Der Rückhalt eines Spielers (0 bis 1): Zufriedenheit, Moral, Charakter
+     * (Professionalität und Treue; ein Hitzkopf murrt eher), wie lange er
+     * den Trainer kennt und ob er auf seiner Position spielt.
+     */
+    rueckhaltSpieler(p, club = null, slotPos = null) {
+        const W = this.WIRKSAMKEIT, G = W.rueckhaltTeile;
+        const eins = x => Math.max(0, Math.min(1, x));
+        const zufriedenheit = eins(((p?.happiness?.overall ?? 75) - 30) / 60);
+        const moral = eins(((p?.morale ?? 75) - 30) / 60);
+        const h = p?.hiddenAttributes || {};
+        const charakter = eins(((h.professionalism ?? 12) * 0.6 + (h.loyalty ?? 12) * 0.4) / 20 - Math.max(0, (h.temperament ?? 12) - 15) * 0.04);
+        // Ohne Angabe, seit wann der Trainer da ist: Man kennt sich
+        let vertrauen = 0.8;
+        const tageTrainer = this._tageSeit(club?.wirksamkeit?.trainerSeit);
+        if (tageTrainer !== null) vertrauen = 1 - Math.exp(-Math.min(tageTrainer, this.tageImVerein(p)) / W.vertrauenTage);
+        let position = 1;
+        const pe = slotPos ? this._pe() : null;
+        if (pe && typeof pe.getSuitability === "function") position = eins(pe.getSuitability(p, slotPos)?.familiarity ?? 1);
+        const wert = G.zufriedenheit * zufriedenheit + G.moral * moral + G.vertrauen * vertrauen + G.charakter * charakter + G.position * position;
+        return { wert, zufriedenheit, moral, vertrauen, charakter, position };
+    },
+
+    /** Der Platz eines Spielers in der Formation - über die Aufstellung, nicht über die Reihenfolge der Elf */
+    _slotPosVon(club, positions, id) {
+        if (!Array.isArray(positions)) return null;
+        const i = (club?.lineup || []).findIndex(x => String(x) === String(id));
+        return i >= 0 && positions[i] ? positions[i].pos : null;
+    },
+
+    /** Der Rückhalt der Elf: der Schnitt, der Kapitän zählt doppelt */
+    rueckhalt(club, elf, positions = null) {
+        const liste = (elf || []).filter(Boolean);
+        if (!liste.length) return { wert: this.WIRKSAMKEIT.rueckhaltNeutral, spieler: [] };
+        const kapitaen = club?.roles?.captain;
+        let summe = 0, gewicht = 0;
+        const spieler = liste.map(p => {
+            const r = this.rueckhaltSpieler(p, club, this._slotPosVon(club, positions, p.id));
+            const g = kapitaen !== undefined && kapitaen !== null && String(p.id) === String(kapitaen) ? 2 : 1;
+            summe += r.wert * g;
+            gewicht += g;
+            return Object.assign({ id: p.id, name: p.name }, r);
+        });
+        return { wert: summe / gewicht, spieler };
+    },
+
+    /** Der Faktor auf die Stärke - nur beim eigenen Verein (club.wirksamkeit) */
+    rueckhaltFaktor(club, elf, positions = null) {
+        if (!club || !club.wirksamkeit) return 1;
+        const W = this.WIRKSAMKEIT;
+        const r = this.rueckhalt(club, elf, positions).wert;
+        return 1 + Math.max(W.rueckhaltMin, Math.min(W.rueckhaltMax, W.rueckhaltStaerke * (r - W.rueckhaltNeutral)));
+    },
+
+    /** Hat der Stab den Gegner an einem Analysetag studiert? */
+    hatStudiert(club, gegnerId) {
+        const s = club?.wirksamkeit?.studium;
+        if (!s || gegnerId === undefined || gegnerId === null || String(s.gegnerId) !== String(gegnerId)) return false;
+        const tage = this._tageSeit(s.stempel);
+        return tage === null || tage <= this.WIRKSAMKEIT.studiumTage;
+    },
+
+    studiumFaktor(club, gegner) {
+        return gegner && this.hatStudiert(club, gegner.id) ? 1 + this.WIRKSAMKEIT.studium : 1;
+    },
+
+    /**
+     * Alles, was die Wirksamkeit an der Stärke ändert und nicht schon im
+     * Zusammenspiel oder Matchplan steckt: Vertrautheit, Rückhalt, Analysetag.
+     */
+    wirksamkeitsFaktor(club, elf = null, gegner = null, positions = null) {
+        return this.vertrautheitsFaktor(club) * this.rueckhaltFaktor(club, elf, positions) * this.studiumFaktor(club, gegner);
+    },
+
+    /**
+     * Was der Stab über den nächsten Gegner weiß (0 bis 1): Der Spielanalyst
+     * liefert immer etwas, ein Analysetag, ein Matchplan und Anweisungen für
+     * einzelne Gegenspieler legen nach.
+     */
+    gegnerInfo(state, club, partie = null) {
+        const analyse = this._modul("OpponentAnalysisEngine", "./opponentAnalysisEngine.js");
+        const a = analyse && typeof analyse.analyst === "function" ? analyse.analyst(state, club) : { name: "Videoanalyse", sterne: 2.5, eigen: false };
+        const gegnerId = partie ? (partie.homeClubId === club?.id ? partie.awayClubId : partie.homeClubId) : null;
+        const gegner = gegnerId !== null ? (state?.clubs || []).find(c => c.id === gegnerId) : null;
+        const teile = [];
+        let wert = 0.35 * Math.max(0, Math.min(5, a.sterne || 0)) / 5;
+        const sterne = String(a.sterne).replace(".", ",");
+        teile.push({ key: "analyst", an: !!a.eigen, text: a.eigen ? `Spielanalyst ${a.name} (${sterne} Sterne)` : "Kein eigener Spielanalyst - der Blick bleibt grob" });
+        const studiert = gegnerId !== null && this.hatStudiert(club, gegnerId);
+        if (studiert) wert += 0.25;
+        teile.push({ key: "studium", an: studiert, text: studiert ? "Analysetag zum Gegner gehalten" : "Noch kein Analysetag zu diesem Gegner" });
+        const mp = this._modul("MatchplanEngine", "./matchplanEngine.js");
+        const plan = mp && partie ? mp.fuerSpiel(state, partie) : null;
+        const punkte = plan ? (plan.punkte || []).length : 0;
+        if (punkte) wert += Math.min(0.24, 0.12 * punkte) + (plan.treffer ? 0.06 : 0);
+        teile.push({ key: "plan", an: punkte > 0, text: punkte ? `Matchplan mit ${punkte} Punkt${punkte === 1 ? "" : "en"}${plan.treffer ? `, ${plan.treffer} trifft eine Schwäche` : ""}` : "Kein Matchplan für das Spiel" });
+        const ga = this._modul("GegneranweisungEngine", "./gegneranweisungEngine.js");
+        const n = ga && partie ? Object.keys(ga.fuerSpiel(state, partie) || {}).length : 0;
+        if (n) wert += Math.min(0.1, 0.04 * n);
+        teile.push({ key: "einzeln", an: n > 0, text: n ? `Anweisungen für ${n} Gegenspieler` : "Keine Anweisungen für einzelne Gegenspieler" });
+        return { wert: Math.max(0, Math.min(1, wert)), teile, gegnerId, gegnerName: gegner?.name || null, studiert, analyst: a };
+    },
+
+    /** Können: wie gut jeder Spieler auf seinem Platz ist (Eignung, 0 bis 1) */
+    koennen(club, elf, positions) {
+        const pe = this._pe();
+        const liste = (elf || []).filter(Boolean);
+        if (!pe || !liste.length || !Array.isArray(positions)) return { wert: 1, fremd: [] };
+        const fremd = [];
+        const summe = liste.reduce((s, p) => {
+            const pos = this._slotPosVon(club, positions, p.id);
+            const fit = pos ? pe.getSuitability(p, pos) : null;
+            const f = fit ? Math.max(0, Math.min(1, fit.familiarity ?? 1)) : 1;
+            if (fit && f < 0.85) fremd.push({ id: p.id, name: p.name, pos, eignung: f, label: fit.label });
+            return s + f;
+        }, 0);
+        fremd.sort((a, b) => a.eignung - b.eignung);
+        return { wert: summe / liste.length, fremd };
+    },
+
+    /**
+     * Passt ein Spieler in die eigene Taktik? Für Profil und Transfermarkt:
+     * der Platz der Formation, auf dem er am stärksten wäre, seine Eignung
+     * dort, die Rolle, wer dort jetzt spielt, und wie sehr er der Taktik
+     * wohl folgen würde (Charakter - Zufriedenheit und Vertrauen kennt
+     * man bei einem fremden Spieler nicht).
+     * player darf eine Schätzung sein (Scoutwissen) - gerechnet wird mit ihr.
+     */
+    passtInsSystem(state, club, player, positions = null) {
+        const pe = this._pe();
+        const plaetze = positions || this._positionenVon(club);
+        if (!pe || !player || !club || !Array.isArray(plaetze) || !plaetze.length) return null;
+        let bester = null;
+        plaetze.forEach((slot, i) => {
+            const fit = pe.getSuitability(player, slot.pos) || {};
+            const wert = fit.effectiveOverall ?? player.overall ?? 0;
+            if (!bester || wert > bester.wert) bester = { slot: i, pos: slot.pos, eignung: Math.max(0, Math.min(1, fit.familiarity ?? 1)), wert, label: fit.label || "" };
+        });
+        const index = new Map((state?.players || []).map(p => [String(p.id), p]));
+        const stammId = (club.lineup || [])[bester.slot];
+        const stamm = stammId !== undefined && String(stammId) !== String(player.id) ? index.get(String(stammId)) : null;
+        const rolle = this.rollenDerElf(club, plaetze)[bester.slot];
+        const h = player.hiddenAttributes || {};
+        const charakter = Math.max(0, Math.min(1, ((h.professionalism ?? 12) * 0.6 + (h.loyalty ?? 12) * 0.4) / 20 - Math.max(0, (h.temperament ?? 12) - 15) * 0.04));
+        return Object.assign(bester, {
+            rolle: rolle ? this.rolleMitBall(rolle.familie, rolle.mit)?.name || "" : "",
+            stamm: stamm ? { id: stamm.id, name: stamm.name, wert: pe.getSuitability(stamm, bester.pos)?.effectiveOverall ?? stamm.overall ?? 0 } : null,
+            spieltDort: String(stammId) === String(player.id),
+            charakter
+        });
+    },
+
+    /**
+     * Die ganze Wirksamkeit für die Anzeige. opts: positions (Formation),
+     * elf (Spieler in Slot-Reihenfolge), partie (das nächste Spiel).
+     */
+    wirksamkeit(state, club, opts = {}) {
+        if (!club) return null;
+        const configs = typeof FORMATION_CONFIGS !== "undefined" ? FORMATION_CONFIGS : null;
+        const positions = opts.positions || (configs && club.formation && configs[club.formation] ? configs[club.formation].positions : null);
+        const index = opts.elf ? null : new Map((state?.players || []).map(p => [String(p.id), p]));
+        const elf = opts.elf || (club.lineup || []).map(id => index.get(String(id))).filter(Boolean);
+        let partie = opts.partie;
+        if (partie === undefined) {
+            const kal = this._modul("CalendarEngine", "./calendarEngine.js");
+            partie = kal && typeof kal.naechstesSpiel === "function" && state?.userClubId === club.id ? (kal.naechstesSpiel(state)?.partie || null) : null;
+        }
+        const W = this.WIRKSAMKEIT, G = W.gewichte;
+        const verstaendnis = this.vertrautheit(club);
+        const k = this.koennen(club, elf, positions);
+        const r = this.rueckhalt(club, elf, positions);
+        const g = this.gegnerInfo(state, club, partie);
+        const komplex = this.komplexitaet(club, positions);
+        const rueckhaltAnzeige = Math.max(0, Math.min(1, r.wert / 0.9));
+        const gesamt = G.verstaendnis * verstaendnis + G.koennen * k.wert + G.rueckhalt * rueckhaltAnzeige + G.gegner * g.wert;
+        const gegner = g.gegnerId !== null ? (state?.clubs || []).find(c => c.id === g.gegnerId) : null;
+        const mp = this._modul("MatchplanEngine", "./matchplanEngine.js");
+        const plan = mp && partie ? mp.fuerSpiel(state, partie) : null;
+        const faktoren = {
+            vertrautheit: this.vertrautheitsFaktor(club),
+            rueckhalt: this.rueckhaltFaktor(club, elf, positions),
+            studium: this.studiumFaktor(club, gegner),
+            plan: plan ? 1 + Math.min(mp.MAX_PUNKTE, plan.treffer || 0) * mp.BONUS_JE_TREFFER : 1
+        };
+        const staerke = Object.values(faktoren).reduce((x, f) => x * f, 1);
+        // Wer am wenigsten mitzieht - und woran es liegt
+        const GRUENDE = { zufriedenheit: "unzufrieden", moral: "Moral im Keller", vertrauen: "kennt den Trainer noch kaum", charakter: "schwieriger Charakter", position: "spielt nicht auf seiner Position" };
+        const zweifler = r.spieler.filter(s => s.wert < W.rueckhaltNeutral - 0.08).sort((a, b) => a.wert - b.wert).slice(0, 3).map(s => {
+            const teil = Object.keys(GRUENDE).map(key => ({ key, fehlt: W.rueckhaltTeile[key] * (1 - s[key]) })).sort((a, b) => b.fehlt - a.fehlt)[0];
+            return { id: s.id, name: s.name, wert: s.wert, grund: GRUENDE[teil.key] };
+        });
+        const hinweise = [];
+        if (verstaendnis < 0.85) hinweise.push(`Die Taktik sitzt erst zu ${Math.round(verstaendnis * 100)} %. Spiele und Taktiktraining schleifen sie ein${komplex.wert >= 0.5 ? " - bei dieser Komplexität dauert es länger" : ""}.`);
+        if (k.fremd.length) hinweise.push(`${k.fremd.length === 1 ? `${k.fremd[0].name} spielt` : `${k.fremd.length} Spieler spielen`} auf einer Position, die ${k.fremd.length === 1 ? "ihm" : "ihnen"} nicht liegt.`);
+        if (zweifler.length) hinweise.push(`Wenig Rückhalt: ${zweifler.map(z => `${z.name} (${z.grund})`).join(", ")}.`);
+        if (g.gegnerId !== null && !g.studiert) hinweise.push("Ein Analysetag im Trainingsplan vor dem Spiel bringt die Abläufe des Gegners mit.");
+        if (komplex.wert >= 0.75) hinweise.push("Die Taktik ist sehr komplex: Neue Anweisungen brauchen lange, bis sie sitzen.");
+        const vertrauen = r.spieler.length ? r.spieler.reduce((x, s) => x + s.vertrauen, 0) / r.spieler.length : 1;
+        return {
+            gesamt, verstaendnis, koennen: k.wert, rueckhalt: rueckhaltAnzeige, rueckhaltRoh: r.wert, vertrauen, gegner: g.wert,
+            fremd: k.fremd, zweifler, gegnerInfo: g, komplexitaet: komplex,
+            lernFaktor: this.lernFaktor(club, elf, positions),
+            faktoren, staerke, hinweise
+        };
+    },
+
+    /**
+     * Der Stand der Wirksamkeit am eigenen Verein: seit wann der Trainer
+     * da ist. Jeden Tag gepflegt (CalendarEngine.advanceOneDay); andere
+     * Vereine verlieren die Angabe - nur beim eigenen wirkt der Rückhalt.
+     */
+    wirksamkeitPflegen(state) {
+        if (!state || !Array.isArray(state.clubs)) return null;
+        const id = state.userClubId;
+        let club = null;
+        state.clubs.forEach(c => {
+            if (c.id === id) club = c;
+            else if (c.wirksamkeit) delete c.wirksamkeit;
+        });
+        if (!club) return null;
+        const stationen = state.career?.stationen || [];
+        const station = stationen[stationen.length - 1];
+        const seit = station && station.clubId === id
+            ? (station.vonSaison || 1) * 1000 + (typeof station.vonTag === "number" ? station.vonTag : 0)
+            : (club.wirksamkeit?.trainerSeit ?? (state.seasonYear || 1) * 1000);
+        club.wirksamkeit = Object.assign({}, club.wirksamkeit || {}, { trainerSeit: seit });
+        return club.wirksamkeit;
+    },
+
+    /** Ein Analysetag: Der Stab studiert den nächsten Gegner */
+    gegnerStudieren(state, club, gegnerId) {
+        if (!club || gegnerId === undefined || gegnerId === null) return null;
+        club.wirksamkeit = Object.assign({}, club.wirksamkeit || {}, {
+            studium: { gegnerId, stempel: (state?.seasonYear || 1) * 1000 + (state?.currentDayIndex || 0) }
+        });
+        return club.wirksamkeit.studium;
     },
 
     /**

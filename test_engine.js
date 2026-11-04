@@ -17784,6 +17784,180 @@ function runEngineTests() {
         if (ui.kaderZeilen(state, club, "all").length !== J.eigeneSpieler(state).length) throw new Error("Die U19-Liste ist unvollständig");
     });
 
+    test("Taktische Wirksamkeit: vier Teile, Komplexität, Rückhalt nur beim eigenen Verein, Analysetag, Passt ins System", () => {
+        const T = TacticsEngine;
+        const state = GameState.createNewGame("muc", "normal", { name: "Wirksam" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const gegner = state.clubs.find(c => c.id === "dor");
+        const slots = MatchEngine.getFormationSlots(club);
+        T.stelleUhr(state);
+        // Die Marke trägt nur der eigene Verein - wer sie sonst hat, verliert sie
+        gegner.wirksamkeit = { trainerSeit: 1000 };
+        T.wirksamkeitPflegen(state);
+        if (!club.wirksamkeit || typeof club.wirksamkeit.trainerSeit !== "number") throw new Error("Der eigene Verein hat keine Wirksamkeit");
+        if (gegner.wirksamkeit) throw new Error("Ein fremder Verein behält die Wirksamkeit");
+
+        // Vier Teile zwischen 0 und 1, dazu Komplexität und Hinweise
+        const w = T.wirksamkeit(state, club, { positions: slots });
+        ["gesamt", "verstaendnis", "koennen", "rueckhalt", "gegner"].forEach(k => {
+            if (!(w[k] >= 0 && w[k] <= 1)) throw new Error(`${k} außerhalb 0..1: ${w[k]}`);
+        });
+        if (!w.komplexitaet || !["Einfach", "Überschaubar", "Anspruchsvoll", "Sehr komplex"].includes(w.komplexitaet.stufe)) throw new Error("Komplexität fehlt");
+        if (!Array.isArray(w.hinweise) || !w.gegnerInfo || w.gegnerInfo.teile.length !== 4) throw new Error("Gegnerinfo unvollständig");
+
+        // Komplexität: Positionsspiel verlangt mehr als die ausgewogene Grundordnung - und lernt langsamer
+        const einfach = { formation: club.formation, tactics: T.wendeVorlageAn({}, "ausgewogen") };
+        const komplex = { formation: club.formation, tactics: T.wendeVorlageAn({}, "positionsspiel") };
+        const kE = T.komplexitaet(einfach, slots), kK = T.komplexitaet(komplex, slots);
+        if (!(kK.punkte > kE.punkte + 10) || !(kK.lernFaktor < kE.lernFaktor)) throw new Error(`Komplexität ${kE.punkte}/${kK.punkte}, Lerntempo ${kE.lernFaktor}/${kK.lernFaktor}`);
+        const elf = club.lineup.map(id => state.players.find(p => p.id === id)).filter(Boolean);
+        const lf = T.lernFaktor(komplex, elf, slots);
+        if (!(lf >= 0.4 && lf <= 1.5)) throw new Error(`Lerntempo außerhalb der Grenzen: ${lf}`);
+
+        // Rückhalt: Unzufriedene ziehen nicht mit, Zufriedene, die den Trainer kennen, schon
+        const W = T.WIRKSAMKEIT;
+        elf.forEach(p => { p.happiness = Object.assign({}, p.happiness, { overall: 20 }); p.morale = 30; });
+        const schlecht = T.rueckhaltFaktor(club, elf, slots);
+        if (!(schlecht < 1 && schlecht >= 1 + W.rueckhaltMin - 1e-9)) throw new Error(`Unzufriedene Elf: ${schlecht}`);
+        elf.forEach(p => { p.happiness.overall = 98; p.morale = 99; });
+        club.wirksamkeit.trainerSeit = (state.seasonYear - 2) * 1000;
+        const gut = T.rueckhaltFaktor(club, elf, slots);
+        if (!(gut > 1 && gut <= 1 + W.rueckhaltMax + 1e-9)) throw new Error(`Zufriedene Elf: ${gut}`);
+        if (T.rueckhaltFaktor(gegner, MatchEngine.getCleanLineup(gegner, state.players), MatchEngine.getFormationSlots(gegner)) !== 1) throw new Error("Rückhalt wirkt bei der KI");
+
+        // Analysetag: gilt für diesen Gegner und ein paar Tage
+        T.gegnerStudieren(state, club, gegner.id);
+        if (!T.hatStudiert(club, gegner.id) || T.studiumFaktor(club, gegner) !== 1 + W.studium) throw new Error("Der Analysetag wirkt nicht");
+        if (T.hatStudiert(club, "boc")) throw new Error("Der Analysetag gilt für jeden Gegner");
+        const uhr = T.uhr;
+        T.uhr = uhr + W.studiumTage + 1;
+        if (T.hatStudiert(club, gegner.id)) throw new Error("Der Analysetag gilt ewig");
+        T.uhr = uhr;
+
+        // Im Livespiel stecken Rückhalt und Analysetag in der Vertrautheit
+        const live = new LiveMatch({ id: "wirksam", played: false, homeClubId: club.id, awayClubId: gegner.id }, club, gegner, state.players);
+        const erwartet = T.vertrautheitsFaktor(club) * T.zusammenspielFaktor(club, slots, live.homeLineup)
+            * T.rueckhaltFaktor(club, live.homeLineup, slots) * T.studiumFaktor(club, gegner);
+        if (Math.abs(live.vertrautheit.home - erwartet) > 1e-9) throw new Error(`Livespiel ${live.vertrautheit.home} statt ${erwartet}`);
+        // ... und in der Sofort-Simulation über den Faktor
+        const f = T.wirksamkeitsFaktor(club, MatchEngine.getCleanLineup(club, state.players), gegner, slots);
+        if (!(f > T.vertrautheitsFaktor(club))) throw new Error("Wirksamkeitsfaktor ohne Rückhalt");
+
+        // Passt ins System: ein fremder Stürmer findet seinen Platz und den, der dort spielt
+        const fremd = state.players.find(p => p.clubId === gegner.id && p.pos === "ST");
+        const s = T.passtInsSystem(state, club, fremd, slots);
+        if (!s || !slots.some(x => x.pos === s.pos) || !(s.eignung > 0 && s.eignung <= 1)) throw new Error("Passt ins System ohne Platz");
+        if (!s.stamm || s.spieltDort || !(s.charakter >= 0 && s.charakter <= 1)) throw new Error("Passt ins System ohne Vergleich");
+    });
+
+    test("Anweisungspakete: mehrere Anweisungen auf einmal, ersetzen die Schnellanweisungen, zurück zur eigenen Taktik", () => {
+        const T = TacticsEngine;
+        const state = GameState.createNewGame("muc", "normal", { name: "Pakete" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const gegner = state.clubs.find(c => c.id === "dor");
+        // Drei Vorlagen, jede mit gültigen Anweisungen
+        const vorlagen = T.pakete(state);
+        if (vorlagen.length !== 3 || vorlagen.some(p => Object.keys(p.setzt).length < 4)) throw new Error("Die Vorlagen fehlen");
+        vorlagen.forEach(p => Object.entries(p.setzt).forEach(([k, v]) => {
+            if (!T.anweisung(k)?.optionen.some(o => o.value === v)) throw new Error(`Ungültig in ${p.name}: ${k}=${v}`);
+        }));
+        // Eigene Pakete: Unbekanntes fällt weg, leere werden abgelehnt, höchstens sechs
+        if (T.paketSpeichern(state, { name: "Leer", setzt: { gibtsNicht: "x" } }).success) throw new Error("Leeres Paket gespeichert");
+        const r = T.paketSpeichern(state, { name: "  Schlussphase  ", icon: "i-flame", setzt: { pressing: "high", tempo: "fast", gibtsNicht: "x", mentality: "unsinn" } });
+        if (!r.success || r.paket.name !== "Schlussphase" || Object.keys(r.paket.setzt).length !== 2 || !r.paket.id) throw new Error("Eigenes Paket falsch gespeichert");
+        if (T.pakete(state).length !== 4) throw new Error("Die Vorlagen sind beim ersten eigenen Paket verschwunden");
+        T.paketSpeichern(state, { ...r.paket, name: "Schlussphase neu" });
+        if (T.pakete(state).length !== 4 || !T.pakete(state).some(p => p.name === "Schlussphase neu")) throw new Error("Ändern legt ein neues Paket an");
+        T.paketSpeichern(state, { name: "5", setzt: { tempo: "slow" } });
+        T.paketSpeichern(state, { name: "6", setzt: { tempo: "slow" } });
+        if (T.paketSpeichern(state, { name: "7", setzt: { tempo: "slow" } }).success) throw new Error("Mehr als sechs Pakete");
+        if (!T.paketLoeschen(state, r.paket.id).success || T.pakete(state).length !== 5) throw new Error("Löschen klappt nicht");
+
+        // Im Livespiel: ein Tipp, alle Anweisungen gelten - die Schnellanweisung weicht
+        const live = new LiveMatch({ id: "paket", played: false, homeClubId: club.id, awayClubId: gegner.id }, club, gegner, state.players);
+        const keys = new Set(T.ANWEISUNGEN.map(a => a.key));
+        const vorher = {};
+        keys.forEach(k => { vorher[k] = T.wert(club.tactics, k); });
+        live.schnellAnweisung("home", "angriffsweg", "mitte");
+        const sturm = vorlagen.find(p => p.id === "sturm");
+        const an = live.paketAnweisung("home", sturm);
+        if (!an.success || live.paketStand("home") !== "sturm") throw new Error("Paket nicht aktiv");
+        Object.entries(sturm.setzt).forEach(([k, v]) => { if (T.wert(club.tactics, k) !== v) throw new Error(`${k} nicht gesetzt`); });
+        if (Object.keys(live.schnellStand("home")).length) throw new Error("Die Schnellanweisung läuft neben dem Paket weiter");
+        // Darüber eine Schnellanweisung, dann das Paket zurück, dann die Schnellanweisung zurück
+        live.schnellAnweisung("home", "ausrichtung", "halten");
+        live.paketAnweisung("home", sturm);
+        if (live.paketStand("home") !== null) throw new Error("Paket nicht zurückgenommen");
+        live.schnellAnweisung("home", "ausrichtung", "halten");
+        keys.forEach(k => { if (T.wert(club.tactics, k) !== vorher[k]) throw new Error(`${k} steht nicht wieder auf der eigenen Taktik (${T.wert(club.tactics, k)} statt ${vorher[k]})`); });
+        // Ein Paket löst das andere ab
+        live.paketAnweisung("home", vorlagen.find(p => p.id === "halten"));
+        live.paketAnweisung("home", vorlagen.find(p => p.id === "ruhe"));
+        if (live.paketStand("home") !== "ruhe") throw new Error("Das zweite Paket gilt nicht");
+        if (T.wert(club.tactics, "mentality") !== vorher.mentality) throw new Error("Das erste Paket wirkt nach");
+    });
+
+    test("Gespeicherte Aufstellungen: Profis, U23 und U19 speichern und laden, Ausfall wird ersetzt, nur Spielweise, Spielstand", () => {
+        const T = TacticsEngine;
+        const { ReserveEngine: R } = require('./js/engine/reserveEngine.js');
+        const { SaveCodec } = require('./js/services/saveCodec.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Saetze" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        if (T.satzSpeichern(state, club, "   ").success) throw new Error("Ohne Namen gespeichert");
+        const formation = club.formation, elf = club.lineup.slice();
+        const taktik = JSON.stringify(T.normalisiere({ ...club.tactics }));
+        const r = T.satzSpeichern(state, club, "Pokalelf");
+        if (!r.success || r.ersetzt || T.saetze(club).length !== 1) throw new Error("Speichern klappt nicht");
+        if (!T.satzSpeichern(state, club, "pokalelf").ersetzt || T.saetze(club).length !== 1) throw new Error("Gleicher Name legt einen zweiten an");
+
+        // Umstellen, dann laden: Formation, Elf und Taktik wie gespeichert
+        club.formation = formation === "4-3-3" ? "4-4-2" : "4-3-3";
+        club.tactics = T.wendeVorlageAn(club.tactics, "konter");
+        GameState.repairLineup(club, state.players);
+        const geladen = T.satzLaden(state, club, r.satz.id);
+        if (!geladen.success || club.formation !== formation) throw new Error("Formation nicht geladen");
+        if (club.lineup.some((id, i) => id !== elf[i])) throw new Error("Elf nicht geladen");
+        if (JSON.stringify(T.normalisiere({ ...club.tactics })) !== taktik) throw new Error("Taktik nicht geladen");
+
+        // Fällt einer aus, rückt ein anderer auf seinen Platz - und er bekommt ihn zurück
+        const verletzt = state.players.find(p => p.id === elf[3]);
+        verletzt.injuredWeeks = 3;
+        const mitAusfall = T.satzLaden(state, club, r.satz.id);
+        if (!mitAusfall.fehlen.includes(verletzt.name)) throw new Error("Der Ausfall wird nicht gemeldet");
+        if (club.lineup.includes(verletzt.id) || new Set(club.lineup).size !== 11) throw new Error("Der Verletzte steht in der Elf");
+        if (!Object.values(club.lineupCover || {}).some(c => c.stamm === verletzt.id)) throw new Error("Die Vertretung ist nicht vermerkt");
+        verletzt.injuredWeeks = 0;
+
+        // Nur die Spielweise: Formation und Elf bleiben
+        club.formation = formation === "4-3-3" ? "4-4-2" : "4-3-3";
+        GameState.repairLineup(club, state.players);
+        const andereElf = club.lineup.slice();
+        club.tactics = T.wendeVorlageAn(club.tactics, "direkt");
+        T.satzLaden(state, club, r.satz.id, "taktik");
+        if (club.formation === formation || club.lineup.some((id, i) => id !== andereElf[i])) throw new Error("Nur Spielweise ändert die Elf");
+        if (JSON.stringify(T.normalisiere({ ...club.tactics })) !== taktik) throw new Error("Spielweise nicht geladen");
+        if (!T.satzLoeschen(club, r.satz.id).success || T.saetze(club).length) throw new Error("Löschen klappt nicht");
+        for (let i = 0; i < T.SAETZE_MAX; i++) T.satzSpeichern(state, club, `Satz ${i}`);
+        if (T.satzSpeichern(state, club, "Einer zu viel").success) throw new Error(`Mehr als ${T.SAETZE_MAX} gespeichert`);
+
+        // U23 und U19: Formation, Plätze und Mentalität
+        const u = R.satzSpeichern(state, "u23", "Auswärts");
+        R.setzeFormation(state, "u23", "3-5-2");
+        R.setzeMentalitaet(state, "u23", "offensiv");
+        if (!u.success || !R.satzLaden(state, "u23", u.satz.id).success) throw new Error("U23-Aufstellung nicht geladen");
+        if (R.teamPlan(state, "u23").formation !== u.satz.formation || R.teamPlan(state, "u23").mentalitaet !== u.satz.mentalitaet) throw new Error("U23 nicht wie gespeichert");
+        const j = R.satzSpeichern(state, "u19", "Pokal");
+        if (!j.success || R.saetze(state, "u19").length !== 1 || R.saetze(state, "u23").length !== 1) throw new Error("U19 und U23 teilen sich die Liste");
+
+        // Alles übersteht Speichern und Laden des Spielstands
+        T.paketSpeichern(state, { name: "Eigenes", setzt: { tempo: "fast" } });
+        const neu = GameState._zuState(SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(state)))));
+        const neuClub = neu.clubs.find(c => c.id === club.id);
+        if (T.saetze(neuClub).length !== T.SAETZE_MAX) throw new Error("Gespeicherte Aufstellungen gehen beim Speichern verloren");
+        if (!T.pakete(neu).some(p => p.name === "Eigenes")) throw new Error("Pakete gehen beim Speichern verloren");
+        if (R.saetze(neu, "u23").length !== 1 || R.saetze(neu, "u19").length !== 1) throw new Error("Unterbau-Aufstellungen gehen beim Speichern verloren");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

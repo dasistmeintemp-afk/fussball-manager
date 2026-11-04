@@ -56,6 +56,8 @@ class CareerEngine {
             leagueId: club.leagueId,
             vonSaison: state.seasonYear || 1,
             vonSpieltag: state.currentMatchday || 1,
+            // Der Kalendertag - seit dann kennen die Spieler den Trainer (taktische Wirksamkeit)
+            vonTag: state.currentDayIndex || 0,
             bisSaison: null,
             bisSpieltag: null,
             spiele: 0,

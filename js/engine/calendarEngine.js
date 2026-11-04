@@ -539,6 +539,13 @@ const CalendarEngine = {
         return tage;
     },
 
+    /** Die Startelf eines Vereins als Spieler (für das Lerntempo der Taktik) */
+    _elfVon(state, club) {
+        if (!club || !Array.isArray(club.lineup)) return [];
+        const index = new Map((state?.players || []).map(p => [String(p.id), p]));
+        return club.lineup.map(id => index.get(String(id))).filter(Boolean);
+    },
+
     /** Das Land der eigenen Liga - danach richten sich Feiertage und Pausen */
     landDerLiga(state) {
         const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
@@ -1110,6 +1117,8 @@ const CalendarEngine = {
             ? TacticsEngine
             : ((typeof window !== 'undefined' && window.TacticsEngine) ? window.TacticsEngine : (typeof require !== 'undefined' ? require('./tacticsEngine.js').TacticsEngine : null));
         if (taktikUhr && typeof taktikUhr.stelleUhr === "function") taktikUhr.stelleUhr(state);
+        // Taktische Wirksamkeit: seit wann der Trainer da ist (für den Rückhalt)
+        if (taktikUhr && typeof taktikUhr.wirksamkeitPflegen === "function") taktikUhr.wirksamkeitPflegen(state);
         const res = this._tagWeiter(state);
         // Eine Anfrage an den Vorstand: Nach der Bedenkzeit kommt die Antwort
         const vorstand = _getBoardEngineCal();
@@ -1721,7 +1730,9 @@ const CalendarEngine = {
                 const profilT = (typeof TrainerProfilEngine !== "undefined" && TrainerProfilEngine)
                     ? TrainerProfilEngine
                     : (typeof require !== "undefined" ? (() => { try { return require("./trainerProfilEngine.js").TrainerProfilEngine; } catch (e) { return null; } })() : null);
-                const wert = taktik.vertrautheitUeben(userClub, 0.08 * (profilT ? profilT.faktor(state, "taktik", 0.25) : 1), 0);
+                // Wie schnell es sitzt, hängt an der Komplexität und an den Köpfen der Elf
+                const lernen = typeof taktik.lernFaktor === "function" ? taktik.lernFaktor(userClub, this._elfVon(state, userClub)) : 1;
+                const wert = taktik.vertrautheitUeben(userClub, 0.08 * lernen * (profilT ? profilT.faktor(state, "taktik", 0.25) : 1), 0);
                 summary.messages.push(`Taktikschulung abgeschlossen. Die Mannschaft ist zu ${Math.round(wert * 100)} % mit ihrer Taktik vertraut.`);
             } else {
                 summary.messages.push("Taktikschulung abgeschlossen. Taktische Vertrautheit +2%.");
@@ -1730,7 +1741,18 @@ const CalendarEngine = {
 
         // 6. Gegneranalyse
         else if (currentDay.type === CALENDAR_DAY_TYPES.OPPONENT_ANALYSIS) {
-            summary.messages.push("Detaillierter Gegner-Scoutingbericht liegt im Postfach bereit.");
+            // Der Stab studiert den nächsten Gegner - die Mannschaft kennt
+            // seine Abläufe (taktische Wirksamkeit: Gegnerinfo)
+            const taktik = (typeof TacticsEngine !== 'undefined' && TacticsEngine)
+                ? TacticsEngine
+                : (typeof require !== 'undefined' ? require('./tacticsEngine.js').TacticsEngine : null);
+            const naechstes = this.naechstesSpiel(state);
+            if (userClub && naechstes?.gegner && taktik && typeof taktik.gegnerStudieren === 'function') {
+                taktik.gegnerStudieren(state, userClub, naechstes.gegner.id);
+                summary.messages.push(`Analysetag: Die Mannschaft hat die Abläufe von ${naechstes.gegner.name} studiert.`);
+            } else {
+                summary.messages.push("Detaillierter Gegner-Scoutingbericht liegt im Postfach bereit.");
+            }
         }
 
         // Scouting & Jugendfortschritt täglich leicht weiterlaufen lassen

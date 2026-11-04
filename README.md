@@ -280,6 +280,25 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
   - Die Bankleiste nennt die Nummer und, unter 90 %, die Kondition.
 - **Spezialrollen:** Kapitän, Elfmeterschütze, Freistoßschütze, Eckenschütze.
 - **Teamchemie & Spielerzufriedenheit:** Individuelle Zufriedenheit je Spieler (Spielzeit, Vertrag, Teamleistung) und Einfluss auf Spielgeschehen.
+- **Taktische Wirksamkeit (`TacticsEngine.wirksamkeit`):** wie in der neuesten Ausgabe des Vorbilds. Eine Karte im Taktik-Reiter fasst vier Teile zusammen, jeder mit Balken und einem Satz, was fehlt.
+  - *Verständnis:* wie vertraut Formation und Anweisungen sind.
+  - *Können:* die Eignung jedes Spielers auf seinem Platz.
+  - *Rückhalt:* ob die Spieler hinter der Taktik stehen. Er setzt sich zusammen aus Zufriedenheit, Moral, Charakter (Professionalität und Treue, ein Hitzkopf murrt eher), wie lange sie den Trainer kennen und ob sie auf ihrer Position spielen. Wer wenig mitzieht, steht mit Grund da.
+  - *Gegnerinfo:* was der Stab über den nächsten Gegner weiß. Dazu zählen der Spielanalyst, ein Analysetag im Wochenplan, der Matchplan und Anweisungen für einzelne Gegenspieler.
+  - *Komplexität:* Punkte für jede Anweisung abseits des Standards, eigene Formen mit und gegen den Ball, besondere Rollen, Spieleranweisungen und Abläufe, bei denen alle mitgehen müssen (Manndeckung, Abseits- und Pressingfalle). Die Stufen sind einfach, überschaubar, anspruchsvoll und sehr komplex. Je komplexer, desto langsamer schleifen Spiele und Taktiktraining die Taktik ein (Lerntempo 1,3 bis 0,5). Kluge Köpfe und anpassungsfähige Spieler lernen schneller.
+  - *Wirkung:* Neu auf die Stärke wirken nur der Rückhalt (beim eigenen Verein, −2,5 bis +1,5 %) und ein Analysetag (+0,5 %, gilt zehn Tage für diesen Gegner). Verständnis, Können und Matchplan wirkten schon; die Karte zeigt die Summe.
+  - Der Trainings-Reiter nennt Wirksamkeit, Komplexität und Lerntempo.
+  - Jedes Spielerprofil hat die Kachel *Im System*. Sie zeigt den Platz der eigenen Formation, auf dem er am stärksten wäre, die Eignung dort, die Rolle, den Vergleich mit dem Spieler, der jetzt dort steht, und seinen Charakter. Bei fremden Spielern rechnet die Kachel mit der Schätzung der Scouts.
+- **Anweisungspakete (`TacticsEngine.pakete`, `LiveMatch.paketAnweisung`):** mehrere Mannschaftsanweisungen auf einmal, vorher festgelegt.
+  - Drei Vorlagen: *Ergebnis halten*, *Alles nach vorn*, *Ruhe reinbringen*.
+  - Eigene Pakete legt man im Taktik-Reiter unter *Anweisungen* an: Name, Symbol und für jede Anweisung „unverändert“ oder ein Wert. Höchstens sechs Pakete mit je 14 Anweisungen; sie gelten bei jedem Verein.
+  - Im Livespiel stehen sie oben im Menü *Anweisungen*, am Handy als Zeile über *Seitenlinie* und *Sofort-Ergebnis*. Ein Tipp setzt alle Anweisungen, noch ein Tipp nimmt sie zurück.
+  - Es gilt höchstens ein Paket. Es ersetzt die Schnellanweisungen, und Zurücknehmen führt zur eigenen Taktik zurück. Was der Trainer danach selbst umgestellt hat, bleibt.
+- **Gespeicherte Aufstellungen (`TacticsEngine.satzSpeichern/satzLaden`, `ReserveEngine.satz…`):** Aufstellung und Taktik unter einem Namen sichern, etwa als Pokalelf, Rotation oder Auswärtstaktik. Das fehlte im Vorbild seit der vorigen Ausgabe.
+  - Der Knopf *Gespeichert* im Taktik-Reiter öffnet die Liste mit Namensvorschlägen. Ein gleicher Name überschreibt; je Verein sind es höchstens acht.
+  - *Laden* stellt Formation, Elf, Bank, Rollen und Taktik wieder her. *Nur Spielweise* lädt Anweisungen, Formen und Rollen zur jetzigen Elf.
+  - Wer verletzt, gesperrt oder abgegeben ist, wird genannt. Seinen Platz besetzt die Aufstellung wie bei jedem Ausfall; kommt er zurück, bekommt er ihn wieder.
+  - U23 und U19 haben dasselbe Menü neben *Automatisch aufstellen*, für Formation, festgelegte Plätze und Mentalität.
 
 ### 2b. 🧭 Positionseignung & Nebenpositionen (`PositionEngine`)
 - **Familiaritätsmodell:** Jeder Spieler hat eine Naturposition und – je nach Profil – Nebenpositionen. Wie gut er eine andere Position ausfüllt, ergibt sich aus dem Abstand der Mannschaftsteile und dem Seitenwechsel, verfeinert durch das versteckte Attribut *Anpassungsfähigkeit*.

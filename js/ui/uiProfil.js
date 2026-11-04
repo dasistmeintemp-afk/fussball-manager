@@ -490,6 +490,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 : `<div class="pf-gross">${komma(player.form ?? 7, 1)}</div><p class="pf-klein">Laufende Form. Die Noten der einzelnen Spiele stehen hier für Spieler der eigenen Liga, sobald sie gespielt haben.</p>`));
         }
 
+        // Im System: Wo er in der eigenen Taktik spielen würde
+        const imSystem = this.profilImSystemHtml(player, ctx);
+        if (imSystem) kacheln.push(kachel("Im System", "i-tactics", imSystem));
+
         // Disziplin: Karten und Sperren
         if (!isProspect) {
             // Karten zählt nur die Gesamtstatistik (alle Pflichtspiele); jede fünfte Gelbe sperrt
@@ -547,6 +551,47 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <p class="pf-klein">${lb.zeilen.length} ${lb.zeilen.length === 1 ? "Saison" : "Saisons"} bei ${vereine} ${vereine === 1 ? "Verein" : "Vereinen"}${(player.auszeichnungen || []).length ? ` · ${player.auszeichnungen.length} Auszeichnung${player.auszeichnungen.length === 1 ? "" : "en"}` : ""}.</p>`));
         }
         return `<div class="pf-kacheln">${kacheln.join("")}</div>`;
+    },
+
+    /**
+     * Kachel "Im System" (taktische Wirksamkeit): der Platz der eigenen
+     * Formation, auf dem er am stärksten wäre, seine Eignung, die Rolle, wer
+     * dort jetzt spielt und wie sehr er der Taktik folgen würde. Bei
+     * fremden Spielern mit wenig Scoutwissen mit der geschätzten Stärke.
+     */
+    profilImSystemHtml(player, ctx) {
+        const T = typeof TacticsEngine !== "undefined" ? TacticsEngine : null;
+        const state = this.app.state;
+        const eigen = (state.clubs || []).find(c => c.id === state.userClubId);
+        if (!T || typeof T.passtInsSystem !== "function" || !eigen || ctx.isProspect) return "";
+        const confidence = ctx.isUserClub ? 100 : (ctx.confidence ?? 100);
+        let basis = player;
+        if (confidence < 85 && ctx.card?.estimatedCa) {
+            const r = this.getRatingEngine?.();
+            if (r) basis = { ...player, overall: r.abilityToOverall(Math.round((ctx.card.estimatedCa.min + ctx.card.estimatedCa.max) / 2)) };
+        }
+        const slots = typeof MatchEngine !== "undefined" ? MatchEngine.getFormationSlots(eigen) : null;
+        const s = T.passtInsSystem(state, eigen, basis, slots);
+        if (!s) return "";
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const zeile = (l, w, extra = "") => `<div class="pf-zeile"><span>${esc(l)}</span><strong>${w}</strong></div>${extra}`;
+        const eignung = Math.round(s.eignung * 100);
+        let vergleich = "";
+        if (s.spieltDort) vergleich = "Spielt dort";
+        else if (s.stamm) {
+            const d = s.wert - s.stamm.wert;
+            vergleich = d >= 3 ? `Stärker als ${s.stamm.name.split(" ").pop()}` : (d <= -3 ? `Hinter ${s.stamm.name.split(" ").pop()}` : `Gleichauf mit ${s.stamm.name.split(" ").pop()}`);
+        } else vergleich = "Platz ist frei";
+        const charakter = confidence >= 35
+            ? (s.charakter >= 0.72 ? "zieht mit" : (s.charakter >= 0.52 ? "normal" : "eher schwierig"))
+            : "unbekannt";
+        const ton = s.eignung >= 0.85 ? "gut" : (s.eignung >= 0.55 ? "mittel" : "schlecht");
+        return `
+            <div class="pf-gross pf-ton-${ton}">${esc(s.pos)}${s.rolle ? ` <small>${esc(s.rolle)}</small>` : ""}</div>
+            ${zeile("Eignung dort", `${eignung} %`, this._pfBalken(eignung))}
+            ${zeile("Im Vergleich", esc(vergleich))}
+            ${zeile("Rückhalt für die Taktik", esc(charakter))}
+            <p class="pf-klein">In Ihrer Formation ${esc(eigen.formation || "")}${confidence < 85 ? ", nach der Einschätzung der Scouts" : ""}.</p>`;
     },
 
     // ------------------------------------------------------------ Leistung

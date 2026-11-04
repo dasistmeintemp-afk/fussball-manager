@@ -67,13 +67,23 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (!box || !menu) return;
         box.hidden = !liveMatch.userSide || typeof liveMatch.schnellAnweisung !== "function";
         box.open = false;
+        const paketLeiste = document.getElementById("lmPaketLeiste");
+        if (paketLeiste && !liveMatch.userSide) { paketLeiste.hidden = true; paketLeiste.innerHTML = ""; }
         if (!menu.dataset.gebunden) {
             menu.dataset.gebunden = "1";
             menu.addEventListener("click", (e) => {
+                const paket = e.target.closest("[data-paket]");
+                if (paket) { this.setzePaket(paket.dataset.paket); return; }
                 const btn = e.target.closest("[data-schnell]");
                 if (!btn) return;
                 const [gruppe, option] = btn.dataset.schnell.split(":");
                 this.setzeSchnellAnweisung(gruppe, option);
+            });
+            // Am Handy die Pakete unten in der Fußleiste, ein Tipp genügt
+            const leiste = document.getElementById("lmPaketLeiste");
+            if (leiste) leiste.addEventListener("click", (e) => {
+                const paket = e.target.closest("[data-paket]");
+                if (paket) this.setzePaket(paket.dataset.paket);
             });
             // Ein Tipp neben das Menü schließt es. Der Pfad statt contains():
             // Der angetippte Knopf ist nach dem Neuzeichnen schon ausgehängt.
@@ -90,20 +100,51 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const T = typeof TacticsEngine !== "undefined" ? TacticsEngine : null;
         if (!menu || !T || !liveMatch || !liveMatch.userSide) return;
         const stand = liveMatch.schnellStand(liveMatch.userSide);
-        menu.innerHTML = (T.SCHNELL_ANWEISUNGEN || []).map(g => `<div class="lm-schnell-gruppe">
+        // Die Pakete zuerst: mehrere Anweisungen mit einem Tipp
+        const pakete = typeof T.pakete === "function" && typeof liveMatch.paketAnweisung === "function" ? T.pakete(this.app.state) : [];
+        const paketAktiv = typeof liveMatch.paketStand === "function" ? liveMatch.paketStand(liveMatch.userSide) : null;
+        const paketKnopf = (p, klasse) => {
+            const an = p.id === paketAktiv;
+            const n = Object.keys(p.setzt).length;
+            return `<button type="button" class="${klasse}${an ? " aktiv" : ""}" data-paket="${this.escapeHtml(p.id)}" aria-pressed="${an}" title="${this.escapeHtml(T.paketText(p, "\n"))}"><svg class="ico" aria-hidden="true"><use href="#${p.icon}"/></svg><span>${this.escapeHtml(p.name)}</span><small>${n}</small></button>`;
+        };
+        const paketHtml = pakete.length ? `<div class="lm-schnell-gruppe lm-pakete">
+                <div class="lm-schnell-titel">Pakete <span>mehrere Anweisungen auf einmal</span></div>
+                <div class="lm-paket-wahl">${pakete.map(p => paketKnopf(p, "lm-schnell-btn lm-paket-btn")).join("")}</div>
+            </div>` : "";
+        const leiste = document.getElementById("lmPaketLeiste");
+        if (leiste) {
+            leiste.hidden = !pakete.length;
+            leiste.innerHTML = pakete.map(p => paketKnopf(p, "lm-paket-chip")).join("");
+        }
+        menu.innerHTML = paketHtml + (T.SCHNELL_ANWEISUNGEN || []).map(g => `<div class="lm-schnell-gruppe">
                 <div class="lm-schnell-titel">${this.escapeHtml(g.titel)}</div>
                 <div class="lm-schnell-wahl">${g.optionen.map(o => {
                     const an = stand[g.key] === o.key;
                     return `<button type="button" class="lm-schnell-btn${an ? " aktiv" : ""}" data-schnell="${g.key}:${o.key}" aria-pressed="${an}" title="${this.escapeHtml(o.hilfe)}"><svg class="ico" aria-hidden="true"><use href="#${o.icon}"/></svg><span>${this.escapeHtml(o.titel)}</span></button>`;
                 }).join("")}</div>
             </div>`).join("")
-            + `<p class="lm-schnell-hinweis">Wirkt sofort und bis zum Abpfiff. Noch einmal tippen nimmt sie zurück.</p>`;
+            + `<p class="lm-schnell-hinweis">Wirkt sofort und bis zum Abpfiff. Noch einmal tippen nimmt sie zurück. Ein Paket ersetzt die einzelnen Anweisungen; eigene Pakete legen Sie im Taktik-Reiter unter Anweisungen an.</p>`;
         const zahl = document.getElementById("lmSchnellZahl");
         if (zahl) {
-            const n = Object.keys(stand).length;
+            const n = Object.keys(stand).length + (paketAktiv ? 1 : 0);
             zahl.hidden = n === 0;
             zahl.textContent = String(n);
         }
+    },
+
+    /** Ein Anweisungspaket an- oder abschalten, ohne das Spiel anzuhalten */
+    setzePaket(id) {
+        const lm = this.app.currentLiveMatch;
+        const T = typeof TacticsEngine !== "undefined" ? TacticsEngine : null;
+        if (!lm || !lm.userSide || !T || typeof lm.paketAnweisung !== "function") return;
+        const paket = T.pakete(this.app.state).find(p => p.id === String(id));
+        if (!paket) return;
+        const r = lm.paketAnweisung(lm.userSide, paket);
+        this.showToast(r.message, r.success ? "success" : "error");
+        this.renderSchnell(lm);
+        const wahl = document.getElementById("lmMentalitaet");
+        if (wahl) wahl.value = lm.clubVon(lm.userSide)?.tactics?.mentality || "balanced";
     },
 
     /** Eine Schnellanweisung an- oder abschalten, ohne das Spiel anzuhalten */

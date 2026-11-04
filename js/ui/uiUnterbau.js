@@ -89,6 +89,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     ${Object.entries(R.MENTALITAETEN).map(([k, m]) => `<option value="${k}"${k === plan.mentalitaet ? " selected" : ""}>${esc(m.label)}</option>`).join("")}
                 </select></label>
                 <button type="button" class="btn btn-sm btn-secondary ub-auto"${plan.lineup.some(id => id != null) ? "" : " disabled"} title="Alle festgelegten Plätze lösen - der Einsatzplan stellt auf">Automatisch aufstellen</button>
+                ${typeof R.saetze === "function" ? `<button type="button" class="btn btn-sm btn-secondary ub-saetze" title="Formation, Plätze und Mentalität unter einem Namen speichern und laden"><svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg><span>Gespeichert${R.saetze(state, team).length ? ` (${R.saetze(state, team).length})` : ""}</span></button>` : ""}
             </div>
             <div class="ub-raster">
                 <div class="ub-feld" role="group" aria-label="Aufstellung der ${esc(name)}">
@@ -114,6 +115,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         el.querySelector(".ub-formation")?.addEventListener("change", (e) => this.unterbauGeaendert(R.setzeFormation(state, team, e.target.value)));
         el.querySelector(".ub-mentalitaet")?.addEventListener("change", (e) => this.unterbauGeaendert(R.setzeMentalitaet(state, team, e.target.value)));
         el.querySelector(".ub-auto")?.addEventListener("click", () => this.unterbauGeaendert(R.automatischAufstellen(state, team)));
+        el.querySelector(".ub-saetze")?.addEventListener("click", () => this.oeffneUnterbauSaetze(team));
         el.querySelectorAll("[data-slot]").forEach(b => b.addEventListener("click", () => this.zeigeUnterbauPlatzWahl(team, Number(b.dataset.slot))));
         el.querySelectorAll("[data-akte]").forEach(b => b.addEventListener("click", () => this.showPlayerDetailsModal(this.resolvePlayerId(b.dataset.akte), { abschnitt: "unterbau" })));
     },
@@ -165,6 +167,30 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 this.schliesseSpielerMenue();
                 this.unterbauGeaendert(R.setzeAufPlatz(state, team, slotIndex, b.dataset.ubWahl));
             }));
+        });
+    },
+
+    /** Gespeicherte Aufstellungen der U23 oder U19 - dasselbe Menü wie bei den Profis */
+    oeffneUnterbauSaetze(team) {
+        const R = this._unterbauEngine();
+        const state = this.app.state;
+        if (!R || typeof R.saetze !== "function" || typeof this.oeffneSatzMenue !== "function") return;
+        const nachId = new Map((state.players || []).map(p => [String(p.id), p]));
+        this.oeffneSatzMenue({
+            titel: `Gespeicherte Aufstellungen der ${R.MANNSCHAFTEN[team]}`,
+            speichernText: "Formation, festgelegte Plätze und Mentalität speichern als",
+            max: R.SAETZE_MAX,
+            nurTaktik: false,
+            saetze: () => R.saetze(state, team),
+            speichern: (name) => R.satzSpeichern(state, team, name),
+            laden: (id) => R.satzLaden(state, team, id),
+            loeschen: (id) => R.satzLoeschen(state, team, id),
+            zeile: (st) => {
+                const namen = (st.lineup || []).filter(x => x != null).map(x => nachId.get(String(x))?.name.split(" ").pop()).filter(Boolean);
+                const ment = R.MENTALITAETEN[st.mentalitaet]?.label || "";
+                return `${ment}${namen.length ? ` · ${namen.join(", ")}` : " · alle Plätze nach Einsatzplan"}`;
+            },
+            fertig: () => this.unterbauGeaendert({ success: true })
         });
     },
 

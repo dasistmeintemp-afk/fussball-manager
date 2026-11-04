@@ -538,6 +538,7 @@
                         <h2>Aufstellung & Taktik</h2>
                         <div class="pane-actions">
                             <button class="btn btn-secondary" id="btnAutoLineup" title="Wählt die Formation, die am besten zu den einsatzfähigen Spielern passt, und stellt darin die beste Elf auf"><svg class="ico" aria-hidden="true"><use href="#i-bolt"/></svg><span>Beste 11 automatisch aufstellen</span></button>
+                            <button class="btn btn-secondary" id="btnTaktikSaetze" type="button" title="Aufstellung und Taktik unter einem Namen speichern und laden"><svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg><span>Gespeichert</span><span class="satz-zahl" hidden></span></button>
                         </div>
                     </div>
 
@@ -654,6 +655,9 @@
 
                         <!-- Right: Tactic Controls & Roles -->
                         <div class="tactics-sidebar-controls">
+                            <!-- Taktische Wirksamkeit: Verständnis, Können, Rückhalt, Gegnerinfo und Komplexität (uiTaktik.renderWirksamkeit) -->
+                            <div class="tactics-card wk-karte" id="tacWirksamkeit" data-taktik-bereich="aufstellung"></div>
+
                             <div class="tactics-card" data-taktik-bereich="stil">
                                 <h3>Spielstil</h3>
                                 <div class="tactic-field">
@@ -739,6 +743,8 @@
                         <div class="vertrautheit-leiste" id="tacVertrautheit"></div>
                         <div class="anweisungs-kacheln" id="tacAnweisungen"></div>
                         <p class="taktik-hilfe" id="tacAnwHilfe">Kachel antippen, um die Anweisung zu ändern. Grün umrandet: abweichend von der Grundeinstellung.</p>
+                        <!-- Anweisungspakete für das Livespiel (uiTaktik.renderPakete) -->
+                        <div class="paket-flaeche" id="tacPakete"></div>
                     </div>
                 </section>
 
@@ -2261,7 +2267,7 @@
                 <!-- Kachelansicht: jede Position der eigenen Elf mit Kondition und Note -->
                 <div class="lm-leiste" id="lmLeiste" aria-label="Kondition und Noten der eigenen Elf"></div>
                 <!-- Am Handy: Seitenlinie und Sofort-Ergebnis unten in Daumenreichweite (uiLivespiel.ordneLivesteuerung) -->
-                <div class="lm-fussleiste" id="lmFussleiste"></div>
+                <div class="lm-fussleiste" id="lmFussleiste"><div class="lm-paket-leiste" id="lmPaketLeiste" role="group" aria-label="Anweisungspakete" hidden></div></div>
             </div>
         </div>
 

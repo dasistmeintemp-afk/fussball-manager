@@ -17288,9 +17288,14 @@ function runEngineTests() {
             } finally { TransferEngine.interesse = echtesInteresse; }
         };
         const offen = mit("offen"), abgeneigt = mit("abgeneigt"), interessiert = mit("interessiert");
+        // Forderungen werden auf zwei Stellen gerundet (11.000 €, 15.000 €):
+        // erlaubt ist also der Faktor 1,3 plus die halbe Rundungsstufe beider Beträge
         const quote = abgeneigt.demand.wage / offen.demand.wage;
-        if (quote < 1.25 || quote > 1.35) throw new Error(`Gehaltsforderung bei kein Interesse: ${quote.toFixed(3)}`);
-        if (!(interessiert.demand.wage < offen.demand.wage) || !(abgeneigt.patience < offen.patience) || abgeneigt.interesse !== "abgeneigt") throw new Error("Interesse wirkt nicht auf Forderung und Geduld");
+        const rundung = ContractEngine.schrittFuer(abgeneigt.demand.wage) / 2 + 1.3 * ContractEngine.schrittFuer(offen.demand.wage) / 2;
+        if (Math.abs(abgeneigt.demand.wage - 1.3 * offen.demand.wage) > rundung + 1) throw new Error(`Gehaltsforderung bei kein Interesse: ${quote.toFixed(3)} (${offen.demand.wage} → ${abgeneigt.demand.wage})`);
+        const rundungI = ContractEngine.schrittFuer(interessiert.demand.wage) / 2 + 0.95 * ContractEngine.schrittFuer(offen.demand.wage) / 2;
+        if (interessiert.demand.wage > offen.demand.wage || Math.abs(interessiert.demand.wage - 0.95 * offen.demand.wage) > rundungI + 1) throw new Error(`Interessiert senkt die Forderung nicht: ${offen.demand.wage} → ${interessiert.demand.wage}`);
+        if (!(interessiert.patience > offen.patience) || !(abgeneigt.patience < offen.patience) || abgeneigt.interesse !== "abgeneigt") throw new Error("Interesse wirkt nicht auf Geduld");
         if (!abgeneigt.log.some(l => /Eigentlich will er nicht/.test(l.text || ""))) throw new Error("Der Berater sagt nicht, dass er nicht will");
 
         // Verträge: jede Stufe gezählt, jeder Spieler mit Rat und Grund

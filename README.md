@@ -969,7 +969,36 @@ Ein Transfer ist kein Knopfdruck mehr, sondern ein Vorgang über mehrere Tage:
 - **Berater mit Charakter:** Fünf Profile von *Unerfahren* bis *Lautstark* bestimmen, wie hoch gefordert, wie schnell geantwortet und wie viel Geduld mitgebracht wird. Ein Spieler behält seinen Berater über die Jahre.
 - **Geduld und Frist:** Jedes zu niedrige Gebot kostet Geduld. Bei 0 % oder nach 14 Tagen platzen die Gespräche. Ein Angebot unter 60 % der Forderung beendet sie sofort.
 - **Die Gegenseite bewegt sich:** Mit jeder Runde gibt sie ein Stück nach – wer hart, aber fair verhandelt, spart Millionen.
-- **Alles im Blick:** Der Reiter *Transfermarkt* zeigt jede laufende Verhandlung mit Phase, aktueller Forderung, Restgeduld, Frist und dem letzten Satz der Gegenseite, auch Leihen und Talente anderer Akademien. Am Deadline Day steht dort statt der Frist der Hinweis, dass heute Abend Schluss ist.
+- **Alles im Blick:** Die Seite *Transferaktivität* der Rekrutierung zeigt jede laufende Verhandlung mit Phase, aktueller Forderung, Restgeduld, Frist und dem letzten Satz der Gegenseite, auch Leihen und Talente anderer Akademien. Am Deadline Day steht dort statt der Frist der Hinweis, dass heute Abend Schluss ist.
+
+### 4c. 🧭 Rekrutierung wie im Vorbild (`RekrutierungEngine`, `TransferEngine.interesse`, `uiRekrutierung.js`)
+Scouting und Transfers stehen jetzt in einem Bereich *Rekrutierung*. Er hat elf Unterseiten: Übersicht, Spielerdatenbank, Empfehlungen, Scouting, Beobachtungsliste, Kaderplaner, Transferaktivität, Verträge, Transferbörse, Leihen und Sportdirektor. Was in der zweiten Kopfzeile keinen Platz hat, steht wie im Vorbild unter *Mehr*. Die Zeile prüft bei jeder Fensterbreite neu, was hineinpasst.
+
+- **Übersicht in elf Kacheln**, jede führt in ihre Seite:
+  - *Spielerdatenbank:* Scouting-Reichweite, gescoutete Spieler, die besten Noten, laufende Aufträge.
+  - *Transferaktivität:* Fenster offen oder zu und wie lange noch; Zugänge, Vorschläge des Sportdirektors, Abgänge, Angebote, Verhandlungen; Ausgaben und Einnahmen der Saison.
+  - *Budgets:* Transfer, Gehalt, Scouting.
+  - *Verträge:* Restlaufzeiten in vier Ringen (0–6 Monate, 6–12 Monate, 1–2 Jahre, länger), darunter jeder, dessen Vertrag in zwölf Monaten endet.
+  - *Kaderplaner:* die Baustellen aus der Kaderplanung und die Elf mit Rückennummern auf einem kleinen Feld.
+  - *Personal, Vorgaben* (Kader- und Finanzziele des Vorstands), *Klauseln, Beobachtungsliste* und die *Transferbörse* für Abgabe und Suche.
+- **Wechselinteresse (`TransferEngine.interesse`):** Bisher unterschrieb jeder, wenn das Geld stimmte, auch ein Weltstar beim Drittligisten. Jetzt hat jeder fremde Spieler eine Haltung zum eigenen Verein: *interessiert, würde wechseln, zögert, kein Interesse* oder *kommt nicht in Frage*.
+  - **Was zählt:** Spielklasse (12 Punkte je Klasse), Ansehen (Ehrgeizige nehmen einen Abstieg schwerer) und ob er klar besser ist als der eigene Kader. Dazu kommen seine Lage: unzufrieden, spielt kaum, auf der Transferliste, Vertrag läuft aus, Alter, Heimat, Treue, gerade erst gewechselt. Eine feste Eigenart je Spieler und Verein kommt hinzu, ohne Zufallszahl.
+  - **Kommt nicht in Frage** ist, wer woanders unterschrieben hat, keine Arbeitserlaubnis bekäme oder zwei Klassen absteigen müsste, ohne weg zu wollen.
+  - **Wirkung in der Verhandlung:** Wer nicht in Frage kommt, verhandelt nicht. Kein Interesse heißt 30 % mehr Gehaltsforderung und weniger Geduld, zögern 12 % mehr. Interessiert heißt 5 % weniger und mehr Geduld. Der Berater sagt es gleich zu Beginn.
+  - **Wo man es sieht:** als eigene Spalte in Spielerdatenbank und Empfehlungen, in der Akte unter *Info* mit Gründen und bei der *Anfrage beim Verein*.
+  - **Gemessen bei Spielbeginn:** Für den Spitzenklub (Ruf 92) sind von 14.000 erreichbaren Spielern rund 10.400 interessiert und 11 ohne Interesse. Für einen Drittligisten sind von 8.660 Spielern 1.600 interessiert, 2.290 ohne Interesse und 122 kommen nicht in Frage.
+- **Spielerdatenbank:** neue Filter *Interesse* (auch „ohne kommt nicht in Frage“) und *Nur bezahlbare* (Ablöse im Transferbudget, Gehaltsforderung im freien Gehaltsrahmen), dazu die Sortierung nach Interesse.
+- **Empfehlungen:** alle gescouteten Spieler nach der Note des Scouts, filterbar nach Note, Mannschaftsteil und Interesse.
+- **Transferaktivität:** Angebote für eigene Spieler und laufende Verhandlungen stehen jetzt hier. Darunter alle Zu- und Abgänge der Saison mit Ablöse, Leihen eingeschlossen. Der Spielstand merkt sich die letzten 120 eigenen Wechsel.
+- **Verträge:** jeder Spieler mit Gehalt, Anteil am Gehaltsbudget, Marktwert, Rolle, Vertragsende und einem Rat mit Grund.
+  - *Vertrag anbieten:* Leistungsträger, wer gebraucht wird, Talente.
+  - *Entscheidung vertagen:* der Vertrag läuft noch lange, oder er hat gerade erst unterschrieben.
+  - *Nicht verlängern:* überzählig, zu alt, nicht gut genug, oder er hat woanders unterschrieben.
+- **Transferbörse:**
+  - *Unsere Gesuche:* Positionen auf einem kleinen Feld wählen, dazu Spielzeit (Star bis Kaderbreite oder Talent), Kauf oder Leihe und Alter. Höchstens fünf Gesuche gleichzeitig, jedes läuft 30 Tage. Die Vereine melden sich nach einem bis sechs Tagen mit Spielern, die sie abgeben würden: auf der Transferliste, mit auslaufendem Vertrag oder laut ihrer Kaderplanung überzählig. Nur wer zu uns wollen könnte, wird gemeldet. Der Sportdirektor hebt die zwei passendsten hervor; *Verhandeln* oder *Leihen* führt direkt weiter.
+  - *Gesuche anderer Vereine:* Die dringendste Baustelle jedes Vereins von einer Klasse über bis zwei Klassen unter uns, als Kauf oder Leihe (wer knapp bei Kasse ist, leiht). Passt ein eigener Spieler, bietet man ihn an. Der Verein antwortet sofort mit einem Angebot, das unter Transferaktivität oder Leihen erscheint, oder mit einer Absage und Grund. Eine Liste hält fest, wen man wem angeboten hat und was daraus wurde.
+- **Kleinigkeiten:** Die Legende im Karriere-Assistenten nannte bei Platz 16 nichts, weil sie ein Namensfeld las, das die Relegationsformate nicht haben. Jetzt steht dort etwa „Relegation gegen den 3. der 2. Liga“, und der Abstieg nennt seine Plätze. In der Akte stand „Im Verein seit Saison 1003“, jetzt die Saison.
+- **Test** *Rekrutierung*: Interesse fest und ohne Zufall; ein Drittligaspieler will zum Spitzenklub, der Star der ersten Liga nicht zum Drittligisten (Verhandlung abgelehnt); Gehaltsforderung und Geduld nach Interesse; Verträge mit Stufen, Rat und Reihenfolge; ziehbare Ausstiegsklausel; Gesuche mit Antworten erst nach Tagen, passend, mit Empfehlung und Höchstzahl; fremde Gesuche, Anbieten mit Absage und Angebot; eigene Zu- und Abgänge mit Ablöse; jede Relegation mit Namen.
 
 ### 5. 🏋️ Training & Jugendakademie
 - **Trainingsplan über Wochen, Monat oder Saison (`CoachingStaffEngine.setManagerVeto`, `planTage`, `PLAN_DAUERN`):** Ein häufiger Wunsch an das Vorbild war, den Plan für einen Monat oder die ganze Saison einmal festzulegen. Bisher galt jede Vorgabe des Managers genau sieben Tage, dann plante wieder der Stab.
@@ -1591,7 +1620,10 @@ untitled/
 ├── icon-512.png                # App-Symbol in hoher Auflösung (auch maskierbar)
 ├── service-worker.js           # Offline-Caching & PWA Service Worker
 ├── css/
-│   └── style.css               # Modernes Dark-Mode UI Theme
+│   ├── style.css               # Modernes Dark-Mode UI Theme
+│   ├── design.css              # Designsystem: Karten, Tabellen, Kopfmenü, Seiten
+│   ├── fonts.css               # Mitgelieferte Schriften (Inter, Barlow Condensed)
+│   └── glanz.css               # Glanz-Ebene: Verläufe, Glas, Sportschrift
 ├── js/
 │   ├── app.js                  # App-Initialisierung & Controller
 │   ├── core/
@@ -1649,6 +1681,7 @@ untitled/
 │   │   ├── ehemaligeEngine.js  # Ehemalige Spieler im Trainerstab, Abschiedsspiel für Legenden
 │   │   ├── visionEngine.js     # Vereinsvision: Fernziel mit Frist, Jahresziele, Bilanz
 │   │   ├── kaderplanungEngine.js # Kader über drei Spielzeiten, Baustellen als Suchauftrag
+│   │   ├── rekrutierungEngine.js # Eigene Wechsel, Vertragsrat, Klauseln, Transferbörse (Gesuche und Angebote)
 │   │   ├── kaderregelEngine.js # Meldelisten: Europapokal (25, acht ausgebildet, Liste B), Premier Division, Primera División (Nicht-EU)
 │   │   ├── koeffizientEngine.js # Fünfjahreswertung der Länder und Startplätze im Europapokal
 │   │   ├── turnierEngine.js    # EM und WM im Sommer: Gruppen, K.-o.-Runden, Titel

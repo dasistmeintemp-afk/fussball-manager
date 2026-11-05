@@ -1801,7 +1801,7 @@ class UIManager {
         this.playSound("click");
         this.zeigeAngebotSeite(neu[0].id);
         if (neu.length > 1) {
-            this.showToast(`Dazu ${neu.length - 1} weitere${neu.length === 2 ? "s" : ""} Angebot${neu.length === 2 ? "" : "e"} - unten auf der Seite und im Transfermarkt ganz oben.`, "info", 6000);
+            this.showToast(`Dazu ${neu.length - 1} weitere${neu.length === 2 ? "s" : ""} Angebot${neu.length === 2 ? "" : "e"} - unten auf der Seite und unter Rekrutierung, Transferaktivität.`, "info", 6000);
         }
         return true;
     }
@@ -3059,7 +3059,7 @@ class UIManager {
         }
         if (anlass.art === "angebot") {
             this.switchTab("transfers");
-            document.getElementById("btnSubTransfersMarket")?.click();
+            document.getElementById("btnSubTransfersAktivitaet")?.click();
             const karten = document.getElementById("aiOffersContainer");
             if (karten && typeof this.hebeHervor === "function") this.hebeHervor(karten);
             return;
@@ -3656,36 +3656,31 @@ class UIManager {
             };
         }
 
-        // Transfer, Scouting und Leihen als Unterreiter
-        const transferAnsicht = (knopf, ansicht) => {
-            ["btnSubTransfersMarket", "btnSubTransfersScouting", "btnSubTransfersLoans", "btnSubTransfersSD", "btnSubTransfersListe"].forEach(id =>
-                document.getElementById(id)?.classList.toggle("active", id === knopf));
-            ["viewTransferMarket", "viewScoutingCenter", "viewLoans", "viewSportdirektor", "viewBeobachtung"].forEach(id =>
-                id === ansicht ? DOM.show(id) : DOM.hide(id));
+        // Die Ansichten der Rekrutierung: je Knopf eine Ansicht und was sie zeichnet
+        const ANSICHTEN = {
+            btnSubTransfersUebersicht: ["viewRekrutierung", () => this.renderTransfers()],
+            btnSubTransfersMarket: ["viewTransferMarket", null],
+            btnSubTransfersEmpfehlungen: ["viewEmpfehlungen", () => this.renderTransfers()],
+            btnSubTransfersScouting: ["viewScoutingCenter", () => this.renderTransfers()],
+            btnSubTransfersListe: ["viewBeobachtung", () => this.renderBeobachtungsliste()],
+            btnSubTransfersAktivitaet: ["viewAktivitaet", () => this.renderTransfers()],
+            btnSubTransfersVertraege: ["viewVertraege", () => this.renderVertraege?.()],
+            btnSubTransfersBoerse: ["viewBoerse", () => this.renderTransferboerse?.()],
+            btnSubTransfersLoans: ["viewLoans", () => this.renderLeihen()],
+            btnSubTransfersSD: ["viewSportdirektor", () => this.renderSportdirektor()]
         };
-        document.getElementById("btnSubTransfersMarket")?.addEventListener("click", () => {
-            transferAnsicht("btnSubTransfersMarket", "viewTransferMarket");
+        const transferAnsicht = (knopf) => {
+            Object.keys(ANSICHTEN).forEach(id => document.getElementById(id)?.classList.toggle("active", id === knopf));
+            Object.values(ANSICHTEN).forEach(([ansicht]) => (ansicht === ANSICHTEN[knopf][0] ? DOM.show(ansicht) : DOM.hide(ansicht)));
+        };
+        Object.entries(ANSICHTEN).forEach(([knopf, [, zeichne]]) => {
+            document.getElementById(knopf)?.addEventListener("click", () => {
+                transferAnsicht(knopf);
+                if (zeichne) zeichne();
+            });
         });
-
-        document.getElementById("btnSubTransfersScouting")?.addEventListener("click", () => {
-            transferAnsicht("btnSubTransfersScouting", "viewScoutingCenter");
-            this.renderTransfers();
-        });
-
-        document.getElementById("btnSubTransfersLoans")?.addEventListener("click", () => {
-            transferAnsicht("btnSubTransfersLoans", "viewLoans");
-            this.renderLeihen();
-        });
-
-        document.getElementById("btnSubTransfersSD")?.addEventListener("click", () => {
-            transferAnsicht("btnSubTransfersSD", "viewSportdirektor");
-            this.renderSportdirektor();
-        });
-
-        document.getElementById("btnSubTransfersListe")?.addEventListener("click", () => {
-            transferAnsicht("btnSubTransfersListe", "viewBeobachtung");
-            this.renderBeobachtungsliste();
-        });
+        // Der Kaderplaner liegt im Kader - wie im Vorbild führt die Rekrutierung dorthin
+        document.getElementById("btnSubTransfersPlaner")?.addEventListener("click", () => this.zeigeKaderplaner?.());
 
         // Scout Auftrag absenden
         document.getElementById("btnStartScoutAssignment")?.addEventListener("click", () => {

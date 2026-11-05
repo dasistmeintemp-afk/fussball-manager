@@ -18,7 +18,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
      * direkt nachbessern.
      */
     /**
-     * Springt zu einer laufenden Verhandlung: Transfermarkt öffnen, die Karte
+     * Springt zu einer laufenden Verhandlung: Transferaktivität öffnen, die Karte
      * in die Mitte holen und kurz hervorheben. Sind wir am Zug, steht der
      * Cursor gleich im ersten Feld.
      *
@@ -27,7 +27,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
      */
     zeigeVerhandlung(negId) {
         this.switchTab("transfers");
-        document.getElementById("btnSubTransfersMarket")?.click();
+        document.getElementById("btnSubTransfersAktivitaet")?.click();
         const karte = Array.from(document.querySelectorAll("[data-neg-card]"))
             .find(el => el.dataset.negCard === String(negId));
         if (!karte) return false;
@@ -871,7 +871,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const res = te.vereinSuchen(state, player.id);
             const n = res.angebote?.length || 0;
             fertig(res, n
-                ? `${n} Angebot${n === 1 ? "" : "e"} für ${player.name}: ${res.angebote.map(o => o.fromClubName).join(", ")} - im Postfach und im Transfermarkt.`
+                ? `${n} Angebot${n === 1 ? "" : "e"} für ${player.name}: ${res.angebote.map(o => o.fromClubName).join(", ")} - im Postfach und unter Rekrutierung, Transferaktivität.`
                 : `Für ${player.name} beißt im Moment keiner an. Der Sportdirektor hat geschrieben.`);
         });
         klick("btnPdAufloesen", () => {
@@ -1196,16 +1196,43 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             }
             return noten.get(p.id);
         };
+        // Wechselinteresse (TransferEngine.interesse): will er überhaupt zu uns?
+        const iKontext = transferEngine && typeof transferEngine.interesseKontext === "function" ? transferEngine.interesseKontext(state) : null;
+        const interessen = new Map();
+        const interesse = (p) => {
+            if (!iKontext) return null;
+            if (!interessen.has(p.id)) interessen.set(p.id, transferEngine.interesse(state, p, userClub.id, iKontext));
+            return interessen.get(p.id);
+        };
+        const INTERESSE_RANG = { interessiert: 4, offen: 3, zoegert: 2, abgeneigt: 1, ausgeschlossen: 0 };
+        const interesseVal = feldWert("tfInteresseFilter");
+        if (interesseVal && iKontext) {
+            const passt = {
+                moeglich: (i) => i.stufe !== "ausgeschlossen",
+                offen: (i) => i.stufe === "offen" || i.stufe === "interessiert"
+            }[interesseVal] || ((i) => i.stufe === interesseVal);
+            marketPlayers = marketPlayers.filter(p => { const i = interesse(p); return !i || passt(i); });
+        }
         const nurGescoutet = !!document.getElementById("tfNurGescoutet")?.checked;
         if (nurGescoutet && scouting && typeof scouting.istGescoutet === "function") {
             marketPlayers = marketPlayers.filter(p => scouting.istGescoutet(p));
         }
         if (potVal > 0) marketPlayers = marketPlayers.filter(p => sichtwerte(p).potSterne >= potVal);
+        // Bezahlbar: Ablöse im Transferbudget, Gehaltsforderung im freien Gehaltsrahmen
+        const nurBezahlbar = !!document.getElementById("tfNurBezahlbar")?.checked;
+        if (nurBezahlbar) {
+            const fe = typeof FinanceEngine !== "undefined" ? FinanceEngine : (typeof window !== "undefined" ? window.FinanceEngine : null);
+            const gehalt = fe && typeof fe.gehaltNachRolle === "function" ? fe.gehaltNachRolle(state, userClub) : { summe: 0, budget: userClub.wageBudget || 0 };
+            const frei = Math.max(0, (gehalt.budget || 0) - (gehalt.summe || 0));
+            const budget = Math.max(0, userClub.transferBudget || 0);
+            marketPlayers = marketPlayers.filter(p => (!p.clubId || sichtwerte(p).wertMin <= budget)
+                && (typeof transferEngine?.gehaltsSpanne !== "function" || transferEngine.gehaltsSpanne(p).min <= frei));
+        }
         if (wertVal) {
             const grenzeWert = wertVal === "budget" ? Math.max(0, userClub.transferBudget || 0) : Number(wertVal);
             marketPlayers = marketPlayers.filter(p => sichtwerte(p).wertMin <= grenzeWert);
         }
-        const mehrZahl = [alterVal, potVal > 0, wertVal, vertragVal, landVal, sortVal !== "staerke"].filter(Boolean).length;
+        const mehrZahl = [alterVal, potVal > 0, wertVal, vertragVal, landVal, interesseVal, sortVal !== "staerke"].filter(Boolean).length;
         const mehrEl = document.getElementById("tfMehrZahl");
         if (mehrEl) mehrEl.textContent = mehrZahl ? `(${mehrZahl} aktiv)` : "";
 
@@ -1234,7 +1261,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             potenzial: (a, b) => sichtwerte(b).potSterne - sichtwerte(a).potSterne || staerke(b) - staerke(a),
             alter: (a, b) => (a.age || 0) - (b.age || 0) || staerke(b) - staerke(a),
             wert: (a, b) => sichtwerte(b).wertMin - sichtwerte(a).wertMin,
-            empfehlung: (a, b) => (note(b)?.punkte ?? -9) - (note(a)?.punkte ?? -9) || staerke(b) - staerke(a)
+            empfehlung: (a, b) => (note(b)?.punkte ?? -9) - (note(a)?.punkte ?? -9) || staerke(b) - staerke(a),
+            interesse: (a, b) => (interesse(b)?.punkte ?? -99) - (interesse(a)?.punkte ?? -99) || staerke(b) - staerke(a)
         };
         marketPlayers.sort(sortierer[sortVal] || sortierer.staerke);
 
@@ -1242,7 +1270,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         // Treffer seitenweise - erst 30, auf Wunsch mehr. Vorher standen
         // 120 Zeilen untereinander, über zehntausend Pixel Seite.
         const TREFFER_PRO_SEITE = 30;
-        const filterKey = [searchVal, posVal, minStars, alterVal, potVal, wertVal, vertragVal, landVal, sortVal, nurGescoutet].join("|");
+        const filterKey = [searchVal, posVal, minStars, alterVal, potVal, wertVal, vertragVal, landVal, sortVal, nurGescoutet, interesseVal, nurBezahlbar].join("|");
         if (this._tfFilterKey !== filterKey) {
             this._tfFilterKey = filterKey;
             this._tfLimit = TREFFER_PRO_SEITE;
@@ -1255,7 +1283,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const negEngine = typeof NegotiationEngine !== "undefined" ? NegotiationEngine : (typeof window !== "undefined" ? window.NegotiationEngine : null);
         const verhandelt = new Set((negEngine && typeof negEngine.getOpenNegotiations === "function" ? negEngine.getOpenNegotiations(state) : [])
             .filter(n => n.clubId === userClub.id).map(n => String(n.playerId)));
-        const kontext = { schaetzKontext: sichtKontext, sichtwerte, note, verhandelt, vereinVon };
+        const kontext = { schaetzKontext: sichtKontext, sichtwerte, note, verhandelt, vereinVon, interesse };
 
         const trefferEl = document.getElementById("tfTreffer");
         if (trefferEl) trefferEl.innerHTML = `<strong>${gesamtTreffer.toLocaleString("de-DE")}</strong> Spieler gefunden`;
@@ -1265,7 +1293,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             // Sterne messen sich am eigenen Kader. Bei einem Spitzenverein
             // gibt es oberhalb von vier Sternen schlicht niemanden mehr -
             // das soll dastehen und nicht als leere Tabelle wirken.
-            tbody.innerHTML = `<tr><td colspan="14" class="text-center text-muted" style="padding:22px;">
+            tbody.innerHTML = `<tr><td colspan="15" class="text-center text-muted" style="padding:22px;">
                 ${nurGescoutet ? "Noch kein gescouteter Spieler passt zu diesen Filtern. Schicken Sie einen Scout los oder nehmen Sie den Schalter heraus." : "Kein Spieler entspricht diesen Kriterien. Gemessen wird an Ihrem eigenen Kader – je stärker Ihre Mannschaft, desto seltener sind echte Verstärkungen."}
             </td></tr>`;
         } else if (tbody) {
@@ -1274,7 +1302,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             // Wie viele es wirklich gibt, gehört unter die Liste - und ein
             // Knopf, der die nächsten dreißig holt
             if (gesamtTreffer > marketPlayers.length) {
-                tbody.innerHTML += `<tr class="tm-mehr-zeile"><td colspan="14" class="text-center text-muted" style="padding:14px;">
+                tbody.innerHTML += `<tr class="tm-mehr-zeile"><td colspan="15" class="text-center text-muted" style="padding:14px;">
                     <div>Die ${marketPlayers.length} stärksten von ${gesamtTreffer.toLocaleString("de-DE")} passenden Spielern.</div>
                     <button class="btn btn-sm btn-secondary" id="btnTfMehr" style="margin-top:8px;">Weitere ${Math.min(TREFFER_PRO_SEITE, gesamtTreffer - marketPlayers.length)} anzeigen</button>
                 </td></tr>`;
@@ -1294,14 +1322,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 });
             });
 
-            document.querySelectorAll(".btn-bid-player").forEach(btn => {
+            tbody.querySelectorAll(".btn-bid-player").forEach(btn => {
                 btn.addEventListener("click", () => {
                     const pId = this.resolvePlayerId(btn.dataset.playerId);
                     this.showTransferOfferModal(pId);
                 });
             });
 
-            document.querySelectorAll(".btn-scout-direct").forEach(btn => {
+            tbody.querySelectorAll(".btn-scout-direct").forEach(btn => {
                 btn.addEventListener("click", () => {
                     const pId = this.resolvePlayerId(btn.dataset.playerId);
                     const scoutingEngine = (typeof ScoutingEngine !== 'undefined' && ScoutingEngine)
@@ -1321,10 +1349,18 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ? mitNote(sichtbarerMarkt.filter(p => scouting.istGescoutet(p))).slice(0, 5) : [];
         const ersterEindruck = empfehlungen.length === 0;
         if (ersterEindruck) empfehlungen = mitNote(marketPlayers).slice(0, 3);
-        this.renderMarktKacheln(state, userClub, Object.assign({}, kontext, {
+        const gescoutet = scouting && typeof scouting.istGescoutet === "function" ? sichtbarerMarkt.filter(p => scouting.istGescoutet(p)) : [];
+        const rkKontext = Object.assign({}, kontext, {
             empfehlungen, empfehlungenErsterEindruck: ersterEindruck && empfehlungen.length > 0,
+            gescoutet, sichtbarerMarkt, staerke, interesse,
             unbekannt, ausserReichweite, angebote: pendingOffers.length
-        }));
+        });
+        this.renderRekrutierungUebersicht?.(state, userClub, rkKontext);
+        this.renderEmpfehlungen?.(state, userClub, rkKontext);
+        this.renderAktivitaet?.(state, userClub, rkKontext);
+        const sichtbar = (id) => { const el = document.getElementById(id); return !!el && el.style.display !== "none"; };
+        if (sichtbar("viewVertraege")) this.renderVertraege?.();
+        if (sichtbar("viewBoerse")) this.renderTransferboerse?.();
 
         // 3. Scouting Aufträge & Berichte
         const assignList = document.getElementById("scoutAssignmentsList");

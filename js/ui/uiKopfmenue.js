@@ -2,7 +2,7 @@
  * Menü oben wie im Vorbild.
  *
  * Am breiten Bildschirm stehen die Bereiche in der Kopfleiste: Start, Kader,
- * Spieltag, Transfers, Verein. Jeder Bereich klappt beim Zeigen (oder über
+ * Spieltag, Rekrutierung, Verein. Jeder Bereich klappt beim Zeigen (oder über
  * den kleinen Pfeil) ein Menü mit seinen Seiten und deren Unterreitern auf.
  * Darunter zeigt eine zweite Zeile die Seiten des gewählten Bereichs, rechts
  * daneben Tabellenplatz, Form, Spieltag, Kontostand und Vorstand. Die
@@ -45,12 +45,18 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             { tab: "stats", titel: "Statistiken", icon: "i-chart" },
             { tab: "preseason", titel: "Vorbereitung", icon: "i-sun", zahl: "navPreseasonBadge", nurWenn: "navPreseason" }
         ] },
-        { id: "transfers", titel: "Transfers", seiten: [
-            { tab: "transfers", knopf: "btnSubTransfersMarket", titel: "Transfermarkt", icon: "i-transfer", zahl: "navOffersBadge" },
+        { id: "transfers", titel: "Rekrutierung", seiten: [
+            { tab: "transfers", knopf: "btnSubTransfersUebersicht", titel: "Übersicht", icon: "i-grid" },
+            { tab: "transfers", knopf: "btnSubTransfersMarket", titel: "Spielerdatenbank", icon: "i-users" },
+            { tab: "transfers", knopf: "btnSubTransfersEmpfehlungen", titel: "Empfehlungen", icon: "i-target" },
             { tab: "transfers", knopf: "btnSubTransfersScouting", titel: "Scouting", icon: "i-search" },
+            { tab: "transfers", knopf: "btnSubTransfersListe", titel: "Beobachtungsliste", icon: "i-star" },
+            { tab: "transfers", knopf: "btnSubTransfersPlaner", titel: "Kaderplaner", icon: "i-tactics" },
+            { tab: "transfers", knopf: "btnSubTransfersAktivitaet", titel: "Transferaktivität", icon: "i-transfer", zahl: "navOffersBadge" },
+            { tab: "transfers", knopf: "btnSubTransfersVertraege", titel: "Verträge", icon: "i-doc" },
+            { tab: "transfers", knopf: "btnSubTransfersBoerse", titel: "Transferbörse", icon: "i-briefcase" },
             { tab: "transfers", knopf: "btnSubTransfersLoans", titel: "Leihen", icon: "i-transfer" },
-            { tab: "transfers", knopf: "btnSubTransfersSD", titel: "Sportdirektor", icon: "i-target" },
-            { tab: "transfers", knopf: "btnSubTransfersListe", titel: "Beobachtungsliste", icon: "i-star" }
+            { tab: "transfers", knopf: "btnSubTransfersSD", titel: "Sportdirektor", icon: "i-target" }
         ] },
         { id: "verein", titel: "Verein", seiten: [
             { tab: "club", titel: "Verein", icon: "i-shield" },
@@ -214,7 +220,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             this.setzeMenueArt(this.menueArt() === "schmal" ? "leiste" : "schmal");
             if (typeof this.playSound === "function") this.playSound("click");
         });
-        // Die Ansichten im Transfermarkt wechseln ohne neuen Reiter
+        // Die Ansichten der Rekrutierung wechseln ohne neuen Reiter
         document.querySelector("#pane-transfers .view-switch-buttons")?.addEventListener("click", () => this.aktualisiereKopfmenue());
 
         document.addEventListener("click", (e) => {

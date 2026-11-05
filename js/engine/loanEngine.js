@@ -226,6 +226,7 @@ class LoanEngine {
             }
         }
         this._wechsle(state, player, eigener, leihverein);
+        this._resolve("RekrutierungEngine", "./rekrutierungEngine.js")?.merke?.(state, player, eigener, leihverein, gebuehr, true);
         player.reserve = undefined;
         player.leihListe = undefined;
         const winter = angebot.dauer === "winter";
@@ -389,24 +390,34 @@ class LoanEngine {
         for (const i of this.interessenten(state, player.id, 12)) {
             if (neu.length >= anzahl || offen.length + neu.length >= this.MAX_ANGEBOTE) break;
             if (schonDa.has(i.clubId) || (l.abgelehnt || []).includes(i.clubId)) continue;
-            const b = this._angebotVon(state, player, i);
-            if (!b) continue;
-            const a = Object.assign({
-                id: `leih_${saison}_${heute}_${player.id}_${i.clubId}`,
-                playerId: player.id, playerName: player.name, playerPos: player.pos,
-                clubId: i.clubId, clubName: i.clubName, stufe: i.stufe, rolle: i.rolle,
-                dauer: l.dauer, rueckholrecht: l.rueckholrecht,
-                eingang: heute, frist: heute + this.ANGEBOTS_FRIST, saison, status: "offen"
-            }, b);
-            liste.unshift(a);
-            neu.push(a);
-            this._post(state, i.clubName, `📨 Leihangebot für ${player.name}`,
-                `${i.clubName} (Liga ${i.stufe}) möchte ${player.name} ${this.DAUER[l.dauer]} ausleihen - als ${i.rolle}, mit ${Math.round(a.lohnAnteil * 100)} % des Gehalts`
-                + (a.gebuehr ? ` und ${this._geld(a.gebuehr)} Leihgebühr` : "")
-                + (a.kaufoption ? `, dazu eine Kaufoption für ${this._geld(a.kaufoption)}` : "")
-                + `. Das Angebot gilt ${this.ANGEBOTS_FRIST} Tage - annehmen, mehr fordern oder ablehnen im Transfermarkt unter Leihen.`);
+            const a = this._legeLeihangebotAn(state, player, i);
+            if (a) neu.push(a);
         }
         return neu;
+    }
+
+    /** Ein Leihangebot des Vereins i anlegen und melden - oder null, wenn er so nicht will */
+    static _legeLeihangebotAn(state, player, i) {
+        const l = player?.leihListe;
+        if (!l || !i) return null;
+        const b = this._angebotVon(state, player, i);
+        if (!b) return null;
+        const saison = state.seasonYear || 1;
+        const heute = state.currentDayIndex || 0;
+        const a = Object.assign({
+            id: `leih_${saison}_${heute}_${player.id}_${i.clubId}`,
+            playerId: player.id, playerName: player.name, playerPos: player.pos,
+            clubId: i.clubId, clubName: i.clubName, stufe: i.stufe, rolle: i.rolle,
+            dauer: l.dauer, rueckholrecht: l.rueckholrecht,
+            eingang: heute, frist: heute + this.ANGEBOTS_FRIST, saison, status: "offen"
+        }, b);
+        this._angebote(state).unshift(a);
+        this._post(state, i.clubName, `📨 Leihangebot für ${player.name}`,
+            `${i.clubName} (Liga ${i.stufe}) möchte ${player.name} ${this.DAUER[l.dauer]} ausleihen - als ${i.rolle}, mit ${Math.round(a.lohnAnteil * 100)} % des Gehalts`
+            + (a.gebuehr ? ` und ${this._geld(a.gebuehr)} Leihgebühr` : "")
+            + (a.kaufoption ? `, dazu eine Kaufoption für ${this._geld(a.kaufoption)}` : "")
+            + `. Das Angebot gilt ${this.ANGEBOTS_FRIST} Tage - annehmen, mehr fordern oder ablehnen unter Rekrutierung, Leihen.`);
+        return a;
     }
 
     /**
@@ -706,6 +717,7 @@ class LoanEngine {
             }
         }
         this._wechsle(state, player, stammverein, eigener);
+        this._resolve("RekrutierungEngine", "./rekrutierungEngine.js")?.merke?.(state, player, stammverein, eigener, gebuehr, true);
         player.reserve = undefined;
         player.leihe = {
             stammvereinId: stammverein.id,

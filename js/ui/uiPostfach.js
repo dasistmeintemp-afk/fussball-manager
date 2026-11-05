@@ -283,7 +283,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 return typeof this.entwicklungsBerichtHtml === "function" ? this.entwicklungsBerichtHtml(msg.entwicklung) : "";
             case "kandidaten":
                 return typeof this.sdVorschlagHtml === "function" ? `<div class="sd-liste">${msg.vorschlaege.map(v => this.sdVorschlagHtml(v)).join("")}</div>
-                    <p class="text-muted" style="font-size:12px;">Wonach er sucht, können Sie ihm im Transfermarkt unter Sportdirektor sagen.</p>` : "";
+                    <p class="text-muted" style="font-size:12px;">Wonach er sucht, können Sie ihm unter Rekrutierung, Sportdirektor sagen.</p>` : "";
             case "gegner": {
                 const g = news.vereinZu(state, msg);
                 if (!g) return "";

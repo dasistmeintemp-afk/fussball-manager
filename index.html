@@ -195,7 +195,7 @@
                     </button>
                     <button class="nav-item" data-tab="transfers">
                         <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-transfer"/></svg></span>
-                        <span class="nav-text">Transfermarkt</span>
+                        <span class="nav-text">Rekrutierung</span>
                         <span class="badge" id="navOffersBadge" style="display:none;">0</span>
                     </button>
                     <button class="nav-item" data-tab="preseason" id="navPreseason" style="display:none;">
@@ -805,32 +805,29 @@
                 <!-- Tab: Transfers -->
                 <section class="tab-pane" id="pane-transfers">
                     <div class="pane-header">
-                        <h2>Transfermarkt & Scouting</h2>
+                        <h2>Rekrutierung</h2>
                         <div class="view-switch-buttons">
-                            <button class="btn btn-sm active" id="btnSubTransfersMarket">Transfermarkt</button>
-                            <button class="btn btn-sm" id="btnSubTransfersScouting"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg><span>Scouting-Zentrale</span></button>
+                            <button class="btn btn-sm active" id="btnSubTransfersUebersicht"><svg class="ico" aria-hidden="true"><use href="#i-grid"/></svg><span>Übersicht</span></button>
+                            <button class="btn btn-sm" id="btnSubTransfersMarket"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg><span>Spielerdatenbank</span></button>
+                            <button class="btn btn-sm" id="btnSubTransfersEmpfehlungen"><svg class="ico" aria-hidden="true"><use href="#i-target"/></svg><span>Empfehlungen</span></button>
+                            <button class="btn btn-sm" id="btnSubTransfersScouting"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg><span>Scouting</span></button>
+                            <button class="btn btn-sm" id="btnSubTransfersListe"><svg class="ico" aria-hidden="true"><use href="#i-star"/></svg><span>Beobachtungsliste</span></button>
+                            <button class="btn btn-sm" id="btnSubTransfersPlaner"><svg class="ico" aria-hidden="true"><use href="#i-tactics"/></svg><span>Kaderplaner</span></button>
+                            <button class="btn btn-sm" id="btnSubTransfersAktivitaet"><svg class="ico" aria-hidden="true"><use href="#i-transfer"/></svg><span>Transferaktivität</span></button>
+                            <button class="btn btn-sm" id="btnSubTransfersVertraege"><svg class="ico" aria-hidden="true"><use href="#i-doc"/></svg><span>Verträge</span></button>
+                            <button class="btn btn-sm" id="btnSubTransfersBoerse"><svg class="ico" aria-hidden="true"><use href="#i-briefcase"/></svg><span>Transferbörse</span></button>
                             <button class="btn btn-sm" id="btnSubTransfersLoans"><svg class="ico" aria-hidden="true"><use href="#i-transfer"/></svg><span>Leihen</span></button>
                             <button class="btn btn-sm" id="btnSubTransfersSD"><svg class="ico" aria-hidden="true"><use href="#i-target"/></svg><span>Sportdirektor</span></button>
-                            <button class="btn btn-sm" id="btnSubTransfersListe"><svg class="ico" aria-hidden="true"><use href="#i-star"/></svg><span>Beobachtungsliste</span></button>
                         </div>
                     </div>
 
-                    <div id="viewTransferMarket">
-                        <!-- AI Offers Card if available -->
-                        <div class="ai-offers-container" id="aiOffersContainer" style="display:none;">
-                            <h3>Eingehende Transferangebote für Ihre Spieler</h3>
-                            <div class="ai-offers-list" id="aiOffersList"></div>
-                        </div>
+                    <!-- Übersicht wie im Vorbild (uiRekrutierung.js): Kacheln für Datenbank, Aktivität,
+                         Budgets, Verträge, Kaderplaner, Personal, Vorgaben, Klauseln, Beobachtungsliste, Transferbörse -->
+                    <div id="viewRekrutierung">
+                        <div class="rk-raster" id="rkUebersicht"></div>
+                    </div>
 
-                        <!-- Laufende Verhandlungen -->
-                        <div class="ai-offers-container" id="negotiationsContainer" style="display:none;">
-                            <h3>Laufende Verhandlungen</h3>
-                            <p class="text-muted" style="font-size:12px; margin:2px 0 10px;">
-                                Ablöse, persönliche Konditionen, Medizincheck, Leihen und Talente anderer Akademien brauchen ihre Zeit. Die Gegenseite antwortet nach ein bis drei Tagen, am Deadline Day sofort.
-                            </p>
-                            <div id="negotiationsList"></div>
-                        </div>
-
+                    <div id="viewTransferMarket" style="display:none;">
                         <div class="transfer-filters mb-3">
                             <input type="text" id="tfSearch" class="styled-input" placeholder="Spielername suchen...">
                             <select id="tfPosFilter" class="styled-select">
@@ -895,12 +892,22 @@
                                     <select id="tfLandFilter" class="styled-select" aria-label="Land">
                                         <option value="">Alle Länder</option>
                                     </select>
+                                    <select id="tfInteresseFilter" class="styled-select" aria-label="Interesse">
+                                        <option value="">Interesse beliebig</option>
+                                        <option value="moeglich">Ohne „kommt nicht in Frage“</option>
+                                        <option value="offen">Würde wechseln oder interessiert</option>
+                                        <option value="interessiert">Nur interessiert</option>
+                                        <option value="zoegert">Zögert</option>
+                                        <option value="abgeneigt">Kein Interesse</option>
+                                        <option value="ausgeschlossen">Kommt nicht in Frage</option>
+                                    </select>
                                     <select id="tfSortierung" class="styled-select" aria-label="Sortierung">
                                         <option value="staerke">Sortiert nach Stärke</option>
                                         <option value="potenzial">Sortiert nach Potenzial</option>
                                         <option value="alter">Sortiert nach Alter</option>
                                         <option value="wert">Sortiert nach Marktwert</option>
                                         <option value="empfehlung">Sortiert nach Empfehlung</option>
+                                        <option value="interesse">Sortiert nach Interesse</option>
                                     </select>
                                     <button type="button" class="btn btn-sm btn-secondary" id="btnTfZuruecksetzen">Filter zurücksetzen</button>
                                 </div>
@@ -913,6 +920,7 @@
                             <span class="tm-treffer" id="tfTreffer"></span>
                             <span class="tm-fenster-chip" id="tfFensterChip"></span>
                             <label class="tm-schalter"><input type="checkbox" id="tfNurGescoutet"><span class="tm-schalter-bahn" aria-hidden="true"></span><span>Nur gescoutete Spieler</span></label>
+                            <label class="tm-schalter" title="Ablöse im Transferbudget und Gehaltsforderung im freien Gehaltsrahmen"><input type="checkbox" id="tfNurBezahlbar"><span class="tm-schalter-bahn" aria-hidden="true"></span><span>Nur bezahlbare</span></label>
                         </div>
                         <div class="table-container full-page">
                             <table class="data-table sortierbar" id="transferTable">
@@ -929,6 +937,7 @@
                                         <th class="tm-wert" data-sort="zahl">Ablöse</th>
                                         <th class="tm-gehalt" data-sort="zahl" title="Geschätzte Gehaltsforderung je Woche">Gehalt/Wo.</th>
                                         <th class="tm-note-zelle" data-sort="zahl" title="Empfehlung des Scouts">Empf.</th>
+                                        <th class="tm-interesse" data-sort="zahl" title="Will er zu uns? Von interessiert bis kommt nicht in Frage">Interesse</th>
                                         <th class="tm-wissen" data-sort="zahl">Wissen</th>
                                         <th class="tm-meta"></th>
                                         <th class="tm-aktion"></th>
@@ -939,8 +948,127 @@
                                 </tbody>
                             </table>
                         </div>
-                        <!-- Kacheln: Transferfenster, Scouting-Reichweite, Empfehlungen, Beobachtungsliste, Budgets, Aufträge -->
-                        <div class="tm-raster" id="tmKacheln"></div>
+                    </div>
+
+                    <!-- Empfehlungen: wen die Scouts gesehen haben, nach ihrer Note -->
+                    <div id="viewEmpfehlungen" style="display:none;">
+                        <div class="dash-card mb-3">
+                            <div class="card-header"><h3>Spielerempfehlungen</h3><span id="empfMeta" class="header-tag">-</span></div>
+                            <p class="muted-note">Jeder Spieler mit Scoutbericht oder gutem Wissen, nach der Note des Scouts. Die Note misst ihn an Ihrem Kader, seinem Potenzial, Alter und der Ablöse; dazu, ob er überhaupt zu Ihnen will.</p>
+                            <div class="transfer-filters mb-2">
+                                <select id="empfNoteFilter" class="styled-select" aria-label="Note">
+                                    <option value="">Alle Noten</option>
+                                    <option value="A">Ab A</option>
+                                    <option value="B">Ab B</option>
+                                    <option value="C">Ab C</option>
+                                </select>
+                                <select id="empfPosFilter" class="styled-select" aria-label="Mannschaftsteil">
+                                    <option value="">Alle Positionen</option>
+                                    <option value="tw">Torwart</option>
+                                    <option value="abw">Abwehr</option>
+                                    <option value="mf">Mittelfeld</option>
+                                    <option value="st">Angriff</option>
+                                </select>
+                                <select id="empfInteresseFilter" class="styled-select" aria-label="Interesse">
+                                    <option value="moeglich">Ohne „kommt nicht in Frage“</option>
+                                    <option value="offen">Würde wechseln oder interessiert</option>
+                                    <option value="">Alle</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="table-container full-page">
+                            <table class="data-table sortierbar" id="empfTable">
+                                <thead>
+                                    <tr>
+                                        <th class="tm-status" title="Status"></th>
+                                        <th class="tm-name" data-sort="text">Spieler</th>
+                                        <th class="tm-nation" data-sort="text" title="Nationalität">Nat.</th>
+                                        <th class="tm-verein" data-sort="text">Verein</th>
+                                        <th class="tm-pos" data-sort="auf">Position</th>
+                                        <th class="tm-alter" data-sort="zahl">Alter</th>
+                                        <th class="tm-staerke" data-sort="zahl">Stärke</th>
+                                        <th class="tm-pot" data-sort="zahl">Potenzial</th>
+                                        <th class="tm-wert" data-sort="zahl">Ablöse</th>
+                                        <th class="tm-gehalt" data-sort="zahl" title="Geschätzte Gehaltsforderung je Woche">Gehalt/Wo.</th>
+                                        <th class="tm-note-zelle" data-sort="zahl" title="Empfehlung des Scouts">Empf.</th>
+                                        <th class="tm-interesse" data-sort="zahl" title="Will er zu uns? Von interessiert bis kommt nicht in Frage">Interesse</th>
+                                        <th class="tm-wissen" data-sort="zahl">Wissen</th>
+                                        <th class="tm-meta"></th>
+                                        <th class="tm-aktion"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="empfTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Transferaktivität: Angebote, Verhandlungen und die Wechsel der Saison -->
+                    <div id="viewAktivitaet" style="display:none;">
+                        <div id="akKopf" class="rk-kopf mb-3"></div>
+                        <div class="ai-offers-container" id="aiOffersContainer" style="display:none;">
+                            <h3>Eingehende Transferangebote für Ihre Spieler</h3>
+                            <div class="ai-offers-list" id="aiOffersList"></div>
+                        </div>
+
+                        <!-- Laufende Verhandlungen -->
+                        <div class="ai-offers-container" id="negotiationsContainer" style="display:none;">
+                            <h3>Laufende Verhandlungen</h3>
+                            <p class="text-muted" style="font-size:12px; margin:2px 0 10px;">
+                                Ablöse, persönliche Konditionen, Medizincheck, Leihen und Talente anderer Akademien brauchen ihre Zeit. Die Gegenseite antwortet nach ein bis drei Tagen, am Deadline Day sofort.
+                            </p>
+                            <div id="negotiationsList"></div>
+                        </div>
+
+                        <div class="dash-card mb-3">
+                            <div class="card-header"><h3>Wechsel der Saison</h3><span id="akMeta" class="header-tag">-</span></div>
+                            <div id="akWechsel"></div>
+                        </div>
+                    </div>
+
+                    <!-- Verträge: Laufzeiten des Kaders und ein Rat je Spieler -->
+                    <div id="viewVertraege" style="display:none;">
+                        <div id="vtKopf" class="rk-kopf mb-3"></div>
+                        <div class="dash-card">
+                            <div class="card-header"><h3>Spieler</h3><span id="vtMeta" class="header-tag">-</span></div>
+                            <div class="transfer-filters mb-2">
+                                <select id="vtFilter" class="styled-select" aria-label="Auswahl">
+                                    <option value="">Alle Spieler</option>
+                                    <option value="12">Vertrag endet in 12 Monaten</option>
+                                    <option value="anbieten">Rat: Vertrag anbieten</option>
+                                    <option value="nicht">Rat: nicht verlängern</option>
+                                </select>
+                            </div>
+                            <div class="table-container" id="vtTabelle"></div>
+                        </div>
+                    </div>
+
+                    <!-- Transferbörse: eigene Gesuche und die Gesuche anderer Vereine -->
+                    <div id="viewBoerse" style="display:none;">
+                        <div class="tb-raster">
+                            <div class="dash-card">
+                                <div class="card-header"><h3>Unsere Gesuche</h3><span id="tbGesucheMeta" class="header-tag">-</span></div>
+                                <p class="muted-note">Schreiben Sie aus, wen Sie suchen. Die Vereine melden sich in den Tagen danach mit Spielern, die sie abgeben würden; der Sportdirektor hebt die passendsten hervor.</p>
+                                <div id="tbForm" class="tb-form"></div>
+                                <div id="tbGesuche"></div>
+                            </div>
+                            <div class="dash-card">
+                                <div class="card-header"><h3>Gesuche anderer Vereine</h3><span id="tbFremdeMeta" class="header-tag">-</span></div>
+                                <p class="muted-note">Was andere Vereine suchen, aus ihrer Kaderplanung. Passt einer Ihrer Spieler, bieten Sie ihn direkt an - der Verein antwortet mit einem Angebot oder einer Absage.</p>
+                                <div class="transfer-filters mb-2">
+                                    <select id="tbFremdeArt" class="styled-select" aria-label="Art">
+                                        <option value="">Kauf und Leihe</option>
+                                        <option value="transfer">Kauf</option>
+                                        <option value="leihe">Leihe</option>
+                                    </select>
+                                    <label class="tm-schalter"><input type="checkbox" id="tbNurPassend" checked><span class="tm-schalter-bahn" aria-hidden="true"></span><span>Nur mit passendem Spieler</span></label>
+                                </div>
+                                <div id="tbFremde"></div>
+                            </div>
+                        </div>
+                        <div class="dash-card mt-3">
+                            <div class="card-header"><h3>Angebotene Spieler</h3><span id="tbAngebotenMeta" class="header-tag">-</span></div>
+                            <div id="tbAngeboten"></div>
+                        </div>
                     </div>
 
                     <!-- Leihen: eigene Leihen und der Leihmarkt -->
@@ -2502,7 +2630,7 @@
                     </button>
                     <button class="mobile-drawer-item" data-tab="transfers">
                         <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-transfer"/></svg></span>
-                        <span class="drawer-text">Transfermarkt</span>
+                        <span class="drawer-text">Rekrutierung</span>
                         <span class="badge badge-angebot" id="mobileOffersBadge" style="display:none;">0</span>
                     </button>
                     <button class="mobile-drawer-item" data-tab="training">
@@ -2628,6 +2756,7 @@
     <script src="js/engine/ehemaligeEngine.js"></script>
     <script src="js/engine/visionEngine.js"></script>
     <script src="js/engine/kaderplanungEngine.js"></script>
+    <script src="js/engine/rekrutierungEngine.js"></script>
     <script src="js/engine/kaderregelEngine.js"></script>
     <script src="js/engine/arbeitserlaubnisEngine.js"></script>
     <script src="js/engine/koeffizientEngine.js"></script>
@@ -2699,6 +2828,7 @@
     <script src="js/ui/uiAngebot.js"></script>
     <script src="js/ui/uiVereinSeite.js"></script>
     <script src="js/ui/uiSpielerdatenbank.js"></script>
+    <script src="js/ui/uiRekrutierung.js"></script>
     <script src="js/ui/uiLivespiel.js"></script>
     <script src="js/ui/uiLiveKacheln.js"></script>
     <script src="js/ui/uiLiveDarstellung.js"></script>

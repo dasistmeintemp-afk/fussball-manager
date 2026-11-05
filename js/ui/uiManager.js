@@ -3869,6 +3869,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // Die ausgelagerten Teile hängen sich an die Klasse - im Browser lädt sie
     // index.html der Reihe nach, unter Node holen wir sie hier dazu
     ["./uiAssistent.js", "./uiKader.js", "./uiTaktik.js", "./uiWettbewerbe.js", "./uiWettbewerbSeite.js", "./uiTraining.js", "./uiUnterbau.js", "./uiFinanzen.js", "./uiVerein.js", "./uiPostfach.js", "./uiDialoge.js", "./uiKarriere.js",
-        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiSeiten.js", "./uiProfil.js", "./uiProfilLaufbahn.js", "./uiAngebot.js", "./uiVereinSeite.js", "./uiSpielerdatenbank.js", "./uiLivespiel.js", "./uiLiveKacheln.js", "./uiLiveDarstellung.js", "./uiSpielbericht.js", "./uiMeldungen.js", "./uiKopfmenue.js", "./uiFarben.js", "./uiPortal.js", "./uiWettbewerbUebersicht.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
+        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiSeiten.js", "./uiProfil.js", "./uiProfilLaufbahn.js", "./uiAngebot.js", "./uiVereinSeite.js", "./uiSpielerdatenbank.js", "./uiRekrutierung.js", "./uiLivespiel.js", "./uiLiveKacheln.js", "./uiLiveDarstellung.js", "./uiSpielbericht.js", "./uiMeldungen.js", "./uiKopfmenue.js", "./uiFarben.js", "./uiPortal.js", "./uiWettbewerbUebersicht.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
         .forEach(teil => require(teil));
 }

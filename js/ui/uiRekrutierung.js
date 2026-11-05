@@ -166,7 +166,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 ${zeile(`<span class="rk-pfeil raus"></span>Abgänge`, w.ab.length)}
                 ${zeile("Angebote für unsere Spieler", (k.angebote || 0).toLocaleString("de-DE"))}
                 ${zeile("Laufende Verhandlungen", (k.verhandelt?.size || 0).toLocaleString("de-DE"))}
-                <div class="rk-bilanz"><span><strong>${geld(w.ausgaben)}</strong> ausgegeben</span><span><strong>${geld(w.einnahmen)}</strong> eingenommen</span></div>`));
+                <div class="rk-bilanz"><span><strong>${geld(w.ausgaben)}</strong> ausgegeben</span><span><strong>${geld(w.einnahmen)}</strong> eingenommen</span></div>`, "", "rk-breit"));
         }
 
         // 3. Budgets
@@ -254,13 +254,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <div class="tm-gross">${gel.length} <small>Gelegenheiten</small></div>
                 <p class="tm-text">Vereine, die genau so einen Spieler suchen, wie wir ihn abgeben könnten.</p>
                 ${zeile("Spieler angeboten", angeboten.length)}
-                ${zeile("Daraus Angebote", angeboten.filter(a => a.ergebnis === "angebot").length)}`));
+                ${zeile("Daraus Angebote", angeboten.filter(a => a.ergebnis === "angebot").length)}`, "", "rk-breit"));
             const gesuche = rk.gesuche(state).filter(g => !rk._abgelaufen(state, g));
             const antworten = gesuche.reduce((s, g) => s + rk.antworten(state, g).antworten.length, 0);
             kacheln.push(kachel("Transferbörse · Suche", "search", "boerse", `
                 <div class="tm-gross">${gesuche.length} <small>Gesuche</small></div>
                 <p class="tm-text">${gesuche.length ? gesuche.map(g => esc(rk.gesuchText(g))).slice(0, 2).join("<br>") : "Schreiben Sie aus, wen Sie suchen - die Vereine melden sich."}</p>
-                ${zeile("Antworten", antworten)}`));
+                ${zeile("Antworten", antworten)}`, "", "rk-breit"));
         }
 
         box.innerHTML = kacheln.join("");

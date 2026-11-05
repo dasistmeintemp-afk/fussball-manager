@@ -222,6 +222,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     zeigeVerfuegbarkeit(player, body) {
         const v = TransferEngine.verfuegbarkeit(this.app.state, player);
         if (!v) return;
+        if (typeof TransferEngine.interesse === "function") v.interesse = TransferEngine.interesse(this.app.state, player);
         this._verfuegbarkeit = this._verfuegbarkeit || {};
         this._verfuegbarkeit[player.id] = v;
         body.querySelector('[data-pd-reiter="vertrag"]')?.click();
@@ -250,6 +251,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <div class="pf-gross pf-ton-${ton}">${esc(v.titel)}</div>
                 <p>${esc(v.text)}</p>
                 ${v.hinweise.length ? `<ul class="pf-hinweise">${v.hinweise.map(h => `<li>${esc(h)}</li>`).join("")}</ul>` : ""}
+                ${v.interesse ? `<div class="pf-zeile pf-interesse"><span>Und der Spieler?</span><strong>${this.interesseHtml(v.interesse)}</strong></div><p class="pf-interesse-grund">${esc(v.interesse.text)}</p>` : ""}
                 ${weiter.length ? `<div class="pf-anfrage-knoepfe">${weiter.map(([sel, text]) => `<button type="button" class="btn btn-secondary btn-sm" data-pf-weiter="${esc(sel)}">${esc(text)}</button>`).join("")}</div>` : ""}
             </div>`;
     },
@@ -368,13 +370,20 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             player.foot ? ["Starker Fuß", fuss] : null,
             ["Persönlichkeit", this.persoenlichkeitWort(player, confidence)],
             isProspect ? null : ["Bekanntheit", this.bekanntheitWort(player)],
-            player.vereinSeit && player.clubId ? ["Im Verein seit", `Saison ${player.vereinSeit}`] : null,
+            // vereinSeit ist Saison * 1000 + Tag - vorher stand hier "Saison 1003"
+            typeof player.vereinSeit === "number" && player.clubId ? ["Im Verein seit", `Saison ${Math.floor(player.vereinSeit / 1000)}`] : null,
             player.laenderspiele ? ["Länderspiele", `${player.laenderspiele} (${player.laenderspielTore || 0} Tore)`] : null
         ].filter(Boolean);
+        // Fremde Spieler: will er zu uns? (TransferEngine.interesse, Gründe im Tooltip)
+        const state = this.app?.state;
+        const interesse = !isProspect && state && player.clubId !== state.userClubId && typeof TransferEngine !== "undefined" && typeof TransferEngine.interesse === "function"
+            ? TransferEngine.interesse(state, player) : null;
         return `
             <div class="dash-card pf-karte pf-info">
                 <h4 class="gs-titel"><svg class="ico h-ico" aria-hidden="true"><use href="#i-info"/></svg>Info</h4>
                 ${zeilen.map(([l, w]) => `<div class="pf-zeile"><span>${esc(l)}</span><strong>${esc(w)}</strong></div>`).join("")}
+                ${interesse ? `<div class="pf-zeile pf-interesse"><span>Wechsel zu uns</span><strong>${this.interesseHtml(interesse)}</strong></div>
+                    <p class="pf-interesse-grund">${esc(interesse.text)}</p>` : ""}
             </div>`;
     },
 

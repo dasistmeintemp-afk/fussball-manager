@@ -16855,10 +16855,12 @@ function runEngineTests() {
         leiste.forEach(t => { if (!imMenue.has(t)) throw new Error(`Reiter ${t} fehlt im Menü`); });
         imMenue.forEach(t => { if (!leiste.includes(t)) throw new Error(`Menü kennt ${t}, die Seitenleiste nicht`); });
         if (new Set(reiter).size !== reiter.length) throw new Error("Ein Reiter steht in zwei Bereichen");
-        // Die Ansichten des Transfermarkts: alle fünf Knöpfe, jeder vorhanden
+        // Die Ansichten der Rekrutierung: alle elf Knöpfe, jeder im Menü; die seltenen unter "Mehr"
         const knoepfe = [...html.matchAll(/id="(btnSubTransfers\w+)"/g)].map(m => m[1]);
         const imMenueKnoepfe = ui.KOPFMENUE.flatMap(g => g.seiten).filter(s => s.knopf).map(s => s.knopf);
-        if (knoepfe.length !== 5 || knoepfe.some(k => !imMenueKnoepfe.includes(k))) throw new Error(`Transferansichten: ${knoepfe} / ${imMenueKnoepfe}`);
+        if (knoepfe.length !== 11 || knoepfe.some(k => !imMenueKnoepfe.includes(k))) throw new Error(`Transferansichten: ${knoepfe} / ${imMenueKnoepfe}`);
+        const mehr = ui.KOPFMENUE.find(g => g.id === "transfers").seiten.filter(s => s.mehr).map(s => s.titel);
+        if (mehr.join() !== "Verträge,Transferbörse,Leihen,Sportdirektor") throw new Error(`Unter Mehr: ${mehr}`);
         // Zahlen, Zeichen und der Reiter auf Zeit gibt es wirklich
         ui.KOPFMENUE.flatMap(g => g.seiten).forEach(s => {
             [s.zahl, s.nurWenn].filter(Boolean).forEach(id => { if (!html.includes(`id="${id}"`)) throw new Error(`${s.titel}: ${id} fehlt`); });
@@ -16882,7 +16884,7 @@ function runEngineTests() {
             const marken = { navInboxBadge: { textContent: "4", style: { display: "inline-block" } }, navOffersBadge: { textContent: "2", style: { display: "none" } }, navNationalBadge: { textContent: "1", style: { display: "" } } };
             global.document = { getElementById: id => marken[id] || null };
             const seite = (titel) => ui.KOPFMENUE.flatMap(g => g.seiten).find(s => s.titel === titel);
-            if (ui.kopfZahl(seite("Postfach")) !== 4 || ui.kopfZahl(seite("Transfermarkt")) !== 0 || ui.kopfZahl(seite("Nationalteam")) !== 1 || ui.kopfZahl(seite("Kalender")) !== 0) throw new Error("Zahlen falsch übernommen");
+            if (ui.kopfZahl(seite("Postfach")) !== 4 || ui.kopfZahl(seite("Transferaktivität")) !== 0 || ui.kopfZahl(seite("Nationalteam")) !== 1 || ui.kopfZahl(seite("Kalender")) !== 0) throw new Error("Zahlen falsch übernommen");
             if (ui.kopfSeiteDa(seite("Vorbereitung"))) throw new Error("Die Vorbereitung steht da, obwohl ihr Reiter fehlt");
             // Die Wahl gilt je Gerät: Standard oben, Unsinn wird nicht gespeichert
             const speicher = {};
@@ -17147,7 +17149,7 @@ function runEngineTests() {
         if (state.players.filter(p => p.clubId === "dor").some(p => !verlinkt.has(String(p.id)))) throw new Error("Nicht jeder Spieler steht in seiner Gehaltsgruppe");
     });
 
-    test("Spielerdatenbank wie im Vorbild: Note des Scouts, Gehaltsspanne, Statussymbole, vierzehn Spalten, sechs Kacheln", () => {
+    test("Spielerdatenbank wie im Vorbild: Note des Scouts, Gehaltsspanne, Statussymbole, Interesse, fünfzehn Spalten, Übersicht in elf Kacheln", () => {
         const SE = ScoutingEngine;
         const state = GameState.createNewGame("dor", "normal", { name: "Datenbank" });
         const club = state.clubs.find(c => c.id === "dor");
@@ -17198,7 +17200,7 @@ function runEngineTests() {
         const hatte = { pr: global.PlayerRatingEngine, se: global.ScoutingEngine, te: global.TransferEngine, doc: global.document };
         global.PlayerRatingEngine = PlayerRatingEngine; global.ScoutingEngine = SE; global.TransferEngine = TransferEngine;
         const box = { innerHTML: "", querySelectorAll: () => [] };
-        global.document = { getElementById: (id) => id === "tmKacheln" ? box : null };
+        global.document = { getElementById: (id) => id === "rkUebersicht" ? box : null };
         try {
             SE.merke(state, fremd.id, true);
             fremd.transferListed = true;
@@ -17211,16 +17213,22 @@ function runEngineTests() {
                 vereinVon: new Map(state.clubs.map(c => [c.id, c]))
             };
             const zeile = ui.tmZeileHtml(fremd, state, kontext);
-            if ((zeile.match(/<td /g) || []).length !== 14) throw new Error(`Die Zeile hat ${(zeile.match(/<td /g) || []).length} Spalten`);
-            ["tm-status", "tm-nation", "tm-verein", "tm-pos", "tm-alter", "tm-staerke", "tm-pot", "tm-wert", "tm-gehalt", "tm-note-zelle", "tm-wissen", "tm-aktion"]
+            if ((zeile.match(/<td /g) || []).length !== 15) throw new Error(`Die Zeile hat ${(zeile.match(/<td /g) || []).length} Spalten`);
+            const kopf = require("fs").readFileSync("./index.html", "utf8").split('id="transferTable"')[1].split("</thead>")[0];
+            if ((kopf.match(/<th /g) || []).length !== 15) throw new Error("Kopf und Zeile haben nicht gleich viele Spalten");
+            ["tm-status", "tm-nation", "tm-verein", "tm-pos", "tm-alter", "tm-staerke", "tm-pot", "tm-wert", "tm-gehalt", "tm-note-zelle", "tm-interesse", "tm-wissen", "tm-aktion"]
                 .forEach(k => { if (!zeile.includes(`class="${k}`)) throw new Error(`Spalte ${k} fehlt`); });
+            if (!/tm-interesse-marke int-(interessiert|offen|zoegert|abgeneigt|ausgeschlossen)/.test(zeile)) throw new Error("Die Zeile nennt das Interesse nicht");
             ["st-merk", "st-verh", "st-verkauf"].forEach(k => { if (!zeile.includes(k)) throw new Error(`Status ${k} fehlt`); });
             if (!/class="tm-note note-[a-e]/.test(zeile)) throw new Error("Die Zeile hat keine Note");
 
-            ui.renderMarktKacheln(state, club, { empfehlungen: [{ p: fremd, e: kontext.note(fremd), wert: { wertMin: 1e6, wertMax: 2e6 } }], verhandelt: kontext.verhandelt, vereinVon: kontext.vereinVon, angebote: 0 });
-            ["Transferfenster", "Scouting-Reichweite", "Spielerempfehlungen", "Beobachtungsliste", "Budgets", "Aufträge"]
-                .forEach(t => { if (!box.innerHTML.includes(`</svg>${t}</h4>`)) throw new Error(`Kachel ${t} fehlt`); });
-            if ((box.innerHTML.match(new RegExp(`data-tm-spieler="${fremd.id}"`, "g")) || []).length !== 2) throw new Error("Empfehlung und Beobachtungsliste nennen den Spieler nicht");
+            const e = kontext.note(fremd);
+            e.sicher = true;
+            ui.renderRekrutierungUebersicht(state, club, { empfehlungen: [{ p: fremd, e, wert: { wertMin: 1e6, wertMax: 2e6 } }], gescoutet: [fremd], verhandelt: kontext.verhandelt, vereinVon: kontext.vereinVon, angebote: 0 });
+            const titel = [...box.innerHTML.matchAll(/<\/svg>([^<]+)<\/button><\/h4>/g)].map(m => m[1]);
+            if (titel.join("|") !== "Spielerdatenbank|Transferaktivität|Budgets|Verträge|Kaderplaner|Personal|Vorgaben|Klauseln|Beobachtungsliste|Transferbörse · Abgabe|Transferbörse · Suche") throw new Error(`Kacheln: ${titel.join("|")}`);
+            if ((box.innerHTML.match(new RegExp(`data-rk-spieler="${fremd.id}"`, "g")) || []).length !== 2) throw new Error("Empfehlung und Beobachtungsliste nennen den Spieler nicht");
+            if ((box.innerHTML.match(/data-rk-ziel="/g) || []).length < 11) throw new Error("Nicht jede Kachel führt in ihre Ansicht");
         } finally {
             ["pr", "se", "te"].forEach((k, i) => {
                 const name = ["PlayerRatingEngine", "ScoutingEngine", "TransferEngine"][i];
@@ -17228,6 +17236,135 @@ function runEngineTests() {
             });
             if (hatte.doc === undefined) delete global.document; else global.document = hatte.doc;
         }
+    });
+
+    test("Rekrutierung: Wechselinteresse, Verhandlung, Verträge, Klauseln, Transferbörse, eigene Wechsel", () => {
+        const { RekrutierungEngine: R } = require('./js/engine/rekrutierungEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Rekrutierung" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const vereinVon = new Map(state.clubs.map(c => [c.id, c]));
+        const fremde = state.players.filter(p => p.clubId && p.clubId !== "muc" && !p.leihe && !p.vorvertrag);
+
+        // Interesse: fest (kein Zufall), mit Stufe, Titel und Gründen
+        const echt = Math.random;
+        let i1, i2;
+        try {
+            Math.random = () => { throw new Error("Das Interesse würfelt"); };
+            const k = TransferEngine.interesseKontext(state);
+            i1 = fremde.slice(0, 300).map(p => TransferEngine.interesse(state, p, "muc", k));
+            i2 = fremde.slice(0, 300).map(p => TransferEngine.interesse(state, p, "muc"));
+        } finally { Math.random = echt; }
+        if (i1.some((x, n) => x.stufe !== i2[n].stufe || x.punkte !== i2[n].punkte)) throw new Error("Mit und ohne Kontext verschieden");
+        if (i1.some(x => !TransferEngine.INTERESSE[x.stufe] || !x.titel || !x.text)) throw new Error("Interesse ohne Stufe, Titel oder Text");
+        if (TransferEngine.interesse(state, state.players.find(p => p.clubId === "muc"), "muc") !== null) throw new Error("Eigene Spieler haben ein Interesse");
+        // Ein Spieler aus der dritten Liga will zum Spitzenklub, ein Vorvertrag woanders schließt aus
+        const unten = fremde.find(p => (vereinVon.get(p.clubId)?.level || 1) >= 3 && vereinVon.get(p.clubId)?.countryId === "de");
+        const iu = TransferEngine.interesse(state, unten, "muc");
+        if (iu.stufe !== "interessiert" || !iu.gruende.some(g => g.includes("höher"))) throw new Error(`Drittligaspieler: ${JSON.stringify(iu)}`);
+        const vergeben = Object.assign({}, fremde[5], { vorvertrag: { clubId: "x", clubName: "SV Irgendwo" } });
+        if (TransferEngine.interesse(state, vergeben, "muc").stufe !== "ausgeschlossen") throw new Error("Vorvertrag schließt nicht aus");
+
+        // Ein kleiner Verein: der Star der ersten Liga spricht nicht mit ihm
+        const klein = state.clubs.find(c => c.countryId === "de" && (c.level || 1) === 3);
+        const star = fremde.filter(p => (vereinVon.get(p.clubId)?.level || 1) === 1).sort((a, b) => b.overall - a.overall)[0];
+        const iStar = TransferEngine.interesse(state, star, klein.id);
+        if (iStar.stufe !== "ausgeschlossen") throw new Error(`Der Star würde zum Drittligisten: ${JSON.stringify(iStar)}`);
+        const altUser = state.userClubId;
+        state.userClubId = klein.id;
+        const nein = NegotiationEngine.startTransferNegotiation(state, star.id, klein.id);
+        state.userClubId = altUser;
+        if (nein.success || !/will nicht zu/.test(nein.error)) throw new Error(`Verhandlung trotz Ablehnung: ${JSON.stringify(nein)}`);
+
+        // In der Verhandlung: wer kein Interesse hat, will 30 % mehr Gehalt und hat weniger Geduld
+        const kandidat = fremde.find(p => !p.agent && (p.wage || 0) > 20000 && TransferEngine.interesse(state, p, "muc").stufe !== "ausgeschlossen");
+        const echtesInteresse = TransferEngine.interesse;
+        const mit = (stufe) => {
+            TransferEngine.interesse = () => ({ stufe, titel: TransferEngine.INTERESSE[stufe].titel, punkte: 0, gruende: [], text: "Test" });
+            try {
+                const r = NegotiationEngine.startTransferNegotiation(state, kandidat.id, "muc");
+                if (!r.success) throw new Error(`${stufe}: ${r.error}`);
+                NegotiationEngine.withdraw(state, r.negotiation.id);
+                return r.negotiation;
+            } finally { TransferEngine.interesse = echtesInteresse; }
+        };
+        const offen = mit("offen"), abgeneigt = mit("abgeneigt"), interessiert = mit("interessiert");
+        const quote = abgeneigt.demand.wage / offen.demand.wage;
+        if (quote < 1.25 || quote > 1.35) throw new Error(`Gehaltsforderung bei kein Interesse: ${quote.toFixed(3)}`);
+        if (!(interessiert.demand.wage < offen.demand.wage) || !(abgeneigt.patience < offen.patience) || abgeneigt.interesse !== "abgeneigt") throw new Error("Interesse wirkt nicht auf Forderung und Geduld");
+        if (!abgeneigt.log.some(l => /Eigentlich will er nicht/.test(l.text || ""))) throw new Error("Der Berater sagt nicht, dass er nicht will");
+
+        // Verträge: jede Stufe gezählt, jeder Spieler mit Rat und Grund
+        const v = R.vertraege(state);
+        const kader = state.players.filter(p => p.clubId === "muc");
+        if (v.anzahl !== kader.length || Object.values(v.stufen).reduce((a, b) => a + b, 0) !== v.anzahl) throw new Error(`Vertragsstufen: ${JSON.stringify(v.stufen)}`);
+        if (v.liste.some(z => !["anbieten", "vertagen", "nicht"].includes(z.rat) || !z.grund)) throw new Error("Ein Spieler ohne Rat");
+        if (v.liste.some((z, n) => n > 0 && z.monate < v.liste[n - 1].monate)) throw new Error("Nicht nach Restlaufzeit sortiert");
+        const bester = kader.slice().sort((a, b) => b.overall - a.overall)[0];
+        const alteJahre = bester.contractYears;
+        bester.contractYears = 0;
+        const zBester = R.vertraege(state).liste.find(z => z.p.id === bester.id);
+        bester.contractYears = alteJahre;
+        if (zBester.rat !== "anbieten" || zBester.monate > 12) throw new Error(`Der Beste mit auslaufendem Vertrag: ${zBester.rat}, ${zBester.monate} Monate`);
+        const geht = kader.find(p => p.id !== bester.id);
+        geht.vorvertrag = { clubId: "x", clubName: "SV Irgendwo" };
+        const zGeht = R.vertraege(state).liste.find(z => z.p.id === geht.id);
+        geht.vorvertrag = undefined;
+        if (zGeht.rat !== "nicht" || !zGeht.grund.includes("SV Irgendwo")) throw new Error("Wer woanders unterschrieben hat, bekommt einen Vertrag angeboten");
+
+        // Klauseln: eine Ausstiegsklausel im Budget lässt sich ziehen
+        const ziel = fremde.find(p => p.overall >= R.niveau(state, "muc") - 3 && TransferEngine.isWithinReach(p, club, state.clubs));
+        ziel.ausstiegsklausel = Math.min(5e6, Math.max(1e5, Math.round((club.transferBudget || 0) / 2)));
+        const kl = R.klauseln(state);
+        if (!kl.ziehbar.some(x => x.p.id === ziel.id)) throw new Error("Die erschwingliche Ausstiegsklausel fehlt");
+        ziel.ausstiegsklausel = 0;
+
+        // Gesuche: ohne Position abgelehnt, Antworten erst nach Tagen, passend und vom Sportdirektor sortiert
+        if (R.gesuchAnlegen(state, { positionen: [] }).success) throw new Error("Gesuch ohne Position angenommen");
+        const g = R.gesuchAnlegen(state, { positionen: ["IV", "LV", "RV"], spielzeit: "rotation", art: "beides", alterVon: 18, alterBis: 30 }).gesuch;
+        const sofort = R.antworten(state, g);
+        if (sofort.antworten.length || !sofort.ausstehend) throw new Error("Antworten kommen am selben Tag");
+        state.currentDayIndex = (state.currentDayIndex || 0) + 7;
+        const a = R.antworten(state, g);
+        if (!a.antworten.length) throw new Error("Nach einer Woche keine Antwort");
+        if (a.antworten.some(x => !g.positionen.includes(x.p.pos) || x.p.age < 18 || x.p.age > 30 || x.p.clubId === "muc")) throw new Error("Antwort passt nicht zum Gesuch");
+        if (a.antworten.some(x => x.interesse && (x.interesse.stufe === "ausgeschlossen" || x.interesse.stufe === "abgeneigt"))) throw new Error("Antwort von einem, der nicht will");
+        if (a.antworten.filter(x => x.empfohlen).length !== Math.min(2, a.antworten.length) || !a.antworten[0].empfohlen) throw new Error("Der Sportdirektor empfiehlt nicht die ersten zwei");
+        for (let n = 0; n < R.GESUCHE_MAX; n++) R.gesuchAnlegen(state, { positionen: ["ST"] });
+        if (R.gesuche(state).filter(x => !R._abgelaufen(state, x)).length !== R.GESUCHE_MAX) throw new Error("Mehr Gesuche als erlaubt");
+        state.currentDayIndex += R.GESUCH_TAGE + 1;
+        if (!R._abgelaufen(state, g)) throw new Error("Das Gesuch läuft nicht ab");
+        state.currentDayIndex -= R.GESUCH_TAGE + 8;
+
+        // Gesuche anderer Vereine: aus ihrer Kaderplanung; anbieten bringt ein Angebot oder eine Absage
+        const fg = R.fremdeGesuche(state);
+        if (!fg.length || fg.some(x => !x.positionen.length || x.clubId === "muc")) throw new Error("Keine fremden Gesuche");
+        const gel = R.gelegenheiten(state).find(x => x.g.art !== "leihe");
+        if (!gel) throw new Error("Keine Gelegenheit für einen Verkauf");
+        const falsch = kader.find(p => !gel.g.positionen.includes(p.pos));
+        const absage = R.anbieten(state, falsch.id, gel.g.id);
+        if (!absage.success || absage.angebot || !/andere Position/.test(absage.text)) throw new Error(`Falsche Position: ${JSON.stringify(absage)}`);
+        const vorher = (state.transferMarket.offers || []).length + (state.leihAngebote || []).length;
+        const res = R.anbieten(state, gel.passend[0].id, gel.g.id);
+        if (!res.success) throw new Error(`Anbieten: ${res.error}`);
+        if (res.angebot && (state.transferMarket.offers || []).length + (state.leihAngebote || []).length !== vorher + 1) throw new Error("Angebot ohne Eintrag");
+        if (R.anbieten(state, gel.passend[0].id, gel.g.id).success) throw new Error("Zweimal demselben Verein angeboten");
+        if (R.angeboten(state).length !== 2) throw new Error("Angebotene Spieler nicht gemerkt");
+
+        // Eigene Wechsel: Zugang und Abgang mit Ablöse
+        const neu = fremde.find(p => p.clubId !== "muc" && !p.leihe && (p.value || 0) < (club.transferBudget || 0));
+        if (!TransferEngine.executeTransfer(state, neu.id, "muc", 1234567, neu.wage, 3)) throw new Error("Wechsel scheitert");
+        const ab = kader.find(p => p.id !== neu.id && !p.leihe);
+        const kaeufer = state.clubs.find(c => c.id !== "muc" && (c.level || 1) === 1);
+        if (!TransferEngine.executeTransfer(state, ab.id, kaeufer.id, 7654321, ab.wage, 3)) throw new Error("Verkauf scheitert");
+        const w = R.wechsel(state);
+        if (w.zu.length !== 1 || w.zu[0].pId !== neu.id || w.ausgaben !== 1234567) throw new Error(`Zugänge: ${JSON.stringify(w.zu)}`);
+        if (w.ab.length !== 1 || w.ab[0].verein !== kaeufer.name || w.einnahmen !== 7654321) throw new Error(`Abgänge: ${JSON.stringify(w.ab)}`);
+
+        // Die Relegation hat einen Namen - die Legende im Assistenten las vorher ein Feld, das es nicht gibt
+        const { PlayoffEngine } = require('./js/engine/playoffEngine.js');
+        Object.keys(PlayoffEngine.FORMATE).forEach(id => { if (!PlayoffEngine.formatName(id)) throw new Error(`${id} ohne Namen`); });
+        const assistent = require("fs").readFileSync("./js/ui/uiAssistent.js", "utf8");
+        if (/zeilen\.push\(\[f\.name/.test(assistent)) throw new Error("Die Legende liest wieder f.name");
     });
 
     test("Vereinsprofil als Seite: Finanzlage in Worten, Tabellenausschnitt, Geschichte, Aktionen nach Themen", () => {

@@ -361,7 +361,19 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const titel = `${min(e)} ${String(this.spielberichtEreignisText(e, esc)).replace(/<[^>]+>/g, "")}`;
             return `<span class="spb-marke spb-${e.seite === "home" ? "oben" : "unten"}${e.type === "goal" ? " tor" : ""}" style="left:${x.toFixed(2)}%;--reihe:${Math.min(reihe, 2)}" title="${esc(titel)}">${this.spielberichtZeichen(e)}</span>`;
         }).join("");
-        const leiste = `
+        // Momentum aus dem Livespiel (uiMomentum.js): wer wann gedrückt hat
+        const mom = match && match._momentum;
+        let momentum = "";
+        if (mom && Array.isArray(mom.reihe) && mom.reihe.length > 1 && typeof this.momentumSvg === "function") {
+            const trikots = typeof ermittleTrikots === "function" ? ermittleTrikots(d.home, d.away) : null;
+            const farben = { home: trikots?.home?.akzent || "#38bdf8", away: trikots?.away?.akzent || "#f59e0b" };
+            const namen = { home: this.kurzName(d.home?.name || "Heim"), away: this.kurzName(d.away?.name || "Gast") };
+            momentum = `<div class="spb-momentum">
+                <div class="spb-mom-kopf"><span>Momentum</span>${this.momentumLegende(namen, farben)}</div>
+                ${this.momentumSvg(mom.reihe, { ende: mom.ende || 90, farben, namen, marken: mom.marken || [], id: "spbMom" })}
+            </div>`;
+        }
+        const leiste = `${momentum}
             <div class="spb-leiste" role="img" aria-label="Zeitleiste der Partie">
                 <span class="spb-leiste-linie"></span>
                 <span class="spb-leiste-hz" style="left:${(45 / ende * 100).toFixed(2)}%"></span>

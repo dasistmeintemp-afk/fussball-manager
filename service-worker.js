@@ -140,6 +140,7 @@ const ASSETS_TO_CACHE = [
     "./js/ui/uiRekrutierung.js",
     "./js/ui/uiKacheln.js",
     "./js/ui/uiBereiche.js",
+    "./js/ui/uiMomentum.js",
     "./js/ui/uiLivespiel.js",
     "./js/ui/uiLiveKacheln.js",
     "./js/ui/uiLiveDarstellung.js",

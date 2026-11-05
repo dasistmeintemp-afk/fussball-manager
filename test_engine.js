@@ -17449,6 +17449,52 @@ function runEngineTests() {
         if (!html.includes("Weiter<span class=\"spb-lang\"> zur Übersicht</span>")) throw new Error("Der Spielbericht sagt nicht, wohin Weiter führt");
     });
 
+    test("Momentum im Livespiel: Heim drückt nach oben, Gast nach unten, Paraden zählen für den Schützen, Bericht ohne Spur im Spielstand", () => {
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const ui = Object.create(UIManager.prototype);
+        // Die erste Halbzeit gehört Heim, die zweite dem Gast; die Parade des Heimtorwarts zählt für den Gast
+        const verlauf = [
+            ...[5, 8, 12, 20, 25].map(minute => ({ minute, type: "shot_miss", team: "home" })),
+            { minute: 22, type: "goal", team: "home", name: "Max Muster" },
+            ...[55, 60, 70, 75].map(minute => ({ minute, type: "corner", team: "away" })),
+            ...[62, 68, 72].map(minute => ({ minute, type: "save", team: "home" })),
+            { minute: 80, type: "red_card", team: "home", name: "Karl Rot" },
+            { minute: 30, type: "substitution", team: "away" }
+        ];
+        const reihe = ui.momentumReihe(verlauf, 90);
+        if (reihe.length !== 91 || reihe.some(v => v < -1 || v > 1 || !Number.isFinite(v))) throw new Error("Die Kurve verlässt den Rahmen");
+        if (ui.momentumPhase(reihe, 5, 25) !== "home" || ui.momentumPhase(reihe, 55, 75) !== "away" || ui.momentumPhase(reihe, 85, 90) !== null) {
+            throw new Error(`Phasen: ${ui.momentumPhase(reihe, 5, 25)} / ${ui.momentumPhase(reihe, 55, 75)} / ${ui.momentumPhase(reihe, 85, 90)}`);
+        }
+        if (Math.max(...reihe) < 0.9) throw new Error("Die stärkste Phase reicht nicht an den Rand");
+        // Live nur bis zur laufenden Minute - am Rand fällt die Kurve nicht künstlich ab
+        const halb = ui.momentumReihe(verlauf.filter(e => e.minute <= 25), 25);
+        if (halb.length !== 26 || halb[25] < 0.3) throw new Error(`Am Rand der laufenden Minute: ${halb[25]}`);
+        // Das Bild: zwei Flächen (oben Heim, unten Gast), Tor und Platzverweis als Marken, Hinweise je fünf Minuten
+        const marken = ui.momentumMarken(verlauf);
+        if (marken.map(m => m.art).join() !== "tor,rot" || !/22' Tor Muster/.test(marken[0].titel)) throw new Error(`Marken: ${JSON.stringify(marken)}`);
+        const svg = ui.momentumSvg(reihe, { namen: { home: "Heim", away: "Gast" }, marken, id: "t" });
+        if (!svg.includes('clip-path="url(#t-o)"') || !svg.includes('clip-path="url(#t-u)"') || (svg.match(/class="mom-tor"/g) || []).length !== 1 || !svg.includes("mom-rot")) throw new Error("Flächen oder Marken fehlen");
+        if ((svg.match(/class="mom-zeig"/g) || []).length !== 18 || !svg.includes("6.–10. Minute: Heim drückt")) throw new Error("Hinweise je fünf Minuten fehlen");
+        const live = ui.momentumSvg(halb, { live: true, kompakt: true, id: "k" });
+        if (!live.includes("mom-jetzt") || live.includes("mom-zeig") || !live.includes('preserveAspectRatio="none"')) throw new Error("Die Zeitleiste zeigt nicht, wo das Spiel steht");
+        // Leerer Verlauf: eine flache Linie, kein Fehler
+        if (ui.momentumReihe([], 10).some(v => v !== 0)) throw new Error("Ohne Ereignisse drückt jemand");
+
+        // Ein echtes Spiel: die Kurve folgt dem Spiel, der Bericht bekommt sie, der Spielstand nicht
+        const state = GameState.createNewGame("muc", "normal", { name: "Momentum" });
+        const match = { id: "mom", played: false, homeClubId: "muc", awayClubId: "dor" };
+        const lm = new LiveMatch(match, state.clubs.find(c => c.id === "muc"), state.clubs.find(c => c.id === "dor"), state.players);
+        lm.ohneBild = true;
+        lm.rechneOhneBild();
+        const echt = ui.momentumReihe(lm.verlauf, 90);
+        if (echt.filter(v => Math.abs(v) > 0.05).length < 20) throw new Error("Ein ganzes Spiel ohne erkennbares Momentum");
+        Object.defineProperty(match, "_momentum", { value: { reihe: echt }, enumerable: false, configurable: true });
+        if (JSON.stringify(match).includes("_momentum")) throw new Error("Das Momentum landet im Spielstand");
+        const src = require('fs').readFileSync('./js/ui/uiSpielbericht.js', 'utf8');
+        if (!src.includes("match._momentum") || !require('fs').readFileSync('./index.html', 'utf8').includes('id="lmTlMomentum"')) throw new Error("Zeitleiste oder Bericht zeigen das Momentum nicht");
+    });
+
     test("Vereinsprofil als Seite: Finanzlage in Worten, Tabellenausschnitt, Geschichte, Aktionen nach Themen", () => {
         const { UIManager } = require('./js/ui/uiManager.js');
         const state = GameState.createNewGame("dor", "normal", { name: "Verein" });

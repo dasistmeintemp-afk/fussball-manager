@@ -1000,6 +1000,20 @@ Scouting und Transfers stehen jetzt in einem Bereich *Rekrutierung*. Er hat elf 
 - **Kleinigkeiten:** Die Legende im Karriere-Assistenten nannte bei Platz 16 nichts, weil sie ein Namensfeld las, das die Relegationsformate nicht haben. Jetzt steht dort etwa „Relegation gegen den 3. der 2. Liga“, und der Abstieg nennt seine Plätze. In der Akte stand „Im Verein seit Saison 1003“, jetzt die Saison.
 - **Test** *Rekrutierung*: Interesse fest und ohne Zufall; ein Drittligaspieler will zum Spitzenklub, der Star der ersten Liga nicht zum Drittligisten (Verhandlung abgelehnt); Gehaltsforderung und Geduld nach Interesse; Verträge mit Stufen, Rat und Reihenfolge; ziehbare Ausstiegsklausel; Gesuche mit Antworten erst nach Tagen, passend, mit Empfehlung und Höchstzahl; fremde Gesuche, Anbieten mit Absage und Angebot; eigene Zu- und Abgänge mit Ablöse; jede Relegation mit Namen.
 
+### 4d. 🧩 Kacheln und Übersichten wie im Vorbild (`uiKacheln.js`, `uiBereiche.js`)
+- **Jeder Bereich beginnt mit einer Übersicht:** Ein Klick oben auf *Kader*, *Spieltag* oder *Verein* führt zuerst auf eine Seite aus Kacheln. Die Unterreiter daneben führen in die Themen (Kader, Training, Jugend; Aufstellung, Spielplan, Statistiken; Verein, Finanzen). *Start* und *Rekrutierung* hatten ihre Übersicht schon. Am Handy stehen die drei Übersichten unter *Mehr*.
+  - *Kader:* Kennzahlen und die Stützen, Verfügbarkeit (Verletzte, Gesperrte, Angeschlagene), Stimmung (Teamchemie, wer unzufrieden ist), Mannschaftsteile, Training, Jugend, Verträge, Kaderplanung mit der Elf.
+  - *Spieltag:* das nächste Spiel mit beiden Mannschaften, Form und Stärke, Aufstellung, Taktik (Spielstil, Wirksamkeit, Verständnis), Tabellenausschnitt, Form, Spielplan, die Bestwerte der Mannschaft; im Sommer die Vorbereitung.
+  - *Verein:* Wappen und Kennzahlen, Vorstand (Vertrauen, Saisonziel, Vision), Finanzen mit Prognose und Sponsoren, Fans und Stimmung, Anlagen mit Stufe und Zustand, Personal, Chronik.
+- **Eine Kachel für alles:** Rekrutierung, Finanzen und die neuen Übersichten bauen ihre Kacheln aus demselben Baustein: Symbol, Titel, ein Knopf zum Vergrößern.
+- **Groß beim Anklicken:** Ein Klick auf eine Kachel holt sie groß nach vorn; sie wächst aus ihrem Platz heraus. Groß zeigt sie mehr (den ganzen Kader nach Stärke, alle Verletzten, weitere Empfehlungen, alle Gesuche mit Antworten, jede Einnahmeart) und führt mit *Seite öffnen* in ihren Bereich. Escape, das Kreuz oder ein Klick daneben legen sie zurück. Knöpfe und Spieler in der Kachel tun weiter, was sie tun.
+- **Weiter führt zur Übersicht:** Der Weiter-Knopf oben und *Weiter zur Übersicht* im Spielbericht bringen auf die Startseite. Braucht unterwegs etwas eine Entscheidung, springt das Spiel danach dorthin.
+
+### 4e. 📈 Momentum im Livespiel (`uiMomentum.js`)
+- **Wer gerade drückt:** Aus dem Spielverlauf wird je Minute gezählt, was nach vorn geht: Tore, Schüsse, Paraden des Gegners, Ecken, Flanken, Steilpässe, Dribblings und Fouls, die der Gegner ziehen muss. Über ein paar Minuten geglättet, wird daraus eine Fläche in den Trikotfarben, Heim oben, Gast unten.
+- **Drei Stellen:** klein in der Zeitleiste über dem Spiel (Tore, Karten und Wechsel liegen darüber, eine Linie zeigt die laufende Minute), groß im Reiter *Statistik* mit Tor-Marken, Legende und einem Hinweis je fünf Minuten, und im Spielbericht unter *Spielverlauf*. Er ersetzt die alten Fünf-Minuten-Balken.
+- Die Kurve für den Bericht hängt nur am Spiel, solange der Bericht offen ist; der Spielstand wird dadurch nicht größer.
+
 ### 5. 🏋️ Training & Jugendakademie
 - **Trainingsplan über Wochen, Monat oder Saison (`CoachingStaffEngine.setManagerVeto`, `planTage`, `PLAN_DAUERN`):** Ein häufiger Wunsch an das Vorbild war, den Plan für einen Monat oder die ganze Saison einmal festzulegen. Bisher galt jede Vorgabe des Managers genau sieben Tage, dann plante wieder der Stab.
   - **Zeitraum:** Im Trainerstab wählt man, wie lange eine Änderung von Schwerpunkt oder Intensität gilt: eine Woche, zwei Wochen, bis Monatsende oder bis Saisonende. Monat und Saison kommen aus dem Kalender. Die Karte zeigt, was gilt und bis wann.
@@ -1728,6 +1742,9 @@ untitled/
 │   │   ├── uiVereinSeite.js    # Vereinsprofil als eigene Seite: Kopf, Übersicht, Kader, Spiele, Geschichte
 │   │   ├── uiLivespiel.js      # Match-Center, Zurufe, Seitenlinie während der Partie
 │   │   ├── uiLiveKacheln.js    # Livespiel als Kachelansicht: Aufstellungen, Statistik, Bank, Leiste, Schnellanweisungen
+│   │   ├── uiMomentum.js       # Momentum: wer gerade drückt, in Zeitleiste, Statistik und Spielbericht
+│   │   ├── uiKacheln.js        # Kachel-Baustein: groß beim Anklicken, Seite öffnen
+│   │   ├── uiBereiche.js       # Übersichten der Bereiche Kader, Spieltag und Verein
 │   │   ├── uiLiveDarstellung.js # Torwiederholung im 2D-Bild, Pass- und Laufwege
 │   │   ├── uiSpielbericht.js   # Spielbericht mit Schusskarte, Heatmaps und Passnetz
 │   │   ├── uiSpeicher.js       # Speicherplätze, Sicherungen, Laden, Löschen, Import

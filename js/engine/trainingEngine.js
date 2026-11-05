@@ -654,6 +654,15 @@ class TrainingEngine {
         player.trueCurrentAbility = basis + rest;
     }
 
+    /** PlayerGenerator - im Browser global, unter Node per require, einmal gemerkt */
+    static _generator() {
+        if (this._gen !== undefined) return this._gen;
+        this._gen = (typeof PlayerGenerator !== "undefined" && PlayerGenerator)
+            || (typeof window !== "undefined" && window.PlayerGenerator)
+            || (typeof require !== "undefined" ? (() => { try { return require("./playerGenerator.js").PlayerGenerator; } catch (e) { return null; } })() : null);
+        return this._gen;
+    }
+
     static developPlayer(player, focus, intensity, facilityLevel = 2, scale = 1) {
         const kurve = this.alterskurveFuer(player.age);
         const potentialRoom = player.pot - player.overall;
@@ -675,6 +684,9 @@ class TrainingEngine {
         if (potentialRoom > 0 && Math.random() < growthChance) {
             player.overall = Math.min(player.pot, player.overall + 1);
             this.faehigkeitAngleichen(player);
+            // Die Einzelwerte wachsen mit, im Profil der Position (PlayerGenerator.werteNachziehen)
+            const gen = this._generator();
+            if (gen && typeof gen.werteNachziehen === "function") gen.werteNachziehen(player, 1);
             player.value = Math.round(player.value * 1.08); // Marktwert steigt
 
             // Spezifische Attribute je nach Trainingsfokus steigern
@@ -709,8 +721,15 @@ class TrainingEngine {
         if (Math.random() < declineChance && player.overall > 8) {
             player.overall -= 1;
             this.faehigkeitAngleichen(player);
-            player.pace = Math.max(35, (player.pace ?? 60) - 1);
-            player.stamina = Math.max(40, (player.stamina ?? 60) - 1);
+            // Die Einzelwerte lassen mit nach - ab dreißig zuerst der Körper
+            const gen = this._generator();
+            if (gen && typeof gen.werteNachziehen === "function") gen.werteNachziehen(player, -1);
+            else {
+                player.pace = (player.pace ?? 60) - 1;
+                player.stamina = (player.stamina ?? 60) - 1;
+            }
+            player.pace = Math.max(35, player.pace ?? 60);
+            player.stamina = Math.max(40, player.stamina ?? 60);
             player.value = Math.max(150000, Math.round(player.value * 0.9));
         }
     }

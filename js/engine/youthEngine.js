@@ -1420,6 +1420,9 @@ const YouthEngine = {
             if (Math.random() < growthChance && prospect.overall < prospect.pot) {
                 prospect.overall += 1;
                 if (typeof prospect.trueCurrentAbility === "number") prospect.trueCurrentAbility += 2;
+                // Die Einzelwerte wachsen mit (PlayerGenerator.werteNachziehen)
+                const gen = _youthResolve("PlayerGenerator", "./playerGenerator.js");
+                if (gen && typeof gen.werteNachziehen === "function") gen.werteNachziehen(prospect, 1);
             }
         });
     },

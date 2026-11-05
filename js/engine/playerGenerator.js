@@ -753,6 +753,52 @@ class PlayerGenerator {
         return attrs;
     }
 
+    /**
+     * Die Einzelwerte folgen der Gesamtstärke.
+     *
+     * Bisher stieg beim Wachsen nur die Gesamtstärke - die Einzelwerte nur,
+     * wenn ein Trainingsschwerpunkt gesetzt war, und dann zwei davon. Beim
+     * Schwerpunkt "Allround", den die KI-Vereine trainieren, stieg keiner.
+     * Gemessen passte nach vier Saisons bei fast drei Prozent der Spieler das
+     * Profil nicht mehr zur Stärke (Schlüsselwerte mehr als sechs Punkte
+     * darunter), und es wurden jede Saison mehr - die "seltsamen Werte", die
+     * Spieler des Vorbilds in langen Spielständen beklagen.
+     *
+     * Jetzt zieht jeder Schritt der Gesamtstärke die Einzelwerte mit: wer
+     * unter dem Profil seiner Position liegt, sicher, wer dort liegt, meist,
+     * wer weit darüber liegt (seine Stärke), selten. Beim Nachlassen geht
+     * es umgekehrt, und ab dreißig zuerst der Körper - Tempo, Ausdauer,
+     * Kraft. Ohne Zufall: Ob ein Wert mitgeht, folgt fest aus Spieler, Wert
+     * und Stärke, damit Welten und Messungen gleich bleiben.
+     */
+    static werteNachziehen(p, richtung = 1) {
+        if (!p || !richtung) return;
+        const o = p.overall || 0;
+        const ziele = {};
+        if (p.pos === "TW") {
+            Object.assign(ziele, { reflexes: o + 2, handling: o, oneOnOne: o, positioning: o, kicking: o - 4, physical: o - 3, stamina: o - 4 });
+        } else {
+            const profil = this.PROFILE[p.pos] || this.PROFILE.ZM;
+            this.FELDWERTE.forEach(k => { ziele[k] = o + (profil[k] || 0); });
+        }
+        const alt = (p.age || 25) >= 30;
+        const KOERPER = { pace: 1, stamina: 1, physical: 1 };
+        const zahl = (k) => {
+            const text = `${p.id}|${k}|${o}|${richtung}`;
+            let h = 2166136261;
+            for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+            return ((h >>> 0) % 1000) / 1000;
+        };
+        Object.keys(ziele).forEach(k => {
+            if (typeof p[k] !== "number") return;
+            // Abstand in Richtung der Bewegung: positiv heißt "hinkt hinterher"
+            const abstand = richtung > 0 ? ziele[k] - p[k] : p[k] - ziele[k];
+            let chance = abstand >= 4 ? 1 : (abstand >= -4 ? 0.75 : 0.25);
+            if (richtung < 0 && alt && KOERPER[k]) chance = 1;
+            if (zahl(k) < chance) p[k] = Math.max(1, Math.min(99, p[k] + richtung));
+        });
+    }
+
     static FELDWERTE = ["pace", "shooting", "passing", "dribbling", "defense", "physical", "stamina", "vision", "technique", "positioning"];
     static TORWARTWERTE = { reflexes: 2, handling: 0, oneOnOne: 0, positioning: 0 };
 

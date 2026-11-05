@@ -999,7 +999,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <li>
                     <span class="preis-monat">${esc(w.datum || `Saison ${w.saison}`)}</span>
                     <span><strong>${esc(w.verein)}</strong> <small>${w.grund === "saisonende" ? "Trennung zum Saisonende" : `Entlassung${w.platz ? `, Platz ${w.platz}` : ""}`}</small></span>
-                    <span>${esc(w.alt)} → <strong>${esc(w.neu)}</strong> <small>${esc(engine.stilName(w.stil))}</small></span>
+                    <span>${esc(w.alt)} → <strong>${esc(w.neu)}</strong> <small>${esc(engine.stilName(w.stil))}${w.formation ? ` · ${esc(w.formation)}` : ""}</small></span>
                 </li>`).join("")}</ul>`;
     },
 });

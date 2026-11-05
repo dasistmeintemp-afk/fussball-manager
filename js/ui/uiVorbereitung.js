@@ -46,7 +46,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     ${sub ? `<span class="muted-note">${sub}</span>` : ""}
                 </div>`;
             offenEl.innerHTML = `
-                <div class="pre-fazit-kopf">✅ Die Vorbereitung ist abgeschlossen - die Punkterunde läuft.</div>
+                <div class="pre-fazit-kopf"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg> Die Vorbereitung ist abgeschlossen - die Punkterunde läuft.</div>
                 <div class="pre-fazit">
                     ${kachel("Trainerstab", `${besetzt} von ${engine.BEREICHE.length} besetzt`,
                         besetzt < engine.BEREICHE.length ? "Offene Stellen lassen sich unten weiter besetzen." : "Alle Fachbereiche besetzt.")}
@@ -59,8 +59,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 </div>`;
         } else if (offenEl) {
             offenEl.innerHTML = offen.length
-                ? `<strong>Noch zu erledigen:</strong><ul style="margin:6px 0 0 18px;">${offen.map(o => `<li>${o}</li>`).join("")}</ul>`
-                : `<span style="color:var(--success, #22c55e);">Alles erledigt - die Mannschaft ist bereit für den ersten Spieltag.</span>`;
+                ? `<p class="pre-offen-titel">Noch zu erledigen · ${offen.length}</p><ul class="pre-offen">${offen.map(o => `<li>${o}</li>`).join("")}</ul>`
+                : `<p class="pre-offen-fertig"><svg class="ico" aria-hidden="true"><use href="#i-check"/></svg>Alles erledigt - die Mannschaft ist bereit für den ersten Spieltag.</p>`;
         }
 
         this.renderPreseasonZiel(state, club, pre);
@@ -90,7 +90,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const betrag = Math.round(Math.max(0, club.transferBudget || 0) * V.budget);
         const { rettung } = board.grenzen(state, club);
         const prognose = typeof z.prognose === "number"
-            ? `<div class="ziel-prognose">📰 Die Medien sehen uns auf <strong>Platz ${z.prognose}</strong>.</div>` : "";
+            ? `<div class="ziel-prognose"><svg class="ico" aria-hidden="true"><use href="#i-mic"/></svg><span>Die Medien sehen uns auf <strong>Platz ${z.prognose}</strong>.</span></div>` : "";
         const status = z.verhandelt === "senken" ? `Gesenkt von Platz ${z.vorher} – ${this.geldKurz(-z.budgetAenderung)} weniger Transferbudget.`
             : z.verhandelt === "erhoehen" ? `Erhöht von Platz ${z.vorher} – ${this.geldKurz(z.budgetAenderung)} mehr Transferbudget.`
                 : z.verhandelt === "angenommen" ? "Angenommen." : "";

@@ -294,7 +294,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <button type="button" class="btn btn-primary btn-sm" data-einstieg-ok>Verstanden</button>
                 <button type="button" class="btn btn-link btn-sm" data-einstieg-begriffe>Begriffe</button>
             </div>`;
-        const kopf = pane.querySelector(":scope > .pane-header");
+        // Unter die Überschrift der Seite, wenn sie eine hat - sonst stünde
+        // der Kasten über dem Titel (Saisonvorbereitung)
+        const kopf = pane.querySelector(":scope > .pane-header") || pane.querySelector(":scope > h2:first-child");
         if (kopf) kopf.after(kasten);
         else pane.prepend(kasten);
         kasten.querySelector("[data-einstieg-ok]").addEventListener("click", () => {

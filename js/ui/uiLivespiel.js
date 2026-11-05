@@ -1103,6 +1103,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 }
                 const ohneBildEnde = !!liveMatch.ohneBild;
                 if (ohneBildEnde) this.zeigeOhneBildStand(liveMatch);
+                // Das Momentum für den Spielbericht - nicht im Spielstand (nicht aufzählbar)
+                if (typeof this.momentumReihe === "function" && match && typeof match === "object") {
+                    const bis = Math.max(90, Math.floor(liveMatch.minute || 90));
+                    Object.defineProperty(match, "_momentum", {
+                        value: { reihe: this.momentumReihe(liveMatch.verlauf || [], bis), marken: this.momentumMarken(liveMatch.verlauf || []), ende: bis },
+                        enumerable: false, configurable: true, writable: true
+                    });
+                }
                 setTimeout(() => {
                     modal.style.display = "none";
                     const box = document.getElementById("lmOhneBild");
@@ -1579,7 +1587,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             el.style.setProperty("--kit-2", kit?.zweit || "#ffffff");
         });
         const leeren = (id, html = "") => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
-        ["lmHomeScorers", "lmAwayScorers", "lmTlMarks", "lmMomentum", "lmLineups", "lmStatsList"].forEach(id => leeren(id));
+        ["lmHomeScorers", "lmAwayScorers", "lmTlMarks", "lmMomentum", "lmTlMomentum", "lmMomLegende", "lmLineups", "lmStatsList"].forEach(id => leeren(id));
         const fill = document.getElementById("lmTlFill");
         if (fill) fill.style.width = "0%";
         const setzeName = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
@@ -1698,35 +1706,20 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             }
         }
 
-        // Druckphasen in Fünf-Minuten-Abschnitten: Heim nach oben, Gast nach
-        // unten. Gewichtet nach Gefahr - ein Tor zählt mehr als eine Flanke.
-        const mom = document.getElementById("lmMomentum");
-        if (mom) {
-            const ABSCHNITTE = 18;
-            const druck = Array.from({ length: ABSCHNITTE }, () => [0, 0]);
-            const gegner = s => s === "home" ? "away" : "home";
-            const gewicht = {
-                goal: [4, false], shot_miss: [1.5, false], corner: [1, false], cross: [1, false],
-                through_ball: [1, false], dribble: [0.8, false],
-                save: [2.5, true], foul: [0.5, true], tackle: [0.3, true]
-            };
-            verlauf.forEach(e => {
-                const g = gewicht[e.type];
-                if (!g || !e.team) return;
-                const seite = g[1] ? gegner(e.team) : e.team;
-                const i = Math.min(ABSCHNITTE - 1, Math.max(0, Math.floor(e.minute / 5)));
-                druck[i][seite === "home" ? 0 : 1] += g[0];
-            });
-            const hoechster = Math.max(4, ...druck.map(d => Math.max(d[0], d[1])));
-            const jetzt = Math.floor(Math.min(89.9, liveMatch.minute) / 5);
-            mom.innerHTML = druck.map((d, i) => {
-                const zukunft = i > jetzt && !liveMatch.isFinished;
-                const h = (d[0] / hoechster * 100).toFixed(0), a = (d[1] / hoechster * 100).toFixed(0);
-                return `<span class="lm-mom-col${zukunft ? " offen" : ""}${i === jetzt && !liveMatch.isFinished ? " jetzt" : ""}" title="${i * 5}.–${i * 5 + 5}. Minute">
-                        <span class="lm-mom-up"><i style="height:${h}%"></i></span>
-                        <span class="lm-mom-down"><i style="height:${a}%"></i></span>
-                    </span>`;
-            }).join("");
+        // Momentum wie im Vorbild (uiMomentum.js): klein in der Zeitleiste,
+        // groß im Reiter Statistik - Heim oben, Gast unten, in den Trikotfarben
+        if (typeof this.momentumReihe === "function") {
+            const bis = Math.max(0, Math.floor(liveMatch.minute || 0));
+            const reihe = this.momentumReihe(verlauf, bis);
+            const ende = Math.max(90, bis);
+            const live = !liveMatch.isFinished;
+            const namen = { home: this._lmKurz?.(liveMatch.clubVon?.("home")) || "Heim", away: this._lmKurz?.(liveMatch.clubVon?.("away")) || "Gast" };
+            const klein = document.getElementById("lmTlMomentum");
+            if (klein) klein.innerHTML = this.momentumSvg(reihe, { ende, live, kompakt: true, id: "lmMomK", namen });
+            const gross = document.getElementById("lmMomentum");
+            if (gross) gross.innerHTML = this.momentumSvg(reihe, { ende, live, namen, marken: this.momentumMarken(verlauf), id: "lmMomG" });
+            const legende = document.getElementById("lmMomLegende");
+            if (legende && neueEreignisse) legende.innerHTML = this.momentumLegende(namen);
         }
     },
 

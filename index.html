@@ -2278,6 +2278,8 @@
                         <button class="btn btn-sm btn-secondary" id="btnLmSkip" aria-label="Sofort-Ergebnis"><svg class="ico" aria-hidden="true"><use href="#i-bolt"/></svg><span class="lm-btn-text"> Sofort-Ergebnis</span></button>
                     </div>
                     <div class="lm-timeline" id="lmTimeline" aria-hidden="true">
+                        <!-- Momentum (uiMomentum.js): wer gerade drückt, Heim oben, Gast unten -->
+                        <div class="lm-tl-mom" id="lmTlMomentum"></div>
                         <div class="lm-tl-track">
                             <div class="lm-tl-fill" id="lmTlFill"></div>
                             <span class="lm-tl-ht"></span>
@@ -2383,9 +2385,10 @@
                             </div>
                             <div class="lm-stats-list" id="lmStatsList"></div>
                             <div class="lm-momentum-block">
-                                <div class="lm-block-title">Druckphasen <span class="lm-block-sub">wer wann Chancen erspielt</span></div>
+                                <div class="lm-block-title">Momentum <span class="lm-block-sub">wer gerade drückt</span></div>
                                 <div class="lm-momentum" id="lmMomentum"></div>
                                 <div class="lm-momentum-axis"><span>0'</span><span>45'</span><span>90'</span></div>
+                                <div id="lmMomLegende"></div>
                             </div>
                         </div>
 
@@ -2860,6 +2863,7 @@
     <script src="js/ui/uiRekrutierung.js"></script>
     <script src="js/ui/uiKacheln.js"></script>
     <script src="js/ui/uiBereiche.js"></script>
+    <script src="js/ui/uiMomentum.js"></script>
     <script src="js/ui/uiLivespiel.js"></script>
     <script src="js/ui/uiLiveKacheln.js"></script>
     <script src="js/ui/uiLiveDarstellung.js"></script>

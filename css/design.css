@@ -4461,3 +4461,43 @@ body.uk-gross-offen { overflow: hidden; }
     .bh-wappen { width: 40px; height: 40px; }
     .bh-datum { width: 78px; }
 }
+
+/* --------------------------------------------------------------------------
+   Momentum (uiMomentum.js): Heim oben, Gast unten, in den Trikotfarben
+   -------------------------------------------------------------------------- */
+.mom-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.mom-svg.kompakt { height: 100%; }
+.mom-svg line { vector-effect: non-scaling-stroke; }
+.mom-mitte { stroke: rgba(255, 255, 255, 0.24); stroke-width: 1; }
+.mom-hz { stroke: rgba(255, 255, 255, 0.3); stroke-width: 1; stroke-dasharray: 4 4; }
+.mom-raster { stroke: rgba(255, 255, 255, 0.06); stroke-width: 1; }
+.mom-jetzt { stroke: rgba(255, 255, 255, 0.7); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.mom-tor circle:first-child { stroke: var(--surface-1, #10151c); stroke-width: 2.5; }
+.mom-tor-ball { fill: #fff; }
+.mom-rot { fill: #ef4444; stroke: var(--surface-1, #10151c); stroke-width: 2; }
+.mom-zeig { fill: transparent; }
+.mom-zeig:hover { fill: rgba(255, 255, 255, 0.05); }
+.mom-legende { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11.5px; color: var(--text-soft, #cbd5e1); }
+.mom-legende span { display: inline-flex; align-items: center; gap: 6px; }
+.mom-legende i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.mom-legende small { color: var(--text-muted); }
+
+/* Im Livespiel: die Zeitleiste trägt das Momentum, die Marken liegen darüber */
+#modalLiveMatch .lm-tl-mom { position: absolute; left: 0; right: 0; top: 0; bottom: 0; pointer-events: none; }
+#modalLiveMatch .lm-tl-track { background: transparent; }
+#modalLiveMatch .lm-tl-fill { opacity: 0.55; }
+#modalLiveMatch .lm-tl-marks { z-index: 1; }
+#modalLiveMatch .lm-momentum { display: block; height: auto; background: none; gap: 0; }
+#modalLiveMatch .lm-momentum-block #lmMomLegende { margin-top: 6px; }
+@media (min-width: 1280px) and (min-height: 700px) {
+    #modalLiveMatch .lm-timeline { height: 58px; align-self: center; }
+    #modalLiveMatch .lm-timeline::before {
+        content: "Momentum"; position: absolute; left: 0; top: -14px;
+        font-size: 9.5px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-muted);
+    }
+}
+
+/* Im Spielbericht über der Zeitleiste */
+.spb-momentum { margin: 2px 0 14px; padding: 10px 12px 8px; border-radius: 12px; background: rgba(255, 255, 255, 0.025); border: 1px solid var(--line); }
+.spb-mom-kopf { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.spb-mom-kopf > span { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); }

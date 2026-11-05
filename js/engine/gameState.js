@@ -1301,7 +1301,18 @@ class GameState {
      */
     static FORMATIONEN_HINTERGRUND = ["4-2-3-1", "4-3-3", "4-4-2"];
 
-    static waehleFormation(club, allPlayers, nurAbGewinn = 0, kandidaten = null) {
+    /**
+     * So viel Teamstärke ist einem Trainer sein System wert
+     * (TrainerwechselEngine.lieblingsformation): Er spielt es, solange es
+     * nicht mehr als 1,6 Punkte kostet (von gut 80 bis 90 in den ersten
+     * Ligen). Gemessen kostet es im Mittel 0,8, bei drei von vier Vereinen
+     * höchstens 1,5. Wer ein System hat, braucht den allgemeinen Vorzug
+     * für die verbreiteten Formationen nicht - der zog sonst wieder alle zu
+     * 4-3-3.
+     */
+    static HANDSCHRIFT = 1.6;
+
+    static waehleFormation(club, allPlayers, nurAbGewinn = 0, kandidaten = null, lieblings = null) {
         const engine = GameState._resolveEngine('MatchEngine', './matchEngine.js');
         if (!club || !engine || typeof engine.calculateTeamPower !== 'function') return null;
         const staerke = (f) => {
@@ -1310,10 +1321,13 @@ class GameState {
             return engine.calculateTeamPower(club, allPlayers, false).total || 0;
         };
         const alt = club.formation;
-        const vorzug = f => GameState.FORMATIONEN_KI[f] || 0;
+        const lieb = lieblings && FORMATION_CONFIGS[lieblings] ? lieblings : null;
+        const vorzug = f => (lieb ? (f === lieb ? GameState.HANDSCHRIFT : 0) : (GameState.FORMATIONEN_KI[f] || 0));
         const altWert = alt ? staerke(alt) + vorzug(alt) : -Infinity;
         let beste = alt, besterWert = altWert;
-        (kandidaten || Object.keys(GameState.FORMATIONEN_KI)).forEach(f => {
+        const liste = (kandidaten || Object.keys(GameState.FORMATIONEN_KI)).slice();
+        if (lieb && !kandidaten && !liste.includes(lieb)) liste.push(lieb);
+        liste.forEach(f => {
             if (f === alt || !FORMATION_CONFIGS[f]) return;
             const w = staerke(f) + vorzug(f);
             if (w > besterWert) { beste = f; besterWert = w; }
@@ -1329,6 +1343,7 @@ class GameState {
         (state.players || []).forEach(p => { if (p.clubId) (index.get(p.clubId) || index.set(p.clubId, []).get(p.clubId)).push(p); });
         let gewechselt = 0;
         const hintergrund = new Set((state.leagues || []).filter(l => l.hintergrund).map(l => l.id));
+        const trainerwechsel = GameState._resolveEngine('TrainerwechselEngine', './trainerwechselEngine.js');
         (state.clubs || []).forEach(club => {
             if (nurKi && club.id === state.userClubId) return;
             // Nur die ersten Ligen: Jeder Versuch kostet eine Aufstellung, und
@@ -1337,7 +1352,10 @@ class GameState {
             const kader = index.get(club.id) || [];
             if (kader.length < 11) return;
             const kandidaten = hintergrund.has(club.leagueId) ? GameState.FORMATIONEN_HINTERGRUND : null;
-            if (GameState.waehleFormation(club, kader, nurAbGewinn, kandidaten)) gewechselt++;
+            // Die KI-Vereine spielen das System ihres Trainers, wenn der Kader es hergibt
+            const lieb = club.id !== state.userClubId && trainerwechsel && typeof trainerwechsel.lieblingsformation === 'function'
+                ? trainerwechsel.lieblingsformation(club) : null;
+            if (GameState.waehleFormation(club, kader, nurAbGewinn, kandidaten, lieb)) gewechselt++;
         });
         return gewechselt;
     }

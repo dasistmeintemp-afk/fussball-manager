@@ -1,0 +1,313 @@
+/* ==========================================================================
+   Glanz - zweite Stufe des Designsystems "Flutlicht"
+   --------------------------------------------------------------------------
+   Liegt über design.css und ändert nur das Aussehen, nicht die Anordnung.
+   Ziel: moderner und hochwertiger, ohne laut zu werden.
+
+    - Tiefe statt flacher Flächen: Karten mit leichtem Verlauf, einer hellen
+      Oberkante und weichem Schatten; der Hintergrund mit Flutlichtschein
+      und feinem Korn.
+    - Sportschrift: Seitentitel in Barlow Condensed in Großbuchstaben, Zahlen
+      in Kennzahlen und Tabellen gleich breit.
+    - Der Vereinsakzent sparsamer: Filter und Umschalter leuchten getönt
+      statt vollflächig, voll gefüllt sind nur die Hauptknöpfe.
+    - Gläserne Kopf- und Fußleisten, Bewegung beim Wechsel der Seiten -
+      bei "Bewegung reduzieren" ohne.
+   ========================================================================== */
+
+:root {
+    --surface-0: #06090e;
+    --surface-1: #0e131b;
+    --surface-2: #141a24;
+    --surface-3: #1b2330;
+    --line: rgba(255, 255, 255, 0.065);
+    --line-strong: rgba(255, 255, 255, 0.11);
+    --glanz-kante: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+    --glanz-verlauf: linear-gradient(180deg, rgba(255, 255, 255, 0.032) 0%, rgba(255, 255, 255, 0.01) 38%, rgba(255, 255, 255, 0) 100%);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 12px 32px -14px rgba(0, 0, 0, 0.6);
+    --glanz-schatten-hoch: 0 2px 4px rgba(0, 0, 0, 0.35), 0 22px 48px -18px rgba(0, 0, 0, 0.7);
+    --glanz-glas: rgba(10, 14, 20, 0.72);
+    --radius-lg: 16px;
+}
+
+/* --------------------------------------------------------------------------
+   Hintergrund: Flutlicht oben, feines Korn darüber
+   -------------------------------------------------------------------------- */
+body {
+    background-color: var(--surface-0);
+    background-image:
+        radial-gradient(1100px 560px at 15% -12%, rgba(var(--accent-rgb), 0.075), transparent 62%),
+        radial-gradient(900px 520px at 105% -8%, rgba(96, 196, 255, 0.055), transparent 60%),
+        radial-gradient(1400px 700px at 50% 120%, rgba(var(--accent-rgb), 0.025), transparent 70%);
+    background-attachment: fixed;
+    text-rendering: optimizeLegibility;
+}
+body::before {
+    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='k'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.6 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23k)'/%3E%3C/svg%3E");
+}
+
+/* --------------------------------------------------------------------------
+   Schrift: Titel sportlich, Zahlen gleich breit
+   -------------------------------------------------------------------------- */
+.pane-header h2,
+.pane-title,
+.tab-pane > h2 {
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    line-height: 1.02;
+}
+.modal-header h2,
+.modal-header h3 { font-size: 26px; letter-spacing: 0.4px; }
+.data-table td, .compact-table td, .kv-liste strong, .pf-zeile strong, .wk-zeile strong,
+.qs-val, .fin-val, .info-val, .conf-val { font-variant-numeric: tabular-nums; }
+
+/* Kennzahlen in Sportschrift - wo die Seiten eine große Zahl zeigen */
+.qs-val, .kpi-wert, .kz-wert, .fk-wert, .pf-gross, .wk-gesamt, .stat-value {
+    font-family: var(--font-display);
+    letter-spacing: 0.3px;
+}
+
+/* --------------------------------------------------------------------------
+   Karten
+   -------------------------------------------------------------------------- */
+.dash-card,
+.tactics-card,
+.pf-kachel,
+.paket-karte,
+.satz-karte {
+    background-color: var(--surface-1);
+    background-image: var(--glanz-verlauf);
+    border: 1px solid var(--line);
+    box-shadow: var(--glanz-kante), var(--shadow-card);
+}
+.dash-card,
+.tactics-card { border-radius: var(--radius-lg); }
+
+/* Karten, die man antippen kann, heben sich leicht */
+.dash-card.clickable, .dash-card[role="button"], .wb-kachel, .pf-kachel.klickbar {
+    transition: transform 0.18s var(--ease), box-shadow 0.18s var(--ease), border-color 0.18s var(--ease);
+}
+.dash-card.clickable:hover, .dash-card[role="button"]:hover, .wb-kachel:hover, .pf-kachel.klickbar:hover {
+    transform: translateY(-2px);
+    border-color: var(--line-strong);
+    box-shadow: var(--glanz-kante), var(--glanz-schatten-hoch);
+}
+
+/* Überschriften der Karten: Symbol im Akzent */
+.dash-card h3 .h-ico, .dash-card h4 .h-ico, .tactics-card h3 .h-ico, .gs-titel .h-ico { color: var(--accent); }
+
+/* Erklärkästen beim ersten Besuch: ruhiger, mit Leiste links */
+.einstieg-erklaerung {
+    position: relative;
+    border: 1px solid rgba(var(--info-rgb), 0.18);
+    border-left: 0;
+    background: linear-gradient(90deg, rgba(var(--info-rgb), 0.085), rgba(var(--info-rgb), 0.025) 55%, rgba(var(--info-rgb), 0.015));
+    box-shadow: var(--glanz-kante);
+    padding: 14px 16px 14px 20px;
+    border-radius: 14px;
+    overflow: hidden;
+}
+.einstieg-erklaerung::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: linear-gradient(180deg, rgb(var(--info-rgb)), rgba(var(--info-rgb), 0.35));
+}
+.einstieg-erklaerung strong { font-family: var(--font-display); font-size: 17px; letter-spacing: 0.4px; text-transform: uppercase; }
+.einstieg-erklaerung ul { font-size: 13px; color: var(--text-muted); }
+.einstieg-erklaerung .btn-primary {
+    background: rgba(var(--info-rgb), 0.16); color: #cfeaff; border-color: rgba(var(--info-rgb), 0.4); box-shadow: none;
+}
+.einstieg-erklaerung .btn-primary:hover:not(:disabled) { background: rgba(var(--info-rgb), 0.26); color: #fff; box-shadow: none; transform: none; }
+.einstieg-erklaerung .btn-link { color: #9fd6ff; }
+
+.hint-box { background: rgba(96, 196, 255, 0.05); border-color: rgba(96, 196, 255, 0.16); box-shadow: var(--glanz-kante); }
+
+/* --------------------------------------------------------------------------
+   Knöpfe
+   -------------------------------------------------------------------------- */
+.btn-primary,
+.btn-success {
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 55%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 0 0 1px rgba(var(--accent-rgb), 0.35), 0 8px 22px -6px rgba(var(--accent-rgb), 0.45);
+}
+.btn-primary:hover:not(:disabled),
+.btn-success:hover:not(:disabled) {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 0 0 1px rgba(var(--accent-rgb), 0.5), 0 12px 30px -6px rgba(var(--accent-rgb), 0.55);
+}
+.btn-secondary {
+    background-color: rgba(255, 255, 255, 0.035);
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0));
+    box-shadow: var(--glanz-kante);
+}
+.btn-secondary:hover:not(:disabled) { background-color: rgba(255, 255, 255, 0.07); }
+
+/* Der Weiter-Knopf oben rechts: das Wichtigste der Kopfleiste */
+.btn-advance {
+    background-image: linear-gradient(120deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 45%), linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.06));
+}
+.btn-advance:hover:not(:disabled) .ico { transform: translateX(2px); }
+.btn-advance .ico { transition: transform 0.18s var(--ease); }
+
+/* Filter und Umschalter: getönt statt vollflächig */
+.filter-chip {
+    background: rgba(255, 255, 255, 0.035);
+    border-color: var(--line-strong);
+    color: var(--text-muted);
+    box-shadow: var(--glanz-kante);
+}
+.filter-chip:hover { background: rgba(255, 255, 255, 0.07); border-color: rgba(255, 255, 255, 0.18); color: var(--text-main); }
+.filter-chip.active {
+    background: rgba(var(--accent-rgb), 0.15);
+    border-color: rgba(var(--accent-rgb), 0.55);
+    color: var(--text-main);
+    box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.15), 0 6px 16px -8px rgba(var(--accent-rgb), 0.6);
+}
+
+/* Segmente (Tabelle/Spielplan, Ansichten der Taktiktafel) */
+.view-switch-buttons,
+.taktik-ansicht {
+    background: rgba(0, 0, 0, 0.25);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.view-switch-buttons .btn.active,
+.taktik-ansicht-btn.active {
+    background: var(--surface-3);
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0));
+    box-shadow: var(--glanz-kante), 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+/* --------------------------------------------------------------------------
+   Formulare
+   -------------------------------------------------------------------------- */
+.styled-input,
+.styled-select {
+    background-color: rgba(0, 0, 0, 0.28);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.styled-input:focus,
+.styled-select:focus { background-color: rgba(0, 0, 0, 0.38); }
+
+/* --------------------------------------------------------------------------
+   Tabellen
+   -------------------------------------------------------------------------- */
+.data-table th,
+.compact-table th { color: var(--text-dim); font-size: 10.5px; letter-spacing: 1px; }
+.data-table tbody tr,
+.compact-table tbody tr { transition: background-color 0.12s var(--ease); }
+.data-table tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.012); }
+.data-table tbody tr.row-clickable:hover td { background: rgba(var(--accent-rgb), 0.06); }
+.row-user-club td { background: transparent; }
+.row-user-club {
+    background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.16), rgba(var(--accent-rgb), 0.04) 60%) !important;
+}
+.table-container.full-page,
+#viewStandings.table-container {
+    background-color: var(--surface-1);
+    background-image: var(--glanz-verlauf);
+    box-shadow: var(--glanz-kante), var(--shadow-card);
+}
+
+/* --------------------------------------------------------------------------
+   Balken: rund und mit Verlauf
+   -------------------------------------------------------------------------- */
+.einstieg-balken i,
+.vertrautheit-balken span,
+.mini-bar > *,
+.kb-balken i,
+.wk-balken i {
+    background-image: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.22));
+}
+
+/* --------------------------------------------------------------------------
+   Fenster
+   -------------------------------------------------------------------------- */
+.modal-overlay { background: rgba(3, 5, 8, 0.66); backdrop-filter: blur(14px) saturate(120%); -webkit-backdrop-filter: blur(14px) saturate(120%); }
+.modal-box {
+    background-color: var(--surface-1);
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0) 120px);
+    box-shadow: var(--glanz-kante), 0 30px 80px -20px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+.modal-overlay[style*="flex"] .modal-box { animation: glanz-auf 0.22s var(--ease) both; }
+
+/* --------------------------------------------------------------------------
+   Kopfleiste und Leisten: Glas
+   -------------------------------------------------------------------------- */
+.app-header {
+    background: var(--glanz-glas);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border-bottom: 1px solid var(--line);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03), 0 10px 30px -18px rgba(0, 0, 0, 0.8);
+}
+.app-header::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px; pointer-events: none;
+    background: linear-gradient(90deg, transparent, rgba(var(--accent-rgb), 0.55), transparent);
+    opacity: 0.6;
+}
+@media (min-width: 901px) {
+    .kopf-gruppe.aktiv::after { background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.3), var(--accent), rgba(var(--accent-rgb), 0.3)); box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.6); }
+    .ku-knopf.aktiv::after { box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.55); }
+    .kopf-aufklapp {
+        background: rgba(14, 19, 27, 0.92);
+        backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+        box-shadow: var(--glanz-kante), var(--glanz-schatten-hoch);
+        animation: glanz-auf 0.16s var(--ease) both;
+    }
+}
+
+/* Untere Navigation am Handy */
+@media (max-width: 900px) {
+    .mobile-bottom-nav {
+        background: var(--glanz-glas);
+        backdrop-filter: blur(18px) saturate(140%);
+        -webkit-backdrop-filter: blur(18px) saturate(140%);
+        border-top: 1px solid var(--line);
+    }
+}
+
+/* --------------------------------------------------------------------------
+   Bewegung: Seiten blenden weich ein
+   -------------------------------------------------------------------------- */
+@keyframes glanz-auf {
+    from { opacity: 0; transform: translateY(6px) scale(0.995); }
+    to { opacity: 1; transform: none; }
+}
+@keyframes glanz-ein {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+/* Nur die Seite selbst - ihr Inhalt wird oft neu gezeichnet und soll dabei nicht jedes Mal einblenden */
+.tab-pane.active { animation: glanz-ein 0.26s var(--ease) both; }
+
+@media (prefers-reduced-motion: reduce) {
+    .tab-pane.active, .modal-overlay[style*="flex"] .modal-box, .kopf-aufklapp { animation: none !important; }
+    .dash-card.clickable:hover, .dash-card[role="button"]:hover, .wb-kachel:hover { transform: none; }
+}
+
+
+/* --------------------------------------------------------------------------
+   Spieltagskarte "Als Nächstes": Flutlicht über einem Rasen in Streifen
+   -------------------------------------------------------------------------- */
+.match-preview-content {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    background:
+        radial-gradient(120% 80% at 50% -10%, rgba(255, 255, 255, 0.10), transparent 55%),
+        radial-gradient(60% 90% at 0% 0%, rgba(var(--accent-rgb), 0.16), transparent 60%),
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.022) 0 24px, rgba(255, 255, 255, 0) 24px 48px),
+        linear-gradient(180deg, #0f2a1a, #0a1c12);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 -30px 40px -20px rgba(0, 0, 0, 0.55);
+}
+/* Der Mittelkreis, ganz zart */
+.match-preview-content::after {
+    content: ""; position: absolute; left: 50%; top: 50%; width: 92px; height: 92px; pointer-events: none;
+    border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 50%; transform: translate(-50%, -50%);
+}
+.match-preview-content > * { position: relative; z-index: 1; }
+.preview-crest { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45), 0 0 0 2px rgba(255, 255, 255, 0.08); }
+.match-preview-content .preview-team h4 { font-family: var(--font-display); font-size: 17px; letter-spacing: 0.3px; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5); }
+.vs-text { color: #fff; text-shadow: 0 0 18px rgba(var(--accent-rgb), 0.6); letter-spacing: 1px; }
+.pk-naechstes .match-preview-content .preview-team h4 { font-size: 15.5px; }

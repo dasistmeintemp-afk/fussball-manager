@@ -25,7 +25,13 @@ html = html.replace(/[ \t]*<link[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+
     const p = path.join(WURZEL, datei);
     if (!fs.existsSync(p)) { console.warn('  fehlt:', datei); return treffer; }
     styles++;
-    return `<style>\n${fs.readFileSync(p, 'utf8')}\n</style>\n`;
+    // Schriften (css/fonts.css) als Data-URI: Die Datei kennt keine Ordner daneben
+    const css = fs.readFileSync(p, 'utf8').replace(/url\((['"]?)([^'")]+\.woff2)\1\)/g, (u, q, rel) => {
+        const f = path.join(path.dirname(p), rel);
+        if (!fs.existsSync(f)) { console.warn('  fehlt:', rel); return u; }
+        return `url("data:font/woff2;base64,${fs.readFileSync(f).toString('base64')}")`;
+    });
+    return `<style>\n${css}\n</style>\n`;
 });
 
 // 2. Icon als Data-URI, damit das Tab-Symbol auch ohne Dateien daneben steht

@@ -2,12 +2,20 @@
  * Service Worker für Offline-Unterstützung und PWA-Installation
  */
 
-const CACHE_NAME = "fm-pro-cache-v223";
+const CACHE_NAME = "fm-pro-cache-v224";
 const ASSETS_TO_CACHE = [
     "./",
     "./index.html",
+    "./css/fonts.css",
     "./css/style.css",
     "./css/design.css",
+    "./css/glanz.css",
+    "./assets/fonts/inter-latin.woff2",
+    "./assets/fonts/inter-latin-ext.woff2",
+    "./assets/fonts/barlow-condensed-latin-600.woff2",
+    "./assets/fonts/barlow-condensed-latin-700.woff2",
+    "./assets/fonts/barlow-condensed-latin-ext-600.woff2",
+    "./assets/fonts/barlow-condensed-latin-ext-700.woff2",
     "./manifest.json",
     "./icon-192.png",
     "./icon-512.png",

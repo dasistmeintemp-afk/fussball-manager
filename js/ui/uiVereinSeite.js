@@ -192,7 +192,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     </table>` : `<p class="pf-klein">Keine Tabelle für diese Liga.</p>`)}
                 ${kachel("Spielweise", "i-tactics", `
                     <div class="kv-liste">
-                        ${trainer ? kv("Trainer", `${esc(trainer.name)} <small class="text-muted">seit Saison ${trainer.seit} · ${esc(karussell.stilName(trainer.stil))}</small>`) : ""}
+                        ${trainer ? kv("Trainer", `${esc(trainer.name)} <small class="text-muted">seit Saison ${trainer.seit} · ${esc(karussell.stilName(trainer.stil))}${typeof karussell.lieblingsformation === "function" ? ` · am liebsten ${esc(karussell.lieblingsformation(club, trainer) || "")}` : ""}</small>`) : ""}
                         ${kv("Formation", esc(club.formation || t.formation || "—"))}
                         ${kv("Grundhaltung", esc(wort("mentality")))}
                         ${kv("Pressing", esc(wort("pressing")))}

@@ -68,6 +68,67 @@ const TrainerwechselEngine = {
         return _twResolve("TacticsEngine", "./tacticsEngine.js");
     },
 
+    /**
+     * Die Handschrift eines Trainers: seine Lieblingsformation.
+     *
+     * Bisher nahm jeder KI-Verein die Formation, die rechnerisch am meisten
+     * aus seinem Kader holt. Das Ergebnis war eine Einheitsliga: Gemessen
+     * spielten schon in der ersten Saison 40 bis 47 Prozent der Erstligisten
+     * 4-3-3 - genau die Gleichförmigkeit, die Spieler des Vorbilds in langen
+     * Spielständen beklagen. In den echten Ligen verteilen sich die Systeme
+     * breiter: Viererkette mit Zehner, drei Spitzen, Dreierkette, 4-4-2.
+     *
+     * Jetzt bringt jeder Trainer ein System mit, passend zu seiner
+     * Spielweise - ein Positionstrainer spielt mit drei Spitzen oder
+     * Dreierkette, ein Kontertrainer eher 4-4-2 oder Fünferkette. Es gilt,
+     * solange der Kader es halbwegs hergibt (GameState.waehleFormation gibt
+     * ihm einen Vorzug), und ein neuer Trainer bringt ein neues mit. Welche
+     * es wird, folgt fest aus Verein und Trainer - ohne Zufall, damit die
+     * Welt beim Erzeugen dieselbe bleibt.
+     */
+    FORMATIONEN_JE_STIL: {
+        ausgewogen: { "4-2-3-1": 4, "4-4-2": 3, "4-3-3": 2, "4-1-4-1": 2, "3-5-2": 1 },
+        positionsspiel: { "4-3-3": 4, "3-4-2-1": 3, "4-2-3-1": 2, "4-1-2-3": 1 },
+        gegenpressing: { "4-2-3-1": 3, "4-3-3": 3, "4-4-2": 2, "3-4-3": 1, "4-2-2-2": 1 },
+        konter: { "4-4-2": 3, "4-1-4-1": 2, "4-2-3-1": 2, "5-3-2": 2, "4-4-1-1": 1 },
+        tieferBlock: { "5-4-1": 3, "5-3-2": 3, "4-5-1": 2, "4-1-4-1": 2 },
+        fluegelspiel: { "4-4-2": 3, "4-2-3-1": 3, "3-4-3": 2, "4-3-3": 1 },
+        direkt: { "4-4-2": 4, "3-5-2": 2, "4-4-1-1": 2, "4-2-3-1": 1 },
+        manndeckung: { "3-4-2-1": 4, "3-5-2": 2, "3-4-1-2": 2 }
+    },
+
+    /** Eine feste Zahl zwischen 0 und 1 aus einem Text */
+    _zahl(text) {
+        let h = 2166136261;
+        for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+        return ((h >>> 0) % 10000) / 10000;
+    },
+
+    /**
+     * Die Lieblingsformation eines Trainers. Ohne Trainer-Eintrag (beim
+     * Erzeugen der Welt) die des ersten Trainers - dieselbe, die er später
+     * mit seinem Eintrag behält.
+     */
+    lieblingsformation(club, trainer = club?.trainer) {
+        if (!club) return null;
+        if (trainer && trainer.formation) return trainer.formation;
+        const stil = trainer?.stil || club.tactics?.vorlage || "ausgewogen";
+        const liste = Object.entries(this.FORMATIONEN_JE_STIL[stil] || this.FORMATIONEN_JE_STIL.ausgewogen);
+        const summe = liste.reduce((s, [, w]) => s + w, 0);
+        let r = this._zahl(`${club.id}|${trainer?.name || "erster"}`) * summe;
+        for (const [f, w] of liste) { r -= w; if (r < 0) return f; }
+        return liste[0][0];
+    },
+
+    /** Der Kader und eine neue Formation nach dem System des Trainers */
+    _systemEinfuehren(state, club, trainer) {
+        const gs = _twResolve("GameState", "./gameState.js");
+        if (!gs || typeof gs.waehleFormation !== "function" || !trainer?.formation) return null;
+        const kader = (state.players || []).filter(p => p.clubId === club.id);
+        if (kader.length < 11) return null;
+        return gs.waehleFormation(club, kader, 0, null, trainer.formation);
+    },
+
     /** Der Trainer eines KI-Vereins - beim ersten Blick angelegt */
     trainer(state, club, zufall = Math.random) {
         if (!club || club.id === state?.userClubId) return null;
@@ -80,6 +141,8 @@ const TrainerwechselEngine = {
                 ruf: Math.max(30, Math.min(92, Math.round((club.reputation || 60) + (zufall() - 0.5) * 16))),
                 ab: 0
             };
+            // Das System des ersten Trainers - dasselbe, mit dem die Welt erzeugt wurde
+            club.trainer.formation = this.lieblingsformation(club, { stil: club.trainer.stil });
         }
         return club.trainer;
     },
@@ -214,8 +277,12 @@ const TrainerwechselEngine = {
         };
         // Doppelte Namen im selben Verein klingen nach einem Fehler
         if (neu.name === alt.name) neu.name = this._name(club, zufall);
+        // Seine Handschrift: das System, das er mitbringt
+        neu.formation = this.lieblingsformation(club, { stil, name: neu.name });
         club.trainer = neu;
         if (taktik && typeof taktik.wendeVorlageAn === "function") club.tactics = taktik.wendeVorlageAn(club.tactics, stil);
+        // Er stellt um, soweit der Kader es hergibt
+        const umgestellt = this._systemEinfuehren(state, club, neu);
         // Trainereffekt: Die Mannschaft will sich zeigen
         if (grund !== "saisonende") {
             (state.players || []).forEach(p => { if (p.clubId === club.id) p.morale = Math.min(100, (p.morale ?? 70) + this.TRAINEREFFEKT); });
@@ -224,7 +291,7 @@ const TrainerwechselEngine = {
         club.trainerwechsel = { saison, anzahl: (club.trainerwechsel?.saison === saison ? club.trainerwechsel.anzahl : 0) + 1 };
         const eintrag = {
             saison, datum: state.currentDate || "", tag: state.currentDayIndex || 0, clubId: club.id, verein: club.name, liga: club.leagueId,
-            alt: alt.name, neu: neu.name, stil, grund, platz
+            alt: alt.name, neu: neu.name, stil, grund, platz, formation: club.formation, systemNeu: !!umgestellt
         };
         if (!Array.isArray(state.trainerwechsel)) state.trainerwechsel = [];
         const eigeneLiga = (state.clubs || []).find(c => c.id === state.userClubId)?.leagueId;
@@ -240,9 +307,10 @@ const TrainerwechselEngine = {
 
     _post(state, w) {
         if (!Array.isArray(state.inbox)) state.inbox = [];
+        const system = w.systemNeu && w.formation ? ` Er stellt auf ${w.formation} um.` : "";
         const text = w.grund === "saisonende"
-            ? `${w.verein} und Trainer ${w.alt} gehen nach der Saison getrennte Wege${w.platz ? ` (Platz ${w.platz})` : ""}. Nachfolger wird ${w.neu}, der für ${this.stilName(w.stil)} steht.`
-            : `${w.verein} hat Trainer ${w.alt} entlassen${w.platz ? ` - Platz ${w.platz}` : ""}. Nachfolger ist ${w.neu}, der für ${this.stilName(w.stil)} steht. Die Mannschaft dürfte in den nächsten Wochen mit neuem Schwung auftreten.`;
+            ? `${w.verein} und Trainer ${w.alt} gehen nach der Saison getrennte Wege${w.platz ? ` (Platz ${w.platz})` : ""}. Nachfolger wird ${w.neu}, der für ${this.stilName(w.stil)} steht.${system}`
+            : `${w.verein} hat Trainer ${w.alt} entlassen${w.platz ? ` - Platz ${w.platz}` : ""}. Nachfolger ist ${w.neu}, der für ${this.stilName(w.stil)} steht.${system} Die Mannschaft dürfte in den nächsten Wochen mit neuem Schwung auftreten.`;
         state.inbox.unshift({
             id: Date.now() + Math.floor(Math.random() * 1000),
             matchday: state.currentMatchday,

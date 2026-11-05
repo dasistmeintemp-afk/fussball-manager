@@ -7243,7 +7243,8 @@ function runEngineTests() {
         const { KoeffizientEngine: K } = require('./js/engine/koeffizientEngine.js');
         const state = GameState.createNewGame("en3_cha", "normal", { name: "Trainer" });
         const erste = state.clubs.filter(c => /_liga_1$/.test(c.leagueId));
-        // Keine Liga spielt nur 4-4-2, und jede gewählte Formation ist die stärkste (bis auf den Vorzug der gängigen)
+        // Keine Liga spielt nur 4-4-2, und jede gewählte Formation ist die stärkste - bis auf den Vorzug
+        // der gängigen oder das System des Trainers (TrainerwechselEngine.lieblingsformation)
         const de = erste.filter(c => c.leagueId === "de_liga_1");
         if (de.every(c => c.formation === "4-4-2")) throw new Error("Die erste deutsche Liga spielt geschlossen 4-4-2");
         const kader = new Map();
@@ -7255,7 +7256,11 @@ function runEngineTests() {
             const bester = Math.max(...Object.keys(GameState.FORMATIONEN_KI).map(wert));
             const eigen = wert(gewaehlt);
             c.formation = gewaehlt; GameState.autoSetLineupForClub(c, k);
-            if (eigen < bester - 1.0) throw new Error(`${c.id}: ${gewaehlt} ${eigen.toFixed(1)} statt bis zu ${bester.toFixed(1)}`);
+            if (eigen < bester - 1.0) {
+                const { TrainerwechselEngine: TW } = require('./js/engine/trainerwechselEngine.js');
+                const system = c.id !== state.userClubId && TW.lieblingsformation(c) === gewaehlt;
+                if (!system || eigen < bester - GameState.HANDSCHRIFT - 0.05) throw new Error(`${c.id}: ${gewaehlt} ${eigen.toFixed(1)} statt bis zu ${bester.toFixed(1)}`);
+            }
         });
         // Die Europapokal-Ränge 3 bis 7: Deutschland nicht hinter Frankreich
         const elf = c => { const s = (kader.get(c.id) || []).map(p => p.overall).sort((a, b) => b - a).slice(0, 11); return s.reduce((a, b) => a + b, 0) / s.length; };
@@ -17895,6 +17900,60 @@ function runEngineTests() {
         live.paketAnweisung("home", vorlagen.find(p => p.id === "ruhe"));
         if (live.paketStand("home") !== "ruhe") throw new Error("Das zweite Paket gilt nicht");
         if (T.wert(club.tactics, "mentality") !== vorher.mentality) throw new Error("Das erste Paket wirkt nach");
+    });
+
+    test("Lange Spielstände: Trainer mit Handschrift, neues System mit dem neuen Trainer, Einzelwerte folgen der Stärke", () => {
+        const { TrainerwechselEngine: TW } = require('./js/engine/trainerwechselEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Langzeit" });
+        // Jede Formation der Handschriften gibt es
+        Object.values(TW.FORMATIONEN_JE_STIL).forEach(liste => Object.keys(liste).forEach(f => {
+            if (!FORMATION_CONFIGS[f]) throw new Error(`Formation ${f} gibt es nicht`);
+        }));
+        // Vielfalt in den ersten Ligen: kein System bei mehr als einem Drittel, mindestens acht verschiedene
+        const erste = state.clubs.filter(c => (c.level || 1) === 1 && ["de", "en", "es", "it", "fr"].includes(c.countryId) && c.id !== state.userClubId);
+        const zahl = {};
+        erste.forEach(c => { zahl[c.formation] = (zahl[c.formation] || 0) + 1; });
+        const top = Math.max(...Object.values(zahl)) / erste.length;
+        if (top > 0.32 || Object.keys(zahl).length < 8) throw new Error(`Einheitsliga: ${JSON.stringify(zahl)}`);
+        // Die Lieblingsformation steht fest: derselbe Trainer, dasselbe System - ohne Zufall
+        const club = state.clubs.find(c => c.id === "dor");
+        const zufall = Math.random;
+        Math.random = () => { throw new Error("Zufall verbraucht"); };
+        let lieb;
+        try { lieb = TW.lieblingsformation(club, { stil: "konter", name: "A B" }); }
+        finally { Math.random = zufall; }
+        if (lieb !== TW.lieblingsformation(club, { stil: "konter", name: "A B" }) || !TW.FORMATIONEN_JE_STIL.konter[lieb]) throw new Error("Lieblingsformation nicht fest");
+        // Der erste Trainer behält das System, mit dem die Welt erzeugt wurde
+        const t = TW.trainer(state, club);
+        if (t.formation !== TW.lieblingsformation(club, { stil: t.stil })) throw new Error("Der erste Trainer hat ein anderes System");
+        // Ein neuer Trainer bringt sein System mit und stellt um, soweit der Kader es hergibt
+        const w = TW.wechsle(state, club, { grund: "entlassung", gespielt: 10, platz: 12 });
+        if (!club.trainer.formation || w.formation !== club.formation) throw new Error("Die Formation nach dem Wechsel fehlt im Protokoll");
+        if (w.systemNeu && club.formation !== club.trainer.formation) throw new Error("Umgestellt, aber nicht auf sein System");
+
+        // Einzelwerte: Wer wächst, bekommt sie mitgezogen - auch ohne Schwerpunkt
+        const { PlayerGenerator: G } = require('./js/engine/playerGenerator.js');
+        const { TrainingEngine: TE } = require('./js/engine/trainingEngine.js');
+        const st = { id: "lz_st", pos: "ST", age: 21, overall: 70, pot: 85, value: 1000000 };
+        Object.assign(st, G.generateAttributes("ST", 60));
+        const summe = p => G.FELDWERTE.reduce((x, k) => x + p[k], 0);
+        const vorher = summe(st);
+        Math.random = () => 0;
+        try { TE.developPlayer(st, "allround", "normal", 2, 1); }
+        finally { Math.random = zufall; }
+        if (st.overall !== 71) throw new Error("Wachstum nicht ausgelöst");
+        if (!(summe(st) >= vorher + 7)) throw new Error(`Einzelwerte bleiben zurück: ${vorher} → ${summe(st)}`);
+        // Wer nachlässt, verliert ab dreißig zuerst am Körper
+        const alt = { id: "lz_alt", pos: "ZM", age: 33, overall: 80, pot: 80, value: 1000000 };
+        Object.assign(alt, G.generateAttributes("ZM", 80));
+        const koerper = ["pace", "stamina", "physical"].map(k => alt[k]);
+        G.werteNachziehen(Object.assign(alt, { overall: 79 }), -1);
+        if (["pace", "stamina", "physical"].some((k, i) => alt[k] !== koerper[i] - 1)) throw new Error("Der Körper lässt nicht zuerst nach");
+        // Ein Torwart behält sein Profil
+        const tw = Object.assign({ id: "lz_tw", pos: "TW", age: 24, overall: 75 }, G.generateAttributes("TW", 65));
+        const reflexe = tw.reflexes;
+        G.werteNachziehen(tw, 1);
+        if (!(tw.reflexes === reflexe + 1)) throw new Error("Torwartwerte ziehen nicht mit");
     });
 
     test("Gespeicherte Aufstellungen: Profis, U23 und U19 speichern und laden, Ausfall wird ersetzt, nur Spielweise, Spielstand", () => {

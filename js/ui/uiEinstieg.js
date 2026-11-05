@@ -39,7 +39,7 @@ const EINSTIEG_SCHRITTE = [
         text: "Der Trainerstab plant die Woche. Du setzt Schwerpunkte, legst ein Veto ein und siehst, wer zu viel Last trägt."
     },
     {
-        id: "transfers", tab: "transfers", titel: "Den Transfermarkt ansehen",
+        id: "transfers", tab: "transfers", titel: "Die Rekrutierung ansehen",
         text: "Erst scouten, dann bieten: Je mehr dein Scout über einen Spieler weiß, desto genauer sind seine Werte."
     },
     {
@@ -104,11 +104,12 @@ const EINSTIEG_ERKLAERUNGEN = {
         ]
     },
     transfers: {
-        titel: "Transfers",
+        titel: "Die Rekrutierung",
         punkte: [
-            "Gesucht wird nach Position, Stärke und Preis; Spieler, die zu teuer oder zu gut für deine Liga sind, wollen oft nicht kommen.",
-            "Scouten kostet Tage, macht die Werte aber genau. Ohne Bericht sind es Schätzungen.",
-            "Ablösefreie Spieler kosten keine Ablöse – findet einer eine Saison lang keinen Verein, hört er auf."
+            "Die Übersicht zeigt alles auf einen Blick: Budgets, Verträge, Baustellen im Kader, was der Vorstand erwartet. Ein Klick auf eine Kachel öffnet ihre Seite.",
+            "Nicht jeder will zu dir: Die Spalte Interesse reicht von interessiert bis kommt nicht in Frage. Wer zögert, verlangt mehr Gehalt.",
+            "In der Transferbörse schreibst du aus, wen du suchst, und bietest Vereinen an, wen du abgeben willst.",
+            "Scouten kostet Tage, macht die Werte aber genau. Ohne Bericht sind es Schätzungen."
         ]
     },
     preseason: {

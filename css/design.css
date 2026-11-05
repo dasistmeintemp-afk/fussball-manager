@@ -2624,13 +2624,130 @@ td.tm-verein > span:not(.crest) { display: inline-block; max-width: 130px; overf
         grid-template-columns: 40px minmax(0, 1fr) auto auto;
         grid-template-areas:
             "pos name name note"
-            "pos staerke aktion aktion"
+            "pos staerke int aktion"
             "pos meta meta meta";
     }
     #pane-transfers .data-table tr.row-clickable td.tm-note-zelle { display: block; grid-area: note; align-self: start; text-align: right; }
     #pane-transfers .data-table tr.row-clickable td.tm-aktion { align-self: center; }
     #pane-transfers .tm-knoepfe { flex-direction: row; }
     #pane-transfers .tm-rolle-name { display: none; }
+}
+
+/* --------------------------------------------------------------------------
+   Rekrutierung (uiRekrutierung.js): Wechselinteresse, Übersicht in Kacheln,
+   Transferaktivität, Verträge, Transferbörse
+   -------------------------------------------------------------------------- */
+.tm-interesse { white-space: nowrap; }
+.tm-interesse-marke { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-soft); }
+.tm-interesse-marke i { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 10px; background: var(--text-dim); box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04); }
+.int-interessiert i { background: var(--ok); }
+.int-offen i { background: #8fd18a; }
+.int-zoegert i { background: var(--warn); }
+.int-abgeneigt i { background: #f08a3c; }
+.int-ausgeschlossen i { background: var(--bad); }
+.int-ausgeschlossen { color: var(--text-muted); }
+.pf-interesse strong { display: inline-flex; }
+.pf-interesse-grund { margin: 2px 0 0; font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+
+.rk-raster { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.rk-raster > * { min-width: 0; }
+.rk-kachel.rk-breit { grid-column: span 2; }
+.rk-titel { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+.rk-titel:hover { color: var(--accent); }
+.rk-titel:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+.rk-zwei { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.rk-unterkopf { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; margin: 10px 0 4px; padding: 5px 10px; border: 1px solid var(--line-strong); border-radius: 8px; font-size: 12.5px; font-weight: 600; color: var(--text-main); }
+.rk-unterkopf:hover { border-color: var(--accent-line); }
+.rk-unterkopf .ico, .rk-unterkopf-text .ico { width: 15px; height: 15px; color: var(--accent); }
+.rk-unterkopf-text { display: flex; align-items: center; gap: 7px; margin: 12px 0 6px; font-size: 12.5px; font-weight: 700; color: var(--text-main); }
+.rk-fenster { display: inline-flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 800; }
+.rk-fenster .ico { width: 22px; height: 22px; }
+.rk-fenster.offen { color: var(--ok); }
+.rk-fenster.zu { color: var(--bad); }
+.rk-tabelle-kopf { display: flex; justify-content: space-between; margin: 6px 0 2px; padding-top: 8px; border-top: 1px solid var(--border-color); font-size: 12px; font-weight: 700; color: var(--text-main); }
+.rk-pfeil { display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; vertical-align: 1px; }
+.rk-pfeil.rein { background: var(--ok); }
+.rk-pfeil.raus { background: var(--bad); }
+.rk-pfeil.sd { background: var(--info, #60c4ff); }
+.rk-bilanz { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.rk-bilanz span { padding: 5px 10px; border: 1px solid var(--line-strong); border-radius: 8px; font-size: 12px; color: var(--text-muted); }
+.rk-bilanz strong { color: var(--text-main); margin-right: 4px; }
+.rk-budget { display: grid; gap: 1px; padding: 8px 0; border-bottom: 1px solid var(--border-color); }
+.rk-budget:last-child { border-bottom: 0; }
+.rk-budget-kopf { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-soft); }
+.rk-budget-kopf .ico { width: 14px; height: 14px; }
+.rk-budget strong { font-size: 19px; font-variant-numeric: tabular-nums; }
+.rk-ringe { display: flex; flex-wrap: wrap; gap: 10px; }
+.rk-ring { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+.rk-ring b { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; border: 2.5px solid var(--text-dim); color: var(--text-main); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.rk-ring.schlecht b { border-color: var(--bad); }
+.rk-ring.warn b { border-color: var(--warn); }
+.rk-ring.mittel b { border-color: var(--text-soft); }
+.rk-ring.gut b { border-color: var(--ok); }
+.rk-vertragsraster { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 12px; }
+.rk-vertrag { all: unset; cursor: pointer; display: grid; min-width: 0; padding: 4px 0; }
+.rk-vertrag strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rk-vertrag span { font-size: 11.5px; color: var(--text-muted); }
+.rk-vertrag:hover strong { color: var(--accent); }
+.rk-planer { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 16px; align-items: center; }
+.rk-planer-text strong { display: block; font-size: 15px; margin-bottom: 4px; }
+.rk-feld { position: relative; aspect-ratio: 3 / 4; border-radius: 8px; background: linear-gradient(180deg, rgba(40, 110, 70, 0.32), rgba(25, 80, 50, 0.32)); border: 1px solid rgba(255, 255, 255, 0.12); overflow: hidden; }
+.rk-feld-mitte { position: absolute; left: 50%; top: 0; width: 34%; aspect-ratio: 1; transform: translate(-50%, -50%); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 50%; }
+.rk-feld-strafraum { position: absolute; left: 22%; right: 22%; bottom: 0; height: 18%; border: 1px solid rgba(255, 255, 255, 0.14); border-bottom: 0; }
+.rk-feld-nr { position: absolute; transform: translate(-50%, -50%); display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(var(--accent-rgb), 0.85); color: var(--accent-ink); font-size: 10.5px; font-weight: 800; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4); }
+.rk-vorgabe { display: flex; justify-content: space-between; gap: 10px; padding: 6px 10px; margin: 4px 0; border-radius: 8px; background: rgba(255, 255, 255, 0.03); border-left: 3px solid var(--warn); font-size: 12.5px; }
+.rk-vorgabe.gut { border-left-color: var(--ok); }
+.rk-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.rk-chips span { padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line-strong); font-size: 11.5px; color: var(--text-soft); }
+.rk-kopf { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.rk-kopf-feld { display: grid; gap: 2px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border-color); background: rgba(255, 255, 255, 0.025); }
+.rk-kopf-feld span { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); }
+.rk-kopf-feld strong { font-size: 20px; font-variant-numeric: tabular-nums; }
+.rk-kopf-feld small { font-size: 12px; color: var(--text-muted); }
+.rk-kopf-karte { margin: 0; }
+.rk-warn { color: var(--warn); }
+.vt-tabelle .tm-sub { display: block; }
+.vt-tabelle td { vertical-align: middle; }
+
+.tb-raster { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.tb-raster > * { min-width: 0; margin: 0; }
+.tb-form { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; margin: 6px 0 14px; }
+.tb-feld { display: grid; gap: 6px; padding: 12px 10px; border-radius: 12px; background: linear-gradient(180deg, rgba(40, 110, 70, 0.3), rgba(25, 80, 50, 0.3)); border: 1px solid rgba(255, 255, 255, 0.12); }
+.tb-feld-reihe { display: flex; justify-content: center; gap: 6px; }
+.tb-pos { min-width: 44px; padding: 6px 4px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.18); background: rgba(0, 0, 0, 0.3); color: var(--text-main); font-size: 12px; font-weight: 700; cursor: pointer; }
+.tb-pos:hover { border-color: rgba(255, 255, 255, 0.35); }
+.tb-pos.aktiv { background: rgb(var(--accent-rgb)); border-color: transparent; color: var(--accent-ink); }
+.tb-angaben { display: grid; gap: 10px; align-content: start; }
+.tb-angaben label { display: grid; gap: 4px; font-size: 12px; color: var(--text-muted); }
+.tb-alter { display: flex; align-items: center; gap: 8px; }
+.tb-alter select { flex: 1; }
+.tb-gesuch, .tb-fremd { padding: 10px 0; border-top: 1px solid var(--border-color); }
+.tb-gesuch-kopf { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.tb-gesuch-kopf .tm-sub { flex: 1 1 200px; }
+.tb-antwort { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.tb-antwort.empfohlen .tm-eintrag { box-shadow: inset 3px 0 0 rgb(var(--accent-rgb)); }
+.tb-sd { margin-left: 6px; font-size: 10.5px; font-weight: 700; color: var(--accent); }
+.tb-passend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.tb-eigener { display: inline-flex; align-items: center; gap: 6px; padding: 4px 4px 4px 10px; border-radius: 10px; border: 1px solid var(--line-strong); }
+.tb-name { all: unset; cursor: pointer; font-size: 12.5px; font-weight: 600; }
+.tb-name small { color: var(--text-muted); font-weight: 500; }
+.tb-name:hover { color: var(--accent); }
+
+@media (max-width: 1500px) {
+    #transferTable .tm-interesse-marke span, #empfTable .tm-interesse-marke span { display: none; }
+}
+@media (max-width: 1250px) {
+    .rk-raster { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tb-raster { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+    .rk-raster { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+    .rk-kachel.rk-breit { grid-column: auto; }
+    .rk-vertragsraster { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .rk-planer { grid-template-columns: 110px minmax(0, 1fr); }
+    .tb-form { grid-template-columns: minmax(0, 1fr); }
+    #pane-transfers .data-table tr.row-clickable td.tm-interesse { display: block; grid-area: int; align-self: center; }
+    #pane-transfers .data-table tr.row-clickable td.tm-interesse .tm-interesse-marke span { display: none; }
 }
 
 /* --------------------------------------------------------------------------
@@ -3550,6 +3667,7 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
     .ku-knopf:hover { color: var(--text-main); }
     .ku-knopf.aktiv { color: var(--text-main); }
     .ku-knopf.aktiv::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 2px; border-radius: 2px 2px 0 0; background: var(--accent); }
+    .ku-mehr .ico { width: 14px; height: 14px; }
 
     /* Die Ansichten des Transfermarkts stehen schon in der zweiten Zeile */
     body.menue-oben #pane-transfers > .pane-header .view-switch-buttons { display: none; }
@@ -4175,3 +4293,16 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
 .satz-aktionen { display: flex; gap: 6px; flex-wrap: wrap; }
 .satz-aktionen .satz-loeschen { margin-left: auto; }
 .satz-aktionen .btn { min-height: 36px; }
+
+/* "Mehr" der zweiten Kopfzeile: hängt fest unter dem Knopf (uiKopfmenue.oeffneKuMehr) */
+.ku-mehr-feld {
+    position: fixed; z-index: 1200; min-width: 210px; padding: 6px; display: grid; gap: 2px;
+    border-radius: 12px; border: 1px solid var(--line-strong); background: var(--surface-1, #12161d);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+}
+.ku-mehr-eintrag {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; border: 0; border-radius: 8px;
+    background: transparent; color: var(--text-soft); font: inherit; font-size: 13.5px; font-weight: 600; text-align: left; cursor: pointer;
+}
+.ku-mehr-eintrag:hover, .ku-mehr-eintrag:focus-visible { background: rgba(255, 255, 255, 0.06); color: var(--text-main); outline: none; }
+.ku-mehr-eintrag.aktiv { color: var(--text-main); box-shadow: inset 3px 0 0 var(--accent); }

@@ -53,10 +53,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             { tab: "transfers", knopf: "btnSubTransfersListe", titel: "Beobachtungsliste", icon: "i-star" },
             { tab: "transfers", knopf: "btnSubTransfersPlaner", titel: "Kaderplaner", icon: "i-tactics" },
             { tab: "transfers", knopf: "btnSubTransfersAktivitaet", titel: "Transferaktivität", icon: "i-transfer", zahl: "navOffersBadge" },
-            { tab: "transfers", knopf: "btnSubTransfersVertraege", titel: "Verträge", icon: "i-doc" },
-            { tab: "transfers", knopf: "btnSubTransfersBoerse", titel: "Transferbörse", icon: "i-briefcase" },
-            { tab: "transfers", knopf: "btnSubTransfersLoans", titel: "Leihen", icon: "i-transfer" },
-            { tab: "transfers", knopf: "btnSubTransfersSD", titel: "Sportdirektor", icon: "i-target" }
+            { tab: "transfers", knopf: "btnSubTransfersVertraege", titel: "Verträge", mehr: true, icon: "i-doc" },
+            { tab: "transfers", knopf: "btnSubTransfersBoerse", titel: "Transferbörse", mehr: true, icon: "i-briefcase" },
+            { tab: "transfers", knopf: "btnSubTransfersLoans", titel: "Leihen", mehr: true, icon: "i-transfer" },
+            { tab: "transfers", knopf: "btnSubTransfersSD", titel: "Sportdirektor", mehr: true, icon: "i-target" }
         ] },
         { id: "verein", titel: "Verein", seiten: [
             { tab: "club", titel: "Verein", icon: "i-shield" },
@@ -210,6 +210,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         });
 
         document.getElementById("kopfUnter")?.addEventListener("click", (e) => {
+            const mehr = e.target.closest(".ku-mehr");
+            if (mehr) { this.oeffneKuMehr(mehr); e.stopPropagation(); return; }
             const k = e.target.closest("[data-ku-seite]");
             if (!k) return;
             const [g, i] = k.dataset.kuSeite.split(":");
@@ -225,6 +227,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         document.addEventListener("click", (e) => {
             if (!e.target.closest || !e.target.closest(".kopf-gruppe")) this.schliesseKopfAufklapp();
+            if (!e.target.closest || !e.target.closest(".ku-mehr-feld")) this.schliesseKuMehr();
         });
         document.addEventListener("keydown", (e) => {
             if (e.key !== "Escape") return;
@@ -243,7 +246,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         // Der Inhalt rollt unter der Kopfleiste - ihre Höhe hängt am Menü
         if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
-            window.addEventListener("resize", () => this.messeKopf());
+            window.addEventListener("resize", () => {
+                this.messeKopf();
+                // Was in der zweiten Zeile Platz hat, hängt an der Breite
+                cancelAnimationFrame(this._kuRahmen);
+                this._kuRahmen = requestAnimationFrame(() => this.aktualisiereKopfmenue());
+            });
         }
         const kopf = document.querySelector(".app-header");
         if (kopf && typeof ResizeObserver === "function") new ResizeObserver(() => this.messeKopf()).observe(kopf);
@@ -336,12 +344,31 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         const unter = document.getElementById("kopfUnter");
         if (unter) {
-            unter.innerHTML = hier ? hier.gruppe.seiten.map((seite, i) => {
-                if (!this.kopfSeiteDa(seite)) return "";
+            const knopf = (seite, i, klasse = "ku-knopf") => {
                 const n = this.kopfZahl(seite);
                 const an = i === hier.index;
-                return `<button type="button" class="ku-knopf${an ? " aktiv" : ""}" data-ku-seite="${hier.gruppe.id}:${i}"${an ? ` aria-current="page"` : ""}>${this.escapeHtml(seite.titel)}${n > 0 ? `<span class="kopf-zahl-klein">${n}</span>` : ""}</button>`;
-            }).join("") : "";
+                return `<button type="button" class="${klasse}${an ? " aktiv" : ""}" data-ku-seite="${hier.gruppe.id}:${i}"${an ? ` aria-current="page"` : ""}>${this.escapeHtml(seite.titel)}${n > 0 ? `<span class="kopf-zahl-klein">${n}</span>` : ""}</button>`;
+            };
+            const da = hier ? hier.gruppe.seiten.map((seite, i) => ({ seite, i })).filter(x => this.kopfSeiteDa(x.seite)) : [];
+            // Seltener gebrauchte Seiten stehen wie im Vorbild unter "Mehr" -
+            // und alles, was in der Zeile keinen Platz mehr hat
+            const haupt = da.filter(x => !x.seite.mehr);
+            const mehr = da.filter(x => x.seite.mehr);
+            const zeichne = () => {
+                const mehrAktiv = mehr.find(x => x.i === hier?.index);
+                unter.innerHTML = haupt.map(x => knopf(x.seite, x.i)).join("")
+                    + (mehr.length ? `<button type="button" class="ku-knopf ku-mehr${mehrAktiv ? " aktiv" : ""}" aria-haspopup="true" aria-expanded="false">${this.escapeHtml(mehrAktiv ? mehrAktiv.seite.titel : "Mehr")}<svg class="ico" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>` : "");
+                this._kuMehr = mehr.map(x => knopf(x.seite, x.i, "ku-mehr-eintrag")).join("");
+            };
+            zeichne();
+            for (let n = 0; n < 12 && haupt.length > 1 && unter.scrollWidth > unter.clientWidth + 1; n++) {
+                // Die hinterste Seite wandert unter "Mehr" - die aktive bleibt stehen
+                const weg = haupt.map(x => x.i !== hier?.index).lastIndexOf(true);
+                if (weg < 1) break;
+                mehr.unshift(haupt.splice(weg, 1)[0]);
+                zeichne();
+            }
+            this.schliesseKuMehr();
             // Rollt die Zeile (schmales Fenster), steht die aktive Seite im Blick
             const an = unter.querySelector(".ku-knopf.aktiv");
             if (an && unter.scrollWidth > unter.clientWidth) unter.scrollLeft = Math.max(0, an.offsetLeft - unter.offsetLeft - 24);
@@ -359,6 +386,41 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const gespielt = /form-dot (w|d|l)\b/.test(form);
             stand.innerHTML = `<span class="ks-platz" title="Tabellenplatz"><small>Platz</small><b>${this.escapeHtml(platz)}</b></span>${gespielt ? `<span class="ks-form form-indicators" title="Form">${form}</span>` : ""}`;
         }
+    },
+
+    /**
+     * Das Menü "Mehr" der zweiten Zeile. Die Zeile rollt waagerecht und
+     * schneidet ab, was über sie hinausragt - das Feld hängt deshalb fest
+     * unter dem Knopf, außerhalb der Zeile.
+     */
+    oeffneKuMehr(knopf) {
+        if (typeof document === "undefined") return;
+        const offen = document.getElementById("kuMehrFeld");
+        if (offen) { this.schliesseKuMehr(); return; }
+        const feld = document.createElement("div");
+        feld.id = "kuMehrFeld";
+        feld.className = "ku-mehr-feld";
+        feld.setAttribute("role", "menu");
+        feld.innerHTML = this._kuMehr || "";
+        const r = knopf.getBoundingClientRect();
+        feld.style.left = `${Math.max(8, Math.min(r.left, (window.innerWidth || 1200) - 230))}px`;
+        feld.style.top = `${r.bottom + 6}px`;
+        document.body.appendChild(feld);
+        knopf.setAttribute("aria-expanded", "true");
+        feld.addEventListener("click", (e) => {
+            const k = e.target.closest("[data-ku-seite]");
+            if (!k) return;
+            const [g, i] = k.dataset.kuSeite.split(":");
+            this.schliesseKuMehr();
+            this.kopfGehe(g, Number(i));
+        });
+        feld.querySelector("button")?.focus({ preventScroll: true });
+    },
+
+    schliesseKuMehr() {
+        if (typeof document === "undefined" || typeof document.getElementById !== "function") return;
+        document.getElementById("kuMehrFeld")?.remove();
+        document.querySelector?.(".ku-mehr")?.setAttribute("aria-expanded", "false");
     },
 
     /** Einstellung unter "Spielstand & Optionen" */

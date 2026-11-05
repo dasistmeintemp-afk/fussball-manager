@@ -278,7 +278,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 europeanSpots: liga.europeanSpots || null,
                 promotionTo: liga.promotionTo || null,
                 promotionSpots: liga.promotionSpots || null,
-                relegationTo: liga.relegationTo || null
+                relegationTo: liga.relegationTo || null,
+                relegationSpots: liga.relegationSpots || null
             };
         }).sort((a, b) =>
             // Deutschland zuerst - dort liegt die ganze Ligapyramide bis zur
@@ -394,7 +395,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 zeilen.push([`Relegation gegen ${gegner}`, `Platz ${f.oben.platz}`, "rel"]);
             }
         });
-        if (liga.relegationTo && liga.relegationTo.length) zeilen.push(["Abstieg", "in die nächsttiefere Klasse", "ab"]);
+        if (liga.relegationTo && liga.relegationTo.length) {
+            zeilen.push(["Abstieg in die nächsttiefere Klasse", Array.isArray(liga.relegationSpots) && liga.relegationSpots.length ? plaetze(liga.relegationSpots) : "die Letzten", "ab"]);
+        }
         if (!liga.promotionTo && !liga.europeanSpots) zeilen.push(["Ligaspitze", "Kein Aufstieg möglich", ""]);
 
         detail.innerHTML = `

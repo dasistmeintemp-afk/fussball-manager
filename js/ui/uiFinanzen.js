@@ -209,15 +209,16 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (!el || !fin || typeof fin.monatsBilanz !== "function") return;
         const esc = (t) => this.escapeHtml(String(t ?? ""));
         const geld = (b) => this.geldKurz(b || 0);
-        const kachel = (titel, icon, inhalt, klasse = "") => `
-            <div class="dash-card fin-kachel ${klasse}">
-                <h4 class="gs-titel"><svg class="ico h-ico" aria-hidden="true"><use href="#${icon}"/></svg>${esc(titel)}</h4>
-                ${inhalt}
-            </div>`;
+        // Kacheln wie überall (uiKacheln.js): ein Klick holt sie groß nach
+        // vorn, "Seite öffnen" führt zu den Budgets oder Buchungen
+        const kachel = (titel, icon, inhalt, klasse = "", ziel = "", mehr = "") => this.ukKachel({
+            titel, icon, inhalt, mehr, ziel, klasse: `fin-kachel ${klasse}`,
+            zielText: ziel === "Budgets" ? "Zu den Budgets" : ziel === "Journal" ? "Zu den Buchungen" : ""
+        });
         const arten = (nachArt, vorzeichen) => Object.entries(nachArt)
             .filter(([, b]) => vorzeichen > 0 ? b > 0 : b < 0)
             .reduce((m, [art, b]) => { const n = this.FINANZ_ARTEN[art] || "Sonstiges"; m.set(n, (m.get(n) || 0) + Math.abs(b)); return m; }, new Map());
-        const top = (map, n = 3) => [...map].sort((a, b) => b[1] - a[1]).slice(0, n)
+        const top = (map, n = 3, ab = 0) => [...map].sort((a, b) => b[1] - a[1]).slice(ab, n)
             .map(([name, b]) => `<div class="pf-zeile"><span>${esc(name)}</span><strong>${geld(b)}</strong></div>`).join("");
         const saison = (s) => typeof this.profilSaisonText === "function" ? this.profilSaisonText(s) : `Saison ${s}`;
 
@@ -230,7 +231,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <div class="fin-verlauf-box">${this.finanzVerlaufSvg(verlauf)}</div>
             ${stande.length ? `<table class="compact-table pf-tabelle fin-tabelle"><thead><tr><th>Monat</th><th>Kontostand</th></tr></thead>
                 <tbody>${stande.map(p => `<tr><td>${esc(p.datum)}</td><td class="${p.saldo < 0 ? "pf-ton-schlecht" : ""}">${geld(p.saldo)}</td></tr>`).join("")}</tbody></table>`
-                : `<p class="pf-klein">Am Monatsersten kommt der erste Stand in den Verlauf.</p>`}`, "fin-uebersicht");
+                : `<p class="pf-klein">Am Monatsersten kommt der erste Stand in den Verlauf.</p>`}`, "fin-uebersicht", "Journal");
 
         // Einnahmen und Ausgaben des Monats
         const monat = fin.monatsBilanz(state);
@@ -239,11 +240,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <div class="fin-gross pf-ton-gut">${geld(monat.einnahmen)}</div>
             <div class="fin-unter">diesen Monat</div>
             ${top(arten(monat.nachArt, 1))}
-            ${fr ? `<p class="pf-klein fin-fuss">Umsatz der Saison: <strong>${geld(fr.umsatz)}</strong></p>` : ""}`);
+            ${fr ? `<p class="pf-klein fin-fuss">Umsatz der Saison: <strong>${geld(fr.umsatz)}</strong></p>` : ""}`, "", "Journal", top(arten(monat.nachArt, 1), 20, 3));
         const ausgaben = kachel("Ausgaben", "i-wallet", `
             <div class="fin-gross pf-ton-schlecht">${geld(monat.ausgaben)}</div>
             <div class="fin-unter">diesen Monat</div>
-            ${top(arten(monat.nachArt, -1))}`);
+            ${top(arten(monat.nachArt, -1))}`, "", "Journal", top(arten(monat.nachArt, -1), 20, 3));
 
         // Finanzregeln
         const fre = typeof FinanzregelEngine !== "undefined" ? FinanzregelEngine : null;
@@ -253,7 +254,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <div class="fin-regel pf-ton-${regel[2]}"><svg class="ico" aria-hidden="true"><use href="#${regel[0]}"/></svg>${esc(regel[1])}</div>
             <div class="pf-zeile"><span>Kaderkosten</span><strong>${Math.round(fr.quote * 100)} % des Umsatzes</strong></div>
             <div class="pf-zeile"><span>Grenze</span><strong>${Math.round(fre.GRENZE * 100)} %</strong></div>
-            <p class="pf-klein">Abgerechnet wird am Saisonende. Mehr unter <em>Budgets</em>.</p>` : `<p class="pf-klein">Keine Regel in dieser Liga.</p>`);
+            <p class="pf-klein">Abgerechnet wird am Saisonende. Mehr unter <em>Budgets</em>.</p>` : `<p class="pf-klein">Keine Regel in dieser Liga.</p>`, "", "Budgets");
 
         // Schulden und Raten
         const sch = fin.schulden(state, club);
@@ -263,7 +264,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ${sch.raten ? `<div class="pf-zeile"><span>Ablöse in Raten</span><strong>${geld(sch.raten)}</strong></div>` : ""}
             ${sch.baukredite ? `<div class="pf-zeile"><span>Baukredite</span><strong>${geld(sch.baukredite)}</strong></div>` : ""}
             ${sch.forderungen ? `<div class="pf-zeile"><span>Uns stehen zu</span><strong class="pf-ton-gut">${geld(sch.forderungen)}</strong></div>` : ""}
-            ${sch.naechsterMonat ? `<div class="pf-zeile"><span>Fällig im nächsten Monat</span><strong>${geld(sch.naechsterMonat)}</strong></div>` : ""}`);
+            ${sch.naechsterMonat ? `<div class="pf-zeile"><span>Fällig im nächsten Monat</span><strong>${geld(sch.naechsterMonat)}</strong></div>` : ""}`, "", "Budgets");
 
         // Gehälter nach Kaderrolle gegen das Budget; aufgeklappte Gruppen bleiben offen
         const g = fin.gehaltNachRolle(state, club);
@@ -288,7 +289,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                             <strong>${geld(p.wage)}</strong>
                         </button>`).join("")}</div>
                 </details>`;
-            }).join("")}</div>`, "fin-hoch");
+            }).join("")}</div>`, "fin-hoch", "Budgets");
 
         // Sponsoren
         const sp = fin.sponsoring(state, club);
@@ -297,7 +298,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <div class="fin-gross">${geld(sp.summe)}</div>
             <div class="fin-unter">Sponsoring der Saison</div>
             <div class="fin-segmente" role="img" aria-label="Anteile am Sponsoring">${sp.posten.map((p, i) => `<i class="${farben[i % farben.length]}" style="flex-grow:${Math.max(1, p.betrag)}" title="${esc(p.name)}: ${esc(geld(p.betrag))}"></i>`).join("")}</div>
-            <div class="fin-posten">${sp.posten.map((p, i) => `<div class="pf-zeile"><span><i class="fin-punkt-farbe ${farben[i % farben.length]}"></i>${esc(p.name)}${p.hinweis ? ` <small>${esc(p.hinweis)}</small>` : ""}</span><strong>${geld(p.betrag)}</strong></div>`).join("")}</div>`, "fin-hoch");
+            <div class="fin-posten">${sp.posten.map((p, i) => `<div class="pf-zeile"><span><i class="fin-punkt-farbe ${farben[i % farben.length]}"></i>${esc(p.name)}${p.hinweis ? ` <small>${esc(p.hinweis)}</small>` : ""}</span><strong>${geld(p.betrag)}</strong></div>`).join("")}</div>`, "fin-hoch", "Journal");
 
         // Prognose
         const pr = fin.prognose(state, club);
@@ -314,7 +315,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const prognose = kachel("Prognose", "i-target", `
             ${block(`Ende der Saison ${saison(s)}`, pr.diese, true)}
             ${block(`Ende der Saison ${saison(s + 1)}`, pr.naechste, false)}
-            <p class="pf-klein">${pr.ausBuchungen ? "Aus den Buchungen je Spieltag" : "Aus den Schätzungen je Spieltag"} (${pr.nettoJeSpieltag >= 0 ? "+" : "−"}${geld(Math.abs(pr.nettoJeSpieltag))}), ohne Transfers, Prämien und Investor.</p>`, "fin-hoch");
+            <p class="pf-klein">${pr.ausBuchungen ? "Aus den Buchungen je Spieltag" : "Aus den Schätzungen je Spieltag"} (${pr.nettoJeSpieltag >= 0 ? "+" : "−"}${geld(Math.abs(pr.nettoJeSpieltag))}), ohne Transfers, Prämien und Investor.</p>`, "fin-hoch", "Budgets");
 
         el.innerHTML = `
             ${uebersicht}
@@ -322,6 +323,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <div class="fin-spalte">${regeln}${schulden}</div>
             ${gehaelter}${sponsoren}${prognose}`;
         if (typeof el.querySelectorAll !== "function") return;
+        this.ukVerdrahte(el, (ziel) => this.zeigeUnterreiter?.("pane-finances", ziel, { nachOben: true }));
+        this.ukTabulator(el);
         el.querySelectorAll("details[data-fin-rolle]").forEach(d => d.addEventListener("toggle", () => {
             if (d.open) offen.add(d.dataset.finRolle); else offen.delete(d.dataset.finRolle);
         }));

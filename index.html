@@ -406,6 +406,22 @@
                 </section>
 
                 <!-- Tab: Club (Neuer Tab Verein - D3) -->
+                <!-- Übersichten der Bereiche wie im Vorbild (uiBereiche.js): Ein Klick oben auf
+                     Kader, Spieltag oder Verein führt zuerst hierher, die Unterreiter in die Themen.
+                     Jede Kachel kommt per Klick groß nach vorn (uiKacheln.js). -->
+                <section class="tab-pane" id="pane-kaderhub">
+                    <div class="pane-header"><h2>Kader</h2></div>
+                    <div class="bh-raster" id="bhKader"></div>
+                </section>
+                <section class="tab-pane" id="pane-spieltaghub">
+                    <div class="pane-header"><h2>Spieltag</h2></div>
+                    <div class="bh-raster" id="bhSpieltag"></div>
+                </section>
+                <section class="tab-pane" id="pane-vereinhub">
+                    <div class="pane-header"><h2>Verein</h2></div>
+                    <div class="bh-raster" id="bhVerein"></div>
+                </section>
+
                 <section class="tab-pane" id="pane-club">
                     <div class="pane-header">
                         <h2>Vereinszentrum & Infrastruktur</h2>
@@ -2450,7 +2466,7 @@
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-secondary" id="btnReportPress" style="display:none;"><svg class="ico" aria-hidden="true"><use href="#i-mic"/></svg><span>Pressekonferenz</span></button>
-                    <button class="btn btn-primary" id="btnCloseReport">Weiter<span class="spb-lang"> zum Dashboard</span> ▶</button>
+                    <button class="btn btn-primary" id="btnCloseReport">Weiter<span class="spb-lang"> zur Übersicht</span> ▶</button>
                 </div>
             </div>
         </div>
@@ -2615,6 +2631,19 @@
                     <button class="modal-close" id="btnCloseMobileDrawer">×</button>
                 </div>
                 <div class="mobile-drawer-grid">
+                    <!-- Die Übersichten der Bereiche: am Handy fehlt das Menü oben -->
+                    <button class="mobile-drawer-item" data-tab="kaderhub">
+                        <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-grid"/></svg></span>
+                        <span class="drawer-text">Übersicht Kader</span>
+                    </button>
+                    <button class="mobile-drawer-item" data-tab="spieltaghub">
+                        <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-grid"/></svg></span>
+                        <span class="drawer-text">Übersicht Spieltag</span>
+                    </button>
+                    <button class="mobile-drawer-item" data-tab="vereinhub">
+                        <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-grid"/></svg></span>
+                        <span class="drawer-text">Übersicht Verein</span>
+                    </button>
                     <button class="mobile-drawer-item drawer-item-highlight" data-tab="preseason" id="mobileNavPreseason" style="display:none;">
                         <span class="drawer-icon"><svg class="ico" aria-hidden="true"><use href="#i-sun"/></svg></span>
                         <span class="drawer-text">Vorbereitung</span>
@@ -2829,6 +2858,8 @@
     <script src="js/ui/uiVereinSeite.js"></script>
     <script src="js/ui/uiSpielerdatenbank.js"></script>
     <script src="js/ui/uiRekrutierung.js"></script>
+    <script src="js/ui/uiKacheln.js"></script>
+    <script src="js/ui/uiBereiche.js"></script>
     <script src="js/ui/uiLivespiel.js"></script>
     <script src="js/ui/uiLiveKacheln.js"></script>
     <script src="js/ui/uiLiveDarstellung.js"></script>

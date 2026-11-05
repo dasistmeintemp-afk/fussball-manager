@@ -46,6 +46,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     zeigeSeite(art, id) {
         const seite = this._seitenElement(art);
         if (!seite) return;
+        // Eine große Kachel tritt zurück - die Seite liegt nicht hinter ihr
+        if (typeof this.kachelKlein === "function") this.kachelKlein(true);
         const bereich = document.getElementById("contentArea");
         const vorher = this.offeneSeite();
         const neu = vorher !== art || String(this._seitenId) !== String(id);

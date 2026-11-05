@@ -554,9 +554,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         }));
 
         modal.style.display = "flex";
+        // "Weiter zur Übersicht" - vorher blieb man auf der Seite, auf der das Spiel begann
         document.getElementById("btnCloseReport").onclick = () => {
             modal.style.display = "none";
-            this.renderCurrentTab();
+            if (this.activeTab !== "dashboard" || this.offeneSeite?.()) this.switchTab("dashboard");
+            else this.renderCurrentTab();
             this.renderHeader();
         };
 

@@ -16853,7 +16853,16 @@ function runEngineTests() {
         const imMenue = new Set(reiter.concat(ui.KOPFMENUE.flatMap(g => g.seiten.filter(s => s.knopf).map(s => s.tab))));
         if (leiste.length < 15) throw new Error(`Nur ${leiste.length} Reiter in der Seitenleiste gefunden`);
         leiste.forEach(t => { if (!imMenue.has(t)) throw new Error(`Reiter ${t} fehlt im Menü`); });
-        imMenue.forEach(t => { if (!leiste.includes(t)) throw new Error(`Menü kennt ${t}, die Seitenleiste nicht`); });
+        // Die Übersichten der Bereiche gibt es nur oben (und am Handy unter "Mehr") - sonst kennt die Leiste jeden Reiter
+        const uebersichten = Object.keys(ui.BEREICH_UEBERSICHTEN);
+        imMenue.forEach(t => { if (!leiste.includes(t) && !uebersichten.includes(t)) throw new Error(`Menü kennt ${t}, die Seitenleiste nicht`); });
+        // Jeder Bereich beginnt mit seiner Übersicht: ein Klick oben führt dorthin
+        ui.KOPFMENUE.filter(g => !g.zahnrad).forEach(g => {
+            if (g.seiten[0].titel !== "Übersicht") throw new Error(`${g.titel} beginnt mit ${g.seiten[0].titel}`);
+        });
+        uebersichten.forEach(t => {
+            if (!html.includes(`id="pane-${t}"`) || !html.includes(`class="mobile-drawer-item" data-tab="${t}"`)) throw new Error(`Übersicht ${t}: Seite oder Eintrag am Handy fehlt`);
+        });
         if (new Set(reiter).size !== reiter.length) throw new Error("Ein Reiter steht in zwei Bereichen");
         // Die Ansichten der Rekrutierung: alle elf Knöpfe, jeder im Menü; die seltenen unter "Mehr"
         const knoepfe = [...html.matchAll(/id="(btnSubTransfers\w+)"/g)].map(m => m[1]);
@@ -17140,7 +17149,9 @@ function runEngineTests() {
             if (vorher.fe === undefined) delete global.FinanceEngine; else global.FinanceEngine = vorher.fe;
         }
         ["Übersicht", "Einnahmen", "Ausgaben", "Finanzregeln", "Schulden und Raten", "Gehälter", "Sponsoren", "Prognose"]
-            .forEach(t => { if (!el.innerHTML.includes(`</svg>${t}</h4>`)) throw new Error(`Kachel ${t} fehlt`); });
+            .forEach(t => { if (!el.innerHTML.includes(`<h4 class="uk-titel">${t}</h4>`)) throw new Error(`Kachel ${t} fehlt`); });
+        // Jede Kachel kommt groß nach vorn; Einnahmen und Ausgaben führen von dort zu den Buchungen
+        if ((el.innerHTML.match(/data-uk-auf/g) || []).length !== 8 || (el.innerHTML.match(/data-uk-ziel="Journal"/g) || []).length !== 4) throw new Error("Die Finanzkacheln lassen sich nicht vergrößern");
         if ((el.innerHTML.match(/class="fin-punkt[ "]/g) || []).length !== F.kontoVerlauf(state).length) throw new Error("Nicht jeder Stand ist ein Punkt im Verlauf");
         // Die Gehaltsgruppen klappen auf: jede besetzte Rolle, darin jeder Spieler des Kaders
         const gruppen = F.gehaltNachRolle(state, club).liste.filter(e => e.anzahl > 0).length;
@@ -17225,10 +17236,11 @@ function runEngineTests() {
             const e = kontext.note(fremd);
             e.sicher = true;
             ui.renderRekrutierungUebersicht(state, club, { empfehlungen: [{ p: fremd, e, wert: { wertMin: 1e6, wertMax: 2e6 } }], gescoutet: [fremd], verhandelt: kontext.verhandelt, vereinVon: kontext.vereinVon, angebote: 0 });
-            const titel = [...box.innerHTML.matchAll(/<\/svg>([^<]+)<\/button><\/h4>/g)].map(m => m[1]);
+            const titel = [...box.innerHTML.matchAll(/<h4 class="uk-titel">([^<]+)<\/h4>/g)].map(m => m[1]);
             if (titel.join("|") !== "Spielerdatenbank|Transferaktivität|Budgets|Verträge|Kaderplaner|Personal|Vorgaben|Klauseln|Beobachtungsliste|Transferbörse · Abgabe|Transferbörse · Suche") throw new Error(`Kacheln: ${titel.join("|")}`);
             if ((box.innerHTML.match(new RegExp(`data-rk-spieler="${fremd.id}"`, "g")) || []).length !== 2) throw new Error("Empfehlung und Beobachtungsliste nennen den Spieler nicht");
-            if ((box.innerHTML.match(/data-rk-ziel="/g) || []).length < 11) throw new Error("Nicht jede Kachel führt in ihre Ansicht");
+            // Jede Kachel kommt groß nach vorn und führt von dort in ihre Ansicht
+            if ((box.innerHTML.match(/data-uk-ziel="/g) || []).length !== 11 || (box.innerHTML.match(/data-uk-auf/g) || []).length !== 11) throw new Error("Nicht jede Kachel führt in ihre Ansicht");
         } finally {
             ["pr", "se", "te"].forEach((k, i) => {
                 const name = ["PlayerRatingEngine", "ScoutingEngine", "TransferEngine"][i];
@@ -17370,6 +17382,71 @@ function runEngineTests() {
         Object.keys(PlayoffEngine.FORMATE).forEach(id => { if (!PlayoffEngine.formatName(id)) throw new Error(`${id} ohne Namen`); });
         const assistent = require("fs").readFileSync("./js/ui/uiAssistent.js", "utf8");
         if (/zeilen\.push\(\[f\.name/.test(assistent)) throw new Error("Die Legende liest wieder f.name");
+    });
+
+    test("Bereiche wie im Vorbild: Kader, Spieltag und Verein beginnen mit Kacheln, jede kommt groß nach vorn, Weiter führt zur Übersicht", () => {
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Bereiche" });
+        for (let i = 0; i < 3; i++) CalendarEngine.advanceOneDay(state);
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        const html = require('fs').readFileSync('./index.html', 'utf8');
+        const hatte = { doc: global.document, pr: global.PlayerRatingEngine, warn: console.warn };
+        const kisten = {}, warnungen = [];
+        global.PlayerRatingEngine = PlayerRatingEngine;
+        global.document = { getElementById: (id) => id.startsWith("bh") ? (kisten[id] = kisten[id] || { innerHTML: "", querySelectorAll: () => [] }) : null };
+        console.warn = (...a) => warnungen.push(a.join(" "));
+        try {
+            ui.renderKaderUebersicht();
+            ui.renderSpieltagUebersicht();
+            ui.renderVereinUebersicht();
+            const titel = (id) => [...kisten[id].innerHTML.matchAll(/<h4 class="uk-titel">([^<]+)/g)].map(m => m[1]).join("|");
+            // Keine Kachel fällt still aus: jede rechnet für sich, ein Fehler stünde in den Warnungen
+            if (warnungen.length) throw new Error(`Kacheln ausgelassen: ${warnungen.join(" / ")}`);
+            if (titel("bhKader") !== "Kader|Verfügbarkeit|Stimmung|Mannschaftsteile|Training|Jugend|Verträge|Kaderplanung") throw new Error(`Kader: ${titel("bhKader")}`);
+            if (titel("bhSpieltag") !== "Nächstes Spiel|Aufstellung|Taktik|Tabelle|Form|Spielplan|Bestwerte") throw new Error(`Spieltag: ${titel("bhSpieltag")}`);
+            if (titel("bhVerein") !== "Verein|Vorstand|Finanzen|Fans &amp; Stimmung|Anlagen|Personal|Chronik") throw new Error(`Verein: ${titel("bhVerein")}`);
+            // Jede Kachel lässt sich vergrößern und führt von dort in einen Bereich, den es gibt
+            Object.values(kisten).forEach(k => {
+                const kacheln = (k.innerHTML.match(/class="dash-card uk /g) || []).length;
+                const ziele = [...k.innerHTML.matchAll(/data-uk-ziel="([^"]+)"/g)].map(m => m[1].replace(/&amp;/g, "&"));
+                if ((k.innerHTML.match(/data-uk-auf/g) || []).length !== kacheln || ziele.length !== kacheln) throw new Error("Eine Kachel ohne Vergrößern oder Ziel");
+                ziele.forEach(z => {
+                    const [tab, unter] = z.split(":");
+                    if (tab === "rk") { if (!ui.RK_ZIEL_TEXT[unter]) throw new Error(`Unbekanntes Ziel ${z}`); return; }
+                    if (!html.includes(`id="pane-${tab}"`)) throw new Error(`Ziel ${z}: Reiter fehlt`);
+                    if (unter && !html.includes(`data-ur="${unter}"`)) throw new Error(`Ziel ${z}: Unterreiter fehlt`);
+                });
+            });
+            // Der Kader nennt alle Spieler, die Tabelle den eigenen Verein
+            const kader = state.players.filter(p => p.clubId === "muc" && !p.reserve);
+            if ((kisten.bhKader.innerHTML.match(/data-bh-spieler="/g) || []).length < kader.length) throw new Error("Groß fehlt ein Teil des Kaders");
+            if (!kisten.bhSpieltag.innerHTML.includes("row-user-club")) throw new Error("Die Tabelle zeigt den eigenen Platz nicht");
+        } finally {
+            global.document = hatte.doc;
+            console.warn = hatte.warn;
+            if (hatte.pr === undefined) delete global.PlayerRatingEngine; else global.PlayerRatingEngine = hatte.pr;
+        }
+
+        // Kacheln wie überall: auch die Finanzen und die Rekrutierung nutzen den Baustein
+        const kachel = ui.ukKachel({ titel: "Test", icon: "i-grid", ziel: "squad", inhalt: "<p>klein</p>", mehr: "<p>groß</p>" });
+        if (!/class="uk-mehr"><p>groß/.test(kachel) || !kachel.includes("data-uk-oeffnen") || !kachel.includes("data-uk-zu")) throw new Error("Der Baustein hat keine große Ansicht");
+        ["uiFinanzen.js", "uiRekrutierung.js", "uiBereiche.js"].forEach(f => {
+            if (!require('fs').readFileSync(`./js/ui/${f}`, 'utf8').includes("this.ukVerdrahte(")) throw new Error(`${f} vergrößert keine Kacheln`);
+        });
+        // Ohne Bildschirm schließt nichts: keine große Kachel offen, kein Fehler
+        ui.kachelKlein(true);
+        if (ui.kachelOffen()) throw new Error("Eine Kachel gilt als offen");
+
+        // Weiter führt zur Übersicht - einmal, nicht bei jedem Klick erneut
+        const wohin = [];
+        ui.switchTab = (t) => { wohin.push(t); ui.activeTab = t; };
+        ui.offeneSeite = () => null;
+        ui.activeTab = "tactics";
+        ui.zurUebersicht();
+        ui.zurUebersicht();
+        if (wohin.join() !== "dashboard") throw new Error(`Weiter führt nach ${wohin.join()}`);
+        if (!html.includes("Weiter<span class=\"spb-lang\"> zur Übersicht</span>")) throw new Error("Der Spielbericht sagt nicht, wohin Weiter führt");
     });
 
     test("Vereinsprofil als Seite: Finanzlage in Worten, Tabellenausschnitt, Geschichte, Aktionen nach Themen", () => {

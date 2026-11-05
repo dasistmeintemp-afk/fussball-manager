@@ -40,18 +40,26 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         return (typeof TransferEngine !== "undefined" && TransferEngine) ? TransferEngine : (typeof window !== "undefined" ? window.TransferEngine : null);
     },
 
+    /** Wohin "Seite öffnen" in der großen Kachel führt - und wie der Knopf heißt */
+    RK_ZIEL_TEXT: {
+        datenbank: "Zur Spielerdatenbank", empfehlungen: "Zu den Empfehlungen", scouting: "Zum Scouting",
+        liste: "Zur Beobachtungsliste", aktivitaet: "Zur Transferaktivität", vertraege: "Zu den Verträgen",
+        boerse: "Zur Transferbörse", sd: "Zum Sportdirektor", leihen: "Zu den Leihen", planer: "Zum Kaderplaner",
+        finanzen: "Zu den Finanzen", personal: "Zum Personal", vorstand: "Zum Verein"
+    },
+
     /** Kachel-Bausteine wie in der Spielerdatenbank und den Finanzen */
     _rkBausteine() {
         const esc = (t) => this.escapeHtml(String(t ?? ""));
         return {
             esc,
             geld: (b) => this.geldKurz(b || 0),
-            kachel: (titel, icon, ziel, inhalt, fuss = "", klasse = "") => `
-                <div class="dash-card tm-kachel rk-kachel ${klasse}">
-                    <h4 class="gs-titel"><button type="button" class="rk-titel" data-rk-ziel="${ziel}"><svg class="ico h-ico" aria-hidden="true"><use href="#i-${icon}"/></svg>${esc(titel)}</button></h4>
-                    ${inhalt}
-                    ${fuss ? `<div class="tm-kachel-fuss">${fuss}</div>` : ""}
-                </div>`,
+            // Eine Kachel wie überall (uiKacheln.js): ein Klick holt sie groß
+            // nach vorn, "mehr" steht nur dort, "Seite öffnen" führt zu ziel
+            kachel: (titel, icon, ziel, inhalt, fuss = "", klasse = "", mehr = "") => this.ukKachel({
+                titel, icon: `i-${icon}`, ziel, zielText: this.RK_ZIEL_TEXT[ziel] || "", inhalt, fuss, mehr,
+                klasse: `tm-kachel rk-kachel ${klasse}`
+            }),
             knopf: (ziel, text) => `<button type="button" class="btn btn-sm btn-secondary" data-rk-ziel="${ziel}">${esc(text)}</button>`,
             zeile: (links, rechts, klasse = "") => `<div class="pf-zeile ${klasse}"><span>${links}</span><strong>${rechts}</strong></div>`,
             leer: (text) => `<p class="tm-leer">${esc(text)}</p>`,
@@ -148,7 +156,15 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ${empf.length ? `<div class="tm-liste">${empf.map(({ p, e }) => B.spieler(p, esc(k.vereinVon?.get(p.clubId)?.name || "vereinslos"), this.noteHtml(e))).join("")}</div>`
                 : leer("Noch keine belastbare Note. Schicken Sie Scouts los.")}
             <button type="button" class="rk-unterkopf" data-rk-ziel="scouting"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg>Scouting-Aufträge (${auftraege.length})</button>
-            <p class="tm-hinweis">${(state.scouting?.reports || []).length.toLocaleString("de-DE")} Berichte liegen vor${k.unbekannt ? ` · ${k.unbekannt.toLocaleString("de-DE")} Spieler im Ausland noch unbekannt` : ""}</p>`));
+            <p class="tm-hinweis">${(state.scouting?.reports || []).length.toLocaleString("de-DE")} Berichte liegen vor${k.unbekannt ? ` · ${k.unbekannt.toLocaleString("de-DE")} Spieler im Ausland noch unbekannt` : ""}</p>`, "", "",
+            // Groß: die nächsten Empfehlungen und die laufenden Aufträge
+            `${(() => {
+                const weitere = (k.empfehlungen || []).filter(x => x.e && x.e.sicher).slice(2, 10);
+                return weitere.length ? `<p class="rk-unterkopf-text">Weitere Empfehlungen</p><div class="tm-liste uk-spalten">${weitere.map(({ p, e }) => B.spieler(p, esc(k.vereinVon?.get(p.clubId)?.name || "vereinslos"), this.noteHtml(e))).join("")}</div>` : "";
+            })()}
+            ${auftraege.length ? `<p class="rk-unterkopf-text">Laufende Aufträge</p>${auftraege.slice(0, 6).map(a => zeile(
+                `${esc(a.position && a.position !== "ALL" ? a.position : "Alle Positionen")} · bis ${esc(a.maxAge)} J.${a.land && typeof se?.landName === "function" ? ` · ${esc(se.landName(a.land))}` : ""}`,
+                `noch ${esc(a.matchdaysRemaining ?? "?")} Spieltag${a.matchdaysRemaining === 1 ? "" : "e"}`)).join("")}` : ""}`));
 
         // 2. Transferaktivität
         if (te && typeof te.fensterInfo === "function") {
@@ -192,7 +208,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <p class="rk-unterkopf-text"><svg class="ico" aria-hidden="true"><use href="#i-clock"/></svg>Vertrag endet in 12 Monaten (${v.auslaufend.length})</p>
                 ${v.auslaufend.length ? `<div class="rk-vertragsraster">${v.auslaufend.slice(0, 9).map(z => `
                     <button type="button" class="rk-vertrag" data-rk-spieler="${esc(z.p.id)}"><strong>${esc(z.p.name)}</strong><span>bis ${esc(this.vertragsEnde ? (this.vertragsEnde(z.p) || "") : "")}</span></button>`).join("")}</div>`
-                    : leer("Kein Vertrag läuft in den nächsten zwölf Monaten aus.")}`, "", "rk-breit"));
+                    : leer("Kein Vertrag läuft in den nächsten zwölf Monaten aus.")}`, "", "rk-breit",
+                // Groß: alle, die bald gehen, mit dem Rat des Stabs
+                v.auslaufend.length > 9 || v.liste.length ? `<p class="rk-unterkopf-text">Der Rat des Stabs</p>
+                    ${v.liste.filter(z => z.monate <= 24).slice(0, 12).map(z => zeile(
+                        `<button type="button" class="uk-name" data-rk-spieler="${esc(z.p.id)}">${esc(z.p.name)}</button> <span class="tm-sub">${esc(z.p.pos)} · ${esc(z.p.age)} J. · noch ${esc(z.monate)} Mon.</span>`,
+                        `<span class="${{ anbieten: "pf-ton-gut", nicht: "pf-ton-schlecht" }[z.rat] || ""}">${esc(this.RAT_TEXT?.[z.rat] || z.rat)}</span>`)).join("")}` : ""));
         }
 
         // 5. Kaderplaner: Baustellen und die Elf mit Nummern
@@ -205,7 +226,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     <strong>${hinweise.length ? `${hinweise.length} Baustelle${hinweise.length === 1 ? "" : "n"}` : "Keine Probleme auf den Positionen"}</strong>
                     ${hinweise.length ? hinweise.map(h => `<p class="tm-text">${esc(h.text)}</p>`).join("") : `<p class="tm-text">Jeder Mannschaftsteil ist nach dem Kaderplan Ihrer Liga besetzt, auch nächste Saison.</p>`}
                 </div>
-            </div>`, "", "rk-breit"));
+            </div>`, "", "rk-breit",
+            // Groß: alle Hinweise des Kaderplans
+            (() => {
+                const alle = kp && typeof kp.hinweise === "function" ? kp.hinweise(state, 10).slice(3) : [];
+                return alle.length ? `<p class="rk-unterkopf-text">Weitere Hinweise</p>${alle.map(h => `<p class="tm-text">${esc(h.text)}</p>`).join("")}` : "";
+            })()));
 
         // 6. Personal
         const pe = (typeof PreseasonEngine !== "undefined" && PreseasonEngine) ? PreseasonEngine : (typeof window !== "undefined" ? window.PreseasonEngine : null);
@@ -236,7 +262,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 ${zeile(`Ausstiegsklauseln bei uns`, `${kl.unsere.length} · ${geld(kl.unsereSumme)}`)}
                 ${zeile(`Weitere Vertragsklauseln bei uns`, kl.vertragsklauseln)}
                 ${zeile(`Mit dem Budget zu ziehen`, `${kl.ziehbar.length} · ${geld(kl.ziehbarSumme)}`)}
-                ${kl.ziehbar.length ? `<div class="tm-liste">${kl.ziehbar.slice(0, 2).map(x => B.spieler(x.p, esc(k.vereinVon?.get(x.p.clubId)?.name || ""), geld(x.betrag))).join("")}</div>` : ""}`));
+                ${kl.ziehbar.length ? `<div class="tm-liste">${kl.ziehbar.slice(0, 2).map(x => B.spieler(x.p, esc(k.vereinVon?.get(x.p.clubId)?.name || ""), geld(x.betrag))).join("")}</div>` : ""}`, "", "",
+                // Groß: weitere Klauseln, die wir ziehen könnten, und unsere eigenen
+                `${kl.ziehbar.length > 2 ? `<p class="rk-unterkopf-text">Weitere zu ziehen</p><div class="tm-liste uk-spalten">${kl.ziehbar.slice(2, 10).map(x => B.spieler(x.p, esc(k.vereinVon?.get(x.p.clubId)?.name || ""), geld(x.betrag))).join("")}</div>` : ""}
+                ${kl.unsere.length ? `<p class="rk-unterkopf-text">Ausstiegsklauseln bei uns</p><div class="tm-liste uk-spalten">${kl.unsere.slice(0, 8).map(x => B.spieler(x.p, "bei uns", geld(x.betrag))).join("")}</div>` : ""}`));
         }
 
         // 9. Beobachtungsliste
@@ -244,7 +273,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         kacheln.push(kachel("Beobachtungsliste", "star", "liste", `
             <div class="tm-gross">${liste.length} <small>/ ${se?.LISTE_MAX || 60}</small></div>
             ${liste.length ? `<div class="tm-liste">${liste.slice(0, 3).map(x => B.spieler(x.player, esc(x.hinweise[0]?.text || (x.verein ? x.verein.name : "vereinslos")))).join("")}</div>`
-                : leer("Noch niemand auf der Liste. Ein Rechtsklick auf einen Namen setzt ihn darauf.")}`));
+                : leer("Noch niemand auf der Liste. Ein Rechtsklick auf einen Namen setzt ihn darauf.")}`, "", "",
+            liste.length > 3 ? `<div class="tm-liste uk-spalten">${liste.slice(3, 15).map(x => B.spieler(x.player, esc(x.hinweise[0]?.text || (x.verein ? x.verein.name : "vereinslos")))).join("")}</div>` : ""));
 
         // 10./11. Transferbörse: Abgabe und Suche
         if (rk) {
@@ -254,17 +284,30 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <div class="tm-gross">${gel.length} <small>Gelegenheiten</small></div>
                 <p class="tm-text">Vereine, die genau so einen Spieler suchen, wie wir ihn abgeben könnten.</p>
                 ${zeile("Spieler angeboten", angeboten.length)}
-                ${zeile("Daraus Angebote", angeboten.filter(a => a.ergebnis === "angebot").length)}`, "", "rk-breit"));
+                ${zeile("Daraus Angebote", angeboten.filter(a => a.ergebnis === "angebot").length)}`, "", "rk-breit",
+                // Groß: die Gesuche, zu denen wir jemanden hätten
+                gel.length ? `<p class="rk-unterkopf-text">Wer sucht - und wen wir hätten</p>${gel.slice(0, 8).map(x => zeile(
+                    `<strong>${esc(x.g.verein)}</strong> <span class="tm-sub">${esc(x.g.titel)} · ${esc(x.g.art === "leihe" ? "Leihe" : "Kauf")}</span>`,
+                    x.passend.slice(0, 2).map(p => `<button type="button" class="uk-name" data-rk-spieler="${esc(p.id)}">${esc(p.name)}</button>`).join(", "))).join("")}` : ""));
             const gesuche = rk.gesuche(state).filter(g => !rk._abgelaufen(state, g));
             const antworten = gesuche.reduce((s, g) => s + rk.antworten(state, g).antworten.length, 0);
             kacheln.push(kachel("Transferbörse · Suche", "search", "boerse", `
                 <div class="tm-gross">${gesuche.length} <small>Gesuche</small></div>
                 <p class="tm-text">${gesuche.length ? gesuche.map(g => esc(rk.gesuchText(g))).slice(0, 2).join("<br>") : "Schreiben Sie aus, wen Sie suchen - die Vereine melden sich."}</p>
-                ${zeile("Antworten", antworten)}`, "", "rk-breit"));
+                ${zeile("Antworten", antworten)}`, "", "rk-breit",
+                // Groß: jedes Gesuch mit den Antworten und dem, was der Sportdirektor hervorhebt
+                gesuche.length ? gesuche.map(g => {
+                    const a = rk.antworten(state, g);
+                    return `<p class="rk-unterkopf-text">${esc(rk.gesuchText(g))}</p>
+                        ${a.antworten.length ? `<div class="tm-liste uk-spalten">${a.antworten.slice(0, 6).map(x => B.spieler(x.p, `${x.empfohlen ? "★ " : ""}${esc(x.verein?.name || "vereinslos")}`, esc(x.art === "leihe" ? "Leihe" : "Kauf"))).join("")}</div>`
+                            : leer(a.ausstehend ? `Noch ${a.ausstehend} Antwort${a.ausstehend === 1 ? "" : "en"} ausstehend.` : "Bisher keine passende Antwort.")}`;
+                }).join("") : ""));
         }
 
         box.innerHTML = kacheln.join("");
         this._rkVerdrahte(box);
+        this.ukVerdrahte(box, (ziel) => this.rkGehe(ziel));
+        this.ukTabulator(box);
     },
 
     /** Die Elf als kleines Feld mit Rückennummern, aufgestellt nach der Formation */

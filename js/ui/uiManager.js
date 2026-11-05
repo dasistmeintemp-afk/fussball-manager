@@ -588,7 +588,8 @@ class UIManager {
             if (bar) bar.style.display = "none";
         }
 
-        // Ein Reiter löst eine offene Seite ab (Profil, Angebot)
+        // Ein Reiter löst eine offene Seite ab (Profil, Angebot) - und eine große Kachel
+        if (typeof this.kachelKlein === "function") this.kachelKlein(true);
         if (typeof this.schliesseSeite === "function") this.schliesseSeite();
         this.activeTab = tabId;
         // Erste Schritte: Wer einen Bereich besucht hat, hat den Schritt getan
@@ -660,6 +661,16 @@ class UIManager {
                 break;
             case "settings":
                 this.renderSettings();
+                break;
+            // Die Übersichten der Bereiche (uiBereiche.js)
+            case "kaderhub":
+                this.renderKaderUebersicht?.();
+                break;
+            case "spieltaghub":
+                this.renderSpieltagUebersicht?.();
+                break;
+            case "vereinhub":
+                this.renderVereinUebersicht?.();
                 break;
         }
         // Unterreiter ohne Inhalt (etwa Preise vor dem ersten Saisonende) blenden aus
@@ -2602,6 +2613,9 @@ class UIManager {
         if (this.pruefeEntlassung()) return;
         // Ohne Arzt, Athletik- und Co-Trainer beginnt die Saison nicht einfach so
         if (this.pruefePflichtpostenVorStart(() => this.handleWeiter())) return;
+        // Wie im Vorbild: Weiter führt zurück auf die Übersicht. Braucht ein
+        // Ereignis unterwegs eine Entscheidung, springt zeigeAnlass danach dorthin.
+        this.zurUebersicht();
 
         const ziel = this.beschreibeWeiter();
 
@@ -2620,6 +2634,11 @@ class UIManager {
         this.handleCalendarAdvanceDay();
     }
 
+    /** Auf die Übersicht (Start) - es sei denn, man steht schon dort */
+    zurUebersicht() {
+        if (this.activeTab !== "dashboard" || (typeof this.offeneSeite === "function" && this.offeneSeite())) this.switchTab("dashboard");
+    }
+
     /**
      * Nur einen Tag weiter - für den, der zwischen Pressekonferenz und
      * Anpfiff jeden Trainingstag selbst sehen will.
@@ -2629,6 +2648,7 @@ class UIManager {
         if (typeof this.raeumeMeldungenAuf === "function") this.raeumeMeldungenAuf();
         if (this.pruefeEntlassung()) return;
         if (this.pruefePflichtpostenVorStart(() => this.handleEinTag())) return;
+        this.zurUebersicht();
         const ziel = this.beschreibeWeiter();
         if (ziel.art === "spiel") {
             this.handleWeiter();
@@ -3869,6 +3889,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // Die ausgelagerten Teile hängen sich an die Klasse - im Browser lädt sie
     // index.html der Reihe nach, unter Node holen wir sie hier dazu
     ["./uiAssistent.js", "./uiKader.js", "./uiTaktik.js", "./uiWettbewerbe.js", "./uiWettbewerbSeite.js", "./uiTraining.js", "./uiUnterbau.js", "./uiFinanzen.js", "./uiVerein.js", "./uiPostfach.js", "./uiDialoge.js", "./uiKarriere.js",
-        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiSeiten.js", "./uiProfil.js", "./uiProfilLaufbahn.js", "./uiAngebot.js", "./uiVereinSeite.js", "./uiSpielerdatenbank.js", "./uiRekrutierung.js", "./uiLivespiel.js", "./uiLiveKacheln.js", "./uiLiveDarstellung.js", "./uiSpielbericht.js", "./uiMeldungen.js", "./uiKopfmenue.js", "./uiFarben.js", "./uiPortal.js", "./uiWettbewerbUebersicht.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
+        "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiSeiten.js", "./uiProfil.js", "./uiProfilLaufbahn.js", "./uiAngebot.js", "./uiVereinSeite.js", "./uiSpielerdatenbank.js", "./uiRekrutierung.js", "./uiKacheln.js", "./uiBereiche.js", "./uiLivespiel.js", "./uiLiveKacheln.js", "./uiLiveDarstellung.js", "./uiSpielbericht.js", "./uiMeldungen.js", "./uiKopfmenue.js", "./uiFarben.js", "./uiPortal.js", "./uiWettbewerbUebersicht.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
         .forEach(teil => require(teil));
 }

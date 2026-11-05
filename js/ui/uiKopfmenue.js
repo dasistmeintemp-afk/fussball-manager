@@ -25,7 +25,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
      * Unterreiter des Transfermarkts), "zahl" das Abzeichen der Seitenleiste,
      * dessen Zahl das Menü übernimmt, "nurWenn" ein Reiter, der nur zeitweise
      * da ist. Der letzte Bereich hat keinen Platz in der Zeile: Die Optionen
-     * öffnet das Zahnrad.
+     * öffnet das Zahnrad. Jeder Bereich beginnt wie im Vorbild mit seiner
+     * Übersicht aus Kacheln (uiBereiche.js) - dorthin führt ein Klick oben.
      */
     KOPFMENUE: [
         { id: "start", titel: "Start", seiten: [
@@ -34,12 +35,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             { tab: "calendar", titel: "Kalender", icon: "i-calendar" }
         ] },
         { id: "kader", titel: "Kader", seiten: [
+            { tab: "kaderhub", titel: "Übersicht", icon: "i-grid" },
             { tab: "squad", titel: "Kader", icon: "i-users" },
             { tab: "training", titel: "Training", icon: "i-dumbbell" },
             { tab: "youth", titel: "Jugend", icon: "i-leaf", zahl: "navYouthBadge" },
             { tab: "national", titel: "Nationalteam", icon: "i-globe", zahl: "navNationalBadge" }
         ] },
         { id: "spieltag", titel: "Spieltag", seiten: [
+            { tab: "spieltaghub", titel: "Übersicht", icon: "i-grid" },
             { tab: "tactics", titel: "Aufstellung & Taktik", icon: "i-tactics" },
             { tab: "fixtures", titel: "Spielplan & Tabelle", icon: "i-table" },
             { tab: "stats", titel: "Statistiken", icon: "i-chart" },
@@ -59,6 +62,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             { tab: "transfers", knopf: "btnSubTransfersSD", titel: "Sportdirektor", mehr: true, icon: "i-target" }
         ] },
         { id: "verein", titel: "Verein", seiten: [
+            { tab: "vereinhub", titel: "Übersicht", icon: "i-grid" },
             { tab: "club", titel: "Verein", icon: "i-shield" },
             { tab: "finances", titel: "Finanzen", icon: "i-wallet" }
         ] },

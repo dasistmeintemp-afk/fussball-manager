@@ -13,10 +13,10 @@
  *   Stärke und Potenzial in getrennten Spalten
  *   Ablöse und Gehalt als Spanne, so genau, wie man sie kennt
  *   Empfehlung  - die Note des Scouts (ScoutingEngine.empfehlung)
+ *   Interesse   - ob er zu uns will (TransferEngine.interesse)
  *   Wissen      - wie gut der Verein den Spieler kennt
  *
- * Darunter sechs Kacheln: Transferfenster, Scouting-Reichweite,
- * Spielerempfehlungen, Beobachtungsliste, Budgets und Aufträge.
+ * Die Kacheln dazu stehen in der Übersicht der Rekrutierung (uiRekrutierung.js).
  */
 "use strict";
 
@@ -74,6 +74,16 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     },
 
     /**
+     * Wechselinteresse als Marke (TransferEngine.interesse): grün
+     * interessiert, hell würde wechseln, gelb zögert, orange kein Interesse,
+     * rot kommt nicht in Frage. Die Gründe stehen im Tooltip.
+     */
+    interesseHtml(i, kurz = false) {
+        if (!i) return "";
+        return `<span class="tm-interesse-marke int-${i.stufe}" title="${this.escapeHtml(`${i.titel}: ${i.text}`)}"><i aria-hidden="true"></i>${kurz ? "" : `<span>${this.escapeHtml(i.titel)}</span>`}</span>`;
+    },
+
+    /**
      * Die Statussymbole eines Spielers. kontext.verhandelt: IDs mit
      * laufender Verhandlung.
      */
@@ -117,6 +127,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const vereinsName = club ? esc(club.name) : "Vereinslos";
         const laeuft = typeof this.beobachtungsText === "function" ? this.beobachtungsText(p.id) : null;
         const status = this.tmStatusHtml(p, state, kontext);
+        const interesse = kontext.interesse ? kontext.interesse(p)
+            : (te && typeof te.interesse === "function" ? te.interesse(state, p) : null);
         return `
             <tr class="row-clickable" data-player-id="${esc(p.id)}" title="Profil von ${esc(p.name)}">
                 <td class="tm-status">${status}</td>
@@ -136,6 +148,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <td class="tm-wert nowrap" data-wert="${club ? wert.wertMin : 0}"><span class="${card && !card.isPrecise ? "estimated-value" : ""}">${ablose}</span></td>
                 <td class="tm-gehalt nowrap" data-wert="${gehalt.min}" title="${gehalt.bekannt ? "Forderung seines Beraters je Woche" : "Geschätzte Forderung je Woche - genau weiß man sie erst in der Verhandlung"}">${this.spanneText(gehalt.min, gehalt.max)}</td>
                 <td class="tm-note-zelle" data-wert="${e ? e.punkte : -9}">${this.noteHtml(e)}</td>
+                <td class="tm-interesse" data-wert="${interesse ? interesse.punkte : -99}">${this.interesseHtml(interesse)}</td>
                 <td class="tm-wissen" data-wert="${wissen}"><span class="tm-wissen-balken ${wissenStufe}" title="${esc(card?.confidenceInfo?.label || "")}"><i style="width:${wissen}%"></i></span><span class="tm-wissen-zahl">${wissen} %</span></td>
                 <td class="tm-meta">${vereinsName} · ${ablose} · Wissen ${wissen} %</td>
                 <td class="tm-aktion">
@@ -148,128 +161,4 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 </td>
             </tr>`;
     },
-
-    /**
-     * Die Kacheln unter der Datenbank. kontext: empfehlungen ([{p, e, wert}]),
-     * unbekannt, ausserReichweite, verhandelt, angebote.
-     */
-    renderMarktKacheln(state, club, kontext = {}) {
-        const box = document.getElementById("tmKacheln");
-        if (!box || !state || !club) return;
-        const esc = (t) => this.escapeHtml(String(t ?? ""));
-        const te = (typeof TransferEngine !== "undefined" && TransferEngine) ? TransferEngine : (typeof window !== "undefined" ? window.TransferEngine : null);
-        const se = this.getScoutingEngine();
-        const geld = (b) => this.geldKurz(b || 0);
-        // Aufgebaut wie die Kacheln der Finanzseite (uiFinanzen.js)
-        const kachel = (titel, icon, inhalt, fuss = "", klasse = "") => `
-            <div class="dash-card tm-kachel ${klasse}">
-                <h4 class="gs-titel"><svg class="ico h-ico" aria-hidden="true"><use href="#i-${icon}"/></svg>${esc(titel)}</h4>
-                ${inhalt}
-                ${fuss ? `<div class="tm-kachel-fuss">${fuss}</div>` : ""}
-            </div>`;
-        const knopf = (ziel, text) => `<button type="button" class="btn btn-sm btn-secondary" data-tm-ziel="${ziel}">${esc(text)}</button>`;
-        const zeile = (links, rechts, klasse = "") => `<div class="pf-zeile ${klasse}"><span>${links}</span><strong>${rechts}</strong></div>`;
-        const leer = (text) => `<p class="tm-leer">${esc(text)}</p>`;
-        const kacheln = [];
-
-        // 1. Transferfenster: offen oder zu, wie lange noch
-        if (te && typeof te.fensterInfo === "function") {
-            const f = te.fensterInfo(state);
-            let rest = "";
-            const h = typeof te.heute === "function" ? te.heute(state) : null;
-            if (f.offen && f.bis && h) {
-                const jetzt = new Date(h.jahr, h.monat - 1, h.tag);
-                let ende = new Date(h.jahr, f.bis[0] - 1, f.bis[1]);
-                if (ende < jetzt) ende = new Date(h.jahr + 1, f.bis[0] - 1, f.bis[1]);
-                const tage = Math.round((ende - jetzt) / 86400000);
-                rest = tage === 0 ? "Deadline Day - heute schließt das Fenster" : `noch ${tage} Tag${tage === 1 ? "" : "e"}`;
-            }
-            const art = f.art === "winter" ? "Winterfenster" : (f.art === "sommer" ? "Sommerfenster" : "Transferfenster");
-            kacheln.push(kachel("Transferfenster", "calendar", `
-                <div class="tm-gross ${f.offen ? "offen" : "zu"}">${f.offen ? "Offen" : "Geschlossen"}</div>
-                <p class="tm-text">${f.offen ? `${esc(art)} ${f.bis ? `bis ${esc(te._datumText(f.bis))}` : ""}${rest ? ` · ${esc(rest)}` : ""}` : `Es öffnet ${esc(f.oeffnet || "")}`}</p>
-                ${zeile("Laufende Verhandlungen", (kontext.verhandelt?.size || 0).toLocaleString("de-DE"))}
-                ${zeile("Angebote für Ihre Spieler", (kontext.angebote || 0).toLocaleString("de-DE"))}`,
-                f.offen ? "" : `<span class="tm-hinweis">Vereinslose Spieler lassen sich jederzeit verpflichten.</span>`));
-        }
-
-        // 2. Scouting-Reichweite: welche Ligen offenstehen, wie gut man die Länder kennt
-        if (te && typeof te.describeReach === "function") {
-            const reich = te.describeReach(club, state.leagues || []);
-            const laender = se && typeof se.laender === "function"
-                ? se.laender(state).map(l => ({ l, w: se.landWissen(state, l.id) })).sort((a, b) => b.w - a.w).slice(0, 5)
-                : [];
-            kacheln.push(kachel("Scouting-Reichweite", "globe", `
-                <div class="tm-gross">${reich.level <= 1 ? "Weltweit" : `Ab Ligastufe ${reich.level}`}</div>
-                <p class="tm-text">${reich.level <= 1 ? "Auch Spieler der Topligen nehmen Gespräche an." : `Höherklassige Profis sind noch außer Reichweite${kontext.ausserReichweite ? ` (${kontext.ausserReichweite.toLocaleString("de-DE")} Spieler)` : ""}.`}</p>
-                ${laender.map(({ l, w }) => `<div class="tm-land"><span>${l.flag || ""} ${esc(l.name)}</span><span class="tm-balken"><i style="width:${w}%"></i></span><strong>${w} %</strong></div>`).join("")}
-                ${kontext.unbekannt ? `<p class="tm-hinweis">${kontext.unbekannt.toLocaleString("de-DE")} Spieler im Ausland kennt Ihr Scout noch nicht.</p>` : ""}`,
-                knopf("scouting", "Scouting-Zentrale")));
-        }
-
-        // 3. Spielerempfehlungen: die besten Noten unter den gescouteten
-        const empf = (kontext.empfehlungen || []).slice(0, 5);
-        kacheln.push(kachel("Spielerempfehlungen", "target", empf.length
-            ? `<div class="tm-liste">${empf.map(({ p, e, wert }) => `
-                <button type="button" class="tm-eintrag" data-tm-spieler="${esc(p.id)}">
-                    ${this.noteHtml(e)}
-                    <span class="tm-eintrag-name"><strong>${esc(p.name)}</strong><span class="tm-sub">${esc(p.pos)} · ${esc(p.age)} J. · ${esc(kontext.vereinVon?.get(p.clubId)?.name || "vereinslos")}</span></span>
-                    <span class="tm-eintrag-wert">${p.clubId ? this.spanneText(wert.wertMin, wert.wertMax) : "ablösefrei"}</span>
-                </button>`).join("")}</div>${kontext.empfehlungenErsterEindruck ? `<p class="tm-hinweis">Noch ohne Bericht - ein erster Eindruck aus der Liste.</p>` : ""}`
-            : leer("Noch keine Empfehlung. Ihr Scout empfiehlt Spieler, sobald er sie beobachtet hat."),
-            knopf("sd", "Sportdirektor fragen")));
-
-        // 4. Beobachtungsliste
-        const liste = se && typeof se.beobachtungsliste === "function" ? se.beobachtungsliste(state) : [];
-        kacheln.push(kachel("Beobachtungsliste", "star", `
-            <div class="tm-gross">${liste.length} <small>/ ${se?.LISTE_MAX || 60}</small></div>
-            ${liste.length ? `<div class="tm-liste">${liste.slice(0, 4).map(x => `
-                <button type="button" class="tm-eintrag" data-tm-spieler="${esc(x.player.id)}">
-                    <span class="pos-tag pos-${this.getPosGroup(x.player.pos)}">${esc(x.player.pos)}</span>
-                    <span class="tm-eintrag-name"><strong>${esc(x.player.name)}</strong><span class="tm-sub">${esc(x.hinweise[0]?.text || (x.verein ? x.verein.name : "vereinslos"))}</span></span>
-                </button>`).join("")}</div>` : leer("Noch niemand auf der Liste. Ein Rechtsklick auf einen Namen setzt ihn darauf.")}`,
-            liste.length ? knopf("liste", "Ganze Liste") : ""));
-
-        // 5. Budgets: Ablöse und Gehalt, wie viel noch frei ist
-        const fe = (typeof FinanceEngine !== "undefined" && FinanceEngine) ? FinanceEngine : (typeof window !== "undefined" ? window.FinanceEngine : null);
-        const gehalt = fe && typeof fe.gehaltNachRolle === "function" ? fe.gehaltNachRolle(state, club) : { summe: 0, budget: club.wageBudget || 0 };
-        const anteil = gehalt.budget > 0 ? Math.round(gehalt.summe / gehalt.budget * 100) : 0;
-        kacheln.push(kachel("Budgets", "wallet", `
-            <div class="tm-gross">${geld(Math.max(0, club.transferBudget || 0))}</div>
-            <p class="tm-text">Transferbudget</p>
-            ${zeile("Gehälter je Woche", `${geld(gehalt.summe)} von ${geld(gehalt.budget)}`)}
-            <div class="tm-balken breit ${anteil > 100 ? "ueber" : ""}"><i style="width:${Math.min(100, anteil)}%"></i></div>
-            ${zeile(gehalt.budget >= gehalt.summe ? "Frei für neue Gehälter" : "Über dem Gehaltsbudget", geld(Math.abs(gehalt.budget - gehalt.summe)), gehalt.budget >= gehalt.summe ? "" : "pf-ton-schlecht")}`,
-            knopf("finanzen", "Zu den Finanzen")));
-
-        // 6. Aufträge: Scouts, Beobachtungen, Suchauftrag des Sportdirektors
-        const auftraege = (state.scouting?.assignments || []).filter(a => a.status === "active");
-        const beobachtungen = state.scouting?.beobachtungen || [];
-        const sdE = typeof this.getSportdirektorEngine === "function" ? this.getSportdirektorEngine() : null;
-        const sdAuftrag = sdE && state.sportdirektor ? state.sportdirektor.auftrag : null;
-        const regional = se && typeof se.regionalScouts === "function" ? Object.values(se.regionalScouts(state)).filter(Boolean).length : 0;
-        const auftragZeilen = auftraege.slice(0, 3).map(a => zeile(
-            `${a.position === "ALL" ? "Alle Positionen" : esc(a.position)} · bis ${esc(a.maxAge)} J. · ab ${this.starsFor(a.minOverall)}${a.land && a.land !== "ALL" && se ? ` · ${this.flaggeVon(a.land)}` : ""}`,
-            `${esc(a.matchdaysRemaining)} Sp.`));
-        kacheln.push(kachel("Aufträge", "search", `
-            ${auftragZeilen.length ? auftragZeilen.join("") : leer("Kein Scout ist mit einem Suchauftrag unterwegs.")}
-            ${beobachtungen.length ? zeile("Spieler in Beobachtung", beobachtungen.length.toLocaleString("de-DE")) : ""}
-            ${regional ? zeile("Regionale Scouts", regional.toLocaleString("de-DE")) : ""}
-            ${sdE ? zeile("Sportdirektor", sdAuftrag ? "Suchauftrag aktiv" : "sucht nach Bedarf") : ""}`,
-            knopf("scouting", "Neuer Auftrag")));
-
-        box.innerHTML = kacheln.join("");
-
-        box.querySelectorAll("[data-tm-spieler]").forEach(el => el.addEventListener("click", () => {
-            const pId = this.resolvePlayerId(el.dataset.tmSpieler);
-            if (pId !== null) this.showPlayerDetailsModal(pId);
-        }));
-        box.querySelectorAll("[data-tm-ziel]").forEach(el => el.addEventListener("click", () => {
-            const ziel = el.dataset.tmZiel;
-            if (ziel === "finanzen") { this.switchTab("finances"); return; }
-            const knopfId = { scouting: "btnSubTransfersScouting", sd: "btnSubTransfersSD", liste: "btnSubTransfersListe" }[ziel];
-            document.getElementById(knopfId)?.click();
-            document.getElementById("pane-transfers")?.scrollIntoView?.({ block: "start" });
-        }));
-    }
 });

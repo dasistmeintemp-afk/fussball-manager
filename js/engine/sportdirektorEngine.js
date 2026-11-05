@@ -322,7 +322,7 @@ class SportdirektorEngine {
                     ? "Wie besprochen habe ich mich umgesehen:"
                     : `Unsere größte Baustelle sehe ich ${baustelle ? this.GRUPPEN[baustelle.key].im : "in der Breite"}. Diese Spieler würde ich mir ansehen:`)
                 + "\n\n" + vorschlaege.map(v => `• ${v.name} (${v.pos}, ${v.age}, ${v.vereinName}): ${v.grund}`).join("\n")
-                + "\n\nWonach ich suchen soll, können Sie mir im Transfermarkt unter Sportdirektor sagen.",
+                + "\n\nWonach ich suchen soll, können Sie mir unter Rekrutierung, Sportdirektor sagen.",
             read: false,
             type: "sportdirektor",
             vorschlaege

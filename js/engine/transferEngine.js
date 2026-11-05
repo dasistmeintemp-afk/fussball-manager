@@ -240,6 +240,123 @@ class TransferEngine {
     }
 
     /**
+     * Wechselinteresse: Will der Spieler überhaupt zu uns? Die Verfügbarkeit
+     * (oben) ist die Sicht seines Vereins, das hier ist seine eigene. Bisher
+     * unterschrieb jeder, wenn das Geld stimmte - auch ein Weltstar beim
+     * Absteiger aus der dritten Liga.
+     *
+     * Gezählt werden Punkte, mehr heißt lieber:
+     *   Spielklasse  12 je Klasse, die der Käufer höher (oder tiefer) spielt
+     *   Ansehen      0,6 je Punkt Ruf über (unter) seinem Verein, ehrgeizige
+     *                Spieler nehmen einen Abstieg schwerer
+     *   Kaderniveau  3 je Punkt, den er mehr als 4 über dem Schnitt der
+     *                besten 14 des Käufers liegt - er sucht eine stärkere Elf
+     *   Lage         unzufrieden +15 (sehr +25), spielt kaum +10, auf der
+     *                Transferliste +15, Vertrag läuft aus +6, ab 31 +6,
+     *                vereinslos +10, Heimat (im Ausland, Käufer aus seinem
+     *                Land) +8, treu und lange im Verein −10, gerade erst
+     *                gewechselt −8
+     *   Eigenart     fest je Spieler und Käufer ±6 (kein Zufall)
+     *
+     * Stufen: ab 15 interessiert, ab 0 offen, ab −15 zögert, ab −35
+     * abgeneigt, darunter kommt nicht in Frage. Ohne Gespräch geht es immer,
+     * wenn er schon woanders unterschrieben hat, die Arbeitserlaubnis fehlt
+     * oder der Käufer zwei Klassen unter ihm spielt und er nicht weg will.
+     *
+     * Liefert { stufe, titel, punkte, text, gruende } oder null für eigene
+     * Spieler. kontext (interesseKontext) spart bei langen Listen das
+     * Nachschlagen.
+     */
+    static INTERESSE = {
+        interessiert: { titel: "Interessiert", ab: 15, gehalt: 0.95, geduld: 10 },
+        offen: { titel: "Würde wechseln", ab: 0, gehalt: 1, geduld: 0 },
+        zoegert: { titel: "Zögert", ab: -15, gehalt: 1.12, geduld: -8 },
+        abgeneigt: { titel: "Kein Interesse", ab: -35, gehalt: 1.3, geduld: -18 },
+        ausgeschlossen: { titel: "Kommt nicht in Frage", ab: -Infinity, gehalt: 1, geduld: 0 }
+    };
+
+    static interesseKontext(state, kaeuferId = state?.userClubId) {
+        const vereine = new Map((state?.clubs || []).map(c => [c.id, c]));
+        const kaeufer = vereine.get(kaeuferId) || null;
+        const besten = (state?.players || []).filter(p => p.clubId === kaeuferId && !p.reserve)
+            .map(p => p.overall || 0).sort((a, b) => b - a).slice(0, 14);
+        const niveau = besten.length ? besten.reduce((s, x) => s + x, 0) / besten.length : 60;
+        return { vereine, kaeufer, kaeuferId, niveau, saison: state?.seasonYear || 1 };
+    }
+
+    static interesse(state, player, kaeuferId = state?.userClubId, kontext = null) {
+        if (!player || (player.clubId && player.clubId === kaeuferId)) return null;
+        const k = kontext && kontext.kaeuferId === kaeuferId ? kontext : this.interesseKontext(state, kaeuferId);
+        const kaeufer = k.kaeufer;
+        if (!kaeufer) return null;
+        const S = this.INTERESSE;
+        const ergebnis = (stufe, punkte, gruende) => ({
+            stufe, titel: S[stufe].titel, punkte: Math.round(punkte),
+            gruende: gruende.map(g => g.text),
+            text: gruende.length ? gruende.map(g => g.text).join(" · ")
+                : (punkte < 0 ? "Er fühlt sich bei seinem Verein wohl" : "Ein Wechsel wäre für ihn denkbar")
+        });
+        if (player.vorvertrag && player.vorvertrag.clubId !== kaeuferId) {
+            return ergebnis("ausgeschlossen", -99, [{ text: `Hat schon bei ${player.vorvertrag.clubName || "einem anderen Verein"} unterschrieben` }]);
+        }
+        const erlaubnis = this.erlaubnisHindernis(state, player, kaeufer);
+        if (erlaubnis) return ergebnis("ausgeschlossen", -99, [{ text: "Keine Arbeitserlaubnis" }]);
+
+        const sein = player.clubId ? k.vereine.get(player.clubId) : null;
+        const gruende = [];
+        const plus = (punkte, text) => { if (punkte) gruende.push({ punkte, text }); return punkte; };
+        let s = 0;
+        const glatt = (x, grenze) => Math.max(-grenze, Math.min(grenze, x));
+
+        // Spielklasse: eine Klasse höher ist ein Schritt nach vorn
+        const klasse = sein ? (sein.level || 1) - (kaeufer.level || 1) : 0;
+        if (klasse) s += plus(glatt(klasse * 12, 36), klasse > 0
+            ? `Ihr Verein spielt ${klasse === 1 ? "eine Klasse" : `${klasse} Klassen`} höher`
+            : `Ihr Verein spielt ${klasse === -1 ? "eine Klasse" : `${-klasse} Klassen`} tiefer als seiner`);
+        // Ansehen: der Ruf des Käufers gegen den seines Vereins
+        const ehrgeiz = player.hiddenAttributes?.ambition ?? 12;
+        if (sein) {
+            const ruf = (kaeufer.reputation || 50) - (sein.reputation || 50);
+            let p = glatt(ruf * 0.6, 30);
+            if (ruf < 0) p *= 1 + 0.05 * (ehrgeiz - 10);
+            if (Math.abs(p) >= 4) s += plus(p, p > 0 ? "Ihr Verein hat mehr Ansehen als seiner" : (ehrgeiz >= 15 ? "Sein Verein hat mehr Ansehen, und er ist ehrgeizig" : "Sein Verein hat mehr Ansehen"));
+        } else {
+            s += plus(10, "Vereinslos - er sucht einen neuen Verein");
+        }
+        // Zu gut für den Kader: er will in eine stärkere Mannschaft
+        const abstand = (player.overall || 0) - k.niveau;
+        if (abstand > 4) s += plus(-Math.min(30, (abstand - 4) * 3), "Er ist klar besser als Ihr Kader und sucht eine stärkere Mannschaft");
+        // Seine Lage im Verein
+        const zufrieden = player.happiness?.overall ?? 70;
+        if (sein && zufrieden < 35) s += plus(25, "Er ist sehr unzufrieden bei seinem Verein");
+        else if (sein && zufrieden < 50) s += plus(15, "Er ist unzufrieden bei seinem Verein");
+        if (sein && (player.happiness?.playingTime ?? 70) < 50) s += plus(10, "Er spielt bei seinem Verein kaum");
+        if (sein && (player.transferListed || (sein.transferList || []).includes(player.id))) s += plus(15, "Er steht auf der Transferliste");
+        if (sein && (player.contractYears ?? 2) <= 1) s += plus(6, "Sein Vertrag läuft aus");
+        if ((player.age || 25) >= 31) s += plus(6, "In seinem Alter ist er weniger wählerisch");
+        if (sein && typeof player.vereinSeit === "number" && Math.floor(player.vereinSeit / 1000) === k.saison) s += plus(-8, "Er ist erst diese Saison gewechselt");
+        const ce = _transferResolve("ContractEngine", "./contractEngine.js");
+        if (sein && ce && typeof ce.istTreu === "function" && (player.hiddenAttributes?.loyalty ?? 12) >= 15 && ce.istTreu(player, state)) s += plus(-10, "Er ist seinem Verein treu");
+        // Heimat: wer im Ausland spielt, kehrt gern zurück
+        const pg = _transferResolve("PlayerGenerator", "./playerGenerator.js");
+        const heimat = pg && typeof pg.landZuNation === "function" ? pg.landZuNation(player.nationality) : null;
+        if (heimat && heimat === kaeufer.countryId && sein && sein.countryId !== heimat) s += plus(8, "Er würde gern in seine Heimat zurück");
+        // Eigenart: fest je Spieler und Käufer, kein Würfel
+        let h = 2166136261;
+        `${player.id}|${kaeuferId}`.split("").forEach(ch => { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; });
+        s += ((h % 1000) / 1000 - 0.5) * 12;
+
+        // Zwei Klassen tiefer kommt nicht in Frage, solange er nicht weg will
+        const willWeg = zufrieden < 50 || player.transferListed || (player.happiness?.playingTime ?? 70) < 50;
+        const stufe = (klasse <= -2 && !willWeg) ? "ausgeschlossen"
+            : (["interessiert", "offen", "zoegert", "abgeneigt"].find(x => s >= S[x].ab) || "ausgeschlossen");
+        // Die stärksten Gründe zuerst, höchstens drei
+        gruende.sort((a, b) => Math.abs(b.punkte) - Math.abs(a.punkte));
+        const passend = stufe === "interessiert" || stufe === "offen" ? gruende.filter(g => g.punkte > 0) : gruende.filter(g => g.punkte < 0);
+        return ergebnis(stufe, s, (passend.length ? passend : gruende).slice(0, 3));
+    }
+
+    /**
      * Was ein Spieler beim Wechsel ungefähr verdienen will, als Spanne je
      * Woche: sein Gehalt mit Wechselaufschlag mal dem Zuschlag seines
      * Beraters (NegotiationEngine.startTransferNegotiation). Den Berater
@@ -494,6 +611,9 @@ class TransferEngine {
 
         // Für die Wettbewerbsseite: Wechsel je Liga und Saison
         TransferEngine.merkeLigaWechsel(state, player, sellerClub, buyerClub, fee);
+        // Die eigenen Wechsel für die Rekrutierung (Transferaktivität)
+        const rek = _transferResolve("RekrutierungEngine", "./rekrutierungEngine.js");
+        if (rek && typeof rek.merke === "function") rek.merke(state, player, sellerClub || null, buyerClub, fee);
 
         // Nachricht ins Postfach - aber nur, wenn es den eigenen Verein
         // betrifft. Seit die KI-Vereine untereinander handeln, sind das sonst
@@ -1476,7 +1596,7 @@ ${stand}`,
             body: (ablosefrei
                 ? `${interestedClub.name} würde Ihren Spieler ${player.name} (${player.pos}, ${player.age} Jahre, Marktwert ${_formatTransferMoney(player.value)}) ablösefrei übernehmen.${lohnText}`
                 : `${interestedClub.name} bietet ${_formatTransferMoney(angebot)} Ablösesumme${zahlText} für Ihren Spieler ${player.name} (${player.pos}, ${player.age} Jahre, Marktwert ${_formatTransferMoney(player.value)}).${lohnText}`)
-                + `\n\nDas Angebot gilt ${this.ANGEBOTS_FRIST} Tage. Sie können annehmen, ablehnen oder mehr fordern - im Transfermarkt ganz oben.`,
+                + `\n\nDas Angebot gilt ${this.ANGEBOTS_FRIST} Tage. Sie können annehmen, ablehnen oder mehr fordern - unter Rekrutierung, Transferaktivität.`,
             read: false,
             type: "transfer_offer",
             // Damit das Postfach Frist, Anhang und Knöpfe kennt

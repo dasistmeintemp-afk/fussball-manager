@@ -1380,13 +1380,13 @@ function runWizardTests() {
         ui.switchTab = tab => aufrufe.push(["reiter", tab]);
 
         const liste = machEl("dashAttentionList");
-        const markt = machEl("btnSubTransfersMarket");
+        const markt = machEl("btnSubTransfersAktivitaet");
         markt.addEventListener("click", () => aufrufe.push(["markt"]));
         const karten = ["neg_3", "neg_7"].map(id => { const k = machEl(null); k.dataset.negCard = id; k.eingabe = machEl(null); return k; });
 
         const altesDokument = global.document;
         global.document = {
-            getElementById: id => ({ dashAttentionList: liste, btnSubTransfersMarket: markt })[id] || null,
+            getElementById: id => ({ dashAttentionList: liste, btnSubTransfersAktivitaet: markt })[id] || null,
             querySelectorAll: sel => sel === "[data-neg-card]" ? karten : []
         };
         try {
@@ -1404,7 +1404,7 @@ function runWizardTests() {
             // Die Verhandlung führt zu ihrer Karte, nicht nur in den Reiter
             liste.children.find(c => c.dataset.neg === "neg_7").click();
             if (!aufrufe.some(a => a[0] === "reiter" && a[1] === "transfers") || !aufrufe.some(a => a[0] === "markt")) {
-                throw new Error("Kein Wechsel auf den Transfermarkt");
+                throw new Error("Kein Wechsel in die Transferaktivität");
             }
             if (karten[1].gescrollt !== 1 || !karten[1].classList.contains("sprung-ziel") || karten[1].eingabe.fokus !== 1) {
                 throw new Error("Die Karte der Verhandlung wird nicht angesteuert");

@@ -325,6 +325,14 @@ class NegotiationEngine {
         }
         const erlaubnis = this.erlaubnisPruefung(state, player, buyerClub);
         if (erlaubnis && !erlaubnis.erteilt) return { success: false, error: erlaubnis.text };
+        // Will er überhaupt zu uns? (TransferEngine.interesse) Wer gar nicht
+        // will, spricht nicht; wer zögert, verlangt mehr und hat weniger Geduld.
+        const interesse = buyerClubId === state.userClubId && transferEngine && typeof transferEngine.interesse === "function"
+            ? transferEngine.interesse(state, player, buyerClubId) : null;
+        if (interesse && interesse.stufe === "ausgeschlossen") {
+            return { success: false, error: `${player.name} will nicht zu ${buyerClub.name} wechseln: ${interesse.text}.` };
+        }
+        const interesseStufe = interesse ? transferEngine.INTERESSE[interesse.stufe] : null;
         const askingPrice = vorvertrag ? 0 : (transferEngine
             ? transferEngine.calculateAskingPrice(player, sellerClub)
             : Math.round((player.value || 1000000) * 1.15));
@@ -332,7 +340,7 @@ class NegotiationEngine {
         const agent = this.getAgentFor(player);
         // Narben aus früheren Verhandlungen: höhere Forderung, weniger Geduld
         const narbe = agent.vergiftet || 0;
-        const wageDemand = this.runde((player.wage || 10000) * 1.18 * agent.greed * (1 + 0.06 * narbe));
+        const wageDemand = this.runde((player.wage || 10000) * 1.18 * agent.greed * (1 + 0.06 * narbe) * (interesseStufe ? interesseStufe.gehalt : 1));
         const ohneAbloese = vorvertrag || !sellerClub;
 
         // Reservationspreis + Walk-Away-Schwelle. Beim Ablöse-Fall
@@ -368,7 +376,8 @@ class NegotiationEngine {
             deadlineDay: this.today(state) + this.fristFuer(agent, 14),
             replyDay: null,
             round: 0,
-            patience: this.geduldMitRuf(state, agent.patience) - 10 * narbe,
+            patience: this.geduldMitRuf(state, agent.patience) - 10 * narbe + (interesseStufe ? interesseStufe.geduld : 0),
+            interesse: interesse ? interesse.stufe : null,
             // Neue Felder
             reservation,
             agenda,
@@ -394,6 +403,14 @@ class NegotiationEngine {
                     ? `Verhandlung mit ${sellerClub.name} über ${player.name} eröffnet. Geforderte Ablöse: ${this.formatMoney(askingPrice)}.`
                     : `${player.name} ist vereinslos. Es geht direkt um die persönlichen Konditionen.`));
         if (erlaubnis && erlaubnis.noetig) this.log(negotiation, state, "system", erlaubnis.text);
+        if (interesse && interesse.stufe !== "offen") {
+            const satz = {
+                interessiert: "Er will zu Ihnen - das macht es leichter.",
+                zoegert: "Er zögert noch. Überzeugen muss ihn das Angebot.",
+                abgeneigt: "Eigentlich will er nicht. Es wird teuer, ihn umzustimmen."
+            }[interesse.stufe];
+            if (satz) this.log(negotiation, state, "agent", `Berater ${agent.name}: "${satz}" (${interesse.text})`);
+        }
         if (agenda) {
             const text = {
                 ausstiegsklausel: "Der Berater will eine Ausstiegsklausel im Vertrag.",

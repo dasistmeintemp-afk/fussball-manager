@@ -383,11 +383,16 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const ziel = ligen.find(l => l.id === liga.promotionTo);
             zeilen.push([`Aufstieg${ziel ? ` in die ${ziel.shortName}` : ""}`, plaetze(po ? po.direktePlaetze(liga) : (liga.promotionSpots || [1])), "auf"]);
             const f = po?.FORMATE?.[liga.id];
-            if (f) zeilen.push([f.name, plaetze(f.art === "relegation" ? [f.unten] : f.plaetze), "po"]);
+            // Die Formate tragen keinen eigenen Namen - formatName setzt ihn aus den Ligen zusammen
+            if (f) zeilen.push([po.formatName(liga.id), plaetze(f.art === "relegation" ? [f.unten] : f.plaetze), "po"]);
         }
         Object.keys(po?.FORMATE || {}).forEach(id => {
             const f = po.FORMATE[id];
-            if (f.oben && f.oben.liga === liga.id) zeilen.push([f.name, `Platz ${f.oben.platz}`, "rel"]);
+            if (f.oben && f.oben.liga === liga.id) {
+                const unten = ligen.find(l => l.id === id)?.shortName || "Liga darunter";
+                const gegner = f.art === "barrage" ? `den Sieger der Play-offs der ${unten}` : `den ${f.unten}. der ${unten}`;
+                zeilen.push([`Relegation gegen ${gegner}`, `Platz ${f.oben.platz}`, "rel"]);
+            }
         });
         if (liga.relegationTo && liga.relegationTo.length) zeilen.push(["Abstieg", "in die nächsttiefere Klasse", "ab"]);
         if (!liga.promotionTo && !liga.europeanSpots) zeilen.push(["Ligaspitze", "Kein Aufstieg möglich", ""]);

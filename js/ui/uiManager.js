@@ -2023,7 +2023,7 @@ class UIManager {
                             <span class="cal-full-kopf">${this.tagIcon(d.type)}<span>${this.ohneSymbol(inhalt.titel || d.title)}</span></span>
                             <span class="cal-full-sub">${inhalt.text || ""}</span>
                         </div>
-                        <div class="cal-full-status">${isCurrent ? '⏳ Heute' : ''}</div>
+                        <div class="cal-full-status">${isCurrent ? '<svg class="ico" aria-hidden="true"><use href="#i-hourglass"/></svg> Heute' : ''}</div>
                     </div>
                 `;
             }).join("");
@@ -2165,8 +2165,11 @@ class UIManager {
 
         const seite = (club, istEigener) => `
             <div class="nm-club ${istEigener ? "nm-own" : ""}">
-                <span class="nm-name">${club?.name || "-"}</span>
-                <span class="nm-sub">${this.tabellenPlatzText(state, club?.id)}</span>
+                ${club ? this.wappenHtml(club, "crest-md nm-wappen") : ""}
+                <span class="nm-text">
+                    <span class="nm-name">${this.escapeHtml(club?.name || "-")}</span>
+                    <span class="nm-sub">${this.tabellenPlatzText(state, club?.id)}</span>
+                </span>
             </div>`;
         const home = document.getElementById("nextMatchHome");
         const away = document.getElementById("nextMatchAway");

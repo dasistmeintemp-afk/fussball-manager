@@ -1334,7 +1334,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const beobachtungenHtml = beobachtungen.map(b => `
                     <div class="news-item-dash" style="justify-content: space-between;">
                         <div>👁 <strong>${this.escapeHtml(b.playerName)}</strong> <span class="scout-beobachtung">· ${this.escapeHtml(b.clubName)} · ${this.escapeHtml(b.scoutName)}</span></div>
-                        <span class="header-tag" style="background:var(--accent-primary); color:var(--accent-ink);">⏳ Bericht in ${b.tageRest} Tag(en)</span>
+                        <span class="header-tag" style="background:var(--accent-primary); color:var(--accent-ink);"><svg class="ico" aria-hidden="true"><use href="#i-hourglass"/></svg> Bericht in ${b.tageRest} Tag(en)</span>
                     </div>`).join("");
             if (assignments.length === 0 && beobachtungen.length === 0) {
                 assignList.innerHTML = `<div class="empty-state-sm">Keine aktiven Scouting-Aufträge. Entsenden Sie oben einen Scout oder lassen Sie einen Spieler beobachten.</div>`;

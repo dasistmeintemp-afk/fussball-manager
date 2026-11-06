@@ -98,7 +98,7 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
 - **Spieler in den Medien (`MedienEngine`):** Nach Ligaspielen gibt ab und zu ein Spieler ein Interview: der Frustrierte auf der Bank, der Matchwinner, das Talent, der Kapitän nach einer Pleitenserie, der Umworbene, der Spieler mit auslaufendem Vertrag. Was er sagt, wirkt auf Mediendruck, Kabine und Fans.
 - **Meilensteine, Trophäenschrank und Saisonrückblick (`MeilensteinEngine`):** Jubiläen von Trainer und Spielern (Spiele, Siege, Tore, Titel, Jahre im Verein) kommen als Nachricht und in die Chronik. Die Vereinsseite zeigt den Trophäenschrank, der Saisonabschluss die Saison in Zahlen.
 - **U19-Liga (`JugendligaEngine`):** Die Talente der Akademie spielen in einer Liga mit zwölf Nachwuchsteams aus dem eigenen Land - mit Tabelle, Ergebnissen und Torjägern im Reiter Jugend. Die U19-Meisterschaft kommt in den Trophäenschrank.
-- **U23-Liga (`ReserveEngine.ligaStarte`):** Die zweite Mannschaft spielt gegen die zweiten Mannschaften anderer Vereine aus dem eigenen Land, so viele, dass jeder Spieltag der Profis ein Spieltag der U23 ist (34 Spieltage: 18 Teams). Tabelle, Ergebnisse und Torjäger stehen im Reiter Jugend, die U23-Meisterschaft kommt in den Trophäenschrank. Steht niemand in der U23, spielt sie mit Amateuren. Ein Spielstand mitten in der Saison holt die gespielten Spieltage nach.
+- **Liga der U23 (`ReserveEngine.ligaStarte`):** Die zweite Mannschaft spielt je nach Land im Ligasystem (Deutschland, Spanien, Italien: gegen die Vereine einer tieferen Liga, mit Auf- und Abstieg) oder in einer eigenen Liga der zweiten Mannschaften (5f), so viele Teams, dass jeder Spieltag der Profis ein Spieltag der U23 ist (34 Spieltage: 18 Teams). Tabelle, Ergebnisse und Torjäger stehen im Reiter Jugend, die U23-Meisterschaft kommt in den Trophäenschrank. Steht niemand in der U23, spielt sie mit Amateuren. Ein Spielstand mitten in der Saison holt die gespielten Spieltage nach.
 - **U23 und U19 wie die Profis (`ReserveEngine.aufstellung`, `uiUnterbau.js`):** Beide Mannschaften haben eine Formation, eine Startelf auf festen Plätzen und eine Mentalität (`state.unterbau`).
   - Im Reiter Jugend steht die Elf auf dem Feld; ein Tipp auf einen Platz setzt einen Spieler fest, steht er schon woanders, tauschen beide. *Automatisch aufstellen* löst alle festen Plätze.
   - Freie Plätze füllt der Einsatzplan, jeden Spieler auf dem Platz, der ihm am besten liegt. Fällt ein festgesetzter Spieler aus, springt der Einsatzplan ein, die Vorgabe bleibt gemerkt.
@@ -1142,6 +1142,30 @@ Gemessen über drei Saisons mit einem Spitzenklub und einem Viertligisten:
 - **Gegner in der U19-Liga:** Ihre Stärke entspricht jetzt einem Jahrgang mit gut zwei Jahren Ausbildung, denn eine U19 spielt mit Siebzehn- und Achtzehnjährigen. Vorher wurde jede halbwegs gefüllte eigene Akademie Meister.
 - **Talente anderer Akademien** kommen ebenfalls mit ihrem Alter: Ein Sechzehnjähriger ist weiter als ein Fünfzehnjähriger.
 
+### 5f. 🎓 Unterbau mit vollem Kader: zweite Mannschaft nach Land und Stufe, Wunderkinder
+Bisher standen in der U23 nur Profis, die der Trainer selbst hinunterschickte - zum Start niemand, die Elf stellten gedachte Amateure. Die U19 bestand aus den drei bis acht Talenten der Akademie. Jetzt haben beide einen Kader wie in Wirklichkeit:
+
+- **Wer eine zweite Mannschaft hat (`ReserveEngine.U23_LAENDER`, `u23Regel`):**
+  - Deutschland: Erst- bis Drittligisten. Spanien: Erst- und Zweitligisten. Italien: Erstligisten. England und Frankreich: Erst- und Zweitligisten. Die übrigen Länder: Erstligisten.
+  - Darunter gibt es keine zweite Mannschaft - etwa in der Landesliga. Der Reiter Jugend sagt das, und *In die U23* gibt es dort nicht.
+- **Wo sie spielt:**
+  - Deutschland, Spanien und Italien: im Ligasystem, gegen die ersten Mannschaften einer tieferen Liga und ein paar andere zweite Mannschaften, jede mit ihrer echten Stärke. Die U23 eines Bundesligisten spielt so in der 3. Liga oder der Regionalliga.
+  - Zum Start in der Liga, deren Stärke am besten passt (`startStufe`). Der Erste steigt auf, die letzten drei steigen ab, nie bis zur Liga der eigenen Profis. Steigen die Profis ab, muss die U23 notfalls mit hinunter.
+  - England, Frankreich und die übrigen Länder: eine eigene Liga der zweiten Mannschaften (`U23-Liga`).
+  - Die Tabelle im Reiter Jugend ist die Wertung mit unserer U23; die Liga der Profis daneben läuft für sich.
+- **Kader und Stärke (`fuelleU23`, `u23Ziel`):**
+  - 22 Spieler beim Erstligisten, 21 beim Zweit-, 20 beim Drittligisten, nach Positionen mit zwei Torhütern. Beim Start 18 bis 23 Jahre alt, mit Vertrag bis 23 und einem Nachwuchsgehalt (60 % dessen, was ihre Liga zahlt).
+  - Stark wie die eigene U19 oder stärker, aber deutlich unter den Profis.
+  - Was die zweite Mannschaft verdient, gibt der Vorstand zum Gehaltsbudget dazu - den Profis geht nichts ab.
+- **Die U19 (`YouthEngine.fuelleU19`):** 22 Jugendspieler beim Erstligisten bis 14 in der Landesliga. Wer nur den Kader füllt, belegt keinen Platz der Akademie, bekommt keine Ausbildungsvergütung, wird nicht umworben und steht in der Liste als *U19-Kader*.
+- **Saisonwechsel (`saisonwechselUnterbau`, `ausU19Aufnehmen`):**
+  - Wer über 23 ist, verlässt die zweite Mannschaft und ist vereinslos.
+  - Hat der Trainer seinen Vertrag verlängert, gehört er zu den Profis.
+  - Die guten Jugendspieler der U19 rücken mit 19 in die U23 auf, die übrigen gehen ohne Meldung in den Amateurbereich. Die Lücken füllen Achtzehn- und Neunzehnjährige. Eine Nachricht des Nachwuchsleiters fasst es zusammen.
+- **Wunderkinder (`YouthEngine.WUNDERKIND`):** Unter den Jugendspielern des eigenen Vereins ist ab und zu einer mit 14 Punkten mehr Potenzial. Beim Erstligisten 3 % je Jugendspieler, in der 4. Liga 0,6 %, in der Landesliga 0,2 %. Er steht mit ⭐ in den Listen, und der Nachwuchsleiter meldet ihn.
+- **Aktionen wie im Vorbild:** Im Menü *Aktionen* der Akte steht oben die Gruppe *Mannschaft*: *In die erste Mannschaft holen*, *Für den nächsten Spieltag nominieren*, *In die U19 / U23 wechseln*, *In die U23 / U19 schicken*, bei Talenten *Hochziehen*. Dieselben Einträge hat jede Zeile von U23, U19 und Akademie im Menü ⋯ und per Rechtsklick.
+- **Nebenwirkungen abgefangen:** U23 und U19 stehen nicht auf der Meldeliste, frusten nicht als Bankspieler, wollen nicht zum Gespräch und melden ihre Verträge nicht als auslaufend. Trainingsverletzungen und Genesungen stehen in ihrer Liste statt im Postfach. Beim Vereinswechsel bleibt die alte U23 nicht gesperrt beim alten Verein zurück, und die Akademie des alten Vereins wandert nicht mit.
+
 ### 6. 💼 Finanzen, Sponsoren & Buchungsjournal
 - **Gehaltsdisziplin der KI-Vereine (`FinanceEngine.gehaltsDisziplin`):** Jeder Wechsel und jede Verlängerung legt beim Gehalt etwas drauf. Angeglichen wurde bisher nur bei Auf- und Abstieg.
   - Gemessen lagen die Erstligisten nach drei Saisons bei 115 % dessen, was sie tragen können.
@@ -1529,7 +1553,7 @@ Eine komplette Welt mit über 4300 Spielern belegt als gewöhnliches JSON knapp 
 - **Wetter und Platz (`WetterEngine`):** Jede Partie bekommt Wetter nach Jahreszeit und einen Rasen nach Ligastufe. Nasser Rasen macht Fernschüsse tückisch, tiefer Boden kostet Kraft und Genauigkeit, Wind verweht lange Bälle, Hitze zehrt an der Ausdauer. Vorschau, Livespiel und Spielbericht zeigen es an.
 - **Spielanalyse:** Zu jedem eigenen Spiel – live oder als Sofort-Ergebnis – gehören Heatmaps beider Mannschaften und ein Passnetz: wer mit wem wie oft zusammengespielt hat und wo er im Schnitt stand. Fehlen die Laufwege (ältere Spielstände), sagt der Bericht das, statt eine Karte zu erfinden.
 - **Trainerprofil (`TrainerProfilEngine`):** Fünf Werte von 1 bis 20 (Taktik, Motivation, Menschenführung, Jugendarbeit, Spielerbewertung), die wirklich wirken – auf Vertrautheit, Ansprachen, Einzelgespräche, Talententwicklung und Scoutberichte. Dazu B-, A- und Pro-Lizenz: Ab der Regionalliga verlangt der Verband die A-Lizenz, in den Bundesligen die Pro-Lizenz. Lehrgänge kosten Geld und Zeit. Am Saisonende wächst, was gefordert war.
-- **Zweite Mannschaft (U23, `ReserveEngine`):** Talente, die bei den Profis nicht spielen, schickt man in die U23. Sie spielt an jedem Spieltag ein Spiel ihrer eigenen U23-Liga und bringt Spielpraxis (etwas weniger als bei den Profis), Spielschärfe und eine eigene Bilanz. Höchstens drei Spieler über 23, im Profikader bleiben mindestens 16. Die KI-Vereine geben ihren Talenten ohne Einsatz ebenfalls etwas Praxis.
+- **Zweite Mannschaft (U23, `ReserveEngine`):** Ein voller Kader nach Land und Stufe (5f); dazu schickt man Talente, die bei den Profis nicht spielen, in die U23. Sie spielt an jedem Spieltag ein Spiel ihrer eigenen U23-Liga und bringt Spielpraxis (etwas weniger als bei den Profis), Spielschärfe und eine eigene Bilanz. Höchstens drei Spieler über 23, im Profikader bleiben mindestens 16. Die KI-Vereine geben ihren Talenten ohne Einsatz ebenfalls etwas Praxis.
 - **Zugriff auf U23 und U19 (`ReserveEngine`, `YouthEngine.hochziehen`):** Beide Kader stehen mit ihrer Bilanz da, und wer gebraucht wird, ist mit einem Tipp bei den Profis.
 - **Einsatzplan für U23 und U19 (`ReserveEngine.EINSATZ`, `elfNachPlan`, `setzeEinsatz`):** Bisher stellten beide Mannschaften immer die elf Stärksten auf, ohne Rücksicht auf Positionen. Wer schwächer war, spielte nie und kam ohne Spielpraxis kaum voran. Ein häufiger Wunsch an das Vorbild war, selbst festzulegen, wer im Unterbau wie oft und wo spielt.
   - **Rolle je Spieler** (Spalte *Einsatz* in beiden Kaderlisten):

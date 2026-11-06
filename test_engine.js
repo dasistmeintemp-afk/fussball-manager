@@ -14605,7 +14605,7 @@ function runEngineTests() {
             return !e || !e.erteilt || !["punkte", "gremium", "frei"].includes(e.weg);
         });
         if (ohne.length) throw new Error(`KI holt ohne Erlaubnis: ${ohne.map(x => `${x.p.name} (${beimWechsel.get(x.p.id)?.weg || "ungeprüft"})`)}`);
-        if (!gekauft.some(({ p }) => beimWechsel.has(p.id))) throw new Error("Kein Wechsel geprüft");
+        if (!gekauft.every(({ p }) => beimWechsel.has(p.id))) throw new Error("Wechsel ohne Prüfung im Moment des Wechsels");
     });
 
     test("Fanartikel: eigener Posten nach Stars, Tabelle und Neuzugängen - im Schnitt so viel wie vorher", () => {
@@ -18071,6 +18071,157 @@ function runEngineTests() {
         if (ui.kaderZeilen(state, club, "all").some(z => z.p.reserve)) throw new Error("U23-Spieler stehen bei den Profis");
         ui._kaderWahl.team = "u19";
         if (ui.kaderZeilen(state, club, "all").length !== J.eigeneSpieler(state).length) throw new Error("Die U19-Liste ist unvollständig");
+    });
+
+    test("U23 und U19 mit vollem Kader: zweite Mannschaft nach Land und Stufe, Auf- und Abstieg, Saisonwechsel, Wunderkinder, Aktionen in Akte und Listen", () => {
+        const { ReserveEngine: R } = require('./js/engine/reserveEngine.js');
+        const { YouthEngine: Y } = require('./js/engine/youthEngine.js');
+        const { JugendligaEngine: J } = require('./js/engine/jugendligaEngine.js');
+        const { KaderregelEngine: KR } = require('./js/engine/kaderregelEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Unterbau" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+
+        // Ein Erstligist hat eine volle zweite Mannschaft: Spieler von 18 bis 23, Vertrag bis 23, zwei Torhüter
+        const u23 = R.spieler(state, club);
+        if (u23.length !== R.U23_KADER[1]) throw new Error(`U23 mit ${u23.length} Spielern`);
+        const falsch = u23.find(p => !p.zweite || p.reserve !== true || p.age < 18 || p.age > R.ALTERSGRENZE || p.contractYears !== R.ALTERSGRENZE + 1 - p.age);
+        if (falsch) throw new Error(`U23-Spieler falsch: ${falsch.name} ${falsch.age} J., Vertrag ${falsch.contractYears}`);
+        if (u23.filter(p => p.pos === "TW").length < 2) throw new Error("U23 ohne zweiten Torwart");
+        // Sie spielt im Ligasystem, tiefer als die Profis, gegen Vereine der Liga und andere zweite Mannschaften
+        const regel = R.u23Regel(state, club);
+        if (regel.art !== "gemischt" || !(regel.stufe > club.level) || regel.stufe < regel.hoechste) throw new Error(`Regel: ${JSON.stringify({ art: regel.art, stufe: regel.stufe })}`);
+        const liga = R.ligaStarte(state);
+        if (liga.art !== "gemischt" || liga.ligaId !== regel.liga.id || liga.name !== (regel.liga.shortName || regel.liga.name)) throw new Error(`Liga: ${liga.name}`);
+        const erste = liga.teams.filter(t => !t.zweite), zweite = liga.teams.filter(t => t.zweite);
+        if (!erste.length || zweite.length < 2 || !erste.every(t => state.clubs.find(c => c.id === t.clubId)?.leagueId === regel.liga.id)) throw new Error("Gegner nicht aus der Liga");
+        if (liga.teams.length % 2 || liga.runden.length !== 2 * (liga.teams.length - 1)) throw new Error("Spielplan falsch");
+        // So stark wie die eigene U19 oder stärker, aber deutlich unter den Profis
+        const staerke = R.u23Staerke(state, club);
+        if (staerke.auffuellen || !(staerke.staerke > J.basis(club) - 3 && staerke.staerke < R._kaderSchnitt(state, club) - 4)) throw new Error(`U23-Stärke ${staerke.staerke.toFixed(1)}`);
+
+        // Die U19 hat ihren Kader; die Jugendspieler belegen keinen Platz der Akademie und kosten keine Vergütung
+        if (J.eigeneSpieler(state).length < Y.U19_KADER[1]) throw new Error(`U19 mit ${J.eigeneSpieler(state).length} Spielern`);
+        const talente = Y.eigeneTalente(state).filter(t => !t.promoted);
+        if (!talente.some(t => t.kader) || Y.akademiePlaetze(state, club).belegt !== talente.filter(t => !t.kader).length) throw new Error("Akademieplätze zählen den U19-Kader");
+        if (Y.umwerbbare(state).some(t => t.kader)) throw new Error("U19-Kader wird umworben");
+        // Meldeliste und Kabine der Profis zählen die U23 nicht
+        if (KR._kader(state, club).some(p => p.reserve)) throw new Error("U23 auf der Meldeliste");
+
+        // Ohne zweite Mannschaft: Landesliga und Drittligist in England; in England eine eigene Liga
+        const landesliga = state.clubs.find(c => c.countryId === "de" && c.level === 7);
+        const r7 = R.u23Regel(state, landesliga);
+        if (r7.hat || !/zweite Mannschaft/.test(r7.grund)) throw new Error("Landesligist mit U23");
+        const spieler7 = state.players.find(p => p.clubId === landesliga.id && (p.age || 30) <= 23);
+        if (spieler7 && R.pruefe(state, spieler7).ok) throw new Error("Landesligist darf in die U23 schicken");
+        if (R.hatU23(state, state.clubs.find(c => c.countryId === "en" && c.level === 3))) throw new Error("Englischer Drittligist mit U23");
+        if (R.u23Regel(state, state.clubs.find(c => c.countryId === "en" && c.level === 1)).art !== "eigen") throw new Error("England ohne eigene Liga");
+
+        // Auf- und Abstieg: Der Erste steigt auf, nie bis zur Liga der Profis; der Letzte steigt ab
+        const spiele = (eigenePunkte) => {
+            state.u23liga = null;
+            const l = R.ligaStarte(state);
+            l.tabelle.forEach((z, i) => { z[5] = i === 0 ? eigenePunkte : 40 + i; });
+            R._ligaSaisonende(state, l);
+            return l;
+        };
+        state.u23Stufe = { clubId: club.id, stufe: regel.hoechste + 1 };
+        const vorher = spiele(99);
+        if (vorher.stufe !== regel.hoechste + 1 || state.u23Stufe.stufe !== regel.hoechste) throw new Error(`Kein Aufstieg: ${JSON.stringify(state.u23Stufe)}`);
+        if (!/steigt auf/.test(state.inbox[0].subject)) throw new Error(`Post zum Aufstieg: ${state.inbox[0].subject}`);
+        spiele(99);
+        if (state.u23Stufe.stufe !== regel.hoechste || !/nie so hoch wie die eigenen Profis/.test(state.inbox[0].body)) throw new Error("Aufstieg bis zu den Profis");
+        spiele(0);
+        if (state.u23Stufe.stufe !== regel.hoechste + 1) throw new Error("Kein Abstieg");
+        state.u23liga = null;
+        if (R.ligaStarte(state).stufe !== regel.hoechste + 1) throw new Error("Die neue Saison spielt nicht in der neuen Liga");
+
+        // Saisonwechsel: Wer über 23 ist, geht vereinslos; mit verlängertem Vertrag zu den Profis; Junge rücken nach
+        const geht = u23[0], bleibt = u23[1];
+        geht.age = 24; geht.contractYears = 0;
+        bleibt.age = 24; bleibt.contractYears = 2;
+        const budget = club.wageBudget, lohnGeht = geht.wage;
+        const wechsel = R.saisonwechselUnterbau(state, () => 0.5);
+        if (geht.clubId !== null || club.playerIds.includes(geht.id) || geht.reserve || geht.zweite || geht.vereinslosAb !== state.seasonYear) throw new Error("Zu alter nicht vereinslos");
+        if (bleibt.reserve || bleibt.zweite || !club.playerIds.includes(bleibt.id)) throw new Error("Mit Vertrag nicht bei den Profis");
+        if (R.spieler(state, club).length !== R.U23_KADER[1] || !wechsel.kommen.length || wechsel.kommen.some(p => p.age > 19)) throw new Error("Nicht mit Jungen aufgefüllt");
+        // Das Gehaltsbudget folgt der zweiten Mannschaft: was geht, fällt heraus, was kommt, kommt dazu
+        const erwartet = budget - lohnGeht + wechsel.kommen.reduce((s, p) => s + p.wage, 0);
+        if (club.wageBudget !== erwartet) throw new Error(`Gehaltsbudget ${club.wageBudget} statt ${erwartet}`);
+        if (!state.inbox.some(m => /^Zweite Mannschaft:/.test(m.subject) && m.body.includes(geht.name) && m.body.includes(bleibt.name))) throw new Error("Keine Nachricht zum Saisonwechsel");
+        // Verträge der zweiten Mannschaft melden sich nicht als auslaufend
+        if (SeasonEngine.auslaufendZumWechsel(state).some(p => p.zweite)) throw new Error("U23-Vertrag als auslaufend gemeldet");
+
+        // Mit 19: Die guten Jugendspieler des U19-Kaders rücken in die U23 auf, die übrigen gehen still
+        Y.eigeneTalente(state).forEach(t => { if (!t.promoted) t.age = 15; });
+        const [gut, schwach] = Y.eigeneTalente(state).filter(t => t.kader && !t.promoted);
+        Object.assign(gut, { age: 18, overall: 70, pot: 85 });
+        Object.assign(schwach, { age: 18, overall: 20, pot: 25 });
+        R.spieler(state, club).slice(0, 2).forEach(p => R._verabschiede(state, club, p));
+        const post = state.inbox.length, anzahl = state.players.length;
+        Y.alterTalente(state);
+        const aufgerueckt = state.players.find(p => p.name === gut.name && p.clubId === club.id);
+        if (!aufgerueckt || !aufgerueckt.zweite || aufgerueckt.reserve !== true || aufgerueckt.age !== 19) throw new Error("Guter Jugendspieler nicht in der U23");
+        // (Namen gibt es in der Welt mehrfach - gezählt wird, wer neu dazukam)
+        if (state.players.some(p => p.name === schwach.name && p.clubId === null && p.vereinslosAb === state.seasonYear) || state.players.length !== anzahl + 1) throw new Error(`Schwacher Jugendspieler blieb in der Welt (${state.players.length - anzahl} neu)`);
+        if (state.inbox.length !== post) throw new Error("Post für Jugendspieler des U19-Kaders");
+        // Wer aus der zweiten Mannschaft in die U19 ging, kommt mit 20 in die U23 zurück
+        const jung = R.spieler(state, club).find(p => p.age <= 19 && p.zweite);
+        if (!R.wechsleTeam(state, jung.id).success || !R.inU19(jung)) throw new Error("Nicht in die U19 gewechselt");
+        if (!R.wechsleTeam(state, jung.id).success || jung.reserve !== true) throw new Error("Nicht zurück in die U23");
+
+        // Wunderkinder: oben öfter als unten, mit viel mehr Potenzial und einer Nachricht
+        const c = (level) => Y.wunderkindChance({ level });
+        if (!(c(1) > c(2) && c(2) > c(4) && c(4) > c(7) && c(7) > 0)) throw new Error("Wunderkinder nicht nach Ligastufe");
+        const alt = Y.WUNDERKIND.chance;
+        let normal, wunder;
+        try {
+            Y.WUNDERKIND.chance = { 1: 0 };
+            normal = Y.generateProspects(state, club.id, { anzahl: 40, ohneKosten: true, jahrgang: false, vorschau: true });
+            Y.WUNDERKIND.chance = { 1: 1 };
+            wunder = Y.generateProspects(state, club.id, { anzahl: 40, ohneKosten: true, jahrgang: false });
+        } finally { Y.WUNDERKIND.chance = alt; }
+        const schnitt = (l) => l.reduce((s, t) => s + t.pot, 0) / l.length;
+        if (normal.some(t => t.wunderkind) || !wunder.filter(t => !t.ausnahmetalent).every(t => t.wunderkind && !t.kader)) throw new Error("Wunderkind falsch markiert");
+        if (!(schnitt(wunder) > schnitt(normal) + 8)) throw new Error(`Wunderkinder ohne mehr Potenzial: ${schnitt(wunder).toFixed(1)} gegen ${schnitt(normal).toFixed(1)}`);
+        if (!state.inbox.some(m => /Wunderkind/.test(m.subject))) throw new Error("Keine Nachricht zum Wunderkind");
+
+        // Aktionen in Akte und Kontextmenü: in die erste Mannschaft, Spieltag, U19, hinunter
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        const hatte = { r: global.ReserveEngine, y: global.YouthEngine };
+        global.ReserveEngine = R; global.YouthEngine = Y;
+        try {
+            const texte = (p) => ui.unterbauAktionen(p).map(a => a.text);
+            const zweiter = R.spieler(state, club).find(p => p.zweite && p.age <= 19);
+            if (texte(zweiter).join("|") !== "In die erste Mannschaft holen|Für den nächsten Spieltag nominieren|In die U19 wechseln") throw new Error(`U23: ${texte(zweiter)}`);
+            const profi = R.profis(state, club).find(p => p.age <= 19) || Object.assign(R.profis(state, club)[0], { age: 19 });
+            if (!texte(profi).includes("In die U23 schicken") || !texte(profi).includes("In die U19 schicken")) throw new Error(`Profi: ${texte(profi)}`);
+            const talent = Y.eigeneTalente(state).find(t => !t.promoted && !t.kader);
+            talent.age = 17;
+            if (texte(talent).join("|") !== "In die erste Mannschaft holen|Für den nächsten Spieltag hochziehen") throw new Error(`Talent: ${texte(talent)}`);
+            // Im Menü Aktionen der Akte steht oben die Mannschaft
+            const gruppen = ui.profilAktionen({ player: zweiter, club, card: null, isUserClub: true, isProspect: false }, { querySelector: () => null });
+            if (gruppen[0].titel !== "Mannschaft" || gruppen[0].eintraege.length !== 3) throw new Error(`Akte: ${gruppen.map(g => g.titel)}`);
+            // Im Kontextmenü der Listen nach "Akte öffnen"
+            ui.getScoutingEngine = () => null;
+            const km = ui.kontextEintraege(zweiter).map(e => e.art);
+            if (km[0] !== "akte" || km[1] !== "ub-hinauf" || !km.includes("ub-nominieren")) throw new Error(`Kontextmenü: ${km}`);
+            if (ui.kontextEintraege(talent).some(e => e.art === "vergleich")) throw new Error("Talent im Spielervergleich");
+            // Ausführen: hoch in die erste Mannschaft, der Rest bleibt in der U23
+            ui.showToast = () => {}; ui.renderCurrentTab = () => {}; ui.renderHeader = () => {};
+            const res = ui.unterbauAktion("ub-hinauf", zweiter.id);
+            if (!res.success || zweiter.reserve || zweiter.zweite || !R.profis(state, club).includes(zweiter)) throw new Error("Nicht in die erste Mannschaft geholt");
+        } finally {
+            global.ReserveEngine = hatte.r; global.YouthEngine = hatte.y;
+        }
+
+        // Vereinswechsel: Die alte U23 bleibt nicht gesperrt zurück, der neue Verein bekommt seine
+        const neu = state.clubs.find(c => c.countryId === "de" && c.level === 2);
+        const alteU23 = R.spieler(state, club).map(p => p.id);
+        CareerEngine.uebernimm(state, neu.id);
+        if (state.players.some(p => alteU23.includes(p.id) && (p.clubId === club.id || p.reserve))) throw new Error("Alte U23 bleibt beim alten Verein");
+        if (R.spieler(state, neu).length !== R.U23_KADER[2] || Y.eigeneTalente(state).some(t => t.clubId === club.id && !t.promoted)) throw new Error("Neuer Verein ohne eigenen Unterbau");
     });
 
     test("Taktische Wirksamkeit: vier Teile, Komplexität, Rückhalt nur beim eigenen Verein, Analysetag, Passt ins System", () => {

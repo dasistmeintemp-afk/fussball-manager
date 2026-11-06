@@ -317,7 +317,7 @@ const ContractEngine = {
 
             // Auslaufende Verträge des Spielervereins warnen
             // Die zweite Mannschaft regelt ihre Verträge selbst (bis 23)
-            if (p.clubId === state.userClubId && p.contractYears === 1 && !p.zweite) auslaufend.push(p);
+            if (p.clubId === state.userClubId && p.contractYears === 1 && !(p.zweite && p.reserve)) auslaufend.push(p);
         });
 
         // Die KI-Vereine verlängern, bevor der Vertrag ausläuft

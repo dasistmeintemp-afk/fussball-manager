@@ -145,7 +145,8 @@ const RekrutierungEngine = {
     vertraege(state) {
         const club = this._eigener(state);
         if (!club) return null;
-        const kader = (state.players || []).filter(p => p.clubId === club.id && !(p.leihe && p.leihe.stammvereinId !== club.id));
+        // Die zweite Mannschaft hat Verträge bis 23 - die regelt sie selbst
+        const kader = (state.players || []).filter(p => p.clubId === club.id && !(p.leihe && p.leihe.stammvereinId !== club.id) && !(p.zweite && p.reserve));
         const kp = this._kp();
         const analyse = kp && typeof kp.bedarfsAnalyse === "function" ? kp.bedarfsAnalyse(state, club, kader) : null;
         const verlaengern = new Map((analyse?.renewalCandidates || []).map(x => [x.id, x.reason]));

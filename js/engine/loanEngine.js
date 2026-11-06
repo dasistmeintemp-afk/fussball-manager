@@ -228,6 +228,8 @@ class LoanEngine {
         this._wechsle(state, player, eigener, leihverein);
         this._resolve("RekrutierungEngine", "./rekrutierungEngine.js")?.merke?.(state, player, eigener, leihverein, gebuehr, true);
         player.reserve = undefined;
+        // Verliehen ist er ein Profi wie jeder andere, auch wenn er aus der zweiten Mannschaft kam
+        player.zweite = undefined;
         player.leihListe = undefined;
         const winter = angebot.dauer === "winter";
         player.leihe = {
@@ -719,6 +721,7 @@ class LoanEngine {
         this._wechsle(state, player, stammverein, eigener);
         this._resolve("RekrutierungEngine", "./rekrutierungEngine.js")?.merke?.(state, player, stammverein, eigener, gebuehr, true);
         player.reserve = undefined;
+        player.zweite = undefined;
         player.leihe = {
             stammvereinId: stammverein.id,
             leihvereinId: eigener.id,
@@ -839,6 +842,7 @@ class LoanEngine {
             const diff = (p.overall || 0) - niveau(ziel);
             this._wechsle(state, p, stamm, ziel);
             p.reserve = undefined;
+            p.zweite = undefined;
             p.leihe = {
                 stammvereinId: stamm.id,
                 leihvereinId: ziel.id,

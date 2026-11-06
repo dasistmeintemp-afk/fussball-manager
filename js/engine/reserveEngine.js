@@ -274,6 +274,7 @@ const ReserveEngine = {
     /** Beim Vereinswechsel, bei Leihe oder Karriereende gilt die U23 nicht mehr */
     entlasse(player) {
         if (player && player.reserve) player.reserve = undefined;
+        if (player) player.zweite = undefined;
         if (player) player.nominiertAus = undefined;
     },
 

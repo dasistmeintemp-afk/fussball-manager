@@ -473,7 +473,8 @@ const ReserveEngine = {
         p.reserve = true;
         p.zweite = true;
         p.squadRole = "Zukunftstalent";
-        p.vereinSeit = state.seasonYear || 1;
+        // Aus dem eigenen Nachwuchs: kein Neuer im Verein (wie YouthEngine.spielerAusTalent)
+        p.vereinSeit = (state.seasonYear || 1) * 1000 + (state.currentDayIndex || 0) - 250;
         p.spielpraxis = 0.6;
         return typeof gen.forme === "function" ? gen.forme(p) : p;
     },

@@ -449,7 +449,8 @@ class MatchEngine {
         const clean = [];
         const seenIds = new Set();
 
-        const isPlayerFitAndEligible = p => p && (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0;
+        // U23 und U19 spielen ihr eigenes Spiel - sie rücken bei den Profis nicht nach
+        const isPlayerFitAndEligible = p => p && (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0 && !p.reserve;
 
         // Fitte Spieler aus der Bank bereitstellen
         const availableBench = benchIds

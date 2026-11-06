@@ -1277,7 +1277,8 @@ class ManagerEngine {
         const club = this.clubOf(state);
         if (!club) return [];
 
-        const squad = this.squadOf(state, club);
+        // Der Schreibtisch gilt den Profis - U23 und U19 haben ihre eigenen Listen
+        const squad = this.squadOf(state, club).filter(p => !p.reserve);
         const items = [];
 
         // 0. Ein anderer Verein will den Trainer (JobmarktEngine)

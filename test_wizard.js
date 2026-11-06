@@ -1649,7 +1649,8 @@ function runWizardTests() {
             ui.setzeSternMassstab("welt");
             if (PlayerRatingEngine.sternBezug(state) !== 140) throw new Error("Weltmaßstab nicht fest");
             ui.setzeSternMassstab("kader");
-            const eigene = state.players.filter(p => p.clubId === "muc");
+            // Gemessen am Profikader - ohne die zweite Mannschaft
+            const eigene = state.players.filter(p => p.clubId === "muc" && !(p.zweite && p.reserve));
             if (Math.abs(PlayerRatingEngine.sternBezug(state) - PlayerRatingEngine.squadAverageAbility(eigene)) > 1e-9) throw new Error("Kadermaßstab falsch");
             ui.setzeSternMassstab("unsinn");
             if (ui.sternMassstab() !== "kader") throw new Error("Unbekannter Maßstab angenommen");

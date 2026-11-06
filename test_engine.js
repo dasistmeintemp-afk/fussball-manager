@@ -479,15 +479,17 @@ function runEngineTests() {
         if (YouthEngine.sichtungsLage(state).warten !== 0) throw new Error("Nach sechs Wochen geht kein neuer Sichtungstag");
 
         // Die Akademie ist begrenzt
-        const { plaetze } = YouthEngine.akademiePlaetze(state, club);
-        while (talente().length < plaetze) YouthEngine.generateProspects(state, club.id, { anzahl: 1, ohneKosten: true });
+        // (die Jugendspieler des U19-Kaders belegen keinen Platz - es zählen die Talente)
+        while (YouthEngine.akademiePlaetze(state, club).frei > 0) YouthEngine.generateProspects(state, club.id, { anzahl: 1, ohneKosten: true });
         if (YouthEngine.pruefeProbetraining(state, () => 0) !== null) throw new Error("Probetraining trotz voller Akademie");
         if (YouthEngine.sichtungstag(state, () => 0).success) throw new Error("Sichtungstag trotz voller Akademie");
         const frei = YouthEngine.talentFreigeben(state, probe.id);
         if (!frei.success || talente().includes(probe) || YouthEngine.akademiePlaetze(state, club).frei !== 1) throw new Error(`Freigeben macht keinen Platz (${JSON.stringify(frei.error)}, ${talente().includes(probe)}, ${JSON.stringify(YouthEngine.akademiePlaetze(state, club))})`);
 
         // Zum Saisonwechsel älter - mit 19 ist ohne Vertrag Schluss
-        const [alt, jung] = talente();
+        const [alt, jung] = talente().filter(t => !t.kader);
+        // Alle anderen jung genug - ein Wunderkind im U19-Kader kann schon 18 sein
+        talente().forEach(t => { t.age = Math.min(t.age || 16, 16); });
         alt.age = 18;
         jung.age = 16;
         const gehen = YouthEngine.alterTalente(state);
@@ -538,7 +540,8 @@ function runEngineTests() {
     test("Sommerpause: Drei Wochen zum Verlängern, wer wartet, verliert Spieler an andere - dann der Saisonwechsel", () => {
         const state = GameState.createNewGame("muc", "normal", { name: "Trainer" });
         const club = state.clubs.find(c => c.id === "muc");
-        const kader = state.players.filter(p => p.clubId === "muc" && !p.leihe)
+        // Der Profikader - die zweite Mannschaft regelt ihre Verträge selbst
+        const kader = state.players.filter(p => p.clubId === "muc" && !p.leihe && !p.reserve)
             .sort((a, b) => b.overall - a.overall);
         const [bleibt, umworben, schwach] = [kader[0], kader[1], kader[kader.length - 1]];
         kader.forEach(p => { p.contractYears = 3; });
@@ -6235,9 +6238,11 @@ function runEngineTests() {
             ? match.homeClubId : match.awayClubId;
         if (sieger !== gewinntMehr) throw new Error("Der Sieger passt nicht zum Ergebnis");
 
-        // Der Schnitt muss im Bereich echter Elfmeterschießen liegen
+        // Der Schnitt muss im Bereich echter Elfmeterschießen liegen - über
+        // 300 Schießen: Bei 60 streute die Quote je nach Zufallsfolge um
+        // mehrere Punkte (gemessen 88 bis 95 % bei 91 % im Mittel)
         let treffer = 0, schuesse = 0;
-        for (let i = 0; i < 60; i++) {
+        for (let i = 0; i < 300; i++) {
             const m = { homeClubId: zwei[0].id, awayClubId: zwei[1].id, played: true, homeGoals: 0, awayGoals: 0 };
             CupEngine.elfmeterschiessen(state, m);
             treffer += m.penaltyScore[0] + m.penaltyScore[1];
@@ -16225,8 +16230,9 @@ function runEngineTests() {
         Y.mitProfisTrainieren(state, t.id, false);
 
         // U19-Einsätze zählen - nur bei Talenten der Akademie, die Profis bekommen kein Feld
+        // Die Elf, wie sie aufläuft - auf ihren Plätzen, mit einem Torwart (die U19 hat jetzt einen vollen Kader)
+        const elf = J.aufstellung(state).filter(pl => pl.spieler).map(pl => pl.spieler);
         J.spieltag(state);
-        const elf = J.eigeneSpieler(state).slice().sort((a, b) => (b.overall || 0) - (a.overall || 0)).slice(0, 11);
         const imTeam = Y.eigeneTalente(state).filter(x => elf.includes(x));
         if (!imTeam.length || imTeam.some(x => x.u19Spiele !== 1)) throw new Error("U19-Einsätze nicht gezählt");
         if (state.players.some(p => "u19Spiele" in p)) throw new Error("Profis tragen ein U19-Feld");
@@ -16298,9 +16304,9 @@ function runEngineTests() {
 
         // Mit 19 ohne Profivertrag: vereinslos in der Welt, nicht verschwunden
         const geht = Y.eigeneTalente(state).find(t => !t.promoted && !t.kader);
+        // Alle anderen bleiben jung - im U19-Kader stehen auch Achtzehnjährige
+        Y.eigeneTalente(state).forEach(t => { if (!t.promoted) t.age = 15; });
         geht.age = 18;
-        // Die Jugendspieler des U19-Kaders altern mit - hier sollen sie jung bleiben
-        Y.eigeneTalente(state).filter(t => t.kader).forEach(t => { t.age = 15; });
         const anzahl = state.players.length;
         Y.alterTalente(state);
         const frei = state.players.find(p => p.name === geht.name && p.ausgebildetVon === club.id);
@@ -17600,7 +17606,8 @@ function runEngineTests() {
         const reihe = (teil, pos = "all") => { Object.assign(ui._kaderWahl, teil); return ui.kaderZeilen(state, club, pos).map(z => z.p); };
         const steigt = (liste, f) => liste.every((p, i) => i === 0 || f(liste[i - 1]) <= f(p));
         // Vertragsende: kürzeste zuerst, umgekehrt die längsten
-        const kader = state.players.filter(p => p.clubId === "muc");
+        // Die Liste zeigt die Profis - U23 und U19 haben eigene Ansichten
+        const kader = state.players.filter(p => p.clubId === "muc" && !p.reserve);
         kader.forEach((p, i) => { p.contractYears = 1 + (i % 4); });
         const vertrag = reihe({ sorte: "vertrag", ab: null });
         if (vertrag.length !== kader.length || !steigt(vertrag, p => p.contractYears)) throw new Error(`Nicht nach Vertrag sortiert: ${vertrag.map(p => p.contractYears)}`);

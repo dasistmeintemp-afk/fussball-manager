@@ -497,7 +497,8 @@ const ReserveEngine = {
             overall, pot: Math.max(overall, gen.toOverall(pa)), trueCurrentAbility: ca, truePotentialAbility: pa
         });
         // Die Kopfwerte neu - sie folgen der Stärke, die er jetzt hat
-        (gen.KOPFWERTE || []).forEach(k => { delete p[k]; });
+        // (auf undefined statt delete - so bleibt jeder Spieler in derselben Form)
+        (gen.KOPFWERTE || []).forEach(k => { p[k] = undefined; });
         if (typeof gen.ergaenzeKopfwerte === "function") gen.ergaenzeKopfwerte(p);
         const wert = gen.getValueAndWage(overall, stufe, alter);
         const fin = _reResolve("FinanceEngine", "./financeEngine.js");

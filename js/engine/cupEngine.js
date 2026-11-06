@@ -814,7 +814,8 @@ class CupEngine {
             const club = (state.clubs || []).find(c => c.id === clubId);
             if (!club) return 0.76;
 
-            const kader = (club.playerIds || []).map(finde).filter(Boolean);
+            // U23 und U19 stehen nicht im Spieltagskader der Profis
+            const kader = (club.playerIds || []).map(finde).filter(p => p && !p.reserve);
 
             const schuetzen = kader.filter(p => p.pos !== "TW")
                 .map(p => ((p.shooting || p.finishing || 55) + (p.composure || p.mental || 55)) / 2)

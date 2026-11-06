@@ -244,11 +244,15 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const alleTalente = youthListe && typeof youthListe.eigeneTalente === "function"
                 ? youthListe.eigeneTalente(state)
                 : (state.youthAcademy?.prospects || []);
-            const prospects = alleTalente.filter(p => !p.promoted);
+            // Erst die Talente der Akademie, dann die Jugendspieler des U19-Kaders
+            const prospects = alleTalente.filter(p => !p.promoted).map((p, i) => ({ p, i }))
+                .sort((a, b) => ((a.p.kader ? 1 : 0) - (b.p.kader ? 1 : 0)) || (a.i - b.i)).map(x => x.p);
             const meta = document.getElementById("youthTalenteMeta");
             if (meta) {
                 const werben = this.offeneJugendAnfragen(state);
-                meta.textContent = `${prospects.length} ${prospects.length === 1 ? "Talent" : "Talente"}`
+                const kader = prospects.filter(p => p.kader).length;
+                const talente = prospects.length - kader;
+                meta.textContent = `${talente} ${talente === 1 ? "Talent" : "Talente"}${kader ? ` · ${kader} im U19-Kader` : ""}`
                     + (werben > 0 ? ` · ${werben} ${werben === 1 ? "Verein wirbt" : "Vereine werben"}` : "");
                 meta.classList.toggle("header-tag-warnung", werben > 0);
             }
@@ -307,13 +311,15 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     const aktion = gespraech
                         ? `<button class="btn btn-sm btn-secondary btn-goto-negotiation" data-neg-id="${this.escapeHtml(gespraech.id)}">Zur Verhandlung</button>${anfrageKnoepfe}`
                         : `${profiKnopf}${hochKnopf}${anfrageKnoepfe}${profisKnopf}
-                           <button class="btn btn-sm btn-secondary btn-release-prospect" data-prospect-id="${p.id}" title="Platz in der Akademie freimachen">Freigeben</button>`;
+                           <button class="btn btn-sm btn-secondary btn-release-prospect" data-prospect-id="${p.id}" title="Platz in der Akademie freimachen">Freigeben</button>${this.unterbauMenueKnopf(p.id, p.name)}`;
                     const quelle = ({ probetraining: "Probetraining", sichtung: "Sichtungstag" })[p.quelle]
                         || (p.quelle === "fremd" && p.vonClubName ? `aus ${p.vonClubName}` : null);
                     // Aus der internationalen Sichtung: woher er kommt, und ob er ein Ausnahmetalent ist
                     const heimatName = typeof YouthEngine !== "undefined" && YouthEngine.heimatland ? YouthEngine.heimatland(state, userClub) : null;
                     const herkunft = p.nationality && heimatName && p.nationality !== heimatName ? ` <span class="text-muted">· ${this.escapeHtml(p.nationality)}</span>` : "";
-                    const ausnahme = p.ausnahmetalent ? ` <span class="talent-quelle talent-ausnahme">⭐ Ausnahmetalent</span>` : "";
+                    const ausnahme = p.wunderkind ? ` <span class="talent-quelle talent-ausnahme">⭐ Wunderkind</span>`
+                        : p.ausnahmetalent ? ` <span class="talent-quelle talent-ausnahme">⭐ Ausnahmetalent</span>`
+                        : p.kader ? ` <span class="talent-quelle" title="Jugendspieler aus der Region - füllt den U19-Kader, belegt keinen Platz der Akademie">U19-Kader</span>` : "";
                     const profis = p.mitProfis ? ` <span class="talent-quelle talent-profis">🏋️ trainiert mit den Profis</span>` : "";
 
                     return `
@@ -514,9 +520,17 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (!el || !R) return;
         const club = state.clubs.find(c => c.id === state.userClubId);
         const liga = R.ligaStarte(state);
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const regel = club && typeof R.u23Regel === "function" ? R.u23Regel(state, club) : { hat: !!liga };
+        if (club && !regel.hat) {
+            // Keine zweite Mannschaft in dieser Klasse - wie in der Wirklichkeit
+            el.hidden = false;
+            el.innerHTML = `<div class="card-header"><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-shield"/></svg>Zweite Mannschaft</h3><span class="header-tag">keine</span></div>
+                <p class="text-muted jl-hinweis">${esc(regel.grund)} Steigt der Verein auf, gründet er eine.</p>`;
+            return;
+        }
         if (!club || !liga) { el.hidden = true; return; }
         el.hidden = false;
-        const esc = (t) => this.escapeHtml(String(t ?? ""));
         const saison = state.seasonYear || 1;
         const tabelle = R.ligaTabelle(state);
         // Lange Tabellen: die Spitze und das Umfeld der eigenen U23, der Rest auf Knopfdruck
@@ -533,12 +547,17 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const bank = new Set((club.bench || []).map(String));
         const kandidaten = R.profis(state, club).filter(p => (p.age || 30) <= R.ALTERSGRENZE && !elf.has(String(p.id)) && !p.nominiertAus && !p.leihe)
             .sort((a, b) => (bank.has(String(a.id)) - bank.has(String(b.id))) || ((a.spielpraxis ?? 0.5) - (b.spielpraxis ?? 0.5))).slice(0, 6);
-        const zeileKader = ({ p, b }) => `<tr data-u23-akte="${esc(p.id)}"><td>${esc(p.name)}${this.einsatzElf(p, naechsteElf)}${(p.injuredWeeks || 0) > 0 ? ' <span class="text-danger">verletzt</span>' : ""}</td><td>${esc(p.pos)}</td><td>${p.age || "-"}</td>
+        const zeileKader = ({ p, b }) => `<tr data-u23-akte="${esc(p.id)}"><td>${esc(p.name)}${p.zweite ? "" : ' <span class="text-muted">Profi</span>'}${this.einsatzElf(p, naechsteElf)}${(p.injuredWeeks || 0) > 0 ? ' <span class="text-danger">verletzt</span>' : ""}</td><td>${esc(p.pos)}</td><td>${p.age || "-"}</td>
             <td>${this.starsFor(p.overall)}</td>${this.unterbauZellen(p, "u23")}<td>${Math.round((p.spielpraxis ?? 0.5) * 100)} %</td>${this.einsatzZellen(p)}
-            <td><div class="unterbau-knoepfe"><button class="btn btn-sm btn-primary btn-nominieren" data-id="${esc(p.id)}" title="Nach dem nächsten Ligaspiel geht er zurück">Spieltag</button><button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(p.id)}" title="Für immer zu den Profis">Ganz hoch</button></div></td></tr>`;
+            <td><div class="unterbau-knoepfe"><button class="btn btn-sm btn-primary btn-nominieren" data-id="${esc(p.id)}" title="Nach dem nächsten Ligaspiel geht er zurück">Spieltag</button><button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(p.id)}" title="Für immer in die erste Mannschaft">Ganz hoch</button>${this.unterbauMenueKnopf(p.id, p.name)}</div></td></tr>`;
+        // Im Ligasystem: gegen die Vereine der Liga, mit Auf- und Abstieg
+        const gemischt = liga.art === "gemischt";
+        const ligaHinweis = gemischt
+            ? `Die zweite Mannschaft spielt in der ${esc(liga.name)} mit - gegen die Vereine dieser Liga und andere zweite Mannschaften. Der Erste steigt auf, die letzten drei steigen ab; so hoch wie die Profis spielt sie nie. Die Tabelle hier ist die Wertung mit unserer U23.`
+            : `Die U23 spielt in der Liga der zweiten Mannschaften - gegen die U23 der anderen Vereine aus dem Land.`;
         el.innerHTML = `
             <div class="card-header"><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-shield"/></svg>Zweite Mannschaft (U23)</h3><span class="header-tag">${esc(liga.name)} · ${liga.runde} / ${liga.runden.length} Spieltage${liga.meister ? ` · Meister: ${esc(liga.meister)}` : ""}</span></div>
-            <p class="text-muted jl-hinweis">Die U23 spielt an jedem Spieltag der Profis gegen die zweite Mannschaft eines anderen Vereins aus dem Land. Wer dort spielt, sammelt Spielpraxis und steht den Profis nicht zur Verfügung. Höchstens ${R.MAX_UEBERALTERT} Spieler über ${R.ALTERSGRENZE}. Stärke im Moment ${staerke.toFixed(1).replace(".", ",")}${auffuellen ? `, ${auffuellen} ${auffuellen === 1 ? "Platz füllt" : "Plätze füllen"} Amateure auf` : ""}.</p>
+            <p class="text-muted jl-hinweis">${ligaHinweis} Gespielt wird an jedem Spieltag der Profis. Wer dort spielt, sammelt Spielpraxis und steht den Profis nicht zur Verfügung. Höchstens ${R.MAX_UEBERALTERT} Spieler über ${R.ALTERSGRENZE}. Stärke im Moment ${staerke.toFixed(1).replace(".", ",")}${auffuellen ? `, ${auffuellen} ${auffuellen === 1 ? "Platz füllt" : "Plätze füllen"} Amateure auf` : ""}.</p>
             <div class="jl-raster">
                 <div class="table-container">
                     <table class="compact-table jl-tabelle" id="u23Tabelle">
@@ -565,7 +584,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <div class="table-container"><table class="compact-table nw-tabelle">
                 <thead><tr><th>Spieler</th><th>Pos</th><th>Alter</th><th>Stärke</th><th>Praxis</th><th></th></tr></thead>
                 <tbody>${kandidaten.map(p => `<tr data-u23-akte="${esc(p.id)}"><td>${esc(p.name)}${bank.has(String(p.id)) ? ' <span class="text-muted">Bank</span>' : ""}</td><td>${esc(p.pos)}</td><td>${p.age || "-"}</td><td>${this.starsFor(p.overall)}</td><td>${Math.round((p.spielpraxis ?? 0.5) * 100)} %</td>
-                    <td><button class="btn btn-sm btn-secondary btn-unterbau-runter" data-id="${esc(p.id)}" title="Spielt in der U23 und steht den Profis nicht zur Verfügung">In die U23</button></td></tr>`).join("")}</tbody></table></div>` : ""}`;
+                    <td><div class="unterbau-knoepfe"><button class="btn btn-sm btn-secondary btn-unterbau-runter" data-id="${esc(p.id)}" title="Spielt in der U23 und steht den Profis nicht zur Verfügung">In die U23</button>${this.unterbauMenueKnopf(p.id, p.name)}</div></td></tr>`).join("")}</tbody></table></div>` : ""}`;
         el.querySelectorAll("[data-u23-akte]").forEach(tr => tr.addEventListener("click", (e) => {
             if (e.target.closest("button")) return;
             this.showPlayerDetailsModal(tr.dataset.u23Akte, { abschnitt: "unterbau" });
@@ -670,24 +689,26 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const elf = new Set((typeof engine.elf === "function" ? engine.elf(state) : []).map(p => String(p.id)));
         const esc = (t) => this.escapeHtml(String(t ?? ""));
         const ab = youth.MIT_PROFIS.abAlter;
+        const menue = (k) => this.unterbauMenueKnopf(k.p.id, k.p.name);
         const aktion = (k) => {
             if (k.talent) {
                 if ((k.p.age || 0) < ab) return `<span class="text-muted">ab ${ab}</span>`;
                 if (youth.offeneAnfrage(state, k.p.id)) return `<span class="text-muted">Anfrage offen</span>`;
                 return `<div class="unterbau-knoepfe"><button class="btn btn-sm btn-primary btn-hochziehen-spieltag" data-talent-id="${esc(k.p.id)}" title="Für den nächsten Ligaspieltag - danach spielt er in der U19">Spieltag</button>`
-                    + `<button class="btn btn-sm btn-secondary btn-hochziehen" data-talent-id="${esc(k.p.id)}">Ganz hoch</button></div>`;
+                    + `<button class="btn btn-sm btn-secondary btn-hochziehen" data-talent-id="${esc(k.p.id)}">Ganz hoch</button>${menue(k)}</div>`;
             }
             return reserve.inU19(k.p)
                 ? `<div class="unterbau-knoepfe"><button class="btn btn-sm btn-primary btn-nominieren" data-id="${esc(k.p.id)}">Spieltag</button>`
-                    + `<button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(k.p.id)}">Ganz hoch</button></div>`
-                : `<span class="text-muted" title="Profi ohne Stammplatz - spielt in der U19 mit">Profikader</span>`;
+                    + `<button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(k.p.id)}">Ganz hoch</button>${menue(k)}</div>`
+                : `<div class="unterbau-knoepfe"><span class="text-muted" title="Profi ohne Stammplatz - spielt in der U19 mit">Profikader</span>${menue(k)}</div>`;
         };
+        const herkunft = (k) => k.talent ? (k.p.wunderkind ? "⭐ Wunderkind" : k.p.kader ? "U19" : "Akademie") : (reserve.inU19(k.p) ? "Profi in der U19" : "Profi");
         return `
             <h4 class="unterbau-titel">Kader der U19</h4>
             <div class="table-container">
                 <table class="compact-table u19-kader">
                     <thead><tr><th>Spieler</th><th>Pos</th><th>Alter</th><th>Stärke</th><th>Sp</th><th>Tore</th><th>Ø</th><th>Form</th><th>Einsatz</th><th>Spielt als</th><th></th></tr></thead>
-                    <tbody>${kader.map(k => `<tr class="row-clickable" data-u19-akte="${esc(k.p.id)}"><td><strong>${esc(k.p.name)}</strong>${this.einsatzElf(k.p, elf)} <span class="text-muted">${k.talent ? "Akademie" : (reserve.inU19(k.p) ? "Profi in der U19" : "Profi")}</span></td><td>${esc(k.p.pos)}</td><td>${k.p.age || "-"}</td><td>${k.p.overall || "-"}</td>${this.unterbauZellen(k.p, "u19")}${this.einsatzZellen(k.p)}<td>${aktion(k)}</td></tr>`).join("")}</tbody>
+                    <tbody>${kader.map(k => `<tr class="row-clickable" data-u19-akte="${esc(k.p.id)}"><td><strong>${esc(k.p.name)}</strong>${this.einsatzElf(k.p, elf)} <span class="text-muted">${herkunft(k)}</span></td><td>${esc(k.p.pos)}</td><td>${k.p.age || "-"}</td><td>${k.p.overall || "-"}</td>${this.unterbauZellen(k.p, "u19")}${this.einsatzZellen(k.p)}<td>${aktion(k)}</td></tr>`).join("")}</tbody>
                 </table>
             </div>
             ${this.einsatzHinweis()}

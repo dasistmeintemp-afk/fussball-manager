@@ -422,7 +422,8 @@ class PlayerTalkEngine {
         if (!club) return [];
         const heute = this.stempel(state);
         const ids = new Set(club.playerIds.map(String));
-        const kader = (state.players || []).filter(p => ids.has(String(p.id)));
+        // Die Spieler der zweiten Mannschaft wollen nicht zum Gespräch mit dem Cheftrainer
+        const kader = (state.players || []).filter(p => ids.has(String(p.id)) && !(p.zweite && p.reserve));
         const meldungen = [];
 
         kader.forEach(p => {

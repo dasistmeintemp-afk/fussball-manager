@@ -501,11 +501,68 @@ const YouthEngine = {
     SICHTUNG: { abstand: 42, kosten: { 1: 50000, 2: 30000, 3: 15000, 4: 8000, 5: 4000, 6: 2500, 7: 1500 } },
     AKADEMIE_PLAETZE: { basis: 8, jeStufe: 2 },
 
+    /**
+     * Der U19-Kader. Bisher bestand die U19 nur aus den Talenten der
+     * Akademie - drei bis acht - und den jungen Profis ohne Stammplatz; den
+     * Rest der Elf stellten gedachte Amateure. Jetzt hat sie einen Kader wie
+     * eine echte A-Jugend: Jugendspieler aus der Region füllen auf, je
+     * höher der Verein, desto mehr. Sie belegen keinen Platz der Akademie,
+     * bekommen keine Ausbildungsvergütung und werden nicht umworben (kader:
+     * true). Mit 19 rücken die Besten in die zweite Mannschaft auf
+     * (ReserveEngine.ausU19Aufnehmen), die übrigen gehen in den Amateurbereich.
+     */
+    U19_KADER: { 1: 22, 2: 20, 3: 18, 4: 17, 5: 16, 6: 15, 7: 14 },
+    U19_PLAN: ["TW", "IV", "IV", "LV", "RV", "DM", "ZM", "ZM", "OM", "LA", "RA", "ST",
+        "TW", "IV", "LV", "RV", "ST", "DM", "ZM", "LM", "RM", "IV"],
+    /** Jugendspieler des Kaders: etwas weniger Potenzial als die Talente der Akademie */
+    U19_KADER_WERTE: { pot: -10, ovr: -2 },
+
+    /**
+     * Wunderkinder: Eines unter vielen Jugendspielern hat Potenzial weit
+     * über dem, was die Akademie sonst hervorbringt (pot in Gesamtstärke).
+     * Bei einem großen Verein ab und zu, je tiefer die Liga, desto seltener -
+     * die Besten der Region gehen dorthin, wo die Profis spielen. Chance je
+     * Jugendspieler des eigenen Vereins, nach Ligastufe.
+     */
+    WUNDERKIND: { pot: 14, chance: { 1: 0.03, 2: 0.018, 3: 0.01, 4: 0.006, 5: 0.004, 6: 0.003, 7: 0.002 } },
+
+    wunderkindChance(club) {
+        return this.WUNDERKIND.chance[club?.level || 1] ?? 0.002;
+    },
+
+    /**
+     * Den U19-Kader auffüllen, bis er seine Größe hat - nach den Positionen,
+     * die fehlen. Beim Karrierestart Sechzehn- bis Achtzehnjährige, zum
+     * Saisonwechsel die Sechzehn- und Siebzehnjährigen, die nachrücken.
+     * Liefert die Neuen.
+     */
+    fuelleU19(state, { zufall = Math.random, nachwuchs = false } = {}) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        if (!club) return [];
+        const jl = _youthResolve("JugendligaEngine", "./jugendligaEngine.js");
+        const reserve = _youthResolve("ReserveEngine", "./reserveEngine.js");
+        if (!reserve || typeof reserve.fehlendePositionen !== "function") return [];
+        const vorhanden = jl && typeof jl.eigeneSpieler === "function"
+            ? jl.eigeneSpieler(state) : this.eigeneTalente(state).filter(t => t && !t.promoted);
+        const anzahl = this.U19_KADER[club.level || 1] || 15;
+        const neu = [];
+        reserve.fehlendePositionen(vorhanden, anzahl, this.U19_PLAN).forEach(pos => {
+            const alter = nachwuchs ? 16 + Math.floor(zufall() * 2) : 16 + Math.floor(zufall() * 3);
+            const [t] = this.generateProspects(state, club.id, {
+                anzahl: 1, quelle: "kader", jahrgang: false, ohneKosten: true, kader: true,
+                pot: this.U19_KADER_WERTE.pot, ovr: this.U19_KADER_WERTE.ovr, alter, pos
+            });
+            if (t) neu.push(t);
+        });
+        return neu;
+    },
+
     /** Wie viele Talente die eigene Akademie fasst - und wie viele da sind */
     akademiePlaetze(state, club = null) {
         const verein = club || (state?.clubs || []).find(c => c.id === state?.userClubId);
         const plaetze = this.AKADEMIE_PLAETZE.basis + this.AKADEMIE_PLAETZE.jeStufe * Math.round(this.akademieStufe(state, verein));
-        const belegt = this.eigeneTalente(state).filter(t => t && !t.promoted).length;
+        // Die Jugendspieler, die den U19-Kader auffüllen, belegen keinen Platz für Talente
+        const belegt = this.eigeneTalente(state).filter(t => t && !t.promoted && !t.kader).length;
         return { plaetze, belegt, frei: Math.max(0, plaetze - belegt) };
     },
 
@@ -604,7 +661,8 @@ const YouthEngine = {
         const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
         if (!club) return 0;
         const je = this.VERGUETUNG[club.level || 1] ?? 20;
-        return je * this.eigeneTalente(state).filter(t => t && !t.promoted).length;
+        // Die Jugendspieler des U19-Kaders spielen ohne Ausbildungsvergütung - wie im Amateurbereich
+        return je * this.eigeneTalente(state).filter(t => t && !t.promoted && !t.kader).length;
     },
 
     /** Der Vertrag eines Talents: Art, ab wann Profi, wie lange er noch läuft */
@@ -661,6 +719,13 @@ const YouthEngine = {
         });
         // Erledigte Anfragen braucht niemand mehr
         if (Array.isArray(state.youthAcademy?.anfragen)) state.youthAcademy.anfragen = state.youthAcademy.anfragen.filter(a => a.status === "offen");
+        // Die Jugendspieler des U19-Kaders: Die Besten rücken in die zweite
+        // Mannschaft auf, die übrigen spielen künftig im Amateurbereich -
+        // ohne Meldung, sie waren nie Talente der Akademie
+        const kader = gehen.filter(t => t.kader);
+        const reserve = _youthResolve("ReserveEngine", "./reserveEngine.js");
+        if (kader.length && reserve && typeof reserve.ausU19Aufnehmen === "function") reserve.ausU19Aufnehmen(state, club, kader);
+        for (let i = gehen.length - 1; i >= 0; i--) if (gehen[i].kader) gehen.splice(i, 1);
         // Wer geht, sucht sich einen neuen Verein
         gehen.forEach(t => this.alsVereinslos(state, club, t));
         if (gehen.length) {
@@ -788,7 +853,7 @@ const YouthEngine = {
      * die Ausbildungsvergütung hochziehen können.
      */
     umwerbbare(state) {
-        const talente = this.eigeneTalente(state).filter(t => t && !t.promoted);
+        const talente = this.eigeneTalente(state).filter(t => t && !t.promoted && !t.kader);
         const profis = (state?.players || []).filter(p => p.clubId === state?.userClubId && p.jugendvertrag && !p.leihe);
         return talente.concat(profis);
     },
@@ -1332,13 +1397,13 @@ const YouthEngine = {
             const { vorname: firstName, nachname: lastName } = gen && typeof gen.nameFuer === "function"
                 ? gen.nameFuer(nat, wurfVor, wurfNach, club?.countryId)
                 : { vorname: "Max", nachname: "Müller" };
-            const pos = posTopf[Math.floor(Math.random() * posTopf.length)];
+            const pos = optionen.pos || posTopf[Math.floor(Math.random() * posTopf.length)];
             // Zum Jugendtag kommt ein Jahrgang von Fünfzehn- und Sechzehnjährigen,
             // im Probetraining und am Sichtungstag auch mal ein Spätstarter
             const wurfAlter = Math.random();
-            const age = (optionen.quelle || "jugendtag") === "jugendtag"
+            const age = optionen.alter || ((optionen.quelle || "jugendtag") === "jugendtag"
                 ? (wurfAlter < this.JUGENDTAG_FUENFZEHN ? 15 : 16)
-                : 15 + Math.floor(wurfAlter * 3);
+                : 15 + Math.floor(wurfAlter * 3));
 
             // Stärke und Potenzial nach Ligastufe und Akademie-Level, beim
             // eigenen Verein dazu Jahrgang, Einzugsgebiet und Nachwuchsleiter
@@ -1350,6 +1415,9 @@ const YouthEngine = {
                 potPlus += I.auslandPot;
                 if (Math.random() < (regional(nat) ? I.ausnahmeChanceRegion : I.ausnahmeChance)) { potPlus += I.ausnahmePot; ausnahme = true; }
             }
+            // Ein Wunderkind: bei einem großen Verein ab und zu, weiter unten selten
+            const wunderkind = eigen && !ausnahme && Math.random() < this.wunderkindChance(club);
+            if (wunderkind) potPlus += this.WUNDERKIND.pot;
             const werte = this.talentWerte(club, academyLevel, { ovr: eigen ? (mitJahrgang ? jahrgang.ovr : 0) + (optionen.ovr || 0) : 0, pot: potPlus, alter: age });
 
             const prospect = {
@@ -1373,6 +1441,9 @@ const YouthEngine = {
                 promoted: false
             };
             if (ausnahme) prospect.ausnahmetalent = true;
+            if (wunderkind) prospect.wunderkind = true;
+            // Füllt den U19-Kader auf (fuelleU19) - ein Wunderkind ist ein Talent wie jedes andere
+            if (optionen.kader && !wunderkind) prospect.kader = true;
             // Persönlichkeit und Kopfwerte folgen fest aus der Kennung (die
             // Kopfwerte zusätzlich aus Stärke, Alter und Persönlichkeit). Die
             // Talente der KI-Vereine bekommen sie erst mit dem Profivertrag -
@@ -1388,6 +1459,12 @@ const YouthEngine = {
             } else if (clubId === state.userClubId) {
                 // Beim eigenen Verein gibt es nur eine Liste
                 this.eigeneTalente(state).push(prospect);
+                if (wunderkind) {
+                    this.nachwuchsPost(state, club, `⭐ Ein Wunderkind in unserer Jugend: ${prospect.name}`,
+                        `${prospect.name} (${prospect.pos}, ${prospect.age} Jahre) ist ein Ausnahmekönner, wie ihn ein Verein nur selten bekommt - `
+                        + `das Potenzial reicht weit über das hinaus, was unsere Jugend sonst hervorbringt. Er spielt in der U19.\n\n`
+                        + `Halten Sie ihn: Andere Vereine werden früh von ihm hören. Einen Profivertrag bieten Sie ihm in seiner Akte an${(prospect.age || 15) < this.profiAb(club) ? ` - ab ${this.profiAb(club)}` : ""}.`);
+                }
             } else if (club && club.youthAcademy) {
                 club.youthAcademy.prospects.push(prospect);
             }

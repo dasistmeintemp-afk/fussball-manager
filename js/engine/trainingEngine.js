@@ -777,7 +777,8 @@ class TrainingEngine {
             club.lineup = club.lineup.filter(id => id !== player.id);
         }
 
-        if (club.id === state.userClubId) {
+        // U23 und U19: Die Verletzung steht in ihrer Liste, das Postfach bleibt frei
+        if (club.id === state.userClubId && !player.reserve) {
             state.inbox.unshift({
                 id: Date.now(),
                 matchday: state.currentMatchday,

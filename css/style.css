@@ -9027,6 +9027,7 @@ td.nowrap { white-space: nowrap; }
 .gs-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .unterbau-knoepfe { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
 /* Das Menü ⋯ einer Zeile in U23, U19 und Akademie: dieselben Aktionen wie in der Akte */
+.u23-ue23 { font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 6px; color: var(--text-muted); border: 1px solid var(--line); margin-left: 4px; vertical-align: 1px; }
 .ub-menue { min-width: 32px; padding-inline: 8px; font-weight: 700; letter-spacing: 1px; line-height: 1; }
 .talent-aktionen .ub-menue { margin-left: 2px; }
 /* Einsatzplan in U23 und U19: Rolle und Position je Spieler, wer im nächsten Spiel aufläuft */

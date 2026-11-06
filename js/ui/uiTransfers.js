@@ -686,7 +686,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         : knoepfe(`<button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(k.p.id)}">Ganz hoch</button>`,
                             `<button class="btn btn-sm btn-primary btn-nominieren" data-id="${esc(k.p.id)}">Spieltag</button>`, k.p.id, k.p.name)}</td></tr>`).join("")}
             </tbody></table></div>` : `<p class="text-muted">In der U19 ist niemand alt genug für die Profis (ab ${typeof YouthEngine !== "undefined" ? YouthEngine.MIT_PROFIS.abAlter : 16}).</p>`}
-            <p class="text-muted kb-hinweis">Hinunter schicken Sie Spieler über die Spielerakte, das Menü ⋯ oder einen Rechtsklick auf den Spieler. In der U23 höchstens ${engine.MAX_UEBERALTERT} Spieler über ${engine.ALTERSGRENZE}, im Profikader bleiben mindestens ${engine.MIN_PROFIKADER}. Hochgezogene Talente spielen mit ihrem Jugendvertrag. <em>Spieltag</em> holt nur für das nächste Ligaspiel hoch, <em>Ganz hoch</em> für immer.
+            <p class="text-muted kb-hinweis">Hinunter schicken Sie Spieler über die Spielerakte, das Menü ⋯ oder einen Rechtsklick auf den Spieler. In der U23 stehen höchstens ${engine.MAX_UEBERALTERT} Spieler gleichzeitig auf dem Platz, die am Stichtag 30. Juni schon ${engine.ALTERSGRENZE} waren; im Profikader bleiben mindestens ${engine.MIN_PROFIKADER}. Hochgezogene Talente spielen mit ihrem Jugendvertrag. <em>Spieltag</em> holt nur für das nächste Ligaspiel hoch, <em>Ganz hoch</em> für immer.
                 <button type="button" class="btn-link" id="btnUnterbauZurJugend">U23-Liga, U19 und Verliehene im Reiter Jugend</button></p>`;
         box.querySelectorAll("[data-u23]").forEach(tr => tr.addEventListener("click", (e) => {
             if (e.target.closest("button")) return;
@@ -768,11 +768,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             text = ok ? `${spieler.name} spielt wieder in der ${spieler.reserve === R.U19 ? "U19" : "U23"}.` : "";
         } else if (art === "ub-wechsel") {
             res = R.wechsleTeam(state, id);
-            text = res.success ? `${res.player.name} spielt jetzt in der ${res.nach}.` : "";
+            text = res.success ? `${res.player.name} spielt jetzt in der ${res.nach}.${res.hinweis ? ` ${res.hinweis}` : ""}` : "";
         } else if (art === "ub-u23") {
             res = R.hinunter(state, id);
             if (res.success && res.ausElf) reparieren();
-            text = res.success ? `${res.player.name} spielt jetzt in der U23${res.ausElf ? " - die Aufstellung ist nachgerückt" : ""}.` : "";
+            text = res.success ? `${res.player.name} spielt jetzt in der U23${res.ausElf ? " - die Aufstellung ist nachgerückt" : ""}.${res.hinweis ? ` ${res.hinweis}` : ""}` : "";
         } else if (art === "ub-u19") {
             res = R.hinunterU19(state, id);
             text = res.success ? `${res.player.name} spielt jetzt in der U19${res.ausElf ? " - die Aufstellung ist nachgerückt" : ""}.` : "";
@@ -842,7 +842,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             if (!res.success) return this.showToast(res.error, "error", 6000);
             const club = state.clubs.find(c => c.id === state.userClubId);
             if (res.ausElf && typeof GameState !== "undefined" && GameState.repairLineup) GameState.repairLineup(club, state.players);
-            fertig(`${res.player.name} spielt jetzt in der U23.`);
+            fertig(`${res.player.name} spielt jetzt in der U23.${res.hinweis ? ` ${res.hinweis}` : ""}`);
         }));
         box.querySelectorAll(".btn-nominieren").forEach(btn => btn.addEventListener("click", (e) => {
             e.stopPropagation();

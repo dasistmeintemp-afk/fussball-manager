@@ -972,7 +972,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const hinunter = !player.reserve && !player.nominiertAus;
             const res = hinunter ? reserveEngine.hinunter(state, player.id) : reserveEngine.hinauf(state, player.id);
             nachLeihe(res, hinunter
-                ? `${player.name} spielt jetzt in der U23${res.ausElf ? " - die Aufstellung ist nachgerückt" : ""}.`
+                ? `${player.name} spielt jetzt in der U23${res.ausElf ? " - die Aufstellung ist nachgerückt" : ""}.${res.hinweis ? ` ${res.hinweis}` : ""}`
                 : `${player.name} ist zurück aus der ${res.von || "U23"} und gehört wieder zum Profikader.`);
             if (res.success && this.activeTab === "tactics") this.renderCurrentTab();
         });
@@ -988,7 +988,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         });
         document.getElementById("btnPdTeamWechsel")?.addEventListener("click", () => {
             const res = reserveEngine.wechsleTeam(state, player.id);
-            nachLeihe(res, res.success ? `${player.name} spielt jetzt in der ${res.nach}.` : "");
+            nachLeihe(res, res.success ? `${player.name} spielt jetzt in der ${res.nach}.${res.hinweis ? ` ${res.hinweis}` : ""}` : "");
         });
         document.getElementById("btnPdU19")?.addEventListener("click", () => {
             if (!reserveEngine || typeof reserveEngine.hinunterU19 !== "function") return;

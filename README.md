@@ -1150,16 +1150,22 @@ Bisher standen in der U23 nur Profis, die der Trainer selbst hinunterschickte - 
   - Darunter gibt es keine zweite Mannschaft - etwa in der Landesliga. Der Reiter Jugend sagt das, und *In die U23* gibt es dort nicht.
 - **Wo sie spielt:**
   - Deutschland, Spanien und Italien: im Ligasystem, gegen die ersten Mannschaften einer tieferen Liga und ein paar andere zweite Mannschaften, jede mit ihrer echten Stärke. Die U23 eines Bundesligisten spielt so in der 3. Liga oder der Regionalliga.
-  - Zum Start in der Liga, deren Stärke am besten passt (`startStufe`). Der Erste steigt auf, die letzten drei steigen ab, nie bis zur Liga der eigenen Profis. Steigen die Profis ab, muss die U23 notfalls mit hinunter.
+  - Zum Start in der Liga, deren Stärke am besten passt (`startStufe`). Der Erste steigt auf, die letzten drei steigen ab.
+  - Höchstens bis zur 3. Liga, nie bis zur Liga der eigenen Profis. Die zweite Mannschaft eines Drittligisten spielt höchstens in der Oberliga, erst mit dem Aufstieg der Profis in die 2. Liga darf sie in die Regionalliga. Steigen die Profis ab, muss die U23 notfalls mit hinunter.
   - England, Frankreich und die übrigen Länder: eine eigene Liga der zweiten Mannschaften (`U23-Liga`).
   - Die Tabelle im Reiter Jugend ist die Wertung mit unserer U23; die Liga der Profis daneben läuft für sich.
+- **Altersregel wie in den Spielordnungen (`istUe23`, `MAX_UEBERALTERT`):**
+  - Stichtag ist der 30. Juni vor der Saison. Wer dann schon 23 ist, ist Ü23 - bisher zählte ein 23-Jähriger noch als U23.
+  - Höchstens drei Ü23 stehen gleichzeitig auf dem Platz. Im Kader dürfen es mehr sein; bisher durften höchstens drei Spieler über 23 überhaupt in die U23. Beim Hinunterschicken eines vierten Ü23 kommt ein Hinweis.
+  - Die Elf hält sich daran, auch feste Plätze: Einen vierten Ü23 lässt die Aufstellung nicht zu, der Einsatzplan nimmt den nächsten Jungen.
+  - Eine Ausnahme für Torhüter nennt nur eine Fanseite, keine Spielordnung - im Spiel gibt es keine.
 - **Kader und Stärke (`fuelleU23`, `u23Ziel`):**
-  - 22 Spieler beim Erstligisten, 21 beim Zweit-, 20 beim Drittligisten, nach Positionen mit zwei Torhütern. Beim Start 18 bis 23 Jahre alt, mit Vertrag bis 23 und einem Nachwuchsgehalt (60 % dessen, was ihre Liga zahlt).
+  - 22 Spieler beim Erstligisten, 21 beim Zweit-, 20 beim Drittligisten, nach Positionen mit zwei Torhütern. Beim Start 18 bis 22 Jahre alt, mit Vertrag bis zur letzten Saison als U23 und einem Nachwuchsgehalt (60 % dessen, was ihre Liga zahlt).
   - Stark wie die eigene U19 oder stärker, aber deutlich unter den Profis.
   - Was die zweite Mannschaft verdient, gibt der Vorstand zum Gehaltsbudget dazu - den Profis geht nichts ab.
 - **Die U19 (`YouthEngine.fuelleU19`):** 22 Jugendspieler beim Erstligisten bis 14 in der Landesliga. Wer nur den Kader füllt, belegt keinen Platz der Akademie, bekommt keine Ausbildungsvergütung, wird nicht umworben und steht in der Liste als *U19-Kader*.
 - **Saisonwechsel (`saisonwechselUnterbau`, `ausU19Aufnehmen`):**
-  - Wer über 23 ist, verlässt die zweite Mannschaft und ist vereinslos.
+  - Wer am Stichtag 23 ist, ist Ü23 und verlässt die zweite Mannschaft vereinslos.
   - Hat der Trainer seinen Vertrag verlängert, gehört er zu den Profis.
   - Die guten Jugendspieler der U19 rücken mit 19 in die U23 auf, die übrigen gehen ohne Meldung in den Amateurbereich. Die Lücken füllen Achtzehn- und Neunzehnjährige. Eine Nachricht des Nachwuchsleiters fasst es zusammen.
 - **Wunderkinder (`YouthEngine.WUNDERKIND`):** Unter den Jugendspielern des eigenen Vereins ist ab und zu einer mit 14 Punkten mehr Potenzial. Beim Erstligisten 3 % je Jugendspieler, in der 4. Liga 0,6 %, in der Landesliga 0,2 %. Er steht mit ⭐ in den Listen, und der Nachwuchsleiter meldet ihn.
@@ -1553,7 +1559,7 @@ Eine komplette Welt mit über 4300 Spielern belegt als gewöhnliches JSON knapp 
 - **Wetter und Platz (`WetterEngine`):** Jede Partie bekommt Wetter nach Jahreszeit und einen Rasen nach Ligastufe. Nasser Rasen macht Fernschüsse tückisch, tiefer Boden kostet Kraft und Genauigkeit, Wind verweht lange Bälle, Hitze zehrt an der Ausdauer. Vorschau, Livespiel und Spielbericht zeigen es an.
 - **Spielanalyse:** Zu jedem eigenen Spiel – live oder als Sofort-Ergebnis – gehören Heatmaps beider Mannschaften und ein Passnetz: wer mit wem wie oft zusammengespielt hat und wo er im Schnitt stand. Fehlen die Laufwege (ältere Spielstände), sagt der Bericht das, statt eine Karte zu erfinden.
 - **Trainerprofil (`TrainerProfilEngine`):** Fünf Werte von 1 bis 20 (Taktik, Motivation, Menschenführung, Jugendarbeit, Spielerbewertung), die wirklich wirken – auf Vertrautheit, Ansprachen, Einzelgespräche, Talententwicklung und Scoutberichte. Dazu B-, A- und Pro-Lizenz: Ab der Regionalliga verlangt der Verband die A-Lizenz, in den Bundesligen die Pro-Lizenz. Lehrgänge kosten Geld und Zeit. Am Saisonende wächst, was gefordert war.
-- **Zweite Mannschaft (U23, `ReserveEngine`):** Ein voller Kader nach Land und Stufe (5f); dazu schickt man Talente, die bei den Profis nicht spielen, in die U23. Sie spielt an jedem Spieltag ein Spiel ihrer eigenen U23-Liga und bringt Spielpraxis (etwas weniger als bei den Profis), Spielschärfe und eine eigene Bilanz. Höchstens drei Spieler über 23, im Profikader bleiben mindestens 16. Die KI-Vereine geben ihren Talenten ohne Einsatz ebenfalls etwas Praxis.
+- **Zweite Mannschaft (U23, `ReserveEngine`):** Ein voller Kader nach Land und Stufe (5f); dazu schickt man Talente, die bei den Profis nicht spielen, in die U23. Sie spielt an jedem Spieltag ein Spiel ihrer eigenen U23-Liga und bringt Spielpraxis (etwas weniger als bei den Profis), Spielschärfe und eine eigene Bilanz. Höchstens drei Ü23 gleichzeitig auf dem Platz (5f), im Profikader bleiben mindestens 16. Die KI-Vereine geben ihren Talenten ohne Einsatz ebenfalls etwas Praxis.
 - **Zugriff auf U23 und U19 (`ReserveEngine`, `YouthEngine.hochziehen`):** Beide Kader stehen mit ihrer Bilanz da, und wer gebraucht wird, ist mit einem Tipp bei den Profis.
 - **Einsatzplan für U23 und U19 (`ReserveEngine.EINSATZ`, `elfNachPlan`, `setzeEinsatz`):** Bisher stellten beide Mannschaften immer die elf Stärksten auf, ohne Rücksicht auf Positionen. Wer schwächer war, spielte nie und kam ohne Spielpraxis kaum voran. Ein häufiger Wunsch an das Vorbild war, selbst festzulegen, wer im Unterbau wie oft und wo spielt.
   - **Rolle je Spieler** (Spalte *Einsatz* in beiden Kaderlisten):

@@ -2537,7 +2537,9 @@ function runEngineTests() {
         if ((live.schnitte || 0) <= schnitte) throw new Error("Kein ausgewiesener Schnitt zur Fahne");
         if (!stati.has("ball_unterwegs") || !stati.has("aufbau")) throw new Error(`Kein sichtbarer Aufbau: ${[...stati].join(", ")}`);
         if (ausgefuehrt.spielLage.phase !== "standard" || ausgefuehrt.spielLage.standard?.art !== "corner") throw new Error("Die Spiellage kennt die Ecke nicht");
-        if (abnehmer.length < 50) throw new Error("Die Hereingabe findet kaum einen Abnehmer");
+        // Aus 150 Hereingaben: gemessen 36 bis 67 Abnehmer je nach Zufallsfolge (im Schnitt
+        // um 50) - die alte Grenze 50 entschied per Münzwurf, auch vor dem Unterbau
+        if (abnehmer.length < 30) throw new Error(`Die Hereingabe findet kaum einen Abnehmer (${abnehmer.length})`);
         if (abnehmer.includes(eingeteilt.id)) throw new Error("Der Eckenschütze ist selbst der Abnehmer");
         if ((d.flowStats.standardNotfall || 0) > 0) throw new Error("Die Ecke kam über die Notbremse");
         if (live.setPieceStatus) throw new Error("Nach der Ecke steht noch ein Status");

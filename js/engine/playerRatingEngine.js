@@ -373,14 +373,15 @@ class PlayerRatingEngine {
             const liga = new Set(state.clubs.filter(c => c.leagueId === club.leagueId).map(c => c.id));
             const nachVerein = new Map();
             players.forEach(p => {
-                if (!liga.has(p.clubId)) return;
+                if (!liga.has(p.clubId) || (p.zweite && p.reserve)) return;
                 if (!nachVerein.has(p.clubId)) nachVerein.set(p.clubId, []);
                 nachVerein.get(p.clubId).push(p);
             });
             const schnitte = [...nachVerein.values()].map(k => PlayerRatingEngine.squadAverageAbility(k));
             if (schnitte.length) return schnitte.reduce((a, b) => a + b, 0) / schnitte.length;
         }
-        return PlayerRatingEngine.squadAverageAbility(players.filter(p => p.clubId === clubId));
+        // Gemessen am Profikader - die zweite Mannschaft zieht den Schnitt nicht herunter
+        return PlayerRatingEngine.squadAverageAbility(players.filter(p => p.clubId === clubId && !(p.zweite && p.reserve)));
     }
 
     static squadAverageAbility(players = []) {

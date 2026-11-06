@@ -223,7 +223,8 @@ class SeasonEngine {
         const club = (state.clubs || []).find(c => c.id === state.userClubId);
         if (!club) return [];
         const ids = new Set(club.playerIds || []);
-        return (state.players || []).filter(p => ids.has(p.id) && (p.contractYears || 0) <= 0 && !p.leihe);
+        // Die zweite Mannschaft regelt ihre Verträge selbst (ReserveEngine.saisonwechselUnterbau)
+        return (state.players || []).filter(p => ids.has(p.id) && (p.contractYears || 0) <= 0 && !p.leihe && !p.zweite);
     }
 
     /**
@@ -706,7 +707,7 @@ class SeasonEngine {
                 // stehen. Nach einer halben Saison hingen so ueber 250 Spieler
                 // in diesem Zustand fest.
                 if (p.injuredWeeks === 0) p.injured = false;
-                if (p.injuredWeeks === 0 && p.clubId === state.userClubId) {
+                if (p.injuredWeeks === 0 && p.clubId === state.userClubId && !p.reserve) {
                     state.inbox.unshift({
                         id: Date.now() + 3,
                         matchday: state.currentMatchday,
@@ -1180,7 +1181,8 @@ class SeasonEngine {
         state.players.forEach(player => {
             player.age += 1;
             // Aus dem U19-Alter heraus: zurück zu den Profis (ReserveEngine.U19)
-            if (player.reserve === "u19" && player.age > 19) player.reserve = undefined;
+            // Wer aus der zweiten Mannschaft kam, geht dorthin zurück
+            if (player.reserve === "u19" && player.age > 19) player.reserve = player.zweite ? true : undefined;
             if (kopfGen && typeof kopfGen.kopfReife === 'function') kopfGen.kopfReife(player, player.age - 1, state.seasonYear || 1);
             // Spielpraxis feilt an den Detailwerten seiner Position - beim
             // eigenen Verein, auch verliehen. Wer schon etwas erarbeitet hat,
@@ -1393,6 +1395,8 @@ class SeasonEngine {
         state.players.forEach(player => {
             if ((player.contractYears || 0) > 0) return;
             if (!player.clubId) { abgaenge.push(player); return; }
+            // Die zweite Mannschaft regelt ihre Verträge selbst (ReserveEngine.saisonwechselUnterbau)
+            if (player.zweite) return;
 
             const club = state.clubs.find(c => c.id === player.clubId);
             if (!club) {
@@ -1466,7 +1470,8 @@ class SeasonEngine {
             const ist = {};
             (club.playerIds || []).forEach(id => {
                 const p = nachId.get(id) || state.players.find(sp => sp.id === id);
-                if (p) ist[p.pos] = (ist[p.pos] || 0) + 1;
+                // U23 und U19 zählen nicht zum Profikader
+                if (p && !p.reserve) ist[p.pos] = (ist[p.pos] || 0) + 1;
             });
             const rest = Object.assign({}, ist);
             const offen = [];
@@ -1495,7 +1500,7 @@ class SeasonEngine {
             // darüber hinaus auffüllen will, geht selbst auf den Transfermarkt.
             const soll = sollGroesse(club);
             const ziel = club.id === state.userClubId ? Math.min(20, soll) : soll;
-            let fehlend = ziel - (club.playerIds || []).length;
+            let fehlend = ziel - (club.playerIds || []).filter(id => !nachId.get(id)?.reserve).length;
             if (fehlend <= 0) return;
 
             // Erst die Lücken schließen, die wirklich weh tun: Ohne zweiten
@@ -1826,6 +1831,11 @@ class SeasonEngine {
         if (youthEngine && typeof youthEngine.alterTalente === 'function') {
             youthEngine.alterTalente(state);
         }
+        // Zweite Mannschaft und U19: Wer zu alt ist, geht, Junge rücken nach -
+        // nach Auf- und Abstieg der Profis, die über die U23 entscheiden
+        const reserveWechsel = _resolve('ReserveEngine', './reserveEngine.js');
+        if (reserveWechsel && typeof reserveWechsel.saisonwechselUnterbau === 'function') reserveWechsel.saisonwechselUnterbau(state);
+        if (youthEngine && typeof youthEngine.fuelleU19 === 'function') youthEngine.fuelleU19(state, { nachwuchs: true });
 
         const userClub = state.clubs.find(c => c.id === state.userClubId);
         const formatMoney = (gameState && typeof gameState.formatMoney === 'function')

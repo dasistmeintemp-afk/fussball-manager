@@ -1004,6 +1004,9 @@ class GameState {
         if (youthEngine && typeof youthEngine.generateProspects === 'function') {
             youthEngine.generateProspects(state, userClubId);
         }
+        // Zweite Mannschaft und U19 mit vollem Kader - nach Land und Stufe
+        const reserveStart = GameState._resolveEngine('ReserveEngine', './reserveEngine.js');
+        if (reserveStart && typeof reserveStart.richteUnterbauEin === 'function') reserveStart.richteUnterbauEin(state);
 
         const zielSatz = boardEngine && typeof boardEngine.zielText === 'function'
             ? boardEngine.zielText(state, userClub)
@@ -1146,6 +1149,11 @@ class GameState {
                 fin.setzeGehaltsrahmen(state, state.clubs.filter(c => c.id !== state.userClubId));
                 if (eigen) eigen.wageBudget = Math.max(vorher, fin.gehaltsrahmen(state, eigen));
             }
+        }
+        // Zweite Mannschaft und U19 bekommen ihren Kader - einmal je Spielstand
+        if (!state.unterbauV2 && state.userClubId) {
+            const reserve = GameState._resolveEngine("ReserveEngine", "./reserveEngine.js");
+            if (reserve && typeof reserve.richteUnterbauEin === "function") reserve.richteUnterbauEin(state);
         }
         // Der starke Fuß für die von Hand angelegten Kader - einmal je Spielstand
         if (!state.fussV1) {

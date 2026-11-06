@@ -80,6 +80,8 @@ const ReserveEngine = {
         if (!club.playerIds.includes(player.id)) return { ok: false, grund: "Er gehört nicht zum Kader." };
         if (player.reserve) return { ok: false, grund: `${player.name} spielt schon in der ${player.reserve === this.U19 ? "U19" : "U23"}.` };
         if (player.abgestellt) return { ok: false, grund: `${player.name} ist gerade bei der Nationalmannschaft.` };
+        const regel = this.u23Regel(state, club);
+        if (!regel.hat) return { ok: false, grund: regel.grund };
         if ((player.age || 30) > this.ALTERSGRENZE) {
             const alte = this.spieler(state, club).filter(p => (p.age || 30) > this.ALTERSGRENZE).length;
             if (alte >= this.MAX_UEBERALTERT) {
@@ -122,7 +124,33 @@ const ReserveEngine = {
         if (!player || !player.reserve) return { success: false, error: "Er spielt weder in der U23 noch in der U19." };
         const von = player.reserve === this.U19 ? "U19" : "U23";
         player.reserve = undefined;
+        // Aus der zweiten Mannschaft für immer hoch: jetzt ein Profi wie jeder andere
+        player.zweite = undefined;
         return { success: true, player, von };
+    },
+
+    /**
+     * Zwischen U23 und U19 wechseln, ohne Umweg über die Profis: in die U19
+     * nur bis zum Alter der A-Jugend, in die U23 nur, wenn es eine gibt.
+     */
+    wechsleTeam(state, playerId) {
+        const player = (state?.players || []).find(p => String(p.id) === String(playerId));
+        if (!player || !player.reserve) return { success: false, error: "Er spielt weder in der U23 noch in der U19." };
+        const club = (state.clubs || []).find(c => c.id === player.clubId);
+        if (player.reserve === this.U19) {
+            const regel = this.u23Regel(state, club);
+            if (!regel.hat) return { success: false, error: regel.grund };
+            if ((player.age || 30) > this.ALTERSGRENZE && this.spieler(state, club).filter(p => (p.age || 30) > this.ALTERSGRENZE).length >= this.MAX_UEBERALTERT) {
+                return { success: false, error: `In der U23 spielen schon ${this.MAX_UEBERALTERT} Spieler über ${this.ALTERSGRENZE}.` };
+            }
+            player.reserve = true;
+            return { success: true, player, nach: "U23" };
+        }
+        const youth = _reResolve("YouthEngine", "./youthEngine.js");
+        const grenze = youth?.AKADEMIE_HOECHSTALTER ?? 19;
+        if ((player.age || 30) > grenze) return { success: false, error: `In der U19 spielt nur, wer höchstens ${grenze} ist.` };
+        player.reserve = this.U19;
+        return { success: true, player, nach: "U19" };
     },
 
     // ----------------------------------------------- Nur für den Spieltag
@@ -254,6 +282,423 @@ const ReserveEngine = {
         return profis.length ? profis.reduce((a, b) => a + b, 0) / profis.length : 60;
     },
 
+    // ------------------------------------- Zweite Mannschaft nach Land und Stufe
+
+    /**
+     * Wer eine zweite Mannschaft hat und wo sie spielt - nach Land und Stufe
+     * der Profis, wie in der Wirklichkeit. Bisher hatte jeder Verein eine
+     * U23, auch der Landesligist, aber in keiner stand ein Spieler: Sie
+     * bestand nur aus Profis, die der Trainer selbst hinunterschickte, und
+     * aus Amateuren, die auffüllten.
+     *
+     *  - gemischt (Deutschland, Spanien, Italien): Die zweite Mannschaft
+     *    spielt im Ligasystem mit - gegen die ersten Mannschaften einer
+     *    tieferen Liga und ein paar andere zweite Mannschaften. Sie steigt
+     *    auf und ab, aber nie in die Liga der eigenen Profis (hoechste).
+     *    start: wo sie nach Stufe der Profis anfängt.
+     *  - eigen (England, Frankreich, die übrigen Länder): eine eigene Liga
+     *    der zweiten Mannschaften.
+     * bisStufe: bis zu welcher Stufe der Profis es eine zweite Mannschaft
+     * gibt. Darunter spielt der Nachwuchs in der U19, die Älteren bei den
+     * Profis - so in der Landesliga.
+     */
+    U23_LAENDER: {
+        de: { bisStufe: 3, art: "gemischt", start: { 1: 4, 2: 4, 3: 5 }, hoechste: 3, zusatz: "II" },
+        es: { bisStufe: 2, art: "gemischt", start: { 1: 3, 2: 3 }, hoechste: 3, zusatz: "B" },
+        it: { bisStufe: 1, art: "gemischt", start: { 1: 3 }, hoechste: 3, zusatz: "U23" },
+        en: { bisStufe: 2, art: "eigen", zusatz: "U21" },
+        fr: { bisStufe: 2, art: "eigen", zusatz: "B" },
+        sonst: { bisStufe: 1, art: "eigen", zusatz: "U23" }
+    },
+    /** So viele Spieler hat die zweite Mannschaft, nach Stufe der Profis */
+    U23_KADER: { 1: 22, 2: 21, 3: 20 },
+    /** Die Positionen in der Reihenfolge, in der eine Mannschaft entsteht */
+    KADER_PLAN: ["TW", "IV", "IV", "LV", "RV", "DM", "ZM", "ZM", "OM", "LA", "RA", "ST",
+        "TW", "IV", "LV", "RV", "ST", "DM", "ZM", "LM", "RM", "IV", "ST", "OM"],
+    /** Die zweite Mannschaft zahlt Nachwuchsgehälter: ein Teil dessen, was ihre Liga zahlt */
+    U23_LOHN: 0.6,
+
+    /** Die Ligen eines Landes auf einer Stufe */
+    _ligenDerStufe(state, land, stufe) {
+        return (state?.leagues || []).filter(l => (l.countryId || "de") === land && (l.level || 1) === stufe && !l.hintergrund);
+    },
+
+    /** Die tiefste Stufe eines Landes */
+    _tiefsteStufe(state, land) {
+        return (state?.leagues || []).filter(l => (l.countryId || "de") === land).reduce((m, l) => Math.max(m, l.level || 1), 1);
+    },
+
+    /** Eine feste Zahl je Verein - so bleibt die Staffel über die Jahre dieselbe */
+    _hash(text) {
+        let h = 2166136261;
+        for (const ch of String(text)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+        return h >>> 0;
+    },
+
+    /**
+     * Die Regel für einen Verein: { hat, art, land, stufe, liga, hoechste,
+     * tiefste, zusatz } - bei "gemischt" mit der Stufe und der Liga, in der
+     * die zweite Mannschaft gerade spielt. hat: false mit grund, wenn es
+     * keine gibt.
+     */
+    u23Regel(state, club) {
+        if (!club) return { hat: false, grund: "Kein Verein." };
+        const land = club.countryId || "de";
+        const regel = this.U23_LAENDER[land] || this.U23_LAENDER.sonst;
+        const profi = club.level || 1;
+        if (profi > regel.bisStufe) {
+            return { hat: false, land, zusatz: regel.zusatz,
+                grund: `Eine zweite Mannschaft haben in diesem Land nur Vereine bis zur ${regel.bisStufe}. Liga. Die Jungen spielen in der U19 oder bei den Profis.` };
+        }
+        if (regel.art === "gemischt") {
+            const tiefste = this._tiefsteStufe(state, land);
+            const hoechste = Math.max(regel.hoechste, profi + 1);
+            const gemerkt = state?.u23Stufe && state.u23Stufe.clubId === club.id ? state.u23Stufe.stufe : null;
+            const stufe = Math.max(hoechste, Math.min(tiefste, gemerkt || regel.start[profi] || hoechste));
+            const ligen = this._ligenDerStufe(state, land, stufe);
+            if (ligen.length && stufe > profi) {
+                const liga = ligen[this._hash(club.id) % ligen.length];
+                return { hat: true, art: "gemischt", land, stufe, liga, hoechste, tiefste, zusatz: regel.zusatz };
+            }
+        }
+        return { hat: true, art: "eigen", land, zusatz: regel.zusatz, bisStufe: regel.bisStufe };
+    },
+
+    /** Hat der Verein eine zweite Mannschaft? */
+    hatU23(state, club) {
+        return this.u23Regel(state, club).hat;
+    },
+
+    /** Stärke einer Mannschaft: die besten vierzehn ihrer Profis */
+    _vereinsSchnitt(state, clubId, nachVerein = null) {
+        const werte = nachVerein ? (nachVerein.get(clubId) || [])
+            : (state.players || []).filter(p => p.clubId === clubId && !p.reserve).map(p => p.overall || 0);
+        const w = werte.slice().sort((a, b) => b - a).slice(0, 14);
+        return w.length ? w.reduce((a, b) => a + b, 0) / w.length : 55;
+    },
+
+    /** Die Profis aller Vereine nach Verein (für viele Vereine auf einmal) */
+    _staerkenNachVerein(state) {
+        const m = new Map();
+        (state.players || []).forEach(p => {
+            if (!p.clubId || p.reserve) return;
+            if (!m.has(p.clubId)) m.set(p.clubId, []);
+            m.get(p.clubId).push(p.overall || 0);
+        });
+        return m;
+    },
+
+    /** Wie stark die Vereine einer Liga im Schnitt sind */
+    ligaSchnitt(state, ligaId, nachVerein = null) {
+        const karte = nachVerein || this._staerkenNachVerein(state);
+        const vereine = (state.clubs || []).filter(c => c.leagueId === ligaId);
+        if (!vereine.length) return 55;
+        return vereine.reduce((s, c) => s + this._vereinsSchnitt(state, c.id, karte), 0) / vereine.length;
+    },
+
+    /**
+     * Wie stark die zweite Mannschaft sein soll - daran richten sich die
+     * Spieler, die nachkommen. Im Ligasystem: etwa wie die Liga, in der sie
+     * spielt (die eines Erstligisten ein Stück darüber). In einer eigenen
+     * Liga: ein gutes Stück unter den Profis.
+     */
+    u23Ziel(state, club, regel = null) {
+        const r = regel || this.u23Regel(state, club);
+        const profi = this._kaderSchnitt(state, club);
+        // Nie schwächer als die eigene U19 - von dort rücken die Besten auf
+        const jl = _reResolve("JugendligaEngine", "./jugendligaEngine.js");
+        const u19 = jl && typeof jl.basis === "function" ? jl.basis(club) : profi - 24;
+        const abstand = r.hat && r.art === "gemischt" ? 22 : 12;
+        return Math.min(profi - 6, Math.max(u19 + 1, profi - abstand));
+    },
+
+    /**
+     * Wo die zweite Mannschaft im Ligasystem anfängt: in der Liga, deren
+     * Stärke am besten zu ihr passt - die Mannschaft soll in der oberen
+     * Hälfte mitspielen, nicht durchmarschieren. Nie höher als erlaubt.
+     */
+    startStufe(state, club, regel = null) {
+        const r = regel || this.u23Regel(state, club);
+        if (!r.hat || r.art !== "gemischt") return null;
+        const ziel = this.u23Ziel(state, club, r) - 2;
+        const karte = this._staerkenNachVerein(state);
+        let beste = null;
+        for (let stufe = r.hoechste; stufe <= r.tiefste; stufe++) {
+            const ligen = this._ligenDerStufe(state, r.land, stufe);
+            if (!ligen.length) continue;
+            const liga = ligen[this._hash(club.id) % ligen.length];
+            const abstand = Math.abs(this.ligaSchnitt(state, liga.id, karte) - ziel);
+            if (!beste || abstand < beste.abstand) beste = { stufe, abstand };
+        }
+        return beste ? beste.stufe : r.stufe;
+    },
+
+    /** Die Fähigkeit (CA), die zu einer Gesamtstärke gehört */
+    _caFuer(gen, overall) {
+        let lo = 1, hi = 200;
+        while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (gen.toOverall(mid) < overall) lo = mid + 1; else hi = mid;
+        }
+        return lo;
+    },
+
+    /**
+     * Ein Spieler der zweiten Mannschaft: mit Vertrag bis 23, Nachwuchsgehalt
+     * und Werten, die zu seiner Stärke passen. zweite: true heißt, er kam
+     * mit der zweiten Mannschaft - nicht als Profi, der hinuntergeschickt
+     * wurde.
+     */
+    _baueSpieler(state, club, { pos, alter, staerke, potenzial, stufe }) {
+        const gen = _reResolve("PlayerGenerator", "./playerGenerator.js");
+        if (!gen || typeof gen.generatePlayer !== "function") return null;
+        const p = gen.generatePlayer(club.id, stufe, pos, null, { countryId: club.countryId || "de", ageRange: [alter, alter] });
+        const ca = this._caFuer(gen, Math.max(15, Math.round(staerke)));
+        const pa = Math.min(190, Math.max(ca + 4, this._caFuer(gen, Math.round(potenzial))));
+        const overall = gen.toOverall(ca);
+        const attribute = gen.generateAttributes(pos, overall);
+        Object.assign(p, attribute, gen.buildCharacter(pos, attribute), {
+            overall, pot: Math.max(overall, gen.toOverall(pa)), trueCurrentAbility: ca, truePotentialAbility: pa
+        });
+        // Die Kopfwerte neu - sie folgen der Stärke, die er jetzt hat
+        (gen.KOPFWERTE || []).forEach(k => { delete p[k]; });
+        if (typeof gen.ergaenzeKopfwerte === "function") gen.ergaenzeKopfwerte(p);
+        const wert = gen.getValueAndWage(overall, stufe, alter);
+        const fin = _reResolve("FinanceEngine", "./financeEngine.js");
+        const boden = fin && typeof fin.mindestlohn === "function" ? fin.mindestlohn(club) : 50;
+        p.value = wert.value;
+        p.trueMarketValue = wert.value;
+        p.wage = Math.max(boden, Math.round(wert.wage * this.U23_LOHN / 10) * 10);
+        p.contractYears = Math.max(1, this.ALTERSGRENZE + 1 - alter);
+        p.reserve = true;
+        p.zweite = true;
+        p.squadRole = "Zukunftstalent";
+        p.vereinSeit = state.seasonYear || 1;
+        p.spielpraxis = 0.6;
+        return typeof gen.forme === "function" ? gen.forme(p) : p;
+    },
+
+    /** Ein Alter für einen neuen Spieler der zweiten Mannschaft */
+    _alter(zufall, nachwuchs) {
+        if (nachwuchs) return zufall() < 0.7 ? 18 : 19;
+        const gewichte = [[18, 3], [19, 4], [20, 4], [21, 3], [22, 2], [23, 1]];
+        let r = zufall() * gewichte.reduce((s, [, g]) => s + g, 0);
+        for (const [a, g] of gewichte) { r -= g; if (r < 0) return a; }
+        return 20;
+    },
+
+    /** Welche Positionen der Mannschaft noch fehlen, bis sie anzahl Spieler hat */
+    fehlendePositionen(vorhanden, anzahl, plan = this.KADER_PLAN) {
+        const rest = {};
+        vorhanden.forEach(p => { rest[p.pos] = (rest[p.pos] || 0) + 1; });
+        const offen = [];
+        let n = vorhanden.length;
+        for (let i = 0; n < anzahl; i++) {
+            const pos = plan[i % plan.length];
+            if (i < plan.length && (rest[pos] || 0) > 0) { rest[pos]--; continue; }
+            offen.push(pos);
+            n++;
+        }
+        return offen;
+    },
+
+    /**
+     * Die zweite Mannschaft auffüllen, bis sie ihre Größe hat - beim
+     * Karrierestart mit Spielern von 18 bis 23, zum Saisonwechsel mit
+     * Achtzehn- und Neunzehnjährigen aus dem eigenen Nachwuchs. Was die
+     * neuen Spieler verdienen, gibt der Vorstand zum Gehaltsbudget dazu: Die
+     * zweite Mannschaft geht nicht vom Geld für die Profis ab.
+     * Liefert die neuen Spieler.
+     */
+    fuelleU23(state, club, { nachwuchs = false, zufall = Math.random } = {}) {
+        const regel = this.u23Regel(state, club);
+        if (!regel.hat || !Array.isArray(state.players)) return [];
+        const anzahl = this.U23_KADER[club.level || 1] || 20;
+        const offen = this.fehlendePositionen(this.spieler(state, club), anzahl);
+        if (!offen.length) return [];
+        const ziel = this.u23Ziel(state, club, regel);
+        const stufe = regel.art === "gemischt" ? regel.stufe : Math.min(7, (club.level || 1) + 2);
+        const neu = [];
+        offen.forEach(pos => {
+            const alter = this._alter(zufall, nachwuchs);
+            // Die Älteren sind schon weiter; dazu eine Streuung wie in jedem Kader
+            const streuung = (zufall() + zufall() - 1) * 6;
+            const staerke = ziel - 2 + (alter - 20.5) * 1.4 + streuung;
+            const luft = Math.max(2, (this.ALTERSGRENZE - alter) * 2.2 + Math.pow(zufall(), 1.6) * 12);
+            const p = this._baueSpieler(state, club, { pos, alter, staerke, potenzial: staerke + luft, stufe });
+            if (!p) return;
+            state.players.push(p);
+            club.playerIds.push(p.id);
+            neu.push(p);
+        });
+        if (club.id === state.userClubId) club.wageBudget = Math.round((club.wageBudget || 0) + neu.reduce((s, p) => s + (p.wage || 0), 0));
+        return neu;
+    },
+
+    /**
+     * Mit 19 verlassen die Jugendspieler des U19-Kaders die A-Jugend. Wer
+     * gut genug für die zweite Mannschaft ist, rückt dorthin auf - mit
+     * Vertrag bis 23 und Nachwuchsgehalt. Liefert die Aufgerückten.
+     */
+    ausU19Aufnehmen(state, club, talente) {
+        const regel = this.u23Regel(state, club);
+        const youth = _reResolve("YouthEngine", "./youthEngine.js");
+        const gen = _reResolve("PlayerGenerator", "./playerGenerator.js");
+        if (!regel.hat || !youth || typeof youth.spielerAusTalent !== "function" || !gen) return [];
+        const ziel = this.u23Ziel(state, club, regel);
+        const platz = (this.U23_KADER[club.level || 1] || 20) + 2 - this.spieler(state, club).length;
+        const stufe = regel.art === "gemischt" ? regel.stufe : Math.min(7, (club.level || 1) + 2);
+        const fin = _reResolve("FinanceEngine", "./financeEngine.js");
+        const boden = fin && typeof fin.mindestlohn === "function" ? fin.mindestlohn(club) : 50;
+        const gute = (talente || []).filter(t => (t.pot || 0) >= ziel - 2 || (t.overall || 0) >= ziel - 8)
+            .sort((a, b) => (b.pot || 0) - (a.pot || 0)).slice(0, Math.max(0, platz));
+        const neu = gute.map(t => {
+            const lohn = Math.max(boden, Math.round(gen.getValueAndWage(t.overall || 40, stufe, t.age || 19).wage * this.U23_LOHN / 10) * 10);
+            const p = youth.spielerAusTalent(state, club, t, { wage: lohn, contractYears: Math.max(1, this.ALTERSGRENZE + 1 - (t.age || 19)) });
+            p.wage = lohn;
+            p.reserve = true;
+            p.zweite = true;
+            p.squadRole = "Zukunftstalent";
+            if (t.u19) p.u19 = Object.assign({}, t.u19);
+            state.players.push(p);
+            club.playerIds.push(p.id);
+            t.promoted = true;
+            return p;
+        });
+        if (club.id === state.userClubId) club.wageBudget = Math.round((club.wageBudget || 0) + neu.reduce((s, p) => s + (p.wage || 0), 0));
+        this._aufgerueckt = (this._aufgerueckt || []).concat(neu.map(p => p.name));
+        return neu;
+    },
+
+    /**
+     * Ein Spieler der zweiten Mannschaft geht: zu alt oder ohne zweite
+     * Mannschaft. Er sucht sich als Vereinsloser einen neuen Verein; sein
+     * Gehalt fällt aus dem Budget, wie es hineinkam.
+     */
+    _verabschiede(state, club, p) {
+        club.playerIds = (club.playerIds || []).filter(id => id !== p.id);
+        club.lineup = (club.lineup || []).filter(id => id !== p.id);
+        club.bench = (club.bench || []).filter(id => id !== p.id);
+        if (club.id === state.userClubId) club.wageBudget = Math.max(0, Math.round((club.wageBudget || 0) - (p.wage || 0)));
+        p.clubId = null;
+        p.contractYears = 0;
+        p.vereinslosAb = state.seasonYear || 1;
+        p.reserve = undefined;
+        p.zweite = undefined;
+        p.nominiertAus = undefined;
+        p.einsatz = undefined;
+    },
+
+    /**
+     * Der Trainer verlässt den Verein: Die zweite Mannschaft führt dort
+     * niemand mehr. Ihre Spieler suchen sich neue Vereine, die
+     * hinuntergeschickten Profis gehören wieder zum Kader, und die
+     * Jugendspieler des U19-Kaders bleiben nicht als Talente in der
+     * Akademie der KI stehen. Vorher blieb die U23 beim alten Verein
+     * gesperrt - die KI stellt niemanden aus der U23 auf.
+     */
+    vereinVerlassen(state, clubId) {
+        const club = (state?.clubs || []).find(c => c.id === clubId);
+        if (!club) return 0;
+        const ids = new Set(club.playerIds || []);
+        let n = 0;
+        (state.players || []).filter(p => ids.has(p.id) && (p.reserve || p.nominiertAus || p.zweite)).forEach(p => {
+            if (p.zweite && (p.reserve || p.nominiertAus)) { this._verabschiede(state, club, p); n++; return; }
+            p.reserve = undefined;
+            p.nominiertAus = undefined;
+            p.zweite = undefined;
+        });
+        if (club.youthAcademy && Array.isArray(club.youthAcademy.prospects)) {
+            club.youthAcademy.prospects = club.youthAcademy.prospects.filter(t => t && !t.kader);
+        }
+        // Die Akademie des alten Vereins ist nicht mehr die eigene
+        if (state.youthAcademy) state.youthAcademy.prospects = [];
+        if (state.unterbau) Object.values(state.unterbau).forEach(plan => { if (plan && Array.isArray(plan.lineup)) plan.lineup = []; });
+        state.u23Stufe = null;
+        return n;
+    },
+
+    /**
+     * Beim Karrierestart und beim Vereinswechsel: Die zweite Mannschaft des
+     * eigenen Vereins bekommt ihren Kader, die U19 ihre Jugendspieler.
+     * Liefert { u23, u19 } (die neuen Spieler).
+     */
+    richteUnterbauEin(state, zufall = Math.random) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        if (!club) return { u23: [], u19: [] };
+        state.unterbauV2 = 1;
+        // Die alte Stufe gehörte zum alten Verein; die neue richtet sich nach der Stärke
+        if (state.u23Stufe && state.u23Stufe.clubId !== club.id) state.u23Stufe = null;
+        if (!state.u23Stufe) {
+            const stufe = this.startStufe(state, club);
+            if (stufe) state.u23Stufe = { clubId: club.id, stufe };
+        }
+        const u23 = this.fuelleU23(state, club, { zufall });
+        const youth = _reResolve("YouthEngine", "./youthEngine.js");
+        const u19 = youth && typeof youth.fuelleU19 === "function" ? youth.fuelleU19(state, { zufall }) : [];
+        // Die Liga richtet sich nach der neuen Mannschaft
+        if (state.u23liga && state.u23liga.clubId !== club.id) state.u23liga = null;
+        return { u23, u19 };
+    },
+
+    /**
+     * Zum Saisonwechsel (nach dem Altern, nach Auf- und Abstieg):
+     *  - Gibt es keine zweite Mannschaft mehr (Abstieg der Profis), gehen
+     *    ihre Spieler, und die hinuntergeschickten Profis kommen zurück.
+     *  - Wer über 23 ist, verlässt die zweite Mannschaft.
+     *  - Die Lücken füllen Achtzehn- und Neunzehnjährige aus dem Nachwuchs.
+     *  - Spielt die zweite Mannschaft im Ligasystem so hoch wie die Profis
+     *    nach deren Abstieg, muss sie eine Stufe hinunter.
+     * Eine Nachricht fasst es zusammen. Liefert { gehen, kommen, zurueck }.
+     */
+    saisonwechselUnterbau(state, zufall = Math.random) {
+        const club = (state?.clubs || []).find(c => c.id === state?.userClubId);
+        const leer = { gehen: [], kommen: [], zurueck: [] };
+        if (!club) return leer;
+        const regel = this.u23Regel(state, club);
+        const u23 = this.spieler(state, club);
+        const gehen = [], zurueck = [];
+        if (!regel.hat) {
+            u23.forEach(p => {
+                if (p.zweite) { this._verabschiede(state, club, p); gehen.push(p); } else { p.reserve = undefined; zurueck.push(p); }
+            });
+            const hatte = gehen.length || zurueck.length;
+            state.u23Stufe = null;
+            if (hatte) {
+                this._post(state, "Nachwuchsleiter", "Keine zweite Mannschaft mehr",
+                    `${regel.grund}\n\n`
+                    + (gehen.length ? `Die Spieler der zweiten Mannschaft suchen sich neue Vereine: ${gehen.map(p => p.name).join(", ")}.` : "")
+                    + (zurueck.length ? `${gehen.length ? "\n\n" : ""}Zurück bei den Profis: ${zurueck.map(p => p.name).join(", ")}.` : ""));
+            }
+            return { gehen, kommen: [], zurueck };
+        }
+        // Wer zu alt ist, geht - wer hinuntergeschickt war, bleibt (bis drei über 23).
+        // Hat der Trainer den Vertrag verlängert, gehört er jetzt zu den Profis.
+        u23.forEach(p => {
+            if (!p.zweite) return;
+            if ((p.age || 30) > this.ALTERSGRENZE) {
+                if ((p.contractYears || 0) > 0) { p.reserve = undefined; p.zweite = undefined; zurueck.push(p); }
+                else { this._verabschiede(state, club, p); gehen.push(p); }
+            } else if ((p.contractYears || 0) < 1) p.contractYears = Math.max(1, this.ALTERSGRENZE + 1 - (p.age || 20));
+        });
+        // Im Ligasystem: nie in der Liga der Profis oder darüber
+        if (regel.art === "gemischt") state.u23Stufe = { clubId: club.id, stufe: regel.stufe };
+        const kommen = this.fuelleU23(state, club, { nachwuchs: true, zufall });
+        const ausU19 = this._aufgerueckt || [];
+        this._aufgerueckt = [];
+        if (gehen.length || kommen.length || ausU19.length || zurueck.length) {
+            const ligaName = regel.art === "gemischt" ? (regel.liga.shortName || regel.liga.name) : this.LIGA.name;
+            const neu = kommen.length + ausU19.length;
+            this._post(state, "Nachwuchsleiter", `Zweite Mannschaft: ${neu} neu, ${gehen.length} ${gehen.length === 1 ? "geht" : "gehen"}`,
+                (gehen.length ? `Zu alt für die zweite Mannschaft und jetzt vereinslos: ${gehen.map(p => `${p.name} (${p.pos})`).join(", ")}.\n\n` : "")
+                + (zurueck.length ? `Mit verlängertem Vertrag jetzt bei den Profis: ${zurueck.map(p => p.name).join(", ")}.\n\n` : "")
+                + (ausU19.length ? `Aus unserer U19 rücken auf: ${ausU19.join(", ")}.\n\n` : "")
+                + (kommen.length ? `Neu aus dem Nachwuchs der Region: ${kommen.map(p => `${p.name} (${p.pos}, ${p.age})`).join(", ")}.\n\n` : "")
+                + `Die zweite Mannschaft spielt in der neuen Saison in der ${ligaName}. Wer bei den Profis gebraucht wird, holen Sie im Reiter Jugend oder über das Menü Aktionen in seiner Akte hoch.`);
+        }
+        return { gehen, kommen, zurueck };
+    },
+
     // ------------------------------------------------------------ U23-Liga
 
     /**
@@ -269,26 +714,63 @@ const ReserveEngine = {
         return Math.round((schnitt - this.LIGA.abstand + (zufall() - 0.5) * 6) * 10) / 10;
     },
 
-    /** Zur neuen Saison: Teams, Spielplan und leere Tabelle (state.u23liga) */
+    /**
+     * Zur neuen Saison: Teams, Spielplan und leere Tabelle (state.u23liga).
+     *
+     * Im Ligasystem (U23_LAENDER "gemischt") spielt die zweite Mannschaft
+     * gegen die ersten Mannschaften ihrer Liga - etwa der Regionalliga - und
+     * ein paar andere zweite Mannschaften; jeder mit seiner echten Stärke.
+     * Sonst in einer eigenen Liga der zweiten Mannschaften des Landes, mit
+     * den Vereinen bis zur Stufe, die eine haben. Ohne zweite Mannschaft:
+     * null.
+     */
     ligaStarte(state, zufall = Math.random) {
         const saison = state?.seasonYear || 1;
-        if (state.u23liga && state.u23liga.saison === saison) return state.u23liga;
-        const eigen = (state.clubs || []).find(c => c.id === state.userClubId);
+        const eigen = (state?.clubs || []).find(c => c.id === state.userClubId);
+        if (state.u23liga && state.u23liga.saison === saison && (!state.u23liga.clubId || !eigen || state.u23liga.clubId === eigen.id)) return state.u23liga;
         if (!eigen) return null;
+        const regel = this.u23Regel(state, eigen);
+        if (!regel.hat) return null;
         const land = eigen.countryId || "de";
         const spieltage = Math.max(18, state.totalMatchdays || (state.schedule ? state.schedule.length : 34));
-        const kandidaten = (state.clubs || []).filter(c => c.id !== eigen.id && (c.countryId || "de") === land)
-            .sort((a, b) => (Math.abs((a.level || 1) - (eigen.level || 1)) - Math.abs((b.level || 1) - (eigen.level || 1)))
-                || ((b.reputation || 0) - (a.reputation || 0)));
-        let anzahl = Math.max(this.LIGA.minTeams, Math.min(this.LIGA.maxTeams, Math.floor(spieltage / 2) + 1, kandidaten.length + 1));
-        if (anzahl % 2) anzahl--;
-        const andere = kandidaten.slice(0, anzahl - 1);
-        // Stärke der anderen: ihre Profis (die besten vierzehn) minus Abstand
-        const nachVerein = new Map(andere.map(c => [c.id, []]));
-        (state.players || []).forEach(p => { if (nachVerein.has(p.clubId) && !p.reserve) nachVerein.get(p.clubId).push(p.overall || 0); });
-        const schnitt = (werte) => { const w = werte.sort((a, b) => b - a).slice(0, 14); return w.length ? w.reduce((a, b) => a + b, 0) / w.length : 55; };
-        const teams = [{ clubId: eigen.id, name: `${eigen.name} U23`, staerke: null }]
-            .concat(andere.map(c => ({ clubId: c.id, name: `${c.name} U23`, staerke: this.zweiteStaerke(schnitt(nachVerein.get(c.id)), zufall) })));
+        const karte = this._staerkenNachVerein(state);
+        const zweiteName = (c) => `${c.name} ${regel.zusatz || "U23"}`;
+        // Andere zweite Mannschaften: Vereine des Landes, die eine haben
+        const mitZweiter = (state.clubs || []).filter(c => c.id !== eigen.id && (c.countryId || "de") === land && this.hatU23(state, c));
+        let teams, name, ligaId = null, art = regel.art;
+        if (regel.art === "gemischt") {
+            const ersteTeams = (state.clubs || []).filter(c => c.leagueId === regel.liga.id && c.id !== eigen.id);
+            let anzahl = Math.max(this.LIGA.minTeams, Math.min(this.LIGA.maxTeams, Math.floor(spieltage / 2) + 1, ersteTeams.length + mitZweiter.length + 1));
+            if (anzahl % 2) anzahl--;
+            // Etwa jede fünfte Mannschaft ist eine zweite - die übrigen Plätze die Vereine der Liga
+            const zweite = Math.min(mitZweiter.length, Math.max(anzahl - 1 - ersteTeams.length, Math.round((anzahl - 1) * 0.2)));
+            const andereZweite = mitZweiter.slice()
+                .sort((a, b) => (Math.abs((a.level || 1) - (eigen.level || 1)) - Math.abs((b.level || 1) - (eigen.level || 1))) || ((b.reputation || 0) - (a.reputation || 0)))
+                .slice(0, zweite);
+            const gemischt = ersteTeams.map(c => ({ c, r: zufall() })).sort((a, b) => a.r - b.r).map(x => x.c).slice(0, anzahl - 1 - andereZweite.length);
+            // Die anderen zweiten Mannschaften: so stark, wie es die eigene nach ihrem Verein wäre
+            const jl = _reResolve("JugendligaEngine", "./jugendligaEngine.js");
+            const zweiteZiel = (c) => {
+                const profi = this._vereinsSchnitt(state, c.id, karte);
+                const u19 = jl && typeof jl.basis === "function" ? jl.basis(c) : profi - 24;
+                return Math.min(profi - 6, Math.max(u19 + 1, profi - 22)) + 1;
+            };
+            teams = [{ clubId: eigen.id, name: zweiteName(eigen), staerke: null, zweite: true }]
+                .concat(gemischt.map(c => ({ clubId: c.id, name: c.name, staerke: Math.round(this._vereinsSchnitt(state, c.id, karte) * 10) / 10 })))
+                .concat(andereZweite.map(c => ({ clubId: c.id, name: zweiteName(c), zweite: true,
+                    staerke: Math.round((zweiteZiel(c) + (zufall() - 0.5) * 6) * 10) / 10 })));
+            name = regel.liga.shortName || regel.liga.name;
+            ligaId = regel.liga.id;
+        } else {
+            const kandidaten = mitZweiter.sort((a, b) => ((a.level || 1) - (b.level || 1)) || ((b.reputation || 0) - (a.reputation || 0)));
+            let anzahl = Math.max(Math.min(this.LIGA.minTeams, kandidaten.length + 1), Math.min(this.LIGA.maxTeams, Math.floor(spieltage / 2) + 1, kandidaten.length + 1));
+            if (anzahl % 2) anzahl--;
+            const andere = kandidaten.slice(0, anzahl - 1);
+            teams = [{ clubId: eigen.id, name: zweiteName(eigen), staerke: null, zweite: true }]
+                .concat(andere.map(c => ({ clubId: c.id, name: zweiteName(c), zweite: true, staerke: this.zweiteStaerke(this._vereinsSchnitt(state, c.id, karte), zufall) })));
+            name = this.LIGA.name;
+        }
+        if (teams.length < 2) return null;
         // Doppelrunde nach dem Kreisverfahren
         const n = teams.length;
         const idx = teams.map((_, i) => i);
@@ -303,7 +785,8 @@ const ReserveEngine = {
             idx.splice(1, 0, idx.pop());
         }
         const liga = state.u23liga = {
-            saison, name: this.LIGA.name, teams, runden: hin.concat(hin.map(r => r.map(([a, b]) => [b, a]))), runde: 0,
+            saison, name, art, ligaId, stufe: regel.art === "gemischt" ? regel.stufe : null, clubId: eigen.id,
+            teams, runden: hin.concat(hin.map(r => r.map(([a, b]) => [b, a]))), runde: 0,
             tabelle: teams.map(() => [0, 0, 0, 0, 0, 0]),      // s, u, n, tore, gegentore, punkte
             eigene: [], torschuetzen: {}, meister: null
         };
@@ -728,16 +1211,45 @@ const ReserveEngine = {
         liga.meister = meister ? meister.name : null;
         const eigen = tab.find(z => z.eigen);
         const bester = Object.values(liga.torschuetzen).sort((a, b) => b.tore - a.tore)[0];
+        const ligaName = liga.name || this.LIGA.name;
         if (meister && meister.eigen) {
             const chronik = _reResolve("ChronikEngine", "./chronikEngine.js");
-            if (chronik && typeof chronik.titel === "function") chronik.titel(state, this.LIGA.titel, liga.saison);
+            if (chronik && typeof chronik.titel === "function") chronik.titel(state, liga.art === "gemischt" ? `${ligaName} (zweite Mannschaft)` : this.LIGA.titel, liga.saison);
         }
+        const wechsel = this._ligaAufAb(state, liga, tab);
         this._post(state, "Nachwuchsleiter",
-            meister && meister.eigen ? "🏅 Unsere U23 ist Meister!" : `${this.LIGA.name}: ${eigen ? `Platz ${eigen.rang}` : "Saison beendet"}`,
+            wechsel.auf ? `🏅 Die U23 steigt auf: ${wechsel.nach}` : meister && meister.eigen ? "🏅 Unsere U23 ist Meister!" : wechsel.ab ? `U23 steigt ab: ${wechsel.nach}` : `${ligaName}: ${eigen ? `Platz ${eigen.rang}` : "Saison beendet"}`,
             (meister && meister.eigen
-                ? `Die U23 holt die Meisterschaft der ${this.LIGA.name} - ${meister.punkte} Punkte aus ${meister.spiele} Spielen.`
-                : `Die ${this.LIGA.name} ist gespielt. Meister: ${meister ? meister.name : "-"}. Unsere U23 wird ${eigen ? `${eigen.rang}.` : "-"} mit ${eigen ? eigen.punkte : 0} Punkten.`)
+                ? `Die U23 holt die Meisterschaft der ${ligaName} - ${meister.punkte} Punkte aus ${meister.spiele} Spielen.`
+                : `Die ${ligaName} ist gespielt. Meister: ${meister ? meister.name : "-"}. Unsere U23 wird ${eigen ? `${eigen.rang}.` : "-"} mit ${eigen ? eigen.punkte : 0} Punkten.`)
+            + (wechsel.text ? `\n\n${wechsel.text}` : "")
             + (bester ? `\n\nBester Torschütze unserer U23: ${bester.name} mit ${bester.tore} Toren.` : ""));
+    },
+
+    /**
+     * Auf- und Abstieg der zweiten Mannschaft im Ligasystem: Der Erste
+     * steigt auf - nie bis zur Liga der Profis -, die letzten drei steigen
+     * ab. Gilt ab der nächsten Saison (state.u23Stufe).
+     */
+    _ligaAufAb(state, liga, tab) {
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        if (liga.art !== "gemischt" || !club || !liga.stufe) return {};
+        const regel = this.u23Regel(state, club);
+        if (!regel.hat || regel.art !== "gemischt") return {};
+        const eigen = tab.find(z => z.eigen);
+        if (!eigen) return {};
+        const abstieg = tab.length >= 14 ? 3 : 2;
+        let stufe = liga.stufe, auf = false, ab = false;
+        if (eigen.rang === 1 && stufe - 1 >= regel.hoechste) { stufe--; auf = true; }
+        else if (eigen.rang > tab.length - abstieg && stufe + 1 <= regel.tiefste) { stufe++; ab = true; }
+        state.u23Stufe = { clubId: club.id, stufe };
+        if (!auf && !ab) {
+            const sperre = eigen.rang === 1 && liga.stufe - 1 < regel.hoechste;
+            return sperre ? { text: "Aufsteigen darf sie nicht: Eine zweite Mannschaft spielt nie so hoch wie die eigenen Profis." } : {};
+        }
+        const ziel = this._ligenDerStufe(state, regel.land, stufe);
+        const nach = ziel.length ? (ziel[this._hash(club.id) % ziel.length].shortName || ziel[0].name) : `${stufe}. Liga`;
+        return { auf, ab, nach, text: auf ? `In der neuen Saison spielt die zweite Mannschaft in der ${nach}.` : `In der neuen Saison spielt die zweite Mannschaft eine Stufe tiefer, in der ${nach}.` };
     },
 
     // ------------------------------------------------------------ Spieltag

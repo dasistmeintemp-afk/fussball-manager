@@ -986,6 +986,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             nachLeihe(ok ? { success: true } : { success: false, error: "Er kann nicht zurück." },
                 `${player.name} spielt wieder in der ${player.reserve === reserveEngine.U19 ? "U19" : "U23"}.`);
         });
+        document.getElementById("btnPdTeamWechsel")?.addEventListener("click", () => {
+            const res = reserveEngine.wechsleTeam(state, player.id);
+            nachLeihe(res, res.success ? `${player.name} spielt jetzt in der ${res.nach}.` : "");
+        });
         document.getElementById("btnPdU19")?.addEventListener("click", () => {
             if (!reserveEngine || typeof reserveEngine.hinunterU19 !== "function") return;
             const res = reserveEngine.hinunterU19(state, player.id);

@@ -73,7 +73,8 @@ class DressingRoomEngine {
         (match.playerRatings || []).forEach(r => noten.set(String(r.playerId), r));
 
         const kaderIds = new Set(club.playerIds);
-        const kader = state.players.filter(p => kaderIds.has(p.id));
+        // U23 und U19 spielen ihr eigenes Spiel - auf der Bank der Profis saßen sie nicht
+        const kader = state.players.filter(p => kaderIds.has(p.id) && !p.reserve);
         const gestiegen = [];
         const gefallen = [];
 

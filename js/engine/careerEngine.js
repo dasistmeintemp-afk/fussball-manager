@@ -319,6 +319,11 @@ class CareerEngine {
             state.activeCompetitionId = neueLiga;
         }
 
+        // Die zweite Mannschaft und der U19-Kader bleiben beim alten Verein zurück
+        const reserveAlt = _carResolve("ReserveEngine", "./reserveEngine.js");
+        if (reserveAlt && typeof reserveAlt.vereinVerlassen === "function" && state.userClubId && state.userClubId !== clubId) {
+            reserveAlt.vereinVerlassen(state, state.userClubId);
+        }
         state.userClubId = clubId;
         state.arbeitslos = false;
         state.managerDismissed = null;
@@ -347,6 +352,9 @@ class CareerEngine {
         if (youth && typeof youth.generateProspects === "function") {
             youth.generateProspects(state, clubId);
         }
+        // Der neue Verein: zweite Mannschaft und U19 mit vollem Kader
+        const reserveNeu = _carResolve("ReserveEngine", "./reserveEngine.js");
+        if (reserveNeu && typeof reserveNeu.richteUnterbauEin === "function") reserveNeu.richteUnterbauEin(state);
 
         this.beginneStation(state, clubId);
 

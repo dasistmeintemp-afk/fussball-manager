@@ -77,7 +77,8 @@ const KaderregelEngine = {
         const finde = gs && typeof gs.spielerMitId === "function"
             ? (id) => gs.spielerMitId(state.players, id)
             : (id) => (state.players || []).find(p => p.id === id);
-        return (club?.playerIds || []).map(finde).filter(p => p && !p.leihe?.verliehenAn);
+        // U23 und U19 stehen nicht auf der Meldeliste der Profis
+        return (club?.playerIds || []).map(finde).filter(p => p && !p.leihe?.verliehenAn && !p.reserve);
     },
 
     /** Im Land ausgebildet: aus der eigenen Jugend oder mit der Nationalität des Landes */

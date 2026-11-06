@@ -128,7 +128,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const eigen = isUserClub && !isProspect;
         const da = (sel) => !!body.querySelector(sel);
         const fremdImVerein = !isUserClub && !isProspect && !!player.clubId;
+        // U23, U19 und Akademie: hoch in die erste Mannschaft, für den Spieltag, zwischen den Teams
+        const mannschaft = typeof this.unterbauAktionen === "function" && (isUserClub || isProspect)
+            ? this.unterbauAktionen(player).map(a => ({ text: a.text, icon: a.icon, aktion: () => this.unterbauAktion(a.art, player.id, { akte: true }) }))
+            : [];
         const gruppen = [
+            { titel: "Mannschaft", eintraege: mannschaft },
             { titel: "Vertrag", eintraege: [
                 eigen && da("#btnSubmitExtension") ? { text: "Vertrag verlängern", icon: "i-doc", reiter: "vertrag", ziel: "#pdVertrag" } : null,
                 isProspect && da("#btnPdPromoteProspect") ? { text: "Profivertrag anbieten", icon: "i-doc", knopf: "#btnPdPromoteProspect" } : null,

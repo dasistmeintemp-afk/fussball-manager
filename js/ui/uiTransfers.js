@@ -576,25 +576,31 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         }
         if (player.reserve) {
             const team = engine.inU19(player) ? "U19" : "U23";
+            const wechsel = (this.unterbauAktionen(player).find(a => a.art === "ub-wechsel") || {}).text;
             return `
                 <div class="dash-card mb-3 gs-karte">${kopf}
-                    <div class="gs-lage gs-info">Spielt in der ${team} und steht den Profis nicht zur Verfügung · Spielpraxis ${praxis} %</div>
+                    <div class="gs-lage gs-info">Spielt in der ${team}${player.zweite ? " - aus der zweiten Mannschaft, Vertrag bis 23" : ""} und steht den Profis nicht zur Verfügung · Spielpraxis ${praxis} %</div>
                     ${bilanz ? `<div class="gs-sub">${esc(bilanz)}</div>` : ""}
                     <div class="gs-knoepfe">
                         <button class="btn btn-primary" id="btnPdNominieren" title="Danach geht er von selbst zurück in die ${team}">Für den nächsten Spieltag</button>
-                        <button class="btn btn-secondary" id="btnPdReserve">Ganz zu den Profis</button>
+                        <button class="btn btn-secondary" id="btnPdReserve">In die erste Mannschaft</button>
+                        ${wechsel ? `<button class="btn btn-secondary" id="btnPdTeamWechsel">${esc(wechsel)}</button>` : ""}
                     </div>
                 </div>`;
         }
         const check = engine.pruefe(state, player);
         const checkU19 = typeof engine.pruefeU19 === "function" ? engine.pruefeU19(state, player) : { ok: false };
         const u19Moeglich = (player.age || 30) <= (typeof YouthEngine !== "undefined" ? YouthEngine.AKADEMIE_HOECHSTALTER : 19);
+        const verein = state.clubs.find(c => c.id === player.clubId);
+        const regel = typeof engine.u23Regel === "function" ? engine.u23Regel(state, verein) : { hat: true };
+        if (!regel.hat && !u19Moeglich) return "";
+        const wo = regel.hat ? `In der U23${u19Moeglich ? " oder U19" : ""}` : "In der U19";
         return `
             <div class="dash-card mb-3 gs-karte">${kopf}
-                <div class="gs-sub">In der U23${u19Moeglich ? " oder U19" : ""} spielt er an jedem Spieltag und sammelt Spielpraxis (jetzt ${praxis} %). Für die Profis fehlt er, bis Sie ihn zurückholen.</div>
+                <div class="gs-sub">${wo} spielt er an jedem Spieltag und sammelt Spielpraxis (jetzt ${praxis} %). Für die Profis fehlt er, bis Sie ihn zurückholen.${regel.hat ? "" : ` ${esc(regel.grund)}`}</div>
                 ${bilanz ? `<div class="gs-sub">${esc(bilanz)}</div>` : ""}
                 <div class="gs-knoepfe">
-                    ${check.ok ? `<button class="btn btn-secondary" id="btnPdReserve">In die U23 schicken</button>` : `<div class="gs-lage">${esc(check.grund)}</div>`}
+                    ${!regel.hat ? "" : check.ok ? `<button class="btn btn-secondary" id="btnPdReserve">In die U23 schicken</button>` : `<div class="gs-lage">${esc(check.grund)}</div>`}
                     ${u19Moeglich ? (checkU19.ok ? `<button class="btn btn-secondary" id="btnPdU19">In die U19 schicken</button>` : `<div class="gs-lage">${esc(checkU19.grund || "")}</div>`) : ""}
                 </div>
             </div>`;
@@ -656,7 +662,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     <button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(p.id)}">Behalten</button></span></div>`).join("")}
                 <small class="text-muted">Nach dem nächsten Ligaspiel gehen sie von selbst zurück.</small>
             </div>` : "";
-        const knoepfe = (hoch, nom) => `<div class="unterbau-knoepfe">${nom}${hoch}</div>`;
+        const knoepfe = (hoch, nom, id, name) => `<div class="unterbau-knoepfe">${nom}${hoch}${id != null ? this.unterbauMenueKnopf(id, name) : ""}</div>`;
         const kopfZeile = `<thead><tr><th>Spieler</th><th>Pos</th><th>Alter</th><th>Stärke</th><th>Sp</th><th>Tore</th><th>Ø</th><th>Form</th><th></th></tr></thead>`;
         box.innerHTML = `
             <div class="kb-kopf">
@@ -669,18 +675,18 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ${spieler.length ? `<div class="table-container"><table class="compact-table u23-tabelle">${kopfZeile}<tbody>
                 ${spieler.map(p => `<tr data-u23="${esc(p.id)}"><td>${esc(p.name)}${verletzt(p)}</td><td>${esc(p.pos)}</td><td>${p.age || "-"}</td><td>${p.overall || "-"}</td>${this.unterbauZellen(p, "u23")}
                     <td>${knoepfe(`<button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(p.id)}" title="Für immer zu den Profis">Ganz hoch</button>`,
-                        `<button class="btn btn-sm btn-primary btn-nominieren" data-id="${esc(p.id)}" title="Nach dem nächsten Ligaspiel geht er zurück">Spieltag</button>`)}</td></tr>`).join("")}
+                        `<button class="btn btn-sm btn-primary btn-nominieren" data-id="${esc(p.id)}" title="Nach dem nächsten Ligaspiel geht er zurück">Spieltag</button>`, p.id, p.name)}</td></tr>`).join("")}
             </tbody></table></div>` : `<p class="text-muted">Niemand spielt gerade in der U23.</p>`}
             <h4 class="unterbau-titel">U19: bereit für die Profis</h4>
             ${u19.length ? `<div class="table-container"><table class="compact-table u23-tabelle">${kopfZeile}<tbody>
                 ${u19.map(k => `<tr data-u23="${esc(k.p.id)}"><td>${esc(k.p.name)} <span class="text-muted">${k.talent ? "Akademie" : "Profi"}</span></td><td>${esc(k.p.pos)}</td><td>${k.p.age || "-"}</td><td>${k.p.overall || "-"}</td>${this.unterbauZellen(k.p, "u19")}
                     <td>${k.talent
                         ? knoepfe(`<button class="btn btn-sm btn-secondary btn-hochziehen" data-talent-id="${esc(k.p.id)}" title="Mit Jugendvertrag ganz zu den Profis - ohne Berater">Ganz hoch</button>`,
-                            `<button class="btn btn-sm btn-primary btn-hochziehen-spieltag" data-talent-id="${esc(k.p.id)}" title="Mit Jugendvertrag für den nächsten Ligaspieltag - danach spielt er in der U19">Spieltag</button>`)
+                            `<button class="btn btn-sm btn-primary btn-hochziehen-spieltag" data-talent-id="${esc(k.p.id)}" title="Mit Jugendvertrag für den nächsten Ligaspieltag - danach spielt er in der U19">Spieltag</button>`, k.p.id, k.p.name)
                         : knoepfe(`<button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(k.p.id)}">Ganz hoch</button>`,
-                            `<button class="btn btn-sm btn-primary btn-nominieren" data-id="${esc(k.p.id)}">Spieltag</button>`)}</td></tr>`).join("")}
+                            `<button class="btn btn-sm btn-primary btn-nominieren" data-id="${esc(k.p.id)}">Spieltag</button>`, k.p.id, k.p.name)}</td></tr>`).join("")}
             </tbody></table></div>` : `<p class="text-muted">In der U19 ist niemand alt genug für die Profis (ab ${typeof YouthEngine !== "undefined" ? YouthEngine.MIT_PROFIS.abAlter : 16}).</p>`}
-            <p class="text-muted kb-hinweis">Hinunter schicken Sie Spieler über die Spielerakte. In der U23 höchstens ${engine.MAX_UEBERALTERT} Spieler über ${engine.ALTERSGRENZE}, im Profikader bleiben mindestens ${engine.MIN_PROFIKADER}. Hochgezogene Talente spielen mit ihrem Jugendvertrag. <em>Spieltag</em> holt nur für das nächste Ligaspiel hoch, <em>Ganz hoch</em> für immer.
+            <p class="text-muted kb-hinweis">Hinunter schicken Sie Spieler über die Spielerakte, das Menü ⋯ oder einen Rechtsklick auf den Spieler. In der U23 höchstens ${engine.MAX_UEBERALTERT} Spieler über ${engine.ALTERSGRENZE}, im Profikader bleiben mindestens ${engine.MIN_PROFIKADER}. Hochgezogene Talente spielen mit ihrem Jugendvertrag. <em>Spieltag</em> holt nur für das nächste Ligaspiel hoch, <em>Ganz hoch</em> für immer.
                 <button type="button" class="btn-link" id="btnUnterbauZurJugend">U23-Liga, U19 und Verliehene im Reiter Jugend</button></p>`;
         box.querySelectorAll("[data-u23]").forEach(tr => tr.addEventListener("click", (e) => {
             if (e.target.closest("button")) return;
@@ -690,8 +696,134 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         box.querySelector("#btnUnterbauZurJugend")?.addEventListener("click", () => this.switchTab("youth"));
     },
 
+    /**
+     * Was man mit einem Spieler aus U23, U19 oder der Akademie tun kann -
+     * für das Menü Aktionen der Akte und das Kontextmenü der Listen, wie im
+     * Vorbild: in die erste Mannschaft, für den Spieltag, zwischen U23 und
+     * U19, hinunter. [{ art, text, icon }] - unterbauAktion führt sie aus.
+     */
+    unterbauAktionen(p) {
+        const state = this.app?.state;
+        const R = typeof ReserveEngine !== "undefined" ? ReserveEngine : null;
+        const Y = typeof YouthEngine !== "undefined" ? YouthEngine : null;
+        if (!state || !R || !p) return [];
+        const club = (state.clubs || []).find(c => c.id === state.userClubId);
+        // Ein Talent der Akademie (noch ohne Profivertrag)
+        const talent = Y && !(state.players || []).includes(p)
+            ? Y.eigeneTalente(state).find(t => t && String(t.id) === String(p.id) && !t.promoted) : null;
+        if (talent) {
+            if ((talent.age || 0) < Y.MIT_PROFIS.abAlter || Y.offeneAnfrage(state, talent.id)) return [];
+            return [
+                { art: "ub-talent-hoch", text: "In die erste Mannschaft holen", icon: "i-up" },
+                { art: "ub-talent-spieltag", text: "Für den nächsten Spieltag hochziehen", icon: "i-calendar" }
+            ];
+        }
+        if (!club || p.clubId !== club.id || p.leihe) return [];
+        const team = (x) => (x === R.U19 ? "U19" : "U23");
+        if (p.nominiertAus) {
+            return [
+                { art: "ub-hinauf", text: "Ganz in der ersten Mannschaft behalten", icon: "i-up" },
+                { art: "ub-zurueck", text: `Sofort zurück in die ${team(p.nominiertAus)}`, icon: "i-back" }
+            ];
+        }
+        if (p.reserve) {
+            const liste = [
+                { art: "ub-hinauf", text: "In die erste Mannschaft holen", icon: "i-up" },
+                { art: "ub-nominieren", text: "Für den nächsten Spieltag nominieren", icon: "i-calendar" }
+            ];
+            const zurU19 = !R.inU19(p) && (p.age || 30) <= (Y ? Y.AKADEMIE_HOECHSTALTER : 19);
+            const zurU23 = R.inU19(p) && typeof R.hatU23 === "function" && R.hatU23(state, club);
+            if (zurU19 || zurU23) liste.push({ art: "ub-wechsel", text: zurU23 ? "In die U23 wechseln" : "In die U19 wechseln", icon: "i-transfer" });
+            return liste;
+        }
+        const liste = [];
+        if (R.pruefe(state, p).ok) liste.push({ art: "ub-u23", text: "In die U23 schicken", icon: "i-users" });
+        if (typeof R.pruefeU19 === "function" && R.pruefeU19(state, p).ok) liste.push({ art: "ub-u19", text: "In die U19 schicken", icon: "i-users" });
+        return liste;
+    },
+
+    /**
+     * Eine Aktion aus unterbauAktionen ausführen: Meldung, speichern, die
+     * Seite dahinter neu zeichnen. Mit akte: true öffnet sich die Akte neu -
+     * beim hochgezogenen Talent die des neuen Profis. Liefert das Ergebnis.
+     */
+    unterbauAktion(art, id, { akte = false } = {}) {
+        const state = this.app.state;
+        const R = ReserveEngine;
+        const Y = typeof YouthEngine !== "undefined" ? YouthEngine : null;
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const reparieren = () => { if (club && typeof GameState !== "undefined" && GameState.repairLineup) GameState.repairLineup(club, state.players); };
+        const spieler = state.players.find(x => String(x.id) === String(id));
+        let res, text = "";
+        if (art === "ub-hinauf") {
+            res = R.hinauf(state, id);
+            text = res.success ? `${res.player.name} gehört jetzt zur ersten Mannschaft.` : "";
+        } else if (art === "ub-nominieren") {
+            res = R.nominieren(state, id);
+            text = res.success ? `${res.player.name} ist für den nächsten Spieltag dabei und geht danach zurück in die ${res.von}.` : "";
+        } else if (art === "ub-zurueck") {
+            const ok = !!spieler && R.zurueckNachNominierung(state, spieler);
+            if (ok) reparieren();
+            res = ok ? { success: true, player: spieler } : { success: false, error: "Er kann nicht zurück." };
+            text = ok ? `${spieler.name} spielt wieder in der ${spieler.reserve === R.U19 ? "U19" : "U23"}.` : "";
+        } else if (art === "ub-wechsel") {
+            res = R.wechsleTeam(state, id);
+            text = res.success ? `${res.player.name} spielt jetzt in der ${res.nach}.` : "";
+        } else if (art === "ub-u23") {
+            res = R.hinunter(state, id);
+            if (res.success && res.ausElf) reparieren();
+            text = res.success ? `${res.player.name} spielt jetzt in der U23${res.ausElf ? " - die Aufstellung ist nachgerückt" : ""}.` : "";
+        } else if (art === "ub-u19") {
+            res = R.hinunterU19(state, id);
+            text = res.success ? `${res.player.name} spielt jetzt in der U19${res.ausElf ? " - die Aufstellung ist nachgerückt" : ""}.` : "";
+        } else if (art === "ub-talent-hoch" || art === "ub-talent-spieltag") {
+            const nurSpieltag = art === "ub-talent-spieltag";
+            res = Y ? Y.hochziehen(state, id, nurSpieltag ? { nurSpieltag: true } : {}) : { success: false, error: "Nicht verfügbar." };
+            text = res.success ? (nurSpieltag
+                ? `🎓 ${res.player.name} ist für den nächsten Spieltag dabei - danach spielt er in der U19.`
+                : `🎓 ${res.player.name} ist bei den Profis - mit seinem Jugendvertrag.`) : "";
+        } else {
+            return { success: false };
+        }
+        if (!res || !res.success) { this.showToast(res?.error || "Das geht nicht.", "error", 6000); return res || { success: false }; }
+        this.showToast(text, "success", 5000);
+        this.playSound?.(art === "ub-talent-hoch" ? "erfolg" : "click");
+        if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
+        this.renderHeader?.();
+        this.renderCurrentTab();
+        if (akte) this.showPlayerDetailsModal(res.player ? res.player.id : id, { abschnitt: "unterbau" });
+        return res;
+    },
+
+    /** Das Menü einer Zeile in U23, U19 oder Akademie: der Knopf ⋯ und ein Rechtsklick */
+    bindeUnterbauMenue(box) {
+        box.querySelectorAll("[data-ub-menue]").forEach(btn => btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const p = this.unterbauSpielerFuer(btn.dataset.ubMenue);
+            if (!p) return;
+            const r = btn.getBoundingClientRect();
+            this.zeigeKontextmenue(p, r.left, r.bottom + 4);
+        }));
+    },
+
+    /** Spieler oder Talent zu einer Kennung - Talente stehen nicht in state.players */
+    unterbauSpielerFuer(id) {
+        const state = this.app?.state;
+        if (!state) return null;
+        const p = (state.players || []).find(x => String(x.id) === String(id));
+        if (p) return p;
+        const Y = typeof YouthEngine !== "undefined" ? YouthEngine : null;
+        return Y ? Y.eigeneTalente(state).find(t => t && String(t.id) === String(id) && !t.promoted) || null : null;
+    },
+
+    /** Der Knopf ⋯ am Ende einer Zeile */
+    unterbauMenueKnopf(id, name) {
+        return `<button type="button" class="btn btn-sm btn-secondary ub-menue" data-ub-menue="${this.escapeHtml(String(id))}" aria-label="Aktionen für ${this.escapeHtml(String(name || ""))}" title="Aktionen" aria-haspopup="menu">⋯</button>`;
+    },
+
     /** Die Knöpfe "Zu den Profis" und "Hochziehen" - im Kader wie in der Jugend */
     bindeUnterbauKnoepfe(box) {
+        this.bindeUnterbauMenue(box);
         const state = this.app.state;
         const fertig = (text) => {
             this.showToast(text, "success");

@@ -471,11 +471,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         document.addEventListener("contextmenu", (e) => {
             if (!this.app?.state || !e.target || typeof e.target.closest !== "function") return;
             if (e.target.closest("#modalLiveMatch, input, textarea, select")) return;
-            const el = e.target.closest("[data-player-id], [data-player]");
+            const el = e.target.closest("[data-player-id], [data-player], [data-u23-akte], [data-u19-akte], [data-u23], [data-prospect-id]");
             if (!el) return;
-            const roh = el.dataset.playerId ?? el.dataset.player;
+            const roh = el.dataset.playerId ?? el.dataset.player ?? el.dataset.u23Akte ?? el.dataset.u19Akte ?? el.dataset.u23 ?? el.dataset.prospectId;
             const id = typeof this.resolvePlayerId === "function" ? this.resolvePlayerId(roh) : roh;
-            const p = (this.app.state.players || []).find(x => String(x.id) === String(id));
+            // Talente der Akademie stehen nicht unter den Spielern
+            const p = (this.app.state.players || []).find(x => String(x.id) === String(id))
+                || (typeof this.unterbauSpielerFuer === "function" ? this.unterbauSpielerFuer(roh) : null);
             if (!p) return;
             e.preventDefault();
             this.zeigeKontextmenue(p, e.clientX, e.clientY);
@@ -503,14 +505,18 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const se = this.getScoutingEngine ? this.getScoutingEngine() : null;
         const laeuft = typeof this.beobachtungsText === "function" ? this.beobachtungsText(p.id) : null;
         const gemerkt = se && typeof se.istGemerkt === "function" && se.istGemerkt(state, p.id);
+        // U23, U19 und Akademie: in die erste Mannschaft, für den Spieltag, hinunter
+        const unterbau = eigen || !(state.players || []).includes(p)
+            ? (typeof this.unterbauAktionen === "function" ? this.unterbauAktionen(p) : []) : [];
         return [
             { art: "akte", text: "Akte öffnen", icon: "i-doc" },
+            ...unterbau,
             !eigen && se && typeof se.merke === "function"
                 ? { art: "liste", text: gemerkt ? "Von der Beobachtungsliste nehmen" : "Auf die Beobachtungsliste", icon: "i-star" } : null,
             !eigen && se && typeof se.beobachteSpieler === "function"
                 ? { art: "scout", text: laeuft ? `Scout ist dran (${laeuft})` : "Scouten", icon: laeuft ? "i-eye" : "i-search", aus: !!laeuft } : null,
             !eigen && p.clubId ? { art: "angebot", text: "Verhandeln", icon: "i-briefcase" } : null,
-            typeof this.zeigeVergleich === "function" ? { art: "vergleich", text: "Vergleichen", icon: "i-chart" } : null
+            typeof this.zeigeVergleich === "function" && (state.players || []).includes(p) ? { art: "vergleich", text: "Vergleichen", icon: "i-chart" } : null
         ].filter(Boolean);
     },
 
@@ -522,7 +528,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const menue = document.createElement("div");
         menue.className = "kontextmenue";
         menue.setAttribute("role", "menu");
-        menue.innerHTML = `<div class="km-kopf"><strong>${esc(p.name)}</strong><span>${esc(p.pos)} · ${esc(p.age)} J. · ${esc(verein ? verein.name : "vereinslos")}</span></div>`
+        const R = typeof ReserveEngine !== "undefined" ? ReserveEngine : null;
+        const team = !(state.players || []).includes(p) ? "Akademie" : p.nominiertAus ? "für den Spieltag oben" : p.reserve ? (R && R.inU19(p) ? "U19" : "U23") : "";
+        menue.innerHTML = `<div class="km-kopf"><strong>${esc(p.name)}</strong><span>${esc(p.pos)} · ${esc(p.age)} J. · ${esc(verein ? verein.name : "vereinslos")}${team ? ` · ${esc(team)}` : ""}</span></div>`
             + this.kontextEintraege(p).map(e => `<button type="button" role="menuitem" class="km-eintrag" data-km="${e.art}"${e.aus ? " disabled" : ""}><svg class="ico" aria-hidden="true"><use href="#${e.icon}"/></svg>${esc(e.text)}</button>`).join("");
         document.body.appendChild(menue);
         const r = menue.getBoundingClientRect();
@@ -539,6 +547,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     },
 
     kontextAktion(art, p) {
+        if (String(art).startsWith("ub-") && typeof this.unterbauAktion === "function") { this.unterbauAktion(art, p.id); return; }
         if (art === "akte") this.showPlayerDetailsModal(p.id);
         else if (art === "liste") this.schalteBeobachtungsliste(p.id);
         else if (art === "scout") this.beobachte(p.id, "kontextmenue", () => this.renderCurrentTab());

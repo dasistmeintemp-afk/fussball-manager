@@ -14578,20 +14578,34 @@ function runEngineTests() {
         ki.transferBudget = 5e8; ki.wageBudget = 1e9;
         AE._speicher(state).genutzt[ki.id] = AE.AUSNAHMEPLAETZE[1];
         const gekauft = [];
-        for (let i = 0; i < 40; i++) {
-            const vorher = new Map((ki.playerIds || []).map(id => [id, true]));
-            const herkunft = new Map(state.players.map(p => [p.id, p.clubId]));
-            TransferEngine.versucheEinenTransfer(state, ki);
-            (ki.playerIds || []).filter(id => !vorher.has(id)).forEach(id => gekauft.push({ p: state.players.find(x => x.id === id), von: herkunft.get(id) }));
+        // Geprüft wird im Moment des Wechsels: Danach zählen seine Ligaminuten
+        // schon für den neuen Verein, und die Punkte fielen anders aus
+        const beimWechsel = new Map();
+        const wechsel = TransferEngine.executeTransfer;
+        TransferEngine.executeTransfer = function (st, playerId, zuId, ...rest) {
+            const p = st.players.find(x => x.id === playerId);
+            if (p && zuId === ki.id) beimWechsel.set(p.id, AE.pruefe(st, p, ki));
+            return wechsel.call(this, st, playerId, zuId, ...rest);
+        };
+        try {
+            for (let i = 0; i < 40; i++) {
+                const vorher = new Map((ki.playerIds || []).map(id => [id, true]));
+                const herkunft = new Map(state.players.map(p => [p.id, p.clubId]));
+                TransferEngine.versucheEinenTransfer(state, ki);
+                (ki.playerIds || []).filter(id => !vorher.has(id)).forEach(id => gekauft.push({ p: state.players.find(x => x.id === id), von: herkunft.get(id) }));
+            }
+        } finally {
+            TransferEngine.executeTransfer = wechsel;
         }
         const ohne = gekauft.filter(({ p, von }) => {
             const alt = state.clubs.find(c => c.id === von);
             if (!alt || alt.countryId === "en" || AE.FREI.includes(p.nationality)) return false;
-            const vorher = Object.assign({}, p, { clubId: von });
-            const e = AE.punkte(state, vorher);
-            return e.gesamt < AE.SCHWELLE && !AE.gremiumStimmtZu(state, vorher, e.gesamt, e.anteil);
+            const e = beimWechsel.get(p.id);
+            // Ohne freie Ausnahmeplätze zählen nur Punkte oder das Gremium
+            return !e || !e.erteilt || !["punkte", "gremium", "frei"].includes(e.weg);
         });
-        if (ohne.length) throw new Error(`KI holt ohne Erlaubnis: ${ohne.map(x => x.p.name)}`);
+        if (ohne.length) throw new Error(`KI holt ohne Erlaubnis: ${ohne.map(x => `${x.p.name} (${beimWechsel.get(x.p.id)?.weg || "ungeprüft"})`)}`);
+        if (!gekauft.some(({ p }) => beimWechsel.has(p.id))) throw new Error("Kein Wechsel geprüft");
     });
 
     test("Fanartikel: eigener Posten nach Stars, Tabelle und Neuzugängen - im Schnitt so viel wie vorher", () => {
@@ -16077,7 +16091,8 @@ function runEngineTests() {
         if (ContractEngine.maxLaufzeit(18) !== 5) throw new Error("Volljährige dürfen fünf Jahre");
 
         // Die Talente bekommen ihre Ausbildungsvergütung
-        const erwartet = Y.VERGUETUNG[club.level || 1] * talente.filter(x => !x.promoted).length;
+        // Die Jugendspieler des U19-Kaders (kader) spielen ohne Ausbildungsvergütung
+        const erwartet = Y.VERGUETUNG[club.level || 1] * talente.filter(x => !x.promoted && !x.kader).length;
         FinanceEngine.applyWeeklyCosts(state);
         const buchung = state.finances.transactions.find(x => x.clubId === club.id && /Ausbildungsvergütung/.test(x.description));
         if (!buchung || buchung.amount !== -erwartet) throw new Error(`Ausbildungsvergütung: ${buchung && buchung.amount} statt ${-erwartet}`);
@@ -16106,7 +16121,9 @@ function runEngineTests() {
         // Größere Vereine fragen an
         const meldung = Y.pruefeAbwerben(state, () => 0);
         const anfragen = Y.anfragen(state).filter(a => a.status === "offen");
-        if (!meldung || anfragen.length !== talente.length) throw new Error(`Anfragen: ${anfragen.length} für ${talente.length} Talente`);
+        // Umworben werden die Talente der Akademie, nicht die Jugendspieler des U19-Kaders
+        const umworben = talente.filter(t => !t.kader);
+        if (!meldung || anfragen.length !== umworben.length) throw new Error(`Anfragen: ${anfragen.length} für ${umworben.length} Talente`);
         anfragen.forEach(a => {
             const w = state.clubs.find(c => c.id === a.clubId);
             if (!(w.reputation >= club.reputation + Y.ABWERBEN.rufVorsprung) || !Y.wechselErlaubt("de", w.countryId, 16)
@@ -16277,8 +16294,10 @@ function runEngineTests() {
         if (!(ausnahmen > 0.04 && ausnahmen < 0.2)) throw new Error(`${Math.round(ausnahmen * 100)} % Ausnahmetalente`);
 
         // Mit 19 ohne Profivertrag: vereinslos in der Welt, nicht verschwunden
-        const geht = Y.eigeneTalente(state).find(t => !t.promoted);
+        const geht = Y.eigeneTalente(state).find(t => !t.promoted && !t.kader);
         geht.age = 18;
+        // Die Jugendspieler des U19-Kaders altern mit - hier sollen sie jung bleiben
+        Y.eigeneTalente(state).filter(t => t.kader).forEach(t => { t.age = 15; });
         const anzahl = state.players.length;
         Y.alterTalente(state);
         const frei = state.players.find(p => p.name === geht.name && p.ausgebildetVon === club.id);

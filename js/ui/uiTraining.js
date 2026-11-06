@@ -491,14 +491,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const u23 = reserve ? reserve.spieler(state, club) : [];
         const u19 = jl ? jl.eigeneSpieler(state) : [];
         const talente = youth ? youth.eigeneTalente(state).filter(t => t && !t.promoted) : [];
-        const weg = loan ? loan.verlieheneVon(state, club.id).filter(p => (p.age || 30) <= reserve?.ALTERSGRENZE) : [];
+        const weg = loan ? loan.verlieheneVon(state, club.id).filter(p => reserve && !reserve.istUe23(p)) : [];
         const kacheln = [
             // Ohne eigene Spieler spielt die U23 trotzdem - mit Amateuren
             { titel: "U23", wert: `${u23.length} Spieler`, ziel: "u23Karte", extra: reserve && state.u23liga
                 ? `<small>${u23.length ? "" : "nur Amateure · "}${platz(reserve.ligaTabelle(state))}</small>` : "" },
             { titel: "U19", wert: `${u19.length} Spieler`, ziel: "jugendligaKarte", extra: jl && state.jugendliga ? `<small>${platz(jl.tabelle(state))}</small>` : "" },
             { titel: "Akademie", wert: `${talente.length} Talente`, ziel: "youthProspectsBody" },
-            { titel: "Verliehen", wert: `${weg.length} bis ${reserve ? reserve.ALTERSGRENZE : 23}`, ziel: "verliehenKarte" }
+            { titel: "Verliehen", wert: `${weg.length} unter ${reserve ? reserve.ALTERSGRENZE : 23}`, ziel: "verliehenKarte" }
         ];
         const esc = (v) => this.escapeHtml(String(v ?? ""));
         el.innerHTML = kacheln.map(k => `<button type="button" class="vk-kachel nw-kachel" data-ziel="${k.ziel}"><span>${esc(k.titel)}</span><strong>${esc(k.wert)}</strong>${k.extra || ""}</button>`).join("");
@@ -545,19 +545,20 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         // Junge Profis ohne Stammplatz: Kandidaten für Spielpraxis in der U23
         const elf = new Set((club.lineup || []).map(String));
         const bank = new Set((club.bench || []).map(String));
-        const kandidaten = R.profis(state, club).filter(p => (p.age || 30) <= R.ALTERSGRENZE && !elf.has(String(p.id)) && !p.nominiertAus && !p.leihe)
+        const kandidaten = R.profis(state, club).filter(p => !R.istUe23(p) && !elf.has(String(p.id)) && !p.nominiertAus && !p.leihe)
             .sort((a, b) => (bank.has(String(a.id)) - bank.has(String(b.id))) || ((a.spielpraxis ?? 0.5) - (b.spielpraxis ?? 0.5))).slice(0, 6);
-        const zeileKader = ({ p, b }) => `<tr data-u23-akte="${esc(p.id)}"><td>${esc(p.name)}${p.zweite ? "" : ' <span class="text-muted">Profi</span>'}${this.einsatzElf(p, naechsteElf)}${(p.injuredWeeks || 0) > 0 ? ' <span class="text-danger">verletzt</span>' : ""}</td><td>${esc(p.pos)}</td><td>${p.age || "-"}</td>
+        const zeileKader = ({ p, b }) => `<tr data-u23-akte="${esc(p.id)}"><td>${esc(p.name)}${p.zweite ? "" : ' <span class="text-muted">Profi</span>'}${R.istUe23(p) ? ' <span class="u23-ue23" title="Am Stichtag 30. Juni schon 23 - höchstens drei Ü23 stehen gleichzeitig auf dem Platz">Ü23</span>' : ""}${this.einsatzElf(p, naechsteElf)}${(p.injuredWeeks || 0) > 0 ? ' <span class="text-danger">verletzt</span>' : ""}</td><td>${esc(p.pos)}</td><td>${p.age || "-"}</td>
             <td>${this.starsFor(p.overall)}</td>${this.unterbauZellen(p, "u23")}<td>${Math.round((p.spielpraxis ?? 0.5) * 100)} %</td>${this.einsatzZellen(p)}
             <td><div class="unterbau-knoepfe"><button class="btn btn-sm btn-primary btn-nominieren" data-id="${esc(p.id)}" title="Nach dem nächsten Ligaspiel geht er zurück">Spieltag</button><button class="btn btn-sm btn-secondary btn-unterbau-hoch" data-id="${esc(p.id)}" title="Für immer in die erste Mannschaft">Ganz hoch</button>${this.unterbauMenueKnopf(p.id, p.name)}</div></td></tr>`;
         // Im Ligasystem: gegen die Vereine der Liga, mit Auf- und Abstieg
         const gemischt = liga.art === "gemischt";
         const ligaHinweis = gemischt
-            ? `Die zweite Mannschaft spielt in der ${esc(liga.name)} mit - gegen die Vereine dieser Liga und andere zweite Mannschaften. Der Erste steigt auf, die letzten drei steigen ab; so hoch wie die Profis spielt sie nie. Die Tabelle hier ist die Wertung mit unserer U23.`
+            ? `Die zweite Mannschaft spielt in der ${esc(liga.name)} mit - gegen die Vereine dieser Liga und andere zweite Mannschaften. Der Erste steigt auf, die letzten drei steigen ab. ${esc(R.grenzText(club, regel))} Die Tabelle hier ist die Wertung mit unserer U23.`
             : `Die U23 spielt in der Liga der zweiten Mannschaften - gegen die U23 der anderen Vereine aus dem Land.`;
+        const ue23 = kader.filter(k => R.istUe23(k.p)).length;
         el.innerHTML = `
             <div class="card-header"><h3><svg class="ico h-ico" aria-hidden="true"><use href="#i-shield"/></svg>Zweite Mannschaft (U23)</h3><span class="header-tag">${esc(liga.name)} · ${liga.runde} / ${liga.runden.length} Spieltage${liga.meister ? ` · Meister: ${esc(liga.meister)}` : ""}</span></div>
-            <p class="text-muted jl-hinweis">${ligaHinweis} Gespielt wird an jedem Spieltag der Profis. Wer dort spielt, sammelt Spielpraxis und steht den Profis nicht zur Verfügung. Höchstens ${R.MAX_UEBERALTERT} Spieler über ${R.ALTERSGRENZE}. Stärke im Moment ${staerke.toFixed(1).replace(".", ",")}${auffuellen ? `, ${auffuellen} ${auffuellen === 1 ? "Platz füllt" : "Plätze füllen"} Amateure auf` : ""}.</p>
+            <p class="text-muted jl-hinweis">${ligaHinweis} Gespielt wird an jedem Spieltag der Profis. Wer dort spielt, sammelt Spielpraxis und steht den Profis nicht zur Verfügung. U23 heißt: am Stichtag 30. Juni noch keine ${R.ALTERSGRENZE}. Ältere (Ü23) dürfen im Kader stehen, aber höchstens ${R.MAX_UEBERALTERT} gleichzeitig auf dem Platz${ue23 ? ` - im Kader sind es ${ue23}` : ""}. Stärke im Moment ${staerke.toFixed(1).replace(".", ",")}${auffuellen ? `, ${auffuellen} ${auffuellen === 1 ? "Platz füllt" : "Plätze füllen"} Amateure auf` : ""}.</p>
             <div class="jl-raster">
                 <div class="table-container">
                     <table class="compact-table jl-tabelle" id="u23Tabelle">
@@ -654,7 +655,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (!el || !loan) return;
         const club = state.clubs.find(c => c.id === state.userClubId);
         const grenze = typeof ReserveEngine !== "undefined" ? ReserveEngine.ALTERSGRENZE : 23;
-        const weg = loan.verlieheneVon(state, club.id).filter(p => (p.age || 30) <= grenze)
+        const weg = loan.verlieheneVon(state, club.id).filter(p => (p.age || 30) < grenze)
             .sort((a, b) => (a.age || 0) - (b.age || 0));
         const esc = (t) => this.escapeHtml(String(t ?? ""));
         const verein = (id) => state.clubs.find(c => c.id === id);

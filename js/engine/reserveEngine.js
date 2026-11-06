@@ -32,7 +32,19 @@ function _reResolve(name, pfad) {
 }
 
 const ReserveEngine = {
+    /**
+     * Die Altersregel der zweiten Mannschaften (Spielordnungen der Verbände,
+     * gestützt auf § 11 der DFB-Spielordnung): Stichtag ist der 30. Juni vor
+     * der Saison. Wer dann das 23. Lebensjahr vollendet hat, ist Ü23. Das
+     * Alter im Spiel ist das Alter zum Saisonbeginn - Ü23 heißt also: 23
+     * oder älter.
+     */
     ALTERSGRENZE: 23,
+    /**
+     * Höchstens drei Ü23 dürfen GLEICHZEITIG auf dem Platz stehen. Im Kader
+     * dürfen es mehr sein - bisher begrenzte das Spiel den Kader auf drei
+     * Spieler über 23 und ließ 23-Jährige als U23 zählen.
+     */
     MAX_UEBERALTERT: 3,
     MIN_PROFIKADER: 16,
     /** Spielpraxis je Partie: Profis zählen voll, die U23 zu diesem Teil */
@@ -40,6 +52,11 @@ const ReserveEngine = {
     /** Was ein KI-Talent ohne Einsatz in seiner zweiten Mannschaft sammelt */
     KI_PRAXIS: 0.3,
     VERLETZUNG: 0.012,
+
+    /** Ü23 nach dem Stichtag: am 30. Juni vor der Saison schon 23 */
+    istUe23(player) {
+        return (player?.age || 30) >= this.ALTERSGRENZE;
+    },
 
     istReserve(player) {
         return !!player?.reserve;
@@ -82,16 +99,22 @@ const ReserveEngine = {
         if (player.abgestellt) return { ok: false, grund: `${player.name} ist gerade bei der Nationalmannschaft.` };
         const regel = this.u23Regel(state, club);
         if (!regel.hat) return { ok: false, grund: regel.grund };
-        if ((player.age || 30) > this.ALTERSGRENZE) {
-            const alte = this.spieler(state, club).filter(p => (p.age || 30) > this.ALTERSGRENZE).length;
-            if (alte >= this.MAX_UEBERALTERT) {
-                return { ok: false, grund: `In der U23 spielen schon ${this.MAX_UEBERALTERT} Spieler über ${this.ALTERSGRENZE}.` };
-            }
-        }
         if (this.profis(state, club).length - 1 < this.MIN_PROFIKADER) {
             return { ok: false, grund: `Im Profikader müssen mindestens ${this.MIN_PROFIKADER} Spieler bleiben.` };
         }
-        return { ok: true };
+        return { ok: true, hinweis: this.ue23Hinweis(state, club, player) };
+    },
+
+    /**
+     * Ein Ü23 darf in den Kader, egal wie viele es schon sind - spielen
+     * können aber nur drei zugleich. Der Hinweis sagt, wenn es eng wird.
+     */
+    ue23Hinweis(state, club, player) {
+        if (!this.istUe23(player)) return null;
+        const schon = this.spieler(state, club).filter(p => p !== player && this.istUe23(p)).length;
+        return schon >= this.MAX_UEBERALTERT
+            ? `In der U23 stehen schon ${schon} Spieler ab ${this.ALTERSGRENZE}. Gleichzeitig auf dem Platz dürfen nur ${this.MAX_UEBERALTERT} stehen - einer sitzt dann draußen.`
+            : null;
     },
 
     /** In die U23 schicken */
@@ -107,10 +130,10 @@ const ReserveEngine = {
         const gs = _reResolve("GameState", "./gameState.js");
         if (warDabei && gs && typeof gs.repairLineup === "function") gs.repairLineup(club, state.players);
         // Wer aus der Stammelf fällt, ist nicht begeistert
-        if ((player.age || 30) > this.ALTERSGRENZE || (player.overall || 0) >= this._kaderSchnitt(state, club)) {
+        if (this.istUe23(player) || (player.overall || 0) >= this._kaderSchnitt(state, club)) {
             player.morale = Math.max(0, (player.morale ?? 70) - 8);
         }
-        return { success: true, player, ausElf: warDabei };
+        return { success: true, player, ausElf: warDabei, hinweis: check.hinweis || null };
     },
 
     /** In den Profikader zurückholen - aus der U23 wie aus der U19, auch einen nur für den Spieltag Nominierten für immer */
@@ -140,11 +163,9 @@ const ReserveEngine = {
         if (player.reserve === this.U19) {
             const regel = this.u23Regel(state, club);
             if (!regel.hat) return { success: false, error: regel.grund };
-            if ((player.age || 30) > this.ALTERSGRENZE && this.spieler(state, club).filter(p => (p.age || 30) > this.ALTERSGRENZE).length >= this.MAX_UEBERALTERT) {
-                return { success: false, error: `In der U23 spielen schon ${this.MAX_UEBERALTERT} Spieler über ${this.ALTERSGRENZE}.` };
-            }
+            const hinweis = this.ue23Hinweis(state, club, player);
             player.reserve = true;
-            return { success: true, player, nach: "U23" };
+            return { success: true, player, nach: "U23", hinweis };
         }
         const youth = _reResolve("YouthEngine", "./youthEngine.js");
         const grenze = youth?.AKADEMIE_HOECHSTALTER ?? 19;
@@ -304,7 +325,9 @@ const ReserveEngine = {
      * Profis - so in der Landesliga.
      */
     U23_LAENDER: {
-        de: { bisStufe: 3, art: "gemischt", start: { 1: 4, 2: 4, 3: 5 }, hoechste: 3, zusatz: "II" },
+        // Höchstens 3. Liga; die eines Drittligisten nicht in der Regionalliga
+        // (erst wenn die Profis in die 2. Liga aufsteigen) - so die DFB-Statuten
+        de: { bisStufe: 3, art: "gemischt", start: { 1: 4, 2: 4, 3: 5 }, hoechste: { 1: 3, 2: 3, 3: 5 }, zusatz: "II" },
         es: { bisStufe: 2, art: "gemischt", start: { 1: 3, 2: 3 }, hoechste: 3, zusatz: "B" },
         it: { bisStufe: 1, art: "gemischt", start: { 1: 3 }, hoechste: 3, zusatz: "U23" },
         en: { bisStufe: 2, art: "eigen", zusatz: "U21" },
@@ -353,7 +376,8 @@ const ReserveEngine = {
         }
         if (regel.art === "gemischt") {
             const tiefste = this._tiefsteStufe(state, land);
-            const hoechste = Math.max(regel.hoechste, profi + 1);
+            const grenze = typeof regel.hoechste === "object" ? (regel.hoechste[profi] || profi + 1) : regel.hoechste;
+            const hoechste = Math.max(grenze, profi + 1);
             const gemerkt = state?.u23Stufe && state.u23Stufe.clubId === club.id ? state.u23Stufe.stufe : null;
             const stufe = Math.max(hoechste, Math.min(tiefste, gemerkt || regel.start[profi] || hoechste));
             const ligen = this._ligenDerStufe(state, land, stufe);
@@ -363,6 +387,17 @@ const ReserveEngine = {
             }
         }
         return { hat: true, art: "eigen", land, zusatz: regel.zusatz, bisStufe: regel.bisStufe };
+    },
+
+    /** Warum die zweite Mannschaft nicht höher darf - für Nachrichten und den Reiter Jugend */
+    grenzText(club, regel) {
+        const profi = club?.level || 1;
+        if (!regel || regel.art !== "gemischt") return "";
+        if (regel.hoechste <= profi + 1) return "Eine zweite Mannschaft spielt nie so hoch wie die eigenen Profis.";
+        if (profi >= 3) {
+            return `Die zweite Mannschaft eines Vereins der ${profi}. Liga spielt höchstens in der ${regel.hoechste}. Liga - erst wenn die Profis aufsteigen, darf sie höher.`;
+        }
+        return `Höher als die ${regel.hoechste}. Liga spielen zweite Mannschaften nicht - darüber spielen nur erste Mannschaften.`;
     },
 
     /** Hat der Verein eine zweite Mannschaft? */
@@ -470,7 +505,8 @@ const ReserveEngine = {
         p.value = wert.value;
         p.trueMarketValue = wert.value;
         p.wage = Math.max(boden, Math.round(wert.wage * this.U23_LOHN / 10) * 10);
-        p.contractYears = Math.max(1, this.ALTERSGRENZE + 1 - alter);
+        // Bis zur letzten Saison als U23: mit 22 am Stichtag
+        p.contractYears = Math.max(1, this.ALTERSGRENZE - alter);
         p.reserve = true;
         p.zweite = true;
         p.squadRole = "Zukunftstalent";
@@ -483,7 +519,8 @@ const ReserveEngine = {
     /** Ein Alter für einen neuen Spieler der zweiten Mannschaft */
     _alter(zufall, nachwuchs) {
         if (nachwuchs) return zufall() < 0.7 ? 18 : 19;
-        const gewichte = [[18, 3], [19, 4], [20, 4], [21, 3], [22, 2], [23, 1]];
+        // Nur U23 nach dem Stichtag: höchstens 22
+        const gewichte = [[18, 3], [19, 4], [20, 4], [21, 3], [22, 2]];
         let r = zufall() * gewichte.reduce((s, [, g]) => s + g, 0);
         for (const [a, g] of gewichte) { r -= g; if (r < 0) return a; }
         return 20;
@@ -556,7 +593,7 @@ const ReserveEngine = {
             .sort((a, b) => (b.pot || 0) - (a.pot || 0)).slice(0, Math.max(0, platz));
         const neu = gute.map(t => {
             const lohn = Math.max(boden, Math.round(gen.getValueAndWage(t.overall || 40, stufe, t.age || 19).wage * this.U23_LOHN / 10) * 10);
-            const p = youth.spielerAusTalent(state, club, t, { wage: lohn, contractYears: Math.max(1, this.ALTERSGRENZE + 1 - (t.age || 19)) });
+            const p = youth.spielerAusTalent(state, club, t, { wage: lohn, contractYears: Math.max(1, this.ALTERSGRENZE - (t.age || 19)) });
             p.wage = lohn;
             p.reserve = true;
             p.zweite = true;
@@ -674,14 +711,14 @@ const ReserveEngine = {
             }
             return { gehen, kommen: [], zurueck };
         }
-        // Wer zu alt ist, geht - wer hinuntergeschickt war, bleibt (bis drei über 23).
+        // Wer am Stichtag 23 ist, ist Ü23 und geht - wer als Profi hinuntergeschickt war, bleibt.
         // Hat der Trainer den Vertrag verlängert, gehört er jetzt zu den Profis.
         u23.forEach(p => {
             if (!p.zweite) return;
-            if ((p.age || 30) > this.ALTERSGRENZE) {
+            if (this.istUe23(p)) {
                 if ((p.contractYears || 0) > 0) { p.reserve = undefined; p.zweite = undefined; zurueck.push(p); }
                 else { this._verabschiede(state, club, p); gehen.push(p); }
-            } else if ((p.contractYears || 0) < 1) p.contractYears = Math.max(1, this.ALTERSGRENZE + 1 - (p.age || 20));
+            } else if ((p.contractYears || 0) < 1) p.contractYears = Math.max(1, this.ALTERSGRENZE - (p.age || 20));
         });
         // Im Ligasystem: nie in der Liga der Profis oder darüber
         if (regel.art === "gemischt") state.u23Stufe = { clubId: club.id, stufe: regel.stufe };
@@ -843,7 +880,7 @@ const ReserveEngine = {
         // Die Elf auf den Plätzen der Formation (nur die eigene U23 hat eine)
         const aufstellung = club && club.id === state?.userClubId
             ? this.aufstellung(state, "u23", verfuegbar)
-            : this.elfNachPlan(verfuegbar, "u23", state?.seasonYear || 1, 0).map((p, i) => ({ slot: i, pos: p.pos, spieler: p, fest: false }));
+            : this.elfNachPlan(verfuegbar, "u23", state?.seasonYear || 1, 0, this.MAX_UEBERALTERT).map((p, i) => ({ slot: i, pos: p.pos, spieler: p, fest: false }));
         const elf = aufstellung.filter(pl => pl.spieler).map(pl => pl.spieler);
         const profiSchnitt = this._kaderSchnitt(state, club);
         const auffuellen = Math.max(0, 11 - elf.length);
@@ -919,7 +956,7 @@ const ReserveEngine = {
      * Rotation (wer am wenigsten gespielt hat, zuerst) und zuletzt die für
      * den Notfall. Geschonte spielen nicht. Im Tor steht genau einer.
      */
-    elfNachPlan(kandidaten, feld, saison, mannschaftsSpiele = 0) {
+    elfNachPlan(kandidaten, feld, saison, mannschaftsSpiele = 0, maxUe23 = Infinity) {
         const spiele = (p) => (p[feld] && p[feld].saison === saison ? p[feld].spiele : 0);
         const stufe = (p) => {
             const r = this.einsatzVon(p).rolle;
@@ -931,9 +968,28 @@ const ReserveEngine = {
         };
         const reihe = (kandidaten || []).filter(p => stufe(p) < 9)
             .sort((a, b) => (stufe(a) - stufe(b)) || (stufe(a) === 3 ? spiele(a) - spiele(b) : 0) || (this.einsatzStaerke(b) - this.einsatzStaerke(a)));
-        const torwart = reihe.find(p => p.pos === "TW");
-        const feldspieler = reihe.filter(p => p.pos !== "TW").slice(0, torwart ? 10 : 11);
+        // In der U23 höchstens drei Ü23 zugleich auf dem Platz (maxUe23) -
+        // wer darüber hinaus käme, bleibt draußen, der nächste rückt nach
+        let ue23 = 0;
+        const darf = (p) => {
+            if (!this.istUe23(p)) return true;
+            if (ue23 >= maxUe23) return false;
+            ue23++;
+            return true;
+        };
+        const torwart = reihe.find(p => p.pos === "TW" && (!this.istUe23(p) || ue23 < maxUe23));
+        if (torwart) darf(torwart);
+        const feldspieler = [];
+        for (const p of reihe) {
+            if (feldspieler.length >= (torwart ? 10 : 11)) break;
+            if (p.pos !== "TW" && darf(p)) feldspieler.push(p);
+        }
         return torwart ? [torwart, ...feldspieler] : feldspieler;
+    },
+
+    /** Wie viele Ü23 die Elf einer Mannschaft haben darf: nur die U23 kennt die Grenze */
+    ue23Grenze(team) {
+        return team === "u23" ? this.MAX_UEBERALTERT : Infinity;
     },
 
     /** Nach dem Spiel: Wer auf einer fremden Position stand, lernt sie (wie bei den Profis) */
@@ -1043,19 +1099,23 @@ const ReserveEngine = {
         const nachId = new Map(kader.map(p => [String(p.id), p]));
         const platz = slots.map((s, i) => ({ slot: i, pos: s.pos, spieler: null, fest: false }));
         const vergeben = new Set();
+        // In der U23 höchstens drei Ü23 zugleich - auch bei festen Plätzen
+        const grenze = this.ue23Grenze(team);
+        let ue23 = 0;
         // 1. Was der Trainer festgelegt hat
         platz.forEach((pl, i) => {
             const p = plan.lineup[i] != null ? nachId.get(String(plan.lineup[i])) : null;
-            if (p && !vergeben.has(p)) { pl.spieler = p; pl.fest = true; vergeben.add(p); }
+            if (!p || vergeben.has(p)) return;
+            if (this.istUe23(p)) { if (ue23 >= grenze) return; ue23++; }
+            pl.spieler = p; pl.fest = true; vergeben.add(p);
         });
         // 2. Der Rest nach dem Einsatzplan - jeder auf den freien Platz, der ihm am besten liegt
         const frei = platz.filter(pl => !pl.spieler);
         if (frei.length) {
             const liga = team === "u23" ? state?.u23liga : state?.jugendliga;
             const spiele = liga && liga.saison === saison ? (liga.eigene || []).length : 0;
-            let reihe = this.elfNachPlan(kader.filter(p => !vergeben.has(p)), team, saison, spiele);
             const twFrei = frei.some(pl => pl.pos === "TW");
-            if (!twFrei) reihe = reihe.filter(p => p.pos !== "TW");
+            let reihe = this.elfNachPlan(kader.filter(p => !vergeben.has(p) && (twFrei || p.pos !== "TW")), team, saison, spiele, grenze - ue23);
             const feldFrei = frei.filter(pl => pl.pos !== "TW").length;
             const tw = twFrei ? reihe.find(p => p.pos === "TW") : null;
             reihe = (tw ? [tw] : []).concat(reihe.filter(p => p.pos !== "TW").slice(0, feldFrei));
@@ -1088,8 +1148,19 @@ const ReserveEngine = {
         // Stand er schon woanders, tauschen beide die Plätze
         const alt = plan.lineup.findIndex(id => id != null && String(id) === String(p.id));
         const vorher = plan.lineup[slotIndex];
-        if (alt >= 0 && alt !== slotIndex) plan.lineup[alt] = vorher ?? null;
-        plan.lineup[slotIndex] = p.id;
+        const neu = plan.lineup.slice();
+        if (alt >= 0 && alt !== slotIndex) neu[alt] = vorher ?? null;
+        neu[slotIndex] = p.id;
+        // Höchstens drei Ü23 zugleich auf dem Platz (Stichtag 30. Juni)
+        const grenze = this.ue23Grenze(team);
+        if (this.istUe23(p) && grenze < Infinity) {
+            const kader = new Map(this.teamKader(state, team).map(x => [String(x.id), x]));
+            const ue23 = neu.filter(id => { const x = id != null ? kader.get(String(id)) : null; return !!x && this.istUe23(x); }).length;
+            if (ue23 > grenze) {
+                return { success: false, error: `Gleichzeitig auf dem Platz dürfen höchstens ${grenze} Spieler stehen, die am Stichtag (30. Juni) schon ${this.ALTERSGRENZE} waren. Nehmen Sie erst einen anderen Ü23 heraus.` };
+            }
+        }
+        plan.lineup = neu;
         // Wer eingeteilt wird, wird nicht mehr geschont
         if (this.einsatzVon(p).rolle === "schonen") this.setzeEinsatz(state, p.id, "auto", undefined);
         return { success: true };
@@ -1247,7 +1318,7 @@ const ReserveEngine = {
         state.u23Stufe = { clubId: club.id, stufe };
         if (!auf && !ab) {
             const sperre = eigen.rang === 1 && liga.stufe - 1 < regel.hoechste;
-            return sperre ? { text: "Aufsteigen darf sie nicht: Eine zweite Mannschaft spielt nie so hoch wie die eigenen Profis." } : {};
+            return sperre ? { text: `Aufsteigen darf sie nicht: ${this.grenzText(club, regel)}` } : {};
         }
         const ziel = this._ligenDerStufe(state, regel.land, stufe);
         const nach = ziel.length ? (ziel[this._hash(club.id) % ziel.length].shortName || ziel[0].name) : `${stufe}. Liga`;

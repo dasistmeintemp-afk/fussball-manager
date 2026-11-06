@@ -5170,14 +5170,17 @@ function runEngineTests() {
         if (GameState.einsatzfaehigeSpieler(club, state.players).some(p => p.id === stamm.id)) throw new Error("Er gilt noch als einsatzfähig für die Profis");
         if (ReserveEngine.hinunter(state, stamm.id).success) throw new Error("Doppelt hinunter geht");
 
-        // Höchstens drei über 23
-        const alt = kader.filter(p => p.age > 23 && !p.reserve).sort((a, b) => a.overall - b.overall);
-        for (let i = 0; i < ReserveEngine.MAX_UEBERALTERT; i++) {
+        // Ü23 (am Stichtag schon 23) dürfen in den Kader, aber nur drei gleichzeitig auf den Platz
+        const alt = kader.filter(p => p.age >= 23 && !p.reserve).sort((a, b) => b.overall - a.overall);
+        const ue23Vorher = ReserveEngine.spieler(state, club).filter(p => ReserveEngine.istUe23(p)).length;
+        for (let i = 0; i <= ReserveEngine.MAX_UEBERALTERT; i++) {
             const res = ReserveEngine.hinunter(state, alt[i].id);
             if (!res.success) throw new Error(`Älterer Spieler ${i + 1} darf nicht hinunter: ${res.error}`);
+            if ((ue23Vorher + i >= ReserveEngine.MAX_UEBERALTERT) !== !!res.hinweis) throw new Error(`Hinweis zu Ü23 falsch beim ${i + 1}.`);
         }
-        const vierter = ReserveEngine.hinunter(state, alt[ReserveEngine.MAX_UEBERALTERT].id);
-        if (vierter.success || !/über/.test(vierter.error)) throw new Error("Der vierte Ältere darf hinunter");
+        const elfU23 = ReserveEngine.aufstellung(state, "u23").filter(pl => pl.spieler).map(pl => pl.spieler);
+        if (elfU23.filter(p => ReserveEngine.istUe23(p)).length !== ReserveEngine.MAX_UEBERALTERT) throw new Error("Nicht genau drei Ü23 in der Elf");
+        if (!ReserveEngine.istUe23({ age: 23 }) || ReserveEngine.istUe23({ age: 22 })) throw new Error("Stichtag: 23 ist schon Ü23");
 
         // Der Profikader darf nicht leerlaufen
         const rest = state.players.filter(p => club.playerIds.includes(p.id) && !p.reserve && p.age <= 23);
@@ -18085,7 +18088,7 @@ function runEngineTests() {
         // Ein Erstligist hat eine volle zweite Mannschaft: Spieler von 18 bis 23, Vertrag bis 23, zwei Torhüter
         const u23 = R.spieler(state, club);
         if (u23.length !== R.U23_KADER[1]) throw new Error(`U23 mit ${u23.length} Spielern`);
-        const falsch = u23.find(p => !p.zweite || p.reserve !== true || p.age < 18 || p.age > R.ALTERSGRENZE || p.contractYears !== R.ALTERSGRENZE + 1 - p.age);
+        const falsch = u23.find(p => !p.zweite || p.reserve !== true || p.age < 18 || R.istUe23(p) || p.contractYears !== R.ALTERSGRENZE - p.age);
         if (falsch) throw new Error(`U23-Spieler falsch: ${falsch.name} ${falsch.age} J., Vertrag ${falsch.contractYears}`);
         if (u23.filter(p => p.pos === "TW").length < 2) throw new Error("U23 ohne zweiten Torwart");
         // Sie spielt im Ligasystem, tiefer als die Profis, gegen Vereine der Liga und andere zweite Mannschaften
@@ -18130,16 +18133,21 @@ function runEngineTests() {
         if (vorher.stufe !== regel.hoechste + 1 || state.u23Stufe.stufe !== regel.hoechste) throw new Error(`Kein Aufstieg: ${JSON.stringify(state.u23Stufe)}`);
         if (!/steigt auf/.test(state.inbox[0].subject)) throw new Error(`Post zum Aufstieg: ${state.inbox[0].subject}`);
         spiele(99);
-        if (state.u23Stufe.stufe !== regel.hoechste || !/nie so hoch wie die eigenen Profis/.test(state.inbox[0].body)) throw new Error("Aufstieg bis zu den Profis");
+        if (state.u23Stufe.stufe !== regel.hoechste || !state.inbox[0].body.includes(R.grenzText(club, regel)) || !/3\. Liga/.test(R.grenzText(club, regel))) throw new Error("Aufstieg über die 3. Liga hinaus");
+        // Die zweite Mannschaft eines Drittligisten spielt nicht in der Regionalliga
+        const drittligist = state.clubs.find(c => c.countryId === "de" && c.level === 3);
+        const r3 = R.u23Regel(state, drittligist);
+        if (r3.hoechste !== 5 || r3.stufe < 5 || !/höchstens in der 5\. Liga/.test(R.grenzText(drittligist, r3))) throw new Error(`Drittligist: ${r3.hoechste}/${r3.stufe}`);
+        if (R.u23Regel(state, state.clubs.find(c => c.countryId === "de" && c.level === 2)).hoechste !== 3) throw new Error("Zweitligist nicht bis zur 3. Liga");
         spiele(0);
         if (state.u23Stufe.stufe !== regel.hoechste + 1) throw new Error("Kein Abstieg");
         state.u23liga = null;
         if (R.ligaStarte(state).stufe !== regel.hoechste + 1) throw new Error("Die neue Saison spielt nicht in der neuen Liga");
 
-        // Saisonwechsel: Wer über 23 ist, geht vereinslos; mit verlängertem Vertrag zu den Profis; Junge rücken nach
+        // Saisonwechsel: Wer am Stichtag 23 ist, geht vereinslos; mit verlängertem Vertrag zu den Profis; Junge rücken nach
         const geht = u23[0], bleibt = u23[1];
-        geht.age = 24; geht.contractYears = 0;
-        bleibt.age = 24; bleibt.contractYears = 2;
+        geht.age = 23; geht.contractYears = 0;
+        bleibt.age = 23; bleibt.contractYears = 2;
         const budget = club.wageBudget, lohnGeht = geht.wage;
         const wechsel = R.saisonwechselUnterbau(state, () => 0.5);
         if (geht.clubId !== null || club.playerIds.includes(geht.id) || geht.reserve || geht.zweite || geht.vereinslosAb !== state.seasonYear) throw new Error("Zu alter nicht vereinslos");
@@ -18165,6 +18173,22 @@ function runEngineTests() {
         // (Namen gibt es in der Welt mehrfach - gezählt wird, wer neu dazukam)
         if (state.players.some(p => p.name === schwach.name && p.clubId === null && p.vereinslosAb === state.seasonYear) || state.players.length !== anzahl + 1) throw new Error(`Schwacher Jugendspieler blieb in der Welt (${state.players.length - anzahl} neu)`);
         if (state.inbox.length !== post) throw new Error("Post für Jugendspieler des U19-Kaders");
+        // Höchstens drei Ü23 zugleich auf dem Platz: auch feste Plätze halten sich daran
+        // (fünf der Besten werden für den Test 23 - dann wären sie alle in der Elf)
+        R.automatischAufstellen(state, "u23");
+        const ue23 = R.spieler(state, club).filter(p => p.pos !== "TW" && (p.injuredWeeks || 0) <= 0).sort((a, b) => b.overall - a.overall).slice(0, 5);
+        const alter = ue23.map(p => p.age);
+        ue23.forEach(p => { p.age = R.ALTERSGRENZE; });
+        if (R.aufstellung(state, "u23").filter(pl => pl.spieler && R.istUe23(pl.spieler)).length !== R.MAX_UEBERALTERT) throw new Error("Nicht genau drei Ü23 in der Elf");
+        const feldPlaetze = R.teamSlots(state, "u23").map((sl, i) => (sl.pos !== "TW" ? i : -1)).filter(i => i >= 0);
+        ue23.slice(0, 3).forEach((p, k) => { const r = R.setzeAufPlatz(state, "u23", feldPlaetze[k], p.id); if (!r.success) throw new Error(`Ü23 ${k + 1} nicht gesetzt: ${r.error}`); });
+        const vierterUe23 = R.setzeAufPlatz(state, "u23", feldPlaetze[3], ue23[3].id);
+        if (vierterUe23.success || !/höchstens 3/.test(vierterUe23.error)) throw new Error("Vierter Ü23 auf festem Platz");
+        // Ein Ü23 gegen einen anderen Ü23 tauschen geht
+        if (!R.setzeAufPlatz(state, "u23", feldPlaetze[2], ue23[3].id).success) throw new Error("Ü23 gegen Ü23 tauschen geht nicht");
+        R.automatischAufstellen(state, "u23");
+        ue23.forEach((p, k) => { p.age = alter[k]; });
+
         // Wer aus der zweiten Mannschaft in die U19 ging, kommt mit 20 in die U23 zurück
         const jung = R.spieler(state, club).find(p => p.age <= 19 && p.zweite);
         if (!R.wechsleTeam(state, jung.id).success || !R.inU19(jung)) throw new Error("Nicht in die U19 gewechselt");

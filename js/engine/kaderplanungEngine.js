@@ -76,7 +76,8 @@ const KaderplanungEngine = {
         const saison = state.seasonYear || 1;
         const bedarf = this.bedarf(club);
         const stamm = this._stammStaerke(state);
-        const eigene = (state.players || []).filter(p => p.clubId === club.id || (p.leihe && p.leihe.stammvereinId === club.id));
+        // Die Spieler der zweiten Mannschaft planen nicht für die Profis mit - wer hochgeholt wird, schon
+        const eigene = (state.players || []).filter(p => (p.clubId === club.id && !(p.zweite && p.reserve)) || (p.leihe && p.leihe.stammvereinId === club.id));
         const kommen = (state.players || []).filter(p => p.vorvertrag && p.vorvertrag.clubId === club.id && p.clubId !== club.id);
 
         const spalten = [];
@@ -164,7 +165,7 @@ const KaderplanungEngine = {
     bedarfsAnalyse(state, club, kader = null) {
         if (!club) return null;
         const a = this.ANALYSE;
-        const spieler = (kader || (state?.players || []).filter(p => p.clubId === club.id)).filter(Boolean);
+        const spieler = (kader || (state?.players || []).filter(p => p.clubId === club.id && !(p.zweite && p.reserve))).filter(Boolean);
         const soll = this.bedarf(club);
         const niveau = spieler.length ? spieler.reduce((s, p) => s + (p.overall || 50), 0) / spieler.length : 50;
         const rang = new Map(spieler.slice().sort((x, y) => (y.overall || 0) - (x.overall || 0)).map((p, i) => [p.id, i]));

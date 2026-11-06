@@ -203,6 +203,7 @@ const PartnerEngine = {
         const eigener = this._eigener(state);
         loans._wechsle(state, p, eigener, partner.club);
         p.reserve = undefined;
+        p.zweite = undefined;
         p.leihe = {
             stammvereinId: eigener.id, leihvereinId: partner.club.id, bisSaison: state.seasonYear || 1,
             lohnAnteil: this.LEIH_ANTEIL, rolle: "Stammspieler", garantie: true, seit: loans._stempel(state),
@@ -229,6 +230,7 @@ const PartnerEngine = {
         if (hindernis) return { success: false, error: hindernis };
         loans._wechsle(state, p, partner.club, eigener);
         p.reserve = undefined;
+        p.zweite = undefined;
         p.leihe = {
             stammvereinId: partner.club.id, leihvereinId: eigener.id, bisSaison: state.seasonYear || 1,
             lohnAnteil: this.LEIH_ANTEIL, rolle: "Talent", seit: loans._stempel(state), gebuehr: 0, kaufoption: null,

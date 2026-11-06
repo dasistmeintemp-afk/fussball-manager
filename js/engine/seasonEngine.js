@@ -224,7 +224,7 @@ class SeasonEngine {
         if (!club) return [];
         const ids = new Set(club.playerIds || []);
         // Die zweite Mannschaft regelt ihre Verträge selbst (ReserveEngine.saisonwechselUnterbau)
-        return (state.players || []).filter(p => ids.has(p.id) && (p.contractYears || 0) <= 0 && !p.leihe && !p.zweite);
+        return (state.players || []).filter(p => ids.has(p.id) && (p.contractYears || 0) <= 0 && !p.leihe && !(p.zweite && p.reserve));
     }
 
     /**
@@ -1396,7 +1396,7 @@ class SeasonEngine {
             if ((player.contractYears || 0) > 0) return;
             if (!player.clubId) { abgaenge.push(player); return; }
             // Die zweite Mannschaft regelt ihre Verträge selbst (ReserveEngine.saisonwechselUnterbau)
-            if (player.zweite) return;
+            if (player.zweite && player.reserve) return;
 
             const club = state.clubs.find(c => c.id === player.clubId);
             if (!club) {

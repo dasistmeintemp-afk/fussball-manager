@@ -17331,7 +17331,8 @@ function runEngineTests() {
 
         // Verträge: jede Stufe gezählt, jeder Spieler mit Rat und Grund
         const v = R.vertraege(state);
-        const kader = state.players.filter(p => p.clubId === "muc");
+        // Ohne die zweite Mannschaft: Ihre Verträge laufen bis 23 und regeln sich selbst
+        const kader = state.players.filter(p => p.clubId === "muc" && !(p.zweite && p.reserve));
         if (v.anzahl !== kader.length || Object.values(v.stufen).reduce((a, b) => a + b, 0) !== v.anzahl) throw new Error(`Vertragsstufen: ${JSON.stringify(v.stufen)}`);
         if (v.liste.some(z => !["anbieten", "vertagen", "nicht"].includes(z.rat) || !z.grund)) throw new Error("Ein Spieler ohne Rat");
         if (v.liste.some((z, n) => n > 0 && z.monate < v.liste[n - 1].monate)) throw new Error("Nicht nach Restlaufzeit sortiert");
@@ -18168,6 +18169,13 @@ function runEngineTests() {
         const jung = R.spieler(state, club).find(p => p.age <= 19 && p.zweite);
         if (!R.wechsleTeam(state, jung.id).success || !R.inU19(jung)) throw new Error("Nicht in die U19 gewechselt");
         if (!R.wechsleTeam(state, jung.id).success || jung.reserve !== true) throw new Error("Nicht zurück in die U23");
+
+        // Verkauft: Beim neuen Verein ist er ein Profi wie jeder andere, und sein Geld fällt aus dem Budget
+        const verkauft = R.spieler(state, club).find(p => p.zweite);
+        const kaeufer = state.clubs.find(c => c.countryId === "de" && c.level === 2);
+        const budgetVorVerkauf = club.wageBudget, lohnVerkauft = verkauft.wage;
+        if (!require('./js/engine/transferEngine.js').TransferEngine.executeTransfer(state, verkauft.id, kaeufer.id, 100000, lohnVerkauft + 500, 2)) throw new Error("Verkauf gescheitert");
+        if (verkauft.zweite || verkauft.reserve || club.wageBudget !== budgetVorVerkauf - lohnVerkauft) throw new Error("Verkaufter bleibt Spieler der zweiten Mannschaft");
 
         // Wunderkinder: oben öfter als unten, mit viel mehr Potenzial und einer Nachricht
         const c = (level) => Y.wunderkindChance({ level });

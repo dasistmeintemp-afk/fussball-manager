@@ -563,14 +563,20 @@ class TransferEngine {
         if (laufbahn && player.clubId) laufbahn.wechsel(state, player, player.clubId);
 
         // Spieler aktualisieren
+        const alterLohn = player.wage || 0;
         player.clubId = buyerClub.id;
         player.wage = wage;
         player.contractYears = contractYears;
         player.morale = 95; // Frische Motivation beim Wechsel
         // Ab heute neu in der Kabine
         player.vereinSeit = (state.seasonYear || state.season || 1) * 1000 + (state.currentDayIndex || 0);
-        // Die U23 des alten Vereins gilt beim neuen nicht, ebenso wenig sein Jugendvertrag
+        // Die U23 des alten Vereins gilt beim neuen nicht, ebenso wenig sein Jugendvertrag.
+        // Ein Spieler der zweiten Mannschaft nimmt das Geld mit, das der Vorstand für sie gab.
+        if (player.zweite && sellerClub && sellerClub.id === state.userClubId) {
+            sellerClub.wageBudget = Math.max(0, Math.round((sellerClub.wageBudget || 0) - alterLohn));
+        }
         player.reserve = undefined;
+        player.zweite = undefined;
         player.jugendvertrag = undefined;
         // Seine Rolle folgt dem Rang im neuen Kader. Vorher nahm er sie vom
         // alten Verein mit: Der Schlüsselspieler eines Drittligisten blieb es
@@ -1832,6 +1838,7 @@ ${stand}`,
         player.transferListed = false;
         player.wechselwunsch = undefined;
         player.reserve = undefined;
+        player.zweite = undefined;
         player.jugendvertrag = undefined;
         player.nominiertAus = undefined;
         player.leihListe = undefined;

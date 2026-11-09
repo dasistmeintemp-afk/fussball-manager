@@ -7424,7 +7424,7 @@ td.nowrap { white-space: nowrap; }
 .pre-fazit-kachel strong { font-size: 15px; }
 
 /* Training: Güte des Stabs als saubere Balkenliste */
-.stab-faecher { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 22px; }
+.stab-faecher { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 8px 22px; }
 .stab-fach { display: grid; grid-template-columns: minmax(0, 1fr) 80px 28px; align-items: center; gap: 10px; font-size: 13px; }
 .stab-fach-name { color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stab-fach .mini-bar { width: 100%; }
@@ -9698,3 +9698,19 @@ table.sortierbar th.sortiert-ab::after { content: " ▾"; }
 /* Livespiel: Das Ereignisbanner der 3D-Ansicht rückt unter die Konferenz-Meldung, statt darunter zu verschwinden */
 .live-pitch-wrapper:has(.lm-konf-blitz:not([hidden])) .lm-3d-banner { top: 66px; }
 .med-zeilen small { font-size: 12px; color: var(--text-soft); line-height: 1.35; }
+
+/* Am Handy nimmt der Erklärkasten nicht mehr den halben Bildschirm: Titel und Knöpfe in einer Zeile,
+   die Punkte klappt ein Tipp auf den Titel auf */
+@media (max-width: 640px) {
+    .einstieg-erklaerung { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 12px; }
+    .einstieg-erklaerung-text { flex: 1 1 140px; min-width: 0; }
+    .einstieg-erklaerung-titel { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .einstieg-erklaerung-titel::after { content: "▾"; font-size: 12px; color: var(--text-muted); transition: transform .15s; }
+    .einstieg-erklaerung.offen .einstieg-erklaerung-titel::after { transform: rotate(180deg); }
+    .einstieg-erklaerung:not(.offen) ul { display: none; }
+    .einstieg-erklaerung.offen .einstieg-erklaerung-text { flex-basis: 100%; }
+    /* Aufstellung & Taktik: die Knöpfe unter "Beste 11" nebeneinander statt drei Zeilen hoch */
+    #pane-tactics .pane-actions { flex-direction: row; flex-wrap: wrap; }
+    #pane-tactics .pane-actions .btn { width: auto; flex: 1 1 calc(50% - 4px); min-width: 0; }
+    #pane-tactics .pane-actions #btnAutoLineup { flex-basis: 100%; }
+}

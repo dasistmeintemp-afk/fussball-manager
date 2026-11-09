@@ -18633,7 +18633,7 @@ function runEngineTests() {
             if (ui.kontextEintraege(fremd).some(k => k.art === "behandeln")) throw new Error("Fremder Spieler im Kontextmenü behandelbar");
             let dialog = null;
             ui.zeigeEntscheidung = (d) => { dialog = d; };
-            ui.showToast = () => {}; ui.renderCurrentTab = () => {}; ui.renderHeader = () => {};
+            ui.showToast = () => {}; ui.renderCurrentTab = () => {}; ui.renderHeader = () => {}; ui.showPlayerDetailsModal = () => {};
             ui.zeigeBehandlung(f.id);
             if (!dialog || !/Fitspritzen/.test(dialog.html) || !/Intensive Reha/.test(dialog.html)) throw new Error("Dialog ohne die beiden Wege");
             dialog.knoepfe.find(k => k.text === "Fitspritzen").aktion();
@@ -18761,7 +18761,8 @@ function runEngineTests() {
         try {
             let dialog = null;
             ui.zeigeEntscheidung = (x) => { dialog = x; };
-            ui.showToast = () => {}; ui.renderCurrentTab = () => {}; ui.renderHeader = () => {};
+            // Die Akte selbst gehört nicht zu diesem Test (ein offenes document aus anderen Tests würde sie zeichnen)
+            ui.showToast = () => {}; ui.renderCurrentTab = () => {}; ui.renderHeader = () => {}; ui.showPlayerDetailsModal = () => {};
             const h = profis[10];
             verletze(h, "Kreuzbandanriss", 10);
             ui.zeigeBehandlung(h.id);

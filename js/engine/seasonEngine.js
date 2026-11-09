@@ -694,6 +694,10 @@ class SeasonEngine {
             negotiationEngine.processDay(state);
         }
 
+        // Glatt Rot bei den eigenen Profis: Der Co-Trainer fragt nach einer Strafe
+        const fuehrung = _resolve('FuehrungEngine', './fuehrungEngine.js');
+        if (fuehrung && typeof fuehrung.meldePlatzverweise === 'function') fuehrung.meldePlatzverweise(state);
+
         // 4. Verletzungen & Sperren um 1 reduzieren
         // Fitgespritzte: eine Woche näher dran, und wo es nach dem Spiel aufgebrochen ist, meldet der Arzt
         const medizin = _resolve('MedizinEngine', './medizinEngine.js');
@@ -713,6 +717,8 @@ class SeasonEngine {
                 if (p.injuredWeeks === 0) p.injured = false;
                 // Die intensive Reha galt dieser Verletzung - die nächste darf wieder
                 if (p.injuredWeeks === 0 && p.reha) p.reha = null;
+                // Konservativ behandelt: jetzt beginnt der Aufbau mit Rückfallrisiko
+                if (p.injuredWeeks === 0 && p.eingriff && medizin && typeof medizin.geheilt === 'function') medizin.geheilt(state, p);
                 if (p.injuredWeeks === 0 && p.clubId === state.userClubId && !p.reserve) {
                     state.inbox.unshift({
                         id: Date.now() + 3,
@@ -729,6 +735,8 @@ class SeasonEngine {
 
             if (p.suspendedMatches > 0) {
                 p.suspendedMatches--;
+                // Mit der Sperre verfällt auch die Frage nach einer Strafe
+                if (p.suspendedMatches === 0 && p.strafeOffen) p.strafeOffen = null;
                 if (p.suspendedMatches === 0 && p.clubId === state.userClubId) {
                     state.inbox.unshift({
                         id: Date.now() + 4,
@@ -1216,6 +1224,9 @@ class SeasonEngine {
             // Auch wer fitgespritzt spielte, ist über den Sommer ausgeheilt
             if (player.angeschlagen) player.angeschlagen = null;
             if (player.reha) player.reha = null;
+            if (player.eingriff) player.eingriff = null;
+            if (player.frei) player.frei = null;
+            if (player.strafeOffen) player.strafeOffen = null;
         });
 
         // Verträge um ein Jahr kürzen; wessen Vertrag danach im letzten Jahr

@@ -306,6 +306,13 @@ class TrainingEngine {
             if (typeof player.matchSharpness !== "number") player.matchSharpness = 60;
             player.daysSinceInjury = (player.daysSinceInjury ?? 999) + 1;
 
+            // Freie Tage (MedizinEngine.gibFrei): kein Training, schnellere Erholung
+            if (player.frei > 0 && !(player.injuredWeeks > 0)) {
+                const med = (typeof MedizinEngine !== "undefined" && MedizinEngine) ? MedizinEngine
+                    : ((typeof window !== "undefined" && window.MedizinEngine) ? window.MedizinEngine
+                        : (typeof require !== "undefined" ? require("./medizinEngine.js").MedizinEngine : null));
+                if (med && med.freierTag(player)) return;
+            }
             // Fitgespritzt (MedizinEngine): Er spielt, trainiert aber nicht mit
             // und kommt nicht über 85 % Kondition
             if (player.injuredWeeks > 0 || player.angeschlagen) {

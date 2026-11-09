@@ -67,6 +67,16 @@ const MedizinEngine = {
     /** Intensive Reha: Kosten je Woche Restdauer nach Ligastufe */
     REHA_KOSTEN: { 1: 20000, 2: 10000, 3: 5000, 4: 2500, 5: 1500, 6: 1000, 7: 600 },
 
+    /**
+     * Operation oder konservativ bei schweren Verletzungen ab fünf Wochen:
+     * Dauer als Faktor der Restdauer, Kosten der Operation in Reha-Wochen,
+     * wie viel robuster sie macht, Aufbau und Rückfallrisiko je Einsatz danach.
+     */
+    EINGRIFF: { abWochen: 5, opDauer: 1.25, opKostenWochen: 6, opRobuster: 2, konservativDauer: 0.7, aufbauWochen: 4, risiko: 0.08 },
+
+    /** Freie Tage: wie viele, ab welcher Kondition nicht mehr, Erholung und Verlust an Spielschärfe je Tag */
+    FREI: { tage: 2, abKondition: 90, erholung: 7, schaerfe: 2.5 },
+
     /** Ab hier rät der Arzt ab (Risiko je Spiel) */
     RAT: { vertretbar: 0.12, abraten: 0.25 },
 
@@ -124,7 +134,9 @@ const MedizinEngine = {
         const wochen = Math.max(1, a ? a.wochen : (player?.injuredWeeks || 1));
         const art = this.art(player);
         const arzt = this.arzt(club);
-        const r = art.risiko * (1 + 0.5 * (wochen - 1)) * this._anfaelligkeit(player) * (1.35 - arzt.guete / 150);
+        // Nach konservativer Behandlung gilt ein festes Grundrisiko, solange er im Aufbau ist
+        const grund = a && typeof a.risiko === "number" ? a.risiko : art.risiko * (1 + 0.5 * (wochen - 1));
+        const r = grund * this._anfaelligkeit(player) * (1.35 - arzt.guete / 150);
         return Math.max(0.02, Math.min(0.6, r));
     },
 
@@ -152,9 +164,17 @@ const MedizinEngine = {
      * { spritze, reha, absetzen }, je null, wenn es nicht zur Wahl steht.
      */
     optionen(state, player) {
-        const erg = { spritze: null, reha: null, absetzen: null };
+        const erg = { spritze: null, reha: null, absetzen: null, eingriff: null, frei: null };
         const club = this._club(state, player);
         if (!player || !club || club.id !== state?.userClubId) return erg;
+
+        // Freie Tage: für Gesunde, die müde sind (unter 90 % Kondition)
+        if (!(player.injuredWeeks > 0) && !player.angeschlagen && !player.abgestellt) {
+            let fgrund = null;
+            if (player.frei > 0) fgrund = `Er hat schon frei (noch ${player.frei} ${player.frei === 1 ? "Tag" : "Tage"}).`;
+            else if ((player.fitness ?? 100) >= this.FREI.abKondition) fgrund = "Er ist frisch genug.";
+            erg.frei = { ok: !fgrund, grund: fgrund, tage: this.FREI.tage, kondition: Math.round(player.fitness ?? 100) };
+        }
 
         if (player.angeschlagen) {
             const risiko = this.risiko(player, club);
@@ -184,6 +204,17 @@ const MedizinEngine = {
         else if (wochen < 2) rgrund = "Bei einer Woche Ausfall lässt sich nichts mehr abkürzen.";
         else if ((club.balance || 0) < kosten) rgrund = "Dafür reicht das Geld auf dem Konto nicht.";
         erg.reha = { ok: !rgrund, grund: rgrund, kosten, ersparnis, wochen, zentrum: this.zentrum(state, club) };
+
+        // Schwere Verletzung: Operation oder konservativ - einmal, solange noch viel Zeit bleibt
+        if (art.schwere === "schwer" && wochen >= this.EINGRIFF.abWochen && !player.eingriff) {
+            const opKosten = (this.REHA_KOSTEN[club.level || 1] || 1000) * this.EINGRIFF.opKostenWochen;
+            erg.eingriff = {
+                op: { ok: (club.balance || 0) >= opKosten, grund: (club.balance || 0) >= opKosten ? null : "Dafür reicht das Geld auf dem Konto nicht.",
+                    wochen: Math.ceil(wochen * this.EINGRIFF.opDauer), kosten: opKosten, robuster: this.EINGRIFF.opRobuster },
+                konservativ: { ok: true, wochen: Math.max(2, Math.floor(wochen * this.EINGRIFF.konservativDauer)),
+                    aufbau: this.EINGRIFF.aufbauWochen, risiko: this.EINGRIFF.risiko, folge: art.folge }
+            };
+        }
         return erg;
     },
 
@@ -191,6 +222,69 @@ const MedizinEngine = {
     behandelbar(state, player) {
         const o = this.optionen(state, player);
         return !!(o.spritze || o.reha || o.absetzen);
+    },
+
+    /**
+     * Operation: länger raus, dafür ist die Schwachstelle repariert (weniger
+     * anfällig). Konservativ: schneller zurück, danach einige Wochen im
+     * Aufbau mit Rückfallrisiko je Einsatz.
+     */
+    waehleEingriff(state, playerId, art) {
+        const p = this._spieler(state, playerId);
+        const o = this.optionen(state, p).eingriff;
+        if (!o) return { ok: false, grund: "Dafür ist es zu spät oder die Verletzung zu leicht." };
+        const club = this._club(state, p);
+        if (art === "op") {
+            if (!o.op.ok) return { ok: false, grund: o.op.grund };
+            club.balance = (club.balance || 0) - o.op.kosten;
+            const fe = _medResolve("FinanceEngine", "./financeEngine.js");
+            if (fe && typeof fe.recordTransaction === "function") fe.recordTransaction(state, club.id, "medizin", -o.op.kosten, `Operation: ${p.name} (${p.injuryName || "Verletzung"})`);
+            p.injuredWeeks = o.op.wochen;
+            p.eingriff = { art: "op" };
+            if (p.hiddenAttributes && typeof p.hiddenAttributes.injuryProneness === "number") {
+                p.hiddenAttributes.injuryProneness = Math.max(1, p.hiddenAttributes.injuryProneness - o.op.robuster);
+            }
+            return { ok: true, art, wochen: p.injuredWeeks, kosten: o.op.kosten, text: `${p.name} wird operiert und fällt ${p.injuredWeeks} Wochen aus. Danach ist er weniger anfällig.` };
+        }
+        if (art === "konservativ") {
+            p.injuredWeeks = o.konservativ.wochen;
+            p.eingriff = { art: "konservativ" };
+            return { ok: true, art, wochen: p.injuredWeeks, text: `${p.name} wird konservativ behandelt und ist in ${p.injuredWeeks} Wochen zurück, dann ${o.konservativ.aufbau} Wochen im Aufbau mit Rückfallrisiko.` };
+        }
+        return { ok: false, grund: "Unbekannte Behandlung." };
+    },
+
+    /**
+     * Geheilt (SeasonEngine): Nach konservativer Behandlung ist der Spieler
+     * noch einige Wochen im Aufbau - er spielt, kann aber rückfällig werden.
+     */
+    geheilt(state, p) {
+        const e = p?.eingriff;
+        if (!e) return;
+        p.eingriff = null;
+        if (e.art !== "konservativ") return;
+        p.angeschlagen = { name: p.injuryName || "Verletzung", wochen: this.EINGRIFF.aufbauWochen, art: "konservativ",
+            risiko: this.EINGRIFF.risiko, saison: state?.seasonYear || 1, tag: state?.currentDayIndex || 0 };
+        p.fitness = Math.min(p.fitness ?? 80, this.KONDITION_ANGESCHLAGEN);
+    },
+
+    /** Freie Tage: Er setzt mit dem Training aus, erholt sich schneller, verliert etwas Spielschärfe */
+    gibFrei(state, playerId) {
+        const p = this._spieler(state, playerId);
+        const o = this.optionen(state, p).frei;
+        if (!o) return { ok: false, grund: "Er ist verletzt oder nicht da." };
+        if (!o.ok) return { ok: false, grund: o.grund };
+        p.frei = o.tage;
+        return { ok: true, tage: o.tage, text: `${p.name} hat ${o.tage} Tage frei.` };
+    },
+
+    /** Ein freier Tag (TrainingEngine): liefert true, wenn der Spieler heute nicht trainiert */
+    freierTag(p) {
+        if (!(p?.frei > 0)) return false;
+        p.fitness = Math.min(100, (p.fitness ?? 80) + this.FREI.erholung);
+        p.matchSharpness = Math.max(0, (p.matchSharpness ?? 60) - this.FREI.schaerfe);
+        p.frei = p.frei > 1 ? p.frei - 1 : null;
+        return true;
     },
 
     /** Fitspritzen oder früher zurückholen: Der Spieler ist sofort einsatzbereit */

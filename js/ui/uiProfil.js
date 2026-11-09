@@ -135,8 +135,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             : [];
         // Verletzt oder fitgespritzt: Behandlung mit dem Mannschaftsarzt (MedizinEngine)
         const medizin = eigen && typeof this.medizinBehandelbar === "function" && this.medizinBehandelbar(player)
-            ? [{ text: player.angeschlagen ? "Spritzen absetzen oder weiter" : "Behandeln: fitspritzen, Reha", icon: "i-medical", aktion: () => this.zeigeBehandlung(player.id) }]
+            ? [{ text: player.angeschlagen ? (player.angeschlagen.art === "konservativ" ? "Aufbau: schonen oder weiter" : "Spritzen absetzen oder weiter") : "Behandeln: fitspritzen, Reha, Operation", icon: "i-medical", aktion: () => this.zeigeBehandlung(player.id) }]
             : [];
+        if (eigen && typeof this.medizinFreiMoeglich === "function" && this.medizinFreiMoeglich(player)) {
+            medizin.push({ text: "Zwei freie Tage geben", icon: "i-clock", aktion: () => this.medizinAusfuehren("frei", player.id) });
+        }
         const gruppen = [
             { titel: "Mannschaft", eintraege: mannschaft },
             { titel: "Medizin", eintraege: medizin },
@@ -147,6 +150,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 eigen && da("#btnPdAufloesen") ? { text: "Vertrag auflösen", icon: "i-trash", reiter: "entwicklung", ziel: "#pdAbgabe" } : null
             ] },
             { titel: "Kabine", eintraege: [
+                eigen && typeof this.strafeMoeglich === "function" && this.strafeMoeglich(player) ? { text: "Platzverweis ahnden", icon: "i-alert", aktion: () => this.zeigeStrafe(player.id) } : null,
                 eigen && da("[data-gespraech]") ? { text: "Gespräch unter vier Augen", icon: "i-chat", reiter: "vertrag", ziel: "[data-gespraech]" } : null,
                 eigen ? { text: "Rückennummer ändern", icon: "i-edit", knopf: "#pdTrikot button.pd-nr", ausserhalb: true } : null
             ] },
@@ -495,6 +499,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         kacheln.push(kachel("Fitness", "i-medical", `
             <div class="pf-gross pf-ton-${player.injuredWeeks > 0 ? "schlecht" : ((player.fitness ?? 95) >= 75 ? "gut" : "mittel")}">${player.injuredWeeks > 0 ? `Verletzt · ${player.injuredWeeks} Wo.` : ((player.fitness ?? 95) >= 90 ? "Topfit" : ((player.fitness ?? 95) >= 75 ? "Einsatzbereit" : "Müde"))}</div>
             ${player.injuredWeeks > 0 && player.injuryName ? `<p class="pf-klein">${esc(player.injuryName)}${player.reha ? " · in der intensiven Reha" : ""}</p>` : ""}
+            ${player.frei > 0 ? `<p class="pf-klein">Hat frei, noch ${player.frei} ${player.frei === 1 ? "Tag" : "Tage"}</p>` : ""}
+            ${player.eingriff && player.injuredWeeks > 0 ? `<p class="pf-klein">${player.eingriff.art === "op" ? "Operiert" : "Konservativ behandelt"}</p>` : ""}
             ${player.angeschlagen ? `<p class="pf-klein pf-ton-mittel">💉 ${esc(this.medizinStatus ? this.medizinStatus(player) : "Fitgespritzt")} angeschlagen (${esc(player.angeschlagen.name)})</p>` : ""}
             ${isUserClub && !isProspect && typeof this.medizinBehandelbar === "function" && this.medizinBehandelbar(player)
                 ? `<button type="button" class="btn btn-sm btn-secondary pf-behandeln" data-behandlung="${esc(player.id)}"><svg class="ico" aria-hidden="true"><use href="#i-medical"/></svg>${player.angeschlagen ? "Spritzen" : "Behandeln"}</button>` : ""}

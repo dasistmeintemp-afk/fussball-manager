@@ -9697,3 +9697,4 @@ table.sortierbar th.sortiert-ab::after { content: " ▾"; }
 
 /* Livespiel: Das Ereignisbanner der 3D-Ansicht rückt unter die Konferenz-Meldung, statt darunter zu verschwinden */
 .live-pitch-wrapper:has(.lm-konf-blitz:not([hidden])) .lm-3d-banner { top: 66px; }
+.med-zeilen small { font-size: 12px; color: var(--text-soft); line-height: 1.35; }

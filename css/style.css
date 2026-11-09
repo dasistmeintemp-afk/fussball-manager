@@ -9694,3 +9694,6 @@ table.sortierbar th.sortiert-ab::after { content: " ▾"; }
 .med-zeilen > div { display: flex; flex-direction: column; gap: 1px; }
 .med-zeilen span { font-size: 11.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
 .pf-behandeln { margin: 4px 0 6px; }
+
+/* Livespiel: Das Ereignisbanner der 3D-Ansicht rückt unter die Konferenz-Meldung, statt darunter zu verschwinden */
+.live-pitch-wrapper:has(.lm-konf-blitz:not([hidden])) .lm-3d-banner { top: 66px; }

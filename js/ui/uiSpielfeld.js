@@ -88,7 +88,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
      * Pro Frame wird nur noch dieses Bild kopiert - das spart bei 60 fps
      * hunderte Zeichenbefehle und beseitigt das Ruckeln.
      */
-    buildPitchBackdrop(width, height, stil = "modern") {
+    buildPitchBackdrop(width, height, stil = "modern", rand = 0.05) {
         const canvas = (typeof document !== "undefined") ? document.createElement("canvas") : null;
         if (!canvas) return null;
 
@@ -99,7 +99,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         // Das Spielfeld behält sein echtes Seitenverhältnis (105 x 68 m) und
         // wird mittig in den Rasen gelegt; ringsum bleibt etwas Umfeld sichtbar.
         const PITCH_RATIO = 105 / 68;
-        const margin = Math.round(Math.min(width, height) * 0.05);
+        const margin = Math.round(Math.min(width, height) * rand);
 
         let pitchW = width - margin * 2;
         let pitchH = pitchW / PITCH_RATIO;
@@ -213,7 +213,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ctx.lineWidth = Math.max(2, unit * 0.2);
         });
 
-        return { canvas, pitchX, pitchY, pitchW, pitchH, midX, midY, unit, stil, umfeld: klassisch ? "#6d693c" : "#08301d" };
+        return { canvas, pitchX, pitchY, pitchW, pitchH, midX, midY, unit, stil, rand, umfeld: klassisch ? "#6d693c" : "#08301d" };
     },
 
     /**
@@ -428,6 +428,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
      * Einblendungen wie im Fernsehen: Spielphasen, Standardsituationen,
      * Torsequenz, Karten und Auswechslungen.
      */
+    /** Abstand des Ereignisbanners vom oberen Rand, wenn die Konferenz darüber meldet (CSS-Pixel) */
+    BANNER_UNTER_KONFERENZ: 66,
+
     drawBroadcastOverlays(ctx, canvas, liveMatch, bg) {
         const { pitchH } = bg;
         const midX = canvas.width / 2;
@@ -502,25 +505,42 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         // Banner für Spielphasen und Ereignisse
         const banner = liveMatch.banner;
         if (banner && banner.timer > 0) {
+            // Ein Feld oben in der Mitte, so breit wie sein Text - vorher lag
+            // ein Streifen über die ganze Breite halb durchsichtig auf den
+            // Spielern. Meldet gerade die Konferenz ein Tor, rückt es darunter.
             const fade = Math.min(1, banner.timer * 1.6);
-            const boxH = Math.round(pitchH * 0.115);
-            const boxY = Math.round(canvas.height * 0.13);
+            const s = canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
+            const boxH = Math.round(Math.max(40 * s, pitchH * 0.105));
+            const konf = typeof document !== "undefined" ? document.getElementById("lmKonfBlitz") : null;
+            const boxY = Math.round((konf && !konf.hidden ? this.BANNER_UNTER_KONFERENZ : 10) * s);
+            const titelFont = `800 ${Math.round(boxH * 0.4)}px 'Inter', system-ui, sans-serif`;
+            const unterFont = `600 ${Math.round(boxH * 0.26)}px 'Inter', system-ui, sans-serif`;
 
             ctx.save();
+            ctx.font = titelFont;
+            let tw = ctx.measureText(banner.title).width;
+            if (banner.subtitle) { ctx.font = unterFont; tw = Math.max(tw, ctx.measureText(banner.subtitle).width); }
+            const boxW = Math.min(canvas.width - 24 * s, tw + boxH * 1.1);
+            const boxX = (canvas.width - boxW) / 2;
             ctx.globalAlpha = fade;
-            ctx.fillStyle = banner.color || "rgba(12, 16, 22, 0.92)";
-            ctx.fillRect(0, boxY, canvas.width, boxH);
+            ctx.fillStyle = "rgba(10, 14, 20, 0.94)";
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(boxX, boxY, boxW, boxH, 10 * s); else ctx.rect(boxX, boxY, boxW, boxH);
+            ctx.fill();
+            // Die Farbe des Ereignisses als Kante unten
+            ctx.fillStyle = banner.color || "rgba(148, 163, 184, 0.9)";
+            ctx.fillRect(boxX + 10 * s, boxY + boxH - 3 * s, boxW - 20 * s, 3 * s);
 
             ctx.fillStyle = "#f8fafc";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.font = `800 ${Math.round(boxH * 0.42)}px 'Inter', system-ui, sans-serif`;
-            ctx.fillText(banner.title, canvas.width / 2, boxY + boxH * 0.36);
+            ctx.font = titelFont;
+            ctx.fillText(banner.title, canvas.width / 2, boxY + boxH * (banner.subtitle ? 0.34 : 0.48), boxW - 16 * s);
 
             if (banner.subtitle) {
-                ctx.font = `600 ${Math.round(boxH * 0.26)}px 'Inter', system-ui, sans-serif`;
+                ctx.font = unterFont;
                 ctx.fillStyle = "rgba(226, 232, 240, 0.92)";
-                ctx.fillText(banner.subtitle, canvas.width / 2, boxY + boxH * 0.74);
+                ctx.fillText(banner.subtitle, canvas.width / 2, boxY + boxH * 0.7, boxW - 16 * s);
             }
             ctx.restore();
         }

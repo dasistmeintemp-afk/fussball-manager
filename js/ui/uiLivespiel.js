@@ -21,7 +21,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         try { gespeichert = JSON.parse(localStorage.getItem("fm_anzeige2d") || "null"); } catch (e) { gespeichert = null; }
         this._anzeige2D = {
             namen: true, formEigene: false, formGegner: false, feldGross: false,
-            dreiD: false, kamera3D: "tv", kamera2D: "dynamisch", qualitaet3D: "auto", wiederholung3D: true,
+            dreiD: false, kamera3D: "tv", kamera2D: "feld", qualitaet3D: "auto", wiederholung3D: true,
             wiederholung2D: true, passwege: false, laufwege: false, steilpaesse: true, rasen: "klassisch",
             ...(gespeichert || {})
         };
@@ -122,6 +122,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             };
         });
     },
+
+    /** Rand ums Spielfeld (Anteil der kürzeren Bildseite) und Spielergröße in der Totale */
+    FELD_RAND: { feld: 0.025, dynamisch: 0.05 },
+    FELD_SPIELER: 1.2,
 
     /**
      * Eine kritisch gedämpfte Feder für die Kamera: Sie läuft auf das Ziel zu,
@@ -604,9 +608,12 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         const render2DCanvas = (dt = 0.016) => {
             const rasen = this.anzeige2D().rasen === "modern" ? "modern" : "klassisch";
+            // Ganzes Feld: weniger Rand ums Spielfeld, damit es die Fläche füllt
+            const ganzesFeld = this.anzeige2D().kamera2D === "feld";
+            const rand = ganzesFeld ? this.FELD_RAND.feld : this.FELD_RAND.dynamisch;
             if (!this.pitchBackdrop || this.pitchBackdrop.canvas.width !== canvas.width || this.pitchBackdrop.canvas.height !== canvas.height
-                || this.pitchBackdrop.stil !== rasen) {
-                this.pitchBackdrop = this.buildPitchBackdrop(canvas.width, canvas.height, rasen);
+                || this.pitchBackdrop.stil !== rasen || this.pitchBackdrop.rand !== rand) {
+                this.pitchBackdrop = this.buildPitchBackdrop(canvas.width, canvas.height, rasen, rand);
             }
             const bg = this.pitchBackdrop;
             if (!bg) return;
@@ -689,7 +696,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             // Spielergröße wächst mit dem Zoom, aber gedämpft
             // Gut ein Siebtel größer als vorher: Die Rückennummern waren in der
             // Totale kaum zu lesen, auf dem Handy gar nicht.
-            const radius = Math.max(7, (pitchW / 105) * 1.5 * (0.5 * cam.zoom + 0.5));
+            // In der Totale (Ganzes Feld) ein Fünftel größer, damit Nummern und Namen lesbar bleiben
+            const radius = Math.max(7, (pitchW / 105) * 1.5 * (0.5 * cam.zoom + 0.5) * (ganzesFeld ? this.FELD_SPIELER : 1));
             const torwartFarbe = team => liveMatch.kits?.[team]?.tw || (team === "home" ? "#facc15" : "#22d3ee");
 
             const numberFont = `bold ${Math.round(radius * 0.92)}px 'Inter', system-ui, sans-serif`;
@@ -1017,6 +1025,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
             // 6c. Konfetti nach einem Tor, über allem auf dem Rasen
             this.zeichneTorjubel(ctx, liveMatch, players, ball, toX, toY, unit, radius, torlinien, inWiederholung, "oben", dt);
+
+            // 6d. Karte des angetippten Spielers (uiLiveDarstellung.js)
+            this._feldBild = { toX, toY, radius };
+            if (!inWiederholung) this.zeichneSpielerkarte(ctx, canvas, liveMatch, players, toX, toY, radius);
 
             // 7. Übersichtsradar, sobald herangezoomt wird
             if (cam.zoom > 1.3) {

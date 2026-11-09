@@ -895,6 +895,23 @@ function runWizardTests() {
         probe.setze("drohne");
         if (probe.kamera !== "tv" || !Spielfeld3D.KAMERA.hintertor || !(Spielfeld3D.REGIE.nah > Spielfeld3D.REGIE.totale)) throw new Error("Kamerawahl oder Regie-Grenzen falsch");
         if (!/data-anzeige-wahl="kamera2D"/.test(html) || !/<option value="feld">Ganzes Feld<\/option>/.test(html)) throw new Error("Kamerawahl für 2D fehlt");
+        // 2D: Ganzes Feld ist der Standard; ein Tipp auf einen Spieler zeigt seine Karte, derselbe noch einmal schließt sie
+        const { UIManager: UIK } = require('./js/ui/uiManager.js');
+        const uik = Object.create(UIK.prototype);
+        const altSpeicher = global.localStorage;
+        global.localStorage = { getItem: () => null, setItem: () => {} };
+        try { if (uik.anzeige2D().kamera2D !== "feld") throw new Error(`Standard-Kamera 2D: ${uik.anzeige2D().kamera2D}`); } finally { global.localStorage = altSpeicher; }
+        if (!(uik.FELD_RAND.feld < uik.FELD_RAND.dynamisch) || !(uik.FELD_SPIELER > 1)) throw new Error("Ganzes Feld füllt die Fläche nicht besser");
+        const lmK = { players2D: [{ id: 7, team: "home", pos: "ZM", name: "Kern", number: 8, x: 50, y: 50, freshness: 0.8 }, { id: 9, team: "away", pos: "ST", name: "Fern", number: 9, x: 80, y: 20, freshness: 1 }],
+            verlauf: [{ type: "goal", playerId: 7 }, { type: "goal", playerId: 9, assistId: 7 }], verwarnt: { home: [7], away: [] }, angeschlagen: { home: [], away: [] },
+            liveNoten: () => new Map([[7, { note: 7.4 }]]) };
+        uik._feldBild = { toX: x => x * 10, toY: y => y * 5, radius: 12 };
+        if (uik.waehleFeldSpieler(lmK, 505, 255) !== 7 || uik._feldWahl.id !== 7) throw new Error("Tipp trifft den Spieler nicht");
+        const karte = uik.feldKarteDaten(lmK, lmK.players2D[0]);
+        if (karte.titel !== "8 Kern" || karte.zeilen.map(z => z.join("=")).join("|") !== "Note=7,4|Kondition=80 %|Tore · Vorlagen=1 · 1|Status=Gelb") throw new Error(`Karte: ${JSON.stringify(karte)}`);
+        if (uik.waehleFeldSpieler(lmK, 505, 255) !== null || uik._feldWahl) throw new Error("Zweiter Tipp schließt die Karte nicht");
+        uik.waehleFeldSpieler(lmK, 505, 255);
+        if (uik.waehleFeldSpieler(lmK, 100, 400) !== null || uik._feldWahl) throw new Error("Tipp daneben schließt die Karte nicht");
         if (!/data-anzeige-wahl="qualitaet3D"/.test(html) || !/data-anzeige2d="wiederholung3D"/.test(html)) throw new Error("Qualitätswahl oder Wiederholungsschalter fehlen");
         const sw = fs.readFileSync('./service-worker.js', 'utf8');
         if (!sw.includes('./js/vendor/three.min.js') || !sw.includes('./js/ui/spielfeld3d.js')) throw new Error("3D fehlt im Offline-Vorrat");

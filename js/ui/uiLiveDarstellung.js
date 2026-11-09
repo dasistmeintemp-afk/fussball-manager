@@ -42,14 +42,117 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const canvas = document.getElementById("livePitchCanvas");
         if (canvas && !canvas.dataset.wdhGebunden) {
             canvas.dataset.wdhGebunden = "1";
-            canvas.addEventListener("click", () => {
+            canvas.addEventListener("click", (e) => {
                 if (this._wdh && this._wdh.aktiv) {
                     this._wdh = null;
                     // Der Klick gilt dem Spiel, das gerade läuft - gebunden wird nur einmal
                     if (this.app?.currentLiveMatch) this.blendeSchnitt(this.app.currentLiveMatch);
+                    return;
                 }
+                // Ein Tipp auf einen Spieler zeigt seine Karte, daneben schließt sie
+                const lm = this.app?.currentLiveMatch;
+                const r = canvas.getBoundingClientRect();
+                if (!lm || !r.width) return;
+                const skala = canvas.width / r.width;
+                this.waehleFeldSpieler(lm, (e.clientX - r.left) * skala, (e.clientY - r.top) * skala);
             });
         }
+    },
+
+    /** Wie lange die Karte eines angetippten Spielers stehen bleibt (Sekunden) */
+    FELD_KARTE_DAUER: 8,
+
+    /**
+     * Tipp aufs Feld: Der nächste Spieler im Umkreis bekommt seine Karte
+     * (Note, Kondition, Tore, Karten). Derselbe noch einmal oder ein Tipp
+     * daneben schließt sie. Liefert die gewählte Spieler-ID oder null.
+     */
+    waehleFeldSpieler(liveMatch, px, py) {
+        const bild = this._feldBild;
+        if (!bild || !liveMatch) return null;
+        let best = null, bestD = bild.radius * 2.2;
+        (liveMatch.players2D || []).forEach(p => {
+            const lage = this._glatteLagen && this._glatteLagen.get(p.id);
+            const d = Math.hypot(bild.toX(lage ? lage.x : p.x) - px, bild.toY(lage ? lage.y : p.y) - py);
+            if (d < bestD) { bestD = d; best = p; }
+        });
+        const uhr = (typeof performance !== "undefined" ? performance.now() : Date.now()) / 1000;
+        if (!best || (this._feldWahl && this._feldWahl.id === best.id)) { this._feldWahl = null; return null; }
+        this._feldWahl = { id: best.id, bis: uhr + this.FELD_KARTE_DAUER };
+        return best.id;
+    },
+
+    /** Was auf der Karte steht - aus dem laufenden Spiel */
+    feldKarteDaten(liveMatch, p) {
+        const seite = p.team;
+        const noten = typeof liveMatch.liveNoten === "function" ? liveMatch.liveNoten() : new Map();
+        const n = noten.get(p.id);
+        const tore = (liveMatch.verlauf || []).filter(e => e.type === "goal" && e.playerId === p.id).length;
+        const vorlagen = (liveMatch.verlauf || []).filter(e => e.type === "goal" && e.assistId === p.id).length;
+        const zeilen = [];
+        if (n && typeof n.note === "number") zeilen.push(["Note", n.note.toFixed(1).replace(".", ",")]);
+        zeilen.push(["Kondition", `${Math.round((p.freshness ?? 1) * 100)} %`]);
+        if (tore || vorlagen) zeilen.push(["Tore · Vorlagen", `${tore} · ${vorlagen}`]);
+        const marken = [];
+        if ((liveMatch.verwarnt?.[seite] || []).includes(p.id)) marken.push("Gelb");
+        if ((liveMatch.angeschlagen?.[seite] || []).includes(p.id)) marken.push("angeschlagen");
+        if (marken.length) zeilen.push(["Status", marken.join(", ")]);
+        return { titel: `${p.number ?? ""} ${p.name || ""}`.trim(), unter: p.pos || "", zeilen, kondition: p.freshness ?? 1 };
+    },
+
+    /** Die Karte neben dem angetippten Spieler - sie wandert mit ihm */
+    zeichneSpielerkarte(ctx, canvas, liveMatch, spieler, toX, toY, radius) {
+        const wahl = this._feldWahl;
+        if (!wahl) return;
+        const uhr = performance.now() / 1000;
+        const p = spieler.find(x => x.id === wahl.id);
+        if (!p || uhr > wahl.bis) { this._feldWahl = null; return; }
+        const k = this.feldKarteDaten(liveMatch, p);
+        const px = toX(p.x), py = toY(p.y);
+        const s = canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
+        const gross = Math.round(13 * s), klein = Math.round(11.5 * s), zeile = Math.round(17 * s), pad = Math.round(9 * s);
+        ctx.save();
+        // Ring um den Gewählten
+        ctx.beginPath();
+        ctx.arc(px, py, radius * 1.45, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(248, 250, 252, 0.95)";
+        ctx.lineWidth = Math.max(1.5, radius * 0.14);
+        ctx.stroke();
+        ctx.font = `700 ${gross}px 'Inter', system-ui, sans-serif`;
+        let breite = ctx.measureText(`${k.titel}  ${k.unter}`).width;
+        ctx.font = `600 ${klein}px 'Inter', system-ui, sans-serif`;
+        k.zeilen.forEach(([a, b]) => { breite = Math.max(breite, ctx.measureText(a).width + ctx.measureText(b).width + 18 * s); });
+        const w = breite + pad * 2, h = pad * 2 + gross + 4 * s + k.zeilen.length * zeile;
+        // Rechts vom Spieler, sonst links; im Bild halten
+        let x = px + radius * 1.9;
+        if (x + w > canvas.width - 6 * s) x = px - radius * 1.9 - w;
+        const y = Math.max(6 * s, Math.min(canvas.height - h - 6 * s, py - h / 2));
+        ctx.fillStyle = "rgba(10, 14, 20, 0.94)";
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.16)";
+        ctx.lineWidth = 1 * s;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(x, y, w, h, 8 * s); else ctx.rect(x, y, w, h);
+        ctx.fill();
+        ctx.stroke();
+        ctx.textBaseline = "top";
+        ctx.textAlign = "left";
+        ctx.font = `700 ${gross}px 'Inter', system-ui, sans-serif`;
+        ctx.fillStyle = "#f8fafc";
+        ctx.fillText(k.titel, x + pad, y + pad);
+        const tb = ctx.measureText(k.titel).width;
+        ctx.font = `600 ${klein}px 'Inter', system-ui, sans-serif`;
+        ctx.fillStyle = "rgba(148, 163, 184, 1)";
+        ctx.fillText(k.unter, x + pad + tb + 7 * s, y + pad + 1.5 * s);
+        k.zeilen.forEach(([a, b], i) => {
+            const zy = y + pad + gross + 6 * s + i * zeile;
+            ctx.textAlign = "left";
+            ctx.fillStyle = "rgba(148, 163, 184, 1)";
+            ctx.fillText(a, x + pad, zy);
+            ctx.textAlign = "right";
+            ctx.fillStyle = a === "Kondition" ? (k.kondition >= 0.86 ? "#4ade80" : k.kondition >= 0.74 ? "#fbbf24" : "#f87171") : "#f8fafc";
+            ctx.fillText(b, x + w - pad, zy);
+        });
+        ctx.restore();
     },
 
     /** Ein gezeigtes Bild in den Puffer legen - und merken, wenn ein Tor fiel */

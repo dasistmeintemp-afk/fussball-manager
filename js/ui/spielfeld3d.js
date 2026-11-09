@@ -1228,7 +1228,9 @@ class Spielfeld3D {
     // ---------------------------------------------------------------- Zeichnen
 
     setzeKamera(art) {
-        this.kamera = ["tv", "taktik", "nah"].includes(art) ? art : "tv";
+        this.kamera = ["tv", "taktik", "nah", "hintertor", "regie"].includes(art) ? art : "tv";
+        this._regieNah = false;
+        this._torSeite = 0;
     }
 
     groesse() {
@@ -1913,6 +1915,7 @@ class Spielfeld3D {
         tv: { hoehe: 26, abstand: 14, breite: 44, min: 14, max: 32 },
         taktik: { hoehe: 72, abstand: 14, breite: 84, min: 30, max: 60 },
         nah: { hoehe: 4.2, abstand: 10, breite: 44, min: 20, max: 40 },
+        hintertor: { hoehe: 15, abstand: 18, breite: 50, min: 24, max: 46 },
         wiederholung: { breite: 62, min: 30, max: 52 }
     };
 
@@ -1923,6 +1926,9 @@ class Spielfeld3D {
         const fov = 2 * Math.atan(Math.tan(k.breite * Math.PI / 360) / seiten) * 180 / Math.PI;
         return Math.max(k.min, Math.min(k.max, fov));
     }
+
+    /** Regie: ab hier (Meter von der Mittellinie) schneidet sie nah heran, darunter zurück in die Totale */
+    static REGIE = { nah: 34, totale: 26 };
 
     /** Die Kamera folgt dem Ball - weich, nie ruckartig, mit etwas Vorlauf in Spielrichtung */
     _fuehreKamera(bw, hoehe, dt, z) {
@@ -1937,18 +1943,37 @@ class Spielfeld3D {
         const vorlauf = this._vorlauf || 0;
         const zielX = Math.max(-40, Math.min(40, bw.x + vorlauf));
         let pos, blick, art;
+        // Regie: Totale im Aufbau, im letzten Drittel der Schnitt auf die nahe Kamera
+        let kamera = this.kamera;
+        let schnitt = false;
+        if (kamera === "regie") {
+            const tief = Math.abs(bw.x);
+            const nah = this._regieNah ? tief > Spielfeld3D.REGIE.totale : tief > Spielfeld3D.REGIE.nah;
+            if (nah !== !!this._regieNah && !this._wiederholung) { this._regieNah = nah; schnitt = true; }
+            kamera = this._regieNah ? "nah" : "tv";
+        }
         if (this._wiederholung) {
             // Hinter dem Tor, auf das der Schütze spielte, leicht erhöht
             const seite = this._wiederholung.seite;
             pos = new THREE.Vector3(seite * (S3D_LAENGE / 2 + 13), 7.5, bw.z * 0.4);
             blick = new THREE.Vector3(bw.x - seite * 4, 1 + hoehe * 0.3, bw.z);
             art = "wiederholung";
-        } else if (this.kamera === "taktik") {
+        } else if (kamera === "hintertor") {
+            // Hinter dem Tor, erhöht: Man sieht die Staffelung in der Tiefe. Sie
+            // steht hinter dem Tor der Hälfte, in der gespielt wird - wechselt
+            // das Spiel die Seite, schneidet sie um (erst 12 m hinter der Mitte)
+            const c = Spielfeld3D.KAMERA.hintertor;
+            const seite = bw.x > 12 ? 1 : (bw.x < -12 ? -1 : (this._torSeite || -1));
+            if (seite !== this._torSeite) { this._torSeite = seite; schnitt = true; }
+            pos = new THREE.Vector3(seite * (S3D_LAENGE / 2 + c.abstand), c.hoehe, bw.z * 0.25);
+            blick = new THREE.Vector3(seite > 0 ? Math.min(30, bw.x) : Math.max(-30, bw.x), 0, bw.z * 0.6);
+            art = "hintertor";
+        } else if (kamera === "taktik") {
             const c = Spielfeld3D.KAMERA.taktik;
             pos = new THREE.Vector3(zielX * 0.35, c.hoehe, S3D_BREITE / 2 + c.abstand);
             blick = new THREE.Vector3(zielX * 0.35, 0, 1);
             art = "taktik";
-        } else if (this.kamera === "nah") {
+        } else if (kamera === "nah") {
             const c = Spielfeld3D.KAMERA.nah;
             pos = new THREE.Vector3(bw.x - vorlauf * 0.3, c.hoehe, bw.z + c.abstand);
             blick = new THREE.Vector3(bw.x + vorlauf * 0.4, 1 + hoehe * 0.3, bw.z);
@@ -1962,7 +1987,7 @@ class Spielfeld3D {
         }
         const fov = this._kameraFov(art);
         // Zur Wiederholung springt die Kamera, statt quer durchs Stadion zu fliegen
-        const sprung = !!this._wiederholung !== !!this._warWiederholung;
+        const sprung = schnitt || !!this._wiederholung !== !!this._warWiederholung;
         this._warWiederholung = !!this._wiederholung;
         if (sprung) { this._kamPos.copy(pos); this._ziel.copy(blick); }
         this._kamPos.lerp(pos, k);

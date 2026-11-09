@@ -21,7 +21,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         try { gespeichert = JSON.parse(localStorage.getItem("fm_anzeige2d") || "null"); } catch (e) { gespeichert = null; }
         this._anzeige2D = {
             namen: true, formEigene: false, formGegner: false, feldGross: false,
-            dreiD: false, kamera3D: "tv", qualitaet3D: "auto", wiederholung3D: true,
+            dreiD: false, kamera3D: "tv", kamera2D: "dynamisch", qualitaet3D: "auto", wiederholung3D: true,
             wiederholung2D: true, passwege: false, laufwege: false, steilpaesse: true, rasen: "klassisch",
             ...(gespeichert || {})
         };
@@ -569,6 +569,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 const gefahr = dir.torGefahr();
                 if (gefahr > 0.3) zoom = 1.06 + Math.min(1, (gefahr - 0.3) / 0.5) * 0.55;
             }
+            // Ganzes Feld wie im Vorbild: Die Kamera steht, alle 22 bleiben im Bild
+            if (this.anzeige2D().kamera2D === "feld") zoom = 1;
             cam.targetZoom = zoom;
 
             // Blickpunkt: Ball, leicht in Spielrichtung vorgehalten

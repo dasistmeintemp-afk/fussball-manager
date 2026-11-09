@@ -1581,10 +1581,10 @@ class Spielfeld3D {
     }
 
     /** Schilder: so hoch auf dem Schirm, in Bildpunkten - im kleinen Bild kleiner */
-    static NAMEN_PX = 23;
+    static NAMEN_PX = 27;
 
     _namenPx() {
-        return Math.max(12, Math.min(Spielfeld3D.NAMEN_PX, (this._h || 480) * 0.045));
+        return Math.max(13, Math.min(Spielfeld3D.NAMEN_PX, (this._h || 480) * 0.054));
     }
 
     /**
@@ -1912,7 +1912,7 @@ class Spielfeld3D {
      * sondern nur weniger Himmel und Tribüne.
      */
     static KAMERA = {
-        tv: { hoehe: 26, abstand: 14, breite: 44, min: 14, max: 32 },
+        tv: { hoehe: 26, abstand: 14, breite: 36, min: 12, max: 32 },
         taktik: { hoehe: 72, abstand: 14, breite: 84, min: 30, max: 60 },
         nah: { hoehe: 4.2, abstand: 10, breite: 44, min: 20, max: 40 },
         hintertor: { hoehe: 15, abstand: 18, breite: 50, min: 24, max: 46 },

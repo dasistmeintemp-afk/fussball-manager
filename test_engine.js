@@ -18493,6 +18493,168 @@ function runEngineTests() {
         if (R.saetze(neu, "u23").length !== 1 || R.saetze(neu, "u19").length !== 1) throw new Error("Unterbau-Aufstellungen gehen beim Speichern verloren");
     });
 
+    test("Behandlung Verletzter: fitspritzen, früher zurückholen, intensive Reha, Aufbrechen nach dem Spiel, Absetzen, Spielstand", () => {
+        const { MedizinEngine: M } = require('./js/engine/medizinEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Arzt" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const profis = state.players.filter(p => club.playerIds.includes(p.id) && !p.reserve && p.pos !== "TW");
+        const verletze = (p, name, wochen) => { p.injuredWeeks = wochen; p.injured = true; p.injuryName = name; p.angeschlagen = null; p.reha = null; };
+
+        // Leichte Verletzung: fitspritzen und Reha stehen zur Wahl
+        const a = profis.find(p => club.lineup.includes(p.id));
+        verletze(a, "Zerrung", 2);
+        let o = M.optionen(state, a);
+        if (!o.spritze?.ok || o.spritze.art !== "spritze" || !o.reha?.ok || o.absetzen) throw new Error("Zerrung: " + JSON.stringify(o));
+        if (o.spritze.folge.name !== "Muskelfaserriss") throw new Error("Zerrung bricht nicht als Muskelfaserriss auf");
+
+        // Schwere Verletzung: erst in der letzten Woche früher zurück, Reha sofort
+        const b = profis.find(p => p !== a);
+        verletze(b, "Kreuzbandanriss", 10);
+        o = M.optionen(state, b);
+        if (o.spritze.ok || !/letzten Woche/.test(o.spritze.grund) || !o.reha.ok) throw new Error("Kreuzband: " + JSON.stringify(o));
+        b.injuredWeeks = 1;
+        o = M.optionen(state, b);
+        if (!o.spritze.ok || o.spritze.art !== "frueh" || o.spritze.titel !== "Früher zurückholen") throw new Error("Letzte Woche: kein früheres Comeback");
+        if (o.reha.ok) throw new Error("Reha bei einer Woche Ausfall");
+
+        // U23 spritzt niemand fit, fremde Spieler behandelt man nicht
+        const u23 = state.players.find(p => p.clubId === club.id && p.reserve === true);
+        verletze(u23, "Prellung", 1);
+        if (M.optionen(state, u23).spritze.ok) throw new Error("U23-Spieler fitgespritzt");
+        const fremd = state.players.find(p => p.clubId && p.clubId !== club.id);
+        verletze(fremd, "Zerrung", 2);
+        if (M.behandelbar(state, fremd)) throw new Error("Fremder Spieler behandelbar");
+        if (M.fitspritzen(state, fremd.id).ok) throw new Error("Fremden Spieler fitgespritzt");
+
+        // Risiko: guter Arzt senkt es, Restdauer und Anfälligkeit heben es
+        const alterStab = club.staff;
+        club.staff = { ...(club.staff || {}), medizin: { name: "Dr. Gut", guete: 95 } };
+        const gut = M.risiko(a, club);
+        club.staff = { ...(club.staff || {}), medizin: { name: "Dr. Mau", guete: 20 } };
+        const schlecht = M.risiko(a, club);
+        if (!(gut < schlecht)) throw new Error(`Guter Arzt ${gut}, schlechter ${schlecht}`);
+        const ersparnisGut = (club.staff.medizin.guete = 95, M.rehaErsparnis(state, club, 10));
+        const ersparnisSchlecht = (club.staff.medizin.guete = 20, M.rehaErsparnis(state, club, 10));
+        if (!(ersparnisGut > ersparnisSchlecht) || ersparnisGut > 4) throw new Error(`Reha spart ${ersparnisGut} / ${ersparnisSchlecht} von 10 Wochen`);
+        club.staff = alterStab;
+        a.injuredWeeks = 1;
+        const eineWoche = M.risiko(a, club);
+        a.injuredWeeks = 2;
+        if (!(M.risiko(a, club) > eineWoche)) throw new Error("Zwei Wochen Rest nicht riskanter als eine");
+        const anf = a.hiddenAttributes.injuryProneness;
+        a.hiddenAttributes.injuryProneness = 19;
+        const anfaellig = M.risiko(a, club);
+        a.hiddenAttributes.injuryProneness = 3;
+        if (!(anfaellig > M.risiko(a, club))) throw new Error("Anfälligkeit zählt nicht");
+        a.hiddenAttributes.injuryProneness = anf;
+
+        // Fitspritzen: sofort einsatzfähig, angeschlagen, höchstens 85 % Kondition - auch nach einem Trainingstag
+        a.fitness = 100;
+        const r = M.fitspritzen(state, a.id);
+        if (!r.ok || a.injuredWeeks !== 0 || a.injured || a.angeschlagen?.wochen !== 2 || a.fitness > 85) throw new Error("Fitspritzen: " + JSON.stringify(r));
+        if (!club.lineup.includes(a.id) || !MatchEngine.getCleanLineup(club, state.players).some(p => p && p.id === a.id)) throw new Error("Fitgespritzter darf nicht spielen");
+        if (!M.optionen(state, a).absetzen) throw new Error("Absetzen steht nicht zur Wahl");
+        TrainingEngine.processDailyTraining(state, "training");
+        if (a.fitness > 85) throw new Error(`Angeschlagener trainiert sich auf ${a.fitness} %`);
+
+        // Nach dem Spiel: Hält es, bleibt er angeschlagen; bricht es auf, fällt er länger aus und der Arzt meldet es
+        const liste = [];
+        M.nachDemSpiel([{ player: a, club }], liste, () => 0.999);
+        if (!a.angeschlagen || liste.length) throw new Error("Aufgebrochen, obwohl der Wurf hielt");
+        M.nachDemSpiel([{ player: a, club }], liste, () => 0);
+        if (a.angeschlagen || a.injuryName !== "Muskelfaserriss" || a.injuredWeeks !== 3 || liste[0]?.aufgebrochen !== "Zerrung") throw new Error("Aufbrechen: " + JSON.stringify({ a: a.injuredWeeks, n: a.injuryName, liste }));
+        const zeilen = M.meldungenAbholen(state);
+        const post = state.inbox.find(m => /aufgebrochen/.test(m.subject));
+        if (zeilen.length !== 1 || !post || post.relatedEntity?.id !== a.id || !/Muskelfaserriss/.test(post.body)) throw new Error("Keine Meldung vom Aufbrechen");
+        if (M.meldungenAbholen(state).length) throw new Error("Meldung doppelt");
+
+        // Neu verletzt im Spiel: Die alte Verletzung kommt obendrauf
+        const c = profis.find(p => p !== a && p !== b);
+        verletze(c, "Prellung", 1);
+        M.fitspritzen(state, c.id);
+        c.injuredWeeks = 2; c.injuryName = "Bänderdehnung";
+        const imSpiel = [{ playerId: c.id, weeks: 2, injuryName: "Bänderdehnung" }];
+        M.nachDemSpiel([{ player: c, club }], imSpiel, () => 0.999);
+        if (c.angeschlagen || c.injuredWeeks !== 3 || imSpiel[0].weeks !== 3) throw new Error("Neue Verletzung ohne die alte");
+
+        // Eine Woche vorbei: ausgeheilt, der Arzt meldet es
+        verletze(c, "Prellung", 1);
+        M.fitspritzen(state, c.id);
+        M.wocheVorbei(state, c);
+        if (c.angeschlagen || !state.inbox.some(m => /Beschwerdefrei/.test(m.subject))) throw new Error("Nicht ausgeheilt");
+
+        // Absetzen: wieder verletzt für die Restdauer, raus aus Startelf und Bank
+        const e = profis.find(p => club.lineup.includes(p.id) && p !== a);
+        verletze(e, "Zerrung", 2);
+        M.fitspritzen(state, e.id);
+        const ab = M.absetzen(state, e.id);
+        if (!ab.ok || e.injuredWeeks !== 2 || !e.injured || e.angeschlagen || club.lineup.includes(e.id)) throw new Error("Absetzen: " + JSON.stringify(ab));
+
+        // Intensive Reha: kostet, verkürzt, einmal je Verletzung, nicht ohne Geld
+        verletze(b, "Kreuzbandanriss", 10);
+        const konto = club.balance;
+        const reha = M.intensiveReha(state, b.id);
+        if (!reha.ok || club.balance !== konto - reha.kosten || b.injuredWeeks !== 10 - reha.gespart || reha.gespart < 1) throw new Error("Reha: " + JSON.stringify(reha));
+        if (!state.finances.transactions.some(t => t.type === "medizin" && t.amount === -reha.kosten)) throw new Error("Reha nicht gebucht");
+        if (M.intensiveReha(state, b.id).ok) throw new Error("Reha zweimal");
+        verletze(c, "Meniskusschaden", 6);
+        const geld = club.balance;
+        club.balance = 100;
+        if (M.intensiveReha(state, c.id).ok) throw new Error("Reha ohne Geld");
+        club.balance = geld;
+
+        // Spielstand: angeschlagen und Reha bleiben erhalten
+        verletze(a, "Muskelverhärtung", 1);
+        M.fitspritzen(state, a.id);
+        const neu = GameState._zuState(SaveCodec.decodeState(JSON.parse(JSON.stringify(SaveCodec.encodeState(state)))));
+        const a2 = neu.players.find(p => p.id === a.id), b2 = neu.players.find(p => p.id === b.id);
+        if (a2.angeschlagen?.name !== "Muskelverhärtung" || !b2.reha) throw new Error("Behandlung geht beim Speichern verloren");
+
+        // Oberfläche: Medizin in den Aktionen der Akte und im Kontextmenü, der Dialog führt aus
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        ui.getScoutingEngine = () => null;
+        const hatte = global.MedizinEngine;
+        global.MedizinEngine = M;
+        try {
+            const f = profis.find(p => p !== a && p !== b && p !== c && p !== e && !(p.injuredWeeks > 0));
+            verletze(f, "Knöchelstauchung", 2);
+            const gruppen = ui.profilAktionen({ player: f, club, card: null, isUserClub: true, isProspect: false }, { querySelector: () => null });
+            const med = gruppen.find(g => g.titel === "Medizin");
+            if (!med || med.eintraege.length !== 1) throw new Error(`Akte ohne Medizin: ${gruppen.map(g => g.titel)}`);
+            if (!ui.kontextEintraege(f).some(k => k.art === "behandeln")) throw new Error("Kontextmenü ohne Behandeln");
+            if (ui.kontextEintraege(fremd).some(k => k.art === "behandeln")) throw new Error("Fremder Spieler im Kontextmenü behandelbar");
+            let dialog = null;
+            ui.zeigeEntscheidung = (d) => { dialog = d; };
+            ui.showToast = () => {}; ui.renderCurrentTab = () => {}; ui.renderHeader = () => {};
+            ui.zeigeBehandlung(f.id);
+            if (!dialog || !/Fitspritzen/.test(dialog.html) || !/Intensive Reha/.test(dialog.html)) throw new Error("Dialog ohne die beiden Wege");
+            dialog.knoepfe.find(k => k.text === "Fitspritzen").aktion();
+            if (!f.angeschlagen || f.injuredWeeks !== 0) throw new Error("Dialog spritzt nicht fit");
+            if (!/💉/.test(ui.medizinMarke(f)) || ui.medizinStatus(f) !== "Fitgespritzt · noch 2 Wo.") throw new Error("Keine Marke für den Fitgespritzten");
+            ui.zeigeBehandlung(f.id);
+            if (!dialog.knoepfe.some(k => k.text === "Spritzen absetzen")) throw new Error("Dialog bietet kein Absetzen");
+        } finally {
+            global.MedizinEngine = hatte;
+        }
+
+        // Im echten Spieltag: Wer fitgespritzt aufläuft und aufbricht, fällt aus und steht im Postfach
+        const altRisiko = M.risiko;
+        try {
+            M.risiko = () => 1;
+            const d = profis.find(p => club.lineup.includes(p.id) && p !== a && !(p.injuredWeeks > 0));
+            verletze(d, "Zerrung", 2);
+            M.fitspritzen(state, d.id);
+            if (!club.lineup.includes(d.id)) throw new Error("Spieler fehlt in der Startelf");
+            SeasonEngine.advanceToNextMatchday(state);
+            if (d.angeschlagen || !(d.injuredWeeks >= 2)) throw new Error(`Nach dem Spieltag: angeschlagen ${JSON.stringify(d.angeschlagen)}, verletzt ${d.injuredWeeks}`);
+            if (!state.inbox.some(m => /aufgebrochen/.test(m.subject) && m.relatedEntity?.id === d.id)) throw new Error("Spieltag ohne Meldung vom Aufbrechen");
+        } finally {
+            M.risiko = altRisiko;
+        }
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

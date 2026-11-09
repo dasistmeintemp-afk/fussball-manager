@@ -498,7 +498,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             note: { titel: "Note", sorte: "note", klasse: "sq-zahl", zelle: (z) => z.saison.matches ? komma(z.saison.ratingSum / z.saison.matches, 2) : "–" },
             karten: { titel: "Karten", sorte: null, klasse: "sq-karten nowrap", zelle: (z) => `<span class="sq-gelb${z.saison.yellowCards ? "" : " sq-null"}">${z.saison.yellowCards}</span> <span class="sq-rot${z.saison.redCards ? "" : " sq-null"}">${z.saison.redCards}</span>` },
             praxis: { titel: "Spielpraxis", sorte: "praxis", klasse: "sq-praxis nowrap", zelle: (z) => `<span class="mini-bar"><span class="mini-bar-fill" style="width:${z.praxis}%;background:${this.fitnessFarbe(z.praxis)}"></span></span>${z.praxis}%` },
-            ausfall: { titel: "Ausfall", sorte: null, klasse: "sq-ausfall", zelle: (z) => z.p.injuredWeeks > 0 ? `<span class="pf-ton-schlecht">${esc(z.p.injuryName || "Verletzt")} · ${z.p.injuredWeeks} Wo.</span>` : (z.p.suspendedMatches > 0 ? `<span class="pf-ton-schlecht">Gesperrt · ${z.p.suspendedMatches} Sp.</span>` : "–") },
+            ausfall: { titel: "Ausfall", sorte: null, klasse: "sq-ausfall", zelle: (z) => z.p.injuredWeeks > 0 ? `<span class="pf-ton-schlecht">${esc(z.p.injuryName || "Verletzt")} · ${z.p.injuredWeeks} Wo.</span>` : z.p.angeschlagen ? `<span class="pf-ton-mittel">💉 ${esc(z.p.angeschlagen.name)} · noch ${z.p.angeschlagen.wochen} Wo.</span>` : (z.p.suspendedMatches > 0 ? `<span class="pf-ton-schlecht">Gesperrt · ${z.p.suspendedMatches} Sp.</span>` : "–") },
             belastung: { titel: "Belastung", sorte: null, klasse: "sq-belastung", zelle: (z) => { const l = z.p.trainingLog?.load; return l === undefined || l === null ? "–" : (l >= 7 ? `<span class="pf-ton-schlecht">hoch</span>` : (l >= 4 ? "normal" : "gering")); } }
         };
         return spalten[key];
@@ -529,7 +529,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const form = formZahl ? formZahl.toFixed(1).replace(".", ",") : "–";
         if (ansicht === "vertrag") return `Vertrag bis ${this.vertragsEnde ? this.vertragsEnde(p) || "–" : p.contractYears + " J."} · ${geld(p.wage)}/Wo · ${geld(p.value)}${this.kaderLage(p) ? " · " + this.kaderLage(p) : ""}`;
         if (ansicht === "leistung") return `${z.saison.matches || 0} Sp · ${z.saison.goals || 0} T · ${z.saison.assists || 0} V · Note ${z.saison.matches ? (z.saison.ratingSum / z.saison.matches).toFixed(2).replace(".", ",") : "–"} · Form ${form}`;
-        if (ansicht === "fitness") return `Spielpraxis ${z.praxis} %${p.injuredWeeks > 0 ? ` · verletzt ${p.injuredWeeks} Wo.` : ""}${p.suspendedMatches > 0 ? ` · gesperrt ${p.suspendedMatches} Sp.` : ""} · Moral ${Math.round(p.happiness?.overall ?? 75)} %`;
+        if (ansicht === "fitness") return `Spielpraxis ${z.praxis} %${p.injuredWeeks > 0 ? ` · verletzt ${p.injuredWeeks} Wo.` : ""}${p.angeschlagen ? ` · fitgespritzt, noch ${p.angeschlagen.wochen} Wo.` : ""}${p.suspendedMatches > 0 ? ` · gesperrt ${p.suspendedMatches} Sp.` : ""} · Moral ${Math.round(p.happiness?.overall ?? 75)} %`;
         return `Form ${form} · ${geld(p.value)} · ${geld(p.wage)}/Wo · ${p.vorvertrag ? `geht zu ${p.vorvertrag.clubName}` : (p.contractYears != null ? `${p.contractYears} J. Vertrag` : "Akademie")}`;
     },
 
@@ -607,6 +607,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const isBench = bank.has(p.id) || (team !== "profis" && !isLineup);
             let statusBadge = `<span class="badge-status-fit">Fit</span>`;
             if (p.injuredWeeks > 0) statusBadge = `<span class="badge-status-inj">🚑 ${p.injuredWeeks} Wo.</span>`;
+            else if (p.angeschlagen) statusBadge = `<span class="badge-status-spritze" title="${esc(this.medizinStatus ? this.medizinStatus(p) : "Fitgespritzt")} (${esc(p.angeschlagen.name)})">💉 ${p.angeschlagen.wochen} Wo.</span>`;
             else if (p.suspendedMatches > 0) statusBadge = `<span class="badge-status-susp">🟥 ${p.suspendedMatches} Sp.</span>`;
             else if (isLineup) statusBadge = `<span class="badge-status-lineup">Startelf</span>`;
             else if (isBench) statusBadge = `<span class="badge-status-bench">Bank</span>`;

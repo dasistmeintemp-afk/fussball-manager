@@ -986,6 +986,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             nachLeihe(ok ? { success: true } : { success: false, error: "Er kann nicht zurück." },
                 `${player.name} spielt wieder in der ${player.reserve === reserveEngine.U19 ? "U19" : "U23"}.`);
         });
+        // Kachel Fitness: Behandlung mit dem Mannschaftsarzt
+        body.querySelectorAll("[data-behandlung]").forEach(b => b.addEventListener("click", () => this.zeigeBehandlung?.(b.dataset.behandlung)));
         document.getElementById("btnPdTeamWechsel")?.addEventListener("click", () => {
             const res = reserveEngine.wechsleTeam(state, player.id);
             nachLeihe(res, res.success ? `${player.name} spielt jetzt in der ${res.nach}.${res.hinweis ? ` ${res.hinweis}` : ""}` : "");

@@ -273,7 +273,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     ? tabelle([["Diagnose", esc(p.injuryName || "Verletzung")], ["Ausfall", `${p.injuredWeeks} Woche${p.injuredWeeks === 1 ? "" : "n"}`],
                         ["Zurück voraussichtlich", esc(zurueck || "nach der Saison")], ["Fitness", `${Math.round(p.fitness ?? 0)} %`],
                         ["Anfälligkeit", anfaellig >= 14 ? "hoch" : anfaellig >= 9 ? "mittel" : "gering"]])
-                    : `<p class="text-muted">${esc(p.name)} ist wieder gesund (Fitness ${Math.round(p.fitness ?? 100)} %).</p>`;
+                        + (typeof this.medizinBehandelbar === "function" && this.medizinBehandelbar(p)
+                            ? `<button class="btn btn-sm btn-secondary" data-behandlung="${esc(p.id)}" style="margin-top:8px;"><svg class="ico" aria-hidden="true"><use href="#i-medical"/></svg>Behandeln: fitspritzen, Reha</button>` : "")
+                    : p.angeschlagen
+                        ? `<p class="text-muted">💉 ${esc(p.name)} spielt angeschlagen (${esc(this.medizinStatus ? this.medizinStatus(p) : "fitgespritzt")}).</p>`
+                        : `<p class="text-muted">${esc(p.name)} ist wieder gesund (Fitness ${Math.round(p.fitness ?? 100)} %).</p>`;
             }
             case "scoutbericht": {
                 const bericht = (state.scouting?.reports || []).find(r => String(r.playerId) === String(p?.id));
@@ -446,6 +450,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             el.addEventListener("click", los);
             el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") los(e); });
         });
+        alle("[data-behandlung]").forEach(el => el.addEventListener("click", (e) => {
+            e.preventDefault();
+            this.zeigeBehandlung?.(el.dataset.behandlung);
+        }));
         alle("[data-verein-link]").forEach(el => el.addEventListener("click", (e) => {
             e.preventDefault?.();
             if (typeof this.showClubDetailsModal === "function") this.showClubDetailsModal(el.dataset.vereinLink);

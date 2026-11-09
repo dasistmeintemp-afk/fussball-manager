@@ -1192,6 +1192,23 @@ Bisher heilte jede Verletzung stur nach Plan, und der Trainer konnte nur warten.
 - **Nur die erste Mannschaft des eigenen Vereins** wird fitgespritzt, die Reha gibt es auch für U23 und U19.
 - **Zu sehen:** 💉 mit Restdauer in der Kaderliste, auf dem Trikot in der Aufstellung, in der Akte, in der Kachel Verfügbarkeit und in der Liste der Ausfälle. Über den Sommer heilt alles aus.
 
+### 5h. 🧑‍⚕️ Weitere Entscheidungen des Trainers: Operation, freie Tage, Strafe, Sonderprämie (`MedizinEngine`, `FuehrungEngine`)
+Vier Entscheidungen nach dem Muster des Fitspritzens: Jede hat einen Nutzen und einen Preis.
+
+- **Operation oder konservativ** (im Dialog *Behandlung*, bei schweren Verletzungen ab fünf Wochen Restdauer, einmal je Verletzung):
+  - *Operation:* ein Viertel länger raus, kostet sechs Reha-Wochen (120 Tsd. € beim Erstligisten). Dafür ist die Schwachstelle repariert: Die Verletzungsanfälligkeit sinkt um zwei Punkte.
+  - *Konservativ:* nach 70 % der Zeit zurück. Danach ist der Spieler vier Wochen *im Aufbau*: Er spielt, trainiert aber nicht mit, und je Einsatz droht mit rund 8 % ein Rückfall (aus dem Kreuzbandanriss wird ein Kreuzbandriss).
+  - Ohne Wahl läuft die normale Behandlung wie bisher.
+- **Zwei freie Tage** (Akte, Aktionen, Gruppe *Medizin*, und per Rechtsklick; für Spieler unter 90 % Kondition): kein Training, dafür sieben Punkte Kondition je Tag. Kostet je Tag 2,5 Punkte Spielschärfe.
+- **Platzverweis ahnden** (nach glatt Rot, solange die Sperre läuft; der Co-Trainer meldet es im Postfach, der Dialog öffnet sich aus der Akte unter *Kabine* oder per Rechtsklick):
+  - *Geldstrafe:* Ein Wochenlohn geht in die Vereinskasse, die Moral der übrigen Profis steigt um einen Punkt. Ein professioneller Spieler (Professionalität ab 11) nimmt es an: Sein Temperament sinkt um einen Punkt, er sieht künftig seltener Karten. Ein anderer ist gekränkt (Moral minus 12).
+  - *Abmahnung:* milder, wirkt nur ab Professionalität 14.
+  - *Nachsicht:* Moral plus 2, sonst ändert sich nichts.
+- **Sonderprämie** (Knopf bei *Aufstellung & Taktik*): ein halber Wochenlohn aller Profis fürs nächste Ligaspiel.
+  - Die Moral der Profis steigt sofort um fünf Punkte.
+  - Gezahlt wird nur bei einem Sieg, gebucht als Prämie (zählt zur Kaderkostenquote). Ohne Sieg fällt die Moral um drei Punkte.
+  - Höchstens alle fünf Spieltage.
+
 ### 6. 💼 Finanzen, Sponsoren & Buchungsjournal
 - **Gehaltsdisziplin der KI-Vereine (`FinanceEngine.gehaltsDisziplin`):** Jeder Wechsel und jede Verlängerung legt beim Gehalt etwas drauf. Angeglichen wurde bisher nur bei Auf- und Abstieg.
   - Gemessen lagen die Erstligisten nach drei Saisons bei 115 % dessen, was sie tragen können.

@@ -709,6 +709,9 @@ const FinanceEngine = {
         if (!state || !match || typeof match.homeGoals !== "number" || typeof match.awayGoals !== "number") return null;
         if (match.praemieGebucht) return null;
         match.praemieGebucht = true;
+        // Eine ausgelobte Sonderprämie wird mit dem eigenen Ligaspiel abgerechnet
+        const fuehrung = _feResolve("FuehrungEngine", "./fuehrungEngine.js");
+        if (fuehrung && typeof fuehrung.rechneAb === "function") fuehrung.rechneAb(state, match);
         const lohn = this.lohnsummen(state);
         const satz = (eigene, fremde) => eigene > fremde ? this.ERFOLGSPRAEMIE.sieg : (eigene === fremde ? this.ERFOLGSPRAEMIE.remis : 0);
         const ergebnis = {};

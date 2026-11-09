@@ -514,7 +514,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             { art: "akte", text: "Akte öffnen", icon: "i-doc" },
             ...unterbau,
             eigen && typeof this.medizinBehandelbar === "function" && this.medizinBehandelbar(p)
-                ? { art: "behandeln", text: p.angeschlagen ? "Fitgespritzt: Spritzen absetzen?" : "Behandeln", icon: "i-medical" } : null,
+                ? { art: "behandeln", text: p.angeschlagen ? "Angeschlagen: schonen?" : "Behandeln", icon: "i-medical" } : null,
+            eigen && typeof this.medizinFreiMoeglich === "function" && this.medizinFreiMoeglich(p)
+                ? { art: "frei", text: "Zwei freie Tage geben", icon: "i-clock" } : null,
+            eigen && typeof this.strafeMoeglich === "function" && this.strafeMoeglich(p)
+                ? { art: "strafe", text: "Platzverweis ahnden", icon: "i-alert" } : null,
             !eigen && se && typeof se.merke === "function"
                 ? { art: "liste", text: gemerkt ? "Von der Beobachtungsliste nehmen" : "Auf die Beobachtungsliste", icon: "i-star" } : null,
             !eigen && se && typeof se.beobachteSpieler === "function"
@@ -558,6 +562,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         else if (art === "angebot") this.showTransferOfferModal(p.id);
         else if (art === "vergleich") this.zeigeVergleich(p.id);
         else if (art === "behandeln") this.zeigeBehandlung?.(p.id);
+        else if (art === "frei") this.medizinAusfuehren?.("frei", p.id);
+        else if (art === "strafe") this.zeigeStrafe?.(p.id);
     },
 
     // ------------------------------------------------------------ Beobachtungsliste

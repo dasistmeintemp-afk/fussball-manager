@@ -18661,6 +18661,134 @@ function runEngineTests() {
         }
     });
 
+    test("Entscheidungen des Trainers: Operation oder konservativ, freie Tage, Platzverweis ahnden, Sonderprämie", () => {
+        const { MedizinEngine: M } = require('./js/engine/medizinEngine.js');
+        const { FuehrungEngine: F } = require('./js/engine/fuehrungEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Chef" });
+        const club = state.clubs.find(c => c.id === state.userClubId);
+        const profis = state.players.filter(p => club.playerIds.includes(p.id) && !p.reserve && p.pos !== "TW");
+        const verletze = (p, name, wochen) => { p.injuredWeeks = wochen; p.injured = true; p.injuryName = name; p.angeschlagen = null; p.reha = null; p.eingriff = null; };
+
+        // Operation oder konservativ: nur bei schweren Verletzungen mit viel Restdauer
+        const a = profis[0], b = profis[1];
+        verletze(a, "Zerrung", 2);
+        if (M.optionen(state, a).eingriff) throw new Error("Eingriff bei einer Zerrung");
+        verletze(a, "Kreuzbandanriss", 4);
+        if (M.optionen(state, a).eingriff) throw new Error("Eingriff bei nur vier Wochen Rest");
+        verletze(a, "Kreuzbandanriss", 10);
+        const e = M.optionen(state, a).eingriff;
+        if (!e || e.op.wochen !== 13 || e.konservativ.wochen !== 7 || !(e.op.kosten > 0)) throw new Error("Eingriff: " + JSON.stringify(e));
+        // Operation: länger raus, kostet, macht robuster - und nur einmal
+        a.hiddenAttributes.injuryProneness = 12;
+        const konto = club.balance;
+        const op = M.waehleEingriff(state, a.id, "op");
+        if (!op.ok || a.injuredWeeks !== 13 || club.balance !== konto - e.op.kosten || a.hiddenAttributes.injuryProneness !== 10) throw new Error("Operation: " + JSON.stringify(op));
+        if (M.optionen(state, a).eingriff || M.waehleEingriff(state, a.id, "konservativ").ok) throw new Error("Zweite Wahl möglich");
+        a.injuredWeeks = 0; M.geheilt(state, a);
+        if (a.angeschlagen || a.eingriff) throw new Error("Nach der Operation im Aufbau");
+        // Konservativ: schneller zurück, danach vier Wochen im Aufbau mit festem Grundrisiko
+        verletze(b, "Meniskusschaden", 6);
+        const kon = M.waehleEingriff(state, b.id, "konservativ");
+        if (!kon.ok || b.injuredWeeks !== 4 || b.eingriff?.art !== "konservativ") throw new Error("Konservativ: " + JSON.stringify(kon));
+        b.injuredWeeks = 0; b.injured = false; M.geheilt(state, b);
+        if (b.angeschlagen?.art !== "konservativ" || b.angeschlagen.wochen !== 4 || b.eingriff) throw new Error("Kein Aufbau nach konservativer Behandlung");
+        const risiko = M.risiko(b, club);
+        if (!(risiko > 0.03 && risiko < 0.2)) throw new Error(`Rückfallrisiko ${risiko}`);
+        const liste = [];
+        M.nachDemSpiel([{ player: b, club }], liste, () => 0);
+        if (b.angeschlagen || b.injuryName !== "Meniskusriss" || liste.length !== 1) throw new Error("Rückfall nach konservativer Behandlung fehlt");
+        // Über den Spieltag: Die Heilung löst den Aufbau aus
+        const c = profis[2];
+        verletze(c, "Bänderriss", 6);
+        M.waehleEingriff(state, c.id, "konservativ");
+        c.injuredWeeks = 1;
+        SeasonEngine.advanceToNextMatchday(state);
+        if (c.injuredWeeks !== 0 || c.angeschlagen?.art !== "konservativ") throw new Error("Spieltag: kein Aufbau nach der Heilung");
+
+        // Freie Tage: nur für Müde, zwei Tage ohne Training, schneller frisch, etwas Spielschärfe weg
+        const d = profis.find(p => !(p.injuredWeeks > 0) && !p.angeschlagen), g = profis.filter(p => p !== d && !(p.injuredWeeks > 0) && !p.angeschlagen)[0];
+        d.fitness = 96;
+        if (M.gibFrei(state, d.id).ok) throw new Error("Freie Tage für einen Frischen");
+        d.fitness = 70; g.fitness = 70; d.matchSharpness = 80; g.matchSharpness = 80;
+        if (!M.gibFrei(state, d.id).ok || d.frei !== 2 || M.gibFrei(state, d.id).ok) throw new Error("Freie Tage nicht vergeben oder doppelt");
+        TrainingEngine.processDailyTraining(state, "training");
+        if (d.fitness !== 77 || d.frei !== 1 || !(d.matchSharpness < 80)) throw new Error(`Freier Tag: Kondition ${d.fitness}, frei ${d.frei}`);
+        if (!(d.fitness > g.fitness)) throw new Error("Frei bringt nicht mehr Kondition als Training");
+        TrainingEngine.processDailyTraining(state, "training");
+        if (d.frei) throw new Error("Die freien Tage enden nicht");
+
+        // Platzverweis ahnden: Meldung, Geldstrafe mit und ohne Einsicht, Abmahnung, Nachsicht
+        const r1 = profis[5], r2 = profis[6], r3 = profis[7];
+        [r1, r2, r3].forEach(p => { p.strafeOffen = true; p.suspendedMatches = 2; p.morale = 70; p.hiddenAttributes.temperament = 14; });
+        if (F.meldePlatzverweise(state).length !== 3 || F.meldePlatzverweise(state).length !== 0) throw new Error("Platzverweise nicht genau einmal gemeldet");
+        if (!state.inbox.some(m => m.subject === `Platzverweis: ${r1.name}` && m.relatedEntity?.id === r1.id)) throw new Error("Keine Nachricht zum Platzverweis");
+        r1.hiddenAttributes.professionalism = 15;
+        const kasse = club.balance, andere = profis[8].morale;
+        const s1 = F.ahnde(state, r1.id, "geldstrafe");
+        if (!s1.ok || !s1.einsicht || club.balance !== kasse + r1.wage || r1.hiddenAttributes.temperament !== 13 || r1.morale !== 67 || r1.strafeOffen) throw new Error("Geldstrafe mit Einsicht: " + JSON.stringify(s1));
+        if (profis[8].morale !== Math.min(100, andere + 1)) throw new Error("Die Mannschaft reagiert nicht");
+        if (F.ahnde(state, r1.id, "geldstrafe").ok) throw new Error("Zweimal bestraft");
+        r2.hiddenAttributes.professionalism = 6; r2.morale = 70;
+        const s2 = F.ahnde(state, r2.id, "geldstrafe");
+        if (s2.einsicht || r2.hiddenAttributes.temperament !== 14 || r2.morale !== 58) throw new Error("Geldstrafe ohne Einsicht: " + JSON.stringify(s2));
+        r3.morale = 70;
+        if (!F.ahnde(state, r3.id, "nachsicht").ok || r3.morale !== 72 || r3.hiddenAttributes.temperament !== 14) throw new Error("Nachsicht falsch");
+        if (F.ahnde(state, state.players.find(p => p.clubId !== club.id && p.clubId).id, "geldstrafe").ok) throw new Error("Fremden Spieler bestraft");
+
+        // Sonderprämie: Moral sofort, Zahlung nur bei Sieg, Pause danach
+        profis.forEach(p => { p.morale = 70; });
+        const o = F.praemie(state);
+        if (!o.ok || !(o.betrag > 0)) throw new Error("Prämie: " + JSON.stringify(o));
+        if (!F.lobeAus(state).ok || profis[9].morale !== 75 || F.lobeAus(state).ok) throw new Error("Ausloben klappt nicht oder doppelt");
+        const vor = club.balance;
+        const sieg = F.rechneAb(state, { homeClubId: club.id, awayClubId: "x", homeGoals: 2, awayGoals: 0 });
+        if (!sieg.sieg || club.balance !== vor - o.betrag || !state.finances.transactions.some(t => /Sonderprämie/.test(t.description))) throw new Error("Prämie bei Sieg nicht gezahlt");
+        if (F.praemie(state).ok || !/Spieltage her/.test(F.praemie(state).grund)) throw new Error("Keine Pause nach der Prämie");
+        state.sonderpraemie.letzter = (state.currentMatchday || 1) - 5;
+        F.lobeAus(state);
+        const vor2 = club.balance, moral = profis[9].morale;
+        const remis = F.rechneAb(state, { homeClubId: "x", awayClubId: club.id, homeGoals: 1, awayGoals: 1 });
+        if (remis.sieg || club.balance !== vor2 || profis[9].morale !== moral - 3) throw new Error("Ohne Sieg gezahlt oder keine Enttäuschung");
+        if (F.rechneAb(state, { homeClubId: club.id, awayClubId: "x", homeGoals: 3, awayGoals: 0 })) throw new Error("Ohne Auslobung abgerechnet");
+
+        // Oberfläche: Einträge in Akte und Kontextmenü, Dialoge führen aus
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        ui.getScoutingEngine = () => null;
+        const hatte = { m: global.MedizinEngine, f: global.FuehrungEngine };
+        global.MedizinEngine = M; global.FuehrungEngine = F;
+        try {
+            let dialog = null;
+            ui.zeigeEntscheidung = (x) => { dialog = x; };
+            ui.showToast = () => {}; ui.renderCurrentTab = () => {}; ui.renderHeader = () => {};
+            const h = profis[10];
+            verletze(h, "Kreuzbandanriss", 10);
+            ui.zeigeBehandlung(h.id);
+            if (!/Operation oder konservativ/.test(dialog.html) || !dialog.knoepfe.some(k => k.text === "Konservativ")) throw new Error("Dialog ohne Operation und konservativ");
+            dialog.knoepfe.find(k => k.text === "Konservativ").aktion();
+            if (h.injuredWeeks !== 7) throw new Error("Dialog wählt nicht konservativ");
+            const i = profis[11];
+            i.fitness = 72; i.injuredWeeks = 0; i.angeschlagen = null; i.frei = null; i.strafeOffen = "gemeldet"; i.suspendedMatches = 1;
+            const texte = ui.profilAktionen({ player: i, club, card: null, isUserClub: true, isProspect: false }, { querySelector: () => null }).flatMap(x => x.eintraege.map(y => y.text));
+            if (!texte.includes("Zwei freie Tage geben") || !texte.includes("Platzverweis ahnden")) throw new Error(`Akte: ${texte}`);
+            const km = ui.kontextEintraege(i).map(x => x.art);
+            if (!km.includes("frei") || !km.includes("strafe")) throw new Error(`Kontextmenü: ${km}`);
+            ui.zeigeStrafe(i.id);
+            dialog.knoepfe.find(k => k.text === "Abmahnung").aktion();
+            if (i.strafeOffen) throw new Error("Dialog ahndet nicht");
+            state.sonderpraemie = null;
+            ui.zeigeSonderpraemie();
+            if (!/Sonderprämie/.test(dialog.titel) || !dialog.knoepfe[0].text.startsWith("Ausloben")) throw new Error("Prämiendialog fehlt");
+            dialog.knoepfe[0].aktion();
+            if (!state.sonderpraemie?.aktiv) throw new Error("Dialog lobt nicht aus");
+        } finally {
+            global.MedizinEngine = hatte.m; global.FuehrungEngine = hatte.f;
+        }
+        const html = require('fs').readFileSync('./index.html', 'utf8');
+        if (!html.includes('id="btnDashPraemie"')) throw new Error("Knopf Sonderprämie fehlt bei Aufstellung & Taktik");
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

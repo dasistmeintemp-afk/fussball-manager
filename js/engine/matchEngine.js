@@ -2818,6 +2818,8 @@ class MatchEngine {
             } else if (st.redCards > 0) {
                 player.stats.redCards = (player.stats.redCards || 0) + 1;
                 player.suspendedMatches = Math.max(player.suspendedMatches || 0, 2);
+                // Glatt Rot: Der Trainer kann ihn zur Rechenschaft ziehen (FuehrungEngine)
+                if (pflichtspiel) player.strafeOffen = true;
                 matchSuspensions.push({
                     playerId: player.id,
                     playerName: player.name,

@@ -28,7 +28,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     medizinMarke(p) {
         const a = p?.angeschlagen;
         if (!a) return "";
-        const titel = `${a.art === "frueh" ? "Früher zurück" : "Fitgespritzt"} (${a.name}), noch ${a.wochen} ${a.wochen === 1 ? "Woche" : "Wochen"} angeschlagen`;
+        const titel = `${this._medizinArt(a)} (${a.name}), noch ${a.wochen} ${a.wochen === 1 ? "Woche" : "Wochen"} angeschlagen`;
         return `<span class="med-marke" title="${this.escapeHtml(titel)}" aria-label="${this.escapeHtml(titel)}">💉</span>`;
     },
 
@@ -36,7 +36,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     medizinStatus(p) {
         const a = p?.angeschlagen;
         if (!a) return "";
-        return `${a.art === "frueh" ? "Früher zurück" : "Fitgespritzt"} · noch ${a.wochen} Wo.`;
+        return `${this._medizinArt(a)} · noch ${a.wochen} Wo.`;
+    },
+
+    _medizinArt(a) {
+        return a.art === "frueh" ? "Früher zurück" : (a.art === "konservativ" ? "Im Aufbau" : "Fitgespritzt");
     },
 
     _medizinProzent(r) {
@@ -98,6 +102,18 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             </div>`);
         }
 
+        if (o.eingriff) {
+            const e = o.eingriff;
+            wege.push(`<div class="med-weg">
+                <h4>Operation oder konservativ</h4>
+                <p>Bei dieser Verletzung gibt es zwei Wege neben der normalen Behandlung. Die Wahl gilt einmal.</p>
+                <div class="med-zeilen">
+                    <div><span>Operation</span><strong>${esc(this._medizinWochen(e.op.wochen))} Ausfall · ${esc(geld(e.op.kosten))}</strong><small>Länger raus, danach weniger verletzungsanfällig.${e.op.ok ? "" : ` ${esc(e.op.grund)}`}</small></div>
+                    <div><span>Konservativ</span><strong>${esc(this._medizinWochen(e.konservativ.wochen))} Ausfall</strong><small>Schneller zurück, dann ${esc(this._medizinWochen(e.konservativ.aufbau))} im Aufbau: rund ${this._medizinProzent(e.konservativ.risiko)} Rückfallrisiko je Einsatz (${esc(e.konservativ.folge.name)}).</small></div>
+                </div>
+            </div>`);
+        }
+
         return `
             <div class="verh-kopf">
                 <div><strong>${esc(p.name)}</strong> <span class="muted-note">(${esc(p.age)}) · ${esc(p.pos)}</span></div>
@@ -121,11 +137,20 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             return;
         }
         const knoepfe = [];
-        if (o.absetzen) knoepfe.push({ text: "Spritzen absetzen", klasse: "btn-primary", aktion: () => this.medizinAusfuehren("absetzen", p.id) });
+        if (o.absetzen) knoepfe.push({ text: p.angeschlagen?.art === "konservativ" ? "Schonen" : "Spritzen absetzen", klasse: "btn-primary", aktion: () => this.medizinAusfuehren("absetzen", p.id) });
         if (o.reha?.ok) knoepfe.push({ text: `Intensive Reha (${this.geldKurz ? this.geldKurz(o.reha.kosten) : o.reha.kosten})`, klasse: "btn-primary", aktion: () => this.medizinAusfuehren("reha", p.id) });
+        if (o.eingriff?.op.ok) knoepfe.push({ text: "Operation", klasse: "btn-primary", aktion: () => this.medizinAusfuehren("op", p.id) });
+        if (o.eingriff) knoepfe.push({ text: "Konservativ", klasse: "btn-primary", aktion: () => this.medizinAusfuehren("konservativ", p.id) });
         if (o.spritze?.ok) knoepfe.push({ text: o.spritze.titel, klasse: o.spritze.rat.stufe === "schlecht" ? "btn-danger" : "btn-primary", aktion: () => this.medizinAusfuehren("spritze", p.id) });
-        knoepfe.push({ text: o.absetzen ? "Weiter spritzen" : "Abwarten", klasse: "btn-secondary" });
-        this.zeigeEntscheidung({ titel: o.absetzen ? "Fitgespritzt" : "Behandlung", html: this.behandlungHtml(p, o), knoepfe });
+        const aufbau = p.angeschlagen?.art === "konservativ";
+        knoepfe.push({ text: o.absetzen ? (aufbau ? "Weiter aufbauen" : "Weiter spritzen") : "Abwarten", klasse: "btn-secondary" });
+        this.zeigeEntscheidung({ titel: o.absetzen ? (aufbau ? "Im Aufbau" : "Fitgespritzt") : "Behandlung", html: this.behandlungHtml(p, o), knoepfe });
+    },
+
+    /** Freie Tage stehen zur Wahl (müde, gesund, noch nicht frei) */
+    medizinFreiMoeglich(p) {
+        const M = this._medizinEngine();
+        return !!(M && p && this.app?.state && M.optionen(this.app.state, p).frei?.ok);
     },
 
     /** Eine Behandlung ausführen, melden, speichern und neu zeichnen */
@@ -135,7 +160,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         if (!M) return null;
         const res = art === "spritze" ? M.fitspritzen(state, playerId)
             : art === "reha" ? M.intensiveReha(state, playerId)
-                : M.absetzen(state, playerId);
+                : art === "op" || art === "konservativ" ? M.waehleEingriff(state, playerId, art)
+                    : art === "frei" ? M.gibFrei(state, playerId)
+                        : M.absetzen(state, playerId);
         if (!res || !res.ok) { this.showToast(res?.grund || "Das geht nicht.", "error", 6000); return res; }
         this.playSound?.("click");
         this.showToast(art === "spritze" ? `💉 ${res.text}` : res.text, art === "spritze" && res.risiko >= M.RAT.abraten ? "warning" : "success", 6000);

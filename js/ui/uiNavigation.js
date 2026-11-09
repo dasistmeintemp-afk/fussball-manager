@@ -147,6 +147,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             else if (rechts > leiste.scrollLeft + leiste.clientWidth) leiste.scrollLeft = rechts - leiste.clientWidth + 24;
         }
         if (!optionen.still && vorher !== name) this.merkeVerlauf();
+        // Die Seiten des Vereins stehen als Unterreiter in der zweiten Zeile oben
+        if (vorher !== name && typeof this.aktualisiereKopfmenue === "function") this.aktualisiereKopfmenue();
         return true;
     },
 

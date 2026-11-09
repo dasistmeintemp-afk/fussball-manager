@@ -22,7 +22,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     || require("./uiManager.js").UIManager).prototype, {
     /**
      * Bereiche und ihre Seiten. "knopf" ist eine Ansicht im Reiter (die
-     * Unterreiter des Transfermarkts), "zahl" das Abzeichen der Seitenleiste,
+     * Unterreiter des Transfermarkts), "ur" ein Unterreiter der Seite (die
+     * Seiten des Vereins stehen so direkt in der zweiten Zeile), "zahl" das
+     * Abzeichen der Seitenleiste,
      * dessen Zahl das Menü übernimmt, "nurWenn" ein Reiter, der nur zeitweise
      * da ist. Der letzte Bereich hat keinen Platz in der Zeile: Die Optionen
      * öffnet das Zahnrad. Jeder Bereich beginnt wie im Vorbild mit seiner
@@ -63,7 +65,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         ] },
         { id: "verein", titel: "Verein", seiten: [
             { tab: "vereinhub", titel: "Übersicht", icon: "i-grid" },
-            { tab: "club", titel: "Verein", icon: "i-shield" },
+            { tab: "club", ur: "Übersicht", titel: "Vereinsprofil", icon: "i-shield" },
+            { tab: "club", ur: "Anlagen", titel: "Anlagen", icon: "i-build" },
+            { tab: "club", ur: "Trainer", titel: "Trainer", icon: "i-user" },
+            { tab: "club", ur: "Vision & Partner", titel: "Vision & Partner", icon: "i-target" },
+            { tab: "club", ur: "Chronik", titel: "Chronik", icon: "i-trophy" },
             { tab: "finances", titel: "Finanzen", icon: "i-wallet" }
         ] },
         { id: "optionen", titel: "Optionen", zahnrad: true, seiten: [
@@ -113,9 +119,28 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
     /** Ist eine Seite gerade da? Die Vorbereitung gibt es nur im Sommer. */
     kopfSeiteDa(seite) {
+        if (seite.ur) {
+            const knopf = this._kopfUrKnopf(seite);
+            if (knopf && knopf.hidden) return false;
+        }
         if (!seite.nurWenn || typeof document === "undefined") return true;
         const el = document.getElementById(seite.nurWenn);
         return !!el && !(el.style && el.style.display === "none");
+    },
+
+    /** Der Knopf eines Unterreiters in seiner Seite (oder null) */
+    _kopfUrKnopf(seite) {
+        if (!seite.ur || typeof document === "undefined" || typeof document.getElementById !== "function") return null;
+        const pane = document.getElementById(`pane-${seite.tab}`);
+        if (!pane || typeof pane.querySelectorAll !== "function") return null;
+        return [...pane.querySelectorAll(":scope > .unterreiter .ur-knopf")].find(k => k.dataset.urZiel === seite.ur) || null;
+    },
+
+    /** Welcher Unterreiter einer Seite gerade offen ist */
+    _kopfUrAktiv(tab) {
+        if (typeof document === "undefined" || typeof document.getElementById !== "function") return null;
+        const pane = document.getElementById(`pane-${tab}`);
+        return pane && pane.dataset ? pane.dataset.urAktiv || null : null;
     },
 
     /** Die Zahl am Abzeichen der Seitenleiste, 0 wenn es verborgen ist */
@@ -137,7 +162,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             for (let i = 0; i < gruppe.seiten.length; i++) {
                 const seite = gruppe.seiten[i];
                 if (seite.tab !== tab) continue;
-                if (!seite.knopf || aktiv(seite.knopf)) return { gruppe, index: i };
+                if (seite.ur) {
+                    if (this._kopfUrAktiv(tab) === seite.ur) return { gruppe, index: i };
+                } else if (!seite.knopf || aktiv(seite.knopf)) return { gruppe, index: i };
                 if (!ersatz) ersatz = { gruppe, index: i };
             }
         }
@@ -153,7 +180,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this.schliesseKopfAufklapp();
         this.switchTab(seite.tab);
         if (seite.knopf) document.getElementById(seite.knopf)?.click();
-        if (unterreiter && typeof this.zeigeUnterreiter === "function") this.zeigeUnterreiter(`pane-${seite.tab}`, unterreiter, { nachOben: true });
+        const ur = unterreiter || seite.ur;
+        if (ur && typeof this.zeigeUnterreiter === "function") this.zeigeUnterreiter(`pane-${seite.tab}`, ur, { nachOben: true });
         if (typeof this.playSound === "function") this.playSound("click");
         this.aktualisiereKopfmenue();
     },
@@ -291,7 +319,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         let loseAn = -1;
         gruppe.seiten.forEach((seite, i) => {
             if (!this.kopfSeiteDa(seite)) return;
-            const pane = seite.knopf ? null : document.getElementById(`pane-${seite.tab}`);
+            // Seiten, die selbst ein Unterreiter sind (Verein), stehen ohne eigene Spalte
+            const pane = seite.knopf || seite.ur ? null : document.getElementById(`pane-${seite.tab}`);
             const unter = pane ? [...pane.querySelectorAll(":scope > .unterreiter .ur-knopf")].filter(k => !k.hidden) : [];
             if (!unter.length) {
                 if (loseAn < 0) loseAn = spalten.length;

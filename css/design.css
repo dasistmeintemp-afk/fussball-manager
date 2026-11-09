@@ -3671,6 +3671,8 @@ button.post-link { appearance: none; padding: 0; border: 0; background: none; fo
 
     /* Die Ansichten des Transfermarkts stehen schon in der zweiten Zeile */
     body.menue-oben #pane-transfers > .pane-header .view-switch-buttons { display: none; }
+    /* Ebenso die Seiten des Vereins (Vereinsprofil, Anlagen, Trainer, Vision & Partner, Chronik) */
+    body.menue-oben #pane-club > .unterreiter { display: none; }
 
     /* Der Inhalt rollt unter der höheren Kopfleiste */
     body.menue-oben .content-area { max-height: calc(100vh - var(--kopf-hoehe, 97px)); }

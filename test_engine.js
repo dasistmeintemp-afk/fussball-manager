@@ -16879,8 +16879,8 @@ function runEngineTests() {
         const sw = require('fs').readFileSync('./service-worker.js', 'utf8');
         // Jeder Reiter der Seitenleiste steht in genau einem Bereich - keiner fehlt, keiner doppelt
         const leiste = [...html.matchAll(/<button class="nav-item[^"]*" data-tab="(\w+)"/g)].map(m => m[1]);
-        const reiter = ui.KOPFMENUE.flatMap(g => g.seiten.filter(s => !s.knopf).map(s => s.tab));
-        const imMenue = new Set(reiter.concat(ui.KOPFMENUE.flatMap(g => g.seiten.filter(s => s.knopf).map(s => s.tab))));
+        const reiter = ui.KOPFMENUE.flatMap(g => g.seiten.filter(s => !s.knopf && !s.ur).map(s => s.tab));
+        const imMenue = new Set(reiter.concat(ui.KOPFMENUE.flatMap(g => g.seiten.filter(s => s.knopf || s.ur).map(s => s.tab))));
         if (leiste.length < 15) throw new Error(`Nur ${leiste.length} Reiter in der Seitenleiste gefunden`);
         leiste.forEach(t => { if (!imMenue.has(t)) throw new Error(`Reiter ${t} fehlt im Menü`); });
         // Die Übersichten der Bereiche gibt es nur oben (und am Handy unter "Mehr") - sonst kennt die Leiste jeden Reiter
@@ -16919,6 +16919,12 @@ function runEngineTests() {
             [["transfers", "transfers:Leihen"], ["youth", "kader:Jugend"], ["settings", "optionen:Spielstand & Optionen"], ["fixtures", "spieltag:Spielplan & Tabelle"], ["gibtsnicht", null]].forEach(([tab, soll]) => {
                 if (wo(tab) !== soll) throw new Error(`${tab}: ${wo(tab)} statt ${soll}`);
             });
+            // Die Seiten des Vereins stehen als seine Unterreiter oben in der zweiten Zeile
+            const verein = ui.KOPFMENUE.find(g => g.id === "verein").seiten;
+            if (verein.map(s => s.titel).join() !== "Übersicht,Vereinsprofil,Anlagen,Trainer,Vision & Partner,Chronik,Finanzen") throw new Error(`Verein: ${verein.map(s => s.titel)}`);
+            verein.filter(s => s.ur).forEach(s => { if (!html.includes(`data-ur="${s.ur}"`)) throw new Error(`Unterreiter ${s.ur} fehlt auf der Seite Verein`); });
+            global.document = { getElementById: id => id === "pane-club" ? { dataset: { urAktiv: "Chronik" } } : null };
+            if (wo("club") !== "verein:Chronik") throw new Error(`Verein, Chronik offen: ${wo("club")}`);
             // Zahlen übernimmt das Menü von der Seitenleiste, verborgene zählen nicht
             const marken = { navInboxBadge: { textContent: "4", style: { display: "inline-block" } }, navOffersBadge: { textContent: "2", style: { display: "none" } }, navNationalBadge: { textContent: "1", style: { display: "" } } };
             global.document = { getElementById: id => marken[id] || null };

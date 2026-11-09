@@ -887,6 +887,14 @@ function runWizardTests() {
         if (!html.includes('js/ui/spielfeld3d.js')) throw new Error("Das 3D-Modul fehlt in index.html");
         if (Spielfeld3D.BIBLIOTHEK !== "js/vendor/three.min.js" || !fs.existsSync('./' + Spielfeld3D.BIBLIOTHEK)) throw new Error("Der Nachlade-Pfad stimmt nicht");
         if (!/data-anzeige2d="dreiD"/.test(html) || !/data-kamera3d="tv"/.test(html)) throw new Error("Schalter oder Kamerawahl fehlen");
+        // Fünf Kameras, jede mit Knopf; eine unbekannte fällt auf TV zurück. 2D: Kamera wählbar
+        const kameras = [...html.matchAll(/data-kamera3d="(\w+)"/g)].map(m => m[1]);
+        if (kameras.join() !== "tv,taktik,nah,hintertor,regie") throw new Error(`Kameras: ${kameras}`);
+        const probe = { setze: Spielfeld3D.prototype.setzeKamera };
+        kameras.forEach(k => { probe.setze(k); if (probe.kamera !== k) throw new Error(`Kamera ${k} wird nicht angenommen`); });
+        probe.setze("drohne");
+        if (probe.kamera !== "tv" || !Spielfeld3D.KAMERA.hintertor || !(Spielfeld3D.REGIE.nah > Spielfeld3D.REGIE.totale)) throw new Error("Kamerawahl oder Regie-Grenzen falsch");
+        if (!/data-anzeige-wahl="kamera2D"/.test(html) || !/<option value="feld">Ganzes Feld<\/option>/.test(html)) throw new Error("Kamerawahl für 2D fehlt");
         if (!/data-anzeige-wahl="qualitaet3D"/.test(html) || !/data-anzeige2d="wiederholung3D"/.test(html)) throw new Error("Qualitätswahl oder Wiederholungsschalter fehlen");
         const sw = fs.readFileSync('./service-worker.js', 'utf8');
         if (!sw.includes('./js/vendor/three.min.js') || !sw.includes('./js/ui/spielfeld3d.js')) throw new Error("3D fehlt im Offline-Vorrat");

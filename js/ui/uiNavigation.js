@@ -65,6 +65,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
     UNTERREITER_SPEICHER: "viererkette-unterreiter",
 
+    /** Überschrift der Seite Verein je Unterreiter */
+    VEREIN_TITEL: { "Übersicht": "Vereinsprofil", "Anlagen": "Anlagen & Ausbau", "Trainer": "Trainer & Laufbahn", "Vision & Partner": "Vision & Partner", "Chronik": "Vereinschronik" },
+
     initUnterreiter() {
         let gemerkt = {};
         try { gemerkt = JSON.parse(localStorage.getItem(this.UNTERREITER_SPEICHER) || "{}") || {}; } catch (e) { gemerkt = {}; }
@@ -147,6 +150,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             else if (rechts > leiste.scrollLeft + leiste.clientWidth) leiste.scrollLeft = rechts - leiste.clientWidth + 24;
         }
         if (!optionen.still && vorher !== name) this.merkeVerlauf();
+        // Die Überschrift der Seite Verein nennt, was man gerade sieht
+        if (paneId === "pane-club") {
+            const titel = typeof pane.querySelector === "function" ? pane.querySelector("#clubTitel") : null;
+            if (titel) titel.textContent = this.VEREIN_TITEL[name] || name;
+        }
         // Die Seiten des Vereins stehen als Unterreiter in der zweiten Zeile oben
         if (vorher !== name && typeof this.aktualisiereKopfmenue === "function") this.aktualisiereKopfmenue();
         return true;

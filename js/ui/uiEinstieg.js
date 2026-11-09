@@ -288,7 +288,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         kasten.setAttribute("role", "note");
         kasten.innerHTML = `
             <div class="einstieg-erklaerung-text">
-                <strong>${esc(inhalt.titel)}</strong>
+                <strong class="einstieg-erklaerung-titel" role="button" tabindex="0" aria-expanded="false">${esc(inhalt.titel)}</strong>
                 <ul>${inhalt.punkte.map(p => `<li>${esc(p)}</li>`).join("")}</ul>
             </div>
             <div class="einstieg-erklaerung-knoepfe">
@@ -307,6 +307,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             this._einstiegSpeichern();
         });
         kasten.querySelector("[data-einstieg-begriffe]").addEventListener("click", () => this.zeigeKurzanleitung("begriffe"));
+        // Am Handy ist der Kasten eingeklappt: Ein Tipp auf den Titel zeigt die Punkte
+        const titel = kasten.querySelector(".einstieg-erklaerung-titel");
+        const klappe = () => titel.setAttribute("aria-expanded", String(kasten.classList.toggle("offen")));
+        titel.addEventListener("click", klappe);
+        titel.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); klappe(); } });
     },
 
     /** Kurzanleitung und Begriffe - im Fenster "Über das Spiel" */

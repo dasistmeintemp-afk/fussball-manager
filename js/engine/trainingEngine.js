@@ -306,7 +306,9 @@ class TrainingEngine {
             if (typeof player.matchSharpness !== "number") player.matchSharpness = 60;
             player.daysSinceInjury = (player.daysSinceInjury ?? 999) + 1;
 
-            if (player.injuredWeeks > 0) {
+            // Fitgespritzt (MedizinEngine): Er spielt, trainiert aber nicht mit
+            // und kommt nicht über 85 % Kondition
+            if (player.injuredWeeks > 0 || player.angeschlagen) {
                 // Reha statt Training
                 player.fitness = Math.min(85, (player.fitness ?? 60) + 2);
                 player.matchSharpness = Math.max(0, player.matchSharpness - 1.5);

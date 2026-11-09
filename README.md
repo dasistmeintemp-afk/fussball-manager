@@ -1172,6 +1172,23 @@ Bisher standen in der U23 nur Profis, die der Trainer selbst hinunterschickte - 
 - **Aktionen wie im Vorbild:** Im Menü *Aktionen* der Akte steht oben die Gruppe *Mannschaft*: *In die erste Mannschaft holen*, *Für den nächsten Spieltag nominieren*, *In die U19 / U23 wechseln*, *In die U23 / U19 schicken*, bei Talenten *Hochziehen*. Dieselben Einträge hat jede Zeile von U23, U19 und Akademie im Menü ⋯ und per Rechtsklick.
 - **Nebenwirkungen abgefangen:** U23 und U19 stehen nicht auf der Meldeliste, frusten nicht als Bankspieler, wollen nicht zum Gespräch und melden ihre Verträge nicht als auslaufend. Trainingsverletzungen und Genesungen stehen in ihrer Liste statt im Postfach. Beim Vereinswechsel bleibt die alte U23 nicht gesperrt beim alten Verein zurück, und die Akademie des alten Vereins wandert nicht mit.
 
+### 5g. 💉 Behandlung Verletzter: fitspritzen, früher zurückholen, intensive Reha (`MedizinEngine`)
+Bisher heilte jede Verletzung stur nach Plan, und der Trainer konnte nur warten. Jetzt entscheidet er mit dem Mannschaftsarzt. Der Dialog *Behandlung* öffnet sich aus der Akte (Aktionen, Gruppe *Medizin*, und Kachel Fitness), per Rechtsklick in der Kaderliste und aus dem ärztlichen Befund im Postfach.
+
+- **Fitspritzen:** bei leichten Verletzungen (Prellung, Muskelverhärtung, Knöchelstauchung, Zerrung).
+  - Der Spieler ist sofort einsatzbereit, spielt aber angeschlagen, bis die Verletzung ausgeheilt wäre.
+  - Er trainiert nicht mit und kommt nicht über 85 % Kondition.
+  - Nach jedem Einsatz kann die Verletzung aufbrechen, dann schwerer als vorher: aus der Zerrung wird ein Muskelfaserriss, aus der Stauchung eine Bänderdehnung. Die medizinische Abteilung meldet es.
+  - Wer im Spiel eine neue Verletzung erleidet, nimmt die alte mit in die Pause.
+- **Früher zurückholen:** dasselbe in der letzten Woche einer mittleren oder schweren Verletzung. Vorher geht es nicht: Einen Kreuzbandanriss spritzt kein Arzt fit.
+- **Risiko je Einsatz:** Grundwert der Verletzung (Prellung 6 %, Zerrung 16 %, Kreuzband 30 %), anderthalbmal so hoch bei zwei Wochen Restdauer, dazu die Anfälligkeit des Spielers und der Mannschaftsarzt (ein sehr guter senkt es um knapp ein Drittel). Der Arzt sagt dazu *vertretbar*, *mit Risiko* oder *rät ab*.
+- **Spritzen absetzen:** Dann fällt der Spieler für die Restdauer wieder aus, dafür ohne Risiko. Er verlässt Startelf und Bank.
+- **Intensive Reha:** ab zwei Wochen Ausfall, einmal je Verletzung.
+  - Spart je nach Mannschaftsarzt und medizinischem Zentrum ein Achtel bis 45 % der Restdauer, mindestens eine Woche.
+  - Kostet je Woche Restdauer 20 Tsd. € beim Erstligisten bis 600 € in der Landesliga, gebucht unter *Medizin*.
+- **Nur die erste Mannschaft des eigenen Vereins** wird fitgespritzt, die Reha gibt es auch für U23 und U19.
+- **Zu sehen:** 💉 mit Restdauer in der Kaderliste, auf dem Trikot in der Aufstellung, in der Akte, in der Kachel Verfügbarkeit und in der Liste der Ausfälle. Über den Sommer heilt alles aus.
+
 ### 6. 💼 Finanzen, Sponsoren & Buchungsjournal
 - **Gehaltsdisziplin der KI-Vereine (`FinanceEngine.gehaltsDisziplin`):** Jeder Wechsel und jede Verlängerung legt beim Gehalt etwas drauf. Angeglichen wurde bisher nur bei Auf- und Abstieg.
   - Gemessen lagen die Erstligisten nach drei Saisons bei 115 % dessen, was sie tragen können.

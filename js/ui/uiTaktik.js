@@ -1399,6 +1399,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const marken = [];
         if (String(rollenV.captain) === String(player.id)) marken.push(`<span class="spk-marke spk-kapitaen" title="Kapitän">C</span>`);
         if (player.injuredWeeks > 0) marken.push(`<span class="spk-marke spk-verletzt" title="Verletzt, noch ${player.injuredWeeks} ${player.injuredWeeks === 1 ? "Woche" : "Wochen"}">✚</span>`);
+        else if (player.angeschlagen) marken.push(`<span class="spk-marke spk-spritze" title="Fitgespritzt (${this.escapeHtml(player.angeschlagen.name)}), noch ${player.angeschlagen.wochen} ${player.angeschlagen.wochen === 1 ? "Woche" : "Wochen"} angeschlagen">💉</span>`);
         else if (player.suspendedMatches > 0) marken.push(`<span class="spk-marke spk-gesperrt" title="Gesperrt für ${player.suspendedMatches} ${player.suspendedMatches === 1 ? "Spiel" : "Spiele"}"></span>`);
         const sig = this.signaturVon(player);
         const titel = [
@@ -1469,7 +1470,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const land = (typeof PlayerGenerator !== "undefined" && typeof PlayerGenerator.landZuNation === "function")
             ? PlayerGenerator.landZuNation(player.nationality) : null;
         const fehlt = player.injuredWeeks > 0 ? `<span class="spm-status schlecht">Verletzt, noch ${player.injuredWeeks} ${player.injuredWeeks === 1 ? "Woche" : "Wochen"}</span>`
-            : (player.suspendedMatches > 0 ? `<span class="spm-status schlecht">Gesperrt für ${player.suspendedMatches} ${player.suspendedMatches === 1 ? "Spiel" : "Spiele"}</span>` : "");
+            : (player.suspendedMatches > 0 ? `<span class="spm-status schlecht">Gesperrt für ${player.suspendedMatches} ${player.suspendedMatches === 1 ? "Spiel" : "Spiele"}</span>`
+                : (player.angeschlagen ? `<span class="spm-status mittel">💉 Fitgespritzt (${esc(player.angeschlagen.name)}), noch ${player.angeschlagen.wochen} ${player.angeschlagen.wochen === 1 ? "Woche" : "Wochen"} angeschlagen</span>` : ""));
         const sig = this.signaturVon(player);
         return `<div class="spm-kopf">
             <div class="spm-sub">${land ? this.flaggeVon(land) + " " : ""}${esc(player.nationality || "")} · ${player.age} Jahre · Stammposition <strong>${esc(player.pos)}</strong>${player.leihe ? " · Leihspieler" : ""}</div>

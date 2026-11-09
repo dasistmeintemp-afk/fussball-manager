@@ -153,11 +153,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         kacheln.push(this._bhSicher(() => {
             const verletzt = kader.filter(p => (p.injuredWeeks || 0) > 0);
             const gesperrt = kader.filter(p => (p.suspendedMatches || 0) > 0);
-            const muede = kader.filter(p => !(p.injuredWeeks > 0) && (p.fitness ?? 100) < 75).sort((a, b) => (a.fitness ?? 100) - (b.fitness ?? 100));
+            const muede = kader.filter(p => !(p.injuredWeeks > 0) && !p.angeschlagen && (p.fitness ?? 100) < 75).sort((a, b) => (a.fitness ?? 100) - (b.fitness ?? 100));
+            const gespritzt = kader.filter(p => p.angeschlagen);
             const bereit = kader.length - new Set([...verletzt, ...gesperrt].map(p => p.id)).size;
             const liste = [
                 ...verletzt.map(p => B.spieler(p, `<span class="pf-ton-schlecht">${esc(p.injuryName || "Verletzt")}</span>`, `${p.injuredWeeks} Wo.`)),
-                ...gesperrt.map(p => B.spieler(p, `<span class="pf-ton-schlecht">Gesperrt</span>`, `${p.suspendedMatches} Sp.`))
+                ...gesperrt.map(p => B.spieler(p, `<span class="pf-ton-schlecht">Gesperrt</span>`, `${p.suspendedMatches} Sp.`)),
+                ...gespritzt.map(p => B.spieler(p, `<span class="pf-ton-mittel">💉 Fitgespritzt</span>`, `${p.angeschlagen.wochen} Wo.`))
             ];
             return this.ukKachel({
                 titel: "Verfügbarkeit", icon: "i-medical", ziel: "squad:Spieler", zielText: "Zum Kader",

@@ -107,6 +107,15 @@ const _genEngine = _einmal(() => (typeof PlayerGenerator !== 'undefined' && Play
     : ((typeof window !== 'undefined' && window.PlayerGenerator) ? window.PlayerGenerator
         : (typeof require !== 'undefined' ? (() => { try { return require('./playerGenerator.js').PlayerGenerator; } catch (e) { return null; } })() : null)));
 
+// Behandlung Verletzter (MedizinEngine): Wer fitgespritzt spielt, kann aufbrechen
+const _mMedizin = _einmal(() => (typeof MedizinEngine !== 'undefined' && MedizinEngine)
+    ? MedizinEngine
+    : ((typeof window !== 'undefined' && window.MedizinEngine)
+        ? window.MedizinEngine
+        : ((typeof require !== 'undefined')
+            ? (() => { try { return require('./medizinEngine.js').MedizinEngine; } catch (e) { return null; } })()
+            : null)));
+
 const _stabEngine = _einmal(() => (typeof CoachingStaffEngine !== 'undefined' && CoachingStaffEngine)
     ? CoachingStaffEngine
     : ((typeof window !== 'undefined' && window.CoachingStaffEngine)
@@ -2699,6 +2708,8 @@ class MatchEngine {
         });
 
         const playerRatings = [];
+        // Wer fitgespritzt auf dem Platz stand (MedizinEngine.nachDemSpiel)
+        const angeschlagen = [];
         // Ein Testspiel zählt für keine Statistik und keine Kartensperre.
         // Vorher liefen seine Tore, Einsätze und Gelben Karten in die
         // Saisonbilanz: Der beste Torjäger hatte nach sieben Spieltagen 24
@@ -2731,6 +2742,7 @@ class MatchEngine {
             if (!isStarter && st.subInMinute === null) minutes = 0;
 
             if (minutes <= 0) return;
+            if (player.angeschlagen) angeschlagen.push({ player, club: teamClub });
 
             // Noten-Berechnung (B9) - dieselbe Rechnung wie die Live-Note
             const isTW = player.pos === "TW";
@@ -2839,6 +2851,12 @@ class MatchEngine {
                 p.fitness = Math.max(30, (p.fitness || 100) - 20);
             }
         });
+
+        // Fitgespritzt gespielt: Nach dem Einsatz kann die Verletzung aufbrechen
+        if (angeschlagen.length) {
+            const medizin = _mMedizin();
+            if (medizin && typeof medizin.nachDemSpiel === "function") medizin.nachDemSpiel(angeschlagen, matchInjuries);
+        }
 
         // Formkurven der Vereine - nur aus der Liga. Vorher liefen
         // Testspiele der Vorbereitung und Pokalspiele mit hinein: Zum

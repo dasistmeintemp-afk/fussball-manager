@@ -695,7 +695,11 @@ class SeasonEngine {
         }
 
         // 4. Verletzungen & Sperren um 1 reduzieren
+        // Fitgespritzte: eine Woche näher dran, und wo es nach dem Spiel aufgebrochen ist, meldet der Arzt
+        const medizin = _resolve('MedizinEngine', './medizinEngine.js');
+        if (medizin && typeof medizin.meldungenAbholen === 'function') medizin.meldungenAbholen(state);
         state.players.forEach(p => {
+            if (p.angeschlagen && medizin) medizin.wocheVorbei(state, p);
             if (p.injuredWeeks > 0) {
                 p.injuredWeeks--;
                 // Das Kennzeichen muss mit heilen. Vorher wurde nur die
@@ -707,6 +711,8 @@ class SeasonEngine {
                 // stehen. Nach einer halben Saison hingen so ueber 250 Spieler
                 // in diesem Zustand fest.
                 if (p.injuredWeeks === 0) p.injured = false;
+                // Die intensive Reha galt dieser Verletzung - die nächste darf wieder
+                if (p.injuredWeeks === 0 && p.reha) p.reha = null;
                 if (p.injuredWeeks === 0 && p.clubId === state.userClubId && !p.reserve) {
                     state.inbox.unshift({
                         id: Date.now() + 3,
@@ -1207,6 +1213,9 @@ class SeasonEngine {
             player.injuredWeeks = 0;
             player.injured = false;
             player.suspendedMatches = 0;
+            // Auch wer fitgespritzt spielte, ist über den Sommer ausgeheilt
+            if (player.angeschlagen) player.angeschlagen = null;
+            if (player.reha) player.reha = null;
         });
 
         // Verträge um ein Jahr kürzen; wessen Vertrag danach im letzten Jahr

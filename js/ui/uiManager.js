@@ -1401,7 +1401,7 @@ class UIManager {
         // 4. Medical / Suspended List
         const medContainer = document.getElementById("dashMedicalList");
         const squad = state.players.filter(p => userClub.playerIds.includes(p.id));
-        const injuredOrSuspended = squad.filter(p => p.injuredWeeks > 0 || p.suspendedMatches > 0);
+        const injuredOrSuspended = squad.filter(p => p.injuredWeeks > 0 || p.suspendedMatches > 0 || p.angeschlagen);
 
         if (injuredOrSuspended.length === 0) {
             medContainer.innerHTML = `<div class="empty-state-sm">Keine verletzten oder gesperrten Spieler. Voller Kader einsatzbereit!</div>`;
@@ -1412,6 +1412,13 @@ class UIManager {
                         <div class="medical-item">
                             <span class="medical-name"><svg class="ico" aria-hidden="true"><use href="#i-medical"/></svg><strong>${this.escapeHtml(p.name)}</strong> <span class="text-muted">${this.escapeHtml(p.pos)}</span></span>
                             <span class="medical-badge">${p.injuryName} (${p.injuredWeeks} Wo.)</span>
+                        </div>
+                    `;
+                } else if (p.angeschlagen && !(p.suspendedMatches > 0)) {
+                    return `
+                        <div class="medical-item">
+                            <span class="medical-name">💉 <strong>${this.escapeHtml(p.name)}</strong> <span class="text-muted">${this.escapeHtml(p.pos)}</span></span>
+                            <span class="medical-badge">Fitgespritzt (${this.escapeHtml(p.angeschlagen.name)}, noch ${p.angeschlagen.wochen} Wo.)</span>
                         </div>
                     `;
                 } else {
@@ -3888,7 +3895,7 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = { UIManager };
     // Die ausgelagerten Teile hängen sich an die Klasse - im Browser lädt sie
     // index.html der Reihe nach, unter Node holen wir sie hier dazu
-    ["./uiAssistent.js", "./uiKader.js", "./uiTaktik.js", "./uiWettbewerbe.js", "./uiWettbewerbSeite.js", "./uiTraining.js", "./uiUnterbau.js", "./uiFinanzen.js", "./uiVerein.js", "./uiPostfach.js", "./uiDialoge.js", "./uiKarriere.js",
+    ["./uiAssistent.js", "./uiKader.js", "./uiTaktik.js", "./uiWettbewerbe.js", "./uiWettbewerbSeite.js", "./uiTraining.js", "./uiUnterbau.js", "./uiMedizin.js", "./uiFinanzen.js", "./uiVerein.js", "./uiPostfach.js", "./uiDialoge.js", "./uiKarriere.js",
         "./uiSpielfeld.js", "./uiVorbereitung.js", "./uiTransfers.js", "./uiAkten.js", "./uiSeiten.js", "./uiProfil.js", "./uiProfilLaufbahn.js", "./uiAngebot.js", "./uiVereinSeite.js", "./uiSpielerdatenbank.js", "./uiRekrutierung.js", "./uiKacheln.js", "./uiBereiche.js", "./uiMomentum.js", "./uiLivespiel.js", "./uiLiveKacheln.js", "./uiLiveDarstellung.js", "./uiSpielbericht.js", "./uiMeldungen.js", "./uiKopfmenue.js", "./uiFarben.js", "./uiPortal.js", "./uiWettbewerbUebersicht.js", "./uiSpeicher.js", "./uiEinstieg.js", "./uiNational.js", "./uiNavigation.js"]
         .forEach(teil => require(teil));
 }

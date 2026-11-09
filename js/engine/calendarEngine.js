@@ -1120,6 +1120,14 @@ const CalendarEngine = {
         // Taktische Wirksamkeit: seit wann der Trainer da ist (für den Rückhalt)
         if (taktikUhr && typeof taktikUhr.wirksamkeitPflegen === "function") taktikUhr.wirksamkeitPflegen(state);
         const res = this._tagWeiter(state);
+        // Nach einem Spiel: Wo eine fitgespritzte Verletzung aufgebrochen ist (MedizinEngine)
+        const medizin = (typeof MedizinEngine !== 'undefined' && MedizinEngine)
+            ? MedizinEngine
+            : ((typeof window !== 'undefined' && window.MedizinEngine) ? window.MedizinEngine : (typeof require !== 'undefined' ? (() => { try { return require('./medizinEngine.js').MedizinEngine; } catch (e) { return null; } })() : null));
+        if (res && res.success && medizin && typeof medizin.meldungenAbholen === "function") {
+            const zeilen = medizin.meldungenAbholen(state);
+            if (res.summary && Array.isArray(res.summary.messages)) zeilen.forEach(m => res.summary.messages.push(m));
+        }
         // Eine Anfrage an den Vorstand: Nach der Bedenkzeit kommt die Antwort
         const vorstand = _getBoardEngineCal();
         if (res && res.success && vorstand && typeof vorstand.anfrageTag === "function") {

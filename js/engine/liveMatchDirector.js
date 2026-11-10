@@ -469,6 +469,17 @@ class LiveMatchDirector {
      * den Konter sofort ins Spiel, ruhig wartet, bis die Mannschaft steht.
      */
     static TORWART_HALTEN = { schnell: [0.3, 0.7], normal: [1.2, 2.2], ruhig: [2.6, 4] };
+    /**
+     * Nach einem Abschluss steht die halbe Mannschaft im eigenen Strafraum.
+     * Dann wartet der Torwart, bis sie herausgerückt ist: je Mitspieler über
+     * "frei" hinaus, der noch tiefer als "tiefe" Einheiten vor dem eigenen
+     * Tor steht, "je" Sekunden länger, höchstens "hoechstens" Sekunden
+     * insgesamt. Gemessen hielt er den Ball vorher 0,7 Sekunden, mit im
+     * Schnitt 6,4 Mitspielern im Strafraum, und warf 38 Meter weit ins
+     * Niemandsland. Wer "schnell" verteilt, kontert weiter sofort - außer es
+     * stehen mehr als "freiSchnell" hinten, dann fehlt vorn der Abnehmer.
+     */
+    static TORWART_WARTEN = { tiefe: 18, frei: 3, freiSchnell: 6, je: 0.75, hoechstens: { schnell: 3, normal: 6, ruhig: 7.5 } };
     /** Abwurf-Tempo, wenn der Torwart den Ball am Fuß annimmt (setzeAnnahme): Faktor je torwartSchnell */
     static TORWART_FUSS = { 1: 0.6, "-1": 1.4 };
 
@@ -514,6 +525,24 @@ class LiveMatchDirector {
 
     /** Wie die Spieleranweisung "Läufe in die Tiefe" wirkt: Zuschlag auf die Wahl des Laufwegs und auf den Start im Steilmoment */
     static TIEFE_ANWEISUNG = { oft: { bonus: 1.6, start: 1.6 }, selten: { bonus: -2.2, start: 0.35 } };
+    /**
+     * Restverteidigung: Liegt der Ball weiter als "ab" vorn, bleibt hinter
+     * dem Ball (mehr als "zone" Einheiten) einer mehr als dort Gegner lauern,
+     * mindestens "mindestens". Wer zur Absicherung gehört, rückt dann nicht
+     * auf. Gemessen stand die Absicherung vorher in 29 % der Momente nur in
+     * Gleichzahl oder Unterzahl.
+     */
+    static RESTVERTEIDIGUNG = { ab: 0.6, zone: 22, mindestens: 2 };
+    /**
+     * Lauf hinter die Kette: Angreifer starten auf die Abseitslinie, auch
+     * weiter als ihr Positionsraum reicht (höchstens "weite" Einheiten).
+     * Gemessen lief vorher nur in 2 % der Momente im Mittelfeld einer an
+     * oder hinter der letzten Reihe. "zweiter" bremst den zweiten Läufer,
+     * damit nicht alle zugleich starten.
+     */
+    static KETTENLAUF = { von: 0.3, bis: 0.8, weite: 20, abstand: 2, bonus: 6.5, zweiter: -5 };
+    /** Nach dem Ballgewinn: So lange (Sekunden) sprinten die Außen in die Breite */
+    static BREITE_NACH_GEWINN = { dauer: 5, bonus: 2.2, urgency: 1.4, vorAnteil: 0.35 };
     static VORAUSAHNEN = 0.5;
 
     /**
@@ -3603,9 +3632,24 @@ class LiveMatchDirector {
         const schnell = this.taktik(keeper.team).w.torwartSchnell || 0;
         const art = schnell > 0 ? "schnell" : (schnell < 0 ? "ruhig" : "normal");
         const [von, bis] = LiveMatchDirector.TORWART_HALTEN[art];
-        this._annahmeTimer = (von + Math.random() * (bis - von)) / this.getAbspielTempo() * this.zeitspielFaktor(keeper.team);
+        let halten = von + Math.random() * (bis - von);
+        // Steht die Mannschaft noch im eigenen Strafraum, wartet er, bis sie herausgerückt ist
+        // Auch wer schnell verteilt, braucht vorn einen Abnehmer: Stehen fast alle hinten, wartet er kurz
+        const tief = this.mitspielerTief(keeper);
+        const W = LiveMatchDirector.TORWART_WARTEN;
+        const frei = art === "schnell" ? W.freiSchnell : W.frei;
+        const wartet = tief > frei;
+        if (wartet) halten = Math.min(W.hoechstens[art] || W.hoechstens.normal, halten + (tief - frei) * W.je);
+        this._annahmeTimer = halten / this.getAbspielTempo() * this.zeitspielFaktor(keeper.team);
         // Wer sich Zeit lässt, wirft auch dem freien Läufer nicht gleich zu
-        this._torwartRuhig = art === "ruhig" ? keeper.id : null;
+        this._torwartRuhig = art === "ruhig" || wartet ? keeper.id : null;
+    }
+
+    /** Wie viele Feldspieler der eigenen Elf noch tief vor dem eigenen Tor stehen (TORWART_WARTEN.tiefe) */
+    mitspielerTief(keeper) {
+        const tor = this.ownGoalX(keeper.team);
+        return (this.match.players2D || []).filter(p => p.team === keeper.team && p.pos !== "TW"
+            && Math.abs(p.x - tor) < LiveMatchDirector.TORWART_WARTEN.tiefe).length;
     }
 
     /** Zeitspiel beim ruhenden Ball: Wer führt und auf Zeit spielt, lässt sich mit dem Standard Zeit */
@@ -5769,6 +5813,21 @@ class LiveMatchDirector {
         const mutig = taktik.mentality === "offensive" || taktik.mentality === "very_offensive";
         const vorsichtig = taktik.mentality === "defensive" || taktik.mentality === "very_defensive";
 
+        // Restverteidigung: Wer hinter dem Ball absichert, bleibt, solange dort
+        // nicht einer mehr steht, als Gegner lauern
+        const RV = LiveMatchDirector.RESTVERTEIDIGUNG;
+        const imSpielfluss = this.mode === "ambient";
+        if (imSpielfluss && vorne > RV.ab && (p.group === "def" || p.rolle === "DM")) {
+            const hinterBall = (q) => (ball.x - q.x) * dir > RV.zone;
+            if (hinterBall(p)) {
+                const absicherung = 1 + mitspieler.filter(hinterBall).length;
+                const lauernde = gegner.filter(hinterBall).length;
+                if (absicherung <= Math.max(RV.mindestens, lauernde + 1)) {
+                    return { ox: -dir * 1.5, oy: 0, art: "absichern", urgency: 0, sprint: false };
+                }
+            }
+        }
+
         // Stehenbleiben ist eine Wahl fuer den, der weit weg vom Ball ist. Wer
         // im Spiel ist, bewegt sich.
         const imSpiel = Math.hypot(p.x - ball.x, p.y - ball.y) < 32;
@@ -5793,6 +5852,19 @@ class LiveMatchDirector {
             kandidaten.push({ ox: -dir * r.x * 0.9, oy: zumBall * r.y * 0.4, art: "entgegen",
                 urgency: 1.2, bonus: (vorne < 0.55 ? 1.6 : 0) + (kurz ? 1.0 : direkt ? -0.8 : 0) });
         }
+        // Lauf hinter die Kette: auf die Abseitslinie starten, auch über den eigenen Raum hinaus
+        const KL = LiveMatchDirector.KETTENLAUF;
+        const kette = this._abseitsLinie?.[p.team];
+        if (imSpielfluss && typeof kette === "number" && vorne > KL.von && vorne < KL.bis && p.anw?.tiefe !== "selten"
+            && (p.group === "att" || p.rolleMit?.laeuft || p.anw?.tiefe === "oft")) {
+            const bisKette = (kette - dir * 0.5 - anker.x) * dir;
+            if (bisKette > KL.abstand && bisKette < KL.weite) {
+                const schonEiner = mitspieler.some(m => m.lauf?.art === "kette" && m.lauf.team === this.possessionTeam);
+                kandidaten.push({ ox: dir * bisKette, oy: (Math.random() - 0.5) * r.y * 0.8, art: "kette", urgency: 1.5, sprint: true, frei: true,
+                    bonus: KL.bonus + (direkt ? 1.2 : kurz ? -0.6 : 0) + (mutig ? 0.6 : 0) + steilMoment + (tiefeAnw ? tiefeAnw.bonus : 0)
+                        + (schonEiner ? KL.zweiter : 0) });
+            }
+        }
         if (p.group === "att" && vorne > 0.68 && p.anw?.strafraum !== "selten") {
             // Liegt der Ball im letzten Drittel, gehen die Spitzen in den
             // Strafraum - an den ersten oder an den zweiten Pfosten
@@ -5806,8 +5878,11 @@ class LiveMatchDirector {
         // einmal nach innen; wer im Halbraum steht, geht auch einmal nach
         // aussen, wenn dort Platz ist.
         const aussen = anker.y < 50 ? -1 : 1;
+        // Gerade den Ball gewonnen: Die Außen machen das Feld sofort breit
+        const BG = LiveMatchDirector.BREITE_NACH_GEWINN;
+        const frisch = imSpielfluss && (this._laufUhr || 0) - (this._wechselUhr ?? -99) < BG.dauer;
         if (bahn === "linie") {
-            kandidaten.push({ ox: dir * r.x * 0.4, oy: 0, art: "breite", urgency: 1.1, bonus: 1.4 });
+            kandidaten.push({ ox: dir * r.x * 0.4, oy: 0, art: "breite", urgency: frisch ? BG.urgency : 1.1, sprint: frisch, bonus: 1.4 + (frisch ? BG.bonus : 0) });
             if (p.group !== "def") {
                 kandidaten.push({ ox: dir * r.x * 0.3, oy: -aussen * raum.y * 1.4, art: "einruecken",
                     urgency: 1.15, bonus: vorne > 0.6 ? 1.2 : -0.5, frei: true });
@@ -6497,6 +6572,19 @@ class LiveMatchDirector {
                 && (p.group === "att" || (wT.konter > 0 && (p.rolleMit?.laeuft || BREITE_ROLLEN.includes(p.rolle) && p.group === "mid")))) {
                 urgency = wT.konter > 0 ? 1.55 : 1.4;
                 sprinting = true;
+            } else if (attacking && seitWechsel < LiveMatchDirector.BREITE_NACH_GEWINN.dauer && urgency < LiveMatchDirector.BREITE_NACH_GEWINN.urgency
+                && Math.abs(ty - 50) > Math.abs(p.y - 50) + 3) {
+                // Ballgewinn: Wer nach außen muss, läuft zügig hin - das Feld wird sofort breit
+                urgency = LiveMatchDirector.BREITE_NACH_GEWINN.urgency;
+                sprinting = true;
+            }
+            // ... und zwar zuerst nach außen, dann nach vorn. Gemessen lief ein
+            // Außenverteidiger mit Ziel an der Linie nur einen Meter je Sekunde
+            // zur Seite, weil sein Platz zugleich weit vorn lag: Nach vier
+            // Sekunden war die Elf erst 39 statt 44 Meter breit.
+            if (attacking && p.group !== "att" && seitWechsel < LiveMatchDirector.BREITE_NACH_GEWINN.dauer
+                && Math.abs(ty - 50) > Math.abs(p.y - 50) + 4 && Math.abs(ty - p.y) > 5) {
+                tx = p.x + (tx - p.x) * LiveMatchDirector.BREITE_NACH_GEWINN.vorAnteil;
             }
         }
 

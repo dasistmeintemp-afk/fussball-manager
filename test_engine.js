@@ -18790,6 +18790,105 @@ function runEngineTests() {
         if (!html.includes('id="btnDashPraemie"')) throw new Error("Knopf Sonderprämie fehlt bei Aufstellung & Taktik");
     });
 
+    test("Spielablauf: Torwart wartet auf die eigene Elf, Restverteidigung mit einem Mann mehr, Lauf hinter die Kette, breit nach Ballgewinn", () => {
+        const { LiveMatchDirector: D } = require('./js/engine/liveMatchDirector.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Ablauf" });
+        const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");
+        const neu = () => {
+            const live = new LiveMatch({ id: "ablauf", played: false, homeClubId: "muc", awayClubId: "dor" }, heim, gast, state.players);
+            live.speed = 1;
+            return live;
+        };
+        const altZufall = Math.random;
+        try {
+            // Torwart: Steht die Elf im eigenen Strafraum, hält er den Ball, bis sie herausgerückt ist
+            const live = neu(), d = live.director;
+            const elf = live.players2D.filter(p => p.team === "home"), tw = elf.find(p => p.pos === "TW"), feld = elf.filter(p => p.pos !== "TW");
+            const tor = d.ownGoalX("home"), dir = d.attackDir("home");
+            heim.tactics.torwartVerteilung = "normal";
+            Math.random = () => 0.5;
+            feld.forEach(p => { p.x = tor + dir * 40; });
+            d.torwartHatBall(tw);
+            const frei = d._annahmeTimer;
+            if (!(frei > 1 && frei < 2.3) || d._torwartRuhig) throw new Error(`Freies Feld: Torwart hält ${frei} s`);
+            feld.forEach(p => { p.x = tor + dir * 10; });
+            if (d.mitspielerTief(tw) !== feld.length) throw new Error("Tiefe Mitspieler falsch gezählt");
+            d.torwartHatBall(tw);
+            if (d._annahmeTimer !== D.TORWART_WARTEN.hoechstens.normal || d._torwartRuhig !== tw.id) throw new Error(`Voller Strafraum: Torwart hält ${d._annahmeTimer} s`);
+            feld.slice(0, 5).forEach(p => { p.x = tor + dir * 40; });
+            d.torwartHatBall(tw);
+            const halb = d._annahmeTimer;
+            if (!(halb > frei + 1 && halb < D.TORWART_WARTEN.hoechstens.normal)) throw new Error(`Fünf noch hinten: ${halb} s`);
+            // Schnell verteilen kontert weiter sofort - außer es steht fast niemand vorn
+            heim.tactics.torwartVerteilung = "schnell";
+            live.director.flow && live.director.taktik && (live.director._taktikCache = null);
+            const live2 = neu(), d2 = live2.director, elf2 = live2.players2D.filter(p => p.team === "home"), tw2 = elf2.find(p => p.pos === "TW"), feld2 = elf2.filter(p => p.pos !== "TW");
+            feld2.forEach((p, i) => { p.x = tor + dir * (i < 5 ? 10 : 40); });
+            d2.torwartHatBall(tw2);
+            if (!(d2._annahmeTimer < 0.8)) throw new Error(`Schnell mit fünf hinten: ${d2._annahmeTimer} s`);
+            feld2.forEach(p => { p.x = tor + dir * 10; });
+            d2.torwartHatBall(tw2);
+            if (!(d2._annahmeTimer > 1.5 && d2._annahmeTimer <= D.TORWART_WARTEN.hoechstens.schnell)) throw new Error(`Schnell mit allen hinten: ${d2._annahmeTimer} s`);
+            heim.tactics.torwartVerteilung = "normal";
+            Math.random = altZufall;
+
+            // Restverteidigung: Ball im letzten Drittel, hinten bleibt einer mehr, als Gegner lauern
+            const live3 = neu(), d3 = live3.director;
+            d3.mode = "ambient"; d3.possessionTeam = "home";
+            const e3 = live3.players2D.filter(p => p.team === "home" && p.pos !== "TW"), g3 = live3.players2D.filter(p => p.team === "away" && p.pos !== "TW");
+            const ball = { x: tor + dir * 75, y: 50 };
+            e3.forEach(p => { p.x = ball.x - dir * 5; }); g3.forEach(p => { p.x = ball.x + dir * 6; });
+            const iv = e3.filter(p => p.group === "def");
+            iv[0].x = ball.x - dir * 30; iv[1].x = ball.x - dir * 30;
+            const anker = { x: iv[0].x, y: iv[0].y };
+            const gezwungen = (w) => w.art === "absichern" && w.ox === -dir * 1.5;
+            for (let i = 0; i < 20; i++) if (!gezwungen(d3.waehleFreilaufen(iv[0], anker, dir, ball))) throw new Error("Zwei hinten, keiner lauert: Der Verteidiger verlässt die Absicherung");
+            // Lauert ein Gegner, braucht es zwei - auch dann bleibt er; mit vier hinten darf er wieder frei wählen
+            g3[0].x = ball.x - dir * 28;
+            if (!gezwungen(d3.waehleFreilaufen(iv[0], anker, dir, ball))) throw new Error("Zwei gegen einen: Der Verteidiger geht");
+            e3.filter(p => !iv.slice(0, 2).includes(p)).slice(0, 2).forEach(p => { p.x = ball.x - dir * 30; });
+            let frei3 = 0;
+            for (let i = 0; i < 40; i++) if (!gezwungen(d3.waehleFreilaufen(iv[0], anker, dir, ball))) frei3++;
+            if (!frei3) throw new Error("Vier hinten gegen einen: Der Verteidiger bleibt trotzdem gebunden");
+            // Im Jubel gilt die Regel nicht
+            g3[0].x = ball.x + dir * 6;
+            e3.forEach(p => { if (!iv.slice(0, 2).includes(p)) p.x = ball.x - dir * 5; });
+            d3.mode = "celebration";
+            let jubel = 0;
+            for (let i = 0; i < 30; i++) if (!gezwungen(d3.waehleFreilaufen(iv[0], anker, dir, ball))) jubel++;
+            if (!jubel) throw new Error("Restverteidigung bindet auch im Torjubel");
+
+            // Lauf hinter die Kette: Ein Stürmer startet auf die Abseitslinie, weiter als sein Raum reicht
+            const live4 = neu(), d4 = live4.director;
+            d4.mode = "ambient"; d4.possessionTeam = "home";
+            const st = live4.players2D.find(p => p.team === "home" && p.group === "att");
+            const ball4 = { x: tor + dir * 50, y: 50 };
+            const linie = tor + dir * 78;
+            d4._abseitsLinie = { home: linie, away: tor + dir * 20 };
+            // Vier in der Kette, die anderen vor dem Ball
+            const g4 = live4.players2D.filter(p => p.team === "away" && p.pos !== "TW");
+            g4.forEach(p => { p.x = ball4.x + dir * 4; });
+            g4.filter(p => p.group === "def").slice(0, 4).forEach((p, i) => { p.x = linie + dir * 0.5; p.y = 20 + i * 20; });
+            const anker4 = { x: linie - dir * 12, y: 50 };
+            st.x = anker4.x; st.y = 50; st.lauf = null;
+            let laeufe = 0, weit = 0;
+            for (let i = 0; i < 120; i++) {
+                st.lauf = null;
+                const w = d4.waehleFreilaufen(st, anker4, dir, ball4);
+                if (w.art === "kette") { laeufe++; if (w.sprint && w.ox * dir > 9) weit++; }
+            }
+            if (laeufe < 12 || weit !== laeufe) throw new Error(`Lauf hinter die Kette: ${laeufe} von 120, davon ${weit} weit und im Sprint`);
+            d4.mode = "celebration";
+            for (let i = 0; i < 40; i++) { st.lauf = null; if (d4.waehleFreilaufen(st, anker4, dir, ball4).art === "kette") throw new Error("Lauf hinter die Kette im Torjubel"); }
+
+            // Breit nach Ballgewinn: Die Werte stehen, und sie gelten nur kurz nach dem Wechsel
+            if (!(D.BREITE_NACH_GEWINN.dauer >= 3 && D.BREITE_NACH_GEWINN.vorAnteil < 1 && D.BREITE_NACH_GEWINN.urgency > 1.1)) throw new Error("Breite nach Ballgewinn nicht eingestellt");
+        } finally {
+            Math.random = altZufall;
+            heim.tactics.torwartVerteilung = "normal";
+        }
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

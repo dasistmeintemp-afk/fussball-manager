@@ -541,6 +541,8 @@ class LiveMatchDirector {
      * damit nicht alle zugleich starten.
      */
     static KETTENLAUF = { von: 0.3, bis: 0.8, weite: 20, abstand: 2, bonus: 6.5, zweiter: -5 };
+    /** Sekunden von der Abwehr- in die Angriffsform und zurück: beim Kontern, normal, beim Ballsichern - und in der Breite (umschaltBreite) */
+    static UMSCHALT_FORM = { konter: 1.1, normal: 1.6, sichern: 2.0, breite: 0.7 };
     /** Nach dem Ballgewinn: So lange (Sekunden) sprinten die Außen in die Breite */
     static BREITE_NACH_GEWINN = { dauer: 5, bonus: 2.2, urgency: 1.4, vorAnteil: 0.35 };
     static VORAUSAHNEN = 0.5;
@@ -6444,7 +6446,8 @@ class LiveMatchDirector {
         const mitBall = this.formMitBall(p, gesehen, ball, dir, ballProgress);
         const ohneBall = this.formOhneBall(p, gesehen, dir);
         let tx = ohneBall.x + (mitBall.x - ohneBall.x) * form;
-        let ty = ohneBall.y + (mitBall.y - ohneBall.y) * form;
+        // In die Breite schaltet jeder schnell um, auch wer in der Tiefe noch absichert
+        let ty = ohneBall.y + (mitBall.y - ohneBall.y) * this.umschaltBreite(p);
 
         // Die Position im Verbund, bevor Zweikampf und Pressing sie ueberschreiben
         const blockTx = tx;
@@ -6622,6 +6625,25 @@ class LiveMatchDirector {
      * aber nicht in einem Bild. Ein Ball, der nach einer Sekunde zurueckerobert
      * ist, schickt deshalb nicht mehr die ganze Mannschaft auf die Reise.
      */
+    /**
+     * Wie weit ein Spieler in der Breite umgeschaltet hat (null eng, eins
+     * breit). Eigener Wert neben umschaltgrad: Beim Kontern bleiben Abwehr
+     * und Absicherung in der Tiefe 2,6 Sekunden stehen - gemessen zog das
+     * auch die Außenverteidiger erst nach drei Sekunden nach außen, und die
+     * Elf stand zwei Sekunden nach dem Ballgewinn so eng wie ohne Ball.
+     */
+    umschaltBreite(p) {
+        const ziel = p.team === this.possessionTeam ? 1 : 0;
+        const uhr = this._laufUhr || 0;
+        if (typeof p.formB !== "number") p.formB = ziel;
+        const vergangen = Math.max(0, uhr - (p._formBUhr ?? uhr));
+        p._formBUhr = uhr;
+        if (uhr - (this._wechselUhr ?? -99) < (p.reaktion ?? 0.3)) return p.formB;
+        const schritt = vergangen / LiveMatchDirector.UMSCHALT_FORM.breite;
+        p.formB += Math.max(-schritt, Math.min(schritt, ziel - p.formB));
+        return p.formB;
+    }
+
     umschaltgrad(p) {
         const ziel = p.team === this.possessionTeam ? 1 : 0;
         const uhr = this._laufUhr || 0;
@@ -6632,7 +6654,12 @@ class LiveMatchDirector {
         // Wer kontert, ist schneller in der Form mit Ball; wer den Ball
         // sichert, laesst sich Zeit
         const konter = ziel === 1 ? (this.taktik(p.team).w.konter || 0) : 0;
-        let dauer = konter > 0 ? 1.1 : (konter < 0 ? 2.0 : 1.6);
+        // Wie lange das Umschalten in der Tiefe dauert (UMSCHALT_FORM). Schneller
+        // (1,0 statt 1,6 Sekunden) schob die Kette eines tiefen Blocks fast auf
+        // die Höhe einer neutralen Elf - in die Breite schaltet umschaltBreite
+        // deshalb eigens und schneller um.
+        const UF = LiveMatchDirector.UMSCHALT_FORM;
+        let dauer = konter > 0 ? UF.konter : (konter < 0 ? UF.sichern : UF.normal);
         // Beim Kontern geht nach vorn, wer laufen soll - die Abwehr und die
         // Absicherung davor bleiben stehen, bis der Angriff sitzt. Vorher
         // schaltete die ganze Elf in gut einer Sekunde um; ging der Ball

@@ -612,6 +612,13 @@ Im Livespiel wird nichts mehr vorab gewürfelt. Wie in den großen Managerspiele
 
 **Der Trainer des Gegners reagiert:** Liegt die KI zurück, stellt sie ab der 55. Minute offensiver um, bei zwei Toren Rückstand sofort, in der Schlussphase auf volles Risiko mit hohem Pressing. Eine späte Führung sichert sie ab und bringt sie knapp auch mit Zeitspiel über die Zeit. Jede Umstellung steht im Ticker, nach dem Abpfiff gilt wieder die eigene Taktik. Gewechselt wird nach Kondition: Wer zurückliegt, bringt früher frische Beine nach vorn, wer führt, frischt die Abwehr auf. Dieselbe Logik gilt in der Sofort-Simulation für alle Spiele der Liga.
 
+**Spielablauf wie auf dem Platz (gemessen über mehrere Partien, vorher und nachher):**
+- **Der Torwart wartet auf seine Elf (`TORWART_WARTEN`, `mitspielerTief`):** Nach einem Abschluss steht die halbe Mannschaft im eigenen Strafraum. Vorher hielt er den Ball 0,7 Sekunden, mit im Schnitt 6,4 Mitspielern im Strafraum, und warf 38 Meter weit. Jetzt hält er ihn je tief stehendem Mitspieler länger, höchstens sechs Sekunden (ruhig 7,5). In dieser Zeit rücken fünf bis sechs Mann heraus. Wer *schnell* verteilt, kontert weiter sofort, außer es stehen mehr als sechs hinten.
+- **Restverteidigung (`RESTVERTEIDIGUNG`):** Liegt der Ball im letzten Drittel, bleibt hinter dem Ball einer mehr, als dort Gegner lauern, mindestens zwei. Wer dazugehört, rückt nicht auf. Die Absicherung stand vorher in 20 % der Momente nur in Gleichzahl oder Unterzahl, jetzt in 13 bis 14 %.
+- **Lauf hinter die Kette (`KETTENLAUF`):** Angreifer starten im Sprint auf die Abseitslinie, auch weiter als ihr Positionsraum reicht (bis 20 Einheiten), aber nie zwei zugleich. Solche Läufe gab es vorher rund 14-mal in fünf Minuten Bild, jetzt rund 43-mal in knapp sieben. Schüsse und Tore je Spiel blieben gleich (22 bis 25 und 2 bis 3).
+- **Breit nach Ballgewinn (`BREITE_NACH_GEWINN`):** Fünf Sekunden lang laufen die Außen zügig und zuerst nach außen, dann nach vorn. Das wirkt bisher nur leicht: Die Elf ist nach sechs Sekunden 46 statt 43 bis 45 Meter breit, in den ersten zwei Sekunden ändert sich nichts, weil die Form erst dann umschaltet.
+- Alle vier gelten nur im laufenden Spiel, nicht im Torjubel oder bei Standards.
+
 **Verletzungen entstehen auf dem Platz:** Nichts wird mehr vorab über den Kader gewürfelt.
 - **Kontakt:** Ein Foul kann den Gefoulten verletzen – je härter, desto eher (ein rotwürdiges Foul rund dreißigmal so oft wie ein normales). Prellung, Knöchelstauchung, Bänderdehnung, im Pech Meniskus oder Kreuzband.
 - **Muskel:** Wer müde ist, zerrt sich. Das Risiko steigt mit der Erschöpfung, mit dem versteckten Wert Verletzungsanfälligkeit und ab 30 mit dem Alter.

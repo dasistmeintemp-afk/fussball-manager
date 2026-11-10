@@ -125,7 +125,18 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
     /** Rand ums Spielfeld (Anteil der kürzeren Bildseite) und Spielergröße in der Totale */
     FELD_RAND: { feld: 0.025, dynamisch: 0.05 },
-    FELD_SPIELER: 1.2,
+    FELD_SPIELER: 1.1,
+
+    /**
+     * Die Uhr über dem Feld zeigt die Spielminute ("23'"). Das Bild läuft in
+     * echtem Tempo, die Partie ist aber gerafft: Eine Spielminute dauert im
+     * Bild gut sieben Sekunden. Mit Sekunden raste die Uhr deshalb achtmal
+     * so schnell wie das Geschehen - das sah nach Vorlauf aus.
+     */
+    liveUhrText(liveMatch) {
+        const minute = Math.max(0, Math.floor(Number(liveMatch?.minute) || 0));
+        return `${minute}'`;
+    },
 
     /**
      * Eine kritisch gedämpfte Feder für die Kamera: Sie läuft auf das Ziel zu,
@@ -491,7 +502,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             setText("lmHomeScore", String(liveMatch.homeScore));
             setText("lmAwayScore", String(liveMatch.awayScore));
             setText("lmMinute", String(liveMatch.minute));
-            setText("lmClock", liveMatch.getClockText ? liveMatch.getClockText() : `${liveMatch.minute}:00`);
+            setText("lmClock", this.liveUhrText(liveMatch));
 
             // Was die Uhr gerade bedeutet: läuft, steht in der Pause, ist aus
             const phase = liveMatch.isFinished ? "abpfiff"
@@ -1079,7 +1090,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 setText("lmHomeScore", String(liveMatch.homeScore));
                 setText("lmAwayScore", String(liveMatch.awayScore));
                 setText("lmMinute", String(liveMatch.minute));
-                setText("lmClock", liveMatch.getClockText ? liveMatch.getClockText() : `${liveMatch.minute}:00`);
+                setText("lmClock", this.liveUhrText(liveMatch));
                 if (!liveMatch.isFinished) {
                     this.liveMatchAnimFrame = requestAnimationFrame(tickLoop);
                     return;
@@ -1522,7 +1533,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         // Wie das Spiel gezeigt wird: nur die Szenen (ruhige Phasen laufen
         // ohne Bild durch) oder alle 90 Minuten - und in welchem Tempo
         if (!["schluessel", "hoehepunkte", "ganz"].includes(e.ansicht)) e.ansicht = "hoehepunkte";
-        if (![1, 2, 4].includes(e.tempo)) e.tempo = 2;
+        // Echtzeit ist der Standard: Die Spieler laufen so schnell wie auf einem echten Platz.
+        // Laufende Karrieren stellen einmal um (vorher war dreifach voreingestellt).
+        if (![1, 2, 4].includes(e.tempo) || !e.echtzeitStandard) e.tempo = 1;
+        e.echtzeitStandard = true;
         return e;
     },
 

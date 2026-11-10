@@ -902,6 +902,16 @@ function runWizardTests() {
         global.localStorage = { getItem: () => null, setItem: () => {} };
         try { if (uik.anzeige2D().kamera2D !== "feld") throw new Error(`Standard-Kamera 2D: ${uik.anzeige2D().kamera2D}`); } finally { global.localStorage = altSpeicher; }
         if (!(uik.FELD_RAND.feld < uik.FELD_RAND.dynamisch) || !(uik.FELD_SPIELER > 1)) throw new Error("Ganzes Feld füllt die Fläche nicht besser");
+        // Echtzeit ist das Tempo zum Anpfiff - auch für laufende Karrieren einmal, danach gilt die eigene Wahl
+        uik.app = { state: { liveEinstellungen: { tempo: 2 } } };
+        if (uik.liveEinstellungen().tempo !== 1) throw new Error("Laufende Karriere stellt nicht auf Echtzeit um");
+        uik.app.state.liveEinstellungen.tempo = 4;
+        if (uik.liveEinstellungen().tempo !== 4) throw new Error("Die eigene Wahl des Tempos wird überschrieben");
+        uik.app = { state: {} };
+        if (uik.liveEinstellungen().tempo !== 1) throw new Error("Neue Karriere startet nicht in Echtzeit");
+        if (!/data-speed="1"[^>]*>\s*<span class="lm-speed-lang">Echtzeit/.test(html) || !/class="btn btn-sm speed-btn active" data-speed="1"/.test(html)) throw new Error("Echtzeit ist nicht der markierte Tempoknopf");
+        // Die Uhr zeigt die Spielminute, keine rasenden Sekunden
+        if (uik.liveUhrText({ minute: 23, seconds: 41 }) !== "23'" || uik.liveUhrText({}) !== "0'") throw new Error("Uhr zeigt nicht die Spielminute");
         const lmK = { players2D: [{ id: 7, team: "home", pos: "ZM", name: "Kern", number: 8, x: 50, y: 50, freshness: 0.8 }, { id: 9, team: "away", pos: "ST", name: "Fern", number: 9, x: 80, y: 20, freshness: 1 }],
             verlauf: [{ type: "goal", playerId: 7 }, { type: "goal", playerId: 9, assistId: 7 }], verwarnt: { home: [7], away: [] }, angeschlagen: { home: [], away: [] },
             liveNoten: () => new Map([[7, { note: 7.4 }]]) };

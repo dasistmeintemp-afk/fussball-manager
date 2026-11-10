@@ -714,9 +714,9 @@ class UIManager {
             ])}
             <h4 class="einstellung-h">Tempo zum Anpfiff</h4>
             ${wahl("liveTempo", e.tempo, [
-                [1, "Langsam", "Echtes Abspieltempo."],
-                [2, "Normal", "Knapp dreifach."],
-                [4, "Schnell", "Gut sechsfach."]
+                [1, "Echtzeit", "Die Spieler laufen so schnell wie auf dem Platz (Standard)."],
+                [2, "3× schnell", "Knapp dreifach."],
+                [4, "6× schnell", "Gut sechsfach."]
             ])}
             <h4 class="einstellung-h">Dem Co-Trainer überlassen</h4>
             ${schalter("delegation", "wechsel", "Wechsel", "Er wechselt Müde und Verletzte positionsgerecht aus.")}

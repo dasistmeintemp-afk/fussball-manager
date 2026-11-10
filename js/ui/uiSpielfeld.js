@@ -504,7 +504,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         // Banner für Spielphasen und Ereignisse
         const banner = liveMatch.banner;
-        if (banner && banner.timer > 0) {
+        // Während der Wiederholung steht oben ihr Hinweis - das Banner käme darunter zu liegen
+        if (banner && banner.timer > 0 && !(this._wdh && this._wdh.aktiv)) {
             // Ein Feld oben in der Mitte, so breit wie sein Text - vorher lag
             // ein Streifen über die ganze Breite halb durchsichtig auf den
             // Spielern. Meldet gerade die Konferenz ein Tor, rückt es darunter.

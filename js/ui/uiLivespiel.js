@@ -1812,7 +1812,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     <div class="lm-lu-head">
                         <span class="lm-kit klein" style="--kit:${esc(liveMatch.kits?.[seite]?.farbe || "#64748b")};--kit-2:${esc(liveMatch.kits?.[seite]?.zweit || "#fff")}"></span>
                         <span class="lm-lu-club">${esc(club?.name || "")}</span>
-                        <span class="lm-lu-form">${esc(club?.formation || "")}${eigene ? " · Du" : ""}</span>
+                        <span class="lm-lu-form">${esc(club?.formation || "")}${eigene ? " · Sie" : ""}</span>
                     </div>
                     <div class="lm-lu-list">${feld}</div>
                     ${ausgewechselt ? `<div class="lm-lu-h">Ausgewechselt</div><div class="lm-lu-list">${ausgewechselt}</div>` : ""}
@@ -2239,7 +2239,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             `<option value="${esc(f.key)}" ${f.key === c.taktik.formGegenBall ? "selected" : ""}>${esc(f.name)}</option>`).join("") : "";
 
         el.innerHTML = `
-            <div class="coach-hint">Gilt nur für dieses Spiel - deine gespeicherte Taktik bleibt unverändert.${c.delegation.taktik ? " Der Co-Trainer darf zusätzlich nachsteuern." : ""}</div>
+            <div class="coach-hint">Gilt nur für dieses Spiel - Ihre gespeicherte Taktik bleibt unverändert.${c.delegation.taktik ? " Der Co-Trainer darf zusätzlich nachsteuern." : ""}</div>
             <div class="coach-quick">${schnell.map(([k, t]) => `<button class="coach-chip coach-quick-btn" data-schnell="${k}">${t}</button>`).join("")}</div>
             <label class="coach-label" for="coachFormation">Formation</label>
             <select id="coachFormation" class="styled-select">${optionen}</select>
@@ -2306,11 +2306,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <h4 class="coach-h">Einschätzung</h4>
             <div class="coach-tips">${liste}</div>
             <h4 class="coach-h">Dem Co-Trainer überlassen</h4>
-            ${schalter("wechsel", "Wechsel", "Er wechselt Müde und Verletzte positionsgerecht aus - du wirst nicht mehr gefragt.", "delegation")}
+            ${schalter("wechsel", "Wechsel", "Er wechselt Müde und Verletzte positionsgerecht aus - Sie werden nicht mehr gefragt.", "delegation")}
             ${schalter("taktik", "Taktik anpassen", "Bei Rückstand stellt er offensiver, bei später Führung sicherer.", "delegation")}
             <h4 class="coach-h">Seitenlinie automatisch öffnen</h4>
             ${schalter("halbzeit", "Zur Halbzeit", "Nach der Kabinenansprache.", "auto")}
-            ${schalter("verletzung", "Bei einer Verletzung", "Wenn einer deiner Spieler nicht weiterkann.", "auto")}
+            ${schalter("verletzung", "Bei einer Verletzung", "Wenn einer Ihrer Spieler nicht weiterkann.", "auto")}
             ${schalter("platzverweis", "Bei einem Platzverweis", "Um die Mannschaft neu zu ordnen.", "auto")}
         `;
 
@@ -2450,7 +2450,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <div class="coach-co-kopf"><strong>${co.name ? esc(co.name) : "Assistent aus dem Trainerstab"}</strong>
                     <span class="coach-co-ruf">${ruf} · ${g}</span></div>
                 <span class="coach-co-bar"><i style="width:${Math.max(4, Math.min(100, g))}%"></i></span>
-                <div class="coach-muted">${kann}${co.eigen ? "" : " Einen eigenen Co-Trainer verpflichtest du in der Vorbereitung."}</div>
+                <div class="coach-muted">${kann}${co.eigen ? "" : " Einen eigenen Co-Trainer verpflichten Sie in der Vorbereitung."}</div>
             </div>`;
     },
 
@@ -2484,8 +2484,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         <span class="coach-muted">${bei[k]}</span>
                     </div>`).join("")}</div>`
             : `<div class="coach-hint">${a.hauptSeite
-                ? `Dein Co-Trainer hat den Eindruck, ${esc(gegner.name)} komme eher über ${a.hauptSeite === "mitte" ? "die Mitte" : `${seineSeite[a.hauptSeite]} Seite`}.`
-                : "Dein Co-Trainer kann kein Muster erkennen."} Genauer liest das Spiel nur ein besserer Co-Trainer.</div>`;
+                ? `Ihr Co-Trainer hat den Eindruck, ${esc(gegner.name)} komme eher über ${a.hauptSeite === "mitte" ? "die Mitte" : `${seineSeite[a.hauptSeite]} Seite`}.`
+                : "Ihr Co-Trainer kann kein Muster erkennen."} Genauer liest das Spiel nur ein besserer Co-Trainer.</div>`;
 
         const arten = g >= 50 && a.arten.length
             ? `<h4 class="coach-h">Womit er angreift</h4><div class="coach-chips">${a.arten.map(x =>

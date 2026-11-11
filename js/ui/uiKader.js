@@ -556,7 +556,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <button type="button" class="btn btn-sm btn-secondary kw-richtung" id="kwRichtung" title="${ab ? "absteigend - umkehren" : "aufsteigend - umkehren"}" aria-label="Richtung umkehren">${ab ? "↓" : "↑"}</button>
             </div>
             <div class="kw-gruppe kw-filter">
-                ${Object.entries(this.KADER_FILTER).map(([k, f]) => `<button type="button" class="filter-chip${k === wahl.filter ? " active" : ""}" data-kw-filter="${k}">${esc(f.name)}</button>`).join("")}
+                <label for="kwFilter">Zeigen</label>
+                <select id="kwFilter" class="styled-select${wahl.filter && wahl.filter !== "alle" ? " kw-filter-an" : ""}">
+                    ${Object.entries(this.KADER_FILTER).map(([k, f]) => `<option value="${k}"${k === wahl.filter ? " selected" : ""}>${esc(f.name)}</option>`).join("")}
+                </select>
                 <span class="kw-anzahl">${anzahl} ${anzahl === 1 ? "Spieler" : "Spieler"}</span>
             </div>`;
     },
@@ -635,7 +638,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         werkzeuge?.querySelectorAll("[data-kw-ansicht]").forEach(b => b.addEventListener("click", () => this.setzeKaderWahl({ ansicht: b.dataset.kwAnsicht })));
         werkzeuge?.querySelector("#kwSorte")?.addEventListener("change", (e) => this.setzeKaderWahl({ sorte: e.target.value, ab: null }));
         werkzeuge?.querySelector("#kwRichtung")?.addEventListener("click", () => this.setzeKaderWahl({ ab: !ab }));
-        werkzeuge?.querySelectorAll("[data-kw-filter]").forEach(b => b.addEventListener("click", () => this.setzeKaderWahl({ filter: b.dataset.kwFilter })));
+        // Die Schnellfilter stehen als Auswahl neben dem Sortieren - als eigene Reihe von Knöpfen machten sie die Leiste drei Zeilen hoch
+        werkzeuge?.querySelector("#kwFilter")?.addEventListener("change", (e) => this.setzeKaderWahl({ filter: e.target.value }));
         kopf?.querySelectorAll("[data-kader-sort]").forEach(h => h.addEventListener("click", () => {
             const key = h.dataset.kaderSort;
             this.setzeKaderWahl(key === wahl.sorte ? { ab: !ab } : { sorte: key, ab: null });

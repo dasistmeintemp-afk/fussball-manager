@@ -270,7 +270,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         el.innerHTML = `
             <header class="lm-k-kopf">
                 <span class="lm-k-titel">Aufstellung</span>
-                <span class="lm-k-sub"><span class="lm-kit klein" style="--kit:${esc(kit.farbe)};--kit-2:${esc(kit.zweit)}"></span>${esc(this._lmKurz(club))} · ${esc(club?.formation || "")}${eigene ? " · Du" : ""}</span>
+                <span class="lm-k-sub"><span class="lm-kit klein" style="--kit:${esc(kit.farbe)};--kit-2:${esc(kit.zweit)}"></span>${esc(this._lmKurz(club))} · ${esc(club?.formation || "")}${eigene ? " · Sie" : ""}</span>
             </header>
             <div class="lm-ke-feld" role="img" aria-label="Aufstellung ${esc(club?.name || "")}">
                 <i class="lm-ke-linie mitte"></i><i class="lm-ke-kreis"></i><i class="lm-ke-strafraum unten"></i><i class="lm-ke-strafraum oben"></i>

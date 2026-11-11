@@ -135,9 +135,9 @@ const NationalTeamEngine = {
             const name = id => state.players.find(p => String(p.id) === String(id))?.name || "ein Spieler";
             const aus = nutzer.ersetzt.map(name), nach = nutzer.nachgerueckt.map(p => p.name);
             this._post(state, `Verband ${nt.nation}`, "Nachnominierung",
-                `Aus deiner Auswahl ${aus.length === 1 ? "fällt" : "fallen"} ${aus.join(", ")} aus (verletzt oder nicht mehr verfügbar). `
-                + (nach.length === 1 ? `Nachnominiert: ${nach[0]} - der Beste seines Mannschaftsteils, den du nicht gestrichen hattest.`
-                    : nach.length ? `Nachnominiert: ${nach.join(", ")} - die Besten ihres Mannschaftsteils, die du nicht gestrichen hattest.` : ""));
+                `Aus Ihrer Auswahl ${aus.length === 1 ? "fällt" : "fallen"} ${aus.join(", ")} aus (verletzt oder nicht mehr verfügbar). `
+                + (nach.length === 1 ? `Nachnominiert: ${nach[0]} - der Beste seines Mannschaftsteils, den Sie nicht gestrichen hatten.`
+                    : nach.length ? `Nachnominiert: ${nach.join(", ")} - die Besten ihres Mannschaftsteils, die Sie nicht gestrichen hatten.` : ""));
         }
 
         const eigene = this.eigeneAbgestellte(state);
@@ -358,12 +358,12 @@ const NationalTeamEngine = {
     },
 
     bewerben(state, nation) {
-        if (state.nationaltrainer) return { ok: false, grund: `Du trainierst schon ${state.nationaltrainer.nation}.` };
+        if (state.nationaltrainer) return { ok: false, grund: `Sie trainieren schon ${state.nationaltrainer.nation}.` };
         const p = this.posten(state).find(x => x.name === nation);
         if (!p) return { ok: false, grund: "Diese Nation hat keine Mannschaft." };
         if (!p.frei) return { ok: false, grund: `${nation} hat einen Trainer.` };
         const ruf = this._ruf(state);
-        if (ruf < p.anforderung) return { ok: false, grund: `Der Verband verlangt einen Ruf von ${p.anforderung}, deiner liegt bei ${ruf}.` };
+        if (ruf < p.anforderung) return { ok: false, grund: `Der Verband verlangt einen Ruf von ${p.anforderung}, Ihrer liegt bei ${ruf}.` };
         this._uebernimm(state, nation, p.rang);
         return { ok: true, nation };
     },
@@ -374,10 +374,10 @@ const NationalTeamEngine = {
             vertrauen: 60, ausrichtung: "ausgewogen", auswahl: null, spiele: []
         };
         if (state.nationalAngebot) delete state.nationalAngebot;
-        this._post(state, `Verband ${nation}`, `Neuer Nationaltrainer: ${state.managerName || "du"}`,
-            `Willkommen als Nationaltrainer von ${nation}! Du betreust die Auswahl neben deinem Verein.\n\n`
-            + `Vor jeder Länderspielpause bestimmst du im Reiter Nationalteam den Kader - sonst beruft der Verband die 23 Besten. `
-            + `Wir messen dich an den Ergebnissen gegen gleich starke und stärkere Gegner.`);
+        this._post(state, `Verband ${nation}`, `Neuer Nationaltrainer: ${state.managerName || "Sie"}`,
+            `Willkommen als Nationaltrainer von ${nation}! Sie betreuen die Auswahl neben Ihrem Verein.\n\n`
+            + `Vor jeder Länderspielpause bestimmen Sie im Reiter Nationalteam den Kader - sonst beruft der Verband die 23 Besten. `
+            + `Wir messen Sie an den Ergebnissen gegen gleich starke und stärkere Gegner.`);
     },
 
     /** Zum Saisonstart: Wer genug Ruf hat, bekommt vielleicht ein Angebot */
@@ -390,7 +390,7 @@ const NationalTeamEngine = {
         const wahl = passend.find(p => p.name === state.managerNationality) || passend[0];
         state.nationalAngebot = { nation: wahl.name, rang: wahl.rang, saison: state.seasonYear || 1 };
         this._post(state, `Verband ${wahl.name}`, `Angebot: Nationaltrainer von ${wahl.name}`,
-            `Der Verband von ${wahl.name} (Weltrang ${wahl.rang}) möchte dich als Nationaltrainer - neben deinem Verein. `
+            `Der Verband von ${wahl.name} (Weltrang ${wahl.rang}) möchte Sie als Nationaltrainer - neben Ihrem Verein. `
             + `Annehmen oder ablehnen im Reiter Nationalteam; das Angebot gilt bis zum Ende der Saison.`);
         return state.nationalAngebot;
     },
@@ -398,7 +398,7 @@ const NationalTeamEngine = {
     nimmAngebotAn(state) {
         const a = state.nationalAngebot;
         if (!a || a.saison !== (state.seasonYear || 1)) return { ok: false, grund: "Kein Angebot." };
-        if (state.nationaltrainer) return { ok: false, grund: "Du trainierst schon eine Nation." };
+        if (state.nationaltrainer) return { ok: false, grund: "Sie trainieren schon eine Nation." };
         this._uebernimm(state, a.nation, a.rang);
         return { ok: true, nation: a.nation };
     },
@@ -531,7 +531,7 @@ const NationalTeamEngine = {
             const nation = nt.nation;
             this._beende(state, "entlassen");
             this._post(state, `Verband ${nation}`, "Trennung als Nationaltrainer",
-                `Der Verband von ${nation} trennt sich von dir. Bilanz dieser Saison: ${b.siege} Siege, ${b.remis} Remis, ${b.niederlagen} Niederlagen. Dein Verein bleibt davon unberührt.`);
+                `Der Verband von ${nation} trennt sich von Ihnen. Bilanz dieser Saison: ${b.siege} Siege, ${b.remis} Remis, ${b.niederlagen} Niederlagen. Ihr Verein bleibt davon unberührt.`);
             return { entlassen: true, ...b };
         }
         this._post(state, `Verband ${nt.nation}`, `Saisonbilanz der Nationalmannschaft`,

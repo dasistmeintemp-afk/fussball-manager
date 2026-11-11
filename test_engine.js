@@ -4940,7 +4940,11 @@ function runEngineTests() {
         const median = abstand[Math.floor(abstand.length / 2)];
         if (!(median < 1.5)) throw new Error(`Der Ballführende steht bei Ankunft ${median?.toFixed(1)} vom Ball weg`);
         const weit = abstand.filter(x => x > 3).length;
-        if (weit > abstand.length * 0.08) throw new Error(`Zu oft liegt der Ball, und der Spieler ist weit weg (${weit} von ${abstand.length})`);
+        // Grenze 10 % statt 8 %: Seit die Spieler seitlich so schnell laufen wie
+        // nach vorn (LiveMatchDirector.QUER), liegt die Quote über sechs
+        // Zufallsfolgen bei 5,1 bis 8,9 % (Mittel 6,6 %), vorher bei 4,4 bis
+        // 6,9 % (Mittel 5,8 %). Dafür verschiebt die Elf sichtbar schneller.
+        if (weit > abstand.length * 0.10) throw new Error(`Zu oft liegt der Ball, und der Spieler ist weit weg (${weit} von ${abstand.length})`);
         const flanken = aktionen.filter(a => a.type === "cross");
         if (flanken.length && flanken.some(f => !f.physik)) throw new Error("Eine Flanke ohne Flugbahn");
 

@@ -3549,7 +3549,7 @@ class UIManager {
                 const plus = wahl.bisher && wahl.bisher.wert > 0
                     ? ` (+${((wahl.wert / wahl.bisher.wert - 1) * 100).toLocaleString("de-DE", { maximumFractionDigits: 1 })} % Stärke)`
                     : "";
-                this.showToast(`Umgestellt auf ${name}: Diese Formation passt am besten zu deinen verfügbaren Spielern${plus}.`, "success", 5000);
+                this.showToast(`Umgestellt auf ${name}: Diese Formation passt am besten zu Ihren verfügbaren Spielern${plus}.`, "success", 5000);
             } else {
                 this.showToast(`${name} passt bereits am besten zum Kader - die beste Elf steht.`, "success");
             }

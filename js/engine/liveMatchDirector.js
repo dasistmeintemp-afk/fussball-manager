@@ -479,7 +479,7 @@ class LiveMatchDirector {
      * Niemandsland. Wer "schnell" verteilt, kontert weiter sofort - außer es
      * stehen mehr als "freiSchnell" hinten, dann fehlt vorn der Abnehmer.
      */
-    static TORWART_WARTEN = { tiefe: 18, frei: 3, freiSchnell: 6, je: 0.75, hoechstens: { schnell: 3, normal: 6, ruhig: 7.5 } };
+    static TORWART_WARTEN = { tiefe: 18, frei: 3, freiSchnell: 4, je: 0.75, hoechstens: { schnell: 4.5, normal: 6, ruhig: 7.5 } };
     /** Abwurf-Tempo, wenn der Torwart den Ball am Fuß annimmt (setzeAnnahme): Faktor je torwartSchnell */
     static TORWART_FUSS = { 1: 0.6, "-1": 1.4 };
 
@@ -541,6 +541,8 @@ class LiveMatchDirector {
      * damit nicht alle zugleich starten.
      */
     static KETTENLAUF = { von: 0.3, bis: 0.8, weite: 20, abstand: 2, bonus: 6.5, zweiter: -5 };
+    /** Meter je Einheit quer geteilt durch Meter je Einheit längs: (68 / 100) / (105 / 92) */
+    static QUER = (68 / 100) / (105 / 92);
     /** Sekunden von der Abwehr- in die Angriffsform und zurück: beim Kontern, normal, beim Ballsichern - und in der Breite (umschaltBreite) */
     static UMSCHALT_FORM = { konter: 1.1, normal: 1.6, sichern: 2.0, breite: 0.7 };
     /** Nach dem Ballgewinn: So lange (Sekunden) sprinten die Außen in die Breite */
@@ -6081,11 +6083,17 @@ class LiveMatchDirector {
         const bremsen = BREMSKRAFT * (p.wendigF || 1) * Math.max(1, Math.min(2.2, u));
         const nachziehen = 3.2 * Math.max(1, u);
 
+        // Quer ist das Feld kürzer als längs: 100 Einheiten sind in der Breite
+        // 68 Meter, in der Länge 92 Einheiten 105 Meter. Gerechnet wird deshalb
+        // in gleich langen Einheiten (QUER): Vorher lief ein Spieler seitlich
+        // nur 60 % so schnell wie nach vorn, und die Elf verschob träge.
+        const quer = LiveMatchDirector.QUER;
+        let lvyQ = p.lvy * quer;
         const schritte = Math.max(1, Math.ceil(lauf * 45));
         const h = lauf / schritte;
         for (let i = 0; i < schritte; i++) {
             const dx = target.x - p.x;
-            const dy = target.y - p.y;
+            const dy = (target.y - p.y) * quer;
             const dist = Math.hypot(dx, dy);
 
             // Die Wunschgeschwindigkeit: volles Tempo, aber so, dass er am
@@ -6098,10 +6106,10 @@ class LiveMatchDirector {
             }
 
             let sx = wx - p.lvx;
-            let sy = wy - p.lvy;
-            const tempo2 = p.lvx * p.lvx + p.lvy * p.lvy;
+            let sy = wy - lvyQ;
+            const tempo2 = p.lvx * p.lvx + lvyQ * lvyQ;
             // Abbremsen und Wenden geht schneller als Antreten
-            const bremst = (wx * p.lvx + wy * p.lvy) < tempo2 - 1e-6;
+            const bremst = (wx * p.lvx + wy * lvyQ) < tempo2 - 1e-6;
             const grenze = (bremst ? bremsen : antritt) * h;
             const aenderung = Math.hypot(sx, sy);
             if (aenderung > grenze) {
@@ -6109,10 +6117,12 @@ class LiveMatchDirector {
                 sy *= grenze / aenderung;
             }
             p.lvx += sx;
-            p.lvy += sy;
+            lvyQ += sy;
             p.x += p.lvx * h;
-            p.y += p.lvy * h;
+            p.y += lvyQ / quer * h;
         }
+        // Nach außen bleibt die Geschwindigkeit in Feldeinheiten je Sekunde
+        p.lvy = lvyQ / quer;
         this.atme(p, lauf);
     }
 

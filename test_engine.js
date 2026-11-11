@@ -12916,6 +12916,18 @@ function runEngineTests() {
         if (interessent.leagueId !== club.leagueId || interessent.id === club.id || spieler.clubId === club.id) throw new Error("Gerücht über die falschen Vereine");
         if (Presse.reiz(interessent, spieler) !== Presse.GERUECHT_REIZ || Presse.reiz(interessent, state.players.find(p => p.id !== spieler.id)) !== 0) throw new Error("Wunschspieler ohne Reiz");
         if (!state.inbox.some(m => /Gerüchteküche/.test(m.subject || ""))) throw new Error("Gerücht nicht gemeldet");
+        // Weitere Gerüchte über fremde Spieler wachsen in derselben Nachricht mit, statt das Postfach zu füllen
+        const anzahl = () => state.inbox.filter(m => /Gerüchteküche/.test(m.subject || "")).length;
+        const vorher = anzahl();
+        Presse.geruechtTag(state, true, () => 0.3);
+        Presse.geruechtTag(state, true, () => 0.2);
+        const sammel = state.inbox.find(m => m.geruechte);
+        if (anzahl() !== vorher || !sammel || sammel.geruechte !== 3 || !/3 Gerüchte dieser Woche/.test(sammel.subject) || sammel.body.split("\n").length !== 3) throw new Error(`Gerüchte nicht gesammelt: ${anzahl()} Nachrichten, ${sammel?.geruechte}`);
+        // Nach einer Woche beginnt eine neue Nachricht
+        state.currentDayIndex = (state.currentDayIndex || 0) + Presse.GERUECHT_SAMMELN;
+        Presse.geruechtTag(state, true, () => 0.1);
+        if (anzahl() !== vorher + 1) throw new Error("Nach einer Woche keine neue Sammelnachricht");
+        state.currentDayIndex -= Presse.GERUECHT_SAMMELN;
 
         // Kommt der Wechsel zustande, war das Gerücht wahr
         Presse.transfer(state, { player: spieler, vonId: spieler.clubId, zuId: interessent.id, fee: 9000000 });
@@ -18823,9 +18835,9 @@ function runEngineTests() {
             heim.tactics.torwartVerteilung = "schnell";
             live.director.flow && live.director.taktik && (live.director._taktikCache = null);
             const live2 = neu(), d2 = live2.director, elf2 = live2.players2D.filter(p => p.team === "home"), tw2 = elf2.find(p => p.pos === "TW"), feld2 = elf2.filter(p => p.pos !== "TW");
-            feld2.forEach((p, i) => { p.x = tor + dir * (i < 5 ? 10 : 40); });
+            feld2.forEach((p, i) => { p.x = tor + dir * (i < 4 ? 10 : 40); });
             d2.torwartHatBall(tw2);
-            if (!(d2._annahmeTimer < 0.8)) throw new Error(`Schnell mit fünf hinten: ${d2._annahmeTimer} s`);
+            if (!(d2._annahmeTimer < 0.8)) throw new Error(`Schnell mit vier hinten: ${d2._annahmeTimer} s`);
             feld2.forEach(p => { p.x = tor + dir * 10; });
             d2.torwartHatBall(tw2);
             if (!(d2._annahmeTimer > 1.5 && d2._annahmeTimer <= D.TORWART_WARTEN.hoechstens.schnell)) throw new Error(`Schnell mit allen hinten: ${d2._annahmeTimer} s`);
@@ -18880,6 +18892,18 @@ function runEngineTests() {
             if (laeufe < 12 || weit !== laeufe) throw new Error(`Lauf hinter die Kette: ${laeufe} von 120, davon ${weit} weit und im Sprint`);
             d4.mode = "celebration";
             for (let i = 0; i < 40; i++) { st.lauf = null; if (d4.waehleFreilaufen(st, anker4, dir, ball4).art === "kette") throw new Error("Lauf hinter die Kette im Torjubel"); }
+
+            // Seitlich so schnell wie nach vorn, in Metern gerechnet (vorher 60 %)
+            const live5 = neu(), d5 = live5.director;
+            const lauf = (zx, zy) => {
+                const p = live5.players2D.find(q => q.team === "home" && q.group === "mid");
+                Object.assign(p, { x: 50, y: 50, lvx: 0, lvy: 0, pusteF: 1, freshness: 1 });
+                for (let i = 0; i < 120; i++) d5.laufeZu(p, { x: zx, y: zy, urgency: 1.4 }, 1 / 60);
+                return Math.hypot((p.x - 50) * 105 / 92, (p.y - 50) * 0.68);
+            };
+            const vorMeter = lauf(90, 50), querMeter = lauf(50, 95);
+            if (!(vorMeter > 6) || Math.abs(querMeter - vorMeter) > vorMeter * 0.06) throw new Error(`In zwei Sekunden ${vorMeter.toFixed(1)} m nach vorn, ${querMeter.toFixed(1)} m zur Seite`);
+            if (Math.abs(D.QUER - 0.5958) > 0.001) throw new Error(`QUER ist ${D.QUER}`);
 
             // Breit nach Ballgewinn: Die Werte stehen, und sie gelten nur kurz nach dem Wechsel
             if (!(D.BREITE_NACH_GEWINN.dauer >= 3 && D.BREITE_NACH_GEWINN.vorAnteil < 1 && D.BREITE_NACH_GEWINN.urgency > 1.1)) throw new Error("Breite nach Ballgewinn nicht eingestellt");

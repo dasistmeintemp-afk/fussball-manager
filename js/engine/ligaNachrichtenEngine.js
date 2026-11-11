@@ -22,6 +22,8 @@ const LigaNachrichtenEngine = {
     GERUECHT_JE_TAG: 0.35,
     /** So lange hält ein Gerücht (Tage) */
     GERUECHT_DAUER: 21,
+    /** So viele Tage sammelt eine Nachricht die Gerüchte über fremde Spieler */
+    GERUECHT_SAMMELN: 7,
     /** Wie viel mehr Reiz ein Wunschspieler für den Verein hat (TransferEngine) */
     GERUECHT_REIZ: 15,
     MERKEN: 30,
@@ -155,7 +157,22 @@ const LigaNachrichtenEngine = {
         s.geruechte.push(eintrag);
         if (s.geruechte.length > this.MERKEN) s.geruechte.splice(0, s.geruechte.length - this.MERKEN);
         const text = `${g.club.name} soll an ${g.p.name} interessiert sein (${g.p.pos}, ${g.p.age} Jahre, ${eintrag.von}). Aus dem Umfeld heißt es, man suche auf dieser Position Verstärkung.`;
-        this._post(state, `🗞️ Gerüchteküche: ${g.p.name} zu ${g.club.name}?`, text);
+        // Gerüchte über fremde Spieler kommen gesammelt: eine Nachricht je Woche,
+        // die mitwächst. Vorher kam jedes einzeln - nach zwölf Tagen im offenen
+        // Fenster standen vier Gerüchte über Spieler anderer Vereine im
+        // Postfach, am Handy der ganze erste Bildschirm. Wer auf der eigenen
+        // Beobachtungsliste steht, bekommt weiter seine eigene Nachricht.
+        const saison = state.seasonYear || 1;
+        const gemerkt = (state.scouting?.shortlist || state.scouting?.merkliste || []).some(x => String(x && typeof x === "object" ? (x.playerId ?? x.id) : x) === String(g.p.id));
+        const woche = gemerkt ? null : (state.inbox || []).find(m => m.geruechte && m.geruechteSaison === saison && heute - m.geruechteTag < this.GERUECHT_SAMMELN);
+        if (woche) {
+            woche.geruechte++;
+            woche.body += `\n${text}`;
+            woche.subject = `🗞️ Gerüchteküche: ${woche.geruechte} Gerüchte dieser Woche`;
+            return eintrag;
+        }
+        this._post(state, `🗞️ Gerüchteküche: ${g.p.name} zu ${g.club.name}?${gemerkt ? " (auf Ihrer Beobachtungsliste)" : ""}`, text);
+        if (!gemerkt && state.inbox[0]) Object.assign(state.inbox[0], { geruechte: 1, geruechteTag: heute, geruechteSaison: saison });
         return eintrag;
     },
 

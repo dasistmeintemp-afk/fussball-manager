@@ -212,7 +212,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 const p = e.partie, heim = p.homeClubId === state.userClubId;
                 const name = e.wettbewerb?.name || (tag.type === "cup" ? "Pokal" : "Europapokal");
                 // Der Landespokal heißt kurz Pokal, der Europapokal behält seinen Namen
-                liste.push({ i, tag, kurz: tag.type === "cup" ? "Pokal" : (e.wettbewerb?.shortName || name), lang: name,
+                // ... und der Supercup ist kein Pokalspiel: Er stand im Spielplan als "Pokal"
+                const supercup = /supercup/i.test(`${tag.cupArt || ""} ${name}`);
+                liste.push({ i, tag, kurz: supercup ? "Supercup" : (tag.type === "cup" ? "Pokal" : (e.wettbewerb?.shortName || name)), lang: name,
                     heim, gegner: verein(heim ? p.awayClubId : p.homeClubId), gespielt: !!p.played,
                     tore: p.played ? (heim ? [p.homeGoals, p.awayGoals] : [p.awayGoals, p.homeGoals]) : null });
             } else if (tag.type === "friendly" && pre && Array.isArray(pre.plan)) {

@@ -156,7 +156,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             : null;
 
         el.innerHTML = `
-            <div class="ws-title">Deine Karriere</div>
+            <div class="ws-title">Ihre Karriere</div>
             <div class="ws-row"><span class="ws-label">Manager</span><span class="ws-val">${name ? esc(name) : "–"}</span></div>
             <div class="ws-row"><span class="ws-label">Herkunft</span><span class="ws-val">${esc(herkunft) || "–"}</span></div>
             <div class="ws-row"><span class="ws-label">Stufe</span><span class="ws-val">${stufe}</span></div>

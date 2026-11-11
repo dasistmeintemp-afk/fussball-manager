@@ -451,12 +451,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         this.renderChronik(state, userClub);
         this.renderEhemalige(state, userClub);
 
-        DOM.setText("clubTabName", userClub.name);
-        DOM.setText("clubTabCity", userClub.city || "Deutschland");
-        DOM.setText("clubTabReputation", userClub.reputation || 70);
-        DOM.setText("clubTabFanbase", (userClub.fanBase || 25000).toLocaleString("de-DE"));
-        DOM.setText("clubTabFanMood", state.fanMood || 75);
-        DOM.setText("clubTabChemistry", userClub.chemistry?.overall || 75);
+        // Name, Stadt, Ruf, Fans, Stimmung und Teamchemie stehen im Kopf der Seite - die Karte, die sie wiederholte, ist entfallen
 
         const facEngine = (typeof FacilityEngine !== "undefined") ? FacilityEngine : null;
         const nutzbar = facEngine

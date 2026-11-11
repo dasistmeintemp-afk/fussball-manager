@@ -55,7 +55,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             ${angebot ? `
             <div class="dash-card nat-angebot">
                 <h3>Angebot: Nationaltrainer von ${esc(angebot.nation)}</h3>
-                <p>Der Verband (Weltrang ${angebot.rang}) möchte dich – neben deinem Verein. Vor jeder Länderspielpause berufst du den Kader; gemessen wirst du an den Ergebnissen.</p>
+                <p>Der Verband (Weltrang ${angebot.rang}) möchte Sie – neben Ihrem Verein. Vor jeder Länderspielpause berufen Sie den Kader; gemessen werden Sie an den Ergebnissen.</p>
                 <div class="nat-knoepfe">
                     <button type="button" class="btn btn-primary" data-nat="annehmen">Annehmen</button>
                     <button type="button" class="btn btn-secondary" data-nat="ablehnen">Ablehnen</button>
@@ -65,9 +65,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 <div class="nat-kopf">
                     <div>
                         <h3>Freie Posten in dieser Saison</h3>
-                        <p class="nat-unter">Neben dem Verein eine Nation trainieren. Der Verband verlangt einen Ruf, der zu seinem Weltrang passt; für deine Heimat (${esc(state.managerNationality || "–")}) genügt etwas weniger.</p>
+                        <p class="nat-unter">Neben dem Verein eine Nation trainieren. Der Verband verlangt einen Ruf, der zu seinem Weltrang passt; für Ihre Heimat (${esc(state.managerNationality || "–")}) genügt etwas weniger.</p>
                     </div>
-                    <div class="nat-ruf"><span>Dein Ruf</span><strong>${ruf}</strong></div>
+                    <div class="nat-ruf"><span>Ihr Ruf</span><strong>${ruf}</strong></div>
                 </div>
                 ${frei.length ? `
                 <div class="nat-scroll"><table class="data-table nat-tabelle">
@@ -135,7 +135,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     <div>
                         <h3>Kader ${laeuft ? "· gerade unterwegs" : "für die nächste Pause"}</h3>
                         <p class="nat-unter">${laeuft ? "Die Spieler sind bei der Mannschaft. Änderungen gelten ab der nächsten Pause."
-                            : pause ? `Abreise am ${esc(pause.date)}. ${nt.auswahl ? "Deine Auswahl reist; wer bis dahin ausfällt, wird ersetzt." : "Ohne eigene Auswahl beruft der Verband die 23 Besten."}`
+                            : pause ? `Abreise am ${esc(pause.date)}. ${nt.auswahl ? "Ihre Auswahl reist; wer bis dahin ausfällt, wird ersetzt." : "Ohne eigene Auswahl beruft der Verband die 23 Besten."}`
                                 : "In dieser Saison steht keine Pause mehr an."}</p>
                     </div>
                     <div class="nat-zaehler" id="natZaehler"></div>
@@ -172,7 +172,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         <span>${s.heim ? "gegen" : "bei"} <strong>${esc(s.gegner)}</strong></span>
                         <span class="nat-unter">Saison ${s.saison} · erwartet ${String(s.erwartet).replace(".", ",")} Punkte · ${esc(engine.AUSRICHTUNG[s.ausrichtung]?.text || "")}</span>
                     </div>`;
-                }).join("")}</div>` : `<div class="empty-state-sm">Noch kein Länderspiel unter dir.</div>`}
+                }).join("")}</div>` : `<div class="empty-state-sm">Noch kein Länderspiel unter Ihnen.</div>`}
             </div>`;
     },
 
@@ -195,20 +195,20 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const neu = () => { this._nationalSpeichern(); this.renderNational(); this.renderHeader(); };
         box.querySelectorAll("[data-bewerben]").forEach(btn => btn.addEventListener("click", () => {
             const r = engine.bewerben(state, btn.dataset.bewerben);
-            this.showToast(r.ok ? `Du bist Nationaltrainer von ${r.nation}!` : r.grund, r.ok ? "success" : "warning", 6000);
+            this.showToast(r.ok ? `Sie sind Nationaltrainer von ${r.nation}!` : r.grund, r.ok ? "success" : "warning", 6000);
             if (r.ok) neu();
         }));
         const aktion = (name, fn) => box.querySelector(`[data-nat="${name}"]`)?.addEventListener("click", fn);
         aktion("annehmen", () => {
             const r = engine.nimmAngebotAn(state);
-            this.showToast(r.ok ? `Du bist Nationaltrainer von ${r.nation}!` : r.grund, r.ok ? "success" : "warning");
+            this.showToast(r.ok ? `Sie sind Nationaltrainer von ${r.nation}!` : r.grund, r.ok ? "success" : "warning");
             neu();
         });
         aktion("ablehnen", () => { engine.lehneAngebotAb(state); neu(); });
         aktion("ruecktritt", () => {
             this.zeigeEntscheidung({
                 titel: "Als Nationaltrainer zurücktreten?",
-                html: `<p>Du gibst den Posten bei ${this.escapeHtml(state.nationaltrainer.nation)} ab. Dein Verein bleibt davon unberührt.</p>`,
+                html: `<p>Sie geben den Posten bei ${this.escapeHtml(state.nationaltrainer.nation)} ab. Ihr Verein bleibt davon unberührt.</p>`,
                 knoepfe: [
                     { text: "Zurücktreten", klasse: "btn-danger", aktion: () => { engine.ruecktritt(state); neu(); } },
                     { text: "Abbrechen", klasse: "btn-secondary" }

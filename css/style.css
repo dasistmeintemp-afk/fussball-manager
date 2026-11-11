@@ -9714,3 +9714,13 @@ table.sortierbar th.sortiert-ab::after { content: " ▾"; }
     #pane-tactics .pane-actions .btn { width: auto; flex: 1 1 calc(50% - 4px); min-width: 0; }
     #pane-tactics .pane-actions #btnAutoLineup { flex-basis: 100%; }
 }
+
+/* Kaderliste: Werkzeuge in einer Zeile - Mannschaft, Ansicht, Zeigen, Sortieren */
+.kw-filter label, .kw-sortieren label { font-size: 12.5px; color: var(--text-muted); }
+.kw-filter .styled-select, .kw-sortieren .styled-select { min-height: 36px; padding-block: 6px; }
+.kw-filter .styled-select.kw-filter-an { border-color: var(--accent); color: var(--text-main); }
+.kw-anzahl { margin-left: 4px; white-space: nowrap; }
+@media (max-width: 720px) { .kw-filter { overflow: visible; flex-wrap: wrap; } }
+
+/* Vereinsprofil: Die Karten füllen die Zeile - nach dem Wegfall der doppelten Übersichtskarte blieb rechts eine Spalte leer */
+@media (min-width: 901px) { #pane-club > .dashboard-grid { grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); } }

@@ -191,6 +191,9 @@ class BallPhysik {
      * Bis zu welcher Höhe (Meter) ein Spieler an den Ball kommt: Körpergröße
      * (Zentimeter, um 182 üblich) und Sprungkraft, der Torwart mit den Händen.
      */
+    /** Meter je Einheit quer geteilt durch Meter je Einheit längs, wie LiveMatchDirector.QUER */
+    static QUER = (68 / 100) / (105 / 92);
+
     static reichweite(p, mitHaenden = false) {
         const groesse = typeof p.groesse === "number" ? Math.max(-0.2, Math.min(0.2, (p.groesse - 182) / 100)) : 0;
         if (mitHaenden) return BallPhysik.TW_HOEHE + groesse + Math.max(-0.2, Math.min(0.4, (p.fein?.aerialReach || 0) * 0.04));
@@ -204,9 +207,13 @@ class BallPhysik {
      * Ein Lauf in die richtige Richtung zählt als Anfangstempo.
      */
     static laufzeit(p, punkt, reaktion = 0, radius = BallPhysik.RADIUS) {
-        const vx = p.lvx || 0, vy = p.lvy || 0;
-        const ax = p.x + vx * reaktion, ay = p.y + vy * reaktion;
-        const dx = punkt.x - ax, dy = punkt.y - ay;
+        // Quer in gleich langen Einheiten wie längs - so läuft der Spieler
+        // auch (LiveMatchDirector.laufeZu). Sonst schätzt der Wettlauf zum
+        // Ball seitliche Wege zu lang, und der Ball liegt öfter allein.
+        const q = BallPhysik.QUER;
+        const vx = p.lvx || 0, vy = (p.lvy || 0) * q;
+        const ax = p.x + vx * reaktion, ay = p.y * q + vy * reaktion;
+        const dx = punkt.x - ax, dy = punkt.y * q - ay;
         const voll = Math.hypot(dx, dy);
         const d = Math.max(0, voll - radius);
         if (d <= 0) return reaktion;

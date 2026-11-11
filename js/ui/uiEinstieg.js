@@ -36,11 +36,11 @@ const EINSTIEG_SCHRITTE = [
     },
     {
         id: "training", tab: "training", titel: "Ins Training schauen",
-        text: "Der Trainerstab plant die Woche. Du setzt Schwerpunkte, legst ein Veto ein und siehst, wer zu viel Last trägt."
+        text: "Der Trainerstab plant die Woche. Sie setzen Schwerpunkte, legen ein Veto ein und sehen, wer zu viel Last trägt."
     },
     {
         id: "transfers", tab: "transfers", titel: "Die Rekrutierung ansehen",
-        text: "Erst scouten, dann bieten: Je mehr dein Scout über einen Spieler weiß, desto genauer sind seine Werte."
+        text: "Erst scouten, dann bieten: Je mehr Ihr Scout über einen Spieler weiß, desto genauer sind seine Werte."
     },
     {
         id: "tag", titel: "Den ersten Tag spielen",
@@ -62,7 +62,7 @@ const EINSTIEG_ERKLAERUNGEN = {
         punkte: [
             "Oben steht, was als Nächstes kommt, darunter, was heute eine Entscheidung braucht – ein Klick springt in den zuständigen Bereich.",
             "„Weiter“ spielt einen Tag. An Spieltagen geht es von hier ins Spiel.",
-            "Vorstand, Fans und Presse: Die Balken zeigen, wie sicher dein Stuhl ist."
+            "Vorstand, Fans und Presse: Die Balken zeigen, wie sicher Ihr Stuhl ist."
         ]
     },
     club: {
@@ -76,9 +76,9 @@ const EINSTIEG_ERKLAERUNGEN = {
     squad: {
         titel: "Der Kader",
         punkte: [
-            "Die Sterne zeigen Stärke (gefüllt) und Potenzial (hell) – gemessen an deiner Liga.",
+            "Die Sterne zeigen Stärke (gefüllt) und Potenzial (hell) – gemessen an Ihrer Liga.",
             "Ein Klick öffnet die Akte: Werte, Vertrag, Entwicklung, Gespräche, Leihe oder Verkauf.",
-            "Achte auf Moral und Kondition: Unzufriedene und Müde spielen schlechter."
+            "Achten Sie auf Moral und Kondition: Unzufriedene und Müde spielen schlechter."
         ]
     },
     tactics: {
@@ -107,15 +107,15 @@ const EINSTIEG_ERKLAERUNGEN = {
         titel: "Die Rekrutierung",
         punkte: [
             "Die Übersicht zeigt alles auf einen Blick: Budgets, Verträge, Baustellen im Kader, was der Vorstand erwartet. Ein Klick auf eine Kachel öffnet ihre Seite.",
-            "Nicht jeder will zu dir: Die Spalte Interesse reicht von interessiert bis kommt nicht in Frage. Wer zögert, verlangt mehr Gehalt.",
-            "In der Transferbörse schreibst du aus, wen du suchst, und bietest Vereinen an, wen du abgeben willst.",
+            "Nicht jeder will zu Ihnen: Die Spalte Interesse reicht von interessiert bis kommt nicht in Frage. Wer zögert, verlangt mehr Gehalt.",
+            "In der Transferbörse schreiben Sie aus, wen Sie suchen, und bieten Vereinen an, wen Sie abgeben wollen.",
             "Scouten kostet Tage, macht die Werte aber genau. Ohne Bericht sind es Schätzungen."
         ]
     },
     preseason: {
         titel: "Die Vorbereitung",
         punkte: [
-            "Besetze die offenen Posten im Trainerstab, sonst arbeiten Aushilfen.",
+            "Besetzen Sie die offenen Posten im Trainerstab, sonst arbeiten Aushilfen.",
             "Testspiele bringen Spielpraxis und Vertrautheit, Turniere etwas Geld.",
             "Der Etat für Gehälter und Transfers wird hier verteilt."
         ]
@@ -123,7 +123,7 @@ const EINSTIEG_ERKLAERUNGEN = {
     training: {
         titel: "Training",
         punkte: [
-            "Der Trainerstab plant die Woche; du kannst Schwerpunkte setzen und Einheiten ablehnen.",
+            "Der Trainerstab plant die Woche; Sie können Schwerpunkte setzen und Einheiten ablehnen.",
             "Hohe Last bringt mehr Fortschritt, aber auch mehr Verletzungen.",
             "Entwicklungspläne fördern einzelne Spieler gezielt – auch auf einer neuen Position.",
             "Akademie und Talente haben einen eigenen Reiter: Jugend."
@@ -147,15 +147,15 @@ const EINSTIEG_ERKLAERUNGEN = {
     stats: {
         titel: "Statistiken",
         punkte: [
-            "Torschützen, Noten und Bilanzen – für deine Mannschaft und die Liga.",
+            "Torschützen, Noten und Bilanzen – für Ihre Mannschaft und die Liga.",
             "Die Spielanalyse zu jedem eigenen Spiel liegt im Spielbericht."
         ]
     },
     national: {
         titel: "Das Nationalteam",
         punkte: [
-            "Neben dem Verein kannst du ein Nationalteam übernehmen. Welche Posten frei sind und welchen Ruf sie verlangen, steht hier.",
-            "Als Nationaltrainer nominierst du vor jeder Länderspielpause 23 Spieler und wählst die Ausrichtung.",
+            "Neben dem Verein können Sie ein Nationalteam übernehmen. Welche Posten frei sind und welchen Ruf sie verlangen, steht hier.",
+            "Als Nationaltrainer nominieren Sie vor jeder Länderspielpause 23 Spieler und wählen die Ausrichtung.",
             "Das Vertrauen des Verbands folgt den Ergebnissen, gemessen an der Stärke der Gegner. Sinkt es zu tief, endet das Amt zum Saisonwechsel."
         ]
     },
@@ -170,7 +170,7 @@ const EINSTIEG_ERKLAERUNGEN = {
 
 /** Die Begriffe, die das Spiel überall verwendet */
 const EINSTIEG_BEGRIFFE = [
-    ["Sterne", "Stärke (gefüllt) und Potenzial (hell) eines Spielers, gemessen an deiner Liga. Fünf Sterne heißt: einer der Besten auf dieser Ebene."],
+    ["Sterne", "Stärke (gefüllt) und Potenzial (hell) eines Spielers, gemessen an Ihrer Liga. Fünf Sterne heißt: einer der Besten auf dieser Ebene."],
     ["Potenzial", "Wie gut ein Spieler werden kann. Junge Spieler wachsen schnell, ab Mitte zwanzig kaum noch, ab dreißig geht es abwärts."],
     ["Moral", "Wie zufrieden ein Spieler ist. Siege, Einsatzzeit und Gespräche heben sie, Bankplätze und gebrochene Versprechen senken sie."],
     ["Form", "Die Noten der letzten Spiele. Wer gut gespielt hat, spielt meist wieder gut."],
@@ -178,8 +178,8 @@ const EINSTIEG_BEGRIFFE = [
     ["Spielschärfe", "Rhythmus aus echten Spielen. Wer lange nicht gespielt hat oder verletzt war, braucht ein paar Einsätze."],
     ["Vertrautheit", "Wie gut die Mannschaft eine Formation und Spielweise beherrscht. Sie wächst mit Training und Spielen."],
     ["Rolle", "Was ein Spieler auf seiner Position tut, mit und gegen den Ball – etwa Spielmacher, Zielspieler oder Ballverteiler."],
-    ["Scoutwissen", "Wie genau du einen Spieler kennst. Unter hundert Prozent sind Werte und Marktwert Schätzungen."],
-    ["Vorstandsvertrauen", "Wie zufrieden der Vorstand mit dir ist. Sinkt es zu weit, folgen Warnung, Ultimatum und Entlassung."],
+    ["Scoutwissen", "Wie genau Sie einen Spieler kennen. Unter hundert Prozent sind Werte und Marktwert Schätzungen."],
+    ["Vorstandsvertrauen", "Wie zufrieden der Vorstand mit Ihnen ist. Sinkt es zu weit, folgen Warnung, Ultimatum und Entlassung."],
     ["Ruf", "Wie bekannt ein Verein oder Trainer ist. Ein großer Ruf lockt bessere Spieler und bessere Angebote."],
     ["xG", "Erwartete Tore: wie viele Tore die Chancen eines Spiels im Schnitt bringen. Mehr xG als Tore heißt: Pech oder schwache Abschlüsse."]
 ];
@@ -241,10 +241,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <div class="dash-card einstieg-karte">
                 <div class="einstieg-kopf">
                     <div>
-                        <h3>${alle ? "Geschafft – du kennst dich aus" : "Erste Schritte"}</h3>
+                        <h3>${alle ? "Geschafft – Sie kennen sich aus" : "Erste Schritte"}</h3>
                         <p class="einstieg-unter">${alle
                             ? "Alle Bereiche gesehen, das erste Spiel bestritten. Die Erklärungen lassen sich in den Einstellungen abschalten."
-                            : `${fertig} von ${schritte.length} erledigt · ein Schritt ist erledigt, sobald du ihn getan hast`}</p>
+                            : `${fertig} von ${schritte.length} erledigt · ein Schritt ist erledigt, sobald Sie ihn getan haben`}</p>
                     </div>
                     <button type="button" class="btn btn-link btn-sm" id="btnEinstiegAus">${alle ? "Schließen" : "Ausblenden"}</button>
                 </div>
@@ -323,14 +323,14 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         body.innerHTML = `
             <section class="anleitung-abschnitt">
                 <h3>Worum es geht</h3>
-                <p>Du übernimmst einen Verein – vom Spitzenklub bis zum Landesligisten – und führst ihn Saison für Saison: Kader, Taktik, Training, Transfers, Finanzen. Gespielt wird Tag für Tag; jedes Spiel lässt sich live verfolgen und von der Seitenlinie lenken. Der Vorstand misst dich an seinem Saisonziel.</p>
+                <p>Sie übernehmen einen Verein – vom Spitzenklub bis zum Landesligisten – und führen ihn Saison für Saison: Kader, Taktik, Training, Transfers, Finanzen. Gespielt wird Tag für Tag; jedes Spiel lässt sich live verfolgen und von der Seitenlinie lenken. Der Vorstand misst Sie an seinem Saisonziel.</p>
             </section>
             <section class="anleitung-abschnitt">
                 <h3>Ein Tag im Spiel</h3>
                 <ol class="anleitung-liste">
                     <li>Auf der Übersicht steht, was heute ansteht und was eine Entscheidung braucht.</li>
-                    <li>Kümmere dich darum – oder überlass es dem Stab: Training und vieles andere läuft auch ohne dich.</li>
-                    <li>„Weiter“ spielt den Tag. An Spieltagen bereitest du das Spiel vor, hältst eine Ansprache und spielst live oder sofort.</li>
+                    <li>Kümmern Sie sich darum – oder überlassen Sie es dem Stab: Training und vieles andere läuft auch ohne Sie.</li>
+                    <li>„Weiter“ spielt den Tag. An Spieltagen bereiten Sie das Spiel vor, halten eine Ansprache und spielen live oder sofort.</li>
                 </ol>
             </section>
             <section class="anleitung-abschnitt" id="anleitungBegriffe">

@@ -420,3 +420,31 @@ select option { background: var(--surface-1, #12161d); color: var(--text-main); 
 /* Spielerakte: der Name in der Sportschrift wie die Seitentitel */
 .pf-kopf-text > h2 { font-family: var(--font-display); font-size: 34px; font-weight: 700; letter-spacing: 0.3px; line-height: 1.02; }
 @media (max-width: 640px) { .pf-kopf-text > h2 { font-size: 27px; } }
+
+/* Rundgang über alle Seiten und Unterreiter (automatisch geprüft): abgeschnittene Texte und am Handy zu kleine Tippflächen */
+/* Titel umbrechen statt abschneiden: Anweisungspakete, nächstes Spiel, Kennzahlen, Speicherstände */
+.paket-titel strong, .bh-team strong, .kz-leiste .vk-kachel > span, .platz-text strong {
+    white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere;
+}
+/* Rollen mit langem Namen ("Außenverteidiger offensiv") passen ganz hinein */
+.role-chip { max-width: 200px; }
+.tm-rolle-name { white-space: normal; overflow: visible; text-overflow: clip; }
+@media (max-width: 720px) {
+    /* Tippflächen: mindestens 34 Pixel hoch */
+    .einsatz-rolle, .einsatz-pos { min-height: 36px; font-size: 13px; padding: 6px 8px; }
+    .uk-knopf.uk-auf { min-width: 36px; min-height: 36px; }
+    .pp-filter { min-height: 36px; padding-inline: 12px; }
+    .portal-titel { min-height: 34px; display: inline-flex; align-items: center; }
+    .sq-nr { min-width: 34px; min-height: 34px; }
+    .fin-spieler { min-height: 38px; }
+    .attention-name { min-height: 34px; display: inline-flex; align-items: center; }
+}
+.tm-rolle-name { max-width: none; }
+@media (max-width: 720px) {
+    /* Auswahlfelder und Textknöpfe in den Seiten: am Handy gut zu treffen */
+    .tab-pane select { min-height: 38px; }
+    .tab-pane .btn-link { min-height: 34px; display: inline-flex; align-items: center; }
+    .taktik-ansicht-btn { min-height: 36px; }
+    .kb-stufen a { display: inline-block; padding-block: 8px; }
+    .preis-name { min-height: 34px; display: inline-flex; align-items: center; }
+}

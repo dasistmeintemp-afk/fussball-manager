@@ -7506,15 +7506,20 @@ class LiveMatchDirector {
         const boxSpieler = angreifer
             .filter(q => !absicherung.includes(q))
             .sort((a, b) => rang(a) - rang(b) || (a.seed || 0) - (b.seed || 0));
+        // Quer sind 100 Einheiten 68 Meter: Mit den alten Werten (bis 8,5
+        // Einheiten neben der Mitte) standen sechs Angreifer und zehn
+        // Verteidiger auf zwölf mal zwölf Metern - im Bild ein Knäuel. Jetzt
+        // ist der Strafraum besetzt wie bei einer Ecke: vom kurzen Pfosten
+        // bis hinter den langen, gestaffelt bis zum Elfmeterpunkt.
         const angriffsPlaetze = [
-            punkt(5.0, nah * 0.5),    // Fuenfer, Mitte
-            punkt(9.6, nah * 3),      // Elfmeterpunkt
-            punkt(3.6, nah * 6.5),    // kurzer Pfosten
-            punkt(5.6, -nah * 8.5),   // langer Pfosten
-            punkt(10.8, -nah * 7),    // Elfmeterpunkt, lang
-            punkt(15.5, nah * 3),     // Rueckraum
+            punkt(5.2, nah * 1),      // Fuenfer, Mitte
+            punkt(10, nah * 5),       // Elfmeterpunkt, kurz
+            punkt(3.8, nah * 10),     // kurzer Pfosten
+            punkt(6, -nah * 12.5),    // langer Pfosten
+            punkt(11.5, -nah * 9),    // Elfmeterpunkt, lang
+            punkt(17, nah * 2),       // Rueckraum
             punkt(4.5, nah * 38),     // kurze Anspielstation
-            punkt(14.5, -nah * 16)    // Strafraumrand, lang
+            punkt(15.5, -nah * 23)    // Strafraumrand, lang
         ];
         const imStrafraum = [];
         boxSpieler.forEach((q, i) => {
@@ -7532,17 +7537,17 @@ class LiveMatchDirector {
             .sort((a, b) => rang(b) - rang(a) || (a.seed || 0) - (b.seed || 0));
         if (vorn) plan.set(vorn.id, punkt(42, -nah * 6));
         const raum = [
-            punkt(1.3, nah * 4.4),    // kurzer Pfosten
-            punkt(4.8, nah * 3.5),    // Fuenferlinie kurz
-            punkt(4.8, -nah * 1),     // Fuenferlinie Mitte
-            punkt(4.8, -nah * 5.5)    // Fuenferlinie lang
+            punkt(1.3, nah * 5.6),    // kurzer Pfosten
+            punkt(4.8, nah * 6.5),    // Fuenferlinie kurz
+            punkt(4.8, -nah * 0.5),   // Fuenferlinie Mitte
+            punkt(4.8, -nah * 8)      // Fuenferlinie lang
         ];
         // Manndecker stehen torseitig und einen Schritt zur Mitte hin
         const mann = imStrafraum.map(pl => ({
             x: pl.x + dir * 1.1,
             y: pl.y + (pl.y < 50 ? 1.2 : -1.2)
         }));
-        const verteidigerPlaetze = [...raum, ...mann, punkt(15, 0), punkt(12, -nah * 14)];
+        const verteidigerPlaetze = [...raum, ...mann, punkt(16, -nah * 5), punkt(13, -nah * 20)];
         hinten.forEach((q, i) => plan.set(q.id, verteidigerPlaetze[i] || punkt(16, ((i % 3) - 1) * 10)));
 
         this._eckenPlan = { info, plan };

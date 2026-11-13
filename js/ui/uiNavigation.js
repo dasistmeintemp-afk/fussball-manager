@@ -527,6 +527,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 ? { art: "frei", text: "Zwei freie Tage geben", icon: "i-clock" } : null,
             eigen && typeof this.strafeMoeglich === "function" && this.strafeMoeglich(p)
                 ? { art: "strafe", text: "Platzverweis ahnden", icon: "i-alert" } : null,
+            eigen && typeof this.einspruchMoeglich === "function" && this.einspruchMoeglich(p)
+                ? { art: "einspruch", text: "Einspruch gegen die Sperre", icon: "i-doc" } : null,
             !eigen && se && typeof se.merke === "function"
                 ? { art: "liste", text: gemerkt ? "Von der Beobachtungsliste nehmen" : "Auf die Beobachtungsliste", icon: "i-star" } : null,
             !eigen && se && typeof se.beobachteSpieler === "function"
@@ -572,6 +574,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         else if (art === "behandeln") this.zeigeBehandlung?.(p.id);
         else if (art === "frei") this.medizinAusfuehren?.("frei", p.id);
         else if (art === "strafe") this.zeigeStrafe?.(p.id);
+        else if (art === "einspruch") this.zeigeEinspruch?.(p.id);
     },
 
     // ------------------------------------------------------------ Beobachtungsliste

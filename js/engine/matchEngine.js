@@ -446,6 +446,25 @@ class MatchEngine {
         return map;
     }
 
+    /** So viele Wechsel lassen sich vorab planen (MatchEngine.wechselplanVon) */
+    static WECHSELPLAN_MAX = 5;
+
+    /**
+     * Der Wechselplan eines Vereins, bereinigt und nach Minute geordnet:
+     * [{ minute, outId, inId | null }]. inId null heißt: der passendste von
+     * der Bank. Gilt für jedes Spiel, bis der Trainer ihn ändert.
+     */
+    static wechselplanVon(club) {
+        const roh = Array.isArray(club?.wechselplan) ? club.wechselplan : [];
+        const raus = new Set();
+        return roh
+            .map(w => ({ minute: Math.round(Number(w?.minute)), outId: w?.outId, inId: w?.inId ?? null }))
+            .filter(w => w.minute >= 1 && w.minute <= 89 && w.outId !== undefined && w.outId !== null
+                && !raus.has(String(w.outId)) && raus.add(String(w.outId)))
+            .sort((x, y) => x.minute - y.minute)
+            .slice(0, MatchEngine.WECHSELPLAN_MAX);
+    }
+
     static findPlayer(allPlayers, id) {
         const found = this.getPlayerIndex(allPlayers).get(id);
         if (found) return found;
@@ -1905,8 +1924,59 @@ class MatchEngine {
             return _Random.chance(p) ? verletze(opfer, opferHeim, "kontakt", min, sekunde) : false;
         };
 
+        // Der Wechselplan des Trainers: Zur geplanten Minute geht der eine und
+        // kommt der andere - wenn beide noch können und ein Wechsel frei ist.
+        // Ohne festen Ersatz kommt der Passendste von der Bank.
+        const planOffen = {
+            home: MatchEngine.wechselplanVon(homeClub).filter(w => w.minute >= startMinute),
+            away: MatchEngine.wechselplanVon(awayClub).filter(w => w.minute >= startMinute)
+        };
+        const nachPlanGekommen = new Set();
+        const fuehrePlanAus = (bis) => ['home', 'away'].forEach(teamSide => {
+            const offen = planOffen[teamSide];
+            while (offen.length > 0 && offen[0].minute <= bis) {
+                const w = offen.shift();
+                const isHomeTeam = teamSide === 'home';
+                const club = isHomeTeam ? homeClub : awayClub;
+                const activePlayers = isHomeTeam ? activeHomePlayers : activeAwayPlayers;
+                if ((isHomeTeam ? homeSubsUsed : awaySubsUsed) >= maxSubs || !fensterFrei(teamSide, w.minute)) continue;
+                const outIdx = activePlayers.findIndex(p => p && String(p.id) === String(w.outId));
+                const out = outIdx === -1 ? null : activePlayers[outIdx];
+                if (!out || sentOffPlayerIds.has(out.id)) continue;
+                const benchAvailable = bankVon(isHomeTeam)
+                    .map(id => MatchEngine.findPlayer(allPlayers, id))
+                    .filter(p => p && (p.injuredWeeks || 0) <= 0 && (p.suspendedMatches || 0) <= 0 && !activePlayers.some(ap => ap.id === p.id));
+                const wunsch = w.inId === null ? null : benchAvailable.find(p => String(p.id) === String(w.inId));
+                const subIn = (wunsch && (wunsch.pos === "TW") === (deployedPosOf(out, isHomeTeam) === "TW")) ? wunsch
+                    : ersatzFuer(out, isHomeTeam, benchAvailable);
+                if (!subIn) continue;
+                activePlayers[outIdx] = subIn;
+                ausgewechselt.add(out.id);
+                dabeiSeit.set(subIn.id, { minute: w.minute, second: 3 });
+                nachPlanGekommen.add(subIn.id);
+                if (isHomeTeam) homeSubsUsed++; else awaySubsUsed++;
+                fensterBelegen(teamSide, w.minute);
+                timeline.push({
+                    minute: w.minute,
+                    second: 3,
+                    type: "substitution",
+                    team: teamSide,
+                    clubId: club.id,
+                    clubName: club.name,
+                    playerOutId: out.id,
+                    playerOutName: out.name,
+                    playerInId: subIn.id,
+                    playerInName: subIn.name,
+                    geplant: true,
+                    text: formatCommentary("substitution", { minute: w.minute, club: club.name, playerIn: subIn.name, playerOut: out.name })
+                });
+            }
+        });
+
         // Simuliere jede Szene chronologisch
         sceneMinutes.forEach(min => {
+            fuehrePlanAus(min);
+
             // Kleine Fouls, die vor dieser Szene liegen, zuerst
             while (foulMinuten.length > 0 && foulMinuten[0] < min) kleinesFoul(foulMinuten.shift());
 
@@ -1925,7 +1995,9 @@ class MatchEngine {
                     const bis = lage < 0 ? 84 : 82;
                     const wechselChance = lage > 0 ? 0.3 : 0.2;
 
+                    // Solange der Plan des Trainers noch Wechsel vorsieht, wartet der Co-Trainer
                     if (min >= ab && min <= bis && autoWechsel[teamSide] && subsUsed < maxSubs
+                        && planOffen[teamSide].length === 0
                         && fensterFrei(teamSide, min) && _Random.chance(wechselChance)) {
                         const benchAvailable = bankVon(isHomeTeam)
                             .map(id => MatchEngine.findPlayer(allPlayers, id))
@@ -1944,8 +2016,9 @@ class MatchEngine {
                                 const hinten = ["IV", "LV", "RV", "DM"].includes(pos);
                                 return lage > 0 ? (vorn ? 4 : 0) : (lage < 0 ? (hinten ? 3 : 0) : 0);
                             };
+                            // ... und wer nach Plan gekommen ist, bleibt auch
                             const kandidaten = [...activePlayers]
-                                .filter(p => p.pos !== "TW" && !sentOffPlayerIds.has(p.id))
+                                .filter(p => p.pos !== "TW" && !sentOffPlayerIds.has(p.id) && !nachPlanGekommen.has(p.id))
                                 .sort((a, b) => (frischeVon(a) - schwerpunkt(a)) - (frischeVon(b) - schwerpunkt(b)));
                             const guete = wechselGuete(isHomeTeam);
                             const candidateOut = (guete !== null && _Random.chance((100 - guete) / 160))
@@ -2382,6 +2455,9 @@ class MatchEngine {
                 }
             }
         });
+
+        // Geplante Wechsel nach der letzten Szene
+        fuehrePlanAus(89);
 
         // Die restlichen kleinen Fouls nach der letzten Szene
         while (foulMinuten.length > 0) kleinesFoul(foulMinuten.shift());

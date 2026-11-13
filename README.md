@@ -1242,6 +1242,21 @@ Viermal in der Saison ruht die Liga. Bisher hieß das für den Verein vier Tage 
   - Wirkung nach Minuten: sechs Punkte Spielschärfe und fünf Punkte Kondition für 90 Minuten. Wer gegen die höhere Mannschaft eine 7,5 oder besser spielt, gewinnt vier Punkte Moral; ein Profi, der gegen den Nachwuchs 5,6 oder schlechter spielt, verliert zwei.
   - Die letzten sechs Spiele bleiben im Spielstand (`state.trainingsspiele`); die Karte zeigt das letzte auch außerhalb der Pause.
 
+### 5j. 📋 Spieltag vorab planen: Wechselplan, Elfmeterschießen, Einspruch, Videobeweis
+- **Wechselplan (`MatchEngine.wechselplanVon`, `uiSpieltagsplan.js`):** bei *Aufstellung & Taktik* im Bereich *Standards*. Bis zu fünf Wechsel mit Minute, Auswechselspieler und Ersatz; ohne festen Ersatz kommt der Passendste von der Bank.
+  - Der Plan gilt für jedes Spiel, bis Sie ihn ändern, live wie in der Sofortberechnung. So lässt sich auch die Einsatzzeit eines Rückkehrers begrenzen.
+  - Ein Wechsel entfällt, wenn der Spieler nicht mehr auf dem Platz steht, kein Wechsel oder keine Unterbrechung mehr frei ist. Sitzt der Ersatz nicht mehr auf der Bank, kommt der Passendste.
+  - Solange noch ein geplanter Wechsel aussteht, wechselt der Co-Trainer nur Verletzte aus. Wer nach Plan gekommen ist, bleibt auf dem Platz.
+- **Elfmeterschießen mit echten Schützen (`CupEngine.elfmeterSchuetzen`, `elfmeterschiessen`):** Bisher zählte nur der Schnitt der fünf Besten. Jetzt tritt jeder Schütze einzeln gegen den Torwart an, getroffen wird nach Abschluss und Nerven.
+  - Die fünf Plätze bestimmen Sie bei den *Standard- & Führungsrollen* (`club.roles.elfmeterschiessen`). Ein leerer Platz heißt automatisch: der Beste, der noch nicht dran war. Danach schießen die übrigen, der Torwart zuletzt.
+  - Geschossen wird abwechselnd, und es ist Schluss, sobald es entschieden ist. Der Spielbericht zeigt das Elfmeterschießen Schuss für Schuss (`match.penaltyProtokoll`).
+- **Einspruch gegen die Sperre (`FuehrungEngine.einspruch`, `legeEinspruchEin`):** nach glatt Rot, einmal je Sperre, aus der Akte (Aktionen, *Kabine*) oder per Rechtsklick.
+  - 32 % Aussicht auf ein Spiel weniger, bei besonnenen Spielern mehr, bei Hitzköpfen weniger (15 bis 50 %). In 20 % der Fälle hält das Sportgericht den Einspruch für mutwillig: ein Spiel mehr.
+  - Die Gebühr, ein halber Wochenlohn des Spielers, ist in jedem Fall weg. Der Bescheid kommt sofort ins Postfach.
+- **Videobeweis im Livespiel (`LiveMatchDirector.VAR`):** Der Ball liegt im Netz, dann meldet sich der Videoassistent: Abseits, Foul im Angriff oder Handspiel, kein Tor.
+  - Dafür wird jede zehnte Parade nach einem Schuss aus dem Spiel umgedeutet (nicht bei Elfmetern, Freistößen und Halbchancen). Tore werden nie aberkannt, die Zahl der Tore bleibt also, wie sie ist.
+  - Gemessen kommt das rund einmal in vier Spielen vor. Im Bild steht das Banner *VIDEOBEWEIS*, weiter geht es mit Abstoß.
+
 ### 6. 💼 Finanzen, Sponsoren & Buchungsjournal
 - **Gehaltsdisziplin der KI-Vereine (`FinanceEngine.gehaltsDisziplin`):** Jeder Wechsel und jede Verlängerung legt beim Gehalt etwas drauf. Angeglichen wurde bisher nur bei Auf- und Abstieg.
   - Gemessen lagen die Erstligisten nach drei Saisons bei 115 % dessen, was sie tragen können.

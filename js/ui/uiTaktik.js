@@ -287,6 +287,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         populateRoleSelect("rolePenalty", userClub.roles.penaltyTaker);
         populateRoleSelect("roleFreeKick", userClub.roles.freeKickTaker);
         populateRoleSelect("roleCorner", userClub.roles.cornerTaker);
+        this.renderElfmeterReihe?.();
+        this.renderWechselplan?.();
     },
 
     getTacticsEngine() {

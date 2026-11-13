@@ -283,7 +283,21 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     ${team(away, "away", "gast")}
                 </div>
                 <div class="spb-umstaende">${umstaende}</div>
+                ${this.spielberichtElfmeterHtml(match, home, away)}
             </header>`;
+    },
+
+    /** Das Elfmeterschießen Schuss für Schuss: wer getroffen hat, wer nicht */
+    spielberichtElfmeterHtml(match, home, away) {
+        const protokoll = match.penaltyWinner && Array.isArray(match.penaltyProtokoll) ? match.penaltyProtokoll : null;
+        if (!protokoll || !protokoll.length) return "";
+        const esc = (t) => this.escapeHtml(t == null ? "" : String(t));
+        const reihe = (t) => protokoll.filter(k => k.t === t)
+            .map(k => `<span class="spb-elf-schuss ${k.tor ? "tor" : "kein"}" title="${k.tor ? "verwandelt" : "vergeben"}">${k.tor ? "●" : "○"} ${esc(k.name)}</span>`).join("");
+        return `<div class="spb-elfmeter" aria-label="Elfmeterschießen">
+            <div><strong>${esc(home.name)}</strong>${reihe(0)}</div>
+            <div><strong>${esc(away.name)}</strong>${reihe(1)}</div>
+        </div>`;
     },
 
     /** Statistik als gespiegelte Balken: links Heim, rechts Gast */

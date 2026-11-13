@@ -70,11 +70,23 @@ const FuehrungEngine = {
     /** Nach dem Spieltag: Platzverweise der eigenen Profis melden (einmal) */
     meldePlatzverweise(state) {
         const gemeldet = [];
+        // Abgesessene Sperren: Der Einspruch dazu ist erledigt
+        if (state.einspruch) {
+            Object.keys(state.einspruch).forEach(id => {
+                const q = (state.players || []).find(x => String(x.id) === id);
+                if (!q || !((q.suspendedMatches || 0) > 0)) delete state.einspruch[id];
+            });
+        }
         this._profis(state).forEach(p => {
             if (p.strafeOffen !== true) return;
             p.strafeOffen = "gemeldet";
+            // Gegen die Sperre ist einmal Einspruch möglich (EINSPRUCH)
+            if ((p.suspendedMatches || 0) > 0) {
+                if (!state.einspruch) state.einspruch = {};
+                state.einspruch[String(p.id)] = { sperre: p.suspendedMatches, genutzt: false };
+            }
             this._post(state, `Platzverweis: ${p.name}`,
-                `${p.name} hat glatt Rot gesehen und fehlt gesperrt. Wollen Sie ihn zur Rechenschaft ziehen? In seiner Akte steht unter Aktionen „Platzverweis ahnden“: Geldstrafe (${this.wochenlohn(p).toLocaleString("de-DE")} €), Abmahnung oder Nachsicht.`, p.id);
+                `${p.name} hat glatt Rot gesehen und fehlt gesperrt. Wollen Sie ihn zur Rechenschaft ziehen? In seiner Akte steht unter Aktionen „Platzverweis ahnden“: Geldstrafe (${this.wochenlohn(p).toLocaleString("de-DE")} €), Abmahnung oder Nachsicht. Dort können Sie auch einmal Einspruch gegen die Sperre einlegen.`, p.id);
             gemeldet.push(p.id);
         });
         return gemeldet;
@@ -110,6 +122,66 @@ const FuehrungEngine = {
         return { ok: true, art, einsicht, betrag,
             text: einsicht ? `${p.name} ${was} und nimmt es an. Er will sich künftig besser im Griff haben.`
                 : `${p.name} ${was} und fühlt sich ungerecht behandelt.` };
+    },
+
+    // ------------------------------------------------------- Einspruch gegen die Sperre
+
+    /**
+     * Einspruch beim Sportgericht, einmal je Sperre nach glatt Rot.
+     *
+     * Erfolg: ein Spiel weniger. Abgelehnt: nichts ändert sich. Hält das
+     * Gericht den Einspruch für mutwillig, gibt es ein Spiel obendrauf.
+     * Wer als ruhig gilt (niedriges Temperament), hat die besseren Karten.
+     * Die Gebühr (ein halber Wochenlohn des Spielers) ist in jedem Fall weg.
+     */
+    EINSPRUCH: { erfolg: 0.32, jePunkt: 0.015, min: 0.15, max: 0.5, haerter: 0.2, gebuehr: 0.5 },
+
+    einspruch(state, p) {
+        const e = p && state?.einspruch ? state.einspruch[String(p.id)] : null;
+        if (!p || p.clubId !== state?.userClubId || !e) return null;
+        const R = this.EINSPRUCH;
+        const temperament = p.hiddenAttributes?.temperament ?? 10;
+        const chance = Math.max(R.min, Math.min(R.max, R.erfolg - (temperament - 10) * R.jePunkt));
+        const kosten = Math.round(this.wochenlohn(p) * R.gebuehr);
+        let grund = null;
+        if (e.genutzt) grund = "Gegen diese Sperre haben Sie schon Einspruch eingelegt.";
+        else if (!((p.suspendedMatches || 0) > 0)) grund = "Die Sperre ist abgesessen.";
+        return { ok: !grund, grund, chance, risiko: R.haerter, kosten, sperre: p.suspendedMatches || 0 };
+    },
+
+    legeEinspruchEin(state, playerId, zufall = Math.random) {
+        const p = (state?.players || []).find(x => String(x.id) === String(playerId));
+        const o = this.einspruch(state, p);
+        if (!o) return { ok: false, grund: "Hier gibt es keine Sperre, gegen die Sie vorgehen könnten." };
+        if (!o.ok) return { ok: false, grund: o.grund };
+        const club = this._club(state);
+        state.einspruch[String(p.id)].genutzt = true;
+        if (club && o.kosten > 0) {
+            club.balance = (club.balance || 0) - o.kosten;
+            const fe = _fuResolve("FinanceEngine", "./financeEngine.js");
+            if (fe && typeof fe.recordTransaction === "function") fe.recordTransaction(state, club.id, "other", -o.kosten, `Einspruch gegen Sperre: ${p.name}`);
+        }
+        const z = zufall();
+        const spiele = (n) => `${n} ${n === 1 ? "Spiel" : "Spiele"}`;
+        let ausgang, text;
+        if (z < o.chance) {
+            ausgang = "erfolg";
+            p.suspendedMatches = Math.max(0, (p.suspendedMatches || 0) - 1);
+            if (p.suspendedMatches === 0) { p.suspended = false; if (p.strafeOffen) p.strafeOffen = null; }
+            this._moral(p, 3);
+            text = p.suspendedMatches > 0
+                ? `Einspruch erfolgreich: Das Sportgericht verkürzt die Sperre von ${p.name} auf ${spiele(p.suspendedMatches)}.`
+                : `Einspruch erfolgreich: Das Sportgericht hebt die Sperre von ${p.name} auf. Er darf sofort wieder spielen.`;
+        } else if (z < o.chance + o.risiko) {
+            ausgang = "haerter";
+            p.suspendedMatches = (p.suspendedMatches || 0) + 1;
+            text = `Das Sportgericht hält den Einspruch für mutwillig und verlängert die Sperre von ${p.name} auf ${spiele(p.suspendedMatches)}.`;
+        } else {
+            ausgang = "abgelehnt";
+            text = `Einspruch abgelehnt: Es bleibt bei ${spiele(p.suspendedMatches)} Sperre für ${p.name}.`;
+        }
+        this._post(state, `Sportgericht: ${p.name}`, `${text} Die Gebühr von ${o.kosten.toLocaleString("de-DE")} € ist bezahlt.`, p.id);
+        return { ok: true, ausgang, sperre: p.suspendedMatches, kosten: o.kosten, text };
     },
 
     // ------------------------------------------------------------ Sonderprämie

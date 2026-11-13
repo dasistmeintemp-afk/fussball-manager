@@ -805,61 +805,83 @@ class CupEngine {
      * besseren Abschluss hat, trifft häufiger. Der Ausgang steht in
      * `match.penaltyScore` und wird im Spielbericht angezeigt.
      */
+    /** Wert eines Schützen vom Punkt: Abschluss und Nerven */
+    static elfmeterWert(p) {
+        return ((p.shooting || p.finishing || 55) + (p.composure || p.mental || 55)) / 2;
+    }
+
+    /**
+     * Die Schützen einer Mannschaft in ihrer Reihenfolge: zuerst, wen der
+     * Trainer bestimmt hat (club.roles.elfmeterschiessen, bis zu fünf), dann
+     * die Besten vom Punkt. Der Torwart schießt als Letzter. Gewählt wird aus
+     * dem Spieltagskader (Elf und Bank); fehlt der, aus dem ganzen Kader.
+     */
+    static elfmeterSchuetzen(state, club, finde = null) {
+        const suche = finde || ((id) => (state.players || []).find(p => p.id === id));
+        if (!club) return [];
+        const bereit = (p) => p && !p.reserve && (p.injuredWeeks || 0) <= 0;
+        let kader = [...(club.lineup || []), ...(club.bench || [])].map(suche).filter(bereit);
+        if (kader.length < 11) kader = (club.playerIds || []).map(suche).filter(bereit);
+        const gesehen = new Set();
+        kader = kader.filter(p => !gesehen.has(String(p.id)) && gesehen.add(String(p.id)));
+        // Fünf Plätze: Wen der Trainer auf einen gesetzt hat, schießt an dieser Stelle
+        const plaetze = (Array.isArray(club.roles?.elfmeterschiessen) ? club.roles.elfmeterschiessen : []).slice(0, 5)
+            .map(id => (id === null || id === undefined ? null : kader.find(p => String(p.id) === String(id)) || null))
+            .map((p, i, a) => (p && a.indexOf(p) === i ? p : null));
+        const rest = kader.filter(p => !plaetze.includes(p))
+            .sort((a, b) => ((a.pos === "TW") - (b.pos === "TW")) || (this.elfmeterWert(b) - this.elfmeterWert(a)));
+        const erste = [];
+        for (let i = 0; i < 5; i++) erste.push(plaetze[i] || rest.shift() || null);
+        return erste.filter(Boolean).concat(rest);
+    }
+
+    /** Trefferchance eines Schützen gegen einen Torwart - real trifft etwa jeder vierte nicht */
+    static elfmeterChance(schuetze, torwart) {
+        const wert = schuetze ? this.elfmeterWert(schuetze) : 60;
+        const keeper = torwart ? (torwart.reflexes || torwart.goalkeeping || 60) : 60;
+        return Math.min(0.92, Math.max(0.55, 0.76 + (wert - 62) * 0.004 - (keeper - 62) * 0.003));
+    }
+
     static elfmeterschiessen(state, match) {
         const gs = _cupResolve("GameState", "./gameState.js");
         const finde = gs && typeof gs.spielerMitId === "function"
             ? (id) => gs.spielerMitId(state.players || [], id)
             : (id) => (state.players || []).find(p => p.id === id);
-        const quote = clubId => {
+        const seiten = [match.homeClubId, match.awayClubId].map(clubId => {
             const club = (state.clubs || []).find(c => c.id === clubId);
-            if (!club) return 0.76;
-
-            // U23 und U19 stehen nicht im Spieltagskader der Profis
-            const kader = (club.playerIds || []).map(finde).filter(p => p && !p.reserve);
-
-            const schuetzen = kader.filter(p => p.pos !== "TW")
-                .map(p => ((p.shooting || p.finishing || 55) + (p.composure || p.mental || 55)) / 2)
-                .sort((a, b) => b - a)
-                .slice(0, 5);
-            const torwart = kader.find(p => p.pos === "TW");
-
-            const schnitt = schuetzen.length
-                ? schuetzen.reduce((s, v) => s + v, 0) / schuetzen.length
-                : 60;
-            // Gegner-Torwart drückt die Quote, der eigene Abschluss hebt sie
-            return { schnitt, keeper: torwart ? (torwart.reflexes || torwart.goalkeeping || 60) : 60 };
+            const schuetzen = this.elfmeterSchuetzen(state, club, finde);
+            const elf = (club?.lineup || []).map(finde).filter(Boolean);
+            const torwart = elf.find(p => p.pos === "TW") || schuetzen.find(p => p.pos === "TW") || null;
+            return { schuetzen, torwart, tore: 0, geschossen: 0 };
+        });
+        const protokoll = [];
+        const schiesse = (t) => {
+            const s = seiten[t];
+            const schuetze = s.schuetzen.length ? s.schuetzen[s.geschossen % s.schuetzen.length] : null;
+            const tor = _cupRandom.chance(this.elfmeterChance(schuetze, seiten[1 - t].torwart));
+            s.geschossen++;
+            if (tor) s.tore++;
+            protokoll.push({ t, id: schuetze ? schuetze.id : null, name: schuetze ? schuetze.name : "Schütze", tor });
         };
-
-        const heim = quote(match.homeClubId);
-        const gast = quote(match.awayClubId);
-
-        // Real trifft etwa jeder vierte Schütze nicht
-        const trefferChance = (schuetze, keeper) =>
-            Math.min(0.92, Math.max(0.55, 0.76 + (schuetze.schnitt - 62) * 0.004 - (keeper.keeper - 62) * 0.003));
-
-        const chanceHeim = trefferChance(heim, gast);
-        const chanceGast = trefferChance(gast, heim);
-
-        let toreHeim = 0;
-        let toreGast = 0;
-
-        for (let i = 0; i < 5; i++) {
-            if (_cupRandom.chance(chanceHeim)) toreHeim++;
-            if (_cupRandom.chance(chanceGast)) toreGast++;
+        // Fünf Schützen je Mannschaft - Schluss, sobald es entschieden ist
+        const entschieden = () => seiten.some((s, t) => s.tore > seiten[1 - t].tore + (5 - seiten[1 - t].geschossen));
+        for (let i = 0; i < 5 && !entschieden(); i++) {
+            schiesse(0);
+            if (entschieden()) break;
+            schiesse(1);
         }
-        // Sudden Death, bis eine Runde den Unterschied macht
+        // Danach einer gegen einen, bis eine Runde den Unterschied macht
         let runden = 0;
-        while (toreHeim === toreGast && runden < 15) {
+        while (seiten[0].tore === seiten[1].tore && runden < 20) {
             runden++;
-            const h = _cupRandom.chance(chanceHeim);
-            const g = _cupRandom.chance(chanceGast);
-            if (h) toreHeim++;
-            if (g) toreGast++;
+            schiesse(0);
+            schiesse(1);
         }
-        if (toreHeim === toreGast) toreHeim++;   // Notbremse gegen Endlosschleifen
+        if (seiten[0].tore === seiten[1].tore) seiten[0].tore++;   // Notbremse gegen Endlosschleifen
 
-        match.penaltyScore = [toreHeim, toreGast];
-        match.penaltyWinner = toreHeim > toreGast ? match.homeClubId : match.awayClubId;
+        match.penaltyScore = [seiten[0].tore, seiten[1].tore];
+        match.penaltyProtokoll = protokoll;
+        match.penaltyWinner = seiten[0].tore > seiten[1].tore ? match.homeClubId : match.awayClubId;
         return match.penaltyWinner;
     }
 

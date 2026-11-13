@@ -6251,9 +6251,36 @@ function runEngineTests() {
         for (let i = 0; i < 300; i++) {
             const m = { homeClubId: zwei[0].id, awayClubId: zwei[1].id, played: true, homeGoals: 0, awayGoals: 0 };
             CupEngine.elfmeterschiessen(state, m);
-            treffer += m.penaltyScore[0] + m.penaltyScore[1];
-            schuesse += 10 + (m.penaltyScore[0] + m.penaltyScore[1] > 10 ? 2 : 0);
+            treffer += m.penaltyProtokoll.filter(k => k.tor).length;
+            schuesse += m.penaltyProtokoll.length;
+            const tore = [0, 1].map(t => m.penaltyProtokoll.filter(k => k.t === t && k.tor).length);
+            if (tore[0] !== m.penaltyScore[0] || tore[1] !== m.penaltyScore[1]) throw new Error("Protokoll und Ergebnis des Elfmeterschießens passen nicht zusammen");
+            // Entschieden ist entschieden: Niemand schießt mehr, wenn es der Gegner nicht mehr aufholen kann
+            if (m.penaltyProtokoll.length < 6 || (m.penaltyProtokoll.length < 10 && Math.abs(tore[0] - tore[1]) < 2 && m.penaltyProtokoll.length < 9)) throw new Error(`Elfmeterschießen nach ${m.penaltyProtokoll.length} Schüssen bei ${tore.join(":")} beendet`);
         }
+
+        // Die Reihenfolge des Trainers: Seine fünf schießen zuerst, in seiner Ordnung; der Torwart als Letzter
+        const eigen = zwei[0];
+        const auto = CupEngine.elfmeterSchuetzen(state, eigen);
+        if (auto.length < 11 || auto[auto.length - 1].pos !== "TW") throw new Error("Automatische Reihenfolge: zu wenige Schützen oder der Torwart nicht am Ende");
+        if (CupEngine.elfmeterWert(auto[0]) < CupEngine.elfmeterWert(auto[4])) throw new Error("Automatisch schießt nicht der Beste zuerst");
+        const wunsch = [auto[7], auto[3], auto[9], auto[0], auto[5]].map(p => p.id);
+        eigen.roles = eigen.roles || {};
+        eigen.roles.elfmeterschiessen = wunsch.concat([wunsch[0], "gibtEsNicht"]);
+        const reihe = CupEngine.elfmeterSchuetzen(state, eigen);
+        if (reihe.slice(0, 5).map(p => p.id).join() !== wunsch.join()) throw new Error("Die bestimmte Reihenfolge gilt nicht");
+        if (new Set(reihe.map(p => p.id)).size !== reihe.length || reihe.length !== auto.length) throw new Error("Ein Schütze steht doppelt oder fehlt");
+        const m2 = { homeClubId: eigen.id, awayClubId: zwei[1].id, played: true, homeGoals: 0, awayGoals: 0 };
+        CupEngine.elfmeterschiessen(state, m2);
+        const eigeneSchuesse = m2.penaltyProtokoll.filter(k => k.t === 0).map(k => k.id);
+        if (eigeneSchuesse.some((id, i) => i < 5 && id !== wunsch[i])) throw new Error("Im Elfmeterschießen tritt nicht die bestimmte Reihenfolge an");
+        // Nur der dritte Platz ist bestimmt: Er schießt als Dritter, davor die beiden Besten
+        eigen.roles.elfmeterschiessen = [null, null, auto[8].id, null, null];
+        const gemischt = CupEngine.elfmeterSchuetzen(state, eigen);
+        if (gemischt[2].id !== auto[8].id || gemischt[0].id !== auto[0].id || gemischt[1].id !== auto[1].id) throw new Error("Ein einzeln bestimmter Platz verschiebt die Reihenfolge");
+        if (new Set(gemischt.map(p => p.id)).size !== auto.length) throw new Error("Gemischte Reihenfolge mit doppeltem oder fehlendem Schützen");
+        eigen.roles.elfmeterschiessen = undefined;
+
         const quote = treffer / schuesse;
         if (quote < 0.55 || quote > 0.95) {
             throw new Error(`Trefferquote beim Elfmeterschießen unrealistisch: ${(quote * 100).toFixed(0)} %`);
@@ -8783,6 +8810,10 @@ function runEngineTests() {
         const elf = d.teamPlayers("home").filter(p => p.pos !== "TW");
         const schuetze = elf.find(p => p.rolle === "ST") || elf[elf.length - 1];
         schuetze.x = torX - dir * 8; schuetze.y = 62;
+        // Die Mitspieler stehen ein Stück weg, egal wo das Spiel gerade war: Standen sie
+        // zufällig schon um ihn herum, lief er ihnen zur Eckfahne nur davon, und der
+        // Abstand wurde nicht kleiner.
+        elf.filter(p => p !== schuetze).forEach((p, i) => { p.x = torX - dir * (34 + i * 2.5); p.y = 18 + i * 7; p.lvx = 0; p.lvy = 0; });
         d.startCelebration({ team: "home", playerId: schuetze.id, playerName: schuetze.name });
         if (lm.jubelSchuetze !== schuetze.id) throw new Error("Das Bild erfährt nicht, wer jubelt");
         const ziel = d.computeTarget(schuetze, lm.ball, []);
@@ -19193,6 +19224,153 @@ function runEngineTests() {
         if (s3.laenderspielPause.gaeste.length) throw new Error("Nach der Rückkehr sind noch Gäste da");
         if (R.profis(s3, s3.clubs.find(c => c.id === "muc")).some(p => p.abgestellt)) throw new Error("Nach der Pause ist noch jemand abgestellt");
         void club;
+    });
+
+    test("Spieltag: Wechselplan läuft zur Minute, Einspruch gegen die Sperre, Videobeweis nimmt ein Tor zurück", () => {
+        const { LiveMatchDirector: D } = require('./js/engine/liveMatchDirector.js');
+        const { FuehrungEngine: F } = require('./js/engine/fuehrungEngine.js');
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Spieltag" });
+        const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");
+        const spieler = (id) => state.players.find(p => p.id === id);
+        const wechselVon = (tl, seite) => (Array.isArray(tl) ? tl : tl.timeline).filter(e => e.type === "substitution" && e.team === seite);
+        // Ein Feldspieler von der Bank als bestimmter Ersatz
+        const ersatz = heim.bench.find(id => spieler(id) && spieler(id).pos !== "TW" && !(spieler(id).injuredWeeks > 0));
+
+        // Plan bereinigen: sortiert, höchstens fünf, niemand zweimal, Minuten 1 bis 89
+        heim.wechselplan = [{ minute: 75, outId: heim.lineup[5], inId: null }, { minute: 60, outId: heim.lineup[9], inId: ersatz },
+            { minute: 200, outId: heim.lineup[3] }, { minute: 70, outId: heim.lineup[9], inId: null }, { minute: 0, outId: heim.lineup[4] }, { outId: heim.lineup[2] }];
+        const plan = MatchEngine.wechselplanVon(heim);
+        if (plan.length !== 2 || plan[0].minute !== 60 || plan[1].minute !== 75 || plan[0].inId !== ersatz || plan[1].inId !== null) throw new Error(`Bereinigter Plan: ${JSON.stringify(plan)}`);
+        if (MatchEngine.wechselplanVon({}).length || MatchEngine.wechselplanVon(null).length) throw new Error("Ohne Plan kein leerer Plan");
+
+        // In der Berechnung: beide Wechsel zur Minute, der bestimmte Ersatz kommt, der Co-Trainer nimmt den Neuen nicht wieder raus
+        // (Verletzt sich einer der beiden vorher oder sind die drei Unterbrechungen verbraucht, entfällt ein Wechsel - das ist selten.)
+        let beide = 0;
+        for (let i = 0; i < 10; i++) {
+            const tl = MatchEngine.generateTimeline({ id: "plan" + i, homeClubId: "muc", awayClubId: "dor" }, heim, gast, state.players, {});
+            const w = wechselVon(tl, "home");
+            const a = w.find(e => e.playerOutId === heim.lineup[9] && e.geplant), b = w.find(e => e.playerOutId === heim.lineup[5] && e.geplant);
+            if (a && b) beide++;
+            // Der bestimmte Ersatz kommt - außer er musste schon vorher für einen Verletzten ran
+            if (a && (a.minute !== 60 || (a.playerInId !== ersatz && !w.some(e => e.playerInId === ersatz && e.minute <= 60)))) throw new Error(`Geplanter Wechsel in der 60.: ${JSON.stringify([a.minute, a.playerInName])}`);
+            if (b && b.minute !== 75) throw new Error("Geplanter Wechsel nicht in der 75.");
+            if (b && spieler(b.playerInId).pos === "TW") throw new Error("Für einen Feldspieler kommt der Torwart");
+            if (w.some(e => e.playerOutId === ersatz)) throw new Error("Der nach Plan Eingewechselte wird wieder ausgewechselt");
+            // Solange der Plan läuft, wechselt der Co-Trainer nur einen Verletzten aus
+            const verletzt = new Set((Array.isArray(tl) ? tl : tl.timeline).filter(e => e.type === "injury").map(e => e.playerId));
+            if (w.some(e => !e.geplant && e.minute < 75 && !verletzt.has(e.playerOutId))) throw new Error("Der Co-Trainer wechselt, obwohl der Plan noch läuft");
+            if (w.length > 5) throw new Error("Mehr als fünf Wechsel");
+        }
+        if (beide < 7) throw new Error(`Nur in ${beide} von 10 Spielen laufen beide geplanten Wechsel`);
+        // Im Livespiel steht derselbe Plan im Rahmen der Partie - auch wenn der Trainer selbst wechselt
+        const live = new LiveMatch({ id: "planLive", played: false, homeClubId: "muc", awayClubId: "dor" }, heim, gast, state.players,
+            { modus: "fm", userSide: "home", delegation: { wechsel: false, taktik: false } });
+        const lw = wechselVon(live.timeline, "home");
+        if (lw.length !== 2 || lw.some(e => !e.geplant) || lw[0].minute !== 60 || lw[1].minute !== 75) throw new Error(`Livespiel: ${JSON.stringify(lw.map(e => [e.minute, e.geplant]))}`);
+        if (wechselVon(live.timeline, "away").some(e => e.geplant) || !wechselVon(live.timeline, "away").length) throw new Error("Der Gegner ohne Plan wechselt nicht wie gewohnt");
+        // Wer nicht in der Elf steht, wird übergangen; der Gegner ohne Plan wechselt wie immer
+        heim.wechselplan = [{ minute: 50, outId: heim.bench[0], inId: null }];
+        const tl2 = MatchEngine.generateTimeline({ id: "plan9", homeClubId: "muc", awayClubId: "dor" }, heim, gast, state.players, {});
+        if (wechselVon(tl2, "home").some(e => e.geplant)) throw new Error("Ein Bankspieler wird nach Plan ausgewechselt");
+
+        // Oberfläche: anlegen, ändern, streichen; die Reihenfolge im Elfmeterschießen setzen
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        heim.wechselplan = [];
+        const e1 = ui.wechselplanNeu();
+        if (!e1 || e1.minute !== 60 || !heim.lineup.includes(e1.outId) || spieler(e1.outId).pos === "TW" || e1.inId !== null) throw new Error(`Neuer Wechsel: ${JSON.stringify(e1)}`);
+        const e2 = ui.wechselplanNeu(heim.lineup[4], 75);
+        if (!e2 || e2.outId !== heim.lineup[4] || heim.wechselplan.length !== 2) throw new Error("Zweiter Wechsel nicht angelegt");
+        if (ui.wechselplanSetze(1, "outId", e1.outId)) throw new Error("Derselbe Spieler steht zweimal im Plan");
+        if (!ui.wechselplanSetze(1, "inId", heim.bench[2]) || heim.wechselplan[1].inId !== heim.bench[2]) throw new Error("Ersatz nicht gesetzt");
+        if (!ui.wechselplanSetze(1, "minute", "46") || heim.wechselplan[0].minute !== 46 || heim.wechselplan[0].outId !== heim.lineup[4]) throw new Error("Minute nicht gesetzt oder Plan nicht sortiert");
+        if (ui.wechselplanSetze(0, "minute", "95") || ui.wechselplanSetze(7, "minute", "50")) throw new Error("Unsinnige Eingabe angenommen");
+        for (let i = 0; i < 8; i++) ui.wechselplanNeu();
+        if (heim.wechselplan.length !== MatchEngine.WECHSELPLAN_MAX) throw new Error(`${heim.wechselplan.length} geplante Wechsel`);
+        if (!ui.wechselplanEntferne(0) || heim.wechselplan.length !== MatchEngine.WECHSELPLAN_MAX - 1) throw new Error("Streichen geht nicht");
+        heim.wechselplan = [];
+        if (!ui.elfmeterSetze(0, heim.lineup[8]) || !ui.elfmeterSetze(1, heim.lineup[8])) throw new Error("Schütze nicht gesetzt");
+        if (heim.roles.elfmeterschiessen[0] !== null || heim.roles.elfmeterschiessen[1] !== heim.lineup[8]) throw new Error("Ein Schütze steht zweimal in der Reihenfolge");
+        if (ui.elfmeterSetze(5, heim.lineup[1])) throw new Error("Sechster Platz angenommen");
+        if (ui.elfmeterReihe().length !== 5) throw new Error("Die Reihenfolge hat nicht fünf Plätze");
+        // Spielbericht: das Elfmeterschießen Schuss für Schuss
+        const html = ui.spielberichtElfmeterHtml({ penaltyWinner: "muc", penaltyProtokoll: [{ t: 0, name: "Eins", tor: true }, { t: 1, name: "Zwei", tor: false }] }, heim, gast);
+        if (!html.includes("Eins") || !html.includes("Zwei") || !/spb-elf-schuss tor/.test(html) || !/spb-elf-schuss kein/.test(html)) throw new Error("Spielbericht ohne Elfmeterprotokoll");
+        if (ui.spielberichtElfmeterHtml({ penaltyWinner: null }, heim, gast) !== "") throw new Error("Elfmeterprotokoll ohne Elfmeterschießen");
+        heim.roles.elfmeterschiessen = undefined;
+
+        // Einspruch: nach glatt Rot einmal je Sperre
+        const hatteF = global.FuehrungEngine;
+        global.FuehrungEngine = F;
+        const profi = state.players.find(p => p.clubId === "muc" && !p.reserve && p.pos !== "TW");
+        if (F.einspruch(state, profi) !== null) throw new Error("Einspruch ohne Sperre");
+        profi.suspendedMatches = 2; profi.suspended = true; profi.strafeOffen = true;
+        profi.hiddenAttributes = { ...(profi.hiddenAttributes || {}), temperament: 10 };
+        F.meldePlatzverweise(state);
+        const o = F.einspruch(state, profi);
+        if (!o || !o.ok || Math.abs(o.chance - F.EINSPRUCH.erfolg) > 1e-9 || o.kosten !== Math.round(profi.wage * F.EINSPRUCH.gebuehr) || o.sperre !== 2) throw new Error(`Einspruch: ${JSON.stringify(o)}`);
+        // Wer als Hitzkopf gilt, hat schlechtere Karten
+        profi.hiddenAttributes.temperament = 18;
+        if (!(F.einspruch(state, profi).chance < o.chance) || F.einspruch(state, profi).chance < F.EINSPRUCH.min) throw new Error("Temperament ändert die Aussicht nicht");
+        profi.hiddenAttributes.temperament = 10;
+        if (!ui.einspruchMoeglich(profi)) throw new Error("Die Oberfläche bietet keinen Einspruch an");
+        const kasse = heim.balance;
+        const r1 = F.legeEinspruchEin(state, profi.id, () => 0.01);
+        if (!r1.ok || r1.ausgang !== "erfolg" || profi.suspendedMatches !== 1) throw new Error("Erfolgreicher Einspruch verkürzt die Sperre nicht");
+        if (heim.balance !== kasse - o.kosten) throw new Error("Die Gebühr ist nicht bezahlt");
+        if (F.legeEinspruchEin(state, profi.id, () => 0.01).ok || ui.einspruchMoeglich(profi)) throw new Error("Zweiter Einspruch gegen dieselbe Sperre");
+        if (!/Sportgericht/.test(state.inbox[0].subject)) throw new Error("Kein Bescheid im Postfach");
+        const neu = (zufall) => { profi.suspendedMatches = 2; state.einspruch[String(profi.id)] = { sperre: 2, genutzt: false }; return F.legeEinspruchEin(state, profi.id, zufall); };
+        if (neu(() => o.chance + 0.01).ausgang !== "haerter" || profi.suspendedMatches !== 3) throw new Error("Mutwilliger Einspruch verlängert nicht");
+        if (neu(() => 0.99).ausgang !== "abgelehnt" || profi.suspendedMatches !== 2) throw new Error("Abgelehnter Einspruch ändert die Sperre");
+        profi.suspendedMatches = 1; state.einspruch[String(profi.id)] = { sperre: 1, genutzt: false };
+        if (F.legeEinspruchEin(state, profi.id, () => 0).sperre !== 0 || profi.strafeOffen) throw new Error("Aufgehobene Sperre bleibt bestehen");
+        // Abgesessen: Der Eintrag verschwindet beim nächsten Spieltag
+        F.meldePlatzverweise(state);
+        if (state.einspruch[String(profi.id)]) throw new Error("Erledigter Einspruch bleibt im Spielstand");
+        ui.getScoutingEngine = () => null;
+        if (ui.kontextEintraege(profi).some(k => k.art === "einspruch")) throw new Error("Kontextmenü bietet Einspruch ohne Sperre");
+        profi.suspendedMatches = 2; state.einspruch = { [String(profi.id)]: { sperre: 2, genutzt: false } };
+        if (!ui.kontextEintraege(profi).some(k => k.art === "einspruch")) throw new Error("Kontextmenü ohne Einspruch bei laufender Sperre");
+        profi.suspendedMatches = 0; profi.suspended = false; state.einspruch = {};
+        global.FuehrungEngine = hatteF;
+
+        // Videobeweis: Aus einer Parade wird ein Treffer, der nicht zählt
+        const live2 = new LiveMatch({ id: "var", played: false, homeClubId: "muc", awayClubId: "dor" }, heim, gast, state.players, { modus: "fm" });
+        const d = live2.director;
+        const schuetze = live2.players2D.find(p => p.team === "home" && p.group === "att");
+        const altVar = { ...D.VAR };
+        let szene = null;
+        d.fmSzene = (evs) => { szene = evs; };
+        try {
+            D.VAR.aberkannt = 1;
+            d.fmSchussSzene(schuetze, { ausgang: "saved", xg: 0.3, festgehalten: true }, {});
+            const ev = szene[0];
+            if (ev.type !== "shot_miss" || ev.outcome !== "var" || !ev.varAberkannt || !/📺/.test(ev.text)) throw new Error(`Videobeweis: ${JSON.stringify({ t: ev.type, o: ev.outcome, v: ev.varAberkannt })}`);
+            if (ev.fmFolge.ecke || ev.fmFolge.festgehalten) throw new Error("Nach dem aberkannten Tor folgt eine Ecke oder der Torwart hält fest");
+            const tor = d.ownGoalX("away");
+            const ende = d.eventPoint(ev.end);
+            if (Math.abs(ende.x - tor) > 0.5 || Math.abs(ende.y - 50) > 3.4) throw new Error("Der Ball liegt beim aberkannten Tor nicht im Netz");
+            const vorher = [live2.homeScore, live2.stats.shots[0], live2.stats.shotsOnTarget[0]];
+            live2.processEvent(ev);
+            if (live2.homeScore !== vorher[0] || live2.stats.shots[0] !== vorher[1] + 1) throw new Error("Das aberkannte Tor zählt oder fehlt bei den Schüssen");
+            d.bannerForEvent(ev);
+            if (!/VIDEOBEWEIS/.test(live2.banner?.title || "")) throw new Error("Kein Banner zum Videobeweis");
+            // Elfmeter, Freistöße und Halbchancen prüft niemand nach; ein Tor bleibt ein Tor
+            d.fmSchussSzene(schuetze, { ausgang: "saved", xg: 0.3 }, { elfmeter: true });
+            if (szene[0].varAberkannt) throw new Error("Gehaltener Elfmeter wird zum aberkannten Tor");
+            d.fmSchussSzene(schuetze, { ausgang: "saved", xg: D.VAR.abXg / 2 }, {});
+            if (szene[0].varAberkannt) throw new Error("Harmloser Schuss wird zum aberkannten Tor");
+            d.fmSchussSzene(schuetze, { ausgang: "goal", xg: 0.3 }, {});
+            if (szene[0].type !== "goal" || szene[0].varAberkannt) throw new Error("Ein Tor wird aberkannt");
+            D.VAR.aberkannt = 0;
+            d.fmSchussSzene(schuetze, { ausgang: "saved", xg: 0.3 }, {});
+            if (szene[0].type !== "save") throw new Error("Ohne Videobeweis ist die Parade keine Parade");
+        } finally {
+            Object.assign(D.VAR, altVar);
+        }
+        if (!(D.VAR.aberkannt > 0.02 && D.VAR.aberkannt < 0.3)) throw new Error("Videobeweis nicht eingestellt");
     });
 
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);

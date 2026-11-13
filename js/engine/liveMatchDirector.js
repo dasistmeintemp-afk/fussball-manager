@@ -546,6 +546,18 @@ class LiveMatchDirector {
     /** Sekunden von der Abwehr- in die Angriffsform und zurück: beim Kontern, normal, beim Ballsichern - und in der Breite (umschaltBreite) */
     static UMSCHALT_FORM = { konter: 1.1, normal: 1.6, sichern: 2.0, breite: 0.7 };
     /** Nach dem Ballgewinn: So lange (Sekunden) sprinten die Außen in die Breite */
+    /**
+     * Videobeweis: Der Ball liegt im Netz, aber das Tor zählt nicht.
+     *
+     * Aus einem gehaltenen Schuss aus dem Spiel wird mit der Chance
+     * "aberkannt" (ab einer Chancengüte von "abXg") ein Treffer, den der
+     * Videoassistent zurücknimmt - meist wegen Abseits, seltener wegen eines
+     * Fouls oder Handspiels in der Entstehung. Weil dafür Paraden umgedeutet
+     * werden und keine Tore, bleibt die Zahl der Tore, wie sie ist. Gemessen
+     * gibt es das rund einmal in vier Spielen.
+     */
+    static VAR = { aberkannt: 0.1, abXg: 0.06, gruende: ["abseits", "abseits", "abseits", "foul", "hand"] };
+
     static BREITE_NACH_GEWINN = { dauer: 5, bonus: 2.2, urgency: 1.4, vorAnteil: 0.35 };
 
     /**
@@ -2655,7 +2667,11 @@ class LiveMatchDirector {
 
         const tatort = this.eventPoint(ev.start) || this.eventPoint(ev.end) || null;
 
-        if (ev.type === "yellow_card") {
+        if (ev.varAberkannt) {
+            const grund = { abseits: "Abseits", foul: "Foul im Angriff", hand: "Handspiel" }[ev.varAberkannt] || "";
+            this.cueSound("pfiff_foul");
+            this.showBanner("📺 VIDEOBEWEIS", `Kein Tor: ${grund} · ${club}`, "rgba(55, 48, 163, 0.94)");
+        } else if (ev.type === "yellow_card") {
             this.showBanner(ev.isSecondYellow ? "🟨🟥 GELB-ROT" : "🟨 GELBE KARTE",
                 `${ev.playerName || "Spieler"} · ${club}`, "rgba(133, 100, 4, 0.94)");
             this.startDrama("card", {
@@ -3904,6 +3920,12 @@ class LiveMatchDirector {
         vorbei_freistoss: ["💨 Der Freistoß von {schuetze} bleibt in der Mauer hängen.", "💨 {schuetze} setzt den Freistoß knapp über die Latte."],
         vorbei_elfmeter: ["💨 VERSCHOSSEN! {schuetze} setzt den Elfmeter neben das Tor!"],
         pfosten: ["💥 PFOSTEN! {schuetze} trifft nur das Aluminium!", "💥 Latte! {schuetze} hat den Treffer auf dem Fuß."],
+        var_abseits: [
+            "📺 {schuetze} trifft, {club} jubelt - doch der Videoassistent meldet sich: Abseits. Das Tor zählt nicht.",
+            "📺 Der Ball ist drin! Aber der Schiedsrichter hört in sein Ohr: {schuetze} stand im Abseits, kein Tor."
+        ],
+        var_foul: ["📺 Tor für {club}? Nein! Nach Ansicht der Bilder pfeift der Schiedsrichter ein Foul im Angriff zurück. Kein Tor für {schuetze}."],
+        var_hand: ["📺 {schuetze} hat den Ball im Netz untergebracht - der Videobeweis zeigt aber ein Handspiel in der Entstehung. Das Tor zählt nicht."],
         geblockt: ["🛡️ {blocker} wirft sich in den Schuss von {schuetze}!", "🛡️ Geblockt! {blocker} ist gegen {schuetze} dazwischen."],
         foul: [
             "🛑 Foul von {taeter} an {opfer} - Freistoß.",
@@ -3975,8 +3997,13 @@ class LiveMatchDirector {
             vorlage: vorlage?.name || "", meter, blocker: r.blocker?.name || "ein Verteidiger"
         };
 
+        // Videobeweis: Der Torwart ist geschlagen, aber der Treffer zählt nicht (VAR)
+        const V = LiveMatchDirector.VAR;
+        const aberkannt = (r.ausgang === "saved" && !opts.elfmeter && !opts.freistoss && (r.xg || 0) >= V.abXg && _dirRandom.chance(V.aberkannt))
+            ? _dirRandom.choice(V.gruende) : null;
+
         let ende;
-        if (r.ausgang === "goal") ende = { x: torX, y: 50 + _dirRandom.float(-3.3, 3.3) };
+        if (r.ausgang === "goal" || aberkannt) ende = { x: torX, y: 50 + _dirRandom.float(-3.3, 3.3) };
         else if (r.ausgang === "saved") ende = { x: torX + dir * -0.8, y: 50 + _dirRandom.float(-3, 3) };
         else if (r.ausgang === "woodwork") ende = { x: torX, y: 50 + (_dirRandom.chance(0.5) ? 5.4 : -5.4) };
         else if (r.ausgang === "blocked" && r.blocker) ende = { x: r.blocker.x, y: r.blocker.y };
@@ -3994,7 +4021,15 @@ class LiveMatchDirector {
         };
 
         let ev;
-        if (r.ausgang === "goal") {
+        if (aberkannt) {
+            ev = {
+                ...basis, type: "shot_miss", team, clubId: attClub?.id, clubName: attClub?.name,
+                playerId: schuetze.id, playerName: schuetze.name,
+                outcome: "var", varAberkannt: aberkannt,
+                fmFolge: { ecke: false, festgehalten: false, blockerId: null },
+                text: this.fmText("var_" + aberkannt, daten)
+            };
+        } else if (r.ausgang === "goal") {
             const schluessel = opts.elfmeter ? "tor_elfmeter" : opts.freistoss ? "tor_freistoss"
                 : opts.kopfball ? "tor_kopf" : meter > 20 ? "tor_distanz" : r.schwach ? "tor_schwach" : vorlage ? "tor_vorlage" : "tor";
             ev = {

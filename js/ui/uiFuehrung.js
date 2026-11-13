@@ -24,6 +24,48 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         return !!(F && p && this.app?.state && F.strafeOffen(this.app.state, p));
     },
 
+    /** Kann gegen die Sperre dieses Spielers noch Einspruch eingelegt werden? */
+    einspruchMoeglich(p) {
+        const F = this._fuehrungEngine();
+        return !!(F && p && this.app?.state && typeof F.einspruch === "function" && F.einspruch(this.app.state, p)?.ok);
+    },
+
+    /** Einspruch gegen die Sperre: Chance, Risiko und Gebühr auf einen Blick */
+    zeigeEinspruch(playerId) {
+        const state = this.app?.state;
+        const F = this._fuehrungEngine();
+        const p = (state?.players || []).find(x => String(x.id) === String(playerId));
+        const o = F && p ? F.einspruch(state, p) : null;
+        if (!o || !o.ok || typeof this.zeigeEntscheidung !== "function") { if (o && !o.ok) this.showToast(o.grund, "info"); return; }
+        const esc = (t) => this.escapeHtml(String(t ?? ""));
+        const geld = (b) => (typeof this.geldKurz === "function" ? this.geldKurz(b) : `${b} €`);
+        const pct = (x) => `${Math.round(x * 100)} %`;
+        const spiele = (n) => `${n} ${n === 1 ? "Spiel" : "Spiele"}`;
+        this.zeigeEntscheidung({
+            titel: "Einspruch gegen die Sperre",
+            html: `
+                <div class="verh-kopf"><div><strong>${esc(p.name)}</strong> <span class="muted-note">(${esc(p.age)}) · ${esc(p.pos)} · gesperrt für ${esc(spiele(o.sperre))}</span></div></div>
+                <div class="verh-zahlen">
+                    <div><span>Ein Spiel weniger</span><strong class="pf-ton-gut">${pct(o.chance)}</strong></div>
+                    <div><span>Es bleibt dabei</span><strong>${pct(Math.max(0, 1 - o.chance - o.risiko))}</strong></div>
+                    <div><span>Ein Spiel mehr</span><strong class="pf-ton-schlecht">${pct(o.risiko)}</strong></div>
+                    <div><span>Gebühr</span><strong>${esc(geld(o.kosten))}</strong></div>
+                </div>
+                <p class="taktik-hilfe">Das Sportgericht entscheidet sofort. Wer als besonnen gilt, hat bessere Aussichten. Einspruch gibt es nur einmal je Sperre, die Gebühr ist in jedem Fall weg.</p>`,
+            knoepfe: [
+                { text: "Sperre hinnehmen", klasse: "btn-secondary" },
+                { text: "Einspruch einlegen", klasse: "btn-primary", aktion: () => {
+                    const r = F.legeEinspruchEin(state, p.id);
+                    if (!r.ok) { this.showToast(r.grund, "error"); return false; }
+                    this._fuehrungFertig(r.text, r.ausgang === "erfolg" ? "success" : (r.ausgang === "haerter" ? "error" : "warning"));
+                    const akte = typeof document !== "undefined" ? document.getElementById("modalPlayerDetails") : null;
+                    if (akte && akte.style.display !== "none") this.showPlayerDetailsModal(p.id);
+                    return true;
+                } }
+            ]
+        });
+    },
+
     _fuehrungFertig(text, ton = "success") {
         const state = this.app.state;
         this.playSound?.("click");

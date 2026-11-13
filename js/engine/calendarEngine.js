@@ -50,6 +50,15 @@ const FESTTAGE = {
     en: { festtage: [[12, 26, "Boxing Day"], [12, 29, "Spieltag zwischen den Jahren"], [1, 1, "Neujahrsspieltag"]] }
 };
 
+function _getTrainingsspielEngine() {
+    if (typeof TrainingsspielEngine !== "undefined" && TrainingsspielEngine) return TrainingsspielEngine;
+    if (typeof window !== "undefined" && window.TrainingsspielEngine) return window.TrainingsspielEngine;
+    if (typeof require !== "undefined") {
+        try { return require("./trainingsspielEngine.js").TrainingsspielEngine; } catch (e) { /* ohne Bundler */ }
+    }
+    return null;
+}
+
 function _getNationalTeamEngine() {
     if (typeof NationalTeamEngine !== "undefined" && NationalTeamEngine) return NationalTeamEngine;
     if (typeof window !== "undefined" && window.NationalTeamEngine) return window.NationalTeamEngine;
@@ -293,7 +302,7 @@ const CalendarEngine = {
                 { type: CALENDAR_DAY_TYPES.INTERNATIONAL, schritt: "abreise", title: "🌍 Länderspielpause: Abreise",
                     description: "Die Nationalspieler reisen zu ihren Auswahlteams. Wer bleibt, trainiert weiter." },
                 { type: CALENDAR_DAY_TYPES.TRAINING, schritt: null, title: "Training mit dem Restkader",
-                    description: "Die Liga ruht. Zeit für die, die sonst wenig spielen." },
+                    description: "Die Liga ruht. Zeit für die, die sonst wenig spielen - und für ein Trainingsspiel (Reiter Training)." },
                 { type: CALENDAR_DAY_TYPES.INTERNATIONAL, schritt: "spiel", title: "🌍 Länderspieltag",
                     description: "Die Nationalmannschaften spielen. Daumen drücken, dass alle heil bleiben." },
                 { type: CALENDAR_DAY_TYPES.INTERNATIONAL, schritt: "rueckkehr", title: "🌍 Länderspieltag und Rückkehr",
@@ -1310,6 +1319,10 @@ const CalendarEngine = {
         if (currentDay.laenderspiel) {
             const nationalEngine = _getNationalTeamEngine();
             if (nationalEngine) laenderspiel = nationalEngine.tag(state, currentDay.laenderspiel);
+            // Im Verein: Talente rücken ins Training der Profis nach und gehen danach zurück
+            const ts = _getTrainingsspielEngine();
+            if (ts && currentDay.laenderspiel === "abreise") ts.ladeGaesteEin(state);
+            if (ts && currentDay.laenderspiel === "rueckkehr") ts.verabschiedeGaeste(state);
         }
 
         // Mit dem ersten Spieltag ist die Vorbereitung vorbei

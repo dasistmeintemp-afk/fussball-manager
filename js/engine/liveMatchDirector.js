@@ -547,6 +547,31 @@ class LiveMatchDirector {
     static UMSCHALT_FORM = { konter: 1.1, normal: 1.6, sichern: 2.0, breite: 0.7 };
     /** Nach dem Ballgewinn: So lange (Sekunden) sprinten die Außen in die Breite */
     static BREITE_NACH_GEWINN = { dauer: 5, bonus: 2.2, urgency: 1.4, vorAnteil: 0.35 };
+
+    /**
+     * Der Konter: Ballgewinn im Spiel, und der Gegner steht offen.
+     *
+     * Gewonnen bis "bisFeld" (Anteil des Feldes vom eigenen Tor) und höchstens
+     * "offen" gegnerische Feldspieler zwischen Ball und Tor (mit "Kontern"
+     * einer mehr): Dann sprinten die vordersten "laeufer" Spieler mit
+     * "urgency" vor den Ball ("vor" Einheiten, höchstens bis an die
+     * Abseitslinie), und der Ballführende spielt und treibt nach vorn (siehe
+     * MatchFlowEngine, ctx.konter). Der Moment dauert "dauer" Sekunden
+     * Laufzeit und endet früher, wenn der Ball weg ist, im letzten Drittel
+     * angekommen ("endeFeld") oder der Gegner wieder steht ("zu" Feldspieler
+     * hinter dem Ball). Wer den Ball sichern soll, kontert nicht.
+     *
+     * Damit es eine Anspielstation gibt, bleibt beim Verteidigen eine Spitze
+     * vorn (spitzeVorn): nicht tiefer als "spitze" (Anteil des Feldes vom
+     * eigenen Tor) und zur Mitte gerückt ("spitzeMitte"). Vorher standen im
+     * tiefen Block alle zehn Feldspieler im eigenen Drittel, und der
+     * eroberte Ball hatte kein Ziel.
+     *
+     * Vorher gab es das nur als Passvorliebe: Gemessen war der Ball sechs
+     * Sekunden nach dem Gewinn 20 Meter weiter, in der Hälfte der Fälle
+     * binnen zehn Sekunden wieder weg und praktisch nie im letzten Drittel.
+     */
+    static KONTER = { bisFeld: 0.55, offen: 5, offenKontern: 6, abstand: 2, dauer: 8, laeufer: 3, laeuferKontern: 4, urgency: 1.95, vor: 17, endeFeld: 0.8, zu: 8, spitze: 0.42, spitzeMitte: 0.6 };
     static VORAUSAHNEN = 0.5;
 
     /**
@@ -1819,6 +1844,7 @@ class LiveMatchDirector {
         if (attackingTeam) {
             this.possessionTeam = attackingTeam;
             this.possessionChain = 0;
+            this._ketteTeam = attackingTeam;
         }
 
         // Ein Foul passiert dort, wo der Ball ist - nicht dort, wo die
@@ -2848,12 +2874,20 @@ class LiveMatchDirector {
         this._passAbsicht = null;
         this._amBallSeit = 0;
         this._torwartRuhig = null;
-        if (player.team === this.possessionTeam) {
+        // Die Passfolge gehört der Mannschaft, die zuletzt am Ball war
+        // (_ketteTeam). Wer den Ball im Spiel gewinnt - abgefangen, im
+        // Zweikampf, als zweiten Ball -, steht schon vor diesem Aufruf in
+        // possessionTeam: Der Vergleich damit zählte die Folge des Gegners
+        // einfach weiter, und alles, was an den ersten Pässen nach dem
+        // Ballgewinn hängt (Kontern, Ball sichern), griff nur nach Anstoß
+        // und ruhendem Ball.
+        if (player.team === this.possessionTeam && player.team === (this._ketteTeam ?? player.team)) {
             this.possessionChain = (this.possessionChain || 0) + 1;
         } else {
             this.possessionChain = 0;
             this.possessionTeam = player.team;
         }
+        this._ketteTeam = player.team;
         this.carrierId = player.id;
         this.match.ball.holderId = player.id;
         this.match.activePlayerId = player.id;
@@ -3026,6 +3060,7 @@ class LiveMatchDirector {
         this._direktSpiel = null;
         let action = this.flow.decide(carrier, {
             chainLength: this.possessionChain || 0,
+            konter: this.kontert(carrier.team),
             zielSpieler: (ziel && ziel.team === carrier.team && ziel.id !== carrier.id) ? ziel : null,
             direkt
         });
@@ -3105,7 +3140,7 @@ class LiveMatchDirector {
         }
 
         const lage = this.flow.lageAmBall(carrier, {
-            chainLength: this.possessionChain || 0, zeitAmBall: this._amBallSeit,
+            chainLength: this.possessionChain || 0, zeitAmBall: this._amBallSeit, konter: this.kontert(carrier.team), konterSpitze: this.kontert(carrier.team) ? this._konter.spitze : null,
             takt: this.tempoFaktor(carrier.team) * this.zeitspielFaktor(carrier.team)
         });
         if (!lage) return;
@@ -4475,6 +4510,7 @@ class LiveMatchDirector {
         this.match.setPieceStatus = null;
         this.possessionTeam = team;
         this.possessionChain = 0;
+        this._ketteTeam = team;
         this.deadBallTimer = 0;
         this.flowStats.setPieces++;
 
@@ -5611,9 +5647,10 @@ class LiveMatchDirector {
 
         // Ballverlust: Ab jetzt schaltet die Mannschaft um
         if (this._letzterBesitz !== this.possessionTeam) {
-            if (this._letzterBesitz) this._wechselUhr = this._laufUhr;
+            if (this._letzterBesitz) { this._wechselUhr = this._laufUhr; this.pruefeKonter(); }
             this._letzterBesitz = this.possessionTeam;
         }
+        this.fuehreKonter();
         this._abseitsLinie = { home: this.abseitsLinie("home"), away: this.abseitsLinie("away") };
         this.fuehreSchwerpunktNach(lauf);
 
@@ -5702,6 +5739,70 @@ class LiveMatchDirector {
             const traeg = b < alt ? 0.6 : 1.6;
             this._schwerpunkt[team] = alt + (b - alt) * (1 - Math.exp(-lauf / traeg));
         });
+    }
+
+    /** Gegnerische Feldspieler zwischen Ball und ihrem Tor, aus Sicht der Mannschaft am Ball */
+    gegnerVorDemBall(team) {
+        const dir = this.attackDir(team), ball = this.match.ball, K = LiveMatchDirector.KONTER;
+        return this.teamPlayers(team === "home" ? "away" : "home")
+            .filter(p => p.pos !== "TW" && (p.x - ball.x) * dir > K.abstand).length;
+    }
+
+    /**
+     * Die Spitze, die beim Verteidigen vorn bleibt: der vorderste, zentralste
+     * Angreifer der Grundordnung. Wer zurückarbeiten soll (Rolle mit
+     * "tiefer"), bleibt es nicht; ein eingeteilter Konterspieler ist es ohnehin.
+     */
+    spitzeVorn(team) {
+        if (!this.fm) return null;
+        const uhr = this._laufUhr || 0;
+        const c = this._spitzeVorn || (this._spitzeVorn = {});
+        if (c[team] && c[team].uhr === uhr) return c[team].id;
+        const dir = this.attackDir(team);
+        const alle = this.teamPlayers(team);
+        let id = null;
+        if (!alle.some(p => p.rolleGegen?.konter)) {
+            const wahl = alle.filter(p => p.group === "att" && !p.rolleGegen?.tiefer)
+                .sort((a, b) => ((b.baseX - a.baseX) * dir - (Math.abs(b.baseY - 50) - Math.abs(a.baseY - 50)) * 0.25) || (a.id < b.id ? -1 : 1))[0];
+            id = wahl ? wahl.id : null;
+        }
+        c[team] = { uhr, id };
+        return id;
+    }
+
+    /** Ballgewinn im Spiel: Steht der Gegner offen, beginnt ein Konter (KONTER) */
+    pruefeKonter() {
+        this._konter = null;
+        if (!this.fm || this.mode !== "ambient" || this.deadBall || this.kickoff || this._offenerStandard) return;
+        const team = this.possessionTeam, K = LiveMatchDirector.KONTER;
+        const kontern = this.taktik(team).w.konter || 0;
+        if (kontern < 0) return;
+        const dir = this.attackDir(team), ball = this.match.ball;
+        if ((dir > 0 ? ball.x / 100 : 1 - ball.x / 100) > K.bisFeld) return;
+        if (this.gegnerVorDemBall(team) > (kontern > 0 ? K.offenKontern : K.offen)) return;
+        // Die Läufer: wer am weitesten vorn steht - Abwehrspieler bleiben hinten
+        const laeufer = this.teamPlayers(team)
+            .filter(p => p.pos !== "TW" && p.group !== "def")
+            .sort((a, b) => (b.x - a.x) * dir)
+            // einer mehr als Läufer: Wer gerade den Ball hat, läuft nicht ohne ihn
+            .slice(0, (kontern > 0 ? K.laeuferKontern : K.laeufer) + 1)
+            .map(p => p.id);
+        this._konter = { team, bis: (this._laufUhr || 0) + K.dauer, laeufer, spitze: this.spitzeVorn(team) };
+        this.flowStats.konter = (this.flowStats.konter || 0) + 1;
+    }
+
+    /** Der Konter endet, wenn der Ball weg ist, vorn angekommen oder der Gegner wieder steht */
+    fuehreKonter() {
+        const k = this._konter;
+        if (!k) return;
+        const K = LiveMatchDirector.KONTER, dir = this.attackDir(k.team), ball = this.match.ball;
+        if (this.mode !== "ambient" || this.deadBall || this.possessionTeam !== k.team || (this._laufUhr || 0) >= k.bis
+            || (dir > 0 ? ball.x / 100 : 1 - ball.x / 100) > K.endeFeld || this.gegnerVorDemBall(k.team) >= K.zu) this._konter = null;
+    }
+
+    /** Läuft gerade ein Konter dieser Mannschaft? */
+    kontert(team) {
+        return !!this._konter && this._konter.team === team;
     }
 
     /**
@@ -6601,6 +6702,21 @@ class LiveMatchDirector {
             }
         }
 
+        // Konter: Die Läufer sprinten vor den Ball, bis an die Abseitslinie
+        const konter = this._konter;
+        if (konter && attacking && this.mode === "ambient" && konter.team === p.team
+            && p.id !== this.carrierId && konter.laeufer.includes(p.id)) {
+            const K = LiveMatchDirector.KONTER;
+            let zx = ball.x + dir * K.vor;
+            const linie = this._abseitsLinie?.[p.team];
+            if (typeof linie === "number" && (linie - ball.x) * dir > 0 && (zx - (linie - dir)) * dir > 0) zx = linie - dir;
+            if ((zx - tx) * dir > 0) tx = zx;
+            if ((tx - p.x) * dir > 3) {
+                urgency = Math.max(urgency, K.urgency);
+                sprinting = true;
+            }
+        }
+
         // Gangart: Wer weit weg vom Ball steht und seinen Platz fast erreicht
         // hat, geht. Wer weit hinter seinem Platz ist, zieht das Tempo an.
         // Vorher trabte jeder immer im selben Tempo.
@@ -7045,6 +7161,13 @@ class LiveMatchDirector {
             else if (r.konter === "halbraum") y = 50 + seite * 18;
             else y = 50 + (gesehen.y - 50) * 0.25;
             return { x, y };
+        }
+
+        // Eine Spitze bleibt vorn, auch wenn der Block tief steht (KONTER.spitze)
+        if (p.id === this.spitzeVorn(p.team)) {
+            const K = LiveMatchDirector.KONTER;
+            const boden = this.ownGoalX(p.team) + dir * 92 * K.spitze;
+            if ((boden - x) * dir > 0) return { x: boden, y: 50 + (y - 50) * K.spitzeMitte };
         }
 
         // Der abkippende Sechser laesst sich im tiefen Block in die Kette fallen

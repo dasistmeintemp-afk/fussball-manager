@@ -621,6 +621,12 @@ Im Livespiel wird nichts mehr vorab gewürfelt. Wie in den großen Managerspiele
 - **Tore und Flanken bleiben, wo sie waren:** 2,1 Tore je Spiel mit dem neuen Lauftempo gegen 2,3 mit dem alten (je 20 Spiele, innerhalb der Schwankung), 21 bis 25 Flanken aus dem Spiel.
 - Die neuen Läufe gelten nur im laufenden Spiel, nicht im Torjubel oder bei Standards.
 - **Ecken über den ganzen Strafraum (`eckenPlan`):** Die Plätze lagen höchstens 8,5 Einheiten neben der Tormitte, das sind knapp sechs Meter: Sechs Angreifer und zehn Verteidiger standen auf zwölf mal zwölf Metern, im Bild ein Knäuel. Jetzt reichen sie vom kurzen Pfosten bis hinter den langen (12,5 Einheiten), gestaffelt bis zum Rückraum; die Raumdecker stehen entsprechend breiter.
+- **Konter (`KONTER`, `pruefeKonter`, `spitzeVorn`):** Gemessen kamen Konter praktisch nicht zustande: Sechs Sekunden nach einem Ballgewinn in der eigenen Hälfte war der Ball 20 Meter weiter, in der Hälfte der Fälle binnen zehn Sekunden wieder weg. Drei Ursachen, drei Änderungen:
+  - *Passfolge:* Nach einem abgefangenen Pass, gewonnenen Zweikampf oder zweiten Ball zählte die Passfolge des Gegners einfach weiter (`setCarrier`). Alles, was an den ersten Pässen nach dem Ballgewinn hängt (*Kontern*, *Ball sichern*), griff deshalb nur nach Anstoß und ruhendem Ball. Jetzt beginnt sie beim Ballgewinn bei null.
+  - *Eine Spitze bleibt vorn:* Im tiefen Block standen alle zehn Feldspieler im eigenen Drittel, der eroberte Ball hatte kein Ziel. Der vorderste, zentralste Angreifer bleibt jetzt bei 42 % des Feldes, rund 44 Meter vor dem eigenen Tor (außer er soll zurückarbeiten; ein eingeteilter Konterspieler steht ohnehin höher).
+  - *Der Konter selbst:* Ballgewinn im Spiel bis kurz hinter der Mittellinie, und höchstens fünf gegnerische Feldspieler stehen noch zwischen Ball und Tor (mit *Kontern* sechs): Die drei vordersten Spieler (mit *Kontern* vier) sprinten vor den Ball, höchstens bis an die Abseitslinie. Der Ballführende spielt nicht zurück und schlägt nicht weg; er treibt den Ball, solange vor ihm frei ist (Gegner in seinem Rücken zählen nicht). Der Konter endet nach acht Sekunden, im letzten Drittel, bei Ballverlust oder wenn der Gegner wieder mit acht Mann hinter dem Ball steht. Wer den *Ball sichern* soll, kontert nicht.
+  - Gemessen über je 24 Spiele: Das letzte Drittel erreichen 24 statt 14 % der Konter, im Mittel nach 7,5 statt 8,7 Sekunden. Abschlüsse aus Kontern 1,6 statt 1,0 je Spiel. Tore (2,3 gegen 2,4) und Schüsse (26 gegen 24) bleiben im Rahmen.
+  - Das Gedränge am Ball ist im Livespiel kein Problem: Im Umkreis von zehn Metern um den Ballführenden stehen im Schnitt 1,9 Gegner und ein Mitspieler.
 
 **Verletzungen entstehen auf dem Platz:** Nichts wird mehr vorab über den Kader gewürfelt.
 - **Kontakt:** Ein Foul kann den Gefoulten verletzen – je härter, desto eher (ein rotwürdiges Foul rund dreißigmal so oft wie ein normales). Prellung, Knöchelstauchung, Bänderdehnung, im Pech Meniskus oder Kreuzband.
@@ -1221,6 +1227,20 @@ Vier Entscheidungen nach dem Muster des Fitspritzens: Jede hat einen Nutzen und 
   - Die Moral der Profis steigt sofort um fünf Punkte.
   - Gezahlt wird nur bei einem Sieg, gebucht als Prämie (zählt zur Kaderkostenquote). Ohne Sieg fällt die Moral um drei Punkte.
   - Höchstens alle fünf Spieltage.
+
+### 5i. 🌍 Länderspielpause im Verein: Trainingsgäste und Trainingsspiel (`TrainingsspielEngine`, `uiTrainingsspiel.js`)
+Viermal in der Saison ruht die Liga. Bisher hieß das für den Verein vier Tage Training mit dem Restkader.
+
+- **Talente trainieren bei den Profis mit (`ladeGaesteEin`, `verabschiedeGaeste`):** Für jeden abgestellten Profi rückt mit der Abreise ein Talent aus U23 oder U19 ins Training der Ersten nach, höchstens sechs.
+  - Gewählt werden die interessantesten (`interesse`): Potenzial zählt vor Stärke, dazu die Form in U23 oder U19 und ein Bonus für die Jungen.
+  - Der Co-Trainer nennt sie im Postfach. Mit der Rückkehr der Nationalspieler gehen sie zurück, mit drei Punkten Moral und drei Punkten Spielschärfe mehr.
+- **Trainingsspiel (`spiele`):** einmal je Pause, im Reiter *Training* in der Karte *Länderspielpause*. Zur Wahl stehen *Erste gegen U23*, *Erste gegen U19* und *U23 gegen U19*.
+  - Zweimal 45 Minuten, zur Pause wird durchgewechselt: Bis zu 22 Spieler je Mannschaft bekommen eine Halbzeit oder mehr.
+  - Die Erste spielt mit allen Profis, die da sind, und mit den Gästen. Hat sie weniger als 18 Spieler, füllen weitere Talente auf, zuerst aus der Mannschaft, die nicht der Gegner ist. Wer aushilft, fehlt seiner eigenen Mannschaft.
+  - Gerechnet wird wie in den Ligen des Unterbaus: Tore nach dem Stärkeunterschied der beiden Mannschaften, kein Livespiel. Sind alle Profis da, gewinnt die Erste fast immer; mit vielen Abgestellten ist das Spiel offen.
+  - Danach gibt es den Spielbogen mit Torfolge und einer Note für jeden (Tore, Vorlagen, Ergebnis, eigene Stärke gegen die des Gegners, Tagesform), dazu den Bericht im Postfach. *Aufgedrängt* nennt die bis zu drei besten Noten ab 7,0 von Spielern, die nicht zu den Profis gehören.
+  - Wirkung nach Minuten: sechs Punkte Spielschärfe und fünf Punkte Kondition für 90 Minuten. Wer gegen die höhere Mannschaft eine 7,5 oder besser spielt, gewinnt vier Punkte Moral; ein Profi, der gegen den Nachwuchs 5,6 oder schlechter spielt, verliert zwei.
+  - Die letzten sechs Spiele bleiben im Spielstand (`state.trainingsspiele`); die Karte zeigt das letzte auch außerhalb der Pause.
 
 ### 6. 💼 Finanzen, Sponsoren & Buchungsjournal
 - **Gehaltsdisziplin der KI-Vereine (`FinanceEngine.gehaltsDisziplin`):** Jeder Wechsel und jede Verlängerung legt beim Gehalt etwas drauf. Angeglichen wurde bisher nur bei Auf- und Abstieg.

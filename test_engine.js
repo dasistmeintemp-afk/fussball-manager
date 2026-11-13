@@ -18917,6 +18917,284 @@ function runEngineTests() {
         }
     });
 
+    test("Konter: Passfolge beginnt beim Ballgewinn neu, eine Spitze bleibt vorn, Läufer sprinten vor den Ball, kein Ball zurück", () => {
+        const { LiveMatchDirector: D } = require('./js/engine/liveMatchDirector.js');
+        const { MatchFlowEngine: F } = require('./js/engine/matchFlowEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Konter" });
+        const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");
+        const neu = (modus = "fm") => {
+            const live = new LiveMatch({ id: "konter", played: false, homeClubId: "muc", awayClubId: "dor" }, heim, gast, state.players, modus ? { modus } : undefined);
+            live.speed = 1;
+            return live;
+        };
+        const K = D.KONTER;
+        const altGewinn = heim.tactics.nachBallgewinn;
+        try {
+            // Passfolge: Der Ballgewinn im Spiel setzt possessionTeam schon vor setCarrier - gezählt wird trotzdem neu
+            const live = neu(), d = live.director;
+            const elf = live.players2D.filter(p => p.team === "home" && p.pos !== "TW"), geg = live.players2D.filter(p => p.team === "away" && p.pos !== "TW");
+            d.setCarrier(geg[0]); d.setCarrier(geg[1]); d.setCarrier(geg[2]);
+            if (d.possessionChain < 2) throw new Error(`Passfolge des Gegners zählt nicht: ${d.possessionChain}`);
+            d.possessionTeam = "home";
+            d.setCarrier(elf[0]);
+            if (d.possessionChain !== 0) throw new Error(`Nach dem Ballgewinn steht die Passfolge bei ${d.possessionChain}`);
+            d.setCarrier(elf[1]);
+            if (d.possessionChain !== 1) throw new Error(`Erster Pass nach dem Ballgewinn: Passfolge ${d.possessionChain}`);
+
+            // Auslöser: Ball in der eigenen Hälfte gewonnen, höchstens fünf Gegner zwischen Ball und Tor
+            const tor = d.ownGoalX("home"), dir = d.attackDir("home");
+            const stelle = (davor) => {
+                d.mode = "ambient"; d.deadBall = null; d.kickoff = null; d._offenerStandard = null;
+                d.possessionTeam = "home"; d._taktikCache = null;
+                live.ball.x = tor + dir * 92 * 0.35; live.ball.y = 50;
+                geg.forEach((p, i) => { p.x = live.ball.x + dir * (i < davor ? 12 : -12); });
+                d.pruefeKonter();
+                return d._konter;
+            };
+            heim.tactics.nachBallgewinn = "normal";
+            const k = stelle(K.offen);
+            if (!k || k.team !== "home") throw new Error("Fünf Gegner vor dem Ball: kein Konter");
+            if (k.laeufer.length !== K.laeufer + 1) throw new Error(`Läufer: ${k.laeufer.length}`);
+            if (k.laeufer.some(id => live.players2D.find(p => p.id === id).group === "def")) throw new Error("Ein Abwehrspieler ist als Läufer eingeteilt");
+            if (!d.kontert("home") || d.kontert("away")) throw new Error("kontert() meldet die falsche Mannschaft");
+            if (stelle(K.offen + 1)) throw new Error("Sechs Gegner vor dem Ball: Konter ohne Anweisung");
+            heim.tactics.nachBallgewinn = "kontern";
+            const k2 = stelle(K.offenKontern);
+            if (!k2 || k2.laeufer.length !== K.laeuferKontern + 1) throw new Error("Mit 'Kontern' reicht ein Gegner mehr und läuft einer mehr mit");
+            heim.tactics.nachBallgewinn = "ballsichern";
+            if (stelle(2)) throw new Error("Ball sichern kontert trotzdem");
+            heim.tactics.nachBallgewinn = "normal";
+            stelle(3);
+            live.ball.x = tor + dir * 92 * (K.bisFeld + 0.05); d.pruefeKonter();
+            if (d._konter) throw new Error("Ballgewinn weit in der gegnerischen Hälfte gilt als Konter");
+            stelle(3); d.deadBall = { kind: "throwin" }; d.pruefeKonter();
+            if (d._konter) throw new Error("Ruhender Ball gilt als Konter");
+
+            // Ende: Ball weg, Zeit um, vorn angekommen, Gegner steht wieder
+            stelle(3); d.fuehreKonter();
+            if (!d._konter) throw new Error("Der Konter endet sofort");
+            d.possessionTeam = "away"; d.fuehreKonter();
+            if (d._konter) throw new Error("Ball weg, der Konter läuft weiter");
+            stelle(3); d._laufUhr = (d._laufUhr || 0) + K.dauer + 0.1; d.fuehreKonter();
+            if (d._konter) throw new Error("Zeit um, der Konter läuft weiter");
+            stelle(3); live.ball.x = tor + dir * 92 * (K.endeFeld + 0.05); geg.forEach(p => { p.x = live.ball.x + dir * 3; }); d.fuehreKonter();
+            if (d._konter) throw new Error("Im letzten Drittel angekommen, der Konter läuft weiter");
+            stelle(3); geg.forEach(p => { p.x = live.ball.x + dir * 12; }); d.fuehreKonter();
+            if (d._konter) throw new Error("Der Gegner steht wieder, der Konter läuft weiter");
+
+            // Läufer: mit vollem Tempo vor den Ball; wer nicht eingeteilt ist, nicht
+            const k3 = stelle(3);
+            d._abseitsLinie = { home: tor + dir * 80, away: tor + dir * 10 };
+            const traeger = elf.find(p => p.group === "def");
+            traeger.x = live.ball.x; traeger.y = 50; d.carrierId = traeger.id;
+            const laeufer = live.players2D.find(p => p.id === k3.laeufer[0]);
+            laeufer.x = live.ball.x - dir * 4; laeufer.y = 40; laeufer.lauf = null;
+            const ziel = d.computeTarget(laeufer, live.ball, new Set());
+            if (!((ziel.x - live.ball.x) * dir >= K.vor - 1) || ziel.urgency < K.urgency) throw new Error(`Läufer: Ziel ${((ziel.x - live.ball.x) * dir).toFixed(1)} vor dem Ball, Dringlichkeit ${ziel.urgency}`);
+            const verteidiger = elf.find(p => p.group === "def" && p.id !== traeger.id);
+            verteidiger.x = live.ball.x - dir * 4; verteidiger.lauf = null;
+            const zielV = d.computeTarget(verteidiger, live.ball, new Set());
+            if (zielV.urgency >= K.urgency) throw new Error("Auch der Verteidiger sprintet mit");
+            // ... und nicht ins Abseits
+            d._abseitsLinie = { home: live.ball.x + dir * 8, away: tor + dir * 10 };
+            const zielA = d.computeTarget(laeufer, live.ball, new Set());
+            if ((zielA.x - (live.ball.x + dir * 8)) * dir > 0.01) throw new Error("Der Läufer startet ins Abseits");
+
+            // Eine Spitze bleibt vorn, auch wenn der Ball am eigenen Strafraum liegt
+            const live2 = neu(), d2 = live2.director;
+            const dir2 = d2.attackDir("home"), tor2 = d2.ownGoalX("home");
+            const spitzeId = d2.spitzeVorn("home");
+            const spitze = live2.players2D.find(p => p.id === spitzeId);
+            if (!spitze || spitze.group !== "att") throw new Error("Keine Spitze gefunden");
+            const tief = { x: tor2 + dir2 * 12, y: 50 };
+            const hoehe = (p) => (d2.formOhneBall(p, tief, dir2).x - tor2) * dir2 / 92;
+            if (hoehe(spitze) < K.spitze - 0.001) throw new Error(`Die Spitze steht bei ${(hoehe(spitze) * 100).toFixed(0)} % des Feldes`);
+            const andere = live2.players2D.filter(p => p.team === "home" && p.pos !== "TW" && p.id !== spitzeId);
+            if (!andere.every(p => hoehe(p) < K.spitze - 0.03)) throw new Error("Neben der Spitze bleibt noch jemand vorn");
+            // Wer zurückarbeiten soll, bleibt nicht vorn
+            const altRolle = spitze.rolleGegen;
+            spitze.rolleGegen = { ...(altRolle || {}), tiefer: 10 };
+            d2._spitzeVorn = null; d2._laufUhr = (d2._laufUhr || 0) + 1;
+            if (d2.spitzeVorn("home") === spitzeId) throw new Error("Der zurückarbeitende Stürmer bleibt als Spitze vorn");
+            spitze.rolleGegen = altRolle;
+            // Im alten Modus gibt es die Spitze nicht
+            if (neu(null).director.spitzeVorn("home") !== null) throw new Error("Spitze im Zeitleisten-Modus");
+
+            // Spiel-Engine: Im Konter kostet der Ball zurück, und Gegner im Rücken halten den Lauf mit Ball nicht auf
+            const live3 = neu(), d3 = live3.director, f = d3.flow;
+            const dir3 = d3.attackDir("home"), tor3 = d3.ownGoalX("home");
+            const e3 = live3.players2D.filter(p => p.team === "home" && p.pos !== "TW"), g3 = live3.players2D.filter(p => p.team === "away");
+            const c3 = e3.find(p => p.group === "mid"), hinten = e3.find(p => p.group === "def");
+            c3.x = tor3 + dir3 * 40; c3.y = 50;
+            e3.forEach((p, i) => { if (p !== c3) { p.x = c3.x + dir3 * 30; p.y = 10 + i * 8; } });
+            hinten.x = c3.x - dir3 * 14; hinten.y = 50;
+            g3.forEach((p, i) => { p.x = c3.x + dir3 * 45; p.y = 10 + i * 8; });
+            const wert = (ctx) => {
+                let summe = 0;
+                for (let i = 0; i < 40; i++) summe += f.ratePassOptions(c3, e3.filter(p => p !== c3), g3, heim.tactics, { phase: "midfield", pressure: 0, chainLength: 6, ...ctx }).find(o => o.target.id === hinten.id).score;
+                return summe / 40;
+            };
+            const ohne = wert({}), mit = wert({ konter: true });
+            if (!(ohne - mit > F.KONTER_ZURUECK * 0.7)) throw new Error(`Rückpass: ohne Konter ${ohne.toFixed(2)}, im Konter ${mit.toFixed(2)}`);
+            // Zwei Gegner direkt im Rücken, vorn frei: Ohne Konter bleibt er stehen, im Konter treibt er den Ball
+            const verfolger = g3.filter(p => p.pos !== "TW").slice(0, 2);
+            verfolger.forEach((p, i) => { p.x = c3.x - dir3 * 3; p.y = 48 + i * 4; });
+            if (f.lageAmBall(c3, { chainLength: 6 }).tragen) throw new Error("Bedrängt von hinten trägt er den Ball auch ohne Konter");
+            if (!f.lageAmBall(c3, { chainLength: 6, konter: true }).tragen) throw new Error("Im Konter treibt er den Ball nicht, obwohl vor ihm frei ist");
+        } finally {
+            heim.tactics.nachBallgewinn = altGewinn;
+        }
+    });
+
+    test("Länderspielpause im Verein: Talente trainieren bei den Profis mit, Trainingsspiel mit Noten für jeden", () => {
+        const { TrainingsspielEngine: T } = require('./js/engine/trainingsspielEngine.js');
+        const { NationalTeamEngine: N } = require('./js/engine/nationalTeamEngine.js');
+        const { ReserveEngine: R } = require('./js/engine/reserveEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Pause" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const zufallVon = (saat) => { let z = saat; return () => { z = (z * 1664525 + 1013904223) % 4294967296; return z / 4294967296; }; };
+
+        // Außerhalb der Pause gibt es kein Trainingsspiel
+        if (T.inPause(state)) throw new Error("Der erste Tag gilt als Länderspielpause");
+        if (T.optionen(state).some(o => o.ok)) throw new Error("Trainingsspiel außerhalb der Pause möglich");
+        if (T.spiele(state, "erste_u23").ok) throw new Error("Trainingsspiel außerhalb der Pause gespielt");
+
+        // Abreise: Für die Abgestellten rücken Talente nach - die interessantesten, höchstens sechs
+        const abreise = state.calendar.findIndex(d => d.laenderspiel === "abreise");
+        if (abreise < 0 || !/Trainingsspiel/.test(state.calendar[abreise + 1].description)) throw new Error("Der Trainingstag der Pause nennt das Trainingsspiel nicht");
+        state.currentDayIndex = abreise;
+        N.tag(state, "abreise");
+        const fehlen = T.abgestellte(state).length;
+        if (!fehlen) throw new Error("Vom Rekordmeister ist niemand abgestellt");
+        const post0 = state.inbox.length;
+        const gaeste = T.ladeGaesteEin(state);
+        if (gaeste.length !== Math.min(T.WERTE.gaesteHoechstens, fehlen)) throw new Error(`${fehlen} abgestellt, ${gaeste.length} Gäste`);
+        if (gaeste.some(g => T.herkunft(state, g) === "erste" || g.abgestellt || (g.injuredWeeks || 0) > 0)) throw new Error("Ein Profi, Abgestellter oder Verletzter ist Trainingsgast");
+        const alle = T.talente(state);
+        const schwelle = Math.min(...gaeste.map(g => T.interesse(state, g)));
+        if (alle.filter(t => !gaeste.includes(t)).some(t => T.interesse(state, t) > schwelle + 1e-9)) throw new Error("Ein interessanteres Talent blieb zu Hause");
+        if (state.inbox.length !== post0 + 1 || !/Trainingsspiel/.test(state.inbox[0].subject) || !state.inbox[0].body.includes(gaeste[0].name)) throw new Error("Die Meldung zur Pause fehlt oder nennt die Gäste nicht");
+        if (T.gaeste(state).length !== gaeste.length) throw new Error("Die Gäste stehen nicht im Spielstand");
+
+        // Kader: Der Ersten fehlen Profis, Talente füllen auf - niemand spielt für beide
+        state.currentDayIndex = abreise + 1;
+        if (!T.inPause(state)) throw new Error("Der Trainingstag gilt nicht als Pause");
+        const kader = T.kader(state, "erste_u23");
+        const idsE = kader.erste.map(e => String(e.p.id)), idsU = kader.u23.map(e => String(e.p.id));
+        if (idsE.some(id => idsU.includes(id))) throw new Error("Ein Spieler steht in beiden Kadern");
+        if (kader.erste.some(e => e.p.abgestellt)) throw new Error("Ein Abgestellter spielt mit");
+        if (kader.erste.length > T.WERTE.kader || kader.erste.length < 14) throw new Error(`Kader der Ersten: ${kader.erste.length}`);
+        if (!kader.erste.some(e => e.gast)) throw new Error("Trotz Abstellungen füllt kein Talent auf");
+        if (kader.erste.filter(e => !e.gast).some(e => e.p.reserve)) throw new Error("Ein Spieler der U23 gilt in der Ersten nicht als Gast");
+        if (!kader.erste.some(e => e.p.pos === "TW")) throw new Error("Die Erste hat keinen Torwart");
+        const felder = (liste) => liste.map(p => [p.matchSharpness, p.fitness, p.morale]);
+
+        // Das Spiel: zweimal 45 Minuten, jeder im Kader spielt, Tore und Noten stimmen zusammen
+        const profi = kader.erste.find(e => !e.gast && e.p.pos !== "TW").p;
+        profi.matchSharpness = 50; profi.fitness = 90;
+        const vorher = felder([profi]);
+        const post1 = state.inbox.length;
+        const res = T.spiele(state, "erste_u23", zufallVon(11));
+        if (!res.ok) throw new Error(`Trainingsspiel: ${res.grund}`);
+        const spiel = res.spiel;
+        if (spiel.teams.length !== 2 || spiel.teams[0].team !== "erste" || spiel.teams[1].team !== "u23") throw new Error("Falsche Mannschaften");
+        spiel.teams.forEach(t => {
+            if (t.spieler.filter(z => z.start).length !== 11) throw new Error(`${t.name}: ${t.spieler.filter(z => z.start).length} in der Startelf`);
+            if (t.spieler.filter(z => z.start && z.pos === "TW").length !== 1) throw new Error(`${t.name}: nicht genau ein Torwart`);
+            if (t.spieler.reduce((s, z) => s + z.minuten, 0) !== 990) throw new Error(`${t.name}: ${t.spieler.reduce((s, z) => s + z.minuten, 0)} Minuten statt 990`);
+            if (t.spieler.some(z => !(z.note >= 3 && z.note <= 10))) throw new Error("Note außerhalb von 3 bis 10");
+            if (t.spieler.reduce((s, z) => s + z.tore, 0) !== t.tore) throw new Error(`${t.name}: Tore der Spieler und Ergebnis passen nicht`);
+            if (t.spieler.some(z => "_p" in z)) throw new Error("Der Spielbogen hält Spielerobjekte fest");
+        });
+        if (spiel.tore.length !== spiel.teams[0].tore + spiel.teams[1].tore) throw new Error("Torfolge und Ergebnis passen nicht");
+        const zeile = spiel.teams[0].spieler.find(z => String(z.id) === String(profi.id));
+        if (!zeile) throw new Error("Ein Profi aus dem Kader hat nicht gespielt");
+        const anteil = zeile.minuten / 90;
+        if (Math.abs(profi.matchSharpness - (50 + T.WERTE.schaerfe * anteil)) > 1e-6) throw new Error(`Spielschärfe ${vorher[0][0]} -> ${profi.matchSharpness}`);
+        if (Math.abs(profi.fitness - (90 - T.WERTE.kondition * anteil)) > 1e-6) throw new Error(`Kondition ${vorher[0][1]} -> ${profi.fitness}`);
+        if (spiel.auffaellig.some(z => z.herkunft === "erste" || z.note < 7) || spiel.auffaellig.length > 3) throw new Error("Aufgedrängt: falsche Auswahl");
+        if (state.inbox.length !== post1 + 1 || !state.inbox[0].subject.startsWith("Trainingsspiel:") || !state.inbox[0].body.includes("Alle Noten")) throw new Error("Der Bericht fehlt");
+        if (state.trainingsspiele[0] !== spiel || T.gespielt(state) !== spiel) throw new Error("Das Spiel steht nicht im Spielstand");
+        JSON.stringify(state.trainingsspiele);
+
+        // Oberfläche: Der Spielbogen nennt jeden Spieler mit Note, der Dialog öffnet sich beim Ansetzen
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        const hatteT = global.TrainingsspielEngine;
+        global.TrainingsspielEngine = T;
+        try {
+            const html = ui.trainingsspielHtml(spiel);
+            const fehlt = spiel.teams.flatMap(t => t.spieler).find(z => !html.includes(ui.escapeHtml(z.name)) || !html.includes(z.note.toFixed(1)));
+            if (fehlt) throw new Error(`Der Spielbogen nennt ${fehlt.name} nicht`);
+            if (!html.includes(`${spiel.teams[0].tore}:${spiel.teams[1].tore}`) || !/ts-bank/.test(html)) throw new Error("Spielbogen ohne Ergebnis oder ohne Einwechselspieler");
+            let dialog = null;
+            ui.zeigeEntscheidung = (d) => { dialog = d; };
+            ui.showToast = () => {}; ui.renderCurrentTab = () => {}; ui.renderHeader = () => {};
+            const nein = ui.trainingsspielAnsetzen("erste_u19");
+            if (nein.ok || dialog) throw new Error("Die Oberfläche setzt ein zweites Trainingsspiel an");
+            state.trainingsspiele = [];
+            const ja = ui.trainingsspielAnsetzen("erste_u19");
+            if (!ja.ok || !dialog || !/Trainingsspiel/.test(dialog.titel) || !dialog.html.includes("U19")) throw new Error("Ansetzen öffnet den Spielbogen nicht");
+            state.trainingsspiele = [spiel];
+        } finally {
+            global.TrainingsspielEngine = hatteT;
+        }
+
+        // Nur eines je Pause
+        const zweites = T.spiele(state, "u23_u19", zufallVon(3));
+        if (zweites.ok || !/schon/.test(zweites.grund)) throw new Error("Zweites Trainingsspiel in derselben Pause");
+        if (T.optionen(state).some(o => o.ok)) throw new Error("Nach dem Spiel steht noch eine Paarung zur Wahl");
+
+        // Sind alle Profis da, ist die Erste klar stärker: Über viele Spiele gewinnt sie fast alle.
+        // (Mit vierzehn Abgestellten ist sie eine gemischte Elf - dann ist das Spiel offen.)
+        const weg = T.abgestellte(state).map(p => [p, p.abgestellt]);
+        weg.forEach(([p]) => { p.abgestellt = undefined; });
+        const voll = T.kader(state, "erste_u23").erste;
+        if (voll.filter(e => e.gast).length !== gaeste.filter(g => voll.some(e => e.p === g)).length) throw new Error("Volle Erste, trotzdem füllen weitere Talente auf");
+        if (voll.length > T.WERTE.kader) throw new Error(`Volle Erste mit ${voll.length} Spielern`);
+        let siege = 0, moralPlus = 0;
+        for (let i = 0; i < 40; i++) {
+            state.trainingsspiele = [];
+            const junge = T.kader(state, "erste_u23").u23.map(e => e.p);
+            const m0 = junge.map(p => p.morale);
+            const s = T.spiele(state, "erste_u23", zufallVon(100 + i)).spiel;
+            if (s.teams[0].tore > s.teams[1].tore) siege++;
+            // Wer gegen die Profis glänzt, gewinnt Selbstvertrauen
+            s.teams[1].spieler.filter(z => z.note >= T.WERTE.noteStark).forEach(z => {
+                const k = junge.findIndex(p => String(p.id) === String(z.id));
+                if (k >= 0 && typeof m0[k] === "number" && m0[k] < 96) { if (junge[k].morale > m0[k]) moralPlus++; else throw new Error("Starke Leistung gegen die Profis ohne Moralgewinn"); }
+            });
+        }
+        weg.forEach(([p, nation]) => { p.abgestellt = nation; });
+        if (siege < 30) throw new Error(`Die volle Erste gewinnt nur ${siege} von 40 Trainingsspielen gegen die U23`);
+        if (state.trainingsspiele.length > T.WERTE.behalten) throw new Error("Zu viele Trainingsspiele im Spielstand");
+
+        // U23 gegen U19 geht ohne die Profis; die Gäste der Ersten spielen dann in ihrer Mannschaft
+        state.trainingsspiele = [];
+        const k2 = T.kader(state, "u23_u19");
+        if (k2.erste.length || k2.u23.length < 11 || k2.u19.length < 11) throw new Error("U23 gegen U19: Kader falsch");
+        const s2 = T.spiele(state, "u23_u19", zufallVon(5));
+        if (!s2.ok || s2.spiel.teams[0].team !== "u23" || s2.spiel.teams[1].team !== "u19") throw new Error("U23 gegen U19 nicht gespielt");
+
+        // Rückkehr: Die Gäste gehen zurück, mit etwas mehr Moral
+        const gast = T.gaeste(state).find(g => typeof g.morale === "number" && g.morale < 90);
+        const moral = gast ? gast.morale : null;
+        const zurueck = T.verabschiedeGaeste(state);
+        if (zurueck.length !== gaeste.length || T.gaeste(state).length) throw new Error("Die Gäste sind nicht verabschiedet");
+        if (gast && gast.morale !== moral + T.WERTE.gastMoral) throw new Error("Die Tage bei den Profis heben die Moral nicht");
+
+        // Über den Kalender: Abreise lädt ein, Rückkehr verabschiedet
+        const s3 = GameState.createNewGame("muc", "normal", { name: "Pause2" });
+        s3.currentDayIndex = s3.calendar.findIndex(d => d.laenderspiel === "abreise");
+        CalendarEngine.advanceOneDay(s3);
+        if (!Array.isArray(s3.laenderspielPause?.gaeste) || !s3.laenderspielPause.gaeste.length) throw new Error("Der Kalender lädt keine Gäste ein");
+        while (s3.calendar[s3.currentDayIndex]?.laenderspielPause) CalendarEngine.advanceOneDay(s3);
+        if (s3.laenderspielPause.gaeste.length) throw new Error("Nach der Rückkehr sind noch Gäste da");
+        if (R.profis(s3, s3.clubs.find(c => c.id === "muc")).some(p => p.abgestellt)) throw new Error("Nach der Pause ist noch jemand abgestellt");
+        void club;
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

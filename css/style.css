@@ -9724,3 +9724,24 @@ table.sortierbar th.sortiert-ab::after { content: " ▾"; }
 
 /* Vereinsprofil: Die Karten füllen die Zeile - nach dem Wegfall der doppelten Übersichtskarte blieb rechts eine Spalte leer */
 @media (min-width: 901px) { #pane-club > .dashboard-grid { grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); } }
+
+/* Länderspielpause: Trainingsgäste und Trainingsspiel (uiTrainingsspiel.js) */
+.ts-lage, .ts-ergebnis { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 20px; margin: 10px 0; }
+.ts-lage > div, .ts-ergebnis > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ts-lage span, .ts-ergebnis span { font-size: 12px; color: var(--text-muted); }
+.ts-lage strong small { font-weight: 400; color: var(--text-muted); }
+.ts-ergebnis { align-items: center; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 10px; }
+.ts-ergebnis .btn { justify-self: start; }
+.ts-kopf { display: flex; align-items: center; justify-content: center; gap: 14px; font-size: 16px; margin-bottom: 8px; flex-wrap: wrap; text-align: center; }
+.ts-stand { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; padding: 2px 12px; border-radius: 8px; background: rgba(255, 255, 255, 0.06); }
+.ts-tore { list-style: none; margin: 0 0 10px; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 2px 16px; font-size: 13px; }
+.ts-auf { font-size: 13px; margin: 6px 0; }
+.ts-teams { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 16px; margin: 10px 0; }
+.ts-team h4 { margin: 0 0 6px; font-size: 14px; }
+.ts-tabelle { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ts-tabelle th { text-align: left; font-size: 11px; font-weight: 600; color: var(--text-muted); padding: 4px 6px; border-bottom: 1px solid var(--border-color); }
+.ts-tabelle td { padding: 4px 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); vertical-align: baseline; }
+.ts-tabelle td:nth-child(3), .ts-tabelle td:nth-child(5), .ts-tabelle th:nth-child(3), .ts-tabelle th:nth-child(5) { text-align: right; font-variant-numeric: tabular-nums; }
+.ts-tabelle td:nth-child(4) { white-space: nowrap; }
+.ts-tabelle .ts-bank td { color: var(--text-muted); }
+.ts-tabelle .ts-bank td strong { color: inherit; }

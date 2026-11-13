@@ -111,6 +111,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
 
         this.renderCoachingStaffCard();
         this.renderTrainingWirkung();
+        this.renderTrainingsspielKarte?.();
         this.renderTrainingslager();
         this.renderTrainingsPlaene();
         this.renderTrainingReport();

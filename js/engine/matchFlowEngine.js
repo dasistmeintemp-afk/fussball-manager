@@ -287,6 +287,10 @@ class MatchFlowEngine {
 
     /** Höchste Risikoscheu im Konter (die ersten Pässe nach dem Ballgewinn mit "Kontern"), siehe ratePassOptions */
     static KONTER_RISIKO = 0.85;
+    /** Abzug für den Pass zurück, solange der Konter läuft (ratePassOptions) */
+    static KONTER_ZURUECK = 0.9;
+    /** Im Konter treibt er den Ball, solange vor ihm frei ist: Gegner, die mehr als so viele Einheiten hinter ihm sind, zählen nicht (lageAmBall) */
+    static KONTER_RUECKEN = 1;
 
     /**
      * Abgefälscht statt abgefangen (resolvePassPhysik): Kommt ein Gegner an
@@ -601,7 +605,9 @@ class MatchFlowEngine {
         // Vorher bremste die defensive Mentalitaet auch diesen Moment - ein
         // Konterteam spielte den eroberten Ball quer und zurueck und kam
         // gemessen auf neun Schuesse gegen zweiundzwanzig.
-        const kontertGerade = chain <= 4 && (_flowTaktik()?.wirkung(tactics).konter || 0) > 0;
+        // Dasselbe gilt für jede Elf, solange ihr Konter läuft (context.konter:
+        // Ballgewinn gegen einen offenen Gegner, LiveMatchDirector.KONTER)
+        const kontertGerade = !!context.konter || (chain <= 4 && (_flowTaktik()?.wirkung(tactics).konter || 0) > 0);
         if (kontertGerade) forwardDrive = Math.max(forwardDrive, 1.3);
         // ... und auch nicht ihre Vorsicht: Wer kontert, nimmt den Pass in den
         // Raum in Kauf (KONTER_RISIKO). Vorher spielte ein tiefer Block nach
@@ -633,7 +639,7 @@ class MatchFlowEngine {
         // wer den Ball sichert, spielt erst einmal sicher
         let progressFaktor = 1 + (eigeneRolle.passWeit || 0);
         let risikoFaktor = 1;
-        if (chain <= 2 && wk.konter > 0) progressFaktor *= 1.35;
+        if (context.konter || (chain <= 2 && wk.konter > 0)) progressFaktor *= 1.35;
         // Tempo: Schnell spielt vertikal, langsam geduldig
         if (tactics.tempo === "fast") progressFaktor *= 1.15;
         else if (tactics.tempo === "slow") progressFaktor *= 0.92;
@@ -659,7 +665,7 @@ class MatchFlowEngine {
         const tief = tactics.defensiveLine === "deep" || (typeof wk.pressingLinie === "number" && wk.pressingLinie >= bf.pressingAb);
         const befreien = tief && !istTorwart && fortschritt < 0.45 && chain >= bf.ab;
         // Konter: Der Spieler, der vorn gewartet hat, ist das erste Ziel
-        const konterZiel = chain <= 3 && (wk.konter || 0) > 0;
+        const konterZiel = !!context.konter || (chain <= 3 && (wk.konter || 0) > 0);
 
         // Wohin das Spiel gerade strebt: der Spieler, bei dem die naechste
         // Szene beginnt. Er wird gesucht wie ein freistehender Stuermer -
@@ -802,7 +808,9 @@ class MatchFlowEngine {
                 if (dist > 24 && forward > 12) taktikScore += bf.lang;
                 else if (forward < 4) taktikScore += bf.kurz;
             }
-            if (konterZiel && mate.rolleGegen?.konter && forward > 8) taktikScore += 0.6;
+            if (konterZiel && (mate.rolleGegen?.konter || mate.id === context.konterSpitze) && forward > 8) taktikScore += 0.6;
+            // Im Konter geht der Ball nicht zurück - der Gegner stünde sonst wieder
+            if (context.konter && forward < -3) taktikScore -= MatchFlowEngine.KONTER_ZURUECK;
             if (istAufbau && forwardDrive < 1 && dist > 26 && forward > 10) taktikScore += (1 - forwardDrive) * 0.6;
             if (istTorwart) {
                 // Kurz: Innenverteidiger suchen; lang: weit nach vorn
@@ -854,7 +862,7 @@ class MatchFlowEngine {
             // auch, wer schnell nach vorn will. Sonst ginge er, wenn vorn zu
             // ist, ins Dribbling statt zur Seite.
             const taktikTeil = taktikGeduld > 0 || forward < -3 ? taktikGeduld : 0;
-            const geduldScore = ((geduld !== 0 || taktikTeil !== 0) && !istAbschluss && forward <= 3 && laneRisk < 0.35 && mate.pos !== "TW")
+            const geduldScore = ((geduld !== 0 || taktikTeil !== 0) && !context.konter && !istAbschluss && forward <= 3 && laneRisk < 0.35 && mate.pos !== "TW")
                 ? (geduld * MatchFlowEngine.GEDULD_QUER + taktikTeil * MatchFlowEngine.GEDULD_TAKTIK.gewicht)
                     * (istAufbau ? 1 : MatchFlowEngine.GEDULD_MITTE)
                 : 0;
@@ -1853,7 +1861,7 @@ class MatchFlowEngine {
         const pressure = this.getPressure(carrier, opponents);
         const phase = this.derivePhase(carrier, team);
         const optionen = this.ratePassOptions(carrier, mates, opponents, tactics, {
-            phase, pressure, chainLength: ctx.chainLength || 0
+            phase, pressure, chainLength: ctx.chainLength || 0, konter: !!ctx.konter, konterSpitze: ctx.konterSpitze ?? null
         }).sort((a, b) => b.score - a.score);
         const beste = optionen[0] || null;
         const m = MatchFlowEngine.MOMENT;
@@ -1897,7 +1905,12 @@ class MatchFlowEngine {
         const lust = Math.sign(_flowTaktik()?.wirkung(tactics).dribbling || 0);
         const raumNoetig = t.raum + (lust < 0 ? t.weniger : (lust > 0 ? -t.mehr : 0));
         let vor = null;
-        if (carrier.pos !== "TW" && pressure < t.druck && fortschritt < 0.85) {
+        // Im Konter zählt, wer vor ihm steht: Die Gegner in seinem Rücken
+        // laufen hinterher, sie versperren ihm nichts.
+        const tragDruck = ctx.konter
+            ? this.getPressure(carrier, opponents.filter(o => (o.x - carrier.x) * dir > -MatchFlowEngine.KONTER_RUECKEN))
+            : pressure;
+        if (carrier.pos !== "TW" && tragDruck < t.druck && fortschritt < 0.85) {
             for (const weite of (lust < 0 ? t.weiten.slice(1) : t.weiten)) {
                 const punkt = { x: carrier.x + dir * weite, y: carrier.y + (50 - carrier.y) * 0.01 * weite };
                 const mitte = { x: (carrier.x + punkt.x) / 2, y: (carrier.y + punkt.y) / 2 };
@@ -1948,7 +1961,8 @@ class MatchFlowEngine {
             // sucht ihn - dadurch entsteht die Szene aus dem Spiel heraus,
             // statt dass der Ball zu ihr transportiert wird.
             zielSpieler: options.zielSpieler || null,
-            direkt: !!options.direkt
+            direkt: !!options.direkt,
+            konter: !!options.konter, konterSpitze: options.konterSpitze ?? null
         });
         // Wer den Ball unter Druck direkt spielt, will ihn loswerden - nicht
         // noch in den Zweikampf gehen (LOESEN)
@@ -1990,7 +2004,9 @@ class MatchFlowEngine {
         // endete fast jede Passfolge im Mittelfeld mit einem langen Ball ins
         // Nichts, sobald ein Gegner kam.
         const eigeneHaelfte = (this.attackDir(team) > 0 ? carrier.x : 100 - carrier.x) < 50;
-        if (!best || (eigeneHaelfte && pressure > 0.6 - sicher && best.score < 0.5 + sicher)) {
+        // Im Konter wird nicht weggeschlagen: Der Ball soll nach vorn getragen
+        // und gespielt werden, der Gegner steht ja offen.
+        if (!best || (eigeneHaelfte && !options.konter && pressure > 0.6 - sicher && best.score < 0.5 + sicher)) {
             best = this.rateClearance(carrier, mates, tactics, pressure);
         }
 

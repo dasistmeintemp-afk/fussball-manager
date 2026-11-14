@@ -712,11 +712,16 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const talent = Y && !(state.players || []).includes(p)
             ? Y.eigeneTalente(state).find(t => t && String(t.id) === String(p.id) && !t.promoted) : null;
         if (talent) {
-            if ((talent.age || 0) < Y.MIT_PROFIS.abAlter || Y.offeneAnfrage(state, talent.id)) return [];
-            return [
-                { art: "ub-talent-hoch", text: "In die erste Mannschaft holen", icon: "i-up" },
-                { art: "ub-talent-spieltag", text: "Für den nächsten Spieltag hochziehen", icon: "i-calendar" }
-            ];
+            // Alles, was nicht der nächste Schritt ist, steht hier - in der Zeile bleibt der Hauptknopf
+            const altGenug = (talent.age || 0) >= Y.MIT_PROFIS.abAlter;
+            const liste = [];
+            if (altGenug && !Y.offeneAnfrage(state, talent.id)) {
+                liste.push({ art: "ub-talent-hoch", text: "In die erste Mannschaft holen", icon: "i-up" },
+                    { art: "ub-talent-spieltag", text: "Für den nächsten Spieltag hochziehen", icon: "i-calendar" });
+            }
+            if (altGenug) liste.push({ art: "ub-talent-profis", text: talent.mitProfis ? "Zurück ins Training der U19" : "Mit den Profis trainieren", icon: "i-dumbbell" });
+            liste.push({ art: "ub-talent-frei", text: "Aus der Akademie freigeben", icon: "i-trash" });
+            return liste;
         }
         if (!club || p.clubId !== club.id || p.leihe) return [];
         const team = (x) => (x === R.U19 ? "U19" : "U23");
@@ -782,6 +787,18 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             text = res.success ? (nurSpieltag
                 ? `🎓 ${res.player.name} ist für den nächsten Spieltag dabei - danach spielt er in der U19.`
                 : `🎓 ${res.player.name} ist bei den Profis - mit seinem Jugendvertrag.`) : "";
+        } else if (art === "ub-talent-profis") {
+            const talent = Y ? Y.eigeneTalente(state).find(t => t && String(t.id) === String(id) && !t.promoted) : null;
+            res = Y && talent ? Y.mitProfisTrainieren(state, id, !talent.mitProfis) : { success: false, error: "Nicht verfügbar." };
+            if (res.success) res.player = res.talent;
+            text = res.success ? (res.talent.mitProfis ? `🏋️ ${res.talent.name} trainiert ab jetzt mit den Profis.` : `${res.talent.name} trainiert wieder in der U19.`) : "";
+        } else if (art === "ub-talent-frei") {
+            const talent = Y ? Y.eigeneTalente(state).find(t => t && String(t.id) === String(id) && !t.promoted) : null;
+            if (!Y || !talent) return { success: false };
+            if (typeof confirm === "function" && !confirm(`${talent.name} aus der Akademie freigeben?`)) return { success: false, abgebrochen: true };
+            res = Y.talentFreigeben(state, id);
+            text = res.success ? `${talent.name} verlässt die Akademie.` : "";
+            akte = false;
         } else {
             return { success: false };
         }

@@ -128,14 +128,60 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
     FELD_SPIELER: 1.1,
 
     /**
-     * Die Uhr über dem Feld zeigt die Spielminute ("23'"). Das Bild läuft in
-     * echtem Tempo, die Partie ist aber gerafft: Eine Spielminute dauert im
-     * Bild gut sieben Sekunden. Mit Sekunden raste die Uhr deshalb achtmal
-     * so schnell wie das Geschehen - das sah nach Vorlauf aus.
+     * Die Uhr im Livespiel: Szenen in Echtzeit, dazwischen Zeitsprünge.
+     *
+     * Ein Spiel dauert am Bildschirm rund elf Minuten, auf der Uhr neunzig -
+     * die Spielzeit läuft also etwa achtmal so schnell wie das Bild. Vorher
+     * zeigte die Uhr nur die Minute, weil rasende Sekunden zu Spielern in
+     * Echtzeit nicht passen. Jetzt läuft die Anzeige im Spielfluss Sekunde
+     * für Sekunde mit dem Bild und springt an jedem Schnitt auf den wahren
+     * Stand: wenn der Ball ruht, eine Szene beginnt oder ein Ereignis gebucht
+     * wird. Was im Ticker steht (Tor in der 25.), stimmt deshalb in dem
+     * Moment mit der Uhr überein, in dem es passiert.
+     *
+     * Die Anzeige läuft der wahren Spielzeit nie voraus und höchstens
+     * "rueckstand" Sekunden hinterher. Ein Sprung ab "sprungAb" Sekunden
+     * blitzt kurz auf ("blitz" Millisekunden), damit man ihn als Schnitt liest.
      */
-    liveUhrText(liveMatch) {
-        const minute = Math.max(0, Math.floor(Number(liveMatch?.minute) || 0));
-        return `${minute}'`;
+    LIVE_UHR: { rueckstand: 300, sprungAb: 20, blitz: 900 },
+
+    /** Stand der Anzeige: { sekunden, text, sprung } - jetztMs nur für Tests */
+    liveUhrStand(liveMatch, jetztMs = (typeof performance !== "undefined" ? performance.now() : Date.now())) {
+        const d = liveMatch?.director;
+        const wahr = d && typeof d.clock === "number"
+            ? d.clock : Math.max(0, (Number(liveMatch?.minute) || 0) * 60 + (Number(liveMatch?.seconds) || 0));
+        const text = (sek) => `${String(Math.floor(sek / 60)).padStart(2, "0")}:${String(Math.floor(sek % 60)).padStart(2, "0")}`;
+        if (!liveMatch || !d) return { sekunden: wahr, text: text(wahr), sprung: false };
+        const U = this.LIVE_UHR;
+        const u = liveMatch._uhr || (liveMatch._uhr = { anzeige: wahr, zuletzt: jetztMs, schnitt: "", blitzBis: 0 });
+        const dt = Math.max(0, Math.min(0.25, (jetztMs - u.zuletzt) / 1000));
+        u.zuletzt = jetztMs;
+        // Ein Schnitt: Der Zustand des Spiels wechselt oder ein Ereignis ist gebucht
+        const schnitt = `${d.mode}|${d.deadBall ? d.deadBall.kind : ""}|${d.kickoff ? 1 : 0}|${liveMatch.timelineIndex || 0}|${liveMatch.isFinished ? 1 : 0}`;
+        // Steht das Spiel oder wird eine ruhige Phase übersprungen (Höhepunkte), gilt der wahre Stand
+        const steht = liveMatch.isFinished || liveMatch.isPaused || !!liveMatch.spult || (typeof liveMatch.istHalbzeitpause === "function" && liveMatch.istHalbzeitpause());
+        let sprung = 0;
+        if (schnitt !== u.schnitt || steht || wahr < u.anzeige || wahr - u.anzeige > U.rueckstand) {
+            sprung = wahr - u.anzeige;
+            u.anzeige = wahr;
+            u.schnitt = schnitt;
+        } else {
+            let speeds = typeof LIVE_MATCH_SPEEDS !== "undefined" ? LIVE_MATCH_SPEEDS : (typeof window !== "undefined" ? window.LIVE_MATCH_SPEEDS : null);
+            if (!speeds && typeof require !== "undefined") { try { speeds = require("../core/constants.js").LIVE_MATCH_SPEEDS; } catch (e) { /* ohne Bundler */ } }
+            const tempo = (speeds && speeds[liveMatch.speed] && speeds[liveMatch.speed].abspielTempo) || 1;
+            u.anzeige = Math.min(wahr, u.anzeige + dt * tempo);
+        }
+        if (sprung >= U.sprungAb) u.blitzBis = jetztMs + U.blitz;
+        return { sekunden: u.anzeige, text: text(u.anzeige), sprung: jetztMs < u.blitzBis };
+    },
+
+    /** Die Uhr als Text: "23:41" mit Bild, "23'" ohne Bild (dort gibt es keine Szenen) */
+    liveUhrText(liveMatch, { nurMinute = false } = {}) {
+        if (nurMinute || !liveMatch?.director) {
+            const minute = Math.max(0, Math.floor(Number(liveMatch?.minute) || 0));
+            return `${minute}'`;
+        }
+        return this.liveUhrStand(liveMatch).text;
     },
 
     /**
@@ -381,6 +427,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         // Der Plan gilt für genau dieses Spiel - der Livespiel-Motor hat ihn
         if (planEngine) planEngine.abschliessen(state, match);
         this.app.currentLiveMatch = liveMatch;
+        // Kontrastmodus: Blau gegen Gelb statt der Vereinsfarben
+        this.kontrastTrikots?.(liveMatch);
         // Die anderen Plätze des Spieltags (nur im Ligaspiel)
         this.bereiteKonferenzVor(state, match);
         // Die Stimmung im Stadion: Choreo, Gesänge, Pfiffe
@@ -502,7 +550,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             setText("lmHomeScore", String(liveMatch.homeScore));
             setText("lmAwayScore", String(liveMatch.awayScore));
             setText("lmMinute", String(liveMatch.minute));
-            setText("lmClock", this.liveUhrText(liveMatch));
+            const uhr = this.liveUhrStand(liveMatch);
+            setText("lmClock", liveMatch.director ? uhr.text : this.liveUhrText(liveMatch));
+            // Ein Zeitsprung blitzt kurz auf
+            const uhrEl = document.getElementById("lmClock");
+            if (uhrEl && uhrEl.classList) uhrEl.classList.toggle("lm-zeitsprung", !!uhr.sprung);
 
             // Was die Uhr gerade bedeutet: läuft, steht in der Pause, ist aus
             const phase = liveMatch.isFinished ? "abpfiff"
@@ -1090,7 +1142,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 setText("lmHomeScore", String(liveMatch.homeScore));
                 setText("lmAwayScore", String(liveMatch.awayScore));
                 setText("lmMinute", String(liveMatch.minute));
-                setText("lmClock", this.liveUhrText(liveMatch));
+                setText("lmClock", this.liveUhrText(liveMatch, { nurMinute: true }));
                 if (!liveMatch.isFinished) {
                     this.liveMatchAnimFrame = requestAnimationFrame(tickLoop);
                     return;

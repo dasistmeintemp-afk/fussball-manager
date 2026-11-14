@@ -306,10 +306,28 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             let runde = n.kurz === "Liga" && n.tag?.matchday ? `${n.tag.matchday}. Spieltag` : (n.tag?.title && n.kurz !== "Test" ? String(this.ohneSymbol?.(n.tag.title) || n.tag.title).trim() : "");
             // Ein Endspiel ohne Runden (Supercup) heißt nur einmal so
             if (runde && (n.lang || n.kurz) && runde.includes(n.lang || n.kurz)) runde = "";
+            // Unter der Paarung: das Wichtigste über den Gegner. Vorher blieb die halbe Kachel leer.
+            const fakten = (() => {
+                if (!g.id) return "";
+                const liga = (state.leagues || []).find(l => l.id === g.leagueId);
+                const tab = g.leagueId === this.getUserLeagueId?.(state) ? (state.standings || []) : ((state.standingsByLeague || {})[g.leagueId] || []);
+                const platz = tab.findIndex(s => s.clubId === g.id) + 1;
+                const ids = new Set(g.playerIds || []);
+                const bester = (state.players || []).filter(p => ids.has(p.id) && !p.reserve && !(p.injuredWeeks > 0))
+                    .sort((x, y) => (y.overall || 0) - (x.overall || 0))[0];
+                const bisher = spiele.filter(s => s.gegner && s.gegner.id === g.id && s.gespielt && s.tore);
+                const fakt = (titel, wert) => `<div><span>${titel}</span><strong>${wert}</strong></div>`;
+                return `<div class="bh-fakten">
+                    ${fakt("Tabelle", platz && (tab[platz - 1].played || 0) > 0 ? `${platz}. Platz · ${esc(liga?.shortName || liga?.name || "")}` : esc(liga?.shortName || liga?.name || "–"))}
+                    ${fakt("Formation", esc(g.formation || "–"))}
+                    ${bester ? fakt("Stärkster Spieler", `${esc(bester.name)} <small>${esc(bester.pos)}</small>`) : ""}
+                    ${bisher.length ? fakt("Diese Saison", bisher.map(s => `${s.tore[0]}:${s.tore[1]}`).join(", ")) : ""}
+                </div>`;
+            })();
             return this.ukKachel({
                 titel: "Nächstes Spiel", icon: "i-ball", ziel: "tactics", zielText: "Zur Aufstellung", klasse: "bh-breit",
                 unter: `${n.kurz === "Test" ? "Testspiel" : (n.lang || n.kurz || "")}${runde ? ` · ${runde}` : ""}`,
-                inhalt: `<div class="bh-spiel">${seite(heim)}<div class="bh-mitte"><span class="bh-wann">${esc(wann)}</span><strong>${esc(datum(n))}</strong><span class="bh-vs">${n.heim ? "Heimspiel" : "Auswärts"}</span></div>${seite(gast)}</div>`,
+                inhalt: `<div class="bh-spiel">${seite(heim)}<div class="bh-mitte"><span class="bh-wann">${esc(wann)}</span><strong>${esc(datum(n))}</strong><span class="bh-vs">${n.heim ? "Heimspiel" : "Auswärts"}</span></div>${seite(gast)}</div>${fakten}`,
                 fuss: `<button type="button" class="btn btn-sm btn-secondary" data-bh-aktion="gegner">Gegner analysieren</button><button type="button" class="btn btn-sm btn-secondary" data-bh-ziel="tactics">Aufstellung</button>`,
                 mehr: (() => {
                     const liga = (state.leagues || []).find(l => l.id === g.leagueId);
@@ -379,7 +397,10 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             return this.ukKachel({
                 titel: "Form", icon: "i-chart", ziel: "fixtures", zielText: "Zum Spielplan",
                 inhalt: letzte.length ? `<div class="bh-form">${letzte.map(s => `<i class="pt-f pt-f-${formZeichen(s.tore)}" title="${esc(`${s.tore[0]}:${s.tore[1]} ${s.gegner?.name || ""}`)}"></i>`).join("")}<span>${punkte} von ${letzte.length * 3} Punkten</span></div>
-                    ${letzte.slice().reverse().slice(0, 3).map(zeileSpiel).join("")}` : leer("Noch kein Pflichtspiel gespielt."),
+                    ${letzte.slice().reverse().slice(0, 3).map(zeileSpiel).join("")}` : (() => {
+                        const erstes = spiele.find(s => !s.gespielt && s.i >= heute && s.kurz !== "Test");
+                        return leer("Noch kein Pflichtspiel gespielt.") + (erstes ? `<p class="tm-text">Das erste: ${esc(datum(erstes))} ${erstes.heim ? "zu Hause gegen" : "auswärts bei"} ${esc(erstes.gegner?.name || erstes.gegnerName || "–")} (${esc(erstes.lang || erstes.kurz || "")}).</p>` : "");
+                    })(),
                 mehr: vorbei.length > 3 ? vorbei.slice().reverse().slice(3, 15).map(zeileSpiel).join("") : ""
             });
         }));
@@ -411,7 +432,13 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             const torjaeger = werte.filter(x => (x.s.goals || 0) > 0).sort((a, b) => b.s.goals - a.s.goals);
             return this.ukKachel({
                 titel: "Bestwerte", icon: "i-trophy", ziel: "stats", zielText: "Zu den Statistiken",
-                inhalt: liste.length ? `<div class="tm-liste">${liste.join("")}</div>` : leer("Nach dem ersten Pflichtspiel stehen hier die Besten der Mannschaft."),
+                // Vor dem ersten Pflichtspiel: die Stärksten im Kader statt einer leeren Kachel
+                inhalt: liste.length ? `<div class="tm-liste">${liste.join("")}</div>`
+                    : (() => {
+                        const starke = kader.filter(p => !(p.injuredWeeks > 0)).sort((x, y) => (y.overall || 0) - (x.overall || 0)).slice(0, 3);
+                        if (!starke.length) return leer("Nach dem ersten Pflichtspiel stehen hier die Besten der Mannschaft.");
+                        return `<p class="tm-text">Vor dem ersten Pflichtspiel: die Stärksten im Kader.</p><div class="tm-liste">${starke.map(p => B.spieler(p, `${p.age} Jahre`, typeof this.abilityStarsFor === "function" ? this.abilityStarsFor(p) : "")).join("")}</div>`;
+                    })(),
                 mehr: torjaeger.length ? `<p class="rk-unterkopf-text">Torschützen</p><div class="tm-liste uk-spalten">${torjaeger.slice(0, 12).map(x => B.spieler(x.p, `${x.s.matches || 0} Spiele`, `${x.s.goals} Tore`)).join("")}</div>` : ""
             });
         }));

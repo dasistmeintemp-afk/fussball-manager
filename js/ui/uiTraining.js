@@ -298,21 +298,16 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     const profiKnopf = zuJung
                         ? `<button class="btn btn-sm btn-secondary" disabled title="${this.escapeHtml(zuJung)}">Profi ab ${vertrag ? vertrag.profiAb : 16}</button>`
                         : `<button class="btn btn-sm btn-primary btn-promote-prospect" data-prospect-id="${p.id}">Profivertrag anbieten</button>`;
-                    const profisKnopf = (p.age || 0) >= (youthV?.MIT_PROFIS?.abAlter ?? 16)
-                        ? `<button class="btn btn-sm btn-secondary btn-mit-profis" data-prospect-id="${p.id}" data-an="${p.mitProfis ? "0" : "1"}">${p.mitProfis ? "Zurück in die U19" : "Mit den Profis trainieren"}</button>`
-                        : "";
                     const anfrageKnoepfe = anfrage
                         ? (anfrage.gespraech ? "" : `<button class="btn btn-sm btn-primary btn-perspektive" data-anfrage-id="${this.escapeHtml(anfrage.id)}" title="Ein Gespräch über seinen Weg bei uns - einmal je Anfrage">Perspektive aufzeigen</button>`)
                             + `<button class="btn btn-sm btn-secondary btn-ziehen-lassen" data-anfrage-id="${this.escapeHtml(anfrage.id)}">Ziehen lassen</button>`
                         : "";
-                    // Sofort zu den Profis, mit dem Jugendvertrag (YouthEngine.hochziehen)
-                    const hochKnopf = !anfrage && (p.age || 0) >= (youthV?.MIT_PROFIS?.abAlter ?? 16)
-                        ? `<button class="btn btn-sm btn-secondary btn-hochziehen" data-talent-id="${p.id}" title="Sofort zu den Profis - ohne Berater, mit seinem Jugendvertrag">Hochziehen</button>`
-                        : "";
                     const aktion = gespraech
                         ? `<button class="btn btn-sm btn-secondary btn-goto-negotiation" data-neg-id="${this.escapeHtml(gespraech.id)}">Zur Verhandlung</button>${anfrageKnoepfe}`
-                        : `${profiKnopf}${hochKnopf}${anfrageKnoepfe}${profisKnopf}
-                           <button class="btn btn-sm btn-secondary btn-release-prospect" data-prospect-id="${p.id}" title="Platz in der Akademie freimachen">Freigeben</button>${this.unterbauMenueKnopf(p.id, p.name)}`;
+                        // In der Zeile bleibt der nächste Schritt (und was eine Anfrage verlangt); Hochziehen,
+                        // Training bei den Profis und Freigeben stehen im Menü ⋯ (unterbauAktionen).
+                        // Vorher standen hier bis zu fünf Knöpfe nebeneinander.
+                        : `${profiKnopf}${anfrageKnoepfe}${this.unterbauMenueKnopf(p.id, p.name)}`;
                     const quelle = ({ probetraining: "Probetraining", sichtung: "Sichtungstag" })[p.quelle]
                         || (p.quelle === "fremd" && p.vonClubName ? `aus ${p.vonClubName}` : null);
                     // Aus der internationalen Sichtung: woher er kommt, und ob er ein Ausnahmetalent ist
@@ -370,15 +365,6 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                     });
                 });
 
-                document.querySelectorAll(".btn-mit-profis").forEach(btn => {
-                    btn.addEventListener("click", () => {
-                        const res = youthV.mitProfisTrainieren(state, btn.dataset.prospectId, btn.dataset.an === "1");
-                        if (!res.success) return this.showToast(res.error, "error");
-                        this.showToast(res.talent.mitProfis ? `🏋️ ${res.talent.name} trainiert ab jetzt mit den Profis.` : `${res.talent.name} trainiert wieder in der U19.`, "info");
-                        speichernUndNeu();
-                    });
-                });
-
                 document.querySelectorAll(".btn-perspektive").forEach(btn => {
                     btn.addEventListener("click", () => {
                         const res = youthV.perspektiveAufzeigen(state, btn.dataset.anfrageId);
@@ -395,20 +381,6 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                         if (!res.success) return this.showToast(res.error, "error");
                         this.showToast(`Er wechselt - als Ausbildungsentschädigung kommen ${this.formatMoneySafe(res.betrag)}.`, "info", 6000);
                         speichernUndNeu();
-                    });
-                });
-
-                document.querySelectorAll(".btn-release-prospect").forEach(btn => {
-                    btn.addEventListener("click", () => {
-                        const youth = (typeof YouthEngine !== "undefined" && YouthEngine) ? YouthEngine : window.YouthEngine;
-                        const talent = prospects.find(t => String(t.id) === btn.dataset.prospectId);
-                        if (!youth || !talent) return;
-                        if (typeof confirm === "function" && !confirm(`${talent.name} aus der Akademie freigeben?`)) return;
-                        const res = youth.talentFreigeben(state, talent.id);
-                        if (!res.success) return this.showToast(res.error, "error");
-                        this.showToast(`${talent.name} verlässt die Akademie.`, "info");
-                        if (typeof state.saveToLocalStorage === "function") state.saveToLocalStorage();
-                        this.renderJugend();
                     });
                 });
 

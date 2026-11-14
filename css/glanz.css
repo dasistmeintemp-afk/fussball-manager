@@ -475,3 +475,30 @@ select option { background: var(--surface-1, #12161d); color: var(--text-main); 
 .mg-antwort input { margin-top: 4px; flex: none; }
 .mg-antwort span { display: flex; flex-direction: column; gap: 1px; }
 .mg-antwort small { color: var(--text-muted); }
+
+/* Kontrastmodus für Farbschwäche (uiKontrast.js): Blau, Gelb, Orange statt Grün und Rot */
+:root[data-kontrast="an"] {
+    --ok: #56b4e9;
+    --warn: #f0e442;
+    --bad: #ff8a3d;
+    --text-muted: #c5cedb;
+    --border-color: rgba(255, 255, 255, 0.28);
+}
+:root[data-kontrast="an"] .form-dot.w { background: #56b4e9; color: #06202f; }
+:root[data-kontrast="an"] .form-dot.l { background: #ff8a3d; color: #2b1200; }
+:root[data-kontrast="an"] .form-dot.d { background: #6b7280; color: #ffffff; }
+:root[data-kontrast="an"] .badge-status-fit { background: rgba(86, 180, 233, 0.18); color: #56b4e9; border-color: rgba(86, 180, 233, 0.5); }
+:root[data-kontrast="an"] .lager-gebucht { color: #56b4e9; }
+:root[data-kontrast="an"] :focus-visible { outline: 3px solid #f0e442; outline-offset: 2px; }
+
+/* Übersicht Spieltag: das Wichtigste über den Gegner unter der Paarung (uiBereiche.js) */
+.bh-fakten { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px 16px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color); }
+.bh-fakten > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bh-fakten span { font-size: 11px; color: var(--text-muted); }
+.bh-fakten strong { font-size: 13px; overflow-wrap: anywhere; }
+.bh-fakten small { font-weight: 400; color: var(--text-muted); }
+
+/* Livespiel-Uhr: Ein Zeitsprung zwischen zwei Szenen blitzt kurz auf (uiLivespiel.js, liveUhrStand) */
+#lmClock { transition: color 0.25s ease, text-shadow 0.25s ease; }
+#lmClock.lm-zeitsprung { color: var(--warn); text-shadow: 0 0 10px rgba(251, 191, 36, 0.55); }
+#lmClock.lm-zeitsprung::after { content: " »"; font-size: 0.7em; }

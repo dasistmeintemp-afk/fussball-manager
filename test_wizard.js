@@ -910,8 +910,29 @@ function runWizardTests() {
         uik.app = { state: {} };
         if (uik.liveEinstellungen().tempo !== 1) throw new Error("Neue Karriere startet nicht in Echtzeit");
         if (!/data-speed="1"[^>]*>\s*<span class="lm-speed-lang">Echtzeit/.test(html) || !/class="btn btn-sm speed-btn active" data-speed="1"/.test(html)) throw new Error("Echtzeit ist nicht der markierte Tempoknopf");
-        // Die Uhr zeigt die Spielminute, keine rasenden Sekunden
+        // Ohne Bild zeigt die Uhr die Spielminute
         if (uik.liveUhrText({ minute: 23, seconds: 41 }) !== "23'" || uik.liveUhrText({}) !== "0'") throw new Error("Uhr zeigt nicht die Spielminute");
+        // Mit Bild: Sekunde für Sekunde in Echtzeit, an jedem Schnitt der Sprung auf den wahren Stand
+        const uhrSpiel = { speed: 1, timelineIndex: 4, director: { clock: 600, mode: "ambient", deadBall: null, kickoff: null } };
+        if (uik.liveUhrStand(uhrSpiel, 1000).text !== "10:00") throw new Error("Die Uhr beginnt nicht beim wahren Stand");
+        uhrSpiel.director.clock = 616;                       // zwei Sekunden Bild, sechzehn Sekunden Spielzeit
+        let stand = uik.liveUhrStand(uhrSpiel, 1200);
+        for (let t = 1400; t <= 3000; t += 200) stand = uik.liveUhrStand(uhrSpiel, t);
+        if (Math.abs(stand.sekunden - 602) > 0.01 || stand.text !== "10:02" || stand.sprung) throw new Error(`Im Spielfluss läuft die Uhr nicht in Echtzeit: ${stand.sekunden}`);
+        uhrSpiel.director.clock = 640; uhrSpiel.director.deadBall = { kind: "throwin" };   // der Ball ruht: Schnitt
+        stand = uik.liveUhrStand(uhrSpiel, 3200);
+        if (stand.text !== "10:40" || !stand.sprung) throw new Error(`Am Schnitt springt die Uhr nicht: ${stand.text}`);
+        if (uik.liveUhrStand(uhrSpiel, 3200 + uik.LIVE_UHR.blitz + 50).sprung) throw new Error("Der Zeitsprung blitzt ewig");
+        uhrSpiel.director.deadBall = null; uik.liveUhrStand(uhrSpiel, 4400);
+        uhrSpiel.director.clock = 648; uhrSpiel.timelineIndex = 5;                          // ein Ereignis ist gebucht: Uhr und Ticker stimmen überein
+        stand = uik.liveUhrStand(uhrSpiel, 4600);
+        if (stand.text !== "10:48" || stand.sprung) throw new Error("Nach einem gebuchten Ereignis stimmt die Uhr nicht mit der Spielzeit überein");
+        uhrSpiel.director.clock = 648 + uik.LIVE_UHR.rueckstand + 30;                       // sehr langer Spielfluss: nie mehr als fünf Minuten zurück
+        if (uik.liveUhrStand(uhrSpiel, 4800).sekunden !== uhrSpiel.director.clock) throw new Error("Die Uhr hängt weiter zurück als erlaubt");
+        uhrSpiel.speed = 2; uhrSpiel.director.clock += 100;
+        const vor2 = uik.liveUhrStand(uhrSpiel, 5000).sekunden, nach2 = uik.liveUhrStand(uhrSpiel, 5200).sekunden;
+        if (!(nach2 - vor2 > 0.3)) throw new Error("Bei höherem Tempo läuft die Uhr nicht schneller");
+        if (uik.liveUhrStand(uhrSpiel, 5400).sekunden > uhrSpiel.director.clock) throw new Error("Die Uhr läuft der Spielzeit voraus");
         const lmK = { players2D: [{ id: 7, team: "home", pos: "ZM", name: "Kern", number: 8, x: 50, y: 50, freshness: 0.8 }, { id: 9, team: "away", pos: "ST", name: "Fern", number: 9, x: 80, y: 20, freshness: 1 }],
             verlauf: [{ type: "goal", playerId: 7 }, { type: "goal", playerId: 9, assistId: 7 }], verwarnt: { home: [7], away: [] }, angeschlagen: { home: [], away: [] },
             liveNoten: () => new Map([[7, { note: 7.4 }]]) };

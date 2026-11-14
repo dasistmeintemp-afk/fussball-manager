@@ -3013,7 +3013,16 @@ class LiveMatchDirector {
         }
         // Wer den Ball trägt, schaut weiter, was geht: Der Steilpass, der
         // Abschluss oder der sichere Ball unter Druck unterbrechen den Lauf
-        if (this.carryTarget && this.carryTarget.id === this.carrierId) this.taktAmBall(dt);
+        if (this.carryTarget && this.carryTarget.id === this.carrierId) {
+            const zugriffe = this.flowStats.zugriffe || 0;
+            this.taktAmBall(dt);
+            // Greift in diesem Takt ein Gegner zu (Zweikampf, Foul), ist das die
+            // Aktion dieses Bildes. Vorher lief das Bild weiter und entschied
+            // gleich noch einmal: Ein Foul am Ballführenden im Lauf stand dann
+            // doppelt in der Zeitleiste, einmal ohne je gezählt zu werden - der
+            // Spielbericht hatte ein Foul mehr als die Live-Anzeige.
+            if (this.mode !== "ambient" || (this.flowStats.zugriffe || 0) !== zugriffe) return;
+        }
 
         // Der Ball ist über die Linie gerollt - jetzt wird er geholt und für
         // die Spielfortsetzung hingelegt.

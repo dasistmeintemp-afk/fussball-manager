@@ -360,6 +360,9 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             if (eigen && /^contract/.test(msg.type || "")) k("Vertrag verlängern", `vertrag:${p.id}`, true, "i-doc");
             if (eigen && msg.type === "player_talk") k("Gespräch führen", `gespraech:${p.id}`, true, "i-chat");
         }
+        // Post mit eigenem Dialog: Fanprotest, Mitgliederversammlung, Trainingsspiel
+        if (msg.aktion === "fanprotest" && typeof this.fanprotestOffen === "function" && this.fanprotestOffen()) k("Antworten", "dialog:fanprotest", true, "i-chat");
+        if (msg.aktion === "mitglieder" && typeof this.mitgliederOffen === "function" && this.mitgliederOffen()) k("Zur Versammlung", "dialog:mitglieder", true, "i-mic");
         const g = (msg.type === "preview" || msg.type === "transfer_offer") && news ? news.vereinZu(state, msg) : null;
         if (g) k(g.name, `verein:${g.id}`, false, "i-shield");
         const tab = { spiel: ["Zur Aufstellung", "tactics"], presse: ["Zur Tabelle", "fixtures"], vorstand: ["Zum Verein", "club"],
@@ -481,6 +484,8 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             else if (art === "annehmen") this.bestaetigeAngebotAusPost(wert);
             else if (art === "verein") { if (typeof this.showClubDetailsModal === "function") this.showClubDetailsModal(wert); }
             else if (art === "tab") this.switchTab(wert);
+            else if (art === "dialog" && wert === "fanprotest") this.zeigeFanprotest?.();
+            else if (art === "dialog" && wert === "mitglieder") this.zeigeMitgliederversammlung?.();
             if (state && typeof state.saveToLocalStorage === "function" && (art === "ablehnen")) state.saveToLocalStorage();
         }));
     },

@@ -448,3 +448,30 @@ select option { background: var(--surface-1, #12161d); color: var(--text-main); 
     .kb-stufen a { display: inline-block; padding-block: 8px; }
     .preis-name { min-height: 34px; display: inline-flex; align-items: center; }
 }
+
+/* Entwicklungskurve in der Akte (uiVerlauf.js) */
+.vl-raster { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px 22px; }
+.vl-kopf { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.vl-kopf span { font-size: 12px; color: var(--text-muted); }
+.vl-kopf strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+.vl-kopf em { font-style: normal; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.vl-box { height: 92px; }
+
+/* Persönliche Saisonziele (uiSaisonziel.js) */
+.sz-stufen { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 8px; }
+.sz-stufe { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; text-align: left; font: inherit; font-size: 12px; color: inherit; background: var(--bg-elevated); border: 1px solid var(--border-color); border-radius: 10px; cursor: pointer; min-height: 44px; }
+.sz-stufe:hover, .sz-stufe:focus-visible { border-color: var(--accent); outline: none; }
+.sz-stufe strong { font-size: 22px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.sz-stufe .sz-label { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+.sz-stufe small { color: var(--text-muted); }
+
+/* Mitgliederversammlung (uiMitglieder.js) */
+.mg-frage { border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 12px; margin: 0 0 10px; min-width: 0; }
+.mg-frage legend { font-weight: 600; font-size: 14px; padding: 0 6px; }
+.mg-frage legend .header-tag { margin-right: 6px; }
+.mg-frage .mg-schlecht { color: var(--bad); border-color: var(--bad); }
+.mg-antwort { display: flex; align-items: flex-start; gap: 10px; padding: 8px 6px; min-height: 44px; border-radius: 8px; cursor: pointer; }
+.mg-antwort:hover { background: rgba(255, 255, 255, 0.04); }
+.mg-antwort input { margin-top: 4px; flex: none; }
+.mg-antwort span { display: flex; flex-direction: column; gap: 1px; }
+.mg-antwort small { color: var(--text-muted); }

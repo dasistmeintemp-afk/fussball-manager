@@ -721,6 +721,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
         const leiheInEntwicklung = leiheModus === "eigener" || leiheModus === "verliehen";
         const leiheImVertrag = !!leiheModus && !leiheInEntwicklung;
         const entwicklungInhalt = [
+            isUserClub && !isProspect && typeof this.entwicklungsKurveHtml === "function" ? this.entwicklungsKurveHtml(player) : "",
             isUserClub && !isProspect ? this.entwicklungsplanHtml(player) : "",
             leiheModus === "eigener" ? this.reserveHtml(player) : "",
             leiheInEntwicklung ? this.leiheHtml(player, leiheModus) : "",

@@ -1259,6 +1259,29 @@ Viermal in der Saison ruht die Liga. Bisher hieß das für den Verein vier Tage 
   - Dafür wird jede zehnte Parade nach einem Schuss aus dem Spiel umgedeutet (nicht bei Elfmetern, Freistößen und Halbchancen). Tore werden nie aberkannt, die Zahl der Tore bleibt also, wie sie ist.
   - Gemessen kommt das rund einmal in vier Spielen vor. Im Bild steht das Banner *VIDEOBEWEIS*, weiter geht es mit Abstoß.
 
+### 5k. 📈 Saisonleben: Entwicklungskurve, Saisonziele, Fanprotest, Mitgliederversammlung, Spielabsagen
+- **Entwicklungskurve in der Akte (`VerlaufEngine`, `uiVerlauf.js`):** Im Reiter *Entwicklung* stehen Stärke und Marktwert eines eigenen Spielers als zwei Linien über die Zeit.
+  - Am Ersten jedes Monats kommt für jeden Spieler des Vereins (Profis, U23, U19) ein Punkt dazu, höchstens 48 je Spieler (vier Jahre). Dazu der Stand von heute.
+  - Über der Linie steht die Veränderung seit dem ersten Punkt, jeder Punkt trägt Datum und Wert als Tooltip. Wer den Verein verlässt, fällt beim nächsten Monatsersten heraus.
+- **Persönliche Saisonziele (`SaisonzielEngine`, `uiSaisonziel.js`):** aus der Akte (Aktionen, *Kabine*) oder per Rechtsklick. Je nach Position stehen Tore, Vorlagen, Einsätze oder Spiele zu null zur Wahl.
+  - Drei Stufen, gemessen an dem, was von ihm zu erwarten ist: *Solide* (85 %, zwei Wochenlöhne Prämie), *Ehrgeizig* (115 %, vier) und *Sehr ehrgeizig* (145 %, acht).
+  - Wie er die Latte aufnimmt, hängt an seinem Ehrgeiz: Den Ehrgeizigen spornt das hohe Ziel an, den Genügsamen drückt es.
+  - Erreicht er das Ziel, wird die Prämie sofort gezahlt und die Moral steigt (5, 8 oder 12 Punkte). Verfehlt er es bis zum Saisonende, sinkt sie (2, 4 oder 6).
+  - Ein Ziel je Spieler und Saison, mit höchstens fünf Profis, zu vereinbaren bis zum 8. Spieltag.
+- **Fanprotest (`MitgliederEngine.pruefeProtest`, `antworte`):** Fällt die Fanstimmung auf 38 oder tiefer und bleibt die Mannschaft drei Ligaspiele sieglos, kündigt die Kurve einen Stimmungsboykott an. Der Vorstand verliert drei Punkte Vertrauen.
+  - *Vor die Kurve treten:* Fanstimmung plus 9, kein Boykott. In einem von vier Fällen kippt das Gespräch (Stimmung minus 4, der Boykott bleibt).
+  - *Öffentlich um Geduld bitten:* plus 4, ein Zehntel der Plätze bleibt beim nächsten Heimspiel leer.
+  - *Aussitzen:* ein Fünftel der Plätze bleibt leer. Das gilt auch, wenn Sie vier Spieltage lang nicht antworten.
+  - Geantwortet wird über den Knopf an der Post. Der nächste Protest kommt frühestens acht Spieltage später.
+- **Mitgliederversammlung (`MitgliederEngine.pruefeVersammlung`, `halteRede`):** einmal je Saison zur Saisonhälfte. Drei Fragen (sportliche Lage, Finanzen, Eintrittspreise) mit je drei Antworten.
+  - Was eine Antwort bewirkt, hängt an der Lage: Wer hinter dem Saisonziel liegt, im Minus steht oder hohe Preise nimmt, gewinnt mit Offenheit und verliert mit Schönreden.
+  - Die Antworten wirken auf Fanstimmung, Vorstandsvertrauen und Moral. Am Ende stimmen die Mitglieder über die Entlastung ab: ab 80 % ein klarer Rückhalt, unter 55 % ein Denkzettel (Vorstand minus 5).
+  - *Preise einfrieren* ist ein Versprechen: Wer in der Saison trotzdem erhöht, verliert acht Punkte Fanstimmung.
+  - Wer vier Spieltage lang nicht erscheint, für den findet die Versammlung ohne ihn statt (Fanstimmung minus 3, Vorstand minus 2).
+- **Spielabsagen und Nachholspiele (`WetterEngine.absage`, `SeasonEngine.sageAb`, `spieleNachholspiele`):** Schnee auf hart gefrorenem Platz oder Dauerregen auf tiefem Boden lassen eine Partie ausfallen, etwa zwei je Saison und Liga.
+  - Die Partie wird zwei Spieltage später nachgeholt. Bis dahin steht im Spielplan *abgesagt*, und beide Vereine haben in der Tabelle ein Spiel weniger. Absage und Ergebnis meldet der Ligaverband im Postfach.
+  - Abgesagt werden nur Partien ohne den eigenen Verein: Ein Nachholspiel mit eigenem Livespiel bräuchte einen zusätzlichen Spieltermin im Kalender. In den letzten vier Spieltagen fällt nichts mehr aus.
+
 ### 6. 💼 Finanzen, Sponsoren & Buchungsjournal
 - **Gehaltsdisziplin der KI-Vereine (`FinanceEngine.gehaltsDisziplin`):** Jeder Wechsel und jede Verlängerung legt beim Gehalt etwas drauf. Angeglichen wurde bisher nur bei Auf- und Abstieg.
   - Gemessen lagen die Erstligisten nach drei Saisons bei 115 % dessen, was sie tragen können.

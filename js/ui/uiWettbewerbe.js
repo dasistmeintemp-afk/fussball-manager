@@ -189,7 +189,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
                 const home = state.clubs.find(c => c.id === m.homeClubId);
                 const away = state.clubs.find(c => c.id === m.awayClubId);
                 const isUserMatch = home?.id === userClub.id || away?.id === userClub.id;
-                const scoreText = m.played ? `${m.homeGoals} : ${m.awayGoals}` : "vs";
+                const scoreText = m.played ? `${m.homeGoals} : ${m.awayGoals}` : (m.verlegt ? "abgesagt" : "vs");
 
                 // Ein Derby steht im Spielplan, nicht im Kleingedruckten
                 const derby = m.isDerby

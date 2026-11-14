@@ -1562,6 +1562,12 @@ const CalendarEngine = {
         }
         // ... und der Kontostand des Monats für den Verlauf auf der Finanzseite
         if (ratenEngine && typeof ratenEngine.monatsStand === 'function') ratenEngine.monatsStand(state, currentDay.date);
+        // ... und Stärke und Marktwert der eigenen Spieler für die Kurve in der Akte
+        const verlaufEngine = (typeof VerlaufEngine !== 'undefined' && VerlaufEngine)
+            ? VerlaufEngine
+            : ((typeof window !== 'undefined' && window.VerlaufEngine) ? window.VerlaufEngine
+                : (typeof require !== 'undefined' ? (() => { try { return require('./verlaufEngine.js').VerlaufEngine; } catch (e) { return null; } })() : null));
+        if (verlaufEngine) verlaufEngine.monatsStand(state, currentDay.date);
 
         // Die Vision des Vorstands - neu bei Amtsantritt und nach einem Vereinswechsel
         const vision = (typeof VisionEngine !== 'undefined' && VisionEngine)

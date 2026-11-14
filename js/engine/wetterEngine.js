@@ -115,6 +115,24 @@ const WetterEngine = {
         return this.mitWirkung({ art: "bewoelkt", temp: 14, platz: "gut" });
     },
 
+    /**
+     * Fällt die Partie aus? Schnee auf hart gefrorenem Platz oft, Starkregen
+     * auf tiefem Boden selten - fest bestimmt wie das Wetter selbst. Über eine
+     * Saison trifft es in einer Liga etwa zwei Spiele. Rückgabe: der Grund
+     * als Text, oder null.
+     */
+    ABSAGE: { schnee: 0.3, regen: 0.04 },
+
+    absage(match, heimverein = null) {
+        if (!match) return null;
+        const w = this.fuer(match, heimverein);
+        const schluessel = `${match.id || ""}|${match.homeClubId || ""}|${match.awayClubId || ""}|${match.matchday || ""}|absage`;
+        const z = this._hash(schluessel);
+        if (w.art === "schnee" && w.platz === "hart" && z < this.ABSAGE.schnee) return "Der Platz ist nach starkem Schneefall und Frost unbespielbar";
+        if (w.art === "starkregen" && w.platz === "tief" && z < this.ABSAGE.regen) return "Der Platz steht nach Dauerregen unter Wasser";
+        return null;
+    },
+
     /** Wetter und Platz zu einer Wirkung zusammenrechnen */
     mitWirkung(wetter) {
         const a = this.ARTEN[wetter.art] || this.ARTEN.bewoelkt;

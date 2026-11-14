@@ -19373,6 +19373,242 @@ function runEngineTests() {
         if (!(D.VAR.aberkannt > 0.02 && D.VAR.aberkannt < 0.3)) throw new Error("Videobeweis nicht eingestellt");
     });
 
+    test("Saisonleben: Entwicklungskurve je Monat, persönliche Saisonziele, Fanprotest, Mitgliederversammlung", () => {
+        const { VerlaufEngine: V } = require('./js/engine/verlaufEngine.js');
+        const { SaisonzielEngine: Z } = require('./js/engine/saisonzielEngine.js');
+        const { MitgliederEngine: M } = require('./js/engine/mitgliederEngine.js');
+        const { FinanceEngine } = require('./js/engine/financeEngine.js');
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Leben" });
+        const club = state.clubs.find(c => c.id === "muc");
+        const spieler = (id) => state.players.find(p => p.id === id);
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        ui.showToast = () => {}; ui.renderCurrentTab = () => {}; ui.renderHeader = () => {}; ui.showPlayerDetailsModal = () => {};
+        const hatte = { v: global.VerlaufEngine, z: global.SaisonzielEngine, m: global.MitgliederEngine };
+        Object.assign(global, { VerlaufEngine: V, SaisonzielEngine: Z, MitgliederEngine: M });
+        try {
+            // --- Entwicklungskurve: ein Punkt je Monatserstem, nur eigene Spieler, höchstens MAX
+            const st = spieler(club.lineup[9]);
+            if (V.monatsStand(state, "15.08.2026") !== 0 || state.spielerVerlauf) throw new Error("Mitten im Monat wird ein Punkt gesetzt");
+            const n1 = V.monatsStand(state, "01.09.2026");
+            if (n1 !== club.playerIds.length) throw new Error(`${n1} Punkte für ${club.playerIds.length} Spieler`);
+            if (V.monatsStand(state, "01.09.2026") !== 0) throw new Error("Derselbe Monat zählt zweimal");
+            const fremd = state.players.find(p => p.clubId === "dor");
+            if (state.spielerVerlauf[String(fremd.id)]) throw new Error("Ein fremder Spieler hat eine Kurve");
+            st.overall += 2; st.value = (st.value || 1e6) + 500000;
+            V.monatsStand(state, "01.10.2026");
+            state.currentDate = "12.10.2026";
+            const kurve = V.verlauf(state, st);
+            if (kurve.length !== 3 || !kurve[2].heute || kurve[1].staerke - kurve[0].staerke !== 2) throw new Error(`Kurve: ${JSON.stringify(kurve)}`);
+            const bil = V.bilanz(state, st);
+            if (bil.staerke !== 2 || bil.wert !== 500000 || bil.seit !== "01.09.2026") throw new Error(`Bilanz: ${JSON.stringify(bil)}`);
+            for (let i = 0; i < V.MAX + 10; i++) V.erfasse(state, `01.x.${i}`);
+            if (state.spielerVerlauf[String(st.id)].length !== V.MAX) throw new Error("Die Kurve wächst über MAX hinaus");
+            // Wer den Verein verlässt, fällt heraus
+            const weg = spieler(club.playerIds[club.playerIds.length - 1]);
+            club.playerIds = club.playerIds.filter(id => id !== weg.id);
+            V.erfasse(state, "01.y.1");
+            if (state.spielerVerlauf[String(weg.id)]) throw new Error("Die Kurve eines Abgangs bleibt im Spielstand");
+            club.playerIds.push(weg.id);
+            const kHtml = ui.entwicklungsKurveHtml(st);
+            if (!/Entwicklung über die Zeit/.test(kHtml) || (kHtml.match(/fin-linie/g) || []).length !== 2 || !/fin-punkt/.test(kHtml)) throw new Error("Akte ohne die beiden Kurven");
+            // Über den Kalender: Am Monatsersten kommt ein Punkt dazu
+            const s2 = GameState.createNewGame("muc", "normal", { name: "Leben2" });
+            const erster = s2.calendar.findIndex((d, i) => i > 0 && /^01\./.test(d.date));
+            s2.currentDayIndex = erster;
+            CalendarEngine.advanceOneDay(s2);
+            if (!s2.spielerVerlauf || !Object.keys(s2.spielerVerlauf).length) throw new Error("Der Kalender setzt am Monatsersten keinen Punkt");
+
+            // --- Saisonziele: Angebote nach Position, Reaktion nach Ehrgeiz, Prämie bei Erfolg, Enttäuschung am Saisonende
+            state.currentDate = "20.08.2026"; state.currentMatchday = 2;
+            const tw = spieler(club.lineup[0]);
+            if (Z.artenFuer(tw).includes("tore") || !Z.artenFuer(tw).includes("zuNull")) throw new Error("Der Torwart bekommt Tore als Ziel");
+            if (Z.artenFuer(st)[0] !== "tore") throw new Error("Der Stürmer bekommt kein Torziel");
+            const v = Z.vorschlaege(state, st).find(x => x.art === "tore");
+            if (!(v.stufen[0].ziel < v.stufen[1].ziel && v.stufen[1].ziel < v.stufen[2].ziel)) throw new Error(`Stufen nicht aufsteigend: ${v.stufen.map(x => x.ziel)}`);
+            if (!(v.stufen[0].praemie < v.stufen[2].praemie) || v.stufen[1].praemie !== Math.round(st.wage * Z.STUFEN.ehrgeizig.praemie)) throw new Error("Prämien falsch");
+            st.hiddenAttributes = { ...(st.hiddenAttributes || {}), ambition: 18 };
+            if (!(Z.reaktion(st, "hoch").moral > 0 && Z.reaktion(st, "solide").moral < 0)) throw new Error("Der Ehrgeizige will keine hohe Latte");
+            st.hiddenAttributes.ambition = 5;
+            if (!(Z.reaktion(st, "hoch").moral < 0)) throw new Error("Den Genügsamen drückt die hohe Latte nicht");
+            st.hiddenAttributes.ambition = 12; st.morale = 70; st.stats.goals = 0;
+            const r = Z.vereinbare(state, st.id, "tore", "ehrgeizig");
+            if (!r.ok || r.ziel.ziel !== v.stufen[1].ziel || st.morale !== 73) throw new Error(`Vereinbaren: ${JSON.stringify(r)}`);
+            if (Z.vereinbare(state, st.id, "vorlagen", "solide").ok) throw new Error("Zweites Ziel für denselben Spieler");
+            if (Z.vereinbare(state, tw.id, "tore", "solide").ok) throw new Error("Unpassendes Ziel angenommen");
+            if (!ui.saisonzielMoeglich(st) || !/0 von/.test(ui.saisonzielText(st)) || !/Toren/.test(ui.saisonzielText(st))) throw new Error(`Akte ohne Stand: ${ui.saisonzielText(st)}`);
+            if (!/Stand/.test(ui.saisonzielHtml(st)) || !/data-sz-art/.test(ui.saisonzielHtml(tw))) throw new Error("Dialog zeigt nicht Stand oder Angebote");
+            // Erreicht: Prämie sofort, Moral steigt, einmal gemeldet
+            const kasse = club.balance, moral = st.morale;
+            st.stats.goals = r.ziel.ziel - 1;
+            if (Z.nachSpieltag(state).length) throw new Error("Ziel vor der Zeit erreicht");
+            st.stats.goals = r.ziel.ziel;
+            if (Z.nachSpieltag(state).join() !== String(st.id)) throw new Error("Erreichtes Ziel nicht gemeldet");
+            if (club.balance !== kasse - r.ziel.praemie || st.morale !== Math.min(100, moral + Z.STUFEN.ehrgeizig.erreicht)) throw new Error("Prämie oder Moral nach Erfolg falsch");
+            if (Z.nachSpieltag(state).length || club.balance !== kasse - r.ziel.praemie) throw new Error("Die Prämie wird zweimal gezahlt");
+            // Höchstens fünf, nur bis Spieltag acht, nur Profis
+            const feld = club.lineup.slice(1, 9).map(spieler);
+            feld.slice(0, Z.HOECHSTENS - 1).forEach(p => { if (!Z.vereinbare(state, p.id, "einsaetze", "solide").ok) throw new Error("Ziel für einen Stammspieler abgelehnt"); });
+            if (Z.pruefe(state, feld[Z.HOECHSTENS]).ok) throw new Error("Sechstes Saisonziel möglich");
+            state.saisonziele = {};
+            state.currentMatchday = Z.BIS_SPIELTAG + 1;
+            if (Z.pruefe(state, feld[0]).ok) throw new Error("Saisonziel nach Spieltag acht");
+            state.currentMatchday = 3;
+            const u23 = state.players.find(p => p.clubId === "muc" && p.reserve);
+            if (u23 && Z.pruefe(state, u23).ok) throw new Error("Saisonziel für einen Spieler der U23");
+            // Verfehlt: Enttäuschung am Saisonende, danach ist alles erledigt
+            const iv = feld[0]; iv.morale = 70; iv.stats.matches = 3;
+            Z.vereinbare(state, iv.id, "einsaetze", "hoch");
+            const vorEnde = iv.morale;
+            const ende = Z.saisonende(state);
+            if (ende.verfehlt !== 1 || iv.morale !== vorEnde + Z.STUFEN.hoch.verfehlt || Object.keys(state.saisonziele).length) throw new Error(`Saisonende: ${JSON.stringify(ende)}`);
+            if (!/Abrechnung/.test(state.inbox[0].subject)) throw new Error("Keine Abrechnung im Postfach");
+
+            // --- Fanprotest: tiefe Stimmung und sieglos, einmal antworten, Boykott beim nächsten Heimspiel
+            state.currentMatchday = 9; state.fanMood = 70; club.form = ["L", "L", "D"];
+            if (M.pruefeProtest(state)) throw new Error("Protest bei guter Stimmung");
+            state.fanMood = 30; club.form = ["L", "W", "L"];
+            if (M.pruefeProtest(state)) throw new Error("Protest trotz Sieg");
+            club.form = ["L", "D", "L"]; state.currentMatchday = 3;
+            if (M.pruefeProtest(state)) throw new Error("Protest am dritten Spieltag");
+            state.currentMatchday = 9;
+            const vertrauen = state.boardConfidence ?? club.confidence ?? 75;
+            const protest = M.pruefeProtest(state);
+            if (!protest || !M.protest(state) || state.inbox[0].aktion !== "fanprotest") throw new Error("Kein Protest trotz Krise");
+            if ((state.boardConfidence ?? 75) !== vertrauen + M.PROTEST.vorstand) throw new Error("Der Vorstand bleibt gelassen");
+            if (M.pruefeProtest(state)) throw new Error("Zweiter Protest, während der erste läuft");
+            if (!ui.fanprotestOffen() || !ui.postAktionen(state.inbox[0], state).some(k => k.akt === "dialog:fanprotest")) throw new Error("Die Post bietet keine Antwort an");
+            // Vor die Kurve: wirkt, kann aber kippen
+            const mood = state.fanMood;
+            const a1 = M.antworte(state, "kurve", () => 0.9);
+            if (!a1.ok || a1.gekippt || state.fanMood !== mood + M.PROTEST.antworten.kurve.stimmung || M.boykott(state) !== 0) throw new Error(`Kurve: ${JSON.stringify(a1)}`);
+            if (M.antworte(state, "geduld").ok || ui.fanprotestOffen()) throw new Error("Zweite Antwort auf denselben Protest");
+            state.fanprotest = { saison: state.seasonYear || 1, spieltag: 9, offen: true, boykott: 0.2 };
+            const a2 = M.antworte(state, "kurve", () => 0.1);
+            if (!a2.gekippt || M.boykott(state) !== M.PROTEST.antworten.kurve.kippt.boykott) throw new Error("Das Gespräch kippt nicht");
+            // Der Boykott gilt für ein Heimspiel: weniger Zuschauer, danach vorbei
+            const heimspiel = { homeClubId: "muc", awayClubId: "dor", played: true, homeGoals: 1, awayGoals: 1 };
+            const besucher = (boykott) => {
+                state.fanprotest = { saison: state.seasonYear || 1, spieltag: 9, offen: false, boykott };
+                const m = { ...heimspiel };
+                const zufall = Math.random; Math.random = () => 0.5;
+                try { FinanceEngine.applyMatchdayIncome(state, m); } finally { Math.random = zufall; }
+                return m.attendance;
+            };
+            const voll = besucher(0), leer = besucher(0.2);
+            if (!(leer < voll * 0.9)) throw new Error(`Boykott: ${leer} statt ${voll} Zuschauer`);
+            if (M.boykott(state) !== 0) throw new Error("Der Boykott gilt für ein zweites Heimspiel");
+            // Ohne Antwort gilt der Protest nach der Frist als ausgesessen; der nächste kommt frühestens nach der Pause
+            state.fanprotest = { saison: state.seasonYear || 1, spieltag: 9, offen: true, boykott: 0.2 };
+            state.currentMatchday = 9 + M.FRIST;
+            M.pruefeProtest(state);
+            if (M.protest(state) || state.fanprotest.antwort !== "aussitzen") throw new Error("Unbeantworteter Protest bleibt offen");
+            state.fanMood = 30; club.form = ["L", "L", "L"];
+            if (M.pruefeProtest(state)) throw new Error("Neuer Protest vor Ablauf der Pause");
+            state.currentMatchday = 9 + M.PROTEST.pause;
+            if (!M.pruefeProtest(state)) throw new Error("Nach der Pause kein neuer Protest");
+            M.antworte(state, "aussitzen");
+
+            // --- Mitgliederversammlung: zur Saisonhälfte, drei Fragen, Wirkung nach Lage, Entlastung
+            state.mitglieder = null; state.currentMatchday = 10;
+            if (M.pruefeVersammlung(state)) throw new Error("Versammlung vor der Saisonhälfte");
+            state.currentMatchday = 18; state.fanMood = 70; club.balance = 5000000; club.ticketPrice = 30;
+            const vs = M.pruefeVersammlung(state);
+            if (!vs || state.inbox[0].aktion !== "mitglieder" || !ui.mitgliederOffen()) throw new Error("Keine Einladung zur Saisonhälfte");
+            if (M.pruefeVersammlung(state) !== null || !M.versammlung(state)) throw new Error("Zweite Einladung in derselben Saison");
+            const fragen = M.fragen(state);
+            if (fragen.length !== 3 || fragen.some(f => f.antworten.length !== 3 || !f.frage)) throw new Error("Nicht drei Fragen mit je drei Antworten");
+            if (M.halteRede(state, { sport: "kaempferisch" }).ok) throw new Error("Rede mit nur einer Antwort");
+            // In der Krise schönreden kostet, offen sein hilft
+            const rede = (lage, antworten) => {
+                state.mitglieder = { saison: state.seasonYear || 1, spieltag: 18, offen: true, lage };
+                state.fanMood = 60;
+                return M.halteRede(state, antworten);
+            };
+            const krise = { sport: "schlecht", finanzen: "schlecht", preise: "schlecht" };
+            const ehrlich = rede(krise, { sport: "selbstkritisch", finanzen: "sparen", preise: "einfrieren" });
+            const schoen = rede(krise, { sport: "schoenreden", finanzen: "investieren", preise: "verteidigen" });
+            if (!(ehrlich.entlastung > schoen.entlastung + 20) || schoen.urteil !== "verweigert" || !(schoen.wirkung.fans < 0) || !(ehrlich.wirkung.fans > 0)) throw new Error(`Rede in der Krise: ${ehrlich.entlastung} gegen ${schoen.entlastung}`);
+            if (ehrlich.preisStopp !== 30) throw new Error("Das Preisversprechen ist nicht gemerkt");
+            if (M.halteRede(state, { sport: "kaempferisch", finanzen: "offen", preise: "ausweichen" }).ok) throw new Error("Zweite Rede");
+            // Das Versprechen: Wer trotzdem erhöht, verliert Fanstimmung - einmal
+            state.mitglieder = { saison: state.seasonYear || 1, spieltag: 18, offen: false, preisStopp: 30 };
+            state.fanMood = 60;
+            if (M.pruefePreisversprechen(state)) throw new Error("Bruch ohne Erhöhung");
+            club.ticketPrice = 36;
+            if (!M.pruefePreisversprechen(state) || state.fanMood !== 60 + M.PREIS_BRUCH || M.pruefePreisversprechen(state)) throw new Error("Gebrochenes Versprechen bleibt folgenlos oder zählt doppelt");
+            // Lage: Minus auf dem Konto und hohe Preise gelten als angespannt
+            club.balance = -1; club.ticketPrice = 90;
+            if (M.lage(state, "finanzen") !== "schlecht" || M.lage(state, "preise") !== "schlecht") throw new Error("Die Lage wird nicht erkannt");
+            club.balance = 5000000; club.ticketPrice = 30;
+            if (M.lage(state, "finanzen") !== "gut" || M.lage(state, "preise") !== "gut") throw new Error("Entspannte Lage gilt als angespannt");
+            // Wer nicht erscheint: Die Versammlung läuft ohne ihn
+            state.mitglieder = { saison: state.seasonYear || 1, spieltag: 18, offen: true, lage: { sport: "gut", finanzen: "gut", preise: "gut" } };
+            state.currentMatchday = 18 + M.FRIST;
+            M.pruefeVersammlung(state);
+            if (M.versammlung(state) || !state.mitglieder.ohneTrainer) throw new Error("Die Versammlung wartet ewig auf den Trainer");
+        } finally {
+            Object.assign(global, { VerlaufEngine: hatte.v, SaisonzielEngine: hatte.z, MitgliederEngine: hatte.m });
+        }
+    });
+
+    test("Spielabsage: unbespielbarer Platz, Nachholspiel zwei Spieltage später, nie das eigene Spiel", () => {
+        const { WetterEngine: W } = require('./js/engine/wetterEngine.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Absage" });
+        const altAbsage = W.absage;
+        try {
+            // Wetter: Schnee auf hartem Platz kann ausfallen, Sonne nie
+            const partie = { id: "a", homeClubId: "muc", awayClubId: "dor", matchday: 20 };
+            if (W.absage({ ...partie, wetter: { art: "sonnig", temp: 20, platz: "gut" } }) !== null) throw new Error("Absage bei Sonne");
+            let schnee = 0;
+            for (let i = 0; i < 400; i++) if (W.absage({ ...partie, id: "s" + i, wetter: { art: "schnee", temp: -3, platz: "hart" } })) schnee++;
+            if (Math.abs(schnee / 400 - W.ABSAGE.schnee) > 0.08) throw new Error(`Schnee auf hartem Platz: ${schnee} von 400 fallen aus`);
+            if (W.absage({ ...partie, id: "s1", wetter: { art: "schnee", temp: -3, platz: "hart" } }) !== W.absage({ ...partie, id: "s1", wetter: { art: "schnee", temp: -3, platz: "hart" } })) throw new Error("Dieselbe Partie fällt einmal aus und einmal nicht");
+
+            // Eine Partie ohne den eigenen Verein fällt aus; das eigene Spiel nie
+            const runde = state.schedule.find(r => r.matchday === state.currentMatchday);
+            const fremd = runde.matches.find(m => m.homeClubId !== "muc" && m.awayClubId !== "muc");
+            W.absage = (m) => (m.homeClubId === fremd.homeClubId || m.homeClubId === "muc" || m.awayClubId === "muc" ? "Der Platz ist unbespielbar" : null);
+            const post0 = state.inbox.length;
+            SeasonEngine.simulateRemainingMatchesOfDay(state);
+            const eigen = runde.matches.find(m => m.homeClubId === "muc" || m.awayClubId === "muc");
+            if (!eigen.played || eigen.verlegt) throw new Error("Das eigene Spiel ist abgesagt");
+            if (fremd.played || !fremd.verlegt || fremd.verlegt.am !== runde.matchday + SeasonEngine.NACHHOLEN.nach) throw new Error("Die fremde Partie ist nicht verlegt");
+            if (runde.matches.filter(m => !m.played).length !== 1) throw new Error("Mehr als eine Partie fehlt");
+            if (state.nachholspiele.length !== 1 || !state.inbox.slice(0, state.inbox.length - post0).some(m => /^Spielabsage/.test(m.subject) && m.sender === "Ligaverband")) throw new Error("Absage nicht vermerkt oder nicht gemeldet");
+            // In der Tabelle fehlt beiden ein Spiel
+            const zeile = (id) => state.standings.find(e => e.clubId === id);
+            if (zeile(fremd.homeClubId).played !== 0 || zeile(fremd.awayClubId).played !== 0 || zeile("muc").played !== 1) throw new Error("Die Tabelle zählt das abgesagte Spiel");
+            // Noch einmal derselbe Spieltag: nichts doppelt
+            SeasonEngine.simulateRemainingMatchesOfDay(state);
+            if (state.nachholspiele.length !== 1) throw new Error("Die Absage steht doppelt im Spielstand");
+            W.absage = () => null;
+            // Ein Spieltag später: noch nicht fällig. Zwei später: nachgeholt, gemeldet, Tabelle vollständig
+            state.currentMatchday = runde.matchday + 1;
+            SeasonEngine.simulateRemainingMatchesOfDay(state);
+            if (fremd.played) throw new Error("Das Nachholspiel läuft zu früh");
+            state.currentMatchday = runde.matchday + 2;
+            SeasonEngine.simulateRemainingMatchesOfDay(state);
+            if (!fremd.played || typeof fremd.homeGoals !== "number" || !fremd.verlegt.nachgeholt || state.nachholspiele.length) throw new Error("Das Nachholspiel ist nicht gespielt");
+            if (!state.inbox.some(m => /^Nachholspiel/.test(m.subject))) throw new Error("Das Nachholspiel ist nicht gemeldet");
+            if (zeile(fremd.homeClubId).played !== 3 || zeile("muc").played !== 3) throw new Error(`Tabelle nach dem Nachholen: ${zeile(fremd.homeClubId).played} und ${zeile("muc").played} Spiele`);
+            // Kurz vor Saisonende fällt nichts mehr aus
+            const letzte = state.schedule[state.schedule.length - 2];
+            W.absage = () => "Der Platz ist unbespielbar";
+            const m9 = letzte.matches.find(m => m.homeClubId !== "muc" && m.awayClubId !== "muc");
+            if (SeasonEngine.sageAb(state, letzte, m9, state.clubs.find(c => c.id === m9.homeClubId), state.clubs.find(c => c.id === m9.awayClubId))) throw new Error("Absage am vorletzten Spieltag");
+            // Was am Saisonende noch aussteht, wird vorher gespielt
+            const frueh = state.schedule.find(r => r.matchday === runde.matchday + 3);
+            const m3 = frueh.matches.find(m => m.homeClubId !== "muc" && m.awayClubId !== "muc");
+            SeasonEngine.sageAb(state, frueh, m3, state.clubs.find(c => c.id === m3.homeClubId), state.clubs.find(c => c.id === m3.awayClubId));
+            if (state.nachholspiele.length !== 1) throw new Error("Absage für den Abschlusstest fehlt");
+            if (SeasonEngine.spieleNachholspiele(state, true).length !== 1 || !m3.played) throw new Error("Ausstehendes Nachholspiel bleibt liegen");
+        } finally {
+            W.absage = altAbsage;
+        }
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

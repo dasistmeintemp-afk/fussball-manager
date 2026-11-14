@@ -474,10 +474,15 @@ class SeasonEngine {
 
         const matchEngine = _getMatchEngine();
 
+        // Erst die Nachholspiele, die fällig sind (SeasonEngine.NACHHOLEN)
+        SeasonEngine.spieleNachholspiele(state);
+
         round.matches.forEach(match => {
             if (!match.played) {
                 const homeClub = state.clubs.find(c => c.id === match.homeClubId);
                 const awayClub = state.clubs.find(c => c.id === match.awayClubId);
+                // Unbespielbarer Platz: Die Partie fällt aus und wird nachgeholt
+                if (homeClub && awayClub && SeasonEngine.sageAb(state, round, match, homeClub, awayClub)) return;
                 if (homeClub && awayClub && matchEngine) {
                     // Der Matchplan aus der Taktikbesprechung gilt auch, wenn
                     // das eigene Spiel ohne Livespiel berechnet wird
@@ -490,7 +495,7 @@ class SeasonEngine {
                 }
             }
             // Nur die eigenen Partien behalten Einzelkritiken und Ereignisse
-            if (matchEngine && typeof matchEngine.compactPlayedMatch === 'function') {
+            if (match.played && matchEngine && typeof matchEngine.compactPlayedMatch === 'function') {
                 const isUserMatch = match.homeClubId === state.userClubId || match.awayClubId === state.userClubId;
                 matchEngine.compactPlayedMatch(match, isUserMatch, true);
             }
@@ -506,6 +511,72 @@ class SeasonEngine {
             state.standingsByLeague = state.standingsByLeague || {};
             state.standingsByLeague[gameState.getUserLeagueId(state)] = state.standings;
         }
+    }
+
+    /**
+     * Spielabsagen: Ist der Platz unbespielbar (WetterEngine.absage), fällt
+     * die Partie aus und wird "nach" Spieltagen später unter der Woche
+     * nachgeholt. Bis dahin hat die Tabelle für beide ein Spiel weniger.
+     *
+     * Abgesagt werden nur Partien ohne den eigenen Verein: Ein Nachholspiel
+     * mit eigenem Livespiel bräuchte einen zusätzlichen Spieltermin im
+     * Kalender. In den letzten "schluss" Spieltagen fällt nichts mehr aus.
+     */
+    static NACHHOLEN = { nach: 2, schluss: 4 };
+
+    static sageAb(state, round, match, homeClub, awayClub) {
+        if (match.verlegt || match.homeClubId === state.userClubId || match.awayClubId === state.userClubId) return !!match.verlegt;
+        const N = SeasonEngine.NACHHOLEN;
+        const letzter = Math.max(...state.schedule.map(r => r.matchday));
+        if (round.matchday > letzter - N.schluss) return false;
+        const wetter = _resolve('WetterEngine', './wetterEngine.js');
+        if (!wetter || typeof wetter.absage !== 'function') return false;
+        const grund = wetter.absage({ ...match, matchday: round.matchday, id: match.id || `${round.matchday}:${match.homeClubId}:${match.awayClubId}` }, homeClub);
+        if (!grund) return false;
+        match.verlegt = { von: round.matchday, am: round.matchday + N.nach };
+        if (!Array.isArray(state.nachholspiele)) state.nachholspiele = [];
+        state.nachholspiele.push({ saison: state.seasonYear || 1, matchday: round.matchday, heim: match.homeClubId, gast: match.awayClubId, am: round.matchday + N.nach });
+        SeasonEngine.ligaMeldung(state, `Spielabsage: ${homeClub.name} - ${awayClub.name}`,
+            `${grund}. Die Partie ${homeClub.name} gegen ${awayClub.name} fällt aus und wird vor dem ${round.matchday + N.nach}. Spieltag nachgeholt. Bis dahin haben beide in der Tabelle ein Spiel weniger.`);
+        return true;
+    }
+
+    /** Post vom Ligaverband (Absagen, Nachholspiele) */
+    static ligaMeldung(state, betreff, text) {
+        if (!Array.isArray(state.inbox)) state.inbox = [];
+        state.inbox.unshift({
+            id: Date.now() + Math.floor(Math.random() * 1000), matchday: state.currentMatchday,
+            date: state.currentDate || `Spieltag ${state.currentMatchday}`, sender: "Ligaverband",
+            subject: betreff, body: text, read: false, type: "info"
+        });
+    }
+
+    /** Fällige Nachholspiele austragen (alle = true: jedes, das noch aussteht) */
+    static spieleNachholspiele(state, alle = false) {
+        const offen = Array.isArray(state.nachholspiele) ? state.nachholspiele : [];
+        if (!offen.length) return [];
+        const saison = state.seasonYear || 1;
+        const matchEngine = _getMatchEngine();
+        const gespielt = [];
+        state.nachholspiele = offen.filter(n => {
+            if (n.saison !== saison) return false;
+            if (!alle && (state.currentMatchday || 1) < n.am) return true;
+            const round = state.schedule.find(r => r.matchday === n.matchday);
+            const match = round ? round.matches.find(m => m.homeClubId === n.heim && m.awayClubId === n.gast) : null;
+            const homeClub = state.clubs.find(c => c.id === n.heim), awayClub = state.clubs.find(c => c.id === n.gast);
+            if (!match || match.played || !homeClub || !awayClub || !matchEngine) return false;
+            if (typeof matchEngine.spieleAus === 'function') matchEngine.spieleAus(state, match, homeClub, awayClub, {});
+            else matchEngine.simulateFullMatch(match, homeClub, awayClub, state.players, {});
+            match.verlegt = { ...match.verlegt, nachgeholt: true };
+            const finanz = _getFinanceEngine();
+            if (finanz && typeof finanz.applyMatchdayIncome === 'function') finanz.applyMatchdayIncome(state, match);
+            if (typeof matchEngine.compactPlayedMatch === 'function') matchEngine.compactPlayedMatch(match, false, true);
+            SeasonEngine.ligaMeldung(state, `Nachholspiel: ${homeClub.name} ${match.homeGoals}:${match.awayGoals} ${awayClub.name}`,
+                `Das ausgefallene Spiel vom ${n.matchday}. Spieltag ist nachgeholt: ${homeClub.name} ${match.homeGoals}:${match.awayGoals} ${awayClub.name}. Die Tabelle ist wieder vollständig.`);
+            gespielt.push(match);
+            return false;
+        });
+        return gespielt;
     }
 
     /**
@@ -600,7 +671,8 @@ class SeasonEngine {
             const round = state.schedule.find(r => r.matchday === state.currentMatchday);
             if (round && Array.isArray(round.matches)) {
                 round.matches.forEach(m => {
-                    financeEngine.applyMatchdayIncome(state, m);
+                    // Ein abgesagtes Spiel bringt erst Einnahmen, wenn es nachgeholt ist
+                    if (m.played) financeEngine.applyMatchdayIncome(state, m);
                 });
             }
         }
@@ -697,6 +769,14 @@ class SeasonEngine {
         // Glatt Rot bei den eigenen Profis: Der Co-Trainer fragt nach einer Strafe
         const fuehrung = _resolve('FuehrungEngine', './fuehrungEngine.js');
         if (fuehrung && typeof fuehrung.meldePlatzverweise === 'function') fuehrung.meldePlatzverweise(state);
+
+        // Persönliche Saisonziele: Wer seines erreicht hat, bekommt die Prämie
+        const saisonziele = _resolve('SaisonzielEngine', './saisonzielEngine.js');
+        if (saisonziele && typeof saisonziele.nachSpieltag === 'function') saisonziele.nachSpieltag(state);
+
+        // Druck von außen: Fanprotest in der Krise, Mitgliederversammlung zur Saisonhälfte
+        const mitglieder = _resolve('MitgliederEngine', './mitgliederEngine.js');
+        if (mitglieder && typeof mitglieder.nachSpieltag === 'function') mitglieder.nachSpieltag(state);
 
         // 4. Verletzungen & Sperren um 1 reduzieren
         // Fitgespritzte: eine Woche näher dran, und wo es nach dem Spiel aufgebrochen ist, meldet der Arzt
@@ -1023,6 +1103,15 @@ class SeasonEngine {
     }
 
     static finishSeason(state) {
+        // Was an Nachholspielen noch aussteht, wird vor der Abrechnung gespielt
+        if (SeasonEngine.spieleNachholspiele(state, true).length) {
+            const gs = _getGameState();
+            if (gs && typeof gs.calculateStandings === 'function') {
+                state.standings = gs.calculateStandings(gs.getLeagueClubs(state), state.schedule, state.currentMatchday);
+                if (state.standingsByLeague) state.standingsByLeague[gs.getUserLeagueId(state)] = state.standings;
+            }
+        }
+
         const championEntry = state.standings[0];
         const championClub = state.clubs.find(c => c.id === championEntry.clubId);
         const userClub = state.clubs.find(c => c.id === state.userClubId);
@@ -1042,6 +1131,10 @@ class SeasonEngine {
             };
         }
         state._seasonFinished = state.seasonYear;
+
+        // Persönliche Saisonziele abrechnen, solange die Zahlen der Saison noch stehen
+        const saisonzielEngine = _resolve('SaisonzielEngine', './saisonzielEngine.js');
+        if (saisonzielEngine && typeof saisonzielEngine.saisonende === 'function') saisonzielEngine.saisonende(state);
 
         // Leihspieler kehren zurück, bevor Verträge und Kader abgerechnet werden
         const leihen = _resolve('LoanEngine', './loanEngine.js');

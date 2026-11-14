@@ -784,6 +784,18 @@ const FinanceEngine = {
             else if (formEffekt <= -0.05) gruende.push("sportliche Krise");
         }
 
+        // Fanprotest: Ein Teil der Kurve bleibt dem nächsten Heimspiel fern (MitgliederEngine)
+        if (homeClub.id === state.userClubId) {
+            const mitglieder = (typeof MitgliederEngine !== "undefined" && MitgliederEngine) ? MitgliederEngine
+                : ((typeof window !== "undefined" && window.MitgliederEngine) ? window.MitgliederEngine
+                    : (typeof require !== "undefined" ? (() => { try { return require("./mitgliederEngine.js").MitgliederEngine; } catch (e) { return null; } })() : null));
+            const boykott = mitglieder ? mitglieder.boykott(state, true) : 0;
+            if (boykott > 0) {
+                baseAttendancePct *= 1 - boykott;
+                gruende.push("Fanprotest");
+            }
+        }
+
         // Ein Spitzenspiel zieht, ein Duell zweier Abstiegskandidaten nicht
         const tabelle = state.standingsByLeague?.[homeClub.leagueId] || state.standings || [];
         const platz = (id) => {

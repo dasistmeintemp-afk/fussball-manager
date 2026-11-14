@@ -152,6 +152,7 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             { titel: "Kabine", eintraege: [
                 eigen && typeof this.strafeMoeglich === "function" && this.strafeMoeglich(player) ? { text: "Platzverweis ahnden", icon: "i-alert", aktion: () => this.zeigeStrafe(player.id) } : null,
                 eigen && typeof this.einspruchMoeglich === "function" && this.einspruchMoeglich(player) ? { text: "Einspruch gegen die Sperre", icon: "i-doc", aktion: () => this.zeigeEinspruch(player.id) } : null,
+                eigen && typeof this.saisonzielMoeglich === "function" && this.saisonzielMoeglich(player) ? { text: this.saisonzielText(player) || "Saisonziel vereinbaren", icon: "i-target", aktion: () => this.zeigeSaisonziel(player.id) } : null,
                 eigen && da("[data-gespraech]") ? { text: "Gespräch unter vier Augen", icon: "i-chat", reiter: "vertrag", ziel: "[data-gespraech]" } : null,
                 eigen ? { text: "Rückennummer ändern", icon: "i-edit", knopf: "#pdTrikot button.pd-nr", ausserhalb: true } : null
             ] },

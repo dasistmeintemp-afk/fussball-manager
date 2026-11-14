@@ -615,7 +615,13 @@ class LiveMatchDirector {
     static FREISTOSS_SCHNITT = 12;
 
     /** Breite mit Ball (planMitBall): Abstand der Linie und der Halbräume von der Mitte in der Grundeinstellung */
-    static BREITE = { linie: 42, halbraum: 21 };
+    /**
+     * "breit" und "eng" strecken oder stauchen dazu die ganze Elf mit Ball um
+     * die Feldmitte (computeTarget). Die Bahnen allein zeigten sich kaum:
+     * Gemessen stand die Elf mit Ball im Mittelfeld eng 43, normal 48 und
+     * breit 50 Meter breit, weil nur die Äußersten ihre Bahn wechseln.
+     */
+    static BREITE = { linie: 42, halbraum: 21, strecken: 1.2, stauchen: 0.92 };
 
     constructor(liveMatch) {
         this.match = liveMatch;
@@ -6601,8 +6607,12 @@ class LiveMatchDirector {
         const mitBall = this.formMitBall(p, gesehen, ball, dir, ballProgress);
         const ohneBall = this.formOhneBall(p, gesehen, dir);
         let tx = ohneBall.x + (mitBall.x - ohneBall.x) * form;
+        // Breit spielen heißt: die ganze Elf zieht das Feld auseinander, eng: sie rückt zusammen (BREITE)
+        const breiteAnw = this.fm ? (this.taktik(p.team).w.breite || 0) : 0;
+        const breiteFaktor = breiteAnw > 0 ? LiveMatchDirector.BREITE.strecken : (breiteAnw < 0 ? LiveMatchDirector.BREITE.stauchen : 1);
+        const mitBallY = p.pos === "TW" ? mitBall.y : Math.max(4, Math.min(96, 50 + (mitBall.y - 50) * breiteFaktor));
         // In die Breite schaltet jeder schnell um, auch wer in der Tiefe noch absichert
-        let ty = ohneBall.y + (mitBall.y - ohneBall.y) * this.umschaltBreite(p);
+        let ty = ohneBall.y + (mitBallY - ohneBall.y) * this.umschaltBreite(p);
 
         // Die Position im Verbund, bevor Zweikampf und Pressing sie ueberschreiben
         const blockTx = tx;

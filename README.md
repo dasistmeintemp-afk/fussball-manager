@@ -509,7 +509,7 @@ Das Spiel besitzt ein vollständiges, robustes Speichersystem:
     - *Ballspur:* Sie hängt am gezeichneten Ball, auch in der Luft (`merkeBallspur`). Vorher kam sie aus der Rechnung und lag auf dem Rasen, während der Ball über die Köpfe flog. Am Boden liegt sie unter den Spielern, in der Luft über ihnen, und sie wird zum Ball hin breiter und heller. Ein Schuss zieht eine längere, wärmere Spur. In der Wiederholung entsteht die Spur aus dem Tempo im Bild, ein hingelegter Ball zieht keine.
     - *Steilpass und langer Ball:* Eine Linie zeigt, wohin der Ball geht, ein Ring markiert den Zielpunkt, und wer in den Lauf startet, bekommt seinen Laufweg dorthin. Das Stück, das der Ball schon hinter sich hat, ist durchgezogen. Nach der Ankunft klingt das Bild eine knappe Sekunde nach. Die Regie meldet dafür bei jedem angekommenen Pass den Empfänger und ob er in den Lauf ging. Im Augen-Menü lässt sich das unter „Steilpässe und lange Bälle“ abschalten.
     - *Tempo:* **Echtzeit** ist der Standard, auch laufende Karrieren stellen einmal um. Gemessen laufen die Spieler dann im Mittel 2,4 m/s, die schnellsten 6,2 m/s; im alten Standard (dreifach) waren es im Mittel 7,8 m/s, das sah nach Vorlauf aus. *3× schnell* und *6× schnell* bleiben wählbar.
-    - *Uhr:* Sie zeigt die Spielminute (*23'*). Die Partie ist gerafft, eine Spielminute dauert im Bild gut sieben Sekunden. Mit Sekunden raste die Uhr achtmal so schnell wie das Geschehen.
+    - *Uhr (`liveUhrStand`):* Szenen in Echtzeit, dazwischen Zeitsprünge. Die Partie ist gerafft, neunzig Minuten dauern im Bild rund elf. Im Spielfluss läuft die Anzeige Sekunde für Sekunde mit dem Bild (*23:41, 23:42 …*). An jedem Schnitt springt sie auf den wahren Stand: wenn der Ball ruht, eine Szene beginnt, ein Ereignis gebucht wird oder eine ruhige Phase übersprungen ist. Ein Tor in der 25. Minute fällt deshalb auch auf der Uhr in der 25. Sprünge ab zwanzig Sekunden blitzen kurz auf (*»*). Die Anzeige läuft der Spielzeit nie voraus und höchstens fünf Minuten hinterher. Ohne Bild zeigt sie weiter die Minute (*23'*). Die Spielberechnung selbst ist unverändert.
     - *Wiederholung:* Solange sie läuft, steht nur ihr Hinweis oben, das Ereignisbanner kommt nicht mehr darunter zu liegen.
     - *Kamera (2D):* *Ganzes Feld* wie im Vorbild (Standard): Die Kamera steht, alle 22 Spieler und beide Tore bleiben im Bild. Der Rand ums Feld ist halb so breit, die Spieler sind ein Zehntel größer (bei einem Fünftel überdeckten sie sich im Gedränge). *Folgt dem Ball* zoomt wie bisher je nach Szene.
     - *Tipp auf einen Spieler:* Eine Karte neben ihm zeigt Note, Kondition, Tore und Vorlagen, Gelb und ob er angeschlagen ist. Sie wandert mit, schließt nach acht Sekunden, beim zweiten Tipp oder bei einem Tipp daneben (`waehleFeldSpieler`, `zeichneSpielerkarte`).
@@ -1281,6 +1281,19 @@ Viermal in der Saison ruht die Liga. Bisher hieß das für den Verein vier Tage 
 - **Spielabsagen und Nachholspiele (`WetterEngine.absage`, `SeasonEngine.sageAb`, `spieleNachholspiele`):** Schnee auf hart gefrorenem Platz oder Dauerregen auf tiefem Boden lassen eine Partie ausfallen, etwa zwei je Saison und Liga.
   - Die Partie wird zwei Spieltage später nachgeholt. Bis dahin steht im Spielplan *abgesagt*, und beide Vereine haben in der Tabelle ein Spiel weniger. Absage und Ergebnis meldet der Ligaverband im Postfach.
   - Abgesagt werden nur Partien ohne den eigenen Verein: Ein Nachholspiel mit eigenem Livespiel bräuchte einen zusätzlichen Spieltermin im Kalender. In den letzten vier Spieltagen fällt nichts mehr aus.
+
+### 5l. 🎨 Kontrastmodus, aufgeräumte Akademie, volle Spieltag-Übersicht, sichtbare Breite
+- **Kontrastmodus für Farbschwäche (`uiKontrast.js`):** Schalter unter *Spielstand & Optionen* bei den Farben, gilt je Gerät.
+  - Gut, Warnung und schlecht stehen in Blau, Gelb und Orange statt in Grün, Gelb und Rot; gedämpfter Text wird heller, Rahmen und Fokus kräftiger.
+  - Im 2D-Spiel tragen die Mannschaften Blau und Gelb statt der Vereinsfarben, die Torhüter Weiß und Schwarz. Der Wechsel wirkt auch im laufenden Spiel.
+  - Die 3D-Ansicht zeigt weiter die Vereinsfarben.
+- **Akademie-Zeilen (`unterbauAktionen`):** In der Zeile eines Talents stehen noch der nächste Schritt (*Profivertrag anbieten* oder *Zur Verhandlung*) und, wenn ein Verein wirbt, die Antwort darauf. *Hochziehen*, *Mit den Profis trainieren* und *Freigeben* stehen im Menü ⋯ und im Rechtsklick. Vorher waren es bis zu fünf Knöpfe nebeneinander.
+- **Übersicht Spieltag (`uiBereiche.js`):**
+  - *Nächstes Spiel* nennt unter der Paarung Tabellenplatz, Formation und stärksten Spieler des Gegners und die Ergebnisse dieser Saison gegen ihn.
+  - *Bestwerte* zeigt vor dem ersten Pflichtspiel die drei Stärksten im Kader, *Form* nennt das erste Pflichtspiel.
+- **Breite mit Ball (`LiveMatchDirector.BREITE.strecken`, `stauchen`):** *Breit* und *Eng* strecken oder stauchen die ganze Elf um die Feldmitte, nicht nur die Bahn der Äußersten.
+  - Gemessen mit Ball im Mittelfeld: eng 40 statt 43 Meter, normal 48, breit 52 statt 50. Zwischen eng und breit liegen jetzt gut zwölf Meter statt sechseinhalb.
+  - Die Abwehrlinie zeigt sich schon deutlich und bleibt, wie sie ist: tief 28, normal 31, hoch 37 Meter vor dem eigenen Tor.
 
 ### 6. 💼 Finanzen, Sponsoren & Buchungsjournal
 - **Gehaltsdisziplin der KI-Vereine (`FinanceEngine.gehaltsDisziplin`):** Jeder Wechsel und jede Verlängerung legt beim Gehalt etwas drauf. Angeglichen wurde bisher nur bei Auf- und Abstieg.

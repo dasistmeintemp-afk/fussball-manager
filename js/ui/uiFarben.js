@@ -121,10 +121,11 @@ Object.assign(((typeof window !== "undefined" && window.UIManager)
             <label class="coach-switch einstellung-schalter">
                 <input type="radio" name="farbenArt" value="${key}" ${key === aktuell ? "checked" : ""}>
                 <span class="coach-switch-text"><strong>${f.titel}</strong><br><span class="coach-muted">${f.text}</span></span>
-            </label>`).join("");
+            </label>`).join("") + (typeof this.kontrastEinstellungHtml === "function" ? this.kontrastEinstellungHtml() : "");
         el.querySelectorAll("input[name=farbenArt]").forEach(inp => inp.onchange = () => {
             this.setzeFarbenArt(inp.value);
             this.showToast(`Farben: ${this.FARBEN_ARTEN[inp.value].titel}`, "success");
         });
+        this.bindeKontrastEinstellung?.(el);
     }
 });

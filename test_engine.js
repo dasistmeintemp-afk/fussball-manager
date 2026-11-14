@@ -19609,6 +19609,94 @@ function runEngineTests() {
         }
     });
 
+    test("Oberfläche und Spielbild: Kontrastmodus, Akademie-Menü, Breite streckt die ganze Elf", () => {
+        const { LiveMatchDirector: D } = require('./js/engine/liveMatchDirector.js');
+        const { UIManager } = require('./js/ui/uiManager.js');
+        const state = GameState.createNewGame("muc", "normal", { name: "Paket" });
+        const heim = state.clubs.find(c => c.id === "muc"), gast = state.clubs.find(c => c.id === "dor");
+        const ui = Object.create(UIManager.prototype);
+        ui.app = { state };
+        ui.showToast = () => {}; ui.renderCurrentTab = () => {}; ui.renderHeader = () => {}; ui.showPlayerDetailsModal = () => {};
+
+        // --- Kontrastmodus: aus ist aus; an stellt die Trikots auf Blau und Gelb, aus stellt sie zurück
+        const live = new LiveMatch({ id: "kontrast", played: false, homeClubId: "muc", awayClubId: "dor" }, heim, gast, state.players, { modus: "fm" });
+        const vereinsfarben = [live.kits.home.farbe, live.kits.away.farbe];
+        if (ui.kontrastAn()) throw new Error("Der Kontrastmodus ist ohne Wahl an");
+        if (ui.kontrastTrikots(live) || live.kits.home.farbe !== vereinsfarben[0]) throw new Error("Ohne Kontrastmodus ändern sich die Trikots");
+        ui.app.currentLiveMatch = live;
+        ui.setzeKontrast(true);
+        if (!ui.kontrastAn()) throw new Error("Der Kontrastmodus lässt sich nicht einschalten");
+        const K = ui.KONTRAST_TRIKOTS;
+        if (live.kits.home.farbe !== K.home.farbe || live.kits.away.farbe !== K.away.farbe || live.kits.home.tw !== K.home.tw) throw new Error("Die Trikots sind nicht Blau und Gelb");
+        if (live.players2D.some(p => p.color !== K[p.team].farbe || p.textColor !== K[p.team].text)) throw new Error("Ein Spieler trägt noch die Vereinsfarbe");
+        if (K.home.farbe === K.away.farbe || K.home.tw === K.away.tw) throw new Error("Die Kontrastfarben sind nicht verschieden");
+        ui.setzeKontrast(false);
+        if (ui.kontrastAn() || live.kits.home.farbe !== vereinsfarben[0] || live.kits.away.farbe !== vereinsfarben[1]) throw new Error("Ausschalten stellt die Vereinsfarben nicht wieder her");
+        if (live.players2D.some(p => p.color !== (p.team === "home" ? vereinsfarben[0] : vereinsfarben[1]))) throw new Error("Ein Spieler trägt noch die Kontrastfarbe");
+        if (!/kontrastSchalter/.test(ui.kontrastEinstellungHtml()) || /checked/.test(ui.kontrastEinstellungHtml())) throw new Error("Schalter fehlt oder ist angehakt");
+        ui.app.currentLiveMatch = null;
+
+        // --- Akademie: Hochziehen, Training bei den Profis und Freigeben stehen im Menü
+        const hatte = { r: global.ReserveEngine, y: global.YouthEngine };
+        global.ReserveEngine = require('./js/engine/reserveEngine.js').ReserveEngine;
+        global.YouthEngine = YouthEngine;
+        const altConfirm = global.confirm;
+        try {
+            const talente = YouthEngine.eigeneTalente(state).filter(t => !t.promoted);
+            const alt = talente.find(t => (t.age || 0) >= YouthEngine.MIT_PROFIS.abAlter);
+            const jung = talente.find(t => (t.age || 0) < YouthEngine.MIT_PROFIS.abAlter);
+            if (!alt) throw new Error("Kein Talent ab 16 in der Akademie");
+            const arten = (t) => ui.unterbauAktionen(t).map(e => e.art);
+            if (!["ub-talent-hoch", "ub-talent-spieltag", "ub-talent-profis", "ub-talent-frei"].every(a => arten(alt).includes(a))) throw new Error(`Menü des Talents: ${arten(alt)}`);
+            if (jung && arten(jung).join() !== "ub-talent-frei") throw new Error(`Menü des zu jungen Talents: ${arten(jung)}`);
+            const r1 = ui.unterbauAktion("ub-talent-profis", alt.id);
+            if (!r1.success || !alt.mitProfis) throw new Error("Training bei den Profis aus dem Menü geht nicht");
+            if (!ui.unterbauAktionen(alt).some(e => e.art === "ub-talent-profis" && /Zurück/.test(e.text))) throw new Error("Das Menü bietet den Weg zurück nicht an");
+            ui.unterbauAktion("ub-talent-profis", alt.id);
+            if (alt.mitProfis) throw new Error("Zurück in die U19 geht nicht");
+            // Freigeben fragt nach; ein Nein lässt alles, wie es ist
+            const opfer = jung || talente.find(t => t !== alt);
+            global.confirm = () => false;
+            ui.unterbauAktion("ub-talent-frei", opfer.id);
+            if (!YouthEngine.eigeneTalente(state).includes(opfer)) throw new Error("Freigeben trotz Nein");
+            global.confirm = () => true;
+            const r2 = ui.unterbauAktion("ub-talent-frei", opfer.id);
+            if (!r2.success || YouthEngine.eigeneTalente(state).includes(opfer)) throw new Error("Freigeben aus dem Menü geht nicht");
+        } finally {
+            global.ReserveEngine = hatte.r; global.YouthEngine = hatte.y; global.confirm = altConfirm;
+        }
+
+        // --- Breite: "breit" streckt die Elf mit Ball um die Mitte, "eng" staucht sie; ohne Ball und im Tor ändert sich nichts
+        if (!(D.BREITE.strecken > 1.05 && D.BREITE.stauchen < 0.97)) throw new Error("Streckung der Breite nicht eingestellt");
+        const live2 = new LiveMatch({ id: "breite", played: false, homeClubId: "muc", awayClubId: "dor" }, heim, gast, state.players, { modus: "fm" });
+        const d = live2.director;
+        d.mode = "ambient"; d.kickoff = null; d.deadBall = null; d.possessionTeam = "home";
+        const feld = live2.players2D.filter(p => p.team === "home" && p.pos !== "TW");
+        const tw = live2.players2D.find(p => p.team === "home" && p.pos === "TW");
+        const breiteMit = (anweisung, team = "home") => {
+            heim.tactics.breite = anweisung; d._taktikCache = {};
+            // Die Uhr läuft weiter: Der Plan mit Ball wird je Zeitpunkt nur einmal gerechnet
+            d.possessionTeam = team; d._wechselUhr = -99; d._laufUhr = (d._laufUhr || 0) + 5;
+            feld.forEach(p => { p.form = team === "home" ? 1 : 0; p.formB = team === "home" ? 1 : 0; p.lauf = null; p.sicht = null; });
+            const ys = feld.map(p => d.computeTarget(p, live2.ball, new Set()).y);
+            return { spanne: Math.max(...ys) - Math.min(...ys), tor: d.computeTarget(tw, live2.ball, new Set()).y };
+        };
+        Object.assign(live2.ball, { x: 50, y: 50 });
+        const altBreite = heim.tactics.breite;
+        const zufall = Math.random;
+        Math.random = () => 0.5;
+        try {
+            const normal = breiteMit("normal"), breit = breiteMit("breit"), eng = breiteMit("eng");
+            if (!(breit.spanne > normal.spanne + 3 && eng.spanne < normal.spanne - 3)) throw new Error(`Breite mit Ball: eng ${eng.spanne.toFixed(1)}, normal ${normal.spanne.toFixed(1)}, breit ${breit.spanne.toFixed(1)}`);
+            if (Math.abs(breit.tor - normal.tor) > 0.01) throw new Error("Der Torwart rückt mit der Breite nach außen");
+            const ohneNormal = breiteMit("normal", "away"), ohneBreit = breiteMit("breit", "away");
+            if (Math.abs(ohneBreit.spanne - ohneNormal.spanne) > 1.5) throw new Error(`Breite ohne Ball ändert sich: ${ohneNormal.spanne.toFixed(1)} gegen ${ohneBreit.spanne.toFixed(1)}`);
+        } finally {
+            Math.random = zufall;
+            heim.tactics.breite = altBreite;
+        }
+    });
+
     console.log(`\n  Ergebnis Engine-Tests: ${passed} bestanden, ${failed} fehlgeschlagen.`);
     if (failed > 0) throw new Error(`${failed} Engine-Tests fehlgeschlagen.`);
     return { passed, failed };

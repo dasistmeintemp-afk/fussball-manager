@@ -287,6 +287,8 @@ class MatchFlowEngine {
 
     /** Höchste Risikoscheu im Konter (die ersten Pässe nach dem Ballgewinn mit "Kontern"), siehe ratePassOptions */
     static KONTER_RISIKO = 0.85;
+    /** Bis hierhin (Feldeinheiten vom eigenen Tor) wird auch im Konter weggeschlagen (decide) */
+    static KONTER_KLAEREN = 30;
     /** Abzug für den Pass zurück, solange der Konter läuft (ratePassOptions) */
     static KONTER_ZURUECK = 0.9;
     /** Im Konter treibt er den Ball, solange vor ihm frei ist: Gegner, die mehr als so viele Einheiten hinter ihm sind, zählen nicht (lageAmBall) */
@@ -2005,8 +2007,10 @@ class MatchFlowEngine {
         // Nichts, sobald ein Gegner kam.
         const eigeneHaelfte = (this.attackDir(team) > 0 ? carrier.x : 100 - carrier.x) < 50;
         // Im Konter wird nicht weggeschlagen: Der Ball soll nach vorn getragen
-        // und gespielt werden, der Gegner steht ja offen.
-        if (!best || (eigeneHaelfte && !options.konter && pressure > 0.6 - sicher && best.score < 0.5 + sicher)) {
+        // und gespielt werden, der Gegner steht ja offen. Nur im eigenen Drittel
+        // bleibt der Befreiungsschlag - er geht dann zur Spitze, die vorn wartet.
+        const eigenesDrittel = (this.attackDir(team) > 0 ? carrier.x : 100 - carrier.x) < MatchFlowEngine.KONTER_KLAEREN;
+        if (!best || (eigeneHaelfte && (!options.konter || eigenesDrittel) && pressure > 0.6 - sicher && best.score < 0.5 + sicher)) {
             best = this.rateClearance(carrier, mates, tactics, pressure);
         }
 

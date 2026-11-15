@@ -18293,7 +18293,8 @@ function runEngineTests() {
             if (!texte(profi).includes("In die U23 schicken") || !texte(profi).includes("In die U19 schicken")) throw new Error(`Profi: ${texte(profi)}`);
             const talent = Y.eigeneTalente(state).find(t => !t.promoted && !t.kader);
             talent.age = 17;
-            if (texte(talent).join("|") !== "In die erste Mannschaft holen|Für den nächsten Spieltag hochziehen") throw new Error(`Talent: ${texte(talent)}`);
+            // Im Menü des Talents steht alles, was nicht der nächste Schritt ist (die Zeile hat nur noch den Hauptknopf)
+            if (texte(talent).join("|") !== "In die erste Mannschaft holen|Für den nächsten Spieltag hochziehen|Mit den Profis trainieren|Aus der Akademie freigeben") throw new Error(`Talent: ${texte(talent)}`);
             // Im Menü Aktionen der Akte steht oben die Mannschaft
             const gruppen = ui.profilAktionen({ player: zweiter, club, card: null, isUserClub: true, isProspect: false }, { querySelector: () => null });
             if (gruppen[0].titel !== "Mannschaft" || gruppen[0].eintraege.length !== 3) throw new Error(`Akte: ${gruppen.map(g => g.titel)}`);

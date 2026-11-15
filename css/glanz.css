@@ -502,3 +502,10 @@ select option { background: var(--surface-1, #12161d); color: var(--text-main); 
 #lmClock { transition: color 0.25s ease, text-shadow 0.25s ease; }
 #lmClock.lm-zeitsprung { color: var(--warn); text-shadow: 0 0 10px rgba(251, 191, 36, 0.55); }
 #lmClock.lm-zeitsprung::after { content: " »"; font-size: 0.7em; }
+
+/* Rundgang: Kennzahlen der Finanzen umbrechen statt abschneiden, Namen in der Kabine am Handy gut zu treffen */
+#finKennzahlen .vk-kachel span { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+@media (max-width: 720px) {
+    .kb-zeile a { display: inline-flex; align-items: center; min-height: 40px; }
+    .kabine-card .hint-box a { display: inline-block; padding: 10px 0; }
+}

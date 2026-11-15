@@ -894,6 +894,10 @@ function runWizardTests() {
         kameras.forEach(k => { probe.setze(k); if (probe.kamera !== k) throw new Error(`Kamera ${k} wird nicht angenommen`); });
         probe.setze("drohne");
         if (probe.kamera !== "tv" || !Spielfeld3D.KAMERA.hintertor || !(Spielfeld3D.REGIE.nah > Spielfeld3D.REGIE.totale)) throw new Error("Kamerawahl oder Regie-Grenzen falsch");
+        // Die Fernsehkamera steht flach: Die Gegengerade gehört ins Bild
+        const tvKamera = Spielfeld3D.KAMERA.tv;
+        if (Math.atan2(tvKamera.hoehe, tvKamera.abstand + 34) * 180 / Math.PI > 18) throw new Error("Die Fernsehkamera schaut zu steil, das Stadion fehlt im Bild");
+        if (typeof Spielfeld3D.prototype._baueSeitenrand !== "function") throw new Error("Trainerbänke und Tunnel fehlen");
         if (!/data-anzeige-wahl="kamera2D"/.test(html) || !/<option value="feld">Ganzes Feld<\/option>/.test(html)) throw new Error("Kamerawahl für 2D fehlt");
         // 2D: Ganzes Feld ist der Standard; ein Tipp auf einen Spieler zeigt seine Karte, derselbe noch einmal schließt sie
         const { UIManager: UIK } = require('./js/ui/uiManager.js');

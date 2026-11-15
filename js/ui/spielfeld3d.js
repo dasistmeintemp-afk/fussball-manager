@@ -700,7 +700,54 @@ class Spielfeld3D {
                 this._glanz(gruppe, x * 0.97, hoch, z * 0.97, 18);
             });
         }
+        this._baueSeitenrand(gruppe, { heimFarbe, gastFarbe, B, vorSeite, beton });
         this.scene.add(gruppe);
+    }
+
+    /**
+     * Was an der Gegengerade zwischen Linie und Bande steht: zwei
+     * Trainerbänke mit Ersatzspielern und der Spielertunnel dazwischen.
+     */
+    _baueSeitenrand(gruppe, { heimFarbe, gastFarbe, B, vorSeite, beton }) {
+        const dunkel = new THREE.MeshLambertMaterial({ color: "#111827" });
+        const glas = new THREE.MeshLambertMaterial({ color: "#cbd5e1", transparent: true, opacity: 0.35, side: THREE.DoubleSide });
+        const haut = new THREE.MeshLambertMaterial({ color: "#d6a57c" });
+        const z = -(B + 2.6);
+        const bank = (x, farbe, saat) => {
+            const g = new THREE.Group();
+            const lang = 9;
+            const teil = (geo, mat, px, py, pz) => { const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz); g.add(m); return m; };
+            teil(new THREE.BoxGeometry(lang, 1.9, 0.12), dunkel, 0, 0.95, -0.7);
+            teil(new THREE.BoxGeometry(lang + 0.2, 0.1, 1.5), glas, 0, 1.95, -0.05).rotation.x = 0.12;
+            [-1, 1].forEach(s => teil(new THREE.BoxGeometry(0.1, 1.9, 1.3), glas, s * lang / 2, 0.95, -0.1));
+            teil(new THREE.BoxGeometry(lang - 0.4, 0.45, 0.5), new THREE.MeshLambertMaterial({ color: farbe }), 0, 0.3, -0.35);
+            // Ersatzspieler im Trainingsleibchen, dazu zwei vom Stab in Dunkel
+            const zufall = Spielfeld3D.zufall(saat);
+            const leib = new THREE.MeshLambertMaterial({ color: farbe });
+            const rumpf = new THREE.BoxGeometry(0.46, 0.62, 0.3), kopf = new THREE.SphereGeometry(0.13, 8, 6);
+            for (let i = 0; i < 9; i++) {
+                const px = -lang / 2 + 0.75 + i * 0.94 + (zufall() - 0.5) * 0.12;
+                teil(rumpf, i < 2 ? dunkel : leib, px, 0.86, -0.32);
+                teil(kopf, haut, px, 1.32, -0.3);
+            }
+            g.position.set(x, 0, z);
+            gruppe.add(g);
+        };
+        bank(-11, heimFarbe, 11);
+        bank(11, gastFarbe, 23);
+        // Spielertunnel: dunkle Öffnung in der Brüstung, Rahmen in Vereinsfarbe
+        const tunnelZ = -(B + vorSeite) + 0.25;
+        const rahmen = new THREE.Mesh(new THREE.BoxGeometry(5.2, 2.9, 0.5), new THREE.MeshLambertMaterial({ color: heimFarbe }));
+        rahmen.position.set(0, 1.45, tunnelZ - 0.1);
+        gruppe.add(rahmen);
+        const loch = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.4, 0.5), new THREE.MeshBasicMaterial({ color: "#05070b" }));
+        loch.position.set(0, 1.2, tunnelZ + 0.05);
+        gruppe.add(loch);
+        // Die Bande lässt vor dem Tunnel den Weg frei: ein Stück Kunstrasen-Teppich
+        const weg = new THREE.Mesh(new THREE.PlaneGeometry(4.2, vorSeite - 0.6), new THREE.MeshLambertMaterial({ color: "#3f4a3a" }));
+        weg.rotation.x = -Math.PI / 2;
+        weg.position.set(0, 0.03, -(B + vorSeite / 2 + 0.2));
+        gruppe.add(weg);
     }
 
     /** Ein Lichthof um eine Lampe - je dunkler das Wetter, desto heller */
@@ -1912,7 +1959,7 @@ class Spielfeld3D {
      * sondern nur weniger Himmel und Tribüne.
      */
     static KAMERA = {
-        tv: { hoehe: 26, abstand: 14, breite: 36, min: 12, max: 32 },
+        tv: { hoehe: 16, abstand: 24, breite: 40, min: 14, max: 32 },
         taktik: { hoehe: 72, abstand: 14, breite: 84, min: 30, max: 60 },
         nah: { hoehe: 4.2, abstand: 10, breite: 44, min: 20, max: 40 },
         hintertor: { hoehe: 15, abstand: 18, breite: 50, min: 24, max: 46 },
@@ -1979,7 +2026,7 @@ class Spielfeld3D {
             blick = new THREE.Vector3(bw.x + vorlauf * 0.4, 1 + hoehe * 0.3, bw.z);
             art = "nah";
         } else {
-            // Übertragung: hoch auf der Haupttribüne, nah am Spiel, schwenkt mit dem Ball
+            // Übertragung: von der Tribüne, flach genug, dass Banden und Gegengerade im Bild stehen
             const c = Spielfeld3D.KAMERA.tv;
             pos = new THREE.Vector3(zielX * 0.85, c.hoehe, S3D_BREITE / 2 + c.abstand);
             blick = new THREE.Vector3(zielX, 0, bw.z * 0.75 - 1);

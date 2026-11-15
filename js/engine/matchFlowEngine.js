@@ -217,7 +217,12 @@ class MatchFlowEngine {
      *   (kopfball). Vorher fing der Torwart fast jede dritte Ecke, und nur
      *   jede sechste brachte einen Kopfball.
      * - tore: Faktor auf die Torwahrscheinlichkeit eines Abschlusses aus dem
-     *   Spiel und nach Standards (Elfmeter ausgenommen)
+     *   Spiel und nach Standards (Elfmeter ausgenommen). Mit 0,91 fielen im
+     *   2D-Modell gemessen rund 2,5 Tore je Partie, in der Zeitleiste 3,0 -
+     *   bei gleich vielen Schüssen. Die eigene Mannschaft spielte damit in
+     *   einer torärmeren Welt als der Rest der Liga. Über 972 Partien mit
+     *   Faktoren von 0,5 bis 1,6 steigt die Zahl der Tore um 2,1 je ganzem
+     *   Schritt; mit 1,2 sind es 3,00 gegen 2,99 (300 gegen 800 Partien).
      */
     static EICHUNG = {
         annahme: { basis: 0.012, ab: 11, jeTempo: 0.008, druck: 0.05, hoch: 0.07 },
@@ -226,7 +231,7 @@ class MatchFlowEngine {
         ecke: { kopfball: 0.68, faust: 0.5, block: 0.45, abgefaelscht: 0.32 },
         foul: { zweikampf: 1.05, druck: 1.54, strafraum: 0.14 },
         standard: { twReaktion: 0.14, kopfball: 7 },
-        tore: 0.91
+        tore: 1.2
     };
 
     // Geduld am Ball (siehe qualitaetsVorsprung): Bisher spielten Bayern und
@@ -1355,7 +1360,7 @@ class MatchFlowEngine {
         const fussCfg = (typeof MatchEngine !== "undefined" && MatchEngine.SCHWACHER_FUSS) || { faktorSchwach: 0.8, faktorStark: 1.05 };
         if (fussArt === "schwach") pTor *= fussCfg.faktorSchwach;
         else if (fussArt === "stark") pTor *= fussCfg.faktorStark;
-        // Stufe 5: Mit der Ballphysik fielen 2,65 statt rund drei Tore je Spiel
+        // Die Eichung auf rund drei Tore je Spiel, wie in der Zeitleiste (EICHUNG.tore)
         if (!opts.elfmeter && this.mitPhysik()) pTor *= MatchFlowEngine.EICHUNG.tore;
         pTor = Math.max(0.005, Math.min(opts.elfmeter ? 0.93 : 0.9, pTor));
 

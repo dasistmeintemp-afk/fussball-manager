@@ -1,0 +1,127 @@
+{
+ "d dashboard": {
+  "breit": false,
+  "abgeschnitten": [
+   "pp-absender: Alexander Hoffmann (Sportdirektor)",
+   "SPAN: Litoral Santista",
+   "SPAN: Southampton Cori…",
+   "SPAN: Étoile Angers",
+   "SPAN: SSV Bochum",
+   "SPAN: SC Sinsheim",
+   "SPAN: Blau-Weiß Gelsen…",
+   "SPAN: Viktoria Hamburg"
+  ],
+  "raus": [],
+  "klein": [],
+  "leer": [],
+  "roh": []
+ },
+ "d transfers:Market": {
+  "breit": false,
+  "abgeschnitten": [
+   "SPAN: Manchester Victoria",
+   "SPAN: Germania Leipzig",
+   "SPAN: Manchester Wanderers",
+   "SPAN: Juventud Madrid",
+   "SPAN: SSV Leverkusen",
+   "SPAN: Liverpool Victoria",
+   "SPAN: Concordia Dortmund",
+   "SPAN: Liverpool Wanderers"
+  ],
+  "raus": [],
+  "klein": [],
+  "leer": [],
+  "roh": []
+ },
+ "d FEHLER": [],
+ "m dashboard": {
+  "breit": false,
+  "abgeschnitten": [
+   "SPAN: Litoral Santista",
+   "SPAN: Motherwell Clyde",
+   "SPAN: SSV Bochum",
+   "SPAN: SC Sinsheim",
+   "SPAN: Blau-Weiß Gelsen…",
+   "SPAN: Juventud Madrid",
+   "SPAN: Viktoria Hamburg"
+  ],
+  "raus": [],
+  "klein": [],
+  "leer": [],
+  "roh": []
+ },
+ "m squad:Kabine": {
+  "breit": false,
+  "abgeschnitten": [],
+  "raus": [],
+  "klein": [
+   "A 99x21: Theo Schröder",
+   "A 100x21: Josip Knežević",
+   "A 88x21: Gabriel Blanc",
+   "A 99x21: Ruben Verhoef",
+   "A 62x21: Ali Arslan",
+   "A 90x21: Fran Sánchez",
+   "A 77x15: Kenta Tanaka",
+   "A 75x15: Felipe Freitas"
+  ],
+  "leer": [],
+  "roh": []
+ },
+ "m youth:U19": {
+  "breit": false,
+  "abgeschnitten": [
+   "ub-name: Zimmermann"
+  ],
+  "raus": [],
+  "klein": [],
+  "leer": [],
+  "roh": []
+ },
+ "m tactics": {
+  "breit": false,
+  "abgeschnitten": [
+   "STRONG: Kwiatkowski"
+  ],
+  "raus": [],
+  "klein": [],
+  "leer": [],
+  "roh": []
+ },
+ "m fixtures": {
+  "breit": false,
+  "abgeschnitten": [
+   "SPAN: Blau-Weiß Gelsen…",
+   "SPAN: Rot-Weiß München",
+   "SPAN: Concordia Frankf…",
+   "SPAN: Sportfreunde Kar…",
+   "SPAN: Concordia Dortmund"
+  ],
+  "raus": [],
+  "klein": [],
+  "leer": [],
+  "roh": []
+ },
+ "m stats:Datenzentrale": {
+  "breit": false,
+  "abgeschnitten": [
+   "dz-name: Blau-Weiß Gelsenkirchen"
+  ],
+  "raus": [],
+  "klein": [],
+  "leer": [],
+  "roh": []
+ },
+ "m finances:Budgets": {
+  "breit": false,
+  "abgeschnitten": [
+   "SPAN: Gehälter / Woche",
+   "SPAN: Sponsor / Spieltag",
+   "SPAN: Fanartikel / Spieltag"
+  ],
+  "raus": [],
+  "klein": [],
+  "leer": [],
+  "roh": []
+ },
+ "m FEHLER": []
+}

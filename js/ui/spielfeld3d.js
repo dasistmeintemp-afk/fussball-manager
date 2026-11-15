@@ -69,6 +69,22 @@ class Spielfeld3D {
         schnee: { oben: "#6c7888", horizont: "#d6dde5", sonne: 1.0, himmel: 1.5, licht: "#eef2f7", nebel: [95, 320], flutlicht: 0.85, wolken: 1, niederschlag: "schnee", dichte: 1 }
     };
 
+    /** Abendspiel: Das überschreibt Himmel und Licht des Wetters, Regen und Schnee bleiben */
+    static ABEND = { oben: "#050912", horizont: "#121a29", sonne: 1.75, himmel: 0.5, licht: "#eef3ff", flutlicht: 1, nacht: true };
+
+    /**
+     * Ob die Partie am Abend unter Flutlicht läuft: jedes Pokalspiel und
+     * jedes dritte Ligaspiel, fest je Partie. Nur fürs Bild.
+     */
+    static abendspiel(liveMatch) {
+        const m = (liveMatch && liveMatch.match) || {};
+        if (m.isCup || m.cup || m.cupRound || m.competition === "cup") return true;
+        const text = String(m.id || `${m.homeClubId || ""}-${m.awayClubId || ""}-${m.matchday || ""}`);
+        let h = 2166136261;
+        for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+        return (h >>> 0) % 3 === 0;
+    }
+
     /** Wo die Bibliothek liegt - als Datei und als Vorrat in der Einzeldatei */
     static BIBLIOTHEK = "js/vendor/three.min.js";
     static VORRAT_ID = "vorrat-three";
@@ -283,6 +299,10 @@ class Spielfeld3D {
             g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
             g.restore();
         }
+        if (s.nacht && s.wolken < 0.2) {
+            g.fillStyle = "rgba(226,232,240,0.8)";
+            for (let i = 0; i < 140; i++) g.fillRect(zufall() * c.width, zufall() * c.height * 0.4, 1, 1);
+        }
         const t = new THREE.CanvasTexture(c);
         t.colorSpace = THREE.SRGBColorSpace;
         t.wrapS = THREE.RepeatWrapping;
@@ -294,9 +314,12 @@ class Spielfeld3D {
      * Das Wetter der Partie: Himmel, Sonne, Sichtweite, nasser Rasen und
      * Niederschlag. Ohne Wetter scheint die Sonne.
      */
-    _stimmung(art) {
-        const s = Spielfeld3D.STIMMUNG[art] || Spielfeld3D.STIMMUNG.sonnig;
+    _stimmung(art, abend = false) {
+        const tag = Spielfeld3D.STIMMUNG[art] || Spielfeld3D.STIMMUNG.sonnig;
+        const s = abend ? { ...tag, ...Spielfeld3D.ABEND, nebel: [Math.min(tag.nebel[0], 170), Math.min(tag.nebel[1], 430)], wolken: tag.wolken * 0.35 } : tag;
         this.stimmung = s;
+        // Abends leuchtet das Flutlicht von oben, tags steht die Sonne hinter der Kamera
+        if (s.nacht) this.sonne.position.set(-10, 95, 24); else this.sonne.position.set(-38, 80, 52);
         if (this.himmel) {
             if (this.himmel.material.map) this.himmel.material.map.dispose();
             this.himmel.material.map = this._himmelTextur(s);
@@ -903,7 +926,35 @@ class Spielfeld3D {
         this.scene.add(this.markierung);
     }
 
-    _schatten(radius) {
+    /** Unter Flutlicht wirft jede Figur vier weiche Schatten, zu den vier Masten hin */
+    _kreuzSchatten(radius) {
+        if (!this._kreuzTextur) {
+            const c = document.createElement("canvas");
+            c.width = c.height = 128;
+            const g = c.getContext("2d");
+            for (let i = 0; i < 4; i++) {
+                g.save();
+                g.translate(64, 64);
+                g.rotate(Math.PI / 4 + i * Math.PI / 2);
+                g.scale(1, 0.26);
+                const v = g.createRadialGradient(30, 0, 0, 30, 0, 32);
+                v.addColorStop(0, "rgba(0,0,0,0.55)");
+                v.addColorStop(1, "rgba(0,0,0,0)");
+                g.fillStyle = v;
+                g.fillRect(-4, -40, 70, 80);
+                g.restore();
+            }
+            this._kreuzTextur = new THREE.CanvasTexture(c);
+        }
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(radius * 8, radius * 8),
+            new THREE.MeshBasicMaterial({ map: this._kreuzTextur, transparent: true, opacity: 0.8, depthWrite: false }));
+        m.rotation.x = -Math.PI / 2;
+        m.position.y = 0.02;
+        return m;
+    }
+
+    _schatten(radius, kreuz = false) {
+        if (kreuz && this.stimmung && this.stimmung.nacht) return this._kreuzSchatten(radius);
         const m = new THREE.Mesh(new THREE.CircleGeometry(radius, 16),
             new THREE.MeshBasicMaterial({ color: "#000000", transparent: true, opacity: this.q.schatten ? 0.22 : 0.35, depthWrite: false }));
         m.rotation.x = -Math.PI / 2;
@@ -1161,7 +1212,7 @@ class Spielfeld3D {
                 g.rumpf.add(nummer);
             }
         }
-        const blob = this._schatten(0.42);
+        const blob = this._schatten(0.42, true);
         this.scene.add(blob);
 
         // Größe aus dem Spieler: 1,81 Meter ist der Durchschnitt
@@ -1251,7 +1302,7 @@ class Spielfeld3D {
     _neuesSpiel(liveMatch) {
         this._entferneFiguren();
         const k = liveMatch.kits || {};
-        this._stimmung(liveMatch.wetter?.art);
+        this._stimmung(liveMatch.wetter?.art, Spielfeld3D.abendspiel(liveMatch));
         const heim = liveMatch.homeClub || {}, gast = liveMatch.awayClub || {};
         this._baueStadion({
             kapazitaet: heim.stadiumCapacity || heim.capacity || 30000,

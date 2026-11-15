@@ -898,6 +898,13 @@ function runWizardTests() {
         const tvKamera = Spielfeld3D.KAMERA.tv;
         if (Math.atan2(tvKamera.hoehe, tvKamera.abstand + 34) * 180 / Math.PI > 18) throw new Error("Die Fernsehkamera schaut zu steil, das Stadion fehlt im Bild");
         if (typeof Spielfeld3D.prototype._baueSeitenrand !== "function") throw new Error("Trainerbänke und Tunnel fehlen");
+        // Abendspiel: jedes Pokalspiel, rund jedes dritte Ligaspiel, fest je Partie
+        if (!Spielfeld3D.abendspiel({ match: { id: "x", isCup: true } })) throw new Error("Ein Pokalspiel läuft nicht am Abend");
+        let abende = 0;
+        for (let i = 0; i < 300; i++) if (Spielfeld3D.abendspiel({ match: { id: "m" + i } })) abende++;
+        if (abende < 60 || abende > 140) throw new Error(`${abende} von 300 Ligaspielen am Abend statt rund 100`);
+        if (Spielfeld3D.abendspiel({ match: { id: "m7" } }) !== Spielfeld3D.abendspiel({ match: { id: "m7" } })) throw new Error("Abendspiel wechselt je Aufruf");
+        if (!Spielfeld3D.ABEND.nacht || Spielfeld3D.ABEND.flutlicht !== 1) throw new Error("Abends brennt das Flutlicht nicht");
         if (!/data-anzeige-wahl="kamera2D"/.test(html) || !/<option value="feld">Ganzes Feld<\/option>/.test(html)) throw new Error("Kamerawahl für 2D fehlt");
         // 2D: Ganzes Feld ist der Standard; ein Tipp auf einen Spieler zeigt seine Karte, derselbe noch einmal schließt sie
         const { UIManager: UIK } = require('./js/ui/uiManager.js');
